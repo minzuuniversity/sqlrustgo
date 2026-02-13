@@ -1,0 +1,5 @@
+*.tbl filter=lfs diff=lfs merge=lfs -text
+*.wal filter=lfs diff=lfs merge=lfs -text
+*.profraw filter=lfs diff=lfs merge=lfs -text
+*.pptx filter=lfs diff=lfs merge=lfs -text
+*.tar.gz filter=lfs diff=lfs merge=lfs -text
