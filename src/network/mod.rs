@@ -37,9 +37,6 @@
 //!
 //! Network Layer for SQLRustGo
 
-pub mod async_server;
-pub mod config;
-
 use crate::{SqlError, Value};
 use bytes::{BufMut, BytesMut};
 use std::io::{Read, Write};
