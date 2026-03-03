@@ -31,7 +31,7 @@ fn main() {
 
     while running.load(Ordering::SeqCst) {
         print!("sqlrustgo> ");
-        io::stdout().flush().unwrap();
+        io::stdout().flush().expect("failed to flush stdout");
 
         let mut input = String::new();
         match io::stdin().read_line(&mut input) {

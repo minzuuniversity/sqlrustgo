@@ -143,7 +143,7 @@ impl BPlusTree {
         if self.root.is_none() {
             return vec![];
         }
-        self.range_query_node(self.root.as_ref().unwrap(), start, end)
+        self.range_query_node(self.root.as_ref().expect("root is Some after is_none check"), start, end)
     }
 
     fn range_query_node(&self, node: &Node, start: i64, end: i64) -> Vec<u32> {

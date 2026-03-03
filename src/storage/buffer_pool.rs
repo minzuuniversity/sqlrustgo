@@ -21,13 +21,13 @@ impl BufferPool {
 
     /// Get a page
     pub fn get(&self, page_id: u32) -> Option<Arc<Page>> {
-        let pages = self.pages.lock().unwrap();
+        let pages = self.pages.lock().expect("buffer pool lock poisoned");
         pages.get(&page_id).cloned()
     }
 
     /// Insert a page
     pub fn insert(&self, page: Arc<Page>) {
-        let mut pages = self.pages.lock().unwrap();
+        let mut pages = self.pages.lock().expect("buffer pool lock poisoned");
         if pages.len() >= self.capacity {
             pages.remove(&0); // Simple eviction
         }

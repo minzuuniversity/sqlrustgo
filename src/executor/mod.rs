@@ -148,7 +148,8 @@ impl ExecutionEngine {
 
         // Get indexed columns before mutating
         let indexed_columns: Vec<(usize, String)> = {
-            let table_data = self.storage.get_table(&stmt.table).unwrap();
+            let table_data = self.storage.get_table(&stmt.table)
+                .expect("table should exist after contains_table check");
             table_data.info.columns.iter()
                 .enumerate()
                 .filter(|(_, c)| self.storage.has_index(&stmt.table, &c.name))
@@ -161,7 +162,8 @@ impl ExecutionEngine {
         let mut index_updates: Vec<(String, i64, u32)> = Vec::new(); // (column_name, key, row_id)
 
         {
-            let table_data = self.storage.get_table_mut(&stmt.table).unwrap();
+            let table_data = self.storage.get_table_mut(&stmt.table)
+                .expect("table should exist after contains_table check");
             for row_expr in &stmt.values {
                 let row: Vec<Value> = row_expr.iter().map(expression_to_value_static).collect();
                 let row_id = table_data.rows.len() as u32;
@@ -208,7 +210,8 @@ impl ExecutionEngine {
 
         // Build column index map from table schema
         let column_indices: std::collections::HashMap<String, usize> = {
-            let table_data = self.storage.get_table(&stmt.table).unwrap();
+            let table_data = self.storage.get_table(&stmt.table)
+                .expect("table should exist after contains_table check");
             table_data
                 .info
                 .columns
@@ -219,7 +222,8 @@ impl ExecutionEngine {
         };
 
         let rows_affected = {
-            let table_data = self.storage.get_table_mut(&stmt.table).unwrap();
+            let table_data = self.storage.get_table_mut(&stmt.table)
+                .expect("table should exist after contains_table check");
             let mut count = 0;
 
             // Evaluate WHERE clause if present
@@ -267,7 +271,8 @@ impl ExecutionEngine {
 
         // Build column index map for WHERE clause evaluation
         let column_indices: std::collections::HashMap<String, usize> = {
-            let table_data = self.storage.get_table(&stmt.table).unwrap();
+            let table_data = self.storage.get_table(&stmt.table)
+                .expect("table should exist after contains_table check");
             table_data
                 .info
                 .columns
@@ -278,7 +283,8 @@ impl ExecutionEngine {
         };
 
         let rows_affected = {
-            let table_data = self.storage.get_table_mut(&stmt.table).unwrap();
+            let table_data = self.storage.get_table_mut(&stmt.table)
+                .expect("table should exist after contains_table check");
             let original_count = table_data.rows.len();
 
             // If WHERE clause is present, filter rows; otherwise delete all
