@@ -62,18 +62,20 @@ pub struct ExecutionEngine {
 
 impl ExecutionEngine {
     /// Create a new execution engine with file-based storage
+    /// Panics if storage initialization fails (use with_data_dir for error handling)
     pub fn new() -> Self {
         Self::with_data_dir(std::path::PathBuf::from("data"))
+            .expect("Failed to initialize execution engine")
     }
 
     /// Create a new execution engine with custom data directory
     #[allow(clippy::new_without_default)]
-    pub fn with_data_dir(data_dir: PathBuf) -> Self {
-        let storage = FileStorage::new(data_dir).expect("Failed to initialize file storage");
-        Self {
+    pub fn with_data_dir(data_dir: PathBuf) -> SqlResult<Self> {
+        let storage = FileStorage::new(data_dir)?;
+        Ok(Self {
             buffer_pool: BufferPool::new(100),
             storage,
-        }
+        })
     }
 }
 
