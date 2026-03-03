@@ -712,3 +712,139 @@ impl PhysicalPlan for LimitExec {
         Ok(rows)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::types::Value;
+
+    #[test]
+    fn test_hashjoin_inner() {
+        let left_schema = Schema::new(vec![
+            super::Field::new("id".to_string(), super::DataType::Integer),
+            super::Field::new("name".to_string(), super::DataType::Text),
+        ]);
+        let right_schema = Schema::new(vec![
+            super::Field::new("user_id".to_string(), super::DataType::Integer),
+            super::Field::new("email".to_string(), super::DataType::Text),
+        ]);
+
+        let left_data = vec![
+            vec![Value::Integer(1), Value::Text("Alice".to_string())],
+            vec![Value::Integer(2), Value::Text("Bob".to_string())],
+            vec![Value::Integer(3), Value::Text("Charlie".to_string())],
+        ];
+
+        let right_data = vec![
+            vec![Value::Integer(1), Value::Text("alice@test.com".to_string())],
+            vec![Value::Integer(2), Value::Text("bob@test.com".to_string())],
+            vec![Value::Integer(4), Value::Text("david@test.com".to_string())],
+        ];
+
+        let left = Arc::new(SeqScanExec {
+            table_name: "users".to_string(),
+            projection: None,
+            filters: vec![],
+            limit: None,
+            schema: left_schema.clone(),
+            rows: left_data,
+        });
+
+        let right = Arc::new(SeqScanExec {
+            table_name: "emails".to_string(),
+            projection: None,
+            filters: vec![],
+            limit: None,
+            schema: right_schema.clone(),
+            rows: right_data,
+        });
+
+        let join_schema = Schema::new(vec![
+            super::Field::new("id".to_string(), super::DataType::Integer),
+            super::Field::new("name".to_string(), super::DataType::Text),
+            super::Field::new("user_id".to_string(), super::DataType::Integer),
+            super::Field::new("email".to_string(), super::DataType::Text),
+        ]);
+
+        let join = HashJoinExec::new(
+            left,
+            right,
+            vec![(
+                Column::new("id".to_string()),
+                Column::new("user_id".to_string()),
+            )],
+            JoinType::Inner,
+            join_schema,
+        );
+
+        let result = join.execute().unwrap();
+
+        assert_eq!(result.len(), 2);
+        assert_eq!(result[0][0], Value::Integer(1));
+        assert_eq!(result[0][2], Value::Integer(1));
+        assert_eq!(result[1][0], Value::Integer(2));
+        assert_eq!(result[1][2], Value::Integer(2));
+    }
+
+    #[test]
+    fn test_hashjoin_left() {
+        let left_schema = Schema::new(vec![super::Field::new(
+            "id".to_string(),
+            super::DataType::Integer,
+        )]);
+        let right_schema = Schema::new(vec![super::Field::new(
+            "user_id".to_string(),
+            super::DataType::Integer,
+        )]);
+
+        let left_data = vec![
+            vec![Value::Integer(1)],
+            vec![Value::Integer(2)],
+            vec![Value::Integer(3)],
+        ];
+
+        let right_data = vec![vec![Value::Integer(1)], vec![Value::Integer(2)]];
+
+        let left = Arc::new(SeqScanExec {
+            table_name: "users".to_string(),
+            projection: None,
+            filters: vec![],
+            limit: None,
+            schema: left_schema.clone(),
+            rows: left_data,
+        });
+
+        let right = Arc::new(SeqScanExec {
+            table_name: "emails".to_string(),
+            projection: None,
+            filters: vec![],
+            limit: None,
+            schema: right_schema.clone(),
+            rows: right_data,
+        });
+
+        let join_schema = Schema::new(vec![
+            super::Field::new("id".to_string(), super::DataType::Integer),
+            super::Field::new("user_id".to_string(), super::DataType::Integer),
+        ]);
+
+        let join = HashJoinExec::new(
+            left,
+            right,
+            vec![(
+                Column::new("id".to_string()),
+                Column::new("user_id".to_string()),
+            )],
+            JoinType::Left,
+            join_schema,
+        );
+
+        let result = join.execute().unwrap();
+
+        assert_eq!(result.len(), 3);
+        assert_eq!(result[0][0], Value::Integer(1));
+        assert_eq!(result[1][0], Value::Integer(2));
+        assert_eq!(result[2][0], Value::Integer(3));
+        assert_eq!(result[2][1], Value::Null);
+    }
+}

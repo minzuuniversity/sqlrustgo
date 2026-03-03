@@ -6,8 +6,8 @@
 //! - Schema resolution
 
 use crate::parser::{
-    AggregateCall, ColumnDefinition, DeleteStatement, Expression, InsertStatement,
-    SelectStatement, Statement, UpdateStatement,
+    AggregateCall, ColumnDefinition, DeleteStatement, Expression, InsertStatement, SelectStatement,
+    Statement, UpdateStatement,
 };
 use crate::planner::{
     AggregateFunction as PlannerAggFunc, DataType, Expr, Field, LogicalPlan, Operator, Schema,
@@ -222,7 +222,10 @@ impl Analyzer {
     }
 
     /// Analyze CREATE TABLE statement
-    fn analyze_create_table(&self, create: crate::parser::CreateTableStatement) -> Result<LogicalPlan, SqlError> {
+    fn analyze_create_table(
+        &self,
+        create: crate::parser::CreateTableStatement,
+    ) -> Result<LogicalPlan, SqlError> {
         let fields: Vec<Field> = create
             .columns
             .iter()
@@ -236,7 +239,10 @@ impl Analyzer {
     }
 
     /// Analyze DROP TABLE statement
-    fn analyze_drop_table(&self, drop: crate::parser::DropTableStatement) -> Result<LogicalPlan, SqlError> {
+    fn analyze_drop_table(
+        &self,
+        drop: crate::parser::DropTableStatement,
+    ) -> Result<LogicalPlan, SqlError> {
         Ok(LogicalPlan::DropTable {
             name: drop.name,
             schema: Schema::empty(),
@@ -244,7 +250,12 @@ impl Analyzer {
     }
 
     /// Bind a column reference to a schema
-    fn bind_column(&self, name: &str, schema: &Schema, alias: Option<&str>) -> Result<Expr, SqlError> {
+    fn bind_column(
+        &self,
+        name: &str,
+        schema: &Schema,
+        alias: Option<&str>,
+    ) -> Result<Expr, SqlError> {
         // Check if it's a wildcard
         if name == "*" {
             return Ok(Expr::Wildcard);
@@ -262,7 +273,10 @@ impl Analyzer {
         if schema.field(name).is_some() {
             Ok(Expr::Column(crate::planner::Column::new(name.to_string())))
         } else {
-            Err(SqlError::ExecutionError(format!("Unknown column: {}", name)))
+            Err(SqlError::ExecutionError(format!(
+                "Unknown column: {}",
+                name
+            )))
         }
     }
 
@@ -270,16 +284,16 @@ impl Analyzer {
     fn bind_expression(&self, expr: &Expression, schema: &Schema) -> Result<Expr, SqlError> {
         match expr {
             Expression::Literal(lit) => Ok(Expr::Literal(crate::types::parse_sql_literal(lit))),
-            Expression::Identifier(name) => {
-                self.bind_column(name, schema, None)
-            }
+            Expression::Identifier(name) => self.bind_column(name, schema, None),
             Expression::BinaryOp(left, op, right) => {
                 let left_bound = self.bind_expression(left, schema)?;
                 let right_bound = self.bind_expression(right, schema)?;
                 let operator = self.bind_operator(op)?;
                 Ok(Expr::binary_expr(left_bound, operator, right_bound))
             }
-            _ => Err(SqlError::ExecutionError("Unsupported expression".to_string())),
+            _ => Err(SqlError::ExecutionError(
+                "Unsupported expression".to_string(),
+            )),
         }
     }
 
@@ -322,7 +336,10 @@ impl Analyzer {
             "*" => Ok(Operator::Multiply),
             "/" => Ok(Operator::Divide),
             "%" => Ok(Operator::Modulo),
-            _ => Err(SqlError::ExecutionError(format!("Unknown operator: {}", op))),
+            _ => Err(SqlError::ExecutionError(format!(
+                "Unknown operator: {}",
+                op
+            ))),
         }
     }
 
@@ -331,7 +348,10 @@ impl Analyzer {
         match op.to_uppercase().as_str() {
             "NOT" => Ok(Operator::Not),
             "-" => Ok(Operator::Minus),
-            _ => Err(SqlError::ExecutionError(format!("Unknown unary operator: {}", op))),
+            _ => Err(SqlError::ExecutionError(format!(
+                "Unknown unary operator: {}",
+                op
+            ))),
         }
     }
 
@@ -341,8 +361,12 @@ impl Analyzer {
             Expression::Literal(lit) => Expr::Literal(crate::types::parse_sql_literal(lit)),
             Expression::Identifier(name) => Expr::Column(crate::planner::Column::new(name.clone())),
             Expression::BinaryOp(left, op, right) => {
-                let left_bound = self.bind_expression(left, &Schema::empty()).unwrap_or_else(|_| Expr::Wildcard);
-                let right_bound = self.bind_expression(right, &Schema::empty()).unwrap_or_else(|_| Expr::Wildcard);
+                let left_bound = self
+                    .bind_expression(left, &Schema::empty())
+                    .unwrap_or_else(|_| Expr::Wildcard);
+                let right_bound = self
+                    .bind_expression(right, &Schema::empty())
+                    .unwrap_or_else(|_| Expr::Wildcard);
                 let operator = self.bind_operator(op).unwrap_or(Operator::Eq);
                 Expr::binary_expr(left_bound, operator, right_bound)
             }
