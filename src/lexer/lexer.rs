@@ -225,6 +225,7 @@ impl<'a> Lexer<'a> {
                     "ALTER" => Token::Alter,
                     "INDEX" => Token::Index,
                     "ON" => Token::On,
+                    "JOIN" => Token::Join,
                     "PRIMARY" => Token::Primary,
                     "KEY" => Token::Key,
                     "BEGIN" => Token::Begin,

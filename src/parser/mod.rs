@@ -33,6 +33,14 @@ pub struct SelectStatement {
     pub columns: Vec<SelectColumn>,
     pub table: String,
     pub where_clause: Option<Expression>,
+    pub join: Option<JoinClause>,
+}
+
+/// JOIN clause
+#[derive(Debug, Clone, PartialEq)]
+pub struct JoinClause {
+    pub table: String,
+    pub condition: Expression,
 }
 
 /// Column in SELECT
@@ -120,6 +128,16 @@ impl Parser {
         self.position >= self.tokens.len() || matches!(self.current(), Some(Token::Eof))
     }
 
+    /// Check and consume JOIN token if present
+    fn consume_join(&mut self) -> bool {
+        if matches!(self.current(), Some(Token::Join)) {
+            self.next();
+            true
+        } else {
+            false
+        }
+    }
+
     /// Advance to next token
     fn next(&mut self) -> Option<Token> {
         self.position += 1;
@@ -164,9 +182,21 @@ impl Parser {
                     self.next();
                 }
                 Some(Token::Identifier(_)) => {
-                    if let Some(Token::Identifier(name)) = self.next() {
-                        columns.push(SelectColumn { name, alias: None });
+                    // Handle qualified column names (e.g., "a.id")
+                    let mut col_name = String::new();
+                    if let Some(Token::Identifier(name)) = self.current() {
+                        col_name = name.clone();
+                        self.next();
                     }
+                    // Check for dot (table.column format)
+                    if matches!(self.current(), Some(Token::Dot)) {
+                        self.next(); // consume dot
+                        if let Some(Token::Identifier(name)) = self.current() {
+                            col_name = format!("{}.{}", col_name, name);
+                            self.next();
+                        }
+                    }
+                    columns.push(SelectColumn { name: col_name, alias: None });
                 }
                 Some(Token::Comma) => {
                     self.next();
@@ -193,10 +223,34 @@ impl Parser {
             None
         };
 
+        // Parse JOIN clause (optional)
+        let join = if self.consume_join() {
+            let join_table = match self.current() {
+                Some(Token::Identifier(name)) => name.clone(),
+                _ => return Err("Expected join table name".to_string()),
+            };
+            self.next(); // consume table name
+
+            // Expect ON keyword
+            if !matches!(self.current(), Some(Token::On)) {
+                return Err("Expected ON after join table".to_string());
+            }
+            self.next(); // consume ON
+
+            let condition = self.parse_expression()?;
+            Some(JoinClause {
+                table: join_table,
+                condition,
+            })
+        } else {
+            None
+        };
+
         Ok(Statement::Select(SelectStatement {
             columns,
             table,
             where_clause,
+            join,
         }))
     }
 
@@ -710,6 +764,22 @@ mod tests {
                 assert_eq!(d.name, "users");
             }
             _ => panic!("Expected DROP TABLE statement"),
+        }
+    }
+
+    #[test]
+    fn test_parse_inner_join() {
+        let result = parse("SELECT a.id, b.name FROM a JOIN b ON a.id = b.id");
+        assert!(result.is_ok(), "Parser should support INNER JOIN");
+        let stmt = result.unwrap();
+        // Verify it's a SelectStatement with join
+        match stmt {
+            Statement::Select(s) => {
+                assert!(s.join.is_some(), "Should have join clause");
+                let join = s.join.unwrap();
+                assert_eq!(join.table, "b");
+            }
+            _ => panic!("Expected SELECT statement"),
         }
     }
 }
