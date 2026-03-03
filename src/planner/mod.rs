@@ -5,8 +5,9 @@
 pub mod logical_plan;
 pub mod physical_plan;
 
+pub use crate::executor::HashJoinExec;
 pub use logical_plan::LogicalPlan;
-pub use physical_plan::{PhysicalPlan, HashJoinExec};
+pub use physical_plan::PhysicalPlan;
 
 #[cfg(test)]
 mod tests {

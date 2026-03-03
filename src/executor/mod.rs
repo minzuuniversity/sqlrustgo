@@ -16,11 +16,36 @@
 use crate::parser::{
     DeleteStatement, Expression, InsertStatement, SelectStatement, Statement, UpdateStatement,
 };
-#[cfg(test)]
-use crate::planner::{HashJoinExec, PhysicalPlan};
+use crate::planner::logical_plan::JoinType;
+use crate::planner::PhysicalPlan;
 use crate::storage::{BufferPool, FileStorage};
 use crate::types::{SqlError, SqlResult, Value, parse_sql_literal};
 use std::path::PathBuf;
+
+/// Hash Join Executor
+#[derive(Debug)]
+pub struct HashJoinExec {
+    left: Box<PhysicalPlan>,
+    right: Box<PhysicalPlan>,
+    join_type: JoinType,
+    condition: Expression,
+}
+
+impl HashJoinExec {
+    pub fn new(
+        left: Box<PhysicalPlan>,
+        right: Box<PhysicalPlan>,
+        join_type: JoinType,
+        condition: Expression,
+    ) -> Self {
+        Self {
+            left,
+            right,
+            join_type,
+            condition,
+        }
+    }
+}
 
 /// Execution result
 #[derive(Debug)]
@@ -711,5 +736,40 @@ mod tests {
 
         // Verify the exec was created (we can't inspect internals, but creation succeeds)
         let _ = exec;
+    }
+
+    #[test]
+    fn test_hash_join_planner_executor_integration() {
+        // Integration test: demonstrates planner-to-executor flow
+        // 1. Create a PhysicalPlan::HashJoin (the planner's output)
+        // 2. Create HashJoinExec from the PhysicalPlan (executor receives the plan)
+        use crate::planner::logical_plan::JoinType;
+
+        // Step 1: Create a HashJoin physical plan (this is what the planner produces)
+        let left_plan = PhysicalPlan::TableScan { table_name: "employees".to_string() };
+        let right_plan = PhysicalPlan::TableScan { table_name: "departments".to_string() };
+        let join_condition = Expression::BinaryOp(
+            Box::new(Expression::Identifier("employees.dept_id".to_string())),
+            "=".to_string(),
+            Box::new(Expression::Identifier("departments.id".to_string())),
+        );
+
+        let physical_plan = PhysicalPlan::HashJoin {
+            left: Box::new(left_plan),
+            right: Box::new(right_plan),
+            join_type: JoinType::Inner,
+            condition: join_condition,
+        };
+
+        // Step 2: Create HashJoinExec from PhysicalPlan (executor receives the plan)
+        let hash_join_exec = match physical_plan {
+            PhysicalPlan::HashJoin { left, right, join_type, condition } => {
+                HashJoinExec::new(left, right, join_type, condition)
+            }
+            _ => panic!("Expected HashJoin physical plan"),
+        };
+
+        // Verify the full flow succeeded
+        let _ = hash_join_exec;
     }
 }

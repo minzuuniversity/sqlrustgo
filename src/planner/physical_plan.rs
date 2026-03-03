@@ -26,28 +26,3 @@ pub enum PhysicalPlan {
         condition: Expression,
     },
 }
-
-/// Hash Join Executor
-#[derive(Debug)]
-pub struct HashJoinExec {
-    left: Box<PhysicalPlan>,
-    right: Box<PhysicalPlan>,
-    join_type: JoinType,
-    condition: Expression,
-}
-
-impl HashJoinExec {
-    pub fn new(
-        left: Box<PhysicalPlan>,
-        right: Box<PhysicalPlan>,
-        join_type: JoinType,
-        condition: Expression,
-    ) -> Self {
-        Self {
-            left,
-            right,
-            join_type,
-            condition,
-        }
-    }
-}
