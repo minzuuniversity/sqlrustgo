@@ -2,20 +2,38 @@
   "name": "test",
   "columns": [
     {
+<<<<<<< HEAD
       "name": "name",
       "data_type": "TEXT",
+=======
+      "name": "id",
+      "data_type": "INTEGER",
+>>>>>>> origin/develop-v1.2.0
       "nullable": true
     }
   ],
   "rows": [
     [
       {
+<<<<<<< HEAD
         "Text": "Alice"
+=======
+        "Integer": 1
+>>>>>>> origin/develop-v1.2.0
       }
     ],
     [
       {
+<<<<<<< HEAD
         "Text": "Bob"
+=======
+        "Integer": 2
+      }
+    ],
+    [
+      {
+        "Integer": 3
+>>>>>>> origin/develop-v1.2.0
       }
     ]
   ]

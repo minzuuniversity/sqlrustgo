@@ -7,7 +7,16 @@ fn bench_executor_select_where(c: &mut Criterion) {
         .execute(parse("CREATE TABLE users (id INTEGER, name TEXT, age INTEGER)").unwrap())
         .unwrap();
 
+<<<<<<< HEAD
     for i in 0..100 {
+=======
+<<<<<<< HEAD
+    // Use 1000 rows for benchmark
+    for i in 0..1000 {
+=======
+    for i in 0..100 {
+>>>>>>> origin/main
+>>>>>>> origin/develop-v1.2.0
         engine
             .execute(
                 parse(&format!(
@@ -23,7 +32,15 @@ fn bench_executor_select_where(c: &mut Criterion) {
 
     let mut group = c.benchmark_group("executor_select");
 
+<<<<<<< HEAD
     group.bench_function("select_all", |b| {
+=======
+<<<<<<< HEAD
+    group.bench_function("select_all_1k", |b| {
+=======
+    group.bench_function("select_all", |b| {
+>>>>>>> origin/main
+>>>>>>> origin/develop-v1.2.0
         b.iter(|| {
             engine
                 .execute(parse("SELECT * FROM users").unwrap())
@@ -31,15 +48,36 @@ fn bench_executor_select_where(c: &mut Criterion) {
         });
     });
 
+<<<<<<< HEAD
+=======
+<<<<<<< HEAD
+    group.bench_function("select_where_id_1k", |b| {
+        b.iter(|| {
+            engine
+                .execute(parse("SELECT * FROM users WHERE id = 500").unwrap())
+=======
+>>>>>>> origin/develop-v1.2.0
     group.bench_function("select_where_id", |b| {
         b.iter(|| {
             engine
                 .execute(parse("SELECT * FROM users WHERE id = 50").unwrap())
+<<<<<<< HEAD
+=======
+>>>>>>> origin/main
+>>>>>>> origin/develop-v1.2.0
                 .unwrap()
         });
     });
 
+<<<<<<< HEAD
     group.bench_function("select_where_age", |b| {
+=======
+<<<<<<< HEAD
+    group.bench_function("select_where_age_1k", |b| {
+=======
+    group.bench_function("select_where_age", |b| {
+>>>>>>> origin/main
+>>>>>>> origin/develop-v1.2.0
         b.iter(|| {
             engine
                 .execute(parse("SELECT * FROM users WHERE age > 25").unwrap())
@@ -58,7 +96,15 @@ fn bench_executor_insert(c: &mut Criterion) {
 
     let mut group = c.benchmark_group("executor_insert");
 
+<<<<<<< HEAD
     for size in [10, 100, 1000] {
+=======
+<<<<<<< HEAD
+    for size in [1000, 10000, 100000] {
+=======
+    for size in [10, 100, 1000] {
+>>>>>>> origin/main
+>>>>>>> origin/develop-v1.2.0
         group.bench_with_input(BenchmarkId::from_parameter(size), &size, |b, &size| {
             b.iter(|| {
                 for i in 0..size {
