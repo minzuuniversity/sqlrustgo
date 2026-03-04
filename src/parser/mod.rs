@@ -70,6 +70,7 @@ pub struct SelectStatement {
     pub table: String,
     pub where_clause: Option<Expression>,
     pub aggregates: Vec<AggregateCall>,
+    pub join_clause: Option<JoinClause>,
 }
 
 /// Column in SELECT
@@ -151,6 +152,22 @@ pub enum Expression {
     Literal(String),
     Identifier(String),
     BinaryOp(Box<Expression>, String, Box<Expression>),
+}
+
+/// JOIN type
+#[derive(Debug, Clone, PartialEq)]
+pub enum JoinType {
+    Inner,
+    Left,
+    Right,
+}
+
+/// JOIN clause
+#[derive(Debug, Clone, PartialEq)]
+pub struct JoinClause {
+    pub table: String,
+    pub join_type: JoinType,
+    pub on_clause: (Expression, Expression),
 }
 
 /// SQL Parser
@@ -266,6 +283,7 @@ impl Parser {
             table,
             where_clause,
             aggregates,
+            join_clause: None,
         }))
     }
 
