@@ -1,8 +1,21 @@
 //! SQL Value types
-//! Core data types for SQLRustGo database system
+//!
+//! Core data types for SQLRustGo database system.
+//!
+//! ## Type Mapping
+//!
+//! | SQL Type | Rust Type | Notes |
+//! |----------|-----------|-------|
+//! | NULL     | Null      | Missing value |
+//! | BOOLEAN  | bool      | TRUE/FALSE |
+//! | INTEGER  | i64       | 64-bit signed |
+//! | FLOAT    | f64       | 64-bit float |
+//! | TEXT     | String    | UTF-8 string |
+//! | BLOB     | `Vec<u8>` | Binary data |
 
 use serde::{Deserialize, Serialize};
 use std::fmt;
+use std::hash::{Hash, Hasher};
 
 /// SQL Value enum representing all supported SQL data types
 ///
@@ -47,6 +60,25 @@ pub enum Value {
     /// Binary large object - arbitrary binary data
     /// Example: image_data, file_content
     Blob(Vec<u8>),
+}
+
+impl Hash for Value {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        match self {
+            Value::Null => 0.hash(state),
+            Value::Boolean(b) => b.hash(state),
+            Value::Integer(i) => i.hash(state),
+            Value::Float(f) => {
+                if f.is_nan() {
+                    0.hash(state);
+                } else {
+                    f.to_bits().hash(state);
+                }
+            }
+            Value::Text(s) => s.hash(state),
+            Value::Blob(b) => b.hash(state),
+        }
+    }
 }
 
 impl Value {
