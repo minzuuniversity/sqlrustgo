@@ -40,7 +40,6 @@ impl ExecutionEngine {
     /// Panics if storage initialization fails (use with_data_dir for error handling)
     pub fn new() -> Self {
         Self::with_data_dir(std::path::PathBuf::from("data"))
-            .expect("Failed to initialize execution engine")
     }
 
     /// Create a new execution engine with custom data directory
@@ -49,7 +48,7 @@ impl ExecutionEngine {
         Self {
             buffer_pool: BufferPool::new(100),
             storage,
-        })
+        }
     }
 
     /// Execute a SQL statement
@@ -107,14 +106,19 @@ impl ExecutionEngine {
         // Filter rows by WHERE clause (with index optimization)
         let filtered_rows: Vec<Vec<Value>> = if let Some(ref where_expr) = stmt.where_clause {
             // Try to use index for optimization
-            if let Some(row_indices) = self.execute_select_with_index(&table_data, where_expr, &column_map) {
+            if let Some(row_indices) =
+                self.execute_select_with_index(table_data, where_expr, &column_map)
+            {
                 // Use index results
-                row_indices.iter()
+                row_indices
+                    .iter()
                     .filter_map(|&idx| table_data.rows.get(idx).cloned())
                     .collect()
             } else {
                 // Fall back to full table scan
-                table_data.rows.iter()
+                table_data
+                    .rows
+                    .iter()
                     .filter(|row| evaluate_where(row, where_expr, &column_map))
                     .cloned()
                     .collect()
@@ -151,7 +155,10 @@ impl ExecutionEngine {
         // Get indexed columns before mutating
         let indexed_columns: Vec<(usize, String)> = {
             let table_data = self.storage.get_table(&stmt.table).unwrap();
-            table_data.info.columns.iter()
+            table_data
+                .info
+                .columns
+                .iter()
                 .enumerate()
                 .filter(|(_, c)| self.storage.has_index(&stmt.table, &c.name))
                 .map(|(i, c)| (i, c.name.clone()))
@@ -184,7 +191,9 @@ impl ExecutionEngine {
 
         // Apply index updates
         for (col_name, key, row_id) in index_updates {
-            let _ = self.storage.insert_with_index(&stmt.table, &col_name, key, row_id);
+            let _ = self
+                .storage
+                .insert_with_index(&stmt.table, &col_name, key, row_id);
         }
 
         self.storage.persist_table(&stmt.table)?;
@@ -350,20 +359,30 @@ impl ExecutionEngine {
     /// Create an index on a table column
     pub fn create_index(&mut self, table_name: &str, column_name: &str) -> SqlResult<()> {
         // Find column index in table schema
-        let table = self.storage.get_table(table_name)
+        let table = self
+            .storage
+            .get_table(table_name)
             .ok_or_else(|| SqlError::TableNotFound(table_name.to_string()))?;
 
-        let column_index = table.info.columns.iter()
+        let column_index = table
+            .info
+            .columns
+            .iter()
             .position(|c| c.name == column_name)
-            .ok_or_else(|| SqlError::ExecutionError(format!("Column '{}' not found", column_name)))?;
+            .ok_or_else(|| {
+                SqlError::ExecutionError(format!("Column '{}' not found", column_name))
+            })?;
 
         // Check if column is INTEGER type (for B+ Tree index)
         if table.info.columns[column_index].data_type != "INTEGER" {
-            return Err(SqlError::ExecutionError("Index only supports INTEGER columns".to_string()));
+            return Err(SqlError::ExecutionError(
+                "Index only supports INTEGER columns".to_string(),
+            ));
         }
 
         // Create index
-        self.storage.create_index(table_name, column_name, column_index)
+        self.storage
+            .create_index(table_name, column_name, column_index)
             .map_err(|e| SqlError::ExecutionError(e.to_string()))?;
 
         Ok(())
@@ -393,11 +412,10 @@ impl ExecutionEngine {
                         if let Some(key) = key_value.as_integer() {
                             if self.storage.has_index(&table_data.info.name, col_name) {
                                 // Use index to find matching row
-                                if let Some(row_id) = self.storage.search_index(
-                                    &table_data.info.name,
-                                    col_name,
-                                    key,
-                                ) {
+                                if let Some(row_id) =
+                                    self.storage
+                                        .search_index(&table_data.info.name, col_name, key)
+                                {
                                     return Some(vec![row_id as usize]);
                                 } else {
                                     return Some(vec![]); // No match
@@ -529,7 +547,7 @@ mod tests {
     fn test_execution_engine_create() {
         // Use a unique temp directory for test isolation
         let temp_dir = env::temp_dir().join(format!("sqlrustgo_test_{}", std::process::id()));
-        let engine = ExecutionEngine::with_data_dir(temp_dir.clone()).unwrap();
+        let engine = ExecutionEngine::with_data_dir(temp_dir.clone());
         assert!(engine.storage.table_names().is_empty());
         // Clean up
         let _ = std::fs::remove_dir_all(temp_dir);
