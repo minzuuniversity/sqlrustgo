@@ -385,8 +385,10 @@ impl ExecutionEngine {
 
                 // Collect index updates to apply after borrow
                 for (col_idx, col_name) in &indexed_columns {
-                    if let Some(Value::Integer(key)) = row.get(*col_idx) {
-                        index_updates.push((col_name.clone(), *key, row_id));
+                    if let Some(value) = row.get(*col_idx) {
+                        if let Some(key) = value.to_index_key() {
+                            index_updates.push((col_name.clone(), key, row_id));
+                        }
                     }
                 }
 
@@ -458,7 +460,8 @@ impl ExecutionEngine {
                     for (column, value_expr) in &set_clauses {
                         if let Some(&idx) = column_indices.get(column) {
                             if idx < row.len() {
-                                row[idx] = expression_to_value_static(value_expr);
+                                // Use evaluate_expression to support BinaryOp (e.g., column + 1)
+                                row[idx] = evaluate_expression(row, value_expr, &column_indices);
                             }
                         }
                     }
@@ -590,11 +593,13 @@ impl ExecutionEngine {
                 SqlError::ExecutionError(format!("Column '{}' not found", column_name))
             })?;
 
-        // Check if column is INTEGER type (for B+ Tree index)
-        if table.info.columns[column_index].data_type != "INTEGER" {
-            return Err(SqlError::ExecutionError(
-                "Index only supports INTEGER columns".to_string(),
-            ));
+        // Check if column type is supported for B+ Tree index
+        let data_type = &table.info.columns[column_index].data_type;
+        if data_type != "INTEGER" && data_type != "TEXT" {
+            return Err(SqlError::ExecutionError(format!(
+                "Index only supports INTEGER and TEXT columns, got {}",
+                data_type
+            )));
         }
 
         // Create index
@@ -626,7 +631,8 @@ impl ExecutionEngine {
                     if let Expression::Literal(val) = right.as_ref() {
                         // Check if we have an index on this column
                         let key_value = parse_sql_literal(val);
-                        if let Some(key) = key_value.as_integer() {
+                        // Support both INTEGER and TEXT index keys
+                        if let Some(key) = key_value.to_index_key() {
                             if self.storage.has_index(&table_data.info.name, col_name) {
                                 // Use index to find matching row
                                 if let Some(row_id) =
@@ -657,6 +663,122 @@ fn expression_to_value_static(expr: &Expression) -> Value {
     }
 }
 
+/// Evaluate expression with row data (supports BinaryOp)
+/// Used for dynamic expression evaluation (e.g., UPDATE SET column = column + 1)
+fn evaluate_expression(
+    row: &[Value],
+    expr: &Expression,
+    column_indices: &std::collections::HashMap<String, usize>,
+) -> Value {
+    match expr {
+        Expression::Literal(s) => parse_sql_literal(s),
+        Expression::Identifier(name) => {
+            // First try to parse as literal, if fails then try column lookup
+            let literal_val = parse_sql_literal(name);
+            if !matches!(literal_val, Value::Null) {
+                return literal_val;
+            }
+            // Try column lookup
+            column_indices
+                .get(name)
+                .and_then(|&idx| row.get(idx))
+                .cloned()
+                .unwrap_or(Value::Null)
+        }
+        Expression::BinaryOp(left, op, right) => {
+            // Get left value
+            let left_val = evaluate_expression(row, left, column_indices);
+            // Get right value
+            let right_val = evaluate_expression(row, right, column_indices);
+
+            // Handle arithmetic operators
+            match op.as_str() {
+                "+" => match (&left_val, &right_val) {
+                    (Value::Integer(l), Value::Integer(r)) => Value::Integer(l + r),
+                    (Value::Float(l), Value::Float(r)) => Value::Float(l + r),
+                    (Value::Text(l), Value::Text(r)) => Value::Text(l.clone() + r),
+                    (Value::Integer(l), Value::Float(r)) => Value::Float(*l as f64 + r),
+                    (Value::Float(l), Value::Integer(r)) => Value::Float(l + *r as f64),
+                    _ => Value::Null,
+                },
+                "-" => match (&left_val, &right_val) {
+                    (Value::Integer(l), Value::Integer(r)) => Value::Integer(l - r),
+                    (Value::Float(l), Value::Float(r)) => Value::Float(l - r),
+                    (Value::Integer(l), Value::Float(r)) => Value::Float(*l as f64 - r),
+                    (Value::Float(l), Value::Integer(r)) => Value::Float(l - *r as f64),
+                    _ => Value::Null,
+                },
+                "*" => match (&left_val, &right_val) {
+                    (Value::Integer(l), Value::Integer(r)) => Value::Integer(l * r),
+                    (Value::Float(l), Value::Float(r)) => Value::Float(l * r),
+                    (Value::Integer(l), Value::Float(r)) => Value::Float(*l as f64 * r),
+                    (Value::Float(l), Value::Integer(r)) => Value::Float(l * *r as f64),
+                    _ => Value::Null,
+                },
+                "/" => match (&left_val, &right_val) {
+                    (Value::Integer(l), Value::Integer(r)) => {
+                        if *r == 0 {
+                            Value::Null
+                        } else {
+                            Value::Integer(l / r)
+                        }
+                    }
+                    (Value::Float(l), Value::Float(r)) => {
+                        if *r == 0.0 {
+                            Value::Null
+                        } else {
+                            Value::Float(l / r)
+                        }
+                    }
+                    (Value::Integer(l), Value::Float(r)) => {
+                        if *r == 0.0 {
+                            Value::Null
+                        } else {
+                            Value::Float(*l as f64 / r)
+                        }
+                    }
+                    (Value::Float(l), Value::Integer(r)) => {
+                        if *r == 0 {
+                            Value::Null
+                        } else {
+                            Value::Float(l / *r as f64)
+                        }
+                    }
+                    _ => Value::Null,
+                },
+                // Comparison operators return boolean
+                "=" => Value::Boolean(left_val == right_val),
+                "!=" => Value::Boolean(left_val != right_val),
+                ">" => Value::Boolean(match (&left_val, &right_val) {
+                    (Value::Integer(l), Value::Integer(r)) => l > r,
+                    (Value::Float(l), Value::Float(r)) => l > r,
+                    (Value::Text(l), Value::Text(r)) => l > r,
+                    _ => false,
+                }),
+                "<" => Value::Boolean(match (&left_val, &right_val) {
+                    (Value::Integer(l), Value::Integer(r)) => l < r,
+                    (Value::Float(l), Value::Float(r)) => l < r,
+                    (Value::Text(l), Value::Text(r)) => l < r,
+                    _ => false,
+                }),
+                ">=" => Value::Boolean(match (&left_val, &right_val) {
+                    (Value::Integer(l), Value::Integer(r)) => l >= r,
+                    (Value::Float(l), Value::Float(r)) => l >= r,
+                    (Value::Text(l), Value::Text(r)) => l >= r,
+                    _ => false,
+                }),
+                "<=" => Value::Boolean(match (&left_val, &right_val) {
+                    (Value::Integer(l), Value::Integer(r)) => l <= r,
+                    (Value::Float(l), Value::Float(r)) => l <= r,
+                    (Value::Text(l), Value::Text(r)) => l <= r,
+                    _ => false,
+                }),
+                _ => Value::Null,
+            }
+        }
+    }
+}
+
 /// Evaluate WHERE clause for a row with dynamic column mapping
 fn evaluate_where(
     row: &[Value],
@@ -665,66 +787,88 @@ fn evaluate_where(
 ) -> bool {
     match expr {
         Expression::BinaryOp(left, op, right) => {
-            // Get left value (column reference)
-            let left_val = match left.as_ref() {
-                Expression::Identifier(name) => {
-                    // Dynamic column lookup
-                    column_indices
-                        .get(name)
-                        .and_then(|&idx| row.get(idx))
-                        .cloned()
-                        .unwrap_or(Value::Null)
-                }
-                Expression::Literal(s) => parse_sql_literal(s),
-                _ => Value::Null,
-            };
-
-            // Get right value
-            let right_val = match right.as_ref() {
-                Expression::Identifier(name) => {
-                    // Dynamic column lookup
-                    column_indices
-                        .get(name)
-                        .and_then(|&idx| row.get(idx))
-                        .cloned()
-                        .unwrap_or(Value::Null)
-                }
-                Expression::Literal(s) => parse_sql_literal(s),
-                _ => Value::Null,
-            };
-
-            // Evaluate based on operator
+            // Handle logical operators AND/OR
             match op.as_str() {
-                "=" => left_val == right_val,
-                "!=" => left_val != right_val,
-                ">" => match (&left_val, &right_val) {
-                    (Value::Integer(l), Value::Integer(r)) => l > r,
-                    (Value::Float(l), Value::Float(r)) => l > r,
-                    (Value::Text(l), Value::Text(r)) => l > r,
-                    _ => false,
-                },
-                "<" => match (&left_val, &right_val) {
-                    (Value::Integer(l), Value::Integer(r)) => l < r,
-                    (Value::Float(l), Value::Float(r)) => l < r,
-                    (Value::Text(l), Value::Text(r)) => l < r,
-                    _ => false,
-                },
-                ">=" => match (&left_val, &right_val) {
-                    (Value::Integer(l), Value::Integer(r)) => l >= r,
-                    (Value::Float(l), Value::Float(r)) => l >= r,
-                    (Value::Text(l), Value::Text(r)) => l >= r,
-                    _ => false,
-                },
-                "<=" => match (&left_val, &right_val) {
-                    (Value::Integer(l), Value::Integer(r)) => l <= r,
-                    (Value::Float(l), Value::Float(r)) => l <= r,
-                    (Value::Text(l), Value::Text(r)) => l <= r,
-                    _ => false,
-                },
-                _ => false,
+                "AND" => {
+                    evaluate_where(row, left, column_indices)
+                        && evaluate_where(row, right, column_indices)
+                }
+                "OR" => {
+                    evaluate_where(row, left, column_indices)
+                        || evaluate_where(row, right, column_indices)
+                }
+                // Handle comparison operators
+                _ => {
+                    // Get left value (column reference)
+                    let left_val = match left.as_ref() {
+                        Expression::Identifier(name) => {
+                            // Dynamic column lookup
+                            column_indices
+                                .get(name)
+                                .and_then(|&idx| row.get(idx))
+                                .cloned()
+                                .unwrap_or(Value::Null)
+                        }
+                        Expression::Literal(s) => parse_sql_literal(s),
+                        _ => Value::Null,
+                    };
+
+                    // Get right value
+                    let right_val = match right.as_ref() {
+                        Expression::Identifier(name) => {
+                            // Dynamic column lookup
+                            column_indices
+                                .get(name)
+                                .and_then(|&idx| row.get(idx))
+                                .cloned()
+                                .unwrap_or(Value::Null)
+                        }
+                        Expression::Literal(s) => parse_sql_literal(s),
+                        _ => Value::Null,
+                    };
+
+                    // Evaluate based on operator
+                    match op.as_str() {
+                        "=" => left_val == right_val,
+                        "!=" => left_val != right_val,
+                        ">" => match (&left_val, &right_val) {
+                            (Value::Integer(l), Value::Integer(r)) => l > r,
+                            (Value::Float(l), Value::Float(r)) => l > r,
+                            (Value::Text(l), Value::Text(r)) => l > r,
+                            _ => false,
+                        },
+                        "<" => match (&left_val, &right_val) {
+                            (Value::Integer(l), Value::Integer(r)) => l < r,
+                            (Value::Float(l), Value::Float(r)) => l < r,
+                            (Value::Text(l), Value::Text(r)) => l < r,
+                            _ => false,
+                        },
+                        ">=" => match (&left_val, &right_val) {
+                            (Value::Integer(l), Value::Integer(r)) => l >= r,
+                            (Value::Float(l), Value::Float(r)) => l >= r,
+                            (Value::Text(l), Value::Text(r)) => l >= r,
+                            _ => false,
+                        },
+                        "<=" => match (&left_val, &right_val) {
+                            (Value::Integer(l), Value::Integer(r)) => l <= r,
+                            (Value::Float(l), Value::Float(r)) => l <= r,
+                            (Value::Text(l), Value::Text(r)) => l <= r,
+                            _ => false,
+                        },
+                        _ => false,
+                    }
+                }
             }
         }
-        _ => true,
+        Expression::Identifier(name) => {
+            // Single identifier - treat as column reference, return true if exists
+            column_indices.contains_key(name)
+        }
+        Expression::Literal(s) => {
+            // Literal expression - convert to Value and check truthiness
+            let val = parse_sql_literal(s);
+            !matches!(val, Value::Null | Value::Boolean(false))
+        }
     }
 }
 
@@ -1103,12 +1247,15 @@ mod tests {
             .execute(crate::parser::parse("INSERT INTO or_test VALUES (3)").unwrap())
             .unwrap();
 
-        // Test OR condition - currently may return partial results
+        // Test OR condition
         let result = engine
             .execute(crate::parser::parse("SELECT * FROM or_test WHERE id = 1 OR id = 3").unwrap())
             .unwrap();
-        // Just verify it returns results (OR may not be fully implemented)
-        assert!(!result.rows.is_empty());
+        // Should return 2 rows (id = 1 and id = 3)
+        assert_eq!(result.rows.len(), 2);
+        let ids: Vec<i64> = result.rows.iter().map(|r| r[0].as_integer().unwrap()).collect();
+        assert!(ids.contains(&1));
+        assert!(ids.contains(&3));
     }
 
     #[test]
@@ -2069,11 +2216,12 @@ mod tests {
     #[test]
     fn test_create_index_invalid_column_type() {
         let mut engine = ExecutionEngine::new();
+        // FLOAT is not supported for indexing (only INTEGER and TEXT)
         engine
-            .execute(crate::parser::parse("CREATE TABLE users (name TEXT)").unwrap())
+            .execute(crate::parser::parse("CREATE TABLE users (score FLOAT)").unwrap())
             .unwrap();
 
-        let result = engine.create_index("users", "name");
+        let result = engine.create_index("users", "score");
         assert!(result.is_err());
     }
 
@@ -2255,10 +2403,11 @@ mod tests {
     #[test]
     fn test_execute_create_index_non_integer() {
         let mut engine = ExecutionEngine::new();
+        // FLOAT is not supported for indexing (only INTEGER and TEXT)
         engine
-            .execute(crate::parser::parse("CREATE TABLE t (id INTEGER, name TEXT)").unwrap())
+            .execute(crate::parser::parse("CREATE TABLE t (id INTEGER, score FLOAT)").unwrap())
             .unwrap();
-        let result = engine.create_index("t", "name");
+        let result = engine.create_index("t", "score");
         assert!(result.is_err());
     }
 

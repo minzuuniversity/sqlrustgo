@@ -62,6 +62,23 @@ impl Value {
         }
     }
 
+    /// Convert value to index key for B+Tree
+    /// Returns None if value cannot be used as index key
+    pub fn to_index_key(&self) -> Option<i64> {
+        match self {
+            Value::Integer(i) => Some(*i),
+            Value::Text(s) => {
+                // Simple hash function for TEXT values
+                // Note: This is not unique, but provides basic indexing
+                use std::hash::{Hash, Hasher};
+                let mut hasher = std::collections::hash_map::DefaultHasher::new();
+                s.hash(&mut hasher);
+                Some(hasher.finish() as i64)
+            }
+            _ => None,
+        }
+    }
+
     /// Convert Value to SQL string representation
     pub fn to_sql_string(&self) -> String {
         match self {
