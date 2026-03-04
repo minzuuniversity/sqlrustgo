@@ -16,7 +16,7 @@ pub mod types;
 
 pub use auth::{AuthError, AuthManager, Operation, Role, Session, User};
 pub use catalog::{Catalog, CatalogResult, ColumnMeta, SimpleCatalog, TableMeta};
-pub use executor::{execute, ExecutionEngine, ExecutionResult};
+pub use executor::{execute, ExecutionEngine, ExecutionResult, Executor, ExecutorResult};
 pub use lexer::{tokenize, Lexer, Token};
 pub use network::{connect, start_server_sync, NetworkHandler};
 pub use parser::{parse, Statement};
