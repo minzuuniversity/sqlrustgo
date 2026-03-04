@@ -16,7 +16,7 @@ pub use network::{NetworkHandler, connect, start_server_sync};
 pub use parser::{Statement, parse};
 pub use storage::{BPlusTree, BufferPool, FileStorage, Page};
 pub use transaction::{TransactionManager, TxState, WriteAheadLog};
-pub use types::{SqlError, SqlResult, Value, parse_sql_literal};
+pub use types::{parse_sql_literal, SqlError, SqlResult, Value};
 
 /// Initialize the database system
 pub fn init() {

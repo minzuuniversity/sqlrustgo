@@ -17,7 +17,7 @@ use crate::parser::{
     DeleteStatement, Expression, InsertStatement, SelectStatement, Statement, UpdateStatement,
 };
 use crate::storage::{BufferPool, FileStorage};
-use crate::types::{SqlError, SqlResult, Value, parse_sql_literal};
+use crate::types::{parse_sql_literal, SqlError, SqlResult, Value};
 use std::path::PathBuf;
 
 /// Execution result
@@ -37,6 +37,7 @@ pub struct ExecutionEngine {
 
 impl ExecutionEngine {
     /// Create a new execution engine with file-based storage
+    /// Panics if storage initialization fails (use with_data_dir for error handling)
     pub fn new() -> Self {
         Self::with_data_dir(std::path::PathBuf::from("data"))
     }
@@ -105,14 +106,19 @@ impl ExecutionEngine {
         // Filter rows by WHERE clause (with index optimization)
         let filtered_rows: Vec<Vec<Value>> = if let Some(ref where_expr) = stmt.where_clause {
             // Try to use index for optimization
-            if let Some(row_indices) = self.execute_select_with_index(&table_data, where_expr, &column_map) {
+            if let Some(row_indices) =
+                self.execute_select_with_index(table_data, where_expr, &column_map)
+            {
                 // Use index results
-                row_indices.iter()
+                row_indices
+                    .iter()
                     .filter_map(|&idx| table_data.rows.get(idx).cloned())
                     .collect()
             } else {
                 // Fall back to full table scan
-                table_data.rows.iter()
+                table_data
+                    .rows
+                    .iter()
                     .filter(|row| evaluate_where(row, where_expr, &column_map))
                     .cloned()
                     .collect()
@@ -149,7 +155,10 @@ impl ExecutionEngine {
         // Get indexed columns before mutating
         let indexed_columns: Vec<(usize, String)> = {
             let table_data = self.storage.get_table(&stmt.table).unwrap();
-            table_data.info.columns.iter()
+            table_data
+                .info
+                .columns
+                .iter()
                 .enumerate()
                 .filter(|(_, c)| self.storage.has_index(&stmt.table, &c.name))
                 .map(|(i, c)| (i, c.name.clone()))
@@ -182,7 +191,9 @@ impl ExecutionEngine {
 
         // Apply index updates
         for (col_name, key, row_id) in index_updates {
-            let _ = self.storage.insert_with_index(&stmt.table, &col_name, key, row_id);
+            let _ = self
+                .storage
+                .insert_with_index(&stmt.table, &col_name, key, row_id);
         }
 
         self.storage.persist_table(&stmt.table)?;
@@ -234,10 +245,10 @@ impl ExecutionEngine {
                 if matches {
                     // Apply SET clauses with dynamic column mapping
                     for (column, value_expr) in &set_clauses {
-                        if let Some(&idx) = column_indices.get(column)
-                            && idx < row.len()
-                        {
-                            row[idx] = expression_to_value_static(value_expr);
+                        if let Some(&idx) = column_indices.get(column) {
+                            if idx < row.len() {
+                                row[idx] = expression_to_value_static(value_expr);
+                            }
                         }
                     }
                     count += 1;
@@ -348,20 +359,30 @@ impl ExecutionEngine {
     /// Create an index on a table column
     pub fn create_index(&mut self, table_name: &str, column_name: &str) -> SqlResult<()> {
         // Find column index in table schema
-        let table = self.storage.get_table(table_name)
+        let table = self
+            .storage
+            .get_table(table_name)
             .ok_or_else(|| SqlError::TableNotFound(table_name.to_string()))?;
 
-        let column_index = table.info.columns.iter()
+        let column_index = table
+            .info
+            .columns
+            .iter()
             .position(|c| c.name == column_name)
-            .ok_or_else(|| SqlError::ExecutionError(format!("Column '{}' not found", column_name)))?;
+            .ok_or_else(|| {
+                SqlError::ExecutionError(format!("Column '{}' not found", column_name))
+            })?;
 
         // Check if column is INTEGER type (for B+ Tree index)
         if table.info.columns[column_index].data_type != "INTEGER" {
-            return Err(SqlError::ExecutionError("Index only supports INTEGER columns".to_string()));
+            return Err(SqlError::ExecutionError(
+                "Index only supports INTEGER columns".to_string(),
+            ));
         }
 
         // Create index
-        self.storage.create_index(table_name, column_name, column_index)
+        self.storage
+            .create_index(table_name, column_name, column_index)
             .map_err(|e| SqlError::ExecutionError(e.to_string()))?;
 
         Ok(())
@@ -391,11 +412,10 @@ impl ExecutionEngine {
                         if let Some(key) = key_value.as_integer() {
                             if self.storage.has_index(&table_data.info.name, col_name) {
                                 // Use index to find matching row
-                                if let Some(row_id) = self.storage.search_index(
-                                    &table_data.info.name,
-                                    col_name,
-                                    key,
-                                ) {
+                                if let Some(row_id) =
+                                    self.storage
+                                        .search_index(&table_data.info.name, col_name, key)
+                                {
                                     return Some(vec![row_id as usize]);
                                 } else {
                                     return Some(vec![]); // No match
@@ -417,11 +437,12 @@ impl Default for ExecutionEngine {
 }
 
 /// Convert expression to value (static function)
+/// Note: BinaryOp cannot be evaluated in static context - returns Null
 fn expression_to_value_static(expr: &Expression) -> Value {
     match expr {
         Expression::Literal(s) => parse_sql_literal(s),
         Expression::Identifier(s) => parse_sql_literal(s),
-        Expression::BinaryOp(_, _, _) => Value::Null, // TODO: evaluate expression
+        Expression::BinaryOp(_, _, _) => Value::Null,
     }
 }
 
