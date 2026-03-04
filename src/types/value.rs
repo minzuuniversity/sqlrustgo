@@ -53,6 +53,10 @@ impl Hash for Value {
     }
 }
 
+/// f64 doesn't implement Eq, so we implement it manually for Value
+/// Note: NaN != NaN by IEEE 754, so we use bit equality for Float variant
+impl Eq for Value {}
+
 impl Value {
     /// Get integer value if this is an Integer
     pub fn as_integer(&self) -> Option<i64> {
