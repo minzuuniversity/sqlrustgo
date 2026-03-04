@@ -292,6 +292,28 @@ impl StorageEngine for MemoryStorage {
     fn search_index(&self, table: &str, column: &str, key: i64) -> Option<u32> {
         MemoryStorage::search_index(self, table, column, key)
     }
+
+    fn get_table_mut(&mut self, name: &str) -> Option<&mut TableData> {
+        self.tables.get_mut(name)
+    }
+
+    fn has_index(&self, table: &str, column: &str) -> bool {
+        MemoryStorage::has_index(self, table, column)
+    }
+
+    fn insert_with_index(&mut self, table: &str, column: &str, key: i64, row_id: u32) -> StorageResult<()> {
+        MemoryStorage::insert_with_index(self, table, column, key, row_id)
+    }
+
+    fn persist_table(&self, _table: &str) -> StorageResult<()> {
+        // Memory storage is ephemeral, nothing to persist
+        Ok(())
+    }
+
+    fn flush(&self) -> StorageResult<()> {
+        // Memory storage doesn't need flushing
+        Ok(())
+    }
 }
 
 #[cfg(test)]

@@ -14,8 +14,11 @@ pub type RowFilter = Box<dyn Fn(&Vec<Value>, &TableInfo) -> bool + Send + Sync>;
 /// StorageEngine trait - abstraction for storage backends
 #[allow(clippy::type_complexity)]
 pub trait StorageEngine: Send + Sync {
-    /// Get table information
+    /// Get table information (cloned)
     fn get_table(&self, name: &str) -> Option<TableData>;
+
+    /// Get mutable table data
+    fn get_table_mut(&mut self, name: &str) -> Option<&mut TableData>;
 
     /// List all table names
     fn table_names(&self) -> Vec<String>;
@@ -60,6 +63,24 @@ pub trait StorageEngine: Send + Sync {
 
     /// Search using index
     fn search_index(&self, table: &str, column: &str, key: i64) -> Option<u32>;
+
+    /// Check if index exists
+    fn has_index(&self, table: &str, column: &str) -> bool;
+
+    /// Insert row with index update
+    fn insert_with_index(
+        &mut self,
+        table: &str,
+        column: &str,
+        key: i64,
+        row_id: u32,
+    ) -> StorageResult<()>;
+
+    /// Persist table to storage (for file-based storage)
+    fn persist_table(&self, table: &str) -> StorageResult<()>;
+
+    /// Flush all data to storage
+    fn flush(&self) -> StorageResult<()>;
 }
 
 /// Schema definition for tables

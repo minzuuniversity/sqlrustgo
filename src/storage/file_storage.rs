@@ -515,6 +515,27 @@ impl StorageEngine for FileStorage {
     fn search_index(&self, table: &str, column: &str, key: i64) -> Option<u32> {
         FileStorage::search_index(self, table, column, key)
     }
+
+    fn get_table_mut(&mut self, name: &str) -> Option<&mut TableData> {
+        self.get_table_mut(name)
+    }
+
+    fn has_index(&self, table: &str, column: &str) -> bool {
+        FileStorage::has_index(self, table, column)
+    }
+
+    fn insert_with_index(&mut self, table: &str, column: &str, key: i64, row_id: u32) -> StorageResult<()> {
+        FileStorage::insert_with_index(self, table, column, key, row_id)
+            .map_err(|e| SqlError::IoError(e.to_string()))
+    }
+
+    fn persist_table(&self, table: &str) -> StorageResult<()> {
+        FileStorage::persist_table(self, table).map_err(|e| SqlError::IoError(e.to_string()))
+    }
+
+    fn flush(&self) -> StorageResult<()> {
+        FileStorage::flush(self).map_err(|e| SqlError::IoError(e.to_string()))
+    }
 }
 
 /// Stored table data (for serialization)

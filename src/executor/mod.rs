@@ -22,7 +22,7 @@
 use crate::parser::{
     DeleteStatement, Expression, InsertStatement, SelectStatement, Statement, UpdateStatement,
 };
-use crate::storage::{BufferPool, FileStorage};
+use crate::storage::{BufferPool, FileStorage, StorageEngine};
 use crate::types::{parse_sql_literal, SqlError, SqlResult, Value};
 use std::path::PathBuf;
 
@@ -38,7 +38,7 @@ pub struct ExecutionResult {
 #[allow(dead_code)]
 pub struct ExecutionEngine {
     buffer_pool: BufferPool,
-    storage: FileStorage,
+    storage: Box<dyn StorageEngine>,
 }
 
 impl ExecutionEngine {
@@ -51,11 +51,21 @@ impl ExecutionEngine {
 
     /// Create a new execution engine with custom data directory
     pub fn with_data_dir(data_dir: PathBuf) -> SqlResult<Self> {
-        let storage = FileStorage::new(data_dir)?;
+        let storage = Box::new(FileStorage::new(data_dir)?) as Box<dyn StorageEngine>;
         Ok(Self {
             buffer_pool: BufferPool::new(100),
             storage,
         })
+    }
+
+    /// Create a new execution engine with memory storage (for testing)
+    #[allow(dead_code)]
+    pub fn with_memory_storage() -> Self {
+        let storage = Box::new(crate::storage::MemoryStorage::new()) as Box<dyn StorageEngine>;
+        Self {
+            buffer_pool: BufferPool::new(100),
+            storage,
+        }
     }
 
     /// Execute a SQL statement
@@ -155,7 +165,7 @@ impl ExecutionEngine {
     /// Execute INSERT (supports multi-row)
     fn execute_insert(&mut self, stmt: InsertStatement) -> SqlResult<ExecutionResult> {
         // Check if table exists
-        if !self.storage.contains_table(&stmt.table) {
+        if !self.storage.has_table(&stmt.table) {
             return Err(SqlError::TableNotFound(stmt.table));
         }
 
@@ -229,7 +239,7 @@ impl ExecutionEngine {
     /// Execute UPDATE (with dynamic column mapping)
     fn execute_update(&mut self, stmt: UpdateStatement) -> SqlResult<ExecutionResult> {
         // Check if table exists
-        if !self.storage.contains_table(&stmt.table) {
+        if !self.storage.has_table(&stmt.table) {
             return Err(SqlError::TableNotFound(stmt.table));
         }
 
@@ -294,7 +304,7 @@ impl ExecutionEngine {
     /// Execute DELETE
     fn execute_delete(&mut self, stmt: DeleteStatement) -> SqlResult<ExecutionResult> {
         // Check if table exists
-        if !self.storage.contains_table(&stmt.table) {
+        if !self.storage.has_table(&stmt.table) {
             return Err(SqlError::TableNotFound(stmt.table));
         }
 
@@ -356,7 +366,7 @@ impl ExecutionEngine {
             },
             rows: Vec::new(),
         };
-        self.storage.insert_table(stmt.name, table_data)?;
+        self.storage.create_table(&stmt.name, table_data.info)?;
 
         Ok(ExecutionResult {
             rows_affected: 0,
@@ -379,8 +389,8 @@ impl ExecutionEngine {
         })
     }
 
-    /// Get table data
-    pub fn get_table(&self, name: &str) -> Option<&TableData> {
+    /// Get table data (cloned)
+    pub fn get_table(&self, name: &str) -> Option<TableData> {
         self.storage.get_table(name)
     }
 
@@ -412,7 +422,7 @@ impl ExecutionEngine {
 
         // Create index
         self.storage
-            .create_index(table_name, column_name, column_index)
+            .create_index(table_name, column_name)
             .map_err(|e| SqlError::ExecutionError(e.to_string()))?;
 
         Ok(())
