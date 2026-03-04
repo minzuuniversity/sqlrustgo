@@ -1,10 +1,15 @@
 # Changelog
 
+<<<<<<< HEAD
 All notable changes to SQLRustGo will be documented in this file.
+=======
+All notable changes to this project will be documented in this file.
+>>>>>>> origin/baseline
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+<<<<<<< HEAD
 <<<<<<< HEAD
 ## [Unreleased]
 
@@ -88,6 +93,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 *This changelog is maintained by yinglichina8848*
 =======
+=======
+>>>>>>> origin/baseline
 ## [1.0.0] - 2026-02-16
 
 ### Added
@@ -151,4 +158,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 实施计划
 - AI 工具链配置
 - 基础项目结构
+<<<<<<< HEAD
 >>>>>>> origin/main
+=======
+>>>>>>> origin/baseline

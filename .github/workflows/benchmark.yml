@@ -27,6 +27,7 @@ jobs:
         
       - name: Run Lexer/Parser benchmarks
 <<<<<<< HEAD
+<<<<<<< HEAD
         run: cargo run --release --benches -- lexer_parser_bench
         
       - name: Run Executor benchmarks
@@ -52,6 +53,8 @@ jobs:
           comment-on-alert: true
           fail-on-alert: true
 =======
+=======
+>>>>>>> origin/baseline
         run: cargo bench --bench lexer_parser_bench
         
       - name: Run Executor benchmarks
@@ -77,4 +80,7 @@ jobs:
 
   # Note: Benchmark upload disabled - criterion 0.5 compatibility issue
   # Upload can be re-enabled once criterion produces JSON output
+<<<<<<< HEAD
 >>>>>>> origin/main
+=======
+>>>>>>> origin/baseline
