@@ -1,11 +1,23 @@
 //! Query Execution Engine
-//! Executes SQL statements and returns results
+//!
+//! # What (是什么)
+//! Executor 负责执行 Parser 生成的 AST，产生查询结果
+//!
+//! # Why (为什么)
+//! Parser 解析 SQL 只是理解"要做什么"，Executor 才是真正"执行操作"的组件
+//! Executor 需要访问存储层，按需读写数据
+//!
+//! # How (如何实现)
+//! - Volcano 模型：迭代器风格，每步处理一个算子
+//! - 算子下推：将过滤等操作下推到存储层
+//! - 支持：DML (INSERT/UPDATE/DELETE) 和 DQL (SELECT)
+//! - 表达式求值：WHERE 子句的布尔表达式
 
 use crate::parser::{
     DeleteStatement, Expression, InsertStatement, SelectStatement, Statement, UpdateStatement,
 };
 use crate::storage::{BufferPool, FileStorage};
-use crate::types::{SqlError, SqlResult, Value, parse_sql_literal};
+use crate::types::{parse_sql_literal, SqlError, SqlResult, Value};
 use std::path::PathBuf;
 
 /// Execution result
@@ -25,6 +37,7 @@ pub struct ExecutionEngine {
 
 impl ExecutionEngine {
     /// Create a new execution engine with file-based storage
+    /// Panics if storage initialization fails (use with_data_dir for error handling)
     pub fn new() -> Self {
         Self::with_data_dir(std::path::PathBuf::from("data"))
     }
@@ -53,12 +66,16 @@ impl ExecutionEngine {
     /// Execute SELECT
     fn execute_select(&mut self, stmt: SelectStatement) -> SqlResult<ExecutionResult> {
         // Check if table exists
-        let table_data = self.storage
+        let table_data = self
+            .storage
             .get_table(&stmt.table)
             .ok_or_else(|| SqlError::TableNotFound(stmt.table.clone()))?;
 
         // Get column names from table schema
-        let table_columns: Vec<String> = table_data.info.columns.iter()
+        let table_columns: Vec<String> = table_data
+            .info
+            .columns
+            .iter()
             .map(|c| c.name.clone())
             .collect();
 
@@ -73,13 +90,15 @@ impl ExecutionEngine {
         let column_indices: Vec<usize> = if stmt.columns.iter().any(|c| c.name == "*") {
             (0..table_columns.len()).collect()
         } else {
-            stmt.columns.iter().filter_map(|c| {
-                table_columns.iter().position(|tc| tc == &c.name)
-            }).collect()
+            stmt.columns
+                .iter()
+                .filter_map(|c| table_columns.iter().position(|tc| tc == &c.name))
+                .collect()
         };
 
         // Build column index map for WHERE clause evaluation
-        let column_map: std::collections::HashMap<String, usize> = table_columns.iter()
+        let column_map: std::collections::HashMap<String, usize> = table_columns
+            .iter()
             .enumerate()
             .map(|(i, c)| (c.clone(), i))
             .collect();
@@ -87,14 +106,19 @@ impl ExecutionEngine {
         // Filter rows by WHERE clause (with index optimization)
         let filtered_rows: Vec<Vec<Value>> = if let Some(ref where_expr) = stmt.where_clause {
             // Try to use index for optimization
-            if let Some(row_indices) = self.execute_select_with_index(&table_data, where_expr, &column_map) {
+            if let Some(row_indices) =
+                self.execute_select_with_index(table_data, where_expr, &column_map)
+            {
                 // Use index results
-                row_indices.iter()
+                row_indices
+                    .iter()
                     .filter_map(|&idx| table_data.rows.get(idx).cloned())
                     .collect()
             } else {
                 // Fall back to full table scan
-                table_data.rows.iter()
+                table_data
+                    .rows
+                    .iter()
                     .filter(|row| evaluate_where(row, where_expr, &column_map))
                     .cloned()
                     .collect()
@@ -104,9 +128,11 @@ impl ExecutionEngine {
         };
 
         // Project to result columns
-        let result_rows: Vec<Vec<Value>> = filtered_rows.iter()
+        let result_rows: Vec<Vec<Value>> = filtered_rows
+            .iter()
             .map(|row| {
-                column_indices.iter()
+                column_indices
+                    .iter()
                     .filter_map(|&idx| row.get(idx).cloned())
                     .collect()
             })
@@ -129,7 +155,10 @@ impl ExecutionEngine {
         // Get indexed columns before mutating
         let indexed_columns: Vec<(usize, String)> = {
             let table_data = self.storage.get_table(&stmt.table).unwrap();
-            table_data.info.columns.iter()
+            table_data
+                .info
+                .columns
+                .iter()
                 .enumerate()
                 .filter(|(_, c)| self.storage.has_index(&stmt.table, &c.name))
                 .map(|(i, c)| (i, c.name.clone()))
@@ -162,7 +191,9 @@ impl ExecutionEngine {
 
         // Apply index updates
         for (col_name, key, row_id) in index_updates {
-            let _ = self.storage.insert_with_index(&stmt.table, &col_name, key, row_id);
+            let _ = self
+                .storage
+                .insert_with_index(&stmt.table, &col_name, key, row_id);
         }
 
         self.storage.persist_table(&stmt.table)?;
@@ -295,8 +326,7 @@ impl ExecutionEngine {
             },
             rows: Vec::new(),
         };
-        self.storage
-            .insert_table(stmt.name, table_data)?;
+        self.storage.insert_table(stmt.name, table_data)?;
 
         Ok(ExecutionResult {
             rows_affected: 0,
@@ -310,8 +340,7 @@ impl ExecutionEngine {
         &mut self,
         stmt: crate::parser::DropTableStatement,
     ) -> SqlResult<ExecutionResult> {
-        self.storage
-            .drop_table(&stmt.name)?;
+        self.storage.drop_table(&stmt.name)?;
 
         Ok(ExecutionResult {
             rows_affected: 0,
@@ -330,20 +359,30 @@ impl ExecutionEngine {
     /// Create an index on a table column
     pub fn create_index(&mut self, table_name: &str, column_name: &str) -> SqlResult<()> {
         // Find column index in table schema
-        let table = self.storage.get_table(table_name)
+        let table = self
+            .storage
+            .get_table(table_name)
             .ok_or_else(|| SqlError::TableNotFound(table_name.to_string()))?;
 
-        let column_index = table.info.columns.iter()
+        let column_index = table
+            .info
+            .columns
+            .iter()
             .position(|c| c.name == column_name)
-            .ok_or_else(|| SqlError::ExecutionError(format!("Column '{}' not found", column_name)))?;
+            .ok_or_else(|| {
+                SqlError::ExecutionError(format!("Column '{}' not found", column_name))
+            })?;
 
         // Check if column is INTEGER type (for B+ Tree index)
         if table.info.columns[column_index].data_type != "INTEGER" {
-            return Err(SqlError::ExecutionError("Index only supports INTEGER columns".to_string()));
+            return Err(SqlError::ExecutionError(
+                "Index only supports INTEGER columns".to_string(),
+            ));
         }
 
         // Create index
-        self.storage.create_index(table_name, column_name, column_index)
+        self.storage
+            .create_index(table_name, column_name, column_index)
             .map_err(|e| SqlError::ExecutionError(e.to_string()))?;
 
         Ok(())
@@ -373,11 +412,10 @@ impl ExecutionEngine {
                         if let Some(key) = key_value.as_integer() {
                             if self.storage.has_index(&table_data.info.name, col_name) {
                                 // Use index to find matching row
-                                if let Some(row_id) = self.storage.search_index(
-                                    &table_data.info.name,
-                                    col_name,
-                                    key,
-                                ) {
+                                if let Some(row_id) =
+                                    self.storage
+                                        .search_index(&table_data.info.name, col_name, key)
+                                {
                                     return Some(vec![row_id as usize]);
                                 } else {
                                     return Some(vec![]); // No match
@@ -392,12 +430,19 @@ impl ExecutionEngine {
     }
 }
 
+impl Default for ExecutionEngine {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// Convert expression to value (static function)
+/// Note: BinaryOp cannot be evaluated in static context - returns Null
 fn expression_to_value_static(expr: &Expression) -> Value {
     match expr {
         Expression::Literal(s) => parse_sql_literal(s),
         Expression::Identifier(s) => parse_sql_literal(s),
-        Expression::BinaryOp(_, _, _) => Value::Null, // TODO: evaluate expression
+        Expression::BinaryOp(_, _, _) => Value::Null,
     }
 }
 
@@ -441,38 +486,30 @@ fn evaluate_where(
             match op.as_str() {
                 "=" => left_val == right_val,
                 "!=" => left_val != right_val,
-                ">" => {
-                    match (&left_val, &right_val) {
-                        (Value::Integer(l), Value::Integer(r)) => l > r,
-                        (Value::Float(l), Value::Float(r)) => l > r,
-                        (Value::Text(l), Value::Text(r)) => l > r,
-                        _ => false,
-                    }
-                }
-                "<" => {
-                    match (&left_val, &right_val) {
-                        (Value::Integer(l), Value::Integer(r)) => l < r,
-                        (Value::Float(l), Value::Float(r)) => l < r,
-                        (Value::Text(l), Value::Text(r)) => l < r,
-                        _ => false,
-                    }
-                }
-                ">=" => {
-                    match (&left_val, &right_val) {
-                        (Value::Integer(l), Value::Integer(r)) => l >= r,
-                        (Value::Float(l), Value::Float(r)) => l >= r,
-                        (Value::Text(l), Value::Text(r)) => l >= r,
-                        _ => false,
-                    }
-                }
-                "<=" => {
-                    match (&left_val, &right_val) {
-                        (Value::Integer(l), Value::Integer(r)) => l <= r,
-                        (Value::Float(l), Value::Float(r)) => l <= r,
-                        (Value::Text(l), Value::Text(r)) => l <= r,
-                        _ => false,
-                    }
-                }
+                ">" => match (&left_val, &right_val) {
+                    (Value::Integer(l), Value::Integer(r)) => l > r,
+                    (Value::Float(l), Value::Float(r)) => l > r,
+                    (Value::Text(l), Value::Text(r)) => l > r,
+                    _ => false,
+                },
+                "<" => match (&left_val, &right_val) {
+                    (Value::Integer(l), Value::Integer(r)) => l < r,
+                    (Value::Float(l), Value::Float(r)) => l < r,
+                    (Value::Text(l), Value::Text(r)) => l < r,
+                    _ => false,
+                },
+                ">=" => match (&left_val, &right_val) {
+                    (Value::Integer(l), Value::Integer(r)) => l >= r,
+                    (Value::Float(l), Value::Float(r)) => l >= r,
+                    (Value::Text(l), Value::Text(r)) => l >= r,
+                    _ => false,
+                },
+                "<=" => match (&left_val, &right_val) {
+                    (Value::Integer(l), Value::Integer(r)) => l <= r,
+                    (Value::Float(l), Value::Float(r)) => l <= r,
+                    (Value::Text(l), Value::Text(r)) => l <= r,
+                    _ => false,
+                },
                 _ => false,
             }
         }
@@ -519,7 +556,8 @@ mod tests {
     #[test]
     fn test_execute_create_table() {
         let mut engine = ExecutionEngine::new();
-        let result = engine.execute(crate::parser::parse("CREATE TABLE users (id INTEGER, name TEXT)").unwrap());
+        let result = engine
+            .execute(crate::parser::parse("CREATE TABLE users (id INTEGER, name TEXT)").unwrap());
         assert!(result.is_ok());
         assert!(engine.get_table("users").is_some());
     }
@@ -528,7 +566,8 @@ mod tests {
     fn test_execute_select() {
         let mut engine = ExecutionEngine::new();
         // Create table first
-        let _ = engine.execute(crate::parser::parse("CREATE TABLE users (id INTEGER, name TEXT)").unwrap());
+        let _ = engine
+            .execute(crate::parser::parse("CREATE TABLE users (id INTEGER, name TEXT)").unwrap());
 
         // Select from existing table
         let result = engine.execute(crate::parser::parse("SELECT id FROM users").unwrap());
