@@ -12,14 +12,16 @@
 //! - CostModel trait: 成本模型接口
 
 pub mod cost;
+pub mod network_cost;
 pub mod plan;
 pub mod rules;
 pub mod stats;
 
+pub use network_cost::{NetworkCost, NetworkCostEstimator, SimpleNetworkCostEstimator};
 pub use plan::{OptimizerError, OptimizerResult};
 pub use stats::{
-    ColumnStats, InMemoryStatisticsProvider, StatisticsProvider, StatsError, StatsResult,
-    TableStats,
+    ColumnStats, DefaultStatsCollector, InMemoryStatisticsProvider, StatisticsProvider,
+    StatsCollector, StatsError, StatsResult, TableStats,
 };
 
 /// Optimizer trait - main interface for query optimization
