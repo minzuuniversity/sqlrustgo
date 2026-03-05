@@ -230,6 +230,7 @@ impl<'a> Lexer<'a> {
                     "BEGIN" => Token::Begin,
                     "COMMIT" => Token::Commit,
                     "ROLLBACK" => Token::Rollback,
+                    "ANALYZE" => Token::Analyze,
                     "GRANT" => Token::Grant,
                     "REVOKE" => Token::Revoke,
                     "INTEGER" | "INT" => Token::Integer,

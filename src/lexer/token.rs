@@ -29,6 +29,7 @@ pub enum Token {
     Rollback,
     Grant,
     Revoke,
+    Analyze,
 
     // Data Types
     Integer,
@@ -106,6 +107,7 @@ impl fmt::Display for Token {
             Token::Rollback => write!(f, "ROLLBACK"),
             Token::Grant => write!(f, "GRANT"),
             Token::Revoke => write!(f, "REVOKE"),
+            Token::Analyze => write!(f, "ANALYZE"),
             Token::Integer => write!(f, "INTEGER"),
             Token::Text => write!(f, "TEXT"),
             Token::Float => write!(f, "FLOAT"),
@@ -167,6 +169,7 @@ pub fn is_keyword(s: &str) -> bool {
             | "ROLLBACK"
             | "GRANT"
             | "REVOKE"
+            | "ANALYZE"
             | "INTEGER"
             | "TEXT"
             | "FLOAT"
@@ -206,6 +209,7 @@ pub fn from_keyword(s: &str) -> Option<Token> {
         "ROLLBACK" => Some(Token::Rollback),
         "GRANT" => Some(Token::Grant),
         "REVOKE" => Some(Token::Revoke),
+        "ANALYZE" => Some(Token::Analyze),
         "INTEGER" => Some(Token::Integer),
         "TEXT" => Some(Token::Text),
         "FLOAT" => Some(Token::Float),

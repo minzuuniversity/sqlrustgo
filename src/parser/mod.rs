@@ -25,6 +25,7 @@ pub enum Statement {
     Delete(DeleteStatement),
     CreateTable(CreateTableStatement),
     DropTable(DropTableStatement),
+    Analyze(AnalyzeStatement),
 }
 
 /// SELECT statement
@@ -76,6 +77,12 @@ pub struct CreateTableStatement {
 #[derive(Debug, Clone, PartialEq)]
 pub struct DropTableStatement {
     pub name: String,
+}
+
+/// ANALYZE statement - collects table statistics
+#[derive(Debug, Clone, PartialEq)]
+pub struct AnalyzeStatement {
+    pub table: String,
 }
 
 /// Column definition
@@ -144,6 +151,7 @@ impl Parser {
             Some(Token::Delete) => self.parse_delete(),
             Some(Token::Create) => self.parse_create_table(),
             Some(Token::Drop) => self.parse_drop_table(),
+            Some(Token::Analyze) => self.parse_analyze(),
             Some(t) => Err(format!("Unexpected token: {:?}", t)),
             None => Err("Empty input".to_string()),
         }
@@ -583,6 +591,15 @@ impl Parser {
 
         Ok(Statement::DropTable(DropTableStatement { name }))
     }
+
+    fn parse_analyze(&mut self) -> Result<Statement, String> {
+        self.expect(Token::Analyze)?;
+        let table = match self.next() {
+            Some(Token::Identifier(name)) => name,
+            _ => return Err("Expected table name after ANALYZE".to_string()),
+        };
+        Ok(Statement::Analyze(AnalyzeStatement { table }))
+    }
 }
 
 /// Parse a SQL string into statements
@@ -757,6 +774,18 @@ mod tests {
                 assert_eq!(d.name, "users");
             }
             _ => panic!("Expected DROP TABLE statement"),
+        }
+    }
+
+    #[test]
+    fn test_parse_analyze() {
+        let result = parse("ANALYZE users");
+        assert!(result.is_ok());
+        match result.unwrap() {
+            Statement::Analyze(a) => {
+                assert_eq!(a.table, "users");
+            }
+            _ => panic!("Expected ANALYZE statement"),
         }
     }
 }

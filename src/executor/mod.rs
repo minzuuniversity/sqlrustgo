@@ -16,15 +16,18 @@
 #![allow(
     clippy::collapsible_if,
     clippy::collapsible_match,
-    clippy::needless_borrow
+    clippy::needless_borrow,
+    clippy::module_inception
 )]
 
 pub mod executor;
 
 pub use executor::{Executor, ExecutorResult};
 
+use crate::optimizer::stats::ColumnStats;
 use crate::parser::{
-    DeleteStatement, Expression, InsertStatement, SelectStatement, Statement, UpdateStatement,
+    AnalyzeStatement, DeleteStatement, Expression, InsertStatement, SelectStatement, Statement,
+    UpdateStatement,
 };
 use crate::storage::{BufferPool, FileStorage};
 use crate::types::{parse_sql_literal, SqlError, SqlResult, Value};
@@ -39,7 +42,7 @@ pub struct ExecutionResult {
 }
 
 /// Query execution engine
-#[allow(dead_code)]
+#[allow(dead_code, clippy::module_inception)]
 pub struct ExecutionEngine {
     buffer_pool: BufferPool,
     storage: FileStorage,
@@ -71,6 +74,7 @@ impl ExecutionEngine {
             Statement::Delete(s) => self.execute_delete(s),
             Statement::CreateTable(c) => self.execute_create_table(c),
             Statement::DropTable(d) => self.execute_drop_table(d),
+            Statement::Analyze(a) => self.execute_analyze(a),
         }
     }
 
@@ -362,6 +366,131 @@ impl ExecutionEngine {
             rows_affected: 0,
             columns: Vec::new(),
             rows: Vec::new(),
+        })
+    }
+
+    /// Execute ANALYZE - collect table statistics
+    fn execute_analyze(&mut self, stmt: AnalyzeStatement) -> SqlResult<ExecutionResult> {
+        // Get table data
+        let table_data = self
+            .storage
+            .get_table(&stmt.table)
+            .ok_or_else(|| SqlError::TableNotFound(stmt.table.clone()))?;
+
+        // Collect statistics for each column
+        let mut column_stats_vec: Vec<ColumnStats> = Vec::new();
+
+        for (col_idx, col_def) in table_data.info.columns.iter().enumerate() {
+            let mut col_stats = ColumnStats::new(&col_def.name);
+
+            // Collect values for this column
+            let mut values: Vec<&Value> = Vec::new();
+            let mut null_count: u64 = 0;
+
+            for row in &table_data.rows {
+                if let Some(val) = row.get(col_idx) {
+                    match val {
+                        Value::Null => null_count += 1,
+                        _ => values.push(val),
+                    }
+                }
+            }
+
+            col_stats.null_count = null_count;
+
+            // Calculate distinct count
+            let mut distinct_values: std::collections::HashSet<String> =
+                std::collections::HashSet::new();
+            for val in &values {
+                distinct_values.insert(val.to_string());
+            }
+            col_stats.distinct_count = distinct_values.len() as u64;
+
+            // Calculate min/max for numeric types
+            if let Some(first_val) = values.first() {
+                match first_val {
+                    Value::Integer(_) | Value::Float(_) => {
+                        let mut min_val: Option<f64> = None;
+                        let mut max_val: Option<f64> = None;
+                        let mut sum: f64 = 0.0;
+                        let mut count: u64 = 0;
+
+                        for val in &values {
+                            let num = match val {
+                                Value::Integer(i) => *i as f64,
+                                Value::Float(f) => *f,
+                                _ => continue,
+                            };
+                            min_val = Some(min_val.map_or(num, |m| m.min(num)));
+                            max_val = Some(max_val.map_or(num, |m| m.max(num)));
+                            sum += num;
+                            count += 1;
+                        }
+
+                        col_stats.min_value = min_val.map(|v| Value::Integer(v as i64));
+                        col_stats.max_value = max_val.map(|v| Value::Integer(v as i64));
+                        if count > 0 {
+                            col_stats.avg_value = Some(sum / count as f64);
+                        }
+                    }
+                    Value::Text(_) => {
+                        // For text, just track min/max as strings
+                        let mut min_str: Option<String> = None;
+                        let mut max_str: Option<String> = None;
+
+                        for val in &values {
+                            if let Value::Text(s) = val {
+                                min_str = Some(min_str.map_or(s.clone(), |m| {
+                                    if s < &m {
+                                        s.clone()
+                                    } else {
+                                        m
+                                    }
+                                }));
+                                max_str = Some(max_str.map_or(s.clone(), |m| {
+                                    if s > &m {
+                                        s.clone()
+                                    } else {
+                                        m
+                                    }
+                                }));
+                            }
+                        }
+
+                        col_stats.min_value = min_str.map(Value::Text);
+                        col_stats.max_value = max_str.map(Value::Text);
+                    }
+                    _ => {}
+                }
+            }
+
+            column_stats_vec.push(col_stats);
+        }
+
+        // Build result table
+        let mut rows: Vec<Vec<Value>> = Vec::new();
+        for col_stats in &column_stats_vec {
+            rows.push(vec![
+                Value::Text(col_stats.column_name.clone()),
+                Value::Integer(col_stats.distinct_count as i64),
+                Value::Integer(col_stats.null_count as i64),
+                col_stats.min_value.clone().unwrap_or(Value::Null),
+                col_stats.max_value.clone().unwrap_or(Value::Null),
+                col_stats.avg_value.map(Value::Float).unwrap_or(Value::Null),
+            ]);
+        }
+
+        Ok(ExecutionResult {
+            rows_affected: 0,
+            columns: vec![
+                "column_name".to_string(),
+                "distinct_count".to_string(),
+                "null_count".to_string(),
+                "min_value".to_string(),
+                "max_value".to_string(),
+                "avg_value".to_string(),
+            ],
+            rows,
         })
     }
 
@@ -770,6 +899,38 @@ mod tests {
         // Verify row was deleted
         let table = engine.get_table("users").unwrap();
         assert_eq!(table.rows.len(), 0);
+    }
+
+    #[test]
+    fn test_execute_analyze() {
+        let mut engine = ExecutionEngine::new();
+        // Create table first
+        engine
+            .execute(
+                crate::parser::parse("CREATE TABLE users (id INTEGER, name TEXT, age INTEGER)")
+                    .unwrap(),
+            )
+            .unwrap();
+
+        // Insert rows
+        engine
+            .execute(crate::parser::parse("INSERT INTO users VALUES (1, 'Alice', 25)").unwrap())
+            .unwrap();
+        engine
+            .execute(crate::parser::parse("INSERT INTO users VALUES (2, 'Bob', 30)").unwrap())
+            .unwrap();
+        engine
+            .execute(crate::parser::parse("INSERT INTO users VALUES (3, 'Charlie', 25)").unwrap())
+            .unwrap();
+
+        // Analyze the table
+        let result = engine.execute(crate::parser::parse("ANALYZE users").unwrap());
+        assert!(result.is_ok());
+
+        let exec_result = result.unwrap();
+        // Should have 3 columns: id, name, age
+        assert_eq!(exec_result.columns.len(), 6); // column_name, distinct_count, null_count, min_value, max_value, avg_value
+        assert_eq!(exec_result.rows.len(), 3); // 3 columns analyzed
     }
 }
 
