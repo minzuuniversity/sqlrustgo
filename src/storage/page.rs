@@ -145,28 +145,33 @@ impl Page {
 
         // Table ID (8 bytes)
         self.data[offset..offset + 8].copy_from_slice(&self.table_id.to_le_bytes());
+        offset += 8;
+
+        // Page ID (4 bytes)
+        self.data[offset..offset + 4].copy_from_slice(&self.page_id.to_le_bytes());
     }
 
     /// Read page header
     fn read_header(&mut self) {
-        let mut offset = 0;
-
         // Magic number
         let magic = u32::from_le_bytes([self.data[0], self.data[1], self.data[2], self.data[3]]);
         if magic != PAGE_MAGIC {
             return;
         }
 
-        offset = 8;
+        let mut offset = 4;
 
-        // Page type
+        // Version (2 bytes) - skip
+        offset += 2;
+
+        // Page type (1 byte)
         self.page_type = match self.data[offset] {
             1 => PageType::Data,
             2 => PageType::Index,
             3 => PageType::Meta,
             _ => PageType::Free,
         };
-        offset += 2;
+        offset += 2; // page_type (1) + reserved (1)
 
         offset += 4; // skip checksum
         offset += 4; // skip prev page
@@ -200,6 +205,15 @@ impl Page {
             self.data[offset + 5],
             self.data[offset + 6],
             self.data[offset + 7],
+        ]);
+        offset += 8;
+
+        // Page ID
+        self.page_id = u32::from_le_bytes([
+            self.data[offset],
+            self.data[offset + 1],
+            self.data[offset + 2],
+            self.data[offset + 3],
         ]);
     }
 
