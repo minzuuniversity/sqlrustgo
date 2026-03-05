@@ -10,13 +10,12 @@
 //! - StatisticsProvider trait: 统计信息提供者接口
 //! - TableStats: 表级统计信息结构
 //! - ColumnStats: 列级统计信息结构
+//! - StatsCollector: 统计信息收集器
 
 use std::collections::HashMap;
-use std::fs;
-use std::path::Path;
 use thiserror::Error;
 
-use serde::{Deserialize, Serialize};
+use crate::storage::StorageEngine;
 use crate::types::Value;
 
 /// Statistics provider error types
@@ -36,7 +35,7 @@ pub enum StatsError {
 pub type StatsResult<T> = Result<T, StatsError>;
 
 /// Column statistics for a single column
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default)]
 pub struct ColumnStats {
     /// Column name
     pub column_name: String,
@@ -102,7 +101,7 @@ impl ColumnStats {
 }
 
 /// Table-level statistics
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default)]
 pub struct TableStats {
     /// Table name
     pub table_name: String,
@@ -193,7 +192,7 @@ pub trait StatisticsProvider: Send + Sync {
 }
 
 /// In-memory statistics provider implementation
-#[derive(Debug, Default, Serialize, Deserialize)]
+#[derive(Debug, Default)]
 pub struct InMemoryStatisticsProvider {
     stats: HashMap<String, TableStats>,
 }
@@ -233,97 +232,201 @@ impl StatisticsProvider for InMemoryStatisticsProvider {
     }
 }
 
-/// File-based statistics provider implementation
-/// Persists statistics to disk in JSON format
-#[derive(Debug, Default)]
-pub struct FileStatisticsProvider {
-    /// Base directory for storing statistics files
-    stats_dir: String,
-    /// In-memory cache for quick access
-    cache: InMemoryStatisticsProvider,
+/// StatsCollector trait - for collecting statistics from tables
+///
+/// # What
+/// 统计信息收集器接口，从表中收集统计信息
+///
+/// # Why
+/// CBO 需要实时的表统计信息来估算查询成本
+///
+/// # How
+/// - collect_table_stats 方法收集表的完整统计信息
+/// - collect_row_count 方法只收集行数
+/// - collect_column_stats 方法收集列级统计信息
+pub trait StatsCollector: Send + Sync {
+    /// Collect statistics for a table
+    fn collect_table_stats(
+        &self,
+        storage: &dyn StorageEngine,
+        table: &str,
+    ) -> StatsResult<TableStats>;
+
+    /// Collect row count for a table
+    fn collect_row_count(&self, storage: &dyn StorageEngine, table: &str) -> StatsResult<u64>;
+
+    /// Collect column statistics
+    fn collect_column_stats(
+        &self,
+        storage: &dyn StorageEngine,
+        table: &str,
+        column: &str,
+        column_index: usize,
+    ) -> StatsResult<ColumnStats>;
 }
 
-impl FileStatisticsProvider {
-    /// Create a new FileStatisticsProvider with the given stats directory
-    pub fn new(stats_dir: impl Into<String>) -> Self {
-        let stats_dir = stats_dir.into();
-        // Ensure directory exists
-        let _ = fs::create_dir_all(&stats_dir);
-        Self {
-            stats_dir,
-            cache: InMemoryStatisticsProvider::default(),
-        }
+/// Default statistics collector implementation
+#[derive(Debug, Clone, Default)]
+pub struct DefaultStatsCollector;
+
+impl DefaultStatsCollector {
+    pub fn new() -> Self {
+        Self
     }
+}
 
-    /// Load all statistics from disk into memory cache
-    pub fn load(&mut self) -> StatsResult<()> {
-        let path = Path::new(&self.stats_dir);
-        if !path.exists() {
-            return Ok(());
-        }
+impl StatsCollector for DefaultStatsCollector {
+    fn collect_table_stats(
+        &self,
+        storage: &dyn StorageEngine,
+        table: &str,
+    ) -> StatsResult<TableStats> {
+        let records = storage
+            .scan(table)
+            .map_err(|e| StatsError::UpdateFailed(e.to_string()))?;
+        let row_count = records.len() as u64;
 
-        // Try to load from stats.json
-        let stats_file = path.join("stats.json");
-        if stats_file.exists() {
-            let content = fs::read_to_string(&stats_file)
-                .map_err(|e| StatsError::UpdateFailed(e.to_string()))?;
-            let loaded: InMemoryStatisticsProvider = serde_json::from_str(&content)
-                .map_err(|e| StatsError::InvalidStats(e.to_string()))?;
+        let mut column_stats = HashMap::new();
 
-            // Merge loaded stats into cache
-            for (_table, stats) in loaded.stats {
-                self.cache.add_stats(stats);
+        if let Ok(table_info) = storage.get_table_info(table) {
+            for (idx, col_meta) in table_info.columns.iter().enumerate() {
+                let col_stats = self.collect_column_stats(storage, table, &col_meta.name, idx)?;
+                column_stats.insert(col_meta.name.clone(), col_stats);
             }
         }
-        Ok(())
+
+        Ok(TableStats::new(table)
+            .with_row_count(row_count)
+            .with_last_updated(
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs(),
+            )
+            .with_column_stats(column_stats))
     }
 
-    /// Save all statistics to disk
-    pub fn save(&self) -> StatsResult<()> {
-        let path = Path::new(&self.stats_dir);
-        let _ = fs::create_dir_all(path);
+    fn collect_row_count(&self, storage: &dyn StorageEngine, table: &str) -> StatsResult<u64> {
+        let records = storage
+            .scan(table)
+            .map_err(|e| StatsError::UpdateFailed(e.to_string()))?;
+        Ok(records.len() as u64)
+    }
 
-        let stats_file = path.join("stats.json");
-        let content = serde_json::to_string_pretty(&self.cache)
+    fn collect_column_stats(
+        &self,
+        storage: &dyn StorageEngine,
+        _table: &str,
+        column: &str,
+        column_index: usize,
+    ) -> StatsResult<ColumnStats> {
+        let records = storage
+            .scan(_table)
             .map_err(|e| StatsError::UpdateFailed(e.to_string()))?;
 
-        fs::write(&stats_file, content)
-            .map_err(|e| StatsError::UpdateFailed(e.to_string()))?;
+        let mut null_count: u64 = 0;
+        let mut distinct_values: std::collections::HashSet<String> =
+            std::collections::HashSet::new();
+        let mut min_value: Option<Value> = None;
+        let mut max_value: Option<Value> = None;
+        let mut sum: f64 = 0.0;
+        let mut numeric_count: u64 = 0;
 
-        Ok(())
-    }
+        for record in &records {
+            if let Some(value) = record.get(column_index) {
+                // Count nulls
+                if matches!(value, Value::Null) {
+                    null_count += 1;
+                    continue;
+                }
 
-    /// Add or update statistics for a table
-    pub fn add_stats(&mut self, table_stats: TableStats) {
-        self.cache.add_stats(table_stats);
-    }
+                // Track distinct values
+                distinct_values.insert(value.to_string());
 
-    /// Remove statistics for a table
-    pub fn remove_stats(&mut self, table: &str) {
-        self.cache.remove_stats(table);
-    }
+                // Track min/max
+                match value {
+                    Value::Integer(i) => {
+                        let v = *i as f64;
+                        sum += v;
+                        numeric_count += 1;
+                        match min_value {
+                            None => min_value = Some(value.clone()),
+                            Some(Value::Integer(min_i)) if *i < min_i => {
+                                min_value = Some(value.clone())
+                            }
+                            _ => {}
+                        }
+                        match max_value {
+                            None => max_value = Some(value.clone()),
+                            Some(Value::Integer(max_i)) if *i > max_i => {
+                                max_value = Some(value.clone())
+                            }
+                            _ => {}
+                        }
+                    }
+                    Value::Float(f) => {
+                        sum += *f;
+                        numeric_count += 1;
+                        match min_value {
+                            None => min_value = Some(value.clone()),
+                            Some(Value::Float(min_f)) if *f < min_f => {
+                                min_value = Some(value.clone())
+                            }
+                            _ => {}
+                        }
+                        match max_value {
+                            None => max_value = Some(value.clone()),
+                            Some(Value::Float(max_f)) if *f > max_f => {
+                                max_value = Some(value.clone())
+                            }
+                            _ => {}
+                        }
+                    }
+                    Value::Text(_) | Value::Blob(_) => {
+                        // For non-numeric types, just track min/max lexicographically
+                        match &min_value {
+                            None => min_value = Some(value.clone()),
+                            Some(Value::Text(_)) | Some(Value::Blob(_)) => {
+                                if value.to_string() < min_value.as_ref().unwrap().to_string() {
+                                    min_value = Some(value.clone());
+                                }
+                            }
+                            _ => {}
+                        }
+                        match &max_value {
+                            None => max_value = Some(value.clone()),
+                            Some(Value::Text(_)) | Some(Value::Blob(_)) => {
+                                if value.to_string() > max_value.as_ref().unwrap().to_string() {
+                                    max_value = Some(value.clone());
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
 
-    /// Check if statistics exist for a table
-    pub fn has_stats(&self, table: &str) -> bool {
-        self.cache.has_stats(table)
-    }
+        let avg_value = if numeric_count > 0 {
+            Some(sum / numeric_count as f64)
+        } else {
+            None
+        };
 
-    /// Get the stats directory path
-    pub fn stats_dir(&self) -> &str {
-        &self.stats_dir
+        Ok(ColumnStats::new(column)
+            .with_distinct_count(distinct_values.len() as u64)
+            .with_null_count(null_count)
+            .with_range(min_value, max_value)
+            .with_average(avg_value.unwrap_or(0.0)))
     }
 }
 
-impl StatisticsProvider for FileStatisticsProvider {
-    fn table_stats(&self, table: &str) -> Option<TableStats> {
-        self.cache.table_stats(table)
-    }
-
-    fn update_stats(&self, table: &str, _stats: TableStats) -> StatsResult<()> {
-        if !self.cache.has_stats(table) {
-            return Err(StatsError::TableNotFound(table.to_string()));
-        }
-        Ok(())
+impl TableStats {
+    /// Add multiple column stats at once
+    pub fn with_column_stats(mut self, stats: HashMap<String, ColumnStats>) -> Self {
+        self.column_stats = stats;
+        self
     }
 }
 
@@ -414,70 +517,5 @@ mod tests {
 
         let selectivity = provider.selectivity("users", "age");
         assert!((selectivity - 0.02).abs() < 0.001);
-    }
-
-    #[test]
-    fn test_file_statistics_provider() {
-        use tempfile::TempDir;
-
-        let temp_dir = TempDir::new().unwrap();
-        let stats_dir = temp_dir.path().join("stats");
-
-        let mut provider = FileStatisticsProvider::new(stats_dir.to_string_lossy().to_string());
-
-        // Add some stats
-        let stats = TableStats::new("users")
-            .with_row_count(5000)
-            .with_size_bytes(500_000)
-            .add_column_stats(ColumnStats::new("id").with_distinct_count(5000));
-        provider.add_stats(stats);
-
-        // Save to disk
-        provider.save().unwrap();
-
-        // Create new provider and load
-        let mut provider2 = FileStatisticsProvider::new(stats_dir.to_string_lossy().to_string());
-        provider2.load().unwrap();
-
-        // Verify loaded stats
-        let loaded = provider2.table_stats("users");
-        assert!(loaded.is_some());
-        assert_eq!(loaded.unwrap().row_count, 5000);
-    }
-
-    #[test]
-    fn test_file_provider_serialization() {
-        use tempfile::TempDir;
-
-        let temp_dir = TempDir::new().unwrap();
-        let stats_dir = temp_dir.path().join("stats2");
-
-        let stats = TableStats::new("orders")
-            .with_row_count(10000)
-            .with_size_bytes(1_000_000)
-            .add_column_stats(
-                ColumnStats::new("amount")
-                    .with_distinct_count(100)
-                    .with_null_count(5)
-                    .with_range(Some(Value::Integer(1)), Some(Value::Integer(10000)))
-                    .with_average(500.5),
-            );
-
-        {
-            let mut provider = FileStatisticsProvider::new(stats_dir.to_string_lossy().to_string());
-            provider.add_stats(stats.clone());
-            provider.save().unwrap();
-        }
-
-        // Load and verify
-        let mut provider = FileStatisticsProvider::new(stats_dir.to_string_lossy().to_string());
-        provider.load().unwrap();
-
-        let loaded = provider.table_stats("orders").unwrap();
-        assert_eq!(loaded.row_count, 10000);
-        assert_eq!(loaded.column_stats.len(), 1);
-        let col_stats = loaded.column("amount").unwrap();
-        assert_eq!(col_stats.distinct_count, 100);
-        assert_eq!(col_stats.null_count, 5);
     }
 }

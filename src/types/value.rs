@@ -59,13 +59,7 @@ impl PartialEq for Value {
             (Value::Null, Value::Null) => true,
             (Value::Boolean(a), Value::Boolean(b)) => a == b,
             (Value::Integer(a), Value::Integer(b)) => a == b,
-            (Value::Float(a), Value::Float(b)) => {
-                if a.is_nan() && b.is_nan() {
-                    true
-                } else {
-                    a == b
-                }
-            }
+            (Value::Float(a), Value::Float(b)) => a == b,
             (Value::Text(a), Value::Text(b)) => a == b,
             (Value::Blob(a), Value::Blob(b)) => a == b,
             _ => false,
