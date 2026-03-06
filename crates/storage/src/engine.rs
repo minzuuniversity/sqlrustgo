@@ -1,11 +1,12 @@
 //! Storage Engine trait - abstraction for storage backends
 //! Supports multiple storage implementations (File, Memory, etc.)
 
+use serde::{Deserialize, Serialize};
 use sqlrustgo_types::{SqlResult, Value};
 use std::collections::HashMap;
 
 /// Column definition for table schema
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ColumnDefinition {
     pub name: String,
     pub data_type: String,
@@ -13,7 +14,7 @@ pub struct ColumnDefinition {
 }
 
 /// Table metadata
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TableInfo {
     pub name: String,
     pub columns: Vec<ColumnDefinition>,
@@ -21,6 +22,13 @@ pub struct TableInfo {
 
 /// Record type - a single row of values
 pub type Record = Vec<Value>;
+
+/// Table data with rows - combines metadata and data
+#[derive(Debug, Clone)]
+pub struct TableData {
+    pub info: TableInfo,
+    pub rows: Vec<Record>,
+}
 
 /// StorageEngine trait - abstraction for table storage
 /// Enables multiple storage backends (FileStorage, MemoryStorage, etc.)
