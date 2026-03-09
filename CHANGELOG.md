@@ -5,6 +5,31 @@ SQLRustGo 的所有显着更改都将记录在此文件中。
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0-rc1] - 2026-03-09
+
+### Added
+
+- **RC**：v1.2.0 进入 RC 阶段
+- **架构**：带有 RecordBatch 的矢量化执行引擎
+- **架构**：可插拔存储后端的 StorageEngine 特征
+- **架构**：文件存储和内存存储实现
+- **架构**：带有统计信息的基于成本的优化器（CBO）
+- **功能**：用于统计收集的 ANALYZE 命令
+- **功能**：带有表/列统计信息的简化 CBO
+- **功能**：用于嵌入式使用的 LocalExecutor
+- **测试**：LocalExecutor 测试 (T-005)
+
+### Fixed
+
+- **修复**：修复 src/lib.rs tokenize 重复导入
+- **修复**：导出 tokenize 函数
+- **修复**：Cargo fmt 格式问题
+- **修复**：Clippy 零警告
+
+### Security
+
+- **审核**：依赖审核已通过（cargo audit，无高严重性漏洞）
+
 ## [未发布]
 
 ### Added
@@ -106,6 +131,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 |版本| Date |到期| Notes |
 |---------|------|----------|-------|
+| v1.2.0-rc1 | 2026-03-09 | L3+ |RC阶段，矢量化、CBO、存储抽象|
 | v1.2.0 | TBD | L3+ |矢量化、CBO、存储抽象|
 | v1.1.0 | 2026-03-05 | L3 |架构升级，Clippy通过|
 | v1.0.0 | 2026-02-22 | L3 GA |初次发布|
