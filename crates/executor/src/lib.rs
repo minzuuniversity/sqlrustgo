@@ -2,9 +2,11 @@
 
 pub mod executor;
 pub mod local_executor;
+pub mod projection;
 
 pub use executor::{Executor, ExecutorResult};
 pub use local_executor::LocalExecutor;
+pub use projection::{ProjectionBuilder, ProjectionConfig, ProjectionExecutor, ProjectionExpr};
 
 #[cfg(test)]
 mod tests {
