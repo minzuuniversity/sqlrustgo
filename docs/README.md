@@ -1,7 +1,7 @@
 # SQLRustGo 文档索引
 
-> **最后更新**: 2026-03-05  
-> **当前版本**: v1.1.0-draft (L3 产品级)
+> **最后更新**: 2026-03-12
+> **当前版本**: v1.2.0-RC (RC 阶段)
 
 ---
 
@@ -11,8 +11,8 @@
 docs/
 ├── releases/                    # 版本发布文档
 │   ├── v1.0.0/                 # v1.0.0 发布文档
-│   ├── v1.1.0/                 # v1.1.0 发布文档 (当前)
-│   ├── v1.2.0/                 # v1.2.0 版本计划
+│   ├── v1.1.0/                 # v1.1.0 发布文档
+│   ├── v1.2.0/                 # v1.2.0 发布文档 (当前)
 │   └── v1.3.0/                 # v1.3.0 版本计划
 │
 ├── v1.0/                        # v1.0 开发过程文档
@@ -37,27 +37,31 @@ docs/
 └── 教学实践/                    # 学生实践材料 (手册、模板)
 ```
 
+> 文档中文化进度说明见：[文档中文化推进说明](文档中文化推进说明.md)
+
 ---
 
 ## 二、版本发布文档
 
-### v1.1.0 (当前版本)
+### v1.2.0 (当前版本: Alpha)
+
+| 文档 | 说明 |
+|------|------|
+| [文档索引](releases/v1.2.0/README.md) | v1.2.0 文档总入口 |
+| [版本计划](releases/v1.2.0/VERSION_PLAN.md) | v1.2.0 版本计划 |
+| [门禁检查清单](releases/v1.2.0/RELEASE_GATE_CHECKLIST.md) | 发布门禁 |
+| [任务矩阵](releases/v1.2.0/TASK_MATRIX.md) | v1.2.0 任务跟踪 |
+| [分支治理规范](releases/v1.2.0/BRANCH_STAGE_GOVERNANCE.md) |Draft/Alpha/Beta/RC/GA 规则|
+| [测试计划](releases/v1.2.0/TEST_PLAN.md) | 测试目标与阶段安排 |
+| [发布说明](releases/v1.2.0/RELEASE_NOTES.md) | 发布文档草稿 |
+
+### v1.1.0 (已发布)
 
 | 文档 | 说明 |
 |------|------|
 | [Release Notes](releases/v1.1.0/RELEASE_NOTES.md) | 版本发布说明 |
 | [门禁检查清单](releases/v1.1.0/RELEASE_GATE_CHECKLIST.md) | 发布门禁 |
-| [成熟度评估](releases/v1.1.0/MATURITY_ASSESSMENT.md) | L3 成熟度评估 |
-| [性能报告](releases/v1.1.0/PERFORMANCE_REPORT.md) | 性能测试分析 |
 | [API 文档](releases/v1.1.0/API_DOCUMENTATION.md) | API 参考 |
-| [升级指南](releases/v1.1.0/UPGRADE_GUIDE.md) | v1.0.0 → v1.1.0 |
-| [安全审计](releases/v1.1.0/SECURITY_AUDIT.md) | 安全审计报告 |
-| [代码质量审计](releases/v1.1.0/CODE_QUALITY_AUDIT.md) | 代码质量报告 |
-| [日志规范](releases/v1.1.0/LOGGING_SPECIFICATION.md) | 日志格式规范 |
-| [监控规范](releases/v1.1.0/MONITORING_SPECIFICATION.md) | 性能监控规范 |
-| [健康检查规范](releases/v1.1.0/HEALTH_CHECK_SPECIFICATION.md) | 健康检查端点 |
-| [DeepSeek 评估报告](releases/v1.1.0/DEEPSEEK_EVALUATION.md) | DeepSeek 评估 |
-| [改进计划](releases/v1.1.0/IMPROVEMENT_PLAN.md) | v1.1.0-draft 改进计划 |
 
 ### v1.2.0 (计划中)
 
@@ -65,6 +69,8 @@ docs/
 |------|------|
 | [版本计划](releases/v1.2.0/VERSION_PLAN.md) | v1.2.0 版本计划 |
 | [门禁检查清单](releases/v1.2.0/RELEASE_GATE_CHECKLIST.md) | 发布门禁 |
+
+> 说明：`v1.2.0-draft` 属于历史阶段标识，文档保留用于追溯；当前执行口径为 `alpha/v1.2.0` + `develop/v1.2.0`。
 
 ### v1.3.0 (计划中)
 
@@ -87,13 +93,16 @@ docs/
 
 | 文档 | 说明 |
 |------|------|
-| [路线图](v2.0/SQLRUSTGO_2_0_ROADMAP.md) | 2.0 开发路线图 |
+| [技术路线图](v2.0/TECH_ROADMAP.md) | 1.x → 3.0 完整演进路线 |
 | [架构设计](v2.0/ARCHITECTURE_V2.md) | 2.0 架构设计 |
+| [Cascades 优化器](v2.0/CASCADES_OPTIMIZER.md) | 工业级查询优化器设计 |
+| [基准测试框架](v2.0/BENCHMARK_FRAMEWORK.md) | 性能测试框架 |
+| [路线图](v2.0/SQLRUSTGO_2_0_ROADMAP.md) | 2.0 开发路线图 |
 | [分布式接口设计](v2.0/DISTRIBUTED_INTERFACE_DESIGN.md) | 3.0 分布式接口 |
 | [风险矩阵](v2.0/RISK_MATRIX.md) | 风险评估 |
 | [白皮书](v2.0/WHITEPAPER.md) | 项目白皮书 |
 | [白皮书 v3](v2.0/WHITEPAPER_V3.md) | 3.0 分布式接口与治理白皮书 |
-| [权限模型](v2.0/GIT_PERMISSION_MODEL.md) | Git & GitHub 权限体系 |
+| [权限模型](v2.0/GIT_PERMISSION_MODEL.md) |Git & GitHub 权限体系|
 | [企业级权限](v2.0/GIT_PERMISSION_MODEL_V3.md) | 3.0 企业级权限推演 |
 | [展示材料](v2.0/PRESENTATION_MATERIALS.md) | 多受众展示版本 |
 | [分支策略](v2.0/BRANCH_STRATEGY.md) | 分支管理策略 |
@@ -109,7 +118,7 @@ docs/
 | [多 Agent 配置说明](AI增强软件工程/MULTI_AGENT_CONFIG.md) | 环境配置指南 |
 | [多身份隔离开发模式](AI增强软件工程/MULTI_IDENTITY_DEVELOPMENT_MODEL.md) | 四账号权限体系 |
 | [GitHub 多账号配置指南](AI增强软件工程/GitHub多账号配置指南.md) | 多账号配置 |
-| [Copilot 评估报告](AI增强软件工程/Copilot-Github评估报告.md) | GitHub Copilot 评估 |
+| [Copilot 评估报告](AI增强软件工程/Copilot-Github评估报告.md) |GitHub Copilot 评估|
 
 ---
 
@@ -141,7 +150,7 @@ docs/
 
 | 文档 | 说明 |
 |------|------|
-| [架构设计](architecture.md) | 系统架构设计 |
+| [架构设计](architecture.md) | 系统架构设计（含 Mermaid 架构图） |
 | [架构演进](ARCHITECTURE_EVOLUTION.md) | 架构演进历史 |
 | [设计文档](2026-02-13-sqlcc-rust-redesign-design.md) | 重构设计文档 |
 | [实施计划](2026-02-13-sqlcc-rust-impl-plan.md) | 实施计划 |
