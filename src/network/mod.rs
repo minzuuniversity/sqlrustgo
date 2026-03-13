@@ -667,3 +667,74 @@ mod tests {
         assert!(true);
     }
 }
+
+
+// ============================================================================
+// Health Check Endpoints
+// ============================================================================
+
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+
+static SERVER_LIVE: AtomicBool = AtomicBool::new(true);
+static SERVER_READY: AtomicBool = AtomicBool::new(false);
+static START_TIME: AtomicU64 = AtomicU64::new(0);
+
+/// Initialize health check subsystem
+pub fn init_health_check() {
+    START_TIME.store(
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs(),
+        Ordering::Relaxed,
+    );
+}
+
+/// Check if server is alive
+pub fn is_alive() -> bool {
+    SERVER_LIVE.load(Ordering::Relaxed)
+}
+
+/// Check if server is ready to serve requests
+pub fn is_ready() -> bool {
+    SERVER_READY.load(Ordering::Relaxed)
+}
+
+/// Mark server as ready
+pub fn mark_ready() {
+    SERVER_READY.store(true, Ordering::Relaxed);
+}
+
+/// Health check response
+#[derive(Debug)]
+pub struct HealthStatus {
+    pub alive: bool,
+    pub ready: bool,
+    pub uptime_seconds: u64,
+}
+
+impl HealthStatus {
+    pub fn new() -> Self {
+        let uptime = START_TIME.load(Ordering::Relaxed);
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        Self {
+            alive: is_alive(),
+            ready: is_ready(),
+            uptime_seconds: now.saturating_sub(uptime),
+        }
+    }
+    
+    pub fn to_json(&self) -> String {
+        format!(
+            r#"{{"alive":{}, "ready":{}, "uptime_seconds":{}}}"#,
+            self.alive, self.ready, self.uptime_seconds
+        )
+    }
+}
+
+impl Default for HealthStatus {
+    fn default() -> Self { Self::new() }
+}
