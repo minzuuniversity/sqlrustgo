@@ -677,3 +677,26 @@ mod tests {
         assert_eq!(table.rows.len(), 0);
     }
 }
+
+#[cfg(test)]
+mod more_tests {
+    use super::*;
+    use std::env;
+
+    #[test]
+    fn test_execution_engine_with_data_dir() {
+        let temp_dir = env::temp_dir().join(format!("sqlrustgo_test_{}", std::process::id()));
+        let engine = ExecutionEngine::with_data_dir(temp_dir.clone());
+        let _ = engine.storage.table_names();
+        let _ = std::fs::remove_dir_all(temp_dir);
+    }
+
+    #[test]
+    fn test_execute_drop_table() {
+        let mut engine = ExecutionEngine::new();
+        let _ = engine.execute(crate::parser::parse("CREATE TABLE test (id INTEGER)").unwrap());
+        let result = engine.execute(crate::parser::parse("DROP TABLE test").unwrap());
+        assert!(result.is_ok());
+        assert!(engine.get_table("test").is_none());
+    }
+}
