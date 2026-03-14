@@ -1112,4 +1112,46 @@ mod tests {
         let result = execute_collect(&mut executor).unwrap();
         assert_eq!(result.rows.len(), 3);
     }
+
+    #[test]
+    fn test_volcano_executor_not_initialized_error() {
+        let mut executor = MockVolcanoExecutor::new();
+        let result = executor.next();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_volcano_executor_all_rows_consumed() {
+        let mut executor =
+            MockVolcanoExecutor::with_data(vec![vec![Value::Integer(1)], vec![Value::Integer(2)]]);
+        executor.init().unwrap();
+        assert!(executor.next().unwrap().is_some());
+        assert!(executor.next().unwrap().is_some());
+        assert!(executor.next().unwrap().is_none());
+    }
+
+    #[test]
+    fn test_executor_result_debug() {
+        let result = ExecutorResult::new(vec![], 0);
+        let debug_str = format!("{:?}", result);
+        assert!(debug_str.contains("ExecutorResult"));
+    }
+
+    #[test]
+    fn test_executor_result_with_multiple_rows() {
+        let rows = vec![
+            vec![Value::Integer(1), Value::Text("a".to_string())],
+            vec![Value::Integer(2), Value::Text("b".to_string())],
+            vec![Value::Integer(3), Value::Text("c".to_string())],
+        ];
+        let result = ExecutorResult::new(rows, 0);
+        assert_eq!(result.rows.len(), 3);
+        assert_eq!(result.affected_rows, 0);
+    }
+
+    #[test]
+    fn test_executor_result_with_affected_rows() {
+        let result = ExecutorResult::new(vec![], 10);
+        assert_eq!(result.affected_rows, 10);
+    }
 }
