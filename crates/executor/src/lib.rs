@@ -10,6 +10,11 @@ pub use filter::FilterVolcanoExecutor;
 pub use local_executor::LocalExecutor;
 pub use projection::{ProjectionBuilder, ProjectionConfig, ProjectionExecutor, ProjectionExpr};
 
+// Test framework modules - publicly accessible
+pub mod mock_storage;
+pub mod test_data;
+pub mod harness;
+
 #[cfg(test)]
 mod tests {
     use super::*;
