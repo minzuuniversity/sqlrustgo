@@ -1,9 +1,11 @@
 // SQLRustGo executor module
 
 pub mod executor;
+pub mod executor_metrics;
 pub mod local_executor;
 
 pub use executor::{Executor, ExecutorResult};
+pub use executor_metrics::ExecutorMetrics;
 pub use local_executor::LocalExecutor;
 
 #[cfg(test)]
