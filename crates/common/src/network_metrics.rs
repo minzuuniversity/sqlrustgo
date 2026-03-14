@@ -178,4 +178,12 @@ mod tests {
         metrics.record_connection_open();
         assert_eq!(metrics.connections_active(), 1);
     }
+
+    #[test]
+    fn test_network_metrics_connection_lifecycle() {
+        let metrics = NetworkMetrics::new();
+        metrics.record_connection_open();
+        metrics.record_connection_close();
+        assert_eq!(metrics.connections_active(), 0);
+    }
 }
