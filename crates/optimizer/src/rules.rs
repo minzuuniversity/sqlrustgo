@@ -1683,4 +1683,39 @@ mod tests {
         // Both should be similar, but small-first is better
         assert!(abc_join <= abc_alt);
     }
+
+    #[test]
+    fn test_plan_type_name() {
+        assert_eq!(
+            Plan::TableScan {
+                table_name: "t".to_string(),
+                projection: None
+            }
+            .type_name(),
+            "TableScan"
+        );
+        assert_eq!(Plan::EmptyRelation.type_name(), "EmptyRelation");
+    }
+
+    #[test]
+    fn test_plan_get_children() {
+        let plan = Plan::Filter {
+            predicate: Expr::Literal(Value::Integer(1)),
+            input: Box::new(Plan::TableScan {
+                table_name: "t".to_string(),
+                projection: None,
+            }),
+        };
+        assert_eq!(plan.get_children().len(), 1);
+    }
+
+    #[test]
+    fn test_join_type_debug() {
+        let _ = format!("{:?}", JoinType::Inner);
+    }
+
+    #[test]
+    fn test_value_debug() {
+        let _ = format!("{:?}", Value::Integer(1));
+    }
 }
