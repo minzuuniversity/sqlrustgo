@@ -854,6 +854,7 @@ impl JoinReordering {
 }
 
 /// IndexSelect rule - chooses between index scan and table scan based on cost
+#[allow(dead_code)]
 pub struct IndexSelect {
     cost_model: crate::SimpleCostModel,
     available_indexes: Vec<(String, String)>,
@@ -924,7 +925,7 @@ impl Rule<Plan> for IndexSelect {
                 if let Plan::TableScan { table_name, .. } = input.as_ref() {
                     if self.should_use_index(table_name, predicate) {
                         let index_scan = self.convert_to_index_scan(table_name, predicate);
-                        *input = Box::new(index_scan);
+                        **input = index_scan;
                         return true;
                     }
                 }
