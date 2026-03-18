@@ -1,0 +1,19 @@
+# Tarpaulin configuration for test coverage
+
+[tool.tarpaulin]
+# Exclude legacy/unused code from coverage
+exclude = [
+    "crates/executor/src/executor.rs",  # Legacy Volcano executor (unused)
+    "crates/executor/src/harness.rs",   # Test harness utilities
+    "tests/",                           # Integration tests
+    "benches/",                         # Benchmarks
+]
+
+# Features to test
+all-features = false
+
+# Ignore panics in tests
+ignore-panics = false
+
+# Timeout for tests (seconds)
+timeout = 300
