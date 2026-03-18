@@ -7,21 +7,38 @@ use criterion::{criterion_group, criterion_main, Criterion};
 use sqlrustgo::{parse, ExecutionEngine};
 use std::sync::Arc;
 
-/// TPC-H Data Generator
-/// Generates sample data for TPC-H style tables
+const SCALE_FACTOR: f64 = 0.1;
+
 struct TpchDataGenerator {
-    scale_factor: u32,
+    scale_factor: f64,
 }
 
 impl TpchDataGenerator {
-    fn new(scale_factor: u32) -> Self {
+    fn new(scale_factor: f64) -> Self {
         Self { scale_factor }
+    }
+
+    fn row_count(&self, base_count: usize) -> usize {
+        (base_count as f64 * self.scale_factor) as usize
+    }
+
+    fn table_row_counts(&self) -> Vec<(&'static str, usize)> {
+        vec![
+            ("nation", 25),
+            ("region", 5),
+            ("part", self.row_count(200_000)),
+            ("supplier", self.row_count(10_000)),
+            ("partsupp", self.row_count(800_000)),
+            ("customer", self.row_count(150_000)),
+            ("orders", self.row_count(1_500_000)),
+            ("lineitem", self.row_count(6_000_000)),
+        ]
     }
 
     /// Generate TPC-H lineitem table data
     fn generate_lineitem_data(&self) -> Vec<(i64, i64, f64, f64, f64, f64, f64, i32, &str)> {
         let mut data = Vec::new();
-        let num_rows = 1000 * self.scale_factor;
+        let num_rows = self.row_count(6_000_000);
 
         for i in 0..num_rows {
             let order_key = (i % 10000) as i64 + 1;
@@ -58,7 +75,7 @@ impl TpchDataGenerator {
     /// Generate TPC-H orders table data
     fn generate_orders_data(&self) -> Vec<(i64, i64, i32, &str, i64, u32)> {
         let mut data = Vec::new();
-        let num_rows = 500 * self.scale_factor;
+        let num_rows = self.row_count(1_500_000);
 
         for i in 0..num_rows {
             let order_key = i as i64 + 1;
