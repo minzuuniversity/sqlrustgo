@@ -122,10 +122,6 @@ harness = false
 name = "bench_cbo"
 harness = false
 
-[[bin]]
-name = "tpch_benchmark"
-path = "benches/tpch_comprehensive_main.rs"
-
 [[test]]
 name = "optimizer_rules_test"
 path = "tests/optimizer_rules_test.rs"
