@@ -3275,4 +3275,44 @@ mod tests {
 
         assert_eq!(smj.join_type(), crate::JoinType::Left);
     }
+
+    #[test]
+    fn test_index_scan_exec_methods() {
+        let schema = Schema::new(vec![Field::new("id".to_string(), DataType::Integer)]);
+        let key_expr = Expr::literal(Value::Integer(42));
+
+        let scan = IndexScanExec::new(
+            "users".to_string(),
+            "idx_id".to_string(),
+            key_expr.clone(),
+            schema.clone(),
+        );
+
+        assert_eq!(scan.table_name(), "users");
+        assert_eq!(scan.index_name(), "idx_id");
+        assert_eq!(scan.key_expr(), &key_expr);
+    }
+
+    #[test]
+    fn test_index_scan_exec_physical_plan_impl() {
+        let schema = Schema::new(vec![Field::new("id".to_string(), DataType::Integer)]);
+        let scan = IndexScanExec::new(
+            "users".to_string(),
+            "idx_id".to_string(),
+            Expr::literal(Value::Integer(1)),
+            schema.clone(),
+        );
+
+        assert_eq!(scan.name(), "IndexScan");
+        assert!(scan.children().is_empty());
+        assert_eq!(scan.schema().fields.len(), 1);
+    }
+
+    #[test]
+    fn test_seq_scan_exec_table_name_method() {
+        let schema = Schema::new(vec![Field::new("id".to_string(), DataType::Integer)]);
+        let scan = SeqScanExec::new("test_table".to_string(), schema.clone());
+
+        assert_eq!(scan.table_name(), "test_table");
+    }
 }
