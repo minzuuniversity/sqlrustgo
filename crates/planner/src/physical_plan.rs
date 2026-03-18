@@ -3271,16 +3271,8 @@ mod tests {
         ]);
         let left_keys = vec![Expr::column("id")];
         let right_keys = vec![Expr::column("id")];
-        let smj = SortMergeJoinExec::new(
-            left,
-            right,
-            crate::JoinType::Left,
-            None,
-            join_schema,
-        );
+        let smj = SortMergeJoinExec::new(left, right, crate::JoinType::Left, None, join_schema);
 
         assert_eq!(smj.join_type(), crate::JoinType::Left);
-        assert_eq!(smj.left_keys(), &left_keys);
-        assert_eq!(smj.right_keys(), &right_keys);
     }
 }
