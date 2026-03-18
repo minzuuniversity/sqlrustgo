@@ -3292,20 +3292,19 @@ mod tests {
             Field::new("id".to_string(), DataType::Integer),
             Field::new("id".to_string(), DataType::Integer),
         ]);
-        let left_keys = vec![Expr::column("id")];
-        let right_keys = vec![Expr::column("id")];
+        let condition = Expr::BinaryExpr {
+            left: Box::new(Expr::column("id")),
+            op: Operator::Eq,
+            right: Box::new(Expr::column("id")),
+        };
         let smj = SortMergeJoinExec::new(
             left,
             right,
             crate::JoinType::Left,
-            None,
-            left_keys.clone(),
-            right_keys.clone(),
+            Some(condition),
             join_schema,
         );
 
         assert_eq!(smj.join_type(), crate::JoinType::Left);
-        assert_eq!(smj.left_keys(), &left_keys);
-        assert_eq!(smj.right_keys(), &right_keys);
     }
 }
