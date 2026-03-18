@@ -1538,4 +1538,66 @@ mod tests {
         assert!(result.is_ok());
         assert!(result.unwrap().rows.is_empty());
     }
+
+    #[test]
+    fn test_execute_projection_with_empty_children() {
+        use sqlrustgo_planner::{Expr, Field, ProjectionExec, Schema};
+
+        let storage = MemoryStorage::new();
+        let executor = LocalExecutor::new(&storage);
+
+        let schema = Schema::new(vec![Field::new(
+            "id".to_string(),
+            sqlrustgo_planner::DataType::Integer,
+        )]);
+        let empty_plan = SeqScanExec::new("".to_string(), schema.clone());
+
+        let proj = ProjectionExec::new(Box::new(empty_plan), vec![Expr::column("id")], schema);
+
+        let result = executor.execute(&proj);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_execute_filter_with_empty_children() {
+        use sqlrustgo_planner::{Expr, Field, FilterExec, Operator, Schema};
+
+        let storage = MemoryStorage::new();
+        let executor = LocalExecutor::new(&storage);
+
+        let schema = Schema::new(vec![Field::new(
+            "id".to_string(),
+            sqlrustgo_planner::DataType::Integer,
+        )]);
+        let empty_plan = SeqScanExec::new("".to_string(), schema.clone());
+
+        let predicate = Expr::BinaryExpr {
+            left: Box::new(Expr::column("id")),
+            op: Operator::Gt,
+            right: Box::new(Expr::literal(sqlrustgo_types::Value::Integer(10))),
+        };
+
+        let filter = FilterExec::new(Box::new(empty_plan), predicate);
+
+        let result = executor.execute(&filter);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_execute_seq_scan_with_empty_table_name() {
+        use sqlrustgo_planner::{Field, Schema};
+
+        let storage = MemoryStorage::new();
+        let executor = LocalExecutor::new(&storage);
+
+        let schema = Schema::new(vec![Field::new(
+            "id".to_string(),
+            sqlrustgo_planner::DataType::Integer,
+        )]);
+        let empty_table_scan = SeqScanExec::new("".to_string(), schema);
+
+        let result = executor.execute(&empty_table_scan);
+        assert!(result.is_ok());
+        assert!(result.unwrap().rows.is_empty());
+    }
 }
