@@ -139,15 +139,18 @@ impl LockManager {
         }
     }
 
+    #[allow(clippy::collapsible_if)]
     pub fn upgrade_lock(&mut self, tx_id: TxId, key: Vec<u8>) -> Result<LockGrantMode, LockError> {
         if let Some(lock) = self.locks.get_mut(&key) {
-            if lock.holders.contains(&tx_id) && lock.mode == LockMode::Shared {
-                if lock.holders.len() == 1 && lock.waiters.is_empty() {
-                    lock.holders.clear();
-                    lock.holders.insert(tx_id);
-                    lock.mode = LockMode::Exclusive;
-                    return Ok(LockGrantMode::Granted);
-                }
+            if lock.holders.contains(&tx_id)
+                && lock.mode == LockMode::Shared
+                && lock.holders.len() == 1
+                && lock.waiters.is_empty()
+            {
+                lock.holders.clear();
+                lock.holders.insert(tx_id);
+                lock.mode = LockMode::Exclusive;
+                return Ok(LockGrantMode::Granted);
             }
         }
         Err(LockError::LockUpgradeFailed)

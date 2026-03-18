@@ -11,10 +11,18 @@ pub struct DeadlockDetector {
 
 impl DeadlockDetector {
     pub fn new() -> Self {
+        Self::with_timeout(Duration::from_secs(5))
+    }
+
+    pub fn with_timeout(timeout: Duration) -> Self {
         Self {
             waits_for: HashMap::new(),
-            lock_wait_timeout: Duration::from_secs(5),
+            lock_wait_timeout: timeout,
         }
+    }
+
+    pub fn get_timeout(&self) -> Duration {
+        self.lock_wait_timeout
     }
 
     pub fn add_edge(&mut self, blocked: TxId, holder: TxId) {
