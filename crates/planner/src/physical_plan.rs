@@ -163,10 +163,8 @@ impl PhysicalPlan for IndexScanExec {
             for key in *start..*end {
                 results.push(vec![Value::Integer(key)]);
             }
-        } else {
-            if let Expr::Literal(Value::Integer(key)) = &self.key_expr {
-                results.push(vec![Value::Integer(*key)]);
-            }
+        } else if let Expr::Literal(Value::Integer(key)) = &self.key_expr {
+            results.push(vec![Value::Integer(*key)]);
         }
 
         Ok(results)
