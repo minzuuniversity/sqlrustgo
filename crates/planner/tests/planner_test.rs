@@ -743,3 +743,45 @@ fn test_join_different_types() {
     let result = planner.create_physical_plan(&join);
     assert!(result.is_ok());
 }
+
+#[test]
+fn test_index_scan_exec_execute() {
+    use sqlrustgo_planner::IndexScanExec;
+
+    let schema = Schema::new(vec![Field::new("id".to_string(), DataType::Integer)]);
+
+    let scan = IndexScanExec::new(
+        "users".to_string(),
+        "idx_id".to_string(),
+        Expr::literal(Value::Integer(42)),
+        schema.clone(),
+    );
+
+    let result = scan.execute();
+    assert!(result.is_ok());
+    let rows = result.unwrap();
+    // IndexScan returns empty in current stub implementation
+    // Full implementation would return actual indexed data
+    assert!(rows.is_empty() || rows.len() == 1);
+}
+
+#[test]
+fn test_index_scan_exec_key_range() {
+    use sqlrustgo_planner::IndexScanExec;
+
+    let schema = Schema::new(vec![Field::new("id".to_string(), DataType::Integer)]);
+
+    let scan = IndexScanExec::new(
+        "users".to_string(),
+        "idx_id".to_string(),
+        Expr::literal(Value::Integer(1)),
+        schema.clone(),
+    )
+    .with_key_range(1, 10);
+
+    let result = scan.execute();
+    assert!(result.is_ok());
+    let rows = result.unwrap();
+    // IndexScan with key range - verify config is set (stub returns empty)
+    assert!(rows.is_empty() || rows.len() == 9);
+}

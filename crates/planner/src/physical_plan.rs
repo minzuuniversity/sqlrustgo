@@ -8,9 +8,11 @@ use crate::AggregateFunction;
 use crate::Expr;
 use crate::Operator;
 use crate::Schema;
+use sqlrustgo_storage::StorageEngine;
 use sqlrustgo_types::Value;
 use std::any::Any;
 use std::collections::HashMap;
+use std::sync::Arc;
 
 /// Physical plan trait - common interface for all physical operators
 pub trait PhysicalPlan: Send + Sync {
@@ -96,13 +98,16 @@ impl PhysicalPlan for SeqScanExec {
 }
 
 /// Index scan execution operator - uses index instead of full table scan
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 #[allow(dead_code)]
 pub struct IndexScanExec {
     table_name: String,
     index_name: String,
     key_expr: Expr,
     schema: Schema,
+    key_range_min: Option<i64>,
+    key_range_max: Option<i64>,
+    storage: Option<Arc<dyn StorageEngine>>,
 }
 
 impl IndexScanExec {
@@ -112,7 +117,34 @@ impl IndexScanExec {
             index_name,
             key_expr,
             schema,
+            key_range_min: None,
+            key_range_max: None,
+            storage: None,
         }
+    }
+
+    pub fn with_storage(
+        table_name: String,
+        index_name: String,
+        key_expr: Expr,
+        schema: Schema,
+        storage: Arc<dyn StorageEngine>,
+    ) -> Self {
+        Self {
+            table_name,
+            index_name,
+            key_expr,
+            schema,
+            key_range_min: None,
+            key_range_max: None,
+            storage: Some(storage),
+        }
+    }
+
+    pub fn with_key_range(mut self, min: i64, max: i64) -> Self {
+        self.key_range_min = Some(min);
+        self.key_range_max = Some(max);
+        self
     }
 
     pub fn table_name(&self) -> &str {
@@ -125,6 +157,10 @@ impl IndexScanExec {
 
     pub fn key_expr(&self) -> &Expr {
         &self.key_expr
+    }
+
+    pub fn key_range(&self) -> (Option<i64>, Option<i64>) {
+        (self.key_range_min, self.key_range_max)
     }
 }
 
@@ -146,7 +182,41 @@ impl PhysicalPlan for IndexScanExec {
     }
 
     fn execute(&self) -> Result<Vec<Vec<Value>>, String> {
-        Ok(vec![])
+        match &self.storage {
+            Some(storage) => {
+                let key_value = match &self.key_expr {
+                    Expr::Literal(v) => match v {
+                        sqlrustgo_types::Value::Integer(i) => *i,
+                        _ => return Ok(vec![]),
+                    },
+                    _ => return Ok(vec![]),
+                };
+
+                if let Some(min) = self.key_range_min {
+                    let max = self.key_range_max.unwrap_or(min);
+                    let row_ids = storage.range_index(&self.table_name, &self.index_name, min, max);
+                    let mut results = Vec::new();
+                    let all_rows = storage.scan(&self.table_name).map_err(|e| e.to_string())?;
+                    for row_id in row_ids {
+                        if (row_id as usize) < all_rows.len() {
+                            results.push(all_rows[row_id as usize].clone());
+                        }
+                    }
+                    Ok(results)
+                } else {
+                    if let Some(row_id) =
+                        storage.search_index(&self.table_name, &self.index_name, key_value)
+                    {
+                        let all_rows = storage.scan(&self.table_name).map_err(|e| e.to_string())?;
+                        if (row_id as usize) < all_rows.len() {
+                            return Ok(vec![all_rows[row_id as usize].clone()]);
+                        }
+                    }
+                    Ok(vec![])
+                }
+            }
+            None => Ok(vec![]),
+        }
     }
 
     fn as_any(&self) -> &dyn Any {
@@ -723,6 +793,8 @@ pub struct SortMergeJoinExec {
     join_type: crate::JoinType,
     condition: Option<Expr>,
     schema: Schema,
+    left_keys: Vec<Expr>,
+    right_keys: Vec<Expr>,
 }
 
 impl SortMergeJoinExec {
@@ -732,6 +804,8 @@ impl SortMergeJoinExec {
         join_type: crate::JoinType,
         condition: Option<Expr>,
         schema: Schema,
+        left_keys: Vec<Expr>,
+        right_keys: Vec<Expr>,
     ) -> Self {
         Self {
             left,
@@ -739,6 +813,8 @@ impl SortMergeJoinExec {
             join_type,
             condition,
             schema,
+            left_keys,
+            right_keys,
         }
     }
 
@@ -756,6 +832,14 @@ impl SortMergeJoinExec {
 
     pub fn condition(&self) -> Option<&Expr> {
         self.condition.as_ref()
+    }
+
+    pub fn left_keys(&self) -> &Vec<Expr> {
+        &self.left_keys
+    }
+
+    pub fn right_keys(&self) -> &Vec<Expr> {
+        &self.right_keys
     }
 }
 
@@ -3271,7 +3355,15 @@ mod tests {
         ]);
         let left_keys = vec![Expr::column("id")];
         let right_keys = vec![Expr::column("id")];
-        let smj = SortMergeJoinExec::new(left, right, crate::JoinType::Left, None, join_schema);
+        let smj = SortMergeJoinExec::new(
+            left,
+            right,
+            crate::JoinType::Left,
+            None,
+            join_schema,
+            left_keys.clone(),
+            right_keys.clone(),
+        );
 
         assert_eq!(smj.join_type(), crate::JoinType::Left);
     }

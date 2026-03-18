@@ -76,12 +76,18 @@ pub trait StorageEngine: Send + Sync {
 
     /// Range query using index - returns row IDs in range [start, end)
     fn range_index(&self, table: &str, column: &str, start: i64, end: i64) -> Vec<u32>;
+
+    /// Callback triggered after write operations (INSERT/UPDATE/DELETE)
+    /// Used by upper layers to invalidate query caches
+    fn on_write_complete(&mut self, _table: &str) {}
 }
 
 /// In-memory storage implementation for testing and caching
+#[allow(clippy::type_complexity)]
 pub struct MemoryStorage {
     tables: HashMap<String, Vec<Record>>,
     table_infos: HashMap<String, TableInfo>,
+    write_callback: Option<Box<dyn Fn(&str) + Send + Sync>>,
 }
 
 impl MemoryStorage {
@@ -89,6 +95,15 @@ impl MemoryStorage {
         Self {
             tables: HashMap::new(),
             table_infos: HashMap::new(),
+            write_callback: None,
+        }
+    }
+
+    pub fn with_callback(callback: Box<dyn Fn(&str) + Send + Sync>) -> Self {
+        Self {
+            tables: HashMap::new(),
+            table_infos: HashMap::new(),
+            write_callback: Some(callback),
         }
     }
 }
@@ -109,6 +124,7 @@ impl StorageEngine for MemoryStorage {
             .entry(table.to_string())
             .or_default()
             .extend(records);
+        self.on_write_complete(table);
         Ok(())
     }
 
@@ -118,6 +134,7 @@ impl StorageEngine for MemoryStorage {
             count = records.len();
             records.clear();
         }
+        self.on_write_complete(table);
         Ok(count)
     }
 
@@ -127,7 +144,9 @@ impl StorageEngine for MemoryStorage {
         _filters: &[Value],
         _updates: &[(usize, Value)],
     ) -> SqlResult<usize> {
-        Ok(self.tables.get(table).map(|r| r.len()).unwrap_or(0))
+        let count = self.tables.get(table).map(|r| r.len()).unwrap_or(0);
+        self.on_write_complete(table);
+        Ok(count)
     }
 
     fn create_table(&mut self, info: &TableInfo) -> SqlResult<()> {
@@ -176,6 +195,12 @@ impl StorageEngine for MemoryStorage {
 
     fn range_index(&self, _table: &str, _column: &str, _start: i64, _end: i64) -> Vec<u32> {
         Vec::new()
+    }
+
+    fn on_write_complete(&mut self, table: &str) {
+        if let Some(callback) = &self.write_callback {
+            callback(table);
+        }
     }
 }
 
