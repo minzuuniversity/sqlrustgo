@@ -48,12 +48,12 @@
 
 | ID | 检查项 | 状态 | 说明 |
 |----|--------|------|------|
-| A-01 | 编译通过 | ⏳ | cargo build --all 无错误 |
-| A-02 | 测试通过 | ⏳ | cargo test --all 全部通过 |
-| A-03 | Clippy 检查 | ⏳ | cargo clippy -- -D warnings 无警告 |
-| A-04 | 格式检查 | ⏳ | cargo fmt --all -- --check 通过 |
+| A-01 | 编译通过 | ✅ | cargo build --all 无错误 |
+| A-02 | 测试通过 | ✅ | cargo test --all 全部通过 |
+| A-03 | Clippy 检查 | ✅ | cargo clippy -- -D warnings 无警告 |
+| A-04 | 格式检查 | ✅ | cargo fmt --all -- --check 通过 |
 | A-05 | 无 unwrap/panic | ⏳ | 核心代码无 unwrap/panic 调用 |
-| A-06 | 错误处理完整 | ⏳ | 使用 SqlResult<T> 统一错误处理 |
+| A-06 | 错误处理完整 | ✅ | 使用 SqlResult<T> 统一错误处理 |
 
 #### B. 测试覆盖门禁
 
