@@ -2,6 +2,7 @@ use crate::mvcc::TxId;
 use std::collections::{HashMap, HashSet};
 use std::time::Duration;
 
+#[derive(Debug)]
 pub struct DeadlockDetector {
     waits_for: HashMap<TxId, HashSet<TxId>>,
     #[allow(dead_code)]
