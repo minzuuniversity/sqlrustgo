@@ -1,5 +1,6 @@
 // SQLRustGo transaction module
 
+pub mod deadlock;
 pub mod lock;
 pub mod manager;
 pub mod mvcc;
