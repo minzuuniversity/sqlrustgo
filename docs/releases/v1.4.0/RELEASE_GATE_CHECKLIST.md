@@ -120,10 +120,10 @@
 
 | ID | 检查项 | 状态 | 说明 |
 |----|--------|------|------|
-| RC-07 | 版本号更新 | ⏳ | Cargo.toml 版本 |
+| RC-07 | 版本号更新 | ✅ | Cargo.toml 版本 1.4.0 |
 | RC-08 | Release Notes | ✅ | 已完成 |
-| RC-09 | Tag 创建 | ⏳ | git tag v1.4.0 |
-| RC-10 | GitHub Release | ⏳ | 发布页面 |
+| RC-09 | Tag 创建 | ⏳ | git tag v1.4.0 (等待) |
+| RC-10 | GitHub Release | ⏳ | 发布页面 (等待) |
 
 #### E. 文档门禁
 
