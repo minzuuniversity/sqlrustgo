@@ -6,6 +6,7 @@
 use std::fs::{File, OpenOptions};
 use std::io::{BufReader, BufWriter, Read, Write};
 use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
 
 /// WAL magic number for validation
 #[allow(dead_code)]
@@ -197,6 +198,7 @@ impl WalEntry {
 
 /// WAL writer - 预写日志，使用批量写入提高性能
 pub struct WalWriter {
+    file: Arc<Mutex<File>>,
     writer: BufWriter<File>,
     lsn: u64,
 }
@@ -205,9 +207,14 @@ impl WalWriter {
     /// Create a new WAL writer
     pub fn new(path: &PathBuf) -> std::io::Result<Self> {
         let file = OpenOptions::new().create(true).append(true).open(path)?;
-        let writer = BufWriter::new(file);
+        let file = Arc::new(Mutex::new(file));
+        let writer = BufWriter::new(file.lock().unwrap().try_clone()?);
 
-        Ok(Self { writer, lsn: 0 })
+        Ok(Self {
+            file,
+            writer,
+            lsn: 0,
+        })
     }
 
     /// Append an entry to the WAL (batched write, no auto flush)
