@@ -69,22 +69,26 @@ pub struct WalEntry {
 }
 
 impl WalEntry {
+    fn fixed_header_size() -> usize {
+        8 + 8 + 8 + 1 + 8 + 4 + 4
+    }
+
+    pub fn serialized_size(&self) -> usize {
+        let key_len = self.key.as_ref().map(|k| k.len()).unwrap_or(0);
+        let data_len = self.data.as_ref().map(|d| d.len()).unwrap_or(0);
+        4 + Self::fixed_header_size() + key_len + data_len
+    }
+
     /// Serialize entry to bytes
     pub fn to_bytes(&self) -> Vec<u8> {
-        let mut bytes = Vec::new();
+        let mut bytes = Vec::with_capacity(self.serialized_size());
 
-        // LSN (8 bytes)
         bytes.extend_from_slice(&self.lsn.to_le_bytes());
-        // Timestamp (8 bytes)
         bytes.extend_from_slice(&self.timestamp.to_le_bytes());
-        // Transaction ID (8 bytes)
         bytes.extend_from_slice(&self.tx_id.to_le_bytes());
-        // Entry type (1 byte)
         bytes.push(self.entry_type as u8);
-        // Table ID (8 bytes)
         bytes.extend_from_slice(&self.table_id.to_le_bytes());
 
-        // Key length + key (if present)
         match &self.key {
             Some(k) => {
                 bytes.extend_from_slice(&(k.len() as u32).to_le_bytes());
@@ -95,7 +99,6 @@ impl WalEntry {
             }
         }
 
-        // Data length + data (if present)
         match &self.data {
             Some(d) => {
                 bytes.extend_from_slice(&(d.len() as u32).to_le_bytes());
@@ -198,7 +201,6 @@ impl WalEntry {
 
 /// WAL writer - 预写日志，使用批量写入提高性能
 pub struct WalWriter {
-    file: Arc<Mutex<File>>,
     writer: BufWriter<File>,
     lsn: u64,
 }
@@ -207,14 +209,9 @@ impl WalWriter {
     /// Create a new WAL writer
     pub fn new(path: &PathBuf) -> std::io::Result<Self> {
         let file = OpenOptions::new().create(true).append(true).open(path)?;
-        let file = Arc::new(Mutex::new(file));
-        let writer = BufWriter::new(file.lock().unwrap().try_clone()?);
+        let writer = BufWriter::new(file);
 
-        Ok(Self {
-            file,
-            writer,
-            lsn: 0,
-        })
+        Ok(Self { writer, lsn: 0 })
     }
 
     /// Append an entry to the WAL (batched write, no auto flush)
@@ -238,6 +235,12 @@ impl WalWriter {
     /// Get current LSN
     pub fn current_lsn(&self) -> u64 {
         self.lsn
+    }
+}
+
+impl Drop for WalWriter {
+    fn drop(&mut self) {
+        let _ = self.writer.flush();
     }
 }
 
@@ -297,17 +300,22 @@ impl WalReader {
 /// WAL manager for recovery
 pub struct WalManager {
     wal_path: PathBuf,
+    writer: Arc<Mutex<WalWriter>>,
 }
 
 impl WalManager {
     /// Create a new WAL manager
-    pub fn new(wal_path: PathBuf) -> Self {
-        Self { wal_path }
+    pub fn new(wal_path: PathBuf) -> std::io::Result<Self> {
+        let writer = WalWriter::new(&wal_path)?;
+        Ok(Self {
+            wal_path,
+            writer: Arc::new(Mutex::new(writer)),
+        })
     }
 
-    /// Get WAL writer
-    pub fn get_writer(&self) -> std::io::Result<WalWriter> {
-        WalWriter::new(&self.wal_path)
+    /// Get WAL writer (shared instance)
+    pub fn get_writer(&self) -> Arc<Mutex<WalWriter>> {
+        Arc::clone(&self.writer)
     }
 
     /// Get WAL reader
@@ -317,13 +325,18 @@ impl WalManager {
 
     /// Recover from WAL
     pub fn recover(&self) -> std::io::Result<Vec<WalEntry>> {
+        // Flush writer buffer before reading
+        {
+            let mut guard = self.writer.lock().unwrap();
+            guard.flush()?;
+        }
         let mut reader = self.get_reader()?;
         reader.read_all()
     }
 
     /// Create a checkpoint
     pub fn checkpoint(&self, tx_id: u64) -> std::io::Result<u64> {
-        let mut writer = self.get_writer()?;
+        let mut guard = self.writer.lock().unwrap();
 
         let entry = WalEntry {
             tx_id,
@@ -331,19 +344,19 @@ impl WalManager {
             table_id: 0,
             key: None,
             data: None,
-            lsn: writer.current_lsn(),
+            lsn: guard.current_lsn(),
             timestamp: std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
                 .as_secs(),
         };
 
-        writer.append(&entry)
+        guard.append(&entry)
     }
 
     /// Log transaction begin
     pub fn log_begin(&self, tx_id: u64) -> std::io::Result<u64> {
-        let mut writer = self.get_writer()?;
+        let mut guard = self.writer.lock().unwrap();
 
         let entry = WalEntry {
             tx_id,
@@ -351,19 +364,19 @@ impl WalManager {
             table_id: 0,
             key: None,
             data: None,
-            lsn: writer.current_lsn(),
+            lsn: guard.current_lsn(),
             timestamp: std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
                 .as_secs(),
         };
 
-        writer.append(&entry)
+        guard.append(&entry)
     }
 
     /// Log transaction commit (flush on commit for durability)
     pub fn log_commit(&self, tx_id: u64) -> std::io::Result<u64> {
-        let mut writer = self.get_writer()?;
+        let mut guard = self.writer.lock().unwrap();
 
         let entry = WalEntry {
             tx_id,
@@ -371,16 +384,16 @@ impl WalManager {
             table_id: 0,
             key: None,
             data: None,
-            lsn: writer.current_lsn(),
+            lsn: guard.current_lsn(),
             timestamp: std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
                 .as_secs(),
         };
 
-        writer.append(&entry)?;
-        writer.flush()?; // Flush on commit for durability
-        Ok(writer.current_lsn() - 1)
+        guard.append(&entry)?;
+        guard.flush()?; // Flush on commit for durability
+        Ok(guard.current_lsn() - 1)
     }
 
     /// Log insert
@@ -391,7 +404,7 @@ impl WalManager {
         key: Vec<u8>,
         data: Vec<u8>,
     ) -> std::io::Result<u64> {
-        let mut writer = self.get_writer()?;
+        let mut guard = self.writer.lock().unwrap();
 
         let entry = WalEntry {
             tx_id,
@@ -399,14 +412,14 @@ impl WalManager {
             table_id,
             key: Some(key),
             data: Some(data),
-            lsn: writer.current_lsn(),
+            lsn: guard.current_lsn(),
             timestamp: std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
                 .as_secs(),
         };
 
-        writer.append(&entry)
+        guard.append(&entry)
     }
 
     /// Log update
@@ -417,7 +430,7 @@ impl WalManager {
         key: Vec<u8>,
         data: Vec<u8>,
     ) -> std::io::Result<u64> {
-        let mut writer = self.get_writer()?;
+        let mut guard = self.writer.lock().unwrap();
 
         let entry = WalEntry {
             tx_id,
@@ -425,19 +438,69 @@ impl WalManager {
             table_id,
             key: Some(key),
             data: Some(data),
-            lsn: writer.current_lsn(),
+            lsn: guard.current_lsn(),
             timestamp: std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
                 .as_secs(),
         };
 
-        writer.append(&entry)
+        guard.append(&entry)
+    }
+
+    /// Batch insert - insert multiple entries in one transaction
+    pub fn batch_insert(
+        &self,
+        entries: Vec<(u64, u64, Vec<u8>, Vec<u8>)>,
+    ) -> std::io::Result<Vec<u64>> {
+        let mut guard = self.writer.lock().unwrap();
+        let mut lsns = Vec::with_capacity(entries.len());
+
+        for (tx_id, table_id, key, data) in entries {
+            let entry = WalEntry {
+                tx_id,
+                entry_type: WalEntryType::Insert,
+                table_id,
+                key: Some(key),
+                data: Some(data),
+                lsn: guard.current_lsn(),
+                timestamp: current_timestamp(),
+            };
+            let lsn = guard.append(&entry)?;
+            lsns.push(lsn);
+        }
+
+        Ok(lsns)
+    }
+
+    /// Batch update - update multiple entries in one transaction
+    pub fn batch_update(
+        &self,
+        entries: Vec<(u64, u64, Vec<u8>, Vec<u8>)>,
+    ) -> std::io::Result<Vec<u64>> {
+        let mut guard = self.writer.lock().unwrap();
+        let mut lsns = Vec::with_capacity(entries.len());
+
+        for (tx_id, table_id, key, data) in entries {
+            let entry = WalEntry {
+                tx_id,
+                entry_type: WalEntryType::Update,
+                table_id,
+                key: Some(key),
+                data: Some(data),
+                lsn: guard.current_lsn(),
+                timestamp: current_timestamp(),
+            };
+            let lsn = guard.append(&entry)?;
+            lsns.push(lsn);
+        }
+
+        Ok(lsns)
     }
 
     /// Log delete
     pub fn log_delete(&self, tx_id: u64, table_id: u64, key: Vec<u8>) -> std::io::Result<u64> {
-        let mut writer = self.get_writer()?;
+        let mut guard = self.writer.lock().unwrap();
 
         let entry = WalEntry {
             tx_id,
@@ -445,19 +508,19 @@ impl WalManager {
             table_id,
             key: Some(key),
             data: None,
-            lsn: writer.current_lsn(),
+            lsn: guard.current_lsn(),
             timestamp: std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
                 .as_secs(),
         };
 
-        writer.append(&entry)
+        guard.append(&entry)
     }
 
     /// Log rollback
     pub fn log_rollback(&self, tx_id: u64) -> std::io::Result<u64> {
-        let mut writer = self.get_writer()?;
+        let mut guard = self.writer.lock().unwrap();
 
         let entry = WalEntry {
             tx_id,
@@ -465,14 +528,14 @@ impl WalManager {
             table_id: 0,
             key: None,
             data: None,
-            lsn: writer.current_lsn(),
+            lsn: guard.current_lsn(),
             timestamp: std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
                 .as_secs(),
         };
 
-        writer.append(&entry)
+        guard.append(&entry)
     }
 }
 
@@ -871,6 +934,22 @@ mod tests {
     }
 
     #[test]
+    fn test_wal_entry_serialized_size() {
+        let entry = WalEntry {
+            tx_id: 1,
+            entry_type: WalEntryType::Insert,
+            table_id: 100,
+            key: Some(vec![1, 2, 3, 4]),
+            data: Some(vec![10, 20, 30]),
+            lsn: 0,
+            timestamp: 1234567890,
+        };
+
+        let bytes = entry.to_bytes();
+        assert_eq!(entry.serialized_size(), bytes.len() + 4);
+    }
+
+    #[test]
     fn test_wal_write_read() {
         let dir = tempdir().unwrap();
         let wal_path = dir.path().join("test.wal");
@@ -918,7 +997,7 @@ mod tests {
         let dir = tempdir().unwrap();
         let wal_path = dir.path().join("test.wal");
 
-        let manager = WalManager::new(wal_path);
+        let manager = WalManager::new(wal_path).unwrap();
 
         // Log begin
         let _lsn = manager.log_begin(1).unwrap();
@@ -1018,7 +1097,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let wal_path = dir.path().join("test_rollback.wal");
 
-        let manager = WalManager::new(wal_path);
+        let manager = WalManager::new(wal_path).unwrap();
         let _ = manager.log_begin(1).unwrap();
         let _ = manager.log_insert(1, 1, vec![1], vec![10]).unwrap();
         let _ = manager.log_rollback(1).unwrap();
@@ -1033,7 +1112,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let wal_path = dir.path().join("test_checkpoint.wal");
 
-        let manager = WalManager::new(wal_path);
+        let manager = WalManager::new(wal_path).unwrap();
         let _ = manager.checkpoint(1).unwrap();
 
         let entries = manager.recover().unwrap();
@@ -1048,7 +1127,7 @@ mod tests {
 
         // Write multiple entries
         {
-            let mut manager = WalManager::new(wal_path.clone());
+            let manager = WalManager::new(wal_path.clone()).unwrap();
             for i in 0u64..5 {
                 let entry = WalEntry {
                     tx_id: 1,
@@ -1059,12 +1138,14 @@ mod tests {
                     lsn: i,
                     timestamp: 1234567890 + i,
                 };
-                let _ = manager.get_writer().unwrap().append(&entry);
+                let writer = manager.get_writer();
+                let mut guard = writer.lock().unwrap();
+                let _ = guard.append(&entry);
             }
         }
 
         // Read from LSN 2
-        let mut reader = WalManager::new(wal_path).get_reader().unwrap();
+        let mut reader = WalManager::new(wal_path).unwrap().get_reader().unwrap();
         let entries = reader.read_from(2).unwrap();
 
         assert_eq!(entries.len(), 3);
@@ -1083,7 +1164,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let wal_path = dir.path().join("test_multi_tx.wal");
 
-        let manager = WalManager::new(wal_path);
+        let manager = WalManager::new(wal_path).unwrap();
 
         // Transaction 1
         let _ = manager.log_begin(1).unwrap();
@@ -1106,7 +1187,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let wal_path = dir.path().join("bench.wal");
 
-        let mut manager = WalManager::new(wal_path);
+        let manager = WalManager::new(wal_path).unwrap();
         let tx_id = 1;
 
         // Log begin
@@ -1140,7 +1221,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let wal_path = dir.path().join("bench.wal");
 
-        let mut manager = WalManager::new(wal_path);
+        let manager = WalManager::new(wal_path).unwrap();
         let tx_id = 1;
 
         // Log begin
@@ -1176,7 +1257,7 @@ mod tests {
 
         // Create WAL with ~1MB of data (approximately 1000 entries x 1KB)
         {
-            let mut manager = WalManager::new(wal_path.clone());
+            let manager = WalManager::new(wal_path.clone()).unwrap();
             let tx_id = 1;
 
             let _ = manager.log_begin(tx_id).unwrap();
@@ -1193,7 +1274,7 @@ mod tests {
 
         // Recovery test
         let start = std::time::Instant::now();
-        let manager = WalManager::new(wal_path);
+        let manager = WalManager::new(wal_path).unwrap();
         let entries = manager.recover().unwrap();
         let elapsed = start.elapsed();
 
@@ -1216,7 +1297,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let wal_path = dir.path().join("bench.wal");
 
-        let mut manager = WalManager::new(wal_path);
+        let manager = WalManager::new(wal_path).unwrap();
         let tx_id = 1;
 
         let _ = manager.log_begin(tx_id).unwrap();
@@ -1241,14 +1322,92 @@ mod tests {
             throughput_mbps, elapsed, 10000
         );
 
-        // Target: >= 5 MB/s (flush on every write for compatibility)
+        // Target: >= 100 MB/s (with batched writes and file handle reuse)
         println!(
-            "WAL Throughput: {:.2} MB/s (target: >= 5 MB/s)",
+            "WAL Throughput: {:.2} MB/s (target: >= 100 MB/s)",
             throughput_mbps
         );
         assert!(
-            throughput_mbps >= 5.0,
+            throughput_mbps >= 100.0,
             "WAL throughput too low: {:.2} MB/s",
+            throughput_mbps
+        );
+    }
+
+    #[test]
+    fn test_wal_batch_insert() {
+        let dir = tempfile::tempdir().unwrap();
+        let wal_path = dir.path().join("test_batch.wal");
+
+        let manager = WalManager::new(wal_path).unwrap();
+        let entries: Vec<_> = (0u32..1000)
+            .map(|i| (1, 1, i.to_le_bytes().to_vec(), vec![0u8; 512]))
+            .collect();
+
+        let start = std::time::Instant::now();
+        let lsns = manager.batch_insert(entries).unwrap();
+        manager.log_commit(1).unwrap();
+        let elapsed = start.elapsed();
+
+        assert_eq!(lsns.len(), 1000);
+        println!("Batch insert 1000 entries: {:?}", elapsed);
+
+        assert!(
+            elapsed.as_secs_f64() < 0.1,
+            "Batch insert too slow: {:?}",
+            elapsed
+        );
+    }
+
+    #[test]
+    fn test_wal_batch_update() {
+        let dir = tempfile::tempdir().unwrap();
+        let wal_path = dir.path().join("test_batch_update.wal");
+
+        let manager = WalManager::new(wal_path).unwrap();
+        let entries: Vec<_> = (0u32..500)
+            .map(|i| (1, 1, i.to_le_bytes().to_vec(), vec![0u8; 1024]))
+            .collect();
+
+        let start = std::time::Instant::now();
+        let lsns = manager.batch_update(entries).unwrap();
+        manager.log_commit(1).unwrap();
+        let elapsed = start.elapsed();
+
+        assert_eq!(lsns.len(), 500);
+        println!("Batch update 500 entries: {:?}", elapsed);
+
+        assert!(
+            elapsed.as_secs_f64() < 0.1,
+            "Batch update too slow: {:?}",
+            elapsed
+        );
+    }
+
+    #[test]
+    fn test_wal_perf_batch_throughput() {
+        let dir = tempfile::tempdir().unwrap();
+        let wal_path = dir.path().join("bench_batch.wal");
+
+        let manager = WalManager::new(wal_path).unwrap();
+
+        let start = std::time::Instant::now();
+
+        let entries: Vec<_> = (0u32..10000)
+            .map(|i| (1, 1, i.to_le_bytes().to_vec(), vec![0u8; 512]))
+            .collect();
+
+        manager.batch_insert(entries).unwrap();
+        manager.log_commit(1).unwrap();
+
+        let elapsed = start.elapsed();
+        let total_bytes = 10000 * 516u64;
+        let throughput_mbps = (total_bytes as f64 / 1_000_000.0) / elapsed.as_secs_f64();
+
+        println!("WAL Batch Throughput: {:.2} MB/s", throughput_mbps);
+        assert!(
+            throughput_mbps >= 100.0,
+            "Batch throughput too low: {:.2} MB/s",
             throughput_mbps
         );
     }
@@ -1410,7 +1569,7 @@ mod tests {
         let dir = tempdir().unwrap();
         let wal_path = dir.path().join("test_5tx.wal");
 
-        let manager = WalManager::new(wal_path);
+        let manager = WalManager::new(wal_path).unwrap();
 
         for tx_id in 1..=5 {
             let _ = manager.log_begin(tx_id).unwrap();
@@ -1429,7 +1588,7 @@ mod tests {
         let dir = tempdir().unwrap();
         let wal_path = dir.path().join("test_mixed2.wal");
 
-        let manager = WalManager::new(wal_path);
+        let manager = WalManager::new(wal_path).unwrap();
 
         let _ = manager.log_begin(1).unwrap();
         let _ = manager.log_insert(1, 1, vec![1], vec![10]).unwrap();
@@ -1452,7 +1611,7 @@ mod tests {
 
         let large_data = vec![0u8; 100000];
 
-        let manager = WalManager::new(wal_path);
+        let manager = WalManager::new(wal_path).unwrap();
         let _ = manager.log_begin(1).unwrap();
         let _ = manager
             .log_insert(1, 1, vec![1], large_data.clone())
