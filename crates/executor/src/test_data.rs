@@ -484,4 +484,60 @@ mod tests {
         let data = TestDataSet::aggregate_test_data();
         assert_eq!(data.len(), 5);
     }
+
+    #[test]
+    fn test_test_data_generator_generate_orders_table() {
+        let mut gen = TestDataGenerator::with_seed(42);
+        let orders = gen.generate_orders_table(10);
+        assert_eq!(orders.len(), 10);
+        for order in &orders {
+            assert_eq!(order.len(), 4);
+        }
+    }
+
+    #[test]
+    fn test_test_data_generator_generate_products_table() {
+        let mut gen = TestDataGenerator::with_seed(42);
+        let products = gen.generate_products_table(10);
+        assert_eq!(products.len(), 10);
+        for product in &products {
+            assert_eq!(product.len(), 3);
+        }
+    }
+
+    #[test]
+    fn test_test_data_generator_generate_users_table() {
+        let mut gen = TestDataGenerator::with_seed(42);
+        let users = gen.generate_users_table(5);
+        assert_eq!(users.len(), 5);
+        for user in &users {
+            assert_eq!(user.len(), 4);
+        }
+    }
+
+    #[test]
+    fn test_test_data_generator_default() {
+        let mut gen = TestDataGenerator::default();
+        let schema = Schema::new(vec![Field::new("id".to_string(), DataType::Integer)]);
+        let row = gen.generate_row(&schema);
+        assert_eq!(row.len(), 1);
+    }
+
+    #[test]
+    fn test_row_builder_multiple() {
+        let row1 = RowBuilder::new().add_integer(1).add_text("Alice").build();
+        let row2 = RowBuilder::new().add_integer(2).add_text("Bob").build();
+        assert_ne!(row1, row2);
+    }
+
+    #[test]
+    fn test_test_table_builder_multiple_columns() {
+        let builder = TestTableBuilder::new("test")
+            .add_integer_column("id")
+            .add_text_column("name")
+            .add_float_column("price")
+            .add_boolean_column("active");
+        let schema = builder.build_schema();
+        assert_eq!(schema.fields.len(), 4);
+    }
 }
