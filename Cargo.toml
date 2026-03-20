@@ -10,6 +10,7 @@ members = [
     "crates/transaction",
     "crates/server",
     "crates/bench",
+    "crates/bench-cli",
 ]
 
 [workspace.package]
@@ -124,6 +125,10 @@ harness = false
 
 [[bench]]
 name = "bench_cbo"
+harness = false
+
+[[bench]]
+name = "tpch_bench"
 harness = false
 
 [[bin]]
