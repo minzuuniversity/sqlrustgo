@@ -11,6 +11,7 @@ pub struct ColumnDefinition {
     pub name: String,
     pub data_type: String,
     pub nullable: bool,
+    pub is_unique: bool,
 }
 
 /// Table metadata
@@ -135,6 +136,29 @@ impl StorageEngine for MemoryStorage {
     }
 
     fn insert(&mut self, table: &str, records: Vec<Record>) -> SqlResult<()> {
+        let table_info = self.table_infos.get(table);
+
+        for record in &records {
+            if let Some(info) = table_info {
+                for (col_idx, col_def) in info.columns.iter().enumerate() {
+                    if col_def.is_unique {
+                        if let Some(value) = record.get(col_idx) {
+                            for existing in self.tables.get(table).cloned().unwrap_or_default() {
+                                if let Some(existing_val) = existing.get(col_idx) {
+                                    if existing_val == value {
+                                        return Err(SqlError::DuplicateKey {
+                                            value: value.to_string(),
+                                            key: col_def.name.clone(),
+                                        });
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         self.tables
             .entry(table.to_string())
             .or_default()
@@ -287,6 +311,7 @@ mod tests {
                 name: "id".to_string(),
                 data_type: "INTEGER".to_string(),
                 nullable: false,
+                is_unique: false,
             }],
         };
         storage.create_table(&info).unwrap();
@@ -310,6 +335,7 @@ mod tests {
                 name: "id".to_string(),
                 data_type: "INTEGER".to_string(),
                 nullable: false,
+                is_unique: false,
             }],
         };
         storage.create_table(&info).unwrap();
@@ -345,6 +371,7 @@ mod tests {
             name: "id".to_string(),
             data_type: "INTEGER".to_string(),
             nullable: false,
+            is_unique: false,
         };
         assert_eq!(col.name, "id");
     }

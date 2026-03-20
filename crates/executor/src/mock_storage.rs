@@ -60,6 +60,7 @@ impl MockStorage {
                 name: name.clone(),
                 data_type: format!("{:?}", data_type),
                 nullable: false,
+                is_unique: false,
             })
             .collect();
 
@@ -254,6 +255,7 @@ mod tests {
                     name: "id".to_string(),
                     data_type: "INTEGER".to_string(),
                     nullable: false,
+                    is_unique: false,
                 }],
             })
             .unwrap();
