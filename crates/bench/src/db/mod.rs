@@ -2,7 +2,10 @@
 
 pub mod sqlrustgo;
 pub mod sqlite;
+pub mod sqlite_benchmark;
 pub mod postgres;
+pub mod postgres_benchmark;
+pub mod comparison;
 
 use async_trait::async_trait;
 use std::sync::Arc;
