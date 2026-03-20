@@ -1,0 +1,48 @@
+name: Benchmark PR
+
+on:
+  pull_request:
+    branches: [develop/**]
+  push:
+    branches: [develop/**]
+
+jobs:
+  quick-benchmark:
+    name: Quick Benchmark (SF=0.1)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build bench-cli
+        run: cargo build --release -p sqlrustgo-bench-cli
+
+      - name: Run TPC-H SF=0.1
+        run: |
+          mkdir -p benchmarks/results/sf01
+          ./target/release/benchmark tpch --sf 0.1 --output benchmarks/results/sf01/tpch.json
+
+      - name: Run OLTP SF=0.1
+        run: |
+          ./target/release/benchmark oltp --sf 0.1 --output benchmarks/results/sf01/oltp.json
+
+      - name: Run Custom SF=0.1
+        run: |
+          ./target/release/benchmark custom --sf 0.1 --output benchmarks/results/sf01/custom.json
+
+      - name: Compare with baseline
+        run: python scripts/compare_benchmarks.py benchmarks/baselines/sf01 benchmarks/results/sf01
+
+      - name: Upload results
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results-sf01
+          path: benchmarks/results/sf01/
