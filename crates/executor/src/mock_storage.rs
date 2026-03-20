@@ -148,7 +148,9 @@ impl StorageEngine for MockStorage {
         infos
             .get(table_name)
             .cloned()
-            .ok_or_else(|| sqlrustgo_types::SqlError::TableNotFound(table_name.to_string()))
+            .ok_or_else(|| sqlrustgo_types::SqlError::TableNotFound {
+                table: table_name.to_string(),
+            })
     }
 
     fn list_tables(&self) -> Vec<String> {

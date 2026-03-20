@@ -1096,7 +1096,9 @@ impl StorageEngine for FileStorage {
     fn get_table_info(&self, table: &str) -> SqlResult<TableInfo> {
         self.get_table(table)
             .map(|t| t.info.clone())
-            .ok_or_else(|| SqlError::TableNotFound(table.to_string()))
+            .ok_or_else(|| SqlError::TableNotFound {
+                table: table.to_string(),
+            })
     }
 
     fn has_table(&self, table: &str) -> bool {
@@ -1116,7 +1118,9 @@ impl StorageEngine for FileStorage {
         let table = self
             .tables
             .get(table_name)
-            .ok_or_else(|| SqlError::TableNotFound(table_name.to_string()))?;
+            .ok_or_else(|| SqlError::TableNotFound {
+                table: table_name.to_string(),
+            })?;
 
         let mut index = BPlusTree::new();
         for (row_id, row) in table.rows.iter().enumerate() {

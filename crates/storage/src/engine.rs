@@ -177,10 +177,11 @@ impl StorageEngine for MemoryStorage {
     }
 
     fn get_table_info(&self, table: &str) -> SqlResult<TableInfo> {
-        self.table_infos
-            .get(table)
-            .cloned()
-            .ok_or_else(|| sqlrustgo_types::SqlError::TableNotFound(table.to_string()))
+        self.table_infos.get(table).cloned().ok_or_else(|| {
+            sqlrustgo_types::SqlError::TableNotFound {
+                table: table.to_string(),
+            }
+        })
     }
 
     fn has_table(&self, table: &str) -> bool {
