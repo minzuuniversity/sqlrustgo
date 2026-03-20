@@ -1,5 +1,9 @@
 # B-11 Benchmark CI Implementation Plan
 
+> **状态**: ⏳ 待开发
+> **Epic**: #687
+> **对应 Issue**: #687
+
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** Implement GitHub Actions CI workflows for TPC-H/OLTP/Custom benchmarks with baseline comparison

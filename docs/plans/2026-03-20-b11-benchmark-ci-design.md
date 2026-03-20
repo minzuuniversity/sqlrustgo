@@ -1,5 +1,9 @@
 # B-11 Benchmark CI Design
 
+> **状态**: 📋 设计已完成 (待实现)
+> **Epic**: #687
+> **对应 Issue**: #687
+
 ## Overview
 
 Implement GitHub Actions CI for the new TPC-H/OLTP/Custom benchmark system created in EPIC-01.
