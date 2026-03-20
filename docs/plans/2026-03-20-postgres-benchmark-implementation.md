@@ -1,10 +1,5 @@
 # PostgreSQL Benchmark 实现计划
 
-> **状态**: ✅ 已完成
-> **Epic**: #684
-> **PR**: #695, #698
-> **完成日期**: 2026-03-20
-
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** 实现 PostgreSQL 实际连接和与 SQLRustGo 的并行对比测试

@@ -40,8 +40,7 @@ impl BenchmarkComparison {
         let sqlite_result = sqlite_bench.run_reads(operations).await.ok();
         let postgres_result = postgres_bench.run_reads(operations).await.ok();
 
-        let (winner, speedup) = if let (Some(sqlite), Some(pg)) = (&sqlite_result, &postgres_result)
-        {
+        let (winner, speedup) = if let (Some(sqlite), Some(pg)) = (&sqlite_result, &postgres_result) {
             if sqlite.qps > 0.0 && pg.qps > 0.0 {
                 let speedup = pg.qps / sqlite.qps;
                 if speedup > 1.0 {
@@ -117,7 +116,7 @@ mod tests {
     #[test]
     fn test_comparison_with_sqlite_only() {
         use crate::db::sqlite_benchmark::BenchmarkResult;
-
+        
         let sqlite_result = BenchmarkResult {
             db_name: "sqlite".to_string(),
             total_time_ms: 100,
