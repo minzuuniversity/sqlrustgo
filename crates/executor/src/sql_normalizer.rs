@@ -115,4 +115,53 @@ mod tests {
         assert_eq!(sql, "select * from t where id = ?");
         assert_eq!(params, vec![Value::Integer(42)]);
     }
+
+    #[test]
+    fn test_from_literal_trailing_number() {
+        let (sql, params) = SqlNormalizer::from_literal("SELECT * FROM t WHERE id = 42");
+        assert_eq!(sql, "select * from t where id = ?");
+        assert_eq!(params, vec![Value::Integer(42)]);
+    }
+
+    #[test]
+    fn test_from_literal_trailing_float() {
+        let (sql, params) = SqlNormalizer::from_literal("SELECT * FROM t WHERE price = 19.99");
+        assert_eq!(sql, "select * from t where price = ?");
+        assert_eq!(params, vec![Value::Float(19.99)]);
+    }
+
+    #[test]
+    fn test_hash_params() {
+        let params1 = vec![Value::Integer(1), Value::Text("test".to_string())];
+        let params2 = vec![Value::Integer(1), Value::Text("test".to_string())];
+        let params3 = vec![Value::Integer(2), Value::Text("test".to_string())];
+
+        let hash1 = SqlNormalizer::hash_params(&params1);
+        let hash2 = SqlNormalizer::hash_params(&params2);
+        let hash3 = SqlNormalizer::hash_params(&params3);
+
+        assert_eq!(hash1, hash2);
+        assert_ne!(hash1, hash3);
+    }
+
+    #[test]
+    fn test_normalize_empty() {
+        assert_eq!(SqlNormalizer::normalize(""), "");
+    }
+
+    #[test]
+    fn test_normalize_multiple_numbers() {
+        assert_eq!(
+            SqlNormalizer::normalize("SELECT 1, 2, 3 FROM t"),
+            "select ?, ?, ? from t"
+        );
+    }
+
+    #[test]
+    fn test_normalize_decimals() {
+        assert_eq!(
+            SqlNormalizer::normalize("SELECT * FROM t WHERE value = 123.456"),
+            "select * from t where value = ?"
+        );
+    }
 }

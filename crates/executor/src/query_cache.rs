@@ -156,3 +156,108 @@ pub fn should_cache(result: &crate::ExecutorResult) -> bool {
 
     true
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::query_cache_config::{CacheEntry, CacheKey, QueryCacheConfig};
+    use crate::ExecutorResult;
+    use sqlrustgo_types::Value;
+
+    fn make_test_entry() -> CacheEntry {
+        CacheEntry {
+            result: ExecutorResult {
+                rows: vec![vec![Value::Integer(1), Value::Text("test".to_string())]],
+                affected_rows: 0,
+            },
+            tables: vec!["users".to_string()],
+            created_at: std::time::Instant::now(),
+            size_bytes: 64,
+        }
+    }
+
+    fn make_cache_key(sql: &str) -> CacheKey {
+        CacheKey {
+            normalized_sql: sql.to_string(),
+            params_hash: 0,
+        }
+    }
+
+    #[test]
+    fn test_query_cache_new() {
+        let config = QueryCacheConfig::default();
+        let cache = QueryCache::new(config);
+        let stats = cache.stats();
+        assert_eq!(stats.entries, 0);
+    }
+
+    #[test]
+    fn test_query_cache_put_and_get() {
+        let config = QueryCacheConfig::default();
+        let mut cache = QueryCache::new(config);
+        let key = make_cache_key("SELECT * FROM users");
+        let entry = make_test_entry();
+        cache.put(key.clone(), entry, vec!["users".to_string()]);
+        let result = cache.get(&key);
+        assert!(result.is_some());
+    }
+
+    #[test]
+    fn test_query_cache_disabled() {
+        let config = QueryCacheConfig {
+            enabled: false,
+            ttl_seconds: 60,
+            max_entries: 100,
+            max_memory_bytes: 1024 * 1024,
+        };
+        let mut cache = QueryCache::new(config);
+        let key = make_cache_key("SELECT * FROM users");
+        let entry = make_test_entry();
+        cache.put(key.clone(), entry, vec!["users".to_string()]);
+        let result = cache.get(&key);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_query_cache_clear() {
+        let config = QueryCacheConfig::default();
+        let mut cache = QueryCache::new(config);
+        let key = make_cache_key("SELECT * FROM users");
+        let entry = make_test_entry();
+        cache.put(key.clone(), entry, vec!["users".to_string()]);
+        cache.clear();
+        let stats = cache.stats();
+        assert_eq!(stats.entries, 0);
+    }
+
+    #[test]
+    fn test_should_cache_empty_result() {
+        let result = ExecutorResult {
+            rows: vec![],
+            affected_rows: 0,
+        };
+        assert!(!should_cache(&result));
+    }
+
+    #[test]
+    fn test_should_cache_small_result() {
+        let result = ExecutorResult {
+            rows: vec![vec![Value::Integer(1)]],
+            affected_rows: 0,
+        };
+        assert!(should_cache(&result));
+    }
+
+    #[test]
+    fn test_should_cache_large_result() {
+        let mut rows = vec![];
+        for i in 0..1001 {
+            rows.push(vec![Value::Integer(i)]);
+        }
+        let result = ExecutorResult {
+            rows,
+            affected_rows: 0,
+        };
+        assert!(!should_cache(&result));
+    }
+}
