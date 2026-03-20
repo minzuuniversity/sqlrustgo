@@ -12,7 +12,7 @@ pub struct SqliteDB {
 
 impl SqliteDB {
     /// Create a new SQLite adapter
-    pub async fn new(path: &str) -> anyhow::Result<Self> {
+    pub async fn new(path: &str, scale: usize) -> anyhow::Result<Self> {
         // Enable WAL mode for better concurrent performance
         let conn = Connection::open(path)?;
 
@@ -24,6 +24,25 @@ impl SqliteDB {
              PRAGMA temp_store=MEMORY;",
         )?;
 
+        // Create table if not exists
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS accounts (id INTEGER PRIMARY KEY, balance INTEGER NOT NULL)",
+            [],
+        )?;
+
+        // Insert initial data if table is empty
+        let count: i64 = conn.query_row("SELECT COUNT(*) FROM accounts", [], |row| row.get(0))?;
+        if count == 0 {
+            let tx = conn.unchecked_transaction()?;
+            for i in 0..scale as i64 {
+                tx.execute(
+                    "INSERT OR IGNORE INTO accounts (id, balance) VALUES (?1, 100)",
+                    [i],
+                )?;
+            }
+            tx.commit()?;
+        }
+
         Ok(Self {
             conn: Mutex::new(conn),
         })
@@ -34,7 +53,7 @@ impl SqliteDB {
 impl Database for SqliteDB {
     async fn read(&self, key: usize) -> anyhow::Result<()> {
         let conn = self.conn.lock().unwrap();
-        conn.execute("SELECT * FROM accounts WHERE id = ?1", [key])?;
+        conn.query_row("SELECT * FROM accounts WHERE id = ?1", [key], |_row| Ok(()))?;
         Ok(())
     }
 
