@@ -9,6 +9,8 @@ members = [
     "crates/catalog",
     "crates/transaction",
     "crates/server",
+    "crates/bench",
+    "crates/bench-cli",
 ]
 
 [workspace.package]
