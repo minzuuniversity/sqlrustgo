@@ -4,12 +4,15 @@ pub mod executor;
 pub mod executor_metrics;
 pub mod filter;
 pub mod local_executor;
+pub mod operator_profile;
+pub mod pipeline_trace;
 pub mod query_cache;
 pub mod query_cache_config;
 pub mod query_cache_metrics;
 pub mod session_config;
 pub mod sql_normalizer;
 pub mod test_framework;
+pub mod traced_executor;
 pub mod vectorization;
 
 pub use executor::{
@@ -24,6 +27,18 @@ pub use query_cache_config::{CacheEntry, CacheKey, QueryCacheConfig};
 pub use query_cache_metrics::QueryCacheMetrics;
 pub use sql_normalizer::SqlNormalizer;
 pub use vectorization::{BatchIterator, RecordBatch, Vector, VectorizedExecutor};
+
+// Teaching-enhanced exports
+pub use operator_profile::{
+    OperatorProfile, ProfileTimer, QueryProfile, VectorizedTrace, OperationTrace,
+    GLOBAL_PROFILER,
+};
+pub use pipeline_trace::{
+    OperatorTrace, QueryTrace, TraceCollector, TraceSummary, GLOBAL_TRACE_COLLECTOR,
+};
+pub use traced_executor::{
+    TracedExecutor, execute_with_trace, execute_with_profiling, execute_with_trace_lightweight,
+};
 
 // Test framework modules - publicly accessible
 pub mod harness;
