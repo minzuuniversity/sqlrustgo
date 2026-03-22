@@ -41,6 +41,7 @@ pub fn simple_table_info(name: &str) -> TableInfo {
             name: "id".to_string(),
             data_type: "INTEGER".to_string(),
             nullable: false,
+            is_unique: false,
         }],
     }
 }
@@ -54,16 +55,19 @@ pub fn multi_column_table_info(name: &str) -> TableInfo {
                 name: "id".to_string(),
                 data_type: "INTEGER".to_string(),
                 nullable: false,
+            is_unique: false,
             },
             ColumnDefinition {
                 name: "name".to_string(),
                 data_type: "TEXT".to_string(),
                 nullable: true,
+            is_unique: false,
             },
             ColumnDefinition {
                 name: "value".to_string(),
                 data_type: "INTEGER".to_string(),
                 nullable: true,
+            is_unique: false,
             },
         ],
     }
@@ -78,11 +82,13 @@ pub fn orders_table_info() -> TableInfo {
                 name: "id".to_string(),
                 data_type: "INTEGER".to_string(),
                 nullable: false,
+            is_unique: false,
             },
             ColumnDefinition {
                 name: "amount".to_string(),
                 data_type: "INTEGER".to_string(),
                 nullable: false,
+            is_unique: false,
             },
         ],
     }

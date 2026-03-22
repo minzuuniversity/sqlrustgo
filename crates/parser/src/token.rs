@@ -37,6 +37,17 @@ pub enum Token {
     Except,
     View,
     All,
+    Group,
+    By,
+    Order,
+    Asc,
+    Desc,
+    Join,
+    Inner,
+    Left,
+    Right,
+    Full,
+    Cross,
 
     // Aggregate Functions
     Count,
@@ -149,6 +160,19 @@ impl fmt::Display for Token {
             Token::Avg => write!(f, "AVG"),
             Token::Min => write!(f, "MIN"),
             Token::Max => write!(f, "MAX"),
+            // Group By
+            Token::Group => write!(f, "GROUP"),
+            Token::By => write!(f, "BY"),
+            Token::Order => write!(f, "ORDER"),
+            Token::Asc => write!(f, "ASC"),
+            Token::Desc => write!(f, "DESC"),
+            // Join
+            Token::Join => write!(f, "JOIN"),
+            Token::Inner => write!(f, "INNER"),
+            Token::Left => write!(f, "LEFT"),
+            Token::Right => write!(f, "RIGHT"),
+            Token::Full => write!(f, "FULL"),
+            Token::Cross => write!(f, "CROSS"),
             // Operators - uppercase
             Token::Equal => write!(f, "="),
             Token::NotEqual => write!(f, "<>"),
@@ -220,6 +244,17 @@ pub fn is_keyword(s: &str) -> bool {
             | "AND"
             | "OR"
             | "NOT"
+            | "GROUP"
+            | "BY"
+            | "ORDER"
+            | "ASC"
+            | "DESC"
+            | "JOIN"
+            | "INNER"
+            | "LEFT"
+            | "RIGHT"
+            | "FULL"
+            | "CROSS"
     )
 }
 
