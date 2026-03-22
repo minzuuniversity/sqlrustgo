@@ -304,7 +304,7 @@ impl Parser {
                 Some(Token::Identifier(name)) => {
                     let mut col_name = name.to_string();
                     self.next(); // consume identifier
-                    
+
                     // Check for table.column format (e.g., customers.name)
                     if matches!(self.current(), Some(Token::Dot)) {
                         self.next(); // consume dot
@@ -316,7 +316,7 @@ impl Parser {
                             _ => {}
                         }
                     }
-                    
+
                     // Check for AS alias
                     let alias = if matches!(self.current(), Some(Token::As)) {
                         self.next(); // consume AS
@@ -331,8 +331,11 @@ impl Parser {
                     } else {
                         None
                     };
-                    
-                    columns.push(SelectColumn { name: col_name, alias });
+
+                    columns.push(SelectColumn {
+                        name: col_name,
+                        alias,
+                    });
                 }
                 Some(Token::Comma) => {
                     self.next();
@@ -359,7 +362,7 @@ impl Parser {
                 _ => break,
             }
         }
-        
+
         if tables.is_empty() {
             return Err("Expected at least one table name".to_string());
         }
@@ -390,7 +393,7 @@ impl Parser {
         if matches!(self.current(), Some(Token::Group)) {
             self.next(); // consume GROUP
             self.expect(Token::By)?;
-            
+
             let mut group_cols = Vec::new();
             loop {
                 match self.current() {
@@ -411,7 +414,7 @@ impl Parser {
         if matches!(self.current(), Some(Token::Order)) {
             self.next(); // consume ORDER
             self.expect(Token::By)?;
-            
+
             let mut order_cols = Vec::new();
             loop {
                 match self.current() {
