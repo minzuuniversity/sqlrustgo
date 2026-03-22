@@ -96,16 +96,19 @@ pub struct AggregateCall {
     pub func: AggregateFunction,
     pub args: Vec<Expression>,
     pub distinct: bool,
+    pub alias: Option<String>,
 }
 
 /// SELECT statement
 #[derive(Debug, Clone, PartialEq)]
 pub struct SelectStatement {
     pub columns: Vec<SelectColumn>,
-    pub table: String,
+    pub tables: Vec<String>, // Support multiple tables (comma-separated)
     pub where_clause: Option<Expression>,
     pub join_clause: Option<JoinClause>,
     pub aggregates: Vec<AggregateCall>,
+    pub group_by: Option<Vec<String>>,
+    pub order_by: Option<Vec<(String, bool)>>, // (column, descending)
 }
 
 /// Column in SELECT
@@ -275,17 +278,61 @@ impl Parser {
 
                     self.expect(Token::RParen)?;
 
+                    // Check for AS alias after aggregate
+                    let alias = if matches!(self.current(), Some(Token::As)) {
+                        self.next(); // consume AS
+                        match self.current() {
+                            Some(Token::Identifier(alias_name)) => {
+                                let a = alias_name.to_string();
+                                self.next();
+                                Some(a)
+                            }
+                            _ => None,
+                        }
+                    } else {
+                        None
+                    };
+
                     let agg = AggregateCall {
                         func,
                         args,
                         distinct: false,
+                        alias,
                     };
                     aggregates.push(agg);
                 }
-                Some(Token::Identifier(_)) => {
-                    if let Some(Token::Identifier(name)) = self.next() {
-                        columns.push(SelectColumn { name, alias: None });
+                Some(Token::Identifier(name)) => {
+                    let mut col_name = name.to_string();
+                    self.next(); // consume identifier
+                    
+                    // Check for table.column format (e.g., customers.name)
+                    if matches!(self.current(), Some(Token::Dot)) {
+                        self.next(); // consume dot
+                        match self.current() {
+                            Some(Token::Identifier(col)) => {
+                                col_name = format!("{}.{}", col_name, col);
+                                self.next(); // consume column name
+                            }
+                            _ => {}
+                        }
                     }
+                    
+                    // Check for AS alias
+                    let alias = if matches!(self.current(), Some(Token::As)) {
+                        self.next(); // consume AS
+                        match self.current() {
+                            Some(Token::Identifier(alias_name)) => {
+                                let a = alias_name.to_string();
+                                self.next();
+                                Some(a)
+                            }
+                            _ => None,
+                        }
+                    } else {
+                        None
+                    };
+                    
+                    columns.push(SelectColumn { name: col_name, alias });
                 }
                 Some(Token::Comma) => {
                     self.next();
@@ -298,11 +345,27 @@ impl Parser {
 
         self.expect(Token::From)?;
 
-        let table = match self.next() {
-            Some(Token::Identifier(name)) => name,
-            Some(t) => return Err(format!("Expected table name, got {:?}", t)),
-            None => return Err("Expected table name".to_string()),
-        };
+        // Parse table names (supports comma-separated tables)
+        let mut tables = Vec::new();
+        loop {
+            match self.current() {
+                Some(Token::Identifier(name)) => {
+                    tables.push(name.to_string());
+                    self.next();
+                }
+                Some(Token::Comma) => {
+                    self.next(); // consume comma
+                }
+                _ => break,
+            }
+        }
+        
+        if tables.is_empty() {
+            return Err("Expected at least one table name".to_string());
+        }
+
+        // For backward compatibility, use first table as primary
+        let table = tables[0].clone();
 
         // Parse WHERE clause (optional)
         let where_clause = if matches!(self.current(), Some(Token::Where)) {
@@ -314,11 +377,69 @@ impl Parser {
 
         let base_select = SelectStatement {
             columns,
-            table,
+            tables,
             where_clause,
             join_clause: None,
             aggregates,
+            group_by: None,
+            order_by: None,
         };
+
+        // Parse GROUP BY clause
+        let mut select_stmt = base_select.clone();
+        if matches!(self.current(), Some(Token::Group)) {
+            self.next(); // consume GROUP
+            self.expect(Token::By)?;
+            
+            let mut group_cols = Vec::new();
+            loop {
+                match self.current() {
+                    Some(Token::Identifier(name)) => {
+                        group_cols.push(name.to_string());
+                        self.next();
+                    }
+                    Some(Token::Comma) => {
+                        self.next(); // consume comma
+                    }
+                    _ => break,
+                }
+            }
+            select_stmt.group_by = Some(group_cols);
+        }
+
+        // Parse ORDER BY clause
+        if matches!(self.current(), Some(Token::Order)) {
+            self.next(); // consume ORDER
+            self.expect(Token::By)?;
+            
+            let mut order_cols = Vec::new();
+            loop {
+                match self.current() {
+                    Some(Token::Identifier(name)) => {
+                        let col_name = name.to_string();
+                        self.next();
+                        // Check for ASC/DESC
+                        let descending = match self.current() {
+                            Some(Token::Desc) => {
+                                self.next();
+                                true
+                            }
+                            Some(Token::Asc) => {
+                                self.next();
+                                false
+                            }
+                            _ => false,
+                        };
+                        order_cols.push((col_name, descending));
+                    }
+                    Some(Token::Comma) => {
+                        self.next(); // consume comma
+                    }
+                    _ => break,
+                }
+            }
+            select_stmt.order_by = Some(order_cols);
+        }
 
         // Check for set operations (UNION, INTERSECT, EXCEPT)
         match self.current() {
