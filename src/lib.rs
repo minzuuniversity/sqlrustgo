@@ -50,6 +50,64 @@ fn evaluate_where_clause(
     }
 }
 
+/// Extract simple column=value filter from WHERE clause for FK-aware delete
+/// Returns (column_index, value) if the WHERE clause is a simple equality condition
+fn extract_simple_filter(
+    expr: &sqlrustgo_parser::Expression,
+    columns: &[sqlrustgo_storage::ColumnDefinition],
+) -> Option<(usize, Value)> {
+    match expr {
+        sqlrustgo_parser::Expression::BinaryOp(left, op, right) => {
+            // Only handle equality comparisons
+            if op != "=" && op != "==" {
+                return None;
+            }
+
+            // Extract column name (left side) and value (right side)
+            let (col_name, value_expr) = match (left.as_ref(), right.as_ref()) {
+                (sqlrustgo_parser::Expression::Identifier(name), val) => (name, val),
+                (val, sqlrustgo_parser::Expression::Identifier(name)) => (name, val),
+                _ => return None,
+            };
+
+            // Find column index
+            let col_idx = columns.iter().position(|c| c.name.eq_ignore_ascii_case(col_name))?;
+
+            // Evaluate value
+            let value = evaluate_literal_expr(value_expr);
+
+            Some((col_idx, value))
+        }
+        _ => None,
+    }
+}
+
+/// Evaluate a literal expression to a Value
+fn evaluate_literal_expr(expr: &sqlrustgo_parser::Expression) -> Value {
+    match expr {
+        sqlrustgo_parser::Expression::Literal(s) => {
+            if let Ok(n) = s.parse::<i64>() {
+                Value::Integer(n)
+            } else if let Ok(n) = s.parse::<f64>() {
+                Value::Float(n)
+            } else if s.eq_ignore_ascii_case("true") {
+                Value::Boolean(true)
+            } else if s.eq_ignore_ascii_case("false") {
+                Value::Boolean(false)
+            } else if s.eq_ignore_ascii_case("null") {
+                Value::Null
+            } else {
+                Value::Text(s.clone())
+            }
+        }
+        sqlrustgo_parser::Expression::Identifier(name) => {
+            // Could be a column reference in some contexts, but for literals return as text
+            Value::Text(name.clone())
+        }
+        _ => Value::Null,
+    }
+}
+
 /// Evaluate an expression to a Value
 fn evaluate_expr(
     expr: &sqlrustgo_parser::Expression,
@@ -382,17 +440,24 @@ impl ExecutionEngine {
                     .iter()
                     .map(|col| {
                         let references = col.references.as_ref().map(|fk| {
+                            use sqlrustgo_parser::parser::ForeignKeyAction as ParserAction;
+                            use sqlrustgo_storage::ForeignKeyAction as StorageAction;
+
+                            let map_action = |action: &Option<ParserAction>| {
+                                action.as_ref().map(|a| {
+                                    match a {
+                                        ParserAction::Cascade => StorageAction::Cascade,
+                                        ParserAction::SetNull => StorageAction::SetNull,
+                                        ParserAction::Restrict => StorageAction::Restrict,
+                                    }
+                                })
+                            };
+
                             sqlrustgo_storage::ForeignKeyConstraint {
                                 referenced_table: fk.table.clone(),
                                 referenced_column: fk.column.clone(),
-                                on_delete: fk
-                                    .on_delete
-                                    .as_ref()
-                                    .map(|_| sqlrustgo_storage::ForeignKeyAction::Cascade),
-                                on_update: fk
-                                    .on_update
-                                    .as_ref()
-                                    .map(|_| sqlrustgo_storage::ForeignKeyAction::Cascade),
+on_delete: map_action(&fk.on_delete),
+                                on_update: map_action(&fk.on_update),
                             }
                         });
                         sqlrustgo_storage::ColumnDefinition {
@@ -472,25 +537,40 @@ impl ExecutionEngine {
                 let columns = table_info
                     .map(|info| info.columns.clone())
                     .unwrap_or_default();
-                let mut rows = storage.scan(&delete.table).unwrap_or_default();
 
-                // Filter rows by WHERE clause - keep rows that DON'T match the WHERE clause
-                let original_count = rows.len();
-                rows.retain(|row| {
-                    if let Some(ref where_clause) = delete.where_clause {
-                        !evaluate_where_clause(where_clause, row, &columns) // Invert: keep rows that don't match
-                    } else {
-                        true // Without WHERE, keep all rows (nothing to delete)
-                    }
-                });
+                // If no WHERE clause, delete all rows
+                if delete.where_clause.is_none() {
+                    let deleted_count = storage.scan(&delete.table).unwrap_or_default().len();
+                    storage.delete(&delete.table, &[])?;
+                    return Ok(ExecutorResult::new(vec![], deleted_count));
+                }
 
-                let deleted_count = original_count - rows.len();
+                let where_clause = delete.where_clause.as_ref().unwrap();
 
-                // Delete matching rows and insert remaining rows
-                if deleted_count > 0 {
-                    let _ = storage.delete(&delete.table, &[]);
-                    if !rows.is_empty() {
-                        storage.insert(&delete.table, rows)?;
+                // Try to extract simple column=value condition from WHERE clause
+                // This supports FK constraint checking
+                let mut deleted_count = 0;
+
+                if let Some((col_idx, filter_value)) = extract_simple_filter(where_clause, &columns) {
+                    // Simple filter: column = value - use storage.delete directly
+                    // This allows proper FK constraint checking
+                    deleted_count = storage.delete(&delete.table, &[Value::Integer(col_idx as i64), filter_value])?;
+                } else {
+                    // Complex WHERE clause - fall back to in-memory approach
+                    let mut rows = storage.scan(&delete.table).unwrap_or_default();
+                    let original_count = rows.len();
+
+                    rows.retain(|row| {
+                        !evaluate_where_clause(where_clause, row, &columns)
+                    });
+
+                    deleted_count = original_count - rows.len();
+
+                    if deleted_count > 0 {
+                        storage.delete(&delete.table, &[])?;
+                        if !rows.is_empty() {
+                            storage.insert(&delete.table, rows)?;
+                        }
                     }
                 }
 
@@ -509,43 +589,111 @@ impl ExecutionEngine {
                 let columns = table_info
                     .map(|info| info.columns.clone())
                     .unwrap_or_default();
-                let mut rows = storage.scan(&update.table).unwrap_or_default();
 
-                // Filter rows by WHERE clause and apply updates
-                let mut updated_count = 0;
-                for row in rows.iter_mut() {
-                    if let Some(ref where_clause) = update.where_clause {
-                        if !evaluate_where_clause(where_clause, row, &columns) {
-                            continue;
-                        }
-                    } else {
-                        // No WHERE clause - update all rows (but we need at least one filter)
-                        // For UPDATE without WHERE, we still require some condition
-                        // For now, skip rows without WHERE
-                        continue;
-                    }
+                // If no WHERE clause, we can't do simple FK checking - need to reject or handle specially
+                if update.where_clause.is_none() {
+                    return Err(SqlError::ExecutionError(
+                        "UPDATE without WHERE clause is not supported with FK constraints".to_string(),
+                    ));
+                }
 
-                    // Apply SET clauses
+                let where_clause = update.where_clause.as_ref().unwrap();
+
+                // Try to extract simple column=value condition from WHERE clause
+                // This supports FK constraint checking
+                let mut updated_count;
+                if let Some((col_idx, filter_value)) = extract_simple_filter(where_clause, &columns) {
+                    // Simple filter: column = value - use storage.update directly
+                    // This allows proper FK constraint checking
+
+                    // First, we need to evaluate the SET expressions to get the new values
+                    // But we need a sample row to evaluate against for column references
+                    let sample_row = storage.scan(&update.table).unwrap_or_default().pop();
+                    let sample_row = sample_row.as_ref().map(|r| r.as_slice());
+
+                    let mut updates: Vec<(usize, Value)> = Vec::new();
                     for (col_name, expr) in &update.set_clauses {
                         if let Some(col_idx) = columns
                             .iter()
                             .position(|c| c.name.eq_ignore_ascii_case(col_name))
                         {
-                            let new_value = evaluate_expr(expr, row, &columns);
-                            if col_idx < row.len() {
-                                row[col_idx] = new_value;
-                                updated_count += 1;
+                            // Use sample row if available for evaluating expressions
+                            let new_value = if let Some(row) = sample_row {
+                                evaluate_expr(expr, row, &columns)
+                            } else {
+                                evaluate_expr(expr, &[], &columns)
+                            };
+                            updates.push((col_idx, new_value));
+                        }
+                    }
+
+                    if !updates.is_empty() {
+                        updated_count = storage.update(
+                            &update.table,
+                            &[Value::Integer(col_idx as i64), filter_value],
+                            &updates,
+                        )?;
+                    } else {
+                        updated_count = 0;
+                    }
+                } else {
+                    // Complex WHERE clause - fall back to in-memory approach
+                    // But we need to be careful: the current implementation deletes ALL rows
+                    // and re-inserts which bypasses FK checking
+                    // For now, reject complex WHERE with FK constraints
+                    let mut rows = storage.scan(&update.table).unwrap_or_default();
+
+                    // Check if any FK columns are being updated
+                    let mut has_fk_update = false;
+                    for (col_name, _) in &update.set_clauses {
+                        if let Some(col_idx) = columns
+                            .iter()
+                            .position(|c| c.name.eq_ignore_ascii_case(col_name))
+                        {
+                            if col_idx < columns.len() && columns[col_idx].references.is_some() {
+                                has_fk_update = true;
+                                break;
                             }
                         }
                     }
-                }
 
-                // Write back updated rows
-                if updated_count > 0 {
-                    // Delete all existing rows
-                    let _ = storage.delete(&update.table, &[]);
-                    // Insert updated rows
-                    storage.insert(&update.table, rows)?;
+                    if has_fk_update {
+                        return Err(SqlError::ExecutionError(
+                            "Complex WHERE clause with FK column updates is not supported".to_string(),
+                        ));
+                    }
+
+                    // Filter and update rows in memory (no FK constraints affected)
+                    let original_count = rows.len();
+                    for row in rows.iter_mut() {
+                        if !evaluate_where_clause(where_clause, row, &columns) {
+                            continue;
+                        }
+
+                        for (col_name, expr) in &update.set_clauses {
+                            if let Some(col_idx) = columns
+                                .iter()
+                                .position(|c| c.name.eq_ignore_ascii_case(col_name))
+                            {
+                                let new_value = evaluate_expr(expr, row, &columns);
+                                if col_idx < row.len() {
+                                    row[col_idx] = new_value;
+                                }
+                            }
+                        }
+                    }
+
+                    let new_count = rows.len();
+                    updated_count = original_count - new_count;
+
+                    if updated_count > 0 {
+                        storage.delete(&update.table, &[])?;
+                        if !rows.is_empty() {
+                            storage.insert(&update.table, rows)?;
+                        }
+                    } else {
+                        updated_count = 0;
+                    }
                 }
 
                 Ok(ExecutorResult::new(vec![], updated_count))

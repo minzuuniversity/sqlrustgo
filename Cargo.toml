@@ -166,6 +166,10 @@ name = "executor_test"
 path = "tests/integration/executor_test.rs"
 
 [[test]]
+name = "foreign_key_test"
+path = "tests/integration/foreign_key_test.rs"
+
+[[test]]
 name = "planner_test"
 path = "tests/integration/planner_test.rs"
 
