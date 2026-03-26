@@ -55,6 +55,7 @@ criterion = "0.8"
 miniz_oxide = "0.7"
 rand = "0.8"
 fnv = "1.0"
+proptest = "1.1"
 
 [dev-dependencies]
 criterion = "0.8"
@@ -62,6 +63,7 @@ tempfile = "3.25.0"
 serde_yaml = "0.9"
 rand = "0.8"
 clap = { version = "4.0", features = ["derive"] }
+proptest = "1.1"
 
 [package]
 name = "sqlrustgo"
@@ -219,6 +221,14 @@ name = "crash_recovery_test"
 path = "tests/stress/crash_recovery_test.rs"
 
 [[test]]
+name = "wal_deterministic_test"
+path = "tests/stress/wal_deterministic_test.rs"
+
+[[test]]
+name = "wal_fuzz_test"
+path = "tests/stress/wal_fuzz_test.rs"
+
+[[test]]
 name = "stress_test"
 path = "tests/stress/stress_test.rs"
 
@@ -241,4 +251,8 @@ path = "tests/integration/performance_test.rs"
 [[test]]
 name = "mvcc_concurrency_test"
 path = "tests/anomaly/mvcc_concurrency_test.rs"
+
+[[test]]
+name = "checksum_corruption_test"
+path = "tests/integration/checksum_corruption_test.rs"
 
