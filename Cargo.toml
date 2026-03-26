@@ -302,3 +302,7 @@ path = "tests/anomaly/datetime_type_test.rs"
 [[test]]
 name = "boundary_test"
 path = "tests/anomaly/boundary_test.rs"
+
+[[test]]
+name = "error_handling_test"
+path = "tests/anomaly/error_handling_test.rs"
