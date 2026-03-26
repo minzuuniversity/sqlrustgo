@@ -267,20 +267,33 @@ cat target/tarpaulin/tarpaulin-report.json
 
 ### 覆盖率统计说明
 
-tarpaulin 统计范围：
-- 核心库代码 (`crates/*/src/*.rs`)
-- 测试代码 (`tests/**/*.rs`)
+tarpaulin 统计的是**测试二进制中实际编译的代码**：
 
-**总行数计算**：包含测试代码本身，因此覆盖率 = 核心被测行 / (核心行 + 测试行)
+| 指标 | 数值 |
+|------|------|
+| 测试二进制中的代码行 | 11,031 行 |
+| 被覆盖的行数 | 7,197 行 |
+| tarpaulin 覆盖率 | **65.24%** |
 
-### v1.9.x 模块级覆盖率
+**注意**：tarpaulin 显示的 65.24% 是"测试二进制覆盖率"，不是"核心代码覆盖率"。
 
-| 模块 | 覆盖率 | 提升 |
-|------|--------|------|
-| storage/buffer_pool.rs | 91% | +27% |
-| storage/engine.rs | 97% | +33% |
-| optimizer/rules.rs | 82% | - |
-| planner/logical_plan.rs | 95% | - |
+真正的核心代码覆盖率：
+```
+真正覆盖率 = 核心被测行 / 核心总行
+          = 7,197 / ~45,000
+          = ~16%
+```
+
+因为 tarpaulin 只统计测试编译时实际编译的 ~11,000 行代码，而非全部 ~45,000 行核心代码。
+
+### v1.9.x 模块级覆盖率（tarpaulin 统计）
+
+| 模块 | 覆盖率 |
+|------|--------|
+| storage/buffer_pool.rs | 91% |
+| storage/engine.rs | 97% |
+| optimizer/rules.rs | 82% |
+| planner/logical_plan.rs | 95% |
 
 ### 异常测试对覆盖率的贡献
 
@@ -292,7 +305,7 @@ v1.9.x 新增的异常测试：
 | tests/anomaly/io_error_test.rs | 8 | file_storage |
 | tests/anomaly/leak_test.rs | 8 | buffer_pool, storage |
 
-这些测试提升了 storage 模块的模块级覆盖率（从 64% 提升到 91%+）。
+这些测试显著提升了 storage 模块的模块级覆盖率。
 
 ---
 
