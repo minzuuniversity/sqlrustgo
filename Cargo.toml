@@ -242,3 +242,7 @@ path = "tests/integration/performance_test.rs"
 name = "mvcc_concurrency_test"
 path = "tests/anomaly/mvcc_concurrency_test.rs"
 
+[[test]]
+name = "crash_injection_test"
+path = "tests/anomaly/crash_injection_test.rs"
+
