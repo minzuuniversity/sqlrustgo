@@ -263,3 +263,7 @@ path = "tests/anomaly/long_run_stability_test.rs"
 [[test]]
 name = "qps_benchmark_test"
 path = "tests/anomaly/qps_benchmark_test.rs"
+
+[[test]]
+name = "server_integration_test"
+path = "tests/integration/server_integration_test.rs"
