@@ -6,12 +6,13 @@ v1.9.0 版本包含以下测试类型：
 
 | 测试类型 | 数量 | 运行方式 |
 |----------|------|----------|
-| 单元测试 (unit) | 100+ | `cargo test` |
-| 集成测试 (integration) | 50+ | `cargo test` |
+| 单元测试 (unit) | ~100+ | `cargo test` |
+| 集成测试 (integration) | ~50+ | `cargo test` |
 | 性能测试 (performance) | 16 | `cargo test --test performance_test` |
 | 教学场景测试 (teaching) | 18 | `cargo test --test teaching_scenario_test` |
 | 压力测试 (stress) | 41 | `cargo test --test stress_test` |
 | TPC-H 测试 | 5 | `cargo test --test tpch_test` |
+| **总计** | **1748+** | - |
 
 ---
 
