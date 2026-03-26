@@ -18,6 +18,71 @@ pub use sqlrustgo_types::{SqlError, SqlResult, Value};
 
 use std::sync::{Arc, RwLock};
 
+use sqlrustgo_executor::OperatorProfile;
+
+/// Format the EXPLAIN ANALYZE output as a tree structure (PostgreSQL-style)
+fn format_tree_output(profiles: &[OperatorProfile], total_time: &str) -> Vec<Vec<Value>> {
+    let mut rows = Vec::new();
+
+    // Header
+    rows.push(vec![
+        Value::Text("┌─────────────────────────────────────────────────────────────────┐".to_string()),
+        Value::Text("".to_string()),
+        Value::Text("".to_string()),
+    ]);
+    rows.push(vec![
+        Value::Text("│                      Execution Plan                             │".to_string()),
+        Value::Text("".to_string()),
+        Value::Text("".to_string()),
+    ]);
+    rows.push(vec![
+        Value::Text("├─────────────────────────────────────────────────────────────────┤".to_string()),
+        Value::Text("".to_string()),
+        Value::Text("".to_string()),
+    ]);
+
+    // Operator nodes
+    for (i, profile) in profiles.iter().enumerate() {
+        let is_last = i == profiles.len() - 1;
+        let prefix = if is_last { "└─ " } else { "├─ " };
+        let time_ms = profile.total_time_ns as f64 / 1_000_000.0;
+
+        rows.push(vec![
+            Value::Text(format!(
+                "│  {} {} (rows={})",
+                prefix,
+                profile.operator_name,
+                profile.rows_processed
+            )),
+            Value::Text("".to_string()),
+            Value::Text("".to_string()),
+        ]);
+        rows.push(vec![
+            Value::Text(format!(
+                "│        Actual Time: {:.3} ms, Rows: {}",
+                time_ms,
+                profile.rows_processed
+            )),
+            Value::Text("".to_string()),
+            Value::Text("".to_string()),
+        ]);
+    }
+
+    // Footer
+    rows.push(vec![
+        Value::Text("└─────────────────────────────────────────────────────────────────┘".to_string()),
+        Value::Text("".to_string()),
+        Value::Text("".to_string()),
+    ]);
+    rows.push(vec![
+        Value::Text(format!("Total Execution Time: {}", total_time)),
+        Value::Text("".to_string()),
+        Value::Text("".to_string()),
+    ]);
+
+    rows
+}
+
 /// Evaluate a WHERE clause expression against a row
 fn evaluate_where_clause(
     expr: &sqlrustgo_parser::Expression,
@@ -631,34 +696,8 @@ impl ExecutionEngine {
 
                 if explain.analyze {
                     let profiles = GLOBAL_PROFILER.get_all_profiles();
-                    let mut rows = Vec::new();
-
-                    rows.push(vec![
-                        Value::Text("Plan".to_string()),
-                        Value::Text("Timing".to_string()),
-                        Value::Text("Rows".to_string()),
-                    ]);
-
-                    // Generate rows from real profiling data
-                    for profile in &profiles {
-                        rows.push(vec![
-                            Value::Text(profile.operator_name.clone()),
-                            Value::Text(format!("{:.3} ms", profile.total_time_ns as f64 / 1_000_000.0)),
-                            Value::Text(format!("{}", profile.rows_processed)),
-                        ]);
-                    }
-
-                    rows.push(vec![
-                        Value::Text("".to_string()),
-                        Value::Text("".to_string()),
-                        Value::Text("".to_string()),
-                    ]);
-
-                    rows.push(vec![
-                        Value::Text("Execution Time".to_string()),
-                        Value::Text(format!("{:.3} ms", duration.as_secs_f64() * 1000.0)),
-                        Value::Text("-".to_string()),
-                    ]);
+                    let total_time = format!("{:.3} ms", duration.as_secs_f64() * 1000.0);
+                    let rows = format_tree_output(&profiles, &total_time);
 
                     return Ok(ExecutorResult::new(rows, result.affected_rows));
                 }
