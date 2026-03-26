@@ -148,6 +148,9 @@ path = "crates/bench/examples/tpch_data_gen.rs"
 version = "0.32"
 features = ["bundled"]
 
+[dev-dependencies.mysql]
+version = "25"
+
 [[test]]
 name = "optimizer_rules_test"
 path = "tests/unit/optimizer_rules_test.rs"
