@@ -539,60 +539,130 @@ impl ExecutionEngine {
                     .iter()
                     .enumerate()
                     .map(|(row_idx, row)| {
-                        let mut new_row: Vec<Value> = row
-                            .iter()
-                            .enumerate()
-                            .map(|(col_idx, expr)| {
-                                match expr {
-                                    Expression::Literal(value) => {
-                                        // Determine the column type from table schema
-                                        if let Some(ref info) = table_info {
-                                            if col_idx < info.columns.len() {
-                                                let col_type = &info.columns[col_idx].data_type;
-                                                let upper = col_type.to_uppercase();
-                                                // Parse numeric values for appropriate types
-                                                if upper.contains("INT")
-                                                    || upper == "BIGINT"
-                                                    || upper == "SMALLINT"
-                                                {
-                                                    if let Ok(n) = value.parse::<i64>() {
-                                                        return Value::Integer(n);
+                        // If INSERT specifies columns, map values to correct positions
+                        // Otherwise, values go in column order
+                        let num_columns = if insert.columns.is_empty() {
+                            table_info
+                                .as_ref()
+                                .map(|i| i.columns.len())
+                                .unwrap_or(row.len())
+                        } else {
+                            table_info.as_ref().map(|i| i.columns.len()).unwrap_or(0)
+                        };
+
+                        // Create row with correct size, filled with Null initially
+                        let mut new_row: Vec<Value> = vec![Value::Null; num_columns];
+
+                        // Map values to correct column positions
+                        if insert.columns.is_empty() {
+                            // No column list: values map to columns in order
+                            for (col_idx, expr) in row.iter().enumerate() {
+                                if col_idx < num_columns {
+                                    new_row[col_idx] = match expr {
+                                        Expression::Literal(value) => {
+                                            if let Some(ref info) = table_info {
+                                                if col_idx < info.columns.len() {
+                                                    let col_type = &info.columns[col_idx].data_type;
+                                                    let upper = col_type.to_uppercase();
+                                                    if upper.contains("INT")
+                                                        || upper == "BIGINT"
+                                                        || upper == "SMALLINT"
+                                                    {
+                                                        if let Ok(n) = value.parse::<i64>() {
+                                                            Value::Integer(n)
+                                                        } else {
+                                                            Value::Text(value.clone())
+                                                        }
+                                                    } else if upper == "FLOAT"
+                                                        || upper == "DOUBLE"
+                                                        || upper == "DECIMAL"
+                                                    {
+                                                        if let Ok(n) = value.parse::<f64>() {
+                                                            Value::Float(n)
+                                                        } else {
+                                                            Value::Text(value.clone())
+                                                        }
+                                                    } else if upper == "BOOLEAN" {
+                                                        if value.to_uppercase() == "TRUE" {
+                                                            Value::Boolean(true)
+                                                        } else if value.to_uppercase() == "FALSE" {
+                                                            Value::Boolean(false)
+                                                        } else {
+                                                            Value::Text(value.clone())
+                                                        }
+                                                    } else {
+                                                        Value::Text(value.clone())
                                                     }
-                                                } else if upper == "FLOAT"
-                                                    || upper == "DOUBLE"
-                                                    || upper == "DECIMAL"
-                                                {
-                                                    if let Ok(n) = value.parse::<f64>() {
-                                                        return Value::Float(n);
-                                                    }
-                                                } else if upper == "BOOLEAN" {
-                                                    if value.to_uppercase() == "TRUE" {
-                                                        return Value::Boolean(true);
-                                                    } else if value.to_uppercase() == "FALSE" {
-                                                        return Value::Boolean(false);
-                                                    }
+                                                } else {
+                                                    Value::Text(value.clone())
                                                 }
+                                            } else {
+                                                Value::Text(value.clone())
                                             }
                                         }
-                                        // Default to text for strings and unrecognized types
-                                        Value::Text(value.clone())
+                                        _ => Value::Null,
+                                    };
+                                }
+                            }
+                        } else {
+                            // Column list specified: map each value to its column position
+                            for (value_idx, col_name) in insert.columns.iter().enumerate() {
+                                if value_idx < row.len() {
+                                    // Find column index by name
+                                    if let Some(ref info) = table_info {
+                                        if let Some(target_idx) = info
+                                            .columns
+                                            .iter()
+                                            .position(|c| c.name.eq_ignore_ascii_case(col_name))
+                                        {
+                                            let expr = &row[value_idx];
+                                            new_row[target_idx] = match expr {
+                                                Expression::Literal(value) => {
+                                                    let col_type =
+                                                        &info.columns[target_idx].data_type;
+                                                    let upper = col_type.to_uppercase();
+                                                    if upper.contains("INT")
+                                                        || upper == "BIGINT"
+                                                        || upper == "SMALLINT"
+                                                    {
+                                                        if let Ok(n) = value.parse::<i64>() {
+                                                            Value::Integer(n)
+                                                        } else {
+                                                            Value::Text(value.clone())
+                                                        }
+                                                    } else if upper == "FLOAT"
+                                                        || upper == "DOUBLE"
+                                                        || upper == "DECIMAL"
+                                                    {
+                                                        if let Ok(n) = value.parse::<f64>() {
+                                                            Value::Float(n)
+                                                        } else {
+                                                            Value::Text(value.clone())
+                                                        }
+                                                    } else if upper == "BOOLEAN" {
+                                                        if value.to_uppercase() == "TRUE" {
+                                                            Value::Boolean(true)
+                                                        } else if value.to_uppercase() == "FALSE" {
+                                                            Value::Boolean(false)
+                                                        } else {
+                                                            Value::Text(value.clone())
+                                                        }
+                                                    } else {
+                                                        Value::Text(value.clone())
+                                                    }
+                                                }
+                                                _ => Value::Null,
+                                            };
+                                        }
                                     }
-                                    _ => Value::Null,
                                 }
-                            })
-                            .collect();
+                            }
+                        }
 
-                        // Apply auto_increment values
+                        // Apply auto_increment values for columns that are Null
                         for &(col_idx, next_val) in &auto_increment_values[row_idx] {
-                            if col_idx < new_row.len() {
-                                if matches!(new_row[col_idx], Value::Null) {
-                                    new_row[col_idx] = Value::Integer(next_val);
-                                }
-                            } else {
-                                while new_row.len() < col_idx {
-                                    new_row.push(Value::Null);
-                                }
-                                new_row.push(Value::Integer(next_val));
+                            if col_idx < new_row.len() && matches!(new_row[col_idx], Value::Null) {
+                                new_row[col_idx] = Value::Integer(next_val);
                             }
                         }
 
