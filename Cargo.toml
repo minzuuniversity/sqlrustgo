@@ -258,3 +258,7 @@ path = "tests/anomaly/long_run_stability_test.rs"
 name = "qps_benchmark_test"
 path = "tests/anomaly/qps_benchmark_test.rs"
 
+[[test]]
+name = "transaction_isolation_test"
+path = "tests/anomaly/transaction_isolation_test.rs"
+
