@@ -36,6 +36,8 @@ pub enum Statement {
     Transaction(TransactionStatement),
     Grant(GrantStatement),
     Revoke(RevokeStatement),
+    ShowStatus,
+    ShowProcesslist,
 }
 
 /// CREATE INDEX statement
@@ -359,6 +361,7 @@ impl Parser {
             | Some(Token::Savepoint) => self.parse_transaction(),
             Some(Token::Grant) => self.parse_grant(),
             Some(Token::Revoke) => self.parse_revoke(),
+            Some(Token::Show) => self.parse_show(),
             Some(t) => Err(format!("Unexpected token: {:?}", t)),
             None => Err("Empty input".to_string()),
         }
@@ -1582,6 +1585,22 @@ impl Parser {
         }))
     }
 
+    fn parse_show(&mut self) -> Result<Statement, String> {
+        self.expect(Token::Show)?;
+
+        match self.current() {
+            Some(Token::Status) => {
+                self.next();
+                Ok(Statement::ShowStatus)
+            }
+            Some(Token::Processlist) => {
+                self.next();
+                Ok(Statement::ShowProcesslist)
+            }
+            _ => Err("Expected STATUS or PROCESSLIST after SHOW".to_string()),
+        }
+    }
+
     fn parse_transaction(&mut self) -> Result<Statement, String> {
         match self.current() {
             Some(Token::Begin) => {
@@ -2701,5 +2720,25 @@ mod tests {
     fn test_parse_column_auto_increment_synonyms() {
         let result = parse("CREATE TABLE t1 (id INTEGER AUTOINCREMENT)");
         assert!(result.is_ok(), "Error: {:?}", result.err());
+    }
+
+    #[test]
+    fn test_parse_show_status() {
+        let result = parse("SHOW STATUS");
+        assert!(result.is_ok(), "Error: {:?}", result.err());
+        match result.unwrap() {
+            Statement::ShowStatus => {}
+            _ => panic!("Expected SHOW STATUS statement"),
+        }
+    }
+
+    #[test]
+    fn test_parse_show_processlist() {
+        let result = parse("SHOW PROCESSLIST");
+        assert!(result.is_ok(), "Error: {:?}", result.err());
+        match result.unwrap() {
+            Statement::ShowProcesslist => {}
+            _ => panic!("Expected SHOW PROCESSLIST statement"),
+        }
     }
 }
