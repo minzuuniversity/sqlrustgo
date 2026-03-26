@@ -12,6 +12,8 @@ members = [
     "crates/bench",
     "crates/bench-cli",
     "crates/sql-cli",
+    "crates/sqlancer",
+    "crates/transaction-stress",
     "test/sql92",
 ]
 
