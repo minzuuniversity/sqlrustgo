@@ -254,3 +254,6 @@ path = "tests/integration/upsert_test.rs"
 [[test]]
 name = "autoinc_test"
 path = "tests/integration/autoinc_test.rs"
+[[test]]
+name = "fk_actions_test"
+path = "tests/integration/fk_actions_test.rs"
