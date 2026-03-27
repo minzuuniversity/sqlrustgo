@@ -1209,6 +1209,8 @@ mod tests {
                 nullable: false,
                 is_unique: false,
                 references: None,
+                is_primary_key: false,
+                auto_increment: false,
             }],
         };
         storage.create_table(&info).unwrap();
@@ -1234,6 +1236,8 @@ mod tests {
                 nullable: false,
                 is_unique: false,
                 references: None,
+                is_primary_key: false,
+                auto_increment: false,
             }],
         };
         storage.create_table(&info).unwrap();
@@ -1254,9 +1258,26 @@ mod tests {
     #[test]
     fn test_memory_storage_update() {
         let mut storage = MemoryStorage::new();
+        // Insert into tables
         storage
             .tables
             .insert("users".to_string(), vec![vec![Value::Integer(1)]]);
+        // Also insert into table_infos (required by update method)
+        storage.table_infos.insert(
+            "users".to_string(),
+            TableInfo {
+                name: "users".to_string(),
+                columns: vec![ColumnDefinition {
+                    name: "id".to_string(),
+                    data_type: "INTEGER".to_string(),
+                    nullable: false,
+                    is_unique: false,
+                    is_primary_key: false,
+                    auto_increment: false,
+                    references: None,
+                }],
+            },
+        );
         let count = storage
             .update("users", &[], &[(0, Value::Integer(2))])
             .unwrap();
@@ -1270,6 +1291,8 @@ mod tests {
             data_type: "INTEGER".to_string(),
             nullable: false,
             is_unique: false,
+            is_primary_key: false,
+            auto_increment: false,
             references: None,
         };
         assert_eq!(col.name, "id");
@@ -1382,6 +1405,8 @@ fn test_column_definition_new() {
         data_type: "INTEGER".to_string(),
         nullable: false,
         is_unique: true,
+        is_primary_key: false,
+        auto_increment: false,
         references: None,
     };
     assert_eq!(col.name, "id");
@@ -1400,6 +1425,8 @@ fn test_table_info_new() {
                 data_type: "INTEGER".to_string(),
                 nullable: false,
                 is_unique: true,
+                is_primary_key: false,
+                auto_increment: false,
                 references: None,
             },
             ColumnDefinition {
@@ -1407,6 +1434,8 @@ fn test_table_info_new() {
                 data_type: "TEXT".to_string(),
                 nullable: true,
                 is_unique: false,
+                is_primary_key: false,
+                auto_increment: false,
                 references: None,
             },
         ],
@@ -1464,6 +1493,8 @@ fn test_column_definition_serialize() {
         data_type: "INTEGER".to_string(),
         nullable: false,
         is_unique: true,
+        is_primary_key: false,
+        auto_increment: false,
         references: None,
     };
     let json = serde_json::to_string(&col).unwrap();
@@ -1479,6 +1510,8 @@ fn test_table_info_serialize() {
             data_type: "INTEGER".to_string(),
             nullable: false,
             is_unique: true,
+            is_primary_key: false,
+            auto_increment: false,
             references: None,
         }],
     };
@@ -1552,6 +1585,8 @@ fn test_memory_storage_insert_with_info() {
             data_type: "INTEGER".to_string(),
             nullable: false,
             is_unique: true,
+            is_primary_key: false,
+            auto_increment: false,
             references: None,
         }],
     };
@@ -1573,6 +1608,8 @@ fn test_memory_storage_duplicate_key() {
             data_type: "INTEGER".to_string(),
             nullable: false,
             is_unique: true,
+            is_primary_key: false,
+            auto_increment: false,
             references: None,
         }],
     };
@@ -1594,6 +1631,8 @@ fn test_memory_storage_get_table_info() {
             data_type: "INTEGER".to_string(),
             nullable: false,
             is_unique: false,
+            is_primary_key: false,
+            auto_increment: false,
             references: None,
         }],
     };
@@ -1666,6 +1705,8 @@ fn test_memory_storage_create_index() {
             data_type: "INTEGER".to_string(),
             nullable: false,
             is_unique: true,
+            is_primary_key: false,
+            auto_increment: false,
             references: None,
         }],
     };
@@ -1688,6 +1729,8 @@ fn test_memory_storage_drop_index() {
             data_type: "INTEGER".to_string(),
             nullable: false,
             is_unique: true,
+            is_primary_key: false,
+            auto_increment: false,
             references: None,
         }],
     };
@@ -1711,6 +1754,8 @@ fn test_memory_storage_search_index() {
             data_type: "INTEGER".to_string(),
             nullable: false,
             is_unique: true,
+            is_primary_key: false,
+            auto_increment: false,
             references: None,
         }],
     };
@@ -1737,6 +1782,8 @@ fn test_memory_storage_range_index() {
             data_type: "INTEGER".to_string(),
             nullable: false,
             is_unique: true,
+            is_primary_key: false,
+            auto_increment: false,
             references: None,
         }],
     };
@@ -1781,6 +1828,8 @@ fn test_column_definition_with_foreign_key() {
         data_type: "INTEGER".to_string(),
         nullable: false,
         is_unique: false,
+        is_primary_key: false,
+        auto_increment: false,
         references: Some(fk),
     };
     assert!(col.references.is_some());
