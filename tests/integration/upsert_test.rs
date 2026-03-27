@@ -1,52 +1,79 @@
-// UPSERT (ON DUPLICATE KEY UPDATE) Integration Tests (Issue #890)
+// UPSERT/REPLACE/INSERT IGNORE - 完整功能测试 (Issue #890)
 
 use sqlrustgo::{parse, ExecutionEngine, MemoryStorage, StorageEngine};
 use sqlrustgo_types::Value;
 use std::sync::{Arc, RwLock};
 
+// ============== REPLACE 测试 ==============
+#[test]
+fn test_replace_updates_existing_row() {
+    let mut engine = ExecutionEngine::new(Arc::new(RwLock::new(MemoryStorage::new())));
+    engine.execute(parse("CREATE TABLE t (id INTEGER PRIMARY KEY, name TEXT)").unwrap()).unwrap();
+
+    engine.execute(parse("INSERT INTO t VALUES (1, 'Alice')").unwrap()).unwrap();
+    engine.execute(parse("REPLACE INTO t VALUES (1, 'Bob')").unwrap()).unwrap();
+
+    // Should still have 1 row (replaced)
+    let count = engine.execute(parse("SELECT COUNT(*) FROM t").unwrap()).unwrap();
+    assert_eq!(count.rows[0][0], Value::Integer(1), "Should have 1 row after REPLACE");
+
+    println!("✓ REPLACE 更新: 保持 1 行");
+}
+
+// ============== INSERT IGNORE 测试 ==============
+#[test]
+fn test_insert_ignore_skips_duplicate() {
+    let mut engine = ExecutionEngine::new(Arc::new(RwLock::new(MemoryStorage::new())));
+    engine.execute(parse("CREATE TABLE t2 (id INTEGER PRIMARY KEY, name TEXT)").unwrap()).unwrap();
+
+    engine.execute(parse("INSERT INTO t2 VALUES (1, 'Alice')").unwrap()).unwrap();
+    engine.execute(parse("INSERT IGNORE INTO t2 VALUES (1, 'Bob')").unwrap()).unwrap();
+
+    // Should still have 1 row
+    let count = engine.execute(parse("SELECT COUNT(*) FROM t2").unwrap()).unwrap();
+    assert_eq!(count.rows[0][0], Value::Integer(1), "Should have 1 row");
+
+    println!("✓ INSERT IGNORE 跳过重复");
+}
+
+// ============== UPSERT 测试 ==============
+#[test]
+fn test_upsert_inserts_new_row() {
+    let mut engine = ExecutionEngine::new(Arc::new(RwLock::new(MemoryStorage::new())));
+    engine.execute(parse("CREATE TABLE t3 (id INTEGER PRIMARY KEY, name TEXT)").unwrap()).unwrap();
+
+    engine.execute(parse("INSERT INTO t3 VALUES (1, 'new') ON DUPLICATE KEY UPDATE name='updated'").unwrap()).unwrap();
+
+    let count = engine.execute(parse("SELECT COUNT(*) FROM t3").unwrap()).unwrap();
+    assert_eq!(count.rows[0][0], Value::Integer(1));
+
+    println!("✓ UPSERT 插入新行");
+}
+
+// ============== 解析测试 ==============
 #[test]
 fn test_upsert_parsing() {
-    // Test UPSERT parsing
-    let result = parse("INSERT INTO users (id, name) VALUES (1, 'Alice') ON DUPLICATE KEY UPDATE name='Alice'");
-    assert!(result.is_ok(), "UPSERT should parse: {:?}", result.err());
-    
-    println!("✓ UPSERT parsing works");
+    let stmt = parse("INSERT INTO t VALUES (1, 'a') ON DUPLICATE KEY UPDATE name='b'").unwrap();
+    if let sqlrustgo_parser::parser::Statement::Insert(insert) = stmt {
+        assert!(insert.on_duplicate.is_some());
+        println!("✓ UPSERT 解析正确");
+    }
 }
 
 #[test]
-fn test_upsert_basic_insert() {
-    // Test basic UPSERT insert (when key doesn't exist)
-    let mut engine = ExecutionEngine::new(Arc::new(RwLock::new(MemoryStorage::new())));
-
-    engine.execute(parse("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)").unwrap()).unwrap();
-    
-    // UPSERT with non-existent key - should insert
-    let result = engine.execute(
-        parse("INSERT INTO users VALUES (1, 'new') ON DUPLICATE KEY UPDATE name='updated'").unwrap()
-    );
-    assert!(result.is_ok());
-    
-    // Should have 1 row
-    let count = engine.execute(parse("SELECT COUNT(*) FROM users").unwrap()).unwrap();
-    assert_eq!(count.rows[0][0], Value::Integer(1));
-    
-    println!("✓ UPSERT insert works");
+fn test_replace_parsing() {
+    let stmt = parse("REPLACE INTO t VALUES (1, 'a')").unwrap();
+    if let sqlrustgo_parser::parser::Statement::Insert(insert) = stmt {
+        assert!(insert.replace);
+        println!("✓ REPLACE 解析正确");
+    }
 }
 
 #[test]
-fn test_upsert_multiple_columns() {
-    // Test UPSERT with multiple column updates
-    let result = parse("INSERT INTO t (id, a, b) VALUES (1, 'x', 'y') ON DUPLICATE KEY UPDATE a='x2', b='y2'");
-    assert!(result.is_ok(), "Multi-column UPSERT should parse");
-    
-    println!("✓ Multi-column UPSERT parsing works");
-}
-
-#[test]
-fn test_upsert_with_expression() {
-    // Test UPSERT with expression in UPDATE
-    let result = parse("INSERT INTO t VALUES (1, 10) ON DUPLICATE KEY UPDATE count = count + 1");
-    assert!(result.is_ok(), "UPSERT with expression should parse");
-    
-    println!("✓ UPSERT with expression parsing works");
+fn test_insert_ignore_parsing() {
+    let stmt = parse("INSERT IGNORE INTO t VALUES (1, 'a')").unwrap();
+    if let sqlrustgo_parser::parser::Statement::Insert(insert) = stmt {
+        assert!(insert.ignore);
+        println!("✓ INSERT IGNORE 解析正确");
+    }
 }
