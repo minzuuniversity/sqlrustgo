@@ -49,7 +49,7 @@ jobs:
           ./target/release/sqlrustgo-bench-cli custom --file benchmarks/sql/sample.sql --iterations 3 --output benchmarks/results/sf10/custom.json
 
       - name: Upload results
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: benchmark-results-full
           path: benchmarks/results/

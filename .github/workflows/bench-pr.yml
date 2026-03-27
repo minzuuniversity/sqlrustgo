@@ -47,7 +47,7 @@ jobs:
         run: python scripts/compare_benchmarks.py benchmarks/baselines/sf01 benchmarks/results/sf01
 
       - name: Upload results
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: benchmark-results-sf01
           path: benchmarks/results/sf01/
