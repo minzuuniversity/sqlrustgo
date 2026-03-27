@@ -226,6 +226,8 @@ pub struct InsertStatement {
     pub columns: Vec<String>,
     pub values: Vec<Vec<Expression>>, // Multiple rows
     pub on_duplicate: Option<Vec<(String, Expression)>>, // ON DUPLICATE KEY UPDATE
+    pub ignore: bool, // INSERT IGNORE
+    pub replace: bool, // REPLACE INTO (aliased to INSERT or separate)
 }
 
 /// UPDATE statement
@@ -346,7 +348,7 @@ impl Parser {
     pub fn parse_statement(&mut self) -> Result<Statement, String> {
         match self.current() {
             Some(Token::Select) => self.parse_select(),
-            Some(Token::Insert) => self.parse_insert(),
+            Some(Token::Insert) | Some(Token::Replace) => self.parse_insert(),
             Some(Token::Update) => self.parse_update(),
             Some(Token::Delete) => self.parse_delete(),
             Some(Token::Alter) => self.parse_alter(),
@@ -637,7 +639,30 @@ impl Parser {
     }
 
     fn parse_insert(&mut self) -> Result<Statement, String> {
-        self.expect(Token::Insert)?;
+        // Check for REPLACE INTO (MySQL syntax: REPLACE INTO table...)
+        let mut replace = false;
+        let mut ignore = false;
+        
+        if let Some(Token::Replace) = self.current() {
+            replace = true;
+            self.next(); // consume REPLACE
+        } else if let Some(Token::Ignore) = self.current() {
+            // Check for IGNORE (INSERT IGNORE INTO)
+            ignore = true;
+            self.next(); // consume IGNORE
+        }
+        
+        // Now expect INSERT (unless we already consumed REPLACE)
+        if !replace {
+            self.expect(Token::Insert)?;
+        }
+        
+        // Check for IGNORE after INSERT (INSERT IGNORE INTO)
+        if let Some(Token::Ignore) = self.current() {
+            ignore = true;
+            self.next(); // consume IGNORE
+        }
+        
         self.expect(Token::Into)?;
 
         let table = match self.next() {
@@ -720,6 +745,8 @@ impl Parser {
                 columns,
                 values,
                 on_duplicate: None,
+                ignore,
+                replace,
             }));
         } else if matches!(self.current(), Some(Token::LParen)) {
             // INSERT INTO table (col1, col2) VALUES ...
@@ -857,6 +884,8 @@ impl Parser {
             columns,
             values,
             on_duplicate,
+            ignore,
+            replace,
         }))
     }
 
@@ -2725,6 +2754,8 @@ mod tests {
                 "name".to_string(),
                 Expression::Literal("new".to_string()),
             )]),
+            ignore: false,
+            replace: false,
         };
         let cloned = insert.clone();
         assert_eq!(insert.table, cloned.table);
@@ -2873,3 +2904,62 @@ mod tests {
         }
     }
 }
+
+    // ============================================================================
+    // MySQL Compatibility Tests (Issue #897)
+    // ============================================================================
+
+    #[test]
+    fn test_parse_insert_ignore() {
+        let result = parse("INSERT IGNORE INTO users (id, name) VALUES (1, 'Alice')");
+        assert!(result.is_ok(), "Error: {:?}", result.err());
+        match result.unwrap() {
+            Statement::Insert(i) => {
+                assert!(i.ignore, "Should have ignore flag set");
+                assert!(!i.replace, "Should not have replace flag set");
+                assert_eq!(i.table, "users");
+            }
+            _ => panic!("Expected INSERT statement"),
+        }
+    }
+
+    #[test]
+    fn test_parse_replace_into() {
+        let result = parse("REPLACE INTO users (id, name) VALUES (1, 'Alice')");
+        assert!(result.is_ok(), "Error: {:?}", result.err());
+        match result.unwrap() {
+            Statement::Insert(i) => {
+                assert!(i.replace, "Should have replace flag set");
+                assert!(!i.ignore, "Should not have ignore flag set");
+                assert_eq!(i.table, "users");
+            }
+            _ => panic!("Expected INSERT statement"),
+        }
+    }
+
+    #[test]
+    fn test_parse_insert_ignore_on_duplicate() {
+        let result = parse("INSERT IGNORE INTO users (id, name) VALUES (1, 'Alice') ON DUPLICATE KEY UPDATE name='Bob'");
+        assert!(result.is_ok(), "Error: {:?}", result.err());
+        match result.unwrap() {
+            Statement::Insert(i) => {
+                assert!(i.ignore, "Should have ignore flag set");
+                assert!(i.on_duplicate.is_some(), "Should have on_duplicate");
+            }
+            _ => panic!("Expected INSERT statement"),
+        }
+    }
+
+    #[test]
+    fn test_parse_insert_with_set_ignore() {
+        let result = parse("INSERT IGNORE INTO users SET id=1, name='Alice'");
+        assert!(result.is_ok(), "Error: {:?}", result.err());
+        match result.unwrap() {
+            Statement::Insert(i) => {
+                assert!(i.ignore, "Should have ignore flag set");
+                assert_eq!(i.table, "users");
+                assert_eq!(i.columns.len(), 2);
+            }
+            _ => panic!("Expected INSERT statement"),
+        }
+    }
