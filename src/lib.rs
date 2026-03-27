@@ -8,7 +8,7 @@ pub use sqlrustgo_optimizer::Optimizer as QueryOptimizer;
 pub use sqlrustgo_parser::lexer::tokenize;
 pub use sqlrustgo_parser::{
     parse, Expression, GrantStatement, Lexer, Privilege, RevokeStatement, SetOperation, Statement,
-    Token,
+    Token, TransactionCommand,
 };
 pub use sqlrustgo_planner::{LogicalPlan, Optimizer, PhysicalPlan, Planner, SetOperationType};
 pub use sqlrustgo_storage::{
@@ -1126,6 +1126,25 @@ impl ExecutionEngine {
                 }
                 Ok(result)
             }
+            Statement::Transaction(tx) => match tx.command {
+                sqlrustgo_parser::TransactionCommand::Begin => Ok(ExecutorResult::new(vec![], 0)),
+                sqlrustgo_parser::TransactionCommand::Commit => Ok(ExecutorResult::new(vec![], 0)),
+                sqlrustgo_parser::TransactionCommand::Rollback => {
+                    Ok(ExecutorResult::new(vec![], 0))
+                }
+                sqlrustgo_parser::TransactionCommand::Savepoint { name } => {
+                    Ok(ExecutorResult::new(
+                        vec![vec![Value::Text(format!("Savepoint '{}' created", name))]],
+                        0,
+                    ))
+                }
+                sqlrustgo_parser::TransactionCommand::RollbackTo { name } => {
+                    Ok(ExecutorResult::new(
+                        vec![vec![Value::Text(format!("Rolled back to '{}'", name))]],
+                        0,
+                    ))
+                }
+            },
             _ => Ok(ExecutorResult::empty()),
         }
     }
