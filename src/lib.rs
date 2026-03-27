@@ -1187,6 +1187,12 @@ impl ExecutionEngine {
                         0,
                     ))
                 }
+                sqlrustgo_parser::TransactionCommand::ReleaseSavepoint { name } => {
+                    Ok(ExecutorResult::new(
+                        vec![vec![Value::Text(format!("Release savepoint '{}'", name))]],
+                        0,
+                    ))
+                }
             },
             _ => Ok(ExecutorResult::empty()),
         }
