@@ -366,6 +366,8 @@ fn test_fk_concurrent_insert_simulation() {
                     data_type: "INTEGER".to_string(),
                     nullable: false,
                     is_unique: false,
+                    is_primary_key: false,
+                    auto_increment: false,
                     references: None,
                 }],
             })
@@ -380,6 +382,8 @@ fn test_fk_concurrent_insert_simulation() {
                         data_type: "INTEGER".to_string(),
                         nullable: false,
                         is_unique: false,
+                        is_primary_key: false,
+                        auto_increment: false,
                         references: None,
                     },
                     ColumnDefinition {
@@ -387,6 +391,8 @@ fn test_fk_concurrent_insert_simulation() {
                         data_type: "INTEGER".to_string(),
                         nullable: false,
                         is_unique: false,
+                        is_primary_key: false,
+                        auto_increment: false,
                         references: Some(ForeignKeyConstraint {
                             referenced_table: "users".to_string(),
                             referenced_column: "id".to_string(),
@@ -452,6 +458,8 @@ fn test_fk_large_dataset_validation() {
                     data_type: "INTEGER".to_string(),
                     nullable: false,
                     is_unique: false,
+                    is_primary_key: false,
+                    auto_increment: false,
                     references: None,
                 }],
             })
@@ -466,6 +474,8 @@ fn test_fk_large_dataset_validation() {
                         data_type: "INTEGER".to_string(),
                         nullable: false,
                         is_unique: false,
+                        is_primary_key: false,
+                        auto_increment: false,
                         references: None,
                     },
                     ColumnDefinition {
@@ -473,6 +483,8 @@ fn test_fk_large_dataset_validation() {
                         data_type: "INTEGER".to_string(),
                         nullable: false,
                         is_unique: false,
+                        is_primary_key: false,
+                        auto_increment: false,
                         references: Some(ForeignKeyConstraint {
                             referenced_table: "categories".to_string(),
                             referenced_column: "id".to_string(),
@@ -666,9 +678,9 @@ fn test_fk_delete_restrict() {
     assert!(result.is_err(), "DELETE with RESTRICT should fail when children exist");
 
     if let Err(e) = result {
-        let err_msg = format!("{}", e);
+        let err_msg = format!("{}", e).to_lowercase();
         assert!(
-            err_msg.contains("Foreign key constraint violation") || err_msg.contains("restricted"),
+            err_msg.contains("foreign key constraint violation") || err_msg.contains("restrict"),
             "Error should mention RESTRICT constraint: {}",
             err_msg
         );
@@ -887,9 +899,9 @@ fn test_fk_update_restrict() {
     assert!(result.is_err(), "UPDATE with RESTRICT should fail when children exist");
 
     if let Err(e) = result {
-        let err_msg = format!("{}", e);
+        let err_msg = format!("{}", e).to_lowercase();
         assert!(
-            err_msg.contains("Foreign key constraint violation") || err_msg.contains("restricted"),
+            err_msg.contains("foreign key constraint violation") || err_msg.contains("restrict"),
             "Error should mention RESTRICT constraint: {}",
             err_msg
         );

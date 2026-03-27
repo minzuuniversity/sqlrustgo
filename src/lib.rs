@@ -100,10 +100,9 @@ fn handle_foreign_key_delete(
     let all_tables = storage.list_tables();
 
     for table_name in all_tables {
-        if table_name == parent_table {
-            continue;
-        }
-
+        // For RESTRICT and SET NULL, we skip self-referencing tables
+        // because they are handled specially in the storage engine's delete method
+        // But for CASCADE, we need to process self-referencing tables too
         let table_info = match storage.get_table_info(&table_name) {
             Ok(info) => info,
             Err(_) => continue,
@@ -115,6 +114,11 @@ fn handle_foreign_key_delete(
                 {
                     match fk.on_delete {
                         Some(ForeignKeyAction::Restrict) => {
+                            // Skip self-referencing tables for RESTRICT
+                            // They are handled in storage engine's delete method
+                            if table_name == parent_table {
+                                continue;
+                            }
                             let child_rows = storage.scan(&table_name)?;
                             if let Some(pk_val) = parent_key_values.first() {
                                 for child_row in &child_rows {
@@ -128,27 +132,33 @@ fn handle_foreign_key_delete(
                             }
                         }
                         Some(ForeignKeyAction::Cascade) => {
-                            // TODO: 当前只处理直接子表，不支持递归删除孙表及更深层次
-                            // 例如: parent -> child -> grandchild，删除 parent 时 child 被删除，
-                            //      但 grandchild 不会被处理（需要递归实现）
+                            // Skip self-referencing tables for CASCADE - they are handled
+                            // in the storage engine's delete method which does multi-pass
+                            // transitive cascade deletion properly
+                            if table_name == parent_table {
+                                continue;
+                            }
                             let child_rows = storage.scan(&table_name)?;
                             if let Some(pk_val) = parent_key_values.first() {
-                                let original_count = child_rows.len();
-                                let remaining: Vec<Vec<Value>> = child_rows
+                                let (to_delete, to_keep): (Vec<Vec<Value>>, Vec<Vec<Value>>) = child_rows
                                     .into_iter()
-                                    .filter(|r| r[col_idx] != *pk_val)
-                                    .collect();
-                                let deleted = original_count - remaining.len();
-                                if deleted > 0 {
+                                    .partition(|r| r[col_idx] == *pk_val);
+
+                                if !to_delete.is_empty() {
                                     let _ = storage.delete(&table_name, &[]);
-                                    if !remaining.is_empty() {
-                                        storage.insert(&table_name, remaining)?;
+                                    if !to_keep.is_empty() {
+                                        storage.insert(&table_name, to_keep)?;
                                     }
-                                    total_cascade_deletes += deleted;
+                                    total_cascade_deletes += to_delete.len();
                                 }
                             }
                         }
                         Some(ForeignKeyAction::SetNull) => {
+                            // Skip self-referencing tables for SET NULL
+                            // They are handled in storage engine's delete method
+                            if table_name == parent_table {
+                                continue;
+                            }
                             let child_rows = storage.scan(&table_name)?;
                             if let Some(pk_val) = parent_key_values.first() {
                                 let mut updated = false;
@@ -853,14 +863,16 @@ impl ExecutionEngine {
                             sqlrustgo_storage::ForeignKeyConstraint {
                                 referenced_table: fk.table.clone(),
                                 referenced_column: fk.column.clone(),
-                                on_delete: fk
-                                    .on_delete
-                                    .as_ref()
-                                    .map(|_| sqlrustgo_storage::ForeignKeyAction::Cascade),
-                                on_update: fk
-                                    .on_update
-                                    .as_ref()
-                                    .map(|_| sqlrustgo_storage::ForeignKeyAction::Cascade),
+                                on_delete: fk.on_delete.as_ref().map(|a| match a {
+                                    sqlrustgo_parser::parser::ForeignKeyAction::Cascade => sqlrustgo_storage::ForeignKeyAction::Cascade,
+                                    sqlrustgo_parser::parser::ForeignKeyAction::SetNull => sqlrustgo_storage::ForeignKeyAction::SetNull,
+                                    sqlrustgo_parser::parser::ForeignKeyAction::Restrict => sqlrustgo_storage::ForeignKeyAction::Restrict,
+                                }),
+                                on_update: fk.on_update.as_ref().map(|a| match a {
+                                    sqlrustgo_parser::parser::ForeignKeyAction::Cascade => sqlrustgo_storage::ForeignKeyAction::Cascade,
+                                    sqlrustgo_parser::parser::ForeignKeyAction::SetNull => sqlrustgo_storage::ForeignKeyAction::SetNull,
+                                    sqlrustgo_parser::parser::ForeignKeyAction::Restrict => sqlrustgo_storage::ForeignKeyAction::Restrict,
+                                }),
                             }
                         });
                         sqlrustgo_storage::ColumnDefinition {
@@ -964,37 +976,67 @@ impl ExecutionEngine {
                 }
 
                 // Handle foreign key constraints for CASCADE/SET NULL/RESTRICT
+                // For self-referencing tables, we use storage engine's delete which handles
+                // transitive CASCADE properly
+                let mut has_self_ref_cascade = false;
                 if let (Some(pk_col_idx), true) = (primary_key_col, !rows_to_delete.is_empty()) {
-                    for row in &rows_to_delete {
-                        let key_value = row[pk_col_idx].clone();
-                        handle_foreign_key_delete(
-                            &mut *storage,
-                            &delete.table,
-                            &[key_value],
-                            &columns[pk_col_idx].name,
-                        )?;
+                    // Check if this table has any self-referencing FK with CASCADE
+                    let table_info = storage.get_table_info(&delete.table).ok();
+                    has_self_ref_cascade = table_info
+                        .as_ref()
+                        .map(|info| {
+                            info.columns.iter().any(|col| {
+                                col.references.as_ref().map_or(false, |fk| {
+                                    fk.referenced_table == delete.table && fk.on_delete == Some(ForeignKeyAction::Cascade)
+                                })
+                            })
+                        })
+                        .unwrap_or(false);
+
+                    // Only call handle_foreign_key_delete if NOT a self-referencing CASCADE table
+                    if !has_self_ref_cascade {
+                        for row in &rows_to_delete {
+                            let key_value = row[pk_col_idx].clone();
+                            handle_foreign_key_delete(
+                                &mut *storage,
+                                &delete.table,
+                                &[key_value],
+                                &columns[pk_col_idx].name,
+                            )?;
+                        }
                     }
                 }
-
-                // Filter rows - keep rows that DON'T match the WHERE clause
-                let mut remaining_rows: Vec<Vec<Value>> = all_rows
-                    .into_iter()
-                    .filter(|row| {
-                        if let Some(ref where_clause) = delete.where_clause {
-                            !evaluate_where_clause(where_clause, row, &columns)
-                        } else {
-                            true
-                        }
-                    })
-                    .collect();
 
                 let deleted_count = rows_to_delete.len();
 
                 // Delete matching rows and insert remaining rows
                 if deleted_count > 0 {
-                    let _ = storage.delete(&delete.table, &[]);
-                    if !remaining_rows.is_empty() {
-                        storage.insert(&delete.table, remaining_rows)?;
+                    if has_self_ref_cascade {
+                        // For self-referencing CASCADE, use storage.delete with proper filter
+                        // so that storage engine's CASCADE loop handles transitive deletion
+                        if let Some(pk_col_idx) = primary_key_col {
+                            for row in &rows_to_delete {
+                                let key_value = row[pk_col_idx].clone();
+                                // Filter format: [column_index, value]
+                                storage.delete(&delete.table, &[Value::Integer(pk_col_idx as i64), key_value])?;
+                            }
+                        }
+                    } else {
+                        // For non-self-referencing tables, use delete all + reinsert pattern
+                        let remaining_rows: Vec<Vec<Value>> = all_rows
+                            .into_iter()
+                            .filter(|row| {
+                                if let Some(ref where_clause) = delete.where_clause {
+                                    !evaluate_where_clause(where_clause, row, &columns)
+                                } else {
+                                    true
+                                }
+                            })
+                            .collect();
+                        let _ = storage.delete(&delete.table, &[]);
+                        if !remaining_rows.is_empty() {
+                            storage.insert(&delete.table, remaining_rows)?;
+                        }
                     }
                 }
 
@@ -1054,23 +1096,53 @@ impl ExecutionEngine {
                         }
                     }
 
-                    // Handle foreign key constraints if primary key is being updated
-                    if let (Some(pk_col), Some(old_val)) = (primary_key_col, old_key_value) {
-                        if let Some(new_key_val) = new_row.get(pk_col) {
-                            handle_foreign_key_update(
-                                &mut *storage,
-                                &update.table,
-                                &old_val,
-                                new_key_val,
-                                &columns[pk_col].name,
-                            )?;
-                        }
-                    }
-
                     rows_to_update.push((row.clone(), new_row));
                 }
 
                 let updated_count = rows_to_update.len();
+
+                // Check RESTRICT constraints BEFORE modifying the parent table
+                // This must happen before any delete/insert operations
+                if updated_count > 0 {
+                    if let Some(pk_col_idx) = primary_key_col {
+                        for (old_row, new_row) in &rows_to_update {
+                            if let (Some(old_val), Some(new_val)) = (old_row.get(pk_col_idx), new_row.get(pk_col_idx)) {
+                                if old_val != new_val {
+                                    // Check if any child table has RESTRICT that would block this update
+                                    let all_tables = storage.list_tables();
+                                    for table_name in &all_tables {
+                                        if *table_name == update.table {
+                                            continue;
+                                        }
+
+                                        let table_info = match storage.get_table_info(table_name) {
+                                            Ok(info) => info,
+                                            Err(_) => continue,
+                                        };
+
+                                        for (col_idx, col) in table_info.columns.iter().enumerate() {
+                                            if let Some(ref fk) = col.references {
+                                                if fk.referenced_table == update.table && fk.referenced_column == columns[pk_col_idx].name {
+                                                    if fk.on_update == Some(ForeignKeyAction::Restrict) {
+                                                        let child_rows = storage.scan(table_name)?;
+                                                        for child_row in &child_rows {
+                                                            if child_row[col_idx] == *old_val {
+                                                                return Err(SqlError::ExecutionError(format!(
+                                                                    "Cannot update: foreign key constraint violation - table '{}' has referenced rows",
+                                                                    table_name
+                                                                )));
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
 
                 // Write back updated rows
                 if updated_count > 0 {
@@ -1078,11 +1150,30 @@ impl ExecutionEngine {
 
                     let mut final_rows = all_rows;
                     final_rows.retain(|r| !rows_to_update.iter().any(|(old, _)| old == r));
-                    for (_, new) in rows_to_update {
-                        final_rows.push(new);
+                    for (_, new) in rows_to_update.iter() {
+                        final_rows.push(new.clone());
                     }
 
                     storage.insert(&update.table, final_rows)?;
+
+                    // Now handle foreign key cascading AFTER parent is updated
+                    // This must happen AFTER the parent record is updated because
+                    // child records reference the NEW value, not the old one
+                    if let Some(pk_col_idx) = primary_key_col {
+                        for (old_row, new_row) in &rows_to_update {
+                            if let (Some(old_val), Some(new_val)) = (old_row.get(pk_col_idx), new_row.get(pk_col_idx)) {
+                                if old_val != new_val {
+                                    handle_foreign_key_update(
+                                        &mut *storage,
+                                        &update.table,
+                                        &old_val,
+                                        new_val,
+                                        &columns[pk_col_idx].name,
+                                    )?;
+                                }
+                            }
+                        }
+                    }
                 }
 
                 Ok(ExecutorResult::new(vec![], updated_count))
