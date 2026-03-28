@@ -343,6 +343,7 @@ impl ExplainExecutor {
             Expr::UnaryExpr { op, expr } => format!("({} {})", op, self.format_expr(expr)),
             Expr::WindowFunction { func, .. } => format!("{:?}", func),
             Expr::Alias { expr, name } => format!("{} AS {}", self.format_expr(expr), name),
+            Expr::Parameter { index } => format!("?{}", index),
         }
     }
 
