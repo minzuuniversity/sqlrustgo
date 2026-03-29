@@ -34,6 +34,10 @@ pub use buffer_pool::BufferPool;
 pub use buffer_pool_metrics::BufferPoolMetrics;
 pub use clock_replacer::ClockReplacer;
 
+pub use columnar::{
+    Bitmap, ColumnChunk, ColumnSegment, ColumnStats, ColumnarStorage, CompressionType, TableStore,
+};
+
 pub use engine::{
     ColumnDefinition, ForeignKeyAction, ForeignKeyConstraint, MemoryStorage, Record, StorageEngine,
     TableData, TableInfo, TriggerEvent, TriggerInfo, TriggerTiming, ViewInfo,
