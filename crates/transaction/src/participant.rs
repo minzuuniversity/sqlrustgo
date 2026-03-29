@@ -1,3 +1,4 @@
+#[allow(unused_imports)]
 use crate::dtc::{Change, ChangeOperation, DistributedTransactionState, TransactionContext};
 use crate::gid::{GlobalTransactionId, NodeId};
 use sqlrustgo_storage::{WalEntryType, WalManager};
