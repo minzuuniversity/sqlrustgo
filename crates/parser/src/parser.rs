@@ -33,6 +33,10 @@ pub enum Statement {
     CreateView(CreateViewStatement),
     CreateTrigger(CreateTriggerStatement),
     DropTrigger(DropTriggerStatement),
+    CreateProcedure(CreateProcedureStatement),
+    DropProcedure(DropProcedureStatement),
+    Call(CallProcedureStatement),
+    Delimiter(DelimiterStatement),
     Analyze(AnalyzeStatement),
     Explain(ExplainStatement),
     Transaction(TransactionStatement),
@@ -40,6 +44,47 @@ pub enum Statement {
     Revoke(RevokeStatement),
     ShowStatus,
     ShowProcesslist,
+    /// PREPARE stmt FROM 'sql text'
+    Prepare(PrepareStatement),
+    /// EXECUTE stmt USING param1, param2, ...
+    Execute(ExecuteStatement),
+    /// DEALLOCATE PREPARE stmt
+    DeallocatePrepare(DeallocatePrepareStatement),
+    /// COPY table FROM/TO 'path' (FORMAT PARQUET)
+    Copy(CopyStatement),
+}
+
+/// PREPARE statement
+#[derive(Debug, Clone, PartialEq)]
+pub struct PrepareStatement {
+    pub name: String,
+    pub sql: String,
+}
+
+/// EXECUTE statement
+#[derive(Debug, Clone, PartialEq)]
+pub struct ExecuteStatement {
+    pub name: String,
+    pub params: Vec<Expression>,
+}
+
+/// DEALLOCATE PREPARE statement
+#[derive(Debug, Clone, PartialEq)]
+pub struct DeallocatePrepareStatement {
+    pub name: String,
+}
+
+/// COPY statement - COPY table FROM 'path' (FORMAT PARQUET) or COPY table TO 'path' (FORMAT PARQUET)
+#[derive(Debug, Clone, PartialEq)]
+pub struct CopyStatement {
+    /// Table name
+    pub table_name: String,
+    /// Direction: true = FROM (import), false = TO (export)
+    pub from: bool,
+    /// File path
+    pub path: String,
+    /// Format (only PARQUET supported currently)
+    pub format: String,
 }
 
 /// CREATE INDEX statement
@@ -116,6 +161,65 @@ pub struct CreateTriggerStatement {
 #[derive(Debug, Clone, PartialEq)]
 pub struct DropTriggerStatement {
     pub name: String,
+}
+
+/// CREATE PROCEDURE statement
+#[derive(Debug, Clone, PartialEq)]
+pub struct CreateProcedureStatement {
+    pub name: String,
+    pub params: Vec<ProcedureParam>,
+    pub body: Vec<ProcedureStatement>,
+}
+
+/// Stored procedure parameter
+#[derive(Debug, Clone, PartialEq)]
+pub struct ProcedureParam {
+    pub name: String,
+    pub mode: ParamMode,
+    pub data_type: String,
+}
+
+/// Parameter mode for stored procedure
+#[derive(Debug, Clone, PartialEq)]
+pub enum ParamMode {
+    In,
+    Out,
+    InOut,
+}
+
+/// Procedure body statement
+#[derive(Debug, Clone, PartialEq)]
+pub enum ProcedureStatement {
+    /// Raw SQL statement
+    RawSql(String),
+    /// SELECT ... INTO var1, var2 FROM ...
+    SelectInto {
+        columns: Vec<String>,
+        into_vars: Vec<String>,
+        table: String,
+        where_clause: Option<String>,
+    },
+    /// SET variable = value
+    Set { variable: String, value: String },
+}
+
+/// DROP PROCEDURE statement
+#[derive(Debug, Clone, PartialEq)]
+pub struct DropProcedureStatement {
+    pub name: String,
+}
+
+/// CALL statement for invoking stored procedure
+#[derive(Debug, Clone, PartialEq)]
+pub struct CallProcedureStatement {
+    pub procedure_name: String,
+    pub args: Vec<String>,
+}
+
+/// DELIMITER statement (client-side directive)
+#[derive(Debug, Clone, PartialEq)]
+pub struct DelimiterStatement {
+    pub delimiter: String,
 }
 
 /// Trigger timing: BEFORE or AFTER
@@ -339,6 +443,35 @@ pub enum Expression {
     Subquery(Box<Statement>),
     /// Qualified column: table.column
     QualifiedColumn(String, String),
+    /// Window function expression: ROW_NUMBER() OVER (PARTITION BY ... ORDER BY ...)
+    WindowFunction {
+        func: String,           // Function name: ROW_NUMBER, RANK, LEAD, etc.
+        args: Vec<Expression>, // Arguments for LEAD/LAG/NTH_VALUE
+        partition_by: Vec<Expression>,
+        order_by: Vec<OrderByItem>,
+        frame: Option<WindowFrameInfo>,
+    },
+    /// Parameter placeholder for prepared statements (?)
+    Placeholder,
+}
+
+/// Window frame info parsed from SQL
+#[derive(Debug, Clone, PartialEq)]
+pub struct WindowFrameInfo {
+    pub mode: String, // ROWS, RANGE, or GROUPS
+    pub start: FrameBoundInfo,
+    pub end: FrameBoundInfo,
+    pub exclude: Option<String>, // NO OTHERS, CURRENT ROW, GROUP, or TIES
+}
+
+/// Frame bound for window frame
+#[derive(Debug, Clone, PartialEq)]
+pub enum FrameBoundInfo {
+    UnboundedPreceding,
+    Preceding(i64),
+    CurrentRow,
+    Following(i64),
+    UnboundedFollowing,
 }
 
 /// SQL Parser
@@ -403,6 +536,10 @@ impl Parser {
             Some(Token::Grant) => self.parse_grant(),
             Some(Token::Revoke) => self.parse_revoke(),
             Some(Token::Show) => self.parse_show(),
+            Some(Token::Prepare) => self.parse_prepare(),
+            Some(Token::Execute) => self.parse_execute(),
+            Some(Token::Deallocate) => self.parse_deallocate(),
+            Some(Token::Copy) => self.parse_copy(),
             Some(t) => Err(format!("Unexpected token: {:?}", t)),
             None => Err("Empty input".to_string()),
         }
@@ -487,6 +624,16 @@ impl Parser {
                         distinct: false,
                     };
                     aggregates.push(agg);
+                }
+                Some(Token::RowNumber) | Some(Token::Rank) | Some(Token::DenseRank)
+                | Some(Token::Lead) | Some(Token::Lag) | Some(Token::FirstValue)
+                | Some(Token::LastValue) | Some(Token::NthValue) => {
+                    // Parse window function
+                    let window_expr = self.parse_window_function()?;
+                    columns.push(SelectColumn {
+                        name: format!("{:?}", window_expr),
+                        alias: None,
+                    });
                 }
                 Some(Token::Identifier(_)) => {
                     let first_name = match self.current() {
@@ -902,7 +1049,11 @@ impl Parser {
                         break;
                     }
                     Some(Token::Identifier(name)) => {
-                        row.push(Expression::Identifier(name.clone()));
+                        if name.to_uppercase() == "NULL" {
+                            row.push(Expression::Literal("NULL".to_string()));
+                        } else {
+                            row.push(Expression::Identifier(name.clone()));
+                        }
                         self.next();
                     }
                     Some(Token::NumberLiteral(n)) => {
@@ -914,14 +1065,6 @@ impl Parser {
                         self.next();
                     }
                     Some(Token::Comma) => {
-                        self.next();
-                    }
-                    Some(Token::Identifier(name)) => {
-                        if name.to_uppercase() == "NULL" {
-                            row.push(Expression::Literal("NULL".to_string()));
-                        } else {
-                            row.push(Expression::Identifier(name.clone()));
-                        }
                         self.next();
                     }
                     Some(Token::Minus) => {
@@ -1281,6 +1424,12 @@ impl Parser {
                 self.expect(Token::RParen)?;
                 Ok(Expression::FunctionCall(func_name.to_string(), args))
             }
+            // Window function: ROW_NUMBER() OVER (...)
+            Some(Token::RowNumber) | Some(Token::Rank) | Some(Token::DenseRank)
+            | Some(Token::Lead) | Some(Token::Lag) | Some(Token::FirstValue)
+            | Some(Token::LastValue) | Some(Token::NthValue) => {
+                return self.parse_window_function();
+            }
             Some(Token::LParen) => {
                 self.next(); // consume '('
 
@@ -1296,8 +1445,249 @@ impl Parser {
                 self.expect(Token::RParen)?;
                 Ok(expr)
             }
+            Some(Token::QuestionMark) => {
+                self.next(); // consume '?'
+                Ok(Expression::Placeholder)
+            }
             _ => Err("Expected expression".to_string()),
         }
+    }
+
+    /// Parse a window function: ROW_NUMBER() OVER (...)
+    fn parse_window_function(&mut self) -> Result<Expression, String> {
+        // Parse function name
+        let func = match self.current() {
+            Some(Token::RowNumber) => "ROW_NUMBER".to_string(),
+            Some(Token::Rank) => "RANK".to_string(),
+            Some(Token::DenseRank) => "DENSE_RANK".to_string(),
+            Some(Token::Lead) => "LEAD".to_string(),
+            Some(Token::Lag) => "LAG".to_string(),
+            Some(Token::FirstValue) => "FIRST_VALUE".to_string(),
+            Some(Token::LastValue) => "LAST_VALUE".to_string(),
+            Some(Token::NthValue) => "NTH_VALUE".to_string(),
+            Some(Token::Sum) => "SUM".to_string(),
+            Some(Token::Avg) => "AVG".to_string(),
+            Some(Token::Count) => "COUNT".to_string(),
+            Some(Token::Min) => "MIN".to_string(),
+            Some(Token::Max) => "MAX".to_string(),
+            _ => return Err("Expected window function".to_string()),
+        };
+        self.next(); // consume function name
+
+        // Parse arguments if any (for LEAD/LAG/NTH_VALUE)
+        let mut args = Vec::new();
+        if matches!(self.current(), Some(Token::LParen)) {
+            self.next(); // consume '('
+            if !matches!(self.current(), Some(Token::RParen)) {
+                args.push(self.parse_expression()?);
+                while matches!(self.current(), Some(Token::Comma)) {
+                    self.next(); // consume ','
+                    args.push(self.parse_expression()?);
+                }
+            }
+            self.expect(Token::RParen)?;
+        }
+
+        // Parse OVER clause
+        self.expect(Token::Over)?;
+        self.expect(Token::LParen)?;
+
+        // Parse PARTITION BY (optional)
+        let mut partition_by = Vec::new();
+        if matches!(self.current(), Some(Token::Partition)) {
+            self.next(); // consume PARTITION
+            self.expect(Token::By)?;
+            partition_by.push(self.parse_expression()?);
+            while matches!(self.current(), Some(Token::Comma)) {
+                self.next(); // consume ','
+                partition_by.push(self.parse_expression()?);
+            }
+        }
+
+        // Parse ORDER BY (optional)
+        let mut order_by = Vec::new();
+        if matches!(self.current(), Some(Token::Order)) {
+            self.next(); // consume ORDER
+            self.expect(Token::By)?;
+            order_by.push(self.parse_order_by_item()?);
+            while matches!(self.current(), Some(Token::Comma)) {
+                self.next(); // consume ','
+                order_by.push(self.parse_order_by_item()?);
+            }
+        }
+
+        // Parse window frame (optional)
+        let frame = self.parse_window_frame().ok();
+
+        self.expect(Token::RParen)?;
+
+        Ok(Expression::WindowFunction {
+            func,
+            args,
+            partition_by,
+            order_by,
+            frame,
+        })
+    }
+
+    /// Parse window frame: ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+    fn parse_window_frame(&mut self) -> Result<WindowFrameInfo, String> {
+        // Parse frame mode (ROWS, RANGE, or GROUPS) - optional, defaults to ROWS
+        let mode = match self.current() {
+            Some(Token::Rows) => {
+                self.next();
+                "ROWS".to_string()
+            }
+            Some(Token::Range) => {
+                self.next();
+                "RANGE".to_string()
+            }
+            Some(Token::Groups) => {
+                self.next();
+                "GROUPS".to_string()
+            }
+            // No frame specified - will return early
+            _ => {
+                return Err("Expected ROWS, RANGE, or GROUPS".to_string());
+            }
+        };
+
+        // Parse BETWEEN
+        self.expect(Token::Between)?;
+
+        let start = self.parse_frame_bound()?;
+        self.expect(Token::And)?;
+        let end = self.parse_frame_bound()?;
+
+        // Parse EXCLUDE (optional)
+        let exclude = if matches!(self.current(), Some(Token::Exclude)) {
+            self.next(); // consume EXCLUDE
+            Some(match self.current() {
+                Some(Token::NoOthers) => {
+                    self.next();
+                    "NO OTHERS".to_string()
+                }
+                Some(Token::Current) => {
+                    self.next();
+                    self.expect(Token::Row)?;
+                    "CURRENT ROW".to_string()
+                }
+                Some(Token::Ties) => {
+                    self.next();
+                    "TIES".to_string()
+                }
+                _ => return Err("Expected NO OTHERS, CURRENT ROW, or TIES after EXCLUDE".to_string()),
+            })
+        } else {
+            None
+        };
+
+        Ok(WindowFrameInfo { mode, start, end, exclude })
+    }
+
+    /// Parse frame bound: UNBOUNDED PRECEDING, PRECEDING(n), CURRENT ROW, FOLLOWING(n), UNBOUNDED FOLLOWING
+    fn parse_frame_bound(&mut self) -> Result<FrameBoundInfo, String> {
+        match self.current() {
+            Some(Token::Unbounded) => {
+                self.next(); // consume UNBOUNDED
+                match self.current() {
+                    Some(Token::Preceding) => {
+                        self.next();
+                        Ok(FrameBoundInfo::UnboundedPreceding)
+                    }
+                    Some(Token::Following) => {
+                        self.next();
+                        Ok(FrameBoundInfo::UnboundedFollowing)
+                    }
+                    _ => Err("Expected PRECEDING or FOLLOWING after UNBOUNDED".to_string()),
+                }
+            }
+            Some(Token::Preceding) => {
+                self.next(); // consume PRECEDING
+                // Try to parse optional number: PRECEDING(n)
+                if matches!(self.current(), Some(Token::LParen)) {
+                    self.next(); // consume '('
+                    let n = match self.current() {
+                        Some(Token::NumberLiteral(n)) => n.parse::<i64>().unwrap_or(1),
+                        _ => 1,
+                    };
+                    if let Some(Token::NumberLiteral(_)) = self.current() {
+                        self.next();
+                    }
+                    self.expect(Token::RParen)?;
+                    Ok(FrameBoundInfo::Preceding(n))
+                } else {
+                    Ok(FrameBoundInfo::Preceding(1))
+                }
+            }
+            Some(Token::Following) => {
+                self.next(); // consume FOLLOWING
+                // Try to parse optional number: FOLLOWING(n)
+                if matches!(self.current(), Some(Token::LParen)) {
+                    self.next(); // consume '('
+                    let n = match self.current() {
+                        Some(Token::NumberLiteral(n)) => n.parse::<i64>().unwrap_or(1),
+                        _ => 1,
+                    };
+                    if let Some(Token::NumberLiteral(_)) = self.current() {
+                        self.next();
+                    }
+                    self.expect(Token::RParen)?;
+                    Ok(FrameBoundInfo::Following(n))
+                } else {
+                    Ok(FrameBoundInfo::Following(1))
+                }
+            }
+            Some(Token::Current) => {
+                self.next(); // consume CURRENT
+                self.expect(Token::Row)?;
+                Ok(FrameBoundInfo::CurrentRow)
+            }
+            _ => Err("Expected frame bound (UNBOUNDED PRECEDING, PRECEDING, CURRENT ROW, FOLLOWING, UNBOUNDED FOLLOWING)".to_string()),
+        }
+    }
+
+    /// Parse ORDER BY item
+    fn parse_order_by_item(&mut self) -> Result<OrderByItem, String> {
+        let expr = self.parse_expression()?;
+
+        // Parse ASC/DESC (default ASC)
+        let asc = match self.current() {
+            Some(Token::Asc) => {
+                self.next();
+                true
+            }
+            Some(Token::Desc) => {
+                self.next();
+                false
+            }
+            _ => true, // default is ASC
+        };
+
+        // Parse NULLS FIRST/LAST (default depends on ASC/DESC)
+        let nulls_first = match self.current() {
+            Some(Token::Nulls) => {
+                self.next(); // consume NULLS
+                match self.current() {
+                    Some(Token::First) => {
+                        self.next();
+                        true
+                    }
+                    Some(Token::Last) => {
+                        self.next();
+                        false
+                    }
+                    _ => return Err("Expected FIRST or LAST after NULLS".to_string()),
+                }
+            }
+            _ => asc, // default: NULLS FIRST for ASC, NULLS LAST for DESC
+        };
+
+        Ok(OrderByItem {
+            expr,
+            asc,
+            nulls_first,
+        })
     }
 
     fn parse_delete(&mut self) -> Result<Statement, String> {
@@ -1772,6 +2162,250 @@ impl Parser {
         }))
     }
 
+    fn parse_create_procedure(&mut self) -> Result<Statement, String> {
+        // Parse procedure name
+        let name = match self.next() {
+            Some(Token::Identifier(name)) => name,
+            _ => return Err("Expected procedure name".to_string()),
+        };
+
+        // Parse parameters: (param1, param2, ...)
+        self.expect(Token::LParen)?;
+        
+        let mut params = Vec::new();
+        if !matches!(self.current(), Some(Token::RParen)) {
+            loop {
+                let param_name = match self.next() {
+                    Some(Token::Identifier(name)) => name,
+                    _ => return Err("Expected parameter name".to_string()),
+                };
+                
+                // Parse parameter mode (IN, OUT, INOUT) - default is IN
+                let mode = match self.current() {
+                    Some(Token::Identifier(mode_str)) => {
+                        match mode_str.to_uppercase().as_str() {
+                            "IN" => {
+                                self.next();
+                                ParamMode::In
+                            }
+                            "OUT" => {
+                                self.next();
+                                ParamMode::Out
+                            }
+                            "INOUT" => {
+                                self.next();
+                                ParamMode::InOut
+                            }
+                            _ => ParamMode::In, // default
+                        }
+                    }
+                    _ => ParamMode::In,
+                };
+                
+                // Parse data type
+                let data_type = match self.next() {
+                    Some(Token::Identifier(dt)) => dt,
+                    Some(Token::Integer) => "INTEGER".to_string(),
+                    Some(Token::Text) => "TEXT".to_string(),
+                    Some(Token::Float) => "FLOAT".to_string(),
+                    Some(Token::Decimal) => "DECIMAL".to_string(),
+                    Some(Token::Boolean) => "BOOLEAN".to_string(),
+                    Some(Token::Date) => "DATE".to_string(),
+                    Some(Token::Timestamp) => "TIMESTAMP".to_string(),
+                    Some(Token::Blob) => "BLOB".to_string(),
+                    _ => return Err("Expected data type".to_string()),
+                };
+                
+                params.push(ProcedureParam {
+                    name: param_name,
+                    mode,
+                    data_type,
+                });
+                
+                match self.current() {
+                    Some(Token::Comma) => {
+                        self.next();
+                    }
+                    _ => break,
+                }
+            }
+        }
+        self.expect(Token::RParen)?;
+
+        // Parse BEGIN...END block
+        self.expect(Token::Begin)?;
+        
+        let mut body = Vec::new();
+        
+        // Simple body parsing: collect statements until END
+        // Note: This is a simplified implementation that stores raw SQL for now
+        while !matches!(self.current(), Some(Token::Identifier(end_str)) 
+                       if end_str.to_uppercase() == "END") 
+               && !matches!(self.current(), None) {
+            let stmt = match self.current() {
+                Some(Token::Select) => {
+                    // For now, just collect SELECT statements as raw SQL
+                    let raw_sql = self.collect_until_semicolon();
+                    ProcedureStatement::RawSql(raw_sql)
+                }
+                Some(Token::Set) => {
+                    let raw_sql = self.collect_until_semicolon();
+                    ProcedureStatement::RawSql(raw_sql)
+                }
+                Some(Token::Identifier(_)) => {
+                    let raw_sql = self.collect_until_semicolon();
+                    ProcedureStatement::RawSql(raw_sql)
+                }
+                Some(Token::Semicolon) => {
+                    self.next();
+                    continue;
+                }
+                Some(Token::If) => {
+                    let raw_sql = self.collect_until_end_if();
+                    ProcedureStatement::RawSql(raw_sql)
+                }
+                Some(Token::While) => {
+                    let raw_sql = self.collect_until_end_loop();
+                    ProcedureStatement::RawSql(raw_sql)
+                }
+                Some(Token::Loop) => {
+                    let raw_sql = self.collect_until_end_loop();
+                    ProcedureStatement::RawSql(raw_sql)
+                }
+                Some(Token::Leave) => {
+                    let raw_sql = self.collect_until_semicolon();
+                    ProcedureStatement::RawSql(raw_sql)
+                }
+                Some(Token::Iterate) => {
+                    let raw_sql = self.collect_until_semicolon();
+                    ProcedureStatement::RawSql(raw_sql)
+                }
+                Some(Token::Signal) => {
+                    let raw_sql = self.collect_until_semicolon();
+                    ProcedureStatement::RawSql(raw_sql)
+                }
+                Some(Token::Return) => {
+                    let raw_sql = self.collect_until_semicolon();
+                    ProcedureStatement::RawSql(raw_sql)
+                }
+                _ => {
+                    let raw_sql = self.collect_until_semicolon();
+                    ProcedureStatement::RawSql(raw_sql)
+                }
+            };
+            body.push(stmt);
+        }
+        
+        // Expect END
+        if matches!(self.current(), Some(Token::Identifier(end_str)) 
+                   if end_str.to_uppercase() == "END") {
+            self.next();
+        }
+
+        Ok(Statement::CreateProcedure(CreateProcedureStatement {
+            name,
+            params,
+            body,
+        }))
+    }
+
+    /// Collect tokens until semicolon (exclusive)
+    fn collect_until_semicolon(&mut self) -> String {
+        let mut sql = String::new();
+        loop {
+            match self.current() {
+                Some(Token::Semicolon) => {
+                    self.next();
+                    break;
+                }
+                Some(Token::Eof) => break,
+                None => break,
+                Some(tok) => {
+                    sql.push_str(&tok.to_string());
+                    sql.push(' ');
+                    self.next();
+                }
+            }
+        }
+        sql.trim().to_string()
+    }
+
+    /// Collect tokens until END IF
+    fn collect_until_end_if(&mut self) -> String {
+        let mut sql = String::new();
+        let mut end_if_depth = 0;
+        loop {
+            match self.current() {
+                Some(Token::Eof) | None => break,
+                Some(Token::Identifier(id)) if id.to_uppercase() == "END" => {
+                    sql.push_str("END");
+                    sql.push(' ');
+                    self.next();
+                    if matches!(self.current(), Some(Token::If)) {
+                        if end_if_depth > 0 {
+                            end_if_depth -= 1;
+                            sql.push_str("IF ");
+                            self.next();
+                        } else {
+                            sql.push_str("IF");
+                            self.next();
+                            break;
+                        }
+                    }
+                }
+                Some(Token::If) => {
+                    end_if_depth += 1;
+                    sql.push_str("IF ");
+                    self.next();
+                }
+                Some(tok) => {
+                    sql.push_str(&tok.to_string());
+                    sql.push(' ');
+                    self.next();
+                }
+            }
+        }
+        sql.trim().to_string()
+    }
+
+    /// Collect tokens until END LOOP
+    fn collect_until_end_loop(&mut self) -> String {
+        let mut sql = String::new();
+        let mut end_loop_depth = 0;
+        loop {
+            match self.current() {
+                Some(Token::Eof) | None => break,
+                Some(Token::Identifier(id)) if id.to_uppercase() == "END" => {
+                    sql.push_str("END");
+                    sql.push(' ');
+                    self.next();
+                    if matches!(self.current(), Some(Token::Loop)) {
+                        if end_loop_depth > 0 {
+                            end_loop_depth -= 1;
+                            sql.push_str("LOOP ");
+                            self.next();
+                        } else {
+                            sql.push_str("LOOP");
+                            self.next();
+                            break;
+                        }
+                    }
+                }
+                Some(Token::Loop) => {
+                    end_loop_depth += 1;
+                    sql.push_str("LOOP ");
+                    self.next();
+                }
+                Some(tok) => {
+                    sql.push_str(&tok.to_string());
+                    sql.push(' ');
+                    self.next();
+                }
+            }
+        }
+        sql.trim().to_string()
+    }
+
     fn parse_create_view(&mut self) -> Result<Statement, String> {
         let name = match self.next() {
             Some(Token::Identifier(name)) => name,
@@ -1962,6 +2596,198 @@ impl Parser {
             }
             _ => Err("Expected STATUS or PROCESSLIST after SHOW".to_string()),
         }
+    }
+
+    /// Parse PREPARE statement: PREPARE stmt FROM 'sql text'
+    fn parse_prepare(&mut self) -> Result<Statement, String> {
+        self.expect(Token::Prepare)?;
+
+        // Get statement name
+        let name = match self.current() {
+            Some(Token::Identifier(n)) => {
+                let name = n.clone();
+                self.next();
+                name
+            }
+            _ => return Err("Expected statement name after PREPARE".to_string()),
+        };
+
+        self.expect(Token::From)?;
+
+        // Get SQL string literal
+        let sql = match self.current() {
+            Some(Token::StringLiteral(s)) => {
+                let sql = s.clone();
+                self.next();
+                sql
+            }
+            _ => return Err("Expected SQL string literal after FROM".to_string()),
+        };
+
+        Ok(Statement::Prepare(PrepareStatement { name, sql }))
+    }
+
+    /// Parse EXECUTE statement: EXECUTE stmt USING param1, param2, ...
+    fn parse_execute(&mut self) -> Result<Statement, String> {
+        self.expect(Token::Execute)?;
+
+        // Get statement name
+        let name = match self.current() {
+            Some(Token::Identifier(n)) => {
+                let name = n.clone();
+                self.next();
+                name
+            }
+            _ => return Err("Expected statement name after EXECUTE".to_string()),
+        };
+
+        // Parse optional USING clause
+        let mut params = Vec::new();
+        if let Some(Token::Using) = self.current() {
+            self.next();
+            // Parse parameter list
+            loop {
+                params.push(self.parse_expression()?);
+                match self.current() {
+                    Some(Token::Comma) => {
+                        self.next();
+                    }
+                    _ => break,
+                }
+            }
+        }
+
+        Ok(Statement::Execute(ExecuteStatement { name, params }))
+    }
+
+    /// Parse DEALLOCATE PREPARE statement: DEALLOCATE PREPARE stmt
+    fn parse_deallocate(&mut self) -> Result<Statement, String> {
+        self.expect(Token::Deallocate)?;
+        self.expect(Token::Prepare)?;
+
+        // Get statement name
+        let name = match self.current() {
+            Some(Token::Identifier(n)) => {
+                let name = n.clone();
+                self.next();
+                name
+            }
+            _ => return Err("Expected statement name after DEALLOCATE PREPARE".to_string()),
+        };
+
+        Ok(Statement::DeallocatePrepare(DeallocatePrepareStatement { name }))
+    }
+
+    /// Parse COPY statement
+    /// COPY table_name FROM 'path' (FORMAT PARQUET)
+    /// COPY table_name TO 'path' (FORMAT PARQUET)
+    fn parse_copy(&mut self) -> Result<Statement, String> {
+        self.expect(Token::Copy)?;
+
+        // Get table name
+        let table_name = match self.current() {
+            Some(Token::Identifier(name)) => {
+                let name = name.clone();
+                self.next();
+                name
+            }
+            _ => return Err("Expected table name after COPY".to_string()),
+        };
+
+        // Get direction (FROM or TO)
+        let from = match self.current() {
+            Some(Token::From) => {
+                self.next();
+                true
+            }
+            Some(Token::To) => {
+                self.next();
+                false
+            }
+            _ => return Err("Expected FROM or TO after table name".to_string()),
+        };
+
+        // Get file path
+        let path = match self.current() {
+            Some(Token::StringLiteral(s)) => {
+                let path = s.clone();
+                self.next();
+                path
+            }
+            _ => return Err("Expected file path string after FROM/TO".to_string()),
+        };
+
+        // Parse optional format clause: (FORMAT PARQUET)
+        let format = if matches!(self.current(), Some(Token::LParen)) {
+            self.next().ok_or_else(|| "Unexpected end of input".to_string())?;
+            self.expect(Token::Format)?;
+            self.expect(Token::Parquet)?;
+            self.expect(Token::RParen)?;
+            "PARQUET".to_string()
+        } else {
+            "PARQUET".to_string() // Default format
+        };
+
+        Ok(Statement::Copy(CopyStatement {
+            table_name,
+            from,
+            path,
+            format,
+        }))
+    }
+
+    fn parse_call(&mut self) -> Result<Statement, String> {
+        self.expect(Token::Call)?;
+        
+        // Get procedure name
+        let procedure_name = match self.next() {
+            Some(Token::Identifier(name)) => name,
+            _ => return Err("Expected procedure name".to_string()),
+        };
+
+        // Parse arguments: (arg1, arg2, ...)
+        self.expect(Token::LParen)?;
+        
+        let mut args = Vec::new();
+        if !matches!(self.current(), Some(Token::RParen)) {
+            loop {
+                let arg = match self.next() {
+                    Some(Token::Identifier(name)) => name,
+                    Some(Token::StringLiteral(s)) => s,
+                    Some(Token::NumberLiteral(n)) => n,
+                    Some(Token::QuestionMark) => "?".to_string(),
+                    _ => return Err("Expected argument".to_string()),
+                };
+                args.push(arg);
+                
+                match self.current() {
+                    Some(Token::Comma) => {
+                        self.next();
+                    }
+                    _ => break,
+                }
+            }
+        }
+        self.expect(Token::RParen)?;
+
+        Ok(Statement::Call(CallProcedureStatement {
+            procedure_name,
+            args,
+        }))
+    }
+
+    fn parse_delimiter(&mut self) -> Result<Statement, String> {
+        self.expect(Token::Delimiter)?;
+        
+        // Get the new delimiter
+        let delimiter = match self.next() {
+            Some(Token::Semicolon) => ";".to_string(),
+            Some(Token::Identifier(d)) => d,
+            Some(Token::Eof) | None => ";".to_string(),
+            _ => return Err("Expected delimiter".to_string()),
+        };
+
+        Ok(Statement::Delimiter(DelimiterStatement { delimiter }))
     }
 
     fn parse_transaction(&mut self) -> Result<Statement, String> {
@@ -3154,6 +3980,89 @@ mod tests {
             Statement::ShowProcesslist => {}
             _ => panic!("Expected SHOW PROCESSLIST statement"),
         }
+    }
+
+    // ========================================================================
+    // COPY Statement Tests (Issue #758 - Parquet Import/Export)
+    // ========================================================================
+
+    #[test]
+    fn test_parse_copy_from_parquet() {
+        let result = parse("COPY users FROM 'users.parquet' (FORMAT PARQUET)");
+        assert!(result.is_ok(), "Error: {:?}", result.err());
+        match result.unwrap() {
+            Statement::Copy(c) => {
+                assert_eq!(c.table_name, "users");
+                assert!(c.from, "COPY FROM should have from=true");
+                assert_eq!(c.path, "users.parquet");
+                assert_eq!(c.format, "PARQUET");
+            }
+            _ => panic!("Expected COPY statement"),
+        }
+    }
+
+    #[test]
+    fn test_parse_copy_to_parquet() {
+        let result = parse("COPY users TO 'backup.parquet' (FORMAT PARQUET)");
+        assert!(result.is_ok(), "Error: {:?}", result.err());
+        match result.unwrap() {
+            Statement::Copy(c) => {
+                assert_eq!(c.table_name, "users");
+                assert!(!c.from, "COPY TO should have from=false");
+                assert_eq!(c.path, "backup.parquet");
+                assert_eq!(c.format, "PARQUET");
+            }
+            _ => panic!("Expected COPY statement"),
+        }
+    }
+
+    #[test]
+    fn test_parse_copy_from_parquet_without_format() {
+        // FORMAT PARQUET should be optional and default to PARQUET
+        let result = parse("COPY users FROM 'users.parquet'");
+        assert!(result.is_ok(), "Error: {:?}", result.err());
+        match result.unwrap() {
+            Statement::Copy(c) => {
+                assert_eq!(c.table_name, "users");
+                assert!(c.from, "COPY FROM should have from=true");
+                assert_eq!(c.path, "users.parquet");
+                assert_eq!(c.format, "PARQUET", "Default format should be PARQUET");
+            }
+            _ => panic!("Expected COPY statement"),
+        }
+    }
+
+    #[test]
+    fn test_parse_copy_to_parquet_without_format() {
+        let result = parse("COPY products TO 'products.parquet'");
+        assert!(result.is_ok(), "Error: {:?}", result.err());
+        match result.unwrap() {
+            Statement::Copy(c) => {
+                assert_eq!(c.table_name, "products");
+                assert!(!c.from, "COPY TO should have from=false");
+                assert_eq!(c.path, "products.parquet");
+                assert_eq!(c.format, "PARQUET");
+            }
+            _ => panic!("Expected COPY statement"),
+        }
+    }
+
+    #[test]
+    fn test_parse_copy_error_no_table() {
+        let result = parse("COPY FROM 'file.parquet'");
+        assert!(result.is_err(), "Should fail without table name");
+    }
+
+    #[test]
+    fn test_parse_copy_error_no_direction() {
+        let result = parse("COPY users 'file.parquet'");
+        assert!(result.is_err(), "Should fail without FROM/TO");
+    }
+
+    #[test]
+    fn test_parse_copy_error_no_path() {
+        let result = parse("COPY users FROM");
+        assert!(result.is_err(), "Should fail without file path");
     }
 }
 

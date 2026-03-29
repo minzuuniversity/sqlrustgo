@@ -1476,6 +1476,86 @@ impl ExecutionEngine {
                     ))
                 }
             },
+            Statement::Copy(copy) => {
+                use sqlrustgo_storage::parquet::{export_to_parquet, import_from_parquet};
+
+                let table_name = &copy.table_name;
+                let path = &copy.path;
+                let format = &copy.format;
+
+                // Validate format
+                if format.to_uppercase() != "PARQUET" {
+                    return Err(SqlError::ExecutionError(format!(
+                        "Unsupported COPY format: {}. Only PARQUET is supported.",
+                        format
+                    )));
+                }
+
+                let mut storage = self.storage.write().unwrap();
+
+                if copy.from {
+                    // COPY FROM PARQUET - Import data from Parquet file
+                    if !storage.has_table(table_name) {
+                        return Err(SqlError::ExecutionError(format!(
+                            "Table '{}' not found",
+                            table_name
+                        )));
+                    }
+
+                    // Get table info for column names
+                    let table_info = storage.get_table_info(table_name)
+                        .ok()
+                        .ok_or_else(|| SqlError::ExecutionError(format!(
+                            "Could not get table info for '{}'",
+                            table_name
+                        )))?;
+
+                    let column_names: Vec<String> = table_info.columns.iter().map(|c| c.name.clone()).collect();
+
+                    // Import records from Parquet
+                    let records = import_from_parquet(path, &column_names)?;
+
+                    // Insert records into table
+                    let mut rows_inserted = 0;
+                    for record in &records {
+                        if storage.insert(table_name, vec![record.clone()]).is_ok() {
+                            rows_inserted += 1;
+                        }
+                    }
+
+                    Ok(ExecutorResult::new(vec![], rows_inserted))
+                } else {
+                    // COPY TO PARQUET - Export data to Parquet file
+                    if !storage.has_table(table_name) {
+                        return Err(SqlError::ExecutionError(format!(
+                            "Table '{}' not found",
+                            table_name
+                        )));
+                    }
+
+                    // Get table info for column names
+                    let table_info = storage.get_table_info(table_name)
+                        .ok()
+                        .ok_or_else(|| SqlError::ExecutionError(format!(
+                            "Could not get table info for '{}'",
+                            table_name
+                        )))?;
+
+                    let column_names: Vec<String> = table_info.columns.iter().map(|c| c.name.clone()).collect();
+
+                    // Scan all rows from table
+                    let records = storage.scan(table_name)?;
+
+                    // Export records to Parquet
+                    export_to_parquet(path, &records, &column_names)?;
+
+                    let row_count = records.len();
+                    Ok(ExecutorResult::new(
+                        vec![vec![Value::Text(format!("Exported {} rows to {}", row_count, path))]],
+                        row_count,
+                    ))
+                }
+            }
             _ => Ok(ExecutorResult::empty()),
         }
     }

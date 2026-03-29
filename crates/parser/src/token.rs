@@ -68,6 +68,7 @@ pub enum Token {
     Leave,
     Iterate,
     Signal,
+    Delimiter,
     View,
     All,
     Limit,
@@ -77,6 +78,17 @@ pub enum Token {
     Show,
     Status,
     Processlist,
+
+    // COPY keywords
+    Copy,
+    Format,
+    Parquet,
+
+    // Prepared Statements
+    Prepare,
+    Execute,
+    Deallocate,
+    Using,
 
     // Group By / Order By keywords
     Group,
@@ -88,6 +100,30 @@ pub enum Token {
     Nulls,
     First,
     Last,
+
+    // Window Functions
+    RowNumber,
+    Rank,
+    DenseRank,
+    Lead,
+    Lag,
+    FirstValue,
+    LastValue,
+    NthValue,
+    Over,
+    Partition,
+    Within,
+    Rows,
+    Range,
+    Groups,
+    Unbounded,
+    Preceding,
+    Following,
+    Exclude,
+    Current,
+    Ties,
+    NoOthers,
+    Between,
 
     // Aggregate Functions
     Length,
@@ -143,6 +179,7 @@ pub enum Token {
     Semicolon,
     Colon,
     SingleQuote,
+    QuestionMark,
 
     // Column constraints
     AutoIncrement,
@@ -235,6 +272,7 @@ impl fmt::Display for Token {
             Token::Leave => write!(f, "LEAVE"),
             Token::Iterate => write!(f, "ITERATE"),
             Token::Signal => write!(f, "SIGNAL"),
+            Token::Delimiter => write!(f, "DELIMITER"),
             Token::View => write!(f, "VIEW"),
             Token::All => write!(f, "ALL"),
             Token::Limit => write!(f, "LIMIT"),
@@ -249,6 +287,29 @@ impl fmt::Display for Token {
             Token::Nulls => write!(f, "NULLS"),
             Token::First => write!(f, "FIRST"),
             Token::Last => write!(f, "LAST"),
+            // Window Functions
+            Token::RowNumber => write!(f, "ROW_NUMBER"),
+            Token::Rank => write!(f, "RANK"),
+            Token::DenseRank => write!(f, "DENSE_RANK"),
+            Token::Lead => write!(f, "LEAD"),
+            Token::Lag => write!(f, "LAG"),
+            Token::FirstValue => write!(f, "FIRST_VALUE"),
+            Token::LastValue => write!(f, "LAST_VALUE"),
+            Token::NthValue => write!(f, "NTH_VALUE"),
+            Token::Over => write!(f, "OVER"),
+            Token::Partition => write!(f, "PARTITION"),
+            Token::Within => write!(f, "WITHIN"),
+            Token::Rows => write!(f, "ROWS"),
+            Token::Range => write!(f, "RANGE"),
+            Token::Groups => write!(f, "GROUPS"),
+            Token::Unbounded => write!(f, "UNBOUNDED"),
+            Token::Preceding => write!(f, "PRECEDING"),
+            Token::Following => write!(f, "FOLLOWING"),
+            Token::Exclude => write!(f, "EXCLUDE"),
+            Token::Current => write!(f, "CURRENT"),
+            Token::Ties => write!(f, "TIES"),
+            Token::NoOthers => write!(f, "NO OTHERS"),
+            Token::Between => write!(f, "BETWEEN"),
             Token::Integer => write!(f, "INTEGER"),
             Token::Text => write!(f, "TEXT"),
             Token::Float => write!(f, "FLOAT"),
@@ -302,12 +363,22 @@ impl fmt::Display for Token {
             Token::Semicolon => write!(f, ";"),
             Token::Colon => write!(f, ":"),
             Token::SingleQuote => write!(f, "'"),
+            Token::QuestionMark => write!(f, "?"),
             Token::Star => write!(f, "*"),
             Token::Eof => write!(f, "EOF"),
             // SHOW keywords
             Token::Show => write!(f, "SHOW"),
             Token::Status => write!(f, "STATUS"),
             Token::Processlist => write!(f, "PROCESSLIST"),
+            // COPY keywords
+            Token::Copy => write!(f, "COPY"),
+            Token::Format => write!(f, "FORMAT"),
+            Token::Parquet => write!(f, "PARQUET"),
+            // Prepared Statements
+            Token::Prepare => write!(f, "PREPARE"),
+            Token::Execute => write!(f, "EXECUTE"),
+            Token::Deallocate => write!(f, "DEALLOCATE"),
+            Token::Using => write!(f, "USING"),
         }
     }
 }
@@ -354,6 +425,31 @@ pub fn is_keyword(s: &str) -> bool {
             | "AND"
             | "OR"
             | "NOT"
+            | "OVER"
+            | "PARTITION"
+            | "ROW_NUMBER"
+            | "RANK"
+            | "DENSE_RANK"
+            | "LEAD"
+            | "LAG"
+            | "FIRST_VALUE"
+            | "LAST_VALUE"
+            | "NTH_VALUE"
+            | "UNBOUNDED"
+            | "PRECEDING"
+            | "FOLLOWING"
+            | "EXCLUDE"
+            | "CURRENT ROW"
+            | "TIES"
+            | "NO OTHERS"
+            | "BETWEEN"
+            | "PREPARE"
+            | "EXECUTE"
+            | "DEALLOCATE"
+            | "USING"
+            | "COPY"
+            | "FORMAT"
+            | "PARQUET"
     )
 }
 
@@ -403,12 +499,37 @@ pub fn from_keyword(s: &str) -> Option<Token> {
         "AND" => Some(Token::And),
         "OR" => Some(Token::Or),
         "NOT" => Some(Token::Not),
+        "OVER" => Some(Token::Over),
+        "PARTITION" => Some(Token::Partition),
+        "ROW_NUMBER" => Some(Token::RowNumber),
+        "RANK" => Some(Token::Rank),
+        "DENSE_RANK" => Some(Token::DenseRank),
+        "LEAD" => Some(Token::Lead),
+        "LAG" => Some(Token::Lag),
+        "FIRST_VALUE" => Some(Token::FirstValue),
+        "LAST_VALUE" => Some(Token::LastValue),
+        "NTH_VALUE" => Some(Token::NthValue),
+        "UNBOUNDED" => Some(Token::Unbounded),
+        "PRECEDING" => Some(Token::Preceding),
+        "FOLLOWING" => Some(Token::Following),
+        "EXCLUDE" => Some(Token::Exclude),
+        "CURRENT ROW" => Some(Token::Current),
+        "TIES" => Some(Token::Ties),
+        "NO OTHERS" => Some(Token::NoOthers),
+        "BETWEEN" => Some(Token::Between),
         "VIEW" => Some(Token::View),
         "AS" => Some(Token::As),
         "EXPLAIN" => Some(Token::Explain),
         "SHOW" => Some(Token::Show),
         "STATUS" => Some(Token::Status),
         "PROCESSLIST" => Some(Token::Processlist),
+        "PREPARE" => Some(Token::Prepare),
+        "EXECUTE" => Some(Token::Execute),
+        "DEALLOCATE" => Some(Token::Deallocate),
+        "USING" => Some(Token::Using),
+        "COPY" => Some(Token::Copy),
+        "FORMAT" => Some(Token::Format),
+        "PARQUET" => Some(Token::Parquet),
         _ => None,
     }
 }
