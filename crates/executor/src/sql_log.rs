@@ -7,7 +7,7 @@
 //! - Configurable log levels
 //! - Log persistence and recovery
 
-use std::fs::{File, OpenOptions};
+use std::fs::{self, File, OpenOptions};
 use std::io::{self, BufRead, BufReader, Write};
 use std::path::PathBuf;
 use std::sync::LazyLock;
