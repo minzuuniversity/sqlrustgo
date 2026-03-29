@@ -2299,6 +2299,58 @@ mod tests {
     }
 
     #[test]
+    fn test_execute_select_where_gt() {
+        let mut engine = ExecutionEngine::default();
+        engine
+            .execute(parse("CREATE TABLE users (id INTEGER)").unwrap())
+            .unwrap();
+        engine
+            .execute(parse("INSERT INTO users VALUES (1), (2), (3)").unwrap())
+            .unwrap();
+        let result = engine.execute(parse("SELECT * FROM users WHERE id > 1").unwrap());
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_execute_select_where_lt() {
+        let mut engine = ExecutionEngine::default();
+        engine
+            .execute(parse("CREATE TABLE users (id INTEGER)").unwrap())
+            .unwrap();
+        engine
+            .execute(parse("INSERT INTO users VALUES (1), (2), (3)").unwrap())
+            .unwrap();
+        let result = engine.execute(parse("SELECT * FROM users WHERE id < 3").unwrap());
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_execute_update_without_where() {
+        let mut engine = ExecutionEngine::default();
+        engine
+            .execute(parse("CREATE TABLE users (id INTEGER, name TEXT)").unwrap())
+            .unwrap();
+        engine
+            .execute(parse("INSERT INTO users VALUES (1, 'Alice'), (2, 'Bob')").unwrap())
+            .unwrap();
+        let result = engine.execute(parse("UPDATE users SET name = 'Changed'").unwrap());
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_execute_analyze_table() {
+        let mut engine = ExecutionEngine::default();
+        engine
+            .execute(parse("CREATE TABLE users (id INTEGER, name TEXT)").unwrap())
+            .unwrap();
+        engine
+            .execute(parse("INSERT INTO users VALUES (1, 'Alice')").unwrap())
+            .unwrap();
+        let result = engine.execute(parse("ANALYZE users").unwrap());
+        assert!(result.is_ok());
+    }
+
+    #[test]
     fn test_execute_aggregate_count_star() {
         let mut engine = ExecutionEngine::default();
         engine
