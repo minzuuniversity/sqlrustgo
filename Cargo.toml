@@ -3,13 +3,18 @@
 [workspace]
 members = [
     "crates/common",
+    "crates/types",
     "crates/parser",
     "crates/planner",
     "crates/optimizer",
     "crates/executor",
     "crates/storage",
     "crates/catalog",
+    "crates/security",
+    "crates/telemetry",
     "crates/transaction",
+    "crates/network",
+    "crates/distributed",
     "crates/server",
     "crates/bench",
     "crates/bench-cli",
@@ -42,7 +47,11 @@ sqlrustgo-optimizer = { path = "crates/optimizer" }
 sqlrustgo-executor = { path = "crates/executor" }
 sqlrustgo-storage = { path = "crates/storage" }
 sqlrustgo-catalog = { path = "crates/catalog" }
+sqlrustgo-security = { path = "crates/security" }
+sqlrustgo-telemetry = { path = "crates/telemetry" }
 sqlrustgo-transaction = { path = "crates/transaction" }
+sqlrustgo-network = { path = "crates/network" }
+sqlrustgo-distributed = { path = "crates/distributed" }
 sqlrustgo-server = { path = "crates/server" }
 
 # External dependencies
@@ -67,8 +76,11 @@ miniz_oxide = "0.7"
 rand = "0.8"
 fnv = "1.0"
 proptest = "1.1"
-arrow = { version = "52" }
-parquet = { version = "52" }
+arrow = { version = "53" }
+parquet = { version = "53" }
+tonic = "0.12"
+prost = "0.13"
+tonic-build = "0.12"
 
 [dev-dependencies]
 criterion = "0.8"
