@@ -164,9 +164,9 @@ pub struct ColumnSegment {
     /// Compression type used
     compression: CompressionType,
     /// Statistics for this segment
-    stats: ColumnStatsDisk,
+    pub stats: ColumnStatsDisk,
     /// Number of values in this segment
-    num_values: u64,
+    pub num_values: u64,
 }
 
 impl ColumnSegment {
@@ -224,6 +224,16 @@ impl ColumnSegment {
     /// Get number of values
     pub fn num_values(&self) -> u64 {
         self.num_values
+    }
+
+    /// Set statistics
+    pub fn set_stats(&mut self, stats: ColumnStatsDisk) {
+        self.stats = stats;
+    }
+
+    /// Set number of values
+    pub fn set_num_values(&mut self, num_values: u64) {
+        self.num_values = num_values;
     }
 
     /// Serialize segment metadata to bytes
@@ -393,15 +403,14 @@ impl ColumnSegment {
             .map_err(|e| SegmentError::Serialization(e.to_string()))?;
 
         // Deserialize bitmap
-        let null_bitmap = bitmap_data.map(|data| {
+        let null_bitmap = if let Some(data) = bitmap_data {
             let bits: Vec<u64> = serde_json::from_slice(&data)
                 .map_err(|e| SegmentError::Serialization(e.to_string()))?;
             let len = bits.len() * 64;
-            Ok(Bitmap {
-                bits,
-                len,
-            })
-        }).transpose()?;
+            Some(Bitmap { bits, len })
+        } else {
+            None
+        };
 
         Ok((values, null_bitmap))
     }
