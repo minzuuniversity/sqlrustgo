@@ -19,7 +19,6 @@ use serde::{Deserialize, Serialize};
 
 /// SQL Statement types
 #[derive(Debug, Clone, PartialEq)]
-#[allow(clippy::large_enum_variant)]
 pub enum Statement {
     Select(SelectStatement),
     SetOperation(SetOperation),
@@ -53,6 +52,10 @@ pub enum Statement {
     DeallocatePrepare(DeallocatePrepareStatement),
     /// COPY table FROM/TO 'path' (FORMAT PARQUET)
     Copy(CopyStatement),
+    /// MERGE INTO target USING source ON condition (SQL-2003)
+    Merge(MergeStatement),
+    /// TRUNCATE TABLE table_name
+    Truncate(TruncateStatement),
 }
 
 /// PREPARE statement
@@ -86,6 +89,38 @@ pub struct CopyStatement {
     pub path: String,
     /// Format (only PARQUET supported currently)
     pub format: String,
+}
+
+/// MERGE statement - SQL-2003
+/// MERGE INTO target USING source ON condition
+///   WHEN MATCHED THEN UPDATE SET ...
+///   WHEN NOT MATCHED THEN INSERT ...
+#[derive(Debug, Clone, PartialEq)]
+pub struct MergeStatement {
+    pub target_table: String,
+    pub source_table: String,
+    pub on_condition: Expression,
+    pub when_matched: Option<MergeAction>,
+    pub when_not_matched: Option<MergeAction>,
+}
+
+/// MERGE action (UPDATE or INSERT)
+#[derive(Debug, Clone, PartialEq)]
+pub enum MergeAction {
+    Update {
+        set_clauses: Vec<(String, Expression)>,
+    },
+    Insert {
+        columns: Vec<String>,
+        values: Vec<Expression>,
+    },
+}
+
+/// TRUNCATE statement - SQL-2003
+/// TRUNCATE TABLE table_name
+#[derive(Debug, Clone, PartialEq)]
+pub struct TruncateStatement {
+    pub table_name: String,
 }
 
 /// CREATE INDEX statement
@@ -349,6 +384,23 @@ pub struct SelectStatement {
     pub group_by: Option<GroupByClause>,
     pub having: Option<Expression>,
     pub order_by: Option<OrderByClause>,
+    // CTE (Common Table Expression) - SQL-99
+    pub with_clause: Option<WithClause>,
+}
+
+/// Common Table Expression (CTE) - SQL-99
+#[derive(Debug, Clone, PartialEq)]
+pub struct WithClause {
+    pub recursive: bool,
+    pub cte_tables: Vec<CteTable>,
+}
+
+/// CTE table definition
+#[derive(Debug, Clone, PartialEq)]
+pub struct CteTable {
+    pub name: String,
+    pub columns: Vec<String>,
+    pub query: Box<Statement>,
 }
 
 /// Column in SELECT
@@ -481,7 +533,6 @@ pub struct Parser {
     position: usize,
 }
 
-#[allow(dead_code)]
 impl Parser {
     /// Create a parser from tokens
     pub fn new(tokens: Vec<Token>) -> Self {
@@ -520,6 +571,7 @@ impl Parser {
     /// Parse a complete SQL statement
     pub fn parse_statement(&mut self) -> Result<Statement, String> {
         match self.current() {
+            Some(Token::With) => self.parse_with(),
             Some(Token::Select) => self.parse_select(),
             Some(Token::Insert) | Some(Token::Replace) => self.parse_insert(),
             Some(Token::Update) => self.parse_update(),
@@ -542,9 +594,197 @@ impl Parser {
             Some(Token::Execute) => self.parse_execute(),
             Some(Token::Deallocate) => self.parse_deallocate(),
             Some(Token::Copy) => self.parse_copy(),
+            Some(Token::Merge) => self.parse_merge(),
+            Some(Token::Truncate) => self.parse_truncate(),
             Some(t) => Err(format!("Unexpected token: {:?}", t)),
             None => Err("Empty input".to_string()),
         }
+    }
+
+    /// Parse WITH [RECURSIVE] cte AS (SELECT ...) ...
+    fn parse_with(&mut self) -> Result<Statement, String> {
+        self.expect(Token::With)?;
+
+        let recursive = matches!(self.current(), Some(Token::Recursive));
+        if recursive {
+            self.next(); // consume RECURSIVE
+        }
+
+        let mut cte_tables = Vec::new();
+
+        loop {
+            // Parse CTE table name
+            let cte_name = match self.current() {
+                Some(Token::Identifier(name)) => name.clone(),
+                Some(t) => return Err(format!("Expected CTE name, got {:?}", t)),
+                None => return Err("Unexpected end of input in CTE".to_string()),
+            };
+            self.next();
+
+            // Parse column list (optional): WITH RECURSIVE cte(col1, col2) AS (...)
+            let mut columns = Vec::new();
+            if matches!(self.current(), Some(Token::LParen)) {
+                self.next();
+                loop {
+                    match self.current() {
+                        Some(Token::Identifier(name)) => {
+                            columns.push(name.clone());
+                            self.next();
+                            if matches!(self.current(), Some(Token::Comma)) {
+                                self.next();
+                            } else {
+                                break;
+                            }
+                        }
+                        Some(Token::RParen) => {
+                            self.next();
+                            break;
+                        }
+                        t => return Err(format!("Expected column name, got {:?}", t)),
+                    }
+                }
+            }
+
+            // Parse AS (SELECT ...)
+            self.expect(Token::As)?;
+            self.expect(Token::LParen)?;
+
+            // Parse the CTE's SELECT statement
+            let cte_select = self.parse_select()?;
+
+            self.expect(Token::RParen)?;
+
+            cte_tables.push(CteTable {
+                name: cte_name,
+                columns,
+                query: Box::new(cte_select),
+            });
+
+            // Check for more CTEs or end of WITH clause
+            match self.current() {
+                Some(Token::Comma) => {
+                    self.next(); // consume comma for next CTE
+                }
+                Some(Token::Select) => {
+                    // No more CTEs, main SELECT follows
+                    break;
+                }
+                Some(t) => return Err(format!("Unexpected token after CTE: {:?}", t)),
+                None => return Err("Unexpected end of input after CTE".to_string()),
+            }
+        }
+
+        // Parse the main SELECT statement
+        let mut main_select = match self.parse_select()? {
+            Statement::Select(s) => s,
+            _ => return Err("Expected SELECT after WITH clause".to_string()),
+        };
+
+        // Attach WITH clause to the main SELECT
+        main_select.with_clause = Some(WithClause {
+            recursive,
+            cte_tables,
+        });
+
+        Ok(Statement::Select(main_select))
+    }
+
+    /// Parse MERGE statement - SQL-2003
+    /// MERGE INTO target USING source ON condition
+    ///   WHEN MATCHED THEN UPDATE SET ...
+    ///   WHEN NOT MATCHED THEN INSERT ...
+    #[allow(dead_code)]
+    fn parse_merge(&mut self) -> Result<Statement, String> {
+        self.expect(Token::Merge)?;
+
+        // MERGE INTO target
+        self.expect(Token::Into)?;
+        let target_table = match self.current() {
+            Some(Token::Identifier(name)) => name.clone(),
+            _ => return Err("Expected target table name".to_string()),
+        };
+        self.next();
+
+        // USING source
+        self.expect(Token::Using)?;
+        let source_table = match self.current() {
+            Some(Token::Identifier(name)) => name.clone(),
+            _ => return Err("Expected source table name".to_string()),
+        };
+        self.next();
+
+        // ON condition
+        self.expect(Token::On)?;
+        let on_condition = self.parse_expression()?;
+
+        let mut when_matched = None;
+        let mut when_not_matched = None;
+
+        // WHEN MATCHED THEN UPDATE SET ... / WHEN NOT MATCHED THEN INSERT ...
+        loop {
+            match self.current() {
+                Some(Token::When) => {
+                    self.next();
+                    match self.current() {
+                        Some(Token::Matched) => {
+                            self.next(); // consume MATCHED
+                            self.expect(Token::Then)?;
+                            self.expect(Token::Update)?;
+                            self.expect(Token::Set)?;
+
+                            let mut set_clauses = Vec::new();
+                            loop {
+                                match self.current() {
+                                    Some(Token::Identifier(name)) => {
+                                        let col_name = name.clone();
+                                        self.next();
+                                        self.expect(Token::Equal)?;
+                                        let value = self.parse_expression()?;
+                                        set_clauses.push((col_name, value));
+                                        if matches!(self.current(), Some(Token::Comma)) {
+                                            self.next();
+                                        } else {
+                                            break;
+                                        }
+                                    }
+                                    Some(Token::When) | None => break,
+                                    _ => {
+                                        return Err("Expected column name in SET clause".to_string())
+                                    }
+                                }
+                            }
+                            when_matched = Some(MergeAction::Update { set_clauses });
+                        }
+                        _ => return Err("Expected MATCHED or NOT MATCHED".to_string()),
+                    }
+                }
+                Some(Token::When) | None => break,
+                _ => return Err("Unexpected token in MERGE".to_string()),
+            }
+        }
+
+        Ok(Statement::Merge(MergeStatement {
+            target_table,
+            source_table,
+            on_condition,
+            when_matched,
+            when_not_matched,
+        }))
+    }
+
+    /// Parse TRUNCATE statement - SQL-2003
+    /// TRUNCATE TABLE table_name
+    fn parse_truncate(&mut self) -> Result<Statement, String> {
+        self.expect(Token::Truncate)?;
+        self.expect(Token::Table)?;
+
+        let table_name = match self.current() {
+            Some(Token::Identifier(name)) => name.clone(),
+            _ => return Err("Expected table name".to_string()),
+        };
+        self.next();
+
+        Ok(Statement::Truncate(TruncateStatement { table_name }))
     }
 
     fn parse_select(&mut self) -> Result<Statement, String> {
@@ -559,7 +799,7 @@ impl Parser {
                     // Subquery in SELECT: (SELECT ...) AS alias
                     self.next();
                     if matches!(self.current(), Some(Token::Select)) {
-                        let _select_stmt = self.parse_select()?;
+                        let select_stmt = self.parse_select()?;
                         self.expect(Token::RParen)?;
 
                         // Check for AS alias
@@ -578,7 +818,7 @@ impl Parser {
                         };
 
                         columns.push(SelectColumn {
-                            name: "(subquery)".to_string(),
+                            name: format!("(subquery)"),
                             alias,
                         });
                     } else {
@@ -813,11 +1053,11 @@ impl Parser {
             group_by,
             having,
             order_by,
+            with_clause: None,
         };
 
         // Check for LIMIT and OFFSET
         let mut select = base_select.clone();
-        #[allow(clippy::single_match)]
         match self.current() {
             Some(Token::Limit) => {
                 self.next();
@@ -831,7 +1071,6 @@ impl Parser {
             _ => {}
         }
 
-        #[allow(clippy::single_match)]
         match self.current() {
             Some(Token::Offset) => {
                 self.next();
@@ -940,7 +1179,6 @@ impl Parser {
             // INSERT INTO table SET col1=val1, col2=val2
             self.next(); // consume SET
 
-            #[allow(clippy::while_let_loop)]
             loop {
                 // Parse column name
                 let col_name = match self.current() {
@@ -1442,7 +1680,9 @@ impl Parser {
             | Some(Token::Lag)
             | Some(Token::FirstValue)
             | Some(Token::LastValue)
-            | Some(Token::NthValue) => self.parse_window_function(),
+            | Some(Token::NthValue) => {
+                return self.parse_window_function();
+            }
             Some(Token::LParen) => {
                 self.next(); // consume '('
 
@@ -1966,7 +2206,6 @@ impl Parser {
                                         on_update: None,
                                     });
                                     // Parse ON DELETE and ON UPDATE actions
-                                    #[allow(clippy::while_let_loop)]
                                     loop {
                                         match self.current() {
                                             Some(Token::On) => {
@@ -2260,9 +2499,9 @@ impl Parser {
 
         // Simple body parsing: collect statements until END
         // Note: This is a simplified implementation that stores raw SQL for now
-        while !matches!(self.current(), Some(Token::Identifier(end_str))
+        while !matches!(self.current(), Some(Token::Identifier(end_str)) 
                        if end_str.to_uppercase() == "END")
-            && self.current().is_some()
+            && !matches!(self.current(), None)
         {
             let stmt = match self.current() {
                 Some(Token::Select) => {
@@ -2319,7 +2558,7 @@ impl Parser {
         }
 
         // Expect END
-        if matches!(self.current(), Some(Token::Identifier(end_str))
+        if matches!(self.current(), Some(Token::Identifier(end_str)) 
                    if end_str.to_uppercase() == "END")
         {
             self.next();
