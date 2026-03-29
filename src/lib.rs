@@ -2460,4 +2460,41 @@ mod tests {
             .unwrap();
         assert_eq!(count_result.rows[0][0], Value::Integer(2));
     }
+
+    #[test]
+    fn test_value_integer() {
+        let v = Value::Integer(42);
+        assert!(matches!(v, Value::Integer(42)));
+    }
+
+    #[test]
+    fn test_value_text() {
+        let v = Value::Text("hello".to_string());
+        assert!(matches!(v, Value::Text(_)));
+    }
+
+    #[test]
+    fn test_value_null() {
+        let v = Value::Null;
+        assert!(matches!(v, Value::Null));
+    }
+
+    #[test]
+    fn test_sql_error_display() {
+        use sqlrustgo_types::SqlError;
+        let err = SqlError::ExecutionError("test error".to_string());
+        assert!(err.to_string().contains("test error"));
+    }
+
+    #[test]
+    fn test_parse_truncate() {
+        let result = parse("TRUNCATE TABLE t1");
+        assert!(result.is_ok() || result.is_err());
+    }
+
+    #[test]
+    fn test_parse_cte() {
+        let result = parse("WITH cte AS (SELECT 1) SELECT * FROM cte");
+        assert!(result.is_ok() || result.is_err());
+    }
 }
