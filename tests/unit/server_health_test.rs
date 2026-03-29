@@ -38,8 +38,7 @@ fn test_health_checker_new() {
 #[test]
 fn test_health_checker_uptime() {
     let checker = HealthChecker::new("1.0.0");
-    let uptime = checker.uptime_seconds();
-    assert!(uptime >= 0);
+    let _uptime = checker.uptime_seconds();
 }
 
 #[test]
@@ -65,8 +64,7 @@ fn test_health_checker_check_ready() {
 #[test]
 fn test_health_checker_check_health() {
     let checker = HealthChecker::new("1.0.0");
-    let report = checker.check_health();
-    assert!(report.uptime_seconds >= 0);
+    let _report = checker.check_health();
 }
 
 #[test]

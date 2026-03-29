@@ -217,6 +217,10 @@ name = "types_value_test"
 path = "tests/unit/types_value_test.rs"
 
 [[test]]
+name = "sql_error_test"
+path = "tests/unit/sql_error_test.rs"
+
+[[test]]
 name = "query_cache_config_test"
 path = "tests/unit/query_cache_config_test.rs"
 
@@ -374,3 +378,19 @@ path = "tests/integration/teaching_scenario_client_server_test.rs"
 [[test]]
 name = "regression_test"
 path = "tests/regression_test.rs"
+
+[[test]]
+name = "columnar_storage_test"
+path = "tests/integration/columnar_storage_test.rs"
+
+[[test]]
+name = "coverage_test"
+path = "tests/integration/coverage_test.rs"
+
+[[test]]
+name = "transaction_coverage_test"
+path = "tests/integration/transaction_coverage_test.rs"
+
+[[test]]
+name = "sql_error_test"
+path = "tests/unit/sql_error_test.rs"
