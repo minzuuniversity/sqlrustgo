@@ -253,6 +253,40 @@ pub enum ProcedureStatement {
     },
     /// SET variable = value
     Set { variable: String, value: String },
+    /// DECLARE variable statement
+    Declare {
+        name: String,
+        data_type: String,
+        default_value: Option<String>,
+    },
+    /// IF condition THEN statements [ELSEIF ...] [ELSE ...] END IF
+    If {
+        condition: String,
+        then_body: Vec<ProcedureStatement>,
+        elseif_body: Vec<(String, Vec<ProcedureStatement>)>,
+        else_body: Vec<ProcedureStatement>,
+    },
+    /// WHILE condition DO statements END WHILE
+    While {
+        condition: String,
+        body: Vec<ProcedureStatement>,
+    },
+    /// LOOP statements END LOOP (with optional LEAVE to exit)
+    Loop {
+        body: Vec<ProcedureStatement>,
+    },
+    /// RETURN expression
+    Return { value: String },
+    /// LEAVE label - exit a loop
+    Leave { label: String },
+    /// ITERATE label - continue to next iteration
+    Iterate { label: String },
+    /// CALL another stored procedure
+    Call {
+        procedure_name: String,
+        args: Vec<String>,
+        into_var: Option<String>,
+    },
 }
 
 /// DROP PROCEDURE statement
@@ -2116,7 +2150,11 @@ impl Parser {
                 self.next();
                 self.parse_create_trigger()
             }
-            _ => Err("Expected TABLE, VIEW, or TRIGGER after CREATE".to_string()),
+            Some(Token::Procedure) => {
+                self.next();
+                self.parse_create_procedure()
+            }
+            _ => Err("Expected TABLE, VIEW, TRIGGER, or PROCEDURE after CREATE".to_string()),
         }
     }
 
@@ -2594,8 +2632,6 @@ impl Parser {
         }))
     }
 
-<<<<<<< HEAD
-=======
     /// Parse procedure body statements until END (but don't consume END)
     fn parse_procedure_body(&mut self) -> Result<Vec<ProcedureStatement>, String> {
         let mut body = Vec::new();
@@ -2940,7 +2976,6 @@ impl Parser {
         }
     }
 
->>>>>>> 2509fe94 (feat(parser): add stored procedure control flow statements (IF/WHILE/LOOP/DECLARE))
     /// Collect tokens until semicolon (exclusive)
     fn collect_until_semicolon(&mut self) -> String {
         let mut sql = String::new();
@@ -5078,5 +5113,95 @@ fn test_parse_union_all() {
             assert_eq!(op.op_type, SetOperationType::UnionAll);
         }
         _ => panic!("Expected SetOperation statement"),
+    }
+}
+
+// Stored Procedure Control Flow Tests
+
+#[test]
+fn test_parse_procedure_with_if() {
+    let sql = "CREATE PROCEDURE test_if(x INT) BEGIN IF x > 0 THEN SELECT 1; END IF; END";
+    let result = parse(sql);
+    assert!(result.is_ok(), "Error: {:?}", result.err());
+    match result.unwrap() {
+        Statement::CreateProcedure(proc) => {
+            assert_eq!(proc.name, "test_if");
+            assert_eq!(proc.body.len(), 1);
+            assert!(matches!(proc.body[0], ProcedureStatement::If { .. }));
+        }
+        _ => panic!("Expected CreateProcedure statement"),
+    }
+}
+
+#[test]
+fn test_parse_procedure_with_while() {
+    let sql = "CREATE PROCEDURE test_while() BEGIN WHILE 1 = 1 DO SELECT 1; END WHILE; END";
+    let result = parse(sql);
+    assert!(result.is_ok(), "Error: {:?}", result.err());
+    match result.unwrap() {
+        Statement::CreateProcedure(proc) => {
+            assert_eq!(proc.name, "test_while");
+            assert!(matches!(proc.body[0], ProcedureStatement::While { .. }));
+        }
+        _ => panic!("Expected CreateProcedure statement"),
+    }
+}
+
+#[test]
+fn test_parse_procedure_with_loop_leave() {
+    let sql = "CREATE PROCEDURE test_loop() BEGIN LOOP SELECT 1; END LOOP; END";
+    let result = parse(sql);
+    assert!(result.is_ok(), "Error: {:?}", result.err());
+    match result.unwrap() {
+        Statement::CreateProcedure(proc) => {
+            assert_eq!(proc.name, "test_loop");
+            assert!(matches!(proc.body[0], ProcedureStatement::Loop { .. }));
+        }
+        _ => panic!("Expected CreateProcedure statement"),
+    }
+}
+
+#[test]
+fn test_parse_procedure_if_else() {
+    let sql = "CREATE PROCEDURE test_if_else(x INT) BEGIN IF x > 0 THEN SELECT 1; ELSE SELECT 2; END IF; END";
+    let result = parse(sql);
+    assert!(result.is_ok(), "Error: {:?}", result.err());
+    match result.unwrap() {
+        Statement::CreateProcedure(proc) => {
+            assert_eq!(proc.name, "test_if_else");
+            match &proc.body[0] {
+                ProcedureStatement::If { else_body, .. } => {
+                    assert!(!else_body.is_empty());
+                }
+                _ => panic!("Expected IF statement"),
+            }
+        }
+        _ => panic!("Expected CreateProcedure statement"),
+    }
+}
+
+#[test]
+fn test_parse_procedure_with_declare() {
+    let sql = "CREATE PROCEDURE test_declare() BEGIN DECLARE x INT DEFAULT 0; SET x = 1; END";
+    let result = parse(sql);
+    assert!(result.is_ok(), "Error: {:?}", result.err());
+    match result.unwrap() {
+        Statement::CreateProcedure(proc) => {
+            assert!(matches!(proc.body[0], ProcedureStatement::Declare { .. }));
+        }
+        _ => panic!("Expected CreateProcedure statement"),
+    }
+}
+
+#[test]
+fn test_parse_procedure_return() {
+    let sql = "CREATE PROCEDURE test_return() BEGIN RETURN 1; END";
+    let result = parse(sql);
+    assert!(result.is_ok(), "Error: {:?}", result.err());
+    match result.unwrap() {
+        Statement::CreateProcedure(proc) => {
+            assert!(matches!(proc.body[0], ProcedureStatement::Return { .. }));
+        }
+        _ => panic!("Expected CreateProcedure statement"),
     }
 }
