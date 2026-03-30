@@ -64,6 +64,87 @@ pub struct UserAuthInfo {
     pub updated_at: u64,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ScramCredential {
+    pub version: u8,
+    pub salt: Vec<u8>,
+    pub iterations: u32,
+    pub stored_key: Vec<u8>,
+    pub server_key: Vec<u8>,
+}
+
+impl ScramCredential {
+    pub const CURRENT_VERSION: u8 = 1;
+    pub const DEFAULT_ITERATIONS: u32 = 32768;
+
+    pub fn new(password: &str) -> Self {
+        let salt = generate_random_salt(32);
+        let iterations = Self::DEFAULT_ITERATIONS;
+
+        let salted_password = pbkdf2(password, &salt, iterations);
+        let client_key = hmac_sha256(&salted_password, b"Client Key");
+        let stored_key = hash_sha256(&client_key);
+        let server_key = hmac_sha256(&salted_password, b"Server Key");
+
+        Self {
+            version: Self::CURRENT_VERSION,
+            salt,
+            iterations,
+            stored_key,
+            server_key,
+        }
+    }
+
+    pub fn verify(&self, password: &str) -> bool {
+        let salted_password = pbkdf2(password, &self.salt, self.iterations);
+        let client_key = hmac_sha256(&salted_password, b"Client Key");
+        let stored_key = hash_sha256(&client_key);
+        constant_time_eq(&stored_key, &self.stored_key)
+    }
+}
+
+fn generate_random_salt(len: usize) -> Vec<u8> {
+    use rand::RngCore;
+    let mut salt = vec![0u8; len];
+    rand::thread_rng().fill_bytes(&mut salt);
+    salt
+}
+
+fn pbkdf2(password: &str, salt: &[u8], iterations: u32) -> Vec<u8> {
+    use pbkdf2::pbkdf2_hmac_array;
+    use sha2::Sha256;
+
+    pbkdf2_hmac_array::<Sha256, 32>(password.as_bytes(), salt, iterations).to_vec()
+}
+
+fn hmac_sha256(key: &[u8], data: &[u8]) -> Vec<u8> {
+    use hmac::{Hmac, Mac};
+    use sha2::Sha256;
+
+    type HmacSha256 = Hmac<Sha256>;
+    let mut mac = HmacSha256::new_from_slice(key).unwrap();
+    mac.update(data);
+    mac.finalize().into_bytes().to_vec()
+}
+
+fn hash_sha256(data: &[u8]) -> Vec<u8> {
+    use sha2::{Digest, Sha256};
+    let mut hasher = Sha256::new();
+    hasher.update(data);
+    hasher.finalize().to_vec()
+}
+
+fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
+    if a.len() != b.len() {
+        return false;
+    }
+    let mut result = 0u8;
+    for (x, y) in a.iter().zip(b.iter()) {
+        result |= x ^ y;
+    }
+    result == 0
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Privilege {
     Read,
@@ -908,5 +989,71 @@ mod tests {
         assert_eq!(Privilege::from_str("INSERT"), Some(Privilege::Insert));
         assert_eq!(Privilege::from_str("ALL"), Some(Privilege::All));
         assert_eq!(Privilege::from_str("INVALID"), None);
+    }
+
+    #[test]
+    fn test_scram_credential_constants() {
+        assert_eq!(ScramCredential::CURRENT_VERSION, 1);
+        assert_eq!(ScramCredential::DEFAULT_ITERATIONS, 32768);
+    }
+
+    #[test]
+    fn test_scram_credential_new() {
+        let cred = ScramCredential::new("password123");
+
+        assert_eq!(cred.version, ScramCredential::CURRENT_VERSION);
+        assert_eq!(cred.salt.len(), 32);
+        assert_eq!(cred.iterations, ScramCredential::DEFAULT_ITERATIONS);
+        assert_eq!(cred.stored_key.len(), 32);
+        assert_eq!(cred.server_key.len(), 32);
+    }
+
+    #[test]
+    fn test_scram_credential_verify_success() {
+        let password = "mysecretpassword";
+        let cred = ScramCredential::new(password);
+
+        assert!(cred.verify(password));
+    }
+
+    #[test]
+    fn test_scram_credential_verify_failure() {
+        let cred = ScramCredential::new("correct_password");
+
+        assert!(
+            cred.verify("correct_password"),
+            "verify with correct password should pass"
+        );
+        assert!(
+            !cred.verify("wrong_password"),
+            "verify with wrong password should fail"
+        );
+        assert!(!cred.verify(""));
+        assert!(!cred.verify("correctpassword "));
+    }
+
+    #[test]
+    fn test_scram_credential_different_passwords_different_keys() {
+        let cred1 = ScramCredential::new("password1");
+        let cred2 = ScramCredential::new("password2");
+
+        assert_ne!(cred1.stored_key, cred2.stored_key);
+        assert_ne!(cred1.server_key, cred2.server_key);
+        assert_ne!(cred1.salt, cred2.salt);
+    }
+
+    #[test]
+    fn test_scram_credential_clone_and_debug() {
+        let cred = ScramCredential::new("test_password");
+        let cloned = cred.clone();
+
+        assert_eq!(cred.version, cloned.version);
+        assert_eq!(cred.salt, cloned.salt);
+        assert_eq!(cred.iterations, cloned.iterations);
+        assert_eq!(cred.stored_key, cloned.stored_key);
+        assert_eq!(cred.server_key, cloned.server_key);
+
+        let debug_str = format!("{:?}", cred);
+        assert!(debug_str.contains("ScramCredential"));
     }
 }
