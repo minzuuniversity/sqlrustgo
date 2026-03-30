@@ -196,6 +196,10 @@ impl<'a> Lexer<'a> {
                 self.position += 1;
                 Token::Colon
             }
+            '@' => {
+                self.position += 1;
+                Token::At
+            }
             '\'' => Token::StringLiteral(self.read_string()),
             '?' => {
                 self.position += 1;
@@ -271,6 +275,8 @@ impl<'a> Lexer<'a> {
                     "GROUP" => Token::Group,
                     "BY" => Token::By,
                     "HAVING" => Token::Having,
+                    "USER" => Token::User,
+                    "IDENTIFIED" => Token::Identified,
                     "ORDER" => Token::Order,
                     "ASC" => Token::Asc,
                     "DESC" => Token::Desc,
@@ -902,7 +908,7 @@ mod tests {
     #[test]
     fn test_lexer_unknown_char() {
         let tokens = tokenize("@");
-        assert!(matches!(&tokens[0], Token::Identifier(s) if s == "@"));
+        assert!(matches!(&tokens[0], Token::At));
     }
 
     #[test]

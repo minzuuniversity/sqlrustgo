@@ -20,11 +20,7 @@ impl StoredProcExecutor {
     }
 
     /// Execute a stored procedure call
-    pub fn execute_call(
-        &self,
-        name: &str,
-        _args: Vec<Value>,
-    ) -> Result<ExecutorResult, String> {
+    pub fn execute_call(&self, name: &str, _args: Vec<Value>) -> Result<ExecutorResult, String> {
         // Look up the stored procedure
         let procedure = self
             .catalog
@@ -62,7 +58,7 @@ mod tests {
     fn test_stored_proc_executor_not_found() {
         let catalog = Arc::new(Catalog::new());
         let executor = StoredProcExecutor::new(catalog);
-        
+
         let result = executor.execute_call("non_existent", vec![]);
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("not found"));
@@ -72,7 +68,7 @@ mod tests {
     fn test_stored_proc_executor_list_empty() {
         let catalog = Arc::new(Catalog::new());
         let executor = StoredProcExecutor::new(catalog);
-        
+
         assert!(executor.list_procedures().is_empty());
         assert!(!executor.has_procedure("test"));
     }

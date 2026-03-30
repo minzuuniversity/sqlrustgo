@@ -42,6 +42,8 @@ pub enum Statement {
     Transaction(TransactionStatement),
     Grant(GrantStatement),
     Revoke(RevokeStatement),
+    CreateUser(CreateUserStmt),
+    DropUser(DropUserStmt),
     ShowStatus,
     ShowProcesslist,
     /// PREPARE stmt FROM 'sql text'
@@ -239,12 +241,28 @@ pub enum TransactionCommand {
     ReleaseSavepoint { name: String },
 }
 
+/// User identity for RBAC: 'username'@'host'
+#[derive(Debug, Clone, PartialEq)]
+pub struct UserIdentity {
+    pub username: String,
+    pub host: String,
+}
+
+impl UserIdentity {
+    pub fn new(username: &str, host: &str) -> Self {
+        Self {
+            username: username.to_lowercase(),
+            host: host.to_lowercase(),
+        }
+    }
+}
+
 /// GRANT statement for permission management
 #[derive(Debug, Clone, PartialEq)]
 pub struct GrantStatement {
     pub privilege: Privilege,
     pub table: String,
-    pub to_user: String,
+    pub to_user: UserIdentity,
 }
 
 /// REVOKE statement for permission management
@@ -252,7 +270,7 @@ pub struct GrantStatement {
 pub struct RevokeStatement {
     pub privilege: Privilege,
     pub table: String,
-    pub from_user: String,
+    pub from_user: UserIdentity,
 }
 
 /// Privilege types
@@ -261,6 +279,19 @@ pub enum Privilege {
     Read,
     Write,
     All,
+}
+
+/// CREATE USER statement
+#[derive(Debug, Clone, PartialEq)]
+pub struct CreateUserStmt {
+    pub identities: Vec<UserIdentity>,
+    pub password: String,
+}
+
+/// DROP USER statement
+#[derive(Debug, Clone, PartialEq)]
+pub struct DropUserStmt {
+    pub identities: Vec<UserIdentity>,
 }
 
 /// Join type
@@ -430,7 +461,7 @@ pub enum Expression {
     QualifiedColumn(String, String),
     /// Window function expression: ROW_NUMBER() OVER (PARTITION BY ... ORDER BY ...)
     WindowFunction {
-        func: String,           // Function name: ROW_NUMBER, RANK, LEAD, etc.
+        func: String,          // Function name: ROW_NUMBER, RANK, LEAD, etc.
         args: Vec<Expression>, // Arguments for LEAD/LAG/NTH_VALUE
         partition_by: Vec<Expression>,
         order_by: Vec<OrderByItem>,
@@ -609,9 +640,14 @@ impl Parser {
                     };
                     aggregates.push(agg);
                 }
-                Some(Token::RowNumber) | Some(Token::Rank) | Some(Token::DenseRank)
-                | Some(Token::Lead) | Some(Token::Lag) | Some(Token::FirstValue)
-                | Some(Token::LastValue) | Some(Token::NthValue) => {
+                Some(Token::RowNumber)
+                | Some(Token::Rank)
+                | Some(Token::DenseRank)
+                | Some(Token::Lead)
+                | Some(Token::Lag)
+                | Some(Token::FirstValue)
+                | Some(Token::LastValue)
+                | Some(Token::NthValue) => {
                     // Parse window function
                     let window_expr = self.parse_window_function()?;
                     columns.push(SelectColumn {
@@ -1409,9 +1445,14 @@ impl Parser {
                 Ok(Expression::FunctionCall(func_name.to_string(), args))
             }
             // Window function: ROW_NUMBER() OVER (...)
-            Some(Token::RowNumber) | Some(Token::Rank) | Some(Token::DenseRank)
-            | Some(Token::Lead) | Some(Token::Lag) | Some(Token::FirstValue)
-            | Some(Token::LastValue) | Some(Token::NthValue) => {
+            Some(Token::RowNumber)
+            | Some(Token::Rank)
+            | Some(Token::DenseRank)
+            | Some(Token::Lead)
+            | Some(Token::Lag)
+            | Some(Token::FirstValue)
+            | Some(Token::LastValue)
+            | Some(Token::NthValue) => {
                 return self.parse_window_function();
             }
             Some(Token::LParen) => {
@@ -1560,13 +1601,20 @@ impl Parser {
                     self.next();
                     "TIES".to_string()
                 }
-                _ => return Err("Expected NO OTHERS, CURRENT ROW, or TIES after EXCLUDE".to_string()),
+                _ => {
+                    return Err("Expected NO OTHERS, CURRENT ROW, or TIES after EXCLUDE".to_string())
+                }
             })
         } else {
             None
         };
 
-        Ok(WindowFrameInfo { mode, start, end, exclude })
+        Ok(WindowFrameInfo {
+            mode,
+            start,
+            end,
+            exclude,
+        })
     }
 
     /// Parse frame bound: UNBOUNDED PRECEDING, PRECEDING(n), CURRENT ROW, FOLLOWING(n), UNBOUNDED FOLLOWING
@@ -1764,6 +1812,7 @@ impl Parser {
     fn parse_create_or_index(&mut self) -> Result<Statement, String> {
         let mut pos = self.position;
         let mut is_index = false;
+        let mut is_user = false;
         if pos < self.tokens.len() {
             pos += 1;
         }
@@ -1778,9 +1827,17 @@ impl Parser {
                 is_index = true;
             }
         }
+        if pos < self.tokens.len() {
+            if let Some(Token::User) = &self.tokens.get(pos) {
+                is_user = true;
+            }
+        }
         if is_index {
             self.next();
             self.parse_create_index()
+        } else if is_user {
+            self.next();
+            self.parse_create_user()
         } else {
             self.parse_create()
         }
@@ -2059,14 +2116,28 @@ impl Parser {
     }
 
     fn parse_drop_table(&mut self) -> Result<Statement, String> {
-        self.expect(Token::Drop)?;
-        self.expect(Token::Table)?;
-        let name = match self.next() {
-            Some(Token::Identifier(name)) => name,
-            _ => return Err("Expected table name".to_string()),
-        };
-
-        Ok(Statement::DropTable(DropTableStatement { name }))
+        let mut pos = self.position;
+        let mut is_user = false;
+        if pos < self.tokens.len() {
+            pos += 1;
+        }
+        if pos < self.tokens.len() {
+            if let Some(Token::User) = &self.tokens.get(pos) {
+                is_user = true;
+            }
+        }
+        if is_user {
+            self.next();
+            self.parse_drop_user()
+        } else {
+            self.expect(Token::Drop)?;
+            self.expect(Token::Table)?;
+            let name = match self.next() {
+                Some(Token::Identifier(name)) => name,
+                _ => return Err("Expected table name".to_string()),
+            };
+            Ok(Statement::DropTable(DropTableStatement { name }))
+        }
     }
 
     fn parse_drop_trigger(&mut self) -> Result<Statement, String> {
@@ -2077,6 +2148,86 @@ impl Parser {
         };
 
         Ok(Statement::DropTrigger(DropTriggerStatement { name }))
+    }
+
+    fn parse_create_user(&mut self) -> Result<Statement, String> {
+        self.expect(Token::User)?;
+
+        let mut identities = Vec::new();
+        loop {
+            let username = match self.current() {
+                Some(Token::StringLiteral(s)) => s.clone(),
+                _ => return Err("Expected username string".to_string()),
+            };
+            self.next();
+
+            let host = if matches!(self.current(), Some(Token::At)) {
+                self.next();
+                let host_str = match self.current() {
+                    Some(Token::StringLiteral(s)) => s.clone(),
+                    _ => return Err("Expected host string after @".to_string()),
+                };
+                self.next();
+                host_str
+            } else {
+                "%".to_string()
+            };
+
+            identities.push(UserIdentity::new(&username, &host));
+
+            if !matches!(self.current(), Some(Token::Comma)) {
+                break;
+            }
+            self.next();
+        }
+
+        self.expect(Token::Identified)?;
+        self.expect(Token::By)?;
+        match self.current() {
+            Some(Token::StringLiteral(pwd)) => {
+                let password = pwd.clone();
+                self.next();
+                Ok(Statement::CreateUser(CreateUserStmt {
+                    identities,
+                    password,
+                }))
+            }
+            _ => Err("Expected password after IDENTIFIED BY".to_string()),
+        }
+    }
+
+    fn parse_drop_user(&mut self) -> Result<Statement, String> {
+        self.expect(Token::User)?;
+
+        let mut identities = Vec::new();
+        loop {
+            let username = match self.current() {
+                Some(Token::StringLiteral(s)) => s.clone(),
+                _ => return Err("Expected username string".to_string()),
+            };
+            self.next();
+
+            let host = if matches!(self.current(), Some(Token::At)) {
+                self.next();
+                let host_str = match self.current() {
+                    Some(Token::StringLiteral(s)) => s.clone(),
+                    _ => return Err("Expected host string after @".to_string()),
+                };
+                self.next();
+                host_str
+            } else {
+                "%".to_string()
+            };
+
+            identities.push(UserIdentity::new(&username, &host));
+
+            if !matches!(self.current(), Some(Token::Comma)) {
+                break;
+            }
+            self.next();
+        }
+
+        Ok(Statement::DropUser(DropUserStmt { identities }))
     }
 
     fn parse_create_trigger(&mut self) -> Result<Statement, String> {
@@ -2155,7 +2306,7 @@ impl Parser {
 
         // Parse parameters: (param1, param2, ...)
         self.expect(Token::LParen)?;
-        
+
         let mut params = Vec::new();
         if !matches!(self.current(), Some(Token::RParen)) {
             loop {
@@ -2163,7 +2314,7 @@ impl Parser {
                     Some(Token::Identifier(name)) => name,
                     _ => return Err("Expected parameter name".to_string()),
                 };
-                
+
                 // Parse parameter mode (IN, OUT, INOUT) - default is IN
                 let mode = match self.current() {
                     Some(Token::Identifier(mode_str)) => {
@@ -2185,7 +2336,7 @@ impl Parser {
                     }
                     _ => ParamMode::In,
                 };
-                
+
                 // Parse data type
                 let data_type = match self.next() {
                     Some(Token::Identifier(dt)) => dt,
@@ -2199,13 +2350,13 @@ impl Parser {
                     Some(Token::Blob) => "BLOB".to_string(),
                     _ => return Err("Expected data type".to_string()),
                 };
-                
+
                 params.push(ProcedureParam {
                     name: param_name,
                     mode,
                     data_type,
                 });
-                
+
                 match self.current() {
                     Some(Token::Comma) => {
                         self.next();
@@ -2218,14 +2369,15 @@ impl Parser {
 
         // Parse BEGIN...END block
         self.expect(Token::Begin)?;
-        
+
         let mut body = Vec::new();
-        
+
         // Simple body parsing: collect statements until END
         // Note: This is a simplified implementation that stores raw SQL for now
         while !matches!(self.current(), Some(Token::Identifier(end_str)) 
-                       if end_str.to_uppercase() == "END") 
-               && !matches!(self.current(), None) {
+                       if end_str.to_uppercase() == "END")
+            && !matches!(self.current(), None)
+        {
             let stmt = match self.current() {
                 Some(Token::Select) => {
                     // For now, just collect SELECT statements as raw SQL
@@ -2279,10 +2431,11 @@ impl Parser {
             };
             body.push(stmt);
         }
-        
+
         // Expect END
         if matches!(self.current(), Some(Token::Identifier(end_str)) 
-                   if end_str.to_uppercase() == "END") {
+                   if end_str.to_uppercase() == "END")
+        {
             self.next();
         }
 
@@ -2496,7 +2649,7 @@ impl Parser {
             Some(Token::Identifier(name)) => {
                 let u = name.clone();
                 self.next();
-                u
+                UserIdentity::new(&u, "%")
             }
             _ => return Err("Expected user name".to_string()),
         };
@@ -2554,7 +2707,7 @@ impl Parser {
             Some(Token::Identifier(name)) => {
                 let u = name.clone();
                 self.next();
-                u
+                UserIdentity::new(&u, "%")
             }
             _ => return Err("Expected user name".to_string()),
         };
@@ -2659,12 +2812,14 @@ impl Parser {
             _ => return Err("Expected statement name after DEALLOCATE PREPARE".to_string()),
         };
 
-        Ok(Statement::DeallocatePrepare(DeallocatePrepareStatement { name }))
+        Ok(Statement::DeallocatePrepare(DeallocatePrepareStatement {
+            name,
+        }))
     }
 
     fn parse_call(&mut self) -> Result<Statement, String> {
         self.expect(Token::Call)?;
-        
+
         // Get procedure name
         let procedure_name = match self.next() {
             Some(Token::Identifier(name)) => name,
@@ -2673,7 +2828,7 @@ impl Parser {
 
         // Parse arguments: (arg1, arg2, ...)
         self.expect(Token::LParen)?;
-        
+
         let mut args = Vec::new();
         if !matches!(self.current(), Some(Token::RParen)) {
             loop {
@@ -2685,7 +2840,7 @@ impl Parser {
                     _ => return Err("Expected argument".to_string()),
                 };
                 args.push(arg);
-                
+
                 match self.current() {
                     Some(Token::Comma) => {
                         self.next();
@@ -2704,7 +2859,7 @@ impl Parser {
 
     fn parse_delimiter(&mut self) -> Result<Statement, String> {
         self.expect(Token::Delimiter)?;
-        
+
         // Get the new delimiter
         let delimiter = match self.next() {
             Some(Token::Semicolon) => ";".to_string(),
@@ -3184,7 +3339,7 @@ mod tests {
             Statement::Grant(g) => {
                 assert_eq!(g.privilege, Privilege::Read);
                 assert_eq!(g.table, "users");
-                assert_eq!(g.to_user, "alice");
+                assert_eq!(g.to_user, UserIdentity::new("alice", "%"));
             }
             _ => panic!("Expected GRANT statement"),
         }
@@ -3198,7 +3353,7 @@ mod tests {
             Statement::Grant(g) => {
                 assert_eq!(g.privilege, Privilege::Write);
                 assert_eq!(g.table, "orders");
-                assert_eq!(g.to_user, "bob");
+                assert_eq!(g.to_user, UserIdentity::new("bob", "%"));
             }
             _ => panic!("Expected GRANT statement"),
         }
@@ -3212,7 +3367,7 @@ mod tests {
             Statement::Grant(g) => {
                 assert_eq!(g.privilege, Privilege::All);
                 assert_eq!(g.table, "products");
-                assert_eq!(g.to_user, "admin");
+                assert_eq!(g.to_user, UserIdentity::new("admin", "%"));
             }
             _ => panic!("Expected GRANT statement"),
         }
@@ -3226,7 +3381,7 @@ mod tests {
             Statement::Grant(g) => {
                 assert_eq!(g.privilege, Privilege::Read);
                 assert_eq!(g.table, "users");
-                assert_eq!(g.to_user, "guest");
+                assert_eq!(g.to_user, UserIdentity::new("guest", "%"));
             }
             _ => panic!("Expected GRANT statement"),
         }
@@ -3240,7 +3395,7 @@ mod tests {
             Statement::Grant(g) => {
                 assert_eq!(g.privilege, Privilege::Write);
                 assert_eq!(g.table, "users");
-                assert_eq!(g.to_user, "writer");
+                assert_eq!(g.to_user, UserIdentity::new("writer", "%"));
             }
             _ => panic!("Expected GRANT statement"),
         }
@@ -3254,7 +3409,7 @@ mod tests {
             Statement::Grant(g) => {
                 assert_eq!(g.privilege, Privilege::Write);
                 assert_eq!(g.table, "users");
-                assert_eq!(g.to_user, "updater");
+                assert_eq!(g.to_user, UserIdentity::new("updater", "%"));
             }
             _ => panic!("Expected GRANT statement"),
         }
@@ -3268,7 +3423,7 @@ mod tests {
             Statement::Grant(g) => {
                 assert_eq!(g.privilege, Privilege::Write);
                 assert_eq!(g.table, "users");
-                assert_eq!(g.to_user, "deleter");
+                assert_eq!(g.to_user, UserIdentity::new("deleter", "%"));
             }
             _ => panic!("Expected GRANT statement"),
         }
@@ -3282,7 +3437,7 @@ mod tests {
             Statement::Grant(g) => {
                 assert_eq!(g.privilege, Privilege::Read);
                 assert_eq!(g.table, "users");
-                assert_eq!(g.to_user, "alice");
+                assert_eq!(g.to_user, UserIdentity::new("alice", "%"));
             }
             _ => panic!("Expected GRANT statement"),
         }
@@ -3296,7 +3451,7 @@ mod tests {
             Statement::Grant(g) => {
                 assert_eq!(g.privilege, Privilege::Read);
                 assert_eq!(g.table, "Users");
-                assert_eq!(g.to_user, "Alice");
+                assert_eq!(g.to_user, UserIdentity::new("alice", "%"));
             }
             _ => panic!("Expected GRANT statement"),
         }
@@ -3328,7 +3483,7 @@ mod tests {
             Statement::Revoke(r) => {
                 assert_eq!(r.privilege, Privilege::Read);
                 assert_eq!(r.table, "users");
-                assert_eq!(r.from_user, "alice");
+                assert_eq!(r.from_user, UserIdentity::new("alice", "%"));
             }
             _ => panic!("Expected REVOKE statement"),
         }
@@ -3342,7 +3497,7 @@ mod tests {
             Statement::Revoke(r) => {
                 assert_eq!(r.privilege, Privilege::Write);
                 assert_eq!(r.table, "orders");
-                assert_eq!(r.from_user, "bob");
+                assert_eq!(r.from_user, UserIdentity::new("bob", "%"));
             }
             _ => panic!("Expected REVOKE statement"),
         }
@@ -3356,7 +3511,7 @@ mod tests {
             Statement::Revoke(r) => {
                 assert_eq!(r.privilege, Privilege::All);
                 assert_eq!(r.table, "products");
-                assert_eq!(r.from_user, "admin");
+                assert_eq!(r.from_user, UserIdentity::new("admin", "%"));
             }
             _ => panic!("Expected REVOKE statement"),
         }
@@ -3370,7 +3525,7 @@ mod tests {
             Statement::Revoke(r) => {
                 assert_eq!(r.privilege, Privilege::Read);
                 assert_eq!(r.table, "users");
-                assert_eq!(r.from_user, "guest");
+                assert_eq!(r.from_user, UserIdentity::new("guest", "%"));
             }
             _ => panic!("Expected REVOKE statement"),
         }
@@ -3384,7 +3539,7 @@ mod tests {
             Statement::Revoke(r) => {
                 assert_eq!(r.privilege, Privilege::Write);
                 assert_eq!(r.table, "users");
-                assert_eq!(r.from_user, "writer");
+                assert_eq!(r.from_user, UserIdentity::new("writer", "%"));
             }
             _ => panic!("Expected REVOKE statement"),
         }
@@ -3398,7 +3553,7 @@ mod tests {
             Statement::Revoke(r) => {
                 assert_eq!(r.privilege, Privilege::Write);
                 assert_eq!(r.table, "users");
-                assert_eq!(r.from_user, "updater");
+                assert_eq!(r.from_user, UserIdentity::new("updater", "%"));
             }
             _ => panic!("Expected REVOKE statement"),
         }
@@ -3412,7 +3567,7 @@ mod tests {
             Statement::Revoke(r) => {
                 assert_eq!(r.privilege, Privilege::Write);
                 assert_eq!(r.table, "users");
-                assert_eq!(r.from_user, "deleter");
+                assert_eq!(r.from_user, UserIdentity::new("deleter", "%"));
             }
             _ => panic!("Expected REVOKE statement"),
         }
@@ -3426,7 +3581,7 @@ mod tests {
             Statement::Revoke(r) => {
                 assert_eq!(r.privilege, Privilege::Read);
                 assert_eq!(r.table, "users");
-                assert_eq!(r.from_user, "alice");
+                assert_eq!(r.from_user, UserIdentity::new("alice", "%"));
             }
             _ => panic!("Expected REVOKE statement"),
         }
@@ -3440,7 +3595,7 @@ mod tests {
             Statement::Revoke(r) => {
                 assert_eq!(r.privilege, Privilege::Read);
                 assert_eq!(r.table, "Users");
-                assert_eq!(r.from_user, "Alice");
+                assert_eq!(r.from_user, UserIdentity::new("alice", "%"));
             }
             _ => panic!("Expected REVOKE statement"),
         }
@@ -3476,7 +3631,7 @@ mod tests {
         let grant = GrantStatement {
             privilege: Privilege::Read,
             table: "users".to_string(),
-            to_user: "alice".to_string(),
+            to_user: UserIdentity::new("alice", "%"),
         };
         let cloned = grant.clone();
         assert_eq!(grant.privilege, cloned.privilege);
@@ -3489,7 +3644,7 @@ mod tests {
         let revoke = RevokeStatement {
             privilege: Privilege::Write,
             table: "orders".to_string(),
-            from_user: "bob".to_string(),
+            from_user: UserIdentity::new("bob", "%"),
         };
         let cloned = revoke.clone();
         assert_eq!(revoke.privilege, cloned.privilege);
@@ -3502,7 +3657,7 @@ mod tests {
         let grant = GrantStatement {
             privilege: Privilege::Read,
             table: "users".to_string(),
-            to_user: "alice".to_string(),
+            to_user: UserIdentity::new("alice", "%"),
         };
         let debug = format!("{:?}", grant);
         assert!(debug.contains("GrantStatement"));
@@ -3516,7 +3671,7 @@ mod tests {
         let revoke = RevokeStatement {
             privilege: Privilege::Write,
             table: "orders".to_string(),
-            from_user: "bob".to_string(),
+            from_user: UserIdentity::new("bob", "%"),
         };
         let debug = format!("{:?}", revoke);
         assert!(debug.contains("RevokeStatement"));
@@ -3548,6 +3703,82 @@ mod tests {
         for sql in revokes {
             let result = parse(sql);
             assert!(result.is_ok(), "Failed to parse: {}", sql);
+        }
+    }
+
+    #[test]
+    fn test_parse_create_user() {
+        let result = parse("CREATE USER 'alice'@'localhost' IDENTIFIED BY 'password123'");
+        assert!(result.is_ok(), "Error: {:?}", result.err());
+        match result.unwrap() {
+            Statement::CreateUser(c) => {
+                assert_eq!(c.identities.len(), 1);
+                assert_eq!(c.identities[0].username, "alice");
+                assert_eq!(c.identities[0].host, "localhost");
+                assert_eq!(c.password, "password123");
+            }
+            _ => panic!("Expected CREATE USER statement"),
+        }
+    }
+
+    #[test]
+    fn test_parse_create_user_multiple() {
+        let result = parse("CREATE USER 'alice'@'localhost', 'bob'@'%' IDENTIFIED BY 'password'");
+        assert!(result.is_ok(), "Error: {:?}", result.err());
+        match result.unwrap() {
+            Statement::CreateUser(c) => {
+                assert_eq!(c.identities.len(), 2);
+                assert_eq!(c.identities[0].username, "alice");
+                assert_eq!(c.identities[0].host, "localhost");
+                assert_eq!(c.identities[1].username, "bob");
+                assert_eq!(c.identities[1].host, "%");
+                assert_eq!(c.password, "password");
+            }
+            _ => panic!("Expected CREATE USER statement"),
+        }
+    }
+
+    #[test]
+    fn test_parse_create_user_default_host() {
+        let result = parse("CREATE USER 'alice' IDENTIFIED BY 'password'");
+        assert!(result.is_ok(), "Error: {:?}", result.err());
+        match result.unwrap() {
+            Statement::CreateUser(c) => {
+                assert_eq!(c.identities.len(), 1);
+                assert_eq!(c.identities[0].username, "alice");
+                assert_eq!(c.identities[0].host, "%");
+            }
+            _ => panic!("Expected CREATE USER statement"),
+        }
+    }
+
+    #[test]
+    fn test_parse_drop_user() {
+        let result = parse("DROP USER 'alice'@'localhost'");
+        assert!(result.is_ok(), "Error: {:?}", result.err());
+        match result.unwrap() {
+            Statement::DropUser(d) => {
+                assert_eq!(d.identities.len(), 1);
+                assert_eq!(d.identities[0].username, "alice");
+                assert_eq!(d.identities[0].host, "localhost");
+            }
+            _ => panic!("Expected DROP USER statement"),
+        }
+    }
+
+    #[test]
+    fn test_parse_drop_user_multiple() {
+        let result = parse("DROP USER 'alice'@'localhost', 'bob'@'%'");
+        assert!(result.is_ok(), "Error: {:?}", result.err());
+        match result.unwrap() {
+            Statement::DropUser(d) => {
+                assert_eq!(d.identities.len(), 2);
+                assert_eq!(d.identities[0].username, "alice");
+                assert_eq!(d.identities[0].host, "localhost");
+                assert_eq!(d.identities[1].username, "bob");
+                assert_eq!(d.identities[1].host, "%");
+            }
+            _ => panic!("Expected DROP USER statement"),
         }
     }
 
