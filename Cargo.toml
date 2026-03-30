@@ -369,3 +369,7 @@ path = "tests/integration/teaching_scenario_client_server_test.rs"
 [[test]]
 name = "regression_test"
 path = "tests/regression_test.rs"
+
+[[test]]
+name = "auth_rbac_test"
+path = "tests/integration/auth_rbac_test.rs"
