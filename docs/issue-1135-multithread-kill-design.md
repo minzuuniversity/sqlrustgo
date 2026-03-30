@@ -30,6 +30,83 @@
 
 ---
 
+## 1.3 业界标准：为什么数据库必须使用协作式取消？
+
+**核心原因只有一个：强制终止线程会破坏数据库一致性**
+
+数据库执行线程正在做的事情可能包括：
+
+| 操作 | 风险 |
+|------|------|
+| 写 WAL | 日志损坏 |
+| 更新 B+Tree | 索引损坏 |
+| 更新 buffer pool | 脏页不一致 |
+| 持有锁 | 死锁 |
+| 事务中途终止 | ACID 破坏 |
+
+**例如**：
+```sql
+UPDATE users SET balance = balance - 100;
+```
+如果线程被强杀，可能变成：`balance 已扣` 但 `WAL 未写`，数据库直接损坏。
+
+**结论：数据库只能请求停止，不能强制停止**
+
+---
+
+## 1.4 业界标准取消机制参考
+
+### 1.4.1 MySQL KILL 实现机制
+
+**官方文档描述**：
+> "When you use `KILL`, a **thread-specific kill flag is set** for the thread. In most cases, it might take some time for the thread to die because the kill flag is checked only at **specific intervals**"
+
+**MySQL 内部模型**：
+```cpp
+THD {
+    killed_state killed;
+}
+
+while (...) {
+    check_killed();
+}
+```
+
+**killed_state 定义**：
+
+| killed_state | 含义 |
+|--------------|------|
+| NOT_KILLED | 正常 |
+| KILL_QUERY | 终止当前查询 |
+| KILL_CONNECTION | 终止 session |
+
+### 1.4.2 PostgreSQL 取消机制（更先进）
+
+PostgreSQL 使用独立标志：
+```cpp
+QueryCancelPending  // kill query
+ProcDiePending      // kill session
+```
+
+**执行循环**：
+```cpp
+#define CHECK_FOR_INTERRUPTS() \
+ if (InterruptPending) ProcessInterrupts()
+```
+
+### 1.4.3 不同操作类型的取消策略
+
+数据库不会统一处理所有类型查询取消：
+
+| 操作类型 | 取消检查点 | 说明 |
+|----------|-----------|------|
+| SELECT SeqScan | 每 N rows | 几乎即时响应 |
+| ORDER BY / GROUP BY | chunk merge boundary | 排序不能随时中断 |
+| UPDATE / DELETE | before next row | 不能 mid-row cancel |
+| ALTER TABLE | copy boundary | metadata swap 不能中断 |
+
+---
+
 ## 2. 当前架构分析
 
 ### 2.1 服务器线程模型 (`crates/server/src/main.rs`)
@@ -99,19 +176,115 @@ pub struct SessionManager {
 
 ### 3.2 核心数据结构变更
 
-#### 3.2.1 Session 增强
+#### 3.2.1 CancelToken 和 CancelGuard
+
+参考 PostgreSQL 设计的业界标准取消机制：
+
+```rust
+// crates/security/src/cancel.rs
+
+use std::sync::atomic::{AtomicBool, Ordering};
+
+/// CancelToken - 协作式取消标志
+/// 参考 PostgreSQL QueryCancelPending 设计
+pub struct CancelToken {
+    /// 取消当前查询（KILL QUERY）
+    query_cancelled: AtomicBool,
+    /// 终止会话（KILL CONNECTION）
+    connection_killed: AtomicBool,
+}
+
+impl CancelToken {
+    pub fn new() -> Self {
+        Self {
+            query_cancelled: AtomicBool::new(false),
+            connection_killed: AtomicBool::new(false),
+        }
+    }
+
+    /// 取消当前查询（KILL QUERY）
+    pub fn cancel_query(&self) {
+        self.query_cancelled.store(true, Ordering::SeqCst);
+    }
+
+    /// 检查查询是否被取消
+    pub fn is_query_cancelled(&self) -> bool {
+        self.query_cancelled.load(Ordering::SeqCst)
+    }
+
+    /// 终止连接（KILL CONNECTION）
+    pub fn kill_connection(&self) {
+        self.connection_killed.store(true, Ordering::SeqCst);
+    }
+
+    /// 检查连接是否被终止
+    pub fn is_connection_killed(&self) -> bool {
+        self.connection_killed.load(Ordering::SeqCst)
+    }
+
+    /// 重置查询取消标志（用于新的查询）
+    pub fn reset_query_cancelled(&self) {
+        self.query_cancelled.store(false, Ordering::SeqCst);
+    }
+}
+
+/// CancelGuard - 临界区取消保护
+/// 参考 PostgreSQL CancelGuard 设计
+/// 用于在关键操作（如 metadata swap）期间禁用取消
+pub struct CancelGuard {
+    token: Arc<CancelToken>,
+    previous_state: bool,
+}
+
+impl CancelGuard {
+    /// 禁用取消（进入临界区）
+    pub fn disable(token: Arc<CancelToken>) -> Self {
+        let previous_state = token.query_cancelled.swap(true, Ordering::SeqCst);
+        Self { token, previous_state }
+    }
+
+    /// 重新启用取消（离开临界区）
+    pub fn enable(self) {
+        self.token.query_cancelled.store(self.previous_state, Ordering::SeqCst);
+    }
+}
+
+impl Drop for CancelGuard {
+    fn drop(&mut self) {
+        // 确保离开临界区时恢复取消状态
+        self.token.query_cancelled.store(self.previous_state, Ordering::SeqCst);
+    }
+}
+```
+
+#### 3.2.2 KillType 枚举
+
+```rust
+// crates/parser/src/ast.rs 或新文件
+
+/// KILL 语句类型
+/// 参考 MySQL KILL_QUERY / KILL_CONNECTION
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum KillType {
+    /// 终止当前查询，连接保持
+    Query,
+    /// 终止整个连接
+    Connection,
+}
+```
+
+#### 3.2.3 Session 增强
 
 ```rust
 // crates/security/src/session.rs
 
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::thread::ThreadId;
+use std::sync::Arc;
 
 /// Session 状态追踪
 pub struct SessionState {
     pub thread_id: AtomicU64,           // 当前处理线程 ID
-    pub is_cancelled: AtomicBool,      // 取消标志
-    pub is_killed: AtomicBool,          // Kill 标志
+    pub cancel_token: Arc<CancelToken>, // 取消标志
 }
 
 /// Session 扩展方法
@@ -119,18 +292,37 @@ impl Session {
     /// 标记 session 正在被线程处理
     pub fn set_thread_id(&self, thread_id: u64);
     
-    /// 检查是否已被取消
-    pub fn is_cancelled(&self) -> bool;
+    /// 获取取消标志
+    pub fn cancel_token(&self) -> Arc<CancelToken>;
     
-    /// 标记为取消
-    pub fn cancel(&self);
+    /// 检查是否已被取消查询
+    pub fn is_query_cancelled(&self) -> bool {
+        self.cancel_token.is_query_cancelled()
+    }
     
-    /// 标记为已 kill
-    pub fn kill(&self);
+    /// 标记为取消查询
+    pub fn cancel_query(&self) {
+        self.cancel_token.cancel_query();
+    }
+    
+    /// 检查是否连接已被 kill
+    pub fn is_connection_killed(&self) -> bool {
+        self.cancel_token.is_connection_killed()
+    }
+    
+    /// 标记为 kill 连接
+    pub fn kill_connection(&self) {
+        self.cancel_token.kill_connection();
+    }
+    
+    /// 重置查询取消标志（用于新的查询）
+    pub fn reset_query_cancelled(&self) {
+        self.cancel_token.reset_query_cancelled();
+    }
 }
 ```
 
-#### 3.2.2 SessionManager 增强
+#### 3.2.4 SessionManager 增强
 
 ```rust
 impl SessionManager {
