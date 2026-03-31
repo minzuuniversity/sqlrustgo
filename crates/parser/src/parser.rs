@@ -686,7 +686,7 @@ impl Parser {
             Some(Token::Prepare) => self.parse_prepare(),
             Some(Token::Execute) => self.parse_execute(),
             Some(Token::Deallocate) => self.parse_deallocate(),
-            Some(Token::Copy) => self.parse_copy(),
+            Some(Token::Copy) => self.parse_call(),
             Some(Token::Merge) => self.parse_merge(),
             Some(Token::Truncate) => self.parse_truncate(),
             Some(t) => Err(format!("Unexpected token: {:?}", t)),
