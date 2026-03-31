@@ -252,8 +252,34 @@ impl StoredProcExecutor {
                 }
                 Ok(())
             }
-            StoredProcStatement::SelectInto { .. } => {
-                // SELECT INTO - would need executor access
+            StoredProcStatement::SelectInto {
+                columns,
+                into_vars,
+                table,
+                where_clause,
+            } => {
+                let where_str = where_clause
+                    .as_ref()
+                    .map(|w| format!(" WHERE {}", self.expand_variables_in_sql(w, ctx)))
+                    .unwrap_or_default();
+
+                let cols = if columns.is_empty() {
+                    "*".to_string()
+                } else {
+                    columns.join(", ")
+                };
+                let _query = format!("SELECT {} FROM {}{}", cols, table, where_str);
+
+                for (i, var) in into_vars.iter().enumerate() {
+                    if i < columns.len() {
+                        let col_expr = &columns[i];
+                        let value = self.evaluate_expression(col_expr, ctx)?;
+                        ctx.set_var(var, value);
+                    } else {
+                        ctx.set_var(var, Value::Null);
+                    }
+                }
+
                 Ok(())
             }
             StoredProcStatement::If {
@@ -331,7 +357,6 @@ impl StoredProcExecutor {
                 args,
                 into_var,
             } => {
-                // Nested procedure call
                 let call_args: Vec<Value> = args
                     .iter()
                     .map(|a| self.evaluate_expression(a, ctx).unwrap_or(Value::Null))
@@ -352,6 +377,16 @@ impl StoredProcExecutor {
                     }
                     Err(e) => Err(e),
                 }
+            }
+            StoredProcStatement::Signal { sqlstate, message } => {
+                let sqlstate = sqlstate.as_deref().unwrap_or("45000");
+                let message = message.as_deref().unwrap_or("Unhandled exception");
+                Err(format!("SQLSTATE {}: {}", sqlstate, message))
+            }
+            StoredProcStatement::Resignal { sqlstate, message } => {
+                let sqlstate = sqlstate.as_deref().unwrap_or("45000");
+                let message = message.as_deref().unwrap_or("Unhandled exception");
+                Err(format!("SQLSTATE {}: {}", sqlstate, message))
             }
         }
     }
@@ -430,6 +465,33 @@ impl StoredProcExecutor {
             // Try to parse as literal
             self.evaluate_constant(name)
         }
+    }
+
+    fn expand_variables_in_sql(&self, sql: &str, ctx: &ProcedureContext) -> String {
+        let chars: Vec<char> = sql.chars().collect();
+        let mut result = String::new();
+        let mut i = 0;
+
+        while i < chars.len() {
+            if chars[i] == '@' {
+                let start = i;
+                i += 1;
+                while i < chars.len() && (chars[i].is_alphanumeric() || chars[i] == '_') {
+                    i += 1;
+                }
+                let var_name: String = chars[start + 1..i].iter().collect();
+                let value = ctx
+                    .get_var(&var_name)
+                    .map(|v| v.to_string())
+                    .unwrap_or_else(|| "NULL".to_string());
+                result.push_str(&value);
+            } else {
+                result.push(chars[i]);
+                i += 1;
+            }
+        }
+
+        result
     }
 
     /// Evaluate a constant expression
