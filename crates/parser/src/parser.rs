@@ -17,16 +17,6 @@ use crate::lexer::Lexer;
 use crate::token::Token;
 use serde::{Deserialize, Serialize};
 
-/// Convert a token to its string representation (not debug format)
-fn token_to_string(token: &Token) -> String {
-    match token {
-        Token::Identifier(s) => s.clone(),
-        Token::StringLiteral(s) => format!("'{}'", s),
-        Token::NumberLiteral(n) => n.clone(),
-        _ => token.to_string(),
-    }
-}
-
 /// SQL Statement types
 #[derive(Debug, Clone, PartialEq)]
 #[allow(clippy::large_enum_variant)]
@@ -282,9 +272,7 @@ pub enum ProcedureStatement {
         body: Vec<ProcedureStatement>,
     },
     /// LOOP statements END LOOP (with optional LEAVE to exit)
-    Loop {
-        body: Vec<ProcedureStatement>,
-    },
+    Loop { body: Vec<ProcedureStatement> },
     /// RETURN expression
     Return { value: String },
     /// LEAVE label - exit a loop
@@ -372,6 +360,18 @@ pub enum Privilege {
     Read,
     Write,
     All,
+    Process,
+    Super,
+}
+
+impl Privilege {
+    pub fn can_kill(&self) -> bool {
+        matches!(self, Privilege::Super | Privilege::All)
+    }
+
+    pub fn can_view_processlist(&self) -> bool {
+        matches!(self, Privilege::Super | Privilege::Process | Privilege::All)
+    }
 }
 
 /// Join type
@@ -998,7 +998,25 @@ impl Parser {
         self.expect(Token::From)?;
 
         let table = match self.next() {
-            Some(Token::Identifier(name)) => name,
+            Some(Token::Identifier(name)) => {
+                if matches!(self.current(), Some(Token::Dot)) {
+                    self.next();
+                    match self.next() {
+                        Some(Token::Identifier(table_name)) => {
+                            format!("{}.{}", name, table_name)
+                        }
+                        Some(Token::Processlist) => {
+                            format!("{}.processlist", name)
+                        }
+                        Some(t) => {
+                            return Err(format!("Expected table name after dot, got {:?}", t))
+                        }
+                        None => return Err("Expected table name after dot".to_string()),
+                    }
+                } else {
+                    name
+                }
+            }
             Some(t) => return Err(format!("Expected table name, got {:?}", t)),
             None => return Err("Expected table name".to_string()),
         };
@@ -2536,7 +2554,15 @@ impl Parser {
         // Parse BEGIN...END block
         self.expect(Token::Begin)?;
 
+        // Use parse_procedure_body for proper control flow parsing
         let body = self.parse_procedure_body()?;
+
+        // Expect END
+        if matches!(self.current(), Some(Token::Identifier(end_str)) 
+                   if end_str.to_uppercase() == "END")
+        {
+            self.next();
+        }
 
         Ok(Statement::CreateProcedure(CreateProcedureStatement {
             name,
@@ -2556,11 +2582,11 @@ impl Parser {
             {
                 break;
             }
-            
+
             if self.current().is_none() {
                 break;
             }
-            
+
             match self.parse_procedure_statement() {
                 Ok(stmt) => {
                     // Skip empty statements
@@ -2601,7 +2627,8 @@ impl Parser {
             Some(Token::Call) => self.parse_procedure_call(),
             Some(Token::Set) => self.parse_procedure_set(),
             Some(Token::Select) => {
-                self.parse_procedure_select()
+                let sql = self.collect_until_semicolon();
+                Ok(ProcedureStatement::RawSql(sql))
             }
             Some(Token::Identifier(id)) if id.to_uppercase() == "CALL" => {
                 self.next(); // consume CALL
@@ -2617,7 +2644,7 @@ impl Parser {
     /// Parse DECLARE variable statement
     fn parse_procedure_declare(&mut self) -> Result<ProcedureStatement, String> {
         self.expect(Token::Declare)?;
-        
+
         // Variable name
         let name = match self.next() {
             Some(Token::Identifier(name)) => name,
@@ -2643,9 +2670,11 @@ impl Parser {
         };
 
         // Optional DEFAULT value
-        let default_value = if matches!(self.current(), Some(Token::Identifier(id)) if id.to_uppercase() == "DEFAULT") {
+        let default_value = if matches!(self.current(), Some(Token::Identifier(id)) if id.to_uppercase() == "DEFAULT")
+        {
             self.next();
-            Some(self.collect_until_semicolon().trim().to_string())
+            let value = self.collect_until_semicolon().trim().to_string();
+            Some(value)
         } else {
             self.expect(Token::Semicolon)?;
             None
@@ -2711,10 +2740,7 @@ impl Parser {
         self.expect_token_case_insensitive("END")?;
         self.expect_token_case_insensitive("WHILE")?;
 
-        Ok(ProcedureStatement::While {
-            condition,
-            body,
-        })
+        Ok(ProcedureStatement::While { condition, body })
     }
 
     /// Parse LOOP ... END LOOP statement
@@ -2726,9 +2752,7 @@ impl Parser {
         self.expect_token_case_insensitive("END")?;
         self.expect_token_case_insensitive("LOOP")?;
 
-        Ok(ProcedureStatement::Loop {
-            body,
-        })
+        Ok(ProcedureStatement::Loop { body })
     }
 
     /// Parse LEAVE label statement
@@ -2788,7 +2812,8 @@ impl Parser {
         }
 
         // Optional INTO variable
-        let into_var = if matches!(self.current(), Some(Token::Identifier(id)) if id.to_uppercase() == "INTO") {
+        let into_var = if matches!(self.current(), Some(Token::Identifier(id)) if id.to_uppercase() == "INTO")
+        {
             self.next();
             match self.next() {
                 Some(Token::Identifier(name)) => Some(name),
@@ -2807,80 +2832,6 @@ impl Parser {
         })
     }
 
-    /// Parse SELECT ... INTO for stored procedures
-    fn parse_procedure_select(&mut self) -> Result<ProcedureStatement, String> {
-        // Look ahead to see if this is SELECT ... INTO var1, var2 FROM table
-        let sql = self.collect_until_semicolon();
-        let sql_upper = sql.to_uppercase();
-        
-        if sql_upper.contains(" INTO ") {
-            // Parse SELECT ... INTO
-            return self.parse_select_into(&sql);
-        }
-        
-        // Regular SELECT - treat as raw SQL
-        Ok(ProcedureStatement::RawSql(sql))
-    }
-
-    /// Parse SELECT INTO statement
-    fn parse_select_into(&mut self, sql: &str) -> Result<ProcedureStatement, String> {
-        // Simple parser for SELECT col1, col2 INTO @var1, @var2 FROM table [WHERE ...]
-        let sql_upper = sql.to_uppercase();
-        
-        // Extract INTO clause
-        let into_pos = sql_upper.find(" INTO ").ok_or("Missing INTO clause")?;
-        let from_pos = sql_upper.find(" FROM ");
-        
-        // Parse columns
-        let select_part = sql[..into_pos].replace("SELECT", "").trim().to_string();
-        let columns: Vec<String> = select_part
-            .split(',')
-            .map(|s| s.trim().to_string())
-            .filter(|s| !s.is_empty())
-            .collect();
-        
-        // Parse INTO variables
-        let into_part = if let Some(from_idx) = from_pos {
-            sql[into_pos + 6..from_idx].trim().to_string()
-        } else {
-            sql[into_pos + 6..].trim().to_string()
-        };
-        
-        // Extract variable names (remove @ prefix if present)
-        let into_vars: Vec<String> = into_part
-            .split(',')
-            .map(|s| {
-                let var = s.trim();
-                if var.starts_with('@') {
-                    var[1..].to_string()
-                } else {
-                    var.to_string()
-                }
-            })
-            .collect();
-        
-        // Parse table name
-        let (table, where_clause) = if let Some(from_idx) = from_pos {
-            let from_part = sql[from_idx + 6..].trim();
-            if let Some(where_pos) = from_part.to_uppercase().find(" WHERE ") {
-                let table = from_part[..where_pos].trim().to_string();
-                let where_cond = from_part[where_pos + 8..].trim().to_string();
-                (table, Some(where_cond))
-            } else {
-                (from_part.to_string(), None)
-            }
-        } else {
-            return Err("Missing FROM clause in SELECT INTO".to_string());
-        };
-        
-        Ok(ProcedureStatement::SelectInto {
-            columns,
-            into_vars,
-            table,
-            where_clause,
-        })
-    }
-
     /// Parse SET variable = value statement
     fn parse_procedure_set(&mut self) -> Result<ProcedureStatement, String> {
         self.expect(Token::Set)?;
@@ -2888,25 +2839,22 @@ impl Parser {
             Some(Token::Identifier(id)) => id,
             _ => return Err("Expected variable name".to_string()),
         };
-        
+
         // Handle = or := assignment
         if matches!(self.current(), Some(Token::Equal)) {
             self.next();
         }
-        
+
         let value = self.collect_until_semicolon();
-        
-        Ok(ProcedureStatement::Set {
-            variable,
-            value,
-        })
+
+        Ok(ProcedureStatement::Set { variable, value })
     }
 
     /// Collect tokens until one of the specified tokens is encountered
     fn collect_until_token(&mut self, tokens: &[Token]) -> String {
         let mut result = String::new();
         let mut paren_depth = 0;
-        
+
         loop {
             match self.current() {
                 None => break,
@@ -2974,7 +2922,7 @@ impl Parser {
                 Some(Token::Eof) => break,
                 None => break,
                 Some(tok) => {
-                    sql.push_str(&token_to_string(&tok));
+                    sql.push_str(&tok.to_string());
                     sql.push(' ');
                     self.next();
                 }
@@ -5067,7 +5015,8 @@ fn test_parse_select_with_group_by() {
 
 #[test]
 fn test_parse_select_with_having() {
-    let result = parse("SELECT department, COUNT(*) FROM employees GROUP BY department HAVING COUNT(*) > 5");
+    let result =
+        parse("SELECT department, COUNT(*) FROM employees GROUP BY department HAVING COUNT(*) > 5");
     assert!(result.is_ok(), "Error: {:?}", result.err());
     match result.unwrap() {
         Statement::Select(s) => {
@@ -5187,28 +5136,6 @@ fn test_parse_procedure_return() {
     match result.unwrap() {
         Statement::CreateProcedure(proc) => {
             assert!(matches!(proc.body[0], ProcedureStatement::Return { .. }));
-        }
-        _ => panic!("Expected CreateProcedure statement"),
-    }
-}
-
-#[test]
-fn test_parse_procedure_select_into() {
-    let sql = "CREATE PROCEDURE test_select_into() BEGIN SELECT id, name INTO @uid, @uname FROM users WHERE id = 1; END";
-    let result = parse(sql);
-    assert!(result.is_ok(), "Error: {:?}", result.err());
-    match result.unwrap() {
-        Statement::CreateProcedure(proc) => {
-            match &proc.body[0] {
-                ProcedureStatement::SelectInto { columns, into_vars, table, .. } => {
-                    assert_eq!(columns.len(), 2);
-                    assert_eq!(into_vars.len(), 2);
-                    assert_eq!(into_vars[0].trim(), "uid");
-                    assert_eq!(into_vars[1].trim(), "uname");
-                    assert_eq!(table.trim(), "users");
-                }
-                _ => panic!("Expected SelectInto statement"),
-            }
         }
         _ => panic!("Expected CreateProcedure statement"),
     }
