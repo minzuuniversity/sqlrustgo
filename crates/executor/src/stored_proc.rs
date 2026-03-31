@@ -24,6 +24,10 @@ pub struct ProcedureContext {
     iterate: bool,
     /// Current loop label
     current_label: Option<String>,
+    /// Label stack for nested blocks
+    label_stack: Vec<String>,
+    /// Local variable scope stack for BEGIN/END blocks
+    scope_stack: Vec<HashMap<String, Value>>,
 }
 
 impl ProcedureContext {
@@ -36,7 +40,38 @@ impl ProcedureContext {
             leave: false,
             iterate: false,
             current_label: None,
+            label_stack: Vec::new(),
+            scope_stack: Vec::new(),
         }
+    }
+
+    /// Push a label onto the stack (enter a labeled block)
+    pub fn enter_label(&mut self, label: String) {
+        self.label_stack.push(label.clone());
+        self.current_label = Some(label);
+    }
+
+    /// Pop a label from the stack (exit a labeled block)
+    pub fn exit_label(&mut self) {
+        self.label_stack.pop();
+        self.current_label = self.label_stack.last().cloned();
+    }
+
+    /// Push a new variable scope (enter BEGIN block)
+    pub fn enter_scope(&mut self) {
+        self.scope_stack.push(HashMap::new());
+    }
+
+    /// Pop the current variable scope (exit END block)
+    pub fn exit_scope(&mut self) {
+        if self.scope_stack.pop().is_some() {
+            // Variables in the block scope are discarded
+        }
+    }
+
+    /// Check if a label exists in the stack
+    pub fn has_label(&self, label: &str) -> bool {
+        self.label_stack.iter().any(|l| l == label)
     }
 
     /// Set a variable value (local variable, without @ prefix)
@@ -400,6 +435,35 @@ impl StoredProcExecutor {
                 let sqlstate = sqlstate.as_deref().unwrap_or("45000");
                 let message = message.as_deref().unwrap_or("Unhandled exception");
                 Err(format!("SQLSTATE {}: {}", sqlstate, message))
+            }
+            StoredProcStatement::Block { label, body } => {
+                // BEGIN...END block with optional label
+                if let Some(ref lbl) = label {
+                    ctx.enter_label(lbl.clone());
+                }
+
+                // Push new scope for block-local variables
+                ctx.enter_scope();
+
+                // Execute block body
+                let result = self.execute_body(body, ctx);
+
+                // Pop scope (discard block-local variables)
+                ctx.exit_scope();
+
+                if label.is_some() {
+                    ctx.exit_label();
+                }
+
+                result
+            }
+            StoredProcStatement::DeclareHandler {
+                condition_type: _,
+                body: _,
+            } => {
+                // Handler declaration - acknowledged but not active in current implementation
+                // In a full implementation, this would register the handler
+                Ok(())
             }
         }
     }
