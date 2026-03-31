@@ -85,6 +85,7 @@ pub enum StoredProcStatement {
 }
 
 /// SQL error codes for common conditions
+#[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq)]
 pub enum SqlCondition {
     SqlException,
