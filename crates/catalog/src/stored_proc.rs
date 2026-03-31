@@ -92,6 +92,17 @@ pub enum StoredProcStatement {
         condition_type: HandlerCondition,
         body: Vec<StoredProcStatement>,
     },
+    /// DECLARE cursor
+    DeclareCursor { name: String, query: String },
+    /// OPEN cursor
+    OpenCursor { name: String },
+    /// FETCH from cursor
+    Fetch {
+        name: String,
+        into_vars: Vec<String>,
+    },
+    /// CLOSE cursor
+    CloseCursor { name: String },
 }
 
 /// Handler condition types

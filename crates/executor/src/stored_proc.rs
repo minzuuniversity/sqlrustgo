@@ -50,6 +50,8 @@ pub struct ProcedureContext {
     exception_handling: bool,
     /// Current exception (for RESIGNAL)
     current_exception: Option<StoredProcError>,
+    /// Cursors declared in the procedure
+    cursors: HashMap<String, Cursor>,
 }
 
 /// Exception handler registered by DECLARE HANDLER
@@ -57,6 +59,16 @@ pub struct ProcedureContext {
 struct ExceptionHandler {
     condition: HandlerCondition,
     body: Vec<StoredProcStatement>,
+}
+
+/// Cursor state for stored procedure cursors
+#[derive(Debug, Clone)]
+struct Cursor {
+    name: String,
+    query: String,
+    records: Vec<Vec<Value>>,
+    position: usize,
+    is_open: bool,
 }
 
 impl ProcedureContext {
@@ -74,6 +86,88 @@ impl ProcedureContext {
             handler_stack: Vec::new(),
             exception_handling: false,
             current_exception: None,
+            cursors: HashMap::new(),
+        }
+    }
+
+    /// Declare a cursor
+    pub fn declare_cursor(&mut self, name: String, query: String) {
+        self.cursors.insert(
+            name.clone(),
+            Cursor {
+                name,
+                query,
+                records: Vec::new(),
+                position: 0,
+                is_open: false,
+            },
+        );
+    }
+
+    /// Open a cursor (execute query and load results)
+    pub fn open_cursor(&mut self, name: &str) -> Result<(), String> {
+        if let Some(cursor) = self.cursors.get_mut(name) {
+            cursor.is_open = true;
+            cursor.position = 0;
+            Ok(())
+        } else {
+            Err(format!("Cursor '{}' not found", name))
+        }
+    }
+
+    /// Fetch from cursor into variables (returns has_rows, and sets variables via set_var)
+    pub fn fetch_cursor(&mut self, name: &str, into_vars: &[String]) -> Result<bool, String> {
+        let (has_rows, row_data) = {
+            let cursor = self
+                .cursors
+                .get_mut(name)
+                .ok_or_else(|| format!("Cursor '{}' not found", name))?;
+
+            if !cursor.is_open {
+                return Err(format!("Cursor '{}' is not open", name));
+            }
+
+            if cursor.position < cursor.records.len() {
+                let row = cursor.records[cursor.position].clone();
+                cursor.position += 1;
+                (true, Some(row))
+            } else {
+                (false, None)
+            }
+        };
+
+        if let Some(row) = row_data {
+            for (i, var) in into_vars.iter().enumerate() {
+                if i < row.len() {
+                    self.set_var(var, row[i].clone());
+                } else {
+                    self.set_var(var, Value::Null);
+                }
+            }
+        }
+        Ok(has_rows)
+    }
+
+    /// Close a cursor
+    pub fn close_cursor(&mut self, name: &str) -> Result<(), String> {
+        if let Some(cursor) = self.cursors.get_mut(name) {
+            cursor.is_open = false;
+            Ok(())
+        } else {
+            Err(format!("Cursor '{}' not found", name))
+        }
+    }
+
+    /// Check if cursor exists
+    pub fn has_cursor(&self, name: &str) -> bool {
+        self.cursors.contains_key(name)
+    }
+
+    /// Set cursor records (called after OPEN)
+    pub fn set_cursor_records(&mut self, name: &str, records: Vec<Vec<Value>>) {
+        if let Some(cursor) = self.cursors.get_mut(name) {
+            cursor.records = records;
+            cursor.position = 0;
         }
     }
 
@@ -605,6 +699,47 @@ impl StoredProcExecutor {
             } => {
                 // Register the exception handler
                 ctx.push_handler(condition_type.clone(), body.clone());
+                Ok(())
+            }
+            StoredProcStatement::DeclareCursor { name, query } => {
+                // Declare a cursor
+                ctx.declare_cursor(name.clone(), query.clone());
+                Ok(())
+            }
+            StoredProcStatement::OpenCursor { name } => {
+                // Open cursor - parse query, execute, and load results
+                let query = if let Some(cursor) = ctx.cursors.get(&name.clone()) {
+                    cursor.query.clone()
+                } else {
+                    return Err(format!("Cursor '{}' not found", name));
+                };
+
+                let expanded = self.expand_variables_in_sql(&query, ctx);
+                let statement = sqlrustgo_parser::parse(&expanded)
+                    .map_err(|e| format!("Failed to parse cursor query: {}", e))?;
+
+                if let sqlrustgo_parser::Statement::Select(select) = statement {
+                    let storage = self.storage.read().unwrap();
+                    let records = storage
+                        .scan(&select.table)
+                        .map_err(|e| format!("Failed to scan table: {}", e))?;
+                    ctx.set_cursor_records(&name, records);
+                    ctx.open_cursor(&name)?;
+                }
+                Ok(())
+            }
+            StoredProcStatement::Fetch { name, into_vars } => {
+                // Fetch from cursor
+                let has_rows = ctx.fetch_cursor(name, &into_vars)?;
+                ctx.set_session_var("__found", Value::Boolean(has_rows));
+                if !has_rows {
+                    ctx.set_session_var("__found_rows", Value::Integer(0));
+                }
+                Ok(())
+            }
+            StoredProcStatement::CloseCursor { name } => {
+                // Close cursor
+                ctx.close_cursor(&name)?;
                 Ok(())
             }
         }
