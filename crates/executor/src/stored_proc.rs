@@ -7,7 +7,7 @@ use sqlrustgo_catalog::StoredProcStatement;
 use sqlrustgo_storage::{Record, StorageEngine};
 use sqlrustgo_types::Value;
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 
 /// Stored procedure execution error
 #[derive(Debug, Clone)]
@@ -224,12 +224,15 @@ impl ProcedureContext {
 #[derive(Clone)]
 pub struct StoredProcExecutor {
     catalog: Arc<sqlrustgo_catalog::Catalog>,
-    storage: Arc<dyn StorageEngine>,
+    storage: Arc<RwLock<dyn StorageEngine>>,
 }
 
 impl StoredProcExecutor {
     /// Create a new stored procedure executor
-    pub fn new(catalog: Arc<sqlrustgo_catalog::Catalog>, storage: Arc<dyn StorageEngine>) -> Self {
+    pub fn new(
+        catalog: Arc<sqlrustgo_catalog::Catalog>,
+        storage: Arc<RwLock<dyn StorageEngine>>,
+    ) -> Self {
         Self { catalog, storage }
     }
 
@@ -238,7 +241,7 @@ impl StoredProcExecutor {
         use sqlrustgo_storage::MemoryStorage;
         Self {
             catalog,
-            storage: Arc::new(MemoryStorage::new()),
+            storage: Arc::new(RwLock::new(MemoryStorage::new())),
         }
     }
 
@@ -539,8 +542,8 @@ impl StoredProcExecutor {
         match statement {
             sqlrustgo_parser::Statement::Select(select) => {
                 let table_name = &select.table;
-                let records = self
-                    .storage
+                let storage = self.storage.read().unwrap();
+                let records = storage
                     .scan(table_name)
                     .map_err(|e| format!("Failed to scan table: {}", e))?;
 
