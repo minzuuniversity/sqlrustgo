@@ -260,13 +260,14 @@ impl ProcedureContext {
 
     /// Push a new variable scope (enter BEGIN block)
     pub fn enter_scope(&mut self) {
-        self.scope_stack.push(HashMap::new());
+        self.scope_stack.push(self.local_variables.clone());
+        self.local_variables.clear();
     }
 
     /// Pop the current variable scope (exit END block)
     pub fn exit_scope(&mut self) {
-        if self.scope_stack.pop().is_some() {
-            // Variables in the block scope are discarded
+        if let Some(saved_vars) = self.scope_stack.pop() {
+            self.local_variables = saved_vars;
         }
     }
 
