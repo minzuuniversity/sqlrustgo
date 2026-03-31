@@ -3,11 +3,27 @@
 //! This module provides stored procedure execution support with control flow.
 
 use crate::ExecutorResult;
+use sqlrustgo_catalog::HandlerCondition;
 use sqlrustgo_catalog::StoredProcStatement;
 use sqlrustgo_storage::StorageEngine;
 use sqlrustgo_types::Value;
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
+
+/// Stored procedure execution error
+#[derive(Debug, Clone)]
+pub struct StoredProcError {
+    pub sqlstate: String,
+    pub message: String,
+}
+
+impl std::fmt::Display for StoredProcError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "SQLSTATE {}: {}", self.sqlstate, self.message)
+    }
+}
+
+impl std::error::Error for StoredProcError {}
 
 /// Session-level variables for stored procedure execution
 #[derive(Debug, Clone, Default)]
@@ -28,6 +44,19 @@ pub struct ProcedureContext {
     label_stack: Vec<String>,
     /// Local variable scope stack for BEGIN/END blocks
     scope_stack: Vec<HashMap<String, Value>>,
+    /// Handler stack for exception handling
+    handler_stack: Vec<ExceptionHandler>,
+    /// Whether an exception is currently being handled
+    exception_handling: bool,
+    /// Current exception (for RESIGNAL)
+    current_exception: Option<StoredProcError>,
+}
+
+/// Exception handler registered by DECLARE HANDLER
+#[derive(Debug, Clone)]
+struct ExceptionHandler {
+    condition: HandlerCondition,
+    body: Vec<StoredProcStatement>,
 }
 
 impl ProcedureContext {
@@ -42,7 +71,85 @@ impl ProcedureContext {
             current_label: None,
             label_stack: Vec::new(),
             scope_stack: Vec::new(),
+            handler_stack: Vec::new(),
+            exception_handling: false,
+            current_exception: None,
         }
+    }
+
+    /// Push an exception handler onto the stack
+    pub fn push_handler(&mut self, condition: HandlerCondition, body: Vec<StoredProcStatement>) {
+        self.handler_stack
+            .push(ExceptionHandler { condition, body });
+    }
+
+    /// Pop an exception handler from the stack
+    pub fn pop_handler(&mut self) {
+        self.handler_stack.pop();
+    }
+
+    /// Check if current exception matches any handler condition
+    pub fn find_matching_handler(&self, exc: &StoredProcError) -> Option<&ExceptionHandler> {
+        for handler in &self.handler_stack {
+            match &handler.condition {
+                HandlerCondition::SqlException => {
+                    if exc.sqlstate.starts_with("45") || exc.sqlstate == "22000" {
+                        return Some(handler);
+                    }
+                }
+                HandlerCondition::SqlWarning => {
+                    if exc.sqlstate.starts_with("01") {
+                        return Some(handler);
+                    }
+                }
+                HandlerCondition::NotFound => {
+                    if exc.sqlstate == "02000" {
+                        return Some(handler);
+                    }
+                }
+                HandlerCondition::SqlState(state) => {
+                    if exc.sqlstate == *state {
+                        return Some(handler);
+                    }
+                }
+                HandlerCondition::Custom(name) => {
+                    if exc.message.contains(name) {
+                        return Some(handler);
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    /// Set exception handling mode
+    pub fn set_exception_handling(&mut self, handling: bool) {
+        self.exception_handling = handling;
+    }
+
+    /// Check if currently handling an exception
+    pub fn is_handling_exception(&self) -> bool {
+        self.exception_handling
+    }
+
+    /// Set the current exception (for handler access)
+    pub fn set_exception(&mut self, sqlstate: String, message: String) {
+        if let Some(exc) = &mut self.current_exception {
+            exc.sqlstate = sqlstate;
+            exc.message = message;
+        } else {
+            self.current_exception = Some(StoredProcError { sqlstate, message });
+        }
+    }
+
+    /// Clear the current exception
+    pub fn clear_exception(&mut self) {
+        self.current_exception = None;
+    }
+
+    /// Get the current exception
+    pub fn get_exception(&self) -> Option<&StoredProcError> {
+        self.current_exception.as_ref()
     }
 
     /// Push a label onto the stack (enter a labeled block)
@@ -262,7 +369,42 @@ impl StoredProcExecutor {
             if ctx.get_return().is_some() {
                 break;
             }
-            self.execute_statement(stmt, ctx)?;
+
+            let result = self.execute_statement(stmt, ctx);
+
+            if let Err(ref e) = result {
+                // Check if we should handle this exception
+                if let Some(err_str) = e.strip_prefix("SQLSTATE ") {
+                    let sqlstate = err_str
+                        .split(':')
+                        .next()
+                        .unwrap_or("45000")
+                        .trim()
+                        .to_string();
+                    let message = e
+                        .strip_prefix(&format!("SQLSTATE {}: ", sqlstate))
+                        .unwrap_or(e)
+                        .trim()
+                        .to_string();
+                    let exc = StoredProcError { sqlstate, message };
+
+                    if let Some(handler) = ctx.find_matching_handler(&exc) {
+                        // Clone handler body to avoid borrow conflict
+                        let handler_body = handler.body.clone();
+                        ctx.set_exception_handling(true);
+                        ctx.set_exception(exc.sqlstate.clone(), exc.message.clone());
+                        let handler_result = self.execute_body(&handler_body, ctx);
+                        ctx.clear_exception();
+                        ctx.set_exception_handling(false);
+
+                        if handler_result.is_err() {
+                            return handler_result;
+                        }
+                        continue;
+                    }
+                }
+                return result;
+            }
         }
         Ok(())
     }
@@ -458,11 +600,11 @@ impl StoredProcExecutor {
                 result
             }
             StoredProcStatement::DeclareHandler {
-                condition_type: _,
-                body: _,
+                condition_type,
+                body,
             } => {
-                // Handler declaration - acknowledged but not active in current implementation
-                // In a full implementation, this would register the handler
+                // Register the exception handler
+                ctx.push_handler(condition_type.clone(), body.clone());
                 Ok(())
             }
         }
