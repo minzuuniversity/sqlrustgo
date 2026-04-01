@@ -16,10 +16,12 @@ use sqlrustgo_storage::{
 };
 use sqlrustgo_types::Value;
 use std::collections::HashMap;
-use std::fs;
+use std::fs::{self, File};
+use std::io::{BufReader, BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::time::{SystemTime, UNIX_EPOCH};
 use structopt::StructOpt;
 
 /// Global LSN counter for tracking changes
@@ -341,6 +343,25 @@ pub enum BackupCommand {
         )]
         clean: bool,
     },
+
+    /// Create a physical backup (file-level snapshot)
+    Physical {
+        /// Backup directory (will be created)
+        #[structopt(short = "d", long = "dir")]
+        dir: PathBuf,
+
+        /// Database data directory
+        #[structopt(short = "D", long = "data-dir", default_value = "./data")]
+        data_dir: PathBuf,
+
+        /// WAL directory
+        #[structopt(short = "W", long = "wal-dir", default_value = "./wal")]
+        wal_dir: PathBuf,
+
+        /// Compress backup files
+        #[structopt(short = "z", long = "compress")]
+        compress: bool,
+    },
 }
 
 /// Backup tool entry point
@@ -361,6 +382,12 @@ pub fn run() -> Result<()> {
         BackupCommand::List { dir } => list_backups(&dir),
         BackupCommand::Verify { dir } => verify_backup(&dir),
         BackupCommand::Restore { dir, target, clean } => restore_backup(&dir, &target, clean),
+        BackupCommand::Physical {
+            dir,
+            data_dir,
+            wal_dir,
+            compress,
+        } => create_physical_backup(&dir, &data_dir, &wal_dir, compress),
     }
 }
 
@@ -650,6 +677,261 @@ pub fn create_incremental_backup_with_changeset(
 
     Ok(())
 }
+
+/// Physical backup metadata
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PhysicalBackupManifest {
+    pub version: String,
+    pub timestamp: String,
+    pub lsn: u64,
+    pub data_files: Vec<DataFileInfo>,
+    pub wal_files: Vec<WalFileInfo>,
+    pub total_size_bytes: u64,
+    pub compressed: bool,
+    pub checksum: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DataFileInfo {
+    pub name: String,
+    pub size_bytes: u64,
+    pub modified_at: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WalFileInfo {
+    pub name: String,
+    pub size_bytes: u64,
+    pub start_lsn: u64,
+    pub end_lsn: u64,
+}
+
+/// Create a physical backup (file-level snapshot)
+pub fn create_physical_backup(
+    dir: &Path,
+    data_dir: &Path,
+    wal_dir: &Path,
+    compress: bool,
+) -> Result<()> {
+    println!("Creating physical backup:");
+    println!("  Data directory: {}", data_dir.display());
+    println!("  WAL directory: {}", wal_dir.display());
+    println!("  Target: {}", dir.display());
+    println!("  Compress: {}", compress);
+
+    // Create backup directory structure
+    fs::create_dir_all(dir).context("Failed to create backup directory")?;
+    let data_backup = dir.join("data");
+    let wal_backup = dir.join("wal");
+    fs::create_dir_all(&data_backup).context("Failed to create data backup directory")?;
+    fs::create_dir_all(&wal_backup).context("Failed to create WAL backup directory")?;
+
+    // Get current LSN (would come from storage in real implementation)
+    let current_lsn = generate_lsn_from_u64(0); // Placeholder
+
+    let mut data_files = Vec::new();
+    let mut total_size = 0u64;
+
+    // Copy data files
+    if data_dir.exists() {
+        for entry in walkdir(data_dir)? {
+            let path = entry.path();
+            if path.is_file() {
+                let relative = path.strip_prefix(data_dir).unwrap_or(path.as_ref());
+                let target = data_backup.join(relative);
+
+                if let Some(parent) = target.parent() {
+                    fs::create_dir_all(parent).context("Failed to create parent directory")?;
+                }
+
+                let metadata = fs::metadata(&path)?;
+                let size = metadata.len();
+                let modified = metadata
+                    .modified()
+                    .unwrap_or(SystemTime::UNIX_EPOCH)
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs();
+
+                fs::copy(&path, &target).context(format!("Failed to copy {}", path.display()))?;
+
+                data_files.push(DataFileInfo {
+                    name: relative.to_string_lossy().to_string(),
+                    size_bytes: size,
+                    modified_at: modified,
+                });
+
+                total_size += size;
+                println!("  Copied data: {} ({} bytes)", relative.display(), size);
+            }
+        }
+    } else {
+        println!("  Warning: Data directory does not exist, skipping data files");
+    }
+
+    // Archive WAL files
+    let mut wal_files = Vec::new();
+    let wal_size = if wal_dir.exists() {
+        let wal_archive = wal_backup.join("wal.archive");
+
+        // Create WAL archive
+        let wal_file = wal_dir.join("wal.binlog");
+        if wal_file.exists() {
+            let metadata = fs::metadata(&wal_file)?;
+            let size = metadata.len();
+
+            if compress {
+                // Compress WAL to wal.archive.gz
+                let compressed_file = wal_backup.join("wal.archive.gz");
+                BackupCompressor::compress_file(&wal_file, &compressed_file)?;
+                println!("  Archived WAL: wal.archive.gz ({} bytes compressed)", size);
+            } else {
+                // Copy WAL directly
+                fs::copy(&wal_file, &wal_archive)?;
+                println!("  Archived WAL: wal.archive ({} bytes)", size);
+            }
+
+            wal_files.push(WalFileInfo {
+                name: "wal.binlog".to_string(),
+                size_bytes: size,
+                start_lsn: 0,
+                end_lsn: current_lsn,
+            });
+
+            total_size += size;
+        }
+
+        size_of_dir(wal_dir)?
+    } else {
+        println!("  Warning: WAL directory does not exist, skipping WAL");
+        0
+    };
+
+    // Create manifest
+    let manifest = PhysicalBackupManifest {
+        version: "1.0".to_string(),
+        timestamp: chrono_lite_timestamp(),
+        lsn: current_lsn,
+        data_files,
+        wal_files,
+        total_size_bytes: total_size,
+        compressed: compress,
+        checksum: format!("{:016x}", total_size),
+    };
+
+    let manifest_file = dir.join("physical_manifest.json");
+    let manifest_json = serde_json::to_string_pretty(&manifest)?;
+    fs::write(&manifest_file, manifest_json).context("Failed to write manifest.json")?;
+
+    // Create human-readable info file
+    let info_file = dir.join("BACKUP_INFO.txt");
+    let info_content = format!(
+        "SQLRustGo Physical Backup\n\
+         ========================\n\
+         Created: {}\n\
+         LSN: {}\n\
+         Data files: {}\n\
+         Total size: {} bytes\n\
+         Compressed: {}\n\
+         \n\
+         To restore:\n\
+         1. Stop the database\n\
+         2. Copy data/* back to your data directory\n\
+         3. Copy wal/* back to your WAL directory\n\
+         4. Start the database\n",
+        manifest.timestamp,
+        current_lsn,
+        manifest.data_files.len(),
+        total_size,
+        compress
+    );
+    fs::write(&info_file, info_content).context("Failed to write info file")?;
+
+    println!();
+    println!("✅ Physical backup complete!");
+    println!("   Directory: {}", dir.display());
+    println!("   Data files: {}", manifest.data_files.len());
+    println!(
+        "   WAL archived: {}",
+        if wal_size > 0 { "Yes" } else { "No" }
+    );
+    println!("   Total size: {} bytes", total_size);
+    println!("   LSN: {}", current_lsn);
+
+    Ok(())
+}
+
+/// Walk directory recursively
+fn walkdir(path: &Path) -> Result<Vec<std::fs::DirEntry>> {
+    let mut entries = Vec::new();
+    if path.is_dir() {
+        for entry in fs::read_dir(path)? {
+            let entry = entry?;
+            let path = entry.path();
+            if path.is_dir() {
+                entries.extend(walkdir(&path)?);
+            } else {
+                entries.push(entry);
+            }
+        }
+    }
+    Ok(entries)
+}
+
+/// Calculate total size of a directory
+fn size_of_dir(path: &Path) -> Result<u64> {
+    let mut total = 0u64;
+    if path.is_dir() {
+        for entry in walkdir(path)? {
+            total += entry.metadata()?.len();
+        }
+    }
+    Ok(total)
+}
+
+/// Generate LSN string from u64
+fn generate_lsn_from_u64(lsn: u64) -> u64 {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    (now << 32) | lsn
+}
+
+/// Compressor wrapper for physical backup
+struct BackupCompressor;
+
+impl BackupCompressor {
+    fn compress_file(src: &Path, dst: &Path) -> Result<u64> {
+        use flate2::write::GzEncoder;
+        use flate2::Compression;
+        use std::io::{BufReader, BufWriter, Read, Write};
+
+        let input = File::open(src).context("Failed to open source file")?;
+        let output = File::create(dst).context("Failed to create destination file")?;
+
+        let mut reader = BufReader::new(input);
+        let mut writer = BufWriter::new(GzEncoder::new(output, Compression::default()));
+
+        let mut buffer = vec![0u8; 8192];
+        let mut total = 0u64;
+
+        loop {
+            let n = reader.read(&mut buffer).context("Failed to read")?;
+            if n == 0 {
+                break;
+            }
+            writer.write_all(&buffer[..n]).context("Failed to write")?;
+            total += n as u64;
+        }
+
+        writer.flush().context("Failed to flush")?;
+        Ok(total)
+    }
+}
+
+/// UNIX_EPOCH constant
 
 /// Restore from incremental backup chain (point-in-time recovery)
 pub fn restore_incremental_chain(

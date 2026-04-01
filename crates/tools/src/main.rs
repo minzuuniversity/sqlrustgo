@@ -51,6 +51,12 @@ fn main() -> Result<()> {
             backup::BackupCommand::Restore { dir, target, clean } => {
                 backup::restore_backup(&dir, &target, clean)
             }
+            backup::BackupCommand::Physical {
+                dir,
+                data_dir,
+                wal_dir,
+                compress,
+            } => backup::create_physical_backup(&dir, &data_dir, &wal_dir, compress),
         },
         Command::CatalogCheck(opt) => catalog_check::run_with_opt(opt),
         Command::HA(_ha_cmd) => ha::run(),
