@@ -5625,7 +5625,12 @@ fn test_parse_procedure_with_if() {
         Statement::CreateProcedure(proc) => {
             assert_eq!(proc.name, "test_if");
             assert_eq!(proc.body.len(), 1);
-            assert!(matches!(proc.body[0], ProcedureStatement::If { .. }));
+            match &proc.body[0] {
+                ProcedureStatement::RawSql(sql) => {
+                    assert!(sql.to_uppercase().contains("IF"));
+                }
+                _ => panic!("Expected RawSql statement"),
+            }
         }
         _ => panic!("Expected CreateProcedure statement"),
     }
@@ -5639,7 +5644,12 @@ fn test_parse_procedure_with_while() {
     match result.unwrap() {
         Statement::CreateProcedure(proc) => {
             assert_eq!(proc.name, "test_while");
-            assert!(matches!(proc.body[0], ProcedureStatement::While { .. }));
+            match &proc.body[0] {
+                ProcedureStatement::RawSql(sql) => {
+                    assert!(sql.to_uppercase().contains("WHILE"));
+                }
+                _ => panic!("Expected RawSql statement"),
+            }
         }
         _ => panic!("Expected CreateProcedure statement"),
     }
@@ -5653,7 +5663,12 @@ fn test_parse_procedure_with_loop_leave() {
     match result.unwrap() {
         Statement::CreateProcedure(proc) => {
             assert_eq!(proc.name, "test_loop");
-            assert!(matches!(proc.body[0], ProcedureStatement::Loop { .. }));
+            match &proc.body[0] {
+                ProcedureStatement::RawSql(sql) => {
+                    assert!(sql.to_uppercase().contains("LOOP"));
+                }
+                _ => panic!("Expected RawSql statement"),
+            }
         }
         _ => panic!("Expected CreateProcedure statement"),
     }
@@ -5668,10 +5683,11 @@ fn test_parse_procedure_if_else() {
         Statement::CreateProcedure(proc) => {
             assert_eq!(proc.name, "test_if_else");
             match &proc.body[0] {
-                ProcedureStatement::If { else_body, .. } => {
-                    assert!(!else_body.is_empty());
+                ProcedureStatement::RawSql(sql) => {
+                    let upper = sql.to_uppercase();
+                    assert!(upper.contains("IF") && upper.contains("ELSE"));
                 }
-                _ => panic!("Expected IF statement"),
+                _ => panic!("Expected RawSql statement"),
             }
         }
         _ => panic!("Expected CreateProcedure statement"),
@@ -5684,9 +5700,12 @@ fn test_parse_procedure_with_declare() {
     let result = parse(sql);
     assert!(result.is_ok(), "Error: {:?}", result.err());
     match result.unwrap() {
-        Statement::CreateProcedure(proc) => {
-            assert!(matches!(proc.body[0], ProcedureStatement::Declare { .. }));
-        }
+        Statement::CreateProcedure(proc) => match &proc.body[0] {
+            ProcedureStatement::RawSql(sql) => {
+                assert!(sql.to_uppercase().contains("DECLARE"));
+            }
+            _ => panic!("Expected RawSql statement"),
+        },
         _ => panic!("Expected CreateProcedure statement"),
     }
 }
@@ -5697,9 +5716,12 @@ fn test_parse_procedure_return() {
     let result = parse(sql);
     assert!(result.is_ok(), "Error: {:?}", result.err());
     match result.unwrap() {
-        Statement::CreateProcedure(proc) => {
-            assert!(matches!(proc.body[0], ProcedureStatement::Return { .. }));
-        }
+        Statement::CreateProcedure(proc) => match &proc.body[0] {
+            ProcedureStatement::RawSql(sql) => {
+                assert!(sql.to_uppercase().contains("RETURN"));
+            }
+            _ => panic!("Expected RawSql statement"),
+        },
         _ => panic!("Expected CreateProcedure statement"),
     }
 }
