@@ -954,6 +954,14 @@ impl Parser {
                     self.next(); // consume function name
                     self.expect(Token::LParen)?;
 
+                    let distinct = match self.current() {
+                        Some(Token::Distinct) => {
+                            self.next();
+                            true
+                        }
+                        _ => false,
+                    };
+
                     let mut args = Vec::new();
                     match self.current() {
                         Some(Token::Star) => {
@@ -972,7 +980,7 @@ impl Parser {
                     let agg = AggregateCall {
                         func,
                         args,
-                        distinct: false,
+                        distinct,
                     };
                     aggregates.push(agg);
                 }
