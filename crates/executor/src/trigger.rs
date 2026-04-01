@@ -8,7 +8,7 @@ use sqlrustgo_storage::{
     TriggerTiming as StorageTriggerTiming,
 };
 use sqlrustgo_types::{SqlResult, Value};
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 
 /// Trigger timing: BEFORE or AFTER
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -89,24 +89,20 @@ impl TriggerType {
 }
 
 /// Trigger executor for running database triggers
-pub struct TriggerExecutor<S: StorageEngine> {
-    storage: Arc<S>,
+pub struct TriggerExecutor {
+    storage: Arc<RwLock<dyn StorageEngine>>,
 }
 
-impl<S: StorageEngine> TriggerExecutor<S> {
-    /// Create a new TriggerExecutor
-    pub fn new(storage: Arc<S>) -> Self {
+impl TriggerExecutor {
+    /// Create a new TriggerExecutor with a locked storage engine
+    pub fn new(storage: Arc<RwLock<dyn StorageEngine>>) -> Self {
         Self { storage }
-    }
-
-    /// Get the storage engine reference
-    pub fn storage(&self) -> &S {
-        &self.storage
     }
 
     /// Get all triggers for a specific table
     pub fn get_table_triggers(&self, table: &str) -> Vec<TriggerInfo> {
-        self.storage.list_triggers(table)
+        let storage = self.storage.read().unwrap();
+        storage.list_triggers(table)
     }
 
     /// Get triggers filtered by timing and event
@@ -234,7 +230,11 @@ impl<S: StorageEngine> TriggerExecutor<S> {
             if let Some(assignments) = self.parse_simple_set_assignments(body) {
                 for (col_name, value) in assignments {
                     // Find column index and update
-                    let table_info = self.storage.get_table_info(&trigger.table_name)?;
+                    let table_info = self
+                        .storage
+                        .read()
+                        .unwrap()
+                        .get_table_info(&trigger.table_name)?;
                     if let Some(col_idx) =
                         table_info.columns.iter().position(|c| c.name == col_name)
                     {
@@ -425,7 +425,7 @@ mod tests {
         ColumnDefinition, MemoryStorage, TableInfo, TriggerInfo as StorageTriggerInfo,
     };
 
-    fn create_test_storage() -> MemoryStorage {
+    fn create_test_storage() -> Arc<RwLock<dyn StorageEngine>> {
         let mut storage = MemoryStorage::new();
 
         // Create orders table
@@ -440,20 +440,20 @@ mod tests {
         };
         storage.create_table(&table_info).unwrap();
 
-        storage
+        Arc::new(RwLock::new(storage))
     }
 
     #[test]
     fn test_trigger_executor_creation() {
         let storage = create_test_storage();
-        let executor = TriggerExecutor::new(Arc::new(storage));
+        let executor = TriggerExecutor::new(storage);
         assert_eq!(executor.get_table_triggers("orders").len(), 0);
     }
 
     #[test]
     fn test_get_triggers_for_operation_empty() {
         let storage = create_test_storage();
-        let executor = TriggerExecutor::new(Arc::new(storage));
+        let executor = TriggerExecutor::new(storage);
 
         let triggers = executor.get_triggers_for_operation(
             "orders",
@@ -465,7 +465,7 @@ mod tests {
 
     #[test]
     fn test_get_triggers_for_operation_with_triggers() {
-        let mut storage = create_test_storage();
+        let storage = create_test_storage();
 
         // Add a trigger
         let trigger = StorageTriggerInfo {
@@ -475,9 +475,9 @@ mod tests {
             event: StorageTriggerEvent::Insert,
             body: "SET NEW.total = NEW.price * NEW.quantity".to_string(),
         };
-        storage.create_trigger(trigger).unwrap();
+        storage.write().unwrap().create_trigger(trigger).unwrap();
 
-        let executor = TriggerExecutor::new(Arc::new(storage));
+        let executor = TriggerExecutor::new(storage);
 
         let triggers = executor.get_triggers_for_operation(
             "orders",
@@ -500,9 +500,9 @@ mod tests {
             event: StorageTriggerEvent::Insert,
             body: "SET NEW.total = NEW.price * NEW.quantity".to_string(),
         };
-        storage.create_trigger(trigger).unwrap();
+        storage.write().unwrap().create_trigger(trigger).unwrap();
 
-        let executor = TriggerExecutor::new(Arc::new(storage));
+        let executor = TriggerExecutor::new(storage);
 
         // Execute before insert trigger
         let new_row = vec![
@@ -528,9 +528,9 @@ mod tests {
             event: StorageTriggerEvent::Insert,
             body: "".to_string(),
         };
-        storage.create_trigger(trigger).unwrap();
+        storage.write().unwrap().create_trigger(trigger).unwrap();
 
-        let executor = TriggerExecutor::new(Arc::new(storage));
+        let executor = TriggerExecutor::new(storage);
 
         let new_row = vec![
             Value::Integer(1),
@@ -555,9 +555,9 @@ mod tests {
             event: StorageTriggerEvent::Update,
             body: "SET NEW.total = NEW.price * NEW.quantity".to_string(),
         };
-        storage.create_trigger(trigger).unwrap();
+        storage.write().unwrap().create_trigger(trigger).unwrap();
 
-        let executor = TriggerExecutor::new(Arc::new(storage));
+        let executor = TriggerExecutor::new(storage);
 
         let old_row = vec![
             Value::Integer(1),
@@ -589,9 +589,9 @@ mod tests {
             event: StorageTriggerEvent::Delete,
             body: "".to_string(),
         };
-        storage.create_trigger(trigger).unwrap();
+        storage.write().unwrap().create_trigger(trigger).unwrap();
 
-        let executor = TriggerExecutor::new(Arc::new(storage));
+        let executor = TriggerExecutor::new(storage);
 
         let old_row = vec![
             Value::Integer(1),
@@ -718,11 +718,11 @@ mod tests {
             body: "".to_string(),
         };
 
-        storage.create_trigger(trigger1).unwrap();
-        storage.create_trigger(trigger2).unwrap();
-        storage.create_trigger(trigger3).unwrap();
+        storage.write().unwrap().create_trigger(trigger1).unwrap();
+        storage.write().unwrap().create_trigger(trigger2).unwrap();
+        storage.write().unwrap().create_trigger(trigger3).unwrap();
 
-        let executor = TriggerExecutor::new(Arc::new(storage));
+        let executor = TriggerExecutor::new(storage);
 
         let all_triggers = executor.get_table_triggers("orders");
         assert_eq!(all_triggers.len(), 3);
@@ -767,6 +767,6 @@ mod tests {
     fn test_send_sync() {
         fn _check<T: Send + Sync>() {}
         let storage = create_test_storage();
-        _check::<TriggerExecutor<MemoryStorage>>();
+        _check::<TriggerExecutor>();
     }
 }
