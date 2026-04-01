@@ -5,6 +5,14 @@ edition.workspace = true
 authors.workspace = true
 license.workspace = true
 
+[lib]
+name = "sqlrustgo_tools"
+path = "src/lib.rs"
+
+[[bin]]
+name = "sqlrustgo-tools"
+path = "src/main.rs"
+
 [dependencies]
 sqlrustgo-catalog.workspace = true
 sqlrustgo-storage.workspace = true

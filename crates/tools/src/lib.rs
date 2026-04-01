@@ -9,3 +9,7 @@
 pub mod backup;
 pub mod mysqldump;
 pub mod upgrade;
+
+pub use mysqldump::{
+    ColumnDef, DumpImporter, ForeignKeyRef, ImportMode, ImportStats, SqlStatement,
+};

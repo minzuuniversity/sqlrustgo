@@ -27,6 +27,7 @@ fn get_test_categories() -> Vec<TestCategory> {
                 "buffer_pool_test",
                 "file_storage_test",
                 "local_executor_test",
+                "mysqldump_test",
                 "optimizer_cost_test",
                 "optimizer_rules_test",
                 "parser_token_test",
