@@ -1001,6 +1001,7 @@ impl Parser {
                         distinct,
                     };
                     aggregates.push(agg);
+                    continue;
                 }
                 Some(Token::RowNumber)
                 | Some(Token::Rank)
