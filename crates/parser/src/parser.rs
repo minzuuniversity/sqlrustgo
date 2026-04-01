@@ -979,11 +979,18 @@ impl Parser {
                             args.push(Expression::Wildcard);
                             self.next();
                         }
-                        Some(Token::Identifier(name)) => {
-                            args.push(Expression::Identifier(name.to_string()));
-                            self.next();
+                        Some(Token::Identifier(_))
+                        | Some(Token::Minus)
+                        | Some(Token::LParen)
+                        | Some(Token::Case) => {
+                            let expr = self.parse_expression()?;
+                            args.push(expr);
                         }
-                        _ => return Err("Expected * or column name in aggregate".to_string()),
+                        _ => {
+                            return Err(
+                                "Expected *, column name, or expression in aggregate".to_string()
+                            );
+                        }
                     }
 
                     self.expect(Token::RParen)?;
@@ -1729,6 +1736,16 @@ impl Parser {
                         values,
                     });
                 }
+                // Check for LIKE: expr LIKE pattern
+                if matches!(self.current(), Some(Token::Like)) {
+                    self.next(); // consume LIKE
+                    let pattern = self.parse_arithmetic_expression()?;
+                    return Ok(Expression::BinaryOp(
+                        Box::new(left),
+                        "LIKE".to_string(),
+                        Box::new(pattern),
+                    ));
+                }
                 return Ok(left); // No operator, return simple expression
             }
         };
@@ -1855,15 +1872,18 @@ impl Parser {
                         args.push(Expression::Wildcard);
                         self.next();
                     }
-                    Some(Token::Identifier(name)) => {
-                        args.push(Expression::Identifier(name.to_string()));
-                        self.next();
+                    Some(Token::Identifier(_))
+                    | Some(Token::Minus)
+                    | Some(Token::LParen)
+                    | Some(Token::Case) => {
+                        let expr = self.parse_expression()?;
+                        args.push(expr);
                     }
-                    Some(Token::NumberLiteral(n)) => {
-                        args.push(Expression::Literal(n.clone()));
-                        self.next();
+                    _ => {
+                        return Err(
+                            "Expected *, column name, or expression in aggregate".to_string()
+                        );
                     }
-                    _ => return Err("Expected *, column name, or number in aggregate".to_string()),
                 }
 
                 self.expect(Token::RParen)?;
