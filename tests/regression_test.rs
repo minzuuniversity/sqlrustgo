@@ -23,10 +23,12 @@ fn get_test_categories() -> Vec<TestCategory> {
         TestCategory {
             name: "单元测试 (Unit Tests)",
             test_files: vec![
+                "backup_test",
                 "bplus_tree_test",
                 "buffer_pool_test",
                 "file_storage_test",
                 "local_executor_test",
+                "mysqldump_test",
                 "optimizer_cost_test",
                 "optimizer_rules_test",
                 "parser_token_test",
@@ -49,8 +51,16 @@ fn get_test_categories() -> Vec<TestCategory> {
         // 集成测试 - SQL功能
         TestCategory {
             name: "集成测试 - SQL功能 (SQL Functionality)",
-            test_files: vec!["foreign_key_test", "server_integration_test", "upsert_test"],
-            description: "测试外键、服务器、UPSERT",
+            test_files: vec![
+                "foreign_key_test",
+                "fk_actions_test",
+                "server_integration_test",
+                "upsert_test",
+                "mysql_compatibility_test",
+                "savepoint_test",
+                "session_config_test",
+            ],
+            description: "测试外键、服务器、UPSERT、MySQL兼容性(KILL/PROCESSLIST)、保存点",
         },
         // 集成测试 - 存储
         TestCategory {
@@ -59,20 +69,25 @@ fn get_test_categories() -> Vec<TestCategory> {
                 "query_cache_test",
                 "optimizer_stats_test",
                 "checksum_corruption_test",
+                "columnar_storage_test",
+                "parquet_test",
+                "storage_integration_test",
             ],
-            description: "测试查询缓存、优化器统计、校验和完整性",
-        },
-        // 教学场景测试
-        TestCategory {
-            name: "教学场景测试 (Teaching Scenarios)",
-            test_files: vec!["teaching_scenario_test"],
-            description: "35+ 教学场景测试：CRUD、事务、JOIN、聚合、子查询、视图、优化器",
+            description: "测试查询缓存、优化器统计、校验和完整性、列式存储、Parquet",
         },
         // 性能测试
         TestCategory {
             name: "性能测试 (Performance)",
-            test_files: vec!["performance_test"],
-            description: "22 性能测试：批量插入、索引扫描、JOIN、缓存、向量化",
+            test_files: vec![
+                "performance_test",
+                "tpch_test",
+                "tpch_benchmark",
+                "tpch_full_test",
+                "batch_insert_test",
+                "autoinc_test",
+                "index_integration_test",
+            ],
+            description: "性能测试：批量插入、索引扫描、JOIN、缓存、向量化、TPC-H Q1-Q22",
         },
         // 异常测试 - 并发
         TestCategory {
@@ -105,8 +120,13 @@ fn get_test_categories() -> Vec<TestCategory> {
         // 异常测试 - 查询
         TestCategory {
             name: "异常测试 - 查询 (Anomaly - Query)",
-            test_files: vec!["join_test", "set_operations_test", "view_test"],
-            description: "JOIN、集合操作、视图",
+            test_files: vec![
+                "join_test",
+                "set_operations_test",
+                "view_test",
+                "window_function_test",
+            ],
+            description: "JOIN、集合操作、视图、窗口函数",
         },
         // 异常测试 - 约束
         TestCategory {
@@ -148,8 +168,39 @@ fn get_test_categories() -> Vec<TestCategory> {
         // 其他测试
         TestCategory {
             name: "其他测试 (Other)",
-            test_files: vec!["binary_format_test", "wal_integration_test"],
-            description: "二进制格式、WAL集成测试",
+            test_files: vec![
+                "binary_format_test",
+                "wal_integration_test",
+                "distributed_transaction_test",
+            ],
+            description: "二进制格式、WAL集成测试、分布式事务",
+        },
+        // 安全测试
+        TestCategory {
+            name: "安全测试 (Security)",
+            test_files: vec!["auth_rbac_test", "logging_test"],
+            description: "RBAC权限、日志配置",
+        },
+        // 教学场景测试
+        TestCategory {
+            name: "教学场景测试 (Teaching Scenarios)",
+            test_files: vec![
+                "teaching_scenario_test",
+                "teaching_scenario_client_server_test",
+            ],
+            description: "教学场景：客户端/服务器模式",
+        },
+        // 工具测试
+        TestCategory {
+            name: "工具测试 (Tools)",
+            test_files: vec!["physical_backup_test"],
+            description: "物理备份、mysqldump 等工具集成测试",
+        },
+        // Executor 内部测试
+        TestCategory {
+            name: "执行器测试 (Executor)",
+            test_files: vec!["PKG:sqlrustgo-executor:test_stored_proc"],
+            description: "executor crate 内部测试: 存储过程 (36 tests)",
         },
         // 工具测试
         TestCategory {
@@ -163,9 +214,20 @@ fn get_test_categories() -> Vec<TestCategory> {
 /// 运行单个测试文件
 fn run_test_file(test_file: &str) -> TestResult {
     let start = Instant::now();
-    let output = Command::new("cargo")
-        .args(&["test", "--test", test_file, "--", "--nocapture"])
-        .output();
+
+    // 处理 crate 内部测试
+    let output = if test_file.starts_with("PKG:") {
+        let parts: Vec<&str> = test_file.split(':').collect();
+        let pkg = parts[1];
+        let test_path = parts.get(2).unwrap_or(&"");
+        Command::new("cargo")
+            .args(&["test", "-p", pkg, "--test", test_path, "--", "--nocapture"])
+            .output()
+    } else {
+        Command::new("cargo")
+            .args(&["test", "--test", test_file, "--", "--nocapture"])
+            .output()
+    };
 
     let duration = start.elapsed();
 
