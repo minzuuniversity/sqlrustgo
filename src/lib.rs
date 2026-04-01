@@ -7,8 +7,8 @@ pub use sqlrustgo_executor::{Executor, ExecutorResult, GLOBAL_PROFILER};
 pub use sqlrustgo_optimizer::Optimizer as QueryOptimizer;
 pub use sqlrustgo_parser::lexer::tokenize;
 pub use sqlrustgo_parser::{
-    parse, Expression, GrantStatement, Lexer, Privilege, RevokeStatement, SetOperation, Statement,
-    Token, TransactionCommand,
+    parse, Expression, GrantStatement, KillStatement, KillType, Lexer, Privilege, RevokeStatement,
+    SetOperation, Statement, Token, TransactionCommand,
 };
 pub use sqlrustgo_planner::{LogicalPlan, Optimizer, PhysicalPlan, Planner, SetOperationType};
 pub use sqlrustgo_storage::{
@@ -363,6 +363,26 @@ fn evaluate_where_clause(
             }
             false
         }
+        sqlrustgo_parser::Expression::CaseWhen {
+            conditions,
+            else_result,
+        } => {
+            for (condition, then_result) in conditions {
+                let cond_val = evaluate_expr(condition, row, columns);
+                if let Value::Boolean(true) = cond_val {
+                    let then_val = evaluate_expr(then_result, row, columns);
+                    return then_val.to_bool();
+                }
+            }
+            if let Some(else_expr) = else_result {
+                let else_val = evaluate_expr(else_expr, row, columns);
+                else_val.to_bool()
+            } else {
+                false
+            }
+        }
+        sqlrustgo_parser::Expression::Extract { .. } => false,
+        sqlrustgo_parser::Expression::Substring { .. } => false,
     }
 }
 
@@ -463,6 +483,76 @@ fn evaluate_expr(
                 }
             }
             Value::Boolean(false)
+        }
+        sqlrustgo_parser::Expression::CaseWhen {
+            conditions,
+            else_result,
+        } => {
+            for (condition, then_result) in conditions {
+                let cond_val = evaluate_expr(condition, row, columns);
+                if let Value::Boolean(true) = cond_val {
+                    return evaluate_expr(then_result, row, columns);
+                }
+            }
+            if let Some(else_expr) = else_result {
+                evaluate_expr(else_expr, row, columns)
+            } else {
+                Value::Null
+            }
+        }
+        sqlrustgo_parser::Expression::Extract { field, expr } => {
+            let val = evaluate_expr(expr, row, columns);
+            if let Value::Text(s) = val {
+                let parts: Vec<&str> = s.split('-').collect();
+                if parts.len() == 3 {
+                    match field.as_str() {
+                        "YEAR" => {
+                            if let Ok(y) = parts[0].parse::<i64>() {
+                                return Value::Integer(y);
+                            }
+                        }
+                        "MONTH" => {
+                            if let Ok(m) = parts[1].parse::<i64>() {
+                                return Value::Integer(m);
+                            }
+                        }
+                        "DAY" => {
+                            if let Ok(d) = parts[2].parse::<i64>() {
+                                return Value::Integer(d);
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            Value::Null
+        }
+        sqlrustgo_parser::Expression::Substring { expr, start, len } => {
+            let val = evaluate_expr(expr, row, columns);
+            let start_val = evaluate_expr(start, row, columns);
+            let result = match (&val, &start_val) {
+                (Value::Text(s), Value::Integer(i)) => {
+                    let start_idx = (*i as isize - 1).max(0) as usize;
+                    if let Some(len_expr) = len {
+                        let len_val = evaluate_expr(len_expr, row, columns);
+                        if let Value::Integer(len_int) = len_val {
+                            let len_usize = (len_int as usize).min(1000000);
+                            Some(
+                                s.chars()
+                                    .skip(start_idx)
+                                    .take(len_usize)
+                                    .collect::<String>(),
+                            )
+                        } else {
+                            None
+                        }
+                    } else {
+                        Some(s.chars().skip(start_idx).collect::<String>())
+                    }
+                }
+                _ => None,
+            };
+            result.map_or(Value::Null, Value::Text)
         }
     }
 }
@@ -672,11 +762,33 @@ fn compute_aggregate(
 
 pub struct ExecutionEngine {
     pub storage: Arc<RwLock<dyn StorageEngine>>,
+    session_manager: Option<Arc<sqlrustgo_security::SessionManager>>,
+    current_session_id: Option<u64>,
 }
 
 impl ExecutionEngine {
     pub fn new(storage: Arc<RwLock<dyn StorageEngine>>) -> Self {
-        Self { storage }
+        Self {
+            storage,
+            session_manager: None,
+            current_session_id: None,
+        }
+    }
+
+    pub fn new_with_session(
+        storage: Arc<RwLock<dyn StorageEngine>>,
+        session_manager: Arc<sqlrustgo_security::SessionManager>,
+        session_id: u64,
+    ) -> Self {
+        Self {
+            storage,
+            session_manager: Some(session_manager),
+            current_session_id: Some(session_id),
+        }
+    }
+
+    pub fn session_id(&self) -> Option<u64> {
+        self.current_session_id
     }
 
     pub fn execute(&mut self, statement: Statement) -> Result<ExecutorResult, SqlError> {
@@ -1609,7 +1721,74 @@ impl ExecutionEngine {
                     ))
                 }
             }
+            Statement::Kill(kill) => self.execute_kill(&kill),
             _ => Ok(ExecutorResult::empty()),
+        }
+    }
+
+    fn execute_kill(&mut self, kill: &KillStatement) -> Result<ExecutorResult, SqlError> {
+        let session_manager = self
+            .session_manager
+            .as_ref()
+            .ok_or_else(|| SqlError::ExecutionError("Session manager not available".to_string()))?;
+
+        let current_session_id = self
+            .current_session_id
+            .ok_or_else(|| SqlError::ExecutionError("Not in a valid session".to_string()))?;
+
+        let target_session_id = kill.process_id;
+
+        if target_session_id == current_session_id {
+            return Err(SqlError::ExecutionError(
+                "Cannot kill self session".to_string(),
+            ));
+        }
+
+        let target_session = session_manager.get_session(target_session_id);
+        if target_session.is_none() {
+            return Err(SqlError::ExecutionError(format!(
+                "Unknown thread id: {}",
+                target_session_id
+            )));
+        }
+
+        let target_session = target_session.unwrap();
+        let current_session = session_manager
+            .get_session(current_session_id)
+            .ok_or_else(|| SqlError::ExecutionError("Current session not found".to_string()))?;
+
+        let is_own_session = target_session.user == current_session.user;
+        if !is_own_session && !current_session.can_kill() {
+            return Err(SqlError::ExecutionError(
+                "Access denied: need SUPER privilege to kill other user's sessions".to_string(),
+            ));
+        }
+
+        match kill.kill_type {
+            KillType::Connection => {
+                session_manager
+                    .kill_session(target_session_id)
+                    .map_err(|e| SqlError::ExecutionError(e))?;
+                Ok(ExecutorResult::new(
+                    vec![vec![Value::Text(format!(
+                        "CONNECTION {} executed",
+                        target_session_id
+                    ))]],
+                    0,
+                ))
+            }
+            KillType::Query => {
+                session_manager
+                    .kill_query(target_session_id)
+                    .map_err(|e| SqlError::ExecutionError(e))?;
+                Ok(ExecutorResult::new(
+                    vec![vec![Value::Text(format!(
+                        "QUERY {} executed",
+                        target_session_id
+                    ))]],
+                    0,
+                ))
+            }
         }
     }
 
@@ -1768,6 +1947,8 @@ impl Default for ExecutionEngine {
     fn default() -> Self {
         Self {
             storage: Arc::new(RwLock::new(MemoryStorage::new())),
+            session_manager: None,
+            current_session_id: None,
         }
     }
 }
