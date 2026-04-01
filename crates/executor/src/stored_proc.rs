@@ -64,6 +64,7 @@ struct ExceptionHandler {
 /// Cursor state for stored procedure cursors
 #[derive(Debug, Clone)]
 struct Cursor {
+    #[allow(dead_code)]
     name: String,
     query: String,
     records: Vec<Vec<Value>>,
@@ -183,7 +184,7 @@ impl ProcedureContext {
     }
 
     /// Check if current exception matches any handler condition
-    pub fn find_matching_handler(&self, exc: &StoredProcError) -> Option<&ExceptionHandler> {
+    fn find_matching_handler(&self, exc: &StoredProcError) -> Option<&ExceptionHandler> {
         for handler in &self.handler_stack {
             match &handler.condition {
                 HandlerCondition::SqlException => {
@@ -297,10 +298,12 @@ impl ProcedureContext {
     }
 
     /// Get any variable (local first, then session)
+    /// Handles @ prefix for session variables
     pub fn get_var(&self, name: &str) -> Option<&Value> {
+        let key = name.strip_prefix('@').unwrap_or(name);
         self.local_variables
-            .get(name)
-            .or_else(|| self.session_variables.get(name))
+            .get(key)
+            .or_else(|| self.session_variables.get(key))
     }
 
     /// Set any variable (local or session based on @ prefix)
@@ -1350,7 +1353,7 @@ mod tests {
     #[test]
     fn test_stored_proc_executor_not_found() {
         let catalog = Arc::new(Catalog::new());
-        let executor = StoredProcExecutor::new(catalog);
+        let executor = StoredProcExecutor::new_for_test(catalog);
 
         let result = executor.execute_call("non_existent", vec![]);
         assert!(result.is_err());
@@ -1360,7 +1363,7 @@ mod tests {
     #[test]
     fn test_stored_proc_executor_list_empty() {
         let catalog = Arc::new(Catalog::new());
-        let executor = StoredProcExecutor::new(catalog);
+        let executor = StoredProcExecutor::new_for_test(catalog);
 
         assert!(executor.list_procedures().is_empty());
         assert!(!executor.has_procedure("test"));
@@ -1407,7 +1410,7 @@ mod tests {
     #[test]
     fn test_evaluate_condition() {
         let catalog = Arc::new(Catalog::new());
-        let executor = StoredProcExecutor::new(catalog);
+        let executor = StoredProcExecutor::new_for_test(catalog);
         let mut ctx = ProcedureContext::new();
         ctx.set_var("x", Value::Integer(10));
 

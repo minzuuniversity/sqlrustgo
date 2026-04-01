@@ -40,6 +40,12 @@ fn get_test_categories() -> Vec<TestCategory> {
             ],
             description: "测试底层组件：存储、缓冲区、解析器、类型系统",
         },
+        // 存储过程测试
+        TestCategory {
+            name: "存储过程测试 (Stored Procedure)",
+            test_files: vec!["test_stored_proc"],
+            description: "测试存储过程执行引擎：变量、流程控制、异常处理、光标",
+        },
         // 集成测试 - 核心
         TestCategory {
             name: "集成测试 - 核心 (Core Integration)",
