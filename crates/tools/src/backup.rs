@@ -147,6 +147,15 @@ fn value_to_sql(value: &Value) -> String {
         Value::Blob(bytes) => format!("X'{}'", hex::encode(bytes)),
         Value::Date(days) => format!("DATE '{}'", days),
         Value::Timestamp(us) => format!("TIMESTAMP '{}'", us),
+        Value::Uuid(u) => format!("'{:036x}'", u),
+        Value::Array(arr) => format!(
+            "'{}'",
+            arr.iter()
+                .map(|v| value_to_sql(v))
+                .collect::<Vec<_>>()
+                .join(",")
+        ),
+        Value::Enum(_, name) => format!("'{}'", name),
     }
 }
 
