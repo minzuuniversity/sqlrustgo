@@ -185,9 +185,6 @@ impl TestTableBuilder {
                 data_type: format!("{:?}", data_type),
                 nullable: false,
                 is_unique: false,
-                is_primary_key: false,
-                references: None,
-                auto_increment: false,
             })
             .collect();
         sqlrustgo_storage::TableInfo {

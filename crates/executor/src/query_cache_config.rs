@@ -1,12 +1,13 @@
 use std::time::{Duration, Instant};
 
+use sqlrustgo_types::Value;
+
 #[derive(Debug, Clone)]
 pub struct QueryCacheConfig {
     pub max_entries: usize,
     pub max_memory_bytes: usize,
     pub ttl_seconds: u64,
     pub enabled: bool,
-    pub benchmark_mode: bool,
 }
 
 impl Default for QueryCacheConfig {
@@ -16,7 +17,6 @@ impl Default for QueryCacheConfig {
             max_memory_bytes: 100 * 1024 * 1024, // 100MB
             ttl_seconds: 30,
             enabled: true,
-            benchmark_mode: false,
         }
     }
 }
@@ -33,7 +33,6 @@ pub struct CacheEntry {
     pub tables: Vec<String>,
     pub created_at: Instant,
     pub size_bytes: usize,
-    pub last_access: u64,
 }
 
 impl CacheEntry {
