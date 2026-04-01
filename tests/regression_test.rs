@@ -75,12 +75,6 @@ fn get_test_categories() -> Vec<TestCategory> {
             ],
             description: "测试查询缓存、优化器统计、校验和完整性、列式存储、Parquet",
         },
-        // 教学场景测试
-        TestCategory {
-            name: "教学场景测试 (Teaching Scenarios)",
-            test_files: vec!["teaching_scenario_test"],
-            description: "35+ 教学场景测试：CRUD、事务、JOIN、聚合、子查询、视图、优化器",
-        },
         // 性能测试
         TestCategory {
             name: "性能测试 (Performance)",
@@ -126,8 +120,13 @@ fn get_test_categories() -> Vec<TestCategory> {
         // 异常测试 - 查询
         TestCategory {
             name: "异常测试 - 查询 (Anomaly - Query)",
-            test_files: vec!["join_test", "set_operations_test", "view_test"],
-            description: "JOIN、集合操作、视图",
+            test_files: vec![
+                "join_test",
+                "set_operations_test",
+                "view_test",
+                "window_function_test",
+            ],
+            description: "JOIN、集合操作、视图、窗口函数",
         },
         // 异常测试 - 约束
         TestCategory {
@@ -169,8 +168,27 @@ fn get_test_categories() -> Vec<TestCategory> {
         // 其他测试
         TestCategory {
             name: "其他测试 (Other)",
-            test_files: vec!["binary_format_test", "wal_integration_test"],
-            description: "二进制格式、WAL集成测试",
+            test_files: vec![
+                "binary_format_test",
+                "wal_integration_test",
+                "distributed_transaction_test",
+            ],
+            description: "二进制格式、WAL集成测试、分布式事务",
+        },
+        // 安全测试
+        TestCategory {
+            name: "安全测试 (Security)",
+            test_files: vec!["auth_rbac_test", "logging_test"],
+            description: "RBAC权限、日志配置",
+        },
+        // 教学场景测试
+        TestCategory {
+            name: "教学场景测试 (Teaching Scenarios)",
+            test_files: vec![
+                "teaching_scenario_test",
+                "teaching_scenario_client_server_test",
+            ],
+            description: "教学场景：客户端/服务器模式",
         },
         // 工具测试
         TestCategory {
