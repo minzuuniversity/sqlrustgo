@@ -56,8 +56,10 @@ mod tests {
         std::env::remove_var("SQLRUSTGO_BENCHMARK_MODE");
         std::env::remove_var("SQLRUSTGO_TEACHING_MODE");
         let config = SessionConfig::default();
-        // Just verify config can be created
-        let _ = config;
+        assert!(!config.benchmark_mode);
+        assert!(!config.teaching_mode);
+        assert!(config.cache_enabled);
+        assert!(config.stats_enabled);
     }
 
     #[test]

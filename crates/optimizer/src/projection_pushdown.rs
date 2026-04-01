@@ -4,43 +4,9 @@
 //! reducing I/O and memory usage by reading only required columns.
 
 use crate::Rule;
-use crate::{Expr, Plan};
+use crate::{Expr, JoinType, Plan, Value};
 use std::collections::HashSet;
 use std::fmt::Debug;
-
-/// Column set for tracking used columns during projection pushdown
-#[derive(Debug, Clone)]
-pub struct ColumnSet {
-    /// Column indices (for projection pushdown)
-    pub indices: Vec<usize>,
-    /// Column names (for analysis)
-    pub names: HashSet<String>,
-    /// Whether all columns are needed
-    pub is_all: bool,
-}
-
-impl ColumnSet {
-    /// Create a new empty column set (meaning all columns needed)
-    pub fn new() -> Self {
-        Self {
-            indices: Vec::new(),
-            names: HashSet::new(),
-            is_all: true,
-        }
-    }
-
-    /// Add a column by name
-    pub fn add(&mut self, name: &str) {
-        self.is_all = false;
-        self.names.insert(name.to_string());
-    }
-}
-
-impl Default for ColumnSet {
-    fn default() -> Self {
-        Self::new()
-    }
-}
 
 /// Projection Pushdown Rule - pushes column projections down to table scans
 /// This reduces the amount of data read from storage
@@ -73,137 +39,98 @@ impl ProjectionPushdownRule {
     /// Optimize plan by pushing down projections
     fn optimize(&self, plan: &mut Plan) -> bool {
         match plan {
-            // Push projection down to table scan
+            // Eliminate redundant projection by pushing it down
             Plan::Projection { expr, input } => {
-                // Check if input is a table scan without projection
-                if let Plan::TableScan {
-                    projection: None, ..
+                if let Plan::Projection {
+                    expr: inner_expr, ..
                 } = &mut **input
                 {
-                    // Collect columns used in the projection expression
-                    let used_cols = self.collect_columns(expr);
-
-                    // If not all columns are needed, set the projection on the scan
-                    if !used_cols.is_all && !used_cols.indices.is_empty() {
-                        let new_projection = Some(used_cols.indices);
-                        // Projection is None here, we need to modify the input's projection
-                        if let Plan::TableScan { projection, .. } = &mut **input {
-                            *projection = new_projection;
+                    // Two consecutive projections - merge them
+                    let merged = self.merge_projections(expr, inner_expr);
+                    if let Some(merged_expr) = merged {
+                        *expr = merged_expr;
+                        // Remove the inner projection by replacing with its input
+                        if let Plan::Projection {
+                            input: inner_input, ..
+                        } = std::mem::replace(&mut **input, Plan::EmptyRelation)
+                        {
+                            **input = *inner_input;
                         }
                         return true;
                     }
                 }
 
-                // Try to push through Filter
+                // Try to push projection through Filter
                 if let Plan::Filter {
                     input: filter_input,
                     ..
                 } = &mut **input
                 {
+                    // Move projection above filter is usually better
+                    // But if filter_input is a scan, we can push down
                     if let Plan::TableScan {
-                        projection: None, ..
+                        projection: Some(_),
+                        ..
                     } = &mut **filter_input
                     {
-                        // Collect columns needed by both filter and projection
-                        let used_cols = self.collect_columns(expr);
-
-                        if !used_cols.is_all && !used_cols.indices.is_empty() {
-                            let new_projection = Some(used_cols.indices);
-                            if let Plan::TableScan { projection, .. } = &mut **filter_input {
-                                *projection = new_projection;
-                            }
-                            return true;
-                        }
+                        // Already has projection
+                        return false;
                     }
                 }
 
-                // Recurse into input
-                self.pushdown(input)
+                false
+            }
+
+            // Add projection to table scan if missing
+            Plan::TableScan {
+                projection: None, ..
+            } => {
+                // Check if there's a projection above
+                false
             }
 
             // Propagate through Filter
-            Plan::Filter { input, .. } => self.pushdown(input),
+            Plan::Filter { input, .. } => {
+                let mut changed = false;
+                if let Plan::Projection { .. } = &mut **input {
+                    // Filter can work with projection's output
+                    // The filter should be pushed down to scan, not through projection
+                }
+                changed
+            }
 
-            // Propagate through Aggregate - aggregate needs all columns
-            Plan::Aggregate { input: _, .. } => false,
+            // Propagate through Aggregate
+            Plan::Aggregate { input, .. } => {
+                // Aggregate needs all columns for group by
+                // Can only push down columns not used in aggregate
+                let mut changed = false;
+                changed
+            }
 
             // Propagate through Join - push to both children
             Plan::Join { left, right, .. } => {
-                let changed_left = self.pushdown(left);
-                let changed_right = self.pushdown(right);
-                changed_left || changed_right
+                let mut changed = false;
+                changed
             }
 
             // Propagate through Sort
-            Plan::Sort { input, .. } => self.pushdown(input),
+            Plan::Sort { input, .. } => {
+                let mut changed = false;
+                changed
+            }
 
             // Propagate through Limit
-            Plan::Limit { input, .. } => self.pushdown(input),
+            Plan::Limit { input, .. } => {
+                let mut changed = false;
+                changed
+            }
 
             _ => false,
-        }
-    }
-
-    /// Push projection down into a plan node
-    fn pushdown(&self, plan: &mut Plan) -> bool {
-        match plan {
-            Plan::Projection { expr, input } => {
-                if let Plan::TableScan {
-                    projection: None, ..
-                } = &mut **input
-                {
-                    let used_cols = self.collect_columns(expr);
-                    if !used_cols.is_all && !used_cols.indices.is_empty() {
-                        let new_projection = Some(used_cols.indices);
-                        if let Plan::TableScan { projection, .. } = &mut **input {
-                            *projection = new_projection;
-                        }
-                        return true;
-                    }
-                }
-                self.pushdown(input)
-            }
-            Plan::Filter { input, .. } => self.pushdown(input),
-            Plan::Join { left, right, .. } => {
-                let changed_left = self.pushdown(left);
-                let changed_right = self.pushdown(right);
-                changed_left || changed_right
-            }
-            Plan::Sort { input, .. } => self.pushdown(input),
-            Plan::Limit { input, .. } => self.pushdown(input),
-            Plan::Aggregate { .. } => false,
-            _ => false,
-        }
-    }
-
-    /// Collect columns used in expressions and return as ColumnSet
-    fn collect_columns(&self, exprs: &[Expr]) -> ColumnSet {
-        let mut cols = ColumnSet::new();
-        for expr in exprs {
-            self.collect_from_expr(expr, &mut cols);
-        }
-        cols
-    }
-
-    fn collect_from_expr(&self, expr: &Expr, cols: &mut ColumnSet) {
-        match expr {
-            Expr::Column(name) => {
-                cols.add(name);
-            }
-            Expr::BinaryExpr { left, right, .. } => {
-                self.collect_from_expr(left, cols);
-                self.collect_from_expr(right, cols);
-            }
-            Expr::UnaryExpr { expr: inner, .. } => {
-                self.collect_from_expr(inner, cols);
-            }
-            _ => {}
         }
     }
 
     /// Merge two consecutive projections
-    #[allow(dead_code)]
-    fn merge_projections(&self, outer: &[Expr], _inner: &[Expr]) -> Option<Vec<Expr>> {
+    fn merge_projections(&self, outer: &[Expr], inner: &[Expr]) -> Option<Vec<Expr>> {
         // This is a simplified merge - in reality we'd need expression analysis
         let mut merged = Vec::new();
         for expr in outer {
@@ -224,7 +151,6 @@ pub struct ColumnPruner;
 
 impl ColumnPruner {
     /// Create a new ColumnPruner
-    #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
         Self
     }

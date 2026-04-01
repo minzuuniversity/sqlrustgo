@@ -14,9 +14,6 @@ use std::sync::Arc;
 /// Database trait for benchmark
 #[async_trait]
 pub trait Database: Send + Sync {
-    /// Execute a SQL statement
-    async fn execute(&self, sql: &str) -> Result<()>;
-
     /// Read a record by key
     async fn read(&self, key: usize) -> Result<()>;
 
