@@ -6,8 +6,8 @@ use rustyline::history::FileHistory;
 use rustyline::Editor;
 use sqlrustgo_executor::ExecutorResult;
 use sqlrustgo_parser::parser::{
-    CreateTableStatement, DropTableStatement, Expression, InsertStatement, KillStatement, KillType,
-    SelectStatement,
+    CreateTableStatement, DeleteStatement, DropTableStatement, Expression, InsertStatement,
+    KillStatement, KillType, SelectStatement, UpdateStatement,
 };
 use sqlrustgo_parser::{parse, Statement};
 use sqlrustgo_security::SessionManager;
@@ -173,7 +173,9 @@ fn execute_sql(
         Statement::ShowStatus => execute_show_status(storage),
         Statement::ShowProcesslist => execute_show_processlist(session_manager, current_session_id),
         Statement::Kill(kill) => execute_kill(&kill, session_manager, current_session_id),
-        _ => Err("Only SELECT, INSERT, CREATE TABLE, DROP TABLE, SHOW STATUS, SHOW PROCESSLIST, KILL are supported".to_string()),
+        Statement::Update(update) => execute_update(&update, storage),
+        Statement::Delete(delete) => execute_delete(&delete, storage),
+        _ => Err("Only SELECT, INSERT, UPDATE, DELETE, CREATE TABLE, DROP TABLE, SHOW STATUS, SHOW PROCESSLIST, KILL are supported".to_string()),
     }
 }
 
@@ -396,6 +398,96 @@ fn execute_drop_table(
     storage.drop_table(&drop.name).map_err(|e| e.to_string())?;
 
     Ok(ExecutorResult::new(vec![], 0))
+}
+
+/// Execute UPDATE statement
+fn execute_update(
+    update: &UpdateStatement,
+    storage: &mut dyn StorageEngine,
+) -> Result<ExecutorResult, String> {
+    let table_name = &update.table;
+
+    if !storage.has_table(table_name) {
+        return Err(format!("Table '{}' not found", table_name));
+    }
+
+    let table_info = storage
+        .get_table_info(table_name)
+        .map_err(|e| e.to_string())?;
+
+    let mut rows = storage.scan(table_name).map_err(|e| e.to_string())?;
+
+    let mut updated_count = 0;
+
+    for row in &mut rows {
+        if let Some(ref where_expr) = update.where_clause {
+            if !evaluate_where_clause(where_expr, row, &table_info.columns) {
+                continue;
+            }
+        }
+
+        for (col_name, new_val_expr) in &update.set_clauses {
+            if let Some(col_idx) = table_info
+                .columns
+                .iter()
+                .position(|c| c.name.eq_ignore_ascii_case(col_name))
+            {
+                let new_val = evaluate_expression(new_val_expr, row, &table_info.columns);
+                if col_idx < row.len() {
+                    row[col_idx] = new_val;
+                    updated_count += 1;
+                }
+            }
+        }
+    }
+
+    storage.delete(table_name, &[]).map_err(|e| e.to_string())?;
+    if !rows.is_empty() {
+        storage
+            .insert(table_name, rows)
+            .map_err(|e| e.to_string())?;
+    }
+
+    Ok(ExecutorResult::new(vec![], updated_count))
+}
+
+/// Execute DELETE statement
+fn execute_delete(
+    delete: &DeleteStatement,
+    storage: &mut dyn StorageEngine,
+) -> Result<ExecutorResult, String> {
+    let table_name = &delete.table;
+
+    if !storage.has_table(table_name) {
+        return Err(format!("Table '{}' not found", table_name));
+    }
+
+    let table_info = storage
+        .get_table_info(table_name)
+        .map_err(|e| e.to_string())?;
+
+    let mut rows = storage.scan(table_name).map_err(|e| e.to_string())?;
+
+    let original_count = rows.len();
+
+    rows.retain(|row| {
+        if let Some(ref where_expr) = delete.where_clause {
+            !evaluate_where_clause(where_expr, row, &table_info.columns)
+        } else {
+            false
+        }
+    });
+
+    let deleted_count = original_count - rows.len();
+
+    storage.delete(table_name, &[]).map_err(|e| e.to_string())?;
+    if !rows.is_empty() {
+        storage
+            .insert(table_name, rows)
+            .map_err(|e| e.to_string())?;
+    }
+
+    Ok(ExecutorResult::new(vec![], deleted_count))
 }
 
 /// Execute SHOW STATUS statement
@@ -631,6 +723,116 @@ fn execute_kill(
         ))]],
         0,
     ))
+}
+
+/// Evaluate a WHERE clause expression against a row
+fn evaluate_where_clause(expr: &Expression, row: &[Value], columns: &[ColumnDefinition]) -> bool {
+    match expr {
+        Expression::BinaryOp(left, op, right) => {
+            let left_val = evaluate_expression(left, row, columns);
+            let right_val = evaluate_expression(right, row, columns);
+            compare_values(&left_val, op, &right_val)
+        }
+        Expression::Identifier(name) => {
+            if let Some(idx) = columns
+                .iter()
+                .position(|c| c.name.eq_ignore_ascii_case(name))
+            {
+                if let Some(val) = row.get(idx) {
+                    return val.to_bool();
+                }
+            }
+            false
+        }
+        Expression::Literal(s) => s.to_uppercase() != "FALSE" && s != "0",
+        Expression::Wildcard => true,
+        Expression::InList { expr, values } => {
+            let expr_val = evaluate_expression(expr, row, columns);
+            for value_expr in values {
+                let value = evaluate_expression(value_expr, row, columns);
+                if value == expr_val {
+                    return true;
+                }
+            }
+            false
+        }
+        Expression::Between { expr, low, high } => {
+            let expr_val = evaluate_expression(expr, row, columns);
+            let low_val = evaluate_expression(low, row, columns);
+            let high_val = evaluate_expression(high, row, columns);
+            compare_values(&expr_val, ">=", &low_val) && compare_values(&expr_val, "<=", &high_val)
+        }
+        _ => false,
+    }
+}
+
+/// Evaluate an expression to a Value
+fn evaluate_expression(expr: &Expression, row: &[Value], columns: &[ColumnDefinition]) -> Value {
+    match expr {
+        Expression::Literal(s) => {
+            if let Ok(n) = s.parse::<i64>() {
+                Value::Integer(n)
+            } else if let Ok(n) = s.parse::<f64>() {
+                Value::Float(n)
+            } else if s.eq_ignore_ascii_case("true") {
+                Value::Boolean(true)
+            } else if s.eq_ignore_ascii_case("false") {
+                Value::Boolean(false)
+            } else {
+                Value::Text(s.clone())
+            }
+        }
+        Expression::Identifier(name) => {
+            if let Some(idx) = columns
+                .iter()
+                .position(|c| c.name.eq_ignore_ascii_case(name))
+            {
+                row.get(idx).cloned().unwrap_or(Value::Null)
+            } else {
+                Value::Null
+            }
+        }
+        _ => Value::Null,
+    }
+}
+
+/// Compare two values with an operator
+fn compare_values(left: &Value, op: &str, right: &Value) -> bool {
+    match op {
+        "=" | "==" => left == right,
+        "!=" | "<>" => left != right,
+        ">" => match (left, right) {
+            (Value::Integer(l), Value::Integer(r)) => *l > *r,
+            (Value::Float(l), Value::Float(r)) => *l > *r,
+            (Value::Integer(l), Value::Float(r)) => (*l as f64) > *r,
+            (Value::Float(l), Value::Integer(r)) => *l > (*r as f64),
+            _ => false,
+        },
+        ">=" => match (left, right) {
+            (Value::Integer(l), Value::Integer(r)) => *l >= *r,
+            (Value::Float(l), Value::Float(r)) => *l >= *r,
+            (Value::Integer(l), Value::Float(r)) => (*l as f64) >= *r,
+            (Value::Float(l), Value::Integer(r)) => *l >= (*r as f64),
+            _ => false,
+        },
+        "<" => match (left, right) {
+            (Value::Integer(l), Value::Integer(r)) => *l < *r,
+            (Value::Float(l), Value::Float(r)) => *l < *r,
+            (Value::Integer(l), Value::Float(r)) => (*l as f64) < *r,
+            (Value::Float(l), Value::Integer(r)) => *l < (*r as f64),
+            _ => false,
+        },
+        "<=" => match (left, right) {
+            (Value::Integer(l), Value::Integer(r)) => *l <= *r,
+            (Value::Float(l), Value::Float(r)) => *l <= *r,
+            (Value::Integer(l), Value::Float(r)) => (*l as f64) <= *r,
+            (Value::Float(l), Value::Integer(r)) => *l <= (*r as f64),
+            _ => false,
+        },
+        "AND" | "and" => left.to_bool() && right.to_bool(),
+        "OR" | "or" => left.to_bool() || right.to_bool(),
+        _ => false,
+    }
 }
 
 /// Setup sample data for testing CLI commands
