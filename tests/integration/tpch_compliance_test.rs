@@ -12,8 +12,8 @@ use sqlrustgo_storage::{ColumnDefinition, TableInfo};
 use std::sync::{Arc, RwLock};
 
 // Use tiny dataset for quick testing, change to "data/tpch-sf001" for full SF=0.1 test
-const TBL_DATA_DIR: &str = "data/tpch-tiny";
-const TBL_SQLITE_DB: &str = "data/tpch-tiny/tpch.db";
+const TBL_DATA_DIR: &str = "data/tpch-sf01";
+const TBL_SQLITE_DB: &str = "data/tpch-sf01/tpch.db";
 
 fn create_sqlite_conn() -> Connection {
     Connection::open(TBL_SQLITE_DB).unwrap()
