@@ -2260,7 +2260,7 @@ impl ExecutionEngine {
 
                 // Sort rows by ORDER BY clause BEFORE projection
                 // This is necessary because ORDER BY can reference columns not in SELECT list
-                let sorted_rows: Vec<Vec<Value>> = if let Some(ref order_by) = select.order_by {
+                let ordered_rows: Vec<Vec<Value>> = if let Some(ref order_by) = select.order_by {
                     sort_rows_by_order_by(filtered_rows, order_by, &columns)
                 } else {
                     filtered_rows
@@ -2269,14 +2269,6 @@ impl ExecutionEngine {
                 // Apply column projection if specified (not SELECT *)
                 // SELECT * has columns = [{"*", None}]
                 let is_select_star = select.columns.len() == 1 && select.columns[0].name == "*";
-// IMPORTANT: ORDER BY must happen BEFORE projection
-                // because ORDER BY columns may not be in the SELECT list
-                // Keep full rows for ORDER BY processing (projection happens after sort)
-                let ordered_rows: Vec<Vec<Value>> = if let Some(ref order_by) = select.order_by {
-                    sort_rows_by_order_by(filtered_rows, order_by, &columns)
-                } else {
-                    filtered_rows
-                };
 
                 // Apply column projection AFTER sorting
                 let result_rows: Vec<Vec<Value>> = if is_select_star || select.columns.is_empty() {
