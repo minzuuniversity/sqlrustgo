@@ -233,14 +233,6 @@ pub trait StorageEngine: Send + Sync {
         }
         Ok(())
     }
-
-    /// Bulk load records from a TPC-H .tbl file (pipe-delimited format)
-    /// Returns the number of records loaded
-    fn bulk_load_tbl_file(&mut self, _table: &str, _filepath: &str) -> SqlResult<usize> {
-        Err(SqlError::ExecutionError(
-            "bulk_load_tbl_file not supported by this storage engine".to_string(),
-        ))
-    }
 }
 
 /// In-memory storage implementation for testing and caching
