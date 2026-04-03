@@ -1712,6 +1712,27 @@ impl ExecutionEngine {
                 storage.create_view(view_info)?;
                 Ok(ExecutorResult::new(vec![], 0))
             }
+            Statement::CreateIndex(create) => {
+                let mut storage = self.storage.write().unwrap();
+                if create.columns.is_empty() {
+                    return Err(SqlError::ExecutionError(
+                        "CREATE INDEX requires at least one column".to_string(),
+                    ));
+                }
+                let table_info = storage.get_table_info(&create.table)?;
+                let column_index = table_info
+                    .columns
+                    .iter()
+                    .position(|c| c.name == create.columns[0])
+                    .ok_or_else(|| {
+                        SqlError::ExecutionError(format!(
+                            "Column '{}' not found in table '{}'",
+                            create.columns[0], create.table
+                        ))
+                    })?;
+                storage.create_table_index(&create.table, &create.columns[0], column_index)?;
+                Ok(ExecutorResult::new(vec![], 0))
+            }
             Statement::Analyze(analyze) => {
                 let table_name = analyze.table_name.ok_or_else(|| {
                     SqlError::ExecutionError("ANALYZE requires a table name".to_string())
