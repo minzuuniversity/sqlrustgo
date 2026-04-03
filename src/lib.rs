@@ -314,6 +314,48 @@ fn handle_foreign_key_update(
     Ok((total_cascade_updates, total_set_null_updates))
 }
 
+/// Extract index usage info from a WHERE clause for TEXT columns
+/// Returns (column_name, op, value_string) for TEXT column range queries
+fn extract_text_index_predicate(
+    where_clause: &sqlrustgo_parser::Expression,
+    columns: &[sqlrustgo_storage::ColumnDefinition],
+) -> Option<(String, String, String)> {
+    match where_clause {
+        sqlrustgo_parser::Expression::BinaryOp(left, op, right) => {
+            let op_upper = op.to_uppercase();
+            
+            // Only handle simple comparison operators
+            if !["<", ">", "=", "<=", ">="].contains(&op_upper.as_str()) {
+                return None;
+            }
+            
+            // Check if left side is a column and right side is a value
+            let (col_name, value_str) = match (&**left, &**right) {
+                (sqlrustgo_parser::Expression::Identifier(name), sqlrustgo_parser::Expression::Literal(val)) => {
+                    (name.clone(), val.clone())
+                }
+                (sqlrustgo_parser::Expression::QualifiedColumn(_, col), sqlrustgo_parser::Expression::Literal(val)) => {
+                    (col.clone(), val.clone())
+                }
+                _ => return None,
+            };
+            
+            // Check if column exists and is TEXT type (not integer)
+            let col_def = columns.iter().find(|c| &c.name == &col_name)?;
+            let upper = col_def.data_type.to_uppercase();
+            
+            // Skip if it's an integer column (use extract_index_predicate instead)
+            if upper.contains("INT") || upper == "BIGINT" || upper == "SMALLINT" || upper == "TINYINT" {
+                return None;
+            }
+            
+            // For TEXT columns, return the string value directly
+            Some((col_name, op_upper, value_str))
+        }
+        _ => None,
+    }
+}
+
 /// Extract index usage info from a WHERE clause
 /// Returns (column_name, op, value) if the WHERE can use an index
 /// For TEXT columns, value is the hash of the string
@@ -341,34 +383,91 @@ fn extract_index_predicate(
                 _ => return None,
             };
             
-            // Check if column exists
+            // Check if column exists and is integer type
             let col_def = columns.iter().find(|c| &c.name == &col_name)?;
             let upper = col_def.data_type.to_uppercase();
             
-            // For TEXT columns, we need to hash the string value
-            // Hash must match the hash function used in to_index_key()
-            use std::hash::{Hash, Hasher};
-            use std::collections::hash_map::DefaultHasher;
-            
-            let value_i64 = if upper.contains("INT") || upper == "BIGINT" || upper == "SMALLINT" || upper == "TINYINT" {
-                // Integer column: parse the value as i64
-                value_str.parse::<i64>().ok()?
+            // Only handle integer columns here, TEXT columns use extract_text_index_predicate
+            if upper.contains("INT") || upper == "BIGINT" || upper == "SMALLINT" || upper == "TINYINT" {
+                let value_i64 = value_str.parse::<i64>().ok()?;
+                Some((col_name, op_upper, value_i64))
             } else {
-                // TEXT column: hash the string
-                // NOTE: For TEXT, only "=" operator works correctly with hash index
-                // Range operators (<, >) will not work correctly with hash
-                if op_upper != "=" {
-                    return None; // Hash doesn't support range queries
-                }
-                let mut hasher = DefaultHasher::new();
-                value_str.hash(&mut hasher);
-                hasher.finish() as i64
-            };
-            
-            Some((col_name, op_upper, value_i64))
+                None
+            }
         }
         _ => None,
     }
+}
+
+/// Use TEXT index to filter rows for a single table
+/// Returns Some(filtered_rows) if index was used, None if full scan needed
+fn filter_using_text_index(
+    storage: &std::sync::RwLockReadGuard<'_, dyn sqlrustgo_storage::StorageEngine>,
+    table_name: &str,
+    column_name: &str,
+    op: &str,
+    value: &str,
+) -> Option<Vec<Vec<Value>>> {
+    match op {
+        "=" => {
+            // Exact match - use search_index and get_row
+            let row_ids = storage.search_index(table_name, column_name, hash_string(value));
+            if row_ids.is_empty() {
+                return Some(vec![]);
+            }
+            let filtered: Vec<Vec<Value>> = row_ids
+                .into_iter()
+                .filter_map(|id| storage.get_row(table_name, id as usize).ok().flatten())
+                .collect();
+            return Some(filtered);
+        }
+        "<" | "<=" | ">" | ">=" => {
+            // Range query - use string_range_index
+            let (start, end) = match op {
+                "<" => (String::new(), value.to_string()),
+                "<=" => (String::new(), next_string(value)),
+                ">" => (next_string(value), String::from("\u{FFFF}")),
+                ">=" => (value.to_string(), String::from("\u{FFFF}")),
+                _ => return None,
+            };
+            
+            let row_ids = storage.string_range_index(table_name, column_name, &start, &end);
+            
+            if row_ids.is_empty() {
+                return Some(vec![]);
+            }
+            
+            let filtered: Vec<Vec<Value>> = row_ids
+                .into_iter()
+                .filter_map(|id| storage.get_row(table_name, id as usize).ok().flatten())
+                .collect();
+            return Some(filtered);
+        }
+        _ => None,
+    }
+}
+
+/// Get the next string after the given string (for range queries)
+fn next_string(s: &str) -> String {
+    let bytes = s.as_bytes();
+    let mut next = bytes.to_vec();
+    for i in (0..next.len()).rev() {
+        if next[i] < 0xFF {
+            next[i] += 1;
+            return String::from_utf8(next).unwrap_or_default();
+        }
+    }
+    // If all bytes are 0xFF, return empty (beyond range)
+    String::new()
+}
+
+/// Hash a string for index key
+fn hash_string(s: &str) -> i64 {
+    use std::hash::{Hash, Hasher};
+    use std::collections::hash_map::DefaultHasher;
+    let mut hasher = DefaultHasher::new();
+    s.hash(&mut hasher);
+    hasher.finish() as i64
 }
 
 /// Use index to filter rows for a single table
@@ -2153,8 +2252,16 @@ impl ExecutionEngine {
                     
                     // Try to use index for single-table SELECT with WHERE on indexed column
                     let rows = if tables.len() == 1 && select.where_clause.is_some() {
+                        // First try INTEGER index
                         if let Some((col_name, op, value)) = extract_index_predicate(select.where_clause.as_ref().unwrap(), &all_columns) {
                             if let Some(indexed_rows) = filter_using_index(&storage, table_name, &col_name, &op, value, &all_columns) {
+                                indexed_rows
+                            } else {
+                                storage.scan(table_name).unwrap_or_default()
+                            }
+                        // Then try TEXT index for range queries
+                        } else if let Some((col_name, op, value)) = extract_text_index_predicate(select.where_clause.as_ref().unwrap(), &all_columns) {
+                            if let Some(indexed_rows) = filter_using_text_index(&storage, table_name, &col_name, &op, &value) {
                                 indexed_rows
                             } else {
                                 storage.scan(table_name).unwrap_or_default()

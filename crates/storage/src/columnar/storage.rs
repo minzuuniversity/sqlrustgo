@@ -460,6 +460,10 @@ impl StorageEngine for ColumnarStorage {
         Vec::new()
     }
 
+    fn string_range_index(&self, _table: &str, _column: &str, _start: &str, _end: &str) -> Vec<u32> {
+        Vec::new()
+    }
+
     fn create_view(&mut self, _info: ViewInfo) -> crate::engine::SqlResult<()> {
         Err(crate::engine::SqlError::ExecutionError(
             "Views not yet implemented for ColumnarStorage".to_string(),

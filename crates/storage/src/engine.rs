@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
-use crate::bplus_tree::SimpleBPlusTree;
+use crate::bplus_tree::{SimpleBPlusTree, StringBPlusTree};
 
 /// Column statistics for a single column
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -167,6 +167,9 @@ pub trait StorageEngine: Send + Sync {
     /// Range query using index - returns row IDs in range [start, end)
     fn range_index(&self, table: &str, column: &str, start: i64, end: i64) -> Vec<u32>;
 
+    /// String range query using string index - returns row IDs in range [start, end)
+    fn string_range_index(&self, table: &str, column: &str, start: &str, end: &str) -> Vec<u32>;
+
     /// Create a view
     fn create_view(&mut self, info: ViewInfo) -> SqlResult<()>;
 
@@ -248,6 +251,7 @@ pub struct MemoryStorage {
     triggers: HashMap<String, TriggerInfo>,
     table_triggers: HashMap<String, Vec<String>>,
     indexes: HashMap<String, SimpleBPlusTree>,
+    string_indexes: HashMap<String, StringBPlusTree>,
     write_callback: Option<Box<dyn Fn(&str) + Send + Sync>>,
     auto_increment_counters: HashMap<String, HashMap<usize, i64>>,
     cancel_flag: Option<Arc<AtomicBool>>,
@@ -292,6 +296,7 @@ impl MemoryStorage {
             triggers: HashMap::new(),
             table_triggers: HashMap::new(),
             indexes: HashMap::new(),
+            string_indexes: HashMap::new(),
             write_callback: None,
             auto_increment_counters: HashMap::new(),
             cancel_flag: None,
@@ -306,6 +311,7 @@ impl MemoryStorage {
             triggers: HashMap::new(),
             table_triggers: HashMap::new(),
             indexes: HashMap::new(),
+            string_indexes: HashMap::new(),
             write_callback: Some(callback),
             auto_increment_counters: HashMap::new(),
             cancel_flag: None,
@@ -1037,6 +1043,14 @@ impl StorageEngine for MemoryStorage {
             .unwrap_or_default()
     }
 
+    fn string_range_index(&self, table: &str, column: &str, start: &str, end: &str) -> Vec<u32> {
+        let index_name = format!("{}_{}", table, column);
+        self.string_indexes
+            .get(&index_name)
+            .map(|tree: &StringBPlusTree| tree.range_query(start, end))
+            .unwrap_or_default()
+    }
+
     fn create_view(&mut self, info: ViewInfo) -> SqlResult<()> {
         self.views.insert(info.name.clone(), info);
         Ok(())
@@ -1249,23 +1263,39 @@ impl StorageEngine for MemoryStorage {
         if !records.is_empty() {
             self.insert(table, records.clone())?;
             
-            // Auto-create indexes for integer columns after bulk load
+            // Auto-create indexes for all columns after bulk load
             if let Some(table_info) = self.table_infos.get(table) {
                 for (col_idx, col_def) in table_info.columns.iter().enumerate() {
                     let upper = col_def.data_type.to_uppercase();
-                    // Auto-create index for all columns (supports INTEGER, TEXT via hash)
                     let index_name = format!("{}_{}", table, col_def.name);
-                    let mut tree = SimpleBPlusTree::new();
-                    if let Some(all_records) = self.tables.get(table) {
-                        for (row_id, record) in all_records.iter().enumerate() {
-                            if let Some(value) = record.get(col_idx) {
-                                if let Some(key) = value.to_index_key() {
-                                    tree.insert(key, row_id as u32);
+                    
+                    if upper.contains("INT") || upper == "BIGINT" || upper == "SMALLINT" || upper == "TINYINT" {
+                        // Integer column: use SimpleBPlusTree with numeric key
+                        let mut tree = SimpleBPlusTree::new();
+                        if let Some(all_records) = self.tables.get(table) {
+                            for (row_id, record) in all_records.iter().enumerate() {
+                                if let Some(value) = record.get(col_idx) {
+                                    if let Some(key) = value.to_index_key() {
+                                        tree.insert(key, row_id as u32);
+                                    }
                                 }
                             }
                         }
+                        self.indexes.insert(index_name, tree);
+                    } else {
+                        // TEXT column: use StringBPlusTree with string key for range support
+                        let mut tree = StringBPlusTree::new();
+                        if let Some(all_records) = self.tables.get(table) {
+                            for (row_id, record) in all_records.iter().enumerate() {
+                                if let Some(value) = record.get(col_idx) {
+                                    if let Value::Text(s) = value {
+                                        tree.insert(s.clone(), row_id as u32);
+                                    }
+                                }
+                            }
+                        }
+                        self.string_indexes.insert(index_name, tree);
                     }
-                    self.indexes.insert(index_name, tree);
                 }
             }
         }

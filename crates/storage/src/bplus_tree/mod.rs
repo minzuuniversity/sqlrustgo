@@ -59,6 +59,51 @@ impl SimpleBPlusTree {
     }
 }
 
+/// String-based B+Tree for TEXT column range queries
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct StringBPlusTree {
+    map: BTreeMap<String, Vec<u32>>,
+}
+
+impl StringBPlusTree {
+    pub fn new() -> Self {
+        Self {
+            map: BTreeMap::new(),
+        }
+    }
+
+    pub fn insert(&mut self, key: String, value: u32) {
+        self.map.entry(key).or_insert_with(Vec::new).push(value);
+    }
+
+    pub fn search_all(&self, key: &str) -> Vec<u32> {
+        self.map.get(key).cloned().unwrap_or_default()
+    }
+
+    /// Range query: start <= key < end
+    pub fn range_query(&self, start: &str, end: &str) -> Vec<u32> {
+        let mut results = Vec::new();
+        for values in self.map.range(start.to_string()..end.to_string()).map(|(_, v)| v) {
+            results.extend(values.iter().copied());
+        }
+        results
+    }
+
+    /// Prefix range query: key starts with prefix
+    pub fn prefix_query(&self, prefix: &str) -> Vec<u32> {
+        let start = prefix.to_string();
+        // For prefix query, just use the prefix as the start and iterate through matching keys
+        // This is a simplified implementation - keys starting with prefix
+        let mut results = Vec::new();
+        for (key, values) in &self.map {
+            if key.starts_with(&start) {
+                results.extend(values.iter().copied());
+            }
+        }
+        results
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

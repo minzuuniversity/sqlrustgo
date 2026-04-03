@@ -1309,6 +1309,10 @@ impl StorageEngine for FileStorage {
         self.range_index(table, column, start, end)
     }
 
+    fn string_range_index(&self, _table: &str, _column: &str, _start: &str, _end: &str) -> Vec<u32> {
+        Vec::new()
+    }
+
     fn create_view(&mut self, _info: crate::engine::ViewInfo) -> SqlResult<()> {
         Ok(())
     }
