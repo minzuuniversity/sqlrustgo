@@ -134,6 +134,7 @@ impl Ord for Value {
             (Value::Boolean(a), Value::Boolean(b)) => a.cmp(b),
             (Value::Integer(a), Value::Integer(b)) => a.cmp(b),
             (Value::Float(a), Value::Float(b)) => {
+                // Handle NaN: NaN is considered the smallest value
                 if a.is_nan() && b.is_nan() {
                     std::cmp::Ordering::Equal
                 } else if a.is_nan() {
