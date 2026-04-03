@@ -1304,6 +1304,28 @@ impl MemoryStorage {
 
         if !records.is_empty() {
             self.insert(table, records.clone())?;
+            
+            // Auto-create indexes for integer columns after bulk load
+            if let Some(table_info) = self.table_infos.get(table) {
+                for (col_idx, col_def) in table_info.columns.iter().enumerate() {
+                    let upper = col_def.data_type.to_uppercase();
+                    if upper.contains("INT") || upper == "BIGINT" || upper == "SMALLINT" || upper == "TINYINT" {
+                        // Auto-create index for integer columns
+                        let index_name = format!("{}_{}", table, col_def.name);
+                        let mut tree = SimpleBPlusTree::new();
+                        if let Some(all_records) = self.tables.get(table) {
+                            for (row_id, record) in all_records.iter().enumerate() {
+                                if let Some(value) = record.get(col_idx) {
+                                    if let Some(key) = value.to_index_key() {
+                                        tree.insert(key, row_id as u32);
+                                    }
+                                }
+                            }
+                        }
+                        self.indexes.insert(index_name, tree);
+                    }
+                }
+            }
         }
 
         Ok(records.len())
