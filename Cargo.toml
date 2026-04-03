@@ -28,6 +28,7 @@ members = [
     "crates/test-runner",
     "crates/test-results",
     "crates/test-reporter",
+    "crates/gmp",
     "test/sql92",
 ]
 
@@ -53,6 +54,8 @@ sqlrustgo-transaction = { path = "crates/transaction" }
 sqlrustgo-server = { path = "crates/server" }
 sqlrustgo-telemetry = { path = "crates/telemetry" }
 sqlrustgo-network = { path = "crates/network" }
+sqlrustgo-gmp = { path = "crates/gmp" }
+sqlrustgo-agentsql = { path = "crates/agentsql" }
 
 # External dependencies
 tokio = { version = "1.0", features = ["full"] }
@@ -94,6 +97,7 @@ sqlrustgo-server = { path = "crates/server" }
 sqlrustgo-transaction = { path = "crates/transaction" }
 sqlrustgo-security = { path = "crates/security" }
 sqlrustgo-telemetry = { path = "crates/telemetry" }
+sqlrustgo-gmp = { path = "crates/gmp" }
 query-stats = { path = "crates/query-stats" }
 sqlrustgo-tools = { path = "crates/tools" }
 
@@ -113,6 +117,7 @@ sqlrustgo-optimizer.workspace = true
 sqlrustgo-executor.workspace = true
 sqlrustgo-storage.workspace = true
 sqlrustgo-catalog.workspace = true
+sqlrustgo-security.workspace = true
 sqlrustgo-transaction.workspace = true
 tokio.workspace = true
 async-trait.workspace = true
@@ -126,6 +131,8 @@ bytes.workspace = true
 lru-cache.workspace = true
 ctrlc.workspace = true
 serde_json.workspace = true
+sqlrustgo-agentsql.workspace = true
+sqlrustgo-gmp.workspace = true
 
 [[test]]
 name = "ci_test"
@@ -281,6 +288,10 @@ path = "tests/stress/stress_test.rs"
 [[test]]
 name = "concurrency_stress_test"
 path = "tests/stress/concurrency_stress_test.rs"
+
+[[test]]
+name = "kill_stress_test"
+path = "tests/stress/kill_stress_test.rs"
 
 [[test]]
 name = "chaos_test"
