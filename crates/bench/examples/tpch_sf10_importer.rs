@@ -477,8 +477,8 @@ fn insert_orders_batch(conn: &Connection, batch: &[(i32, i32, String, f64, Strin
 }
 
 fn import_lineitem(conn: &Connection, scale: usize) {
-    let count = SF10_LINEITEM * scale / 10;
-    println!("Importing lineitem ({} rows)...", count);
+    let target_rows = SF10_LINEITEM * scale / 10;
+    println!("Importing lineitem ({} rows, ~4 per order)...", target_rows);
     
     let start = Instant::now();
     let mut rng = rand::thread_rng();
@@ -490,61 +490,69 @@ fn import_lineitem(conn: &Connection, scale: usize) {
     let batch_size = 10000;
     let mut batch: Vec<(i32, i32, i32, i32, f64, f64, f64, f64, String, String, String, String, String, String, String, String)> = Vec::with_capacity(batch_size);
     
-    for i in 1..=count {
-        let orderkey = rng.gen_range(1..=(SF10_ORDERS * scale / 10) as i32);
-        let linenumber = rng.gen_range(1..8);
+    let mut row_count = 0;
+    
+    for orderkey in 1..=SF10_ORDERS * scale / 10 {
+        let lineitems_per_order = rng.gen_range(1..8);
         
-        let base_date = 87600;
-        let ship_offset = rng.gen_range(0..500);
-        let shipdate = format!("{:04}-{:02}-{:02}",
-            1992 + ship_offset / 365,
-            (ship_offset % 365) / 30 + 1,
-            ship_offset % 30 + 1
-        );
-        let commit_offset = ship_offset + rng.gen_range(0..30);
-        let commitdate = format!("{:04}-{:02}-{:02}",
-            1992 + commit_offset / 365,
-            (commit_offset % 365) / 30 + 1,
-            commit_offset % 30 + 1
-        );
-        let receipt_offset = commit_offset + rng.gen_range(0..30);
-        let receiptdate = format!("{:04}-{:02}-{:02}",
-            1992 + receipt_offset / 365,
-            (receipt_offset % 365) / 30 + 1,
-            receipt_offset % 30 + 1
-        );
-        
-        batch.push((
-            orderkey,
-            rng.gen_range(1..=(SF10_PART * scale / 10) as i32),
-            rng.gen_range(1..=(SF10_SUPPLIER * scale / 10) as i32),
-            linenumber,
-            rng.gen_range(1.0..50.0),
-            rng.gen_range(100.0..10000.0),
-            rng.gen_range(0.0..0.10),
-            rng.gen_range(0.0..0.10),
-            return_flags[rng.gen_range(0..3)].to_string(),
-            "O".to_string(),
-            shipdate,
-            commitdate,
-            receiptdate,
-            ship_instrs[rng.gen_range(0..4)].to_string(),
-            ship_modes[rng.gen_range(0..6)].to_string(),
-            format!("Comment{}", i),
-        ));
-        
-        if batch.len() >= batch_size {
-            insert_lineitem_batch(conn, &batch);
-            batch.clear();
-            print_progress(i, count, start.elapsed().as_secs_f64());
+        for linenumber in 1..=lineitems_per_order {
+            if row_count >= target_rows {
+                break;
+            }
+            
+            let ship_offset = rng.gen_range(0..500);
+            let shipdate = format!("{:04}-{:02}-{:02}",
+                1992 + ship_offset / 365,
+                (ship_offset % 365) / 30 + 1,
+                ship_offset % 30 + 1
+            );
+            let commit_offset = ship_offset + rng.gen_range(0..30);
+            let commitdate = format!("{:04}-{:02}-{:02}",
+                1992 + commit_offset / 365,
+                (commit_offset % 365) / 30 + 1,
+                commit_offset % 30 + 1
+            );
+            let receipt_offset = commit_offset + rng.gen_range(0..30);
+            let receiptdate = format!("{:04}-{:02}-{:02}",
+                1992 + receipt_offset / 365,
+                (receipt_offset % 365) / 30 + 1,
+                receipt_offset % 30 + 1
+            );
+            
+            batch.push((
+                orderkey as i32,
+                rng.gen_range(1..=(SF10_PART * scale / 10) as i32),
+                rng.gen_range(1..=(SF10_SUPPLIER * scale / 10) as i32),
+                linenumber as i32,
+                rng.gen_range(1.0..50.0),
+                rng.gen_range(100.0..10000.0),
+                rng.gen_range(0.0..0.10),
+                rng.gen_range(0.0..0.10),
+                return_flags[rng.gen_range(0..3)].to_string(),
+                "O".to_string(),
+                shipdate,
+                commitdate,
+                receiptdate,
+                ship_instrs[rng.gen_range(0..4)].to_string(),
+                ship_modes[rng.gen_range(0..6)].to_string(),
+                format!("Comment{}", row_count),
+            ));
+            
+            row_count += 1;
+            
+            if batch.len() >= batch_size {
+                insert_lineitem_batch(conn, &batch);
+                batch.clear();
+                print_progress(row_count, target_rows, start.elapsed().as_secs_f64());
+            }
         }
     }
+    
     if !batch.is_empty() {
         insert_lineitem_batch(conn, &batch);
     }
     println!();
 }
-
 fn insert_lineitem_batch(conn: &Connection, batch: &[(i32, i32, i32, i32, f64, f64, f64, f64, String, String, String, String, String, String, String, String)]) {
     let mut stmt = conn.prepare(
         "INSERT INTO lineitem VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)"
