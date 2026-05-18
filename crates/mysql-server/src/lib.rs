@@ -1720,6 +1720,44 @@ fn execute_select(
     engine: &mut MemoryExecutionEngine,
     storage: &Arc<RwLock<MemoryStorage>>,
 ) -> MySqlResult<(Vec<String>, Vec<String>, Vec<Vec<Value>>)> {
+    // Fast-path for SELECT without FROM: handle simple value expressions
+    // without going through the full engine pipeline.
+    let trimmed = sql.trim();
+    let upper = trimmed.to_uppercase();
+    if upper.starts_with("SELECT ") || upper == "SELECT" {
+        let expr_str = &trimmed["SELECT".len()..].trim();
+        if !expr_str.is_empty()
+            && !expr_str.to_uppercase().contains("FROM")
+            && !expr_str.to_uppercase().contains("WHERE")
+            && !expr_str.to_uppercase().contains("JOIN")
+        {
+            if let Some(values) = parse_select_literals(expr_str) {
+                if !values.is_empty() {
+                    let cols: Vec<String> = (0..values.len())
+                        .map(|i| {
+                            if values.len() == 1 {
+                                format!("col_{}", i)
+                            } else {
+                                format!("col_{}", i + 1)
+                            }
+                        })
+                        .collect();
+                    let ctypes: Vec<String> = values
+                        .iter()
+                        .map(|v| {
+                            match v {
+                                Value::Integer(_) => "BIGINT",
+                                _ => "VARCHAR(255)",
+                            }
+                            .to_string()
+                        })
+                        .collect();
+                    return Ok((cols, ctypes, vec![values]));
+                }
+            }
+        }
+    }
+
     let r = engine.execute(sql).map_err(MySqlError::from)?;
     let real_cols = extract_column_names(sql, storage);
     let n = r.rows.first().map(|row| row.len()).unwrap_or(0);
@@ -1732,6 +1770,44 @@ fn execute_select(
     };
     let ctypes: Vec<String> = infer_column_types(sql, storage, &cols);
     Ok((cols, ctypes, r.rows))
+}
+
+/// Parse simple SELECT value literals like "1", "'hello'", "1, 2"
+fn parse_select_literals(expr_str: &str) -> Option<Vec<Value>> {
+    let mut values = Vec::new();
+    for part in expr_str.split(',') {
+        let part = part.trim();
+        if part.is_empty() {
+            continue;
+        }
+        let value = if let Ok(i) = part.parse::<i64>() {
+            Value::Integer(i)
+        } else if let Ok(f) = part.parse::<f64>() {
+            Value::Float(f)
+        } else if part.len() >= 2
+            && ((part.starts_with('\'') && part.ends_with('\''))
+                || (part.starts_with('"') && part.ends_with('"')))
+        {
+            Value::Text(part[1..part.len() - 1].to_string())
+        } else if part.eq_ignore_ascii_case("NULL") {
+            Value::Null
+        } else if part.eq_ignore_ascii_case("TRUE") {
+            Value::Boolean(true)
+        } else if part.eq_ignore_ascii_case("FALSE") {
+            Value::Boolean(false)
+        } else if part.len() >= 2 && part.starts_with("0x") {
+            Value::Text(part.to_string())
+        } else {
+            // unknown expression, can't handle
+            return None;
+        };
+        values.push(value);
+    }
+    if values.is_empty() {
+        None
+    } else {
+        Some(values)
+    }
 }
 
 #[inline]
@@ -1775,8 +1851,6 @@ fn execute_select_statement(
 #[inline]
 fn is_select(sql: &str) -> bool {
     let trimmed = sql.trim();
-    // Fast path: check first char to avoid allocation in common case
-    // MySQL protocol typically sends uppercase commands
     match trimmed.as_bytes().first().copied() {
         Some(b'S') | Some(b's') => {
             trimmed.starts_with("SELECT")
@@ -1887,6 +1961,90 @@ fn is_xa_recover_cmd(sql: &str) -> bool {
         Some(b'X') | Some(b'x') => trimmed.to_uppercase().starts_with("XA RECOVER"),
         _ => false,
     }
+}
+
+fn is_system_variable_query(sql: &str) -> bool {
+    let trimmed = sql.trim();
+    match trimmed.as_bytes().first().copied() {
+        Some(b'S') | Some(b's') => {
+            let upper = trimmed.to_uppercase();
+            upper.starts_with("SELECT @@") || upper.starts_with("select @@")
+        }
+        _ => false,
+    }
+}
+
+fn get_system_variable_value(var_name: &str) -> Value {
+    match var_name.to_lowercase().as_str() {
+        "@@version_comment" => Value::Text("SQLRustGo MySQL Server".into()),
+        "@@version" => Value::Text("8.0.33-SQLRustGo".into()),
+        "@@hostname" => Value::Text("localhost".into()),
+        "@@port" => Value::Integer(3306),
+        "@@datadir" => Value::Text("/var/lib/mysql/".into()),
+        "@@tmpdir" => Value::Text("/tmp/".into()),
+        "@@license" => Value::Text("GPL".into()),
+        "@@socket" => Value::Text("/tmp/mysql.sock".into()),
+        "@@max_allowed_packet" => Value::Integer(16777216),
+        "@@character_set_client" => Value::Text("utf8mb4".into()),
+        "@@character_set_connection" => Value::Text("utf8mb4".into()),
+        "@@character_set_results" => Value::Text("utf8mb4".into()),
+        "@@collation_connection" => Value::Text("utf8mb4_general_ci".into()),
+        "@@sql_mode" => Value::Text("ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION".into()),
+        "@@autocommit" => Value::Integer(1),
+        "@@tx_isolation" => Value::Text("REPEATABLE-READ".into()),
+        "@@transaction_isolation" => Value::Text("REPEATABLE-READ".into()),
+        "@@wait_timeout" => Value::Integer(28800),
+        "@@interactive_timeout" => Value::Integer(28800),
+        "@@sql_auto_is_null" => Value::Integer(0),
+        _ => Value::Text("".into()),
+    }
+}
+
+fn handle_system_variable_query<S: Read + Write>(
+    stream: &mut S,
+    sql: &str,
+    seq: u8,
+    cap: u32,
+) -> MySqlResult<u8> {
+    let var_name = sql
+        .trim()
+        .trim_start_matches(|c: char| {
+            c.is_whitespace()
+                || c == 's'
+                || c == 'S'
+                || c == 'e'
+                || c == 'E'
+                || c == 'l'
+                || c == 'L'
+                || c == 'c'
+                || c == 'C'
+                || c == 't'
+                || c == 'T'
+        })
+        .trim_start_matches('@')
+        .trim_start_matches('@')
+        .split(&[' ', '\t', '\n', '\r', ',', ';', '('][..])
+        .next()
+        .unwrap_or("")
+        .trim_end_matches(';')
+        .to_string();
+
+    let var_full = format!("@@{}", var_name);
+    let value = get_system_variable_value(&var_full);
+
+    // Determine column type based on value
+    let ctype = match &value {
+        Value::Integer(_) => "BIGINT",
+        _ => "VARCHAR(255)",
+    };
+
+    let cols = vec![var_full.clone()];
+    let ctypes = vec![ctype.to_string()];
+    let rows = vec![vec![value]];
+
+    let new_seq = send_result_set(stream, &cols, &ctypes, &rows, seq, cap)?;
+    stream.flush()?;
+    Ok(new_seq)
 }
 
 pub fn parse_transaction_command(sql: &str) -> TransactionCommand {
@@ -2010,7 +2168,13 @@ fn do_command_loop<S: Read + Write>(
                 break;
             }
         };
+        tracing::debug!("Received packet: len={}, seq={}", pkt.length, pkt.sequence);
         let cmd = pkt.payload.first().copied().unwrap_or(0);
+        tracing::debug!(
+            "Command byte: 0x{:02x}, payload_hex: {:02x?}",
+            cmd,
+            &pkt.payload
+        );
         let payload = &pkt.payload[1..];
         seq = pkt.sequence.wrapping_add(1);
         match cmd {
@@ -2127,24 +2291,43 @@ fn do_command_loop<S: Read + Write>(
                             tracing::error!("Transaction query error: {}", e);
                         }
                     }
+                } else if is_system_variable_query(&q) {
+                    tracing::debug!("Handling system variable query: {}", q);
+                    match handle_system_variable_query(stream, &q, seq, cap) {
+                        Ok(new_seq) => seq = new_seq,
+                        Err(e) => {
+                            tracing::error!("System variable query error: {}", e);
+                        }
+                    }
                 } else if is_select(&q) {
+                    tracing::debug!("is_select returned true for: {}", q);
                     match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                         execute_select(&q, engine, &storage)
                     })) {
                         Ok(Ok((c, t, r))) => {
+                            tracing::debug!("Sending result set for query: {}", q);
                             seq = send_result_set(stream, &c, &t, &r, seq, cap)?;
+                            tracing::debug!("Result set sent, flushing...");
+                            stream.flush()?;
+                            tracing::debug!("Flush complete for query: {}", q);
                         }
                         Ok(Err(e)) => {
+                            tracing::error!("execute_select failed for '{}': {:?}", q, e);
                             let code = match &e {
                                 MySqlError::Sql(s) if s.contains("not found") => 1146,
                                 MySqlError::Sql(_) => 1064,
                                 _ => 2000,
                             };
                             make_err_packet(seq, code, "42000", &e.to_string()).write_to(stream)?;
-                            stream.flush()?;
+                            if let Err(flush_err) = stream.flush() {
+                                tracing::error!("Flush error after err packet: {}", flush_err);
+                            } else {
+                                tracing::debug!("Error packet flushed for query: {}", q);
+                            }
                             seq = seq.wrapping_add(1);
                         }
                         Err(_) => {
+                            tracing::error!("execute_select panicked for '{}'", q);
                             make_err_packet(seq, 2000, "HY000", "Internal error")
                                 .write_to(stream)?;
                             stream.flush()?;
@@ -2345,7 +2528,9 @@ fn do_command_loop<S: Read + Write>(
                     param_count,
                     column_count
                 );
-                stream.flush()?;
+                if let Err(e) = stream.flush() {
+                    tracing::error!("STMT PREPARE flush error: {}", e);
+                }
             }
             packet_type::COM_STMT_EXECUTE => {
                 if payload.len() < 4 {
@@ -2556,7 +2741,10 @@ fn handle_connection(
             }
             tracing::info!("Auth accepted, sending OK packet, seq=3");
             make_ok_packet(3, 0, 0, 0x0002, 0).write_to(&mut tls).ok();
-            tls.flush().ok();
+            if let Err(e) = tls.flush() {
+                tracing::error!("TLS flush error after OK: {}", e);
+                return;
+            }
             tracing::info!("Starting command loop, seq=4");
             let mut ps_manager = PreparedStatementManager::new();
             #[allow(deprecated)]
@@ -2612,10 +2800,15 @@ fn handle_connection(
         return;
     }
     tracing::info!("Auth accepted, sending OK packet, seq=2");
-    make_ok_packet(2, 0, 0, 0x0002, 0)
-        .write_to(&mut &stream)
-        .ok();
-    stream.flush().ok();
+    if let Err(e) = make_ok_packet(2, 0, 0, 0x0002, 0).write_to(&mut &stream) {
+        tracing::error!("OK packet write error: {}", e);
+        return;
+    }
+    if let Err(e) = stream.flush() {
+        tracing::error!("Stream flush error after OK: {}", e);
+        return;
+    }
+    tracing::info!("OK packet sent and flushed successfully");
     tracing::info!("Starting command loop, seq=3");
     let mut ps_manager = PreparedStatementManager::new();
     #[allow(deprecated)]

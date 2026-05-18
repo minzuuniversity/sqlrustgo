@@ -71,10 +71,6 @@ fn test_mysql_protocol_handshake() {
 
     let conn_result = mysql::Conn::new(opts);
 
-    // Cleanup server
-    let _ = server.kill();
-    let _ = server.wait();
-
     // Verify connection succeeded (protocol handshake worked)
     assert!(
         conn_result.is_ok(),
@@ -86,6 +82,10 @@ fn test_mysql_protocol_handshake() {
     let mut conn = conn_result.unwrap();
     let result: Vec<(i32,)> = conn.query("SELECT 1").unwrap();
     assert_eq!(result, vec![(1,)]);
+
+    // Cleanup server after all queries are done
+    let _ = server.kill();
+    let _ = server.wait();
 }
 
 #[test]
@@ -101,8 +101,6 @@ fn test_mysql_protocol_multiple_queries() {
         .pass(Some(""));
 
     let mut conn = mysql::Conn::new(opts).expect("Connection failed");
-    let _ = server.kill();
-    let _ = server.wait();
 
     // Test multiple queries in sequence
     let r1: Vec<(i32,)> = conn.query("SELECT 1").unwrap();
@@ -113,6 +111,10 @@ fn test_mysql_protocol_multiple_queries() {
 
     let r3: Vec<(String,)> = conn.query("SELECT 'hello'").unwrap();
     assert_eq!(r3, vec![("hello".to_string(),)]);
+
+    // Cleanup server after all queries are done
+    let _ = server.kill();
+    let _ = server.wait();
 }
 
 #[test]
@@ -128,11 +130,12 @@ fn test_mysql_protocol_error_handling() {
         .pass(Some(""));
 
     let mut conn = mysql::Conn::new(opts).expect("Connection failed");
-    let _ = server.kill();
-    let _ = server.wait();
 
     // Test that invalid SQL returns proper error (not crash)
-    // Use a simple query result type that we'll just discard
     let result: Result<Vec<(i32,)>, _> = conn.query("INVALID SQL SYNTAX");
     assert!(result.is_err(), "Expected error for invalid SQL");
+
+    // Cleanup server after all queries are done
+    let _ = server.kill();
+    let _ = server.wait();
 }
