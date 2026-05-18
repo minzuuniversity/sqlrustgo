@@ -142,4 +142,14 @@ mod tests {
         );
         assert!(!EventExecutor::should_run_event(&event));
     }
+
+    #[test]
+    fn test_execute_event_disabled_returns_ok() {
+        use std::sync::RwLock;
+        let catalog = Arc::new(RwLock::new(sqlrustgo_catalog::Catalog::new("test")));
+        let executor = EventExecutor::new(catalog);
+        let event = create_test_event("test", false, EventSchedule::OneTime);
+        // Disabled event returns Ok(()) without parsing
+        assert!(executor.execute_event(&event).is_ok());
+    }
 }
