@@ -5754,6 +5754,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "sqlrustgo-trust-viz"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "sqlrustgo-types"
 version = "3.0.0"
 dependencies = [
