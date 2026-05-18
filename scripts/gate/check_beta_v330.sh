@@ -1,9 +1,13 @@
 #!/usr/bin/env bash
 # v3.3.0 Beta Gate (Z6G4 Server)
 set -euo pipefail
-cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
-PROJECT_ROOT="$(pwd)"
+# Source cargo env
+source ~/.cargo/env 2>/dev/null || true
+
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+cd "$PROJECT_ROOT"
+
 PASS=0; FAIL=0; SKIP=0
 
 check() {
@@ -31,7 +35,7 @@ check_coverage() {
 
 echo "=== v3.3.0 Beta Gate ==="
 echo "Date: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
-echo "Branch: beta/v3.3.0"
+echo "Branch: $(git branch --show-current)"
 echo "Commit: $(git rev-parse --short HEAD)"
 echo ""
 
