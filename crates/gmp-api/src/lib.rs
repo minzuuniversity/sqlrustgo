@@ -16,6 +16,7 @@ pub mod device;
 pub mod signature;
 pub mod export;
 pub mod dashboard;
+pub mod rule_engine;
 
 use serde::{Deserialize, Serialize};
 
