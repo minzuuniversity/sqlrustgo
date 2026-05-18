@@ -75,6 +75,7 @@ pub mod signature;
 pub mod sop;
 pub mod sql_api;
 pub mod vector_search;
+pub mod trust_visualization;
 pub mod workflow;
 
 // Re-export commonly used types
