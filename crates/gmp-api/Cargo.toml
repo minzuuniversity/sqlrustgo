@@ -1,0 +1,28 @@
+[package]
+name = "sqlrustgo-gmp-api"
+version = "0.1.0"
+edition = "2021"
+description = "GMP Management API - REST/GraphQL interface for GMP Management Suite"
+license = "MIT"
+repository = "https://github.com/openclaw/sqlrustgo"
+
+[dependencies]
+sqlrustgo-gmp = { path = "../gmp" }
+sqlrustgo-evidence-engine = { path = "../evidence-engine" }
+sqlrustgo-provenance-graph = { path = "../provenance-graph" }
+sqlrustgo-compliance-engine = { path = "../compliance-engine" }
+sqlrustgo-workflow-v2 = { path = "../workflow-v2" }
+sqlrustgo-trust-viz = { path = "../trust-viz" }
+sqlrustgo-types = { path = "../types" }
+
+axum.workspace = true
+tokio.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1.8", features = ["v4", "serde"] }
+thiserror.workspace = true
+
+[dev-dependencies]
+tokio-test = "0.4"
