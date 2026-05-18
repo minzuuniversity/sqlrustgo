@@ -5387,8 +5387,10 @@ version = "0.1.0"
 dependencies = [
  "axum",
  "chrono",
+ "hex",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
  "sqlrustgo-compliance-engine",
  "sqlrustgo-evidence-engine",
  "sqlrustgo-gmp",
