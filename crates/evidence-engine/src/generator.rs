@@ -5,7 +5,11 @@ use crate::{EvidenceFormat, EvidenceManifest, EvidencePackage, ManifestEntry};
 pub struct EvidenceGenerator;
 
 impl EvidenceGenerator {
-    pub fn generate(batch_id: &str, manifest: EvidenceManifest, format: EvidenceFormat) -> EvidencePackage {
+    pub fn generate(
+        batch_id: &str,
+        manifest: EvidenceManifest,
+        format: EvidenceFormat,
+    ) -> EvidencePackage {
         EvidencePackage {
             batch_id: batch_id.to_string(),
             manifest,
@@ -14,7 +18,10 @@ impl EvidenceGenerator {
         }
     }
 
-    pub fn generate_from_audit_log(batch_id: &str, audit_entries: Vec<AuditEntry>) -> EvidencePackage {
+    pub fn generate_from_audit_log(
+        batch_id: &str,
+        audit_entries: Vec<AuditEntry>,
+    ) -> EvidencePackage {
         let mut manifest = EvidenceManifest::new();
 
         for entry in audit_entries {
@@ -47,7 +54,7 @@ pub struct AuditEntry {
 
 impl AuditEntry {
     pub fn compute_hash(&self) -> String {
-        use sha2::{Sha256, Digest};
+        use sha2::{Digest, Sha256};
         let mut hasher = Sha256::new();
         hasher.update(&self.item_type);
         hasher.update(&self.description);

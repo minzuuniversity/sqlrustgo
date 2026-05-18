@@ -27,9 +27,11 @@ impl RuleEvaluator {
 
     fn check_condition(condition: &RuleCondition, batch: &BatchRecord) -> bool {
         match condition {
-            RuleCondition::Threshold { field, operator, value } => {
-                Self::check_threshold(&batch.signatures.len(), operator, *value)
-            }
+            RuleCondition::Threshold {
+                field,
+                operator,
+                value,
+            } => Self::check_threshold(&batch.signatures.len(), operator, *value),
             RuleCondition::Count { field, min, max } => {
                 let count = batch.signatures.len() as u32;
                 let min_ok = min.map(|m| count >= m).unwrap_or(true);

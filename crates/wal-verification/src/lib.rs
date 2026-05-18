@@ -5,7 +5,7 @@
 pub mod verification;
 
 // Re-exports
-pub use verification::{WALVerifier, WALVerificationResult};
+pub use verification::{WALVerificationResult, WALVerifier};
 
 /// WAL operation types
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

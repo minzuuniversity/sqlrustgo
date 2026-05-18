@@ -16,10 +16,23 @@ pub struct ComplianceRule {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type")]
 pub enum RuleCondition {
-    Threshold { field: String, operator: String, value: f64 },
-    Count { field: String, min: Option<u32>, max: Option<u32> },
-    Presence { field: String, required: bool },
-    Custom { expression: String },
+    Threshold {
+        field: String,
+        operator: String,
+        value: f64,
+    },
+    Count {
+        field: String,
+        min: Option<u32>,
+        max: Option<u32>,
+    },
+    Presence {
+        field: String,
+        required: bool,
+    },
+    Custom {
+        expression: String,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
