@@ -49,6 +49,7 @@ members = [
     "crates/perf-baseline",
     "crates/crash-sim",
     "crates/wal-verification",
+    "crates/compliance-engine",
 ]
 
 [workspace.package]
