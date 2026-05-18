@@ -1,27 +1,34 @@
-# SQLRustGo v3.3.0 Coverage SSOT 测量规范
+# SQLRustGo v3.3.0 门禁规范
 
 > **版本**: 1.0
 > **日期**: 2026-05-18
 > **状态**: 生效
-> **supersedes**: v3.2.0 RC_TO_GA_FINAL_REPORT.md 中的旧覆盖率数据
+> **supersedes**: v3.2.0 门禁规范
 
 ---
 
-## 1. 背景
+## 一、概述
 
-v3.2.0 GA 存在覆盖率数据不一致问题：
-- GA_GATE_CHECKLIST.md: 85.81%
-- RC_TO_GA_FINAL_REPORT.md: 68.8%
+### 1.1 四级门禁模型
 
-**根因**: 测量命令、工具版本、测量范围（crate 列表）不统一。
+```
+A-Gate → B-Gate → R-Gate → G-Gate
+ (α入口)  (β入口)  (RC入口)  (GA入口)
+```
 
-本规范建立 **SSOT (Single Source of Truth)**，消除歧义。
+### 1.2 门禁通过条件
+
+| 条件类型 | 说明 |
+|----------|------|
+| **全部通过** | 所有门禁检查项必须 PASS |
+| **有豁免记录** | 不满足的项必须在 `GATE_EXEMPTIONS.md` 有审批通过的豁免记录 |
+| **无阻塞性 OPEN Issue** | milestone 下的 OPEN Issue 不能阻塞门禁 |
 
 ---
 
-## 2. 测量命令（强制）
+## 二、Coverage SSOT 测量规范
 
-所有 Coverage 测量必须使用以下命令：
+### 2.1 测量命令（强制）
 
 ```bash
 cargo llvm-cov test --lib \
@@ -33,149 +40,158 @@ cargo llvm-cov test --lib \
   --llvm-cov --codecov
 ```
 
-### 参数说明
+### 2.2 L1_CRATES 定义
 
-| 参数 | 含义 |
-|------|------|
-| `--lib` | 仅测量库代码（不含集成测试） |
-| `-p <crate>` | 指定要测量的 crate，可重复 |
-| `--llvm-cov` | 使用 LLVM 覆盖率工具 |
-| `--codecov` | 生成 Codecov 兼容格式 |
-
-### 禁止使用的旧命令
-
-以下命令不再使用（测量范围不一致）：
-- `cargo test --lib --coverage` （混入了 tests/ 目录）
-- `cargo llvm-cov test --all` （测量了额外 crate）
-- 仅测量单一 crate
+| Crate | Alpha 阈值 | Beta 阈值 | GA 阈值 |
+|-------|-----------|-----------|---------|
+| `sqlrustgo` | ≥70% | ≥75% | ≥80% |
+| `sqlrustgo-executor` | ≥75% | ≥80% | ≥85% |
+| `sqlrustgo-optimizer` | ≥80% | ≥85% | ≥90% |
+| `sqlrustgo-storage` | ≥80% | ≥85% | ≥90% |
+| `sqlrustgo-types` | ≥80% | ≥85% | ≥90% |
+| **整体** | **≥75%** | **≥80%** | **≥85%** |
 
 ---
 
-## 3. L1_CRATES 定义
+## 三、A-Gate (Alpha Gate)
 
-Coverage 测量范围仅限以下 5 个 crate：
+### 3.1 检查清单
 
-| Crate | 说明 | Alpha 阈值 | Beta 阈值 | GA 阈值 |
-|-------|------|-----------|-----------|---------|
-| `sqlrustgo` | 主 crate | ≥70% | ≥75% | ≥80% |
-| `sqlrustgo-executor` | 执行器 | ≥75% | ≥80% | ≥85% |
-| `sqlrustgo-optimizer` | 优化器 | ≥80% | ≥85% | ≥90% |
-| `sqlrustgo-storage` | 存储引擎 | ≥80% | ≥85% | ≥90% |
-| `sqlrustgo-types` | 类型系统 | ≥80% | ≥85% | ≥90% |
-| **整体** | 全部 L1 | ≥75% | ≥80% | ≥85% |
+| # | 检查项 | 命令/方法 | 通过标准 | 证据格式 |
+|---|--------|----------|---------|---------|
+| A1 | 编译检查 | `cargo build --release --workspace` | 无错误 | `{command, exit_code}` |
+| A2 | 单元测试 | `cargo test --lib` | 全部通过 | `{passed, failed, exit_code}` |
+| A3 | Clippy 检查 | `cargo clippy --all-features -- -D warnings` | 零警告 | `{warnings, exit_code}` |
+| A4 | 格式化检查 | `cargo fmt --all -- --check` | 无格式错误 | `{diff_count, exit_code}` |
+| A5 | 覆盖率检查 | `cargo llvm-cov` | L1 ≥75% | `{total_pct}` |
+| A6 | MySQL Protocol | mysql client 连接 | 连接成功 | `{connection_status}` |
+| A7 | TPC-H SF=1 | `check_tpch.sh --sf1` | 22/22 通过 | `{passed, total}` |
 
----
+### 3.2 Alpha 豁免关联
 
-## 4. 排除范围
-
-以下内容**不计入**覆盖率：
-
-### 4.1 目录级排除
-
-```
-tests/          # 集成测试
-benches/       # 性能基准测试
-examples/      # 示例代码
-```
-
-### 4.2 文件级排除
-
-- 第三方依赖（`vendor/`、`target/`、crates.io 依赖）
-- 生成的代码（`build.rs` 生成的代码）
-
-### 4.3 条件排除
-
-使用 `#[cfg(test)]` 保护的测试代码不计入覆盖率计算。
+| 豁免 ID | 描述 | 关联 Issue |
+|----------|------|-----------|
+| EX-v320-001 | executor 覆盖率 70.7% | #1196, #1197 |
+| EX-v320-002 | MySQL Protocol 握手失败 | #1201 |
+| EX-v320-003 | TPC-H SF=1 数据缺失 | #1198 |
+| EX-v320-004 | Sysbench 服务器环境 | #1198 |
 
 ---
 
-## 5. 报告格式
+## 四、B-Gate (Beta Gate)
 
-### 5.1 JSON 报告
+### 4.1 检查清单
 
-```bash
-cargo llvm-cov test --lib \
-  -p sqlrustgo \
-  -p sqlrustgo-executor \
-  -p sqlrustgo-optimizer \
-  -p sqlrustgo-storage \
-  -p sqlrustgo-types \
-  --llvm-cov --codecov \
-  --json --output-path coverage.json
-```
+| # | 检查项 | 命令/方法 | 通过标准 | 证据格式 |
+|---|--------|----------|---------|---------|
+| B1 | 编译检查 | `cargo build --release --workspace` | 无错误 | `{command, exit_code}` |
+| B2 | 全量测试 | `cargo test --all-features` | ≥90% 通过 | `{passed, failed, exit_code}` |
+| B3 | Clippy 检查 | `cargo clippy --all-features -- -D warnings` | 零警告 | `{warnings, exit_code}` |
+| B4 | 格式化检查 | `cargo fmt --all -- --check` | 无格式错误 | `{diff_count, exit_code}` |
+| B5 | 覆盖率检查 | `cargo llvm-cov` | L1 ≥80% | `{total_pct}` |
+| B6 | 安全扫描 | `cargo audit` | 无高危漏洞 | `{vulnerabilities}` |
+| B7 | 文档链接检查 | `check_docs_links.sh` | 无死链 | `{broken_links}` |
+| B8 | TPC-H SF=0.1 | `check_tpch.sh sf=0.1` | 22/22 通过 | `{passed, total, oom_count}` |
 
-### 5.2 HTML 报告
+### 4.2 Beta Trust Infrastructure 检查
 
-```bash
-cargo llvm-cov test --lib \
-  -p sqlrustgo \
-  -p sqlrustgo-executor \
-  -p sqlrustgo-optimizer \
-  -p sqlrustgo-storage \
-  -p sqlrustgo-types \
-  --html --output-path coverage_html/
-```
-
-### 5.3 门禁检查脚本
-
-使用官方脚本进行门禁验证：
-
-```bash
-bash scripts/gate/check_coverage.sh
-```
-
-该脚本会自动：
-1. 执行正确的测量命令
-2. 解析 JSON 输出
-3. 对照阈值判断是否通过
-4. 输出 PASS/FAIL 及详细数据
+| # | 检查项 | 命令/方法 | 通过标准 |
+|---|--------|----------|---------|
+| B-TI1 | Performance Governance | cargo test -p perf-baseline | 全部通过 |
+| B-TI2 | Crash Simulation | cargo test -p crash-sim | 全部通过 |
+| B-TI3 | WAL Verification | cargo test -p wal-verification | 全部通过 |
+| B-TI4 | Compliance Engine | cargo test -p compliance-engine | 全部通过 |
+| B-TI5 | Evidence Engine | cargo test -p evidence-engine | 全部通过 |
+| B-TI6 | Provenance Graph | cargo test -p provenance-graph | 全部通过 |
 
 ---
 
-## 6. 测量时机
+## 五、R-Gate (RC Gate)
 
-| 阶段 | 触发条件 | 负责人 |
-|------|----------|--------|
-| Alpha | 每次合入 develop/v3.3.0 | CI (Nomad) |
-| Beta | 每次 PR 合并前 | CI (Nomad) |
-| RC | 每次 RC 分支更新 | CI (Nomad) |
-| GA | RC→GA 前 | Release Manager |
+### 5.1 检查清单
 
----
+| # | 检查项 | 命令/方法 | 通过标准 | 证据格式 |
+|---|--------|----------|---------|---------|
+| R1 | 编译检查 | `cargo build --release --workspace` | 无错误 | `{command, exit_code}` |
+| R2 | 全量测试 | `cargo test --all-features` | 100% 通过 | `{passed, failed, exit_code}` |
+| R3 | Clippy 检查 | `cargo clippy --all-features -- -D warnings` | 零警告 | `{warnings, exit_code}` |
+| R4 | 格式化检查 | `cargo fmt --all -- --check` | 无格式错误 | `{diff_count, exit_code}` |
+| R5 | 覆盖率检查 | `cargo llvm-cov` | L1 ≥85% | `{total_pct}` |
+| R6 | 安全扫描 | `cargo audit` | 无漏洞 | `{vulnerabilities}` |
+| R7 | SQL Corpus | `check_sql_compat.sh` | ≥85% | `{passed, total, pct}` |
+| R8 | TPC-H SF=1 | `check_tpch.sh --sf1` | 22/22 通过 | `{passed, total}` |
 
-## 7. v3.2.0 数据修正
+### 5.2 RC 稳定性测试
 
-| 文档 | 旧值 | 修正值 | 说明 |
-|------|------|--------|------|
-| RC_TO_GA_FINAL_REPORT.md | 68.8% | **85.81%** | 使用 SSOT 命令重新测量 |
-| RC_GATE_CHECKLIST.md | 68.8% | **85.81%** | 同上 |
-
-修正命令：
-```bash
-cd /home/openclaw/dev/yinglichina163/sqlrustgo
-cargo llvm-cov test --lib \
-  -p sqlrustgo \
-  -p sqlrustgo-executor \
-  -p sqlrustgo-optimizer \
-  -p sqlrustgo-storage \
-  -p sqlrustgo-types \
-  --llvm-cov --codecov
-```
-
-测量结果：85.81%（2026-05-17）
+| # | 检查项 | 命令/方法 | 通过标准 |
+|---|--------|----------|---------|
+| R-S1 | 16h 持续写入 | `test_sustained_write_16h` | 无崩溃 |
+| R-S2 | 16h 并发读写 | `test_concurrent_read_write_16h` | 无崩溃 |
+| R-S3 | 24h 持续写入 | `test_sustained_write_24h` | 无崩溃 |
+| R-S4 | 24h 并发读写 | `test_concurrent_read_write_24h` | 无崩溃 |
 
 ---
 
-## 8. 豁免关联
+## 六、G-Gate (GA Gate)
 
-| 豁免 ID | 描述 | 关闭条件 |
-|---------|------|----------|
-| EX-v320-001 | executor 覆盖率 70.7% | 达到 GA 阈值 ≥85% |
+### 6.1 检查清单
+
+| # | 检查项 | 命令/方法 | 通过标准 | 证据格式 |
+|---|--------|----------|---------|---------|
+| G1 | 编译检查 | `cargo build --release --workspace` | 无错误 | `{command, exit_code}` |
+| G2 | 全量测试 | `cargo test --all-features` | 100% 通过 | `{passed, failed, exit_code}` |
+| G3 | Clippy 检查 | `cargo clippy --all-features -- -D warnings` | 零警告 | `{warnings, exit_code}` |
+| G4 | 格式化检查 | `cargo fmt --all -- --check` | 无格式错误 | `{diff_count, exit_code}` |
+| G5 | 覆盖率检查 | `cargo llvm-cov` | L1 ≥85% | `{total_pct}` |
+| G6 | 安全扫描 | `cargo audit` | 无漏洞 | `{vulnerabilities}` |
+| G7 | SQL Corpus | `check_sql_compat.sh` | ≥90% | `{passed, total, pct}` |
+| G8 | TPC-H SF=1 | `check_tpch.sh --sf1` | 22/22 通过 | `{passed, total}` |
+
+### 6.2 GA 性能基准
+
+| # | 检查项 | 命令/方法 | 通过标准 |
+|---|--------|----------|---------|
+| G-P1 | Point Select QPS | sysbench point_select | ≥30K QPS |
+| G-P2 | Update QPS | sysbench update_index | ≥10K QPS |
+| G-P3 | Delete QPS | sysbench delete | ≥10K QPS |
+
+### 6.3 GA 稳定性测试
+
+| # | 检查项 | 命令/方法 | 通过标准 |
+|---|--------|----------|---------|
+| G-S1 | 48h 持续写入 | `test_sustained_write_48h` | 无崩溃、无内存泄漏 |
+| G-S2 | 48h 并发读写 | `test_concurrent_read_write_48h` | 无崩溃、无内存泄漏 |
+| G-S3 | 72h 持续写入 | `test_sustained_write_72h` | 无崩溃、无内存泄漏 |
+| G-S4 | 72h 并发读写 | `test_concurrent_read_write_72h` | 无崩溃、无内存泄漏 |
+
+### 6.4 GA Trust Infrastructure 验证
+
+| # | 检查项 | 命令/方法 | 通过标准 |
+|---|--------|----------|---------|
+| G-TI1 | Performance Governance | perf-gate check | regression <10% |
+| G-TI2 | Crash Simulation | crash-sim inject 1000x | 无数据损坏 |
+| G-TI3 | WAL Formal Verification | TLC model check | 无 violation |
+| G-TI4 | Compliance-as-Code | rule evaluation test | 全部通过 |
+| G-TI5 | Evidence Engine | audit package generation | 生成成功 |
+| G-TI6 | Provenance Graph | cypher query test | 查询正确 |
 
 ---
 
-## 9. 变更历史
+## 七、豁免管理
+
+### 7.1 v3.3.0 豁免项
+
+| 豁免 ID | 描述 | 关闭条件 | 关联 Issue |
+|----------|------|----------|-----------|
+| EX-v320-001 | executor 覆盖率 70.7% | 达到 ≥85% | #1196, #1197 |
+| EX-v320-002 | MySQL Protocol 握手失败 | 连接成功 | #1201 |
+| EX-v320-003 | TPC-H SF=1 数据缺失 | 22/22 通过 | #1198 |
+| EX-v320-004 | Sysbench 服务器环境 | Z6G4 执行 | #1198 |
+
+---
+
+## 八、变更历史
 
 | 版本 | 日期 | 变更 |
 |------|------|------|
-| 1.0 | 2026-05-18 | 初始版本，建立 Coverage SSOT 规范 |
+| 1.0 | 2026-05-18 | 初始版本，建立完整门禁规范 |
