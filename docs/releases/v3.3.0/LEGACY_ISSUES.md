@@ -1,6 +1,6 @@
 # v3.3.0 遗留问题追踪
 
-> **版本**: v1.0
+> **版本**: v1.1
 > **日期**: 2026-05-18
 > **维护人**: hermes-agent
 > **范围**: v3.2.0 GA 遗留问题 → v3.3.0 修复目标
@@ -179,26 +179,26 @@ bash scripts/gate/check_tpch.sh --sf1
 
 ### 5.1 P0 Trust Kernel
 
-| Issue | 标题 | 状态 | OO 文档 |
-|-------|------|------|---------|
-| #1235 | Performance Governance System | ✅ 已实现 | PERFORMANCE_GOVERNANCE.md |
-| #1236 | Crash Simulation Framework | 🟡 设计中 | CRASH_SIMULATION_FRAMEWORK.md |
-| #1237 | WAL Formal Verification | 🟡 设计中 | WAL_FORMAL_VERIFICATION.md |
+| Issue | 标题 | 状态 | PR | OO 文档 |
+|-------|------|------|-----|---------|
+| #1235 | Performance Governance System | ✅ 已合并 | #1243 | PERFORMANCE_GOVERNANCE.md |
+| #1236 | Crash Simulation Framework | ✅ 已合并 | #1244 | CRASH_SIMULATION_FRAMEWORK.md |
+| #1237 | WAL Formal Verification | ✅ 已合并 | #1247 | WAL_FORMAL_VERIFICATION.md |
 
 ### 5.2 P0 Compliance
 
-| Issue | 标题 | 状态 | OO 文档 |
-|-------|------|------|---------|
-| #1238 | Compliance-as-Code Engine | 🟡 设计中 | COMPLIANCE_AS_CODE_ENGINE.md |
-| #1239 | Evidence Engine | 🟡 设计中 | EVIDENCE_ENGINE.md |
-| #1240 | Provenance Knowledge Graph | 🟡 设计中 | PROVENANCE_KNOWLEDGE_GRAPH.md |
+| Issue | 标题 | 状态 | PR | OO 文档 |
+|-------|------|------|-----|---------|
+| #1238 | Compliance-as-Code Engine | ✅ 已合并 | #1248 | COMPLIANCE_AS_CODE_ENGINE.md |
+| #1239 | Evidence Engine | ✅ 已合并 | #1249 | EVIDENCE_ENGINE.md |
+| #1240 | Provenance Knowledge Graph | ✅ 已合并 | #1250 | PROVENANCE_KNOWLEDGE_GRAPH.md |
 
 ### 5.3 P1 GMP Management
 
-| Issue | 标题 | 状态 | OO 文档 |
-|-------|------|------|---------|
-| #1241 | Workflow V2 | 🟡 设计中 | WORKFLOW_V2.md |
-| #1242 | Trust Visualization | 🟡 设计中 | TRUST_VISUALIZATION.md |
+| Issue | 标题 | 状态 | PR | OO 文档 |
+|-------|------|------|-----|---------|
+| #1241 | Workflow V2 | ✅ 已合并 | #1252 | WORKFLOW_V2.md |
+| #1242 | Trust Visualization | ✅ 已合并 | #1253 | TRUST_VISUALIZATION.md |
 
 ---
 
@@ -211,14 +211,14 @@ bash scripts/gate/check_tpch.sh --sf1
 | L-003 | #1198 | P1 | — | v3.3.0 RC | 🔴 Open |
 | L-004 | #1198 | P2 | — | v3.3.0 GA | 🔴 Open |
 | L-005 | #1202 | P1 | — | v3.3.0 Alpha | ✅ Closed |
-| TI-001 | #1235 | P0 | — | v3.3.0 Beta | ✅ 已实现 |
-| TI-002 | #1236 | P0 | — | v3.3.0 Beta | 🟡 设计中 |
-| TI-003 | #1237 | P0 | — | v3.3.0 Beta | 🟡 设计中 |
-| CE-001 | #1238 | P0 | — | v3.3.0 Beta | 🟡 设计中 |
-| CE-002 | #1239 | P0 | — | v3.3.0 RC | 🟡 设计中 |
-| CE-003 | #1240 | P0 | — | v3.3.0 RC | 🟡 设计中 |
-| GM-001 | #1241 | P1 | — | v3.3.0 RC | 🟡 设计中 |
-| GM-002 | #1242 | P1 | — | v3.3.0 GA | 🟡 设计中 |
+| TI-001 | #1235 | P0 | — | v3.3.0 Beta | ✅ 已合并 |
+| TI-002 | #1236 | P0 | — | v3.3.0 Beta | ✅ 已合并 |
+| TI-003 | #1237 | P0 | — | v3.3.0 Beta | ✅ 已合并 |
+| CE-001 | #1238 | P0 | — | v3.3.0 Beta | ✅ 已合并 |
+| CE-002 | #1239 | P0 | — | v3.3.0 RC | ✅ 已合并 |
+| CE-003 | #1240 | P0 | — | v3.3.0 RC | ✅ 已合并 |
+| GM-001 | #1241 | P1 | — | v3.3.0 RC | ✅ 已合并 |
+| GM-002 | #1242 | P1 | — | v3.3.0 GA | ✅ 已合并 |
 
 ---
 
@@ -227,7 +227,14 @@ bash scripts/gate/check_tpch.sh --sf1
 | 遗留 ID | PR | 内容 | 状态 |
 |---------|-----|------|------|
 | L-005 | #1210 | docs: establish coverage SSOT and fix data contradiction | ✅ Closed |
-| TI-001 | #1244 | feat(crash-sim): add Crash Simulation Framework | ✅ Closed |
+| TI-001 | #1243 | feat(perf): add Performance Governance System | ✅ Closed |
+| TI-002 | #1244 | feat(crash-sim): add Crash Simulation Framework | ✅ Closed |
+| TI-003 | #1247 | feat(wal): add WAL Formal Verification framework | ✅ Closed |
+| CE-001 | #1248 | feat(compliance): add Compliance-as-Code Engine | ✅ Closed |
+| CE-002 | #1249 | feat(evidence): add GMP Evidence Engine | ✅ Closed |
+| CE-003 | #1250 | feat(provenance): add Provenance Knowledge Graph | ✅ Closed |
+| GM-001 | #1252 | feat(workflow): add Workflow V2 Engine | ✅ Closed |
+| GM-002 | #1253 | feat(trust-viz): add Trust Visualization | ✅ Closed |
 
 ---
 
