@@ -51,6 +51,7 @@ members = [
     "crates/wal-verification",
     "crates/compliance-engine",
     "crates/evidence-engine",
+    "crates/provenance-graph",
 ]
 
 [workspace.package]
