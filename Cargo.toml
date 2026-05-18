@@ -53,6 +53,7 @@ members = [
     "crates/evidence-engine",
     "crates/provenance-graph",
     "crates/workflow-v2",
+    "crates/trust-viz",
 ]
 
 [workspace.package]
