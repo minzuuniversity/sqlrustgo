@@ -8,13 +8,14 @@ pub struct WorkflowEngine;
 
 impl WorkflowEngine {
     pub fn start_instance(def: &WorkflowDef, instance_id: &str) -> WorkflowInstance {
-        let mut instance = WorkflowInstance::new(instance_id, &def.name, &def.current_version.version);
-        
+        let mut instance =
+            WorkflowInstance::new(instance_id, &def.name, &def.current_version.version);
+
         // Initialize step instances
         for step in &def.current_version.steps {
             instance.steps.push(StepInstance::new(&step.id));
         }
-        
+
         // Start first step
         if let Some(first_step) = def.current_version.steps.first() {
             instance.advance_to_step(&first_step.id);
@@ -22,7 +23,7 @@ impl WorkflowEngine {
                 first.status = StepStatus::InProgress;
             }
         }
-        
+
         instance
     }
 

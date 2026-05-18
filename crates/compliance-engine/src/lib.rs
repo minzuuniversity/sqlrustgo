@@ -1,16 +1,14 @@
 //! Compliance-as-Code Engine for SQLRustGo GMP
 
-pub mod rule;
 pub mod engine;
 pub mod evaluator;
+pub mod rule;
 pub mod types;
 
-pub use types::{
-    ComplianceRule, RuleCondition, ViolationRecord, BatchRecord, Signature
-};
 pub use engine::ComplianceEngine;
 pub use evaluator::RuleEvaluator;
 pub use types::*;
+pub use types::{BatchRecord, ComplianceRule, RuleCondition, Signature, ViolationRecord};
 
 #[derive(Debug, Clone)]
 pub struct ComplianceCheckResult {

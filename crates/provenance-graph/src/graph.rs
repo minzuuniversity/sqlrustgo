@@ -36,7 +36,10 @@ impl ProvenanceGraph {
     }
 
     pub fn nodes_of_type(&self, node_type: NodeType) -> Vec<&ProvenanceNode> {
-        self.nodes.iter().filter(|n| n.node_type == node_type).collect()
+        self.nodes
+            .iter()
+            .filter(|n| n.node_type == node_type)
+            .collect()
     }
 
     pub fn outgoing_edges(&self, node_id: &str) -> Vec<&Edge> {

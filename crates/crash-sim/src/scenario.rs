@@ -1,6 +1,6 @@
 //! CrashScenario defines a single crash scenario to execute
 
-use crate::{CrashPoint, CrashSeverity, CrashCampaignConfig};
+use crate::{CrashCampaignConfig, CrashPoint, CrashSeverity};
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 
