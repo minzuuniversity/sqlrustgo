@@ -5382,6 +5382,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "sqlrustgo-gmp-api"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "chrono",
+ "hex",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "sqlrustgo-compliance-engine",
+ "sqlrustgo-evidence-engine",
+ "sqlrustgo-gmp",
+ "sqlrustgo-provenance-graph",
+ "sqlrustgo-trust-viz",
+ "sqlrustgo-types",
+ "sqlrustgo-workflow-v2",
+ "thiserror 2.0.18",
+ "tokio",
+ "tokio-test",
+ "uuid",
+]
+
+[[package]]
 name = "sqlrustgo-graph"
 version = "0.1.0"
 dependencies = [
