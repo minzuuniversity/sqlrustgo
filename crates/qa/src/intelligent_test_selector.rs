@@ -36,7 +36,11 @@ impl IntelligentTestSelector {
             // Base failure rate
             let base_rate = fail as f64 / total as f64;
             // Adjust based on affected modules
-            let module_factor = if changes.modules_affected.iter().any(|m| test_name.contains(m)) {
+            let module_factor = if changes
+                .modules_affected
+                .iter()
+                .any(|m| test_name.contains(m))
+            {
                 1.5
             } else {
                 1.0
@@ -50,7 +54,11 @@ impl IntelligentTestSelector {
         let predictions = self.predict_failure_probability(changes);
         let mut sorted: Vec<_> = predictions.into_iter().collect();
         sorted.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
-        sorted.into_iter().take(max_tests).map(|(name, _)| name).collect()
+        sorted
+            .into_iter()
+            .take(max_tests)
+            .map(|(name, _)| name)
+            .collect()
     }
 
     pub fn record_result(&mut self, test_name: String, passed: bool) {

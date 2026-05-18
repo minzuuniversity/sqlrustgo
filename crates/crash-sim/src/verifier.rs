@@ -1,6 +1,6 @@
 //! RecoveryVerifier checks data integrity after crash recovery
 
-use crate::{CrashTestResult, CrashScenario};
+use crate::{CrashScenario, CrashTestResult};
 use std::collections::HashMap;
 
 /// Verifies data integrity after crash recovery
@@ -29,7 +29,8 @@ impl RecoveryVerifier {
 
     /// Record expected table checksum
     pub fn set_expected_checksum(&mut self, table: &str, checksum: &str) {
-        self.expected_checksums.insert(table.to_string(), checksum.to_string());
+        self.expected_checksums
+            .insert(table.to_string(), checksum.to_string());
     }
 
     /// Set baseline state for comparison

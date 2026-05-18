@@ -4,14 +4,14 @@
 //! database recovery correctness.
 
 pub mod crash_point;
+pub mod runner;
 pub mod scenario;
 pub mod verifier;
-pub mod runner;
 
 pub use crash_point::CrashPoint;
+pub use runner::CrashTestRunner;
 pub use scenario::CrashScenario;
 pub use verifier::RecoveryVerifier;
-pub use runner::CrashTestRunner;
 
 /// Severity level of crash simulation
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -73,7 +73,11 @@ impl CrashTestResult {
                 self.recovery_time_ms
             )
         } else {
-            format!("recovered={}, error={:?}", self.recovered, self.error_message.as_ref().map(|s| &s[..]))
+            format!(
+                "recovered={}, error={:?}",
+                self.recovered,
+                self.error_message.as_ref().map(|s| &s[..])
+            )
         }
     }
 }
