@@ -68,11 +68,7 @@ Generate test cases covering:
 
 Output format: JSON array of test cases with fields: name, code, module, description
 "#,
-            module,
-            module,
-            context.public_api,
-            context.historical_bugs,
-            context.edge_cases
+            module, module, context.public_api, context.historical_bugs, context.edge_cases
         );
 
         let response = self.call_llm(&prompt).await?;
@@ -88,7 +84,8 @@ Output format: JSON array of test cases with fields: name, code, module, descrip
             }]
         });
 
-        let response = self.client
+        let response = self
+            .client
             .post(&self.api_endpoint)
             .json(&request_body)
             .send()
@@ -107,7 +104,11 @@ Output format: JSON array of test cases with fields: name, code, module, descrip
         Ok(content.to_string())
     }
 
-    fn parse_test_cases(&self, response: &str, module: &str) -> Result<Vec<TestCase>, TestGenError> {
+    fn parse_test_cases(
+        &self,
+        response: &str,
+        module: &str,
+    ) -> Result<Vec<TestCase>, TestGenError> {
         // Try to extract JSON array from response
         let json_str = response
             .lines()
@@ -116,7 +117,11 @@ Output format: JSON array of test cases with fields: name, code, module, descrip
             .collect::<Vec<_>>()
             .join("\n");
 
-        serde_json::from_str(&json_str)
-            .map_err(|e| TestGenError::ParseError(format!("Failed to parse JSON: {}. Response: {}", e, json_str)))
+        serde_json::from_str(&json_str).map_err(|e| {
+            TestGenError::ParseError(format!(
+                "Failed to parse JSON: {}. Response: {}",
+                e, json_str
+            ))
+        })
     }
 }
