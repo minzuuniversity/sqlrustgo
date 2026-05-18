@@ -3,14 +3,14 @@
 //! Tracks the complete lineage of GMP entities:
 //! - Equipment → Operator → SOP → Batch → Workflow → Deviation → CAPA → Signature
 
+pub mod edges;
 pub mod graph;
 pub mod nodes;
-pub mod edges;
 pub mod query;
 
-pub use graph::ProvenanceGraph;
-pub use nodes::{NodeType, GMPNode};
 pub use edges::{Edge, EdgeType};
+pub use graph::ProvenanceGraph;
+pub use nodes::{GMPNode, NodeType};
 pub use query::ProvenanceQuery;
 
 /// A node in the provenance graph
