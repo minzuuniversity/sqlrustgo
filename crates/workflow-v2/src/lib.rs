@@ -7,7 +7,7 @@ pub mod engine;
 pub mod state;
 pub mod transitions;
 
-pub use definition::{WorkflowDef, StepDef, GateDef, WorkflowVersion};
+pub use definition::{GateDef, StepDef, WorkflowDef, WorkflowVersion};
 pub use engine::WorkflowEngine;
-pub use state::{WorkflowInstance, StepStatus, InstanceStatus};
+pub use state::{InstanceStatus, StepStatus, WorkflowInstance};
 pub use transitions::TransitionResult;

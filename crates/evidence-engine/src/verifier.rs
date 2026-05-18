@@ -1,6 +1,6 @@
 //! Evidence Verifier - validates evidence packages
 
-use crate::{EvidencePackage, EvidenceCompleteness};
+use crate::{EvidenceCompleteness, EvidencePackage};
 
 pub struct EvidenceVerifier;
 
@@ -22,8 +22,16 @@ impl EvidenceVerifier {
         }
 
         // Check for required GMP items
-        let has_signatures = package.manifest.entries.iter().any(|e| e.item_type == "signature");
-        let has_workflow = package.manifest.entries.iter().any(|e| e.item_type == "workflow");
+        let has_signatures = package
+            .manifest
+            .entries
+            .iter()
+            .any(|e| e.item_type == "signature");
+        let has_workflow = package
+            .manifest
+            .entries
+            .iter()
+            .any(|e| e.item_type == "workflow");
 
         if !has_signatures {
             warnings.push("No signature evidence found".to_string());
