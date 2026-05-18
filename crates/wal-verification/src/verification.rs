@@ -71,9 +71,15 @@ impl WALVerifier {
         let mut txn_states: std::collections::HashMap<u64, bool> = std::collections::HashMap::new();
         for rec in &self.log.records {
             match rec.operation {
-                crate::WALOperation::BeginTxn => { txn_states.insert(rec.txn_id, false); }
-                crate::WALOperation::CommitTxn => { txn_states.insert(rec.txn_id, true); }
-                crate::WALOperation::AbortTxn => { txn_states.remove(&rec.txn_id); }
+                crate::WALOperation::BeginTxn => {
+                    txn_states.insert(rec.txn_id, false);
+                }
+                crate::WALOperation::CommitTxn => {
+                    txn_states.insert(rec.txn_id, true);
+                }
+                crate::WALOperation::AbortTxn => {
+                    txn_states.remove(&rec.txn_id);
+                }
                 _ => {}
             }
         }
@@ -84,10 +90,15 @@ impl WALVerifier {
         // Phantom commits would be commits without matching BEGIN
         let mut txn_ids: std::collections::HashSet<u64> = std::collections::HashSet::new();
         for rec in &self.log.records {
-            if matches!(rec.operation, crate::WALOperation::BeginTxn | crate::WALOperation::CommitTxn) {
+            if matches!(
+                rec.operation,
+                crate::WALOperation::BeginTxn | crate::WALOperation::CommitTxn
+            ) {
                 txn_ids.insert(rec.txn_id);
             }
-            if matches!(rec.operation, crate::WALOperation::CommitTxn) && !txn_ids.contains(&rec.txn_id) {
+            if matches!(rec.operation, crate::WALOperation::CommitTxn)
+                && !txn_ids.contains(&rec.txn_id)
+            {
                 return false;
             }
         }
