@@ -1,11 +1,13 @@
 # v3.3.0 开发测试计划
 
-> **版本**: v1.0
+> **版本**: v1.2
 > **创建日期**: 2026-05-18
+> **更新日期**: 2026-05-18
 > **维护人**: hermes-agent
-> **分支**: `develop/v3.3.0` (`c97a709a`)
+> **分支**: `develop/v3.3.0` (`328db376`)
 > **起点**: `539f2957` (v3.2.0 GA release point)
 > **Milestone**: v3.3.0 (id=13)
+> **战略定位**: Industrial Trust Platform（工业级可信闭环平台）
 
 ---
 
@@ -13,7 +15,40 @@
 
 ### 1.1 核心目标
 
-解决 v3.2.0 GA 遗留问题，消除 5 项豁免记录（EX-v320-001~004），建立 Coverage SSOT 测量规范。
+**v3.3.0 战略重新定义**：从 "GMP Management Suite" 升级为 **"Industrial Trust Platform"**。
+
+**核心判断**：v3.2.0 暴露了三个关键问题——性能回归（UPDATE QPS -89%）、覆盖率不足（68.8%）、MySQL 协议失败。根因是**内核可信性尚未工业闭环**。
+
+**正确顺序**：
+```
+v3.2.x: 内核修复（覆盖率/性能/MySQL协议）
+    ↓
+v3.3.0: Trust Infrastructure（可信性工业闭环）
+    ↓
+v3.4.0: GMP Management Suite
+    ↓
+v3.5.0: AI Native GMP Platform
+```
+
+### 1.2 Trust Infrastructure 四层架构
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                    Trust Visualization                    │
+│        (Trust Graph, Compliance Score, Risk Heatmap)     │
+├─────────────────────────────────────────────────────────┤
+│                 Compliance Evidence Engine                │
+│        (Audit Package, PDF, JSON, Signature Proof)       │
+├─────────────────────────────────────────────────────────┤
+│                    Provenance Graph                      │
+│         (Device→Operator→SOP→Batch→Deviation)          │
+├─────────────────────────────────────────────────────────┤
+│               Trust Infrastructure Kernel                 │
+│  Performance Governance │ Crash Simulation │ WAL Formal   │
+└─────────────────────────────────────────────────────────┘
+```
+
+### 1.3 版本约束
 
 ### 1.2 版本约束
 
@@ -491,8 +526,87 @@ CI 执行 (Nomad/Z6G4)
 ---
 
 ## 八、变更历史
+## 八、变更历史
+|||| 版本 | 日期 | 说明 |
+||||------|------|------|
+|||| 1.0 | 2026-05-18 | 初始版本，基于 v3.2.0 GA 遗留问题分析 |
+|||| 1.1 | 2026-05-18 | 新增第九节 AI 辅助开发规划、第十节多模型协作策略，整合 v1.3.0 CRAFT_PLAN 和 v3.3.0 QA_ENHANCEMENT_PLAN |
+|||| 1.2 | 2026-05-18 | 战略重构：从 "GMP Management Suite" 升级为 "Industrial Trust Platform"；新增 P0 Issue #1235~#1240；新增 Trust Infrastructure Strategy 文档 |
 
-||| 版本 | 日期 | 说明 |
-|||------|------|------|
-||| 1.0 | 2026-05-18 | 初始版本，基于 v3.2.0 GA 遗留问题分析 |
-||| 1.1 | 2026-05-18 | 新增第九节 AI 辅助开发规划、第十节多模型协作策略，整合 v1.3.0 CRAFT_PLAN 和 v3.3.0 QA_ENHANCEMENT_PLAN |
+---
+
+## 九、v3.3.0 Trust Infrastructure Issue 映射
+
+> **战略重新定义**：v3.3.0 的真正目标是建立 **工业级可信闭环平台**，而非继续快速扩张 GMP 功能。
+
+### 9.1 P0 Issue（Trust Infrastructure Kernel）
+
+| Issue | 标题 | 交付物 | 估计工时 |
+|-------|------|--------|----------|
+| #1235 | Performance Governance System | perf-baseline crate + perf-gate + Flamegraph | 2 周 |
+| #1236 | Crash Simulation Framework | crash-injector + recovery-verifier + chaos-test | 3 周 |
+| #1237 | WAL Formal Verification | WAL.tla + Recovery.tla + Checkpoint.tla | 2 周 |
+
+### 9.2 P0 Issue（Compliance Automation）
+
+| Issue | 标题 | 交付物 | 估计工时 |
+|-------|------|--------|----------|
+| #1238 | Compliance-as-Code Engine | Rule DSL + 内置 GMP 规则库 | 3 周 |
+| #1239 | Evidence Engine | AuditPackage + JSON/PDF 导出 + Hash Proof | 3 周 |
+| #1240 | Provenance Knowledge Graph | Graph DB + Cypher + 血缘推导 | 3 周 |
+
+### 9.3 P1 Issue（GMP Management）
+
+| Issue | 标题 | 交付物 | 估计工时 |
+|-------|------|--------|----------|
+| #1241 | Workflow V2 | 并行分支 + 条件分支 + 子流程 + 多人审批 | 2 周 |
+| #1242 | Trust Visualization | 审计链可视化 + 合规评分 + 风险热图 | 2 周 |
+
+### 9.4 遗留 Issue
+
+| Issue | 标题 | 说明 |
+|-------|------|------|
+| #1224 | 72h 稳定性测试 | Beta/RC 阶段，Z6G4 执行 |
+| #1220 | executor stored_proc 子模块化 | ✅ 已完成（PR #1232） |
+| #1221 | MySQL Protocol 握手修复 | ✅ 已完成（PR #1234） |
+| #1222 | gate_spec_v330.md | ✅ 已完成（PR #1231） |
+| #1223 | TPC-H SF=1 22/22 | ✅ 已完成（PR #1229） |
+| #1225~#1228 | AI 辅助开发工具 | ✅ 已完成（PR #1230） |
+
+### 9.5 Alpha/Beta/GA Gate 对齐
+
+#### Alpha Gate
+
+| 检查项 | 描述 | 状态 |
+|--------|------|------|
+| A1~A4 | Build/Test/Clippy/Format | ✅ 继承 |
+| A5 | Coverage ≥85% (L1 CRATES) | ⏳ Z6G4 执行 |
+| A6 | MySQL Protocol 握手测试 | ✅ PR #1234 已修复 |
+| A7 | TPC-H SF=1 22/22 | ✅ PR #1229 已完成 |
+
+#### Beta Gate
+
+| 检查项 | 描述 | 对应 Issue |
+|--------|------|------------|
+| B1 | Performance Governance 集成测试 | #1235 |
+| B2 | Crash Simulation 1000 次注入 | #1236 |
+| B3 | Compliance-as-Code 规则引擎测试 | #1238 |
+| B4 | Evidence Engine 生成审计包验证 | #1239 |
+| B5 | Provenance Graph 查询测试 | #1240 |
+| B6 | 72h 稳定性测试 | #1224 |
+
+#### GA Gate
+
+| 检查项 | 描述 | 对应 Issue |
+|--------|------|------------|
+| G1 | Performance regression <5% | #1235 |
+| G2 | Crash recovery 10,000 次注入无损坏 | #1236 |
+| G3 | TLA+ WAL model check 无 violation | #1237 |
+| G4 | Compliance evidence 通过第三方审计 | #1239 |
+| G5 | Provenance graph 支持完整 GMP 血缘查询 | #1240 |
+
+---
+
+*文档版本: v1.2*
+*更新: hermes-agent*
+*日期: 2026-05-18*
