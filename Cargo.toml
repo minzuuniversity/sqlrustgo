@@ -50,6 +50,7 @@ members = [
     "crates/crash-sim",
     "crates/wal-verification",
     "crates/compliance-engine",
+    "crates/evidence-engine",
 ]
 
 [workspace.package]

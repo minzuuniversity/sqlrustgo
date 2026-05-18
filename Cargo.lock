@@ -5289,6 +5289,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "sqlrustgo-evidence-engine"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "hex",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "thiserror 2.0.18",
+]
+
+[[package]]
 name = "sqlrustgo-executor"
 version = "3.0.0"
 dependencies = [
