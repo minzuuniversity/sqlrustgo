@@ -1,9 +1,9 @@
 //! Storage module for perf-baseline (JSON file-based)
 
-use std::path::PathBuf;
-use std::fs;
 use crate::models::{BenchmarkResult, MetricRecord};
 use chrono::{DateTime, Utc};
+use std::fs;
+use std::path::PathBuf;
 
 pub struct BaselineDb {
     base_path: PathBuf,
@@ -41,7 +41,10 @@ impl BaselineDb {
         Ok(results)
     }
 
-    fn save_benchmarks(&self, results: &[BenchmarkResult]) -> Result<(), Box<dyn std::error::Error>> {
+    fn save_benchmarks(
+        &self,
+        results: &[BenchmarkResult],
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let content = serde_json::to_string_pretty(results)?;
         fs::write(self.benchmarks_file(), content)?;
         Ok(())
@@ -57,69 +60,135 @@ impl BaselineDb {
         Ok(records)
     }
 
-    fn save_metrics(&self, metric: &str, records: &[MetricRecord]) -> Result<(), Box<dyn std::error::Error>> {
+    fn save_metrics(
+        &self,
+        metric: &str,
+        records: &[MetricRecord],
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let content = serde_json::to_string_pretty(records)?;
         fs::write(self.metrics_file(metric), content)?;
         Ok(())
     }
 
-    pub fn save_benchmark(&self, result: &BenchmarkResult) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn save_benchmark(
+        &self,
+        result: &BenchmarkResult,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let mut all = self.load_benchmarks()?;
-        
+
         // Update or append
         if let Some(pos) = all.iter().position(|r| r.commit == result.commit) {
             all[pos] = result.clone();
         } else {
             all.push(result.clone());
         }
-        
+
         // Sort by timestamp
         all.sort_by(|a, b| a.timestamp.cmp(&b.timestamp));
-        
+
         self.save_benchmarks(&all)?;
-        
+
         // Also save individual metrics
-        self.save_metric("qps_update", result.qps_update, &result.commit, result.timestamp)?;
-        self.save_metric("qps_delete", result.qps_delete, &result.commit, result.timestamp)?;
-        self.save_metric("qps_insert", result.qps_insert, &result.commit, result.timestamp)?;
-        self.save_metric("qps_select", result.qps_select, &result.commit, result.timestamp)?;
-        self.save_metric("qps_complex_where", result.qps_complex_where, &result.commit, result.timestamp)?;
-        self.save_metric("qps_join", result.qps_join, &result.commit, result.timestamp)?;
-        self.save_metric("latency_p50", result.latency_p50, &result.commit, result.timestamp)?;
-        self.save_metric("latency_p99", result.latency_p99, &result.commit, result.timestamp)?;
-        self.save_metric("memory_mb", result.memory_mb, &result.commit, result.timestamp)?;
-        
+        self.save_metric(
+            "qps_update",
+            result.qps_update,
+            &result.commit,
+            result.timestamp,
+        )?;
+        self.save_metric(
+            "qps_delete",
+            result.qps_delete,
+            &result.commit,
+            result.timestamp,
+        )?;
+        self.save_metric(
+            "qps_insert",
+            result.qps_insert,
+            &result.commit,
+            result.timestamp,
+        )?;
+        self.save_metric(
+            "qps_select",
+            result.qps_select,
+            &result.commit,
+            result.timestamp,
+        )?;
+        self.save_metric(
+            "qps_complex_where",
+            result.qps_complex_where,
+            &result.commit,
+            result.timestamp,
+        )?;
+        self.save_metric(
+            "qps_join",
+            result.qps_join,
+            &result.commit,
+            result.timestamp,
+        )?;
+        self.save_metric(
+            "latency_p50",
+            result.latency_p50,
+            &result.commit,
+            result.timestamp,
+        )?;
+        self.save_metric(
+            "latency_p99",
+            result.latency_p99,
+            &result.commit,
+            result.timestamp,
+        )?;
+        self.save_metric(
+            "memory_mb",
+            result.memory_mb,
+            &result.commit,
+            result.timestamp,
+        )?;
+
         Ok(())
     }
 
-    fn save_metric(&self, name: &str, value: f64, commit: &str, ts: DateTime<Utc>) 
-        -> Result<(), Box<dyn std::error::Error>> 
-    {
+    fn save_metric(
+        &self,
+        name: &str,
+        value: f64,
+        commit: &str,
+        ts: DateTime<Utc>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let mut records = self.load_metrics(name)?;
-        
+
         records.push(MetricRecord {
             metric_name: name.to_string(),
             metric_value: value,
             commit: commit.to_string(),
             timestamp: ts,
         });
-        
+
         // Sort by timestamp
         records.sort_by(|a, b| a.timestamp.cmp(&b.timestamp));
-        
+
         self.save_metrics(name, &records)?;
         Ok(())
     }
 
-    pub fn get_commit(&self, commit: &str) -> Result<Option<BenchmarkResult>, Box<dyn std::error::Error>> {
+    pub fn get_commit(
+        &self,
+        commit: &str,
+    ) -> Result<Option<BenchmarkResult>, Box<dyn std::error::Error>> {
         let all = self.load_benchmarks()?;
         Ok(all.into_iter().find(|r| r.commit == commit))
     }
 
-    pub fn query_metrics(&self, metric: &str, days: u32) -> Result<Vec<MetricRecord>, Box<dyn std::error::Error>> {
+    pub fn query_metrics(
+        &self,
+        metric: &str,
+        days: u32,
+    ) -> Result<Vec<MetricRecord>, Box<dyn std::error::Error>> {
         let cutoff = Utc::now() - chrono::Duration::days(days as i64);
         let records = self.load_metrics(metric)?;
-        Ok(records.into_iter().filter(|r| r.timestamp >= cutoff).collect())
+        Ok(records
+            .into_iter()
+            .filter(|r| r.timestamp >= cutoff)
+            .collect())
     }
 
     pub fn get_latest(&self) -> Result<Option<BenchmarkResult>, Box<dyn std::error::Error>> {
@@ -127,9 +196,11 @@ impl BaselineDb {
         Ok(all.into_iter().max_by_key(|r| r.timestamp))
     }
 
-    pub fn compare(&self, baseline_commit: &str, head_commit: &str) 
-        -> Result<Vec<MetricComparison>, Box<dyn std::error::Error>> 
-    {
+    pub fn compare(
+        &self,
+        baseline_commit: &str,
+        head_commit: &str,
+    ) -> Result<Vec<MetricComparison>, Box<dyn std::error::Error>> {
         let baseline = self.get_commit(baseline_commit)?;
         let head = self.get_commit(head_commit)?;
 
