@@ -47,6 +47,7 @@ members = [
     "crates/spill",
     "crates/qa",
     "crates/perf-baseline",
+    "crates/crash-sim",
 ]
 
 [workspace.package]
