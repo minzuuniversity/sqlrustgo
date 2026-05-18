@@ -5438,6 +5438,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "sqlrustgo-perf-baseline"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "dirs",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.18",
+]
+
+[[package]]
 name = "sqlrustgo-planner"
 version = "3.0.0"
 dependencies = [
