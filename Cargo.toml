@@ -46,6 +46,7 @@ members = [
     "crates/gis",
     "crates/spill",
     "crates/qa",
+    "crates/perf-baseline",
 ]
 
 [workspace.package]
