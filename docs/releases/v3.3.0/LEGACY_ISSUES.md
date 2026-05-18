@@ -1,7 +1,7 @@
 # v3.3.0 遗留问题追踪
 
-> **版本**: v1.1
-> **日期**: 2026-05-18
+> **版本**: v1.2
+> **日期**: 2026-05-19
 > **维护人**: hermes-agent
 > **范围**: v3.2.0 GA 遗留问题 → v3.3.0 修复目标
 > **依据**: Issue #1196-#1202, #1235-#1242
@@ -14,13 +14,13 @@ v3.2.0 GA 通过率 89.1%，有 5 项未通过。v3.3.0 定位为 **Industrial T
 
 ### 遗留问题汇总
 
-| 优先级 | Issue | 问题 | 影响 | 目标版本 | 状态 |
-|--------|-------|------|------|----------|------|
-| 🔴 P0 | #1196/#1197 | executor 覆盖率 70.7% < 85% | GA 门禁失败 | v3.3.0 RC | 🔴 Open |
-| 🔴 P0 | #1201 | MySQL Protocol 握手失败 | GA 门禁失败 | v3.3.0 RC | 🔴 Open |
-| 🟡 P1 | #1198 | TPC-H SF=1 数据缺失 | 无法验证 | v3.3.0 RC | 🔴 Open |
-| 🟡 P2 | #1198 | 72h 稳定性测试未完成 | 稳定性未确认 | v3.3.0 GA | 🔴 Open |
-| 🟢 P1 | #1202 | Coverage 数据矛盾 | SSOT 已建立 | v3.3.0 Alpha | ✅ Closed |
+| 优先级 | Issue | 问题 | 影响 | 目标版本 | 状态 | 关闭日期 |
+|--------|-------|------|------|----------|------|----------|
+| 🔴 P0 | #1196/#1197 | executor 覆盖率 70.7% < 85% | GA 门禁失败 | v3.3.0 RC | ✅ Closed | 2026-05-17 |
+| 🔴 P0 | #1201 | MySQL Protocol 握手失败 | GA 门禁失败 | v3.3.0 RC | ✅ Closed | 2026-05-17 |
+| 🟡 P1 | #1198 | TPC-H SF=1 数据缺失 | 无法验证 | v3.3.0 RC | ✅ Closed | 2026-05-17 |
+| 🟡 P2 | #1224 | 72h 稳定性测试未完成 | 稳定性未确认 | v3.3.0 GA | ⏳ Pending | - |
+| 🟢 P1 | #1202 | Coverage 数据矛盾 | SSOT 已建立 | v3.3.0 Alpha | ✅ Closed | 2026-05-17 |
 
 ---
 
@@ -204,37 +204,40 @@ bash scripts/gate/check_tpch.sh --sf1
 
 ## 六、修复追踪表
 
-| 遗留 ID | Issue | 优先级 | 负责人 | 目标阶段 | 状态 |
-|---------|-------|--------|--------|----------|------|
-| L-001 | #1196/#1197 | P0 | — | v3.3.0 RC | 🔴 Open |
-| L-002 | #1201 | P0 | — | v3.3.0 RC | 🔴 Open |
-| L-003 | #1198 | P1 | — | v3.3.0 RC | 🔴 Open |
-| L-004 | #1198 | P2 | — | v3.3.0 GA | 🔴 Open |
-| L-005 | #1202 | P1 | — | v3.3.0 Alpha | ✅ Closed |
-| TI-001 | #1235 | P0 | — | v3.3.0 Beta | ✅ 已合并 |
-| TI-002 | #1236 | P0 | — | v3.3.0 Beta | ✅ 已合并 |
-| TI-003 | #1237 | P0 | — | v3.3.0 Beta | ✅ 已合并 |
-| CE-001 | #1238 | P0 | — | v3.3.0 Beta | ✅ 已合并 |
-| CE-002 | #1239 | P0 | — | v3.3.0 RC | ✅ 已合并 |
-| CE-003 | #1240 | P0 | — | v3.3.0 RC | ✅ 已合并 |
-| GM-001 | #1241 | P1 | — | v3.3.0 RC | ✅ 已合并 |
-| GM-002 | #1242 | P1 | — | v3.3.0 GA | ✅ 已合并 |
+| 遗留 ID | Issue | 优先级 | 负责人 | 目标阶段 | 状态 | 关闭日期 |
+|---------|-------|--------|--------|----------|------|----------|
+| L-001 | #1196/#1197 | P0 | — | v3.3.0 RC | ✅ Closed | 2026-05-17 |
+| L-002 | #1201 | P0 | — | v3.3.0 RC | ✅ Closed | 2026-05-17 |
+| L-003 | #1198 | P1 | — | v3.3.0 RC | ✅ Closed | 2026-05-17 |
+| L-004 | #1224 | P2 | — | v3.3.0 GA | ⏳ Pending | - |
+| L-005 | #1202 | P1 | — | v3.3.0 Alpha | ✅ Closed | 2026-05-17 |
+| TI-001 | #1235 | P0 | — | v3.3.0 Beta | ✅ Closed | 2026-05-17 |
+| TI-002 | #1236 | P0 | — | v3.3.0 Beta | ✅ Closed | 2026-05-17 |
+| TI-003 | #1237 | P0 | — | v3.3.0 Beta | ✅ Closed | 2026-05-17 |
+| CE-001 | #1238 | P0 | — | v3.3.0 Beta | ✅ Closed | 2026-05-17 |
+| CE-002 | #1239 | P0 | — | v3.3.0 RC | ✅ Closed | 2026-05-17 |
+| CE-003 | #1240 | P0 | — | v3.3.0 RC | ✅ Closed | 2026-05-17 |
+| GM-001 | #1241 | P1 | — | v3.3.0 RC | ✅ Closed | 2026-05-17 |
+| GM-002 | #1242 | P1 | — | v3.3.0 GA | ✅ Closed | 2026-05-17 |
 
 ---
 
 ## 七、修复 PR 记录
 
-| 遗留 ID | PR | 内容 | 状态 |
-|---------|-----|------|------|
-| L-005 | #1210 | docs: establish coverage SSOT and fix data contradiction | ✅ Closed |
-| TI-001 | #1243 | feat(perf): add Performance Governance System | ✅ Closed |
-| TI-002 | #1244 | feat(crash-sim): add Crash Simulation Framework | ✅ Closed |
-| TI-003 | #1247 | feat(wal): add WAL Formal Verification framework | ✅ Closed |
-| CE-001 | #1248 | feat(compliance): add Compliance-as-Code Engine | ✅ Closed |
-| CE-002 | #1249 | feat(evidence): add GMP Evidence Engine | ✅ Closed |
-| CE-003 | #1250 | feat(provenance): add Provenance Knowledge Graph | ✅ Closed |
-| GM-001 | #1252 | feat(workflow): add Workflow V2 Engine | ✅ Closed |
-| GM-002 | #1253 | feat(trust-viz): add Trust Visualization | ✅ Closed |
+| 遗留 ID | PR | 内容 | 状态 | 合并日期 |
+|---------|-----|------|------|----------|
+| L-001 | #1220/#1232 | feat(executor): stored_proc 模块拆分 | ✅ Closed | 2026-05-17 |
+| L-002 | #1256 | fix(mysql-server): MySQL protocol handshake | ✅ Closed | 2026-05-17 |
+| L-003 | #1229 | docs(v3.3.0): TPC-H SF=1 22/22 verification | ✅ Closed | 2026-05-17 |
+| L-005 | #1210 | docs: establish coverage SSOT | ✅ Closed | 2026-05-17 |
+| TI-001 | #1243 | feat(perf): Performance Governance System | ✅ Closed | 2026-05-17 |
+| TI-002 | #1244 | feat(crash-sim): Crash Simulation Framework | ✅ Closed | 2026-05-17 |
+| TI-003 | #1247 | feat(wal): WAL Formal Verification | ✅ Closed | 2026-05-17 |
+| CE-001 | #1248 | feat(compliance): Compliance-as-Code Engine | ✅ Closed | 2026-05-17 |
+| CE-002 | #1249 | feat(evidence): GMP Evidence Engine | ✅ Closed | 2026-05-17 |
+| CE-003 | #1250 | feat(provenance): Provenance Knowledge Graph | ✅ Closed | 2026-05-17 |
+| GM-001 | #1252 | feat(workflow): Workflow V2 Engine | ✅ Closed | 2026-05-17 |
+| GM-002 | #1253 | feat(trust-viz): Trust Visualization | ✅ Closed | 2026-05-17 |
 
 ---
 
