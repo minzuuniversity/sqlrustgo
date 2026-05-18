@@ -87,7 +87,7 @@ pub fn overflow_page_count(data_size: usize) -> usize {
     if data_size == 0 {
         return 0;
     }
-    (data_size + OVERFLOW_PAGE_DATA_SIZE - 1) / OVERFLOW_PAGE_DATA_SIZE
+    data_size.div_ceil(OVERFLOW_PAGE_DATA_SIZE)
 }
 
 /// Check if data needs overflow pages.
