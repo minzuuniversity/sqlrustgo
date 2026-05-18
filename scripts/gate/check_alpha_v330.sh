@@ -25,10 +25,10 @@ run_check() {
     echo -n "[$name] ... "
     if eval "$cmd" > /dev/null 2>&1; then
         echo "✅ PASS"
-        ((PASS++))
+        PASS=$((PASS+1))
     else
         echo "❌ FAIL"
-        ((FAIL++))
+        FAIL=$((FAIL+1))
     fi
 }
 
@@ -38,10 +38,10 @@ run_check_report() {
     echo -n "[$name] ... "
     if eval "$cmd" > /dev/null 2>&1; then
         echo "✅ PASS"
-        ((PASS++))
+        PASS=$((PASS+1))
     else
         echo "⏭ SKIP (manual review required)"
-        ((SKIP++))
+        SKIP=$((SKIP+1))
     fi
 }
 
