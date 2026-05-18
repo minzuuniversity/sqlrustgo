@@ -37,10 +37,13 @@ fn start_server(port: u16) -> std::process::Child {
         .spawn()
         .expect("Failed to start server");
 
-    // Wait for server to be ready
+    // Wait for server to be ready — verify by connecting and immediately
+    // closing to ensure the accept loop has started.
     let start = std::time::Instant::now();
     while start.elapsed().as_secs() < SERVER_STARTUP_TIMEOUT {
-        if TcpStream::connect(format!("127.0.0.1:{}", port)).is_ok() {
+        if let Ok(stream) = TcpStream::connect(format!("127.0.0.1:{}", port)) {
+            // Successfully connected — server accept loop is active
+            drop(stream);
             return child;
         }
         std::thread::sleep(Duration::from_millis(100));
