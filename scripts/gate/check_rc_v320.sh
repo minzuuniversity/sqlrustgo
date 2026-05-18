@@ -233,7 +233,7 @@ else
 fi
 
 # ========== R13: MySQL Protocol ==========
-check "R13: MySQL protocol" "SQLRUSTGO_SERVER_BIN=\"$PROJECT_ROOT/target/release/sqlrustgo-mysql-server\" cargo test -p sqlrustgo-mysql-server --test mysql_protocol_handshake_test" "R13"
+check "R13: MySQL protocol" "SQLRUSTGO_SERVER_BIN=\"$PROJECT_ROOT/target/release/sqlrustgo-mysql-server\" cargo test -p sqlrustgo-mysql-server --test mysql_protocol_handshake_test -- --test-threads=1" "R13"
 
 # ========== R14: Window Functions ==========
 check_test "R14: window_function_test" "cargo test --test window_function_test" "R14"
