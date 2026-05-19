@@ -1,7 +1,6 @@
 use sqlrustgo_crash_sim::{
-    CrashPoint, CrashScenario, CrashSeverity,
-    CrashTestResult, CrashCampaignConfig,
-    scenario::CrashScenarioBuilder,
+    scenario::CrashScenarioBuilder, CrashCampaignConfig, CrashPoint, CrashScenario, CrashSeverity,
+    CrashTestResult,
 };
 
 #[test]
@@ -21,7 +20,9 @@ fn test_crash_point_name() {
 #[test]
 fn test_crash_point_description() {
     assert!(CrashPoint::WalWrite.description().contains("WAL"));
-    assert!(CrashPoint::TransactionCommit.description().contains("commit"));
+    assert!(CrashPoint::TransactionCommit
+        .description()
+        .contains("commit"));
 }
 
 #[test]

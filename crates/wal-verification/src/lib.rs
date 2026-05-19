@@ -344,14 +344,38 @@ mod tests {
 
         #[test]
         fn test_property_severity() {
-            assert_eq!(WALProperty::IdempotentReplay.severity(), PropertySeverity::Critical);
-            assert_eq!(WALProperty::AtomicWrites.severity(), PropertySeverity::Critical);
-            assert_eq!(WALProperty::LSNMonotonicity.severity(), PropertySeverity::Critical);
-            assert_eq!(WALProperty::CheckpointAtomicity.severity(), PropertySeverity::Critical);
-            assert_eq!(WALProperty::CommittedTransactionsDurable.severity(), PropertySeverity::Critical);
-            assert_eq!(WALProperty::NoPhantomCommits.severity(), PropertySeverity::Critical);
-            assert_eq!(WALProperty::NoLostUpdates.severity(), PropertySeverity::Critical);
-            assert_eq!(WALProperty::AuditChainContinuity.severity(), PropertySeverity::Important);
+            assert_eq!(
+                WALProperty::IdempotentReplay.severity(),
+                PropertySeverity::Critical
+            );
+            assert_eq!(
+                WALProperty::AtomicWrites.severity(),
+                PropertySeverity::Critical
+            );
+            assert_eq!(
+                WALProperty::LSNMonotonicity.severity(),
+                PropertySeverity::Critical
+            );
+            assert_eq!(
+                WALProperty::CheckpointAtomicity.severity(),
+                PropertySeverity::Critical
+            );
+            assert_eq!(
+                WALProperty::CommittedTransactionsDurable.severity(),
+                PropertySeverity::Critical
+            );
+            assert_eq!(
+                WALProperty::NoPhantomCommits.severity(),
+                PropertySeverity::Critical
+            );
+            assert_eq!(
+                WALProperty::NoLostUpdates.severity(),
+                PropertySeverity::Critical
+            );
+            assert_eq!(
+                WALProperty::AuditChainContinuity.severity(),
+                PropertySeverity::Important
+            );
         }
 
         #[test]
@@ -470,7 +494,8 @@ mod tests {
         #[test]
         fn test_wal_log_lsn_range_single_record() {
             let mut log = WALLog::new();
-            log.records.push(make_record(100, 1, WALOperation::BeginTxn));
+            log.records
+                .push(make_record(100, 1, WALOperation::BeginTxn));
             assert_eq!(log.lsn_range(), Some((100, 100)));
         }
 
@@ -479,7 +504,8 @@ mod tests {
             let mut log = WALLog::new();
             log.records.push(make_record(10, 1, WALOperation::BeginTxn));
             log.records.push(make_record(20, 1, WALOperation::WriteRow));
-            log.records.push(make_record(30, 1, WALOperation::CommitTxn));
+            log.records
+                .push(make_record(30, 1, WALOperation::CommitTxn));
             assert_eq!(log.lsn_range(), Some((10, 30)));
         }
 
