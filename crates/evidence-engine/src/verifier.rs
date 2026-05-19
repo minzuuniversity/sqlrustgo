@@ -72,7 +72,9 @@ mod tests {
         let package = create_test_package_with_entries(vec![]);
         let result = EvidenceVerifier::verify(&package);
         assert!(!result.complete);
-        assert!(result.missing_items.contains(&"No manifest entries".to_string()));
+        assert!(result
+            .missing_items
+            .contains(&"No manifest entries".to_string()));
     }
 
     #[test]
@@ -108,7 +110,10 @@ mod tests {
         let package = create_test_package_with_entries(entries);
         let result = EvidenceVerifier::verify(&package);
         assert!(!result.complete);
-        assert!(result.missing_items.iter().any(|s| s.contains("missing hash")));
+        assert!(result
+            .missing_items
+            .iter()
+            .any(|s| s.contains("missing hash")));
     }
 
     #[test]
