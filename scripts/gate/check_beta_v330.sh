@@ -37,8 +37,15 @@ check_test() {
     local name="$1"; local cmd="$2"
     echo -n "[beta-v3.3.0] $name ... "
     out=$(eval "$cmd" 2>&1 || true)
-    passed=$(echo "$out" | grep -c "test result: ok\." 2>/dev/null || echo "0")
-    failed=$(echo "$out" | grep -c "test result: FAILED" 2>/dev/null || echo "0")
+    passed=$(echo "$out" | grep -E "^test result:" | awk '{print $4}' | tr -d '.' || echo "0")
+    failed=$(echo "$out" | grep -E "^test result:" | awk '{print $7}' | tr -d '.' || echo "0")
+    # Handle single test result format
+    if [ "$passed" = "0" ] || [ -z "$passed" ]; then
+        passed=$(echo "$out" | grep -c "ok$" 2>/dev/null || echo "0")
+    fi
+    if [ "$failed" = "0" ] || [ -z "$failed" ]; then
+        failed=$(echo "$out" | grep -c "FAILED$" 2>/dev/null || echo "0")
+    fi
     if [ "$failed" -eq 0 ] && [ "$passed" -gt 0 ]; then
         echo "✅ PASS ($passed tests)"; PASS=$((PASS+1))
     elif [ "$passed" -eq 0 ] && [ "$failed" -eq 0 ]; then
