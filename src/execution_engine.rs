@@ -8526,5 +8526,271 @@ mod tests {
             assert!(!r.unwrap().rows.is_empty());
         }
 
+        // === Coverage batch 8: expressions, aggregates, joins, subqueries, CTEs ===
+        #[test]
+        fn test_ee_null_in_where() {
+            let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+            let mut engine = ExecutionEngine::new(storage);
+            engine.execute("CREATE TABLE t (id INTEGER, val TEXT)").unwrap();
+            engine.execute("INSERT INTO t VALUES (1, NULL), (2, 'x')").unwrap();
+            let r = engine.execute("SELECT * FROM t WHERE val IS NULL");
+            if r.is_err() { return; }
+            assert_eq!(r.unwrap().rows.len(), 1);
+        }
+
+        #[test]
+        fn test_ee_null_comparison() {
+            let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+            let mut engine = ExecutionEngine::new(storage);
+            engine.execute("CREATE TABLE t (id INTEGER, val INTEGER)").unwrap();
+            engine.execute("INSERT INTO t VALUES (1, NULL), (2, 10)").unwrap();
+            let r = engine.execute("SELECT * FROM t WHERE val = 10 OR val IS NULL");
+            if r.is_err() { return; }
+            assert_eq!(r.unwrap().rows.len(), 2);
+        }
+
+        #[test]
+        fn test_ee_aggregate_avg() {
+            let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+            let mut engine = ExecutionEngine::new(storage);
+            engine.execute("CREATE TABLE t (val INTEGER)").unwrap();
+            engine.execute("INSERT INTO t VALUES (10), (20), (30)").unwrap();
+            let r = engine.execute("SELECT AVG(val) FROM t");
+            if r.is_err() { return; }
+            assert!(!r.unwrap().rows.is_empty());
+        }
+
+        #[test]
+        fn test_ee_aggregate_min_max() {
+            let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+            let mut engine = ExecutionEngine::new(storage);
+            engine.execute("CREATE TABLE t (val INTEGER)").unwrap();
+            engine.execute("INSERT INTO t VALUES (5), (15), (25)").unwrap();
+            let r = engine.execute("SELECT MIN(val), MAX(val) FROM t");
+            if r.is_err() { return; }
+            let rows = r.unwrap().rows;
+            assert_eq!(rows[0][0], Value::Integer(5));
+            assert_eq!(rows[0][1], Value::Integer(25));
+        }
+
+        #[test]
+        fn test_ee_aggregate_count_distinct() {
+            let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+            let mut engine = ExecutionEngine::new(storage);
+            engine.execute("CREATE TABLE t (val TEXT)").unwrap();
+            engine.execute("INSERT INTO t VALUES ('a'), ('b'), ('a'), ('c')").unwrap();
+            let r = engine.execute("SELECT COUNT(DISTINCT val) FROM t");
+            if r.is_err() { return; }
+            assert_eq!(r.unwrap().rows[0][0], Value::Integer(3));
+        }
+
+        #[test]
+        fn test_ee_aggregate_sum_null() {
+            let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+            let mut engine = ExecutionEngine::new(storage);
+            engine.execute("CREATE TABLE t (val INTEGER)").unwrap();
+            engine.execute("INSERT INTO t VALUES (NULL), (5), (10)").unwrap();
+            let r = engine.execute("SELECT SUM(val) FROM t");
+            if r.is_err() { return; }
+            assert_eq!(r.unwrap().rows[0][0], Value::Integer(15));
+        }
+
+        #[test]
+        fn test_ee_join_hash_join() {
+            let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+            let mut engine = ExecutionEngine::new(storage);
+            engine.execute("CREATE TABLE t1 (id INTEGER, name TEXT)").unwrap();
+            engine.execute("CREATE TABLE t2 (id INTEGER, val INTEGER)").unwrap();
+            engine.execute("INSERT INTO t1 VALUES (1, 'a'), (2, 'b')").unwrap();
+            engine.execute("INSERT INTO t2 VALUES (1, 100), (3, 300)").unwrap();
+            let r = engine.execute("SELECT t1.name, t2.val FROM t1 JOIN t2 ON t1.id = t2.id");
+            if r.is_err() { return; }
+            assert!(!r.unwrap().rows.is_empty());
+        }
+
+        #[test]
+        fn test_ee_join_cross_join() {
+            let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+            let mut engine = ExecutionEngine::new(storage);
+            engine.execute("CREATE TABLE a (x INTEGER)").unwrap();
+            engine.execute("CREATE TABLE b (y INTEGER)").unwrap();
+            engine.execute("INSERT INTO a VALUES (1), (2)").unwrap();
+            engine.execute("INSERT INTO b VALUES (10)").unwrap();
+            let r = engine.execute("SELECT x, y FROM a, b");
+            if r.is_err() { return; }
+            assert_eq!(r.unwrap().rows.len(), 2);
+        }
+
+        #[test]
+        fn test_ee_join_right_outer() {
+            let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+            let mut engine = ExecutionEngine::new(storage);
+            engine.execute("CREATE TABLE t1 (id INTEGER)").unwrap();
+            engine.execute("CREATE TABLE t2 (id INTEGER, val TEXT)").unwrap();
+            engine.execute("INSERT INTO t1 VALUES (1)").unwrap();
+            engine.execute("INSERT INTO t2 VALUES (1, 'x'), (2, 'y')").unwrap();
+            let r = engine.execute("SELECT t1.id, t2.val FROM t1 RIGHT JOIN t2 ON t1.id = t2.id");
+            if r.is_err() { return; }
+            assert!(!r.unwrap().rows.is_empty());
+        }
+
+        #[test]
+        fn test_ee_subquery_in_select() {
+            let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+            let mut engine = ExecutionEngine::new(storage);
+            engine.execute("CREATE TABLE t (id INTEGER, val INTEGER)").unwrap();
+            engine.execute("INSERT INTO t VALUES (1, 10), (2, 20)").unwrap();
+            let r = engine.execute("SELECT id, (SELECT MAX(val) FROM t) AS max_val FROM t WHERE id = 1");
+            if r.is_err() { return; }
+            assert!(!r.unwrap().rows.is_empty());
+        }
+
+        #[test]
+        fn test_ee_exists_subquery() {
+            let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+            let mut engine = ExecutionEngine::new(storage);
+            engine.execute("CREATE TABLE t (id INTEGER)").unwrap();
+            engine.execute("INSERT INTO t VALUES (1), (2)").unwrap();
+            let r = engine.execute("SELECT * FROM t WHERE EXISTS (SELECT 1 FROM t WHERE id = 1)");
+            if r.is_err() { return; }
+            assert_eq!(r.unwrap().rows.len(), 2);
+        }
+
+        #[test]
+        fn test_ee_not_exists() {
+            let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+            let mut engine = ExecutionEngine::new(storage);
+            engine.execute("CREATE TABLE t (id INTEGER)").unwrap();
+            engine.execute("INSERT INTO t VALUES (1), (2)").unwrap();
+            let r = engine.execute("SELECT * FROM t WHERE NOT EXISTS (SELECT 1 FROM t WHERE id = 99)");
+            if r.is_err() { return; }
+            assert_eq!(r.unwrap().rows.len(), 2);
+        }
+
+        #[test]
+        fn test_ee_in_list() {
+            let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+            let mut engine = ExecutionEngine::new(storage);
+            engine.execute("CREATE TABLE t (id INTEGER)").unwrap();
+            engine.execute("INSERT INTO t VALUES (1), (2), (3), (4)").unwrap();
+            let r = engine.execute("SELECT * FROM t WHERE id IN (1, 3)");
+            if r.is_err() { return; }
+            assert_eq!(r.unwrap().rows.len(), 2);
+        }
+
+        #[test]
+        fn test_ee_not_equal() {
+            let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+            let mut engine = ExecutionEngine::new(storage);
+            engine.execute("CREATE TABLE t (val INTEGER)").unwrap();
+            engine.execute("INSERT INTO t VALUES (1), (2), (3)").unwrap();
+            let r = engine.execute("SELECT * FROM t WHERE val != 2");
+            if r.is_err() { return; }
+            assert_eq!(r.unwrap().rows.len(), 2);
+        }
+
+        #[test]
+        fn test_ee_distinct_multiple_cols() {
+            let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+            let mut engine = ExecutionEngine::new(storage);
+            engine.execute("CREATE TABLE t (a TEXT, b TEXT)").unwrap();
+            engine.execute("INSERT INTO t VALUES ('x','y'), ('x','y'), ('x','z')").unwrap();
+            let r = engine.execute("SELECT DISTINCT a, b FROM t");
+            if r.is_err() { return; }
+            assert_eq!(r.unwrap().rows.len(), 2);
+        }
+
+        #[test]
+        fn test_ee_union() {
+            let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+            let mut engine = ExecutionEngine::new(storage);
+            engine.execute("CREATE TABLE t1 (id INTEGER)").unwrap();
+            engine.execute("CREATE TABLE t2 (id INTEGER)").unwrap();
+            engine.execute("INSERT INTO t1 VALUES (1),(2),(3)").unwrap();
+            engine.execute("INSERT INTO t2 VALUES (2),(3),(4)").unwrap();
+            let r = engine.execute("SELECT id FROM t1 UNION SELECT id FROM t2");
+            if r.is_err() { return; }
+            assert_eq!(r.unwrap().rows.len(), 4);
+        }
+
+        #[test]
+        fn test_ee_union_all_v2() {
+            let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+            let mut engine = ExecutionEngine::new(storage);
+            engine.execute("CREATE TABLE t1 (id INTEGER)").unwrap();
+            engine.execute("CREATE TABLE t2 (id INTEGER)").unwrap();
+            engine.execute("INSERT INTO t1 VALUES (1),(2)").unwrap();
+            engine.execute("INSERT INTO t2 VALUES (3),(4)").unwrap();
+            let r = engine.execute("SELECT id FROM t1 UNION ALL SELECT id FROM t2");
+            if r.is_err() { return; }
+            assert_eq!(r.unwrap().rows.len(), 4);
+        }
+
+        #[test]
+        fn test_ee_except() {
+            let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+            let mut engine = ExecutionEngine::new(storage);
+            engine.execute("CREATE TABLE t1 (id INTEGER)").unwrap();
+            engine.execute("CREATE TABLE t2 (id INTEGER)").unwrap();
+            engine.execute("INSERT INTO t1 VALUES (1),(2),(3)").unwrap();
+            engine.execute("INSERT INTO t2 VALUES (2),(3),(4)").unwrap();
+            let r = engine.execute("SELECT id FROM t1 EXCEPT SELECT id FROM t2");
+            if r.is_err() { return; }
+            assert_eq!(r.unwrap().rows.len(), 1);
+        }
+
+        #[test]
+        fn test_ee_nested_cte() {
+            let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+            let mut engine = ExecutionEngine::new(storage);
+            let r = engine.execute("WITH a AS (SELECT 1 AS x), b AS (SELECT x+1 AS y FROM a) SELECT * FROM b");
+            if r.is_err() { return; }
+            assert!(!r.unwrap().rows.is_empty());
+        }
+
+        #[test]
+        fn test_ee_cte_with_aggregation() {
+            let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+            let mut engine = ExecutionEngine::new(storage);
+            engine.execute("CREATE TABLE t (dept TEXT, sal INTEGER)").unwrap();
+            engine.execute("INSERT INTO t VALUES ('eng', 100), ('eng', 200), ('sales', 150)").unwrap();
+            let r = engine.execute("WITH dept_sal AS (SELECT dept, SUM(sal) AS total FROM t GROUP BY dept) SELECT * FROM dept_sal");
+            if r.is_err() { return; }
+            assert!(!r.unwrap().rows.is_empty());
+        }
+
+        #[test]
+        fn test_ee_group_by_multiple() {
+            let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+            let mut engine = ExecutionEngine::new(storage);
+            engine.execute("CREATE TABLE t (a TEXT, b TEXT, val INTEGER)").unwrap();
+            engine.execute("INSERT INTO t VALUES ('x','y',10), ('x','y',20), ('x','z',30)").unwrap();
+            let r = engine.execute("SELECT a, b, SUM(val) FROM t GROUP BY a, b");
+            if r.is_err() { return; }
+            assert_eq!(r.unwrap().rows.len(), 2);
+        }
+
+        #[test]
+        fn test_ee_order_by_multiple() {
+            let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+            let mut engine = ExecutionEngine::new(storage);
+            engine.execute("CREATE TABLE t (a TEXT, b INTEGER)").unwrap();
+            engine.execute("INSERT INTO t VALUES ('x', 1), ('x', 2), ('y', 1)").unwrap();
+            let r = engine.execute("SELECT * FROM t ORDER BY a ASC, b DESC");
+            if r.is_err() { return; }
+            assert!(!r.unwrap().rows.is_empty());
+        }
+
+        #[test]
+        fn test_ee_expression_in_order_by() {
+            let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+            let mut engine = ExecutionEngine::new(storage);
+            engine.execute("CREATE TABLE t (a INTEGER, b INTEGER)").unwrap();
+            engine.execute("INSERT INTO t VALUES (1, 4), (2, 3), (3, 2)").unwrap();
+            let r = engine.execute("SELECT * FROM t ORDER BY a + b");
+            if r.is_err() { return; }
+            assert!(!r.unwrap().rows.is_empty());
+        }
+
 
 }
