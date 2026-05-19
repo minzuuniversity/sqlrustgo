@@ -225,3 +225,350 @@ impl WALInvariant {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // WALOperation tests
+    mod wal_operation_tests {
+        use super::*;
+
+        #[test]
+        fn test_is_dml_write_row() {
+            assert!(WALOperation::WriteRow.is_dml());
+        }
+
+        #[test]
+        fn test_is_dml_delete_row() {
+            assert!(WALOperation::DeleteRow.is_dml());
+        }
+
+        #[test]
+        fn test_is_dml_update_row() {
+            assert!(WALOperation::UpdateRow.is_dml());
+        }
+
+        #[test]
+        fn test_is_dml_false_for_non_dml() {
+            assert!(!WALOperation::BeginTxn.is_dml());
+            assert!(!WALOperation::CommitTxn.is_dml());
+            assert!(!WALOperation::AbortTxn.is_dml());
+            assert!(!WALOperation::Checkpoint.is_dml());
+        }
+
+        #[test]
+        fn test_is_boundary_begin_txn() {
+            assert!(WALOperation::BeginTxn.is_boundary());
+        }
+
+        #[test]
+        fn test_is_boundary_commit_txn() {
+            assert!(WALOperation::CommitTxn.is_boundary());
+        }
+
+        #[test]
+        fn test_is_boundary_abort_txn() {
+            assert!(WALOperation::AbortTxn.is_boundary());
+        }
+
+        #[test]
+        fn test_is_boundary_false_for_non_boundary() {
+            assert!(!WALOperation::WriteRow.is_boundary());
+            assert!(!WALOperation::DeleteRow.is_boundary());
+            assert!(!WALOperation::UpdateRow.is_boundary());
+            assert!(!WALOperation::Checkpoint.is_boundary());
+        }
+
+        #[test]
+        fn test_wal_operation_equality() {
+            assert_eq!(WALOperation::BeginTxn, WALOperation::BeginTxn);
+            assert_eq!(WALOperation::WriteRow, WALOperation::WriteRow);
+            assert_ne!(WALOperation::BeginTxn, WALOperation::CommitTxn);
+        }
+
+        #[test]
+        fn test_wal_operation_clone() {
+            let op = WALOperation::WriteRow;
+            let cloned = op;
+            assert_eq!(op, cloned);
+        }
+    }
+
+    // WALState tests
+    mod wal_state_tests {
+        use super::*;
+
+        #[test]
+        fn test_wal_state_default() {
+            assert_eq!(WALState::default(), WALState::Idle);
+        }
+
+        #[test]
+        fn test_wal_state_equality() {
+            assert_eq!(WALState::Idle, WALState::Idle);
+            assert_eq!(WALState::Writing, WALState::Writing);
+            assert_ne!(WALState::Idle, WALState::Writing);
+        }
+
+        #[test]
+        fn test_wal_state_all_variants() {
+            let states = [
+                WALState::Idle,
+                WALState::Writing,
+                WALState::Flushing,
+                WALState::Committing,
+                WALState::Checkpointing,
+            ];
+            assert_eq!(states.len(), 5);
+        }
+    }
+
+    // WALProperty tests
+    mod wal_property_tests {
+        use super::*;
+
+        #[test]
+        fn test_all_returns_eight_properties() {
+            let props = WALProperty::all();
+            assert_eq!(props.len(), 8);
+        }
+
+        #[test]
+        fn test_critical_returns_critical_severity_only() {
+            let critical = WALProperty::critical();
+            for prop in &critical {
+                assert_eq!(prop.severity(), PropertySeverity::Critical);
+            }
+        }
+
+        #[test]
+        fn test_property_severity() {
+            assert_eq!(WALProperty::IdempotentReplay.severity(), PropertySeverity::Critical);
+            assert_eq!(WALProperty::AtomicWrites.severity(), PropertySeverity::Critical);
+            assert_eq!(WALProperty::LSNMonotonicity.severity(), PropertySeverity::Critical);
+            assert_eq!(WALProperty::CheckpointAtomicity.severity(), PropertySeverity::Critical);
+            assert_eq!(WALProperty::CommittedTransactionsDurable.severity(), PropertySeverity::Critical);
+            assert_eq!(WALProperty::NoPhantomCommits.severity(), PropertySeverity::Critical);
+            assert_eq!(WALProperty::NoLostUpdates.severity(), PropertySeverity::Critical);
+            assert_eq!(WALProperty::AuditChainContinuity.severity(), PropertySeverity::Important);
+        }
+
+        #[test]
+        fn test_property_description() {
+            assert_eq!(
+                WALProperty::IdempotentReplay.description(),
+                "WAL replay is idempotent"
+            );
+            assert_eq!(
+                WALProperty::AtomicWrites.description(),
+                "All WAL writes are atomic"
+            );
+            assert_eq!(
+                WALProperty::LSNMonotonicity.description(),
+                "LSN is monotonically increasing"
+            );
+        }
+    }
+
+    // WALRecord tests
+    mod wal_record_tests {
+        use super::*;
+
+        #[test]
+        fn test_wal_record_valid_with_nonzero_lsn_and_txn_id() {
+            let record = WALRecord {
+                lsn: 1,
+                txn_id: 1,
+                operation: WALOperation::WriteRow,
+                page_id: Some(1),
+                row_key: Some(vec![1, 2, 3]),
+                before_value: None,
+                after_value: Some(vec![4, 5, 6]),
+                checksum: 0xDEADBEEF,
+            };
+            assert!(record.is_valid());
+        }
+
+        #[test]
+        fn test_wal_record_invalid_with_zero_lsn() {
+            let record = WALRecord {
+                lsn: 0,
+                txn_id: 1,
+                operation: WALOperation::WriteRow,
+                page_id: None,
+                row_key: None,
+                before_value: None,
+                after_value: None,
+                checksum: 0,
+            };
+            assert!(!record.is_valid());
+        }
+
+        #[test]
+        fn test_wal_record_invalid_with_zero_txn_id() {
+            let record = WALRecord {
+                lsn: 1,
+                txn_id: 0,
+                operation: WALOperation::WriteRow,
+                page_id: None,
+                row_key: None,
+                before_value: None,
+                after_value: None,
+                checksum: 0,
+            };
+            assert!(!record.is_valid());
+        }
+    }
+
+    // WALLog tests
+    mod wal_log_tests {
+        use super::*;
+
+        fn make_record(lsn: u64, txn_id: u64, op: WALOperation) -> WALRecord {
+            WALRecord {
+                lsn,
+                txn_id,
+                operation: op,
+                page_id: None,
+                row_key: None,
+                before_value: None,
+                after_value: None,
+                checksum: 0,
+            }
+        }
+
+        #[test]
+        fn test_wal_log_new() {
+            let log = WALLog::new();
+            assert!(log.is_empty());
+            assert_eq!(log.len(), 0);
+        }
+
+        #[test]
+        fn test_wal_log_is_empty() {
+            let log = WALLog::new();
+            assert!(log.is_empty());
+        }
+
+        #[test]
+        fn test_wal_log_len() {
+            let mut log = WALLog::new();
+            assert_eq!(log.len(), 0);
+            log.records.push(make_record(1, 1, WALOperation::BeginTxn));
+            assert_eq!(log.len(), 1);
+            log.records.push(make_record(2, 1, WALOperation::WriteRow));
+            assert_eq!(log.len(), 2);
+        }
+
+        #[test]
+        fn test_wal_log_lsn_range_empty() {
+            let log = WALLog::new();
+            assert!(log.lsn_range().is_none());
+        }
+
+        #[test]
+        fn test_wal_log_lsn_range_single_record() {
+            let mut log = WALLog::new();
+            log.records.push(make_record(100, 1, WALOperation::BeginTxn));
+            assert_eq!(log.lsn_range(), Some((100, 100)));
+        }
+
+        #[test]
+        fn test_wal_log_lsn_range_multiple_records() {
+            let mut log = WALLog::new();
+            log.records.push(make_record(10, 1, WALOperation::BeginTxn));
+            log.records.push(make_record(20, 1, WALOperation::WriteRow));
+            log.records.push(make_record(30, 1, WALOperation::CommitTxn));
+            assert_eq!(log.lsn_range(), Some((10, 30)));
+        }
+
+        #[test]
+        fn test_wal_log_txn_records() {
+            let mut log = WALLog::new();
+            log.records.push(make_record(1, 1, WALOperation::BeginTxn));
+            log.records.push(make_record(2, 1, WALOperation::WriteRow));
+            log.records.push(make_record(3, 2, WALOperation::BeginTxn));
+            log.records.push(make_record(4, 1, WALOperation::CommitTxn));
+
+            let txn1_records = log.txn_records(1);
+            assert_eq!(txn1_records.len(), 3);
+
+            let txn2_records = log.txn_records(2);
+            assert_eq!(txn2_records.len(), 1);
+
+            let txn3_records = log.txn_records(3);
+            assert!(txn3_records.is_empty());
+        }
+
+        #[test]
+        fn test_wal_log_check_lsn_monotonicity_true() {
+            let mut log = WALLog::new();
+            log.records.push(make_record(1, 1, WALOperation::BeginTxn));
+            log.records.push(make_record(2, 1, WALOperation::WriteRow));
+            log.records.push(make_record(3, 1, WALOperation::CommitTxn));
+            assert!(log.check_lsn_monotonicity());
+        }
+
+        #[test]
+        fn test_wal_log_check_lsn_monotonicity_false() {
+            let mut log = WALLog::new();
+            log.records.push(make_record(3, 1, WALOperation::BeginTxn));
+            log.records.push(make_record(2, 1, WALOperation::WriteRow)); // Decreasing LSN
+            log.records.push(make_record(1, 1, WALOperation::CommitTxn));
+            assert!(!log.check_lsn_monotonicity());
+        }
+
+        #[test]
+        fn test_wal_log_check_lsn_monotonicity_equal_lsn() {
+            let mut log = WALLog::new();
+            log.records.push(make_record(1, 1, WALOperation::BeginTxn));
+            log.records.push(make_record(1, 1, WALOperation::WriteRow)); // Same LSN
+            assert!(!log.check_lsn_monotonicity());
+        }
+    }
+
+    // WALInvariant tests
+    mod wal_invariant_tests {
+        use super::*;
+
+        fn make_record(lsn: u64, txn_id: u64, op: WALOperation) -> WALRecord {
+            WALRecord {
+                lsn,
+                txn_id,
+                operation: op,
+                page_id: None,
+                row_key: None,
+                before_value: None,
+                after_value: None,
+                checksum: 0,
+            }
+        }
+
+        #[test]
+        fn test_no_duplicate_lsn_holds() {
+            let mut log = WALLog::new();
+            log.records.push(make_record(1, 1, WALOperation::BeginTxn));
+            log.records.push(make_record(2, 1, WALOperation::WriteRow));
+            log.records.push(make_record(3, 1, WALOperation::CommitTxn));
+
+            let invariant = WALInvariant::NoDuplicateLSN;
+            let result = invariant.check(&log);
+            assert!(result.holds);
+            assert!(result.failed_at.is_none());
+        }
+
+        #[test]
+        fn test_no_duplicate_lsn_fails() {
+            let mut log = WALLog::new();
+            log.records.push(make_record(1, 1, WALOperation::BeginTxn));
+            log.records.push(make_record(1, 1, WALOperation::WriteRow)); // Duplicate LSN
+            log.records.push(make_record(2, 1, WALOperation::CommitTxn));
+
+            let invariant = WALInvariant::NoDuplicateLSN;
+            let result = invariant.check(&log);
+            assert!(!result.holds);
+            assert_eq!(result.failed_at, Some(1));
+        }
+    }
+}
