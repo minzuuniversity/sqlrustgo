@@ -37,10 +37,15 @@ check_test() {
     local name="$1"; local cmd="$2"
     echo -n "[beta-v3.3.0] $name ... "
     out=$(eval "$cmd" 2>&1 || true)
-    passed=$(echo "$out" | grep -o " ok$" | wc -l | tr -d ' ' || echo "0")
-    failed=$(echo "$out" | grep -o " FAILED$" | wc -l | tr -d ' ' || echo "0")
-    [ -z "$passed" ] && passed=0
-    [ -z "$failed" ] && failed=0
+    result=$(python3 -c "
+import sys, re
+data = sys.stdin.read()
+passed = len(re.findall(r' ok$', data, re.MULTILINE))
+failed = len(re.findall(r' FAILED$', data, re.MULTILINE))
+print(f'{passed}:{failed}')
+" <<< "$out")
+    passed="${result%%:*}"
+    failed="${result##*:}"
     if [ "$failed" -eq 0 ] && [ "$passed" -gt 0 ]; then
         echo "✅ PASS ($passed tests)"; PASS=$((PASS+1))
     elif [ "$passed" -eq 0 ] && [ "$failed" -eq 0 ]; then
