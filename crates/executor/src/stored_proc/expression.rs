@@ -1605,4 +1605,182 @@ mod tests {
         ));
         assert!(!ex.regexp_match(&Value::Text("world".into()), &Value::Text("hello".into())));
     }
+
+    #[test]
+    fn test_regexp_match_non_text() {
+        let ex = executor();
+        assert!(!ex.regexp_match(&Value::Integer(123).into(), &Value::Text("hello".into())));
+        assert!(!ex.regexp_match(&Value::Null, &Value::Text("hello".into())));
+    }
+
+    #[test]
+    fn test_like_match_non_text() {
+        let ex = executor();
+        assert!(!ex.like_match(&Value::Integer(123).into(), &Value::Text("hello".into())));
+        assert!(!ex.like_match(&Value::Null, &Value::Text("hello".into())));
+    }
+
+    #[test]
+    fn test_escape_sql_value_float() {
+        let ex = executor();
+        let val = Value::Float(3.14);
+        let escaped = ex.escape_sql_value(&val);
+        assert!(escaped.contains("3.14"));
+    }
+
+    #[test]
+    fn test_escape_sql_value_boolean() {
+        let ex = executor();
+        assert_eq!(ex.escape_sql_value(&Value::Boolean(true)), "TRUE");
+        assert_eq!(ex.escape_sql_value(&Value::Boolean(false)), "FALSE");
+    }
+
+    #[test]
+    fn test_arithmetic_op_integer() {
+        let ex = executor();
+        assert_eq!(ex.arithmetic_op(&Value::Integer(10), &Value::Integer(3), "+"), Ok(Value::Integer(13)));
+        assert_eq!(ex.arithmetic_op(&Value::Integer(10), &Value::Integer(3), "-"), Ok(Value::Integer(7)));
+        assert_eq!(ex.arithmetic_op(&Value::Integer(10), &Value::Integer(3), "*"), Ok(Value::Integer(30)));
+        assert_eq!(ex.arithmetic_op(&Value::Integer(10), &Value::Integer(3), "/"), Ok(Value::Integer(3)));
+    }
+
+    #[test]
+    fn test_arithmetic_op_float() {
+        let ex = executor();
+        assert_eq!(ex.arithmetic_op(&Value::Float(3.0), &Value::Float(2.0), "+"), Ok(Value::Float(5.0)));
+        assert_eq!(ex.arithmetic_op(&Value::Float(3.0), &Value::Float(2.0), "-"), Ok(Value::Float(1.0)));
+        assert_eq!(ex.arithmetic_op(&Value::Float(3.0), &Value::Float(2.0), "*"), Ok(Value::Float(6.0)));
+        assert_eq!(ex.arithmetic_op(&Value::Float(6.0), &Value::Float(2.0), "/"), Ok(Value::Float(3.0)));
+    }
+
+    #[test]
+    fn test_arithmetic_op_div_by_zero() {
+        let ex = executor();
+        assert!(ex.arithmetic_op(&Value::Integer(10), &Value::Integer(0), "/").is_err());
+        assert!(ex.arithmetic_op(&Value::Float(3.0), &Value::Float(0.0), "/").is_err());
+    }
+
+    #[test]
+    fn test_arithmetic_op_unsupported() {
+        let ex = executor();
+        assert!(ex.arithmetic_op(&Value::Integer(10), &Value::Integer(3), "%").is_err());
+        assert!(ex.arithmetic_op(&Value::Text("a".into()), &Value::Integer(3), "+").is_err());
+    }
+
+    #[test]
+    fn test_ge_values_float() {
+        let ex = executor();
+        assert!(ex.ge_values(&Value::Float(5.0), &Value::Float(3.0)));
+        assert!(ex.ge_values(&Value::Float(3.0), &Value::Float(3.0)));
+        assert!(!ex.ge_values(&Value::Float(2.0), &Value::Float(3.0)));
+    }
+
+    #[test]
+    fn test_ge_values_text() {
+        let ex = executor();
+        assert!(ex.ge_values(&Value::Text("zoo".into()), &Value::Text("apple".into())));
+        assert!(!ex.ge_values(&Value::Text("apple".into()), &Value::Text("zoo".into())));
+    }
+
+    #[test]
+    fn test_ge_values_invalid_types() {
+        let ex = executor();
+        assert!(!ex.ge_values(&Value::Integer(5), &Value::Text("x".into())));
+        assert!(!ex.ge_values(&Value::Null, &Value::Integer(5)));
+    }
+
+    #[test]
+    fn test_le_values_float() {
+        let ex = executor();
+        assert!(ex.le_values(&Value::Float(2.0), &Value::Float(3.0)));
+        assert!(ex.le_values(&Value::Float(3.0), &Value::Float(3.0)));
+        assert!(!ex.le_values(&Value::Float(5.0), &Value::Float(3.0)));
+    }
+
+    #[test]
+    fn test_le_values_text() {
+        let ex = executor();
+        assert!(ex.le_values(&Value::Text("apple".into()), &Value::Text("zoo".into())));
+        assert!(!ex.le_values(&Value::Text("zoo".into()), &Value::Text("apple".into())));
+    }
+
+    #[test]
+    fn test_le_values_invalid_types() {
+        let ex = executor();
+        assert!(!ex.le_values(&Value::Text("x".into()), &Value::Integer(5)));
+        assert!(!ex.le_values(&Value::Null, &Value::Integer(5)));
+    }
+
+    #[test]
+    fn test_partial_cmp_boolean() {
+        let ex = executor();
+        assert_eq!(ex.partial_cmp(&Value::Boolean(true), &Value::Boolean(false)), Some(std::cmp::Ordering::Greater));
+        assert_eq!(ex.partial_cmp(&Value::Boolean(false), &Value::Boolean(true)), Some(std::cmp::Ordering::Less));
+        assert_eq!(ex.partial_cmp(&Value::Boolean(true), &Value::Boolean(true)), Some(std::cmp::Ordering::Equal));
+    }
+
+    #[test]
+    fn test_partial_cmp_mixed_types() {
+        let ex = executor();
+        assert_eq!(ex.partial_cmp(&Value::Integer(1), &Value::Text("a".into())), None);
+        assert_eq!(ex.partial_cmp(&Value::Float(1.0), &Value::Integer(1)), None);
+    }
+
+    #[test]
+    fn test_compare_values_gte_lte() {
+        let ex = executor();
+        assert!(ex.compare_values(&Value::Integer(5), &Value::Integer(5), ">="));
+        assert!(ex.compare_values(&Value::Integer(5), &Value::Integer(3), ">="));
+        assert!(!ex.compare_values(&Value::Integer(3), &Value::Integer(5), ">="));
+        assert!(ex.compare_values(&Value::Integer(3), &Value::Integer(5), "<="));
+        assert!(ex.compare_values(&Value::Integer(5), &Value::Integer(5), "<="));
+        assert!(!ex.compare_values(&Value::Integer(5), &Value::Integer(3), "<="));
+    }
+
+    #[test]
+    fn test_compare_values_invalid_op() {
+        let ex = executor();
+        assert!(!ex.compare_values(&Value::Integer(1), &Value::Integer(1), "??"));
+    }
+
+    #[test]
+    fn test_expand_variable_system() {
+        let ex = executor();
+        let mut ctx = ctx_with_vars();
+        ctx.set_var("SYS::USER", Value::Text("admin".into()));
+        let val = ex.expand_variable("SYS::USER", &ctx);
+        assert_eq!(val, Value::Text("admin".into()));
+    }
+
+    #[test]
+    fn test_expand_variables_in_sql_escape() {
+        let ex = executor();
+        let mut ctx = ctx_with_vars();
+        ctx.set_var("val", Value::Text("it's a test".into()));
+        let sql = ex.expand_variables_in_sql("SELECT '@val'", &ctx);
+        assert!(sql.contains("''")); // escaped
+    }
+
+    #[test]
+    fn test_extract_identifiers_from_expr_literal() {
+        let ex = executor();
+        let ids = ex.extract_identifiers_from_expr(&Expression::Literal("42".into()));
+        assert!(ids.is_empty());
+    }
+
+    #[test]
+    fn test_extract_identifiers_from_expr_nested() {
+        let ex = executor();
+        let expr = Expression::BinaryOp(
+            Box::new(Expression::BinaryOp(
+                Box::new(Expression::Identifier("a".into())),
+                "+".into(),
+                Box::new(Expression::Identifier("b".into())),
+            )),
+            "*".into(),
+            Box::new(Expression::Identifier("c".into())),
+        );
+        let ids = ex.extract_identifiers_from_expr(&expr);
+        assert_eq!(ids.len(), 3);
+    }
 }
