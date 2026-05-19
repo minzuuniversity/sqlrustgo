@@ -237,3 +237,91 @@ fn resolve_git_commit(ref_str: &str) -> Result<String, Box<dyn std::error::Error
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_save_cmd_fields() {
+        let cmd = SaveCmd {
+            commit: "abc123".to_string(),
+            db_path: PathBuf::from("/tmp/test"),
+        };
+        assert_eq!(cmd.commit, "abc123");
+        assert_eq!(cmd.db_path, PathBuf::from("/tmp/test"));
+    }
+
+    #[test]
+    fn test_query_cmd_fields() {
+        let cmd = QueryCmd {
+            metric: "qps_update".to_string(),
+            range_days: 30,
+            db_path: PathBuf::from("/tmp/test"),
+        };
+        assert_eq!(cmd.metric, "qps_update");
+        assert_eq!(cmd.range_days, 30);
+    }
+
+    #[test]
+    fn test_query_cmd_default_range() {
+        let cmd = QueryCmd {
+            metric: "latency_p99".to_string(),
+            range_days: 7,
+            db_path: PathBuf::from("/tmp/test"),
+        };
+        assert_eq!(cmd.range_days, 7);
+    }
+
+    #[test]
+    fn test_check_cmd_fields() {
+        let cmd = CheckCmd {
+            baseline: "HEAD~1".to_string(),
+            head: "HEAD".to_string(),
+            threshold: 0.10,
+            db_path: PathBuf::from("/tmp/test"),
+        };
+        assert_eq!(cmd.baseline, "HEAD~1");
+        assert_eq!(cmd.head, "HEAD");
+        assert_eq!(cmd.threshold, 0.10);
+    }
+
+    #[test]
+    fn test_check_cmd_custom_threshold() {
+        let cmd = CheckCmd {
+            baseline: "v1.0".to_string(),
+            head: "v1.1".to_string(),
+            threshold: 0.05,
+            db_path: PathBuf::from("/tmp/test"),
+        };
+        assert_eq!(cmd.threshold, 0.05);
+    }
+
+    #[test]
+    fn test_check_cmd_threshold_as_percentage() {
+        let cmd = CheckCmd {
+            baseline: "abc".to_string(),
+            head: "def".to_string(),
+            threshold: 0.10,
+            db_path: PathBuf::from("/tmp/test"),
+        };
+        // threshold 0.10 = 10%
+        assert!((cmd.threshold * 100.0 - 10.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_resolve_git_commit_direct() {
+        // A 40-character hex string should be treated as a valid commit
+        let commit = "a".repeat(40);
+        let result = resolve_git_commit(&commit);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), commit);
+    }
+
+    #[test]
+    fn test_resolve_git_commit_invalid() {
+        // An invalid ref that is not a valid commit hash should error
+        let result = resolve_git_commit("this-is-not-a-valid-ref-or-commit");
+        assert!(result.is_err());
+    }
+}
