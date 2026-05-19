@@ -1,38 +1,33 @@
 # SQLRustGo 版本演化计划
 
-> **版本**: v8.0
-> **更新日期**: 2026-04-17
-> **战略定位**: 教学数据库产品（Teaching DBMS）
-> **核心原则**: 替代 MySQL 教学，差异化超越
+> **版本**: v9.0
+> **更新日期**: 2026-05-18
+> **战略定位**: Industrial Trust Platform → GMP Management Suite
+> **核心原则**: 工业级 GMP 合规数据库，从可信内核到管理套件
 
 ---
 
-## 一、战略定位（关键转向）
+## 零、战略演进（关键转向）
 
-### 从：数据库内核工程
-### 到：教学数据库产品（Teaching DBMS）
+### v3.x 战略路线
 
 ```
-💡 核心洞察：
-
-❌ 不要试图完全兼容 MySQL（工程量爆炸）
-✅ 正确策略：兼容"教材"，而不是兼容"数据库"
-
-🎯 最终目标：
-
-v2.6.0 = 生产就绪（替代 MySQL 简单生产环境）
-v2.7.0 = 分布式架构
+v3.2.x: 内核修复（覆盖率/性能/MySQL协议）
+    ↓
+v3.3.0: Trust Infrastructure（可信性工业闭环）← 当前阶段
+    ↓
+v3.4.0: GMP Management Suite（管理套件）
+    ↓
+v3.5.0: AI Native GMP Platform
 ```
 
----
+### 成熟度等级
 
-## 二、版本语义化与技术范式
-
-| 主版本 | 技术范式 | 成熟度等级 | 核心特征 | 对标系统 |
-|--------|----------|------------|----------|----------|
-| 1.x | 单机基础数据库 | L3 | 火山模型、SQL-92、MVCC、B+Tree | early PostgreSQL |
-| 2.x | 高性能分析引擎 | L4 | 向量化、列存、CBO、并行执行 | DuckDB |
-
+| 主版本 | 技术范式 | 成熟度 | 核心特征 |
+|--------|----------|--------|----------|
+| 1.x | 单机基础数据库 | L3 | 火山模型、SQL-92、MVCC、B+Tree |
+| 2.x | 高性能分析引擎 | L4 | 向量化、列存、CBO、并行执行 |
+| 3.x | GMP 合规数据库 | L4+ | Trust Infrastructure、企业级合规 |
 **演进路径**：1.x（教学可用）→ 2.x（超越 MySQL）
 
 ---
@@ -238,6 +233,92 @@ L1 (Toy)   →   L2 (Query Engine)   →   L3 (Mini DBMS)   →   L4 (Analytical
 
 ---
 
+## v3.3.0 - Industrial Trust Platform（工业级可信闭环）
+
+**版本**: v1.0
+**状态**: Beta 阶段（2026-05-18）
+**分支**: `beta/v3.3.0` (b566d9ca)
+
+### 战略定位
+
+v3.3.0 是从 "GMP Management Suite" 升级为 **"Industrial Trust Platform"** 的关键版本。核心目标：建立工业级可信闭环，让数据库内核本身可验证、可审计、可追溯。
+
+### 四层架构
+
+```
+Trust Visualization → Compliance Evidence Engine → Provenance Graph → Trust Infrastructure Kernel
+```
+
+### 交付物
+
+| 模块 | 功能 | Issue | 状态 |
+|------|------|-------|------|
+| Trust Infrastructure Kernel | Performance Governance + Crash Simulation + WAL Formal Verification | #1235-#1237 | ✅ |
+| Compliance Automation | Compliance-as-Code + Evidence Engine + Provenance Graph | #1238-#1240 | ✅ |
+| GMP Management | Workflow V2 + Trust Visualization | #1241-#1242 | ✅ |
+| 内核修复 | executor 拆分 + MySQL 握手 + TPC-H SF=1 + Coverage SSOT | #1196-#1222 | ✅ |
+
+### Alpha/Beta Gate
+
+- **Alpha Gate**: 5/5 PASS ✅（A1-A4, A8）
+- **Beta Gate**: B1/B3/B4/PASS, B7 TPC-H PASS, B5/B6 待验证
+
+### 文档
+
+- 开发计划: `docs/releases/v3.3.0/DEV_PLAN.md`
+- 综合状态: `docs/releases/v3.3.0/COMPREHENSIVE_STATUS_REPORT.md`
+- Trust Infrastructure Strategy: `docs/releases/v3.3.0/TRUST_INFRASTRUCTURE_STRATEGY.md`
+
+---
+
+## v3.4.0 - GMP Management Suite（GMP 管理套件）
+
+**版本**: v1.0
+**状态**: 规划中
+**前置版本**: v3.3.0 GA
+**目标发布日期**: 2026-07-15
+
+### 战略定位
+
+v3.4.0 在 v3.3.0 可信内核基础上构建完整的 **GMP Management Suite**，让合规人员、QA、审计员能够通过可视化界面操作可信内核。
+
+### 核心模块
+
+| 模块 | 优先级 | 关键功能 |
+|------|--------|----------|
+| Web Dashboard | P0 | GMP 合规仪表板、审计链可视化 |
+| EBR (Electronic Batch Record) | P0 | 电子批次记录全生命周期 |
+| 电子签名服务 | P0 | 21 CFR Part 11 合规签名 |
+| 设备集成 (OPC UA/MQTT/Modbus) | P1 | 工业设备接入 |
+| 规则引擎可视化编辑器 | P1 | 无代码规则配置 |
+| 移动审批 API | P2 | 移动端审批接口 |
+| 合规模板库 | P2 | 预置 GMP 合规模板 |
+
+### Issue 规划
+
+| # | 标题 | 优先级 | 估计工时 |
+|---|-------|--------|----------|
+| #1256 | Web Dashboard 核心仪表板 | P0 | 3 周 |
+| #1257 | EBR 核心批次管理 | P0 | 4 周 |
+| #1258 | 电子签名服务 | P0 | 2 周 |
+| #1259 | OPC UA 设备集成 | P1 | 3 周 |
+| #1260 | 规则引擎可视化编辑器 | P1 | 2 周 |
+
+### 发布计划
+
+| 阶段 | 目标日期 |
+|------|----------|
+| Alpha | 2026-06-01 |
+| Beta | 2026-06-15 |
+| RC | 2026-06-30 |
+| GA | 2026-07-15 |
+
+### 文档
+
+- 开发计划: `docs/releases/v3.4.0/DEV_PLAN.md`
+
+---
+
 ## 十二、变更历史
 
 | 版本 | 日期 | 说明 |
@@ -248,19 +329,13 @@ L1 (Toy)   →   L2 (Query Engine)   →   L3 (Mini DBMS)   →   L4 (Analytical
 | 4.0 | 2026-03-18 | 整合 v1.x 版本 |
 | 5.0 | 2026-03-21 | SQL-92 路线图 |
 | 6.0 | 2026-03-21 | 教学 DBMS 战略定位 |
-| **7.0** | **2026-03-21** | **v1.7 合并 v1.8+v1.9，v2.0 独立** |
-| **8.0** | **2026-04-09** | **v2.4.0 Graph Engine + OpenClaw** |
+| 7.0 | 2026-03-21 | v1.7 合并 v1.8+v1.9，v2.0 独立 |
+| 8.0 | 2026-04-09 | v2.4.0 Graph Engine + OpenClaw |
+| **9.0** | **2026-05-18** | **v3.3.0 Trust Infrastructure + v3.4.0 GMP Management Suite** |
 
 ---
 
-**文档状态**: 定稿
-**制定日期**: 2026-03-21
-**最后更新**: 2026-03-21
-**制定人**: yinglichina8848
-**战略定位**: 教学数据库产品（Teaching DBMS）
----
-
-## v2.1 - 运维自动化版 (2026年4月)
+*文档更新: 2026-05-18*
 
 **目标**: 省心线初级 - 监控、告警、备份CLI
 
