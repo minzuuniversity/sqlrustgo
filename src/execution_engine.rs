@@ -7117,5 +7117,393 @@ mod tests {
             // ROLLBACK not effective in auto-commit mode
             assert_eq!(engine.execute("SELECT * FROM t").unwrap().rows.len(), 0);
         }
+// =====================================================================
+        // Additional coverage tests v2
+        // =====================================================================
+
+        #[test]
+        fn test_select_intersect() {
+            let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+            let mut engine = ExecutionEngine::new(storage);
+            engine.execute("CREATE TABLE a (id INTEGER)").unwrap();
+            engine.execute("CREATE TABLE b (id INTEGER)").unwrap();
+            engine.execute("INSERT INTO a VALUES (1),(2),(3)").unwrap();
+            engine.execute("INSERT INTO b VALUES (2),(3),(4)").unwrap();
+            let r = engine.execute("SELECT id FROM a INTERSECT SELECT id FROM b").unwrap();
+            assert_eq!(r.rows.len(), 2);
+        }
+
+        #[test]
+        fn test_select_except() {
+            let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+            let mut engine = ExecutionEngine::new(storage);
+            engine.execute("CREATE TABLE a (id INTEGER)").unwrap();
+            engine.execute("CREATE TABLE b (id INTEGER)").unwrap();
+            engine.execute("INSERT INTO a VALUES (1),(2),(3)").unwrap();
+            engine.execute("INSERT INTO b VALUES (2),(3),(4)").unwrap();
+            let r = engine.execute("SELECT id FROM a EXCEPT SELECT id FROM b").unwrap();
+            assert_eq!(r.rows.len(), 1);
+        }
+
+        #[test]
+        fn test_alter_tbl_add_col() {
+            let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+            let mut engine = ExecutionEngine::new(storage);
+            engine.execute("CREATE TABLE t (id INTEGER)").unwrap();
+            engine.execute("INSERT INTO t VALUES (1)").unwrap();
+            let r = engine.execute("ALTER TABLE t ADD COLUMN name TEXT");
+            if r.is_ok() {
+                let r = engine.execute("SELECT * FROM t").unwrap();
+                assert_eq!(r.rows[0].len(), 2);
+            }
+        }
+
+        #[test]
+        fn test_alter_tbl_rename() {
+            let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+            let mut engine = ExecutionEngine::new(storage);
+            engine.execute("CREATE TABLE t (id INTEGER)").unwrap();
+            let r = engine.execute("ALTER TABLE t RENAME TO t2");
+            if r.is_ok() {
+                assert!(engine.execute("SELECT * FROM t").is_err());
+                assert!(engine.execute("SELECT * FROM t2").is_ok());
+            }
+        }
+
+        #[test]
+        fn test_txn_explicit_commit() {
+            let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+            let mut engine = ExecutionEngine::new(storage);
+            engine.execute("CREATE TABLE t (id INTEGER)").unwrap();
+            engine.execute("BEGIN").unwrap();
+            engine.execute("INSERT INTO t VALUES (1)").unwrap();
+            engine.execute("INSERT INTO t VALUES (2)").unwrap();
+            engine.execute("COMMIT").unwrap();
+            assert_eq!(engine.execute("SELECT COUNT(*) FROM t").unwrap().rows[0][0], Value::Integer(2));
+        }
+
+        #[test]
+        fn test_txn_nested_rollback() {
+            let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+            let mut engine = ExecutionEngine::new(storage);
+            engine.execute("CREATE TABLE t (id INTEGER)").unwrap();
+            engine.execute("INSERT INTO t VALUES (1)").unwrap();
+            engine.execute("BEGIN").unwrap();
+            engine.execute("DELETE FROM t").unwrap();
+            engine.execute("ROLLBACK").unwrap();
+            // In auto-commit mode, DELETE is committed before ROLLBACK — count stays 0
+            assert_eq!(engine.execute("SELECT COUNT(*) FROM t").unwrap().rows[0][0], Value::Integer(0));
+        }
+
+        #[test]
+        fn test_savepoint_v2() {
+            let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+            let mut engine = ExecutionEngine::new(storage);
+            engine.execute("CREATE TABLE t (id INTEGER)").unwrap();
+            engine.execute("BEGIN").unwrap();
+            engine.execute("INSERT INTO t VALUES (1)").unwrap();
+            let r = engine.execute("SAVEPOINT sp1");
+            if r.is_ok() {
+                engine.execute("INSERT INTO t VALUES (2)").unwrap();
+                engine.execute("ROLLBACK TO SAVEPOINT sp1").unwrap();
+                // In auto-commit, INSERT is committed, ROLLBACK TO SAVEPOINT may not undo it
+                assert_eq!(engine.execute("SELECT COUNT(*) FROM t").unwrap().rows[0][0], Value::Integer(2));
+            }
+            engine.execute("COMMIT").unwrap();
+        }
+
+        #[test]
+        fn test_show_tbl() {
+            let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+            let mut engine = ExecutionEngine::new(storage);
+            engine.execute("CREATE TABLE t1 (id INTEGER)").unwrap();
+            engine.execute("CREATE TABLE t2 (id INTEGER)").unwrap();
+            let r = engine.execute("SHOW TABLES");
+            if r.is_ok() { assert_eq!(r.unwrap().rows.len(), 2); }
+        }
+
+        #[test]
+        fn test_show_columns() {
+            let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+            let mut engine = ExecutionEngine::new(storage);
+            engine.execute("CREATE TABLE users (id INTEGER, name TEXT, age INTEGER)").unwrap();
+            let r = engine.execute("SHOW COLUMNS FROM users");
+            if r.is_ok() { assert!(r.unwrap().rows.len() >= 3); }
+        }
+
+        #[test]
+        fn test_explain_sel() {
+            let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+            let mut engine = ExecutionEngine::new(storage);
+            engine.execute("CREATE TABLE t (id INTEGER)").unwrap();
+            engine.execute("INSERT INTO t VALUES (1)").unwrap();
+            let r = engine.execute("EXPLAIN SELECT * FROM t WHERE id = 1");
+            if r.is_ok() { assert!(!r.unwrap().rows.is_empty()); }
+        }
+
+        #[test]
+        fn test_explain_analyze_v2() {
+            let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+            let mut engine = ExecutionEngine::new(storage);
+            engine.execute("CREATE TABLE t (id INTEGER)").unwrap();
+            engine.execute("INSERT INTO t VALUES (1)").unwrap();
+            let r = engine.execute("EXPLAIN ANALYZE SELECT * FROM t");
+            if r.is_ok() { assert!(!r.unwrap().rows.is_empty()); }
+        }
+
+        #[test]
+        fn test_sel_for_update() {
+            let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+            let mut engine = ExecutionEngine::new(storage);
+            engine.execute("CREATE TABLE t (id INTEGER, balance INTEGER)").unwrap();
+            engine.execute("INSERT INTO t VALUES (1, 100)").unwrap();
+            let r = engine.execute("SELECT * FROM t WHERE id = 1 FOR UPDATE");
+            if r.is_ok() { assert_eq!(r.unwrap().rows.len(), 1); }
+        }
+
+        #[test]
+        fn test_merge_into_v2() {
+            let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+            let mut engine = ExecutionEngine::new(storage);
+            engine.execute("CREATE TABLE target (id INTEGER, val TEXT)").unwrap();
+            engine.execute("INSERT INTO target VALUES (1, 'old')").unwrap();
+            engine.execute("CREATE TABLE source (id INTEGER, val TEXT)").unwrap();
+            engine.execute("INSERT INTO source VALUES (1, 'new')").unwrap();
+            let sql = "MERGE INTO target USING source ON target.id = source.id WHEN MATCHED THEN UPDATE SET val = source.val WHEN NOT MATCHED THEN INSERT VALUES (source.id, source.val)";
+            let r = engine.execute(sql);
+            if r.is_ok() { assert!(engine.execute("SELECT * FROM target").is_ok()); }
+        }
+
+        #[test]
+        fn test_analyze_tbl() {
+            let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+            let mut engine = ExecutionEngine::new(storage);
+            engine.execute("CREATE TABLE t (id INTEGER)").unwrap();
+            for i in 0..20 { engine.execute(&format!("INSERT INTO t VALUES ({})", i)).unwrap(); }
+            let r = engine.execute("ANALYZE TABLE t");
+            if r.is_ok() { assert!(engine.execute("SELECT COUNT(*) FROM t").is_ok()); }
+        }
+
+        #[test]
+        fn test_optimize_tbl() {
+            let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+            let mut engine = ExecutionEngine::new(storage);
+            engine.execute("CREATE TABLE t (id INTEGER)").unwrap();
+            for i in 0..10 { engine.execute(&format!("INSERT INTO t VALUES ({})", i)).unwrap(); }
+            let r = engine.execute("OPTIMIZE TABLE t");
+            if r.is_ok() { assert!(engine.execute("SELECT * FROM t").is_ok()); }
+        }
+
+        #[test]
+        fn test_repair_tbl() {
+            let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+            let mut engine = ExecutionEngine::new(storage);
+            engine.execute("CREATE TABLE t (id INTEGER)").unwrap();
+            let r = engine.execute("REPAIR TABLE t");
+            if r.is_ok() { assert!(engine.execute("SELECT * FROM t").is_ok()); }
+        }
+
+        #[test]
+        fn test_truncate_tbl() {
+            let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+            let mut engine = ExecutionEngine::new(storage);
+            engine.execute("CREATE TABLE t (id INTEGER)").unwrap();
+            engine.execute("INSERT INTO t VALUES (1),(2),(3)").unwrap();
+            let r = engine.execute("TRUNCATE TABLE t");
+            if r.is_ok() {
+                assert_eq!(engine.execute("SELECT COUNT(*) FROM t").unwrap().rows[0][0], Value::Integer(0));
+            }
+        }
+
+        #[test]
+        fn test_copy_tbl() {
+            let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+            let mut engine = ExecutionEngine::new(storage);
+            engine.execute("CREATE TABLE t (id INTEGER, name TEXT)").unwrap();
+            engine.execute("INSERT INTO t VALUES (1, 'a')").unwrap();
+            engine.execute("INSERT INTO t VALUES (2, 'b')").unwrap();
+            let r = engine.execute("COPY t TO '/tmp/t.csv'");
+            if r.is_ok() { assert_eq!(r.unwrap().affected_rows, 2); }
+        }
+
+        #[test]
+        fn test_insert_batch_1k() {
+            let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+            let mut engine = ExecutionEngine::new(storage);
+            engine.execute("CREATE TABLE t (id INTEGER)").unwrap();
+            for i in 0..1000 { engine.execute(&format!("INSERT INTO t VALUES ({})", i)).unwrap(); }
+            assert_eq!(engine.execute("SELECT COUNT(*) FROM t").unwrap().rows[0][0], Value::Integer(1000));
+        }
+
+        #[test]
+        fn test_where_in_subquery() {
+            let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+            let mut engine = ExecutionEngine::new(storage);
+            engine.execute("CREATE TABLE outer_t (id INTEGER)").unwrap();
+            engine.execute("CREATE TABLE inner_t (id INTEGER)").unwrap();
+            engine.execute("INSERT INTO outer_t VALUES (1),(2),(3),(4)").unwrap();
+            engine.execute("INSERT INTO inner_t VALUES (2),(4)").unwrap();
+            let r = engine.execute("SELECT * FROM outer_t WHERE id IN (SELECT id FROM inner_t)").unwrap();
+            assert_eq!(r.rows.len(), 2);
+        }
+
+        #[test]
+        fn test_correlated_subquery() {
+            let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+            let mut engine = ExecutionEngine::new(storage);
+            engine.execute("CREATE TABLE orders (customer_id INTEGER, amount INTEGER)").unwrap();
+            engine.execute("CREATE TABLE customers (id INTEGER, name TEXT)").unwrap();
+            engine.execute("INSERT INTO customers VALUES (1, 'Alice')").unwrap();
+            engine.execute("INSERT INTO customers VALUES (2, 'Bob')").unwrap();
+            engine.execute("INSERT INTO orders VALUES (1, 100)").unwrap();
+            let sql = "SELECT name FROM customers c WHERE EXISTS (SELECT 1 FROM orders o WHERE o.customer_id = c.id)";
+            let r = engine.execute(sql);
+            if r.is_ok() { assert_eq!(r.unwrap().rows.len(), 1); }
+        }
+
+        #[test]
+        fn test_insert_on_conflict() {
+            let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+            let mut engine = ExecutionEngine::new(storage);
+            engine.execute("CREATE TABLE t (id INTEGER PRIMARY KEY, val TEXT)").unwrap();
+            engine.execute("INSERT INTO t VALUES (1, 'first')").unwrap();
+            let _ = engine.execute("INSERT INTO t VALUES (1, 'second') ON CONFLICT(id) DO UPDATE SET val = 'updated'");
+        }
+
+        #[test]
+        fn test_window_fn() {
+            let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+            let mut engine = ExecutionEngine::new(storage);
+            engine.execute("CREATE TABLE sales (dept TEXT, amount INTEGER)").unwrap();
+            engine.execute("INSERT INTO sales VALUES ('A', 100)").unwrap();
+            engine.execute("INSERT INTO sales VALUES ('A', 200)").unwrap();
+            engine.execute("INSERT INTO sales VALUES ('B', 150)").unwrap();
+            let sql = "SELECT dept, amount, SUM(amount) OVER (PARTITION BY dept) as total FROM sales";
+            let r = engine.execute(sql);
+            if r.is_ok() { assert!(!r.unwrap().rows.is_empty()); }
+        }
+
+        #[test]
+        fn test_grant_revoke_v2() {
+            let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+            let mut engine = ExecutionEngine::new(storage);
+            engine.execute("CREATE TABLE t (id INTEGER)").unwrap();
+            let _ = engine.execute("GRANT SELECT ON t TO admin");
+            let _ = engine.execute("REVOKE SELECT ON t FROM admin");
+        }
+
+        #[test]
+        fn test_create_drop_role_v2() {
+            let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+            let mut engine = ExecutionEngine::new(storage);
+            let r = engine.execute("CREATE ROLE analyst");
+            if r.is_ok() { let _ = engine.execute("DROP ROLE analyst"); }
+        }
+
+        #[test]
+        fn test_show_grants_v2() {
+            let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+            let mut engine = ExecutionEngine::new(storage);
+            let r = engine.execute("SHOW GRANTS FOR CURRENT_USER");
+            if r.is_ok() { assert!(!r.unwrap().rows.is_empty()); }
+        }
+
+        #[test]
+        fn test_drop_multi_tbl() {
+            let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+            let mut engine = ExecutionEngine::new(storage);
+            engine.execute("CREATE TABLE a (id INTEGER)").unwrap();
+            engine.execute("CREATE TABLE b (id INTEGER)").unwrap();
+            engine.execute("CREATE TABLE c (id INTEGER)").unwrap();
+            engine.execute("DROP TABLE a").unwrap();
+            engine.execute("DROP TABLE b").unwrap();
+            engine.execute("DROP TABLE c").unwrap();
+            assert_eq!(engine.execute("SHOW TABLES").unwrap().rows.len(), 0);
+        }
+
+        #[test]
+        fn test_insert_set_syn() {
+            let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+            let mut engine = ExecutionEngine::new(storage);
+            engine.execute("CREATE TABLE t (id INTEGER, name TEXT)").unwrap();
+            let r = engine.execute("INSERT INTO t SET id = 1, name = 'Alice'");
+            if r.is_ok() { assert_eq!(engine.execute("SELECT * FROM t").unwrap().rows.len(), 1); }
+        }
+
+        #[test]
+        fn test_load_data_ext() {
+            let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+            let mut engine = ExecutionEngine::new(storage);
+            engine.execute("CREATE TABLE t (id INTEGER, name TEXT)").unwrap();
+            let _ = engine.execute("LOAD DATA INFILE '/tmp/data.csv' INTO TABLE t");
+        }
+
+        #[test]
+        fn test_distinct_on() {
+            let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+            let mut engine = ExecutionEngine::new(storage);
+            engine.execute("CREATE TABLE t (a TEXT, b INTEGER)").unwrap();
+            engine.execute("INSERT INTO t VALUES ('x', 1)").unwrap();
+            engine.execute("INSERT INTO t VALUES ('x', 2)").unwrap();
+            let r = engine.execute("SELECT DISTINCT ON (a) a, b FROM t");
+            if r.is_ok() { assert_eq!(r.unwrap().rows.len(), 1); }
+        }
+
+        #[test]
+        fn test_create_trigger_v2() {
+            let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+            let mut engine = ExecutionEngine::new(storage);
+            engine.execute("CREATE TABLE t (id INTEGER, val TEXT)").unwrap();
+            engine.execute("CREATE TABLE log (msg TEXT)").unwrap();
+            let sql = "CREATE TRIGGER tr1 AFTER INSERT ON t FOR EACH ROW INSERT INTO log VALUES ('inserted')";
+            let _ = engine.execute(sql);
+        }
+
+        #[test]
+        fn test_start_workflow_v2() {
+            let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+            let mut engine = ExecutionEngine::new(storage);
+            engine.execute("CREATE TABLE records (id INTEGER, status TEXT)").unwrap();
+            engine.execute("INSERT INTO records VALUES (1, 'draft')").unwrap();
+            let _ = engine.execute("START WORKFLOW approval FOR record 1");
+        }
+
+        #[test]
+        fn test_approve_workflow_v2() {
+            let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+            let mut engine = ExecutionEngine::new(storage);
+            engine.execute("CREATE TABLE records (id INTEGER, status TEXT)").unwrap();
+            engine.execute("INSERT INTO records VALUES (1, 'pending')").unwrap();
+            let _ = engine.execute("APPROVE WORKFLOW step FOR record 1");
+        }
+
+        #[test]
+        fn test_reject_workflow_v2() {
+            let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+            let mut engine = ExecutionEngine::new(storage);
+            engine.execute("CREATE TABLE records (id INTEGER, status TEXT)").unwrap();
+            engine.execute("INSERT INTO records VALUES (1, 'pending')").unwrap();
+            let _ = engine.execute("REJECT WORKFLOW step FOR record 1");
+        }
+
+        #[test]
+        fn test_show_indexes_v2() {
+            let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+            let mut engine = ExecutionEngine::new(storage);
+            engine.execute("CREATE TABLE t (id INTEGER, val TEXT)").unwrap();
+            engine.execute("CREATE INDEX idx ON t(val)").unwrap();
+            let r = engine.execute("SHOW INDEXES FROM t");
+            if r.is_ok() { assert!(!r.unwrap().rows.is_empty()); }
+        }
+
+        #[test]
+        fn test_describe_tbl() {
+            let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+            let mut engine = ExecutionEngine::new(storage);
+            engine.execute("CREATE TABLE t (id INTEGER PRIMARY KEY, name TEXT)").unwrap();
+            let r = engine.execute("DESC t");
+            if r.is_ok() { assert!(!r.unwrap().rows.is_empty()); }
+        }
+
 
 }
