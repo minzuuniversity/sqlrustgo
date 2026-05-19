@@ -7,20 +7,15 @@ use std::fmt;
 // =============================================================================
 
 /// Workflow V2: Branch types for parallel and conditional execution
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
 pub enum BranchType {
     /// Sequential (V1 style): one next step
+    #[default]
     Sequential,
     /// Parallel: all branches execute concurrently, all must complete
     ParallelAll,
     /// Conditional: only one branch executes based on condition
     Conditional,
-}
-
-impl Default for BranchType {
-    fn default() -> Self {
-        BranchType::Sequential
-    }
 }
 
 /// Workflow V2: Transition condition for conditional branching
@@ -53,9 +48,9 @@ impl TransitionCondition {
                 if let Some(context_val) = context.get(field) {
                     // Handle boolean values
                     if expected == "true" {
-                        return context_val.as_bool().map(|b| b).unwrap_or(false);
+                        return context_val.as_bool().unwrap_or(false);
                     } else if expected == "false" {
-                        return context_val.as_bool().map(|b| !b).unwrap_or(false);
+                        return !context_val.as_bool().unwrap_or(false);
                     }
                     // Handle string values
                     return context_val.to_string().trim_matches('"') == expected;
