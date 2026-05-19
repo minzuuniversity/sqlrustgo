@@ -142,3 +142,140 @@ pub struct ColumnState {
     pub min_value: Option<String>,
     pub max_value: Option<String>,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::CrashPoint;
+
+    #[test]
+    fn test_recovery_verifier_new() {
+        let verifier = RecoveryVerifier::new();
+        assert!(verifier.expected_counts.is_empty());
+        assert!(verifier.expected_checksums.is_empty());
+        assert!(verifier.baseline_state.is_none());
+    }
+
+    #[test]
+    fn test_recovery_verifier_set_expected_counts() {
+        let mut verifier = RecoveryVerifier::new();
+        verifier.set_expected_counts("users", 100);
+        verifier.set_expected_counts("orders", 500);
+
+        assert_eq!(verifier.expected_counts.get("users"), Some(&100));
+        assert_eq!(verifier.expected_counts.get("orders"), Some(&500));
+    }
+
+    #[test]
+    fn test_recovery_verifier_set_expected_checksum() {
+        let mut verifier = RecoveryVerifier::new();
+        verifier.set_expected_checksum("users", "abc123");
+        verifier.set_expected_checksum("orders", "def456");
+
+        assert_eq!(
+            verifier.expected_checksums.get("users"),
+            Some(&"abc123".to_string())
+        );
+        assert_eq!(
+            verifier.expected_checksums.get("orders"),
+            Some(&"def456".to_string())
+        );
+    }
+
+    #[test]
+    fn test_recovery_verifier_set_baseline() {
+        let mut verifier = RecoveryVerifier::new();
+        let state = DbState::new();
+        verifier.set_baseline(state.clone());
+        assert!(verifier.baseline_state.is_some());
+    }
+
+    #[test]
+    fn test_recovery_verifier_verify_populates_result() {
+        let verifier = RecoveryVerifier::new();
+        let mut result = CrashTestResult {
+            scenario: CrashScenario::at(CrashPoint::WalWrite),
+            recovered: false,
+            data_integrity_ok: false,
+            wal_replay_ok: false,
+            audit_chain_intact: false,
+            signature_valid: false,
+            phantom_commits: 0,
+            lost_writes: 0,
+            recovery_time_ms: 0,
+            error_message: None,
+        };
+
+        verifier.verify(&mut result);
+
+        assert!(result.recovered);
+        assert!(result.data_integrity_ok);
+        assert!(result.wal_replay_ok);
+        assert!(result.audit_chain_intact);
+        assert!(result.signature_valid);
+        assert_eq!(result.phantom_commits, 0);
+        assert_eq!(result.lost_writes, 0);
+        assert!(result.error_message.is_none());
+    }
+
+    #[test]
+    fn test_recovery_verifier_default() {
+        let verifier = RecoveryVerifier::default();
+        assert!(verifier.expected_counts.is_empty());
+        assert!(verifier.expected_checksums.is_empty());
+    }
+
+    #[test]
+    fn test_db_state_new() {
+        let state = DbState::new();
+        assert!(state.tables.is_empty());
+        assert_eq!(state.transaction_count, 0);
+        assert_eq!(state.last_lsn, 0);
+        assert!(state.audit_chain_hash.is_empty());
+    }
+
+    #[test]
+    fn test_db_state_clone() {
+        let original = DbState::new();
+        let cloned = original.clone();
+        assert_eq!(cloned.tables.len(), original.tables.len());
+    }
+
+    #[test]
+    fn test_table_state_new() {
+        let table = TableState {
+            row_count: 42,
+            checksum: "checksum123".to_string(),
+            columns: vec![],
+        };
+        assert_eq!(table.row_count, 42);
+        assert_eq!(table.checksum, "checksum123");
+    }
+
+    #[test]
+    fn test_column_state_with_values() {
+        let col = ColumnState {
+            name: "age".to_string(),
+            null_count: 3,
+            min_value: Some("0".to_string()),
+            max_value: Some("100".to_string()),
+        };
+        assert_eq!(col.name, "age");
+        assert_eq!(col.null_count, 3);
+        assert_eq!(col.min_value, Some("0".to_string()));
+        assert_eq!(col.max_value, Some("100".to_string()));
+    }
+
+    #[test]
+    fn test_column_state_null_values() {
+        let col = ColumnState {
+            name: "email".to_string(),
+            null_count: 10,
+            min_value: None,
+            max_value: None,
+        };
+        assert_eq!(col.null_count, 10);
+        assert!(col.min_value.is_none());
+        assert!(col.max_value.is_none());
+    }
+}
