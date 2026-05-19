@@ -163,3 +163,87 @@ pub struct CrashCampaignSummary {
     pub failures: usize,
     pub success_rate: f64,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::CrashPoint;
+
+    #[test]
+    fn test_crash_test_runner_new() {
+        let config = CrashCampaignConfig::default();
+        let runner = CrashTestRunner::new(config);
+        assert!(runner.results.is_empty());
+    }
+
+    #[test]
+    fn test_crash_test_runner_run_scenario() {
+        let config = CrashCampaignConfig::default();
+        let mut runner = CrashTestRunner::new(config);
+        let scenario = CrashScenario::at(CrashPoint::WalWrite);
+        let result = runner.run_scenario(&scenario);
+        // Framework always succeeds in execute_crash/execute_recovery
+        assert!(result.recovered);
+    }
+
+    #[test]
+    fn test_crash_test_runner_run_random() {
+        let config = CrashCampaignConfig::default();
+        let mut runner = CrashTestRunner::new(config);
+        let results = runner.run_random(5);
+        assert_eq!(results.len(), 5);
+        assert_eq!(runner.results.len(), 5);
+    }
+
+    #[test]
+    fn test_crash_test_runner_summary_empty() {
+        let config = CrashCampaignConfig::default();
+        let runner = CrashTestRunner::new(config);
+        let summary = runner.summary();
+        assert_eq!(summary.total_scenarios, 0);
+        assert_eq!(summary.successes, 0);
+        assert_eq!(summary.failures, 0);
+        assert_eq!(summary.success_rate, 0.0);
+    }
+
+    #[test]
+    fn test_crash_test_runner_summary_with_results() {
+        let config = CrashCampaignConfig {
+            iterations_per_point: 1,
+            random_probability: 0.05,
+            recovery_timeout_ms: 30_000,
+            verify_audit_chain: true,
+            verify_signatures: true,
+        };
+        let mut runner = CrashTestRunner::new(config);
+        // run_campaign populates self.results
+        let results = runner.run_campaign();
+        let summary = runner.summary();
+        // 11 crash points * 1 iteration = 11 scenarios
+        assert_eq!(results.len(), 11);
+        assert_eq!(summary.total_scenarios, 11);
+        // successes + failures should equal total
+        assert_eq!(summary.successes + summary.failures, 11);
+        // Success rate should be between 0 and 1
+        assert!(summary.success_rate >= 0.0 && summary.success_rate <= 1.0);
+    }
+
+    #[test]
+    fn test_crash_campaign_summary_debug() {
+        let summary = CrashCampaignSummary {
+            total_scenarios: 10,
+            successes: 8,
+            failures: 2,
+            success_rate: 0.8,
+        };
+        let debug_str = format!("{:?}", summary);
+        assert!(debug_str.contains("10"));
+        assert!(debug_str.contains("8"));
+    }
+
+    #[test]
+    fn test_crash_test_runner_default() {
+        let runner = CrashTestRunner::default();
+        assert!(runner.results.is_empty());
+    }
+}
