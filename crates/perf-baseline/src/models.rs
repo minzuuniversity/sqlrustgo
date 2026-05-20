@@ -36,6 +36,7 @@ pub struct RegressionResult {
     pub is_regression: bool,
 }
 
+#[derive(Debug, PartialEq)]
 pub enum MetricType {
     QpsUpdate,
     QpsDelete,

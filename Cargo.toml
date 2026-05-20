@@ -53,6 +53,8 @@ members = [
     "crates/evidence-engine",
     "crates/provenance-graph",
     "crates/workflow-v2",
+    "crates/trust-viz",
+    "crates/gmp-api",
 ]
 
 [workspace.package]
@@ -76,6 +78,7 @@ sqlrustgo-server = { path = "crates/server" }
 sqlrustgo-telemetry = { path = "crates/telemetry" }
 sqlrustgo-network = { path = "crates/network" }
 sqlrustgo-gmp = { path = "crates/gmp" }
+sqlrustgo-gmp-api = { path = "crates/gmp-api" }
 sqlrustgo-agentsql = { path = "crates/agentsql" }
 sqlrustgo-vector = { path = "crates/vector" }
 sqlrustgo-graph = { path = "crates/graph" }
@@ -91,6 +94,7 @@ async-trait = "0.1"
 anyhow = "1.0"
 thiserror = "2.0"
 serde = { version = "1.0", features = ["derive"] }
+axum = "0.7"
 log = "0.4"
 env_logger = "0.11"
 hex = "0.4"
