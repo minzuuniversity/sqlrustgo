@@ -639,4 +639,160 @@ mod tests {
         let result = router.route(QueryType::Read);
         assert!(result.is_read);
     }
+
+    #[test]
+    fn test_update_replica_lag() {
+        let config = create_test_config();
+        let mut router = ReadWriteRouter::new(config);
+
+        let replica_addr: SocketAddr = "127.0.0.1:3307".parse().unwrap();
+        router.update_replica_lag(replica_addr, 500);
+
+        let result = router.route(QueryType::Read);
+        assert!(result.is_read);
+    }
+
+    #[test]
+    fn test_set_replica_health() {
+        let config = create_test_config();
+        let mut router = ReadWriteRouter::new(config);
+
+        let replica_addr: SocketAddr = "127.0.0.1:3307".parse().unwrap();
+        router.set_replica_health(replica_addr, false);
+
+        assert_eq!(router.get_healthy_replica_count(), 1); // Only master + 3308 healthy
+    }
+
+    #[test]
+    fn test_get_master_addr() {
+        let config = create_test_config();
+        let router = ReadWriteRouter::new(config);
+
+        assert_eq!(router.get_master_addr(), "127.0.0.1:3306".parse().unwrap());
+    }
+
+    #[test]
+    fn test_get_replica_addrs() {
+        let config = create_test_config();
+        let router = ReadWriteRouter::new(config);
+
+        let addrs = router.get_replica_addrs();
+        assert_eq!(addrs.len(), 2);
+    }
+
+    #[test]
+    fn test_get_healthy_replica_count() {
+        let config = create_test_config();
+        let router = ReadWriteRouter::new(config);
+
+        assert_eq!(router.get_healthy_replica_count(), 2);
+    }
+
+    #[test]
+    fn test_release_connection() {
+        let config = create_test_config();
+        let router = ReadWriteRouter::new(config);
+
+        let replica_addr: SocketAddr = "127.0.0.1:3307".parse().unwrap();
+        router.increment_connection_count(&replica_addr);
+        router.release_connection(&replica_addr);
+    }
+
+    #[test]
+    fn test_classify_sql_read_queries() {
+        assert!(ReadWriteRouter::classify_sql("SELECT * FROM users").is_read());
+        assert!(ReadWriteRouter::classify_sql("select id from orders").is_read());
+        assert!(ReadWriteRouter::classify_sql("  SELECT MAX(value) FROM metrics").is_read());
+    }
+
+    #[test]
+    fn test_classify_sql_write_queries() {
+        assert!(ReadWriteRouter::classify_sql("INSERT INTO users VALUES (1)").is_write());
+        assert!(ReadWriteRouter::classify_sql("update orders set status='done'").is_write());
+        assert!(ReadWriteRouter::classify_sql("DELETE FROM logs WHERE id > 100").is_write());
+        assert!(ReadWriteRouter::classify_sql("  INSERT INTO metrics VALUES (1, 2)").is_write());
+    }
+
+    #[test]
+    fn test_classify_sql_transaction() {
+        assert!(ReadWriteRouter::classify_sql("BEGIN").is_write());
+        assert!(ReadWriteRouter::classify_sql("START TRANSACTION").is_write());
+        assert!(ReadWriteRouter::classify_sql("COMMIT").is_write());
+        assert!(ReadWriteRouter::classify_sql("ROLLBACK").is_write());
+    }
+
+    #[test]
+    fn test_classify_sql_unknown_defaults_to_write() {
+        assert!(ReadWriteRouter::classify_sql("UNKNOWN COMMAND").is_write());
+        assert!(ReadWriteRouter::classify_sql("").is_write());
+    }
+
+    #[test]
+    fn test_replica_node_with_weight() {
+        let replica = ReplicaNode::new("127.0.0.1:3307".parse().unwrap()).with_weight(200);
+        assert_eq!(replica.weight, 200);
+    }
+
+    #[test]
+    fn test_read_write_router_with_multiple_replicas() {
+        let mut config = create_test_config();
+        config
+            .replica_addrs
+            .push(ReplicaNode::new("127.0.0.1:3309".parse().unwrap()));
+        let mut router = ReadWriteRouter::new(config);
+
+        assert_eq!(router.get_replica_addrs().len(), 3);
+        router.remove_replica("127.0.0.1:3309".parse().unwrap());
+        assert_eq!(router.get_replica_addrs().len(), 2);
+    }
+
+    #[test]
+    fn test_read_after_write_strong_consistency() {
+        let mut config = create_test_config();
+        config.consistency_mode = ConsistencyMode::Strong;
+        let consistency = ReadAfterWriteConsistency::new(config);
+
+        consistency.record_master_write(1000);
+        consistency.record_replica_position("127.0.0.1:3307".parse().unwrap(), 999);
+        // Strong consistency: replica position must be >= master position
+        assert!(!consistency.wait_for_replication("127.0.0.1:3307".parse().unwrap()));
+    }
+
+    #[test]
+    fn test_read_after_write_session_consistency() {
+        let mut config = create_test_config();
+        config.consistency_mode = ConsistencyMode::Session;
+        let consistency = ReadAfterWriteConsistency::new(config);
+
+        consistency.record_master_write(1000);
+        consistency.record_replica_position("127.0.0.1:3307".parse().unwrap(), 1000);
+        assert!(consistency.wait_for_replication("127.0.0.1:3307".parse().unwrap()));
+    }
+
+    #[test]
+    fn test_read_after_write_eventual_consistency() {
+        let mut config = create_test_config();
+        config.consistency_mode = ConsistencyMode::Eventual;
+        let consistency = ReadAfterWriteConsistency::new(config);
+
+        consistency.record_master_write(1000);
+        consistency.record_replica_position("127.0.0.1:3307".parse().unwrap(), 950);
+        // Eventual: just needs lag < max_lag_ms
+        assert!(!consistency.wait_for_replication("127.0.0.1:3307".parse().unwrap()));
+    }
+
+    #[test]
+    fn test_router_route_after_removing_all_replicas() {
+        let config = create_test_config();
+        let mut router = ReadWriteRouter::new(config);
+
+        // Remove all replicas
+        router.remove_replica("127.0.0.1:3307".parse().unwrap());
+        router.remove_replica("127.0.0.1:3308".parse().unwrap());
+
+        // Reads should still route (to master as fallback)
+        let result = router.route(QueryType::Read);
+        assert!(result.is_read);
+        assert_eq!(result.target_addr, "127.0.0.1:3306".parse().unwrap());
+    }
 }

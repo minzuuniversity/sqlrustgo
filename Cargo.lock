@@ -5238,6 +5238,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "sqlrustgo-compliance-engine"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "regex",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.18",
+]
+
+[[package]]
+name = "sqlrustgo-crash-sim"
+version = "0.1.0"
+dependencies = [
+ "rand 0.8.6",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.18",
+]
+
+[[package]]
 name = "sqlrustgo-distributed"
 version = "0.1.0"
 dependencies = [
@@ -5263,6 +5286,18 @@ dependencies = [
  "tonic-build",
  "tower 0.5.3",
  "tracing",
+]
+
+[[package]]
+name = "sqlrustgo-evidence-engine"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "hex",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "thiserror 2.0.18",
 ]
 
 [[package]]
@@ -5438,6 +5473,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "sqlrustgo-perf-baseline"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "dirs",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.18",
+]
+
+[[package]]
 name = "sqlrustgo-planner"
 version = "3.0.0"
 dependencies = [
@@ -5450,6 +5497,28 @@ dependencies = [
  "sqlrustgo-types",
  "tempfile",
  "thiserror 2.0.18",
+]
+
+[[package]]
+name = "sqlrustgo-provenance-graph"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+]
+
+[[package]]
+name = "sqlrustgo-qa"
+version = "0.1.0"
+dependencies = [
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
 ]
 
 [[package]]
@@ -5685,6 +5754,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "sqlrustgo-trust-viz"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "sqlrustgo-types"
 version = "3.0.0"
 dependencies = [
@@ -5734,6 +5812,25 @@ dependencies = [
  "parking_lot",
  "rand 0.8.6",
  "rayon",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+]
+
+[[package]]
+name = "sqlrustgo-wal-verification"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
+name = "sqlrustgo-workflow-v2"
+version = "0.1.0"
+dependencies = [
+ "chrono",
  "serde",
  "serde_json",
  "thiserror 2.0.18",
