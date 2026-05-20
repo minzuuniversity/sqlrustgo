@@ -8,4 +8,4 @@ pub mod metrics;
 
 pub use dashboard::{ComplianceDashboard, ComplianceSummary};
 pub use evidence_chain::EvidenceChainViz;
-pub use metrics::{TrustMetrics, MetricType, MetricValue};
+pub use metrics::{MetricType, MetricValue, TrustMetrics};
