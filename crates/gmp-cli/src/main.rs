@@ -28,6 +28,10 @@ enum Commands {
         /// Validate existing index
         #[arg(long, default_value_t = false)]
         validate: bool,
+
+        /// Database path
+        #[arg(long, default_value = "./data/gmp.db")]
+        db: String,
     },
     /// Search for relevant GMP documents
     Search {
@@ -46,6 +50,10 @@ enum Commands {
         /// Show debug information
         #[arg(long, default_value_t = false)]
         explain: bool,
+
+        /// Database path
+        #[arg(long, default_value = "./data/gmp.db")]
+        db: String,
     },
     /// Evaluate against test scenarios
     Evaluate {
@@ -62,7 +70,11 @@ enum Commands {
         limit: Option<usize>,
     },
     /// Interactive shell for queries
-    Shell,
+    Shell {
+        /// Database path
+        #[arg(long, default_value = "./data/gmp.db")]
+        db: String,
+    },
     /// Benchmark performance
     Bench {
         /// Number of concurrent queries
@@ -83,33 +95,114 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::Index { source, validate } => {
+        Commands::Index {
+            source,
+            validate,
+            db,
+        } => {
             info!(
-                "GMP Index command: source={}, validate={}",
-                source, validate
+                "GMP Index command: source={}, validate={}, db={}",
+                source, validate, db
             );
             if validate {
-                println!("Index validation: OK (placeholder)");
-            } else {
+                let config = gmp_storage::StorageConfig {
+                    data_dir: "./data".to_string(),
+                    db_path: db.clone(),
+                };
+                let engine = gmp_storage::StorageEngine::new(config)?;
+                let result = engine.validate()?;
+                println!("Index Validation:");
+                println!("  Documents: {}", result.documents);
+                println!("  Chunks: {}", result.chunks);
                 println!(
-                    "Indexing from: {} (placeholder - not yet implemented)",
-                    source
+                    "  Status: {}",
+                    if result.is_valid {
+                        "VALID"
+                    } else {
+                        "NEEDS REBUILD"
+                    }
                 );
+            } else {
+                println!("Indexing from: {}...", source);
+                let config = gmp_storage::StorageConfig {
+                    data_dir: "./data".to_string(),
+                    db_path: db,
+                };
+                let engine = gmp_storage::StorageEngine::new(config)?;
+                let stats = engine.index_documents(&source)?;
+                println!("Indexing complete:");
+                println!("  Documents imported: {}", stats.documents_imported);
+                println!("  Chunks indexed: {}", stats.chunks_indexed);
+                if !stats.errors.is_empty() {
+                    println!("  Errors: {}", stats.errors.len());
+                    for e in stats.errors.iter().take(5) {
+                        println!("    - {}", e);
+                    }
+                }
             }
         }
         Commands::Search {
             query,
             channel,
-            rerank,
+            rerank: _,
             explain,
+            db,
         } => {
             info!("GMP Search: query={}, channel={}", query, channel);
-            println!(
-                "Searching for: '{}'\nChannel: {}\nRerank: {}\n(Placeholder - full implementation pending Issue #9-#13)",
-                query, channel, rerank
-            );
+            let config = gmp_storage::StorageConfig {
+                data_dir: "./data".to_string(),
+                db_path: db,
+            };
+            let engine = gmp_storage::StorageEngine::new(config)?;
+
+            match channel.as_str() {
+                "fts" | "all" => {
+                    println!("Searching FTS for: '{}'\n", query);
+                    let results = engine.search_fts(&query, 10)?;
+                    if results.is_empty() {
+                        println!("No results found.");
+                    } else {
+                        for (i, r) in results.iter().enumerate() {
+                            println!(
+                                "{}. [{}] {}",
+                                i + 1,
+                                r.doc_type.clone().unwrap_or_default(),
+                                r.title
+                            );
+                            println!("   Score: {:.4}", r.score);
+                            println!("   {}...", r.content.chars().take(200).collect::<String>());
+                            println!();
+                        }
+                    }
+                }
+                "vector" => {
+                    println!(
+                        "Vector search for: '{}' (placeholder - pending Issue #10)",
+                        query
+                    );
+                }
+                "rule" => {
+                    println!(
+                        "Rule search for: '{}' (placeholder - pending Issue #10)",
+                        query
+                    );
+                }
+                "graph" => {
+                    println!(
+                        "Graph search for: '{}' (placeholder - pending Issue #10)",
+                        query
+                    );
+                }
+                _ => {
+                    println!(
+                        "Unknown channel: {}. Use: fts, vector, rule, graph, all",
+                        channel
+                    );
+                }
+            }
+
             if explain {
-                println!("Debug info: See docs/design/gmp-sqlrustgo-four-layer-plan.md");
+                println!("\nDebug: Four-layer architecture - see docs/design/gmp-sqlrustgo-four-layer-plan.md");
             }
         }
         Commands::Evaluate {
@@ -123,7 +216,7 @@ fn main() -> Result<()> {
                 test_set, output, limit
             );
         }
-        Commands::Shell => {
+        Commands::Shell { db } => {
             info!("Starting interactive shell");
             println!("GMP Compliance Retrieval Shell (v1.0.0-alpha)");
             println!("Type 'help' for commands, 'exit' to quit.");
@@ -147,7 +240,30 @@ fn main() -> Result<()> {
                     continue;
                 }
                 if let Some(query) = input.strip_prefix("search ") {
-                    println!("Searching for: '{}' (placeholder)", query);
+                    let config = gmp_storage::StorageConfig {
+                        data_dir: "./data".to_string(),
+                        db_path: db.clone(),
+                    };
+                    match gmp_storage::StorageEngine::new(config) {
+                        Ok(engine) => {
+                            let results = engine.search_fts(query, 5).unwrap_or_default();
+                            if results.is_empty() {
+                                println!("No results found.");
+                            } else {
+                                for (i, r) in results.iter().enumerate() {
+                                    println!(
+                                        "{}. [{}] {}",
+                                        i + 1,
+                                        r.doc_type.clone().unwrap_or_default(),
+                                        r.title
+                                    );
+                                }
+                            }
+                        }
+                        Err(e) => println!("Error: {}", e),
+                    }
+                } else if input == "index" {
+                    println!("Use 'gmp-retrieve index --source gmp-md/' to build indexes");
                 } else {
                     println!(
                         "Unknown command: '{}'. Type 'help' for available commands.",
