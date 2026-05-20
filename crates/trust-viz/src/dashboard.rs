@@ -99,15 +99,13 @@ mod tests {
                 compliance_rate: 0.7,
                 last_updated: test_timestamp(),
             },
-            recent_violations: vec![
-                ViolationItem {
-                    batch_id: "batch-1".to_string(),
-                    rule_name: "Rule-001".to_string(),
-                    severity: "high".to_string(),
-                    description: "Test violation".to_string(),
-                    timestamp: test_timestamp(),
-                },
-            ],
+            recent_violations: vec![ViolationItem {
+                batch_id: "batch-1".to_string(),
+                rule_name: "Rule-001".to_string(),
+                severity: "high".to_string(),
+                description: "Test violation".to_string(),
+                timestamp: test_timestamp(),
+            }],
             evidence_chains: vec![],
         };
         assert_eq!(dashboard.recent_violations.len(), 1);
