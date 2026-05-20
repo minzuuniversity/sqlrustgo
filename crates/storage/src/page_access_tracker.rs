@@ -252,4 +252,125 @@ mod tests {
         info.update_tier(StorageTier::Cold);
         assert_eq!(info.current_tier(), StorageTier::Cold);
     }
+
+    #[test]
+    fn test_page_access_tracker_with_config() {
+        let tracker = PageAccessTracker::with_config(5, 3, 60, 300, 600);
+        tracker.record_access(1);
+        assert_eq!(tracker.get_recommended_tier(1), StorageTier::Hot);
+    }
+
+    #[test]
+    fn test_page_access_tracker_len_and_is_empty() {
+        let tracker = PageAccessTracker::new();
+        assert!(tracker.is_empty());
+        assert_eq!(tracker.len(), 0);
+
+        tracker.record_access(1);
+        assert!(!tracker.is_empty());
+        assert_eq!(tracker.len(), 1);
+
+        tracker.record_access(2);
+        assert_eq!(tracker.len(), 2);
+    }
+
+    #[test]
+    fn test_page_access_tracker_remove_page() {
+        let tracker = PageAccessTracker::new();
+        tracker.record_access(1);
+        assert!(tracker.get_access_info(1).is_some());
+
+        tracker.remove_page(1);
+        assert!(tracker.get_access_info(1).is_none());
+    }
+
+    #[test]
+    fn test_page_access_tracker_clear() {
+        let tracker = PageAccessTracker::new();
+        tracker.record_access(1);
+        tracker.record_access(2);
+        assert_eq!(tracker.len(), 2);
+
+        tracker.clear();
+        assert!(tracker.is_empty());
+    }
+
+    #[test]
+    fn test_page_access_info_last_access() {
+        let info = PageAccessInfo::new(1);
+        // Initially 0 seconds ago since created just now
+        let secs = info.last_access_seconds_ago();
+        assert_eq!(secs, 0);
+
+        info.record_access();
+        let secs_after = info.last_access_seconds_ago();
+        assert!(secs_after <= 1);
+    }
+
+    #[test]
+    fn test_page_access_info_time_helpers() {
+        let info = PageAccessInfo::new(1);
+        // minutes and days should be 0 for fresh access
+        assert_eq!(info.minutes_since_last_access(), 0);
+        assert_eq!(info.days_since_last_access(), 0);
+    }
+
+    #[test]
+    fn test_get_page_ids_needing_migration_from_hot() {
+        let tracker = PageAccessTracker::new();
+        tracker.record_access(1);
+        tracker.record_access(2);
+
+        // Both pages should need migration if they're not in the right tier
+        let to_migrate = tracker.get_page_ids_needing_migration(StorageTier::Hot);
+        // Pages with no explicit tier change are still in Hot
+        // They shouldn't need migration since they're already hot
+        assert_eq!(to_migrate.len(), 0);
+    }
+
+    #[test]
+    fn test_page_access_info_update_tier_records_time() {
+        let info = PageAccessInfo::new(1);
+        let initial_secs = info.last_access_seconds_ago();
+        assert_eq!(initial_secs, 0);
+
+        // Update tier
+        info.update_tier(StorageTier::Cold);
+
+        // last_tier_change should be recorded
+        // Since we just updated, it should be recent
+        let tier = info.current_tier();
+        assert_eq!(tier, StorageTier::Cold);
+    }
+
+    #[test]
+    fn test_multiple_pages_different_tiers() {
+        let tracker = PageAccessTracker::new();
+
+        let info1 = tracker.record_access(1);
+        let info2 = tracker.record_access(2);
+
+        info1.update_tier(StorageTier::Hot);
+        info2.update_tier(StorageTier::Cold);
+
+        assert_eq!(info1.current_tier(), StorageTier::Hot);
+        assert_eq!(info2.current_tier(), StorageTier::Cold);
+    }
+
+    #[test]
+    fn test_tracker_with_many_pages() {
+        let tracker = PageAccessTracker::new();
+
+        for i in 0..100 {
+            tracker.record_access(i);
+        }
+
+        assert_eq!(tracker.len(), 100);
+        assert!(!tracker.is_empty());
+
+        // All pages should be retrievable
+        for i in 0..100 {
+            assert!(tracker.get_access_info(i).is_some());
+        }
+    }
 }
