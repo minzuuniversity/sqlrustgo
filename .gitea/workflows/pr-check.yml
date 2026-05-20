@@ -1,0 +1,126 @@
+name: PR Check — Build, Test, Lint
+
+on:
+  pull_request:
+    branches:
+      - develop/v1.0.0
+      - main
+    types:
+      - opened
+      - synchronize
+      - reopened
+
+concurrency:
+  group: pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  # ============================================================
+  # A-Gate: Build + Test + Clippy + Format
+  # ============================================================
+  agate:
+    name: A-Gate (Build / Test / Clippy / Format)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: https://github.com/actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          profile: minimal
+          components: rustfmt, clippy
+          override: true
+
+      - name: Cache cargo registry
+        uses: https://github.com/actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      # A1: Build
+      - name: A1 — cargo build --release
+        run: cargo build --release
+        continue-on-error: false
+
+      # A3: Clippy (zero warnings)
+      - name: A3 — cargo clippy -- -D warnings
+        run: cargo clippy --all-targets --all-features -- -D warnings
+        continue-on-error: false
+
+      # A4: Format check
+      - name: A4 — cargo fmt -- --check
+        run: cargo fmt --all -- --check
+        continue-on-error: false
+
+      # A2: Tests
+      - name: A2 — cargo test
+        run: cargo test --all-features
+        continue-on-error: false
+
+  # ============================================================
+  # Docs check (always runs, even without code)
+  # ============================================================
+  docs-check:
+    name: Document Integrity Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check required docs exist
+        run: |
+          required_docs=(
+            "README.md"
+            "DOCS_INDEX.md"
+            "docs/governance/GOVERNANCE_STANDARD.md"
+            "docs/governance/GATE_SPEC.md"
+            "docs/releases/v1.0.0/DEVELOPMENT_PLAN.md"
+            "docs/releases/v1.0.0/TEST_PLAN.md"
+            "docs/releases/v1.0.0/RELEASE_GATE_CHECKLIST.md"
+            "docs/design/gmp-sqlrustgo-four-layer-plan.md"
+          )
+          missing=0
+          for doc in "${required_docs[@]}"; do
+            if [ ! -f "$doc" ]; then
+              echo "MISSING: $doc"
+              missing=1
+            else
+              echo "OK: $doc"
+            fi
+          done
+          if [ $missing -ne 0 ]; then
+            echo "ERROR: Required documents missing!"
+            exit 1
+          fi
+
+      - name: Check markdown links
+        run: |
+          broken=0
+          for md in $(find docs -name '*.md' 2>/dev/null); do
+            # Extract relative links and check if target exists
+            grep -oP '\[.*?\]\((?!http)(.*?\.md)\)' "$md" 2>/dev/null | \
+              grep -oP '(?<=\()[^)]+\.md' | \
+              while read link; do
+                target="$(dirname "$md")/$link"
+                if [ ! -f "$target" ]; then
+                  echo "BROKEN LINK in $md: $link -> $target"
+                  echo "broken" > /tmp/broken_links
+                fi
+              done
+          done
+          if [ -f /tmp/broken_links ]; then
+            echo "ERROR: Broken internal links found!"
+            exit 1
+          fi
+          echo "All internal links OK"
