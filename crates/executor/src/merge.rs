@@ -431,5 +431,102 @@ mod tests {
             expression_to_value(&Expression::Literal("NULL".to_string())),
             Value::Null
         );
+        assert_eq!(
+            expression_to_value(&Expression::Literal("TRUE".to_string())),
+            Value::Boolean(true)
+        );
+        assert_eq!(
+            expression_to_value(&Expression::Literal("FALSE".to_string())),
+            Value::Boolean(false)
+        );
+        assert_eq!(
+            expression_to_value(&Expression::Identifier("col1".to_string())),
+            Value::Text("col1".to_string())
+        );
+        assert_eq!(
+            expression_to_value(&Expression::BinaryOp(
+                Box::new(Expression::Literal("1".to_string())),
+                "+".to_string(),
+                Box::new(Expression::Literal("2".to_string()))
+            )),
+            Value::Null
+        );
+    }
+
+    #[test]
+    fn test_expression_to_value_float() {
+        assert_eq!(
+            expression_to_value(&Expression::Literal("3.14".to_string())),
+            Value::Float(3.14)
+        );
+        assert_eq!(
+            expression_to_value(&Expression::Literal("'test'".to_string())),
+            Value::Text("test".to_string())
+        );
+        // Unsupported expression returns Null
+        assert_eq!(
+            expression_to_value(&Expression::UnaryOp(
+                "NOT".to_string(),
+                Box::new(Expression::Literal("TRUE".to_string()))
+            )),
+            Value::Null
+        );
+    }
+
+    #[test]
+    fn test_compare_values_float() {
+        assert_eq!(compare_values(&Value::Float(1.5), &Value::Float(1.5)), 0);
+        assert_eq!(compare_values(&Value::Float(1.0), &Value::Float(2.0)), -1);
+        assert_eq!(compare_values(&Value::Float(2.0), &Value::Float(1.0)), 1);
+    }
+
+    #[test]
+    fn test_sql_compare_operators() {
+        // Equality
+        assert!(sql_compare("=", &Value::Integer(1), &Value::Integer(1)));
+        assert!(!sql_compare("=", &Value::Integer(1), &Value::Integer(2)));
+        // Not equal
+        assert!(sql_compare("!=", &Value::Integer(1), &Value::Integer(2)));
+        assert!(sql_compare("<>", &Value::Integer(1), &Value::Integer(2)));
+        // Greater/less than
+        assert!(sql_compare(">", &Value::Integer(2), &Value::Integer(1)));
+        assert!(sql_compare("<", &Value::Integer(1), &Value::Integer(2)));
+        assert!(sql_compare(">=", &Value::Integer(2), &Value::Integer(2)));
+        assert!(sql_compare("<=", &Value::Integer(2), &Value::Integer(2)));
+        // Null handling
+        assert!(!sql_compare("=", &Value::Null, &Value::Integer(1)));
+        assert!(!sql_compare(">", &Value::Null, &Value::Integer(1)));
+    }
+
+    #[test]
+    fn test_evaluate_binary_op_or() {
+        assert_eq!(
+            evaluate_binary_op(&Value::Boolean(false), &Value::Boolean(true), "OR"),
+            Value::Boolean(true)
+        );
+        assert_eq!(
+            evaluate_binary_op(&Value::Boolean(false), &Value::Boolean(false), "OR"),
+            Value::Boolean(false)
+        );
+    }
+
+    #[test]
+    fn test_evaluate_binary_op_string_eq() {
+        assert_eq!(
+            evaluate_binary_op(
+                &Value::Text("a".to_string()),
+                &Value::Text("a".to_string()),
+                "="
+            ),
+            Value::Boolean(true)
+        );
+        assert_eq!(
+            evaluate_binary_op(
+                &Value::Text("a".to_string()),
+                &Value::Text("b".to_string()),
+                "!="
+            ),
+            Value::Boolean(true)
+        );
     }
 }
