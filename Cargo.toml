@@ -55,6 +55,8 @@ members = [
     "crates/workflow-v2",
     "crates/trust-viz",
     "crates/gmp-api",
+    "crates/reranker",
+    "crates/llm",
 ]
 
 [workspace.package]
