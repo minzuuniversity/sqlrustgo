@@ -1,6 +1,6 @@
 # ============================================
 # GMP-Platform .gitignore
-# 四层隔离体系：仅提交 docs/ + agent-knowledge/
+# 提交通道: docs/ + agent-knowledge/ | gmp-md/ + scripts/ (工具与整理集合)
 # ============================================
 
 # ---- 原始资料目录（禁止提交） ----
@@ -49,3 +49,4 @@ node_modules/
 # ---- 压缩包 ----
 *.tar.gz
 *.zip
+.gitnexus
