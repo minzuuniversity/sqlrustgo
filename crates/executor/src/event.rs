@@ -81,3 +81,75 @@ impl EventExecutor {
             .collect()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn create_test_event(name: &str, enable: bool, schedule: EventSchedule) -> Event {
+        Event {
+            name: name.to_string(),
+            schema: "public".to_string(),
+            body: "SELECT 1".to_string(),
+            enable,
+            schedule,
+            comment: None,
+            created: "2024-01-01 00:00:00".to_string(),
+            last_altered: "2024-01-01 00:00:00".to_string(),
+            definer: "root@localhost".to_string(),
+            sql_mode: "ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES".to_string(),
+            status: "ENABLED".to_string(),
+            on_completion: "PRESERVE".to_string(),
+            starts: None,
+            ends: None,
+        }
+    }
+
+    #[test]
+    fn test_should_run_event_enabled_onetime() {
+        let event = create_test_event("test", true, EventSchedule::OneTime);
+        assert!(EventExecutor::should_run_event(&event));
+    }
+
+    #[test]
+    fn test_should_run_event_enabled_interval() {
+        let event = create_test_event(
+            "test",
+            true,
+            EventSchedule::Interval {
+                interval_value: "5".to_string(),
+                interval_unit: "HOUR".to_string(),
+            },
+        );
+        assert!(EventExecutor::should_run_event(&event));
+    }
+
+    #[test]
+    fn test_should_run_event_disabled() {
+        let event = create_test_event("test", false, EventSchedule::OneTime);
+        assert!(!EventExecutor::should_run_event(&event));
+    }
+
+    #[test]
+    fn test_should_run_event_disabled_interval() {
+        let event = create_test_event(
+            "test",
+            false,
+            EventSchedule::Interval {
+                interval_value: "1".to_string(),
+                interval_unit: "DAY".to_string(),
+            },
+        );
+        assert!(!EventExecutor::should_run_event(&event));
+    }
+
+    #[test]
+    fn test_execute_event_disabled_returns_ok() {
+        use std::sync::RwLock;
+        let catalog = Arc::new(RwLock::new(sqlrustgo_catalog::Catalog::new("test")));
+        let executor = EventExecutor::new(catalog);
+        let event = create_test_event("test", false, EventSchedule::OneTime);
+        // Disabled event returns Ok(()) without parsing
+        assert!(executor.execute_event(&event).is_ok());
+    }
+}
