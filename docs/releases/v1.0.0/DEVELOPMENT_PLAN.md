@@ -266,20 +266,21 @@ v1.0.0 = GMP 合规内审检索的首个正式版本
 
 ### 9.3 Gitea ISSUE 映射
 
-| Issue # | 标题 | Milestone | Assignee | Priority |
-|---------|------|-----------|----------|----------|
-| #1 | [M1] 项目脚手架 + Cargo workspace + CLI 框架 | v1.0.0-A | TRAE + DeepSeek-V4-Pro | P0 |
-| #2 | [M2] 数据导入 + 索引基础设施 (FTS/向量/图谱) | v1.0.0-B | TRAE + DeepSeek-V4-Pro | P0 |
-| #3 | [M3] 四通道检索引擎 (规则/向量/全文/图谱) | v1.0.0-B | TRAE + DeepSeek-V4-Pro | P0 |
-| #4 | [M4] RRF 融合 + Reranker 重排引擎 | v1.0.0-B | TRAE + DeepSeek-V4-Pro | P0 |
-| #5 | [M4] LLM 问答集成 + 意图分类器 | v1.0.0-RC | TRAE + DeepSeek-V4-Pro | P0 |
-| #6 | [M3] CLI 全命令 (index/search/evaluate/shell) | v1.0.0-RC | TRAE + DeepSeek-V4-Pro | P0 |
-| #7 | [M5] 391 场景测试 + 通过率报告 | v1.0.0-RC | TRAE + DeepSeek-V4-Pro | P0 |
-| #8 | [M5] 用户手册 + 部署指南 | v1.0.0-RC | TRAE + DeepSeek-V4-Pro | P0 |
-| #9 | [P1] 索引增量更新 | v1.0.0-GA | — | P1 |
-| #10 | [P2] 中国 GMP 条文补充 | v1.1.0 | — | P2 |
-| #11 | [P2] 设备手册集成 | v1.1.0 | — | P2 |
-| #12 | [P2] Web API 模式 | v1.1.0 | — | P2 |
+| Issue # | 标题 | Milestone | Assignee | Priority | URL |
+|---------|------|-----------|----------|----------|-----|
+| [#8](http://192.168.0.252:3000/openclaw/GMP-Platform/issues/8) | [M1] 项目脚手架 + Cargo workspace + CLI 框架 | v1.0.0-A | TRAE + DeepSeek-V4-Pro | P0 | [→](http://192.168.0.252:3000/openclaw/GMP-Platform/issues/8) |
+| [#9](http://192.168.0.252:3000/openclaw/GMP-Platform/issues/9) | [M2] 数据导入 + 索引基础设施 (FTS/向量/图谱) | v1.0.0-B | TRAE + DeepSeek-V4-Pro | P0 | [→](http://192.168.0.252:3000/openclaw/GMP-Platform/issues/9) |
+| [#10](http://192.168.0.252:3000/openclaw/GMP-Platform/issues/10) | [M3] 四通道检索引擎 (规则/向量/全文/图谱) | v1.0.0-B | TRAE + DeepSeek-V4-Pro | P0 | [→](http://192.168.0.252:3000/openclaw/GMP-Platform/issues/10) |
+| [#11](http://192.168.0.252:3000/openclaw/GMP-Platform/issues/11) | [M4] RRF 融合 + Reranker 重排引擎 | v1.0.0-B | TRAE + DeepSeek-V4-Pro | P0 | [→](http://192.168.0.252:3000/openclaw/GMP-Platform/issues/11) |
+| [#12](http://192.168.0.252:3000/openclaw/GMP-Platform/issues/12) | [M4] LLM 问答集成 + 意图分类器 | v1.0.0-RC | TRAE + DeepSeek-V4-Pro | P0 | [→](http://192.168.0.252:3000/openclaw/GMP-Platform/issues/12) |
+| [#13](http://192.168.0.252:3000/openclaw/GMP-Platform/issues/13) | [M3] CLI 全命令 (index/search/evaluate/shell) | v1.0.0-RC | TRAE + DeepSeek-V4-Pro | P0 | [→](http://192.168.0.252:3000/openclaw/GMP-Platform/issues/13) |
+| [#14](http://192.168.0.252:3000/openclaw/GMP-Platform/issues/14) | [M5] 391 场景测试 + 通过率报告 | v1.0.0-RC | TRAE + DeepSeek-V4-Pro | P0 | [→](http://192.168.0.252:3000/openclaw/GMP-Platform/issues/14) |
+| [#15](http://192.168.0.252:3000/openclaw/GMP-Platform/issues/15) | [M5] 用户手册 + 部署指南 + 发布文档 | v1.0.0-RC | TRAE + DeepSeek-V4-Pro | P0 | [→](http://192.168.0.252:3000/openclaw/GMP-Platform/issues/15) |
+| [#16](http://192.168.0.252:3000/openclaw/GMP-Platform/issues/16) | [P1] 索引增量更新 | v1.0.0-GA | — | P1 | [→](http://192.168.0.252:3000/openclaw/GMP-Platform/issues/16) |
+| [#17](http://192.168.0.252:3000/openclaw/GMP-Platform/issues/17) | [P1] 性能压测 + 基准报告 | v1.0.0-GA | — | P1 | [→](http://192.168.0.252:3000/openclaw/GMP-Platform/issues/17) |
+| [#18](http://192.168.0.252:3000/openclaw/GMP-Platform/issues/18) | [P2] 中国 GMP 条文补充 | v1.1.0 | — | P2 | [→](http://192.168.0.252:3000/openclaw/GMP-Platform/issues/18) |
+| [#19](http://192.168.0.252:3000/openclaw/GMP-Platform/issues/19) | [P2] 设备手册集成 | v1.1.0 | — | P2 | [→](http://192.168.0.252:3000/openclaw/GMP-Platform/issues/19) |
+| [#20](http://192.168.0.252:3000/openclaw/GMP-Platform/issues/20) | [P2] Web API 模式 | v1.1.0 | — | P2 | [→](http://192.168.0.252:3000/openclaw/GMP-Platform/issues/20) |
 
 ---
 
