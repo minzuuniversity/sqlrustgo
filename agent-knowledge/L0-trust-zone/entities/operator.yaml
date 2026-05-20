@@ -1,0 +1,65 @@
+# GMP 实体定义：岗位与人员（Role & Operator）
+
+> 来源: 2025GMP-MD/02_/SOP (126份) + 02_/POL (5份) + 03_/TRA (10份)
+> 隔离层级: L0-trust-zone（禁止出云）
+> 提取日期: 2026-05-20
+
+---
+
+## 实体 Schema
+
+```yaml
+entity_type: operator
+properties:
+  code:              { type: string, required: true, description: "工号" }
+  name:              { type: string, required: true, description: "姓名" }
+  department:        { type: string, required: true, description: "所属部门" }
+  role:              { type: enum, values: [操作工, QA监控员, QC检验员, 生产主管, 维修工, 质量总监], required: true }
+  authorized_devices: { type: list<string>, description: "授权操作的设备编号列表" }
+  authorized_sops:   { type: list<string>, description: "已培训的SOP编号列表" }
+  training_status:   { type: enum, values: [合格, 待复训, 过期], required: true }
+  health_check_due:  { type: date, description: "下次健康检查日期" }
+  signature_level:   { type: enum, values: [操作者, 复核者, 审批者], description: "签名权限级别" }
+```
+
+## 实体实例（示例）
+
+```yaml
+- code: OP-001
+  name: 张三
+  department: 生产部
+  role: 操作工
+  authorized_devices: [DEV-WEI-001, DEV-MIX-001]
+  authorized_sops: [SOP-WEI-001, SOP-MFG-101, SOP-CLE-001]
+  training_status: 合格
+  health_check_due: "2026-12-01"
+  signature_level: 操作者
+
+- code: OP-002
+  name: 李四
+  department: 质量保证部
+  role: QA监控员
+  authorized_devices: []
+  authorized_sops: [SOP-QA-019, SOP-QA-006, SOP-QA-DI-001]
+  training_status: 合格
+  health_check_due: "2026-09-01"
+  signature_level: 复核者
+```
+
+## 关联关系
+
+```yaml
+relationships:
+  - operator -> department:    "属于部门"
+  - operator -> device:        "授权操作设备"
+  - operator -> sop:           "已培训SOP"
+  - operator -> training:      "培训记录"
+  - operator -> batch:         "参与生产批次"
+  - operator -> signature:     "电子签名"
+```
+
+## Agent 使用场景
+
+1. **操作权限验证**: 操作工扫码/人脸识别 → Agent 查询授权列表 → 确认是否可操作该设备
+2. **培训状态检查**: 操作前 Agent 检查 training_status，过期则阻止操作
+3. **双人复核**: Agent 根据 signature_level 自动选择复核人

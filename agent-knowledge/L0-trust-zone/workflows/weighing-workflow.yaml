@@ -1,0 +1,175 @@
+# GMP 流程模型：称量操作
+
+> 来源: 2025GMP-MD/05_/SOP + 08_/SOP + deepseek-implementation-plan.md
+> 隔离层级: L0-trust-zone（禁止出云）
+> 提取日期: 2026-05-20
+> 场景: 最小闭环 — 称量操作
+
+---
+
+## 流程 DAG
+
+```yaml
+workflow_id: WF-WEIGHING-001
+name: 称量操作完整流程
+description: 从任务领取到记录归档的称量操作全流程
+version: "1.0"
+
+steps:
+  - id: start
+    name: 任务领取
+    type: trigger
+    input:
+      - work_order_id
+      - operator_id
+    next: pre_check
+
+  - id: pre_check
+    name: 操作前检查
+    type: parallel
+    branches:
+      - id: check_operator
+        name: 人员权限验证
+        rules: [WEI-004]
+        output: operator_verified
+      - id: check_device
+        name: 设备校准检查
+        rules: [WEI-003]
+        output: device_verified
+      - id: check_area
+        name: 清场确认
+        rules: [WEI-006]
+        output: area_verified
+    all_must_pass: true
+    on_failure: block
+    next: material_confirm
+
+  - id: material_confirm
+    name: 物料确认
+    type: interactive
+    input_mode: photo + voice
+    agent_tasks:
+      - "OCR 提取物料标签信息"
+      - "语音提取物料名称、批号"
+    rules: [WEI-001]
+    output: material_verified
+    on_failure: block
+    next: weighing
+
+  - id: weighing
+    name: 称量操作
+    type: interactive
+    input_mode: voice + manual
+    agent_tasks:
+      - "语音提取称量值"
+      - "自动读取天平数值（如果支持）"
+    rules: [WEI-002]
+    output: weighing_value
+    on_failure:
+      rule_violation: create_deviation
+      next: deviation_handler
+    next: dual_check
+
+  - id: dual_check
+    name: 双人复核
+    type: interactive
+    input_mode: voice + biometric
+    rules: [WEI-005]
+    agent_tasks:
+      - "验证复核人身份"
+      - "验证复核人权限"
+      - "记录复核结果"
+    output: dual_check_passed
+    on_failure: block
+    next: record_generation
+
+  - id: record_generation
+    name: 记录生成
+    type: automatic
+    agent_tasks:
+      - "组装完整称量记录"
+      - "附加 ALCOA 证据链"
+      - "写入 SQLRustGo 不可变链"
+    output: record_id
+    next: end
+
+  - id: deviation_handler
+    name: 偏差处理
+    type: automatic
+    rules: [WEI-007, DEV-001]
+    agent_tasks:
+      - "自动创建偏差记录"
+      - "判定偏差级别"
+      - "评估是否需要启动 CAPA"
+    output: deviation_id
+    next: end
+
+  - id: end
+    name: 流程结束
+    type: terminal
+```
+
+## Agent 决策树
+
+```
+任务领取
+  │
+  ├─ 人员权限验证 ── 失败 → 阻止操作
+  ├─ 设备校准检查 ── 失败 → 阻止操作 + 触发校准工单
+  ├─ 清场确认 ── 失败 → 阻止操作 + 触发清场任务
+  │
+  ↓ 全部通过
+  │
+  物料确认
+  ├─ 物料编码不在工单 → 偏差（主要）
+  ├─ 物料未放行 → 阻止操作
+  ├─ 批号为空 → 偏差（主要）
+  │
+  ↓ 确认通过
+  │
+  称量操作
+  ├─ 值在范围内 → 继续
+  ├─ 值超出范围 → 偏差（主要/关键）→ CAPA 评估
+  │
+  ↓ 称量完成
+  │
+  双人复核
+  ├─ 复核人权限不足 → 阻止
+  ├─ 复核人与操作人相同 → 阻止
+  ├─ 复核通过 → 生成记录
+  │
+  ↓ 复核通过
+  │
+  记录生成 + 写入不可变链 → 流程结束
+```
+
+## 证据链要求
+
+```yaml
+evidence_chain:
+  - step: pre_check
+    evidence:
+      - operator_id_card_photo
+      - device_calibration_certificate_ref
+      - area_clean_check_record
+  - step: material_confirm
+    evidence:
+      - material_label_photo
+      - ocr_extracted_text
+      - voice_transcript
+  - step: weighing
+    evidence:
+      - weighing_value_screenshot
+      - voice_transcript
+      - timestamp
+  - step: dual_check
+    evidence:
+      - reviewer_biometric
+      - reviewer_signature
+      - review_result
+  - step: record_generation
+    evidence:
+      - complete_record_hash
+      - sqlrustgo_tx_id
+      - audit_chain_ref
+```

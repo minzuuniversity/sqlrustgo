@@ -1,0 +1,51 @@
+# ============================================
+# GMP-Platform .gitignore
+# 四层隔离体系：仅提交 docs/ + agent-knowledge/
+# ============================================
+
+# ---- 原始资料目录（禁止提交） ----
+gmp_complete_archive/
+gmp_kg_build/
+gmp-qa-package/
+
+# ---- 通用忽略 ----
+.DS_Store
+*.swp
+*.swo
+*~
+.env
+.env.*
+*.log
+
+# ---- IDE ----
+.idea/
+.vscode/
+*.iml
+
+# ---- 编译产物 ----
+target/
+build/
+dist/
+*.exe
+*.dll
+*.so
+*.dylib
+
+# ---- 数据库文件 ----
+*.db
+*.sqlite
+*.sqlite3
+
+# ---- Python ----
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# ---- Node ----
+node_modules/
+
+# ---- 压缩包 ----
+*.tar.gz
+*.zip

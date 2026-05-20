@@ -1,0 +1,214 @@
+# GMP 判定规则库：变更控制规则
+
+> 来源: gmp_complete_archive/02_补充文档/openclaw_supplement/02_变更控制 (15份)
+> 隔离层级: L0-trust-zone（禁止出云）
+> 提取日期: 2026-05-20
+
+---
+
+## 变更分类与分级
+
+```yaml
+rule_id: CHG-001
+description: 变更分类与分级标准
+applies_to: 所有变更申请
+trigger: 变更申请提交
+classification:
+  major_change:
+    description: "对产品质量可能有重大影响的变更"
+    examples:
+      - "处方变更"
+      - "关键工艺参数变更"
+      - "关键设备更换"
+      - "关键物料供应商变更"
+      - "生产场地变更"
+    approval: ["质量负责人", "生产负责人"]
+    risk_assessment: required
+    validation: required
+
+  minor_change:
+    description: "对产品质量影响较小的变更"
+    examples:
+      - "非关键设备更换"
+      - "文件格式调整"
+      - "非关键参数微调"
+      - "非关键辅料供应商变更"
+    approval: ["QA负责人"]
+    risk_assessment: simplified
+    validation: as_needed
+
+  administrative_change:
+    description: "不影响产品质量的行政性变更"
+    examples:
+      - "文件编号调整"
+      - "人员职责文字修改"
+      - "格式排版变更"
+    approval: ["QA"]
+    risk_assessment: none
+    validation: none
+```
+
+## 变更类型专项规则
+
+```yaml
+rule_id: CHG-002
+description: 工艺变更控制
+source: 02_变更控制/007_工艺变更控制.md
+applies_to: 工艺规程修订
+trigger: 工艺参数/步骤变更申请
+conditions:
+  - condition: "涉及关键工艺参数(CPP)变更"
+    severity: major
+    actions:
+      - create_change_request
+      - risk_assessment_required: true
+      - validation_required: true
+      - regulatory_notification: "如涉及注册标准需报药监局"
+  - condition: "涉及一般工艺参数变更"
+    severity: minor
+    actions:
+      - create_change_request
+      - risk_assessment_required: true
+      - validation_required: false
+
+rule_id: CHG-003
+description: 设备变更控制
+source: 02_变更控制/006_设备变更控制.md
+applies_to: 设备更换/改造
+trigger: 设备变更申请
+conditions:
+  - condition: "关键生产设备更换"
+    severity: major
+    actions:
+      - create_change_request
+      - equipment_qualification: [IQ, OQ, PQ]
+      - cleaning_validation: required
+      - process_validation: required
+  - condition: "非关键设备更换"
+    severity: minor
+    actions:
+      - create_change_request
+      - equipment_qualification: [IQ, OQ]
+
+rule_id: CHG-004
+description: 物料供应商变更控制
+source: 02_变更控制/008_物料供应商变更控制.md
+applies_to: 原辅料/包装材料供应商变更
+trigger: 供应商变更申请
+conditions:
+  - condition: "关键原料供应商变更"
+    severity: major
+    actions:
+      - create_change_request
+      - supplier_audit: required
+      - material_qualification: required
+      - stability_study: "至少3批"
+      - regulatory_notification: "如涉及注册需报批"
+  - condition: "辅料供应商变更"
+    severity: minor
+    actions:
+      - create_change_request
+      - material_qualification: required
+
+rule_id: CHG-005
+description: 检验方法变更控制
+source: 02_变更控制/009_检验方法变更控制.md
+applies_to: 检验方法变更
+trigger: 检验方法变更申请
+conditions:
+  - condition: "替代检验方法"
+    severity: major
+    actions:
+      - method_validation: required
+      - comparative_study: "新旧方法对比"
+      - regulatory_notification: "如涉及注册标准"
+  - condition: "检验方法优化（不改变原理）"
+    severity: minor
+    actions:
+      - method_verification: required
+
+rule_id: CHG-006
+description: 计算机系统变更控制
+source: 02_变更控制/011_计算机系统变更控制.md
+applies_to: 计算机化系统变更
+trigger: 系统升级/配置变更
+conditions:
+  - condition: "GMP关键系统变更"
+    severity: major
+    actions:
+      - create_change_request
+      - system_validation: required
+      - data_migration_verification: required
+      - user_acceptance_test: required
+  - condition: "非关键系统配置调整"
+    severity: minor
+    actions:
+      - create_change_request
+      - verification: required
+```
+
+## 变更流程 DAG
+
+```yaml
+change_control_workflow:
+  steps:
+    - id: change_request
+      name: 变更申请
+      type: trigger
+      input: [change_type, change_description, justification, initiator]
+      next: classification
+
+    - id: classification
+      name: 变更分级
+      type: decision
+      rules: [CHG-001]
+      branches:
+        major: risk_assessment
+        minor: simplified_review
+        administrative: qa_approval
+      next: determined_by_branch
+
+    - id: risk_assessment
+      name: 风险评估
+      type: action
+      method: [FMEA, 鱼骨图]
+      output: risk_report
+      next: approval_major
+
+    - id: approval_major
+      name: 重大变更审批
+      type: approval
+      approvers: [质量负责人, 生产负责人]
+      on_reject: back_to_request
+      next: implementation
+
+    - id: simplified_review
+      name: 简化评审
+      type: approval
+      approvers: [QA负责人]
+      next: implementation
+
+    - id: qa_approval
+      name: QA审批
+      type: approval
+      approvers: [QA]
+      next: implementation
+
+    - id: implementation
+      name: 变更实施
+      type: action
+      actions: [execute_change, training, validation]
+      next: effectiveness_check
+
+    - id: effectiveness_check
+      name: 效果确认
+      type: verification
+      timeline: "变更完成后3-6个月"
+      criteria: "变更目标达成，无新风险"
+      next: closure
+
+    - id: closure
+      name: 变更关闭
+      type: end
+      output: change_closure_record
+```

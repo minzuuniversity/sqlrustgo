@@ -1,0 +1,195 @@
+# GMP 实体定义：设备确认与验证实体
+
+> 来源: gmp_complete_archive/02_补充文档/openclaw_supplement/04_验证管理 + 05_设备确认
+> 隔离层级: L0-trust-zone（禁止出云）
+> 提取日期: 2026-05-20
+
+---
+
+## 设备实体（增强版）
+
+```yaml
+entity_type: Equipment
+description: 生产与检验设备
+properties:
+  - name: equipment_id
+    type: string
+    description: "设备编号"
+    required: true
+  - name: equipment_name
+    type: string
+    description: "设备名称"
+    required: true
+  - name: equipment_type
+    type: enum
+    values: [生产设备, 检验设备, 公用设备]
+    required: true
+  - name: criticality
+    type: enum
+    values: [关键, 非关键]
+    description: "设备关键性分类"
+  - name: qualification_status
+    type: enum
+    values: [未确认, DQ完成, IQ完成, OQ完成, PQ完成, 确认到期, 需再确认]
+    description: "确认状态"
+  - name: calibration_status
+    type: enum
+    values: [合格, 超期, 待校准]
+    description: "校准状态"
+  - name: last_qualification_date
+    type: date
+    description: "最近确认日期"
+  - name: next_qualification_date
+    type: date
+    description: "下次确认到期日"
+  - name: last_calibration_date
+    type: date
+    description: "最近校准日期"
+  - name: next_calibration_date
+    type: date
+    description: "下次校准到期日"
+  - name: location
+    type: string
+    description: "设备所在位置"
+  - name: maintenance_status
+    type: enum
+    values: [正常, 维修中, 停用]
+    description: "维护状态"
+```
+
+## 验证活动实体
+
+```yaml
+entity_type: ValidationActivity
+description: 验证与确认活动
+properties:
+  - name: validation_id
+    type: string
+    description: "验证编号"
+    required: true
+  - name: validation_type
+    type: enum
+    values: [DQ, IQ, OQ, PQ, 工艺验证, 清洁验证, 方法验证, CSV]
+    required: true
+  - name: status
+    type: enum
+    values: [计划中, 执行中, 已完成, 已关闭, 偏差中]
+    required: true
+  - name: target_equipment
+    type: ref
+    entity: Equipment
+    description: "关联设备"
+  - name: target_process
+    type: ref
+    entity: Process
+    description: "关联工艺"
+  - name: protocol_number
+    type: string
+    description: "验证方案编号"
+  - name: planned_start
+    type: date
+  - name: planned_end
+    type: date
+  - name: actual_start
+    type: date
+  - name: actual_end
+    type: date
+  - name: conclusion
+    type: enum
+    values: [合格, 不合格, 有条件合格]
+  - name: deviations
+    type: array
+    item_type: ref
+    entity: Deviation
+    description: "验证过程中的偏差"
+```
+
+## 变更实体
+
+```yaml
+entity_type: ChangeRequest
+description: 变更控制申请
+properties:
+  - name: change_id
+    type: string
+    description: "变更编号"
+    required: true
+  - name: change_type
+    type: enum
+    values: [工艺变更, 设备变更, 物料变更, 方法变更, 文件变更, 系统变更, 供应商变更, 厂房变更]
+    required: true
+  - name: change_level
+    type: enum
+    values: [重大, 一般, 行政]
+    required: true
+  - name: status
+    type: enum
+    values: [申请中, 评审中, 已批准, 实施中, 效果确认, 已关闭, 已驳回]
+    required: true
+  - name: initiator
+    type: ref
+    entity: Person
+    description: "变更发起人"
+  - name: justification
+    type: string
+    description: "变更理由"
+  - name: risk_assessment
+    type: ref
+    entity: RiskAssessment
+    description: "关联风险评估"
+  - name: related_deviations
+    type: array
+    item_type: ref
+    entity: Deviation
+    description: "关联偏差"
+  - name: related_capas
+    type: array
+    item_type: ref
+    entity: CAPA
+    description: "关联CAPA"
+  - name: effectiveness_check_date
+    type: date
+    description: "效果确认日期"
+  - name: effectiveness_result
+    type: enum
+    values: [有效, 无效, 部分有效]
+```
+
+## 风险评估实体
+
+```yaml
+entity_type: RiskAssessment
+description: 质量风险评估
+properties:
+  - name: assessment_id
+    type: string
+    description: "评估编号"
+    required: true
+  - name: method
+    type: enum
+    values: [FMEA, HAZOP, 故障树, 简单评估]
+    required: true
+  - name: severity
+    type: integer
+    range: [1, 10]
+    description: "严重度(S)"
+  - name: occurrence
+    type: integer
+    range: [1, 10]
+    description: "发生度(O)"
+  - name: detection
+    type: integer
+    range: [1, 10]
+    description: "检测度(D)"
+  - name: rpn
+    type: integer
+    description: "风险优先数 = S × O × D"
+  - name: risk_level
+    type: enum
+    values: [高, 中, 低]
+    description: "风险等级"
+  - name: mitigation_actions
+    type: array
+    item_type: string
+    description: "风险缓解措施"
+```

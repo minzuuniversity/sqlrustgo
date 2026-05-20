@@ -1,0 +1,149 @@
+# GMP 判定规则库：设施与设备管理规则
+
+> 来源: gmp_complete_archive/02_补充文档/phase2/facilities (16份) + unique_to_me/设施与设备 (9份) + phase2/security (6份)
+> 隔离层级: L0-trust-zone（禁止出云）
+> 提取日期: 2026-05-20
+
+---
+
+## 洁净区管理规则
+
+```yaml
+rule_id: FAC-001
+description: 洁净区管理
+source: phase2/facilities/ + unique_to_me/设施与设备/
+applies_to: 洁净区环境控制
+trigger: 洁净区操作/监测
+cleanroom_classification:
+  - grade: A
+    use: "高风险操作区（无菌配制、灌装）"
+    particles_static_0.5um: "≤3,520/m³"
+    particles_dynamic_0.5um: "≤3,520/m³"
+    microbial_air: "<1 CFU/m³"
+    microbial_surface: "<1 CFU/接触碟"
+  - grade: B
+    use: "A级区的背景环境"
+    particles_static_0.5um: "≤3,520/m³"
+    particles_dynamic_0.5um: "≤352,000/m³"
+  - grade: C
+    use: "较低风险的无菌工艺"
+    particles_static_0.5um: "≤352,000/m³"
+    particles_dynamic_0.5um: "≤3,520,000/m³"
+  - grade: D
+    use: "一般洁净操作"
+    particles_static_0.5um: "≤3,520,000/m³"
+
+environmental_monitoring:
+  - parameter: 压差
+    requirement: "洁净区与非洁净区≥10Pa"
+    frequency: "实时监测/每班记录"
+  - parameter: 温度
+    requirement: "18-26°C"
+    frequency: "实时监测"
+  - parameter: 相对湿度
+    requirement: "45-65%"
+    frequency: "实时监测"
+  - parameter: 悬浮粒子
+    requirement: "按级别"
+    frequency: "按SOP规定"
+  - parameter: 微生物
+    requirement: "按级别"
+    frequency: "按SOP规定"
+```
+
+## 设备维护管理规则
+
+```yaml
+rule_id: FAC-002
+description: 设备预防性维护
+source: missing/设备预防性维护计划制定规程.md
+applies_to: 设备维护管理
+trigger: 维护计划/周期到达
+maintenance_types:
+  - type: 日常维护
+    frequency: "每日/每班"
+    content: ["清洁", "检查运行状态", "记录"]
+  - type: 预防性维护
+    frequency: "按设备维护计划"
+    content: ["润滑", "更换易损件", "校准", "性能检查"]
+  - type: 大修
+    frequency: "按设备状况/年度计划"
+    content: ["全面检修", "更换关键部件", "再确认"]
+
+rule_id: FAC-003
+description: 设备校准管理
+source: openclaw_supplement/01_GMP条款解释/034_计量器具管理.md
+applies_to: 计量器具/仪表校准
+trigger: 校准周期到达/设备维修后
+requirements:
+  - "所有影响产品质量的测量仪器必须校准"
+  - "校准周期根据使用频率和稳定性确定"
+  - "校准应可追溯到国家/国际标准"
+  - "校准不合格的仪器不得使用"
+  - "校准记录应保存"
+```
+
+## 水系统管理规则
+
+```yaml
+rule_id: FAC-004
+description: 制药用水系统管理
+source: missing/制药用水系统维护规程.md + phase2/production/水系统日常监测.md + phase2/production/生产用水监控规程.md
+applies_to: 纯化水/注射用水系统
+trigger: 水系统日常监测
+water_types:
+  - type: 饮用水
+    use: "设备初始清洗"
+    monitoring: "按国家饮用水标准"
+  - type: 纯化水
+    use: "制剂生产/设备清洗"
+    monitoring:
+      - parameter: 电导率
+        limit: "≤1.1 µS/cm (25°C)"
+        frequency: "在线监测"
+      - parameter: TOC
+        limit: "≤500 ppb"
+        frequency: "在线监测"
+      - parameter: 微生物
+        limit: "≤100 CFU/mL"
+        frequency: "每周"
+  - type: 注射用水
+    use: "无菌制剂/最终冲洗"
+    monitoring:
+      - parameter: 电导率
+        limit: "≤1.1 µS/cm (25°C)"
+        frequency: "在线监测"
+      - parameter: TOC
+        limit: "≤500 ppb"
+        frequency: "在线监测"
+      - parameter: 微生物
+        limit: "≤10 CFU/100mL"
+        frequency: "每周"
+      - parameter: 细菌内毒素
+        limit: "≤0.25 EU/mL"
+        frequency: "每周"
+
+alert_action_limits:
+  - type: 纯化水微生物
+    alert: "50 CFU/mL"
+    action: "100 CFU/mL"
+  - type: 注射用水微生物
+    alert: "5 CFU/100mL"
+    action: "10 CFU/100mL"
+```
+
+## 安全卫生管理
+
+```yaml
+rule_id: FAC-005
+description: 安全卫生管理
+source: phase2/security/ (6份) + unique_to_me/安全卫生/ (5份)
+applies_to: 生产安全与卫生
+requirements:
+  - "人员更衣按洁净级别SOP执行"
+  - "洁净区人员更衣验证"
+  - "人员健康检查定期执行"
+  - "防虫鼠措施有效"
+  - "安全操作规程执行"
+  - "危险品管理合规"
+```

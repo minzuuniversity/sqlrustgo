@@ -1,0 +1,195 @@
+# GMP 判定规则库：生产管理规则
+
+> 来源: gmp_complete_archive/02_补充文档/phase2/production (18份) + unique_to_me/生产管理 (11份)
+> 隔离层级: L0-trust-zone（禁止出云）
+> 提取日期: 2026-05-20
+
+---
+
+## 清场管理规则
+
+```yaml
+rule_id: PROD-001
+description: 清场管理
+source: phase2/production/清场管理规程.md
+applies_to: 生产区域清场
+trigger: 生产结束/品种切换/批次切换
+classification:
+  - type: 每日清场
+    trigger: 每日生产结束
+    requirement: 全面清洁消毒
+  - type: 换品种清场
+    trigger: 不同品种切换
+    requirement: 彻底清洁
+    evidence: 清场合格证
+  - type: 换批次清场
+    trigger: 同品种换批次
+    requirement: 一般清洁
+  - type: 换规格清场
+    trigger: 不同规格切换
+    requirement: 彻底清洁
+    evidence: 清场合格证
+  - type: 停产清场
+    trigger: 长时间停产恢复
+    requirement: 全面清洁验证
+    evidence: 清洁验证报告
+
+clearance_checklist:
+  material_clearance:
+    - "本批物料退回仓库或转入下批"
+    - "剩余物料标识清楚，隔离存放"
+    - "散落物料收集或清理"
+  equipment_cleaning:
+    - "设备内表面清洁无残留"
+    - "设备外表面清洁无灰尘"
+    - "输送管道按清洁规程执行"
+    - "清洁效果目视检查合格"
+  environment_cleaning:
+    - "地面无积尘、无物料残留"
+    - "墙壁无积尘、无蜘蛛网"
+    - "天花板无积尘"
+    - "灯具无积尘"
+    - "地漏清洁畅通"
+```
+
+## 防混淆管理规则
+
+```yaml
+rule_id: PROD-002
+description: 防混淆管理
+source: phase2/production/防混淆管理规程.md
+applies_to: 生产全过程
+trigger: 物料/中间产品/成品流转
+anti_mix_measures:
+  - measure: "物料标识管理"
+    rules:
+      - "所有物料必须有唯一标识"
+      - "标识包含：品名、批号、数量、状态"
+      - "状态标识：待验(黄)、合格(绿)、不合格(红)"
+  - measure: "生产隔离"
+    rules:
+      - "同一区域不得同时生产不同品种"
+      - "不同批次间应有物理或时间隔离"
+  - measure: "清场确认"
+    rules:
+      - "换品种必须清场并取得清场合格证"
+      - "清场检查由QA执行"
+  - measure: "中间产品管理"
+    rules:
+      - "中间产品必须标识清楚"
+      - "存放区域明确划分"
+      - "周转容器不得混用"
+```
+
+## 批生产记录审核规则
+
+```yaml
+rule_id: PROD-003
+description: 批生产记录审核
+source: phase2/production/批生产记录审核规程.md
+applies_to: 批记录审核
+trigger: 批生产完成后
+review_items:
+  - "记录是否完整，无缺项漏项"
+  - "所有操作是否按SOP执行"
+  - "关键工艺参数是否在规定范围内"
+  - "偏差是否已记录并处理"
+  - "物料平衡是否在允许范围内"
+  - "签名是否齐全"
+  - "修改是否按规范执行（划线签名日期）"
+  - "清场记录是否完整"
+acceptance_criteria:
+  - "所有项目审核通过"
+  - "偏差已关闭或已有处理计划"
+  - "物料平衡在规定范围内"
+```
+
+## 生产偏差处理规则
+
+```yaml
+rule_id: PROD-004
+description: 生产偏差处理
+source: phase2/production/生产偏差处理规程.md
+applies_to: 生产过程中的偏差
+trigger: 生产偏差发生
+workflow:
+  - step: 立即记录
+    actions: ["记录偏差发生时间、地点、现象", "通知生产主管和QA"]
+  - step: 初步评估
+    actions: ["评估偏差对产品质量的影响", "确定是否需要暂停生产"]
+  - step: 偏差分级
+    rules: [DEV-001-ENHANCED]
+  - step: 调查分析
+    methods: ["5Why", "鱼骨图", "FMEA"]
+  - step: CAPA制定
+    rules: [CAPA-001]
+  - step: CAPA实施
+    timeline: "按CAPA计划执行"
+  - step: 有效性验证
+    timeline: "CAPA完成后3-6个月"
+```
+
+## 岗位操作规程（Agent 场景知识）
+
+```yaml
+operation_procedures:
+  - process: 称量
+    source: "已有 weighing-rules.yaml + weighing-workflow.yaml"
+    status: complete
+
+  - process: 制粒
+    source: phase2/production/制粒岗位操作规程.md
+    key_parameters: [粘合剂用量, 制粒时间, 颗粒粒度, 干燥温度, 水分含量]
+    agent_use: "制粒工序规则提取"
+
+  - process: 压片
+    source: phase2/production/压片岗位操作规程.md
+    key_parameters: [片重差异, 硬度, 崩解时限, 外观]
+    agent_use: "压片工序规则提取"
+
+  - process: 包衣
+    source: phase2/production/包衣岗位操作规程.md
+    key_parameters: [包衣液浓度, 喷雾速度, 进风温度, 包衣增重]
+    agent_use: "包衣工序规则提取"
+
+  - process: 粉碎
+    source: phase2/production/粉碎岗位操作规程.md
+    key_parameters: [粉碎粒度, 筛网目数, 投料速度]
+    agent_use: "粉碎工序规则提取"
+```
+
+## 无菌操作规范
+
+```yaml
+rule_id: PROD-005
+description: 无菌操作规范
+source: phase2/production/无菌操作规范.md + 无菌生产工艺要求.md
+applies_to: 无菌生产区域
+trigger: 进入无菌生产区域
+requirements:
+  - "人员更衣按SOP执行"
+  - "无菌区人员数量最小化"
+  - "操作动作缓慢，避免剧烈运动"
+  - "物料经传递窗进入，表面消毒"
+  - "环境监测按频次执行"
+  - "培养基模拟灌装定期执行"
+```
+
+## 交叉污染控制
+
+```yaml
+rule_id: PROD-006
+description: 产品防护和交叉污染控制
+source: phase2/production/产品防护和交叉污染控制.md
+applies_to: 多品种共线生产
+trigger: 共线生产评估
+control_measures:
+  - measure: "物理隔离"
+    description: "不同品种不同区域，或时间隔离"
+  - measure: "清洁验证"
+    description: "换品种清洁验证，残留限度合格"
+  - measure: "专用设备"
+    description: "关键工序使用专用设备"
+  - measure: "环境监测"
+    description: "生产区域环境监测达标"
+```

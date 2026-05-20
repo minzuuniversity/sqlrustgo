@@ -1,0 +1,81 @@
+# GMP 实体定义：设备（Device）
+
+> 来源: 2025GMP-MD/04_/SOP (119份) + 04_/VAL (62份)
+> 隔离层级: L0-trust-zone（禁止出云）
+> 提取日期: 2026-05-20
+
+---
+
+## 实体 Schema
+
+```yaml
+entity_type: device
+properties:
+  code:             { type: string, required: true, description: "设备编号" }
+  name:             { type: string, required: true, description: "设备名称" }
+  model:            { type: string, description: "型号" }
+  location:         { type: string, description: "安装位置" }
+  clean_area_level: { type: enum, values: [D级, C级, B级, A级, 非洁净区], description: "洁净级别" }
+  calibration_cycle: { type: string, description: "校准周期" }
+  calibration_due:  { type: date, description: "下次校准日期" }
+  maintenance_cycle: { type: string, description: "维护周期" }
+  status:           { type: enum, values: [运行中, 停机, 维修中, 校准过期, 待清洁], required: true }
+  sop_ref:          { type: string, description: "操作规程编号" }
+  qualification_status: { type: enum, values: [已确认, 待再确认, 过期], description: "确认状态" }
+```
+
+## 实体实例（示例，来自模拟数据和 SOP）
+
+```yaml
+- code: DEV-MIX-001
+  name: 混合机
+  model: "VH-500"
+  location: "D级洁净区-混合间"
+  clean_area_level: D级
+  calibration_cycle: "12个月"
+  calibration_due: "2026-12-01"
+  maintenance_cycle: "6个月"
+  status: 运行中
+  sop_ref: SOP-MFG-101
+  qualification_status: 已确认
+
+- code: DEV-WEI-001
+  name: 电子天平
+  model: "ME4002"
+  location: "D级洁净区-称量间"
+  clean_area_level: D级
+  calibration_cycle: "6个月"
+  calibration_due: "2026-06-15"
+  maintenance_cycle: "12个月"
+  status: 运行中
+  sop_ref: SOP-WEI-001
+  qualification_status: 已确认
+
+- code: DEV-FIL-001
+  name: 板框多层过滤器
+  model: "BM-20"
+  location: "D级洁净区-过滤间"
+  clean_area_level: D级
+  calibration_cycle: "12个月"
+  status: 运行中
+  sop_ref: SOP-FIL-001
+  qualification_status: 已确认
+```
+
+## 关联关系
+
+```yaml
+relationships:
+  - device -> sop:           "遵循操作规程"
+  - device -> calibration:   "需要校准"
+  - device -> maintenance:   "需要维护"
+  - device -> batch:         "用于生产批次"
+  - device -> clean_status:  "清洁状态"
+  - device -> operator:      "授权操作人员"
+```
+
+## Agent 使用场景
+
+1. **设备校准检查**: Agent 在操作前自动检查 calibration_due，若过期则阻止操作并触发校准工单
+2. **清洁状态验证**: 操作前 Agent 查询设备清洁状态，确认清场合格
+3. **操作权限验证**: Agent 检查操作人员是否在 device -> operator 授权列表中

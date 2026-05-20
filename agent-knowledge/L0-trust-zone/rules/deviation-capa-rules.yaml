@@ -1,0 +1,178 @@
+# GMP 判定规则库：偏差与 CAPA
+
+> 来源: knowledge_base_docs/CAPA与偏差关联管理规程_完整示例.md + 变更控制管理规程_含模板.md
+> 隔离层级: L0-trust-zone（禁止出云）
+> 提取日期: 2026-05-20
+
+---
+
+## 规则 1: 偏差分级
+
+```yaml
+rule_id: DEV-001
+description: 偏差分级判定
+applies_to: 偏差登记
+trigger: 偏差事件发生
+classification:
+  critical:
+    description: "对产品质量有潜在影响的关键偏差"
+    conditions:
+      - "涉及关键工艺参数(CPP)超限"
+      - "影响产品安全性或有效性"
+      - "涉及注册批准的工艺变更"
+    requires_capa: true
+    requires_signature: true
+    approval_level: "质量负责人"
+  major:
+    description: "对产品质量有影响的主要偏差"
+    conditions:
+      - "涉及一般工艺参数超限"
+      - "影响产品质量但不影响安全性"
+      - "同一设备/物料/工序第2次偏差"
+    requires_capa: true
+    requires_signature: true
+    approval_level: "质量保证部经理"
+  minor:
+    description: "对产品质量无影响的微小偏差"
+    conditions:
+      - "不影响产品质量的记录错误"
+      - "首次发生的轻微偏差"
+      - "明确根本原因的即时纠正"
+    requires_capa: false
+    requires_signature: true
+    approval_level: "部门负责人"
+sop_ref: SOP-QA-019
+```
+
+## 规则 2: CAPA 触发条件
+
+```yaml
+rule_id: CAPA-001
+description: CAPA 启动触发条件
+applies_to: 偏差调查完成后
+trigger: 偏差调查结论
+must_start_capa:
+  - condition: "偏差分级为 critical"
+    source: "关键偏差"
+  - condition: "偏差分级为 major"
+    source: "主要偏差"
+  - condition: "同一设备/物料/工序第2次偏差"
+    source: "重复偏差"
+  - condition: "监管检查中发现的严重不符合项"
+    source: "审计发现"
+  - condition: "客户投诉中的系统性问题"
+    source: "客户投诉"
+  - condition: "趋势分析显示的恶化趋势"
+    source: "趋势分析"
+may_skip_capa:
+  - condition: "偏差分级为 minor 且首次发生"
+    reason: "微小偏差，即时纠正即可"
+  - condition: "明确根本原因的即时纠正已完成"
+    reason: "根因已消除"
+  - condition: "对产品质量无影响"
+    reason: "无需预防措施"
+sop_ref: SOP-QA-019
+```
+
+## 规则 3: 偏差→CAPA 关联
+
+```yaml
+rule_id: DEV-CAPA-001
+description: 偏差与CAPA关联规则
+applies_to: 偏差-CAPA关联
+trigger: CAPA 启动
+relationships:
+  deviation_to_capa:
+    description: "偏差调查后启动CAPA"
+    trigger: "关键偏差、重复偏差"
+    required_fields:
+      - deviation_id
+      - capa_id
+      - root_cause
+      - corrective_action
+      - preventive_action
+  capa_to_deviation:
+    description: "CAPA执行中发现偏差"
+    trigger: "CAPA实施过程中的偏差"
+  independent_capa:
+    description: "不关联偏差的CAPA"
+    trigger: "投诉、审计、趋势分析"
+sop_ref: SOP-QA-019
+```
+
+## 规则 4: 变更分级
+
+```yaml
+rule_id: CHG-001
+description: 变更分级判定
+applies_to: 变更控制
+trigger: 变更申请提交
+classification:
+  critical:
+    description: "可能影响产品安全性或有效性"
+    examples:
+      - "关键工艺参数重大调整"
+      - "原料药供应商变更"
+    approval: "注册批准+内部批准"
+    requires_validation: true
+  major:
+    description: "可能影响产品质量"
+    examples:
+      - "设备更换"
+      - "批量调整"
+    approval: "质量负责人"
+    requires_validation: true
+  minor:
+    description: "不直接影响产品质量"
+    examples:
+      - "辅助参数调整"
+      - "文件格式变更"
+    approval: "部门负责人"
+    requires_validation: false
+sop_ref: SOP-QA-006
+ref: knowledge_base_docs/变更控制管理规程_含模板.md
+```
+
+## 规则 5: 数据完整性 ALCOA 检查
+
+```yaml
+rule_id: DI-001
+description: 数据完整性ALCOA原则检查
+applies_to: 所有GMP数据记录
+trigger: 记录生成时
+checks:
+  attributable:
+    description: "可追溯性"
+    rule: "每项数据必须可追溯到产生者/来源"
+    validation:
+      - "记录创建者身份已标识"
+      - "创建时间已记录"
+      - "修改记录包含操作者和时间"
+  legible:
+    description: "易读性"
+    rule: "数据内容清晰可读"
+    validation:
+      - "不使用铅笔记录"
+      - "不使用涂改液"
+      - "电子数据格式可读"
+  contemporaneous:
+    description: "同步性"
+    rule: "数据在产生当时及时记录"
+    validation:
+      - "时间戳与操作同步"
+      - "不得后补或提前记录"
+  original:
+    description: "原始性"
+    rule: "数据为第一手来源的原始记录"
+    validation:
+      - "原始数据已保存"
+      - "备份数据与原始一致"
+  accurate:
+    description: "准确性"
+    rule: "数据真实准确"
+    validation:
+      - "数据未经篡改"
+      - "计算结果可验证"
+sop_ref: QA-DI-001
+ref: knowledge_base_docs/数据完整性ALCOA管理规程.md
+```

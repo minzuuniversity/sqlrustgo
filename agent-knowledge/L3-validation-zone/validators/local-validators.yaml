@@ -1,0 +1,111 @@
+# 本地验证器规则
+
+> 隔离层级: L3-validation-zone（禁止出云）
+> 用途: 云端模型输出必须经过本地验证器确认后才能执行
+> 提取日期: 2026-05-20
+
+---
+
+## DSL 验证器
+
+```yaml
+validator_id: VAL-DSL-001
+name: DSL 格式与安全验证
+applies_to: 所有 Agent 生成的 DSL
+checks:
+  - id: dsl_format
+    description: "DSL 格式合法性"
+    rule: "action 必须在允许列表 [weighing_operation, compliance_check, deviation_summary, capa_status, generate_record] 中"
+    on_failure: reject
+
+  - id: required_fields
+    description: "必填字段完整性"
+    rule: "所有 required 字段必须非空"
+    on_failure: reject
+
+  - id: no_sql_injection
+    description: "SQL 注入检测"
+    rule: "params 中不能包含 SELECT/INSERT/UPDATE/DELETE/DROP 等 SQL 关键字"
+    on_failure: reject_and_alert
+
+  - id: no_path_traversal
+    description: "路径遍历检测"
+    rule: "params 中不能包含 ../ 或绝对路径"
+    on_failure: reject_and_alert
+
+  - id: entity_existence
+    description: "实体存在性验证"
+    rule: "entity_code 必须在本地数据库中存在"
+    on_failure: reject
+
+  - id: operator_authorization
+    description: "操作人员权限验证"
+    rule: "operator_code 必须有对应 action 的操作权限"
+    on_failure: reject
+```
+
+## 称量操作验证器
+
+```yaml
+validator_id: VAL-WEI-001
+name: 称量操作合规验证
+applies_to: weighing_operation DSL
+checks:
+  - id: wei_material_match
+    description: "物料与工单匹配"
+    rule: "material_code 必须在 work_order 的物料清单中"
+    on_failure: reject
+
+  - id: wei_device_calibration
+    description: "设备校准状态"
+    rule: "device 的 calibration_due > current_date 且 qualification_status = qualified"
+    on_failure: reject
+
+  - id: wei_operator_training
+    description: "操作人员培训状态"
+    rule: "operator 的 training_status = qualified 且 authorized_sops 包含 SOP-WEI-001"
+    on_failure: reject
+
+  - id: wei_area_clean
+    description: "区域清场状态"
+    rule: "area 的 clean_status = cleaned"
+    on_failure: reject
+
+  - id: wei_value_range
+    description: "称量值范围"
+    rule: "actual_value 在 target_value * (1 - tolerance_pct/100) 到 target_value * (1 + tolerance_pct/100) 之间"
+    on_failure: create_deviation
+
+  - id: wei_dual_check
+    description: "双人复核"
+    rule: "requires_dual_check = true 时，reviewer_code != operator_code 且 reviewer.signature_level >= reviewer"
+    on_failure: reject
+```
+
+## 审计验证器
+
+```yaml
+validator_id: VAL-AUD-001
+name: 审计链完整性验证
+applies_to: 所有写入操作
+checks:
+  - id: audit_timestamp
+    description: "时间戳完整性"
+    rule: "所有记录必须有不可篡改的时间戳"
+    on_failure: reject
+
+  - id: audit_signature
+    description: "电子签名验证"
+    rule: "关键操作必须有有效的电子签名"
+    on_failure: reject
+
+  - id: audit_immutability
+    description: "不可变性验证"
+    rule: "已写入审计链的记录不能被修改或删除"
+    on_failure: reject_and_alert
+
+  - id: audit_alcoa
+    description: "ALCOA 原则验证"
+    rule: "记录必须满足 ALCOA 五原则"
+    on_failure: reject
+```

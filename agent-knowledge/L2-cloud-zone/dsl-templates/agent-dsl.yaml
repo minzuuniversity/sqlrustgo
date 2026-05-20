@@ -1,0 +1,97 @@
+# Agent DSL 模板
+
+> 隔离层级: L2-cloud-zone（仅抽象 DSL，可出云）
+> 用途: 云端模型生成操作指令的 DSL 格式定义
+> 提取日期: 2026-05-20
+
+---
+
+## 称量操作 DSL
+
+```yaml
+# Agent 可生成的 DSL 格式
+# 云端模型只生成此格式，本地引擎验证后执行
+
+dsl_version: "1.0"
+action: weighing_operation
+params:
+  work_order_id: string       # 工单ID
+  material_code: string       # 物料编码
+  target_weight: float        # 目标重量
+  unit: string                # 单位
+  tolerance_pct: float        # 允差百分比
+  device_code: string         # 设备编码
+  operator_code: string       # 操作人员编码
+  requires_dual_check: bool   # 是否需要双人复核
+```
+
+## 偏差查询 DSL
+
+```yaml
+dsl_version: "1.0"
+action: deviation_summary
+filters:
+  severity: enum[critical, major, minor]
+  month: string              # YYYY-MM
+  department: string
+  material_code: string
+limit: int
+```
+
+## CAPA 查询 DSL
+
+```yaml
+dsl_version: "1.0"
+action: capa_status
+filters:
+  status: enum[open, in_progress, completed, overdue]
+  source_deviation: string
+  due_date_before: date
+limit: int
+```
+
+## 合规检查 DSL
+
+```yaml
+dsl_version: "1.0"
+action: compliance_check
+target:
+  entity_type: enum[operator, device, material, area]
+  entity_code: string
+  check_type: enum[authorization, calibration, training, clean_status]
+context:
+  work_order_id: string
+  sop_ref: string
+```
+
+## 记录生成 DSL
+
+```yaml
+dsl_version: "1.0"
+action: generate_record
+record_type: enum[weighing, deviation, capa, inspection, cleaning]
+data:
+  # 由 Agent 从多模态输入中提取的结构化数据
+  fields: map<string, any>
+evidence:
+  photos: list<string>        # 照片引用
+  voice_transcripts: list<string>
+  timestamps: list<datetime>
+  operator_code: string
+  reviewer_code: string
+```
+
+## DSL 执行约束
+
+```yaml
+# 云端模型生成的 DSL 必须满足以下约束，否则本地引擎拒绝执行
+constraints:
+  - action 必须在允许列表中
+  - 所有 required 字段必须非空
+  - entity_code 必须存在于本地数据库
+  - operator_code 必须有操作权限
+  - 不允许直接读写原始数据
+  - 不允许包含 SQL 语句
+  - 不允许包含文件路径
+  - 不允许包含 API Key
+```

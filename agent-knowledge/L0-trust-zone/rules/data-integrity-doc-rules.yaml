@@ -1,0 +1,143 @@
+# GMP 判定规则库：数据完整性与文件管理规则
+
+> 来源: gmp_complete_archive/02_补充文档/phase2/docmgmt (12份) + unique_to_me/文件管理 (9份) + openclaw_supplement/01_GMP条款解释/047-051
+> 隔离层级: L0-trust-zone（禁止出云）
+> 提取日期: 2026-05-20
+
+---
+
+## 数据完整性 ALCOA+ 规则
+
+```yaml
+rule_id: DI-001
+description: 数据完整性 ALCOA+ 原则
+source: GUIDE-QA-021_数据完整性ALCOA原则.md
+applies_to: 所有GMP数据
+principles:
+  - principle: A - Attributable
+    description: "可归属：数据可追溯到执行人"
+    agent_check:
+      - "记录是否有操作人签名"
+      - "电子记录是否有用户身份标识"
+      - "审计追踪是否完整"
+  - principle: L - Legible
+    description: "清晰可读：数据在整个保留期内可读"
+    agent_check:
+      - "手写记录是否清晰"
+      - "电子数据格式是否可持续读取"
+  - principle: C - Contemporaneous
+    description: "同步记录：数据在操作时实时记录"
+    agent_check:
+      - "记录是否在操作时填写"
+      - "是否存在后补记录"
+      - "时间戳是否合理"
+  - principle: O - Original
+    description: "原始记录：保留原始数据"
+    agent_check:
+      - "是否保留原始记录"
+      - "复印件是否标注"
+      - "电子数据是否保留原始格式"
+  - principle: A - Accurate
+    description: "准确：数据真实准确"
+    agent_check:
+      - "数据是否经过篡改"
+      - "修改是否按规范执行"
+      - "计算是否正确"
+
+alcoa_plus:
+  - principle: Complete
+    description: "完整：所有数据包括重复测试均需保留"
+  - principle: Consistent
+    description: "一致：数据在时间顺序和逻辑上一致"
+  - principle: Enduring
+    description: "持久：记录在整个保存期内可获取"
+  - principle: Available
+    description: "可获取：记录在审核或检查时可提供"
+```
+
+## 文件管理规则
+
+```yaml
+rule_id: DOC-001
+description: 文件编码规则
+source: openclaw_supplement/01_GMP条款解释/047_文件编码规则.md
+applies_to: GMP文件编号
+naming_convention:
+  pattern: "{公司代码}-{文件类型}-{部门代码}-{顺序号}"
+  file_types:
+    SOP: 标准操作规程
+    GUI: 管理指南
+    POL: 政策
+    REC: 记录/表单
+    VAL: 验证文件
+    BPR: 批生产记录
+    AGR: 协议
+    TRA: 培训记录
+
+rule_id: DOC-002
+description: SOP编制规范
+source: openclaw_supplement/01_GMP条款解释/048_SOP编制规范.md
+applies_to: SOP编写
+requirements:
+  - "SOP应有唯一编号和版本号"
+  - "SOP应包含：目的、范围、职责、操作步骤、记录"
+  - "SOP应由起草人、审核人、批准人签名"
+  - "SOP应定期回顾（通常2年）"
+  - "修订后的SOP应保留旧版本"
+
+rule_id: DOC-003
+description: 记录填写规范
+source: openclaw_supplement/01_GMP条款解释/050_记录填写规范.md
+applies_to: GMP记录填写
+requirements:
+  - "使用黑色签字笔填写"
+  - "字迹清晰，不得涂改"
+  - "修改时划单线，保持原字可辨，签名并注明日期"
+  - "不得留空白，用斜线划去"
+  - "签名使用全名，注明日期"
+  - "不得使用铅笔或可擦笔"
+
+rule_id: DOC-004
+description: 文件生命周期管理
+source: openclaw_supplement/01_GMP条款解释/051_文件生命周期管理.md
+applies_to: 文件从起草到废止
+lifecycle:
+  - stage: 起草
+    actions: ["起草人编写", "选择文件类型和编号"]
+  - stage: 审核
+    actions: ["部门负责人审核", "QA审核"]
+  - stage: 批准
+    actions: ["授权人批准", "生效日期确定"]
+  - stage: 发放
+    actions: ["受控分发", "旧版回收"]
+  - stage: 执行
+    actions: ["按文件执行", "培训到位"]
+  - stage: 回顾
+    actions: ["定期回顾", "必要时修订"]
+  - stage: 废止
+    actions: ["新版生效后旧版废止", "归档保存"]
+```
+
+## 计算机系统合规规则
+
+```yaml
+rule_id: CS-001
+description: 计算机系统合规管理
+source: phase2/computers/ (6份) + unique_to_me/计算机系统/ (6份)
+applies_to: GMP相关计算机化系统
+requirements:
+  - "系统应经过验证"
+  - "应有审计追踪功能"
+  - "用户权限分级管理"
+  - "电子签名合规"
+  - "数据备份与恢复"
+  - "系统变更控制"
+  - "定期回顾"
+
+audit_trail_requirements:
+  - "记录谁(Who)在何时(When)做了什么(What)"
+  - "不得关闭审计追踪"
+  - "审计追踪记录不得删除"
+  - "管理员权限与操作权限分离"
+  - "定期审核审计追踪"
+```

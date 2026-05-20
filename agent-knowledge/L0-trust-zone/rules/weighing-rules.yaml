@@ -1,0 +1,193 @@
+# GMP 判定规则库：称量操作
+
+> 来源: 2025GMP-MD/05_/SOP + 08_/SOP + knowledge_base_docs
+> 隔离层级: L0-trust-zone（禁止出云）
+> 提取日期: 2026-05-20
+> 场景: 最小闭环 — 称量操作
+
+---
+
+## 规则 1: 物料确认
+
+```yaml
+rule_id: WEI-001
+description: 物料身份确认
+applies_to: 工序-称量
+trigger: 操作工扫描/拍照物料标签
+conditions:
+  - field: material.code
+    operator: IN
+    value: "${work_order.material_list}"
+    violation: deviation
+    severity: major
+    message: "物料编码 ${material.code} 不在工单 ${work_order.id} 的物料清单中"
+  - field: material.batch_no
+    operator: NOT_EMPTY
+    violation: deviation
+    severity: major
+    message: "物料批号为空，无法追溯"
+  - field: material.status
+    operator: EQUALS
+    value: "已放行"
+    violation: block
+    severity: critical
+    message: "物料未放行，禁止使用"
+sop_ref: SOP-WEI-001
+```
+
+## 规则 2: 称量范围控制
+
+```yaml
+rule_id: WEI-002
+description: 称量值范围控制
+applies_to: 工序-称量
+trigger: 操作工语音/手动输入称量值
+conditions:
+  - field: weighing.actual_value
+    operator: BETWEEN
+    value: [${weighing.target_value} * 0.995, ${weighing.target_value} * 1.005]
+    violation: deviation
+    severity: major
+    message: "称量值 ${weighing.actual_value} 超出目标值 ${weighing.target_value} 的 ±0.5% 范围"
+  - field: weighing.unit
+    operator: EQUALS
+    value: "${weighing.target_unit}"
+    violation: warning
+    severity: minor
+    message: "称量单位与目标单位不一致"
+sop_ref: SOP-WEI-001
+```
+
+## 规则 3: 设备校准状态
+
+```yaml
+rule_id: WEI-003
+description: 天平校准状态检查
+applies_to: 工序-称量
+trigger: 称量操作开始前
+conditions:
+  - field: device.calibration_due
+    operator: GREATER_THAN
+    value: "${current_date}"
+    violation: block
+    severity: critical
+    message: "天平 ${device.code} 校准已过期，禁止使用"
+  - field: device.qualification_status
+    operator: EQUALS
+    value: "已确认"
+    violation: block
+    severity: critical
+    message: "天平 ${device.code} 确认状态不合格"
+  - field: device.status
+    operator: EQUALS
+    value: "运行中"
+    violation: block
+    severity: critical
+    message: "天平 ${device.code} 状态非运行中"
+sop_ref: SOP-WEI-001
+```
+
+## 规则 4: 人员操作权限
+
+```yaml
+rule_id: WEI-004
+description: 操作人员权限验证
+applies_to: 工序-称量
+trigger: 操作工登录/扫码
+conditions:
+  - field: operator.authorized_devices
+    operator: CONTAINS
+    value: "${device.code}"
+    violation: block
+    severity: critical
+    message: "操作工 ${operator.code} 未授权操作天平 ${device.code}"
+  - field: operator.training_status
+    operator: EQUALS
+    value: "合格"
+    violation: block
+    severity: major
+    message: "操作工 ${operator.code} 培训状态不合格"
+  - field: operator.authorized_sops
+    operator: CONTAINS
+    value: "SOP-WEI-001"
+    violation: block
+    severity: major
+    message: "操作工 ${operator.code} 未完成称量SOP培训"
+sop_ref: SOP-WEI-001
+```
+
+## 规则 5: 双人复核
+
+```yaml
+rule_id: WEI-005
+description: 称量双人复核
+applies_to: 工序-称量
+trigger: 称量值记录后
+conditions:
+  - field: weighing.requires_dual_check
+    operator: EQUALS
+    value: true
+    violation: block
+    severity: critical
+    message: "称量操作需要双人复核"
+  - field: reviewer.signature_level
+    operator: EQUALS
+    value: "复核者"
+    violation: block
+    severity: critical
+    message: "复核人签名权限级别不足"
+  - field: reviewer.code
+    operator: NOT_EQUALS
+    value: "${operator.code}"
+    violation: block
+    severity: critical
+    message: "复核人与操作人不能为同一人"
+sop_ref: SOP-WEI-001
+```
+
+## 规则 6: 清场确认
+
+```yaml
+rule_id: WEI-006
+description: 称量前清场确认
+applies_to: 工序-称量
+trigger: 称量操作开始前
+conditions:
+  - field: area.clean_status
+    operator: EQUALS
+    value: "已清场"
+    violation: block
+    severity: critical
+    message: "称量区域未清场，禁止操作"
+  - field: area.previous_batch
+    operator: NOT_EQUALS
+    value: "${current_batch}"
+    violation: warning
+    severity: minor
+    message: "前次生产批号与当前不同，需确认清场有效性"
+sop_ref: SOP-WEI-001
+```
+
+## 规则 7: 偏差触发
+
+```yaml
+rule_id: WEI-007
+description: 称量偏差自动触发
+applies_to: 工序-称量
+trigger: 任何称量规则违反
+conditions:
+  - field: violation.severity
+    operator: EQUALS
+    value: "major"
+    action: create_deviation
+    deviation_type: "称量偏差"
+    deviation_level: "主要偏差"
+  - field: violation.severity
+    operator: EQUALS
+    value: "critical"
+    action: block_and_create_deviation
+    deviation_type: "称量偏差"
+    deviation_level: "关键偏差"
+sop_ref: SOP-QA-019
+ref: knowledge_base_docs/CAPA与偏差关联管理规程_完整示例.md
+```

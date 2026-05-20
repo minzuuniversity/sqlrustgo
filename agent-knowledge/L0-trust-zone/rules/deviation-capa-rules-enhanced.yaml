@@ -1,0 +1,191 @@
+# GMP 判定规则库：偏差分级标准（增强版）
+
+> 来源: gmp_complete_archive/02_补充文档/openclaw_supplement/03_偏差CAPA/002_偏差分级标准.md
+> 隔离层级: L0-trust-zone（禁止出云）
+> 提取日期: 2026-05-20
+> 说明: 补充偏差分级决策树和案例库，增强 Agent 偏差判定能力
+
+---
+
+## 偏差分级决策树（来自 openclaw_supplement）
+
+```yaml
+rule_id: DEV-001-ENHANCED
+description: 偏差分级决策树（增强版）
+applies_to: 偏差登记
+trigger: 偏差事件发生
+decision_tree:
+  step_1:
+    question: "该偏差是否影响产品关键质量属性（CQA）？"
+    yes: CRITICAL
+    no: step_2
+  step_2:
+    question: "该偏差是否影响产品放行？"
+    yes: CRITICAL
+    no: step_3
+  step_3:
+    question: "该偏差是否可能对患者安全造成影响？"
+    yes: CRITICAL
+    no: MAJOR
+```
+
+## 重大偏差判定标准（10类）
+
+```yaml
+critical_deviation_types:
+  - type: 关键工艺参数严重偏离
+    examples: ["灭菌温度超出范围", "干燥温度超标"]
+    agent_trigger: "CPP 超限自动触发"
+
+  - type: 物料/产品混淆
+    examples: ["批号混淆", "物料标识错误"]
+    agent_trigger: "物料编码不匹配自动触发"
+
+  - type: 关键设备故障
+    examples: ["正在生产时设备故障"]
+    agent_trigger: "设备状态异常自动触发"
+
+  - type: 关键物料不合格
+    examples: ["原料检验不合格已用于生产"]
+    agent_trigger: "物料放行状态检查失败"
+
+  - type: 关键参数超标
+    examples: ["中间产品含量超标"]
+    agent_trigger: "检验结果超内控标准"
+
+  - type: 重大污染
+    examples: ["发现异物", "微生物超标"]
+    agent_trigger: "环境监测/检验结果异常"
+
+  - type: 注册标准偏离
+    examples: ["检验结果偏离注册标准"]
+    agent_trigger: "检验结果超注册标准"
+
+  - type: 数据完整性问题
+    examples: ["伪造数据", "删除数据"]
+    agent_trigger: "审计追踪异常"
+
+  - type: 物料使用错误
+    examples: ["用错原料", "辅料"]
+    agent_trigger: "物料编码与工单不匹配"
+
+  - type: 生产条件不符
+    examples: ["洁净区压差超标"]
+    agent_trigger: "环境监测数据超限"
+```
+
+## 一般偏差判定标准（7类）
+
+```yaml
+minor_deviation_types:
+  - type: 记录填写不规范
+    examples: ["漏填签名", "日期"]
+  - type: 设备轻微故障
+    examples: ["不影响产品质量的小故障"]
+  - type: 环境条件轻微偏离
+    examples: ["温度轻微超标"]
+  - type: 物料轻微外观问题
+    examples: ["包装轻微破损"]
+  - type: 非关键参数偏离
+    examples: ["非关键步骤时间偏差"]
+  - type: 文件轻微偏差
+    examples: ["SOP轻微偏离"]
+  - type: 设备清洁轻微问题
+    examples: ["清洁不彻底但不严重"]
+```
+
+## 偏差案例库（Agent RAG 检索用）
+
+```yaml
+deviation_cases:
+  - case_id: DEV-CASE-001
+    title: 中间产品含量超标偏差
+    product: PRODUCT-X
+    process: 制粒
+    description: "中间产品含量检测结果为92.3%，低于内控标准95.0%"
+    root_cause: "干燥温度设定错误，实际干燥温度偏低5°C，导致有效成分挥发"
+    capa:
+      - "修订干燥工序SOP，明确温度参数"
+      - "对干燥设备温度探头进行校准"
+      - "对操作人员进行再培训"
+    effectiveness: "3个月内该工序未再发生类似偏差"
+    agent_use: "Agent 检索历史案例辅助根因分析"
+
+  - case_id: DEV-CASE-002
+    title: 洁净区压差超标偏差
+    area: 洁净区走廊
+    description: "洁净区走廊与一般区压差低于标准要求(-5Pa vs 标准-10Pa以上)"
+    root_cause: "高效过滤器压差表损坏，未及时发现"
+    capa:
+      - "更换压差表"
+      - "建立压差日常巡检制度"
+      - "备件库存增加压差表"
+    effectiveness: "压差巡检制度建立后，压差持续符合要求"
+    agent_use: "Agent 检索环境监测偏差案例"
+
+  - case_id: DEV-CASE-003
+    title: 称量值超限偏差
+    process: 称量
+    description: "称量值超出目标值的允差范围"
+    root_cause: "操作工读数错误或天平精度不足"
+    capa:
+      - "增加双人复核"
+      - "天平校准检查"
+      - "操作工再培训"
+    agent_use: "称量场景偏差自动关联"
+```
+
+## 偏差→变更关联规则（新增）
+
+```yaml
+rule_id: DEV-CHG-001
+description: 偏差关联变更管理
+source: openclaw_supplement/02_变更控制/013_偏差关联变更管理.md
+applies_to: 偏差调查结论涉及工艺/设备/物料变更
+trigger: 偏差根因分析完成后
+conditions:
+  - condition: "根因涉及工艺参数需调整"
+    action: create_change_request
+    change_type: "工艺变更"
+    change_level: "按参数重要性分级"
+  - condition: "根因涉及设备需更换或维修"
+    action: create_change_request
+    change_type: "设备变更"
+    change_level: "按设备关键性分级"
+  - condition: "根因涉及物料供应商问题"
+    action: create_change_request
+    change_type: "物料供应商变更"
+    change_level: "major"
+```
+
+## OOS 调查程序（新增）
+
+```yaml
+rule_id: OOS-001
+description: 超标(OOS)调查程序
+source: openclaw_supplement/03_偏差CAPA/008_OOS调查程序.md
+applies_to: 检验结果超出质量标准
+trigger: 检验结果超限
+phases:
+  phase_1_laboratory_investigation:
+    description: "实验室调查"
+    checks:
+      - "检验方法是否正确执行"
+      - "仪器是否校准且运行正常"
+      - "标准品/对照品是否合格"
+      - "操作人员是否培训合格"
+    outcome:
+      assignable_cause_found: "进行重新检验"
+      no_assignable_cause: "进入 Phase 2"
+
+  phase_2_full_investigation:
+    description: "全面调查"
+    checks:
+      - "生产过程回顾"
+      - "批记录审核"
+      - "设备运行记录审查"
+      - "环境监测数据审查"
+    outcome:
+      root_cause_found: "启动 CAPA"
+      no_root_cause: "启动全面 CAPA + 增加监控"
+```

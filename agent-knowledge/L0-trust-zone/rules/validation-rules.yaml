@@ -1,0 +1,160 @@
+# GMP 判定规则库：验证与确认规则
+
+> 来源: gmp_complete_archive/02_补充文档/openclaw_supplement/04_验证管理 + 05_设备确认 (15份)
+> 隔离层级: L0-trust-zone（禁止出云）
+> 提取日期: 2026-05-20
+
+---
+
+## 验证总计划规则
+
+```yaml
+rule_id: VAL-001
+description: 验证总计划管理
+source: 04_验证管理/001_验证总计划.md
+applies_to: 验证活动管理
+trigger: 年度验证计划制定/更新
+validation_types:
+  - type: 设备确认
+    sub_types: [DQ, IQ, OQ, PQ]
+    frequency: "设备新购/大修/变更后"
+  - type: 工艺验证
+    sub_types: [前验证, 同步验证, 回顾性验证, 再验证]
+    frequency: "新产品/重大变更后 + 定期再验证"
+  - type: 清洁验证
+    sub_types: [清洁方法验证, 清洁效果确认]
+    frequency: "新产品/换品种后 + 定期再验证"
+  - type: 分析方法验证
+    sub_types: [方法验证, 方法确认, 方法转移]
+    frequency: "新方法/方法变更后"
+  - type: 计算机系统验证
+    sub_types: [CSV]
+    frequency: "新系统/升级后"
+```
+
+## 设备确认规则（DQ/IQ/OQ/PQ）
+
+```yaml
+rule_id: VAL-002
+description: 设备设计确认(DQ)
+source: 05_设备确认/001_设备设计确认.md
+applies_to: 新设备采购/设计阶段
+trigger: 设备采购需求提出
+checks:
+  - "设备设计是否符合GMP要求"
+  - "设备选型是否满足工艺需求"
+  - "设备材质是否满足产品接触要求"
+  - "设备清洁设计是否合理"
+  - "设备是否便于维护和校准"
+output: DQ报告
+
+rule_id: VAL-003
+description: 设备安装确认(IQ)
+source: 05_设备确认/002_设备安装确认.md
+applies_to: 设备安装完成后
+trigger: 设备安装完毕
+checks:
+  - "设备是否按设计图纸安装"
+  - "公用设施连接是否正确"
+  - "仪表是否安装并校准"
+  - "安装记录是否完整"
+  - "设备标识是否齐全"
+output: IQ报告
+
+rule_id: VAL-004
+description: 设备运行确认(OQ)
+source: 05_设备确认/003_设备运行确认.md
+applies_to: 设备运行测试
+trigger: IQ通过后
+checks:
+  - "设备各功能是否按设计运行"
+  - "关键参数是否在规定范围内"
+  - "报警功能是否正常"
+  - "安全联锁是否有效"
+  - "操作SOP是否可执行"
+output: OQ报告
+
+rule_id: VAL-005
+description: 设备性能确认(PQ)
+source: 05_设备确认/004_设备性能确认.md
+applies_to: 设备性能验证
+trigger: OQ通过后
+checks:
+  - "设备在工艺条件下是否持续稳定运行"
+  - "产品质量是否满足标准"
+  - "连续运行3批以上均合格"
+output: PQ报告
+```
+
+## 关键设备确认方案
+
+```yaml
+equipment_qualification_protocols:
+  - equipment: 灭菌柜
+    source: 05_设备确认/005_灭菌柜确认方案.md
+    critical_parameters: [温度分布, F0值, 生物指示剂]
+    agent_use: "灭菌工序设备状态检查"
+
+  - equipment: HPLC
+    source: 05_设备确认/006_HPLC确认方案.md
+    critical_parameters: [精度, 线性, 检测限, 定量限]
+    agent_use: "检验设备状态检查"
+
+  - equipment: 干燥箱
+    source: 05_设备确认/007_干燥箱确认方案.md
+    critical_parameters: [温度均匀性, 升温速率, 控温精度]
+    agent_use: "干燥工序设备状态检查"
+
+  - equipment: 纯化水系统
+    source: 05_设备确认/008_纯化水系统确认方案.md
+    critical_parameters: [电导率, TOC, 微生物限度, 内毒素]
+    agent_use: "水系统监测规则"
+
+  - equipment: 压缩空气系统
+    source: 05_设备确认/009_压缩空气确认方案.md
+    critical_parameters: [含油量, 露点, 微粒, 微生物]
+    agent_use: "公用系统监测规则"
+```
+
+## 设备年度确认回顾
+
+```yaml
+rule_id: VAL-006
+description: 设备年度确认回顾
+source: 05_设备确认/010_设备年度确认回顾.md
+applies_to: 关键设备年度评估
+trigger: 年度回顾周期
+review_items:
+  - "设备运行日志回顾"
+  - "偏差记录回顾"
+  - "维修保养记录回顾"
+  - "校准记录回顾"
+  - "变更记录回顾"
+outcome:
+  - "确认状态维持"
+  - "需要再验证"
+  - "需要维修/升级"
+```
+
+## 验证方案/报告模板
+
+```yaml
+validation_templates:
+  - type: 验证方案模板
+    source: 04_验证管理/002_验证方案模板.md
+    sections: [目的, 范围, 职责, 前提条件, 测试项目, 接受标准, 偏差处理]
+    agent_use: "Agent 生成验证方案时使用模板结构"
+
+  - type: 验证报告模板
+    source: 04_验证管理/003_验证报告模板.md
+    sections: [概述, 测试结果汇总, 偏差说明, 结论, 附件]
+    agent_use: "Agent 生成验证报告时使用模板结构"
+
+  - type: 清洁验证总计划
+    source: 04_验证管理/004_清洁验证总计划.md
+    agent_use: "清洁验证规则提取"
+
+  - type: 工艺验证总计划
+    source: 04_验证管理/005_工艺验证总计划.md
+    agent_use: "工艺验证规则提取"
+```

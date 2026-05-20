@@ -1,0 +1,67 @@
+# GMP 实体定义：物料（Material）
+
+> 来源: 2025GMP-MD/05_/SOP (121份) + knowledge_base_docs/供应商管理综合规程.md
+> 隔离层级: L0-trust-zone（禁止出云）
+> 提取日期: 2026-05-20
+
+---
+
+## 实体 Schema
+
+```yaml
+entity_type: material
+properties:
+  code:           { type: string, required: true, description: "物料编码" }
+  name:           { type: string, required: true, description: "物料名称" }
+  category:       { type: enum, values: [原料药, 辅料, 包装材料, 中间体, 成品], required: true }
+  specification:  { type: string, description: "规格" }
+  unit:           { type: string, description: "计量单位" }
+  storage_condition: { type: string, description: "储存条件" }
+  shelf_life:     { type: string, description: "有效期" }
+  supplier_code:  { type: string, description: "供应商编码" }
+  quality_standard: { type: string, description: "质量标准编号" }
+  inspection_required: { type: boolean, default: true }
+```
+
+## 实体实例（示例，来自模拟数据）
+
+```yaml
+- code: MAT-RAW-001
+  name: 香加皮
+  category: 原料药
+  specification: "中国药典2025版"
+  unit: kg
+  storage_condition: "阴凉干燥处"
+  shelf_life: "36个月"
+  supplier_code: SUP-SUP001
+  quality_standard: QS-RAW-001
+  inspection_required: true
+
+- code: MAT-EXC-001
+  name: 乙醇
+  category: 辅料
+  specification: "75% v/v"
+  unit: L
+  storage_condition: "易燃品库"
+  shelf_life: "24个月"
+  supplier_code: SUP-SUP003
+  quality_standard: QS-EXC-001
+  inspection_required: true
+```
+
+## 关联关系
+
+```yaml
+relationships:
+  - material -> supplier:        "由供应商提供"
+  - material -> quality_standard: "执行质量标准"
+  - material -> batch:           "用于生产批次"
+  - material -> inspection:      "需要检验"
+  - material -> sop:             "遵循操作规程"
+```
+
+## Agent 使用场景
+
+1. **物料确认**: 操作工拍照物料标签 → Agent OCR 提取物料编码 → 查询此实体 → 验证是否与工单匹配
+2. **入库检验**: 物料到货 → Agent 根据 inspection_required 判断是否需要取样检验
+3. **储存检查**: Agent 根据 storage_condition 提醒储存要求

@@ -1,0 +1,113 @@
+# GMP 判定规则库：物料与仓储管理规则
+
+> 来源: gmp_complete_archive/02_补充文档/phase2/materials (13份) + unique_to_me/物料与产品 (10份)
+> 隔离层级: L0-trust-zone（禁止出云）
+> 提取日期: 2026-05-20
+
+---
+
+## 物料状态管理规则
+
+```yaml
+rule_id: MAT-001
+description: 物料状态标识管理
+source: SOP-QC-002_物料状态标识管理规程.md
+applies_to: 所有物料状态管理
+trigger: 物料入库/检验/放行/使用
+status_flow:
+  - status: 待验
+    color: 黄色
+    trigger: "物料到货入库"
+    next: [合格, 不合格]
+  - status: 合格
+    color: 绿色
+    trigger: "检验合格 + QA放行"
+    next: [使用, 退库]
+  - status: 不合格
+    color: 红色
+    trigger: "检验不合格"
+    next: [退货, 销毁]
+  - status: 限制使用
+    color: 蓝色
+    trigger: "特殊批准使用"
+    next: [使用, 退库]
+```
+
+## 原料入库验收规则
+
+```yaml
+rule_id: MAT-002
+description: 原料入库验收
+source: SOP-QC-003_原料入库验收规程.md
+applies_to: 原料入库
+trigger: 原料到货
+checks:
+  - check: 供应商资质
+    rules: [QMS-002]
+    required: true
+  - check: 包装完整性
+    description: "检查包装是否完好，有无破损"
+  - check: 标识检查
+    description: "品名、批号、数量、供应商是否与订单一致"
+  - check: 随货文件
+    description: "检验报告COA、运输条件记录"
+  - check: 取样
+    description: "按取样SOP取样送检"
+  - check: 请验
+    description: "填写请验单，送QC检验"
+```
+
+## 中间产品管理规则
+
+```yaml
+rule_id: MAT-003
+description: 中间产品管理
+source: SOP-QC-001_中间产品管理规程.md
+applies_to: 中间产品流转
+trigger: 中间产品产出
+requirements:
+  - "中间产品必须有唯一标识（品名、批号、数量、状态）"
+  - "中间产品存放于指定区域"
+  - "中间产品检验合格后方可流转至下工序"
+  - "中间产品有效期/持有时间应有规定"
+  - "中间产品转移应有交接记录"
+```
+
+## 仓储管理规则
+
+```yaml
+rule_id: MAT-004
+description: 仓储管理
+source: phase2/materials/ (13份)
+applies_to: 仓库管理
+requirements:
+  storage_conditions:
+    - type: 常温库
+      range: "10-30°C"
+    - type: 阴凉库
+      range: "≤20°C"
+    - type: 冷库
+      range: "2-8°C"
+    - type: 特殊管理
+      range: "按产品要求"
+  fifo_principle: "先进先出、近效期先出"
+  inventory_check: "定期盘点，账物相符"
+  pest_control: "防虫鼠管理"
+  safety_management: "仓库安全管理"
+```
+
+## 麻醉精神药品管理
+
+```yaml
+rule_id: MAT-005
+description: 麻醉精神药品管理
+source: SOP-QC-005_麻醉精神药品管理规程.md
+applies_to: 麻醉精神药品
+trigger: 麻精药品采购/储存/使用
+requirements:
+  - "双人双锁管理"
+  - "专用账册，逐笔记录"
+  - "使用后空安瓿回收"
+  - "定期盘点，账物相符"
+  - "不合格品单独管理"
+```

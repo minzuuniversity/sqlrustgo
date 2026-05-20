@@ -1,0 +1,219 @@
+# GMP 判定规则库：质量管理体系规则
+
+> 来源: gmp_complete_archive/02_补充文档/phase2/qms (27份) + unique_to_me/质量管理体系 (8份)
+> 隔离层级: L0-trust-zone（禁止出云）
+> 提取日期: 2026-05-20
+
+---
+
+## CAPA 管理规则
+
+```yaml
+rule_id: CAPA-001
+description: 纠正和预防措施管理
+source: phase2/qms/纠正和预防措施管理规程.md
+applies_to: 所有与产品质量相关的纠正和预防措施
+trigger_conditions:
+  - type: 偏差
+    examples: ["生产偏差", "检验偏差"]
+  - type: 投诉
+    examples: ["客户投诉", "产品投诉"]
+  - type: 审计发现
+    examples: ["内部自检", "外部审计"]
+  - type: 趋势分析
+    examples: ["数据异常趋势"]
+  - type: 法规变化
+    examples: ["GMP法规更新"]
+  - type: 正常审查
+    examples: ["定期管理审查"]
+
+root_cause_analysis_methods:
+  - method: 5Why分析
+    applicable: 简单问题
+  - method: 鱼骨图
+    applicable: 复杂问题多因素分析
+  - method: FMEA
+    applicable: 风险相关问题
+  - method: 故障树分析
+    applicable: 系统性故障
+
+capa_workflow:
+  steps:
+    - id: problem_description
+      name: 问题描述
+      actions: ["清晰描述发现的问题", "记录时间、地点、涉及批次", "初步评估影响范围"]
+    - id: root_cause_analysis
+      name: 根本原因分析
+      actions: ["选择分析方法", "识别根本原因", "记录分析过程"]
+    - id: corrective_action
+      name: 纠正措施制定
+      actions: ["针对根本原因制定纠正措施", "评估措施可行性", "确定责任人和完成时限"]
+    - id: preventive_action
+      name: 预防措施制定
+      actions: ["识别潜在类似风险", "制定预防措施", "防止问题重复发生"]
+    - id: implementation
+      name: CAPA实施
+      actions: ["按计划执行", "记录实施过程", "更新相关文件"]
+    - id: effectiveness_check
+      name: 有效性验证
+      timeline: "CAPA完成后3-6个月"
+      criteria: "问题未再发生，目标达成"
+    - id: closure
+      name: CAPA关闭
+      actions: ["验证有效性", "关闭CAPA记录", "归档"]
+```
+
+## 质量风险管理规则
+
+```yaml
+rule_id: QMS-001
+description: 质量风险管理
+source: phase2/qms/质量风险管理制度.md + 质量风险评估流程.md
+applies_to: 质量风险管理
+trigger: 新产品/新工艺/变更/偏差
+risk_management_process:
+  - step: 风险识别
+    methods: ["头脑风暴", "流程图分析", "历史数据回顾"]
+  - step: 风险分析
+    methods: ["FMEA", "HAZOP", "故障树"]
+  - step: 风险评价
+    criteria:
+      high: "RPN > 200 或 严重度 ≥ 8"
+      medium: "100 < RPN ≤ 200"
+      low: "RPN ≤ 100"
+  - step: 风险控制
+    actions: ["降低风险", "接受风险(需论证)", "规避风险"]
+  - step: 风险沟通
+    actions: ["风险报告", "管理评审"]
+  - step: 风险回顾
+    frequency: "年度或事件驱动"
+
+fmea_method:
+  source: phase2/qms/FMEA风险评估方法.md
+  parameters:
+    severity: { range: "1-10", description: "影响的严重程度" }
+    occurrence: { range: "1-10", description: "发生的可能性" }
+    detection: { range: "1-10", description: "被检测到的可能性" }
+  rpn_formula: "S × O × D"
+  action_threshold: "RPN > 100 需采取行动"
+```
+
+## 供应商管理规则
+
+```yaml
+rule_id: QMS-002
+description: 供应商审计管理
+source: phase2/qms/供应商审计管理规程.md + 供应商风险评估标准.md
+applies_to: 物料供应商管理
+trigger: 供应商选择/年度评估/变更
+supplier_classification:
+  - type: 关键物料供应商
+    audit_frequency: "每年至少1次现场审计"
+    risk_assessment: "全面评估"
+  - type: 一般物料供应商
+    audit_frequency: "每2年至少1次"
+    risk_assessment: "简化评估"
+  - type: 辅料/包装材料供应商
+    audit_frequency: "按风险评估结果确定"
+    risk_assessment: "按需评估"
+
+risk_assessment_criteria:
+  - criterion: "物料对产品质量的影响"
+  - criterion: "供应商质量管理体系成熟度"
+  - criterion: "历史供货质量记录"
+  - criterion: "法规合规性"
+  - criterion: "供应链稳定性"
+```
+
+## 产品质量回顾分析
+
+```yaml
+rule_id: QMS-003
+description: 产品质量回顾分析
+source: phase2/qms/产品质量回顾分析规程.md
+applies_to: 年度产品质量回顾
+trigger: 每年1次
+review_content:
+  - "关键工艺参数趋势分析"
+  - "中间产品和成品检验结果趋势"
+  - "偏差和CAPA回顾"
+  - "变更控制回顾"
+  - "投诉和召回回顾"
+  - "验证状态回顾"
+  - "供应商质量回顾"
+  - "环境监测趋势"
+acceptance_criteria: "所有趋势在控制范围内，无系统性问题"
+```
+
+## 药品投诉与召回
+
+```yaml
+rule_id: QMS-004
+description: 药品投诉管理
+source: phase2/qms/药品投诉管理规程.md
+applies_to: 药品质量投诉
+trigger: 收到投诉
+classification:
+  - type: 严重投诉
+    criteria: "涉及产品安全性/有效性"
+    timeline: "24小时内响应"
+  - type: 一般投诉
+    criteria: "包装/外观等非安全性问题"
+    timeline: "72小时内响应"
+
+rule_id: QMS-005
+description: 药品召回管理
+source: phase2/qms/药品召回管理规程.md
+applies_to: 药品召回
+trigger: 产品存在安全隐患
+classification:
+  - type: 一级召回
+    criteria: "可能严重危害健康"
+    timeline: "24小时内启动"
+  - type: 二级召回
+    criteria: "可能暂时危害健康"
+    timeline: "48小时内启动"
+  - type: 三级召回
+    criteria: "一般质量问题"
+    timeline: "72小时内启动"
+```
+
+## 自检与审计
+
+```yaml
+rule_id: QMS-006
+description: GMP自检管理
+source: phase2/qms/GMP自检管理规程.md
+applies_to: 内部自检
+trigger: 自检计划/飞检前
+frequency: "每年至少1次全面自检"
+scope: ["质量管理", "生产管理", "物料管理", "设备管理", "文件管理", "验证管理", "人员管理"]
+```
+
+## 稳定性考察与留样
+
+```yaml
+rule_id: QMS-007
+description: 留样管理
+source: phase2/qms/留样管理规程.md
+applies_to: 留样管理
+requirements:
+  - "每批产品留样量至少为全检量的2倍"
+  - "留样条件与贮存条件一致"
+  - "留样期限为有效期后1年"
+
+rule_id: QMS-008
+description: 稳定性试验管理
+source: phase2/qms/稳定性试验管理规程.md
+applies_to: 稳定性考察
+types:
+  - type: 长期稳定性
+    conditions: "25°C±2°C / 60%RH±5%RH"
+    frequency: "0,3,6,9,12,18,24,36月"
+  - type: 加速稳定性
+    conditions: "40°C±2°C / 75%RH±5%RH"
+    frequency: "0,1,2,3,6月"
+  - type: 影响因素试验
+    conditions: "高温/高湿/强光"
+    frequency: "0,5,10,30天"
+```

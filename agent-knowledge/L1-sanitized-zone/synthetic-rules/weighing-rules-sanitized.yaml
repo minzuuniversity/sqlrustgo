@@ -1,0 +1,75 @@
+# 脱敏规则：称量操作（不含真实参数值）
+
+> 隔离层级: L1-sanitized-zone（Schema 保留，值替换为占位符）
+> 用途: 云端模型推理时使用，不包含真实工艺参数
+> 提取日期: 2026-05-20
+
+---
+
+## 规则模板（脱敏版）
+
+```yaml
+rule_id: WEI-001-SANITIZED
+description: 物料身份确认
+applies_to: 工序-称量
+trigger: 操作工扫描/拍照物料标签
+conditions:
+  - field: material.code
+    operator: IN
+    value: "${work_order.material_list}"
+    violation: deviation
+    severity: major
+  - field: material.batch_no
+    operator: NOT_EMPTY
+    violation: deviation
+    severity: major
+  - field: material.status
+    operator: EQUALS
+    value: "${RELEASED_STATUS}"
+    violation: block
+    severity: critical
+```
+
+```yaml
+rule_id: WEI-002-SANITIZED
+description: 称量值范围控制
+applies_to: 工序-称量
+trigger: 操作工语音/手动输入称量值
+conditions:
+  - field: weighing.actual_value
+    operator: BETWEEN
+    value: ["${TARGET_LOW}", "${TARGET_HIGH}"]
+    violation: deviation
+    severity: major
+```
+
+```yaml
+rule_id: WEI-003-SANITIZED
+description: 天平校准状态检查
+applies_to: 工序-称量
+trigger: 称量操作开始前
+conditions:
+  - field: device.calibration_due
+    operator: GREATER_THAN
+    value: "${CURRENT_DATE}"
+    violation: block
+    severity: critical
+  - field: device.qualification_status
+    operator: EQUALS
+    value: "${QUALIFIED_STATUS}"
+    violation: block
+    severity: critical
+```
+
+## Token 替换映射
+
+| 原始值 | 脱敏 Token | 说明 |
+|--------|-----------|------|
+| 真实物料名称 | RAW_MATERIAL_A/B/C | 物料名替换 |
+| 真实批号 | BATCH-XXXX | 批号替换 |
+| 真实供应商 | SUPPLIER_X | 供应商替换 |
+| 真实工艺参数值 | PARAM_SET_XX | 参数值替换 |
+| 真实称量目标值 | TARGET_VALUE | 目标值替换 |
+| 真实允差范围 | TARGET_LOW/TARGET_HIGH | 范围替换 |
+| 真实设备编号 | DEVICE_XX | 设备编号替换 |
+| 真实人员姓名 | OPERATOR_XX | 人员替换 |
