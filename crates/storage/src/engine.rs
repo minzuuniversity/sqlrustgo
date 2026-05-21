@@ -4,6 +4,7 @@
 use rustc_hash::FxHashMap;
 use serde::{Deserialize, Serialize};
 pub use sqlrustgo_types::{SqlError, SqlResult, Value};
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::collections::HashSet;
 
@@ -590,6 +591,13 @@ pub trait StorageEngine: Send + Sync {
     /// Scan all rows from a table
     fn scan(&self, table: &str) -> SqlResult<Vec<Record>>;
 
+    /// Get records from a table, optionally as a borrowed slice to avoid cloning.
+    /// Default implementation wraps scan() result in Cow::Owned.
+    /// Override in storage backends that can return borrowed data (e.g. MemoryStorage).
+    fn get_records(&self, table: &str) -> SqlResult<Cow<'_, [Record]>> {
+        self.scan(table).map(Cow::Owned)
+    }
+
     /// Insert rows into a table
     fn insert(&mut self, table: &str, records: Vec<Record>) -> SqlResult<()>;
 
@@ -818,6 +826,13 @@ impl Default for MemoryStorage {
 impl StorageEngine for MemoryStorage {
     fn scan(&self, table: &str) -> SqlResult<Vec<Record>> {
         Ok(self.tables.get(table).cloned().unwrap_or_default())
+    }
+
+    fn get_records(&self, table: &str) -> SqlResult<Cow<'_, [Record]>> {
+        Ok(match self.tables.get(table) {
+            Some(records) => Cow::Borrowed(records.as_slice()),
+            None => Cow::Owned(Vec::new()),
+        })
     }
 
     fn insert(&mut self, table: &str, records: Vec<Record>) -> SqlResult<()> {
