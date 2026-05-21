@@ -1,6 +1,6 @@
 //! Provenance query engine
 
-use crate::{Edge, EdgeType, NodeType, ProvenanceGraph, ProvenanceNode, ProvenanceResult};
+use crate::{Edge, NodeType, ProvenanceGraph, ProvenanceNode, ProvenanceResult};
 
 pub struct ProvenanceQuery<'a> {
     graph: &'a ProvenanceGraph,
@@ -62,7 +62,7 @@ impl<'a> ProvenanceQuery<'a> {
     }
 
     /// Find all batches approved by a specific operator
-    pub fn batches_by_operator(&self, operator_id: &str) -> Vec<&ProvenanceNode> {
+    pub fn batches_by_operator(&self, _operator_id: &str) -> Vec<&ProvenanceNode> {
         self.graph.nodes_of_type(NodeType::Batch)
     }
 }
