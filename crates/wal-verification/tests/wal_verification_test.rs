@@ -1,6 +1,6 @@
 use sqlrustgo_wal_verification::{
-    WALOperation, WALState, WALProperty, PropertySeverity,
-    WALRecord, WALLog, WALInvariant, WALInvariantResult,
+    PropertySeverity, WALInvariant, WALInvariantResult, WALLog, WALOperation, WALProperty,
+    WALRecord, WALState,
 };
 
 #[test]
@@ -40,10 +40,22 @@ fn test_wal_property_critical_count() {
 
 #[test]
 fn test_wal_property_severity() {
-    assert_eq!(WALProperty::IdempotentReplay.severity(), PropertySeverity::Critical);
-    assert_eq!(WALProperty::AtomicWrites.severity(), PropertySeverity::Critical);
-    assert_eq!(WALProperty::LSNMonotonicity.severity(), PropertySeverity::Critical);
-    assert_eq!(WALProperty::AuditChainContinuity.severity(), PropertySeverity::Important);
+    assert_eq!(
+        WALProperty::IdempotentReplay.severity(),
+        PropertySeverity::Critical
+    );
+    assert_eq!(
+        WALProperty::AtomicWrites.severity(),
+        PropertySeverity::Critical
+    );
+    assert_eq!(
+        WALProperty::LSNMonotonicity.severity(),
+        PropertySeverity::Critical
+    );
+    assert_eq!(
+        WALProperty::AuditChainContinuity.severity(),
+        PropertySeverity::Important
+    );
 }
 
 #[test]

@@ -1,5 +1,5 @@
-use serde::{Deserialize, Serialize};
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DashboardSummary {
@@ -78,10 +78,6 @@ impl DashboardService {
         page: u32,
         page_size: u32,
     ) -> super::PaginatedResponse<BatchStatus> {
-        super::PaginatedResponse::new(
-            Vec::new(),
-            0,
-            &super::PaginationParams { page, page_size },
-        )
+        super::PaginatedResponse::new(Vec::new(), 0, &super::PaginationParams { page, page_size })
     }
 }

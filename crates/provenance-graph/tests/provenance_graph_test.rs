@@ -1,6 +1,5 @@
 use sqlrustgo_provenance_graph::{
-    ProvenanceGraph, ProvenanceNode, NodeType, Edge, EdgeType,
-    ProvenanceResult,
+    Edge, EdgeType, NodeType, ProvenanceGraph, ProvenanceNode, ProvenanceResult,
 };
 
 #[test]

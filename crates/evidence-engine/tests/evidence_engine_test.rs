@@ -1,6 +1,5 @@
 use sqlrustgo_evidence_engine::{
-    EvidencePackage, EvidenceFormat, EvidenceCompleteness,
-    EvidenceManifest, ManifestEntry,
+    EvidenceCompleteness, EvidenceFormat, EvidenceManifest, EvidencePackage, ManifestEntry,
 };
 
 #[test]
