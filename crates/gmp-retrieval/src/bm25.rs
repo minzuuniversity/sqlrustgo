@@ -72,7 +72,8 @@ impl Bm25Search {
                 }
                 let idf = *self.idf.get(term).unwrap_or(&0.0);
                 let numerator = term_freq as f64 * (self.k1 + 1.0);
-                let denominator = term_freq as f64 + self.k1 * (1.0 - self.b + self.b * doc_len as f64 / self.avg_doc_len);
+                let denominator = term_freq as f64
+                    + self.k1 * (1.0 - self.b + self.b * doc_len as f64 / self.avg_doc_len);
                 score += idf * numerator / denominator;
             }
             scores[doc_id] = score;

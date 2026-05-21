@@ -1,0 +1,16 @@
+[package]
+name = "sqlrustgo-llm"
+version = "0.1.0"
+edition = "2021"
+description = "LLM Chat integration for SQLRustGo - Ollama Chat Completion"
+
+[dependencies]
+async-trait = "0.1"
+reqwest = { version = "0.12", features = ["json"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tokio = { version = "1.0", features = ["full"] }
+thiserror = "2.0"
+
+[dev-dependencies]
+tokio-test = "0.4"

@@ -1,10 +1,10 @@
 pub mod bm25;
-pub mod rrf;
 pub mod retrieval;
+pub mod rrf;
 
 pub use bm25::Bm25Search;
-pub use rrf::RrfFusion;
 pub use retrieval::RetrievalEngine;
+pub use rrf::RrfFusion;
 
 #[cfg(test)]
 mod tests {
