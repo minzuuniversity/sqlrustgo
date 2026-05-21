@@ -17,8 +17,8 @@ thiserror = { workspace = true }
 tracing = { workspace = true }
 tokio = { workspace = true }
 rusqlite = { version = "0.32", features = ["bundled"] }
-reqwest = { workspace = true, features = ["json", "blocking"] }
+reqwest = { version = "0.12", features = ["json", "blocking"] }
+tempfile = "3"
 glob = "0.3"
 
 [dev-dependencies]
-tempfile = "3"

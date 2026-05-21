@@ -156,10 +156,7 @@ pub fn create_reranker(ollama_url: &str, model: &str) -> Arc<dyn Reranker> {
             .timeout(std::time::Duration::from_secs(2))
             .build()
         {
-            if let Ok(response) = client
-                .get(format!("{}/api/tags", base_url))
-                .send()
-            {
+            if let Ok(response) = client.get(format!("{}/api/tags", base_url)).send() {
                 return response.status().is_success();
             }
         }
@@ -170,9 +167,13 @@ pub fn create_reranker(ollama_url: &str, model: &str) -> Arc<dyn Reranker> {
 
     if available {
         tracing::info!("Ollama reranker available, using BGE-Reranker-v2-m3");
-        Arc::new(OllamaReranker::new(ollama_url.to_string(), model.to_string()))
+        Arc::new(OllamaReranker::new(
+            ollama_url.to_string(),
+            model.to_string(),
+        ))
     } else {
         tracing::info!("Ollama not available, using NoopReranker");
         Arc::new(NoopReranker)
     }
 }
+mod tests;

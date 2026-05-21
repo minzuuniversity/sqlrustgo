@@ -33,7 +33,11 @@ impl RuleChannel {
             for entry in walkdir::WalkDir::new(path)
                 .into_iter()
                 .filter_map(Result::ok)
-                .filter(|e| e.path().extension().map_or(false, |ext| ext == "yaml" || ext == "yml"))
+                .filter(|e| {
+                    e.path()
+                        .extension()
+                        .map_or(false, |ext| ext == "yaml" || ext == "yml")
+                })
             {
                 if let Ok(content) = std::fs::read_to_string(entry.path()) {
                     if let Ok(rule) = serde_yaml::from_str::<KnowledgeRule>(&content) {
@@ -90,7 +94,10 @@ impl RuleChannel {
                         ScoredChunk {
                             chunk_id: 0,
                             doc_id: format!("rule-{}", r.id),
-                            content: format!("【{}】{}\n\n要求: {}", r.category, r.description, r.requirement),
+                            content: format!(
+                                "【{}】{}\n\n要求: {}",
+                                r.category, r.description, r.requirement
+                            ),
                             score,
                             source: ChannelType::Rule,
                         },
@@ -120,7 +127,13 @@ fn get_builtin_rules() -> Vec<KnowledgeRule> {
             subcategory: "偏差分级".into(),
             description: "偏差分级标准".into(),
             requirement: "重大偏差应启动CAPA，一般偏差需记录和评审，微小偏差可记录可不评审".into(),
-            keywords: vec!["偏差".into(), "分级".into(), "重大".into(), "一般".into(), "微小".into()],
+            keywords: vec![
+                "偏差".into(),
+                "分级".into(),
+                "重大".into(),
+                "一般".into(),
+                "微小".into(),
+            ],
         },
         KnowledgeRule {
             id: "DEV-002".into(),
@@ -136,7 +149,13 @@ fn get_builtin_rules() -> Vec<KnowledgeRule> {
             subcategory: "CAPA触发".into(),
             description: "CAPA触发条件".into(),
             requirement: "偏差、投诉、审计发现、内审不符合项均应触发CAPA评估".into(),
-            keywords: vec!["CAPA".into(), "触发".into(), "偏差".into(), "投诉".into(), "审计".into()],
+            keywords: vec![
+                "CAPA".into(),
+                "触发".into(),
+                "偏差".into(),
+                "投诉".into(),
+                "审计".into(),
+            ],
         },
         KnowledgeRule {
             id: "SOP-001".into(),
@@ -151,8 +170,16 @@ fn get_builtin_rules() -> Vec<KnowledgeRule> {
             category: "验证与确认".into(),
             subcategory: "设备确认".into(),
             description: "设备确认阶段".into(),
-            requirement: "设备确认包括IQ（安装确认）、OQ（运行确认）、PQ（性能确认）三个阶段".into(),
-            keywords: vec!["验证".into(), "确认".into(), "IQ".into(), "OQ".into(), "PQ".into(), "设备".into()],
+            requirement: "设备确认包括IQ（安装确认）、OQ（运行确认）、PQ（性能确认）三个阶段"
+                .into(),
+            keywords: vec![
+                "验证".into(),
+                "确认".into(),
+                "IQ".into(),
+                "OQ".into(),
+                "PQ".into(),
+                "设备".into(),
+            ],
         },
     ]
 }
@@ -165,7 +192,11 @@ pub struct VectorChannel {
 }
 
 impl VectorChannel {
-    pub fn new(storage: std::sync::Arc<gmp_storage::StorageEngine>, ollama_url: String, embedding_model: String) -> Self {
+    pub fn new(
+        storage: std::sync::Arc<gmp_storage::StorageEngine>,
+        ollama_url: String,
+        embedding_model: String,
+    ) -> Self {
         Self {
             storage,
             ollama_url,
@@ -183,16 +214,17 @@ impl VectorChannel {
 
         // Search vectors in storage
         let storage = self.storage.clone();
-        match tokio::task::spawn_blocking(move || {
-            storage.search_vectors(&embedding, top_k)
-        }).await {
-            Ok(Ok(results)) => results.into_iter().map(|r| ScoredChunk {
-                chunk_id: r.chunk_id,
-                doc_id: r.doc_id,
-                content: r.content,
-                score: r.score as f32,
-                source: gmp_core::ChannelType::Vector,
-            }).collect(),
+        match tokio::task::spawn_blocking(move || storage.search_vectors(&embedding, top_k)).await {
+            Ok(Ok(results)) => results
+                .into_iter()
+                .map(|r| ScoredChunk {
+                    chunk_id: r.chunk_id,
+                    doc_id: r.doc_id,
+                    content: r.content,
+                    score: r.score as f32,
+                    source: gmp_core::ChannelType::Vector,
+                })
+                .collect(),
             _ => vec![],
         }
     }
@@ -287,7 +319,10 @@ impl GraphChannel {
 
             // Check entity matches
             for entity in &entities {
-                if rule.keywords.iter().any(|kw| kw.to_lowercase().contains(entity))
+                if rule
+                    .keywords
+                    .iter()
+                    .any(|kw| kw.to_lowercase().contains(entity))
                     || rule.description.to_lowercase().contains(entity)
                 {
                     score += 1.0;
@@ -298,14 +333,21 @@ impl GraphChannel {
                 results.push(ScoredChunk {
                     chunk_id: 0,
                     doc_id: format!("graph-{}", rule.id),
-                    content: format!("【{}】{}\n\n要求: {}", rule.category, rule.description, rule.requirement),
+                    content: format!(
+                        "【{}】{}\n\n要求: {}",
+                        rule.category, rule.description, rule.requirement
+                    ),
                     score,
                     source: ChannelType::Graph,
                 });
             }
         }
 
-        results.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+        results.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
         results.into_iter().take(top_k).collect()
     }
 }
@@ -313,7 +355,9 @@ impl GraphChannel {
 /// Extract entities from query
 fn extract_entities(query: &str) -> Vec<String> {
     let mut entities = Vec::new();
-    let keywords = ["偏差", "CAPA", "SOP", "变更", "验证", "设备", "工艺", "清洁", "偏差", "投诉", "审计"];
+    let keywords = [
+        "偏差", "CAPA", "SOP", "变更", "验证", "设备", "工艺", "清洁", "偏差", "投诉", "审计",
+    ];
 
     for kw in &keywords {
         if query.contains(kw) {
@@ -334,12 +378,11 @@ pub struct FourChannelEngine {
 }
 
 impl FourChannelEngine {
-    pub fn new(
-        storage: gmp_storage::StorageEngine,
-        agent_knowledge_dir: Option<&str>,
-    ) -> Self {
+    pub fn new(storage: gmp_storage::StorageEngine, agent_knowledge_dir: Option<&str>) -> Self {
         let rules = if let Some(dir) = agent_knowledge_dir {
-            RuleChannel::from_yaml_files(dir).map(|c| c.rules).unwrap_or_else(|_| get_builtin_rules())
+            RuleChannel::from_yaml_files(dir)
+                .map(|c| c.rules)
+                .unwrap_or_else(|_| get_builtin_rules())
         } else {
             get_builtin_rules()
         };

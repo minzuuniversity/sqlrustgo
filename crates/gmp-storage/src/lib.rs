@@ -3,3 +3,4 @@
 pub mod storage;
 
 pub use storage::{IndexStats, SearchResult, StorageConfig, StorageEngine, ValidationResult};
+mod tests;
