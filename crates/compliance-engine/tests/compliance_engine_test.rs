@@ -1,7 +1,5 @@
-use sqlrustgo_compliance_engine::{
-    ComplianceCheckResult, EvidenceItem, ViolationSeverity,
-};
 use chrono::Utc;
+use sqlrustgo_compliance_engine::{ComplianceCheckResult, EvidenceItem, ViolationSeverity};
 
 #[test]
 fn test_compliance_check_result_is_compliant() {
