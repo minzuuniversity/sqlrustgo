@@ -5382,6 +5382,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "sqlrustgo-gmp-retrieval"
+version = "3.0.0"
+dependencies = [
+ "anyhow",
+ "serde",
+ "serde_json",
+ "sqlrustgo-parser",
+ "sqlrustgo-planner",
+ "sqlrustgo-storage",
+ "sqlrustgo-types",
+ "tempfile",
+ "thiserror 2.0.18",
+]
+
+[[package]]
 name = "sqlrustgo-graph"
 version = "0.1.0"
 dependencies = [
