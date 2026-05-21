@@ -162,3 +162,123 @@ impl Default for CrashScenario {
         Self::random()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_crash_scenario_at_is_deterministic() {
+        let scenario = CrashScenario::at(CrashPoint::WalFlush);
+        assert_eq!(scenario.crash_point, CrashPoint::WalFlush);
+        assert_eq!(scenario.severity, CrashSeverity::HardKill);
+        assert!(!scenario.is_random);
+        assert_eq!(scenario.probability, 1.0);
+    }
+
+    #[test]
+    fn test_crash_scenario_random_is_random() {
+        let scenario = CrashScenario::random();
+        assert!(scenario.is_random);
+        assert!(scenario.probability > 0.0 && scenario.probability <= 1.0);
+    }
+
+    #[test]
+    fn test_crash_scenario_from_config() {
+        let config = CrashCampaignConfig {
+            iterations_per_point: 2,
+            random_probability: 0.1,
+            recovery_timeout_ms: 5000,
+            verify_audit_chain: true,
+            verify_signatures: true,
+        };
+        let scenarios = CrashScenario::from_config(&config);
+        // 11 crash points * 2 iterations = 22 scenarios
+        assert_eq!(scenarios.len(), 22);
+    }
+
+    #[test]
+    fn test_crash_scenario_generate_random() {
+        let scenario = CrashScenario::generate_random();
+        assert!(scenario.is_random);
+        assert!(scenario.seed.is_some());
+    }
+
+    #[test]
+    fn test_crash_scenario_builder_new() {
+        let builder = CrashScenarioBuilder::new();
+        assert_eq!(builder.crash_point, CrashPoint::WalWrite);
+        assert_eq!(builder.severity, CrashSeverity::HardKill);
+        assert!(!builder.is_random);
+    }
+
+    #[test]
+    fn test_crash_scenario_builder_inject_at() {
+        let scenario = CrashScenarioBuilder::new()
+            .inject_at(CrashPoint::TransactionCommit)
+            .build();
+        assert_eq!(scenario.crash_point, CrashPoint::TransactionCommit);
+    }
+
+    #[test]
+    fn test_crash_scenario_builder_with_severity() {
+        let scenario = CrashScenarioBuilder::new()
+            .with_severity(CrashSeverity::DiskFull)
+            .build();
+        assert_eq!(scenario.severity, CrashSeverity::DiskFull);
+    }
+
+    #[test]
+    fn test_crash_scenario_builder_probability() {
+        let scenario = CrashScenarioBuilder::new().probability(0.15).build();
+        assert_eq!(scenario.probability, 0.15);
+        assert!(scenario.is_random);
+    }
+
+    #[test]
+    fn test_crash_scenario_builder_deterministic() {
+        let scenario = CrashScenarioBuilder::new().deterministic(12345).build();
+        assert_eq!(scenario.seed, Some(12345));
+        assert!(!scenario.is_random);
+    }
+
+    #[test]
+    fn test_crash_scenario_builder_after_ops() {
+        let scenario = CrashScenarioBuilder::new().after_ops(100).build();
+        assert_eq!(scenario.ops_before_crash, Some(100));
+        assert!(!scenario.is_random);
+    }
+
+    #[test]
+    fn test_crash_scenario_builder_chaining() {
+        let scenario = CrashScenarioBuilder::new()
+            .inject_at(CrashPoint::PageSplit)
+            .with_severity(CrashSeverity::NetworkPartition)
+            .probability(0.25)
+            .deterministic(999)
+            .after_ops(50)
+            .build();
+
+        assert_eq!(scenario.crash_point, CrashPoint::PageSplit);
+        assert_eq!(scenario.severity, CrashSeverity::NetworkPartition);
+        assert_eq!(scenario.probability, 0.25);
+        assert_eq!(scenario.seed, Some(999));
+        assert_eq!(scenario.ops_before_crash, Some(50));
+    }
+
+    #[test]
+    fn test_crash_scenario_clone() {
+        let original = CrashScenario::at(CrashPoint::Checkpoint);
+        let cloned = original.clone();
+        assert_eq!(original.crash_point, cloned.crash_point);
+        assert_eq!(original.severity, cloned.severity);
+    }
+
+    #[test]
+    fn test_crash_scenario_serialize() {
+        let scenario = CrashScenario::at(CrashPoint::WalWrite);
+        let json = serde_json::to_string(&scenario).unwrap();
+        // JSON contains field "crash_point" with value like "WalWrite"
+        assert!(json.contains("crash_point"));
+    }
+}

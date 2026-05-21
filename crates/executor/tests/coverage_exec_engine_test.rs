@@ -2,11 +2,11 @@
 
 #[cfg(test)]
 mod coverage_exec_engine {
-    use std::sync::Arc;
-    use std::sync::RwLock;
     use sqlrustgo::ExecutionEngine;
     use sqlrustgo_storage::MemoryStorage;
     use sqlrustgo_types::Value;
+    use std::sync::Arc;
+    use std::sync::RwLock;
 
     fn engine() -> ExecutionEngine<MemoryStorage> {
         ExecutionEngine::new(Arc::new(RwLock::new(MemoryStorage::default())))
@@ -182,7 +182,8 @@ mod coverage_exec_engine {
     fn test_group_by() {
         let mut e = engine();
         e.execute("CREATE TABLE t (dept TEXT, v INT)").ok();
-        e.execute("INSERT INTO t VALUES ('a', 10), ('a', 20), ('b', 30)").ok();
+        e.execute("INSERT INTO t VALUES ('a', 10), ('a', 20), ('b', 30)")
+            .ok();
         let r = e.execute("SELECT dept, SUM(v) FROM t GROUP BY dept");
         assert!(r.is_ok());
         assert_eq!(r.unwrap().rows.len(), 2);

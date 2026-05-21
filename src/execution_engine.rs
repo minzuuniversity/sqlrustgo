@@ -47,6 +47,7 @@ use sqlrustgo_transaction::{
     TransactionManager, TxId,
 };
 use sqlrustgo_types::Value as SqlValue;
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
@@ -963,20 +964,42 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             ));
         }
 
+        // COUNT(*) optimization: skip full scan for simple row count
+        if select.where_clause.is_none()
+            && select.join_clause.is_none()
+            && select.group_by.is_empty()
+            && select.having.is_none()
+            && !select.distinct
+            && select.limit.is_none()
+            && select.offset.is_none()
+            && select.aggregates.len() == 1
+            && matches!(&select.aggregates[0].func, AggregateFunction::Count)
+            && select.aggregates[0].args.is_empty()
+            && !select.aggregates[0].distinct
+        {
+            let storage = self.storage.read().unwrap();
+            let count = storage.get_row_count(&select.table)?;
+            return Ok(ExecutorResult::new(
+                vec![vec![Value::Integer(count as i64)]],
+                count as usize,
+            ));
+        }
+
         let storage = self.storage.read().unwrap();
 
         // Step 1: FROM/JOIN - get initial rows and schema
         let (mut rows, table_info) = if select.join_clause.is_some() {
-            self.execute_join(select)?
+            let (owned_rows, info) = self.execute_join(select)?;
+            (Cow::Owned(owned_rows), info)
         } else if self.cbo_enabled {
             // CBO: try index scan for simple equality predicates
             let table_info = storage.get_table_info(&select.table)?;
-            let rows = self.try_index_scan_or_fallback(select, &*storage, &table_info)?;
-            (rows, table_info)
+            let owned_rows = self.try_index_scan_or_fallback(select, &*storage, &table_info)?;
+            (Cow::Owned(owned_rows), table_info)
         } else {
-            let rows = storage.scan(&select.table)?;
+            let records = storage.get_records(&select.table)?;
             let table_info = storage.get_table_info(&select.table)?;
-            (rows, table_info)
+            (records, table_info)
         };
 
         // Step 2: WHERE (with constant folding optimization)
@@ -986,7 +1009,9 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             } else {
                 where_expr.clone()
             };
-            rows.retain(|row| self.eval_predicate(&folded_where, row, &table_info));
+            let mut owned_rows = rows.into_owned();
+            owned_rows.retain(|row| self.eval_predicate(&folded_where, row, &table_info));
+            rows = Cow::Owned(owned_rows);
         }
 
         // Step 3: GROUP BY + AGGREGATE
@@ -994,7 +1019,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             let group_exprs = &select.group_by;
             if group_exprs.is_empty() {
                 let mut agg_values =
-                    self.compute_aggregates(&select.aggregates, &rows, &table_info)?;
+                    self.compute_aggregates(&select.aggregates, rows.as_ref(), &table_info)?;
 
                 if let Some(ref having_expr) = select.having {
                     let having_schema = build_aggregate_schema(&[], &select.aggregates)?;
@@ -1007,7 +1032,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             } else {
                 let mut groups: std::collections::HashMap<String, Vec<Vec<Value>>> =
                     std::collections::HashMap::new();
-                for row in &rows {
+                for row in rows.iter() {
                     let key = group_exprs
                         .iter()
                         .map(|expr| evaluate_expr_to_string(expr, row, &table_info))
@@ -1057,7 +1082,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             !select.columns.is_empty() && !select.columns.iter().any(|c| c.name == "*");
 
         let projected_rows: Vec<Vec<Value>> = if needs_projection {
-            rows.into_iter()
+            rows.into_owned()
+                .into_iter()
                 .map(|row| {
                     select
                         .columns
@@ -1076,7 +1102,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 })
                 .collect()
         } else {
-            rows
+            rows.into_owned()
         };
 
         // Step 5: DISTINCT — deduplicate after projection
@@ -2871,9 +2897,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 .map(|row| {
                     let mut new_row = row.clone();
                     for &(col_idx, ref set_expr) in &set_col_indices {
-                        let new_val =
-                            evaluate_expression(set_expr, &new_row, &table_info)
-                                .unwrap_or(Value::Null);
+                        let new_val = evaluate_expression(set_expr, &new_row, &table_info)
+                            .unwrap_or(Value::Null);
                         if col_idx < new_row.len() {
                             new_row[col_idx] = new_val;
                         }

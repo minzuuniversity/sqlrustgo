@@ -103,3 +103,193 @@ impl Default for CrashCampaignConfig {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_crash_severity_all_variants() {
+        assert_eq!(CrashSeverity::HardKill.as_str(), "hard_kill");
+        assert_eq!(CrashSeverity::WriteFault.as_str(), "write_fault");
+        assert_eq!(CrashSeverity::PowerLoss.as_str(), "power_loss");
+        assert_eq!(CrashSeverity::DiskFull.as_str(), "disk_full");
+        assert_eq!(
+            CrashSeverity::NetworkPartition.as_str(),
+            "network_partition"
+        );
+    }
+
+    #[test]
+    fn test_crash_severity_as_str_no_spaces() {
+        for severity in &[
+            CrashSeverity::HardKill,
+            CrashSeverity::WriteFault,
+            CrashSeverity::PowerLoss,
+            CrashSeverity::DiskFull,
+            CrashSeverity::NetworkPartition,
+        ] {
+            let s = severity.as_str();
+            assert!(
+                !s.contains(' '),
+                "as_str() '{}' should not contain spaces",
+                s
+            );
+            assert!(s.chars().all(|c| c.is_lowercase() || c == '_'));
+        }
+    }
+
+    #[test]
+    fn test_crash_severity_clone() {
+        let original = CrashSeverity::HardKill;
+        let cloned = original.clone();
+        assert_eq!(original, cloned);
+    }
+
+    #[test]
+    fn test_crash_test_result_is_success_all_true() {
+        let result = CrashTestResult {
+            scenario: CrashScenario::at(CrashPoint::WalWrite),
+            recovered: true,
+            data_integrity_ok: true,
+            wal_replay_ok: true,
+            audit_chain_intact: true,
+            signature_valid: true,
+            phantom_commits: 0,
+            lost_writes: 0,
+            recovery_time_ms: 100,
+            error_message: None,
+        };
+        assert!(result.is_success());
+    }
+
+    #[test]
+    fn test_crash_test_result_is_success_false_on_recovered() {
+        let result = CrashTestResult {
+            scenario: CrashScenario::at(CrashPoint::WalWrite),
+            recovered: false,
+            data_integrity_ok: true,
+            wal_replay_ok: true,
+            audit_chain_intact: true,
+            signature_valid: true,
+            phantom_commits: 0,
+            lost_writes: 0,
+            recovery_time_ms: 0,
+            error_message: Some("crash".to_string()),
+        };
+        assert!(!result.is_success());
+    }
+
+    #[test]
+    fn test_crash_test_result_is_success_false_on_phantom_commits() {
+        let result = CrashTestResult {
+            scenario: CrashScenario::at(CrashPoint::TransactionCommit),
+            recovered: true,
+            data_integrity_ok: true,
+            wal_replay_ok: true,
+            audit_chain_intact: true,
+            signature_valid: true,
+            phantom_commits: 5,
+            lost_writes: 0,
+            recovery_time_ms: 100,
+            error_message: None,
+        };
+        assert!(!result.is_success());
+    }
+
+    #[test]
+    fn test_crash_test_result_is_success_false_on_lost_writes() {
+        let result = CrashTestResult {
+            scenario: CrashScenario::at(CrashPoint::WalFlush),
+            recovered: true,
+            data_integrity_ok: true,
+            wal_replay_ok: true,
+            audit_chain_intact: true,
+            signature_valid: true,
+            phantom_commits: 0,
+            lost_writes: 3,
+            recovery_time_ms: 100,
+            error_message: None,
+        };
+        assert!(!result.is_success());
+    }
+
+    #[test]
+    fn test_crash_test_result_summary_success() {
+        let result = CrashTestResult {
+            scenario: CrashScenario::at(CrashPoint::Checkpoint),
+            recovered: true,
+            data_integrity_ok: true,
+            wal_replay_ok: true,
+            audit_chain_intact: true,
+            signature_valid: true,
+            phantom_commits: 0,
+            lost_writes: 0,
+            recovery_time_ms: 50,
+            error_message: None,
+        };
+        let summary = result.summary();
+        assert!(summary.contains("recovered=true"));
+        assert!(summary.contains("data_ok=true"));
+        assert!(summary.contains("wal_ok=true"));
+        assert!(summary.contains("phantom=0"));
+        assert!(summary.contains("lost=0"));
+    }
+
+    #[test]
+    fn test_crash_test_result_summary_failure() {
+        let result = CrashTestResult {
+            scenario: CrashScenario::at(CrashPoint::WalWrite),
+            recovered: false,
+            data_integrity_ok: false,
+            wal_replay_ok: false,
+            audit_chain_intact: false,
+            signature_valid: false,
+            phantom_commits: 0,
+            lost_writes: 0,
+            recovery_time_ms: 0,
+            error_message: Some("disk error".to_string()),
+        };
+        let summary = result.summary();
+        assert!(summary.contains("recovered=false"));
+        assert!(summary.contains("error"));
+    }
+
+    #[test]
+    fn test_crash_test_result_clone() {
+        let original = CrashTestResult {
+            scenario: CrashScenario::at(CrashPoint::WalWrite),
+            recovered: true,
+            data_integrity_ok: true,
+            wal_replay_ok: true,
+            audit_chain_intact: true,
+            signature_valid: true,
+            phantom_commits: 0,
+            lost_writes: 0,
+            recovery_time_ms: 100,
+            error_message: None,
+        };
+        let cloned = original.clone();
+        assert_eq!(original.recovered, cloned.recovered);
+        assert_eq!(original.data_integrity_ok, cloned.data_integrity_ok);
+    }
+
+    #[test]
+    fn test_crash_campaign_config_default() {
+        let config = CrashCampaignConfig::default();
+        assert_eq!(config.iterations_per_point, 100);
+        assert_eq!(config.random_probability, 0.05);
+        assert_eq!(config.recovery_timeout_ms, 30_000);
+        assert!(config.verify_audit_chain);
+        assert!(config.verify_signatures);
+    }
+
+    #[test]
+    fn test_crash_campaign_config_clone() {
+        let original = CrashCampaignConfig::default();
+        let cloned = original.clone();
+        assert_eq!(original.iterations_per_point, cloned.iterations_per_point);
+        assert_eq!(original.random_probability, cloned.random_probability);
+        assert_eq!(original.verify_audit_chain, cloned.verify_audit_chain);
+    }
+}
