@@ -355,7 +355,11 @@ impl DefaultPlanner {
                 // CALL stored procedure - handled by execution engine
                 Ok(Box::new(SeqScanExec::new(String::new(), Schema::empty())))
             }
-            LogicalPlan::Update { table_name, updates, predicate } => Ok(Box::new(UpdateExec::new(
+            LogicalPlan::Update {
+                table_name,
+                updates,
+                predicate,
+            } => Ok(Box::new(UpdateExec::new(
                 table_name.clone(),
                 updates.clone(),
                 predicate.clone(),

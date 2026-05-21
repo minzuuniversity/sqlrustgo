@@ -45,3 +45,54 @@ pub struct ProvenanceResult {
     pub nodes: Vec<ProvenanceNode>,
     pub edges: Vec<Edge>,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_provenance_node_new() {
+        let node = ProvenanceNode::new("batch-001", NodeType::Batch);
+        assert_eq!(node.id, "batch-001");
+        assert_eq!(node.node_type, NodeType::Batch);
+        assert_eq!(node.properties, serde_json::json!({}));
+    }
+
+    #[test]
+    fn test_provenance_node_with_properties() {
+        let node = ProvenanceNode::new("batch-001", NodeType::Batch)
+            .with_properties(serde_json::json!({"status": "approved"}));
+        assert_eq!(node.id, "batch-001");
+        assert_eq!(node.properties["status"], "approved");
+    }
+
+    #[test]
+    fn test_provenance_result_empty() {
+        let result = ProvenanceResult {
+            path: vec![],
+            nodes: vec![],
+            edges: vec![],
+        };
+        assert!(result.path.is_empty());
+        assert!(result.nodes.is_empty());
+        assert!(result.edges.is_empty());
+    }
+
+    #[test]
+    fn test_provenance_result_with_data() {
+        let node = ProvenanceNode::new("batch-001", NodeType::Batch);
+        let edge = Edge {
+            from: "batch-001".to_string(),
+            to: "sig-001".to_string(),
+            edge_type: EdgeType::SignedBy,
+        };
+        let result = ProvenanceResult {
+            path: vec!["batch-001".to_string()],
+            nodes: vec![node],
+            edges: vec![edge],
+        };
+        assert_eq!(result.path.len(), 1);
+        assert_eq!(result.nodes.len(), 1);
+        assert_eq!(result.edges.len(), 1);
+    }
+}

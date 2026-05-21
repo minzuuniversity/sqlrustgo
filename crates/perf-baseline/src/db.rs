@@ -255,6 +255,280 @@ impl BaselineDb {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    fn create_test_db() -> (BaselineDb, TempDir) {
+        let temp_dir = TempDir::new().unwrap();
+        let db_path = temp_dir.path().to_path_buf();
+        let db = BaselineDb::new(&db_path).unwrap();
+        (db, temp_dir)
+    }
+
+    #[test]
+    fn test_baseline_db_new_creates_dir() {
+        let temp_dir = TempDir::new().unwrap();
+        let db_path = temp_dir.path().to_path_buf();
+        let db = BaselineDb::new(&db_path).unwrap();
+        assert!(db_path.exists());
+        drop(db);
+        temp_dir.close().unwrap();
+    }
+
+    #[test]
+    fn test_save_and_get_benchmark() {
+        use chrono::Utc;
+        let (db, _temp) = create_test_db();
+
+        let result = BenchmarkResult {
+            commit: "abc123".to_string(),
+            timestamp: Utc::now(),
+            system_info: "test".to_string(),
+            qps_update: 10000.0,
+            qps_delete: 5000.0,
+            qps_insert: 8000.0,
+            qps_select: 30000.0,
+            qps_complex_where: 4000.0,
+            qps_join: 3000.0,
+            latency_p50: 0.5,
+            latency_p99: 1.5,
+            memory_mb: 256.0,
+        };
+
+        db.save_benchmark(&result).unwrap();
+
+        let retrieved = db.get_commit("abc123").unwrap().unwrap();
+        assert_eq!(retrieved.commit, "abc123");
+        assert_eq!(retrieved.qps_update, 10000.0);
+        assert_eq!(retrieved.qps_select, 30000.0);
+    }
+
+    #[test]
+    fn test_get_commit_not_found() {
+        let (db, _temp) = create_test_db();
+        let result = db.get_commit("nonexistent").unwrap();
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_save_benchmark_updates_existing() {
+        use chrono::Utc;
+        let (db, _temp) = create_test_db();
+
+        let result1 = BenchmarkResult {
+            commit: "abc123".to_string(),
+            timestamp: Utc::now(),
+            system_info: "test".to_string(),
+            qps_update: 10000.0,
+            qps_delete: 5000.0,
+            qps_insert: 8000.0,
+            qps_select: 30000.0,
+            qps_complex_where: 4000.0,
+            qps_join: 3000.0,
+            latency_p50: 0.5,
+            latency_p99: 1.5,
+            memory_mb: 256.0,
+        };
+
+        db.save_benchmark(&result1).unwrap();
+
+        let mut result2 = result1.clone();
+        result2.qps_update = 15000.0;
+
+        db.save_benchmark(&result2).unwrap();
+
+        let retrieved = db.get_commit("abc123").unwrap().unwrap();
+        assert_eq!(retrieved.qps_update, 15000.0); // Updated value
+    }
+
+    #[test]
+    fn test_query_metrics() {
+        use chrono::{Duration, Utc};
+        let (db, _temp) = create_test_db();
+
+        let now = Utc::now();
+        let recent = now - Duration::days(1);
+        let old = now - Duration::days(10);
+
+        // Save metrics at different times
+        let _record1 = MetricRecord {
+            metric_name: "qps_update".to_string(),
+            metric_value: 10000.0,
+            commit: "abc".to_string(),
+            timestamp: recent,
+        };
+        let _record2 = MetricRecord {
+            metric_name: "qps_update".to_string(),
+            metric_value: 8000.0,
+            commit: "def".to_string(),
+            timestamp: old,
+        };
+
+        // Directly save via benchmark
+        let result = BenchmarkResult {
+            commit: "abc".to_string(),
+            timestamp: recent,
+            system_info: "test".to_string(),
+            qps_update: 10000.0,
+            qps_delete: 5000.0,
+            qps_insert: 8000.0,
+            qps_select: 30000.0,
+            qps_complex_where: 4000.0,
+            qps_join: 3000.0,
+            latency_p50: 0.5,
+            latency_p99: 1.5,
+            memory_mb: 256.0,
+        };
+        db.save_benchmark(&result).unwrap();
+
+        let records = db.query_metrics("qps_update", 7).unwrap();
+        assert!(!records.is_empty());
+    }
+
+    #[test]
+    fn test_get_latest() {
+        use chrono::{Duration, Utc};
+        let (db, _temp) = create_test_db();
+
+        let now = Utc::now();
+        let earlier = now - Duration::hours(1);
+
+        let result1 = BenchmarkResult {
+            commit: "abc".to_string(),
+            timestamp: earlier,
+            system_info: "test".to_string(),
+            qps_update: 10000.0,
+            qps_delete: 5000.0,
+            qps_insert: 8000.0,
+            qps_select: 30000.0,
+            qps_complex_where: 4000.0,
+            qps_join: 3000.0,
+            latency_p50: 0.5,
+            latency_p99: 1.5,
+            memory_mb: 256.0,
+        };
+
+        let result2 = BenchmarkResult {
+            commit: "def".to_string(),
+            timestamp: now,
+            system_info: "test".to_string(),
+            qps_update: 12000.0,
+            qps_delete: 5500.0,
+            qps_insert: 8500.0,
+            qps_select: 32000.0,
+            qps_complex_where: 4200.0,
+            qps_join: 3100.0,
+            latency_p50: 0.4,
+            latency_p99: 1.4,
+            memory_mb: 260.0,
+        };
+
+        db.save_benchmark(&result1).unwrap();
+        db.save_benchmark(&result2).unwrap();
+
+        let latest = db.get_latest().unwrap().unwrap();
+        assert_eq!(latest.commit, "def");
+    }
+
+    #[test]
+    fn test_compare() {
+        use chrono::Utc;
+        let (db, _temp) = create_test_db();
+
+        let result1 = BenchmarkResult {
+            commit: "abc".to_string(),
+            timestamp: Utc::now(),
+            system_info: "test".to_string(),
+            qps_update: 10000.0,
+            qps_delete: 5000.0,
+            qps_insert: 8000.0,
+            qps_select: 30000.0,
+            qps_complex_where: 4000.0,
+            qps_join: 3000.0,
+            latency_p50: 0.5,
+            latency_p99: 1.5,
+            memory_mb: 256.0,
+        };
+
+        let result2 = BenchmarkResult {
+            commit: "def".to_string(),
+            timestamp: Utc::now(),
+            system_info: "test".to_string(),
+            qps_update: 8999.0, // ~10.01% decrease (triggers regressed: < -10.0)
+            qps_delete: 5000.0,
+            qps_insert: 8000.0,
+            qps_select: 30000.0,
+            qps_complex_where: 4000.0,
+            qps_join: 3000.0,
+            latency_p50: 0.5,
+            latency_p99: 1.5,
+            memory_mb: 256.0,
+        };
+
+        db.save_benchmark(&result1).unwrap();
+        db.save_benchmark(&result2).unwrap();
+
+        let comparisons = db.compare("abc", "def").unwrap();
+        assert!(!comparisons.is_empty());
+
+        let qps_update_comp = comparisons
+            .iter()
+            .find(|c| c.metric == "qps_update")
+            .unwrap();
+        assert!((qps_update_comp.change_pct - (-10.0)).abs() < 0.1);
+        assert!(qps_update_comp.regressed);
+    }
+
+    #[test]
+    fn test_compare_no_regression() {
+        use chrono::Utc;
+        let (db, _temp) = create_test_db();
+
+        let result1 = BenchmarkResult {
+            commit: "abc".to_string(),
+            timestamp: Utc::now(),
+            system_info: "test".to_string(),
+            qps_update: 10000.0,
+            qps_delete: 5000.0,
+            qps_insert: 8000.0,
+            qps_select: 30000.0,
+            qps_complex_where: 4000.0,
+            qps_join: 3000.0,
+            latency_p50: 0.5,
+            latency_p99: 1.5,
+            memory_mb: 256.0,
+        };
+
+        let result2 = BenchmarkResult {
+            commit: "def".to_string(),
+            timestamp: Utc::now(),
+            system_info: "test".to_string(),
+            qps_update: 10500.0, // 5% improvement
+            qps_delete: 5000.0,
+            qps_insert: 8000.0,
+            qps_select: 30000.0,
+            qps_complex_where: 4000.0,
+            qps_join: 3000.0,
+            latency_p50: 0.5,
+            latency_p99: 1.5,
+            memory_mb: 256.0,
+        };
+
+        db.save_benchmark(&result1).unwrap();
+        db.save_benchmark(&result2).unwrap();
+
+        let comparisons = db.compare("abc", "def").unwrap();
+        let qps_update_comp = comparisons
+            .iter()
+            .find(|c| c.metric == "qps_update")
+            .unwrap();
+        assert!((qps_update_comp.change_pct - 5.0).abs() < 0.1);
+        assert!(!qps_update_comp.regressed);
+    }
+}
+
 fn pct_change(baseline: f64, head: f64) -> f64 {
     if baseline == 0.0 {
         return 0.0;
