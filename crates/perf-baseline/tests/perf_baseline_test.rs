@@ -1,5 +1,5 @@
-use sqlrustgo_perf_baseline::{BenchmarkResult, MetricType, RegressionResult};
 use chrono::Utc;
+use sqlrustgo_perf_baseline::{BenchmarkResult, MetricType, RegressionResult};
 
 #[test]
 fn test_benchmark_result_serialization() {
@@ -28,11 +28,23 @@ fn test_benchmark_result_serialization() {
 
 #[test]
 fn test_metric_type_from_str() {
-    assert_eq!(MetricType::from_str("qps_update"), Some(MetricType::QpsUpdate));
-    assert_eq!(MetricType::from_str("qps_delete"), Some(MetricType::QpsDelete));
-    assert_eq!(MetricType::from_str("qps_select"), Some(MetricType::QpsSelect));
-    assert_eq!(MetricType::from_str("latency_p50"), Some(MetricType::LatencyP50));
-    assert_eq!(MetricType::from_str("invalid"), None);
+    assert_eq!(
+        MetricType::parse_str("qps_update"),
+        Some(MetricType::QpsUpdate)
+    );
+    assert_eq!(
+        MetricType::parse_str("qps_delete"),
+        Some(MetricType::QpsDelete)
+    );
+    assert_eq!(
+        MetricType::parse_str("qps_select"),
+        Some(MetricType::QpsSelect)
+    );
+    assert_eq!(
+        MetricType::parse_str("latency_p50"),
+        Some(MetricType::LatencyP50)
+    );
+    assert_eq!(MetricType::parse_str("invalid"), None);
 }
 
 #[test]
