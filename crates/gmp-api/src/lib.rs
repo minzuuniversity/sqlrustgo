@@ -10,13 +10,13 @@
 //! - Signature API: Electronic signature service (21 CFR Part 11)
 //! - Export API: JSON/PDF audit package export
 
-pub mod batch;
 pub mod audit;
-pub mod device;
-pub mod signature;
-pub mod export;
+pub mod batch;
 pub mod dashboard;
+pub mod device;
+pub mod export;
 pub mod rule_engine;
+pub mod signature;
 
 use serde::{Deserialize, Serialize};
 

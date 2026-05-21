@@ -513,11 +513,19 @@ mod tests {
     #[test]
     fn test_evaluate_binary_op_string_eq() {
         assert_eq!(
-            evaluate_binary_op(&Value::Text("a".to_string()), &Value::Text("a".to_string()), "="),
+            evaluate_binary_op(
+                &Value::Text("a".to_string()),
+                &Value::Text("a".to_string()),
+                "="
+            ),
             Value::Boolean(true)
         );
         assert_eq!(
-            evaluate_binary_op(&Value::Text("a".to_string()), &Value::Text("b".to_string()), "!="),
+            evaluate_binary_op(
+                &Value::Text("a".to_string()),
+                &Value::Text("b".to_string()),
+                "!="
+            ),
             Value::Boolean(true)
         );
     }

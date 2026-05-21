@@ -25,7 +25,10 @@ pub struct MetricValue {
 }
 
 impl TrustMetrics {
-    pub fn new(period_start: chrono::DateTime<chrono::Utc>, period_end: chrono::DateTime<chrono::Utc>) -> Self {
+    pub fn new(
+        period_start: chrono::DateTime<chrono::Utc>,
+        period_end: chrono::DateTime<chrono::Utc>,
+    ) -> Self {
         Self {
             metrics: Vec::new(),
             period_start,
