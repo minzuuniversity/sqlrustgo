@@ -130,3 +130,301 @@ impl WALVerificationResult {
         format!("{:?} [{}] {:?}", self.property, status, self.severity)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{WALLog, WALOperation, WALRecord};
+
+    fn make_record(lsn: u64, txn_id: u64, op: WALOperation) -> WALRecord {
+        WALRecord {
+            lsn,
+            txn_id,
+            operation: op,
+            page_id: None,
+            row_key: None,
+            before_value: None,
+            after_value: None,
+            checksum: 0,
+        }
+    }
+
+    fn make_log(records: Vec<WALRecord>, checkpoint_lsn: Option<u64>) -> WALLog {
+        WALLog {
+            records,
+            checkpoint_lsn,
+        }
+    }
+
+    // WALVerificationResult tests
+    mod wal_verification_result_tests {
+        use super::*;
+        use crate::{PropertySeverity, WALProperty};
+
+        #[test]
+        fn test_result_summary_pass() {
+            let result = WALVerificationResult {
+                property: WALProperty::LSNMonotonicity,
+                holds: true,
+                counterexample: None,
+                severity: PropertySeverity::Critical,
+            };
+            let summary = result.summary();
+            assert!(summary.contains("PASS"));
+        }
+
+        #[test]
+        fn test_result_summary_fail() {
+            let result = WALVerificationResult {
+                property: WALProperty::AtomicWrites,
+                holds: false,
+                counterexample: Some("Record checksum mismatch".to_string()),
+                severity: PropertySeverity::Critical,
+            };
+            let summary = result.summary();
+            assert!(summary.contains("FAIL"));
+        }
+    }
+
+    // WALVerifier tests
+    mod wal_verifier_tests {
+        use super::*;
+
+        #[test]
+        fn test_verify_all_returns_eight_results() {
+            let log = make_log(
+                vec![
+                    make_record(1, 1, WALOperation::BeginTxn),
+                    make_record(2, 1, WALOperation::CommitTxn),
+                ],
+                None,
+            );
+            let verifier = WALVerifier::new(log);
+            let results = verifier.verify_all();
+            assert_eq!(results.len(), 8);
+        }
+
+        #[test]
+        fn test_verify_lsn_monotonicity_passes() {
+            let log = make_log(
+                vec![
+                    make_record(1, 1, WALOperation::BeginTxn),
+                    make_record(2, 1, WALOperation::WriteRow),
+                    make_record(3, 1, WALOperation::CommitTxn),
+                ],
+                None,
+            );
+            let verifier = WALVerifier::new(log);
+            let result = verifier.verify(&WALProperty::LSNMonotonicity);
+            assert!(result.holds);
+        }
+
+        #[test]
+        fn test_verify_lsn_monotonicity_fails() {
+            let log = make_log(
+                vec![
+                    make_record(3, 1, WALOperation::BeginTxn),
+                    make_record(2, 1, WALOperation::WriteRow),
+                    make_record(1, 1, WALOperation::CommitTxn),
+                ],
+                None,
+            );
+            let verifier = WALVerifier::new(log);
+            let result = verifier.verify(&WALProperty::LSNMonotonicity);
+            assert!(!result.holds);
+        }
+
+        #[test]
+        fn test_verify_idempotent_replay_passes() {
+            let log = make_log(
+                vec![
+                    make_record(1, 1, WALOperation::BeginTxn),
+                    make_record(2, 1, WALOperation::WriteRow),
+                    make_record(3, 1, WALOperation::CommitTxn),
+                ],
+                None,
+            );
+            let verifier = WALVerifier::new(log);
+            let result = verifier.verify(&WALProperty::IdempotentReplay);
+            assert!(result.holds);
+        }
+
+        #[test]
+        fn test_verify_idempotent_replay_fails_duplicate_lsn() {
+            let log = make_log(
+                vec![
+                    make_record(1, 1, WALOperation::BeginTxn),
+                    make_record(1, 1, WALOperation::WriteRow),
+                    make_record(2, 1, WALOperation::CommitTxn),
+                ],
+                None,
+            );
+            let verifier = WALVerifier::new(log);
+            let result = verifier.verify(&WALProperty::IdempotentReplay);
+            assert!(!result.holds);
+        }
+
+        #[test]
+        fn test_verify_atomic_writes_passes() {
+            let log = make_log(
+                vec![
+                    make_record(1, 1, WALOperation::BeginTxn),
+                    make_record(2, 1, WALOperation::WriteRow),
+                    make_record(3, 1, WALOperation::CommitTxn),
+                ],
+                None,
+            );
+            let verifier = WALVerifier::new(log);
+            let result = verifier.verify(&WALProperty::AtomicWrites);
+            assert!(result.holds);
+        }
+
+        #[test]
+        fn test_verify_atomic_writes_fails_invalid_record() {
+            let log = make_log(
+                vec![
+                    make_record(0, 1, WALOperation::BeginTxn), // Invalid: lsn=0
+                    make_record(2, 1, WALOperation::WriteRow),
+                    make_record(3, 1, WALOperation::CommitTxn),
+                ],
+                None,
+            );
+            let verifier = WALVerifier::new(log);
+            let result = verifier.verify(&WALProperty::AtomicWrites);
+            assert!(!result.holds);
+        }
+
+        #[test]
+        fn test_verify_checkpoint_atomicity_passes_no_checkpoint() {
+            let log = make_log(
+                vec![
+                    make_record(1, 1, WALOperation::BeginTxn),
+                    make_record(2, 1, WALOperation::WriteRow),
+                ],
+                None,
+            );
+            let verifier = WALVerifier::new(log);
+            let result = verifier.verify(&WALProperty::CheckpointAtomicity);
+            assert!(result.holds);
+        }
+
+        #[test]
+        fn test_verify_checkpoint_atomicity_passes_checkpoint_in_range() {
+            let log = make_log(
+                vec![
+                    make_record(1, 1, WALOperation::BeginTxn),
+                    make_record(2, 1, WALOperation::Checkpoint),
+                    make_record(3, 1, WALOperation::CommitTxn),
+                ],
+                Some(2),
+            );
+            let verifier = WALVerifier::new(log);
+            let result = verifier.verify(&WALProperty::CheckpointAtomicity);
+            assert!(result.holds);
+        }
+
+        #[test]
+        fn test_verify_checkpoint_atomicity_fails_checkpoint_out_of_range() {
+            let log = make_log(
+                vec![
+                    make_record(10, 1, WALOperation::BeginTxn),
+                    make_record(20, 1, WALOperation::Checkpoint),
+                    make_record(30, 1, WALOperation::CommitTxn),
+                ],
+                Some(100), // Checkpoint LSN outside record range
+            );
+            let verifier = WALVerifier::new(log);
+            let result = verifier.verify(&WALProperty::CheckpointAtomicity);
+            assert!(!result.holds);
+        }
+
+        #[test]
+        fn test_verify_durable_commits_passes() {
+            let log = make_log(
+                vec![
+                    make_record(1, 1, WALOperation::BeginTxn),
+                    make_record(2, 1, WALOperation::WriteRow),
+                    make_record(3, 1, WALOperation::CommitTxn),
+                ],
+                None,
+            );
+            let verifier = WALVerifier::new(log);
+            let result = verifier.verify(&WALProperty::CommittedTransactionsDurable);
+            assert!(result.holds);
+        }
+
+        #[test]
+        fn test_verify_durable_commits_fails_uncommitted() {
+            let log = make_log(
+                vec![
+                    make_record(1, 1, WALOperation::BeginTxn),
+                    make_record(2, 1, WALOperation::WriteRow),
+                    // No CommitTxn for txn_id 1
+                ],
+                None,
+            );
+            let verifier = WALVerifier::new(log);
+            let result = verifier.verify(&WALProperty::CommittedTransactionsDurable);
+            assert!(!result.holds);
+        }
+
+        #[test]
+        fn test_verify_no_phantom_commits_passes() {
+            let log = make_log(
+                vec![
+                    make_record(1, 1, WALOperation::BeginTxn),
+                    make_record(2, 1, WALOperation::WriteRow),
+                    make_record(3, 1, WALOperation::CommitTxn),
+                ],
+                None,
+            );
+            let verifier = WALVerifier::new(log);
+            let result = verifier.verify(&WALProperty::NoPhantomCommits);
+            assert!(result.holds);
+        }
+
+        #[test]
+        fn test_verify_no_lost_updates_passes() {
+            let log = make_log(
+                vec![
+                    make_record(1, 1, WALOperation::BeginTxn),
+                    make_record(2, 1, WALOperation::WriteRow),
+                    make_record(3, 1, WALOperation::CommitTxn),
+                ],
+                None,
+            );
+            let verifier = WALVerifier::new(log);
+            let result = verifier.verify(&WALProperty::NoLostUpdates);
+            assert!(result.holds);
+        }
+
+        #[test]
+        fn test_verify_audit_continuity_passes() {
+            let log = make_log(
+                vec![
+                    make_record(1, 1, WALOperation::BeginTxn),
+                    make_record(2, 1, WALOperation::WriteRow),
+                    make_record(3, 1, WALOperation::CommitTxn),
+                ],
+                None,
+            );
+            let verifier = WALVerifier::new(log);
+            let result = verifier.verify(&WALProperty::AuditChainContinuity);
+            assert!(result.holds);
+        }
+
+        #[test]
+        fn test_verify_result_has_correct_severity() {
+            let log = make_log(
+                vec![
+                    make_record(1, 1, WALOperation::BeginTxn),
+                    make_record(2, 1, WALOperation::CommitTxn),
+                ],
+                None,
+            );
+            let verifier = WALVerifier::new(log);
+            let result = verifier.verify(&WALProperty::IdempotentReplay);
+            assert_eq!(result.severity, PropertySeverity::Critical);
+        }
+    }
+}
