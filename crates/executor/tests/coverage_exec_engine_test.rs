@@ -223,4 +223,163 @@ mod coverage_exec_engine {
         assert!(r.is_ok());
         assert_eq!(r.unwrap().rows.len(), 3);
     }
+
+    // === ANALYZE TABLE ===
+    #[test]
+    fn test_analyze_table() {
+        let mut e = engine();
+        e.execute("CREATE TABLE t (id INT, v TEXT)").ok();
+        e.execute("INSERT INTO t VALUES (1, 'a'), (2, 'b')").ok();
+        let r = e.execute("ANALYZE t");
+        assert!(r.is_ok(), "ANALYZE should succeed: {:?}", r);
+    }
+
+    // === OPTIMIZE TABLE ===
+    #[test]
+    fn test_optimize_table() {
+        let mut e = engine();
+        e.execute("CREATE TABLE t (id INT)").ok();
+        let r = e.execute("OPTIMIZE TABLE t");
+        assert!(r.is_ok(), "OPTIMIZE should succeed: {:?}", r);
+    }
+
+    // === CHECK TABLE ===
+    #[test]
+    fn test_check_table() {
+        let mut e = engine();
+        e.execute("CREATE TABLE t (id INT PRIMARY KEY)").ok();
+        e.execute("INSERT INTO t VALUES (1), (2)").ok();
+        let r = e.execute("CHECK TABLE t");
+        assert!(r.is_ok(), "CHECK TABLE should succeed: {:?}", r);
+    }
+
+    // === REPAIR TABLE ===
+    #[test]
+    fn test_repair_table() {
+        let mut e = engine();
+        e.execute("CREATE TABLE t (id INT)").ok();
+        let r = e.execute("REPAIR TABLE t");
+        assert!(r.is_ok(), "REPAIR TABLE should succeed: {:?}", r);
+    }
+
+    // === CREATE ROLE / DROP ROLE ===
+    #[test]
+    fn test_create_drop_role() {
+        // CREATE ROLE requires catalog - execution correctly returns error without it
+        let mut e = engine();
+        let r = e.execute("CREATE ROLE analyst");
+        // Without catalog, returns ExecutionError - this path IS covered in execution_engine.rs
+        assert!(
+            r.is_err(),
+            "CREATE ROLE without catalog should fail: {:?}",
+            r
+        );
+        // Verify the error is the expected "no catalog" error
+        let err_str = format!("{:?}", r);
+        assert!(
+            err_str.contains("No catalog") || err_str.contains("catalog"),
+            "Expected catalog error, got: {}",
+            err_str
+        );
+    }
+
+    // === GRANT / REVOKE ===
+    #[test]
+    fn test_grant_revoke() {
+        // GRANT requires catalog - execution correctly returns error without it
+        let mut e = engine();
+        e.execute("CREATE ROLE reader").ok();
+        e.execute("CREATE TABLE t (id INT)").ok();
+        let r = e.execute("GRANT SELECT ON t TO reader");
+        // Without catalog, returns ExecutionError - this path IS covered
+        assert!(r.is_err(), "GRANT without catalog should fail: {:?}", r);
+        e.execute("DROP ROLE reader").ok();
+    }
+
+    // === SET ROLE ===
+    #[test]
+    fn test_set_role() {
+        // SET ROLE requires catalog - execution correctly returns error without it
+        let mut e = engine();
+        e.execute("CREATE ROLE admin").ok();
+        let r = e.execute("SET ROLE admin");
+        assert!(r.is_err(), "SET ROLE without catalog should fail: {:?}", r);
+        e.execute("DROP ROLE admin").ok();
+    }
+
+    // === ALTER TABLE ADD COLUMN ===
+    #[test]
+    fn test_alter_table_add_column() {
+        let mut e = engine();
+        e.execute("CREATE TABLE t (id INT)").ok();
+        let r = e.execute("ALTER TABLE t ADD COLUMN name TEXT");
+        assert!(r.is_ok(), "ALTER TABLE ADD COLUMN: {:?}", r);
+        let r2 = e.execute("DESCRIBE t");
+        assert!(r2.is_ok());
+    }
+
+    // === MERGE ===
+    #[test]
+    fn test_merge() {
+        let mut e = engine();
+        e.execute("CREATE TABLE target (id INT, v TEXT)").ok();
+        e.execute("INSERT INTO target VALUES (1, 'old')").ok();
+        e.execute("CREATE TABLE source (id INT, v TEXT)").ok();
+        e.execute("INSERT INTO source VALUES (1, 'new'), (2, 'new2')")
+            .ok();
+        let r = e.execute(
+            "MERGE INTO target USING source ON target.id = source.id \
+             WHEN MATCHED THEN UPDATE SET v = source.v \
+             WHEN NOT MATCHED THEN INSERT VALUES (source.id, source.v)",
+        );
+        assert!(r.is_ok(), "MERGE should succeed: {:?}", r);
+    }
+
+    // === WITH (CTE) ===
+    #[test]
+    fn test_cte_basic() {
+        let mut e = engine();
+        let r = e.execute("WITH cte AS (SELECT 1 AS n) SELECT * FROM cte");
+        assert!(r.is_ok(), "CTE should succeed: {:?}", r);
+        assert_eq!(r.unwrap().rows[0][0], Value::Integer(1));
+    }
+
+    // === SHOW CREATE TABLE ===
+    #[test]
+    fn test_show_create_table() {
+        let mut e = engine();
+        e.execute("CREATE TABLE t (id INT PRIMARY KEY)").ok();
+        let r = e.execute("SHOW CREATE TABLE t");
+        assert!(r.is_ok(), "SHOW CREATE TABLE should succeed: {:?}", r);
+    }
+
+    // === SHOW TABLES ===
+    #[test]
+    fn test_show_tables() {
+        let mut e = engine();
+        e.execute("CREATE TABLE t1 (id INT)").ok();
+        e.execute("CREATE TABLE t2 (id INT)").ok();
+        let r = e.execute("SHOW TABLES");
+        assert!(r.is_ok(), "SHOW TABLES should succeed: {:?}", r);
+    }
+
+    // === SHOW COLUMNS ===
+    #[test]
+    fn test_show_columns() {
+        let mut e = engine();
+        e.execute("CREATE TABLE t (id INT, name TEXT)").ok();
+        let r = e.execute("SHOW COLUMNS FROM t");
+        assert!(r.is_ok(), "SHOW COLUMNS should succeed: {:?}", r);
+    }
+
+    // === UPDATE without WHERE ===
+    #[test]
+    fn test_update_all() {
+        let mut e = engine();
+        e.execute("CREATE TABLE t (id INT, v INT)").ok();
+        e.execute("INSERT INTO t VALUES (1, 10), (2, 20)").ok();
+        let r = e.execute("UPDATE t SET v = 99");
+        assert!(r.is_ok());
+        assert_eq!(r.unwrap().affected_rows, 2);
+    }
 }
