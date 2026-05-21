@@ -87,8 +87,7 @@ mod tests {
 
     #[test]
     fn test_step_def_with_approvers() {
-        let step = StepDef::new("approve", "Approval Step")
-            .with_approvers(vec!["alice", "bob"]);
+        let step = StepDef::new("approve", "Approval Step").with_approvers(vec!["alice", "bob"]);
         assert_eq!(step.approvers.len(), 2);
         assert_eq!(step.approvers[0], "alice");
         assert_eq!(step.approvers[1], "bob");
@@ -96,8 +95,7 @@ mod tests {
 
     #[test]
     fn test_step_def_clone() {
-        let step = StepDef::new("clone", "Clone Test")
-            .with_approvers(vec!["alice"]);
+        let step = StepDef::new("clone", "Clone Test").with_approvers(vec!["alice"]);
         let cloned = step.clone();
         assert_eq!(cloned.id, step.id);
         assert_eq!(cloned.approvers, step.approvers);
@@ -111,13 +109,11 @@ mod tests {
             id: "gate_and".to_string(),
             name: "AND Gate".to_string(),
             gate_type: GateType::And,
-            conditions: vec![
-                GateCondition {
-                    field: "approved".to_string(),
-                    operator: "eq".to_string(),
-                    value: serde_json::json!(true),
-                },
-            ],
+            conditions: vec![GateCondition {
+                field: "approved".to_string(),
+                operator: "eq".to_string(),
+                value: serde_json::json!(true),
+            }],
             timeout_hours: 72,
         };
         assert!(matches!(gate.gate_type, GateType::And));
@@ -348,7 +344,8 @@ mod tests {
     #[test]
     fn test_workflow_engine_advance_step_approve_last_completes() {
         let mut wf = WorkflowDef::new("SingleStepWorkflow");
-        wf.current_version.add_step(StepDef::new("step1", "Only Step"));
+        wf.current_version
+            .add_step(StepDef::new("step1", "Only Step"));
 
         let mut instance = WorkflowEngine::start_instance(&wf, "inst-004");
         let result = WorkflowEngine::advance_step(&mut instance, "step1", "approve");
@@ -390,7 +387,9 @@ mod tests {
         let mut instance = WorkflowEngine::start_instance(&wf, "inst-007");
         let result = WorkflowEngine::advance_step(&mut instance, "nonexistent", "approve");
 
-        assert!(matches!(result, TransitionResult::InvalidAction(msg) if msg.contains("not found")));
+        assert!(
+            matches!(result, TransitionResult::InvalidAction(msg) if msg.contains("not found"))
+        );
     }
 
     #[test]
