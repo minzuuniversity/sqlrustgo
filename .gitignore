@@ -1,6 +1,6 @@
 # ============================================
 # GMP-Platform .gitignore
-# 提交通道: docs/ + agent-knowledge/ | gmp-md/ + scripts/ (工具与整理集合)
+# 提交通道: docs/ + agent-knowledge/ | gmp-md/ + scripts/ | gmp-md-masking/ (脱敏版, 可公开发布)
 # ============================================
 
 # ---- 原始资料目录（禁止提交） ----
@@ -50,3 +50,6 @@ node_modules/
 *.tar.gz
 *.zip
 .gitnexus
+
+# ---- 脱敏映射表（含真实→占位符映射，禁止提交） ----
+gmp-md-masking/MASKING-MAP.json

@@ -1,0 +1,28 @@
+[package]
+name = "gmp-cli"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "gmp-retrieve"
+path = "src/main.rs"
+
+[dependencies]
+gmp-core = { path = "../gmp-core" }
+gmp-storage = { path = "../gmp-storage" }
+gmp-retrieval = { path = "../gmp-retrieval" }
+gmp-reranker = { path = "../gmp-reranker" }
+gmp-llm = { path = "../gmp-llm" }
+clap = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+reqwest = { workspace = true }
