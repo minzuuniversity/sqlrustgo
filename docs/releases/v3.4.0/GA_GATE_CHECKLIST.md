@@ -4,8 +4,8 @@
 > **创建日期**: 2026-05-21
 > **维护人**: hermes-agent
 > **阶段**: GA (General Availability)
-> **分支**: `origin/develop/v3.4.0` (commit `24d7c1c0`)
-> **起点**: `a1ddb44c` (v3.3.0 GA release point)
+|> **分支**: `origin/develop/v3.4.0` (commit `e1bab9a6`)
+|> **起点**: `a1ddb44c` (v3.3.0 GA release point)
 > **关联门禁规范**: `docs/governance/GATE_SPEC_MASTER.md`
 
 ---
@@ -58,10 +58,10 @@ v3.5.0: AI Native GMP Platform
 
 | 检查项 | 命令 | 期望结果 | 状态 |
 |--------|------|----------|------|
-| cargo build | `cargo build --release --workspace` | 编译成功 | ⏳ |
-| cargo clippy | `cargo clippy --all-features -- -D warnings` | 零警告 | ⏳ |
-| cargo fmt | `cargo fmt --check` | 通过 | ⏳ |
-| cargo test | `cargo test --lib` | 全部通过 | ⏳ |
+| cargo build | `cargo build --release --workspace` | 编译成功 | ✅ 38.09s |
+| cargo clippy | `cargo clippy --all-features -- -D warnings` | 零警告 | ✅ (manifest unused key warning 除外) |
+| cargo fmt | `cargo fmt --check` | 通过 | ✅ |
+| cargo test | `cargo test --lib` | 全部通过 | ⏳ (workspace 测试运行中) |
 
 ### 2.2 覆盖率检查
 
@@ -89,20 +89,20 @@ v3.5.0: AI Native GMP Platform
 
 ### 3.1 核心检查 (G1-G12)
 
-| # | 检查项 | 命令 | 期望结果 | 状态 |
+|| # | 检查项 | 命令 | 期望结果 | 状态 |
 |---|--------|------|----------|------|
-| G1 | Build | `cargo build --release` | 成功 | ⏳ |
-| G2 | Test | `cargo test --lib` | 全部通过 | ⏳ |
-| G3 | Clippy | `cargo clippy --all-features -- -D warnings` | 零警告 | ⏳ |
-| G4 | Format | `cargo fmt --check` | 通过 | ⏳ |
-| G5 | Coverage | `cargo llvm-cov test L1_CRATES --lib` | ≥85% | ⏳ |
-| G6 | Security | `cargo audit` | 无漏洞 | ⏳ |
-| G7 | GMP API Build | `cargo build -p sqlrustgo-gmp-api` | 成功 | ⏳ |
-| G8 | GMP Retrieval Build | `cargo build -p sqlrustgo-gmp-retrieval` (if exists) | 成功 | ⏳ |
-| G9 | MySQL Server | `cargo build -p sqlrustgo-mysql-server` | 成功 | ⏳ |
-| G10 | TPC-H SF=1 | `check_tpch.sh --sf1` | 22/22 | ⏳ |
-| G11 | Proofs | TLA+ model check | ≥30 | ⏳ |
-| G12 | Docs | All OO docs | 全部存在 | ⏳ |
+| ✅ | G1 | Build | `cargo build --release` | 成功 | ✅ 38.09s |
+| ⏳ | G2 | Test | `cargo test --lib` | 全部通过 | ⏳ workspace 测试运行中 |
+| ✅ | G3 | Clippy | `cargo clippy --all-features -- -D warnings` | 零警告 | ✅ (manifest unused key 除外) |
+| ✅ | G4 | Format | `cargo fmt --check` | 通过 | ✅ |
+| ⏳ | G5 | Coverage | `cargo llvm-cov test L1_CRATES --lib` | ≥85% | ⏳ |
+| ⏳ | G6 | Security | `cargo audit` | 无漏洞 | ⏳ |
+| ⏳ | G7 | GMP API Build | `cargo build -p sqlrustgo-gmp-api` | 成功 | ⏳ |
+| ⏳ | G8 | GMP Retrieval Build | `cargo build -p sqlrustgo-gmp-retrieval` (if exists) | 成功 | ⏳ |
+| ✅ | G9 | MySQL Server | `cargo build -p sqlrustgo-mysql-server` | 成功 | ✅ |
+| ⏳ | G10 | TPC-H SF=1 | `check_tpch.sh --sf1` | 22/22 | ⏳ |
+| ⏳ | G11 | Proofs | TLA+ model check | ≥30 | ⏳ |
+| ⏳ | G12 | Docs | All OO docs | 全部存在 | ⏳ |
 
 ### 3.2 GMP Management API 测试 (G-API1~G-API7)
 
@@ -154,13 +154,13 @@ v3.5.0: AI Native GMP Platform
 
 ### 4.1 结果汇总表
 
-| 类别 | 通过数 | 总数 | 通过率 | 状态 |
+|| 类别 | 通过数 | 总数 | 通过率 | 状态 |
 |------|--------|------|--------|------|
-| 核心检查 G1-G12 | 0 | 12 | 0% | ⏳ |
+| 核心检查 G1-G12 | 4 | 12 | 33% | 🔄 |
 | GMP API G-API1~7 | 0 | 7 | 0% | ⏳ |
 | GMP 核心 G-GMP1~8 | 0 | 8 | 0% | ⏳ |
 | Trust Infra G-TI1~8 | 0 | 8 | 0% | ⏳ |
-| **总计** | **0** | **35** | **0%** | **⏳** |
+| **总计** | **4** | **35** | **11%** | **🔄** |
 
 ### 4.2 GA Gate 执行模板
 
