@@ -2871,9 +2871,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 .map(|row| {
                     let mut new_row = row.clone();
                     for &(col_idx, ref set_expr) in &set_col_indices {
-                        let new_val =
-                            evaluate_expression(set_expr, &new_row, &table_info)
-                                .unwrap_or(Value::Null);
+                        let new_val = evaluate_expression(set_expr, &new_row, &table_info)
+                            .unwrap_or(Value::Null);
                         if col_idx < new_row.len() {
                             new_row[col_idx] = new_val;
                         }
