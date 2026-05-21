@@ -30,9 +30,10 @@ impl EvidenceChainViz {
     }
 
     pub fn verify_chain(&mut self) -> bool {
-        self.is_verified = self.entries.windows(2).all(|w| {
-            w[0].timestamp <= w[1].timestamp
-        });
+        self.is_verified = self
+            .entries
+            .windows(2)
+            .all(|w| w[0].timestamp <= w[1].timestamp);
         self.is_verified
     }
 }
