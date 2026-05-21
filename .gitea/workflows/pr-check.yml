@@ -20,31 +20,12 @@ jobs:
   # ============================================================
   agate:
     name: A-Gate (Build / Test / Clippy / Format)
-    runs-on: ubuntu-latest
+    runs-on: macos
     timeout-minutes: 30
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Setup Rust
-        uses: https://github.com/actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          profile: minimal
-          components: rustfmt, clippy
-          override: true
-
-      - name: Cache cargo registry
-        uses: https://github.com/actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-
 
       # A1: Build
       - name: A1 — cargo build --release
@@ -71,7 +52,7 @@ jobs:
   # ============================================================
   docs-check:
     name: Document Integrity Check
-    runs-on: ubuntu-latest
+    runs-on: macos
     timeout-minutes: 5
 
     steps:
@@ -106,20 +87,19 @@ jobs:
 
       - name: Check markdown links
         run: |
+          echo "Checking internal .md links..."
           broken=0
           for md in $(find docs -name '*.md' 2>/dev/null); do
-            # Extract relative links and check if target exists
-            grep -oP '\[.*?\]\((?!http)(.*?\.md)\)' "$md" 2>/dev/null | \
-              grep -oP '(?<=\()[^)]+\.md' | \
-              while read link; do
-                target="$(dirname "$md")/$link"
-                if [ ! -f "$target" ]; then
-                  echo "BROKEN LINK in $md: $link -> $target"
-                  echo "broken" > /tmp/broken_links
-                fi
-              done
+            sed -n 's/.*\[.*\](\([^)]*\.md\)).*/\1/p' "$md" | while read link; do
+              target="$(dirname "$md")/$link"
+              if [ ! -f "$target" ]; then
+                echo "BROKEN LINK in $md: $link -> $target"
+                echo "BROKEN" > /tmp/.mdlink_broken
+              fi
+            done
           done
-          if [ -f /tmp/broken_links ]; then
+          if [ -f /tmp/.mdlink_broken ]; then
+            rm -f /tmp/.mdlink_broken
             echo "ERROR: Broken internal links found!"
             exit 1
           fi
