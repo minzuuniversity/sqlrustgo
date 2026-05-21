@@ -1638,33 +1638,65 @@ mod tests {
     #[test]
     fn test_arithmetic_op_integer() {
         let ex = executor();
-        assert_eq!(ex.arithmetic_op(&Value::Integer(10), &Value::Integer(3), "+"), Ok(Value::Integer(13)));
-        assert_eq!(ex.arithmetic_op(&Value::Integer(10), &Value::Integer(3), "-"), Ok(Value::Integer(7)));
-        assert_eq!(ex.arithmetic_op(&Value::Integer(10), &Value::Integer(3), "*"), Ok(Value::Integer(30)));
-        assert_eq!(ex.arithmetic_op(&Value::Integer(10), &Value::Integer(3), "/"), Ok(Value::Integer(3)));
+        assert_eq!(
+            ex.arithmetic_op(&Value::Integer(10), &Value::Integer(3), "+"),
+            Ok(Value::Integer(13))
+        );
+        assert_eq!(
+            ex.arithmetic_op(&Value::Integer(10), &Value::Integer(3), "-"),
+            Ok(Value::Integer(7))
+        );
+        assert_eq!(
+            ex.arithmetic_op(&Value::Integer(10), &Value::Integer(3), "*"),
+            Ok(Value::Integer(30))
+        );
+        assert_eq!(
+            ex.arithmetic_op(&Value::Integer(10), &Value::Integer(3), "/"),
+            Ok(Value::Integer(3))
+        );
     }
 
     #[test]
     fn test_arithmetic_op_float() {
         let ex = executor();
-        assert_eq!(ex.arithmetic_op(&Value::Float(3.0), &Value::Float(2.0), "+"), Ok(Value::Float(5.0)));
-        assert_eq!(ex.arithmetic_op(&Value::Float(3.0), &Value::Float(2.0), "-"), Ok(Value::Float(1.0)));
-        assert_eq!(ex.arithmetic_op(&Value::Float(3.0), &Value::Float(2.0), "*"), Ok(Value::Float(6.0)));
-        assert_eq!(ex.arithmetic_op(&Value::Float(6.0), &Value::Float(2.0), "/"), Ok(Value::Float(3.0)));
+        assert_eq!(
+            ex.arithmetic_op(&Value::Float(3.0), &Value::Float(2.0), "+"),
+            Ok(Value::Float(5.0))
+        );
+        assert_eq!(
+            ex.arithmetic_op(&Value::Float(3.0), &Value::Float(2.0), "-"),
+            Ok(Value::Float(1.0))
+        );
+        assert_eq!(
+            ex.arithmetic_op(&Value::Float(3.0), &Value::Float(2.0), "*"),
+            Ok(Value::Float(6.0))
+        );
+        assert_eq!(
+            ex.arithmetic_op(&Value::Float(6.0), &Value::Float(2.0), "/"),
+            Ok(Value::Float(3.0))
+        );
     }
 
     #[test]
     fn test_arithmetic_op_div_by_zero() {
         let ex = executor();
-        assert!(ex.arithmetic_op(&Value::Integer(10), &Value::Integer(0), "/").is_err());
-        assert!(ex.arithmetic_op(&Value::Float(3.0), &Value::Float(0.0), "/").is_err());
+        assert!(ex
+            .arithmetic_op(&Value::Integer(10), &Value::Integer(0), "/")
+            .is_err());
+        assert!(ex
+            .arithmetic_op(&Value::Float(3.0), &Value::Float(0.0), "/")
+            .is_err());
     }
 
     #[test]
     fn test_arithmetic_op_unsupported() {
         let ex = executor();
-        assert!(ex.arithmetic_op(&Value::Integer(10), &Value::Integer(3), "%").is_err());
-        assert!(ex.arithmetic_op(&Value::Text("a".into()), &Value::Integer(3), "+").is_err());
+        assert!(ex
+            .arithmetic_op(&Value::Integer(10), &Value::Integer(3), "%")
+            .is_err());
+        assert!(ex
+            .arithmetic_op(&Value::Text("a".into()), &Value::Integer(3), "+")
+            .is_err());
     }
 
     #[test]
@@ -1714,15 +1746,27 @@ mod tests {
     #[test]
     fn test_partial_cmp_boolean() {
         let ex = executor();
-        assert_eq!(ex.partial_cmp(&Value::Boolean(true), &Value::Boolean(false)), Some(std::cmp::Ordering::Greater));
-        assert_eq!(ex.partial_cmp(&Value::Boolean(false), &Value::Boolean(true)), Some(std::cmp::Ordering::Less));
-        assert_eq!(ex.partial_cmp(&Value::Boolean(true), &Value::Boolean(true)), Some(std::cmp::Ordering::Equal));
+        assert_eq!(
+            ex.partial_cmp(&Value::Boolean(true), &Value::Boolean(false)),
+            Some(std::cmp::Ordering::Greater)
+        );
+        assert_eq!(
+            ex.partial_cmp(&Value::Boolean(false), &Value::Boolean(true)),
+            Some(std::cmp::Ordering::Less)
+        );
+        assert_eq!(
+            ex.partial_cmp(&Value::Boolean(true), &Value::Boolean(true)),
+            Some(std::cmp::Ordering::Equal)
+        );
     }
 
     #[test]
     fn test_partial_cmp_mixed_types() {
         let ex = executor();
-        assert_eq!(ex.partial_cmp(&Value::Integer(1), &Value::Text("a".into())), None);
+        assert_eq!(
+            ex.partial_cmp(&Value::Integer(1), &Value::Text("a".into())),
+            None
+        );
         assert_eq!(ex.partial_cmp(&Value::Float(1.0), &Value::Integer(1)), None);
     }
 
