@@ -2,7 +2,7 @@
 
 use crate::{CrashCampaignConfig, CrashScenario, CrashTestResult, RecoveryVerifier};
 use rand::Rng;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 /// Runs crash simulation scenarios
 pub struct CrashTestRunner {
@@ -20,7 +20,7 @@ impl CrashTestRunner {
 
     /// Run a single crash scenario
     pub fn run_scenario(&mut self, scenario: &CrashScenario) -> CrashTestResult {
-        let start = Instant::now();
+        let _start = Instant::now();
         let mut result = CrashTestResult {
             scenario: scenario.clone(),
             recovered: false,
@@ -98,7 +98,7 @@ impl CrashTestRunner {
     }
 
     /// Execute recovery
-    fn execute_recovery(&self, scenario: &CrashScenario) -> bool {
+    fn execute_recovery(&self, _scenario: &CrashScenario) -> bool {
         // This is a framework - actual implementation would:
         // 1. Attempt to open the database
         // 2. Run WAL replay

@@ -30,8 +30,9 @@ impl WALOperation {
 }
 
 /// WAL state machine states
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum WALState {
+    #[default]
     Idle,
     Writing,
     Flushing,
@@ -39,11 +40,6 @@ pub enum WALState {
     Checkpointing,
 }
 
-impl Default for WALState {
-    fn default() -> Self {
-        Self::Idle
-    }
-}
 
 /// Critical WAL properties that must always hold
 #[derive(Debug, Clone)]
