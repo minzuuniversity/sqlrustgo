@@ -102,6 +102,15 @@ impl StorageEngine {
             CREATE INDEX IF NOT EXISTS idx_chunks_doc_id ON gmp_document_chunks(doc_id);
             CREATE INDEX IF NOT EXISTS idx_docs_code ON gmp_documents(code);
             CREATE INDEX IF NOT EXISTS idx_docs_type ON gmp_documents(doc_type);
+
+            -- Embeddings table for vector search
+            CREATE TABLE IF NOT EXISTS gmp_embeddings (
+                chunk_id INTEGER PRIMARY KEY REFERENCES gmp_document_chunks(id),
+                embedding BLOB NOT NULL
+            );
+
+            -- Index on embeddings
+            CREATE INDEX IF NOT EXISTS idx_embeddings_chunk ON gmp_embeddings(chunk_id);
             "#,
         )
         .context("Failed to initialize schema")?;
@@ -336,6 +345,140 @@ impl StorageEngine {
             is_valid: doc_count >= 1600 && chunk_count > 0,
         })
     }
+
+    /// Search vectors using cosine similarity (dot product on normalized vectors)
+    pub fn search_vectors(&self, query_embedding: &[f32], top_k: usize) -> Result<Vec<VectorSearchResult>> {
+        let conn = self.conn.lock().unwrap();
+
+        let mut stmt = conn.prepare(
+            "SELECT e.chunk_id, e.embedding, c.doc_id, c.chunk_index, c.content
+             FROM gmp_embeddings e
+             JOIN gmp_document_chunks c ON e.chunk_id = c.id
+             LIMIT 10000"
+        )?;
+
+        let mut results = Vec::new();
+        let mut rows = stmt.query([])?;
+
+        while let Some(row) = rows.next()? {
+            let chunk_id: i64 = row.get(0)?;
+            let blob: Vec<u8> = row.get(1)?;
+            let doc_id: String = row.get(2)?;
+            let chunk_index: i32 = row.get(3)?;
+            let content: String = row.get(4)?;
+
+            // Deserialize embedding from BLOB
+            let embedding: Vec<f32> = blob
+                .chunks_exact(4)
+                .map(|bytes| f32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]))
+                .collect();
+
+            // Compute cosine similarity
+            let score = cosine_sim(query_embedding, &embedding);
+            results.push(VectorSearchResult {
+                chunk_id,
+                doc_id,
+                chunk_index,
+                content,
+                score: score as f64,
+            });
+        }
+
+        // Sort by score descending and take top_k
+        results.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+        results.truncate(top_k);
+
+        Ok(results)
+    }
+
+    /// Index embeddings for all chunks (call after index_documents)
+    pub fn index_embeddings(&self, ollama_url: &str, model: &str) -> Result<usize> {
+        let client = reqwest::blocking::Client::new();
+
+        // Get all chunks without embeddings - collect as plain data
+        let chunk_ids_and_content: Vec<(i64, String)> = {
+            let conn = self.conn.lock().unwrap();
+            let mut stmt = conn.prepare(
+                "SELECT c.id, c.content FROM gmp_document_chunks c
+                 WHERE NOT EXISTS (SELECT 1 FROM gmp_embeddings e WHERE e.chunk_id = c.id)
+                 LIMIT 500"
+            )?;
+            let mut ids = Vec::new();
+            let mut rows = stmt.query([])?;
+            while let Some(row) = rows.next()? {
+                let id: i64 = row.get(0)?;
+                let content: String = row.get(1)?;
+                ids.push((id, content));
+            }
+            ids
+        };
+
+        if chunk_ids_and_content.is_empty() {
+            return Ok(0);
+        }
+
+        let mut indexed = 0;
+        for (chunk_id, content) in chunk_ids_and_content {
+            // Get embedding from Ollama
+            let resp = client
+                .post(format!("{}/api/embeddings", ollama_url))
+                .json(&serde_json::json!({
+                    "model": model,
+                    "prompt": content
+                }))
+                .send();
+
+            match resp {
+                Ok(response) if response.status().is_success() => {
+                    #[derive(serde::Deserialize)]
+                    struct EmbedResp {
+                        embedding: Vec<f32>,
+                    }
+                    if let Ok(embed_resp) = response.json::<EmbedResp>() {
+                        // Serialize to BLOB
+                        let mut blob = Vec::with_capacity(embed_resp.embedding.len() * 4);
+                        for f in &embed_resp.embedding {
+                            blob.extend_from_slice(&f.to_le_bytes());
+                        }
+
+                        let conn = self.conn.lock().unwrap();
+                        let _ = conn.execute(
+                            "INSERT OR REPLACE INTO gmp_embeddings (chunk_id, embedding) VALUES (?1, ?2)",
+                            params![chunk_id, blob],
+                        );
+                        indexed += 1;
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        Ok(indexed)
+    }
+}
+
+/// Compute cosine similarity between two normalized vectors
+fn cosine_sim(a: &[f32], b: &[f32]) -> f32 {
+    if a.len() != b.len() || a.is_empty() {
+        return 0.0;
+    }
+    let dot: f32 = a.iter().zip(b.iter()).map(|(x, y)| x * y).sum();
+    let norm_a: f32 = a.iter().map(|x| x * x).sum::<f32>().sqrt();
+    let norm_b: f32 = b.iter().map(|x| x * x).sum::<f32>().sqrt();
+    if norm_a == 0.0 || norm_b == 0.0 {
+        return 0.0;
+    }
+    dot / (norm_a * norm_b)
+}
+
+/// Vector search result
+#[derive(Debug, Clone)]
+pub struct VectorSearchResult {
+    pub chunk_id: i64,
+    pub doc_id: String,
+    pub chunk_index: i32,
+    pub content: String,
+    pub score: f64,
 }
 
 /// Search result from FTS
