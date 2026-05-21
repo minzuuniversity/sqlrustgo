@@ -439,14 +439,8 @@ mod tests {
     fn test_rrf_basic() {
         // Channel 1: doc_a (score 1.0), doc_b (score 0.8)
         // Channel 2: doc_b (score 0.9), doc_a (score 0.7)
-        let ch1 = vec![
-            ("doc_a".to_string(), 1.0),
-            ("doc_b".to_string(), 0.8),
-        ];
-        let ch2 = vec![
-            ("doc_b".to_string(), 0.9),
-            ("doc_a".to_string(), 0.7),
-        ];
+        let ch1 = vec![("doc_a".to_string(), 1.0), ("doc_b".to_string(), 0.8)];
+        let ch2 = vec![("doc_b".to_string(), 0.9), ("doc_a".to_string(), 0.7)];
 
         let result = reciprocal_rank_fusion(&[ch1, ch2], 60.0, 10);
 
@@ -473,10 +467,7 @@ mod tests {
 
     #[test]
     fn test_rrf_empty_channel() {
-        let ch1 = vec![
-            ("doc_a".to_string(), 1.0),
-            ("doc_b".to_string(), 0.8),
-        ];
+        let ch1 = vec![("doc_a".to_string(), 1.0), ("doc_b".to_string(), 0.8)];
         let ch2: Vec<(String, f32)> = vec![];
 
         let result = reciprocal_rank_fusion(&[ch1, ch2], 60.0, 10);
@@ -490,11 +481,7 @@ mod tests {
         let ch1 = vec![("doc_a".to_string(), 1.0)];
         let ch2 = vec![("doc_a".to_string(), 1.0)];
 
-        let result = weighted_reciprocal_rank_fusion(
-            &[(ch1, 1.0), (ch2, 2.0)],
-            60.0,
-            10,
-        );
+        let result = weighted_reciprocal_rank_fusion(&[(ch1, 1.0), (ch2, 2.0)], 60.0, 10);
 
         // doc_a: 1.0/(60+0) + 2.0/(60+0) = 0.01667 + 0.03333 = 0.05
         assert!((result[0].1 - 0.05).abs() < 0.001);

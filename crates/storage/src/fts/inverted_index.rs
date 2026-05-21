@@ -37,7 +37,10 @@ impl InvertedIndex {
         }
         let doc_len: usize = term_counts.values().map(|&v| v as usize).sum();
         for (token, tf) in &term_counts {
-            self.index.entry(token.clone()).or_default().insert(doc_id, *tf);
+            self.index
+                .entry(token.clone())
+                .or_default()
+                .insert(doc_id, *tf);
         }
         self.doc_lengths.insert(doc_id, doc_len);
         self.doc_count += 1;
