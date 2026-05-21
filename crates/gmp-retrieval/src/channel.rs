@@ -157,15 +157,17 @@ fn get_builtin_rules() -> Vec<KnowledgeRule> {
     ]
 }
 
-/// Vector channel using embeddings + HNSW
+/// Vector channel using embeddings + SQLite cosine similarity
 pub struct VectorChannel {
+    storage: std::sync::Arc<gmp_storage::StorageEngine>,
     ollama_url: String,
     embedding_model: String,
 }
 
 impl VectorChannel {
-    pub fn new(ollama_url: String, embedding_model: String) -> Self {
+    pub fn new(storage: std::sync::Arc<gmp_storage::StorageEngine>, ollama_url: String, embedding_model: String) -> Self {
         Self {
+            storage,
             ollama_url,
             embedding_model,
         }
@@ -173,18 +175,25 @@ impl VectorChannel {
 
     /// Search using vector similarity (requires Ollama)
     pub async fn search(&self, query: &str, top_k: usize) -> Vec<ScoredChunk> {
-        // Try to get embedding from Ollama
-        match self.get_embedding(query).await {
-            Ok(embedding) => {
-                // In a full implementation, this would search HNSW index
-                // For now, return a placeholder
-                let _ = embedding;
-                vec![]
-            }
-            Err(_) => {
-                // Ollama not available, return empty
-                vec![]
-            }
+        // Get query embedding from Ollama
+        let embedding = match self.get_embedding(query).await {
+            Ok(e) => e,
+            Err(_) => return vec![],
+        };
+
+        // Search vectors in storage
+        let storage = self.storage.clone();
+        match tokio::task::spawn_blocking(move || {
+            storage.search_vectors(&embedding, top_k)
+        }).await {
+            Ok(Ok(results)) => results.into_iter().map(|r| ScoredChunk {
+                chunk_id: r.chunk_id,
+                doc_id: r.doc_id,
+                content: r.content,
+                score: r.score as f32,
+                source: gmp_core::ChannelType::Vector,
+            }).collect(),
+            _ => vec![],
         }
     }
 
@@ -212,26 +221,11 @@ impl VectorChannel {
         let result: EmbedResponse = response.json().await?;
         Ok(result.embedding)
     }
-
-    /// Check if Ollama is available
-    pub async fn is_available(&self) -> bool {
-        let client = reqwest::Client::new();
-        client
-            .get(format!("{}/api/tags", self.ollama_url))
-            .timeout(std::time::Duration::from_secs(5))
-            .send()
-            .await
-            .map(|r| r.status().is_success())
-            .unwrap_or(false)
-    }
 }
 
 impl Default for VectorChannel {
     fn default() -> Self {
-        Self::new(
-            "http://localhost:11434".to_string(),
-            "bge-m3".to_string(),
-        )
+        unimplemented!("VectorChannel requires StorageEngine, use VectorChannel::new")
     }
 }
 
@@ -242,10 +236,8 @@ pub struct FtsChannel {
 }
 
 impl FtsChannel {
-    pub fn new(storage: gmp_storage::StorageEngine) -> Self {
-        Self {
-            storage: std::sync::Arc::new(storage),
-        }
+    pub fn new(storage: std::sync::Arc<gmp_storage::StorageEngine>) -> Self {
+        Self { storage }
     }
 
     /// Search using BM25 full-text search
@@ -352,10 +344,16 @@ impl FourChannelEngine {
             get_builtin_rules()
         };
 
+        let storage_for_fts = std::sync::Arc::new(storage);
+        let storage_for_vector = storage_for_fts.clone();
         Self {
             rule: RuleChannel::new(rules.clone()),
-            vector: VectorChannel::default(),
-            fts: FtsChannel::new(storage),
+            vector: VectorChannel::new(
+                storage_for_vector,
+                "http://localhost:11434".to_string(),
+                "bge-m3:latest".to_string(),
+            ),
+            fts: FtsChannel::new(storage_for_fts),
             graph: GraphChannel::new(rules),
             fusion: RrfFusion::default(),
         }

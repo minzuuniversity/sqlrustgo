@@ -544,6 +544,7 @@ dependencies = [
  "anyhow",
  "glob",
  "gmp-core",
+ "reqwest",
  "rusqlite",
  "serde",
  "serde_json",
