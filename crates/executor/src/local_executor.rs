@@ -287,6 +287,7 @@ impl<'a> LocalExecutor<'a> {
                 "Sort" => self.execute_sort(plan),
                 "Limit" => self.execute_limit(plan),
                 "Delete" => self.execute_delete(plan),
+                "Update" => self.execute_update(plan),
                 "Merge" => self.execute_merge(plan),
                 _ => Ok(ExecutorResult::empty()),
             }?;
@@ -1413,10 +1414,63 @@ impl<'a> LocalExecutor<'a> {
             None => Ok(ExecutorResult::empty()),
         }
     }
-                
-                // Delete all rows from table
-                let deleted = self.storage.delete(table_name, &[])?;
-                Ok(ExecutorResult::new(vec![], deleted))
+
+    /// Execute update
+    fn execute_update(&self, plan: &dyn PhysicalPlan) -> SqlResult<ExecutorResult> {
+        use sqlrustgo_planner::UpdateExec;
+
+        let update_exec = plan.as_any().downcast_ref::<UpdateExec>();
+
+        match update_exec {
+            Some(update_plan) => {
+                let table_name = update_plan.table_name();
+                let updates = update_plan.updates();
+                let predicate = update_plan.predicate();
+
+                // Get table schema to map column names to indices
+                let table_info = self.storage.get_table_info(table_name)?;
+                let col_index_map: std::collections::HashMap<&str, usize> = table_info
+                    .columns
+                    .iter()
+                    .enumerate()
+                    .map(|(i, c)| (c.name.as_str(), i))
+                    .collect();
+
+                // Convert (column_name, Expr) to (column_index, Value)
+                let mut assignments = Vec::new();
+                for (col_name, expr) in updates {
+                    if let Some(&col_idx) = col_index_map.get(col_name.as_str()) {
+                        // Evaluate expression to a Value
+                        // For now, handle literal values directly
+                        if let sqlrustgo_planner::Expr::Literal(val) = expr {
+                            assignments.push((col_idx, val.clone()));
+                        } else {
+                            // Fallback: try to evaluate via SQL string conversion
+                            let sql_str = expr.to_sql_string();
+                            eprintln!("DEBUG execute_update: col={}, expr={}", col_name, sql_str);
+                            // For non-literal expressions, we'd need evaluation here
+                            // For now, skip complex expressions
+                        }
+                    }
+                }
+
+                let updated = if !assignments.is_empty() {
+                    if let Some(pred) = predicate {
+                        let pred_sql = pred.to_sql_string();
+                        eprintln!("DEBUG execute_update: table={}, predicate={}, assignments={:?}",
+                            table_name, pred_sql, assignments);
+                        self.storage.update_by_predicate(table_name, &pred_sql, &assignments)?
+                    } else {
+                        eprintln!("DEBUG execute_update: table={}, no predicate, updating all, assignments={:?}",
+                            table_name, assignments);
+                        self.storage.update_by_predicate(table_name, "1=1", &assignments)?
+                    }
+                } else {
+                    0
+                };
+
+                eprintln!("DEBUG execute_update: updated {} rows", updated);
+                Ok(ExecutorResult::new(vec![], updated))
             }
             None => Ok(ExecutorResult::empty()),
         }
