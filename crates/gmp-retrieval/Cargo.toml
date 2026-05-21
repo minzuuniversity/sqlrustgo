@@ -1,7 +1,7 @@
 [package]
 name = "gmp-retrieval"
 version.workspace = true
-edition.workspace = true
+edition = "2021"
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
@@ -12,6 +12,7 @@ gmp-core = { path = "../gmp-core" }
 gmp-storage = { path = "../gmp-storage" }
 serde = { workspace = true }
 serde_json = { workspace = true }
+serde_yaml = "0.9"
 anyhow = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
@@ -19,3 +20,4 @@ tokio = { workspace = true }
 futures = { workspace = true }
 reqwest = { workspace = true }
 ollama-rs = { workspace = true }
+walkdir = "2"

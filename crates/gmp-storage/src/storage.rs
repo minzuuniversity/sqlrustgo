@@ -4,6 +4,7 @@ use anyhow::{Context, Result};
 use glob::glob;
 use rusqlite::{params, Connection};
 use std::path::Path;
+use std::sync::Mutex;
 
 /// Frontmatter extracted from markdown document
 #[derive(Debug, serde::Deserialize)]
@@ -36,7 +37,7 @@ impl Default for StorageConfig {
 pub struct StorageEngine {
     #[allow(dead_code)]
     config: StorageConfig,
-    conn: Connection,
+    conn: Mutex<Connection>,
 }
 
 impl StorageEngine {
@@ -50,16 +51,19 @@ impl StorageEngine {
 
         let conn = Connection::open(&config.db_path).context("Failed to open database")?;
 
-        let engine = Self { config, conn };
+        let engine = Self {
+            config,
+            conn: Mutex::new(conn),
+        };
         engine.init_schema()?;
         Ok(engine)
     }
 
     /// Initialize database schema
     fn init_schema(&self) -> Result<()> {
-        self.conn
-            .execute_batch(
-                r#"
+        let conn = self.conn.lock().unwrap();
+        conn.execute_batch(
+            r#"
             -- Documents table
             CREATE TABLE IF NOT EXISTS gmp_documents (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -99,8 +103,8 @@ impl StorageEngine {
             CREATE INDEX IF NOT EXISTS idx_docs_code ON gmp_documents(code);
             CREATE INDEX IF NOT EXISTS idx_docs_type ON gmp_documents(doc_type);
             "#,
-            )
-            .context("Failed to initialize schema")?;
+        )
+        .context("Failed to initialize schema")?;
 
         Ok(())
     }
@@ -114,24 +118,30 @@ impl StorageEngine {
 
         let pattern = path.join("**/*.md");
         let mut stats = IndexStats::default();
-        let tx = self.conn.unchecked_transaction()?;
 
-        for entry in glob(pattern.to_str().unwrap())?
-            .filter_map(Result::ok)
-            .filter(|e| e.is_file())
         {
-            match self.import_document(&entry, &tx) {
-                Ok(doc_id) => {
-                    stats.documents_imported += 1;
-                    let _ = doc_id;
-                }
-                Err(e) => {
-                    stats.errors.push(format!("{}: {}", entry.display(), e));
+            // Keep lock during transaction
+            let conn = self.conn.lock().unwrap();
+            let tx = conn.unchecked_transaction()?;
+
+            for entry in glob(pattern.to_str().unwrap())?
+                .filter_map(Result::ok)
+                .filter(|e| e.is_file())
+            {
+                match self.import_document(&entry, &tx) {
+                    Ok(doc_id) => {
+                        stats.documents_imported += 1;
+                        let _ = doc_id;
+                    }
+                    Err(e) => {
+                        stats.errors.push(format!("{}: {}", entry.display(), e));
+                    }
                 }
             }
+
+            tx.commit()?;
         }
 
-        tx.commit()?;
         stats.chunks_indexed = self.get_chunk_count()?;
         Ok(stats)
     }
@@ -261,17 +271,19 @@ impl StorageEngine {
 
     /// Get total chunk count
     fn get_chunk_count(&self) -> Result<usize> {
-        let count: i64 =
-            self.conn
-                .query_row("SELECT COUNT(*) FROM gmp_document_chunks", [], |row| {
-                    row.get(0)
-                })?;
+        let conn = self.conn.lock().unwrap();
+        let count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM gmp_document_chunks",
+            [],
+            |row| row.get(0),
+        )?;
         Ok(count as usize)
     }
 
     /// Search using FTS
     pub fn search_fts(&self, query: &str, top_k: usize) -> Result<Vec<SearchResult>> {
-        let mut stmt = self.conn.prepare(
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
             r#"SELECT c.id, c.doc_id, c.content, c.token_count,
                       d.title, d.doc_type, d.chapter,
                       bm25(gmp_chunks_fts) as score
@@ -304,9 +316,12 @@ impl StorageEngine {
 
     /// Get document count
     pub fn get_document_count(&self) -> Result<i64> {
-        let count: i64 = self
-            .conn
-            .query_row("SELECT COUNT(*) FROM gmp_documents", [], |row| row.get(0))?;
+        let conn = self.conn.lock().unwrap();
+        let count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM gmp_documents",
+            [],
+            |row| row.get(0),
+        )?;
         Ok(count)
     }
 
