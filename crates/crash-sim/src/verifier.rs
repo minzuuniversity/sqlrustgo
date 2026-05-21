@@ -1,6 +1,6 @@
 //! RecoveryVerifier checks data integrity after crash recovery
 
-use crate::{CrashScenario, CrashTestResult};
+use crate::CrashTestResult;
 use std::collections::HashMap;
 
 /// Verifies data integrity after crash recovery
