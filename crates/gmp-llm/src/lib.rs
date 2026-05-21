@@ -1,5 +1,5 @@
 //! GMP LLM Module - Chat Completion + Intent Classification
-//! 
+//!
 //! Provides Ollama Chat Completion interface for RAG-based Q&A and
 //! intent classification to route queries to appropriate channels.
 
@@ -41,7 +41,8 @@ impl LlmClient {
         };
 
         let url = format!("{}/api/chat", self.base_url);
-        let response = self.client
+        let response = self
+            .client
             .post(&url)
             .json(&request)
             .send()
@@ -70,13 +71,19 @@ Classify the user query into ONE of these categories:
 Respond with ONLY the category name, nothing else."#;
 
         let messages = vec![
-            ChatMessage { role: "system".to_string(), content: system_prompt.to_string() },
-            ChatMessage { role: "user".to_string(), content: query.to_string() },
+            ChatMessage {
+                role: "system".to_string(),
+                content: system_prompt.to_string(),
+            },
+            ChatMessage {
+                role: "user".to_string(),
+                content: query.to_string(),
+            },
         ];
 
         let response = self.chat(messages).await?;
         let intent_str = response.message.content.trim().to_lowercase();
-        
+
         let intent = match intent_str.as_str() {
             "rule" => Intent::Rule,
             "factual" => Intent::Factual,
@@ -85,14 +92,14 @@ Respond with ONLY the category name, nothing else."#;
             "comparison" => Intent::Comparison,
             _ => Intent::General,
         };
-        
+
         Ok(intent)
     }
 
     /// Route query to best channel based on intent
     pub async fn route_query(&self, query: &str) -> Result<ChannelRoute> {
         let intent = self.classify_intent(query).await?;
-        
+
         let channels = match intent {
             Intent::Rule => vec!["rule".to_string(), "vector".to_string(), "fts".to_string()],
             Intent::Factual => vec!["vector".to_string(), "fts".to_string(), "rule".to_string()],
@@ -130,9 +137,12 @@ Be precise and cite specific GMP requirements when relevant.
 Always prefer official GMP terminology."#;
 
         let messages = vec![
-            ChatMessage { role: "system".to_string(), content: system_prompt.to_string() },
-            ChatMessage { 
-                role: "user".to_string(), 
+            ChatMessage {
+                role: "system".to_string(),
+                content: system_prompt.to_string(),
+            },
+            ChatMessage {
+                role: "user".to_string(),
                 content: format!("Context:\n{}\n\nQuestion: {}", context, query),
             },
         ];
@@ -202,3 +212,4 @@ pub type SharedLlmClient = Arc<RwLock<LlmClient>>;
 pub fn new_shared(client: LlmClient) -> SharedLlmClient {
     Arc::new(RwLock::new(client))
 }
+mod tests;

@@ -140,7 +140,10 @@ async fn main() -> Result<()> {
             validate,
             db,
         } => {
-            info!("GMP Index command: source={}, validate={}, db={}", source, validate, db);
+            info!(
+                "GMP Index command: source={}, validate={}, db={}",
+                source, validate, db
+            );
             if validate {
                 let config = gmp_storage::StorageConfig {
                     data_dir: "./data".to_string(),
@@ -151,7 +154,14 @@ async fn main() -> Result<()> {
                 println!("Index Validation:");
                 println!("  Documents: {}", result.documents);
                 println!("  Chunks: {}", result.chunks);
-                println!("Status: {}", if result.is_valid { "VALID" } else { "NEEDS REBUILD" });
+                println!(
+                    "Status: {}",
+                    if result.is_valid {
+                        "VALID"
+                    } else {
+                        "NEEDS REBUILD"
+                    }
+                );
             } else {
                 println!("Indexing from: {}...", source);
                 let config = gmp_storage::StorageConfig {
@@ -178,12 +188,15 @@ async fn main() -> Result<()> {
             explain,
             db,
         } => {
+            use gmp_core::ScoredChunk;
             use gmp_retrieval::channel::FourChannelEngine;
             use gmp_retrieval::RrfFusion;
-            use gmp_core::ScoredChunk;
             use std::collections::HashMap;
 
-            info!("GMP Search: query={}, channel={}, rerank={}", query, channel, rerank);
+            info!(
+                "GMP Search: query={}, channel={}, rerank={}",
+                query, channel, rerank
+            );
 
             let config = gmp_storage::StorageConfig {
                 data_dir: "./data".to_string(),
@@ -218,9 +231,11 @@ async fn main() -> Result<()> {
                     "http://localhost:11434",
                     "bge-reranker-v2-m3:latest",
                 );
-                match tokio::runtime::Handle::current()
-                    .block_on(reranker.rerank(&query, fused.clone(), 20))
-                {
+                match tokio::runtime::Handle::current().block_on(reranker.rerank(
+                    &query,
+                    fused.clone(),
+                    20,
+                )) {
                     Ok(reranked) => reranked,
                     Err(e) => {
                         println!("Reranking failed: {}, using fusion results", e);
@@ -245,7 +260,10 @@ async fn main() -> Result<()> {
                     );
                     println!("   Score: {:.4}", r.score);
                     if explain {
-                        println!("   Content: {}...", r.content.chars().take(150).collect::<String>());
+                        println!(
+                            "   Content: {}...",
+                            r.content.chars().take(150).collect::<String>()
+                        );
                     }
                     println!();
                 }
@@ -275,8 +293,8 @@ async fn main() -> Result<()> {
                 data_dir: "./data".to_string(),
                 db_path: db,
             };
-            let storage = gmp_storage::StorageEngine::new(config)
-                .context("Failed to initialize storage")?;
+            let storage =
+                gmp_storage::StorageEngine::new(config).context("Failed to initialize storage")?;
 
             let mut results = Vec::new();
             let mut passed = 0u32;
@@ -339,7 +357,8 @@ async fn main() -> Result<()> {
                     avg_mrr,
                     results,
                 };
-                let json = serde_json::to_string_pretty(&report).context("Failed to serialize report")?;
+                let json =
+                    serde_json::to_string_pretty(&report).context("Failed to serialize report")?;
                 std::fs::write(&output_path, json)
                     .with_context(|| format!("Failed to write report to {}", output_path))?;
                 println!("Report saved to: {}", output_path);
@@ -348,7 +367,9 @@ async fn main() -> Result<()> {
         Commands::Shell { db } => {
             info!("Starting interactive shell");
             println!("GMP Compliance Retrieval Shell (v1.0.0)");
-            println!("Commands: search <q>, route <q>, rag <q>, stats, channel <c> <q>, help, exit");
+            println!(
+                "Commands: search <q>, route <q>, rag <q>, stats, channel <c> <q>, help, exit"
+            );
             println!();
             loop {
                 print!("gmp> ");
@@ -378,17 +399,22 @@ async fn main() -> Result<()> {
                         db_path: db.clone(),
                     };
                     match gmp_storage::StorageEngine::new(config) {
-                        Ok(engine) => {
-                            match engine.validate() {
-                                Ok(result) => {
-                                    println!("Index Statistics:");
-                                    println!("  Documents: {}", result.documents);
-                                    println!("  Chunks:   {}", result.chunks);
-                                    println!("  Status:   {}", if result.is_valid { "VALID" } else { "NEEDS REBUILD" });
-                                }
-                                Err(e) => println!("Error: {}", e),
+                        Ok(engine) => match engine.validate() {
+                            Ok(result) => {
+                                println!("Index Statistics:");
+                                println!("  Documents: {}", result.documents);
+                                println!("  Chunks:   {}", result.chunks);
+                                println!(
+                                    "  Status:   {}",
+                                    if result.is_valid {
+                                        "VALID"
+                                    } else {
+                                        "NEEDS REBUILD"
+                                    }
+                                );
                             }
-                        }
+                            Err(e) => println!("Error: {}", e),
+                        },
                         Err(e) => println!("Error: {}", e),
                     }
                     continue;
@@ -427,7 +453,10 @@ async fn main() -> Result<()> {
                     let q = query.to_string();
                     rt.block_on(async {
                         use gmp_llm::LlmClient;
-                        let llm = LlmClient::new("http://localhost:11434".to_string(), "llama3.2".to_string());
+                        let llm = LlmClient::new(
+                            "http://localhost:11434".to_string(),
+                            "llama3.2".to_string(),
+                        );
                         match llm.classify_intent(&q).await {
                             Ok(intent) => println!("[Intent] {:?}", intent),
                             Err(e) => println!("[Intent] Error: {} (is Ollama running?)", e),
@@ -443,7 +472,14 @@ async fn main() -> Result<()> {
                             .search_fts(query, 3)
                             .unwrap_or_default()
                             .into_iter()
-                            .map(|r| format!("[{}] {}\n\n{}", r.title, r.doc_type.clone().unwrap_or_default(), r.content))
+                            .map(|r| {
+                                format!(
+                                    "[{}] {}\n\n{}",
+                                    r.title,
+                                    r.doc_type.clone().unwrap_or_default(),
+                                    r.content
+                                )
+                            })
                             .collect(),
                         Err(e) => {
                             println!("Error: {}", e);
@@ -465,7 +501,10 @@ async fn main() -> Result<()> {
                     let c = chunks.clone();
                     rt.block_on(async {
                         use gmp_llm::LlmClient;
-                        let llm = LlmClient::new("http://localhost:11434".to_string(), "llama3.2".to_string());
+                        let llm = LlmClient::new(
+                            "http://localhost:11434".to_string(),
+                            "llama3.2".to_string(),
+                        );
                         match llm.generate_answer(&q, &c, 4096).await {
                             Ok(ans) => println!("{}", ans),
                             Err(e) => println!("[LLM] Error: {} (is Ollama running?)", e),
@@ -480,7 +519,10 @@ async fn main() -> Result<()> {
                     let channel = parts[0];
                     let query = parts[1];
                     if channel != "fts" {
-                        println!("Channel '{}' not yet implemented (only 'fts' available)", channel);
+                        println!(
+                            "Channel '{}' not yet implemented (only 'fts' available)",
+                            channel
+                        );
                         continue;
                     }
                     let config = gmp_storage::StorageConfig {
@@ -566,8 +608,7 @@ async fn main() -> Result<()> {
                                 data_dir: dd,
                                 db_path: dp,
                             };
-                            gmp_storage::StorageEngine::new(cfg)
-                                .and_then(|s| s.search_fts(&q, 5))
+                            gmp_storage::StorageEngine::new(cfg).and_then(|s| s.search_fts(&q, 5))
                         })
                     })
                     .collect();

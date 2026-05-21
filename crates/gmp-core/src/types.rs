@@ -134,3 +134,342 @@ impl Default for GmpConfig {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // =====================================================================
+    // GmpDocument tests
+    // =====================================================================
+
+    #[test]
+    fn test_gmp_document_creation() {
+        let doc = GmpDocument {
+            id: 1,
+            doc_id: "GMP-001".to_string(),
+            title: "偏差处理规程".to_string(),
+            chapter: Some("第5章".to_string()),
+            doc_type: Some("SOP".to_string()),
+            department: Some("质量部".to_string()),
+            status: "有效".to_string(),
+            source_file: "/data/gmp-md/chapter5.md".to_string(),
+            created_at: Some(1700000000),
+            updated_at: Some(1700000000),
+        };
+        assert_eq!(doc.id, 1);
+        assert_eq!(doc.doc_id, "GMP-001");
+        assert_eq!(doc.title, "偏差处理规程");
+        assert_eq!(doc.status, "有效");
+    }
+
+    #[test]
+    fn test_gmp_document_clone() {
+        let doc = GmpDocument {
+            id: 1,
+            doc_id: "GMP-001".to_string(),
+            title: "测试文档".to_string(),
+            chapter: None,
+            doc_type: None,
+            department: None,
+            status: "有效".to_string(),
+            source_file: "test.md".to_string(),
+            created_at: None,
+            updated_at: None,
+        };
+        let cloned = doc.clone();
+        assert_eq!(cloned.id, doc.id);
+        assert_eq!(cloned.doc_id, doc.doc_id);
+    }
+
+    // =====================================================================
+    // GmpChunk tests
+    // =====================================================================
+
+    #[test]
+    fn test_gmp_chunk_creation() {
+        let chunk = GmpChunk {
+            id: 1,
+            doc_id: "GMP-001".to_string(),
+            chunk_index: 0,
+            content: "这是偏差处理规程的正文内容。".to_string(),
+            token_count: 50,
+        };
+        assert_eq!(chunk.id, 1);
+        assert_eq!(chunk.chunk_index, 0);
+        assert!(chunk.content.contains("偏差"));
+    }
+
+    // =====================================================================
+    // QueryIntent tests
+    // =====================================================================
+
+    #[test]
+    fn test_query_intent_retrieve_sop() {
+        let intent = QueryIntent::from_query("查找偏差处理SOP");
+        assert_eq!(intent, QueryIntent::RetrieveSop);
+    }
+
+    #[test]
+    fn test_query_intent_retrieve_sop_chinese() {
+        let intent = QueryIntent::from_query("查找规程");
+        assert_eq!(intent, QueryIntent::RetrieveSop);
+    }
+
+    #[test]
+    fn test_query_intent_check_compliance() {
+        let intent = QueryIntent::from_query("这样做是否合规");
+        assert_eq!(intent, QueryIntent::CheckCompliance);
+    }
+
+    #[test]
+    fn test_query_intent_compare_regulation() {
+        let intent = QueryIntent::from_query("比较中国GMP和EU GMP的差异");
+        assert_eq!(intent, QueryIntent::CompareRegulation);
+    }
+
+    #[test]
+    fn test_query_intent_trace_process() {
+        let intent = QueryIntent::from_query("偏差处理的流程是什么");
+        assert_eq!(intent, QueryIntent::TraceProcess);
+    }
+
+    #[test]
+    fn test_query_intent_classify_incident_deviation() {
+        let intent = QueryIntent::from_query("偏差如何分级");
+        assert_eq!(intent, QueryIntent::ClassifyIncident);
+    }
+
+    #[test]
+    fn test_query_intent_classify_incident_change() {
+        let intent = QueryIntent::from_query("变更控制的类型");
+        assert_eq!(intent, QueryIntent::ClassifyIncident);
+    }
+
+    #[test]
+    fn test_query_intent_generate_checklist() {
+        // "清单" in query takes precedence (no "偏差" keyword)
+        let intent = QueryIntent::from_query("生产设备检查清单");
+        assert_eq!(intent, QueryIntent::GenerateChecklist);
+    }
+
+    #[test]
+    fn test_query_intent_analyze_root_cause() {
+        let intent = QueryIntent::from_query("根本原因分析");
+        assert_eq!(intent, QueryIntent::AnalyzeRootCause);
+    }
+
+    #[test]
+    fn test_query_intent_default() {
+        // Unknown query falls back to RetrieveSop
+        let intent = QueryIntent::from_query("GMP原料药管理要求");
+        assert_eq!(intent, QueryIntent::RetrieveSop);
+    }
+
+    // =====================================================================
+    // ScoredChunk tests
+    // =====================================================================
+
+    #[test]
+    fn test_scored_chunk_creation() {
+        let chunk = ScoredChunk {
+            chunk_id: 1,
+            doc_id: "GMP-001".to_string(),
+            content: "偏差处理规程内容".to_string(),
+            score: 0.95,
+            source: ChannelType::Vector,
+        };
+        assert_eq!(chunk.score, 0.95);
+        assert_eq!(chunk.source, ChannelType::Vector);
+    }
+
+    #[test]
+    fn test_scored_chunk_clone() {
+        let chunk = ScoredChunk {
+            chunk_id: 1,
+            doc_id: "GMP-001".to_string(),
+            content: "测试内容".to_string(),
+            score: 0.8,
+            source: ChannelType::Fts,
+        };
+        let cloned = chunk.clone();
+        assert_eq!(cloned.score, chunk.score);
+        assert_eq!(cloned.source, chunk.source);
+    }
+
+    #[test]
+    fn test_scored_chunk_ordering() {
+        let mut chunks = vec![
+            ScoredChunk {
+                chunk_id: 1,
+                doc_id: "A".into(),
+                content: "".into(),
+                score: 0.5,
+                source: ChannelType::Rule,
+            },
+            ScoredChunk {
+                chunk_id: 2,
+                doc_id: "B".into(),
+                content: "".into(),
+                score: 0.9,
+                source: ChannelType::Rule,
+            },
+            ScoredChunk {
+                chunk_id: 3,
+                doc_id: "C".into(),
+                content: "".into(),
+                score: 0.7,
+                source: ChannelType::Rule,
+            },
+        ];
+        chunks.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap());
+        assert_eq!(chunks[0].doc_id, "B");
+        assert_eq!(chunks[1].doc_id, "C");
+        assert_eq!(chunks[2].doc_id, "A");
+    }
+
+    // =====================================================================
+    // ChannelType tests
+    // =====================================================================
+
+    #[test]
+    fn test_channel_type_all_variants() {
+        assert_eq!(format!("{}", ChannelType::Rule), "rule");
+        assert_eq!(format!("{}", ChannelType::Vector), "vector");
+        assert_eq!(format!("{}", ChannelType::Fts), "fts");
+        assert_eq!(format!("{}", ChannelType::Graph), "graph");
+    }
+
+    #[test]
+    fn test_channel_type_equality() {
+        assert_eq!(ChannelType::Rule, ChannelType::Rule);
+        assert_ne!(ChannelType::Rule, ChannelType::Vector);
+        assert_ne!(ChannelType::Fts, ChannelType::Graph);
+    }
+
+    #[test]
+    fn test_channel_type_copy() {
+        let ct = ChannelType::Vector;
+        let ct2 = ct;
+        assert_eq!(ct, ct2);
+    }
+
+    // =====================================================================
+    // GmpConfig tests
+    // =====================================================================
+
+    #[test]
+    fn test_gmp_config_default() {
+        let config = GmpConfig::default();
+        assert_eq!(config.ollama_url, "http://localhost:11434");
+        assert_eq!(config.ollama_model, "qwen2.5:14b");
+        assert_eq!(config.embedding_model, "bge-m3");
+        assert_eq!(config.reranker_model, "bge-reranker-v2-m3");
+        assert_eq!(config.rrf_k, 60.0);
+        assert_eq!(config.hnsw_m, 16);
+    }
+
+    #[test]
+    fn test_gmp_config_custom() {
+        let config = GmpConfig {
+            ollama_url: "http://custom:11434".to_string(),
+            ollama_model: "custom-model".to_string(),
+            embedding_model: "custom-embedding".to_string(),
+            reranker_model: "custom-reranker".to_string(),
+            llm_model: "custom-llm".to_string(),
+            data_dir: "/tmp/test".to_string(),
+            hnsw_m: 8,
+            hnsw_ef_construction: 100,
+            rrf_k: 30.0,
+        };
+        assert_eq!(config.ollama_url, "http://custom:11434");
+        assert_eq!(config.rrf_k, 30.0);
+        assert_eq!(config.hnsw_m, 8);
+    }
+
+    // =====================================================================
+    // Serialization tests
+    // =====================================================================
+
+    #[test]
+    fn test_channel_type_serde() {
+        let ct = ChannelType::Vector;
+        let encoded = serde_json::to_string(&ct).unwrap();
+        let decoded: ChannelType = serde_json::from_str(&encoded).unwrap();
+        assert_eq!(ct, decoded);
+    }
+
+    #[test]
+    fn test_scored_chunk_serde() {
+        let chunk = ScoredChunk {
+            chunk_id: 42,
+            doc_id: "TEST-001".into(),
+            content: "测试内容".into(),
+            score: 0.876,
+            source: ChannelType::Rule,
+        };
+        let encoded = serde_json::to_string(&chunk).unwrap();
+        let decoded: ScoredChunk = serde_json::from_str(&encoded).unwrap();
+        assert_eq!(decoded.chunk_id, 42);
+        assert_eq!(decoded.score, 0.876);
+    }
+
+    #[test]
+    fn test_query_intent_serde() {
+        let intent = QueryIntent::ClassifyIncident;
+        let encoded = serde_json::to_string(&intent).unwrap();
+        let decoded: QueryIntent = serde_json::from_str(&encoded).unwrap();
+        assert_eq!(intent, decoded);
+    }
+
+    // =====================================================================
+    // Edge cases
+    // =====================================================================
+
+    #[test]
+    fn test_empty_doc_id() {
+        let chunk = ScoredChunk {
+            chunk_id: 0,
+            doc_id: "".to_string(),
+            content: "内容".to_string(),
+            score: 0.0,
+            source: ChannelType::Fts,
+        };
+        assert_eq!(chunk.doc_id, "");
+        assert_eq!(chunk.score, 0.0);
+    }
+
+    #[test]
+    fn test_very_long_content() {
+        let long_content = "x".repeat(10000);
+        let chunk = GmpChunk {
+            id: 1,
+            doc_id: "TEST".to_string(),
+            chunk_index: 0,
+            content: long_content.clone(),
+            token_count: 5000,
+        };
+        assert_eq!(chunk.content.len(), 10000);
+    }
+
+    #[test]
+    fn test_all_query_intents_covered() {
+        let test_cases = vec![
+            ("SOP文件", QueryIntent::RetrieveSop),
+            ("是否合规", QueryIntent::CheckCompliance),
+            ("比较差异", QueryIntent::CompareRegulation),
+            ("流程步骤", QueryIntent::TraceProcess),
+            ("偏差分级", QueryIntent::ClassifyIncident),
+            ("调查清单", QueryIntent::GenerateChecklist),
+            ("根因分析", QueryIntent::AnalyzeRootCause),
+        ];
+        for (query, expected) in test_cases {
+            assert_eq!(
+                QueryIntent::from_query(query),
+                expected,
+                "Failed for query: {}",
+                query
+            );
+        }
+    }
+}
