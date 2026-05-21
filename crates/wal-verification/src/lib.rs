@@ -40,7 +40,6 @@ pub enum WALState {
     Checkpointing,
 }
 
-
 /// Critical WAL properties that must always hold
 #[derive(Debug, Clone)]
 pub enum WALProperty {
