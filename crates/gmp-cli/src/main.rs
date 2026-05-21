@@ -174,48 +174,80 @@ async fn main() -> Result<()> {
         Commands::Search {
             query,
             channel,
-            rerank: _,
+            rerank,
             explain,
             db,
         } => {
-            info!("GMP Search: query={}, channel={}", query, channel);
+            use gmp_retrieval::channel::FourChannelEngine;
+            use gmp_retrieval::RrfFusion;
+            use gmp_core::ScoredChunk;
+            use std::collections::HashMap;
+
+            info!("GMP Search: query={}, channel={}, rerank={}", query, channel, rerank);
+
             let config = gmp_storage::StorageConfig {
                 data_dir: "./data".to_string(),
                 db_path: db,
             };
-            let engine = gmp_storage::StorageEngine::new(config)?;
+            let storage = match gmp_storage::StorageEngine::new(config) {
+                Ok(s) => s,
+                Err(e) => {
+                    println!("Error: Failed to initialize storage: {}", e);
+                    return Ok(());
+                }
+            };
 
-            match channel.as_str() {
-                "fts" | "all" => {
-                    println!("Searching FTS for: '{}'\n", query);
-                    let results = engine.search_fts(&query, 10)?;
-                    if results.is_empty() {
-                        println!("No results found.");
-                    } else {
-                        for (i, r) in results.iter().enumerate() {
-                            println!(
-                                "{}. [{}] {}",
-                                i + 1,
-                                r.doc_type.clone().unwrap_or_default(),
-                                r.title
-                            );
-                            println!("   Score: {:.4}", r.score);
-                            println!("   {}...", r.content.chars().take(200).collect::<String>());
-                            println!();
-                        }
+            // Build four-channel engine
+            let four_channel = FourChannelEngine::new(storage, None);
+            let fusion = RrfFusion::new(60.0);
+
+            // Run four-channel search via tokio runtime
+            let results: Vec<ScoredChunk> = tokio::runtime::Handle::current()
+                .block_on(async { four_channel.search(&query, 20).await });
+
+            let fused: Vec<ScoredChunk> = if channel == "all" {
+                // Full fusion with all channels using equal weights
+                fusion.fuse(vec![(results.clone(), 1.0f32)])
+            } else {
+                results.clone()
+            };
+
+            // Apply reranking if requested
+            let final_results: Vec<ScoredChunk> = if rerank && !fused.is_empty() {
+                let reranker = gmp_reranker::create_reranker(
+                    "http://localhost:11434",
+                    "bge-reranker-v2-m3:latest",
+                );
+                match tokio::runtime::Handle::current()
+                    .block_on(reranker.rerank(&query, fused.clone(), 20))
+                {
+                    Ok(reranked) => reranked,
+                    Err(e) => {
+                        println!("Reranking failed: {}, using fusion results", e);
+                        fused
                     }
                 }
-                "vector" => {
-                    println!("Vector search for: '{}' (placeholder)", query);
-                }
-                "rule" => {
-                    println!("Rule search for: '{}' (placeholder)", query);
-                }
-                "graph" => {
-                    println!("Graph search for: '{}' (placeholder)", query);
-                }
-                _ => {
-                    println!("Unknown channel: {}. Use: fts, vector, rule, graph, all", channel);
+            } else {
+                fused
+            };
+
+            if final_results.is_empty() {
+                println!("No results found.");
+            } else {
+                println!("Found {} results:\n", final_results.len());
+                for (i, r) in final_results.iter().enumerate() {
+                    println!(
+                        "{}. [{}][{}] {}",
+                        i + 1,
+                        r.source,
+                        if rerank { "RERANKED" } else { "FUSED" },
+                        r.doc_id
+                    );
+                    println!("   Score: {:.4}", r.score);
+                    if explain {
+                        println!("   Content: {}...", r.content.chars().take(150).collect::<String>());
+                    }
+                    println!();
                 }
             }
 
