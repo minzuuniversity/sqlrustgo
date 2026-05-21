@@ -1,5 +1,7 @@
 //! Retrieval engine - orchestrates four channels + fusion
 
+use gmp_core::ScoredChunk;
+
 /// Retrieval engine configuration
 #[derive(Debug, Clone)]
 pub struct RetrievalEngineConfig {
@@ -22,7 +24,7 @@ impl Default for RetrievalEngineConfig {
     }
 }
 
-/// Main retrieval engine
+/// Main retrieval engine - placeholder for future multi-channel orchestration
 pub struct RetrievalEngine {
     config: RetrievalEngineConfig,
 }
@@ -32,7 +34,6 @@ impl RetrievalEngine {
         Self { config }
     }
 
-    /// Get configuration reference
     pub fn config(&self) -> &RetrievalEngineConfig {
         &self.config
     }
