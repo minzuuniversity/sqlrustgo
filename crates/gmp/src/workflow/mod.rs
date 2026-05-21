@@ -30,5 +30,8 @@ pub use approval::{ApprovalAction, ApprovalChain, ApprovalRecord};
 pub use definition::WorkflowDefinition;
 pub use engine::WorkflowEngine;
 pub use instance::WorkflowInstance;
-pub use state::{WorkflowState, WorkflowTransition};
+pub use state::{
+    BranchDefinition, BranchType, EscalationPolicy, TransitionCondition, WorkflowState,
+    WorkflowTransition,
+};
 pub use timeout::TimeoutChecker;
