@@ -23,7 +23,7 @@ pub use optimizer::{DefaultOptimizer, NoOpOptimizer, Optimizer, OptimizerRule};
 pub use physical_plan::PhysicalPlan;
 pub use physical_plan::{
     AggregateExec, DeleteExec, FilterExec, HashJoinExec, IndexScanExec, LimitExec, ProjectionExec,
-    SeqScanExec, SortExec, SortMergeJoinExec, WindowExec,
+    SeqScanExec, SortExec, SortMergeJoinExec, UpdateExec, WindowExec,
 };
 pub use planner::{DefaultPlanner, NoOpPlanner, Planner};
 
