@@ -3,16 +3,16 @@
 use crate::models::{BenchmarkResult, MetricRecord};
 use chrono::{DateTime, Utc};
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 pub struct BaselineDb {
     base_path: PathBuf,
 }
 
 impl BaselineDb {
-    pub fn new(base_path: &PathBuf) -> Result<Self, Box<dyn std::error::Error>> {
+    pub fn new(base_path: &Path) -> Result<Self, Box<dyn std::error::Error>> {
         let db = Self {
-            base_path: base_path.clone(),
+            base_path: base_path.to_path_buf(),
         };
         db.ensure_dir()?;
         Ok(db)
