@@ -1,6 +1,6 @@
-use serde::{Deserialize, Serialize};
 use chrono::{DateTime, Utc};
-use sha2::{Sha256, Digest};
+use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -99,7 +99,10 @@ pub enum UserRole {
 
 impl UserRole {
     pub fn can_sign(&self) -> bool {
-        matches!(self, Self::Operator | Self::QA | Self::Manager | Self::Admin)
+        matches!(
+            self,
+            Self::Operator | Self::QA | Self::Manager | Self::Admin
+        )
     }
 
     pub fn requires_dual_signature(&self) -> bool {
@@ -128,7 +131,10 @@ impl SignatureService {
         }
     }
 
-    pub fn sign(&mut self, request: SignatureRequest) -> Result<ElectronicSignature, SignatureError> {
+    pub fn sign(
+        &mut self,
+        request: SignatureRequest,
+    ) -> Result<ElectronicSignature, SignatureError> {
         let user = self
             .users
             .iter()
@@ -155,9 +161,10 @@ impl SignatureService {
 
         let signature_hash = Self::compute_hash(&signature_data);
 
-        let hash_chain = self.last_signature_hash.as_ref().map(|prev| {
-            Self::compute_hash(&format!("{}|{}", prev, signature_hash))
-        });
+        let hash_chain = self
+            .last_signature_hash
+            .as_ref()
+            .map(|prev| Self::compute_hash(&format!("{}|{}", prev, signature_hash)));
 
         let signature = ElectronicSignature {
             id: Uuid::new_v4().to_string(),
@@ -200,9 +207,7 @@ impl SignatureService {
 
         let recalculated_hash = Self::compute_hash(&format!(
             "{}|{}|{}",
-            signature.signer_id,
-            signature.signer_name,
-            signature.reason,
+            signature.signer_id, signature.signer_name, signature.reason,
         ));
 
         if recalculated_hash != signature.signature_hash {
@@ -212,7 +217,8 @@ impl SignatureService {
 
         if let Some(ref prev) = signature.previous_signature_hash {
             if let Some(ref chain) = signature.hash_chain {
-                let expected_chain = Self::compute_hash(&format!("{}|{}", prev, signature.signature_hash));
+                let expected_chain =
+                    Self::compute_hash(&format!("{}|{}", prev, signature.signature_hash));
                 if &expected_chain != chain {
                     chain_verified = false;
                     errors.push("Hash chain broken - audit trail compromised".to_string());
@@ -273,9 +279,9 @@ impl SignatureService {
     }
 
     pub fn verify_password(&self, user_id: &str, password: &str) -> bool {
-        self.users
-            .iter()
-            .any(|u| u.id == user_id && Self::hash_password(password) == Self::hash_password("dummy"))
+        self.users.iter().any(|u| {
+            u.id == user_id && Self::hash_password(password) == Self::hash_password("dummy")
+        })
     }
 
     fn compute_hash(data: &str) -> String {

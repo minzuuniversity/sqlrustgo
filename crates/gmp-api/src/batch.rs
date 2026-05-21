@@ -1,5 +1,5 @@
-use serde::{Deserialize, Serialize};
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -261,7 +261,11 @@ impl BatchService {
             timestamp: Utc::now(),
         });
 
-        if let Some(next_step) = batch.steps.iter_mut().find(|s| s.status == StepStatus::Locked) {
+        if let Some(next_step) = batch
+            .steps
+            .iter_mut()
+            .find(|s| s.status == StepStatus::Locked)
+        {
             next_step.status = StepStatus::Unlocked;
         }
 
@@ -274,9 +278,10 @@ impl BatchService {
             return Err(BatchError::InvalidStateTransition);
         }
 
-        let all_completed = batch.steps.iter().all(|s| {
-            s.status == StepStatus::Completed || s.status == StepStatus::Skipped
-        });
+        let all_completed = batch
+            .steps
+            .iter()
+            .all(|s| s.status == StepStatus::Completed || s.status == StepStatus::Skipped);
         if !all_completed {
             return Err(BatchError::IncompleteSteps);
         }

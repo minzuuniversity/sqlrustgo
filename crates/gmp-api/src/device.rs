@@ -1,7 +1,7 @@
-use serde::{Deserialize, Serialize};
 use chrono::{DateTime, Utc};
-use uuid::Uuid;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Device {
@@ -245,8 +245,15 @@ impl DeviceService {
         self.devices.get_mut(id)
     }
 
-    pub fn update_device_status(&mut self, id: &str, status: DeviceStatus) -> Result<(), DeviceError> {
-        let device = self.devices.get_mut(id).ok_or(DeviceError::DeviceNotFound)?;
+    pub fn update_device_status(
+        &mut self,
+        id: &str,
+        status: DeviceStatus,
+    ) -> Result<(), DeviceError> {
+        let device = self
+            .devices
+            .get_mut(id)
+            .ok_or(DeviceError::DeviceNotFound)?;
         device.status = status;
         if status == DeviceStatus::Online {
             device.last_connected = Some(Utc::now());
@@ -254,7 +261,11 @@ impl DeviceService {
         Ok(())
     }
 
-    pub fn record_reading(&mut self, device_id: &str, reading: DeviceReading) -> Result<(), DeviceError> {
+    pub fn record_reading(
+        &mut self,
+        device_id: &str,
+        reading: DeviceReading,
+    ) -> Result<(), DeviceError> {
         if !self.devices.contains_key(device_id) {
             return Err(DeviceError::DeviceNotFound);
         }
@@ -274,7 +285,10 @@ impl DeviceService {
         from: Option<DateTime<Utc>>,
         to: Option<DateTime<Utc>>,
     ) -> Result<Vec<&DeviceReading>, DeviceError> {
-        let readings = self.readings.get(device_id).ok_or(DeviceError::DeviceNotFound)?;
+        let readings = self
+            .readings
+            .get(device_id)
+            .ok_or(DeviceError::DeviceNotFound)?;
 
         Ok(readings
             .iter()
