@@ -241,7 +241,9 @@ mod tests {
     #[tokio::test]
     async fn test_noop_reranker_top_k() {
         let reranker = NoopReranker;
-        let docs: Vec<(String, String)> = (0..20).map(|i| (format!("doc{}", i), format!("content {}", i))).collect();
+        let docs: Vec<(String, String)> = (0..20)
+            .map(|i| (format!("doc{}", i), format!("content {}", i)))
+            .collect();
         let result = reranker.rerank("query", &docs, 5).await.unwrap();
         assert_eq!(result.len(), 5);
     }
