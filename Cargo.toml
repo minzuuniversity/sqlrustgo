@@ -54,6 +54,7 @@ members = [
     "crates/provenance-graph",
     "crates/workflow-v2",
     "crates/trust-viz",
+    "crates/gmp-retrieval",
 ]
 
 [workspace.package]
@@ -77,6 +78,7 @@ sqlrustgo-server = { path = "crates/server" }
 sqlrustgo-telemetry = { path = "crates/telemetry" }
 sqlrustgo-network = { path = "crates/network" }
 sqlrustgo-gmp = { path = "crates/gmp" }
+sqlrustgo-gmp-retrieval = { path = "crates/gmp-retrieval" }
 sqlrustgo-agentsql = { path = "crates/agentsql" }
 sqlrustgo-vector = { path = "crates/vector" }
 sqlrustgo-graph = { path = "crates/graph" }
