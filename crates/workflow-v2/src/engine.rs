@@ -1,6 +1,6 @@
 //! Workflow engine
 
-use crate::definition::{StepDef, WorkflowDef};
+use crate::definition::WorkflowDef;
 use crate::state::{InstanceStatus, StepInstance, StepStatus, WorkflowInstance};
 use crate::transitions::TransitionResult;
 
@@ -48,10 +48,10 @@ impl WorkflowEngine {
                     let next_id = instance.steps[step_idx + 1].step_id.clone();
                     instance.advance_to_step(&next_id);
                     instance.steps[step_idx + 1].status = StepStatus::InProgress;
-                    return TransitionResult::Advanced(next_id);
+                    TransitionResult::Advanced(next_id)
                 } else {
                     instance.status = InstanceStatus::Completed;
-                    return TransitionResult::Completed;
+                    TransitionResult::Completed
                 }
             }
             "reject" => {
