@@ -23,8 +23,7 @@ mod update_basic_tests {
         e.execute("INSERT INTO t VALUES (1, 'a', 10), (2, 'b', 20), (3, 'c', 30)")
             .unwrap();
 
-        let result = e.execute("UPDATE t SET value = 99 WHERE id = 2")
-            .unwrap();
+        let result = e.execute("UPDATE t SET value = 99 WHERE id = 2").unwrap();
         assert_eq!(result.affected_rows, 1);
 
         let select = e.execute("SELECT * FROM t ORDER BY id").unwrap();
@@ -75,13 +74,11 @@ mod update_basic_tests {
         let mut e = engine();
         e.execute("CREATE TABLE t (id INTEGER, name TEXT, value INTEGER)")
             .unwrap();
-        e.execute("INSERT INTO t VALUES (1, 'a', 10)")
-            .unwrap();
+        e.execute("INSERT INTO t VALUES (1, 'a', 10)").unwrap();
 
         // Note: multi-column UPDATE requires separate SET clauses
         // This tests basic single-column UPDATE for now
-        let result = e.execute("UPDATE t SET value = 99 WHERE id = 1")
-            .unwrap();
+        let result = e.execute("UPDATE t SET value = 99 WHERE id = 1").unwrap();
         assert_eq!(result.affected_rows, 1);
 
         let select = e.execute("SELECT * FROM t").unwrap();
@@ -94,8 +91,7 @@ mod update_basic_tests {
         let mut e = engine();
         e.execute("CREATE TABLE t (id INTEGER, value INTEGER)")
             .unwrap();
-        e.execute("INSERT INTO t VALUES (1, 10)")
-            .unwrap();
+        e.execute("INSERT INTO t VALUES (1, 10)").unwrap();
 
         let result = e
             .execute("UPDATE t SET value = 99 WHERE id = 9999")
@@ -110,8 +106,7 @@ mod update_basic_tests {
     #[test]
     fn test_update_text_column() {
         let mut e = engine();
-        e.execute("CREATE TABLE t (id INTEGER, name TEXT)")
-            .unwrap();
+        e.execute("CREATE TABLE t (id INTEGER, name TEXT)").unwrap();
         e.execute("INSERT INTO t VALUES (1, 'Alice'), (2, 'Bob')")
             .unwrap();
 
@@ -131,8 +126,7 @@ mod update_basic_tests {
         e.execute("CREATE TABLE t (id INTEGER PRIMARY KEY, value INTEGER)")
             .unwrap();
         // Empty table
-        let result = e.execute("UPDATE t SET value = 99 WHERE id = 1")
-            .unwrap();
+        let result = e.execute("UPDATE t SET value = 99 WHERE id = 1").unwrap();
         assert_eq!(result.affected_rows, 0);
     }
 

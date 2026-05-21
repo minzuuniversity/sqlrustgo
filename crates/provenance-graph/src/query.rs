@@ -66,3 +66,66 @@ impl<'a> ProvenanceQuery<'a> {
         self.graph.nodes_of_type(NodeType::Batch)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn create_test_graph() -> ProvenanceGraph {
+        let mut graph = ProvenanceGraph::new();
+        graph.add_node(ProvenanceNode::new("batch-001", NodeType::Batch));
+        graph.add_node(ProvenanceNode::new("sig-001", NodeType::Signature));
+        graph.add_node(ProvenanceNode::new("workflow-001", NodeType::Workflow));
+        graph.add_node(ProvenanceNode::new("dev-001", NodeType::Deviation));
+        graph.add_edge_between("batch-001", "sig-001", EdgeType::SignedBy);
+        graph.add_edge_between("batch-001", "workflow-001", EdgeType::Contains);
+        graph.add_edge_between("workflow-001", "dev-001", EdgeType::TriggeredBy);
+        graph
+    }
+
+    #[test]
+    fn test_connected_to() {
+        let graph = create_test_graph();
+        let query = ProvenanceQuery::new(&graph);
+        let connected = query.connected_to("batch-001");
+        assert_eq!(connected.len(), 2); // sig-001 and workflow-001
+    }
+
+    #[test]
+    fn test_connected_to_isolated_node() {
+        let mut graph = ProvenanceGraph::new();
+        graph.add_node(ProvenanceNode::new("isolated", NodeType::Batch));
+        let query = ProvenanceQuery::new(&graph);
+        let connected = query.connected_to("isolated");
+        assert!(connected.is_empty());
+    }
+
+    #[test]
+    fn test_trace_batch_lineage() {
+        let graph = create_test_graph();
+        let query = ProvenanceQuery::new(&graph);
+        let result = query.trace_batch_lineage("batch-001");
+        assert!(!result.nodes.is_empty());
+        assert!(!result.path.is_empty());
+    }
+
+    #[test]
+    fn test_trace_batch_lineage_nonexistent() {
+        let graph = create_test_graph();
+        let query = ProvenanceQuery::new(&graph);
+        let result = query.trace_batch_lineage("nonexistent");
+        assert!(result.nodes.is_empty());
+        assert!(result.path.is_empty());
+    }
+
+    #[test]
+    fn test_batches_by_operator() {
+        let mut graph = ProvenanceGraph::new();
+        graph.add_node(ProvenanceNode::new("batch-001", NodeType::Batch));
+        graph.add_node(ProvenanceNode::new("batch-002", NodeType::Batch));
+        graph.add_node(ProvenanceNode::new("op-001", NodeType::Operator));
+        let query = ProvenanceQuery::new(&graph);
+        let batches = query.batches_by_operator("op-001");
+        assert_eq!(batches.len(), 2);
+    }
+}

@@ -87,3 +87,68 @@ impl std::fmt::Display for CrashPoint {
         write!(f, "{}", self.name())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_crash_point_all_returns_all_points() {
+        let points = CrashPoint::all();
+        assert_eq!(points.len(), 11);
+    }
+
+    #[test]
+    fn test_crash_point_name_contains_no_spaces() {
+        for point in CrashPoint::all() {
+            let name = point.name();
+            assert!(
+                !name.contains(' '),
+                "name '{}' should not contain spaces",
+                name
+            );
+            assert!(
+                name.chars().all(|c| c.is_lowercase() || c == '_'),
+                "name '{}' should be lowercase with underscores",
+                name
+            );
+        }
+    }
+
+    #[test]
+    fn test_crash_point_description_is_non_empty() {
+        for point in CrashPoint::all() {
+            let desc = point.description();
+            assert!(
+                !desc.is_empty(),
+                "description for {:?} should not be empty",
+                point
+            );
+        }
+    }
+
+    #[test]
+    fn test_crash_point_display_trait() {
+        assert_eq!(format!("{}", CrashPoint::WalWrite), "wal_write");
+        assert_eq!(format!("{}", CrashPoint::Checkpoint), "checkpoint");
+    }
+
+    #[test]
+    fn test_crash_point_eq_and_hash() {
+        use std::collections::HashSet;
+        let mut set = HashSet::new();
+        set.insert(CrashPoint::WalWrite);
+        set.insert(CrashPoint::WalWrite); // duplicate
+        assert_eq!(set.len(), 1);
+
+        set.insert(CrashPoint::WalFlush);
+        assert_eq!(set.len(), 2);
+    }
+
+    #[test]
+    fn test_crash_point_copy() {
+        let point = CrashPoint::TransactionCommit;
+        let point2 = point;
+        assert_eq!(point, point2);
+    }
+}
