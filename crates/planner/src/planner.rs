@@ -6,7 +6,7 @@ use crate::logical_plan::LogicalPlan;
 use crate::optimizer::{DefaultOptimizer, Optimizer};
 use crate::physical_plan::{
     AggregateExec, DeleteExec, FilterExec, HashJoinExec, IndexScanExec, LimitExec, MergeExec,
-    PhysicalPlan, ProjectionExec, SeqScanExec, SortExec,
+    PhysicalPlan, ProjectionExec, SeqScanExec, SortExec, UpdateExec,
 };
 use crate::Schema;
 use crate::{Expr, JoinType};
@@ -355,10 +355,15 @@ impl DefaultPlanner {
                 // CALL stored procedure - handled by execution engine
                 Ok(Box::new(SeqScanExec::new(String::new(), Schema::empty())))
             }
-            LogicalPlan::Update { .. } => {
-                // DML statements - handled differently
-                Ok(Box::new(SeqScanExec::new(String::new(), Schema::empty())))
-            }
+            LogicalPlan::Update {
+                table_name,
+                updates,
+                predicate,
+            } => Ok(Box::new(UpdateExec::new(
+                table_name.clone(),
+                updates.clone(),
+                predicate.clone(),
+            ))),
             LogicalPlan::Merge {
                 target_table,
                 source_table,
@@ -554,9 +559,15 @@ impl DefaultPlanner {
                 // DDL statements - handled differently
                 Ok(Box::new(SeqScanExec::new(String::new(), Schema::empty())))
             }
-            LogicalPlan::Update { .. } => {
-                Ok(Box::new(SeqScanExec::new(String::new(), Schema::empty())))
-            }
+            LogicalPlan::Update {
+                table_name,
+                updates,
+                predicate,
+            } => Ok(Box::new(UpdateExec::new(
+                table_name.clone(),
+                updates.clone(),
+                predicate.clone(),
+            ))),
             LogicalPlan::Merge {
                 target_table,
                 source_table,
