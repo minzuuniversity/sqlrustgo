@@ -1736,7 +1736,8 @@ fn execute_select(
                 if !results.is_empty() {
                     let cols: Vec<String> = results.iter().map(|(c, _, _)| c.clone()).collect();
                     let ctypes: Vec<String> = results.iter().map(|(_, t, _)| t.clone()).collect();
-                    let rows: Vec<Vec<Value>> = vec![results.iter().map(|(_, _, v)| v.clone()).collect()];
+                    let rows: Vec<Vec<Value>> =
+                        vec![results.iter().map(|(_, _, v)| v.clone()).collect()];
                     return Ok((cols, ctypes, rows));
                 }
             }
@@ -1794,8 +1795,7 @@ fn parse_single_literal(s: &str) -> Option<Value> {
         return Some(Value::Float(f));
     }
     if s.len() >= 2
-        && ((s.starts_with('\'') && s.ends_with('\''))
-            || (s.starts_with('"') && s.ends_with('"')))
+        && ((s.starts_with('\'') && s.ends_with('\'')) || (s.starts_with('"') && s.ends_with('"')))
     {
         return Some(Value::Text(s[1..s.len() - 1].to_string()));
     }
@@ -1846,7 +1846,8 @@ fn handle_builtin_functions(expr_str: &str) -> Option<Vec<(String, String, Value
         }
 
         // database() / schema() -> current database
-        if upper == "DATABASE()" || upper == "DATABASE" || upper == "SCHEMA()" || upper == "SCHEMA" {
+        if upper == "DATABASE()" || upper == "DATABASE" || upper == "SCHEMA()" || upper == "SCHEMA"
+        {
             results.push((
                 "DATABASE()".to_string(),
                 "VARCHAR(255)".to_string(),
@@ -1856,7 +1857,11 @@ fn handle_builtin_functions(expr_str: &str) -> Option<Vec<(String, String, Value
         }
 
         // user() / current_user() -> connected user
-        if upper == "USER()" || upper == "USER" || upper == "CURRENT_USER()" || upper == "CURRENT_USER" {
+        if upper == "USER()"
+            || upper == "USER"
+            || upper == "CURRENT_USER()"
+            || upper == "CURRENT_USER"
+        {
             results.push((
                 "USER()".to_string(),
                 "VARCHAR(255)".to_string(),
