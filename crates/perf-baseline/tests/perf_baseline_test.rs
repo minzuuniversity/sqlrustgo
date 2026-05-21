@@ -27,7 +27,7 @@ fn test_benchmark_result_serialization() {
 }
 
 #[test]
-fn test_metric_type_from_str() {
+fn test_metric_type_parse_str() {
     assert_eq!(
         MetricType::parse_str("qps_update"),
         Some(MetricType::QpsUpdate)

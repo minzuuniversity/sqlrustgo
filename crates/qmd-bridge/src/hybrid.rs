@@ -281,25 +281,45 @@ impl HybridSearcher {
         let ranked_vector: Vec<(String, f32)> = vector_results
             .iter()
             .enumerate()
-            .map(|(i, r)| (r.id.clone(), 1.0 / (rrf_config.k + i as f32) * rrf_config.vector_weight))
+            .map(|(i, r)| {
+                (
+                    r.id.clone(),
+                    1.0 / (rrf_config.k + i as f32) * rrf_config.vector_weight,
+                )
+            })
             .collect();
 
         let ranked_graph: Vec<(String, f32)> = graph_results
             .iter()
             .enumerate()
-            .map(|(i, r)| (r.id.clone(), 1.0 / (rrf_config.k + i as f32) * rrf_config.graph_weight))
+            .map(|(i, r)| {
+                (
+                    r.id.clone(),
+                    1.0 / (rrf_config.k + i as f32) * rrf_config.graph_weight,
+                )
+            })
             .collect();
 
         let ranked_text: Vec<(String, f32)> = text_results
             .iter()
             .enumerate()
-            .map(|(i, r)| (r.id.clone(), 1.0 / (rrf_config.k + i as f32) * rrf_config.text_weight))
+            .map(|(i, r)| {
+                (
+                    r.id.clone(),
+                    1.0 / (rrf_config.k + i as f32) * rrf_config.text_weight,
+                )
+            })
             .collect();
 
         let ranked_rules: Vec<(String, f32)> = rule_results
             .iter()
             .enumerate()
-            .map(|(i, r)| (r.id.clone(), 1.0 / (rrf_config.k + i as f32) * rrf_config.rule_weight))
+            .map(|(i, r)| {
+                (
+                    r.id.clone(),
+                    1.0 / (rrf_config.k + i as f32) * rrf_config.rule_weight,
+                )
+            })
             .collect();
 
         // Build doc_id → all_scores map
@@ -307,7 +327,12 @@ impl HybridSearcher {
             HashMap::new();
 
         for r in &vector_results {
-            doc_scores.entry(r.id.clone()).or_default().push((r.id.clone(), Some(r.score), None, None));
+            doc_scores.entry(r.id.clone()).or_default().push((
+                r.id.clone(),
+                Some(r.score),
+                None,
+                None,
+            ));
         }
         for r in &graph_results {
             doc_scores.entry(r.id.clone()).or_insert_with(Vec::new);
@@ -369,9 +394,18 @@ impl HybridSearcher {
                 HybridSearchResultItem {
                     id: doc_id.clone(),
                     score: *score,
-                    vector_score: vector_results.iter().find(|r| &r.id == doc_id).map(|r| r.score),
-                    graph_score: graph_results.iter().find(|r| &r.id == doc_id).map(|r| r.score),
-                    text_score: text_results.iter().find(|r| &r.id == doc_id).map(|r| r.score),
+                    vector_score: vector_results
+                        .iter()
+                        .find(|r| &r.id == doc_id)
+                        .map(|r| r.score),
+                    graph_score: graph_results
+                        .iter()
+                        .find(|r| &r.id == doc_id)
+                        .map(|r| r.score),
+                    text_score: text_results
+                        .iter()
+                        .find(|r| &r.id == doc_id)
+                        .map(|r| r.score),
                     data,
                 }
             })

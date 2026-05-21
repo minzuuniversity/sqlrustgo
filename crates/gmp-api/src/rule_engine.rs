@@ -1,5 +1,5 @@
-use serde::{Deserialize, Serialize};
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -231,9 +231,15 @@ impl RuleService {
         }
     }
 
-    pub fn create_rule(&mut self, request: CreateRuleRequest, user_id: &str) -> Result<Rule, RuleError> {
+    pub fn create_rule(
+        &mut self,
+        request: CreateRuleRequest,
+        user_id: &str,
+    ) -> Result<Rule, RuleError> {
         if request.name.is_empty() {
-            return Err(RuleError::ValidationError("Rule name cannot be empty".to_string()));
+            return Err(RuleError::ValidationError(
+                "Rule name cannot be empty".to_string(),
+            ));
         }
 
         let now = Utc::now();
@@ -319,18 +325,12 @@ impl RuleService {
         }
     }
 
-    pub fn list_rules(
-        &self,
-        status: Option<RuleStatus>,
-        category: Option<&str>,
-    ) -> Vec<&Rule> {
+    pub fn list_rules(&self, status: Option<RuleStatus>, category: Option<&str>) -> Vec<&Rule> {
         self.rules
             .iter()
             .filter(|r| {
                 let status_match = status.map_or(true, |s| r.status == s);
-                let category_match = category.map_or(true, |c| {
-                    r.tags.iter().any(|t| t == c)
-                });
+                let category_match = category.map_or(true, |c| r.tags.iter().any(|t| t == c));
                 status_match && category_match
             })
             .collect()
@@ -382,11 +382,13 @@ impl RuleService {
         let message = if passed {
             format!("Rule '{}' passed", rule.name)
         } else {
-            format!("Rule '{}' failed: {} {} {:?}",
+            format!(
+                "Rule '{}' failed: {} {} {:?}",
                 rule.name,
                 rule.condition.field,
                 rule.condition.operator.as_str(),
-                rule.condition.value)
+                rule.condition.value
+            )
         };
 
         RuleEvaluation {
@@ -418,10 +420,20 @@ impl RuleService {
             (ConditionOperator::Equals, ConditionValue::Number(n), ConditionValue::Number(a)) => {
                 (a - n).abs() < f64::EPSILON
             }
-            (ConditionOperator::Equals, ConditionValue::String(s), ConditionValue::String(a)) => a == s,
-            (ConditionOperator::GreaterThan, ConditionValue::Number(n), ConditionValue::Number(a)) => a > n,
-            (ConditionOperator::LessThan, ConditionValue::Number(n), ConditionValue::Number(a)) => a < n,
-            (ConditionOperator::Contains, ConditionValue::String(s), ConditionValue::String(a)) => a.contains(s),
+            (ConditionOperator::Equals, ConditionValue::String(s), ConditionValue::String(a)) => {
+                a == s
+            }
+            (
+                ConditionOperator::GreaterThan,
+                ConditionValue::Number(n),
+                ConditionValue::Number(a),
+            ) => a > n,
+            (ConditionOperator::LessThan, ConditionValue::Number(n), ConditionValue::Number(a)) => {
+                a < n
+            }
+            (ConditionOperator::Contains, ConditionValue::String(s), ConditionValue::String(a)) => {
+                a.contains(s)
+            }
             _ => false,
         }
     }
