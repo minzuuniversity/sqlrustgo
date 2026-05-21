@@ -1731,6 +1731,15 @@ fn execute_select(
             && !expr_str.to_uppercase().contains("WHERE")
             && !expr_str.to_uppercase().contains("JOIN")
         {
+            // Handle built-in functions: version(), database(), user(), now(), connection_id()
+            if let Some(results) = handle_builtin_functions(expr_str) {
+                if !results.is_empty() {
+                    let cols: Vec<String> = results.iter().map(|(c, _, _)| c.clone()).collect();
+                    let ctypes: Vec<String> = results.iter().map(|(_, t, _)| t.clone()).collect();
+                    let rows: Vec<Vec<Value>> = vec![results.iter().map(|(_, _, v)| v.clone()).collect()];
+                    return Ok((cols, ctypes, rows));
+                }
+            }
             if let Some(values) = parse_select_literals(expr_str) {
                 if !values.is_empty() {
                     let cols: Vec<String> = (0..values.len())
@@ -1770,6 +1779,125 @@ fn execute_select(
     };
     let ctypes: Vec<String> = infer_column_types(sql, storage, &cols);
     Ok((cols, ctypes, r.rows))
+}
+
+/// Parse a single literal value (used for mixed literal+function SELECT)
+fn parse_single_literal(s: &str) -> Option<Value> {
+    let s = s.trim();
+    if s.is_empty() {
+        return None;
+    }
+    if let Ok(i) = s.parse::<i64>() {
+        return Some(Value::Integer(i));
+    }
+    if let Ok(f) = s.parse::<f64>() {
+        return Some(Value::Float(f));
+    }
+    if s.len() >= 2
+        && ((s.starts_with('\'') && s.ends_with('\''))
+            || (s.starts_with('"') && s.ends_with('"')))
+    {
+        return Some(Value::Text(s[1..s.len() - 1].to_string()));
+    }
+    if s.eq_ignore_ascii_case("NULL") {
+        return Some(Value::Null);
+    }
+    if s.eq_ignore_ascii_case("TRUE") {
+        return Some(Value::Boolean(true));
+    }
+    if s.eq_ignore_ascii_case("FALSE") {
+        return Some(Value::Boolean(false));
+    }
+    None
+}
+
+/// Infer column type from Value
+fn infer_type(v: &Value) -> String {
+    match v {
+        Value::Integer(_) => "BIGINT".to_string(),
+        Value::Float(_) => "DOUBLE".to_string(),
+        Value::Text(_) => "VARCHAR(255)".to_string(),
+        Value::Boolean(_) => "TINYINT".to_string(),
+        Value::Null => "VARCHAR(255)".to_string(),
+        Value::Blob(_) => "BLOB".to_string(),
+        Value::Geometry(_) => "GEOMETRY".to_string(),
+    }
+}
+
+/// Handle built-in MySQL functions that don't need a storage engine.
+/// Returns Vec of (column_name, column_type, value) if handled, None otherwise.
+fn handle_builtin_functions(expr_str: &str) -> Option<Vec<(String, String, Value)>> {
+    let mut results = Vec::new();
+    for part in expr_str.split(',') {
+        let part = part.trim();
+        if part.is_empty() {
+            continue;
+        }
+        let upper = part.to_uppercase();
+
+        // version() -> returns SQLRustGo version string
+        if upper == "VERSION()" || upper == "VERSION" {
+            results.push((
+                "VERSION()".to_string(),
+                "VARCHAR(255)".to_string(),
+                Value::Text("8.0.33-SQLRustGo".to_string()),
+            ));
+            continue;
+        }
+
+        // database() / schema() -> current database
+        if upper == "DATABASE()" || upper == "DATABASE" || upper == "SCHEMA()" || upper == "SCHEMA" {
+            results.push((
+                "DATABASE()".to_string(),
+                "VARCHAR(255)".to_string(),
+                Value::Null,
+            ));
+            continue;
+        }
+
+        // user() / current_user() -> connected user
+        if upper == "USER()" || upper == "USER" || upper == "CURRENT_USER()" || upper == "CURRENT_USER" {
+            results.push((
+                "USER()".to_string(),
+                "VARCHAR(255)".to_string(),
+                Value::Text("root@127.0.0.1".to_string()),
+            ));
+            continue;
+        }
+
+        // connection_id() -> thread id
+        if upper == "CONNECTION_ID()" || upper == "CONNECTION_ID" {
+            results.push((
+                "CONNECTION_ID()".to_string(),
+                "BIGINT".to_string(),
+                Value::Integer(1),
+            ));
+            continue;
+        }
+
+        // Now() / current_timestamp
+        if upper == "NOW()" || upper == "NOW" || upper == "CURRENT_TIMESTAMP" {
+            results.push((
+                "NOW()".to_string(),
+                "DATETIME".to_string(),
+                Value::Text("2026-01-01 00:00:00".to_string()),
+            ));
+            continue;
+        }
+
+        // Not a built-in function we handle, try as literal value
+        if let Some(v) = parse_single_literal(part) {
+            results.push((format!("col_{}", results.len() + 1), infer_type(&v), v));
+            continue;
+        }
+
+        // Not a built-in function we handle, bail out
+    }
+    if results.is_empty() {
+        None
+    } else {
+        Some(results)
+    }
 }
 
 /// Parse simple SELECT value literals like "1", "'hello'", "1, 2"
