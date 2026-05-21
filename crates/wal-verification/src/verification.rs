@@ -1,6 +1,6 @@
 //! WAL Verification engine
 
-use crate::{PropertySeverity, WALLog, WALProperty, WALRecord};
+use crate::{PropertySeverity, WALLog, WALProperty};
 
 pub struct WALVerifier {
     log: WALLog,
