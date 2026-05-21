@@ -315,8 +315,8 @@ async fn main() -> Result<()> {
         }
         Commands::Shell { db } => {
             info!("Starting interactive shell");
-            println!("GMP Compliance Retrieval Shell (v1.0.0-alpha)");
-            println!("Type 'help' for commands, 'exit' to quit.");
+            println!("GMP Compliance Retrieval Shell (v1.0.0)");
+            println!("Commands: search <q>, route <q>, rag <q>, stats, channel <c> <q>, help, exit");
             println!();
             loop {
                 print!("gmp> ");
@@ -330,10 +330,35 @@ async fn main() -> Result<()> {
                     break;
                 }
                 if input == "help" {
-                    println!("Available commands:");
-                    println!("  search <query>  - Search for documents");
-                    println!("  index           - Build indexes");
-                    println!("  exit/quit       - Exit shell");
+                    println!("Commands:");
+                    println!("  search <q>    - FTS search");
+                    println!("  route <q>     - Intent classification + channel routing");
+                    println!("  rag <q>       - LLM RAG Q&A");
+                    println!("  stats         - Index statistics");
+                    println!("  channel <c> <q> - Search in channel (fts/vector/rule/graph)");
+                    println!("  help          - Show this help");
+                    println!("  exit/quit     - Exit shell");
+                    continue;
+                }
+                if input == "stats" {
+                    let config = gmp_storage::StorageConfig {
+                        data_dir: "./data".to_string(),
+                        db_path: db.clone(),
+                    };
+                    match gmp_storage::StorageEngine::new(config) {
+                        Ok(engine) => {
+                            match engine.validate() {
+                                Ok(result) => {
+                                    println!("Index Statistics:");
+                                    println!("  Documents: {}", result.documents);
+                                    println!("  Chunks:   {}", result.chunks);
+                                    println!("  Status:   {}", if result.is_valid { "VALID" } else { "NEEDS REBUILD" });
+                                }
+                                Err(e) => println!("Error: {}", e),
+                            }
+                        }
+                        Err(e) => println!("Error: {}", e),
+                    }
                     continue;
                 }
                 if let Some(query) = input.strip_prefix("search ") {
@@ -359,13 +384,92 @@ async fn main() -> Result<()> {
                         }
                         Err(e) => println!("Error: {}", e),
                     }
-                } else if input == "index" {
-                    println!("Use 'gmp-retrieve index --source gmp-md/' to build indexes");
+                } else if let Some(query) = input.strip_prefix("route ") {
+                    let rt = match tokio::runtime::Runtime::new() {
+                        Ok(rt) => rt,
+                        Err(e) => {
+                            println!("Error: cannot create runtime: {}", e);
+                            continue;
+                        }
+                    };
+                    let q = query.to_string();
+                    rt.block_on(async {
+                        use gmp_llm::LlmClient;
+                        let llm = LlmClient::new("http://localhost:11434".to_string(), "llama3.2".to_string());
+                        match llm.classify_intent(&q).await {
+                            Ok(intent) => println!("[Intent] {:?}", intent),
+                            Err(e) => println!("[Intent] Error: {} (is Ollama running?)", e),
+                        }
+                    });
+                } else if let Some(query) = input.strip_prefix("rag ") {
+                    let config = gmp_storage::StorageConfig {
+                        data_dir: "./data".to_string(),
+                        db_path: db.clone(),
+                    };
+                    let chunks: Vec<String> = match gmp_storage::StorageEngine::new(config) {
+                        Ok(engine) => engine
+                            .search_fts(query, 3)
+                            .unwrap_or_default()
+                            .into_iter()
+                            .map(|r| format!("[{}] {}\n\n{}", r.title, r.doc_type.clone().unwrap_or_default(), r.content))
+                            .collect(),
+                        Err(e) => {
+                            println!("Error: {}", e);
+                            continue;
+                        }
+                    };
+                    if chunks.is_empty() {
+                        println!("No documents found. Run 'index' first.");
+                        continue;
+                    }
+                    let rt = match tokio::runtime::Runtime::new() {
+                        Ok(rt) => rt,
+                        Err(e) => {
+                            println!("Error: cannot create runtime: {}", e);
+                            continue;
+                        }
+                    };
+                    let q = query.to_string();
+                    let c = chunks.clone();
+                    rt.block_on(async {
+                        use gmp_llm::LlmClient;
+                        let llm = LlmClient::new("http://localhost:11434".to_string(), "llama3.2".to_string());
+                        match llm.generate_answer(&q, &c, 4096).await {
+                            Ok(ans) => println!("{}", ans),
+                            Err(e) => println!("[LLM] Error: {} (is Ollama running?)", e),
+                        }
+                    });
+                } else if let Some(rest) = input.strip_prefix("channel ") {
+                    let parts: Vec<&str> = rest.splitn(2, ' ').collect();
+                    if parts.len() < 2 {
+                        println!("Usage: channel <fts|vector|rule|graph> <query>");
+                        continue;
+                    }
+                    let channel = parts[0];
+                    let query = parts[1];
+                    if channel != "fts" {
+                        println!("Channel '{}' not yet implemented (only 'fts' available)", channel);
+                        continue;
+                    }
+                    let config = gmp_storage::StorageConfig {
+                        data_dir: "./data".to_string(),
+                        db_path: db.clone(),
+                    };
+                    match gmp_storage::StorageEngine::new(config) {
+                        Ok(engine) => {
+                            let results = engine.search_fts(query, 5).unwrap_or_default();
+                            if results.is_empty() {
+                                println!("No results found.");
+                            } else {
+                                for (i, r) in results.iter().enumerate() {
+                                    println!("{}. {}", i + 1, r.title);
+                                }
+                            }
+                        }
+                        Err(e) => println!("Error: {}", e),
+                    }
                 } else {
-                    println!(
-                        "Unknown command: '{}'. Type 'help' for available commands.",
-                        input
-                    );
+                    println!("Unknown command. Type 'help' for available commands.");
                 }
             }
         }
