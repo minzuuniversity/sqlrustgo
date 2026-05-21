@@ -8,15 +8,19 @@ run-name: ${{ gitea.ref_name }} - ${{ gitea.sha }}
       - develop/v2.8.0
       - develop/v3.0.0
       - develop/v3.2.0
+      - develop/v3.4.0
       - alpha/v2.9.0
       - alpha/v3.2.0
+      - alpha/v3.4.0
       - beta/v2.8.0
       - beta/v2.9.0
       - beta/v3.0.0
       - beta/v3.2.0
+      - beta/v3.4.0
       - ci/gitea-compat
       - ci/v2.9.0-*
       - ci/v2.8.0-*
+      - ci/v3.4.0-*
     paths-ignore:
       - 'docs/**'
       - '*.md'
@@ -29,15 +33,19 @@ run-name: ${{ gitea.ref_name }} - ${{ gitea.sha }}
       - develop/v2.8.0
       - develop/v3.0.0
       - develop/v3.2.0
+      - develop/v3.4.0
       - alpha/v2.9.0
       - alpha/v3.2.0
+      - alpha/v3.4.0
       - beta/v2.8.0
       - beta/v2.9.0
       - beta/v3.0.0
       - beta/v3.2.0
+      - beta/v3.4.0
       - ci/gitea-compat
       - ci/v2.9.0-*
       - ci/v2.8.0-*
+      - ci/v3.4.0-*
     paths-ignore:
       - 'docs/**'
       - '*.md'
