@@ -107,7 +107,7 @@ Output format: JSON array of test cases with fields: name, code, module, descrip
     fn parse_test_cases(
         &self,
         response: &str,
-        module: &str,
+        _module: &str,
     ) -> Result<Vec<TestCase>, TestGenError> {
         // Try to extract JSON array from response
         let json_str = response
