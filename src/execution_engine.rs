@@ -2835,10 +2835,62 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             }
         }
 
-        // If no WHERE clause, use the simple storage.update() path
+        // If no WHERE clause, update ALL rows
         if update.where_clause.is_none() {
+            // storage.update() is a stub, so implement here properly
+            let table_info = {
+                let storage = self.storage.read().unwrap();
+                storage.get_table_info(&table_name)?.clone()
+            };
+
+            let set_col_indices: Vec<(usize, Expression)> = update
+                .set_clauses
+                .iter()
+                .filter_map(|(col_name, expr)| {
+                    find_column_index(col_name, &table_info).map(|idx| (idx, expr.clone()))
+                })
+                .collect();
+
+            if set_col_indices.is_empty() {
+                return Ok(ExecutorResult::new(vec![], 0));
+            }
+
+            let all_rows = {
+                let storage = self.storage.read().unwrap();
+                storage.scan(&table_name)?
+            };
+            let count = all_rows.len();
+
+            if count == 0 {
+                return Ok(ExecutorResult::new(vec![], 0));
+            }
+
+            // Apply SET expressions to all rows
+            let updated_rows: Vec<Vec<Value>> = all_rows
+                .into_iter()
+                .map(|row| {
+                    let mut new_row = row.clone();
+                    for &(col_idx, ref set_expr) in &set_col_indices {
+                        let new_val =
+                            evaluate_expression(set_expr, &new_row, &table_info)
+                                .unwrap_or(Value::Null);
+                        if col_idx < new_row.len() {
+                            new_row[col_idx] = new_val;
+                        }
+                    }
+                    new_row
+                })
+                .collect();
+
+            // Write back
             let mut storage = self.storage.write().unwrap();
-            let count = storage.update(&table_name, &[], &[])?;
+            storage.delete(&table_name, &[])?;
+            storage.insert(&table_name, updated_rows)?;
+
+            self.query_cache
+                .write()
+                .unwrap()
+                .invalidate_table(&table_name);
             return Ok(ExecutorResult::new(vec![], count));
         }
 
