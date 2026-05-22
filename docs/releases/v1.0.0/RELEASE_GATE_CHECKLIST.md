@@ -1,7 +1,7 @@
 # v1.0.0 门禁检查清单
 
 > **版本**: v1.0.0
-> **更新日期**: 2026-05-21
+> **更新日期**: 2026-05-22
 > **维护人**: TRAE + DeepSeek-V4-Pro
 > **阶段**: Alpha → Beta → RC → GA
 > **关联门禁规范**: [docs/governance/GATE_SPEC.md](../../governance/GATE_SPEC.md)
@@ -95,7 +95,7 @@ B-Gate: PASS (with 1 note)
 | # | 检查项 | 命令/方法 | 通过标准 | 结果 | 证据 |
 |---|--------|----------|---------|------|------|
 | R1 | Build | `cargo build --release` | 无错误 | ✅ | cargo build pass (0.2s) |
-| R2 | Test | `cargo test` | 100% 通过 | ❌ | 123 passed; 1 FAILED: `test_search_fts_result_scoring` (`assertion r.score >= 0.0` at integration_storage.rs:163) |
+| R2 | Test | `cargo test` | 100% 通过 | ❌ | 69 passed; 1 FAILED: `test_search_fts_result_scoring` (`assertion r.score >= 0.0` at integration_storage.rs:163) |
 | R3 | Clippy | `cargo clippy -- -D warnings` | 零警告 | ❌ | dead_code: `make_test_chunk` in gmp-reranker/src/tests.rs; unused imports in gmp-storage/src/tests.rs |
 | R4 | Format | `cargo fmt -- --check` | 通过 | ❌ | Multiple diffs: gmp-eval/src/main.rs, gmp-llm/src/tests.rs, gmp-reranker/src/tests.rs, gmp-storage/src/lib.rs, integration_storage.rs |
 | R5 | 408 场景 | `cargo run --release -p gmp-eval` | ≥ 80% | ❌ | 89/408 = 21.8% (CAPA关联0%, 交叉场景0%, 人员培训0%, 多跳因果推理0%) |
