@@ -228,7 +228,7 @@ impl StorageEngine {
         // Chunk the content (simple split by headers)
         let chunks = self.chunk_content(&body);
         for (idx, chunk_text) in chunks.iter().enumerate() {
-            let token_count = chunk_text.len() / 4; // rough estimate
+            let token_count = (chunk_text.len() / 4) as i64; // rough estimate, cast to i64
 
             tx.execute(
                 r#"INSERT INTO gmp_document_chunks (doc_id, chunk_index, content, token_count)

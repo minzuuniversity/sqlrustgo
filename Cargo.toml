@@ -6,14 +6,10 @@ members = [
     "crates/gmp-retrieval",
     "crates/gmp-reranker",
     "crates/gmp-llm",
-    "crates/gmp-ner",
-    "crates/gmp-re",
-    "crates/gmp-classifier",
-    "crates/gmp-scorer",
-    "crates/gmp-kg",
-    "crates/gmp-graph",
     "crates/gmp-cli",
+    "crates/gmp-server",
     "crates/gmp-eval",
+    "crates/gmp-api",
 ]
 
 [workspace.package]
@@ -48,6 +44,10 @@ reqwest = { version = "0.12", features = ["json"] }
 
 # Embeddings / Reranker (Ollama)
 ollama-rs = "0.2"
+
+# REST API
+actix-web = "4"
+actix-rt = "2"
 
 [profile.release]
 opt-level = 3
