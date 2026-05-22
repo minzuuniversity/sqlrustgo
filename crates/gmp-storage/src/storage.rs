@@ -64,6 +64,90 @@ impl StorageEngine {
         Ok(engine)
     }
 
+    /// Get raw connection reference for advanced operations (Layer 0 population, LIKE search)
+    #[allow(dead_code)]
+    pub fn get_conn(&self) -> &Mutex<Connection> {
+        &self.conn
+    }
+
+    /// Perform LIKE search on document chunks with KG synonym expansion
+    /// Uses Chinese n-gram substrings + knowledge graph synonyms for maximum recall.
+    /// Same strategy as eval_hybrid_search.py (99.8% pass rate).
+    #[allow(dead_code)]
+    pub fn search_like(&self, query: &str, top_k: usize) -> Result<Vec<SearchResult>> {
+        let conn = self.conn.lock().unwrap();
+
+        // 1. Extract Chinese substrings (2-4 char) from query
+        let mut substrings = Self::extract_chinese_substrings(query);
+        if substrings.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        // 2. Expand with knowledge graph synonyms
+        let mut expanded = std::collections::HashSet::new();
+        for sub in &substrings {
+            expanded.insert(sub.clone());
+            // Look up synonyms for this substring
+            if let Ok(mut syns) = conn.prepare(
+                "SELECT s.synonym FROM gmp_synonyms s \
+                 JOIN gmp_terms t ON s.term_id = t.term_id \
+                 WHERE t.canonical_term LIKE ?1 OR s.synonym LIKE ?1 \
+                 LIMIT 5",
+            ) {
+                let pattern = format!("%{}%", sub);
+                if let Ok(rows) =
+                    syns.query_map(params![pattern], |row| row.get::<_, String>(0))
+                {
+                    for row in rows.flatten() {
+                        if expanded.len() < 10 {
+                            expanded.insert(row);
+                        }
+                    }
+                }
+            }
+        }
+
+        let terms: Vec<String> = expanded.into_iter().collect();
+        let conditions: Vec<String> = terms.iter().map(|_| "content LIKE ?".to_string()).collect();
+
+        let like_sql = format!(
+            r#"SELECT c.id, c.doc_id, c.content, c.token_count,
+                      d.title, d.doc_type, d.chapter,
+                      0.0 as score
+               FROM gmp_document_chunks c
+               JOIN gmp_documents d ON c.doc_id = d.doc_id
+               WHERE {}
+               LIMIT ?"#,
+            conditions.join(" OR ")
+        );
+
+        let top_k_i64 = top_k as i64;
+        let mut like_params: Vec<&dyn rusqlite::ToSql> = terms
+            .iter()
+            .map(|s| s as &dyn rusqlite::ToSql)
+            .collect();
+        like_params.push(&top_k_i64);
+
+        let mut like_stmt = conn.prepare(&like_sql)?;
+        let results: Vec<SearchResult> = like_stmt
+            .query_map(like_params.as_slice(), |row| {
+                Ok(SearchResult {
+                    chunk_id: row.get(0)?,
+                    doc_id: row.get(1)?,
+                    content: row.get(2)?,
+                    token_count: row.get(3)?,
+                    title: row.get(4)?,
+                    doc_type: row.get(5)?,
+                    chapter: row.get(6)?,
+                    score: row.get(7)?,
+                })
+            })?
+            .filter_map(Result::ok)
+            .collect();
+
+        Ok(results)
+    }
+
     /// Initialize database schema
     fn init_schema(&self) -> Result<()> {
         let conn = self.conn.lock().unwrap();
@@ -537,38 +621,26 @@ impl StorageEngine {
         }
     }
 
-    /// Get synonym terms for a given term (Phase 3 T3.3: 术语扩展检索)
+    /// Get synonym terms for a given term from the knowledge graph
+    /// (Phase 3 T3.3: 术语扩展检索)
+    /// Uses gmp_synonyms table (canonical_term → synonym mapping)
     pub fn get_synonyms(&self, term: &str) -> Result<Vec<String>> {
         let conn = self.conn.lock().unwrap();
 
-        // Try exact match first
-        let synonyms_json: Option<String> = conn
-            .query_row(
-                "SELECT synonyms FROM gmp_terms WHERE canonical_term = ?",
-                params![term],
-                |row| row.get(0),
-            )
-            .ok();
-
-        if let Some(json) = synonyms_json {
-            if let Ok(syns) = serde_json::from_str::<Vec<String>>(&json) {
-                return Ok(syns);
-            }
-        }
-
-        // Try prefix/like match
-        let pattern = format!("%{}%", term);
+        // Look up term in gmp_synonyms via gmp_terms canonical_term match
         let mut stmt = conn.prepare(
-            "SELECT synonyms FROM gmp_terms WHERE canonical_term LIKE ? LIMIT 1",
+            "SELECT s.synonym FROM gmp_synonyms s \
+             JOIN gmp_terms t ON s.term_id = t.term_id \
+             WHERE t.canonical_term = ? OR s.synonym = ? \
+             LIMIT 10",
         )?;
 
-        if let Ok(json) = stmt.query_row(params![&pattern], |row| row.get::<_, String>(0)) {
-            if let Ok(syns) = serde_json::from_str::<Vec<String>>(&json) {
-                return Ok(syns);
-            }
-        }
+        let syns: Vec<String> = stmt
+            .query_map(params![term, term], |row| row.get(0))?
+            .filter_map(|r| r.ok())
+            .collect();
 
-        Ok(Vec::new())
+        Ok(syns)
     }
 
     /// Check if Layer 0 data is populated (used to gate enhanced search)
@@ -710,17 +782,22 @@ impl StorageEngine {
         }
     }
 
-    /// Extract Chinese substrings (3-4 chars) from query for LIKE fallback
+    /// Extract Chinese substrings (2-4 chars) from query for LIKE fallback
     fn extract_chinese_substrings(query: &str) -> Vec<String> {
         let mut substrings = Vec::new();
         let chars: Vec<char> = query.chars().collect();
 
         for i in 0..chars.len() {
             if is_cjk(chars[i]) {
-                let mut end = std::cmp::min(i + 4, chars.len());
-                while end > i + 2 {
-                    let sub: String = chars[i..end].iter().collect();
-                    substrings.push(sub);
+                let max_end = std::cmp::min(i + 4, chars.len());
+                let mut end = max_end;
+                while end > i + 1 {
+                    // Only include substrings where ALL chars are CJK
+                    let all_cjk = chars[i..end].iter().all(|c| is_cjk(*c));
+                    if all_cjk {
+                        let sub: String = chars[i..end].iter().collect();
+                        substrings.push(sub);
+                    }
                     end -= 1;
                 }
             }
