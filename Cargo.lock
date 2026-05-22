@@ -457,6 +457,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0cc23270f6e1808e30a928bdc84dea0b9b4136a8bc82338574f23baf47bbd280"
 
 [[package]]
+name = "gmp-classifier"
+version = "1.0.0"
+dependencies = [
+ "anyhow",
+ "gmp-core",
+ "regex",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "tracing",
+]
+
+[[package]]
 name = "gmp-cli"
 version = "1.0.0"
 dependencies = [
@@ -538,6 +551,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "gmp-re"
+version = "1.0.0"
+dependencies = [
+ "anyhow",
+ "gmp-core",
+ "lazy_static",
+ "regex",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "tracing",
+]
+
+[[package]]
 name = "gmp-reranker"
 version = "1.0.0"
 dependencies = [
@@ -569,6 +596,14 @@ dependencies = [
  "tokio",
  "tracing",
  "walkdir",
+]
+
+[[package]]
+name = "gmp-scorer"
+version = "1.0.0"
+dependencies = [
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
