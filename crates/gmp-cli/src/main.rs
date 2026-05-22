@@ -215,8 +215,12 @@ async fn main() -> Result<()> {
             let fusion = RrfFusion::new(60.0);
 
             // Run four-channel search via tokio runtime
-            let results: Vec<ScoredChunk> = tokio::runtime::Handle::current()
-                .block_on(async { four_channel.search(&query, 20).await });
+            let results: Vec<ScoredChunk> = std::thread::scope(|s| {
+                s.spawn(|| {
+                    let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+                    rt.block_on(async { four_channel.search(&query, 20).await })
+                }).join().unwrap()
+            });
 
             let fused: Vec<ScoredChunk> = if channel == "all" {
                 // Full fusion with all channels using equal weights
@@ -231,11 +235,12 @@ async fn main() -> Result<()> {
                     "http://localhost:11434",
                     "bge-reranker-v2-m3:latest",
                 );
-                match tokio::runtime::Handle::current().block_on(reranker.rerank(
-                    &query,
-                    fused.clone(),
-                    20,
-                )) {
+                match std::thread::scope(|s| {
+                    s.spawn(|| {
+                        let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+                        rt.block_on(reranker.rerank(&query, fused.clone(), 20))
+                    }).join().unwrap()
+                }) {
                     Ok(reranked) => reranked,
                     Err(e) => {
                         println!("Reranking failed: {}, using fusion results", e);

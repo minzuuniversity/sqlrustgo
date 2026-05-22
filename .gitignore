@@ -53,3 +53,4 @@ node_modules/
 
 # ---- 脱敏映射表（含真实→占位符映射，禁止提交） ----
 gmp-md-masking/MASKING-MAP.json
+OPENSPEC.md
