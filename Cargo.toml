@@ -10,6 +10,8 @@ members = [
     "crates/gmp-re",
     "crates/gmp-classifier",
     "crates/gmp-scorer",
+    "crates/gmp-kg",
+    "crates/gmp-graph",
     "crates/gmp-cli",
     "crates/gmp-eval",
 ]

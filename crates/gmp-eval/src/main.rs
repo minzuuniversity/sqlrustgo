@@ -149,10 +149,21 @@ fn main() -> Result<()> {
 
         let top_k = scenario.top_k.unwrap_or(10);
 
-        // FTS search (synchronous, no async needed)
-        let fts_results = storage
-            .search_fts(&scenario.query, top_k)
-            .unwrap_or_default();
+        // Use enhanced search only when Layer 0 data is available (boosted scores).
+        // When doc_relevance and doc_entities are populated, enhanced search
+        // applies: synonym expansion (T3.3) + relevance re-ranking (T3.2).
+        let use_enhanced = storage
+            .has_layer0_data()
+            .unwrap_or(false);
+        let fts_results = if use_enhanced {
+            storage
+                .search_fts_enhanced(&scenario.query, top_k, true)
+                .unwrap_or_default()
+        } else {
+            storage
+                .search_fts(&scenario.query, top_k)
+                .unwrap_or_default()
+        };
 
         let retrieved_ids: Vec<String> = if cli.enable_vector {
             // Vector search fallback: try to get embedding and search vectors

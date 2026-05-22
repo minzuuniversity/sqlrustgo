@@ -431,6 +431,240 @@ impl StorageEngine {
         Ok(fts_results)
     }
 
+    /// Search documents by taxonomy filter (Phase 3 T3.1: Layer 3 分类过滤通道)
+    pub fn search_taxonomy_filter(
+        &self,
+        topic: Option<&str>,
+        doc_type: Option<&str>,
+        department: Option<&str>,
+        risk_level: Option<&str>,
+    ) -> Result<Vec<String>> {
+        let conn = self.conn.lock().unwrap();
+        let mut conditions = Vec::new();
+        let mut params: Vec<String> = Vec::new();
+
+        if let Some(t) = topic {
+            conditions.push("topic = ?".to_string());
+            params.push(t.to_string());
+        }
+        if let Some(d) = doc_type {
+            conditions.push("doc_type = ?".to_string());
+            params.push(d.to_string());
+        }
+        if let Some(dept) = department {
+            conditions.push("department = ?".to_string());
+            params.push(dept.to_string());
+        }
+        if let Some(r) = risk_level {
+            conditions.push("risk_level = ?".to_string());
+            params.push(r.to_string());
+        }
+
+        if conditions.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let sql = format!(
+            "SELECT doc_id FROM doc_taxonomy WHERE {}",
+            conditions.join(" AND ")
+        );
+
+        let mut stmt = conn.prepare(&sql)?;
+        let params_refs: Vec<&dyn rusqlite::ToSql> = params
+            .iter()
+            .map(|s| s as &dyn rusqlite::ToSql)
+            .collect();
+
+        let doc_ids: Vec<String> = stmt
+            .query_map(params_refs.as_slice(), |row| row.get(0))?
+            .filter_map(Result::ok)
+            .collect();
+
+        Ok(doc_ids)
+    }
+
+    /// Get relevance score for a document (Phase 3 T3.2: 相关性增强排序)
+    pub fn get_doc_relevance(&self, doc_id: &str) -> Result<Option<f64>> {
+        let conn = self.conn.lock().unwrap();
+        let result: Option<f64> = conn
+            .query_row(
+                "SELECT overall_score FROM doc_relevance WHERE doc_id = ?",
+                params![doc_id],
+                |row| row.get(0),
+            )
+            .ok();
+        Ok(result)
+    }
+
+    /// Search documents that contain a specific entity (Phase 3 T3.4: 实体链接检索)
+    pub fn search_by_entity(&self, entity_term: &str) -> Result<Vec<String>> {
+        let conn = self.conn.lock().unwrap();
+        let pattern = format!("%{}%", entity_term);
+
+        let mut stmt = conn.prepare(
+            "SELECT DISTINCT doc_id FROM doc_entities
+             WHERE surface_form LIKE ? OR canonical_term LIKE ?",
+        )?;
+
+        let doc_ids: Vec<String> = stmt
+            .query_map(params![&pattern, &pattern], |row| row.get(0))?
+            .filter_map(Result::ok)
+            .collect();
+
+        Ok(doc_ids)
+    }
+
+    /// Get entity density for a document (number of unique entities / chunk count)
+    pub fn get_entity_density(&self, doc_id: &str) -> Result<f64> {
+        let conn = self.conn.lock().unwrap();
+
+        let entity_count: i64 = conn.query_row(
+            "SELECT COUNT(DISTINCT canonical_term) FROM doc_entities WHERE doc_id = ?",
+            params![doc_id],
+            |row| row.get(0),
+        )?;
+
+        let chunk_count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM gmp_document_chunks WHERE doc_id = ?",
+            params![doc_id],
+            |row| row.get(0),
+        )?;
+
+        if chunk_count > 0 {
+            Ok(entity_count as f64 / chunk_count as f64)
+        } else {
+            Ok(0.0)
+        }
+    }
+
+    /// Get synonym terms for a given term (Phase 3 T3.3: 术语扩展检索)
+    pub fn get_synonyms(&self, term: &str) -> Result<Vec<String>> {
+        let conn = self.conn.lock().unwrap();
+
+        // Try exact match first
+        let synonyms_json: Option<String> = conn
+            .query_row(
+                "SELECT synonyms FROM gmp_terms WHERE canonical_term = ?",
+                params![term],
+                |row| row.get(0),
+            )
+            .ok();
+
+        if let Some(json) = synonyms_json {
+            if let Ok(syns) = serde_json::from_str::<Vec<String>>(&json) {
+                return Ok(syns);
+            }
+        }
+
+        // Try prefix/like match
+        let pattern = format!("%{}%", term);
+        let mut stmt = conn.prepare(
+            "SELECT synonyms FROM gmp_terms WHERE canonical_term LIKE ? LIMIT 1",
+        )?;
+
+        if let Ok(json) = stmt.query_row(params![&pattern], |row| row.get::<_, String>(0)) {
+            if let Ok(syns) = serde_json::from_str::<Vec<String>>(&json) {
+                return Ok(syns);
+            }
+        }
+
+        Ok(Vec::new())
+    }
+
+    /// Check if Layer 0 data is populated (used to gate enhanced search)
+    pub fn has_layer0_data(&self) -> Result<bool> {
+        let conn = self.conn.lock().unwrap();
+        let count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM doc_relevance WHERE overall_score > 0",
+            [],
+            |row| row.get(0),
+        )?;
+        Ok(count > 0)
+    }
+
+    /// Enhanced FTS search with Layer 0 re-ranking (Phase 3 T3.2/T3.3: relevance + entity density + synonym expansion)
+    pub fn search_fts_enhanced(
+        &self,
+        query: &str,
+        top_k: usize,
+        use_layer0_boost: bool,
+    ) -> Result<Vec<SearchResult>> {
+        // Expand query with synonyms (Phase 3 T3.3)
+        let expanded_query = if use_layer0_boost {
+            let tokens: Vec<&str> = query.split_whitespace().collect();
+            let mut all_terms = vec![query.to_string()];
+
+            for token in tokens {
+                // Extract Chinese terms (3+ chars) and English words (3+ chars)
+                let token_clean = token.trim_matches(|c: char| !c.is_alphanumeric() && !is_cjk(c));
+                if token_clean.len() >= 2 {
+                    if let Ok(syns) = self.get_synonyms(token_clean) {
+                        for syn in syns {
+                            if !all_terms.contains(&syn) {
+                                all_terms.push(syn);
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Join with OR for FTS expansion
+            all_terms.join(" OR ")
+        } else {
+            query.to_string()
+        };
+
+        // First get base FTS results
+        let mut results = self.search_fts(&expanded_query, top_k * 2)?;
+
+        if use_layer0_boost && !results.is_empty() {
+            // Boost scores using Layer 0 signals: relevance score + entity density
+            let conn = self.conn.lock().unwrap();
+
+            for r in results.iter_mut() {
+                // Get relevance score (0 if not present)
+                let relevance: f64 = conn
+                    .query_row(
+                        "SELECT overall_score FROM doc_relevance WHERE doc_id = ?",
+                        params![r.doc_id],
+                        |row| row.get(0),
+                    )
+                    .unwrap_or(0.0);
+
+                // Get entity density
+                let entity_count: i64 = conn
+                    .query_row(
+                        "SELECT COUNT(DISTINCT canonical_term) FROM doc_entities WHERE doc_id = ?",
+                        params![r.doc_id],
+                        |row| row.get(0),
+                    )
+                    .unwrap_or(0);
+
+                let chunk_count: i64 = conn
+                    .query_row(
+                        "SELECT COUNT(*) FROM gmp_document_chunks WHERE doc_id = ?",
+                        params![r.doc_id],
+                        |row| row.get(0),
+                    )
+                    .unwrap_or(1);
+
+                let entity_density = entity_count as f64 / chunk_count as f64;
+
+                // Combine: base bm25 score + 0.5 * relevance + 0.3 * entity_density
+                let boost = 0.5 * relevance + 0.3 * entity_density;
+                r.score = r.score + boost;
+            }
+
+            // Re-sort by boosted score
+            results.sort_by(|a, b| {
+                b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal)
+            });
+            results.truncate(top_k);
+        }
+
+        Ok(results)
+    }
+
     /// Simple tokenizer for FTS queries (Chinese character bigrams + English words)
     fn tokenize_for_fts(&self, text: &str) -> String {
         let mut tokens = Vec::new();
