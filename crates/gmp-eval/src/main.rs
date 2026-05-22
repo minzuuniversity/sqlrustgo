@@ -1,14 +1,13 @@
-//! GMP 408 Scenario Evaluator with Hybrid Search (FTS5 + Vector)
-//!
-//! Evaluation strategy:
-//! 1. FTS5 search first (BM25)
-//! 2. If FTS recall = 0, fall back to vector search via Ollama embeddings
-//! 3. Merge results and evaluate
+//! GMP 391 Scenario Evaluator
+//! Runs FTS-based evaluation against the 408-scenario test set
 
 use anyhow::{Context, Result};
 use clap::Parser;
-use gmp_storage::{StorageConfig, StorageEngine};
+use gmp_storage::{StorageConfig, StorageEngine, VectorSearchResult};
 use std::collections::HashMap;
+
+const DEFAULT_OLLAMA_URL: &str = "http://localhost:11434";
+const DEFAULT_EMBED_MODEL: &str = "mxbai-embed-large";
 
 #[derive(Debug, Clone, serde::Deserialize)]
 struct TestScenario {
@@ -28,8 +27,6 @@ struct EvalReport {
     pub pass_rate: f64,
     pub avg_recall: f64,
     pub avg_mrr: f64,
-    pub fts_passed: u32,
-    pub vector_passed: u32,
     pub category_stats: HashMap<String, CategoryResult>,
 }
 
@@ -42,7 +39,7 @@ struct CategoryResult {
 
 #[derive(Parser, Debug)]
 #[command(name = "gmp-eval")]
-#[command(about = "GMP 408-Scenario Evaluation Tool with Hybrid Search")]
+#[command(about = "GMP 408-Scenario Evaluation Tool")]
 struct Cli {
     /// Path to test scenarios JSON file
     #[arg(long, default_value = "test-data/391_scenarios.json")]
@@ -60,94 +57,67 @@ struct Cli {
     #[arg(long)]
     output: Option<String>,
 
-    /// Ollama URL for vector embeddings (fallback search)
-    #[arg(long, default_value = "http://localhost:11434")]
+    /// Enable vector search fallback
+    #[arg(long, default_value_t = false)]
+    enable_vector: bool,
+
+    /// Ollama URL for embeddings
+    #[arg(long, default_value = DEFAULT_OLLAMA_URL)]
     ollama_url: String,
 
-    /// Ollama embedding model
-    #[arg(long, default_value = "nomic-embed-text")]
+    /// Embedding model name
+    #[arg(long, default_value = DEFAULT_EMBED_MODEL)]
     embed_model: String,
-
-    /// Disable hybrid search (use FTS only)
-    #[arg(long, default_value_t = false)]
-    no_hybrid: bool,
 }
 
-/// Compute cosine similarity between two f32 vectors
-fn cosine_sim(a: &[f32], b: &[f32]) -> f32 {
-    assert_eq!(a.len(), b.len());
-    let dot: f32 = a.iter().zip(b.iter()).map(|(x, y)| x * y).sum();
-    let norm_a: f32 = a.iter().map(|x| x * x).sum::<f32>().sqrt();
-    let norm_b: f32 = b.iter().map(|x| x * x).sum::<f32>().sqrt();
-    if norm_a == 0.0 || norm_b == 0.0 {
-        0.0
-    } else {
-        dot / (norm_a * norm_b)
-    }
-}
-
-/// Call Ollama embeddings API to get a query vector
-fn get_query_embedding(query: &str, ollama_url: &str, model: &str) -> Option<Vec<f32>> {
+/// Get embedding for a text query from Ollama
+fn get_embedding(query: &str, ollama_url: &str, model: &str) -> Option<Vec<f32>> {
     let client = reqwest::blocking::Client::new();
-    let payload = serde_json::json!({
-        "model": model,
-        "prompt": query
-    });
-
     let resp = client
         .post(format!("{}/api/embeddings", ollama_url))
-        .json(&payload)
-        .timeout(std::time::Duration::from_secs(30))
+        .json(&serde_json::json!({
+            "model": model,
+            "prompt": query
+        }))
         .send()
         .ok()?;
 
-    let embedding: Vec<f32> = resp.json().ok()?;
-    Some(embedding)
+    if resp.status().is_success() {
+        #[derive(serde::Deserialize)]
+        struct EmbedResp {
+            embedding: Vec<f32>,
+        }
+        if let Ok(embed_resp) = resp.json::<EmbedResp>() {
+            return Some(embed_resp.embedding);
+        }
+    }
+    None
 }
 
-/// Hybrid search: FTS first, then vector fallback
-fn hybrid_search(
-    storage: &StorageEngine,
-    query: &str,
-    top_k: usize,
-    ollama_url: &str,
-    embed_model: &str,
-) -> Vec<gmp_storage::SearchResult> {
-    // Step 1: FTS5 search
-    let fts_results = storage.search_fts(query, top_k).unwrap_or_default();
+/// Merge FTS and vector results, removing duplicates by doc_id
+fn merge_results(
+    fts_results: &[gmp_storage::SearchResult],
+    vector_results: &[VectorSearchResult],
+) -> Vec<String> {
+    use std::collections::HashSet;
+    let mut seen = HashSet::new();
+    let mut merged = Vec::new();
 
-    // Step 2: Check if FTS caught anything
-    if !fts_results.is_empty() {
-        return fts_results;
+    // Add FTS results first (they typically have better precision)
+    for r in fts_results.iter().take(10) {
+        if seen.insert(r.doc_id.clone()) {
+            merged.push(r.doc_id.clone());
+        }
     }
 
-    // Step 3: FTS returned nothing — try vector fallback
-    eprintln!(
-        "  [vector fallback for query: \"{}...\"]",
-        query.chars().take(10).collect::<String>()
-    );
-    let query_vec = match get_query_embedding(query, ollama_url, embed_model) {
-        Some(v) => v,
-        None => return fts_results,
-    };
+    // Add vector results that aren't duplicates
+    for r in vector_results.iter() {
+        if seen.insert(r.doc_id.clone()) {
+            merged.push(r.doc_id.clone());
+        }
+    }
 
-    // Step 4: Vector search
-    let vector_results = storage.search_vectors(&query_vec, top_k).unwrap_or_default();
-
-    // Step 5: Convert VectorSearchResult to SearchResult
-    vector_results
-        .into_iter()
-        .map(|vr| gmp_storage::SearchResult {
-            chunk_id: vr.chunk_id,
-            doc_id: vr.doc_id,
-            content: vr.content,
-            token_count: 0,
-            title: String::new(),
-            doc_type: None,
-            chapter: None,
-            score: vr.score,
-        })
-        .collect()
+    merged
 }
 
 fn main() -> Result<()> {
@@ -159,9 +129,6 @@ fn main() -> Result<()> {
         .with_context(|| format!("Failed to parse test set JSON from {}", cli.test_set))?;
 
     eprintln!("Loaded {} test scenarios", test_scenarios.len());
-    if !cli.no_hybrid {
-        eprintln!("Hybrid search: FTS5 + Vector fallback (Ollama: {})", cli.ollama_url);
-    }
 
     let config = StorageConfig {
         data_dir: "./data".to_string(),
@@ -173,8 +140,6 @@ fn main() -> Result<()> {
     let scenarios: Vec<_> = test_scenarios.iter().take(limit).collect();
 
     let mut total_passed = 0u32;
-    let mut fts_passed = 0u32;
-    let mut vector_passed = 0u32;
     let mut all_recalls: Vec<f64> = Vec::new();
     let mut all_mrrs: Vec<f64> = Vec::new();
     let mut category_stats: HashMap<String, (u32, usize)> = HashMap::new();
@@ -184,23 +149,40 @@ fn main() -> Result<()> {
 
         let top_k = scenario.top_k.unwrap_or(10);
 
-        // Hybrid search
-        let search_results = if !cli.no_hybrid {
-            hybrid_search(&storage, &scenario.query, top_k, &cli.ollama_url, &cli.embed_model)
+        // FTS search (synchronous, no async needed)
+        let fts_results = storage
+            .search_fts(&scenario.query, top_k)
+            .unwrap_or_default();
+
+        let retrieved_ids: Vec<String> = if cli.enable_vector {
+            // Vector search fallback: try to get embedding and search vectors
+            let embedding = get_embedding(&scenario.query, &cli.ollama_url, &cli.embed_model);
+            
+            if let Some(emb) = embedding {
+                // Search vectors for semantic similarity
+                let vector_results = storage.search_vectors(&emb, top_k).unwrap_or_default();
+                
+                // Merge FTS and vector results
+                merge_results(&fts_results, &vector_results)
+            } else {
+                // Fallback to FTS only if embedding fails
+                fts_results.iter().map(|r| r.doc_id.clone()).collect()
+            }
         } else {
-            storage.search_fts(&scenario.query, top_k).unwrap_or_default()
+            // FTS only mode
+            fts_results.iter().map(|r| r.doc_id.clone()).collect()
         };
 
-        let retrieved_ids: Vec<String> = search_results.iter().map(|r| r.doc_id.clone()).collect();
-
-        // Keyword-in-content matching
+        // Keyword-in-content matching: pass if any expected keyword appears in retrieved content
         let hit_count = scenario
             .expected_doc_ids
             .iter()
             .filter(|kw| {
                 let kw_lower = kw.to_lowercase();
+                // Check against retrieved doc_ids (titles/codes)
                 retrieved_ids.iter().any(|id| id.to_lowercase().contains(&kw_lower))
-                    || search_results.iter().any(|r| {
+                    // Also check against retrieved titles (from search results)
+                    || fts_results.iter().any(|r| {
                         r.title.to_lowercase().contains(&kw_lower)
                             || r.content.to_lowercase().contains(&kw_lower)
                     })
@@ -237,11 +219,6 @@ fn main() -> Result<()> {
         let is_pass = recall > 0.0;
         if is_pass {
             total_passed += 1;
-            // Track which search mode contributed
-            if search_results.len() > 0 && !search_results.iter().all(|r| r.score == 0.0 && r.content.is_empty()) {
-                // Check if this likely came from vector (content would be populated differently)
-                fts_passed += 1;
-            }
         }
 
         let cat = scenario
@@ -279,6 +256,11 @@ fn main() -> Result<()> {
     eprintln!("Pass Rate: {:.1}%", pass_rate);
     eprintln!("Avg Recall@K: {:.3}", avg_recall);
     eprintln!("Avg MRR: {:.3}", avg_mrr);
+    if cli.enable_vector {
+        eprintln!("Vector Search: ENABLED (fallback active)");
+    } else {
+        eprintln!("Vector Search: DISABLED (FTS only)");
+    }
     eprintln!();
 
     let mut cat_report_map: HashMap<String, CategoryResult> = HashMap::new();
@@ -309,8 +291,6 @@ fn main() -> Result<()> {
             pass_rate,
             avg_recall,
             avg_mrr,
-            fts_passed,
-            vector_passed,
             category_stats: cat_report_map,
         };
         let json = serde_json::to_string_pretty(&report)?;
