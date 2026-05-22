@@ -2,5 +2,5 @@
 
 pub mod storage;
 
-pub use storage::{IndexStats, SearchResult, StorageConfig, StorageEngine, ValidationResult};
+pub use storage::{IndexStats, SearchResult, StorageConfig, StorageEngine, ValidationResult, VectorSearchResult};
 mod tests;

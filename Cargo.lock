@@ -489,6 +489,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "gmp-eval"
+version = "1.0.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "gmp-core",
+ "gmp-llm",
+ "gmp-reranker",
+ "gmp-retrieval",
+ "gmp-storage",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "gmp-llm"
 version = "1.0.0"
 dependencies = [

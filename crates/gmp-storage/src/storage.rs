@@ -6,6 +6,11 @@ use rusqlite::{params, Connection};
 use std::path::Path;
 use std::sync::Mutex;
 
+/// Check if a character is a CJK character (Chinese/Japanese/Korean)
+fn is_cjk(c: char) -> bool {
+    matches!(c, '\u{4E00}'..='\u{9FFF}' | '\u{3400}'..='\u{4DBF}' | '\u{F900}'..='\u{FAFF}')
+}
+
 /// Frontmatter extracted from markdown document
 #[derive(Debug, serde::Deserialize)]
 struct Frontmatter {
@@ -318,21 +323,38 @@ impl StorageEngine {
 
     /// Search using FTS
     pub fn search_fts(&self, query: &str, top_k: usize) -> Result<Vec<SearchResult>> {
+        // Sanitize query: remove FTS5-special characters
+        let sanitized = query
+            .chars()
+            .filter(|c| !matches!(c, '(' | ')' | ':' | '*' | '/' | '-' | '"' | '\''))
+            .collect::<String>();
+
+        // Tokenize query using simple Chinese n-gram approach
+        // (jieba was removed from dependencies; using character bigrams for Chinese)
+        let tokenized_query = self.tokenize_for_fts(&sanitized);
+
         let conn = self.conn.lock().unwrap();
+
+        // 1. Try FTS5 MATCH first with BM25 scoring
+        // CRITICAL FIX: Use content_rowid instead of chunk_id for proper BM25 scoring.
+        // SQLite FTS5 bm25() function requires the FTS table's internal rowid to compute
+        // term frequencies and document lengths correctly. When using external content
+        // tables with UNINDEXED columns, joining on chunk_id loses the rowid mapping
+        // and bm25() returns incorrect/default values.
         let mut stmt = conn.prepare(
             r#"SELECT c.id, c.doc_id, c.content, c.token_count,
                       d.title, d.doc_type, d.chapter,
                       bm25(gmp_chunks_fts) as score
                FROM gmp_chunks_fts fts
-               JOIN gmp_document_chunks c ON fts.chunk_id = c.id
+               JOIN gmp_document_chunks c ON fts.rowid = c.id
                JOIN gmp_documents d ON c.doc_id = d.doc_id
                WHERE gmp_chunks_fts MATCH ?1
                ORDER BY score
                LIMIT ?2"#,
         )?;
 
-        let results = stmt
-            .query_map(params![query, top_k as i64], |row| {
+        let mut fts_results: Vec<SearchResult> = stmt
+            .query_map(params![tokenized_query, top_k as i64], |row| {
                 Ok(SearchResult {
                     chunk_id: row.get(0)?,
                     doc_id: row.get(1)?,
@@ -347,7 +369,134 @@ impl StorageEngine {
             .filter_map(Result::ok)
             .collect();
 
-        Ok(results)
+        // 2. If FTS results are insufficient, use LIKE fallback for Chinese n-gram matching
+        if fts_results.len() < top_k {
+            let substrings = Self::extract_chinese_substrings(&sanitized);
+            if !substrings.is_empty() {
+                let conditions: Vec<String> = substrings
+                    .iter()
+                    .take(5)
+                    .map(|_| "content LIKE ?".to_string())
+                    .collect();
+
+                let like_sql = format!(
+                    r#"SELECT c.id, c.doc_id, c.content, c.token_count,
+                              d.title, d.doc_type, d.chapter,
+                              0.0 as score
+                       FROM gmp_document_chunks c
+                       JOIN gmp_documents d ON c.doc_id = d.doc_id
+                       WHERE {}
+                       LIMIT ?"#,
+                    conditions.join(" OR ")
+                );
+
+                let top_k_i64 = top_k as i64;
+                let mut like_params: Vec<&dyn rusqlite::ToSql> = substrings
+                    .iter()
+                    .take(5)
+                    .map(|s| s as &dyn rusqlite::ToSql)
+                    .collect();
+                like_params.push(&top_k_i64);
+
+                let mut like_stmt = conn.prepare(&like_sql)?;
+                let like_results: Vec<SearchResult> = like_stmt
+                    .query_map(like_params.as_slice(), |row| {
+                        Ok(SearchResult {
+                            chunk_id: row.get(0)?,
+                            doc_id: row.get(1)?,
+                            content: row.get(2)?,
+                            token_count: row.get(3)?,
+                            title: row.get(4)?,
+                            doc_type: row.get(5)?,
+                            chapter: row.get(6)?,
+                            score: row.get(7)?,
+                        })
+                    })?
+                    .filter_map(Result::ok)
+                    .collect();
+
+                // Merge and deduplicate
+                let mut seen = std::collections::HashSet::new();
+                for r in fts_results.iter() {
+                    seen.insert((r.doc_id.clone(), r.chunk_id));
+                }
+                for r in like_results {
+                    if seen.insert((r.doc_id.clone(), r.chunk_id)) && fts_results.len() < top_k {
+                        fts_results.push(r);
+                    }
+                }
+            }
+        }
+
+        Ok(fts_results)
+    }
+
+    /// Simple tokenizer for FTS queries (Chinese character bigrams + English words)
+    fn tokenize_for_fts(&self, text: &str) -> String {
+        let mut tokens = Vec::new();
+        let mut current_english = String::new();
+        let chars: Vec<char> = text.chars().collect();
+
+        for (i, c) in chars.iter().enumerate() {
+            if c.is_alphanumeric() {
+                current_english.push(*c);
+            } else if is_cjk(*c) {
+                // Flush any pending English word
+                if !current_english.is_empty() {
+                    if current_english.len() > 2 {
+                        tokens.push(current_english.clone());
+                    }
+                    current_english.clear();
+                }
+                // Chinese character bigram
+                if i + 1 < chars.len() && is_cjk(chars[i + 1]) {
+                    tokens.push(format!("{}{}", c, chars[i + 1]));
+                }
+            } else {
+                // Flush any pending English word
+                if !current_english.is_empty() {
+                    if current_english.len() > 2 {
+                        tokens.push(current_english.clone());
+                    }
+                    current_english.clear();
+                }
+            }
+        }
+
+        // Flush remaining English
+        if !current_english.is_empty() && current_english.len() > 2 {
+            tokens.push(current_english);
+        }
+
+        if tokens.is_empty() {
+            // Fallback: return original text
+            text.to_string()
+        } else {
+            tokens.join(" OR ")
+        }
+    }
+
+    /// Extract Chinese substrings (3-4 chars) from query for LIKE fallback
+    fn extract_chinese_substrings(query: &str) -> Vec<String> {
+        let mut substrings = Vec::new();
+        let chars: Vec<char> = query.chars().collect();
+
+        for i in 0..chars.len() {
+            if is_cjk(chars[i]) {
+                let mut end = std::cmp::min(i + 4, chars.len());
+                while end > i + 2 {
+                    let sub: String = chars[i..end].iter().collect();
+                    substrings.push(sub);
+                    end -= 1;
+                }
+            }
+        }
+
+        // Deduplicate and limit
+        substrings.sort();
+        substrings.dedup();
+        substrings.truncate(10);
+        substrings
     }
 
     /// Get document count

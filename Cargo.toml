@@ -7,6 +7,7 @@ members = [
     "crates/gmp-reranker",
     "crates/gmp-llm",
     "crates/gmp-cli",
+    "crates/gmp-eval",
 ]
 
 [workspace.package]
