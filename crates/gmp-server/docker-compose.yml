@@ -1,0 +1,35 @@
+version: '3.8'
+
+services:
+  gmp-server:
+    build:
+      context: ../..
+      dockerfile: crates/gmp-server/Dockerfile
+    container_name: gmp-server
+    ports:
+      - "3306:3306"
+      - "8080:8080"
+    volumes:
+      - gmp-server-data:/var/lib/gmp-server/data
+      - ./config:/app/config:ro
+    environment:
+      - RUST_LOG=info
+      - GMP_SERVER_HOST=0.0.0.0
+      - GMP_SERVER_PORT=3306
+    networks:
+      - gmp-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  gmp-server-data:
+    driver: local
+
+networks:
+  gmp-network:
+    driver: bridge
