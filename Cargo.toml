@@ -6,6 +6,7 @@ members = [
     "crates/gmp-retrieval",
     "crates/gmp-reranker",
     "crates/gmp-llm",
+    "crates/gmp-ner",
     "crates/gmp-cli",
     "crates/gmp-eval",
 ]
