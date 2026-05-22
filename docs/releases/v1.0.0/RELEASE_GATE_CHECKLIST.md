@@ -94,12 +94,12 @@ B-Gate: PASS (with 1 note)
 
 | # | 检查项 | 命令/方法 | 通过标准 | 结果 | 证据 |
 |---|--------|----------|---------|------|------|
-| R1 | Build | `cargo build --release` | 无错误 | ✅ | cargo build pass (0.2s) |
-| R2 | Test | `cargo test` | 100% 通过 | ❌ | 69 passed; 1 FAILED: `test_search_fts_result_scoring` (`assertion r.score >= 0.0` at integration_storage.rs:163) |
-| R3 | Clippy | `cargo clippy -- -D warnings` | 零警告 | ❌ | dead_code: `make_test_chunk` in gmp-reranker/src/tests.rs; unused imports in gmp-storage/src/tests.rs |
-| R4 | Format | `cargo fmt -- --check` | 通过 | ❌ | Multiple diffs: gmp-eval/src/main.rs, gmp-llm/src/tests.rs, gmp-reranker/src/tests.rs, gmp-storage/src/lib.rs, integration_storage.rs |
-| R5 | 408 场景 | `cargo run --release -p gmp-eval` | ≥ 80% | ❌ | 89/408 = 21.8% (CAPA关联0%, 交叉场景0%, 人员培训0%, 多跳因果推理0%) |
-| R6 | 性能 P50 | `gmp-eval bench --single` | < 5s | ⚠️ | CLI不支持bench子命令; 单次查询~0.26s |
+| R1 | Build | `cargo build --release` | 无错误 | ✅ | cargo build pass (0.15s) |
+| R2 | Test | `cargo test` | 100% 通过 | ❌ | 6 passed; 1 FAILED: `test_search_fts_result_scoring` (`assertion r.score >= 0.0` at integration_storage.rs:163) |
+| R3 | Clippy | `cargo clippy -- -D warnings` | 零警告 | ❌ | dead_code + unused imports in gmp-reranker, gmp-storage |
+| R4 | Format | `cargo fmt -- --check` | 通过 | ❌ | Multiple diffs: gmp-eval/src/main.rs, gmp-llm, gmp-reranker, gmp-storage |
+| R5 | 408 场景 | `cargo run --release -p gmp-eval` | ≥ 80% | ❌ | **89/408 = 21.8%** — 结果已保存 test-data/391_results.json |
+| R6 | 性能 P50 | `gmp-eval bench --single` | < 5s | ⚠️ | CLI不支持bench子命令；单次查询~0.26s |
 | R7 | 性能 P95 | `gmp-retrieve bench --single --samples 100` | < 15s | ⬜ | |
 | R8 | 并发压测 | `gmp-retrieve bench --concurrent 10 --rounds 100` | 0 崩溃 | ⬜ | |
 | R9 | 安全审计 | `cargo audit` | 无高危 | ⚠️ | 无法获取advisory数据库(GitHub网络不可达) |
