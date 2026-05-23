@@ -4,7 +4,6 @@ use crate::fusion::RrfFusion;
 use anyhow::Result;
 use gmp_core::{ChannelType, ScoredChunk};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 
 /// Agent-knowledge rule
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -36,7 +35,7 @@ impl RuleChannel {
                 .filter(|e| {
                     e.path()
                         .extension()
-                        .map_or(false, |ext| ext == "yaml" || ext == "yml")
+                        .is_some_and(|ext| ext == "yaml" || ext == "yml")
                 })
             {
                 if let Ok(content) = std::fs::read_to_string(entry.path()) {

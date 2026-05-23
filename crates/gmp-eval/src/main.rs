@@ -74,6 +74,7 @@ struct Cli {
 }
 
 /// Compute cosine similarity between two f32 vectors
+#[allow(dead_code)]
 fn cosine_sim(a: &[f32], b: &[f32]) -> f32 {
     assert_eq!(a.len(), b.len());
     let dot: f32 = a.iter().zip(b.iter()).map(|(x, y)| x * y).sum();
@@ -132,7 +133,9 @@ fn hybrid_search(
     };
 
     // Step 4: Vector search
-    let vector_results = storage.search_vectors(&query_vec, top_k).unwrap_or_default();
+    let vector_results = storage
+        .search_vectors(&query_vec, top_k)
+        .unwrap_or_default();
 
     // Step 5: Convert VectorSearchResult to SearchResult
     vector_results
@@ -160,7 +163,10 @@ fn main() -> Result<()> {
 
     eprintln!("Loaded {} test scenarios", test_scenarios.len());
     if !cli.no_hybrid {
-        eprintln!("Hybrid search: FTS5 + Vector fallback (Ollama: {})", cli.ollama_url);
+        eprintln!(
+            "Hybrid search: FTS5 + Vector fallback (Ollama: {})",
+            cli.ollama_url
+        );
     }
 
     let config = StorageConfig {
@@ -174,7 +180,6 @@ fn main() -> Result<()> {
 
     let mut total_passed = 0u32;
     let mut fts_passed = 0u32;
-    let mut vector_passed = 0u32;
     let mut all_recalls: Vec<f64> = Vec::new();
     let mut all_mrrs: Vec<f64> = Vec::new();
     let mut category_stats: HashMap<String, (u32, usize)> = HashMap::new();
@@ -186,9 +191,17 @@ fn main() -> Result<()> {
 
         // Hybrid search
         let search_results = if !cli.no_hybrid {
-            hybrid_search(&storage, &scenario.query, top_k, &cli.ollama_url, &cli.embed_model)
+            hybrid_search(
+                &storage,
+                &scenario.query,
+                top_k,
+                &cli.ollama_url,
+                &cli.embed_model,
+            )
         } else {
-            storage.search_fts(&scenario.query, top_k).unwrap_or_default()
+            storage
+                .search_fts(&scenario.query, top_k)
+                .unwrap_or_default()
         };
 
         let retrieved_ids: Vec<String> = search_results.iter().map(|r| r.doc_id.clone()).collect();
@@ -199,7 +212,9 @@ fn main() -> Result<()> {
             .iter()
             .filter(|kw| {
                 let kw_lower = kw.to_lowercase();
-                retrieved_ids.iter().any(|id| id.to_lowercase().contains(&kw_lower))
+                retrieved_ids
+                    .iter()
+                    .any(|id| id.to_lowercase().contains(&kw_lower))
                     || search_results.iter().any(|r| {
                         r.title.to_lowercase().contains(&kw_lower)
                             || r.content.to_lowercase().contains(&kw_lower)
@@ -238,7 +253,11 @@ fn main() -> Result<()> {
         if is_pass {
             total_passed += 1;
             // Track which search mode contributed
-            if search_results.len() > 0 && !search_results.iter().all(|r| r.score == 0.0 && r.content.is_empty()) {
+            if !search_results.is_empty()
+                && !search_results
+                    .iter()
+                    .all(|r| r.score == 0.0 && r.content.is_empty())
+            {
                 // Check if this likely came from vector (content would be populated differently)
                 fts_passed += 1;
             }
@@ -310,7 +329,7 @@ fn main() -> Result<()> {
             avg_recall,
             avg_mrr,
             fts_passed,
-            vector_passed,
+            vector_passed: 0,
             category_stats: cat_report_map,
         };
         let json = serde_json::to_string_pretty(&report)?;

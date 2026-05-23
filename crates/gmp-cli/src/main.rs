@@ -191,7 +191,6 @@ async fn main() -> Result<()> {
             use gmp_core::ScoredChunk;
             use gmp_retrieval::channel::FourChannelEngine;
             use gmp_retrieval::RrfFusion;
-            use std::collections::HashMap;
 
             info!(
                 "GMP Search: query={}, channel={}, rerank={}",
@@ -217,9 +216,14 @@ async fn main() -> Result<()> {
             // Run four-channel search via tokio runtime
             let results: Vec<ScoredChunk> = std::thread::scope(|s| {
                 s.spawn(|| {
-                    let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+                    let rt = tokio::runtime::Builder::new_current_thread()
+                        .enable_all()
+                        .build()
+                        .unwrap();
                     rt.block_on(async { four_channel.search(&query, 20).await })
-                }).join().unwrap()
+                })
+                .join()
+                .unwrap()
             });
 
             let fused: Vec<ScoredChunk> = if channel == "all" {
@@ -237,9 +241,14 @@ async fn main() -> Result<()> {
                 );
                 match std::thread::scope(|s| {
                     s.spawn(|| {
-                        let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+                        let rt = tokio::runtime::Builder::new_current_thread()
+                            .enable_all()
+                            .build()
+                            .unwrap();
                         rt.block_on(reranker.rerank(&query, fused.clone(), 20))
-                    }).join().unwrap()
+                    })
+                    .join()
+                    .unwrap()
                 }) {
                     Ok(reranked) => reranked,
                     Err(e) => {
@@ -557,7 +566,6 @@ async fn main() -> Result<()> {
             rounds,
             db,
         } => {
-            use std::time::Instant;
             use tokio::task;
 
             info!("GMP Bench: concurrent={}, rounds={}", concurrent, rounds);
@@ -620,11 +628,8 @@ async fn main() -> Result<()> {
 
                 let mut round_latencies: Vec<u64> = Vec::new();
                 for h in handles {
-                    match h.await {
-                        Ok(Ok(_)) => {
-                            round_latencies.push(round_start.elapsed().as_millis() as u64);
-                        }
-                        _ => {}
+                    if let Ok(Ok(_)) = h.await {
+                        round_latencies.push(round_start.elapsed().as_millis() as u64);
                     }
                 }
                 latencies.extend(round_latencies);
@@ -691,7 +696,6 @@ async fn main() -> Result<()> {
             db,
         } => {
             use gmp_llm::LlmClient;
-            use std::time::Instant;
 
             println!("GMP Chat (LLM + RAG)\n");
 

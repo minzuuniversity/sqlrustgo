@@ -1,5 +1,4 @@
-//! Unit tests for gmp-storage
-
+#[allow(unused_imports)]
 use std::fs;
 use tempfile::TempDir;
 
@@ -8,6 +7,7 @@ use crate::storage::{
     VectorSearchResult,
 };
 
+#[allow(dead_code)]
 fn create_test_engine(tmpdir: &TempDir) -> StorageEngine {
     let config = StorageConfig {
         data_dir: tmpdir.path().to_string_lossy().to_string(),
@@ -18,6 +18,7 @@ fn create_test_engine(tmpdir: &TempDir) -> StorageEngine {
     StorageEngine::new(config).expect("Failed to create storage engine")
 }
 
+#[allow(dead_code)]
 fn create_test_markdown(tmpdir: &TempDir, filename: &str, content: &str) -> std::path::PathBuf {
     let path = tmpdir.path().join(filename);
     fs::write(&path, content).expect("Failed to write test file");
@@ -466,7 +467,9 @@ fn test_cosine_sim_mismatched_length() {
 fn test_cosine_sim_normalized() {
     // Unit vectors should give dot product as cosine similarity
     let a = vec![0.57735027f32, 0.57735027, 0.57735027]; // 1/sqrt(3) each
-    let b = vec![0.70710678f32, 0.70710678, 0.0]; // 1/sqrt(2) each
+    use std::f32::consts::FRAC_1_SQRT_2;
+    #[allow(clippy::approx_constant)]
+    let b = vec![FRAC_1_SQRT_2, 0.70710678_f32, 0.0]; // 1/sqrt(2) each
     let sim = cosine_sim(&a, &b);
     // dot = 0.577*0.707 + 0.577*0.707 + 0 = 0.816
     assert!((sim - 0.816).abs() < 0.01);
