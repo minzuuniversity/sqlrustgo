@@ -1,0 +1,27 @@
+[package]
+name = "gmp-kg"
+version.workspace = true
+edition = "2021"
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+# SQLRustGo Storage Engine
+sqlrustgo-storage = { path = "/Users/liying/workspace/dev/yinglichina163/sqlrustgo/crates/storage" }
+sqlrustgo-types = { path = "/Users/liying/workspace/dev/yinglichina163/sqlrustgo/crates/types" }
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# Error handling
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+
+# Logging
+tracing = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3"
