@@ -33,8 +33,8 @@ v3.5.0: AI Native GMP Platform
 
 - [x] v3.3.0 GA 通过（v3.3.0 tag at `a1ddb44c`）
 - [x] 所有 Trust Infrastructure 内核稳定
-- [x] Alpha Gate 通过（TODO）
-- [x] Beta Gate 通过（TODO）
+- [x] Alpha Gate 通过（✅ 16/16 PASS, 2026-05-22）
+- [x] Beta Gate 通过（✅ 14/14 PASS, 2026-05-22）
 
 ### 1.3 新增 Crates（v3.4.0）
 
