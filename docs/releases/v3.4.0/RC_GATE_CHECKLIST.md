@@ -26,8 +26,8 @@
 |---|--------|------|------|------|
 | R1 | Build | `cargo build --release --workspace` | 成功 | ✅ PASS (28.76s, 11 warnings pre-existing) |
 | R2 | Test | `cargo test --all-features --workspace` | 全部通过 | ⏳ Z440 超时 |
-| R3 | Clippy | `cargo clippy --all-features --workspace -- -D warnings` | 零警告 | ⚠️ gmp-retrieval `documents` dead code |
-| R4 | Format | `cargo fmt --all -- --check` | 通过 | ⏳ |
+| R3 | Clippy | `cargo clippy --all-features --workspace -- -D warnings` | 零警告 | ✅ PASS |
+| R4 | Format | `cargo fmt --all -- --check` | 通过 | ✅ PASS |
 
 ### 2.2 覆盖率检查 (R5)
 
