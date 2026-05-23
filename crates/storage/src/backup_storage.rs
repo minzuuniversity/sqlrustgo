@@ -567,4 +567,250 @@ mod tests {
         assert_eq!(keys[0], "backup1.sql");
         assert_eq!(keys[1], "backup2.sql");
     }
+
+    #[test]
+    fn test_parse_s3_list_response_empty() {
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+        <ListBucketResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
+        </ListBucketResult>"#;
+        let keys = parse_s3_list_response(xml);
+        assert_eq!(keys.len(), 0);
+    }
+
+    #[test]
+    fn test_parse_s3_list_response_multiline() {
+        let xml = r#"<ListBucketResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
+<Key>file1.txt</Key>
+<Key>file2.txt</Key>
+</ListBucketResult>"#;
+        let keys = parse_s3_list_response(xml);
+        assert_eq!(keys.len(), 2);
+        assert_eq!(keys[0], "file1.txt");
+        assert_eq!(keys[1], "file2.txt");
+    }
+
+    #[test]
+    fn test_local_storage_binary_data() {
+        let temp = std::env::temp_dir().join("backup_binary_test");
+        let storage = LocalBackupStorage::new(temp.clone());
+
+        let binary_data: Vec<u8> = (0..255).collect();
+        storage.save("binary/key.bin", &binary_data).unwrap();
+
+        let loaded = storage.load("binary/key.bin").unwrap();
+        assert_eq!(loaded, binary_data);
+
+        std::fs::remove_dir_all(temp).ok();
+    }
+
+    #[test]
+    fn test_local_storage_empty_data() {
+        let temp = std::env::temp_dir().join("backup_empty_test");
+        let storage = LocalBackupStorage::new(temp.clone());
+
+        storage.save("empty/key.dat", b"").unwrap();
+        let loaded = storage.load("empty/key.dat").unwrap();
+        assert_eq!(loaded, b"");
+
+        std::fs::remove_dir_all(temp).ok();
+    }
+
+    #[test]
+    fn test_local_storage_load_nonexistent() {
+        let temp = std::env::temp_dir().join("backup_load_nonexistent_test");
+        let storage = LocalBackupStorage::new(temp.clone());
+
+        let result = storage.load("nonexistent/key.dat");
+        assert!(result.is_err());
+
+        std::fs::remove_dir_all(temp).ok();
+    }
+
+    #[test]
+    fn test_local_storage_delete_nonexistent() {
+        let temp = std::env::temp_dir().join("backup_delete_nonexistent_test");
+        let storage = LocalBackupStorage::new(temp.clone());
+
+        // Should not panic, but will return error
+        let result = storage.delete("nonexistent/key.dat");
+        assert!(result.is_err());
+
+        std::fs::remove_dir_all(temp).ok();
+    }
+
+    #[test]
+    fn test_backup_storage_manager_delete() {
+        let temp = std::env::temp_dir().join("backup_manager_delete_test");
+        let manager = BackupStorageManager::new(temp.clone());
+
+        manager.save("test/key.dat", b"test data").unwrap();
+        assert!(manager.exists("test/key.dat").unwrap());
+
+        manager.delete("test/key.dat").unwrap();
+        assert!(!manager.exists("test/key.dat").unwrap());
+
+        std::fs::remove_dir_all(temp).ok();
+    }
+
+    #[test]
+    fn test_backup_storage_manager_exists() {
+        let temp = std::env::temp_dir().join("backup_manager_exists_test");
+        let manager = BackupStorageManager::new(temp.clone());
+
+        assert!(!manager.exists("test/key.dat").unwrap());
+
+        manager.save("test/key.dat", b"test data").unwrap();
+        assert!(manager.exists("test/key.dat").unwrap());
+
+        std::fs::remove_dir_all(temp).ok();
+    }
+
+    #[test]
+    fn test_backup_storage_manager_list() {
+        let temp = std::env::temp_dir().join("backup_manager_list_test");
+        let manager = BackupStorageManager::new(temp.clone());
+
+        manager.save("prefix/key1.dat", b"data1").unwrap();
+        manager.save("prefix/key2.dat", b"data2").unwrap();
+        manager.save("other/key3.dat", b"data3").unwrap();
+
+        let list = manager.list("prefix").unwrap();
+        assert_eq!(list.len(), 2);
+
+        std::fs::remove_dir_all(temp).ok();
+    }
+
+    #[test]
+    fn test_backup_transfer_sync_to_remote() {
+        let temp = std::env::temp_dir().join("backup_transfer_test");
+        let manager = BackupStorageManager::new(temp.clone());
+
+        manager.save("test/key.dat", b"test data").unwrap();
+
+        let transfer = BackupTransfer::new(manager);
+        // sync_to_remote will fail if no remote is configured, but we can at least call it
+        let result = transfer.sync_to_remote("test/key.dat");
+        // Without remote configured, this should be Ok(()) because remote is None
+        assert!(result.is_ok());
+
+        std::fs::remove_dir_all(temp).ok();
+    }
+
+    #[test]
+    fn test_backup_transfer_sync_from_remote() {
+        let temp = std::env::temp_dir().join("backup_transfer_from_test");
+        let manager = BackupStorageManager::new(temp.clone());
+
+        let transfer = BackupTransfer::new(manager);
+        // Without remote configured, this does nothing
+        let result = transfer.sync_from_remote("test/key.dat");
+        assert!(result.is_ok());
+
+        std::fs::remove_dir_all(temp).ok();
+    }
+
+    #[test]
+    fn test_backup_transfer_full_sync() {
+        let temp = std::env::temp_dir().join("backup_transfer_full_test");
+        let manager = BackupStorageManager::new(temp.clone());
+
+        manager.save("key1.dat", b"data1").unwrap();
+        manager.save("key2.dat", b"data2").unwrap();
+
+        let transfer = BackupTransfer::new(manager);
+        // Should sync 2 keys (but remote is not configured, so just returns count)
+        let result = transfer.full_sync();
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), 2);
+
+        std::fs::remove_dir_all(temp).ok();
+    }
+
+    #[test]
+    fn test_backup_storage_manager_with_remote() {
+        let temp = std::env::temp_dir().join("backup_manager_remote_test");
+        let mut manager = BackupStorageManager::new(temp.clone());
+
+        let config = RemoteConfig::new(
+            "https://s3.amazonaws.com",
+            "test-bucket",
+            "access-key",
+            "secret-key",
+            "us-east-1",
+        );
+        manager.with_remote(config);
+
+        // Should still work locally even with remote configured
+        manager.save("test/key.dat", b"test data").unwrap();
+        let data = manager.load("test/key.dat").unwrap();
+        assert_eq!(data, b"test data");
+
+        std::fs::remove_dir_all(temp).ok();
+    }
+
+    #[test]
+    fn test_backup_storage_manager_set_use_remote() {
+        let temp = std::env::temp_dir().join("backup_manager_use_remote_test");
+        let mut manager = BackupStorageManager::new(temp.clone());
+
+        let config = RemoteConfig::new(
+            "https://s3.amazonaws.com",
+            "test-bucket",
+            "access-key",
+            "secret-key",
+            "us-east-1",
+        );
+        manager.with_remote(config);
+
+        manager.set_use_remote(true);
+        assert!(*manager.use_remote.read().unwrap());
+
+        manager.set_use_remote(false);
+        assert!(!*manager.use_remote.read().unwrap());
+
+        std::fs::remove_dir_all(temp).ok();
+    }
+
+    #[test]
+    fn test_local_storage_nested_directories() {
+        let temp = std::env::temp_dir().join("backup_nested_test");
+        let storage = LocalBackupStorage::new(temp.clone());
+
+        storage.save("a/b/c/d/deep.txt", b"deep content").unwrap();
+        let loaded = storage.load("a/b/c/d/deep.txt").unwrap();
+        assert_eq!(loaded, b"deep content");
+
+        let exists = storage.exists("a/b/c/d/deep.txt").unwrap();
+        assert!(exists);
+
+        std::fs::remove_dir_all(temp).ok();
+    }
+
+    #[test]
+    fn test_local_storage_list_nested() {
+        let temp = std::env::temp_dir().join("backup_list_nested_test");
+        let storage = LocalBackupStorage::new(temp.clone());
+
+        storage.save("dir1/file1.txt", b"1").unwrap();
+        storage.save("dir1/file2.txt", b"2").unwrap();
+        storage.save("dir2/file3.txt", b"3").unwrap();
+
+        let list = storage.list("dir1").unwrap();
+        assert_eq!(list.len(), 2);
+
+        std::fs::remove_dir_all(temp).ok();
+    }
+
+    #[test]
+    fn test_backup_storage_manager_get_local() {
+        let temp = std::env::temp_dir().join("backup_manager_local_test");
+        let manager = BackupStorageManager::new(temp.clone());
+
+        let local = manager.get_local();
+        local.save("test.txt", b"test").unwrap();
+        let loaded = local.load("test.txt").unwrap();
+        assert_eq!(loaded, b"test");
+
+        std::fs::remove_dir_all(temp).ok();
+    }
 }
