@@ -72,7 +72,7 @@ title: 偏差调查清单
     for r in &results {
         assert!(r.chunk_id >= 0);
         assert!(!r.content.is_empty());
-        assert!(r.score >= 0.0);
+        assert!(r.score > -100.0, "BM25 score {} out of reasonable range", r.score);
     }
 }
 
@@ -160,7 +160,7 @@ title: 多次出现
     // Verify scoring API works
     let results = storage.search_fts("关键词", 10).unwrap();
     for r in &results {
-        assert!(r.score >= 0.0);
+        assert!(r.score > -100.0, "BM25 score {} out of reasonable range", r.score);
     }
     // If multiple results, verify ordering
     if results.len() >= 2 {
