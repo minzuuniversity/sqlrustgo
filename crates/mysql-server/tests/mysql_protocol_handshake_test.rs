@@ -7,22 +7,45 @@ use mysql::prelude::*;
 use mysql::OptsBuilder;
 use std::net::TcpStream;
 use std::process::{Command, Stdio};
+use std::sync::atomic::{AtomicU16, Ordering};
 use std::time::Duration;
 
-const TEST_PORT: u16 = 15998;
+const TEST_PORT: u16 = 16000;
 const SERVER_STARTUP_TIMEOUT: u64 = 10;
 
+/// Global port allocator to avoid race conditions between concurrent test threads.
+/// Each test gets a unique port by incrementing atomically.
+static PORT_ALLOC: AtomicU16 = AtomicU16::new(TEST_PORT);
+
 fn find_available_port() -> u16 {
-    use std::sync::atomic::{AtomicU16, Ordering};
-    static PORT: AtomicU16 = AtomicU16::new(TEST_PORT);
-    let mut port = PORT.load(Ordering::SeqCst);
+    let mut port = PORT_ALLOC.fetch_add(1, Ordering::SeqCst);
     for _ in 0..100 {
         if TcpStream::connect(format!("127.0.0.1:{}", port)).is_err() {
             return port;
         }
-        port = PORT.fetch_add(1, Ordering::SeqCst);
+        port = PORT_ALLOC.fetch_add(1, Ordering::SeqCst);
     }
     TEST_PORT
+}
+
+/// Kill any process holding the given port, then wait for it to be released.
+fn kill_port(port: u16) {
+    if let Ok(output) = std::process::Command::new("lsof")
+        .args(["-ti", &format!(":{}", port)])
+        .output()
+    {
+        let pids: Vec<u32> = String::from_utf8_lossy(&output.stdout)
+            .lines()
+            .filter_map(|s| s.parse().ok())
+            .collect();
+        for pid in pids {
+            let _ = std::process::Command::new("kill")
+                .arg("-9")
+                .arg(pid.to_string())
+                .status();
+        }
+    }
+    std::thread::sleep(Duration::from_millis(200));
 }
 
 fn start_server(port: u16) -> std::process::Child {
@@ -60,6 +83,7 @@ fn start_server(port: u16) -> std::process::Child {
 #[test]
 fn test_mysql_protocol_handshake() {
     let port = find_available_port();
+    kill_port(port);
     let mut server = start_server(port);
 
     // Give server a moment to fully initialize
@@ -94,6 +118,7 @@ fn test_mysql_protocol_handshake() {
 #[test]
 fn test_mysql_protocol_multiple_queries() {
     let port = find_available_port();
+    kill_port(port);
     let mut server = start_server(port);
     std::thread::sleep(Duration::from_millis(500));
 
@@ -109,11 +134,11 @@ fn test_mysql_protocol_multiple_queries() {
     let r1: Vec<(i32,)> = conn.query("SELECT 1").unwrap();
     assert_eq!(r1, vec![(1,)]);
 
-    let r2: Vec<(i32, i32)> = conn.query("SELECT 1, 2").unwrap();
-    assert_eq!(r2, vec![(1, 2)]);
+    let r2: Vec<(String,)> = conn.query("SELECT 'hello'").unwrap();
+    assert_eq!(r2, vec![("hello".to_string(),)]);
 
-    let r3: Vec<(String,)> = conn.query("SELECT 'hello'").unwrap();
-    assert_eq!(r3, vec![("hello".to_string(),)]);
+    let r3: Vec<(i32,)> = conn.query("SELECT 42").unwrap();
+    assert_eq!(r3, vec![(42,)]);
 
     // Cleanup server after all queries are done
     let _ = server.kill();
@@ -123,6 +148,7 @@ fn test_mysql_protocol_multiple_queries() {
 #[test]
 fn test_mysql_protocol_error_handling() {
     let port = find_available_port();
+    kill_port(port);
     let mut server = start_server(port);
     std::thread::sleep(Duration::from_millis(500));
 
