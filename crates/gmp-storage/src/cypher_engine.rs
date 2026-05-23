@@ -77,14 +77,15 @@ impl CypherEngine {
         Ok(())
     }
 
-    /// Execute a Cypher query and return results (Z440: pending execute_cypher generalization)
-    pub fn execute(&self, _query: &str) -> Result<CypherQueryResult> {
-        // Z440: execute_cypher currently only accepts InMemoryGraphStore
-        // DiskGraphStore persistence pending SQLRustGo #1326
-        Ok(CypherQueryResult {
-            columns: vec![],
-            rows: vec![],
-        })
+    /// Execute a Cypher query and return results
+    pub fn execute(&self, query: &str) -> Result<CypherQueryResult> {
+        let store = self.store.lock().unwrap();
+        execute_cypher(query, &*store)
+            .map(|result| CypherQueryResult {
+                columns: result.columns,
+                rows: result.rows,
+            })
+            .context("Failed to execute Cypher query")
     }
 
     /// Get nodes by label
@@ -177,7 +178,6 @@ mod tests {
     use tempfile::TempDir;
 
     #[test]
-    #[ignore = "Z440: execute_cypher stubbed pending InMemoryGraphStore migration"]
     fn test_cypher_create_and_query() {
         let engine = CypherEngine::in_memory();
 
@@ -204,7 +204,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "Z440: execute_cypher stubbed pending InMemoryGraphStore migration"]
     fn test_cypher_with_where() {
         let engine = CypherEngine::in_memory();
 
@@ -224,7 +223,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "Z440: execute_cypher stubbed pending InMemoryGraphStore migration"]
     fn test_cypher_disk_store_persistence() {
         let temp_dir = TempDir::new().unwrap();
         let data_dir = temp_dir.path().to_path_buf();
