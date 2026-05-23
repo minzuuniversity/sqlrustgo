@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 pub struct Bm25Search {
+    #[allow(dead_code)]
     documents: Vec<String>,
     term_freqs: Vec<HashMap<String, usize>>,
     doc_count: usize,
