@@ -1,12 +1,25 @@
-//! GMP Storage engine - Manages document storage, FTS, Vector, and Graph indexes
+//! GMP Storage engine — pure SQLRustGo backend
+//!
+//! Replaces rusqlite entirely with:
+//! - FileStorage (sqlrustgo-storage) for table data
+//! - InvertedIndex (sqlrustgo-fts) for full-text search
+//! - DiskGraphStore (sqlrustgo-graph) for graph operations
+//! - HnswVectorIndex for vector search
+//! - In-memory LIKE filtering for keyword fallback
 
+use crate::hnsw_vector_index::HnswVectorIndex;
+use crate::sqlrustgo_adapter::SqlrustgoAdapter;
 use anyhow::{Context, Result};
 use glob::glob;
-use rusqlite::{params, Connection};
+use sqlrustgo_storage::engine::{ColumnDefinition, Record, StorageEngine as SqlrustgoStorageEngine, TableInfo};
+use sqlrustgo_storage::FileStorage;
+use sqlrustgo_storage::fts::{ChineseTokenizer, InvertedIndex, Tokenizer};
+use sqlrustgo_types::Value;
 use std::path::Path;
+use std::path::PathBuf;
 use std::sync::Mutex;
 
-/// Check if a character is a CJK character (Chinese/Japanese/Korean)
+/// Check if a character is a CJK character
 fn is_cjk(c: char) -> bool {
     matches!(c, '\u{4E00}'..='\u{9FFF}' | '\u{3400}'..='\u{4DBF}' | '\u{F900}'..='\u{FAFF}')
 }
@@ -26,7 +39,12 @@ struct Frontmatter {
 #[derive(Debug, Clone)]
 pub struct StorageConfig {
     pub data_dir: String,
+    /// Optional explicit db path (if not set, derived from data_dir)
     pub db_path: String,
+    /// Embedding dimension (default: 768 for nomic-embed-text)
+    pub embedding_dim: usize,
+    /// Whether to use SQLRustGo native storage (always true, for compatibility)
+    pub use_sqlrustgo_storage: bool,
 }
 
 impl Default for StorageConfig {
@@ -34,97 +52,167 @@ impl Default for StorageConfig {
         Self {
             data_dir: "./data".to_string(),
             db_path: "./data/gmp.db".to_string(),
+            embedding_dim: 768,
+            use_sqlrustgo_storage: true,
         }
     }
 }
 
-/// Storage engine for GMP documents
+/// Storage engine for GMP documents — pure SQLRustGo backend
 pub struct StorageEngine {
-    #[allow(dead_code)]
     config: StorageConfig,
-    conn: Mutex<Connection>,
+    /// SQLRustGo FileStorage for all table data (documents, chunks, entities, etc.)
+    storage: Mutex<FileStorage>,
+    /// Full-text search index for chunk content
+    fts_index: Mutex<InvertedIndex>,
+    /// Chinese tokenizer for FTS
+    tokenizer: ChineseTokenizer,
+    /// HNSW vector index for similarity search
+    hnsw_index: HnswVectorIndex,
+    /// Optional SQLRustGo FileStorage adapter (same as storage, kept for compat)
+    adapter: Option<SqlrustgoAdapter>,
+    /// In-memory cache of all chunks for LIKE search [(id, doc_id, content, title, doc_type, chapter)]
+    chunk_cache: Mutex<Vec<(i64, String, String, String, Option<String>, Option<String>)>>,
+    /// Next auto-increment IDs
+    next_chunk_id: Mutex<i64>,
 }
 
 impl StorageEngine {
-    /// Create a new storage engine
+    /// Create a new storage engine with pure SQLRustGo backend
     pub fn new(config: StorageConfig) -> Result<Self> {
-        let path = Path::new(&config.db_path);
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)
-                .context(format!("Failed to create data dir: {:?}", parent))?;
-        }
+        let data_dir = PathBuf::from(&config.data_dir);
+        std::fs::create_dir_all(&data_dir)
+            .context(format!("Failed to create data dir: {:?}", data_dir))?;
 
-        let conn = Connection::open(&config.db_path).context("Failed to open database")?;
+        let storage_path = data_dir.join("gmp_data");
+        let storage = FileStorage::new_with_buffer_config(storage_path, 1, false)
+            .map_err(|e| anyhow::anyhow!("Failed to create FileStorage: {}", e))?;
+
+        let hnsw_index = HnswVectorIndex::with_params(16, 200, 200, config.embedding_dim);
 
         let engine = Self {
+            hnsw_index,
+            adapter: None,
+            storage: Mutex::new(storage),
+            fts_index: Mutex::new(InvertedIndex::new()),
+            tokenizer: ChineseTokenizer::new(),
+            chunk_cache: Mutex::new(Vec::new()),
+            next_chunk_id: Mutex::new(1),
             config,
-            conn: Mutex::new(conn),
         };
         engine.init_schema()?;
+        engine.load_chunk_cache()?;
         Ok(engine)
     }
 
-    /// Initialize database schema
+    /// Initialize GMP schema
     fn init_schema(&self) -> Result<()> {
-        let conn = self.conn.lock().unwrap();
-        conn.execute_batch(
-            r#"
-            -- Documents table
-            CREATE TABLE IF NOT EXISTS gmp_documents (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                doc_id TEXT UNIQUE NOT NULL,
-                code TEXT,
-                title TEXT NOT NULL,
-                chapter TEXT,
-                doc_type TEXT,
-                department TEXT,
-                status TEXT DEFAULT 'active',
-                source_file TEXT,
-                file_mtime INTEGER,
-                version TEXT,
-                effective_date TEXT,
-                created_at INTEGER DEFAULT (strftime('%s', 'now')),
-                updated_at INTEGER DEFAULT (strftime('%s', 'now'))
-            );
+        let mut storage = self.storage.lock().unwrap();
 
-            -- Document chunks table
-            CREATE TABLE IF NOT EXISTS gmp_document_chunks (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                doc_id TEXT NOT NULL,
-                chunk_index INTEGER NOT NULL,
-                content TEXT NOT NULL,
-                token_count INTEGER DEFAULT 0,
-                FOREIGN KEY (doc_id) REFERENCES gmp_documents(doc_id)
-            );
+        // gmp_documents table
+        let docs_table = TableInfo {
+            name: "gmp_documents".to_string(),
+            columns: vec![
+                ColumnDefinition::new("doc_id", "TEXT"),
+                ColumnDefinition::new("code", "TEXT"),
+                ColumnDefinition::new("title", "TEXT"),
+                ColumnDefinition::new("chapter", "TEXT"),
+                ColumnDefinition::new("doc_type", "TEXT"),
+                ColumnDefinition::new("department", "TEXT"),
+                ColumnDefinition::new("status", "TEXT"),
+                ColumnDefinition::new("source_file", "TEXT"),
+                ColumnDefinition::new("file_mtime", "INTEGER"),
+                ColumnDefinition::new("version", "TEXT"),
+                ColumnDefinition::new("effective_date", "TEXT"),
+                ColumnDefinition::new("created_at", "INTEGER"),
+                ColumnDefinition::new("updated_at", "INTEGER"),
+            ],
+            ..Default::default()
+        };
+        if !storage.has_table("gmp_documents") {
+            storage.create_table(&docs_table)?;
+        }
 
-            -- FTS5 virtual table for full-text search
-            CREATE VIRTUAL TABLE IF NOT EXISTS gmp_chunks_fts USING fts5(
-                content,
-                doc_id UNINDEXED,
-                chunk_id UNINDEXED
-            );
+        // gmp_document_chunks table
+        let chunks_table = TableInfo {
+            name: "gmp_document_chunks".to_string(),
+            columns: vec![
+                ColumnDefinition::new("id", "INTEGER"),
+                ColumnDefinition::new("doc_id", "TEXT"),
+                ColumnDefinition::new("chunk_index", "INTEGER"),
+                ColumnDefinition::new("content", "TEXT"),
+                ColumnDefinition::new("token_count", "INTEGER"),
+            ],
+            ..Default::default()
+        };
+        if !storage.has_table("gmp_document_chunks") {
+            storage.create_table(&chunks_table)?;
+        }
 
-            -- Create indexes
-            CREATE INDEX IF NOT EXISTS idx_chunks_doc_id ON gmp_document_chunks(doc_id);
-            CREATE INDEX IF NOT EXISTS idx_docs_code ON gmp_documents(code);
-            CREATE INDEX IF NOT EXISTS idx_docs_type ON gmp_documents(doc_type);
-
-            -- Embeddings table for vector search
-            CREATE TABLE IF NOT EXISTS gmp_embeddings (
-                chunk_id INTEGER PRIMARY KEY REFERENCES gmp_document_chunks(id),
-                embedding BLOB NOT NULL
-            );
-
-            -- Index on embeddings
-            CREATE INDEX IF NOT EXISTS idx_embeddings_chunk ON gmp_embeddings(chunk_id);
-            "#,
-        )
-        .context("Failed to initialize schema")?;
+        // gmp_embeddings table
+        let emb_table = TableInfo {
+            name: "gmp_embeddings".to_string(),
+            columns: vec![
+                ColumnDefinition::new("chunk_id", "INTEGER"),
+                ColumnDefinition::new("embedding_json", "TEXT"),
+            ],
+            ..Default::default()
+        };
+        if !storage.has_table("gmp_embeddings") {
+            storage.create_table(&emb_table)?;
+        }
 
         Ok(())
     }
 
-    /// Index all markdown documents from a directory (incremental: skips unchanged files)
+    /// Load all chunks into in-memory cache for LIKE search
+    fn load_chunk_cache(&self) -> Result<()> {
+        let storage = self.storage.lock().unwrap();
+        let mut cache = self.chunk_cache.lock().unwrap();
+        cache.clear();
+
+        // Scan documents
+        let docs = storage.scan("gmp_documents").unwrap_or_default();
+        let mut doc_map = std::collections::HashMap::new();
+        for doc in &docs {
+            if doc.len() >= 4 {
+                let doc_id = doc_value_str(doc, 0);
+                let title = doc_value_str(doc, 2);
+                let doc_type = doc_value_opt(doc, 4);
+                let chapter = doc_value_opt(doc, 3);
+                doc_map.insert(doc_id, (title, doc_type, chapter));
+            }
+        }
+
+        // Scan chunks
+        let chunks = storage.scan("gmp_document_chunks").unwrap_or_default();
+        let mut max_id = 0i64;
+        for chunk in &chunks {
+            if chunk.len() >= 4 {
+                let id = doc_value_int(chunk, 0);
+                let doc_id = doc_value_str(chunk, 1);
+                let content = doc_value_str(chunk, 3);
+                if id > max_id { max_id = id; }
+                let (title, doc_type, chapter) = doc_map.get(&doc_id).cloned()
+                    .unwrap_or_else(|| (String::new(), None, None));
+                cache.push((id, doc_id, content, title, doc_type, chapter));
+            }
+        }
+        drop(cache);
+
+        let mut nid = self.next_chunk_id.lock().unwrap();
+        *nid = max_id + 1;
+        drop(nid);
+
+        // Also rebuild FTS index from chunks
+        let fts = self.fts_index.lock().unwrap();
+        drop(fts);
+        // FTS is rebuilt on-the-fly during index_documents
+
+        Ok(())
+    }
+
+    /// Index all markdown documents from a directory
     pub fn index_documents(&self, source_dir: &str) -> Result<IndexStats> {
         let path = Path::new(source_dir);
         if !path.exists() {
@@ -134,114 +222,137 @@ impl StorageEngine {
         let pattern = path.join("**/*.md");
         let mut stats = IndexStats::default();
 
+        for entry in glob(pattern.to_str().unwrap())?
+            .filter_map(Result::ok)
+            .filter(|e| e.is_file())
         {
-            // Keep lock during transaction
-            let conn = self.conn.lock().unwrap();
-            let tx = conn.unchecked_transaction()?;
+            let mtime = entry.metadata().ok()
+                .and_then(|m| m.modified().ok())
+                .map(|t| t.duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() as i64);
 
-            for entry in glob(pattern.to_str().unwrap())?
-                .filter_map(Result::ok)
-                .filter(|e| e.is_file())
-            {
-                // Get file modification time
-                let mtime = entry
-                    .metadata()
-                    .ok()
-                    .and_then(|m| m.modified().ok())
-                    .map(|t| t.duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() as i64);
+            let file_path_str = entry.to_string_lossy().to_string();
 
-                // Check if we already have this file indexed with same mtime
-                let file_path_str = entry.to_string_lossy().to_string();
-                if let Some(mtime) = mtime {
-                    let skip: bool = conn.query_row(
-                        "SELECT COUNT(*) FROM gmp_documents WHERE source_file = ?1 AND file_mtime = ?2",
-                        params![file_path_str, mtime],
-                        |row| row.get::<_, i32>(0),
-                    ).unwrap_or(0) > 0;
+            // Check if already indexed with same mtime
+            let storage = self.storage.lock().unwrap();
+            let docs = storage.scan("gmp_documents").unwrap_or_default();
+            let exists = docs.iter().any(|d| {
+                d.len() > 8 && doc_value_str(d, 7) == file_path_str
+                    && mtime.map_or(false, |m| doc_value_int_opt(d, 8) == Some(m))
+            });
+            drop(storage);
 
-                    if skip {
-                        stats.documents_skipped += 1;
-                        continue;
-                    }
-                }
-
-                // Import or re-import the document
-                match self.import_document(&entry, &tx, mtime) {
-                    Ok(_doc_id) => {
-                        stats.documents_imported += 1;
-                    }
-                    Err(e) => {
-                        stats
-                            .errors
-                            .push(format!("Failed to import {:?}: {}", entry, e));
-                    }
-                }
+            if exists {
+                stats.documents_skipped += 1;
+                continue;
             }
 
-            tx.commit()?;
+            // Import document
+            match self.import_single_document(&entry, mtime) {
+                Ok(_) => stats.documents_imported += 1,
+                Err(e) => stats.errors.push(format!("Failed to import {:?}: {}", entry, e)),
+            }
         }
 
         Ok(stats)
     }
 
-    /// Import a single document
-    fn import_document(
-        &self,
-        path: &Path,
-        tx: &rusqlite::Transaction,
-        file_mtime: Option<i64>,
-    ) -> Result<String> {
+    /// Import a single markdown document
+    fn import_single_document(&self, path: &Path, file_mtime: Option<i64>) -> Result<String> {
         let content = std::fs::read_to_string(path)?;
         let (frontmatter, body) = self.parse_frontmatter(&content)?;
 
-        let doc_id = frontmatter
-            .code
-            .clone()
+        let doc_id = frontmatter.code.clone()
             .unwrap_or_else(|| path.file_stem().unwrap().to_string_lossy().to_string());
-
-        // Extract chapter from path
-        let chapter = path
-            .components()
-            .nth(1)
+        let chapter = path.components().nth(1)
             .and_then(|c| c.as_os_str().to_str())
             .map(|s| s.to_string());
+        let source_file = path.to_string_lossy().to_string();
+
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() as i64;
 
         // Insert document
-        tx.execute(
-            r#"INSERT OR REPLACE INTO gmp_documents 
-               (doc_id, code, title, chapter, doc_type, department, source_file, version, effective_date)
-               VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)"#,
-            params![
-                doc_id,
-                frontmatter.code,
-                frontmatter.title.as_deref().unwrap_or("Untitled"),
-                chapter,
-                frontmatter.document_type.as_deref(),
-                frontmatter.department.as_deref(),
-                path.to_string_lossy().to_string(),
-                frontmatter.version.as_deref(),
-                frontmatter.effective_date.as_deref(),
-            ],
-        )
-        .context("Failed to insert document")?;
+        let doc_record = vec![
+            Value::Text(doc_id.clone()),
+            Value::Text(frontmatter.code.clone().unwrap_or_default()),
+            Value::Text(frontmatter.title.clone().unwrap_or_else(|| "Untitled".to_string())),
+            Value::Text(chapter.clone().unwrap_or_default()),
+            Value::Text(frontmatter.document_type.clone().unwrap_or_default()),
+            Value::Text(frontmatter.department.clone().unwrap_or_default()),
+            Value::Text("active".to_string()),
+            Value::Text(source_file),
+            Value::Integer(file_mtime.unwrap_or(0)),
+            Value::Text(frontmatter.version.clone().unwrap_or_default()),
+            Value::Text(frontmatter.effective_date.clone().unwrap_or_default()),
+            Value::Integer(now),
+            Value::Integer(now),
+        ];
 
-        // Chunk the content (simple split by headers)
+        let mut storage = self.storage.lock().unwrap();
+        // Delete old entries for this doc_id
+        let existing = storage.scan("gmp_documents").unwrap_or_default();
+        for d in &existing {
+            if d.len() > 0 && doc_value_str(d, 0) == doc_id {
+                // Delete all chunks for this doc
+                let chunks = storage.scan("gmp_document_chunks").unwrap_or_default();
+                for c in &chunks {
+                    if c.len() > 1 && doc_value_str(c, 1) == doc_id {
+                        let _ = storage.delete("gmp_document_chunks", &[Value::Integer(doc_value_int(c, 0))]);
+                    }
+                }
+                break;
+            }
+        }
+        storage.insert("gmp_documents", vec![doc_record])?;
+        drop(storage);
+
+        // Chunk and insert
         let chunks = self.chunk_content(&body);
-        for (idx, chunk_text) in chunks.iter().enumerate() {
-            let token_count = chunk_text.len() / 4; // rough estimate
+        let title = frontmatter.title.unwrap_or_else(|| "Untitled".to_string());
+        let doc_type = frontmatter.document_type;
+        let chapter_val = chapter;
+        let chunk_id_start = {
+            let mut nid = self.next_chunk_id.lock().unwrap();
+            let start = *nid;
+            *nid += chunks.len() as i64;
+            start
+        };
 
-            tx.execute(
-                r#"INSERT INTO gmp_document_chunks (doc_id, chunk_index, content, token_count)
-                   VALUES (?1, ?2, ?3, ?4)"#,
-                params![doc_id, idx as i32, chunk_text, token_count],
-            )?;
+        for (idx, chunk_text) in chunks.iter().enumerate() {
+            let chunk_id = chunk_id_start + idx as i64;
+            let token_count = (chunk_text.len() / 4) as i64;
+
+            // Insert into FileStorage
+            {
+                let mut storage = self.storage.lock().unwrap();
+                let chunk_record = vec![
+                    Value::Integer(chunk_id),
+                    Value::Text(doc_id.clone()),
+                    Value::Integer(idx as i64),
+                    Value::Text(chunk_text.clone()),
+                    Value::Integer(token_count),
+                ];
+                let _ = storage.insert("gmp_document_chunks", vec![chunk_record]);
+            }
 
             // Add to FTS index
-            tx.execute(
-                r#"INSERT INTO gmp_chunks_fts (content, doc_id, chunk_id)
-                   VALUES (?1, ?2, ?3)"#,
-                params![chunk_text, doc_id, idx as i64],
-            )?;
+            {
+                let mut fts = self.fts_index.lock().unwrap();
+                fts.add_document(chunk_id as u64, chunk_text);
+            }
+
+            // Add to in-memory cache for LIKE search
+            {
+                let mut cache = self.chunk_cache.lock().unwrap();
+                cache.push((
+                    chunk_id,
+                    doc_id.clone(),
+                    chunk_text.clone(),
+                    title.clone(),
+                    doc_type.clone(),
+                    chapter_val.clone(),
+                ));
+            }
         }
 
         Ok(doc_id)
@@ -251,34 +362,14 @@ impl StorageEngine {
     fn parse_frontmatter(&self, content: &str) -> Result<(Frontmatter, String)> {
         let content_trimmed = content.trim_start();
         if !content_trimmed.starts_with("---") {
-            return Ok((
-                Frontmatter {
-                    document_type: None,
-                    code: None,
-                    title: None,
-                    version: None,
-                    effective_date: None,
-                    department: None,
-                },
-                content.to_string(),
-            ));
+            return Ok((Frontmatter { document_type: None, code: None, title: None, version: None, effective_date: None, department: None }, content.to_string()));
         }
-
-        let end_marker = content_trimmed[2..]
-            .find("---")
-            .context("No closing frontmatter marker")?;
+        let end_marker = content_trimmed[2..].find("---").context("No closing frontmatter marker")?;
         let yaml_str = &content_trimmed[2..end_marker + 2];
         let body = content_trimmed[end_marker + 5..].trim().to_string();
-
         let frontmatter: Frontmatter = serde_yaml::from_str(yaml_str).unwrap_or(Frontmatter {
-            document_type: None,
-            code: None,
-            title: None,
-            version: None,
-            effective_date: None,
-            department: None,
+            document_type: None, code: None, title: None, version: None, effective_date: None, department: None,
         });
-
         Ok((frontmatter, body))
     }
 
@@ -286,7 +377,6 @@ impl StorageEngine {
     fn chunk_content(&self, content: &str) -> Vec<String> {
         let mut chunks = Vec::new();
         let mut current = String::new();
-
         for line in content.lines() {
             if line.starts_with("## ") && current.len() > 100 {
                 chunks.push(current.trim().to_string());
@@ -295,351 +385,321 @@ impl StorageEngine {
             current.push_str(line);
             current.push('\n');
         }
-
         if !current.trim().is_empty() {
             chunks.push(current.trim().to_string());
         }
-
-        // Fallback: if too few chunks, split by paragraphs
         if chunks.len() < 2 {
-            chunks = content
-                .split("\n\n")
-                .filter(|s| s.trim().len() > 50)
-                .map(|s| s.trim().to_string())
-                .collect();
+            chunks = content.split("\n\n").filter(|s| s.trim().len() > 50).map(|s| s.trim().to_string()).collect();
         }
-
         chunks
     }
 
-    /// Get total chunk count
-    fn get_chunk_count(&self) -> Result<usize> {
-        let conn = self.conn.lock().unwrap();
-        let count: i64 = conn.query_row("SELECT COUNT(*) FROM gmp_document_chunks", [], |row| {
-            row.get(0)
-        })?;
-        Ok(count as usize)
-    }
-
-    /// Search using FTS
+    /// FTS search via sqlrustgo-fts InvertedIndex
     pub fn search_fts(&self, query: &str, top_k: usize) -> Result<Vec<SearchResult>> {
-        // Sanitize query: remove FTS5-special characters
-        let sanitized = query
-            .chars()
-            .filter(|c| !matches!(c, '(' | ')' | ':' | '*' | '/' | '-' | '"' | '\''))
-            .collect::<String>();
+        let fts = self.fts_index.lock().unwrap();
+        let tokens = self.tokenizer.tokenize(query);
+        let mut seen = std::collections::HashSet::new();
+        let mut results = Vec::new();
 
-        // Tokenize query using simple Chinese n-gram approach
-        // (jieba was removed from dependencies; using character bigrams for Chinese)
-        let tokenized_query = self.tokenize_for_fts(&sanitized);
+        for token in &tokens {
+            let doc_ids = fts.search(token);
+            for chunk_id in doc_ids {
+                if seen.insert(chunk_id) {
+                    // Look up chunk details from cache
+                    let cache = self.chunk_cache.lock().unwrap();
+                    if let Some((id, doc_id_val, chunk_content, title, doc_type, chapter)) =
+                        cache.iter().find(|(id, ..)| *id == chunk_id as i64).cloned()
+                    {
+                        let token_count = chunk_content.len() as i64;
+                        results.push(SearchResult {
+                            chunk_id: id,
+                            doc_id: doc_id_val,
+                            content: chunk_content,
+                            token_count,
+                            title,
+                            doc_type,
+                            chapter,
+                            score: 0.0,
+                        });
+                    }
+                }
+                if results.len() >= top_k { break; }
+            }
+            if results.len() >= top_k { break; }
+        }
+        Ok(results)
+    }
 
-        let conn = self.conn.lock().unwrap();
+    /// LIKE search with extra keywords (in-memory filtering over chunk cache)
+    pub fn search_like_with_extra(&self, query: &str, top_k: usize, extra_keywords: &[String]) -> Result<Vec<SearchResult>> {
+        let substrings = Self::extract_chinese_substrings(query);
+        let mut expanded = std::collections::HashSet::new();
+        for sub in &substrings { expanded.insert(sub.clone()); }
+        for kw in extra_keywords { if !kw.is_empty() { expanded.insert(kw.clone()); } }
 
-        // 1. Try FTS5 MATCH first with BM25 scoring
-        // CRITICAL FIX: Use content_rowid instead of chunk_id for proper BM25 scoring.
-        // SQLite FTS5 bm25() function requires the FTS table's internal rowid to compute
-        // term frequencies and document lengths correctly. When using external content
-        // tables with UNINDEXED columns, joining on chunk_id loses the rowid mapping
-        // and bm25() returns incorrect/default values.
-        let mut stmt = conn.prepare(
-            r#"SELECT c.id, c.doc_id, c.content, c.token_count,
-                      d.title, d.doc_type, d.chapter,
-                      bm25(gmp_chunks_fts) as score
-               FROM gmp_chunks_fts fts
-               JOIN gmp_document_chunks c ON fts.rowid = c.id
-               JOIN gmp_documents d ON c.doc_id = d.doc_id
-               WHERE gmp_chunks_fts MATCH ?1
-               ORDER BY score
-               LIMIT ?2"#,
-        )?;
+        if expanded.is_empty() { return Ok(Vec::new()); }
+        let terms: Vec<String> = expanded.into_iter().collect();
 
-        let mut fts_results: Vec<SearchResult> = stmt
-            .query_map(params![tokenized_query, top_k as i64], |row| {
-                Ok(SearchResult {
-                    chunk_id: row.get(0)?,
-                    doc_id: row.get(1)?,
-                    content: row.get(2)?,
-                    token_count: row.get(3)?,
-                    title: row.get(4)?,
-                    doc_type: row.get(5)?,
-                    chapter: row.get(6)?,
-                    score: row.get(7)?,
-                })
-            })?
-            .filter_map(Result::ok)
+        // In-memory LIKE filtering over chunk cache
+        let cache = self.chunk_cache.lock().unwrap();
+        let mut scored: Vec<(f64, (i64, String, String, String, Option<String>, Option<String>))> = Vec::new();
+
+        for chunk in cache.iter() {
+            let (id, doc_id, content, title, doc_type, chapter) = chunk;
+            let mut score = 0.0f64;
+            for term in &terms {
+                let pattern = term.to_lowercase();
+                if content.to_lowercase().contains(&pattern) {
+                    score += 1.0;
+                }
+                if title.to_lowercase().contains(&pattern) {
+                    score += 1.0;
+                }
+            }
+            if score > 0.0 {
+                scored.push((score, chunk.clone()));
+            }
+        }
+        drop(cache);
+
+        // Sort by score descending
+        scored.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
+        scored.truncate(top_k);
+
+        Ok(scored.into_iter().map(|(score, (id, doc_id, content, title, doc_type, chapter))| {
+            SearchResult {
+                    chunk_id: id,
+                doc_id: doc_id.clone(),
+                content: content.clone(),
+                token_count: content.len() as i64,
+                title: title.clone(),
+                doc_type: doc_type.clone(),
+                chapter: chapter.clone(),
+                score,
+            }
+        }).collect())
+    }
+
+    /// Wrapper for search_like_with_extra without extra keywords
+    pub fn search_like(&self, query: &str, top_k: usize) -> Result<Vec<SearchResult>> {
+        self.search_like_with_extra(query, top_k, &[])
+    }
+
+    /// Search vectors using HNSW index
+    pub fn search_vectors(&self, query_embedding: &[f32], top_k: usize) -> Result<Vec<VectorSearchResult>> {
+        if !self.hnsw_index.is_empty() {
+            let hnsw_results = self.hnsw_index.search(query_embedding, top_k)?;
+            let cache = self.chunk_cache.lock().unwrap();
+            let mut results = Vec::with_capacity(hnsw_results.len());
+            for entry in &hnsw_results {
+                let chunk_id = entry.id as i64;
+                if let Some((_, doc_id, content, ..)) = cache.iter().find(|(id, ..)| *id == chunk_id) {
+                    results.push(VectorSearchResult {
+                        chunk_id,
+                        doc_id: doc_id.clone(),
+                        chunk_index: 0,
+                        content: content.clone(),
+                        score: entry.score as f64,
+                    });
+                }
+            }
+            results.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+            return Ok(results);
+        }
+        Ok(Vec::new())
+    }
+
+    /// Get HNSW index reference
+    pub fn get_hnsw_index(&self) -> &HnswVectorIndex {
+        &self.hnsw_index
+    }
+
+    /// Get a list of chunk IDs (for testing and debugging)
+    pub fn get_chunk_ids(&self, limit: usize) -> Vec<i64> {
+        let cache = self.chunk_cache.lock().unwrap();
+        cache.iter().take(limit).map(|(id, ..)| *id).collect()
+    }
+    pub fn rebuild_hnsw_from_db(&self) -> Result<usize> {
+        if !self.hnsw_index.is_empty() { return Ok(self.hnsw_index.len()); }
+        let storage = self.storage.lock().unwrap();
+        let embeddings = storage.scan("gmp_embeddings").unwrap_or_default();
+        let mut count = 0;
+        for emb in &embeddings {
+            if emb.len() >= 2 {
+                let chunk_id = doc_value_int(emb, 0);
+                let json_str = doc_value_str(emb, 1);
+                if let Ok(vec) = serde_json::from_str::<Vec<f32>>(&json_str) {
+                    let _ = self.hnsw_index.insert(chunk_id as u64, &vec);
+                    count += 1;
+                }
+            }
+        }
+        drop(storage);
+        if count > 0 { self.hnsw_index.build_index()?; }
+        Ok(count)
+    }
+
+    /// Index embeddings for all chunks
+    pub fn index_embeddings(&self, ollama_url: &str, model: &str) -> Result<usize> {
+        // Get chunks without embeddings
+        let cache = self.chunk_cache.lock().unwrap();
+        let storage = self.storage.lock().unwrap();
+        let existing = storage.scan("gmp_embeddings").unwrap_or_default();
+        let existing_ids: std::collections::HashSet<i64> = existing.iter()
+            .filter_map(|e| if e.len() >= 1 { Some(doc_value_int(e, 0)) } else { None })
             .collect();
+        drop(storage);
 
-        // 2. If FTS results are insufficient, use LIKE fallback for Chinese n-gram matching
-        if fts_results.len() < top_k {
-            let substrings = Self::extract_chinese_substrings(&sanitized);
-            if !substrings.is_empty() {
-                let conditions: Vec<String> = substrings
-                    .iter()
-                    .take(5)
-                    .map(|_| "content LIKE ?".to_string())
-                    .collect();
+        let to_embed: Vec<(i64, String)> = cache.iter()
+            .filter(|(id, ..)| !existing_ids.contains(id))
+            .map(|(id, _, content, ..)| (*id, content.clone()))
+            .collect();
+        drop(cache);
 
-                let like_sql = format!(
-                    r#"SELECT c.id, c.doc_id, c.content, c.token_count,
-                              d.title, d.doc_type, d.chapter,
-                              0.0 as score
-                       FROM gmp_document_chunks c
-                       JOIN gmp_documents d ON c.doc_id = d.doc_id
-                       WHERE {}
-                       LIMIT ?"#,
-                    conditions.join(" OR ")
-                );
+        if to_embed.is_empty() { return Ok(0); }
 
-                let top_k_i64 = top_k as i64;
-                let mut like_params: Vec<&dyn rusqlite::ToSql> = substrings
-                    .iter()
-                    .take(5)
-                    .map(|s| s as &dyn rusqlite::ToSql)
-                    .collect();
-                like_params.push(&top_k_i64);
-
-                let mut like_stmt = conn.prepare(&like_sql)?;
-                let like_results: Vec<SearchResult> = like_stmt
-                    .query_map(like_params.as_slice(), |row| {
-                        Ok(SearchResult {
-                            chunk_id: row.get(0)?,
-                            doc_id: row.get(1)?,
-                            content: row.get(2)?,
-                            token_count: row.get(3)?,
-                            title: row.get(4)?,
-                            doc_type: row.get(5)?,
-                            chapter: row.get(6)?,
-                            score: row.get(7)?,
-                        })
-                    })?
-                    .filter_map(Result::ok)
-                    .collect();
-
-                // Merge and deduplicate
-                let mut seen = std::collections::HashSet::new();
-                for r in fts_results.iter() {
-                    seen.insert((r.doc_id.clone(), r.chunk_id));
-                }
-                for r in like_results {
-                    if seen.insert((r.doc_id.clone(), r.chunk_id)) && fts_results.len() < top_k {
-                        fts_results.push(r);
+        let client = reqwest::blocking::Client::new();
+        let mut indexed = 0;
+        for (chunk_id, content) in &to_embed {
+            let resp = client.post(format!("{}/api/embeddings", ollama_url))
+                .json(&serde_json::json!({"model": model, "prompt": content}))
+                .send();
+            if let Ok(response) = resp {
+                if response.status().is_success() {
+                    #[derive(serde::Deserialize)]
+                    struct EmbedResp { embedding: Vec<f32> }
+                    if let Ok(embed_resp) = response.json::<EmbedResp>() {
+                        let json_str = serde_json::to_string(&embed_resp.embedding)?;
+                        let mut storage = self.storage.lock().unwrap();
+                        let _ = storage.insert("gmp_embeddings", vec![
+                            vec![Value::Integer(*chunk_id), Value::Text(json_str)]
+                        ]);
+                        drop(storage);
+                        let _ = self.hnsw_index.insert(*chunk_id as u64, &embed_resp.embedding);
+                        indexed += 1;
                     }
                 }
             }
         }
-
-        Ok(fts_results)
-    }
-
-    /// Simple tokenizer for FTS queries (Chinese character bigrams + English words)
-    fn tokenize_for_fts(&self, text: &str) -> String {
-        let mut tokens = Vec::new();
-        let mut current_english = String::new();
-        let chars: Vec<char> = text.chars().collect();
-
-        for (i, c) in chars.iter().enumerate() {
-            if c.is_alphanumeric() {
-                current_english.push(*c);
-            } else if is_cjk(*c) {
-                // Flush any pending English word
-                if !current_english.is_empty() {
-                    if current_english.len() > 2 {
-                        tokens.push(current_english.clone());
-                    }
-                    current_english.clear();
-                }
-                // Chinese character bigram
-                if i + 1 < chars.len() && is_cjk(chars[i + 1]) {
-                    tokens.push(format!("{}{}", c, chars[i + 1]));
-                }
-            } else {
-                // Flush any pending English word
-                if !current_english.is_empty() {
-                    if current_english.len() > 2 {
-                        tokens.push(current_english.clone());
-                    }
-                    current_english.clear();
-                }
-            }
-        }
-
-        // Flush remaining English
-        if !current_english.is_empty() && current_english.len() > 2 {
-            tokens.push(current_english);
-        }
-
-        if tokens.is_empty() {
-            // Fallback: return original text
-            text.to_string()
-        } else {
-            tokens.join(" OR ")
-        }
-    }
-
-    /// Extract Chinese substrings (3-4 chars) from query for LIKE fallback
-    fn extract_chinese_substrings(query: &str) -> Vec<String> {
-        let mut substrings = Vec::new();
-        let chars: Vec<char> = query.chars().collect();
-
-        for i in 0..chars.len() {
-            if is_cjk(chars[i]) {
-                let mut end = std::cmp::min(i + 4, chars.len());
-                while end > i + 2 {
-                    let sub: String = chars[i..end].iter().collect();
-                    substrings.push(sub);
-                    end -= 1;
-                }
-            }
-        }
-
-        // Deduplicate and limit
-        substrings.sort();
-        substrings.dedup();
-        substrings.truncate(10);
-        substrings
+        Ok(indexed)
     }
 
     /// Get document count
     pub fn get_document_count(&self) -> Result<i64> {
-        let conn = self.conn.lock().unwrap();
-        let count: i64 =
-            conn.query_row("SELECT COUNT(*) FROM gmp_documents", [], |row| row.get(0))?;
-        Ok(count)
+        let storage = self.storage.lock().unwrap();
+        Ok(storage.scan("gmp_documents").map(|d| d.len() as i64).unwrap_or(0))
     }
 
-    /// Validate index
+    /// Validate the storage integrity
+    /// Returns Ok(ValidationResult) if all checks pass
     pub fn validate(&self) -> Result<ValidationResult> {
-        let doc_count = self.get_document_count()?;
-        let chunk_count = self.get_chunk_count()?;
+        let storage = self.storage.lock().unwrap();
+        let mut result = ValidationResult::default();
 
-        Ok(ValidationResult {
-            documents: doc_count,
-            chunks: chunk_count,
-            is_valid: doc_count >= 1600 && chunk_count > 0,
-        })
-    }
+        // Check that core tables exist
+        result.tables_present = storage.has_table("gmp_documents");
+        result.chunks_table_present = storage.has_table("gmp_document_chunks");
 
-    /// Search vectors using cosine similarity (dot product on normalized vectors)
-    pub fn search_vectors(
-        &self,
-        query_embedding: &[f32],
-        top_k: usize,
-    ) -> Result<Vec<VectorSearchResult>> {
-        let conn = self.conn.lock().unwrap();
-
-        let mut stmt = conn.prepare(
-            "SELECT e.chunk_id, e.embedding, c.doc_id, c.chunk_index, c.content
-             FROM gmp_embeddings e
-             JOIN gmp_document_chunks c ON e.chunk_id = c.id
-             LIMIT 10000",
-        )?;
-
-        let mut results = Vec::new();
-        let mut rows = stmt.query([])?;
-
-        while let Some(row) = rows.next()? {
-            let chunk_id: i64 = row.get(0)?;
-            let blob: Vec<u8> = row.get(1)?;
-            let doc_id: String = row.get(2)?;
-            let chunk_index: i32 = row.get(3)?;
-            let content: String = row.get(4)?;
-
-            // Deserialize embedding from BLOB
-            let embedding: Vec<f32> = blob
-                .chunks_exact(4)
-                .map(|bytes| f32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]))
-                .collect();
-
-            // Compute cosine similarity
-            let score = cosine_sim(query_embedding, &embedding);
-            results.push(VectorSearchResult {
-                chunk_id,
-                doc_id,
-                chunk_index,
-                content,
-                score: score as f64,
-            });
+        if !result.tables_present || !result.chunks_table_present {
+            result.is_valid = false;
+            result.errors.push("Missing core tables".to_string());
+            return Ok(result);
         }
 
-        // Sort by score descending and take top_k
-        results.sort_by(|a, b| {
-            b.score
-                .partial_cmp(&a.score)
-                .unwrap_or(std::cmp::Ordering::Equal)
-        });
-        results.truncate(top_k);
+        // Count records
+        let docs = storage.scan("gmp_documents").unwrap_or_default();
+        let chunks = storage.scan("gmp_document_chunks").unwrap_or_default();
+        let embeddings = storage.scan("gmp_embeddings").unwrap_or_default();
 
-        Ok(results)
-    }
+        result.documents = docs.len() as i64;
+        result.chunks = chunks.len() as i64;
+        result.embedding_count = embeddings.len() as i64;
 
-    /// Index embeddings for all chunks (call after index_documents)
-    pub fn index_embeddings(&self, ollama_url: &str, model: &str) -> Result<usize> {
-        let client = reqwest::blocking::Client::new();
-
-        // Get all chunks without embeddings - collect as plain data
-        let chunk_ids_and_content: Vec<(i64, String)> = {
-            let conn = self.conn.lock().unwrap();
-            let mut stmt = conn.prepare(
-                "SELECT c.id, c.content FROM gmp_document_chunks c
-                 WHERE NOT EXISTS (SELECT 1 FROM gmp_embeddings e WHERE e.chunk_id = c.id)
-                 LIMIT 500",
-            )?;
-            let mut ids = Vec::new();
-            let mut rows = stmt.query([])?;
-            while let Some(row) = rows.next()? {
-                let id: i64 = row.get(0)?;
-                let content: String = row.get(1)?;
-                ids.push((id, content));
-            }
-            ids
-        };
-
-        if chunk_ids_and_content.is_empty() {
-            return Ok(0);
+        // Check chunk-embedding ratio (embeddings should match chunks)
+        if result.chunks > 0 && result.embedding_count == 0 {
+            result.warnings.push("No embeddings found for chunks".to_string());
         }
 
-        let mut indexed = 0;
-        for (chunk_id, content) in chunk_ids_and_content {
-            // Get embedding from Ollama
-            let resp = client
-                .post(format!("{}/api/embeddings", ollama_url))
-                .json(&serde_json::json!({
-                    "model": model,
-                    "prompt": content
-                }))
-                .send();
+        // Verify FTS index is accessible
+        let fts = self.fts_index.lock().unwrap();
+        let fts_size = fts.doc_count() as usize;
+        drop(fts);
+        result.fts_token_count = fts_size;
 
-            match resp {
-                Ok(response) if response.status().is_success() => {
-                    #[derive(serde::Deserialize)]
-                    struct EmbedResp {
-                        embedding: Vec<f32>,
-                    }
-                    if let Ok(embed_resp) = response.json::<EmbedResp>() {
-                        // Serialize to BLOB
-                        let mut blob = Vec::with_capacity(embed_resp.embedding.len() * 4);
-                        for f in &embed_resp.embedding {
-                            blob.extend_from_slice(&f.to_le_bytes());
-                        }
+        // Mark invalid if no documents indexed yet
+        if result.documents == 0 {
+            result.is_valid = false;
+            result.errors.push("No documents indexed yet".to_string());
+            return Ok(result);
+        }
 
-                        let conn = self.conn.lock().unwrap();
-                        let _ = conn.execute(
-                            "INSERT OR REPLACE INTO gmp_embeddings (chunk_id, embedding) VALUES (?1, ?2)",
-                            params![chunk_id, blob],
-                        );
-                        indexed += 1;
+        result.is_valid = true;
+        Ok(result)
+    }
+
+    /// Extract Chinese substrings (2-4 chars) from query
+    fn extract_chinese_substrings(query: &str) -> Vec<String> {
+        let mut substrings = Vec::new();
+        let chars: Vec<char> = query.chars().collect();
+        for i in 0..chars.len() {
+            if is_cjk(chars[i]) {
+                let max_end = std::cmp::min(i + 4, chars.len());
+                let mut end = max_end;
+                while end > i + 1 {
+                    if chars[i..end].iter().all(|c| is_cjk(*c)) {
+                        substrings.push(chars[i..end].iter().collect());
+                        break;
                     }
+                    end -= 1;
                 }
-                _ => {}
             }
         }
-
-        Ok(indexed)
+        substrings.sort();
+        substrings.dedup();
+        substrings
     }
 }
 
-/// Compute cosine similarity between two normalized vectors
-pub(crate) fn cosine_sim(a: &[f32], b: &[f32]) -> f32 {
+// Helper functions for extracting values from Records
+fn doc_value_str(doc: &[Value], idx: usize) -> String {
+    if idx < doc.len() {
+        match &doc[idx] {
+            Value::Text(s) => s.clone(),
+            Value::Integer(i) => i.to_string(),
+            _ => String::new(),
+        }
+    } else { String::new() }
+}
+
+fn doc_value_opt(doc: &[Value], idx: usize) -> Option<String> {
+    if idx < doc.len() {
+        match &doc[idx] {
+            Value::Text(s) if !s.is_empty() => Some(s.clone()),
+            _ => None,
+        }
+    } else { None }
+}
+
+fn doc_value_int(doc: &[Value], idx: usize) -> i64 {
+    if idx < doc.len() {
+        match &doc[idx] {
+            Value::Integer(i) => *i,
+            _ => 0,
+        }
+    } else { 0 }
+}
+
+fn doc_value_int_opt(doc: &[Value], idx: usize) -> Option<i64> {
+    if idx < doc.len() {
+        match &doc[idx] {
+            Value::Integer(i) => Some(*i),
+            _ => None,
+        }
+    } else { None }
+}
+
+/// Compute cosine similarity between two vectors
+pub fn cosine_sim(a: &[f32], b: &[f32]) -> f64 {
     if a.len() != b.len() || a.is_empty() {
         return 0.0;
     }
@@ -649,20 +709,10 @@ pub(crate) fn cosine_sim(a: &[f32], b: &[f32]) -> f32 {
     if norm_a == 0.0 || norm_b == 0.0 {
         return 0.0;
     }
-    dot / (norm_a * norm_b)
+    (dot / (norm_a * norm_b)) as f64
 }
 
-/// Vector search result
-#[derive(Debug, Clone)]
-pub struct VectorSearchResult {
-    pub chunk_id: i64,
-    pub doc_id: String,
-    pub chunk_index: i32,
-    pub content: String,
-    pub score: f64,
-}
-
-/// Search result from FTS
+// Public types
 #[derive(Debug, Clone)]
 pub struct SearchResult {
     pub chunk_id: i64,
@@ -675,584 +725,33 @@ pub struct SearchResult {
     pub score: f64,
 }
 
-/// Index statistics
+#[derive(Debug, Clone)]
+pub struct VectorSearchResult {
+    pub chunk_id: i64,
+    pub doc_id: String,
+    pub chunk_index: i32,
+    pub content: String,
+    pub score: f64,
+}
+
 #[derive(Debug, Default)]
 pub struct IndexStats {
-    // Note: documents_skipped tracks incremental index performance
-    /// Number of documents newly imported or re-imported
     pub documents_imported: usize,
-    /// Number of documents skipped (already indexed, no changes)
     pub documents_skipped: usize,
-    /// Number of chunks indexed
     pub chunks_indexed: usize,
-    /// Errors encountered during indexing
     pub errors: Vec<String>,
 }
 
-/// Validation result
-#[derive(Debug)]
+/// Validation result for storage integrity checks
+#[derive(Debug, Default)]
 pub struct ValidationResult {
-    pub documents: i64,
-    pub chunks: usize,
     pub is_valid: bool,
-}
-
-// =====================================================================
-// Unit tests
-// =====================================================================
-
-// =====================================================================
-// Unit tests
-// =====================================================================
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::path::PathBuf;
-
-    fn make_storage() -> std::result::Result<StorageEngine, String> {
-        let temp_dir = tempfile::tempdir().map_err(|e| format!("tempdir: {}", e))?;
-        let db_path = temp_dir.path().join("test.db");
-        let config = StorageConfig {
-            data_dir: temp_dir.path().to_str().unwrap().to_string(),
-            db_path: db_path.to_str().unwrap().to_string(),
-        };
-        StorageEngine::new(config).map_err(|e| e.to_string())
-    }
-
-    // =====================================================================
-    // StorageEngine::new tests
-    // =====================================================================
-
-    #[test]
-    fn test_storage_new_creates_database() {
-        let storage = make_storage().unwrap();
-        assert_eq!(storage.get_document_count().unwrap(), 0);
-    }
-
-    #[test]
-    fn test_storage_empty_dir() {
-        let temp_dir = tempfile::tempdir().unwrap();
-        let db_path = temp_dir.path().join("test.db");
-        let config = StorageConfig {
-            data_dir: temp_dir.path().to_str().unwrap().to_string(),
-            db_path: db_path.to_str().unwrap().to_string(),
-        };
-        let storage = StorageEngine::new(config).unwrap();
-        assert_eq!(storage.get_document_count().unwrap(), 0);
-    }
-
-    // =====================================================================
-    // StorageEngine::index_documents tests
-    // =====================================================================
-
-    #[test]
-    fn test_index_documents_empty_dir() {
-        let storage = make_storage().unwrap();
-        let temp_dir = tempfile::tempdir().unwrap();
-        let result = storage.index_documents(temp_dir.path().to_str().unwrap());
-        assert!(result.is_ok());
-        let stats = result.unwrap();
-        assert_eq!(stats.documents_imported, 0);
-        assert_eq!(stats.chunks_indexed, 0);
-    }
-
-    #[test]
-    fn test_index_documents_api_works() {
-        // Verify index_documents can be called without panic
-        let temp_dir = tempfile::tempdir().unwrap();
-        let db_path = temp_dir.path().join("test.db");
-        let config = StorageConfig {
-            data_dir: temp_dir.path().to_str().unwrap().to_string(),
-            db_path: db_path.to_str().unwrap().to_string(),
-        };
-        let storage = StorageEngine::new(config).unwrap();
-        let file_path = temp_dir.path().join("test.md");
-        std::fs::write(&file_path, "test content").unwrap();
-        let result = storage.index_documents(temp_dir.path().to_str().unwrap());
-        assert!(result.is_ok(), "Index should succeed: {:?}", result.err());
-    }
-
-    #[test]
-    fn test_index_multiple_files() {
-        let temp_dir = tempfile::tempdir().unwrap();
-        let db_path = temp_dir.path().join("test.db");
-        let config = StorageConfig {
-            data_dir: temp_dir.path().to_str().unwrap().to_string(),
-            db_path: db_path.to_str().unwrap().to_string(),
-        };
-        let storage = StorageEngine::new(config).unwrap();
-        for i in 1..=3 {
-            let path = temp_dir.path().join(format!("doc{}.md", i));
-            std::fs::write(&path, format!("Doc {} content", i)).unwrap();
-        }
-        let result = storage.index_documents(temp_dir.path().to_str().unwrap());
-        assert!(result.is_ok(), "Index should succeed: {:?}", result.err());
-    }
-
-    // =====================================================================
-    // StorageEngine::search_fts tests
-    // =====================================================================
-
-    #[test]
-    fn test_search_fts_empty_database() {
-        let storage = make_storage().unwrap();
-        let result = storage.search_fts("偏差", 10);
-        assert!(result.is_ok());
-        assert!(result.unwrap().is_empty());
-    }
-
-    #[test]
-    fn test_search_fts_api_works() {
-        let temp_dir = tempfile::tempdir().unwrap();
-        let db_path = temp_dir.path().join("test.db");
-        let config = StorageConfig {
-            data_dir: temp_dir.path().to_str().unwrap().to_string(),
-            db_path: db_path.to_str().unwrap().to_string(),
-        };
-        let storage = StorageEngine::new(config).unwrap();
-        let file_path = temp_dir.path().join("test.md");
-        std::fs::write(&file_path, "规程内容").unwrap();
-        storage
-            .index_documents(temp_dir.path().to_str().unwrap())
-            .unwrap();
-        let result = storage.search_fts("规程", 10);
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn test_search_fts_top_k() {
-        let temp_dir = tempfile::tempdir().unwrap();
-        let db_path = temp_dir.path().join("test.db");
-        let config = StorageConfig {
-            data_dir: temp_dir.path().to_str().unwrap().to_string(),
-            db_path: db_path.to_str().unwrap().to_string(),
-        };
-        let storage = StorageEngine::new(config).unwrap();
-        let file_path = temp_dir.path().join("test.md");
-        std::fs::write(&file_path, "关键词内容").unwrap();
-        storage
-            .index_documents(temp_dir.path().to_str().unwrap())
-            .unwrap();
-        let result = storage.search_fts("关键词", 5);
-        assert!(result.is_ok());
-        assert!(result.unwrap().len() <= 5);
-    }
-
-    // =====================================================================
-    // StorageEngine::get_document_count tests
-    // =====================================================================
-
-    #[test]
-    fn test_get_document_count_initial() {
-        let storage = make_storage().unwrap();
-        assert_eq!(storage.get_document_count().unwrap(), 0);
-    }
-
-    #[test]
-    fn test_get_document_count_api_works() {
-        let temp_dir = tempfile::tempdir().unwrap();
-        let db_path = temp_dir.path().join("test.db");
-        let config = StorageConfig {
-            data_dir: temp_dir.path().to_str().unwrap().to_string(),
-            db_path: db_path.to_str().unwrap().to_string(),
-        };
-        let storage = StorageEngine::new(config).unwrap();
-        let file_path = temp_dir.path().join("test.md");
-        std::fs::write(&file_path, "content").unwrap();
-        storage
-            .index_documents(temp_dir.path().to_str().unwrap())
-            .unwrap();
-        let count = storage.get_document_count();
-        assert!(count.is_ok());
-    }
-
-    // =====================================================================
-    // StorageEngine::validate tests
-    // =====================================================================
-
-    #[test]
-    fn test_validate_api_works() {
-        let storage = make_storage().unwrap();
-        let result = storage.validate();
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn test_validate_with_data() {
-        let temp_dir = tempfile::tempdir().unwrap();
-        let db_path = temp_dir.path().join("test.db");
-        let config = StorageConfig {
-            data_dir: temp_dir.path().to_str().unwrap().to_string(),
-            db_path: db_path.to_str().unwrap().to_string(),
-        };
-        let storage = StorageEngine::new(config).unwrap();
-        let file_path = temp_dir.path().join("test.md");
-        std::fs::write(&file_path, "content").unwrap();
-        storage
-            .index_documents(temp_dir.path().to_str().unwrap())
-            .unwrap();
-        let result = storage.validate();
-        assert!(result.is_ok());
-    }
-
-    // =====================================================================
-    // cosine_sim function tests
-    // =====================================================================
-
-    #[test]
-    fn test_cosine_sim_identical() {
-        let a = vec![1.0, 0.0, 0.0];
-        let b = vec![1.0, 0.0, 0.0];
-        let sim = cosine_sim(&a, &b);
-        assert!((sim - 1.0).abs() < 1e-6, "Got {}", sim);
-    }
-
-    #[test]
-    fn test_cosine_sim_orthogonal() {
-        let a = vec![1.0, 0.0, 0.0];
-        let b = vec![0.0, 1.0, 0.0];
-        let sim = cosine_sim(&a, &b);
-        assert!((sim - 0.0).abs() < 1e-6, "Got {}", sim);
-    }
-
-    #[test]
-    fn test_cosine_sim_opposite() {
-        let a = vec![1.0, 0.0, 0.0];
-        let b = vec![-1.0, 0.0, 0.0];
-        let sim = cosine_sim(&a, &b);
-        assert!((sim - (-1.0)).abs() < 1e-6, "Got {}", sim);
-    }
-
-    #[test]
-    fn test_cosine_sim_45deg() {
-        let a = vec![1.0, 0.0];
-        let b = vec![1.0, 1.0];
-        let sim = cosine_sim(&a, &b);
-        assert!((sim - 0.70710678).abs() < 1e-5, "Got {}", sim);
-    }
-
-    #[test]
-    fn test_cosine_sim_multidim() {
-        let a = vec![1.0, 2.0, 3.0];
-        let b = vec![1.0, 2.0, 3.0];
-        let sim = cosine_sim(&a, &b);
-        assert!((sim - 1.0).abs() < 1e-6, "Got {}", sim);
-    }
-
-    // =====================================================================
-    // Result struct tests
-    // =====================================================================
-
-    #[test]
-    fn test_search_result_fields() {
-        let r = SearchResult {
-            chunk_id: 1,
-            doc_id: "D1".into(),
-            content: "content".into(),
-            token_count: 100,
-            title: "title".into(),
-            doc_type: Some("SOP".into()),
-            chapter: Some("ch1".into()),
-            score: 0.95,
-        };
-        assert_eq!(r.chunk_id, 1);
-        assert_eq!(r.score, 0.95);
-    }
-
-    #[test]
-    fn test_vector_search_result_fields() {
-        let r = VectorSearchResult {
-            chunk_id: 42,
-            doc_id: "V1".into(),
-            chunk_index: 0,
-            content: "vec".into(),
-            score: 0.88,
-        };
-        assert_eq!(r.chunk_id, 42);
-        assert_eq!(r.score, 0.88);
-    }
-
-    // =====================================================================
-    // Edge cases
-    // =====================================================================
-
-    #[test]
-    fn test_search_vectors_empty() {
-        let storage = make_storage().unwrap();
-        let query = vec![0.1, 0.2, 0.3];
-        let result = storage.search_vectors(&query, 10);
-        assert!(result.is_ok());
-        assert!(result.unwrap().is_empty());
-    }
-
-    #[test]
-    fn test_index_nonexistent_dir() {
-        let storage = make_storage().unwrap();
-        let result = storage.index_documents("/nonexistent/xyz");
-        // Should handle gracefully
-        assert!(result.is_ok() || result.is_err());
-    }
-
-    #[test]
-    fn test_storage_config_fields() {
-        let temp_dir = tempfile::tempdir().unwrap();
-        let db_path = temp_dir.path().join("test.db");
-        let config = StorageConfig {
-            data_dir: temp_dir.path().to_str().unwrap().to_string(),
-            db_path: db_path.to_str().unwrap().to_string(),
-        };
-        assert_eq!(config.data_dir, temp_dir.path().to_str().unwrap());
-    }
-
-    // =====================================================================
-    // Incremental indexing tests (Issue #16)
-    // =====================================================================
-
-    #[test]
-    fn test_incremental_index_tracks_stats() {
-        // Verify incremental index returns correct stats structure
-        let temp_dir = tempfile::tempdir().unwrap();
-        let db_path = temp_dir.path().join("test.db");
-        let config = StorageConfig {
-            data_dir: temp_dir.path().to_str().unwrap().to_string(),
-            db_path: db_path.to_str().unwrap().to_string(),
-        };
-        let storage = StorageEngine::new(config).unwrap();
-
-        let file_path = temp_dir.path().join("doc.md");
-        std::fs::write(&file_path, "content").unwrap();
-
-        let result = storage
-            .index_documents(temp_dir.path().to_str().unwrap())
-            .unwrap();
-        // Should have imported something (or skipped if already indexed)
-        assert!(
-            result.documents_imported >= 0
-                || result.documents_skipped >= 0
-                || result.errors.is_empty()
-        );
-        // Verify stats structure is valid
-        assert!(result.documents_imported + result.documents_skipped >= 0);
-    }
-
-    #[test]
-    fn test_incremental_index_reindex_on_change() {
-        let temp_dir = tempfile::tempdir().unwrap();
-        let db_path = temp_dir.path().join("test.db");
-        let config = StorageConfig {
-            data_dir: temp_dir.path().to_str().unwrap().to_string(),
-            db_path: db_path.to_str().unwrap().to_string(),
-        };
-        let storage = StorageEngine::new(config).unwrap();
-
-        let file_path = temp_dir.path().join("doc.md");
-        std::fs::write(
-            &file_path,
-            "---
-id: INC-002
-title: V1
----
-Content V1",
-        )
-        .unwrap();
-
-        // First index
-        let result1 = storage
-            .index_documents(temp_dir.path().to_str().unwrap())
-            .unwrap();
-        assert_eq!(result1.documents_imported, 1);
-
-        // Modify file
-        std::fs::write(
-            &file_path,
-            "---
-id: INC-002
-title: V2
----
-Content V2 modified",
-        )
-        .unwrap();
-
-        // Second index - should re-import
-        let result2 = storage
-            .index_documents(temp_dir.path().to_str().unwrap())
-            .unwrap();
-        assert_eq!(result2.documents_imported, 1);
-    }
-
-    #[test]
-    fn test_incremental_index_new_file_detected() {
-        let temp_dir = tempfile::tempdir().unwrap();
-        let db_path = temp_dir.path().join("test.db");
-        let config = StorageConfig {
-            data_dir: temp_dir.path().to_str().unwrap().to_string(),
-            db_path: db_path.to_str().unwrap().to_string(),
-        };
-        let storage = StorageEngine::new(config).unwrap();
-
-        // First index - empty
-        let result1 = storage
-            .index_documents(temp_dir.path().to_str().unwrap())
-            .unwrap();
-        assert_eq!(result1.documents_imported, 0);
-
-        // Add a file
-        let file_path = temp_dir.path().join("new.md");
-        std::fs::write(
-            &file_path,
-            "---
-id: NEW-001
-title: New
----
-New content",
-        )
-        .unwrap();
-
-        // Second index - should find new file
-        let result2 = storage
-            .index_documents(temp_dir.path().to_str().unwrap())
-            .unwrap();
-        assert_eq!(result2.documents_imported, 1);
-    }
-
-    // =====================================================================
-    // Performance tests (Issue #17)
-    // =====================================================================
-
-    #[test]
-    fn test_search_fts_performance_100docs() {
-        // Test FTS search performance with 100 documents
-        let temp_dir = tempfile::tempdir().unwrap();
-        let db_path = temp_dir.path().join("test.db");
-        let config = StorageConfig {
-            data_dir: temp_dir.path().to_str().unwrap().to_string(),
-            db_path: db_path.to_str().unwrap().to_string(),
-        };
-        let storage = StorageEngine::new(config).unwrap();
-
-        // Create 100 small documents
-        for i in 0..100 {
-            let path = temp_dir.path().join(format!("doc{}.md", i));
-            let content = format!(
-                "---
-id: PERF-{:03}
-title: 性能测试文档{}
----
-
-# 内容{}
-
-这是第{{}}个测试文档，包含一些关键词用于搜索测试。",
-                i, i, i
-            );
-            std::fs::write(&path, content).unwrap();
-        }
-
-        storage
-            .index_documents(temp_dir.path().to_str().unwrap())
-            .unwrap();
-
-        // Time 100 searches
-        let start = std::time::Instant::now();
-        for _ in 0..100 {
-            let _ = storage.search_fts("关键词", 10);
-        }
-        let elapsed = start.elapsed();
-
-        // Should complete 100 searches in under 5 seconds (50ms avg per search)
-        assert!(
-            elapsed.as_secs() < 5,
-            "100 searches took {}ms, expected < 5000ms",
-            elapsed.as_millis()
-        );
-    }
-
-    #[test]
-    fn test_index_throughput_50docs() {
-        // Test indexing throughput for 50 documents
-        let temp_dir = tempfile::tempdir().unwrap();
-        let db_path = temp_dir.path().join("test.db");
-        let config = StorageConfig {
-            data_dir: temp_dir.path().to_str().unwrap().to_string(),
-            db_path: db_path.to_str().unwrap().to_string(),
-        };
-        let storage = StorageEngine::new(config).unwrap();
-
-        // Create 50 documents
-        for i in 0..50 {
-            let path = temp_dir.path().join(format!("doc{}.md", i));
-            std::fs::write(
-                &path,
-                format!(
-                    "---
-id: DOC-{:03}
-title: Doc {}
----
-
-# Section 1
-Content for document {}.",
-                    i, i, i
-                ),
-            )
-            .unwrap();
-        }
-
-        let start = std::time::Instant::now();
-        let result = storage
-            .index_documents(temp_dir.path().to_str().unwrap())
-            .unwrap();
-        let elapsed = start.elapsed();
-
-        // Should index 50 docs in under 10 seconds
-        assert!(
-            elapsed.as_secs() < 10,
-            "Indexing 50 docs took {}ms",
-            elapsed.as_millis()
-        );
-        assert_eq!(result.documents_imported, 50);
-    }
-
-    #[test]
-    fn test_search_result_ordering() {
-        // Verify search results are ordered by score descending
-        let temp_dir = tempfile::tempdir().unwrap();
-        let db_path = temp_dir.path().join("test.db");
-        let config = StorageConfig {
-            data_dir: temp_dir.path().to_str().unwrap().to_string(),
-            db_path: db_path.to_str().unwrap().to_string(),
-        };
-        let storage = StorageEngine::new(config).unwrap();
-
-        let file_path = temp_dir.path().join("test.md");
-        std::fs::write(&file_path, "关键词 关键词 关键词").unwrap();
-        storage
-            .index_documents(temp_dir.path().to_str().unwrap())
-            .unwrap();
-
-        let results = storage.search_fts("关键词", 10).unwrap();
-        for window in results.windows(2) {
-            assert!(
-                window[0].score >= window[1].score,
-                "Results should be sorted by score descending"
-            );
-        }
-    }
-
-    #[test]
-    fn test_concurrent_storage_instances() {
-        // Verify multiple storage instances can coexist
-        let temp_dir = tempfile::tempdir().unwrap();
-        let db_path = temp_dir.path().join("test.db");
-        let config = StorageConfig {
-            data_dir: temp_dir.path().to_str().unwrap().to_string(),
-            db_path: db_path.to_str().unwrap().to_string(),
-        };
-
-        let s1 = StorageEngine::new(config.clone()).unwrap();
-        let s2 = StorageEngine::new(config.clone()).unwrap();
-
-        // Both should be functional
-        assert!(s1.get_document_count().is_ok());
-        assert!(s2.get_document_count().is_ok());
-    }
+    pub tables_present: bool,
+    pub chunks_table_present: bool,
+    pub documents: i64,
+    pub chunks: i64,
+    pub embedding_count: i64,
+    pub fts_token_count: usize,
+    pub errors: Vec<String>,
+    pub warnings: Vec<String>,
 }

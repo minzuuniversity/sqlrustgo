@@ -9,10 +9,11 @@ use crate::storage::{
 };
 
 fn create_test_engine(tmpdir: &TempDir) -> StorageEngine {
-    let db_path = tmpdir.path().join("test.db");
     let config = StorageConfig {
         data_dir: tmpdir.path().to_string_lossy().to_string(),
-        db_path: db_path.to_string_lossy().to_string(),
+        db_path: tmpdir.path().join("test.db").to_string_lossy().to_string(),
+        embedding_dim: 768,
+        use_sqlrustgo_storage: true,
     };
     StorageEngine::new(config).expect("Failed to create storage engine")
 }
@@ -39,6 +40,7 @@ fn test_storage_config_custom() {
     let config = StorageConfig {
         data_dir: "/tmp/custom_data".to_string(),
         db_path: "/tmp/custom_data/custom.db".to_string(),
+        ..Default::default()
     };
     assert_eq!(config.data_dir, "/tmp/custom_data");
     assert_eq!(config.db_path, "/tmp/custom_data/custom.db");
@@ -63,9 +65,12 @@ fn test_storage_engine_new_creates_db() {
     let config = StorageConfig {
         data_dir: tmpdir.path().to_string_lossy().to_string(),
         db_path: db_path.to_string_lossy().to_string(),
+        ..Default::default()
     };
     let engine = StorageEngine::new(config).expect("Failed to create engine");
-    assert!(db_path.exists());
+    // FileStorage stores data in data_dir/gmp_data (a directory), not db_path
+    let storage_path = tmpdir.path().join("gmp_data");
+    assert!(storage_path.exists(), "FileStorage should create data_dir/gmp_data");
     let _ = engine; // suppress unused warning
 }
 
@@ -77,9 +82,9 @@ fn test_storage_engine_new_creates_parent_dirs() {
     let config = StorageConfig {
         data_dir: nested_path.to_string_lossy().to_string(),
         db_path: db_path.to_string_lossy().to_string(),
+        ..Default::default()
     };
-    let engine =
-        StorageEngine::new(config).expect("Failed to create engine with nested path");
+    let engine = StorageEngine::new(config).expect("Failed to create engine with nested path");
     assert!(nested_path.exists());
     let _ = engine;
 }
@@ -474,9 +479,15 @@ fn test_cosine_sim_normalized() {
 #[test]
 fn test_validation_result_is_valid() {
     let result = ValidationResult {
+        is_valid: true,
+        tables_present: true,
+        chunks_table_present: true,
         documents: 2000,
         chunks: 100,
-        is_valid: true,
+        embedding_count: 50,
+        fts_token_count: 5000,
+        errors: vec![],
+        warnings: vec![],
     };
     assert!(result.is_valid);
     assert_eq!(result.documents, 2000);
@@ -486,9 +497,15 @@ fn test_validation_result_is_valid() {
 #[test]
 fn test_validation_result_is_invalid() {
     let result = ValidationResult {
+        is_valid: false,
+        tables_present: true,
+        chunks_table_present: true,
         documents: 100,
         chunks: 50,
-        is_valid: false,
+        embedding_count: 0,
+        fts_token_count: 0,
+        errors: vec!["Missing index".to_string()],
+        warnings: vec![],
     };
     assert!(!result.is_valid);
 }
@@ -496,9 +513,15 @@ fn test_validation_result_is_invalid() {
 #[test]
 fn test_validation_result_debug() {
     let result = ValidationResult {
+        is_valid: true,
+        tables_present: true,
+        chunks_table_present: true,
         documents: 1600,
         chunks: 10,
-        is_valid: true,
+        embedding_count: 5,
+        fts_token_count: 100,
+        errors: vec![],
+        warnings: vec![],
     };
     let debug_str = format!("{:?}", result);
     assert!(debug_str.contains("ValidationResult"));
