@@ -1,14 +1,15 @@
 # v3.4.0 Changelog
 
 > **Version**: 3.4.0
-> **Date**: 2026-05-21
-> **Status**: Pre-GA (develop/v3.4.0)
+> **Date**: 2026-05-23
+> **Status**: RC (Release Candidate)
 > **Branch**: `origin/develop/v3.4.0`
-> **HEAD**: `e1bab9a6`
+> **HEAD**: `bd39e787` (parser OOM fix merge)
+> **RC from**: `9dd799f2` (executor stored proc coverage tests)
 
 ---
 
-## v3.4.0 (2026-05-21)
+## v3.4.0 (2026-05-23) - RC
 
 ### Added
 
@@ -114,6 +115,12 @@ PR: #1297
 ---
 
 ### Fixed
+
+**Parser OOM — StringLiteral/BooleanLiteral token consumption**
+- `parse_select_statement`: StringLiteral branch missing `self.next()` caused infinite loop accumulating Expression objects until OOM (80GB+)
+- `parse_select_statement`: BooleanLiteral branch missing `self.next()` (same issue)
+- Added `MAX_RECURSION_DEPTH=64` guard to `parse_or_expression` and `parse_and_expression`
+- PR: #1329
 
 **Workflow State**
 - `#[derive(Default)]` fix for `WorkflowState`
