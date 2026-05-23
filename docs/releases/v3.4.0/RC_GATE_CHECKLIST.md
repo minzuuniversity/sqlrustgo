@@ -24,9 +24,9 @@
 
 | # | 检查项 | 命令 | 标准 | 状态 |
 |---|--------|------|------|------|
-| R1 | Build | `cargo build --release --workspace` | 成功 | ⏳ |
-| R2 | Test | `cargo test --all-features -- --test-threads=4` | 全部通过 | ⏳ |
-| R3 | Clippy | `cargo clippy --all-features -- -D warnings` | 零警告 | ⏳ |
+| R1 | Build | `cargo build --release --workspace` | 成功 | ✅ PASS (28.76s, 11 warnings pre-existing) |
+| R2 | Test | `cargo test --all-features --workspace` | 全部通过 | ⏳ Z440 超时 |
+| R3 | Clippy | `cargo clippy --all-features --workspace -- -D warnings` | 零警告 | ⚠️ gmp-retrieval `documents` dead code |
 | R4 | Format | `cargo fmt --all -- --check` | 通过 | ⏳ |
 
 ### 2.2 覆盖率检查 (R5)
@@ -78,8 +78,8 @@
 
 | # | 检查项 | 命令 | Alpha 状态 | RC 状态 |
 |---|--------|------|-----------|---------|
-| A6 | MySQL handshake | `cargo test -p sqlrustgo-mysql-server --test mysql_protocol_handshake_test` | ✅ PASS | ⏳ |
-| A7 | TPC-H SF=1 | `sqlrustgo-bench-cli tpch --scale 1` | ✅ PASS | ✅ 已确认 |
+| A6 | MySQL handshake | `cargo test -p sqlrustgo-mysql-server --test mysql_protocol_handshake_test` | ✅ PASS | ✅ PASS (3/3, .cargo/config.toml) |
+| A7 | TPC-H SF=1 | `sqlrustgo-bench-cli tpch --scale 1` | ✅ PASS (22/22) | ✅ 已确认 |
 
 ---
 
