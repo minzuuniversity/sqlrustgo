@@ -252,7 +252,9 @@ impl SqlrustgoAdapter {
             Value::Text(action.to_string()),
             Value::Text(actor.to_string()),
             Value::Text(detail.to_string()),
-            signature.map(|s| Value::Text(s.to_string())).unwrap_or(Value::Null),
+            signature
+                .map(|s| Value::Text(s.to_string()))
+                .unwrap_or(Value::Null),
             Value::Text(result.to_string()),
         ];
         let mut engine = self.engine.lock().unwrap();
@@ -272,11 +274,56 @@ impl SqlrustgoAdapter {
         }
 
         let demos = vec![
-            ("AUDIT-001", "WE-20260522-001", 1747888338000i64, "工单创建", "operator_zhang", r#"{"task":"称量任务 #WE-001","operator":"张三"}"#, Some("ZhangSan#sha256:abc123"), "通过"),
-            ("AUDIT-002", "WE-20260522-001", 1747888385000i64, "OCR识别", "system", r#"{"device":"BAL-001","result":"识别成功"}"#, None, "通过"),
-            ("AUDIT-003", "WE-20260522-001", 1747888392000i64, "规则校验", "system", r#"{"dsl":"weigh_material","result":"校验通过"}"#, None, "通过"),
-            ("AUDIT-004", "WE-20260522-001", 1747888425000i64, "主管审批", "supervisor_wang", r#"{"level":1,"result":"审批通过"}"#, Some("WangWu#sha256:def456"), "通过"),
-            ("AUDIT-005", "WE-20260522-001", 1747888442000i64, "质量部审批", "quality_li", r#"{"level":2,"result":"第二级审批通过"}"#, Some("LiLiu#sha256:ghi789"), "通过"),
+            (
+                "AUDIT-001",
+                "WE-20260522-001",
+                1747888338000i64,
+                "工单创建",
+                "operator_zhang",
+                r#"{"task":"称量任务 #WE-001","operator":"张三"}"#,
+                Some("ZhangSan#sha256:abc123"),
+                "通过",
+            ),
+            (
+                "AUDIT-002",
+                "WE-20260522-001",
+                1747888385000i64,
+                "OCR识别",
+                "system",
+                r#"{"device":"BAL-001","result":"识别成功"}"#,
+                None,
+                "通过",
+            ),
+            (
+                "AUDIT-003",
+                "WE-20260522-001",
+                1747888392000i64,
+                "规则校验",
+                "system",
+                r#"{"dsl":"weigh_material","result":"校验通过"}"#,
+                None,
+                "通过",
+            ),
+            (
+                "AUDIT-004",
+                "WE-20260522-001",
+                1747888425000i64,
+                "主管审批",
+                "supervisor_wang",
+                r#"{"level":1,"result":"审批通过"}"#,
+                Some("WangWu#sha256:def456"),
+                "通过",
+            ),
+            (
+                "AUDIT-005",
+                "WE-20260522-001",
+                1747888442000i64,
+                "质量部审批",
+                "quality_li",
+                r#"{"level":2,"result":"第二级审批通过"}"#,
+                Some("LiLiu#sha256:ghi789"),
+                "通过",
+            ),
         ];
 
         for (audit_id, wo, ts, action, actor, detail, sig, result) in demos {

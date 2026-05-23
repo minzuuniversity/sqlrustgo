@@ -24,13 +24,13 @@ struct ScenarioResult {
     pub expected_keywords: Vec<String>,
     pub top_k: usize,
     pub retrieved: Vec<RetrievedDoc>,
-    pub hit_keywords: Vec<String>,      // which expected kw were found
-    pub missed_keywords: Vec<String>,   // which expected kw were NOT found
+    pub hit_keywords: Vec<String>,    // which expected kw were found
+    pub missed_keywords: Vec<String>, // which expected kw were NOT found
     pub recall: f64,
     pub mrr: f64,
     pub is_pass: bool,
     pub fail_reason: String,
-    pub search_mode: String,            // "fts" or "vector_fallback"
+    pub search_mode: String, // "fts" or "vector_fallback"
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -41,8 +41,8 @@ struct RetrievedDoc {
     pub doc_type: Option<String>,
     pub chapter: Option<String>,
     pub score: f64,
-    pub content_snippet: String,        // first 200 chars for review
-    pub matched_keywords: Vec<String>,  // which expected kw appear in this doc
+    pub content_snippet: String,       // first 200 chars for review
+    pub matched_keywords: Vec<String>, // which expected kw appear in this doc
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -111,7 +111,9 @@ fn hybrid_search(
     embed_model: &str,
 ) -> (Vec<gmp_storage::SearchResult>, String) {
     // Step 1: FTS with BM25 scoring
-    let fts_results = storage.search_fts_with_scores(query, top_k).unwrap_or_default();
+    let fts_results = storage
+        .search_fts_with_scores(query, top_k)
+        .unwrap_or_default();
 
     if !fts_results.is_empty() {
         return (fts_results, "fts".to_string());
@@ -123,7 +125,9 @@ fn hybrid_search(
         None => return (fts_results, "fts".to_string()),
     };
 
-    let vector_results = storage.search_vectors(&query_vec, top_k).unwrap_or_default();
+    let vector_results = storage
+        .search_vectors(&query_vec, top_k)
+        .unwrap_or_default();
     let results = vector_results
         .into_iter()
         .map(|vr| gmp_storage::SearchResult {
@@ -174,20 +178,30 @@ fn main() -> Result<()> {
         eprint!("\rEvaluating: {}/{}", i + 1, scenarios.len());
 
         let top_k = scenario.top_k.unwrap_or(10);
-        let category = scenario.category.clone().unwrap_or_else(|| "unknown".to_string());
+        let category = scenario
+            .category
+            .clone()
+            .unwrap_or_else(|| "unknown".to_string());
 
         // Hybrid search
         let (search_results, search_mode) = if !cli.no_hybrid {
-            hybrid_search(&storage, &scenario.query, top_k, &cli.ollama_url, &cli.embed_model)
+            hybrid_search(
+                &storage,
+                &scenario.query,
+                top_k,
+                &cli.ollama_url,
+                &cli.embed_model,
+            )
         } else {
             (
-                storage.search_fts_with_scores(&scenario.query, top_k).unwrap_or_default(),
+                storage
+                    .search_fts_with_scores(&scenario.query, top_k)
+                    .unwrap_or_default(),
                 "fts_only".to_string(),
             )
         };
 
         let retrieved_ids: Vec<String> = search_results.iter().map(|r| r.doc_id.clone()).collect();
-
 
         // Check which expected keywords appear in retrieved docs
         let mut hit_keywords: Vec<String> = Vec::new();
@@ -195,7 +209,9 @@ fn main() -> Result<()> {
 
         for kw in &scenario.expected_doc_ids {
             let kw_lower = kw.to_lowercase();
-            let found = retrieved_ids.iter().any(|id| id.to_lowercase().contains(&kw_lower))
+            let found = retrieved_ids
+                .iter()
+                .any(|id| id.to_lowercase().contains(&kw_lower))
                 || search_results.iter().any(|r| {
                     r.title.to_lowercase().contains(&kw_lower)
                         || r.content.to_lowercase().contains(&kw_lower)
@@ -218,7 +234,10 @@ fn main() -> Result<()> {
             let mut m = 0.0;
             for (rank, id) in retrieved_ids.iter().enumerate() {
                 let id_lower = id.to_lowercase();
-                if scenario.expected_doc_ids.iter().any(|kw| id_lower.contains(&kw.to_lowercase()))
+                if scenario
+                    .expected_doc_ids
+                    .iter()
+                    .any(|kw| id_lower.contains(&kw.to_lowercase()))
                 {
                     m = 1.0 / (rank + 1) as f64;
                     break;
@@ -318,7 +337,9 @@ fn main() -> Result<()> {
         all_results.push(result);
 
         // Category tracking
-        let entry = category_stats.entry(category.clone()).or_insert((0, 0, Vec::new()));
+        let entry = category_stats
+            .entry(category.clone())
+            .or_insert((0, 0, Vec::new()));
         entry.1 += 1;
         if is_pass {
             entry.0 += 1;
@@ -344,12 +365,17 @@ fn main() -> Result<()> {
     eprintln!("\n========== 408 SCENARIO EVALUATION REPORT ==========");
     eprintln!(
         "Total: {} | Passed: {} | Failed: {}",
-        total, total_passed, total - total_passed
+        total,
+        total_passed,
+        total - total_passed
     );
     eprintln!("Pass Rate: {:.1}%", pass_rate);
     eprintln!("Avg Recall@K: {:.3}", avg_recall);
     eprintln!("Avg MRR: {:.3}", avg_mrr);
-    eprintln!("FTS passed: {} | Vector fallback: {}", fts_passed, vector_passed);
+    eprintln!(
+        "FTS passed: {} | Vector fallback: {}",
+        fts_passed, vector_passed
+    );
     eprintln!();
 
     eprintln!("Per-Category Results:");
@@ -357,7 +383,13 @@ fn main() -> Result<()> {
     cats.sort_by_key(|k| k.0);
     for (cat, &(p, t, _)) in cats {
         let rate = (p as f64 / t as f64) * 100.0;
-        let mark = if p == t { "✅" } else if p >= t / 2 { "⚠️" } else { "❌" };
+        let mark = if p == t {
+            "✅"
+        } else if p >= t / 2 {
+            "⚠️"
+        } else {
+            "❌"
+        };
         eprintln!("  {} {:20}: {}/{} ({:.0}%)", mark, cat, p, t, rate);
     }
     eprintln!("==================================================");

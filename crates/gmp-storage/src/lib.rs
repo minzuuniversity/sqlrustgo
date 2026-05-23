@@ -8,5 +8,7 @@ pub mod storage;
 pub use cypher_engine::{CypherEngine, CypherQueryResult};
 pub use hnsw_vector_index::HnswVectorIndex;
 pub use sqlrustgo_adapter::SqlrustgoAdapter;
-pub use storage::{IndexStats, SearchResult, StorageConfig, StorageEngine, ValidationResult, VectorSearchResult};
+pub use storage::{
+    IndexStats, SearchResult, StorageConfig, StorageEngine, ValidationResult, VectorSearchResult,
+};
 mod tests;

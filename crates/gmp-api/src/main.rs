@@ -1,6 +1,6 @@
 //! GMP API Server - RESTful API for GMP Compliance Retrieval
 
-use actix_web::{web, App, HttpResponse, HttpServer, middleware, Responder};
+use actix_web::{middleware, web, App, HttpResponse, HttpServer, Responder};
 use serde::{Deserialize, Serialize};
 use tracing::info;
 
@@ -172,6 +172,8 @@ async fn main() -> std::io::Result<()> {
     let storage = gmp_storage::StorageConfig {
         data_dir: "./data".to_string(),
         db_path: config.db_path.clone(),
+        embedding_dim: 768,
+        use_sqlrustgo_storage: true,
     };
 
     let engine = gmp_storage::StorageEngine::new(storage).expect("Failed to initialize storage");
