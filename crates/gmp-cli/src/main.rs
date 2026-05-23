@@ -80,6 +80,16 @@ enum Commands {
         #[arg(long, default_value = "./data/gmp.db")]
         db: String,
     },
+    /// Query audit chain records
+    Audit {
+        /// Work order ID to filter (optional)
+        #[arg(long)]
+        work_order_id: Option<String>,
+
+        /// Database path
+        #[arg(long, default_value = "./data/gmp.db")]
+        db: String,
+    },
     /// Benchmark performance
     Bench {
         /// Number of concurrent queries
@@ -597,6 +607,47 @@ async fn main() -> Result<()> {
                 } else {
                     println!("Unknown command. Type 'help' for available commands.");
                 }
+            }
+        }
+        Commands::Audit { work_order_id, db } => {
+            let config = gmp_storage::StorageConfig {
+                embedding_dim: 768,
+                data_dir: "./data".to_string(),
+                use_sqlrustgo_storage: true,
+                db_path: db.clone(),
+            };
+            let engine = gmp_storage::StorageEngine::new(config)
+                .context("Failed to init storage")?;
+
+            let records = engine.scan_audit_chain()?;
+            let filtered: Vec<_> = if let Some(ref wo) = work_order_id {
+                records
+                    .into_iter()
+                    .filter(|r| {
+                        r.iter()
+                            .any(|v| v.to_string().contains(wo))
+                    })
+                    .collect()
+            } else {
+                records
+            };
+
+            let mut sorted = filtered;
+            sorted.sort_by(|a, b| {
+                let ta = a
+                    .get(3)
+                    .and_then(|v| v.as_integer())
+                    .unwrap_or(0);
+                let tb = b
+                    .get(3)
+                    .and_then(|v| v.as_integer())
+                    .unwrap_or(0);
+                tb.cmp(&ta)
+            });
+
+            for rec in sorted {
+                let fields: Vec<String> = rec.iter().map(|v| v.to_string()).collect();
+                println!("{}", fields.join("|"));
             }
         }
         Commands::Bench {
