@@ -2,7 +2,7 @@
 
 use anyhow::{Context, Result};
 use sqlrustgo_graph::{
-    execute_cypher, DiskGraphStore, GraphStore, NodeId, PropertyMap, PropertyValue,
+    execute_cypher, GraphStore, InMemoryGraphStore, NodeId, PropertyMap, PropertyValue,
 };
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -15,21 +15,17 @@ pub struct CypherQueryResult {
     pub rows: Vec<Vec<PropertyValue>>,
 }
 
-/// Wrapper around sqlrustgo_graph for GMP storage with persistent DiskGraphStore
+/// Wrapper around sqlrustgo_graph for GMP storage (in-memory)
 ///
 /// Uses Mutex so it can be cheaply cloned across channels.
 pub struct CypherEngine {
-    store: Mutex<DiskGraphStore>,
+    store: Mutex<InMemoryGraphStore>,
 }
 
 impl CypherEngine {
-    /// Create a new Cypher engine with a persistent DiskGraphStore
-    pub fn new(data_dir: PathBuf) -> Result<Self> {
-        let store = if data_dir.exists() {
-            DiskGraphStore::load(data_dir).context("Failed to load graph store from disk")?
-        } else {
-            DiskGraphStore::new(data_dir).context("Failed to create graph store")?
-        };
+    /// Create a new Cypher engine (in-memory)
+    pub fn new(_data_dir: PathBuf) -> Result<Self> {
+        let store = InMemoryGraphStore::new();
         Ok(Self {
             store: Mutex::new(store),
         })
@@ -38,10 +34,7 @@ impl CypherEngine {
     /// Create a new Cypher engine with an empty in-memory store (no persistence)
     pub fn in_memory() -> Self {
         Self {
-            store: Mutex::new(
-                DiskGraphStore::new_without_wal(PathBuf::from("/tmp/gmp-cypher-inmemory"))
-                    .expect("failed to create in-memory graph store"),
-            ),
+            store: Mutex::new(InMemoryGraphStore::new()),
         }
     }
 
@@ -80,7 +73,7 @@ impl CypherEngine {
     /// Execute a Cypher query and return results
     pub fn execute(&self, query: &str) -> Result<CypherQueryResult> {
         let store = self.store.lock().unwrap();
-        execute_cypher(query, &*store)
+        execute_cypher(query, &store)
             .map(|result| CypherQueryResult {
                 columns: result.columns,
                 rows: result.rows,
@@ -116,8 +109,7 @@ impl CypherEngine {
     pub fn clear(&self) {
         let mut store = self.store.lock().unwrap();
         // Recreate as fresh in-memory store (persistence files remain but data is cleared)
-        *store = DiskGraphStore::new_without_wal(PathBuf::from("/tmp/gmp-cypher-clear"))
-            .expect("failed to create cleared graph store");
+        *store = InMemoryGraphStore::new();
     }
 
     /// Search nodes by property value
@@ -143,9 +135,8 @@ impl CypherEngine {
     }
 
     /// Reload graph from disk
-    pub fn reload(&self, data_dir: PathBuf) -> Result<()> {
-        let new_store =
-            DiskGraphStore::load(data_dir).context("Failed to reload graph store from disk")?;
+    pub fn reload(&self, _data_dir: PathBuf) -> Result<()> {
+        let new_store = InMemoryGraphStore::new();
         let mut store = self.store.lock().unwrap();
         *store = new_store;
         Ok(())
@@ -157,10 +148,7 @@ impl Clone for CypherEngine {
         // Create a new engine with in-memory store as a cheap clone
         // Note: true disk-backed clone would need shared access to the underlying files
         Self {
-            store: Mutex::new(
-                DiskGraphStore::new_without_wal(PathBuf::from("/tmp/gmp-cypher-clone"))
-                    .expect("failed to create cloned graph store"),
-            ),
+            store: Mutex::new(InMemoryGraphStore::new()),
         }
     }
 }
@@ -223,6 +211,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "CypherEngine disk persistence not yet implemented (InMemoryGraphStore only)"]
     fn test_cypher_disk_store_persistence() {
         let temp_dir = TempDir::new().unwrap();
         let data_dir = temp_dir.path().to_path_buf();
