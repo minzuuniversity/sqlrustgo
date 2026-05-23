@@ -108,11 +108,150 @@ impl StorageEngine {
             tokenizer: ChineseTokenizer::new(),
             chunk_cache: Mutex::new(Vec::new()),
             next_chunk_id: Mutex::new(1),
-            config,
+            config: config.clone(),
         };
         engine.init_schema()?;
+
+        // Migrate from rusqlite gmp.db if sqlrustgo storage is empty
+        engine.migrate_from_rusqlite_if_needed(&config.db_path)?;
+
         engine.load_chunk_cache()?;
         Ok(engine)
+    }
+
+    /// Migrate data from rusqlite gmp.db into sqlrustgo FileStorage if the latter is empty
+    fn migrate_from_rusqlite_if_needed(&self, rusqlite_path: &str) -> Result<()> {
+    // Check if chunks table already has data
+    {
+        let storage = self.storage.lock().unwrap();
+        let chunks = storage.scan("gmp_document_chunks").unwrap_or_default();
+        if !chunks.is_empty() {
+            return Ok(()); // Already populated
+        }
+    }
+
+    let rusqlite_path = std::path::Path::new(rusqlite_path);
+    if !rusqlite_path.exists() {
+        return Ok(()); // No rusqlite db
+    }
+
+    let conn = match rusqlite::Connection::open(rusqlite_path) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("[migrate] Could not open rusqlite db: {}", e);
+            return Ok(());
+        }
+    };
+
+    eprintln!("[migrate] Starting migration from rusqlite gmp.db...");
+
+    // Migrate documents using rusqlite query + ManualExt trait
+    let mut doc_count = 0i64;
+    {
+        let mut storage = self.storage.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT doc_id, code, title, chapter, doc_type, department, status, source_file, file_mtime, version, effective_date, created_at, updated_at FROM gmp_documents"
+        )?;
+        let cols = stmt.column_count();
+        let mut rows = stmt.query([])?;
+        while let Some(row) = rows.next()? {
+            let doc_id: String = row.get(0).unwrap_or_default();
+            let code: String = row.get(1).unwrap_or_default();
+            let title: String = row.get(2).unwrap_or_default();
+            let chapter: String = row.get(3).unwrap_or_default();
+            let doc_type: String = row.get(4).unwrap_or_default();
+            let department: String = row.get(5).unwrap_or_default();
+            let status: String = row.get(6).unwrap_or_default();
+            let source_file: String = row.get(7).unwrap_or_default();
+            let file_mtime: i64 = row.get(8).unwrap_or(0);
+            let version: String = row.get(9).unwrap_or_default();
+            let effective_date: String = row.get(10).unwrap_or_default();
+            let created_at: i64 = row.get(11).unwrap_or(0);
+            let updated_at: i64 = row.get(12).unwrap_or(0);
+            let record = vec![
+                sqlrustgo_types::Value::Text(doc_id),
+                sqlrustgo_types::Value::Text(code),
+                sqlrustgo_types::Value::Text(title),
+                sqlrustgo_types::Value::Text(chapter),
+                sqlrustgo_types::Value::Text(doc_type),
+                sqlrustgo_types::Value::Text(department),
+                sqlrustgo_types::Value::Text(status),
+                sqlrustgo_types::Value::Text(source_file),
+                sqlrustgo_types::Value::Integer(file_mtime),
+                sqlrustgo_types::Value::Text(version),
+                sqlrustgo_types::Value::Text(effective_date),
+                sqlrustgo_types::Value::Integer(created_at),
+                sqlrustgo_types::Value::Integer(updated_at),
+            ];
+            let _ = storage.insert("gmp_documents", vec![record]);
+            doc_count += 1;
+            if doc_count % 500 == 0 {
+                eprintln!("[migrate] Documents: {}", doc_count);
+            }
+        }
+    }
+    eprintln!("[migrate] Migrated {} documents", doc_count);
+
+    // Migrate chunks
+    let mut chunk_count = 0i64;
+    {
+        let mut storage = self.storage.lock().unwrap();
+        let mut fts = self.fts_index.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT id, doc_id, chunk_index, content, token_count FROM gmp_document_chunks"
+        )?;
+        let mut rows = stmt.query([])?;
+        while let Some(row) = rows.next()? {
+            let id: i64 = row.get(0).unwrap_or(0);
+            let doc_id: String = row.get(1).unwrap_or_default();
+            let chunk_index: i64 = row.get(2).unwrap_or(0);
+            let content: String = row.get(3).unwrap_or_default();
+            let token_count: i64 = row.get(4).unwrap_or(0);
+            let record = vec![
+                sqlrustgo_types::Value::Integer(id),
+                sqlrustgo_types::Value::Text(doc_id),
+                sqlrustgo_types::Value::Integer(chunk_index),
+                sqlrustgo_types::Value::Text(content.clone()),
+                sqlrustgo_types::Value::Integer(token_count),
+            ];
+            let _ = storage.insert("gmp_document_chunks", vec![record]);
+            fts.add_document(id as u64, &content);
+            chunk_count += 1;
+            if chunk_count % 2000 == 0 {
+                eprintln!("[migrate] Chunks: {}", chunk_count);
+            }
+        }
+    }
+    eprintln!("[migrate] Migrated {} chunks", chunk_count);
+
+    // Migrate embeddings
+    let mut emb_count = 0i64;
+    {
+        let mut storage = self.storage.lock().unwrap();
+        let mut stmt = conn.prepare("SELECT chunk_id, embedding_json FROM gmp_embeddings")?;
+        let mut rows = stmt.query([])?;
+        while let Some(row) = rows.next()? {
+            let chunk_id: i64 = row.get(0).unwrap_or(0);
+            let embedding_json: String = row.get(1).unwrap_or_default();
+            let record = vec![
+                sqlrustgo_types::Value::Integer(chunk_id),
+                sqlrustgo_types::Value::Text(embedding_json),
+            ];
+            let _ = storage.insert("gmp_embeddings", vec![record]);
+            emb_count += 1;
+        }
+    }
+    eprintln!("[migrate] Migrated {} embeddings", emb_count);
+
+    // CRITICAL: flush all buffered inserts
+    self.storage.lock().unwrap().flush_all_buffers()?;
+    eprintln!("[migrate] Flush complete, FTS index built.");
+
+    Ok(())
+}
+    /// Stub for tokenizer access (used by gmp-eval for diagnostics)
+    pub fn get_tokenizer(&self) -> &ChineseTokenizer {
+        &self.tokenizer
     }
 
     /// Initialize GMP schema
