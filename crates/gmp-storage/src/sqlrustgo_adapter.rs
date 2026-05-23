@@ -9,7 +9,9 @@ use anyhow::{Context, Result};
 use sqlrustgo_storage::engine::{
     ColumnDefinition, Record, StorageEngine as SqlrustgoStorageEngine, TableInfo,
 };
-use sqlrustgo_storage::fts::{ChineseTokenizer, InvertedIndex, Tokenizer};
+use sqlrustgo_storage::fts::{
+    Bm25Scorer, ChineseTokenizer, InvertedIndex, Tokenizer,
+};
 use sqlrustgo_storage::FileStorage;
 use sqlrustgo_types::Value;
 use std::path::PathBuf;

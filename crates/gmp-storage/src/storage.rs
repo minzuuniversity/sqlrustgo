@@ -13,7 +13,7 @@ use anyhow::{Context, Result};
 use glob::glob;
 use sqlrustgo_storage::engine::{ColumnDefinition, Record, StorageEngine as SqlrustgoStorageEngine, TableInfo};
 use sqlrustgo_storage::FileStorage;
-use sqlrustgo_storage::fts::{ChineseTokenizer, InvertedIndex, Tokenizer};
+use sqlrustgo_storage::fts::{Bm25Scorer, ChineseTokenizer, InvertedIndex, Tokenizer};
 use sqlrustgo_types::Value;
 use std::path::Path;
 use std::path::PathBuf;
@@ -204,10 +204,17 @@ impl StorageEngine {
         *nid = max_id + 1;
         drop(nid);
 
-        // Also rebuild FTS index from chunks
-        let fts = self.fts_index.lock().unwrap();
-        drop(fts);
-        // FTS is rebuilt on-the-fly during index_documents
+        // Rebuild FTS index from existing chunks
+        {
+            let mut fts = self.fts_index.lock().unwrap();
+            for chunk in &chunks {
+                if chunk.len() >= 4 {
+                    let chunk_id = doc_value_int(chunk, 0) as u64;
+                    let content = doc_value_str(chunk, 3);
+                    fts.add_document(chunk_id, &content);
+                }
+            }
+        }
 
         Ok(())
     }
@@ -426,6 +433,58 @@ impl StorageEngine {
                 if results.len() >= top_k { break; }
             }
             if results.len() >= top_k { break; }
+        }
+        Ok(results)
+    }
+
+    /// FTS search with BM25 scoring — uses sqlrustgo InvertedIndex BM25 scoring
+    pub fn search_fts_with_scores(&self, query: &str, top_k: usize) -> Result<Vec<SearchResult>> {
+        let fts = self.fts_index.lock().unwrap();
+
+        // Build BM25 scorer — finalize() populates doc_freq from index internals
+        let mut scorer = Bm25Scorer::new(1.2, 0.75);
+        scorer.finalize(&fts);
+
+        // Tokenize query — bind to variable to avoid temporary lifetime issue
+        let token_strings = self.tokenizer.tokenize(query);
+        let tokens: Vec<&str> = token_strings.iter().map(|s| s.as_str()).collect();
+        if tokens.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        // Multi-token BM25: sum scores across all query tokens
+        let mut score_map: std::collections::HashMap<u64, f32> = std::collections::HashMap::new();
+        for token in &tokens {
+            let results = fts.search_with_scores(token, &scorer, top_k * 3);
+            for (doc_id, bm25) in results {
+                *score_map.entry(doc_id).or_insert(0.0) += bm25;
+            }
+        }
+
+        // Sort by combined BM25 score descending
+        drop(fts);
+        let mut sorted: Vec<_> = score_map.into_iter().collect();
+        sorted.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+        sorted.truncate(top_k);
+
+        let cache = self.chunk_cache.lock().unwrap();
+        let mut results = Vec::new();
+        for (chunk_id, score) in sorted {
+            if let Some((id, doc_id_val, chunk_content, title, doc_type, chapter)) =
+                cache.iter().find(|(id, ..)| *id == chunk_id as i64).cloned()
+            {
+                let token_count = chunk_content.len() as i64;
+                results.push(SearchResult {
+                    chunk_id: id,
+                    doc_id: doc_id_val,
+                    content: chunk_content,
+                    token_count,
+                    title,
+                    doc_type,
+                    chapter,
+                    score: score as f64,
+                });
+            }
         }
         Ok(results)
     }

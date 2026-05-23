@@ -113,8 +113,8 @@ fn hybrid_search(
     ollama_url: &str,
     embed_model: &str,
 ) -> Vec<gmp_storage::SearchResult> {
-    // Step 1: FTS5 search
-    let fts_results = storage.search_fts(query, top_k).unwrap_or_default();
+    // Step 1: FTS search with BM25 scoring (now returns real scores)
+    let fts_results = storage.search_fts_with_scores(query, top_k).unwrap_or_default();
 
     // Step 2: Check if FTS caught anything
     if !fts_results.is_empty() {
@@ -166,6 +166,8 @@ fn main() -> Result<()> {
     let config = StorageConfig {
         data_dir: "./data".to_string(),
         db_path: cli.db,
+        embedding_dim: 768,
+        use_sqlrustgo_storage: true,
     };
     let storage = StorageEngine::new(config).context("Failed to initialize storage")?;
 
@@ -188,7 +190,7 @@ fn main() -> Result<()> {
         let search_results = if !cli.no_hybrid {
             hybrid_search(&storage, &scenario.query, top_k, &cli.ollama_url, &cli.embed_model)
         } else {
-            storage.search_fts(&scenario.query, top_k).unwrap_or_default()
+            storage.search_fts_with_scores(&scenario.query, top_k).unwrap_or_default()
         };
 
         let retrieved_ids: Vec<String> = search_results.iter().map(|r| r.doc_id.clone()).collect();

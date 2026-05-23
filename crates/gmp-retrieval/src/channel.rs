@@ -272,9 +272,9 @@ impl FtsChannel {
         Self { storage }
     }
 
-    /// Search using BM25 full-text search
+    /// Search using BM25 full-text search (now with real BM25 scores)
     pub fn search(&self, query: &str, top_k: usize) -> Vec<ScoredChunk> {
-        match self.storage.search_fts(query, top_k) {
+        match self.storage.search_fts_with_scores(query, top_k) {
             Ok(results) => results
                 .into_iter()
                 .map(|r| ScoredChunk {
