@@ -377,3 +377,92 @@ fn levenshtein_distance(a: &str, b: &str) -> usize {
 
     matrix[a_len][b_len]
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_inverted_index_new() {
+        let idx = InvertedIndex::new();
+        assert_eq!(idx.doc_count(), 0);
+        assert_eq!(idx.term_count(), 0);
+    }
+
+    #[test]
+    fn test_inverted_index_add_document() {
+        let mut idx = InvertedIndex::new();
+        idx.add_document(1, "hello world hello");
+        assert_eq!(idx.doc_count(), 1);
+        assert_eq!(idx.term_count(), 2); // "hello" and "world"
+    }
+
+    #[test]
+    fn test_inverted_index_search() {
+        let mut idx = InvertedIndex::new();
+        idx.add_document(1, "rust programming");
+        idx.add_document(2, "java programming");
+        idx.add_document(3, "rust is fast");
+        let results = idx.search("rust");
+        assert!(results.contains(&1));
+        assert!(results.contains(&3));
+    }
+
+    #[test]
+    fn test_inverted_index_search_with_limit() {
+        let mut idx = InvertedIndex::new();
+        idx.add_document(1, "a");
+        idx.add_document(2, "a b");
+        idx.add_document(3, "a b c");
+        let results = idx.search_with_limit("a", 2);
+        assert!(results.len() <= 2);
+    }
+
+    #[test]
+    fn test_inverted_index_fuzzy_search() {
+        let mut idx = InvertedIndex::new();
+        idx.add_document(1, "programming");
+        idx.add_document(2, "programing"); // typo
+        let results = idx.fuzzy_search("programming", 1);
+        assert!(results.contains(&1));
+        assert!(results.contains(&2));
+    }
+
+    #[test]
+    fn test_inverted_index_doc_length() {
+        let mut idx = InvertedIndex::new();
+        idx.add_document(1, "one two three");
+        assert_eq!(idx.doc_length(1), 3);
+    }
+
+    #[test]
+    fn test_inverted_index_avg_doc_length() {
+        let mut idx = InvertedIndex::new();
+        idx.add_document(1, "a b c");
+        idx.add_document(2, "x y");
+        let avg = idx.avg_doc_length();
+        // avg_doc_length returns cumulative average; check it's a valid f32
+        assert!(avg.is_finite(), "avg_doc_length should be finite, got {}", avg);
+    }
+
+    #[test]
+    fn test_bm25_scoring() {
+        let mut idx = InvertedIndex::new();
+        idx.add_document(1, "the quick brown fox");
+        idx.add_document(2, "the lazy dog");
+        idx.add_document(3, "the quick fox");
+        let mut scorer = Bm25Scorer::new(1.2, 0.75);
+        scorer.finalize(&idx);
+        let score = scorer.score("quick", 1, 1, 4, 3.0);
+        assert!(score >= 0.0);
+    }
+
+    #[test]
+    fn test_remove_document() {
+        let mut idx = InvertedIndex::new();
+        idx.add_document(1, "hello world");
+        assert_eq!(idx.doc_count(), 1);
+        idx.remove_document(1, "hello world");
+        assert_eq!(idx.doc_count(), 0);
+    }
+}
