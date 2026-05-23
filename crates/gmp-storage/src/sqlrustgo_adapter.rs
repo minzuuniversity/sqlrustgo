@@ -96,6 +96,27 @@ impl SqlrustgoAdapter {
             .create_table(&chunks_table)
             .context("Failed to create gmp_document_chunks table")?;
 
+        let audit_table = TableInfo {
+            name: "gmp_audit_chain".to_string(),
+            columns: vec![
+                ColumnDefinition::new("id", "INTEGER"),
+                ColumnDefinition::new("audit_id", "TEXT"),
+                ColumnDefinition::new("work_order_id", "TEXT"),
+                ColumnDefinition::new("timestamp", "INTEGER"),
+                ColumnDefinition::new("action", "TEXT"),
+                ColumnDefinition::new("actor", "TEXT"),
+                ColumnDefinition::new("detail", "TEXT"),
+                ColumnDefinition::new("signature", "TEXT"),
+                ColumnDefinition::new("result", "TEXT"),
+            ],
+            ..Default::default()
+        };
+        engine
+            .create_table(&audit_table)
+            .context("Failed to create gmp_audit_chain table")?;
+
+        self.insert_demo_audit_data()?;
+
         Ok(())
     }
 
@@ -209,6 +230,58 @@ impl SqlrustgoAdapter {
 
     /// Flush any pending writes to disk (FileStorage persists automatically)
     pub fn flush(&self) -> Result<()> {
+        Ok(())
+    }
+
+    pub fn insert_audit_record(
+        &self,
+        audit_id: &str,
+        work_order_id: &str,
+        timestamp: i64,
+        action: &str,
+        actor: &str,
+        detail: &str,
+        signature: Option<&str>,
+        result: &str,
+    ) -> Result<()> {
+        let record = vec![
+            Value::Integer(0),
+            Value::Text(audit_id.to_string()),
+            Value::Text(work_order_id.to_string()),
+            Value::Integer(timestamp),
+            Value::Text(action.to_string()),
+            Value::Text(actor.to_string()),
+            Value::Text(detail.to_string()),
+            signature.map(|s| Value::Text(s.to_string())).unwrap_or(Value::Null),
+            Value::Text(result.to_string()),
+        ];
+        let mut engine = self.engine.lock().unwrap();
+        engine.insert("gmp_audit_chain", vec![record])?;
+        Ok(())
+    }
+
+    pub fn scan_audit_chain(&self) -> Result<Vec<Record>> {
+        let engine = self.engine.lock().unwrap();
+        Ok(engine.scan("gmp_audit_chain")?)
+    }
+
+    pub fn insert_demo_audit_data(&self) -> Result<()> {
+        let records = self.scan_audit_chain()?;
+        if !records.is_empty() {
+            return Ok(());
+        }
+
+        let demos = vec![
+            ("AUDIT-001", "WE-20260522-001", 1747888338000i64, "工单创建", "operator_zhang", r#"{"task":"称量任务 #WE-001","operator":"张三"}"#, Some("ZhangSan#sha256:abc123"), "通过"),
+            ("AUDIT-002", "WE-20260522-001", 1747888385000i64, "OCR识别", "system", r#"{"device":"BAL-001","result":"识别成功"}"#, None, "通过"),
+            ("AUDIT-003", "WE-20260522-001", 1747888392000i64, "规则校验", "system", r#"{"dsl":"weigh_material","result":"校验通过"}"#, None, "通过"),
+            ("AUDIT-004", "WE-20260522-001", 1747888425000i64, "主管审批", "supervisor_wang", r#"{"level":1,"result":"审批通过"}"#, Some("WangWu#sha256:def456"), "通过"),
+            ("AUDIT-005", "WE-20260522-001", 1747888442000i64, "质量部审批", "quality_li", r#"{"level":2,"result":"第二级审批通过"}"#, Some("LiLiu#sha256:ghi789"), "通过"),
+        ];
+
+        for (audit_id, wo, ts, action, actor, detail, sig, result) in demos {
+            self.insert_audit_record(audit_id, wo, ts, action, actor, detail, sig, result)?;
+        }
         Ok(())
     }
 }
