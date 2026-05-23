@@ -7,6 +7,7 @@ use tracing::info;
 // ========== Request/Response Types ==========
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct SearchRequest {
     query: String,
     #[serde(default = "default_channel")]
