@@ -10,10 +10,10 @@
 
 ## 一、执行摘要
 
-v3.3.0 通过率 100%，所有自动化检查通过。v3.4.0 定位为 **Industrial Trust Platform — GA**，核心目标：
+v3.3.0 通过率 100%，所有自动化检查通过。v3.4.0 定位为 **GMP Management Suite — RC**，核心目标：
 
-1. GMP Retrieval v2 (BM25 + RRF + Reranker + LLM Chat)
-2. GMP API GA 稳定性
+1. GMP Management API GA 稳定性
+2. GMP Retrieval v2 (BM25 + RRF + Reranker + LLM Chat)
 3. Trust Infrastructure 全量落地
 
 ### Alpha Gate 结果
