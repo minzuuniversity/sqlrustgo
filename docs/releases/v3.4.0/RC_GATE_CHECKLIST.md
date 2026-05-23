@@ -26,8 +26,8 @@
 |---|--------|------|------|------|
 | R1 | Build | `cargo build --release --workspace` | 成功 | ✅ PASS (28.76s, 11 warnings pre-existing) |
 | R2 | Test | `cargo test --all-features --workspace` | 全部通过 | ⏳ Z440 超时 |
-| R3 | Clippy | `cargo clippy --all-features --workspace -- -D warnings` | 零警告 | ⚠️ gmp-retrieval `documents` dead code |
-| R4 | Format | `cargo fmt --all -- --check` | 通过 | ⏳ |
+| R3 | Clippy | `cargo clippy --all-features --workspace -- -D warnings` | 零警告 | ✅ PASS |
+| R4 | Format | `cargo fmt --all -- --check` | 通过 | ✅ PASS |
 
 ### 2.2 覆盖率检查 (R5)
 
@@ -48,22 +48,22 @@
 
 ### 2.4 Beta 门禁复核 (B1-B14)
 
-| # | 检查项 | 命令 | 标准 | Beta 状态 | RC 状态 |
-|---|--------|------|------|-----------|---------|
-| B1 | Build | `cargo build --release --workspace` | 成功 | ✅ PASS | ⏳ |
-| B2 | Unit tests | `cargo test --lib` | 全部通过 | ✅ PASS | ⏳ |
-| B3 | Clippy | `cargo clippy --all-features` | 零警告 | ✅ PASS | ⏳ |
-| B4 | Format | `cargo fmt --all -- --check` | 通过 | ✅ PASS | ⏳ |
-| B5 | GMP build | `cargo build -p sqlrustgo-gmp` | 成功 | ✅ PASS | ⏳ |
-| B6 | GMP lib test | `cargo test -p sqlrustgo-gmp --lib` | 通过 | ✅ PASS | ⏳ |
-| B7 | Batch API | `cargo test -p sqlrustgo-gmp -- batch` | 通过 | ✅ PASS | ⏳ |
-| B8 | Audit API | `cargo test -p sqlrustgo-gmp -- audit` | 通过 | ✅ PASS | ⏳ |
-| B9 | Retrieval build | `cargo build -p sqlrustgo-gmp-retrieval` | 成功 | ✅ PASS | ⏳ |
-| B10 | BM25 search | `cargo test -p sqlrustgo-gmp-retrieval --lib -- bm25` | 通过 | ✅ PASS | ⏳ |
-| B11 | RRF fusion | `cargo test -p sqlrustgo-gmp-retrieval --lib -- rrf` | 通过 | ✅ PASS | ⏳ |
-| B12 | Evidence engine | `cargo test -p sqlrustgo-evidence-engine --lib` | 通过 | ✅ PASS | ⏳ |
-| B13 | Workflow v2 | `cargo test -p sqlrustgo-workflow-v2 --lib` | 通过 | ✅ PASS | ⏳ |
-| B14 | Trust viz | `cargo test -p sqlrustgo-trust-viz --lib` | 通过 | ✅ PASS | ⏳ |
+| # | 检查项 | 命令 | Beta 状态 | RC 状态 |
+|---|--------|------|-----------|---------|
+| B1 | Build | `cargo build --release --workspace` | ✅ PASS | ✅ PASS |
+| B2 | Unit tests | `cargo test --lib` | ✅ PASS | ✅ PASS |
+| B3 | Clippy | `cargo clippy --all-features` | ✅ PASS | ✅ PASS |
+| B4 | Format | `cargo fmt --all -- --check` | ✅ PASS | ✅ PASS |
+| B5 | GMP build | `cargo build -p sqlrustgo-gmp` | ✅ PASS | ✅ PASS |
+| B6 | GMP lib test | `cargo test -p sqlrustgo-gmp --lib` | ✅ PASS | ✅ PASS |
+| B7 | Batch API | `cargo test -p sqlrustgo-gmp -- batch` | ✅ PASS | ✅ PASS |
+| B8 | Audit API | `cargo test -p sqlrustgo-gmp -- audit` | ✅ PASS | ✅ PASS |
+| B9 | Retrieval build | `cargo build -p sqlrustgo-gmp-retrieval` | ✅ PASS | ✅ PASS |
+| B10 | BM25 search | `cargo test -p sqlrustgo-gmp-retrieval --lib -- bm25` | ✅ PASS | ✅ PASS |
+| B11 | RRF fusion | `cargo test -p sqlrustgo-gmp-retrieval --lib -- rrf` | ✅ PASS | ✅ PASS |
+| B12 | Evidence engine | `cargo test -p sqlrustgo-evidence-engine --lib` | ✅ PASS | ✅ PASS |
+| B13 | Workflow v2 | `cargo test -p sqlrustgo-workflow-v2 --lib` | ✅ PASS | ✅ PASS |
+| B14 | Trust viz | `cargo test -p sqlrustgo-trust-viz --lib` | ✅ PASS | ✅ PASS |
 
 ### 2.5 RC 稳定性测试 (R-S1~S4) — Z6G4
 
