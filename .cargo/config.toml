@@ -1,0 +1,2 @@
+[env]
+SQLRUSTGO_SERVER_BIN = { value = "/home/ai/sqlrustgo/target/release/sqlrustgo-mysql-server" }
