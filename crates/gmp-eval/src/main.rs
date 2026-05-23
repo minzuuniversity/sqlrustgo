@@ -188,6 +188,7 @@ fn main() -> Result<()> {
 
         let retrieved_ids: Vec<String> = search_results.iter().map(|r| r.doc_id.clone()).collect();
 
+
         // Check which expected keywords appear in retrieved docs
         let mut hit_keywords: Vec<String> = Vec::new();
         let mut missed_keywords: Vec<String> = Vec::new();
