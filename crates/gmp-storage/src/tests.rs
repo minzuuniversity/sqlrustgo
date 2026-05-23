@@ -2,6 +2,7 @@
 use std::fs;
 use tempfile::TempDir;
 
+#[allow(unused_imports)]
 use crate::storage::{
     cosine_sim, IndexStats, SearchResult, StorageConfig, StorageEngine, ValidationResult,
     VectorSearchResult,
@@ -71,7 +72,10 @@ fn test_storage_engine_new_creates_db() {
     let engine = StorageEngine::new(config).expect("Failed to create engine");
     // FileStorage stores data in data_dir/gmp_data (a directory), not db_path
     let storage_path = tmpdir.path().join("gmp_data");
-    assert!(storage_path.exists(), "FileStorage should create data_dir/gmp_data");
+    assert!(
+        storage_path.exists(),
+        "FileStorage should create data_dir/gmp_data"
+    );
     let _ = engine; // suppress unused warning
 }
 

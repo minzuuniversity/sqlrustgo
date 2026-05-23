@@ -172,6 +172,8 @@ fn main() -> Result<()> {
     let config = StorageConfig {
         data_dir: "./data".to_string(),
         db_path: cli.db,
+        embedding_dim: 768,
+        use_sqlrustgo_storage: true,
     };
     let storage = StorageEngine::new(config).context("Failed to initialize storage")?;
 
