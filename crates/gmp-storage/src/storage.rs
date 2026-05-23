@@ -900,6 +900,13 @@ impl StorageEngine {
             .unwrap_or(0))
     }
 
+    pub fn scan_audit_chain(&self) -> Result<Vec<Vec<sqlrustgo_types::Value>>> {
+        self.adapter
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("Storage not initialized"))?
+            .scan_audit_chain()
+    }
+
     /// Validate the storage integrity
     /// Returns Ok(ValidationResult) if all checks pass
     pub fn validate(&self) -> Result<ValidationResult> {
