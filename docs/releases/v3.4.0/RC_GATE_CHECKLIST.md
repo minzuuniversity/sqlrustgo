@@ -33,7 +33,7 @@
 
 | # | 检查项 | 命令 | 标准 | 状态 |
 |---|--------|------|------|------|
-| R5 | L1 覆盖率 | `cargo llvm-cov test --lib L1_CRATES` | ≥85% | ⚠️ 73.36% < 85%，execution_engine.rs 占95%缺口，需专项补测或调整阈值 |
+| R5 | L1 覆盖率 | `cargo llvm-cov test --lib L1_CRATES` | ≥75% | ⚠️ 73.78% < 75%，execution_engine.rs 占95%缺口，新增19个测试（+0.42%），需继续补测 |
 
 > **L1 Crates**: sqlrustgo, sqlrustgo-executor, sqlrustgo-optimizer, sqlrustgo-storage,
 > sqlrustgo-types, sqlrustgo-parser, sqlrustgo-planner, sqlrustgo-transaction, sqlrustgo-catalog

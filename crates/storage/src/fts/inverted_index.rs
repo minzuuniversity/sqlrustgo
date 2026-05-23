@@ -442,7 +442,11 @@ mod tests {
         idx.add_document(2, "x y");
         let avg = idx.avg_doc_length();
         // avg_doc_length returns cumulative average; check it's a valid f32
-        assert!(avg.is_finite(), "avg_doc_length should be finite, got {}", avg);
+        assert!(
+            avg.is_finite(),
+            "avg_doc_length should be finite, got {}",
+            avg
+        );
     }
 
     #[test]
