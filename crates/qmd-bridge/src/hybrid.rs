@@ -227,6 +227,7 @@ impl HybridSearcher {
 /// YAML rule matcher for GMP compliance rules
 #[derive(Debug, Clone)]
 pub struct RuleMatcher {
+    #[allow(dead_code)]
     rules: HashMap<String, Vec<(String, String)>>,
 }
 
@@ -323,8 +324,8 @@ impl HybridSearcher {
             .collect();
 
         // Build doc_id → all_scores map
-        let mut doc_scores: HashMap<String, Vec<(String, Option<f32>, Option<f32>, Option<f32>)>> =
-            HashMap::new();
+        type ScoreEntry = (String, Option<f32>, Option<f32>, Option<f32>);
+        let mut doc_scores: HashMap<String, Vec<ScoreEntry>> = HashMap::new();
 
         for r in &vector_results {
             doc_scores.entry(r.id.clone()).or_default().push((
@@ -335,7 +336,7 @@ impl HybridSearcher {
             ));
         }
         for r in &graph_results {
-            doc_scores.entry(r.id.clone()).or_insert_with(Vec::new);
+            doc_scores.entry(r.id.clone()).or_default();
             if let Some(entry) = doc_scores.get_mut(&r.id) {
                 if let Some(e) = entry.iter_mut().find(|e| e.0 == r.id) {
                     e.2 = Some(r.score);
