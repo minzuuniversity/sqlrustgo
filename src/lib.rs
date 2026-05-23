@@ -31,3 +31,13 @@ pub use sqlrustgo_transaction::IsolationLevel;
 pub fn init() {
     println!("SQLRustGo Database System initialized");
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_init() {
+        init();
+    }
+}
