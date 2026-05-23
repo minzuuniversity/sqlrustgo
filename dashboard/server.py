@@ -16,10 +16,11 @@ from pathlib import Path
 
 # Config
 PORT = 8080
-GMP_DIR = Path("/home/openclaw/GMP-Platform")
-GMP_CLI = GMP_DIR / "target/release/gmp-retrieve"
-GMP_DB = GMP_DIR / "data/gmp.db"
-INDEX_HTML = Path(__file__).parent / "index.html"
+_SCRIPT_DIR = Path(__file__).resolve().parent
+GMP_DIR = _SCRIPT_DIR.parent
+GMP_CLI = GMP_DIR / "target" / "release" / "gmp-retrieve"
+GMP_DB = GMP_DIR / "data" / "gmp.db"
+INDEX_HTML = _SCRIPT_DIR / "index.html"
 
 # In-memory stats
 STATS = {
@@ -191,8 +192,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
             "avg_response_ms": avg_ms,
             "db_size_mb": STATS["db_size_mb"],
             "uptime_seconds": uptime,
-            "platform_version": "v1.1.0",
-            "target_version": "v1.2.0",
+            "platform_version": "v1.2.0",
+            "target_version": "v1.3.0",
         })
 
     def handle_audit(self):
