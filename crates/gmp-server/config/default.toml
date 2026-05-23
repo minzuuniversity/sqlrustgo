@@ -1,0 +1,36 @@
+# GMP Server Configuration
+
+[server]
+# MySQL protocol server binding
+host = "0.0.0.0"
+port = 3306
+
+# Monitoring HTTP server
+monitoring_port = 8080
+
+# Logging
+log_level = "info"
+
+[database]
+# SQLRustGo database directory
+data_dir = "/var/lib/gmp-server/data"
+
+# Connection settings
+max_connections = 100
+connection_timeout_seconds = 30
+
+[storage]
+# Storage engine settings
+page_size = 8192
+buffer_pool_size_mb = 256
+
+[security]
+# TLS settings (optional)
+tls_enabled = false
+tls_cert_path = ""
+tls_key_path = ""
+
+[performance]
+# Query execution
+query_timeout_seconds = 300
+max_query_memory_mb = 1024

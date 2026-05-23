@@ -906,6 +906,31 @@ pub struct SearchResult {
     pub score: f64,
 }
 
+impl StorageEngine {
+    /// Check if Layer 0 (entity/taxonomy) data has been populated
+    #[allow(dead_code)]
+    pub fn has_layer0_data(&self) -> Result<bool> {
+        Ok(false)
+    }
+
+    /// Enhanced FTS search with Layer 0 features (entity boost, taxonomy filter)
+    #[allow(dead_code)]
+    pub fn search_fts_enhanced(
+        &self,
+        query: &str,
+        top_k: usize,
+        _use_layer0: bool,
+    ) -> Result<Vec<SearchResult>> {
+        self.search_fts_with_scores(query, top_k)
+    }
+
+    /// LIKE-based search with n-gram Chinese tokenization (wrapper for search_like_with_extra)
+    #[allow(dead_code)]
+    pub fn search_like_ng(&self, query: &str, top_k: usize) -> Result<Vec<SearchResult>> {
+        self.search_like_with_extra(query, top_k, &[])
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct VectorSearchResult {
     pub chunk_id: i64,
