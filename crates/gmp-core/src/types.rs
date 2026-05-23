@@ -299,7 +299,7 @@ mod tests {
 
     #[test]
     fn test_scored_chunk_ordering() {
-        let mut chunks = vec![
+        let mut chunks = [
             ScoredChunk {
                 chunk_id: 1,
                 doc_id: "A".into(),

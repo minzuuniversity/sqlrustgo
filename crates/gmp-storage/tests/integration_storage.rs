@@ -119,7 +119,10 @@ title: 版本V1
     let r2 = storage
         .index_documents(temp_dir.path().to_str().unwrap())
         .unwrap();
-    assert!(r2.documents_skipped >= 0);
+    assert!(
+        r2.documents_skipped >= 1,
+        "re-index unchanged: should skip at least 1 doc"
+    );
 
     // Modify document
     write_doc(
@@ -290,8 +293,16 @@ fn test_hnsw_search_vectors() {
     let (temp_dir, storage) = create_storage();
 
     // Index a test document
-    write_doc(temp_dir.path(), "doc1", "---\nid: V1\ntitle: 第一向量\n---\n内容一");
-    write_doc(temp_dir.path(), "doc2", "---\nid: V2\ntitle: 第二向量\n---\n内容二");
+    write_doc(
+        temp_dir.path(),
+        "doc1",
+        "---\nid: V1\ntitle: 第一向量\n---\n内容一",
+    );
+    write_doc(
+        temp_dir.path(),
+        "doc2",
+        "---\nid: V2\ntitle: 第二向量\n---\n内容二",
+    );
     storage
         .index_documents(temp_dir.path().to_str().unwrap())
         .unwrap();

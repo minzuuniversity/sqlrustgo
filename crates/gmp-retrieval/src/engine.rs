@@ -1,7 +1,5 @@
 //! Retrieval engine - orchestrates four channels + fusion
 
-use gmp_core::ScoredChunk;
-
 /// Retrieval engine configuration
 #[derive(Debug, Clone)]
 pub struct RetrievalEngineConfig {

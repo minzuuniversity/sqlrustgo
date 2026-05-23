@@ -146,10 +146,10 @@ async fn main() -> Result<()> {
             );
             if validate {
                 let config = gmp_storage::StorageConfig {
-                    data_dir: "./data".to_string(),
-                    db_path: db.clone(),
                     embedding_dim: 768,
+                    data_dir: "./data".to_string(),
                     use_sqlrustgo_storage: true,
+                    db_path: db.clone(),
                 };
                 let engine = gmp_storage::StorageEngine::new(config)?;
                 let result = engine.validate()?;
@@ -167,10 +167,10 @@ async fn main() -> Result<()> {
             } else {
                 println!("Indexing from: {}...", source);
                 let config = gmp_storage::StorageConfig {
+                    embedding_dim: 768,
                     data_dir: "./data".to_string(),
+                    use_sqlrustgo_storage: true,
                     db_path: db,
-                embedding_dim: 768,
-                use_sqlrustgo_storage: true,
             };
                 let engine = gmp_storage::StorageEngine::new(config)?;
                 let stats = engine.index_documents(&source)?;
@@ -195,7 +195,6 @@ async fn main() -> Result<()> {
             use gmp_core::ScoredChunk;
             use gmp_retrieval::channel::FourChannelEngine;
             use gmp_retrieval::RrfFusion;
-            use std::collections::HashMap;
 
             info!(
                 "GMP Search: query={}, channel={}, rerank={}",
@@ -203,10 +202,10 @@ async fn main() -> Result<()> {
             );
 
             let config = gmp_storage::StorageConfig {
-                data_dir: "./data".to_string(),
-                db_path: db,
                 embedding_dim: 768,
+                data_dir: "./data".to_string(),
                 use_sqlrustgo_storage: true,
+                db_path: db,
             };
             let storage = match gmp_storage::StorageEngine::new(config) {
                 Ok(s) => s,
@@ -223,9 +222,14 @@ async fn main() -> Result<()> {
             // Run four-channel search via tokio runtime
             let results: Vec<ScoredChunk> = std::thread::scope(|s| {
                 s.spawn(|| {
-                    let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+                    let rt = tokio::runtime::Builder::new_current_thread()
+                        .enable_all()
+                        .build()
+                        .unwrap();
                     rt.block_on(async { four_channel.search(&query, 20).await })
-                }).join().unwrap()
+                })
+                .join()
+                .unwrap()
             });
 
             let fused: Vec<ScoredChunk> = if channel == "all" {
@@ -243,9 +247,14 @@ async fn main() -> Result<()> {
                 );
                 match std::thread::scope(|s| {
                     s.spawn(|| {
-                        let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+                        let rt = tokio::runtime::Builder::new_current_thread()
+                            .enable_all()
+                            .build()
+                            .unwrap();
                         rt.block_on(reranker.rerank(&query, fused.clone(), 20))
-                    }).join().unwrap()
+                    })
+                    .join()
+                    .unwrap()
                 }) {
                     Ok(reranked) => reranked,
                     Err(e) => {
@@ -301,10 +310,10 @@ async fn main() -> Result<()> {
             println!("Loaded {} test scenarios", test_scenarios.len());
 
             let config = gmp_storage::StorageConfig {
-                data_dir: "./data".to_string(),
-                db_path: db,
                 embedding_dim: 768,
+                data_dir: "./data".to_string(),
                 use_sqlrustgo_storage: true,
+                db_path: db,
             };
             let storage =
                 gmp_storage::StorageEngine::new(config).context("Failed to initialize storage")?;
@@ -408,10 +417,10 @@ async fn main() -> Result<()> {
                 }
                 if input == "stats" {
                     let config = gmp_storage::StorageConfig {
+                        embedding_dim: 768,
                         data_dir: "./data".to_string(),
+                        use_sqlrustgo_storage: true,
                         db_path: db.clone(),
-                    embedding_dim: 768,
-                    use_sqlrustgo_storage: true,
                 };
                     match gmp_storage::StorageEngine::new(config) {
                         Ok(engine) => match engine.validate() {
@@ -436,10 +445,10 @@ async fn main() -> Result<()> {
                 }
                 if let Some(query) = input.strip_prefix("search ") {
                     let config = gmp_storage::StorageConfig {
+                        embedding_dim: 768,
                         data_dir: "./data".to_string(),
+                        use_sqlrustgo_storage: true,
                         db_path: db.clone(),
-                    embedding_dim: 768,
-                    use_sqlrustgo_storage: true,
                 };
                     match gmp_storage::StorageEngine::new(config) {
                         Ok(engine) => {
@@ -481,10 +490,10 @@ async fn main() -> Result<()> {
                     });
                 } else if let Some(query) = input.strip_prefix("rag ") {
                     let config = gmp_storage::StorageConfig {
+                        embedding_dim: 768,
                         data_dir: "./data".to_string(),
+                        use_sqlrustgo_storage: true,
                         db_path: db.clone(),
-                    embedding_dim: 768,
-                    use_sqlrustgo_storage: true,
                 };
                     let chunks: Vec<String> = match gmp_storage::StorageEngine::new(config) {
                         Ok(engine) => engine
@@ -545,10 +554,10 @@ async fn main() -> Result<()> {
                         continue;
                     }
                     let config = gmp_storage::StorageConfig {
+                        embedding_dim: 768,
                         data_dir: "./data".to_string(),
+                        use_sqlrustgo_storage: true,
                         db_path: db.clone(),
-                    embedding_dim: 768,
-                    use_sqlrustgo_storage: true,
                 };
                     match gmp_storage::StorageEngine::new(config) {
                         Ok(engine) => {
@@ -573,7 +582,6 @@ async fn main() -> Result<()> {
             rounds,
             db,
         } => {
-            use std::time::Instant;
             use tokio::task;
 
             info!("GMP Bench: concurrent={}, rounds={}", concurrent, rounds);
@@ -583,10 +591,10 @@ async fn main() -> Result<()> {
             );
 
             let config = gmp_storage::StorageConfig {
+                embedding_dim: 768,
                 data_dir: "./data".to_string(),
+                use_sqlrustgo_storage: true,
                 db_path: db.clone(),
-                    embedding_dim: 768,
-                    use_sqlrustgo_storage: true,
                 };
             let storage = match gmp_storage::StorageEngine::new(config) {
                 Ok(s) => s,
@@ -640,11 +648,8 @@ async fn main() -> Result<()> {
 
                 let mut round_latencies: Vec<u64> = Vec::new();
                 for h in handles {
-                    match h.await {
-                        Ok(Ok(_)) => {
-                            round_latencies.push(round_start.elapsed().as_millis() as u64);
-                        }
-                        _ => {}
+                    if let Ok(Ok(_)) = h.await {
+                        round_latencies.push(round_start.elapsed().as_millis() as u64);
                     }
                 }
                 latencies.extend(round_latencies);
@@ -711,16 +716,15 @@ async fn main() -> Result<()> {
             db,
         } => {
             use gmp_llm::LlmClient;
-            use std::time::Instant;
 
             println!("GMP Chat (LLM + RAG)\n");
 
             // Build context from storage (sync)
             let config = gmp_storage::StorageConfig {
-                data_dir: "./data".to_string(),
-                db_path: db,
                 embedding_dim: 768,
+                data_dir: "./data".to_string(),
                 use_sqlrustgo_storage: true,
+                db_path: db,
             };
             let storage = match gmp_storage::StorageEngine::new(config) {
                 Ok(s) => s,
