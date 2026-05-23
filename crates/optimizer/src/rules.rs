@@ -656,6 +656,90 @@ mod tests {
     }
 
     #[test]
+    fn test_eval_binary_op_plus() {
+        assert_eq!(eval_binary_op("2", "3", BinaryOperator::Plus), Some("5".to_string()));
+        assert_eq!(eval_binary_op("-1", "1", BinaryOperator::Plus), Some("0".to_string()));
+        assert_eq!(eval_binary_op("0.5", "0.5", BinaryOperator::Plus), Some("1".to_string()));
+    }
+
+    #[test]
+    fn test_eval_binary_op_minus() {
+        assert_eq!(eval_binary_op("5", "3", BinaryOperator::Minus), Some("2".to_string()));
+        assert_eq!(eval_binary_op("1", "1", BinaryOperator::Minus), Some("0".to_string()));
+    }
+
+    #[test]
+    fn test_eval_binary_op_multiply() {
+        assert_eq!(eval_binary_op("3", "4", BinaryOperator::Multiply), Some("12".to_string()));
+        assert_eq!(eval_binary_op("0", "100", BinaryOperator::Multiply), Some("0".to_string()));
+    }
+
+    #[test]
+    fn test_eval_binary_op_divide() {
+        assert_eq!(eval_binary_op("10", "2", BinaryOperator::Divide), Some("5".to_string()));
+        assert_eq!(eval_binary_op("1", "0", BinaryOperator::Divide), None);
+    }
+
+    #[test]
+    fn test_eval_binary_op_comparison() {
+        assert_eq!(eval_binary_op("5", "3", BinaryOperator::Gt), Some("true".to_string()));
+        assert_eq!(eval_binary_op("3", "5", BinaryOperator::Gt), Some("false".to_string()));
+        assert_eq!(eval_binary_op("3", "3", BinaryOperator::Eq), Some("true".to_string()));
+        assert_eq!(eval_binary_op("3", "4", BinaryOperator::NotEq), Some("true".to_string()));
+        assert_eq!(eval_binary_op("3", "3", BinaryOperator::LtEq), Some("true".to_string()));
+        assert_eq!(eval_binary_op("4", "3", BinaryOperator::GtEq), Some("true".to_string()));
+    }
+
+    #[test]
+    fn test_eval_binary_op_invalid() {
+        assert_eq!(eval_binary_op("x", "2", BinaryOperator::Plus), None);
+        assert_eq!(eval_binary_op("1", "y", BinaryOperator::Plus), None);
+    }
+
+    #[test]
+    fn test_eval_binary_op_and_or() {
+        // AND: both truthy ("1") → true
+        assert_eq!(eval_binary_op("1", "1", BinaryOperator::And), Some("true".to_string()));
+        // AND: left "0" is falsy → false
+        assert_eq!(eval_binary_op("0", "1", BinaryOperator::And), Some("false".to_string()));
+        // AND: right "0" is falsy → false
+        assert_eq!(eval_binary_op("1", "0", BinaryOperator::And), Some("false".to_string()));
+        // OR: left "1" is truthy → true
+        assert_eq!(eval_binary_op("1", "0", BinaryOperator::Or), Some("true".to_string()));
+        // OR: both falsy ("0") → false
+        assert_eq!(eval_binary_op("0", "0", BinaryOperator::Or), Some("false".to_string()));
+    }
+
+    #[test]
+    fn test_references_columns_multiple() {
+        let expr = Expr::BinaryExpr {
+            left: Box::new(Expr::BinaryExpr {
+                left: Box::new(Expr::Column("a".to_string())),
+                op: BinaryOperator::Plus,
+                right: Box::new(Expr::Column("b".to_string())),
+            }),
+            op: BinaryOperator::Multiply,
+            right: Box::new(Expr::Column("c".to_string())),
+        };
+        let cols = expr.references_columns();
+        assert_eq!(cols.len(), 3);
+        assert!(cols.contains(&"a"));
+        assert!(cols.contains(&"b"));
+        assert!(cols.contains(&"c"));
+    }
+
+    #[test]
+    fn test_fold_constants_with_divide() {
+        let expr = Expr::BinaryExpr {
+            left: Box::new(Expr::Literal("10".to_string())),
+            op: BinaryOperator::Divide,
+            right: Box::new(Expr::Literal("2".to_string())),
+        };
+        let folded = expr.fold_constants();
+        assert_eq!(folded, Expr::Literal("5".to_string()));
+    }
+
+    #[test]
     fn test_predicate_pushdown_name() {
         let rule = PredicatePushdown::new();
         assert_eq!(Rule::<UnifiedPlan>::name(&rule), "PredicatePushdown");
