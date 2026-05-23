@@ -4,7 +4,7 @@
 > **创建日期**: 2026-05-21
 > **维护人**: hermes-agent
 > **阶段**: GA (General Availability)
-|> **分支**: `origin/develop/v3.4.0` (commit `e1bab9a6`)
+|> **分支**: `origin/develop/v3.4.0` (commit `bd39e787`)
 |> **起点**: `a1ddb44c` (v3.3.0 GA release point)
 > **关联门禁规范**: `docs/governance/GATE_SPEC_MASTER.md`
 
