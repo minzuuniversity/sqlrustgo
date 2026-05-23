@@ -1139,7 +1139,11 @@ fn evaluate_binary_op(l: &str, r: &str, op: &str) -> Option<Expression> {
 pub struct Parser {
     tokens: Vec<Token>,
     position: usize,
+    /// Recursion depth counter for preventing stack overflow on malformed input
+    depth: usize,
 }
+
+const MAX_RECURSION_DEPTH: usize = 64;
 
 impl Parser {
     /// Create a parser from tokens
@@ -1147,6 +1151,7 @@ impl Parser {
         Self {
             tokens,
             position: 0,
+            depth: 0,
         }
     }
 
@@ -3412,6 +3417,7 @@ impl Parser {
                 // Handle StringLiteral in SELECT (e.g., SELECT 'hello')
                 Some(Token::StringLiteral(s)) => {
                     let lit_str = format!("'{}'", s);
+                    self.next(); // consume StringLiteral
                     let has_alias = matches!(self.current(), Some(Token::As));
                     let alias = if has_alias {
                         self.next();
@@ -3435,6 +3441,7 @@ impl Parser {
                 // Handle BooleanLiteral in SELECT (e.g., SELECT TRUE, FALSE)
                 Some(Token::BooleanLiteral(b)) => {
                     let val = if *b { "TRUE" } else { "FALSE" };
+                    self.next(); // consume BooleanLiteral
                     let alias = if matches!(self.current(), Some(Token::As)) {
                         self.next();
                         match self.current() {
@@ -4554,6 +4561,19 @@ impl Parser {
 
     /// Parse OR expression (lowest precedence)
     fn parse_or_expression(&mut self) -> Result<Expression, String> {
+        if self.depth >= MAX_RECURSION_DEPTH {
+            return Err(format!(
+                "Expression recursion depth limit ({}) exceeded - possible infinite loop",
+                MAX_RECURSION_DEPTH
+            ));
+        }
+        self.depth += 1;
+        let result = self.parse_or_expression_inner();
+        self.depth -= 1;
+        result
+    }
+
+    fn parse_or_expression_inner(&mut self) -> Result<Expression, String> {
         let mut left = self.parse_and_expression()?;
 
         while let Some(Token::Or) = self.current() {
@@ -4567,6 +4587,19 @@ impl Parser {
 
     /// Parse AND expression (higher precedence than OR)
     fn parse_and_expression(&mut self) -> Result<Expression, String> {
+        if self.depth >= MAX_RECURSION_DEPTH {
+            return Err(format!(
+                "Expression recursion depth limit ({}) exceeded - possible infinite loop",
+                MAX_RECURSION_DEPTH
+            ));
+        }
+        self.depth += 1;
+        let result = self.parse_and_expression_inner();
+        self.depth -= 1;
+        result
+    }
+
+    fn parse_and_expression_inner(&mut self) -> Result<Expression, String> {
         let mut left = self.parse_comparison_expression()?;
 
         while let Some(Token::And) = self.current() {
@@ -7200,6 +7233,33 @@ pub fn parse(sql: &str) -> Result<Statement, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_debug_boolean_literal() {
+        let sql = "SELECT TRUE, FALSE FROM t";
+        println!("DEBUG: sql = {:?}", sql);
+        use crate::lexer::Lexer;
+        let tokens = Lexer::new(sql).tokenize();
+        println!("DEBUG: tokens = {:?}", tokens);
+        let mut parser = crate::parser::Parser::new(tokens);
+        println!("DEBUG: Parser created, calling parse_statement");
+        let result = parser.parse_statement();
+        println!("DEBUG: result = {:?}", result);
+        assert!(result.is_ok(), "Boolean literals: {:?}", result);
+    }
+
+    #[test]
+    fn test_debug_simple_select() {
+        let sql = "SELECT 1 FROM t";
+        println!("DEBUG: sql = {:?}", sql);
+        use crate::lexer::Lexer;
+        let tokens = Lexer::new(sql).tokenize();
+        println!("DEBUG: tokens = {:?}", tokens);
+        let mut parser = crate::parser::Parser::new(tokens);
+        println!("DEBUG: calling parse_statement");
+        let result = parser.parse_statement();
+        println!("DEBUG: result = {:?}", result);
+    }
 
     #[test]
     fn test_parse_qualified_column_names() {
