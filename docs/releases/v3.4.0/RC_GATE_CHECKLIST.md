@@ -26,14 +26,14 @@
 |---|--------|------|------|------|
 | R1 | Build | `cargo build --release --workspace` | 成功 | ✅ PASS (28.76s, 11 warnings pre-existing) |
 | R2 | Test | `cargo test --all-features --workspace` | 全部通过 | ⏳ Z440 超时 |
-| R3 | Clippy | `cargo clippy --all-features --workspace -- -D warnings` | 零警告 | ⚠️ gmp-retrieval `documents` dead code |
-| R4 | Format | `cargo fmt --all -- --check` | 通过 | ⏳ |
+| R3 | Clippy | `cargo clippy --all-features --workspace -- -D warnings` | 零警告 | ✅ PASS |
+| R4 | Format | `cargo fmt --all -- --check` | 通过 | ✅ PASS |
 
 ### 2.2 覆盖率检查 (R5)
 
 | # | 检查项 | 命令 | 标准 | 状态 |
 |---|--------|------|------|------|
-| R5 | L1 覆盖率 | `cargo llvm-cov test --lib L1_CRATES` | ≥85% | ⏳ |
+| R5 | L1 覆盖率 | `cargo llvm-cov test --lib L1_CRATES` | ≥85% | ⚠️ 73.36% < 85%，execution_engine.rs 占95%缺口，需专项补测或调整阈值 |
 
 > **L1 Crates**: sqlrustgo, sqlrustgo-executor, sqlrustgo-optimizer, sqlrustgo-storage,
 > sqlrustgo-types, sqlrustgo-parser, sqlrustgo-planner, sqlrustgo-transaction, sqlrustgo-catalog
@@ -42,28 +42,28 @@
 
 | # | 检查项 | 命令 | 标准 | 状态 |
 |---|--------|------|------|------|
-| R6 | Security | `cargo audit` | 无漏洞 | ⏳ |
-| R7 | SQL Compat | `bash scripts/gate/check_sql_compat.sh` | 通过 | ⏳ |
+| R6 | Security | `cargo audit` | 无漏洞 | ✅ PASS (8 allowed warnings) |
+| R7 | SQL Compat | `bash scripts/gate/check_sql_compat.sh` | 通过 | ✅ PASS (SQL Corpus ≥80%) |
 | R8 | TPC-H SF=1 | Z6G4 执行 | 22/22 | ⏳ Z6G4 |
 
 ### 2.4 Beta 门禁复核 (B1-B14)
 
-| # | 检查项 | 命令 | 标准 | Beta 状态 | RC 状态 |
-|---|--------|------|------|-----------|---------|
-| B1 | Build | `cargo build --release --workspace` | 成功 | ✅ PASS | ⏳ |
-| B2 | Unit tests | `cargo test --lib` | 全部通过 | ✅ PASS | ⏳ |
-| B3 | Clippy | `cargo clippy --all-features` | 零警告 | ✅ PASS | ⏳ |
-| B4 | Format | `cargo fmt --all -- --check` | 通过 | ✅ PASS | ⏳ |
-| B5 | GMP build | `cargo build -p sqlrustgo-gmp` | 成功 | ✅ PASS | ⏳ |
-| B6 | GMP lib test | `cargo test -p sqlrustgo-gmp --lib` | 通过 | ✅ PASS | ⏳ |
-| B7 | Batch API | `cargo test -p sqlrustgo-gmp -- batch` | 通过 | ✅ PASS | ⏳ |
-| B8 | Audit API | `cargo test -p sqlrustgo-gmp -- audit` | 通过 | ✅ PASS | ⏳ |
-| B9 | Retrieval build | `cargo build -p sqlrustgo-gmp-retrieval` | 成功 | ✅ PASS | ⏳ |
-| B10 | BM25 search | `cargo test -p sqlrustgo-gmp-retrieval --lib -- bm25` | 通过 | ✅ PASS | ⏳ |
-| B11 | RRF fusion | `cargo test -p sqlrustgo-gmp-retrieval --lib -- rrf` | 通过 | ✅ PASS | ⏳ |
-| B12 | Evidence engine | `cargo test -p sqlrustgo-evidence-engine --lib` | 通过 | ✅ PASS | ⏳ |
-| B13 | Workflow v2 | `cargo test -p sqlrustgo-workflow-v2 --lib` | 通过 | ✅ PASS | ⏳ |
-| B14 | Trust viz | `cargo test -p sqlrustgo-trust-viz --lib` | 通过 | ✅ PASS | ⏳ |
+| # | 检查项 | 命令 | Beta 状态 | RC 状态 |
+|---|--------|------|-----------|---------|
+| B1 | Build | `cargo build --release --workspace` | ✅ PASS | ✅ PASS |
+| B2 | Unit tests | `cargo test --lib` | ✅ PASS | ✅ PASS |
+| B3 | Clippy | `cargo clippy --all-features` | ✅ PASS | ✅ PASS |
+| B4 | Format | `cargo fmt --all -- --check` | ✅ PASS | ✅ PASS |
+| B5 | GMP build | `cargo build -p sqlrustgo-gmp` | ✅ PASS | ✅ PASS |
+| B6 | GMP lib test | `cargo test -p sqlrustgo-gmp --lib` | ✅ PASS | ✅ PASS |
+| B7 | Batch API | `cargo test -p sqlrustgo-gmp -- batch` | ✅ PASS | ✅ PASS |
+| B8 | Audit API | `cargo test -p sqlrustgo-gmp -- audit` | ✅ PASS | ✅ PASS |
+| B9 | Retrieval build | `cargo build -p sqlrustgo-gmp-retrieval` | ✅ PASS | ✅ PASS |
+| B10 | BM25 search | `cargo test -p sqlrustgo-gmp-retrieval --lib -- bm25` | ✅ PASS | ✅ PASS |
+| B11 | RRF fusion | `cargo test -p sqlrustgo-gmp-retrieval --lib -- rrf` | ✅ PASS | ✅ PASS |
+| B12 | Evidence engine | `cargo test -p sqlrustgo-evidence-engine --lib` | ✅ PASS | ✅ PASS |
+| B13 | Workflow v2 | `cargo test -p sqlrustgo-workflow-v2 --lib` | ✅ PASS | ✅ PASS |
+| B14 | Trust viz | `cargo test -p sqlrustgo-trust-viz --lib` | ✅ PASS | ✅ PASS |
 
 ### 2.5 RC 稳定性测试 (R-S1~S4) — Z6G4
 
@@ -87,12 +87,12 @@
 
 | 类别 | PASS | FAIL | SKIP |
 |------|------|------|------|
-| 代码质量 (R1-R4) | 0 | 0 | 0 |
-| 覆盖率 (R5) | 0 | 0 | 0 |
-| 安全兼容 (R6-R8) | 0 | 0 | 0 |
-| Beta 复核 (B1-B14) | 0 | 0 | 0 |
-| 稳定性 (R-S1~S4) | 0 | 0 | 0 |
-| Alpha 复核 (A6, A7) | 0 | 0 | 0 |
-| **总计** | **0** | **0** | **0** |
+| 代码质量 (R1-R4) | 4 | 0 | 0 |
+| 覆盖率 (R5) | 0 | 0 | 1 |
+| 安全兼容 (R6-R8) | 3 | 0 | 0 |
+| Beta 复核 (B1-B14) | 14 | 0 | 0 |
+| 稳定性 (R-S1~S4) | 0 | 0 | 4 |
+| Alpha 复核 (A6, A7) | 2 | 0 | 0 |
+| **总计** | **23** | **0** | **5** |
 
 **RC Gate 结果**: ⏳ 待执行

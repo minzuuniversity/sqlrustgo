@@ -1,10 +1,10 @@
 name: RC Gate Pipeline
-run-name: R-Gate v3.2.0
+run-name: R-Gate v3.4.0
 
 on:
   push:
     branches:
-      - rc/v3.2.0
+      - rc/v3.4.0
     tags:
       - v*-rc*
   schedule:
@@ -29,7 +29,7 @@ jobs:
       - name: RC Gate
         run: |
           cd repo
-          bash scripts/test/nomad/r_gate.sh
+          bash scripts/gate/check_rc_v340.sh
 
   rc-gate-full:
     runs-on: [hp-z6g4]
@@ -44,7 +44,7 @@ jobs:
       - name: TPC-H Full
         run: |
           cd repo
-          bash scripts/gate/check_tpch.sh --full
+          bash scripts/gate/check_tpch.sh --scale 1
 
       - name: Sysbench
         run: |
