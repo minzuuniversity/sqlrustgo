@@ -70,6 +70,7 @@ impl<'a> ProvenanceQuery<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::EdgeType;
 
     fn create_test_graph() -> ProvenanceGraph {
         let mut graph = ProvenanceGraph::new();
