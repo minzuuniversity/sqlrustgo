@@ -172,8 +172,6 @@ async fn main() -> Result<()> {
                     data_dir: "./data".to_string(),
                     use_sqlrustgo_storage: true,
                     db_path: db.clone(),
-                    embedding_dim: 768,
-                    use_sqlrustgo_storage: true,
                 };
                 let engine = gmp_storage::StorageEngine::new(config)?;
                 let result = engine.validate()?;
@@ -195,8 +193,6 @@ async fn main() -> Result<()> {
                     data_dir: "./data".to_string(),
                     use_sqlrustgo_storage: true,
                     db_path: db,
-                embedding_dim: 768,
-                use_sqlrustgo_storage: true,
             };
                 let engine = gmp_storage::StorageEngine::new(config)?;
                 let stats = engine.index_documents(&source)?;
@@ -232,8 +228,6 @@ async fn main() -> Result<()> {
                 data_dir: "./data".to_string(),
                 use_sqlrustgo_storage: true,
                 db_path: db,
-                embedding_dim: 768,
-                use_sqlrustgo_storage: true,
             };
             let storage = match gmp_storage::StorageEngine::new(config) {
                 Ok(s) => s,
@@ -342,8 +336,6 @@ async fn main() -> Result<()> {
                 data_dir: "./data".to_string(),
                 use_sqlrustgo_storage: true,
                 db_path: db,
-                embedding_dim: 768,
-                use_sqlrustgo_storage: true,
             };
             let storage =
                 gmp_storage::StorageEngine::new(config).context("Failed to initialize storage")?;
@@ -451,8 +443,6 @@ async fn main() -> Result<()> {
                         data_dir: "./data".to_string(),
                         use_sqlrustgo_storage: true,
                         db_path: db.clone(),
-                    embedding_dim: 768,
-                    use_sqlrustgo_storage: true,
                 };
                     match gmp_storage::StorageEngine::new(config) {
                         Ok(engine) => match engine.validate() {
@@ -481,8 +471,6 @@ async fn main() -> Result<()> {
                         data_dir: "./data".to_string(),
                         use_sqlrustgo_storage: true,
                         db_path: db.clone(),
-                    embedding_dim: 768,
-                    use_sqlrustgo_storage: true,
                 };
                     match gmp_storage::StorageEngine::new(config) {
                         Ok(engine) => {
@@ -528,8 +516,6 @@ async fn main() -> Result<()> {
                         data_dir: "./data".to_string(),
                         use_sqlrustgo_storage: true,
                         db_path: db.clone(),
-                    embedding_dim: 768,
-                    use_sqlrustgo_storage: true,
                 };
                     let chunks: Vec<String> = match gmp_storage::StorageEngine::new(config) {
                         Ok(engine) => engine
@@ -594,8 +580,6 @@ async fn main() -> Result<()> {
                         data_dir: "./data".to_string(),
                         use_sqlrustgo_storage: true,
                         db_path: db.clone(),
-                    embedding_dim: 768,
-                    use_sqlrustgo_storage: true,
                 };
                     match gmp_storage::StorageEngine::new(config) {
                         Ok(engine) => {
@@ -633,8 +617,6 @@ async fn main() -> Result<()> {
                 data_dir: "./data".to_string(),
                 use_sqlrustgo_storage: true,
                 db_path: db.clone(),
-                    embedding_dim: 768,
-                    use_sqlrustgo_storage: true,
                 };
             let storage = match gmp_storage::StorageEngine::new(config) {
                 Ok(s) => s,
@@ -765,8 +747,6 @@ async fn main() -> Result<()> {
                 data_dir: "./data".to_string(),
                 use_sqlrustgo_storage: true,
                 db_path: db,
-                embedding_dim: 768,
-                use_sqlrustgo_storage: true,
             };
             let storage = match gmp_storage::StorageEngine::new(config) {
                 Ok(s) => s,
