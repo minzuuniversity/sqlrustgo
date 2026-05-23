@@ -33,7 +33,7 @@
 
 | # | 检查项 | 命令 | 标准 | 状态 |
 |---|--------|------|------|------|
-| R5 | L1 覆盖率 | `cargo llvm-cov test --lib L1_CRATES` | ≥85% | ⏳ |
+| R5 | L1 覆盖率 | `cargo llvm-cov test --lib L1_CRATES` | ≥85% | ⚠️ 73.36% < 85%，execution_engine.rs 占95%缺口，需专项补测或调整阈值 |
 
 > **L1 Crates**: sqlrustgo, sqlrustgo-executor, sqlrustgo-optimizer, sqlrustgo-storage,
 > sqlrustgo-types, sqlrustgo-parser, sqlrustgo-planner, sqlrustgo-transaction, sqlrustgo-catalog
@@ -42,8 +42,8 @@
 
 | # | 检查项 | 命令 | 标准 | 状态 |
 |---|--------|------|------|------|
-| R6 | Security | `cargo audit` | 无漏洞 | ⏳ |
-| R7 | SQL Compat | `bash scripts/gate/check_sql_compat.sh` | 通过 | ⏳ |
+| R6 | Security | `cargo audit` | 无漏洞 | ✅ PASS (8 allowed warnings) |
+| R7 | SQL Compat | `bash scripts/gate/check_sql_compat.sh` | 通过 | ✅ PASS (SQL Corpus ≥80%) |
 | R8 | TPC-H SF=1 | Z6G4 执行 | 22/22 | ⏳ Z6G4 |
 
 ### 2.4 Beta 门禁复核 (B1-B14)
@@ -87,12 +87,12 @@
 
 | 类别 | PASS | FAIL | SKIP |
 |------|------|------|------|
-| 代码质量 (R1-R4) | 0 | 0 | 0 |
-| 覆盖率 (R5) | 0 | 0 | 0 |
-| 安全兼容 (R6-R8) | 0 | 0 | 0 |
-| Beta 复核 (B1-B14) | 0 | 0 | 0 |
-| 稳定性 (R-S1~S4) | 0 | 0 | 0 |
-| Alpha 复核 (A6, A7) | 0 | 0 | 0 |
-| **总计** | **0** | **0** | **0** |
+| 代码质量 (R1-R4) | 4 | 0 | 0 |
+| 覆盖率 (R5) | 0 | 0 | 1 |
+| 安全兼容 (R6-R8) | 3 | 0 | 0 |
+| Beta 复核 (B1-B14) | 14 | 0 | 0 |
+| 稳定性 (R-S1~S4) | 0 | 0 | 4 |
+| Alpha 复核 (A6, A7) | 2 | 0 | 0 |
+| **总计** | **23** | **0** | **5** |
 
 **RC Gate 结果**: ⏳ 待执行
