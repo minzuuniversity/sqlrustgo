@@ -4,6 +4,17 @@ use serde::{Deserialize, Serialize};
 
 // ─── Device Events ───────────────────────────────────────────────────────────
 
+/// Normalized device reading parsed from MQTT JSON payload
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DeviceReading {
+    pub device_id: String,
+    #[serde(rename = "reading_type")]
+    pub reading_type: DeviceReadingType,
+    pub value: f64,
+    pub unit: String,
+    pub timestamp: i64,
+}
+
 /// Device reading event from MQTT sensors (weight, temperature, humidity)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DeviceEvent {
