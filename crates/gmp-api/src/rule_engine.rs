@@ -96,6 +96,17 @@ pub enum RuleStatus {
     Archived,
 }
 
+impl RuleStatus {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Draft => "draft",
+            Self::Active => "active",
+            Self::Suspended => "suspended",
+            Self::Archived => "archived",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RuleTemplate {
     pub id: String,
@@ -472,5 +483,180 @@ pub enum RuleError {
 impl From<RuleError> for String {
     fn from(err: RuleError) -> Self {
         err.to_string()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_condition_operator_as_str() {
+        assert_eq!(ConditionOperator::Equals.as_str(), "eq");
+        assert_eq!(ConditionOperator::NotEquals.as_str(), "ne");
+        assert_eq!(ConditionOperator::GreaterThan.as_str(), "gt");
+        assert_eq!(ConditionOperator::GreaterThanOrEquals.as_str(), "gte");
+        assert_eq!(ConditionOperator::LessThan.as_str(), "lt");
+        assert_eq!(ConditionOperator::LessThanOrEquals.as_str(), "lte");
+        assert_eq!(ConditionOperator::Contains.as_str(), "contains");
+        assert_eq!(ConditionOperator::StartsWith.as_str(), "starts_with");
+        assert_eq!(ConditionOperator::EndsWith.as_str(), "ends_with");
+        assert_eq!(ConditionOperator::Matches.as_str(), "matches");
+        assert_eq!(ConditionOperator::In.as_str(), "in");
+        assert_eq!(ConditionOperator::NotIn.as_str(), "not_in");
+    }
+
+    #[test]
+    fn test_rule_severity_as_str() {
+        assert_eq!(RuleSeverity::Critical.as_str(), "critical");
+        assert_eq!(RuleSeverity::Error.as_str(), "error");
+        assert_eq!(RuleSeverity::Warning.as_str(), "warning");
+        assert_eq!(RuleSeverity::Info.as_str(), "info");
+    }
+
+    #[test]
+    fn test_rule_status_as_str() {
+        assert_eq!(RuleStatus::Draft.as_str(), "draft");
+        assert_eq!(RuleStatus::Active.as_str(), "active");
+        assert_eq!(RuleStatus::Suspended.as_str(), "suspended");
+        assert_eq!(RuleStatus::Archived.as_str(), "archived");
+    }
+
+    #[test]
+    fn test_rule_category_as_str() {
+        assert_eq!(RuleCategory::GMPCompliance.as_str(), "gmp_compliance");
+        assert_eq!(RuleCategory::Temperature.as_str(), "temperature");
+        assert_eq!(RuleCategory::Pressure.as_str(), "pressure");
+        assert_eq!(RuleCategory::Hygiene.as_str(), "hygiene");
+        assert_eq!(RuleCategory::Equipment.as_str(), "equipment");
+        assert_eq!(RuleCategory::Quality.as_str(), "quality");
+        assert_eq!(RuleCategory::Safety.as_str(), "safety");
+        assert_eq!(RuleCategory::Custom.as_str(), "custom");
+    }
+
+    #[test]
+    fn test_rule_service_new() {
+        let service = RuleService::new();
+        assert_eq!(service.list_rules(None, None).len(), 0);
+    }
+
+    #[test]
+    fn test_rule_service_create_rule_empty_name() {
+        let mut service = RuleService::new();
+        let request = CreateRuleRequest {
+            name: "".to_string(),
+            description: "test".to_string(),
+            condition: RuleCondition {
+                expression: "x > 0".to_string(),
+                operator: ConditionOperator::GreaterThan,
+                value: ConditionValue::Number(0.0),
+                field: "x".to_string(),
+            },
+            severity: RuleSeverity::Warning,
+            tags: vec![],
+        };
+        let result = service.create_rule(request, "user1");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_rule_service_create_and_get_rule() {
+        let mut service = RuleService::new();
+        let request = CreateRuleRequest {
+            name: "Temperature Check".to_string(),
+            description: "Verify temperature is within range".to_string(),
+            condition: RuleCondition {
+                expression: "temp < 25.0".to_string(),
+                operator: ConditionOperator::LessThan,
+                value: ConditionValue::Number(25.0),
+                field: "temperature".to_string(),
+            },
+            severity: RuleSeverity::Critical,
+            tags: vec!["temperature".to_string()],
+        };
+        let rule = service.create_rule(request, "user1").unwrap();
+        assert_eq!(rule.name, "Temperature Check");
+        assert_eq!(rule.status, RuleStatus::Draft);
+        assert!(!rule.id.is_empty());
+
+        let found = service.get_rule(&rule.id);
+        assert!(found.is_some());
+        assert_eq!(found.unwrap().name, "Temperature Check");
+    }
+
+    #[test]
+    fn test_rule_service_evaluate_rule() {
+        let mut service = RuleService::new();
+        let request = CreateRuleRequest {
+            name: "GT Check".to_string(),
+            description: "desc".to_string(),
+            condition: RuleCondition {
+                expression: "x > 10".to_string(),
+                operator: ConditionOperator::GreaterThan,
+                value: ConditionValue::Number(10.0),
+                field: "x".to_string(),
+            },
+            severity: RuleSeverity::Warning,
+            tags: vec![],
+        };
+        let rule = service.create_rule(request, "user1").unwrap();
+        service.activate_rule(&rule.id).unwrap();
+
+        let mut ctx = EvaluationContext {
+            entity_type: "sensor".to_string(),
+            entity_id: "sensor-001".to_string(),
+            attributes: std::collections::HashMap::new(),
+        };
+        ctx.attributes
+            .insert("x".to_string(), ConditionValue::Number(15.0));
+
+        let eval = service.evaluate_rule(&rule.id, &ctx);
+        assert!(eval.passed);
+        assert_eq!(eval.rule_id, rule.id);
+    }
+
+    #[test]
+    fn test_rule_error_display() {
+        let err = RuleError::RuleNotFound;
+        assert_eq!(err.to_string(), "Rule not found");
+
+        let err = RuleError::ValidationError("name required".to_string());
+        assert_eq!(err.to_string(), "Validation error: name required");
+    }
+
+    #[test]
+    fn test_condition_value_untagged() {
+        let v_num = ConditionValue::Number(42.0);
+        let v_str = ConditionValue::String("test".to_string());
+        let v_bool = ConditionValue::Boolean(true);
+        let v_arr = ConditionValue::Array(vec![ConditionValue::Number(1.0)]);
+
+        assert!(matches!(v_num, ConditionValue::Number(_)));
+        assert!(matches!(v_str, ConditionValue::String(_)));
+        assert!(matches!(v_bool, ConditionValue::Boolean(_)));
+        assert!(matches!(v_arr, ConditionValue::Array(_)));
+    }
+
+    #[test]
+    fn test_rule_service_activate_and_suspend_rule() {
+        let mut service = RuleService::new();
+        let request = CreateRuleRequest {
+            name: "Test Rule".to_string(),
+            description: "desc".to_string(),
+            condition: RuleCondition {
+                expression: "x > 0".to_string(),
+                operator: ConditionOperator::GreaterThan,
+                value: ConditionValue::Number(0.0),
+                field: "x".to_string(),
+            },
+            severity: RuleSeverity::Info,
+            tags: vec![],
+        };
+        let rule = service.create_rule(request, "user1").unwrap();
+        let activated = service.activate_rule(&rule.id).unwrap();
+        assert_eq!(activated.status, RuleStatus::Active);
+
+        let suspended = service.suspend_rule(&rule.id).unwrap();
+        assert_eq!(suspended.status, RuleStatus::Suspended);
     }
 }
