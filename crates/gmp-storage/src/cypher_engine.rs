@@ -73,7 +73,7 @@ impl CypherEngine {
     /// Execute a Cypher query and return results
     pub fn execute(&self, query: &str) -> Result<CypherQueryResult> {
         let store = self.store.lock().unwrap();
-        execute_cypher(query, &store)
+        execute_cypher(query, &*store)
             .map(|result| CypherQueryResult {
                 columns: result.columns,
                 rows: result.rows,
