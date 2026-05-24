@@ -1,7 +1,7 @@
 # SQLRustGo 版本演进完整历史
 
-> **最后更新**: 2026-05-06
-> **当前版本**: v2.9.0 (GA)
+> **最后更新**: 2026-05-24
+> **当前版本**: v3.4.0 (GA)
 
 ---
 
@@ -33,10 +33,60 @@
 | v2.8.0 | 2026-04-28 | GA | 混合检索增强 | L4 |
 | v2.9.0 | 2026-05-05 | GA | 形式化验证卓越 | L4 |
 | v3.0.0 | TBD | 愿景 | 完整分布式数据库 | - |
+| v3.3.0 | 2026-05-20 | GA | Industrial Trust Platform（可信性工业闭环） | L4 |
+| v3.4.0 | 2026-05-24 | GA | GMP Management Suite（管理套件） | L4 |
 
 ---
 
 ## 二、各版本详细变更日志
+
+### v3.3.0 (2026-05-20) - Industrial Trust Platform GA
+
+#### 核心特性
+
+|| 模块 | 功能 | 状态 |
+|------|------|------|------|
+| **Trust Infrastructure** | Evidence Engine | ✅ |
+| **Trust Infrastructure** | Provenance Graph | ✅ |
+| **Trust Infrastructure** | Compliance Engine | ✅ |
+| **Trust Infrastructure** | Workflow V2 | ✅ |
+| **Trust Infrastructure** | Trust Visualization | ✅ |
+| **Trust Infrastructure** | Perf Baseline | ✅ |
+| **Trust Infrastructure** | Crash Simulation | ✅ |
+| **Trust Infrastructure** | WAL Verification (TLA+) | ✅ |
+
+#### 测试情况
+
+- 单元测试: 1000+
+- 覆盖率: L1 ≥85%
+- TPC-H SF=1: 22/22 PASS
+- 72h 稳定性: PASS
+
+---
+
+### v3.4.0 (2026-05-24) - GMP Management Suite GA
+
+#### 核心特性
+
+|| 模块 | 功能 | 状态 |
+|------|------|------|------|
+| **GMP API** | Batch CRUD | ✅ |
+| **GMP API** | Audit Chain | ✅ |
+| **GMP API** | Electronic Signature | ✅ |
+| **GMP API** | Device (OPC UA) | ✅ |
+| **GMP API** | Rule Engine Visual Editor | ✅ |
+| **GMP API** | Dashboard + WebSocket | ✅ |
+| **GMP API** | Export (JSON/PDF) | ✅ |
+| **GMP Retrieval** | BM25 + RRF + Reranker + LLM Chat | ✅ |
+
+#### 版本目标
+
+- GMP Management REST API GA
+- Trust Visualization CLI
+- Workflow V2 稳定性
+- MySQL Built-in Functions 增强
+
+---
 
 ### v2.5.0 (2026-04-03) - MVCC/Vector/Graph
 
@@ -280,20 +330,29 @@ v2.5.0
 
 ## 五、路线图
 
-### 当前版本: v2.9.0 (GA)
+### 当前版本: v3.4.0 (GA)
 
-**核心特性**: 形式化验证卓越
+**核心特性**: GMP Management Suite
 
-| 类别 | 功能 | 状态 |
-|------|------|------|
-| P0 | 形式化验证 | ✅ 完成 |
-| P0 | SQL-92 完整 | ✅ 完成 |
-| P1 | 混合检索 | ✅ 完成 |
-| P2 | 覆盖率提升 | ✅ 进行中 |
+|| 类别 | 功能 | 状态 |
+|------|------|------|------|
+| P0 | GMP API GA | ✅ 完成 |
+| P0 | GMP Retrieval v2 | ✅ 完成 |
+| P1 | Trust Visualization CLI | ✅ 完成 |
+| P2 | MySQL Built-in Functions | ✅ 完成 |
 
-### 下一步: v3.0.0
+### 下一步: v3.5.0 AI Native GMP Platform
 
-**目标**: 完整分布式数据库
+**目标**: GMP Management Suite GA
+
+- RC Gate 通过
+- 72h 稳定性测试完成
+- 覆盖率 ≥85%
+- 文档完善
+
+### 更长期: v3.5.0
+
+**目标**: AI Native GMP Platform
 
 - 分布式架构
 - 分片

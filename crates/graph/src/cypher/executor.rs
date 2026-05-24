@@ -3,7 +3,6 @@
 use super::parser::{ComparisonOp, CypherPattern, CypherPredicate, CypherQuery, Literal};
 use crate::error::GraphError;
 use crate::model::*;
-use crate::store::InMemoryGraphStore;
 use crate::GraphStore;
 
 /// Result of executing a Cypher query
@@ -15,8 +14,8 @@ pub struct CypherResult {
     pub rows: Vec<Vec<PropertyValue>>,
 }
 
-/// Execute a Cypher query against a graph store
-pub fn execute_cypher(query: &str, store: &InMemoryGraphStore) -> Result<CypherResult, GraphError> {
+/// Execute a Cypher query against any GraphStore implementation
+pub fn execute_cypher<T: GraphStore>(query: &str, store: &T) -> Result<CypherResult, GraphError> {
     let mut lexer = super::lexer::CypherLexer::new(query);
     let mut tokens = Vec::new();
     loop {
@@ -33,10 +32,7 @@ pub fn execute_cypher(query: &str, store: &InMemoryGraphStore) -> Result<CypherR
     execute_query(cypher_query, store)
 }
 
-fn execute_query(
-    query: CypherQuery,
-    store: &InMemoryGraphStore,
-) -> Result<CypherResult, GraphError> {
+fn execute_query<T: GraphStore>(query: CypherQuery, store: &T) -> Result<CypherResult, GraphError> {
     match query.pattern {
         CypherPattern::Node(node_pattern) => {
             execute_node_pattern(node_pattern, query.where_clause, query.return_items, store)
@@ -57,11 +53,11 @@ fn execute_query(
     }
 }
 
-fn execute_node_pattern(
+fn execute_node_pattern<T: GraphStore>(
     node: super::parser::NodePattern,
     where_clause: Option<CypherPredicate>,
     return_items: Vec<super::parser::ReturnItem>,
-    store: &InMemoryGraphStore,
+    store: &T,
 ) -> Result<CypherResult, GraphError> {
     let label = node.label.as_deref();
 
@@ -117,13 +113,13 @@ fn execute_node_pattern(
     Ok(CypherResult { columns, rows })
 }
 
-fn execute_relationship_pattern(
+fn execute_relationship_pattern<T: GraphStore>(
     from: super::parser::NodePattern,
     _to: super::parser::NodePattern,
     rel_label: Option<String>,
     where_clause: Option<CypherPredicate>,
     return_items: Vec<super::parser::ReturnItem>,
-    store: &InMemoryGraphStore,
+    store: &T,
 ) -> Result<CypherResult, GraphError> {
     let source_ids: Vec<NodeId> = if let Some(ref label) = from.label {
         store.nodes_by_label(label)
@@ -179,10 +175,10 @@ fn execute_relationship_pattern(
     })
 }
 
-fn node_to_value(
+fn node_to_value<T: GraphStore>(
     node_id: NodeId,
     property: &Option<String>,
-    store: &InMemoryGraphStore,
+    store: &T,
 ) -> PropertyValue {
     if let Some(prop) = property {
         store
@@ -194,10 +190,10 @@ fn node_to_value(
     }
 }
 
-fn evaluate_predicate(
+fn evaluate_predicate<T: GraphStore>(
     predicate: &CypherPredicate,
     node_id: NodeId,
-    store: &InMemoryGraphStore,
+    store: &T,
 ) -> bool {
     match predicate {
         CypherPredicate::PropertyComparison {
@@ -245,7 +241,8 @@ fn evaluate_predicate(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::store::GraphStore;
+    use crate::store::{DiskGraphStore, GraphStore, InMemoryGraphStore};
+    use tempfile::TempDir;
 
     fn create_test_store() -> InMemoryGraphStore {
         let mut store = InMemoryGraphStore::new();
@@ -259,6 +256,8 @@ mod tests {
         let _bob = store.create_node("User", bob_props);
         store
     }
+
+    // ===== InMemoryGraphStore tests =====
 
     #[test]
     fn test_execute_simple_match() {
@@ -384,5 +383,104 @@ mod tests {
         let store = create_test_store();
         let result = execute_cypher("MATCH (n:Admin) RETURN n", &store).unwrap();
         assert_eq!(result.rows.len(), 0);
+    }
+
+    // ===== DiskGraphStore integration tests =====
+
+    fn create_disk_store() -> (DiskGraphStore, TempDir) {
+        let temp_dir = TempDir::new().unwrap();
+        let store = DiskGraphStore::new(temp_dir.path().to_path_buf()).unwrap();
+        (store, temp_dir)
+    }
+
+    #[test]
+    fn test_cypher_with_disk_graph_store() {
+        let (mut store, _temp) = create_disk_store();
+        let mut alice_props = PropertyMap::new();
+        alice_props.insert("name", "Alice");
+        alice_props.insert("age", 30i64);
+        store.create_node("User", alice_props);
+
+        let result = execute_cypher("MATCH (n:User) RETURN n.name", &store).unwrap();
+        assert_eq!(result.rows.len(), 1);
+        assert_eq!(
+            result.rows[0][0],
+            PropertyValue::String("Alice".to_string())
+        );
+    }
+
+    #[test]
+    fn test_cypher_disk_store_where_clause() {
+        let (mut store, _temp) = create_disk_store();
+        let mut alice_props = PropertyMap::new();
+        alice_props.insert("name", "Alice");
+        alice_props.insert("age", 30i64);
+        store.create_node("User", alice_props);
+
+        let mut bob_props = PropertyMap::new();
+        bob_props.insert("name", "Bob");
+        bob_props.insert("age", 25i64);
+        store.create_node("User", bob_props);
+
+        let result = execute_cypher("MATCH (n) WHERE n.age > 28 RETURN n.name", &store).unwrap();
+        assert_eq!(result.rows.len(), 1);
+        assert_eq!(
+            result.rows[0][0],
+            PropertyValue::String("Alice".to_string())
+        );
+    }
+
+    #[test]
+    fn test_cypher_in_memory_vs_disk_same_result() {
+        // InMemory
+        let mut mem_store = InMemoryGraphStore::new();
+        let mut mem_props = PropertyMap::new();
+        mem_props.insert("name", "Test");
+        mem_props.insert("age", 30i64);
+        mem_store.create_node("User", mem_props);
+
+        let mem_result = execute_cypher("MATCH (n:User) RETURN n.name, n.age", &mem_store).unwrap();
+
+        // Disk
+        let (mut disk_store, _temp) = create_disk_store();
+        let mut disk_props = PropertyMap::new();
+        disk_props.insert("name", "Test");
+        disk_props.insert("age", 30i64);
+        disk_store.create_node("User", disk_props);
+
+        let disk_result =
+            execute_cypher("MATCH (n:User) RETURN n.name, n.age", &disk_store).unwrap();
+
+        // Results should match
+        assert_eq!(mem_result.rows.len(), disk_result.rows.len());
+        assert_eq!(mem_result.columns, disk_result.columns);
+        assert_eq!(mem_result.rows[0], disk_result.rows[0]);
+    }
+
+    #[test]
+    fn test_cypher_disk_store_load_reload() {
+        let (mut store, temp) = create_disk_store();
+        let mut props = PropertyMap::new();
+        props.insert("name", "Carol");
+        store.create_node("Admin", props);
+
+        // Verify data exists
+        let result = execute_cypher("MATCH (n:Admin) RETURN n.name", &store).unwrap();
+        assert_eq!(result.rows.len(), 1);
+        assert_eq!(
+            result.rows[0][0],
+            PropertyValue::String("Carol".to_string())
+        );
+
+        // Drop and reload from disk
+        drop(store);
+        let reloaded_store = DiskGraphStore::load(temp.path().to_path_buf()).unwrap();
+
+        let result = execute_cypher("MATCH (n:Admin) RETURN n.name", &reloaded_store).unwrap();
+        assert_eq!(result.rows.len(), 1);
+        assert_eq!(
+            result.rows[0][0],
+            PropertyValue::String("Carol".to_string())
+        );
     }
 }

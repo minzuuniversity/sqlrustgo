@@ -1,6 +1,6 @@
 //! RecoveryVerifier checks data integrity after crash recovery
 
-use crate::{CrashScenario, CrashTestResult};
+use crate::CrashTestResult;
 use std::collections::HashMap;
 
 /// Verifies data integrity after crash recovery
@@ -146,7 +146,7 @@ pub struct ColumnState {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::CrashPoint;
+    use crate::{CrashPoint, CrashScenario};
 
     #[test]
     fn test_recovery_verifier_new() {
