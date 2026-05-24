@@ -940,7 +940,7 @@ mod tests {
         let planner = DefaultPlanner::new();
         let physical_plan = planner.create_physical_plan(&update_plan).unwrap();
 
-        assert_eq!(physical_plan.name(), "SeqScan");
+        assert_eq!(physical_plan.name(), "Update");
     }
 
     #[test]
