@@ -2130,7 +2130,9 @@ mod tests {
     fn test_execute_open_cursor_not_found_error() {
         let ex = executor();
         let mut ctx = ProcedureContext::new();
-        let stmt = StoredProcStatement::OpenCursor { name: "nonexistent".into() };
+        let stmt = StoredProcStatement::OpenCursor {
+            name: "nonexistent".into(),
+        };
         let result = ex.execute_statement(&stmt, &mut ctx);
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("not found"));
@@ -2158,7 +2160,9 @@ mod tests {
     fn test_execute_close_cursor_not_found_v2() {
         let ex = executor();
         let mut ctx = ProcedureContext::new();
-        let stmt = StoredProcStatement::CloseCursor { name: "nonexistent".into() };
+        let stmt = StoredProcStatement::CloseCursor {
+            name: "nonexistent".into(),
+        };
         let result = ex.execute_statement(&stmt, &mut ctx);
         assert!(result.is_err());
     }
