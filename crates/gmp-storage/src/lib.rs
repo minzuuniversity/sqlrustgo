@@ -13,4 +13,5 @@ pub use storage::{
     IndexStats, SearchResult, StorageConfig, StorageEngine, ValidationResult, VectorSearchResult,
 };
 pub use traits::GmpStorage;
+#[cfg(test)]
 mod tests;

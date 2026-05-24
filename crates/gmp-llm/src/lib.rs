@@ -212,4 +212,5 @@ pub type SharedLlmClient = Arc<RwLock<LlmClient>>;
 pub fn new_shared(client: LlmClient) -> SharedLlmClient {
     Arc::new(RwLock::new(client))
 }
+#[cfg(test)]
 mod tests;

@@ -179,7 +179,7 @@ async fn main() -> Result<()> {
             );
             if validate {
                 let config = gmp_storage::StorageConfig {
-                    embedding_dim: 768,
+                    embedding_dim: 1024,
                     data_dir: "./data".to_string(),
                     use_sqlrustgo_storage: true,
                     db_path: db.clone(),
@@ -200,7 +200,7 @@ async fn main() -> Result<()> {
             } else {
                 println!("Indexing from: {}...", source);
                 let config = gmp_storage::StorageConfig {
-                    embedding_dim: 768,
+                    embedding_dim: 1024,
                     data_dir: "./data".to_string(),
                     use_sqlrustgo_storage: true,
                     db_path: db,
@@ -235,7 +235,7 @@ async fn main() -> Result<()> {
             );
 
             let config = gmp_storage::StorageConfig {
-                embedding_dim: 768,
+                embedding_dim: 1024,
                 data_dir: "./data".to_string(),
                 use_sqlrustgo_storage: true,
                 db_path: db,
@@ -343,7 +343,7 @@ async fn main() -> Result<()> {
             println!("Loaded {} test scenarios", test_scenarios.len());
 
             let config = gmp_storage::StorageConfig {
-                embedding_dim: 768,
+                embedding_dim: 1024,
                 data_dir: "./data".to_string(),
                 use_sqlrustgo_storage: true,
                 db_path: db,
@@ -450,7 +450,7 @@ async fn main() -> Result<()> {
                 }
                 if input == "stats" {
                     let config = gmp_storage::StorageConfig {
-                        embedding_dim: 768,
+                        embedding_dim: 1024,
                         data_dir: "./data".to_string(),
                         use_sqlrustgo_storage: true,
                         db_path: db.clone(),
@@ -478,7 +478,7 @@ async fn main() -> Result<()> {
                 }
                 if let Some(query) = input.strip_prefix("search ") {
                     let config = gmp_storage::StorageConfig {
-                        embedding_dim: 768,
+                        embedding_dim: 1024,
                         data_dir: "./data".to_string(),
                         use_sqlrustgo_storage: true,
                         db_path: db.clone(),
@@ -523,7 +523,7 @@ async fn main() -> Result<()> {
                     });
                 } else if let Some(query) = input.strip_prefix("rag ") {
                     let config = gmp_storage::StorageConfig {
-                        embedding_dim: 768,
+                        embedding_dim: 1024,
                         data_dir: "./data".to_string(),
                         use_sqlrustgo_storage: true,
                         db_path: db.clone(),
@@ -587,7 +587,7 @@ async fn main() -> Result<()> {
                         continue;
                     }
                     let config = gmp_storage::StorageConfig {
-                        embedding_dim: 768,
+                        embedding_dim: 1024,
                         data_dir: "./data".to_string(),
                         use_sqlrustgo_storage: true,
                         db_path: db.clone(),
@@ -612,7 +612,7 @@ async fn main() -> Result<()> {
         }
         Commands::Audit { work_order_id, db } => {
             let config = gmp_storage::StorageConfig {
-                embedding_dim: 768,
+                embedding_dim: 1024,
                 data_dir: "./data".to_string(),
                 use_sqlrustgo_storage: true,
                 db_path: db.clone(),
@@ -656,7 +656,7 @@ async fn main() -> Result<()> {
             );
 
             let config = gmp_storage::StorageConfig {
-                embedding_dim: 768,
+                embedding_dim: 1024,
                 data_dir: "./data".to_string(),
                 use_sqlrustgo_storage: true,
                 db_path: db.clone(),
@@ -703,7 +703,7 @@ async fn main() -> Result<()> {
                             let cfg = gmp_storage::StorageConfig {
                                 data_dir: dd,
                                 db_path: dp,
-                                embedding_dim: 768,
+                                embedding_dim: 1024,
                                 use_sqlrustgo_storage: true,
                             };
                             gmp_storage::StorageEngine::new(cfg).and_then(|s| s.search_fts(&q, 5))
@@ -786,7 +786,7 @@ async fn main() -> Result<()> {
 
             // Build context from storage (sync)
             let config = gmp_storage::StorageConfig {
-                embedding_dim: 768,
+                embedding_dim: 1024,
                 data_dir: "./data".to_string(),
                 use_sqlrustgo_storage: true,
                 db_path: db,
@@ -859,9 +859,36 @@ async fn main() -> Result<()> {
                 }
             }
         }
-        Commands::Populate { .. } => {
+        Commands::Populate {
+            ollama_url,
+            model,
+            batch_size: _,
+            db,
+            stage,
+        } => {
             println!("GMP Layer 0 Population\n");
-            println!("Error: 'populate' command is DEPRECATED and temporarily unavailable.");
+            println!("  Ollama: {} ({})", ollama_url, model);
+            println!("  Stage:  {}", stage);
+            println!("  DB:     {}\n", db);
+
+            let config = gmp_storage::StorageConfig {
+                embedding_dim: 1024,
+                use_sqlrustgo_storage: true,
+                data_dir: std::path::Path::new(&db)
+                    .parent()
+                    .map(|p| p.to_string_lossy().to_string())
+                    .unwrap_or_else(|| "./data".to_string()),
+                db_path: db.clone(),
+            };
+            let _storage = match gmp_storage::StorageEngine::new(config) {
+                Ok(s) => s,
+                Err(e) => {
+                    println!("Error: Failed to initialize storage: {}", e);
+                    return Ok(());
+                }
+            };
+
+            println!("Error: 'populate' command is temporarily unavailable.");
             println!(
                 "The storage layer does not yet support direct SQL access for Layer 0 population."
             );

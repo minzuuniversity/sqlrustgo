@@ -1796,6 +1796,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "gmp-event-bus"
+version = "1.0.0"
+dependencies = [
+ "anyhow",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
 name = "gmp-llm"
 version = "1.0.0"
 dependencies = [

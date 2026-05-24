@@ -117,6 +117,12 @@ impl StorageEngine {
         engine.migrate_from_rusqlite_if_needed(&config.db_path)?;
 
         engine.load_chunk_cache()?;
+
+        // Build HNSW index from binary embeddings (handles both fresh migrate
+        // and warm restart from gmp_embeddings_bin)
+        let hnsw_count = engine.rebuild_hnsw_from_db()?;
+        eprintln!("[init] HNSW index: {} vectors loaded (dim={})", hnsw_count, engine.hnsw_index.dimension());
+
         Ok(engine)
     }
 
@@ -224,8 +230,10 @@ impl StorageEngine {
         }
         eprintln!("[migrate] Migrated {} chunks", chunk_count);
 
-        // Migrate embeddings
+        // Migrate embeddings — write BINARY BLOB to sqlrustgo gmp_embeddings_bin
+        // Also build HNSW index in-memory for immediate use
         let mut emb_count = 0i64;
+        let mut hnsw_built = 0i64;
         {
             let mut storage = self.storage.lock().unwrap();
             let mut stmt = conn.prepare("SELECT chunk_id, embedding_json FROM gmp_embeddings")?;
@@ -233,15 +241,43 @@ impl StorageEngine {
             while let Some(row) = rows.next()? {
                 let chunk_id: i64 = row.get(0).unwrap_or(0);
                 let embedding_json: String = row.get(1).unwrap_or_default();
+
+                // JSON decode → Vec<f32>
+                let embedding: Vec<f32> = match serde_json::from_str(&embedding_json) {
+                    Ok(v) => v,
+                    Err(_) => {
+                        emb_count += 1;
+                        continue;
+                    }
+                };
+                let dim = embedding.len();
+
+                // Encode as binary BLOB: [dim u32 BE][f32 BE × dim]
+                let mut blob = Vec::with_capacity(4 + dim * 4);
+                blob.extend_from_slice(&(dim as u32).to_be_bytes());
+                for v in &embedding {
+                    blob.extend_from_slice(&v.to_be_bytes());
+                }
+
+                // Insert binary BLOB into sqlrustgo (not rusqlite)
                 let record = vec![
                     sqlrustgo_types::Value::Integer(chunk_id),
-                    sqlrustgo_types::Value::Text(embedding_json),
+                    sqlrustgo_types::Value::Integer(dim as i64),
+                    sqlrustgo_types::Value::Blob(blob),
                 ];
-                let _ = storage.insert("gmp_embeddings", vec![record]);
+                let _ = storage.insert("gmp_embeddings_bin", vec![record]);
+
+                // Build HNSW index in-memory
+                let _ = self.hnsw_index.insert(chunk_id as u64, &embedding);
+                hnsw_built += 1;
                 emb_count += 1;
             }
         }
-        eprintln!("[migrate] Migrated {} embeddings", emb_count);
+        eprintln!("[migrate] Migrated {} embeddings ({} HNSW vectors)", emb_count, hnsw_built);
+        if hnsw_built > 0 {
+            let _ = self.hnsw_index.build_index();
+            eprintln!("[migrate] HNSW index built ({} vectors)", self.hnsw_index.len());
+        }
 
         // CRITICAL: flush all buffered inserts
         self.storage.lock().unwrap().flush_all_buffers()?;
@@ -309,6 +345,20 @@ impl StorageEngine {
         };
         if !storage.has_table("gmp_embeddings") {
             storage.create_table(&emb_table)?;
+        }
+
+        // gmp_embeddings_bin: binary BLOB storage for embeddings (no JSON parse overhead)
+        let emb_bin_table = TableInfo {
+            name: "gmp_embeddings_bin".to_string(),
+            columns: vec![
+                ColumnDefinition::new("chunk_id", "INTEGER"),
+                ColumnDefinition::new("dimension", "INTEGER"),
+                ColumnDefinition::new("embedding", "BLOB"),
+            ],
+            ..Default::default()
+        };
+        if !storage.has_table("gmp_embeddings_bin") {
+            storage.create_table(&emb_bin_table)?;
         }
 
         Ok(())
@@ -804,10 +854,38 @@ impl StorageEngine {
         if !self.hnsw_index.is_empty() {
             return Ok(self.hnsw_index.len());
         }
+
+        // Try gmp_embeddings_bin (binary BLOB) first, then fall back to gmp_embeddings (JSON)
         let storage = self.storage.lock().unwrap();
-        let embeddings = storage.scan("gmp_embeddings").unwrap_or_default();
+        let bin_embs = storage.scan("gmp_embeddings_bin").unwrap_or_default();
+        let json_embs = if bin_embs.is_empty() {
+            storage.scan("gmp_embeddings").unwrap_or_default()
+        } else {
+            Vec::new()
+        };
+        drop(storage);
+
         let mut count = 0;
-        for emb in &embeddings {
+
+        // Binary BLOB path: [dim u32 BE][f32 BE × dim]
+        for emb in &bin_embs {
+            if emb.len() >= 3 {
+                let chunk_id = doc_value_int(emb, 0);
+                let blob = doc_value_blob(emb, 2);
+                if blob.len() < 4 { continue; }
+                let dim = u32::from_be_bytes([blob[0], blob[1], blob[2], blob[3]]) as usize;
+                if blob.len() != 4 + dim * 4 { continue; }
+                let mut vec = vec![0.0f32; dim];
+                for i in 0..dim {
+                    vec[i] = f32::from_be_bytes([blob[4 + i*4], blob[5 + i*4], blob[6 + i*4], blob[7 + i*4]]);
+                }
+                let _ = self.hnsw_index.insert(chunk_id as u64, &vec);
+                count += 1;
+            }
+        }
+
+        // JSON fallback path
+        for emb in &json_embs {
             if emb.len() >= 2 {
                 let chunk_id = doc_value_int(emb, 0);
                 let json_str = doc_value_str(emb, 1);
@@ -817,9 +895,14 @@ impl StorageEngine {
                 }
             }
         }
-        drop(storage);
+
         if count > 0 {
             self.hnsw_index.build_index()?;
+            eprintln!(
+                "[rebuild] HNSW index built from {} vectors (dim={})",
+                count,
+                self.hnsw_index.dimension()
+            );
         }
         Ok(count)
     }
@@ -1016,6 +1099,19 @@ fn doc_value_int_opt(doc: &[Value], idx: usize) -> Option<i64> {
         }
     } else {
         None
+    }
+}
+
+fn doc_value_blob(doc: &[Value], idx: usize) -> Vec<u8> {
+    if idx < doc.len() {
+        match &doc[idx] {
+            Value::Blob(b) => b.clone(),
+            Value::Text(s) => s.as_bytes().to_vec(),
+            Value::Integer(i) => i.to_le_bytes().to_vec(),
+            _ => Vec::new(),
+        }
+    } else {
+        Vec::new()
     }
 }
 
