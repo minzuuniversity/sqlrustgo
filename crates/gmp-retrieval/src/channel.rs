@@ -185,14 +185,14 @@ fn get_builtin_rules() -> Vec<KnowledgeRule> {
 
 /// Vector channel using embeddings + SQLite cosine similarity
 pub struct VectorChannel {
-    storage: std::sync::Arc<gmp_storage::StorageEngine>,
+    storage: std::sync::Arc<dyn gmp_storage::GmpStorage>,
     ollama_url: String,
     embedding_model: String,
 }
 
 impl VectorChannel {
     pub fn new(
-        storage: std::sync::Arc<gmp_storage::StorageEngine>,
+        storage: std::sync::Arc<dyn gmp_storage::GmpStorage>,
         ollama_url: String,
         embedding_model: String,
     ) -> Self {
@@ -263,11 +263,11 @@ impl Default for VectorChannel {
 /// FTS channel using BM25
 #[derive(Clone)]
 pub struct FtsChannel {
-    storage: std::sync::Arc<gmp_storage::StorageEngine>,
+    storage: std::sync::Arc<dyn gmp_storage::GmpStorage>,
 }
 
 impl FtsChannel {
-    pub fn new(storage: std::sync::Arc<gmp_storage::StorageEngine>) -> Self {
+    pub fn new(storage: std::sync::Arc<dyn gmp_storage::GmpStorage>) -> Self {
         Self { storage }
     }
 
@@ -377,7 +377,10 @@ pub struct FourChannelEngine {
 }
 
 impl FourChannelEngine {
-    pub fn new(storage: gmp_storage::StorageEngine, agent_knowledge_dir: Option<&str>) -> Self {
+    pub fn new(
+        storage: std::sync::Arc<dyn gmp_storage::GmpStorage>,
+        agent_knowledge_dir: Option<&str>,
+    ) -> Self {
         let rules = if let Some(dir) = agent_knowledge_dir {
             RuleChannel::from_yaml_files(dir)
                 .map(|c| c.rules)
@@ -386,8 +389,8 @@ impl FourChannelEngine {
             get_builtin_rules()
         };
 
-        let storage_for_fts = std::sync::Arc::new(storage);
-        let storage_for_vector = storage_for_fts.clone();
+        let storage_for_fts = storage.clone();
+        let storage_for_vector = storage;
         Self {
             rule: RuleChannel::new(rules.clone()),
             vector: VectorChannel::new(
