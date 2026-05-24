@@ -10,7 +10,7 @@ use rustc_hash::FxHashMap;
 use std::io::{Read, Write};
 use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, Semaphore};
 use std::thread;
 use std::time::Duration;
 
@@ -40,6 +40,8 @@ pub struct BinlogServer {
     binlog_writer: Arc<Mutex<BinlogWriter>>,
     subscribers: Arc<Mutex<FxHashMap<u32, SlaveSubscriber>>>,
     is_running: Arc<Mutex<bool>>,
+    /// Max concurrent slave connections (bounded thread pool via semaphore)
+    thread_limit: Arc<Semaphore>,
 }
 
 impl BinlogServer {
@@ -48,13 +50,13 @@ impl BinlogServer {
         port: u16,
         server_id: u32,
         binlog_path: PathBuf,
+        max_connections: usize,
     ) -> std::io::Result<Self> {
         let addr: SocketAddr = format!("{}:{}", host, port).parse().unwrap();
         let listener = TcpListener::bind(addr)?;
         listener.set_nonblocking(true)?;
 
         let binlog_writer = BinlogWriter::new(binlog_path.clone())?;
-
         Ok(Self {
             listener,
             server_id,
@@ -63,6 +65,7 @@ impl BinlogServer {
             binlog_writer: Arc::new(Mutex::new(binlog_writer)),
             subscribers: Arc::new(Mutex::new(FxHashMap::default())),
             is_running: Arc::new(Mutex::new(false)),
+            thread_limit: Arc::new(Semaphore::new(max_connections)),
         })
     }
 
@@ -71,11 +74,18 @@ impl BinlogServer {
         let listener = &self.listener;
         let subscribers = self.subscribers.clone();
         let is_running = self.is_running.clone();
+        let thread_limit = self.thread_limit.clone();
 
         loop {
             if !*is_running.lock().unwrap() {
                 break;
             }
+
+            // Acquire semaphore slot (bounded concurrent connections)
+            let permit = match thread_limit.acquire() {
+                Ok(p) => p,
+                Err(_) => continue, // semaphore already closed
+            };
 
             match listener.accept() {
                 Ok((stream, addr)) => {
@@ -95,12 +105,15 @@ impl BinlogServer {
                         ) {
                             eprintln!("Error handling slave {}: {}", addr, e);
                         }
+                        drop(permit); // release semaphore slot when done
                     });
                 }
                 Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                    drop(permit); // didn't actually accept, release slot
                     thread::sleep(Duration::from_millis(10));
                 }
                 Err(e) => {
+                    drop(permit); // release on error
                     eprintln!("Accept error: {}", e);
                 }
             }
@@ -301,6 +314,7 @@ impl Clone for BinlogServer {
             binlog_writer: self.binlog_writer.clone(),
             subscribers: self.subscribers.clone(),
             is_running: self.is_running.clone(),
+            thread_limit: self.thread_limit.clone(),
         }
     }
 }
@@ -314,7 +328,7 @@ mod tests {
         let temp_dir = std::env::temp_dir();
         let binlog_path = temp_dir.join("test_binlog_server");
 
-        let server = BinlogServer::new("127.0.0.1", 0, 1, binlog_path);
+        let server = BinlogServer::new("127.0.0.1", 0, 1, binlog_path, 16);
         assert!(server.is_ok());
     }
 }

@@ -2,7 +2,7 @@
 //!
 //! Provides an in-memory inverted index for fast text search.
 
-use std::collections::{HashMap, HashSet};
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use super::tokenizer::MultiLanguageTokenizer;
 
@@ -10,7 +10,7 @@ use super::tokenizer::MultiLanguageTokenizer;
 ///
 /// Maps tokens to document IDs, enabling fast search operations.
 pub struct InvertedIndex {
-    index: HashMap<String, HashSet<u64>>,
+    index: FxHashMap<String, FxHashSet<u64>>,
     tokenizer: MultiLanguageTokenizer,
     doc_count: u64,
 }
@@ -18,7 +18,7 @@ pub struct InvertedIndex {
 impl InvertedIndex {
     pub fn new() -> Self {
         Self {
-            index: HashMap::new(),
+            index: FxHashMap::default(),
             tokenizer: MultiLanguageTokenizer::new(),
             doc_count: 0,
         }
@@ -54,7 +54,7 @@ impl InvertedIndex {
             return Vec::new();
         }
 
-        let mut result: Option<HashSet<u64>> = None;
+        let mut result: Option<FxHashSet<u64>> = None;
 
         for token in &tokens {
             if let Some(doc_ids) = self.index.get(token) {
@@ -85,7 +85,7 @@ impl InvertedIndex {
     /// Optimized with early termination when length difference exceeds max_distance
     pub fn fuzzy_search(&self, query: &str, max_distance: usize) -> Vec<u64> {
         let tokens = self.tokenizer.tokenize(query);
-        let mut results: HashMap<u64, usize> = HashMap::new();
+        let mut results: FxHashMap<u64, usize> = FxHashMap::default();
 
         for term in self.index.keys() {
             for token in &tokens {
