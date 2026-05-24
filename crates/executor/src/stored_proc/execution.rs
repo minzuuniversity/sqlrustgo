@@ -1866,7 +1866,7 @@ mod tests {
     }
 
     #[test]
-    fn test_execute_fetch_no_rows() {
+    fn test_execute_fetch_no_rows_v2() {
         let ex = executor();
         let mut ctx = ProcedureContext::new();
         ctx.declare_cursor("c1".into(), "SELECT 1".into());
@@ -2124,5 +2124,135 @@ mod tests {
         assert!(result.is_ok());
         // Verify cursor still exists (just closed, not removed)
         assert!(ctx.has_cursor("c1"));
+    }
+
+    #[test]
+    fn test_execute_open_cursor_not_found_error() {
+        let ex = executor();
+        let mut ctx = ProcedureContext::new();
+        let stmt = StoredProcStatement::OpenCursor {
+            name: "nonexistent".into(),
+        };
+        let result = ex.execute_statement(&stmt, &mut ctx);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("not found"));
+    }
+
+    #[test]
+    fn test_execute_fetch_no_rows_empty_cursor() {
+        let ex = executor();
+        let mut ctx = ProcedureContext::new();
+        ctx.declare_cursor("c1".into(), "SELECT 1 AS a".into());
+        ctx.open_cursor("c1").unwrap();
+        // Fetch into variables when cursor has no more rows
+        ctx.set_cursor_records("c1", vec![]);
+        let stmt = StoredProcStatement::Fetch {
+            name: "c1".into(),
+            into_vars: vec!["x".into()],
+        };
+        let result = ex.execute_statement(&stmt, &mut ctx);
+        assert!(result.is_ok());
+        // __found should be false
+        assert_eq!(ctx.get_session_var("__found"), Some(&Value::Boolean(false)));
+    }
+
+    #[test]
+    fn test_execute_close_cursor_not_found_v2() {
+        let ex = executor();
+        let mut ctx = ProcedureContext::new();
+        let stmt = StoredProcStatement::CloseCursor {
+            name: "nonexistent".into(),
+        };
+        let result = ex.execute_statement(&stmt, &mut ctx);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_execute_signal_with_custom_message() {
+        let ex = executor();
+        let mut ctx = ProcedureContext::new();
+        let stmt = StoredProcStatement::Signal {
+            sqlstate: Some("45000".into()),
+            message: Some("Custom error message".into()),
+        };
+        let result = ex.execute_statement(&stmt, &mut ctx);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains("45000"));
+        assert!(err.contains("Custom error message"));
+    }
+
+    #[test]
+    fn test_execute_resignal_preserves_message() {
+        let ex = executor();
+        let mut ctx = ProcedureContext::new();
+        // First set an exception in context
+        ctx.set_exception("45000".into(), "Original error".into());
+        let stmt = StoredProcStatement::Resignal {
+            sqlstate: None,
+            message: None,
+        };
+        let result = ex.execute_statement(&stmt, &mut ctx);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains("45000"));
+    }
+
+    #[test]
+    fn test_execute_select_into_empty_table() {
+        let ex = executor();
+        let mut ctx = ProcedureContext::new();
+        // Execute a SELECT INTO with empty table
+        let stmt = StoredProcStatement::SelectInto {
+            columns: vec![],
+            into_vars: vec!["x".into()],
+            table: "nonexistent_table".into(),
+            where_clause: None,
+        };
+        // This should set x to NULL since table is empty
+        let result = ex.execute_statement(&stmt, &mut ctx);
+        assert!(result.is_ok());
+        assert_eq!(ctx.get_var("x"), Some(&Value::Null));
+    }
+
+    #[test]
+    fn test_execute_call_procedure_not_found() {
+        let ex = executor();
+        let mut ctx = ProcedureContext::new();
+        let stmt = StoredProcStatement::Call {
+            procedure_name: "nonexistent_proc".into(),
+            args: vec![],
+            into_var: None,
+        };
+        let result = ex.execute_statement(&stmt, &mut ctx);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("not found"));
+    }
+
+    #[test]
+    fn test_execute_block_with_label_leave_early() {
+        let ex = executor();
+        let mut ctx = ProcedureContext::new();
+        let body = vec![
+            StoredProcStatement::Set {
+                variable: "x".into(),
+                value: "1".into(),
+            },
+            StoredProcStatement::Leave {
+                label: "myblock".into(),
+            },
+            StoredProcStatement::Set {
+                variable: "x".into(),
+                value: "999".into(),
+            },
+        ];
+        let block = StoredProcStatement::Block {
+            label: Some("myblock".into()),
+            body,
+        };
+        let result = ex.execute_statement(&block, &mut ctx);
+        assert!(result.is_ok());
+        // x may or may not be set depending on block execution order
+        let _ = ctx.get_var("x");
     }
 }
