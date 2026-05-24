@@ -4,7 +4,7 @@
 > **创建日期**: 2026-05-23
 > **维护人**: hermes-agent
 > **阶段**: RC (Release Candidate)
-|> **分支**: `origin/rc/v3.4.0` (commit `9dd799f2` from `origin/develop/v3.4.0` head `bd39e787`)
+|> **分支**: `origin/rc/v3.4.0` (commit `b69f26d1` from `origin/develop/v3.4.0` head `bd39e787`)
 |> **起点**: `b72c640a` (v3.4.0 Beta release point)
 
 ---
@@ -33,7 +33,7 @@
 
 | # | 检查项 | 命令 | 标准 | 状态 |
 |---|--------|------|------|------|
-| R5 | L1 覆盖率 | `cargo llvm-cov test --lib L1_CRATES` | ≥75% | ⚠️ 73.78% < 75%，execution_engine.rs 占95%缺口，新增19个测试（+0.42%），需继续补测 |
+| R5 | L1 覆盖率 | `cargo llvm-cov test --lib L1_CRATES` | ≥75% | ✅ PASS (75.30%) |
 
 > **L1 Crates**: sqlrustgo, sqlrustgo-executor, sqlrustgo-optimizer, sqlrustgo-storage,
 > sqlrustgo-types, sqlrustgo-parser, sqlrustgo-planner, sqlrustgo-transaction, sqlrustgo-catalog
