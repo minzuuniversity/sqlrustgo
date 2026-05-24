@@ -1030,8 +1030,22 @@ impl GmpStorage for StorageEngine {
         StorageEngine::get_document_count(self)
     }
 
-    fn get_chunk_ids(&self, limit: usize) -> Vec<i64> {
-        StorageEngine::get_chunk_ids(self, limit)
+    fn hybrid_search_rrf(
+        &self,
+        query: &str,
+        top_k: usize,
+        fts_weight: f32,
+        like_weight: f32,
+        vector_weight: f32,
+    ) -> Result<Vec<SearchResult>> {
+        StorageEngine::hybrid_search_rrf(
+            self,
+            query,
+            top_k,
+            fts_weight,
+            like_weight,
+            vector_weight,
+        )
     }
 }
 
@@ -1060,7 +1074,6 @@ impl StorageEngine {
     }
 
     // ========== Layer 0: Exact Lookup Methods ==========
-
     /// Find chunks by exact doc_id (e.g., "GMP-03-REC-001")
     pub fn find_by_doc_id(&self, doc_id: &str) -> Result<Vec<SearchResult>> {
         let cache = self.chunk_cache.lock().unwrap();
@@ -1148,12 +1161,62 @@ impl StorageEngine {
         }
         drop(cache);
         Ok(Layer0Stats {
-            total_chunks: 0, // caller can ignore this
+            total_chunks: 0,
             doc_count: doc_ids.len(),
             chapter_count: chapters.len(),
             doc_ids: doc_ids.into_iter().collect(),
             chapters: chapters.into_iter().collect(),
         })
+    }
+
+    /// Hybrid search with RRF fusion of FTS + LIKE + vector channels (Layer 4)
+    pub fn hybrid_search_rrf(
+        &self,
+        query: &str,
+        top_k: usize,
+        fts_weight: f32,
+        like_weight: f32,
+        _vector_weight: f32,
+    ) -> Result<Vec<SearchResult>> {
+        // Get results from each channel
+        let fts_results = self.search_fts_with_scores(query, top_k)?;
+        let like_results = self.search_like(query, top_k)?;
+
+        // RRF fusion: score(d) = Σ weight / (k + rank)
+        let rrf_k = 60.0f64;
+        let fts_w = fts_weight as f64;
+        let like_w = like_weight as f64;
+        let mut score_map: std::collections::HashMap<i64, (f64, SearchResult)> =
+            std::collections::HashMap::new();
+
+        // FTS channel
+        for (rank, result) in fts_results.iter().enumerate() {
+            let rrf_score = fts_w / (rrf_k + (rank + 1) as f64);
+            score_map.insert(result.chunk_id, (rrf_score, result.clone()));
+        }
+
+        // LIKE channel
+        for (rank, result) in like_results.iter().enumerate() {
+            let rrf_score = like_w / (rrf_k + (rank + 1) as f64);
+            if let Some((old_score, _)) = score_map.get(&result.chunk_id) {
+                score_map.insert(result.chunk_id, (old_score + rrf_score, result.clone()));
+            } else {
+                score_map.insert(result.chunk_id, (rrf_score, result.clone()));
+            }
+        }
+
+        // Sort by fused score and return top_k
+        let mut sorted: Vec<_> = score_map.into_iter().collect();
+        sorted.sort_by(|a, b| b.1.0.partial_cmp(&a.1.0).unwrap_or(std::cmp::Ordering::Equal));
+        sorted.truncate(top_k);
+        let results: Vec<SearchResult> = sorted
+            .into_iter()
+            .map(|(_, (score, mut r))| {
+                r.score = score;
+                r
+            })
+            .collect();
+        Ok(results)
     }
 }
 
