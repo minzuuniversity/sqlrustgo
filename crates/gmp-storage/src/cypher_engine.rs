@@ -2,11 +2,13 @@
 
 use anyhow::{Context, Result};
 use sqlrustgo_graph::{
-    execute_cypher, GraphStore, InMemoryGraphStore, NodeId, PropertyMap, PropertyValue,
+    execute_cypher, DiskGraphStore, GraphStore, NodeId, PropertyMap, PropertyValue,
 };
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Mutex;
+
+const GRAPH_DIR: &str = "graph_data";
 
 /// Cypher query result
 #[derive(Debug, Clone)]
@@ -15,26 +17,38 @@ pub struct CypherQueryResult {
     pub rows: Vec<Vec<PropertyValue>>,
 }
 
-/// Wrapper around sqlrustgo_graph for GMP storage (in-memory)
+/// Wrapper around sqlrustgo_graph for GMP storage (disk-backed with WAL)
 ///
-/// Uses Mutex so it can be cheaply cloned across channels.
+/// Uses DiskGraphStore: WAL-enabled persistent storage with crash recovery.
+/// 图数据在服务重启后自动从 WAL 恢复。
 pub struct CypherEngine {
-    store: Mutex<InMemoryGraphStore>,
+    store: Mutex<DiskGraphStore>,
+    /// Cached graph directory path for clear/clone recreation
+    graph_dir: PathBuf,
 }
 
 impl CypherEngine {
-    /// Create a new Cypher engine (in-memory)
-    pub fn new(_data_dir: PathBuf) -> Result<Self> {
-        let store = InMemoryGraphStore::new();
+    /// Create a new Cypher engine with disk-backed WAL storage
+    pub fn new(data_dir: PathBuf) -> Result<Self> {
+        let graph_dir = data_dir.join(GRAPH_DIR);
+        let store = DiskGraphStore::load(graph_dir.clone())
+            .context("Failed to load DiskGraphStore from disk")?;
         Ok(Self {
             store: Mutex::new(store),
+            graph_dir,
         })
     }
 
-    /// Create a new Cypher engine with an empty in-memory store (no persistence)
+    /// Create a new in-memory Cypher engine (no persistence — for testing)
     pub fn in_memory() -> Self {
+        let graph_dir = tempfile::TempDir::new()
+            .expect("TempDir for in_memory engine should not fail")
+            .into_path();
+        let store = DiskGraphStore::new_without_wal(graph_dir.clone())
+            .expect("DiskGraphStore::new_without_wal should not fail for temp dir");
         Self {
-            store: Mutex::new(InMemoryGraphStore::new()),
+            store: Mutex::new(store),
+            graph_dir,
         }
     }
 
@@ -105,11 +119,12 @@ impl CypherEngine {
             .and_then(|n| n.properties.get(property).cloned())
     }
 
-    /// Clear all data
+    /// Clear all graph data (creates fresh WAL-less store)
     pub fn clear(&self) {
+        let new_store = DiskGraphStore::new_without_wal(self.graph_dir.clone())
+            .expect("DiskGraphStore::new_without_wal should not fail in clear");
         let mut store = self.store.lock().unwrap();
-        // Recreate as fresh in-memory store (persistence files remain but data is cleared)
-        *store = InMemoryGraphStore::new();
+        *store = new_store;
     }
 
     /// Search nodes by property value
@@ -134,21 +149,29 @@ impl CypherEngine {
             .collect()
     }
 
-    /// Reload graph from disk
-    pub fn reload(&self, _data_dir: PathBuf) -> Result<()> {
-        let new_store = InMemoryGraphStore::new();
+    /// Reload graph from disk (re-read WAL and JSON files)
+    pub fn reload(&self, data_dir: PathBuf) -> Result<()> {
+        let graph_dir = data_dir.join(GRAPH_DIR);
+        let new_store = DiskGraphStore::load(graph_dir)
+            .context("Failed to reload DiskGraphStore from disk")?;
         let mut store = self.store.lock().unwrap();
         *store = new_store;
         Ok(())
+    }
+
+    /// Path to the graph data directory
+    pub fn graph_path(&self) -> PathBuf {
+        self.graph_dir.clone()
     }
 }
 
 impl Clone for CypherEngine {
     fn clone(&self) -> Self {
-        // Create a new engine with in-memory store as a cheap clone
-        // Note: true disk-backed clone would need shared access to the underlying files
+        let new_store = DiskGraphStore::new_without_wal(self.graph_dir.clone())
+            .expect("DiskGraphStore::new_without_wal should not fail in clone");
         Self {
-            store: Mutex::new(InMemoryGraphStore::new()),
+            store: Mutex::new(new_store),
+            graph_dir: self.graph_dir.clone(),
         }
     }
 }
@@ -169,7 +192,6 @@ mod tests {
     fn test_cypher_create_and_query() {
         let engine = CypherEngine::in_memory();
 
-        // Create a node
         let mut props = HashMap::new();
         props.insert(
             "name".to_string(),
@@ -179,7 +201,6 @@ mod tests {
         let node_id = engine.create_node("SOP", props).unwrap();
         assert_eq!(node_id, 0);
 
-        // Execute a query
         let result = engine.execute("MATCH (n:SOP) RETURN n").unwrap();
         assert_eq!(result.rows.len(), 1);
     }
@@ -195,7 +216,6 @@ mod tests {
     fn test_cypher_with_where() {
         let engine = CypherEngine::in_memory();
 
-        // Create nodes
         let mut props1 = HashMap::new();
         props1.insert("age".to_string(), PropertyValue::Int(30));
         engine.create_node("User", props1).unwrap();
@@ -211,15 +231,12 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "CypherEngine disk persistence not yet implemented (InMemoryGraphStore only)"]
     fn test_cypher_disk_store_persistence() {
         let temp_dir = TempDir::new().unwrap();
         let data_dir = temp_dir.path().to_path_buf();
 
-        // Create engine with disk store
         let engine = CypherEngine::new(data_dir.clone()).unwrap();
 
-        // Create a node
         let mut props = HashMap::new();
         props.insert(
             "name".to_string(),
@@ -227,11 +244,9 @@ mod tests {
         );
         engine.create_node("Product", props).unwrap();
 
-        // Verify it exists
         let result = engine.execute("MATCH (n:Product) RETURN n").unwrap();
         assert_eq!(result.rows.len(), 1);
 
-        // Reload from disk
         engine.reload(data_dir).unwrap();
         let result = engine.execute("MATCH (n:Product) RETURN n").unwrap();
         assert_eq!(result.rows.len(), 1);
@@ -248,9 +263,67 @@ mod tests {
         );
         engine.create_node("Test", props).unwrap();
 
-        // Clone creates independent store
         let engine2 = engine.clone();
         let result = engine2.execute("MATCH (n:Test) RETURN n").unwrap();
-        assert_eq!(result.rows.len(), 0); // clone is independent
+        assert_eq!(result.rows.len(), 0);
+    }
+
+    #[test]
+    fn test_cypher_clear() {
+        let temp_dir = TempDir::new().unwrap();
+        let data_dir = temp_dir.path().to_path_buf();
+
+        let engine = CypherEngine::new(data_dir).unwrap();
+
+        let mut props = HashMap::new();
+        props.insert(
+            "name".to_string(),
+            PropertyValue::String("ToBeCleared".to_string()),
+        );
+        engine.create_node("Item", props).unwrap();
+        assert_eq!(engine.node_count(), 1);
+
+        engine.clear();
+        assert_eq!(engine.node_count(), 0);
+    }
+
+    #[test]
+    fn test_cypher_wal_entry_types() {
+        let temp_dir = TempDir::new().unwrap();
+        let data_dir = temp_dir.path().to_path_buf();
+        let engine = CypherEngine::new(data_dir.clone()).unwrap();
+
+        let mut props1 = HashMap::new();
+        props1.insert(
+            "name".to_string(),
+            PropertyValue::String("Node1".to_string()),
+        );
+        let id1 = engine.create_node("Label", props1).unwrap();
+
+        let mut props2 = HashMap::new();
+        props2.insert(
+            "name".to_string(),
+            PropertyValue::String("Node2".to_string()),
+        );
+        let id2 = engine.create_node("Label", props2).unwrap();
+
+        engine.create_edge(id1, id2, "REL", HashMap::new()).unwrap();
+
+        engine.reload(data_dir).unwrap();
+        let result = engine.execute("MATCH (n:Label) RETURN n").unwrap();
+        assert_eq!(result.rows.len(), 2);
+
+        let edge_result = engine
+            .execute("MATCH (a:Label)-[:REL]->(b:Label) RETURN a, b")
+            .unwrap();
+        assert_eq!(edge_result.rows.len(), 1);
+    }
+
+    #[test]
+    fn test_graph_path() {
+        let temp_dir = TempDir::new().unwrap();
+        let data_dir = temp_dir.path().to_path_buf();
+        let engine = CypherEngine::new(data_dir.clone()).unwrap();
+        assert_eq!(engine.graph_path(), data_dir.join(GRAPH_DIR));
     }
 }
