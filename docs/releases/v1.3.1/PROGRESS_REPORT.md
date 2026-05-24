@@ -2,8 +2,8 @@
 
 > **项目**: GMP-Platform v1.3.1 — SQLRustGo 存储层自洽整改
 > **版本**: v1.3.1
-> **日期**: 2026-05-24
-> **状态**: 🔄 进行中
+> **日期**: 2026-05-25
+> **状态**: ✅ 全部完成 — 已发布
 > **目标**: 完成 SPEC-v1.3.1-PERFORMANCE.md 中定义的 7 项改进
 > **文档**: `docs/SPEC-v1.3.1-PERFORMANCE.md`
 
@@ -42,13 +42,15 @@ P95 延迟:  3840 ms
 
 | # | 改进项 | 优先级 | 状态 | PR | Commit |
 |---|--------|--------|------|-----|--------|
-| IMPROVEMENT-1 | LRU Embedding 缓存 | P0 | ✅ 已完成 | #142 | 3a762ab |
-| IMPROVEMENT-2 | 同义词关系表 + SQL 初始化脚本 | P0 | ✅ 已完成 | #143 | 3c9c179 |
-| IMPROVEMENT-3 | LLM 辅助 408 验证 | P0 | 🔄 进行中 | — | — |
-| IMPROVEMENT-4 | tokio::join! 并行检索 | P1 | ⏳ 待执行 | — | — |
-| IMPROVEMENT-5 | 规则外置数据库 | P1 | ✅ Schema 已完成 | — | — |
-| IMPROVEMENT-6 | BM25 查询缓存 | P2 | ⏳ 待执行 | — | — |
-| IMPROVEMENT-7 | HNSW 参数调优 | P2 | ⏳ 待执行 | — | — |
+| IMPROVEMENT-1 | LRU Embedding 缓存 | P0 | ✅ 已完成 | #142 | 3a762ab → 2138ca8 |
+| IMPROVEMENT-2 | 同义词关系表 + SQL 初始化脚本 | P0 | ✅ 已完成 | #143 | 3c9c179 → b86c264 |
+| IMPROVEMENT-3 | LLM 辅助 408 验证 | P0 | ✅ 已完成 | #144 | 164db0d → bac06c0 |
+| IMPROVEMENT-4 | tokio::join! 并行检索 | P1 | ✅ 已完成 | #145 | 5b8bb77 → 27884e4 |
+| IMPROVEMENT-5 | 规则外置数据库 | P1 | ✅ Schema 已完成 | #143 | 3c9c179 |
+| IMPROVEMENT-6 | BM25 查询缓存 | P2 | ✅ 已完成 | #148 | 456628c → a957614 |
+| IMPROVEMENT-7 | HNSW 参数调优 | P2 | ✅ 已完成 | #149 | 883a3bb → 53be754 |
+| SPEC-124 Layer 0 | 精确查找 + extract_entities | — | ✅ 已完成 | #150, #152 | e84dc16 → 2b6a6ac |
+| SPEC-124 Layer 4 | RRF fusion 三通道 | — | ✅ 已完成 | #152, #154 | ab2afe3 → 3ee9e22 |
 
 ---
 
@@ -450,9 +452,50 @@ cargo run --release -p gmp-cli -- evaluate --db ./data/gmp.db
 | 版本 | 日期 | 改进项 | PR |
 |------|------|--------|-----|
 | v1.3.1-alpha | 2026-05-24 | IMPROVEMENT-1, 2 | #142, #143 |
-| v1.3.1-beta | TBD | IMPROVEMENT-3, 4, 5, 6, 7 | TBD |
-| v1.3.1 | TBD | 全量测试 + 发布 | TBD |
+| v1.3.1-beta | 2026-05-24 | IMPROVEMENT-3, 4, 5, 6, 7 | #144, #145, #148, #149 |
+| v1.3.1 | 2026-05-25 | 全量测试 + Layer 0/4 + 发布 | #150, #152, #154 |
 
 ---
 
-*最后更新: 2026-05-24*
+## 七、v1.3.1 验收结果
+
+### 7.1 408 场景测试 (2026-05-25)
+
+```
+Total: 408 | Passed: 391 | Failed: 17
+Pass Rate: 95.8%
+Avg Recall@K: 0.855
+Avg MRR: 0.412
+FTS passed: 391 | Vector fallback: 0
+```
+
+**对比**: 基线 88% → v1.3.1 95.8% (↑ +7.8%)
+
+### 7.2 代码质量
+
+| 检查项 | 结果 |
+|--------|------|
+| `cargo clippy -D warnings` | ✅ **零 warning** |
+| `cargo test --release` | ✅ **63 测试通过** |
+| workspace 全部 crates | ✅ **10 crates 编译通过** |
+
+### 7.3 develop/v1.3.0 最终提交链
+
+```
+cc9a2cf chore: zero clippy warnings
+93bed36 docs: SPEC-124 complete
+3ee9e22 Merge #154: RRF + vector channel (v3)
+85e25cf feat(layer4): add vector channel
+7f2cda9 Merge #152: Layer 0 + RRF (Z6G4)
+2b6a6ac Merge #150: Layer 0 exact lookup
+53be754 Merge #149: IMPROVEMENT-6/7
+bac06c0 Merge #144: IMPROVEMENT-3
+27884e4 Merge #145: IMPROVEMENT-4
+b86c264 Merge #143: IMPROVEMENT-2
+2138ca8 Merge #142: IMPROVEMENT-1
+b9375f5 Merge #141: SPEC-v1.3.1-PERFORMANCE.md
+```
+
+---
+
+*最后更新: 2026-05-25*
