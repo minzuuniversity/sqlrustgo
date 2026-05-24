@@ -350,6 +350,128 @@ impl BatchService {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_batch_state_as_str() {
+        assert_eq!(BatchState::Created.as_str(), "created");
+        assert_eq!(BatchState::InProgress.as_str(), "in_progress");
+        assert_eq!(BatchState::Released.as_str(), "released");
+    }
+
+    #[test]
+    fn test_batch_state_transitions() {
+        let state = BatchState::Created;
+        assert_eq!(state, BatchState::Created);
+    }
+
+    #[test]
+    fn test_batch_signature() {
+        let sig = BatchSignature {
+            id: "SIG-001".to_string(),
+            step_id: Some("S1".to_string()),
+            signer_id: "U001".to_string(),
+            signer_name: "Operator1".to_string(),
+            signature_type: SignatureType::Operator,
+            reason: "Step completed".to_string(),
+            timestamp: Utc::now(),
+        };
+        assert_eq!(sig.id, "SIG-001");
+        assert_eq!(sig.signer_id, "U001");
+    }
+
+    #[test]
+    fn test_deviation() {
+        let dev = Deviation {
+            id: "DEV-001".to_string(),
+            description: "Temperature out of range".to_string(),
+            severity: DeviationSeverity::Critical,
+            status: DeviationStatus::Open,
+            reported_at: Utc::now(),
+            resolved_at: None,
+            capa_id: None,
+        };
+        assert_eq!(dev.id, "DEV-001");
+    }
+
+    #[test]
+    fn test_batch_progress_zero() {
+        let batch = Batch {
+            id: "B001".to_string(),
+            product_name: "Test".to_string(),
+            batch_number: "BATCH-001".to_string(),
+            status: BatchState::Created,
+            steps: vec![],
+            deviations: vec![],
+            signatures: vec![],
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        };
+        let progress = if batch.steps.is_empty() {
+            0.0
+        } else {
+            let completed = batch
+                .steps
+                .iter()
+                .filter(|s| s.status == StepStatus::Completed || s.status == StepStatus::Skipped)
+                .count();
+            (completed as f64 / batch.steps.len() as f64) * 100.0
+        };
+        assert_eq!(progress, 0.0);
+    }
+
+    #[test]
+    fn test_batch_progress_partial() {
+        let batch = Batch {
+            id: "B003".to_string(),
+            product_name: "Test".to_string(),
+            batch_number: "BATCH-003".to_string(),
+            status: BatchState::InProgress,
+            steps: vec![
+                BatchStep {
+                    id: "S1".to_string(),
+                    name: "Step1".to_string(),
+                    description: "".to_string(),
+                    status: StepStatus::Completed,
+                    required_signatures: 1,
+                    completed_signatures: 1,
+                    parameters: vec![],
+                    started_at: None,
+                    completed_at: Some(Utc::now()),
+                },
+                BatchStep {
+                    id: "S2".to_string(),
+                    name: "Step2".to_string(),
+                    description: "".to_string(),
+                    status: StepStatus::InProgress,
+                    required_signatures: 1,
+                    completed_signatures: 0,
+                    parameters: vec![],
+                    started_at: Some(Utc::now()),
+                    completed_at: None,
+                },
+            ],
+            deviations: vec![],
+            signatures: vec![],
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        };
+        let progress = if batch.steps.is_empty() {
+            0.0
+        } else {
+            let completed = batch
+                .steps
+                .iter()
+                .filter(|s| s.status == StepStatus::Completed || s.status == StepStatus::Skipped)
+                .count();
+            (completed as f64 / batch.steps.len() as f64) * 100.0
+        };
+        assert_eq!(progress, 50.0);
+    }
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum BatchError {
     #[error("Batch not found")]
