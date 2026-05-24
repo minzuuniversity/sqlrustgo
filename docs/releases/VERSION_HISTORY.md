@@ -34,7 +34,7 @@
 | v2.9.0 | 2026-05-05 | GA | 形式化验证卓越 | L4 |
 | v3.0.0 | TBD | 愿景 | 完整分布式数据库 | - |
 | v3.3.0 | 2026-05-20 | GA | Industrial Trust Platform（可信性工业闭环） | L4 |
-| v3.4.0 | TBD | RC | GMP Management Suite（管理套件） | L4 |
+| v3.4.0 | 2026-05-24 | RC | GMP Management Suite（管理套件） | L4 |
 
 ---
 

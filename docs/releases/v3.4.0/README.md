@@ -2,7 +2,7 @@
 
 > **状态**: RC (Release Candidate)
 > **起点**: develop/v3.4.0 (commit `b72c640a` from v3.3.0 GA)
-> **分支**: `rc/v3.4.0` (commit `27f851a1`)
+> **分支**: `rc/v3.4.0` (commit `b69f26d1`)
 > **Milestone**: v3.4.0 (id=TBD)
 > **同步完成**: 2026-05-23
 
