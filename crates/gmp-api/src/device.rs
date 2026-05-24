@@ -371,6 +371,82 @@ impl DeviceService {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_device_type_as_str() {
+        assert_eq!(DeviceType::Sensor.as_str(), "sensor");
+        assert_eq!(DeviceType::Thermometer.as_str(), "thermometer");
+        assert_eq!(DeviceType::PHMeter.as_str(), "ph_meter");
+    }
+
+    #[test]
+    fn test_device_status_as_str() {
+        assert_eq!(DeviceStatus::Online.as_str(), "online");
+        assert_eq!(DeviceStatus::Offline.as_str(), "offline");
+        assert_eq!(DeviceStatus::Maintenance.as_str(), "maintenance");
+    }
+
+    #[test]
+    fn test_device_error_as_str() {
+        let err = DeviceError::DeviceNotFound;
+        assert_eq!(err.to_string(), "Device not found");
+    }
+
+    #[test]
+    fn test_device_metadata() {
+        let meta = DeviceMetadata {
+            manufacturer: Some("Acme".to_string()),
+            model: Some("TC-100".to_string()),
+            serial_number: Some("SN12345".to_string()),
+            firmware_version: Some("1.0.0".to_string()),
+            tags: vec!["temp".to_string(), "gmp".to_string()],
+        };
+        assert_eq!(meta.manufacturer.as_deref(), Some("Acme"));
+        assert_eq!(meta.tags.len(), 2);
+    }
+
+    #[test]
+    fn test_protocol_as_str() {
+        assert_eq!(Protocol::OPCUA.as_str(), "OPC UA");
+        assert_eq!(Protocol::MQTT.as_str(), "MQTT");
+        assert_eq!(Protocol::ModbusTCP.as_str(), "Modbus TCP");
+    }
+
+    #[test]
+    fn test_device_service_new() {
+        let svc = DeviceService::new();
+        assert_eq!(svc.list_devices(None).len(), 0);
+    }
+
+    #[test]
+    fn test_device_service_register() {
+        let mut svc = DeviceService::new();
+        let device = Device {
+            id: "D001".to_string(),
+            name: "Sensor1".to_string(),
+            device_type: DeviceType::Sensor,
+            protocol: Protocol::OPCUA,
+            endpoint: "opc.tcp://localhost:4840".to_string(),
+            status: DeviceStatus::Offline,
+            last_reading: None,
+            last_connected: None,
+            metadata: DeviceMetadata {
+                manufacturer: None,
+                model: None,
+                serial_number: None,
+                firmware_version: None,
+                tags: vec![],
+            },
+        };
+        let id = svc.register_device(device);
+        assert!(id.is_ok());
+        assert_eq!(svc.list_devices(None).len(), 1);
+    }
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum DeviceError {
     #[error("Device not found")]
