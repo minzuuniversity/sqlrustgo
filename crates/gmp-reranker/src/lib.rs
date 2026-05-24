@@ -176,4 +176,5 @@ pub fn create_reranker(ollama_url: &str, model: &str) -> Arc<dyn Reranker> {
         Arc::new(NoopReranker)
     }
 }
+#[cfg(test)]
 mod tests;
