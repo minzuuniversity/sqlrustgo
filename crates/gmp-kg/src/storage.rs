@@ -511,6 +511,41 @@ impl KgStorage {
             relevance_count,
         })
     }
+
+    /// Extract GMP entities from query text using seed terms and extraction rules
+    /// Returns entities sorted by match length (longest match first)
+    pub fn extract_entities(&self, text: &str) -> Result<Vec<ExtractedEntity>> {
+        let terms = self.scan_terms()?;
+        let mut entities = Vec::new();
+
+        for term in &terms {
+            if text.contains(&term.canonical_term) {
+                entities.push(ExtractedEntity {
+                    term: term.canonical_term.clone(),
+                    term_type: term.term_type.clone(),
+                    entity_type: term.entity_type.clone(),
+                    confidence: 1.0,
+                });
+            }
+            for synonym in &term.synonyms {
+                if text.contains(synonym) {
+                    entities.push(ExtractedEntity {
+                        term: synonym.clone(),
+                        term_type: term.term_type.clone(),
+                        entity_type: term.entity_type.clone(),
+                        confidence: 0.9, // slightly lower for synonyms
+                    });
+                }
+            }
+        }
+
+        // Sort by longest match first (better specificity)
+        entities.sort_by(|a, b| b.term.len().cmp(&a.term.len()));
+        // Remove duplicates by term name
+        entities.dedup_by(|a, b| a.term == b.term);
+
+        Ok(entities)
+    }
 }
 
 /// Statistics about stored knowledge graph data
