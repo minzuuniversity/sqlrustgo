@@ -28,8 +28,13 @@ jobs:
 
       - name: RC Gate
         run: |
+          # Install Rust if not present (act-runner containers lack cargo)
+          if ! command -v cargo &>/dev/null; then
+            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable 2>/dev/null
+            export PATH="$HOME/.cargo/bin:$PATH"
+          fi
           cd repo
-          bash scripts/gate/check_rc_v340.sh
+          BRANCH="rc/v3.4.0" bash scripts/gate/check_rc_v340.sh
 
   rc-gate-full:
     runs-on: [hp-z6g4]
@@ -43,6 +48,10 @@ jobs:
 
       - name: TPC-H Full
         run: |
+          if ! command -v cargo &>/dev/null; then
+            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable 2>/dev/null
+            export PATH="$HOME/.cargo/bin:$PATH"
+          fi
           cd repo
           bash scripts/gate/check_tpch.sh --scale 1
 
