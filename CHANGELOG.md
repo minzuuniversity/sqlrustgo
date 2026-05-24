@@ -5,7 +5,51 @@ SQLRustGo 的所有显着更改都将记录在此文件中。
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [3.2.0] - 2026-05-18 (RC → GA)
+## [3.4.0] - 2026-05-23 (RC)
+
+### 目标
+
+GMP Management Suite（管理套件）版本，在 v3.3.0 可信内核基础上构建完整的管理套件。
+
+### 核心功能
+
+- **GMP Management API**: EBR Batch Manager、Electronic Signature、Audit、Device OPC UA、Rule Editor、Dashboard
+- **GMP Retrieval v2**: BM25 + RRF Fusion + Ollama Reranker + LLM Chat
+- **Trust Visualization**: CLI 工具 + Dashboard
+
+### 门禁状态
+
+| Gate | 结果 | 日期 |
+|------|------|------|
+| Alpha (16/16) | ✅ PASS | 2026-05-22 |
+| Beta (14/14) | ✅ PASS | 2026-05-22 |
+| RC | 进行中 | 2026-05-23 |
+
+详见: [docs/releases/v3.4.0/README.md](docs/releases/v3.4.0/README.md)
+
+## [3.3.0] - 2026-05-20 (GA)
+
+### 目标
+
+Industrial Trust Platform（可信内核）版本，建立工业级可信闭环。
+
+### 已完成
+
+| 功能 | PR | 状态 |
+|------|-----|------|
+| GMP Retrieval v1 | #1257 | ✅ |
+| Graph Generic Execute Cypher | #1327 | ✅ |
+| Executor 覆盖率 76.44% | #1324 | ✅ |
+
+### 战略演进
+
+```
+v3.2.0: Trust Convergence（可信收敛）✅ GA
+v3.3.0: Industrial Trust Platform（可信内核）✅ GA
+v3.4.0: GMP Management Suite（管理套件）← 当前 RC
+```
+
+## [3.2.0] - 2026-05-18 (GA)
 
 ### 目标
 

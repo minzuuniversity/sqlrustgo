@@ -6662,4 +6662,168 @@ mod tests {
 
         assert_eq!(result.rows.len(), 1001);
     }
+
+    #[test]
+    fn test_engine_config_builder() {
+        let config = EngineConfig::builder()
+            .cbo_enabled(false)
+            .stats_enabled(false)
+            .build();
+        assert!(!config.cbo_enabled);
+        assert!(!config.stats_enabled);
+    }
+
+    #[test]
+    fn test_engine_config_builder_default() {
+        // builder().build() uses false as defaults (different from EngineConfig::default())
+        let config = EngineConfig::builder().build();
+        assert!(!config.cbo_enabled);
+        assert!(!config.stats_enabled);
+    }
+
+    #[test]
+    fn test_cte_context_temp_table_name() {
+        let ctx = CteContext {
+            cte_tables: HashMap::new(),
+            temp_tables: Vec::new(),
+        };
+        let name = ctx.temp_table_name("my_cte");
+        assert!(name.contains("__cte_my_cte_"));
+    }
+
+    #[test]
+    fn test_cte_context_temp_table_name_unique() {
+        let ctx = CteContext {
+            cte_tables: HashMap::new(),
+            temp_tables: Vec::new(),
+        };
+        let name1 = ctx.temp_table_name("cte1");
+        let name2 = ctx.temp_table_name("cte1");
+        assert_ne!(name1, name2);
+    }
+
+    #[test]
+    fn test_engine_config_default() {
+        let config = EngineConfig::default();
+        assert!(config.cbo_enabled);
+        assert!(config.stats_enabled);
+    }
+
+    #[test]
+    fn test_engine_config_clone() {
+        let config = EngineConfig::builder().cbo_enabled(false).build();
+        let cloned = config.clone();
+        assert_eq!(cloned.cbo_enabled, config.cbo_enabled);
+    }
+
+    #[test]
+    fn test_execution_engine_current_user() {
+        let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+        let mut engine = ExecutionEngine::new(storage);
+
+        // Initially no user
+        assert!(engine.get_current_user().is_none());
+
+        // Set user
+        let user = UserIdentity::new("alice", "localhost");
+        engine.set_current_user(user);
+        assert!(engine.get_current_user().is_some());
+
+        // Clear user
+        engine.clear_current_user();
+        assert!(engine.get_current_user().is_none());
+    }
+
+    #[test]
+    fn test_execution_engine_estimate_row_count() {
+        let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+        let mut engine = ExecutionEngine::new(storage);
+
+        engine
+            .execute("CREATE TABLE t (id INTEGER, name TEXT)")
+            .unwrap();
+        for i in 0..100 {
+            engine
+                .execute(&format!("INSERT INTO t VALUES ({}, 'name{}')", i, i))
+                .unwrap();
+        }
+
+        let estimate = engine.estimate_row_count("t");
+        assert_eq!(estimate, 1000);
+    }
+
+    #[test]
+    fn test_execution_engine_estimate_selectivity() {
+        let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+        let mut engine = ExecutionEngine::new(storage);
+        engine
+            .execute("CREATE TABLE t (id INTEGER, name TEXT)")
+            .unwrap();
+
+        // Without column stats, default 0.1
+        let sel = engine.estimate_selectivity("t", "id");
+        assert_eq!(sel, 0.1);
+    }
+
+    #[test]
+    fn test_execution_engine_estimate_seq_scan_cost() {
+        let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+        let mut engine = ExecutionEngine::new(storage);
+        engine.execute("CREATE TABLE t (id INTEGER)").unwrap();
+        // estimate_row_count returns default 1000 without ANALYZE
+        let cost = engine.estimate_seq_scan_cost("t");
+        assert_eq!(cost, 1000.0);
+    }
+
+    #[test]
+    fn test_execution_engine_estimate_index_scan_cost() {
+        let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+        let mut engine = ExecutionEngine::new(storage);
+        engine.execute("CREATE TABLE t (id INTEGER)").unwrap();
+        let cost = engine.estimate_index_scan_cost("t", 0.1);
+        // rows=1000 (default) * 0.1 selectivity * 0.5 = 50; + 10 = 60
+        assert_eq!(cost, 60.0);
+    }
+
+    #[test]
+    fn test_execution_engine_estimate_index_benefit() {
+        let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+        let mut engine = ExecutionEngine::new(storage);
+        engine.execute("CREATE TABLE t (id INTEGER)").unwrap();
+        // seq_cost = 1000, index_cost = 60 → benefit = 940
+        let benefit = engine.estimate_index_benefit("t", 0.1);
+        assert_eq!(benefit, 940.0);
+    }
+
+    #[test]
+    fn test_execution_engine_should_use_index() {
+        let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+        let mut engine = ExecutionEngine::new(storage);
+        engine.execute("CREATE TABLE t (id INTEGER)").unwrap();
+        assert!(engine.should_use_index("t", "id"));
+    }
+
+    #[test]
+    fn test_execution_engine_estimate_join_cost_hash() {
+        let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+        let mut engine = ExecutionEngine::new(storage);
+        engine.execute("CREATE TABLE t1 (id INTEGER)").unwrap();
+        engine.execute("CREATE TABLE t2 (id INTEGER)").unwrap();
+        // Without ANALYZE, default row count = 1000 each
+        let cost = engine.estimate_join_cost("t1", "t2", "hash");
+        // hash: 1000*0.8 + 1000*0.8 = 800 + 800 = 1600
+        assert_eq!(cost, 1600.0);
+    }
+
+    #[test]
+    fn test_execution_engine_estimate_join_cost_nested_loop() {
+        let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+        let mut engine = ExecutionEngine::new(storage);
+        engine.execute("CREATE TABLE t1 (id INTEGER)").unwrap();
+        engine.execute("CREATE TABLE t2 (id INTEGER)").unwrap();
+        // Without ANALYZE, default row count = 1000 each
+        let cost = engine.estimate_join_cost("t1", "t2", "nested_loop");
+        // nested loop: left + left*right*0.1 = 1000 + 1000*1000*0.1 = 101000
+        assert_eq!(cost, 101000.0);
+    }
 }
