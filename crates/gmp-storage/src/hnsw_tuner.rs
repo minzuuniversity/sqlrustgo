@@ -49,7 +49,7 @@ impl HnswParams {
 }
 
 /// Auto-tune HNSW index parameters based on current vector count
-pub fn auto_tune_hnsw(index: &HnswVectorIndex, current_count: usize) -> HnswParams {
+pub fn auto_tune_hnsw(_index: &HnswVectorIndex, current_count: usize) -> HnswParams {
     let params = HnswParams::for_count(current_count);
 
     // Log the tuning decision

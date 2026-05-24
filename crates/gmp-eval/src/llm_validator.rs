@@ -192,7 +192,7 @@ pub async fn evaluate_with_llm(
     scenario: &TestScenario,
     search_results: &[SearchResult],
     validator: &LlmValidator,
-    top_k: usize,
+    _top_k: usize,
 ) -> LlmEvalResult {
     // Step 1: Original keyword matching (fallback)
     let keyword_pass = keyword_match(scenario, search_results);
@@ -261,6 +261,7 @@ fn keyword_match(scenario: &TestScenario, results: &[SearchResult]) -> bool {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "UPPERCASE")]
+#[allow(clippy::upper_case_acronyms)]
 pub enum EvalVerdict {
     PASS,
     PARTIAL,

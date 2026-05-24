@@ -2,11 +2,13 @@
 //! Outputs every query, retrieved docs, expected keywords, and pass/fail for manual review
 //! Supports LLM-assisted semantic validation (IMPROVEMENT-3)
 
+#![allow(dead_code, clippy::upper_case_acronyms)]
+
 mod llm_validator;
 
 use anyhow::{Context, Result};
 use clap::Parser;
-use crate::llm_validator::{EvalVerdict, LlmValidationResult, LlmValidator};
+use crate::llm_validator::LlmValidator;
 use gmp_storage::{StorageConfig, StorageEngine};
 use std::collections::HashMap;
 
