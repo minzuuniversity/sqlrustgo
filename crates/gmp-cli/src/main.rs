@@ -617,17 +617,14 @@ async fn main() -> Result<()> {
                 use_sqlrustgo_storage: true,
                 db_path: db.clone(),
             };
-            let engine = gmp_storage::StorageEngine::new(config)
-                .context("Failed to init storage")?;
+            let engine =
+                gmp_storage::StorageEngine::new(config).context("Failed to init storage")?;
 
             let records = engine.scan_audit_chain()?;
             let filtered: Vec<_> = if let Some(ref wo) = work_order_id {
                 records
                     .into_iter()
-                    .filter(|r| {
-                        r.iter()
-                            .any(|v| v.to_string().contains(wo))
-                    })
+                    .filter(|r| r.iter().any(|v| v.to_string().contains(wo)))
                     .collect()
             } else {
                 records
@@ -635,14 +632,8 @@ async fn main() -> Result<()> {
 
             let mut sorted = filtered;
             sorted.sort_by(|a, b| {
-                let ta = a
-                    .get(3)
-                    .and_then(|v| v.as_integer())
-                    .unwrap_or(0);
-                let tb = b
-                    .get(3)
-                    .and_then(|v| v.as_integer())
-                    .unwrap_or(0);
+                let ta = a.get(3).and_then(|v| v.as_integer()).unwrap_or(0);
+                let tb = b.get(3).and_then(|v| v.as_integer()).unwrap_or(0);
                 tb.cmp(&ta)
             });
 
