@@ -2,7 +2,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/Rust-1.85+-dea584?style=flat-square&logo=rust" alt="Rust">
-  <img src="https://img.shields.io/badge/version-v3.4.0--RC-blue" alt="Version">
+  <img src="https://img.shields.io/badge/version-v3.4.0--GA-blue" alt="Version">
   <img src="https://img.shields.io/badge/branch-develop%2Fv3.4.0-blue" alt="Branch">
   <img src="https://img.shields.io/badge/license-MIT-green" alt="License">
 </p>
@@ -13,9 +13,9 @@ SQLRustGo 是一个使用 Rust 实现的关系型数据库教学与工程化项�
 
 | 项目 | 当前值 |
 |------|--------|
-| 当前版本状态 | **v3.4.0 (RC)** |
-| 当前主分支 | **develop/v3.4.0** |
-| 当前阶段 | **RC (发布候选)** |
+| 当前版本状态 | **v3.4.0 (GA)** |
+| 当前主分支 | **main** |
+| 当前阶段 | **GA (正式发布)** |
 | 上一稳定版本 | v3.3.0 (GA) |
 | 版本目标 | GMP Management Suite（管理套件） |
 

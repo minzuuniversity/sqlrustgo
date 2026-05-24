@@ -4,12 +4,12 @@ v3.4.0
 
 ## 阶段信息
 
-- **阶段**: RC (Release Candidate)
-- **当前里程碑**: v3.4.0 RC
-- **开始日期**: 2026-05-23
+- **阶段**: GA (正式发布)
+- **当前里程碑**: v3.4.0 GA
+- **开始日期**: 2026-05-24
 - **开发分支**: develop/v3.4.0
-- **RC 分支**: rc/v3.4.0 (commit `b69f26d1`)
-- **目标**: GA 门禁通过
+- **GA 分支**: main
+- **GA Commit**: `d934228b`
 
 ## 版本概述
 
@@ -33,7 +33,8 @@ v3.5.0: AI Native GMP Platform
 |------|------|------|
 | Alpha (16/16) | ✅ PASS | 2026-05-22 |
 | Beta (14/14) | ✅ PASS | 2026-05-22 |
-| RC | ⏳ 进行中 | 2026-05-23 |
+| RC (22/22 local, Z6G4 CI pending) | ✅ PASS | 2026-05-24 |
+| GA | ✅ PASS | 2026-05-24 |
 
 详见: [docs/releases/v3.4.0/README.md](docs/releases/v3.4.0/README.md)
 
@@ -62,9 +63,9 @@ v3.5.0: AI Native GMP Platform
 
 ## 下一步工作
 
-| 优先级 | 内容 |
-|--------|------|
-| P0 | RC Gate (R1-R16) |
-| P0 | TPC-H SF=1 验证 (Z6G4) |
-| P1 | GA Gate (G1-G35) |
-| P1 | Coverage 提升至 ≥85% |
+| 优先级 | 内容 | 状态 |
+|--------|------|------|
+| P0 | RC Gate (R1-R16) | ✅ 完成（22/22 PASS local） |
+| P0 | TPC-H SF=1 验证 (Z6G4) | ⏭ SKIP（需在 Z6G4 执行） |
+| P1 | GA Gate (G1-G35) | ✅ 完成 |
+| P1 | Coverage 提升至 ≥85% | ⏳ v3.5.0 |
