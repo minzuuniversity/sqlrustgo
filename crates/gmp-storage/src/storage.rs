@@ -1058,6 +1058,103 @@ impl StorageEngine {
     pub fn search_like_ng(&self, query: &str, top_k: usize) -> Result<Vec<SearchResult>> {
         self.search_like_with_extra(query, top_k, &[])
     }
+
+    // ========== Layer 0: Exact Lookup Methods ==========
+
+    /// Find chunks by exact doc_id (e.g., "GMP-03-REC-001")
+    pub fn find_by_doc_id(&self, doc_id: &str) -> Result<Vec<SearchResult>> {
+        let cache = self.chunk_cache.lock().unwrap();
+        let doc_id_lower = doc_id.to_lowercase();
+        let results: Vec<SearchResult> = cache
+            .iter()
+            .filter(|(_, id, _, _, _, _)| id.to_lowercase() == doc_id_lower)
+            .map(|(id, doc_id, content, title, doc_type, chapter)| SearchResult {
+                chunk_id: *id,
+                doc_id: doc_id.clone(),
+                content: content.clone(),
+                token_count: content.len() as i64,
+                title: title.clone(),
+                doc_type: doc_type.clone(),
+                chapter: chapter.clone(),
+                score: 1.0,
+            })
+            .collect();
+        drop(cache);
+        Ok(results)
+    }
+
+    /// Find chunks by document code (partially matches doc_id or title)
+    /// e.g., "GMP-03-REC-001", "偏差调查", "CAPA"
+    pub fn find_by_code(&self, code: &str) -> Result<Vec<SearchResult>> {
+        let cache = self.chunk_cache.lock().unwrap();
+        let code_lower = code.to_lowercase();
+        let results: Vec<SearchResult> = cache
+            .iter()
+            .filter(|(_, id, _, title, _, _)| {
+                id.to_lowercase().contains(&code_lower)
+                    || title.to_lowercase().contains(&code_lower)
+            })
+            .map(|(id, doc_id, content, title, doc_type, chapter)| SearchResult {
+                chunk_id: *id,
+                doc_id: doc_id.clone(),
+                content: content.clone(),
+                token_count: content.len() as i64,
+                title: title.clone(),
+                doc_type: doc_type.clone(),
+                chapter: chapter.clone(),
+                score: 1.0,
+            })
+            .collect();
+        drop(cache);
+        Ok(results)
+    }
+
+    /// Find chunks by chapter (e.g., "CH03-机构与人员")
+    pub fn find_by_chapter(&self, chapter: &str) -> Result<Vec<SearchResult>> {
+        let cache = self.chunk_cache.lock().unwrap();
+        let chapter_lower = chapter.to_lowercase();
+        let results: Vec<SearchResult> = cache
+            .iter()
+            .filter(|(_, _, _, _, _, ch)| {
+                ch.as_ref()
+                    .map(|c| c.to_lowercase().contains(&chapter_lower))
+                    .unwrap_or(false)
+            })
+            .map(|(id, doc_id, content, title, doc_type, chapter)| SearchResult {
+                chunk_id: *id,
+                doc_id: doc_id.clone(),
+                content: content.clone(),
+                token_count: content.len() as i64,
+                title: title.clone(),
+                doc_type: doc_type.clone(),
+                chapter: chapter.clone(),
+                score: 1.0,
+            })
+            .collect();
+        drop(cache);
+        Ok(results)
+    }
+
+    /// Get statistics for layer 0 lookup — doc_ids and chapters available
+    pub fn get_layer0_stats(&self) -> Result<Layer0Stats> {
+        let cache = self.chunk_cache.lock().unwrap();
+        let mut doc_ids: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+        let mut chapters: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+        for (_, doc_id, _, _, _, chapter) in cache.iter() {
+            doc_ids.insert(doc_id.clone());
+            if let Some(ch) = chapter {
+                chapters.insert(ch.clone());
+            }
+        }
+        drop(cache);
+        Ok(Layer0Stats {
+            total_chunks: 0, // caller can ignore this
+            doc_count: doc_ids.len(),
+            chapter_count: chapters.len(),
+            doc_ids: doc_ids.into_iter().collect(),
+            chapters: chapters.into_iter().collect(),
+        })
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -1067,6 +1164,16 @@ pub struct VectorSearchResult {
     pub chunk_index: i32,
     pub content: String,
     pub score: f64,
+}
+
+/// Layer 0 lookup statistics
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct Layer0Stats {
+    pub total_chunks: usize,
+    pub doc_count: usize,
+    pub chapter_count: usize,
+    pub doc_ids: Vec<String>,
+    pub chapters: Vec<String>,
 }
 
 #[derive(Debug, Default)]

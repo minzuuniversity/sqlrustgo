@@ -64,3 +64,12 @@ pub struct DocRelevance {
     pub dept_coverage: Option<f64>,
     pub confidence: f64,
 }
+
+/// Entity extracted from query text
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExtractedEntity {
+    pub term: String,
+    pub term_type: String,
+    pub entity_type: Option<String>,
+    pub confidence: f64,
+}
