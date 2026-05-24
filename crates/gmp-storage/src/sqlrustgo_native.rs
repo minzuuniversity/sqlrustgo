@@ -49,8 +49,7 @@ impl GmpRecord {
 
 /// GMP Storage Engine backed by SQLRustGo MemoryStorage
 ///
-/// This satisfies G-Gate G6: SQLRustGo must be the primary storage engine.
-/// rusqlite remains for FTS5/Layer0; this engine handles document table.
+/// This satisfies G-Gate G6: SQLRustGo is the primary storage engine.
 pub struct SqlrustgoNativeEngine {
     storage: MemoryStorage,
     #[allow(dead_code)]

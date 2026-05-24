@@ -7,32 +7,47 @@
 
 ---
 
-## 一、系统架构概览
+## 一、五层架构概览
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                    GMP 合规内审检索系统                           │
-├─────────────────────────────────────────────────────────────────┤
-│  Layer 4: LLM 问答层    → qwen2.5:14b (Ollama) + RAG + 引用溯源 │
-│  Layer 3: 图谱通道      → sqlrustgo-graph (Cypher) 知识图谱       │
-│  Layer 2: 检索引擎层    → 规则/向量/FTS5/图谱 四通道并行召回        │
-│  Layer 1: 数据存储层    → SQLRustGo (RDBMS + HNSW向量 + 倒排索引)  │
-└─────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────┐
+│ Layer 5: LLM 推理与问答                                                 │
+│   qwen2.5:14b (Ollama) + 意图分类 + 答案生成 + 引用溯源               │
+├─────────────────────────────────────────────────────────────────────────┤
+│ Layer 4: Reranker 重排                                                 │
+│   BGE-Reranker-v2-m3 (Cross-Encoder) + RRF 融合                       │
+├─────────────────────────────────────────────────────────────────────────┤
+│ Layer 3: 检索引擎层                                                     │
+│   四通道: 规则/向量/全文/图谱 → Top-30 → RRF(k=60) → Top-20          │
+├─────────────────────────────────────────────────────────────────────────┤
+│ Layer 2: 知识图谱层                                                     │
+│   GMP 实体节点 + 语义关系边 + Cypher 查询 + 路径推理                     │
+│   节点: SOP/Deviation/CAPA/Validation/Device/Material 等                │
+│   关系: TRIGGERS/BELONGS_TO/MANAGED_BY/REQUIRES/MANDATES 等           │
+├─────────────────────────────────────────────────────────────────────────┤
+│ Layer 1: 统一数据存储层 — SQLRustGo                                     │
+│   RDBMS: gmp_documents + gmp_document_chunks                            │
+│   Vector: gmp_embeddings_bin (HNSW, bge-m3 1024d, binary BLOB)         │
+│   FTS: gmp_chunks_fts (InvertedIndex + jieba 分词)                     │
+│   Graph: gmp_graph_nodes + gmp_graph_edges (DiskGraphStore + WAL)       │
+├─────────────────────────────────────────────────────────────────────────┤
+│ Layer 0: 离线知识抽取管线 ★ 初始化时运行 ★                              │
+│   Step 0: GMP 术语库构建 (gmp_terms + gmp_synonyms)                    │
+│   Step 1: NER 实体识别 → doc_entities → Layer 2 节点                   │
+│   Step 2: 关系抽取 (RE) → doc_relations → Layer 2 边                   │
+│   Step 3: 多维分类 → doc_taxonomy (topic/doc_type/risk/department)      │
+│   Step 4: 相关性评分 → doc_relevance (term_density/reg_citation 等)     │
+│   Step 5: 图谱写入 → Layer 2 更新 (gmp_graph_nodes + gmp_graph_edges)    │
+└─────────────────────────────────────────────────────────────────────────┘
+```
 
-原始 GMP MD 文档 (gmp-md/, 1696 篇)
-    ↓
-gmp-cli index         → 文档解析/分块/FTS5 索引
-scripts/run_layer0_pipeline.py  → NER/RE/分类/评分 + 图谱抽取
-    ↓
-SQLRustGo FileStorage (./data/gmp.db)
-    ├── gmp_documents          (文档元数据, 1696 条)
-    ├── gmp_document_chunks    (分块内容, ~8700 chunks)
-    ├── gmp_chunks_fts        (FTS5 倒排索引, InvertedIndex)
-    ├── gmp_embeddings_bin    (bge-m3 1024d binary BLOB 向量)
-    ├── gmp_graph_nodes        (图谱节点, ~700 entities)
-    └── gmp_graph_edges        (图谱边, ~1500 relations)
-    ↓
-四通道检索 + RRF融合 + Reranker → LLM 问答
+### 层级关系
+
+```
+Layer 0 输出 → Layer 2 (知识图谱节点/边补充)
+Layer 0 输出 → Layer 1 (补充字段: entity_tags, taxonomy_path, relevance_score)
+Layer 0 输出 → Layer 3 (检索时可选: 分类过滤/相关性增强)
+Layer 0 输出 → Layer 4 (答案引用可溯源到图谱实体路径)
 ```
 
 ---
@@ -64,7 +79,7 @@ curl -fsSL https://ollama.com/install.sh | sh
 
 # 下载必需模型
 ollama pull bge-m3                          # 向量嵌入 (1024d)
-ollama pull bge-reranker-v2-m3              # 重排模型
+ollama pull bge-reranker-v2-m3             # 重排模型
 ollama pull qwen2.5:14b                    # LLM 问答
 
 # 验证
@@ -86,20 +101,23 @@ git checkout develop/v1.3.0
 ```
 GMP-Platform/
 ├── crates/
-│   ├── gmp-cli/           # CLI 工具 (index/search/chat/evaluate)
-│   ├── gmp-server/        # HTTP API 服务器
-│   ├── gmp-storage/       # 存储引擎 (SQLRustGo + InvertedIndex + HNSW)
-│   ├── gmp-retrieval/     # 四通道检索 + RRF 融合
-│   ├── gmp-reranker/      # 重排模型 (bge-reranker-v2-m3)
-│   ├── gmp-llm/           # LLM 问答 (Ollama)
-│   ├── gmp-graph/         # 知识图谱 (Cypher)
-│   ├── gmp-event-bus/      # 事件总线
-│   └── gmp-api/           # API 类型定义
-├── gmp-md/                # ★ GMP 原始文档 (1696 篇 .md)
+│   ├── gmp-cli/              # CLI 工具 (index/search/chat/evaluate)
+│   ├── gmp-server/           # HTTP API 服务器
+│   ├── gmp-storage/          # 存储引擎 (Layer 1: SQLRustGo + InvertedIndex + HNSW)
+│   ├── gmp-retrieval/        # 检索引擎 (Layer 3: 四通道 + RRF 融合)
+│   ├── gmp-reranker/         # 重排模型 (Layer 4: BGE-Reranker-v2-m3)
+│   ├── gmp-llm/              # LLM 问答 (Layer 5: Ollama)
+│   ├── gmp-graph/            # 知识图谱 (Cypher 查询引擎)
+│   ├── gmp-kg/               # 知识图谱存储 (Layer 2: 实体/关系/评分)
+│   ├── gmp-re/               # 关系抽取 (Layer 0 Step 2)
+│   ├── gmp-classifier/       # 多维分类 (Layer 0 Step 3)
+│   ├── gmp-scorer/           # 相关性评分 (Layer 0 Step 4)
+│   └── gmp-event-bus/         # 事件总线
+├── gmp-md/                   # ★ GMP 原始文档 (1696 篇 .md)
 ├── scripts/
-│   └── run_layer0_pipeline.py  # NER/RE/分类/评分 + 图谱抽取
-├── data/                  # 数据目录 (索引后生成)
-│   └── gmp.db             # SQLRustGo FileStorage 数据库
+│   └── run_layer0_pipeline.py # ★ Layer 0 管线 (NER/RE/分类/评分/图谱)
+├── data/                     # 数据目录 (索引后生成)
+│   └── gmp.db               # SQLRustGo FileStorage 数据库
 └── docs/releases/v1.3.0/
 ```
 
@@ -128,20 +146,21 @@ cargo build --release -p gmp-cli
 
 ## 五、数据初始化流程
 
-### 5.1 Step 1: 文档索引 (gmp-cli index)
+### 5.1 Step 1: 文档索引 (Layer 1 建立)
 
 将 1696 篇原始 MD 文档解析、分块并构建全文索引：
 
 ```bash
 cd /path/to/GMP-Platform
 
-# ★ 核心命令：索引 GMP 文档
+# ★ 核心命令：索引 GMP 文档 → Layer 1 存储
 ./target/release/gmp-cli index \
   --source ./gmp-md \
   --db ./data/gmp.db
 ```
 
 **执行内容**:
+
 ```
 Step 1: 遍历 gmp-md/**/*.md (1696 个文件)
 Step 2: 解析 YAML frontmatter (code, title, version, department)
@@ -153,6 +172,7 @@ Step 7: 迁移已有向量 → gmp_embeddings_bin (binary BLOB, HNSW 索引)
 ```
 
 **输出示例**:
+
 ```
 Indexing from: ./gmp-md...
 Indexing complete:
@@ -160,36 +180,39 @@ Indexing complete:
   Chunks indexed: 8734
 ```
 
-### 5.2 Step 2: Layer 0 知识抽取 (Python 脚本)
+### 5.2 Step 2: Layer 0 知识抽取
 
 执行 NER/RE/分类/评分管线，抽取图谱实体和关系：
 
 ```bash
 cd /path/to/GMP-Platform
 
-# 完整管线 (NER → RE → 分类 → 评分 → 图谱写入)
+# ★ Layer 0 管线：NER → RE → 分类 → 评分 → 图谱写入
 python3 scripts/run_layer0_pipeline.py \
   --db ./data/gmp.db \
   --ollama-url http://localhost:11434
 ```
 
 **执行内容**:
+
 ```
-Step 1: NER - 正则抽取命名实体 (SOP/Deviation/CAPA/Equipment/Regulation 等)
-Step 2: RE  - 关系抽取 (TRIGGERS/GENERATES/REQUIRES/MANDATES 等)
-Step 3: CLF - 文档分类 (topic/doc_type/risk_level/department)
-Step 4: SCR - GMP 相关性评分
-Step 5: 写入 gmp_graph_nodes 和 gmp_graph_edges
+Step 0: 从 gmp_terms.sql 加载 GMP 术语库
+Step 1: NER - 正则抽取命名实体 → doc_entities 表
+Step 2: RE  - 关系抽取 → doc_relations 表
+Step 3: CLF - 多维分类 → doc_taxonomy 表
+Step 4: SCR - GMP 相关性评分 → doc_relevance 表
+Step 5: 图谱写入 → gmp_graph_nodes + gmp_graph_edges (Layer 2)
 ```
 
 ### 5.3 Step 3: 验证索引
 
 ```bash
-# 验证索引完整性
+# 验证 Layer 1 索引完整性
 ./target/release/gmp-cli index --validate --db ./data/gmp.db
 ```
 
 **输出示例**:
+
 ```
 Index Validation:
   Documents: 1696
@@ -233,7 +256,7 @@ code: GMP-01-SOP-001_001   # 文档编号
 title: 文件标准管理规程     # 文档标题
 version: V1.0              # 版本号
 effective_date: 2025-01-01  # 生效日期
-department: 质量部          # 责任部门
+department: 质量部           # 责任部门
 ---
 ```
 
@@ -257,24 +280,24 @@ gmp-md/
 
 ## 七、检索命令
 
-### 7.1 搜索
+### 7.1 搜索 (Layer 3)
 
 ```bash
 # 四通道并行检索 (默认)
-./target/release/gmp-cli search 偏差调查流程 --db ./data/gmp.db
+./target/release/gmp-cli search "偏差调查流程" --db ./data/gmp.db
 
 # 仅 FTS5 全文检索
-./target/release/gmp-cli search 偏差调查流程 --channel fts --db ./data/gmp.db
+./target/release/gmp-cli search "偏差调查流程" --channel fts --db ./data/gmp.db
 
 # 仅向量检索
-./target/release/gmp-cli search 偏差调查流程 --channel vector --db ./data/gmp.db
+./target/release/gmp-cli search "偏差调查流程" --channel vector --db ./data/gmp.db
 ```
 
-### 7.2 LLM 问答
+### 7.2 LLM 问答 (Layer 5)
 
 ```bash
 ./target/release/gmp-cli chat \
-  偏差调查的基本流程是什么？ \
+  "偏差调查的基本流程是什么？" \
   --ollama-url http://localhost:11434 \
   --model qwen2.5:14b \
   --db ./data/gmp.db
@@ -290,47 +313,124 @@ gmp-md/
 
 ---
 
-## 八、四通道检索架构
+## 八、Layer 3: 四通道检索架构
 
 ### 8.1 通道定义
 
-| 通道 | 数据来源 | 技术 | Top-K |
-|------|----------|------|-------|
-| **RuleChannel** | `agent-knowledge/*.yaml` | 关键词匹配规则 | 10 |
-| **VectorChannel** | `gmp_embeddings_bin` | bge-m3 1024d + HNSW | 30 |
-| **FtsChannel** | `gmp_chunks_fts` | jieba 分词 + OR 连接 | 30 |
-| **GraphChannel** | `gmp_graph_nodes/edges` | Cypher 图查询 | 10 |
+| 通道 | 数据来源 | 技术 | Top-K | Weight |
+|------|----------|------|--------|--------|
+| **RuleChannel** | `agent-knowledge/*.yaml` | 关键词匹配规则 | 10 | 2.0 |
+| **VectorChannel** | `gmp_embeddings_bin` | bge-m3 1024d + HNSW | 30 | 1.0 |
+| **FtsChannel** | `gmp_chunks_fts` | jieba 分词 + OR 连接 | 30 | 1.0 |
+| **GraphChannel** | `gmp_graph_nodes/edges` | Cypher 图查询 | 10 | 1.0 |
 
 ### 8.2 FTS5 关键设计
 
 ```rust
 // jieba 中文分词 → OR 连接 (关键: 不是 AND)
-let tokens = jieba.cut(偏差调查流程, false);
-// → [偏差, 调查, 流程]
-let fts_query = tokens.join( OR );
-// → 偏差 OR 调查 OR 流程
+let tokens = jieba.cut("偏差调查流程", false);
+// → ["偏差", "调查", "流程"]
+let fts_query = tokens.join(" OR ");
+// → "偏差 OR 调查 OR 流程"
 ```
 
 ### 8.3 RRF 融合
 
-```rust
-// Reciprocal Rank Fusion, k=60
-RRF_score(d) = Σ 1/(k + rank_i(d))
-
-四通道各取 Top-5 → 最多 20 docs
+```
+四通道各取 Top-K → 最多 80 docs
     ↓
-RRF 融合 (k=60) → Top-20
+RRF 融合 (k=60): score = Σ weight_i / (k + rank_i(d))
     ↓
-Reranker 重排 → Top-10
+Top-20
     ↓
-LLM 生成答案
+Layer 4: Reranker 重排 → Top-10
+    ↓
+Layer 5: LLM 生成答案
 ```
 
 ---
 
-## 九、数据库 Schema (SQLRustGo FileStorage)
+## 九、Layer 0: 离线知识抽取管线详解
 
-### 9.1 核心表
+### 9.1 Layer 0 输出表
+
+```sql
+-- GMP 术语库 (Step 0)
+CREATE TABLE gmp_terms (
+    term_id       INTEGER PRIMARY KEY,
+    canonical_term TEXT NOT NULL,
+    term_type     TEXT NOT NULL,
+    synonyms      TEXT,
+    hypernyms     TEXT,
+    gmp_chapter   TEXT,
+    created_at    INTEGER
+);
+
+-- NER 实体识别结果 (Step 1)
+CREATE TABLE doc_entities (
+    id            INTEGER PRIMARY KEY,
+    doc_id        TEXT NOT NULL,
+    entity_type   TEXT NOT NULL,
+    surface_form  TEXT NOT NULL,
+    canonical_term TEXT NOT NULL,
+    start_pos     INTEGER,
+    end_pos       INTEGER,
+    confidence    REAL DEFAULT 1.0,
+    created_at    INTEGER
+);
+
+-- 关系抽取结果 (Step 2)
+CREATE TABLE doc_relations (
+    id            INTEGER PRIMARY KEY,
+    doc_id        TEXT NOT NULL,
+    src_entity    TEXT NOT NULL,
+    dst_entity    TEXT NOT NULL,
+    rel_type      TEXT NOT NULL,
+    rel_direction TEXT,
+    created_at    INTEGER
+);
+
+-- 多维分类结果 (Step 3)
+CREATE TABLE doc_taxonomy (
+    doc_id       TEXT PRIMARY KEY,
+    topic        TEXT,
+    sub_topic    TEXT,
+    doc_type     TEXT,
+    risk_level   TEXT,
+    department   TEXT,
+    confidence   REAL DEFAULT 1.0,
+    created_at   INTEGER
+);
+
+-- 相关性评分结果 (Step 4)
+CREATE TABLE doc_relevance (
+    doc_id           TEXT PRIMARY KEY,
+    overall_score    REAL NOT NULL,
+    term_density     REAL,
+    reg_citation     REAL,
+    process_completeness REAL,
+    entity_density   REAL,
+    dept_coverage    REAL,
+    created_at       INTEGER
+);
+```
+
+### 9.2 关系类型
+
+| 关系 | 说明 | 示例 |
+|------|------|------|
+| TRIGGERS | 偏差触发 CAPA | 偏差-001 → CAPA-003 |
+| GENERATES | 审计发现生成 CAPA | 审计发现 → CAPA |
+| REQUIRES | 设备需要验证 | 混合机 → IQ/OQ/PQ |
+| MANDATES | 法规规定 SOP | GMP第84条 → 偏差调查规程 |
+| BELONGS_TO | SOP 属于章节 | 清洁验证 → 第7章 |
+| MANAGED_BY | SOP 由部门管理 | 偏差调查 → 质量部 |
+
+---
+
+## 十、数据库 Schema (Layer 1: SQLRustGo FileStorage)
+
+### 10.1 核心表
 
 ```sql
 -- 文档元数据
@@ -367,25 +467,25 @@ CREATE TABLE gmp_embeddings_bin (
     model      TEXT
 );
 
--- 知识图谱节点
+-- 知识图谱节点 (Layer 2)
 CREATE TABLE gmp_graph_nodes (
     node_id    TEXT PRIMARY KEY,
-    node_type  TEXT,       -- Batch/Device/SOP/Deviation/CAPA/Regulation
+    node_type  TEXT,
     name       TEXT,
     properties TEXT
 );
 
--- 知识图谱边
+-- 知识图谱边 (Layer 2)
 CREATE TABLE gmp_graph_edges (
     edge_id    TEXT PRIMARY KEY,
     src        TEXT,
     dst        TEXT,
-    rel_type   TEXT,       -- TRIGGERS/GENERATES/REQUIRES/MANDATES
+    rel_type   TEXT,
     properties TEXT
 );
 ```
 
-### 9.2 索引
+### 10.2 索引
 
 ```
 gmp_embeddings_bin  → HNSW 索引 (M=16, ef=200)
@@ -394,9 +494,9 @@ gmp_document_chunks → InvertedIndex (jieba 中文分词)
 
 ---
 
-## 十、Ollama 服务配置
+## 十一、Ollama 服务配置
 
-### 10.1 启动
+### 11.1 启动
 
 ```bash
 # macOS/Linux
@@ -406,7 +506,7 @@ ollama serve
 nohup ollama serve > /tmp/ollama.log 2>&1 &
 ```
 
-### 10.2 验证
+### 11.2 验证
 
 ```bash
 # 测试 Ollama
@@ -414,16 +514,16 @@ curl http://localhost:11434/api/tags
 
 # 测试 bge-m3 向量化
 curl -X POST http://localhost:11434/api/embeddings \
-  -d '{model:bge-m3,prompt:偏差调查流程}'
+  -d '{"model":"bge-m3","prompt":"偏差调查流程"}'
 
 # 测试 qwen2.5:14b
 curl -X POST http://localhost:11434/api/generate \
-  -d '{model:qwen2.5:14b,prompt:你好}'
+  -d '{"model":"qwen2.5:14b","prompt":"你好"}'
 ```
 
 ---
 
-## 十一、完整操作流程 (从零开始)
+## 十二、完整操作流程 (从零开始)
 
 ```bash
 # =============================================
@@ -447,34 +547,34 @@ ollama pull qwen2.5:14b
 ollama serve
 
 # =============================================
-# Step 4: 索引构建
+# Step 4: Layer 1 - 文档索引构建
 # =============================================
 ./target/release/gmp-cli index \
   --source ./gmp-md \
   --db ./data/gmp.db
 
 # =============================================
-# Step 5: Layer 0 知识抽取
+# Step 5: Layer 0 - 知识抽取管线
 # =============================================
 python3 scripts/run_layer0_pipeline.py \
   --db ./data/gmp.db \
   --ollama-url http://localhost:11434
 
 # =============================================
-# Step 6: 验证
+# Step 6: 验证索引
 # =============================================
 ./target/release/gmp-cli index --validate --db ./data/gmp.db
 
 # =============================================
-# Step 7: 检索测试
+# Step 7: Layer 3 - 四通道检索测试
 # =============================================
-./target/release/gmp-cli search 偏差调查流程 --db ./data/gmp.db
+./target/release/gmp-cli search "偏差调查流程" --db ./data/gmp.db
 
 # =============================================
-# Step 8: LLM 问答 (Ollama 需运行)
+# Step 8: Layer 5 - LLM 问答 (Ollama 需运行)
 # =============================================
 ./target/release/gmp-cli chat \
-  偏差调查的基本流程是什么？ \
+  "偏差调查的基本流程是什么？" \
   --db ./data/gmp.db
 
 # =============================================
@@ -485,9 +585,9 @@ python3 scripts/run_layer0_pipeline.py \
 
 ---
 
-## 十二、常见问题
+## 十三、常见问题
 
-### Q1: `index` 报 No such file or directory: gmp-md
+### Q1: `index` 报 "No such file or directory: gmp-md"
 
 ```bash
 # 确认目录存在
@@ -500,6 +600,7 @@ ls gmp-md/*.md | wc -l    # 应输出 1696
 ### Q2: `index --validate` 显示 embeddings 为 0
 
 向量嵌入从 `data/gmp_data/gmp_embeddings_bin.json` 迁移（首次 `index` 时自动执行）。确保 Ollama 可访问：
+
 ```bash
 curl http://localhost:11434/api/tags
 ```
@@ -511,7 +612,7 @@ curl http://localhost:11434/api/tags
 ./target/release/gmp-cli index --validate --db ./data/gmp.db
 
 # 测试简单查询
-./target/release/gmp-cli search 偏差 --db ./data/gmp.db
+./target/release/gmp-cli search "偏差" --db ./data/gmp.db
 ```
 
 ### Q4: Layer 0 脚本报错
@@ -526,12 +627,12 @@ ls -lh data/gmp.db
 
 ---
 
-## 十三、与旧版 (rusqlite) 的差异
+## 十四、与旧版 (rusqlite) 的差异
 
 | 功能 | 旧版 (rusqlite) | 新版 (SQLRustGo) |
 |------|-----------------|-------------------|
 | 数据库 | SQLite 单文件 | SQLRustGo FileStorage |
-| 向量存储 | JSON 文件 (`gmp_embeddings.json`) | Binary BLOB (`gmp_embeddings_bin`) |
+| 向量存储 | JSON 文件 | Binary BLOB (`gmp_embeddings_bin`) |
 | FTS5 | SQLite FTS5 虚拟表 | InvertedIndex (sqlrustgo-storage) |
 | 依赖 | rusqlite crate + sqlite3 系统库 | 纯 Rust，无系统依赖 |
 | 编译 | 需 sqlite3 系统库 | 纯 Rust，无系统依赖 |
