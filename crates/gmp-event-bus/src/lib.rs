@@ -34,6 +34,7 @@
 pub mod bus;
 pub mod events;
 pub mod handlers;
+pub mod middleware;
 
 pub use bus::{EventBus, EventHandler, GmpEventType, InMemoryBus, SubscriptionId};
 pub use events::{
@@ -41,3 +42,4 @@ pub use events::{
     DocumentEventType, GmpEvent, SystemEvent, SystemEventType, WorkflowEvent, WorkflowStatus,
 };
 pub use handlers::AuditHandler;
+pub use middleware::{AuditContext, AuditEmitter, hash_event, unix_timestamp};
