@@ -24,7 +24,7 @@ jobs:
           git clone --depth=1 "${{ gitea.repository_url }}" repo
           cd repo
           git fetch --depth=1 origin "${{ gitea.ref_name }}"
-          git checkout "${{ gitea_sha }}"
+          git checkout "${{ gitea.sha }}"
 
       - name: RC Gate
         run: |
@@ -39,7 +39,7 @@ jobs:
           git clone --depth=1 "${{ gitea.repository_url }}" repo
           cd repo
           git fetch --depth=1 origin "${{ gitea.ref_name }}"
-          git checkout "${{ gitea_sha }}"
+          git checkout "${{ gitea.sha }}"
 
       - name: TPC-H Full
         run: |
