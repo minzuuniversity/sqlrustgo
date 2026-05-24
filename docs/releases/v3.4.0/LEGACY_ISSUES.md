@@ -267,5 +267,45 @@ v3.3.0 通过率 100%，所有自动化检查通过。v3.4.0 定位为 **GMP Man
 | #G-API2~7 | gmp-api 各模块无测试 | ✅ 已关闭 |
 | #G5 | coverage 测量失败 | ✅ 已关闭 |
 | #G11 | proof count 脚本调用 | ✅ 已关闭 |
-| #act-runner | rc-gate CI act-runner 无 Rust | ⏳ 延续至下版本 GATE_EXEMPTIONS.md |
+| #act-runner | rc-gate CI act-runner 无 Rust | ✅ 已关闭（PR #1357） |
+
+---
+
+## 九、Issue 关闭记录（v3.4.0 GA 完成）
+
+> **时间**: 2026-05-25
+> **依据**: v3.4.0 GA 已完成（35/35 PASS），以下 Issue 关联 PR 已 merged，需关闭
+
+### 9.1 已关闭 Issue
+
+| Issue | 标题 | PR | 关闭原因 |
+|-------|------|-----|---------|
+| #1353 | fix(v3.4.0): check_ga_v340.sh G-API2~7 check_test gates | #1354 ✅ merged | GA Gate 35/35 PASS 完成 |
+| #1341 | fix(storage): FTS FxHashMap + bounded binlog thread pool | #1342 ✅ merged | v3.3.0 P0 内存修复 |
+| #1328 | [BETA START] v3.4.0 Beta 阶段开始 | — | Beta 已完成，进入 GA |
+| #1305 | v3.4.0 GMP-Platform Integration and GA Gate Verification | — | GA Gate 35/35 PASS 完成 |
+
+### 9.2 延期至 v3.5.0 的 Issue（保持 OPEN）
+
+| Issue | 标题 | P | 延期原因 | v3.5.0 映射 |
+|-------|------|---|---------|------------|
+| #1326 | feat(graph): 支持 DiskGraphStore 的 Cypher 执行 | P1 | 功能开发中，未完成 | v3.5.0 P1 |
+| #1321 | [P2] 移动审批 API | P2 | GA 前未能完成 | → #1370 |
+| #1320 | [P2] MQTT 设备集成 | P2 | GA 前未能完成 | v3.5.0 P2 |
+| #1319 | [P2] 72h 稳定性测试执行 | P2 | 测试周期长，RC 门禁豁免 | → v3.5.0 |
+| #1224 | [P2] 72h 稳定性测试 | P2 | 同上 | → v3.5.0 |
+
+---
+
+## 十、v3.5.0 延期追踪入口
+
+| 文档 | 说明 |
+|------|------|
+| `docs/releases/v3.5.0/LEGACY_ISSUES.md` | v3.5.0 遗留问题追踪（含本文档延期项映射） |
+| `docs/releases/v3.5.0/DEV_PLAN.md` | v3.5.0 开发计划（含 Issue 规划） |
+| `docs/governance/gate_spec_v350.md` | v3.5.0 门禁规范 |
+
+---
+
+*最后更新: 2026-05-25*
 
