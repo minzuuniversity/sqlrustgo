@@ -11,7 +11,7 @@ members = [
     "crates/gmp-eval",
     "crates/gmp-api",
     "crates/gmp-event-bus",
-    "crates/gmp-kg",
+    # "crates/gmp-kg",  # TEMPORARILY DISABLED: hardcoded paths to external sqlrustgo
 ]
 
 [workspace.package]
