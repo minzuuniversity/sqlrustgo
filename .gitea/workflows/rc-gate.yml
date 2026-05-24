@@ -13,19 +13,24 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
-  REPO_URL: "http://192.168.0.252:3000/openclaw/sqlrustgo.git"
-  REPO: "openclaw/sqlrustgo"
-  GATE_IMAGE: "192.168.0.252:5000/sqlrustgo-gate:v5"
 
 jobs:
   rc-gate:
     runs-on: [hp-z6g4, hp-z6g4, hp-z6g4, hp-z6g4]
     parallel: true
     steps:
-      - name: Checkout & Run RC Gate
+      - name: Checkout
+        run: |
+          REPO_URL="http://192.168.0.252:3000/openclaw/sqlrustgo.git"
+          git clone --depth=1 -b "rc/v3.4.0" "$REPO_URL" repo
+          cd repo
+          git checkout "${{ gitea.sha }}"
+
+      - name: RC Gate (via gate container)
         run: |
           docker run --rm \
-            -e REPO="openclaw/sqlrustgo" \
+            -v "$(pwd):/repo" \
+            -w /repo \
             -e BRANCH="rc/v3.4.0" \
             -e GATE="rc" \
             -e GITEA_URL="http://192.168.0.252:3000" \
@@ -34,10 +39,18 @@ jobs:
   rc-gate-full:
     runs-on: [hp-z6g4]
     steps:
-      - name: Checkout & Run Full Suite
+      - name: Checkout
+        run: |
+          REPO_URL="http://192.168.0.252:3000/openclaw/sqlrustgo.git"
+          git clone --depth=1 -b "rc/v3.4.0" "$REPO_URL" repo
+          cd repo
+          git checkout "${{ gitea.sha }}"
+
+      - name: Full suite (gate container)
         run: |
           docker run --rm \
-            -e REPO="openclaw/sqlrustgo" \
+            -v "$(pwd):/repo" \
+            -w /repo \
             -e BRANCH="rc/v3.4.0" \
             -e GATE="full" \
             -e GITEA_URL="http://192.168.0.252:3000" \
