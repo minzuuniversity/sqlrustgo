@@ -23,7 +23,7 @@
 ```
 v3.2.0: Trust Convergence（可信收敛）✅ GA
 v3.3.0: Industrial Trust Platform（可信内核）✅ GA
-v3.4.0: GMP Management Suite（管理套件）← 当前 RC
+v3.4.0: GMP Management Suite（管理套件）✅ GA
 v3.5.0: AI Native GMP Platform
 ```
 
