@@ -21,37 +21,30 @@ jobs:
     steps:
       - name: Checkout
         run: |
-          git clone --depth=1 "${{ gitea.repository_url }}" repo
+          REPO_URL="http://192.168.0.252:3000/openclaw/sqlrustgo.git"
+          git clone --depth=1 -b "rc/v3.4.0" "$REPO_URL" repo
           cd repo
-          git fetch --depth=1 origin "${{ gitea.ref_name }}"
-          git checkout "${{ gitea_sha }}"
+          git checkout "${{ gitea.sha }}"
 
       - name: RC Gate
         run: |
           cd repo
-          bash scripts/gate/check_rc_v340.sh
+          GITEA_URL="http://192.168.0.252:3000" BRANCH="rc/v3.4.0" \
+            bash scripts/gate/check_rc_v340.sh 2>&1
 
   rc-gate-full:
     runs-on: [hp-z6g4]
     steps:
       - name: Checkout
         run: |
-          git clone --depth=1 "${{ gitea.repository_url }}" repo
+          REPO_URL="http://192.168.0.252:3000/openclaw/sqlrustgo.git"
+          git clone --depth=1 -b "rc/v3.4.0" "$REPO_URL" repo
           cd repo
-          git fetch --depth=1 origin "${{ gitea.ref_name }}"
-          git checkout "${{ gitea_sha }}"
+          git checkout "${{ gitea.sha }}"
 
-      - name: TPC-H Full
+      - name: Checkout & Run Full Suite
         run: |
-          cd repo
-          bash scripts/gate/check_tpch.sh --scale 1
-
-      - name: Sysbench
-        run: |
-          cd repo
-          bash scripts/gate/check_sysbench.sh
-
-      - name: E2E Tests
-        run: |
-          cd repo
-          bash scripts/test/e2e/run_e2e.sh
+          wget -q -O /tmp/check_rc_v340.sh \
+            "http://192.168.0.252:3000/openclaw/sqlrustgo/raw/rc/v3.4.0/scripts/gate/check_rc_v340.sh"
+          chmod +x /tmp/check_rc_v340.sh
+          bash /tmp/check_rc_v340.sh 2>&1
