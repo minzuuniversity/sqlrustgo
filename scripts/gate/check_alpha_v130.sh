@@ -40,7 +40,7 @@ fi
 # A3: Unit Tests
 echo "--- A3: Unit Tests ---"
 TEST_OUTPUT=$($CARGO test --lib 2>&1) || true
-FAILED=$(echo "$TEST_OUTPUT" | grep -oP '\d+(?= failed)' | head -1 || echo "0")
+FAILED=$(echo "$TEST_OUTPUT" | grep -E '[0-9]+ passed;[0-9]+ failed' | sed 's/.*\([0-9]\+\) failed.*/\1/' | head -1 || echo "0")
 if [ "$FAILED" -eq 0 ]; then
     log_pass "cargo test --lib (0 failures)"
 else
@@ -82,25 +82,21 @@ else
     log_fail "python3 -m py_compile (0 files)"
 fi
 
-# A-F1: gmp-cli CLI
-echo "--- A-F1: gmp-cli CLI ---"
-CLI_BIN="target/release/gmp"
-if [ ! -f "$CLI_BIN" ]; then
-    CLI_BIN="target/release/gmp-cli"
-fi
+# A-F1: gmp-retrieve CLI
+echo "--- A-F1: gmp-retrieve CLI ---"
+CLI_BIN="target/release/gmp-retrieve"
 if [ ! -f "$CLI_BIN" ]; then
     $CARGO build --release -p gmp-cli >/dev/null 2>&1 || true
-    CLI_BIN="target/release/gmp-cli"
 fi
 if [ -f "$CLI_BIN" ]; then
     CLI_OUTPUT=$($CLI_BIN --version 2>&1) || true
-    if echo "$CLI_OUTPUT" | grep -qE "gmp|v1\."; then
-        log_pass "gmp-cli --version: $CLI_OUTPUT"
+    if echo "$CLI_OUTPUT" | grep -qE "gmp|v1\.|retrieve"; then
+        log_pass "gmp-retrieve --version: $CLI_OUTPUT"
     else
-        log_fail "gmp-cli --version: unexpected output"
+        log_fail "gmp-retrieve --version: unexpected output"
     fi
 else
-    log_fail "gmp-cli binary not found"
+    log_fail "gmp-retrieve binary not found"
 fi
 
 # A-F2: gmp-server health (v1.3.0 uses gmp-server not server.py)

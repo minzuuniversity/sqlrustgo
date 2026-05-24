@@ -273,8 +273,11 @@ bash docs/completeness_check.sh 1.3.0
 |------|------|----------|
 | Beta 开发 | PR #138 文档合并 | ✅ 21-docs 完成 |
 | Beta 开发 | PR #140 WAL + Binary BLOB | ✅ #122, #123 关闭 |
-| Beta 开发 | 发现 Gate 脚本硬编码路径 | ⚠️ 待修复 |
+| Beta 开发 | 发现 Gate 脚本硬编码路径 | ✅ 修复：动态路径 |
 | Beta 开发 | 发现层架构文档错误 | ✅ 5-layer 修复 |
+| Beta 开发 | L0-Alpha Gate 自检 | ✅ 13/13 PASSED |
+| Beta 开发 | 创建治理自进化文档 | ✅ 5个新文档 |
+| Beta 开发 | 创建 ISSUE_CLOSING_VERIFICATION | ✅ Issue 关闭验证 |
 
 ### 8.2 规则进化项（基于 v1.3.0 经验）
 
@@ -286,6 +289,40 @@ bash docs/completeness_check.sh 1.3.0
 旧规则: REPO_ROOT="/home/openclaw/..." 硬编码
 新规则: REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 ```
+
+**规则 2**: Gate 脚本检查的二进制名称必须与实际一致
+
+```
+旧规则: 检查 gmp 或 gmp-cli
+新规则: 检查 gmp-retrieve（实际二进制名称）
+```
+
+**规则 3**: 新增 governance 文档必须登记到 GOVERNANCE_STANDARD.md 自检清单
+
+```
+新增: gate_lifecycle_tracking.md → 自检清单 +1
+新增: governance_self_improvement.md → 自检清单 +1
+新增: ISSUE_CLOSING_VERIFICATION.md → 自检清单 +1
+```
+
+### 8.3 v1.3.0 健康检查结果
+
+| 检查项 | 结果 |
+|--------|------|
+| REPO_ROOT 动态路径 | ✅ 已修复 (4/4 scripts) |
+| Issue 关闭验证机制 | ✅ 已建立 |
+| GATE_EXEMPTIONS 复审日期 | ✅ 已添加 |
+| 门禁生命周期追踪 | ✅ 已建立 |
+| 治理自进化机制 | ✅ 已建立 |
+| v1.3.0 gate_spec | ✅ 已建立 |
+
+### 8.4 待改进项
+
+| # | 改进项 | 优先级 | 责任人 |
+|---|--------|--------|--------|
+| 1 | gmp-api crate 自测用例不足 | P1 | @liying |
+| 2 | Layer 0 管线未实现 (#124) | P0 | @liying |
+| 3 | gmp-server 健康检查接口未实现 | P2 | @liying |
 
 **规则 2**: 文档层编号错误必须修复
 

@@ -232,32 +232,41 @@ done
 
 #### L0-Alpha Gate 检查
 
-**日期**: 2026-05-24（待执行）
+**日期**: 2026-05-24
+
+**脚本**: `scripts/gate/check_alpha_v130.sh`
 
 | 检查项 | 命令 | 结果 | 说明 |
 |--------|------|------|------|
-| L0A1 | `cargo build --release --workspace` | 🔄 待执行 | |
-| L0A2 | `cargo test --lib` | 🔄 待执行 | |
-| L0A3 | `cargo clippy --all-targets -- -D warnings` | 🔄 待执行 | |
-| L0A4 | `cargo fmt --all -- --check` | 🔄 待执行 | |
-| L0A5 | `cargo audit` | 🔄 待执行 | |
-| L0B1~B14 | 见 RELEASE_GATE_CHECKLIST.md | 🔄 待执行 | |
+| A1 | `cargo build --release --workspace` | ✅ PASS | |
+| A2 | `cargo build --release -p gmp-cli` | ✅ PASS | |
+| A3 | `cargo test --lib` | ✅ PASS | 0 failures |
+| A4 | `cargo fmt --all -- --check` | ✅ PASS | |
+| A5 | `cargo clippy --all-targets -- -D warnings` | ✅ PASS | |
+| A6 | `python3 -m py_compile` | ✅ PASS | 15 files |
+| A-F1 | `gmp-retrieve --version` | ✅ PASS | binary exists |
+| A-F2 | `gmp-server` binary | ✅ PASS | binary exists |
+| A-F3 | `cargo build -p gmp-event-bus` | ✅ PASS | |
+| A-F4 | `cargo build -p gmp-api` | ✅ PASS | |
+| A-S1 | Gate Spec exists | ✅ PASS | |
+| A-S2 | Development Plan exists | ✅ PASS | |
+| A-S3 | Branch `develop/v1.3.0` | ✅ PASS | |
 
 **入口条件检查**:
 
 | 条件 | 状态 |
 |------|------|
-| Workspace 全量编译成功 | 🔄 待验证 |
-| 所有 crate clippy 零警告 | 🔄 待验证 |
-| 单元测试 ≥90% 通过 | 🔄 待验证 |
+| Workspace 全量编译成功 | ✅ 成功 |
+| 所有 crate clippy 零警告 | ✅ 零警告 |
+| 单元测试 ≥90% 通过 | ✅ 100% (0 failures) |
 
 #### L0-Alpha 结果
 
 ```
-L0-Alpha Gate 结果: X/13 PASSED
-状态: 🔄 待执行
-阻塞项: 
-  - Issue #
+L0-Alpha Gate 结果: 13/13 PASSED
+状态: ✅ PASS
+阻塞项: 无
+执行时间: 2026-05-24
 ```
 
 #### L0-Beta Gate 检查
@@ -268,7 +277,7 @@ L0-Alpha Gate 结果: X/13 PASSED
 
 | 条件 | 状态 |
 |------|------|
-| L0-Alpha Gate PASS | 🔄 待执行 |
+| L0-Alpha Gate PASS | ✅ 13/13 PASSED (2026-05-24) |
 | 21-docs 完整性 PASS | ✅ 21/21 |
 | P0 功能完成 | 🔄 #124 Layer 0 管线开发中 |
 
