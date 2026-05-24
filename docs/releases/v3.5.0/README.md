@@ -3,7 +3,7 @@
 > **状态**: 开发中
 > **起点**: develop/v3.5.0（基于 v3.4.0 GA）
 > **分支**: `develop/v3.5.0`（规划中）
-> **Milestone**: v3.5.0（id=TBD）
+> **Milestone**: v3.5.0（id=23）
 > **计划发布**: 2026-08-05
 
 ---
@@ -35,11 +35,11 @@ v3.6.0: Enterprise GMP Platform            📋 规划中
 
 | 功能 | Issue | 验收条件 | 状态 |
 |------|-------|----------|------|
-| AI 偏差调查助手 | #1360 | 自然语言查询审计链，返回引用证据 | TODO |
-| LLM 合规判断引擎 | #1361 | 输入批次数据 + 规则，输出放行建议 + 理由 | TODO |
-| GMP Retrieval v3 集成 | #1362 | BM25 + Vector + Graph 三路融合 | TODO |
-| 本地 LLM 推理支持 | #1363 | Ollama/bge-m3 本地推理，延迟 < 2s | TODO |
-| AI 流式输出 SSE | #1364 | Server-Sent Events 流式推理，首 token < 500ms | TODO |
+| AI 偏差调查助手 | #1361 | 自然语言查询审计链，返回引用证据 | TODO |
+| LLM 合规判断引擎 | #1362 | 输入批次数据 + 规则，输出放行建议 + 理由 | TODO |
+| GMP Retrieval v3 集成 | #1363 | BM25 + Vector + Graph + FTS 四路融合 | TODO |
+| 本地 LLM 推理支持 | #1364 | Ollama/bge-m3 本地推理，延迟 < 2s | TODO |
+| AI 流式输出 SSE | #1365 | Server-Sent Events 流式推理，首 token < 500ms | TODO |
 
 ---
 
