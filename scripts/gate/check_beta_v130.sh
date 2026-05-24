@@ -29,7 +29,7 @@ fi
 
 echo "--- B1: Full Test Suite ---"
 TEST_OUTPUT=$($CARGO test 2>&1) || true
-FAILED=$(echo "$TEST_OUTPUT" | grep -oP '\d+(?= failed)' | head -1 || echo "0")
+FAILED=$(echo "$TEST_OUTPUT" | grep -E '[0-9]+ passed;[0-9]+ failed' | sed 's/.*\([0-9]\+\) failed.*/\1/' | head -1 || echo "0")
 if [ "$FAILED" -eq 0 ]; then
     log_pass "cargo test (0 failures)"
 else
@@ -37,15 +37,12 @@ else
 fi
 
 echo "--- B2: Documentation Complete (21 docs) ---"
-if [ -f "docs/releases/v1.3.0/DOCS_INDEX.md" ]; then
-    DOC_COUNT=$(grep -c "^\| " docs/releases/v1.3.0/DOCS_INDEX.md | head -1 || echo "0")
-    if [ "$DOC_COUNT" -ge 20 ]; then
-        log_pass "v1.3.0 docs index ($DOC_COUNT entries)"
-    else
-        log_fail "v1.3.0 docs index ($DOC_COUNT entries, expected >= 20)"
-    fi
+COMPLETENESS_OUTPUT=$(bash docs/completeness_check.sh 1.3.0 2>&1) || true
+if echo "$COMPLETENESS_OUTPUT" | grep -q "21/21 PASS"; then
+    log_pass "21 docs completeness check PASS"
 else
-    log_fail "v1.3.0 DOCS_INDEX.md not found"
+    echo "$COMPLETENESS_OUTPUT" | tail -5
+    log_fail "21 docs completeness check FAIL"
 fi
 
 echo "--- B3: Feature Matrix ---"
