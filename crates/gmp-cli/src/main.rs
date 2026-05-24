@@ -871,7 +871,6 @@ async fn main() -> Result<()> {
             println!("  Stage:  {}", stage);
             println!("  DB:     {}\n", db);
 
-            // Initialize storage engine
             let config = gmp_storage::StorageConfig {
                 embedding_dim: 1024,
                 use_sqlrustgo_storage: true,
@@ -889,14 +888,10 @@ async fn main() -> Result<()> {
                 }
             };
 
-            // Note: Layer 0 population requires direct DB access which is not yet
-            // available in the sqlrustgo storage. This functionality is temporarily
-            // disabled until the storage adapter provides the necessary interface.
             println!("Error: 'populate' command is temporarily unavailable.");
             println!(
                 "The storage layer does not yet support direct SQL access for Layer 0 population."
             );
-            return Ok(());
         }
     }
 
