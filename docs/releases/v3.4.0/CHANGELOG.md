@@ -1,15 +1,15 @@
 # v3.4.0 Changelog
 
 > **Version**: 3.4.0
-> **Date**: 2026-05-23
-> **Status**: RC (Release Candidate)
-> **Branch**: `origin/develop/v3.4.0`
-> **HEAD**: `bd39e787` (parser OOM fix merge)
-> **RC from**: `9dd799f2` (executor stored proc coverage tests)
+> **Date**: 2026-05-24
+> **Status**: GA (正式发布)
+> **Branch**: `main`
+> **HEAD**: `d934228b` (RC coverage threshold fix)
+> **GA from**: `d934228b` (executor stored proc coverage tests)
 
 ---
 
-## v3.4.0 (2026-05-23) - RC
+## v3.4.0 (2026-05-24) - GA
 
 ### Added
 
