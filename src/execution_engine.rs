@@ -6662,4 +6662,93 @@ mod tests {
 
         assert_eq!(result.rows.len(), 1001);
     }
+
+    #[test]
+    fn test_engine_config_builder() {
+        let config = EngineConfig::builder()
+            .cbo_enabled(false)
+            .stats_enabled(false)
+            .build();
+        assert!(!config.cbo_enabled);
+        assert!(!config.stats_enabled);
+    }
+
+    #[test]
+    fn test_engine_config_builder_default() {
+        // builder().build() uses false as defaults (different from EngineConfig::default())
+        let config = EngineConfig::builder().build();
+        assert!(!config.cbo_enabled);
+        assert!(!config.stats_enabled);
+    }
+
+    #[test]
+    fn test_cte_context_temp_table_name() {
+        let ctx = CteContext {
+            cte_tables: HashMap::new(),
+            temp_tables: Vec::new(),
+        };
+        let name = ctx.temp_table_name("my_cte");
+        assert!(name.contains("__cte_my_cte_"));
+    }
+
+    #[test]
+    fn test_cte_context_temp_table_name_unique() {
+        let ctx = CteContext {
+            cte_tables: HashMap::new(),
+            temp_tables: Vec::new(),
+        };
+        let name1 = ctx.temp_table_name("cte1");
+        let name2 = ctx.temp_table_name("cte1");
+        assert_ne!(name1, name2);
+    }
+
+    #[test]
+    fn test_engine_config_default() {
+        let config = EngineConfig::default();
+        assert!(config.cbo_enabled);
+        assert!(config.stats_enabled);
+    }
+
+    #[test]
+    fn test_engine_config_clone() {
+        let config = EngineConfig::builder().cbo_enabled(false).build();
+        let cloned = config.clone();
+        assert_eq!(cloned.cbo_enabled, config.cbo_enabled);
+    }
+
+    #[test]
+    fn test_execution_engine_current_user() {
+        let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+        let mut engine = ExecutionEngine::new(storage);
+
+        // Initially no user
+        assert!(engine.get_current_user().is_none());
+
+        // Set user
+        let user = UserIdentity::new("alice", "localhost");
+        engine.set_current_user(user);
+        assert!(engine.get_current_user().is_some());
+
+        // Clear user
+        engine.clear_current_user();
+        assert!(engine.get_current_user().is_none());
+    }
+
+    #[test]
+    fn test_execution_engine_estimate_row_count() {
+        let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+        let mut engine = ExecutionEngine::new(storage);
+
+        engine
+            .execute("CREATE TABLE t (id INTEGER, name TEXT)")
+            .unwrap();
+        for i in 0..100 {
+            engine
+                .execute(&format!("INSERT INTO t VALUES ({}, 'name{}')", i, i))
+                .unwrap();
+        }
+
+        let estimate = engine.estimate_row_count("t");
+        assert_eq!(estimate, 1000);
+    }
 }
