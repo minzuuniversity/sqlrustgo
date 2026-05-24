@@ -26,15 +26,10 @@ jobs:
           cd repo
           git checkout "${{ gitea.sha }}"
 
-      - name: RC Gate (via gate container)
+      - name: RC Gate (direct SSH)
         run: |
-          docker run --rm \
-            -v "$(pwd):/repo" \
-            -w /repo \
-            -e BRANCH="rc/v3.4.0" \
-            -e GATE="rc" \
-            -e GITEA_URL="http://192.168.0.252:3000" \
-            192.168.0.252:5000/sqlrustgo-gate:v5
+          ssh -o StrictHostKeyChecking=no openclaw@192.168.0.252 \
+            "BRANCH='rc/v3.4.0' GATE='rc' GITEA_URL='http://192.168.0.252:3000' bash /home/openclaw/sqlrustgo/scripts/gate/check_rc_v340.sh" 2>&1
 
   rc-gate-full:
     runs-on: [hp-z6g4]
@@ -46,12 +41,7 @@ jobs:
           cd repo
           git checkout "${{ gitea.sha }}"
 
-      - name: Full suite (gate container)
+      - name: Full suite (direct SSH)
         run: |
-          docker run --rm \
-            -v "$(pwd):/repo" \
-            -w /repo \
-            -e BRANCH="rc/v3.4.0" \
-            -e GATE="full" \
-            -e GITEA_URL="http://192.168.0.252:3000" \
-            192.168.0.252:5000/sqlrustgo-gate:v5
+          ssh -o StrictHostKeyChecking=no openclaw@192.168.0.252 \
+            "BRANCH='rc/v3.4.0' GATE='full' GITEA_URL='http://192.168.0.252:3000' bash /home/openclaw/sqlrustgo/scripts/gate/check_rc_v340.sh" 2>&1
