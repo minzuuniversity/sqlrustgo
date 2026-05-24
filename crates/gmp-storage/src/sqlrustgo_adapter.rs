@@ -233,6 +233,7 @@ impl SqlrustgoAdapter {
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn insert_audit_record(
         &self,
         audit_id: &str,
