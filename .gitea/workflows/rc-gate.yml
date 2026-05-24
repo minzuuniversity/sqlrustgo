@@ -13,54 +13,32 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  REPO_URL: "http://192.168.0.252:3000/openclaw/sqlrustgo.git"
+  REPO: "openclaw/sqlrustgo"
+  GATE_IMAGE: "192.168.0.252:5000/sqlrustgo-gate:v5"
 
 jobs:
   rc-gate:
     runs-on: [hp-z6g4, hp-z6g4, hp-z6g4, hp-z6g4]
     parallel: true
     steps:
-      - name: Checkout
+      - name: Checkout & Run RC Gate
         run: |
-          REPO_URL="http://192.168.0.252:3000/openclaw/sqlrustgo.git"
-          git clone --depth=1 -b "${{ gitea.ref_name }}" "$REPO_URL" repo
-          cd repo
-          git checkout "${{ gitea.sha }}"
-
-      - name: RC Gate
-        run: |
-          # Install Rust if not present (act-runner containers lack cargo)
-          if ! command -v cargo &>/dev/null; then
-            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable 2>/dev/null
-            export PATH="$HOME/.cargo/bin:$PATH"
-          fi
-          cd repo
-          BRANCH="rc/v3.4.0" bash scripts/gate/check_rc_v340.sh
+          docker run --rm \
+            -e REPO="openclaw/sqlrustgo" \
+            -e BRANCH="rc/v3.4.0" \
+            -e GATE="rc" \
+            -e GITEA_URL="http://192.168.0.252:3000" \
+            192.168.0.252:5000/sqlrustgo-gate:v5
 
   rc-gate-full:
     runs-on: [hp-z6g4]
     steps:
-      - name: Checkout
+      - name: Checkout & Run Full Suite
         run: |
-          REPO_URL="http://192.168.0.252:3000/openclaw/sqlrustgo.git"
-          git clone --depth=1 -b "${{ gitea.ref_name }}" "$REPO_URL" repo
-          cd repo
-          git checkout "${{ gitea.sha }}"
-
-      - name: TPC-H Full
-        run: |
-          if ! command -v cargo &>/dev/null; then
-            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable 2>/dev/null
-            export PATH="$HOME/.cargo/bin:$PATH"
-          fi
-          cd repo
-          bash scripts/gate/check_tpch.sh --scale 1
-
-      - name: Sysbench
-        run: |
-          cd repo
-          bash scripts/gate/check_sysbench.sh
-
-      - name: E2E Tests
-        run: |
-          cd repo
-          bash scripts/test/e2e/run_e2e.sh
+          docker run --rm \
+            -e REPO="openclaw/sqlrustgo" \
+            -e BRANCH="rc/v3.4.0" \
+            -e GATE="full" \
+            -e GITEA_URL="http://192.168.0.252:3000" \
+            192.168.0.252:5000/sqlrustgo-gate:v5
