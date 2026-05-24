@@ -529,4 +529,212 @@ mod tests {
             Value::Boolean(true)
         );
     }
+
+    #[test]
+    fn test_find_column_index() {
+        use sqlrustgo_storage::{ColumnDefinition, TableInfo};
+
+        let table_info = TableInfo {
+            name: "test".to_string(),
+            columns: vec![
+                ColumnDefinition {
+                    name: "id".to_string(),
+                    data_type: "INTEGER".to_string(),
+                    primary_key: true,
+                    nullable: false,
+                    auto_increment: false,
+                },
+                ColumnDefinition {
+                    name: "name".to_string(),
+                    data_type: "TEXT".to_string(),
+                    primary_key: false,
+                    nullable: true,
+                    auto_increment: false,
+                },
+            ],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
+            has_hidden_rowid: false,
+            next_rowid: 0,
+        };
+
+        assert_eq!(find_column_index("id", &table_info), Some(0));
+        assert_eq!(find_column_index("name", &table_info), Some(1));
+        assert_eq!(find_column_index("nonexistent", &table_info), None);
+        assert_eq!(find_column_index("test.id", &table_info), Some(0));
+    }
+
+    #[test]
+    fn test_find_column_index_with_qualifier() {
+        use sqlrustgo_storage::{ColumnDefinition, TableInfo};
+
+        let table_info = TableInfo {
+            name: "users".to_string(),
+            columns: vec![ColumnDefinition {
+                name: "id".to_string(),
+                data_type: "INTEGER".to_string(),
+                primary_key: true,
+                nullable: false,
+                auto_increment: false,
+            }],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
+            has_hidden_rowid: false,
+            next_rowid: 0,
+        };
+
+        assert_eq!(find_column_index("users.id", &table_info), Some(0));
+        assert_eq!(find_column_index("USERS.ID", &table_info), Some(0));
+    }
+
+    #[test]
+    fn test_evaluate_binary_op_not_equal() {
+        assert_eq!(
+            evaluate_binary_op(&Value::Integer(1), &Value::Integer(2), "!="),
+            Value::Boolean(true)
+        );
+        assert_eq!(
+            evaluate_binary_op(&Value::Integer(1), &Value::Integer(1), "!="),
+            Value::Boolean(false)
+        );
+    }
+
+    #[test]
+    fn test_evaluate_binary_op_greater() {
+        assert_eq!(
+            evaluate_binary_op(&Value::Integer(2), &Value::Integer(1), ">"),
+            Value::Boolean(true)
+        );
+        assert_eq!(
+            evaluate_binary_op(&Value::Integer(1), &Value::Integer(2), ">"),
+            Value::Boolean(false)
+        );
+    }
+
+    #[test]
+    fn test_evaluate_binary_op_greater_equal() {
+        assert_eq!(
+            evaluate_binary_op(&Value::Integer(2), &Value::Integer(1), ">="),
+            Value::Boolean(true)
+        );
+        assert_eq!(
+            evaluate_binary_op(&Value::Integer(1), &Value::Integer(1), ">="),
+            Value::Boolean(true)
+        );
+    }
+
+    #[test]
+    fn test_evaluate_binary_op_less() {
+        assert_eq!(
+            evaluate_binary_op(&Value::Integer(1), &Value::Integer(2), "<"),
+            Value::Boolean(true)
+        );
+        assert_eq!(
+            evaluate_binary_op(&Value::Integer(2), &Value::Integer(1), "<"),
+            Value::Boolean(false)
+        );
+    }
+
+    #[test]
+    fn test_evaluate_binary_op_less_equal() {
+        assert_eq!(
+            evaluate_binary_op(&Value::Integer(1), &Value::Integer(2), "<="),
+            Value::Boolean(true)
+        );
+        assert_eq!(
+            evaluate_binary_op(&Value::Integer(1), &Value::Integer(1), "<="),
+            Value::Boolean(true)
+        );
+    }
+
+    #[test]
+    fn test_evaluate_binary_op_and_short_circuit() {
+        // AND with false on left should short-circuit (not evaluate right)
+        let left = Value::Boolean(false);
+        let right = Value::Boolean(true);
+        assert_eq!(
+            evaluate_binary_op(&left, &right, "AND"),
+            Value::Boolean(false)
+        );
+    }
+
+    #[test]
+    fn test_evaluate_binary_op_or_short_circuit() {
+        // OR with true on left should short-circuit (not evaluate right)
+        let left = Value::Boolean(true);
+        let right = Value::Boolean(false);
+        assert_eq!(
+            evaluate_binary_op(&left, &right, "OR"),
+            Value::Boolean(true)
+        );
+    }
+
+    #[test]
+    fn test_evaluate_binary_op_invalid_op() {
+        assert_eq!(
+            evaluate_binary_op(&Value::Integer(1), &Value::Integer(1), "INVALID"),
+            Value::Null
+        );
+    }
+
+    #[test]
+    fn test_evaluate_binary_op_mixed_types() {
+        // Boolean with Integer AND - should return false, not crash
+        assert_eq!(
+            evaluate_binary_op(&Value::Boolean(true), &Value::Integer(1), "AND"),
+            Value::Boolean(false)
+        );
+        // Boolean with Integer OR - should return false
+        assert_eq!(
+            evaluate_binary_op(&Value::Boolean(false), &Value::Integer(0), "OR"),
+            Value::Boolean(false)
+        );
+    }
+
+    #[test]
+    fn test_compare_values_mixed_types() {
+        // Float vs Integer comparison - falls through to _ => 0 (incomparable types)
+        assert_eq!(compare_values(&Value::Float(1.0), &Value::Integer(2)), 0);
+        assert_eq!(compare_values(&Value::Integer(1), &Value::Float(2.0)), 0);
+    }
+
+    #[test]
+    fn test_sql_compare_with_null_left() {
+        assert!(!sql_compare("=", &Value::Null, &Value::Integer(1)));
+    }
+
+    #[test]
+    fn test_sql_compare_with_null_right() {
+        assert!(!sql_compare("=", &Value::Integer(1), &Value::Null));
+    }
+
+    #[test]
+    fn test_sql_compare_invalid_op() {
+        assert!(!sql_compare(
+            "INVALID",
+            &Value::Integer(1),
+            &Value::Integer(1)
+        ));
+    }
+
+    #[test]
+    fn test_expression_to_value_negative_number() {
+        assert_eq!(
+            expression_to_value(&Expression::Literal("-42".to_string())),
+            Value::Integer(-42)
+        );
+    }
+
+    #[test]
+    fn test_expression_to_value_quoted_text() {
+        // Text without quotes should still be parsed as text
+        assert_eq!(
+            expression_to_value(&Expression::Literal("hello".to_string())),
+            Value::Text("hello".to_string())
+        );
+    }
 }

@@ -1,20 +1,50 @@
 //! Hybrid search implementation
 
 use crate::types::{Filter, QmdData, SearchResult};
+use std::collections::HashMap;
+
+/// RRF (Reciprocal Rank Fusion) configuration
+#[derive(Debug, Clone)]
+pub struct RrfConfig {
+    /// RRF smoothing constant (default 60)
+    pub k: f32,
+    /// Vector channel weight (default 1.0)
+    pub vector_weight: f32,
+    /// Graph channel weight (default 1.0)
+    pub graph_weight: f32,
+    /// Text/FTS channel weight (default 1.0)
+    pub text_weight: f32,
+    /// Rule channel weight (default 2.0 - rules are higher priority)
+    pub rule_weight: f32,
+}
+
+impl Default for RrfConfig {
+    fn default() -> Self {
+        Self {
+            k: 60.0,
+            vector_weight: 1.0,
+            graph_weight: 1.0,
+            text_weight: 1.0,
+            rule_weight: 2.0,
+        }
+    }
+}
 
 /// Configuration for hybrid search
 #[derive(Debug, Clone)]
 pub struct HybridSearchConfig {
-    /// Weight for vector search results
+    /// Weight for vector search results (deprecated - use RRF)
     pub vector_weight: f32,
-    /// Weight for graph search results
+    /// Weight for graph search results (deprecated - use RRF)
     pub graph_weight: f32,
-    /// Weight for text search results
+    /// Weight for text search results (deprecated - use RRF)
     pub text_weight: f32,
     /// Maximum results to return
     pub limit: usize,
     /// Enable reranking
     pub enable_rerank: bool,
+    /// RRF configuration (if Some, use RRF instead of weighted sum)
+    pub rrf: Option<RrfConfig>,
 }
 
 impl Default for HybridSearchConfig {
@@ -25,6 +55,7 @@ impl Default for HybridSearchConfig {
             text_weight: 0.3,
             limit: 10,
             enable_rerank: true,
+            rrf: Some(RrfConfig::default()),
         }
     }
 }
@@ -186,6 +217,203 @@ impl HybridSearcher {
 
         HybridResult {
             results: combined,
+            vector_results,
+            graph_results,
+            text_results,
+        }
+    }
+}
+
+/// YAML rule matcher for GMP compliance rules
+#[derive(Debug, Clone)]
+pub struct RuleMatcher {
+    #[allow(dead_code)]
+    rules: HashMap<String, Vec<(String, String)>>,
+}
+
+impl RuleMatcher {
+    /// Create a new rule matcher (placeholder - loads from agent-knowledge/ in real impl)
+    pub fn new() -> Self {
+        Self {
+            rules: HashMap::new(),
+        }
+    }
+
+    /// Match rules against query and return matched results
+    pub fn match_rules(&self, _query: &str, _top_k: usize) -> Vec<SearchResult> {
+        // TODO: Implement YAML rule loading from agent-knowledge/
+        // For now, return empty results
+        Vec::new()
+    }
+
+    /// Check if query has a direct rule match
+    pub fn has_direct_match(&self, _query: &str) -> bool {
+        // TODO: Implement actual rule matching
+        false
+    }
+}
+
+impl Default for RuleMatcher {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl HybridSearcher {
+    /// Combine and rerank results using RRF (Reciprocal Rank Fusion)
+    ///
+    /// Replaces the old weighted sum approach with standard RRF formula:
+    /// score = Σ w_c / (k + rank_c)
+    ///
+    /// Rule matches get boosted weight (default 2.0) for GMP compliance priority.
+    pub fn rerank_rrf(
+        &self,
+        vector_results: Vec<SearchResult>,
+        graph_results: Vec<SearchResult>,
+        text_results: Vec<SearchResult>,
+        rule_results: Vec<SearchResult>,
+    ) -> HybridResult {
+        let rrf_config = match &self.config.rrf {
+            Some(cfg) => cfg.clone(),
+            None => RrfConfig::default(),
+        };
+
+        // Convert SearchResults to ranked (doc_id, score) lists
+        let ranked_vector: Vec<(String, f32)> = vector_results
+            .iter()
+            .enumerate()
+            .map(|(i, r)| {
+                (
+                    r.id.clone(),
+                    1.0 / (rrf_config.k + i as f32) * rrf_config.vector_weight,
+                )
+            })
+            .collect();
+
+        let ranked_graph: Vec<(String, f32)> = graph_results
+            .iter()
+            .enumerate()
+            .map(|(i, r)| {
+                (
+                    r.id.clone(),
+                    1.0 / (rrf_config.k + i as f32) * rrf_config.graph_weight,
+                )
+            })
+            .collect();
+
+        let ranked_text: Vec<(String, f32)> = text_results
+            .iter()
+            .enumerate()
+            .map(|(i, r)| {
+                (
+                    r.id.clone(),
+                    1.0 / (rrf_config.k + i as f32) * rrf_config.text_weight,
+                )
+            })
+            .collect();
+
+        let ranked_rules: Vec<(String, f32)> = rule_results
+            .iter()
+            .enumerate()
+            .map(|(i, r)| {
+                (
+                    r.id.clone(),
+                    1.0 / (rrf_config.k + i as f32) * rrf_config.rule_weight,
+                )
+            })
+            .collect();
+
+        // Build doc_id → all_scores map
+        type ScoreEntry = (String, Option<f32>, Option<f32>, Option<f32>);
+        let mut doc_scores: HashMap<String, Vec<ScoreEntry>> = HashMap::new();
+
+        for r in &vector_results {
+            doc_scores.entry(r.id.clone()).or_default().push((
+                r.id.clone(),
+                Some(r.score),
+                None,
+                None,
+            ));
+        }
+        for r in &graph_results {
+            doc_scores.entry(r.id.clone()).or_default();
+            if let Some(entry) = doc_scores.get_mut(&r.id) {
+                if let Some(e) = entry.iter_mut().find(|e| e.0 == r.id) {
+                    e.2 = Some(r.score);
+                } else {
+                    entry.push((r.id.clone(), None, Some(r.score), None));
+                }
+            }
+        }
+
+        // Fused scores using RRF
+        let mut fused: HashMap<String, f32> = HashMap::new();
+
+        for (rank, (doc_id, _score)) in ranked_vector.iter().enumerate() {
+            let rrf_score = rrf_config.vector_weight / (rrf_config.k + rank as f32);
+            *fused.entry(doc_id.clone()).or_insert(0.0) += rrf_score;
+        }
+        for (rank, (doc_id, _score)) in ranked_graph.iter().enumerate() {
+            let rrf_score = rrf_config.graph_weight / (rrf_config.k + rank as f32);
+            *fused.entry(doc_id.clone()).or_insert(0.0) += rrf_score;
+        }
+        for (rank, (doc_id, _score)) in ranked_text.iter().enumerate() {
+            let rrf_score = rrf_config.text_weight / (rrf_config.k + rank as f32);
+            *fused.entry(doc_id.clone()).or_insert(0.0) += rrf_score;
+        }
+        for (rank, (doc_id, _score)) in ranked_rules.iter().enumerate() {
+            let rrf_score = rrf_config.rule_weight / (rrf_config.k + rank as f32);
+            *fused.entry(doc_id.clone()).or_insert(0.0) += rrf_score;
+        }
+
+        // Build results sorted by fused score
+        let mut sorted: Vec<_> = fused.into_iter().collect();
+        sorted.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+        sorted.truncate(self.config.limit);
+
+        // Map back to HybridSearchResultItem
+        let results: Vec<_> = sorted
+            .iter()
+            .map(|(doc_id, score)| {
+                let data = vector_results
+                    .iter()
+                    .find(|r| &r.id == doc_id)
+                    .or_else(|| graph_results.iter().find(|r| &r.id == doc_id))
+                    .or_else(|| text_results.iter().find(|r| &r.id == doc_id))
+                    .or_else(|| rule_results.iter().find(|r| &r.id == doc_id))
+                    .map(|r| r.data.clone())
+                    .unwrap_or(QmdData {
+                        id: doc_id.clone(),
+                        data_type: crate::types::QmdDataType::Document,
+                        vector: None,
+                        graph: None,
+                        text: None,
+                        metadata: std::collections::HashMap::new(),
+                        timestamp: 0,
+                    });
+
+                HybridSearchResultItem {
+                    id: doc_id.clone(),
+                    score: *score,
+                    vector_score: vector_results
+                        .iter()
+                        .find(|r| &r.id == doc_id)
+                        .map(|r| r.score),
+                    graph_score: graph_results
+                        .iter()
+                        .find(|r| &r.id == doc_id)
+                        .map(|r| r.score),
+                    text_score: text_results
+                        .iter()
+                        .find(|r| &r.id == doc_id)
+                        .map(|r| r.score),
+                    data,
+                }
+            })
+            .collect();
+
+        HybridResult {
+            results,
             vector_results,
             graph_results,
             text_results,

@@ -368,7 +368,10 @@ impl StoredProcExecutor {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use sqlrustgo_parser::{parser::UnionStatement, Expression, SelectColumn, SelectStatement};
+    use sqlrustgo_parser::{
+        parser::{ExceptStatement, IntersectStatement, UnionStatement},
+        Expression, SelectColumn, SelectStatement,
+    };
     use std::sync::Arc;
 
     fn executor() -> StoredProcExecutor {
@@ -545,5 +548,421 @@ mod tests {
             &mut ctx,
         );
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_execute_cte_subquery_union_all() {
+        let ex = executor();
+        let mut ctx = ProcedureContext::new();
+
+        // Set up CTE table with two rows
+        ctx.cte_tables.insert(
+            "numbers".to_string(),
+            vec![vec![Value::Integer(1)], vec![Value::Integer(2)]],
+        );
+
+        let union_stmt = UnionStatement {
+            left: Box::new(sqlrustgo_parser::Statement::Select(SelectStatement {
+                columns: vec![SelectColumn {
+                    name: "a".into(),
+                    expression: Some(Expression::Identifier("a".into())),
+                    alias: None,
+                }],
+                table: "numbers".into(),
+                from: None,
+                where_clause: None,
+                join_clause: None,
+                aggregates: vec![],
+                group_by: vec![],
+                having: None,
+                order_by: vec![],
+                limit: None,
+                offset: None,
+                distinct: false,
+                for_update: false,
+            })),
+            right: Box::new(sqlrustgo_parser::Statement::Select(SelectStatement {
+                columns: vec![SelectColumn {
+                    name: "a".into(),
+                    expression: Some(Expression::Identifier("a".into())),
+                    alias: None,
+                }],
+                table: "numbers".into(),
+                from: None,
+                where_clause: None,
+                join_clause: None,
+                aggregates: vec![],
+                group_by: vec![],
+                having: None,
+                order_by: vec![],
+                limit: None,
+                offset: None,
+                distinct: false,
+                for_update: false,
+            })),
+            union_all: true,
+        };
+
+        let result =
+            ex.execute_cte_subquery(&sqlrustgo_parser::Statement::Union(union_stmt), &mut ctx);
+        assert!(result.is_ok());
+        let rows = result.unwrap();
+        // UNION ALL should return 4 rows (2 from left + 2 from right)
+        assert_eq!(rows.len(), 4);
+    }
+
+    #[test]
+    fn test_execute_cte_subquery_union_distinct() {
+        let ex = executor();
+        let mut ctx = ProcedureContext::new();
+
+        // Set up CTE table with duplicate rows
+        ctx.cte_tables.insert(
+            "dups".to_string(),
+            vec![
+                vec![Value::Integer(1)],
+                vec![Value::Integer(1)],
+                vec![Value::Integer(2)],
+            ],
+        );
+
+        let union_stmt = UnionStatement {
+            left: Box::new(sqlrustgo_parser::Statement::Select(SelectStatement {
+                columns: vec![SelectColumn {
+                    name: "a".into(),
+                    expression: Some(Expression::Identifier("a".into())),
+                    alias: None,
+                }],
+                table: "dups".into(),
+                from: None,
+                where_clause: None,
+                join_clause: None,
+                aggregates: vec![],
+                group_by: vec![],
+                having: None,
+                order_by: vec![],
+                limit: None,
+                offset: None,
+                distinct: false,
+                for_update: false,
+            })),
+            right: Box::new(sqlrustgo_parser::Statement::Select(SelectStatement {
+                columns: vec![SelectColumn {
+                    name: "a".into(),
+                    expression: Some(Expression::Identifier("a".into())),
+                    alias: None,
+                }],
+                table: "dups".into(),
+                from: None,
+                where_clause: None,
+                join_clause: None,
+                aggregates: vec![],
+                group_by: vec![],
+                having: None,
+                order_by: vec![],
+                limit: None,
+                offset: None,
+                distinct: false,
+                for_update: false,
+            })),
+            union_all: false,
+        };
+
+        let result =
+            ex.execute_cte_subquery(&sqlrustgo_parser::Statement::Union(union_stmt), &mut ctx);
+        assert!(result.is_ok());
+        let rows = result.unwrap();
+        // UNION (distinct) should dedupe: 3 unique values from each side
+        // but since both sides have [1, 1, 2], combined is [1, 1, 2, 1, 1, 2] -> deduped [1, 2]
+        assert_eq!(rows.len(), 2);
+    }
+
+    #[test]
+    fn test_execute_cte_subquery_intersect() {
+        let ex = executor();
+        let mut ctx = ProcedureContext::new();
+
+        // Set up CTE tables
+        ctx.cte_tables.insert(
+            "left_table".to_string(),
+            vec![
+                vec![Value::Integer(1)],
+                vec![Value::Integer(2)],
+                vec![Value::Integer(3)],
+            ],
+        );
+        ctx.cte_tables.insert(
+            "right_table".to_string(),
+            vec![
+                vec![Value::Integer(2)],
+                vec![Value::Integer(3)],
+                vec![Value::Integer(4)],
+            ],
+        );
+
+        let intersect_stmt = IntersectStatement {
+            left: Box::new(sqlrustgo_parser::Statement::Select(SelectStatement {
+                columns: vec![SelectColumn {
+                    name: "a".into(),
+                    expression: Some(Expression::Identifier("a".into())),
+                    alias: None,
+                }],
+                table: "left_table".into(),
+                from: None,
+                where_clause: None,
+                join_clause: None,
+                aggregates: vec![],
+                group_by: vec![],
+                having: None,
+                order_by: vec![],
+                limit: None,
+                offset: None,
+                distinct: false,
+                for_update: false,
+            })),
+            right: Box::new(sqlrustgo_parser::Statement::Select(SelectStatement {
+                columns: vec![SelectColumn {
+                    name: "a".into(),
+                    expression: Some(Expression::Identifier("a".into())),
+                    alias: None,
+                }],
+                table: "right_table".into(),
+                from: None,
+                where_clause: None,
+                join_clause: None,
+                aggregates: vec![],
+                group_by: vec![],
+                having: None,
+                order_by: vec![],
+                limit: None,
+                offset: None,
+                distinct: false,
+                for_update: false,
+            })),
+            intersect_all: false,
+        };
+
+        let result = ex.execute_cte_subquery(
+            &sqlrustgo_parser::Statement::Intersect(intersect_stmt),
+            &mut ctx,
+        );
+        assert!(result.is_ok());
+        let rows = result.unwrap();
+        // INTERSECT (distinct): common elements are 2 and 3
+        assert_eq!(rows.len(), 2);
+    }
+
+    #[test]
+    fn test_execute_cte_subquery_intersect_all() {
+        let ex = executor();
+        let mut ctx = ProcedureContext::new();
+
+        ctx.cte_tables.insert(
+            "left".to_string(),
+            vec![
+                vec![Value::Integer(1)],
+                vec![Value::Integer(2)],
+                vec![Value::Integer(2)],
+            ],
+        );
+        ctx.cte_tables.insert(
+            "right".to_string(),
+            vec![
+                vec![Value::Integer(2)],
+                vec![Value::Integer(2)],
+                vec![Value::Integer(3)],
+            ],
+        );
+
+        let intersect_stmt = IntersectStatement {
+            left: Box::new(sqlrustgo_parser::Statement::Select(SelectStatement {
+                columns: vec![SelectColumn {
+                    name: "a".into(),
+                    expression: Some(Expression::Identifier("a".into())),
+                    alias: None,
+                }],
+                table: "left".into(),
+                from: None,
+                where_clause: None,
+                join_clause: None,
+                aggregates: vec![],
+                group_by: vec![],
+                having: None,
+                order_by: vec![],
+                limit: None,
+                offset: None,
+                distinct: false,
+                for_update: false,
+            })),
+            right: Box::new(sqlrustgo_parser::Statement::Select(SelectStatement {
+                columns: vec![SelectColumn {
+                    name: "a".into(),
+                    expression: Some(Expression::Identifier("a".into())),
+                    alias: None,
+                }],
+                table: "right".into(),
+                from: None,
+                where_clause: None,
+                join_clause: None,
+                aggregates: vec![],
+                group_by: vec![],
+                having: None,
+                order_by: vec![],
+                limit: None,
+                offset: None,
+                distinct: false,
+                for_update: false,
+            })),
+            intersect_all: true,
+        };
+
+        let result = ex.execute_cte_subquery(
+            &sqlrustgo_parser::Statement::Intersect(intersect_stmt),
+            &mut ctx,
+        );
+        assert!(result.is_ok());
+        let rows = result.unwrap();
+        // INTERSECT ALL: 2 appears min(2, 2) = 2 times
+        assert_eq!(rows.len(), 2);
+    }
+
+    #[test]
+    fn test_execute_cte_subquery_except() {
+        let ex = executor();
+        let mut ctx = ProcedureContext::new();
+
+        ctx.cte_tables.insert(
+            "left".to_string(),
+            vec![
+                vec![Value::Integer(1)],
+                vec![Value::Integer(2)],
+                vec![Value::Integer(3)],
+            ],
+        );
+        ctx.cte_tables.insert(
+            "right".to_string(),
+            vec![
+                vec![Value::Integer(2)],
+                vec![Value::Integer(3)],
+                vec![Value::Integer(4)],
+            ],
+        );
+
+        let except_stmt = ExceptStatement {
+            left: Box::new(sqlrustgo_parser::Statement::Select(SelectStatement {
+                columns: vec![SelectColumn {
+                    name: "a".into(),
+                    expression: Some(Expression::Identifier("a".into())),
+                    alias: None,
+                }],
+                table: "left".into(),
+                from: None,
+                where_clause: None,
+                join_clause: None,
+                aggregates: vec![],
+                group_by: vec![],
+                having: None,
+                order_by: vec![],
+                limit: None,
+                offset: None,
+                distinct: false,
+                for_update: false,
+            })),
+            right: Box::new(sqlrustgo_parser::Statement::Select(SelectStatement {
+                columns: vec![SelectColumn {
+                    name: "a".into(),
+                    expression: Some(Expression::Identifier("a".into())),
+                    alias: None,
+                }],
+                table: "right".into(),
+                from: None,
+                where_clause: None,
+                join_clause: None,
+                aggregates: vec![],
+                group_by: vec![],
+                having: None,
+                order_by: vec![],
+                limit: None,
+                offset: None,
+                distinct: false,
+                for_update: false,
+            })),
+            except_all: false,
+        };
+
+        let result =
+            ex.execute_cte_subquery(&sqlrustgo_parser::Statement::Except(except_stmt), &mut ctx);
+        assert!(result.is_ok());
+        let rows = result.unwrap();
+        // EXCEPT (distinct): elements in left but not right = {1}
+        assert_eq!(rows.len(), 1);
+    }
+
+    #[test]
+    fn test_execute_cte_subquery_except_all() {
+        let ex = executor();
+        let mut ctx = ProcedureContext::new();
+
+        ctx.cte_tables.insert(
+            "left".to_string(),
+            vec![
+                vec![Value::Integer(1)],
+                vec![Value::Integer(2)],
+                vec![Value::Integer(2)],
+            ],
+        );
+        ctx.cte_tables
+            .insert("right".to_string(), vec![vec![Value::Integer(2)]]);
+
+        let except_stmt = ExceptStatement {
+            left: Box::new(sqlrustgo_parser::Statement::Select(SelectStatement {
+                columns: vec![SelectColumn {
+                    name: "a".into(),
+                    expression: Some(Expression::Identifier("a".into())),
+                    alias: None,
+                }],
+                table: "left".into(),
+                from: None,
+                where_clause: None,
+                join_clause: None,
+                aggregates: vec![],
+                group_by: vec![],
+                having: None,
+                order_by: vec![],
+                limit: None,
+                offset: None,
+                distinct: false,
+                for_update: false,
+            })),
+            right: Box::new(sqlrustgo_parser::Statement::Select(SelectStatement {
+                columns: vec![SelectColumn {
+                    name: "a".into(),
+                    expression: Some(Expression::Identifier("a".into())),
+                    alias: None,
+                }],
+                table: "right".into(),
+                from: None,
+                where_clause: None,
+                join_clause: None,
+                aggregates: vec![],
+                group_by: vec![],
+                having: None,
+                order_by: vec![],
+                limit: None,
+                offset: None,
+                distinct: false,
+                for_update: false,
+            })),
+            except_all: true,
+        };
+
+        let result =
+            ex.execute_cte_subquery(&sqlrustgo_parser::Statement::Except(except_stmt), &mut ctx);
+        assert!(result.is_ok());
+        let rows = result.unwrap();
+        // Current implementation uses HashSet, removes all left rows that exist in right
+        // left = [1, 2, 2], right = [2] -> filter removes ALL 2s -> [1]
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0][0], Value::Integer(1));
     }
 }

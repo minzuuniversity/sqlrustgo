@@ -47,6 +47,7 @@ use sqlrustgo_transaction::{
     TransactionManager, TxId,
 };
 use sqlrustgo_types::Value as SqlValue;
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
@@ -963,20 +964,42 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             ));
         }
 
+        // COUNT(*) optimization: skip full scan for simple row count
+        if select.where_clause.is_none()
+            && select.join_clause.is_none()
+            && select.group_by.is_empty()
+            && select.having.is_none()
+            && !select.distinct
+            && select.limit.is_none()
+            && select.offset.is_none()
+            && select.aggregates.len() == 1
+            && matches!(&select.aggregates[0].func, AggregateFunction::Count)
+            && select.aggregates[0].args.is_empty()
+            && !select.aggregates[0].distinct
+        {
+            let storage = self.storage.read().unwrap();
+            let count = storage.get_row_count(&select.table)?;
+            return Ok(ExecutorResult::new(
+                vec![vec![Value::Integer(count as i64)]],
+                count as usize,
+            ));
+        }
+
         let storage = self.storage.read().unwrap();
 
         // Step 1: FROM/JOIN - get initial rows and schema
         let (mut rows, table_info) = if select.join_clause.is_some() {
-            self.execute_join(select)?
+            let (owned_rows, info) = self.execute_join(select)?;
+            (Cow::Owned(owned_rows), info)
         } else if self.cbo_enabled {
             // CBO: try index scan for simple equality predicates
             let table_info = storage.get_table_info(&select.table)?;
-            let rows = self.try_index_scan_or_fallback(select, &*storage, &table_info)?;
-            (rows, table_info)
+            let owned_rows = self.try_index_scan_or_fallback(select, &*storage, &table_info)?;
+            (Cow::Owned(owned_rows), table_info)
         } else {
-            let rows = storage.scan(&select.table)?;
+            let records = storage.get_records(&select.table)?;
             let table_info = storage.get_table_info(&select.table)?;
-            (rows, table_info)
+            (records, table_info)
         };
 
         // Step 2: WHERE (with constant folding optimization)
@@ -986,7 +1009,9 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             } else {
                 where_expr.clone()
             };
-            rows.retain(|row| self.eval_predicate(&folded_where, row, &table_info));
+            let mut owned_rows = rows.into_owned();
+            owned_rows.retain(|row| self.eval_predicate(&folded_where, row, &table_info));
+            rows = Cow::Owned(owned_rows);
         }
 
         // Step 3: GROUP BY + AGGREGATE
@@ -994,7 +1019,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             let group_exprs = &select.group_by;
             if group_exprs.is_empty() {
                 let mut agg_values =
-                    self.compute_aggregates(&select.aggregates, &rows, &table_info)?;
+                    self.compute_aggregates(&select.aggregates, rows.as_ref(), &table_info)?;
 
                 if let Some(ref having_expr) = select.having {
                     let having_schema = build_aggregate_schema(&[], &select.aggregates)?;
@@ -1007,7 +1032,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             } else {
                 let mut groups: std::collections::HashMap<String, Vec<Vec<Value>>> =
                     std::collections::HashMap::new();
-                for row in &rows {
+                for row in rows.iter() {
                     let key = group_exprs
                         .iter()
                         .map(|expr| evaluate_expr_to_string(expr, row, &table_info))
@@ -1057,7 +1082,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             !select.columns.is_empty() && !select.columns.iter().any(|c| c.name == "*");
 
         let projected_rows: Vec<Vec<Value>> = if needs_projection {
-            rows.into_iter()
+            rows.into_owned()
+                .into_iter()
                 .map(|row| {
                     select
                         .columns
@@ -1076,7 +1102,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 })
                 .collect()
         } else {
-            rows
+            rows.into_owned()
         };
 
         // Step 5: DISTINCT — deduplicate after projection
@@ -2835,10 +2861,61 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             }
         }
 
-        // If no WHERE clause, use the simple storage.update() path
+        // If no WHERE clause, update ALL rows
         if update.where_clause.is_none() {
+            // storage.update() is a stub, so implement here properly
+            let table_info = {
+                let storage = self.storage.read().unwrap();
+                storage.get_table_info(&table_name)?.clone()
+            };
+
+            let set_col_indices: Vec<(usize, Expression)> = update
+                .set_clauses
+                .iter()
+                .filter_map(|(col_name, expr)| {
+                    find_column_index(col_name, &table_info).map(|idx| (idx, expr.clone()))
+                })
+                .collect();
+
+            if set_col_indices.is_empty() {
+                return Ok(ExecutorResult::new(vec![], 0));
+            }
+
+            let all_rows = {
+                let storage = self.storage.read().unwrap();
+                storage.scan(&table_name)?
+            };
+            let count = all_rows.len();
+
+            if count == 0 {
+                return Ok(ExecutorResult::new(vec![], 0));
+            }
+
+            // Apply SET expressions to all rows
+            let updated_rows: Vec<Vec<Value>> = all_rows
+                .into_iter()
+                .map(|row| {
+                    let mut new_row = row.clone();
+                    for &(col_idx, ref set_expr) in &set_col_indices {
+                        let new_val = evaluate_expression(set_expr, &new_row, &table_info)
+                            .unwrap_or(Value::Null);
+                        if col_idx < new_row.len() {
+                            new_row[col_idx] = new_val;
+                        }
+                    }
+                    new_row
+                })
+                .collect();
+
+            // Write back
             let mut storage = self.storage.write().unwrap();
-            let count = storage.update(&table_name, &[], &[])?;
+            storage.delete(&table_name, &[])?;
+            storage.insert(&table_name, updated_rows)?;
+
+            self.query_cache
+                .write()
+                .unwrap()
+                .invalidate_table(&table_name);
             return Ok(ExecutorResult::new(vec![], count));
         }
 
@@ -6584,5 +6661,169 @@ mod tests {
             .unwrap();
 
         assert_eq!(result.rows.len(), 1001);
+    }
+
+    #[test]
+    fn test_engine_config_builder() {
+        let config = EngineConfig::builder()
+            .cbo_enabled(false)
+            .stats_enabled(false)
+            .build();
+        assert!(!config.cbo_enabled);
+        assert!(!config.stats_enabled);
+    }
+
+    #[test]
+    fn test_engine_config_builder_default() {
+        // builder().build() uses false as defaults (different from EngineConfig::default())
+        let config = EngineConfig::builder().build();
+        assert!(!config.cbo_enabled);
+        assert!(!config.stats_enabled);
+    }
+
+    #[test]
+    fn test_cte_context_temp_table_name() {
+        let ctx = CteContext {
+            cte_tables: HashMap::new(),
+            temp_tables: Vec::new(),
+        };
+        let name = ctx.temp_table_name("my_cte");
+        assert!(name.contains("__cte_my_cte_"));
+    }
+
+    #[test]
+    fn test_cte_context_temp_table_name_unique() {
+        let ctx = CteContext {
+            cte_tables: HashMap::new(),
+            temp_tables: Vec::new(),
+        };
+        let name1 = ctx.temp_table_name("cte1");
+        let name2 = ctx.temp_table_name("cte1");
+        assert_ne!(name1, name2);
+    }
+
+    #[test]
+    fn test_engine_config_default() {
+        let config = EngineConfig::default();
+        assert!(config.cbo_enabled);
+        assert!(config.stats_enabled);
+    }
+
+    #[test]
+    fn test_engine_config_clone() {
+        let config = EngineConfig::builder().cbo_enabled(false).build();
+        let cloned = config.clone();
+        assert_eq!(cloned.cbo_enabled, config.cbo_enabled);
+    }
+
+    #[test]
+    fn test_execution_engine_current_user() {
+        let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+        let mut engine = ExecutionEngine::new(storage);
+
+        // Initially no user
+        assert!(engine.get_current_user().is_none());
+
+        // Set user
+        let user = UserIdentity::new("alice", "localhost");
+        engine.set_current_user(user);
+        assert!(engine.get_current_user().is_some());
+
+        // Clear user
+        engine.clear_current_user();
+        assert!(engine.get_current_user().is_none());
+    }
+
+    #[test]
+    fn test_execution_engine_estimate_row_count() {
+        let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+        let mut engine = ExecutionEngine::new(storage);
+
+        engine
+            .execute("CREATE TABLE t (id INTEGER, name TEXT)")
+            .unwrap();
+        for i in 0..100 {
+            engine
+                .execute(&format!("INSERT INTO t VALUES ({}, 'name{}')", i, i))
+                .unwrap();
+        }
+
+        let estimate = engine.estimate_row_count("t");
+        assert_eq!(estimate, 1000);
+    }
+
+    #[test]
+    fn test_execution_engine_estimate_selectivity() {
+        let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+        let mut engine = ExecutionEngine::new(storage);
+        engine
+            .execute("CREATE TABLE t (id INTEGER, name TEXT)")
+            .unwrap();
+
+        // Without column stats, default 0.1
+        let sel = engine.estimate_selectivity("t", "id");
+        assert_eq!(sel, 0.1);
+    }
+
+    #[test]
+    fn test_execution_engine_estimate_seq_scan_cost() {
+        let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+        let mut engine = ExecutionEngine::new(storage);
+        engine.execute("CREATE TABLE t (id INTEGER)").unwrap();
+        // estimate_row_count returns default 1000 without ANALYZE
+        let cost = engine.estimate_seq_scan_cost("t");
+        assert_eq!(cost, 1000.0);
+    }
+
+    #[test]
+    fn test_execution_engine_estimate_index_scan_cost() {
+        let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+        let mut engine = ExecutionEngine::new(storage);
+        engine.execute("CREATE TABLE t (id INTEGER)").unwrap();
+        let cost = engine.estimate_index_scan_cost("t", 0.1);
+        // rows=1000 (default) * 0.1 selectivity * 0.5 = 50; + 10 = 60
+        assert_eq!(cost, 60.0);
+    }
+
+    #[test]
+    fn test_execution_engine_estimate_index_benefit() {
+        let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+        let mut engine = ExecutionEngine::new(storage);
+        engine.execute("CREATE TABLE t (id INTEGER)").unwrap();
+        // seq_cost = 1000, index_cost = 60 → benefit = 940
+        let benefit = engine.estimate_index_benefit("t", 0.1);
+        assert_eq!(benefit, 940.0);
+    }
+
+    #[test]
+    fn test_execution_engine_should_use_index() {
+        let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+        let mut engine = ExecutionEngine::new(storage);
+        engine.execute("CREATE TABLE t (id INTEGER)").unwrap();
+        assert!(engine.should_use_index("t", "id"));
+    }
+
+    #[test]
+    fn test_execution_engine_estimate_join_cost_hash() {
+        let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+        let mut engine = ExecutionEngine::new(storage);
+        engine.execute("CREATE TABLE t1 (id INTEGER)").unwrap();
+        engine.execute("CREATE TABLE t2 (id INTEGER)").unwrap();
+        // Without ANALYZE, default row count = 1000 each
+        let cost = engine.estimate_join_cost("t1", "t2", "hash");
+        // hash: 1000*0.8 + 1000*0.8 = 800 + 800 = 1600
+        assert_eq!(cost, 1600.0);
+    }
+
+    #[test]
+    fn test_execution_engine_estimate_join_cost_nested_loop() {
+        let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+        let mut engine = ExecutionEngine::new(storage);
+        engine.execute("CREATE TABLE t1 (id INTEGER)").unwrap();
+        engine.execute("CREATE TABLE t2 (id INTEGER)").unwrap();
+        // Without ANALYZE, default row count = 1000 each
+        let cost = engine.estimate_join_cost("t1", "t2", "nested_loop");
+        // nested loop: left + left*right*0.1 = 1000 + 1000*1000*0.1 = 101000
+        assert_eq!(cost, 101000.0);
     }
 }

@@ -24,6 +24,7 @@ pub enum FlakyAction {
 
 pub struct FlakyTestDetector {
     history: HashMap<String, (usize, usize)>,
+    #[expect(dead_code)]
     significance_threshold: f64,
     min_runs: u32,
 }
