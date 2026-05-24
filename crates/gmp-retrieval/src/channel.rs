@@ -378,17 +378,19 @@ impl FourChannelEngine {
         }
     }
 
-    /// Search all channels and fuse results
+    /// Search all channels in parallel and fuse results
     pub async fn search(&self, query: &str, top_k: usize) -> Vec<ScoredChunk> {
         let query_str = query.to_string();
 
-        // Run all channels in parallel using tokio::join!
-        let (rule_res, fts_res, graph_res) = tokio::join!(
+        // Run all four channels in parallel using tokio::join!
+        // Vector channel is async; Rule/FTS/Graph are sync → use spawn_blocking
+        let (rule_res, vector_res, fts_res, graph_res) = tokio::join!(
             tokio::task::spawn_blocking({
                 let rule = self.rule.clone();
                 let q = query_str.clone();
                 move || rule.search(&q, 10)
             }),
+            self.vector.search(&query_str, 30),
             tokio::task::spawn_blocking({
                 let fts = self.fts.clone();
                 let q = query_str.clone();
@@ -402,11 +404,9 @@ impl FourChannelEngine {
         );
 
         let rule_results = rule_res.unwrap_or_default();
+        let vector_results = vector_res;
         let fts_results = fts_res.unwrap_or_default();
         let graph_results = graph_res.unwrap_or_default();
-
-        // Vector results (async)
-        let vector_results = self.vector.search(&query_str, 30).await;
 
         // RRF fusion with weights: Rule=2.0, others=1.0
         let channel_results = vec![
