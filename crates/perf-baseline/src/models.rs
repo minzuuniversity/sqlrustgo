@@ -50,7 +50,7 @@ pub enum MetricType {
 }
 
 impl MetricType {
-    pub fn from_str(s: &str) -> Option<Self> {
+    pub fn parse_str(s: &str) -> Option<Self> {
         match s {
             "qps_update" => Some(Self::QpsUpdate),
             "qps_delete" => Some(Self::QpsDelete),
@@ -87,45 +87,45 @@ mod tests {
     #[test]
     fn test_metric_type_all_variants() {
         assert_eq!(
-            MetricType::from_str("qps_update"),
+            MetricType::parse_str("qps_update"),
             Some(MetricType::QpsUpdate)
         );
         assert_eq!(
-            MetricType::from_str("qps_delete"),
+            MetricType::parse_str("qps_delete"),
             Some(MetricType::QpsDelete)
         );
         assert_eq!(
-            MetricType::from_str("qps_insert"),
+            MetricType::parse_str("qps_insert"),
             Some(MetricType::QpsInsert)
         );
         assert_eq!(
-            MetricType::from_str("qps_select"),
+            MetricType::parse_str("qps_select"),
             Some(MetricType::QpsSelect)
         );
         assert_eq!(
-            MetricType::from_str("qps_complex_where"),
+            MetricType::parse_str("qps_complex_where"),
             Some(MetricType::QpsComplexWhere)
         );
-        assert_eq!(MetricType::from_str("qps_join"), Some(MetricType::QpsJoin));
+        assert_eq!(MetricType::parse_str("qps_join"), Some(MetricType::QpsJoin));
         assert_eq!(
-            MetricType::from_str("latency_p50"),
+            MetricType::parse_str("latency_p50"),
             Some(MetricType::LatencyP50)
         );
         assert_eq!(
-            MetricType::from_str("latency_p99"),
+            MetricType::parse_str("latency_p99"),
             Some(MetricType::LatencyP99)
         );
         assert_eq!(
-            MetricType::from_str("memory_mb"),
+            MetricType::parse_str("memory_mb"),
             Some(MetricType::MemoryMb)
         );
     }
 
     #[test]
     fn test_metric_type_unknown() {
-        assert_eq!(MetricType::from_str("unknown"), None);
-        assert_eq!(MetricType::from_str(""), None);
-        assert_eq!(MetricType::from_str("QPS_UPDATE"), None);
+        assert_eq!(MetricType::parse_str("unknown"), None);
+        assert_eq!(MetricType::parse_str(""), None);
+        assert_eq!(MetricType::parse_str("QPS_UPDATE"), None);
     }
 
     #[test]
@@ -142,7 +142,7 @@ mod tests {
             MetricType::MemoryMb,
         ] {
             assert_eq!(
-                MetricType::from_str(variant.as_str()),
+                MetricType::parse_str(variant.as_str()),
                 Some(variant.clone())
             );
         }

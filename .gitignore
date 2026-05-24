@@ -38,3 +38,4 @@ ci_artifacts/
 # Coverage and benchmark artifacts
 lcov.info
 perf_baselines/
+.cargo/

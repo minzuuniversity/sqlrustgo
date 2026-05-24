@@ -4,6 +4,7 @@
 use rustc_hash::FxHashMap;
 use serde::{Deserialize, Serialize};
 pub use sqlrustgo_types::{SqlError, SqlResult, Value};
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::collections::HashSet;
 
@@ -590,6 +591,13 @@ pub trait StorageEngine: Send + Sync {
     /// Scan all rows from a table
     fn scan(&self, table: &str) -> SqlResult<Vec<Record>>;
 
+    /// Get records from a table, optionally as a borrowed slice to avoid cloning.
+    /// Default implementation wraps scan() result in Cow::Owned.
+    /// Override in storage backends that can return borrowed data (e.g. MemoryStorage).
+    fn get_records(&self, table: &str) -> SqlResult<Cow<'_, [Record]>> {
+        self.scan(table).map(Cow::Owned)
+    }
+
     /// Insert rows into a table
     fn insert(&mut self, table: &str, records: Vec<Record>) -> SqlResult<()>;
 
@@ -818,6 +826,13 @@ impl Default for MemoryStorage {
 impl StorageEngine for MemoryStorage {
     fn scan(&self, table: &str) -> SqlResult<Vec<Record>> {
         Ok(self.tables.get(table).cloned().unwrap_or_default())
+    }
+
+    fn get_records(&self, table: &str) -> SqlResult<Cow<'_, [Record]>> {
+        Ok(match self.tables.get(table) {
+            Some(records) => Cow::Borrowed(records.as_slice()),
+            None => Cow::Owned(Vec::new()),
+        })
     }
 
     fn insert(&mut self, table: &str, records: Vec<Record>) -> SqlResult<()> {
@@ -1490,5 +1505,252 @@ mod tests {
         let result = evaluate_sql_expression("name <> 'Bob'", &columns, &record);
         assert!(result.is_ok());
         assert!(result.unwrap());
+    }
+
+    #[test]
+    fn test_get_column_value() {
+        let columns = vec!["id".to_string(), "name".to_string(), "age".to_string()];
+        let record = vec![
+            Value::Integer(1),
+            Value::Text("Bob".to_string()),
+            Value::Integer(30),
+        ];
+
+        assert_eq!(
+            get_column_value("id", &columns, &record),
+            Some(&Value::Integer(1))
+        );
+        assert_eq!(
+            get_column_value("name", &columns, &record),
+            Some(&Value::Text("Bob".to_string()))
+        );
+        assert_eq!(
+            get_column_value("age", &columns, &record),
+            Some(&Value::Integer(30))
+        );
+        assert_eq!(get_column_value("nonexistent", &columns, &record), None);
+    }
+
+    #[test]
+    fn test_get_column_value_with_quotes() {
+        let columns = vec!["name".to_string()];
+        let record = vec![Value::Text("Alice".to_string())];
+
+        assert_eq!(
+            get_column_value("'name'", &columns, &record),
+            Some(&Value::Text("Alice".to_string()))
+        );
+        assert_eq!(
+            get_column_value("\"name\"", &columns, &record),
+            Some(&Value::Text("Alice".to_string()))
+        );
+    }
+
+    #[test]
+    fn test_get_column_value_case_insensitive() {
+        let columns = vec!["Name".to_string()];
+        let record = vec![Value::Text("Bob".to_string())];
+
+        assert_eq!(
+            get_column_value("NAME", &columns, &record),
+            Some(&Value::Text("Bob".to_string()))
+        );
+    }
+
+    #[test]
+    fn test_is_zero_or_empty() {
+        assert!(is_zero_or_empty(&Value::Integer(0)));
+        assert!(is_zero_or_empty(&Value::Float(0.0)));
+        assert!(is_zero_or_empty(&Value::Text("".to_string())));
+        assert!(is_zero_or_empty(&Value::Boolean(false)));
+        assert!(is_zero_or_empty(&Value::Null));
+        assert!(!is_zero_or_empty(&Value::Integer(1)));
+        assert!(!is_zero_or_empty(&Value::Text("hello".to_string())));
+    }
+
+    #[test]
+    fn test_compare_values_integer_eq() {
+        let col_val = Value::Integer(42);
+        assert!(compare_values(&col_val, "42", "eq").unwrap());
+        assert!(!compare_values(&col_val, "43", "eq").unwrap());
+    }
+
+    #[test]
+    fn test_compare_values_integer_cmp() {
+        let col_val = Value::Integer(10);
+        assert!(compare_values(&col_val, "5", "gt").unwrap());
+        assert!(compare_values(&col_val, "10", "gte").unwrap());
+        assert!(compare_values(&col_val, "15", "lt").unwrap());
+        assert!(compare_values(&col_val, "10", "lte").unwrap());
+        assert!(!compare_values(&col_val, "5", "lt").unwrap());
+    }
+
+    #[test]
+    fn test_compare_values_float_eq() {
+        let col_val = Value::Float(3.14);
+        assert!(compare_values(&col_val, "3.14", "eq").unwrap());
+        assert!(!compare_values(&col_val, "3.15", "eq").unwrap());
+    }
+
+    #[test]
+    fn test_compare_values_text_eq() {
+        let col_val = Value::Text("hello".to_string());
+        assert!(compare_values(&col_val, "hello", "eq").unwrap());
+        assert!(!compare_values(&col_val, "world", "eq").unwrap());
+    }
+
+    #[test]
+    fn test_compare_values_boolean_eq() {
+        let col_val = Value::Boolean(true);
+        assert!(compare_values(&col_val, "true", "eq").unwrap());
+        assert!(compare_values(&col_val, "1", "eq").unwrap());
+        assert!(!compare_values(&col_val, "false", "eq").unwrap());
+    }
+
+    #[test]
+    fn test_compare_values_neq() {
+        let col_val = Value::Integer(5);
+        // neq returns !eq, so neq(5, 5) is false (because eq(5, 5) is true)
+        assert!(!compare_values(&col_val, "5", "neq").unwrap());
+        // neq(5, 10) is true (because eq(5, 10) is false)
+        assert!(compare_values(&col_val, "10", "neq").unwrap());
+    }
+
+    #[test]
+    fn test_compare_values_text_gt() {
+        let col_val = Value::Text("b".to_string());
+        assert!(compare_values(&col_val, "a", "gt").unwrap());
+        assert!(!compare_values(&col_val, "b", "lt").unwrap());
+    }
+
+    #[test]
+    fn test_compare_values_incompatible_gt() {
+        // Text "hello" compared with numeric "5" using gt → string comparison wins, result true
+        let col_val = Value::Text("hello".to_string());
+        let result = compare_values(&col_val, "5", "gt").unwrap();
+        assert!(result); // "hello" > "5" in string comparison
+    }
+
+    #[test]
+    fn test_compare_values_incompatible_lte() {
+        // Boolean compared with text using lte → falls through to Err (Boolean not in gt/gte/lt/lte branch)
+        let col_val = Value::Boolean(true);
+        let result = compare_values(&col_val, "hello", "lte");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_compare_values_blob_neq() {
+        let col_val = Value::Blob(vec![1, 2, 3]);
+        assert!(!compare_values(&col_val, "anything", "eq").unwrap());
+    }
+
+    #[test]
+    fn test_find_top_level_op_basic() {
+        assert_eq!(find_top_level_op("a AND b", "AND"), Some(2));
+        assert_eq!(find_top_level_op("a OR b", "OR"), Some(2));
+    }
+
+    #[test]
+    fn test_find_top_level_op_nested() {
+        // (a AND b) OR c - should find OR at top level, not inner AND
+        assert_eq!(find_top_level_op("(a AND b) OR c", "OR"), Some(10));
+    }
+
+    #[test]
+    fn test_find_top_level_op_in_string() {
+        // 'a AND b' should NOT find the AND inside quotes
+        assert_eq!(find_top_level_op("'a AND b'", "AND"), None);
+    }
+
+    #[test]
+    fn test_find_top_level_op_multiple() {
+        // a AND b AND c - should find first AND
+        assert_eq!(find_top_level_op("a AND b AND c", "AND"), Some(2));
+    }
+
+    #[test]
+    fn test_find_top_level_op_no_match() {
+        assert_eq!(find_top_level_op("a OR b", "XOR"), None);
+    }
+
+    #[test]
+    fn test_evaluate_sql_expression_simple_bool() {
+        let columns = vec!["active".to_string()];
+        let record = vec![Value::Boolean(true)];
+
+        // Test TRUE literal
+        let result = evaluate_sql_expression("TRUE", &columns, &record);
+        assert!(result.is_ok());
+        assert!(result.unwrap());
+
+        // Test 1 as true
+        let result = evaluate_sql_expression("1", &columns, &record);
+        assert!(result.is_ok());
+        assert!(result.unwrap());
+
+        // Test FALSE literal
+        let result = evaluate_sql_expression("FALSE", &columns, &record);
+        assert!(result.is_ok());
+        assert!(!result.unwrap());
+    }
+
+    #[test]
+    fn test_evaluate_sql_expression_column_check() {
+        let columns = vec!["name".to_string(), "value".to_string()];
+        let record = vec![Value::Text("hello".to_string()), Value::Integer(42)];
+
+        // name - column exists and is not null
+        let result = evaluate_sql_expression("name", &columns, &record);
+        assert!(result.is_ok());
+        assert!(result.unwrap());
+
+        // nonexistent - column doesn't exist, should error
+        let result = evaluate_sql_expression("nonexistent", &columns, &record);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_evaluate_sql_expression_0_or_empty() {
+        let columns = vec!["zero".to_string(), "empty".to_string()];
+        let record = vec![Value::Integer(0), Value::Text("".to_string())];
+
+        // zero - should evaluate to false (is_zero_or_empty)
+        let result = evaluate_sql_expression("zero", &columns, &record);
+        assert!(result.is_ok());
+        assert!(!result.unwrap());
+
+        // empty - should evaluate to false
+        let result = evaluate_sql_expression("empty", &columns, &record);
+        assert!(result.is_ok());
+        assert!(!result.unwrap());
+    }
+
+    #[test]
+    fn test_evaluate_check_constraint() {
+        let constraint = CheckConstraint {
+            name: Some("age_check".to_string()),
+            expression: "age >= 0".to_string(),
+        };
+        let columns = vec!["age".to_string()];
+        let record = vec![Value::Integer(25)];
+
+        let result = evaluate_check_constraint(&constraint, &columns, &record);
+        assert!(result.is_ok());
+        assert!(result.unwrap());
+    }
+
+    #[test]
+    fn test_evaluate_check_constraint_fail() {
+        let constraint = CheckConstraint {
+            name: Some("age_check".to_string()),
+            expression: "age >= 0".to_string(),
+        };
+        let columns = vec!["age".to_string()];
+        let record = vec![Value::Integer(-5)];
+
+        let result = evaluate_check_constraint(&constraint, &columns, &record);
+        assert!(result.is_ok());
+        assert!(!result.unwrap());
     }
 }

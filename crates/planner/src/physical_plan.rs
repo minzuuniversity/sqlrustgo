@@ -607,6 +607,56 @@ impl PhysicalPlan for DeleteExec {
     }
 }
 
+/// Update execution operator
+pub struct UpdateExec {
+    table_name: String,
+    /// Column name to new value expression
+    updates: Vec<(String, Expr)>,
+    predicate: Option<Expr>,
+    schema: Schema,
+}
+
+impl UpdateExec {
+    pub fn new(table_name: String, updates: Vec<(String, Expr)>, predicate: Option<Expr>) -> Self {
+        Self {
+            table_name,
+            updates,
+            predicate,
+            schema: Schema::empty(),
+        }
+    }
+
+    pub fn table_name(&self) -> &str {
+        &self.table_name
+    }
+
+    pub fn updates(&self) -> &[(String, Expr)] {
+        &self.updates
+    }
+
+    pub fn predicate(&self) -> Option<&Expr> {
+        self.predicate.as_ref()
+    }
+}
+
+impl PhysicalPlan for UpdateExec {
+    fn schema(&self) -> &Schema {
+        &self.schema
+    }
+
+    fn children(&self) -> Vec<&dyn PhysicalPlan> {
+        vec![]
+    }
+
+    fn name(&self) -> &str {
+        "Update"
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
 use crate::logical_plan::{MergeMatchedClause, MergeNotMatchedClause};
 
 /// Window function execution operator
