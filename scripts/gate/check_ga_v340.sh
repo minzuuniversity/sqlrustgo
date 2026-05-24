@@ -203,19 +203,19 @@ fi
 
 # ============================================================
 # 第四部分: GMP API Tests (G-API1~G-API7)
-# 注意: gmp-api 只有 3 个 lib tests (signature: test_sign/verify/hash_chain)
-# G-API2~7 的过滤器无匹配测试，记录为 SKIP
+# gmp-api 包含: audit.rs, batch.rs, device.rs, dashboard.rs, rule_engine.rs, signature.rs
+# 各模块均已添加 lib tests，覆盖相应 API
 # ============================================================
 echo ""
 echo "━━━ 第四部分: GMP API Tests (G-API1~G-API7) ━━━"
 
 check_test "G-API1: gmp-api lib tests" "cargo test -p sqlrustgo-gmp-api --lib 2>&1" "G-API1"
-log_skip "G-API2: Batch CRUD (no matching tests — gmp-api has 3 lib tests only)" "G-API2"
-log_skip "G-API3: Audit API (no matching tests)" "G-API3"
-log_skip "G-API4: Device API (no matching tests)" "G-API4"
-log_skip "G-API5: Signature API (signature tests already in G-API1)" "G-API5"
-log_skip "G-API6: Dashboard API (no matching tests)" "G-API6"
-log_skip "G-API7: Rule Tests (rule_engine is impl method, not test fn)" "G-API7"
+check_test "G-API2: Batch API tests" "cargo test -p sqlrustgo-gmp-api --lib -- batch 2>&1" "G-API2"
+check_test "G-API3: Audit API tests" "cargo test -p sqlrustgo-gmp-api --lib -- audit 2>&1" "G-API3"
+check_test "G-API4: Device API tests" "cargo test -p sqlrustgo-gmp-api --lib -- device 2>&1" "G-API4"
+check_test "G-API5: Dashboard API tests" "cargo test -p sqlrustgo-gmp-api --lib -- dashboard 2>&1" "G-API5"
+check_test "G-API6: Rule Engine tests" "cargo test -p sqlrustgo-gmp-api --lib -- rule 2>&1" "G-API6"
+check_test "G-API7: Signature API tests" "cargo test -p sqlrustgo-gmp-api --lib -- signature 2>&1" "G-API7"
 
 # ============================================================
 # 第五部分: GMP Core Tests (G-GMP1~G-GMP8)
