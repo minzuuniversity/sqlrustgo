@@ -1,13 +1,18 @@
 //! GMP 408 Scenario Evaluator — Detailed Per-Scenario Report
 //! Outputs every query, retrieved docs, expected keywords, and pass/fail for manual review
+//! Supports LLM-assisted semantic validation (IMPROVEMENT-3)
+
+mod llm_validator;
 
 use anyhow::{Context, Result};
 use clap::Parser;
+use crate::llm_validator::{EvalVerdict, LlmValidationResult, LlmValidator};
 use gmp_storage::{StorageConfig, StorageEngine};
 use std::collections::HashMap;
 
+// Re-export TestScenario — make it pub(crate) in main so llm_validator can import it
 #[derive(Debug, Clone, serde::Deserialize)]
-struct TestScenario {
+pub(crate) struct TestScenario {
     pub query: String,
     pub expected_doc_ids: Vec<String>, // keywords to match in content
     #[serde(default)]
@@ -88,6 +93,12 @@ struct Cli {
     /// Show only failed scenarios in detailed output
     #[arg(long, default_value_t = false)]
     verbose: bool,
+    /// Enable LLM-assisted semantic validation (requires Ollama)
+    #[arg(long, default_value_t = false)]
+    llm_validate: bool,
+    /// Ollama model for LLM validation
+    #[arg(long, default_value = "qwen2.5:14b")]
+    llm_model: String,
 }
 
 fn get_query_embedding(query: &str, ollama_url: &str, model: &str) -> Option<Vec<f32>> {
@@ -145,7 +156,8 @@ fn hybrid_search(
     (results, "vector_fallback".to_string())
 }
 
-fn main() -> Result<()> {
+#[tokio::main]
+async fn main() -> Result<()> {
     let cli = Cli::parse();
 
     let test_content = std::fs::read_to_string(&cli.test_set)
@@ -162,6 +174,15 @@ fn main() -> Result<()> {
         use_sqlrustgo_storage: true,
     };
     let storage = StorageEngine::new(config).context("Failed to initialize storage")?;
+
+    // Initialize LLM validator if enabled
+    let llm_validator = if cli.llm_validate {
+        let validator = LlmValidator::new(cli.ollama_url.clone(), cli.llm_model.clone());
+        eprintln!("LLM validation enabled (model: {})", cli.llm_model);
+        Some(validator)
+    } else {
+        None
+    };
 
     let limit = cli.limit.unwrap_or(408);
     let scenarios: Vec<_> = test_scenarios.iter().take(limit).collect();
@@ -251,12 +272,46 @@ fn main() -> Result<()> {
         all_recalls.push(recall);
         all_mrrs.push(mrr);
 
-        let is_pass = recall > 0.0;
+        // Determine pass/fail — with LLM validation, the bar is semantic relevance
+        let mut is_pass = recall > 0.0;
+        let mut llm_verdict: Option<llm_validator::ValidationVerdict> = None;
+
+        // If LLM validator is available, use semantic validation instead of keyword-only
+        if let Some(ref validator) = llm_validator {
+            let docs: Vec<llm_validator::DocSnippet> = search_results
+                .iter()
+                .take(10)
+                .map(|r| llm_validator::DocSnippet {
+                    doc_id: r.doc_id.clone(),
+                    title: r.title.clone(),
+                    content: r.content.clone(),
+                })
+                .collect();
+
+            let req = llm_validator::LlmValidationRequest {
+                query: scenario.query.clone(),
+                documents: docs,
+                expected_doc_ids: scenario.expected_doc_ids.clone(),
+            };
+
+            match validator.validate(&req).await {
+                Ok(result) => {
+                    llm_verdict = Some(result.verdict.clone());
+                    is_pass = result.verdict == llm_validator::ValidationVerdict::PASS
+                        || result.verdict == llm_validator::ValidationVerdict::PARTIAL;
+                    eprintln!("  [LLM] scenario {}: {:?} — {}", i + 1, result.verdict, &result.reason[..result.reason.len().min(80)]);
+                }
+                Err(e) => {
+                    eprintln!("  [LLM] scenario {}: LLM validation failed: {}", i + 1, e);
+                }
+            }
+        }
+
         let fail_reason = if scenario.expected_doc_ids.is_empty() {
             "No expected keywords defined".to_string()
         } else if search_results.is_empty() {
             "No documents retrieved".to_string()
-        } else if hit_count == 0 {
+        } else if hit_count == 0 && llm_verdict.is_none() {
             format!(
                 "None of the expected keywords found in top-{}: {:?}",
                 top_k, scenario.expected_doc_ids

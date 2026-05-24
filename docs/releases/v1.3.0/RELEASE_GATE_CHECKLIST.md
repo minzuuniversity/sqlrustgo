@@ -5,7 +5,7 @@
 > **维护人**: Hermes Agent
 > **分支**: `develop/v1.3.0`
 > **阶段**: Beta
-> **关联门禁规范**: [docs/governance/gate_spec_v120.md](../../governance/gate_spec_v120.md)
+> **关联门禁规范**: [docs/governance/gate_spec_v130.md](../../governance/gate_spec_v130.md)
 
 ---
 
@@ -16,7 +16,7 @@
 | 门禁类型 | L0-Alpha → L0-Beta → L0-RC → L0-GA |
 | 关联版本 | v1.3.0 |
 | 基线版本 | v1.2.0 (96.08%, MRR 0.497, QPS 8.3) |
-| 规范版本 | gate_spec_v120.md v1.0 |
+| 规范版本 | gate_spec_v130.md v1.0 |
 | 当前 Gate | L0-Alpha 🔄 待执行 |
 
 ---
