@@ -16,24 +16,29 @@ env:
 
 jobs:
   rc-gate:
-    runs-on: [hp-z6g4, hp-z6g4, hp-z6g4, hp-z6g4]
-    parallel: true
+    runs-on: [gate-v3.4.0]
     steps:
       - name: Checkout
         run: |
           REPO_URL="http://192.168.0.252:3000/openclaw/sqlrustgo.git"
           git clone --depth=1 -b "rc/v3.4.0" "$REPO_URL" repo
           cd repo
+          git fetch --depth=1 origin refs/pull/${{ gitea.pull_request.number }}/head 2>/dev/null || true
           git checkout "${{ gitea.sha }}"
-
+      - name: Install Rust toolchain
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
+          source "$HOME/.cargo/env"
+          echo "PATH=$PATH" && cargo --version && rustc --version
       - name: RC Gate
         run: |
+          source "$HOME/.cargo/env"
           cd repo
           GITEA_URL="http://192.168.0.252:3000" BRANCH="rc/v3.4.0" \
             bash scripts/gate/check_rc_v340.sh 2>&1
 
   rc-gate-full:
-    runs-on: [hp-z6g4]
+    runs-on: [gate-v3.4.0]
     steps:
       - name: Checkout
         run: |
@@ -41,10 +46,13 @@ jobs:
           git clone --depth=1 -b "rc/v3.4.0" "$REPO_URL" repo
           cd repo
           git checkout "${{ gitea.sha }}"
-
-      - name: Checkout & Run Full Suite
+      - name: Install Rust toolchain
         run: |
-          wget -q -O /tmp/check_rc_v340.sh \
-            "http://192.168.0.252:3000/openclaw/sqlrustgo/raw/rc/v3.4.0/scripts/gate/check_rc_v340.sh"
-          chmod +x /tmp/check_rc_v340.sh
-          bash /tmp/check_rc_v340.sh 2>&1
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
+          source "$HOME/.cargo/env"
+      - name: RC Gate Full
+        run: |
+          source "$HOME/.cargo/env"
+          cd repo
+          GITEA_URL="http://192.168.0.252:3000" BRANCH="rc/v3.4.0" \
+            bash scripts/gate/check_rc_v340.sh 2>&1
