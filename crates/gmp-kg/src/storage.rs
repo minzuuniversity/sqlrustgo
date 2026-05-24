@@ -163,24 +163,61 @@ impl KgStorage {
                 .map_err(|e| anyhow::anyhow!("Failed to create doc_relevance: {}", e))?;
         }
 
+        // term_synonyms table (replaces JSON in gmp_terms.synonyms)
+        let synonyms_table = TableInfo {
+            name: "term_synonyms".to_string(),
+            columns: vec![
+                ColumnDefinition::new("term_id", "integer"),
+                ColumnDefinition::new("synonym", "text"),
+            ],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
+            has_hidden_rowid: false,
+            next_rowid: 0,
+        };
+
+        if !self.storage.has_table("term_synonyms") {
+            self.storage
+                .create_table(&synonyms_table)
+                .map_err(|e| anyhow::anyhow!("Failed to create term_synonyms: {}", e))?;
+        }
+
+        // term_hierarchy table (replaces hypernyms/hyponyms in gmp_terms)
+        let hierarchy_table = TableInfo {
+            name: "term_hierarchy".to_string(),
+            columns: vec![
+                ColumnDefinition::new("term_id", "integer"),
+                ColumnDefinition::new("parent_term", "text"),
+                ColumnDefinition::new("hierarchy_type", "text"), // "hypernym" or "hyponym"
+            ],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
+            has_hidden_rowid: false,
+            next_rowid: 0,
+        };
+
+        if !self.storage.has_table("term_hierarchy") {
+            self.storage
+                .create_table(&hierarchy_table)
+                .map_err(|e| anyhow::anyhow!("Failed to create term_hierarchy: {}", e))?;
+        }
+
         Ok(())
     }
 
-    /// Insert a GMP term
+    /// Insert a GMP term (synonyms/hierarchy go to separate tables)
     pub fn insert_term(&mut self, term: &GmpTerm) -> Result<()> {
         let record: Record = vec![
             Value::Integer(term.term_id),
             Value::Text(term.canonical_term.clone()),
             Value::Text(term.term_type.clone()),
-            Value::Text(serde_json::to_string(&term.synonyms).unwrap_or_default()),
-            term.hypernyms
-                .as_ref()
-                .map(|s| Value::Text(s.clone()))
-                .unwrap_or(Value::Null),
-            term.hyponyms
-                .as_ref()
-                .map(|s| Value::Text(s.clone()))
-                .unwrap_or(Value::Null),
+            Value::Null, // synonyms now in term_synonyms table
+            Value::Null, // hypernyms now in term_hierarchy table
+            Value::Null, // hyponyms now in term_hierarchy table
             term.gmp_chapter
                 .as_ref()
                 .map(|s| Value::Text(s.clone()))
@@ -194,10 +231,46 @@ impl KgStorage {
         self.storage
             .insert("gmp_terms", vec![record])
             .map_err(|e| anyhow::anyhow!("Failed to insert term: {}", e))?;
+
+        // Insert synonyms into term_synonyms table
+        for synonym in &term.synonyms {
+            let syn_record: Record = vec![
+                Value::Integer(term.term_id),
+                Value::Text(synonym.clone()),
+            ];
+            self.storage
+                .insert("term_synonyms", vec![syn_record])
+                .map_err(|e| anyhow::anyhow!("Failed to insert synonym: {}", e))?;
+        }
+
+        // Insert hypernyms into term_hierarchy table
+        if let Some(ref hypernym) = term.hypernyms {
+            let hier_record: Record = vec![
+                Value::Integer(term.term_id),
+                Value::Text(hypernym.clone()),
+                Value::Text("hypernym".to_string()),
+            ];
+            self.storage
+                .insert("term_hierarchy", vec![hier_record])
+                .map_err(|e| anyhow::anyhow!("Failed to insert hypernym: {}", e))?;
+        }
+
+        // Insert hyponyms into term_hierarchy table
+        if let Some(ref hyponym) = term.hyponyms {
+            let hier_record: Record = vec![
+                Value::Integer(term.term_id),
+                Value::Text(hyponym.clone()),
+                Value::Text("hyponym".to_string()),
+            ];
+            self.storage
+                .insert("term_hierarchy", vec![hier_record])
+                .map_err(|e| anyhow::anyhow!("Failed to insert hyponym: {}", e))?;
+        }
+
         Ok(())
     }
 
-    /// Scan all GMP terms
+    /// Scan all GMP terms (reconstructs synonyms/hierarchy from relation tables)
     pub fn scan_terms(&self) -> Result<Vec<GmpTerm>> {
         let records = self
             .storage
@@ -219,13 +292,21 @@ impl KgStorage {
                     }
                     None
                 };
+                let term_id = r[0].as_integer().unwrap_or(0);
+
+                // Reconstruct synonyms from term_synonyms table
+                let synonyms = self.get_synonyms_for_term(term_id).unwrap_or_default();
+
+                // Reconstruct hypernyms/hyponyms from term_hierarchy table
+                let (hypernyms, hyponyms) = self.get_hierarchy_for_term(term_id);
+
                 GmpTerm {
-                    term_id: r[0].as_integer().unwrap_or(0),
+                    term_id,
                     canonical_term: get_text(&r[1]),
                     term_type: get_text(&r[2]),
-                    synonyms: serde_json::from_str(&get_text(&r[3])).unwrap_or_default(),
-                    hypernyms: get_opt_text(&r[4]),
-                    hyponyms: get_opt_text(&r[5]),
+                    synonyms,
+                    hypernyms,
+                    hyponyms,
                     gmp_chapter: get_opt_text(&r[6]),
                     entity_type: get_opt_text(&r[7]),
                 }
@@ -233,6 +314,64 @@ impl KgStorage {
             .collect();
 
         Ok(terms)
+    }
+
+    /// Get synonyms for a specific term_id from term_synonyms table
+    fn get_synonyms_for_term(&self, term_id: i64) -> Result<Vec<String>> {
+        let all_records = self
+            .storage
+            .scan("term_synonyms")
+            .map_err(|e| anyhow::anyhow!("Failed to scan term_synonyms: {}", e))?;
+
+        let synonyms: Vec<String> = all_records
+            .into_iter()
+            .filter(|r| r[0].as_integer() == Some(term_id))
+            .map(|r| {
+                if let Value::Text(s) = &r[1] {
+                    s.clone()
+                } else {
+                    String::new()
+                }
+            })
+            .filter(|s| !s.is_empty())
+            .collect();
+
+        Ok(synonyms)
+    }
+
+    /// Get hypernyms and hyponyms for a specific term_id from term_hierarchy table
+    fn get_hierarchy_for_term(&self, term_id: i64) -> (Option<String>, Option<String>) {
+        let all_records = match self.storage.scan("term_hierarchy") {
+            Ok(r) => r,
+            Err(_) => return (None, None),
+        };
+
+        let mut hypernyms: Option<String> = None;
+        let mut hyponyms: Option<String> = None;
+
+        for r in all_records {
+            if r[0].as_integer() != Some(term_id) {
+                continue;
+            }
+            let hier_type = if let Value::Text(s) = &r[2] {
+                s.clone()
+            } else {
+                continue;
+            };
+            let parent = if let Value::Text(s) = &r[1] {
+                s.clone()
+            } else {
+                continue;
+            };
+
+            match hier_type.as_str() {
+                "hypernym" if hypernyms.is_none() => hypernyms = Some(parent),
+                "hyponym" if hyponyms.is_none() => hyponyms = Some(parent),
+                _ => {}
+            }
+        }
+
+        (hypernyms, hyponyms)
     }
 
     /// Insert a document entity
@@ -339,6 +478,8 @@ impl KgStorage {
     /// Get statistics about stored data
     pub fn get_stats(&self) -> Result<KgStats> {
         let terms_count = self.storage.scan("gmp_terms").map(|r| r.len()).unwrap_or(0);
+        let synonyms_count = self.storage.scan("term_synonyms").map(|r| r.len()).unwrap_or(0);
+        let hierarchy_count = self.storage.scan("term_hierarchy").map(|r| r.len()).unwrap_or(0);
         let entities_count = self
             .storage
             .scan("doc_entities")
@@ -362,6 +503,8 @@ impl KgStorage {
 
         Ok(KgStats {
             terms_count,
+            synonyms_count,
+            hierarchy_count,
             entities_count,
             relations_count,
             taxonomy_count,
@@ -374,6 +517,8 @@ impl KgStorage {
 #[derive(Debug, Clone)]
 pub struct KgStats {
     pub terms_count: usize,
+    pub synonyms_count: usize,
+    pub hierarchy_count: usize,
     pub entities_count: usize,
     pub relations_count: usize,
     pub taxonomy_count: usize,
