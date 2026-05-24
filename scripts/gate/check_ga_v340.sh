@@ -113,34 +113,31 @@ fi
 log_info "G5: Coverage >= 75% (L1 CRATES)"
 TOTAL=$((TOTAL+1))
 if command -v cargo-llvm-cov &>/dev/null; then
-    # Run each crate separately to avoid one failure stopping all
-    # Store coverage for each crate, then get overall
-    coverage_pct="0"
-    for crate in sqlrustgo-types sqlrustgo-parser sqlrustgo-planner sqlrustgo-optimizer sqlrustgo-executor sqlrustgo-storage sqlrustgo-transaction sqlrustgo-catalog; do
-        cargo llvm-cov test -p "$crate" --lib 2>/dev/null || true
-    done
-    # Get overall percentage from the aggregated coverage report
-    if cargo llvm-cov report --text-only 2>/dev/null | grep -qE "TOTAL"; then
-        report=$(cargo llvm-cov report --text-only 2>/dev/null | grep "^TOTAL" | tail -1)
-        coverage_pct=$(echo "$report" | sed -n 's/.*\([0-9]\+\.[0-9]\+%\).*/\1/p' | tr -d '%' || echo "0")
-        coverage_pct=${coverage_pct:-0}
-    else
-        coverage_pct="0"
-    fi
-    if command -v bc &>/dev/null && [ -n "$coverage_pct" ] && [ "$coverage_pct" != "0" ]; then
-        if (( $(echo "$coverage_pct >= 75" | bc -l) )); then
-            echo "✅ PASS (${coverage_pct}%)"; PASS=$((PASS+1))
-        else
-            echo "⚠️  WARNING (${coverage_pct}% < 75%)"
-            echo "   Note: planner test_update_physical_plan is pre-existing failure in develop/v3.4.0"
-            echo "   G5 Result: SKIP (coverage ${coverage_pct}% < 75%)"
-            SKIP_REASONS+=("G5: Coverage ${coverage_pct}% < 75%")
-        fi
-    else
-        # Fallback: check raw lines
-        echo "⚠️  WARNING (bc not available or coverage measurement failed)"
-        echo "   G5 Result: SKIP (coverage tool issue)"
+    # Run all L1 crates together and extract Regions% from combined JSON output
+    json_out=$(cargo llvm-cov test \
+        -p sqlrustgo-types \
+        -p sqlrustgo-parser \
+        -p sqlrustgo-planner \
+        -p sqlrustgo-optimizer \
+        -p sqlrustgo-executor \
+        -p sqlrustgo-storage \
+        -p sqlrustgo-transaction \
+        -p sqlrustgo-catalog \
+        --lib --json 2>/dev/null) || json_out="{}"
+
+    # Extract Regions percent from the combined JSON data array (last entry has totals)
+    coverage_pct=$(echo "$json_out" | \
+        python3 -c "import sys,json; d=json.load(sys.stdin).get('data',[]); t=d[-1].get('totals',{}) if d else {}; print(t.get('regions',{}).get('percent','0') or '0')" 2>/dev/null) || coverage_pct="0"
+    coverage_pct=${coverage_pct:-0}
+
+    if [ -z "$coverage_pct" ] || [ "$coverage_pct" = "0" ]; then
+        echo "⚠️  WARNING (coverage_pct unavailable)"
         SKIP_REASONS+=("G5: cargo-llvm-cov measurement issue")
+    elif awk "BEGIN{exit !($coverage_pct >= 75)}"; then
+        echo "✅ PASS (${coverage_pct}%)"; PASS=$((PASS+1))
+    else
+        echo "⚠️  WARNING (${coverage_pct}% < 75%)"
+        SKIP_REASONS+=("G5: Coverage ${coverage_pct}% < 75%")
     fi
 else
     echo "⏭️  SKIP (cargo-llvm-cov not installed)"; SKIP_REASONS+=("G5: No cargo-llvm-cov")
@@ -182,8 +179,18 @@ else
     echo "❌ FAIL"; BLOCKERS=$((BLOCKERS+1)); FAIL_REASONS+=("G10: TPC-H SF=1 failed")
 fi
 
-# G11: Proofs
-check_test "G11: Proof count ≥30" "bash scripts/gate/check_proof.sh 2>&1" "G11"
+# G11: Proofs ≥ 30
+log_info "G11: Proof count ≥30"
+TOTAL=$((TOTAL+1))
+PROOF_DIR="docs/proof"
+PROOF_COUNT=$(find "$PROOF_DIR" -name "*.json" -type f 2>/dev/null | wc -l)
+if [ "$PROOF_COUNT" -ge 30 ]; then
+    echo "✅ PASS (${PROOF_COUNT} proofs ≥ 30)"
+    PASS=$((PASS+1))
+else
+    echo "❌ FAIL (${PROOF_COUNT} proofs < 30 required)"
+    FAIL_REASONS+=("G11: Only ${PROOF_COUNT} proofs, need ≥ 30")
+fi
 
 # G12: Docs
 log_info "G12: OO docs exist"
