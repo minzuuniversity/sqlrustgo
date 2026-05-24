@@ -10,11 +10,23 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
 
-/// Cached embedding with timestamp for TTL checking
+/// Cached embedding with timestamp for TTL checking and last-access for LRU
 #[derive(Clone)]
 struct CachedEntry {
     embedding: Vec<f32>,
     created_at: Instant,
+    last_accessed: Instant,
+}
+
+impl CachedEntry {
+    fn new(embedding: Vec<f32>) -> Self {
+        let now = Instant::now();
+        Self {
+            embedding,
+            created_at: now,
+            last_accessed: now,
+        }
+    }
 }
 
 /// Thread-safe embedding cache with TTL and capacity limits
@@ -35,11 +47,12 @@ impl EmbeddingCache {
         }
     }
 
-    /// Get a cached embedding if valid (not expired)
+    /// Get a cached embedding if valid (not expired), refreshes LRU timestamp
     pub async fn get(&self, key: &str) -> Option<Vec<f32>> {
-        let cache = self.inner.read().await;
-        cache.get(key).and_then(|entry| {
+        let mut cache = self.inner.write().await;
+        cache.get_mut(key).and_then(|entry| {
             if entry.created_at.elapsed() < Duration::from_secs(self.ttl_seconds) {
+                entry.last_accessed = Instant::now();
                 Some(entry.embedding.clone())
             } else {
                 None
@@ -56,18 +69,21 @@ impl EmbeddingCache {
         };
 
         if need_evict {
-            // Evict oldest entry
-            let oldest_key = {
+            // Evict LRU entry (oldest last_accessed)
+            let lru_key = {
                 let cache = self.inner.read().await;
-                cache.keys().next().cloned()
+                cache
+                    .iter()
+                    .min_by_key(|(_, entry)| entry.last_accessed)
+                    .map(|(k, _)| k.clone())
             };
-            if let Some(key_to_remove) = oldest_key {
+            if let Some(key_to_remove) = lru_key {
                 self.inner.write().await.remove(&key_to_remove);
             }
         }
 
         // Insert new entry
-        self.inner.write().await.insert(key, CachedEntry { embedding, created_at: Instant::now() });
+        self.inner.write().await.insert(key, CachedEntry::new(embedding));
     }
 
     /// Get current cache size
@@ -215,13 +231,26 @@ mod tests {
         cache.insert("key2".to_string(), vec![2.0]).await;
         assert_eq!(cache.len().await, 2);
 
-        // Adding third key should evict one
+        // Adding third key should evict LRU entry (key1 was inserted first)
         cache.insert("key3".to_string(), vec![3.0]).await;
         assert_eq!(cache.len().await, 2);
 
-        // key1 should be evicted, key2 and key3 should remain
+        // key1 should be evicted (it was the LRU entry when key3 was inserted)
         assert!(cache.get("key1").await.is_none());
         assert!(cache.get("key2").await.is_some());
         assert!(cache.get("key3").await.is_some());
+
+        // Verify LRU is based on insertion order when no get() refreshes
+        let cache2 = EmbeddingCache::new(3600, 2);
+        cache2.insert("a".to_string(), vec![1.0]).await;
+        cache2.insert("b".to_string(), vec![2.0]).await;
+        // Access a to make it MRU
+        let _ = cache2.get("a").await;
+        // Now b is LRU — adding c should evict b
+        cache2.insert("c".to_string(), vec![3.0]).await;
+        assert_eq!(cache2.len().await, 2);
+        assert!(cache2.get("b").await.is_none(), "b should be evicted (LRU after a was accessed)");
+        assert!(cache2.get("a").await.is_some());
+        assert!(cache2.get("c").await.is_some());
     }
 }
