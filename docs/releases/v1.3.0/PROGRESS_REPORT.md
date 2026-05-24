@@ -19,7 +19,9 @@
 | DiskGraphStore WAL | 2026-05-24 | commit `cf65908` |
 | MQTT Gateway 合入 | 2026-05-24 | PR #136 合入 |
 | 技术债清理完成 | 2026-05-24 | PR #135 合入，clippy 0 errors |
-| v1.3.0 Beta 文档补全 | 2026-05-24 | 本次更新 |
+| PR #140 — WAL + Binary BLOB | 2026-05-24 | Issue #122, #123 关闭 |
+| v1.3.0 文档完善 | 2026-05-24 | 5-layer 修复 + INSTALLATION |
+| PR #141 — SPEC-v1.3.1 性能规划 | 2026-05-24 | v1.3.1 性能优化规划文档 |
 
 ---
 
@@ -32,8 +34,8 @@
 | Binary BLOB + HNSW | — | ✅ 完成 | Binary 存储就绪 |
 | MQTT Gateway | — | ✅ 完成 | #125 |
 | clippy + audit 清理 | — | ✅ 完成 | #126 |
-| 向量索引生成流水线 | 待定 | 🔄 开发中 | Binary 存储完成 |
-| DiskGraphStore WAL | 待定 | 🔄 开发中 | WAL 基础完成 |
+| 向量索引生成流水线 | 2026-05-24 | ✅ 完成 | PR #140 合入 |
+| DiskGraphStore WAL | 2026-05-24 | ✅ 完成 | PR #140 合入 |
 | Layer 0 知识管线 | 待定 | 🔄 规划中 | — |
 | L0-Alpha Gate | 待定 | 🔄 待执行 | — |
 | L0-Beta Gate | 待定 | 🔄 待执行 | — |
