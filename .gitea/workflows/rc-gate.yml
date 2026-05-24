@@ -28,14 +28,10 @@ jobs:
 
       - name: Checkout & Run RC Gate
         run: |
-          # Download gate.sh and run it directly (act-runner has wget but no ssh/cargo)
-          GATE_SCRIPT=$(mktemp)
-          wget -q -O "$GATE_SCRIPT" \
+          wget -q -O /tmp/check_rc_v340.sh \
             "http://192.168.0.252:3000/openclaw/sqlrustgo/raw/rc/v3.4.0/scripts/gate/check_rc_v340.sh"
-          chmod +x "$GATE_SCRIPT"
-          GITEA_URL="http://192.168.0.252:3000" \
-          BRANCH="rc/v3.4.0" \
-          bash "$GATE_SCRIPT" 2>&1
+          chmod +x /tmp/check_rc_v340.sh
+          bash /tmp/check_rc_v340.sh 2>&1
 
   rc-gate-full:
     runs-on: [hp-z6g4]
@@ -47,7 +43,9 @@ jobs:
           cd repo
           git checkout "${{ gitea.sha }}"
 
-      - name: Full suite (direct SSH)
+      - name: Checkout & Run Full Suite
         run: |
-          ssh -o StrictHostKeyChecking=no openclaw@192.168.0.252 \
-            "BRANCH='rc/v3.4.0' GATE='full' GITEA_URL='http://192.168.0.252:3000' bash /home/openclaw/sqlrustgo/scripts/gate/check_rc_v340.sh" 2>&1
+          wget -q -O /tmp/check_rc_v340.sh \
+            "http://192.168.0.252:3000/openclaw/sqlrustgo/raw/rc/v3.4.0/scripts/gate/check_rc_v340.sh"
+          chmod +x /tmp/check_rc_v340.sh
+          bash /tmp/check_rc_v340.sh 2>&1
