@@ -475,7 +475,7 @@ impl KgStorage {
         Ok(())
     }
 
-    /// Get statistics about stored data
+    /// Extract GMP entities from query text using seed terms and extraction rules
     pub fn get_stats(&self) -> Result<KgStats> {
         let terms_count = self.storage.scan("gmp_terms").map(|r| r.len()).unwrap_or(0);
         let synonyms_count = self.storage.scan("term_synonyms").map(|r| r.len()).unwrap_or(0);

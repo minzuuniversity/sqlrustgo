@@ -11,6 +11,7 @@ members = [
     "crates/gmp-eval",
     "crates/gmp-api",
     "crates/gmp-event-bus",
+    "crates/gmp-kg",
 ]
 
 [workspace.package]

@@ -1821,6 +1821,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "gmp-kg"
+version = "1.0.0"
+dependencies = [
+ "anyhow",
+ "serde",
+ "serde_json",
+ "sqlrustgo-storage",
+ "sqlrustgo-types",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tracing",
+]
+
+[[package]]
 name = "gmp-llm"
 version = "1.0.0"
 dependencies = [

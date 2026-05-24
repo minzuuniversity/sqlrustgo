@@ -58,8 +58,15 @@ pub trait GmpStorage: Send + Sync {
     /// Total document count
     fn get_document_count(&self) -> Result<i64>;
 
-    // ─── Chunk Access (for debugging/admin) ─────────────────────
+    // ─── Hybrid Search (Layer 4) ────────────────────────────────
 
-    /// Get chunk IDs up to limit
-    fn get_chunk_ids(&self, limit: usize) -> Vec<i64>;
+    /// Hybrid search with RRF fusion of FTS + LIKE + vector channels
+    fn hybrid_search_rrf(
+        &self,
+        query: &str,
+        top_k: usize,
+        fts_weight: f32,
+        like_weight: f32,
+        vector_weight: f32,
+    ) -> Result<Vec<SearchResult>>;
 }
