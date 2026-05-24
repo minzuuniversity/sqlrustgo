@@ -1,10 +1,10 @@
 # v3.4.0 Release — GMP Management Suite
 
-> **状态**: RC (Release Candidate)
+> **状态**: GA (正式发布)
 > **起点**: develop/v3.4.0 (commit `b72c640a` from v3.3.0 GA)
-> **分支**: `rc/v3.4.0` (commit `b69f26d1`)
+> **分支**: `main` (commit `d934228b`)
 > **Milestone**: v3.4.0 (id=TBD)
-> **同步完成**: 2026-05-23
+> **发布完成**: 2026-05-24
 
 ---
 
