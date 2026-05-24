@@ -1176,16 +1176,17 @@ impl StorageEngine {
         top_k: usize,
         fts_weight: f32,
         like_weight: f32,
-        _vector_weight: f32,
+        vector_weight: f32,
     ) -> Result<Vec<SearchResult>> {
         // Get results from each channel
         let fts_results = self.search_fts_with_scores(query, top_k)?;
         let like_results = self.search_like(query, top_k)?;
 
         // RRF fusion: score(d) = Σ weight / (k + rank)
-        let rrf_k = 60.0f64;
         let fts_w = fts_weight as f64;
         let like_w = like_weight as f64;
+        let vector_w = vector_weight as f64;
+        let rrf_k = 60.0f64;
         let mut score_map: std::collections::HashMap<i64, (f64, SearchResult)> =
             std::collections::HashMap::new();
 
@@ -1205,6 +1206,32 @@ impl StorageEngine {
             }
         }
 
+        // Vector channel — query embedding via Ollama /api/embeddings
+        if vector_w > 0.0 {
+            if let Some(embedding) = self.get_query_embedding(query) {
+                if let Ok(vec_results) = self.search_vectors(&embedding, top_k) {
+                    for (rank, result) in vec_results.iter().enumerate() {
+                        let rrf_score = vector_w / (rrf_k + (rank + 1) as f64);
+                        let sr = SearchResult {
+                            chunk_id: result.chunk_id,
+                            doc_id: result.doc_id.clone(),
+                            content: String::new(),
+                            token_count: 0,
+                            title: String::new(),
+                            doc_type: None,
+                            chapter: None,
+                            score: result.score,
+                        };
+                        if let Some((old_score, _)) = score_map.get(&sr.chunk_id) {
+                            score_map.insert(sr.chunk_id, (old_score + rrf_score, sr));
+                        } else {
+                            score_map.insert(sr.chunk_id, (rrf_score, sr));
+                        }
+                    }
+                }
+            }
+        }
+
         // Sort by fused score and return top_k
         let mut sorted: Vec<_> = score_map.into_iter().collect();
         sorted.sort_by(|a, b| b.1.0.partial_cmp(&a.1.0).unwrap_or(std::cmp::Ordering::Equal));
@@ -1217,6 +1244,40 @@ impl StorageEngine {
             })
             .collect();
         Ok(results)
+    }
+
+    /// Get query embedding from Ollama /api/embeddings
+    fn get_query_embedding(&self, query: &str) -> Option<Vec<f32>> {
+        let ollama_url = "http://localhost:11434".to_string();
+        let model = "bge-m3:latest".to_string();
+
+        #[derive(serde::Serialize)]
+        struct EmbedRequest {
+            model: String,
+            prompt: String,
+        }
+
+        #[derive(serde::Deserialize)]
+        struct EmbedResponse {
+            embedding: Vec<f32>,
+        }
+
+        let client = reqwest::blocking::Client::builder()
+            .timeout(std::time::Duration::from_secs(30))
+            .build()
+            .ok()?;
+
+        let resp = client
+            .post(format!("{}/api/embeddings", ollama_url))
+            .json(&EmbedRequest {
+                model: model.clone(),
+                prompt: query.to_string(),
+            })
+            .send()
+            .ok()?;
+
+        let data: EmbedResponse = resp.json().ok()?;
+        Some(data.embedding)
     }
 }
 

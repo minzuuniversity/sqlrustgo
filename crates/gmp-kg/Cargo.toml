@@ -9,8 +9,8 @@ rust-version.workspace = true
 
 [dependencies]
 # SQLRustGo Storage Engine
-sqlrustgo-storage = { path = "/home/openclaw/dev/yinglichina163/sqlrustgo/crates/storage" }
-sqlrustgo-types = { path = "/home/openclaw/dev/yinglichina163/sqlrustgo/crates/types" }
+sqlrustgo-storage = { path = "../../../sqlrustgo/crates/storage" }
+sqlrustgo-types = { path = "../../../sqlrustgo/crates/types" }
 
 # Serialization
 serde = { workspace = true }

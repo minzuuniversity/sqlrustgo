@@ -9,7 +9,7 @@ rust-version.workspace = true
 
 [dependencies]
 # SQLRustGo Graph Engine
-sqlrustgo-graph = { path = "/Users/liying/workspace/dev/yinglichina163/sqlrustgo/crates/graph" }
+sqlrustgo-graph = { path = "../../../sqlrustgo/crates/graph" }
 
 # Serialization
 serde = { workspace = true }
