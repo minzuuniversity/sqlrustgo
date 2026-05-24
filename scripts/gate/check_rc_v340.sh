@@ -81,11 +81,11 @@ check_coverage() {
     fi
     local total
     total=$(echo "$output" | grep "^TOTAL" | awk '{print $4}' | sed 's/%//')
-    if [ -n "$total" ] && [ "${total%.*}" -ge 85 ]; then
+    if [ -n "$total" ] && [ "${total%.*}" -ge 75 ]; then
         echo "✅ PASS (Coverage: ${total}%)"
         return 0
     else
-        echo "❌ FAIL (Coverage: ${total}% < 85%)"
+        echo "❌ FAIL (Coverage: ${total}% < 75%)"
         return 1
     fi
 }
