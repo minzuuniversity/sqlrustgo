@@ -1,6 +1,7 @@
 //! Four-channel retrieval: Rule, Vector, FTS, Graph
 
 use crate::fusion::RrfFusion;
+use crate::embedding_cache::CachedEmbeddingStore;
 use anyhow::Result;
 use gmp_core::{ChannelType, ScoredChunk};
 use serde::{Deserialize, Serialize};
@@ -186,8 +187,7 @@ fn get_builtin_rules() -> Vec<KnowledgeRule> {
 /// Vector channel using embeddings + SQLite cosine similarity
 pub struct VectorChannel {
     storage: std::sync::Arc<dyn gmp_storage::GmpStorage>,
-    ollama_url: String,
-    embedding_model: String,
+    embedding_store: CachedEmbeddingStore,
 }
 
 impl VectorChannel {
@@ -198,15 +198,14 @@ impl VectorChannel {
     ) -> Self {
         Self {
             storage,
-            ollama_url,
-            embedding_model,
+            embedding_store: CachedEmbeddingStore::new(ollama_url, embedding_model),
         }
     }
 
     /// Search using vector similarity (requires Ollama)
     pub async fn search(&self, query: &str, top_k: usize) -> Vec<ScoredChunk> {
-        // Get query embedding from Ollama
-        let embedding = match self.get_embedding(query).await {
+        // Get query embedding from Ollama (with LRU cache)
+        let embedding = match self.embedding_store.embed(query).await {
             Ok(e) => e,
             Err(_) => return vec![],
         };
@@ -226,31 +225,6 @@ impl VectorChannel {
                 .collect(),
             _ => vec![],
         }
-    }
-
-    /// Get embedding from Ollama
-    async fn get_embedding(&self, text: &str) -> Result<Vec<f32>> {
-        let client = reqwest::Client::new();
-        let response = client
-            .post(format!("{}/api/embeddings", self.ollama_url))
-            .json(&serde_json::json!({
-                "model": self.embedding_model,
-                "prompt": text
-            }))
-            .send()
-            .await?;
-
-        if !response.status().is_success() {
-            anyhow::bail!("Ollama API error: {}", response.status());
-        }
-
-        #[derive(Deserialize)]
-        struct EmbedResponse {
-            embedding: Vec<f32>,
-        }
-
-        let result: EmbedResponse = response.json().await?;
-        Ok(result.embedding)
     }
 }
 

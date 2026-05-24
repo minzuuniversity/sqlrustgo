@@ -25,6 +25,9 @@ pub struct CypherEngine {
     store: Mutex<DiskGraphStore>,
     /// Cached graph directory path for clear/clone recreation
     graph_dir: PathBuf,
+    /// Keep TempDir alive for in_memory() engine
+    #[allow(dead_code)]
+    _temp_dir: Option<tempfile::TempDir>,
 }
 
 impl CypherEngine {
@@ -36,19 +39,21 @@ impl CypherEngine {
         Ok(Self {
             store: Mutex::new(store),
             graph_dir,
+            _temp_dir: None,
         })
     }
 
     /// Create a new in-memory Cypher engine (no persistence — for testing)
     pub fn in_memory() -> Self {
-        let graph_dir = tempfile::TempDir::new()
-            .expect("TempDir for in_memory engine should not fail")
-            .into_path();
+        let temp_dir = tempfile::TempDir::new()
+            .expect("TempDir for in_memory engine should not fail");
+        let graph_dir = temp_dir.path().to_path_buf();
         let store = DiskGraphStore::new_without_wal(graph_dir.clone())
             .expect("DiskGraphStore::new_without_wal should not fail for temp dir");
         Self {
             store: Mutex::new(store),
             graph_dir,
+            _temp_dir: Some(temp_dir),
         }
     }
 
@@ -172,6 +177,7 @@ impl Clone for CypherEngine {
         Self {
             store: Mutex::new(new_store),
             graph_dir: self.graph_dir.clone(),
+            _temp_dir: None,
         }
     }
 }

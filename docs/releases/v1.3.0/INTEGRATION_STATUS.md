@@ -141,4 +141,4 @@ gmp-api       ──depends on──▶ gmp-storage, gmp-event-bus
 |------|------|----------|
 | Binary BLOB 向量存储后向量生成流水线尚未实现 | 中 | HNSW 索引自动构建就绪，13809 embeddings 填充后可立即使用 |
 | MQTT Gateway 需要实际 MQTT Broker | 中 | 模拟测试可行 |
-| DiskGraphStore WAL 持久化仍在 feature 分支 | 中 | 核心功能已合入，完整功能在 feature/issue-123-disk-graph-wal |
+| DiskGraphStore WAL 持久化核心已合入 | 低 | PR #140 合入，WAL 基础就绪，完整 recovery 在 feature 分支 |
