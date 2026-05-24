@@ -875,9 +875,6 @@ async fn main() -> Result<()> {
             db,
             stage,
         } => {
-            use gmp_llm::LlmClient;
-            use std::time::Instant;
-
             println!("GMP Layer 0 Population\n");
             println!("  Ollama: {} ({})", ollama_url, model);
             println!("  Stage:  {}", stage);
@@ -893,7 +890,7 @@ async fn main() -> Result<()> {
                     .unwrap_or_else(|| "./data".to_string()),
                 db_path: db.clone(),
             };
-            let storage = match gmp_storage::StorageEngine::new(config) {
+            let _storage = match gmp_storage::StorageEngine::new(config) {
                 Ok(s) => s,
                 Err(e) => {
                     println!("Error: Failed to initialize storage: {}", e);
