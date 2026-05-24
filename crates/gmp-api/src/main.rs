@@ -11,6 +11,7 @@ use tracing::info;
 struct SearchRequest {
     query: String,
     #[serde(default = "default_channel")]
+    #[allow(dead_code)]
     channel: String,
     #[serde(default = "default_top_k")]
     top_k: usize,

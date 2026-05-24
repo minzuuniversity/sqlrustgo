@@ -153,7 +153,6 @@ impl StorageEngine {
             let mut stmt = conn.prepare(
             "SELECT doc_id, code, title, chapter, doc_type, department, status, source_file, file_mtime, version, effective_date, created_at, updated_at FROM gmp_documents"
         )?;
-            let cols = stmt.column_count();
             let mut rows = stmt.query([])?;
             while let Some(row) = rows.next()? {
                 let doc_id: String = row.get(0).unwrap_or_default();

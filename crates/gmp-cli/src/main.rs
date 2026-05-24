@@ -866,9 +866,6 @@ async fn main() -> Result<()> {
             db: _,
             stage: _,
         } => {
-            use gmp_llm::LlmClient;
-            use std::time::Instant;
-
             println!("GMP Layer 0 Population\n");
             println!("  Ollama: {} ({})", ollama_url, model);
             println!("  Stage:  {}", stage);
