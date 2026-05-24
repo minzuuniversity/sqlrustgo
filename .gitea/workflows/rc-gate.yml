@@ -21,9 +21,9 @@ jobs:
     steps:
       - name: Checkout
         run: |
-          git clone --depth=1 "${{ gitea.repository_url }}" repo
+          REPO_URL="http://192.168.0.252:3000/openclaw/sqlrustgo.git"
+          git clone --depth=1 -b "${{ gitea.ref_name }}" "$REPO_URL" repo
           cd repo
-          git fetch --depth=1 origin "${{ gitea.ref_name }}"
           git checkout "${{ gitea.sha }}"
 
       - name: RC Gate
@@ -36,9 +36,9 @@ jobs:
     steps:
       - name: Checkout
         run: |
-          git clone --depth=1 "${{ gitea.repository_url }}" repo
+          REPO_URL="http://192.168.0.252:3000/openclaw/sqlrustgo.git"
+          git clone --depth=1 -b "${{ gitea.ref_name }}" "$REPO_URL" repo
           cd repo
-          git fetch --depth=1 origin "${{ gitea.ref_name }}"
           git checkout "${{ gitea.sha }}"
 
       - name: TPC-H Full
