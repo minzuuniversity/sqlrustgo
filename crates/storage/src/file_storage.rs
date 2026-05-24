@@ -1262,6 +1262,19 @@ mod tests {
     }
 }
 
+// Simple SQL query result
+#[derive(Debug, Clone)]
+pub enum QueryResult {
+    /// SELECT COUNT(*) returns single integer
+    Count(i64),
+    /// SELECT MAX(column) returns single value
+    Max(Option<Value>),
+    /// SELECT * returns all matching rows
+    Rows(Vec<Vec<Value>>),
+    /// INSERT returns number of rows inserted
+    Inserted(usize),
+}
+
 impl FileStorage {
     fn insert_direct(&mut self, table: &str, records: Vec<Record>) -> SqlResult<()> {
         if let Some(ref mut data) = self.tables.get_mut(table) {
@@ -1295,6 +1308,303 @@ impl FileStorage {
             self.flush_buffer(&table)?;
         }
         Ok(())
+    }
+
+    /// Execute a simple SQL statement (INSERT VALUES, or query SELECT ...)
+    /// Returns QueryResult with affected row count or query results.
+    ///
+    /// Supported patterns:
+    /// - `INSERT INTO table VALUES (v1, v2, ...)` - insert a row
+    /// - `SELECT COUNT(*) FROM table [WHERE ...]` - returns QueryResult::Count
+    /// - `SELECT MAX(column) FROM table [WHERE ...]` - returns QueryResult::Max
+    /// - `SELECT * FROM table WHERE ...` - returns QueryResult::Rows
+    pub fn execute_sql(&mut self, sql: &str) -> SqlResult<QueryResult> {
+        let sql_upper = sql.trim().to_uppercase();
+
+        // INSERT INTO table VALUES (...)
+        if sql_upper.starts_with("INSERT INTO") {
+            return self.execute_insert(sql);
+        }
+
+        // Query: SELECT ...
+        if sql_upper.starts_with("SELECT") {
+            return self.execute_select(sql);
+        }
+
+        Err(SqlError::ExecutionError(
+            "Unsupported SQL statement. Use INSERT or SELECT.".into(),
+        ))
+    }
+
+    /// Execute INSERT INTO table VALUES (...)
+    fn execute_insert(&mut self, sql: &str) -> SqlResult<QueryResult> {
+        // Parse: INSERT INTO <table> VALUES (v1, v2, ...)
+        // Remove 'INSERT INTO'
+        let rest = sql.strip_prefix("INSERT INTO").unwrap().trim();
+
+        // Extract table name (up to VALUES)
+        let parts: Vec<&str> = rest.split("VALUES").collect();
+        if parts.len() != 2 {
+            return Err(SqlError::ExecutionError(
+                "INSERT syntax: INSERT INTO table VALUES (...)".into(),
+            ));
+        }
+
+        let table_name = parts[0].trim();
+        let values_str = parts[1].trim().trim_matches('(').trim_end_matches(')');
+
+        // Parse values
+        let values: Vec<Value> = self.parse_values(values_str)?;
+
+        if let Some(ref mut data) = self.tables.get_mut(table_name) {
+            data.rows.push(values.clone());
+            let table_data = data.clone();
+            self.save_table(table_name, &table_data)?;
+            Ok(QueryResult::Inserted(1))
+        } else {
+            Err(SqlError::TableNotFound(table_name.to_string()))
+        }
+    }
+
+    /// Execute SELECT query
+    fn execute_select(&mut self, sql: &str) -> SqlResult<QueryResult> {
+        // Check for aggregate functions
+        let sql_upper = sql.to_uppercase();
+
+        if sql_upper.contains("COUNT(*)") {
+            return self.execute_count(sql);
+        }
+
+        if sql_upper.contains("MAX(") {
+            return self.execute_max(sql);
+        }
+
+        // Default: SELECT * ... WHERE ...
+        self.execute_select_star(sql)
+    }
+
+    /// Execute SELECT COUNT(*) FROM table [WHERE ...]
+    fn execute_count(&mut self, sql: &str) -> SqlResult<QueryResult> {
+        use crate::engine::evaluate_sql_expression;
+
+        // Parse table name after FROM
+        let from_pos = sql
+            .to_uppercase()
+            .find("FROM")
+            .ok_or_else(|| SqlError::ExecutionError("SELECT COUNT(*) FROM table".into()))?;
+
+        let after_from = sql[from_pos + 4..].trim();
+        let table_name = after_from
+            .split_whitespace()
+            .next()
+            .ok_or_else(|| SqlError::ExecutionError("Missing table name".into()))?;
+        let table_name = table_name.to_string();
+
+        // Get optional WHERE clause
+        let where_clause = sql
+            .to_uppercase()
+            .find("WHERE")
+            .map(|w_pos| sql[w_pos + 5..].trim());
+
+        let data = self
+            .tables
+            .get(&table_name)
+            .ok_or_else(|| SqlError::TableNotFound(table_name.clone()))?;
+
+        let columns: Vec<String> = data.info.columns.iter().map(|c| c.name.clone()).collect();
+
+        let count = if let Some(predicate) = where_clause {
+            data.rows
+                .iter()
+                .filter(|row| evaluate_sql_expression(predicate, &columns, row).unwrap_or(false))
+                .count() as i64
+        } else {
+            data.rows.len() as i64
+        };
+
+        Ok(QueryResult::Count(count))
+    }
+
+    /// Execute SELECT MAX(column) FROM table [WHERE ...]
+    fn execute_max(&mut self, sql: &str) -> SqlResult<QueryResult> {
+        use crate::engine::evaluate_sql_expression;
+
+        // Parse: SELECT MAX(column) FROM table [WHERE ...]
+        let sql_upper = sql.to_uppercase();
+
+        // Extract column name between MAX( and )
+        let max_start = sql_upper.find("MAX(").unwrap() + 4;
+        let max_end = sql_upper[max_start..]
+            .find(')')
+            .ok_or_else(|| SqlError::ExecutionError("MAX(column) syntax error".into()))?;
+
+        let column_name = sql[max_start..max_start + max_end].trim().to_lowercase();
+
+        // Parse table name after FROM
+        let from_pos = sql_upper
+            .find("FROM")
+            .ok_or_else(|| SqlError::ExecutionError("SELECT MAX(col) FROM table".into()))?;
+
+        let after_from = sql[from_pos + 4..].trim();
+        let table_name = after_from
+            .split_whitespace()
+            .next()
+            .ok_or_else(|| SqlError::ExecutionError("Missing table name".into()))?;
+        let table_name = table_name.to_string();
+
+        // Get optional WHERE clause
+        let where_clause = sql_upper.find("WHERE").map(|w_pos| sql[w_pos + 5..].trim());
+
+        let data = self
+            .tables
+            .get(&table_name)
+            .ok_or_else(|| SqlError::TableNotFound(table_name.clone()))?;
+
+        let columns: Vec<String> = data.info.columns.iter().map(|c| c.name.clone()).collect();
+        let col_idx = columns
+            .iter()
+            .position(|c| c.to_lowercase() == column_name)
+            .ok_or_else(|| {
+                SqlError::ExecutionError(format!("Column not found: {}", column_name))
+            })?;
+
+        let mut max_val: Option<Value> = None;
+
+        for row in data.rows.iter() {
+            // Apply WHERE filter if present
+            if let Some(predicate) = where_clause {
+                if !evaluate_sql_expression(predicate, &columns, row).unwrap_or(false) {
+                    continue;
+                }
+            }
+
+            if let Some(val) = row.get(col_idx) {
+                match (&max_val, val) {
+                    (None, _) => max_val = Some(val.clone()),
+                    (Some(max_ref), val) if val > max_ref => max_val = Some(val.clone()),
+                    _ => {}
+                }
+            }
+        }
+
+        Ok(QueryResult::Max(max_val))
+    }
+
+    /// Execute SELECT * FROM table WHERE ...
+    fn execute_select_star(&mut self, sql: &str) -> SqlResult<QueryResult> {
+        use crate::engine::evaluate_sql_expression;
+
+        // Parse table name after FROM
+        let from_pos = sql
+            .to_uppercase()
+            .find("FROM")
+            .ok_or_else(|| SqlError::ExecutionError("SELECT * FROM table".into()))?;
+
+        let after_from = sql[from_pos + 4..].trim();
+        let table_name = after_from
+            .split_whitespace()
+            .next()
+            .ok_or_else(|| SqlError::ExecutionError("Missing table name".into()))?;
+        let table_name = table_name.to_string();
+
+        // Get WHERE clause
+        let where_clause = sql
+            .to_uppercase()
+            .find("WHERE")
+            .map(|w_pos| sql[w_pos + 5..].trim());
+
+        let data = self
+            .tables
+            .get(&table_name)
+            .ok_or_else(|| SqlError::TableNotFound(table_name.clone()))?;
+
+        let columns: Vec<String> = data.info.columns.iter().map(|c| c.name.clone()).collect();
+
+        let rows: Vec<Vec<Value>> = if let Some(predicate) = where_clause {
+            data.rows
+                .iter()
+                .filter(|row| evaluate_sql_expression(predicate, &columns, row).unwrap_or(false))
+                .cloned()
+                .collect()
+        } else {
+            data.rows.clone()
+        };
+
+        Ok(QueryResult::Rows(rows))
+    }
+
+    /// Parse comma-separated values for INSERT
+    fn parse_values(&self, values_str: &str) -> SqlResult<Vec<Value>> {
+        let mut values = Vec::new();
+        let mut current = String::new();
+        let mut in_paren = 0;
+        let mut in_quote = false;
+
+        for c in values_str.chars() {
+            match c {
+                '\'' => {
+                    in_quote = !in_quote;
+                    current.push(c);
+                }
+                '(' if !in_quote => {
+                    in_paren += 1;
+                    current.push(c);
+                }
+                ')' if !in_quote => {
+                    in_paren -= 1;
+                    current.push(c);
+                }
+                ',' if !in_quote && in_paren == 0 => {
+                    // End of value
+                    let val_str = current.trim().trim_matches('\'');
+                    values.push(self.parse_value(val_str)?);
+                    current.clear();
+                }
+                _ => {
+                    current.push(c);
+                }
+            }
+        }
+
+        // Last value
+        if !current.trim().is_empty() {
+            let val_str = current.trim().trim_matches('\'');
+            values.push(self.parse_value(val_str)?);
+        }
+
+        Ok(values)
+    }
+
+    /// Parse a single value string into Value
+    fn parse_value(&self, s: &str) -> SqlResult<Value> {
+        let s = s.trim();
+
+        if s.eq_ignore_ascii_case("NULL") {
+            return Ok(Value::Null);
+        }
+
+        if s.eq_ignore_ascii_case("TRUE") || s.eq_ignore_ascii_case("FALSE") {
+            return Ok(Value::Boolean(s.eq_ignore_ascii_case("TRUE")));
+        }
+
+        // Try integer
+        if let Ok(i) = s.parse::<i64>() {
+            return Ok(Value::Integer(i));
+        }
+
+        // Try float
+        if let Ok(f) = s.parse::<f64>() {
+            return Ok(Value::Float(f));
+        }
+
+        // Otherwise it's text
+        Ok(Value::Text(s.to_string()))
+    }
+
+    /// Query SQL (alias for execute_sql that returns results directly)
+    /// Convenience method for read-only queries
+    pub fn query_sql(&mut self, sql: &str) -> SqlResult<QueryResult> {
+        self.execute_sql(sql)
     }
 }
 

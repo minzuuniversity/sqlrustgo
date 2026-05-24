@@ -6,7 +6,7 @@
 mod inverted_index;
 mod tokenizer;
 
-pub use inverted_index::InvertedIndex;
+pub use inverted_index::{Bm25Scorer, InvertedIndex};
 pub use tokenizer::{ChineseTokenizer, MultiLanguageTokenizer, SimpleTokenizer, Tokenizer};
 
 #[cfg(test)]
