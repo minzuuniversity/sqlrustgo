@@ -1,5 +1,6 @@
 //! Four-channel retrieval: Rule, Vector, FTS, Graph
 
+use crate::bm25_cache::Bm25Cache;
 use crate::fusion::RrfFusion;
 use crate::embedding_cache::CachedEmbeddingStore;
 use anyhow::Result;
@@ -238,16 +239,23 @@ impl Default for VectorChannel {
 #[derive(Clone)]
 pub struct FtsChannel {
     storage: std::sync::Arc<dyn gmp_storage::GmpStorage>,
+    cache: Bm25Cache,
 }
 
 impl FtsChannel {
     pub fn new(storage: std::sync::Arc<dyn gmp_storage::GmpStorage>) -> Self {
-        Self { storage }
+        Self {
+            storage,
+            cache: Bm25Cache::new(3600, 500),
+        }
     }
 
-    /// Search using BM25 full-text search (now with real BM25 scores)
+    /// Search using BM25 full-text search (with query result caching)
     pub fn search(&self, query: &str, top_k: usize) -> Vec<ScoredChunk> {
-        match self.storage.search_fts_with_scores(query, top_k) {
+        if let Some(cached) = self.cache.get(query) {
+            return cached;
+        }
+        let results = match self.storage.search_fts_with_scores(query, top_k) {
             Ok(results) => results
                 .into_iter()
                 .map(|r| ScoredChunk {
@@ -259,7 +267,9 @@ impl FtsChannel {
                 })
                 .collect(),
             Err(_) => vec![],
-        }
+        };
+        self.cache.insert(query, results.clone());
+        results
     }
 }
 
