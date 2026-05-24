@@ -224,7 +224,8 @@ PATCH: 向下兼容的问题修正
 |------|----------|------|
 | v1.0.0 | `gate_spec.md` | 已归档 |
 | v1.1.0 | `gate_spec.md` | 已归档 |
-| v1.2.0 | `gate_spec_v120.md` | 生效 |
+| v1.2.0 | `gate_spec_v120.md` | 已归档 |
+| v1.3.0 | `gate_spec_v130.md` | 生效 |
 
 ---
 
@@ -234,7 +235,7 @@ PATCH: 向下兼容的问题修正
 
 ```
 □ GOVERNANCE_STANDARD.md 是最新版本（版本 2.0）
-□ gate_spec_v120.md 存在且内容完整
+□ gate_spec_v130.md 存在且内容完整
 □ VERSION_DOCS_SPEC.md 定义了 21 docs 要求
 □ 当前版本有 21 个文档（docs/completeness_check.sh vX.Y.Z 输出 21/21）
 □ 所有门禁脚本已修复 REPO_ROOT 路径问题
@@ -243,6 +244,10 @@ PATCH: 向下兼容的问题修正
 □ 无文档之间内容矛盾
 □ Issue 追踪已更新到最新状态
 □ 分支保护已正确配置
+□ gate_lifecycle_tracking.md 存在且记录完整
+□ governance_self_improvement.md 存在
+□ ISSUE_CLOSING_VERIFICATION.md 存在
+□ GATE_EXEMPTIONS.md 包含复审日期字段
 ```
 
 ---
