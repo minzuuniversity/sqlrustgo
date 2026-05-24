@@ -10,6 +10,7 @@ members = [
     "crates/gmp-server",
     "crates/gmp-eval",
     "crates/gmp-api",
+    "crates/gmp-event-bus",
 ]
 
 [workspace.package]

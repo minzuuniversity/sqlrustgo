@@ -859,44 +859,12 @@ async fn main() -> Result<()> {
                 }
             }
         }
-        Commands::Populate {
-            ollama_url: _,
-            model: _,
-            batch_size: _,
-            db: _,
-            stage: _,
-        } => {
+        Commands::Populate { .. } => {
             println!("GMP Layer 0 Population\n");
-            println!("  Ollama: {} ({})", ollama_url, model);
-            println!("  Stage:  {}", stage);
-            println!("  DB:     {}\n", db);
-
-            // Initialize storage engine
-            let config = gmp_storage::StorageConfig {
-                embedding_dim: 768,
-                use_sqlrustgo_storage: true,
-                data_dir: std::path::Path::new(&db)
-                    .parent()
-                    .map(|p| p.to_string_lossy().to_string())
-                    .unwrap_or_else(|| "./data".to_string()),
-                db_path: db.clone(),
-            };
-            let _storage = match gmp_storage::StorageEngine::new(config) {
-                Ok(s) => s,
-                Err(e) => {
-                    println!("Error: Failed to initialize storage: {}", e);
-                    return Ok(());
-                }
-            };
-
-            // Note: Layer 0 population requires direct DB access which is not yet
-            // available in the sqlrustgo storage. This functionality is temporarily
-            // disabled until the storage adapter provides the necessary interface.
-            println!("Error: 'populate' command is temporarily unavailable.");
+            println!("Error: 'populate' command is DEPRECATED and temporarily unavailable.");
             println!(
                 "The storage layer does not yet support direct SQL access for Layer 0 population."
             );
-            return Ok(());
         }
     }
 
