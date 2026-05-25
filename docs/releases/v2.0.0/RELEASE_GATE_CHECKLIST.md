@@ -387,3 +387,22 @@ cd test/sql92 && cargo run
 *本文档由 OpenCode AI 生成*
 *生成日期: 2026-03-29*
 *版本: v2.0.0*
+
+---
+
+## 11. 分支结构
+
+```
+alpha/v2.0.0  (origin/alpha/v2.0.0) - 新建
+    ↓
+beta/v2.0.0   (origin/beta/v2.0.0) - 已存在
+    ↓
+rc/v2.0.0     (origin/rc/v2.0.0) - 新建
+    ↓
+ga/v2.0.0     (origin/ga/v2.0.0) - 当前 GA 分支
+```
+
+---
+
+*本文档由 SQLRustGo Team 维护*
+*更新日期: 2026-05-26*

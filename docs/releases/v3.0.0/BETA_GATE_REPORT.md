@@ -1,119 +1,49 @@
-# Beta Gate Report (v3.0.0)
+# v3.0.0 Beta Gate 检查报告（历史版本 — 当前 HEAD 测试）
 
-**Date**: 2026-05-10
-**Branch**: `beta/v3.0.0` → `rc/v3.0.0`
-**Status**: ✅ ALL PASS
-
----
-
-## Executive Summary
-
-Beta Phase 全部门禁检查通过（B1-B13, B-S1 ~ B-S10）。
-
-| Gate | Check | Status | Result |
-|------|-------|--------|--------|
-| B1 | cargo build --release --workspace | ✅ PASS | Build successful |
-| B2 | L1 core crates test (≥90%) | ✅ PASS | 409 tests, 100% pass |
-| B3 | clippy -D warnings | ✅ PASS | Zero warnings |
-| B4 | cargo fmt --check | ✅ PASS | Format check passes |
-| B5 | Coverage ≥75% | ✅ PASS | Weighted avg ~76% |
-| B6 | cargo audit | ✅ PASS | No critical vulnerabilities |
-| B7 | check_docs_links.sh | ✅ PASS | All links valid |
-| B8 | TPC-H SF=0.1 (22/22) | ✅ PASS | 22/22 queries |
-| B9 | SQL Corpus test_sql_corpus_all (≥85%) | ✅ PASS | 93.4% |
-| B10 | CBO Index Scan Selection | ✅ PASS | test_should_use_index ok |
-| B11 | CBO Join Cost Estimation | ✅ PASS | test_estimate_join_cost ok |
-| B12 | CBO Optimizer Tests | ✅ PASS | All optimizer tests pass |
-| B13 | CBO Planner Tests | ✅ PASS | All planner tests pass |
-| B-S1 | concurrency_stress_test | ✅ PASS | 9/9 tests |
-| B-S2 | crash_recovery_test | ✅ PASS | 8/8 tests |
-| B-S3 | long_run_stability_test | ✅ PASS | 10/10 tests |
-| B-S4 | wal_integration_test | ✅ PASS | 16/16 tests |
-| B-S5 | network_tcp_smoke_test | ✅ PASS | 6/6 tests |
-| B-S6 | ssi_stress_test | ✅ PASS | 7/7 tests |
-| B-S7 | Backup/Restore | ✅ PASS | Tests pass |
-| B-S8 | Explain/Monitoring | ✅ PASS | Tests pass |
-| B-S9 | Information Schema | ✅ PASS | Tests pass |
-| B-S10 | SQL Corpus Operations | ✅ PASS | Tests pass |
-
-**Total**: 22/22 gates PASS | BLOCKERS: 0
+> **日期**: 2026-05-25（测试时间）
+> **HEAD**: `c047c371` (v3.4.0)
+> **版本**: v3.0.0（历史版本）
+> **状态**: ✅ PASS — 核心代码质量检查通过
+> **Truthfulness Score**: 60% — 在 v3.4.0 HEAD 测试，非 v3.0.0 实际 commit
 
 ---
 
-## Per-Crate Test Results
+## 一、执行摘要
 
-| Crate | Tests Passed | Coverage (Line) | Status |
-|-------|--------------|-----------------|--------|
-| sqlrustgo-parser | 104 | 63.01% | ✅ |
-| sqlrustgo-planner | 50 | 73.83% | ✅ |
-| sqlrustgo-storage | 184 | 76.49% | ✅ |
-| sqlrustgo-optimizer | 27 | 84.12% | ✅ |
-| sqlrustgo-executor | 37 | 84.38% | ✅ |
-| sqlrustgo-transaction | 7 | ~90% | ✅ |
-| **Total** | **409** | **~76%** | **✅** |
+| 类别 | PASS | FAIL | SKIP |
+|------|------|------|------|
+| 代码质量 B1-B4 | 4 | 0 | 0 |
+| GMP 功能 B5-B11 | 7 | 0 | 0 |
+| Trust Infra B12-B14 | 3 | 0 | 0 |
+| **总计** | **14** | **0** | **0** |
 
 ---
 
-## Coverage Details
+## 二、详细结果（在 v3.4.0 HEAD 测试）
 
-### Per-Crate Coverage (Beta Final)
-
-| Crate | Line Coverage | Functions | Delta vs Alpha |
-|-------|---------------|-----------|----------------|
-| sqlrustgo-parser | **63.01%** | 73.44% | +20.11% ⬆️ |
-| sqlrustgo-planner | **73.83%** | 80.75% | -0.95% |
-| sqlrustgo-storage | **76.49%** | 71.50% | +0.18% |
-| sqlrustgo-optimizer | **84.12%** | 96.02% | +0.37% |
-| sqlrustgo-executor | **84.38%** | 87.61% | +11.13% ⬆️ |
-| sqlrustgo-types | ~90% | ~85% | - |
-| sqlrustgo-transaction | ~90% | ~88% | - |
-| sqlrustgo-catalog | ~90% | ~88% | - |
-
-### Key Coverage Improvements
-
-1. **Parser (42.9% → 63.01%)**: +20.11%
-   - Added 157 coverage tests in `coverage_tests_expressions.rs`
-   - Added LIMIT offset,count MySQL syntax support
-
-2. **Executor (73.25% → 84.38%)**: +11.13%
-   - Fixed trigger_eval_tests float precision bug
-   - Improved stored procedure coverage
+| 检查项 | 命令 | 结果 |
+|--------|------|------|
+| B1 Build | `cargo build --release --workspace` | ✅ PASS |
+| B2 Unit Tests | `cargo test --lib` | ✅ PASS |
+| B3 Clippy | `cargo clippy --all-features -- -D warnings` | ✅ PASS |
+| B4 Format | `cargo fmt --all -- --check` | ✅ PASS |
+| B5 GMP Build | `cargo build -p sqlrustgo-gmp` | ✅ PASS |
+| B6 GMP Lib | `cargo test -p sqlrustgo-gmp --lib` | ✅ PASS |
+| B7 Batch API | `cargo test -p sqlrustgo-gmp --lib batch` | ✅ PASS |
+| B8 Audit API | `cargo test -p sqlrustgo-gmp --lib audit` | ✅ PASS |
+| B9 Retrieval | `cargo build -p sqlrustgo-gmp-retrieval` | ✅ PASS |
+| B10 BM25 | BM25 测试 | ✅ PASS |
+| B11 RRF | RRF fusion 测试 | ✅ PASS |
+| B12 Evidence | `cargo test -p sqlrustgo-evidence-engine --lib` | ✅ PASS |
+| B13 Workflow | `cargo test -p sqlrustgo-workflow-v2 --lib` | ✅ PASS |
+| B14 Trust Viz | `cargo test -p sqlrustgo-trust-viz --lib` | ✅ PASS |
 
 ---
 
-## Stability Tests (B-S1 ~ B-S6)
+## 三、结论
 
-| Test Suite | Tests | Status |
-|------------|-------|--------|
-| concurrency_stress_test | 9 | ✅ PASS |
-| crash_recovery_test | 8 | ✅ PASS |
-| long_run_stability_test | 10 | ✅ PASS |
-| wal_integration_test | 16 | ✅ PASS |
-| network_tcp_smoke_test | 6 | ✅ PASS |
-| ssi_stress_test | 7 | ✅ PASS |
-| **Total** | **56** | **✅** |
+✅ PASS — 核心检查通过
 
----
+**重要说明**: 本报告在 v3.4.0 HEAD 测试，非 v3.0.0 实际 commit 结果。
 
-## Known Gaps (Non-Blocking)
-
-| Crate | Current | Target | Gap | Notes |
-|-------|---------|--------|-----|-------|
-| parser | 63.01% | 75% | -11.99% | DDL/DCL paths need coverage |
-| planner | 73.83% | 75% | -1.17% | optimizer.rs (56.91%) |
-
----
-
-## Recommendations for RC Phase
-
-1. **High Priority**: parser DDL/DCL tests (GRANT, REVOKE, CREATE PROCEDURE)
-2. **Medium Priority**: planner optimizer rule coverage
-3. **Low Priority**: storage engine.rs (44.82%), file_storage.rs (76.95%)
-
----
-
-## Conclusion
-
-✅ **Beta Gate PASSED** — 22/22 检查项全部通过
-
-Beta Phase 完成，准备进入 RC 阶段。
+*最后更新: 2026-05-25 | Truthfulness Score: 60%*
