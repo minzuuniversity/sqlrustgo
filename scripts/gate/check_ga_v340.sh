@@ -248,6 +248,67 @@ check_test "G-TI7: crash-sim" "cargo test -p sqlrustgo-crash-sim --lib 2>&1" "G-
 check_test "G-TI8: wal-verification" "cargo test -p sqlrustgo-wal-verification --lib 2>&1" "G-TI8"
 
 # ============================================================
+# 第七部分: SQL Core Tests (G-SC1~G-SC8) — 补充到门禁
+# ============================================================
+echo ""
+echo "━━━ 第七部分: SQL Core Tests (G-SC1~G-SC8) ━━━"
+
+check_test "G-SC1: aggregate functions" "cargo test --test aggregate_functions_test 2>&1" "G-SC1"
+check_test "G-SC2: DDL statements" "cargo test --test ddl_statement_test 2>&1" "G-SC2"
+check_test "G-SC3: DML multi-table" "cargo test --test dml_multi_table_test 2>&1" "G-SC3"
+check_test "G-SC4: IN value list" "cargo test --test in_value_list_test 2>&1" "G-SC4"
+check_test "G-SC5: LIMIT clause" "cargo test --test limit_clause_test 2>&1" "G-SC5"
+check_test "G-SC6: SET operations" "cargo test --test set_operation_test 2>&1" "G-SC6"
+check_test "G-SC7: replace INTO" "cargo test --test replace_into_test 2>&1" "G-SC7"
+check_test "G-SC8: distinct" "cargo test --test distinct_test 2>&1" "G-SC8"
+
+# ============================================================
+# 第八部分: Joins & Planner Tests (G-JP1~G-JP6)
+# ============================================================
+echo ""
+echo "━━━ 第八部分: Joins & Planner Tests (G-JP1~G-JP6) ━━━"
+
+check_test "G-JP1: hash join" "cargo test --test hash_join_test 2>&1" "G-JP1"
+check_test "G-JP2: cross join" "cargo test --test engine_cross_join_test 2>&1" "G-JP2"
+check_test "G-JP3: subquery" "cargo test --test engine_subquery_test 2>&1" "G-JP3"
+check_test "G-JP4: CBO integration" "cargo test --test cbo_integration_test 2>&1" "G-JP4"
+check_test "G-JP5: planner multi-join" "cargo test --test planner_multi_join_test 2>&1" "G-JP5"
+check_test "G-JP6: physical plan" "cargo test --test engine_physical_plan_test 2>&1" "G-JP6"
+
+# ============================================================
+# 第九部分: MVCC & Transactions (G-MV1~G-MV4)
+# ============================================================
+echo ""
+echo "━━━ 第九部分: MVCC & Transactions (G-MV1~G-MV4) ━━━"
+
+check_test "G-MV1: MVCC transactions" "cargo test --test mvcc_transaction_test 2>&1" "G-MV1"
+check_test "G-MV2: snapshot isolation" "cargo test --test mvcc_snapshot_isolation_test 2>&1" "G-MV2"
+check_test "G-MV3: gap locking" "cargo test --test gap_locking_e2e_test 2>&1" "G-MV3"
+check_test "G-MV4: cursor support" "cargo test --test cursor_test 2>&1" "G-MV4"
+
+# ============================================================
+# 第十部分: Observability Tests (G-OB1~G-OB4)
+# ============================================================
+echo ""
+echo "━━━ 第十部分: Observability Tests (G-OB1~G-OB4) ━━━"
+
+check_test "G-OB1: explain/analyze" "cargo test --test explain_analyze_test 2>&1" "G-OB1"
+check_test "G-OB2: information schema" "cargo test --test information_schema_test 2>&1" "G-OB2"
+check_test "G-OB3: observability" "cargo test --test e2e/e2e_observability_test 2>&1" "G-OB3"
+check_test "G-OB4: monitoring" "cargo test --test e2e/e2e_monitoring_test 2>&1" "G-OB4"
+
+# ============================================================
+# 第十一部分: Chaos/Reliability Tests (G-CR1~G-CR4)
+# ============================================================
+echo ""
+echo "━━━ 第十一部分: Chaos/Reliability Tests (G-CR1~G-CR4) ━━━"
+
+check_test "G-CR1: crash inject" "cargo test --test crash_inject_test 2>&1" "G-CR1"
+check_test "G-CR2: WAL crash recovery" "cargo test --test wal_crash_recovery_test 2>&1" "G-CR2"
+check_test "G-CR3: trigger chain" "cargo test --test trigger_chain_test 2>&1" "G-CR3"
+check_test "G-CR4: long run 72h" "cargo test --test long_run_stability_72h_test 2>&1" "G-CR4"
+
+# ============================================================
 # 结果汇总
 # ============================================================
 echo ""
