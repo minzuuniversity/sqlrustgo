@@ -62,6 +62,12 @@ pub trait VectorIndex: Send + Sync {
     /// Iterate over all vectors without cloning (borrowed references)
     /// Returns iterator of (id, vector_slice) pairs
     fn iter_vectors(&self) -> Box<dyn Iterator<Item = (u64, &[f32])> + '_>;
+
+    /// Save index to binary blob for fast warm restart
+    fn save_index(&self) -> VectorResult<Vec<u8>>;
+
+    /// Load index from binary blob
+    fn load_index(&mut self, data: &[u8]) -> VectorResult<()>;
 }
 
 /// Builder trait for vector indexes

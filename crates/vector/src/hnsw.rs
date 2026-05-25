@@ -362,6 +362,145 @@ impl VectorIndex for HnswIndex {
     fn iter_vectors(&self) -> Box<dyn Iterator<Item = (u64, &[f32])> + '_> {
         Box::new(self.nodes.iter().map(|n| (n.id, n.vector.as_slice())))
     }
+
+    fn save_index(&self) -> VectorResult<Vec<u8>> {
+        use std::io::Write;
+        let mut buf = Vec::new();
+        // Header: magic(4) + version(4) + n(8) + dim(8) + m(8) + ef_c(8) + ef_s(8) + max_lvl(8) + ep_idx(8)
+        buf.write_all(b"HNSW").unwrap();
+        buf.write_all(&1u32.to_le_bytes()).unwrap(); // version
+        buf.write_all(&self.nodes.len().to_le_bytes()).unwrap();
+        buf.write_all(&self.dimension.to_le_bytes()).unwrap();
+        buf.write_all(&self.m.to_le_bytes()).unwrap();
+        buf.write_all(&self.ef_construction.to_le_bytes()).unwrap();
+        buf.write_all(&self.ef_search.to_le_bytes()).unwrap();
+        buf.write_all(&self.max_level.to_le_bytes()).unwrap();
+        buf.write_all(&(self.entry_point.unwrap_or(0).to_le_bytes()))
+            .unwrap();
+
+        // Nodes: id(8) + level(8) + dim*4 + per-layer neighbor count(8) + neighbors
+        for node in &self.nodes {
+            buf.write_all(&node.id.to_le_bytes()).unwrap();
+            buf.write_all(&node.level.to_le_bytes()).unwrap();
+            for &v in &node.vector {
+                buf.write_all(&v.to_le_bytes()).unwrap();
+            }
+        }
+
+        // Layers: layer_count(8) + per-layer per-node neighbor count + neighbors
+        buf.write_all(&self.layers.len().to_le_bytes()).unwrap();
+        for layer in &self.layers {
+            buf.write_all(&layer.neighbors.len().to_le_bytes()).unwrap();
+            for neighbors in &layer.neighbors {
+                buf.write_all(&neighbors.len().to_le_bytes()).unwrap();
+                for &n in neighbors {
+                    buf.write_all(&n.to_le_bytes()).unwrap();
+                }
+            }
+        }
+
+        Ok(buf)
+    }
+
+    fn load_index(&mut self, data: &[u8]) -> VectorResult<()> {
+        use std::io::Read;
+        let mut r = data;
+        let mut magic = [0u8; 4];
+        r.read(&mut magic)
+            .map_err(|_| VectorError::InvalidParameter("truncated data".into()))?;
+        if &magic != b"HNSW" {
+            return Err(VectorError::InvalidParameter("bad magic".into()));
+        }
+        let mut version = [0u8; 4];
+        r.read(&mut version)
+            .map_err(|_| VectorError::InvalidParameter("truncated data".into()))?;
+        let version = u32::from_le_bytes(version);
+        if version != 1 {
+            return Err(VectorError::InvalidParameter(format!(
+                "unknown version {}",
+                version
+            )));
+        }
+
+        let mut n_bytes = [0u8; 8];
+        r.read(&mut n_bytes)
+            .map_err(|_| VectorError::InvalidParameter("truncated data".into()))?;
+        let n = usize::from_le_bytes(n_bytes);
+        r.read(&mut n_bytes)
+            .map_err(|_| VectorError::InvalidParameter("truncated data".into()))?;
+        self.dimension = usize::from_le_bytes(n_bytes);
+        r.read(&mut n_bytes)
+            .map_err(|_| VectorError::InvalidParameter("truncated data".into()))?;
+        self.m = usize::from_le_bytes(n_bytes);
+        r.read(&mut n_bytes)
+            .map_err(|_| VectorError::InvalidParameter("truncated data".into()))?;
+        self.ef_construction = usize::from_le_bytes(n_bytes);
+        r.read(&mut n_bytes)
+            .map_err(|_| VectorError::InvalidParameter("truncated data".into()))?;
+        self.ef_search = usize::from_le_bytes(n_bytes);
+        r.read(&mut n_bytes)
+            .map_err(|_| VectorError::InvalidParameter("truncated data".into()))?;
+        self.max_level = usize::from_le_bytes(n_bytes);
+        r.read(&mut n_bytes)
+            .map_err(|_| VectorError::InvalidParameter("truncated data".into()))?;
+        let ep = usize::from_le_bytes(n_bytes);
+        self.entry_point = if ep == 0 { None } else { Some(ep) };
+
+        self.nodes.clear();
+        self.nodes.reserve(n);
+        for _i in 0..n {
+            let mut id_bytes = [0u8; 8];
+            r.read(&mut id_bytes)
+                .map_err(|_| VectorError::InvalidParameter("truncated data".into()))?;
+            let id = u64::from_le_bytes(id_bytes);
+            let mut lvl_bytes = [0u8; 8];
+            r.read(&mut lvl_bytes)
+                .map_err(|_| VectorError::InvalidParameter("truncated data".into()))?;
+            let level = usize::from_le_bytes(lvl_bytes);
+            let mut vec = vec![0.0f32; self.dimension];
+            for v in &mut vec {
+                let mut b = [0u8; 4];
+                r.read(&mut b)
+                    .map_err(|_| VectorError::InvalidParameter("truncated data".into()))?;
+                *v = f32::from_le_bytes(b);
+            }
+            self.nodes.push(HnswNode {
+                id,
+                vector: vec,
+                level,
+            });
+        }
+
+        let mut lc_bytes = [0u8; 8];
+        r.read(&mut lc_bytes)
+            .map_err(|_| VectorError::InvalidParameter("truncated data".into()))?;
+        let layer_count = usize::from_le_bytes(lc_bytes);
+        self.layers.clear();
+        for _l in 0..layer_count {
+            let mut nc_bytes = [0u8; 8];
+            r.read(&mut nc_bytes)
+                .map_err(|_| VectorError::InvalidParameter("truncated data".into()))?;
+            let node_count = usize::from_le_bytes(nc_bytes);
+            let mut neighbors = Vec::new();
+            for _n in 0..node_count {
+                let mut k_bytes = [0u8; 8];
+                r.read(&mut k_bytes)
+                    .map_err(|_| VectorError::InvalidParameter("truncated data".into()))?;
+                let k = usize::from_le_bytes(k_bytes);
+                let mut nbrs = Vec::with_capacity(k);
+                for _x in 0..k {
+                    let mut nb = [0u8; 8];
+                    r.read(&mut nb)
+                        .map_err(|_| VectorError::InvalidParameter("truncated data".into()))?;
+                    nbrs.push(usize::from_le_bytes(nb));
+                }
+                neighbors.push(nbrs);
+            }
+            self.layers.push(Layer { neighbors });
+        }
+
+        Ok(())
+    }
 }
 
 impl HnswIndex {
@@ -507,7 +646,9 @@ impl HnswIndex {
     }
 
     fn refine_layer0_graph(&mut self, n: usize, m: usize) -> VectorResult<()> {
-        let iterations = 5;
+        // Single-pass refinement only — 5 iterations causes O(n²) explosion at scale
+        // (n=12323 → 5×12323² ≈ 7.6e8 distance comparisons → hang/OOM)
+        let iterations = 1;
         let nodes = &self.nodes;
         let metric = self.metric;
 

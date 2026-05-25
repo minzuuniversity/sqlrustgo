@@ -78,9 +78,9 @@ impl InvertedIndex {
                         set.retain(|doc_id, _| doc_ids.contains_key(doc_id));
                     }
                 }
-            } else {
-                return Vec::new();
             }
+            // Skip unknown tokens instead of failing entirely
+            // This enables partial matching: "设备验证" still finds docs with "设备" even if "验证" is rare
         }
 
         result
@@ -180,9 +180,8 @@ impl InvertedIndex {
                         set.retain(|doc_id, _| doc_ids.contains_key(doc_id));
                     }
                 }
-            } else {
-                return Vec::new();
             }
+            // Skip unknown tokens instead of failing entirely
         }
 
         let candidates = match candidate_docs {

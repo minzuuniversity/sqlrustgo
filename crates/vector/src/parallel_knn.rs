@@ -251,6 +251,13 @@ impl VectorIndex for ParallelKnnIndex {
                 .map(|(id, vector)| (*id, vector.as_slice())),
         )
     }
+
+    fn save_index(&self) -> VectorResult<Vec<u8>> {
+        Ok(Vec::new())
+    }
+    fn load_index(&mut self, _data: &[u8]) -> VectorResult<()> {
+        Ok(())
+    }
 }
 
 /// Parallel KNN wrapper that adds parallel search to any VectorIndex
@@ -362,6 +369,13 @@ impl<I: VectorIndex> VectorIndex for ParallelKnn<I> {
 
     fn iter_vectors(&self) -> Box<dyn Iterator<Item = (u64, &[f32])> + '_> {
         self.inner.iter_vectors()
+    }
+
+    fn save_index(&self) -> VectorResult<Vec<u8>> {
+        self.inner.save_index()
+    }
+    fn load_index(&mut self, data: &[u8]) -> VectorResult<()> {
+        self.inner.load_index(data)
     }
 }
 

@@ -148,6 +148,13 @@ impl VectorIndex for FlatIndex {
     fn iter_vectors(&self) -> Box<dyn Iterator<Item = (u64, &[f32])> + '_> {
         Box::new(self.vectors.iter().map(|e| (e.id, e.vector.as_slice())))
     }
+
+    fn save_index(&self) -> VectorResult<Vec<u8>> {
+        Ok(Vec::new())
+    }
+    fn load_index(&mut self, _data: &[u8]) -> VectorResult<()> {
+        Ok(())
+    }
 }
 
 #[cfg(test)]

@@ -284,6 +284,13 @@ impl VectorIndex for IvfpqIndex {
                 .map(|(id, vector)| (*id, vector.as_slice())),
         )
     }
+
+    fn save_index(&self) -> VectorResult<Vec<u8>> {
+        Ok(Vec::new())
+    }
+    fn load_index(&mut self, _data: &[u8]) -> VectorResult<()> {
+        Ok(())
+    }
 }
 
 fn euclidean(a: &[f32], b: &[f32]) -> f32 {
