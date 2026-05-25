@@ -96,6 +96,15 @@ pub trait LlmClient: Send + Sync {
         instructions: Option<&str>,
     ) -> LlmResult<GeneratedAnswer>;
 
+    /// Stream chat completion with cancellation support
+    async fn chat_stream(
+        &self,
+        messages: &[ChatMessage],
+        temperature: f32,
+        max_tokens: usize,
+        cancellation: CancellationToken,
+    ) -> LlmResult<GeneratedAnswer>;
+
     /// Name of the LLM
     fn name(&self) -> &str;
 
@@ -323,6 +332,23 @@ impl LlmClient for OllamaLlmClient {
             false
         }
     }
+
+    async fn chat_stream(
+        &self,
+        messages: &[ChatMessage],
+        temperature: f32,
+        max_tokens: usize,
+        _cancellation: CancellationToken,
+    ) -> LlmResult<GeneratedAnswer> {
+        // Fall back to non-streaming chat
+        let content = self.chat(messages, temperature, max_tokens).await?;
+        Ok(GeneratedAnswer {
+            answer: content,
+            citations: vec![],
+            confidence: None,
+            needs_human_review: false,
+        })
+    }
 }
 
 /// No-op LLM client that returns a fixed response
@@ -359,6 +385,21 @@ impl LlmClient for NoopLlmClient {
 
     fn is_available(&self) -> bool {
         true
+    }
+
+    async fn chat_stream(
+        &self,
+        _messages: &[ChatMessage],
+        _temperature: f32,
+        _max_tokens: usize,
+        _cancellation: CancellationToken,
+    ) -> LlmResult<GeneratedAnswer> {
+        Ok(GeneratedAnswer {
+            answer: "LLM unavailable.".to_string(),
+            citations: vec![],
+            confidence: None,
+            needs_human_review: true,
+        })
     }
 }
 
