@@ -1,0 +1,33 @@
+{
+  "date": "2026-05-26T02:30:00Z",
+  "version": "v3.4.0",
+  "benchmarks": {
+    "simple_select": {
+      "qps": 20212.04
+    },
+    "insert": {
+      "qps": 10572.38
+    },
+    "update": {
+      "qps": 12138.75
+    },
+    "delete": {
+      "qps": 19944.65
+    },
+    "join": {
+      "qps": 3049.61
+    },
+    "aggregation": {
+      "qps": 18206.16
+    },
+    "order_by": {
+      "qps": 8156.04
+    },
+    "concurrent_select_8t": {
+      "qps": 71861.41
+    },
+    "complex_where": {
+      "qps": 5886.83
+    }
+  }
+}
