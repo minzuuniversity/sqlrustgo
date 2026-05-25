@@ -36,16 +36,15 @@ cd "$PROJECT_ROOT"
 detect_version() {
     local branch
     branch=$(git symbolic-ref --short HEAD 2>/dev/null || git rev-parse --short HEAD 2>/dev/null)
-    if [[ "$branch" =~ v([0-9]+\.[0-9]+\.[0-9]+) ]]; then
-        echo "v${BASH_REMATCH[1]}"
-    elif [[ "$branch" =~ develop/v([0-9]+\.[0-9]+) ]]; then
+    if [[ "$branch" =~ develop/v([0-9]+\.[0-9]+) ]]; then
         echo "v${BASH_REMATCH[1]}.0"
-    elif [[ "$branch" =~ \"v3.0\" ]]; then
-        echo "v3.0.0"
-    elif [[ "$branch" =~ \"v2.9\" ]]; then
-        echo "v2.9.0"
+    elif [[ "$branch" =~ ^docs/v([0-9]+\.[0-9]+) ]]; then
+        # Extract version from docs/v3.4.0-governance-... -> v3.4.0
+        echo "v${BASH_REMATCH[1]}.0"
+    elif [[ "$branch" =~ ^v([0-9]+\.[0-9]+\.[0-9]+) ]]; then
+        echo "v${BASH_REMATCH[1]}"
     else
-        echo "v3.2.0"  # default fallback
+        echo "v3.4.0"  # default fallback for current dev cycle
     fi
 }
 
@@ -271,19 +270,19 @@ if [ "$RUN_TPC" = true ]; then
 
     if [ "$SKIP_RUN" = false ]; then
         # Build bench CLI if needed
-        if ! command -v bench-cli &> /dev/null && [ ! -f "$PROJECT_ROOT/target/release/bench-cli" ]; then
-            echo "[build] Building bench CLI..."
-            cargo build --release -p bench-cli 2>&1 | grep -E "^(error|warning:)" || true
+        if ! command -v sqlrustgo-bench-cli &> /dev/null && [ ! -f "$PROJECT_ROOT/target/release/sqlrustgo-bench-cli" ]; then
+            echo "[build] Building sqlrustgo-bench-cli..."
+            cargo build --release -p sqlrustgo-bench-cli 2>&1 | grep -E "^(error|warning:)" || true
         fi
 
-        BENCH_CLI="$PROJECT_ROOT/target/release/bench-cli"
+        BENCH_CLI="$PROJECT_ROOT/target/release/sqlrustgo-bench-cli"
 
         if [ ! -f "$BENCH_CLI" ]; then
             echo "[!] bench CLI not found, skipping TPC-H"
             TPC_STATUS="SKIP"
         else
             echo "[1/2] Building bench CLI..."
-            cargo build --release -p bench-cli 2>&1 | grep -E "^(error|warning:)" || true
+            cargo build --release -p sqlrustgo-bench-cli 2>&1 | grep -E "^(error|warning:)" || true
             echo "[2/2] Running TPC-H SF=$TPC_SF queries..."
 
             # Check if TPC-H data exists
@@ -291,39 +290,54 @@ if [ "$RUN_TPC" = true ]; then
                 echo "[!] TPC-H data not found at $HOME/sqlrustgo-tpch/data, skipping"
                 TPC_STATUS="SKIP"
             else
-                # Run TPC-H and capture output
-                TPC_OUTPUT=$("$BENCH_CLI" tpch --sf "$TPC_SF" run 2>&1 || echo "")
+                # Run TPC-H via tpch-bench (uses existing .tbl data)
+                TPC_OUTPUT=$("$BENCH_CLI" tpch-bench \
+                    --ddl "$PROJECT_ROOT/scripts/tpch/tpch_schema.sql" \
+                    --data "$HOME/sqlrustgo-tpch/data" \
+                    --queries all 2>&1 || echo "")
                 echo "$TPC_OUTPUT"
 
                 # Parse results into JSON
+                # Output format: "Q1: 223.52 ms (3 rows, 1 iters)"
                 if [ -n "$TPC_OUTPUT" ]; then
-                    TOTAL_MS=$(echo "$TPC_OUTPUT" | grep "^TOTAL" | awk '{print $2}' || echo "0")
                     cat > "$TPC_RESULT" << JSONEOF
 {
   "date": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
   "version": "$VERSION",
   "sf": "$TPC_SF",
-  "total_ms": ${TOTAL_MS:-0},
+  "total_ms": 0,
   "queries": {}
 }
 JSONEOF
-                    # Parse individual query times
+                    total_ms=0
                     while IFS= read -r line; do
-                        if [[ "$line" =~ ^Q[0-9]+ ]]; then
-                            q=$(echo "$line" | awk '{print $1}')
-                            ms=$(echo "$line" | awk '{print $2}')
-                            rows=$(echo "$line" | awk '{print $3}')
-                            # Use python to update JSON
+                        # Parse: "Q1           161.19          3"
+                        if [[ "$line" =~ ^Q([0-9]+)[[:space:]]+([0-9.]+)[[:space:]]+([0-9]+) ]]; then
+                            q="Q${BASH_REMATCH[1]}"
+                            ms="${BASH_REMATCH[2]}"
+                            rows="${BASH_REMATCH[3]}"
                             python3 -c "
 import json
 with open('$TPC_RESULT', 'r') as f:
     d = json.load(f)
-d['queries']['$q'] = {'ms': int($ms), 'rows': int($rows)}
+d['queries']['$q'] = {'ms': float($ms), 'rows': int($rows)}
 with open('$TPC_RESULT', 'w') as f:
     json.dump(d, f, indent=2)
 " 2>/dev/null || true
+                            # accumulate total (convert ms to integer ms)
+                            ms_int=$(python3 -c "print(int(round(float('$ms') * 1000)))" 2>/dev/null || echo "0")
+                            total_ms=$(python3 -c "print($total_ms + $ms_int)" 2>/dev/null || echo "$total_ms")
                         fi
                     done <<< "$TPC_OUTPUT"
+                    # Update total_ms
+                    python3 -c "
+import json
+with open('$TPC_RESULT', 'r') as f:
+    d = json.load(f)
+d['total_ms'] = $total_ms
+with open('$TPC_RESULT', 'w') as f:
+    json.dump(d, f, indent=2)
+" 2>/dev/null || true
                     echo "[+] TPC-H results written to $TPC_RESULT"
                     TPC_STATUS="PASS"
                 else
