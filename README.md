@@ -20,7 +20,7 @@ SQLRustGo 是一个使用 Rust 实现的关系型数据库教学与工程化项�
 | 版本目标 | GMP Management Suite（管理套件） |
 
 - 版本文件: [VERSION](VERSION)
-- 当前版本说明: [docs/releases/v3.4.0/RC_GATE_CHECKLIST.md](docs/releases/v3.4.0/RC_GATE_CHECKLIST.md)
+- 当前版本说明: [docs/releases/v3.4.0/GA_GATE_REPORT.md](docs/releases/v3.4.0/GA_GATE_REPORT.md)
 - v3.4.0 文档入口: [docs/releases/v3.4.0/](docs/releases/v3.4.0/)
 - v3.3.0 GA 文档: [docs/releases/v3.3.0/README.md](docs/releases/v3.3.0/README.md)
 
@@ -148,7 +148,7 @@ v3.5.0: AI Native GMP Platform
 ### v3.4.0 (当前版本)
 
 - [v3.4.0 文档中心](docs/releases/v3.4.0/)
-- [v3.4.0 RC 门禁检查清单](docs/releases/v3.4.0/RC_GATE_CHECKLIST.md)
+- [v3.4.0 RC 门禁检查清单](docs/releases/v3.4.0/GA_GATE_REPORT.md)
 - [v3.4.0 GA 门禁检查清单](docs/releases/v3.4.0/GA_GATE_CHECKLIST.md)
 - [v3.4.0 变更日志](docs/releases/v3.4.0/CHANGELOG.md)
 - [v3.4.0 开发计划](docs/releases/v3.4.0/DEV_PLAN.md)

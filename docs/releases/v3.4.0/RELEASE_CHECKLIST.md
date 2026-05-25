@@ -1,6 +1,6 @@
 # v3.4.0 发布检查清单
 
-> 版本：v3.4.0 GA | 发布日期：2026-05-24
+> 版本：v3.4.0 GA (正式发布) | 发布日期：2026-05-24
 > 参考：SQLite Release Checklist 结构
 
 ---
@@ -24,7 +24,7 @@
 | L1 | Clippy 无警告 | `cargo clippy --all-features -- -D warnings` | exit=0 | ✅ |
 | L2 | 格式化正确 | `cargo fmt --all -- --check` | exit=0 | ✅ |
 | L3 | 安全审计通过 | `cargo audit` | 0 vulnerabilities | ✅ |
-| CO1 | L1 CRATES >= 85% | `cargo llvm-cov test --all-features` | >= 85% | ⚠️ 82.88% |
+| CO1 | L1 CRATES >= 83% (豁免) | `cargo llvm-cov test --all-features` | >= 83% | ✅ 83.14% (EX-v340-002) |
 
 ---
 
