@@ -338,12 +338,91 @@ impl LlmClient for OllamaLlmClient {
         messages: &[ChatMessage],
         temperature: f32,
         max_tokens: usize,
-        _cancellation: CancellationToken,
+        cancellation: CancellationToken,
     ) -> LlmResult<GeneratedAnswer> {
-        // Fall back to non-streaming chat
-        let content = self.chat(messages, temperature, max_tokens).await?;
+        #[derive(Serialize)]
+        struct ChatRequest<'a> {
+            model: &'a str,
+            messages: &'a [ChatMessage],
+            stream: bool,
+            options: ChatOptions,
+        }
+
+        #[derive(Serialize)]
+        struct ChatOptions {
+            temperature: f32,
+            num_predict: usize,
+        }
+
+        #[derive(Deserialize)]
+        struct ChatResponse {
+            message: ChatMessage,
+        }
+
+        #[derive(Deserialize)]
+        struct StreamResponse {
+            message: StreamMessage,
+            done: bool,
+        }
+
+        #[derive(Deserialize)]
+        struct StreamMessage {
+            content: String,
+        }
+
+        let request = ChatRequest {
+            model: &self.model,
+            messages,
+            stream: true,
+            options: ChatOptions {
+                temperature,
+                num_predict: max_tokens,
+            },
+        };
+
+        let resp = self
+            .client
+            .post(format!("{}/api/chat", self.base_url))
+            .json(&request)
+            .send()
+            .await?;
+
+        use tokio_stream::StreamExt;
+        let mut stream = resp.bytes_stream();
+        let mut full_content = String::new();
+
+        while let Some(chunk_result) = stream.next().await {
+            if cancellation.is_cancelled() {
+                return Err(LlmError::InvalidResponse("Request cancelled".to_string()));
+            }
+
+            let bytes = match chunk_result {
+                Ok(b) => b,
+                Err(e) => return Err(LlmError::Network(e)),
+            };
+
+            if let Ok(text) = String::from_utf8(bytes.to_vec()) {
+                for line in text.lines() {
+                    if line.is_empty() {
+                        continue;
+                    }
+                    if let Ok(response) = serde_json::from_str::<StreamResponse>(line) {
+                        full_content.push_str(&response.message.content);
+                        if response.done {
+                            return Ok(GeneratedAnswer {
+                                answer: full_content,
+                                citations: vec![],
+                                confidence: None,
+                                needs_human_review: false,
+                            });
+                        }
+                    }
+                }
+            }
+        }
+
         Ok(GeneratedAnswer {
-            answer: content,
+            answer: full_content,
             citations: vec![],
             confidence: None,
             needs_human_review: false,
