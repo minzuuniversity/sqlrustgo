@@ -23,11 +23,17 @@ run_check() {
     local name="$1"
     local cmd="$2"
     echo -n "[$name] ... "
-    if eval "$cmd" > /dev/null 2>&1; then
+    # 保存 stdout 和 stderr 用于诊断，但最终只判断 exit code
+    local output
+    local exit_code
+    output=$(eval "$cmd" 2>&1) && exit_code=0 || exit_code=$?
+    if [ $exit_code -eq 0 ]; then
         echo "✅ PASS"
         PASS=$((PASS+1))
     else
+        # 输出最后 3 行用于诊断
         echo "❌ FAIL"
+        echo "$output" | tail -3 | sed 's/^/   |/g' 2>/dev/null || true
         FAIL=$((FAIL+1))
     fi
 }
@@ -97,12 +103,12 @@ run_z6g4 "G-S4 72h Read/Write" "需要在 Z6G4 服务器执行"
 
 echo ""
 echo "=== Trust Infrastructure 验证 (G-TI1~TI6) ==="
-run_check "G-TI1 Perf Governance" "cargo test -p perf-baseline 2>/dev/null"
-run_check "G-TI2 Crash Simulation" "cargo test -p crash-sim 2>/dev/null"
-run_check "G-TI3 WAL Verification" "cargo test -p wal-verification 2>/dev/null"
-run_check "G-TI4 Compliance Engine" "cargo test -p compliance-engine 2>/dev/null"
-run_check "G-TI5 Evidence Engine" "cargo test -p evidence-engine 2>/dev/null"
-run_check "G-TI6 Provenance Graph" "cargo test -p provenance-graph 2>/dev/null"
+run_check "G-TI1 Perf Governance" "cargo test -p sqlrustgo-perf-baseline 2>/dev/null"
+run_check "G-TI2 Crash Simulation" "cargo test -p sqlrustgo-crash-sim 2>/dev/null"
+run_check "G-TI3 WAL Verification" "cargo test -p sqlrustgo-wal-verification 2>/dev/null"
+run_check "G-TI4 Compliance Engine" "cargo test -p sqlrustgo-compliance-engine 2>/dev/null"
+run_check "G-TI5 Evidence Engine" "cargo test -p sqlrustgo-evidence-engine 2>/dev/null"
+run_check "G-TI6 Provenance Graph" "cargo test -p sqlrustgo-provenance-graph 2>/dev/null"
 
 echo ""
 echo "=== 结果汇总 ==="
