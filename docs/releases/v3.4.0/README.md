@@ -1,8 +1,8 @@
 # v3.4.0 Release — GMP Management Suite
 
 > **状态**: GA (正式发布)
-> **起点**: develop/v3.4.0 (commit `b72c640a` from v3.3.0 GA)
-> **分支**: `main` (commit `d934228b`)
+> **起点**: develop/v3.4.0 (commit `fba8041d`)
+> **分支**: `develop/v3.4.0` (commit `fba8041d`)
 > **Milestone**: v3.4.0 (id=TBD)
 > **发布完成**: 2026-05-24
 
