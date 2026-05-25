@@ -80,6 +80,7 @@ impl QueryCache {
         }
 
         entry.last_access = self.next_access_order();
+        entry.size_bytes = size;
         self.cache.insert(key.clone(), entry);
         self.current_memory_bytes += size;
 
