@@ -16,7 +16,7 @@ env:
 
 jobs:
   rc-gate:
-    runs-on: [gate-v3.4.0]
+    runs-on: [rust]
     steps:
       - name: Checkout
         run: |
@@ -38,7 +38,7 @@ jobs:
             bash scripts/gate/check_rc_v340.sh 2>&1
 
   rc-gate-full:
-    runs-on: [gate-v3.4.0]
+    runs-on: [rust]
     steps:
       - name: Checkout
         run: |

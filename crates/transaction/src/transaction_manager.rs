@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::io::Write;
 use std::sync::Arc;
 
 use crate::idempotency::{IdempotencyError, IdempotencyRegistry};
@@ -170,14 +169,6 @@ impl TransactionManager {
     ) -> Result<IdempotentBeginResult, IdempotencyOrSsiError> {
         let tx_id = TxId::new(self.next_tx_id);
         self.next_tx_id += 1;
-        let msg = format!(
-            "DEBUG begin_transaction_idempotent: key={}, tx_id={}\n",
-            key,
-            tx_id.as_u64()
-        );
-        std::fs::write("/tmp/debug.log", &msg).ok();
-        std::io::stderr().write_all(msg.as_bytes()).ok();
-        std::io::stderr().flush().ok();
 
         let request_hash =
             Self::compute_request_hash(statement).map_err(IdempotencyOrSsiError::HashError)?;
@@ -187,10 +178,6 @@ impl TransactionManager {
             .check_and_register(key, request_hash, tx_id.as_u64())
         {
             Ok(is_idempotent) => {
-                eprintln!(
-                    "DEBUG begin_transaction_idempotent: key={}, is_idempotent={}",
-                    key, is_idempotent
-                );
                 if is_idempotent {
                     return Ok(IdempotentBeginResult::IdempotentSuccess {
                         key: key.to_string(),
@@ -223,10 +210,6 @@ impl TransactionManager {
             _ => Snapshot::new_read_committed(tx_id, snapshot_timestamp),
         };
 
-        eprintln!(
-            "DEBUG begin_transaction_idempotent: creating active_tx with key={}",
-            key
-        );
         let active_tx = ActiveTransaction::new(tx_id, snapshot, Some(key.to_string()));
         self.active_transactions.insert(tx_id, active_tx);
 
@@ -258,10 +241,22 @@ impl TransactionManager {
         if let Some(active_tx) = self.active_transactions.get_mut(&tx_id) {
             active_tx.read_keys.push(key);
 
+            // REPEATABLE READ: Only update snapshot_timestamp on FIRST read
+            // Subsequent reads use the same snapshot_timestamp for consistent reads
             if isolation == IsolationLevel::RepeatableRead {
-                let read_ts = self.global_timestamp;
-                self.global_timestamp += 1;
-                active_tx.snapshot.snapshot_timestamp = read_ts;
+                // Check if this is the first read by seeing if snapshot_timestamp
+                // equals the initial start timestamp (set in begin_transaction)
+                // We track first_read in the snapshot's active_transactions as a marker
+                // Since snapshot_timestamp is set to start_ts at begin, we only update
+                // when we haven't yet recorded a first read
+                if active_tx.read_keys.len() == 1 {
+                    // First read in this REPEATABLE READ transaction
+                    let read_ts = self.global_timestamp;
+                    self.global_timestamp += 1;
+                    active_tx.snapshot.snapshot_timestamp = read_ts;
+                }
+                // Subsequent reads: do NOT update snapshot_timestamp
+                // This ensures all reads within the transaction see the same snapshot
             }
         }
 
@@ -347,15 +342,8 @@ impl TransactionManager {
 
         let idempotency_key = if let Some(active_tx) = self.active_transactions.get_mut(&tx_id) {
             active_tx.state = TransactionState::Committed;
-            let key = active_tx.idempotency_key.clone();
-            eprintln!(
-                "DEBUG commit: tx_id={}, idempotency_key={:?}",
-                tx_id.as_u64(),
-                key
-            );
-            key
+            active_tx.idempotency_key.clone()
         } else {
-            eprintln!("DEBUG commit: tx_id={}, no active_tx found", tx_id.as_u64());
             None
         };
 
@@ -371,7 +359,6 @@ impl TransactionManager {
         }
 
         if let Some(ref key) = idempotency_key {
-            eprintln!("DEBUG commit: calling mark_committed for key={}", key);
             self.mark_idempotent_committed(key).ok();
         }
 
