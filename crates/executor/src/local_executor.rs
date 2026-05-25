@@ -1402,13 +1402,10 @@ impl<'a> LocalExecutor<'a> {
 
                 let deleted = if let Some(predicate) = delete_plan.predicate() {
                     let pred_sql = predicate.to_sql_string();
-                    eprintln!("DEBUG execute_delete: table={}, predicate={}", table_name, pred_sql);
                     self.storage.delete_by_predicate(table_name, &pred_sql)?
                 } else {
-                    eprintln!("DEBUG execute_delete: table={}, no predicate, deleting all", table_name);
                     self.storage.delete(table_name, &[])?
                 };
-                eprintln!("DEBUG execute_delete: deleted {} rows", deleted);
                 Ok(ExecutorResult::new(vec![], deleted))
             }
             None => Ok(ExecutorResult::empty()),
@@ -1457,19 +1454,14 @@ impl<'a> LocalExecutor<'a> {
                 let updated = if !assignments.is_empty() {
                     if let Some(pred) = predicate {
                         let pred_sql = pred.to_sql_string();
-                        eprintln!("DEBUG execute_update: table={}, predicate={}, assignments={:?}",
-                            table_name, pred_sql, assignments);
                         self.storage.update_by_predicate(table_name, &pred_sql, &assignments)?
                     } else {
-                        eprintln!("DEBUG execute_update: table={}, no predicate, updating all, assignments={:?}",
-                            table_name, assignments);
                         self.storage.update_by_predicate(table_name, "1=1", &assignments)?
                     }
                 } else {
                     0
                 };
 
-                eprintln!("DEBUG execute_update: updated {} rows", updated);
                 Ok(ExecutorResult::new(vec![], updated))
             }
             None => Ok(ExecutorResult::empty()),
