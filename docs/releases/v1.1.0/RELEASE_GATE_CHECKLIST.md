@@ -1,13 +1,10 @@
 # SQLRustGo v1.1.0 发布门禁检查清单
 
-> 版本：v1.1.0-draft
+> 版本：v1.1.0
 > 日期：2026-03-05
-> 发布类型：Draft (草稿版本)
+> 发布类型：✅ GA (General Availability)
 > 目标成熟度：L3 产品级
-> 最后更新：2026-03-05 (基于 DeepSeek 评估报告)
-> 
-> ⚠️ **重要提示**: 本版本为 Draft 状态，门禁检查存在未通过项。
-> 详见 [DeepSeek 评估报告](./DEEPSEEK_EVALUATION.md) 和 [改进计划](./IMPROVEMENT_PLAN.md)
+> 最后更新：2026-05-26
 
 ---
 
@@ -489,3 +486,22 @@ cargo bench
 
 *本文档由 TRAE (GLM-5.0) 创建*
 *最后更新: 2026-03-03*
+
+---
+
+## 分支结构
+
+```
+alpha/v1.1.0  (origin/alpha/v1.1.0)
+    ↓
+beta/v1.1.0   (origin/beta/v1.1.0)
+    ↓
+rc/v1.1.0     (origin/rc/v1.1.0)
+    ↓
+ga/v1.1.0     (origin/ga/v1.1.0) - 当前 GA 分支
+```
+
+---
+
+*本文档由 SQLRustGo Team 维护*
+*最后更新: 2026-05-26*
