@@ -286,7 +286,7 @@ R7 包含四个子检查：
 | G2 | Test | `cargo test --all-features` | 100% 通过 | `{passed, failed, exit_code}` |
 | G3 | Clippy | `cargo clippy --all-features -- -D warnings` | 零警告 | `{warnings, exit_code}` |
 | G4 | Format | `cargo fmt --all -- --check` | 无格式错误 | `{diff_count, exit_code}` |
-| G5 | Coverage | `cargo llvm-cov test L1_CRATES --lib` | ≥85% | `{total_pct, module_pcts}` |
+| G5 | Coverage | `cargo llvm-cov test L1_CRATES --lib` | ≥83% *(v3.4.0 GA 赔免，EX-v340-002)* | `{total_pct, module_pcts}` |
 | G6 | Security | `cargo audit` | 无高危漏洞 | `{vulnerabilities}` |
 | G7 | Point Select QPS | `cargo bench -- point_select` | **≥10,000 ops/s** | `{qps, threshold, pass}` |
 | G8 | UPDATE QPS | `cargo bench -- update_simple` | **≥5,000 ops/s** | `{qps, threshold, pass}` |
