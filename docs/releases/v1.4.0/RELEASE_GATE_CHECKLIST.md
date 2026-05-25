@@ -2,7 +2,7 @@
 
 > **版本**: v1.4.0
 > **制定日期**: 2026-03-15
-> **当前阶段**: 🚀 **RC (Release Candidate)** - 发布候选
+> **当前阶段**: ✅ **GA (General Availability)** - 正式发布
 > **发布类型**: CBO + SortMergeJoin
 > **目标成熟度**: L3 (Mini DBMS)
 
@@ -16,7 +16,7 @@
 |------|------|
 | 版本号 | v1.4.0 |
 | 发布类型 | 查询优化与执行增强 |
-| 目标分支 | release/v1.4.0 |
+| 目标分支 | ga/v1.4.0 |
 | 开发分支 | develop/v1.4.0 |
 | 前置版本 | v1.3.0 (GA) |
 | 目标成熟度 | L3 (Mini DBMS) |
@@ -228,7 +228,21 @@ cargo audit
 
 ---
 
-**文档状态**: RC (Release Candidate)  
-**制定日期**: 2026-03-15  
-**更新日期**: 2026-03-18  
+## 七、分支结构
+
+```
+alpha/v1.4.0  (origin/alpha/v1.4.0)
+    ↓
+beta/v1.4.0   (origin/beta/v1.4.0) - 新建
+    ↓
+rc/v1.4.0     (origin/rc/v1.4.0) - 已存在
+    ↓
+ga/v1.4.0     (origin/ga/v1.4.0) - 当前 GA 分支
+```
+
+---
+
+**文档状态**: GA (General Availability)
+**制定日期**: 2026-03-15
+**更新日期**: 2026-05-26
 **制定人**: yinglichina8848
