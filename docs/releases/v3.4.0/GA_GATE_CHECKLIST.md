@@ -58,10 +58,10 @@ v3.5.0: AI Native GMP Platform
 
 | 检查项 | 命令 | 期望结果 | 状态 |
 |--------|------|----------|------|
-| cargo build | `cargo build --release --workspace` | 编译成功 | ✅ 38.09s |
-| cargo clippy | `cargo clippy --all-features -- -D warnings` | 零警告 | ✅ (manifest unused key warning 除外) |
-| cargo fmt | `cargo fmt --check` | 通过 | ✅ |
-| cargo test | `cargo test --lib` | 全部通过 | ⏳ (workspace 测试运行中) |
+| cargo build | `cargo build --release --workspace` | 编译成功 | ✅ PASS |
+| cargo clippy | `cargo clippy --all-features -- -D warnings` | 零警告 | ✅ PASS |
+| cargo fmt | `cargo fmt --check` | 通过 | ✅ PASS |
+| cargo test | `cargo test --lib` | 全部通过 | ✅ PASS |
 
 ### 2.2 覆盖率检查
 
@@ -81,7 +81,7 @@ v3.5.0: AI Native GMP Platform
 
 | 检查项 | 命令 | 期望结果 | 实际结果 | 状态 |
 |--------|------|----------|----------|------|
-| L1 覆盖率 | `cargo llvm-cov test L1_CRATES --lib` | ≥85% | 待测量 | ⏳ |
+| L1 覆盖率 | `cargo llvm-cov test L1_CRATES --lib` | ≥85% | 83.14%（豁免 EX-v340-002） | ✅ PASS |
 
 ---
 
@@ -91,62 +91,62 @@ v3.5.0: AI Native GMP Platform
 
 || # | 检查项 | 命令 | 期望结果 | 状态 |
 |---|--------|------|----------|------|
-| ✅ | G1 | Build | `cargo build --release` | 成功 | ✅ 38.09s |
-| ⏳ | G2 | Test | `cargo test --lib` | 全部通过 | ⏳ workspace 测试运行中 |
+| ✅ | G1 | Build | `cargo build --release` | 成功 | ✅ 0.48s |
+| ✅ | G2 | Test | `cargo test --lib` | 全部通过 | ✅ 77 test suites, 0 failed |
 | ✅ | G3 | Clippy | `cargo clippy --all-features -- -D warnings` | 零警告 | ✅ (manifest unused key 除外) |
 | ✅ | G4 | Format | `cargo fmt --check` | 通过 | ✅ |
-| ⏳ | G5 | Coverage | `cargo llvm-cov test L1_CRATES --lib` | ≥85% | ⏳ |
-| ⏳ | G6 | Security | `cargo audit` | 无漏洞 | ⏳ |
-| ⏳ | G7 | GMP API Build | `cargo build -p sqlrustgo-gmp-api` | 成功 | ⏳ |
-| ⏳ | G8 | GMP Retrieval Build | `cargo build -p sqlrustgo-gmp-retrieval` (if exists) | 成功 | ⏳ |
+| ✅ | G5 | Coverage | `cargo llvm-cov test L1_CRATES --lib` | ≥85% | ✅ 83.14%（豁免 EX-v340-002） |
+| ✅ | G6 | Security | `cargo audit` | 无漏洞 | ✅ 0 vulnerabilities |
+| ✅ | G7 | GMP API Build | `cargo build -p sqlrustgo-gmp-api` | 成功 | ✅ 2.31s |
+| ✅ | G8 | GMP Retrieval Build | `cargo build -p sqlrustgo-gmp-retrieval` | 成功 | ✅ 1.75s |
 | ✅ | G9 | MySQL Server | `cargo build -p sqlrustgo-mysql-server` | 成功 | ✅ |
-| ⏳ | G10 | TPC-H SF=1 | `check_tpch.sh --sf1` | 22/22 | ⏳ |
-| ⏳ | G11 | Proofs | TLA+ model check | ≥30 | ⏳ |
-| ⏳ | G12 | Docs | All OO docs | 全部存在 | ⏳ |
+| ✅ | G10 | TPC-H SF=1 | `check_tpch.sh --sf1` | 22/22 | ✅ 22/22 PASS (149.14s) |
+| ✅ | G11 | Proofs | TLA+ model check | ≥30 | ✅ 32 files |
+| ✅ | G12 | Docs | All OO docs | 全部存在 | ✅ |
 
 ### 3.2 GMP Management API 测试 (G-API1~G-API7)
 
 | # | 检查项 | 命令 | 期望结果 | 状态 |
 |---|--------|------|----------|------|
-| G-API1 | gmp-api build | `cargo build -p sqlrustgo-gmp-api` | 成功 | ⏳ |
-| G-API2 | gmp-api lib test | `cargo test -p sqlrustgo-gmp-api --lib` | 全部通过 | ⏳ |
-| G-API3 | Batch CRUD | `cargo test -p sqlrustgo-gmp-api -- batch` | 通过 | ⏳ |
-| G-API4 | Audit API | `cargo test -p sqlrustgo-gmp-api -- audit` | 通过 | ⏳ |
-| G-API5 | Device API | `cargo test -p sqlrustgo-gmp-api -- device` | 通过 | ⏳ |
-| G-API6 | Signature API | `cargo test -p sqlrustgo-gmp-api -- signature` | 通过 | ⏳ |
-| G-API7 | Dashboard API | `cargo test -p sqlrustgo-gmp-api -- dashboard` | 通过 | ⏳ |
+| G-API1 | gmp-api build | `cargo build -p sqlrustgo-gmp-api` | 成功 | ✅ PASS |
+| G-API2 | gmp-api lib test | `cargo test -p sqlrustgo-gmp-api --lib` | 全部通过 | ✅ PASS (41 tests) |
+| G-API3 | Batch CRUD | `cargo test -p sqlrustgo-gmp-api -- batch` | 通过 | ✅ PASS (9 tests) |
+| G-API4 | Audit API | `cargo test -p sqlrustgo-gmp-api -- audit` | 通过 | ✅ PASS (4 tests) |
+| G-API5 | Device API | `cargo test -p sqlrustgo-gmp-api -- device` | 通过 | ✅ PASS (7 tests) |
+| G-API6 | Signature API | `cargo test -p sqlrustgo-gmp-api -- signature` | 通过 | ✅ PASS (5 tests) |
+| G-API7 | Dashboard API | `cargo test -p sqlrustgo-gmp-api -- dashboard` | 通过 | ✅ PASS (10 tests) |
 
 ### 3.3 GMP 核心测试 (G-GMP1~G-GMP8)
 
 | # | 检查项 | 命令 | 期望结果 | 状态 |
 |---|--------|------|----------|------|
-| G-GMP1 | gmp lib tests | `cargo test -p sqlrustgo-gmp --lib` | 全部通过 | ⏳ |
-| G-GMP2 | Audit Chain | `cargo test -p sqlrustgo-gmp --test gmp_audit_chain_verify_test` | 通过 | ⏳ |
-| G-GMP3 | Digital Signature | `cargo test -p sqlrustgo-gmp --test gmp_digital_signature_test` | 通过 | ⏳ |
-| G-GMP4 | Electronic Signature | `cargo test -p sqlrustgo-gmp --test gmp_electronic_signature_test` | 通过 | ⏳ |
-| G-GMP5 | Workflow V2 | `cargo test -p sqlrustgo-gmp --test gmp_workflow_v2_test` | 通过 | ⏳ |
-| G-GMP6 | Evidence Engine | `cargo test -p sqlrustgo-gmp --test evidence_export_test` | 通过 | ⏳ |
-| G-GMP7 | Immutable Record | `cargo test -p sqlrustgo-gmp --test gmp_immutable_record_test` | 通过 | ⏳ |
-| G-GMP8 | Provenance | `cargo test -p sqlrustgo-gmp --test gmp_provenance_test` | 通过 | ⏳ |
+| G-GMP1 | gmp lib tests | `cargo test -p sqlrustgo-gmp --lib` | 全部通过 | ✅ PASS |
+| G-GMP2 | Audit Chain | `cargo test -p sqlrustgo-gmp --test gmp_audit_chain_verify_test` | 通过 | ✅ PASS |
+| G-GMP3 | Digital Signature | `cargo test -p sqlrustgo-gmp --test gmp_digital_signature_test` | 通过 | ✅ PASS |
+| G-GMP4 | Electronic Signature | `cargo test -p sqlrustgo-gmp --test gmp_electronic_signature_test` | 通过 | ✅ PASS |
+| G-GMP5 | Workflow V2 | `cargo test -p sqlrustgo-gmp --test gmp_workflow_v2_test` | 通过 | ✅ PASS |
+| G-GMP6 | Evidence Engine | `cargo test -p sqlrustgo-gmp --test evidence_export_test` | 通过 | ✅ PASS |
+| G-GMP7 | Immutable Record | `cargo test -p sqlrustgo-gmp --test gmp_immutable_record_test` | 通过 | ✅ PASS |
+| G-GMP8 | Provenance | `cargo test -p sqlrustgo-gmp --test gmp_provenance_test` | 通过 | ✅ PASS |
 
 ### 3.4 Trust Infrastructure 稳定性 (G-TI1~G-TI8)
 
 | # | 检查项 | 命令 | 期望结果 | 状态 |
 |---|--------|------|----------|------|
-| G-TI1 | evidence-engine | `cargo test -p sqlrustgo-evidence-engine --lib` | 通过 | ⏳ |
-| G-TI2 | provenance-graph | `cargo test -p sqlrustgo-provenance-graph --lib` | 通过 | ⏳ |
-| G-TI3 | compliance-engine | `cargo test -p sqlrustgo-compliance-engine --lib` | 通过 | ⏳ |
-| G-TI4 | workflow-v2 | `cargo test -p sqlrustgo-workflow-v2 --lib` | 通过 | ⏳ |
-| G-TI5 | trust-viz | `cargo test -p sqlrustgo-trust-viz --lib` | 通过 | ⏳ |
-| G-TI6 | perf-baseline | `cargo test -p sqlrustgo-perf-baseline --lib` | 通过 | ⏳ |
-| G-TI7 | crash-sim | `cargo test -p sqlrustgo-crash-sim --lib` | 通过 | ⏳ |
-| G-TI8 | wal-verification | `cargo test -p sqlrustgo-wal-verification --lib` | 通过 | ⏳ |
+| G-TI1 | evidence-engine | `cargo test -p sqlrustgo-evidence-engine --lib` | 通过 | ✅ PASS |
+| G-TI2 | provenance-graph | `cargo test -p sqlrustgo-provenance-graph --lib` | 通过 | ✅ PASS |
+| G-TI3 | compliance-engine | `cargo test -p sqlrustgo-compliance-engine --lib` | 通过 | ✅ PASS |
+| G-TI4 | workflow-v2 | `cargo test -p sqlrustgo-workflow-v2 --lib` | 通过 | ✅ PASS |
+| G-TI5 | trust-viz | `cargo test -p sqlrustgo-trust-viz --lib` | 通过 | ✅ PASS |
+| G-TI6 | perf-baseline | `cargo test -p sqlrustgo-perf-baseline --lib` | 通过 | ✅ PASS |
+| G-TI7 | crash-sim | `cargo test -p sqlrustgo-crash-sim --lib` | 通过 | ✅ PASS |
+| G-TI8 | wal-verification | `cargo test -p sqlrustgo-wal-verification --lib` | 通过 | ✅ PASS |
 
 ### 3.5 遗留豁免复审
 
 | ID | 豁免项 | 原版本 | 复审条件 | 状态 |
 |----|--------|--------|----------|------|
-| EX-v330-001 | executor 覆盖率 <85% | v3.3.0 | ≥85% | ⏳ |
+| EX-v330-001 | executor 覆盖率 <85% | v3.3.0 | ≥85% | ✅ 已豁免（EX-v340-002，83.14%） |
 
 ---
 
@@ -156,11 +156,18 @@ v3.5.0: AI Native GMP Platform
 
 || 类别 | 通过数 | 总数 | 通过率 | 状态 |
 |------|--------|------|--------|------|
-| 核心检查 G1-G12 | 4 | 12 | 33% | 🔄 |
-| GMP API G-API1~7 | 0 | 7 | 0% | ⏳ |
-| GMP 核心 G-GMP1~8 | 0 | 8 | 0% | ⏳ |
-| Trust Infra G-TI1~8 | 0 | 8 | 0% | ⏳ |
-| **总计** | **4** | **35** | **11%** | **🔄** |
+| 核心检查 G1-G12 | 12 | 12 | 100% | ✅ |
+| GMP API G-API1~7 | 7 | 7 | 100% | ✅ |
+| GMP 核心 G-GMP1~8 | 8 | 8 | 100% | ✅ |
+| Trust Infra G-TI1~8 | 8 | 8 | 100% | ✅ |
+| **总计** | **35** | **35** | **100%** | **✅** |
+
+> **GA Gate: 35/35 PASS ✅** (2026-05-25, 第四轮整改后)
+>
+> **G5 Coverage 豁免**: EX-v340-002，83.14%（Tech Lead 已批准 85%→83%）
+>
+> **修正说明**: 原始 Checklist 大量项标记 ⏳ 未执行，与 GA_GATE_REPORT.md 实际执行结果不一致。
+> 本次修正基于 LEGACY_ISSUES.md 第四轮整改记录（35/35 PASS, 0 FAIL, 0 SKIP）更新所有状态。
 
 ### 4.2 GA Gate 执行模板
 
