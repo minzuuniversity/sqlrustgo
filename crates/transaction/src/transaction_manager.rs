@@ -258,10 +258,22 @@ impl TransactionManager {
         if let Some(active_tx) = self.active_transactions.get_mut(&tx_id) {
             active_tx.read_keys.push(key);
 
+            // REPEATABLE READ: Only update snapshot_timestamp on FIRST read
+            // Subsequent reads use the same snapshot_timestamp for consistent reads
             if isolation == IsolationLevel::RepeatableRead {
-                let read_ts = self.global_timestamp;
-                self.global_timestamp += 1;
-                active_tx.snapshot.snapshot_timestamp = read_ts;
+                // Check if this is the first read by seeing if snapshot_timestamp
+                // equals the initial start timestamp (set in begin_transaction)
+                // We track first_read in the snapshot's active_transactions as a marker
+                // Since snapshot_timestamp is set to start_ts at begin, we only update
+                // when we haven't yet recorded a first read
+                if active_tx.read_keys.len() == 1 {
+                    // First read in this REPEATABLE READ transaction
+                    let read_ts = self.global_timestamp;
+                    self.global_timestamp += 1;
+                    active_tx.snapshot.snapshot_timestamp = read_ts;
+                }
+                // Subsequent reads: do NOT update snapshot_timestamp
+                // This ensures all reads within the transaction see the same snapshot
             }
         }
 
