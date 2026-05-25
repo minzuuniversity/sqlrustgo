@@ -57,8 +57,12 @@ impl<S: StorageEngine> WalStorage<S> {
         }
         let tx_id = self.current_tx_id;
         if self.wal_enabled {
+            // NOTE: log_commit() internally calls writer.append() which flushes
+            // the BufWriter to OS buffer. The sync() call was redundant because:
+            // 1. log_commit() -> append() -> flush() flushes BufWriter to OS
+            // 2. sync() opened a new file handle just to call sync_all() - wasteful
+            // The fsync to disk happens at checkpoint time, not per-commit.
             self.wal.log_commit(tx_id)?;
-            self.wal.sync()?;
         }
         self.current_tx_id = 0;
         Ok(())
@@ -73,8 +77,9 @@ impl<S: StorageEngine> WalStorage<S> {
         }
         let tx_id = self.current_tx_id;
         if self.wal_enabled {
+            // NOTE: log_rollback() -> append() -> flush() is sufficient
+            // No need for extra sync() call - same reasoning as commit
             self.wal.log_rollback(tx_id)?;
-            self.wal.sync()?;
         }
         self.current_tx_id = 0;
         Ok(())
