@@ -103,6 +103,9 @@ pub trait LlmClient: Send + Sync {
     fn is_available(&self) -> bool;
 }
 
+pub mod stream;
+pub use stream::{StreamChatRequest, StreamEvent, CancellationToken};
+
 /// Ollama-hosted LLM client
 pub struct OllamaLlmClient {
     base_url: String,
