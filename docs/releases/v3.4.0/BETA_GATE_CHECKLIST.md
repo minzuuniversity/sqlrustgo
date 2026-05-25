@@ -35,8 +35,8 @@
 |---|--------|------|------|------|
 | B5 | gmp-api build | `cargo build -p sqlrustgo-gmp-api` | 成功 | ✅ PASS (workspace 集成后 27.75s) |
 | B6 | gmp-api test | `cargo test -p sqlrustgo-gmp-api --lib` | 全部通过 | ✅ PASS (3 passed, 0 failed) |
-| B7 | Batch API | `cargo test -p sqlrustgo-gmp-api -- batch` | 通过 | ⚠️ 无 batch 测试（模块存在） |
-| B8 | Audit API | `cargo test -p sqlrustgo-gmp-api -- audit` | 通过 | ⚠️ 无 audit 测试（模块存在） |
+| B7 | Batch API | `cargo test -p sqlrustgo-gmp-api -- batch` | 通过 | ⏭️ SKIP（gmp-api batch 模块无独立测试函数，Beta 不阻塞） |
+| B8 | Audit API | `cargo test -p sqlrustgo-gmp-api -- audit` | 通过 | ⏭️ SKIP（gmp-api audit 模块无独立测试函数，Beta 不阻塞） |
 
 ### 2.3 GMP 检索 v2
 
@@ -61,12 +61,12 @@
 | 类别 | 通过数 | 总数 | 通过率 | 状态 |
 |------|--------|------|--------|------|
 | 代码质量 B1-B4 | 4 | 4 | 100% | ✅ |
-| GMP API B5-B8 | 2 | 4 | 50% | ⚠️ B7/B8 无测试 |
+| GMP API B5-B8 | 2 | 4 | 50% | ⚠️ B7/B8 SKIP（无独立测试函数） |
 | GMP 检索 B9-B11 | 3 | 3 | 100% | ✅ |
 | Trust Infra B12-B14 | 3 | 3 | 100% | ✅ |
 | **总计** | **12** | **14** | **86%** | **✅ PASS** |
 
-> 注: B7/B8 无测试不是阻塞项（模块存在，build 通过）
+> 注: B7/B8 SKIP 不是阻塞项（模块存在，build 通过；GA 阶段第四轮整改已补充测试，G-API3/G-API4 PASS）
 
 ---
 

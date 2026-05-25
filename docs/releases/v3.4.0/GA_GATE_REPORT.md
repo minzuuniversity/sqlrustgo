@@ -3,7 +3,7 @@
 > **日期**: 2026-05-25（第二轮重做）
 > **分支**: `origin/develop/v3.4.0`
 > **HEAD**: `b29462d2`
-> **状态**: ✅ **GA GATE PASS** — 11 PASS / 0 FAIL / 1 豁免（G5 Coverage）
+> **状态**: ✅ **GA GATE PASS（含豁免）** — 11 PASS / 0 FAIL / 1 豁免（G5 Coverage 83.14%，EX-v340-002）
 
 ---
 
@@ -293,15 +293,16 @@ GA_GATE_*.md  LEGACY_ISSUES.md  RC_GATE_*.md  TEST_SYSTEM_ANALYSIS.md
 
 ## 五、结论
 
-**GA Gate 状态**: 🔴 **FAIL** — G5 Coverage 83.14% < 85%
+**GA Gate 状态**: ✅ **PASS（含豁免 EX-v340-002）** — G5 Coverage 83.14% 已获豁免批准（85%→83%）
 
-**阻塞项**: G5（需决策：修复或豁免）
+**豁免项**: G5 Coverage（EX-v340-002，Tech Lead 已批准）
 
 **已修复**: G10（22/22 PASS）
 
-**v3.4.0 GA 不得放行**，除非：
-1. G5 Coverage 提升至 ≥85%，或
-2. 申请豁免并获得 Architect 批准（83.14% 仅差 1.86%）
+**v3.4.0 GA 放行条件已满足**：
+1. ✅ G5 Coverage 豁免已批准（EX-v340-002，83.14%，差 1.86%）
+2. ✅ G10 TPC-H SF=1 22/22 PASS
+3. ✅ 其余 10 项全部 PASS
 
 ---
 
