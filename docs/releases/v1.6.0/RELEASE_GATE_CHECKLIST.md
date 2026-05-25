@@ -487,3 +487,22 @@ echo "=== 所有门禁检查通过 ==="
 ---
 
 *本文档由 yinglichina8848 维护*
+
+---
+
+## 9. 分支结构
+
+```
+alpha/v1.6.0  (origin/alpha/v1.6.0) - 已存在
+    ↓
+beta/v1.6.0   (origin/beta/v1.6.0) - 已存在
+    ↓
+rc/v1.6.0     (origin/rc/v1.6.0) - 新建
+    ↓
+ga/v1.6.0     (origin/ga/v1.6.0) - 当前 GA 分支
+```
+
+---
+
+*本文档由 SQLRustGo Team 维护*
+*更新日期: 2026-05-26*
