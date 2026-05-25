@@ -1,17 +1,12 @@
 # v1.2.0 Release Gate Checklist
 
-> **版本（历史记录）**: v1.2.0-draft
+> **版本**: v1.2.0
 > **代号**: Vector Engine
 > **版本类型**: 🏗️ 架构重构 + 接口抽象
-> **阶段（历史记录）**: Draft (草稿)
+> **阶段**: ✅ GA (General Availability)
 > **检查日期**: 2026-03-06
 > **检查人**: yinglichina8848
-> **检查结果**: 🔴 52% (进入 Draft 阶段)
-
-> **当前执行口径（2026-03-07）**
-> - 当前版本状态：`alpha/v1.2.0`
-> - 当前主开发分支：`develop-v1.2.0`
-> - `v1.2.0-draft` 为历史阶段记录，保留用于追溯，不代表当前阶段
+> **检查结果**: ✅ 已通过 GA 门禁
 
 ---
 
@@ -264,3 +259,24 @@ $ cargo build --release
    - 未使用的常量 MIN_KEYS
    - 未使用的字段 path, cv
    - 未使用的 mut 关键字
+
+---
+
+## 十一、分支结构
+
+```
+alpha/v1.2.0  (origin/alpha/v1.2.0)
+    ↓
+beta/v1.2.0   (origin/beta/v1.2.0)
+    ↓
+rc/v1.2.0     (origin/rc/v1.2.0)
+    ↓
+ga/v1.2.0     (origin/ga/v1.2.0) - 当前 GA 分支
+```
+
+---
+
+**文档状态**: GA (General Availability)
+**制定日期**: 2026-03-06
+**更新日期**: 2026-05-26
+**制定人**: yinglichina8848
