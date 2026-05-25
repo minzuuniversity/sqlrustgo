@@ -208,6 +208,13 @@ impl VectorIndex for ShardedVectorIndex {
     fn iter_vectors(&self) -> Box<dyn Iterator<Item = (u64, &[f32])> + '_> {
         Box::new(self.shards.values().flat_map(|s| s.index.iter_vectors()))
     }
+
+    fn save_index(&self) -> VectorResult<Vec<u8>> {
+        Ok(Vec::new())
+    }
+    fn load_index(&mut self, _data: &[u8]) -> VectorResult<()> {
+        Ok(())
+    }
 }
 
 #[cfg(test)]
