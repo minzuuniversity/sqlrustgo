@@ -13,11 +13,11 @@
 |------|------|------|------|------|
 | 代码质量 R1-R4 | 4 | 0 | 0 | 4 |
 | 覆盖率 R5 | 1 | 0 | 0 | 1 |
-| 安全兼容 R6-R8 | 2 | 0 | 1 | 3 |
+| 安全兼容 R6-R8 | 3 | 0 | 0 | 3 |
 | Beta 复核 B1-B14 | 14 | 0 | 0 | 14 |
 | 稳定性 R-S1~S4 | 0 | 0 | 4 | 4 |
 | Alpha 复核 A6,A7 | 1 | 0 | 1 | 2 |
-| **总计** | **22** | **0** | **6** | **28** |
+| **总计** | **23** | **0** | **5** | **28** |
 
 ---
 
@@ -32,7 +32,7 @@
 | R5 Coverage 82.88% | L1≥85%（差 2.12%，GA 豁免） | ✅ PASS (EX) |
 | R6 Security | `cargo audit` | ✅ PASS |
 | R7 SQL Compat | `check_sql_compat.sh` | ✅ PASS |
-| R8 TPC-H SF=1 | Z6G4 执行 | ⏭️ SKIP |
+| R8 TPC-H SF=1 | `check_tpch.sh --sf1` 22/22 | ✅ PASS |
 | B1-B14 Beta 复核 | 全部 14 项 | ✅ 14/14 PASS |
 | R-S1~S4 稳定性 | Z6G4 执行 | ⏭️ 4/4 SKIP |
 | A6 MySQL handshake | Z6G4 执行 | ✅ PASS |
@@ -42,6 +42,6 @@
 
 ## 三、RC Gate 结论
 
-✅ **PASSED** — 22 PASS / 6 SKIP
+✅ **PASSED** — 23 PASS / 5 SKIP
 
 *最后更新: 2026-05-25 | Truthfulness Score: 100%*
