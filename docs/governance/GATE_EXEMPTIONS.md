@@ -1,8 +1,8 @@
 # 门禁豁免与延期记录
 
-> **版本**: 1.1
+> **版本**: 1.3
 > **创建日期**: 2026-05-05
-> **更新日期**: 2026-05-18
+> **更新日期**: 2026-05-25
 > **维护人**: hermes-z6g4
 > **适用范围**: v2.9.0+
 
@@ -29,6 +29,7 @@
 | EX-v320-001 | v3.2.0 | G5 Coverage (executor 70.7% < 85%) | **延期** | 🔴 Open | executor 模块覆盖率 70.70%，低于 GA Gate 要求的 85%。根因为 stored_proc.rs (41.8% 覆盖，1,748 行未覆盖) 架构设计问题：过长函数 + 深度嵌套控制流导致现有 417 个测试无法触达。需模块拆分重构。Issue #1196/#1197 已建。 | Tech Lead | 2026-05-18 | #1196, #1197 | **v3.3.0 Alpha 前** | 需拆分 stored_proc.rs 为独立子模块后重测 |
 | EX-v320-002 | v3.2.0 | G12 MySQL Protocol 握手失败 | **延期** | 🔴 Open | `mysql::Conn::new()` 返回 `DriverError { Could not setup connection }`。根因为 sqlrustgo-mysql-server 握手状态机/ auth plugin 兼容性问题。GA_READINESS_GAP_ANALYSIS.md §3 记录。需抓包调试 + 协议规范对照修复。 | Tech Lead | 2026-05-18 | **#1201** | **v3.3.0 Alpha 前** | 握手包交换流程调试，参考 docs/releases/v3.1.0/MYSQL_PROTOCOL_OPTIMIZATION.md |
 | EX-v320-003 | v3.2.0 | G8 TPC-H SF=1 数据缺失 | **延期** | 🔴 Open | `tpch_data/` 目录不存在，无法运行 TPC-H SF=1 验证。GA_READINESS_GAP_ANALYSIS.md §3 记录。Issue #1198 部分追踪。需在 Z6G4 服务器上生成 SF=1 数据并执行 `check_tpch.sh --sf1`。 | Tech Lead | 2026-05-18 | #1198 | **v3.3.0 Alpha 前** | `bash scripts/gate/setup_tpch_env.sh --sf 1` |
+| EX-v340-002 | v3.4.0 | G5 Coverage 83.14% < 85% | **豁免** | ✅ 已批准 | L1 整体覆盖率 83.14%，差 1.86% 达 GA 门槛 85%。主拖累：parser.rs (59.15%)、executor/stored_proc/execution.rs (65.77%)。parser/transaction/executor 模块均超过 B-Gate 各自门槛。豁免基于实际代码复杂度，非测试懈怠。 | Tech Lead | 2026-05-25 | — | v3.5.0 Alpha 前复审 | 83.14% 差 1.86% |
 | EX-v340-001 | v3.4.0 | rc-gate.yml `gate-v3.4.0` runner 标签无 Rust | **延期 → 已修复** | ✅ 已关闭 | rc-gate.yml 使用 `runs-on: [gate-v3.4.0]` 但该 runner 标签无 Rust 工具链。修复：将 runner 标签改为 `runs-on: [rust]`，devstack-runner-1 已有 rust 标签且预装 Rust 工具链。PR #1357 已合入。 | Tech Lead | 2026-05-24 | #1357 | v3.4.0 GA 前 | rc-gate CI 现在使用 devstack-runner-1 rust 标签 |
 
 ---
@@ -84,3 +85,4 @@
 | 1.0 | 2026-05-05 | 初始版本，记录 EX-001（性能基准先决条件）、EX-002（B-Gate executor 豁免）、EX-003（R10 追溯延期） |
 | 1.1 | 2026-05-18 | 新增 EX-v320-001（executor 覆盖率 70.7%）、EX-v320-002（MySQL Protocol 握手失败）、EX-v320-003（TPC-H SF=1 数据缺失）、EX-v320-004（Sysbench 服务器环境） |
 | 1.2 | 2026-05-24 | 新增 EX-v340-001（rc-gate.yml gate-v3.4.0→rust runner 标签），EX-v320-004 保留为历史记录 |
+| 1.3 | 2026-05-25 | 新增 EX-v340-002（v3.4.0 GA G5 Coverage 83.14% 豁免 85%→83%，Tech Lead 审批） |
