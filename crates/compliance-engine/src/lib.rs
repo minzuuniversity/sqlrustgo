@@ -2,11 +2,18 @@
 
 pub mod engine;
 pub mod evaluator;
+pub mod judge;
+pub mod report;
 pub mod rule;
 pub mod types;
 
 pub use engine::ComplianceEngine;
 pub use evaluator::RuleEvaluator;
+pub use judge::types::RuleEvidence;
+pub use judge::{
+    AuditLogEntry, AuditLogWriter, ComplianceJudge, ConfidenceCalculator, JudgmentAuditor,
+    JudgmentRequest, JudgmentResult, JudgmentStatus, RuleParser,
+};
 pub use types::*;
 pub use types::{BatchRecord, ComplianceRule, RuleCondition, Signature, ViolationRecord};
 
