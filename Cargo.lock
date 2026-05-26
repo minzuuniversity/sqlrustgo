@@ -5241,12 +5241,17 @@ dependencies = [
 name = "sqlrustgo-compliance-engine"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "chrono",
  "regex",
  "serde",
  "serde_json",
+ "serde_yaml",
+ "sha2 0.10.9",
  "tempfile",
  "thiserror 2.0.18",
+ "tokio",
+ "uuid",
 ]
 
 [[package]]
