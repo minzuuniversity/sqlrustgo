@@ -82,7 +82,8 @@ impl UnifiedSearcher {
         rerank_model: &str,
     ) -> Self {
         let vectorizer = OllamaVectorizer::new(ollama_base_url, embedding_model);
-        let chat_client = crate::query_rewriter::OllamaChatClientImpl::new(ollama_base_url, chat_model);
+        let chat_client =
+            crate::query_rewriter::OllamaChatClientImpl::new(ollama_base_url, chat_model);
         let query_rewriter = QueryRewriter::new(Box::new(chat_client), chat_model);
         let reranker = OllamaReranker::new(ollama_base_url, rerank_model);
 
@@ -109,11 +110,15 @@ impl UnifiedSearcher {
         };
 
         // Step 2: Execute searches in parallel
-        let fts_results = self.retrieval.search_bm25(&query, self.config.pre_limit);
-        let rule_results = self.retrieval.search_with_filter(&rewritten, self.config.pre_limit);
+        let fts_results = self.retrieval.search_bm25(query, self.config.pre_limit);
+        let rule_results = self
+            .retrieval
+            .search_with_filter(&rewritten, self.config.pre_limit);
 
         // Step 3: Fuse results
-        let fused = self.retrieval.fuse_results(vec![fts_results, rule_results], self.config.rrf_k);
+        let fused = self
+            .retrieval
+            .fuse_results(vec![fts_results, rule_results], self.config.rrf_k);
 
         // Step 4: Rerank if enabled
         let final_results = if self.config.use_reranker {
@@ -152,11 +157,7 @@ impl UnifiedSearcher {
     }
 
     /// Rerank search results
-    async fn rerank_results(
-        &self,
-        results: Vec<SearchResult>,
-        query: &str,
-    ) -> Vec<SearchResult> {
+    async fn rerank_results(&self, results: Vec<SearchResult>, query: &str) -> Vec<SearchResult> {
         if results.is_empty() {
             return results;
         }
@@ -185,18 +186,20 @@ impl UnifiedSearcher {
         };
 
         match reranker.rerank(&request, "").await {
-            Ok(reranked) => {
-                reranked
-                    .into_iter()
-                    .map(|r| {
-                        results
-                            .iter()
-                            .find(|sr| sr.doc_id == r.doc_id)
-                            .cloned()
-                            .unwrap_or(SearchResult::new(r.doc_id, r.score as f64, RetrievalSource::Fts))
-                    })
-                    .collect()
-            }
+            Ok(reranked) => reranked
+                .into_iter()
+                .map(|r| {
+                    results
+                        .iter()
+                        .find(|sr| sr.doc_id == r.doc_id)
+                        .cloned()
+                        .unwrap_or(SearchResult::new(
+                            r.doc_id,
+                            r.score as f64,
+                            RetrievalSource::Fts,
+                        ))
+                })
+                .collect(),
             Err(_) => results,
         }
     }
@@ -219,17 +222,19 @@ mod tests {
         let retrieval = RetrievalEngine::with_bm25(docs);
 
         // Use mock rewriter and reranker
-        let mock_rewriter = MockChatClient::new(
-            r#"{"keywords":["偏差","报告"],"filters":[],"intent":"search"}"#,
-        );
-        let query_rewriter = Arc::new(QueryRewriter::new(
-            Box::new(mock_rewriter),
-            "qwen2.5:14b",
-        ));
+        let mock_rewriter =
+            MockChatClient::new(r#"{"keywords":["偏差","报告"],"filters":[],"intent":"search"}"#);
+        let query_rewriter = Arc::new(QueryRewriter::new(Box::new(mock_rewriter), "qwen2.5:14b"));
 
         let mock_reranker = MockRerankClient::new(vec![
-            RerankResult { doc_id: "0".to_string(), score: 0.9 },
-            RerankResult { doc_id: "1".to_string(), score: 0.8 },
+            RerankResult {
+                doc_id: "0".to_string(),
+                score: 0.9,
+            },
+            RerankResult {
+                doc_id: "1".to_string(),
+                score: 0.8,
+            },
         ]);
         let reranker: Arc<dyn OllamaRerankClient> = Arc::new(mock_reranker);
 

@@ -466,7 +466,8 @@ impl RuleRecommendationEngine {
             ExistingRule {
                 rule_id: "R001".into(),
                 name: "Cold Storage Temperature Monitoring".into(),
-                description: "All cold storage units must maintain 2-8°C with continuous monitoring".into(),
+                description:
+                    "All cold storage units must maintain 2-8°C with continuous monitoring".into(),
                 category: "Temperature".into(),
                 tags: vec!["temperature".into(), "storage".into(), "monitoring".into()],
             },
@@ -515,7 +516,12 @@ impl RuleRecommendationEngine {
         for v in &recent {
             // Group by category + first word of location + cluster_type
             let location_key = v.location.split_whitespace().next().unwrap_or("unknown");
-            let key = format!("{}:{}:{}", v.category, location_key, v.cluster_type().as_str());
+            let key = format!(
+                "{}:{}:{}",
+                v.category,
+                location_key,
+                v.cluster_type().as_str()
+            );
             clusters.entry(key).or_default().push(v);
         }
 
@@ -599,8 +605,10 @@ impl RuleRecommendationEngine {
         for rule in &self.existing_rules {
             for pattern in &patterns {
                 // Simple keyword-based similarity
-                let rule_text = format!("{} {} {}", rule.name, rule.description, rule.tags.join(" "));
-                let pattern_text = format!("{} {}", pattern.description, pattern.cluster_type.as_str());
+                let rule_text =
+                    format!("{} {} {}", rule.name, rule.description, rule.tags.join(" "));
+                let pattern_text =
+                    format!("{} {}", pattern.description, pattern.cluster_type.as_str());
 
                 let similarity = self.text_similarity(&rule_text, &pattern_text);
                 let coverage_gap = 1.0 - similarity;
@@ -708,7 +716,11 @@ impl RuleRecommendationEngine {
             .collect();
 
         for rtype in &recent_types {
-            if !older_types.contains(rtype) && recent.iter().any(|p| p.cluster_type.as_str() == *rtype && p.frequency >= 2) {
+            if !older_types.contains(rtype)
+                && recent
+                    .iter()
+                    .any(|p| p.cluster_type.as_str() == *rtype && p.frequency >= 2)
+            {
                 alerts.push(RiskAlert {
                     alert_id: Uuid::new_v4().to_string(),
                     alert_type: RiskAlertType::NewViolationType,
@@ -811,9 +823,8 @@ impl RuleRecommendationEngine {
                 .filter(|v| {
                     let v_type = v.cluster_type();
                     v_type == pattern.cluster_type
-                        && v.location.contains(
-                            pattern.description.split_whitespace().nth(3).unwrap_or(""),
-                        )
+                        && v.location
+                            .contains(pattern.description.split_whitespace().nth(3).unwrap_or(""))
                 })
                 .map(|v| v.violation_id.clone())
                 .collect();
@@ -912,16 +923,23 @@ impl RuleRecommendationEngine {
 
     /// Get recommendation by ID
     pub fn get_recommendation(&self, id: &str) -> Option<&RuleRecommendation> {
-        self.recommendations.iter().find(|r| r.recommendation_id == id)
+        self.recommendations
+            .iter()
+            .find(|r| r.recommendation_id == id)
     }
 
     /// Get mutable recommendation by ID
     pub fn get_recommendation_mut(&mut self, id: &str) -> Option<&mut RuleRecommendation> {
-        self.recommendations.iter_mut().find(|r| r.recommendation_id == id)
+        self.recommendations
+            .iter_mut()
+            .find(|r| r.recommendation_id == id)
     }
 
     /// Submit recommendation for review
-    pub fn submit_for_review(&mut self, recommendation_id: &str) -> Result<(), RecommendationError> {
+    pub fn submit_for_review(
+        &mut self,
+        recommendation_id: &str,
+    ) -> Result<(), RecommendationError> {
         let rec = self
             .get_recommendation_mut(recommendation_id)
             .ok_or(RecommendationError::NotFound)?;
@@ -953,9 +971,16 @@ impl RuleRecommendationEngine {
     }
 
     /// List all recommendations
-    pub fn list_recommendations(&self, status: Option<RecommendationStatus>) -> Vec<&RuleRecommendation> {
+    pub fn list_recommendations(
+        &self,
+        status: Option<RecommendationStatus>,
+    ) -> Vec<&RuleRecommendation> {
         match status {
-            Some(s) => self.recommendations.iter().filter(|r| r.status == s).collect(),
+            Some(s) => self
+                .recommendations
+                .iter()
+                .filter(|r| r.status == s)
+                .collect(),
             None => self.recommendations.iter().collect(),
         }
     }
@@ -1161,7 +1186,12 @@ mod tests {
 
         // Approve
         engine
-            .review_decision(&rec_id, "compliance_officer".into(), Decision::Approve, "Approved".into())
+            .review_decision(
+                &rec_id,
+                "compliance_officer".into(),
+                Decision::Approve,
+                "Approved".into(),
+            )
             .unwrap();
         assert_eq!(
             engine.get_recommendation(&rec_id).unwrap().status,
@@ -1191,6 +1221,8 @@ mod tests {
         let drafts = engine.list_recommendations(Some(RecommendationStatus::Draft));
 
         assert!(!all.is_empty());
-        assert!(drafts.iter().all(|r| r.status == RecommendationStatus::Draft));
+        assert!(drafts
+            .iter()
+            .all(|r| r.status == RecommendationStatus::Draft));
     }
 }

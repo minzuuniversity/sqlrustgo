@@ -370,11 +370,7 @@ impl DegradationDetector {
         let n = values.len() as f64;
         let sum_x: f64 = (0..values.len()).map(|i| i as f64).sum();
         let sum_y: f64 = values.iter().sum();
-        let sum_xy: f64 = values
-            .iter()
-            .enumerate()
-            .map(|(i, v)| i as f64 * v)
-            .sum();
+        let sum_xy: f64 = values.iter().enumerate().map(|(i, v)| i as f64 * v).sum();
         let sum_xx: f64 = (0..values.len()).map(|i| (i * i) as f64).sum();
 
         let denominator = n * sum_xx - sum_x * sum_x;
@@ -427,7 +423,10 @@ impl DegradationDetector {
     }
 
     /// Identify the degradation pattern
-    pub fn identify_pattern(readings: &[DeviceReading], reading_type: DeviceReadingType) -> DegradationPattern {
+    pub fn identify_pattern(
+        readings: &[DeviceReading],
+        reading_type: DeviceReadingType,
+    ) -> DegradationPattern {
         if readings.len() < 5 {
             return DegradationPattern::Normal;
         }
@@ -496,7 +495,9 @@ impl RulEstimator {
         // For vibration: increasing is bad
         let is_increasing_bad = matches!(
             reading_type,
-            DeviceReadingType::Temperature | DeviceReadingType::Vibration | DeviceReadingType::Pressure
+            DeviceReadingType::Temperature
+                | DeviceReadingType::Vibration
+                | DeviceReadingType::Pressure
         );
 
         let (distance, direction) = if is_increasing_bad {
@@ -572,8 +573,7 @@ impl MaintenanceScheduler {
         };
 
         // Primary maintenance task
-        let scheduled_date = current_time
-            + (urgency_factor as i64 * 24 * 60 * 60 * 1000); // Days to ms
+        let scheduled_date = current_time + (urgency_factor as i64 * 24 * 60 * 60 * 1000); // Days to ms
 
         let (task_type, parts) = match prediction.degradation_pattern {
             DegradationPattern::GradualDegradation => (
@@ -582,7 +582,10 @@ impl MaintenanceScheduler {
             ),
             DegradationPattern::SuddenShift => (
                 "Emergency inspection - check for immediate failure".to_string(),
-                vec!["Replacement unit".to_string(), "Diagnostic tools".to_string()],
+                vec![
+                    "Replacement unit".to_string(),
+                    "Diagnostic tools".to_string(),
+                ],
             ),
             DegradationPattern::Oscillation => (
                 "Vibration analysis and damping repair".to_string(),
@@ -741,12 +744,14 @@ impl<'a> LlmReasoner<'a> {
 #[async_trait]
 pub trait DevicePredictor {
     /// Analyze device and return prediction
-    async fn predict(&self, device_id: &str, lookback_hours: u64)
-        -> DevicePredictorResult<PredictionResult>;
+    async fn predict(
+        &self,
+        device_id: &str,
+        lookback_hours: u64,
+    ) -> DevicePredictorResult<PredictionResult>;
 
     /// Generate maintenance plan for a device
-    async fn generate_plan(&self, device_id: &str)
-        -> DevicePredictorResult<Vec<MaintenanceTask>>;
+    async fn generate_plan(&self, device_id: &str) -> DevicePredictorResult<Vec<MaintenanceTask>>;
 
     /// Batch predict for all monitored devices
     async fn batch_predict(&self) -> DevicePredictorResult<Vec<PredictionResult>>;
@@ -774,7 +779,8 @@ impl InMemoryDevicePredictor {
 
     /// Add a device with its reading type
     pub fn register_device(&mut self, device_id: &str, reading_type: DeviceReadingType) {
-        self.device_types.insert(device_id.to_string(), reading_type);
+        self.device_types
+            .insert(device_id.to_string(), reading_type);
         self.readings.insert(device_id.to_string(), vec![]);
     }
 
@@ -811,10 +817,8 @@ impl InMemoryDevicePredictor {
         let now = chrono::Utc::now().timestamp_millis();
         let cutoff = now - (lookback_hours as i64 * 60 * 60 * 1000);
 
-        let filtered: Vec<&DeviceReading> = readings
-            .iter()
-            .filter(|r| r.timestamp >= cutoff)
-            .collect();
+        let filtered: Vec<&DeviceReading> =
+            readings.iter().filter(|r| r.timestamp >= cutoff).collect();
 
         Ok(filtered)
     }
@@ -826,7 +830,10 @@ impl InMemoryDevicePredictor {
         }
 
         let values: Vec<f64> = readings.iter().map(|r| r.value).collect();
-        let reading_type = readings.first().map(|r| r.reading_type).unwrap_or(DeviceReadingType::Temperature);
+        let reading_type = readings
+            .first()
+            .map(|r| r.reading_type)
+            .unwrap_or(DeviceReadingType::Temperature);
 
         // Use IQR-based scoring
         let current_value = values.last().unwrap_or(&0.0);
@@ -854,11 +861,16 @@ impl InMemoryDevicePredictor {
         }
 
         let values: Vec<f64> = readings.iter().map(|r| r.value).collect();
-        let reading_type = readings.first().map(|r| r.reading_type).unwrap_or(DeviceReadingType::Temperature);
+        let reading_type = readings
+            .first()
+            .map(|r| r.reading_type)
+            .unwrap_or(DeviceReadingType::Temperature);
         let threshold = reading_type.typical_threshold();
 
         // Check if values are approaching threshold
-        let max_val = values.iter().fold(f64::NAN, |max, &v| if v > max { v } else { max });
+        let max_val = values
+            .iter()
+            .fold(f64::NAN, |max, &v| if v > max { v } else { max });
         if !max_val.is_nan() {
             let ratio = max_val / threshold;
             if ratio > 0.8 {
@@ -891,7 +903,10 @@ impl InMemoryDevicePredictor {
             .filter(|r| r.quality_flag != QualityFlag::Good)
             .count();
         if suspect_count > readings.len() / 4 {
-            factors.push(format!("数据质量问题 ({}% suspect)", suspect_count * 100 / readings.len()));
+            factors.push(format!(
+                "数据质量问题 ({}% suspect)",
+                suspect_count * 100 / readings.len()
+            ));
         }
 
         factors
@@ -962,7 +977,13 @@ impl DevicePredictor for InMemoryDevicePredictor {
         let reasoner = LlmReasoner::new(self.llm.as_ref());
         let status = format!("{:?}", degradation_pattern);
         let llm_explanation = reasoner
-            .generate_explanation(device_id, &status, anomaly_score, rul_hours, &contributing_factors)
+            .generate_explanation(
+                device_id,
+                &status,
+                anomaly_score,
+                rul_hours,
+                &contributing_factors,
+            )
             .await;
 
         Ok(PredictionResult {
@@ -980,7 +1001,10 @@ impl DevicePredictor for InMemoryDevicePredictor {
     async fn generate_plan(&self, device_id: &str) -> DevicePredictorResult<Vec<MaintenanceTask>> {
         let prediction = self.predict(device_id, 168).await?; // 1 week lookback
         let current_time = chrono::Utc::now().timestamp_millis();
-        Ok(MaintenanceScheduler::generate_tasks(&prediction, current_time))
+        Ok(MaintenanceScheduler::generate_tasks(
+            &prediction,
+            current_time,
+        ))
     }
 
     async fn batch_predict(&self) -> DevicePredictorResult<Vec<PredictionResult>> {
@@ -1014,7 +1038,11 @@ impl DevicePredictor for InMemoryDevicePredictor {
 mod tests {
     use super::*;
 
-    fn create_test_readings(device_id: &str, values: &[f64], reading_type: DeviceReadingType) -> Vec<DeviceReading> {
+    fn create_test_readings(
+        device_id: &str,
+        values: &[f64],
+        reading_type: DeviceReadingType,
+    ) -> Vec<DeviceReading> {
         values
             .iter()
             .enumerate()
@@ -1075,7 +1103,9 @@ mod tests {
     #[test]
     fn test_sudden_shift_detection() {
         // Test that CUSUM runs without panicking - exact result depends on algorithm sensitivity
-        let values = vec![5.0, 5.0, 5.0, 5.0, 5.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0];
+        let values = vec![
+            5.0, 5.0, 5.0, 5.0, 5.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0,
+        ];
         let _has_shift = DegradationDetector::detect_sudden_shift(&values, 0.5);
         // Just verify it runs without panic
     }
@@ -1085,7 +1115,8 @@ mod tests {
         // Test that pattern identification runs without panicking
         let values: Vec<f64> = (0..30).map(|i| 45.0 + i as f64 * 1.0).collect();
         let readings = create_test_readings("test", &values, DeviceReadingType::Temperature);
-        let _pattern = DegradationDetector::identify_pattern(&readings, DeviceReadingType::Temperature);
+        let _pattern =
+            DegradationDetector::identify_pattern(&readings, DeviceReadingType::Temperature);
         // Just verify it runs without panic
     }
 
@@ -1105,7 +1136,8 @@ mod tests {
         // Stable values
         let values = vec![10.0, 10.1, 9.9, 10.0, 10.05];
         let readings = create_test_readings("test", &values, DeviceReadingType::Temperature);
-        let pattern = DegradationDetector::identify_pattern(&readings, DeviceReadingType::Temperature);
+        let pattern =
+            DegradationDetector::identify_pattern(&readings, DeviceReadingType::Temperature);
         assert_eq!(pattern, DegradationPattern::Normal);
     }
 
@@ -1115,7 +1147,8 @@ mod tests {
         let mut values = vec![10.0; 15];
         values.extend(vec![50.0; 10]);
         let readings = create_test_readings("test", &values, DeviceReadingType::Temperature);
-        let pattern = DegradationDetector::identify_pattern(&readings, DeviceReadingType::Temperature);
+        let pattern =
+            DegradationDetector::identify_pattern(&readings, DeviceReadingType::Temperature);
         assert_eq!(pattern, DegradationPattern::SuddenShift);
     }
 
@@ -1191,7 +1224,10 @@ mod tests {
         assert_eq!(DeviceReadingType::Temperature.typical_threshold(), 80.0);
         assert_eq!(DeviceReadingType::Vibration.typical_threshold(), 10.0);
         assert_eq!(DeviceReadingType::Pressure.typical_threshold(), 10.0);
-        assert_eq!(DeviceReadingType::PowerConsumption.typical_threshold(), 100.0);
+        assert_eq!(
+            DeviceReadingType::PowerConsumption.typical_threshold(),
+            100.0
+        );
         assert_eq!(DeviceReadingType::Weight.typical_threshold(), 1000.0);
     }
 

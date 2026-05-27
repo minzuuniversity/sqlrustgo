@@ -383,7 +383,7 @@ pub fn reciprocal_rank_fusion(
     // Collect all doc_ids and their RRF scores
     let mut doc_scores: HashMap<String, f32> = HashMap::new();
 
-    for (rank_offset, result_set) in result_sets.iter().enumerate() {
+    for result_set in result_sets.iter() {
         for (rank, (_doc_id, _original_score)) in result_set.iter().enumerate() {
             let zero_based_rank = rank;
             // Weight is 1.0 for all channels by default

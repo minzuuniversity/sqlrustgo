@@ -90,10 +90,7 @@ impl OllamaClientImpl {
 
         if response.status() == 404 {
             let available = vec![];
-            return Err(OllamaError::ModelNotFoundError(
-                request.model,
-                available,
-            ));
+            return Err(OllamaError::ModelNotFoundError(request.model, available));
         }
 
         if !response.status().is_success() {
@@ -146,23 +143,27 @@ impl OllamaClientImpl {
                             let line = lines[..newline_pos].trim().to_string();
                             lines = lines[newline_pos + 1..].to_string();
 
-                            if line.starts_with("data: ") {
-                                let data = &line[6..];
+                            if let Some(data) = line.strip_prefix("data: ") {
                                 if data == "[DONE]" {
-                                    let _ = tx.send(Ok(StreamChunk {
-                                        model: model.clone(),
-                                        done: true,
-                                        message: None,
-                                    })).await;
+                                    let _ = tx
+                                        .send(Ok(StreamChunk {
+                                            model: model.clone(),
+                                            done: true,
+                                            message: None,
+                                        }))
+                                        .await;
                                     return;
-                                } else if let Ok(chunk) = serde_json::from_str::<StreamChunk>(data) {
+                                } else if let Ok(chunk) = serde_json::from_str::<StreamChunk>(data)
+                                {
                                     let _ = tx.send(Ok(chunk)).await;
                                 }
                             }
                         }
                     }
                     Err(e) => {
-                        let _ = tx.send(Err(OllamaError::InvalidResponse(e.to_string()))).await;
+                        let _ = tx
+                            .send(Err(OllamaError::InvalidResponse(e.to_string())))
+                            .await;
                         return;
                     }
                 }
