@@ -81,7 +81,7 @@ impl AuditLogWriter {
         hasher.update(&entry.timestamp);
         hasher.update(&entry.request_hash);
         hasher.update(&entry.result);
-        hasher.update(&entry.confidence_score.to_le_bytes());
+        hasher.update(entry.confidence_score.to_le_bytes());
         hasher.update(&entry.previous_hash);
         format!("{:x}", hasher.finalize())
     }
@@ -168,7 +168,7 @@ impl AuditLogReader {
             hasher.update(&entry.timestamp);
             hasher.update(&entry.request_hash);
             hasher.update(&entry.result);
-            hasher.update(&entry.confidence_score.to_le_bytes());
+            hasher.update(entry.confidence_score.to_le_bytes());
             hasher.update(&entry.previous_hash);
             let computed = format!("{:x}", hasher.finalize());
 
