@@ -54,6 +54,7 @@ pub mod calibration;
 pub mod compliance;
 pub mod correction;
 pub mod correction_chain;
+pub mod device_predictor;
 pub mod document;
 pub mod electronic_signature;
 pub mod embedding;
