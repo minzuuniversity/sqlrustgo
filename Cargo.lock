@@ -5653,6 +5653,7 @@ dependencies = [
  "sqlrustgo-common",
  "sqlrustgo-executor",
  "sqlrustgo-gmp",
+ "sqlrustgo-gmp-api",
  "sqlrustgo-optimizer",
  "sqlrustgo-parser",
  "sqlrustgo-planner",
