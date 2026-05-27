@@ -26,6 +26,7 @@ thiserror.workspace = true
 sha2 = "0.10"
 hex.workspace = true
 lazy_static = "1.4"
+async-trait = "0.1"
 
 [dev-dependencies]
 tokio-test = "0.4"
