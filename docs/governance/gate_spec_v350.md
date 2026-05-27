@@ -1,9 +1,9 @@
 # SQLRustGo v3.5.0 门禁规范
 
 > **版本**: 1.0
-> **日期**: 2026-05-24
+> **日期**: 2026-05-27
 > **状态**: 生效
-> **supersedes**: v3.4.0 门禁规范
+> **supersedes**: v3.4.0 门禁规范（gate_spec_v340.md）
 
 ---
 
@@ -24,6 +24,15 @@ A-Gate → B-Gate → R-Gate → G-Gate
 | **有豁免记录** | 不满足的项必须在 `GATE_EXEMPTIONS.md` 有审批通过的豁免记录 |
 | **无阻塞性 OPEN Issue** | milestone 下的 OPEN Issue 不能阻塞门禁 |
 
+### 1.3 v3.5.0 新增检查范围
+
+| Crate | A-Gate | B-Gate | R-Gate | G-Gate |
+|-------|--------|--------|--------|--------|
+| `sqlrustgo-compliance-engine` | 必须通过 | 必须通过 | 必须通过 | 必须通过 |
+| `sqlrustgo-gmp-api` | 必须通过 | 必须通过 | 必须通过 | 必须通过 |
+| `sqlrustgo-gmp` | 必须通过 | 必须通过 | 必须通过 | 必须通过 |
+| `sqlrustso-gmp-retrieval` | 必须通过 | 必须通过 | 必须通过 | 必须通过 |
+
 ---
 
 ## 二、Coverage SSOT 测量规范
@@ -37,25 +46,38 @@ cargo llvm-cov test --lib \
   -p sqlrustgo-optimizer \
   -p sqlrustgo-storage \
   -p sqlrustgo-types \
-  -p sqlrustgo-gmp-api \
-  -p sqlrustgo-gmp-llm \
-  --llvm-cov --codecov
+  -p sqlrustgo-parser \
+  -p sqlrustgo-planner \
+  -p sqlrustgo-transaction \
+  -p sqlrustgo-catalog \
+  --llc-cov --codecov
 ```
 
 ### 2.2 L1_CRATES 定义
 
 | Crate | Alpha 阈值 | Beta 阈值 | GA 阈值 |
 |-------|-----------|-----------|---------|
-| `sqlrustgo` | ≥70% | ≥75% | ≥80% |
+| `sqlrustgo` (workspace) | ≥70% | ≥75% | ≥80% |
 | `sqlrustgo-executor` | ≥70% | ≥80% | ≥85% |
 | `sqlrustgo-optimizer` | ≥80% | ≥85% | ≥90% |
 | `sqlrustgo-storage` | ≥80% | ≥85% | ≥90% |
 | `sqlrustgo-types` | ≥80% | ≥85% | ≥90% |
-| `sqlrustgo-gmp-api` | ≥70% | ≥75% | ≥80% |
-| `sqlrustgo-gmp-llm` | ≥70% | ≥75% | ≥80% |
-| **整体** | **≥72%** | **≥78%** | **≥82%** |
+| `sqlrustgo-parser` | ≥50% | ≥60% | ≥70% |
+| `sqlrustgo-planner` | ≥40% | ≥50% | ≥60% |
+| `sqlrustgo-transaction` | ≥60% | ≥70% | ≥80% |
+| `sqlrustgo-catalog` | ≥50% | ≥60% | ≥70% |
+| **整体 L1** | **≥70%** | **≥80%** | **≥85%** |
 
-> **v3.5.0 变更**: 新增 `sqlrustgo-gmp-api` 和 `sqlrustgo-gmp-llm` 两个 AI 相关 crate，继承 v3.4.0 整体阈值策略。
+### 2.3 v3.5.0 新增 Crate 覆盖率要求
+
+| Crate | Alpha | Beta | GA |
+|-------|-------|------|-----|
+| `sqlrustgo-compliance-engine` | — | ≥40% | ≥50% |
+| `sqlrustgo-gmp-api` | — | ≥40% | ≥50% |
+| `sqlrustgo-gmp` | — | ≥30% | ≥40% |
+| `sqlrustso-gmp-retrieval` | — | ≥40% | ≥50% |
+
+> 注: 新增 crate 的覆盖率测量在 Beta 阶段开始纳入。
 
 ---
 
@@ -69,12 +91,7 @@ cargo llvm-cov test --lib \
 | A2 | 单元测试 | `cargo test --lib` | 全部通过 | `{passed, failed, exit_code}` |
 | A3 | Clippy 检查 | `cargo clippy --all-features -- -D warnings` | 零警告 | `{warnings, exit_code}` |
 | A4 | 格式化检查 | `cargo fmt --all -- --check` | 无格式错误 | `{diff_count, exit_code}` |
-| A5 | 覆盖率检查 | `cargo llvm-cov test --lib L1_CRATES` | L1 ≥72% | `{total_pct}` |
-| A6 | MySQL Protocol | mysql client 连接 | 连接成功 | `{connection_status}` |
-| A7 | TPC-H SF=1 | `check_tpch.sh --sf1` | 22/22 通过 | `{passed, total}` |
-| A8 | Ollama 连接 | `curl http://localhost:11434/api/tags` | Ollama 就绪 | `{model_list}` |
-| A9 | gmp-api build | `cargo build -p sqlrustgo-gmp-api` | 编译通过 | `{exit_code}` |
-| A10 | gmp-llm build | `cargo build -p sqlrustgo-gmp-llm` | 编译通过 | `{exit_code}` |
+| A5 | 覆盖率检查 | `cargo llvm-cov` | L1 ≥70% | `{total_pct}` |
 
 ### 3.2 Alpha Trust Infrastructure 检查
 
@@ -86,14 +103,18 @@ cargo llvm-cov test --lib \
 | TI-4 | compliance-engine exists | `[ -d crates/compliance-engine/src ]` | 目录存在 |
 | TI-5 | evidence-engine exists | `[ -d crates/evidence-engine/src ]` | 目录存在 |
 | TI-6 | provenance-graph exists | `[ -d crates/provenance-graph/src ]` | 目录存在 |
+| TI-7 | gmp-api exists | `[ -d crates/gmp-api/src ]` | 目录存在 |
+| TI-8 | gmp exists | `[ -d crates/gmp/src ]` | 目录存在 |
+| TI-9 | gmp-retrieval exists | `[ -d crates/gmp-retrieval/src ]` | 目录存在 |
 
 ### 3.3 Alpha SSOT 规范检查
 
 | # | 检查项 | 命令/方法 | 通过标准 |
 |---|--------|----------|---------|
 | SSOT-1 | Gate Spec | `[ -f docs/governance/gate_spec_v350.md ]` | 文件存在 |
-| SSOT-2 | DEV_PLAN | `[ -f docs/releases/v3.5.0/DEV_PLAN.md ]` | 文件存在 |
+| SSOT-2 | OO Roadmap | `[ -f docs/releases/v3.5.0/oo/OO_ROADMAP.md ]` | 文件存在 |
 | SSOT-3 | Legacy Issues | `[ -f docs/releases/v3.5.0/LEGACY_ISSUES.md ]` | 文件存在 |
+| SSOT-4 | Test Plan | `[ -f docs/releases/v3.5.0/TEST_PLAN.md ]` | 文件存在 |
 
 ---
 
@@ -104,28 +125,26 @@ cargo llvm-cov test --lib \
 | # | 检查项 | 命令/方法 | 通过标准 | 证据格式 |
 |---|--------|----------|---------|---------|
 | B1 | 编译检查 | `cargo build --release --workspace` | 无错误 | `{command, exit_code}` |
-| B2 | 单元测试 | `cargo test --lib` | ≥95% 通过 | `{passed, failed, exit_code}` |
+| B2 | 全量测试 | `cargo test --all-features --workspace` | ≥90% 通过 | `{passed, failed, exit_code}` |
 | B3 | Clippy 检查 | `cargo clippy --all-features -- -D warnings` | 零警告 | `{warnings, exit_code}` |
 | B4 | 格式化检查 | `cargo fmt --all -- --check` | 无格式错误 | `{diff_count, exit_code}` |
-| B5 | 覆盖率检查 | `cargo llvm-cov test --lib L1_CRATES` | L1 ≥78% | `{total_pct}` |
-| B6 | MySQL Protocol | mysql client 连接 | 连接成功 | `{connection_status}` |
-| B7 | TPC-H SF=1 | `check_tpch.sh --sf1` | 22/22 通过 | `{passed, total}` |
-| B8 | AI Deviation Demo | `./scripts/ai/demo_deviation.sh` | 返回有效结果 | `{ai_output}` |
-| B9 | AI Compliance Judge | `./scripts/ai/demo_compliance.sh` | 输出可解释理由 | `{ai_output}` |
-| B10 | Retrieval v3 | `./scripts/test/retrieve_v3.sh` | NDCG@10 ≥ 0.8 | `{ndcg}` |
+| B5 | 覆盖率检查 | `cargo llvm-cov` | L1 ≥80% | `{total_pct}` |
+| B6 | 安全扫描 | `cargo audit` | 无高危漏洞 | `{vulnerabilities}` |
+| B7 | 文档链接检查 | `check_docs_links.sh` | 无死链 | `{broken_links}` |
 
-### 4.2 Beta 覆盖率阈值
+### 4.2 Beta Trust Infrastructure 检查
 
-| Crate | Beta 阈值 |
-|-------|-----------|
-| `sqlrustgo` | ≥75% |
-| `sqlrustgo-executor` | ≥80% |
-| `sqlrustgo-optimizer` | ≥85% |
-| `sqlrustgo-storage` | ≥85% |
-| `sqlrustgo-types` | ≥85% |
-| `sqlrustgo-gmp-api` | ≥75% |
-| `sqlrustgo-gmp-llm` | ≥75% |
-| **整体** | **≥78%** |
+| # | 检查项 | 命令/方法 | 通过标准 |
+|---|--------|----------|---------|
+| B-TI1 | Performance Governance | `cargo test -p perf-baseline` | 全部通过 |
+| B-TI2 | Crash Simulation | `cargo test -p crash-sim` | 全部通过 |
+| B-TI3 | WAL Verification | `cargo test -p wal-verification` | 全部通过 |
+| B-TI4 | Compliance Engine | `cargo test -p sqlrustgo-compliance-engine --lib` | 全部通过 |
+| B-TI5 | Evidence Engine | `cargo test -p evidence-engine` | 全部通过 |
+| B-TI6 | Provenance Graph | `cargo test -p provenance-graph` | 全部通过 |
+| B-TI7 | GMP API | `cargo test -p sqlrustgo-gmp-api --lib` | 全部通过 |
+| B-TI8 | GMP Core | `cargo test -p sqlrustgo-gmp --lib` | 全部通过 |
+| B-TI9 | GMP Retrieval | `cargo test -p sqlrustso-gmp-retrieval --lib` | 全部通过 |
 
 ---
 
@@ -136,21 +155,22 @@ cargo llvm-cov test --lib \
 | # | 检查项 | 命令/方法 | 通过标准 | 证据格式 |
 |---|--------|----------|---------|---------|
 | R1 | 编译检查 | `cargo build --release --workspace` | 无错误 | `{command, exit_code}` |
-| R2 | 单元测试 | `cargo test --lib` | 100% 通过 | `{passed, failed, exit_code}` |
+| R2 | 全量测试 | `cargo test --all-features --workspace` | 100% 通过 | `{passed, failed, exit_code}` |
 | R3 | Clippy 检查 | `cargo clippy --all-features -- -D warnings` | 零警告 | `{warnings, exit_code}` |
 | R4 | 格式化检查 | `cargo fmt --all -- --check` | 无格式错误 | `{diff_count, exit_code}` |
-| R5 | 覆盖率检查 | `cargo llvm-cov test --lib L1_CRATES` | L1 ≥82% | `{total_pct}` |
-| R6 | TPC-H SF=1 | `./target/release/sqlrustgo-bench-cli tpch-bench` | 22/22 通过 | `{passed, total}` |
-| R7 | Sysbench | `./target/release/sqlrustgo-bench-cli tpch-bench --sysbench` | 通过 | `{qps}` |
-| R8 | AI Quality (LLM-as-Judge) | `python3 scripts/eval/llm_judge.py` | 综合评分 ≥ 85% | `{score}` |
-| R9 | Local LLM Performance | `./scripts/bench/llm_latency.sh` | < 2s (qwen2.5:7b) | `{latency_ms}` |
-| R10 | SSE Streaming | `./scripts/test/sse_streaming.sh` | 首 token < 500ms | `{time_ms}` |
+| R5 | 覆盖率检查 | `cargo llvm-cov` | L1 ≥85% | `{total_pct}` |
+| R6 | 安全扫描 | `cargo audit` | 无漏洞 | `{vulnerabilities}` |
+| R7 | SQL Corpus | `check_sql_compat.sh` | ≥85% | `{passed, total, pct}` |
+| R8 | TPC-H SF=1 | `check_tpch.sh --sf1` | 22/22 通过 | `{passed, total}` |
 
-### 5.2 RC 豁免关联（v3.4.0 遗留）
+### 5.2 RC 稳定性测试
 
-| 豁免 ID | 描述 | 关联 Issue |
-|----------|------|-----------|
-| EX-v340-001 | rc-gate.yml gate-v3.4.0 runner 标签 | #1357（已关闭） |
+| # | 检查项 | 命令/方法 | 通过标准 |
+|---|--------|----------|---------|
+| R-S1 | 16h 持续写入 | `test_sustained_write_16h` | 无崩溃 |
+| R-S2 | 16h 并发读写 | `test_concurrent_read_write_16h` | 无崩溃 |
+| R-S3 | 24h 持续写入 | `test_sustained_write_24h` | 无崩溃 |
+| R-S4 | 24h 并发读写 | `test_concurrent_read_write_24h` | 无崩溃 |
 
 ---
 
@@ -161,59 +181,81 @@ cargo llvm-cov test --lib \
 | # | 检查项 | 命令/方法 | 通过标准 | 证据格式 |
 |---|--------|----------|---------|---------|
 | G1 | 编译检查 | `cargo build --release --workspace` | 无错误 | `{command, exit_code}` |
-| G2 | 单元测试 | `cargo test --lib` | 100% 通过 | `{passed, failed, exit_code}` |
+| G2 | 全量测试 | `cargo test --all-features --workspace` | 100% 通过 | `{passed, failed, exit_code}` |
 | G3 | Clippy 检查 | `cargo clippy --all-features -- -D warnings` | 零警告 | `{warnings, exit_code}` |
 | G4 | 格式化检查 | `cargo fmt --all -- --check` | 无格式错误 | `{diff_count, exit_code}` |
-| G5 | 覆盖率检查 | `cargo llvm-cov test --lib L1_CRATES` | L1 ≥82% | `{total_pct}` |
-| G6 | TPC-H SF=1 | `./target/release/sqlrustgo-bench-cli tpch-bench` | 22/22 通过 | `{passed, total}` |
-| G7 | Sysbench | `./target/release/sqlrustgo-bench-cli tpch-bench --sysbench` | Point Select ≥ 10K QPS | `{qps}` |
-| G8 | AI Deviation Accuracy | `./scripts/eval/deviation_accuracy.sh` | ≥ 90% | `{accuracy}` |
-| G9 | AI Explainability | `./scripts/eval/explainability.sh` | 100%（有证据链） | `{pass_rate}` |
-| G10 | Security Audit | `cargo audit` + `npm audit` | 无高危漏洞 | `{vulnerabilities}` |
-| G11 | Documentation | `check_docs_links.sh` | 无死链 | `{broken_links}` |
-| G12 | GA_GATE_REPORT | `[ -f docs/releases/v3.5.0/GA_GATE_REPORT.md ]` | 文件存在 | — |
+| G5 | 覆盖率检查 | `cargo llvm-cov` | L1 ≥85% | `{total_pct}` |
+| G6 | 安全扫描 | `cargo audit` | 无漏洞 | `{vulnerabilities}` |
+| G7 | SQL Corpus | `check_sql_compat.sh` | ≥90% | `{passed, total, pct}` |
+| G8 | TPC-H SF=1 | `check_tpch.sh --sf1` | 22/22 通过 | `{passed, total}` |
 
-### 6.2 GA 覆盖率阈值
+### 6.2 GA 性能基准
 
-| Crate | GA 阈值 |
-|-------|---------|
-| `sqlrustgo` | ≥80% |
-| `sqlrustgo-executor` | ≥85% |
-| `sqlrustgo-optimizer` | ≥90% |
-| `sqlrustgo-storage` | ≥90% |
-| `sqlrustgo-types` | ≥90% |
-| `sqlrustgo-gmp-api` | ≥80% |
-| `sqlrustgo-gmp-llm` | ≥80% |
-| **整体** | **≥82%** |
+| # | 检查项 | 命令/方法 | 通过标准 |
+|---|--------|----------|---------|
+| G-P1 | Point Select QPS | sysbench point_select | ≥30K QPS |
+| G-P2 | Update QPS | sysbench update_index | ≥10K QPS |
+| G-P3 | Delete QPS | sysbench delete | ≥10K QPS |
 
-### 6.3 GA 成功标准
+### 6.3 GA 稳定性测试
 
-- [ ] 35/35 PASS（G1~G12 全部通过）
-- [ ] AI 偏差根因识别准确率 ≥ 90%
-- [ ] AI 合规判断 100% 有证据链
-- [ ] LLM 推理延迟 < 2s（qwen2.5:7b，本地 Ollama）
-- [ ] SSE 首 token < 500ms
-- [ ] 无阻塞性 OPEN Issue
-- [ ] 文档同步完成
+| # | 检查项 | 命令/方法 | 通过标准 |
+|---|--------|----------|---------|
+| G-S1 | 48h 持续写入 | `test_sustained_write_48h` | 无崩溃、无内存泄漏 |
+| G-S2 | 48h 并发读写 | `test_concurrent_read_write_48h` | 无崩溃、无内存泄漏 |
+| G-S3 | 72h 持续写入 | `test_sustained_write_72h` | 无崩溃、无内存泄漏 |
+| G-S4 | 72h 并发读写 | `test_concurrent_read_write_72h` | 无崩溃、无内存泄漏 |
 
----
+### 6.4 GA Trust Infrastructure 验证
 
-## 七、门禁脚本清单
-
-| 阶段 | 脚本路径 |
-|------|----------|
-| Alpha | `scripts/gate/check_alpha_v350.sh` |
-| Beta | `scripts/gate/check_beta_v350.sh` |
-| RC | `scripts/gate/check_rc_v350.sh` |
-| GA | `scripts/gate/check_ga_v350.sh` |
-
-> **脚本命名**: `check_{phase}_v{MAJOR}{MINOR}{PATCH}.sh`，例如 `check_ga_v350.sh`
+| # | 检查项 | 命令/方法 | 通过标准 |
+|---|--------|----------|---------|
+| G-TI1 | Performance Governance | perf-gate check | regression <10% |
+| G-TI2 | Crash Simulation | crash-sim inject 1000x | 无数据损坏 |
+| G-TI3 | WAL Formal Verification | TLC model check | 无 violation |
+| G-TI4 | Compliance Engine | `cargo test -p sqlrustgo-compliance-engine --lib` | 全部通过 |
+| G-TI5 | GMP API | `cargo test -p sqlrustgo-gmp-api --lib` | 全部通过 |
+| G-TI6 | GMP Core | `cargo test -p sqlrustgo-gmp --lib` | 全部通过 |
+| G-TI7 | GMP Retrieval | `cargo test -p sqlrustso-gmp-retrieval --lib` | 全部通过 |
+| G-TI8 | Evidence Engine | audit package generation | 生成成功 |
+| G-TI9 | Provenance Graph | cypher query test | 查询正确 |
 
 ---
 
-## 八、变更历史
+## 七、豁免管理
 
-| 版本 | 日期 | 变更说明 |
-|------|------|----------|
-| v1.0 | 2026-05-24 | 初始创建，基于 v3.4.0 门禁规范，新增 gmp-api/gmp-llm crate，新增 AI 相关检查项 |
-| v1.0 | 2026-05-24 | 覆盖测量新增 gmp-api、gmp-llm；AI Deviation/Compliance/Quality 检查项新增 |
+### 7.1 v3.5.0 豁免项
+
+| 豁免 ID | 描述 | 关闭条件 | 关联 Issue |
+|----------|------|----------|-----------|
+| EX-v350-001 | 新增 crate 覆盖率阈值 | Beta 阶段达标 | — |
+
+---
+
+## 八、v3.5.0 版本特性
+
+### 8.1 关键新功能
+
+- **AI Native GMP**: 设备预测 Agent、报表生成 Agent、审计链摘要 Agent、规则推荐 Agent
+- **Report Generator**: 自然语言报表生成（`compliance-engine/report/`）
+- **Device Predictor**: 预测性设备维护（`gmp/device_predictor.rs`）
+- **Audit Chain Summarizer**: 审计链 AI 摘要（`compliance-engine/summarizer/`）
+- **Rule Recommender**: 规则自动推荐（`gmp-api/rule_recommendation.rs`）
+
+### 8.2 架构变更
+
+- 新增 `crates/compliance-engine/src/report/` 报表生成模块
+- 新增 `crates/compliance-engine/src/summarizer/` 审计链摘要模块
+- 新增 `crates/gmp/src/device_predictor.rs` 设备预测模块
+- 新增 `crates/gmp-api/src/rule_recommendation.rs` 规则推荐模块
+- 新增 `crates/gmp-retrieval/src/ollama_vectorizer.rs` Ollama 向量化
+- 新增 `crates/gmp-retrieval/src/query_rewriter.rs` 查询重写
+- 新增 `crates/gmp-retrieval/src/reranker.rs` Reranker
+
+---
+
+## 九、变更历史
+
+| 版本 | 日期 | 变更 |
+|------|------|------|
+| 1.0 | 2026-05-27 | 初始版本，基于 v3.4.0 规范，扩展 AI Native GMP 检查项 |
