@@ -14,15 +14,22 @@ name: B-Gate
 on:
   push:
     branches:
-      - develop/v3.0.0
-      - alpha/v3.0.0
-      - beta/v3.0.0
-      - ci/v3.0.0-*
+      - develop/v3.4.0
+      - develop/v3.5.0
+      - alpha/v3.4.0
+      - alpha/v3.5.0
+      - beta/v3.4.0
+      - beta/v3.5.0
+      - ci/v3.4.0-*
+      - ci/v3.5.0-*
   pull_request:
     branches:
-      - develop/v3.0.0
-      - alpha/v3.0.0
-      - beta/v3.0.0
+      - develop/v3.4.0
+      - develop/v3.5.0
+      - alpha/v3.4.0
+      - alpha/v3.5.0
+      - beta/v3.4.0
+      - beta/v3.5.0
 
 env:
   GATE_VERSION: v3.0.0

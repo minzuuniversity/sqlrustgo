@@ -1,215 +1,458 @@
 #!/usr/bin/env bash
-# check_gate_sync.sh — 检查 gate_spec 与 check_*.sh 一致性
-# 确保：规范中定义的检查项，脚本必须实现；脚本中的检查项，规范必须定义
+# check_gate_sync.sh — Gate CI/CD 同步性检查 (Gitea Actions)
+# 检查所有 .gitea/workflows/ 工作流的分支触发条件与分支保护是否一致
+#
+# 用法: bash scripts/gate/check_gate_sync.sh [--fix]
+#   --fix: 自动创建缺失的分支保护
+
 set -euo pipefail
-cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
-echo "=== 门禁规范与脚本同步检查 ==="
-echo "时间: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
-echo ""
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+FIX_MODE="${1:-}"
 
-PASS=0
-WARN=0
-FAIL=0
+WORKFLOW_DIR="$PROJECT_ROOT/.gitea/workflows"
+GATE_SPEC="$PROJECT_ROOT/docs/governance/gate_spec_v350.md"
 
-# ========== 检查 1: Beta Gate ==========
-echo "【检查 1】Beta Gate (check_beta_v300.sh)"
-echo "-----------------------------------"
+# Token for Gitea API
+GITEA_TOKEN="${GITEA_TOKEN:-cc19b2ad677e18c96b9d049f6dc2b46e02176883}"
+GITEA_BASE="${GITEA_BASE:-http://192.168.0.252:3000/api/v1}"
+REPO="${REPO:-openclaw/sqlrustgo}"
 
-BETA_SCRIPT="scripts/gate/check_beta_v300.sh"
-BETA_SPEC_GATE="B"
+# Colors
+RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; NC='\033[0m'
 
-if [ ! -f "$BETA_SCRIPT" ]; then
-    echo "  ⚠️  $BETA_SCRIPT 不存在"
-else
-    # 检查 B1-B9, B-S* 是否在脚本中
-    for item in B1 B2 B3 B4 B5 B6 B7 B8 B9; do
-        if grep -q "$item" "$BETA_SCRIPT"; then
-            echo "  ✅ $item 在脚本中"
+ERRORS=0; WARNINGS=0
+
+log_fail() { echo -e "${RED}❌ FAIL:${NC} $1"; ERRORS=$((ERRORS+1)); }
+log_pass() { echo -e "${GREEN}✅ PASS:${NC} $1"; }
+log_warn() { echo -e "${YELLOW}⚠️  WARN:${NC} $1"; WARNINGS=$((WARNINGS+1)); }
+log_info() { echo "   $1"; }
+
+# ───────────────────────────────────────────────────────────────
+# Helper: Extract ALL branch names from on.push.branches and
+#         on.pull_request.branches in a YAML file
+# ───────────────────────────────────────────────────────────────
+get_workflow_branches() {
+    local wf="$1"
+    python3 -c "
+import sys
+try:
+    content = open('$wf').read()
+    in_pr = False; in_push = False; branches = set()
+    for line in content.split('\n'):
+        stripped = line.strip()
+        if stripped.startswith('pull_request:'):
+            in_pr = True; in_push = False
+        elif stripped.startswith('push:'):
+            in_push = True; in_pr = False
+        elif stripped.startswith('- '):
+            branch = stripped[1:].strip().strip('\"').strip(\"'\")
+            if branch and not branch.startswith('[') and ':' not in branch:
+                if in_pr or in_push:
+                    branches.add(branch)
+        elif stripped != '' and not stripped.startswith('#') and ':' in stripped:
+            in_pr = False; in_push = False
+    for b in sorted(branches):
+        print(b)
+except: pass
+" 2>/dev/null || true
+}
+
+# ───────────────────────────────────────────────────────────────
+# Helper: Get job keys from Gitea workflow YAML
+# Gitea Actions uses job key (top-level YAML key under jobs:) as context name
+# ───────────────────────────────────────────────────────────────
+get_workflow_jobs() {
+    local wf="$1"
+    python3 -c "
+import sys, re
+try:
+    content = open('$wf').read()
+    # Find jobs: section and extract top-level keys under it
+    in_jobs = False
+    for line in content.split('\n'):
+        stripped = line.strip()
+        if stripped.startswith('jobs:'):
+            in_jobs = True
+            continue
+        if in_jobs and stripped and not stripped.startswith('#'):
+            if ':' in stripped and not stripped.startswith('-'):
+                # This is a job key (4-space indent level)
+                indent = len(line) - len(line.lstrip())
+                if indent == 2:  # jobs: is at indent 0, jobs keys at 2 spaces
+                    key = stripped.split(':')[0].strip()
+                    if key not in ('runs-on','steps','name','permissions','env','if','needs','timeout-minutes','uses','run','with','continue-on-error'):
+                        print(key)
+            elif indent < 2:
+                in_jobs = False
+except: pass
+" 2>/dev/null || true
+}
+
+# ───────────────────────────────────────────────────────────────
+# Check 1: 每个 workflow 的触发分支是否符合其角色定义
+# ───────────────────────────────────────────────────────────────
+check_workflow_triggers() {
+    echo ""
+    echo "━━━ Check 1: Workflow Branch Triggers ━━━"
+
+    python3 - "$WORKFLOW_DIR" <<'PYEOF'
+import os, sys, subprocess, re
+
+workflow_dir = sys.argv[1]
+
+expectations = {
+    "ci.yml": ["develop/v3.4.0", "develop/v3.5.0"],
+    "pr-gate.yml": ["develop/v3.4.0", "develop/v3.5.0", "beta/v3.4.0", "beta/v3.5.0"],
+    "rc-gate.yml": ["rc/v3.4.0", "rc/v3.5.0"],
+    "gate-ci.yml": ["develop/v3.4.0", "develop/v3.5.0"],
+    "layered-ci.yml": ["develop/v3.4.0", "develop/v3.5.0", "rc/v3.4.0", "rc/v3.5.0"],
+    "beta-gate.yml": ["beta/v3.4.0", "beta/v3.5.0"],
+}
+
+RED = '\033[0;31m'; GREEN = '\033[0;32m'; YELLOW = '\033[1;33m'; NC = '\033[0m'
+ERRORS = 0; WARNINGS = 0
+
+def get_branches(wf_path):
+    try:
+        content = open(wf_path).read()
+        in_on = False; in_push = False; in_pr = False; in_branches = False
+        branches = set()
+        for line in content.split('\n'):
+            stripped = line.strip()
+            if stripped == 'on:' or stripped == '"on":' or stripped == "'on':":
+                in_on = True; in_push = False; in_pr = False; in_branches = False
+            elif in_on and (stripped in ('push:', '"push":', "'push':") or stripped in ('pull_request:', '"pull_request":', "'pull_request':")):
+                in_push = any(x in stripped for x in ('push:', '"push', "'push"))
+                in_pr = any(x in stripped for x in ('pull_request', '"pull_request', "'pull_request"))
+                in_branches = False
+            elif in_on and (in_push or in_pr):
+                if stripped == 'branches:':
+                    in_branches = True
+                elif in_branches and stripped.startswith('- '):
+                    branch = stripped[1:].strip().strip('"').strip("'")
+                    if branch and not branch.startswith('[') and ':' not in branch:
+                        branches.add(branch)
+                elif stripped and ':' in stripped and not stripped.startswith('-'):
+                    if not stripped.startswith('#'):
+                        in_branches = False
+        return sorted(branches)
+    except:
+        return []
+
+for wf_name, expected in sorted(expectations.items()):
+    wf_path = os.path.join(workflow_dir, wf_name)
+    if not os.path.exists(wf_path):
+        print(f"  {YELLOW}⚠️  WARN: {wf_name} not found{NC}")
+        WARNINGS += 1
+        continue
+    actual = get_branches(wf_path)
+    missing = [b for b in expected if b not in actual]
+    if not missing:
+        print(f"  {GREEN}✅ PASS: {wf_name} → [{', '.join(expected)}]{NC}")
+    else:
+        print(f"  {RED}❌ FAIL: {wf_name} missing: {missing}{NC}")
+        ERRORS += 1
+
+sys.exit(ERRORS)
+PYEOF
+    [ $? -eq 0 ] || ERRORS=$((ERRORS+$?))
+}
+
+# ───────────────────────────────────────────────────────────────
+# Check 2: 无过时 workflow 引用旧分支
+# ───────────────────────────────────────────────────────────────
+check_no_stale_workflows() {
+    echo ""
+    echo "━━━ Check 2: Stale Workflow References ━━━"
+
+    local stale=(
+        "develop/v2.9.0"
+        "develop/v3.0.0"
+        "develop/v3.1.0"
+        "develop/v3.2.0"
+        "develop/v3.3.0"
+    )
+
+    local found_stale=false
+    for wf in "$WORKFLOW_DIR"/*.yml; do
+        [ -f "$wf" ] || continue
+        wf_name=$(basename "$wf")
+        for pattern in "${stale[@]}"; do
+            if grep -rq "branches.*$pattern" "$wf" 2>/dev/null; then
+                log_warn "$wf_name still references '$pattern'"
+                found_stale=true
+            fi
+        done
+    done
+
+    if ! $found_stale; then
+        log_pass "No stale branch references found"
+    fi
+}
+
+# ───────────────────────────────────────────────────────────────
+# Check 3: Branch protection status_check_contexts 完整性
+# ───────────────────────────────────────────────────────────────
+check_branch_protection_contexts() {
+    echo ""
+    echo "━━━ Check 3: Branch Protection Status Checks ━━━"
+
+    local branches=("develop/v3.4.0" "develop/v3.5.0" "rc/v3.4.0" "rc/v3.5.0")
+
+    for branch in "${branches[@]}"; do
+        response=$(curl -s -H "Authorization: token $GITEA_TOKEN" \
+            -H "Content-Type: application/json" \
+            "$GITEA_BASE/repos/$REPO/branch_protections/$branch" 2>/dev/null) || true
+
+        if [ -z "$response" ]; then
+            log_warn "$branch: no protection found"
+            continue
+        fi
+
+        if ! echo "$response" | python3 -c "import sys,json; json.load(sys.stdin)" 2>/dev/null; then
+            log_warn "$branch: could not parse protection"
+            continue
+        fi
+
+        enable_sc=$(echo "$response" | python3 -c "import sys,json; print(json.load(sys.stdin).get('enable_status_check', False))" 2>/dev/null)
+        contexts=$(echo "$response" | python3 -c "import sys,json; print(json.dumps(json.load(sys.stdin).get('status_check_contexts', [])))" 2>/dev/null)
+        approvals=$(echo "$response" | python3 -c "import sys,json; print(json.load(sys.stdin).get('required_approvals', -1))" 2>/dev/null)
+        ctx_count=$(echo "$contexts" | python3 -c "import sys,json; print(len(json.load(sys.stdin)))" 2>/dev/null)
+
+        echo "   $branch: enable=$enable_sc, approvals=$approvals, contexts=$ctx_count"
+        if [ "$enable_sc" = "True" ] || [ "$enable_sc" = "true" ]; then
+            if [ "$ctx_count" -gt 0 ]; then
+                log_pass "$branch: $ctx_count context(s) configured"
+            else
+                log_fail "$branch: enable_status_check=true but 0 contexts"
+            fi
         else
-            echo "  ❌ $item 不在脚本中"
-            FAIL=$((FAIL+1))
+            log_warn "$branch: enable_status_check=false"
+        fi
+    done
+}
+
+# ───────────────────────────────────────────────────────────────
+# Check 4: Coverage threshold 完整性
+# ───────────────────────────────────────────────────────────────
+check_coverage_thresholds() {
+    echo ""
+    echo "━━━ Check 4: Coverage Thresholds ━━━"
+
+    local threshold_file="$PROJECT_ROOT/scripts/gate/coverage_threshold.toml"
+    if [ ! -f "$threshold_file" ]; then
+        log_fail "coverage_threshold.toml not found"
+        return
+    fi
+
+    # Required: main + v3.5.0 new crates
+    local required_crates=(
+        "types" "parser" "planner" "optimizer" "executor"
+        "storage" "transaction" "catalog" "common"
+        "compliance-engine" "gmp-api" "gmp" "gmp-retrieval"
+        "information-schema"
+    )
+
+    local threshold_crates=$(grep -E '^\w+' "$threshold_file" | grep -v '^\[' | grep -v '^#' | sed 's/ = .*//' | sort -u)
+    local missing=""
+
+    for crate in "${required_crates[@]}"; do
+        if ! echo "$threshold_crates" | grep -qx "$crate"; then
+            missing="$missing $crate"
         fi
     done
 
-    # 检查 B-S* 项
-    for item in B-S1 B-S2 B-S3 B-S4 B-S5 B-S10; do
-        if grep -q "$item" "$BETA_SCRIPT"; then
-            echo "  ✅ $item 在脚本中"
+    if [ -n "$missing" ]; then
+        log_fail "Missing thresholds for:$missing"
+    else
+        log_pass "All required crates have coverage thresholds"
+    fi
+}
+
+# ───────────────────────────────────────────────────────────────
+# Check 5: Gate 脚本存在性
+# ───────────────────────────────────────────────────────────────
+check_gate_scripts() {
+    echo ""
+    echo "━━━ Check 5: Gate Scripts ━━━"
+
+    local required=(
+        "check_alpha_v350.sh"
+        "check_beta_v350.sh"
+        "check_ga_v350.sh"
+        "check_rc_v350.sh"
+    )
+
+    local missing=0
+    for script in "${required[@]}"; do
+        if [ -f "$SCRIPT_DIR/$script" ]; then
+            log_pass "$script exists"
         else
-            echo "  ⚠️  $item 不在脚本中（可能已移除）"
-            WARN=$((WARN+1))
+            log_fail "$script missing"
+            missing=$((missing+1))
         fi
     done
-fi
-echo ""
+}
 
-# ========== 检查 2: GA Gate ==========
-echo "【检查 2】GA Gate (check_ga_v300.sh)"
-echo "-----------------------------------"
+# ───────────────────────────────────────────────────────────────
+# Check 6: CI job contexts 与 branch protection contexts 匹配
+# Gitea Actions context = workflow_filename/job_key
+# ───────────────────────────────────────────────────────────────
+check_ci_jobs_vs_protection() {
+    echo ""
+    echo "━━━ Check 6: CI Job Contexts vs Branch Protection ━━━"
 
-GA_SCRIPT="scripts/gate/check_ga_v300.sh"
+    local active_branch="develop/v3.5.0"
 
-if [ ! -f "$GA_SCRIPT" ]; then
-    echo "  ⚠️  $GA_SCRIPT 不存在"
-else
-    # GA 门禁使用描述性标签，检查关键检查项是否存在
-    # G1: Build
-    if grep -qE "Build|cargo build" "$GA_SCRIPT"; then
-        echo "  ✅ Build 检查存在 (G1)"
-    else
-        echo "  ⚠️  Build 检查未找到 (G1)"
+    response=$(curl -s -H "Authorization: token $GITEA_TOKEN" \
+        -H "Content-Type: application/json" \
+        "$GITEA_BASE/repos/$REPO/branch_protections/$active_branch" 2>/dev/null) || true
+
+    if [ -z "$response" ] || ! echo "$response" | python3 -c "import sys,json; json.load(sys.stdin)" 2>/dev/null; then
+        log_warn "Could not fetch branch protection for $active_branch"
+        return
     fi
 
-    # G2: Test
-    if grep -qE "Test|cargo test" "$GA_SCRIPT"; then
-        echo "  ✅ Test 检查存在 (G2)"
-    else
-        echo "  ⚠️  Test 检查未找到 (G2)"
-    fi
+    # Build protected set via temp file (avoids quoting issues)
+    local prot_tmp; prot_tmp=$(mktemp)
+    echo "$response" | python3 -c "
+import sys,json
+for c in json.load(sys.stdin).get('status_check_contexts', []):
+    print(c)
+" > "$prot_tmp" 2>/dev/null || true
 
-    # G5: Coverage
-    if grep -qE "Coverage|llvm-cov|tarpaulin" "$GA_SCRIPT"; then
-        echo "  ✅ Coverage 检查存在 (G5)"
-    else
-        echo "  ⚠️  Coverage 检查未找到 (G5)"
-    fi
-
-    # G7/G8/G9: QPS
-    if grep -qE "Point|SELECT.*QPS|QPS.*point" "$GA_SCRIPT"; then
-        echo "  ✅ Point SELECT QPS 检查存在 (G7)"
-    fi
-    if grep -qE "UPDATE.*QPS|QPS.*UPDATE|update_simple" "$GA_SCRIPT"; then
-        echo "  ✅ UPDATE QPS 检查存在 (G8)"
-    fi
-    if grep -qE "DELETE.*QPS|QPS.*DELETE|delete_simple" "$GA_SCRIPT"; then
-        echo "  ✅ DELETE QPS 检查存在 (G9)"
-    fi
-
-    # G10: TPC-H SF=1
-    if grep -qE "TPC-H|SF=1|tpch" "$GA_SCRIPT"; then
-        echo "  ✅ TPC-H SF=1 检查存在 (G10)"
-    fi
-
-    # G11: SQL Corpus
-    if grep -qE "SQL.*Corpus|corpus" "$GA_SCRIPT"; then
-        echo "  ✅ SQL Corpus 检查存在 (G11)"
-    fi
-
-    # G12: Stability (B-S tests)
-    if grep -qE "B-S|concurrency|crash|wal_integration" "$GA_SCRIPT"; then
-        echo "  ✅ 稳定性测试存在 (G12)"
-    fi
-
-    # G13: MySQL Protocol
-    if grep -qE "MySQL.*Protocol|mysql.*5.7|handshake" "$GA_SCRIPT"; then
-        echo "  ✅ MySQL Protocol 检查存在 (G13)"
-    fi
-
-    echo "  ℹ️  GA 门禁使用描述性标签（非 G1-G13）"
-fi
-echo ""
-
-# ========== 检查 3: gate_spec 与脚本阈值一致性 ==========
-echo "【检查 3】gate_spec 与脚本阈值一致性"
-echo "-----------------------------------"
-
-# Beta B2 阈值检查
-if [ -f "$BETA_SCRIPT" ]; then
-    # 检查 B2 测试通过率阈值
-    if grep -q "PASS_RATE.*90" "$BETA_SCRIPT"; then
-        echo "  ✅ B2 测试通过率阈值: 90%"
-    else
-        echo "  ⚠️  B2 测试通过率阈值未找到"
-    fi
-
-    # 检查 B5 覆盖率阈值
-    if grep -q "COVERAGE.*75" "$BETA_SCRIPT"; then
-        echo "  ✅ B5 覆盖率阈值: 75%"
-    else
-        echo "  ⚠️  B5 覆盖率阈值未找到"
-    fi
-
-    # 检查 B9 SQL Corpus 阈值
-    if grep -q "CORPUS_PCT.*85" "$BETA_SCRIPT"; then
-        echo "  ✅ B9 SQL Corpus 阈值: 85%"
-    else
-        echo "  ⚠️  B9 SQL Corpus 阈值未找到"
-    fi
-fi
-echo ""
-
-# ========== 检查 4: gate_spec 与 TEST_PLAN 交叉检查 ==========
-echo "【检查 4】gate_spec 与 TEST_PLAN 交叉检查"
-echo "-----------------------------------"
-
-TEST_PLAN="docs/releases/v3.0.0/TEST_PLAN.md"
-
-if [ ! -f "$TEST_PLAN" ]; then
-    echo "  ⚠️  $TEST_PLAN 不存在"
-else
-    # 检查 TEST_PLAN 是否包含 Beta 门禁项
-    for item in B1 B2 B3 B4 B5 B6 B7 B8 B9; do
-        if grep -q "$item" "$TEST_PLAN"; then
-            echo "  ✅ $item 在 TEST_PLAN 中"
-        else
-            echo "  ⚠️  $item 不在 TEST_PLAN 中"
-            WARN=$((WARN+1))
-        fi
+    echo "   Protected contexts ($active_branch):"
+    grep . "$prot_tmp" | while read -r ctx; do
+        echo "   - $ctx"
     done
-fi
-echo ""
 
-# ========== 检查 5: 门禁脚本与实际文件对应 ==========
-echo "【检查 5】门禁脚本与实际测试文件对应"
-echo "-----------------------------------"
+    # Check: only workflows targeting develop/v3.5.0
+    local check6_output
+    check6_output=$(python3 - "$WORKFLOW_DIR" "$prot_tmp" <<'PYEOF'
+import os, sys
+workflow_dir = sys.argv[1]
+prot_file = sys.argv[2]
 
-# 检查门禁脚本中引用的测试文件是否存在
-if grep -q "concurrency_stress_test" "$BETA_SCRIPT" 2>/dev/null; then
-    if find . -name "concurrency_stress_test*" -path "*/tests/*" | grep -q .; then
-        echo "  ✅ concurrency_stress_test 存在"
+protected = set()
+for line in open(prot_file):
+    line = line.strip()
+    if line:
+        protected.add(line)
+
+relevant_wfs = {"ci.yml", "pr-gate.yml", "layered-ci.yml"}
+
+def get_jobs(wf_path):
+    try:
+        content = open(wf_path).read()
+        in_jobs = False; in_job = False; jobs = {}  # job_key -> has_dispatch_only
+        current_job = None
+        for line in content.split('\n'):
+            stripped = line.strip()
+            if stripped.startswith('#'):
+                continue
+            if stripped == 'jobs:':
+                in_jobs = True
+                continue
+            if in_jobs:
+                indent = len(line) - len(line.lstrip())
+                if indent == 2 and ':' in stripped and not stripped.startswith('-'):
+                    key = stripped.split(':')[0].strip()
+                    if key and key not in ('runs-on','steps','name','permissions','env',
+                                          'if','needs','timeout-minutes','uses','run',
+                                          'with','continue-on-error'):
+                        current_job = key
+                        jobs[current_job] = False  # not dispatch-only by default
+                elif indent == 4 and current_job and 'if:' in stripped:
+                    # Check if this job has a workflow_dispatch-only condition
+                    if 'workflow_dispatch' in stripped or "gitea.event_name" in stripped:
+                        # Further check: is it ONLY dispatch or does it also run on push/PR?
+                        # Lines like `if: github.event_name == 'workflow_dispatch'` alone = dispatch only
+                        if 'push' not in stripped and 'pull_request' not in stripped and 'on:' not in stripped:
+                            jobs[current_job] = True
+                elif indent < 2 and stripped and not stripped.startswith('#'):
+                    in_jobs = False
+                    current_job = None
+        # Return only jobs that are NOT dispatch-only
+        return [k for k, v in jobs.items() if not v]
+    except:
+        return []
+
+missing = []
+for wf_name in sorted(relevant_wfs):
+    wf_path = os.path.join(workflow_dir, wf_name)
+    if not os.path.exists(wf_path):
+        continue
+    for job in get_jobs(wf_path):
+        ctx = f"{wf_name}/{job}"
+        if ctx not in protected:
+            missing.append(ctx)
+
+if missing:
+    print("FAIL")
+    for m in missing:
+        print(f"  - {m}")
+else:
+    print("PASS")
+PYEOF
+)
+    rm -f "$prot_tmp"
+
+    if echo "$check6_output" | grep -q "^PASS$"; then
+        echo "  ✅ PASS: All job contexts from relevant workflows are covered"
+        echo "  (Relevant workflows: ci.yml, layered-ci.yml, pr-gate.yml)"
     else
-        echo "  ⚠️  concurrency_stress_test 引用但文件不存在"
-        WARN=$((WARN+1))
+        echo "  ❌ FAIL: Branch protection missing contexts:"
+        echo "$check6_output" | grep "^  - " | while read -r line; do
+            echo "  $line"
+        done
+        echo "  (Only workflows targeting develop/v3.5.0 are checked)"
+        ERRORS=$((ERRORS+1))
     fi
-fi
+}
 
-if grep -q "crash_recovery_test" "$BETA_SCRIPT" 2>/dev/null; then
-    if find . -name "crash_recovery_test*" -path "*/tests/*" | grep -q .; then
-        echo "  ✅ crash_recovery_test 存在"
+# ───────────────────────────────────────────────────────────────
+# Summary
+# ───────────────────────────────────────────────────────────────
+print_summary() {
+    echo ""
+    echo "=========================================="
+    echo "  Gate Sync Check Summary"
+    echo "=========================================="
+    echo "❌ ERRORS  : $ERRORS"
+    echo "⚠️  WARNINGS: $WARNINGS"
+    echo ""
+
+    if [ $ERRORS -gt 0 ]; then
+        echo "Result: 🔴 FAILED — $ERRORS error(s)"
+        return 1
+    elif [ $WARNINGS -gt 0 ]; then
+        echo "Result: 🟡 WARNING — $WARNINGS warning(s)"
+        return 0
     else
-        echo "  ⚠️  crash_recovery_test 引用但文件不存在"
-        WARN=$((WARN+1))
+        echo "Result: ✅ PASSED"
+        return 0
     fi
-fi
+}
 
-if grep -q "wal_integration_test" "$BETA_SCRIPT" 2>/dev/null; then
-    if find . -name "wal_integration_test*" -path "*/tests/*" | grep -q .; then
-        echo "  ✅ wal_integration_test 存在"
-    else
-        echo "  ⚠️  wal_integration_test 引用但文件不存在"
-        WARN=$((WARN+1))
-    fi
-fi
-echo ""
+main() {
+    echo "=========================================="
+    echo "  Gate CI/CD Synchronization Check"
+    echo "  (Gitea Actions — .gitea/workflows/)"
+    echo "=========================================="
+    echo "Workflow dir: $WORKFLOW_DIR"
+    echo "Repo        : $REPO"
+    echo ""
 
-# ========== 总结 ==========
-echo "=== 同步检查结果 ==="
-echo "  ✅ PASS: $PASS"
-echo "  ⚠️  WARN: $WARN"
-echo "  ❌ FAIL: $FAIL"
+    check_workflow_triggers
+    check_no_stale_workflows
+    check_branch_protection_contexts
+    check_coverage_thresholds
+    check_gate_scripts
+    check_ci_jobs_vs_protection
 
-if [ $FAIL -gt 0 ]; then
-    echo ""
-    echo "❌ 同步检查失败: $FAIL 项不一致"
-    echo "建议: 检查 gate_spec_v300.md 和 check_beta_v300.sh / check_ga_v300.sh"
-    exit 1
-elif [ $WARN -gt 0 ]; then
-    echo ""
-    echo "⚠️  同步检查有警告: $WARN 项可能不一致"
-    exit 0
-else
-    echo ""
-    echo "✅ 同步检查通过"
-    exit 0
-fi
+    print_summary
+}
+
+main
