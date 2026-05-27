@@ -8,8 +8,8 @@ use thiserror::Error;
 
 // Re-export from compliance-engine's OllamaClient trait
 pub use sqlrustgo_compliance_engine::judge::agent::OllamaClient as TranslateOllamaClient;
-pub use sqlrustgo_compliance_engine::judge::agent::OllamaResponse;
 pub use sqlrustgo_compliance_engine::judge::agent::OllamaError;
+pub use sqlrustgo_compliance_engine::judge::agent::OllamaResponse;
 
 /// 翻译模型配置
 #[derive(Debug, Clone)]
@@ -77,7 +77,9 @@ impl CrossLangTranslator {
 
     /// 执行翻译 (端到端)
     pub async fn translate(&self, request: &TranslateRequest) -> TranslateResult {
-        use crate::ai::report::term_dictionary::{preprocess_terms, validate_terms, calculate_accuracy_score};
+        use crate::ai::report::term_dictionary::{
+            calculate_accuracy_score, preprocess_terms, validate_terms,
+        };
 
         // Step 1: 本地术语预处理
         let (preprocessed, term_count) = preprocess_terms(&request.source_text);
@@ -116,18 +118,22 @@ impl CrossLangTranslator {
     /// 构建翻译 prompt
     fn build_translate_prompt(source: &str, report_type: &str) -> String {
         let style_guide = match report_type {
-            "fda_21cfr11" => r#"FDA 21 CFR Part 11 风格指南:
+            "fda_21cfr11" => {
+                r#"FDA 21 CFR Part 11 风格指南:
 - 使用正式商务英语
 - 关键术语: Batch (批次), Deviation (偏差), CAPA (纠正预防措施)
 - 电子记录相关术语: Electronic Signature, Audit Trail, Data Integrity
 - 固定开头: "BATCH RELEASE REPORT"
-- 段落结构: 概述 → 详情 → 结论"#,
-            "ema_annex11" => r#"EMA Annex 11 计算机化系统验证风格指南:
+- 段落结构: 概述 → 详情 → 结论"#
+            }
+            "ema_annex11" => {
+                r#"EMA Annex 11 计算机化系统验证风格指南:
 - 使用正式监管文档英语
 - 关键术语: Computerized System (计算机化系统), Validation (验证)
 - 数据完整性术语: Data Integrity, Audit Trail, Traceability
 - 固定开头: "COMPLIANCE VERIFICATION REPORT"
-- 段落结构: 范围 → 系统描述 → 验证结果 → 结论"#,
+- 段落结构: 范围 → 系统描述 → 验证结果 → 结论"#
+            }
             _ => "Standard GMP compliance report style",
         };
 
@@ -147,8 +153,7 @@ impl CrossLangTranslator {
 4. 保持专业、正式的监管文档语气
 
 === 翻译 ==="#,
-            style_guide,
-            source
+            style_guide, source
         )
     }
 
@@ -216,7 +221,8 @@ mod tests {
 
         let result = translator
             .translate(&TranslateRequest {
-                source_text: "偏差调查报告：原料批次号 ABC123，检验偏差，根因分析已完成".to_string(),
+                source_text: "偏差调查报告：原料批次号 ABC123，检验偏差，根因分析已完成"
+                    .to_string(),
                 report_type: "fda_21cfr11".to_string(),
                 batch_id: Some("ABC123".to_string()),
             })
@@ -230,9 +236,8 @@ mod tests {
     #[tokio::test]
     async fn test_preprocess_then_translate() {
         // 模拟完整的翻译流程
-        let (preprocessed, count) = preprocess_terms(
-            "批次放行报告：偏差调查报告已完成，CAPA 已批准，原料检验合格",
-        );
+        let (preprocessed, count) =
+            preprocess_terms("批次放行报告：偏差调查报告已完成，CAPA 已批准，原料检验合格");
         assert!(count >= 3);
         assert!(preprocessed.contains("Batch"));
         assert!(preprocessed.contains("Deviation"));
