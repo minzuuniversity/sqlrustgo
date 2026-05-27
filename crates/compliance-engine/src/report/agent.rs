@@ -5,8 +5,8 @@
 use super::formatter::{JsonFormatter, MarkdownFormatter, ReportFormatter};
 use super::intent::NoopIntentParser;
 use super::types::{
-    Metrics, ParsedIntent, ReportData, ReportFormat, ReportMetadata, ReportRequest,
-    ReportResult, ReportType, TimeRange,
+    Metrics, ParsedIntent, ReportData, ReportFormat, ReportMetadata, ReportRequest, ReportResult,
+    ReportType, TimeRange,
 };
 use async_trait::async_trait;
 use std::time::{Duration, Instant};
@@ -19,7 +19,11 @@ const GENERATION_TIMEOUT_MS: u64 = 3000;
 /// Ollama client trait for LLM inference
 #[async_trait]
 pub trait ReportLlmClient: Send + Sync {
-    async fn chat(&self, prompt: &str, model: &str) -> Result<crate::judge::agent::OllamaResponse, crate::judge::agent::OllamaError>;
+    async fn chat(
+        &self,
+        prompt: &str,
+        model: &str,
+    ) -> Result<crate::judge::agent::OllamaResponse, crate::judge::agent::OllamaError>;
 }
 
 /// Report Generator Agent
@@ -65,7 +69,10 @@ impl ReportGenerator {
         }
     }
 
-    async fn generate_internal(&self, request: &ReportRequest) -> Result<ReportResult, ReportError> {
+    async fn generate_internal(
+        &self,
+        request: &ReportRequest,
+    ) -> Result<ReportResult, ReportError> {
         // Step 1: Parse intent
         let intent = self.parse_intent(&request.query).await;
 
@@ -105,8 +112,10 @@ impl ReportGenerator {
             generation_time_ms: 0,
         };
 
-        Ok(ReportResult::new(uuid::Uuid::new_v4().to_string(), title, content, metadata)
-            .with_data(json_data.unwrap_or_default()))
+        Ok(
+            ReportResult::new(uuid::Uuid::new_v4().to_string(), title, content, metadata)
+                .with_data(json_data.unwrap_or_default()),
+        )
     }
 
     async fn parse_intent(&self, query: &str) -> ParsedIntent {

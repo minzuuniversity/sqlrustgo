@@ -1,7 +1,7 @@
 //! Intent parsing using LLM
 
 use super::types::{ParsedIntent, ReportType, TimeRange};
-use crate::judge::agent::{OllamaClient};
+use crate::judge::agent::OllamaClient;
 use chrono::{DateTime, Utc};
 use serde::Deserialize;
 

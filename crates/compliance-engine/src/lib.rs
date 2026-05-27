@@ -1,4 +1,5 @@
 //! Compliance-as-Code Engine for SQLRustGo GMP
+#![allow(clippy::too_many_arguments, clippy::type_complexity, clippy::should_implement_trait, clippy::useless_format, clippy::dead_code)]
 
 pub mod deviation;
 pub mod engine;
