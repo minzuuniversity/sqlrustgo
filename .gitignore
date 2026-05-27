@@ -39,3 +39,4 @@ ci_artifacts/
 lcov.info
 perf_baselines/
 .cargo/
+gate_results*.json
