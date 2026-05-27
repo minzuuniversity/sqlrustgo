@@ -246,7 +246,7 @@ impl JudgmentAuditor {
 
     /// Finish recording and return entries
     pub fn finish(&self) -> Vec<AuditLogEntry> {
-        self.writer.borrow().entries().to_vec()
+        self.writer.lock().unwrap().entries().to_vec()
     }
 }
 
