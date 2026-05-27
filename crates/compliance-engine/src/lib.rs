@@ -7,6 +7,7 @@ pub mod judge;
 pub mod report;
 pub mod rule;
 pub mod summarizer;
+pub mod tutor;
 pub mod types;
 
 pub use engine::ComplianceEngine;
