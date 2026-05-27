@@ -834,7 +834,6 @@ impl InMemoryDevicePredictor {
             .first()
             .map(|r| r.reading_type)
             .unwrap_or(DeviceReadingType::Temperature);
-
         // Use IQR-based scoring
         let current_value = values.last().unwrap_or(&0.0);
         let score = TimeSeriesAnalyzer::anomaly_score_iqr(&values, *current_value);
