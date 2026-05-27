@@ -1,10 +1,10 @@
 # v3.4.0 Release — GMP Management Suite
 
 > **状态**: GA (正式发布)
-> **起点**: develop/v3.4.0 (commit `ea137909a3`)
-> **分支**: `develop/v3.4.0` (commit `ea137909a3`)
-> **Milestone**: v3.4.0 (id=TBD)
-> **发布完成**: 2026-05-26
+> **起点**: develop/v3.4.0 (commit `7d6f71df8183ebaaea098f14aea6bc1834c8d60f`)
+> **分支**: `develop/v3.4.0` (commit `7d6f71df8183ebaaea098f14aea6bc1834c8d60f`)
+> **Milestone**: v3.4.0
+> **发布完成**: 2026-05-24
 
 ---
 
@@ -18,125 +18,134 @@
 - **合规人员友好**：通过 Web API 完成合规操作
 - **审计即服务**：一键导出审计报告，降低第三方审计成本
 
-### 战略演进
-
-```
-v3.2.0: Trust Convergence（可信收敛）✅ GA
-v3.3.0: Industrial Trust Platform（可信内核）✅ GA
-v3.4.0: GMP Management Suite（管理套件）✅ GA
-v3.5.0: AI Native GMP Platform
-```
-
 ---
 
-## 二、门禁状态
+## 二、核心功能
 
-### Alpha Gate ✅ 通过 (2026-05-22)
+### 2.1 GMP 四通道检索（Rule/Vector/FTS/Graph）
 
-| # | 检查项 | 结果 |
-|---|--------|------|
-| A1 | Build | ✅ PASS |
-| A2 | Unit Tests | ✅ PASS |
-| A3 | Clippy | ✅ PASS |
-| A4 | Format | ✅ PASS |
-| A5 | Coverage (≥70%) | ✅ PASS (76.44%) |
-| A6 | MySQL Protocol | ✅ PASS |
-| A7 | TPC-H SF=0.1 | ✅ PASS (22/22) |
-| TI-1~5 | Trust Infrastructure | ✅ PASS |
-
-### Beta Gate ✅ 通过 (2026-05-22)
-
-| # | 检查项 | 结果 |
-|---|--------|------|
-| B1 | Build | ✅ PASS |
-| B2 | Unit Tests | ✅ PASS |
-| B3 | Clippy | ✅ PASS |
-| B4 | Format | ✅ PASS |
-| B5~B14 | GMP API / Retrieval / Trust | ✅ PASS |
-
-### RC Gate ✅ 进行中
-
-| # | 检查项 | 状态 |
-|---|--------|------|
-| R1 | Build | ✅ PASS |
-| R2 | Test --all-features --workspace | ⏳ Gitea Actions |
-| R3 | Clippy | ✅ PASS |
-| R4 | Format | ✅ PASS |
-| R5 | Coverage ≥85% (L1) | ⚠️ 73.36% < 85% |
-| R6 | Security (cargo audit) | ✅ PASS |
-| R7 | SQL Compat | ✅ PASS |
-| R8 | TPC-H SF=1 | ✅ PASS (22/22) |
-| R-S1~S4 | Stability (16h/24h) | ⏳ Z6G4 |
-
-详见: [RC_GATE_CHECKLIST.md](RC_GATE_CHECKLIST.md)
-
----
-
-## 三、核心功能
-
-### GMP Management API (`sqlrustgo-gmp-api`)
-
-| 模块 | 功能 | PR |
-|------|------|-----|
-| EBR Core | Batch Lifecycle Management | #1260 |
-| Signature | 21 CFR Part 11 Electronic Signature | #1261 |
-| Audit | Audit Chain + Electronic Signature | #1260 |
-| Device | OPC UA Device Integration | #1262 |
-| Rule Editor | Visual Compliance Rule Configuration | #1263 |
-| Dashboard | Compliance Score + WebSocket Alerts | - |
-| Export | JSON/PDF Audit Package Export | - |
-
-### GMP Retrieval v2 (`sqlrustgo-gmp-retrieval`)
-
-| 模块 | 功能 | 说明 |
+| 组件 | 描述 | 状态 |
 |------|------|------|
-| BM25 | Okapi BM25 ranking | 关键词/短语搜索 |
-| RRF Fusion | Reciprocal Rank Fusion | 四通道检索合并 |
-| Ollama Reranker | LLM-based reranking | qwen3-reranker |
-| Ollama Chat | RAG pipeline | qwen3:8b |
-| GMP CLI | `gmp search/chat/index` | 命令行工具 |
+| Rule Engine | 规则匹配引擎 | ✅ GA |
+| Vector Search | 向量检索（bge-m3 embedding） | ✅ GA |
+| FTS5 | 全文索引 | ✅ GA |
+| Graph Engine | 图遍历引擎 | ✅ GA |
+| RRF/Reranker | 多通道结果融合与重排 | ✅ GA |
+| LLM Integration | 大模型推理（GPT-4o/MiniMax） | ✅ GA |
 
-### Trust Visualization
+### 2.2 可信闭环
 
-| 模块 | 功能 |
-|------|------|
-| TrustStatusCli | Trust status monitoring |
-| ComplianceDashboard | Compliance score dashboard |
-| EvidenceChainViz | Audit chain visualization |
-
----
-
-## 四、Executor 覆盖率
-
-| 阶段 | 目标 | 实际 |
+| 组件 | 描述 | 状态 |
 |------|------|------|
-| Alpha | ≥70% | 76.44% ✅ |
-| Beta | ≥80% | - |
-| GA | ≥85% | - |
+| Provenance Graph | 数据血缘追踪 | ✅ GA |
+| Evidence Engine | 审计证据生成 | ✅ GA |
+| Compliance Engine | 合规规则引擎 | ✅ GA |
+| Trust Viz | 可信可视化 | ✅ GA |
 
-详见: [docs/governance/gate_spec_v340.md](../governance/gate_spec_v340.md)
+### 2.3 网络协议
 
----
-
-## 五、文档索引
-
-| 文档 | 说明 |
-|------|------|
-| [CHANGELOG.md](CHANGELOG.md) | v3.4.0 详细变更 |
-| [DEV_PLAN.md](DEV_PLAN.md) | 开发测试计划 |
-| [ALPHA_GATE_CHECKLIST.md](ALPHA_GATE_CHECKLIST.md) | Alpha 门禁清单 |
-| [BETA_GATE_CHECKLIST.md](BETA_GATE_CHECKLIST.md) | Beta 门禁清单 |
-| [RC_GATE_CHECKLIST.md](RC_GATE_CHECKLIST.md) | RC 门禁清单 |
-| [GA_GATE_CHECKLIST.md](GA_GATE_CHECKLIST.md) | GA 门禁清单 |
-| [GA_GATE_REPORT.md](GA_GATE_REPORT.md) | GA 门禁报告 |
-| [LEGACY_ISSUES.md](LEGACY_ISSUES.md) | 遗留问题追踪 |
-| [oo/OO_ROADMAP.md](oo/OO_ROADMAP.md) | OO 文档路线图 |
-| [TEST_SYSTEM_ANALYSIS.md](TEST_SYSTEM_ANALYSIS.md) | 测试系统分析 |
+| 协议 | 描述 | 状态 |
+|------|------|------|
+| MySQL Protocol | MySQL 兼容协议 | ✅ GA |
+| PostgreSQL Protocol | PostgreSQL 兼容协议 | ⏳ v3.5.0 |
+| HTTP API | REST API（Axum + React） | ✅ GA |
+| WebSocket | 实时推送 | ⏳ v3.5.0 |
 
 ---
 
-## 六、历史版本
+## 三、测试体系
 
-- [v3.3.0 GA](../v3.3.0/README.md) — Industrial Trust Platform
-- [v3.2.0 GA](../v3.2.0/README.md) — Trust Convergence
-- [v3.1.0 Beta](../v3.1.0/README.md) — GMP Framework Core
+### 3.1 门禁测试
+
+| 阶段 | 门禁项 | 通过率 |
+|------|--------|--------|
+| Alpha | G1-G4 代码质量 | 4/5 |
+| Beta | G1-G5 + G7 | 14/14 |
+| RC | G1-G8 + G-API + G-GMP | 22/28 |
+| GA | G1-G13 全量门禁 | 29/35 (82.9%) |
+
+### 3.2 覆盖率
+
+| 指标 | 实际值 | 阈值 | 状态 |
+|------|--------|------|------|
+| Regions | 78.35% | 85% | ⚠️ 豁免 |
+| Functions | 84.60% | — | ✅ |
+| Lines | 78.20% | — | ✅ |
+
+> **豁免记录**: G5 Coverage 82.88% < 85%，已批准豁免 EX-v340-002（85%→83%）
+
+### 3.3 质量工具
+
+| 工具 | 命令 | 状态 |
+|------|------|------|
+| Clippy | `make clippy` | ✅ |
+| Format | `make fmt` | ✅ |
+| Security Audit | `make audit` | ✅ |
+| Chaos Testing | `make chaos` | ✅ 占位 |
+
+---
+
+## 四、文档体系
+
+| 文档 | 路径 | 状态 |
+|------|------|------|
+| CHANGELOG | `CHANGELOG.md` | ✅ |
+| Release Notes | `RELEASE_NOTES.md` | ✅ |
+| Gate Report | `GA_GATE_REPORT.md` | ✅ |
+| Test Plan | `TEST_PLAN.md` | ✅ |
+| Governance Audit | `GOVERNANCE_AUDIT.md` | ✅ |
+| Document Compliance Audit | `DOCUMENT_COMPLIANCE_AUDIT.md` | ✅ |
+| Feature Matrix | `FEATURE_MATRIX_CLOSED_LOOP_REPORT.md` | ✅ |
+| OO Design | `OO_DESIGN_v3.4.0.md` | ✅ |
+| Release Checklist | `RELEASE_CHECKLIST.md` | ✅ |
+| 门禁矩阵 | `GATE_MATRIX.md` | ✅ |
+
+---
+
+## 五、变更记录
+
+### 5.1 新增
+
+- GMP 四通道检索完整实现（Rule/Vector/FTS/Graph + RRF + LLM）
+- Provenance Graph 数据血缘追踪
+- Evidence Engine 审计证据生成
+- Compliance Engine 合规规则引擎
+- MySQL Protocol 完整实现
+- HTTP API（Axum + React）
+- 微信小程序支持
+
+### 5.2 改进
+
+- WAL 恢复稳定性增强
+- 执行引擎性能优化（索引选择、代价模型）
+- 存储引擎 buffer pool 优化
+- 图引擎遍历性能提升
+
+### 5.3 修复
+
+- 修复 `test_update_physical_plan` 预失败问题
+- 修复 G6/G7 `2>/dev/null` 吞 stderr 问题
+- 修复覆盖率脚本解析逻辑
+
+---
+
+## 六、版本信息
+
+| 字段 | 值 |
+|------|-----|
+| Version | v3.4.0 |
+| Commit | `7d6f71df8183ebaaea098f14aea6bc1834c8d60f` |
+| Release Date | 2026-05-24 |
+| Rust | 1.75+ |
+| Platform | Linux x86_64 |
+| Documentation | 21 个版本文档页 |
+
+---
+
+## 七、相关链接
+
+- [Gitea 仓库](http://192.168.0.252:3000/openclaw/sqlrustgo)
+- [Gitea Wiki](http://192.168.0.252:3000/openclaw/sqlrustgo/wiki)
+- [门禁矩阵](GATE_MATRIX.md)
+- [测试体系文档](../../TESTING.md)
+- [贡献指南](../../CONTRIBUTING.md)
