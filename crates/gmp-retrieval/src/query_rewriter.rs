@@ -26,6 +26,7 @@ pub enum QueryIntent {
     Aggregation,
 }
 
+#[allow(clippy::derivable_impls)]
 impl Default for QueryIntent {
     fn default() -> Self {
         QueryIntent::Search
@@ -198,7 +199,7 @@ impl QueryRewriter {
         // Try direct parse first
         let text_trimmed = text.trim();
         if let Ok(query) = serde_json::from_str::<RewrittenQuery>(text_trimmed) {
-            return Some(serde_json::to_string(&query).ok()?);
+            return serde_json::to_string(&query).ok();
         }
 
         // Try to find JSON in code block - search for ```json pattern

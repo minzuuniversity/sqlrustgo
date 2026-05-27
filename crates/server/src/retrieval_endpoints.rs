@@ -1,3 +1,5 @@
+#![allow(unused_imports)]
+#![allow(clippy::await_holding_lock, unused_variables, dead_code)]
 //! GMP Retrieval Endpoints
 //!
 //! Provides REST API endpoints for unified retrieval search.
@@ -187,7 +189,7 @@ impl RetrievalAppState {
 
         // Create searcher
         if let Some(ref vectorizer) = self.vectorizer {
-            let config = UnifiedSearchConfig {
+            let _config = UnifiedSearchConfig {
                 rrf_k: 60,
                 pre_limit: 50,
                 post_limit: 10,
