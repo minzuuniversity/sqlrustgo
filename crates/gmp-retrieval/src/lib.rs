@@ -1,26 +1,26 @@
 pub mod bm25;
 pub mod ollama_vectorizer;
 pub mod query_rewriter;
-pub mod retrieval;
 pub mod reranker;
+pub mod retrieval;
 pub mod rrf;
 pub mod unified_searcher;
 
 pub use bm25::Bm25Search;
 pub use ollama_vectorizer::{
-    EmbeddingRequest, EmbeddingResult, OllamaEmbeddingClient, OllamaVectorizer,
-    VectorizerError, MXBAI_EMBED_LARGE, NOMIC_EMBED_TEXT,
+    EmbeddingRequest, EmbeddingResult, OllamaEmbeddingClient, OllamaVectorizer, VectorizerError,
+    MXBAI_EMBED_LARGE, NOMIC_EMBED_TEXT,
 };
 pub use query_rewriter::{
-    FilterCondition, QueryIntent, QueryRewriter, RewrittenQuery, RewriterError,
+    FilterCondition, QueryIntent, QueryRewriter, RewriterError, RewrittenQuery,
 };
 pub use reranker::{
-    NoopReranker, OllamaReranker, OllamaRerankClient, RerankRequest, RerankResult,
-    RerankerError, RerankerResult, RerankerWithFallback,
+    NoopReranker, OllamaRerankClient, OllamaReranker, RerankRequest, RerankResult, RerankerError,
+    RerankerResult, RerankerWithFallback,
 };
 pub use retrieval::{RetrievalEngine, RetrievalSource, SearchResult};
 pub use rrf::RrfFusion;
-pub use unified_searcher::{UnifiedSearcher, UnifiedSearchConfig, UnifiedSearchResult};
+pub use unified_searcher::{UnifiedSearchConfig, UnifiedSearchResult, UnifiedSearcher};
 
 #[cfg(test)]
 mod tests {

@@ -5,9 +5,9 @@
 use async_trait::async_trait;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
+use std::time::Duration;
 use thiserror::Error;
 use tokio::time::timeout;
-use std::time::Duration;
 
 /// Maximum batch size for reranking
 const MAX_BATCH_SIZE: usize = 50;
@@ -61,7 +61,11 @@ pub struct RerankResult {
 #[async_trait]
 pub trait OllamaRerankClient: Send + Sync {
     /// Rerank documents given a query
-    async fn rerank(&self, request: &RerankRequest, model: &str) -> RerankerResult<Vec<RerankResult>>;
+    async fn rerank(
+        &self,
+        request: &RerankRequest,
+        model: &str,
+    ) -> RerankerResult<Vec<RerankResult>>;
 
     /// Check if the reranker is available
     fn is_available(&self) -> bool;
@@ -190,7 +194,10 @@ impl OllamaReranker {
             }
 
             // Try parsing with potential trailing punctuation
-            let cleaned: String = token.chars().filter(|c| c.is_ascii_digit() || *c == '.').collect();
+            let cleaned: String = token
+                .chars()
+                .filter(|c| c.is_ascii_digit() || *c == '.')
+                .collect();
             let cleaned = cleaned.trim_end_matches('.');
             if let Ok(score) = cleaned.parse::<f32>() {
                 if (0.0..=1.0).contains(&score) {
@@ -220,7 +227,9 @@ impl OllamaRerankClient for OllamaReranker {
         }
 
         // Compute scores for all documents
-        let scores = self.compute_scores(&request.query, &request.documents).await?;
+        let scores = self
+            .compute_scores(&request.query, &request.documents)
+            .await?;
 
         // Convert to RerankResult and sort by score descending
         let mut results: Vec<RerankResult> = scores
@@ -228,7 +237,11 @@ impl OllamaRerankClient for OllamaReranker {
             .map(|(doc_id, score)| RerankResult { doc_id, score })
             .collect();
 
-        results.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+        results.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
 
         // Truncate to top_n
         results.truncate(request.top_n);
@@ -295,14 +308,21 @@ impl RerankerWithFallback {
     /// # Arguments
     /// * `primary` - Primary reranker (e.g., OllamaReranker)
     /// * `fallback` - Fallback reranker (e.g., NoopReranker)
-    pub fn new(primary: Box<dyn OllamaRerankClient>, fallback: Box<dyn OllamaRerankClient>) -> Self {
+    pub fn new(
+        primary: Box<dyn OllamaRerankClient>,
+        fallback: Box<dyn OllamaRerankClient>,
+    ) -> Self {
         Self { primary, fallback }
     }
 }
 
 #[async_trait]
 impl OllamaRerankClient for RerankerWithFallback {
-    async fn rerank(&self, request: &RerankRequest, model: &str) -> RerankerResult<Vec<RerankResult>> {
+    async fn rerank(
+        &self,
+        request: &RerankRequest,
+        model: &str,
+    ) -> RerankerResult<Vec<RerankResult>> {
         // Try primary first
         if self.primary.is_available() {
             match timeout(
@@ -357,7 +377,11 @@ impl MockRerankClient {
 #[cfg(test)]
 #[async_trait]
 impl OllamaRerankClient for MockRerankClient {
-    async fn rerank(&self, _request: &RerankRequest, _model: &str) -> RerankerResult<Vec<RerankResult>> {
+    async fn rerank(
+        &self,
+        _request: &RerankRequest,
+        _model: &str,
+    ) -> RerankerResult<Vec<RerankResult>> {
         if self.should_fail {
             return Err(RerankerError::Unavailable("Mock failure".to_string()));
         }
@@ -408,7 +432,12 @@ mod tests {
     #[test]
     fn test_parse_score_with_text() {
         let reranker = OllamaReranker::new("http://localhost:11434", DEFAULT_RERANK_MODEL);
-        assert_eq!(reranker.parse_score("The relevance score is 0.75.").unwrap(), 0.75);
+        assert_eq!(
+            reranker
+                .parse_score("The relevance score is 0.75.")
+                .unwrap(),
+            0.75
+        );
     }
 
     #[test]
@@ -428,7 +457,10 @@ mod tests {
             ],
             top_n: 10,
         };
-        let results = reranker.rerank(&request, DEFAULT_RERANK_MODEL).await.unwrap();
+        let results = reranker
+            .rerank(&request, DEFAULT_RERANK_MODEL)
+            .await
+            .unwrap();
         assert_eq!(results.len(), 2);
         assert_eq!(results[0].doc_id, "doc1");
         assert_eq!(results[0].score, 1.0);
@@ -446,15 +478,24 @@ mod tests {
             ],
             top_n: 2,
         };
-        let results = reranker.rerank(&request, DEFAULT_RERANK_MODEL).await.unwrap();
+        let results = reranker
+            .rerank(&request, DEFAULT_RERANK_MODEL)
+            .await
+            .unwrap();
         assert_eq!(results.len(), 2);
     }
 
     #[tokio::test]
     async fn test_mock_rerank_client() {
         let mock = MockRerankClient::new(vec![
-            RerankResult { doc_id: "doc1".to_string(), score: 0.9 },
-            RerankResult { doc_id: "doc2".to_string(), score: 0.8 },
+            RerankResult {
+                doc_id: "doc1".to_string(),
+                score: 0.9,
+            },
+            RerankResult {
+                doc_id: "doc2".to_string(),
+                score: 0.8,
+            },
         ]);
         let request = RerankRequest {
             query: "test".to_string(),
@@ -483,9 +524,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_fallback_reranker_primary_available() {
-        let mock_primary = MockRerankClient::new(vec![
-            RerankResult { doc_id: "doc1".to_string(), score: 0.9 },
-        ]);
+        let mock_primary = MockRerankClient::new(vec![RerankResult {
+            doc_id: "doc1".to_string(),
+            score: 0.9,
+        }]);
         let fallback = NoopReranker::new();
         let reranker = RerankerWithFallback::new(Box::new(mock_primary), Box::new(fallback));
 
@@ -494,7 +536,10 @@ mod tests {
             documents: vec![("doc1".to_string(), "content 1".to_string())],
             top_n: 10,
         };
-        let results = reranker.rerank(&request, DEFAULT_RERANK_MODEL).await.unwrap();
+        let results = reranker
+            .rerank(&request, DEFAULT_RERANK_MODEL)
+            .await
+            .unwrap();
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].score, 0.9); // Should use primary result
     }
@@ -510,7 +555,10 @@ mod tests {
             documents: vec![("doc1".to_string(), "content 1".to_string())],
             top_n: 10,
         };
-        let results = reranker.rerank(&request, DEFAULT_RERANK_MODEL).await.unwrap();
+        let results = reranker
+            .rerank(&request, DEFAULT_RERANK_MODEL)
+            .await
+            .unwrap();
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].score, 1.0); // Should use fallback result with uniform score
     }

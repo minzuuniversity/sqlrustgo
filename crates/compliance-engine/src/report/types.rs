@@ -233,8 +233,14 @@ mod tests {
 
     #[test]
     fn test_report_type_from_str() {
-        assert_eq!("批次汇总".parse::<ReportType>().unwrap(), ReportType::BatchSummary);
-        assert_eq!("compliance".parse::<ReportType>().unwrap(), ReportType::Compliance);
+        assert_eq!(
+            "批次汇总".parse::<ReportType>().unwrap(),
+            ReportType::BatchSummary
+        );
+        assert_eq!(
+            "compliance".parse::<ReportType>().unwrap(),
+            ReportType::Compliance
+        );
         assert_eq!("unknown".parse::<ReportType>().unwrap(), ReportType::Auto);
     }
 

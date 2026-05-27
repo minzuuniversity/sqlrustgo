@@ -93,10 +93,14 @@ impl RuleValidator {
     /// Validate a rule has all required fields
     pub fn validate(rule: &Rule) -> Result<(), RuleError> {
         if rule.id.is_empty() {
-            return Err(RuleError::ValidationError("Rule id cannot be empty".to_string()));
+            return Err(RuleError::ValidationError(
+                "Rule id cannot be empty".to_string(),
+            ));
         }
         if rule.text.is_empty() {
-            return Err(RuleError::ValidationError("Rule text cannot be empty".to_string()));
+            return Err(RuleError::ValidationError(
+                "Rule text cannot be empty".to_string(),
+            ));
         }
         Ok(())
     }

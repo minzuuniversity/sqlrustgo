@@ -7,9 +7,9 @@
 //!   cargo run --bin compliance-server -- --ollama-url http://localhost:11434 --model qwen3:8b
 
 use clap::Parser;
+use sqlrustgo_compliance_engine::judge::ComplianceJudge;
 use sqlrustgo_gmp_api::compliance::{create_router, create_service_state};
 use sqlrustgo_gmp_api::ollama_client::OllamaClientImpl;
-use sqlrustgo_compliance_engine::judge::ComplianceJudge;
 use std::sync::Arc;
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
@@ -38,8 +38,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
 
     // Initialize logging
-    let filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| EnvFilter::new(&args.log_level));
+    let filter =
+        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(&args.log_level));
 
     tracing_subscriber::registry()
         .with(fmt::layer())

@@ -162,7 +162,10 @@ impl OllamaVectorizer {
 
         // Cache the result
         let embedding = result.embedding;
-        self.cache.write().unwrap().put(cache_key, embedding.clone());
+        self.cache
+            .write()
+            .unwrap()
+            .put(cache_key, embedding.clone());
 
         Ok(embedding)
     }
