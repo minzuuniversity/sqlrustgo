@@ -451,6 +451,7 @@ mod tests {
                 "http://localhost:11434",
             )),
             "test-model",
+            None, // builtin_rules
         );
         let state = create_service_state(judge);
 

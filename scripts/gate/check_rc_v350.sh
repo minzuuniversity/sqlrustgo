@@ -116,7 +116,7 @@ echo "━━━ v3.5.0 新增 Crate Tests ━━━"
 check_test "compliance-engine" "cargo test -p sqlrustgo-compliance-engine --lib 2>&1"
 check_test "gmp-api" "cargo test -p sqlrustgo-gmp-api --lib 2>&1"
 check_test "gmp" "cargo test -p sqlrustgo-gmp --lib 2>&1"
-check_test "gmp-retrieval" "cargo test -p sqlrustso-gmp-retrieval --lib 2>&1"
+check_test "gmp-retrieval" "cargo test -p sqlrustgo-gmp-retrieval --lib 2>&1"
 
 # === Trust Infrastructure ===
 echo ""
