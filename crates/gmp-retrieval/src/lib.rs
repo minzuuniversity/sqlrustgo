@@ -4,6 +4,7 @@ pub mod query_rewriter;
 pub mod retrieval;
 pub mod reranker;
 pub mod rrf;
+pub mod unified_searcher;
 
 pub use bm25::Bm25Search;
 pub use ollama_vectorizer::{
@@ -17,8 +18,9 @@ pub use reranker::{
     NoopReranker, OllamaReranker, OllamaRerankClient, RerankRequest, RerankResult,
     RerankerError, RerankerResult, RerankerWithFallback,
 };
-pub use retrieval::RetrievalEngine;
+pub use retrieval::{RetrievalEngine, RetrievalSource, SearchResult};
 pub use rrf::RrfFusion;
+pub use unified_searcher::{UnifiedSearcher, UnifiedSearchConfig, UnifiedSearchResult};
 
 #[cfg(test)]
 mod tests {

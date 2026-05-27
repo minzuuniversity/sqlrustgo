@@ -1,5 +1,6 @@
 //! Core types for compliance engine
 
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 /// A compliance rule definition
@@ -75,6 +76,234 @@ pub struct ViolationRecord {
     pub message: String,
     pub field: Option<String>,
     pub remediation: Option<String>,
+}
+
+// ============================================================
+// Audit Chain Summarizer types — SPEC v3.5.0 #1368
+// ============================================================
+
+/// Importance level for key events
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Importance {
+    Critical,
+    Major,
+    Minor,
+    Info,
+}
+
+impl Importance {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Critical => "critical",
+            Self::Major => "major",
+            Self::Minor => "minor",
+            Self::Info => "info",
+        }
+    }
+
+    pub fn from_str(s: &str) -> Self {
+        match s.trim().to_lowercase().as_str() {
+            "critical" => Self::Critical,
+            "major" => Self::Major,
+            "minor" => Self::Minor,
+            _ => Self::Info,
+        }
+    }
+}
+
+/// Alert severity level
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Severity {
+    Critical,
+    Major,
+    Minor,
+    Info,
+}
+
+impl Severity {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Critical => "critical",
+            Self::Major => "major",
+            Self::Minor => "minor",
+            Self::Info => "info",
+        }
+    }
+}
+
+/// Alert type classification
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AlertType {
+    SecurityConcern,
+    MissingSignature,
+    SelfApproval,
+    OffHoursBulkModification,
+    ParameterOutOfRange,
+    AccessAnomaly,
+    CapaMissing,
+}
+
+impl AlertType {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::SecurityConcern => "security_concern",
+            Self::MissingSignature => "missing_signature",
+            Self::SelfApproval => "self_approval",
+            Self::OffHoursBulkModification => "off_hours_bulk_modification",
+            Self::ParameterOutOfRange => "parameter_out_of_range",
+            Self::AccessAnomaly => "access_anomaly",
+            Self::CapaMissing => "capa_missing",
+        }
+    }
+}
+
+/// A key event extracted from an audit chain entry
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct KeyEvent {
+    pub event_id: String,
+    pub event_type: String,
+    pub description: String,
+    pub actor: String,
+    pub timestamp: i64,
+    pub importance: Importance,
+    #[serde(default)]
+    pub related_entities: Vec<String>,
+}
+
+impl KeyEvent {
+    pub fn new(
+        event_id: String,
+        event_type: String,
+        description: String,
+        actor: String,
+        timestamp: i64,
+        importance: Importance,
+    ) -> Self {
+        Self {
+            event_id,
+            event_type,
+            description,
+            actor,
+            timestamp,
+            importance,
+            related_entities: Vec::new(),
+        }
+    }
+}
+
+/// An alert generated from anomaly detection
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Alert {
+    pub alert_type: AlertType,
+    pub severity: Severity,
+    pub description: String,
+    #[serde(default)]
+    pub evidence: Vec<String>,
+    pub recommendation: String,
+}
+
+impl Alert {
+    pub fn new(
+        alert_type: AlertType,
+        severity: Severity,
+        description: String,
+        evidence: Vec<String>,
+        recommendation: String,
+    ) -> Self {
+        Self {
+            alert_type,
+            severity,
+            description,
+            evidence,
+            recommendation,
+        }
+    }
+
+    /// Serialize to JSON matching the SPEC alert format
+    pub fn to_spec_json(&self) -> serde_json::Value {
+        serde_json::json!({
+            "type": self.alert_type.as_str(),
+            "severity": self.severity.as_str(),
+            "description": self.description,
+            "evidence": self.evidence,
+            "recommendation": self.recommendation,
+        })
+    }
+}
+
+/// Chain health score components
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChainHealth {
+    /// Overall health score 0-100
+    pub score: f64,
+    /// Completeness score 0-100
+    pub completeness: f64,
+    /// Consistency score 0-100
+    pub consistency: f64,
+    /// Timeliness score 0-100
+    pub timeliness: f64,
+    /// Authenticity score 0-100
+    pub authenticity: f64,
+}
+
+/// Time range for a chain
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChainTimeRange {
+    pub start: DateTime<Utc>,
+    pub end: DateTime<Utc>,
+}
+
+/// Complete audit chain summary
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AuditSummary {
+    pub chain_id: String,
+    pub entity_type: String,
+    pub entity_id: String,
+    pub time_range: ChainTimeRange,
+    pub total_events: usize,
+    #[serde(default)]
+    pub key_events: Vec<KeyEvent>,
+    pub anomaly_score: f64,
+    #[serde(default)]
+    pub alerts: Vec<Alert>,
+    pub executive_summary: String,
+    pub detailed_summary: String,
+    pub generated_at: i64,
+}
+
+/// Audit entry as loaded from storage
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AuditEntry {
+    pub entry_id: String,
+    pub chain_id: String,
+    pub event_type: String,
+    pub description: String,
+    pub actor: String,
+    pub timestamp: i64,
+    pub fields: std::collections::HashMap<String, String>,
+}
+
+/// Query for batch summarizing multiple chains
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AuditQuery {
+    pub entity_type: Option<String>,
+    pub time_range: Option<ChainTimeRange>,
+    pub min_anomaly_score: Option<f64>,
+    pub limit: Option<usize>,
+}
+
+impl Default for AuditQuery {
+    fn default() -> Self {
+        Self {
+            entity_type: None,
+            time_range: None,
+            min_anomaly_score: None,
+            limit: Some(100),
+        }
+    }
 }
 
 #[cfg(test)]
