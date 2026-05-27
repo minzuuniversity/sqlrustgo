@@ -4,19 +4,28 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 /// Report type enumeration
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum ReportType {
     BatchSummary,
     Compliance,
     Equipment,
     AuditSummary,
+    #[default]
     Auto,
 }
 
-impl Default for ReportType {
-    fn default() -> Self {
-        Self::Auto
+impl std::str::FromStr for ReportType {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.trim() {
+            "批次汇总" | "batch_summary" | "BatchSummary" => Ok(Self::BatchSummary),
+            "合规报告" | "compliance" | "Compliance" => Ok(Self::Compliance),
+            "设备报告" | "equipment" | "Equipment" => Ok(Self::Equipment),
+            "审计摘要" | "audit_summary" | "AuditSummary" => Ok(Self::AuditSummary),
+            _ => Ok(Self::Auto),
+        }
     }
 }
 
@@ -30,31 +39,16 @@ impl ReportType {
             Self::Auto => "自动",
         }
     }
-
-    pub fn from_str(s: &str) -> Self {
-        match s.trim() {
-            "批次汇总" | "batch_summary" | "BatchSummary" => Self::BatchSummary,
-            "合规报告" | "compliance" | "Compliance" => Self::Compliance,
-            "设备报告" | "equipment" | "Equipment" => Self::Equipment,
-            "审计摘要" | "audit_summary" | "AuditSummary" => Self::AuditSummary,
-            _ => Self::Auto,
-        }
-    }
 }
 
 /// Output format
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum ReportFormat {
+    #[default]
     Markdown,
     Json,
     Pdf,
-}
-
-impl Default for ReportFormat {
-    fn default() -> Self {
-        Self::Markdown
-    }
 }
 
 /// Time range for report
@@ -239,9 +233,9 @@ mod tests {
 
     #[test]
     fn test_report_type_from_str() {
-        assert_eq!(ReportType::from_str("批次汇总"), ReportType::BatchSummary);
-        assert_eq!(ReportType::from_str("compliance"), ReportType::Compliance);
-        assert_eq!(ReportType::from_str("unknown"), ReportType::Auto);
+        assert_eq!("批次汇总".parse::<ReportType>().unwrap(), ReportType::BatchSummary);
+        assert_eq!("compliance".parse::<ReportType>().unwrap(), ReportType::Compliance);
+        assert_eq!("unknown".parse::<ReportType>().unwrap(), ReportType::Auto);
     }
 
     #[test]
