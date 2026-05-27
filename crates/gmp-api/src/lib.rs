@@ -18,6 +18,8 @@ pub mod export;
 pub mod rule_engine;
 pub mod signature;
 
+pub mod ai;
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

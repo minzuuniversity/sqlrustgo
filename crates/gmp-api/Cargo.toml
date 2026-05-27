@@ -25,6 +25,7 @@ uuid = { version = "1.8", features = ["v4", "serde"] }
 thiserror.workspace = true
 sha2 = "0.10"
 hex.workspace = true
+lazy_static = "1.4"
 
 [dev-dependencies]
 tokio-test = "0.4"
