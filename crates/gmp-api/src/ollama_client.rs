@@ -66,7 +66,11 @@ impl OllamaClientImpl {
 
 #[async_trait]
 impl EngineOllamaClient for OllamaClientImpl {
-    async fn chat(&self, prompt: &str, model: &str) -> Result<EngineOllamaResponse, EngineOllamaError> {
+    async fn chat(
+        &self,
+        prompt: &str,
+        model: &str,
+    ) -> Result<EngineOllamaResponse, EngineOllamaError> {
         let url = format!("{}/api/chat", self.base_url);
 
         let request = ChatRequest {

@@ -39,7 +39,11 @@ pub struct SearchResult {
 
 impl SearchResult {
     pub fn new(doc_id: String, score: f64, source: RetrievalSource) -> Self {
-        Self { doc_id, score, source }
+        Self {
+            doc_id,
+            score,
+            source,
+        }
     }
 
     /// Convert to RerankResult for reranking
@@ -89,9 +93,7 @@ impl RetrievalEngine {
             Some(search) => search
                 .search(query, top_k)
                 .into_iter()
-                .map(|r| {
-                    SearchResult::new(r.doc_id.to_string(), r.score, RetrievalSource::Fts)
-                })
+                .map(|r| SearchResult::new(r.doc_id.to_string(), r.score, RetrievalSource::Fts))
                 .collect(),
             None => Vec::new(),
         }
@@ -115,7 +117,10 @@ impl RetrievalEngine {
             .filter(|(_, doc)| {
                 // Check if document contains any of the keywords
                 let doc_lower = doc.to_lowercase();
-                query.keywords.iter().any(|kw| doc_lower.contains(&kw.to_lowercase()))
+                query
+                    .keywords
+                    .iter()
+                    .any(|kw| doc_lower.contains(&kw.to_lowercase()))
             })
             .map(|(idx, doc)| {
                 // Score based on keyword matches and intent
@@ -163,11 +168,7 @@ impl RetrievalEngine {
     }
 
     /// Search with filter support
-    pub fn search_with_filter(
-        &self,
-        query: &RewrittenQuery,
-        top_k: usize,
-    ) -> Vec<SearchResult> {
+    pub fn search_with_filter(&self, query: &RewrittenQuery, top_k: usize) -> Vec<SearchResult> {
         // Use rule-based search which supports filters
         self.search_rule(query, top_k)
     }
@@ -199,8 +200,7 @@ impl WeightedRrfFusion {
 
     fn add_result(&mut self, result: SearchResult) {
         let source_weight = result.source.weight();
-        *self.scores.entry(result.doc_id.clone()).or_insert(0.0) +=
-            result.score * source_weight;
+        *self.scores.entry(result.doc_id.clone()).or_insert(0.0) += result.score * source_weight;
         *self.source_counts.entry(result.doc_id.clone()).or_insert(0) += 1;
         self.sources
             .entry(result.doc_id.clone())
@@ -214,7 +214,11 @@ impl WeightedRrfFusion {
             .map(|(doc_id, &score)| {
                 let votes = *self.source_counts.get(doc_id).unwrap_or(&1);
                 let rrf_score = score + (1.0 / (self.k as f64 + votes as f64));
-                let source = self.sources.get(doc_id).copied().unwrap_or(RetrievalSource::Fts);
+                let source = self
+                    .sources
+                    .get(doc_id)
+                    .copied()
+                    .unwrap_or(RetrievalSource::Fts);
                 SearchResult::new(doc_id.clone(), rrf_score, source)
             })
             .collect();
