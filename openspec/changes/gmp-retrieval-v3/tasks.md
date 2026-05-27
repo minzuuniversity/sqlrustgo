@@ -45,7 +45,7 @@
 
 ## 6. Performance & Quality
 
-- [ ] 6.1 Benchmark P99 latency target (< 200ms)
-- [ ] 6.2 Measure recall on GMP test corpus (> 90%)
-- [ ] 6.3 Add stress test for 100+ concurrent queries
-- [ ] 6.4 Run full test suite and verify
+- [x] 6.1 Benchmark P99 latency target (< 200ms)
+- [x] 6.2 Measure recall on GMP test corpus (> 90%)
+- [x] 6.3 Add stress test for 100+ concurrent queries
+- [x] 6.4 Run full test suite and verify
