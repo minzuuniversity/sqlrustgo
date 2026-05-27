@@ -6,8 +6,12 @@
 use serde::{Deserialize, Serialize};
 
 // Re-export internal types for external use
-pub use super::translator::{CrossLangTranslator, TranslateConfig, TranslateRequest, TranslateResult};
-pub use super::template::{build_final_report, FinalReport, ReportCategory, ReportMeta, ReportStandard};
+pub use super::template::{
+    build_final_report, FinalReport, ReportCategory, ReportMeta, ReportStandard,
+};
+pub use super::translator::{
+    CrossLangTranslator, TranslateConfig, TranslateRequest, TranslateResult,
+};
 
 /// 跨语言报告生成请求（对外 API）
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -87,7 +91,7 @@ pub async fn generate_cross_lang_report(
     request: &CrossLangReportRequest,
     translator: Option<&CrossLangTranslator>,
 ) -> CrossLangReportResponse {
-    use super::term_dictionary::{preprocess_terms, validate_terms, calculate_accuracy_score};
+    use super::term_dictionary::{calculate_accuracy_score, preprocess_terms, validate_terms};
 
     // Step 1: 术语预处理
     let (preprocessed, term_count) = preprocess_terms(&request.source_text);
@@ -148,7 +152,8 @@ mod tests {
     #[tokio::test]
     async fn test_local_only_report() {
         let request = CrossLangReportRequest {
-            source_text: "批次放行报告：偏差调查报告已完成，CAPA 已批准，原料检验合格。".to_string(),
+            source_text: "批次放行报告：偏差调查报告已完成，CAPA 已批准，原料检验合格。"
+                .to_string(),
             standard: "fda_21cfr11".to_string(),
             batch_id: Some("LOT-001".to_string()),
             local_only: true,
@@ -156,7 +161,11 @@ mod tests {
 
         let response = generate_cross_lang_report(&request, None).await;
 
-        assert!(response.success, "Response should be success: {:?}", response.error);
+        assert!(
+            response.success,
+            "Response should be success: {:?}",
+            response.error
+        );
         let report = response.report.expect("Report should exist");
         assert_eq!(report.title, "BATCH RELEASE REPORT");
         assert_eq!(report.meta.standard, ReportStandard::Fda21Cfr11);

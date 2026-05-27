@@ -15,9 +15,7 @@ use sqlrustgo_gmp_api::ai::report::{
 };
 
 /// GMP Report Handler — 使用 Ollama LLM 翻译
-async fn translate_gmp_report(
-    request: web::Json<CrossLangReportRequest>,
-) -> impl Responder {
+async fn translate_gmp_report(request: web::Json<CrossLangReportRequest>) -> impl Responder {
     let client = OllamaTranslateClient::new("qwen3:8b-gmp");
     let translator = CrossLangTranslator::new(Box::new(client), TranslateConfig::default());
 
@@ -31,9 +29,7 @@ async fn translate_gmp_report(
 }
 
 /// GMP Report Handler — 本地模式（无需 LLM）
-async fn translate_gmp_report_local(
-    request: web::Json<CrossLangReportRequest>,
-) -> impl Responder {
+async fn translate_gmp_report_local(request: web::Json<CrossLangReportRequest>) -> impl Responder {
     let local_request = CrossLangReportRequest {
         source_text: request.source_text.clone(),
         standard: request.standard.clone(),
@@ -73,13 +69,14 @@ async fn main() -> std::io::Result<()> {
     println!("╚══════════════════════════════════════════════════════════╝");
 
     HttpServer::new(|| {
-        App::new()
-            .route("/health", web::get().to(health))
-            .service(
-                web::scope("/api/v1/gmp")
-                    .route("/report/translate", web::post().to(translate_gmp_report))
-                    .route("/report/translate/local", web::post().to(translate_gmp_report_local)),
-            )
+        App::new().route("/health", web::get().to(health)).service(
+            web::scope("/api/v1/gmp")
+                .route("/report/translate", web::post().to(translate_gmp_report))
+                .route(
+                    "/report/translate/local",
+                    web::post().to(translate_gmp_report_local),
+                ),
+        )
     })
     .bind("0.0.0.0:8081")?
     .run()

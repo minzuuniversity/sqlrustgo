@@ -58,7 +58,9 @@ impl AuditLogWriter {
     pub fn add_entry(&mut self, entry: AuditLogEntry) -> Result<(), AuditError> {
         // Verify chain continuity
         if entry.previous_hash != self.last_hash {
-            return Err(AuditError::ChainIntegrityViolation(entry.operation_id.clone()));
+            return Err(AuditError::ChainIntegrityViolation(
+                entry.operation_id.clone(),
+            ));
         }
 
         // Verify entry hash
@@ -79,7 +81,7 @@ impl AuditLogWriter {
         hasher.update(&entry.timestamp);
         hasher.update(&entry.request_hash);
         hasher.update(&entry.result);
-        hasher.update(&entry.confidence_score.to_le_bytes());
+        hasher.update(entry.confidence_score.to_le_bytes());
         hasher.update(&entry.previous_hash);
         format!("{:x}", hasher.finalize())
     }
@@ -155,7 +157,9 @@ impl AuditLogReader {
 
         for entry in &self.entries {
             if entry.previous_hash != expected_previous {
-                return Err(AuditError::ChainIntegrityViolation(entry.operation_id.clone()));
+                return Err(AuditError::ChainIntegrityViolation(
+                    entry.operation_id.clone(),
+                ));
             }
 
             // Verify entry hash
@@ -164,7 +168,7 @@ impl AuditLogReader {
             hasher.update(&entry.timestamp);
             hasher.update(&entry.request_hash);
             hasher.update(&entry.result);
-            hasher.update(&entry.confidence_score.to_le_bytes());
+            hasher.update(entry.confidence_score.to_le_bytes());
             hasher.update(&entry.previous_hash);
             let computed = format!("{:x}", hasher.finalize());
 
@@ -187,9 +191,7 @@ impl AuditLogReader {
 fn chrono_now() -> String {
     // Simplified - would use chrono::Utc::now().to_rfc3339()
     use std::time::{SystemTime, UNIX_EPOCH};
-    let duration = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap();
+    let duration = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
     format!("{}", duration.as_secs())
 }
 
