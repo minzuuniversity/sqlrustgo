@@ -40,7 +40,7 @@
 - [x] 5.1 Add `retrieval` module to `sqlrustgo-gmp` crate
 - [x] 5.2 Create API endpoint `POST /api/v1/retrieval/search`
 - [x] 5.3 Create API endpoint `POST /api/v1/retrieval/embed`
-- [ ] 5.4 Write API integration tests
+- [x] 5.4 Write API integration tests
 - [x] 5.5 Update `gmp-api` exports
 
 ## 6. Performance & Quality
