@@ -4,7 +4,6 @@
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
-use thiserror::Error;
 
 // Re-export from compliance-engine's OllamaClient trait
 pub use sqlrustgo_compliance_engine::judge::agent::OllamaClient as TranslateOllamaClient;
@@ -62,6 +61,7 @@ pub struct TranslateResult {
 pub struct CrossLangTranslator {
     llm_client: Box<dyn TranslateOllamaClient>,
     model: String,
+    #[allow(dead_code)]
     temperature: f32,
 }
 
@@ -94,7 +94,7 @@ impl CrossLangTranslator {
         let cleaned = self.clean_output(&llm_output);
 
         // Step 4: 术语校验
-        let (valid, accuracy, errors) = validate_terms(&cleaned, &request.report_type);
+        let (valid, _accuracy, errors) = validate_terms(&cleaned, &request.report_type);
 
         // Step 5: 计算准确率
         let score = calculate_accuracy_score(&cleaned, errors.len());
