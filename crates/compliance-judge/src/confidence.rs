@@ -28,7 +28,7 @@ impl ConfidenceCalculator {
         let probability = logprob.exp();
 
         // Scale to 0.0-1.0 range with calibration
-        let score = probability.max(0.0).min(1.0);
+        let score = probability.clamp(0.0, 1.0);
 
         let explanation = match score {
             s if s >= 0.9 => "High confidence in judgment".to_string(),
@@ -87,7 +87,7 @@ impl ConfidenceCalculator {
         // Calculate base score
         let base = 0.5 + (positive_count * 0.1) - (negative_count * 0.15) - (neutral_count * 0.05);
 
-        base.max(0.0).min(1.0)
+        base.clamp(0.0, 1.0)
     }
 
     fn generate_explanation(analysis: &str, score: f64) -> String {
