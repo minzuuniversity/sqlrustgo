@@ -5366,6 +5366,7 @@ dependencies = [
  "ed25519-dalek",
  "hex",
  "k256",
+ "log",
  "parking_lot",
  "printpdf",
  "rand 0.8.6",
@@ -5376,6 +5377,7 @@ dependencies = [
  "serde_json",
  "sha2 0.10.9",
  "sqlrustgo-graph",
+ "sqlrustgo-llm",
  "sqlrustgo-parser",
  "sqlrustgo-planner",
  "sqlrustgo-storage",
@@ -5416,6 +5418,9 @@ name = "sqlrustgo-gmp-retrieval"
 version = "3.0.0"
 dependencies = [
  "anyhow",
+ "async-trait",
+ "lru",
+ "reqwest",
  "serde",
  "serde_json",
  "sqlrustgo-parser",
@@ -5424,6 +5429,7 @@ dependencies = [
  "sqlrustgo-types",
  "tempfile",
  "thiserror 2.0.18",
+ "tokio",
 ]
 
 [[package]]
@@ -5436,6 +5442,19 @@ dependencies = [
  "serde_json",
  "tempfile",
  "thiserror 1.0.69",
+]
+
+[[package]]
+name = "sqlrustgo-llm"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "tokio-test",
 ]
 
 [[package]]
