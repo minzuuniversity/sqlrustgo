@@ -1,0 +1,338 @@
+name: CI (v3.5.0 PR Gate)
+
+on:
+  pull_request:
+    branches:
+      - develop/v3.5.0
+    paths-ignore:
+      - 'docs/**'
+      - '*.md'
+      - 'LICENSE'
+      - '.gitignore'
+      - '.env*'
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  # ----------------------------------------
+  # Pre-check jobs (run in parallel)
+  # ----------------------------------------
+  fmt:
+    name: Format Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+  clippy:
+    name: Clippy Lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "clippy"
+          cache-targets: false
+
+      - name: Run clippy
+        run: cargo clippy --all-features -- -D warnings
+
+  # ----------------------------------------
+  # Build job
+  # ----------------------------------------
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "build"
+          cache-targets: false
+
+      - name: Build
+        run: cargo build --all-features
+
+  # ----------------------------------------
+  # Test jobs (run in parallel after build)
+  # ----------------------------------------
+  test-unit:
+    name: Unit Tests (workspace --lib)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "test"
+          cache-targets: false
+
+      - name: Run unit tests
+        run: cargo test --workspace --lib
+
+  test-integration:
+    name: Integration Tests (workspace --test '*')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "test-integration"
+          cache-targets: false
+
+      - name: Run integration tests
+        run: cargo test --workspace --test '*'
+
+  test-doctest:
+    name: Doctests (workspace --doc)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "doctest"
+          cache-targets: false
+
+      - name: Run doctests
+        run: cargo test --workspace --doc
+
+  # ----------------------------------------
+  # v3.5.0 New Crate Tests
+  # ----------------------------------------
+  test-compliance-engine:
+    name: compliance-engine Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "compliance-engine"
+          cache-targets: false
+
+      - name: Run compliance-engine tests
+        run: cargo test -p sqlrustgo-compliance-engine --lib
+
+  test-gmp-api:
+    name: gmp-api Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "gmp-api"
+          cache-targets: false
+
+      - name: Run gmp-api tests
+        run: cargo test -p sqlrustgo-gmp-api --lib
+
+  test-gmp:
+    name: gmp Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "gmp"
+          cache-targets: false
+
+      - name: Run gmp tests
+        run: cargo test -p sqlrustgo-gmp --lib
+
+  test-gmp-retrieval:
+    name: gmp-retrieval Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "gmp-retrieval"
+          cache-targets: false
+
+      - name: Run gmp-retrieval tests
+        run: cargo test -p sqlrustgo-gmp-retrieval --lib
+
+  # ----------------------------------------
+  # Coverage gate
+  # ----------------------------------------
+  coverage:
+    name: Coverage Gate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "coverage"
+          cache-targets: false
+
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@cargo-llvm-cov
+
+      - name: Run coverage gate
+        run: bash scripts/gate/check_coverage.sh
+
+  # ----------------------------------------
+  # Security audit
+  # ----------------------------------------
+  security:
+    name: Security Audit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Run security audit
+        run: cargo audit
+
+  # ----------------------------------------
+  # SQL Compatibility
+  # ----------------------------------------
+  sql-compat:
+    name: SQL Compatibility
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Run SQL compatibility check
+        run: bash scripts/gate/check_sql_compat.sh
+
+  # ----------------------------------------
+  # TPC-H SF=1
+  # ----------------------------------------
+  tpch:
+    name: TPC-H SF=1
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install sqlite3
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y sqlite3
+
+      - name: Run TPC-H SF=1
+        run: bash scripts/gate/check_tpch.sh sf=1
+
+  # ----------------------------------------
+  # Docs check
+  # ----------------------------------------
+  docs:
+    name: Docs Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Check docs build
+        run: cargo doc --no-deps --all-features
+        continue-on-error: true
