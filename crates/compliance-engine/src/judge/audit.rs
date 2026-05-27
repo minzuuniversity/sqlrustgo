@@ -245,8 +245,8 @@ impl JudgmentAuditor {
     }
 
     /// Finish recording and return entries
-    pub fn finish(self) -> Vec<AuditLogEntry> {
-        self.writer.into_inner().into_entries()
+    pub fn finish(&self) -> Vec<AuditLogEntry> {
+        self.writer.borrow().entries().to_vec()
     }
 }
 
@@ -287,7 +287,7 @@ mod tests {
 
     #[test]
     fn test_judgment_auditor_record() {
-        let mut auditor = JudgmentAuditor::new();
+        let auditor = JudgmentAuditor::new();
 
         let entry = auditor.record(
             "op-001",
@@ -307,7 +307,7 @@ mod tests {
 
     #[test]
     fn test_audit_chain_hash_progression() {
-        let mut auditor = JudgmentAuditor::new();
+        let auditor = JudgmentAuditor::new();
 
         let entry1 = auditor.record("op-001", "rule-001", "COMPLIANT", 0.95, None, 100);
         let entry2 = auditor.record("op-002", "rule-001", "NON_COMPLIANT", 0.85, None, 120);

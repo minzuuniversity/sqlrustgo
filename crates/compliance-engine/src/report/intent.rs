@@ -92,7 +92,7 @@ impl IntentParser {
 
         let raw: RawIntent = serde_json::from_str(json_str)?;
 
-        let report_type = ReportType::from_str(&raw.report_type);
+        let report_type = raw.report_type.parse::<ReportType>().unwrap_or_default();
 
         let time_range = raw.time_range.map(|tr| {
             let start = DateTime::parse_from_rfc3339(&format!("{}T00:00:00Z", tr.start))

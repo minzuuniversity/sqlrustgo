@@ -166,7 +166,7 @@ impl ReportGenerator {
 
         match serde_json::from_str::<RawIntent>(json_str) {
             Ok(raw) => {
-                let report_type = ReportType::from_str(&raw.report_type);
+                let report_type = raw.report_type.parse::<ReportType>().unwrap_or_default();
                 let time_range = raw.time_range.map(|tr| {
                     use chrono::{DateTime, NaiveDateTime, Utc};
                     let start = NaiveDateTime::parse_from_str(&tr.start, "%Y-%m-%d")
@@ -243,7 +243,7 @@ impl ReportGenerator {
     fn format_output(
         &self,
         data: &ReportData,
-        report_type: ReportType,
+        _report_type: ReportType,
         format: ReportFormat,
         title: &str,
         time_range: Option<&TimeRange>,
