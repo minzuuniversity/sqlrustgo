@@ -68,6 +68,7 @@ fn build_gmp_terms() -> HashMap<&'static str, &'static str> {
 }
 
 /// 反向字典: 英文 → 中文（用于校验）
+#[allow(dead_code)]
 fn build_gmp_terms_reverse() -> HashMap<&'static str, &'static str> {
     HashMap::from([
         ("Batch", "批次"),
@@ -109,7 +110,7 @@ pub fn preprocess_terms(input: &str) -> (String, usize) {
 
     for (cn_term, en) in terms {
         if result.contains(*cn_term) {
-            let replaced = result.replace(*cn_term, *en);
+            let replaced = result.replace(*cn_term, en);
             count += result.matches(*cn_term).count();
             result = replaced;
         }
