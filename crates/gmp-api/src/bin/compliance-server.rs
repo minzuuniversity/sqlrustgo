@@ -55,7 +55,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let ollama_client = OllamaClientImpl::new(&args.ollama_url);
 
     // Create ComplianceJudge with the Ollama client
-    let judge = ComplianceJudge::new(Box::new(ollama_client), &args.model);
+    let judge = ComplianceJudge::new(Box::new(ollama_client), &args.model, None);
 
     // Create service state
     let state = create_service_state(judge);
