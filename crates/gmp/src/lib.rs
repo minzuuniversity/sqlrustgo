@@ -77,6 +77,7 @@ pub mod sop;
 pub mod sql_api;
 pub mod trust_visualization;
 pub mod vector_search;
+pub mod retrieval;
 pub mod workflow;
 
 // Re-export commonly used types
