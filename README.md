@@ -33,6 +33,7 @@ SQLRustGo 是一个使用 Rust 实现的关系型数据库教学与工程化项�
 - **网络**: TCP / MySQL 风格协议
 - **高级**: 向量存储、图存储、Prepared Statement、存储过程、触发器
 - **分布式**: Semi-sync 复制、MTS 并行复制、Multi-source 复制
+- **AI 合规**: LLM-powered Compliance Judge Agent，支持 GMP 规范实时判断 (<500ms)，置信度评分，完整审计日志
 
 ## 快速开始
 
@@ -75,9 +76,9 @@ cargo clippy --all-targets -- -D warnings
 | 功能 | Issue | 状态 |
 |------|-------|------|
 | AI 偏差调查助手 | #1361 | TODO |
-| LLM 合规判断引擎 | #1362 | TODO |
+| LLM 合规判断引擎 | #1362 | ✅ DONE |
 | GMP Retrieval v3 集成 | #1363 | TODO |
-| 本地 LLM 推理支持（Ollama） | #1364 | TODO |
+| 本地 LLM 推理支持（Ollama） | #1364 | ✅ DONE |
 | AI 流式输出 SSE | #1365 | TODO |
 | DiskGraphStore Cypher | #1326 | TODO |
 
