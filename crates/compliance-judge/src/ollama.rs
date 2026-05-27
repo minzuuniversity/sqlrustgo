@@ -143,8 +143,7 @@ impl OllamaClientImpl {
                             let line = lines[..newline_pos].trim().to_string();
                             lines = lines[newline_pos + 1..].to_string();
 
-                            if line.starts_with("data: ") {
-                                let data = &line[6..];
+                            if let Some(data) = line.strip_prefix("data: ") {
                                 if data == "[DONE]" {
                                     let _ = tx
                                         .send(Ok(StreamChunk {

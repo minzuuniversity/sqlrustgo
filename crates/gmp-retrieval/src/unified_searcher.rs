@@ -110,7 +110,7 @@ impl UnifiedSearcher {
         };
 
         // Step 2: Execute searches in parallel
-        let fts_results = self.retrieval.search_bm25(&query, self.config.pre_limit);
+        let fts_results = self.retrieval.search_bm25(query, self.config.pre_limit);
         let rule_results = self
             .retrieval
             .search_with_filter(&rewritten, self.config.pre_limit);
