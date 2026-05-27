@@ -17,6 +17,7 @@ pub mod device;
 pub mod export;
 pub mod retrieval;
 pub mod rule_engine;
+pub mod rule_recommendation;
 pub mod signature;
 
 pub mod ai;
