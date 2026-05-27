@@ -8,11 +8,23 @@
 
 ---
 
-## v3.5.0 (TBD) - 开发中
+## v3.5.0 (2026-05-27) - 开发中
 
-### 规划中
+### 新增
 
 #### AI Agent Layer（P0）— `gmp-api`
+
+**跨语言合规报告（Cross-Language GMP Report）**
+- Issue: #1411 ✅ 已完成
+- 模块: `crates/gmp-api/src/ai/report/`
+- 功能: GMP 中文记录 → FDA 21 CFR Part 11 / EMA Annex 11 英文报告
+- 模式: 本地术语预处理（无需 LLM）+ Ollama LLM 翻译（qwen3:8b-gmp）
+- HTTP 端点:
+  - `POST /api/v1/gmp/report/translate` (LLM 模式)
+  - `POST /api/v1/gmp/report/translate/local` (本地模式)
+  - `GET /health`
+- 服务器: `cargo run -p sqlrustgo-server --bin gmp-report-server`
+- PR: #1415 #1416 #1418 #1419 #1420 #1422 #1423 #1430 #1431
 
 **AI 偏差调查助手**
 - Deviation Investigator Agent — 自然语言查询审计链，返回引用证据
