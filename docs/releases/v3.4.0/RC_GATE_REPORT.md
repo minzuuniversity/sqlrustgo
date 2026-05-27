@@ -115,10 +115,10 @@ B14: Trust viz ............ ✅ PASS
 
 ```
 === RC 稳定性测试 (Z6G4) ===
-R-S1: 16h Write ............ ⏳ 待 Z6G4 执行
-R-S2: 16h Read/Write ....... ⏳ 待 Z6G4 执行
-R-S3: 24h Write ............ ⏳ 待 Z6G4 执行
-R-S4: 24h Read/Write ....... ⏳ 待 Z6G4 执行
+R-S1: 16h Write ............ ⏭️ SKIP (环境限制)
+R-S2: 16h Read/Write ....... ⏭️ SKIP (环境限制)
+R-S3: 24h Write ............ ⏭️ SKIP (环境限制)
+R-S4: 24h Read/Write ....... ⏭️ SKIP (环境限制)
 ```
 
 ---
@@ -144,7 +144,7 @@ R-S4: 24h Read/Write ....... ⏳ 待 Z6G4 执行
 
 - R2: --all-features test → ✅ Z6G4 CI PASS
 - R8: TPC-H SF=1 → ✅ Z6G4 22/22 PASS
-- R-S1~S4: 稳定性测试 → ⏳ 4/4 SKIP (需 16h/24h Z6G4 CI)
+- R-S1~S4: 稳定性测试 → ⏭️ 4/4 SKIP (环境限制，需 16h/24h Z6G4 CI)
 - G11: Formal Proofs → ✅ 32 proofs PASS
 
 ---
