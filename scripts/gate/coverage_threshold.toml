@@ -21,7 +21,18 @@ parser = 50        # Parser - critical path
 
 # Other crates
 catalog = 10       # Catalog
+transaction = 15    # Transaction manager
 workspace = 80     # Hard gate: ≥80% for GA
+
+# v3.4.0+ GMP crates — measured per gate_spec_v340.md
+compliance-engine = 40   # Beta ≥40%, GA ≥60%
+gmp-api = 40             # Beta ≥40%, GA ≥50%
+gmp = 30                 # Beta ≥30%, GA ≥40%
+gmp-retrieval = 40       # Beta ≥40%, GA ≥50%
+
+# Common/internal workspace crates
+common = 10              # Shared utilities
+information-schema = 10  # SQL information schema
 
 [thresholds.target]
 # Aspirational targets (non-blocking)
