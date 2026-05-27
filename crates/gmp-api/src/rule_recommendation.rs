@@ -528,12 +528,12 @@ impl RuleRecommendationEngine {
         let mut patterns = Vec::new();
 
         for (key, cluster) in clusters {
-            if cluster.len() < 1 {
+            if cluster.is_empty() {
                 continue;
             }
 
             let parts: Vec<&str> = key.split(':').collect();
-            let category = parts.get(0).unwrap_or(&"unknown");
+            let category = parts.first().unwrap_or(&"unknown");
             let location = parts.get(1).unwrap_or(&"unknown");
             let cluster_type = if let Some(ct_str) = parts.get(2) {
                 match *ct_str {
@@ -909,10 +909,8 @@ impl RuleRecommendationEngine {
             ),
             _ => (
                 format!("Preventive Rule for {} Violations ({} occurrences)", type_str, freq),
-                format!("Affected areas: see pattern description"),
-                format!(
-                    "Conduct root cause analysis and implement corrective action within 30 days."
-                ),
+                "Affected areas: see pattern description".to_string(),
+                "Conduct root cause analysis and implement corrective action within 30 days.".to_string(),
             ),
         }
     }
