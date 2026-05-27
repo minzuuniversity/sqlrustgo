@@ -1,5 +1,6 @@
 //! Compliance-as-Code Engine for SQLRustGo GMP
 
+pub mod deviation;
 pub mod engine;
 pub mod evaluator;
 pub mod judge;
