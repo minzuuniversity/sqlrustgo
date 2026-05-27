@@ -82,7 +82,7 @@ echo "=== v3.5.0 New Crate Tests ==="
 run_check "compliance-engine tests" "cargo test -p sqlrustgo-compliance-engine --lib"
 run_check "gmp-api tests" "cargo test -p sqlrustgo-gmp-api --lib"
 run_check "gmp tests" "cargo test -p sqlrustgo-gmp --lib"
-run_check "gmp-retrieval tests" "cargo test -p sqlrustso-gmp-retrieval --lib"
+run_check "gmp-retrieval tests" "cargo test -p sqlrustgo-gmp-retrieval --lib"
 
 echo ""
 echo "=== Alpha Gate Result: $([ $FAILED -eq 0 ] && echo '✅ PASSED' || echo '❌ FAILED') ==="
