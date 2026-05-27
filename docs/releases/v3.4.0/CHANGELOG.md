@@ -1,15 +1,15 @@
 # v3.4.0 Changelog
 
 > **Version**: 3.4.0
-> **Date**: 2026-05-24
+> **Date**: 2026-05-25
 > **Status**: GA (正式发布)
 > **Branch**: `main`
-> **HEAD**: `d934228b` (RC coverage threshold fix)
-> **GA from**: `d934228b` (executor stored proc coverage tests)
+> **HEAD**: `ea137909a3`
+> **GA from**: `ea137909a3`
 
 ---
 
-## v3.4.0 (2026-05-24) - GA
+## v3.4.0 (2026-05-25) - GA
 
 ### Added
 

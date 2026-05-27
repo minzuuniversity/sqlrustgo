@@ -14,7 +14,7 @@ use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 #[command(name = "sqlrustgo-mysql-server")]
 #[command(about = "SQLRustGo MySQL Wire Protocol Server")]
 struct Args {
-    #[arg(long, default_value = "127.0.0.1")]
+    #[arg(long, default_value = "0.0.0.0")]
     host: String,
 
     #[arg(long, default_value = "3306")]

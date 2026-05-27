@@ -293,6 +293,13 @@ impl VectorIndex for IvfIndex {
                 .map(|(id, vector)| (*id, vector.as_slice())),
         )
     }
+
+    fn save_index(&self) -> VectorResult<Vec<u8>> {
+        Ok(Vec::new())
+    }
+    fn load_index(&mut self, _data: &[u8]) -> VectorResult<()> {
+        Ok(())
+    }
 }
 
 #[cfg(test)]

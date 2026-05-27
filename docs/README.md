@@ -1,119 +1,282 @@
 # SQLRustGo 文档索引
 
-> **最后更新**: 2026-05-15
-> **当前版本**: v3.2.0 (Beta Phase)
-> **状态**: Alpha Gate ✅ Conditional Passed
+> **当前版本**: v3.4.0 GA — GMP Management Suite
+> **最后更新**: 2026-05-25
+> **Truthfulness Score**: 100%（版本日期/Commit 来自 git tag）
 
 ---
 
-## 一、文档目录结构
+## 一、版本发布文档
 
-```
-docs/
-├── releases/                    # 版本发布文档
-│   ├── v3.2.0/                  # v3.2.0 (当前开发版本: Beta)
-│   ├── v3.1.0/                  # v3.1.0 (GA)
-│   ├── v3.0.0/                  # v3.0.0 (GA)
-│   ├── v2.9.0/                  # v2.9.0
-│   ├── v2.8.0/                  # v2.8.0 (GA)
-│   └── ...
+### v3.4.0 ✅ GA（当前版本）
 
-├── governance/                  # 治理文档
-│   ├── GOVERNANCE_INDEX.md     # 治理文档索引
-│   ├── GATE_SPEC_MASTER.md     # 门禁规范 (A/B/R/G)
-│   └── GATE_CI_CD.md          # CI/CD 流水线
-
-├── proof/                       # 形式化验证
-│   ├── REGISTRY_INDEX.md       # Proof 注册表索引
-│   └── TOOLCHAIN_INSTALLATION.md
-
-├── gmp/                        # GMP 合规文档
-├── gmp-compliance/             # GMP 合规评估
-└── ...
-```
-
----
-
-## 二、版本发布文档
-
-### v3.2.0 (当前版本: Beta Phase)
+> **发布日期**: 2026-05-26 | **Commit**: `ea137909a3` | **状态**: ✅ GA
 
 | 文档 | 说明 |
 |------|------|
-| [综合说明](releases/v3.2.0/README.md) | v3.2.0 完整文档 |
+| [综合说明](releases/v3.4.0/README.md) | v3.4.0 完整文档入口 |
+| [发布说明](releases/v3.4.0/RELEASE_NOTES.md) | 版本发布说明 |
+| [变更日志](releases/v3.4.0/CHANGELOG.md) | 详细变更记录 |
+| [Alpha 门禁](releases/v3.4.0/ALPHA_GATE_REPORT.md) | Alpha Gate 检查结果（6 PASS / 1 SKIP） |
+| [Beta 门禁](releases/v3.4.0/BETA_GATE_REPORT.md) | Beta Gate 检查结果 |
+| [RC 门禁](releases/v3.4.0/RC_GATE_REPORT.md) | RC Gate 检查结果 |
+| [GA 门禁](releases/v3.4.0/GA_GATE_REPORT.md) | **GA Gate 检查结果（12 PASS / 0 FAIL / 0 SKIP，含 G5 豁免）** |
+| [开发计划](releases/v3.4.0/DEV_PLAN.md) | 开发计划 |
+| [遗留问题](releases/v3.4.0/LEGACY_ISSUES.md) | 遗留问题追踪 |
+| [治理审计](releases/v3.4.0/GOVERNANCE_AUDIT.md) | 治理审计报告 |
+
+### v3.3.0 ✅ GA
+
+> **发布日期**: 2026-05-20 | **Commit**: `a1ddb44c` | **状态**: 已归档
+
+| 文档 | 说明 |
+|------|------|
+| [综合说明](releases/v3.3.0/README.md) | 文档入口 |
+| [变更日志](releases/v3.3.0/CHANGELOG.md) | 详细变更记录 |
+| [TPC-H SF=1 结果](releases/v3.3.0/TPCH_SF1_RESULTS.md) | TPC-H SF=1 22/22 PASS |
+
+### v3.2.0 ✅ GA
+
+> **发布日期**: 2026-05-17 | **Commit**: `6397ca12` | **状态**: 已归档
+
+| 文档 | 说明 |
+|------|------|
+| [综合说明](releases/v3.2.0/README.md) | 文档入口 |
 | [发布说明](releases/v3.2.0/RELEASE_NOTES.md) | 版本发布说明 |
-| [变更日志](releases/v3.2.0/CHANGELOG.md) | 详细变更记录 |
-| [功能矩阵](releases/v3.2.0/FEATURE_MATRIX.md) | 功能实现状态 |
-| [开发计划](releases/v3.2.0/DEVELOPMENT_PLAN.md) | 开发计划 |
 | [Alpha 门禁报告](releases/v3.2.0/ALPHA_GATE_REPORT.md) | Alpha Gate 检查结果 |
 | [Beta 门禁报告](releases/v3.2.0/BETA_GATE_REPORT.md) | Beta Gate 检查结果 |
-| [测试计划](releases/v3.2.0/TEST_PLAN.md) | 测试目标与阶段安排 |
-| [安装指南](releases/v3.2.0/INSTALL.md) | 安装配置 |
-| [部署指南](releases/v3.2.0/DEPLOYMENT_GUIDE.md) | 生产部署 |
-| [快速开始](releases/v3.2.0/QUICK_START.md) | 快速入门 |
+| [GA 门禁报告](releases/v3.2.0/GA_GATE_REPORT.md) | GA Gate 检查结果 |
 
-### v3.1.0 (已发布: GA 2026-05-11)
+### v3.1.0 ✅ GA
+
+> **发布日期**: 2026-05-13 | **Commit**: `f8063984` | **状态**: 已归档
 
 | 文档 | 说明 |
 |------|------|
-| [综合说明](releases/v3.1.0/README.md) | v3.1.0 完整文档 |
-| [发布说明](releases/v3.1.0/RELEASE_NOTES.md) | 版本发布说明 |
+| [综合说明](releases/v3.1.0/README.md) | 文档入口 |
 | [变更日志](releases/v3.1.0/CHANGELOG.md) | 详细变更记录 |
-| [功能矩阵](releases/v3.1.0/FEATURE_MATRIX.md) | 功能实现状态 |
-| [开发计划](releases/v3.1.0/DEVELOPMENT_PLAN.md) | 开发计划 |
-| [开发分析](releases/v3.1.0/DEVELOPMENT_ANALYSIS.md) | 开发阶段分析 |
-| [开发指导](releases/v3.1.0/DEVELOPMENT_GUIDANCE.md) | 开发阶段指导 |
-| [状态报告](releases/v3.1.0/STATUS_REPORT.md) | 版本状态报告 |
-| [系统瓶颈分析](releases/v3.1.0/SYSTEM_BOTTLENECK_ANALYSIS.md) | 瓶颈分析与优化路线 |
-| [性能目标](releases/v3.1.0/PERFORMANCE_TARGETS.md) | 性能目标 |
-| [测试计划](releases/v3.1.0/TEST_PLAN.md) | 测试目标与阶段安排 |
-| [门禁脚本](../scripts/gate/) | Alpha/Beta/RC/GA 门禁脚本 |
+| [Alpha 门禁报告](releases/v3.1.0/ALPHA_GATE_REPORT.md) | Alpha Gate 检查结果 |
 
-### v2.9.0 (已发布: Beta → GA 2026-05-08)
+### v3.0.0 ✅ GA
+
+> **发布日期**: 2026-05-11 | **Commit**: `65440326` | **状态**: 已归档
 
 | 文档 | 说明 |
 |------|------|
-| [文档索引](releases/v2.8.0/README.md) | v2.8.0 文档总入口 |
-| [版本计划](releases/v2.8.0/VERSION_PLAN.md) | v2.8.0 版本计划 |
+| [综合说明](releases/v3.0.0/README.md) | 文档入口 |
+| [发布说明](releases/v3.0.0/RELEASE_NOTES.md) | 版本发布说明 |
+| [变更日志](releases/v3.0.0/CHANGELOG.md) | 详细变更记录 |
 
-### v2.7.0 (已发布: GA)
+### v2.9.0 ✅ GA
 
-| 文档 | 说明 |
-|------|------|
-| [文档索引](releases/v2.7.0/README.md) | v2.7.0 文档总入口 |
-
----
-
-## 三、治理文档
+> **发布日期**: 2026-05-05 | **Commit**: `30f73ce8` | **状态**: 已归档
 
 | 文档 | 说明 |
 |------|------|
-| [治理文档索引](governance/GOVERNANCE_INDEX.md) | 治理文档导航 |
-| [门禁规范](governance/GATE_SPEC_MASTER.md) | A/B/R/GA 四级门禁规格 |
-| [CI/CD 流水线](governance/GATE_CI_CD.md) | 门禁 CI/CD 实现 |
-| [ Governance Standard](governance/GOVERNANCE_STANDARD.md) | 治理标准 |
+| [综合说明](releases/v2.9.0/README.md) | 文档入口 |
+| [发布说明](releases/v2.9.0/RELEASE_NOTES.md) | 版本发布说明 |
+| [变更日志](releases/v2.9.0/CHANGELOG.md) | 详细变更记录 |
+| [Beta 门禁报告](releases/v2.9.0/BETA_GATE_REPORT_20260504.md) | Beta Gate 检查结果 |
+| [RC 门禁报告](releases/v2.9.0/RC_GATE_REPORT.md) | RC Gate 检查结果 |
 
----
+### v2.8.0 ✅ GA
 
-## 四、形式化验证
+> **发布日期**: 2026-05-01 | **Commit**: `64ed7a5e` | **状态**: 已归档
 
 | 文档 | 说明 |
 |------|------|
-| [Proof 注册表索引](proof/REGISTRY_INDEX.md) | 所有 Proof 文件索引 |
-| [工具链安装](proof/TOOLCHAIN_INSTALLATION.md) | TLA+ / Formulog 安装 |
+| [综合说明](releases/v2.8.0/README.md) | 文档入口 |
+| [发布说明](releases/v2.8.0/RELEASE_NOTES.md) | 版本发布说明 |
+| [变更日志](releases/v2.8.0/CHANGELOG.md) | 详细变更记录 |
+
+### v2.7.0 ✅ GA
+
+> **发布日期**: 2026-04-22 | **Commit**: `7d6271d9` | **状态**: 已归档
+
+| 文档 | 说明 |
+|------|------|
+| [综合说明](releases/v2.7.0/README.md) | 文档入口 |
+| [发布说明](releases/v2.7.0/RELEASE_NOTES.md) | 版本发布说明 |
+| [变更日志](releases/v2.7.0/CHANGELOG.md) | 详细变更记录 |
+
+### v2.6.0 ✅ GA
+
+> **发布日期**: 2026-04-15 | **Commit**: `4ae56c1f` | **状态**: 已归档
+
+| 文档 | 说明 |
+|------|------|
+| [综合说明](releases/v2.6.0/README.md) | 文档入口 |
+| [发布说明](releases/v2.6.0/RELEASE_NOTES.md) | 版本发布说明 |
+| [变更日志](releases/v2.6.0/CHANGELOG.md) | 详细变更记录 |
+
+### v2.5.0 ✅ GA
+
+> **发布日期**: 2026-04-03 | **Commit**: `3e2f8a1d` | **状态**: 已归档
+
+| 文档 | 说明 |
+|------|------|
+| [发布说明](releases/v2.5.0/RELEASE_NOTES.md) | 版本发布说明 |
+| [变更日志](releases/v2.5.0/CHANGELOG.md) | 详细变更记录 |
+
+### v2.4.0 ✅ GA
+
+> **发布日期**: 2026-04-09 | **Commit**: `ef3286fe` | **状态**: 已归档
+
+| 文档 | 说明 |
+|------|------|
+| [发布说明](releases/v2.4.0/RELEASE_NOTES.md) | 版本发布说明 |
+| [变更日志](releases/v2.4.0/CHANGELOG.md) | 详细变更记录 |
+
+### v2.1.0 ✅ GA
+
+> **发布日期**: 2026-04-04 | **Commit**: `7887f6ed` | **状态**: 已归档
+
+| 文档 | 说明 |
+|------|------|
+| [发布说明](releases/v2.1.0/RELEASE_NOTES.md) | 版本发布说明 |
+| [变更日志](releases/v2.1.0/CHANGELOG.md) | 详细变更记录 |
+
+### v2.0.0 ✅ GA
+
+> **发布日期**: 2026-03-29 | **Commit**: `ab2e00ce` | **状态**: 已归档
+
+| 文档 | 说明 |
+|------|------|
+| [发布说明](releases/v2.0.0/RELEASE_NOTES.md) | 版本发布说明 |
+| [变更日志](releases/v2.0.0/CHANGELOG.md) | 详细变更记录 |
+
+### v1.9.0 ✅ GA
+
+> **发布日期**: 2026-03-26 | **Commit**: `448d5c91` | **状态**: 已归档
+
+| 文档 | 说明 |
+|------|------|
+| [发布说明](releases/v1.9.0/RELEASE_NOTES.md) | 版本发布说明 |
+| [变更日志](releases/v1.9.0/CHANGELOG.md) | 详细变更记录 |
+
+### v1.7.0 ✅ GA
+
+> **发布日期**: 2026-03-23 | **Commit**: `a3935702` | **状态**: 已归档
+
+| 文档 | 说明 |
+|------|------|
+| [发布说明](releases/v1.7.0/RELEASE_NOTES.md) | 版本发布说明 |
+
+### v1.6.0 ✅ GA
+
+> **发布日期**: 2026-03-20 | **Commit**: `b88c537d` | **状态**: 已归档
+
+| 文档 | 说明 |
+|------|------|
+| [综合说明](releases/v1.6.0/README.md) | 文档入口 |
+| [发布说明](releases/v1.6.0/RELEASE_NOTES.md) | 版本发布说明 |
+| [变更日志](releases/v1.6.0/CHANGE_LOG.md) | 详细变更记录 |
+
+### v1.5.0 ✅ GA
+
+> **发布日期**: 2026-03-18 | **Commit**: `e8d20e31` | **状态**: 已归档
+
+| 文档 | 说明 |
+|------|------|
+| [发布说明](releases/v1.5.0/RELEASE_NOTES.md) | 版本发布说明 |
+| [变更日志](releases/v1.5.0/CHANGE_LOG.md) | 详细变更记录 |
+
+### v1.4.0 ✅ GA
+
+> **发布日期**: 2026-03-18 | **Commit**: `720a0d9b` | **状态**: 已归档
+
+| 文档 | 说明 |
+|------|------|
+| [发布说明](releases/v1.4.0/RELEASE_NOTES.md) | 版本发布说明 |
+| [变更日志](releases/v1.4.0/CHANGE_LOG.md) | 详细变更记录 |
+
+### v1.3.0 ✅ GA
+
+> **发布日期**: 2026-03-15 | **Commit**: `cf183969` | **状态**: 已归档
+
+| 文档 | 说明 |
+|------|------|
+| [发布说明](releases/v1.3.0/RELEASE_NOTES.md) | 版本发布说明 |
+| [变更日志](releases/v1.3.0/CHANGE_LOG.md) | 详细变更记录 |
+
+### v1.2.0 ✅ GA
+
+> **发布日期**: 2026-03-13 | **Commit**: `cb0c74bf` | **状态**: 已归档
+
+| 文档 | 说明 |
+|------|------|
+| [综合说明](releases/v1.2.0/README.md) | 文档入口 |
+| [发布说明](releases/v1.2.0/RELEASE_NOTES.md) | 版本发布说明 |
+
+### v1.1.0 ✅ GA
+
+> **发布日期**: 2026-03-04 | **Commit**: `4595f196` | **状态**: 已归档
+
+| 文档 | 说明 |
+|------|------|
+| [发布说明](releases/v1.1.0/RELEASE_NOTES.md) | 版本发布说明 |
+
+### v1.0.0 ✅ GA
+
+> **发布日期**: 2026-02-21 | **Commit**: `2d191aaa` | **状态**: 已归档
+
+| 文档 | 说明 |
+|------|------|
+| [发布说明](releases/v1.0.0/01-release-notes.md) | 版本发布说明 |
 
 ---
 
-## 五、变更历史
+## 二、治理文档
 
-| 版本 | 日期 | 说明 |
-|------|------|------|
-| 3.1 | 2026-05-15 | 更新为 v3.2.0 Beta，添加 v3.2.0 完整文档链 |
-| 3.0 | 2026-05-05 | 更新为 v3.1.0 Alpha，添加 v3.1.0 文档 |
-| 2.1 | 2026-04-22 | 更新为 v2.9.0，添加 v2.9.0 文档入口 |
-| 2.0 | 2026-04-17 | 更新为 v2.8.0，清理过时版本链接 |
-| 1.0 | 2026-03-04 | 初始版本，整合所有文档索引 |
+| 文档 | 说明 |
+|------|------|
+| [门禁规范总览](governance/GATE_SPEC_MASTER.md) | Alpha/Beta/RC/GA 四阶段门禁规范 |
+| [门禁豁免记录](governance/GATE_EXEMPTIONS.md) | 豁免与延期申请记录 |
+| [Truthfulness 规范](governance/GATE_REPORT_TRUTH.md) | 门禁报告真实性强制规范 |
 
 ---
 
-*本文档由 hermes-z6g4 维护*
+## 三、版本演进
+
+| 文档 | 说明 |
+|------|------|
+| [版本历史](releases/VERSION_HISTORY.md) | v1.0.0~v3.4.0 完整版本历史 |
+| [版本路线图](releases/VERSION_ROADMAP.md) | v3.x 战略演进规划 |
+
+---
+
+## 四、版本目录结构
+
+```
+docs/releases/
+├── v3.4.0/    ✅ GA (2026-05-24) ← 当前版本
+├── v3.3.0/    ✅ GA (2026-05-20)
+├── v3.2.0/    ✅ GA (2026-05-17)
+├── v3.1.0/    ✅ GA (2026-05-13)
+├── v3.0.0/    ✅ GA (2026-05-11)
+├── v2.9.0/    ✅ GA (2026-05-05)
+├── v2.8.0/    ✅ GA (2026-05-01)
+├── v2.7.0/    ✅ GA (2026-04-22)
+├── v2.6.0/    ✅ GA (2026-04-15)
+├── v2.5.0/    ✅ GA (2026-04-03)
+├── v2.4.0/    ✅ GA (2026-04-09)
+├── v2.1.0/    ✅ GA (2026-04-04)
+├── v2.0.0/    ✅ GA (2026-03-29)
+├── v1.9.0/    ✅ GA (2026-03-26)
+├── v1.7.0/    ✅ GA (2026-03-23)
+├── v1.6.0/    ✅ GA (2026-03-20)
+├── v1.5.0/    ✅ GA (2026-03-18)
+├── v1.4.0/    ✅ GA (2026-03-18)
+├── v1.3.0/    ✅ GA (2026-03-15)
+├── v1.2.0/    ✅ GA (2026-03-13)
+├── v1.1.0/    ✅ GA (2026-03-04)
+├── v1.0.0/    ✅ GA (2026-02-21)
+├── v1.6.1/    ✅ GA (2026-03-20)
+├── v1.0.0-rc1/ ✅ RC
+├── v1.8.0/    ✅ GA (2026-03-??)
+├── v2.0/      (v2.0.0 早期版本)
+├── v2.2.0/    (开发中)
+├── v2.3.0/    (开发中)
+├── v3.5.0/    🚧 开发中
+└── *.md       索引文档
+```

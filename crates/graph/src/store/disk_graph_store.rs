@@ -141,6 +141,11 @@ impl DiskGraphStore {
         self.wal_enabled = enabled;
     }
 
+    /// Returns the base path for this graph store
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+
     pub fn node_count(&self) -> usize {
         self.inner.node_count()
     }
