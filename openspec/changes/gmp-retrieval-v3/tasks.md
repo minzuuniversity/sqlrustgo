@@ -17,31 +17,31 @@
 
 ## 3. Reranker
 
-- [ ] 3.1 Create `reranker.rs` module in `gmp-retrieval`
-- [ ] 3.2 Implement `RerankRequest` and `RerankResult` types
-- [ ] 3.3 Implement cross-encoder scoring via Ollama
-- [ ] 3.4 Implement batch processing (max 50 docs)
-- [ ] 3.5 Add fallback for unavailable Ollama
-- [ ] 3.6 Write unit tests
+- [x] 3.1 Create `reranker.rs` module in `gmp-retrieval`
+- [x] 3.2 Implement `RerankRequest` and `RerankResult` types
+- [x] 3.3 Implement cross-encoder scoring via Ollama
+- [x] 3.4 Implement batch processing (max 50 docs)
+- [x] 3.5 Add fallback for unavailable Ollama
+- [x] 3.6 Write unit tests
 
 ## 4. GMP Retrieval v3 Core
 
-- [ ] 4.1 Extend `RetrievalEngine` with four-way fusion
-- [ ] 4.2 Implement `RetrievalSource` enum (Vector/Fts/Rule/Graph)
-- [ ] 4.3 Implement weighted RRF fusion with configurable k
-- [ ] 4.4 Add `search_with_filter` method
-- [ ] 4.5 Integrate vectorizer for embedding queries
-- [ ] 4.6 Integrate query rewriter for natural language input
-- [ ] 4.7 Integrate reranker in post-processing
-- [ ] 4.8 Write integration tests
+- [x] 4.1 Extend `RetrievalEngine` with four-way fusion
+- [x] 4.2 Implement `RetrievalSource` enum (Vector/Fts/Rule/Graph)
+- [x] 4.3 Implement weighted RRF fusion with configurable k
+- [x] 4.4 Add `search_with_filter` method
+- [x] 4.5 Integrate vectorizer for embedding queries
+- [x] 4.6 Integrate query rewriter for natural language input
+- [x] 4.7 Integrate reranker in post-processing
+- [x] 4.8 Write integration tests
 
 ## 5. GMP Platform Integration
 
-- [ ] 5.1 Add `retrieval` module to `sqlrustgo-gmp` crate
-- [ ] 5.2 Create API endpoint `POST /api/v1/retrieval/search`
-- [ ] 5.3 Create API endpoint `POST /api/v1/retrieval/embed`
+- [x] 5.1 Add `retrieval` module to `sqlrustgo-gmp` crate
+- [x] 5.2 Create API endpoint `POST /api/v1/retrieval/search`
+- [x] 5.3 Create API endpoint `POST /api/v1/retrieval/embed`
 - [ ] 5.4 Write API integration tests
-- [ ] 5.5 Update `gmp-api` exports
+- [x] 5.5 Update `gmp-api` exports
 
 ## 6. Performance & Quality
 
