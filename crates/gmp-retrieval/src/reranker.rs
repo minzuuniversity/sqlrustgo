@@ -191,6 +191,7 @@ impl OllamaReranker {
 
             // Try parsing with potential trailing punctuation
             let cleaned: String = token.chars().filter(|c| c.is_ascii_digit() || *c == '.').collect();
+            let cleaned = cleaned.trim_end_matches('.');
             if let Ok(score) = cleaned.parse::<f32>() {
                 if (0.0..=1.0).contains(&score) {
                     return Ok(score);
