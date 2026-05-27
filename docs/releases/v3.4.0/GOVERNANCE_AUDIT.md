@@ -225,7 +225,7 @@
 | README.md | GA badge | v3.4.0 GA | ✅ 一致 |
 | VERSION_HISTORY.md | v3.4.0 GA | v3.4.0 GA (2026-05-24) | ✅ 一致 |
 | CHANGELOG.md | GA (2026-05-24) | GA (2026-05-24) | ✅ 一致 |
-| GA_GATE_REPORT.md | ⏳ PENDING (2026-05-21) | 27/35 PASS, 7 SKIP | ⚠️ 需更新 |
+| GA_GATE_REPORT.md | ✅ 68/68 PASS (2026-05-26) | 68/68 PASS, 1 SKIP (G-SF10) | ✅ 一致 |
 
 ### 6.2 分支状态一致性
 
@@ -253,14 +253,14 @@
 - [x] A-Gate 已通过（16/16 PASS, 2026-05-22）
 - [x] B-Gate 已通过（14/14 PASS, 2026-05-22）
 - [x] R-Gate 已通过（22/22 PASS local, 2026-05-24）
-- [⚠️] G-Gate 部分通过（27/35 PASS, 7 SKIP 待确认）
+- [x] G-Gate 已通过（68/68 PASS, 1 SKIP，2026-05-26）
 
 ### 7.3 文档完整性
 
 - [x] CHANGELOG 已更新（GA 日期 2026-05-24）
 - [x] Release Notes 路径正确（docs/releases/v3.4.0/CHANGELOG.md）
 - [x] 用户文档已更新（README.md GA badge）
-- [❌] **GOVERNANCE_AUDIT.md 缺失** — 需创建
+- [x] **GOVERNANCE_AUDIT.md 存在** — v3.4.0 GOVERNANCE_AUDIT.md 已创建 (2026-05-25)
 
 ---
 
