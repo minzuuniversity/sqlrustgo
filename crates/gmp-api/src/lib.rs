@@ -12,6 +12,7 @@
 
 pub mod audit;
 pub mod batch;
+pub mod compliance;
 pub mod dashboard;
 pub mod device;
 pub mod export;
@@ -21,6 +22,8 @@ pub mod rule_recommendation;
 pub mod signature;
 
 pub mod ai;
+pub mod gmp_integration;
+pub mod ollama_client;
 
 use serde::{Deserialize, Serialize};
 

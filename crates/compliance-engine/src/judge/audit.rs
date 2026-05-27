@@ -195,7 +195,7 @@ impl std::error::Error for AuditIntegrityError {}
 
 /// Auditor for recording judgments
 pub struct JudgmentAuditor {
-    writer: std::cell::RefCell<AuditLogWriter>,
+    writer: std::sync::Mutex<AuditLogWriter>,
 }
 
 impl Default for JudgmentAuditor {
@@ -207,7 +207,7 @@ impl Default for JudgmentAuditor {
 impl JudgmentAuditor {
     pub fn new() -> Self {
         Self {
-            writer: std::cell::RefCell::new(AuditLogWriter::new()),
+            writer: std::sync::Mutex::new(AuditLogWriter::new()),
         }
     }
 
@@ -221,7 +221,7 @@ impl JudgmentAuditor {
         llm_model: Option<&str>,
         latency_ms: u64,
     ) -> AuditLogEntry {
-        let mut writer = self.writer.borrow_mut();
+        let mut writer = self.writer.lock().unwrap();
         let prev_hash = writer.calculate_chain_hash().unwrap_or_default();
 
         let entry = AuditLogEntry {
