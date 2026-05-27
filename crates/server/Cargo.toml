@@ -25,8 +25,15 @@ async-trait.workspace = true
 uuid = { version = "1.0", features = ["v4"] }
 actix-web = "4"
 
+sqlrustgo-gmp-api = { path = "../gmp-api" }
+
 [dev-dependencies]
 tempfile.workspace = true
+
+[[bin]]
+name = "gmp-report-server"
+path = "src/bin/gmp_report_server.rs"
+doc = false
 
 [[bin]]
 name = "crash-worker"

@@ -5651,6 +5651,7 @@ dependencies = [
  "sqlrustgo-catalog",
  "sqlrustgo-common",
  "sqlrustgo-executor",
+ "sqlrustgo-gmp-api",
  "sqlrustgo-optimizer",
  "sqlrustgo-parser",
  "sqlrustgo-planner",
