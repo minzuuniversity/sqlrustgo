@@ -30,7 +30,10 @@ fn build_gmp_terms() -> HashMap<&'static str, &'static str> {
         ("放行检验", "Release Testing"),
         ("关键质量属性", "Critical Quality Attribute (CQA)"),
         // === 生产 ===
-        ("原料", "Raw Material / Active Pharmaceutical Ingredient (API)"),
+        (
+            "原料",
+            "Raw Material / Active Pharmaceutical Ingredient (API)",
+        ),
         ("检验", "Testing / In-Process Control (IPC)"),
         ("中控", "In-Process Control (IPC)"),
         ("生产", "Manufacturing / Production"),
@@ -123,8 +126,17 @@ pub fn validate_terms(output: &str, report_type: &str) -> (bool, f64, Vec<String
 
     // 检查输出中是否包含应翻译的关键术语（中文残留）
     let critical_terms = [
-        "批次", "放行", "偏差", "根因", "CAPA", "原料",
-        "规程", "审计追踪", "生产", "设备", "电子签名",
+        "批次",
+        "放行",
+        "偏差",
+        "根因",
+        "CAPA",
+        "原料",
+        "规程",
+        "审计追踪",
+        "生产",
+        "设备",
+        "电子签名",
     ];
 
     for term in critical_terms {
@@ -137,12 +149,17 @@ pub fn validate_terms(output: &str, report_type: &str) -> (bool, f64, Vec<String
     // 检查输出中是否包含标准格式关键词
     let required_keywords = match report_type {
         "fda_21cfr11" => vec![
-            "Batch", "Manufacturing", "Audit Trail",
-            "Electronic Signature", "Release",
+            "Batch",
+            "Manufacturing",
+            "Audit Trail",
+            "Electronic Signature",
+            "Release",
         ],
         "ema_annex11" => vec![
-            "Computerized System", "Validation",
-            "Data Integrity", "Audit Trail",
+            "Computerized System",
+            "Validation",
+            "Data Integrity",
+            "Audit Trail",
         ],
         _ => vec![],
     };

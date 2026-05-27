@@ -5,15 +5,12 @@
 //! with LLM-powered query rewriting and reranking.
 
 pub use sqlrustgo_gmp_retrieval::{
-    UnifiedSearcher, UnifiedSearchConfig, UnifiedSearchResult,
-    RetrievalEngine, RetrievalSource, SearchResult,
-    Bm25Search, RrfFusion,
-    OllamaVectorizer, OllamaEmbeddingClient,
-    EmbeddingRequest, EmbeddingResult, VectorizerError,
-    QueryRewriter, RewrittenQuery, QueryIntent, FilterCondition, RewriterError,
-    OllamaReranker, OllamaRerankClient, RerankRequest, RerankResult, RerankerError,
-    NoopReranker, RerankerWithFallback,
-    MXBAI_EMBED_LARGE, NOMIC_EMBED_TEXT,
+    Bm25Search, EmbeddingRequest, EmbeddingResult, FilterCondition, NoopReranker,
+    OllamaEmbeddingClient, OllamaRerankClient, OllamaReranker, OllamaVectorizer, QueryIntent,
+    QueryRewriter, RerankRequest, RerankResult, RerankerError, RerankerWithFallback,
+    RetrievalEngine, RetrievalSource, RewriterError, RewrittenQuery, RrfFusion, SearchResult,
+    UnifiedSearchConfig, UnifiedSearchResult, UnifiedSearcher, VectorizerError, MXBAI_EMBED_LARGE,
+    NOMIC_EMBED_TEXT,
 };
 
 /// Configuration for Ollama-based retrieval services
