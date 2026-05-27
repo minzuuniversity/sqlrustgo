@@ -186,11 +186,7 @@ pub async fn judge_handler(
     let audit_entry = AuditLogEntry {
         entry_id: uuid::Uuid::new_v4().to_string(),
         operation_id: request.operation_id,
-        rule_id: request
-            .rule_ids
-            .first()
-            .cloned()
-            .unwrap_or_default(),
+        rule_id: request.rule_ids.first().cloned().unwrap_or_default(),
         status: format!("{:?}", result.status),
         confidence_score: result.confidence_score,
         llm_model: result.model.clone(),
@@ -203,9 +199,7 @@ pub async fn judge_handler(
     // Calculate hash for audit entry
     let prev_hash = {
         let logs = state.audit_logs.lock().unwrap();
-        logs.last()
-            .map(|e| e.hash.clone())
-            .unwrap_or_default()
+        logs.last().map(|e| e.hash.clone()).unwrap_or_default()
     };
 
     let mut entry_with_hash = audit_entry;
@@ -259,7 +253,10 @@ pub fn create_service_state(judge: EngineJudge) -> ComplianceServiceState {
 pub fn create_router(state: Arc<ComplianceServiceState>) -> Router {
     Router::new()
         .route("/api/v1/compliance/judge", post(judge_handler))
-        .route("/api/v1/compliance/audit/{operation_id}", get(audit_handler))
+        .route(
+            "/api/v1/compliance/audit/{operation_id}",
+            get(audit_handler),
+        )
         .with_state(state)
 }
 
@@ -450,7 +447,9 @@ mod tests {
 
         // Create a judge with a mock client
         let judge = EngineJudge::new(
-            Box::new(crate::ollama_client::OllamaClientImpl::new("http://localhost:11434")),
+            Box::new(crate::ollama_client::OllamaClientImpl::new(
+                "http://localhost:11434",
+            )),
             "test-model",
         );
         let state = create_service_state(judge);

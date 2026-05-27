@@ -6,7 +6,7 @@ use crate::ai::report::{
     api::{generate_cross_lang_report, supported_standards, CrossLangReportRequest},
     template::{build_final_report, ReportCategory, ReportStandard},
     term_dictionary::{preprocess_terms, validate_terms},
-    translator::{CrossLangTranslator, TranslateConfig, NoopTranslateClient},
+    translator::{CrossLangTranslator, NoopTranslateClient, TranslateConfig},
 };
 
 /// ===== 本地模式（local_only=true）端到端测试 =====
@@ -14,7 +14,8 @@ use crate::ai::report::{
 #[tokio::test]
 async fn test_e2e_local_mode_batch_release() {
     let request = CrossLangReportRequest {
-        source_text: "批次放行报告：生产已完成，原料检验合格，偏差调查已关闭，CAPA已批准。".to_string(),
+        source_text: "批次放行报告：生产已完成，原料检验合格，偏差调查已关闭，CAPA已批准。"
+            .to_string(),
         standard: "fda_21cfr11".to_string(),
         batch_id: Some("LOT-2026-001".to_string()),
         local_only: true,
@@ -22,7 +23,11 @@ async fn test_e2e_local_mode_batch_release() {
 
     let response = generate_cross_lang_report(&request, None).await;
 
-    assert!(response.success, "Local mode should succeed: {:?}", response.error);
+    assert!(
+        response.success,
+        "Local mode should succeed: {:?}",
+        response.error
+    );
     assert_eq!(response.mode, "local");
     let report = response.report.expect("Report must exist");
     assert_eq!(report.title, "BATCH RELEASE REPORT");
@@ -34,7 +39,9 @@ async fn test_e2e_local_mode_batch_release() {
 #[tokio::test]
 async fn test_e2e_local_mode_ema_compliance() {
     let request = CrossLangReportRequest {
-        source_text: "计算机化系统验证报告：Audit Trail已审查，Electronic Signature已签署，数据完整性确认。".to_string(),
+        source_text:
+            "计算机化系统验证报告：Audit Trail已审查，Electronic Signature已签署，数据完整性确认。"
+                .to_string(),
         standard: "ema_annex11".to_string(),
         batch_id: Some("CSV-2026-001".to_string()),
         local_only: true,
@@ -51,7 +58,9 @@ async fn test_e2e_local_mode_ema_compliance() {
 #[tokio::test]
 async fn test_e2e_local_mode_no_batch_id() {
     let request = CrossLangReportRequest {
-        source_text: "设备验证报告：Installation Qualification已完成，Operational Qualification进行中。".to_string(),
+        source_text:
+            "设备验证报告：Installation Qualification已完成，Operational Qualification进行中。"
+                .to_string(),
         standard: "fda_21cfr11".to_string(),
         batch_id: None,
         local_only: true,
@@ -88,12 +97,21 @@ fn test_e2e_validation_full_flow() {
     let (valid, score, errors) = validate_terms(output, "fda_21cfr11");
 
     // 完整 FDA 报告应通过校验
-    assert!(score >= 0.5, "FDA report should have score >= 0.5, got {}", score);
+    assert!(
+        score >= 0.5,
+        "FDA report should have score >= 0.5, got {}",
+        score
+    );
     // errors 为空或仅有非关键项警告
-    let critical_errors: Vec<_> = errors.iter()
+    let critical_errors: Vec<_> = errors
+        .iter()
         .filter(|e| e.contains("缺失") || e.contains("Missing"))
         .collect();
-    assert!(critical_errors.is_empty(), "Should have no critical errors, got: {:?}", critical_errors);
+    assert!(
+        critical_errors.is_empty(),
+        "Should have no critical errors, got: {:?}",
+        critical_errors
+    );
 }
 
 #[test]
@@ -192,8 +210,20 @@ async fn test_e2e_unknown_standard_falls_back() {
 
 #[test]
 fn test_e2e_report_category_mapping() {
-    assert_eq!(ReportCategory::from_report_type("batch_release"), ReportCategory::BatchRelease);
-    assert_eq!(ReportCategory::from_report_type("deviation"), ReportCategory::DeviationInvestigation);
-    assert_eq!(ReportCategory::from_report_type("audit"), ReportCategory::AuditSummary);
-    assert_eq!(ReportCategory::from_report_type("auto"), ReportCategory::Auto);
+    assert_eq!(
+        ReportCategory::from_report_type("batch_release"),
+        ReportCategory::BatchRelease
+    );
+    assert_eq!(
+        ReportCategory::from_report_type("deviation"),
+        ReportCategory::DeviationInvestigation
+    );
+    assert_eq!(
+        ReportCategory::from_report_type("audit"),
+        ReportCategory::AuditSummary
+    );
+    assert_eq!(
+        ReportCategory::from_report_type("auto"),
+        ReportCategory::Auto
+    );
 }

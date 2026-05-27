@@ -70,6 +70,7 @@ pub mod persist_sqlite;
 pub mod provenance;
 pub mod provenance_lineage;
 pub mod report;
+pub mod retrieval;
 pub mod scenarios;
 pub mod semantic_embedding;
 pub mod signature;
@@ -77,7 +78,6 @@ pub mod sop;
 pub mod sql_api;
 pub mod trust_visualization;
 pub mod vector_search;
-pub mod retrieval;
 pub mod workflow;
 
 // Re-export commonly used types

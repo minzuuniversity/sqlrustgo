@@ -235,7 +235,7 @@ impl RetrievalService {
         // This would check actual service availability in a real implementation
         RetrievalHealthResponse {
             status: "ok".to_string(),
-            ollama_available: true,  // Would check actual Ollama connection
+            ollama_available: true, // Would check actual Ollama connection
             vectorizer_ready: true,
             reranker_ready: true,
         }
