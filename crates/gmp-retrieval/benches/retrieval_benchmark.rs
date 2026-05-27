@@ -5,10 +5,8 @@
 //! - 6.2 Recall measurement on GMP test corpus
 //! - 6.3 Stress test for 100+ concurrent queries
 
-use criterion::{black_box, criterion_group, criterion_main, Criterion, BenchmarkId};
-use sqlrustgo_gmp_retrieval::{
-    Bm25Search, RetrievalEngine, RetrievalSource, RrfFusion,
-};
+use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
+use sqlrustgo_gmp_retrieval::{Bm25Search, RetrievalEngine, RetrievalSource, RrfFusion};
 use std::time::Instant;
 
 /// GMP test corpus - sample documents for recall measurement
@@ -37,13 +35,7 @@ fn bench_bm25_search(c: &mut Criterion) {
     let corpus = gmp_test_corpus();
     let bm25 = Bm25Search::new(corpus);
 
-    let queries = vec![
-        "偏差报告",
-        "GMP生产",
-        "设备故障",
-        "清洁验证",
-        "SOP操作",
-    ];
+    let queries = vec!["偏差报告", "GMP生产", "设备故障", "清洁验证", "SOP操作"];
 
     let mut group = c.benchmark_group("bm25_search");
     for query in queries {
@@ -139,17 +131,17 @@ fn bench_recall(c: &mut Criterion) {
     // Ground truth: relevant doc IDs for "偏差报告"
     // Doc 0, 1, 2, 3, 4, 5, 10, 11, 12, 13, 14 should match
     let relevant_docs: std::collections::HashSet<usize> = [0, 1, 2, 3, 4, 5, 10, 11, 12, 13, 14]
-        .iter().cloned().collect();
+        .iter()
+        .cloned()
+        .collect();
 
     let mut group = c.benchmark_group("recall_measurement");
     group.bench_function("bm25_on_gmp_corpus", |b| {
         b.iter(|| {
             let results = bm25.search(black_box("偏差报告"), 10);
             // doc_id is usize directly, not String
-            let retrieved: std::collections::HashSet<usize> = results
-                .iter()
-                .map(|r| r.doc_id)
-                .collect();
+            let retrieved: std::collections::HashSet<usize> =
+                results.iter().map(|r| r.doc_id).collect();
 
             // Calculate recall
             let true_positives = retrieved.intersection(&relevant_docs).count();

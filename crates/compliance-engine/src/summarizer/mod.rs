@@ -30,8 +30,8 @@
 //! | AC6 | No hallucination | cite entry IDs in summary |
 
 use crate::types::{
-    Alert, AlertType, AuditEntry, AuditQuery, AuditSummary, ChainHealth,
-    ChainTimeRange, Importance, KeyEvent, Severity,
+    Alert, AlertType, AuditEntry, AuditQuery, AuditSummary, ChainHealth, ChainTimeRange,
+    Importance, KeyEvent, Severity,
 };
 use async_trait::async_trait;
 use chrono::{DateTime, Timelike, Utc};
@@ -150,9 +150,10 @@ impl ChainLoader {
                 description: "主管驳回 — 需要第二批准人".to_string(),
                 actor: "supervisor_li".to_string(),
                 timestamp: (now - chrono::Duration::hours(45)).timestamp(),
-                fields: [
-                    ("reason".to_string(), "Self-approval not allowed for critical deviations".to_string()),
-                ]
+                fields: [(
+                    "reason".to_string(),
+                    "Self-approval not allowed for critical deviations".to_string(),
+                )]
                 .into_iter()
                 .collect(),
             },
@@ -216,7 +217,8 @@ impl EventExtractor {
             }
             "Update" => {
                 // Critical parameter changes are major
-                if entry.description.contains("超标") || entry.description.contains("out-of-range") {
+                if entry.description.contains("超标") || entry.description.contains("out-of-range")
+                {
                     Importance::Critical
                 } else {
                     Importance::Minor
@@ -289,7 +291,11 @@ impl AlertGenerator {
         // Deduplicate by entry_id
         let mut seen = std::collections::HashSet::new();
         alerts.retain(|a| {
-            let key = format!("{}:{}", a.alert_type.as_str(), a.evidence.first().unwrap_or(&String::new()));
+            let key = format!(
+                "{}:{}",
+                a.alert_type.as_str(),
+                a.evidence.first().unwrap_or(&String::new())
+            );
             seen.insert(key)
         });
 
@@ -318,9 +324,9 @@ impl AlertGenerator {
     fn detect_missing_signatures(&self, entries: &[AuditEntry]) -> Vec<Alert> {
         let mut alerts = Vec::new();
         // Critical deviations require QA + supervisor approval
-        let has_critical = entries.iter().any(|e| {
-            e.fields.get("deviation_type") == Some(&"Critical".to_string())
-        });
+        let has_critical = entries
+            .iter()
+            .any(|e| e.fields.get("deviation_type") == Some(&"Critical".to_string()));
 
         if has_critical {
             let approvers: std::collections::HashSet<_> = entries
@@ -387,10 +393,7 @@ impl AlertGenerator {
                 alerts.push(Alert::new(
                     AlertType::ParameterOutOfRange,
                     Severity::Critical,
-                    format!(
-                        "Critical parameter out of range: {}",
-                        entry.description
-                    ),
+                    format!("Critical parameter out of range: {}", entry.description),
                     vec![entry.entry_id.clone()],
                     "Initiate CAPA immediately and quarantine affected batch".to_string(),
                 ));
@@ -440,12 +443,15 @@ impl HealthScoreCalculator {
         let authenticity = self.score_authenticity(entries, alerts);
 
         // Anomaly score from alerts reduces overall health
-        let anomaly_penalty = alerts.iter().map(|a| match a.severity {
-            Severity::Critical => 20.0,
-            Severity::Major => 10.0,
-            Severity::Minor => 5.0,
-            Severity::Info => 2.0,
-        }).sum::<f64>();
+        let anomaly_penalty = alerts
+            .iter()
+            .map(|a| match a.severity {
+                Severity::Critical => 20.0,
+                Severity::Major => 10.0,
+                Severity::Minor => 5.0,
+                Severity::Info => 2.0,
+            })
+            .sum::<f64>();
 
         let score = (completeness + consistency + timeliness + authenticity) / 4.0
             - anomaly_penalty.clamp(0.0, 40.0);
@@ -490,8 +496,14 @@ impl HealthScoreCalculator {
 
     fn score_timeliness(&self, entries: &[AuditEntry]) -> f64 {
         // Check if approvals happened within reasonable time (e.g., < 72 hours from creation)
-        let creates: Vec<_> = entries.iter().filter(|e| e.event_type == "Create").collect();
-        let approves: Vec<_> = entries.iter().filter(|e| e.event_type == "Approve").collect();
+        let creates: Vec<_> = entries
+            .iter()
+            .filter(|e| e.event_type == "Create")
+            .collect();
+        let approves: Vec<_> = entries
+            .iter()
+            .filter(|e| e.event_type == "Approve")
+            .collect();
 
         if creates.is_empty() || approves.is_empty() {
             return 100.0;
@@ -603,7 +615,9 @@ Alerts:
 
             // Detect sections
             let lower = trimmed.to_lowercase();
-            if lower.starts_with("executive summary") || lower.starts_with("1.") && executive.is_empty() {
+            if lower.starts_with("executive summary")
+                || lower.starts_with("1.") && executive.is_empty()
+            {
                 in_key_events = false;
                 in_anomalies = false;
                 // Capture content until next numbered section
@@ -668,8 +682,13 @@ Alerts:
         alerts: &[Alert],
     ) -> Result<(String, String), SummarizerError> {
         let prompt = self.build_prompt(
-            chain_id, entity_type, entity_id, time_range,
-            total_events, key_events, alerts,
+            chain_id,
+            entity_type,
+            entity_id,
+            time_range,
+            total_events,
+            key_events,
+            alerts,
         );
 
         let response = self.llm_client.chat(&prompt, &self.model).await?;
@@ -686,7 +705,10 @@ pub trait AuditChainSummarizer: Send + Sync {
     async fn summarize(&self, chain_id: &str) -> Result<AuditSummary, SummarizerError>;
 
     /// Summarize multiple chains (e.g., all deviations in a month)
-    async fn batch_summarize(&self, query: &AuditQuery) -> Result<Vec<AuditSummary>, SummarizerError>;
+    async fn batch_summarize(
+        &self,
+        query: &AuditQuery,
+    ) -> Result<Vec<AuditSummary>, SummarizerError>;
 
     /// Generate alerts only (faster, for real-time monitoring)
     async fn check_alerts(&self, chain_id: &str) -> Result<Vec<Alert>, SummarizerError>;
@@ -733,7 +755,10 @@ impl<L: SummarizerLlmClient + 'static> AuditChainSummarizer for DefaultAuditChai
         .map_err(|e| SummarizerError::Load(e.to_string()))?;
 
         if entries.len() > MAX_DIRECT_ENTRIES {
-            return Err(SummarizerError::ChainTooLarge(entries.len(), MAX_DIRECT_ENTRIES));
+            return Err(SummarizerError::ChainTooLarge(
+                entries.len(),
+                MAX_DIRECT_ENTRIES,
+            ));
         }
 
         // Step 2: Extract key events (AC3: > 90% accuracy target — LLM-assisted)
@@ -812,9 +837,7 @@ impl<L: SummarizerLlmClient + 'static> AuditChainSummarizer for DefaultAuditChai
 
     async fn health_score(&self, chain_id: &str) -> Result<ChainHealth, SummarizerError> {
         let entries = self.chain_loader.load_chain(chain_id).await?;
-        let alerts = self
-            .alert_generator
-            .generate_alerts(&entries, &[]);
+        let alerts = self.alert_generator.generate_alerts(&entries, &[]);
         Ok(self.health_calculator.calculate(&entries, &alerts))
     }
 }

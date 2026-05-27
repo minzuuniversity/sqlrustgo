@@ -116,11 +116,7 @@ impl RuleSet {
     pub fn get_rules_by_category(&self, category: &str) -> Vec<&MultiLangRule> {
         self.by_category
             .get(category)
-            .map(|ids| {
-                ids.iter()
-                    .filter_map(|id| self.rules.get(id))
-                    .collect()
-            })
+            .map(|ids| ids.iter().filter_map(|id| self.rules.get(id)).collect())
             .unwrap_or_default()
     }
 
@@ -128,11 +124,7 @@ impl RuleSet {
     pub fn get_rules_by_language(&self, language: &str) -> Vec<&MultiLangRule> {
         self.by_language
             .get(language)
-            .map(|ids| {
-                ids.iter()
-                    .filter_map(|id| self.rules.get(id))
-                    .collect()
-            })
+            .map(|ids| ids.iter().filter_map(|id| self.rules.get(id)).collect())
             .unwrap_or_default()
     }
 
@@ -310,10 +302,7 @@ impl RuleParser {
 
         for entry in walker {
             let path = entry.path();
-            let ext = path
-                .extension()
-                .and_then(|e| e.to_str())
-                .unwrap_or("");
+            let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
 
             let content = std::fs::read_to_string(path)
                 .map_err(|e| ParseError::Io(format!("Failed to read {:?}: {}", path, e)))?;
@@ -507,11 +496,7 @@ impl RuleParser {
     }
 
     /// 将规则集转换为 LLM prompt 格式
-    pub fn format_rules_for_prompt(
-        rule_ids: &[String],
-        set: &RuleSet,
-        language: &str,
-    ) -> String {
+    pub fn format_rules_for_prompt(rule_ids: &[String], set: &RuleSet, language: &str) -> String {
         let rule_texts = set.get_rule_texts(rule_ids, language);
         if rule_texts.is_empty() {
             return "(无适用规则)".to_string();
@@ -826,8 +811,7 @@ applies_to:
         let parser = RuleParser::new();
         let set = parser.load_builtin_rules();
 
-        let hints =
-            RuleParser::rule_category_hint(&["gmp-batch-001".to_string()], &set);
+        let hints = RuleParser::rule_category_hint(&["gmp-batch-001".to_string()], &set);
         assert_eq!(hints.len(), 1);
         assert!(hints[0].contains("batch_record"));
     }
