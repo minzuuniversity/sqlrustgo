@@ -66,10 +66,17 @@ impl ConfidenceCalculator {
             .count() as f64;
 
         // Negative indicators
-        let negative_count = ["uncertain", "maybe", "perhaps", "possibly", "might", "unclear"]
-            .iter()
-            .filter(|w| analysis_lower.contains(*w))
-            .count() as f64;
+        let negative_count = [
+            "uncertain",
+            "maybe",
+            "perhaps",
+            "possibly",
+            "might",
+            "unclear",
+        ]
+        .iter()
+        .filter(|w| analysis_lower.contains(*w))
+        .count() as f64;
 
         // Neutral indicators
         let neutral_count = ["could", "would", "should"]
@@ -87,8 +94,14 @@ impl ConfidenceCalculator {
         match score {
             s if s >= 0.9 => "Very high confidence based on clear evidence".to_string(),
             s if s >= 0.7 => "High confidence in judgment".to_string(),
-            s if s >= 0.5 => format!("Medium confidence. Analysis: {}", &analysis[..analysis.len().min(100)]),
-            _ => format!("Low confidence - manual review required. Analysis: {}", &analysis[..analysis.len().min(100)]),
+            s if s >= 0.5 => format!(
+                "Medium confidence. Analysis: {}",
+                &analysis[..analysis.len().min(100)]
+            ),
+            _ => format!(
+                "Low confidence - manual review required. Analysis: {}",
+                &analysis[..analysis.len().min(100)]
+            ),
         }
     }
 

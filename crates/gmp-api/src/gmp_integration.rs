@@ -7,9 +7,7 @@ use sqlrustgo_compliance_engine::judge::{
     ComplianceJudge as LlvmComplianceJudge, JudgmentRequest as LlvmJudgmentRequest,
     JudgmentResult as LlvmJudgmentResult, JudgmentStatus as LlvmJudgmentStatus, RuleParser,
 };
-use sqlrustgo_gmp::compliance::{
-    DeclarativeRule, Violation as GmpViolation,
-};
+use sqlrustgo_gmp::compliance::{DeclarativeRule, Violation as GmpViolation};
 use sqlrustgo_gmp::workflow::ApprovalAction;
 use std::sync::{Arc, Mutex};
 
@@ -203,21 +201,11 @@ impl ComplianceEventHook {
     /// Handle a GMP event and perform compliance checking
     pub fn on_event(&self, event: &GmpEvent) -> HybridComplianceResult {
         match event {
-            GmpEvent::DocumentCreated(doc_id) => {
-                self.check_document_compliance(*doc_id)
-            }
-            GmpEvent::DocumentStatusChanged(doc_id, _) => {
-                self.check_document_compliance(*doc_id)
-            }
-            GmpEvent::DocumentApprovalRequested(doc_id) => {
-                self.check_document_compliance(*doc_id)
-            }
-            GmpEvent::WorkflowApproval(action) => {
-                self.check_workflow_compliance(action)
-            }
-            GmpEvent::SignatureCollected(doc_id) => {
-                self.check_document_compliance(*doc_id)
-            }
+            GmpEvent::DocumentCreated(doc_id) => self.check_document_compliance(*doc_id),
+            GmpEvent::DocumentStatusChanged(doc_id, _) => self.check_document_compliance(*doc_id),
+            GmpEvent::DocumentApprovalRequested(doc_id) => self.check_document_compliance(*doc_id),
+            GmpEvent::WorkflowApproval(action) => self.check_workflow_compliance(action),
+            GmpEvent::SignatureCollected(doc_id) => self.check_document_compliance(*doc_id),
         }
     }
 
@@ -407,20 +395,20 @@ mod tests {
     #[test]
     fn test_gmp_event_doc_id() {
         assert_eq!(GmpEvent::DocumentCreated(1).doc_id(), Some(1));
-        assert_eq!(GmpEvent::DocumentStatusChanged(2, "Active".to_string()).doc_id(), Some(2));
-        assert_eq!(GmpEvent::WorkflowApproval(ApprovalAction::Approve).doc_id(), None);
+        assert_eq!(
+            GmpEvent::DocumentStatusChanged(2, "Active".to_string()).doc_id(),
+            Some(2)
+        );
+        assert_eq!(
+            GmpEvent::WorkflowApproval(ApprovalAction::Approve).doc_id(),
+            None
+        );
     }
 
     #[test]
     fn test_gmp_event_equality() {
-        assert_eq!(
-            GmpEvent::DocumentCreated(1),
-            GmpEvent::DocumentCreated(1)
-        );
-        assert_ne!(
-            GmpEvent::DocumentCreated(1),
-            GmpEvent::DocumentCreated(2)
-        );
+        assert_eq!(GmpEvent::DocumentCreated(1), GmpEvent::DocumentCreated(1));
+        assert_ne!(GmpEvent::DocumentCreated(1), GmpEvent::DocumentCreated(2));
     }
 
     /// Mock judge for testing
@@ -453,13 +441,11 @@ mod tests {
                     status: JudgmentStatus::NonCompliant,
                     confidence_score: 0.9,
                     explanation: "Non-compliant".to_string(),
-                    evidence: vec![
-                        sqlrustgo_compliance_engine::judge::types::RuleEvidence {
-                            rule_id: rule_id.to_string(),
-                            rule_text: description.to_string(),
-                            severity: Some("high".to_string()),
-                        },
-                    ],
+                    evidence: vec![sqlrustgo_compliance_engine::judge::types::RuleEvidence {
+                        rule_id: rule_id.to_string(),
+                        rule_text: description.to_string(),
+                        severity: Some("high".to_string()),
+                    }],
                     latency_ms: 10,
                     model: Some("mock".to_string()),
                     timestamp: chrono::Utc::now(),
