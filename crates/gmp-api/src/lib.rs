@@ -15,6 +15,7 @@ pub mod batch;
 pub mod dashboard;
 pub mod device;
 pub mod export;
+pub mod retrieval;
 pub mod rule_engine;
 pub mod signature;
 
