@@ -2,8 +2,8 @@
 //!
 //! Step 5: 将翻译结果转换为符合 FDA/EMA 规范的最终报告
 
-use serde::{Deserialize, Serialize};
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 
 /// 最终输出报告
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -185,8 +185,17 @@ mod tests {
 
     #[test]
     fn test_report_standard_from_str() {
-        assert_eq!(ReportStandard::from_str("fda_21cfr11"), ReportStandard::Fda21Cfr11);
-        assert_eq!(ReportStandard::from_str("EMA_ANNEX11"), ReportStandard::EmaAnnex11);
-        assert_eq!(ReportStandard::from_str("unknown"), ReportStandard::Fda21Cfr11);
+        assert_eq!(
+            ReportStandard::from_str("fda_21cfr11"),
+            ReportStandard::Fda21Cfr11
+        );
+        assert_eq!(
+            ReportStandard::from_str("EMA_ANNEX11"),
+            ReportStandard::EmaAnnex11
+        );
+        assert_eq!(
+            ReportStandard::from_str("unknown"),
+            ReportStandard::Fda21Cfr11
+        );
     }
 }

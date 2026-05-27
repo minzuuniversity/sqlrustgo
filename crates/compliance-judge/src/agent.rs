@@ -2,10 +2,10 @@
 //!
 //! Core agent that evaluates operations against GMP compliance rules using LLM.
 
+use crate::audit::AuditLogWriter;
 use crate::confidence::{ConfidenceCalculator, ConfidenceScore};
 use crate::ollama::{ChatMessage, ChatRequest, ChatResponse, OllamaClient, OllamaError};
 use crate::rules::Rule;
-use crate::audit::AuditLogWriter;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use thiserror::Error;
@@ -166,16 +166,18 @@ Respond in JSON format with:
 
         match json_result {
             Ok(json) => {
-                let status_str = json["status"]
-                    .as_str()
-                    .unwrap_or("NEEDS_REVIEW");
+                let status_str = json["status"].as_str().unwrap_or("NEEDS_REVIEW");
                 let reason = json["reason"]
                     .as_str()
                     .unwrap_or("No reason provided")
                     .to_string();
                 let evidence: Vec<String> = json["evidence"]
                     .as_array()
-                    .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+                    .map(|arr| {
+                        arr.iter()
+                            .filter_map(|v| v.as_str().map(String::from))
+                            .collect()
+                    })
                     .unwrap_or_default();
 
                 let status = match status_str.to_uppercase().as_str() {
@@ -201,7 +203,8 @@ Respond in JSON format with:
                 // Fallback: try to extract status from text
                 let content_upper = content.to_uppercase();
                 let status = if content_upper.contains("COMPLIANT")
-                    && !content_upper.contains("NON_COMPLIANT") {
+                    && !content_upper.contains("NON_COMPLIANT")
+                {
                     JudgmentStatus::Compliant
                 } else if content_upper.contains("NON_COMPLIANT") {
                     JudgmentStatus::NonCompliant
@@ -241,10 +244,10 @@ Respond in JSON format with:
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ollama::{ChatMessage, ChatResponse};
-    use async_trait::async_trait;
-    use crate::rules::{Rule, RuleCategory, RuleLanguage, Severity};
     use crate::confidence::ConfidenceScore;
+    use crate::ollama::{ChatMessage, ChatResponse};
+    use crate::rules::{Rule, RuleCategory, RuleLanguage, Severity};
+    use async_trait::async_trait;
 
     struct MockOllamaClient;
 
@@ -264,7 +267,10 @@ mod tests {
         async fn chat_stream(
             &self,
             _request: ChatRequest,
-        ) -> Result<tokio::sync::mpsc::Receiver<Result<crate::ollama::StreamChunk, OllamaError>>, OllamaError> {
+        ) -> Result<
+            tokio::sync::mpsc::Receiver<Result<crate::ollama::StreamChunk, OllamaError>>,
+            OllamaError,
+        > {
             let (tx, rx) = tokio::sync::mpsc::channel(1);
             Ok(rx)
         }

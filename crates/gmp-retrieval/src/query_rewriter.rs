@@ -177,10 +177,7 @@ impl QueryRewriter {
 
     /// Build prompt from query
     fn build_prompt(&self, query: &str) -> String {
-        format!(
-            "{}\n\n## 用户输入\n{}",
-            self.prompt_template, query
-        )
+        format!("{}\n\n## 用户输入\n{}", self.prompt_template, query)
     }
 
     /// Parse JSON response with fallback
