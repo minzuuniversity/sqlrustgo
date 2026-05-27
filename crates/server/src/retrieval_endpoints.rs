@@ -9,8 +9,8 @@
 use actix_web::{web, HttpResponse, Responder};
 use serde::{Deserialize, Serialize};
 use sqlrustgo_gmp::retrieval::{
-    EmbeddingRequest, OllamaConfig, OllamaEmbeddingClient, OllamaVectorizer,
-    UnifiedSearchConfig, UnifiedSearcher, MXBAI_EMBED_LARGE, NOMIC_EMBED_TEXT,
+    EmbeddingRequest, OllamaConfig, OllamaEmbeddingClient, OllamaVectorizer, UnifiedSearchConfig,
+    UnifiedSearcher, MXBAI_EMBED_LARGE, NOMIC_EMBED_TEXT,
 };
 use std::sync::{Arc, RwLock};
 use std::time::Instant;
@@ -332,9 +332,7 @@ pub async fn embed_handler(
 }
 
 /// GET /api/v1/retrieval/health - Health check endpoint
-pub async fn health_handler(
-    data: web::Data<Arc<RwLock<RetrievalAppState>>>,
-) -> impl Responder {
+pub async fn health_handler(data: web::Data<Arc<RwLock<RetrievalAppState>>>) -> impl Responder {
     let state = match data.read() {
         Ok(s) => s,
         Err(_) => {

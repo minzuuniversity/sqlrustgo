@@ -15,8 +15,10 @@ const REWRITE_TIMEOUT_MS: u64 = 500;
 /// Query intent types
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum QueryIntent {
     /// Search for documents
+    #[default]
     Search,
     /// Filter documents by criteria
     Filter,
@@ -26,11 +28,6 @@ pub enum QueryIntent {
     Aggregation,
 }
 
-impl Default for QueryIntent {
-    fn default() -> Self {
-        QueryIntent::Search
-    }
-}
 
 /// Filter condition for structured queries
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -177,10 +174,7 @@ impl QueryRewriter {
 
     /// Build prompt from query
     fn build_prompt(&self, query: &str) -> String {
-        format!(
-            "{}\n\n## 用户输入\n{}",
-            self.prompt_template, query
-        )
+        format!("{}\n\n## 用户输入\n{}", self.prompt_template, query)
     }
 
     /// Parse JSON response with fallback
@@ -201,7 +195,7 @@ impl QueryRewriter {
         // Try direct parse first
         let text_trimmed = text.trim();
         if let Ok(query) = serde_json::from_str::<RewrittenQuery>(text_trimmed) {
-            return Some(serde_json::to_string(&query).ok()?);
+            return serde_json::to_string(&query).ok();
         }
 
         // Try to find JSON in code block - search for ```json pattern

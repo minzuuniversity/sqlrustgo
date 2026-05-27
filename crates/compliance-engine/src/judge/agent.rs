@@ -159,9 +159,9 @@ impl ComplianceJudge {
         // Step 5: 计算置信度
         let clarity = ResponseClarity::from_response(&response.content);
         let rule_citations = self.count_rule_citations(&response.content, &matched_rule_ids);
-        let confidence_score = self
-            .confidence_calc
-            .calculate(response.logprob, clarity, rule_citations);
+        let confidence_score =
+            self.confidence_calc
+                .calculate(response.logprob, clarity, rule_citations);
 
         // Step 6: 解析响应为判断结果
         let judgment = self.parse_judgment_response(
@@ -195,11 +195,8 @@ impl ComplianceJudge {
     ) -> (String, Vec<String>) {
         // 如果请求指定了 rule_ids，使用指定的规则
         if !request.rule_ids.is_empty() {
-            let text = RuleParser::format_rules_for_prompt(
-                &request.rule_ids,
-                &self.rule_set,
-                language,
-            );
+            let text =
+                RuleParser::format_rules_for_prompt(&request.rule_ids, &self.rule_set, language);
             return (text, request.rule_ids.clone());
         }
 
@@ -208,8 +205,7 @@ impl ComplianceJudge {
         if all_ids.is_empty() {
             return (DEFAULT_RULES_TEXT.to_string(), Vec::new());
         }
-        let text =
-            RuleParser::format_rules_for_prompt(&all_ids, &self.rule_set, language);
+        let text = RuleParser::format_rules_for_prompt(&all_ids, &self.rule_set, language);
         (text, all_ids)
     }
 
@@ -277,14 +273,15 @@ VIOLATED_RULES: [规则ID列表，用逗号分隔，如有]
         let response_upper = response.to_uppercase();
 
         // Parse status
-        let status = if response_upper.contains("NON_COMPLIANT") || response_upper.contains("不合规")
-        {
-            JudgmentStatus::NonCompliant
-        } else if response_upper.contains("NEEDS_REVIEW") || response_upper.contains("需要审核") {
-            JudgmentStatus::NeedsReview
-        } else {
-            JudgmentStatus::Compliant
-        };
+        let status =
+            if response_upper.contains("NON_COMPLIANT") || response_upper.contains("不合规") {
+                JudgmentStatus::NonCompliant
+            } else if response_upper.contains("NEEDS_REVIEW") || response_upper.contains("需要审核")
+            {
+                JudgmentStatus::NeedsReview
+            } else {
+                JudgmentStatus::Compliant
+            };
 
         // Determine final status based on confidence
         let final_status = if confidence_score < 0.7 || clarity == ResponseClarity::Contradictory {
@@ -396,10 +393,7 @@ VIOLATED_RULES: [规则ID列表，用逗号分隔，如有]
 
     /// 获取规则严重级别
     fn get_rule_severity(&self, rule_id: &str) -> Option<String> {
-        self.rule_set
-            .rules
-            .get(rule_id)
-            .map(|r| r.severity.clone())
+        self.rule_set.rules.get(rule_id).map(|r| r.severity.clone())
     }
 }
 
@@ -488,8 +482,10 @@ mod tests {
         let client = Box::new(NoopOllamaClient);
         let judge = ComplianceJudge::new_with_builtin_rules(client, "test-model");
 
-        let request = JudgmentRequest::new("op-003", "Testing with rules")
-            .with_rules(vec!["gmp-batch-001".to_string(), "gmp-batch-002".to_string()]);
+        let request = JudgmentRequest::new("op-003", "Testing with rules").with_rules(vec![
+            "gmp-batch-001".to_string(),
+            "gmp-batch-002".to_string(),
+        ]);
         let result = judge.judge(&request).await;
 
         assert!(!result.evidence.is_empty());
@@ -498,7 +494,9 @@ mod tests {
     #[tokio::test]
     async fn test_judge_timeout() {
         // Use a client that simulates slow response
-        let client = Box::new(MockOllamaClient::new("COMPLIANT\nCONFIDENCE: 0.9\nREASON: OK"));
+        let client = Box::new(MockOllamaClient::new(
+            "COMPLIANT\nCONFIDENCE: 0.9\nREASON: OK",
+        ));
         let judge = ComplianceJudge::new_with_builtin_rules(client, "test-model");
 
         let request = JudgmentRequest::new("op-004", "Normal operation");
@@ -624,8 +622,8 @@ mod tests {
         let client = Box::new(NoopOllamaClient);
         let judge = ComplianceJudge::new_with_builtin_rules(client, "test-model");
 
-        let request = JudgmentRequest::new("op-001", "Test")
-            .with_rules(vec!["gmp-batch-001".to_string()]);
+        let request =
+            JudgmentRequest::new("op-001", "Test").with_rules(vec!["gmp-batch-001".to_string()]);
 
         let (text, ids) = judge.get_applicable_rules(&request, "zh");
         assert!(text.contains("gmp-batch-001"));
@@ -734,9 +732,8 @@ mod tests {
         ));
         let judge = ComplianceJudge::new_with_builtin_rules(client, "test-model");
 
-        let request =
-            JudgmentRequest::new("op-audit-001", "Audit test operation")
-                .with_rules(vec!["gmp-batch-001".to_string()]);
+        let request = JudgmentRequest::new("op-audit-001", "Audit test operation")
+            .with_rules(vec!["gmp-batch-001".to_string()]);
         let result = judge.judge(&request).await;
 
         assert_eq!(result.status, JudgmentStatus::Compliant);
@@ -759,8 +756,10 @@ mod tests {
         assert_eq!(result.status, JudgmentStatus::NonCompliant);
         assert!(!result.evidence.is_empty());
         // Evidence should include rule text
-        assert!(result.evidence[0].rule_text.contains("批记录")
-            || result.evidence[0].rule_text.contains("batch"));
+        assert!(
+            result.evidence[0].rule_text.contains("批记录")
+                || result.evidence[0].rule_text.contains("batch")
+        );
     }
 
     #[tokio::test]
@@ -768,8 +767,7 @@ mod tests {
         let client = Box::new(NoopOllamaClient);
         let judge = ComplianceJudge::new_with_builtin_rules(client, "test-model");
 
-        let request = JudgmentRequest::new("op-jp-001", "テスト操作")
-            .with_language("ja");
+        let request = JudgmentRequest::new("op-jp-001", "テスト操作").with_language("ja");
         let result = judge.judge(&request).await;
 
         assert_eq!(result.status, JudgmentStatus::Compliant);
