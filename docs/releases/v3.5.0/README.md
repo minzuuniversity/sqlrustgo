@@ -38,6 +38,7 @@ v3.6.0: Enterprise GMP Platform            📋 规划中
 | AI 偏差调查助手 | #1361 | 自然语言查询审计链，返回引用证据 | TODO |
 | LLM 合规判断引擎 | #1362 | 输入批次数据 + 规则，输出放行建议 + 理由 | TODO |
 | GMP Retrieval v3 集成 | #1363 | BM25 + Vector + Graph + FTS 四路融合 | TODO |
+| **跨语言合规报告** | **#1411** | GMP 中文记录 → FDA/EMA 英文报告 | ✅ 完成 |
 | 本地 LLM 推理支持 | #1364 | Ollama/bge-m3 本地推理，延迟 < 2s | TODO |
 | AI 流式输出 SSE | #1365 | Server-Sent Events 流式推理，首 token < 500ms | TODO |
 
