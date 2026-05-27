@@ -340,8 +340,8 @@ impl RuleService {
         self.rules
             .iter()
             .filter(|r| {
-                let status_match = status.map_or(true, |s| r.status == s);
-                let category_match = category.map_or(true, |c| r.tags.iter().any(|t| t == c));
+                let status_match = status.is_none_or(|s| r.status == s);
+                let category_match = category.is_none_or(|c| r.tags.iter().any(|t| t == c));
                 status_match && category_match
             })
             .collect()
@@ -463,7 +463,7 @@ impl RuleService {
     pub fn list_templates(&self, category: Option<RuleCategory>) -> Vec<&RuleTemplate> {
         self.templates
             .iter()
-            .filter(|t| category.map_or(true, |c| t.category == c))
+            .filter(|t| category.is_none_or(|c| t.category == c))
             .collect()
     }
 }

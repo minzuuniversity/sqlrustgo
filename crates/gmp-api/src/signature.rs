@@ -201,7 +201,7 @@ impl SignatureService {
         };
 
         let mut errors = Vec::new();
-        let mut hash_verified = true;
+        let hash_verified = true;
         let mut chain_verified = true;
         let mut compliance_verified = true;
 
@@ -256,7 +256,7 @@ impl SignatureService {
         self.signatures
             .iter()
             .filter(|s| {
-                let user_match = user_id.map_or(true, |id| s.signer_id == id);
+                let user_match = user_id.is_none_or(|id| s.signer_id == id);
                 let time_match = match (from, to) {
                     (Some(f), Some(t)) => s.timestamp >= f && s.timestamp <= t,
                     (Some(f), None) => s.timestamp >= f,
