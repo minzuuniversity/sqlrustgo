@@ -488,7 +488,7 @@ impl RulEstimator {
 
         let current_value = values.last()?;
         let threshold = reading_type.typical_threshold();
-        let initial_value = values.first()?;
+        let _initial_value = values.first()?;
 
         // Determine direction: for most metrics, exceeding threshold is failure
         // For temperature: increasing is bad
@@ -725,7 +725,7 @@ impl<'a> LlmReasoner<'a> {
 
         let rul_text = match rul_hours {
             Some(hours) if hours < 24.0 => format!("预计 {} 小时内可能发生故障", hours as i32),
-            Some(hours) => format!("预计在合理时间内需要关注",),
+            Some(_hours) => "预计在合理时间内需要关注".to_string(),
             None => "请密切关注设备状态".to_string(),
         };
 
@@ -830,7 +830,7 @@ impl InMemoryDevicePredictor {
         }
 
         let values: Vec<f64> = readings.iter().map(|r| r.value).collect();
-        let reading_type = readings
+        let _reading_type = readings
             .first()
             .map(|r| r.reading_type)
             .unwrap_or(DeviceReadingType::Temperature);
