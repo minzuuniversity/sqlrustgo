@@ -1,8 +1,22 @@
 pub mod bm25;
+pub mod ollama_vectorizer;
+pub mod query_rewriter;
 pub mod retrieval;
+pub mod reranker;
 pub mod rrf;
 
 pub use bm25::Bm25Search;
+pub use ollama_vectorizer::{
+    EmbeddingRequest, EmbeddingResult, OllamaEmbeddingClient, OllamaVectorizer,
+    VectorizerError, MXBAI_EMBED_LARGE, NOMIC_EMBED_TEXT,
+};
+pub use query_rewriter::{
+    FilterCondition, QueryIntent, QueryRewriter, RewrittenQuery, RewriterError,
+};
+pub use reranker::{
+    NoopReranker, OllamaReranker, OllamaRerankClient, RerankRequest, RerankResult,
+    RerankerError, RerankerResult, RerankerWithFallback,
+};
 pub use retrieval::RetrievalEngine;
 pub use rrf::RrfFusion;
 
