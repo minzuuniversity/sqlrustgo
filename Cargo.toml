@@ -57,6 +57,7 @@ members = [
     "crates/gmp-retrieval",
     "crates/gmp-api",
     "crates/compliance-judge",
+    "crates/evidence",
 ]
 
 [workspace.package]
@@ -90,6 +91,7 @@ sqlrustgo-qmd-bridge = { path = "crates/qmd-bridge" }
 sqlrustgo-gis = { path = "crates/gis" }
 information-schema = { path = "crates/information-schema" }
 sqlrustgo-observability = { path = "crates/observability" }
+sqlrustgo-evidence = { path = "crates/evidence" }
 
 tokio = { version = "1.0", features = ["full"] }
 tonic = "0.14"

@@ -1,0 +1,19 @@
+[package]
+name = "sqlrustgo-evidence"
+version = "0.1.0"
+edition = "2021"
+description = "Evidence-based SQL-Verified AI for SQLRustGo"
+license = "MIT"
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+thiserror = "2.0"
+uuid = { version = "1.0", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+
+[features]
+default = []
+
+
+[dev-dependencies]
+tokio = { version = "1.0", features = ["full"] }
