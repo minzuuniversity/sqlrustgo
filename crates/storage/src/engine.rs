@@ -61,6 +61,27 @@ pub(crate) fn evaluate_sql_expression(
 ) -> SqlResult<bool> {
     let expr = expr.trim();
 
+    // Strip outer parentheses recursively: ((id = 1)) -> (id = 1) -> id = 1
+    let mut expr = expr;
+    while expr.starts_with('(') && expr.ends_with(')') {
+        // Verify matching parens by checking inner content doesn't unbalance
+        let inner = &expr[1..expr.len()-1];
+        let mut depth = 0;
+        let mut valid = true;
+        for c in inner.chars() {
+            match c {
+                '(' => depth += 1,
+                ')' => { depth -= 1; if depth < 0 { valid = false; break; } }
+                _ => {}
+            }
+        }
+        if depth == 0 && valid {
+            expr = inner;
+        } else {
+            break;
+        }
+    }
+
     // Handle AND/OR
     if let Some(idx) = find_top_level_op(expr, "AND") {
         let left = &expr[..idx];
@@ -281,6 +302,26 @@ enum Predicate {
 /// Parse SQL expression string into Predicate AST
 fn parse_predicate(expr: &str, columns: &[String]) -> SqlResult<Predicate> {
     let expr = expr.trim();
+
+    // Strip outer parentheses recursively: ((id = 1)) -> (id = 1) -> id = 1
+    let mut expr = expr;
+    while expr.starts_with('(') && expr.ends_with(')') {
+        let inner = &expr[1..expr.len()-1];
+        let mut depth = 0;
+        let mut valid = true;
+        for c in inner.chars() {
+            match c {
+                '(' => depth += 1,
+                ')' => { depth -= 1; if depth < 0 { valid = false; break; } }
+                _ => {}
+            }
+        }
+        if depth == 0 && valid {
+            expr = inner;
+        } else {
+            break;
+        }
+    }
 
     // Handle AND/OR
     if let Some(idx) = find_top_level_op(expr, "AND") {
@@ -1450,6 +1491,32 @@ mod tests {
 
         // age <> 30
         let result = evaluate_sql_expression("age <> 30", &columns, &record);
+        assert!(result.is_ok());
+        assert!(result.unwrap());
+    }
+
+    #[test]
+    fn test_evaluate_sql_expression_parenthesized() {
+        let columns = vec!["id".to_string()];
+        let record = vec![Value::Integer(1)];
+
+        // Without parens: id = 1
+        let result = evaluate_sql_expression("id = 1", &columns, &record);
+        assert!(result.is_ok());
+        assert!(result.unwrap());
+
+        // With parens: (id = 1)
+        let result = evaluate_sql_expression("(id = 1)", &columns, &record);
+        assert!(result.is_ok(), "failed for (id = 1): {:?}", result);
+        assert!(result.unwrap());
+
+        // Double parens: ((id = 1))
+        let result = evaluate_sql_expression("((id = 1))", &columns, &record);
+        assert!(result.is_ok(), "failed for ((id = 1)): {:?}", result);
+        assert!(result.unwrap());
+
+        // Parens with AND: (id = 1 AND id = 1)
+        let result = evaluate_sql_expression("(id = 1 AND id = 1)", &columns, &record);
         assert!(result.is_ok());
         assert!(result.unwrap());
     }
