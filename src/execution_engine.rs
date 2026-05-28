@@ -30,10 +30,10 @@ use sqlrustgo_parser::parser::{
     GrantRoleStatement, GrantStatement, InsertStatement, MergeStatement,
     ObjectType as ParserObjectType, OptimizeStatement, OrderByExpression,
     Privilege as ParserPrivilege, RejectWorkflowStatement, RepairStatement, RevokeRoleStatement,
-    RevokeStatement, SelectStatement, SetRoleStatement, ShowStatement, StartWorkflowStatement,
+    RevokeStatement, SelectColumn, SelectStatement, SetRoleStatement, ShowStatement, StartWorkflowStatement,
     StoredProcParam as ParserStoredProcParam, StoredProcParamMode as ParserParamMode,
     StoredProcStatement as ParserStatement, TruncateStatement, VacuumMode, VacuumStatement,
-    WithClause, WithSelect,
+    WindowCall, WindowSpecification, WithClause, WithSelect,
 };
 use sqlrustgo_parser::transaction::IsolationLevel as ParserIsolationLevel;
 use sqlrustgo_parser::JoinType; // For join type matching
@@ -1111,22 +1111,34 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             vec![]
         };
 
+        // Pre-compute window function values if needed
+        let window_col_indices = find_window_columns(&select.columns);
+        let all_rows = rows.as_ref();
+        let window_cache = if !window_col_indices.is_empty() {
+            precompute_window_functions(&select.columns, &window_col_indices, all_rows, &table_info)
+        } else {
+            HashMap::new()
+        };
+
         let projected_rows: Vec<Vec<Value>> = if needs_projection {
             rows.into_owned()
                 .into_iter()
-                .map(|row| {
+                .enumerate()
+                .map(|(row_idx, row)| {
                     select
                         .columns
                         .iter()
-                        .map(|col| {
-                            evaluate_expression(
-                                &col.expression
-                                    .as_ref()
-                                    .unwrap_or(&Expression::Identifier(col.name.clone())),
-                                &row,
-                                &table_info,
-                            )
-                            .unwrap_or(Value::Null)
+                        .enumerate()
+                        .map(|(col_idx, col)| {
+                            let default_expr = Expression::Identifier(col.name.clone());
+                            let expr = col.expression.as_ref().unwrap_or(&default_expr);
+                            // Check if this is a window function and we have a pre-computed value
+                            if let Expression::WindowCall(_) = expr {
+                                if let Some(value) = window_cache.get(&(row_idx, col_idx)) {
+                                    return value.clone();
+                                }
+                            }
+                            evaluate_expression(expr, &row, &table_info).unwrap_or(Value::Null)
                         })
                         .collect()
                 })
@@ -5776,6 +5788,403 @@ fn eval_predicate_with_outer(
             Ok(val) if matches!(val, Value::Boolean(true))
         ),
     }
+}
+
+/// Check if an expression contains a window function call
+fn has_window_function(expr: &Expression) -> bool {
+    match expr {
+        Expression::WindowCall(_) => true,
+        Expression::BinaryOp(left, _, right) => has_window_function(left) || has_window_function(right),
+        Expression::IsNull(inner) => has_window_function(inner),
+        Expression::Like(inner, pattern, _) => has_window_function(inner) || has_window_function(pattern),
+        Expression::Between(expr, left, right) => {
+            has_window_function(expr) || has_window_function(left) || has_window_function(right)
+        }
+        Expression::CaseWhen(when_clauses, else_expr) => {
+            when_clauses.iter().any(|wc| has_window_function(&wc.condition) || has_window_function(&wc.result))
+                || else_expr.as_ref().map_or(false, |e| has_window_function(e))
+        }
+        Expression::In(expr, subquery) => {
+            has_window_function(expr) || has_window_function(&Expression::Subquery(Box::new((**subquery).clone())))
+        }
+        Expression::NotIn(expr, subquery) => {
+            has_window_function(expr) || has_window_function(&Expression::Subquery(Box::new((**subquery).clone())))
+        }
+        Expression::Exists(subquery) => has_window_function(&Expression::Subquery(Box::new((**subquery).clone()))),
+        Expression::NotExists(subquery) => has_window_function(&Expression::Subquery(Box::new((**subquery).clone()))),
+        _ => false,
+    }
+}
+
+/// Find indices of columns that contain window function calls
+fn find_window_columns(columns: &[SelectColumn]) -> Vec<usize> {
+    columns
+        .iter()
+        .enumerate()
+        .filter(|(_, col)| {
+            col.expression
+                .as_ref()
+                .map_or(false, |expr| has_window_function(expr))
+        })
+        .map(|(idx, _)| idx)
+        .collect()
+}
+
+/// Pre-compute window function values for all rows
+/// Returns a HashMap mapping (row_index, column_index) to computed Value
+fn precompute_window_functions(
+    columns: &[SelectColumn],
+    window_col_indices: &[usize],
+    rows: &[Vec<Value>],
+    table_info: &TableInfo,
+) -> HashMap<(usize, usize), Value> {
+    let mut results = HashMap::new();
+    if window_col_indices.is_empty() || rows.is_empty() {
+        return results;
+    }
+
+    // For each window column, compute values for all rows
+    for &col_idx in window_col_indices {
+        if let Some(expr) = &columns[col_idx].expression {
+            if let Expression::WindowCall(wc) = expr {
+                let values = compute_window_function_values(wc, rows, table_info);
+                for (row_idx, value) in values.into_iter().enumerate() {
+                    results.insert((row_idx, col_idx), value);
+                }
+            }
+        }
+    }
+
+    results
+}
+
+/// Compute window function values for all rows given a WindowCall
+fn compute_window_function_values(
+    wc: &WindowCall,
+    rows: &[Vec<Value>],
+    table_info: &TableInfo,
+) -> Vec<Value> {
+    let func_name = wc.func_name.to_uppercase();
+
+    // Handle functions that don't need partition/order
+    match func_name.as_str() {
+        "ROW_NUMBER" => {
+            return rows.iter().enumerate().map(|(i, _)| Value::Integer(i as i64 + 1)).collect();
+        }
+        _ => {}
+    }
+
+    // For functions that need partition and/or order, we need to group and sort
+    // Group rows by partition key
+    let partition_key_indices: Vec<usize> = wc
+        .window_spec
+        .partition_by
+        .iter()
+        .filter_map(|expr| {
+            if let Expression::Identifier(name) = expr {
+                find_column_index(name, table_info)
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    // Sort key indices and directions
+    let sort_key_info: Vec<(usize, bool)> = wc
+        .window_spec
+        .order_by
+        .iter()
+        .filter_map(|(expr, asc)| {
+            if let Expression::Identifier(name) = expr {
+                find_column_index(name, table_info).map(|idx| (idx, *asc))
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    // Group rows by partition
+    #[derive(Debug)]
+    struct Partition {
+        rows: Vec<Vec<Value>>,
+        original_indices: Vec<usize>,
+    }
+
+    let mut partitions: Vec<Partition> = Vec::new();
+
+    if partition_key_indices.is_empty() {
+        // Single partition (no PARTITION BY)
+        partitions.push(Partition {
+            rows: rows.to_vec(),
+            original_indices: (0..rows.len()).collect(),
+        });
+    } else {
+        // Multiple partitions
+        use std::collections::HashMap;
+        let mut partition_map: HashMap<String, Partition> = HashMap::new();
+
+        for (idx, row) in rows.iter().enumerate() {
+            let partition_key: String = partition_key_indices
+                .iter()
+                .map(|&col_idx| {
+                    row.get(col_idx)
+                        .map(|v| format!("{:?}", v))
+                        .unwrap_or_default()
+                })
+                .collect::<Vec<_>>()
+                .join("\x00");
+
+            partition_map
+                .entry(partition_key.clone())
+                .or_insert_with(|| Partition {
+                    rows: Vec::new(),
+                    original_indices: Vec::new(),
+                })
+                .rows
+                .push(row.clone());
+            partition_map
+                .get_mut(&partition_key)
+                .unwrap()
+                .original_indices
+                .push(idx);
+        }
+
+        // Sort each partition by sort keys
+        for partition in partition_map.values_mut() {
+            if !sort_key_info.is_empty() {
+                let rows_copy = partition.rows.clone();
+                let indices_copy = partition.original_indices.clone();
+
+                partition.rows.sort_by(|_, _| std::cmp::Ordering::Equal);
+                partition.original_indices = (0..partition.rows.len()).collect();
+
+                // We need to re-sort properly - use stable sort with original indices
+                let mut indexed_rows: Vec<(usize, Vec<Value>)> = partition
+                    .rows
+                    .drain(..)
+                    .enumerate()
+                    .map(|(i, r)| (indices_copy[i], r))
+                    .collect();
+
+                indexed_rows.sort_by(|(idx_a, row_a), (idx_b, row_b)| {
+                    let mut cmp = std::cmp::Ordering::Equal;
+                    for &(col_idx, ascending) in &sort_key_info {
+                        let val_a = row_a.get(col_idx).map(|v| v.clone()).unwrap_or(Value::Null);
+                        let val_b = row_b.get(col_idx).map(|v| v.clone()).unwrap_or(Value::Null);
+                        let ordering = compare_values_for_order(&val_a, &val_b);
+                        cmp = if ascending {
+                            ordering
+                        } else {
+                            ordering.reverse()
+                        };
+                        if cmp != std::cmp::Ordering::Equal {
+                            break;
+                        }
+                    }
+                    if cmp == std::cmp::Ordering::Equal {
+                        cmp = idx_a.cmp(idx_b);
+                    }
+                    cmp
+                });
+
+                partition.rows = indexed_rows.iter().map(|(_, r)| r.clone()).collect();
+                partition.original_indices = indexed_rows.iter().map(|(idx, _)| *idx).collect();
+            }
+        }
+
+        // Sort partitions by their first row's partition key for deterministic output
+        let mut sorted_partitions: Vec<_> = partition_map.into_iter().collect();
+        sorted_partitions.sort_by(|(key_a, _), (key_b, _)| key_a.cmp(key_b));
+        partitions = sorted_partitions.into_iter().map(|(_, p)| p).collect();
+    }
+
+    // Now compute window function values for each row
+    let mut result = vec![Value::Null; rows.len()];
+
+    for partition in &partitions {
+        let partition_size = partition.rows.len();
+
+        for (local_idx, row) in partition.rows.iter().enumerate() {
+            let value = match func_name.as_str() {
+                "LEAD" => {
+                    let offset = if wc.args.len() > 1 {
+                        wc.args[1..]
+                            .iter()
+                            .map(|arg| {
+                                evaluate_expression(arg, row, table_info)
+                                    .unwrap_or(Value::Null)
+                            })
+                            .filter_map(|v| v.as_integer())
+                            .last()
+                            .unwrap_or(1) as usize
+                    } else {
+                        1
+                    };
+                    let target_local_idx = local_idx + offset;
+                    if target_local_idx < partition_size {
+                        let target_row = &partition.rows[target_local_idx];
+                        if let Some(arg) = wc.args.first() {
+                            evaluate_expression(arg, target_row, table_info).unwrap_or(Value::Null)
+                        } else {
+                            Value::Null
+                        }
+                    } else {
+                        Value::Null
+                    }
+                }
+                "LAG" => {
+                    // LAG(expr, offset, default)
+                    // args[0] = expr (value to return)
+                    // args[1] = offset (default 1)
+                    // args[2] = default (default NULL)
+                    let offset: usize = if wc.args.len() > 1 {
+                        evaluate_expression(&wc.args[1], row, table_info)
+                            .ok()
+                            .and_then(|v| v.as_integer())
+                            .unwrap_or(1) as usize
+                    } else {
+                        1
+                    };
+                    if local_idx >= offset {
+                        let target_local_idx = local_idx - offset;
+                        let target_row = &partition.rows[target_local_idx];
+                        if let Some(arg) = wc.args.first() {
+                            evaluate_expression(arg, target_row, table_info).unwrap_or(Value::Null)
+                        } else {
+                            Value::Null
+                        }
+                    } else {
+                        // Default value for LAG (3rd argument)
+                        if wc.args.len() > 2 {
+                            evaluate_expression(&wc.args[2], row, table_info).unwrap_or(Value::Null)
+                        } else {
+                            Value::Null
+                        }
+                    }
+                }
+                "FIRST_VALUE" => {
+                    if let Some(arg) = wc.args.first() {
+                        // Default frame: RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+                        // First value is the first row in the frame
+                        let first_row = if partition_size > 0 {
+                            &partition.rows[0]
+                        } else {
+                            row
+                        };
+                        evaluate_expression(arg, first_row, table_info).unwrap_or(Value::Null)
+                    } else {
+                        Value::Null
+                    }
+                }
+                "LAST_VALUE" => {
+                    if let Some(arg) = wc.args.first() {
+                        // Default frame: RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+                        // Last value is the current row in the frame
+                        evaluate_expression(arg, row, table_info).unwrap_or(Value::Null)
+                    } else {
+                        Value::Null
+                    }
+                }
+                "NTH_VALUE" => {
+                    // NTH_VALUE(expr, n)
+                    // Returns the nth value in the window frame (from row 0 to current row)
+                    // args[0] = expr (value to return)
+                    // args[1] = n (1-indexed position)
+                    if wc.args.len() >= 2 {
+                        if let Some(n) = evaluate_expression(&wc.args[1], row, table_info)
+                            .ok()
+                            .and_then(|v| v.as_integer())
+                        {
+                            let n = n as usize;
+                            // nth value exists in frame if n <= frame_size (which is local_idx + 1)
+                            if n > 0 && n <= local_idx + 1 {
+                                let target_row = &partition.rows[n - 1];
+                                if let Some(arg) = wc.args.first() {
+                                    evaluate_expression(arg, target_row, table_info).unwrap_or(Value::Null)
+                                } else {
+                                    Value::Null
+                                }
+                            } else {
+                                Value::Null
+                            }
+                        } else {
+                            Value::Null
+                        }
+                    } else {
+                        Value::Null
+                    }
+                }
+                "NTILE" => {
+                    if let Some(arg) = wc.args.first() {
+                        if let Some(num_buckets) = evaluate_expression(arg, row, table_info)
+                            .ok()
+                            .and_then(|v| v.as_integer())
+                        {
+                            if num_buckets <= 0 {
+                                Value::Null
+                            } else {
+                                let row_number = local_idx + 1;
+                                let bucket = ((row_number - 1) as i64 * num_buckets / partition_size as i64) + 1;
+                                Value::Integer(bucket.min(num_buckets).max(1_i64))
+                            }
+                        } else {
+                            Value::Null
+                        }
+                    } else {
+                        Value::Null
+                    }
+                }
+                "SUM" | "AVG" | "COUNT" | "MIN" | "MAX" => {
+                    // Aggregate over default frame RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+                    if let Some(arg) = wc.args.first() {
+                        let values: Vec<Value> = partition.rows[0..=local_idx]
+                            .iter()
+                            .map(|r| evaluate_expression(arg, r, table_info).unwrap_or(Value::Null))
+                            .collect();
+                        match func_name.as_str() {
+                            "SUM" => {
+                                let sum: i64 = values
+                                    .iter()
+                                    .filter_map(|v| v.as_integer())
+                                    .sum();
+                                Value::Integer(sum)
+                            }
+                            "AVG" => {
+                                let sum: i64 = values.iter().filter_map(|v| v.as_integer()).sum();
+                                let count = values.iter().filter(|v| !matches!(v, Value::Null)).count() as i64;
+                                if count > 0 {
+                                    Value::Float(sum as f64 / count as f64)
+                                } else {
+                                    Value::Null
+                                }
+                            }
+                            "COUNT" => {
+                                let count = values.iter().filter(|v| !matches!(v, Value::Null)).count() as i64;
+                                Value::Integer(count)
+                            }
+                            "MIN" => {
+                                let min = values.iter().filter_map(|v| v.as_integer()).min();
+                                min.map(Value::Integer).unwrap_or(Value::Null)
+                            }
+                            "MAX" => {
+                                let max = values.iter().filter_map(|v| v.as_integer()).max();
+                                max.map(Value::Integer).unwrap_or(Value::Null)
+                            }
+                            _ => Value::Null,
+                        }
+                    } else {
+                        Value::Integer(local_idx as i64 + 1)
+                    }
+                }
+                _ => Value::Null,
+            };
+
+            let original_idx = partition.original_indices[local_idx];
+            result[original_idx] = value;
+        }
+    }
+
+    result
 }
 
 /// Evaluate an expression and return a Value
