@@ -230,4 +230,3 @@
 2. Beta：L2 全绿 + SQL Corpus >= 95%
 3. RC：TPC-H SF1 + Sysbench + 覆盖率达标
 4. GA：72h 长稳 + 备份恢复 + 崩溃恢复 + 回滚演练全通过
-
