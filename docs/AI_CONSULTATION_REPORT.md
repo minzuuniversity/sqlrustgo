@@ -271,12 +271,12 @@ TPC-H SF=10 在单节点 80 线程/408GB RAM 环境下，理论最优时间是�
 
 ## 七、附件
 
-- [VERSION_TREND.md](docs/releases/VERSION_TREND.md) — 版本趋势分析
-- [WEAK_POINT_EVOLUTION.md](docs/releases/WEAK_POINT_EVOLUTION.md) — 技术债务追踪
-- [COVERAGE_INVESTIGATION.md](docs/releases/v3.0.0/COVERAGE_INVESTIGATION.md) — v3.0.0 覆盖率异常根因
-- [v3.2.0 门禁规范](docs/governance/gate_spec_v320.md) — G1-G14 门禁定义
+- [VERSION_TREND.md](../docs/releases/VERSION_TREND.md) — 版本趋势分析
+- [WEAK_POINT_EVOLUTION.md](../docs/releases/WEAK_POINT_EVOLUTION.md) — 技术债务追踪
+- [COVERAGE_INVESTIGATION.md](../docs/releases/v3.0.0/COVERAGE_INVESTIGATION.md) — v3.0.0 覆盖率异常根因
+- [v3.2.0 门禁规范](../docs/governance/gate_spec_v320.md) — G1-G14 门禁定义
 - [GMP-Platform Wiki](http://192.168.0.252:3000/openclaw/GMP-Platform/wiki/Home)
-- [v3.5.0 覆盖率报告](target/llvm-cov/html/index.html) — 91.92%
+- [v3.5.0 覆盖率报告](../target/llvm-cov/html/index.html) — 87.36%
 
 ---
 

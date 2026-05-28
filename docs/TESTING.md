@@ -242,5 +242,5 @@ cargo llvm-cov lcov --output-path lcov.info
 
 - [CONTRIBUTING.md](../CONTRIBUTING.md) — 贡献指南
 - [BUILD.md](../BUILD.md) — 构建指南
-- [GATE_SPEC_MASTER.md](../governance/GATE_SPEC_MASTER.md) — 门禁规范
+- [docs/governance/gate_spec_v350.md](../governance/gate_spec_v350.md) — 门禁规范
 - [docs/releases/v3.4.0/](../releases/v3.4.0/) — v3.4.0 版本文档

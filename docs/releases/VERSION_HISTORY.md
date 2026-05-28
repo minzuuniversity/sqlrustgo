@@ -1,7 +1,7 @@
 # SQLRustGo 版本演进完整历史
 
 > **最后更新**: 2026-05-24
-> **当前版本**: v3.4.0 (GA)
+> **当前版本**: v3.5.0 (GA)
 
 ---
 
@@ -330,12 +330,20 @@ v2.5.0
 
 ## 五、路线图
 
-### 当前版本: v3.4.0 (GA)
+### 当前版本: v3.5.0 (GA)
 
-**核心特性**: GMP Management Suite
+**核心特性**: AI Native GMP Platform
 
 || 类别 | 功能 | 状态 |
 |------|------|------|------|
+| AI Agent Layer | Deviation Investigator | ✅ GA |
+| AI Agent Layer | Compliance Judge Agent | ✅ GA |
+| AI Agent Layer | Device Predictor Agent | ✅ GA |
+| AI Agent Layer | Report Generator Agent | ✅ GA |
+| LLM 推理 | Ollama 本地推理 | ✅ GA |
+| LLM 推理 | SSE 流式输出 | ✅ GA |
+| GMP Retrieval | v3 四路融合（BM25+Vector+Graph+FTS） | ✅ GA |
+| 跨语言报告 | FDA 21 CFR / EMA Annex 11 | ✅ GA |
 | P0 | GMP API GA | ✅ 完成 |
 | P0 | GMP Retrieval v2 | ✅ 完成 |
 | P1 | Trust Visualization CLI | ✅ 完成 |
@@ -372,13 +380,14 @@ v2.5.0
 | v3.2.0 GA | 🟢 90% | 85.81% | 完善 | 部分手工验证 |
 | v3.3.0 GA | 🟡 ~70% | 72.65% | **Beta/RC/GA 脚本缺失** | 无自动化门禁 |
 | v3.4.0 GA | 🟢 100% | 82.89% | 完整 | 首次完全合规 |
+| v3.5.0 GA | 🟢 100% | 87.36% | 完整 | L1覆盖率87.36%，TPC-H 22/22 |
 
 ### 治理文档索引
 
 - [版本趋势分析](VERSION_TREND.md) — commit 增长、覆盖率、门禁规范化趋势
 - [技术债务追踪](WEAK_POINT_EVOLUTION.md) — 历史版本技术债务开放/关闭状态
 - [v3.0.0 覆盖率异常调查](v3.0.0/COVERAGE_INVESTIGATION.md) — GA-6 阈值腐蚀根因
-- [v3.2.0 门禁规范](v3.2.0/GATE_SPEC.md) — G1-G14 门禁项定义
+- [v3.2.0 门禁规范](v3.2.0/GATE_SUMMARY.md) — 门禁项定义
 - [各版本 GATE_SUMMARY](v3.0.0/GATE_SUMMARY.md) — v3.0.0~v3.4.0 门禁总结
 
 ---
