@@ -446,11 +446,15 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     if !index_rows.is_empty() {
                         return Ok(index_rows);
                     }
+                } else {
                 }
+            } else {
             }
+        } else {
         }
         // Fallback: full table scan
-        storage.scan(&select.table)
+        let rows = storage.scan(&select.table)?;
+        Ok(rows)
     }
 
     /// Collect statistics for a table (ANALYZE)
@@ -987,6 +991,10 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
 
         let storage = self.storage.read().unwrap();
 
+        // DEBUG: print table state before SELECT
+        let select_records = storage.get_records(&select.table)?;
+        let table_info = storage.get_table_info(&select.table)?;
+
         // Step 1: FROM/JOIN - get initial rows and schema
         let (mut rows, table_info) = if select.join_clause.is_some() {
             let (owned_rows, info) = self.execute_join(select)?;
@@ -1078,8 +1086,28 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         // "SELECT *" means no projection (return full rows)
         // Otherwise project only the specified columns
         // NOTE: DISTINCT operates on projected rows, so projection must come first
+        // Step 4: PROJECTION — apply SELECT columns (projection)
+        // "SELECT *" means no projection (return full rows)
+        // Otherwise project only the specified columns
+        // NOTE: DISTINCT operates on projected rows, so projection must come first
+        // NOTE: ORDER BY may reference columns not in SELECT. We handle this by
+        //       pre-computing sort keys before projection, then sorting after DISTINCT.
         let needs_projection =
             !select.columns.is_empty() && !select.columns.iter().any(|c| c.name == "*");
+
+        // Pre-compute ORDER BY sort keys BEFORE projection
+        // This uses original table_info so column indices are correct
+        let order_by_sort_keys: Vec<Vec<Value>> = if !select.order_by.is_empty() {
+            rows.iter()
+                .map(|row| {
+                    select.order_by.iter().map(|ob| {
+                        evaluate_expression(&ob.expression, row, &table_info).unwrap_or(Value::Null)
+                    }).collect()
+                })
+                .collect()
+        } else {
+            vec![]
+        };
 
         let projected_rows: Vec<Vec<Value>> = if needs_projection {
             rows.into_owned()
@@ -1105,8 +1133,38 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             rows.into_owned()
         };
 
-        // Step 5: DISTINCT — deduplicate after projection
-        let deduped_rows: Vec<Vec<Value>> = if select.distinct {
+
+        // Step 6: ORDER BY — sort using pre-computed sort keys
+        // Sort keys were computed BEFORE projection, so column indices are correct
+        let ordered_rows = if !select.order_by.is_empty() {
+            let order_by_exprs = &select.order_by;
+            // Build (row, sort_key, original_idx) from projected_rows (owned copies)
+            let mut rows_with_sort: Vec<(Vec<Value>, Vec<Value>, usize)> = projected_rows
+                .into_iter()
+                .zip(order_by_sort_keys.into_iter())
+                .enumerate()
+                .map(|(orig_idx, (row, sort_key))| (row, sort_key, orig_idx))
+                .collect();
+
+            // DISTINCT: deduplicate while preserving first-occurrence
+            if select.distinct {
+                let mut seen: std::collections::HashSet<Vec<Value>> = std::collections::HashSet::new();
+                rows_with_sort.retain(|(row, _, _)| seen.insert(row.clone()));
+            }
+
+            // Sort by sort_key using original indices for stable tie-break
+            rows_with_sort.sort_by(|(row_a, keys_a, idx_a), (row_b, keys_b, idx_b)| {
+                let cmp = compare_order_by_with_keys(keys_a, keys_b, order_by_exprs);
+                if cmp != std::cmp::Ordering::Equal {
+                    cmp
+                } else {
+                    idx_a.cmp(idx_b)
+                }
+            });
+
+            rows_with_sort.into_iter().map(|(row, _, _)| row).collect()
+        } else if select.distinct {
+            // DISTINCT without ORDER BY: deduplicate projected rows
             let mut seen: std::collections::HashSet<Vec<Value>> = std::collections::HashSet::new();
             projected_rows
                 .into_iter()
@@ -1114,29 +1172,6 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 .collect()
         } else {
             projected_rows
-        };
-
-        // Step 6: ORDER BY — sort using original row values
-        let ordered_rows = if !select.order_by.is_empty() {
-            let order_by_exprs = &select.order_by;
-            let mut rows_with_idx: Vec<(Vec<Value>, usize)> = deduped_rows
-                .into_iter()
-                .enumerate()
-                .map(|(idx, row)| (row, idx))
-                .collect();
-
-            rows_with_idx.sort_by(|(row_a, idx_a), (row_b, idx_b)| {
-                let cmp = compare_order_by(row_a, row_b, order_by_exprs, &table_info);
-                if cmp != std::cmp::Ordering::Equal {
-                    cmp
-                } else {
-                    // Stable tie-break by original index
-                    idx_a.cmp(idx_b)
-                }
-            });
-            rows_with_idx.into_iter().map(|(row, _)| row).collect()
-        } else {
-            deduped_rows
         };
 
         // Step 7: LIMIT / OFFSET
@@ -2919,6 +2954,9 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             return Ok(ExecutorResult::new(vec![], count));
         }
 
+        // With WHERE clause
+        let where_clause = update.where_clause.as_ref().unwrap();
+
         // Check for UPDATE triggers
         let trigger_executor = TriggerExecutor::new(self.storage.clone());
         let before_triggers = trigger_executor.get_triggers_for_operation(
@@ -2948,22 +2986,16 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             })
             .collect();
 
-        let where_clause = update.where_clause.as_ref().unwrap();
-
         // Optimized path: no triggers, try index lookup first
         if !has_update_triggers {
-            // Try index lookup for simple equality WHERE clauses
             if let Some(index_info) = try_extract_index_lookup(where_clause, &table_info.columns) {
-                let indices = {
+                // Separate scope to avoid borrow conflict
+                let indices_opt = {
                     let storage = self.storage.read().unwrap();
-                    storage.find_by_index(
-                        &table_name,
-                        index_info.column_index,
-                        index_info.key_value,
-                    )
+                    storage.find_by_index(&table_name, index_info.column_index, index_info.key_value)
                 };
 
-                if let Some(indices) = indices {
+                if let Some(indices) = indices_opt {
                     if !indices.is_empty() {
                         // In-place update using get_table_records_mut
                         let count = {
@@ -3030,7 +3062,10 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             // Scan all rows
             let all_rows = {
                 let storage = self.storage.read().unwrap();
-                storage.scan(&table_name)?
+                let rows = storage.scan(&table_name)?;
+                for (i, r) in rows.iter().enumerate() {
+                }
+                rows
             };
 
             // Build updated rows - apply SET expressions to matching rows
@@ -3075,6 +3110,9 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 return Ok(ExecutorResult::new(vec![], 0));
             }
 
+            for (i, r) in updated_rows.iter().enumerate() {
+            }
+
             // Write back: delete all and insert updated + non-matching rows
             let mut storage = self.storage.write().unwrap();
             storage.delete(&table_name, &[])?; // Delete all
@@ -3084,6 +3122,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 .into_iter()
                 .filter(|row| !self.eval_predicate(where_clause, row, &table_info))
                 .collect();
+            for (i, r) in rows_to_keep.iter().enumerate() {
+            }
 
             // Insert non-matching rows
             if !rows_to_keep.is_empty() {
@@ -3094,6 +3134,12 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 storage.insert(&table_name, updated_rows)?;
             }
 
+            // Verify table state after writes
+            let final_rows = storage.scan(&table_name)?;
+            for (i, r) in final_rows.iter().enumerate() {
+            }
+
+            drop(storage);
             self.query_cache
                 .write()
                 .unwrap()
@@ -5915,6 +5961,41 @@ fn compare_order_by(
         } else {
             // NULLS LAST (default for ASC in most DBs)
             match (&val_a, &val_b) {
+                (Value::Null, Value::Null) => Ordering::Equal,
+                (Value::Null, _) => Ordering::Greater,
+                (_, Value::Null) => Ordering::Less,
+                _ => cmp,
+            }
+        };
+
+        if cmp != Ordering::Equal {
+            return if expr.ascending { cmp } else { cmp.reverse() };
+        }
+    }
+    Ordering::Equal
+}
+
+/// Compare pre-computed ORDER BY sort keys (no table_info needed)
+fn compare_order_by_with_keys(
+    a_keys: &[Value],
+    b_keys: &[Value],
+    order_by_exprs: &[OrderByExpression],
+) -> std::cmp::Ordering {
+    use std::cmp::Ordering;
+    for (i, expr) in order_by_exprs.iter().enumerate() {
+        let val_a = &a_keys[i];
+        let val_b = &b_keys[i];
+
+        let cmp = compare_values_for_order(val_a, val_b);
+        let cmp = if expr.nulls_first.unwrap_or(false) {
+            match (val_a, val_b) {
+                (Value::Null, Value::Null) => Ordering::Equal,
+                (Value::Null, _) => Ordering::Less,
+                (_, Value::Null) => Ordering::Greater,
+                _ => cmp,
+            }
+        } else {
+            match (val_a, val_b) {
                 (Value::Null, Value::Null) => Ordering::Equal,
                 (Value::Null, _) => Ordering::Greater,
                 (_, Value::Null) => Ordering::Less,
