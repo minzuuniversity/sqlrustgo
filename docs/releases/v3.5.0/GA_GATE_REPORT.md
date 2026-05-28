@@ -59,5 +59,5 @@
 ## 下一步
 
 1. ✅ 合并 `develop/v3.5.0` → `rc/v3.5.0`
-2. ⏳ 创建 Git Tag `v3.5.0` 在 `rc/v3.5.0`
-3. ⏳ 推送 Tag 到 origin
+2. ✅ 创建 Git Tag `v3.5.0` 在 `rc/v3.5.0`
+3. ✅ 推送 Tag 到 origin
