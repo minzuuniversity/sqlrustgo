@@ -28,9 +28,10 @@ get_best_coverage() {
     local tmp_tests="$COVERAGE_DIR/.tmp_${crate_name}_tests.json"
     local tmp_lib="$COVERAGE_DIR/.tmp_${crate_name}_lib.json"
 
-    # executor and storage have broken --tests (linking/panic issues), use --lib
-    if [[ "$crate" == "sqlrustgo-executor" ]] || [[ "$crate" == "sqlrustgo-storage" ]]; then
-        echo "[COVERAGE] $crate: using --lib (--tests broken)" >&2
+    # storage has broken --tests (varlen encoding panic), use --lib
+    # executor --tests now works (4 tests ignored with #[ignore])
+    if [[ "$crate" == "sqlrustgo-storage" ]]; then
+        echo "[COVERAGE] $crate: using --lib (varlen encoding panic in --tests)" >&2
         if cargo llvm-cov --package "$crate" --all-features --lib \
             --json --output-path "$tmp_lib" >/dev/null 2>&1; then
             local lib_pct=$(python3 -c "

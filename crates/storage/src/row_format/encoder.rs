@@ -59,8 +59,17 @@ pub fn encode_row(
         encode_value(&mut buf, val)?;
     }
 
-    // 4. NULL bitmap
-    let bitmap = encode_null_bitmap(null_bitmap);
+    // 4. NULL bitmap (sized by TOTAL column count, not null_bitmap.len())
+    // Decoder expects (fixed + varlen).div_ceil(8) bytes, so encoder must match
+    let total_columns = fixed_columns.len() + varlen_columns.len();
+    let null_bitmap_full = {
+        let mut full = vec![false; total_columns];
+        for (i, &is_null) in null_bitmap.iter().enumerate() {
+            full[i] = is_null;
+        }
+        full
+    };
+    let bitmap = encode_null_bitmap(&null_bitmap_full);
     buf.write_all(&bitmap)?;
 
     // 5. VarLen slots
