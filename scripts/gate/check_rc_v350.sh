@@ -67,7 +67,7 @@ log_info "R5: Coverage >= 85%"
 TOTAL=$((TOTAL+1))
 if command -v cargo-llvm-cov &>/dev/null; then
     # Use check_coverage.sh for consistent per-crate simple average
-    COVERAGE_OUTPUT=$(bash "$SCRIPT_DIR/check_coverage.sh" 2>&1)
+    COVERAGE_OUTPUT=$(bash "$SCRIPT_DIR/check_coverage_comprehensive.sh" 2>&1)
     COVERAGE_ECHO=$?
     echo "$COVERAGE_OUTPUT" | grep -E "Average|Result|passed|FAIL" | head -10
     if echo "$COVERAGE_OUTPUT" | grep -q "check passed"; then
