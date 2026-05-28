@@ -8,6 +8,9 @@ pub mod dtc {
     include!(concat!(env!("OUT_DIR"), "/sqlrustgo.dtc.rs"));
 }
 
+/// OpenAPI specification for HTTP endpoints
+pub mod openapi;
+
 #[cfg(test)]
 mod tests {
     use super::dtc::*;
