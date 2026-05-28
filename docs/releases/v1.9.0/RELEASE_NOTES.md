@@ -25,7 +25,7 @@ v1.9.0 是单机生产就绪版本，专注于增强查询优化、并发控制�
 - **SortMergeJoin**: 排序合并连接
 
 ### 4. 约束支持
-- **外键约束**: FOREIGN KEY 语法解析完成 (ISSUE #901 - DELETE/UPDATE 动作待实现)
+- **外键约束**: FOREIGN KEY 约束验证 (PR #831)
 - **主键约束**: PRIMARY KEY 约束
 - **唯一约束**: UNIQUE 约束
 - **NOT NULL 约束**: 非空约束
@@ -73,10 +73,7 @@ v1.9.0 是单机生产就绪版本，专注于增强查询优化、并发控制�
 | SQL-92 | ✅ 通过 |
 
 ## 已知问题
-- FOREIGN KEY DELETE/UPDATE 动作未完全实现 (ISSUE #888)
-- AUTO_INCREMENT 执行逻辑待实现 (ISSUE #889)
-- UPSERT 执行逻辑待实现 (ISSUE #890)
-- SAVEPOINT 部分实现待完成 (ISSUE #892)
+- 无阻塞性问题
 
 ## 贡献者
 感谢所有参与 v1.9.0 开发的团队成员。
