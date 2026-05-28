@@ -12,6 +12,7 @@ pub mod query_cache;
 pub mod query_cache_config;
 pub mod scan;
 pub mod simd;
+pub mod spill;
 pub mod stored_proc;
 pub mod trigger;
 pub mod trigger_eval;
