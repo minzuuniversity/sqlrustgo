@@ -110,6 +110,19 @@ v3.4.0: GMP Management Suite ✅ GA
 v3.5.0: AI Native GMP Platform ← 开发中
 ```
 
+### 版本治理趋势
+
+| 版本 | 合规率 | 覆盖率 | 门禁规范 | 主要问题 |
+|------|--------|--------|----------|---------|
+| v3.0.0 GA | 🔴 20% | 23.9% (GA-6 降级至22%) | 未建立 | **阈值腐蚀**：GA-6 从 85%→22%，两次降级 |
+| v3.1.0 GA | 🟡 58% | ~60% | 初始建立 | Alpha 无自动化 |
+| v3.2.0 GA | 🟢 90% | 85.81% | 完善 | 部分门禁项仍手工 |
+| v3.3.0 GA | 🟡 ~70% | **72.65%** (实测) | Beta/RC/GA 脚本缺失 | 无自动化门禁脚本 |
+| v3.4.0 GA | 🟢 100% | 82.89% | 完整 | 首次完全合规 |
+
+> 完整趋势分析: [VERSION_TREND.md](docs/releases/VERSION_TREND.md)
+> 技术债务追踪: [WEAK_POINT_EVOLUTION.md](docs/releases/WEAK_POINT_EVOLUTION.md)
+
 ## 文档索引
 
 ### v3.5.0 (开发中)
