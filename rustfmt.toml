@@ -1,0 +1,56 @@
+# rustfmt configuration for SQLRustGo
+# Based on tokio/serde best practices
+
+edition = "2021"
+max_width = 100
+use_small_heuristics = "Default"
+newline_style = "Unix"
+tab_spaces = 4
+
+# Import organization
+imports_granularity = "Crate"
+
+# Merge imports
+group_imports = "StdExternalCrate"
+
+# Reorder imports
+reorder_imports = true
+
+# Skip formatted files
+skip_files = []
+
+# Format arguments in binop expressions
+format_args = true
+
+# Normalize comments
+normalize_comments = true
+
+# Wrap comments
+comment_width = 80
+
+# Format string literals
+format_strings = true
+
+# Use tab for block indentation
+hard_tabs = false
+
+# Merge adjacent blank lines
+merge_derives = true
+
+# Order by visibility
+reorder_impl_items = true
+
+# Collapse single match arms
+condense_wildcard_suffixes = true
+
+# Use angle brackets for generics
+generic_style = "Angle"
+
+# Normalize numeric literals
+normalize_numeric_constants = true
+
+# Remove parentheses from return types
+fn_return_style = "Marked"
+
+# Use pointer nullability notation
+position_no_implicit_copy_in_closure_arguments = false
