@@ -10,6 +10,8 @@
 //! - `cte` - CTE and recursive query execution
 //! - `expression` - Expression evaluation
 //! - `execution` - Statement execution
+//! - `opcodes` - VM instruction definitions
+//! - `vm` - Basic VM interpreter
 
 mod context;
 mod cte;
@@ -17,6 +19,8 @@ mod cursor;
 mod execution;
 mod expression;
 mod handler;
+pub mod opcodes;
+pub mod vm;
 
 use crate::ExecutorResult;
 use sqlrustgo_storage::StorageEngine;
