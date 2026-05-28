@@ -35,10 +35,44 @@
 | v3.0.0 | TBD | 愿景 | 完整分布式数据库 | - |
 | v3.3.0 | 2026-05-20 | GA | Industrial Trust Platform（可信性工业闭环） | L4 |
 | v3.4.0 | 2026-05-24 | GA | GMP Management Suite（管理套件） | L4 |
+| v3.5.0 | 2026-05-29 | GA | AI Native GMP Platform（AI 原生 GMP 平台） | L4 |
 
 ---
 
 ## 二、各版本详细变更日志
+
+### v3.5.0 (2026-05-29) - AI Native GMP Platform GA
+
+#### 核心特性
+
+| 模块 | 功能 | 状态 |
+|------|------|------|
+| **AI Agent Layer** | Deviation Investigator（偏差调查助手） | ✅ GA |
+| **AI Agent Layer** | Compliance Judge Agent（合规判断引擎） | ✅ GA |
+| **AI Agent Layer** | Device Predictor Agent（设备预测 Agent） | ✅ GA |
+| **AI Agent Layer** | Report Generator Agent（报表生成 Agent） | ✅ GA |
+| **LLM 推理** | Ollama 本地推理 | ✅ GA |
+| **LLM 推理** | SSE 流式输出 | ✅ GA |
+| **GMP Retrieval** | v3 四路融合（BM25+Vector+Graph+FTS） | ✅ GA |
+| **跨语言报告** | FDA 21 CFR / EMA Annex 11 | ✅ GA |
+
+#### 版本目标
+
+- GMP API GA
+- GMP Retrieval v2
+- Trust Visualization CLI
+- MySQL Built-in Functions 增强
+
+#### 测试情况
+
+- 单元测试: 39+ (workspace)
+- 覆盖率: L1 87.36% (≥85%)
+- TPC-H SF=1: 22/22 PASS
+- 新增 crate: sqlrustgo-compliance-engine (59), sqlrustgo-gmp-retrieval (9), sqlrustgo-gmp-api (107), sqlrustgo-gmp (196)
+
+---
+
+### v3.4.0 (2026-05-24) - GMP Management Suite GA
 
 ### v3.3.0 (2026-05-20) - Industrial Trust Platform GA
 
