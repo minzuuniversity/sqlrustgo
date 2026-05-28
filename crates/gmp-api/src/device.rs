@@ -233,7 +233,7 @@ impl DeviceService {
     pub fn list_devices(&self, protocol: Option<Protocol>) -> Vec<&Device> {
         self.devices
             .values()
-            .filter(|d| protocol.map_or(true, |p| d.protocol == p))
+            .filter(|d| protocol.is_none_or(|p| d.protocol == p))
             .collect()
     }
 
@@ -271,7 +271,7 @@ impl DeviceService {
         }
         self.readings
             .entry(device_id.to_string())
-            .or_insert_with(Vec::new)
+            .or_default()
             .push(reading.clone());
 
         let device = self.devices.get_mut(device_id).unwrap();
@@ -292,14 +292,11 @@ impl DeviceService {
 
         Ok(readings
             .iter()
-            .filter(|r| {
-                let time_match = match (from, to) {
-                    (Some(f), Some(t)) => r.timestamp >= f && r.timestamp <= t,
-                    (Some(f), None) => r.timestamp >= f,
-                    (None, Some(t)) => r.timestamp <= t,
-                    (None, None) => true,
-                };
-                time_match
+            .filter(|r| match (from, to) {
+                (Some(f), Some(t)) => r.timestamp >= f && r.timestamp <= t,
+                (Some(f), None) => r.timestamp >= f,
+                (None, Some(t)) => r.timestamp <= t,
+                (None, None) => true,
             })
             .collect())
     }
@@ -348,7 +345,7 @@ impl DeviceService {
         self.events
             .iter()
             .filter(|e| {
-                let device_match = device_id.map_or(true, |id| e.device_id == id);
+                let device_match = device_id.is_none_or(|id| e.device_id == id);
                 let time_match = match (from, to) {
                     (Some(f), Some(t)) => e.timestamp >= f && e.timestamp <= t,
                     (Some(f), None) => e.timestamp >= f,

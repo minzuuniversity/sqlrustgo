@@ -91,13 +91,13 @@ pub async fn generate_cross_lang_report(
     request: &CrossLangReportRequest,
     translator: Option<&CrossLangTranslator>,
 ) -> CrossLangReportResponse {
-    use super::term_dictionary::{calculate_accuracy_score, preprocess_terms, validate_terms};
+    use super::term_dictionary::{preprocess_terms, validate_terms};
 
     // Step 1: 术语预处理
     let (preprocessed, term_count) = preprocess_terms(&request.source_text);
 
     // Step 2: 翻译
-    let (translated, accuracy_score, validation_passed, errors) = if request.local_only {
+    let (translated, accuracy_score, validation_passed, _errors) = if request.local_only {
         // 本地模式：仅术语替换，无 LLM
         let cleaned = preprocessed.trim().to_string();
         let (_, accuracy, errs_vec) = validate_terms(&cleaned, &request.standard);
