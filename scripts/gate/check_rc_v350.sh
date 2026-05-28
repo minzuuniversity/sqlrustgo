@@ -61,29 +61,23 @@ check "R3: Clippy" "cargo clippy --all-features -- -D warnings"
 # === R4: Format ===
 check "R4: Format" "cargo fmt --all -- --check"
 
-# === R5: Coverage ===
+# === R5: Coverage >= 85% (per-crate simple average, same as Alpha) ===
 log_info "R5: Coverage >= 85%"
 TOTAL=$((TOTAL+1))
 if command -v cargo-llvm-cov &>/dev/null; then
-    json_out=$(cargo llvm-cov test \
-        -p sqlrustgo-types \
-        -p sqlrustgo-parser \
-        -p sqlrustgo-planner \
-        -p sqlrustgo-optimizer \
-        -p sqlrustgo-executor \
-        -p sqlrustgo-storage \
-        -p sqlrustgo-transaction \
-        -p sqlrustgo-catalog \
-        --lib --json 2>/dev/null) || json_out="{}"
-    coverage_pct=$(echo "$json_out" | \
-        python3 -c "import sys,json; d=json.load(sys.stdin).get('data',[]); t=d[-1].get('totals',{}) if d else {}; print(t.get('regions',{}).get('percent','0') or '0')" 2>/dev/null) || coverage_pct="0"
-    coverage_pct=${coverage_pct:-0}
-    if [ -z "$coverage_pct" ] || [ "$coverage_pct" = "0" ]; then
-        echo "⏭️  SKIP (measurement unavailable)"; SKIP_REASONS+=("R5: cargo-llvm-cov issue")
-    elif awk "BEGIN{exit !($coverage_pct >= 85)}"; then
-        echo "✅ PASS (${coverage_pct}%)"; PASS=$((PASS+1))
+    # Use check_coverage.sh for consistent per-crate simple average
+    COVERAGE_OUTPUT=$(bash "$SCRIPT_DIR/../check_coverage.sh" 2>&1)
+    COVERAGE_ECHO=$?
+    echo "$COVERAGE_OUTPUT" | grep -E "Average|Result|passed|FAIL" | head -10
+    if echo "$COVERAGE_OUTPUT" | grep -q "check passed"; then
+        echo "✅ PASS (per-crate average)"; PASS=$((PASS+1))
     else
-        echo "❌ FAIL (${coverage_pct}% < 85%)"; BLOCKERS=$((BLOCKERS+1)); FAIL_REASONS+=("R5: Coverage ${coverage_pct}%")
+        AVG=$(echo "$COVERAGE_OUTPUT" | grep "Average coverage:" | awk '{print $3}' | tr -d '%')
+        if [[ -n "$AVG" ]] && awk "BEGIN{exit !($AVG >= 85)}"; then
+            echo "✅ PASS (${AVG}%)"; PASS=$((PASS+1))
+        else
+            echo "❌ FAIL (${AVG}% < 85%)"; BLOCKERS=$((BLOCKERS+1)); FAIL_REASONS+=("R5: Coverage ${AVG}%")
+        fi
     fi
 else
     echo "⏭️  SKIP (cargo-llvm-cov not installed)"; SKIP_REASONS+=("R5: No cargo-llvm-cov")
