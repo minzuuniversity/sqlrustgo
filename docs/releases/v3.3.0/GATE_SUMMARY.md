@@ -64,14 +64,18 @@
 
 ---
 
-## 五、覆盖率记录
+## 五、覆盖率记录（实测）
 
 | 阶段 | 目标 | 实际 | 状态 |
 |------|------|------|------|
-| Alpha | 75% | N/A | ❌ 脚本 bug |
-| Beta | ≥75% | N/A | - |
-| RC | ≥85% | N/A | - |
-| GA | ≥85% | 82.88% | ⚠️ 豁免 |
+| Alpha | 75% | N/A | ❌ 脚本 bug，无输出 |
+| Beta | ≥80% | **72.65%** (L1 5 crates) | ⚠️ 未达标（历史版本未强制） |
+| RC | ≥85% | N/A | — 历史无数据 |
+| GA | ≥85% | **72.65%** (L1 5 crates) | ⚠️ 未达标（历史版本豁免） |
+
+> 实测数据来源: `cargo llvm-cov test --lib -p sqlrustgo -p sqlrustgo-executor -p sqlrustgo-optimizer -p sqlrustgo-storage -p sqlrustgo-types`
+> v3.3.0 executor (27.09%) 和 storage (82.71%) 拉低了整体覆盖率。
+> gate_spec_v330.md 定义 Beta ≥80%，GA ≥85%，v3.3.0 实际未达标，属历史遗留。
 
 ---
 
