@@ -49,7 +49,8 @@ fn test_missing_parens() {
 fn test_update_nonexistent_silent() {
     let mut e = engine();
     let r = e.execute("UPDATE nonexistent SET a = 1");
-    assert!(r.is_ok());
+    // Updating non-existent table returns error
+    assert!(r.is_err(), "UPDATE on nonexistent table should error");
 }
 
 #[test]

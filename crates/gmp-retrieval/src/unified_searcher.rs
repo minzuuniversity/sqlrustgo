@@ -50,6 +50,7 @@ pub struct UnifiedSearchResult {
 pub struct UnifiedSearcher {
     config: UnifiedSearchConfig,
     retrieval: RetrievalEngine,
+    #[allow(dead_code)]
     vectorizer: Option<Arc<OllamaVectorizer>>,
     query_rewriter: Option<Arc<QueryRewriter>>,
     reranker: Option<Arc<dyn OllamaRerankClient>>,
@@ -59,7 +60,7 @@ impl UnifiedSearcher {
     /// Create a new unified searcher with all components
     pub fn new(
         retrieval: RetrievalEngine,
-        vectorizer: Option<Arc<OllamaVectorizer>>,
+        #[allow(dead_code)] vectorizer: Option<Arc<OllamaVectorizer>>,
         query_rewriter: Option<Arc<QueryRewriter>>,
         reranker: Option<Arc<dyn OllamaRerankClient>>,
         config: UnifiedSearchConfig,

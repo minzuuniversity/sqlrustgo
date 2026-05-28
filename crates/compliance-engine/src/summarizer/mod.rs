@@ -251,7 +251,7 @@ impl EventExtractor {
     }
 
     fn phase_from_timestamp(ts: i64) -> String {
-        let dt = DateTime::from_timestamp(ts, 0).unwrap_or_else(|| Utc::now());
+        let dt = DateTime::from_timestamp(ts, 0).unwrap_or_else(Utc::now);
         let hour = dt.hour();
         if hour < 6 {
             "夜间 (00:00-06:00)".to_string()
@@ -270,7 +270,7 @@ pub struct AlertGenerator;
 
 impl AlertGenerator {
     /// Generate alerts from audit entries and key events
-    pub fn generate_alerts(&self, entries: &[AuditEntry], key_events: &[KeyEvent]) -> Vec<Alert> {
+    pub fn generate_alerts(&self, entries: &[AuditEntry], _key_events: &[KeyEvent]) -> Vec<Alert> {
         let mut alerts = Vec::new();
 
         // Alert 1: Self-approval detection (F3 trigger)
@@ -363,7 +363,7 @@ impl AlertGenerator {
                 let hour = DateTime::from_timestamp(e.timestamp, 0)
                     .map(|dt| dt.hour())
                     .unwrap_or(0);
-                (hour >= 22 || hour < 6) && e.event_type == "Update"
+                !(6..22).contains(&hour) && e.event_type == "Update"
             })
             .collect();
 
@@ -522,7 +522,7 @@ impl HealthScoreCalculator {
         }
     }
 
-    fn score_authenticity(&self, entries: &[AuditEntry], alerts: &[Alert]) -> f64 {
+    fn score_authenticity(&self, _entries: &[AuditEntry], alerts: &[Alert]) -> f64 {
         // Presence of self-approval reduces authenticity
         let has_self_approval = alerts
             .iter()
@@ -797,7 +797,7 @@ impl<L: SummarizerLlmClient + 'static> AuditChainSummarizer for DefaultAuditChai
         .map_err(|_| SummarizerError::Timeout)?
         .map_err(|e| SummarizerError::Llm(e.to_string()))?;
 
-        let elapsed_ms = start.elapsed().as_millis() as i64;
+        let _elapsed_ms = start.elapsed().as_millis() as i64;
 
         Ok(AuditSummary {
             chain_id: chain_id.to_string(),
@@ -821,7 +821,7 @@ impl<L: SummarizerLlmClient + 'static> AuditChainSummarizer for DefaultAuditChai
         // TODO: Query GMP storage for matching chains
         // For now, return empty batch (real implementation would list chains from storage)
         let limit = query.limit.unwrap_or(100);
-        let mut summaries = Vec::with_capacity(limit.min(10));
+        let summaries = Vec::with_capacity(limit.min(10));
 
         // Placeholder: in real impl, enumerate chains from storage and summarize each
         // Use `batch_summarize` with streaming for chains > 10

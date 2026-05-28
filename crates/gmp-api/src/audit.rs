@@ -33,19 +33,22 @@ pub struct AuditRecord {
 pub struct AuditService;
 
 impl AuditService {
-    pub fn get_chain(chain_id: &str) -> Option<AuditChain> {
+    pub fn get_chain(_chain_id: &str) -> Option<AuditChain> {
         None
     }
 
-    pub fn sign_chain(chain_id: &str, signature: &SignatureRequest) -> Result<AuditChain, String> {
+    pub fn sign_chain(
+        _chain_id: &str,
+        _signature: &SignatureRequest,
+    ) -> Result<AuditChain, String> {
         Err("not implemented".to_string())
     }
 
-    pub fn export_chain(chain_id: &str, format: ExportFormat) -> Result<Vec<u8>, String> {
+    pub fn export_chain(_chain_id: &str, _format: ExportFormat) -> Result<Vec<u8>, String> {
         Err("not implemented".to_string())
     }
 
-    pub fn verify_chain(chain_id: &str) -> Result<bool, String> {
+    pub fn verify_chain(_chain_id: &str) -> Result<bool, String> {
         Err("not implemented".to_string())
     }
 }

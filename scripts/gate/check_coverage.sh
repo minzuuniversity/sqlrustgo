@@ -68,10 +68,10 @@ get_crate_coverage() {
     # Remove old files to ensure fresh data
     rm -f "$output_file" "$tmp_file"
 
-    echo "[COVERAGE] Running $crate..."
+    echo "[COVERAGE] Running $crate..." >&2
 
     # Run coverage for this crate
-    if cargo llvm-cov --package "$crate" --all-features --lib --json --output-path "$tmp_file" 2>/dev/null; then
+    if cargo llvm-cov --package "$crate" --all-features --lib --json --output-path "$tmp_file" >/dev/null 2>&1; then
         mv "$tmp_file" "$output_file"
         # Extract percentage using correct JSON path: data[0].totals.lines.percent
         local pct=$(python3 -c "
@@ -81,11 +81,11 @@ with open('$output_file') as f:
 pct = data.get('data', [{}])[0].get('totals', {}).get('lines', {}).get('percent', 0)
 print(f'{pct:.2f}')
 " 2>/dev/null || echo "0")
-        echo "  -> $crate: ${pct}%"
+        echo "  -> $crate: ${pct}%" >&2
         echo "$pct"
     else
         rm -f "$tmp_file"
-        echo "  -> $crate: FAILED"
+        echo "  -> $crate: FAILED" >&2
         echo "0"
     fi
 }

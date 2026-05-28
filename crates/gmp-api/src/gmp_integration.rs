@@ -7,7 +7,7 @@ use sqlrustgo_compliance_engine::judge::{
     ComplianceJudge as LlvmComplianceJudge, JudgmentRequest as LlvmJudgmentRequest,
     JudgmentResult as LlvmJudgmentResult, JudgmentStatus as LlvmJudgmentStatus, RuleParser,
 };
-use sqlrustgo_gmp::compliance::{DeclarativeRule, Violation as GmpViolation};
+use sqlrustgo_gmp::compliance::Violation as GmpViolation;
 use sqlrustgo_gmp::workflow::ApprovalAction;
 use std::sync::{Arc, Mutex};
 
@@ -145,6 +145,7 @@ impl GmpEvent {
 /// Event hook for GMP compliance checking
 pub struct ComplianceEventHook {
     judge: Option<Arc<dyn LlvmComplianceJudgeTrait>>,
+    #[allow(dead_code)]
     rule_parser: RuleParser,
 }
 
@@ -259,6 +260,7 @@ pub struct ComplianceEventStore {
 struct ComplianceEvent {
     event: GmpEvent,
     result: HybridComplianceResult,
+    #[allow(dead_code)]
     timestamp: chrono::DateTime<chrono::Utc>,
 }
 
