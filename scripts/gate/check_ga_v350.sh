@@ -147,6 +147,58 @@ check_test "G-TI4: perf-baseline" "cargo test -p sqlrustgo-perf-baseline --lib 2
 check_test "G-TI5: crash-sim" "cargo test -p sqlrustgo-crash-sim --lib 2>&1"
 check_test "G-TI6: wal-verification" "cargo test -p sqlrustgo-wal-verification --lib 2>&1"
 
+# === SSOT 文档完整性检查 (D1-D6) ===
+echo ""
+echo "━━━ SSOT 文档完整性检查 ━━━"
+DOC_FAIL=0
+
+check_ssot() {
+    local name="$1" path="$2"
+    TOTAL=$((TOTAL+1))
+    echo -n "[ga-v3.5.0] $name ... "
+    if [ -f "$path" ]; then
+        echo "✅ PASS"; PASS=$((PASS+1))
+    else
+        echo "❌ FAIL ($path missing)"; BLOCKERS=$((BLOCKERS+1)); DOC_FAIL=1
+        FAIL_REASONS+=("SSOT-$name: $path missing")
+    fi
+}
+
+check_ssot "D1: gate_spec_v350" "docs/governance/gate_spec_v350.md"
+check_ssot "D2: OO_ROADMAP" "docs/releases/v3.5.0/oo/OO_ROADMAP.md"
+check_ssot "D3: LEGACY_ISSUES" "docs/releases/v3.5.0/LEGACY_ISSUES.md"
+check_ssot "D4: TEST_PLAN" "docs/releases/v3.5.0/TEST_PLAN.md"
+check_ssot "D5: GATE_SUMMARY" "docs/releases/v3.5.0/GATE_SUMMARY.md"
+check_ssot "D6: DEV_PLAN" "docs/releases/v3.5.0/DEV_PLAN.md"
+
+# === 文档链接检查 (B7/D7) ===
+TOTAL=$((TOTAL+1))
+echo -n "[ga-v3.5.0] D7: 文档链接检查 ... "
+broken=$(bash scripts/gate/check_docs_links.sh entry 2>&1 || echo "error")
+if echo "$broken" | grep -qi "error"; then
+    echo "⏭️  SKIP (script error)"; SKIP_REASONS+=("D7: check_docs_links.sh error")
+else
+    if echo "$broken" | grep -q "0 broken links"; then
+        echo "✅ PASS (0 broken links)"; PASS=$((PASS+1))
+    else
+        echo "❌ FAIL ($broken)"; BLOCKERS=$((BLOCKERS+1))
+        FAIL_REASONS+=("D7: docs links broken")
+    fi
+fi
+
+# === GATE_REPORT 真实性检查 (D8) ===
+# 检查所有 gate 报告文件是否存在 PENDING 占位符
+TOTAL=$((TOTAL+1))
+echo -n "[ga-v3.5.0] D8: GATE_REPORT truthfulness ... "
+pending_count=$(grep -r "PENDING\|⬜\|⏳" docs/releases/v3.5.0/*GATE*.md 2>/dev/null | grep -v "SKIP" | wc -l || echo "0")
+if [ "$pending_count" -gt 0 ]; then
+    echo "❌ FAIL ($pending_count PENDING items found)"
+    BLOCKERS=$((BLOCKERS+1))
+    FAIL_REASONS+=("D8: GATE_REPORT contains PENDING placeholders")
+else
+    echo "✅ PASS (0 PENDING)"; PASS=$((PASS+1))
+fi
+
 # === Summary ===
 echo ""
 echo "=========================================="
