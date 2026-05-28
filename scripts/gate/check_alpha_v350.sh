@@ -58,7 +58,7 @@ run_check "Format" "cargo fmt --all -- --check"
 
 echo ""
 echo "=== A5: Coverage ==="
-bash "$SCRIPT_DIR/check_coverage.sh" || FAILED=1
+bash "$SCRIPT_DIR/check_coverage_comprehensive.sh" || FAILED=1
 
 echo ""
 echo "=== TI: Trust Infrastructure ==="
