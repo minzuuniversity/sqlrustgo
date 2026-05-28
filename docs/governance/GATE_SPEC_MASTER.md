@@ -73,9 +73,10 @@ A-Gate → B-Gate → R-Gate → G-Gate
 | types | ≥50% |
 | **L1 整体** | **≥50%** |
 
-### 2.4 覆盖率测量方法
+### 2.4 覆盖率测量方法（综合方法）
 
 > **重要**: 覆盖率测量仅针对 L1 核心 crate，不包含 workspace 所有 crate。
+> **方法**: 综合方法（`--tests` 优先，`--lib` fallback）。原因：--lib only 忽略外部集成测试覆盖贡献，最高可达 +6.30pp（executor）。此方法已在 RC2 确立（commit aa830bcd），所有 gate 统一使用。
 
 **L1 Crates 定义**:
 ```bash
@@ -93,30 +94,32 @@ L1_CRATES=(
 
 **覆盖率命令**:
 ```bash
-# 完整 L1 覆盖率测量
-cargo llvm-cov test \
-    -p sqlrustgo-types \
-    -p sqlrustgo-parser \
-    -p sqlrustgo-planner \
-    -p sqlrustgo-optimizer \
-    -p sqlrustgo-executor \
-    -p sqlrustgo-storage \
-    -p sqlrustgo-transaction \
-    -p sqlrustgo-catalog \
-    --lib
-
-# 获取汇总行覆盖率
-cargo llvm-cov test L1_CRATES --lib 2>&1 | grep "^TOTAL"
+# 综合覆盖率测量（每个 crate 单独执行）
+for crate in "${L1_CRATES[@]}"; do
+    # 优先使用 --tests（更广覆盖，包含外部集成测试）
+    if cargo llvm-cov test --package "$crate" --all-features --tests 2>/dev/null | grep "^TOTAL" | grep -q "%"; then
+        echo "$crate: $(cargo llvm-cov test --package "$crate" --all-features --tests 2>/dev/null | grep '^TOTAL' | awk '{print $4}') --tests"
+    else
+        # fallback 到 --lib（某些 crate 无外部测试）
+        echo "$crate: $(cargo llvm-cov test --package "$crate" --all-features --lib 2>/dev/null | grep '^TOTAL' | awk '{print $4}') --lib (fallback)"
+    fi
+done
 ```
 
 **门禁脚本中的使用**:
 ```bash
-# Beta Gate (≥75%)
-cargo llvm-cov test L1_CRATES --lib | grep "^TOTAL" | awk '{print $4}'  # 取第4列(行覆盖率)
-
-# RC/GA Gate (≥85%)
-cargo llvm-cov test L1_CRATES --lib | grep "^TOTAL" | awk '{print $4}'  # ≥85% PASS
+# Beta Gate (≥75%) / RC/GA Gate (≥85%)
+# 综合方法：每个 crate 单独测量，取平均值
+for crate in "${L1_CRATES[@]}"; do
+    cargo llvm-cov test --package "$crate" --all-features --tests 2>/dev/null | grep "^TOTAL" | awk '{print $4}'
+done
+# 取所有 crate 的平均值作为 L1 整体覆盖率
 ```
+
+**为什么不只用 --lib**:
+- `--lib` 仅测量 `src/` 代码，忽略 `tests/` 外部集成测试
+- 实测差异：parser +5.64pp, optimizer +6.05pp, executor +6.30pp
+- 综合方法更真实反映测试覆盖情况
 
 **不计入覆盖率的 Crates** (可跳过):
 - `sqlrustgo-server` - 服务集成

@@ -1,10 +1,11 @@
 # v3.5.0 Release — AI Native GMP Platform
 
-> **状态**: 开发中
+> **状态**: ✅ GA (2026-05-28)
 > **起点**: develop/v3.5.0（基于 v3.4.0 GA）
-> **分支**: `develop/v3.5.0`（规划中）
+> **分支**: `develop/v3.5.0`
+> **Tag**: `v3.5.0` → `5720805b`
 > **Milestone**: v3.5.0（id=23）
-> **计划发布**: 2026-08-05
+> **发布日期**: 2026-05-28
 
 ---
 
@@ -35,31 +36,37 @@ v3.6.0: Enterprise GMP Platform            📋 规划中
 
 | 功能 | Issue | 验收条件 | 状态 |
 |------|-------|----------|------|
-| AI 偏差调查助手 | #1361 | 自然语言查询审计链，返回引用证据 | TODO |
-| LLM 合规判断引擎 | #1362 | 输入批次数据 + 规则，输出放行建议 + 理由 | TODO |
-| GMP Retrieval v3 集成 | #1363 | BM25 + Vector + Graph + FTS 四路融合 | TODO |
-| **跨语言合规报告** | **#1411** | GMP 中文记录 → FDA/EMA 英文报告 | ✅ 完成 |
-| 本地 LLM 推理支持 | #1364 | Ollama/bge-m3 本地推理，延迟 < 2s | TODO |
-| AI 流式输出 SSE | #1365 | Server-Sent Events 流式推理，首 token < 500ms | TODO |
+| AI 偏差调查助手 | #1361 | 自然语言查询审计链，返回引用证据 | ✅ DONE |
+| LLM 合规判断引擎 | #1362 | 输入批次数据 + 规则，输出放行建议 + 理由 | ✅ DONE |
+| GMP Retrieval v3 集成 | #1363 | BM25 + Vector + Graph + FTS 四路融合 | ✅ DONE |
+| **跨语言合规报告** | **#1411** | GMP 中文记录 → FDA/EMA 英文报告 | ✅ DONE |
+| 本地 LLM 推理支持 | #1364 | Ollama/bge-m3 本地推理，延迟 < 2s | ✅ DONE |
+| AI 流式输出 SSE | #1365 | Server-Sent Events 流式推理，首 token < 500ms | ✅ DONE |
 
 ---
 
 ## 三、门禁状态
 
-### Alpha Gate 🔄 进行中
+### GA Gate ✅ PASSED (2026-05-28)
 
-| # | 检查项 | 结果 |
-|---|--------|------|
-| A1 | Build | ⬜ |
-| A2 | Unit Tests | ⬜ |
-| A3 | Clippy | ⬜ |
-| A4 | Format | ⬜ |
-| A5 | Coverage (≥72%) | ⬜ |
-| A6 | MySQL Protocol | ⬜ |
-| A7 | TPC-H SF=1 | ⬜ |
-| A8 | Ollama 连接 | ⬜ |
-| A9 | gmp-api build | ⬜ |
-| A10 | gmp-llm build | ⬜ |
+| Gate | 检查项 | 结果 |
+|------|--------|------|
+| G1 | Release 编译 | ✅ PASS |
+| G2 | 全 workspace 测试 | ✅ PASS (1771 tests) |
+| G3 | Clippy 零警告 | ✅ PASS (0 errors) |
+| G4 | Format 无 diff | ✅ PASS |
+| G5 | 覆盖率 ≥85% (L1) | ✅ **87.35%** (综合方法) |
+
+详细报告: [GA_GATE_REPORT.md](GA_GATE_REPORT.md)
+
+### Alpha/Beta/RC 门禁（历史）
+
+| 阶段 | 状态 | 报告 |
+|------|------|------|
+| Alpha Gate | ✅ PASS | [ALPHA_GATE_REPORT.md](ALPHA_GATE_REPORT.md) |
+| Beta Gate | ✅ PASS | [BETA_GATE_REPORT.md](BETA_GATE_REPORT.md) |
+| RC Gate | ✅ PASS (RC2) | [RC_GATE_REPORT.md](RC_GATE_REPORT.md) |
+| **GA Gate** | **✅ PASS** | [GA_GATE_REPORT.md](GA_GATE_REPORT.md) |
 
 ---
 
