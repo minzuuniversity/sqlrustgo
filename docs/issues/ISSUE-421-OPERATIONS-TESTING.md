@@ -169,9 +169,8 @@ sql_corpus/OPERATIONS/
 
 ## 七、相关文档
 
-- [SQL Corpus 评估文档](./SQL_CORPUS_AND_OPS_TESTING.md)
-- [RC 测试改进计划](./RC_TEST_IMPROVEMENT_PLAN.md)
-- [测试指南](../../../docs/guides/TESTING_GUIDE.md)
+- [SQL Corpus 测试报告](../issues/SQL_Corpus_Testing_Report_v2.9.0.md)
+- [测试指南](../TESTING.md)
 
 ---
 

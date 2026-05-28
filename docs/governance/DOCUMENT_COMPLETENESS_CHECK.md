@@ -232,12 +232,12 @@ ls -la docs/releases/v(X-1).Y.Z/ | wc -l
 ```markdown
 ## 用户指南
 
-| 文档 | 说明 |
-|------|------|
-| [USER_MANUAL.md](../oo/user-guide/USER_MANUAL.md) | 用户手册 |
-| [GMP_USER_GUIDE.md](../oo/user-guide/GMP_USER_GUIDE.md) | GMP 用户指南 |
-| [GRAPH_SEARCH_USER_GUIDE.md](../oo/user-guide/GRAPH_SEARCH_USER_GUIDE.md) | 图检索用户指南 |
-| [VECTOR_SEARCH_USER_GUIDE.md](../oo/user-guide/VECTOR_SEARCH_USER_GUIDE.md) | 向量检索用户指南 |
+|| 文档 | 说明 | 状态 |
+|------|------|------|------|
+| [USER_MANUAL.md](../oo/user-guide/USER_MANUAL.md) | 用户手册 | ⏭️ 待创建 |
+| [GMP_USER_GUIDE.md](../oo/user-guide/GMP_USER_GUIDE.md) | GMP 用户指南 | ⏭️ 待创建 |
+| [GRAPH_SEARCH_USER_GUIDE.md](../oo/user-guide/GRAPH_SEARCH_USER_GUIDE.md) | 图检索用户指南 | ⏭️ 待创建 |
+| [VECTOR_SEARCH_USER_GUIDE.md](../oo/user-guide/VECTOR_SEARCH_USER_GUIDE.md) | 向量检索用户指南 | ⏭️ 待创建 |
 ```
 
 ---

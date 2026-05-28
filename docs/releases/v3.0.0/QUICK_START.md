@@ -279,7 +279,7 @@ ORDER BY total_spent DESC;
 
 - [部署指南](./DEPLOYMENT_GUIDE.md) - 生产环境部署
 - [性能调优](./PERFORMANCE_TARGETS.md) - 性能优化建议
-- [形式化验证](../proof/README.md) - TLA+ 证明
+- [形式化验证](https://github.com/openclaw/sqlrustgo/tree/v3.0.0/proof) - TLA+ 证明
 
 ### 8.3 故障排除
 
