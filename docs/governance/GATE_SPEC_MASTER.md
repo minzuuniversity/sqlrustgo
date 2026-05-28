@@ -429,4 +429,171 @@ done
 
 ---
 
+## 六、v3.6.0 门禁规范（Architecture Convergence Release）
+
+### 6.1 概述
+
+v3.6.0 是 Architecture Convergence Release，目标：
+- 统一执行架构（Chunk + Pipeline）
+- SIMD 向量化
+- Benchmark Gate
+- Evidence-based AI
+- 分布式地基（Exchange Operator）
+
+### 6.2 Alpha Gate (A1-A11)
+
+| # | 检查项 | 命令 | 标准 |
+|---|--------|------|------|
+| A1 | 编译检查 | `cargo build --release --workspace` | exit_code=0 |
+| A2 | 单元测试 | `cargo test --lib` | 100% 通过 |
+| A3 | Clippy 检查 | `cargo clippy --all-features -- -D warnings` | 零警告 |
+| A4 | 格式化检查 | `cargo fmt --all -- --check` | 无格式错误 |
+| A5 | 文档链接检查 | `bash scripts/gate/check_docs_links.sh` | 无死链 |
+| A6 | Chunk 模型编译 | `cargo build -p sqlrustgo-executor` | chunk/ 模块编译通过 |
+| A7 | Pipeline 基础编译 | `cargo build -p sqlrustgo-executor` | pipeline/ 模块编译通过 |
+| A8 | SIMD 向量化编译 | `cargo build -p sqlrustgo-executor` | vectorized/ 模块编译通过 |
+| A9 | Benchmark 框架 | `cargo bench --list` | 列出所有 benchmark |
+| A10 | TPC-H SF=1 基线 | `./target/release/sqlrustgo-bench-cli tpch --sf 1` | 22/22 PASS |
+| A11 | Point Select 基线 | `./target/release/sqlrustgo-bench-cli point-select` | QPS 记录 |
+
+**Alpha 覆盖率阈值**: ≥72%（L1 crates，综合方法）
+
+### 6.3 Beta Gate (B1-B10)
+
+| # | 检查项 | 命令 | 标准 |
+|---|--------|------|------|
+| B1 | 编译检查 | `cargo build --release --workspace` | exit_code=0 |
+| B2 | 单元测试 | `cargo test --workspace` | 100% 通过 |
+| B3 | Clippy 检查 | `cargo clippy --all-features -- -D warnings` | 零警告 |
+| B4 | 格式化检查 | `cargo fmt --all -- --check` | 无格式错误 |
+| B5 | 文档链接检查 | `bash scripts/gate/check_docs_links.sh` | 无死链 |
+| B6 | Pipeline 迁移进度 | `cargo test -p sqlrustgo-executor` | 30% operator 已迁移 |
+| B7 | SIMD 向量化 | `cargo test -p sqlrustgo-executor -- vectorized` | 3/4 模块完成 |
+| B8 | Spill Framework | `cargo test -p sqlrustgo-executor -- spill` | HashJoin/Sort/Agg 可 spill |
+| B9 | Benchmark CI | `cargo bench --save-baseline` | 6/8 场景完成 |
+| B10 | Regression CI | `cargo bench --compare-to main` | 无性能回退 |
+
+**Beta 覆盖率阈值**: ≥75%（L1 crates，综合方法）
+
+### 6.4 RC Gate (R1-R12)
+
+| # | 检查项 | 命令 | 标准 |
+|---|--------|------|------|
+| R1 | 编译检查 | `cargo build --release --workspace` | exit_code=0 |
+| R2 | 单元测试 | `cargo test --workspace` | 100% 通过 |
+| R3 | Clippy 检查 | `cargo clippy --all-features -- -D warnings` | 零警告 |
+| R4 | 格式化检查 | `cargo fmt --all -- --check` | 无格式错误 |
+| R5 | 覆盖率检查 | `cargo llvm-cov test L1_CRATES` | ≥80%（L1，综合方法） |
+| R6 | Pipeline 100% 迁移 | `cargo test -p sqlrustgo-executor` | 所有 operator 已迁移 |
+| R7 | SIMD 4/4 完成 | `cargo test -p sqlrustgo-executor -- vectorized` | 4/4 模块 |
+| R8 | Spill 三大 Operator | `cargo test -p sqlrustgo-executor -- spill` | HashJoin/Sort/Agg 可 spill |
+| R9 | Exchange 接口 | `cargo build -p sqlrustgo-executor` | ExchangeOperator trait 定义 |
+| R10 | Evidence AI P0 | `cargo test -p sqlrustgo-gmp-llm` | SQL-Verified 流程完成 |
+| R11 | TPC-H SF=1 | `./target/release/sqlrustgo-bench-cli tpch --sf 1` | 22/22 PASS ≤180s |
+| R12 | Benchmark 回归 | `cargo bench --compare-to main` | 无 >15% 回退 |
+
+**RC 覆盖率阈值**: ≥80%（L1 crates，综合方法）
+
+### 6.5 GA Gate (G1-G12)
+
+| # | 检查项 | 命令 | 标准 |
+|---|--------|------|------|
+| G1 | Release 编译 | `cargo build --release -p sqlrustgo` | exit_code=0 |
+| G2 | 全 workspace 测试 | `cargo test --workspace` | 100% 通过 |
+| G3 | Clippy 零警告 | `cargo clippy --all-features -- -D warnings` | 零警告 |
+| G4 | Format 合规 | `cargo fmt --all -- --check` | 无 diff |
+| G5 | 覆盖率检查 | `cargo llvm-cov test L1_CRATES`（综合方法） | ≥85% |
+| G6 | Pipeline 100% | `cargo test -p sqlrustgo-executor` | 所有 operator 走 Pipeline |
+| G7 | SIMD 完整 | `cargo test -p sqlrustgo-executor -- vectorized` | 4/4 模块 + 性能提升 |
+| G8 | Spill Framework | `cargo test -p sqlrustgo-executor -- spill` | 三大 Operator 可 spill |
+| G9 | Exchange Operator | `cargo test -p sqlrustgo-executor -- exchange` | LocalExchange 可用 |
+| G10 | Evidence AI | `cargo test -p sqlrustgo-gmp-llm` | SQL-Verified + G20 Evidence Gate |
+| G11 | TPC-H SF=1 | `./target/release/sqlrustgo-bench-cli tpch --sf 1` | 22/22 PASS ≤180s |
+| G12 | Benchmark 回归 | `cargo bench --compare-to main` | 无 >15% 回退 |
+
+**GA 覆盖率阈值**: ≥85%（L1 crates，综合方法）
+
+---
+
+## 七、覆盖率测量方法（综合方法）
+
+### 7.1 方法定义
+
+> **重要**: 覆盖率测量仅针对 L1 核心 crate，不包含 workspace 所有 crate。
+> **方法**: 综合方法（`--tests` 优先，`--lib` fallback）。原因：--lib only 忽略外部集成测试覆盖贡献，最高可达 +6.30pp（executor）。此方法已在 RC2 确立（commit aa830bcd），所有 gate 统一使用。
+
+**L1 Crates 定义**:
+```bash
+L1_CRATES=(
+    sqlrustgo-types
+    sqlrustgo-parser
+    sqlrustgo-planner
+    sqlrustgo-optimizer
+    sqlrustgo-executor
+    sqlrustgo-storage
+    sqlrustgo-transaction
+    sqlrustgo-catalog
+)
+```
+
+**覆盖率命令**:
+```bash
+# 综合覆盖率测量（每个 crate 单独执行）
+for crate in "${L1_CRATES[@]}"; do
+    # 优先使用 --tests（更广覆盖，包含外部集成测试）
+    if cargo llvm-cov test --package "$crate" --all-features --tests 2>/dev/null | grep "^TOTAL" | grep -q "%"; then
+        echo "$crate: $(cargo llvm-cov test --package "$crate" --all-features --tests 2>/dev/null | grep '^TOTAL' | awk '{print $4}') --tests"
+    else
+        # fallback 到 --lib（某些 crate 无外部测试）
+        echo "$crate: $(cargo llvm-cov test --package "$crate" --all-features --lib 2>/dev/null | grep '^TOTAL' | awk '{print $4}') --lib (fallback)"
+    fi
+done
+```
+
+**为什么不只用 --lib**:
+- `--lib` 仅测量 `src/` 代码，忽略 `tests/` 外部集成测试
+- 实测差异：parser +5.64pp, optimizer +6.05pp, executor +6.30pp
+- 综合方法更真实反映测试覆盖情况
+
+---
+
+## 八、规范与脚本同步机制
+
+### 8.1 同步原则
+
+```
+规范定义 ←→ 脚本实现
+    ↑              ↓
+    ←── 差距 ───←
+```
+
+每当发生以下情况，必须同步更新：
+
+| 触发事件 | 同步要求 |
+|----------|----------|
+| 规范新增检查项 | 脚本必须在下一版本实现 |
+| 脚本新增检查项 | 必须同步到规范 SSOT |
+| 规范修改阈值 | 脚本必须同步更新 |
+| 脚本发现更好的实现 | 必须回填到规范并说明理由 |
+
+### 8.2 同步检查
+
+```bash
+# 检查规范中定义的检查项是否都在脚本中实现
+for gate in $(grep "^|| [A-Z][0-9]" gate_spec.md | awk '{print $2}'); do
+    if ! grep -q "$gate" scripts/gate/check_*v*.sh; then
+        echo "MISSING: $gate not in any gate script"
+    fi
+done
+
+# 检查脚本中的检查项是否都在规范中定义
+for script_check in $(grep "check_output\|TOTAL=\$((TOTAL" scripts/gate/check_*v*.sh | grep -oE '[A-Z][0-9]+'); do
+    if ! grep -q "$script_check" gate_spec.md; then
+        echo "NOT IN SPEC: $script_check in script but not in spec"
+    fi
+done
+```
+
+---
+
 *本文档由 hermes-z6g4 维护。SSOT: GATE_SPEC_MASTER.md 是 SQLRustGo 门禁唯一权威来源。*
