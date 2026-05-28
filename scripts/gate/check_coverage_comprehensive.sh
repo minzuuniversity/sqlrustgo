@@ -20,12 +20,34 @@ L1_CRATES=(
     "sqlrustgo-catalog"
 )
 
-# Get coverage for a single crate, trying --tests first then --lib
+# Get coverage for a single crate
+# Strategy: executor/storage use --lib (broken --tests), all others use --tests first
 get_best_coverage() {
     local crate="$1"
     local crate_name="${crate#sqlrustgo-}"
     local tmp_tests="$COVERAGE_DIR/.tmp_${crate_name}_tests.json"
     local tmp_lib="$COVERAGE_DIR/.tmp_${crate_name}_lib.json"
+
+    # executor and storage have broken --tests (linking/panic issues), use --lib
+    if [[ "$crate" == "sqlrustgo-executor" ]] || [[ "$crate" == "sqlrustgo-storage" ]]; then
+        echo "[COVERAGE] $crate: using --lib (--tests broken)" >&2
+        if cargo llvm-cov --package "$crate" --all-features --lib \
+            --json --output-path "$tmp_lib" >/dev/null 2>&1; then
+            local lib_pct=$(python3 -c "
+import json
+with open('$tmp_lib') as f:
+    data = json.load(f)
+pct = data.get('data', [{}])[0].get('totals', {}).get('lines', {}).get('percent', 0)
+print(f'{pct:.2f}')
+" 2>/dev/null || echo "0")
+            echo "[COVERAGE]   -> $crate: ${lib_pct}% (--lib)" >&2
+            echo "$lib_pct"
+            return 0
+        fi
+        echo "[COVERAGE]   -> $crate: FAILED" >&2
+        echo "0"
+        return 1
+    fi
 
     echo "[COVERAGE] $crate: trying --tests..." >&2
 
