@@ -3,7 +3,7 @@ use sqlrustgo_gmp::audit_chain::{AuditChain, AuditChainError, GENESIS_PREV_HASH}
 use sqlrustgo_gmp::audit_chain_tamper::{
     detect_tamper, quick_verify, verify_entry_checksum, TamperViolation,
 };
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -285,8 +285,7 @@ fn run_full_verify_extended(chain: &AuditChain) -> VerificationResults {
 
     // Step 3: Orphan detection (sequence gaps)
     let mut orphan_entries = Vec::new();
-    for i in 0..entries.len() {
-        let entry = &entries[i];
+    for (i, entry) in entries.iter().enumerate() {
         let expected_seq = (i + 1) as u64;
         if entry.seq != expected_seq {
             orphan_entries.push(OrphanInfo {
@@ -473,13 +472,13 @@ fn build_chain_stats(chain: &AuditChain) -> ChainStatistics {
     }
 }
 
-pub fn load_chain_from_path(path: &PathBuf) -> Result<AuditChain, String> {
+pub fn load_chain_from_path(path: &Path) -> Result<AuditChain, String> {
     use sqlrustgo_gmp::audit_chain_wal::AuditChainWalManager;
 
     let wal_path = if path.is_dir() {
         path.join("audit_chain.wal")
     } else {
-        path.clone()
+        path.to_path_buf()
     };
 
     if !wal_path.exists() {
@@ -503,7 +502,7 @@ pub fn load_chain_from_path(path: &PathBuf) -> Result<AuditChain, String> {
 
 pub fn run_verification(
     mode: &VerifyMode,
-    chain_path: &PathBuf,
+    chain_path: &Path,
     entry_seq: Option<u64>,
 ) -> Result<AuditChainVerifyReport, String> {
     let start = SystemTime::now();
