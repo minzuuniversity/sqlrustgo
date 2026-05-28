@@ -1,4 +1,5 @@
 pub mod api;
+#[cfg(test)]
 pub mod e2e_tests;
 pub mod ollama_client;
 pub mod template;

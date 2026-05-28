@@ -129,7 +129,7 @@ impl DeviationReportGenerator {
                     for evidence in &finding.evidence {
                         report.push_str(&format!("- {}\n", evidence));
                     }
-                    report.push_str("\n");
+                    report.push('\n');
                 }
 
                 if !finding.related_rules.is_empty() {
@@ -274,7 +274,7 @@ impl DeviationReportGenerator {
                 action.expected_outcome.as_deref().unwrap_or("-"),
             ));
         }
-        report.push_str("\n");
+        report.push('\n');
     }
 
     /// 生成 JSON 格式的偏差报告

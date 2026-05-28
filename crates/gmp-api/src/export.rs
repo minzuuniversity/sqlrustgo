@@ -30,15 +30,15 @@ pub enum EntityType {
 pub struct ExportService;
 
 impl ExportService {
-    pub fn export(request: &ExportRequest) -> Result<ExportResult, String> {
+    pub fn export(_request: &ExportRequest) -> Result<ExportResult, String> {
         Err("not implemented".to_string())
     }
 
-    pub fn export_batch(batch_id: &str, format: ExportFormat) -> Result<Vec<u8>, String> {
+    pub fn export_batch(_batch_id: &str, _format: ExportFormat) -> Result<Vec<u8>, String> {
         Err("not implemented".to_string())
     }
 
-    pub fn export_audit_package(evidence_id: &str) -> Result<Vec<u8>, String> {
+    pub fn export_audit_package(_evidence_id: &str) -> Result<Vec<u8>, String> {
         Err("not implemented".to_string())
     }
 }

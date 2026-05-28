@@ -56,6 +56,7 @@ enum InvestigationPhase {
 }
 
 impl InvestigationPhase {
+    #[allow(dead_code)]
     fn as_str(&self) -> &'static str {
         match self {
             Self::EventValidation => "事件验证",
