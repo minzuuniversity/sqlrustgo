@@ -431,7 +431,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         storage: &dyn StorageEngine,
         table_info: &TableInfo,
     ) -> SqlResult<Vec<Vec<SqlValue>>> {
-        // Try to extract simple equality predicate for index lookup
+        // Step 2: Try index scan
         if let Some(ref where_expr) = select.where_clause {
             if let Some(idx_info) = try_extract_index_lookup(where_expr, &table_info.columns) {
                 if let Some(row_indices) =
@@ -1097,9 +1097,14 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         let order_by_sort_keys: Vec<Vec<Value>> = if !select.order_by.is_empty() {
             rows.iter()
                 .map(|row| {
-                    select.order_by.iter().map(|ob| {
-                        evaluate_expression(&ob.expression, row, &table_info).unwrap_or(Value::Null)
-                    }).collect()
+                    select
+                        .order_by
+                        .iter()
+                        .map(|ob| {
+                            evaluate_expression(&ob.expression, row, &table_info)
+                                .unwrap_or(Value::Null)
+                        })
+                        .collect()
                 })
                 .collect()
         } else {
@@ -1130,7 +1135,6 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             rows.into_owned()
         };
 
-
         // Step 6: ORDER BY — sort using pre-computed sort keys
         // Sort keys were computed BEFORE projection, so column indices are correct
         let ordered_rows = if !select.order_by.is_empty() {
@@ -1145,7 +1149,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
 
             // DISTINCT: deduplicate while preserving first-occurrence
             if select.distinct {
-                let mut seen: std::collections::HashSet<Vec<Value>> = std::collections::HashSet::new();
+                let mut seen: std::collections::HashSet<Vec<Value>> =
+                    std::collections::HashSet::new();
                 rows_with_sort.retain(|(row, _, _)| seen.insert(row.clone()));
             }
 
@@ -2989,7 +2994,11 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 // Separate scope to avoid borrow conflict
                 let indices_opt = {
                     let storage = self.storage.read().unwrap();
-                    storage.find_by_index(&table_name, index_info.column_index, index_info.key_value)
+                    storage.find_by_index(
+                        &table_name,
+                        index_info.column_index,
+                        index_info.key_value,
+                    )
                 };
 
                 if let Some(indices) = indices_opt {
@@ -3060,8 +3069,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             let all_rows = {
                 let storage = self.storage.read().unwrap();
                 let rows = storage.scan(&table_name)?;
-                for (i, r) in rows.iter().enumerate() {
-                }
+                for (i, r) in rows.iter().enumerate() {}
                 rows
             };
 
@@ -3107,8 +3115,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 return Ok(ExecutorResult::new(vec![], 0));
             }
 
-            for (i, r) in updated_rows.iter().enumerate() {
-            }
+            for (i, r) in updated_rows.iter().enumerate() {}
 
             // Write back: delete all and insert updated + non-matching rows
             let mut storage = self.storage.write().unwrap();
@@ -3119,8 +3126,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 .into_iter()
                 .filter(|row| !self.eval_predicate(where_clause, row, &table_info))
                 .collect();
-            for (i, r) in rows_to_keep.iter().enumerate() {
-            }
+            for (i, r) in rows_to_keep.iter().enumerate() {}
 
             // Insert non-matching rows
             if !rows_to_keep.is_empty() {
@@ -3133,8 +3139,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
 
             // Verify table state after writes
             let final_rows = storage.scan(&table_name)?;
-            for (i, r) in final_rows.iter().enumerate() {
-            }
+            for (i, r) in final_rows.iter().enumerate() {}
 
             drop(storage);
             self.query_cache

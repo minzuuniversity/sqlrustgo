@@ -65,13 +65,19 @@ pub(crate) fn evaluate_sql_expression(
     let mut expr = expr;
     while expr.starts_with('(') && expr.ends_with(')') {
         // Verify matching parens by checking inner content doesn't unbalance
-        let inner = &expr[1..expr.len()-1];
+        let inner = &expr[1..expr.len() - 1];
         let mut depth = 0;
         let mut valid = true;
         for c in inner.chars() {
             match c {
                 '(' => depth += 1,
-                ')' => { depth -= 1; if depth < 0 { valid = false; break; } }
+                ')' => {
+                    depth -= 1;
+                    if depth < 0 {
+                        valid = false;
+                        break;
+                    }
+                }
                 _ => {}
             }
         }
@@ -306,13 +312,19 @@ fn parse_predicate(expr: &str, columns: &[String]) -> SqlResult<Predicate> {
     // Strip outer parentheses recursively: ((id = 1)) -> (id = 1) -> id = 1
     let mut expr = expr;
     while expr.starts_with('(') && expr.ends_with(')') {
-        let inner = &expr[1..expr.len()-1];
+        let inner = &expr[1..expr.len() - 1];
         let mut depth = 0;
         let mut valid = true;
         for c in inner.chars() {
             match c {
                 '(' => depth += 1,
-                ')' => { depth -= 1; if depth < 0 { valid = false; break; } }
+                ')' => {
+                    depth -= 1;
+                    if depth < 0 {
+                        valid = false;
+                        break;
+                    }
+                }
                 _ => {}
             }
         }
