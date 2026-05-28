@@ -3,6 +3,7 @@
 pub mod audit_logger;
 pub mod chunk;
 pub mod event;
+pub mod exchange;
 pub mod executor;
 pub mod executor_metrics;
 pub mod explain;
