@@ -1,0 +1,275 @@
+openapi: 3.0.3
+info:
+  title: SQLRustGo Network API
+  version: "1.4.0"
+  description: |
+    HTTP API for SQLRustGo database service health checks, metrics, and query execution.
+    
+    This API provides endpoints for:
+    - Health checks (liveness and readiness probes)
+    - SQL query execution
+    - Prometheus-compatible metrics
+  contact:
+    name: SQLRustGo Team
+    email: sqlrustgo@example.com
+  license:
+    name: MIT
+servers:
+  - url: http://localhost:8080
+    description: Local development server
+tags:
+  - name: Health
+    description: Health check and readiness endpoints
+  - name: Query
+    description: SQL query execution endpoints
+  - name: Metrics
+    description: Prometheus metrics endpoints
+paths:
+  /health:
+    get:
+      tags:
+        - Health
+      summary: Health check endpoint
+      description: |
+        Returns the current health status of the service.
+        This endpoint is suitable for Kubernetes liveness probes.
+      operationId: health_check
+      responses:
+        "200":
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+  /health/live:
+    get:
+      tags:
+        - Health
+      summary: Liveness probe endpoint
+      description: |
+        Returns a simple healthy status for Kubernetes liveness probes.
+      operationId: liveness_probe
+      responses:
+        "200":
+          description: Service is alive
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+  /health/ready:
+    get:
+      tags:
+        - Health
+      summary: Readiness probe endpoint
+      description: |
+        Returns detailed readiness information including version and component status.
+        This endpoint is suitable for Kubernetes readiness probes.
+      operationId: readiness_probe
+      responses:
+        "200":
+          description: Service is ready
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReadinessResponse"
+        "503":
+          description: Service is not ready
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /ready:
+    get:
+      tags:
+        - Health
+      summary: Readiness probe alternative path
+      description: |
+        Returns detailed readiness information.
+        Alias for /health/ready.
+      operationId: ready_alias
+      responses:
+        "200":
+          description: Service is ready
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReadinessResponse"
+        "503":
+          description: Service is not ready
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /query:
+    post:
+      tags:
+        - Query
+      summary: SQL Query submission endpoint
+      description: |
+        Submits a SQL query for execution.
+        Supports SELECT, INSERT, UPDATE, DELETE and other SQL statements.
+      operationId: query_endpoint
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/QueryRequest"
+      responses:
+        "200":
+          description: Query executed successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QueryResponse"
+        "400":
+          description: Invalid query or request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /metrics:
+    get:
+      tags:
+        - Metrics
+      summary: Prometheus metrics endpoint
+      description: |
+        Returns Prometheus-compatible metrics in text format.
+        Suitable for scraping by Prometheus or other monitoring systems.
+      operationId: metrics_endpoint
+      responses:
+        "200":
+          description: Metrics in Prometheus format
+          content:
+            text/plain:
+              schema:
+                $ref: "#/components/schemas/MetricsResponse"
+components:
+  schemas:
+    HealthStatus:
+      type: string
+      enum:
+        - Healthy
+        - Degraded
+        - Unhealthy
+      description: Health status enum
+    HealthResponse:
+      type: object
+      required:
+        - status
+      properties:
+        status:
+          $ref: "#/components/schemas/HealthStatus"
+        version:
+          type: string
+          description: Server version
+          example: "1.4.0"
+    ReadinessResponse:
+      type: object
+      required:
+        - status
+        - version
+        - timestamp
+        - components
+      properties:
+        status:
+          $ref: "#/components/schemas/HealthStatus"
+        version:
+          type: string
+          description: Server version
+          example: "1.4.0"
+        timestamp:
+          type: integer
+          format: int64
+          description: Timestamp of the health check (milliseconds since epoch)
+        components:
+          type: array
+          items:
+            $ref: "#/components/schemas/ComponentHealth"
+    ComponentHealth:
+      type: object
+      required:
+        - name
+        - status
+      properties:
+        name:
+          type: string
+          description: Component name
+        status:
+          $ref: "#/components/schemas/HealthStatus"
+        message:
+          type: string
+          description: Optional status message
+        latency_ms:
+          type: integer
+          format: int64
+          description: Optional latency in milliseconds
+    QueryRequest:
+      type: object
+      required:
+        - sql
+      properties:
+        sql:
+          type: string
+          description: SQL query string to execute
+          example: "SELECT * FROM users WHERE id = 1"
+        transaction_id:
+          type: string
+          description: Optional transaction ID for explicit transaction control
+        timeout_seconds:
+          type: integer
+          format: int64
+          description: Optional query timeout in seconds
+          minimum: 1
+    QueryResponse:
+      type: object
+      required:
+        - success
+      properties:
+        success:
+          type: boolean
+          description: Whether the query was successful
+        affected_rows:
+          type: integer
+          format: int64
+          description: Number of rows affected (for INSERT/UPDATE/DELETE)
+        results:
+          type: array
+          items:
+            type: array
+            items:
+              type: object
+          description: Query results (for SELECT queries)
+        error:
+          type: string
+          description: Error message if the query failed
+        execution_time_ms:
+          type: integer
+          format: int64
+          description: Execution time in milliseconds
+    MetricsResponse:
+      type: object
+      required:
+        - metrics
+      properties:
+        metrics:
+          type: string
+          description: Raw Prometheus metrics text
+    ErrorResponse:
+      type: object
+      required:
+        - error
+        - message
+      properties:
+        error:
+          type: string
+          description: Error code
+        message:
+          type: string
+          description: Detailed error message
