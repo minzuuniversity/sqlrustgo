@@ -1,7 +1,6 @@
 //! 端到端集成测试 — #1411 跨语言合规报告
 //!
 //! Step 7: 验证完整流程: 本地模式 + LLM 模式
-
 use crate::ai::report::{
     api::{generate_cross_lang_report, supported_standards, CrossLangReportRequest},
     template::{build_final_report, ReportCategory, ReportStandard},

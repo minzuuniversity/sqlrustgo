@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Reranker for GMP Retrieval
 //!
 //! LLM-based reranking to improve search result quality through relevance scoring.

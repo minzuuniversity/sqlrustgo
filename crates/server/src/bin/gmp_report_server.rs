@@ -6,7 +6,6 @@
 //!   GET  /health                           (健康检查)
 
 use actix_web::{web, App, HttpResponse, HttpServer, Responder};
-use std::sync::Arc;
 
 use sqlrustgo_gmp_api::ai::report::{
     api::{generate_cross_lang_report, CrossLangReportRequest},

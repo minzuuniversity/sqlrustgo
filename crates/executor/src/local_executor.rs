@@ -1401,7 +1401,7 @@ impl<'a> LocalExecutor<'a> {
                 let table_name = delete_plan.table_name();
 
                 let deleted = if let Some(predicate) = delete_plan.predicate() {
-                    let pred_sql = predicate.to_sql_string();
+                    let pred_sql = format!("{}", predicate);
                     self.storage.delete_by_predicate(table_name, &pred_sql)?
                 } else {
                     self.storage.delete(table_name, &[])?
@@ -1423,6 +1423,7 @@ impl<'a> LocalExecutor<'a> {
                 let table_name = update_plan.table_name();
                 let updates = update_plan.updates();
                 let predicate = update_plan.predicate();
+                eprintln!("DEBUG execute_update: table={}, updates.len={}, pred={:?}", table_name, updates.len(), predicate.as_ref().map(|p| format!("{}", p)));
 
                 // Get table schema to map column names to indices
                 let table_info = self.storage.get_table_info(table_name)?;
@@ -1443,7 +1444,7 @@ impl<'a> LocalExecutor<'a> {
                             assignments.push((col_idx, val.clone()));
                         } else {
                             // Fallback: try to evaluate via SQL string conversion
-                            let sql_str = expr.to_sql_string();
+                            let sql_str = format!("{}", expr);
                             eprintln!("DEBUG execute_update: col={}, expr={}", col_name, sql_str);
                             // For non-literal expressions, we'd need evaluation here
                             // For now, skip complex expressions
@@ -1453,12 +1454,15 @@ impl<'a> LocalExecutor<'a> {
 
                 let updated = if !assignments.is_empty() {
                     if let Some(pred) = predicate {
-                        let pred_sql = pred.to_sql_string();
+                        let pred_sql = format!("{}", pred);
+                        eprintln!("DEBUG: assignments.len={}, pred='{}'", assignments.len(), pred_sql);
                         self.storage.update_by_predicate(table_name, &pred_sql, &assignments)?
                     } else {
+                        eprintln!("DEBUG: assignments.len={}, pred=None, using 1=1", assignments.len());
                         self.storage.update_by_predicate(table_name, "1=1", &assignments)?
                     }
                 } else {
+                    eprintln!("DEBUG: assignments empty, updated=0");
                     0
                 };
 

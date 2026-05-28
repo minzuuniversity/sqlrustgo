@@ -15,10 +15,8 @@ const REWRITE_TIMEOUT_MS: u64 = 500;
 /// Query intent types
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
-#[derive(Default)]
 pub enum QueryIntent {
     /// Search for documents
-    #[default]
     Search,
     /// Filter documents by criteria
     Filter,
@@ -28,6 +26,12 @@ pub enum QueryIntent {
     Aggregation,
 }
 
+#[allow(clippy::derivable_impls)]
+impl Default for QueryIntent {
+    fn default() -> Self {
+        QueryIntent::Search
+    }
+}
 
 /// Filter condition for structured queries
 #[derive(Debug, Clone, Serialize, Deserialize)]
