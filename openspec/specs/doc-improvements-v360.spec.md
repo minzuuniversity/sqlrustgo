@@ -2,7 +2,7 @@
 id: doc-improvements-v360
 title: v3.6.0 Documentation Improvements
 version: 1.0
-status: draft
+status: completed
 created: 2026-05-29
 author: hermes-z440
 ---
