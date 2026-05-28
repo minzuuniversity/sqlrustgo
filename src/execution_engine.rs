@@ -446,12 +446,9 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     if !index_rows.is_empty() {
                         return Ok(index_rows);
                     }
-                } else {
-                }
-            } else {
-            }
-        } else {
-        }
+                } else {}
+            } else {}
+        } else {}
         // Fallback: full table scan
         let rows = storage.scan(&select.table)?;
         Ok(rows)
