@@ -1138,7 +1138,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             // Build (row, sort_key, original_idx) from projected_rows (owned copies)
             let mut rows_with_sort: Vec<(Vec<Value>, Vec<Value>, usize)> = projected_rows
                 .into_iter()
-                .zip(order_by_sort_keys.into_iter())
+                .zip(order_by_sort_keys)
                 .enumerate()
                 .map(|(orig_idx, (row, sort_key))| (row, sort_key, orig_idx))
                 .collect();
@@ -5934,45 +5934,6 @@ fn compare_values(left: &Value, right: &Value) -> i32 {
     }
 }
 
-/// Compare two rows for ORDER BY using the given expressions
-fn compare_order_by(
-    a: &[Value],
-    b: &[Value],
-    order_by_exprs: &[OrderByExpression],
-    table_info: &TableInfo,
-) -> std::cmp::Ordering {
-    use std::cmp::Ordering;
-    for expr in order_by_exprs {
-        let val_a = evaluate_expression(&expr.expression, a, table_info).unwrap_or(Value::Null);
-        let val_b = evaluate_expression(&expr.expression, b, table_info).unwrap_or(Value::Null);
-
-        let cmp = compare_values_for_order(&val_a, &val_b);
-        let cmp = if expr.nulls_first.unwrap_or(false) {
-            // NULLS FIRST: nulls compare less
-            match (&val_a, &val_b) {
-                (Value::Null, Value::Null) => Ordering::Equal,
-                (Value::Null, _) => Ordering::Less,
-                (_, Value::Null) => Ordering::Greater,
-                _ => cmp,
-            }
-        } else {
-            // NULLS LAST (default for ASC in most DBs)
-            match (&val_a, &val_b) {
-                (Value::Null, Value::Null) => Ordering::Equal,
-                (Value::Null, _) => Ordering::Greater,
-                (_, Value::Null) => Ordering::Less,
-                _ => cmp,
-            }
-        };
-
-        if cmp != Ordering::Equal {
-            return if expr.ascending { cmp } else { cmp.reverse() };
-        }
-    }
-    Ordering::Equal
-}
-
-/// Compare pre-computed ORDER BY sort keys (no table_info needed)
 fn compare_order_by_with_keys(
     a_keys: &[Value],
     b_keys: &[Value],
