@@ -56,9 +56,13 @@ pub struct DiskSpillManager {
 }
 
 impl DiskSpillManager {
-    /// Create a new DiskSpillManager with the given memory limit.
+    /// Create a new DiskSpillManager.
     pub fn new(max_memory_bytes: usize, temp_prefix: &str) -> std::io::Result<Self> {
-        let temp_dir = std::env::temp_dir().join(temp_prefix);
+        let unique_id = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let temp_dir = std::env::temp_dir().join(format!("{}_{}", temp_prefix, unique_id));
         fs::create_dir_all(&temp_dir)?;
         Ok(Self {
             max_memory_bytes,
@@ -215,14 +219,15 @@ mod tests {
 
     #[test]
     fn test_spill_manager_basic() {
-        let mut manager = DiskSpillManager::new(1024, "test_spill").unwrap();
+        // Use max_memory_bytes=1 so even a small chunk will spill
+        let mut manager = DiskSpillManager::new(1, "test_spill").unwrap();
         let chunk = create_test_chunk();
 
         manager.open();
         assert_eq!(manager.state, SpillState::Open);
         assert_eq!(manager.current_memory_usage(), 0);
 
-        // Spill the chunk
+        // Spill the chunk (should spill because chunk_size > max_memory_bytes)
         manager.spill_chunk(&chunk).unwrap();
         assert_eq!(manager.spilled_count(), 1);
 

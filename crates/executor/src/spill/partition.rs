@@ -26,8 +26,9 @@ impl PartitionedSpill {
     pub fn new(num_partitions: usize, max_memory_bytes: usize) -> std::io::Result<Self> {
         let mut partitions = Vec::with_capacity(num_partitions);
         for i in 0..num_partitions {
-            let manager =
+            let mut manager =
                 DiskSpillManager::new(max_memory_bytes, &format!("partition_spill_{}", i))?;
+            manager.open(); // Initialize each partition
             partitions.push(manager);
         }
 
@@ -135,7 +136,8 @@ mod tests {
 
     #[test]
     fn test_partitioned_spill_basic() {
-        let mut spill = PartitionedSpill::new(4, 1024).unwrap();
+        // Use max_memory_bytes=1 so even small chunks will spill
+        let mut spill = PartitionedSpill::new(4, 1).unwrap();
 
         let chunk1 = create_test_chunk_with_values(vec![1, 2, 3]);
         let chunk2 = create_test_chunk_with_values(vec![4, 5, 6]);
