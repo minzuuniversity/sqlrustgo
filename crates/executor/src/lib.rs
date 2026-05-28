@@ -7,6 +7,7 @@ pub mod executor;
 pub mod executor_metrics;
 pub mod explain;
 pub mod merge;
+pub mod pipeline;
 pub mod query_cache;
 pub mod query_cache_config;
 pub mod scan;
