@@ -52,7 +52,7 @@
 | sqlrustgo-catalog | 88.52% | ✅ |
 | sqlrustgo-parser | 83.82% | ✅ |
 | **sqlrustgo-storage** | **81.70%** | ⚠️ 最低 |
-| **平均** | **87.36%** | ✅ 超标 |
+| **平均** | **87.35%** | ✅ 超标 |
 
 ### 1.5 已知 Bug
 
@@ -174,7 +174,7 @@
 | Clippy 债务 | ✅ CLEAN | 0 errors |
 | 代码质量 | ⚠️ MODERATE | 34 TODOs, 9 unsafe |
 | 测试债务 | 🔴 HIGH | 95 ignored tests |
-| 覆盖率 | ✅ PASS | 87.36% avg |
+| 覆盖率 | ✅ PASS | 87.35% avg (综合方法) |
 | 已知 Bug | ⚠️ 5 Varlen | Encoder bug for v3.6.0 |
 | 治理债务 | ⚠️ MODERATE | 3 豁免逾期，度量不一致 |
 | 架构债务 | ⚠️ MODERATE | 6 P0 blockers |

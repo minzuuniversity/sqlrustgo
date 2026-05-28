@@ -1,8 +1,8 @@
 # 门禁豁免与延期记录
 
-> **版本**: 1.1
+> **版本**: 1.3
 > **创建日期**: 2026-05-05
-> **更新日期**: 2026-05-18
+> **更新日期**: 2026-05-29
 > **维护人**: hermes-z6g4
 > **适用范围**: v2.9.0+
 
@@ -30,6 +30,11 @@
 | EX-v320-002 | v3.2.0 | G12 MySQL Protocol 握手失败 | **延期** | 🔴 Open | `mysql::Conn::new()` 返回 `DriverError { Could not setup connection }`。根因为 sqlrustgo-mysql-server 握手状态机/ auth plugin 兼容性问题。GA_READINESS_GAP_ANALYSIS.md §3 记录。需抓包调试 + 协议规范对照修复。 | Tech Lead | 2026-05-18 | **#1201** | **v3.3.0 Alpha 前** | 握手包交换流程调试，参考 docs/releases/v3.1.0/MYSQL_PROTOCOL_OPTIMIZATION.md |
 | EX-v320-003 | v3.2.0 | G8 TPC-H SF=1 数据缺失 | **延期** | 🔴 Open | `tpch_data/` 目录不存在，无法运行 TPC-H SF=1 验证。GA_READINESS_GAP_ANALYSIS.md §3 记录。Issue #1198 部分追踪。需在 Z6G4 服务器上生成 SF=1 数据并执行 `check_tpch.sh --sf1`。 | Tech Lead | 2026-05-18 | #1198 | **v3.3.0 Alpha 前** | `bash scripts/gate/setup_tpch_env.sh --sf 1` |
 | EX-v340-001 | v3.4.0 | rc-gate.yml `gate-v3.4.0` runner 标签无 Rust | **延期 → 已修复** | ✅ 已关闭 | rc-gate.yml 使用 `runs-on: [gate-v3.4.0]` 但该 runner 标签无 Rust 工具链。修复：将 runner 标签改为 `runs-on: [rust]`，devstack-runner-1 已有 rust 标签且预装 Rust 工具链。PR #1357 已合入。 | Tech Lead | 2026-05-24 | #1357 | v3.4.0 GA 前 | rc-gate CI 现在使用 devstack-runner-1 rust 标签 |
+| EX-v350-001 | v3.5.0 | G5 parser 覆盖率 78.18% < 85% | **延期** | 🔴 Open | parser crate 覆盖率 78.18%，低于 GA Gate 要求的 85%（差距 6.82pp）。根因为 grammar 覆盖率缺口 + DEBUG println 残留。v3.6.0 Alpha 前需修复。 | Tech Lead | 2026-05-29 | — | v3.6.0 Alpha 前 | 需补充 parser 测试用例，清理 DEBUG 代码 |
+| EX-v350-002 | v3.5.0 | G5 optimizer 覆盖率 83.67% < 85% | **延期** | 🔴 Open | optimizer crate 覆盖率 83.67%，低于 GA Gate 要求的 85%（差距 1.33pp）。v3.6.0 Alpha 前需修复。 | Tech Lead | 2026-05-29 | — | v3.6.0 Alpha 前 | 需补充 optimizer 边界情况测试 |
+| EX-v350-003 | v3.5.0 | G5 executor 覆盖率 83.00% < 85% | **延期** | 🔴 Open | executor crate 覆盖率 83.00%，低于 GA Gate 要求的 85%（差距 2.00pp）。v3.6.0 Alpha 前需修复。 | Tech Lead | 2026-05-29 | — | v3.6.0 Alpha 前 | 需激活更多 executor ignored tests |
+| EX-v350-004 | v3.5.0 | G5 storage 覆盖率 81.66% < 85% | **延期** | 🔴 Open | storage crate 覆盖率 81.66%，低于 GA Gate 要求的 85%（差距 3.34pp）。v3.6.0 Alpha 前需修复。 | Tech Lead | 2026-05-29 | — | v3.6.0 Alpha 前 | 需修复 varlen encoder bug 并补充测试 |
+| EX-v350-005 | v3.5.0 | G2 Storage varlen 5 tests fail | **延期** | 🔴 Open | `test_encode_decode_blob_*`, `test_encode_decode_text_*` 5个测试失败。根因为 encoder/decoder varlen slot 处理不匹配。v3.6.0 Alpha 前需修复。 | Tech Lead | 2026-05-29 | — | v3.6.0 Alpha 前 | 修复后 storage 覆盖率预计可提升至 85%+ |
 
 ---
 
@@ -84,3 +89,4 @@
 | 1.0 | 2026-05-05 | 初始版本，记录 EX-001（性能基准先决条件）、EX-002（B-Gate executor 豁免）、EX-003（R10 追溯延期） |
 | 1.1 | 2026-05-18 | 新增 EX-v320-001（executor 覆盖率 70.7%）、EX-v320-002（MySQL Protocol 握手失败）、EX-v320-003（TPC-H SF=1 数据缺失）、EX-v320-004（Sysbench 服务器环境） |
 | 1.2 | 2026-05-24 | 新增 EX-v340-001（rc-gate.yml gate-v3.4.0→rust runner 标签），EX-v320-004 保留为历史记录 |
+| 1.3 | 2026-05-29 | 新增 EX-v350-001~005（覆盖率不达标 4项 + varlen 5 tests），删除 EX-v350-006（覆盖率方法问题不成立，RC已确立综合方法）；更新 EX-v320-* 状态为逾期 |
