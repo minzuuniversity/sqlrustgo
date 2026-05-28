@@ -1,7 +1,8 @@
 # SQLRustGo 版本演进完整历史
 
-> **最后更新**: 2026-05-24
-> **当前版本**: v3.4.0 (GA)
+> **最后更新**: 2026-05-29
+> **当前版本**: v3.6.0 (开发中)
+> **上一稳定版本**: v3.5.0 GA (2026-05-28)
 
 ---
 
@@ -35,6 +36,8 @@
 | v3.0.0 | TBD | 愿景 | 完整分布式数据库 | - |
 | v3.3.0 | 2026-05-20 | GA | Industrial Trust Platform（可信性工业闭环） | L4 |
 | v3.4.0 | 2026-05-24 | GA | GMP Management Suite（管理套件） | L4 |
+| v3.5.0 | 2026-05-28 | GA | AI Native GMP Platform（AI 原生 GMP 平台）87.35% coverage | L4 |
+| v3.6.0 | TBD | Developing | Architecture Convergence（统一执行架构） | L4 |
 
 ---
 
