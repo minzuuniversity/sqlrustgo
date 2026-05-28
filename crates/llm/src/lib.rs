@@ -96,12 +96,24 @@ pub trait LlmClient: Send + Sync {
         instructions: Option<&str>,
     ) -> LlmResult<GeneratedAnswer>;
 
+    /// Stream chat completion with cancellation support
+    async fn chat_stream(
+        &self,
+        messages: &[ChatMessage],
+        temperature: f32,
+        max_tokens: usize,
+        cancellation: CancellationToken,
+    ) -> LlmResult<GeneratedAnswer>;
+
     /// Name of the LLM
     fn name(&self) -> &str;
 
     /// Check if the LLM is available
     fn is_available(&self) -> bool;
 }
+
+pub mod stream;
+pub use stream::{StreamChatRequest, StreamEvent, CancellationToken};
 
 /// Ollama-hosted LLM client
 pub struct OllamaLlmClient {
@@ -320,6 +332,102 @@ impl LlmClient for OllamaLlmClient {
             false
         }
     }
+
+    async fn chat_stream(
+        &self,
+        messages: &[ChatMessage],
+        temperature: f32,
+        max_tokens: usize,
+        cancellation: CancellationToken,
+    ) -> LlmResult<GeneratedAnswer> {
+        #[derive(Serialize)]
+        struct ChatRequest<'a> {
+            model: &'a str,
+            messages: &'a [ChatMessage],
+            stream: bool,
+            options: ChatOptions,
+        }
+
+        #[derive(Serialize)]
+        struct ChatOptions {
+            temperature: f32,
+            num_predict: usize,
+        }
+
+        #[derive(Deserialize)]
+        struct ChatResponse {
+            message: ChatMessage,
+        }
+
+        #[derive(Deserialize)]
+        struct StreamResponse {
+            message: StreamMessage,
+            done: bool,
+        }
+
+        #[derive(Deserialize)]
+        struct StreamMessage {
+            content: String,
+        }
+
+        let request = ChatRequest {
+            model: &self.model,
+            messages,
+            stream: true,
+            options: ChatOptions {
+                temperature,
+                num_predict: max_tokens,
+            },
+        };
+
+        let resp = self
+            .client
+            .post(format!("{}/api/chat", self.base_url))
+            .json(&request)
+            .send()
+            .await?;
+
+        use tokio_stream::StreamExt;
+        let mut stream = resp.bytes_stream();
+        let mut full_content = String::new();
+
+        while let Some(chunk_result) = stream.next().await {
+            if cancellation.is_cancelled() {
+                return Err(LlmError::InvalidResponse("Request cancelled".to_string()));
+            }
+
+            let bytes = match chunk_result {
+                Ok(b) => b,
+                Err(e) => return Err(LlmError::Network(e)),
+            };
+
+            if let Ok(text) = String::from_utf8(bytes.to_vec()) {
+                for line in text.lines() {
+                    if line.is_empty() {
+                        continue;
+                    }
+                    if let Ok(response) = serde_json::from_str::<StreamResponse>(line) {
+                        full_content.push_str(&response.message.content);
+                        if response.done {
+                            return Ok(GeneratedAnswer {
+                                answer: full_content,
+                                citations: vec![],
+                                confidence: None,
+                                needs_human_review: false,
+                            });
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(GeneratedAnswer {
+            answer: full_content,
+            citations: vec![],
+            confidence: None,
+            needs_human_review: false,
+        })
+    }
 }
 
 /// No-op LLM client that returns a fixed response
@@ -356,6 +464,21 @@ impl LlmClient for NoopLlmClient {
 
     fn is_available(&self) -> bool {
         true
+    }
+
+    async fn chat_stream(
+        &self,
+        _messages: &[ChatMessage],
+        _temperature: f32,
+        _max_tokens: usize,
+        _cancellation: CancellationToken,
+    ) -> LlmResult<GeneratedAnswer> {
+        Ok(GeneratedAnswer {
+            answer: "LLM unavailable.".to_string(),
+            citations: vec![],
+            confidence: None,
+            needs_human_review: true,
+        })
     }
 }
 
