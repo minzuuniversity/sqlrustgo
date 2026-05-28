@@ -113,7 +113,7 @@ pub trait LlmClient: Send + Sync {
 }
 
 pub mod stream;
-pub use stream::{StreamChatRequest, StreamEvent, CancellationToken};
+pub use stream::{CancellationToken, StreamChatRequest, StreamEvent};
 
 /// Ollama-hosted LLM client
 pub struct OllamaLlmClient {
@@ -355,6 +355,7 @@ impl LlmClient for OllamaLlmClient {
         }
 
         #[derive(Deserialize)]
+        #[expect(dead_code)]
         struct ChatResponse {
             message: ChatMessage,
         }

@@ -19,9 +19,15 @@ pub struct StreamChatRequest {
     pub instructions: Option<String>,
 }
 
-fn default_model() -> String { "qwen2.5:14b".to_string() }
-fn default_temperature() -> f32 { 0.7 }
-fn default_max_tokens() -> usize { 2048 }
+fn default_model() -> String {
+    "qwen2.5:14b".to_string()
+}
+fn default_temperature() -> f32 {
+    0.7
+}
+fn default_max_tokens() -> usize {
+    2048
+}
 
 /// Stream response event
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -32,7 +38,10 @@ pub enum StreamEvent {
     #[serde(rename = "error")]
     Error { code: String, message: String },
     #[serde(rename = "final")]
-    Final { answer: String, citations: Vec<crate::Citation> },
+    Final {
+        answer: String,
+        citations: Vec<crate::Citation>,
+    },
 }
 
 /// Cancellation token for aborting streaming
@@ -41,9 +50,17 @@ pub struct CancellationToken {
     cancelled: std::sync::Arc<AtomicBool>,
 }
 
+impl Default for CancellationToken {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl CancellationToken {
     pub fn new() -> Self {
-        Self { cancelled: std::sync::Arc::new(AtomicBool::new(false)) }
+        Self {
+            cancelled: std::sync::Arc::new(AtomicBool::new(false)),
+        }
     }
     pub fn is_cancelled(&self) -> bool {
         self.cancelled.load(Ordering::Relaxed)
