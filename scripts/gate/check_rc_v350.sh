@@ -2,7 +2,8 @@
 # check_rc_v350.sh — v3.5.0 RC Gate 检查脚本
 # 规范来源: docs/governance/gate_spec_v350.md §五
 set -uo pipefail
-cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd
 
 PASS=0; TOTAL=0; BLOCKERS=0
 FAIL_REASONS=()
@@ -66,7 +67,7 @@ log_info "R5: Coverage >= 85%"
 TOTAL=$((TOTAL+1))
 if command -v cargo-llvm-cov &>/dev/null; then
     # Use check_coverage.sh for consistent per-crate simple average
-    COVERAGE_OUTPUT=$(bash "$SCRIPT_DIR/../check_coverage.sh" 2>&1)
+    COVERAGE_OUTPUT=$(bash "$SCRIPT_DIR/check_coverage.sh" 2>&1)
     COVERAGE_ECHO=$?
     echo "$COVERAGE_OUTPUT" | grep -E "Average|Result|passed|FAIL" | head -10
     if echo "$COVERAGE_OUTPUT" | grep -q "check passed"; then
