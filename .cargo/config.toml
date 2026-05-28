@@ -1,2 +1,7 @@
 [env]
 SQLRUSTGO_SERVER_BIN = { value = "/home/ai/sqlrustgo/target/release/sqlrustgo-mysql-server" }
+
+[build]
+# Enable rustdoc documentation for private items
+# Usage: cargo doc --all-features --no-deps
+rustdocflags = ["--document-private-items"]
