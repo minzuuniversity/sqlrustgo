@@ -6,11 +6,14 @@ description = "LLM Chat integration for SQLRustGo - Ollama Chat Completion"
 
 [dependencies]
 async-trait = "0.1"
-reqwest = { version = "0.12", features = ["json"] }
+reqwest = { version = "0.12", features = ["json", "stream"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 tokio = { version = "1.0", features = ["full"] }
 thiserror = "2.0"
+futures-core = "0.3"
+tokio-stream = "0.1"
+futures-util = "0.3"
 
 [dev-dependencies]
 tokio-test = "0.4"
