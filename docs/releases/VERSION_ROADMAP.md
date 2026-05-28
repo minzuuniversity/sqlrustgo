@@ -1,9 +1,9 @@
 # SQLRustGo 版本演化计划
 
 > **版本**: v9.0
-> **更新日期**: 2026-05-18
-> **战略定位**: Industrial Trust Platform → GMP Management Suite
-> **核心原则**: 工业级 GMP 合规数据库，从可信内核到管理套件
+> **更新日期**: 2026-05-29
+> **战略定位**: AI Native GMP Platform
+> **核心原则**: 工业级 GMP 合规数据库，从可信内核到管理套件到 AI Agent 层
 
 ---
 
@@ -273,7 +273,67 @@ Trust Visualization → Compliance Evidence Engine → Provenance Graph → Trus
 
 ## v3.4.0 - GMP Management Suite（GMP 管理套件）
 
-**版本**: v1.0
+> **版本**: v3.4.0 GA | **日期**: 2026-05-24 | **分支**: `origin/develop/v3.4.0` | **Commit**: `486e4ec8`
+
+v3.4.0 在 v3.3.0 可信内核基础上构建完整的 **GMP Management Suite**，让合规人员、QA、审计员能够通过可视化界面操作可信内核。
+
+### 核心功能
+
+| 功能 | 说明 | 状态 |
+|------|------|------|
+| EBR Batch Manager | 批次放行管理 | ✅ GA |
+| Electronic Signature | 电子签名 | ✅ GA |
+| Audit Logger | 审计日志 | ✅ GA |
+| Device OPC UA | 设备集成 | ✅ GA |
+| Rule Editor | 规则编辑器 | ✅ GA |
+| Dashboard | 可视化仪表板 | ✅ GA |
+| GMP Retrieval v2 | BM25 + RRF + Ollama Reranker | ✅ GA |
+| Trust Visualization | CLI + Dashboard | ✅ GA |
+
+### 门禁
+
+| Gate | 结果 | 日期 |
+|------|------|------|
+| Alpha | ✅ 16/16 PASS | 2026-05-22 |
+| Beta | ✅ 14/14 PASS | 2026-05-22 |
+| RC | ✅ 16/16 PASS | 2026-05-24 |
+| GA | ✅ 29 PASS / 6 SKIP | 2026-05-24 |
+
+### 下一步
+
+→ [v3.5.0 AI Native GMP Platform](#v350---ai-native-gmp-platform)
+
+## v3.5.0 - AI Native GMP Platform（AI 原生 GMP 平台）
+
+> **版本**: v3.5.0 GA | **日期**: 2026-05-28 | **分支**: `origin/develop/v3.5.0` | **Commit**: `8db2b89`
+
+v3.5.0 在 v3.4.0 管理套件基础上构建 **AI Agent 层**，实现 GMP 流程的智能化。
+
+### 核心功能
+
+| 功能 | 说明 | 状态 |
+|------|------|------|
+| Deviation Investigator Agent | AI 偏差调查助手 | ✅ GA |
+| Compliance Judge Agent | LLM 合规判断引擎 | ✅ GA |
+| Device Predictor Agent | 预测性维护 Agent | ✅ GA |
+| Report Generator Agent | 报表生成 Agent | ✅ GA |
+| GMP Retrieval v3 | 四路融合（BM25+Vector+Graph+FTS） | ✅ GA |
+| Ollama 本地推理 | qwen2.5/llama3/bge-m3 | ✅ GA |
+| SSE 流式输出 | Server-Sent Events | ✅ GA |
+| 跨语言报告 | FDA 21 CFR / EMA Annex 11 翻译 | ✅ GA |
+
+### 门禁
+
+| Gate | 结果 | 日期 |
+|------|------|------|
+| Alpha | ✅ 16/16 PASS | 2026-05-27 |
+| Beta | ✅ 14/14 PASS | 2026-05-27 |
+| RC | ✅ 16/16 PASS | 2026-05-28 |
+| GA | ✅ 4/4 PASS, L1 87.36%, TPC-H 22/22 | 2026-05-28 |
+
+### 下一步
+
+→ v3.6.0（分布式扩展）
 **状态**: 规划中
 **前置版本**: v3.3.0 GA
 **目标发布日期**: 2026-07-15
