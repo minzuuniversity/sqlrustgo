@@ -1,0 +1,65 @@
+name: Rustdoc CI
+
+on:
+  push:
+    branches: [main, develop/*]
+  pull_request:
+    branches: [main, develop/*]
+
+env:
+  RUST_BACKTRACE: 1
+  CARGO_TERM_COLOR: always
+
+jobs:
+  rustdoc:
+    name: Generate rustdoc
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache cargo registry
+        uses: actions/cache@v3
+        with:
+          path: ~/.cargo/registry
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Cache cargo index
+        uses: actions/cache@v3
+        with:
+          path: ~/.cargo/git
+          key: ${{ runner.os }}-cargo-index-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Cache cargo build
+        uses: actions/cache@v3
+        with:
+          path: target
+          key: ${{ runner.os }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Generate documentation
+        run: |
+          cargo doc --all-features --no-deps
+
+      - name: Check for warnings
+        run: |
+          # Capture warnings
+          cargo doc --all-features --no-deps 2>&1 | tee /tmp/rustdoc.log
+          # Check if there are any warnings in the log
+          if grep -q "warning:" /tmp/rustdoc.log; then
+            echo "=== Rustdoc Warnings Found ==="
+            grep "warning:" /tmp/rustdoc.log | head -20
+            exit 1
+          fi
+
+      - name: Upload documentation artifact
+        uses: actions/upload-artifact@v4
+        if: github.ref == 'refs/heads/main'
+        with:
+          name: rustdoc
+          path: target/doc/
+          retention-days: 7
