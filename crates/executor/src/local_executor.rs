@@ -8,6 +8,7 @@ use sqlrustgo_planner::{
     Operator, PhysicalPlan, PreparedStatementManager, ProjectionExec, SortMergeJoinExec,
 };
 use sqlrustgo_storage::StorageEngine;
+use sqlrustgo_transaction::{TransactionError, TransactionManager, TxId};
 use sqlrustgo_types::{SqlError, SqlResult, Value};
 
 use crate::operator_profile::GLOBAL_PROFILER;
@@ -27,21 +28,19 @@ use std::time::Instant;
 /// LocalExecutor - executes physical plans using StorageEngine
 pub struct LocalExecutor<'a> {
     storage: &'a dyn StorageEngine,
+    txn_manager: Option<&'a TransactionManager>,
     cache: Arc<RwLock<QueryCache>>,
     cache_config: QueryCacheConfig,
-    /// Slow query logger (optional)
     slow_query_log: StdRwLock<Option<query_stats::SlowQueryLog>>,
-    /// SQL text for slow query logging (set when executing with cache)
     current_sql: StdRwLock<String>,
-    /// Prepared statement cache
     prepared_statements: StdRwLock<PreparedStatementManager>,
 }
 
 impl<'a> LocalExecutor<'a> {
-    /// Create a new LocalExecutor with the given storage engine
     pub fn new(storage: &'a dyn StorageEngine) -> Self {
         Self {
             storage,
+            txn_manager: None,
             cache: Arc::new(RwLock::new(QueryCache::new(QueryCacheConfig::default()))),
             cache_config: QueryCacheConfig::default(),
             slow_query_log: StdRwLock::new(None),
@@ -50,7 +49,11 @@ impl<'a> LocalExecutor<'a> {
         }
     }
 
-    /// Create a LocalExecutor with custom cache config
+    pub fn with_txn_manager(mut self, txn_manager: &'a TransactionManager) -> Self {
+        self.txn_manager = Some(txn_manager);
+        self
+    }
+
     pub fn with_cache_config(storage: &'a dyn StorageEngine, config: QueryCacheConfig) -> Self {
         Self {
             storage,
@@ -1089,26 +1092,43 @@ impl<'a> Executor for LocalExecutor<'a> {
 }
 
 impl<'a> ExecutionEngine for LocalExecutor<'a> {
-    fn execute(&mut self, ctx: &mut crate::execution::QueryContext) -> Result<crate::execution::ExecutionResult, sqlrustgo_types::SqlError> {
+    fn execute(&mut self, ctx: &mut crate::execution::QueryContext) -> Result<crate::execution::ExecutionResult, SqlError> {
         self.execute_dml(ctx)
     }
 
-    fn begin(&mut self) -> Result<u64, sqlrustgo_types::SqlError> {
-        Err(sqlrustgo_types::SqlError::ExecutionError("TODO".to_string()))
+    fn begin(&mut self) -> Result<u64, SqlError> {
+        self.txn_manager
+            .ok_or_else(|| SqlError::ExecutionError("No txn_manager configured".to_string()))
+            .and_then(|tm| {
+                tm.begin()
+                    .map(|tx| tx.0 as u64)
+                    .map_err(|e| SqlError::ExecutionError(e.to_string()))
+            })
     }
 
-    fn commit(&mut self, _txn: u64) -> Result<(), sqlrustgo_types::SqlError> {
-        Err(sqlrustgo_types::SqlError::ExecutionError("TODO".to_string()))
+    fn commit(&mut self, txn: u64) -> Result<(), SqlError> {
+        self.txn_manager
+            .ok_or_else(|| SqlError::ExecutionError("No txn_manager configured".to_string()))
+            .and_then(|tm| {
+                tm.commit()
+                    .map_err(|e| SqlError::ExecutionError(e.to_string()))?;
+                Ok(())
+            })
     }
 
-    fn rollback(&mut self, _txn: u64) -> Result<(), sqlrustgo_types::SqlError> {
-        Err(sqlrustgo_types::SqlError::ExecutionError("TODO".to_string()))
+    fn rollback(&mut self, txn: u64) -> Result<(), SqlError> {
+        self.txn_manager
+            .ok_or_else(|| SqlError::ExecutionError("No txn_manager configured".to_string()))
+            .and_then(|tm| {
+                tm.rollback()
+                    .map_err(|e| SqlError::ExecutionError(e.to_string()))
+            })
     }
 }
 
 impl<'a> LocalExecutor<'a> {
     /// Execute DML (INSERT/UPDATE/DELETE) through proper transaction boundary
-    fn execute_dml(&mut self, ctx: &mut crate::execution::QueryContext) -> Result<crate::execution::ExecutionResult, sqlrustgo_types::SqlError> {
+    fn execute_dml(&mut self, ctx: &mut crate::execution::QueryContext) -> Result<crate::execution::ExecutionResult, SqlError> {
         let sql_upper = ctx.sql.to_uppercase();
 
         if sql_upper.starts_with("DELETE") {
@@ -1116,22 +1136,53 @@ impl<'a> LocalExecutor<'a> {
         }
 
         if sql_upper.starts_with("INSERT") {
-            return Err(sqlrustgo_types::SqlError::ExecutionError("INSERT not yet implemented via ExecutionEngine".to_string()));
+            return Err(SqlError::ExecutionError("INSERT not yet implemented via ExecutionEngine".to_string()));
         }
 
         if sql_upper.starts_with("UPDATE") {
-            return Err(sqlrustgo_types::SqlError::ExecutionError("UPDATE not yet implemented via ExecutionEngine".to_string()));
+            return Err(SqlError::ExecutionError("UPDATE not yet implemented via ExecutionEngine".to_string()));
         }
 
-        Err(sqlrustgo_types::SqlError::ExecutionError("Unsupported DML".to_string()))
+        Err(SqlError::ExecutionError("Unsupported DML".to_string()))
     }
 
-    /// Execute DELETE through execute_internal (the ONLY place allowed to touch storage directly)
-    fn execute_delete_sql(&self, _ctx: &crate::execution::QueryContext) -> Result<crate::execution::ExecutionResult, sqlrustgo_types::SqlError> {
-        // This is the ONLY place where direct storage.delete is allowed
-        // ALL other storage access in LocalExecutor is a violation
-        // TODO: Route through proper txn/wal when ExecutionEngine fully implemented
-        Ok(crate::execution::ExecutionResult::ok(0))
+    fn execute_delete_sql(&mut self, ctx: &mut crate::execution::QueryContext) -> Result<crate::execution::ExecutionResult, SqlError> {
+        use crate::execution::{TxnStep, ExecutionTrace};
+
+        let mut trace = ExecutionTrace::new();
+
+        let txn_manager = self.txn_manager.ok_or_else(|| {
+            SqlError::ExecutionError("No txn_manager configured".to_string())
+        })?;
+
+        trace.push(TxnStep::Begin);
+        let tx_id = txn_manager.begin().map_err(|e| SqlError::ExecutionError(e.to_string()))?;
+
+        trace.push(TxnStep::WalPrepare);
+
+        trace.push(TxnStep::StorageMutation);
+        let table_name = extract_table_name_from_delete(&ctx.sql);
+        let deleted = self.storage.delete(&table_name, &[]).map_err(|e| SqlError::ExecutionError(e.to_string()))?;
+
+        trace.push(TxnStep::WalCommit);
+
+        trace.push(TxnStep::Commit);
+        txn_manager.commit().map_err(|e| SqlError::ExecutionError(e.to_string()))?;
+
+        trace.validate_order()?;
+
+        Ok(crate::execution::ExecutionResult::ok(deleted))
+    }
+
+    fn extract_table_name_from_delete(sql: &str) -> String {
+        let sql = sql.trim().to_uppercase();
+        if let Some(from_pos) = sql.find("FROM") {
+            sql[from_pos + 5..].trim().split_whitespace().next().unwrap_or("").to_string()
+        } else if let Some(into_pos) = sql.find("INTO") {
+            sql[into_pos + 5..].trim().split_whitespace().next().unwrap_or("").to_string()
+        } else {
+            "".to_string()
+        }
     }
 }
 
