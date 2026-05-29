@@ -1032,6 +1032,9 @@ fn is_select(sql: &str) -> bool {
         || u.starts_with("DESCRIBE")
         || u.starts_with("EXPLAIN")
 }
+fn is_select_query(sql: &str) -> bool {
+    is_select(sql)
+}
 
 fn is_transaction_cmd(sql: &str) -> bool {
     let u = sql.trim().to_uppercase();
@@ -1535,7 +1538,7 @@ pub fn run_server(host: &str, port: u16) -> MySqlResult<()> {
 // ============================================================================
 
 #[cfg(test)]
-mod tests {
+mod unit_tests {
     use super::*;
 
     // ============ is_select_query Tests ============
