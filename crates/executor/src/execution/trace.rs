@@ -1,5 +1,13 @@
 use sqlrustgo_types::SqlError;
 
+/// DML operation types that share the same VTU execution model
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DmlOperation {
+    Insert,
+    Update,
+    Delete,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TxnStep {
     Begin,
