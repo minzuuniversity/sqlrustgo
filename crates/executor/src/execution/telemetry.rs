@@ -4,6 +4,7 @@ use super::{ExecutionEvent, DmlOperation};
 pub struct EventBuffer {
     events: Vec<ExecutionEvent>,
     capacity: usize,
+    seq: usize,
 }
 
 impl EventBuffer {
@@ -11,10 +12,12 @@ impl EventBuffer {
         Self {
             events: Vec::with_capacity(capacity),
             capacity,
+            seq: 0,
         }
     }
 
     pub fn push(&mut self, event: ExecutionEvent) -> Option<Vec<ExecutionEvent>> {
+        self.seq += 1;
         self.events.push(event);
         if self.events.len() >= self.capacity {
             Some(self.drain())
@@ -31,6 +34,14 @@ impl EventBuffer {
 
     pub fn len(&self) -> usize {
         self.events.len()
+    }
+
+    pub fn seq(&self) -> usize {
+        self.seq
+    }
+
+    pub fn reset_seq(&mut self) {
+        self.seq = 0;
     }
 }
 
@@ -81,53 +92,99 @@ impl TelemetryCollector {
         if events.is_empty() {
             return;
         }
-        let statements = self.build_cypher(&events);
-        self.send_to_neo4j(&statements);
+        let trace_node = self.build_trace_node();
+        let event_nodes = self.build_linked_events(&events);
+        let all_statements = trace_node.into_iter().chain(event_nodes).collect::<Vec<_>>();
+        self.send_to_neo4j(&all_statements);
     }
 
-    fn build_cypher(&self, events: &[ExecutionEvent]) -> Vec<serde_json::Value> {
-        events
-            .iter()
-            .map(|e| {
-                let (event_type, table, rows, txn_id) = match e {
-                    ExecutionEvent::SqlReceived { sql } => {
-                        ("SqlReceived", sql.clone(), 0, None)
-                    }
-                    ExecutionEvent::TxnBegin { txn_id } => ("TxnBegin", String::new(), 0, Some(*txn_id)),
-                    ExecutionEvent::TxnCommit { txn_id } => ("TxnCommit", String::new(), 0, Some(*txn_id)),
-                    ExecutionEvent::TxnRollback { txn_id } => ("TxnRollback", String::new(), 0, Some(*txn_id)),
-                    ExecutionEvent::WalBegin { txn_id } => ("WalBegin", String::new(), 0, Some(*txn_id)),
-                    ExecutionEvent::WalWrite { txn_id, segment } => ("WalWrite", segment.clone(), 0, Some(*txn_id)),
-                    ExecutionEvent::WalCommit { txn_id } => ("WalCommit", String::new(), 0, Some(*txn_id)),
-                    ExecutionEvent::StorageRead { table, rows } => ("StorageRead", table.clone(), *rows, None),
-                    ExecutionEvent::StorageWrite { table, rows } => ("StorageWrite", table.clone(), *rows, None),
-                    ExecutionEvent::StorageMutation { table, op } => {
-                        let op_name = match op {
-                            DmlOperation::Insert => "INSERT",
-                            DmlOperation::Update => "UPDATE",
-                            DmlOperation::Delete => "DELETE",
-                        };
-                        (op_name, table.clone(), 0, None)
-                    }
-                    ExecutionEvent::BoundaryCheck { module, passed } => {
-                        ("BoundaryCheck", module.clone(), if *passed { 1 } else { 0 }, None)
-                    }
-                    ExecutionEvent::VtuValidate { result } => {
-                        ("VtuValidate", String::new(), if *result { 1 } else { 0 }, None)
-                    }
-                };
-                serde_json::json!({
-                    "statement": "CREATE (e:ExecutionEvent { trace_id: $trace_id, type: $type, table: $table, rows: $rows, txn_id: $txn_id, ts: timestamp() })",
+    fn build_trace_node(&self) -> Vec<serde_json::Value> {
+        vec![serde_json::json!({
+            "statement": "MERGE (t:ExecutionTrace { trace_id: $trace_id }) ON CREATE SET t.created_at = timestamp()",
+            "parameters": {
+                "trace_id": self.trace_id,
+            }
+        })]
+    }
+
+    fn build_linked_events(&self, events: &[ExecutionEvent]) -> Vec<serde_json::Value> {
+        let mut statements = Vec::new();
+        let mut prev_id: Option<usize> = None;
+
+        for (idx, e) in events.iter().enumerate() {
+            let (event_type, table, rows, txn_id) = match e {
+                ExecutionEvent::SqlReceived { sql } => {
+                    ("SqlReceived", sql.clone(), 0, None)
+                }
+                ExecutionEvent::TxnBegin { txn_id } => ("TxnBegin", String::new(), 0, Some(*txn_id)),
+                ExecutionEvent::TxnCommit { txn_id } => ("TxnCommit", String::new(), 0, Some(*txn_id)),
+                ExecutionEvent::TxnRollback { txn_id } => ("TxnRollback", String::new(), 0, Some(*txn_id)),
+                ExecutionEvent::WalBegin { txn_id } => ("WalBegin", String::new(), 0, Some(*txn_id)),
+                ExecutionEvent::WalWrite { txn_id, segment } => ("WalWrite", segment.clone(), 0, Some(*txn_id)),
+                ExecutionEvent::WalCommit { txn_id } => ("WalCommit", String::new(), 0, Some(*txn_id)),
+                ExecutionEvent::StorageRead { table, rows } => ("StorageRead", table.clone(), *rows, None),
+                ExecutionEvent::StorageWrite { table, rows } => ("StorageWrite", table.clone(), *rows, None),
+                ExecutionEvent::StorageMutation { table, op } => {
+                    let op_name = match op {
+                        DmlOperation::Insert => "INSERT",
+                        DmlOperation::Update => "UPDATE",
+                        DmlOperation::Delete => "DELETE",
+                    };
+                    (op_name, table.clone(), 0, None)
+                }
+                ExecutionEvent::BoundaryCheck { module, passed } => {
+                    ("BoundaryCheck", module.clone(), if *passed { 1 } else { 0 }, None)
+                }
+                ExecutionEvent::VtuValidate { result } => {
+                    ("VtuValidate", String::new(), if *result { 1 } else { 0 }, None)
+                }
+            };
+
+            let event_id = format!("{}_{}", self.trace_id, idx);
+
+            statements.push(serde_json::json!({
+                "statement": "MATCH (t:ExecutionTrace {trace_id: $trace_id}) CREATE (t)-[:HAS_EVENT]->(e:ExecutionEvent {id: $id, type: $type, table: $table, rows: $rows, txn_id: $txn_id, seq: $seq, ts: timestamp()})",
+                "parameters": {
+                    "trace_id": self.trace_id,
+                    "id": event_id,
+                    "type": event_type,
+                    "table": table,
+                    "rows": rows,
+                    "txn_id": txn_id,
+                    "seq": idx,
+                }
+            }));
+
+            if let Some(prev) = prev_id {
+                let prev_event_id = format!("{}_{}", self.trace_id, prev);
+                statements.push(serde_json::json!({
+                    "statement": "MATCH (e1:ExecutionEvent {id: $prev_id}), (e2:ExecutionEvent {id: $curr_id}) CREATE (e1)-[:NEXT]->(e2)",
                     "parameters": {
-                        "trace_id": self.trace_id,
-                        "type": event_type,
-                        "table": table,
-                        "rows": rows,
-                        "txn_id": txn_id,
+                        "prev_id": prev_event_id,
+                        "curr_id": event_id,
                     }
-                })
-            })
-            .collect()
+                }));
+
+                if Self::is_causal_link(event_type) {
+                    let cause_event_id = format!("{}_{}", self.trace_id, prev);
+                    statements.push(serde_json::json!({
+                        "statement": "MATCH (cause:ExecutionEvent {id: $cause_id}), (effect:ExecutionEvent {id: $effect_id}) CREATE (cause)-[:CAUSES]->(effect)",
+                        "parameters": {
+                            "cause_id": cause_event_id,
+                            "effect_id": event_id,
+                        }
+                    }));
+                }
+            }
+
+            prev_id = Some(idx);
+        }
+
+        statements
+    }
+
+    fn is_causal_link(event_type: &str) -> bool {
+        matches!(event_type, "StorageMutation" | "WalCommit" | "TxnCommit")
     }
 
     fn send_to_neo4j(&self, statements: &[serde_json::Value]) {
