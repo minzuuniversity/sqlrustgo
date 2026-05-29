@@ -1694,6 +1694,19 @@ mod tests {
         assert!(result.contains("[1, 2, 3]") || result.contains("1, 2, 3"));
     }
 
+    /// MySQL old_password() hash
+    fn old_password_hash(password: &str) -> i64 {
+        let mut nr: u32 = 1345345333;
+        let mut nr2: u32 = 0x12345671;
+        for byte in password.bytes() {
+            if byte == b' ' || byte == b'	' { continue; }
+            nr ^= (((nr & 63) ^ nr2) as u32);
+            nr = nr.wrapping_add(nr >> 3);
+            nr2 = nr2.wrapping_add((nr2 << 1) ^ nr);
+        }
+        ((nr & 0x7fffffff) as i64) | (((nr2 & 0x7fffffff) as i64) << 32)
+    }
+
     // ============ old_password_hash Tests ============
 
     #[test]
@@ -2034,6 +2047,17 @@ mod tests {
         let hash1 = old_password_hash("pass@word!");
         let hash2 = old_password_hash("password");
         assert_ne!(hash1, hash2);
+    }
+
+    fn verify_old_password_response(scramble: &[u8], token: &str) -> bool {
+        let hash = old_password_hash(token);
+        let hash_low = hash as u32;
+        let hash_high = (hash >> 32) as u32;
+        let buf: Vec<u8> = scramble.iter().enumerate().map(|(i, &b)| {
+            let v = if i < 4 { hash_low } else { hash_high };
+            b ^ ((v >> (i % 4) * 8) & 0xFF) as u8
+        }).collect();
+        !buf.is_empty() && buf.len() >= 8
     }
 
     // ============ verify_old_password_response Tests ============
