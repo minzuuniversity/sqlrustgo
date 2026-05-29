@@ -206,7 +206,7 @@ mod tests {
     fn create_test_qmd_data(id: &str, vector: Vec<f32>) -> QmdData {
         QmdData {
             id: id.to_string(),
-            data_type: QmdDataType::Vector,
+            data_type: crate::types::QmdDataType::Vector,
             vector: Some(vector),
             graph: None,
             text: None,
