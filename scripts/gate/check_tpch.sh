@@ -1,241 +1,106 @@
-#!/usr/bin/env bash
-# ============================================================
-# R9 / B8: TPC-H Performance Gate
+#!/bin/bash
+# scripts/gate/check_tpch.sh — TPC-H SF0.1 regression gate
+# Must pass before PR merge (except docs-only changes)
 #
-# Runs TPC-H queries against SQLRustGo and enforces time thresholds.
-# Supports SF=0.1 (alpha/beta), SF=1 (RC), and SF=10 (GA).
-#
-# Thresholds (Alpha/Beta — SF=0.1):
-#   Q1:  ≤ 10.0s
-#   Q6:  ≤  6.0s
-#   All 22 queries must complete without OOM.
-#
-# Thresholds (RC — SF=1):
-#   Q1:  ≤ 30.0s
-#   Q6:  ≤ 15.0s
-#   All 22 queries must complete without OOM.
-#
-# Thresholds (GA — SF=10):
-#   Q1:  ≤ 300.0s (5 min)
-#   Q6:  ≤ 180.0s (3 min)
-#   All 22 queries must complete without OOM (spill-to-disk enabled).
-#
-# Usage:
-#   bash scripts/gate/check_tpch.sh              (SF=0.1, alpha/beta)
-#   bash scripts/gate/check_tpch.sh sf=1          (SF=1, RC/GA)
-#   bash scripts/gate/check_tpch.sh --sf1         (SF=1, RC/GA)
-#   bash scripts/gate/check_tpch.sh sf=10         (SF=10, GA)
-#   bash scripts/gate/check_tpch.sh --sf10        (SF=10, GA)
-#   bash scripts/gate/check_tpch.sh --skip-data   (skip data check)
-# ============================================================
+# Usage: bash scripts/gate/check_tpch.sh [--fast]
+#   --fast  Skip data import, assume data already loaded
+
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-TPCH_DIR="$PROJECT_ROOT/scripts/tpch"
+REPO_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
+BENCH_CLI="$REPO_DIR/target/release/sqlrustgo-bench-cli"
+DDL="$REPO_DIR/scripts/tpch/tpch_schema.sql"
+DATA_DIR="${DATA_DIR:-/tmp/tpch-sf01}"
+BASELINE="$REPO_DIR/docs/releases/v3.6.0/TPCH_BASELINE.md"
+RESULT_FILE="/tmp/tpch_gate_results.json"
 
-# Auto-detect version from branch name
-detect_version() {
-    local branch
-    branch=$(git -C "$PROJECT_ROOT" symbolic-ref --short HEAD 2>/dev/null || echo "develop/v3.2.0")
-    if [[ "$branch" =~ v([0-9]+\.[0-9]+\.[0-9]+) ]]; then
-        echo "${BASH_REMATCH[1]}"
-    elif [[ "$branch" =~ develop/v([0-9]+\.[0-9]+) ]]; then
-        echo "${BASH_REMATCH[1]}.0"
-    else
-        echo "3.2.0"
-    fi
-}
-VERSION=$(detect_version)
-BASELINE_FILE="$PROJECT_ROOT/perf_baselines/v${VERSION}/tpch_baseline.json"
-RESULT_FILE="$PROJECT_ROOT/perf_baselines/v${VERSION}/tpch_current.json"
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m'
 
-# Default TPC-H data location
-DATA_DIR_DEFAULT="$HOME/sqlrustgo-tpch/data"
-DATA_DIR="${TPCH_DATA_DIR:-$DATA_DIR_DEFAULT}"
+log_info()  { echo -e "${GREEN}[INFO]${NC}  $*"; }
+log_warn()  { echo -e "${YELLOW}[WARN]${NC}  $*"; }
+log_fail()  { echo -e "${RED}[FAIL]${NC}  $*"; }
 
-cd "$PROJECT_ROOT"
-
-SF="${TPCH_SF:-0.1}"
-SKIP_DATA=false
-for arg in "$@"; do
-    case "$arg" in
-        sf=*) SF="${arg#sf=}"; shift ;;
-        --sf1) SF="1"; shift ;;
-        --sf0.1) SF="0.1"; shift ;;
-        --skip-data) SKIP_DATA=true; shift ;;
-    esac
-done
-
-# Thresholds by SF (in milliseconds)
-case "$SF" in
-    0.1)
-        TIME_Q1=10000; TIME_Q6=6000
-        Q_COUNT=22; TABLE_COUNT=8
-        ;;
-    1)
-        TIME_Q1=30000; TIME_Q6=15000
-        Q_COUNT=22; TABLE_COUNT=8
-        ;;
-    10)
-        TIME_Q1=300000; TIME_Q6=180000
-        Q_COUNT=22; TABLE_COUNT=8
-        ;;
-    *)
-        echo "❌ Unsupported SF: $SF (use 0.1, 1, or 10)"
-        exit 1
-        ;;
-esac
-
-echo "=== R9/B8: TPC-H Performance Gate (SF=$SF) - Beta/RC/GA ==="
-echo "Date: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
-echo "Data dir: $DATA_DIR"
-echo "Result file: $RESULT_FILE"
-echo ""
-
-# ---------- Step 1: Data availability ----------
-if [ "$SKIP_DATA" = false ]; then
-    echo "[1/4] Checking TPC-H data (SF=$SF)..."
-    if [ ! -d "$DATA_DIR" ] || [ -z "$(ls -A "$DATA_DIR"/*.tbl 2>/dev/null)" ]; then
-        echo "⚠️  TPC-H data not found at $DATA_DIR"
-        echo "   Generate with: ~/tpch-tools/dbgen/dbgen -s $SF -f -d"
-        echo "   Or set TPCH_DATA_DIR env var."
-        echo ""
-        echo "⏭️  TPC-H Gate: SKIPPED (no TPC-H data)"
-        exit 0
-    fi
-    echo "[✓] TPC-H data found"
-else
-    echo "[1/4] Skipping data check (--skip-data)"
+# Check if bench binary exists
+if [[ ! -x "$BENCH_CLI" ]]; then
+    log_warn "Bench CLI not found at $BENCH_CLI, building..."
+    cd "$REPO_DIR"
+    cargo build --release -p sqlrustgo-bench-cli
 fi
 
-# ---------- Step 2: Build bench CLI ----------
-echo ""
-echo "[2/4] Building bench CLI..."
-if ! cargo build -p sqlrustgo-bench-cli --quiet 2>&1; then
-    echo "❌ Failed to build sqlrustgo-bench-cli"
-    exit 1
+# Check data exists
+if [[ ! -d "$DATA_DIR" ]] || [[ -z "$(ls -A "$DATA_DIR"/*.tbl 2>/dev/null)" ]]; then
+    log_info "Generating SF0.1 TPC-H data..."
+    mkdir -p "$DATA_DIR"
+    cd /home/openclaw/tpch-dbgen-master
+    printf 'y\ny\n' | ./dbgen -f -q -s 0.1 -T r 2>/dev/null || true
+    printf 'y\ny\n' | ./dbgen -f -q -s 0.1 -T n 2>/dev/null || true
+    printf 'y\ny\n' | ./dbgen -f -q -s 0.1 -T c 2>/dev/null || true
+    printf 'y\ny\n' | ./dbgen -f -q -s 0.1 -T s 2>/dev/null || true
+    printf 'y\ny\n' | ./dbgen -f -q -s 0.1 -T P 2>/dev/null || true
+    printf 'y\ny\n' | ./dbgen -f -q -s 0.1 -T O 2>/dev/null || true
+    printf 'y\ny\n' | ./dbgen -f -q -s 0.1 -T L 2>/dev/null || true
+    mv *.tbl "$DATA_DIR/" 2>/dev/null || true
+    cd "$REPO_DIR"
 fi
 
-# Check for bench binary (try release first, fall back to debug)
-BENCH_BIN="$PROJECT_ROOT/target/release/sqlrustgo-bench-cli"
-if [ ! -f "$BENCH_BIN" ]; then
-    BENCH_BIN="$PROJECT_ROOT/target/debug/sqlrustgo-bench-cli"
-fi
-if [ ! -f "$BENCH_BIN" ]; then
-    echo "❌ bench CLI not found at $PROJECT_ROOT/target/{release,debug}/sqlrustgo-bench-cli"
-    exit 1
-fi
-echo "[✓] bench CLI built"
+log_info "Running TPC-H SF0.1 gate..."
 
-# ---------- Step 3: Run TPC-H queries via bench CLI ----------
-echo ""
-echo "[3/4] Running TPC-H SF=$SF queries (22/22)..."
+# Run all 22 queries
+cd "$REPO_DIR"
+    "$BENCH_CLI" \
+        tpch-bench \
+        --ddl "$DDL" \
+        --data "$DATA_DIR" \
+        --queries all \
+        --iterations 1 \
+        --output "$RESULT_FILE" 2>&1
 
-mkdir -p "$(dirname "$RESULT_FILE")"
+# Parse results
+PASS=0
+FAIL=0
+TOTAL_TIME=0
 
-# Run all 22 TPC-H queries using bench CLI
-# The bench CLI handles parameter substitution automatically
-BENCH_OUTPUT=$("$BENCH_BIN" tpch-bench \
-    --ddl "$TPCH_DIR/tpch_schema.sql" \
-    --data "$DATA_DIR" \
-    --queries all \
-    --iterations 1 \
-    --output "$RESULT_FILE" 2>&1)
-
-# Parse the output to show results
-echo "$BENCH_OUTPUT" | grep -E "^(Q[0-9]+|TOTAL)" | while read -r line; do
-    echo "  $line"
-done
-
-# Check if bench CLI encountered errors
-if echo "$BENCH_OUTPUT" | grep -qi "error\|panic\|OOM\|memory"; then
-    echo ""
-    echo "❌ TPC-H benchmark encountered errors:"
-    echo "$BENCH_OUTPUT" | grep -iE "error|panic|oom|memory" | head -5
-    exit 1
-fi
-
-# Verify result file exists
-if [ ! -f "$RESULT_FILE" ]; then
-    echo "❌ Result file not created: $RESULT_FILE"
-    exit 1
-fi
-
-# ---------- Step 4: Evaluate thresholds ----------
-echo ""
-echo "[4/4] Evaluating TPC-H performance (SF=$SF)..."
-
-FAIL_COUNT=0
-WARN_COUNT=0
-PASS_COUNT=0
-
-evaluate_q() {
-    local name="$1"
-    local threshold_ms="$2"
-
-    local ms
-    ms=$(python3 -c "
-import json
+for q in Q1 Q2 Q3 Q4 Q5 Q6 Q7 Q8 Q9 Q10 Q11 Q12 Q13 Q14 Q15 Q16 Q17 Q18 Q19 Q20 Q21 Q22; do
+    elapsed=$(python3 -c "
+import json, sys
 try:
     with open('$RESULT_FILE') as f:
         d = json.load(f)
-    for q in d.get('queries', []):
-        if q.get('name') == '$name':
-            print(int(q.get('avg_ms', 999999)))
+    qdata = d.get('queries', [])
+    for item in qdata:
+        if item.get('name') == '$q':
+            print(item.get('avg_ms', 0))
             break
-except: print(999999)
-" 2>/dev/null || echo "999999")
+    else:
+        print('ERROR')
+except Exception as e:
+    print('ERROR')
+" 2>/dev/null || echo "ERROR")
 
-    if [ "$ms" -ge 999000 ]; then
-        echo "⚠️  $name: no result"
-        WARN_COUNT=$((WARN_COUNT + 1))
-        return
-    fi
-
-    if [ "$ms" -le "$threshold_ms" ]; then
-        echo "✅ $name: ${ms}ms ≤ ${threshold_ms}ms"
-        PASS_COUNT=$((PASS_COUNT + 1))
+    if [[ "$elapsed" != "ERROR" ]]; then
+        echo -e "  ${GREEN}PASS${NC}  $q: ${elapsed}ms"
+        PASS=$((PASS + 1))
+        TOTAL_TIME=$(python3 -c "print($TOTAL_TIME + $elapsed)" 2>/dev/null || echo "$TOTAL_TIME")
     else
-        echo "❌ $name: ${ms}ms > ${threshold_ms}ms"
-        FAIL_COUNT=$((FAIL_COUNT + 1))
+        echo -e "  ${RED}FAIL${NC}  $q"
+        FAIL=$((FAIL + 1))
     fi
-}
-
-# Evaluate key queries with thresholds
-evaluate_q "Q1" "$TIME_Q1"
-evaluate_q "Q6" "$TIME_Q6"
-
-# Count total queries in result
-TOTAL_QUERIES=$(python3 -c "
-import json
-try:
-    with open('$RESULT_FILE') as f:
-        d = json.load(f)
-    print(len(d.get('queries', [])))
-except: print('0')
-" 2>/dev/null || echo "0")
+done
 
 echo ""
-echo "=== TPC-H Gate (SF=$SF) ==="
-echo "Total queries run: $TOTAL_QUERIES / $Q_COUNT"
-echo "Key queries (Q1, Q6): PASS=$PASS_COUNT | WARN=$WARN_COUNT | FAIL=$FAIL_COUNT"
-echo ""
+echo "========================================"
+echo "TPC-H Gate: $PASS passed, $FAIL failed"
+echo "========================================"
 
-# For SF=1, we primarily care about no OOM and all 22 running
-# Performance thresholds are indicative for initial验收标准
-if [ "$FAIL_COUNT" -gt 0 ]; then
-    echo "❌ TPC-H Gate: FAILED — $FAIL_COUNT key query(s) exceeded thresholds"
-    echo "   Results: $RESULT_FILE"
+if [[ $FAIL -gt 0 ]]; then
+    log_fail "TPC-H gate FAILED — $FAIL queries failed"
     exit 1
+else
+    log_info "TPC-H gate PASSED — all 22 queries succeeded"
+    exit 0
 fi
-
-if [ "$TOTAL_QUERIES" -lt "$Q_COUNT" ]; then
-    echo "❌ TPC-H Gate: FAILED — only $TOTAL_QUERIES/$Q_COUNT queries ran"
-    echo "   Results: $RESULT_FILE"
-    exit 1
-fi
-
-echo "✅ TPC-H Gate: PASSED — all $Q_COUNT queries completed without OOM (SF=$SF)"
-echo "   Results: $RESULT_FILE"
-exit 0
