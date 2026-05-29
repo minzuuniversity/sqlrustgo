@@ -1133,24 +1133,28 @@ impl<'a> LocalExecutor<'a> {
     }
 
     fn execute_dml_vtu(&mut self, op: crate::execution::DmlOperation, ctx: &mut crate::execution::QueryContext) -> Result<crate::execution::ExecutionResult, SqlError> {
-        use crate::execution::{TxnStep, ExecutionTrace};
+        use crate::execution::{TxnStep, ExecutionTrace, ExecutionEvent, TelemetryCollector};
 
         let mut trace = ExecutionTrace::new();
+        let telemetry = ctx.telemetry.take();
 
         let txn_manager = self.txn_manager.ok_or_else(|| {
             SqlError::ExecutionError("No txn_manager configured".to_string())
         })?;
 
         trace.push(TxnStep::Begin);
+        if let Some(ref t) = telemetry { t.emit(ExecutionEvent::TxnBegin { txn_id: 0 }); }
         let _tx_id = txn_manager.begin().map_err(|e| SqlError::ExecutionError(e.to_string()))?;
 
         trace.push(TxnStep::WalPrepare);
+        if let Some(ref t) = telemetry { t.emit(ExecutionEvent::WalBegin { txn_id: 0 }); }
 
         trace.push(TxnStep::StorageMutation);
         let affected = match op {
             crate::execution::DmlOperation::Insert => {
                 let table_name = extract_table_name_from_sql(&ctx.sql);
                 let values = ctx.params.clone();
+                if let Some(ref t) = telemetry { t.emit(ExecutionEvent::StorageMutation { table: table_name.clone(), op }); }
                 self.storage.insert(&table_name, values).map_err(|e| SqlError::ExecutionError(e.to_string()))?
             }
             crate::execution::DmlOperation::Update => {
@@ -1158,16 +1162,20 @@ impl<'a> LocalExecutor<'a> {
             }
             crate::execution::DmlOperation::Delete => {
                 let table_name = extract_table_name_from_sql(&ctx.sql);
+                if let Some(ref t) = telemetry { t.emit(ExecutionEvent::StorageMutation { table: table_name.clone(), op }); }
                 self.storage.delete(&table_name, &[]).map_err(|e| SqlError::ExecutionError(e.to_string()))?
             }
         };
 
         trace.push(TxnStep::WalCommit);
+        if let Some(ref t) = telemetry { t.emit(ExecutionEvent::WalCommit { txn_id: 0 }); }
 
         trace.push(TxnStep::Commit);
         txn_manager.commit().map_err(|e| SqlError::ExecutionError(e.to_string()))?;
+        if let Some(ref t) = telemetry { t.emit(ExecutionEvent::TxnCommit { txn_id: 0 }); }
 
         trace.validate_order()?;
+        if let Some(ref t) = telemetry { t.emit(ExecutionEvent::VtuValidate { result: true }); }
 
         Ok(crate::execution::ExecutionResult::ok(affected))
     }
