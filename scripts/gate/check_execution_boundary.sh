@@ -31,6 +31,16 @@ if grep -rn "TransactionManager::" crates/executor/src/ 2>/dev/null | grep -v "i
 fi
 
 echo ""
+echo "[3/3] Checking for legacy DML entry points (must use execute_dml_vtu)..."
+
+LEGACY_FUNCS="execute_insert_sql\|execute_update_sql\|execute_delete_sql"
+if grep -rn "$LEGACY_FUNCS" crates/executor/src/ 2>/dev/null | grep -v "_test\|#\[test\]"; then
+    echo "❌ LEGACY DML ENTRY POINTS DETECTED"
+    echo "All DML must use execute_dml_vtu()"
+    ERRORS=$((ERRORS + 1))
+fi
+
+echo ""
 if [ $ERRORS -eq 0 ]; then
     echo "✅ Execution boundary check passed!"
     echo "All storage access goes through ExecutionEngine"
@@ -39,10 +49,11 @@ else
     echo "❌ Found $ERRORS execution boundary violation(s)"
     echo ""
     echo "IMPORTANT: All storage access must go through:"
-    echo "  ExecutionEngine.execute_internal()"
+    echo "  ExecutionEngine.execute_dml_vtu()"
     echo ""
     echo "Forbidden patterns:"
-    echo "  - storage.insert/update/delete outside execute_internal"
+    echo "  - storage.insert/update/delete outside VTU"
     echo "  - TransactionManager::begin/commit/rollback outside ExecutionEngine"
+    echo "  - Legacy execute_insert_sql / execute_update_sql / execute_delete_sql"
     exit 1
 fi
