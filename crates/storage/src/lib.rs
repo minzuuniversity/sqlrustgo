@@ -7,6 +7,7 @@ pub mod binary_storage;
 pub mod bplus_tree;
 pub mod buffer_pool;
 pub mod checkpoint;
+pub mod iterator;
 pub mod page_access_tracker;
 pub mod storage_tier;
 pub mod tier_manager;
@@ -42,6 +43,7 @@ pub use file_storage::FileStorage;
 pub use fts::{
     ChineseTokenizer, InvertedIndex, MultiLanguageTokenizer, SimpleTokenizer, Tokenizer,
 };
+pub use iterator::{IteratorSchema, StorageIterator, VecStorageIterator};
 pub use key_manager::{BasicKeyManager, KeyManager};
 pub use page::Page;
 pub use page_access_tracker::PageAccessTracker;

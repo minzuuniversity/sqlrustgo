@@ -8,6 +8,8 @@ use std::borrow::Cow;
 use std::collections::HashMap;
 use std::collections::HashSet;
 
+use crate::iterator::{IteratorSchema, StorageIterator};
+
 /// Referential action for foreign key constraints
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum ForeignKeyAction {
@@ -644,6 +646,11 @@ pub trait StorageEngine: Send + Sync {
     /// Scan all rows from a table
     fn scan(&self, table: &str) -> SqlResult<Vec<Record>>;
 
+    /// Create a streaming iterator over a table.
+    /// This allows memory-efficient scanning without loading all rows at once.
+    /// Returns an iterator that lazily loads rows on each next_row() call.
+    fn scan_iter(&self, table: &str) -> SqlResult<Box<dyn StorageIterator>>;
+
     /// Get records from a table, optionally as a borrowed slice to avoid cloning.
     /// Default implementation wraps scan() result in Cow::Owned.
     /// Override in storage backends that can return borrowed data (e.g. MemoryStorage).
@@ -879,6 +886,14 @@ impl Default for MemoryStorage {
 impl StorageEngine for MemoryStorage {
     fn scan(&self, table: &str) -> SqlResult<Vec<Record>> {
         Ok(self.tables.get(table).cloned().unwrap_or_default())
+    }
+
+    fn scan_iter(&self, table: &str) -> SqlResult<Box<dyn StorageIterator>> {
+        let rows = self.tables.get(table).cloned().unwrap_or_default();
+        let schema = self.table_infos.get(table).map(|info| IteratorSchema::new(
+            info.columns.iter().map(|c| c.name.clone()).collect(),
+        )).unwrap_or_else(|| IteratorSchema::new(vec![]));
+        Ok(Box::new(super::iterator::VecStorageIterator::new(rows, schema)))
     }
 
     fn get_records(&self, table: &str) -> SqlResult<Cow<'_, [Record]>> {

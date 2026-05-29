@@ -6,6 +6,7 @@ use crate::engine::{
     ColumnDefinition, ForeignKeyConstraint, Record, StorageEngine, TableData, TableInfo,
     TriggerInfo, UniqueConstraint,
 };
+use crate::iterator::StorageIterator;
 use sqlrustgo_types::{SqlError, SqlResult, Value};
 use std::collections::HashMap;
 use std::fs::{self, File};
@@ -1304,6 +1305,20 @@ impl StorageEngine for FileStorage {
             .get_table(table)
             .map(|data| data.rows.clone())
             .unwrap_or_default())
+    }
+
+    fn scan_iter(&self, table: &str) -> SqlResult<Box<dyn StorageIterator>> {
+        use crate::iterator::{IteratorSchema, VecStorageIterator};
+        let rows = self
+            .get_table(table)
+            .map(|data| data.rows.clone())
+            .unwrap_or_default();
+        let schema = self.get_table(table)
+            .map(|t| IteratorSchema::new(
+                t.info.columns.iter().map(|c| c.name.clone()).collect()
+            ))
+            .unwrap_or_else(|| IteratorSchema::new(vec![]));
+        Ok(Box::new(VecStorageIterator::new(rows, schema)))
     }
 
     fn insert(&mut self, table: &str, records: Vec<Record>) -> SqlResult<()> {
