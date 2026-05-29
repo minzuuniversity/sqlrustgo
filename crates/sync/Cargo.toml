@@ -15,7 +15,7 @@ chrono = "0.4"
 async-trait = "0.1"
 
 prost = "0.13"
-tonic = "0.12"
+tonic = "0.14"
 tonic-build = "0.12"
 
 sqlrustgo-types = { path = "../types" }
