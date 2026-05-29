@@ -1,5 +1,5 @@
 use std::sync::{Arc, Mutex};
-use super::{ExecutionEvent, DmlOperation};
+use super::{ExecutionEvent, DmlOperation, DriftDetector, GuardPolicy, DriftViolation};
 
 pub struct EventBuffer {
     events: Vec<ExecutionEvent>,
@@ -55,22 +55,28 @@ pub struct TelemetryCollector {
     buffer: Arc<Mutex<EventBuffer>>,
     trace_id: String,
     enabled: bool,
+    detector: DriftDetector,
+    policy: GuardPolicy,
 }
 
 impl TelemetryCollector {
     pub fn new(trace_id: String) -> Self {
         Self {
             buffer: Arc::new(Mutex::new(EventBuffer::new(256))),
-            trace_id,
+            trace_id: trace_id.clone(),
             enabled: true,
+            detector: DriftDetector::new(trace_id),
+            policy: GuardPolicy::new(),
         }
     }
 
     pub fn with_capacity(trace_id: String, capacity: usize) -> Self {
         Self {
             buffer: Arc::new(Mutex::new(EventBuffer::new(capacity))),
-            trace_id,
+            trace_id: trace_id.clone(),
             enabled: true,
+            detector: DriftDetector::new(trace_id),
+            policy: GuardPolicy::new(),
         }
     }
 
@@ -78,14 +84,35 @@ impl TelemetryCollector {
         if !self.enabled {
             return;
         }
+
+        let mut detector = self.detector.clone();
+        detector.add_event(event.clone());
+
+        if detector.has_critical() && self.policy.should_block(detector.violations()) {
+            return;
+        }
+
         let mut buf = match self.buffer.lock() {
             Ok(b) => b,
             Err(_) => return,
         };
+
         if let Some(batch) = buf.push(event) {
             drop(buf);
+            let violation_stmts = detector.to_cypher_statements();
+            if !violation_stmts.is_empty() {
+                self.send_to_neo4j(&violation_stmts);
+            }
             self.flush(batch);
         }
+    }
+
+    pub fn violations(&self) -> Vec<DriftViolation> {
+        self.detector.violations().to_vec()
+    }
+
+    pub fn has_violations(&self) -> bool {
+        self.detector.has_violations()
     }
 
     fn flush(&self, events: Vec<ExecutionEvent>) {
@@ -239,6 +266,8 @@ impl Clone for TelemetryCollector {
             buffer: self.buffer.clone(),
             trace_id: self.trace_id.clone(),
             enabled: self.enabled,
+            detector: self.detector.clone(),
+            policy: GuardPolicy::new(),
         }
     }
 }
