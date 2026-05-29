@@ -10,3 +10,4 @@ pub mod trigger_eval;
 
 pub use executor::{Executor, ExecutorResult};
 pub use executor_metrics::ExecutorMetrics;
+pub mod vec_simd;
