@@ -2296,6 +2296,163 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         Ok(matched)
     }
 
+    /// Graceful Hash Join — memory-bounded join that spills to disk when
+    /// estimated output exceeds PARTITION_THRESHOLD.
+    ///
+    /// Strategy: partition BOTH tables by hash key into N buckets.
+    /// Each bucket pair is processed independently, keeping memory bounded.
+    /// This is the "graceful hash join" algorithm used by DuckDB/Spark.
+    ///
+    /// Memory: O(max(left_rows, right_rows) / N) instead of O(left + right)
+    const PARTITION_THRESHOLD: usize = 1_000_000;
+
+    fn hash_inner_join_rows_graceful(
+        left_rows: &[Vec<Value>],
+        right_rows: &[Vec<Value>],
+        left_key_idx: usize,
+        right_key_idx: usize,
+        left_col_count: usize,
+        right_col_count: usize,
+        join_type: JoinType,
+    ) -> SqlResult<Vec<Vec<Value>>> {
+        use std::collections::{HashMap, HashSet};
+
+        let estimated_output = left_rows.len() * right_rows.len();
+        if estimated_output <= Self::PARTITION_THRESHOLD {
+            return Self::hash_inner_join_rows(
+                left_rows,
+                right_rows,
+                left_key_idx,
+                right_key_idx,
+                left_col_count,
+                right_col_count,
+                join_type,
+            );
+        }
+
+        // Graceful hash join: partition both sides into N buckets,
+        // then process bucket pairs sequentially (build+probe one pair at a time).
+        // This bounds memory to O(max_table_size / N + matched_output).
+        let target_bucket_size = 200_000;
+        let num_buckets = ((left_rows.len().max(right_rows.len()) / target_bucket_size) + 1)
+            .max(4)
+            .min(64);
+
+        // Partition left rows into buckets
+        let mut left_buckets: Vec<Vec<(usize, Vec<Value>)>> = vec![Vec::new(); num_buckets];
+        for (li, row) in left_rows.iter().enumerate() {
+            if matches!(row[left_key_idx], Value::Null) {
+                continue;
+            }
+            let key = format!("{:?}", row[left_key_idx]);
+            let bucket = key
+                .as_bytes()
+                .iter()
+                .fold(0usize, |acc, &b| acc.wrapping_add(b as usize))
+                % num_buckets;
+            left_buckets[bucket].push((li, row.clone()));
+        }
+
+        // Partition right rows into buckets
+        let mut right_buckets: Vec<Vec<(usize, Vec<Value>)>> = vec![Vec::new(); num_buckets];
+        for (ri, row) in right_rows.iter().enumerate() {
+            if matches!(row[right_key_idx], Value::Null) {
+                continue;
+            }
+            let key = format!("{:?}", row[right_key_idx]);
+            let bucket = key
+                .as_bytes()
+                .iter()
+                .fold(0usize, |acc, &b| acc.wrapping_add(b as usize))
+                % num_buckets;
+            right_buckets[bucket].push((ri, row.clone()));
+        }
+
+        let mut matched: Vec<Vec<Value>> = Vec::new();
+        let mut left_matched_global: HashSet<usize> = HashSet::new();
+        let mut right_matched_global: HashSet<usize> = HashSet::new();
+
+        for bucket_idx in 0..num_buckets {
+            let left_bucket = &left_buckets[bucket_idx];
+            let right_bucket = &right_buckets[bucket_idx];
+
+            // Skip empty bucket pairs
+            if left_bucket.is_empty() || right_bucket.is_empty() {
+                // LEFT/FULL unmatched left in empty buckets
+                if matches!(join_type, JoinType::Left | JoinType::Full) && !left_bucket.is_empty() {
+                    for (_, left_row) in left_bucket {
+                        let mut combined = left_row.clone();
+                        combined.extend(vec![Value::Null; right_col_count]);
+                        matched.push(combined);
+                    }
+                }
+                // RIGHT/FULL unmatched right in empty buckets
+                if matches!(join_type, JoinType::Right | JoinType::Full) && !right_bucket.is_empty()
+                {
+                    for (_, right_row) in right_bucket {
+                        let mut combined = vec![Value::Null; left_col_count];
+                        combined.extend(right_row.clone());
+                        matched.push(combined);
+                    }
+                }
+                continue;
+            }
+
+            // Build hash from right bucket
+            let mut right_hash: HashMap<String, Vec<(usize, Vec<Value>)>> = HashMap::new();
+            for (ri, right_row) in right_bucket {
+                let key = format!("{:?}", right_row[right_key_idx]);
+                right_hash
+                    .entry(key)
+                    .or_default()
+                    .push((*ri, right_row.clone()));
+            }
+
+            let mut left_matched: HashSet<usize> = HashSet::new();
+            let mut right_matched: HashSet<usize> = HashSet::new();
+
+            // Probe left bucket against right hash
+            for (li, left_row) in left_bucket {
+                let key = format!("{:?}", left_row[left_key_idx]);
+                if let Some(right_match_rows) = right_hash.get(&key) {
+                    left_matched.insert(*li);
+                    left_matched_global.insert(*li);
+                    for (ri, right_row) in right_match_rows {
+                        right_matched.insert(*ri);
+                        right_matched_global.insert(*ri);
+                        let mut combined = left_row.clone();
+                        combined.extend(right_row.clone());
+                        matched.push(combined);
+                    }
+                }
+            }
+
+            // Emit unmatched left rows (per bucket — no duplicates since rows belong to exactly one bucket)
+            if matches!(join_type, JoinType::Left | JoinType::Full) {
+                for (li, left_row) in left_bucket {
+                    if !left_matched.contains(li) {
+                        let mut combined = left_row.clone();
+                        combined.extend(vec![Value::Null; right_col_count]);
+                        matched.push(combined);
+                    }
+                }
+            }
+
+            // Emit unmatched right rows (per bucket — no duplicates)
+            if matches!(join_type, JoinType::Right | JoinType::Full) {
+                for (ri, right_row) in right_bucket {
+                    if !right_matched.contains(ri) {
+                        let mut combined = vec![Value::Null; left_col_count];
+                        combined.extend(right_row.clone());
+                        matched.push(combined);
+                    }
+                }
+            }
+        }
+
+        Ok(matched)
+    }
+
     /// Execute multi-table JOIN with CBO-optimized order
     /// Replaces the old 2-table-only execute_join
     fn execute_join(&self, select: &SelectStatement) -> SqlResult<(Vec<Vec<Value>>, TableInfo)> {
@@ -2409,7 +2566,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             let left_col_count = result_info.columns.len();
             let right_col_count = right_info.columns.len();
 
-            let joined = Self::hash_inner_join_rows(
+            let joined = Self::hash_inner_join_rows_graceful(
                 &result_rows,
                 &right_rows,
                 left_key_idx,

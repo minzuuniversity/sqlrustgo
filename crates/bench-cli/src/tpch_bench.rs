@@ -387,17 +387,18 @@ pub fn run(args: TpchBenchArgs) -> Result<(), String> {
             }
         };
 
-        // Timed runs (each iteration gets its own engine pointing to the shared populated storage)
+        // Clone storage ONCE per query; all iterations share the same Arc
+        let storage = Arc::new(RwLock::new(storage.clone()));
+
         let mut total_time = 0.0;
         let mut result_rows = 0;
 
         for iter in 0..args.iterations {
             let iter_start = Instant::now();
-            let storage = Arc::new(RwLock::new(storage.clone()));
             #[allow(deprecated)]
-            let mut engine = ExecutionEngine::new(storage);
+            let mut engine = ExecutionEngine::new(Arc::clone(&storage));
             let result = engine.execute(sql);
-            let elapsed = iter_start.elapsed().as_secs_f64() * 1000.0; // ms
+            let elapsed = iter_start.elapsed().as_secs_f64() * 1000.0;
 
             if iter == 0 {
                 result_rows = result.map(|r| r.rows.len()).unwrap_or(0);
