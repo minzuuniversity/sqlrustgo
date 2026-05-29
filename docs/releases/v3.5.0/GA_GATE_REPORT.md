@@ -51,7 +51,13 @@
 ## G3 Clippy
 
 - Z440 修复了 `audit_chain_verify.rs` 的 3 个 clippy 错误
-- 本地修复了 `execution_engine.rs` 的 3 个 needless_else 错误
+- 本地修复了 `execution_engine.rs` 的 8 个 clippy 错误：
+  - `is_some_and` 替代 `map_or(false, ...)` (2处)
+  - `redundant closure` — 函数引用替代闭包 (2处)
+  - `collapsible if let` (1处)
+  - `match eq instead of if` (1处)
+  - `explicit closure for cloning` — `cloned()` 替代 `map(|v| v.clone())` (2处)
+  - `double-ended-iterator-last` — `next_back()` 替代 `last()` (1处)
 - **0 errors** ✅
 
 ---

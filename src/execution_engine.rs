@@ -30,10 +30,11 @@ use sqlrustgo_parser::parser::{
     GrantRoleStatement, GrantStatement, InsertStatement, MergeStatement,
     ObjectType as ParserObjectType, OptimizeStatement, OrderByExpression,
     Privilege as ParserPrivilege, RejectWorkflowStatement, RepairStatement, RevokeRoleStatement,
-    RevokeStatement, SelectColumn, SelectStatement, SetRoleStatement, ShowStatement, StartWorkflowStatement,
-    StoredProcParam as ParserStoredProcParam, StoredProcParamMode as ParserParamMode,
-    StoredProcStatement as ParserStatement, TruncateStatement, VacuumMode, VacuumStatement,
-    WindowCall, WindowSpecification, WithClause, WithSelect,
+    RevokeStatement, SelectColumn, SelectStatement, SetRoleStatement, ShowStatement,
+    StartWorkflowStatement, StoredProcParam as ParserStoredProcParam,
+    StoredProcParamMode as ParserParamMode, StoredProcStatement as ParserStatement,
+    TruncateStatement, VacuumMode, VacuumStatement, WindowCall, WindowSpecification, WithClause,
+    WithSelect,
 };
 use sqlrustgo_parser::transaction::IsolationLevel as ParserIsolationLevel;
 use sqlrustgo_parser::JoinType; // For join type matching
@@ -5794,24 +5795,36 @@ fn eval_predicate_with_outer(
 fn has_window_function(expr: &Expression) -> bool {
     match expr {
         Expression::WindowCall(_) => true,
-        Expression::BinaryOp(left, _, right) => has_window_function(left) || has_window_function(right),
+        Expression::BinaryOp(left, _, right) => {
+            has_window_function(left) || has_window_function(right)
+        }
         Expression::IsNull(inner) => has_window_function(inner),
-        Expression::Like(inner, pattern, _) => has_window_function(inner) || has_window_function(pattern),
+        Expression::Like(inner, pattern, _) => {
+            has_window_function(inner) || has_window_function(pattern)
+        }
         Expression::Between(expr, left, right) => {
             has_window_function(expr) || has_window_function(left) || has_window_function(right)
         }
         Expression::CaseWhen(when_clauses, else_expr) => {
-            when_clauses.iter().any(|wc| has_window_function(&wc.condition) || has_window_function(&wc.result))
-                || else_expr.as_ref().map_or(false, |e| has_window_function(e))
+            when_clauses
+                .iter()
+                .any(|wc| has_window_function(&wc.condition) || has_window_function(&wc.result))
+                || else_expr.as_ref().is_some_and(|e| has_window_function(e))
         }
         Expression::In(expr, subquery) => {
-            has_window_function(expr) || has_window_function(&Expression::Subquery(Box::new((**subquery).clone())))
+            has_window_function(expr)
+                || has_window_function(&Expression::Subquery(Box::new((**subquery).clone())))
         }
         Expression::NotIn(expr, subquery) => {
-            has_window_function(expr) || has_window_function(&Expression::Subquery(Box::new((**subquery).clone())))
+            has_window_function(expr)
+                || has_window_function(&Expression::Subquery(Box::new((**subquery).clone())))
         }
-        Expression::Exists(subquery) => has_window_function(&Expression::Subquery(Box::new((**subquery).clone()))),
-        Expression::NotExists(subquery) => has_window_function(&Expression::Subquery(Box::new((**subquery).clone()))),
+        Expression::Exists(subquery) => {
+            has_window_function(&Expression::Subquery(Box::new((**subquery).clone())))
+        }
+        Expression::NotExists(subquery) => {
+            has_window_function(&Expression::Subquery(Box::new((**subquery).clone())))
+        }
         _ => false,
     }
 }
@@ -5821,11 +5834,7 @@ fn find_window_columns(columns: &[SelectColumn]) -> Vec<usize> {
     columns
         .iter()
         .enumerate()
-        .filter(|(_, col)| {
-            col.expression
-                .as_ref()
-                .map_or(false, |expr| has_window_function(expr))
-        })
+        .filter(|(_, col)| col.expression.as_ref().is_some_and(has_window_function))
         .map(|(idx, _)| idx)
         .collect()
 }
@@ -5845,12 +5854,10 @@ fn precompute_window_functions(
 
     // For each window column, compute values for all rows
     for &col_idx in window_col_indices {
-        if let Some(expr) = &columns[col_idx].expression {
-            if let Expression::WindowCall(wc) = expr {
-                let values = compute_window_function_values(wc, rows, table_info);
-                for (row_idx, value) in values.into_iter().enumerate() {
-                    results.insert((row_idx, col_idx), value);
-                }
+        if let Some(Expression::WindowCall(wc)) = &columns[col_idx].expression {
+            let values = compute_window_function_values(wc, rows, table_info);
+            for (row_idx, value) in values.into_iter().enumerate() {
+                results.insert((row_idx, col_idx), value);
             }
         }
     }
@@ -5867,11 +5874,12 @@ fn compute_window_function_values(
     let func_name = wc.func_name.to_uppercase();
 
     // Handle functions that don't need partition/order
-    match func_name.as_str() {
-        "ROW_NUMBER" => {
-            return rows.iter().enumerate().map(|(i, _)| Value::Integer(i as i64 + 1)).collect();
-        }
-        _ => {}
+    if func_name == "ROW_NUMBER" {
+        return rows
+            .iter()
+            .enumerate()
+            .map(|(i, _)| Value::Integer(i as i64 + 1))
+            .collect();
     }
 
     // For functions that need partition and/or order, we need to group and sort
@@ -5969,8 +5977,8 @@ fn compute_window_function_values(
                 indexed_rows.sort_by(|(idx_a, row_a), (idx_b, row_b)| {
                     let mut cmp = std::cmp::Ordering::Equal;
                     for &(col_idx, ascending) in &sort_key_info {
-                        let val_a = row_a.get(col_idx).map(|v| v.clone()).unwrap_or(Value::Null);
-                        let val_b = row_b.get(col_idx).map(|v| v.clone()).unwrap_or(Value::Null);
+                        let val_a = row_a.get(col_idx).cloned().unwrap_or(Value::Null);
+                        let val_b = row_b.get(col_idx).cloned().unwrap_or(Value::Null);
                         let ordering = compare_values_for_order(&val_a, &val_b);
                         cmp = if ascending {
                             ordering
@@ -6010,12 +6018,8 @@ fn compute_window_function_values(
                     let offset = if wc.args.len() > 1 {
                         wc.args[1..]
                             .iter()
-                            .map(|arg| {
-                                evaluate_expression(arg, row, table_info)
-                                    .unwrap_or(Value::Null)
-                            })
-                            .filter_map(|v| v.as_integer())
-                            .last()
+                            .filter_map(|arg| evaluate_expression(arg, row, table_info).unwrap_or(Value::Null).as_integer())
+                            .next_back()
                             .unwrap_or(1) as usize
                     } else {
                         1
@@ -6100,7 +6104,8 @@ fn compute_window_function_values(
                             if n > 0 && n <= local_idx + 1 {
                                 let target_row = &partition.rows[n - 1];
                                 if let Some(arg) = wc.args.first() {
-                                    evaluate_expression(arg, target_row, table_info).unwrap_or(Value::Null)
+                                    evaluate_expression(arg, target_row, table_info)
+                                        .unwrap_or(Value::Null)
                                 } else {
                                     Value::Null
                                 }
@@ -6124,7 +6129,9 @@ fn compute_window_function_values(
                                 Value::Null
                             } else {
                                 let row_number = local_idx + 1;
-                                let bucket = ((row_number - 1) as i64 * num_buckets / partition_size as i64) + 1;
+                                let bucket = ((row_number - 1) as i64 * num_buckets
+                                    / partition_size as i64)
+                                    + 1;
                                 Value::Integer(bucket.min(num_buckets).max(1_i64))
                             }
                         } else {
@@ -6143,15 +6150,14 @@ fn compute_window_function_values(
                             .collect();
                         match func_name.as_str() {
                             "SUM" => {
-                                let sum: i64 = values
-                                    .iter()
-                                    .filter_map(|v| v.as_integer())
-                                    .sum();
+                                let sum: i64 = values.iter().filter_map(|v| v.as_integer()).sum();
                                 Value::Integer(sum)
                             }
                             "AVG" => {
                                 let sum: i64 = values.iter().filter_map(|v| v.as_integer()).sum();
-                                let count = values.iter().filter(|v| !matches!(v, Value::Null)).count() as i64;
+                                let count =
+                                    values.iter().filter(|v| !matches!(v, Value::Null)).count()
+                                        as i64;
                                 if count > 0 {
                                     Value::Float(sum as f64 / count as f64)
                                 } else {
@@ -6159,7 +6165,9 @@ fn compute_window_function_values(
                                 }
                             }
                             "COUNT" => {
-                                let count = values.iter().filter(|v| !matches!(v, Value::Null)).count() as i64;
+                                let count =
+                                    values.iter().filter(|v| !matches!(v, Value::Null)).count()
+                                        as i64;
                                 Value::Integer(count)
                             }
                             "MIN" => {
