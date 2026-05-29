@@ -192,6 +192,8 @@ impl SimpleExecutor {
                             .rename_table(&alter.table_name, new_name)
                             .map_err(|e| format!("Rename table error: {:?}", e))?;
                     }
+                    AlterTableOperation::DropColumn { .. } => {}
+                    AlterTableOperation::ModifyColumn { .. } => {}
                 }
                 Ok(ExecutorResult::new(vec![], 0))
             }
