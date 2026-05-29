@@ -234,9 +234,15 @@ pub enum WindowFunction {
     /// CUME_DIST - cumulative distribution
     CumeDist,
     /// LEAD - value after current row
-    Lead { offset: usize, default: Option<Value> },
+    Lead {
+        offset: usize,
+        default: Option<Value>,
+    },
     /// LAG - value before current row
-    Lag { offset: usize, default: Option<Value> },
+    Lag {
+        offset: usize,
+        default: Option<Value>,
+    },
     /// FIRST_VALUE - first value in window frame
     FirstValue,
     /// LAST_VALUE - last value in window frame
