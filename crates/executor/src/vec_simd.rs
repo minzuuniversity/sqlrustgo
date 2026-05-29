@@ -7,7 +7,7 @@ pub fn sum_i64_simd_like(values: &[i64]) -> i64 {
     let mut sum = 0i64;
     let mut i = 0;
     while i + 4 <= values.len() {
-        let chunk = &values[i..i+4];
+        let chunk = &values[i..i + 4];
         sum += chunk[0] + chunk[1] + chunk[2] + chunk[3];
         i += 4;
     }
