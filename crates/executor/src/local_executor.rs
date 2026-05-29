@@ -1568,18 +1568,32 @@ impl<'a> LocalExecutor<'a> {
         }
     }
 
-    /// Execute limit
+    /// Execute limit - applies limit and offset to child results
     fn execute_limit(&self, plan: &dyn PhysicalPlan) -> SqlResult<ExecutorResult> {
         let children = plan.children();
         if children.is_empty() {
             return Ok(ExecutorResult::empty());
         }
 
-        // Execute child first
+        let limit_exec = plan.as_any().downcast_ref::<LimitExec>();
+        let (limit, offset) = match limit_exec {
+            Some(l) => (l.limit(), l.offset()),
+            None => (usize::MAX, None),
+        };
+
         let child_result = self.execute(children[0])?;
 
-        // Limit would go here
-        Ok(child_result)
+        let offset = offset.unwrap_or(0);
+        let skip = offset.min(child_result.rows.len());
+        let take = limit.min(child_result.rows.len().saturating_sub(skip));
+
+        let rows = if skip >= child_result.rows.len() {
+            vec![]
+        } else {
+            child_result.rows[skip..].iter().take(take).cloned().collect()
+        };
+
+        Ok(ExecutorResult::new(rows, 0))
     }
 }
 
