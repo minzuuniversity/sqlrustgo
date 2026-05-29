@@ -8,4 +8,4 @@ pub use engine::ExecutionEngine;
 pub use context::QueryContext;
 pub use result::ExecutionResult;
 pub use facade::ExecutionFacade;
-pub use trace::{TxnStep, ExecutionTrace};
+pub use trace::{TxnStep, ExecutionTrace, DmlOperation};
