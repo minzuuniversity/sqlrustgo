@@ -551,13 +551,20 @@ impl<'a> LocalExecutor<'a> {
         match func {
             AggregateFunction::Count => Value::Integer(values.len() as i64),
             AggregateFunction::Sum => {
-                let mut sum: i64 = 0;
-                for v in values {
-                    if let Value::Integer(n) = v {
-                        sum += n;
+                // Use SIMD-accelerated sum for large inputs
+                if values.len() > 100 && values.iter().all(|v| matches!(v, Value::Integer(_))) {
+                    let i64_vals: Vec<i64> = values.iter().map(|v| if let Value::Integer(n) = v { *n } else { 0 }).collect();
+                    let sum = crate::vec_simd::sum_i64_simd_like(&i64_vals);
+                    Value::Integer(sum)
+                } else {
+                    let mut sum: i64 = 0;
+                    for v in values {
+                        if let Value::Integer(n) = v {
+                            sum += n;
+                        }
                     }
+                    Value::Integer(sum)
                 }
-                Value::Integer(sum)
             }
             AggregateFunction::Avg => {
                 let mut sum: i64 = 0;
