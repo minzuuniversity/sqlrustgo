@@ -2,6 +2,7 @@
 
 pub mod arc_storage_adapter;
 pub mod executor;
+pub mod execution;
 pub mod executor_metrics;
 pub mod local_executor_dml;
 pub mod query_cache;
@@ -15,4 +16,5 @@ pub mod vec_simd;
 pub use arc_storage_adapter::ArcStorageAdapter;
 pub use executor::{Executor, ExecutorResult, VolcanoExecutor};
 pub use executor_metrics::ExecutorMetrics;
+pub use execution::{ExecutionEngine, ExecutionFacade, ExecutionResult, QueryContext};
 pub use local_executor_dml::{LocalExecutorDml, LocalExecutorDmlArc};
