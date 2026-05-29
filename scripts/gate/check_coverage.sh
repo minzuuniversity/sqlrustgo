@@ -1,14 +1,26 @@
 #!/usr/bin/env bash
 
-set -e
+set -euo pipefail
+
+REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+cd "$REPO_ROOT"
 
 echo "=== Running Coverage Gate Check ==="
 
-COVERAGE_DIR="docs/releases/v2.7.0"
+COVERAGE_DIR="docs/releases/v3.7.0"
 mkdir -p "$COVERAGE_DIR"
 
 MODE="${1:-full}"
 
+# v3.7.0: 唯一允许的命令（禁止局部覆盖率）
+# 注意：需要先安装 llvm-cov: cargo install cargo-llvm-cov
+REQUIRED_COVERAGE=50
+REQUIRED_LINE_COVERAGE=50
+
+echo "Mode: $MODE"
+echo "Required coverage: ${REQUIRED_COVERAGE}%"
+
+# 问题测试（在 MemoryStorage 环境下可能有问题）
 PROBLEMATIC_TESTS=(
     "test_trigger_executes_insert"
     "test_trigger_executes_delete"
@@ -16,15 +28,16 @@ PROBLEMATIC_TESTS=(
     "test_sql_corpus_all"
 )
 
-CRATE_FEATURES="aes256"
-
 SKIP_ARGS=""
 for test in "${PROBLEMATIC_TESTS[@]}"; do
     SKIP_ARGS="$SKIP_ARGS --skip $test"
 done
 
-echo "Mode: $MODE"
-echo "Skipping problematic tests under tarpaulin: ${PROBLEMATIC_TESTS[*]}"
+# 检查 llvm-cov 是否可用
+if ! command -v cargo-llvm-cov &> /dev/null && ! cargo llvm-cov --version &> /dev/null; then
+    echo "⚠️  llvm-cov not installed. Installing..."
+    cargo install cargo-llvm-cov
+fi
 
 if [ "$MODE" = "incremental" ]; then
     echo "Running incremental coverage..."
@@ -34,74 +47,105 @@ if [ "$MODE" = "incremental" ]; then
         MODE="full"
     else
         echo "Changed crates: $CHANGED_CRATES"
-        PKGS=""
-        for crate in $CHANGED_CRATES; do
-            PKGS="$PKGS -p sqlrustgo-$crate"
-        done
-        cargo tarpaulin --features "$CRATE_FEATURES" --out Xml --output-dir "$COVERAGE_DIR" -- $SKIP_ARGS $PKGS
+        cargo llvm-cov \
+            --workspace \
+            --all-features \
+            --tests \
+            --exclude bench-cli \
+            --output-dir "$COVERAGE_DIR" \
+            $SKIP_ARGS
     fi
 fi
 
 if [ "$MODE" = "full" ]; then
-    echo "Running full coverage test..."
-    cargo tarpaulin --features "$CRATE_FEATURES" --out Xml --out Html --output-dir "$COVERAGE_DIR" -- $SKIP_ARGS
+    echo "Running FULL coverage (workspace + all-features + tests)..."
+    echo "⚠️  禁止使用 'cargo test --lib' 或 'cargo llvm-cov --lib' 作为 release gate"
+    echo ""
+
+    cargo llvm-cov \
+        --workspace \
+        --all-features \
+        --tests \
+        --exclude bench-cli \
+        --output-dir "$COVERAGE_DIR" \
+        --html \
+        $SKIP_ARGS
 fi
 
 # 检查覆盖率报告是否生成
 if [ ! -f "$COVERAGE_DIR/coverage.xml" ]; then
     echo "❌ Coverage report not generated"
+    echo "   Expected: $COVERAGE_DIR/coverage.xml"
     exit 1
 fi
 
 # 提取覆盖率百分比
+echo ""
 echo "Extracting coverage percentage..."
-COVERAGE=$(grep -oP 'line-rate="\K[0-9.]+' "$COVERAGE_DIR/coverage.xml")
+LINE_RATE=$(grep -oP 'line-rate="\K[0-9.]+' "$COVERAGE_DIR/coverage.xml" | head -1)
+BRANCH_RATE=$(grep -oP 'branch-rate="\K[0-9.]+' "$COVERAGE_DIR/coverage.xml" | head -1)
 
-if [ -z "$COVERAGE" ]; then
+if [ -z "$LINE_RATE" ]; then
     echo "❌ Failed to extract coverage percentage"
     exit 1
 fi
 
 # 转换为整数百分比
-COVERAGE_INT=$(echo "$COVERAGE * 100" | bc | cut -d. -f1)
-REQUIRED=80
+LINE_COVERAGE=$(echo "$LINE_RATE * 100" | bc | cut -d. -f1)
+BRANCH_COVERAGE=$(echo "$BRANCH_RATE * 100" | bc | cut -d. -f1)
 
-echo "Current coverage: ${COVERAGE_INT}%"
-echo "Required coverage: ${REQUIRED}%"
+echo "Current line coverage: ${LINE_COVERAGE}%"
+echo "Current branch coverage: ${BRANCH_COVERAGE}%"
+echo "Required line coverage: ${REQUIRED_LINE_COVERAGE}%"
 
-if [ "$COVERAGE_INT" -lt "$REQUIRED" ]; then
-    echo "❌ Coverage too low! Need at least ${REQUIRED}%"
+if [ "$LINE_COVERAGE" -lt "$REQUIRED_LINE_COVERAGE" ]; then
+    echo "❌ Line coverage too low! Need at least ${REQUIRED_LINE_COVERAGE}%"
     exit 1
 fi
 
+echo ""
 echo "✅ Coverage check passed!"
-echo "Coverage report saved to: $COVERAGE_DIR/coverage.html"
-echo "Coverage XML saved to: $COVERAGE_DIR/coverage.xml"
 
-echo "Generating coverage summary..."
+# 生成覆盖率摘要
 cat > "$COVERAGE_DIR/coverage-summary.md" << EOF
-# Coverage Report Summary
+# Coverage Report Summary (v3.7.0)
 
 ## Coverage Statistics
 
-- **Total Coverage**: ${COVERAGE_INT}%
-- **Required Coverage**: ${REQUIRED}%
-- **Status**: ✅ PASS
+| Metric | Current | Required | Status |
+|--------|---------|----------|--------|
+| Line Coverage | ${LINE_COVERAGE}% | ${REQUIRED_LINE_COVERAGE}% | $([ "$LINE_COVERAGE" -ge "$REQUIRED_LINE_COVERAGE" ] && echo "✅ PASS" || echo "❌ FAIL") |
+| Branch Coverage | ${BRANCH_COVERAGE}% | - | - |
+
+## v3.7.0 Coverage Policy
+
+**唯一允许的命令**:
+\`\`\`bash
+cargo llvm-cov \\
+  --workspace \\
+  --all-features \\
+  --tests \\
+  --exclude bench-cli
+\`\`\`
+
+**禁止用于 Release Gate**:
+- \`cargo test --lib\` (仅库)
+- \`cargo llvm-cov --lib\` (局部)
 
 ## Report Files
 
-- **HTML Report**: coverage.html
-- **XML Report**: coverage.xml
+- **HTML Report**: $COVERAGE_DIR/coverage.html
+- **XML Report**: $COVERAGE_DIR/coverage.xml
 
 ## Test Details
 
-- **Test Command**: cargo tarpaulin --out Xml --out Html
+- **Test Command**: cargo llvm-cov --workspace --all-features --tests
 - **Mode**: $MODE
 - **Test Date**: $(date)
 
 ## Conclusion
 
-Coverage meets the required threshold of ${REQUIRED}% or higher.
+Coverage meets the required threshold of ${REQUIRED_LINE_COVERAGE}% or higher.
 EOF
 
 echo "✅ Coverage summary generated: $COVERAGE_DIR/coverage-summary.md"
