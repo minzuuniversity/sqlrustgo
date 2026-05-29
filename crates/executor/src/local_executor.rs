@@ -1127,26 +1127,12 @@ impl<'a> ExecutionEngine for LocalExecutor<'a> {
 }
 
 impl<'a> LocalExecutor<'a> {
-    /// Execute DML (INSERT/UPDATE/DELETE) through proper transaction boundary
     fn execute_dml(&mut self, ctx: &mut crate::execution::QueryContext) -> Result<crate::execution::ExecutionResult, SqlError> {
-        let sql_upper = ctx.sql.to_uppercase();
-
-        if sql_upper.starts_with("DELETE") {
-            return self.execute_delete_sql(ctx);
-        }
-
-        if sql_upper.starts_with("INSERT") {
-            return Err(SqlError::ExecutionError("INSERT not yet implemented via ExecutionEngine".to_string()));
-        }
-
-        if sql_upper.starts_with("UPDATE") {
-            return Err(SqlError::ExecutionError("UPDATE not yet implemented via ExecutionEngine".to_string()));
-        }
-
-        Err(SqlError::ExecutionError("Unsupported DML".to_string()))
+        let op = ctx.op_type.ok_or_else(|| SqlError::ExecutionError("Unknown DML operation".to_string()))?;
+        self.execute_dml_vtu(op, ctx)
     }
 
-    fn execute_delete_sql(&mut self, ctx: &mut crate::execution::QueryContext) -> Result<crate::execution::ExecutionResult, SqlError> {
+    fn execute_dml_vtu(&mut self, op: crate::execution::DmlOperation, ctx: &mut crate::execution::QueryContext) -> Result<crate::execution::ExecutionResult, SqlError> {
         use crate::execution::{TxnStep, ExecutionTrace};
 
         let mut trace = ExecutionTrace::new();
@@ -1156,13 +1142,25 @@ impl<'a> LocalExecutor<'a> {
         })?;
 
         trace.push(TxnStep::Begin);
-        let tx_id = txn_manager.begin().map_err(|e| SqlError::ExecutionError(e.to_string()))?;
+        let _tx_id = txn_manager.begin().map_err(|e| SqlError::ExecutionError(e.to_string()))?;
 
         trace.push(TxnStep::WalPrepare);
 
         trace.push(TxnStep::StorageMutation);
-        let table_name = extract_table_name_from_delete(&ctx.sql);
-        let deleted = self.storage.delete(&table_name, &[]).map_err(|e| SqlError::ExecutionError(e.to_string()))?;
+        let affected = match op {
+            crate::execution::DmlOperation::Insert => {
+                let table_name = extract_table_name_from_sql(&ctx.sql);
+                let values = ctx.params.clone();
+                self.storage.insert(&table_name, values).map_err(|e| SqlError::ExecutionError(e.to_string()))?
+            }
+            crate::execution::DmlOperation::Update => {
+                return Err(SqlError::ExecutionError("UPDATE not yet implemented via VTU".to_string()));
+            }
+            crate::execution::DmlOperation::Delete => {
+                let table_name = extract_table_name_from_sql(&ctx.sql);
+                self.storage.delete(&table_name, &[]).map_err(|e| SqlError::ExecutionError(e.to_string()))?
+            }
+        };
 
         trace.push(TxnStep::WalCommit);
 
@@ -1171,10 +1169,10 @@ impl<'a> LocalExecutor<'a> {
 
         trace.validate_order()?;
 
-        Ok(crate::execution::ExecutionResult::ok(deleted))
+        Ok(crate::execution::ExecutionResult::ok(affected))
     }
 
-    fn extract_table_name_from_delete(sql: &str) -> String {
+    fn extract_table_name_from_sql(sql: &str) -> String {
         let sql = sql.trim().to_uppercase();
         if let Some(from_pos) = sql.find("FROM") {
             sql[from_pos + 5..].trim().split_whitespace().next().unwrap_or("").to_string()
