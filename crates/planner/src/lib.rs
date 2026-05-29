@@ -170,6 +170,19 @@ pub enum Expr {
     Wildcard,
     /// Qualified wildcard (table.*)
     QualifiedWildcard { qualifier: String },
+    /// Window function expression (func() OVER (PARTITION BY ... ORDER BY ...))
+    WindowFunction {
+        /// The window function to compute
+        func: WindowFunction,
+        /// Arguments to the function
+        args: Vec<Expr>,
+        /// PARTITION BY expressions
+        partition_by: Vec<Expr>,
+        /// ORDER BY expressions
+        order_by: Vec<SortExpr>,
+        /// Window frame specification
+        frame: Option<WindowFrame>,
+    },
 }
 
 /// Schema containing field definitions
@@ -207,6 +220,93 @@ pub enum DataType {
     Null,
 }
 
+/// Window function types for window expressions
+#[derive(Debug, Clone, PartialEq)]
+pub enum WindowFunction {
+    /// ROW_NUMBER - returns the number of the row within its partition
+    RowNumber,
+    /// RANK - rank of the current row with gaps
+    Rank,
+    /// DENSE_RANK - rank of the current row without gaps
+    DenseRank,
+    /// PERCENT_RANK - percentage rank
+    PercentRank,
+    /// CUME_DIST - cumulative distribution
+    CumeDist,
+    /// LEAD - value after current row
+    Lead { offset: usize, default: Option<Value> },
+    /// LAG - value before current row
+    Lag { offset: usize, default: Option<Value> },
+    /// FIRST_VALUE - first value in window frame
+    FirstValue,
+    /// LAST_VALUE - last value in window frame
+    LastValue,
+    /// NTH_VALUE - nth value in window frame
+    NthValue { n: usize },
+    /// COUNT - count of values
+    Count,
+    /// SUM - sum of values
+    Sum,
+    /// AVG - average of values
+    Avg,
+    /// MIN - minimum value
+    Min,
+    /// MAX - maximum value
+    Max,
+}
+
+/// Frame bound types for window frames
+#[derive(Debug, Clone, PartialEq)]
+pub enum FrameBound {
+    /// UNBOUNDED PRECEDING - start of partition
+    UnboundedPreceding,
+    /// UNBOUNDED FOLLOWING - end of partition
+    UnboundedFollowing,
+    /// CURRENT ROW - current row position
+    CurrentRow,
+    /// PRECEDING n rows
+    Preceding(usize),
+    /// FOLLOWING n rows
+    Following(usize),
+}
+
+/// Window frame specification (ROWS/RANGE/GROUPS BETWEEN ...)
+#[derive(Debug, Clone, PartialEq)]
+pub struct WindowFrame {
+    /// Frame mode: ROWS, RANGE, or GROUPS
+    pub mode: FrameMode,
+    /// Start bound
+    pub start: FrameBound,
+    /// End bound
+    pub end: FrameBound,
+    /// Exclusion mode
+    pub exclude: ExcludeMode,
+}
+
+/// Frame mode for window frames
+#[derive(Debug, Clone, PartialEq)]
+pub enum FrameMode {
+    /// ROWS mode - physical row offset
+    Rows,
+    /// RANGE mode - logical range based on ORDER BY values
+    Range,
+    /// GROUPS mode - group of equal values
+    Groups,
+}
+
+/// Frame exclusion mode for window frames
+#[derive(Debug, Clone, PartialEq)]
+pub enum ExcludeMode {
+    /// EXCLUDE NO OTHERS (default)
+    None,
+    /// EXCLUDE CURRENT ROW
+    CurrentRow,
+    /// EXCLUDE GROUP
+    Group,
+    /// EXCLUDE TIES
+    Ties,
+}
+
 impl Expr {
     pub fn column(name: &str) -> Self {
         Expr::Column(Column::new(name.to_string()))
@@ -221,6 +321,38 @@ impl Expr {
             left: Box::new(left),
             op,
             right: Box::new(right),
+        }
+    }
+
+    /// Evaluate this expression against a row with a given schema.
+    /// Returns `Some(Value)` for column references and literals,
+    /// `None` for complex expressions (computed separately by executors).
+    pub fn evaluate(&self, row: &[Value], schema: &Schema) -> Option<Value> {
+        match self {
+            Expr::Column(col) => {
+                // Find column index in schema
+                if let Some(idx) = schema.field_index(&col.name) {
+                    row.get(idx).cloned()
+                } else {
+                    None
+                }
+            }
+            Expr::Literal(value) => Some(value.clone()),
+            // Binary and unary expressions require computation at runtime
+            // They are not evaluated here - handled by execution layer
+            Expr::BinaryExpr { .. } => None,
+            Expr::UnaryExpr { .. } => None,
+            Expr::AggregateFunction { .. } => {
+                // Aggregates are computed separately, not here
+                None
+            }
+            Expr::Alias { expr, .. } => expr.evaluate(row, schema),
+            Expr::Wildcard => None,
+            Expr::QualifiedWildcard { .. } => None,
+            Expr::WindowFunction { .. } => {
+                // Window functions are computed by WindowVolcanoExecutor
+                None
+            }
         }
     }
 }
@@ -253,6 +385,27 @@ impl fmt::Display for Expr {
             Expr::Alias { expr, name } => write!(f, "{} AS {}", expr, name),
             Expr::Wildcard => write!(f, "*"),
             Expr::QualifiedWildcard { qualifier } => write!(f, "{}.*", qualifier),
+            Expr::WindowFunction { func, args, .. } => {
+                let func_name = match func {
+                    WindowFunction::RowNumber => "ROW_NUMBER",
+                    WindowFunction::Rank => "RANK",
+                    WindowFunction::DenseRank => "DENSE_RANK",
+                    WindowFunction::PercentRank => "PERCENT_RANK",
+                    WindowFunction::CumeDist => "CUME_DIST",
+                    WindowFunction::Lead { .. } => "LEAD",
+                    WindowFunction::Lag { .. } => "LAG",
+                    WindowFunction::FirstValue => "FIRST_VALUE",
+                    WindowFunction::LastValue => "LAST_VALUE",
+                    WindowFunction::NthValue { .. } => "NTH_VALUE",
+                    WindowFunction::Count => "COUNT",
+                    WindowFunction::Sum => "SUM",
+                    WindowFunction::Avg => "AVG",
+                    WindowFunction::Min => "MIN",
+                    WindowFunction::Max => "MAX",
+                };
+                let args_str: Vec<String> = args.iter().map(|a| a.to_string()).collect();
+                write!(f, "{}({})", func_name, args_str.join(", "))
+            }
         }
     }
 }
