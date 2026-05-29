@@ -22,3 +22,4 @@ criterion = "0.8"
 [[bench]]
 name = "storage_benchmark"
 harness = false
+sqlrustgo-wal-verification = { path = "../wal-verification" }
