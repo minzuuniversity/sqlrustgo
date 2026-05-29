@@ -37,7 +37,8 @@ members = [
     "crates/types",
     "crates/mysql-server",
     "crates/qmd-bridge",
-]
+
+    "crates/wal-verification",]
 
 [workspace.package]
 version = "2.5.0"
