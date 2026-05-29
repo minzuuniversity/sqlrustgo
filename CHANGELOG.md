@@ -5,6 +5,33 @@ SQLRustGo 的所有显着更改都将记录在此文件中。
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.5.0] - 2026-05-28 (GA)
+
+### 目标
+
+AI Native GMP Platform（AI 原生 GMP 平台），在 v3.4.0 管理套件基础上构建 AI Agent 层。
+
+### 核心功能
+
+- **AI Agent Layer**: Deviation Investigator、Compliance Judge、Device Predictor、Report Generator
+- **LLM 本地推理**: Ollama 集成 + SSE 流式输出
+- **GMP Retrieval v3**: BM25 + Vector + Graph + FTS 四路融合（RRF + Reranker）
+- **跨语言报告**: 本地术语预处理 + LLM 翻译（FDA 21 CFR Part 11 / EMA Annex 11）
+
+### 门禁状态
+
+| Gate | 结果 | 日期 |
+|------|------|------|
+| Alpha (16/16) | ✅ PASS | 2026-05-27 |
+| Beta (14/14) | ✅ PASS | 2026-05-27 |
+| RC (16/16) | ✅ PASS | 2026-05-28 |
+| GA | ✅ PASS | 2026-05-28 |
+
+> **L1 平均覆盖率**: 87.36%（≥85%）✅  
+> **TPC-H SF=1**: 22/22 PASS ✅
+
+详见: [docs/releases/v3.5.0/README.md](docs/releases/v3.5.0/README.md)
+
 ## [3.4.0] - 2026-05-24 (GA)
 
 ### 目标
@@ -23,7 +50,8 @@ GMP Management Suite（管理套件）版本，在 v3.3.0 可信内核基础上�
 |------|------|------|
 | Alpha (16/16) | ✅ PASS | 2026-05-22 |
 | Beta (14/14) | ✅ PASS | 2026-05-22 |
-| RC | 进行中 | 2026-05-23 |
+| RC | ✅ PASS | 2026-05-24 |
+| GA | ✅ PASS | 2026-05-24 |
 
 详见: [docs/releases/v3.4.0/README.md](docs/releases/v3.4.0/README.md)
 
@@ -252,12 +280,10 @@ Trust Convergence（可信收敛）版本，聚焦 GMP 工业标准验证，确�
 
 | 版本 | 日期 | 成熟度 | 说明 |
 |------|------|--------|-------|
-| v2.6.0 | TBD | Alpha | 生产就绪、SQL-92 完整 |
-| v2.5.0 | 2026-04-16 | Alpha | MVCC、Vector/Graph、统一查询 |
-| v2.4.0 | 2026-04-08 | Alpha | SIMD、列式存储、压缩 |
-| v2.0.0 | 2026-03-25 | Alpha | 异步网络、连接池 |
-| v1.1.0 | 2026-03-05 | Alpha | 架构升级、Clippy 通过 |
-| v1.0.0 | 2026-02-22 | GA | 初次发布 |
+| v3.5.0 | 2026-05-28 | GA | AI Native GMP Platform、AI Agent Layer |
+| v3.4.0 | 2026-05-24 | GA | GMP Management Suite、管理套件 |
+| v3.3.0 | 2026-05-20 | GA | Industrial Trust Platform、可信内核 |
+| v3.2.0 | 2026-05-18 | GA | Trust Convergence、可信收敛 |
 
 ---
 
