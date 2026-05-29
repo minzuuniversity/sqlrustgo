@@ -1,20 +1,25 @@
 use sqlrustgo_types::Value;
 
+use super::DmlOperation;
+
 #[derive(Debug, Clone)]
 pub struct QueryContext {
     pub sql: String,
     pub params: Vec<Value>,
     pub txn_id: Option<u64>,
     pub trace_id: Option<String>,
+    pub op_type: Option<DmlOperation>,
 }
 
 impl QueryContext {
     pub fn new(sql: String) -> Self {
+        let op_type = detect_dml_operation(&sql);
         Self {
             sql,
             params: vec![],
             txn_id: None,
             trace_id: None,
+            op_type: Some(op_type),
         }
     }
 
@@ -29,13 +34,17 @@ impl QueryContext {
     }
 
     pub fn requires_txn(&self) -> bool {
-        is_dml(&self.sql)
+        self.op_type.is_some()
     }
 }
 
-fn is_dml(sql: &str) -> bool {
-    let sql_upper = sql.to_uppercase();
-    sql_upper.starts_with("INSERT")
-        || sql_upper.starts_with("UPDATE")
-        || sql_upper.starts_with("DELETE")
+fn detect_dml_operation(sql: &str) -> DmlOperation {
+    let sql_upper = sql.trim().to_uppercase();
+    if sql_upper.starts_with("INSERT") {
+        DmlOperation::Insert
+    } else if sql_upper.starts_with("UPDATE") {
+        DmlOperation::Update
+    } else {
+        DmlOperation::Delete
+    }
 }
