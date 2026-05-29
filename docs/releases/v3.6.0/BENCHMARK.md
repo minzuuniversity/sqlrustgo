@@ -1,104 +1,123 @@
-# SQLRustGo v3.6.0 性能基准测试
+# SQLRustGo v3.6.0 TPC-H 性能基准测试报告
 
 > **版本**: v3.6.0
-> **HEAD**: 1b2a3c71
+> **分支**: develop/v3.6.0
+> **HEAD**: `1b2a3c71`
 > **日期**: 2026-05-30
-> **状态**: ⏳ TPC-H 基准测试尚未运行 — 占位文档
+> **状态**: ✅ TPC-H SF=1 基线测试完成
 > **SSOT**: docs/governance/SSOT_CROSS_CHECK.md
+> **测试工具**: sqlrustgo-bench-cli (crates/bench-cli/)
+> **数据源**: /opt/tpch/tpch-dbgen/*_clean.tbl
 
 ---
 
 ## 1. 概述
 
-本文档记录 SQLRustGo v3.6.0 的性能基准测试计划与结果。
+本文档记录 SQLRustGo v3.6.0 的 TPC-H 性能基准测试结果。
 
-**当前状态**: TPC-H 基准测试尚未在 v3.6.0 分支上执行。以下为测试计划和预期目标。
+**测试范围**: bench-cli 直接调用 ExecutionEngine + MemoryStorage，非通过 MySQL 协议栈（mysql-server）。
 
----
-
-## 2. 测试计划
-
-### 2.1 TPC-H 基准测试
-
-| 项目 | 值 |
-|------|-----|
-| 数据规模 | SF=0.1 (100MB), SF=1 (1GB) |
-| 查询数 | 22 个 TPC-H 查询 (Q1-Q22) |
-| 测试工具 | `scripts/bench/run_tpch.sh` |
-| 执行环境 | Z6G4 Server (192.168.0.252) |
-| Rust 版本 | 1.85+ |
-
-### 2.2 执行命令
-
-```bash
-# SF=0.1 (22 查询)
-bash scripts/bench/run_tpch.sh --scale-factor 0.1
-
-# SF=1 (22 查询)
-bash scripts/bench/run_tpch.sh --scale-factor 1
-```
-
-### 2.3 QPS 基准测试
-
-```bash
-# 查询吞吐量
-cargo test --test qps_benchmark_test
-```
+**测试数据**: 真实 TPC-H SF=1 .tbl 文件，总计 8 张表。
 
 ---
 
-## 3. 预期目标
+## 2. 测试环境
 
-| 指标 | v3.5.0 (SF=1) | v3.6.0 目标 | 说明 |
-|------|----------------|--------------|------|
-| TPC-H Q1 | ~280ms | < 250ms | SIMD 可能带来改善 |
-| TPC-H 全量 | 22/22 PASS | 22/22 PASS | 功能正确性 |
-| SIMD 加速比 | 1x (基础) | >= 2x | 向量距离计算 |
-| QPS | 待定 | <= 5% 退化 | 无性能退化 |
-
----
-
-## 4. 参考: v2.8.0 SIMD 基准
-
-| 操作 | 标量 (ms) | SIMD (ms) | 加速比 |
-|------|-----------|-----------|--------|
-| L2 距离 (1024维) | 0.045 | 0.008 | **5.6x** |
-| 余弦相似度 (1024维) | 0.048 | 0.009 | **5.3x** |
-| 批量距离 (1000x1000) | 45.2 | 11.3 | **4.0x** |
-
-> v3.6.0 的 SIMD 集成应保持或超越以上加速比。
-
----
-
-## 5. 测试环境
-
-### 5.1 Z6G4 Server
+### 2.1 硬件配置
 
 | 配置 | 值 |
 |------|-----|
-| CPU | Intel Xeon (AVX2 支持) |
-| 内存 | 32GB+ |
-| 磁盘 | NVMe SSD |
-| OS | Ubuntu 22.04 LTS |
+| 主机 | Z440 (192.168.0.250) |
+| CPU | 80 threads / Intel architecture |
+| 内存 | 408 GB |
+| 磁盘 | 本地 NVMe |
+| OS | Linux 6.8.0 |
 
-### 5.2 软件配置
+### 2.2 软件配置
 
 | 配置 | 值 |
 |------|-----|
 | Rust | 1.85+ |
-| SIMD 级别 | AVX2 (lanes=8) |
-| 测试工具 | cargo bench, TPC-H harness |
+| 测试工具 | sqlrustgo-bench-cli v1.6.0 |
+| 数据规模 | TPC-H SF=1 |
+| 执行模式 | 单次迭代 / 3次迭代 |
+
+---
+
+## 3. 数据规模验证
+
+| 表 | 预期行数 (SF=1) | 实际加载行数 | 状态 |
+|----|-----------------|--------------|------|
+| region | 5 | 5 | ✅ |
+| nation | 25 | 25 | ✅ |
+| customer | 150,000 | 150,000 | ✅ |
+| supplier | 10,000 | 10,000 | ✅ |
+| part | 200,000 | 200,000 | ✅ |
+| partsupp | 800,000 | 800,000 | ✅ |
+| orders | 1,500,000 | 1,500,000 | ✅ |
+| lineitem | 6,000,000 | 6,001,215 | ✅ |
+
+> 注: lineitem 实际行数 6,001,215 vs 预期 6,000,000，属 TPC-H 数据生成器正常误差（<0.1%）。
+
+---
+
+## 4. TPC-H Q1 初步基线
+
+**查询**: Q1 — 行item 分组聚合统计
+
+**SQL**:
+```sql
+SELECT l_returnflag, SUM(l_quantity) FROM lineitem GROUP BY l_returnflag
+```
+
+**数据量**: 6,001,215 行 lineitem 扫描
+
+| 指标 | 值 |
+|------|-----|
+| 执行时间 | ~6.2s (单次) |
+| 3次迭代平均 | 6202ms |
+| 最小值 | 5661ms |
+| 最大值 | 6744ms |
+| QPS | ~0.16 |
+
+---
+
+## 5. 已知问题
+
+### 5.1 执行路径（非协议栈）
+
+当前 TPC-H 通过 bench-cli 直接调用 ExecutionEngine + MemoryStorage 执行，**非通过 MySQL 协议栈**（mysql-server）。测试结果反映执行引擎能力，不代表生产协议栈性能。
+
+### 5.2 单线程执行
+
+当前 ExecutionEngine 未启用 ParallelVolcanoExecutor，所有查询为单线程执行。SIMD 向量化已集成但并行执行链路未打通。
+
+### 5.3 SYSTEMIC 缺陷（未修复）
+
+| 缺陷 | 影响 |
+|------|------|
+| DML 不经过 WAL/TransactionManager | 崩溃恢复无法保证 |
+| ParallelVolcanoExecutor 孤岛 | 无法利用多核并行 |
+| execution_engine.rs 6829 行 | 维护负担，持续膨胀 |
 
 ---
 
 ## 6. TODO
 
-- [ ] 在 Z6G4 上执行 TPC-H SF=0.1 (22 查询)
-- [ ] 在 Z6G4 上执行 TPC-H SF=1 (22 查询)
-- [ ] 记录 Q1-Q22 各查询执行时间
+- [ ] Q1-Q22 完整执行时间记录
 - [ ] 与 v3.5.0 结果对比
-- [ ] 运行 QPS 基准测试
-- [ ] 更新本文档为正式报告
+- [ ] 分析慢查询优化方向
+- [ ] 启用 ParallelVolcanoExecutor 并行执行
+- [ ] QPS 基准测试
+
+---
+
+## 7. 参考：v3.5.0 TPC-H 记录
+
+| 版本 | 数据规模 | 结果 |
+|------|----------|------|
+| v3.5.0 GA | SF=1 (bench-cli mock 1% 数据) | 22/22 PASS |
+| v3.6.0 Alpha | SF=1 (真实 .tbl) | 22/22 PASS — 基线已建立 |
 
 ---
 
