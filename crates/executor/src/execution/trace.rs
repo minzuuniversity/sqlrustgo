@@ -61,6 +61,83 @@ impl DriftViolation {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RecoveryType {
+    Rollback,
+    Patch,
+    Rewire,
+    Ignore,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd)]
+pub enum RecoveryConfidence {
+    High,
+    Medium,
+    Low,
+}
+
+#[derive(Debug, Clone)]
+pub struct RecoveryPlan {
+    pub plan_id: String,
+    pub trace_id: String,
+    pub violation_id: String,
+    pub recovery_type: RecoveryType,
+    pub confidence: RecoveryConfidence,
+    pub steps: Vec<String>,
+    pub created_at: i64,
+}
+
+impl RecoveryPlan {
+    pub fn new(
+        trace_id: String,
+        violation_id: String,
+        recovery_type: RecoveryType,
+        confidence: RecoveryConfidence,
+        steps: Vec<String>,
+    ) -> Self {
+        let timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as i64;
+        let plan_id = format!("{}_{}", trace_id, timestamp);
+        Self {
+            plan_id,
+            trace_id,
+            violation_id,
+            recovery_type,
+            confidence,
+            steps,
+            created_at: timestamp,
+        }
+    }
+
+    pub fn to_cypher(&self) -> serde_json::Value {
+        let recovery_type = match self.recovery_type {
+            RecoveryType::Rollback => "ROLLBACK",
+            RecoveryType::Patch => "PATCH",
+            RecoveryType::Rewire => "REWIRE",
+            RecoveryType::Ignore => "IGNORE",
+        };
+        let confidence = match self.confidence {
+            RecoveryConfidence::High => "HIGH",
+            RecoveryConfidence::Medium => "MEDIUM",
+            RecoveryConfidence::Low => "LOW",
+        };
+        serde_json::json!({
+            "statement": "CREATE (p:RecoveryPlan {plan_id: $id, trace_id: $trace_id, violation_id: $violation_id, type: $type, confidence: $confidence, steps: $steps, created_at: $ts})",
+            "parameters": {
+                "id": self.plan_id,
+                "trace_id": self.trace_id,
+                "violation_id": self.violation_id,
+                "type": recovery_type,
+                "confidence": confidence,
+                "steps": self.steps.join("->"),
+                "ts": self.created_at,
+            }
+        })
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum ExecutionEvent {
     SqlReceived { sql: String },
