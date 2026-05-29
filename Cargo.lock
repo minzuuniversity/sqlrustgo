@@ -4484,6 +4484,7 @@ dependencies = [
  "serde_json",
  "sqlrustgo-common",
  "sqlrustgo-types",
+ "sqlrustgo-wal-verification",
  "tempfile",
  "thiserror 2.0.18",
 ]
