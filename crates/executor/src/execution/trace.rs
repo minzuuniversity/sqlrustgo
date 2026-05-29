@@ -7,6 +7,60 @@ pub enum DmlOperation {
     Delete,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DriftViolationType {
+    WalDrift,
+    TxnDrift,
+    GraphDrift,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DriftSeverity {
+    Low,
+    Medium,
+    Critical,
+}
+
+#[derive(Debug, Clone)]
+pub struct DriftViolation {
+    pub violation_id: String,
+    pub trace_id: String,
+    pub event_id: Option<String>,
+    pub violation_type: DriftViolationType,
+    pub severity: DriftSeverity,
+    pub description: String,
+    pub detected_at: i64,
+}
+
+impl DriftViolation {
+    pub fn new(
+        trace_id: String,
+        violation_type: DriftViolationType,
+        severity: DriftSeverity,
+        description: String,
+    ) -> Self {
+        let timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as i64;
+        let violation_id = format!("{}_{}", trace_id, timestamp);
+        Self {
+            violation_id,
+            trace_id,
+            event_id: None,
+            violation_type,
+            severity,
+            description,
+            detected_at: timestamp,
+        }
+    }
+
+    pub fn with_event_id(mut self, event_id: String) -> Self {
+        self.event_id = Some(event_id);
+        self
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum ExecutionEvent {
     SqlReceived { sql: String },
