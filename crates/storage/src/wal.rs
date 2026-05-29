@@ -1866,9 +1866,9 @@ mod tests {
 
     #[test]
     fn test_wal_recovery_with_corrupted_length_prefix() {
+        use sqlrustgo_wal_verification::verification::{WALVerificationResult, WALVerifier};
         use std::fs::File;
         use std::io::Write;
-        use wal_verification::verification::{WALVerificationResult, WALVerifier};
 
         let dir = tempfile::tempdir().unwrap();
         let wal_path = dir.path().join("bad_len.wal");
