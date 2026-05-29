@@ -1,0 +1,40 @@
+00001|Customer 1|1|1 Phoenix St, Phoenix|+1-101-01|836.59|BUILDING||
+00002|Customer 2|2|2 Chicago St, Chicago|+1-102-02|7247.54|MACHINERY||
+00003|Customer 3|3|3 Phoenix St, Phoenix|+1-103-03|7062.29|FURNISHINGS||
+00004|Customer 4|4|4 Los Angeles St, Los Angeles|+1-104-04|7485.73|HOUSEhold||
+00005|Customer 5|1|5 New York St, New York|+1-105-05|2685.12|AUTOMOBILE||
+00006|Customer 6|2|6 San Antonio St, San Antonio|+1-106-06|1991.79|BUILDING||
+00007|Customer 7|3|7 Los Angeles St, Los Angeles|+1-107-07|1892.45|MACHINERY||
+00008|Customer 8|4|8 San Jose St, San Jose|+1-108-08|5902.86|FURNISHINGS||
+00009|Customer 9|1|9 San Diego St, San Diego|+1-109-09|4007.18|HOUSEhold||
+00010|Customer 10|2|10 Philadelphia St, Philadelphia|+1-100-10|-390.17|AUTOMOBILE||
+00011|Customer 11|3|11 San Jose St, San Jose|+1-101-11|835.7|BUILDING||
+00012|Customer 12|4|12 Chicago St, Chicago|+1-102-12|1806.28|MACHINERY||
+00013|Customer 13|1|13 Los Angeles St, Los Angeles|+1-103-13|8836.95|FURNISHINGS||
+00014|Customer 14|2|14 Los Angeles St, Los Angeles|+1-104-14|1512.45|HOUSEhold||
+00015|Customer 15|3|15 Dallas St, Dallas|+1-105-15|-971.75|AUTOMOBILE||
+00016|Customer 16|4|16 New York St, New York|+1-106-16|1690.07|BUILDING||
+00017|Customer 17|1|17 San Diego St, San Diego|+1-107-17|3003.74|MACHINERY||
+00018|Customer 18|2|18 Chicago St, Chicago|+1-108-18|968.57|FURNISHINGS||
+00019|Customer 19|3|19 New York St, New York|+1-109-19|5081.51|HOUSEhold||
+00020|Customer 20|4|20 San Antonio St, San Antonio|+1-100-20|1469.67|AUTOMOBILE||
+00021|Customer 21|1|21 Houston St, Houston|+1-101-21|3578.82|BUILDING||
+00022|Customer 22|2|22 Philadelphia St, Philadelphia|+1-102-22|1983.84|MACHINERY||
+00023|Customer 23|3|23 Los Angeles St, Los Angeles|+1-103-23|5286.9|FURNISHINGS||
+00024|Customer 24|4|24 Los Angeles St, Los Angeles|+1-104-24|4522.45|HOUSEhold||
+00025|Customer 25|1|25 New York St, New York|+1-105-25|972.79|AUTOMOBILE||
+00026|Customer 26|2|26 Dallas St, Dallas|+1-106-26|9795.55|BUILDING||
+00027|Customer 27|3|27 San Antonio St, San Antonio|+1-107-27|-241.81|MACHINERY||
+00028|Customer 28|4|28 San Diego St, San Diego|+1-108-28|8526.35|FURNISHINGS||
+00029|Customer 29|1|29 Phoenix St, Phoenix|+1-109-29|2600.31|HOUSEhold||
+00030|Customer 30|2|30 Dallas St, Dallas|+1-100-30|4024.21|AUTOMOBILE||
+00031|Customer 31|3|31 Philadelphia St, Philadelphia|+1-101-31|1207.38|BUILDING||
+00032|Customer 32|4|32 San Jose St, San Jose|+1-102-32|7629.58|MACHINERY||
+00033|Customer 33|1|33 San Jose St, San Jose|+1-103-33|1668.42|FURNISHINGS||
+00034|Customer 34|2|34 Philadelphia St, Philadelphia|+1-104-34|5508.6|HOUSEhold||
+00035|Customer 35|3|35 San Diego St, San Diego|+1-105-35|9975.66|AUTOMOBILE||
+00036|Customer 36|4|36 Houston St, Houston|+1-106-36|7057.1|BUILDING||
+00037|Customer 37|1|37 Dallas St, Dallas|+1-107-37|7365.3|MACHINERY||
+00038|Customer 38|2|38 Houston St, Houston|+1-108-38|656.23|FURNISHINGS||
+00039|Customer 39|3|39 San Antonio St, San Antonio|+1-109-39|-736.99|HOUSEhold||
+00040|Customer 40|4|40 Dallas St, Dallas|+1-100-40|2810.66|AUTOMOBILE||
