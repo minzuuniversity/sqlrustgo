@@ -497,12 +497,12 @@ impl WindowVolcanoExecutor {
         let start_idx = match start_bound {
             FrameBound::UnboundedPreceding => 0,
             FrameBound::Preceding(n) => {
-                let offset = *n as usize;
+                let offset = *n;
                 local_idx.saturating_sub(offset)
             }
             FrameBound::CurrentRow => local_idx,
             FrameBound::Following(n) => {
-                let offset = *n as usize;
+                let offset = *n;
                 (local_idx + offset).min(partition_size)
             }
             FrameBound::UnboundedFollowing => 0,
@@ -511,12 +511,12 @@ impl WindowVolcanoExecutor {
         let end_idx = match end_bound {
             FrameBound::UnboundedPreceding => 0,
             FrameBound::Preceding(n) => {
-                let offset = *n as usize;
+                let offset = *n;
                 local_idx.saturating_sub(offset)
             }
             FrameBound::CurrentRow => local_idx,
             FrameBound::Following(n) => {
-                let offset = *n as usize;
+                let offset = *n;
                 (local_idx + offset).min(partition_size - 1)
             }
             FrameBound::UnboundedFollowing => partition_size - 1,
@@ -614,7 +614,9 @@ impl VolcanoExecutor for WindowVolcanoExecutor {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use sqlrustgo_planner::{Column, ExcludeMode, Expr, FrameBound, FrameMode, SortExpr, WindowFrame, WindowFunction};
+    use sqlrustgo_planner::{
+        Column, ExcludeMode, Expr, FrameBound, FrameMode, SortExpr, WindowFrame, WindowFunction,
+    };
 
     fn create_test_partition() -> PartitionState {
         // Create test rows: (id, value)
