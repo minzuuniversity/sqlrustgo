@@ -468,13 +468,6 @@ pub trait StorageEngine: Send + Sync {
         &mut self,
         table: &str,
         filter: &RowFilter,
-        updates: &[(usize, Value)],
-    ) -> SqlResult<usize>;
-
-    fn update_if(
-        &mut self,
-        table: &str,
-        filter: &RowFilter,
         mutation: &RowMutation,
     ) -> SqlResult<usize>;
 
@@ -1044,7 +1037,9 @@ mod tests {
             partition_info: None,
         };
         storage.create_table(&info).unwrap();
-        storage.insert("users", vec![vec![Value::Integer(1)]]).unwrap();
+        storage
+            .insert("users", vec![vec![Value::Integer(1)]])
+            .unwrap();
 
         let filter: RowFilter = Box::new(|row| row[0] == Value::Integer(1));
         let mutation = RowMutation::new(vec![(0, Value::Integer(99))], 0x1234);
