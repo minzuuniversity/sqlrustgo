@@ -6,6 +6,7 @@
 use crate::{parse, SqlError, SqlResult, Value};
 use sqlrustgo_catalog::stored_proc::{ParamMode, StoredProcParam, StoredProcStatement};
 use sqlrustgo_catalog::{auth::UserIdentity, Catalog, StoredProcedure};
+use sqlrustgo_executor::ast_adapter::AstAdapter;
 use sqlrustgo_executor::stored_proc::StoredProcExecutor;
 use sqlrustgo_executor::trigger::{
     TriggerEvent as ExecTriggerEvent, TriggerExecutor, TriggerTiming as ExecTriggerTiming,
@@ -946,9 +947,26 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
 
         // Filter rows that match the WHERE clause
         let rows_to_update: Vec<Vec<Value>> = all_rows
+            .clone()
             .into_iter()
             .filter(|row| evaluate_where_clause(where_clause, row, &table_info))
             .collect();
+
+        let update_plan = AstAdapter::to_update_plan(update, &table_info);
+        if let Ok(plan) = update_plan {
+            let ir_filtered: Vec<Vec<Value>> = all_rows
+                .into_iter()
+                .filter(|row| plan.predicate().evaluate(row, &table_info))
+                .collect();
+
+            if ir_filtered.len() != rows_to_update.len() {
+                eprintln!(
+                    "[IR VALIDATION] Predicate mismatch: legacy={}, ir={}",
+                    rows_to_update.len(),
+                    ir_filtered.len()
+                );
+            }
+        }
 
         let count = rows_to_update.len();
 
