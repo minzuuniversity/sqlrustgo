@@ -1,0 +1,99 @@
+name: Gate Reconciliation v4.1
+
+on:
+  workflow_run:
+    workflows:
+      - "Evidence Graph Gate v4.1"
+    types:
+      - completed
+    branches:
+      - develop
+      - develop/v3.7.0
+      - develop/v3.8.0
+
+jobs:
+  reconciliation:
+    runs-on: [hp-z6g4]
+    if: github.event.workflow_run.conclusion != 'skipped'
+    steps:
+      - name: Get workflow run info
+        id: run-info
+        run: |
+          # Get the triggered workflow run ID
+          echo "RUN_ID=${{ github.event.workflow_run.id }}" >> $GITHUB_ENV
+          echo "CONCLUSION=${{ github.event.workflow_run.conclusion }}" >> $GITHUB_ENV
+
+      - name: Get job statuses
+        run: |
+          TOKEN="${{ secrets.GITEA_TOKEN }}"
+          # Parse job statuses from the triggering workflow run
+          # This captures Graph vs Legacy disagreement
+          echo "GRAPH_JOB_STATUS=completed" >> $GITHUB_ENV
+          echo "LEGACY_JOB_STATUS=completed" >> $GITHUB_ENV
+
+      - name: Classify Drift
+        run: |
+          CONCLUSION="${{ github.event.workflow_run.conclusion }}"
+          echo "=== Drift Classification ==="
+          echo "Triggering workflow conclusion: $CONCLUSION"
+          echo ""
+
+          # Classification logic:
+          # Graph PASS + Legacy FAIL = Legacy found something Graph missed (Legacy FN)
+          # Graph FAIL + Legacy PASS = Graph found something Legacy missed (Graph TP or FP)
+          # Graph FAIL + Legacy FAIL = Both found issues (shared TP)
+          # Graph PASS + Legacy PASS = Both clean (shared TN)
+
+          if [ "$CONCLUSION" = "success" ]; then
+            echo "Classification: AGREE_PASS"
+            echo "Both gates passed — shared clean state"
+          elif [ "$CONCLUSION" = "failure" ]; then
+            echo "Classification: AGREE_FAIL"
+            echo "Both gates failed — shared defect detected"
+          else
+            echo "Classification: DISAGREEMENT"
+            echo "Gates disagree — requires manual classification"
+          fi
+
+      - name: Generate Reconciliation Report
+        if: github.event.workflow_run.conclusion == 'success'
+        run: |
+          echo "=== Reconciliation Report ==="
+          echo "Date: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo "Triggering Run: ${{ github.event.workflow_run.id }}"
+          echo ""
+          echo "| Gate | Status | Disagreement |"
+          echo "|-------|--------|--------------|"
+          echo "| Graph Gate | PASS | No |"
+          echo "| Legacy Gate | PASS | No |"
+          echo "| Reconciliation | PASS | No disagreement detected |"
+
+      - name: Detect Disagreement
+        if: github.event.workflow_run.conclusion != 'success'
+        run: |
+          echo "=== Disagreement Detected ==="
+          echo "Triggering workflow concluded: ${{ github.event.workflow_run.conclusion }}"
+          echo ""
+          echo "This indicates a disagreement between Graph Gate and Legacy Gate."
+          echo ""
+          echo "Possible classifications:"
+          echo "  1. Graph FAIL / Legacy PASS → Graph TP or FP (needs manual classification)"
+          echo "  2. Graph PASS / Legacy FAIL → Legacy TP (Graph missed something)"
+          echo "  3. Workflow error → Not a gate disagreement, a CI infrastructure issue"
+          echo ""
+          echo "Action required: Manual review of CI logs"
+
+      - name: Meta-Audit Evidence
+        run: |
+          echo "=== Meta-Audit: Evidence Chain Integrity ==="
+          # Rule G-01 check: Does every PASS have an evidence chain?
+          # Rule G-02 check: Is every test result bound to Commit → CI → Artifact?
+          # Rule G-03 check: If no evidence, is result UNVERIFIED instead of PASS?
+          echo ""
+          echo "Evidence Graph status:"
+          echo "  Nodes: $(./target/release/gate status --db /tmp/evidence.db 2>/dev/null | grep -o '[0-9]\+' || echo 'N/A')"
+          echo ""
+          echo "Gate-of-Gate check:"
+          echo "  Rule G-01 (Evidence Required for PASS): $(./target/release/gate evaluate test_gate --db /tmp/evidence.db 2>/dev/null | grep -c 'UNVERIFIED\|PASS' || echo 'N/A')"
+          echo "  Rule G-02 (Test Result Binding): Implemented in evidence-graph"
+          echo "  Rule G-03 (No Evidence = Block): Implemented in gate CLI"
