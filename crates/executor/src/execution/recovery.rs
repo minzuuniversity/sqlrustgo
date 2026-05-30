@@ -1,6 +1,6 @@
 use super::{
-    DriftViolation, DriftViolationType, DriftSeverity,
-    RecoveryPlan, RecoveryType, RecoveryConfidence,
+    DriftSeverity, DriftViolation, DriftViolationType, RecoveryConfidence, RecoveryPlan,
+    RecoveryType,
 };
 
 pub struct RecoveryPlanner {
@@ -152,10 +152,16 @@ impl ExecutionReplayEngine {
                 "StorageMutation" => {
                     if let Some(wal_idx) = last_wal {
                         if wal_idx > idx {
-                            divergences.push(format!("StorageMutation at {} preceded WalBegin at {}", idx, wal_idx));
+                            divergences.push(format!(
+                                "StorageMutation at {} preceded WalBegin at {}",
+                                idx, wal_idx
+                            ));
                         }
                     } else {
-                        divergences.push(format!("StorageMutation at {} without open WAL segment", idx));
+                        divergences.push(format!(
+                            "StorageMutation at {} without open WAL segment",
+                            idx
+                        ));
                     }
                 }
                 _ => {}
@@ -221,7 +227,8 @@ impl SafeExecutionController {
         if self.should_block(plan) {
             return ExecutionResult::Blocked {
                 plan_id: plan.plan_id.clone(),
-                reason: "Auto-repair blocked: Critical severity + High confidence rollback".to_string(),
+                reason: "Auto-repair blocked: Critical severity + High confidence rollback"
+                    .to_string(),
             };
         }
 
@@ -247,7 +254,16 @@ impl Default for SafeExecutionController {
 
 #[derive(Debug, Clone)]
 pub enum ExecutionResult {
-    Blocked { plan_id: String, reason: String },
-    AutoRepaired { plan_id: String, steps_executed: usize },
-    Suggested { plan_id: String, steps: Vec<String> },
+    Blocked {
+        plan_id: String,
+        reason: String,
+    },
+    AutoRepaired {
+        plan_id: String,
+        steps_executed: usize,
+    },
+    Suggested {
+        plan_id: String,
+        steps: Vec<String>,
+    },
 }

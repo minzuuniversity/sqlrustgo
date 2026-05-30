@@ -1,5 +1,5 @@
+use super::{DmlOperation, DriftDetector, DriftViolation, ExecutionEvent, GuardPolicy};
 use std::sync::{Arc, Mutex};
-use super::{ExecutionEvent, DmlOperation, DriftDetector, GuardPolicy, DriftViolation};
 
 pub struct EventBuffer {
     events: Vec<ExecutionEvent>,
@@ -34,6 +34,10 @@ impl EventBuffer {
 
     pub fn len(&self) -> usize {
         self.events.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.events.is_empty()
     }
 
     pub fn seq(&self) -> usize {
@@ -121,7 +125,10 @@ impl TelemetryCollector {
         }
         let trace_node = self.build_trace_node();
         let event_nodes = self.build_linked_events(&events);
-        let all_statements = trace_node.into_iter().chain(event_nodes).collect::<Vec<_>>();
+        let all_statements = trace_node
+            .into_iter()
+            .chain(event_nodes)
+            .collect::<Vec<_>>();
         self.send_to_neo4j(&all_statements);
     }
 
@@ -140,17 +147,31 @@ impl TelemetryCollector {
 
         for (idx, e) in events.iter().enumerate() {
             let (event_type, table, rows, txn_id) = match e {
-                ExecutionEvent::SqlReceived { sql } => {
-                    ("SqlReceived", sql.clone(), 0, None)
+                ExecutionEvent::SqlReceived { sql } => ("SqlReceived", sql.clone(), 0, None),
+                ExecutionEvent::TxnBegin { txn_id } => {
+                    ("TxnBegin", String::new(), 0, Some(*txn_id))
                 }
-                ExecutionEvent::TxnBegin { txn_id } => ("TxnBegin", String::new(), 0, Some(*txn_id)),
-                ExecutionEvent::TxnCommit { txn_id } => ("TxnCommit", String::new(), 0, Some(*txn_id)),
-                ExecutionEvent::TxnRollback { txn_id } => ("TxnRollback", String::new(), 0, Some(*txn_id)),
-                ExecutionEvent::WalBegin { txn_id } => ("WalBegin", String::new(), 0, Some(*txn_id)),
-                ExecutionEvent::WalWrite { txn_id, segment } => ("WalWrite", segment.clone(), 0, Some(*txn_id)),
-                ExecutionEvent::WalCommit { txn_id } => ("WalCommit", String::new(), 0, Some(*txn_id)),
-                ExecutionEvent::StorageRead { table, rows } => ("StorageRead", table.clone(), *rows, None),
-                ExecutionEvent::StorageWrite { table, rows } => ("StorageWrite", table.clone(), *rows, None),
+                ExecutionEvent::TxnCommit { txn_id } => {
+                    ("TxnCommit", String::new(), 0, Some(*txn_id))
+                }
+                ExecutionEvent::TxnRollback { txn_id } => {
+                    ("TxnRollback", String::new(), 0, Some(*txn_id))
+                }
+                ExecutionEvent::WalBegin { txn_id } => {
+                    ("WalBegin", String::new(), 0, Some(*txn_id))
+                }
+                ExecutionEvent::WalWrite { txn_id, segment } => {
+                    ("WalWrite", segment.clone(), 0, Some(*txn_id))
+                }
+                ExecutionEvent::WalCommit { txn_id } => {
+                    ("WalCommit", String::new(), 0, Some(*txn_id))
+                }
+                ExecutionEvent::StorageRead { table, rows } => {
+                    ("StorageRead", table.clone(), *rows, None)
+                }
+                ExecutionEvent::StorageWrite { table, rows } => {
+                    ("StorageWrite", table.clone(), *rows, None)
+                }
                 ExecutionEvent::StorageMutation { table, op } => {
                     let op_name = match op {
                         DmlOperation::Insert => "INSERT",
@@ -159,12 +180,18 @@ impl TelemetryCollector {
                     };
                     (op_name, table.clone(), 0, None)
                 }
-                ExecutionEvent::BoundaryCheck { module, passed } => {
-                    ("BoundaryCheck", module.clone(), if *passed { 1 } else { 0 }, None)
-                }
-                ExecutionEvent::VtuValidate { result } => {
-                    ("VtuValidate", String::new(), if *result { 1 } else { 0 }, None)
-                }
+                ExecutionEvent::BoundaryCheck { module, passed } => (
+                    "BoundaryCheck",
+                    module.clone(),
+                    if *passed { 1 } else { 0 },
+                    None,
+                ),
+                ExecutionEvent::VtuValidate { result } => (
+                    "VtuValidate",
+                    String::new(),
+                    if *result { 1 } else { 0 },
+                    None,
+                ),
             };
 
             let event_id = format!("{}_{}", self.trace_id, idx);
