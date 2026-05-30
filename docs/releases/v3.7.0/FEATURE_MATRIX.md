@@ -10,8 +10,8 @@
 
 | 类别 | 功能 | v3.6.0 | v3.7.0 | 状态 |
 |------|------|--------|--------|------|
-| **执行引擎** | Execution Telemetry v2 | ❌ | ✅ | Alpha |
-| | Executor 模块重构 | ⚠️ | ✅ | Alpha |
+| **执行引擎** | Execution Telemetry v2 | ❌ | ✅ | GA |
+| | Executor 模块重构 | ⚠️ | ✅ | GA |
 | **存储** | WALVerifier | ✅ | ✅ | GA |
 | | SIMD 向量化 | ✅ | ✅ | GA |
 | **解析器** | 窗口函数 | ✅ | ✅ | GA |
