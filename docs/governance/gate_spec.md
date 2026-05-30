@@ -259,46 +259,79 @@ echo "=== R-Gate 检查完成 ==="
 ### 6.4 G-Gate 脚本
 
 ```bash
-#!/bin/bash
+#!/usr/bin/env bash
 set -e
 
 echo "=== v2.8.0 G-Gate 检查 ==="
 
-echo "[1/8] Release 编译..."
+echo "[1/9] Release 编译..."
 cargo build --release --workspace
 echo "✅ Release 编译通过"
 
-echo "[2/8] 全量测试..."
+echo "[2/9] 全量测试..."
 cargo test --all-features
 echo "✅ 全量测试通过"
 
-echo "[3/8] Clippy 检查..."
+echo "[3/9] Clippy 检查..."
 cargo clippy --all-features -- -D warnings
 echo "✅ Clippy 通过"
 
-echo "[4/8] 格式化检查..."
+echo "[4/9] 格式化检查..."
 cargo fmt --all -- --check
 echo "✅ 格式化通过"
 
-echo "[5/8] 覆盖率检查..."
+echo "[5/9] 覆盖率检查..."
 rm -rf target/tarpaulin/
 cargo tarpaulin --workspace --all-features
 echo "✅ 覆盖率 ≥85%"
 
-echo "[6/8] 安全扫描..."
+echo "[6/9] 安全扫描..."
 cargo audit
 echo "✅ 安全扫描通过"
 
-echo "[7/8] 性能基准测试..."
+echo "[7/9] 性能基准测试..."
 cargo bench
 echo "✅ 性能基准通过"
 
-echo "[8/8] 文档完整性检查..."
-bash scripts/gate/check_user_guides.sh
+echo "[8/9] 文档完整性检查..."
+bash scripts/gate/check_docs.sh
 echo "✅ 文档完整"
+
+echo "[9/9] 计划完整性检查（Truthfulness 验证）..."
+# 高危漏洞检测：禁止重写开发/测试计划以通过门禁
+bash scripts/gate/check_plan_integrity.sh "${VERSION:-v2.8.0}" /tmp/gate_output
+echo "✅ 计划完整性通过"
 
 echo "=== G-Gate 检查完成 ==="
 ```
+
+### 6.5 计划完整性检查（高危漏洞检测）
+
+**用途**: 检测并阻止「重写开发/测试计划以通过门禁」的违规行为
+
+**高危行为（必须检测）**:
+- 将 VERSION_PLAN.md 从 "Alpha 阶段" 重写为 "GA Final"
+- 将 TEST_PLAN.md 从 "测试进行中" 重写为 "GA Final Report"
+- 修改开发计划状态（Alpha/Beta/RC/GA）以通过门禁
+- 在计划文档中伪造测试结果（无实际命令输出）
+
+**合规做法**:
+- 状态变更是执行结果 → 记录为新文档（如 VERSION_PLAN_BETA_REPORT.md）
+- 原始计划文档只追加、不改写
+
+**检查脚本**: `scripts/gate/check_plan_integrity.sh`
+
+```bash
+# 在 G-Gate 中调用
+bash scripts/gate/check_plan_integrity.sh vX.Y.Z /tmp/gate_output
+```
+
+**检查项**:
+1. 计划文档是否被大幅重写（行数变化 > 30%）
+2. 计划文档中是否存在可疑状态标识（GA Final/GA APPROVED）
+3. 文档修改时间是否在门禁期间
+4. 测试计划是否有实际执行证据
+5. 任务状态是否与实际 commit 对应
 
 ---
 
