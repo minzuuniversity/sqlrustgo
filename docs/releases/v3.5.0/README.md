@@ -1,10 +1,9 @@
 # v3.5.0 Release — AI Native GMP Platform
 
-> **状态**: 开发中
-> **起点**: develop/v3.5.0（基于 v3.4.0 GA）
-> **分支**: `develop/v3.5.0`（规划中）
-> **Milestone**: v3.5.0（id=23）
-> **计划发布**: 2026-08-05
+> **状态**: GA（正式发布）
+> **起点**: v3.4.0 GA (`d934228b`)
+> **分支**: `develop/v3.5.0`
+> **发布日期**: 2026-05-28
 
 ---
 
@@ -25,7 +24,7 @@
 v3.2.0: Trust Convergence（可信收敛）     ✅ GA
 v3.3.0: Industrial Trust Platform（可信内核）✅ GA
 v3.4.0: GMP Management Suite（管理套件）   ✅ GA
-v3.5.0: AI Native GMP Platform（AI 原生）   🔄 开发中
+v3.5.0: AI Native GMP Platform（AI 原生）   ✅ GA
 v3.6.0: Enterprise GMP Platform            📋 规划中
 ```
 
@@ -46,20 +45,16 @@ v3.6.0: Enterprise GMP Platform            📋 规划中
 
 ## 三、门禁状态
 
-### Alpha Gate 🔄 进行中
+## 三、门禁状态
 
-| # | 检查项 | 结果 |
-|---|--------|------|
-| A1 | Build | ⬜ |
-| A2 | Unit Tests | ⬜ |
-| A3 | Clippy | ⬜ |
-| A4 | Format | ⬜ |
-| A5 | Coverage (≥72%) | ⬜ |
-| A6 | MySQL Protocol | ⬜ |
-| A7 | TPC-H SF=1 | ⬜ |
-| A8 | Ollama 连接 | ⬜ |
-| A9 | gmp-api build | ⬜ |
-| A10 | gmp-llm build | ⬜ |
+> v3.5.0 已于 2026-05-28 正式 GA。门禁报告：
+
+| 门禁 | 状态 | 报告 |
+|------|------|------|
+| Alpha Gate | ✅ PASS | [ALPHA_GATE_REPORT.md](ALPHA_GATE_REPORT.md) |
+| Beta Gate | ✅ PASS | [BETA_GATE_REPORT.md](BETA_GATE_REPORT.md) |
+| RC Gate | ✅ PASS | [RC_GATE_REPORT.md](RC_GATE_REPORT.md) |
+| GA Gate | ✅ PASS | [GA_GATE_REPORT.md](GA_GATE_REPORT.md) |
 
 ---
 
