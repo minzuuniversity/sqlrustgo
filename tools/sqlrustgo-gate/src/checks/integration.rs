@@ -4,8 +4,8 @@
 //! subset():  lightweight smoke (cbo_integration_test + ci_test)
 //! full_suite(): deprecated, use run()
 
-use std::process::Command;
 use crate::workspace::workspace_root;
+use std::process::Command;
 
 fn run_integration(args: &[&str]) -> anyhow::Result<()> {
     let root = workspace_root();
