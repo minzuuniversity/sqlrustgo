@@ -19,8 +19,9 @@ pub use bplus_tree::BPlusTree;
 pub use buffer_pool::BufferPool;
 pub use engine::{
     evaluate_check_constraint, ColumnDefinition, ForeignKeyAction, ForeignKeyConstraint,
-    MemoryStorage, Record, StorageEngine, TableData, TableInfo, TriggerEvent, TriggerInfo,
-    TriggerTiming, UniqueConstraint,
+    MemoryStorage, Record, RowFilter, SqlResult, StorageEngine, TableData, TableInfo, TriggerEvent,
+    TriggerInfo, TriggerTiming, UniqueConstraint, Value,
 };
 pub use file_storage::FileStorage;
 pub use page::Page;
+pub use vtu_guard::VtuGuard;
