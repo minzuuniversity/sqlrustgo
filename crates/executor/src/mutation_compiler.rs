@@ -119,3 +119,28 @@ impl RowMutation {
         self.mutation_hash
     }
 }
+
+use std::hash::{Hash, Hasher};
+use std::collections::hash_map::DefaultHasher;
+
+pub struct MutationCompiler;
+
+impl MutationCompiler {
+    pub fn compile(assignments: Vec<Assignment>) -> RowMutation {
+        let canonical: Vec<_> = assignments.iter()
+            .map(|a| canonicalize_expr(&a.expr))
+            .collect();
+
+        let mutation_hash = compute_mutation_hash(&canonical);
+
+        RowMutation::new(assignments, mutation_hash)
+    }
+}
+
+fn compute_mutation_hash(canonical: &[CanonicalExpr]) -> u64 {
+    let mut hasher = DefaultHasher::new();
+    for expr in canonical {
+        expr.hash(&mut hasher);
+    }
+    hasher.finish()
+}
