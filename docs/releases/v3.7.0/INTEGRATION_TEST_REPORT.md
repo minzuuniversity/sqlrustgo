@@ -8,19 +8,22 @@
 
 ## Executive Summary
 
+> **Updated: 2026-05-30** (P0-1/P0-2 fixes applied)
+
 | Category | Result | Notes |
 |----------|--------|-------|
-| MySQL Protocol | ✅ PASS | Auth (SKIP_AUTH=true for testing), COM_QUERY, OK/Error packets |
+| MySQL Protocol | ✅ PASS | Auth (mysql/mysql working), COM_QUERY, OK/Error packets |
 | CREATE TABLE | ✅ PASS | DDL executed successfully |
-| INSERT | ✅ PASS | Affected_rows tracked |
+| INSERT + COMMIT | ✅ PASS | Transaction state persists per session (P0-1 fixed) |
+| UPDATE + DELETE | ✅ PASS | WHERE clause filtering works |
 | SELECT | ✅ PASS | Result set returned with column headers |
-| UPDATE | ✅ PASS | WHERE clause filtering works |
-| DELETE | ✅ PASS | Row deletion works |
-| BEGIN | ⚠️ PARTIAL | Parsed but not routed to TransactionManager |
-| COMMIT | ❌ FAIL | "No transaction in progress" — txn_manager not connected |
-| ROLLBACK | ❌ N/A | Cannot test without working BEGIN/COMMIT |
-| SHOW TABLES | ❌ FAIL | Statement type not supported |
+| BEGIN + COMMIT | ✅ PASS | Session-level engine cache fixed (P0-1) |
+| ROLLBACK | ⚠️ STUB | MVCC stub — records but does not isolate uncommitted data |
+| SHOW TABLES | ❌ FAIL | Statement type not supported (#2583) |
+| Auth | ✅ PASS | SKIP_AUTH=false (P0-2 fixed); mysql/mysql auth working |
 | Prepared Statements | ⚠️ NOT TESTED | Code exists, not exercised via CLI |
+
+**Overall: P0 blockers fixed, transaction persistence working**
 
 ---
 
