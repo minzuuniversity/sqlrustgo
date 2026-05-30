@@ -6,7 +6,7 @@ use crate::columnar::chunk::{ColumnChunk, ColumnStats};
 use crate::columnar::segment::{
     auto_select_compression, ColumnSegment, ColumnStatsDisk, CompressionLevel, CompressionType,
 };
-use crate::engine::{StorageEngine, TableInfo, TableStats, TriggerInfo, ViewInfo};
+use crate::engine::{RowFilter, StorageEngine, TableInfo, TableStats, TriggerInfo, ViewInfo};
 use crate::wal::WalManager;
 use sqlrustgo_types::Value;
 use std::collections::HashMap;
@@ -691,7 +691,12 @@ impl StorageEngine for ColumnarStorage {
     }
 
     fn delete(&mut self, _table: &str, _filters: &[Value]) -> crate::engine::SqlResult<usize> {
-        // For now, not implemented - would require creating new ColumnChunks without deleted rows
+        Err(crate::engine::SqlError::ExecutionError(
+            "DELETE not yet implemented for ColumnarStorage".to_string(),
+        ))
+    }
+
+    fn delete_if(&mut self, _table: &str, _filter: &RowFilter) -> crate::engine::SqlResult<usize> {
         Err(crate::engine::SqlError::ExecutionError(
             "DELETE not yet implemented for ColumnarStorage".to_string(),
         ))

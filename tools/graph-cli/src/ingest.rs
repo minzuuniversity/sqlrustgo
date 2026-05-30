@@ -93,7 +93,12 @@ fn parse_edge(s: &str) -> Option<EdgeType> {
 
 fn run_command(cmd: SubCommand) -> Result<()> {
     match cmd {
-        SubCommand::Commit { hash, author, message, db } => {
+        SubCommand::Commit {
+            hash,
+            author,
+            message,
+            db,
+        } => {
             let store = open_store(db)?;
             let ingestor = EvidenceIngestor::new(&store);
             ingestor.ingest_git_commit(&hash, &author, &message)?;
@@ -105,7 +110,13 @@ fn run_command(cmd: SubCommand) -> Result<()> {
                 }))?
             );
         }
-        SubCommand::Ci { run_id, commit_hash, status, log_url, db } => {
+        SubCommand::Ci {
+            run_id,
+            commit_hash,
+            status,
+            log_url,
+            db,
+        } => {
             let store = open_store(db)?;
             let ingestor = EvidenceIngestor::new(&store);
             ingestor.ingest_ci_run(&run_id, &commit_hash, &status, log_url.as_deref())?;
@@ -117,7 +128,13 @@ fn run_command(cmd: SubCommand) -> Result<()> {
                 }))?
             );
         }
-        SubCommand::Artifact { id, ci_run_id, artifact_type, sha256, db } => {
+        SubCommand::Artifact {
+            id,
+            ci_run_id,
+            artifact_type,
+            sha256,
+            db,
+        } => {
             let store = open_store(db)?;
             let ingestor = EvidenceIngestor::new(&store);
             ingestor.ingest_artifact(&id, &ci_run_id, &artifact_type, &sha256)?;
@@ -129,7 +146,11 @@ fn run_command(cmd: SubCommand) -> Result<()> {
                 }))?
             );
         }
-        SubCommand::Task { task_id, description, db } => {
+        SubCommand::Task {
+            task_id,
+            description,
+            db,
+        } => {
             let store = open_store(db)?;
             let node = GraphNode::new(
                 task_id.clone(),
@@ -146,7 +167,12 @@ fn run_command(cmd: SubCommand) -> Result<()> {
                 }))?
             );
         }
-        SubCommand::Link { from_id, edge_type, to_id, db } => {
+        SubCommand::Link {
+            from_id,
+            edge_type,
+            to_id,
+            db,
+        } => {
             let store = open_store(db)?;
             let et = parse_edge(&edge_type)
                 .ok_or_else(|| anyhow::anyhow!("Invalid edge type: {}", edge_type))?;
