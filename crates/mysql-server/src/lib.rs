@@ -88,6 +88,16 @@ impl From<SqlError> for MySqlError {
         MySqlError::Sql(e.to_string())
     }
 }
+impl From<String> for MySqlError {
+    fn from(s: String) -> Self {
+        MySqlError::Sql(s)
+    }
+}
+impl From<&str> for MySqlError {
+    fn from(s: &str) -> Self {
+        MySqlError::Sql(s.to_string())
+    }
+}
 pub type MySqlResult<T> = Result<T, MySqlError>;
 
 // User storage for mysql_native_password authentication
