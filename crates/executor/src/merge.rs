@@ -2,26 +2,37 @@
 //!
 //! Implements the SQL MERGE statement which combines INSERT, UPDATE, and DELETE
 //! operations in a single statement based on a condition.
+//!
+//! ## VTU Enforcement
+//! ALL DML operations go through ExecutionEngine::execute() - NO direct storage access.
 
 use sqlrustgo_parser::{Expression, MergeStatement};
 use sqlrustgo_storage::{StorageEngine, TableInfo};
-use sqlrustgo_types::{SqlResult, Value};
-use std::sync::{Arc, RwLock};
+use sqlrustgo_types::{SqlError, SqlResult, Value};
+use std::sync::{Arc, Mutex, RwLock};
 
+use crate::execution::{ExecutionEngine, QueryContext};
 use crate::executor::ExecutorResult;
 
 /// MERGE executor that handles SQL MERGE statements
-pub struct MergeExecutor<S: StorageEngine> {
-    storage: Arc<RwLock<S>>,
+/// MERGE executor that handles SQL MERGE statements
+/// ALL DML operations go through ExecutionEngine (VTU enforced)
+/// Storage is only used for READ operations (scan, get_table_info)
+pub struct MergeExecutor {
+    storage: Arc<RwLock<dyn StorageEngine>>,
+    engine: Arc<Mutex<dyn ExecutionEngine>>,
 }
 
-impl<S: StorageEngine> MergeExecutor<S> {
-    /// Create a new MergeExecutor
-    pub fn new(storage: Arc<RwLock<S>>) -> Self {
-        Self { storage }
+impl MergeExecutor {
+    /// Create a new MergeExecutor with VTU enforcement
+    pub fn new(
+        storage: Arc<RwLock<dyn StorageEngine>>,
+        engine: Arc<Mutex<dyn ExecutionEngine>>,
+    ) -> Self {
+        Self { storage, engine }
     }
 
-    /// Execute a MERGE statement
+    /// Execute a MERGE statement (VTU path ONLY)
     pub fn execute_merge(&self, merge: &MergeStatement) -> SqlResult<ExecutorResult> {
         let target_table = &merge.target_table;
         let source_table = &merge.source_table;
@@ -84,8 +95,10 @@ impl<S: StorageEngine> MergeExecutor<S> {
                         .collect();
 
                     let filter = target_pk_idx.and_then(|pk_idx| target_row.get(pk_idx).cloned());
-                    let mut storage = self.storage.write().unwrap();
-                    let _ = storage.update(target_table, filter.as_slice(), &updates);
+                    // VTU path: execute UPDATE through ExecutionEngine
+                    let update_sql = self.build_update_sql(target_table, &target_table_info, &updates, filter.as_slice());
+                    let mut ctx = QueryContext::new(update_sql);
+                    self.engine.lock().unwrap().execute(&mut ctx)?;
                     matched_count += 1;
                 }
             } else if let Some(ref clause) = merge.not_matched_clause {
@@ -103,8 +116,10 @@ impl<S: StorageEngine> MergeExecutor<S> {
                     })
                     .collect();
 
-                let mut storage = self.storage.write().unwrap();
-                let _ = storage.insert(target_table, vec![values]);
+                // VTU path: execute INSERT through ExecutionEngine
+                let insert_sql = self.build_insert_sql(target_table, &target_table_info, &values);
+                let mut ctx = QueryContext::new(insert_sql);
+                self.engine.lock().unwrap().execute(&mut ctx)?;
                 inserted_count += 1;
             }
         }
@@ -582,6 +597,80 @@ mod tests {
         // Null comparisons
         assert!(!sql_compare("=", &Value::Integer(1), &Value::Null));
         assert!(!sql_compare("<", &Value::Null, &Value::Null));
+    }
+
+    /// Build an INSERT SQL statement from values
+    fn build_insert_sql(&self, table: &str, table_info: &TableInfo, values: &[Value]) -> String {
+        let col_names: Vec<String> = table_info
+            .columns
+            .iter()
+            .map(|c| c.name.clone())
+            .collect();
+
+        let values_str = values
+            .iter()
+            .map(|v| self.value_to_sql(v))
+            .collect::<Vec<_>>()
+            .join(", ");
+
+        format!(
+            "INSERT INTO {} ({}) VALUES ({})",
+            table,
+            col_names.join(", "),
+            values_str
+        )
+    }
+
+    /// Build an UPDATE SQL statement with filters
+    fn build_update_sql(
+        &self,
+        table: &str,
+        table_info: &TableInfo,
+        updates: &[(usize, Value)],
+        filter: &[Value],
+    ) -> String {
+        let set_clauses = updates
+            .iter()
+            .filter_map(|(col_idx, val)| {
+                table_info.columns.get(*col_idx).map(|col| {
+                    format!("{} = {}", col.name, self.value_to_sql(val))
+                })
+            })
+            .collect::<Vec<_>>()
+            .join(", ");
+
+        let where_clause = if !filter.is_empty() {
+            let pk_col = table_info
+                .columns
+                .iter()
+                .find(|c| c.primary_key)
+                .map(|c| c.name.clone())
+                .unwrap_or_else(|| table_info.columns.first().map(|c| c.name.clone()).unwrap_or_default());
+
+            let filter_str = filter
+                .iter()
+                .map(|v| self.value_to_sql(v))
+                .collect::<Vec<_>>()
+                .join(", ");
+
+            format!(" WHERE {} IN ({})", pk_col, filter_str)
+        } else {
+            String::new()
+        };
+
+        format!("UPDATE {} SET {}{}", table, set_clauses, where_clause)
+    }
+
+    /// Convert a Value to SQL literal string
+    fn value_to_sql(&self, value: &Value) -> String {
+        match value {
+            Value::Null => "NULL".to_string(),
+            Value::Boolean(b) => if *b { "TRUE" } else { "FALSE" }.to_string(),
+            Value::Integer(i) => i.to_string(),
+            Value::Float(f) => f.to_string(),
+            Value::Text(s) => format!("'{}'", s.replace("'", "''")),
+            Value::Blob(b) => format!("X'{:?}'", b),
+        }
     }
 
     #[test]
