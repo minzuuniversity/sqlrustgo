@@ -70,41 +70,55 @@ fn cmd_evaluate(task_id: &str, db: Option<PathBuf>) -> Result<()> {
 
     let (reachable, path) = store.check_task_completion(task_id)?;
 
-    if path.is_empty() {
-        let tasks = store.get_nodes_by_type(NodeType::Task)?;
-        let exists = tasks.iter().any(|n| n.id == task_id);
+    // check_task_completion returns:
+    // - (false, []) if task not found in graph
+    // - (false, [task_id]) if task found but no complete chain
+    // - (true, [task_id, commit, ci, artifact]) if complete chain exists
+    let task_exists = store.get_nodes_by_type(NodeType::Task)?
+        .iter().any(|n| n.id == task_id);
 
-        let (result, reason, missing) = if !exists {
-            (
-                "FAIL",
-                "task_not_found",
-                vec!["TaskNode not found".to_string()],
-            )
+    if !task_exists {
+        // Rule G-03: No evidence = UNVERIFIED, not PASS
+        // Task not found in graph means no authoritative evidence exists
+        let output = GateResult {
+            task_id: task_id.to_string(),
+            result: "UNVERIFIED".to_string(),
+            reason: "task_not_in_graph".to_string(),
+            missing: vec!["Task node not found — no authoritative evidence".to_string()],
+        };
+        println!("{}", serde_json::to_string_pretty(&output)?);
+        return Ok(());
+    }
+
+    if !reachable {
+        // Rule G-01: Task exists but no complete evidence chain
+        // Rule G-03: Incomplete evidence chain = UNVERIFIED, block release
+        let missing = if path.len() == 1 {
+            vec!["Task→Commit edge missing (IMPLEMENTED_BY)".to_string()]
+        } else if path.len() == 2 {
+            vec!["Commit→CI edge missing (VERIFIED_BY)".to_string()]
+        } else if path.len() == 3 {
+            vec!["CI→Artifact edge missing (PRODUCES)".to_string()]
         } else {
-            (
-                "FAIL",
-                "no_path",
-                vec!["Task → Commit → CI → Artifact path incomplete".to_string()],
-            )
+            vec!["Evidence chain incomplete".to_string()]
         };
 
         let output = GateResult {
             task_id: task_id.to_string(),
-            result: result.to_string(),
-            reason: reason.to_string(),
+            result: "UNVERIFIED".to_string(),
+            reason: "incomplete_evidence_chain".to_string(),
             missing,
         };
         println!("{}", serde_json::to_string_pretty(&output)?);
         return Ok(());
     }
 
-    let result = if reachable { "PASS" } else { "WARN" };
-    let reason = if reachable { "reachability" } else { "partial_path" };
-
+    // Rule G-01: PASS only if complete evidence chain exists
+    // Path: Task → Commit → CI_PASS → Artifact
     let output = GateResult {
         task_id: task_id.to_string(),
-        result: result.to_string(),
-        reason: reason.to_string(),
+        result: "PASS".to_string(),
+        reason: "reachability".to_string(),
         missing: vec![],
     };
     println!("{}", serde_json::to_string_pretty(&output)?);
