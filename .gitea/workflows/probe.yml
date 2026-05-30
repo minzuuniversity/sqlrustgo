@@ -1,0 +1,13 @@
+name: Runner Probe
+
+on:
+  push:
+    branches:
+      - develop/v3.7.0
+
+jobs:
+  probe:
+    runs-on: [ubuntu-latest]
+    steps:
+      - name: Test
+        run: echo "ubuntu-latest works"
