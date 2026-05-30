@@ -15,12 +15,16 @@
 - `01db4fdf` — fix(mysql-server): session-level engine cache for transaction state persistence
 - `2607d788` — fix(mysql-server): SKIP_AUTH=false to restore authentication gate
 
+#### VTU IR Validation
+
+- `a17f13f3` — Merge PR #2618: feat(vtu): Phase 1.6 IR validation - PredicateIR + AstAdapter for UPDATE
+- `dafe8680` — feat(vtu): Phase 1.6 IR validation - PredicateIR + AstAdapter for UPDATE
+
 #### 文档
 
 - `5e11bd04` — docs(v3.7.0): GA re-evaluation after P0 fixes — score 41→65
 - `bf10eb8d` — docs(v3.7.0): add INTEGRATION_DEBT_REPORT — freeze report with legacy debt tracking
 - `b925f438` — docs: add v3.7.0 RELEASE_SUMMARY + v3.8.0 full doc set (LEGACY_ISSUES, etc.)
-- `b925f438` — docs(v3.7.0): add GA_GATE_REPORT (RELEASE_GATE_CHECKLIST updated)
 
 #### 版本信息
 
@@ -63,6 +67,7 @@
 
 | 版本 | 日期 | 状态 |
 |------|------|------|
+| v3.7.0 | 2026-05-30 | GA |
 | v3.6.0 | 2026-05-30 | GA |
 | v3.5.0 | 2026-05-17 | GA |
 | v3.4.0 | 2026-05-10 | GA |
