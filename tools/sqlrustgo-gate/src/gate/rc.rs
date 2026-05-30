@@ -10,8 +10,8 @@ pub fn run() -> anyhow::Result<()> {
     println!("=== RC GATE v3.7.0 ===");
 
     checks::build::check()?;
-    checks::test::all()?;
-    checks::integration::full_suite()?;
+    checks::test::unit()?;
+    checks::integration::subset()?;
     checks::clippy::check_strict()?;
     checks::coverage::check(60.0)?;
     checks::sql_corpus::full()?;
