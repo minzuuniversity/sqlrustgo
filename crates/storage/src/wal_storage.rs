@@ -1,5 +1,5 @@
 use crate::bplus_tree::index::CompositeKey;
-use crate::engine::{ColumnDefinition, Record, SqlResult, StorageEngine, TableInfo, Value};
+use crate::engine::{ColumnDefinition, Record, RowFilter, SqlResult, StorageEngine, TableInfo, Value};
 use crate::wal::{WalEntry, WalEntryType, WalManager};
 use std::path::PathBuf;
 
@@ -307,6 +307,13 @@ impl<S: StorageEngine> StorageEngine for WalStorage<S> {
         self.inner.delete(table, filters)
     }
 
+    fn delete_if(&mut self, table: &str, filter: &RowFilter) -> SqlResult<usize> {
+        let table_id = Self::table_name_to_id(table);
+        let key = format!("RowFilter-{:p}", filter).into_bytes();
+        self.log_delete(table_id, key)?;
+        self.inner.delete_if(table, filter)
+    }
+
     fn update(
         &mut self,
         table: &str,
@@ -318,6 +325,19 @@ impl<S: StorageEngine> StorageEngine for WalStorage<S> {
         let data = format!("{:?}", updates).into_bytes();
         self.log_update(table_id, key, data)?;
         self.inner.update(table, filters, updates)
+    }
+
+    fn update_if(
+        &mut self,
+        table: &str,
+        filter: &RowFilter,
+        updates: &[(usize, Value)],
+    ) -> SqlResult<usize> {
+        let table_id = Self::table_name_to_id(table);
+        let key = format!("RowFilter-{:p}", filter).into_bytes();
+        let data = format!("{:?}", updates).into_bytes();
+        self.log_update(table_id, key, data)?;
+        self.inner.update_if(table, filter, updates)
     }
 
     fn create_table(&mut self, info: &TableInfo) -> SqlResult<()> {
