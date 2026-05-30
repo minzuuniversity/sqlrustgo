@@ -3538,7 +3538,9 @@ dependencies = [
  "base64 0.22.1",
  "bytes",
  "encoding_rs",
+ "futures-channel",
  "futures-core",
+ "futures-util",
  "h2 0.4.13",
  "http 1.4.0",
  "http-body",
@@ -4230,6 +4232,7 @@ name = "sqlrustgo-executor"
 version = "2.5.0"
 dependencies = [
  "log",
+ "reqwest",
  "serde",
  "serde_json",
  "sqlrustgo",
