@@ -3,8 +3,8 @@
 //! Usage: check(threshold: f64)
 //! Exits non-zero if coverage < threshold.
 
-use std::process::Command;
 use crate::workspace::workspace_root;
+use std::process::Command;
 
 pub fn check(threshold: f64) -> anyhow::Result<()> {
     println!("[check] cargo tarpaulin --quiet (threshold: {threshold}%) ...");
