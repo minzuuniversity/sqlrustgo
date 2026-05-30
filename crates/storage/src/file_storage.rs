@@ -1302,7 +1302,6 @@ impl StorageEngine for FileStorage {
         filter: &RowFilter,
         mutation: &RowMutation,
     ) -> SqlResult<usize> {
-        use crate::engine::Record;
         let Some(data) = self.tables.get_mut(table) else {
             return Ok(0);
         };
