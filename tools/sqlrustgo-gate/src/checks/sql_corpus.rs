@@ -3,8 +3,8 @@
 //! smoke(): runs a quick subset to verify corpus framework works
 //! full():   enforces >= 85% pass rate
 
-use std::process::Command;
 use crate::workspace::workspace_root;
+use std::process::Command;
 
 fn run_corpus(args: &[&str]) -> anyhow::Result<()> {
     let root = workspace_root();
