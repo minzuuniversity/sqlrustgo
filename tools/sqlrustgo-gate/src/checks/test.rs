@@ -1,7 +1,7 @@
 //! Test checks: unit / integration / all
 
-use std::process::Command;
 use crate::workspace::workspace_root;
+use std::process::Command;
 
 fn run_test(args: &[&str]) -> anyhow::Result<()> {
     let root = workspace_root();
