@@ -9,14 +9,14 @@ fn test_mysql_error_io() {
     let io_err = std::io::Error::new(std::io::ErrorKind::NotFound, "file not found");
     let err = MySqlError::Io(io_err);
     let display = format!("{}", err);
-    assert!(display.contains("IO error"));
+    assert!(display.contains("IO:") && display.contains("file not found"));
 }
 
 #[test]
 fn test_mysql_error_protocol() {
     let err = MySqlError::Protocol("bad handshake".to_string());
     let display = format!("{}", err);
-    assert!(display.contains("Protocol error"));
+    assert!(display.contains("Protocol:") && display.contains("bad handshake"));
     assert!(display.contains("bad handshake"));
 }
 
@@ -24,7 +24,7 @@ fn test_mysql_error_protocol() {
 fn test_mysql_error_sql() {
     let err = MySqlError::Sql("syntax error".to_string());
     let display = format!("{}", err);
-    assert!(display.contains("SQL error"));
+    assert!(display.contains("SQL:") && display.contains("syntax error"));
     assert!(display.contains("syntax error"));
 }
 
@@ -33,7 +33,7 @@ fn test_mysql_error_from_io_error() {
     let io_err = std::io::Error::new(std::io::ErrorKind::ConnectionRefused, "refused");
     let err: MySqlError = MySqlError::from(io_err);
     let display = format!("{}", err);
-    assert!(display.contains("IO error"));
+    assert!(display.contains("IO:") && display.contains("refused"));
 }
 
 #[test]
