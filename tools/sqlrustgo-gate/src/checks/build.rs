@@ -1,7 +1,7 @@
 //! Build check: `cargo build --all`
 
-use std::process::Command;
 use crate::workspace::workspace_root;
+use std::process::Command;
 
 pub fn check() -> anyhow::Result<()> {
     println!("[check] cargo build --all ...");
