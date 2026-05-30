@@ -12,7 +12,7 @@
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
-use evidence_graph::{EdgeType, EvidenceIngestor, GraphStore, GraphNode, NodeType};
+use evidence_graph::{EdgeType, EvidenceIngestor, GraphNode, GraphStore, NodeType};
 use std::path::PathBuf;
 
 #[derive(Parser, Debug)]
@@ -178,7 +178,10 @@ fn cmd_link(args: Link) -> Result<()> {
     let edge = GraphEdge::new(args.from_id.clone(), args.to_id.clone(), edge_type);
     store.add_edge(&edge)?;
 
-    println!("{{\"linked\": \"{} → {} → {}\"}}", args.from_id, args.edge_type, args.to_id);
+    println!(
+        "{{\"linked\": \"{} → {} → {}\"}}",
+        args.from_id, args.edge_type, args.to_id
+    );
     Ok(())
 }
 
