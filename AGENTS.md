@@ -57,6 +57,9 @@ bash scripts/gate/check_coverage.sh
 
 # Security check
 bash scripts/gate/check_security.sh
+
+# Doc consistency check (version status, links, version history)
+bash scripts/gate/check_docs_consistency.sh
 ```
 
 ## Architecture
@@ -129,6 +132,27 @@ gh issue view <id> --json closedByPullRequestsReferences
 ```
 
 详见: `docs/governance/ISSUE_CLOSING_VERIFICATION.md`
+
+## 文档修改规则 (强制)
+
+**修改 `docs/` 下任何文档前，必须遵循 `docs/governance/DOC_CHECK_CORRECTION_RULES.md` 规定的 5 步流程。**
+
+1. **发现问题** → 记录问题清单（文件、行号、错误内容、依据）
+2. **编写计划** → 撰写改正计划和复核审查 Checklist
+3. **执行改正** → 按计划逐项修改，每步记录 git diff
+4. **复核审查** → 按 Checklist 逐项核查，输出检查结果
+5. **输出报告** → 编写《文档检查和纠正工作报告》，存档到 `docs/governance/DOC_CHECK_CORRECTION_WORK_RECORD.md`
+
+**禁止**：
+- 无 Checklist 核查声称"修复完成"
+- 无证据的状态声明（"已修复"、"通过"）
+- 删除原始记录（commit log、功能描述）
+- 过度修改（修改实质技术内容）
+
+**相关文件**：
+- `docs/governance/DOC_CHECK_CORRECTION_RULES.md` — 规则详情
+- `docs/governance/DOC_CHECK_CORRECTION_WORK_RECORD.md` — 工作记录模板
+- `scripts/gate/check_docs_consistency.sh` — CI 一致性检查脚本
 
 ## Gitea DevStack Remote
 
