@@ -20,4 +20,4 @@ pub mod window_executor;
 pub use execution::trace::ExecutionTrace;
 pub use executor::{Executor, ExecutorResult, VolcanoExecutor};
 pub use executor_metrics::ExecutorMetrics;
-pub use sql_executor::{SqlExecutor, ExecutionResult};
+pub use sql_executor::{ExecutionResult, SqlExecutor};
