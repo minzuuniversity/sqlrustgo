@@ -15,8 +15,8 @@ fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::Run { stage } => {
-            run_gate(&stage)?;
+        Commands::Run { stage, mode } => {
+            run_gate(&stage, &mode)?;
         }
         Commands::Export { path } => {
             evidence::export(&path)?;
