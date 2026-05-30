@@ -45,6 +45,33 @@ let result = eng.execute(&q);  // engine dropped after this
 
 ---
 
+**✅ P0-1 FIXED (2026-05-30)**
+
+Session-level engine cache implemented. The fix:
+
+1. Added `engine: Arc<RwLock<MemoryExecutionEngine>>` parameter to `do_command_loop()`
+2. Engine is created ONCE per connection (in `handle_connection()` after auth), not per query
+3. COM_QUERY reuses the same engine instance across all queries in the session
+
+```rust
+// Before: new engine each query (BROKEN)
+let mut eng = MemoryExecutionEngine::new(storage.clone());
+let result = eng.execute(&q);  // dropped after query
+
+// After: session-persistent engine (FIXED)
+let engine: Arc<RwLock<MemoryExecutionEngine>> =
+    Arc::new(RwLock::new(MemoryExecutionEngine::new(storage.clone())));
+// passed to do_command_loop(), reused for all queries
+let mut eng = engine.write().unwrap();
+let result = eng.execute(&q);  // same engine instance
+```
+
+**Test result**: BEGIN → INSERT → COMMIT → SELECT now shows inserted data correctly.
+
+**BUT**: ROLLBACK still doesn't work — the MVCC/TransactionManager in this codebase is a stub that records transactions but doesn't actually write to a rollback buffer or fence uncommitted data. This is a deeper architectural issue (not fixable in Minimal Fix scope).
+
+---
+
 ### 2.2 Authentication Bypass (`SKIP_AUTH=true`)
 
 | Field | Value |
