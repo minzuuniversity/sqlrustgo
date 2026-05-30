@@ -421,6 +421,9 @@ pub struct TableData {
 /// Record type - a single row of values
 pub type Record = Vec<Value>;
 
+/// RowFilter: compiled predicate for row-level filtering
+pub type RowFilter = Box<dyn Fn(&Record) -> bool + Send + Sync>;
+
 /// StorageEngine trait - abstraction for table storage
 /// Enables multiple storage backends (FileStorage, MemoryStorage, etc.)
 pub trait StorageEngine: Send + Sync {
@@ -432,13 +435,18 @@ pub trait StorageEngine: Send + Sync {
 
     /// Delete rows matching a filter
     fn delete(&mut self, table: &str, _filters: &[Value]) -> SqlResult<usize>;
-
-    /// Update rows matching a filter
+    fn delete_if(&mut self, table: &str, filter: &RowFilter) -> SqlResult<usize>;
     fn update(
         &mut self,
         table: &str,
         _filters: &[Value],
         _updates: &[(usize, Value)],
+    ) -> SqlResult<usize>;
+    fn update_if(
+        &mut self,
+        table: &str,
+        filter: &RowFilter,
+        updates: &[(usize, Value)],
     ) -> SqlResult<usize>;
 
     /// Create a new table
@@ -534,6 +542,15 @@ impl StorageEngine for MemoryStorage {
         Ok(count)
     }
 
+    fn delete_if(&mut self, table: &str, filter: &RowFilter) -> SqlResult<usize> {
+        let Some(records) = self.tables.get_mut(table) else {
+            return Ok(0);
+        };
+        let original_len = records.len();
+        records.retain(|r| !filter(r));
+        Ok(original_len - records.len())
+    }
+
     fn update(
         &mut self,
         table: &str,
@@ -572,6 +589,28 @@ impl StorageEngine for MemoryStorage {
             }
         }
 
+        Ok(count)
+    }
+
+    fn update_if(
+        &mut self,
+        table: &str,
+        filter: &RowFilter,
+        updates: &[(usize, Value)],
+    ) -> SqlResult<usize> {
+        let mut count = 0;
+        if let Some(records) = self.tables.get_mut(table) {
+            for record in records.iter_mut() {
+                if filter(record) {
+                    for &(col_idx, ref new_val) in updates {
+                        if col_idx < record.len() {
+                            record[col_idx] = new_val.clone();
+                        }
+                    }
+                    count += 1;
+                }
+            }
+        }
         Ok(count)
     }
 
