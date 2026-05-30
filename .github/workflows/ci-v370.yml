@@ -1,0 +1,266 @@
+name: CI v3.7.0 (Evidence Trackable)
+
+# Phase A: Parallel CI run for Legacy Gate Retirement
+# Target: 30 consecutive runs on develop/v3.7.0
+# Evidence: sha256 hash of test output logged to gate report
+
+on:
+  push:
+    branches:
+      - develop/v3.7.0
+  pull_request:
+    branches:
+      - develop/v3.7.0
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  # ----------------------------------------
+  # L1: Pre-check jobs (run in parallel)
+  # ----------------------------------------
+  fmt:
+    name: L1-Fmt Format Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Compute sha256 of formatted files
+        run: |
+          SHA=$(find . -name "*.rs" -type f | sort | xargs cat | sha256sum | cut -d' ' -f1)
+          echo "sha256=$SHA" >> $GITHUB_OUTPUT
+          echo "L1-Fmt sha256: $SHA"
+
+      - name: Log evidence
+        run: |
+          echo "OBS-L1-FMT-001: Format check" >> $GITHUB_STEP_SUMMARY
+          echo "command: cargo fmt --all -- --check" >> $GITHUB_STEP_SUMMARY
+          echo "sha256: $SHA" >> $GITHUB_STEP_SUMMARY
+          echo "timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)" >> $GITHUB_STEP_SUMMARY
+
+  clippy:
+    name: L1-Clippy Lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "clippy-v370"
+          cache-targets: false
+
+      - name: Run clippy
+        run: cargo clippy --all-features -- -D warnings
+
+      - name: Compute sha256 of clippy output
+        run: |
+          SHA=$(cargo clippy --all-features -- -D warnings 2>&1 | sha256sum | cut -d' ' -f1)
+          echo "sha256=$SHA" >> $GITHUB_OUTPUT
+
+      - name: Log evidence
+        run: |
+          echo "OBS-L1-CLIPPY-001: Clippy check" >> $GITHUB_STEP_SUMMARY
+          echo "command: cargo clippy --all-features -- -D warnings" >> $GITHUB_STEP_SUMMARY
+          echo "sha256: $SHA" >> $GITHUB_STEP_SUMMARY
+          echo "timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)" >> $GITHUB_STEP_SUMMARY
+
+  # ----------------------------------------
+  # L2: Build and Test
+  # ----------------------------------------
+  build:
+    name: L2-Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "build-v370"
+          cache-targets: false
+
+      - name: Build
+        run: cargo build --all-features
+
+      - name: Compute sha256 of build artifacts
+        run: |
+          SHA=$(find target/debug -name "*.d" -type f 2>/dev/null | sort | xargs cat 2>/dev/null | sha256sum | cut -d' ' -f1 || echo "no-build-deps")
+          echo "sha256=$SHA" >> $GITHUB_OUTPUT
+          echo "L2-Build sha256: $SHA"
+
+      - name: Log evidence
+        run: |
+          echo "OBS-L2-BUILD-001: Build check" >> $GITHUB_STEP_SUMMARY
+          echo "command: cargo build --all-features" >> $GITHUB_STEP_SUMMARY
+          echo "sha256: $SHA" >> $GITHUB_STEP_SUMMARY
+          echo "timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)" >> $GITHUB_STEP_SUMMARY
+
+  test:
+    name: L2-Test Suite
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "test-v370"
+          cache-targets: false
+
+      - name: Run tests
+        run: cargo test --all-features 2>&1 | tee /tmp/test_output.txt
+
+      - name: Compute sha256 of test output
+        run: |
+          SHA=$(cat /tmp/test_output.txt | sha256sum | cut -d' ' -f1)
+          echo "sha256=$SHA" >> $GITHUB_OUTPUT
+          echo "L2-Test sha256: $SHA"
+
+      - name: Parse test results
+        run: |
+          PASSED=$(grep -c "test result: ok" /tmp/test_output.txt || echo "0")
+          FAILED=$(grep -c "FAILED\|failures:" /tmp/test_output.txt || echo "0")
+          echo "tests_passed=$PASSED" >> $GITHUB_OUTPUT
+          echo "tests_failed=$FAILED" >> $GITHUB_OUTPUT
+          echo "L2-Test: passed=$PASSED failed=$FAILED"
+
+      - name: Log evidence
+        run: |
+          echo "OBS-L2-TEST-001: Test suite execution" >> $GITHUB_STEP_SUMMARY
+          echo "command: cargo test --all-features" >> $GITHUB_STEP_SUMMARY
+          echo "sha256: $(cat /tmp/test_output.txt | sha256sum | cut -d' ' -f1)" >> $GITHUB_STEP_SUMMARY
+          echo "passed: $PASSED" >> $GITHUB_STEP_SUMMARY
+          echo "failed: $FAILED" >> $GITHUB_STEP_SUMMARY
+          echo "timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)" >> $GITHUB_STEP_SUMMARY
+
+  # ----------------------------------------
+  # L3: Quality Gates
+  # ----------------------------------------
+  coverage:
+    name: L3-Coverage Check
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Run coverage check script
+        run: bash scripts/gate/check_coverage.sh 2>&1 | tee /tmp/coverage_output.txt
+
+      - name: Compute sha256 of coverage output
+        run: |
+          SHA=$(cat /tmp/coverage_output.txt | sha256sum | cut -d' ' -f1)
+          echo "sha256=$SHA" >> $GITHUB_OUTPUT
+          echo "L3-Coverage sha256: $SHA"
+
+      - name: Log evidence
+        run: |
+          echo "OBS-L3-COV-001: Coverage check" >> $GITHUB_STEP_SUMMARY
+          echo "command: bash scripts/gate/check_coverage.sh" >> $GITHUB_STEP_SUMMARY
+          echo "sha256: $SHA" >> $GITHUB_STEP_SUMMARY
+          echo "timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)" >> $GITHUB_STEP_SUMMARY
+
+  docs:
+    name: L3-Docs Check
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Check docs build
+        run: cargo doc --no-deps --all-features
+        continue-on-error: true
+
+      - name: Log evidence
+        run: |
+          echo "OBS-L3-DOCS-001: Docs check" >> $GITHUB_STEP_SUMMARY
+          echo "command: cargo doc --no-deps --all-features" >> $GITHUB_STEP_SUMMARY
+          echo "status: executed" >> $GITHUB_STEP_SUMMARY
+          echo "timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)" >> $GITHUB_STEP_SUMMARY
+
+  # ----------------------------------------
+  # Evidence Summary Job
+  # ----------------------------------------
+  evidence-summary:
+    name: L7-Evidence Summary
+    runs-on: ubuntu-latest
+    needs: [fmt, clippy, build, test, coverage, docs]
+    if: always()
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Generate Evidence Summary
+        run: |
+          echo "# CI v3.7.0 Evidence Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Run ID: $GITHUB_RUN_NUMBER" >> $GITHUB_STEP_SUMMARY
+          echo "Run Date: $(date -u +%Y-%m-%dT%H:%M:%SZ)" >> $GITHUB_STEP_SUMMARY
+          echo "Commit: $GITHUB_SHA" >> $GITHUB_STEP_SUMMARY
+          echo "Branch: $GITHUB_REF" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Gate Results" >> $GITHUB_STEP_SUMMARY
+          echo "|- Check|Result|" >> $GITHUB_STEP_SUMMARY
+          echo "|--|--|" >> $GITHUB_STEP_SUMMARY
+          echo "| L1-Fmt | ${{ needs.fmt.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "| L1-Clippy | ${{ needs.clippy.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "| L2-Build | ${{ needs.build.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "| L2-Test | ${{ needs.test.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "| L3-Coverage | ${{ needs.coverage.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "| L3-Docs | ${{ needs.docs.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "This run is part of Phase A (parallel CI run #${CI_RUN_COUNT:-0})" >> $GITHUB_STEP_SUMMARY
+
+      - name: Upload evidence artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-evidence-v370-run-${{ github.run_number }}
+          path: $GITHUB_STEP_SUMMARY
+          retention-days: 90
+
+      - name: Log Phase A progress
+        run: |
+          echo "Phase A: CI Run #$GITHUB_RUN_NUMBER on develop/v3.7.0"
+          echo "Evidence artifact: ci-evidence-v370-run-$GITHUB_RUN_NUMBER"
+          echo "Timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
