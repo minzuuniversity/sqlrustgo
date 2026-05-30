@@ -1,7 +1,7 @@
 //! Clippy checks
 
-use std::process::Command;
 use crate::workspace::workspace_root;
+use std::process::Command;
 
 fn run_clippy(args: &[&str]) -> anyhow::Result<()> {
     let root = workspace_root();
