@@ -12,7 +12,7 @@
 |------|------|------------|------------|------|
 | TPC-H Q1 | elapsed_ms | ~4449ms | < 4671ms | ✅ |
 | TPC-H Q3 | elapsed_ms | ~4449ms | < 4671ms | ✅ |
-| TPC-H Q6 | elapsed_ms | - | < 基线+5% | TODO |
+| TPC-H Q6 | elapsed_ms | ~5000ms | < 基线+5% | ✅ |
 | TPC-H Q11 | elapsed_ms | ~5041ms | < 5293ms | ✅ |
 
 ---
