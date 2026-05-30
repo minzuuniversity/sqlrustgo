@@ -74,8 +74,10 @@ fn cmd_evaluate(task_id: &str, db: Option<PathBuf>) -> Result<()> {
     // - (false, []) if task not found in graph
     // - (false, [task_id]) if task found but no complete chain
     // - (true, [task_id, commit, ci, artifact]) if complete chain exists
-    let task_exists = store.get_nodes_by_type(NodeType::Task)?
-        .iter().any(|n| n.id == task_id);
+    let task_exists = store
+        .get_nodes_by_type(NodeType::Task)?
+        .iter()
+        .any(|n| n.id == task_id);
 
     if !task_exists {
         // Rule G-03: No evidence = UNVERIFIED, not PASS
