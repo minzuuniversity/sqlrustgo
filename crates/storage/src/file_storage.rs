@@ -3,8 +3,8 @@
 
 use crate::bplus_tree::BPlusTree;
 use crate::engine::{
-    ColumnDefinition, ForeignKeyConstraint, Record, RowFilter, RowMutation, StorageEngine, TableData,
-    TableInfo, TriggerInfo, UniqueConstraint,
+    ColumnDefinition, ForeignKeyConstraint, Record, RowFilter, RowMutation, StorageEngine,
+    TableData, TableInfo, TriggerInfo, UniqueConstraint,
 };
 use sqlrustgo_types::{SqlError, SqlResult, Value};
 use std::collections::HashMap;
@@ -1282,6 +1282,21 @@ impl StorageEngine for FileStorage {
             let table_data = data.clone();
             self.save_table(table, &table_data)?;
             Ok(count)
+        } else {
+            Ok(0)
+        }
+    }
+
+    fn delete_if(&mut self, table: &str, filter: &RowFilter) -> SqlResult<usize> {
+        if let Some(ref mut data) = self.tables.get_mut(table) {
+            let original_len = data.rows.len();
+            data.rows.retain(|r| !filter(r));
+            let new_len = data.rows.len();
+            if new_len < original_len {
+                let table_data = data.clone();
+                self.save_table(table, &table_data)?;
+            }
+            Ok(original_len - new_len)
         } else {
             Ok(0)
         }
