@@ -383,8 +383,8 @@ mod tests {
     // Test parse → Statement dispatch (new routing model)
     #[test]
     fn test_statement_dispatch() {
-        use sqlrustgo_parser::parse;
         use sqlrustgo::MemoryExecutionEngine;
+        use sqlrustgo_parser::parse;
         use sqlrustgo_storage::MemoryStorage;
         use std::sync::{Arc, RwLock};
 
@@ -772,7 +772,11 @@ fn col_len_from_type(t: &str) -> u32 {
             .next()
             .map(|(idx, _)| {
                 let rest = &u[idx + 4..];
-                rest.chars().take_while(|c| c.is_ascii_digit()).collect::<String>().parse().unwrap_or(11)
+                rest.chars()
+                    .take_while(|c| c.is_ascii_digit())
+                    .collect::<String>()
+                    .parse()
+                    .unwrap_or(11)
             })
             .unwrap_or(11)
     } else if u.contains("FLOAT") {
@@ -784,7 +788,11 @@ fn col_len_from_type(t: &str) -> u32 {
             .next()
             .map(|(idx, _)| {
                 let rest = &u[idx + 8..];
-                rest.chars().take_while(|c| c.is_ascii_digit()).collect::<String>().parse().unwrap_or(255)
+                rest.chars()
+                    .take_while(|c| c.is_ascii_digit())
+                    .collect::<String>()
+                    .parse()
+                    .unwrap_or(255)
             })
             .unwrap_or(255)
     } else if u.contains("TEXT") {
@@ -1036,7 +1044,10 @@ fn infer_column_types(
 
 #[allow(clippy::type_complexity)]
 fn is_select_stmt(stmt: &Statement) -> bool {
-    matches!(stmt, Statement::Select(_) | Statement::Show(_) | Statement::Describe(_))
+    matches!(
+        stmt,
+        Statement::Select(_) | Statement::Show(_) | Statement::Describe(_)
+    )
 }
 
 fn generate_self_signed_cert() -> (Vec<u8>, Vec<u8>) {
@@ -1106,14 +1117,20 @@ fn do_command_loop<S: Read + Write>(
                         let result = eng.execute(&q);
                         match result {
                             Ok(r) if is_select_stmt(&stmt) => {
-                                let cols: Vec<String> = r.rows.first()
-                                    .map(|row| (0..row.len()).map(|i| format!("col_{}", i+1)).collect())
+                                let cols: Vec<String> = r
+                                    .rows
+                                    .first()
+                                    .map(|row| {
+                                        (0..row.len()).map(|i| format!("col_{}", i + 1)).collect()
+                                    })
                                     .unwrap_or_else(|| vec!["result".to_string()]);
-                                let ctypes: Vec<String> = cols.iter().map(|_| "VARCHAR(255)".to_string()).collect();
+                                let ctypes: Vec<String> =
+                                    cols.iter().map(|_| "VARCHAR(255)".to_string()).collect();
                                 seq = send_result_set(stream, &cols, &ctypes, &r.rows, seq, cap)?;
                             }
                             Ok(r) => {
-                                make_ok_packet(seq, r.affected_rows as u64, 0, 0x0002, 0).write_to(stream)?;
+                                make_ok_packet(seq, r.affected_rows as u64, 0, 0x0002, 0)
+                                    .write_to(stream)?;
                                 seq = seq.wrapping_add(1);
                             }
                             Err(e) => {
@@ -1121,7 +1138,8 @@ fn do_command_loop<S: Read + Write>(
                                     true => 1146u16,
                                     false => 1064u16,
                                 };
-                                make_err_packet(seq, code, "42000", &e.to_string()).write_to(stream)?;
+                                make_err_packet(seq, code, "42000", &e.to_string())
+                                    .write_to(stream)?;
                                 seq = seq.wrapping_add(1);
                             }
                         }
@@ -1277,24 +1295,38 @@ fn do_command_loop<S: Read + Write>(
                         let result = eng.execute(&final_sql);
                         match result {
                             Ok(r) if is_select_stmt(&stmt) => {
-                                let c: Vec<String> = r.rows.first()
-                                    .map(|row| (0..row.len()).map(|i| format!("col_{}", i+1)).collect())
+                                let c: Vec<String> = r
+                                    .rows
+                                    .first()
+                                    .map(|row| {
+                                        (0..row.len()).map(|i| format!("col_{}", i + 1)).collect()
+                                    })
                                     .unwrap_or_else(|| vec!["result".to_string()]);
-                                let t: Vec<String> = c.iter().map(|_| "VARCHAR(255)".to_string()).collect();
-                                let c_trimmed: Vec<String> = c.into_iter().take(stmt_col_count as usize).collect();
-                                let t_trimmed: Vec<String> = t.into_iter().take(stmt_col_count as usize).collect();
-                                let r_trimmed: Vec<Vec<Value>> = r.rows
+                                let t: Vec<String> =
+                                    c.iter().map(|_| "VARCHAR(255)".to_string()).collect();
+                                let c_trimmed: Vec<String> =
+                                    c.into_iter().take(stmt_col_count as usize).collect();
+                                let t_trimmed: Vec<String> =
+                                    t.into_iter().take(stmt_col_count as usize).collect();
+                                let r_trimmed: Vec<Vec<Value>> = r
+                                    .rows
                                     .into_iter()
-                                    .map(|row| row.into_iter().take(stmt_col_count as usize).collect())
+                                    .map(|row| {
+                                        row.into_iter().take(stmt_col_count as usize).collect()
+                                    })
                                     .collect();
-                                seq = send_result_set(stream, &c_trimmed, &t_trimmed, &r_trimmed, seq, cap)?;
+                                seq = send_result_set(
+                                    stream, &c_trimmed, &t_trimmed, &r_trimmed, seq, cap,
+                                )?;
                             }
                             Ok(r) => {
-                                make_ok_packet(seq, r.affected_rows as u64, 0, 0x0002, 0).write_to(stream)?;
+                                make_ok_packet(seq, r.affected_rows as u64, 0, 0x0002, 0)
+                                    .write_to(stream)?;
                                 seq = seq.wrapping_add(1);
                             }
                             Err(e) => {
-                                make_err_packet(seq, 1064, "42000", &e.to_string()).write_to(stream)?;
+                                make_err_packet(seq, 1064, "42000", &e.to_string())
+                                    .write_to(stream)?;
                                 seq = seq.wrapping_add(1);
                             }
                         }
@@ -1664,7 +1696,10 @@ mod integration_tests {
     fn test_old_password_hash_deterministic_salted() {
         let hash1 = old_password_hash("password1");
         let hash2 = old_password_hash("password1");
-        assert_eq!(hash1, hash2, "Same password should produce same hash (deterministic)");
+        assert_eq!(
+            hash1, hash2,
+            "Same password should produce same hash (deterministic)"
+        );
     }
 
     #[test]
@@ -1971,7 +2006,10 @@ mod integration_tests {
     fn test_old_password_hash_long_password() {
         let hash = old_password_hash("a very long password that is much longer than average");
         // Result is i64, verify deterministic
-        assert_eq!(old_password_hash("a very long password that is much longer than average"), hash);
+        assert_eq!(
+            old_password_hash("a very long password that is much longer than average"),
+            hash
+        );
     }
 
     #[test]
@@ -2150,8 +2188,12 @@ mod integration_tests {
         let storage: Arc<RwLock<MemoryStorage>> = Arc::new(RwLock::new(MemoryStorage::new()));
         let mut engine = MemoryExecutionEngine::new(storage);
 
-        engine.execute("CREATE TABLE dispatch_test (id INT, name TEXT)").unwrap();
-        engine.execute("INSERT INTO dispatch_test VALUES (1, 'hello')").unwrap();
+        engine
+            .execute("CREATE TABLE dispatch_test (id INT, name TEXT)")
+            .unwrap();
+        engine
+            .execute("INSERT INTO dispatch_test VALUES (1, 'hello')")
+            .unwrap();
 
         let result = engine.execute("SELECT * FROM dispatch_test");
         assert!(result.is_ok());
@@ -2169,11 +2211,13 @@ mod integration_tests {
         let storage: Arc<RwLock<MemoryStorage>> = Arc::new(RwLock::new(MemoryStorage::new()));
         let mut engine = MemoryExecutionEngine::new(storage);
 
-        engine.execute("CREATE TABLE dispatch_insert_test (id INT)").unwrap();
+        engine
+            .execute("CREATE TABLE dispatch_insert_test (id INT)")
+            .unwrap();
         let result = engine.execute("INSERT INTO dispatch_insert_test VALUES (1)");
         assert!(result.is_ok());
         assert!(result.unwrap().affected_rows > 0);
-}
+    }
 
     // ============ MySqlError::std::error::Error trait ============
     #[test]

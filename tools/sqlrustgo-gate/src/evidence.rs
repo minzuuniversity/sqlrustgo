@@ -3,9 +3,9 @@
 //! Evidence is the SSOT (Single Source of Truth) for gate execution results.
 //! This module collects all check outputs into a machine-readable JSON report.
 
+use chrono::Utc;
 use serde::Serialize;
 use std::collections::HashMap;
-use chrono::Utc;
 
 #[derive(Debug, Serialize)]
 pub struct Evidence {
