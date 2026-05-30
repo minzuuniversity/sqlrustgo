@@ -16,8 +16,8 @@ pub enum Commands {
     Run {
         /// Gate stage to execute: alpha, beta, or rc
         stage: String,
-        /// Execution mode: preflight (light) or full
-        #[arg(long, default_value = "full")]
+        /// Execution mode: preflight | partial | full | adaptive
+        #[arg(long, default_value = "adaptive")]
         mode: String,
     },
     /// Export evidence report as JSON
