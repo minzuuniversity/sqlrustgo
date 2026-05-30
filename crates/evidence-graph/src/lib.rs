@@ -571,6 +571,7 @@ impl GraphStore {
         let task_count = self.get_nodes_by_type(NodeType::Task)?.len() as i64;
         let commit_count = self.get_nodes_by_type(NodeType::Commit)?.len() as i64;
         let ci_count = self.get_nodes_by_type(NodeType::CiRun)?.len() as i64;
+        let artifact_count = self.get_nodes_by_type(NodeType::Artifact)?.len() as i64;
 
         Ok(GraphStats {
             node_count,
@@ -579,6 +580,7 @@ impl GraphStore {
             task_count,
             commit_count,
             ci_count,
+            artifact_count,
         })
     }
 }
@@ -592,6 +594,7 @@ pub struct GraphStats {
     pub task_count: i64,
     pub commit_count: i64,
     pub ci_count: i64,
+    pub artifact_count: i64,
 }
 
 // =============================================================================
