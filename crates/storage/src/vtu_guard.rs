@@ -11,8 +11,8 @@
 //! ALL DML operations MUST go through VtuGuard.execute_dml() — NOT direct storage calls.
 //! Direct insert/update/delete calls on VtuGuard will panic with VTU VIOLATION.
 
+use crate::{Record, RowFilter, RowMutation, StorageEngine, TableInfo, TriggerInfo};
 use sqlrustgo_types::{SqlResult, Value};
-use crate::{Record, StorageEngine, TableInfo, TriggerInfo};
 
 /// VTU Violation Guard Wrapper
 /// Wraps a concrete StorageEngine to detect direct DML calls that bypass VTU.
@@ -82,6 +82,27 @@ impl<S: StorageEngine> StorageEngine for VtuGuard<S> {
         );
     }
 
+    fn delete_if(&mut self, table: &str, _filter: &RowFilter) -> SqlResult<usize> {
+        panic!(
+            "🚨 VTU VIOLATION DETECTED\n   Location: {}\n   Operation: delete_if\n   Table: {}\n\n   ❌ Direct storage.delete_if() call bypasses VTU execution path.\n   ✅ FIX: Use DmlGuard::execute() instead.\n\n   See: docs/releases/v3.7.0/ARCHITECTURE_VIOLATIONS.md",
+            self.location,
+            table,
+        );
+    }
+
+    fn update_if(
+        &mut self,
+        table: &str,
+        _filter: &RowFilter,
+        _mutation: &RowMutation,
+    ) -> SqlResult<usize> {
+        panic!(
+            "🚨 VTU VIOLATION DETECTED\n   Location: {}\n   Operation: update_if\n   Table: {}\n\n   ❌ Direct storage.update_if() call bypasses VTU execution path.\n   ✅ FIX: Use DmlGuard::execute() instead.\n\n   See: docs/releases/v3.7.0/ARCHITECTURE_VIOLATIONS.md",
+            self.location,
+            table,
+        );
+    }
+
     fn create_table(&mut self, info: &TableInfo) -> SqlResult<()> {
         self.inner.create_table(info)
     }
@@ -102,12 +123,7 @@ impl<S: StorageEngine> StorageEngine for VtuGuard<S> {
         self.inner.list_tables()
     }
 
-    fn create_index(
-        &mut self,
-        table: &str,
-        column: &str,
-        column_index: usize,
-    ) -> SqlResult<()> {
+    fn create_index(&mut self, table: &str, column: &str, column_index: usize) -> SqlResult<()> {
         self.inner.create_index(table, column, column_index)
     }
 
@@ -175,6 +191,10 @@ mod tests {
             Ok(0)
         }
 
+        fn delete_if(&mut self, _table: &str, _filter: &RowFilter) -> SqlResult<usize> {
+            Ok(0)
+        }
+
         fn update(
             &mut self,
             _table: &str,
@@ -201,7 +221,14 @@ mod tests {
         }
 
         fn get_table_info(&self, _table: &str) -> SqlResult<TableInfo> {
-            Ok(TableInfo { columns: vec![] })
+            Ok(TableInfo {
+                name: String::new(),
+                columns: vec![],
+                foreign_keys: vec![],
+                unique_constraints: vec![],
+                check_constraints: vec![],
+                partition_info: None,
+            })
         }
 
         fn has_table(&self, _table: &str) -> bool {
