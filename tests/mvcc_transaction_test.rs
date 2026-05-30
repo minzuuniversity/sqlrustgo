@@ -12,14 +12,16 @@ fn test_begin_commit_transaction() {
     engine
         .execute("CREATE TABLE t (id INTEGER, value INTEGER)")
         .unwrap();
-    engine.execute("INSERT INTO t VALUES (1, 100)").unwrap();
-
+    // Setup data in a transaction
     engine.execute("BEGIN").unwrap();
+    engine.execute("INSERT INTO t VALUES (1, 100)").unwrap();
+    engine.execute("COMMIT").unwrap();
 
+    // Transaction under test
+    engine.execute("BEGIN").unwrap();
     engine
         .execute("UPDATE t SET value = 200 WHERE id = 1")
         .unwrap();
-
     let commit_result = engine.execute("COMMIT");
     assert!(commit_result.is_ok(), "COMMIT should succeed");
 
@@ -35,14 +37,16 @@ fn test_begin_rollback_transaction() {
     engine
         .execute("CREATE TABLE t (id INTEGER, value INTEGER)")
         .unwrap();
-    engine.execute("INSERT INTO t VALUES (1, 100)").unwrap();
-
+    // Setup data in a transaction
     engine.execute("BEGIN").unwrap();
+    engine.execute("INSERT INTO t VALUES (1, 100)").unwrap();
+    engine.execute("COMMIT").unwrap();
 
+    // Transaction under test
+    engine.execute("BEGIN").unwrap();
     engine
         .execute("UPDATE t SET value = 999 WHERE id = 1")
         .unwrap();
-
     let rollback_result = engine.execute("ROLLBACK");
     assert!(rollback_result.is_ok(), "ROLLBACK should succeed");
 }
@@ -53,7 +57,10 @@ fn test_begin_serializable() {
     engine
         .execute("CREATE TABLE t (id INTEGER, value INTEGER)")
         .unwrap();
+    // Setup data in a transaction
+    engine.execute("BEGIN").unwrap();
     engine.execute("INSERT INTO t VALUES (1, 100)").unwrap();
+    engine.execute("COMMIT").unwrap();
 
     let begin_result = engine.execute("BEGIN SERIALIZABLE");
     assert!(begin_result.is_ok(), "BEGIN SERIALIZABLE should succeed");
@@ -72,7 +79,10 @@ fn test_set_transaction_isolation() {
     engine
         .execute("CREATE TABLE t (id INTEGER, value INTEGER)")
         .unwrap();
+    // Setup data in a transaction
+    engine.execute("BEGIN").unwrap();
     engine.execute("INSERT INTO t VALUES (1, 100)").unwrap();
+    engine.execute("COMMIT").unwrap();
 
     let set_result = engine.execute("SET TRANSACTION ISOLATION LEVEL SERIALIZABLE");
     assert!(
@@ -95,8 +105,12 @@ fn test_start_transaction() {
     engine
         .execute("CREATE TABLE t (id INTEGER, value INTEGER)")
         .unwrap();
+    // Setup data in a transaction
+    engine.execute("BEGIN").unwrap();
     engine.execute("INSERT INTO t VALUES (1, 100)").unwrap();
+    engine.execute("COMMIT").unwrap();
 
+    // Transaction under test
     let start_result = engine.execute("START TRANSACTION");
     assert!(start_result.is_ok(), "START TRANSACTION should succeed");
 
@@ -119,7 +133,10 @@ fn test_start_transaction_serializable() {
     engine
         .execute("CREATE TABLE t (id INTEGER, value INTEGER)")
         .unwrap();
+    // Setup data in a transaction
+    engine.execute("BEGIN").unwrap();
     engine.execute("INSERT INTO t VALUES (1, 100)").unwrap();
+    engine.execute("COMMIT").unwrap();
 
     let start_result = engine.execute("START TRANSACTION ISOLATION LEVEL SERIALIZABLE");
     assert!(

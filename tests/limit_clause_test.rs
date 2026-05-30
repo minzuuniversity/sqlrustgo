@@ -11,11 +11,13 @@ fn test_select_limit() {
 
     // Setup: insert 10 rows
     engine.execute("CREATE TABLE t1 (id INTEGER)").unwrap();
+    engine.execute("BEGIN").unwrap();
     for i in 1..=10 {
         engine
             .execute(&format!("INSERT INTO t1 VALUES ({})", i))
             .unwrap();
     }
+    engine.execute("COMMIT").unwrap();
 
     // SELECT with LIMIT 3 - should return only 3 rows
     let result = engine.execute("SELECT * FROM t1 LIMIT 3");
@@ -34,11 +36,13 @@ fn test_select_limit_offset() {
     let mut engine = ExecutionEngine::new(storage);
 
     engine.execute("CREATE TABLE t1 (id INTEGER)").unwrap();
+    engine.execute("BEGIN").unwrap();
     for i in 1..=10 {
         engine
             .execute(&format!("INSERT INTO t1 VALUES ({})", i))
             .unwrap();
     }
+    engine.execute("COMMIT").unwrap();
 
     // SELECT with LIMIT 3 OFFSET 5 - should skip 5 rows, return 3
     let result = engine.execute("SELECT * FROM t1 LIMIT 3 OFFSET 5");
@@ -57,8 +61,10 @@ fn test_select_limit_zero() {
     let mut engine = ExecutionEngine::new(storage);
 
     engine.execute("CREATE TABLE t1 (id INTEGER)").unwrap();
+    engine.execute("BEGIN").unwrap();
     engine.execute("INSERT INTO t1 VALUES (1)").unwrap();
     engine.execute("INSERT INTO t1 VALUES (2)").unwrap();
+    engine.execute("COMMIT").unwrap();
 
     // LIMIT 0 should return empty
     let result = engine.execute("SELECT * FROM t1 LIMIT 0");

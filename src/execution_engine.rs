@@ -798,6 +798,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     }
 
     fn execute_insert(&self, insert: &InsertStatement) -> SqlResult<ExecutorResult> {
+        // EEK v0: DML requires active transaction (INT-1 enforcement)
+        self.require_tx()?;
         let table_name = insert.table.clone();
 
         // Get table info first (need it for triggers and FK validation)
@@ -923,6 +925,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     }
 
     fn execute_update(&self, update: &UpdateStatement) -> SqlResult<ExecutorResult> {
+        // EEK v0: DML requires active transaction (INT-1 enforcement)
+        self.require_tx()?;
         let table_name = update.table.clone();
 
         // If no WHERE clause, use the simple storage.update() path
@@ -1082,6 +1086,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     }
 
     fn execute_delete(&self, delete: &DeleteStatement) -> SqlResult<ExecutorResult> {
+        // EEK v0: DML requires active transaction (INT-1 enforcement)
+        self.require_tx()?;
         let table_name = delete.table.clone();
 
         // If no WHERE clause, delete all rows (current behavior is correct)
@@ -1432,6 +1438,15 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         })?;
         self.current_tx_id = None;
         Ok(ExecutorResult::empty())
+    }
+
+    /// EEK v0: Require active transaction for DML operations (INT-1 enforcement)
+    fn require_tx(&self) -> SqlResult<&TxId> {
+        self.current_tx_id.as_ref().ok_or_else(|| {
+            SqlError::ExecutionError(
+                "DML requires active transaction (EEK-WAL-INT-1): transaction context required before write operation".to_string()
+            )
+        })
     }
 
     fn execute_grant(&mut self, grant: &GrantStatement) -> SqlResult<ExecutorResult> {
@@ -2325,6 +2340,7 @@ mod tests {
         engine
             .execute("CREATE TABLE users (id INTEGER, name TEXT, age INTEGER)")
             .unwrap();
+        engine.execute("BEGIN").unwrap();
         engine
             .execute("INSERT INTO users VALUES (1, 'Alice', 30)")
             .unwrap();
@@ -2334,6 +2350,7 @@ mod tests {
         engine
             .execute("INSERT INTO users VALUES (3, 'Charlie', 30)")
             .unwrap();
+        engine.execute("COMMIT").unwrap();
 
         let result = engine.execute("ANALYZE users").unwrap();
         assert_eq!(result.affected_rows, 1);
@@ -2374,6 +2391,7 @@ mod tests {
         engine
             .execute("CREATE TABLE users (id INTEGER, name TEXT)")
             .unwrap();
+        engine.execute("BEGIN").unwrap();
         engine
             .execute("INSERT INTO users VALUES (1, 'Alice')")
             .unwrap();
@@ -2383,10 +2401,10 @@ mod tests {
         engine
             .execute("INSERT INTO users VALUES (3, 'Charlie')")
             .unwrap();
+        engine.execute("COMMIT").unwrap();
 
         // Before ANALYZE, should return default estimate
         assert_eq!(engine.estimate_row_count("users"), 1000);
-
         // After ANALYZE, should return actual count
         engine.execute("ANALYZE users").unwrap();
         assert_eq!(engine.estimate_row_count("users"), 3);
@@ -2400,11 +2418,13 @@ mod tests {
         engine
             .execute("CREATE TABLE users (id INTEGER, name TEXT)")
             .unwrap();
+        engine.execute("BEGIN").unwrap();
         for i in 0..100 {
             engine
                 .execute(&format!("INSERT INTO users VALUES ({}, 'User{}')", i, i))
                 .unwrap();
         }
+        engine.execute("COMMIT").unwrap();
 
         // Before ANALYZE, should return default selectivity
         let selectivity = engine.estimate_selectivity("users", "id");
@@ -2426,6 +2446,7 @@ mod tests {
         engine.execute("CREATE TABLE medium (id INTEGER)").unwrap();
         engine.execute("CREATE TABLE small (id INTEGER)").unwrap();
 
+        engine.execute("BEGIN").unwrap();
         for i in 0..1000 {
             engine
                 .execute(&format!("INSERT INTO large VALUES ({})", i))
@@ -2441,11 +2462,14 @@ mod tests {
                 .execute(&format!("INSERT INTO small VALUES ({})", i))
                 .unwrap();
         }
+        engine.execute("COMMIT").unwrap();
 
         // Analyze to get accurate row counts
+        engine.execute("BEGIN").unwrap();
         engine.execute("ANALYZE large").unwrap();
         engine.execute("ANALYZE medium").unwrap();
         engine.execute("ANALYZE small").unwrap();
+        engine.execute("COMMIT").unwrap();
 
         let tables = vec!["large", "medium", "small"];
         let optimal = engine.optimize_join_order(&tables);
@@ -2482,11 +2506,13 @@ mod tests {
         engine
             .execute("CREATE TABLE users (id INTEGER, name TEXT)")
             .unwrap();
+        engine.execute("BEGIN").unwrap();
         for i in 0..1000 {
             engine
                 .execute(&format!("INSERT INTO users VALUES ({}, 'User{}')", i, i))
                 .unwrap();
         }
+        engine.execute("COMMIT").unwrap();
 
         // High selectivity (1/1000) - index should be very beneficial
         let high_sel = engine.estimate_selectivity("users", "id");
@@ -2494,7 +2520,9 @@ mod tests {
         assert!(benefit > 0.0); // Index should be beneficial
 
         // With ANALYZE, we get actual stats
+        engine.execute("BEGIN").unwrap();
         engine.execute("ANALYZE users").unwrap();
+        engine.execute("COMMIT").unwrap();
         let benefit_after_analyze = engine.estimate_index_benefit("users", high_sel);
         assert!(benefit_after_analyze > 0.0);
     }
@@ -2507,18 +2535,22 @@ mod tests {
         engine
             .execute("CREATE TABLE users (id INTEGER, name TEXT)")
             .unwrap();
+        engine.execute("BEGIN").unwrap();
         for i in 0..10000 {
             engine
                 .execute(&format!("INSERT INTO users VALUES ({}, 'User{}')", i, i))
                 .unwrap();
         }
+        engine.execute("COMMIT").unwrap();
 
         // With low selectivity (high cardinality), index is beneficial
         let use_index = engine.should_use_index("users", "id");
         assert!(use_index);
 
         // After ANALYZE, should still recommend index for high cardinality
+        engine.execute("BEGIN").unwrap();
         engine.execute("ANALYZE users").unwrap();
+        engine.execute("COMMIT").unwrap();
         let use_index_after = engine.should_use_index("users", "id");
         assert!(use_index_after);
     }
@@ -2535,6 +2567,7 @@ mod tests {
             .execute("CREATE TABLE users (id INTEGER, name TEXT)")
             .unwrap();
 
+        engine.execute("BEGIN").unwrap();
         for i in 0..100 {
             engine
                 .execute(&format!("INSERT INTO orders VALUES ({}, {})", i, i % 10))
@@ -2545,6 +2578,7 @@ mod tests {
                 .execute(&format!("INSERT INTO users VALUES ({}, 'User{}')", i, i))
                 .unwrap();
         }
+        engine.execute("COMMIT").unwrap();
 
         let hash_cost = engine.estimate_join_cost("orders", "users", "hash");
         let nl_cost = engine.estimate_join_cost("orders", "users", "nested_loop");
@@ -2565,6 +2599,7 @@ mod tests {
         engine.execute("CREATE TABLE t2 (id INTEGER)").unwrap();
         engine.execute("CREATE TABLE t3 (id INTEGER)").unwrap();
 
+        engine.execute("BEGIN").unwrap();
         for i in 0..500 {
             engine
                 .execute(&format!("INSERT INTO t1 VALUES ({})", i))
@@ -2580,11 +2615,14 @@ mod tests {
                 .execute(&format!("INSERT INTO t3 VALUES ({})", i))
                 .unwrap();
         }
+        engine.execute("COMMIT").unwrap();
 
         // Analyze to get accurate stats
+        engine.execute("BEGIN").unwrap();
         engine.execute("ANALYZE t1").unwrap();
         engine.execute("ANALYZE t2").unwrap();
         engine.execute("ANALYZE t3").unwrap();
+        engine.execute("COMMIT").unwrap();
 
         let tables = vec!["t1", "t2", "t3"];
         let optimal = engine.optimize_join_order(&tables);

@@ -30,6 +30,7 @@ fn test_analyze_collects_table_stats() {
     engine
         .execute("CREATE TABLE users (id INTEGER, name TEXT, age INTEGER)")
         .unwrap();
+    engine.execute("BEGIN").unwrap();
     engine
         .execute("INSERT INTO users VALUES (1, 'Alice', 30)")
         .unwrap();
@@ -39,6 +40,7 @@ fn test_analyze_collects_table_stats() {
     engine
         .execute("INSERT INTO users VALUES (3, 'Charlie', 30)")
         .unwrap();
+    engine.execute("COMMIT").unwrap();
 
     let result = engine.execute("ANALYZE users").unwrap();
     assert_eq!(result.affected_rows, 1);
@@ -58,6 +60,7 @@ fn test_estimate_row_count() {
     engine
         .execute("CREATE TABLE users (id INTEGER, name TEXT)")
         .unwrap();
+    engine.execute("BEGIN").unwrap();
     engine
         .execute("INSERT INTO users VALUES (1, 'Alice')")
         .unwrap();
@@ -67,12 +70,15 @@ fn test_estimate_row_count() {
     engine
         .execute("INSERT INTO users VALUES (3, 'Charlie')")
         .unwrap();
+    engine.execute("COMMIT").unwrap();
 
     // Before ANALYZE, should return default estimate
     assert_eq!(engine.estimate_row_count("users"), 1000);
 
     // After ANALYZE, should return actual count
+    engine.execute("BEGIN").unwrap();
     engine.execute("ANALYZE users").unwrap();
+    engine.execute("COMMIT").unwrap();
     assert_eq!(engine.estimate_row_count("users"), 3);
 }
 
@@ -84,18 +90,22 @@ fn test_estimate_selectivity() {
     engine
         .execute("CREATE TABLE users (id INTEGER, name TEXT)")
         .unwrap();
+    engine.execute("BEGIN").unwrap();
     for i in 0..100 {
         engine
             .execute(&format!("INSERT INTO users VALUES ({}, 'User{}')", i, i))
             .unwrap();
     }
+    engine.execute("COMMIT").unwrap();
 
     // Before ANALYZE, should return default selectivity
     let selectivity = engine.estimate_selectivity("users", "id");
     assert_eq!(selectivity, 0.1); // Default 10%
 
     // After ANALYZE with distinct_count, should return better estimate
+    engine.execute("BEGIN").unwrap();
     engine.execute("ANALYZE users").unwrap();
+    engine.execute("COMMIT").unwrap();
     let selectivity = engine.estimate_selectivity("users", "id");
     assert_eq!(selectivity, 0.01); // 1/100 distinct values
 }
@@ -108,11 +118,13 @@ fn test_estimate_index_benefit() {
     engine
         .execute("CREATE TABLE users (id INTEGER, name TEXT)")
         .unwrap();
+    engine.execute("BEGIN").unwrap();
     for i in 0..1000 {
         engine
             .execute(&format!("INSERT INTO users VALUES ({}, 'User{}')", i, i))
             .unwrap();
     }
+    engine.execute("COMMIT").unwrap();
 
     // High selectivity (1/1000) - index should be very beneficial
     let high_sel = engine.estimate_selectivity("users", "id");
@@ -120,7 +132,9 @@ fn test_estimate_index_benefit() {
     assert!(benefit > 0.0); // Index should be beneficial
 
     // With ANALYZE, we get actual stats
+    engine.execute("BEGIN").unwrap();
     engine.execute("ANALYZE users").unwrap();
+    engine.execute("COMMIT").unwrap();
     let benefit_after_analyze = engine.estimate_index_benefit("users", high_sel);
     assert!(benefit_after_analyze > 0.0);
 }
@@ -133,18 +147,22 @@ fn test_should_use_index() {
     engine
         .execute("CREATE TABLE users (id INTEGER, name TEXT)")
         .unwrap();
+    engine.execute("BEGIN").unwrap();
     for i in 0..10000 {
         engine
             .execute(&format!("INSERT INTO users VALUES ({}, 'User{}')", i, i))
             .unwrap();
     }
+    engine.execute("COMMIT").unwrap();
 
     // With low selectivity (high cardinality), index is beneficial
     let use_index = engine.should_use_index("users", "id");
     assert!(use_index);
 
     // After ANALYZE, should still recommend index for high cardinality
+    engine.execute("BEGIN").unwrap();
     engine.execute("ANALYZE users").unwrap();
+    engine.execute("COMMIT").unwrap();
     let use_index_after = engine.should_use_index("users", "id");
     assert!(use_index_after);
 }
@@ -161,6 +179,7 @@ fn test_estimate_join_cost() {
         .execute("CREATE TABLE users (id INTEGER, name TEXT)")
         .unwrap();
 
+    engine.execute("BEGIN").unwrap();
     for i in 0..100 {
         engine
             .execute(&format!("INSERT INTO orders VALUES ({}, {})", i, i % 10))
@@ -171,6 +190,7 @@ fn test_estimate_join_cost() {
             .execute(&format!("INSERT INTO users VALUES ({}, 'User{}')", i, i))
             .unwrap();
     }
+    engine.execute("COMMIT").unwrap();
 
     let hash_cost = engine.estimate_join_cost("orders", "users", "hash");
     let nl_cost = engine.estimate_join_cost("orders", "users", "nested_loop");
@@ -192,6 +212,7 @@ fn test_optimize_join_order() {
     engine.execute("CREATE TABLE medium (id INTEGER)").unwrap();
     engine.execute("CREATE TABLE small (id INTEGER)").unwrap();
 
+    engine.execute("BEGIN").unwrap();
     for i in 0..1000 {
         engine
             .execute(&format!("INSERT INTO large VALUES ({})", i))
@@ -207,11 +228,14 @@ fn test_optimize_join_order() {
             .execute(&format!("INSERT INTO small VALUES ({})", i))
             .unwrap();
     }
+    engine.execute("COMMIT").unwrap();
 
     // Analyze to get accurate row counts
+    engine.execute("BEGIN").unwrap();
     engine.execute("ANALYZE large").unwrap();
     engine.execute("ANALYZE medium").unwrap();
     engine.execute("ANALYZE small").unwrap();
+    engine.execute("COMMIT").unwrap();
 
     let tables = vec!["large", "medium", "small"];
     let optimal = engine.optimize_join_order(&tables);
@@ -231,6 +255,7 @@ fn test_optimize_join_order_respects_stats() {
     engine.execute("CREATE TABLE t2 (id INTEGER)").unwrap();
     engine.execute("CREATE TABLE t3 (id INTEGER)").unwrap();
 
+    engine.execute("BEGIN").unwrap();
     for i in 0..500 {
         engine
             .execute(&format!("INSERT INTO t1 VALUES ({})", i))
@@ -246,11 +271,14 @@ fn test_optimize_join_order_respects_stats() {
             .execute(&format!("INSERT INTO t3 VALUES ({})", i))
             .unwrap();
     }
+    engine.execute("COMMIT").unwrap();
 
     // Analyze to get accurate stats
+    engine.execute("BEGIN").unwrap();
     engine.execute("ANALYZE t1").unwrap();
     engine.execute("ANALYZE t2").unwrap();
     engine.execute("ANALYZE t3").unwrap();
+    engine.execute("COMMIT").unwrap();
 
     let tables = vec!["t1", "t2", "t3"];
     let optimal = engine.optimize_join_order(&tables);

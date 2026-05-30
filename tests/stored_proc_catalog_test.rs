@@ -15,12 +15,14 @@ fn test_create_and_call_procedure_with_catalog() {
     engine
         .execute("CREATE TABLE users (id INTEGER, name TEXT)")
         .unwrap();
+    engine.execute("BEGIN").unwrap();
     engine
         .execute("INSERT INTO users VALUES (1, 'Alice')")
         .unwrap();
     engine
         .execute("INSERT INTO users VALUES (2, 'Bob')")
         .unwrap();
+    engine.execute("COMMIT").unwrap();
 
     let create_result =
         engine.execute("CREATE PROCEDURE get_count() BEGIN SELECT COUNT(*) FROM users; END");
@@ -104,7 +106,9 @@ fn test_create_trigger_with_catalog() {
     );
     assert!(create_trigger.is_ok(), "CREATE TRIGGER should succeed");
 
+    engine.execute("BEGIN").unwrap();
     let insert_result = engine.execute("INSERT INTO users VALUES (1, 'Alice')");
+    engine.execute("COMMIT").unwrap();
     assert!(insert_result.is_ok());
 }
 
@@ -122,7 +126,9 @@ fn test_before_insert_trigger_sets_column() {
     );
     assert!(create_trigger.is_ok(), "CREATE TRIGGER should succeed");
 
+    engine.execute("BEGIN").unwrap();
     let result = engine.execute("INSERT INTO orders VALUES (1, 10.0, 5, 0.0)");
+    engine.execute("COMMIT").unwrap();
     assert!(
         result.is_ok(),
         "INSERT should succeed even if trigger modifies value"
@@ -145,7 +151,9 @@ fn test_after_insert_trigger_executes() {
         .execute("CREATE TRIGGER log_insert AFTER INSERT ON source FOR EACH ROW BEGIN END")
         .unwrap();
 
+    engine.execute("BEGIN").unwrap();
     let result = engine.execute("INSERT INTO source VALUES (1, 'test')");
+    engine.execute("COMMIT").unwrap();
     assert!(
         result.is_ok(),
         "AFTER INSERT trigger should execute without error"
@@ -161,16 +169,20 @@ fn test_before_update_trigger_sets_column() {
         .execute("CREATE TABLE products (id INTEGER, price FLOAT, discounted_price FLOAT)")
         .unwrap();
 
+    engine.execute("BEGIN").unwrap();
     engine
         .execute("INSERT INTO products VALUES (1, 100.0, 0.0)")
         .unwrap();
+    engine.execute("COMMIT").unwrap();
 
     let create_trigger = engine.execute(
         "CREATE TRIGGER apply_discount BEFORE UPDATE ON products FOR EACH ROW BEGIN SET NEW.discounted_price = 90.0; END"
     );
     assert!(create_trigger.is_ok(), "CREATE TRIGGER should succeed");
 
+    engine.execute("BEGIN").unwrap();
     let result = engine.execute("UPDATE products SET price = 100.0 WHERE id = 1");
+    engine.execute("COMMIT").unwrap();
     assert!(
         result.is_ok(),
         "UPDATE should succeed even if trigger modifies value"
@@ -186,15 +198,19 @@ fn test_after_update_trigger_executes() {
         .execute("CREATE TABLE items (id INTEGER, status TEXT)")
         .unwrap();
 
+    engine.execute("BEGIN").unwrap();
     engine
         .execute("INSERT INTO items VALUES (1, 'pending')")
         .unwrap();
+    engine.execute("COMMIT").unwrap();
 
     engine
         .execute("CREATE TRIGGER log_status AFTER UPDATE ON items FOR EACH ROW BEGIN END")
         .unwrap();
 
+    engine.execute("BEGIN").unwrap();
     let result = engine.execute("UPDATE items SET status = 'approved' WHERE id = 1");
+    engine.execute("COMMIT").unwrap();
     assert!(
         result.is_ok(),
         "AFTER UPDATE trigger should execute without error"
@@ -210,15 +226,19 @@ fn test_before_delete_trigger_executes() {
         .execute("CREATE TABLE items (id INTEGER, name TEXT)")
         .unwrap();
 
+    engine.execute("BEGIN").unwrap();
     engine
         .execute("INSERT INTO items VALUES (1, 'to_delete')")
         .unwrap();
+    engine.execute("COMMIT").unwrap();
 
     engine
         .execute("CREATE TRIGGER archive_delete BEFORE DELETE ON items FOR EACH ROW BEGIN END")
         .unwrap();
 
+    engine.execute("BEGIN").unwrap();
     let result = engine.execute("DELETE FROM items WHERE id = 1");
+    engine.execute("COMMIT").unwrap();
     assert!(
         result.is_ok(),
         "BEFORE DELETE trigger should execute without error"
@@ -237,15 +257,19 @@ fn test_after_delete_trigger_executes() {
         .execute("CREATE TABLE orders (id INTEGER, amount FLOAT)")
         .unwrap();
 
+    engine.execute("BEGIN").unwrap();
     engine
         .execute("INSERT INTO orders VALUES (1, 100.0)")
         .unwrap();
+    engine.execute("COMMIT").unwrap();
 
     engine
         .execute("CREATE TRIGGER track_deletion AFTER DELETE ON orders FOR EACH ROW BEGIN END")
         .unwrap();
 
+    engine.execute("BEGIN").unwrap();
     let result = engine.execute("DELETE FROM orders WHERE id = 1");
+    engine.execute("COMMIT").unwrap();
     assert!(
         result.is_ok(),
         "AFTER DELETE trigger should execute without error"
@@ -269,7 +293,9 @@ fn test_multiple_triggers_on_same_table() {
         .execute("CREATE TRIGGER set_ts2 BEFORE INSERT ON events FOR EACH ROW BEGIN SET NEW.ts = 'second'; END")
         .unwrap();
 
+    engine.execute("BEGIN").unwrap();
     let result = engine.execute("INSERT INTO events VALUES (1, 'test', '')");
+    engine.execute("COMMIT").unwrap();
     assert!(result.is_ok());
 
     let rows = engine.execute("SELECT ts FROM events").unwrap();
@@ -288,16 +314,20 @@ fn test_trigger_executes_insert() {
         .execute("CREATE TABLE inventory (product_id INTEGER, stock INTEGER)")
         .unwrap();
 
+    engine.execute("BEGIN").unwrap();
     engine
         .execute("INSERT INTO inventory VALUES (1, 100)")
         .unwrap();
+    engine.execute("COMMIT").unwrap();
 
     let result = engine.execute(
         "CREATE TRIGGER decrement_stock AFTER INSERT ON orders FOR EACH ROW BEGIN UPDATE inventory SET stock = stock - NEW.quantity WHERE product_id = NEW.product_id; END"
     );
     assert!(result.is_ok(), "CREATE TRIGGER should succeed");
 
+    engine.execute("BEGIN").unwrap();
     let insert_result = engine.execute("INSERT INTO orders VALUES (1, 1, 10)");
+    engine.execute("COMMIT").unwrap();
     assert!(insert_result.is_ok(), "INSERT should trigger trigger");
 
     let inventory = engine
@@ -320,16 +350,20 @@ fn test_trigger_executes_update() {
         )
         .unwrap();
 
+    engine.execute("BEGIN").unwrap();
     engine
         .execute("INSERT INTO products VALUES (1, 'Widget', 100)")
         .unwrap();
+    engine.execute("COMMIT").unwrap();
 
     let result = engine.execute(
         "CREATE TRIGGER log_price_change AFTER UPDATE ON products FOR EACH ROW BEGIN INSERT INTO price_history VALUES (OLD.id, OLD.price, NEW.price); END"
     );
     assert!(result.is_ok(), "CREATE TRIGGER should succeed");
 
+    engine.execute("BEGIN").unwrap();
     let update_result = engine.execute("UPDATE products SET price = 150 WHERE id = 1");
+    engine.execute("COMMIT").unwrap();
     assert!(update_result.is_ok(), "UPDATE should trigger trigger");
 
     let history = engine.execute("SELECT * FROM price_history").unwrap();
@@ -348,16 +382,20 @@ fn test_trigger_executes_delete() {
         .execute("CREATE TABLE cancelled_orders (id INTEGER, status TEXT)")
         .unwrap();
 
+    engine.execute("BEGIN").unwrap();
     engine
         .execute("INSERT INTO orders VALUES (1, 'cancelled')")
         .unwrap();
+    engine.execute("COMMIT").unwrap();
 
     let result = engine.execute(
         "CREATE TRIGGER move_cancelled BEFORE DELETE ON orders FOR EACH ROW BEGIN INSERT INTO cancelled_orders VALUES (OLD.id, OLD.status); END"
     );
     assert!(result.is_ok(), "CREATE TRIGGER should succeed");
 
+    engine.execute("BEGIN").unwrap();
     let delete_result = engine.execute("DELETE FROM orders WHERE id = 1");
+    engine.execute("COMMIT").unwrap();
     assert!(delete_result.is_ok(), "DELETE should trigger trigger");
 
     let remaining = engine.execute("SELECT * FROM orders").unwrap();
