@@ -1,20 +1,47 @@
+//! Canonical expression forms for row mutations.
+//!
+//! # Commutative vs Non-Commutative Operators
+//!
+//! - **Add/Mul** are commutative (`a + b == b + a`, `a * b == b * a`) → use sorted `Vec`
+//!   to normalize `b + a` into the same form as `a + b`
+//! - **Sub/Div** are NOT commutative (`a - b != b - a`, `a / b != b / a`) → use `Box`
+//!   to preserve the original left-to-right order
+
 use sqlrustgo_planner::{Expr, Operator};
 use sqlrustgo_types::Value;
 
+/// Canonical expression representation for row-level operations.
+///
+/// Represents SQL expressions in a normalized form suitable for
+/// compilation into row mutations. Handles column references,
+/// constants, and binary operations.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum CanonicalExpr {
+    /// Reference to a column by name
     Column(String),
+    /// Constant value
     Const(Value),
+    /// Addition - commutative, uses sorted Vec to normalize operand order
     Add(Vec<CanonicalExpr>),
+    /// Multiplication - commutative, uses sorted Vec to normalize operand order
     Mul(Vec<CanonicalExpr>),
+    /// Subtraction - NOT commutative, Box preserves left-to-right order
     Sub(Box<CanonicalExpr>, Box<CanonicalExpr>),
+    /// Division - NOT commutative, Box preserves left-to-right order
     Div(Box<CanonicalExpr>, Box<CanonicalExpr>),
+    /// Compound operator with sorted operands
     Compound {
+        /// Operator symbol
         op: String,
+        /// Sorted operands for commutative operators
         args: Vec<CanonicalExpr>,
     },
 }
 
+/// Transforms a planner Expr into a canonical form for row mutations.
+///
+/// Handles column references, literals, and binary expressions,
+/// normalizing commutative operators for consistent hashing.
 pub fn canonicalize_expr(expr: &Expr) -> CanonicalExpr {
     match expr {
         Expr::Column(col) => CanonicalExpr::Column(col.name.clone()),
@@ -48,9 +75,19 @@ pub fn canonicalize_expr(expr: &Expr) -> CanonicalExpr {
                 Box::new(canonicalize_expr(left)),
                 Box::new(canonicalize_expr(right)),
             ),
-            _ => CanonicalExpr::Const(Value::Null),
+            #[allow(unused_variables)]
+            other => {
+                // Unsupported operators (And, Or, Eq, etc.) fall through to Null.
+                // These are filtered out earlier in query planning.
+                CanonicalExpr::Const(Value::Null)
+            }
         },
-        _ => CanonicalExpr::Const(Value::Null),
+        #[allow(unused_variables)]
+        _ => {
+            // Non-expression nodes (wildcards, subqueries, etc.) are not
+            // valid in SET clauses and produce Null.
+            CanonicalExpr::Const(Value::Null)
+        }
     }
 }
 
