@@ -39,7 +39,7 @@ pub type GraphResult<T> = Result<T, GraphError>;
 // =============================================================================
 
 /// Node types that can exist in the Evidence Graph.
-/// 
+///
 /// IMPORTANT: Only authoritative runtimes (CI/Git/Gate Engine) can create these nodes.
 /// AI can ONLY reference existing nodes, never create them.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -128,7 +128,7 @@ impl EdgeType {
 // =============================================================================
 
 /// A node in the Evidence Graph.
-/// 
+///
 /// CRITICAL: Nodes are IMMUTABLE once created. No updates allowed.
 /// Only authoritative systems can create nodes.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -161,7 +161,7 @@ impl GraphNode {
 }
 
 /// An edge in the Evidence Graph.
-/// 
+///
 /// CRITICAL: Edges are IMMUTABLE once created. No updates or deletions.
 /// This enforces the "evidence locking" principle.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -252,13 +252,13 @@ impl GraphStore {
     // =====================================================================
 
     /// Add a node to the graph.
-    /// 
+    ///
     /// WARNING: This should only be called by authority services (CI/Git/Gate).
     /// AI should use `reference_node()` instead.
     pub fn add_node(&self, node: &GraphNode) -> GraphResult<()> {
         let metadata = serde_json::to_string(&node.metadata)?;
         let created_at = node.created_at.to_rfc3339();
-        
+
         self.conn.execute(
             "INSERT OR IGNORE INTO graph_nodes (id, node_type, label, metadata, created_at, authority) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
             params![
@@ -276,7 +276,11 @@ impl GraphStore {
     /// Check if a node exists.
     pub fn node_exists(&self, id: &str) -> bool {
         self.conn
-            .query_row("SELECT 1 FROM graph_nodes WHERE id = ?1", params![id], |_| Ok(()))
+            .query_row(
+                "SELECT 1 FROM graph_nodes WHERE id = ?1",
+                params![id],
+                |_| Ok(()),
+            )
             .is_ok()
     }
 
@@ -339,7 +343,7 @@ impl GraphStore {
     // =====================================================================
 
     /// Add an edge to the graph.
-    /// 
+    ///
     /// WARNING: This should only be called by authority services.
     /// Edges are IMMUTABLE once created.
     pub fn add_edge(&self, edge: &GraphEdge) -> GraphResult<()> {
@@ -460,9 +464,9 @@ impl GraphStore {
     }
 
     /// Check if a Task node has a valid completion path: Task → Commit → CI_PASS → Artifact
-    /// 
+    ///
     /// This is the CORE gate computation.
-    /// 
+    ///
     /// Returns (has_path, path_details)
     pub fn check_task_completion(&self, task_id: &str) -> GraphResult<(bool, Vec<String>)> {
         // Step 1: Task → Commit (IMPLEMENTED_BY)
@@ -525,7 +529,7 @@ impl GraphStore {
     }
 
     /// Get all orphan nodes (nodes with no edges in or out).
-    /// 
+    ///
     /// IMPORTANT: Orphan nodes are INVALID by definition.
     /// "No graph, no truth" - orphan nodes have no evidentiary value.
     pub fn get_orphan_nodes(&self) -> GraphResult<Vec<GraphNode>> {
@@ -561,12 +565,12 @@ impl GraphStore {
 
     /// Get graph statistics.
     pub fn stats(&self) -> GraphResult<GraphStats> {
-        let node_count: i64 = self
-            .conn
-            .query_row("SELECT COUNT(*) FROM graph_nodes", [], |row| row.get(0))?;
-        let edge_count: i64 = self
-            .conn
-            .query_row("SELECT COUNT(*) FROM graph_edges", [], |row| row.get(0))?;
+        let node_count: i64 =
+            self.conn
+                .query_row("SELECT COUNT(*) FROM graph_nodes", [], |row| row.get(0))?;
+        let edge_count: i64 =
+            self.conn
+                .query_row("SELECT COUNT(*) FROM graph_edges", [], |row| row.get(0))?;
         let orphan_count = self.get_orphan_nodes()?.len() as i64;
         let task_count = self.get_nodes_by_type(NodeType::Task)?.len() as i64;
         let commit_count = self.get_nodes_by_type(NodeType::Commit)?.len() as i64;
@@ -602,7 +606,7 @@ pub struct GraphStats {
 // =============================================================================
 
 /// Evidence Ingestor - builds the Evidence Graph from authoritative sources.
-/// 
+///
 /// CRITICAL: This is an authority service. Only CI/Git/Gate should call this.
 /// AI should NEVER call this directly - AI can only consume the resulting graph.
 pub struct EvidenceIngestor<'a> {
@@ -615,14 +619,9 @@ impl<'a> EvidenceIngestor<'a> {
     }
 
     /// Ingest a git commit as a CommitNode.
-    /// 
+    ///
     /// This is called by git hooks/CI, not by AI.
-    pub fn ingest_git_commit(
-        &self,
-        hash: &str,
-        author: &str,
-        message: &str,
-    ) -> GraphResult<()> {
+    pub fn ingest_git_commit(&self, hash: &str, author: &str, message: &str) -> GraphResult<()> {
         let node = GraphNode::new(
             format!("commit_{}", &hash[..8]),
             NodeType::Commit,
@@ -640,7 +639,7 @@ impl<'a> EvidenceIngestor<'a> {
     }
 
     /// Ingest a CI run as a CiRunNode.
-    /// 
+    ///
     /// This is called by CI system, not by AI.
     pub fn ingest_ci_run(
         &self,
@@ -678,7 +677,7 @@ impl<'a> EvidenceIngestor<'a> {
     }
 
     /// Ingest a test artifact as an ArtifactNode.
-    /// 
+    ///
     /// This is called by CI system, not by AI.
     pub fn ingest_artifact(
         &self,
@@ -712,7 +711,7 @@ impl<'a> EvidenceIngestor<'a> {
     }
 
     /// Link a Task node to a Commit node.
-    /// 
+    ///
     /// This establishes that the commit implements the task.
     pub fn link_task_to_commit(&self, task_id: &str, commit_hash: &str) -> GraphResult<()> {
         let commit_id = format!("commit_{}", &commit_hash[..8]);
@@ -864,21 +863,27 @@ mod tests {
         }
 
         // Add edges
-        store.add_edge(&GraphEdge::new(
-            "task_1".to_string(),
-            "commit_1".to_string(),
-            EdgeType::ImplementedBy,
-        )).unwrap();
-        store.add_edge(&GraphEdge::new(
-            "commit_1".to_string(),
-            "ci_1".to_string(),
-            EdgeType::VerifiedBy,
-        )).unwrap();
-        store.add_edge(&GraphEdge::new(
-            "ci_1".to_string(),
-            "art_1".to_string(),
-            EdgeType::Produces,
-        )).unwrap();
+        store
+            .add_edge(&GraphEdge::new(
+                "task_1".to_string(),
+                "commit_1".to_string(),
+                EdgeType::ImplementedBy,
+            ))
+            .unwrap();
+        store
+            .add_edge(&GraphEdge::new(
+                "commit_1".to_string(),
+                "ci_1".to_string(),
+                EdgeType::VerifiedBy,
+            ))
+            .unwrap();
+        store
+            .add_edge(&GraphEdge::new(
+                "ci_1".to_string(),
+                "art_1".to_string(),
+                EdgeType::Produces,
+            ))
+            .unwrap();
 
         let (has_path, path) = store.check_task_completion("task_1").unwrap();
         // CI does not have status=PASS in our test data, so path is incomplete
@@ -911,6 +916,9 @@ mod tests {
         // Verify the node was created
         let all_commits = store.get_nodes_by_type(NodeType::Commit).unwrap();
         println!("DEBUG: all commits in graph: {:?}", all_commits);
-        assert!(!all_commits.is_empty(), "no commits found after ingest_git_commit");
+        assert!(
+            !all_commits.is_empty(),
+            "no commits found after ingest_git_commit"
+        );
     }
 }
