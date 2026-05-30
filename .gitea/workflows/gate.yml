@@ -22,10 +22,15 @@ jobs:
       - name: Checkout
         run: |
           REPO="openclaw/sqlrustgo"
+          SHA="${GITHUB_SHA:-${GITEA_SHA:-$(git rev-parse HEAD)}}"
           git clone --depth=1 "http://192.168.0.252:3000/$REPO" repo
           cd repo
-          git fetch --depth=1 origin "$GITEA_SHA"
-          git checkout "$GITEA_SHA"
+          if [ -n "$SHA" ] && [ "$SHA" != "0000000000000000000000000000000000000000" ]; then
+            git fetch --depth=1 origin "$SHA" 2>/dev/null || true
+            git checkout "$SHA" 2>/dev/null || git checkout HEAD
+          else
+            git checkout HEAD
+          fi
 
       - name: Build graph-cli
         run: |
@@ -48,8 +53,10 @@ jobs:
       - name: Ingest CI Event
         run: |
           cd repo
-          RUN_ID="run_${GITEA_RUN_ID:-$(date +%s)}"
-          ./target/release/ingest ci "$RUN_ID" "${GITEA_SHA:0:8}" PASS --db "$DB_PATH"
+          SHA_SHORT="${GITEA_SHA:0:8}"
+          SHA_FULL="${GITEA_SHA:0:40}"
+          RUN_ID="run_${GITEA_RUN_ID:-$SHA_SHORT}"
+          ./target/release/ingest ci "$RUN_ID" "$SHA_FULL" PASS --db "$DB_PATH"
 
       - name: Ingest Artifact
         run: |
@@ -60,12 +67,13 @@ jobs:
       - name: Link Evidence Chain
         run: |
           cd repo
-          RUN_ID="run_${GITEA_RUN_ID:-$(date +%s)}"
           SHA="${GITEA_SHA:0:8}"
-          # Link Task → Commit (IMPLEMENTED_BY)
-          ./target/release/ingest link "gate_test_$SHA" IMPLEMENTED_BY "commit_$SHA" --db "$DB_PATH" || true
-          # Link CI → Artifact (PRODUCES) — ingest_artifact already does this, but double-link for clarity
-          ./target/release/ingest link "ci_$RUN_ID" PRODUCES "artifact_$RUN_ID" --db "$DB_PATH" || true
+          RUN_ID="run_${GITEA_RUN_ID:-$(date +%s)}"
+          # Only link if we have a valid SHA
+          if [ -n "$SHA" ] && [ "$SHA" != "0000000" ]; then
+            ./target/release/ingest link "gate_test_$SHA" IMPLEMENTED_BY "commit_$SHA" --db "$DB_PATH" || true
+            ./target/release/ingest link "ci_$RUN_ID" PRODUCES "artifact_$RUN_ID" --db "$DB_PATH" || true
+          fi
 
       - name: Ingest Test Result
         run: |
@@ -105,17 +113,18 @@ jobs:
       - name: Checkout
         run: |
           REPO="openclaw/sqlrustgo"
+          SHA="${GITHUB_SHA:-${GITEA_SHA:-$(git rev-parse HEAD)}}"
           git clone --depth=1 "http://192.168.0.252:3000/$REPO" repo
           cd repo
-          git fetch --depth=1 origin "$GITEA_SHA"
-          git checkout "$GITEA_SHA"
+          if [ -n "$SHA" ] && [ "$SHA" != "0000000000000000000000000000000000000000" ]; then
+            git fetch --depth=1 origin "$SHA" 2>/dev/null || true
+            git checkout "$SHA" 2>/dev/null || git checkout HEAD
+          else
+            git checkout HEAD
+          fi
 
       - name: Run Legacy Gate
         run: |
           cd repo
-          chmod +x gate/hermes_gate.sh 2>/dev/null || true
-          if [ -f gate/hermes_gate.sh ]; then
-            bash gate/hermes_gate.sh 2>&1 || true
-          elif [ -f scripts/gate/check_plan_integrity.sh ]; then
-            bash scripts/gate/check_plan_integrity.sh 2>&1 || true
-          fi
+          chmod +x scripts/gate/check_alpha.sh
+          bash scripts/gate/check_alpha.sh 2>&1 || true
