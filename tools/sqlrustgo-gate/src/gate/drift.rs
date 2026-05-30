@@ -54,8 +54,9 @@ impl DriftResult {
         let span_drift = Self::span_drift(baseline, current);
         let wal_drift = Self::wal_drift(baseline, current);
 
-        let score = (0.35 * plan_drift + 0.30 * output_drift + 0.20 * span_drift + 0.15 * wal_drift)
-            .clamp(0.0, 1.0);
+        let score =
+            (0.35 * plan_drift + 0.30 * output_drift + 0.20 * span_drift + 0.15 * wal_drift)
+                .clamp(0.0, 1.0);
 
         let explanation = Self::explain(score, plan_drift, output_drift, span_drift, wal_drift);
 
@@ -75,8 +76,10 @@ impl DriftResult {
         if baseline.is_empty() || current.is_empty() {
             return 0.0;
         }
-        let baseline_plans: std::collections::HashSet<_> = baseline.iter().map(|e| e.plan_hash.clone()).collect();
-        let current_plans: std::collections::HashSet<_> = current.iter().map(|e| e.plan_hash.clone()).collect();
+        let baseline_plans: std::collections::HashSet<_> =
+            baseline.iter().map(|e| e.plan_hash.clone()).collect();
+        let current_plans: std::collections::HashSet<_> =
+            current.iter().map(|e| e.plan_hash.clone()).collect();
 
         let changed = current_plans.symmetric_difference(&baseline_plans).count() as f64;
         let total = current_plans.union(&baseline_plans).count().max(1) as f64;
@@ -86,8 +89,14 @@ impl DriftResult {
     /// Output drift: row count differences per query signature
     fn output_drift(baseline: &[TraceEntry], current: &[TraceEntry]) -> f64 {
         use std::collections::HashMap;
-        let base_map: HashMap<_, _> = baseline.iter().map(|e| (e.query_signature.clone(), e.rows)).collect();
-        let curr_map: HashMap<_, _> = current.iter().map(|e| (e.query_signature.clone(), e.rows)).collect();
+        let base_map: HashMap<_, _> = baseline
+            .iter()
+            .map(|e| (e.query_signature.clone(), e.rows))
+            .collect();
+        let curr_map: HashMap<_, _> = current
+            .iter()
+            .map(|e| (e.query_signature.clone(), e.rows))
+            .collect();
 
         let mut total_diff = 0.0;
         let mut count = 0;
@@ -124,14 +133,25 @@ impl DriftResult {
         if score < 0.1 {
             "negligible drift".to_string()
         } else if score < 0.3 {
-            format!("minor drift (plan={:.1}%, output={:.1}%)", plan * 100.0, output * 100.0)
+            format!(
+                "minor drift (plan={:.1}%, output={:.1}%)",
+                plan * 100.0,
+                output * 100.0
+            )
         } else if score < 0.5 {
-            format!("moderate drift detected (plan={:.1}%, output={:.1}%, span={:.1}%)",
-                plan * 100.0, output * 100.0, span * 100.0)
+            format!(
+                "moderate drift detected (plan={:.1}%, output={:.1}%, span={:.1}%)",
+                plan * 100.0,
+                output * 100.0,
+                span * 100.0
+            )
         } else {
             format!(
                 "significant drift (plan={:.1}%, output={:.1}%, span={:.1}%, wal={:.1}%)",
-                plan * 100.0, output * 100.0, span * 100.0, wal * 100.0
+                plan * 100.0,
+                output * 100.0,
+                span * 100.0,
+                wal * 100.0
             )
         }
     }
@@ -145,13 +165,14 @@ impl DriftResult {
             .map(|o| String::from_utf8_lossy(&o.stdout).to_string())
             .unwrap_or_default();
 
-        let plan_drift: f64 = if executor_changed.contains("100 file") || executor_changed.contains("50 file") {
-            0.4
-        } else if executor_changed.contains("20 file") || executor_changed.contains("10 file") {
-            0.2
-        } else {
-            0.05
-        };
+        let plan_drift: f64 =
+            if executor_changed.contains("100 file") || executor_changed.contains("50 file") {
+                0.4
+            } else if executor_changed.contains("20 file") || executor_changed.contains("10 file") {
+                0.2
+            } else {
+                0.05
+            };
 
         let score: f64 = (0.5 * plan_drift).clamp(0.0, 1.0);
         DriftResult {
