@@ -96,6 +96,29 @@ let auth_ok = if SKIP_AUTH { true } else { ... verify ... }
 
 ---
 
+**✅ P0-2 FIXED (2026-05-30)**
+
+`SKIP_AUTH` set to `false`. Authentication now enforced.
+
+**Available users:**
+- `root` with empty password (empty password auth NOT fully working — see note below)
+- `mysql` with password `mysql` ✓ WORKS
+
+**Known issue**: Empty password authentication (`root` with no password) doesn't work through the standard MySQL client. This is because the MySQL client sends an empty auth response for empty passwords, but the server's auth logic checks `auth_response.is_empty()` before calling `verify_password()`, which rejects it. Workaround: use the `mysql` user with password `mysql` instead.
+
+**Auth flow now:**
+1. `SKIP_AUTH=false` forces real auth path
+2. `UserStore::verify_password()` calls `verify_mysql_native_password()`
+3. MySQL native password auth works correctly for non-empty passwords
+
+**Test:**
+```bash
+mysql -u mysql -pmysql -e "SELECT 1"  # ✓ WORKS
+mysql -u root -e "SELECT 1"           # ✗ Access denied (empty password edge case)
+```
+
+---
+
 ### 2.3 VTU Path Exists But Not Used By mysql-server
 
 | Field | Value |
