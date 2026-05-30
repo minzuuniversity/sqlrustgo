@@ -1,4 +1,54 @@
-use sqlrustgo_planner::Expr;
+use sqlrustgo_planner::{Expr, Operator};
+use sqlrustgo_types::Value;
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum CanonicalExpr {
+    Column(String),
+    Const(Value),
+    Add(Vec<CanonicalExpr>),
+    Mul(Vec<CanonicalExpr>),
+    Sub(Box<CanonicalExpr>, Box<CanonicalExpr>),
+    Div(Box<CanonicalExpr>, Box<CanonicalExpr>),
+    Compound {
+        op: String,
+        args: Vec<CanonicalExpr>,
+    },
+}
+
+pub fn canonicalize_expr(expr: &Expr) -> CanonicalExpr {
+    match expr {
+        Expr::Column(col) => CanonicalExpr::Column(col.name.clone()),
+        Expr::Literal(val) => CanonicalExpr::Const(val.clone()),
+        Expr::BinaryExpr { left, op, right } => match op {
+            Operator::Plus => {
+                let l = canonicalize_expr(left);
+                let r = canonicalize_expr(right);
+                CanonicalExpr::Compound {
+                    op: "+".to_string(),
+                    args: vec![l, r],
+                }
+            }
+            Operator::Minus => CanonicalExpr::Sub(
+                Box::new(canonicalize_expr(left)),
+                Box::new(canonicalize_expr(right)),
+            ),
+            Operator::Multiply => {
+                let l = canonicalize_expr(left);
+                let r = canonicalize_expr(right);
+                CanonicalExpr::Compound {
+                    op: "*".to_string(),
+                    args: vec![l, r],
+                }
+            }
+            Operator::Divide => CanonicalExpr::Div(
+                Box::new(canonicalize_expr(left)),
+                Box::new(canonicalize_expr(right)),
+            ),
+            _ => CanonicalExpr::Const(Value::Null),
+        },
+        _ => CanonicalExpr::Const(Value::Null),
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct Assignment {
