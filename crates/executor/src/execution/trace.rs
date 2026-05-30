@@ -197,11 +197,27 @@ pub enum TxnStep {
 #[derive(Debug, Clone)]
 pub struct ExecutionTrace {
     steps: Vec<TxnStep>,
+    plan_id: Option<String>,
+    predicate_hash: Option<u64>,
 }
 
 impl ExecutionTrace {
     pub fn new() -> Self {
-        Self { steps: vec![] }
+        Self {
+            steps: vec![],
+            plan_id: None,
+            predicate_hash: None,
+        }
+    }
+
+    pub fn with_plan_id(mut self, plan_id: &str) -> Self {
+        self.plan_id = Some(plan_id.to_string());
+        self
+    }
+
+    pub fn with_predicate_hash(mut self, hash: u64) -> Self {
+        self.predicate_hash = Some(hash);
+        self
     }
 
     pub fn push(&mut self, step: TxnStep) {
@@ -210,6 +226,14 @@ impl ExecutionTrace {
 
     pub fn steps(&self) -> &[TxnStep] {
         &self.steps
+    }
+
+    pub fn plan_id(&self) -> Option<&str> {
+        self.plan_id.as_deref()
+    }
+
+    pub fn predicate_hash(&self) -> Option<u64> {
+        self.predicate_hash
     }
 
     pub fn validate_order(&self) -> Result<(), SqlError> {

@@ -1,17 +1,20 @@
-pub mod engine;
 pub mod context;
-pub mod result;
-pub mod facade;
-pub mod trace;
-pub mod telemetry;
 pub mod drift;
+pub mod engine;
+pub mod facade;
 pub mod recovery;
+pub mod result;
+pub mod telemetry;
+pub mod trace;
 
-pub use engine::ExecutionEngine;
 pub use context::QueryContext;
-pub use result::ExecutionResult;
-pub use facade::ExecutionFacade;
-pub use trace::{TxnStep, ExecutionTrace, DmlOperation, ExecutionEvent, DriftViolationType, DriftSeverity, DriftViolation, RecoveryType, RecoveryConfidence, RecoveryPlan};
-pub use telemetry::{TelemetryCollector, EventBuffer};
 pub use drift::{DriftDetector, GuardPolicy};
-pub use recovery::{RecoveryPlanner, ExecutionReplayEngine, SafeExecutionController};
+pub use engine::ExecutionEngine;
+pub use facade::ExecutionFacade;
+pub use recovery::{ExecutionReplayEngine, RecoveryPlanner, SafeExecutionController};
+pub use result::ExecutionResult;
+pub use telemetry::{EventBuffer, TelemetryCollector};
+pub use trace::{
+    DmlOperation, DriftSeverity, DriftViolation, DriftViolationType, ExecutionEvent,
+    ExecutionTrace, RecoveryConfidence, RecoveryPlan, RecoveryType, TxnStep,
+};
