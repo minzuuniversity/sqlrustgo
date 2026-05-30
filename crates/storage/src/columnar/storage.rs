@@ -708,6 +708,17 @@ impl StorageEngine for ColumnarStorage {
         ))
     }
 
+    fn update_if(
+        &mut self,
+        _table: &str,
+        _filter: &RowFilter,
+        _mutation: &RowMutation,
+    ) -> crate::engine::SqlResult<usize> {
+        Err(crate::engine::SqlError::ExecutionError(
+            "UPDATE not yet implemented for ColumnarStorage".to_string(),
+        ))
+    }
+
     fn create_table(&mut self, info: &TableInfo) -> crate::engine::SqlResult<()> {
         let table_name = info.name.clone();
         let store = TableStore::new(info.clone());
