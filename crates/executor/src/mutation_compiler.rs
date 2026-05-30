@@ -23,9 +23,11 @@ pub fn canonicalize_expr(expr: &Expr) -> CanonicalExpr {
             Operator::Plus => {
                 let l = canonicalize_expr(left);
                 let r = canonicalize_expr(right);
+                let mut args = vec![l, r];
+                args.sort_by(|a, b| format!("{:?}", a).cmp(&format!("{:?}", b)));
                 CanonicalExpr::Compound {
                     op: "+".to_string(),
-                    args: vec![l, r],
+                    args,
                 }
             }
             Operator::Minus => CanonicalExpr::Sub(
@@ -35,9 +37,11 @@ pub fn canonicalize_expr(expr: &Expr) -> CanonicalExpr {
             Operator::Multiply => {
                 let l = canonicalize_expr(left);
                 let r = canonicalize_expr(right);
+                let mut args = vec![l, r];
+                args.sort_by(|a, b| format!("{:?}", a).cmp(&format!("{:?}", b)));
                 CanonicalExpr::Compound {
                     op: "*".to_string(),
-                    args: vec![l, r],
+                    args,
                 }
             }
             Operator::Divide => CanonicalExpr::Div(
