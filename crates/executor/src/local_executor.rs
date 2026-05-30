@@ -7,8 +7,10 @@ use sqlrustgo_planner::{
     AggregateExec, AggregateFunction, Expr, FilterExec, HashJoinExec, IndexScanExec, JoinType,
     Operator, PhysicalPlan, PreparedStatementManager, ProjectionExec, SortMergeJoinExec,
 };
-use sqlrustgo_storage::StorageEngine;
+use sqlrustgo_storage::{StorageEngine, WalStorage};
+use sqlrustgo_transaction::{TransactionError, TransactionManager, TxId};
 use sqlrustgo_types::{SqlError, SqlResult, Value};
+use std::path::PathBuf;
 
 use crate::operator_profile::GLOBAL_PROFILER;
 use crate::query_cache::should_cache;
@@ -16,7 +18,7 @@ use crate::query_cache::QueryCache;
 use crate::query_cache_config::{CacheEntry, CacheKey, QueryCacheConfig};
 use crate::sql_normalizer::SqlNormalizer;
 use crate::{Executor, ExecutorResult};
-use crate::execution::ExecutionEngine;
+use crate::execution::{ExecutionEngine, QueryContext};
 use parking_lot::RwLock;
 use query_stats::SlowQueryConfig;
 use std::path::PathBuf;
@@ -25,9 +27,12 @@ use std::sync::RwLock as StdRwLock;
 use std::time::Instant;
 
 /// LocalExecutor - executes physical plans using StorageEngine
+/// with unified WAL + Transaction facade for VTU contract enforcement
 pub struct LocalExecutor<'a> {
     storage: &'a dyn StorageEngine,
     txn_manager: Option<&'a TransactionManager>,
+    /// Unified transaction facade (owned) - activates when storage is wrapped
+    unified_facade: Option<UnifiedFacade>,
     cache: Arc<RwLock<QueryCache>>,
     cache_config: QueryCacheConfig,
     slow_query_log: StdRwLock<Option<query_stats::SlowQueryLog>>,
@@ -35,11 +40,69 @@ pub struct LocalExecutor<'a> {
     prepared_statements: StdRwLock<PreparedStatementManager>,
 }
 
+/// Unified facade - wraps storage with WAL + Transaction enforcement
+struct UnifiedFacade {
+    storage: Arc<RwLock<WalStorage<'a>>>,
+    tx_manager: Arc<RwLock<TransactionManager>>,
+}
+
+impl UnifiedFacade {
+    fn new(storage: &'a dyn StorageEngine, wal_path: Option<PathBuf>) -> Result<Self, SqlError> {
+        let wal_storage = match wal_path {
+            Some(path) => WalStorage::new(storage, path)
+                .map_err(|e| SqlError::ExecutionError(e.to_string()))?,
+            None => WalStorage::new_without_wal(storage),
+        };
+        Ok(Self {
+            storage: Arc::new(RwLock::new(wal_storage)),
+            tx_manager: Arc::new(RwLock::new(TransactionManager::new())),
+        })
+    }
+
+    fn begin(&self) -> Result<u64, SqlError> {
+        let mut storage = self.storage.write();
+        storage.begin_transaction()
+            .map_err(|e| SqlError::ExecutionError(e.to_string()))?;
+        let tx_id = self.tx_manager.write().begin()
+            .map_err(|e| SqlError::ExecutionError(e.to_string()))?;
+        storage.log_begin(tx_id)
+            .map_err(|e| SqlError::ExecutionError(e.to_string()))?;
+        Ok(tx_id)
+    }
+
+    fn commit(&self) -> Result<Option<u64>, SqlError> {
+        let mut storage = self.storage.write();
+        storage.commit_transaction()
+            .map_err(|e| SqlError::ExecutionError(e.to_string()))?;
+        storage.log_commit(self.tx_manager.read().get_current_tx_id().map(|t| t.raw()).unwrap_or(0))
+            .map_err(|e| SqlError::ExecutionError(e.to_string()))?;
+        self.tx_manager.write().commit()
+            .map_err(|e| SqlError::ExecutionError(e.to_string()))
+    }
+
+    fn rollback(&self) -> Result<(), SqlError> {
+        let mut storage = self.storage.write();
+        storage.rollback_transaction()
+            .map_err(|e| SqlError::ExecutionError(e.to_string()))?;
+        self.tx_manager.write().rollback()
+            .map_err(|e| SqlError::ExecutionError(e.to_string()))
+    }
+
+    fn is_in_transaction(&self) -> bool {
+        self.tx_manager.read().is_in_transaction()
+    }
+
+    fn current_tx_id(&self) -> Option<u64> {
+        self.tx_manager.read().get_current_tx_id().map(|t| t.raw())
+    }
+}
+
 impl<'a> LocalExecutor<'a> {
     pub fn new(storage: &'a dyn StorageEngine) -> Self {
         Self {
             storage,
             txn_manager: None,
+            unified_facade: None,
             cache: Arc::new(RwLock::new(QueryCache::new(QueryCacheConfig::default()))),
             cache_config: QueryCacheConfig::default(),
             slow_query_log: StdRwLock::new(None),
@@ -56,12 +119,26 @@ impl<'a> LocalExecutor<'a> {
     pub fn with_cache_config(storage: &'a dyn StorageEngine, config: QueryCacheConfig) -> Self {
         Self {
             storage,
+            txn_manager: None,
+            unified_facade: None,
             cache: Arc::new(RwLock::new(QueryCache::new(config.clone()))),
             cache_config: config,
             slow_query_log: StdRwLock::new(None),
             current_sql: StdRwLock::new(String::new()),
             prepared_statements: StdRwLock::new(PreparedStatementManager::new(100)),
         }
+    }
+
+    pub fn with_unified_facade(mut self) -> Self {
+        match UnifiedFacade::new(self.storage, None) {
+            Ok(facade) => {
+                self.unified_facade = Some(facade);
+            }
+            Err(e) => {
+                eprintln!("Warning: failed to create unified facade: {}", e);
+            }
+        }
+        self
     }
 
     /// Enable slow query logging with the given configuration
@@ -1146,24 +1223,65 @@ impl<'a> Executor for LocalExecutor<'a> {
 
 impl<'a> ExecutionEngine for LocalExecutor<'a> {
     fn execute(&mut self, ctx: &mut crate::execution::QueryContext) -> Result<crate::execution::ExecutionResult, sqlrustgo_types::SqlError> {
+        if let Some(ref facade) = self.unified_facade {
+            return self.execute_dml_via_facade(facade, ctx);
+        }
         self.execute_dml(ctx)
     }
 
     fn begin(&mut self) -> Result<u64, sqlrustgo_types::SqlError> {
-        Err(sqlrustgo_types::SqlError::ExecutionError("TODO".to_string()))
+        if let Some(ref facade) = self.unified_facade {
+            facade.begin()
+        } else if self.txn_manager.is_some() {
+            Err(sqlrustgo_types::SqlError::ExecutionError("No transaction manager".to_string()))
+        } else {
+            Err(sqlrustgo_types::SqlError::ExecutionError("No unified facade".to_string()))
+        }
     }
 
     fn commit(&mut self, _txn: u64) -> Result<(), sqlrustgo_types::SqlError> {
-        Err(sqlrustgo_types::SqlError::ExecutionError("TODO".to_string()))
+        if let Some(ref facade) = self.unified_facade {
+            facade.commit()?;
+            Ok(())
+        } else {
+            Err(sqlrustgo_types::SqlError::ExecutionError("No unified facade".to_string()))
+        }
     }
 
     fn rollback(&mut self, _txn: u64) -> Result<(), sqlrustgo_types::SqlError> {
-        Err(sqlrustgo_types::SqlError::ExecutionError("TODO".to_string()))
+        if let Some(ref facade) = self.unified_facade {
+            facade.rollback()
+        } else {
+            Err(sqlrustgo_types::SqlError::ExecutionError("No unified facade".to_string()))
+        }
     }
 }
 
 impl<'a> LocalExecutor<'a> {
-    /// Execute DML (INSERT/UPDATE/DELETE) through proper transaction boundary
+    fn execute_dml_via_facade(&self, facade: &UnifiedFacade, ctx: &crate::execution::QueryContext) -> Result<crate::execution::ExecutionResult, sqlrustgo_types::SqlError> {
+        let sql_upper = ctx.sql.to_uppercase();
+
+        if sql_upper.starts_with("DELETE") {
+            let table = ctx.sql.trim();
+            let affected = {
+                let mut storage = facade.storage.write();
+                storage.delete(table, &[])
+                    .map_err(|e| sqlrustgo_types::SqlError::ExecutionError(e.to_string()))?
+            };
+            Ok(crate::execution::ExecutionResult {
+                affected_rows: affected,
+                last_insert_id: None,
+                payload: None,
+            })
+        } else if sql_upper.starts_with("INSERT") {
+            Err(sqlrustgo_types::SqlError::ExecutionError("INSERT via facade not yet implemented".to_string()))
+        } else if sql_upper.starts_with("UPDATE") {
+            Err(sqlrustgo_types::SqlError::ExecutionError("UPDATE via facade not yet implemented".to_string()))
+        } else {
+            Err(sqlrustgo_types::SqlError::ExecutionError("Unsupported DML".to_string()))
+        }
+    }
+
     fn execute_dml(&mut self, ctx: &mut crate::execution::QueryContext) -> Result<crate::execution::ExecutionResult, sqlrustgo_types::SqlError> {
         let sql_upper = ctx.sql.to_uppercase();
 
@@ -1182,11 +1300,7 @@ impl<'a> LocalExecutor<'a> {
         Err(sqlrustgo_types::SqlError::ExecutionError("Unsupported DML".to_string()))
     }
 
-    /// Execute DELETE through execute_internal (the ONLY place allowed to touch storage directly)
     fn execute_delete_sql(&self, _ctx: &crate::execution::QueryContext) -> Result<crate::execution::ExecutionResult, sqlrustgo_types::SqlError> {
-        // This is the ONLY place where direct storage.delete is allowed
-        // ALL other storage access in LocalExecutor is a violation
-        // TODO: Route through proper txn/wal when ExecutionEngine fully implemented
         Ok(crate::execution::ExecutionResult::ok(0))
     }
 }
