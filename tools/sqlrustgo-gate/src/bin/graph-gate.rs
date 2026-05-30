@@ -123,8 +123,18 @@ fn evaluate_task(store: &GraphStore, task_id: &str) -> Result<GateResult> {
         }
     }
 
-    let result = if reachable { "PASS" } else if path.len() >= 2 { "WARN" } else { "FAIL" };
-    let reason = if reachable { "reachability" } else { "partial_path" };
+    let result = if reachable {
+        "PASS"
+    } else if path.len() >= 2 {
+        "WARN"
+    } else {
+        "FAIL"
+    };
+    let reason = if reachable {
+        "reachability"
+    } else {
+        "partial_path"
+    };
 
     Ok(GateResult {
         task_id: task_id.to_string(),
