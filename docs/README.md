@@ -1,7 +1,7 @@
 # SQLRustGo 文档索引
 
-> **最后更新**: 2026-04-22
-> **当前版本**: v2.7.0 (GA 阶段)
+> **最后更新**: 2026-05-30
+> **当前版本**: v3.7.0 (GA 阶段)
 
 ---
 
@@ -16,7 +16,7 @@ docs/
 │   ├── v2.4.0/                 # v2.4.0 发布文档
 │   ├── v2.5.0/                 # v2.5.0 发布文档
 │   ├── v2.6.0/                 # v2.6.0 发布文档
-│   └── v2.7.0/                 # v2.7.0 发布文档 (当前)
+│   └── v3.7.0/                 # v3.7.0 发布文档 (当前 GA)
 │
 ├── v2.0/                        # 2.0 规划文档
 │   └── 网络设计/
@@ -36,16 +36,34 @@ docs/
 
 ## 二、版本发布文档
 
-### v2.7.0 (当前版本: GA)
+### v3.7.0 (当前版本: GA)
 
 | 文档 | 说明 |
 |------|------|
-| [文档索引](releases/v2.7.0/README.md) | v2.7.0 文档总入口 |
-| [版本计划](releases/v2.7.0/VERSION_PLAN.md) | v2.7.0 版本计划 |
-| [门禁检查清单](releases/v2.7.0/RELEASE_GATE_CHECKLIST.md) | 发布门禁 |
-| [测试计划](releases/v2.7.0/TEST_PLAN.md) | 测试目标与阶段安排 |
-| [开发计划](releases/v2.7.0/DEVELOPMENT_PLAN.md) | 开发计划 |
-| [版本说明](releases/v2.7.0/RELEASE_NOTES.md) | 发布说明 |
+| [变更日志](releases/v3.7.0/CHANGELOG.md) | v3.7.0 变更记录 |
+| [版本计划](releases/v3.7.0/VERSION_PLAN.md) | v3.7.0 版本计划 |
+| [门禁检查清单](releases/v3.7.0/RELEASE_GATE_CHECKLIST.md) | 发布门禁 |
+| [测试计划](releases/v3.7.0/TEST_PLAN.md) | 测试目标与阶段安排 |
+| [开发计划](releases/v3.7.0/DEVELOPMENT_PLAN.md) | 开发计划 |
+| [版本说明](releases/v3.7.0/RELEASE_NOTES.md) | 发布说明 |
+
+### v3.6.0 (已发布: 2026-05-30)
+
+| 文档 | 说明 |
+|------|------|
+| [文档索引](releases/v3.6.0/README.md) | v3.6.0 文档总入口 |
+| [版本说明](releases/v3.6.0/RELEASE_NOTES.md) | v3.6.0 发布说明 |
+| [变更日志](releases/v3.6.0/CHANGELOG.md) | v3.6.0 变更记录 |
+| [集成债务报告](releases/v3.6.0/INTEGRATION_DEBT_REPORT.md) | 跨版本集成债务分析 |
+
+### v3.5.0 (已发布: 2026-05-28)
+
+| 文档 | 说明 |
+|------|------|
+| [文档索引](releases/v3.5.0/README.md) | v3.5.0 文档总入口 |
+| [版本说明](releases/v3.5.0/RELEASE_NOTES.md) | v3.5.0 发布说明 |
+| [变更日志](releases/v3.5.0/CHANGELOG.md) | v3.5.0 变更记录 |
+| [GA 门禁报告](releases/v3.5.0/GA_GATE_REPORT.md) | GA 质量门禁结果 |
 
 ### v2.6.0 (已发布: 2026-04-22)
 
