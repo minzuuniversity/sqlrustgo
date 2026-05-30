@@ -1063,6 +1063,7 @@ fn do_command_loop<S: Read + Write>(
     stream: &mut S,
     addr: SocketAddr,
     storage: Arc<RwLock<MemoryStorage>>,
+    engine: Arc<RwLock<MemoryExecutionEngine>>,
     cap: u32,
     mut seq: u8,
     ps_manager: &mut PreparedStatementManager,
@@ -1099,7 +1100,7 @@ fn do_command_loop<S: Read + Write>(
                     seq = seq.wrapping_add(1);
                     continue;
                 }
-                let mut eng = MemoryExecutionEngine::new(storage.clone());
+                let mut eng = engine.write().unwrap();
                 match parse(&q) {
                     Ok(stmt) => {
                         let result = eng.execute(&q);
@@ -1421,11 +1422,14 @@ fn handle_connection(
             tracing::info!("Auth accepted, sending OK packet, seq=3");
             make_ok_packet(3, 0, 0, 0x0002, 0).write_to(&mut tls).ok();
             tracing::info!("Starting command loop, seq=4");
+            let engine: Arc<RwLock<MemoryExecutionEngine>> =
+                Arc::new(RwLock::new(MemoryExecutionEngine::new(storage.clone())));
             let mut ps_manager = PreparedStatementManager::new();
             let _ = do_command_loop(
                 &mut tls,
                 addr,
                 storage,
+                engine,
                 resp.capability_flags,
                 4,
                 &mut ps_manager,
@@ -1470,11 +1474,14 @@ fn handle_connection(
         .write_to(&mut &stream)
         .ok();
     tracing::info!("Starting command loop, seq=3");
+    let engine: Arc<RwLock<MemoryExecutionEngine>> =
+        Arc::new(RwLock::new(MemoryExecutionEngine::new(storage.clone())));
     let mut ps_manager = PreparedStatementManager::new();
     let _ = do_command_loop(
         &mut &stream,
         addr,
         storage,
+        engine,
         resp.capability_flags,
         3,
         &mut ps_manager,
