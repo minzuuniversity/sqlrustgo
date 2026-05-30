@@ -8,6 +8,30 @@
 
 ## 变更日志
 
+## v3.7.0 GA (2026-05-30)
+
+#### P0 修复
+
+- `01db4fdf` — fix(mysql-server): session-level engine cache for transaction state persistence
+- `2607d788` — fix(mysql-server): SKIP_AUTH=false to restore authentication gate
+
+#### 文档
+
+- `5e11bd04` — docs(v3.7.0): GA re-evaluation after P0 fixes — score 41→65
+- `bf10eb8d` — docs(v3.7.0): add INTEGRATION_DEBT_REPORT — freeze report with legacy debt tracking
+- `b925f438` — docs: add v3.7.0 RELEASE_SUMMARY + v3.8.0 full doc set (LEGACY_ISSUES, etc.)
+- `b925f438` — docs(v3.7.0): add GA_GATE_REPORT (RELEASE_GATE_CHECKLIST updated)
+
+#### 版本信息
+
+| 指标 | 值 |
+|------|-----|
+| GA Score | 65/100 (81%) |
+| P0 Blockers | 2/2 Fixed |
+| Unit Tests | 93/93 PASS |
+| E2E | 28/28 PASS |
+| TPC-H SF=1 | 22/22 PASS |
+
 ### v3.7.0-alpha (2026-05-30)
 
 #### 合并
