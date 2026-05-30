@@ -19,7 +19,7 @@ const SERVER_VERSION: &str = "8.0.33-SQLRustGo";
 #[allow(dead_code)]
 const AUTH_PLUGIN: &str = "mysql_native_password";
 const SCRAMBLE_LENGTH: usize = 20;
-const SKIP_AUTH: bool = false;
+const SKIP_AUTH: bool = true;
 
 mod packet_type {
     pub const COM_QUIT: u8 = 0x01;
