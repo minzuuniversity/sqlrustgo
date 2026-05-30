@@ -4307,6 +4307,7 @@ dependencies = [
  "sqlrustgo-common",
  "sqlrustgo-parser",
  "sqlrustgo-planner",
+ "sqlrustgo-spill",
  "sqlrustgo-storage",
  "sqlrustgo-types",
  "tempfile",
