@@ -184,6 +184,14 @@ mod tests {
             Ok(0)
         }
 
+        fn update_if(
+            &mut self,
+            _table: &str,
+            _filter: &RowFilter,
+            _mutation: &RowMutation,
+        ) -> SqlResult<usize> {
+            Ok(0)
+        }
         fn create_table(&mut self, _info: &TableInfo) -> SqlResult<()> {
             Ok(())
         }
