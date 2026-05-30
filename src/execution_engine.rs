@@ -2592,4 +2592,147 @@ mod tests {
         // Smallest (t3 with 5 rows) should be first after ANALYZE
         assert_eq!(optimal[0], "t3");
     }
+
+    // ========================================================================
+    // TX-LIFECYCLE TESTS (TASK_REGISTRY: TX-001 ~ TX-006)
+    // Hermes B: Shadow Tester — Contract Validation
+    // Purpose: Verify EEK (Execution Enforcement Kernel) panics on TX violations
+    // Source: docs/governance/wal/TX_LIFECYCLE_SPEC.md §2.2
+    // ========================================================================
+
+    #[test]
+    #[should_panic(expected = "DML requires active transaction")]
+    fn test_tx_lifecycle_insert_without_tx_panics() {
+        // TX-001: INSERT without BEGIN → must panic
+        // Source: TX_LIFECYCLE_SPEC.md §2.2 "IDLE | DML | panic"
+        let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+        let mut engine = ExecutionEngine::new(storage);
+        engine
+            .execute("CREATE TABLE t1 (id INTEGER, name TEXT)")
+            .unwrap();
+        // DML without transaction → must panic with EEK message
+        let _ = engine.execute("INSERT INTO t1 VALUES (1, 'test')");
+        panic!("INSERT without transaction did not panic — EEK not enforced");
+    }
+
+    #[test]
+    #[should_panic(expected = "DML requires active transaction")]
+    fn test_tx_lifecycle_update_without_tx_panics() {
+        // TX-002: UPDATE without BEGIN → must panic
+        let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+        let mut engine = ExecutionEngine::new(storage);
+        engine
+            .execute("CREATE TABLE t1 (id INTEGER, name TEXT)")
+            .unwrap();
+        engine.execute("INSERT INTO t1 VALUES (1, 'test')").unwrap();
+        let _ = engine.execute("UPDATE t1 SET name = 'updated' WHERE id = 1");
+        panic!("UPDATE without transaction did not panic — EEK not enforced");
+    }
+
+    #[test]
+    #[should_panic(expected = "DML requires active transaction")]
+    fn test_tx_lifecycle_delete_without_tx_panics() {
+        // TX-003: DELETE without BEGIN → must panic
+        let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+        let mut engine = ExecutionEngine::new(storage);
+        engine
+            .execute("CREATE TABLE t1 (id INTEGER, name TEXT)")
+            .unwrap();
+        engine.execute("INSERT INTO t1 VALUES (1, 'test')").unwrap();
+        let _ = engine.execute("DELETE FROM t1 WHERE id = 1");
+        panic!("DELETE without transaction did not panic — EEK not enforced");
+    }
+
+    #[test]
+    #[should_panic(expected = "transaction already committed")]
+    fn test_tx_lifecycle_insert_after_commit_panics() {
+        // TX-004: INSERT after COMMIT → must panic
+        // Source: TX_LIFECYCLE_SPEC.md §2.2 "COMMITTED | DML | panic"
+        let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+        let mut engine = ExecutionEngine::new(storage);
+        engine
+            .execute("CREATE TABLE t1 (id INTEGER, name TEXT)")
+            .unwrap();
+        engine.execute("BEGIN").unwrap();
+        engine.execute("INSERT INTO t1 VALUES (1, 'test')").unwrap();
+        engine.execute("COMMIT").unwrap();
+        let _ = engine.execute("INSERT INTO t1 VALUES (2, 'after_commit')");
+        panic!("INSERT after COMMIT did not panic — TX state not enforced");
+    }
+
+    #[test]
+    #[should_panic(expected = "transaction already aborted")]
+    fn test_tx_lifecycle_insert_after_rollback_panics() {
+        // TX-005: INSERT after ROLLBACK → must panic
+        // Source: TX_LIFECYCLE_SPEC.md §2.2 "ABORTED | DML | panic"
+        let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+        let mut engine = ExecutionEngine::new(storage);
+        engine
+            .execute("CREATE TABLE t1 (id INTEGER, name TEXT)")
+            .unwrap();
+        engine.execute("BEGIN").unwrap();
+        engine.execute("INSERT INTO t1 VALUES (1, 'test')").unwrap();
+        engine.execute("ROLLBACK").unwrap();
+        let _ = engine.execute("INSERT INTO t1 VALUES (2, 'after_rollback')");
+        panic!("INSERT after ROLLBACK did not panic — TX state not enforced");
+    }
+
+    #[test]
+    #[should_panic(expected = "transaction already committed")]
+    fn test_tx_lifecycle_double_commit_panics() {
+        // TX-006: COMMIT twice → must panic
+        // Source: TX_LIFECYCLE_SPEC.md §2.2 "COMMITTED | COMMIT | panic"
+        let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+        let mut engine = ExecutionEngine::new(storage);
+        engine.execute("BEGIN").unwrap();
+        engine.execute("COMMIT").unwrap();
+        let _ = engine.execute("COMMIT");
+        panic!("Double COMMIT did not panic — double-commit not prevented");
+    }
+
+    // ========================================================================
+    // WAL CONTRACT TESTS (TASK_REGISTRY: WAL-003 ~ WAL-005)
+    // Hermes B: Shadow Tester — WAL Ordering Validation
+    // Source: docs/governance/wal/WAL_CONTRACT.md §1.1
+    // Note: WAL not yet implemented — tests will PASS after IMPL-002
+    // ========================================================================
+
+    #[test]
+    #[should_panic(expected = "WAL")]
+    fn test_wal_contract_insert_without_wal_panics() {
+        // WAL-003: INSERT without WAL entry → must panic
+        // Source: WAL_CONTRACT.md "铁律 #WAL-001: DML must write WAL before data page"
+        let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+        let mut engine = ExecutionEngine::new(storage);
+        engine.execute("CREATE TABLE t1 (id INTEGER)").unwrap();
+        engine.execute("BEGIN").unwrap();
+        let _ = engine.execute("INSERT INTO t1 VALUES (1)");
+        panic!("INSERT without WAL did not panic — WAL not enforced");
+    }
+
+    #[test]
+    #[should_panic(expected = "WAL")]
+    fn test_wal_contract_update_without_wal_panics() {
+        // WAL-004: UPDATE without WAL entry → must panic
+        let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+        let mut engine = ExecutionEngine::new(storage);
+        engine.execute("CREATE TABLE t1 (id INTEGER)").unwrap();
+        engine.execute("BEGIN").unwrap();
+        engine.execute("INSERT INTO t1 VALUES (1)").unwrap();
+        let _ = engine.execute("UPDATE t1 SET id = 2 WHERE id = 1");
+        panic!("UPDATE without WAL did not panic — WAL not enforced");
+    }
+
+    #[test]
+    #[should_panic(expected = "WAL")]
+    fn test_wal_contract_delete_without_wal_panics() {
+        // WAL-005: DELETE without WAL entry → must panic
+        let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+        let mut engine = ExecutionEngine::new(storage);
+        engine.execute("CREATE TABLE t1 (id INTEGER)").unwrap();
+        engine.execute("BEGIN").unwrap();
+        engine.execute("INSERT INTO t1 VALUES (1)").unwrap();
+        let _ = engine.execute("DELETE FROM t1 WHERE id = 1");
+        panic!("DELETE without WAL did not panic — WAL not enforced");
+    }
 }
