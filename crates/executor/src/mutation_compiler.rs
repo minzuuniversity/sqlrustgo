@@ -87,7 +87,8 @@ pub struct MutationCompiler;
 
 impl MutationCompiler {
     pub fn compile(assignments: Vec<Assignment>) -> RowMutation {
-        let canonical: Vec<_> = assignments.iter()
+        let canonical: Vec<_> = assignments
+            .iter()
             .map(|a| canonicalize_expr(&a.expr))
             .collect();
 
@@ -98,8 +99,8 @@ impl MutationCompiler {
 }
 
 fn compute_mutation_hash(canonical: &[CanonicalExpr]) -> u64 {
-    use std::hash::{Hash, Hasher};
     use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
     let mut hasher = DefaultHasher::new();
     for expr in canonical {
         expr.hash(&mut hasher);
