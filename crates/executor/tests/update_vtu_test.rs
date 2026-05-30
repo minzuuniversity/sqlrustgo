@@ -59,17 +59,18 @@ fn test_commutative_args_sorted() {
 
     let canonical_ab = canonicalize_expr(&expr_a_plus_b);
     let canonical_ba = canonicalize_expr(&expr_b_plus_a);
-    assert_eq!(canonical_ab, canonical_ba, "a + b and b + a should canonicalize to same form");
+    assert_eq!(
+        canonical_ab, canonical_ba,
+        "a + b and b + a should canonicalize to same form"
+    );
 }
 
 #[test]
 fn test_mutation_compiler_basic() {
-    let assignments = vec![
-        Assignment {
-            column: "age".to_string(),
-            expr: Expr::Literal(Value::Integer(25)),
-        },
-    ];
+    let assignments = vec![Assignment {
+        column: "age".to_string(),
+        expr: Expr::Literal(Value::Integer(25)),
+    }];
 
     let mutation = MutationCompiler::compile(assignments);
     assert!(mutation.mutation_hash() != 0); // Hash should be computed
