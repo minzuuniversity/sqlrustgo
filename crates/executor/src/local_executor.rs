@@ -27,21 +27,19 @@ use std::time::Instant;
 /// LocalExecutor - executes physical plans using StorageEngine
 pub struct LocalExecutor<'a> {
     storage: &'a dyn StorageEngine,
+    txn_manager: Option<&'a TransactionManager>,
     cache: Arc<RwLock<QueryCache>>,
     cache_config: QueryCacheConfig,
-    /// Slow query logger (optional)
     slow_query_log: StdRwLock<Option<query_stats::SlowQueryLog>>,
-    /// SQL text for slow query logging (set when executing with cache)
     current_sql: StdRwLock<String>,
-    /// Prepared statement cache
     prepared_statements: StdRwLock<PreparedStatementManager>,
 }
 
 impl<'a> LocalExecutor<'a> {
-    /// Create a new LocalExecutor with the given storage engine
     pub fn new(storage: &'a dyn StorageEngine) -> Self {
         Self {
             storage,
+            txn_manager: None,
             cache: Arc::new(RwLock::new(QueryCache::new(QueryCacheConfig::default()))),
             cache_config: QueryCacheConfig::default(),
             slow_query_log: StdRwLock::new(None),
@@ -50,7 +48,11 @@ impl<'a> LocalExecutor<'a> {
         }
     }
 
-    /// Create a LocalExecutor with custom cache config
+    pub fn with_txn_manager(mut self, txn_manager: &'a TransactionManager) -> Self {
+        self.txn_manager = Some(txn_manager);
+        self
+    }
+
     pub fn with_cache_config(storage: &'a dyn StorageEngine, config: QueryCacheConfig) -> Self {
         Self {
             storage,
