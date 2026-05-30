@@ -700,7 +700,10 @@ mod tests {
         let partition = create_test_partition();
         let input_schema = Schema::new(vec![
             sqlrustgo_planner::Field::new("id".to_string(), sqlrustgo_planner::DataType::Integer),
-            sqlrustgo_planner::Field::new("value".to_string(), sqlrustgo_planner::DataType::Integer),
+            sqlrustgo_planner::Field::new(
+                "value".to_string(),
+                sqlrustgo_planner::DataType::Integer,
+            ),
         ]);
         let executor = WindowVolcanoExecutor::new(
             Box::new(MockExecutor::new()),
@@ -716,14 +719,18 @@ mod tests {
             end: FrameBound::CurrentRow,
             exclude: ExcludeMode::None,
         };
-        assert!(executor.get_frame_rows(&partition, 2, &Some(range_frame)).is_ok());
+        assert!(executor
+            .get_frame_rows(&partition, 2, &Some(range_frame))
+            .is_ok());
         let rows_frame = WindowFrame {
             mode: FrameMode::Rows,
             start: FrameBound::UnboundedPreceding,
             end: FrameBound::CurrentRow,
             exclude: ExcludeMode::None,
         };
-        assert!(executor.get_frame_rows(&partition, 2, &Some(rows_frame)).is_ok());
+        assert!(executor
+            .get_frame_rows(&partition, 2, &Some(rows_frame))
+            .is_ok());
     }
 
     // 4. Single-row partition edge case
