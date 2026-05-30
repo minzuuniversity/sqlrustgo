@@ -10,6 +10,7 @@ pub mod file_storage;
 pub mod page;
 pub mod predicate;
 pub mod read_write_split;
+pub mod vtu_guard;
 pub mod vtu_ir;
 pub mod wal;
 
@@ -19,8 +20,8 @@ pub use bplus_tree::BPlusTree;
 pub use buffer_pool::BufferPool;
 pub use engine::{
     evaluate_check_constraint, ColumnDefinition, ForeignKeyAction, ForeignKeyConstraint,
-    MemoryStorage, Record, RowFilter, SqlResult, StorageEngine, TableData, TableInfo, TriggerEvent,
-    TriggerInfo, TriggerTiming, UniqueConstraint, Value,
+    MemoryStorage, Record, RowFilter, RowMutation, SqlResult, StorageEngine, TableData, TableInfo,
+    TriggerEvent, TriggerInfo, TriggerTiming, UniqueConstraint, Value,
 };
 pub use file_storage::FileStorage;
 pub use page::Page;
