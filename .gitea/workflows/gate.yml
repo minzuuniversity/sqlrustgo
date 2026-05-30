@@ -113,9 +113,5 @@ jobs:
       - name: Run Legacy Gate
         run: |
           cd repo
-          chmod +x gate/hermes_gate.sh 2>/dev/null || true
-          if [ -f gate/hermes_gate.sh ]; then
-            bash gate/hermes_gate.sh 2>&1 || true
-          elif [ -f scripts/gate/check_plan_integrity.sh ]; then
-            bash scripts/gate/check_plan_integrity.sh 2>&1 || true
-          fi
+          chmod +x scripts/gate/check_alpha.sh
+          bash scripts/gate/check_alpha.sh 2>&1 || true
