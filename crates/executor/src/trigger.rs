@@ -146,7 +146,6 @@ impl TriggerExecutor {
     }
 
     /// Execute BEFORE triggers for an UPDATE operation
-    /// Returns modified new_row if any trigger modified it
     pub fn execute_before_update(
         &self,
         table: &str,
@@ -178,7 +177,6 @@ impl TriggerExecutor {
     }
 
     /// Execute BEFORE triggers for a DELETE operation
-    /// Note: For DELETE, NEW row is not available, only OLD row
     pub fn execute_before_delete(&self, table: &str, old_row: &Record) -> SqlResult<()> {
         let triggers =
             self.get_triggers_for_operation(table, TriggerTiming::Before, TriggerEvent::Delete);
