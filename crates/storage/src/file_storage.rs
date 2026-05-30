@@ -3,7 +3,7 @@
 
 use crate::bplus_tree::BPlusTree;
 use crate::engine::{
-    ColumnDefinition, ForeignKeyConstraint, Record, StorageEngine, TableData, TableInfo,
+    ColumnDefinition, ForeignKeyConstraint, Record, RowFilter, StorageEngine, TableData, TableInfo,
     TriggerInfo, UniqueConstraint,
 };
 use sqlrustgo_types::{SqlError, SqlResult, Value};
@@ -1294,6 +1294,23 @@ impl StorageEngine for FileStorage {
         _updates: &[(usize, Value)],
     ) -> SqlResult<usize> {
         Ok(self.get_table(table).map(|d| d.rows.len()).unwrap_or(0))
+    }
+
+    fn delete_if(&mut self, table: &str, _filter: &RowFilter) -> SqlResult<usize> {
+        // FileStorage doesn't support RowFilter-based deletion
+        // Fall back to delete all
+        self.delete(table, &[])
+    }
+
+    fn update_if(
+        &mut self,
+        table: &str,
+        _filter: &RowFilter,
+        _updates: &[(usize, Value)],
+    ) -> SqlResult<usize> {
+        // FileStorage doesn't support RowFilter-based updates
+        // Fall back to update all
+        self.update(table, &[], &[])
     }
 
     fn create_table(&mut self, info: &TableInfo) -> SqlResult<()> {
