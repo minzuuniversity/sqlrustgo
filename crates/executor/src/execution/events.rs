@@ -47,25 +47,57 @@ pub enum DmlOperation {
 }
 
 /// Recovery types
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum RecoveryType {
     Crash,
     Rollback,
     Replay,
+    Patch,
+    Ignore,
+    Rewire,
 }
 
 /// Recovery confidence level
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum RecoveryConfidence {
     High,
     Medium,
     Low,
 }
 
+impl RecoveryConfidence {
+    /// Greater-than-or-equal comparison
+    pub fn ge(&self, other: &RecoveryConfidence) -> bool {
+        *self as u8 >= *other as u8
+    }
+}
+
 /// Recovery plan
 #[derive(Debug, Clone)]
 pub struct RecoveryPlan {
+    pub plan_id: String,
+    pub trace_id: String,
+    pub violation_id: String,
     pub recovery_type: RecoveryType,
     pub confidence: RecoveryConfidence,
     pub steps: Vec<String>,
+}
+
+impl RecoveryPlan {
+    pub fn new(
+        trace_id: String,
+        violation_id: String,
+        recovery_type: RecoveryType,
+        confidence: RecoveryConfidence,
+        steps: Vec<String>,
+    ) -> Self {
+        Self {
+            plan_id: format!("RP-{}-{}", violation_id, trace_id),
+            trace_id,
+            violation_id,
+            recovery_type,
+            confidence,
+            steps,
+        }
+    }
 }
