@@ -24,21 +24,37 @@ cargo build -p graph-cli --release 2>&1
 ```bash
 cd /home/ai/sqlrustgo
 DB=/tmp/eg_alpha_$(date +%s).db
+COMMIT=$(git rev-parse HEAD)
+TASK="v3.8.0-alpha"
+CI="alpha-check-$(date +%s)"
+ARTIFACT="v3.8.0-alpha-artifact"
 
-# Ingest
-./target/release/ingest task "v3.8.0-alpha" --branch develop/v3.8.0 --db $DB
-./target/release/ingest commit $(git rev-parse HEAD) --author "openclaw" --db $DB
-./target/release/ingest ci "alpha-check-$(date +%s)" --status PASS --db $DB
-./target/release/ingest artifact "v3.8.0-alpha-artifact" --db $DB
+# Build
+cargo build -p graph-cli --release 2>&1 | tail -2
 
-# Link
-./target/release/ingest link task --task "v3.8.0-alpha" --commit $(git rev-parse HEAD) --db $DB
-./target/release/ingest link ci --commit $(git rev-parse HEAD) --ci "alpha-check-$(date +%s)" --db $DB
-./target/release/ingest link artifact --ci "alpha-check-$(date +%s)" --artifact "v3.8.0-alpha-artifact" --db $DB
+# Ingest: task <ID> <DESC>
+./target/release/ingest task "$TASK" "v3.8.0 Alpha Gate" --db $DB
 
-# Evaluate
-./target/release/gate evaluate --task "v3.8.0-alpha" --db $DB
+# Ingest: commit <HASH> <AUTHOR> <MSG>
+./target/release/ingest commit "$COMMIT" "openclaw" "alpha evidence" --db $DB
+
+# Ingest: ci <RUN_ID> <COMMIT_HASH> <STATUS>
+./target/release/ingest ci "$CI" "$COMMIT" PASS --db $DB
+
+# Ingest: artifact <ARTIFACT_ID>
+./target/release/ingest artifact "$ARTIFACT" --db $DB
+
+# Link: link <FROM_ID> <EDGE_TYPE> <TO_ID>
+./target/release/ingest link "$TASK" task_to_commit "$COMMIT" --db $DB
+./target/release/ingest link "$COMMIT" commit_to_ci "$CI" --db $DB
+./target/release/ingest link "$CI" ci_to_artifact "$ARTIFACT" --db $DB
+
+# Evaluate: evaluate <TASK_ID>
+./target/release/gate evaluate "$TASK" --db $DB
 ```
+
+Edge types: `IMPLEMENTED_BY`, `VERIFIED_BY`, `PRODUCES`, `VALIDATES`, `REQUIRES`, `CAUSES`
+Chain: task IMPLEMENTED_BY commit, commit PRODUCES ci, ci VERIFIED_BY artifact
 
 **PASS**：`{"result":"PASS","reason":"reachability","missing":[]}`
 
