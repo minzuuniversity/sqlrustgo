@@ -457,13 +457,18 @@ pub trait StorageEngine: Send + Sync {
 
     /// Delete rows matching a filter
     fn delete(&mut self, table: &str, _filters: &[Value]) -> SqlResult<usize>;
-
-    /// Update rows matching a filter
+    fn delete_if(&mut self, table: &str, filter: &RowFilter) -> SqlResult<usize>;
     fn update(
         &mut self,
         table: &str,
         _filters: &[Value],
         _updates: &[(usize, Value)],
+    ) -> SqlResult<usize>;
+    fn update_if(
+        &mut self,
+        table: &str,
+        filter: &RowFilter,
+        updates: &[(usize, Value)],
     ) -> SqlResult<usize>;
 
     fn update_if(
@@ -563,6 +568,15 @@ impl StorageEngine for MemoryStorage {
             records.clear();
         }
         Ok(count)
+    }
+
+    fn delete_if(&mut self, table: &str, filter: &RowFilter) -> SqlResult<usize> {
+        let Some(records) = self.tables.get_mut(table) else {
+            return Ok(0);
+        };
+        let original_len = records.len();
+        records.retain(|r| !filter(r));
+        Ok(original_len - records.len())
     }
 
     fn update(
