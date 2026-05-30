@@ -1,5 +1,5 @@
 use sqlrustgo_planner::{Expr, Operator, Schema};
-use sqlrustgo_storage::RowFilter;
+use sqlrustgo_storage::engine::RowFilter;
 
 use crate::mutation_compiler::{Assignment, MutationCompiler, RowMutation};
 use crate::predicate_compiler::PredicateCompiler;
