@@ -69,17 +69,17 @@ WAL_CONTRACT.md
 
 | ID | Title | Owner | Status | Dependencies |
 |----|-------|-------|--------|--------------|
-| TX-001 | test_insert_without_tx_panics | Hermes B | open | TX_LIFECYCLE_SPEC.md |
-| TX-002 | test_update_without_tx_panics | Hermes B | open | TX_LIFECYCLE_SPEC.md |
-| TX-003 | test_delete_without_tx_panics | Hermes B | open | TX_LIFECYCLE_SPEC.md |
-| TX-004 | test_insert_after_commit_panics | Hermes B | open | TX_LIFECYCLE_SPEC.md |
-| TX-005 | test_insert_after_rollback_panics | Hermes B | open | TX_LIFECYCLE_SPEC.md |
-| TX-006 | test_double_commit_panics | Hermes B | open | TX_LIFECYCLE_SPEC.md |
+| TX-001 | test_insert_without_tx_panics | Hermes B | in_progress | TX_LIFECYCLE_SPEC.md |
+| TX-002 | test_update_without_tx_panics | Hermes B | in_progress | TX_LIFECYCLE_SPEC.md |
+| TX-003 | test_delete_without_tx_panics | Hermes B | in_progress | TX_LIFECYCLE_SPEC.md |
+| TX-004 | test_insert_after_commit_panics | Hermes B | in_progress | TX_LIFECYCLE_SPEC.md |
+| TX-005 | test_insert_after_rollback_panics | Hermes B | in_progress | TX_LIFECYCLE_SPEC.md |
+| TX-006 | test_double_commit_panics | Hermes B | in_progress | TX_LIFECYCLE_SPEC.md |
 | WAL-001 | test_data_page_before_wal_panics | Hermes B | open | WAL_CONTRACT.md |
 | WAL-002 | test_commit_without_wal_entry_panics | Hermes B | open | WAL_CONTRACT.md |
-| WAL-003 | test_insert_without_wal_panics | Hermes B | open | WAL_CONTRACT.md |
-| WAL-004 | test_update_without_wal_panics | Hermes B | open | WAL_CONTRACT.md |
-| WAL-005 | test_delete_without_wal_panics | Hermes B | open | WAL_CONTRACT.md |
+| WAL-003 | test_insert_without_wal_panics | Hermes B | in_progress | WAL_CONTRACT.md |
+| WAL-004 | test_update_without_wal_panics | Hermes B | in_progress | WAL_CONTRACT.md |
+| WAL-005 | test_delete_without_wal_panics | Hermes B | in_progress | WAL_CONTRACT.md |
 | REPLAY-001 | test_commit_twice_second_ignored | Hermes B | open | WAL_CONTRACT.md |
 | REPLAY-002 | test_insert_twice_duplicate_ignored | Hermes B | open | WAL_CONTRACT.md |
 | REPLAY-003 | test_commit_without_begin_panics | Hermes B | open | WAL_CONTRACT.md |
