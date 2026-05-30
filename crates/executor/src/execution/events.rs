@@ -2,44 +2,55 @@
 
 use serde::{Deserialize, Serialize};
 
-/// Execution event types tracked by telemetry
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum ExecutionEventType {
-    TxnBegin,
-    TxnCommit,
-    TxnRollback,
-    WalBegin,
-    WalCommit,
-    StorageMutation,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ExecutionEvent {
-    event_type: ExecutionEventType,
-    trace_id: Option<String>,
-    txn_id: Option<u64>,
-    timestamp: i64,
+pub enum ExecutionEvent {
+    SqlReceived { sql: String },
+    TxnBegin { txn_id: u64 },
+    TxnCommit { txn_id: u64 },
+    TxnRollback { txn_id: u64 },
+    WalBegin { txn_id: u64 },
+    WalWrite { txn_id: u64, segment: String },
+    WalCommit { txn_id: u64 },
+    StorageRead { table: String, rows: usize },
+    StorageWrite { table: String, rows: usize },
+    StorageMutation { table: String, op: DmlOperation },
+    BoundaryCheck { module: String, passed: bool },
+    VtuValidate { result: bool },
 }
 
 impl ExecutionEvent {
     pub fn event_type(&self) -> &str {
-        match &self.event_type {
-            ExecutionEventType::TxnBegin => "TxnBegin",
-            ExecutionEventType::TxnCommit => "TxnCommit",
-            ExecutionEventType::TxnRollback => "TxnRollback",
-            ExecutionEventType::WalBegin => "WalBegin",
-            ExecutionEventType::WalCommit => "WalCommit",
-            ExecutionEventType::StorageMutation => "StorageMutation",
+        match self {
+            ExecutionEvent::SqlReceived { .. } => "SqlReceived",
+            ExecutionEvent::TxnBegin { .. } => "TxnBegin",
+            ExecutionEvent::TxnCommit { .. } => "TxnCommit",
+            ExecutionEvent::TxnRollback { .. } => "TxnRollback",
+            ExecutionEvent::WalBegin { .. } => "WalBegin",
+            ExecutionEvent::WalWrite { .. } => "WalWrite",
+            ExecutionEvent::WalCommit { .. } => "WalCommit",
+            ExecutionEvent::StorageRead { .. } => "StorageRead",
+            ExecutionEvent::StorageWrite { .. } => "StorageWrite",
+            ExecutionEvent::StorageMutation { .. } => "StorageMutation",
+            ExecutionEvent::BoundaryCheck { .. } => "BoundaryCheck",
+            ExecutionEvent::VtuValidate { .. } => "VtuValidate",
         }
     }
 
     pub fn txn_id(&self) -> Option<u64> {
-        self.txn_id
+        match self {
+            ExecutionEvent::TxnBegin { txn_id } => Some(*txn_id),
+            ExecutionEvent::TxnCommit { txn_id } => Some(*txn_id),
+            ExecutionEvent::TxnRollback { txn_id } => Some(*txn_id),
+            ExecutionEvent::WalBegin { txn_id } => Some(*txn_id),
+            ExecutionEvent::WalWrite { txn_id, .. } => Some(*txn_id),
+            ExecutionEvent::WalCommit { txn_id } => Some(*txn_id),
+            _ => None,
+        }
     }
 }
 
 /// DML operation types
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum DmlOperation {
     Insert,
     Update,
