@@ -1,7 +1,8 @@
 //! Integration test suite check
 //!
-//! run():     runs integration tests
-//! full_suite(): enforces all integration test files
+//! run():     runs all integration tests
+//! subset():  lightweight smoke (cbo_integration_test + ci_test)
+//! full_suite(): deprecated, use run()
 
 use std::process::Command;
 use crate::workspace::workspace_root;
@@ -14,7 +15,8 @@ fn run_integration(args: &[&str]) -> anyhow::Result<()> {
         .output()?;
 
     if !output.status.success() {
-        eprintln!("[integration] FAILED");
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        eprintln!("[integration] FAILED\n{}", stderr);
         anyhow::bail!("integration tests failed");
     }
 
@@ -23,11 +25,36 @@ fn run_integration(args: &[&str]) -> anyhow::Result<()> {
 }
 
 pub fn run() -> anyhow::Result<()> {
-    println!("[check] cargo test --all-features --test integration ...");
-    run_integration(&["test", "--all-features", "--test", "integration"])
+    // Run all available integration tests (exclude long-running benchmarks)
+    println!("[check] running all integration tests ...");
+    run_integration(&["test", "--all-features", "--", "--test-threads=8"])
+}
+
+pub fn subset() -> anyhow::Result<()> {
+    // Preflight: smoke tests — fast and representative
+    println!("[check] running integration subset (cbo_integration_test + ci_test) ...");
+    let root = workspace_root();
+    let tests = ["cbo_integration_test", "ci_test"];
+
+    for test in &tests {
+        println!("  running {test} ...");
+        let output = std::process::Command::new("cargo")
+            .args(["test", "--all-features", "--test", test])
+            .current_dir(&root)
+            .output()?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            eprintln!("[integration] {test} FAILED\n{}", stderr);
+            anyhow::bail!("integration test {test} failed");
+        }
+        println!("  {test} OK");
+    }
+
+    Ok(())
 }
 
 pub fn full_suite() -> anyhow::Result<()> {
-    println!("[check] full integration suite ...");
-    run_integration(&["test", "--all-features", "--test", "integration"])
+    // Alias for run() — full integration suite
+    run()
 }
