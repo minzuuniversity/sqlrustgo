@@ -216,7 +216,7 @@ impl SafeExecutionController {
     }
 
     pub fn should_auto_repair(&self, plan: &RecoveryPlan) -> bool {
-        plan.confidence >= self.auto_repair_confidence_threshold
+        plan.confidence.ge(&self.auto_repair_confidence_threshold)
             && matches!(
                 plan.recovery_type,
                 RecoveryType::Patch | RecoveryType::Rewire
