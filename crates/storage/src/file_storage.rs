@@ -3,8 +3,8 @@
 
 use crate::bplus_tree::BPlusTree;
 use crate::engine::{
-    ColumnDefinition, ForeignKeyConstraint, Record, StorageEngine, TableData, TableInfo,
-    TriggerInfo, UniqueConstraint,
+    ColumnDefinition, ForeignKeyConstraint, Record, RowFilter, RowMutation, StorageEngine, TableData,
+    TableInfo, TriggerInfo, UniqueConstraint,
 };
 use sqlrustgo_types::{SqlError, SqlResult, Value};
 use std::collections::HashMap;
@@ -1294,6 +1294,40 @@ impl StorageEngine for FileStorage {
         _updates: &[(usize, Value)],
     ) -> SqlResult<usize> {
         Ok(self.get_table(table).map(|d| d.rows.len()).unwrap_or(0))
+    }
+
+    fn update_if(
+        &mut self,
+        table: &str,
+        filter: &RowFilter,
+        mutation: &RowMutation,
+    ) -> SqlResult<usize> {
+        use crate::engine::Record;
+        let Some(data) = self.tables.get_mut(table) else {
+            return Ok(0);
+        };
+
+        let mut count = 0;
+        let assignments = mutation.assignments();
+
+        for record in data.rows.iter_mut() {
+            if filter(record) {
+                for &(col_idx, ref new_val) in assignments {
+                    if col_idx < record.len() {
+                        record[col_idx] = new_val.clone();
+                    }
+                }
+                count += 1;
+            }
+        }
+
+        if count > 0 {
+            let table_data = data.clone();
+            self.save_table(table, &table_data)
+                .map_err(|e| SqlError::ExecutionError(e.to_string()))?;
+        }
+
+        Ok(count)
     }
 
     fn create_table(&mut self, info: &TableInfo) -> SqlResult<()> {
