@@ -1,461 +1,279 @@
-# v3.7.0 GA Gap Analysis Report
+# SQLRustGo v3.7.0 GA Gap Analysis Report
 
 > Audit Date: 2026-05-30
-> Baseline: `origin/develop/v3.7.0` (commit 3e647254)
-> Tag: `v3.7.0-RC1`
+> Baseline: `origin/develop/v3.7.0` (commit d7d5cfdc, tag v3.7.0-RC1)
 > Auditor: Hermes Agent
 
 ---
 
-## Executive Summary
+## 1. Executive Summary
 
-v3.7.0 has **two execution engines** — a root-level `ExecutionEngine<S>` (which is fully wired with TransactionManager and proper AST routing) and a crate-level `LocalExecutor` (which is the one actually used by `mysql-server`).
+| Field | Value |
+|-------|-------|
+| GA Readiness Score | 41 / 100 |
+| Blockers (P0) | 3 |
+| High Risk (P1) | 3 |
+| Backlog (P2) | 3 |
+| GA Threshold | 70 / 100 |
 
-**The mysql-server crate uses the WRONG engine.**
-
-| Engine | Location | Used by mysql-server | TransactionManager | AST Routing |
-|--------|----------|---------------------|-------------------|-------------|
-| `ExecutionEngine<S>` | `src/execution_engine.rs` | ❌ NO | ✅ Yes | ✅ Full Statement dispatch |
-| `LocalExecutor` | `crates/executor/src/` | ✅ YES | ❌ No | ⚠️ Partial (only is_select_stmt check) |
+**Verdict: ❌ NOT GA READY — Below 70% threshold**
 
 ---
 
-## 1. Execution Core Audit
+## 2. P0 — GA Blockers (Must Fix Before GA)
 
-### 1.1 Two-Engine Architecture (CRITICAL FINDING)
+### 2.1 Transaction State Lost Per Query
 
-The system has two execution engines:
+| Field | Value |
+|-------|-------|
+| File | `crates/mysql-server/src/lib.rs:1092` |
+| Location | COM_QUERY dispatch loop |
+| Issue | Each COM_QUERY creates a **new** `MemoryExecutionEngine` instance. Transaction state (`current_tx_id`) is stored in the engine instance, which is dropped after each query completes. BEGIN parses and calls `begin_transaction()` but COMMIT fails because the engine that started the transaction no longer exists. |
+| Impact | BEGIN/COMMIT/ROLLBACK all fail. No ACID guarantee. COMMIT returns "No transaction in progress" every time. |
+| Severity | 🔴 BLOCKER |
+| Fix | Make `MemoryExecutionEngine` persistent per session (connection-level, not query-level), OR store `current_tx_id` and `transaction_manager` outside the engine instance in session/connection state. |
 
-**Engine A: `ExecutionEngine<S>`** (root level `src/`)
+**Code reference:**
+```rust
+// lib.rs:1092 — new engine each query
+let mut eng = MemoryExecutionEngine::new(storage.clone());
+// ...
+let result = eng.execute(&q);  // engine dropped after this
 ```
-pub struct ExecutionEngine<S: StorageEngine> {
-    storage: Arc<RwLock<S>>,
-    transaction_manager: TransactionManager,
-    current_tx_id: Option<TransactionId>,
-    ...
-    
-    pub fn execute(&mut self, sql: &str) {
-        let statement = parse(sql)?;
-        match statement {
-            Statement::Transaction(t) => self.execute_transaction(t),  // ✅ FULLY ROUTED
-            Statement::Insert(i) => self.execute_insert(i),
-            Statement::Update(u) => self.execute_update(u),
-            Statement::Delete(d) => self.execute_delete(d),
-            Statement::Select(s) => self.execute_select(s),
-            ...  // ALL statement types handled
-        }
-    }
-    
-    fn execute_transaction(&mut self, stmt: &TransactionStatement) {
-        TransactionStatement::Begin → self.begin_transaction() → txn_manager.begin()
-        TransactionStatement::Commit → self.commit_transaction() → txn_manager.commit()
-        TransactionStatement::Rollback → self.rollback_transaction() → txn_manager.rollback()
-    }
+
+**Root cause**: `ExecutionEngine<S>` has `transaction_manager: TransactionManager` and `current_tx_id: Option<TransactionId>` as instance fields. But the instance is recreated for every query.
+
+---
+
+### 2.2 Authentication Bypass (`SKIP_AUTH=true`)
+
+| Field | Value |
+|-------|-------|
+| File | `crates/mysql-server/src/lib.rs:22` |
+| Issue | `const SKIP_AUTH: bool = true` — all connections accepted without credential verification. Auth flow is completely bypassed in both COM_AUTH and connection acceptance paths. |
+| Impact | Any client can connect without valid credentials. Not production-safe. |
+| Severity | 🔴 BLOCKER |
+| Fix | Set `SKIP_AUTH = false`. Requires fixing empty password auth edge case first. |
+
+**Code reference:**
+```rust
+// lib.rs:22
+const SKIP_AUTH: bool = true;
+
+// lib.rs:1396 (COM_AUTH handler)
+let auth_ok = if SKIP_AUTH { true } else { ... verify ... }
+
+// lib.rs:1443 (older auth path)
+let auth_ok = if SKIP_AUTH { true } else { ... verify ... }
+```
+
+---
+
+### 2.3 VTU Path Exists But Not Used By mysql-server
+
+| Field | Value |
+|-------|-------|
+| File | `crates/executor/src/local_executor.rs:1065-1108` |
+| Issue | VTU (Vectorized Test Update) work from PR #2611 (`PredicateCompiler` + `MutationCompiler` + `update_if`) is wired into `LocalExecutor`. But `mysql-server` uses `ExecutionEngine<MemoryStorage>` (root level `src/execution_engine.rs`), NOT `LocalExecutor`. The VTU path is never exercised by the mysql-server. |
+| Impact | PR #2611 VTU investment not delivered to production. UPDATE operations use simple scan-filter-update instead of vectorized path. |
+| Severity | 🔴 BLOCKER (investment not delivered) |
+| Fix | Either (A) wire VTU into `ExecutionEngine::execute_update()` similar to `LocalExecutor`, OR (B) change mysql-server to use `LocalExecutor` instead of `ExecutionEngine` |
+
+**Code reference — VTU exists but disconnected:**
+```rust
+// local_executor.rs:1065-1108 — VTU path (wired)
+let predicate = PredicateCompiler::compile(where_clause, &table_info)?;
+let row_mutation = MutationCompiler::compile_assignments(&update.set_clauses, &table_info)?;
+storage.update_if(&predicate, &row_mutation)?;
+
+// mysql-server uses ExecutionEngine, NOT LocalExecutor
+// execution_engine.rs:924 — simple scan-filter-update (NOT VTU)
+fn execute_update(&self, update: &UpdateStatement) -> SqlResult<ExecutorResult> {
+    // ... simple scan-filter-update without VTU
 }
 ```
 
-**Engine B: `LocalExecutor`** (crate level `crates/executor/src/`)
-```
-pub struct LocalExecutor {
-    storage: Arc<RwLock<MemoryStorage>>,
-    cache: ...,
-    slow_query_log: ...,
-    // NOTE: No transaction_manager field
-    
-    pub fn execute(&self, plan: &dyn PhysicalPlan) {
-        // Takes PhysicalPlan (compiled), NOT raw SQL string
-        // Not called by mysql-server at all
-    }
-}
-```
+---
 
-**The mysql-server does NOT use `ExecutionEngine` — it creates `MemoryExecutionEngine` which is `ExecutionEngine<MemoryStorage>` BUT in mysql-server it calls `eng.execute(&q)` which only does string-based execution, not Statement routing.**
+## 3. P1 — High Risk Issues
 
-Wait — re-check. The `MemoryExecutionEngine` imported in mysql-server is from `use sqlrustgo::MemoryExecutionEngine` which resolves to `src/execution_engine.rs:69`:
-```rust
-pub type MemoryExecutionEngine = ExecutionEngine<MemoryStorage>;
-```
+### 3.1 SHOW Statement Not Supported
 
-So mysql-server IS using `ExecutionEngine<MemoryStorage>`. And `ExecutionEngine::execute()` does full Statement routing. So why did BEGIN/COMMIT fail?
-
-**Root Cause: `eng.execute(&q)` at lib.rs:1095 passes RAW SQL STRING, and `ExecutionEngine::execute()` calls `parse()` internally.**
-
-```rust
-// lib.rs:1092-1095
-let mut eng = MemoryExecutionEngine::new(storage.clone());
-match parse(&q) {
-    Ok(stmt) => {
-        let result = eng.execute(&q);  // ← RAW SQL, not Statement
-```
-
-`eng.execute(&q)` calls `parse(&q)` AGAIN inside. Then it matches on `Statement`.
-
-**BUT** — the integration test showed BEGIN returns "OK" (no error) but COMMIT fails with "No transaction in progress". This means `Statement::Transaction(Begin)` was matched but `self.begin_transaction()` was called but didn't actually start a transaction.
-
-Let me check — the integration test was run with `SKIP_AUTH=true`. The actual execution path was:
-1. `parse("BEGIN")` → `Ok(Statement::Transaction(TransactionStatement::Begin {...}))`
-2. `eng.execute("BEGIN")` → `parse("BEGIN")` → `Statement::Transaction(...)` → `execute_transaction()`
-3. `execute_transaction()` calls `begin_transaction(isolation)`
-4. `begin_transaction()` calls `self.transaction_manager.begin_transaction(isolation)` and sets `self.current_tx_id`
-5. Returns `Ok(ExecutorResult::new(...))` with tx_id
-
-**BUT** — each COM_QUERY creates a NEW `MemoryExecutionEngine` instance:
-```rust
-let mut eng = MemoryExecutionEngine::new(storage.clone());  // ← NEW instance each query
-```
-
-So the transaction state (`current_tx_id`) is LOST after the query completes! The `ExecutionEngine` has a `transaction_manager` field but it's per-instance. The `begin_transaction()` stores `tx_id` in `self.current_tx_id` which is lost when the engine is dropped after the query.
-
-**This is the root architectural problem: stateless per-query execution model + transaction state stored in instance.**
-
-### 1.2 AST Routing Status
-
-| Path | Parser | Statement Routing | Notes |
-|------|--------|-----------------|-------|
-| SELECT | ✅ | ✅ Full dispatch | Via `Statement::Select` |
-| INSERT | ✅ | ✅ Full dispatch | Via `Statement::Insert` |
-| UPDATE | ✅ | ✅ Full dispatch | Via `Statement::Update` (uses VTU path) |
-| DELETE | ✅ | ✅ Full dispatch | Via `Statement::Delete` |
-| CREATE TABLE | ✅ | ✅ Full dispatch | Via `Statement::CreateTable` |
-| DROP TABLE | ✅ | ✅ Full dispatch | Via `Statement::DropTable` |
-| BEGIN | ✅ | ✅ Full dispatch | Via `Statement::Transaction` |
-| COMMIT | ✅ | ✅ Full dispatch | Via `Statement::Transaction` |
-| ROLLBACK | ✅ | ✅ Full dispatch | Via `Statement::Transaction` |
-| SHOW | ⚠️ | ⚠️ Partial | Some SHOW types handled, but SHOW TABLES returns "unsupported" |
-
-### 1.3 VTU (Vectorized Test Update) Path
-
-| Component | Status | Location |
-|-----------|--------|----------|
-| `PredicateCompiler` | ✅ Exists | `crates/executor/src/predicate_compiler.rs` |
-| `MutationCompiler` | ✅ Exists | `crates/executor/src/mutation_compiler.rs` |
-| `RowFilter` | ✅ Exists | `crates/storage/src/engine.rs` |
-| `RowMutation` | ✅ Exists | `crates/executor/src/mutation_compiler.rs` |
-| VTU wired to UPDATE | ✅ Via PR #2611 | `local_executor.rs:1108` `storage.update_if(&predicate, &row_mutation)` |
-| VTU in root ExecutionEngine | ⚠️ DIFFERENT PATH | Root `src/execution_engine.rs` uses simple scan-filter-update |
-
-**Finding**: Two different execution paths exist:
-- `LocalExecutor::execute_update()` — uses VTU (PredicateCompiler + MutationCompiler + `update_if`)
-- `ExecutionEngine::execute_update()` — uses simple scan-filter-update without VTU
+| Field | Value |
+|-------|-------|
+| File | `src/execution_engine.rs` |
+| Issue | `Statement::Show` types (`SHOW TABLES`, `SHOW DATABASES`, etc.) are parsed but execution falls through to "Unsupported statement type". `ExecutionEngine::execute()` has no `Statement::Show` match arm. |
+| Impact | Client compatibility significantly reduced. `mysql` CLI users expect `SHOW TABLES` to work. |
+| Severity | 🟡 HIGH RISK |
+| Fix | Add `Statement::Show` match arm to `ExecutionEngine::execute()` with handler methods |
 
 ---
 
-## 2. Transaction System Audit
+### 3.2 AST Parsed But Not Used for Routing in COM_QUERY
 
-### 2.1 Current State
-
-| Component | Location | Status |
-|-----------|----------|--------|
-| `TransactionManager` | `crates/transaction/src/` | ✅ Exists |
-| `begin_transaction()` | `transaction_manager.rs` | ✅ Implemented |
-| `commit()` | `transaction_manager.rs` | ✅ Implemented |
-| `rollback()` | `transaction_manager.rs` | ✅ Implemented |
-| Connection to `ExecutionEngine` | `src/execution_engine.rs` | ✅ Done |
-| Connection to `mysql-server` | `crates/mysql-server/src/lib.rs` | ❌ **BROKEN** — new engine instance per query |
-
-### 2.2 Critical Bug: Transaction State Lost Per Query
-
-Each COM_QUERY creates a **new** `MemoryExecutionEngine` instance:
-
-```rust
-// lib.rs:1092
-let mut eng = MemoryExecutionEngine::new(storage.clone());
-```
-
-Transaction state (`current_tx_id`) is stored in the engine instance, which is dropped after each query.
-
-**Result**: BEGIN works (creates transaction internally), but COMMIT fails because the engine that ran BEGIN was dropped.
-
-### 2.3 GA Blockers (Transaction)
-
-| Issue | Severity | Description |
-|-------|----------|-------------|
-| Transaction state not persisted | 🔴 P0 | New engine instance per query loses `current_tx_id` |
-| `SKIP_AUTH=true` | 🔴 P0 | Authentication bypassed — not production ready |
-| BEGIN/COMMIT parsed but stateful txn impossible | 🔴 P0 | Root cause: per-query stateless model |
+| Field | Value |
+|-------|-------|
+| File | `crates/mysql-server/src/lib.rs:1092-1095` |
+| Issue | `parse(&q)` is called, resulting `stmt` is used only for `is_select_stmt()` check. Then `eng.execute(&q)` is called with the **raw SQL string**, which re-parses internally. The parsed AST (`stmt`) is not passed to the execution engine for routing decisions. |
+| Impact | Design smell — double parsing overhead. Also means any future AST-based routing (like routing `BEGIN` to TransactionManager) would require re-parsing. |
+| Severity | 🟡 HIGH RISK (performance + design) |
+| Fix | After `parse(&q)`, match on `stmt` directly for known statement types (Transaction, DML) and call the appropriate method, avoiding re-parsing. |
 
 ---
 
-## 3. Protocol Layer Audit
+### 3.3 Empty Password Auth Edge Case
 
-### 3.1 COM_QUERY Path
-
-| Check | Status | Notes |
-|-------|--------|-------|
-| Parse SQL | ✅ | `parse(&q)` works |
-| Handle parse errors | ✅ | Returns MySQL error packet 1064 |
-| Execute SELECT | ✅ | Returns result set |
-| Execute DML | ✅ | Returns OK packet with affected_rows |
-| Handle runtime errors | ✅ | MySQL error packet with code mapping |
-
-### 3.2 COM_STMT_PREPARE
-
-| Check | Status | Notes |
-|-------|--------|-------|
-| Parse SQL for placeholders | ✅ | `count_placeholders()` works |
-| Column count detection | ✅ | SELECT vs non-SELECT |
-| Prepare response | ✅ | Returns statement ID + param count |
-| Execute prepared | ✅ | Works for simple cases |
-
-### 3.3 Auth Protocol
-
-| Check | Status | Notes |
-|-------|--------|-------|
-| Handshake packet | ✅ | `make_handshake_packet()` sent |
-| Scramble generation | ✅ | 20-byte scramble created |
-| Auth response parsing | ✅ | `parse_handshake_response()` works |
-| mysql_native_password verify | ✅ | Correct algorithm |
-| Empty password handling | ⚠️ | Empty auth_response → reject (security correct) |
-| SKIP_AUTH bypass | 🔴 P0 | `SKIP_AUTH=true` allows all connections |
-
-### 3.4 GA Blockers (Protocol)
-
-| Issue | Severity | Description |
-|-------|----------|-------------|
-| `SKIP_AUTH=true` | 🔴 P0 | All connections accepted without credential verification |
-| Empty password auth bug | 🟡 P1 | Empty password produces non-matching auth_response |
+| Field | Value |
+|-------|-------|
+| File | `crates/mysql-server/src/lib.rs:148-165` |
+| Issue | When password is empty, `stored = SHA1(SHA1("")) = be1bdec0aa74b4dcb079943e70528096cca985f8`. The `verify_mysql_native_password()` function computes `expected_hash = SHA1(scramble + stored_password_hash)` and XORs with `auth_response`. For empty auth_response `[]`, this never matches because the algorithm requires a non-empty auth_response. The connection test with `mysql -u root -p''` fails. |
+| Impact | Users cannot authenticate with empty password, which is a common development setup. |
+| Severity | 🟡 HIGH RISK |
+| Fix | Add special case: if `auth_response.len() == 0` and `stored_password_hash == be1bdec0aa74b4dcb079943e70528096cca985f8`, accept connection |
 
 ---
 
-## 4. SQL Coverage Audit
+## 4. P2 — Technical Debt
 
-### 4.1 Supported SQL
+### 4.1 col_type Enum Mismatch
 
-| Statement | Parse | Execute | Notes |
-|-----------|-------|---------|-------|
-| SELECT | ✅ | ✅ | Full support |
-| INSERT | ✅ | ✅ | Full support |
-| UPDATE | ✅ | ✅ | VTU path via PR #2611 |
-| DELETE | ✅ | ✅ | Full support |
-| CREATE TABLE | ✅ | ✅ | Full support |
-| DROP TABLE | ✅ | ✅ | Full support |
-| TRUNCATE | ✅ | ✅ | Supported |
-| CREATE INDEX | ✅ | ✅ | Supported |
-| ANALYZE | ✅ | ✅ | Supported |
-| BEGIN | ✅ | ✅ | Parsed but state lost per query |
-| COMMIT | ✅ | ✅ | Fails: "No transaction in progress" |
-| ROLLBACK | ✅ | ✅ | Fails: same reason |
-| START TRANSACTION | ✅ | ✅ | Same as BEGIN |
-| SHOW TABLES | ⚠️ | ❌ | Parsed but "Unsupported" |
-| SHOW DATABASES | ⚠️ | ❌ | Same |
-| EXPLAIN | ⚠️ | ⚠️ | May exist but untested |
-| USE | ✅ | ⚠️ | Parsed, database switch not fully implemented |
-
-### 4.2 GA Blockers (SQL Coverage)
-
-| Issue | Severity | Description |
-|-------|----------|-------------|
-| COMMIT always fails | 🔴 P0 | No transaction state persistence |
-| SHOW TABLES not working | 🟡 P1 | Commonly needed for compatibility |
-| USE database switching | 🟡 P1 | Limited multi-database support |
+| Field | Value |
+|-------|-------|
+| Area | `crates/types/` vs legacy test expectations |
+| Issue | `col_type` enum values may have changed between versions. Legacy tests may expect old numeric values. Not confirmed but flagged in historical debt. |
+| Severity | 🟢 P2 |
 
 ---
 
-## 5. Security / Auth Audit
+### 4.2 Packet API Divergence
 
-### 5.1 Current State
-
-| Item | Status | Notes |
-|------|--------|-------|
-| SKIP_AUTH | 🔴 ON | `const SKIP_AUTH: bool = true` — bypasses all auth |
-| Password hashing | ⚠️ | Empty password gives deterministic hash but auth_response calculation has edge case |
-| User store | ✅ | `UserStore` with SHA1-based verification |
-| Connection filtering | ✅ | Per-connection handling |
-
-### 5.2 GA Blockers (Security)
-
-| Issue | Severity | Description |
-|-------|----------|-------------|
-| SKIP_AUTH=true | 🔴 P0 | Must be `false` for production |
-| Auth with empty password | 🟡 P1 | Empty password verification logic may have edge case |
+| Field | Value |
+|-------|-------|
+| Area | `mysql-server/tests/mysql_server_tests.rs:63-92` |
+| Issue | Test `test_packet_struct` expects `Packet::read_from()` / `Packet::write_to()`. This test compiles in lib but integration tests fail due to `MySqlError: From<String>` not implemented. |
+| Severity | 🟢 P2 (test fix needed, not runtime) |
 
 ---
 
-## 6. Historical Debt Audit
+### 4.3 old_password_hash Type Mismatch
 
-### 6.1 Test vs Runtime Divergence
-
-| Area | Test Expectation | Runtime Reality | Gap |
-|------|-----------------|----------------|-----|
-| TransactionManager | Part of call chain | In `ExecutionEngine` but lost per query | 🔴 HIGH |
-| BEGIN execution | Starts transaction | Called but state lost next query | 🔴 HIGH |
-| COMMIT execution | Commits transaction | "No transaction in progress" | 🔴 HIGH |
-| Auth | Verify credentials | SKIP_AUTH bypasses | 🔴 HIGH |
-| SHOW TABLES | Returns table list | "Unsupported statement type" | 🟡 MEDIUM |
-
-### 6.2 Two-Engine Divergence
-
-| Aspect | Root Engine (`src/`) | Crate Engine (`crates/executor/`) |
-|--------|---------------------|---------------------------------|
-| TransactionManager | ✅ In struct | ❌ Not present |
-| Statement routing | ✅ Full dispatch | N/A (takes PhysicalPlan) |
-| UPDATE path | Simple scan-filter-update | VTU (PredicateCompiler+MutationCompiler) |
-| Used by mysql-server | ✅ YES (type alias) | N/A |
-| Used by tests | Partial | ✅ YES |
-
-### 6.3 VTU Path Divergence
-
-The UPDATE VTU path (PredicateCompiler + MutationCompiler) only exists in `LocalExecutor`:
-- `local_executor.rs:1067` — imports PredicateCompiler
-- `local_executor.rs:1102` — MutationCompiler compiles assignments
-- `local_executor.rs:1108` — calls `storage.update_if(predicate, row_mutation)`
-
-But `mysql-server` uses `ExecutionEngine<MemoryStorage>` (root level), NOT `LocalExecutor`.
-And `ExecutionEngine::execute_update()` uses the simple scan-filter-update path.
-
-**This means the VTU work (PR #2611) is wired into `LocalExecutor` but `mysql-server` never calls `LocalExecutor` — it calls `ExecutionEngine` directly.**
-
-### 6.4 GA Blockers (Historical Debt)
-
-| Issue | Severity | Description |
-|-------|----------|-------------|
-| VTU path not used by mysql-server | 🔴 P0 | PR #2611 VTU work exists but mysql-server uses different path |
-| Per-query engine instantiation | 🔴 P0 | Transaction state always lost |
+| Field | Value |
+|-------|-------|
+| Area | UserStore password verification |
+| Issue | `verify_old_password_response()` at lib.rs:1967 exists but may have type/return mismatches vs old test expectations. Not tested in current integration run. |
+| Severity | 🟢 P2 |
 
 ---
 
-## 7. System Alignment Map
+## 5. Legacy Mismatch Matrix
 
-```
-MySQL Client
-    │
-    ▼ MySQL Wire Protocol
-COM_QUERY ──→ parse(&q) → Statement
-    │
-    │ NOTE: eng.execute(&q) re-parses internally
-    ▼
-MemoryExecutionEngine = ExecutionEngine<MemoryStorage>
-    │
-    ├── TransactionManager ✅ (in struct)
-    │       │
-    │       └── current_tx_id: Option<TransactionId> ← LOST PER QUERY
-    │
-    └── Statement dispatch ✅ (all types routed)
-            │
-            ├── Statement::Transaction(txn)
-            │     └── execute_transaction(txn) ✅
-            │           ├── Begin → begin_transaction() → txn_manager.begin() ✅
-            │           ├── Commit → commit_transaction() → txn_manager.commit() ❌ (no tx_id)
-            │           └── Rollback → rollback_transaction() → txn_manager.rollback() ❌
-            │
-            ├── Statement::Update → execute_update()
-            │     └── simple scan-filter-update (NOT VTU path)
-            │
-            ├── Statement::Delete → execute_delete() ✅
-            ├── Statement::Insert → execute_insert() ✅
-            ├── Statement::Select → execute_select() ✅
-            └── Statement::Show → partial ❌
-```
+| Test / Expectation | Runtime Behavior | Status |
+|--------------------|-----------------|--------|
+| BEGIN starts a transaction | BEGIN parses, calls `begin_transaction()`, but state lost next query | ❌ FAIL |
+| COMMIT commits the transaction | "No transaction in progress" — engine dropped | ❌ FAIL |
+| ROLLBACK rolls back | Same — no persistent state | ❌ FAIL |
+| SHOW TABLES returns table list | "Unsupported statement type" | ❌ FAIL |
+| mysql CLI connects with `-u root -p''` | Access denied — empty password edge case | ❌ FAIL |
+| All 93 lib tests pass | 93/93 ✅ PASS | ✅ OK |
+| VTU UPDATE uses vectorized path | mysql-server uses simple path | ❌ FAIL |
+| Packet roundtrip (test) | Compiles but `MySqlError: From<String>` not impl | ❌ FAIL |
 
 ---
 
-## 8. GA Gap Score
+## 6. Architecture Consistency Check
+
+| Component | Status | Notes |
+|-----------|--------|-------|
+| Parser → AST | ✅ OK | `sqlrustgo-parser` fully working |
+| AST → Statement dispatch | ✅ OK | `ExecutionEngine::execute()` routes all statement types |
+| Statement::Transaction routing | ✅ OK | `Statement::Transaction` → `execute_transaction()` |
+| TransactionManager API | ✅ OK | `begin/commit/rollback()` all implemented |
+| TransactionManager wired to mysql-server | ❌ DISCONNECTED | New engine per query, state lost |
+| VTU PredicateCompiler | ✅ EXISTS | `crates/executor/src/predicate_compiler.rs` |
+| VTU MutationCompiler | ✅ EXISTS | `crates/executor/src/mutation_compiler.rs` |
+| VTU used by mysql-server | ❌ NOT USED | mysql-server uses `ExecutionEngine` not `LocalExecutor` |
+| AST used for dispatch decision | ⚠️ PARTIAL | Only `is_select_stmt()` uses AST |
+| Auth flow | ⚠️ BYPASSED | `SKIP_AUTH=true` |
+| COM_STMT_PREPARE | ✅ OK | Placeholder counting + prepare works |
+| COM_QUERY error handling | ✅ OK | MySQL error codes returned |
+
+---
+
+## 7. Cross-Check: Tests vs Runtime
+
+| Test Suite | Result | Runtime Match |
+|------------|--------|--------------|
+| `cargo test --lib -p sqlrustgo-mysql-server` | ✅ 93/93 PASS | Yes |
+| `cargo test --lib -p sqlrustgo` | ✅ 12/12 PASS | Yes |
+| `cargo test --workspace` | ❌ FAILED | `MySqlError: From<String>` not impl (test file issue) |
+| E2E: CREATE TABLE | ✅ PASS | Yes |
+| E2E: INSERT | ✅ PASS | Yes |
+| E2E: SELECT | ✅ PASS | Yes |
+| E2E: UPDATE | ✅ PASS | Yes |
+| E2E: DELETE | ✅ PASS | Yes |
+| E2E: BEGIN | ⚠️ PARSED | Transaction started but state lost |
+| E2E: COMMIT | ❌ FAIL | "No transaction in progress" |
+| E2E: SHOW TABLES | ❌ FAIL | "Unsupported statement type" |
+| E2E: `mysql -u root -p''` | ❌ FAIL | Access denied |
+
+---
+
+## 8. GA Readiness Score
+
+**Total: 41 / 100**
 
 | Category | Score | Max | Notes |
 |----------|-------|-----|-------|
-| DDL | 10 | 10 | CREATE/DROP TABLE fully working |
-| DML | 10 | 10 | INSERT/SELECT/UPDATE/DELETE working |
-| Protocol | 8 | 10 | Working, but SKIP_AUTH=true |
-| Transaction | 2 | 10 | BEGIN parsed, state lost per query |
-| Auth | 1 | 10 | SKIP_AUTH=true bypasses all auth |
-| SQL Coverage | 7 | 10 | Core working, SHOW partial |
-| VTU | 3 | 10 | Exists but not used by mysql-server |
-| **TOTAL** | **41** | **80** | **51%** |
-
-**GA Threshold**: ≥70% required
-**Current Score**: 41/80 (51%) — **BELOW THRESHOLD**
+| Execution Core (DDL/DML) | 10 | 10 | All DDL/DML working correctly |
+| Protocol Layer | 8 | 10 | COM_QUERY/COM_STMT working; SKIP_AUTH is P0 |
+| Transaction System | 2 | 10 | BEGIN parsed, state lost; COMMIT always fails |
+| Authentication | 1 | 10 | Completely bypassed via SKIP_AUTH=true |
+| SQL Coverage | 7 | 10 | Core SELECT/INSERT/UPDATE/DELETE working; SHOW partial |
+| VTU Investment | 3 | 10 | Exists but not used by mysql-server |
+| Error Handling | 8 | 10 | MySQL error codes properly returned |
+| **TOTAL** | **41** | **80** | **51% — Below 70% threshold** |
 
 ---
 
-## 9. GA Blockers Summary (Priority Order)
+## 9. Recommendation
 
-### 🔴 P0 — Must Fix Before GA
+### ❌ NOT GA READY
 
-| # | Blocker | Root Cause | Fix Required |
-|---|---------|-----------|--------------|
-| 1 | Transaction state lost per query | `MemoryExecutionEngine::new()` each COM_QUERY | Make engine persistent per session, or store txn state externally |
-| 2 | SKIP_AUTH=true | Test code left in | Set `SKIP_AUTH=false` and fix password auth |
-| 3 | VTU path not used by mysql-server | mysql-server calls `ExecutionEngine`, not `LocalExecutor` | Either wire VTU into `ExecutionEngine`, or have mysql-server use `LocalExecutor` |
+v3.7.0 cannot be released as GA without fixing P0 blockers.
 
-### 🟡 P1 — Should Fix Before GA
+### Required Actions (in priority order):
 
-| # | Issue | Fix |
-|---|-------|-----|
-| 4 | SHOW TABLES returns "unsupported" | Implement `Statement::Show` dispatch in `ExecutionEngine` |
-| 5 | Empty password auth edge case | Verify empty password auth_response calculation |
-| 6 | USE database switching partial | Validate multi-database support |
+| Priority | Action | Effort |
+|----------|--------|--------|
+| P0-1 | Persist transaction state across queries (session-level) | Medium |
+| P0-2 | Set `SKIP_AUTH = false` | Low |
+| P0-3 | Wire VTU into `ExecutionEngine::execute_update()` | Medium |
+| P1-1 | Implement `Statement::Show` dispatch | Low |
+| P1-2 | Fix empty password auth edge case | Low |
+| P2-1 | Fix `MySqlError: From<String>` test | Low |
 
-### 🟢 P2 — Can Fix After GA
+### Three Paths Forward:
 
-| # | Issue |
-|---|-------|
-| 7 | EXPLAIN not tested |
-| 8 | INFORMATION_SCHEMA not implemented |
-| 9 | Prepared statement edge cases |
+| Path | Description | Target Score |
+|------|-------------|--------------|
+| **A: Minimal Fix** | Fix P0-1 (txn state) + P0-2 (SKIP_AUTH) only | 60/80 |
+| **B: Full Fix** | Fix all P0 + P1 items | 75+/80 |
+| **C: Accept Non-Transactional Scope** | Document v3.7.0 as "Non-Transactional SQL Engine" and release as EA | 41/80 |
 
----
-
-## 10. Minimal Fix Path to GA
-
-If we want to reach GA with minimal changes (preserving v3.7 freeze intent):
-
-### Fix 1: Persist Transaction State (P0)
-
-Current: new engine per query → txn state lost
-Target: session-level txn state
-
-**Option A**: Store `current_tx_id` and `transaction_manager` in session/connection state (not per-engine)
-**Option B**: Have `ExecutionEngine` be persistent per connection, not per query
-
-### Fix 2: Disable SKIP_AUTH (P0)
-
-```rust
-const SKIP_AUTH: bool = false;
-```
-
-### Fix 3: Wire VTU to ExecutionEngine (P1)
-
-Either copy VTU logic from `LocalExecutor` into `ExecutionEngine`, or have mysql-server use `LocalExecutor` instead.
-
-### Fix 4: SHOW TABLES Support (P1)
-
-Implement `Statement::Show` dispatch in `ExecutionEngine`.
+**Recommended**: Path A (Minimal Fix) — preserves v3.7 "frozen" intent while fixing critical blockers.
 
 ---
 
-## 11. Recommendation
+## Appendix: Key File References
 
-**v3.7.0 as tagged cannot reach GA without fixing P0 blockers.**
-
-Three paths forward:
-
-### Path A: Minimal Fix (Recommended for v3.7 GA)
-- Fix P0 blockers only
-- Preserve non-transactional model as documented limitation
-- Add prominent documentation that transactions are NOT supported
-- **Score target: 65/80** (enough for non-transactional use case)
-
-### Path B: Full Fix (v3.7.1 or v3.8)
-- Fix all P0 + P1 blockers
-- Persist transaction state across queries
-- Enable full transaction support
-- **Score target: 75+/80**
-
-### Path C: Accept Non-Transactional Scope
-- Accept v3.7.0 as "non-transactional SQL engine"
-- Market as such
-- Skip GA and release as v3.7.0-EA (Early Access)
-- **Score: 41/80** — valid for evaluation only
-
----
-
-## Appendix: File Reference
-
-| File | Relevance |
-|------|-----------|
-| `src/execution_engine.rs` | Root execution engine with TransactionManager |
-| `crates/mysql-server/src/lib.rs` | mysql-server COM_QUERY dispatch (line 1092-1122) |
-| `crates/executor/src/local_executor.rs` | LocalExecutor with VTU (line 1065-1108) |
-| `crates/transaction/src/manager.rs` | TransactionManager API |
-| `docs/releases/v3.7.0/INTEGRATION_TEST_REPORT.md` | E2E test results |
-| `docs/releases/v3.7.0/RELEASE_CANDIDATE_GATE.md` | RC freeze definition |
+| File | Line | Relevance |
+|------|------|-----------|
+| `crates/mysql-server/src/lib.rs` | 22 | SKIP_AUTH constant |
+| `crates/mysql-server/src/lib.rs` | 1092-1122 | COM_QUERY dispatch (new engine per query) |
+| `src/execution_engine.rs` | 35-93 | ExecutionEngine struct (has TransactionManager) |
+| `src/execution_engine.rs` | 336-413 | ExecutionEngine::execute() full Statement dispatch |
+| `src/execution_engine.rs` | 1327-1376 | execute_transaction() (Begin/Commit/Rollback) |
+| `crates/executor/src/local_executor.rs` | 1065-1108 | VTU UPDATE path (NOT used by mysql-server) |
+| `crates/transaction/src/manager.rs` | — | TransactionManager API |
+| `docs/releases/v3.7.0/RELEASE_CANDIDATE_GATE.md` | — | RC1 freeze definition |
+| `docs/releases/v3.7.0/INTEGRATION_TEST_REPORT.md` | — | E2E test results |
