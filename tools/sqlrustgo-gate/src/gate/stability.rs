@@ -111,8 +111,16 @@ impl StabilityWindow {
             return 0.0;
         }
         let mid = recent.len() / 2;
-        let older: f64 = recent[..mid].iter().map(|r| r.regression_score).sum::<f64>() / mid as f64;
-        let newer: f64 = recent[mid..].iter().map(|r| r.regression_score).sum::<f64>() / (recent.len() - mid) as f64;
+        let older: f64 = recent[..mid]
+            .iter()
+            .map(|r| r.regression_score)
+            .sum::<f64>()
+            / mid as f64;
+        let newer: f64 = recent[mid..]
+            .iter()
+            .map(|r| r.regression_score)
+            .sum::<f64>()
+            / (recent.len() - mid) as f64;
         older - newer // positive = improving (newer has lower regression)
     }
 
@@ -121,12 +129,19 @@ impl StabilityWindow {
         if self.history.len() < 3 {
             return 0.0;
         }
-        let recent = self.history.back().map(|r| r.regression_score).unwrap_or(0.0);
+        let recent = self
+            .history
+            .back()
+            .map(|r| r.regression_score)
+            .unwrap_or(0.0);
         let avg: f64 = self.history.iter().map(|r| r.regression_score).sum::<f64>()
             / self.history.len() as f64;
-        let variance: f64 = self.history.iter()
+        let variance: f64 = self
+            .history
+            .iter()
             .map(|r| (r.regression_score - avg).powi(2))
-            .sum::<f64>() / self.history.len() as f64;
+            .sum::<f64>()
+            / self.history.len() as f64;
         let std_dev = variance.sqrt();
         if std_dev == 0.0 {
             return 0.0;
@@ -148,7 +163,13 @@ impl StabilityWindow {
             regression_trend: self.regression_trend(),
             anomaly_score: self.anomaly_score(),
             is_degraded: self.is_degraded(),
-            recent_results: self.history.iter().rev().take(5).map(|s| s.clone()).collect(),
+            recent_results: self
+                .history
+                .iter()
+                .rev()
+                .take(5)
+                .map(|s| s.clone())
+                .collect(),
         }
     }
 }
