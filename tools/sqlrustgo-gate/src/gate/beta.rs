@@ -10,10 +10,10 @@
 //!   - block:     stop pipeline, requires human review
 
 use crate::checks;
-use crate::gate::v2::{decide, format_decision};
 use crate::gate::decision::GateMode;
 use crate::gate::drift::DriftResult;
 use crate::gate::stability::StabilityWindow;
+use crate::gate::v2::{decide, format_decision};
 
 /// Load or create the stability window from disk
 fn get_stability_window() -> StabilityWindow {
@@ -21,7 +21,9 @@ fn get_stability_window() -> StabilityWindow {
         .map(|p| format!("{}/stability_window.json", p))
         .unwrap_or_else(|_| ".gate/state/stability_window.json".to_string());
 
-    let state_dir = std::path::Path::new(&path).parent().map(|p| p.to_path_buf());
+    let state_dir = std::path::Path::new(&path)
+        .parent()
+        .map(|p| p.to_path_buf());
     if let Some(dir) = state_dir {
         let _ = std::fs::create_dir_all(&dir);
     }
@@ -130,8 +132,10 @@ pub fn run(mode: &str) -> anyhow::Result<()> {
     // Print stability summary
     let summary = stability.summary();
     println!();
-    println!("[stability] score={:.2}, streak={}, total_runs={}",
-        summary.score, summary.streak, summary.total_runs);
+    println!(
+        "[stability] score={:.2}, streak={}, total_runs={}",
+        summary.score, summary.streak, summary.total_runs
+    );
     if summary.is_degraded {
         println!("[stability] ⚠ degraded — consecutive failures or high regression");
     }

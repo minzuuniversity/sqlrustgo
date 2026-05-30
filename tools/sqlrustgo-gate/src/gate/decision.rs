@@ -47,7 +47,14 @@ pub struct GateDecision {
 }
 
 impl GateDecision {
-    pub fn new(r: f64, s: f64, d: f64, reasons: Vec<String>, warning: Option<String>, full: bool) -> Self {
+    pub fn new(
+        r: f64,
+        s: f64,
+        d: f64,
+        reasons: Vec<String>,
+        warning: Option<String>,
+        full: bool,
+    ) -> Self {
         Self {
             mode: GateMode::Preflight, // default, overridden below
             risk_score: r,
