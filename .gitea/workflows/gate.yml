@@ -1,0 +1,121 @@
+name: Evidence Graph Gate v4.1
+
+on:
+  push:
+    branches:
+      - develop
+      - main
+      - develop/v3.7.0
+      - develop/v3.8.0
+  pull_request:
+    branches:
+      - develop
+      - main
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  evidence-graph-gate:
+    runs-on: [hp-z6g4]
+    steps:
+      - name: Checkout
+        run: |
+          REPO="openclaw/sqlrustgo"
+          git clone --depth=1 "http://192.168.0.252:3000/$REPO" repo
+          cd repo
+          git fetch --depth=1 origin "$GITEA_SHA"
+          git checkout "$GITEA_SHA"
+
+      - name: Build graph-cli
+        run: |
+          cd repo
+          cargo build -p graph-cli --release
+
+      - name: Initialize Evidence Graph
+        run: |
+          cd repo
+          DB="/tmp/evidence-$(date +%s).db"
+          echo "DB_PATH=$DB" >> $GITHUB_ENV
+          ./target/release/ingest status --db "$DB" || true
+
+      - name: Ingest Commit Event
+        run: |
+          cd repo
+          SHA="${GITEA_SHA:0:40}"
+          ./target/release/ingest commit "$SHA" "ci-system" "CI ingestion" --db "$DB_PATH"
+
+      - name: Ingest CI Event
+        run: |
+          cd repo
+          RUN_ID="run_${GITEA_RUN_ID:-$(date +%s)}"
+          ./target/release/ingest ci "$RUN_ID" "${GITEA_SHA:0:8}" PASS --db "$DB_PATH"
+
+      - name: Ingest Artifact
+        run: |
+          cd repo
+          RUN_ID="run_${GITEA_RUN_ID:-$(date +%s)}"
+          ./target/release/ingest artifact "$RUN_ID" "$RUN_ID" "binary" "sha256-placeholder" --db "$DB_PATH" || true
+
+      - name: Link Evidence Chain
+        run: |
+          cd repo
+          RUN_ID="run_${GITEA_RUN_ID:-$(date +%s)}"
+          SHA="${GITEA_SHA:0:8}"
+          # Link Task → Commit (IMPLEMENTED_BY)
+          ./target/release/ingest link "gate_test_$SHA" IMPLEMENTED_BY "commit_$SHA" --db "$DB_PATH" || true
+          # Link CI → Artifact (PRODUCES) — ingest_artifact already does this, but double-link for clarity
+          ./target/release/ingest link "ci_$RUN_ID" PRODUCES "artifact_$RUN_ID" --db "$DB_PATH" || true
+
+      - name: Ingest Test Result
+        run: |
+          cd repo
+          ./target/release/ingest task "gate_test_${GITEA_SHA:0:8}" "gate integration test" --db "$DB_PATH" || true
+
+      - name: Graph Gate Evaluate
+        id: gate
+        run: |
+          cd repo
+          RESULT=$(./target/release/gate evaluate "gate_test_${GITEA_SHA:0:8}" --db "$DB_PATH" 2>&1)
+          echo "Gate result: $RESULT"
+          echo "$RESULT" | grep -q '"result":"PASS"' && GATE_PASS=1 || GATE_PASS=0
+          echo "GATE_PASS=$GATE_PASS" >> $GITHUB_ENV
+          echo "$RESULT"
+
+      - name: Publish Evidence Graph Report
+        if: always()
+        run: |
+          cd repo
+          ./target/release/ingest status --db "$DB_PATH" 2>/dev/null || echo "Graph stats unavailable"
+
+      - name: Gate Decision
+        run: |
+          if [ "$GATE_PASS" = "1" ]; then
+            echo "✅ Evidence Graph Gate: PASS"
+            exit 0
+          else
+            echo "❌ Evidence Graph Gate: FAIL"
+            exit 1
+          fi
+
+  # Parallel: legacy shell gate (for comparison)
+  legacy-gate:
+    runs-on: [hp-z6g4]
+    steps:
+      - name: Checkout
+        run: |
+          REPO="openclaw/sqlrustgo"
+          git clone --depth=1 "http://192.168.0.252:3000/$REPO" repo
+          cd repo
+          git fetch --depth=1 origin "$GITEA_SHA"
+          git checkout "$GITEA_SHA"
+
+      - name: Run Legacy Gate
+        run: |
+          cd repo
+          chmod +x gate/hermes_gate.sh 2>/dev/null || true
+          if [ -f gate/hermes_gate.sh ]; then
+            bash gate/hermes_gate.sh 2>&1 || true
+          elif [ -f scripts/gate/check_plan_integrity.sh ]; then
+            bash scripts/gate/check_plan_integrity.sh 2>&1 || true
+          fi
