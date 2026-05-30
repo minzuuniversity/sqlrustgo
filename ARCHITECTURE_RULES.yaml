@@ -1,0 +1,238 @@
+# Architecture Rules
+
+> v3.7.0 Core Integrity Release - 架构规则
+> 定义禁止模式和必须模式，用于 CI 自动检查
+
+version: "1.0"
+last_updated: "2026-05-30"
+
+## 模块状态定义
+
+module_status:
+  production:
+    description: "主路径组件，稳定版本使用"
+    allowed_to:
+      - be depended upon by production modules
+      - be used in critical paths
+      - be released as GA
+    forbidden_to:
+      - depend on isolated modules
+      - have known critical bugs
+
+  migrating:
+    description: "正在收敛到主路径"
+    allowed_to:
+      - be depended upon by production modules
+      - depend on production modules
+    forbidden_to:
+      - depend on other migrating modules (except if declared)
+      - be released as GA until migration complete
+
+  isolated:
+    description: "孤岛模块，未接入主路径"
+    allowed_to:
+      - be used in tests
+      - have experimental features
+    forbidden_to:
+      - be depended upon by production modules
+      - be used in server/repl main path
+
+  deprecated:
+    description: "待删除模块"
+    allowed_to:
+      - compile
+    forbidden_to:
+      - new usage
+      - be depended upon by any production module
+
+  experimental:
+    description: "实验功能，feature-gated"
+    allowed_to:
+      - have unstable APIs
+      - require feature flags to enable
+    forbidden_to:
+      - be used in production without explicit opt-in
+
+  frozen:
+    description: "暂停开发，保留存档"
+    allowed_to:
+      - compile
+      - basic tests pass
+    forbidden_to:
+      - new feature development
+      - depend on non-frozen modules
+
+## 禁止规则 (Forbidden Patterns)
+
+forbidden_patterns:
+
+  - id: "F1-DML_WITHOUT_TXN"
+    name: "DML 直接调用 Storage 而不经过事务"
+    severity: "CRITICAL"
+    pattern:
+      - file: "crates/executor/src/*.rs"
+        grep: "storage\\.(insert|update|delete)"
+        exclude: "txn|transaction|wal"
+      - file: "crates/planner/src/*.rs"
+        grep: "storage\\.(insert|update|delete)"
+    must_not_match: true
+    description: |
+      DML (INSERT/UPDATE/DELETE) 必须经过 TransactionManager 和 WAL。
+      直接调用 storage.insert() 而不经过事务是严重架构违规。
+
+  - id: "F2-ISOLATED_IN_MAINLINE"
+    name: "孤岛模块被主路径依赖"
+    severity: "CRITICAL"
+    pattern:
+      file: "crates/*/Cargo.toml"
+        grep: "parallel_executor|vec_simd|expr-legacy"
+    must_not_match: true
+    description: |
+      isolated 或 deprecated 模块不能被 production 模块依赖。
+
+  - id: "F3-DIRECT_STORAGE_CALL"
+    name: "Executor 直接调用 Storage 而不经过 WAL"
+    severity: "CRITICAL"
+    pattern:
+      file: "crates/executor/src/*.rs"
+        grep: "use sqlrustgo_storage::(FileStorage|BufferPool|MemoryStorage)"
+        exclude: "WalStorage"
+    must_not_match: true
+    description: |
+      executor 必须使用 WalStorage 或经过 TransactionManager 封装的 storage。
+
+## 必须规则 (Required Patterns)
+
+required_patterns:
+
+  - id: "R1-DML_REQUIRES_WAL"
+    name: "DML 执行路径必须包含 WAL"
+    severity: "CRITICAL"
+    rule: |
+      所有 DML 执行路径必须包含：
+      1. TransactionManager.begin()
+      2. WalWriter.append() 在 storage mutation 之前
+      3. TransactionManager.commit()
+    check: |
+      grep -rn "wal\\.|WalWriter|WalStorage" crates/executor/src/
+      # 必须有输出
+
+  - id: "R2-EXECUTION_CONTEXT"
+    name: "所有执行层必须接收 QueryContext"
+    severity: "HIGH"
+    rule: |
+      Executor 的 execute 方法必须接收 &QueryContext 参数。
+    check: |
+      grep -rn "fn execute.*QueryContext" crates/executor/src/*.rs
+
+  - id: "R3-TXN_CONTEXT_FOR_DML"
+    name: "DML 操作必须传递 TxnContext"
+    severity: "HIGH"
+    rule: |
+      StorageEngine 的 mutation 方法必须接收 &TxnContext 参数。
+    check: |
+      grep -rn "fn insert.*TxnContext\|fn update.*TxnContext\|fn delete.*TxnContext" crates/storage/src/*.rs
+
+## 模块依赖规则
+
+dependency_rules:
+
+  - from: "executor"
+    to: ["transaction", "storage", "types", "common"]
+    allowed: true
+
+  - from: "executor"
+    to: ["parallel_executor", "vec_simd", "mysql-server"]
+    allowed: false
+
+  - from: "transaction"
+    to: ["storage", "types", "common"]
+    allowed: true
+
+  - from: "transaction"
+    to: ["executor", "planner", "optimizer"]
+    allowed: false
+
+  - from: "mysql-server"
+    to: ["parser", "planner", "executor", "transaction", "network"]
+    allowed: true
+
+  - from: "network"
+    to: ["parser", "planner", "executor", "transaction"]
+    allowed: true
+
+## 单例规则
+
+singleton_rules:
+
+  - id: "S1-EXECUTION_ENGINE"
+    name: "只能有一个 ExecutionEngine 主实现"
+    rule: |
+      主执行器只能是：
+      1. TransactionalExecutor
+      2. WalTransactionalExecutor
+
+    forbidden:
+      - "LocalExecutor 作为生产路径"
+      - "ParallelExecutor 作为唯一执行器（应通过 ExecutionMode 选择）"
+
+  - id: "S2-EXPRESSION_EVALUATOR"
+    name: "只能有一个表达式求值器"
+    rule: |
+      表达式系统必须统一：
+      1. expr crate 作为唯一表达式库
+      2. 禁止 executor 内部独立的 expression evaluator
+
+    forbidden:
+      - "executor/src/ 下有独立的 expression 求值"
+      - "多个 expression crate 并存（expr + expression）"
+
+## 版本约束
+
+version_constraints:
+
+  - rule: "v3.7.0 是稳态版本"
+    constraints:
+      - "禁止新 SQL 方言"
+      - "禁止新 optimizer feature"
+      - "禁止新 storage engine"
+      - "禁止新 protocol"
+      - "禁止 SIMD 扩展（不是 P0）"
+
+## CI 检查命令
+
+ci_commands:
+  check_mainline: |
+    cargo xtask architecture-check --mode=mainline
+
+  check_dead_modules: |
+    cargo xtask dead-modules
+
+  check_forbidden: |
+    grep -rn "storage\\.(insert|update|delete)" crates/executor/src/ \
+        --include="*.rs" | grep -v "txn\|transaction\|wal"
+
+  check_deps: |
+    cargo tree -e normal -p sqlrustgo-executor | grep -E "parallel_executor|vec_simd|mysql-server"
+
+## 违规处理
+
+violation_handling:
+  CRITICAL:
+    action: "BLOCK_MERGE"
+    message: "严重架构违规，必须修复后才能合并"
+
+  HIGH:
+    action: "WARN_AND_BLOCK"
+    message: "高危架构违规，建议修复"
+
+  MEDIUM:
+    action: "WARN"
+    message: "中等风险，建议关注"
+
+## 相关文档
+
+- `EXECUTION_PATH.md` - 执行路径详情
+- `TRANSACTION_BOUNDARY.md` - 事务边界定义
+- `MAINLINE_COMPONENTS.md` - 主路径组件列表
+- `ISOLATED_MODULES.md` - 孤岛模块列表
