@@ -81,10 +81,10 @@ related_decisions: [<decision_ids>]
 
 | Claim ID | Title | Status | Evidence |
 |----------|-------|--------|----------|
-| CLAIM-001 | develop/v3.7.0 push successful | **verified** | commit `fc7f603f` object exists |
-| CLAIM-002 | gate-audit content merged | **verified** | git diff 0d6d3587..fc7f603f (+765/-186) |
-| CLAIM-003 | develop/v3.7.0 in CI branch filter | **verified** | ci.yml includes `develop/v3.7.0` (3 occurrences) |
-| CLAIM-004 | gate.sh is primary gate entrypoint | **verified** | ci.yml line 102 → gate/gate.sh |
+| CLAIM-001 | develop/v3.7.0 push successful | **verified** | commit `fc7f603f` object exists (2026-05-30) |
+| CLAIM-002 | gate-audit content merged | **verified** | git diff 0d6d3587..fc7f603f (+765/-186) (2026-05-30) |
+| CLAIM-003 | develop/v3.7.0 in CI branch filter | **verified** | ci.yml includes `develop/v3.7.0` (3 occurrences) (2026-05-30) |
+| CLAIM-004 | gate.sh is primary gate entrypoint | **verified** | ci.yml line 102 → gate/gate.sh (2026-05-30) |
 | CLAIM-005 | gate.sh is sole gate entrypoint | **disproven** | check_coverage.sh + check_evidence_binding.sh still call scripts/gate/ |
 | CLAIM-006 | CI workflow executed on develop/v3.7.0 | **unverified** | runner API returned empty |
 | CLAIM-007 | Runner online | **unverified** | runner API returned empty |

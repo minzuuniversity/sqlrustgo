@@ -1,0 +1,41 @@
+[2026-05-30 21:15:22] === Beta Entry Verification ===
+[2026-05-30 21:15:22] Date: Sat May 30 09:15:22 PM CST 2026
+[2026-05-30 21:15:22] Commit: faa5b71554779b6d2a32c7e18debb0e79b541623
+[2026-05-30 21:15:22] Timestamp: 20260530_211522
+[2026-05-30 21:15:22] 
+[2026-05-30 21:15:22] --- B1: Build (release) ---
+[2026-05-30 21:15:22] B1: FAIL - see docs/releases/v3.6.0/logs/b1_build.log
+[2026-05-30 21:15:22] 
+[2026-05-30 21:15:22] --- B2: Workspace test ---
+[2026-05-30 21:15:22] B2: Test output: , ,  (0s)
+[2026-05-30 21:15:22] B2: FAIL - see docs/releases/v3.6.0/logs/b2_test.log
+[2026-05-30 21:15:22] 
+[2026-05-30 21:15:22] --- B3: Clippy zero ---
+[2026-05-30 21:15:22] B3: FAIL - see docs/releases/v3.6.0/logs/b3_clippy.log
+[2026-05-30 21:15:22] 
+[2026-05-30 21:15:22] --- B4: Format ---
+[2026-05-30 21:15:22] B4: FAIL - see docs/releases/v3.6.0/logs/b4_fmt.log
+[2026-05-30 21:15:22] 
+[2026-05-30 21:15:22] --- B5: Coverage L1 >= 85% ---
+[2026-05-30 21:15:22] B5: SKIP (cargo-tarpaulin not installed)
+[2026-05-30 21:15:22] B5: Manual coverage check required
+[2026-05-30 21:15:22] 
+[2026-05-30 21:15:22] --- B6: TPC-H SF=0.1 ---
+[2026-05-30 21:15:22] B6: SKIP (TPC-H script not found)
+[2026-05-30 21:15:22] B6: TPC-H test required but not available
+[2026-05-30 21:15:22] 
+[2026-05-30 21:15:22] --- B7: Security (cargo audit) ---
+[2026-05-30 21:15:22] B7: SKIP (cargo-audit not installed)
+[2026-05-30 21:15:22] B7: Manual security audit required
+[2026-05-30 21:15:22] 
+[2026-05-30 21:15:22] --- B8: SQL compat ---
+[2026-05-30 21:15:22] B8: SKIP (SQL corpus script not found)
+[2026-05-30 21:15:22] B8: Manual SQL compatibility check required
+[2026-05-30 21:15:22] 
+[2026-05-30 21:15:22] === Summary ===
+[2026-05-30 21:15:22] PASS: 0/8
+[2026-05-30 21:15:22] FAIL: 8/8
+[2026-05-30 21:15:22] Log file: docs/releases/v3.6.0/logs/beta_entry_faa5b715_20260530_211522.log
+[2026-05-30 21:15:22] 
+[2026-05-30 21:15:22] Beta Entry: REJECTED
+[2026-05-30 21:15:22] Must fix 8 failures before Beta entry
