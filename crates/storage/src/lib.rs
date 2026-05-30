@@ -10,6 +10,7 @@ pub mod file_storage;
 pub mod page;
 pub mod predicate;
 pub mod read_write_split;
+pub mod vtu_ir;
 pub mod wal;
 
 pub use binary_format::BinaryFormat;
