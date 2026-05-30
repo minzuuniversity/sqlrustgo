@@ -17,7 +17,7 @@ env:
 
 jobs:
   evidence-graph-gate:
-    runs-on: [gitea]
+    runs-on: [hp-z6g4]
     steps:
       - name: Checkout
         run: |
@@ -100,7 +100,7 @@ jobs:
 
   # Parallel: legacy shell gate (for comparison)
   legacy-gate:
-    runs-on: [gitea]
+    runs-on: [hp-z6g4]
     steps:
       - name: Checkout
         run: |
