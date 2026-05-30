@@ -1,11 +1,11 @@
 # SQLRustGo
 
-> **Last updated**: 2026-05-29
-> **Commit**: [`dfa9a5c0`](http://192.168.0.252:3000/openclaw/sqlrustgo/commit/dfa9a5c0) @ main
+> **Last updated**: 2026-05-30
+> **Commit**: [`e0ddabbe`](http://192.168.0.252:3000/openclaw/sqlrustgo/commit/e0ddabbe) @ develop/v3.7.0
 
 <p align="center">
   <img src="https://img.shields.io/badge/Rust-1.85+-dea584?style=flat-square&logo=rust" alt="Rust">
-  <img src="https://img.shields.io/badge/version-v3.5.0--GA-green?style=flat-square" alt="Version">
+  <img src="https://img.shields.io/badge/version-v3.7.0--GA-green?style=flat-square" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="License">
   <img src="https://img.shields.io/badge/TPC--H-22%2F22%20PASS-cyan?style=flat-square" alt="TPC-H">
   <img src="https://img.shields.io/badge/coverage-87.36%25-brightgreen?style=flat-square" alt="Coverage">
