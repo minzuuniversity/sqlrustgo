@@ -30,3 +30,34 @@ fn test_canonical_expr_hash_stability() {
     let canonical = canonicalize_expr(&expr1);
     assert!(matches!(canonical, CanonicalExpr::Compound { op, .. } if op == "+"));
 }
+
+#[test]
+fn test_commutative_args_sorted() {
+    let expr_a_plus_b = Expr::BinaryExpr {
+        left: Box::new(Expr::Column(Column {
+            name: "a".to_string(),
+            relation: None,
+        })),
+        op: Operator::Plus,
+        right: Box::new(Expr::Column(Column {
+            name: "b".to_string(),
+            relation: None,
+        })),
+    };
+
+    let expr_b_plus_a = Expr::BinaryExpr {
+        left: Box::new(Expr::Column(Column {
+            name: "b".to_string(),
+            relation: None,
+        })),
+        op: Operator::Plus,
+        right: Box::new(Expr::Column(Column {
+            name: "a".to_string(),
+            relation: None,
+        })),
+    };
+
+    let canonical_ab = canonicalize_expr(&expr_a_plus_b);
+    let canonical_ba = canonicalize_expr(&expr_b_plus_a);
+    assert_eq!(canonical_ab, canonical_ba, "a + b and b + a should canonicalize to same form");
+}
