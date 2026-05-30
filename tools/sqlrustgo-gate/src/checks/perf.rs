@@ -8,9 +8,9 @@
 //! tpch_strict():
 //!   Strict SLO: p95 < baseline * 1.05 for all critical queries
 
-use std::process::Command;
-use serde::{Deserialize, Serialize};
 use crate::workspace::workspace_root;
+use serde::{Deserialize, Serialize};
+use std::process::Command;
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct PerfEvidence {
@@ -110,8 +110,16 @@ fn run_tpch_bench() -> anyhow::Result<std::collections::HashMap<String, f64>> {
     let root = workspace_root();
     let output = Command::new("cargo")
         .args([
-            "run", "--release", "-p", "bench-cli", "--",
-            "tpch", "--sf", "1", "--iterations", "1",
+            "run",
+            "--release",
+            "-p",
+            "bench-cli",
+            "--",
+            "tpch",
+            "--sf",
+            "1",
+            "--iterations",
+            "1",
         ])
         .current_dir(&root)
         .output()?;
