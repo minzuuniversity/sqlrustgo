@@ -45,7 +45,9 @@ pub struct UpdateCompiler;
 
 impl UpdateCompiler {
     pub fn compile(stmt: &UpdateStatement, _schema: &Schema) -> Result<UpdatePlan, SqlError> {
-        let predicate = stmt.where_clause.as_ref()
+        let predicate = stmt
+            .where_clause
+            .as_ref()
             .map(|e| PredicateCompiler::compile(e))
             .unwrap_or_else(|| Box::new(|_| true));
 
@@ -69,8 +71,8 @@ fn compute_predicate_hash(expr: Option<&Expr>) -> u64 {
     match expr {
         Some(e) => {
             let canonical = canonicalize_predicate_expr(e);
-            use std::hash::{Hash, Hasher};
             use std::collections::hash_map::DefaultHasher;
+            use std::hash::{Hash, Hasher};
             let mut hasher = DefaultHasher::new();
             canonical.hash(&mut hasher);
             hasher.finish()
@@ -82,9 +84,12 @@ fn compute_predicate_hash(expr: Option<&Expr>) -> u64 {
 fn canonicalize_predicate_expr(expr: &Expr) -> crate::mutation_compiler::CanonicalExpr {
     match expr {
         Expr::BinaryExpr { left, op, right } => match op {
-            Operator::Eq | Operator::NotEq |
-            Operator::Lt | Operator::LtEq |
-            Operator::Gt | Operator::GtEq => {
+            Operator::Eq
+            | Operator::NotEq
+            | Operator::Lt
+            | Operator::LtEq
+            | Operator::Gt
+            | Operator::GtEq => {
                 let l = canonicalize_predicate_expr(left);
                 let r = canonicalize_predicate_expr(right);
                 crate::mutation_compiler::CanonicalExpr::Compound {
@@ -128,8 +133,8 @@ fn canonicalize_predicate_expr(expr: &Expr) -> crate::mutation_compiler::Canonic
 }
 
 fn combine_hash(a: u64, b: u64) -> u64 {
-    use std::hash::{Hash, Hasher};
     use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
     let mut hasher = DefaultHasher::new();
     a.hash(&mut hasher);
     b.hash(&mut hasher);
