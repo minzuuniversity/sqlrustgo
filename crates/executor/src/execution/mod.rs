@@ -21,7 +21,7 @@ pub use drift::{DriftDetector};
 pub use drift_gate::{DriftGate, DriftSeverity, DriftViolation, DriftViolationType, GuardPolicy};
 pub use engine::ExecutionEngine;
 pub use events::{
-    DmlOperation, ExecutionEvent, ExecutionEventType, RecoveryConfidence, RecoveryPlan,
+    DmlOperation, ExecutionEvent, RecoveryConfidence, RecoveryPlan,
     RecoveryType,
 };
 pub use result::ExecutionResult;
