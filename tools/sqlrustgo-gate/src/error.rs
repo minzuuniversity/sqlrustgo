@@ -1,6 +1,7 @@
 use thiserror::Error;
 
 #[derive(Error, Debug)]
+#[allow(dead_code)]
 pub enum GateError {
     #[error("check failed: {0}")]
     CheckFailed(String),
