@@ -2149,4 +2149,62 @@ mod tests {
         // Should have 4 rows: (1,a,1,100), (2,b,2,200), (3,c,NULL,NULL), (NULL,NULL,4,400)
         assert_eq!(result.rows.len(), 4);
     }
+
+    #[test]
+    fn test_update_execution_vtu_path() {
+        use sqlrustgo_planner::{UpdateExec, Expr, DataType, Field};
+
+        let mut storage = MemoryStorage::new();
+        storage
+            .create_table(&sqlrustgo_storage::TableInfo {
+                name: "users".to_string(),
+                columns: vec![
+                    sqlrustgo_storage::ColumnDefinition {
+                        name: "id".to_string(),
+                        data_type: DataType::Integer,
+                        nullable: false,
+                        primary_key: true,
+                    },
+                    sqlrustgo_storage::ColumnDefinition {
+                        name: "age".to_string(),
+                        data_type: DataType::Integer,
+                        nullable: true,
+                        primary_key: false,
+                    },
+                ],
+                ..Default::default()
+            })
+            .unwrap();
+
+        storage
+            .insert(
+                "users",
+                vec![
+                    vec![Value::Integer(1), Value::Integer(30)],
+                    vec![Value::Integer(2), Value::Integer(25)],
+                ],
+            )
+            .unwrap();
+
+        let executor = LocalExecutor::new(&storage);
+
+        let update_plan = UpdateExec::new(
+            "users".to_string(),
+            vec![1],
+            vec![Value::Integer(25)],
+            Some(Expr::BinaryExpr {
+                left: Box::new(Expr::Column(Column {
+                    name: "id".to_string(),
+                    relation: None,
+                })),
+                op: Operator::Eq,
+                right: Box::new(Expr::Literal(Value::Integer(1))),
+            }),
+        );
+
+        let result = executor.execute(&update_plan);
+        assert!(result.is_ok(), "UPDATE should execute without error");
+        let result = result.unwrap();
+        assert_eq!(result.affected_rows, 1, "Should update exactly 1 row");
+    }
 }
