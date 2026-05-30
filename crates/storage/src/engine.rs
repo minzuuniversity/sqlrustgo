@@ -421,6 +421,31 @@ pub struct TableData {
 /// Record type - a single row of values
 pub type Record = Vec<Value>;
 
+/// Row mutation with assignments and metadata
+#[derive(Debug, Clone)]
+pub struct RowMutation {
+    assignments: Vec<(usize, Value)>,
+    mutation_hash: u64,
+}
+
+impl RowMutation {
+    pub fn new(assignments: Vec<(usize, Value)>, mutation_hash: u64) -> Self {
+        Self {
+            assignments,
+            mutation_hash,
+        }
+    }
+    pub fn assignments(&self) -> &[(usize, Value)] {
+        &self.assignments
+    }
+    pub fn mutation_hash(&self) -> u64 {
+        self.mutation_hash
+    }
+}
+
+/// Filter function type for row-level filtering
+pub type RowFilter = Box<dyn Fn(&Record) -> bool + Send + Sync>;
+
 /// StorageEngine trait - abstraction for table storage
 /// Enables multiple storage backends (FileStorage, MemoryStorage, etc.)
 pub trait StorageEngine: Send + Sync {
@@ -441,7 +466,13 @@ pub trait StorageEngine: Send + Sync {
         _updates: &[(usize, Value)],
     ) -> SqlResult<usize>;
 
-    /// Create a new table
+    fn update_if(
+        &mut self,
+        table: &str,
+        filter: &RowFilter,
+        mutation: &RowMutation,
+    ) -> SqlResult<usize>;
+
     fn create_table(&mut self, info: &TableInfo) -> SqlResult<()>;
 
     /// Drop a table
@@ -569,6 +600,33 @@ impl StorageEngine for MemoryStorage {
                     }
                     count += 1;
                 }
+            }
+        }
+
+        Ok(count)
+    }
+
+    fn update_if(
+        &mut self,
+        table: &str,
+        filter: &RowFilter,
+        mutation: &RowMutation,
+    ) -> SqlResult<usize> {
+        let Some(records) = self.tables.get_mut(table) else {
+            return Ok(0);
+        };
+
+        let mut count = 0;
+        let assignments = mutation.assignments();
+
+        for record in records.iter_mut() {
+            if filter(record) {
+                for &(col_idx, ref new_val) in assignments {
+                    if col_idx < record.len() {
+                        record[col_idx] = new_val.clone();
+                    }
+                }
+                count += 1;
             }
         }
 
@@ -953,5 +1011,34 @@ mod tests {
         let result = evaluate_sql_expression("name <> 'Bob'", &columns, &record);
         assert!(result.is_ok());
         assert!(result.unwrap());
+    }
+
+    #[test]
+    fn test_storage_update_if_signature() {
+        let mut storage = MemoryStorage::new();
+        let info = TableInfo {
+            name: "users".to_string(),
+            columns: vec![ColumnDefinition {
+                name: "id".to_string(),
+                data_type: "INTEGER".to_string(),
+                nullable: false,
+                primary_key: true,
+            }],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
+        };
+        storage.create_table(&info).unwrap();
+        storage.insert("users", vec![vec![Value::Integer(1)]]).unwrap();
+
+        let filter: RowFilter = Box::new(|row| row[0] == Value::Integer(1));
+        let mutation = RowMutation::new(vec![(0, Value::Integer(99))], 0x1234);
+
+        let affected = storage.update_if("users", &filter, &mutation).unwrap();
+        assert_eq!(affected, 1);
+
+        let records = storage.scan("users").unwrap();
+        assert_eq!(records[0][0], Value::Integer(99));
     }
 }
