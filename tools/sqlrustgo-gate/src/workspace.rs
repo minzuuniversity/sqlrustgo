@@ -6,7 +6,7 @@
 //! The binary lives at: target/release/sqlrustgo-gate
 //! Two levels up from the binary = workspace root.
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 /// Returns the sqlrustgo workspace root.
 pub fn workspace_root() -> PathBuf {

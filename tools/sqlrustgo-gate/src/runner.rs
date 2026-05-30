@@ -5,6 +5,7 @@ pub fn run_gate(stage: &str, mode: &str) -> anyhow::Result<()> {
         "alpha" => gate::alpha::run(),
         "beta"  => gate::beta::run(mode),
         "rc"    => gate::rc::run(),
-        _ => anyhow::bail!("unknown gate stage: {stage} (valid: alpha | beta | rc)"),
+        "ga"    => gate::ga::run(),
+        _ => anyhow::bail!("unknown gate stage: {stage} (valid: alpha | beta | rc | ga)"),
     }
 }
