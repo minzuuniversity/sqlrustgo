@@ -5,7 +5,6 @@
 
 use super::transaction_context::TransactionContext;
 use super::write_op::WriteOp;
-use chrono::{DateTime, Utc};
 
 /// Drift violation types
 #[derive(Debug, Clone)]
