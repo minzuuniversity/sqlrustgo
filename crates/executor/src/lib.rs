@@ -1,5 +1,6 @@
 // SQLRustGo executor module
 
+pub mod ast_adapter;
 pub mod execution;
 pub mod executor;
 pub mod executor_metrics;
