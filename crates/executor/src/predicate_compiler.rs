@@ -1,5 +1,5 @@
 use sqlrustgo_planner::{Expr, Operator, Schema};
-use sqlrustgo_storage::{Record, RowFilter};
+use sqlrustgo_storage::engine::{Record, RowFilter};
 
 #[allow(dead_code)]
 pub struct PredicateCompiler {
