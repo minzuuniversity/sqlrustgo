@@ -39,7 +39,9 @@ members = [
     "crates/qmd-bridge",
 
     "crates/wal-verification",
+    "crates/evidence-graph",
     "tools/sqlrustgo-gate",
+    "tools/graph-cli",
 ]
 
 [workspace.package]
