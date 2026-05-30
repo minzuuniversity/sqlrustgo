@@ -1,4 +1,4 @@
-use super::{ExecutionEvent, DriftViolation, DriftViolationType, DriftSeverity};
+use super::{DriftSeverity, DriftViolation, DriftViolationType, ExecutionEvent};
 
 pub struct DriftDetector {
     trace_id: String,
@@ -49,7 +49,10 @@ impl DriftDetector {
             ));
         }
 
-        let last_wal = self.events.iter().rev()
+        let last_wal = self
+            .events
+            .iter()
+            .rev()
             .find(|e| e.event_type() == "WalBegin" || e.event_type() == "WalCommit");
         match last_wal {
             Some(e) if e.event_type() == "WalBegin" => None,
@@ -73,10 +76,14 @@ impl DriftDetector {
             ));
         }
 
-        let txn_id = self.events.iter()
+        let txn_id = self
+            .events
+            .iter()
             .find(|e| e.event_type() == "TxnCommit")
             .and_then(|e| e.txn_id());
-        let txn_begin_id = self.events.iter()
+        let txn_begin_id = self
+            .events
+            .iter()
             .find(|e| e.event_type() == "TxnBegin")
             .and_then(|e| e.txn_id());
 
@@ -86,7 +93,10 @@ impl DriftDetector {
                     self.trace_id.clone(),
                     DriftViolationType::TxnDrift,
                     DriftSeverity::Medium,
-                    format!("TxnCommit id {} does not match TxnBegin id {}", commit_id, begin_id),
+                    format!(
+                        "TxnCommit id {} does not match TxnBegin id {}",
+                        commit_id, begin_id
+                    ),
                 ));
             }
         }
@@ -99,7 +109,9 @@ impl DriftDetector {
     }
 
     pub fn has_critical(&self) -> bool {
-        self.violations.iter().any(|v| v.severity == DriftSeverity::Critical)
+        self.violations
+            .iter()
+            .any(|v| v.severity == DriftSeverity::Critical)
     }
 
     pub fn has_violations(&self) -> bool {
@@ -155,13 +167,17 @@ impl GuardPolicy {
     }
 
     pub fn should_block(&self, violations: &[DriftViolation]) -> bool {
-        self.block_on_critical && violations.iter()
-            .any(|v| v.severity == DriftSeverity::Critical)
+        self.block_on_critical
+            && violations
+                .iter()
+                .any(|v| v.severity == DriftSeverity::Critical)
     }
 
     pub fn should_mark_degraded(&self, violations: &[DriftViolation]) -> bool {
-        self.mark_degraded_on_medium && violations.iter()
-            .any(|v| v.severity == DriftSeverity::Medium)
+        self.mark_degraded_on_medium
+            && violations
+                .iter()
+                .any(|v| v.severity == DriftSeverity::Medium)
     }
 }
 

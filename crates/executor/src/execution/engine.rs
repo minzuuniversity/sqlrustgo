@@ -2,7 +2,7 @@ use super::context::QueryContext;
 use super::result::ExecutionResult;
 use sqlrustgo_types::SqlError;
 
-pub trait ExecutionEngine {
+pub trait ExecutionEngine: Send + Sync {
     fn execute(&mut self, ctx: &mut QueryContext) -> Result<ExecutionResult, SqlError>;
 
     fn begin(&mut self) -> Result<u64, SqlError>;
