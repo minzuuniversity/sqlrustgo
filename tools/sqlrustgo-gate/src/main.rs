@@ -1,11 +1,11 @@
 use clap::Parser;
 
-mod cli;
-mod runner;
-pub mod gate;
 pub mod checks;
-pub mod evidence;
+mod cli;
 mod error;
+pub mod evidence;
+pub mod gate;
+mod runner;
 pub mod workspace;
 
 use cli::{Cli, Commands};
