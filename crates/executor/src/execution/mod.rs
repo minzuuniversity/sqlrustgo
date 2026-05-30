@@ -17,8 +17,8 @@ pub mod write_op;
 
 // Re-export types for external use
 pub use context::QueryContext;
-pub use drift::{DriftDetector, DriftSeverity, DriftViolation, DriftViolationType};
-pub use drift_gate::{DriftGate, GuardPolicy};
+pub use drift::{DriftDetector};
+pub use drift_gate::{DriftGate, DriftSeverity, DriftViolation, DriftViolationType, GuardPolicy};
 pub use engine::ExecutionEngine;
 pub use events::{
     DmlOperation, ExecutionEvent, ExecutionEventType, RecoveryConfidence, RecoveryPlan,
