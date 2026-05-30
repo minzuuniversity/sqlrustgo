@@ -143,6 +143,8 @@ impl<'a> LocalExecutor<'a> {
                 "Sort" => self.execute_sort(plan),
                 "Limit" => self.execute_limit(plan),
                 "Delete" => self.execute_delete(plan),
+                "Insert" => self.execute_insert(plan),
+                "Update" => self.execute_update(plan),
                 _ => Ok(ExecutorResult::empty()),
             }?;
             let duration_ms = start.elapsed().as_millis() as u64;
@@ -175,9 +177,10 @@ impl<'a> LocalExecutor<'a> {
             "Aggregate" => self.execute_aggregate(plan),
             "HashJoin" => self.execute_hash_join(plan),
             "SortMergeJoin" => self.execute_sort_merge_join(plan),
-            "Sort" => self.execute_sort(plan),
-            "Limit" => self.execute_limit(plan),
-            _ => Ok(ExecutorResult::empty()),
+"Sort" => self.execute_sort(plan),
+                "Limit" => self.execute_limit(plan),
+                "Update" => self.execute_update(plan),
+                _ => Ok(ExecutorResult::empty()),
         }?;
         let duration_ms = start.elapsed().as_millis() as u64;
         let row_count = result.rows.len() as u64;
@@ -1035,13 +1038,13 @@ impl<'a> LocalExecutor<'a> {
     /// Execute delete
     fn execute_delete(&self, plan: &dyn PhysicalPlan) -> SqlResult<ExecutorResult> {
         use sqlrustgo_planner::DeleteExec;
-        
+
         let delete_exec = plan.as_any().downcast_ref::<DeleteExec>();
-        
+
         match delete_exec {
             Some(delete_plan) => {
                 let table_name = delete_plan.table_name();
-                
+
                 // For now, delete all rows if no predicate
                 // Full predicate evaluation would require expression evaluation
                 if delete_plan.predicate().is_some() {
@@ -1049,10 +1052,61 @@ impl<'a> LocalExecutor<'a> {
                     // For now, return empty result
                     return Ok(ExecutorResult::empty());
                 }
-                
+
                 // Delete all rows from table
                 let deleted = self.storage.delete(table_name, &[])?;
                 Ok(ExecutorResult::new(vec![], deleted))
+            }
+            None => Ok(ExecutorResult::empty()),
+        }
+    }
+
+    /// Execute update using VTU-compliant path
+    fn execute_update(&self, plan: &dyn PhysicalPlan) -> SqlResult<ExecutorResult> {
+        use sqlrustgo_planner::UpdateExec;
+        use crate::predicate_compiler::PredicateCompiler;
+        use crate::mutation_compiler::MutationCompiler;
+        use crate::mutation_compiler::Assignment as MutAssignment;
+        use sqlrustgo_storage::engine::RowMutation;
+
+        let update_exec = plan.as_any().downcast_ref::<UpdateExec>();
+
+        match update_exec {
+            Some(update_plan) => {
+                let table_name = update_plan.table_name();
+
+                if table_name.is_empty() {
+                    return Ok(ExecutorResult::empty());
+                }
+
+                let column_indices = update_plan.column_indices();
+                let values = update_plan.values();
+
+                if column_indices.is_empty() || values.is_empty() {
+                    return Ok(ExecutorResult::empty());
+                }
+
+                let assignments: Vec<MutAssignment> = column_indices
+                    .iter()
+                    .zip(values.iter())
+                    .map(|(idx, val)| {
+                        let col_idx = *idx;
+                        let expr = Expr::Literal(val.clone());
+                        MutAssignment {
+                            column: col_idx.to_string(),
+                            expr,
+                        }
+                    })
+                    .collect();
+
+                let row_mutation = MutationCompiler::compile(assignments);
+
+                let predicate: sqlrustgo_storage::engine::RowFilter = update_plan.predicate()
+                    .map(|e| PredicateCompiler::compile(e))
+                    .unwrap_or_else(|| Box::new(|_| true));
+
+                let affected = self.storage.update_if(table_name, &predicate, &row_mutation)?;
+                Ok(ExecutorResult::new(vec![], affected))
             }
             None => Ok(ExecutorResult::empty()),
         }
@@ -2148,5 +2202,63 @@ mod tests {
 
         // Should have 4 rows: (1,a,1,100), (2,b,2,200), (3,c,NULL,NULL), (NULL,NULL,4,400)
         assert_eq!(result.rows.len(), 4);
+    }
+
+    #[test]
+    fn test_update_execution_vtu_path() {
+        use sqlrustgo_planner::{UpdateExec, Expr, DataType, Field};
+
+        let mut storage = MemoryStorage::new();
+        storage
+            .create_table(&sqlrustgo_storage::TableInfo {
+                name: "users".to_string(),
+                columns: vec![
+                    sqlrustgo_storage::ColumnDefinition {
+                        name: "id".to_string(),
+                        data_type: DataType::Integer,
+                        nullable: false,
+                        primary_key: true,
+                    },
+                    sqlrustgo_storage::ColumnDefinition {
+                        name: "age".to_string(),
+                        data_type: DataType::Integer,
+                        nullable: true,
+                        primary_key: false,
+                    },
+                ],
+                ..Default::default()
+            })
+            .unwrap();
+
+        storage
+            .insert(
+                "users",
+                vec![
+                    vec![Value::Integer(1), Value::Integer(30)],
+                    vec![Value::Integer(2), Value::Integer(25)],
+                ],
+            )
+            .unwrap();
+
+        let executor = LocalExecutor::new(&storage);
+
+        let update_plan = UpdateExec::new(
+            "users".to_string(),
+            vec![1],
+            vec![Value::Integer(25)],
+            Some(Expr::BinaryExpr {
+                left: Box::new(Expr::Column(Column {
+                    name: "id".to_string(),
+                    relation: None,
+                })),
+                op: Operator::Eq,
+                right: Box::new(Expr::Literal(Value::Integer(1))),
+            }),
+        );
+
+        let result = executor.execute(&update_plan);
+        assert!(result.is_ok(), "UPDATE should execute without error");
+        let result = result.unwrap();
+        assert_eq!(result.affected_rows, 1, "Should update exactly 1 row");
     }
 }
