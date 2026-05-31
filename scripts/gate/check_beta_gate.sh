@@ -185,11 +185,13 @@ fi
 echo -n "B-F6 Feature Checklist: "
 FEATURE_FILE="docs/releases/v3.8.0/FEATURE_CHECKLIST.md"
 if [ -f "$FEATURE_FILE" ]; then
-    FEATURE_COUNT=$(grep -c "^\[.\]" "$FEATURE_FILE" 2>/dev/null || echo "0")
-    if [ "$FEATURE_COUNT" -ge 1 ]; then
+    # Count lines with feature ID pattern: | F-01 | or similar
+    FEATURE_COUNT=$(grep -cE "^\| F-[0-9]+" "$FEATURE_FILE" 2>/dev/null | head -1 | tr -d ' ' || echo "0")
+    FEATURE_COUNT=$(echo "$FEATURE_COUNT" | grep -oE "[0-9]+" | head -1 || echo "0")
+    if [ -n "$FEATURE_COUNT" ] && [ "$FEATURE_COUNT" -ge 1 ] 2>/dev/null; then
         log_result "B-F6" "PASS" "$FEATURE_COUNT features tracked"
     else
-        log_result "B-F6" "FAIL" "Only $FEATURE_COUNT features (need ≥1)"
+        log_result "B-F6" "FAIL" "Feature count invalid: '$FEATURE_COUNT'"
     fi
 else
     log_result "B-F6" "FAIL" "FEATURE_CHECKLIST.md not found"
