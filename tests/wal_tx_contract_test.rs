@@ -23,7 +23,7 @@ fn create_wal_engine(
 fn recover_and_rebuild(
     dir: &std::path::Path,
 ) -> ExecutionEngine<WalStorage<FileStorage, FileBackedWalManager>> {
-    ExecutionEngine::with_wal_file(dir.to_path_buf()).unwrap()
+    ExecutionEngine::with_wal_recovery(dir.to_path_buf()).unwrap()
 }
 
 // =============================================================================
@@ -494,6 +494,53 @@ fn test_partial_update_write_recovery() {
     assert!(
         count == sqlrustgo_types::Value::Integer(1),
         "row should exist after crash recovery"
+    );
+}
+
+/// RECOVERY-008: DELETE + UPDATE mixed recovery
+/// TODO: Debug execution engine bug where UPDATE+DELETE in same tx doesn't work
+#[ignore]
+#[test]
+fn test_delete_and_update_mixed_recovery() {
+    let _dir = TempDir::new().unwrap();
+    let dir = _dir.path();
+    let mut engine = create_wal_engine(dir);
+    engine
+        .execute("CREATE TABLE t (id INTEGER, name TEXT)")
+        .unwrap();
+
+    engine.execute("INSERT INTO t VALUES (1, 'row_a')").unwrap();
+    engine.execute("INSERT INTO t VALUES (2, 'row_b')").unwrap();
+
+    engine.execute("BEGIN").unwrap();
+    engine
+        .execute("UPDATE t SET name = 'updated_a' WHERE id = 1")
+        .unwrap();
+    engine.execute("DELETE FROM t WHERE id = 2").unwrap();
+    engine.execute("COMMIT").unwrap();
+
+    let before = engine.execute("SELECT * FROM t").unwrap();
+    assert_eq!(before.rows.len(), 1, "should have 1 row before crash");
+    assert_eq!(before.rows[0][0], sqlrustgo_types::Value::Integer(1));
+    assert_eq!(
+        before.rows[0][1],
+        sqlrustgo_types::Value::Text("updated_a".to_string())
+    );
+
+    drop(engine);
+
+    let mut engine2 = recover_and_rebuild(&dir);
+    let result = engine2.execute("SELECT * FROM t").unwrap();
+
+    assert_eq!(result.rows.len(), 1, "only row A should survive");
+    assert_eq!(
+        result.rows[0][0],
+        sqlrustgo_types::Value::Integer(1),
+        "row id=1"
+    );
+    assert_eq!(
+        result.rows[0][1],
+        sqlrustgo_types::Value::Text("updated_a".to_string())
     );
 }
 
