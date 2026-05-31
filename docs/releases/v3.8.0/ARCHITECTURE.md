@@ -3,7 +3,7 @@
 ## Status: DRAFT
 
 > Last updated: 2026-05-30
-> Baseline: `origin/develop/v3.7.0` (commit 72223a80)
+> **Baseline**: `origin/develop/v3.8.0` (commit 44fea01c) — Execution Semantics Freeze (087bb12d)
 
 ---
 
