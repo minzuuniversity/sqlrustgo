@@ -29,6 +29,15 @@ impl<S: StorageEngine, T: WalManager> WalStorage<S, T> {
         &self.wal
     }
 
+    pub fn wal_mut(&mut self) -> &mut T {
+        &mut self.wal
+    }
+
+    /// Split into (storage, wal) for independent mutable access
+    pub fn split(&mut self) -> (&mut S, &mut T) {
+        (&mut self.inner, &mut self.wal)
+    }
+
     fn table_name_to_id(table: &str) -> u64 {
         let mut hash: u64 = 0;
         for byte in table.bytes() {
@@ -191,6 +200,7 @@ impl<S: StorageEngine, T: WalManager> WalStorage<S, T> {
             self.wal.append(entry)?;
             self.wal.sync()?;
         }
+        self.inner.flush()?;
         self.current_tx_id = 0;
         Ok(())
     }
@@ -218,6 +228,7 @@ impl<S: StorageEngine, T: WalManager> WalStorage<S, T> {
             self.wal.append(entry)?;
             self.wal.sync()?;
         }
+        self.inner.flush()?;
         self.current_tx_id = 0;
         Ok(())
     }
@@ -399,6 +410,8 @@ impl<S: StorageEngine, T: WalManager> StorageEngine for WalStorage<S, T> {
             self.wal.append(entry)?;
             self.wal.sync()?;
         }
+        // Flush inner storage to ensure data durability
+        self.inner.flush()?;
         self.current_tx_id = 0;
         Ok(())
     }
@@ -426,6 +439,7 @@ impl<S: StorageEngine, T: WalManager> StorageEngine for WalStorage<S, T> {
             self.wal.append(entry)?;
             self.wal.sync()?;
         }
+        self.inner.flush()?;
         self.current_tx_id = 0;
         Ok(())
     }
