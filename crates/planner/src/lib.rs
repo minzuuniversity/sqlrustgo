@@ -362,6 +362,12 @@ impl Expr {
             }
         }
     }
+
+    /// Check if this expression contains a subquery.
+    /// Currently returns false — subquery support is Phase 2.
+    pub fn contains_subquery(&self) -> bool {
+        false
+    }
 }
 
 impl fmt::Display for Expr {
