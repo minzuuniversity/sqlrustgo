@@ -20,10 +20,15 @@ fn extract_count(result: sqlrustgo_types::SqlResult<sqlrustgo::ExecutorResult>) 
 }
 
 // Balance is at index 1 for "SELECT balance FROM ..."
-fn extract_balance(result: sqlrustgo_types::SqlResult<sqlrustgo::ExecutorResult>) -> sqlrustgo_types::Value {
+fn extract_balance(
+    result: sqlrustgo_types::SqlResult<sqlrustgo::ExecutorResult>,
+) -> sqlrustgo_types::Value {
     let rows = result.unwrap().rows;
     // rows[0] = full row [id, balance], balance is at index 1
-    rows.get(0).and_then(|r| r.get(1)).cloned().unwrap_or(sqlrustgo_types::Value::Null)
+    rows.get(0)
+        .and_then(|r| r.get(1))
+        .cloned()
+        .unwrap_or(sqlrustgo_types::Value::Null)
 }
 
 #[test]
@@ -43,10 +48,14 @@ fn test_wal_004_update_survives() {
         let _ = engine.execute("UPDATE accounts SET balance = 900 WHERE id = 1");
         engine.execute("COMMIT").unwrap();
 
-        let balance_pre = extract_balance(engine.execute("SELECT balance FROM accounts WHERE id = 1"));
+        let balance_pre =
+            extract_balance(engine.execute("SELECT balance FROM accounts WHERE id = 1"));
         eprintln!("EXP-G: pre-restart balance={:?}", balance_pre);
-        assert_eq!(balance_pre, sqlrustgo_types::Value::Integer(900),
-            "Pre-restart: balance should be 900");
+        assert_eq!(
+            balance_pre,
+            sqlrustgo_types::Value::Integer(900),
+            "Pre-restart: balance should be 900"
+        );
     }
 
     {
@@ -58,8 +67,12 @@ fn test_wal_004_update_survives() {
         let balance = extract_balance(engine.execute("SELECT balance FROM accounts WHERE id = 1"));
         eprintln!("EXP-G: post-restart balance={:?}", balance);
 
-        assert_eq!(balance, sqlrustgo_types::Value::Integer(900),
-            "WAL-004 violated: balance is {:?}, expected 900", balance);
+        assert_eq!(
+            balance,
+            sqlrustgo_types::Value::Integer(900),
+            "WAL-004 violated: balance is {:?}, expected 900",
+            balance
+        );
     }
 }
 
@@ -148,7 +161,10 @@ fn test_wal_003_multi_tx_ordering() {
         assert_eq!(cnt, 2, "WAL-003: both committed rows must survive");
 
         // Get all rows - verify id=1 has balance 100, id=2 has balance 200
-        let rows = engine.execute("SELECT * FROM accounts ORDER BY id").unwrap().rows;
+        let rows = engine
+            .execute("SELECT * FROM accounts ORDER BY id")
+            .unwrap()
+            .rows;
         eprintln!("EXP-G-MULTI: rows={:?}", rows);
 
         let r1_balance: i64 = match rows.get(0).and_then(|r| r.get(1)) {
