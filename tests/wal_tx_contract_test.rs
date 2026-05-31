@@ -30,7 +30,10 @@ fn test_insert_without_tx_panics() {
     // This test verifies the current behavior.
     let result = engine.execute("INSERT INTO t VALUES (2, 'test2')");
     // Autocommit: this SHOULD succeed. If it fails, the behavior changed.
-    assert!(result.is_ok(), "INSERT without explicit TX should autocommit");
+    assert!(
+        result.is_ok(),
+        "INSERT without explicit TX should autocommit"
+    );
 }
 
 /// TX-002: UPDATE without transaction context — autocommit behavior
@@ -44,7 +47,10 @@ fn test_update_without_tx_panics() {
 
     // TX-002: UPDATE without BEGIN — autocommit
     let result = engine.execute("UPDATE t SET value = 'updated' WHERE id = 1");
-    assert!(result.is_ok(), "UPDATE without explicit TX should autocommit");
+    assert!(
+        result.is_ok(),
+        "UPDATE without explicit TX should autocommit"
+    );
 }
 
 /// TX-003: DELETE without transaction context — autocommit behavior
@@ -58,7 +64,10 @@ fn test_delete_without_tx_panics() {
 
     // TX-003: DELETE without BEGIN — autocommit
     let result = engine.execute("DELETE FROM t WHERE id = 1");
-    assert!(result.is_ok(), "DELETE without explicit TX should autocommit");
+    assert!(
+        result.is_ok(),
+        "DELETE without explicit TX should autocommit"
+    );
 }
 
 /// TX-004: INSERT after COMMIT should fail (no active transaction)
@@ -70,9 +79,7 @@ fn test_insert_after_commit_panics() {
         .unwrap();
 
     engine.execute("BEGIN").unwrap();
-    engine
-        .execute("INSERT INTO t VALUES (1, 'test')")
-        .unwrap();
+    engine.execute("INSERT INTO t VALUES (1, 'test')").unwrap();
 
     let commit_result = engine.execute("COMMIT");
     if commit_result.is_err() {
@@ -95,9 +102,7 @@ fn test_insert_after_rollback_panics() {
         .unwrap();
 
     engine.execute("BEGIN").unwrap();
-    engine
-        .execute("INSERT INTO t VALUES (1, 'test')")
-        .unwrap();
+    engine.execute("INSERT INTO t VALUES (1, 'test')").unwrap();
 
     let rb_result = engine.execute("ROLLBACK");
     if rb_result.is_err() {
@@ -120,9 +125,7 @@ fn test_double_commit_panics() {
         .unwrap();
 
     engine.execute("BEGIN").unwrap();
-    engine
-        .execute("INSERT INTO t VALUES (1, 'test')")
-        .unwrap();
+    engine.execute("INSERT INTO t VALUES (1, 'test')").unwrap();
     engine.execute("COMMIT").unwrap();
 
     // TX-006: Second COMMIT without new BEGIN — Err "No transaction in progress"
@@ -155,7 +158,10 @@ fn test_data_page_before_wal_panics() {
     // This is confirmed by the check_execution_boundary.sh script.
     // Here we just verify the table has correct data.
     let result = engine.execute("SELECT * FROM t WHERE id = 1");
-    assert!(result.is_ok(), "Data should be retrievable after INSERT via WAL");
+    assert!(
+        result.is_ok(),
+        "Data should be retrievable after INSERT via WAL"
+    );
 }
 
 /// WAL-002: COMMIT without WAL entry should panic
@@ -171,10 +177,7 @@ fn test_commit_without_wal_entry_panics() {
     engine.execute("BEGIN").unwrap();
     // COMMIT immediately — this is valid (empty transaction)
     let result = engine.execute("COMMIT");
-    assert!(
-        result.is_ok(),
-        "Empty transaction COMMIT should succeed"
-    );
+    assert!(result.is_ok(), "Empty transaction COMMIT should succeed");
 }
 
 /// WAL-003: INSERT without WAL entry should fail
@@ -190,10 +193,7 @@ fn test_insert_without_wal_panics() {
     // WAL-003: INSERT should emit WAL entry. If it doesn't, behavior is undefined.
     // This test verifies current behavior — INSERT succeeds in autocommit mode.
     let result = engine.execute("INSERT INTO t VALUES (1, 'test')");
-    assert!(
-        result.is_ok(),
-        "INSERT should succeed in autocommit mode"
-    );
+    assert!(result.is_ok(), "INSERT should succeed in autocommit mode");
     engine.execute("COMMIT").unwrap();
 }
 
@@ -209,10 +209,7 @@ fn test_update_without_wal_panics() {
     engine.execute("BEGIN").unwrap();
     // WAL-004: UPDATE should emit WAL entry
     let result = engine.execute("UPDATE t SET value = 'updated' WHERE id = 1");
-    assert!(
-        result.is_ok(),
-        "UPDATE should succeed within transaction"
-    );
+    assert!(result.is_ok(), "UPDATE should succeed within transaction");
     engine.execute("COMMIT").unwrap();
 }
 
@@ -228,10 +225,7 @@ fn test_delete_without_wal_panics() {
     engine.execute("BEGIN").unwrap();
     // WAL-005: DELETE should emit WAL entry
     let result = engine.execute("DELETE FROM t WHERE id = 1");
-    assert!(
-        result.is_ok(),
-        "DELETE should succeed within transaction"
-    );
+    assert!(result.is_ok(), "DELETE should succeed within transaction");
     engine.execute("COMMIT").unwrap();
 }
 
@@ -249,9 +243,7 @@ fn test_commit_twice_second_ignored() {
         .unwrap();
 
     engine.execute("BEGIN").unwrap();
-    engine
-        .execute("INSERT INTO t VALUES (1, 'test')")
-        .unwrap();
+    engine.execute("INSERT INTO t VALUES (1, 'test')").unwrap();
 
     let commit1 = engine.execute("COMMIT");
     assert!(commit1.is_ok(), "First COMMIT should succeed");
@@ -273,9 +265,7 @@ fn test_insert_twice_duplicate_ignored() {
         .unwrap();
 
     engine.execute("BEGIN").unwrap();
-    engine
-        .execute("INSERT INTO t VALUES (1, 'first')")
-        .unwrap();
+    engine.execute("INSERT INTO t VALUES (1, 'first')").unwrap();
     engine.execute("COMMIT").unwrap();
 
     // REPLAY-002: Replay of INSERT for same PK — should be ignored or fail
@@ -299,10 +289,7 @@ fn test_commit_without_begin_panics() {
 
     // REPLAY-003: COMMIT without prior BEGIN — Err "No transaction in progress"
     let result = engine.execute("COMMIT");
-    assert!(
-        result.is_err(),
-        "COMMIT without BEGIN should return Err"
-    );
+    assert!(result.is_err(), "COMMIT without BEGIN should return Err");
 }
 
 // =============================================================================
@@ -317,12 +304,12 @@ fn test_begin_then_crash_rolls_back() {
     engine
         .execute("CREATE TABLE t (id INTEGER, value TEXT)")
         .unwrap();
-    engine.execute("INSERT INTO t VALUES (1, 'initial')").unwrap();
+    engine
+        .execute("INSERT INTO t VALUES (1, 'initial')")
+        .unwrap();
 
     engine.execute("BEGIN").unwrap();
-    engine
-        .execute("INSERT INTO t VALUES (2, 'in_tx')")
-        .unwrap();
+    engine.execute("INSERT INTO t VALUES (2, 'in_tx')").unwrap();
     // Simulate crash: drop engine and recreate
     drop(engine);
 
@@ -340,7 +327,9 @@ fn test_insert_then_crash_rolls_back() {
     engine
         .execute("CREATE TABLE t (id INTEGER, value TEXT)")
         .unwrap();
-    engine.execute("INSERT INTO t VALUES (1, 'initial')").unwrap();
+    engine
+        .execute("INSERT INTO t VALUES (1, 'initial')")
+        .unwrap();
 
     engine.execute("BEGIN").unwrap();
     engine
@@ -362,7 +351,9 @@ fn test_prepare_then_crash_rolls_back() {
     engine
         .execute("CREATE TABLE t (id INTEGER, value TEXT)")
         .unwrap();
-    engine.execute("INSERT INTO t VALUES (1, 'initial')").unwrap();
+    engine
+        .execute("INSERT INTO t VALUES (1, 'initial')")
+        .unwrap();
 
     // RECOVERY-003: PREPARE is a two-phase commit step
     // If crash after PREPARE but before COMMIT, should rollback
@@ -432,10 +423,14 @@ fn test_partial_update_write_recovery() {
     engine
         .execute("CREATE TABLE t (id INTEGER, value TEXT)")
         .unwrap();
-    engine.execute("INSERT INTO t VALUES (1, 'original')").unwrap();
+    engine
+        .execute("INSERT INTO t VALUES (1, 'original')")
+        .unwrap();
 
     engine.execute("BEGIN").unwrap();
-    engine.execute("UPDATE t SET value = 'updated' WHERE id = 1").unwrap();
+    engine
+        .execute("UPDATE t SET value = 'updated' WHERE id = 1")
+        .unwrap();
     engine.execute("COMMIT").unwrap();
 
     drop(engine);
@@ -453,7 +448,9 @@ fn test_partial_delete_write_recovery() {
     engine
         .execute("CREATE TABLE t (id INTEGER, value TEXT)")
         .unwrap();
-    engine.execute("INSERT INTO t VALUES (1, 'to_delete')").unwrap();
+    engine
+        .execute("INSERT INTO t VALUES (1, 'to_delete')")
+        .unwrap();
 
     engine.execute("BEGIN").unwrap();
     engine.execute("DELETE FROM t WHERE id = 1").unwrap();
