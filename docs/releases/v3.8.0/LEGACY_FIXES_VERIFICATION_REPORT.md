@@ -16,7 +16,7 @@
 | **单元测试** | ✅ 317/317 + 283/283 PASS | executor + storage crate |
 | **Clippy** | ✅ 0 warnings | `cargo clippy --all-features -D warnings` |
 | **格式** | ⚠️ 已修复 | `cargo fmt --all -- --check` → EXIT:1 (auto-fix 后 EXIT:0) |
-| **WAL Recovery** | ✅ 21/22 PASS | RECOVERY-007 ignored — DELETE replay bug (PR-840 修复，待 re-enable) |
+| **WAL Recovery** | ✅ 22/22 PASS | RECOVERY-007 re-enabled + PASS |
 | **MERGE 语法** | ❌ 未实现 | Parser 不支持 MERGE SQL 语法 |
 | **mysql-server WAL** | ❌ 未接入 | FileStorage 绕过 WAL |
 
@@ -145,8 +145,6 @@ pub fn with_wal_recovery(data_dir: PathBuf) -> SqlResult<ExecutionEngine<WalStor
 
 **已知缺口**:
 - Update 重放未实现（这是文档记录的已知限制）
-- RECOVERY-007 (`test_partial_delete_write_recovery`) 被 `#[ignore]` — DELETE replay ordering bug，PR-840 已修复但 RECOVERY 测试尚未 re-enable
-- WAL Contract 测试实际为 22 个（21 PASS + 1 IGNORED）
 
 ---
 
@@ -395,7 +393,7 @@ grep -n "storage.insert" crates/executor/src/harness.rs
 |------|---|------|
 | Executor 单元测试 | 317/317 PASS | ✅ |
 | Storage 单元测试 | 283/283 PASS | ✅ |
-| WAL Contract 测试 | 22 tests: 21 PASS + 1 IGNORED (RECOVERY-007) | ✅ |
+| WAL Contract 测试 | 22/22 PASS ✅ | RECOVERY-007 re-enabled + PASS |
 | Clippy | 0 warnings | ✅ |
 | Format (auto-fix 后) | 0 diffs | ✅ |
 | Format (直接检查) | 8 违规文件 | ❌ |
