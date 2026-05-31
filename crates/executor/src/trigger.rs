@@ -97,6 +97,10 @@ pub struct TriggerExecutor {
 impl TriggerExecutor {
     /// Create a new TriggerExecutor
     pub fn new(storage: Arc<RwLock<dyn StorageEngine>>) -> Self {
+        assert!(
+            storage.read().unwrap().is_wal_enabled(),
+            "Storage MUST be WalStorage in production - WAL is mandatory"
+        );
         Self { storage }
     }
 
