@@ -88,31 +88,30 @@ mod tests {
     #[test]
     fn test_compile_literal() {
         let filter = PredicateCompiler::compile(&Expr::Literal(sqlrustgo_types::Value::Integer(1)));
-        let empty: Vec<sqlrustgo_types::Value> = vec![]; assert!(filter(&empty));
+        let empty: Vec<sqlrustgo_types::Value> = vec![];
+        assert!(filter(&empty));
     }
 
     #[test]
     fn test_compile_and() {
-        let filter = PredicateCompiler::compile(
-            &Expr::BinaryExpr {
-                left: Box::new(Expr::Literal(sqlrustgo_types::Value::Integer(1))),
-                op: Operator::And,
-                right: Box::new(Expr::Literal(sqlrustgo_types::Value::Integer(1))),
-            }
-        );
-        let empty: Vec<sqlrustgo_types::Value> = vec![]; assert!(filter(&empty));
+        let filter = PredicateCompiler::compile(&Expr::BinaryExpr {
+            left: Box::new(Expr::Literal(sqlrustgo_types::Value::Integer(1))),
+            op: Operator::And,
+            right: Box::new(Expr::Literal(sqlrustgo_types::Value::Integer(1))),
+        });
+        let empty: Vec<sqlrustgo_types::Value> = vec![];
+        assert!(filter(&empty));
     }
 
     #[test]
     fn test_compile_or() {
-        let filter = PredicateCompiler::compile(
-            &Expr::BinaryExpr {
-                left: Box::new(Expr::Literal(sqlrustgo_types::Value::Integer(0))),
-                op: Operator::Or,
-                right: Box::new(Expr::Literal(sqlrustgo_types::Value::Integer(1))),
-            }
-        );
-        let empty: Vec<sqlrustgo_types::Value> = vec![]; assert!(filter(&empty));
+        let filter = PredicateCompiler::compile(&Expr::BinaryExpr {
+            left: Box::new(Expr::Literal(sqlrustgo_types::Value::Integer(0))),
+            op: Operator::Or,
+            right: Box::new(Expr::Literal(sqlrustgo_types::Value::Integer(1))),
+        });
+        let empty: Vec<sqlrustgo_types::Value> = vec![];
+        assert!(filter(&empty));
     }
 
     #[test]
