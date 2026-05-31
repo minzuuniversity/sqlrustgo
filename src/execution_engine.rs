@@ -34,12 +34,12 @@ use sqlrustgo_parser::JoinType;
 use sqlrustgo_parser::{
     DeleteStatement, Expression, Statement, TransactionStatement, UpdateStatement,
 };
+use sqlrustgo_storage::checkpoint::{CheckpointManager, CheckpointMetadata};
 use sqlrustgo_storage::{
     recovery_engine::{RecoveryEngine, RecoveryEngineImpl},
     ColumnDefinition, FileBackedWalManager, FileStorage, MemoryStorage, StorageEngine, TableInfo,
     WalStorage,
 };
-use sqlrustgo_storage::checkpoint::{CheckpointManager, CheckpointMetadata};
 use sqlrustgo_transaction::{IsolationLevel as TmIsolationLevel, TransactionManager, TxId};
 use sqlrustgo_types::Value as SqlValue;
 use std::collections::HashMap;
@@ -737,25 +737,32 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             updated_rows.clone()
         };
 
-        // Get rows to keep (non-matching rows)
-        let rows_to_keep: Vec<Vec<Value>> = {
+        let mut new_rows: Vec<Vec<Value>> = Vec::new();
+
+        let all_current_rows: Vec<Vec<Value>> = {
             let storage = self.storage.read().unwrap();
-            let all_rows = storage.scan(&table_name)?;
-            all_rows
-                .into_iter()
-                .filter(|row| !evaluate_where_clause(where_clause, row, &table_info))
-                .collect()
+            storage.scan(&table_name)?
         };
 
-        // Delete all rows and re-insert updated + kept rows
+        for row in all_current_rows {
+            if evaluate_where_clause(where_clause, &row, &table_info) {
+                if let Some(pos) = rows_to_update.iter().position(|r| r == &row) {
+                    new_rows.push(trigger_modified_rows[pos].clone());
+                } else {
+                    new_rows.push(row);
+                }
+            } else {
+                new_rows.push(row);
+            }
+        }
+
         {
             let mut storage = self.storage.write().unwrap();
-            let col_names: Vec<String> =
-                table_info.columns.iter().map(|c| c.name.clone()).collect();
 
-            // Validate CHECK constraints on updated rows before inserting
             if !table_info.check_constraints.is_empty() {
-                for record in &trigger_modified_rows {
+                let col_names: Vec<String> =
+                    table_info.columns.iter().map(|c| c.name.clone()).collect();
+                for record in &new_rows {
                     for constraint in &table_info.check_constraints {
                         let valid = sqlrustgo_storage::evaluate_check_constraint(
                             constraint, &col_names, record,
@@ -773,11 +780,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             }
 
             storage.delete(&table_name, &[])?;
-            if !rows_to_keep.is_empty() {
-                storage.insert(&table_name, rows_to_keep)?;
-            }
-            if !trigger_modified_rows.is_empty() {
-                storage.insert(&table_name, trigger_modified_rows)?;
+            if !new_rows.is_empty() {
+                storage.insert(&table_name, new_rows)?;
             }
         }
 
