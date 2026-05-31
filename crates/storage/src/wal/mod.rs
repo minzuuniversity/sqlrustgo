@@ -52,6 +52,21 @@ pub trait WalManager: Send + Sync {
     /// Returns all WAL entries for replay by RecoveryEngine.
     /// Does NOT apply entries to storage - that is RecoveryEngine's responsibility.
     fn recover(&mut self) -> SqlResult<Vec<WalEntry>>;
+
+    /// Truncate WAL entries with LSN < `lsn`
+    fn truncate_before(&mut self, lsn: u64) -> SqlResult<()>;
+}
+
+/// WAL truncation safety gate
+pub trait WalTruncationGate: Send + Sync {
+    /// Returns the LSN below which WAL entries can be safely deleted.
+    /// Returns None if no checkpoint has been established.
+    fn safe_truncate_lsn(&self) -> Option<u64>;
+
+    /// Check if a given LSN can be truncated
+    fn can_truncate(&self, wal_lsn: u64) -> bool {
+        self.safe_truncate_lsn().map_or(false, |cp_lsn| wal_lsn <= cp_lsn)
+    }
 }
 
 /// Helper to create a BEGIN entry
