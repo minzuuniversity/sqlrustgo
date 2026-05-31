@@ -5,6 +5,26 @@ SQLRustGo 的所有显着更改都将记录在此文件中。
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.8.0] - 2026-05-31 (Alpha)
+
+### 目标
+
+Architecture Unification Release — 消灭双执行路径，统一 SQL → AST → Plan → Execution，接入 WAL 核心。
+
+### 核心功能
+
+- **Execution Semantics Freeze**: AUTOCOMMIT + WAL Mandatory + MVCC Enabled + TX Lifecycle 强制（commit 087bb12d）
+- **Hermes C Regression Analysis**: 三路径行为差异检测（Path A/B/C）
+- **ExecutionEngine Type Alias**: `MemoryExecutionEngine = ExecutionEngine<MemoryStorage>`
+
+### 门禁状态
+
+| Gate | 结果 | 日期 |
+|------|------|------|
+| Alpha | 🔄 IN_PROGRESS | 2026-05-31 |
+
+> **Status**: 开发中
+
 ## [3.5.0] - 2026-05-28 (GA)
 
 ### 目标
