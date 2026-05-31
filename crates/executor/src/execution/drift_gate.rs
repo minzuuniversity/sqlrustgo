@@ -223,4 +223,61 @@ mod tests {
         let result = gate.validate(&op, &ctx);
         assert!(result.is_ok());
     }
+
+    #[test]
+    fn test_pre_commit_valid() {
+        let gate = DriftGate::new("trace-pc".to_string());
+        let mut ctx = TransactionContext::new(1);
+        ctx.mark_wal_open();
+        let result = gate.validate_pre_commit(&ctx);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_pre_commit_fails_without_wal() {
+        let gate = DriftGate::new("trace-pc".to_string());
+        let ctx = TransactionContext::new(1);
+        // wal_segment_open = false
+        let result = gate.validate_pre_commit(&ctx);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_pre_commit_succeeds_with_wal_open() {
+        let gate = DriftGate::new("trace-pc".to_string());
+        let mut ctx = TransactionContext::new(1);
+        ctx.mark_wal_open();
+        let result = gate.validate_pre_commit(&ctx);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_guard_policy_blocks_violation() {
+        let policy = GuardPolicy::new();
+        let violations = vec![DriftViolation::new(
+            "trace-1".into(),
+            DriftViolationType::WalDrift,
+            DriftSeverity::Critical,
+            "WAL before mutation".into(),
+        )];
+        assert!(policy.should_block(&violations));
+    }
+
+    #[test]
+    fn test_guard_policy_allows_empty() {
+        let policy = GuardPolicy::new();
+        assert!(!policy.should_block(&[]));
+    }
+
+    #[test]
+    fn test_guard_policy_allows_low_severity() {
+        let policy = GuardPolicy::new();
+        let violations = vec![DriftViolation::new(
+            "trace-2".into(),
+            DriftViolationType::WalDrift,
+            DriftSeverity::Low,
+            "minor drift".into(),
+        )];
+        assert!(!policy.should_block(&violations));
+    }
 }
