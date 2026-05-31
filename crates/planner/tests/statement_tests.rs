@@ -5,18 +5,30 @@
 //! statement.rs 定义了 MergeStatement 和 MergeClause 结构体及其构造函数
 //! 验收: cargo test -p sqlrustgo-planner --test statement_tests -- --test-threads=1
 
-use sqlrustgo_parser::{Expression, SelectStatement};
+use sqlrustgo_planner::Expr;
 use sqlrustgo_planner::{MergeClause, MergeStatement};
+use sqlrustgo_types::Value;
 
 // ============ MergeStatement 白盒测试 ============
+
+fn make_ident(name: &str) -> Expr {
+    Expr::Column(sqlrustgo_planner::Column {
+        name: name.to_string(),
+        relation: None,
+    })
+}
+
+fn make_literal(val: Value) -> Expr {
+    Expr::Literal(val)
+}
 
 #[test]
 fn test_merge_statement_new() {
     // 测试 MergeStatement::new() 完整构造
-    let on_cond = Expression::Identifier("id".to_string());
+    let on_cond = make_ident("id");
     let matched = MergeClause::new(
         vec!["col1".to_string()],
-        vec![Expression::Literal("1".to_string())],
+        vec![make_literal(Value::Text("1".to_string()))],
         vec![],
         vec![],
     );
@@ -30,7 +42,7 @@ fn test_merge_statement_new() {
 
     assert_eq!(stmt.target_table, "target_table");
     assert_eq!(stmt.source_table, "source_table");
-    assert!(matches!(stmt.on_condition, Expression::Identifier(_)));
+    assert!(matches!(stmt.on_condition, Expr::Column(_)));
     assert!(stmt.matched_clause.is_some());
     assert!(stmt.not_matched_clause.is_none());
 }
@@ -40,7 +52,7 @@ fn test_merge_statement_with_both_clauses() {
     // 测试 MergeStatement 同时有 matched 和 not_matched clause
     let matched = MergeClause::new(
         vec!["name".to_string()],
-        vec![Expression::Literal("updated".to_string())],
+        vec![make_literal(Value::Text("updated".to_string()))],
         vec![],
         vec![],
     );
@@ -49,15 +61,15 @@ fn test_merge_statement_with_both_clauses() {
         vec![],
         vec!["name".to_string(), "value".to_string()],
         vec![
-            Expression::Literal("new".to_string()),
-            Expression::Literal("100".to_string()),
+            make_literal(Value::Text("new".to_string())),
+            make_literal(Value::Text("100".to_string())),
         ],
     );
 
     let stmt = MergeStatement::new(
         "orders".to_string(),
         "changes".to_string(),
-        Expression::Identifier("id".to_string()),
+        make_ident("id"),
         Some(matched),
         Some(not_matched),
     );
@@ -74,7 +86,7 @@ fn test_merge_statement_without_clauses() {
     let stmt = MergeStatement::new(
         "t1".to_string(),
         "t2".to_string(),
-        Expression::Identifier("x".to_string()),
+        make_ident("x"),
         None,
         None,
     );
@@ -90,7 +102,7 @@ fn test_merge_statement_clone() {
     let stmt = MergeStatement::new(
         "target".to_string(),
         "source".to_string(),
-        Expression::Identifier("id".to_string()),
+        make_ident("id"),
         None,
         None,
     );
@@ -107,11 +119,11 @@ fn test_merge_clause_new() {
     let clause = MergeClause::new(
         vec!["update_col1".to_string(), "update_col2".to_string()],
         vec![
-            Expression::Literal("42".to_string()),
-            Expression::Literal("hello".to_string()),
+            make_literal(Value::Text("42".to_string())),
+            make_literal(Value::Text("hello".to_string())),
         ],
         vec!["insert_col1".to_string()],
-        vec![Expression::Literal("3.14".to_string())],
+        vec![make_literal(Value::Text("3.14".to_string()))],
     );
 
     assert_eq!(clause.update_columns.len(), 2);
@@ -128,8 +140,8 @@ fn test_merge_clause_empty_update() {
         vec![],
         vec!["col1".to_string(), "col2".to_string()],
         vec![
-            Expression::Literal("1".to_string()),
-            Expression::Literal("new_row".to_string()),
+            make_literal(Value::Text("1".to_string())),
+            make_literal(Value::Text("new_row".to_string())),
         ],
     );
 
@@ -144,7 +156,7 @@ fn test_merge_clause_empty_insert() {
     // 测试 MergeClause 仅 update（matched）场景
     let clause = MergeClause::new(
         vec!["status".to_string()],
-        vec![Expression::Literal("processed".to_string())],
+        vec![make_literal(Value::Text("processed".to_string()))],
         vec![],
         vec![],
     );
@@ -160,9 +172,9 @@ fn test_merge_clause_clone() {
     // 测试 Clone trait
     let clause = MergeClause::new(
         vec!["a".to_string()],
-        vec![Expression::Literal("1".to_string())],
+        vec![make_literal(Value::Text("1".to_string()))],
         vec!["b".to_string()],
-        vec![Expression::Literal("2".to_string())],
+        vec![make_literal(Value::Text("2".to_string()))],
     );
     let cloned = clause.clone();
     assert_eq!(cloned.update_columns, clause.update_columns);
@@ -176,7 +188,7 @@ fn test_merge_clause_debug() {
     // 测试 Debug trait
     let clause = MergeClause::new(
         vec!["id".to_string()],
-        vec![Expression::Literal("1".to_string())],
+        vec![make_literal(Value::Text("1".to_string()))],
         vec![],
         vec![],
     );
@@ -192,7 +204,7 @@ fn test_merge_statement_debug() {
     let stmt = MergeStatement::new(
         "t".to_string(),
         "s".to_string(),
-        Expression::Identifier("x".to_string()),
+        make_ident("x"),
         None,
         None,
     );
