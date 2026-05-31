@@ -1288,7 +1288,7 @@ fn do_command_loop<S: Read + Write>(
                 let final_sql = replace_placeholders(&stmt_sql, &params);
 
                 tracing::info!("STMT EXECUTE (id={}): {}", stmt_id, final_sql);
-                let mut eng = ExecutionEngine::new(storage.clone());
+                let mut eng = engine.write().unwrap();
                 let parsed = parse(&final_sql);
                 match parsed {
                     Ok(stmt) => {
