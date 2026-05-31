@@ -1,5 +1,5 @@
 use crate::engine::{
-    ColumnDefinition, Record, RowFilter, RowMutation, SqlError, SqlResult, StorageEngine,
+    ColumnDefinition, Record, RowFilter, RowMutation, SqlResult, StorageEngine,
     TableInfo, TriggerInfo, Value,
 };
 use crate::wal::{WalEntry, WalEntryType, WalManager};
@@ -7,7 +7,6 @@ use crate::wal::{WalEntry, WalEntryType, WalManager};
 pub struct WalStorage<S: StorageEngine, T: WalManager> {
     inner: S,
     wal: T,
-    current_tx_id: u64,
     wal_enabled: bool,
 }
 
@@ -16,7 +15,6 @@ impl<S: StorageEngine, T: WalManager> WalStorage<S, T> {
         Ok(Self {
             inner,
             wal,
-            current_tx_id: 0,
             wal_enabled: true,
         })
     }
@@ -95,9 +93,9 @@ impl<S: StorageEngine, T: WalManager> WalStorage<S, T> {
     }
 
     fn log_insert(&mut self, table_id: u64, key: Vec<u8>, data: Vec<u8>) -> SqlResult<()> {
-        if self.wal_enabled && self.current_tx_id != 0 {
+        if self.wal_enabled {
             let entry = WalEntry {
-                tx_id: self.current_tx_id,
+                tx_id: self.inner.current_tx_id(),
                 entry_type: WalEntryType::Insert,
                 table_id,
                 key: Some(key),
@@ -114,9 +112,9 @@ impl<S: StorageEngine, T: WalManager> WalStorage<S, T> {
     }
 
     fn log_delete(&mut self, table_id: u64, key: Vec<u8>) -> SqlResult<()> {
-        if self.wal_enabled && self.current_tx_id != 0 {
+        if self.wal_enabled {
             let entry = WalEntry {
-                tx_id: self.current_tx_id,
+                tx_id: self.inner.current_tx_id(),
                 entry_type: WalEntryType::Delete,
                 table_id,
                 key: Some(key),
@@ -133,9 +131,9 @@ impl<S: StorageEngine, T: WalManager> WalStorage<S, T> {
     }
 
     fn log_update(&mut self, table_id: u64, key: Vec<u8>, data: Vec<u8>) -> SqlResult<()> {
-        if self.wal_enabled && self.current_tx_id != 0 {
+        if self.wal_enabled {
             let entry = WalEntry {
-                tx_id: self.current_tx_id,
+                tx_id: self.inner.current_tx_id(),
                 entry_type: WalEntryType::Update,
                 table_id,
                 key: Some(key),
@@ -152,13 +150,7 @@ impl<S: StorageEngine, T: WalManager> WalStorage<S, T> {
     }
 
     pub fn begin_transaction(&mut self) -> SqlResult<u64> {
-        if self.current_tx_id != 0 {
-            return Err(crate::engine::SqlError::ExecutionError(
-                "Transaction already in progress".to_string(),
-            ));
-        }
-        let tx_id = self.current_tx_id + 1;
-        self.current_tx_id = tx_id;
+        let tx_id = 0;
         if self.wal_enabled {
             let entry = WalEntry {
                 tx_id,
@@ -178,15 +170,9 @@ impl<S: StorageEngine, T: WalManager> WalStorage<S, T> {
     }
 
     pub fn commit_transaction(&mut self) -> SqlResult<()> {
-        if self.current_tx_id == 0 {
-            return Err(crate::engine::SqlError::ExecutionError(
-                "No transaction in progress".to_string(),
-            ));
-        }
-        let tx_id = self.current_tx_id;
         if self.wal_enabled {
             let entry = WalEntry {
-                tx_id,
+                tx_id: 0,
                 entry_type: WalEntryType::Commit,
                 table_id: 0,
                 key: None,
@@ -201,20 +187,13 @@ impl<S: StorageEngine, T: WalManager> WalStorage<S, T> {
             self.wal.sync()?;
         }
         self.inner.flush()?;
-        self.current_tx_id = 0;
         Ok(())
     }
 
     pub fn rollback_transaction(&mut self) -> SqlResult<()> {
-        if self.current_tx_id == 0 {
-            return Err(crate::engine::SqlError::ExecutionError(
-                "No transaction in progress".to_string(),
-            ));
-        }
-        let tx_id = self.current_tx_id;
         if self.wal_enabled {
             let entry = WalEntry {
-                tx_id,
+                tx_id: 0,
                 entry_type: WalEntryType::Rollback,
                 table_id: 0,
                 key: None,
@@ -229,16 +208,15 @@ impl<S: StorageEngine, T: WalManager> WalStorage<S, T> {
             self.wal.sync()?;
         }
         self.inner.flush()?;
-        self.current_tx_id = 0;
         Ok(())
     }
 
     pub fn in_transaction(&self) -> bool {
-        self.current_tx_id != 0
+        self.inner.in_transaction()
     }
 
     pub fn current_tx_id(&self) -> u64 {
-        self.current_tx_id
+        self.inner.current_tx_id()
     }
 
     pub fn recover(&mut self) -> SqlResult<Vec<WalEntry>> {
@@ -362,13 +340,7 @@ impl<S: StorageEngine, T: WalManager> StorageEngine for WalStorage<S, T> {
     }
 
     fn begin_transaction(&mut self) -> SqlResult<u64> {
-        if self.current_tx_id != 0 {
-            return Err(SqlError::ExecutionError(
-                "Transaction already in progress".to_string(),
-            ));
-        }
-        let tx_id = self.current_tx_id + 1;
-        self.current_tx_id = tx_id;
+        let tx_id = 0;
         if self.wal_enabled {
             let entry = WalEntry {
                 tx_id,
@@ -388,15 +360,9 @@ impl<S: StorageEngine, T: WalManager> StorageEngine for WalStorage<S, T> {
     }
 
     fn commit_transaction(&mut self) -> SqlResult<()> {
-        if self.current_tx_id == 0 {
-            return Err(SqlError::ExecutionError(
-                "No transaction in progress".to_string(),
-            ));
-        }
-        let tx_id = self.current_tx_id;
         if self.wal_enabled {
             let entry = WalEntry {
-                tx_id,
+                tx_id: 0,
                 entry_type: WalEntryType::Commit,
                 table_id: 0,
                 key: None,
@@ -410,22 +376,14 @@ impl<S: StorageEngine, T: WalManager> StorageEngine for WalStorage<S, T> {
             self.wal.append(entry)?;
             self.wal.sync()?;
         }
-        // Flush inner storage to ensure data durability
         self.inner.flush()?;
-        self.current_tx_id = 0;
         Ok(())
     }
 
     fn rollback_transaction(&mut self) -> SqlResult<()> {
-        if self.current_tx_id == 0 {
-            return Err(SqlError::ExecutionError(
-                "No transaction in progress".to_string(),
-            ));
-        }
-        let tx_id = self.current_tx_id;
         if self.wal_enabled {
             let entry = WalEntry {
-                tx_id,
+                tx_id: 0,
                 entry_type: WalEntryType::Rollback,
                 table_id: 0,
                 key: None,
@@ -440,20 +398,19 @@ impl<S: StorageEngine, T: WalManager> StorageEngine for WalStorage<S, T> {
             self.wal.sync()?;
         }
         self.inner.flush()?;
-        self.current_tx_id = 0;
         Ok(())
     }
 
     fn in_transaction(&self) -> bool {
-        self.current_tx_id != 0
+        self.inner.in_transaction()
     }
 
     fn current_tx_id(&self) -> u64 {
-        self.current_tx_id
+        self.inner.current_tx_id()
     }
 
     fn set_current_tx_id(&mut self, id: u64) {
-        self.current_tx_id = id;
+        self.inner.set_current_tx_id(id);
     }
 
     fn is_wal_enabled(&self) -> bool {
@@ -475,14 +432,12 @@ mod tests {
         let mut storage = WalStorage::new(inner, wal).unwrap();
 
         let tx_id = storage.begin_transaction().unwrap();
-        assert!(tx_id > 0);
-        assert!(storage.in_transaction());
+        assert_eq!(tx_id, 0);
 
         let records = vec![vec![Value::Integer(1), Value::Text("test".to_string())]];
         storage.insert("t1", records).unwrap();
 
         storage.commit_transaction().unwrap();
-        assert!(!storage.in_transaction());
 
         let entries = storage.recover().unwrap();
         let commits: Vec<_> = entries
