@@ -26,7 +26,11 @@ use sqlrustgo_parser::JoinType; // For join type matching
 use sqlrustgo_parser::{
     DeleteStatement, Expression, Statement, TransactionStatement, UpdateStatement,
 };
-use sqlrustgo_storage::{ColumnDefinition, MemoryStorage, StorageEngine, TableInfo, WalStorage};
+use sqlrustgo_storage::{
+    recovery_engine::{RecoveryEngine, RecoveryEngineImpl},
+    ColumnDefinition, FileBackedWalManager, FileStorage, MemoryStorage, StorageEngine, TableInfo,
+    WalStorage,
+};
 use sqlrustgo_transaction::{IsolationLevel as TmIsolationLevel, TransactionManager, TxId};
 use sqlrustgo_types::Value as SqlValue;
 use std::collections::HashMap;
@@ -1953,6 +1957,44 @@ impl ExecutionEngine<MemoryStorage> {
             current_role: None,
         })
     }
+
+    /// Create a WAL-backed engine with persistent FileStorage (clean boot)
+    ///
+    /// Creates storage and WAL manager, wraps in WalStorage, returns Engine.
+    /// Does NOT run WAL recovery — call recover_wal() after crash recovery.
+    pub fn with_wal_file(
+        data_dir: PathBuf,
+    ) -> SqlResult<ExecutionEngine<WalStorage<FileStorage, FileBackedWalManager>>> {
+        let inner = FileStorage::new_with_wal(data_dir.clone())
+            .map_err(|e| SqlError::ExecutionError(format!("FileStorage init failed: {}", e)))?;
+        let wal_path = data_dir.join("sqlrustgo.wal");
+        let wal_manager = FileBackedWalManager::new(wal_path)?;
+        let wal_storage = WalStorage::new(inner, wal_manager)?;
+
+        Ok(ExecutionEngine {
+            storage: Arc::new(RwLock::new(wal_storage)),
+            catalog: None,
+            stats: Arc::new(RwLock::new(ExecutionStats::default())),
+            cbo_enabled: true,
+            transaction_manager: TransactionManager::new(),
+            current_tx_id: None,
+            tx_status: TxStatus::Idle,
+            default_isolation: TmIsolationLevel::default(),
+            current_role: None,
+        })
+    }
+}
+
+/// Recover a WAL-backed engine after crash: replay committed WAL entries
+pub fn recover_wal(
+    engine: &mut ExecutionEngine<WalStorage<FileStorage, FileBackedWalManager>>,
+) -> SqlResult<()> {
+    let storage = &mut *engine.storage.write().map_err(|e| {
+        SqlError::ExecutionError(format!("Failed to lock storage for recovery: {:?}", e))
+    })?;
+    let (inner, wal_mgr) = storage.split();
+    let mut recovery = RecoveryEngineImpl;
+    RecoveryEngine::recover(&mut recovery, inner, wal_mgr).map(|_| ())
 }
 
 // =============================================================================
