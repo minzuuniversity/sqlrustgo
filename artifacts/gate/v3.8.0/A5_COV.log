@@ -1,10 +1,4 @@
   sqlrustgo-types: 87%
-  sqlrustgo-parser: 58%
-  sqlrustgo-planner: 81%
-  sqlrustgo-optimizer: 91%
-  sqlrustgo-executor: 53%
-  sqlrustgo-storage: 73%
-  sqlrustgo-transaction: 92%
-  sqlrustgo-catalog: 92%
-78% (avg of 8 crates)
+  sqlrustgo-parser: 59%
+73% (avg of 2 crates)
   Details:
