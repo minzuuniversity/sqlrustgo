@@ -109,8 +109,10 @@ impl GraceHashJoin {
 
         // Grace Hash Join with partitioning
         let n_partitions = Self::num_partitions(build_side.len(), self.memory_limit);
-        let mut build_partitions: Vec<Vec<(K, Vec<u8>)>> = (0..n_partitions).map(|_| Vec::new()).collect();
-        let mut probe_partitions: Vec<Vec<(K, Vec<u8>)>> = (0..n_partitions).map(|_| Vec::new()).collect();
+        let mut build_partitions: Vec<Vec<(K, Vec<u8>)>> =
+            (0..n_partitions).map(|_| Vec::new()).collect();
+        let mut probe_partitions: Vec<Vec<(K, Vec<u8>)>> =
+            (0..n_partitions).map(|_| Vec::new()).collect();
 
         // Partition build side
         for row in build_side {
@@ -161,8 +163,10 @@ impl GraceHashJoin {
             } else {
                 // Sub-partition: spill this partition and process sub-partitions
                 let sub_n = Self::num_partitions(build_part.len(), self.memory_limit / 2);
-                let mut sub_build: Vec<Vec<(K, Vec<u8>)>> = (0..sub_n).map(|_| Vec::new()).collect();
-                let mut sub_probe: Vec<Vec<(K, Vec<u8>)>> = (0..sub_n).map(|_| Vec::new()).collect();
+                let mut sub_build: Vec<Vec<(K, Vec<u8>)>> =
+                    (0..sub_n).map(|_| Vec::new()).collect();
+                let mut sub_probe: Vec<Vec<(K, Vec<u8>)>> =
+                    (0..sub_n).map(|_| Vec::new()).collect();
 
                 for (key, val) in build_part {
                     let mut h = std::collections::hash_map::DefaultHasher::new();
@@ -194,7 +198,9 @@ impl GraceHashJoin {
                     if total_est <= self.memory_limit && !sub_build.is_empty() {
                         // Process in memory
                         let mut h: HashMap<K, Vec<Vec<u8>>> = HashMap::new();
-                        for (k, v) in sub_build { h.entry(k).or_default().push(v); }
+                        for (k, v) in sub_build {
+                            h.entry(k).or_default().push(v);
+                        }
                         for (k, v) in sub_probe {
                             if let Some(bv) = h.get(&k) {
                                 for b in bv {
@@ -298,12 +304,15 @@ mod tests {
         let mut ghj = GraceHashJoin::new(1_000_000).unwrap();
         let left: Vec<i32> = (0i32..200).collect();
         let right: Vec<i32> = (100i32..300).collect();
-        let results = ghj.join(
-            &left, &right,
-            |x| (x.clone(), (*x).to_le_bytes().to_vec()),
-            |x| (x.clone(), (*x).to_le_bytes().to_vec()),
-            |a, b| a == b,
-        ).unwrap();
+        let results = ghj
+            .join(
+                &left,
+                &right,
+                |x| (x.clone(), (*x).to_le_bytes().to_vec()),
+                |x| (x.clone(), (*x).to_le_bytes().to_vec()),
+                |a, b| a == b,
+            )
+            .unwrap();
         assert_eq!(results.len(), 100);
     }
 
@@ -351,12 +360,15 @@ mod tests {
         let left: Vec<i32> = (0i32..200).collect();
         let right: Vec<i32> = (100i32..300).collect();
 
-        let results = ghj.join(
-            &left, &right,
-            |x| (x.clone(), (*x).to_le_bytes().to_vec()),
-            |x| (x.clone(), (*x).to_le_bytes().to_vec()),
-            |a, b| a == b,
-        ).unwrap();
+        let results = ghj
+            .join(
+                &left,
+                &right,
+                |x| (x.clone(), (*x).to_le_bytes().to_vec()),
+                |x| (x.clone(), (*x).to_le_bytes().to_vec()),
+                |a, b| a == b,
+            )
+            .unwrap();
 
         assert_eq!(results.len(), 100);
     }
@@ -368,11 +380,13 @@ mod tests {
         let right: Vec<i32> = (0i32..50).collect();
 
         ghj.join(
-            &left, &right,
+            &left,
+            &right,
             |x| (x.clone(), (*x).to_le_bytes().to_vec()),
             |x| (x.clone(), (*x).to_le_bytes().to_vec()),
             |a, b| a == b,
-        ).unwrap();
+        )
+        .unwrap();
 
         ghj.partition_manager.cleanup();
         assert_eq!(ghj.total_bytes_spilled(), 0);
