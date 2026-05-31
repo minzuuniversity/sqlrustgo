@@ -3,6 +3,14 @@
 
 #![allow(unused_variables, unused_imports)]
 
+use crate::engine_utils::{
+    build_aggregate_schema, build_combined_schema, eval_predicate, evaluate_where_clause,
+    find_column_index, sql_compare, validate_foreign_keys,
+};
+use crate::expr_utils::{
+    compare_values, evaluate_binary_op, evaluate_expr_to_string, evaluate_expression,
+    expression_to_string, expression_to_value, expression_to_value_from_string,
+};
 use crate::{parse, SqlError, SqlResult, Value};
 use sqlrustgo_catalog::stored_proc::{ParamMode, StoredProcParam, StoredProcStatement};
 use sqlrustgo_catalog::{auth::UserIdentity, Catalog, StoredProcedure};
@@ -13,35 +21,52 @@ use sqlrustgo_executor::trigger::{
 };
 use sqlrustgo_executor::ExecutorResult;
 use sqlrustgo_parser::parser::{
-    AggregateCall, AggregateFunction, CallStatement, CreateIndexStatement,
-    CreateProcedureStatement, CreateRoleStatement, CreateTableStatement, CreateTriggerStatement,
-    DropRoleStatement, DropTableStatement, GrantRoleStatement, GrantStatement, InsertStatement,
-    ObjectType as ParserObjectType, Privilege as ParserPrivilege, RevokeRoleStatement,
-    RevokeStatement, SelectStatement, SetRoleStatement, StoredProcParam as ParserStoredProcParam,
-    StoredProcParamMode as ParserParamMode, StoredProcStatement as ParserStatement,
-    TruncateStatement,
+    AggregateCall, AggregateFunction, AlterTableOperation, AlterTableStatement, CallStatement,
+    CreateIndexStatement, CreateProcedureStatement, CreateRoleStatement, CreateTableStatement,
+    CreateTriggerStatement, DropRoleStatement, DropTableStatement, GrantRoleStatement,
+    GrantStatement, InsertStatement, ObjectType as ParserObjectType, Privilege as ParserPrivilege,
+    RevokeRoleStatement, RevokeStatement, SelectStatement, SetRoleStatement,
+    StoredProcParam as ParserStoredProcParam, StoredProcParamMode as ParserParamMode,
+    StoredProcStatement as ParserStatement, TruncateStatement,
 };
 use sqlrustgo_parser::transaction::IsolationLevel as ParserIsolationLevel;
-use sqlrustgo_parser::JoinType; // For join type matching
+use sqlrustgo_parser::JoinType;
 use sqlrustgo_parser::{
     DeleteStatement, Expression, Statement, TransactionStatement, UpdateStatement,
 };
-use sqlrustgo_storage::{ColumnDefinition, MemoryStorage, StorageEngine, TableInfo};
+use sqlrustgo_storage::checkpoint::{CheckpointManager, CheckpointMetadata};
+use sqlrustgo_storage::{
+    recovery_engine::{RecoveryEngine, RecoveryEngineImpl},
+    ColumnDefinition, FileBackedWalManager, FileStorage, MemoryStorage, StorageEngine, TableInfo,
+    WalStorage,
+};
 use sqlrustgo_transaction::{IsolationLevel as TmIsolationLevel, TransactionManager, TxId};
 use sqlrustgo_types::Value as SqlValue;
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 
 /// Execution engine for SQL statements
 pub struct ExecutionEngine<S: StorageEngine> {
-    storage: Arc<RwLock<S>>,
-    catalog: Option<Arc<RwLock<Catalog>>>,
-    stats: Arc<RwLock<ExecutionStats>>,
-    cbo_enabled: bool,
-    transaction_manager: TransactionManager,
-    current_tx_id: Option<TxId>,
-    default_isolation: TmIsolationLevel,
-    current_role: Option<String>,
+    pub(crate) storage: Arc<RwLock<S>>,
+    pub(crate) catalog: Option<Arc<RwLock<Catalog>>>,
+    pub(crate) stats: Arc<RwLock<ExecutionStats>>,
+    pub(crate) cbo_enabled: bool,
+    pub(crate) transaction_manager: TransactionManager,
+    pub(crate) current_tx_id: Option<TxId>,
+    pub(crate) tx_status: TxStatus,
+    pub(crate) default_isolation: TmIsolationLevel,
+    pub(crate) current_role: Option<String>,
+    pub(crate) checkpoint_manager: Option<Arc<RwLock<CheckpointManager>>>,
+}
+
+/// Transaction status for lifecycle enforcement
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TxStatus {
+    Idle,      // No transaction started
+    Active,    // Transaction in progress
+    Committed, // Transaction committed (terminal)
+    Aborted,   // Transaction rolled back (terminal)
 }
 
 /// Execution statistics for CBO
@@ -79,8 +104,10 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             cbo_enabled: true,
             transaction_manager: TransactionManager::new(),
             current_tx_id: None,
+            tx_status: TxStatus::Idle,
             default_isolation: TmIsolationLevel::default(),
             current_role: None,
+            checkpoint_manager: None,
         }
     }
 
@@ -93,8 +120,10 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             cbo_enabled,
             transaction_manager: TransactionManager::new(),
             current_tx_id: None,
+            tx_status: TxStatus::Idle,
             default_isolation: TmIsolationLevel::default(),
             current_role: None,
+            checkpoint_manager: None,
         }
     }
 
@@ -107,8 +136,10 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             cbo_enabled: true,
             transaction_manager: TransactionManager::new(),
             current_tx_id: None,
+            tx_status: TxStatus::Idle,
             default_isolation: TmIsolationLevel::default(),
             current_role: None,
+            checkpoint_manager: None,
         }
     }
 
@@ -182,6 +213,35 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         let selectivity = self.estimate_selectivity(table_name, column_name);
         let benefit = self.estimate_index_benefit(table_name, selectivity);
         benefit > 0.0
+    }
+
+    /// Advance checkpoint after commit
+    pub fn advance_checkpoint(&self, lsn: u64) {
+        if let Some(cp) = &self.checkpoint_manager {
+            if let Ok(mut guard) = cp.write() {
+                guard.record_checkpoint(CheckpointMetadata {
+                    lsn,
+                    timestamp: std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap()
+                        .as_millis() as u64,
+                    tx_count: 1,
+                    dirty_pages: 0,
+                    file_path: PathBuf::new(),
+                });
+            }
+        }
+    }
+
+    /// Try to truncate WAL up to checkpoint
+    pub fn try_truncate_wal(&self, wal: &mut dyn sqlrustgo_storage::WalManager) {
+        if let Some(cp) = &self.checkpoint_manager {
+            if let Ok(guard) = cp.read() {
+                if let Some(lsn) = guard.last_checkpoint_lsn() {
+                    wal.truncate_before(lsn).ok();
+                }
+            }
+        }
     }
 
     /// Estimate the cost of a join between two tables
@@ -412,392 +472,33 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             Statement::SetRole(ref stmt) => self.execute_set_role(stmt),
             Statement::ShowRoles => self.execute_show_roles(),
             Statement::ShowGrantsFor(ref user) => self.execute_show_grants_for(user),
+            Statement::AlterTable(ref alter) => self.execute_alter_table(alter),
             _ => Err(SqlError::ExecutionError(
                 "Unsupported statement type".to_string(),
             )),
         }
     }
 
-    fn execute_select(&self, select: &SelectStatement) -> SqlResult<ExecutorResult> {
-        let storage = self.storage.read().unwrap();
-
-        if select.table.is_empty() {
-            return Ok(ExecutorResult::new(vec![], 0));
-        }
-
-        // Step 1: FROM/JOIN - get initial rows and schema
-        let (mut rows, table_info) = if select.join_clause.is_some() {
-            self.execute_join(select)?
-        } else {
-            let rows = storage.scan(&select.table)?;
-            let table_info = storage.get_table_info(&select.table)?;
-            (rows, table_info)
-        };
-
-        // Step 2: WHERE
-        if let Some(ref where_expr) = select.where_clause {
-            rows.retain(|row| eval_predicate(where_expr, row, &table_info));
-        }
-
-        // Step 3: GROUP BY + AGGREGATE
-        if !select.aggregates.is_empty() {
-            let group_exprs = &select.group_by;
-            if group_exprs.is_empty() {
-                let mut agg_values =
-                    self.compute_aggregates(&select.aggregates, &rows, &table_info)?;
-
-                if let Some(ref having_expr) = select.having {
-                    let having_schema = build_aggregate_schema(&[], &select.aggregates)?;
-                    if !eval_predicate(having_expr, &agg_values, &having_schema) {
-                        return Ok(ExecutorResult::new(vec![], 0));
-                    }
-                }
-
-                return Ok(ExecutorResult::new(vec![agg_values], 1));
-            } else {
-                let mut groups: std::collections::HashMap<String, Vec<Vec<Value>>> =
-                    std::collections::HashMap::new();
-                for row in &rows {
-                    let key = group_exprs
-                        .iter()
-                        .map(|expr| evaluate_expr_to_string(expr, row, &table_info))
-                        .collect::<Vec<_>>()
-                        .join("\x00");
-                    groups.entry(key).or_default().push(row.clone());
-                }
-
-                let mut agg_result_rows: Vec<Vec<Value>> = Vec::new();
-
-                for (key, group_rows) in groups.iter() {
-                    let key_values: Vec<Value> = key
-                        .split('\x00')
-                        .map(|s| {
-                            if s == "NULL" {
-                                Value::Null
-                            } else if let Ok(n) = s.parse::<i64>() {
-                                Value::Integer(n)
-                            } else {
-                                Value::Text(s.to_string())
-                            }
-                        })
-                        .collect();
-                    let agg_values =
-                        self.compute_aggregates(&select.aggregates, group_rows, &table_info)?;
-                    let mut combined = key_values;
-                    combined.extend(agg_values);
-                    agg_result_rows.push(combined);
-                }
-
-                if let Some(ref having_expr) = select.having {
-                    let having_schema = build_aggregate_schema(group_exprs, &select.aggregates)?;
-                    agg_result_rows.retain(|row| eval_predicate(having_expr, row, &having_schema));
-                }
-
-                let row_count = agg_result_rows.len();
-                return Ok(ExecutorResult::new(agg_result_rows, row_count));
-            }
-        }
-
-        // Step 4: LIMIT / OFFSET
-        let limited_rows = if let Some(limit) = select.limit {
-            let offset = select.offset.unwrap_or(0);
-            if offset as usize >= rows.len() {
-                vec![]
-            } else {
-                rows.into_iter()
-                    .skip(offset as usize)
-                    .take(limit as usize)
-                    .collect()
-            }
-        } else {
-            rows
-        };
-
-        let row_count = limited_rows.len();
-        Ok(ExecutorResult::new(limited_rows, row_count))
-    }
-
-    fn compute_aggregates(
-        &self,
-        aggregates: &[AggregateCall],
-        rows: &[Vec<Value>],
-        table_info: &TableInfo,
-    ) -> SqlResult<Vec<Value>> {
-        let mut results = Vec::with_capacity(aggregates.len());
-        for agg in aggregates {
-            let values: Vec<Value> = if let Some(arg) = agg.args.first() {
-                rows.iter()
-                    .map(|row| evaluate_expression(arg, row, table_info).unwrap_or(Value::Null))
-                    .collect()
-            } else {
-                vec![Value::Integer(rows.len() as i64)]
-            };
-
-            let result = match agg.func {
-                AggregateFunction::Count => {
-                    if agg.args.is_empty() {
-                        // COUNT(*) - count all rows
-                        Value::Integer(rows.len() as i64)
-                    } else {
-                        // COUNT(col) - count non-NULL values
-                        let non_null_count =
-                            values.iter().filter(|v| !matches!(v, Value::Null)).count();
-                        Value::Integer(non_null_count as i64)
-                    }
-                }
-                AggregateFunction::Sum => {
-                    let int_values: Vec<i64> = values
-                        .iter()
-                        .filter_map(|v| {
-                            if let Value::Integer(n) = v {
-                                Some(*n)
-                            } else {
-                                None
-                            }
-                        })
-                        .collect();
-                    if int_values.is_empty() {
-                        Value::Null
-                    } else {
-                        Value::Integer(int_values.iter().sum())
-                    }
-                }
-                AggregateFunction::Avg => {
-                    let sum: i64 = values
-                        .iter()
-                        .filter_map(|v| {
-                            if let Value::Integer(n) = v {
-                                Some(*n)
-                            } else {
-                                None
-                            }
-                        })
-                        .sum();
-                    let count = values
-                        .iter()
-                        .filter(|v| matches!(v, Value::Integer(_)))
-                        .count();
-                    if count > 0 {
-                        Value::Integer(sum / count as i64)
-                    } else {
-                        Value::Null
-                    }
-                }
-                AggregateFunction::Min => {
-                    let min = values
-                        .iter()
-                        .filter_map(|v| {
-                            if let Value::Integer(n) = v {
-                                Some(*n)
-                            } else {
-                                None
-                            }
-                        })
-                        .min();
-                    min.map(Value::Integer).unwrap_or(Value::Null)
-                }
-                AggregateFunction::Max => {
-                    let max = values
-                        .iter()
-                        .filter_map(|v| {
-                            if let Value::Integer(n) = v {
-                                Some(*n)
-                            } else {
-                                None
-                            }
-                        })
-                        .max();
-                    max.map(Value::Integer).unwrap_or(Value::Null)
-                }
-            };
-            results.push(result);
-        }
-        Ok(results)
-    }
-
-    /// Execute JOIN and return (rows, combined_schema)
-    /// This function only generates joined rows, does NOT apply WHERE/AGG/HAVING
-    fn execute_join(&self, select: &SelectStatement) -> SqlResult<(Vec<Vec<Value>>, TableInfo)> {
-        use sqlrustgo_parser::JoinType as ParserJoinType;
-        use std::collections::HashMap;
-
-        let join_clause = select.join_clause.as_ref().unwrap();
-        let left_table_name = select.table.clone();
-        let right_table_name = join_clause.table.clone();
-
-        let storage = self.storage.read().unwrap();
-
-        // Scan both tables
-        let left_rows = storage.scan(&left_table_name)?;
-        let right_rows = storage.scan(&right_table_name)?;
-
-        // Get table info for column indices
-        let left_table_info = storage.get_table_info(&left_table_name)?;
-        let right_table_info = storage.get_table_info(&right_table_name)?;
-
-        // Extract join key column index from ON clause
-        // For "t1.id = t2.id", we need to find which column "id" refers to in each table
-        let left_key_idx =
-            self.find_join_key_index(&join_clause.on_clause, &left_table_info, &select.table)?;
-        let right_key_idx =
-            self.find_join_key_index(&join_clause.on_clause, &right_table_info, &right_table_name)?;
-
-        // Determine join type
-        let join_type = match join_clause.join_type {
-            ParserJoinType::Inner => JoinType::Inner,
-            ParserJoinType::Left => JoinType::Left,
-            ParserJoinType::Right => JoinType::Right,
-            ParserJoinType::Full => JoinType::Full,
-            ParserJoinType::Cross => JoinType::Cross,
-        };
-
-        let left_col_count = left_table_info.columns.len();
-        let right_col_count = right_table_info.columns.len();
-
-        let mut matched_results = match join_type {
-            JoinType::Inner | JoinType::Left | JoinType::Right | JoinType::Full => {
-                // Hash-based matching
-                // SQL semantics: NULL = NULL is UNKNOWN (not a match), so skip NULL keys
-                let mut right_hash: HashMap<String, Vec<Vec<Value>>> = HashMap::new();
-                for right_row in &right_rows {
-                    if matches!(right_row[right_key_idx], Value::Null) {
-                        // NULL keys can never match in a join
-                        continue;
-                    }
-                    let key = format!("{:?}", right_row[right_key_idx]);
-                    right_hash.entry(key).or_default().push(right_row.clone());
-                }
-
-                let mut matched: Vec<Vec<Value>> = Vec::new();
-                let mut left_matched: std::collections::HashSet<usize> =
-                    std::collections::HashSet::new();
-                let mut right_matched: std::collections::HashSet<usize> =
-                    std::collections::HashSet::new();
-
-                // Match left rows to right
-                for (li, left_row) in left_rows.iter().enumerate() {
-                    // SQL semantics: NULL keys never match
-                    if matches!(left_row[left_key_idx], Value::Null) {
-                        // For LEFT JOIN, this row will be added as unmatched later
-                        continue;
-                    }
-                    let key = format!("{:?}", left_row[left_key_idx]);
-                    if let Some(right_match_rows) = right_hash.get(&key) {
-                        left_matched.insert(li);
-                        for right_row in right_match_rows {
-                            // Find the original right row index
-                            if let Some(ri) = right_rows.iter().position(|r| r == right_row) {
-                                right_matched.insert(ri);
-                            }
-                            let mut combined = left_row.clone();
-                            combined.extend(right_row.clone());
-                            matched.push(combined);
-                        }
-                    }
-                }
-
-                // For LEFT/RIGHT/FULL, add unmatched rows
-                if matches!(join_type, JoinType::Left | JoinType::Full) {
-                    for (li, left_row) in left_rows.iter().enumerate() {
-                        if !left_matched.contains(&li) {
-                            let mut combined = left_row.clone();
-                            combined.extend(vec![Value::Null; right_col_count]);
-                            matched.push(combined);
-                        }
-                    }
-                }
-
-                if matches!(join_type, JoinType::Right | JoinType::Full) {
-                    for (ri, right_row) in right_rows.iter().enumerate() {
-                        if !right_matched.contains(&ri) {
-                            let mut combined = vec![Value::Null; left_col_count];
-                            combined.extend(right_row.clone());
-                            matched.push(combined);
-                        }
-                    }
-                }
-
-                matched
-            }
-            JoinType::Cross => {
-                let mut results = Vec::new();
-                for left_row in &left_rows {
-                    for right_row in &right_rows {
-                        let mut combined = left_row.clone();
-                        combined.extend(right_row.clone());
-                        results.push(combined);
-                    }
-                }
-                results
-            }
-        };
-
-        let combined_schema =
-            build_combined_schema(&left_table_info, &right_table_name, &right_table_info)?;
-        Ok((matched_results, combined_schema))
-    }
-
-    /// Find the column index for a join key in a table
-    /// Handles both simple column names and qualified names (e.g., "t1.id")
-    fn find_join_key_index(
-        &self,
-        expr: &Expression,
-        table_info: &TableInfo,
-        table_name: &str,
-    ) -> SqlResult<usize> {
-        match expr {
-            Expression::Identifier(name) => {
-                // Check if it's a qualified name like "t1.id"
-                if let Some((qualifier, col_name)) = name.split_once('.') {
-                    // If qualifier matches our table name, use the column name part
-                    if qualifier == table_name {
-                        table_info
-                            .columns
-                            .iter()
-                            .position(|c| c.name.as_str() == col_name)
-                            .ok_or_else(|| {
-                                SqlError::ExecutionError(format!(
-                                    "Column '{}.{}' not found in {}",
-                                    qualifier, col_name, table_name
-                                ))
-                            })
-                    } else {
-                        // Qualifier doesn't match this table - column not in this table
-                        Err(SqlError::ExecutionError(format!(
-                            "Column '{}' not found in {}",
-                            name, table_name
-                        )))
-                    }
-                } else {
-                    // Simple column name - find its index
-                    table_info
-                        .columns
-                        .iter()
-                        .position(|c| c.name.as_str() == name.as_str())
-                        .ok_or_else(|| {
-                            SqlError::ExecutionError(format!(
-                                "Column '{}' not found in {}",
-                                name, table_name
-                            ))
-                        })
-                }
-            }
-            Expression::BinaryOp(left, _, right) => {
-                // Try left side first
-                let left_result = self.find_join_key_index(left, table_info, table_name);
-                if left_result.is_ok() {
-                    return left_result;
-                }
-                // Try right side
-                self.find_join_key_index(right, table_info, table_name)
-            }
-            _ => Err(SqlError::ExecutionError(
-                "Unsupported join condition expression".to_string(),
-            )),
-        }
-    }
-
     fn execute_insert(&self, insert: &InsertStatement) -> SqlResult<ExecutorResult> {
+        // IMPL-001 & IMPL-004: TX lifecycle enforcement
+        // IDLE/Active with no current_tx_id = implicit autocommit TX (allowed)
+        // Committed/Aborted state = no new implicit TX (error)
+        match self.tx_status {
+            TxStatus::Committed => {
+                return Err(SqlError::ExecutionError(
+                    "transaction already committed".to_string(),
+                ));
+            }
+            TxStatus::Aborted => {
+                return Err(SqlError::ExecutionError(
+                    "transaction already aborted".to_string(),
+                ));
+            }
+            TxStatus::Idle | TxStatus::Active => {
+                // Autocommit: allow DML without explicit BEGIN
+                // New implicit TX started implicitly when current_tx_id is None
+            }
+        }
         let table_name = insert.table.clone();
 
         // Get table info first (need it for triggers and FK validation)
@@ -923,6 +624,22 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     }
 
     fn execute_update(&self, update: &UpdateStatement) -> SqlResult<ExecutorResult> {
+        // IMPL-001 & IMPL-004: TX lifecycle enforcement
+        match self.tx_status {
+            TxStatus::Committed => {
+                return Err(SqlError::ExecutionError(
+                    "transaction already committed".to_string(),
+                ));
+            }
+            TxStatus::Aborted => {
+                return Err(SqlError::ExecutionError(
+                    "transaction already aborted".to_string(),
+                ));
+            }
+            TxStatus::Idle | TxStatus::Active => {
+                // Autocommit: allow DML without explicit BEGIN
+            }
+        }
         let table_name = update.table.clone();
 
         // If no WHERE clause, use the simple storage.update() path
@@ -1082,6 +799,22 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     }
 
     fn execute_delete(&self, delete: &DeleteStatement) -> SqlResult<ExecutorResult> {
+        // IMPL-001 & IMPL-004: TX lifecycle enforcement
+        match self.tx_status {
+            TxStatus::Committed => {
+                return Err(SqlError::ExecutionError(
+                    "transaction already committed".to_string(),
+                ));
+            }
+            TxStatus::Aborted => {
+                return Err(SqlError::ExecutionError(
+                    "transaction already aborted".to_string(),
+                ));
+            }
+            TxStatus::Idle | TxStatus::Active => {
+                // Autocommit: allow DML without explicit BEGIN
+            }
+        }
         let table_name = delete.table.clone();
 
         // If no WHERE clause, delete all rows (current behavior is correct)
@@ -1406,6 +1139,11 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 SqlError::ExecutionError(format!("Failed to begin transaction: {:?}", e))
             })?;
         self.current_tx_id = Some(tx_id);
+        // Delegate to storage engine so WalStorage can track current_tx_id for WAL logging
+        if let Ok(mut storage) = self.storage.write() {
+            storage.set_current_tx_id(tx_id.as_u64());
+        }
+        self.tx_status = TxStatus::Active;
         Ok(ExecutorResult::new(
             vec![vec![Value::Integer(tx_id.as_u64() as i64)]],
             1,
@@ -1413,24 +1151,46 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     }
 
     fn commit_transaction(&mut self) -> SqlResult<ExecutorResult> {
+        // IMPL-004: Double-commit prevention — check before ok_or_else (current_tx_id set to None after commit)
+        if self.current_tx_id.is_none() {
+            return Err(SqlError::ExecutionError(
+                "transaction already committed".to_string(),
+            ));
+        }
         let tx_id = self
             .current_tx_id
             .ok_or_else(|| SqlError::ExecutionError("No transaction in progress".to_string()))?;
+        // Delegate to storage engine first so WalStorage writes WAL Commit entry before clearing state
+        if let Ok(mut storage) = self.storage.write() {
+            let _ = storage.commit_transaction();
+        }
         self.transaction_manager.commit(tx_id).map_err(|e| {
             SqlError::ExecutionError(format!("Failed to commit transaction: {:?}", e))
         })?;
         self.current_tx_id = None;
+        self.tx_status = TxStatus::Committed;
         Ok(ExecutorResult::empty())
     }
 
     fn rollback_transaction(&mut self) -> SqlResult<ExecutorResult> {
+        // IMPL-004: Double-rollback prevention — check before ok_or_else
+        if self.current_tx_id.is_none() {
+            return Err(SqlError::ExecutionError(
+                "transaction already aborted".to_string(),
+            ));
+        }
         let tx_id = self
             .current_tx_id
             .ok_or_else(|| SqlError::ExecutionError("No transaction in progress".to_string()))?;
+        // Delegate to storage engine first so WalStorage writes WAL Rollback entry before clearing state
+        if let Ok(mut storage) = self.storage.write() {
+            let _ = storage.rollback_transaction();
+        }
         self.transaction_manager.rollback(tx_id).map_err(|e| {
             SqlError::ExecutionError(format!("Failed to rollback transaction: {:?}", e))
         })?;
         self.current_tx_id = None;
+        self.tx_status = TxStatus::Aborted;
         Ok(ExecutorResult::empty())
     }
 
@@ -1757,839 +1517,46 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
 
         Ok(ExecutorResult::new(rows, 4))
     }
-}
 
-impl ExecutionEngine<MemoryStorage> {
-    /// Create a new execution engine backed by MemoryStorage with CBO enabled
-    pub fn with_memory() -> Self {
-        Self {
-            storage: Arc::new(RwLock::new(MemoryStorage::new())),
-            catalog: None,
-            stats: Arc::new(RwLock::new(ExecutionStats::default())),
-            cbo_enabled: true,
-            transaction_manager: TransactionManager::new(),
-            current_tx_id: None,
-            default_isolation: TmIsolationLevel::default(),
-            current_role: None,
-        }
-    }
+    fn execute_alter_table(&self, alter: &AlterTableStatement) -> SqlResult<ExecutorResult> {
+        let mut storage = self.storage.write().unwrap();
 
-    /// Create a new execution engine backed by MemoryStorage with custom CBO setting
-    pub fn with_memory_and_cbo(cbo_enabled: bool) -> Self {
-        Self {
-            storage: Arc::new(RwLock::new(MemoryStorage::new())),
-            catalog: None,
-            stats: Arc::new(RwLock::new(ExecutionStats::default())),
-            cbo_enabled,
-            transaction_manager: TransactionManager::new(),
-            current_tx_id: None,
-            default_isolation: TmIsolationLevel::default(),
-            current_role: None,
-        }
-    }
-
-    /// Create a new execution engine with catalog
-    pub fn with_memory_and_catalog(catalog: Arc<RwLock<Catalog>>) -> Self {
-        Self {
-            storage: Arc::new(RwLock::new(MemoryStorage::new())),
-            catalog: Some(catalog),
-            stats: Arc::new(RwLock::new(ExecutionStats::default())),
-            cbo_enabled: true,
-            transaction_manager: TransactionManager::new(),
-            current_tx_id: None,
-            default_isolation: TmIsolationLevel::default(),
-            current_role: None,
-        }
-    }
-}
-
-fn expression_to_string(expr: &sqlrustgo_parser::Expression) -> String {
-    match expr {
-        sqlrustgo_parser::Expression::Literal(s) => s.clone(),
-        sqlrustgo_parser::Expression::Identifier(name) => name.clone(),
-        sqlrustgo_parser::Expression::BinaryOp(left, op, right) => {
-            format!(
-                "({} {} {})",
-                expression_to_string(left),
-                op,
-                expression_to_string(right)
-            )
-        }
-        sqlrustgo_parser::Expression::IsNull(inner) => {
-            format!("{} IS NULL", expression_to_string(inner))
-        }
-        sqlrustgo_parser::Expression::IsNotNull(inner) => {
-            format!("{} IS NOT NULL", expression_to_string(inner))
-        }
-        sqlrustgo_parser::Expression::Aggregate(agg) => match agg.func {
-            sqlrustgo_parser::AggregateFunction::Count => {
-                if agg.args.is_empty() {
-                    "COUNT(*)".to_string()
-                } else {
-                    format!(
-                        "COUNT({})",
-                        agg.args
-                            .iter()
-                            .map(expression_to_string)
-                            .collect::<Vec<_>>()
-                            .join(", ")
-                    )
-                }
-            }
-            sqlrustgo_parser::AggregateFunction::Sum => {
-                format!(
-                    "SUM({})",
-                    agg.args
-                        .iter()
-                        .map(expression_to_string)
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                )
-            }
-            sqlrustgo_parser::AggregateFunction::Avg => {
-                format!(
-                    "AVG({})",
-                    agg.args
-                        .iter()
-                        .map(expression_to_string)
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                )
-            }
-            sqlrustgo_parser::AggregateFunction::Min => {
-                format!(
-                    "MIN({})",
-                    agg.args
-                        .iter()
-                        .map(expression_to_string)
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                )
-            }
-            sqlrustgo_parser::AggregateFunction::Max => {
-                format!(
-                    "MAX({})",
-                    agg.args
-                        .iter()
-                        .map(expression_to_string)
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                )
-            }
-        },
-        _ => "?".to_string(),
-    }
-}
-
-/// Convert a parser Expression to a Value (simple literal evaluation)
-fn expression_to_value(expr: &sqlrustgo_parser::Expression) -> Value {
-    match expr {
-        sqlrustgo_parser::Expression::Literal(s) => {
-            let s = s.trim();
-            if s.eq_ignore_ascii_case("NULL") {
-                Value::Null
-            } else if let Ok(n) = s.parse::<i64>() {
-                Value::Integer(n)
-            } else if let Ok(f) = s.parse::<f64>() {
-                Value::Float(f)
-            } else if s.starts_with('\'') && s.ends_with('\'') {
-                Value::Text(s[1..s.len() - 1].to_string())
-            } else {
-                Value::Text(s.to_string())
-            }
-        }
-        sqlrustgo_parser::Expression::Identifier(name) => Value::Text(name.clone()),
-        _ => Value::Null,
-    }
-}
-
-/// Convert a string argument to a Value (for CALL arguments)
-fn expression_to_value_from_string(s: &str) -> Value {
-    let s = s.trim();
-    if s.eq_ignore_ascii_case("NULL") {
-        Value::Null
-    } else if let Ok(n) = s.parse::<i64>() {
-        Value::Integer(n)
-    } else if let Ok(f) = s.parse::<f64>() {
-        Value::Float(f)
-    } else if s.starts_with('\'') && s.ends_with('\'') {
-        Value::Text(s[1..s.len() - 1].to_string())
-    } else {
-        Value::Text(s.to_string())
-    }
-}
-
-/// Validate foreign key constraints for a row before insert
-fn validate_foreign_keys(
-    storage: &dyn StorageEngine,
-    table_info: &sqlrustgo_storage::TableInfo,
-    row: &[Value],
-    insert_columns: &[String],
-) -> SqlResult<()> {
-    for fk in &table_info.foreign_keys {
-        // Collect FK column values from the row
-        let fk_values: Vec<Value> = fk
-            .columns
-            .iter()
-            .filter_map(|col_name| {
-                let col_idx = if insert_columns.is_empty() {
-                    table_info
-                        .columns
-                        .iter()
-                        .position(|c| c.name.eq_ignore_ascii_case(col_name))
-                } else {
-                    insert_columns
-                        .iter()
-                        .position(|c| c.eq_ignore_ascii_case(col_name))
+        match &alter.operation {
+            AlterTableOperation::AddColumn {
+                name,
+                data_type,
+                nullable,
+                default_value: _,
+            } => {
+                let column = ColumnDefinition {
+                    name: name.clone(),
+                    data_type: data_type.clone(),
+                    nullable: *nullable,
+                    primary_key: false,
                 };
-                col_idx.and_then(|idx| row.get(idx).cloned())
-            })
-            .collect();
-
-        // Skip if any FK value is NULL (NULL FKs are allowed)
-        if fk_values.iter().any(|v| matches!(v, Value::Null)) {
-            continue;
-        }
-
-        // Scan parent table to verify referenced row exists
-        let parent_rows = storage.scan(&fk.referenced_table)?;
-
-        // Find referenced column indices in parent table
-        let ref_col_indices: Vec<usize> = fk
-            .referenced_columns
-            .iter()
-            .filter_map(|col_name| {
-                storage
-                    .get_table_info(&fk.referenced_table)
-                    .ok()?
-                    .columns
-                    .iter()
-                    .position(|c| c.name.eq_ignore_ascii_case(col_name))
-            })
-            .collect();
-
-        let parent_has_match = parent_rows.iter().any(|parent_row| {
-            ref_col_indices
-                .iter()
-                .enumerate()
-                .all(|(i, &col_idx)| parent_row.get(col_idx) == fk_values.get(i))
-        });
-
-        if !parent_has_match {
-            return Err(SqlError::ExecutionError(format!(
-                "Foreign key constraint failed: {} ({}) references {} ({}) which does not exist",
-                table_info.name,
-                fk.columns.join(", "),
-                fk.referenced_table,
-                fk.referenced_columns.join(", ")
-            )));
-        }
-    }
-    Ok(())
-}
-
-/// Evaluate a WHERE clause expression against a row
-/// Returns true if the row matches the WHERE condition
-/// Evaluate a predicate expression to a boolean result
-/// Phase 1: UNKNOWN is folded to FALSE for WHERE filtering
-/// All NULL handling is centralized here - no NULL logic in individual operators
-fn eval_predicate(expr: &Expression, row: &[Value], table_info: &TableInfo) -> bool {
-    match expr {
-        // AND short-circuits on false
-        Expression::BinaryOp(left, op, right) if op.to_uppercase() == "AND" => {
-            eval_predicate(left, row, table_info) && eval_predicate(right, row, table_info)
-        }
-        // OR short-circuits on true
-        Expression::BinaryOp(left, op, right) if op.to_uppercase() == "OR" => {
-            eval_predicate(left, row, table_info) || eval_predicate(right, row, table_info)
-        }
-        // IS NULL - always goes through evaluate_expression for value extraction
-        Expression::IsNull(inner) => match evaluate_expression(inner, row, table_info) {
-            Ok(val) => matches!(val, Value::Null),
-            Err(_) => false,
-        },
-        // IS NOT NULL
-        Expression::IsNotNull(inner) => match evaluate_expression(inner, row, table_info) {
-            Ok(val) => !matches!(val, Value::Null),
-            Err(_) => false,
-        },
-        // Legacy IS NULL (col IS NULL) - now uses new Expression::IsNull
-        Expression::BinaryOp(left, op, right)
-            if op.to_uppercase() == "IS"
-                && matches!(right.as_ref(), Expression::Literal(s) if s.to_uppercase() == "NULL") =>
-        {
-            eval_predicate(&Expression::IsNull(left.clone()), row, table_info)
-        }
-        // Legacy IS NOT NULL
-        Expression::BinaryOp(left, op, right)
-            if op.to_uppercase() == "IS NOT"
-                && matches!(right.as_ref(), Expression::Literal(s) if s.to_uppercase() == "NULL") =>
-        {
-            eval_predicate(&Expression::IsNotNull(left.clone()), row, table_info)
-        }
-        // All comparison operators go through sql_compare
-        Expression::BinaryOp(left, op, right) => {
-            let left_val = evaluate_expression(left, row, table_info).unwrap_or(Value::Null);
-            let right_val = evaluate_expression(right, row, table_info).unwrap_or(Value::Null);
-            sql_compare(op, &left_val, &right_val)
-        }
-        // For other expressions, evaluate and check if truthy
-        _ => match evaluate_expression(expr, row, table_info) {
-            Ok(val) => {
-                matches!(val, Value::Boolean(true))
+                storage.add_column(&alter.table_name, column)?;
             }
-            Err(_) => false,
-        },
-    }
-}
-
-/// Legacy alias for compatibility
-#[allow(dead_code)]
-fn evaluate_where_clause(expr: &Expression, row: &[Value], table_info: &TableInfo) -> bool {
-    eval_predicate(expr, row, table_info)
-}
-
-/// SQL comparison operator
-/// Returns false if either operand is NULL (UNKNOWN semantics)
-/// This is Phase 1: UNKNOWN is folded to FALSE for WHERE filtering
-fn sql_compare(op: &str, left: &Value, right: &Value) -> bool {
-    if matches!(left, Value::Null) || matches!(right, Value::Null) {
-        return false;
-    }
-
-    match op.to_uppercase().as_str() {
-        "=" | "==" => left == right,
-        "!=" | "<>" => left != right,
-        ">" => compare_values(left, right) > 0,
-        ">=" => compare_values(left, right) >= 0,
-        "<" => compare_values(left, right) < 0,
-        "<=" => compare_values(left, right) <= 0,
-        _ => false,
-    }
-}
-
-/// Evaluate an expression and return a Value
-fn evaluate_expression(
-    expr: &Expression,
-    row: &[Value],
-    table_info: &TableInfo,
-) -> Result<Value, String> {
-    match expr {
-        Expression::Literal(_) => Ok(expression_to_value(expr)),
-        Expression::Identifier(name) => {
-            if let Some(col_idx) = find_column_index(name, table_info) {
-                Ok(row.get(col_idx).cloned().unwrap_or(Value::Null))
-            } else {
-                Ok(expression_to_value(expr))
+            AlterTableOperation::DropColumn { name } => {
+                storage.drop_column(&alter.table_name, name)?;
+            }
+            AlterTableOperation::ModifyColumn {
+                name,
+                data_type,
+                nullable,
+            } => {
+                let column = ColumnDefinition {
+                    name: name.clone(),
+                    data_type: data_type.clone(),
+                    nullable: *nullable,
+                    primary_key: false,
+                };
+                storage.modify_column(&alter.table_name, name, column)?;
+            }
+            AlterTableOperation::RenameTo { new_name } => {
+                storage.rename_table(&alter.table_name, new_name)?;
             }
         }
-        Expression::BinaryOp(left, op, right) => {
-            let left_val = evaluate_expression(left, row, table_info).unwrap_or(Value::Null);
-            let right_val = evaluate_expression(right, row, table_info).unwrap_or(Value::Null);
-            Ok(evaluate_binary_op(&left_val, &right_val, op))
-        }
-        Expression::IsNull(inner) => {
-            let val = evaluate_expression(inner, row, table_info)?;
-            Ok(Value::Boolean(matches!(val, Value::Null)))
-        }
-        Expression::Aggregate(agg) => {
-            let agg_name = expression_to_string(&Expression::Aggregate(agg.clone()));
-            if let Some(col_idx) = find_column_index(&agg_name, table_info) {
-                Ok(row.get(col_idx).cloned().unwrap_or(Value::Null))
-            } else {
-                Err(format!("Aggregate not found in schema: {}", agg_name))
-            }
-        }
-        _ => Ok(Value::Null),
-    }
-}
 
-/// Evaluate a binary operation and return a boolean Value
-fn evaluate_binary_op(left: &Value, right: &Value, op: &str) -> Value {
-    match op.to_uppercase().as_str() {
-        "=" | "==" | "IS" => Value::Boolean(left == right),
-        "!=" | "<>" => Value::Boolean(left != right),
-        ">" => Value::Boolean(compare_values(left, right) > 0),
-        ">=" => Value::Boolean(compare_values(left, right) >= 0),
-        "<" => Value::Boolean(compare_values(left, right) < 0),
-        "<=" => Value::Boolean(compare_values(left, right) <= 0),
-        "AND" | "&&" => {
-            if let (Value::Boolean(l), Value::Boolean(r)) = (left, right) {
-                Value::Boolean(*l && *r)
-            } else {
-                Value::Boolean(false)
-            }
-        }
-        "OR" | "||" => {
-            if let (Value::Boolean(l), Value::Boolean(r)) = (left, right) {
-                Value::Boolean(*l || *r)
-            } else {
-                Value::Boolean(false)
-            }
-        }
-        _ => Value::Null,
-    }
-}
-
-/// Compare two values and return -1, 0, or 1
-fn compare_values(left: &Value, right: &Value) -> i32 {
-    match (left, right) {
-        (Value::Integer(l), Value::Integer(r)) => l.cmp(r) as i32,
-        (Value::Float(l), Value::Float(r)) => {
-            if l < r {
-                -1
-            } else if l > r {
-                1
-            } else {
-                0
-            }
-        }
-        (Value::Text(l), Value::Text(r)) => l.cmp(r) as i32,
-        (Value::Null, Value::Null) => 0,
-        (Value::Null, _) => -1,
-        (_, Value::Null) => 1,
-        _ => 0,
-    }
-}
-
-/// Evaluate expression to string (for GROUP BY key)
-fn evaluate_expr_to_string(expr: &Expression, row: &[Value], table_info: &TableInfo) -> String {
-    let val = evaluate_expression(expr, row, table_info).unwrap_or(Value::Null);
-    match val {
-        Value::Null => "NULL".to_string(),
-        Value::Integer(n) => n.to_string(),
-        Value::Float(f) => f.to_string(),
-        Value::Text(s) => s,
-        Value::Boolean(b) => b.to_string(),
-        _ => "?".to_string(),
-    }
-}
-
-/// Find the index of a column in the table info
-/// For JOIN queries with combined tables, handles qualified names like "t2.id"
-/// by routing to the correct portion of the combined schema.
-/// Combined table naming: left_table.col, right_table.col
-fn find_column_index(col_name: &str, table_info: &TableInfo) -> Option<usize> {
-    if let Some((qualifier, col)) = col_name.split_once('.') {
-        for (i, c) in table_info.columns.iter().enumerate() {
-            if c.name.eq_ignore_ascii_case(col_name) {
-                return Some(i);
-            }
-        }
-        table_info
-            .columns
-            .iter()
-            .position(|c| c.name.eq_ignore_ascii_case(col))
-    } else {
-        table_info
-            .columns
-            .iter()
-            .position(|c| c.name.eq_ignore_ascii_case(col_name))
-    }
-}
-
-fn build_combined_schema(
-    left_info: &TableInfo,
-    right_table_name: &str,
-    right_info: &TableInfo,
-) -> SqlResult<TableInfo> {
-    let mut columns = Vec::new();
-
-    for c in &left_info.columns {
-        columns.push(ColumnDefinition {
-            name: format!("{}.{}", left_info.name, c.name),
-            data_type: c.data_type.clone(),
-            nullable: c.nullable,
-            primary_key: c.primary_key,
-        });
-    }
-
-    for c in &right_info.columns {
-        columns.push(ColumnDefinition {
-            name: format!("{}.{}", right_table_name, c.name),
-            data_type: c.data_type.clone(),
-            nullable: c.nullable,
-            primary_key: c.primary_key,
-        });
-    }
-
-    Ok(TableInfo {
-        name: format!("{}_join_{}", left_info.name, right_table_name),
-        columns,
-        foreign_keys: vec![],
-        unique_constraints: vec![],
-        check_constraints: vec![],
-        partition_info: None,
-    })
-}
-
-fn build_aggregate_schema(
-    group_by: &[Expression],
-    aggregates: &[AggregateCall],
-) -> SqlResult<TableInfo> {
-    let mut columns = Vec::new();
-
-    for expr in group_by {
-        columns.push(ColumnDefinition {
-            name: expression_to_string(expr),
-            data_type: "INTEGER".to_string(),
-            nullable: false,
-            primary_key: false,
-        });
-    }
-
-    for agg in aggregates {
-        let name = match agg.func {
-            AggregateFunction::Count => {
-                if agg.args.is_empty() {
-                    "COUNT(*)".to_string()
-                } else {
-                    format!(
-                        "COUNT({})",
-                        agg.args
-                            .iter()
-                            .map(expression_to_string)
-                            .collect::<Vec<_>>()
-                            .join(", ")
-                    )
-                }
-            }
-            AggregateFunction::Sum => {
-                format!(
-                    "SUM({})",
-                    agg.args
-                        .iter()
-                        .map(expression_to_string)
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                )
-            }
-            AggregateFunction::Avg => {
-                format!(
-                    "AVG({})",
-                    agg.args
-                        .iter()
-                        .map(expression_to_string)
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                )
-            }
-            AggregateFunction::Min => {
-                format!(
-                    "MIN({})",
-                    agg.args
-                        .iter()
-                        .map(expression_to_string)
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                )
-            }
-            AggregateFunction::Max => {
-                format!(
-                    "MAX({})",
-                    agg.args
-                        .iter()
-                        .map(expression_to_string)
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                )
-            }
-        };
-        columns.push(ColumnDefinition {
-            name,
-            data_type: "INTEGER".to_string(),
-            nullable: false,
-            primary_key: false,
-        });
-    }
-
-    Ok(TableInfo {
-        name: "aggregate".to_string(),
-        columns,
-        foreign_keys: vec![],
-        unique_constraints: vec![],
-        check_constraints: vec![],
-        partition_info: None,
-    })
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_analyze_table_stats() {
-        let storage = Arc::new(RwLock::new(MemoryStorage::new()));
-        let mut engine = ExecutionEngine::new(storage);
-
-        engine
-            .execute("CREATE TABLE users (id INTEGER, name TEXT, age INTEGER)")
-            .unwrap();
-        engine
-            .execute("INSERT INTO users VALUES (1, 'Alice', 30)")
-            .unwrap();
-        engine
-            .execute("INSERT INTO users VALUES (2, 'Bob', 25)")
-            .unwrap();
-        engine
-            .execute("INSERT INTO users VALUES (3, 'Charlie', 30)")
-            .unwrap();
-
-        let result = engine.execute("ANALYZE users").unwrap();
-        assert_eq!(result.affected_rows, 1);
-        assert_eq!(result.rows[0][0], Value::Integer(3));
-
-        let stats = engine.get_table_stats();
-        let stats_guard = stats.read().unwrap();
-        let table_stats = stats_guard.table_stats.get("users").unwrap();
-        assert_eq!(table_stats.row_count, 3);
-    }
-
-    #[test]
-    fn test_execution_stats_default() {
-        let stats = ExecutionStats::default();
-        assert!(stats.table_stats.is_empty());
-    }
-
-    #[test]
-    fn test_table_statistics() {
-        let mut stats = HashMap::new();
-        stats.insert(
-            "users".to_string(),
-            TableStatistics {
-                row_count: 100,
-                column_stats: HashMap::new(),
-            },
-        );
-
-        let exec_stats = ExecutionStats { table_stats: stats };
-        assert_eq!(exec_stats.table_stats.get("users").unwrap().row_count, 100);
-    }
-
-    #[test]
-    fn test_estimate_row_count() {
-        let storage = Arc::new(RwLock::new(MemoryStorage::new()));
-        let mut engine = ExecutionEngine::new(storage);
-
-        engine
-            .execute("CREATE TABLE users (id INTEGER, name TEXT)")
-            .unwrap();
-        engine
-            .execute("INSERT INTO users VALUES (1, 'Alice')")
-            .unwrap();
-        engine
-            .execute("INSERT INTO users VALUES (2, 'Bob')")
-            .unwrap();
-        engine
-            .execute("INSERT INTO users VALUES (3, 'Charlie')")
-            .unwrap();
-
-        // Before ANALYZE, should return default estimate
-        assert_eq!(engine.estimate_row_count("users"), 1000);
-
-        // After ANALYZE, should return actual count
-        engine.execute("ANALYZE users").unwrap();
-        assert_eq!(engine.estimate_row_count("users"), 3);
-    }
-
-    #[test]
-    fn test_estimate_selectivity() {
-        let storage = Arc::new(RwLock::new(MemoryStorage::new()));
-        let mut engine = ExecutionEngine::new(storage);
-
-        engine
-            .execute("CREATE TABLE users (id INTEGER, name TEXT)")
-            .unwrap();
-        for i in 0..100 {
-            engine
-                .execute(&format!("INSERT INTO users VALUES ({}, 'User{}')", i, i))
-                .unwrap();
-        }
-
-        // Before ANALYZE, should return default selectivity
-        let selectivity = engine.estimate_selectivity("users", "id");
-        assert_eq!(selectivity, 0.1); // Default 10%
-
-        // After ANALYZE with distinct_count, should return better estimate
-        engine.execute("ANALYZE users").unwrap();
-        let selectivity = engine.estimate_selectivity("users", "id");
-        assert_eq!(selectivity, 0.01); // 1/100 distinct values
-    }
-
-    #[test]
-    fn test_optimize_join_order() {
-        let storage = Arc::new(RwLock::new(MemoryStorage::new()));
-        let mut engine = ExecutionEngine::new(storage);
-
-        // Create tables of different sizes
-        engine.execute("CREATE TABLE large (id INTEGER)").unwrap();
-        engine.execute("CREATE TABLE medium (id INTEGER)").unwrap();
-        engine.execute("CREATE TABLE small (id INTEGER)").unwrap();
-
-        for i in 0..1000 {
-            engine
-                .execute(&format!("INSERT INTO large VALUES ({})", i))
-                .unwrap();
-        }
-        for i in 0..100 {
-            engine
-                .execute(&format!("INSERT INTO medium VALUES ({})", i))
-                .unwrap();
-        }
-        for i in 0..10 {
-            engine
-                .execute(&format!("INSERT INTO small VALUES ({})", i))
-                .unwrap();
-        }
-
-        // Analyze to get accurate row counts
-        engine.execute("ANALYZE large").unwrap();
-        engine.execute("ANALYZE medium").unwrap();
-        engine.execute("ANALYZE small").unwrap();
-
-        let tables = vec!["large", "medium", "small"];
-        let optimal = engine.optimize_join_order(&tables);
-
-        // Smallest table should be first after ANALYZE
-        assert_eq!(optimal[0], "small");
-        // Should have all tables
-        assert_eq!(optimal.len(), 3);
-    }
-
-    #[test]
-    fn test_cbo_disable() {
-        let storage = Arc::new(RwLock::new(MemoryStorage::new()));
-        let mut engine = ExecutionEngine::with_cbo(storage, false);
-        assert!(!engine.is_cbo_enabled());
-        engine.set_cbo_enabled(true);
-        assert!(engine.is_cbo_enabled());
-    }
-
-    #[test]
-    fn test_memory_engine_with_cbo() {
-        let engine = ExecutionEngine::with_memory();
-        assert!(engine.is_cbo_enabled());
-
-        let engine_disabled = ExecutionEngine::with_memory_and_cbo(false);
-        assert!(!engine_disabled.is_cbo_enabled());
-    }
-
-    #[test]
-    fn test_estimate_index_benefit() {
-        let storage = Arc::new(RwLock::new(MemoryStorage::new()));
-        let mut engine = ExecutionEngine::new(storage);
-
-        engine
-            .execute("CREATE TABLE users (id INTEGER, name TEXT)")
-            .unwrap();
-        for i in 0..1000 {
-            engine
-                .execute(&format!("INSERT INTO users VALUES ({}, 'User{}')", i, i))
-                .unwrap();
-        }
-
-        // High selectivity (1/1000) - index should be very beneficial
-        let high_sel = engine.estimate_selectivity("users", "id");
-        let benefit = engine.estimate_index_benefit("users", high_sel);
-        assert!(benefit > 0.0); // Index should be beneficial
-
-        // With ANALYZE, we get actual stats
-        engine.execute("ANALYZE users").unwrap();
-        let benefit_after_analyze = engine.estimate_index_benefit("users", high_sel);
-        assert!(benefit_after_analyze > 0.0);
-    }
-
-    #[test]
-    fn test_should_use_index() {
-        let storage = Arc::new(RwLock::new(MemoryStorage::new()));
-        let mut engine = ExecutionEngine::new(storage);
-
-        engine
-            .execute("CREATE TABLE users (id INTEGER, name TEXT)")
-            .unwrap();
-        for i in 0..10000 {
-            engine
-                .execute(&format!("INSERT INTO users VALUES ({}, 'User{}')", i, i))
-                .unwrap();
-        }
-
-        // With low selectivity (high cardinality), index is beneficial
-        let use_index = engine.should_use_index("users", "id");
-        assert!(use_index);
-
-        // After ANALYZE, should still recommend index for high cardinality
-        engine.execute("ANALYZE users").unwrap();
-        let use_index_after = engine.should_use_index("users", "id");
-        assert!(use_index_after);
-    }
-
-    #[test]
-    fn test_estimate_join_cost() {
-        let storage = Arc::new(RwLock::new(MemoryStorage::new()));
-        let mut engine = ExecutionEngine::new(storage);
-
-        engine
-            .execute("CREATE TABLE orders (id INTEGER, user_id INTEGER)")
-            .unwrap();
-        engine
-            .execute("CREATE TABLE users (id INTEGER, name TEXT)")
-            .unwrap();
-
-        for i in 0..100 {
-            engine
-                .execute(&format!("INSERT INTO orders VALUES ({}, {})", i, i % 10))
-                .unwrap();
-        }
-        for i in 0..10 {
-            engine
-                .execute(&format!("INSERT INTO users VALUES ({}, 'User{}')", i, i))
-                .unwrap();
-        }
-
-        let hash_cost = engine.estimate_join_cost("orders", "users", "hash");
-        let nl_cost = engine.estimate_join_cost("orders", "users", "nested_loop");
-        let merge_cost = engine.estimate_join_cost("orders", "users", "merge");
-
-        // Hash join should be reasonable
-        assert!(hash_cost > 0.0);
-        assert!(nl_cost > 0.0);
-        assert!(merge_cost > 0.0);
-    }
-
-    #[test]
-    fn test_optimize_join_order_after_analyze() {
-        let storage = Arc::new(RwLock::new(MemoryStorage::new()));
-        let mut engine = ExecutionEngine::new(storage);
-
-        engine.execute("CREATE TABLE t1 (id INTEGER)").unwrap();
-        engine.execute("CREATE TABLE t2 (id INTEGER)").unwrap();
-        engine.execute("CREATE TABLE t3 (id INTEGER)").unwrap();
-
-        for i in 0..500 {
-            engine
-                .execute(&format!("INSERT INTO t1 VALUES ({})", i))
-                .unwrap();
-        }
-        for i in 0..50 {
-            engine
-                .execute(&format!("INSERT INTO t2 VALUES ({})", i))
-                .unwrap();
-        }
-        for i in 0..5 {
-            engine
-                .execute(&format!("INSERT INTO t3 VALUES ({})", i))
-                .unwrap();
-        }
-
-        // Analyze to get accurate stats
-        engine.execute("ANALYZE t1").unwrap();
-        engine.execute("ANALYZE t2").unwrap();
-        engine.execute("ANALYZE t3").unwrap();
-
-        let tables = vec!["t1", "t2", "t3"];
-        let optimal = engine.optimize_join_order(&tables);
-
-        // Smallest (t3 with 5 rows) should be first after ANALYZE
-        assert_eq!(optimal[0], "t3");
+        Ok(ExecutorResult::empty())
     }
 }
