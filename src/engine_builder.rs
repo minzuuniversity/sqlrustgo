@@ -33,6 +33,7 @@ impl ExecutionEngine<MemoryStorage> {
             tx_status: TxStatus::Idle,
             default_isolation: TmIsolationLevel::default(),
             current_role: None,
+            checkpoint_manager: None,
         }
     }
 
@@ -48,6 +49,7 @@ impl ExecutionEngine<MemoryStorage> {
             tx_status: TxStatus::Idle,
             default_isolation: TmIsolationLevel::default(),
             current_role: None,
+            checkpoint_manager: None,
         }
     }
 
@@ -63,6 +65,7 @@ impl ExecutionEngine<MemoryStorage> {
             tx_status: TxStatus::Idle,
             default_isolation: TmIsolationLevel::default(),
             current_role: None,
+            checkpoint_manager: None,
         }
     }
 }
@@ -89,6 +92,7 @@ impl ExecutionEngine<MemoryStorage> {
             tx_status: TxStatus::Idle,
             default_isolation: TmIsolationLevel::default(),
             current_role: None,
+            checkpoint_manager: None,
         }
     }
 }
@@ -120,6 +124,7 @@ impl ExecutionEngine<MemoryStorage> {
             tx_status: TxStatus::Idle,
             default_isolation: TmIsolationLevel::default(),
             current_role: None,
+            checkpoint_manager: None,
         })
     }
 
@@ -146,6 +151,7 @@ impl ExecutionEngine<MemoryStorage> {
             tx_status: TxStatus::Idle,
             default_isolation: TmIsolationLevel::default(),
             current_role: None,
+            checkpoint_manager: None,
         })
     }
 
