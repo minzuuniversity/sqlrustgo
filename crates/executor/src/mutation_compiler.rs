@@ -107,3 +107,46 @@ fn compute_mutation_hash(canonical: &[CanonicalExpr]) -> u64 {
     }
     hasher.finish()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sqlrustgo_planner::Expr;
+    use sqlrustgo_types::Value;
+
+    #[test]
+    fn test_canonicalize_literal() {
+        let expr = Expr::Literal(Value::Integer(42));
+        let canon = canonicalize_expr(&expr);
+        assert!(matches!(canon, CanonicalExpr::Const(Value::Integer(42))));
+    }
+
+    #[test]
+    fn test_canonicalize_column() {
+        let expr = Expr::Column(sqlrustgo_planner::Column { name: "id".into(), relation: None });
+        let canon = canonicalize_expr(&expr);
+        assert!(matches!(canon, CanonicalExpr::Column(ref s) if s == "id"));
+    }
+
+    #[test]
+    fn test_mutation_compiler_compile() {
+        let assignments = vec![
+            Assignment { column: "name".into(), expr: Expr::Literal(Value::Text("Alice".into())) },
+        ];
+        let mutation = MutationCompiler::compile(assignments.clone());
+        assert_eq!(mutation.assignments().len(), 1);
+        assert_eq!(mutation.assignments()[0].column, "name");
+    }
+
+    #[test]
+    fn test_row_mutation_new() {
+        let mutation = RowMutation::new(vec![], 42);
+        assert_eq!(mutation.mutation_hash(), 42);
+    }
+
+    #[test]
+    fn test_canonical_expr_debug() {
+        let c = CanonicalExpr::Column("x".into());
+        assert!(!format!("{:?}", c).is_empty());
+    }
+}
