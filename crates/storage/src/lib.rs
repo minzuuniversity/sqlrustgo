@@ -28,8 +28,8 @@ pub use engine::{
 };
 pub use file_storage::FileStorage;
 pub use page::Page;
+pub use recovery_engine::{RecoveryEngine, RecoveryEngineImpl, RecoveryReport};
 pub use vtu_guard::VtuGuard;
-pub use wal::recovery_engine::{RecoveryEngine, RecoveryReport};
 pub use wal::{FileBackedWalManager, MemoryWalManager, WalManager};
 pub use wal_legacy::{WalEntry, WalEntryType};
 pub use wal_storage::WalStorage;
