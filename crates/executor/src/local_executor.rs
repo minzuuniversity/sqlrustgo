@@ -1463,12 +1463,11 @@ impl<'a> LocalExecutor<'a> {
         let sql_upper = ctx.sql.to_uppercase();
 
         if sql_upper.starts_with("DELETE") {
-            let table = ctx.sql.trim();
-            let affected = {
-                let mut storage = facade.storage.write();
+            // P0 FIX (SGL-005): Use execute_dml to go through WAL, not direct storage.write()
+            let table = ctx.sql.trim().strip_prefix("DELETE").map(|s| s.trim().strip_prefix("FROM").map(|t| t.trim()).unwrap_or(s.trim())).unwrap_or(ctx.sql.trim());
+            let affected = facade.execute_dml(|storage| {
                 storage.delete(table, &[])
-                    .map_err(|e| sqlrustgo_types::SqlError::ExecutionError(e.to_string()))?
-            };
+            }).map_err(|e| sqlrustgo_types::SqlError::ExecutionError(e.to_string()))?;
             Ok(crate::execution::ExecutionResult {
                 affected_rows: affected,
                 last_insert_id: None,
