@@ -530,7 +530,11 @@ mod tests {
             Value::Boolean(true)
         );
         assert_eq!(
-            eval_binary_op(&Value::Boolean(true), &Value::Boolean(false), &Operator::And),
+            eval_binary_op(
+                &Value::Boolean(true),
+                &Value::Boolean(false),
+                &Operator::And
+            ),
             Value::Boolean(false)
         );
         // And with non-boolean
@@ -544,7 +548,11 @@ mod tests {
             Value::Boolean(true)
         );
         assert_eq!(
-            eval_binary_op(&Value::Boolean(false), &Value::Boolean(false), &Operator::Or),
+            eval_binary_op(
+                &Value::Boolean(false),
+                &Value::Boolean(false),
+                &Operator::Or
+            ),
             Value::Boolean(false)
         );
         // Or with non-boolean
@@ -573,18 +581,54 @@ mod tests {
     #[test]
     fn test_op_compare_edge_cases() {
         // NotEq operator
-        assert!(op_compare(&Operator::NotEq, &Value::Integer(1), &Value::Integer(2)));
-        assert!(!op_compare(&Operator::NotEq, &Value::Integer(1), &Value::Integer(1)));
+        assert!(op_compare(
+            &Operator::NotEq,
+            &Value::Integer(1),
+            &Value::Integer(2)
+        ));
+        assert!(!op_compare(
+            &Operator::NotEq,
+            &Value::Integer(1),
+            &Value::Integer(1)
+        ));
         // GtEq with matching values
-        assert!(op_compare(&Operator::GtEq, &Value::Integer(5), &Value::Integer(3)));
-        assert!(op_compare(&Operator::GtEq, &Value::Integer(5), &Value::Integer(5)));
-        assert!(!op_compare(&Operator::GtEq, &Value::Integer(3), &Value::Integer(5)));
+        assert!(op_compare(
+            &Operator::GtEq,
+            &Value::Integer(5),
+            &Value::Integer(3)
+        ));
+        assert!(op_compare(
+            &Operator::GtEq,
+            &Value::Integer(5),
+            &Value::Integer(5)
+        ));
+        assert!(!op_compare(
+            &Operator::GtEq,
+            &Value::Integer(3),
+            &Value::Integer(5)
+        ));
         // LtEq with matching values
-        assert!(op_compare(&Operator::LtEq, &Value::Integer(3), &Value::Integer(5)));
-        assert!(op_compare(&Operator::LtEq, &Value::Integer(5), &Value::Integer(5)));
-        assert!(!op_compare(&Operator::LtEq, &Value::Integer(6), &Value::Integer(5)));
+        assert!(op_compare(
+            &Operator::LtEq,
+            &Value::Integer(3),
+            &Value::Integer(5)
+        ));
+        assert!(op_compare(
+            &Operator::LtEq,
+            &Value::Integer(5),
+            &Value::Integer(5)
+        ));
+        assert!(!op_compare(
+            &Operator::LtEq,
+            &Value::Integer(6),
+            &Value::Integer(5)
+        ));
         // Unknown operator
-        assert!(!op_compare(&Operator::Like, &Value::Integer(1), &Value::Integer(1)));
+        assert!(!op_compare(
+            &Operator::Like,
+            &Value::Integer(1),
+            &Value::Integer(1)
+        ));
         // Null comparisons
         assert!(!op_compare(&Operator::Eq, &Value::Integer(1), &Value::Null));
         assert!(!op_compare(&Operator::Lt, &Value::Null, &Value::Null));
@@ -596,7 +640,11 @@ mod tests {
             Value::Boolean(true)
         );
         assert_eq!(
-            eval_binary_op(&Value::Boolean(false), &Value::Boolean(false), &Operator::Or),
+            eval_binary_op(
+                &Value::Boolean(false),
+                &Value::Boolean(false),
+                &Operator::Or
+            ),
             Value::Boolean(false)
         );
     }
