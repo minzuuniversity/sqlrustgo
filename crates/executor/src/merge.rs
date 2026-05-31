@@ -6,7 +6,8 @@
 //! ## VTU Enforcement
 //! ALL DML operations go through ExecutionEngine::execute() - NO direct storage access.
 
-use sqlrustgo_parser::{Expression, MergeStatement};
+use sqlrustgo_parser::Expression;
+use sqlrustgo_planner::MergeStatement;
 use sqlrustgo_storage::{StorageEngine, TableInfo};
 use sqlrustgo_types::{SqlError, SqlResult, Value};
 use std::sync::{Arc, Mutex, RwLock};
