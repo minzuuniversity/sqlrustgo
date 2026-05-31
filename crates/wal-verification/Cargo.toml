@@ -14,3 +14,4 @@ version = "1.8.0"
 
 [dev-dependencies]
 tempfile = "3.14"
+sqlrustgo-storage = { path = "../storage" }
