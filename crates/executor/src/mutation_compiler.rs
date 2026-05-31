@@ -123,16 +123,20 @@ mod tests {
 
     #[test]
     fn test_canonicalize_column() {
-        let expr = Expr::Column(sqlrustgo_planner::Column { name: "id".into(), relation: None });
+        let expr = Expr::Column(sqlrustgo_planner::Column {
+            name: "id".into(),
+            relation: None,
+        });
         let canon = canonicalize_expr(&expr);
         assert!(matches!(canon, CanonicalExpr::Column(ref s) if s == "id"));
     }
 
     #[test]
     fn test_mutation_compiler_compile() {
-        let assignments = vec![
-            Assignment { column: "name".into(), expr: Expr::Literal(Value::Text("Alice".into())) },
-        ];
+        let assignments = vec![Assignment {
+            column: "name".into(),
+            expr: Expr::Literal(Value::Text("Alice".into())),
+        }];
         let mutation = MutationCompiler::compile(assignments.clone());
         assert_eq!(mutation.assignments().len(), 1);
         assert_eq!(mutation.assignments()[0].column, "name");
