@@ -26,10 +26,6 @@ pub struct UniqueConstraintViolation {
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct Key(pub i64);
 
-/// B+Tree key wrapper for i64 keys
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
-pub struct Key(pub i64);
-
 /// Composite key for multi-column indexes - uses Vec<Value> with lexicographic ordering
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct CompositeKey {
@@ -79,14 +75,8 @@ fn compare_values(lhs: &Value, rhs: &Value) -> std::cmp::Ordering {
             Value::Boolean(_) => 1,
             Value::Integer(_) => 2,
             Value::Float(_) => 3,
-            Value::Decimal(_) => 4,
-            Value::Text(_) => 5,
-            Value::Blob(_) => 6,
-            Value::Date(_) => 7,
-            Value::Timestamp(_) => 8,
-            Value::Uuid(_) => 9,
-            Value::Array(_) => 10,
-            Value::Enum(_, _) => 11,
+            Value::Text(_) => 4,
+            Value::Blob(_) => 5,
         }
     }
 
