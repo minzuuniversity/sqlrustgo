@@ -1,9 +1,9 @@
 # v3.8.0 Integration Gate Report
 
 **Date**: 2026-06-01
-**Branch**: `develop/v3.8.0` (HEAD: `474b3650`)
+**Branch**: `develop/v3.8.0` (HEAD: `126c48b1`)
 **Gate Type**: Integration Gate (post-Beta, pre-RC)
-**Result**: ✅ PASS — 4/4 sections
+**Result**: ✅ PASS — 4/4 sections | SGL: 4/5 PASS | WAL: 22/22 + 5/5
 
 ---
 
@@ -121,11 +121,12 @@ Based on `ISSUE_AUDIT_AND_GAP_ANALYSIS.md` recommendations:
 
 | PR | Description | Status |
 |----|-------------|--------|
+| #2717 | fix(format): resolve fmt violations from PR #2716 | ✅ Merged |
+| #2716 | docs: RECOVERY TEST DESIGN + INT1 RTI Chain + 22/22 PASS | ✅ Merged |
+| #2714 | docs: add INTEGRATION_GATE_REPORT.md | ✅ Merged |
 | #2713 | feat(gate): integration gate system | ✅ Merged |
 | #2711 | feat(wal): WAL lifecycle integration | ✅ Merged |
 | #2707 | fix(storage): WAL replay correctness | ✅ Merged |
-| #2704 | fix: B4 format + AV-001~007 | ✅ Merged |
-| #2703 | fix: B4 format violations | ✅ Merged |
 | #2699 | PR-830F WAL checkpoint (duplicate) | ❌ Closed as duplicate |
 
 ---
