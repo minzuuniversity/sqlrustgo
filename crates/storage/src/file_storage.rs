@@ -1366,6 +1366,10 @@ impl StorageEngine for FileStorage {
             .ok_or_else(|| SqlError::TableNotFound(table.to_string()))
     }
 
+    fn flush(&mut self) -> SqlResult<()> {
+        self.flush_all_buffers()
+    }
+
     fn has_table(&self, table: &str) -> bool {
         self.tables.contains_key(table)
     }
