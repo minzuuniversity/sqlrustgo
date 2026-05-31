@@ -21,13 +21,13 @@ use sqlrustgo_executor::trigger::{
 };
 use sqlrustgo_executor::ExecutorResult;
 use sqlrustgo_parser::parser::{
-    AggregateCall, AggregateFunction, CallStatement, CreateIndexStatement,
-    CreateProcedureStatement, CreateRoleStatement, CreateTableStatement, CreateTriggerStatement,
-    DropRoleStatement, DropTableStatement, GrantRoleStatement, GrantStatement, InsertStatement,
-    ObjectType as ParserObjectType, Privilege as ParserPrivilege, RevokeRoleStatement,
-    RevokeStatement, SelectStatement, SetRoleStatement, StoredProcParam as ParserStoredProcParam,
-    StoredProcParamMode as ParserParamMode, StoredProcStatement as ParserStatement,
-    TruncateStatement,
+    AggregateCall, AggregateFunction, AlterTableOperation, AlterTableStatement, CallStatement,
+    CreateIndexStatement, CreateProcedureStatement, CreateRoleStatement, CreateTableStatement,
+    CreateTriggerStatement, DropRoleStatement, DropTableStatement, GrantRoleStatement,
+    GrantStatement, InsertStatement, ObjectType as ParserObjectType, Privilege as ParserPrivilege,
+    RevokeRoleStatement, RevokeStatement, SelectStatement, SetRoleStatement,
+    StoredProcParam as ParserStoredProcParam, StoredProcParamMode as ParserParamMode,
+    StoredProcStatement as ParserStatement, TruncateStatement,
 };
 use sqlrustgo_parser::transaction::IsolationLevel as ParserIsolationLevel;
 use sqlrustgo_parser::JoinType;
@@ -438,6 +438,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             Statement::SetRole(ref stmt) => self.execute_set_role(stmt),
             Statement::ShowRoles => self.execute_show_roles(),
             Statement::ShowGrantsFor(ref user) => self.execute_show_grants_for(user),
+            Statement::AlterTable(ref alter) => self.execute_alter_table(alter),
             _ => Err(SqlError::ExecutionError(
                 "Unsupported statement type".to_string(),
             )),
@@ -1481,5 +1482,47 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             .collect();
 
         Ok(ExecutorResult::new(rows, 4))
+    }
+
+    fn execute_alter_table(&self, alter: &AlterTableStatement) -> SqlResult<ExecutorResult> {
+        let mut storage = self.storage.write().unwrap();
+
+        match &alter.operation {
+            AlterTableOperation::AddColumn {
+                name,
+                data_type,
+                nullable,
+                default_value: _,
+            } => {
+                let column = ColumnDefinition {
+                    name: name.clone(),
+                    data_type: data_type.clone(),
+                    nullable: *nullable,
+                    primary_key: false,
+                };
+                storage.add_column(&alter.table_name, column)?;
+            }
+            AlterTableOperation::DropColumn { name } => {
+                storage.drop_column(&alter.table_name, name)?;
+            }
+            AlterTableOperation::ModifyColumn {
+                name,
+                data_type,
+                nullable,
+            } => {
+                let column = ColumnDefinition {
+                    name: name.clone(),
+                    data_type: data_type.clone(),
+                    nullable: *nullable,
+                    primary_key: false,
+                };
+                storage.modify_column(&alter.table_name, name, column)?;
+            }
+            AlterTableOperation::RenameTo { new_name } => {
+                storage.rename_table(&alter.table_name, new_name)?;
+            }
+        }
+
+        Ok(ExecutorResult::empty())
     }
 }
