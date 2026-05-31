@@ -8,6 +8,8 @@ use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
 
+use crate::wal::WalTruncationGate;
+
 /// Checkpoint metadata
 #[derive(Debug, Clone)]
 pub struct CheckpointMetadata {
@@ -129,6 +131,11 @@ impl CheckpointManager {
         self.last_checkpoint.read().unwrap().clone()
     }
 
+    /// Get the last checkpoint LSN
+    pub fn last_checkpoint_lsn(&self) -> Option<u64> {
+        self.last_checkpoint.read().unwrap().as_ref().map(|c| c.lsn)
+    }
+
     /// Save checkpoint metadata to disk
     pub fn save_metadata(&self, metadata: &CheckpointMetadata) -> std::io::Result<()> {
         let path = self.checkpoint_dir.join("checkpoint.json");
@@ -198,6 +205,12 @@ impl CheckpointManager {
 impl Default for CheckpointManager {
     fn default() -> Self {
         Self::new(PathBuf::from("."), CheckpointConfig::default()).unwrap()
+    }
+}
+
+impl WalTruncationGate for CheckpointManager {
+    fn safe_truncate_lsn(&self) -> Option<u64> {
+        self.last_checkpoint_lsn()
     }
 }
 
@@ -306,5 +319,27 @@ mod tests {
         // Keep only 2
         let removed = manager.cleanup_old_checkpoints(2).unwrap();
         assert_eq!(removed, 3);
+    }
+
+    #[test]
+    fn test_truncation_gate_blocks_before_checkpoint() {
+        let manager = CheckpointManager::default();
+        assert!(!manager.can_truncate(1000));
+    }
+
+    #[test]
+    fn test_truncation_gate_allows_after_checkpoint() {
+        let temp = TempDir::new().unwrap();
+        let manager = CheckpointManager::with_dir(temp.path().to_path_buf()).unwrap();
+        manager.record_checkpoint(CheckpointMetadata {
+            lsn: 1000,
+            timestamp: 0,
+            tx_count: 1,
+            dirty_pages: 0,
+            file_path: PathBuf::new(),
+        });
+        assert!(manager.can_truncate(500));
+        assert!(manager.can_truncate(1000));
+        assert!(!manager.can_truncate(1500));
     }
 }
