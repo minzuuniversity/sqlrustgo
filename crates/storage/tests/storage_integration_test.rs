@@ -5,7 +5,7 @@ use std::sync::Arc;
 use sqlrustgo_storage::buffer_pool::BufferPool;
 use sqlrustgo_storage::file_storage::FileStorage;
 use sqlrustgo_storage::page::Page;
-use sqlrustgo_storage::wal::{WalEntry, WalEntryType, WalManager, WalReader, WalWriter};
+use sqlrustgo_storage::wal::{WalEntry, WalEntryType, LegacyWalManager, WalReader, WalWriter};
 use sqlrustgo_storage::{TableData, TableInfo};
 
 fn temp_dir(name: &str) -> PathBuf {
@@ -238,7 +238,7 @@ fn test_wal_manager_recover() {
         .unwrap();
         w.flush().unwrap();
     }
-    let mgr = WalManager::new(p.clone());
+    let mgr = LegacyWalManager::new(p.clone());
     assert_eq!(mgr.recover().unwrap().len(), 1);
     let _ = fs::remove_dir_all(&dir);
 }
