@@ -1,4 +1,4 @@
-use sqlrustgo_storage::wal::{WalEntry, WalEntryType, LegacyWalManager as WalManager, WalWriter};
+use sqlrustgo_storage::wal::{LegacyWalManager as WalManager, WalEntry, WalEntryType, WalWriter};
 use std::fs;
 use tempfile::TempDir;
 
