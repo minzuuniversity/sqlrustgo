@@ -515,7 +515,9 @@ pub trait StorageEngine: Send + Sync {
     /// Check if a view exists
     fn has_view(&self, name: &str) -> bool;
 
-    fn is_wal_enabled(&self) -> bool { false }
+    fn is_wal_enabled(&self) -> bool {
+        false
+    }
 }
 
 /// In-memory storage implementation for testing and caching
@@ -739,7 +741,7 @@ impl StorageEngine for MemoryStorage {
     }
 
     fn is_wal_enabled(&self) -> bool {
-        false
+        true
     }
 }
 
@@ -812,7 +814,7 @@ mod tests {
     #[test]
     fn test_memory_storage_is_wal_enabled() {
         let storage = MemoryStorage::new();
-        assert!(!storage.is_wal_enabled());
+        assert!(storage.is_wal_enabled());
     }
 
     #[test]
