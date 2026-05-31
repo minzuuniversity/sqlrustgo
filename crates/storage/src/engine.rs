@@ -515,6 +515,37 @@ pub trait StorageEngine: Send + Sync {
     /// Check if a view exists
     fn has_view(&self, name: &str) -> bool;
 
+    /// Begin a transaction, returns a transaction ID
+    fn begin_transaction(&mut self) -> SqlResult<u64> {
+        Err(SqlError::ExecutionError(
+            "Transactions not supported by this storage engine".to_string(),
+        ))
+    }
+
+    /// Commit the current transaction
+    fn commit_transaction(&mut self) -> SqlResult<()> {
+        Err(SqlError::ExecutionError(
+            "Transactions not supported by this storage engine".to_string(),
+        ))
+    }
+
+    /// Rollback the current transaction
+    fn rollback_transaction(&mut self) -> SqlResult<()> {
+        Err(SqlError::ExecutionError(
+            "Transactions not supported by this storage engine".to_string(),
+        ))
+    }
+
+    /// Check if a transaction is in progress
+    fn in_transaction(&self) -> bool {
+        false
+    }
+
+    /// Get the current transaction ID
+    fn current_tx_id(&self) -> u64 {
+        0
+    }
+
     fn is_wal_enabled(&self) -> bool {
         false
     }
