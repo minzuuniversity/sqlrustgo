@@ -1,5 +1,5 @@
 //! WAL/TX Contract Validation Tests — Hermes B
-//! 23 P0 Tests: TX-001~006, WAL-001~005, REPLAY-001~003, RECOVERY-001~008
+//! 22 P0 Tests: TX-001~006, WAL-001~005, REPLAY-001~003, RECOVERY-001~008
 //!
 //! Tests verify EEK (ExecutionEngine) returns Err for contract violations.
 //! No should_panic — assertions on Err behavior explicitly.
@@ -498,32 +498,58 @@ fn test_partial_update_write_recovery() {
 }
 
 /// RECOVERY-007: Partial DELETE write recovery
-// Note: ExecutionEngine uses delete+re-insert for WHERE clause deletes.
-// WalStorage logs a single Delete entry (no re-insert WAL).
-// Post-crash, the WAL replay ordering causes 1 row to persist.
-// This will be fixed when WalStorage records row-level operations.
-#[ignore]
+///
+/// Contract: Committed DELETE operations MUST leave rows deleted after crash recovery.
+///
+/// PR-840 fix: WalStorage now stores actual row keys (not filter debug string),
+/// DELETE replay uses row keys for row-level delete (not full table).
 #[test]
 fn test_partial_delete_write_recovery() {
     let _dir = TempDir::new().unwrap();
     let dir = _dir.path();
     let mut engine = create_wal_engine(dir);
     engine
-        .execute("CREATE TABLE t (id INTEGER, value TEXT)")
+        .execute("CREATE TABLE t (id INTEGER PRIMARY KEY, value TEXT)")
         .unwrap();
+
+    // Insert a committed row (must be in transaction for DML)
+    engine.execute("BEGIN").unwrap();
     engine
         .execute("INSERT INTO t VALUES (1, 'to_delete')")
         .unwrap();
+    engine.execute("COMMIT").unwrap();
 
+    // Verify row exists before DELETE
+    let result = engine.execute("SELECT COUNT(*) FROM t").unwrap();
+    assert_eq!(
+        result.rows[0][0],
+        sqlrustgo_types::Value::Integer(1),
+        "row should exist before DELETE"
+    );
+
+    // BEGIN + DELETE + COMMIT
     engine.execute("BEGIN").unwrap();
     engine.execute("DELETE FROM t WHERE id = 1").unwrap();
     engine.execute("COMMIT").unwrap();
 
+    // Verify row is deleted before crash
+    let result = engine.execute("SELECT COUNT(*) FROM t").unwrap();
+    assert_eq!(
+        result.rows[0][0],
+        sqlrustgo_types::Value::Integer(0),
+        "row should be deleted before crash"
+    );
+
     drop(engine);
 
     // RECOVERY-007: After DELETE commit and crash, row should stay deleted
-    #[allow(clippy::no_effect)]
-    let _ = recover_and_rebuild(dir);
+    let mut engine2 = recover_and_rebuild(dir);
+    let result = engine2.execute("SELECT COUNT(*) FROM t").unwrap();
+    assert_eq!(
+        result.rows[0][0],
+        sqlrustgo_types::Value::Integer(0),
+        "deleted row should stay deleted after crash recovery"
+    );
 }
 
 /// RECOVERY-008: Partial COMMIT flush recovery
