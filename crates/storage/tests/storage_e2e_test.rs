@@ -7,8 +7,8 @@ use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use sqlrustgo_storage::file_storage::FileStorage;
 use sqlrustgo_storage::buffer_pool::BufferPool;
+use sqlrustgo_storage::file_storage::FileStorage;
 use sqlrustgo_storage::page::Page;
 use sqlrustgo_storage::{TableData, TableInfo};
 
@@ -20,7 +20,10 @@ fn temp_dir(name: &str) -> PathBuf {
 }
 
 fn make_table(name: &str) -> TableData {
-    let info = TableInfo { name: name.into(), ..Default::default() };
+    let info = TableInfo {
+        name: name.into(),
+        ..Default::default()
+    };
     TableData { info, rows: vec![] }
 }
 
@@ -36,7 +39,8 @@ fn test_e2e_write_and_reload() {
     // Write phase
     {
         let mut fs = FileStorage::new(dir.join("data")).unwrap();
-        fs.insert_table(tbl_name.into(), make_table(tbl_name)).unwrap();
+        fs.insert_table(tbl_name.into(), make_table(tbl_name))
+            .unwrap();
         fs.persist_table(tbl_name).unwrap();
         fs.flush().unwrap();
     }
@@ -72,7 +76,11 @@ fn test_e2e_multiple_tables_persist() {
         let fs = FileStorage::new(dir.join("data")).unwrap();
         let names = fs.table_names();
         for t in &tables {
-            assert!(names.contains(&t.to_string()), "Table {} should survive restart", t);
+            assert!(
+                names.contains(&t.to_string()),
+                "Table {} should survive restart",
+                t
+            );
         }
         assert_eq!(names.len(), tables.len());
     }
@@ -114,7 +122,8 @@ fn test_e2e_buffer_pool_with_file_storage() {
     let mut fs = FileStorage::new(dir.join("data")).unwrap();
 
     // Insert table via FileStorage
-    fs.insert_table("bp_test".into(), make_table("bp_test")).unwrap();
+    fs.insert_table("bp_test".into(), make_table("bp_test"))
+        .unwrap();
     fs.persist_table("bp_test").unwrap();
 
     // Use BufferPool for page caching
@@ -142,7 +151,8 @@ fn test_e2e_index_survives_restart() {
 
     {
         let mut fs = FileStorage::new(dir.join("data")).unwrap();
-        fs.insert_table("idx_test".into(), make_table("idx_test")).unwrap();
+        fs.insert_table("idx_test".into(), make_table("idx_test"))
+            .unwrap();
         fs.create_index("idx_test", "id", 0).unwrap();
         fs.flush().unwrap();
     }
@@ -190,10 +200,14 @@ fn test_e2e_table_metadata_after_reload() {
 
     {
         let mut fs = FileStorage::new(dir.join("data")).unwrap();
-        fs.insert_table("meta_test".into(), TableData {
-            info: original_info.clone(),
-            rows: vec![],
-        }).unwrap();
+        fs.insert_table(
+            "meta_test".into(),
+            TableData {
+                info: original_info.clone(),
+                rows: vec![],
+            },
+        )
+        .unwrap();
         fs.persist_table("meta_test").unwrap();
         fs.flush().unwrap();
     }
@@ -247,7 +261,8 @@ fn test_e2e_create_write_read_cycle() {
     // Create
     {
         let mut fs = FileStorage::new(dir.join("data")).unwrap();
-        fs.insert_table("cycle".into(), make_table("cycle")).unwrap();
+        fs.insert_table("cycle".into(), make_table("cycle"))
+            .unwrap();
         fs.flush().unwrap();
     }
 
