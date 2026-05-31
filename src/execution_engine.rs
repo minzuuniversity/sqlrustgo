@@ -1893,13 +1893,14 @@ impl ExecutionEngine<MemoryStorage> {
 // =============================================================================
 
 impl ExecutionEngine<MemoryStorage> {
-    /// Create a WAL-backed execution engine with WAL disabled (stub mode)
-    /// Uses WalStorage::new_without_wal() to skip actual WAL writes
-    pub fn with_wal_stub() -> ExecutionEngine<WalStorage<MemoryStorage>> {
+    pub fn with_wal_stub()
+        -> ExecutionEngine<WalStorage<MemoryStorage, sqlrustgo_storage::MemoryWalManager>>
+    {
         let inner = MemoryStorage::new();
-        let wal = WalStorage::new_without_wal(inner);
+        let wal = sqlrustgo_storage::MemoryWalManager::new();
+        let wal_storage = WalStorage::new(inner, wal).unwrap();
         ExecutionEngine {
-            storage: Arc::new(RwLock::new(wal)),
+            storage: Arc::new(RwLock::new(wal_storage)),
             catalog: None,
             stats: Arc::new(RwLock::new(ExecutionStats::default())),
             cbo_enabled: true,
@@ -1920,10 +1921,14 @@ impl ExecutionEngine<MemoryStorage> {
 
 impl ExecutionEngine<MemoryStorage> {
     /// Create a WAL-backed execution engine with full WAL enabled
-    /// WalStorage::new(inner, wal_path) initializes the WAL manager at the given path
-    pub fn with_wal(wal_path: PathBuf) -> SqlResult<ExecutionEngine<WalStorage<MemoryStorage>>> {
+    /// WalStorage::new(inner, wal_manager) initializes with given WAL manager
+    pub fn with_wal(
+        wal_path: PathBuf,
+    ) -> SqlResult<ExecutionEngine<WalStorage<MemoryStorage, sqlrustgo_storage::FileBackedWalManager>>>
+    {
         let inner = MemoryStorage::new();
-        let wal = WalStorage::new(inner, wal_path)?;
+        let wal_manager = sqlrustgo_storage::FileBackedWalManager::new(wal_path)?;
+        let wal = WalStorage::new(inner, wal_manager)?;
         Ok(ExecutionEngine {
             storage: Arc::new(RwLock::new(wal)),
             catalog: None,
