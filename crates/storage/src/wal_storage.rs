@@ -340,15 +340,26 @@ impl<S: StorageEngine, T: WalManager> StorageEngine for WalStorage<S, T> {
         let table_id = Self::table_name_to_id(table);
 
         let rows = self.inner.scan(table)?;
-        for row in &rows {
-            if Self::row_matches_filter(row, filters) {
+        let keys_to_update: Vec<Vec<u8>> = rows
+            .iter()
+            .filter(|r| Self::row_matches_filter(r, filters))
+            .map(|r| Self::record_key(r))
+            .collect();
+
+        let result = self.inner.update(table, filters, updates)?;
+
+        if !keys_to_update.is_empty() {
+            let updated_rows = self.inner.scan(table)?;
+            for row in &updated_rows {
                 let key = Self::record_key(row);
-                let old_data = Self::record_to_bytes(row);
-                self.log_update(table_id, key, old_data)?;
+                if keys_to_update.contains(&key) {
+                    let new_data = Self::record_to_bytes(row);
+                    self.log_update(table_id, key, new_data)?;
+                }
             }
         }
 
-        self.inner.update(table, filters, updates)
+        Ok(result)
     }
 
     fn update_if(
@@ -597,5 +608,45 @@ mod tests {
 
         let entries = storage.recover().unwrap();
         assert_eq!(entries.len(), 3);
+    }
+
+    #[test]
+    fn test_wal_storage_update_stores_new_image() {
+        let inner = MemoryStorage::new();
+        let wal = MemoryWalManager::new();
+        let mut storage = WalStorage::new(inner, wal).unwrap();
+
+        let mut col_id = crate::engine::ColumnDefinition::new("id", "INTEGER");
+        col_id.primary_key = true;
+        let mut col_val = crate::engine::ColumnDefinition::new("value", "INTEGER");
+        col_val.primary_key = false;
+        storage.create_table(&crate::engine::TableInfo {
+            name: "t1".to_string(),
+            columns: vec![col_id, col_val],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
+        }).unwrap();
+
+        storage.begin_transaction().unwrap();
+        storage.insert("t1", vec![
+            vec![Value::Integer(1), Value::Integer(10)],
+            vec![Value::Integer(2), Value::Integer(20)],
+        ]).unwrap();
+        storage.commit_transaction().unwrap();
+
+        storage.begin_transaction().unwrap();
+        storage.update("t1", &[Value::Integer(1)], &[(1, Value::Integer(100))]).unwrap();
+        storage.commit_transaction().unwrap();
+
+        let entries = storage.recover().unwrap();
+        let updates: Vec<_> = entries.iter()
+            .filter(|e| e.entry_type == WalEntryType::Update)
+            .collect();
+
+        assert_eq!(updates.len(), 1);
+        assert!(updates[0].key.is_some());
+        assert!(updates[0].data.is_some());
     }
 }
