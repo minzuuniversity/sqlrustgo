@@ -5,7 +5,7 @@ use std::sync::Arc;
 use sqlrustgo_storage::buffer_pool::BufferPool;
 use sqlrustgo_storage::file_storage::FileStorage;
 use sqlrustgo_storage::page::Page;
-use sqlrustgo_storage::wal::{WalEntry, WalEntryType, LegacyWalManager, WalReader, WalWriter};
+use sqlrustgo_storage::wal::{LegacyWalManager, WalEntry, WalEntryType, WalReader, WalWriter};
 use sqlrustgo_storage::{TableData, TableInfo};
 
 fn temp_dir(name: &str) -> PathBuf {
