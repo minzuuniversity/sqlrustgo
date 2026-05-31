@@ -149,8 +149,16 @@ mod tests {
 
         let mut pm = PartitionManager::new().unwrap();
         let rows = vec![
-            Row { id: 1, name: "Alice".into(), score: 95.5 },
-            Row { id: 2, name: "Bob".into(), score: 87.0 },
+            Row {
+                id: 1,
+                name: "Alice".into(),
+                score: 95.5,
+            },
+            Row {
+                id: 2,
+                name: "Bob".into(),
+                score: 87.0,
+            },
         ];
         let id = pm.write_partition(&rows).unwrap();
         let read_back: Vec<Row> = pm.read_partition(id).unwrap();
