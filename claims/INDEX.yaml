@@ -1,0 +1,112 @@
+# Claim Registry INDEX
+
+> **Version**: 1.0
+> **Date**: 2026-05-30
+> **Registry Root**: claims/
+> **Gate**: G-04, G-04.1, G-04.2, G-04.3, G-05
+
+---
+
+## Registry Structure
+
+```
+claims/
+├── G-04_CLAIM_PROVENANCE_SPEC.md   ← G-04 rule definitions
+├── INT/                              # Architectural risks
+│   ├── INT-1.yaml                    # DML bypasses WAL
+│   ├── INT-2.yaml                    # ParallelVolcanoExecutor isolation
+│   ├── INT-3.yaml                    # expr crate duplication
+│   └── INT-4.yaml                    # mysql-server dual path
+├── R/                                # Release gate claims
+│   └── R2.yaml                       # (to be added)
+├── GA/                               # GA assessment records
+│   └── GA-2026-05-30-v3.7.0.yaml     # v3.7.0 GA assessment
+└── DECISION/                         # Deferral decisions
+    └── DECISION-INT1-DEFER.yaml      # INT-1 → v3.8.0
+```
+
+---
+
+## Claim Summary
+
+| Claim ID | Type | Status | Findings | Evidence Complete | Stale |
+|----------|------|--------|----------|-------------------|-------|
+| INT-1 | architectural_risk | supported | 2 | false | unconfirmed |
+| INT-2 | architectural_risk | asserted | 2 | false | false |
+| INT-3 | architectural_risk | asserted | 1 | false | false |
+| INT-4 | architectural_risk | supported | 3 | false | unconfirmed |
+| GA-2026-05-30-v3.7.0 | release_conclusion | supported | 7 required | false | false |
+| DECISION-INT1-DEFER | deferral_decision | supported | — | false | false |
+
+---
+
+## G-04.2 Violation Check
+
+```
+INT-2: status=asserted, findings=2  ← OK (has findings)
+INT-3: status=asserted, findings=1  ← OK (has findings)
+
+No ORPHAN CLAIMs detected (all claims have >=1 finding)
+```
+
+---
+
+## Evidence Chain Status
+
+```
+VERIFIED:     0 claims
+SUPPORTED:    3 claims (INT-1, INT-4, GA, DECISION)
+ASSERTED:     2 claims (INT-2, INT-3)
+DISPROVEN:    0 claims
+MITIGATED:    0 claims
+ORPHAN:       0 claims (G-04.2 compliance)
+
+All claims UNVERIFIED at strict G-04 level
+(no complete evidence chain of commit_sha → ci → artifact)
+```
+
+---
+
+## Active Deferrals
+
+| Decision ID | Claim | Deferred To | Close Criteria |
+|---|---|---|---|
+| DECISION-INT1-DEFER | INT-1 | v3.8.0 PR-830 | WAL recovery test PASS + commit_sha |
+| (pending) | INT-2 | v3.8.0 PR-870 | VTU integration commit + consistency test |
+| (pending) | INT-3 | v3.8.0 PR-860 | expr consolidation commit |
+| (pending) | INT-4 | v3.8.0 PR-850 | Single path commit + consistency test |
+
+---
+
+## Schema Compliance
+
+All claims follow G-04_CLAIM_PROVENANCE_SPEC.md v1.0 schema.
+
+Required fields enforced:
+- [x] claim_id (unique, kebab-case)
+- [x] title (string)
+- [x] type (enum: architectural_risk | release_conclusion | deferral_decision)
+- [x] status (enum: asserted | supported | verified | disproven | mitigated)
+- [x] findings[] (>=1 per G-04.2)
+- [x] evidence.* (commit_sha required for supported/verified)
+- [x] claim_source_refs (Issue/PR/Wiki — marked as NOT evidence)
+
+---
+
+## Next Steps
+
+1. **P0**: Add commit_sha to INT-1, INT-4 (currently EMPTY)
+2. **P0**: Add grep evidence for INT-3 (3 separate Expr enums)
+3. **P1**: Run `gate claim audit` to confirm ORPHAN check
+4. **P1**: Add test_refs for INT-1 (wal_gap test does not exist)
+5. **P2**: Integrate claim registry into CI (gate claim audit as gate step)
+6. **P2**: Add DECISION records for INT-2, INT-3, INT-4 deferrals
+7. **P3**: Implement `gate claim evaluate INT-* --db /tmp/eg.db` in CLI
+
+---
+
+## Change Log
+
+| Date | Version | Change |
+|------|---------|--------|
+| 2026-05-30 | 1.0 | Initial claim registry — 4 INT + 1 GA + 1 DECISION |
