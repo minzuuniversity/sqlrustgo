@@ -257,6 +257,18 @@ fn key_to_filter_values(key: &[u8]) -> Result<Vec<Value>, crate::engine::SqlErro
     ))
 }
 
+fn replace_by_key<S: StorageEngine>(
+    storage: &mut S,
+    table: &str,
+    key: &[u8],
+    new_record: Vec<Value>,
+) -> Result<(), crate::engine::SqlError> {
+    let filter_values = key_to_filter_values(key)?;
+    storage.delete(table, &filter_values)?;
+    storage.insert(table, vec![new_record])?;
+    Ok(())
+}
+
 // ---------------------------------------------------------------------------
 // Helpers: WAL entry filtering
 // ---------------------------------------------------------------------------
@@ -389,11 +401,24 @@ impl<S: StorageEngine> RecoveryEngine<S> for RecoveryEngineImpl {
                 storage.insert(&table_name, vec![record])?;
             }
             WalEntryType::Update => {
-                log::warn!(
-                    "RecoveryEngine: UPDATE replay skipped for table {} (tx_id={})",
-                    table_name,
-                    entry.tx_id
-                );
+                if let Some(ref key) = entry.key {
+                    if let Some(ref data) = entry.data {
+                        let new_record = bytes_to_record(data)?;
+                        replace_by_key(storage, &table_name, key, new_record)?;
+                    } else {
+                        log::warn!(
+                            "RecoveryEngine: UPDATE entry without data for table {} (tx_id={})",
+                            table_name,
+                            entry.tx_id
+                        );
+                    }
+                } else {
+                    log::warn!(
+                        "RecoveryEngine: UPDATE entry without key for table {} (tx_id={})",
+                        table_name,
+                        entry.tx_id
+                    );
+                }
             }
             WalEntryType::Delete => {
                 if let Some(ref key) = entry.key {
