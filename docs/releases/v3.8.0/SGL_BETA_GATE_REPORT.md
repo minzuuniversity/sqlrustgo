@@ -6,7 +6,8 @@
 > **Layer 3 (Semantic): spec vs implementation drift detection**
 
 **Date**: 2026-06-01
-**Commit**: da6bf0f4 (fix/b4-format-violation, B4 fix applied)
+**Branch**: `origin/develop/v3.8.0`
+**Commit**: `04a880de` (after PR #2703 merged — B4 fix + SGL script)
 **Status**: DRIFT-DETECTED
 **Script**: `scripts/gate/semantic_gate_check.py`
 
@@ -16,13 +17,14 @@
 
 | Check | ID | Type | Result |
 |-------|----|------|--------|
-| B4 Format semantics | SGL-001 | Semantic | PASS |
-| WAL-002: advance_checkpoint in commit | SGL-002 | Invariant Violation | FAIL |
-| WAL-003: try_truncate_wal in commit | SGL-003 | Invariant Violation | FAIL |
-| WAL-004: DELETE replay idempotency | SGL-004 | Invariant | PASS |
-| TX-002: Storage direct bypass | SGL-005 | Legacy Drift | DRIFT |
+| B4 Format semantics | SGL-001 | Semantic | **PASS** ✅ |
+| WAL-002: advance_checkpoint in commit | SGL-002 | Invariant Violation | **FAIL** ❌ |
+| WAL-003: try_truncate_wal in commit | SGL-003 | Invariant Violation | **FAIL** ❌ |
+| WAL-004: DELETE replay idempotency | SGL-004 | Invariant | **PASS** ✅ |
+| TX-002: Storage direct bypass | SGL-005 | Legacy Drift | **DRIFT** ⚠️ |
 
 **PASS: 2/5 | FAIL: 2 | DRIFT: 1**
+**Exit code: 2**
 
 ---
 
@@ -37,7 +39,7 @@
 3. Capture git working tree hash after execution
 4. Compare — any mutation = silent auto-fix detected
 
-### Result: PASS
+### Result: PASS ✅
 
 ```
 before_hash == after_hash: True
@@ -45,6 +47,8 @@ cargo fmt --all -- --check exit code: 0
 ```
 
 No file mutation detected. Format check is truly read-only.
+
+**Note**: B4 format violations were found and fixed in PR #2703 (fix/b4-format-violation → develop/v3.8.0, merged 04a880de). The fix resolved 8 files / 85 lines of violations (merge.rs, recovery_engine.rs, engine_builder.rs, execution_engine.rs).
 
 ---
 
@@ -56,19 +60,20 @@ No file mutation detected. Format check is truly read-only.
 ### Method
 Extract `commit_transaction` function body via regex, scan for `advance_checkpoint` call.
 
-### Result: FAIL
+### Result: FAIL ❌
 
 ```
 advance_checkpoint in fn_body: False
 ```
 
 `commit_transaction` in `src/execution_engine.rs:1153` calls:
-- `storage.commit_transaction()`
-- `transaction_manager.commit()`
+- `storage.commit_transaction()` ✅
+- `transaction_manager.commit()` ✅
+- `advance_checkpoint()` ❌ **never called**
 
-But **never** calls `advance_checkpoint()`. WAL checkpoint never advances. WAL truncation never triggers.
+**Impact**: WAL checkpoint never advances. WAL truncation never triggers. WAL file grows unbounded. PR-830F infrastructure is defined but not wired into the commit path.
 
-**Impact**: WAL file grows unbounded. PR-830F infrastructure is defined but not wired into the commit path.
+**Fix required**: In `commit_transaction`, after `storage.commit_transaction()` succeeds, call `advance_checkpoint(lsn)`.
 
 ---
 
@@ -80,15 +85,17 @@ But **never** calls `advance_checkpoint()`. WAL checkpoint never advances. WAL t
 ### Method
 Same function body scan, look for `try_truncate_wal` call.
 
-### Result: FAIL
+### Result: FAIL ❌
 
 ```
 try_truncate_wal in fn_body: False
 ```
 
-WAL never truncates. `try_truncate_wal()` is defined as a stub in `execution_engine.rs:237` but never invoked.
+`try_truncate_wal()` is defined as a stub in `execution_engine.rs:237` but never invoked.
 
-**Impact**: WAL unbounded growth. Checkpoint-based truncation is non-functional.
+**Impact**: WAL never truncates. Checkpoint-based truncation is non-functional. WAL grows unbounded.
+
+**Fix required**: In `commit_transaction` success path, call `try_truncate_wal(lsn)`.
 
 ---
 
@@ -100,7 +107,7 @@ WAL never truncates. `try_truncate_wal()` is defined as a stub in `execution_eng
 ### Method
 Grep WalStorage source for delete+insert patterns.
 
-### Result: PASS (no active violation detected in current source)
+### Result: PASS ✅ (no active violation detected in current source)
 
 Note: RECOVERY-007 (`test_partial_delete_write_recovery`) is still `#[ignore]` in `wal_tx_contract_test.rs`. The bug exists in the test (WHERE DELETE → re-insert pattern in execution layer), not necessarily in WalStorage replay itself. This SGL check examines WalStorage source, not the execution-layer WHERE DELETE implementation.
 
@@ -114,7 +121,7 @@ Note: RECOVERY-007 (`test_partial_delete_write_recovery`) is still `#[ignore]` i
 ### Method
 Grep executor/server crates for direct `storage.insert/update/delete` calls outside transaction-aware paths.
 
-### Result: DRIFT (14 potential bypasses — legacy)
+### Result: DRIFT ⚠️ (14 potential bypasses — legacy)
 
 ```
 crates/executor/src/harness.rs:274: storage.insert(
