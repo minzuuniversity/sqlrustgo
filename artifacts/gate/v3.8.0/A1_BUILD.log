@@ -1,0 +1,14 @@
+warning: profiles for the non root package will be ignored, specify profiles at the workspace root:
+package:   /Users/liying/workspace/dev/openheart/sqlrustgo/tools/sqlrustgo-gate/Cargo.toml
+workspace: /Users/liying/workspace/dev/openheart/sqlrustgo/Cargo.toml
+warning: profiles for the non root package will be ignored, specify profiles at the workspace root:
+package:   /Users/liying/workspace/dev/openheart/sqlrustgo/tools/graph-cli/Cargo.toml
+workspace: /Users/liying/workspace/dev/openheart/sqlrustgo/Cargo.toml
+warning: /Users/liying/workspace/dev/openheart/sqlrustgo/crates/wal-verification/Cargo.toml: unused manifest key: tlaplus
+   Compiling sqlrustgo-storage v2.5.0 (/Users/liying/workspace/dev/openheart/sqlrustgo/crates/storage)
+   Compiling sqlrustgo-spill v0.1.0 (/Users/liying/workspace/dev/openheart/sqlrustgo/crates/spill)
+   Compiling sqlrustgo-optimizer v2.5.0 (/Users/liying/workspace/dev/openheart/sqlrustgo/crates/optimizer)
+   Compiling sqlrustgo-transaction v2.5.0 (/Users/liying/workspace/dev/openheart/sqlrustgo/crates/transaction)
+   Compiling sqlrustgo-planner v2.5.0 (/Users/liying/workspace/dev/openheart/sqlrustgo/crates/planner)
+   Compiling sqlrustgo-executor v2.5.0 (/Users/liying/workspace/dev/openheart/sqlrustgo/crates/executor)
+    Finished `release` profile [optimized] target(s) in 3.09s
