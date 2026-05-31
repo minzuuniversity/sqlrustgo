@@ -2,14 +2,14 @@
 //!
 //! This module re-exports all statement types used by the query planner.
 
-use sqlrustgo_parser::Expression;
+use crate::Expr;
 
 /// MERGE statement planner representation
 #[derive(Debug, Clone)]
 pub struct MergeStatement {
     pub target_table: String,
     pub source_table: String,
-    pub on_condition: Expression,
+    pub on_condition: Expr,
     pub matched_clause: Option<MergeClause>,
     pub not_matched_clause: Option<MergeClause>,
 }
@@ -18,16 +18,16 @@ pub struct MergeStatement {
 #[derive(Debug, Clone)]
 pub struct MergeClause {
     pub update_columns: Vec<String>,
-    pub update_values: Vec<Expression>,
+    pub update_values: Vec<Expr>,
     pub insert_columns: Vec<String>,
-    pub insert_values: Vec<Expression>,
+    pub insert_values: Vec<Expr>,
 }
 
 impl MergeStatement {
     pub fn new(
         target_table: String,
         source_table: String,
-        on_condition: Expression,
+        on_condition: Expr,
         matched_clause: Option<MergeClause>,
         not_matched_clause: Option<MergeClause>,
     ) -> Self {
@@ -44,9 +44,9 @@ impl MergeStatement {
 impl MergeClause {
     pub fn new(
         update_columns: Vec<String>,
-        update_values: Vec<Expression>,
+        update_values: Vec<Expr>,
         insert_columns: Vec<String>,
-        insert_values: Vec<Expression>,
+        insert_values: Vec<Expr>,
     ) -> Self {
         Self {
             update_columns,
