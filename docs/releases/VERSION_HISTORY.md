@@ -275,6 +275,21 @@ v2.5.0
 
 ---
 
+### v3.8.0 (2026-05-31) - Architecture Unification（开发中）
+
+**目标**: Execution Architecture Consolidation — 消灭双执行路径，统一 SQL → AST → Plan → Execution，接入 WAL 核心。
+
+| 阶段 | 目标 | 状态 |
+|------|------|------|
+| Alpha | Execution Freeze (AUTOCOMMIT + WAL Mandatory) | 🔄 IN_PROGRESS |
+| Beta | WAL Persistence + Recovery 7/7 PASS | ⬜ |
+| RC | MVCC 完整化 | ⬜ |
+| GA | 全量验证 | ⬜ |
+
+**核心 Issue**: INT-1~INT-4（见 v3.7.0 节）
+
+---
+
 ### 远景: v3.8.0+
 
 **目标**: 完整分布式数据库
