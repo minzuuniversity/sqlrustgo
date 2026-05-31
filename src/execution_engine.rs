@@ -39,6 +39,7 @@ use sqlrustgo_storage::{
     ColumnDefinition, FileBackedWalManager, FileStorage, MemoryStorage, StorageEngine, TableInfo,
     WalStorage,
 };
+use sqlrustgo_storage::checkpoint::{CheckpointManager, CheckpointMetadata};
 use sqlrustgo_transaction::{IsolationLevel as TmIsolationLevel, TransactionManager, TxId};
 use sqlrustgo_types::Value as SqlValue;
 use std::collections::HashMap;
@@ -56,6 +57,7 @@ pub struct ExecutionEngine<S: StorageEngine> {
     pub(crate) tx_status: TxStatus,
     pub(crate) default_isolation: TmIsolationLevel,
     pub(crate) current_role: Option<String>,
+    pub(crate) checkpoint_manager: Option<Arc<RwLock<CheckpointManager>>>,
 }
 
 /// Transaction status for lifecycle enforcement
@@ -105,6 +107,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             tx_status: TxStatus::Idle,
             default_isolation: TmIsolationLevel::default(),
             current_role: None,
+            checkpoint_manager: None,
         }
     }
 
@@ -120,6 +123,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             tx_status: TxStatus::Idle,
             default_isolation: TmIsolationLevel::default(),
             current_role: None,
+            checkpoint_manager: None,
         }
     }
 
@@ -135,6 +139,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             tx_status: TxStatus::Idle,
             default_isolation: TmIsolationLevel::default(),
             current_role: None,
+            checkpoint_manager: None,
         }
     }
 
@@ -208,6 +213,35 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         let selectivity = self.estimate_selectivity(table_name, column_name);
         let benefit = self.estimate_index_benefit(table_name, selectivity);
         benefit > 0.0
+    }
+
+    /// Advance checkpoint after commit
+    pub fn advance_checkpoint(&self, lsn: u64) {
+        if let Some(cp) = &self.checkpoint_manager {
+            if let Ok(mut guard) = cp.write() {
+                guard.record_checkpoint(CheckpointMetadata {
+                    lsn,
+                    timestamp: std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap()
+                        .as_millis() as u64,
+                    tx_count: 1,
+                    dirty_pages: 0,
+                    file_path: PathBuf::new(),
+                });
+            }
+        }
+    }
+
+    /// Try to truncate WAL up to checkpoint
+    pub fn try_truncate_wal(&self, wal: &mut dyn sqlrustgo_storage::WalManager) {
+        if let Some(cp) = &self.checkpoint_manager {
+            if let Ok(guard) = cp.read() {
+                if let Some(lsn) = guard.last_checkpoint_lsn() {
+                    wal.truncate_before(lsn).ok();
+                }
+            }
+        }
     }
 
     /// Estimate the cost of a join between two tables
