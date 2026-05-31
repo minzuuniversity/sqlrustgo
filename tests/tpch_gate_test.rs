@@ -67,9 +67,11 @@ fn has_tpch_data(dir: &PathBuf) -> bool {
         return false;
     }
     let tbl_count = std::fs::read_dir(dir)
-        .map(|e| e.filter_map(|x| x.ok())
-            .filter(|e| e.path().extension().map(|x| x == "tbl").unwrap_or(false))
-            .count())
+        .map(|e| {
+            e.filter_map(|x| x.ok())
+                .filter(|e| e.path().extension().map(|x| x == "tbl").unwrap_or(false))
+                .count()
+        })
         .unwrap_or(0);
     tbl_count >= 3 // at minimum need region, nation, lineitem
 }
