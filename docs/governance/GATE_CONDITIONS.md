@@ -1,46 +1,71 @@
-# Gate Conditions Definition
+# Gate Conditions Definition — v2.0
 
-## 概述
+> **更新日期**: 2026-05-31  
+> **版本**: 2.0  
+> **关联 Issue**: #2682 (Beta Gate functional tracking vulnerability)  
+> **维护者**: Hermes C  
 
-本文档定义 SQLRustGo 门禁系统中各种状态的语义，确保治理体系无漏洞、可追溯。
+---
+
+## 核心原则
+
+### G1: 门禁检查必须可执行、可验证
+
+门禁标准**必须**满足以下条件：
+
+1. **可执行**：每个检查项必须有对应的脚本执行实际的验证命令
+2. **可量化**：每个阈值必须是明确的数值或布尔值，不允许模糊表述
+3. **防注入**：禁止在 Gate 文档中出现 `PENDING`、`TBD`、`待定` 等未经验证的占位符
+4. **防伪造**：Gate 检查结果必须来自实际命令输出，禁止通过文档审查得出
+
+### G2: 功能追踪必须进入门禁
+
+每个阶段（Alpha/Beta/RC/GA）的门禁**必须**包含功能完整性追踪：
+
+1. **功能清单**：每个版本必须有明确的功能清单（FEATURE CHECKLIST）
+2. **完成状态**：每个功能必须有明确的完成状态（Done/In Progress/Not Started/Deferred）
+3. **门禁关联**：功能完成状态直接影响 Gate PASS/FAIL 判定
 
 ---
 
 ## Alpha Gate
 
-### PASS
+### 入口条件
 
-所有 A1-A5 指标全部 PASS:
+| ID | 检查项 | 方法 |
+|----|-------|------|
+| E1 | DEVELOPMENT_PLAN.md 存在 | `ls docs/releases/v{VERSION}/DEVELOPMENT_PLAN.md` |
+| E2 | TEST_PLAN.md 存在 | `ls docs/releases/v{VERSION}/TEST_PLAN.md` |
+| E3 | COVERAGE_ANALYSIS_REPORT.md 存在 | `ls docs/releases/v{VERSION}/COVERAGE-DELTA-ANALYSIS.md` |
+| E4 | CHANGELOG.md 存在 | `ls CHANGELOG.md` |
+| E5 | 所有 Alpha 前置 Issue 已关闭 | Gitea API 查询 |
+
+### PASS 标准
+
+A1-A5 全部 PASS：
 
 | ID | Check | Method | Threshold |
 |----|-------|--------|-----------|
-| A1 | Build | cargo build --release --workspace | PASS |
-| A2 | Test | cargo test --lib --workspace --exclude sqlrustgo-mysql-server | PASS (0 failure) |
-| A3 | Clippy | cargo clippy --all-features -- -D warnings | PASS |
-| A4 | Format | cargo fmt --all -- --check | PASS |
-| A5 | Coverage | L1 8 crates 综合平均 | >= 75% |
+| A1 | Build | `cargo build --release -p <core_5_crates>` | exit 0 |
+| A2 | Test | `cargo test --lib -p <core_5_crates>` | 0 failures |
+| A3 | Clippy | `cargo clippy -p <core_5_crates> --all-features -- -D warnings` | 0 warnings |
+| A4 | Format | `cargo fmt --all -- --check` | exit 0 |
+| A5 | Coverage | `cargo llvm-cov test -p <L1_8_crates>` 平均 | ≥ 75% |
 
 ### CONDITIONAL PASS
 
-当 A1-A4 硬性指标 PASS，但 A5 Coverage 介于 50%-75% 之间时使用。
+当 A1-A4 PASS 但 A5 Coverage 介于 50%-75% 之间。
 
-**必须满足的条件**:
-
-1. **所有 A1-A4 硬性指标必须 PASS**
-2. **A5 Coverage 必须 >= 50%** (否则 FAIL)
-3. **每个 crate 必须 >= 50%** (否则 FAIL)
-4. **必须创建 Issue 追踪覆盖率问题**
-5. **必须制定 Coverage 改善计划**
-6. **CONDITIONAL 状态必须在 2 周内解除**
-
-**禁止条件**:
-- A1-A4 任一项 FAIL → 不得 CONDITIONAL
-- 任何 crate Coverage < 50% → 不得 CONDITIONAL
-- Coverage < 50% → 直接 FAIL
+**必须满足**：
+1. 所有 A1-A4 硬性指标 PASS
+2. A5 Coverage ≥ 50%
+3. 每 crate ≥ 50%
+4. 创建 Issue 追踪覆盖率
+5. 2 周内解除
 
 ### FAIL
 
-A1-A5 任一项不满足标准。
+A1-A5 或入口条件任一项不满足。
 
 ---
 
@@ -48,30 +73,55 @@ A1-A5 任一项不满足标准。
 
 ### 入口条件
 
-1. Alpha Gate PASS 或 CONDITIONAL PASS (2 周内解除)
-2. ALPHA_GATE_REPORT.md 存在
-3. DEVELOPMENT_PLAN.md 存在
-4. TEST_PLAN.md 存在
-5. COVERAGE_ANALYSIS_REPORT.md 存在
+| ID | 检查项 | 方法 |
+|----|-------|------|
+| BE1 | Alpha Gate PASS 或 CONDITIONAL PASS | 检查 ALPHA_GATE_REPORT.md |
+| BE2 | ALPHA_GATE_REPORT.md 存在 | `ls docs/releases/v{VERSION}/ALPHA_GATE_REPORT.md` |
+| BE3 | DEVELOPMENT_PLAN.md 存在 | `ls docs/releases/v{VERSION}/DEVELOPMENT_PLAN.md` |
+| BE4 | TEST_PLAN.md 存在 | `ls docs/releases/v{VERSION}/TEST_PLAN.md` |
+| BE5 | PR-DAG 图表存在且与实际提交一致 | `scripts/gate/verify_pr_dag.sh` |
+| BE6 | 功能清单（FEATURE_CHECKLIST.md）存在 | `ls docs/releases/v{VERSION}/FEATURE_CHECKLIST.md` |
 
-### PASS
-
-所有 B1-B8 指标全部 PASS:
+### B1-B4 硬性检查（Infrastructure）
 
 | ID | Check | Method | Threshold |
 |----|-------|--------|-----------|
-| B1 | Build | cargo build --release --workspace | PASS |
-| B2 | Workspace test | cargo test --workspace >= 90% | PASS |
-| B3 | Clippy zero | cargo clippy --all-features -- -D warnings | PASS |
-| B4 | Format | cargo fmt --all -- --check | PASS |
-| B5 | Coverage L1 | L1 avg >= 85% | PASS |
-| B6 | TPC-H SF=0.1 | 22/22 PASS | PASS |
-| B7 | Security | cargo audit | PASS |
-| B8 | SQL compat | SQL Corpus >= 85% | PASS |
+| B1 | Build | `cargo build --release -p <core_5_crates>` | exit 0 |
+| B2 | WAL Contract | `cargo test --test wal_tx_contract_test` | 21/22 PASS（1 ignored 允许） |
+| B3 | Clippy | `cargo clippy -p <core_5_crates> --all-features -- -D warnings` | 0 warnings |
+| B4 | Format | `cargo fmt --all -- --check` | exit 0 |
 
-### FAIL
+### B-Functional: 功能完整性追踪
 
-B1-B8 任一项不满足标准。
+**Beta 功能完整性要求**：
+
+Beta Gate 不仅检查基础设施（Build/Test/Clippy/Fmt），还必须追踪功能完成状态。
+
+**B-F1 ~ B-F7：每项功能必须有明确状态**
+
+| ID | 功能 | 检查方法 | 阈值 |
+|----|------|----------|------|
+| B-F1 | WAL Replay（PR-830C） | `git log --oneline origin/develop/v3.8.0 \| grep "PR-830C"` | PR merged |
+| B-F2 | RecoveryEngine（PR-830D） | `git log --oneline origin/develop/v3.8.0 \| grep "PR-830D"` | PR merged |
+| B-F3 | Engine Restart（PR-830E） | `git log --oneline origin/develop/v3.8.0 \| grep "PR-830E"` | PR merged |
+| B-F4 | TransactionalFacade（PR-800） | 检查 `src/execution_engine.rs` 中 TransactionalFacade 是否实现 | Done 或 Deferred with Issue |
+| B-F5 | PR-DAG 与实际一致 | `scripts/gate/verify_pr_dag.sh` | exit 0 |
+| B-F6 | 功能清单存在且更新 | `scripts/gate/check_beta_gate.sh --feature-check` | 所有功能状态已知 |
+| B-F7 | 未合并的 PR 有明确原因 | 检查 PR 状态，未合并 PR 必须在 LEGACY_ISSUES.md 或对应 Issue 中说明 | 无"幽灵 PR" |
+
+### Beta Gate PASS 条件
+
+**必须全部满足**：
+1. **B1-B4 全部 PASS**（硬性）
+2. **B-F1 ~ B-F3 全部 Done**（PR 已合并，或已 Deferred with Issue）
+3. **B-F4 ~ B-F7 全部验证**（功能状态已知，无遗漏）
+
+### Beta Gate FAIL 条件
+
+满足任一条件即 FAIL：
+- B1-B4 任一 FAIL
+- B-F1 ~ B-F3 任一 PR 未合并且无 Deferred 说明
+- B-F5 ~ B-F7 任一验证失败
 
 ---
 
@@ -79,24 +129,30 @@ B1-B8 任一项不满足标准。
 
 ### 入口条件
 
-1. Beta Gate PASS
-2. BETA_GATE_REPORT.md 存在
-3. 所有 Beta 入口问题已关闭
+| ID | 检查项 | 方法 |
+|----|-------|------|
+| RE1 | Beta Gate PASS | 检查 BETA_GATE_REPORT.md |
+| RE2 | BETA_GATE_REPORT.md 存在 | `ls docs/releases/v{VERSION}/BETA_GATE_REPORT.md` |
+| RE3 | 功能清单中所有 B-F 功能状态为 Done 或 Deferred | `scripts/gate/check_beta_gate.sh --feature-status` |
+| RE4 | 所有 Beta 前置 Issue 已关闭 | Gitea API 查询 |
 
-### PASS
+### RC-F 功能完成要求
 
-所有 R1-R4 指标全部 PASS:
+| ID | 功能 | 检查方法 | 阈值 |
+|----|------|----------|------|
+| RC-F1 | BEGIN/COMMIT/ROLLBACK → TransactionManager | 代码检查 + `cargo test --test wal_tx_contract_test` | DML 通过 WriteBuffer |
+| RC-F2 | DML through WriteBuffer | 代码路径分析 | 不是 direct to StorageEngine |
+| RC-F3 | COMMIT flushes WriteBuffer → StorageEngine | 代码检查 | commit 路径验证 |
+| RC-F4 | ROLLBACK discards WriteBuffer | 代码检查 | rollback 路径验证 |
+| RC-F5 | 300+ tests pass | `cargo test --workspace` | ≥ 300 passed |
+| RC-F6 | WAL FileStorage in production | `git log \| grep "PR-830A"` | PR merged |
+| RC-F7 | 所有计划 PR（810/820/840/850/860/870/880/890/900）已合并或 Deferred | PR 状态检查 | 每项有明确状态 |
 
-| ID | Check | Method | Threshold |
-|----|-------|--------|-----------|
-| R1 | B1-B4 | Alpha-Beta 所有硬性指标 | PASS |
-| R2 | TPC-H SF=1 | 22/22 PASS | PASS |
-| R3 | Coverage L1 | L1 avg >= 85% | PASS |
-| R4 | QPS regression | <= 5% 退化 | PASS |
+### RC Gate PASS 条件
 
-### FAIL
-
-R1-R4 任一项不满足标准。
+**必须全部满足**：
+1. R1-R4 全部 PASS（硬性测试）
+2. RC-F1 ~ RC-F7 全部验证
 
 ---
 
@@ -104,93 +160,67 @@ R1-R4 任一项不满足标准。
 
 ### 入口条件
 
-1. RC Gate PASS
-2. RC_GATE_REPORT.md 存在
-3. PERFORMANCE_REPORT.md 存在
-4. SECURITY_AUDIT.md 存在
+| ID | 检查项 | 方法 |
+|----|-------|------|
+| GE1 | RC Gate PASS | 检查 RC_GATE_REPORT.md |
+| GE2 | RC_GATE_REPORT.md 存在 | `ls docs/releases/v{VERSION}/RC_GATE_REPORT.md` |
+| GE3 | PERFORMANCE_REPORT.md 存在 | `ls docs/releases/v{VERSION}/PERFORMANCE_REPORT.md` |
+| GE4 | SECURITY_AUDIT.md 存在 | `ls docs/releases/v{VERSION}/SECURITY_AUDIT.md` |
+| GE5 | 所有 RC 前置 Issue 已关闭 | Gitea API 查询 |
 
-### PASS
-
-所有 GA 指标全部 PASS:
+### PASS 标准
 
 | ID | Check | Method | Threshold |
 |----|-------|--------|-----------|
 | G1 | R1-R4 | 所有 RC 指标 | PASS |
-| G2 | Full test | cargo test --workspace | PASS |
-| G3 | Full coverage | L1 avg >= 85%, 每个 crate >= 80% | PASS |
-| G4 | TPC-H SF=1 | 22/22 PASS | PASS |
-| G5 | Security | cargo audit + 手动审计 | PASS |
+| G2 | Full test | `cargo test --workspace` | PASS |
+| G3 | Full coverage | L1 avg ≥ 85%, 每 crate ≥ 80% | PASS |
+| G4 | TPC-H SF=1 | `scripts/tpch/run_tpch.sh --sf 1` | 22/22 PASS |
+| G5 | Security | `cargo audit` + 手动审计 | PASS |
 | G6 | Documentation | API reference, CHANGELOG, UPGRADE_GUIDE | PASS |
 
-### FAIL
-
-G1-G6 任一项不满足标准。
-
 ---
 
-## CONDITIONAL PASS 的正确使用
+## 门禁执行要求
 
-### 错误示例
+### 日志保存
 
-```
-Alpha Gate: CONDITIONAL PASS (81.97%)
-- A5 Coverage: 81.97% >= 75% ✓
-- Parser coverage: 47.16% < 75% ✗
-```
-
-**问题**: 这里使用了 CONDITIONAL PASS，但条件不明确。Parser 覆盖率 47% 远低于 75%，不符合 CONDITIONAL 的定义。
-
-**正确做法**: 如果 Parser 47% 但总平均 81.97%，说明其他 crate 拉高了平均值。这种情况下：
-- 要么 Parser 单独 Issue 追踪 + CONDITIONAL (如果总平均 >= 70%)
-- 要么直接 FAIL，因为 Parser 结构性缺陷说明数据不可信
-
-### 正确示例
+每次 Gate 执行必须保存日志到 `docs/releases/v{VERSION}/logs/`：
 
 ```
-Alpha Gate: CONDITIONAL PASS (74.5%)
-- A5 Coverage: 74.5% (>= 50%, < 75%)
-- 条件: 所有 crate >= 50%
-- 条件: Parser 覆盖率问题创建 Issue I#2580
-- 条件: 2 周内 Parser 覆盖率提升到 >= 75%
-- 截止日期: 2026-06-13
+logs/gate_alpha_<commit>_<timestamp>.log
+logs/gate_beta_<commit>_<timestamp>.log
+logs/gate_rc_<commit>_<timestamp>.log
+logs/gate_ga_<commit>_<timestamp>.log
 ```
 
----
+### 脚本实现要求
 
-## Gate 执行日志要求
+1. **每个检查必须有对应脚本**：`scripts/gate/check_<gate>_<check>.sh`
+2. **脚本必须实际执行命令**：禁止只检查文档
+3. **脚本必须输出结构化结果**：JSON 或明确格式
+4. **脚本必须有退出码**：0=PASS, 1=FAIL
 
-每次 Gate 执行必须保存日志：
+### 防漏洞规则
 
-| 字段 | 要求 |
+| 规则 | 说明 |
 |------|------|
-| 日志文件 | `docs/releases/v<版本>/logs/gate_<阶段>_<commit>_<timestamp>.log` |
-| 内容 | 包含所有实际执行的命令和输出 |
-| 保存时间 | 执行后立即存档 |
-| 保留时间 | 永久 |
+| 禁止 PENDING 占位 | Gate 报告禁止出现 PENDING/FUTURE/TBD |
+| 禁止文档审查替代执行 | 必须执行实际命令，不能只看文档 |
+| 禁止功能追踪缺失 | Beta/RC/GA 必须追踪功能完成状态 |
+| 禁止幽灵 PR | 未合并的 PR 必须有明确原因说明 |
+| 禁止版本历史伪造 | 禁止引用非当前版本的"历史数据" |
 
 ---
 
-## 问题追踪要求
+## 版本历史
 
-| 问题类型 | 追踪要求 |
-|----------|----------|
-| Coverage 不足 | 创建 Issue，包含目标版本 |
-| 编译错误 | 创建 Issue，必须在下一版本修复 |
-| 测试失败 | 创建 Issue，必须在当前版本修复 |
-| 跨版本债务 | Issue 标题格式 `[debt:<来源版本>]` |
+| 版本 | 日期 | 说明 |
+|------|------|------|
+| 2.0 | 2026-05-31 | 增加 B-Functional 功能追踪，RC-F 功能完成要求，脚本实现要求 |
+| 1.0 | 2026-03-07 | 初始版本 |
 
 ---
 
-## 版本计划现实性要求
-
-| 要求 | 说明 |
-|------|------|
-| 时间线依据 | 基于历史数据和团队速度 |
-| 里程碑标注风险 | 如果时间线紧张，必须标注风险级别 |
-| 不可压缩的最小时间 | Parser 修复: 3 周, mysql-server 修复: 2 周 |
-
----
-
-**最后更新**: 2026-05-30
-**维护者**: hermes-agent
-**关联 Issue**: I#2584 (Alpha CONDITIONAL PASS semantics unclear)
+**关联 Issue**: #2682 (Beta Gate functional tracking vulnerability — gate passed but features incomplete)  
+**修复来源**: Hermes C 根因分析 (2026-05-31) — Beta Gate 只检查 B1-B4 基础设施，未追踪功能完整性
