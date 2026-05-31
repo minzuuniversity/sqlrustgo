@@ -152,7 +152,10 @@ fn cmd_artifact(
     let store = open_store(db)?;
     let ingestor = EvidenceIngestor::new(&store);
     ingestor.ingest_artifact(&id, &ci_run_id, &name, &sha256)?;
-    println!("{{\"ingested\": \"artifact_{}\", \"type\": \"artifact\"}}", id);
+    println!(
+        "{{\"ingested\": \"artifact_{}\", \"type\": \"artifact\"}}",
+        id
+    );
     Ok(())
 }
 
