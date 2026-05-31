@@ -489,6 +489,10 @@ impl<S: StorageEngine> StorageEngine for WalStorage<S> {
     ) -> Vec<crate::engine::ReferencingForeignKey> {
         self.inner.get_referencing_foreign_keys(table)
     }
+
+    fn is_wal_enabled(&self) -> bool {
+        true
+    }
 }
 
 #[cfg(test)]
@@ -540,6 +544,15 @@ mod tests {
             .filter(|e| e.entry_type == WalEntryType::Rollback)
             .collect();
         assert_eq!(rollbacks.len(), 1);
+    }
+
+    #[test]
+    fn test_wal_storage_is_wal_enabled() {
+        let dir = TempDir::new().unwrap();
+        let inner = MemoryStorage::new();
+        let wal_path = dir.path().join("test.wal");
+        let storage = WalStorage::new(inner, wal_path).unwrap();
+        assert!(storage.is_wal_enabled());
     }
 
     #[test]
