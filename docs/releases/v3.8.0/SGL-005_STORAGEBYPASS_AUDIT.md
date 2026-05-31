@@ -2,7 +2,21 @@
 
 **Date**: 2026-06-01
 **Author**: Hermes C
-**Status**: ACTIVE — REAL VIOLATIONS FOUND
+**Status**: IN PROGRESS — 7 violations remain
+
+### Progress (2026-06-01)
+
+| PR | Action | Violations Fixed | Status |
+|----|--------|-----------------|--------|
+| #2723 | P0: DELETE via facade | 1 (local_executor.rs:1469) | ✅ Fixed |
+| #2724 | Remove dead teaching_endpoints.rs | 4 (teaching code) | ✅ Fixed |
+
+### Remaining Violations
+
+| Location | Lines | P | Type | Fix |
+|----------|-------|---|------|-----|
+| trigger.rs | 429,507,509,531 | P1 | Trigger body DML | Architecture refactor |
+| openclaw_endpoints.rs | 2203,2263 | P2 | Teaching DML | Medium refactor |
 
 ---
 
