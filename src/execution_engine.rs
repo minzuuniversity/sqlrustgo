@@ -1427,12 +1427,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     .unwrap_or(self.default_isolation);
                 self.begin_transaction(iso)
             }
-            TransactionStatement::Commit { work: _ } => {
-                self.commit_transaction()
-            }
-            TransactionStatement::Rollback { work: _ } => {
-                self.rollback_transaction()
-            }
+            TransactionStatement::Commit { work: _ } => self.commit_transaction(),
+            TransactionStatement::Rollback { work: _ } => self.rollback_transaction(),
             TransactionStatement::SetTransaction { isolation_level } => {
                 self.default_isolation = match isolation_level {
                     ParserIsolationLevel::ReadCommitted => TmIsolationLevel::SnapshotIsolation,
@@ -2713,7 +2709,10 @@ mod tests {
             .unwrap();
         // DML without explicit BEGIN → must succeed via autocommit
         let result = engine.execute("INSERT INTO t1 VALUES (1, 'test')");
-        assert!(result.is_ok(), "INSERT without explicit TX should autocommit in v3.8.0");
+        assert!(
+            result.is_ok(),
+            "INSERT without explicit TX should autocommit in v3.8.0"
+        );
     }
 
     #[test]
@@ -2727,7 +2726,10 @@ mod tests {
         engine.execute("INSERT INTO t1 VALUES (1, 'test')").unwrap();
         // DML without explicit BEGIN → must succeed via autocommit
         let result = engine.execute("UPDATE t1 SET name = 'updated' WHERE id = 1");
-        assert!(result.is_ok(), "UPDATE without explicit TX should autocommit in v3.8.0");
+        assert!(
+            result.is_ok(),
+            "UPDATE without explicit TX should autocommit in v3.8.0"
+        );
     }
 
     #[test]
@@ -2741,7 +2743,10 @@ mod tests {
         engine.execute("INSERT INTO t1 VALUES (1, 'test')").unwrap();
         // DML without explicit BEGIN → must succeed via autocommit
         let result = engine.execute("DELETE FROM t1 WHERE id = 1");
-        assert!(result.is_ok(), "DELETE without explicit TX should autocommit in v3.8.0");
+        assert!(
+            result.is_ok(),
+            "DELETE without explicit TX should autocommit in v3.8.0"
+        );
     }
 
     #[test]
@@ -2758,7 +2763,9 @@ mod tests {
         engine.execute("INSERT INTO t1 VALUES (1, 'test')").unwrap();
         engine.execute("COMMIT").unwrap();
         // INSERT after COMMIT → must panic
-        engine.execute("INSERT INTO t1 VALUES (2, 'after_commit')").unwrap();
+        engine
+            .execute("INSERT INTO t1 VALUES (2, 'after_commit')")
+            .unwrap();
     }
 
     #[test]
@@ -2775,7 +2782,9 @@ mod tests {
         engine.execute("INSERT INTO t1 VALUES (1, 'test')").unwrap();
         engine.execute("ROLLBACK").unwrap();
         // INSERT after ROLLBACK → must panic
-        engine.execute("INSERT INTO t1 VALUES (2, 'after_rollback')").unwrap();
+        engine
+            .execute("INSERT INTO t1 VALUES (2, 'after_rollback')")
+            .unwrap();
     }
 
     #[test]

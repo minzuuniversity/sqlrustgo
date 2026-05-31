@@ -1,9 +1,9 @@
+use sqlrustgo_executor::local_executor_dml::LocalExecutorDml;
 use sqlrustgo_executor::mutation_compiler::{
     canonicalize_expr, Assignment, CanonicalExpr, MutationCompiler, RowMutation,
 };
 use sqlrustgo_executor::predicate_compiler::PredicateCompiler;
 use sqlrustgo_executor::update_compiler::{UpdateCompiler, UpdateStatement};
-use sqlrustgo_executor::local_executor_dml::LocalExecutorDml;
 use sqlrustgo_planner::{Column, DataType, Expr, Field, Operator, Schema};
 use sqlrustgo_types::Value;
 
@@ -328,9 +328,21 @@ fn test_predicate_compiler_optional() {
 fn dummy_schema() -> Schema {
     Schema {
         fields: vec![
-            Field { name: "id".to_string(), data_type: DataType::Integer, nullable: false },
-            Field { name: "name".to_string(), data_type: DataType::Text, nullable: true },
-            Field { name: "age".to_string(), data_type: DataType::Integer, nullable: false },
+            Field {
+                name: "id".to_string(),
+                data_type: DataType::Integer,
+                nullable: false,
+            },
+            Field {
+                name: "name".to_string(),
+                data_type: DataType::Text,
+                nullable: true,
+            },
+            Field {
+                name: "age".to_string(),
+                data_type: DataType::Integer,
+                nullable: false,
+            },
         ],
     }
 }

@@ -35,7 +35,9 @@ fn test_buffer_pool_insert_and_get() {
 #[test]
 fn test_buffer_pool_lru() {
     let pool = BufferPool::new(3);
-    for i in 0..5 { pool.insert(Arc::new(Page::new(i))); }
+    for i in 0..5 {
+        pool.insert(Arc::new(Page::new(i)));
+    }
     assert_eq!(pool.len(), 3);
     assert!(pool.get(0).is_none());
     assert!(pool.get(4).is_some());
@@ -52,7 +54,9 @@ fn test_buffer_pool_remove() {
 #[test]
 fn test_buffer_pool_clear() {
     let pool = BufferPool::new(10);
-    for i in 0..5 { pool.insert(Arc::new(Page::new(i))); }
+    for i in 0..5 {
+        pool.insert(Arc::new(Page::new(i)));
+    }
     pool.clear();
     assert!(pool.is_empty());
 }
@@ -85,7 +89,10 @@ fn test_file_storage_create() {
 fn test_file_storage_insert_and_drop() {
     let dir = temp_dir("fsid");
     let mut fs = FileStorage::new(dir.clone()).unwrap();
-    let info = TableInfo { name: "t".into(), ..Default::default() };
+    let info = TableInfo {
+        name: "t".into(),
+        ..Default::default()
+    };
     let data = TableData { info, rows: vec![] };
     fs.insert_table("t".into(), data).unwrap();
     assert!(fs.contains_table("t"));
@@ -98,9 +105,13 @@ fn test_file_storage_insert_and_drop() {
 fn test_file_storage_multiple() {
     let dir = temp_dir("fsm");
     let mut fs = FileStorage::new(dir.clone()).unwrap();
-    for n in &["a","b","c"] {
-        let info = TableInfo { name: (*n).into(), ..Default::default() };
-        fs.insert_table((*n).into(), TableData { info, rows: vec![] }).unwrap();
+    for n in &["a", "b", "c"] {
+        let info = TableInfo {
+            name: (*n).into(),
+            ..Default::default()
+        };
+        fs.insert_table((*n).into(), TableData { info, rows: vec![] })
+            .unwrap();
     }
     assert_eq!(fs.table_names().len(), 3);
     let _ = fs::remove_dir_all(&dir);
@@ -110,8 +121,12 @@ fn test_file_storage_multiple() {
 fn test_file_storage_persist() {
     let dir = temp_dir("fsp");
     let mut fs = FileStorage::new(dir.clone()).unwrap();
-    let info = TableInfo { name: "pt".into(), ..Default::default() };
-    fs.insert_table("pt".into(), TableData { info, rows: vec![] }).unwrap();
+    let info = TableInfo {
+        name: "pt".into(),
+        ..Default::default()
+    };
+    fs.insert_table("pt".into(), TableData { info, rows: vec![] })
+        .unwrap();
     fs.flush().unwrap();
     assert!(fs.contains_table("pt"));
     let _ = fs::remove_dir_all(&dir);
@@ -122,9 +137,13 @@ fn test_file_storage_persist() {
 #[test]
 fn test_wal_entry_round_trip() {
     let e = WalEntry {
-        tx_id: 1, entry_type: WalEntryType::Insert, table_id: 100,
-        key: Some(vec![1]), data: Some(vec![10,20]),
-        lsn: 0, timestamp: 12345,
+        tx_id: 1,
+        entry_type: WalEntryType::Insert,
+        table_id: 100,
+        key: Some(vec![1]),
+        data: Some(vec![10, 20]),
+        lsn: 0,
+        timestamp: 12345,
     };
     let bytes = e.to_bytes();
     let d = WalEntry::from_bytes(&bytes).unwrap();
@@ -138,9 +157,15 @@ fn test_wal_append_and_read() {
     let p = dir.join("w.log");
     let mut w = WalWriter::new(&p).unwrap();
     w.append(&WalEntry {
-        tx_id: 1, entry_type: WalEntryType::Insert, table_id: 1,
-        key: None, data: Some(vec![99]), lsn: 0, timestamp: 100,
-    }).unwrap();
+        tx_id: 1,
+        entry_type: WalEntryType::Insert,
+        table_id: 1,
+        key: None,
+        data: Some(vec![99]),
+        lsn: 0,
+        timestamp: 100,
+    })
+    .unwrap();
     w.flush().unwrap();
     let mut r = WalReader::new(&p).unwrap();
     assert_eq!(r.read_all().unwrap().len(), 1);
@@ -154,9 +179,15 @@ fn test_wal_multi_entry() {
     let mut w = WalWriter::new(&p).unwrap();
     for i in 0..5 {
         w.append(&WalEntry {
-            tx_id: i, entry_type: WalEntryType::Insert, table_id: i,
-            key: None, data: Some(vec![i as u8]), lsn: 0, timestamp: i as u64,
-        }).unwrap();
+            tx_id: i,
+            entry_type: WalEntryType::Insert,
+            table_id: i,
+            key: None,
+            data: Some(vec![i as u8]),
+            lsn: 0,
+            timestamp: i as u64,
+        })
+        .unwrap();
     }
     w.flush().unwrap();
     let mut r = WalReader::new(&p).unwrap();
@@ -172,9 +203,15 @@ fn test_wal_recover() {
         let mut w = WalWriter::new(&p).unwrap();
         for i in 0..3 {
             w.append(&WalEntry {
-                tx_id: i, entry_type: WalEntryType::Insert, table_id: 1,
-                key: None, data: Some(vec![i as u8]), lsn: 0, timestamp: i as u64,
-            }).unwrap();
+                tx_id: i,
+                entry_type: WalEntryType::Insert,
+                table_id: 1,
+                key: None,
+                data: Some(vec![i as u8]),
+                lsn: 0,
+                timestamp: i as u64,
+            })
+            .unwrap();
         }
         w.flush().unwrap();
     }
@@ -190,9 +227,15 @@ fn test_wal_manager_recover() {
     {
         let mut w = WalWriter::new(&p).unwrap();
         w.append(&WalEntry {
-            tx_id: 1, entry_type: WalEntryType::Insert, table_id: 1,
-            key: None, data: Some(vec![77]), lsn: 0, timestamp: 999,
-        }).unwrap();
+            tx_id: 1,
+            entry_type: WalEntryType::Insert,
+            table_id: 1,
+            key: None,
+            data: Some(vec![77]),
+            lsn: 0,
+            timestamp: 999,
+        })
+        .unwrap();
         w.flush().unwrap();
     }
     let mgr = WalManager::new(p.clone());
@@ -206,9 +249,15 @@ fn test_wal_lsn() {
     let p = dir.join("l.log");
     let mut w = WalWriter::new(&p).unwrap();
     w.append(&WalEntry {
-        tx_id: 1, entry_type: WalEntryType::Insert, table_id: 1,
-        key: None, data: None, lsn: 0, timestamp: 1,
-    }).unwrap();
+        tx_id: 1,
+        entry_type: WalEntryType::Insert,
+        table_id: 1,
+        key: None,
+        data: None,
+        lsn: 0,
+        timestamp: 1,
+    })
+    .unwrap();
     assert!(w.current_lsn() > 0);
     let _ = fs::remove_dir_all(&dir);
 }
