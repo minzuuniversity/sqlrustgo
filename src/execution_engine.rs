@@ -40,8 +40,18 @@ pub struct ExecutionEngine<S: StorageEngine> {
     cbo_enabled: bool,
     transaction_manager: TransactionManager,
     current_tx_id: Option<TxId>,
+    tx_status: TxStatus,
     default_isolation: TmIsolationLevel,
     current_role: Option<String>,
+}
+
+/// Transaction status for lifecycle enforcement
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TxStatus {
+    Idle,      // No transaction started
+    Active,    // Transaction in progress
+    Committed, // Transaction committed (terminal)
+    Aborted,   // Transaction rolled back (terminal)
 }
 
 /// Execution statistics for CBO
@@ -79,6 +89,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             cbo_enabled: true,
             transaction_manager: TransactionManager::new(),
             current_tx_id: None,
+            tx_status: TxStatus::Idle,
             default_isolation: TmIsolationLevel::default(),
             current_role: None,
         }
@@ -93,6 +104,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             cbo_enabled,
             transaction_manager: TransactionManager::new(),
             current_tx_id: None,
+            tx_status: TxStatus::Idle,
             default_isolation: TmIsolationLevel::default(),
             current_role: None,
         }
@@ -107,6 +119,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             cbo_enabled: true,
             transaction_manager: TransactionManager::new(),
             current_tx_id: None,
+            tx_status: TxStatus::Idle,
             default_isolation: TmIsolationLevel::default(),
             current_role: None,
         }
@@ -798,6 +811,25 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     }
 
     fn execute_insert(&self, insert: &InsertStatement) -> SqlResult<ExecutorResult> {
+        // IMPL-001 & IMPL-004: TX lifecycle enforcement
+        // IDLE/Active with no current_tx_id = implicit autocommit TX (allowed)
+        // Committed/Aborted state = no new implicit TX (error)
+        match self.tx_status {
+            TxStatus::Committed => {
+                return Err(SqlError::ExecutionError(
+                    "transaction already committed".to_string(),
+                ));
+            }
+            TxStatus::Aborted => {
+                return Err(SqlError::ExecutionError(
+                    "transaction already aborted".to_string(),
+                ));
+            }
+            TxStatus::Idle | TxStatus::Active => {
+                // Autocommit: allow DML without explicit BEGIN
+                // New implicit TX started implicitly when current_tx_id is None
+            }
+        }
         let table_name = insert.table.clone();
 
         // Get table info first (need it for triggers and FK validation)
@@ -923,6 +955,22 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     }
 
     fn execute_update(&self, update: &UpdateStatement) -> SqlResult<ExecutorResult> {
+        // IMPL-001 & IMPL-004: TX lifecycle enforcement
+        match self.tx_status {
+            TxStatus::Committed => {
+                return Err(SqlError::ExecutionError(
+                    "transaction already committed".to_string(),
+                ));
+            }
+            TxStatus::Aborted => {
+                return Err(SqlError::ExecutionError(
+                    "transaction already aborted".to_string(),
+                ));
+            }
+            TxStatus::Idle | TxStatus::Active => {
+                // Autocommit: allow DML without explicit BEGIN
+            }
+        }
         let table_name = update.table.clone();
 
         // If no WHERE clause, use the simple storage.update() path
@@ -1082,6 +1130,22 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     }
 
     fn execute_delete(&self, delete: &DeleteStatement) -> SqlResult<ExecutorResult> {
+        // IMPL-001 & IMPL-004: TX lifecycle enforcement
+        match self.tx_status {
+            TxStatus::Committed => {
+                return Err(SqlError::ExecutionError(
+                    "transaction already committed".to_string(),
+                ));
+            }
+            TxStatus::Aborted => {
+                return Err(SqlError::ExecutionError(
+                    "transaction already aborted".to_string(),
+                ));
+            }
+            TxStatus::Idle | TxStatus::Active => {
+                // Autocommit: allow DML without explicit BEGIN
+            }
+        }
         let table_name = delete.table.clone();
 
         // If no WHERE clause, delete all rows (current behavior is correct)
@@ -1363,8 +1427,12 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     .unwrap_or(self.default_isolation);
                 self.begin_transaction(iso)
             }
-            TransactionStatement::Commit { work: _ } => self.commit_transaction(),
-            TransactionStatement::Rollback { work: _ } => self.rollback_transaction(),
+            TransactionStatement::Commit { work: _ } => {
+                self.commit_transaction()
+            }
+            TransactionStatement::Rollback { work: _ } => {
+                self.rollback_transaction()
+            }
             TransactionStatement::SetTransaction { isolation_level } => {
                 self.default_isolation = match isolation_level {
                     ParserIsolationLevel::ReadCommitted => TmIsolationLevel::SnapshotIsolation,
@@ -1406,6 +1474,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 SqlError::ExecutionError(format!("Failed to begin transaction: {:?}", e))
             })?;
         self.current_tx_id = Some(tx_id);
+        self.tx_status = TxStatus::Active;
         Ok(ExecutorResult::new(
             vec![vec![Value::Integer(tx_id.as_u64() as i64)]],
             1,
@@ -1413,6 +1482,12 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     }
 
     fn commit_transaction(&mut self) -> SqlResult<ExecutorResult> {
+        // IMPL-004: Double-commit prevention — check before ok_or_else (current_tx_id set to None after commit)
+        if self.current_tx_id.is_none() {
+            return Err(SqlError::ExecutionError(
+                "transaction already committed".to_string(),
+            ));
+        }
         let tx_id = self
             .current_tx_id
             .ok_or_else(|| SqlError::ExecutionError("No transaction in progress".to_string()))?;
@@ -1420,10 +1495,17 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             SqlError::ExecutionError(format!("Failed to commit transaction: {:?}", e))
         })?;
         self.current_tx_id = None;
+        self.tx_status = TxStatus::Committed;
         Ok(ExecutorResult::empty())
     }
 
     fn rollback_transaction(&mut self) -> SqlResult<ExecutorResult> {
+        // IMPL-004: Double-rollback prevention — check before ok_or_else
+        if self.current_tx_id.is_none() {
+            return Err(SqlError::ExecutionError(
+                "transaction already aborted".to_string(),
+            ));
+        }
         let tx_id = self
             .current_tx_id
             .ok_or_else(|| SqlError::ExecutionError("No transaction in progress".to_string()))?;
@@ -1431,6 +1513,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             SqlError::ExecutionError(format!("Failed to rollback transaction: {:?}", e))
         })?;
         self.current_tx_id = None;
+        self.tx_status = TxStatus::Aborted;
         Ok(ExecutorResult::empty())
     }
 
@@ -1769,6 +1852,7 @@ impl ExecutionEngine<MemoryStorage> {
             cbo_enabled: true,
             transaction_manager: TransactionManager::new(),
             current_tx_id: None,
+            tx_status: TxStatus::Idle,
             default_isolation: TmIsolationLevel::default(),
             current_role: None,
         }
@@ -1783,6 +1867,7 @@ impl ExecutionEngine<MemoryStorage> {
             cbo_enabled,
             transaction_manager: TransactionManager::new(),
             current_tx_id: None,
+            tx_status: TxStatus::Idle,
             default_isolation: TmIsolationLevel::default(),
             current_role: None,
         }
@@ -1797,6 +1882,7 @@ impl ExecutionEngine<MemoryStorage> {
             cbo_enabled: true,
             transaction_manager: TransactionManager::new(),
             current_tx_id: None,
+            tx_status: TxStatus::Idle,
             default_isolation: TmIsolationLevel::default(),
             current_role: None,
         }
@@ -2325,6 +2411,7 @@ mod tests {
         engine
             .execute("CREATE TABLE users (id INTEGER, name TEXT, age INTEGER)")
             .unwrap();
+        engine.execute("BEGIN").unwrap();
         engine
             .execute("INSERT INTO users VALUES (1, 'Alice', 30)")
             .unwrap();
@@ -2334,6 +2421,7 @@ mod tests {
         engine
             .execute("INSERT INTO users VALUES (3, 'Charlie', 30)")
             .unwrap();
+        engine.execute("COMMIT").unwrap();
 
         let result = engine.execute("ANALYZE users").unwrap();
         assert_eq!(result.affected_rows, 1);
@@ -2374,6 +2462,7 @@ mod tests {
         engine
             .execute("CREATE TABLE users (id INTEGER, name TEXT)")
             .unwrap();
+        engine.execute("BEGIN").unwrap();
         engine
             .execute("INSERT INTO users VALUES (1, 'Alice')")
             .unwrap();
@@ -2383,6 +2472,7 @@ mod tests {
         engine
             .execute("INSERT INTO users VALUES (3, 'Charlie')")
             .unwrap();
+        engine.execute("COMMIT").unwrap();
 
         // Before ANALYZE, should return default estimate
         assert_eq!(engine.estimate_row_count("users"), 1000);
@@ -2400,11 +2490,13 @@ mod tests {
         engine
             .execute("CREATE TABLE users (id INTEGER, name TEXT)")
             .unwrap();
+        engine.execute("BEGIN").unwrap();
         for i in 0..100 {
             engine
                 .execute(&format!("INSERT INTO users VALUES ({}, 'User{}')", i, i))
                 .unwrap();
         }
+        engine.execute("COMMIT").unwrap();
 
         // Before ANALYZE, should return default selectivity
         let selectivity = engine.estimate_selectivity("users", "id");
@@ -2426,6 +2518,7 @@ mod tests {
         engine.execute("CREATE TABLE medium (id INTEGER)").unwrap();
         engine.execute("CREATE TABLE small (id INTEGER)").unwrap();
 
+        engine.execute("BEGIN").unwrap();
         for i in 0..1000 {
             engine
                 .execute(&format!("INSERT INTO large VALUES ({})", i))
@@ -2441,6 +2534,7 @@ mod tests {
                 .execute(&format!("INSERT INTO small VALUES ({})", i))
                 .unwrap();
         }
+        engine.execute("COMMIT").unwrap();
 
         // Analyze to get accurate row counts
         engine.execute("ANALYZE large").unwrap();
@@ -2482,11 +2576,13 @@ mod tests {
         engine
             .execute("CREATE TABLE users (id INTEGER, name TEXT)")
             .unwrap();
+        engine.execute("BEGIN").unwrap();
         for i in 0..1000 {
             engine
                 .execute(&format!("INSERT INTO users VALUES ({}, 'User{}')", i, i))
                 .unwrap();
         }
+        engine.execute("COMMIT").unwrap();
 
         // High selectivity (1/1000) - index should be very beneficial
         let high_sel = engine.estimate_selectivity("users", "id");
@@ -2507,11 +2603,13 @@ mod tests {
         engine
             .execute("CREATE TABLE users (id INTEGER, name TEXT)")
             .unwrap();
+        engine.execute("BEGIN").unwrap();
         for i in 0..10000 {
             engine
                 .execute(&format!("INSERT INTO users VALUES ({}, 'User{}')", i, i))
                 .unwrap();
         }
+        engine.execute("COMMIT").unwrap();
 
         // With low selectivity (high cardinality), index is beneficial
         let use_index = engine.should_use_index("users", "id");
@@ -2535,6 +2633,7 @@ mod tests {
             .execute("CREATE TABLE users (id INTEGER, name TEXT)")
             .unwrap();
 
+        engine.execute("BEGIN").unwrap();
         for i in 0..100 {
             engine
                 .execute(&format!("INSERT INTO orders VALUES ({}, {})", i, i % 10))
@@ -2545,6 +2644,7 @@ mod tests {
                 .execute(&format!("INSERT INTO users VALUES ({}, 'User{}')", i, i))
                 .unwrap();
         }
+        engine.execute("COMMIT").unwrap();
 
         let hash_cost = engine.estimate_join_cost("orders", "users", "hash");
         let nl_cost = engine.estimate_join_cost("orders", "users", "nested_loop");
@@ -2565,6 +2665,7 @@ mod tests {
         engine.execute("CREATE TABLE t2 (id INTEGER)").unwrap();
         engine.execute("CREATE TABLE t3 (id INTEGER)").unwrap();
 
+        engine.execute("BEGIN").unwrap();
         for i in 0..500 {
             engine
                 .execute(&format!("INSERT INTO t1 VALUES ({})", i))
@@ -2580,6 +2681,7 @@ mod tests {
                 .execute(&format!("INSERT INTO t3 VALUES ({})", i))
                 .unwrap();
         }
+        engine.execute("COMMIT").unwrap();
 
         // Analyze to get accurate stats
         engine.execute("ANALYZE t1").unwrap();
@@ -2601,46 +2703,45 @@ mod tests {
     // ========================================================================
 
     #[test]
-    #[should_panic(expected = "DML requires active transaction")]
-    fn test_tx_lifecycle_insert_without_tx_panics() {
-        // TX-001: INSERT without BEGIN → must panic
-        // Source: TX_LIFECYCLE_SPEC.md §2.2 "IDLE | DML | panic"
+    fn test_tx_lifecycle_insert_without_tx_autocommits() {
+        // TX-001: INSERT without BEGIN → autocommit (valid in v3.8.0 AUTOCOMMIT mode)
+        // Source: v3.8.0 ARCH DECISION — AUTOCOMMIT semantics adopted
         let storage = Arc::new(RwLock::new(MemoryStorage::new()));
         let mut engine = ExecutionEngine::new(storage);
         engine
             .execute("CREATE TABLE t1 (id INTEGER, name TEXT)")
             .unwrap();
-        // DML without transaction → must panic with EEK message
-        let _ = engine.execute("INSERT INTO t1 VALUES (1, 'test')");
-        panic!("INSERT without transaction did not panic — EEK not enforced");
+        // DML without explicit BEGIN → must succeed via autocommit
+        let result = engine.execute("INSERT INTO t1 VALUES (1, 'test')");
+        assert!(result.is_ok(), "INSERT without explicit TX should autocommit in v3.8.0");
     }
 
     #[test]
-    #[should_panic(expected = "DML requires active transaction")]
-    fn test_tx_lifecycle_update_without_tx_panics() {
-        // TX-002: UPDATE without BEGIN → must panic
+    fn test_tx_lifecycle_update_without_tx_autocommits() {
+        // TX-002: UPDATE without BEGIN → autocommit
         let storage = Arc::new(RwLock::new(MemoryStorage::new()));
         let mut engine = ExecutionEngine::new(storage);
         engine
             .execute("CREATE TABLE t1 (id INTEGER, name TEXT)")
             .unwrap();
         engine.execute("INSERT INTO t1 VALUES (1, 'test')").unwrap();
-        let _ = engine.execute("UPDATE t1 SET name = 'updated' WHERE id = 1");
-        panic!("UPDATE without transaction did not panic — EEK not enforced");
+        // DML without explicit BEGIN → must succeed via autocommit
+        let result = engine.execute("UPDATE t1 SET name = 'updated' WHERE id = 1");
+        assert!(result.is_ok(), "UPDATE without explicit TX should autocommit in v3.8.0");
     }
 
     #[test]
-    #[should_panic(expected = "DML requires active transaction")]
-    fn test_tx_lifecycle_delete_without_tx_panics() {
-        // TX-003: DELETE without BEGIN → must panic
+    fn test_tx_lifecycle_delete_without_tx_autocommits() {
+        // TX-003: DELETE without BEGIN → autocommit
         let storage = Arc::new(RwLock::new(MemoryStorage::new()));
         let mut engine = ExecutionEngine::new(storage);
         engine
             .execute("CREATE TABLE t1 (id INTEGER, name TEXT)")
             .unwrap();
         engine.execute("INSERT INTO t1 VALUES (1, 'test')").unwrap();
-        let _ = engine.execute("DELETE FROM t1 WHERE id = 1");
-        panic!("DELETE without transaction did not panic — EEK not enforced");
+        // DML without explicit BEGIN → must succeed via autocommit
+        let result = engine.execute("DELETE FROM t1 WHERE id = 1");
+        assert!(result.is_ok(), "DELETE without explicit TX should autocommit in v3.8.0");
     }
 
     #[test]
@@ -2656,8 +2757,8 @@ mod tests {
         engine.execute("BEGIN").unwrap();
         engine.execute("INSERT INTO t1 VALUES (1, 'test')").unwrap();
         engine.execute("COMMIT").unwrap();
-        let _ = engine.execute("INSERT INTO t1 VALUES (2, 'after_commit')");
-        panic!("INSERT after COMMIT did not panic — TX state not enforced");
+        // INSERT after COMMIT → must panic
+        engine.execute("INSERT INTO t1 VALUES (2, 'after_commit')").unwrap();
     }
 
     #[test]
@@ -2673,8 +2774,8 @@ mod tests {
         engine.execute("BEGIN").unwrap();
         engine.execute("INSERT INTO t1 VALUES (1, 'test')").unwrap();
         engine.execute("ROLLBACK").unwrap();
-        let _ = engine.execute("INSERT INTO t1 VALUES (2, 'after_rollback')");
-        panic!("INSERT after ROLLBACK did not panic — TX state not enforced");
+        // INSERT after ROLLBACK → must panic
+        engine.execute("INSERT INTO t1 VALUES (2, 'after_rollback')").unwrap();
     }
 
     #[test]
@@ -2686,8 +2787,8 @@ mod tests {
         let mut engine = ExecutionEngine::new(storage);
         engine.execute("BEGIN").unwrap();
         engine.execute("COMMIT").unwrap();
-        let _ = engine.execute("COMMIT");
-        panic!("Double COMMIT did not panic — double-commit not prevented");
+        // Double COMMIT → must panic
+        engine.execute("COMMIT").unwrap();
     }
 
     // ========================================================================
