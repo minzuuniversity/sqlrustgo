@@ -1,6 +1,14 @@
 #!/usr/bin/env bash
-# v3.8.0 Alpha Gate — Alpha 阶段门禁脚本
+# v3.8.0 Alpha Gate — Alpha 阶段门禁脚本 v2.0
 # Governance-Driven: G-01 Evidence Required, G-04 Claim Provenance
+#
+# 检查内容:
+#   A1-A5: Standard Checks (Build/Test/Clippy/Format/Coverage)
+#   A6: Governance (Replay/Claim/Decision/ADR/Freshness)
+#   A7: SGL Layer-3 Semantic Gate (WAL/Transaction invariants)
+#   A8: 3-Layer Review Mechanisms (Evidence/Plan/Arch)
+#   A9: 5 Principles (G-01~G-06 Truthfulness Framework)
+#
 # NOTE: Does NOT use set -e — each check runs independently to produce full report
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -165,9 +173,45 @@ check "A6-5_ADR" "ADR-001~ADR-005 all exist" \
      test -f docs/governance/adr/ADR-005-legacy-gate-retirement.md"
 
 # ============================================================
+# A7: SGL Layer-3 语义门禁
+# ============================================================
+echo ""
+echo "--- A7: SGL Layer-3 Semantic Gate ---"
+
+check "A7_SGL" "SGL Semantic Gate (SGL-001~005)" \
+    "bash \"$SCRIPT_DIR/check_integration_gate.sh\" > \"$ARTIFACTS_DIR/A7_SGL.log\" 2>&1; test \${PIPESTATUS[0]} -eq 0"
+
+# ============================================================
+# A8: 3套审查机制
+# ============================================================
+echo ""
+echo "--- A8: 3-Layer Governance Review Mechanisms ---"
+
+# A8-1: 审查机制1 — 证据绑定 (G-01)
+check "A8-1_EVIDENCE" "Evidence Binding (G-01 Anti-Fabrication)" \
+    "bash \"$SCRIPT_DIR/check_evidence_binding.sh\" v3.8.0 \"$ARTIFACTS_DIR\" > \"$ARTIFACTS_DIR/A8-1_EVIDENCE.log\" 2>&1; test \${PIPESTATUS[0]} -eq 0"
+
+# A8-2: 审查机制2 — 计划完整性 (G-05)
+check "A8-2_PLAN" "Plan Integrity (G-05 No Rewrite)" \
+    "bash \"$SCRIPT_DIR/check_plan_integrity.sh\" v3.8.0 \"$ARTIFACTS_DIR\" > \"$ARTIFACTS_DIR/A8-2_PLAN.log\" 2>&1; test \${PIPESTATUS[0]} -eq 0"
+
+# A8-3: 审查机制3 — 架构不变式 (C-ARCH)
+check "A8-3_ARCH" "Architecture Invariants (C-ARCH-01~05)" \
+    "bash \"$SCRIPT_DIR/check_arch_invariants.sh\" > \"$ARTIFACTS_DIR/A8-3_ARCH.log\" 2>&1; test \${PIPESTATUS[0]} -eq 0"
+
+# ============================================================
+# A9: 5原则 (G-01~G-06) — Truthfulness Framework
+# ============================================================
+echo ""
+echo "--- A9: 5 Principles (G-01~G-06) Truthfulness Framework ---"
+
+check "A9_GOVERNANCE" "5 Principles Full Check" \
+    "bash \"$SCRIPT_DIR/check_5_principles.sh\" v3.8.0 \"$ARTIFACTS_DIR\" > \"$ARTIFACTS_DIR/A9_GOVERNANCE.log\" 2>&1; test \${PIPESTATUS[0]} -eq 0"
+
+# ============================================================
 # 生成 evidence.json (完善 stdout_sha256)
 # ============================================================
-for id in A1_BUILD A2_TEST A3_CLIPPY A4_FORMAT A6-1_REPLAY A6-2_CLAIM A6-3_DECISION A6-5_ADR; do
+for id in A1_BUILD A2_TEST A3_CLIPPY A4_FORMAT A6-1_REPLAY A6-2_CLAIM A6-3_DECISION A6-5_ADR A7_SGL A8-1_EVIDENCE A8-2_PLAN A8-3_ARCH A9_GOVERNANCE; do
     if [ -f "$ARTIFACTS_DIR/${id}.log" ]; then
         sha=$(sha256sum "$ARTIFACTS_DIR/${id}.log" 2>/dev/null | cut -d' ' -f1)
         # 检查是否已添加
