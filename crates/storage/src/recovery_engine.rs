@@ -20,6 +20,7 @@
 use crate::engine::{SqlResult, StorageEngine, Value};
 use crate::wal::{WalEntry, WalEntryType, WalManager};
 use std::collections::HashMap;
+use std::marker::PhantomData;
 
 /// Recovery statistics
 #[derive(Debug, Default, Clone)]
@@ -55,6 +56,62 @@ pub trait RecoveryEngine<S: StorageEngine>: Send + Sync {
 
     /// Apply a single WAL entry directly onto storage
     fn apply_entry(&mut self, storage: &mut S, entry: &WalEntry) -> SqlResult<()>;
+}
+
+/// Recovery state machine — prevents repeated recovery
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum RecoveryState {
+    #[default]
+    Unrecovered,
+    Recovered,
+    Failed,
+}
+
+/// Stateful wrapper around RecoveryEngineImpl
+pub struct StatefulRecoveryEngine<S: StorageEngine> {
+    inner: RecoveryEngineImpl,
+    state: RecoveryState,
+    _marker: PhantomData<S>,
+}
+
+impl<S: StorageEngine> Default for StatefulRecoveryEngine<S> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<S: StorageEngine> StatefulRecoveryEngine<S> {
+    pub fn new() -> Self {
+        Self {
+            inner: RecoveryEngineImpl,
+            state: RecoveryState::Unrecovered,
+            _marker: PhantomData,
+        }
+    }
+}
+
+impl<S: StorageEngine> RecoveryEngine<S> for StatefulRecoveryEngine<S> {
+    fn recover(&mut self, storage: &mut S, wal: &mut dyn WalManager) -> SqlResult<RecoveryReport> {
+        match self.state {
+            RecoveryState::Unrecovered => {
+                self.state = RecoveryState::Recovered;
+                self.inner.recover(storage, wal)
+            }
+            RecoveryState::Recovered => {
+                // Idempotent — already recovered, return empty report
+                Ok(RecoveryReport::default())
+            }
+            RecoveryState::Failed => {
+                Err(crate::engine::SqlError::ExecutionError(
+                    "RecoveryEngine: cannot recover after previous failure".to_string(),
+                ))
+            }
+        }
+    }
+
+    fn apply_entry(&mut self, storage: &mut S, entry: &WalEntry) -> SqlResult<()> {
+        self.inner.apply_entry(storage, entry)
+    }
 }
 
 /// Default RecoveryEngine implementation
@@ -481,8 +538,31 @@ mod tests {
     }
 
     #[test]
+    fn test_recovery_state_default() {
+        let state = RecoveryState::Unrecovered;
+        assert_eq!(state, RecoveryState::Unrecovered);
+    }
+
+    #[test]
+    fn test_stateful_engine_blocks_double_recovery() {
+        use crate::engine::MemoryStorage;
+        use crate::wal::MemoryWalManager;
+
+        let mut storage = MemoryStorage::new();
+        let mut wal = MemoryWalManager::new();
+        let mut engine = StatefulRecoveryEngine::new();
+
+        let result1 = engine.recover(&mut storage, &mut wal);
+        assert!(result1.is_ok());
+
+        let result2 = engine.recover(&mut storage, &mut wal);
+        assert!(result2.is_ok());
+        let report = result2.unwrap();
+        assert_eq!(report.committed_txns, 0);
+    }
+
+    #[test]
     fn test_recovery_engine_impl_trait_bounds() {
-        // Verify RecoveryEngineImpl satisfies trait bounds
         let _engine: Box<dyn RecoveryEngine<MemoryStorage>> = Box::new(RecoveryEngineImpl);
     }
 }
