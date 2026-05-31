@@ -1,5 +1,7 @@
 //! B+ Tree implementation - simplified version for storage crate
 
+pub mod index;
+
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 

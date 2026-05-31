@@ -4,6 +4,7 @@ pub mod ast_adapter;
 pub mod execution;
 pub mod executor;
 pub mod executor_metrics;
+pub mod expr;
 pub mod local_executor_dml;
 pub mod mutation_compiler;
 pub mod predicate_compiler;
