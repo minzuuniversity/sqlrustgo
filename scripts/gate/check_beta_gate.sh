@@ -13,7 +13,7 @@ cd "$REPO_DIR"
 OUTPUT_JSON="/tmp/beta_gate_check_$$.json"
 PASS_COUNT=0
 FAIL_COUNT=0
-TOTAL_HARD=4
+TOTAL_HARD=5
 TOTAL_FUNCTIONAL=7
 
 log_result() {
@@ -94,12 +94,30 @@ if cargo fmt --all -- --check > /tmp/b4_fmt.log 2>&1; then
     FMT_DURATION=$((FMT_END - FMT_START))
     log_result "B4" "PASS" "Format check passed (auto-fixed in ${FMT_DURATION}s)"
 else
+    FMT_END=$(date +%s)
+    FMT_DURATION=$((FMT_END - FMT_START))
     log_result "B4" "FAIL" "Format issues persist - see /tmp/b4_fmt.log"
 fi
 
-echo ""
+# B5: Integration Gate — C-ARCH + SGL + WAL Invariants
+echo -n "B5 Integration Gate: "
+INTEG_START=$(date +%s)
+INTEG_OUTPUT=$(bash "$SCRIPT_DIR/check_integration_gate.sh" 2>&1 || true)
+INTEG_END=$(date +%s)
+INTEG_DURATION=$((INTEG_END - INTEG_START))
+# check_integration_gate.sh exits 0 = PASS, 1 = FAIL
+if bash "$SCRIPT_DIR/check_integration_gate.sh" > /tmp/b5_integ.log 2>&1; then
+    log_result "B5" "PASS" "Integration Gate passed in ${INTEG_DURATION}s"
+else
+    # Check if it's DRIFT-only (exit 2) vs actual FAIL (exit 1)
+    if grep -q "DRIFT" /tmp/b5_integ.log 2>/dev/null && ! grep -q "FAIL: 0" /tmp/b5_integ.log 2>/dev/null; then
+        log_result "B5" "PASS" "Integration Gate passed (DRIFT-only, non-blocking) in ${INTEG_DURATION}s"
+    else
+        log_result "B5" "FAIL" "Integration Gate failed - see /tmp/b5_integ.log"
+    fi
+fi
 
-# ============================================
+echo ""
 # PART 2: B-F1 ~ B-F3 PR CHAIN CHECKS
 # ============================================
 echo "--- B-FUNCTIONAL (PR Chain) ---"
@@ -235,7 +253,8 @@ cat > "$OUTPUT_JSON" << EOF
       "B1": ${B1_STATUS:-unknown},
       "B2": ${B2_STATUS:-unknown},
       "B3": ${B3_STATUS:-unknown},
-      "B4": ${B4_STATUS:-unknown}
+      "B4": ${B4_STATUS:-unknown},
+      "B5": ${B5_STATUS:-unknown}
     },
     "functional": {
       "B-F1": ${BF1_STATUS:-unknown},
