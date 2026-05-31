@@ -227,8 +227,9 @@ IMPL-002 是 v3.8.0 Alpha Freeze 后唯一未完成的 P0 缺陷：
 |------|------|--------|
 | 2026-05-31 | 初始版本 | Hermes C |
 | 2026-05-31 | 基于 v3.6.0/v3.7.0 文档核查 + regression_hotspots.md + Issue list 整合 | Hermes C |
-| 2026-05-31 | 新增 2.7 节：2025年及更早的历史遗留问题 17 个，记录延期原因 | Hermes C |
-
+| 2026-05-31 | 新增 2.7 节：2025年及更早的 17 个历史遗留 Issue | Hermes C |
+| 2026-05-31 | PR-831 Issue Closure Batch — 关闭 11 个 legacy issues（#942/#947/#2254/#2267/#2274/#2275/#2277/#2281/#2288/#2292/#2309） | Hermes C |
+| 2026-05-31 | 关闭已完成 Issue：#2596/#2601/#2606/#2654（文档已合并） | Hermes C |
 ---
 
 *本文档依据 ADR-001 Truthfulness Framework，必须标注 Freshness。*
