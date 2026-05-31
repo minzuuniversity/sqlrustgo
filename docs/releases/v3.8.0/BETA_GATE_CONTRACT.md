@@ -23,6 +23,22 @@ v3.8.0 Beta Gate is passed when all four conditions below are satisfied.
 | **B3** | Clippy | `cargo clippy --all-features -- -D warnings` | 0 warnings | ✅ PASS (f2725974) |
 | **B4** | Format | `cargo fmt --all -- --check` | exit 0 | ✅ PASS (f2725974) |
 
+### B-Functional: Feature Tracking Requirements
+
+Beta Gate 不仅检查基础设施（B1-B4），还必须追踪功能完成状态。
+
+| ID | 功能 | PR | 状态 | 检查方法 |
+|----|------|-----|------|----------|
+| **B-F1** | WAL Replay | PR-830C | ✅ DONE | git log grep "PR-830C" |
+| **B-F2** | RecoveryEngine | PR-830D | ✅ DONE | git log grep "PR-830D" |
+| **B-F3** | Engine Restart | PR-830E | ✅ DONE | git log grep "PR-830E" |
+| **B-F4** | TransactionalFacade | — | ⚠️ DEFERRED | Issue #2603 追踪 |
+| **B-F5** | PR-DAG 一致性 | — | ✅ PASS | DEVELOPMENT_PLAN.md vs git |
+| **B-F6** | Feature Checklist | — | ✅ PASS | docs/releases/v3.8.0/FEATURE_CHECKLIST.md |
+| **B-F7** | 无幽灵 PR | — | ✅ PASS | 所有未合并 PR 有说明 |
+
+> **注意**: PR-810/820/840/850/860/870/880/890/900 未合并，但属于 RC 阶段任务，不影响 Beta Gate。详见 FEATURE_CHECKLIST.md。
+
 ---
 
 ## 2. B1 — Build
