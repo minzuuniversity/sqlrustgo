@@ -6,6 +6,7 @@ pub mod executor;
 pub mod executor_metrics;
 pub mod expr;
 pub mod local_executor_dml;
+pub mod merge;
 pub mod mutation_compiler;
 pub mod predicate_compiler;
 pub mod query_cache;
