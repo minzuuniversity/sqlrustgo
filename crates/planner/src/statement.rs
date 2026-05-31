@@ -2,7 +2,7 @@
 //!
 //! This module re-exports all statement types used by the query planner.
 
-use crate::{Expr, Schema};
+use crate::Expr;
 
 /// MERGE statement planner representation
 #[derive(Debug, Clone)]
