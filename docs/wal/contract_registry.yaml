@@ -1,0 +1,59 @@
+# WAL Contract Registry
+# 格式: Contract ID + 声明语句 + Success/Failure case
+# 原则: 一 Contract = 一可验证声明
+
+contracts:
+  - id: WAL-001
+    statement: "COMMIT returns ⇒ all written data is durable (survives process restart)"
+    verification:
+      success: "INSERT + COMMIT → restart → data exists with correct values"
+      failure: "INSERT + COMMIT → restart → data missing or corrupted"
+
+  - id: WAL-002
+    statement: "COMMIT returns ⇒ only committed data is durable (uncommitted data does NOT survive)"
+    verification:
+      success: "INSERT (no COMMIT) → restart → data does NOT exist"
+      failure: "INSERT (no COMMIT) → restart → data exists (violation)"
+
+  - id: WAL-003
+    statement: "COMMIT ⇒ WAL entry is flushed before COMMIT returns"
+    verification:
+      success: "COMMIT → immediate check WAL file contains entry"
+      failure: "COMMIT returns but WAL file has no entry (durability not guaranteed)"
+
+  - id: WAL-004
+    statement: "UPDATE → COMMIT → restart → row reflects UPDATE value, not original"
+    verification:
+      success: "INSERT + UPDATE + COMMIT → restart → SELECT returns updated value"
+      failure: "restart → SELECT returns original value (update lost)"
+
+  - id: WAL-005
+    statement: "DELETE → COMMIT → restart → row does NOT exist"
+    verification:
+      success: "INSERT + DELETE + COMMIT → restart → SELECT returns no rows"
+      failure: "restart → row still exists (delete not replayed)"
+
+  - id: WAL-006
+    statement: "RECOVERY replays WAL entries in order, respecting transaction boundaries"
+    verification:
+      success: "TX1 COMMIT → TX2 COMMIT → crash → restart → both committed rows exist"
+      failure: "entries replayed out of order or partial transaction replayed"
+
+  - id: WAL-007
+    statement: "RECOVERY does NOT replay uncommitted transactions"
+    verification:
+      success: "TX1 COMMIT → TX2 (no COMMIT) → crash → restart → only TX1 data exists"
+      failure: "TX2 uncommitted data survives recovery"
+
+  # FileStorage 基础持久化契约
+  - id: STG-001
+    statement: "FileStorage with enable_buffer=false ⇒ data written immediately to disk"
+    verification:
+      success: "insert_direct() → immediately check file exists with data"
+      failure: "insert_direct() → file not found or empty"
+
+  - id: STG-002
+    statement: "FileStorage with enable_buffer=true, records.len() < threshold ⇒ buffered, NOT immediate disk write"
+    verification:
+      success: "insert_buffered() → immediately check file → no data yet"
+      failure: "data written despite being buffered"
