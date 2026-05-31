@@ -14,6 +14,7 @@ pub mod vtu_guard;
 pub mod vtu_ir;
 pub mod wal;
 pub mod wal_legacy;
+pub mod wal_storage;
 
 pub use binary_format::BinaryFormat;
 pub use binary_storage::BinaryTableStorage;
@@ -29,3 +30,4 @@ pub use page::Page;
 pub use vtu_guard::VtuGuard;
 pub use wal::{FileBackedWalManager, MemoryWalManager, WalManager};
 pub use wal_legacy::{WalEntry, WalEntryType};
+pub use wal_storage::WalStorage;
