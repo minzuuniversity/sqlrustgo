@@ -497,6 +497,25 @@ pub trait StorageEngine: Send + Sync {
     /// Rename a table
     fn rename_table(&mut self, table: &str, new_name: &str) -> SqlResult<()>;
 
+    /// Drop a column from a table
+    fn drop_column(&mut self, _table: &str, _column: &str) -> SqlResult<()> {
+        Err(SqlError::ExecutionError(
+            "drop_column not supported by this storage engine".to_string(),
+        ))
+    }
+
+    /// Modify a column definition
+    fn modify_column(
+        &mut self,
+        _table: &str,
+        _column: &str,
+        _new_def: ColumnDefinition,
+    ) -> SqlResult<()> {
+        Err(SqlError::ExecutionError(
+            "modify_column not supported by this storage engine".to_string(),
+        ))
+    }
+
     /// Create a trigger on a table
     fn create_trigger(&mut self, info: TriggerInfo) -> SqlResult<()>;
 
