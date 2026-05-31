@@ -738,13 +738,17 @@ impl<'a> LocalExecutor<'a> {
 
         match join_type {
             JoinType::Inner => {
-                // Use GraceHashJoin when build side exceeds memory budget
-                const MEMORY_BUDGET: usize = 64 * 1024 * 1024; // 64MB default
+                // Read memory budget from env (MB), default 64MB
+                let memory_budget_mb = std::env::var("SQLRUSTGO_MAX_MEMORY_MB")
+                    .ok()
+                    .and_then(|v| v.parse::<usize>().ok())
+                    .unwrap_or(64);
+                let memory_budget = memory_budget_mb * 1024 * 1024;
                 let total_rows = left_result.rows.len().max(right_result.rows.len());
 
                 let matched = if total_rows > 0
-                    && (left_result.rows.len() * 128 > MEMORY_BUDGET
-                        || right_result.rows.len() * 128 > MEMORY_BUDGET)
+                    && (left_result.rows.len() * 128 > memory_budget
+                        || right_result.rows.len() * 128 > memory_budget)
                 {
                     // Grace Hash Join with potential spill
                     let build_is_left = left_result.rows.len() <= right_result.rows.len();
@@ -760,7 +764,7 @@ impl<'a> LocalExecutor<'a> {
                         condition,
                         build_schema,
                         probe_schema,
-                        MEMORY_BUDGET,
+                        memory_budget,
                     )?;
 
                     // Combine build + probe rows based on original order
