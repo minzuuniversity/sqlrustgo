@@ -82,53 +82,73 @@ else:
 
 # ============================================================================
 # SGL-002: WAL-002 — advance_checkpoint in commit path
-# Contract (PR-830F): "commit_transaction must call advance_checkpoint"
+# Contract (PR-830F): "commit_transaction must advance checkpoint"
+# Check in WalStorage since WAL lifecycle is implemented there
 # ============================================================================
 print("\n=== SGL-002: WAL-002 — advance_checkpoint in commit path ===")
 
-with open("src/execution_engine.rs") as f:
-    content = f.read()
+wal_storage_path = "crates/storage/src/wal_storage.rs"
+with open(wal_storage_path) as f:
+    wal_content = f.read()
 
-# Extract commit_transaction function using regex
+# Extract commit_transaction from WalStorage
 match = re.search(
-    r"(?:pub )?fn commit_transaction\s*\([^)]*\)\s*(?:->[^=]+)?\s*\{",
-    content,
+    r"pub fn commit_transaction\s*\([^)]*\)\s*(?:->[^=]+)?\s*\{",
+    wal_content,
 )
 if not match:
-    log_fail("SGL-002: commit_transaction function not found in execution_engine.rs")
+    log_fail("SGL-002: commit_transaction not found in wal_storage.rs")
 else:
     start = match.end()
     depth = 1
     pos = start
-    while depth > 0 and pos < len(content):
-        if content[pos] == "{":
+    while depth > 0 and pos < len(wal_content):
+        if wal_content[pos] == "{":
             depth += 1
-        elif content[pos] == "}":
+        elif wal_content[pos] == "}":
             depth -= 1
         pos += 1
-    fn_body = content[start : pos - 1]
+    commit_fn_body = wal_content[start : pos - 1]
 
-    if "advance_checkpoint" in fn_body:
-        log_pass("SGL-002: advance_checkpoint called in commit_transaction")
+    # WAL-002: checkpoint advance via record_checkpoint (the actual checkpoint mechanism)
+    if "record_checkpoint" in commit_fn_body or "advance_checkpoint" in commit_fn_body:
+        log_pass("SGL-002: checkpoint advance triggered in WalStorage.commit_transaction")
     else:
         log_fail(
-            "SGL-002: advance_checkpoint NOT called in commit_transaction (WAL truncation never triggers)"
+            "SGL-002: checkpoint NOT advanced in WalStorage.commit_transaction (WAL truncation never triggers)"
         )
-        print("  WAL-002 invariant violated: commit does not advance checkpoint")
+        print("  WAL-002 invariant violated: checkpoint_manager never receives record_checkpoint")
 
 # ============================================================================
-# SGL-003: WAL-003 — try_truncate_wal in commit path
+# SGL-003: WAL-003 — WAL truncation after commit
 # Invariant WAL-003: "truncation only after durable commit"
 # ============================================================================
-print("\n=== SGL-003: WAL-003 — try_truncate_wal in commit path ===")
+print("\n=== SGL-003: WAL-003 — WAL truncation in commit path ===")
 
-if "try_truncate_wal" in fn_body:
-    log_pass("SGL-003: try_truncate_wal called in commit_transaction")
+wal_commit_fn_body = ""
+match3 = re.search(
+    r"pub fn commit_transaction\s*\([^)]*\)\s*(?:->[^=]+)?\s*\{",
+    wal_content,
+)
+if match3:
+    start = match3.end()
+    depth = 1
+    pos = start
+    while depth > 0 and pos < len(wal_content):
+        if wal_content[pos] == "{":
+            depth += 1
+        elif wal_content[pos] == "}":
+            depth -= 1
+        pos += 1
+    wal_commit_fn_body = wal_content[start : pos - 1]
+
+if wal_commit_fn_body and "truncate_before" in wal_commit_fn_body:
+    log_pass("SGL-003: truncate_before called in WalStorage.commit_transaction")
 else:
     log_fail(
-        "SGL-003: try_truncate_wal NOT called in commit_transaction (WAL grows unbounded)"
+        "SGL-003: WAL truncation NOT triggered in commit_transaction (WAL grows unbounded)"
     )
-    print("  WAL-003 invariant violated: WAL never truncates")
+    print("  WAL-003 invariant violated: WAL never truncates after commit")
 
 # ============================================================================
 # SGL-004: WAL-004 — DELETE replay idempotency
