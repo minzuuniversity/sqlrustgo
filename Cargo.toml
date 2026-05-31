@@ -38,6 +38,7 @@ members = [
     "crates/mysql-server",
     "crates/qmd-bridge",
 
+    "crates/spill",
     "crates/wal-verification",
     "crates/evidence-graph",
     "tools/sqlrustgo-gate",
