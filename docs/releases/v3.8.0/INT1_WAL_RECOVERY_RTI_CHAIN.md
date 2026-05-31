@@ -16,10 +16,9 @@
 - ✅ WAL append on DML: `WalStorage` logs all DML operations
 - ✅ Commit path: `commit_transaction()` → `wal.log_commit()` → checkpoint advance → WAL truncation
 - ✅ Recovery path: `recover_wal()` → `filter_committed_entries()` → `apply_entry()`
-- ✅ Contract tests: 21/22 PASS (RECOVERY-007 ignored = DELETE gap)
-- ❌ DELETE replay: RECOVERY-007 ignored due to WAL ordering bug
+- ✅ Contract tests: 22/22 PASS ✅
 
-**Overall**: INT-1 is **substantially proven** — the primary invariant (committed data survives, uncommitted does NOT) is established. The DELETE gap is tracked via PR-840.
+**Overall**: INT-1 is **FULLY PROVEN** — 22/22 PASS. The DELETE gap is now closed.
 
 ---
 
@@ -103,7 +102,7 @@ Committed data restored to storage
 | Uncommitted INSERT rolled back | RECOVERY-001, 002 | `assert_eq!(count, 1)` | ✅ Direct | ✅ PASS |
 | Uncommitted BEGIN rolled back | RECOVERY-001 | `assert_eq!(count, 1)` | ✅ Direct | ✅ PASS |
 | Committed UPDATE row survives | RECOVERY-006 | `assert_eq!(count, 1)` | ⚠️ Partial | ✅ PASS |
-| Committed DELETE row stays deleted | RECOVERY-007 | IGNORED | ❌ No proof | ⚠️ IGNORED |
+| Committed DELETE row stays deleted | RECOVERY-007 | `assert_eq!(count, 0)` | ✅ Direct | ✅ PASS |
 
 ### RECOVERY-004: Primary INT-1 Proof
 
@@ -157,7 +156,7 @@ This is the **smoking gun** for INT-1. It proves the full write-commit-recover c
 | #2697 | PR-830F: CheckpointManager + WAL truncation | ✅ MERGED | WAL lifecycle |
 | #2707 | PR-840: WAL replay correctness (DELETE/UPDATE) | ✅ MERGED | DELETE/UPDATE replay |
 | #2711 | WAL-002/003: integrate checkpoint+truncate into commit path | ✅ MERGED | Close WAL-002/003 |
-| N/A | RECOVERY-007 re-enable | ⏳ PENDING | DELETE proof |
+| N/A | RECOVERY-007 re-enable | ✅ DONE | DELETE proof |
 
 ---
 
