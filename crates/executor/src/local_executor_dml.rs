@@ -19,3 +19,27 @@ impl Default for LocalExecutorDml {
         Self::new()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_local_executor_dml_new() {
+        let dml = LocalExecutorDml::new();
+        let _ = dml;
+    }
+
+    #[test]
+    fn test_local_executor_dml_default() {
+        let dml = LocalExecutorDml::default();
+        let _ = dml;
+    }
+
+    #[test]
+    fn test_send_sync() {
+        fn check<T: Send + Sync>() {}
+        check::<LocalExecutorDml>();
+        check::<LocalExecutorDmlArc>();
+    }
+}
