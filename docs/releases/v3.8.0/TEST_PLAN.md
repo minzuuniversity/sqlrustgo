@@ -5,6 +5,7 @@
 > **分支**: `origin/develop/v3.8.0`
 > **创建日期**: 2026-05-30
 > **Auditor**: Hermes Agent
+> **Status**: ACTIVE — Execution Semantics Freeze (commit 087bb12d)
 
 ---
 
