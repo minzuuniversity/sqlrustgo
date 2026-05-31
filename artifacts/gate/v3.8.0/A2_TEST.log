@@ -1,0 +1,1565 @@
+warning: profiles for the non root package will be ignored, specify profiles at the workspace root:
+package:   /Users/liying/workspace/dev/openheart/sqlrustgo/tools/sqlrustgo-gate/Cargo.toml
+workspace: /Users/liying/workspace/dev/openheart/sqlrustgo/Cargo.toml
+warning: profiles for the non root package will be ignored, specify profiles at the workspace root:
+package:   /Users/liying/workspace/dev/openheart/sqlrustgo/tools/graph-cli/Cargo.toml
+workspace: /Users/liying/workspace/dev/openheart/sqlrustgo/Cargo.toml
+warning: /Users/liying/workspace/dev/openheart/sqlrustgo/crates/wal-verification/Cargo.toml: unused manifest key: tlaplus
+   Compiling sqlrustgo-storage v2.5.0 (/Users/liying/workspace/dev/openheart/sqlrustgo/crates/storage)
+   Compiling sqlrustgo-spill v0.1.0 (/Users/liying/workspace/dev/openheart/sqlrustgo/crates/spill)
+warning: cannot test inner items
+    --> crates/parser/src/parser.rs:4463:5
+     |
+4463 |     #[test]
+     |     ^^^^^^^
+     |
+     = note: `#[warn(unnameable_test_items)]` on by default
+
+warning: cannot test inner items
+    --> crates/parser/src/parser.rs:4476:5
+     |
+4476 |     #[test]
+     |     ^^^^^^^
+
+warning: cannot test inner items
+    --> crates/parser/src/parser.rs:4489:5
+     |
+4489 |     #[test]
+     |     ^^^^^^^
+
+warning: cannot test inner items
+    --> crates/parser/src/parser.rs:4502:5
+     |
+4502 |     #[test]
+     |     ^^^^^^^
+
+warning: cannot test inner items
+    --> crates/parser/src/parser.rs:4515:5
+     |
+4515 |     #[test]
+     |     ^^^^^^^
+
+warning: cannot test inner items
+    --> crates/parser/src/parser.rs:4528:5
+     |
+4528 |     #[test]
+     |     ^^^^^^^
+
+warning: cannot test inner items
+    --> crates/parser/src/parser.rs:4541:5
+     |
+4541 |     #[test]
+     |     ^^^^^^^
+
+warning: cannot test inner items
+    --> crates/parser/src/parser.rs:4554:5
+     |
+4554 |     #[test]
+     |     ^^^^^^^
+
+warning: cannot test inner items
+    --> crates/parser/src/parser.rs:4567:5
+     |
+4567 |     #[test]
+     |     ^^^^^^^
+
+warning: cannot test inner items
+    --> crates/parser/src/parser.rs:4580:5
+     |
+4580 |     #[test]
+     |     ^^^^^^^
+
+warning: cannot test inner items
+    --> crates/parser/src/parser.rs:4595:5
+     |
+4595 |     #[test]
+     |     ^^^^^^^
+
+warning: cannot test inner items
+    --> crates/parser/src/parser.rs:4610:5
+     |
+4610 |     #[test]
+     |     ^^^^^^^
+
+warning: cannot test inner items
+    --> crates/parser/src/parser.rs:4623:5
+     |
+4623 |     #[test]
+     |     ^^^^^^^
+
+warning: cannot test inner items
+    --> crates/parser/src/parser.rs:4641:5
+     |
+4641 |     #[test]
+     |     ^^^^^^^
+
+warning: cannot test inner items
+    --> crates/parser/src/parser.rs:4658:5
+     |
+4658 |     #[test]
+     |     ^^^^^^^
+
+warning: cannot test inner items
+    --> crates/parser/src/parser.rs:4674:5
+     |
+4674 |     #[test]
+     |     ^^^^^^^
+
+warning: cannot test inner items
+    --> crates/parser/src/parser.rs:4690:5
+     |
+4690 |     #[test]
+     |     ^^^^^^^
+
+warning: cannot test inner items
+    --> crates/parser/src/parser.rs:4706:5
+     |
+4706 |     #[test]
+     |     ^^^^^^^
+
+warning: cannot test inner items
+    --> crates/parser/src/parser.rs:4722:5
+     |
+4722 |     #[test]
+     |     ^^^^^^^
+
+warning: cannot test inner items
+    --> crates/parser/src/parser.rs:4734:5
+     |
+4734 |     #[test]
+     |     ^^^^^^^
+
+warning: cannot test inner items
+    --> crates/parser/src/parser.rs:4746:5
+     |
+4746 |     #[test]
+     |     ^^^^^^^
+
+warning: cannot test inner items
+    --> crates/parser/src/parser.rs:4758:5
+     |
+4758 |     #[test]
+     |     ^^^^^^^
+
+warning: cannot test inner items
+    --> crates/parser/src/parser.rs:4770:5
+     |
+4770 |     #[test]
+     |     ^^^^^^^
+
+warning: cannot test inner items
+    --> crates/parser/src/parser.rs:4782:5
+     |
+4782 |     #[test]
+     |     ^^^^^^^
+
+warning: cannot test inner items
+    --> crates/parser/src/parser.rs:4794:5
+     |
+4794 |     #[test]
+     |     ^^^^^^^
+
+warning: cannot test inner items
+    --> crates/parser/src/parser.rs:4806:5
+     |
+4806 |     #[test]
+     |     ^^^^^^^
+
+warning: cannot test inner items
+    --> crates/parser/src/parser.rs:4818:5
+     |
+4818 |     #[test]
+     |     ^^^^^^^
+
+warning: cannot test inner items
+    --> crates/parser/src/parser.rs:4830:5
+     |
+4830 |     #[test]
+     |     ^^^^^^^
+
+warning: cannot test inner items
+    --> crates/parser/src/parser.rs:4846:5
+     |
+4846 |     #[test]
+     |     ^^^^^^^
+
+warning: function `test_parse_binary_expression_subtraction` is never used
+    --> crates/parser/src/parser.rs:4464:8
+     |
+4464 |     fn test_parse_binary_expression_subtraction() {
+     |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `test_parse_binary_expression_multiplication` is never used
+    --> crates/parser/src/parser.rs:4477:8
+     |
+4477 |     fn test_parse_binary_expression_multiplication() {
+     |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `test_parse_binary_expression_division` is never used
+    --> crates/parser/src/parser.rs:4490:8
+     |
+4490 |     fn test_parse_binary_expression_division() {
+     |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `test_parse_binary_expression_modulo` is never used
+    --> crates/parser/src/parser.rs:4503:8
+     |
+4503 |     fn test_parse_binary_expression_modulo() {
+     |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `test_parse_binary_expression_not_equal` is never used
+    --> crates/parser/src/parser.rs:4516:8
+     |
+4516 |     fn test_parse_binary_expression_not_equal() {
+     |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `test_parse_binary_expression_less_equal` is never used
+    --> crates/parser/src/parser.rs:4529:8
+     |
+4529 |     fn test_parse_binary_expression_less_equal() {
+     |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `test_parse_binary_expression_greater_equal` is never used
+    --> crates/parser/src/parser.rs:4542:8
+     |
+4542 |     fn test_parse_binary_expression_greater_equal() {
+     |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `test_parse_binary_expression_complex` is never used
+    --> crates/parser/src/parser.rs:4555:8
+     |
+4555 |     fn test_parse_binary_expression_complex() {
+     |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `test_parse_binary_expression_with_literal` is never used
+    --> crates/parser/src/parser.rs:4568:8
+     |
+4568 |     fn test_parse_binary_expression_with_literal() {
+     |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `test_parse_binary_expression_multiple_columns` is never used
+    --> crates/parser/src/parser.rs:4581:8
+     |
+4581 |     fn test_parse_binary_expression_multiple_columns() {
+     |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `test_parse_binary_expression_mixed_with_identifier` is never used
+    --> crates/parser/src/parser.rs:4596:8
+     |
+4596 |     fn test_parse_binary_expression_mixed_with_identifier() {
+     |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `test_parse_binary_expression_with_table_prefix` is never used
+    --> crates/parser/src/parser.rs:4611:8
+     |
+4611 |     fn test_parse_binary_expression_with_table_prefix() {
+     |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `test_parse_create_trigger` is never used
+    --> crates/parser/src/parser.rs:4624:8
+     |
+4624 |     fn test_parse_create_trigger() {
+     |        ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `test_parse_create_trigger_after_update` is never used
+    --> crates/parser/src/parser.rs:4642:8
+     |
+4642 |     fn test_parse_create_trigger_after_update() {
+     |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `test_parse_begin` is never used
+    --> crates/parser/src/parser.rs:4659:8
+     |
+4659 |     fn test_parse_begin() {
+     |        ^^^^^^^^^^^^^^^^
+
+warning: function `test_parse_begin_work` is never used
+    --> crates/parser/src/parser.rs:4675:8
+     |
+4675 |     fn test_parse_begin_work() {
+     |        ^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `test_parse_begin_serializable` is never used
+    --> crates/parser/src/parser.rs:4691:8
+     |
+4691 |     fn test_parse_begin_serializable() {
+     |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `test_parse_begin_isolation_level` is never used
+    --> crates/parser/src/parser.rs:4707:8
+     |
+4707 |     fn test_parse_begin_isolation_level() {
+     |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `test_parse_commit` is never used
+    --> crates/parser/src/parser.rs:4723:8
+     |
+4723 |     fn test_parse_commit() {
+     |        ^^^^^^^^^^^^^^^^^
+
+warning: function `test_parse_commit_work` is never used
+    --> crates/parser/src/parser.rs:4735:8
+     |
+4735 |     fn test_parse_commit_work() {
+     |        ^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `test_parse_rollback` is never used
+    --> crates/parser/src/parser.rs:4747:8
+     |
+4747 |     fn test_parse_rollback() {
+     |        ^^^^^^^^^^^^^^^^^^^
+
+warning: function `test_parse_rollback_work` is never used
+    --> crates/parser/src/parser.rs:4759:8
+     |
+4759 |     fn test_parse_rollback_work() {
+     |        ^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `test_parse_start_transaction` is never used
+    --> crates/parser/src/parser.rs:4771:8
+     |
+4771 |     fn test_parse_start_transaction() {
+     |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `test_parse_start_transaction_serializable` is never used
+    --> crates/parser/src/parser.rs:4783:8
+     |
+4783 |     fn test_parse_start_transaction_serializable() {
+     |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `test_parse_set_transaction` is never used
+    --> crates/parser/src/parser.rs:4795:8
+     |
+4795 |     fn test_parse_set_transaction() {
+     |        ^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `test_parse_set_transaction_read_committed` is never used
+    --> crates/parser/src/parser.rs:4807:8
+     |
+4807 |     fn test_parse_set_transaction_read_committed() {
+     |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `test_parse_set_transaction_read_uncommitted` is never used
+    --> crates/parser/src/parser.rs:4819:8
+     |
+4819 |     fn test_parse_set_transaction_read_uncommitted() {
+     |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `test_parse_begin_read_committed` is never used
+    --> crates/parser/src/parser.rs:4831:8
+     |
+4831 |     fn test_parse_begin_read_committed() {
+     |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `test_parse_begin_repeatable_read` is never used
+    --> crates/parser/src/parser.rs:4847:8
+     |
+4847 |     fn test_parse_begin_repeatable_read() {
+     |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: `sqlrustgo-parser` (lib test) generated 58 warnings
+warning: unused imports: `WALVerificationResult` and `WALVerifier`
+    --> crates/storage/src/wal.rs:1869:56
+     |
+1869 |         use sqlrustgo_wal_verification::verification::{WALVerificationResult, WALVerifier};
+     |                                                        ^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^
+     |
+     = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `std::fs::File`
+    --> crates/storage/src/wal.rs:1870:13
+     |
+1870 |         use std::fs::File;
+     |             ^^^^^^^^^^^^^
+
+   Compiling sqlrustgo-optimizer v2.5.0 (/Users/liying/workspace/dev/openheart/sqlrustgo/crates/optimizer)
+   Compiling sqlrustgo-transaction v2.5.0 (/Users/liying/workspace/dev/openheart/sqlrustgo/crates/transaction)
+warning: variable does not need to be mutable
+   --> crates/storage/src/buffer_pool.rs:396:13
+    |
+396 |         let mut buf = vec![0u8; 2048];
+    |             ----^^^
+    |             |
+    |             help: remove this `mut`
+    |
+    = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+    --> crates/storage/src/wal.rs:1260:17
+     |
+1260 |             let mut manager = WalManager::new(wal_path.clone());
+     |                 ----^^^^^^^
+     |                 |
+     |                 help: remove this `mut`
+
+warning: variable does not need to be mutable
+    --> crates/storage/src/wal.rs:1318:13
+     |
+1318 |         let mut manager = WalManager::new(wal_path);
+     |             ----^^^^^^^
+     |             |
+     |             help: remove this `mut`
+
+warning: variable does not need to be mutable
+    --> crates/storage/src/wal.rs:1352:13
+     |
+1352 |         let mut manager = WalManager::new(wal_path);
+     |             ----^^^^^^^
+     |             |
+     |             help: remove this `mut`
+
+warning: variable does not need to be mutable
+    --> crates/storage/src/wal.rs:1388:17
+     |
+1388 |             let mut manager = WalManager::new(wal_path.clone());
+     |                 ----^^^^^^^
+     |                 |
+     |                 help: remove this `mut`
+
+warning: variable does not need to be mutable
+    --> crates/storage/src/wal.rs:1429:13
+     |
+1429 |         let mut manager = WalManager::new(wal_path);
+     |             ----^^^^^^^
+     |             |
+     |             help: remove this `mut`
+
+warning: comparison is useless due to type limits
+   --> crates/storage/src/page.rs:516:17
+    |
+516 |         assert!(page.free_space() >= 0);
+    |                 ^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: `#[warn(unused_comparisons)]` on by default
+
+   Compiling sqlrustgo-catalog v2.5.0 (/Users/liying/workspace/dev/openheart/sqlrustgo/crates/catalog)
+   Compiling sqlrustgo-planner v2.5.0 (/Users/liying/workspace/dev/openheart/sqlrustgo/crates/planner)
+warning: `sqlrustgo-storage` (lib test) generated 9 warnings (run `cargo fix --lib -p sqlrustgo-storage --tests` to apply 8 suggestions)
+   Compiling sqlrustgo-executor v2.5.0 (/Users/liying/workspace/dev/openheart/sqlrustgo/crates/executor)
+warning: variable does not need to be mutable
+   --> crates/catalog/src/catalog.rs:280:13
+    |
+280 |         let mut catalog = create_test_catalog();
+    |             ----^^^^^^^
+    |             |
+    |             help: remove this `mut`
+    |
+    = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: `sqlrustgo-catalog` (lib test) generated 1 warning (run `cargo fix --lib -p sqlrustgo-catalog --tests` to apply 1 suggestion)
+   Compiling sqlrustgo-server v2.5.0 (/Users/liying/workspace/dev/openheart/sqlrustgo/crates/server)
+   Compiling sqlrustgo v2.5.0 (/Users/liying/workspace/dev/openheart/sqlrustgo)
+warning: variable does not need to be mutable
+   --> crates/executor/src/execution/drift_gate.rs:190:13
+    |
+190 |         let mut ctx = TransactionContext::new(1);
+    |             ----^^^
+    |             |
+    |             help: remove this `mut`
+    |
+    = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+   --> crates/executor/src/executor_metrics.rs:266:17
+    |
+266 |             let mut timer = ExecutorMetricsTimer::new(&mut metrics, "SELECT");
+    |                 ----^^^^^
+    |                 |
+    |                 help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> crates/executor/src/executor_metrics.rs:480:17
+    |
+480 |             let mut timer1 = ExecutorMetricsTimer::new(&mut metrics, "SELECT");
+    |                 ----^^^^^^
+    |                 |
+    |                 help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> crates/executor/src/executor_metrics.rs:484:17
+    |
+484 |             let mut timer2 = ExecutorMetricsTimer::new(&mut metrics, "INSERT");
+    |                 ----^^^^^^
+    |                 |
+    |                 help: remove this `mut`
+
+warning: unused variable: `executor`
+    --> crates/executor/src/stored_proc.rs:2141:13
+     |
+2141 |         let executor = StoredProcExecutor::new_for_test(catalog);
+     |             ^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_executor`
+     |
+     = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+    --> crates/executor/src/trigger.rs:1436:13
+     |
+1436 |         let mut storage = create_test_storage();
+     |             ----^^^^^^^
+     |             |
+     |             help: remove this `mut`
+
+warning: variable does not need to be mutable
+    --> crates/executor/src/trigger.rs:1447:13
+     |
+1447 |         let mut storage = create_test_storage();
+     |             ----^^^^^^^
+     |             |
+     |             help: remove this `mut`
+
+warning: variable does not need to be mutable
+    --> crates/executor/src/trigger.rs:1458:13
+     |
+1458 |         let mut storage = create_test_storage();
+     |             ----^^^^^^^
+     |             |
+     |             help: remove this `mut`
+
+warning: variable does not need to be mutable
+    --> crates/executor/src/trigger.rs:1469:13
+     |
+1469 |         let mut storage = create_test_storage();
+     |             ----^^^^^^^
+     |             |
+     |             help: remove this `mut`
+
+warning: variable does not need to be mutable
+    --> crates/executor/src/trigger.rs:1721:13
+     |
+1721 |         let mut storage = create_test_storage();
+     |             ----^^^^^^^
+     |             |
+     |             help: remove this `mut`
+
+warning: variable does not need to be mutable
+    --> crates/executor/src/trigger.rs:1744:13
+     |
+1744 |         let mut storage = create_test_storage();
+     |             ----^^^^^^^
+     |             |
+     |             help: remove this `mut`
+
+warning: variable does not need to be mutable
+    --> crates/executor/src/trigger.rs:1787:13
+     |
+1787 |         let mut storage = create_test_storage();
+     |             ----^^^^^^^
+     |             |
+     |             help: remove this `mut`
+
+warning: variable does not need to be mutable
+    --> crates/executor/src/trigger.rs:1810:13
+     |
+1810 |         let mut storage = create_test_storage();
+     |             ----^^^^^^^
+     |             |
+     |             help: remove this `mut`
+
+warning: variable does not need to be mutable
+    --> crates/executor/src/trigger.rs:1832:13
+     |
+1832 |         let mut storage = create_test_storage();
+     |             ----^^^^^^^
+     |             |
+     |             help: remove this `mut`
+
+warning: variable does not need to be mutable
+    --> crates/executor/src/trigger.rs:1860:13
+     |
+1860 |         let mut storage = create_test_storage();
+     |             ----^^^^^^^
+     |             |
+     |             help: remove this `mut`
+
+warning: variable does not need to be mutable
+    --> crates/executor/src/trigger.rs:1888:13
+     |
+1888 |         let mut storage = create_test_storage();
+     |             ----^^^^^^^
+     |             |
+     |             help: remove this `mut`
+
+warning: variable does not need to be mutable
+    --> crates/executor/src/trigger.rs:1910:13
+     |
+1910 |         let mut storage = create_test_storage();
+     |             ----^^^^^^^
+     |             |
+     |             help: remove this `mut`
+
+warning: variable does not need to be mutable
+    --> crates/executor/src/trigger.rs:1963:13
+     |
+1963 |         let mut storage = create_test_storage();
+     |             ----^^^^^^^
+     |             |
+     |             help: remove this `mut`
+
+warning: variable does not need to be mutable
+    --> crates/executor/src/trigger.rs:1979:13
+     |
+1979 |         let mut storage = create_test_storage();
+     |             ----^^^^^^^
+     |             |
+     |             help: remove this `mut`
+
+warning: variable does not need to be mutable
+    --> crates/executor/src/trigger.rs:1995:13
+     |
+1995 |         let mut storage = create_test_storage();
+     |             ----^^^^^^^
+     |             |
+     |             help: remove this `mut`
+
+warning: variable does not need to be mutable
+    --> crates/executor/src/trigger.rs:2012:13
+     |
+2012 |         let mut storage = create_test_storage();
+     |             ----^^^^^^^
+     |             |
+     |             help: remove this `mut`
+
+warning: `sqlrustgo-executor` (lib test) generated 21 warnings (run `cargo fix --lib -p sqlrustgo-executor --tests` to apply 21 suggestions)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 3.46s
+     Running unittests src/lib.rs (target/debug/deps/sqlrustgo_catalog-13070e31b25696c9)
+
+running 156 tests
+test auth::tests::test_auth_error_display ... ok
+test auth::tests::test_all_users_iterator ... ok
+test auth::tests::test_all_privileges_iterator ... ok
+test auth::tests::test_all_privilege_implies_all ... ok
+test auth::tests::test_authenticate ... ok
+test auth::tests::test_authenticate_wildcard ... ok
+test auth::tests::test_check_privilege_denied ... ok
+test auth::tests::test_check_privilege_with_wildcard ... ok
+test auth::tests::test_constant_time_eq ... ok
+test auth::tests::test_create_role ... ok
+test auth::tests::test_create_role_with_invalid_parent ... ok
+test auth::tests::test_create_user ... ok
+test auth::tests::test_delete_without_privilege ... ok
+test auth::tests::test_drop_role ... ok
+test auth::tests::test_drop_role_not_found ... ok
+test auth::tests::test_drop_user ... ok
+test auth::tests::test_drop_user_not_found ... ok
+test auth::tests::test_duplicate_role_error ... ok
+test auth::tests::test_duplicate_user_error ... ok
+test auth::tests::test_find_exact_user_and_wildcard_user ... ok
+test auth::tests::test_get_authorized_columns_wildcard ... ok
+test auth::tests::test_get_user_privileges ... ok
+test auth::tests::test_get_user_roles_recursive ... ok
+test auth::tests::test_grant_column_privilege ... ok
+test auth::tests::test_grant_option ... ok
+test auth::tests::test_grant_privilege ... ok
+test auth::tests::test_grant_role_to_nonexistent_role ... ok
+test auth::tests::test_grant_role_to_user ... ok
+test auth::tests::test_grantee_type ... ok
+test auth::tests::test_has_grant_option ... ok
+test auth::tests::test_hash_password ... ok
+test auth::tests::test_list_grants ... ok
+test auth::tests::test_list_users_and_roles ... ok
+test auth::tests::test_matches_column ... ok
+test auth::tests::test_object_ref_column ... ok
+test auth::tests::test_object_ref_database ... ok
+test auth::tests::test_object_ref_matches ... ok
+test auth::tests::test_object_ref_table ... ok
+test auth::tests::test_object_type_from_str ... ok
+test auth::tests::test_privilege_display ... ok
+test auth::tests::test_privilege_from_str ... ok
+test auth::tests::test_privilege_grant_matches ... ok
+test auth::tests::test_privilege_grant_matches_all ... ok
+test auth::tests::test_privilege_grant_matches_wildcard_database ... ok
+test auth::tests::test_public_role ... ok
+test auth::tests::test_revoke_privilege ... ok
+test auth::tests::test_revoke_privilege_not_found ... ok
+test auth::tests::test_scram_credential_constants ... ok
+test auth::tests::test_scram_credential_new ... ok
+test auth::tests::test_scram_credential_clone_and_debug ... ok
+test auth::tests::test_show_grants ... ok
+test auth::tests::test_user_identity_hash_and_eq ... ok
+test auth::tests::test_user_identity_new_and_normalize ... ok
+test auth::tests::test_verify_password ... ok
+test catalog::tests::test_add_and_get_schema ... ok
+test catalog::tests::test_add_and_get_stored_procedure ... ok
+test catalog::tests::test_catalog_creation ... ok
+test catalog::tests::test_catalog_with_default_schema ... ok
+test catalog::tests::test_duplicate_schema ... ok
+test catalog::tests::test_duplicate_stored_procedure ... ok
+test catalog::tests::test_remove_stored_procedure ... ok
+test catalog::tests::test_set_default_schema ... ok
+test catalog::tests::test_set_default_schema_not_found ... ok
+test column::tests::test_column_creation ... ok
+test column::tests::test_column_not_null ... ok
+test column::tests::test_column_primary_key ... ok
+test column::tests::test_validate_empty_name ... ok
+test column::tests::test_validate_nullable_pk ... ok
+test column::tests::test_value_matches_type ... ok
+test data_type::tests::test_data_type_clone ... ok
+test data_type::tests::test_data_type_copy ... ok
+test data_type::tests::test_data_type_debug ... ok
+test data_type::tests::test_data_type_partial_eq_all ... ok
+test data_type::tests::test_data_type_sql_name ... ok
+test data_type::tests::test_data_type_sql_name_all ... ok
+test data_type::tests::test_default ... ok
+test data_type::tests::test_display ... ok
+test data_type::tests::test_is_equatable_all ... ok
+test data_type::tests::test_is_orderable ... ok
+test data_type::tests::test_is_orderable_all ... ok
+test data_type::tests::test_parse_sql_name ... ok
+test data_type::tests::test_parse_sql_name_all ... ok
+test data_type::tests::test_valid_for_primary_key ... ok
+test data_type::tests::test_valid_for_primary_key_all ... ok
+test error::tests::test_catalog_result_err ... ok
+test error::tests::test_catalog_result_ok ... ok
+test error::tests::test_column_not_found ... ok
+test error::tests::test_cyclic_dependency ... ok
+test error::tests::test_duplicate_column ... ok
+test error::tests::test_duplicate_schema ... ok
+test error::tests::test_duplicate_table ... ok
+test error::tests::test_foreign_key_violation ... ok
+test error::tests::test_invalid_primary_key ... ok
+test error::tests::test_invariant_violation ... ok
+test error::tests::test_schema_not_found ... ok
+test error::tests::test_serialization_error ... ok
+test error::tests::test_table_not_found ... ok
+test index::tests::test_index_clone ... ok
+test index::tests::test_index_creation ... ok
+test index::tests::test_index_debug ... ok
+test index::tests::test_index_type_btree ... ok
+test index::tests::test_index_type_enum ... ok
+test index::tests::test_index_type_fulltext ... ok
+test index::tests::test_index_type_hash ... ok
+test index::tests::test_index_with_multiple_columns ... ok
+test index::tests::test_primary_key_index ... ok
+test index::tests::test_unique_index ... ok
+test schema::tests::test_duplicate_table ... ok
+test schema::tests::test_get_table ... ok
+test schema::tests::test_get_table_returns_arc ... ok
+test schema::tests::test_has_table ... ok
+test schema::tests::test_multiple_tables ... ok
+test schema::tests::test_remove_nonexistent_table ... ok
+test schema::tests::test_remove_table ... ok
+test schema::tests::test_schema_clone ... ok
+test schema::tests::test_schema_creation ... ok
+test schema::tests::test_schema_debug ... ok
+test schema::tests::test_schema_new ... ok
+test schema::tests::test_schema_validate ... ok
+test schema::tests::test_table_count ... ok
+test schema::tests::test_table_names ... ok
+test schema::tests::test_tables_returns_arc ... ok
+test stored_proc::tests::test_param_mode ... ok
+test stored_proc::tests::test_stored_procedure_creation ... ok
+test system_tables::mysql_db::tests::test_bool_to_yn ... ok
+test system_tables::mysql_db::tests::test_extract_db_name ... ok
+test system_tables::mysql_db::tests::test_rows_empty ... ok
+test system_tables::mysql_db::tests::test_rows_with_privileges ... ok
+test system_tables::mysql_db::tests::test_schema ... ok
+test system_tables::mysql_user::tests::test_rows_empty ... ok
+test system_tables::mysql_user::tests::test_rows_with_users ... ok
+test system_tables::mysql_user::tests::test_schema ... ok
+test table::tests::test_add_column ... ok
+test table::tests::test_add_column_duplicate_detection ... ok
+test table::tests::test_add_column_duplicate_error ... ok
+test table::tests::test_add_foreign_key ... ok
+test table::tests::test_add_index ... ok
+test table::tests::test_column_names ... ok
+test table::tests::test_get_column ... ok
+test table::tests::test_get_column_mut ... ok
+test table::tests::test_get_primary_key_columns ... ok
+test table::tests::test_get_primary_key_columns_none ... ok
+test table::tests::test_primary_key_column_not_found ... ok
+test table::tests::test_set_row_count ... ok
+test table::tests::test_table_creation ... ok
+test table::tests::test_table_with_indices ... ok
+test table::tests::test_validate_composite_foreign_key ... ok
+test table::tests::test_validate_composite_primary_key ... ok
+test table::tests::test_validate_duplicate_column ... ok
+test table::tests::test_validate_duplicate_column_in_new ... ok
+test table::tests::test_validate_foreign_key_column_count_mismatch ... ok
+test table::tests::test_validate_pk_nullable ... ok
+test table::tests::test_validate_self_referencing_foreign_key ... ok
+test auth::tests::test_scram_credential_different_passwords_different_keys ... ok
+test auth::tests::test_scram_credential_verify_success ... ok
+test auth::tests::test_scram_credential_verify_failure ... ok
+
+test result: ok. 156 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.88s
+
+     Running unittests src/lib.rs (target/debug/deps/sqlrustgo_executor-9a7e3ffbb6a936eb)
+
+running 292 tests
+test execution::drift_gate::tests::test_guard_policy_allows_empty ... ok
+test execution::drift_gate::tests::test_pre_commit_fails_without_wal ... ok
+test execution::drift_gate::tests::test_pre_commit_succeeds_with_wal_open ... ok
+test execution::drift_gate::tests::test_guard_policy_blocks_violation ... ok
+test execution::drift_gate::tests::test_guard_policy_allows_low_severity ... ok
+test execution::drift_gate::tests::test_pre_commit_valid ... ok
+test execution::drift_gate::tests::test_txn_boundary_violation ... ok
+test execution::drift_gate::tests::test_valid_mutation ... ok
+test execution::events::tests::test_event_type_names ... ok
+test execution::events::tests::test_all_variants_cover_event_types ... ok
+test execution::events::tests::test_recovery_confidence_ge ... ok
+test execution::drift_gate::tests::test_wal_drift_detected ... ok
+test execution::events::tests::test_recovery_plan_default ... ok
+test execution::events::tests::test_txn_id_extraction ... ok
+test execution::trace::tests::test_execution_trace_empty ... ok
+test execution::trace::tests::test_execution_trace_mutation_hash ... ok
+test execution::transaction_context::tests::test_mark_committed ... ok
+test execution::transaction_context::tests::test_mark_rolled_back ... ok
+test execution::transaction_context::tests::test_mark_wal_open ... ok
+test execution::transaction_context::tests::test_multiple_contexts ... ok
+test execution::transaction_context::tests::test_new_context_active ... ok
+test executor::tests::test_executor_result_affected_rows ... ok
+test executor::tests::test_executor_result ... ok
+test executor::tests::test_executor_result_clone ... ok
+test executor::tests::test_executor_result_empty ... ok
+test executor::tests::test_executor_result_large_affected_rows ... ok
+test executor::tests::test_executor_result_with_blob ... ok
+test executor::tests::test_executor_result_with_float ... ok
+test executor::tests::test_executor_result_with_null ... ok
+test executor::tests::test_executor_result_with_rows ... ok
+test executor::tests::test_executor_result_zero_rows ... ok
+test executor::tests::test_executor_send_sync ... ok
+test executor::tests::test_executor_trait ... ok
+test executor::tests::test_mock_executor_is_ready ... ok
+test executor::tests::test_mock_executor_name ... ok
+test executor_metrics::tests::test_executor_metrics_avg_query_duration_ms ... ok
+test executor_metrics::tests::test_executor_metrics_avg_query_duration_ms_zero ... ok
+test executor_metrics::tests::test_executor_metrics_all_types ... ok
+test executor_metrics::tests::test_executor_metrics_creation ... ok
+test executor_metrics::tests::test_executor_metrics_execution_count ... ok
+test executor_metrics::tests::test_executor_metrics_queries_by_type ... ok
+test executor_metrics::tests::test_executor_metrics_query_duration_ms ... ok
+test executor_metrics::tests::test_executor_metrics_query_duration_ns ... ok
+test executor_metrics::tests::test_executor_metrics_record_error ... ok
+test executor_metrics::tests::test_executor_metrics_record_query ... ok
+test executor_metrics::tests::test_executor_metrics_success_rate ... ok
+test executor_metrics::tests::test_executor_metrics_success_rate_zero ... ok
+test executor_metrics::tests::test_get_metric_avg_query_duration_ms ... ok
+test executor_metrics::tests::test_get_metric_execution_count ... ok
+test executor_metrics::tests::test_get_metric_names ... ok
+test executor_metrics::tests::test_get_metric_queries_failed ... ok
+test executor_metrics::tests::test_get_metric_queries_success ... ok
+test executor_metrics::tests::test_get_metric_queries_total ... ok
+test executor_metrics::tests::test_get_metric_query_duration_ms ... ok
+test executor_metrics::tests::test_get_metric_rows_processed ... ok
+test executor_metrics::tests::test_get_metric_success_rate ... ok
+test executor_metrics::tests::test_get_metric_unknown ... ok
+test executor_metrics::tests::test_record_bytes_read_not_supported ... ok
+test executor_metrics::tests::test_record_bytes_written_not_supported ... ok
+test executor_metrics::tests::test_record_cache_hit_not_supported ... ok
+test executor_metrics::tests::test_record_cache_miss_not_supported ... ok
+test executor_metrics::tests::test_record_error_with_type ... ok
+test executor_metrics::tests::test_record_rows ... ok
+test executor_metrics::tests::test_record_rows_by_type ... ok
+test executor_metrics::tests::test_reset ... ok
+test expr::tests::test_and ... ok
+test expr::tests::test_arithmetic ... ok
+test expr::tests::test_between ... ok
+test expr::tests::test_case_when ... ok
+test expr::tests::test_cast ... ok
+test expr::tests::test_column ... ok
+test expr::tests::test_eq ... ok
+test expr::tests::test_in_list ... ok
+test expr::tests::test_is_null ... ok
+test expr::tests::test_literal_int ... ok
+test expr::tests::test_or ... ok
+test expr::tests::test_parse_literal ... ok
+test expr::tests::test_referenced_columns ... ok
+test query_cache::tests::test_cache_basic ... ok
+test query_cache::tests::test_cache_lru ... ok
+test query_cache::tests::test_cache_with_table_index ... ok
+test query_cache::tests::test_clear ... ok
+test query_cache::tests::test_find_lru_entry_empty ... ok
+test query_cache::tests::test_get_benchmark_mode ... ok
+test query_cache::tests::test_get_disabled_cache ... ok
+test query_cache::tests::test_invalidate_nonexistent_table ... ok
+test query_cache::tests::test_invalidate_table ... ok
+test query_cache::tests::test_memory_eviction ... ok
+test query_cache::tests::test_put_benchmark_mode ... ok
+test query_cache::tests::test_put_disabled_cache ... ok
+test query_cache::tests::test_put_replaces_existing ... ok
+test query_cache::tests::test_should_cache_empty_rows ... ok
+test query_cache::tests::test_should_cache_valid ... ok
+test query_cache::tests::test_stats ... ok
+test query_cache::tests::test_should_cache_too_many_rows ... ok
+test sql_executor::tests::test_execution_result ... ok
+test sql_executor::tests::test_execution_result_empty ... ok
+test sql_executor::tests::test_is_read_only_statement ... ok
+test sql_executor::tests::test_is_dml_statement ... ok
+test stored_proc::tests::test_arithmetic_op_float_operations ... ok
+test stored_proc::tests::test_arithmetic_op_float_divide_by_zero ... ok
+test stored_proc::tests::test_arithmetic_op_integer_add ... ok
+test stored_proc::tests::test_arithmetic_op_integer_divide ... ok
+test stored_proc::tests::test_arithmetic_op_integer_divide_by_zero ... ok
+test stored_proc::tests::test_arithmetic_op_integer_multiply ... ok
+test stored_proc::tests::test_arithmetic_op_integer_subtract ... ok
+test stored_proc::tests::test_arithmetic_op_unsupported ... ok
+test stored_proc::tests::test_compare_values_boolean ... ok
+test stored_proc::tests::test_compare_values_equality ... ok
+test stored_proc::tests::test_compare_values_greater_than ... ok
+test stored_proc::tests::test_compare_values_greater_than_or_equal ... ok
+test stored_proc::tests::test_compare_values_inequality ... ok
+test stored_proc::tests::test_compare_values_less_than ... ok
+test stored_proc::tests::test_compare_values_less_than_or_equal ... ok
+test stored_proc::tests::test_compare_values_null ... ok
+test stored_proc::tests::test_compare_values_text ... ok
+test stored_proc::tests::test_cursor_close_nonexistent ... ok
+test stored_proc::tests::test_cursor_fetch_into_more_vars_than_columns ... ok
+test stored_proc::tests::test_cursor_fetch_when_not_open ... ok
+test stored_proc::tests::test_cursor_operations ... ok
+test stored_proc::tests::test_evaluate_condition ... ok
+test stored_proc::tests::test_evaluate_constant_float ... ok
+test stored_proc::tests::test_evaluate_constant_boolean ... ok
+test stored_proc::tests::test_evaluate_constant_identifier ... ok
+test stored_proc::tests::test_evaluate_constant_integer ... ok
+test stored_proc::tests::test_evaluate_constant_null ... ok
+test stored_proc::tests::test_evaluate_constant_string_literal ... ok
+test stored_proc::tests::test_exception_handlers ... ok
+test stored_proc::tests::test_exception_handling_flow ... ok
+test stored_proc::tests::test_exception_handling_flow_full ... ok
+test stored_proc::tests::test_exception_handling_update_existing ... ok
+test stored_proc::tests::test_expand_variables_in_sql_alphanumeric_var ... ok
+test stored_proc::tests::test_expand_variables_in_sql_at_end ... ok
+test stored_proc::tests::test_expand_variables_in_sql_consecutive_vars ... ok
+test stored_proc::tests::test_expand_variables_in_sql_integer_var ... ok
+test stored_proc::tests::test_expand_variables_in_sql_multiple_vars ... ok
+test stored_proc::tests::test_expand_variables_in_sql_no_vars ... ok
+test stored_proc::tests::test_expand_variables_in_sql_only_var ... ok
+test stored_proc::tests::test_expand_variables_in_sql_text_var ... ok
+test stored_proc::tests::test_expand_variables_in_sql_undefined_var ... ok
+test stored_proc::tests::test_expand_variables_in_sql_var_with_underscore ... ok
+test stored_proc::tests::test_find_matching_handler_custom_by_message ... ok
+test stored_proc::tests::test_find_matching_handler_multiple_handlers ... ok
+test stored_proc::tests::test_find_matching_handler_no_match ... ok
+test stored_proc::tests::test_find_matching_handler_not_found ... ok
+test stored_proc::tests::test_find_matching_handler_sql_exception_22000 ... ok
+test stored_proc::tests::test_find_matching_handler_sql_exception_45xxx ... ok
+test stored_proc::tests::test_find_matching_handler_sql_exception_not_matched ... ok
+test stored_proc::tests::test_find_matching_handler_sql_warning ... ok
+test stored_proc::tests::test_find_matching_handler_sqlstate_specific ... ok
+test stored_proc::tests::test_get_session_vars ... ok
+test stored_proc::tests::test_has_procedure_false ... ok
+test stored_proc::tests::test_iterate_control ... ok
+test stored_proc::tests::test_label_operations ... ok
+test stored_proc::tests::test_partial_cmp_boolean ... ok
+test stored_proc::tests::test_partial_cmp_float ... ok
+test stored_proc::tests::test_partial_cmp_integer ... ok
+test stored_proc::tests::test_partial_cmp_mixed_types ... ok
+test stored_proc::tests::test_partial_cmp_null_left ... ok
+test stored_proc::tests::test_partial_cmp_text ... ok
+test stored_proc::tests::test_procedure_context_clear_local_vars ... ok
+test stored_proc::tests::test_procedure_context_get_label ... ok
+test stored_proc::tests::test_procedure_context_get_var_strips_prefix ... ok
+test stored_proc::tests::test_procedure_context_has_var ... ok
+test stored_proc::tests::test_procedure_context_leave ... ok
+test stored_proc::tests::test_procedure_context_local_vs_session_var ... ok
+test stored_proc::tests::test_procedure_context_nested_labels ... ok
+test stored_proc::tests::test_procedure_context_nested_scopes ... ok
+test stored_proc::tests::test_procedure_context_return ... ok
+test stored_proc::tests::test_procedure_context_return_value ... ok
+test stored_proc::tests::test_procedure_context_scope_shadowing ... ok
+test stored_proc::tests::test_procedure_context_session_vars ... ok
+test stored_proc::tests::test_procedure_context_set_get_var ... ok
+test stored_proc::tests::test_procedure_context_set_label ... ok
+test stored_proc::tests::test_scope_operations ... ok
+test stored_proc::tests::test_stored_proc_error_display ... ok
+test stored_proc::tests::test_stored_proc_executor_list_empty ... ok
+test stored_proc::tests::test_stored_proc_executor_not_found ... ok
+test trigger::tests::test_evaluate_simple_expression_boolean ... ok
+test trigger::tests::test_evaluate_simple_expression_float ... ok
+test trigger::tests::test_evaluate_simple_expression_integer ... ok
+test trigger::tests::test_evaluate_simple_expression_new_col_reference ... ok
+test trigger::tests::test_evaluate_simple_expression_null ... ok
+test trigger::tests::test_evaluate_simple_expression_string ... ok
+test trigger::tests::test_evaluate_simple_expression_unsupported ... ok
+test trigger::tests::test_execute_after_delete_trigger ... ok
+test trigger::tests::test_execute_after_insert_trigger ... ok
+test trigger::tests::test_execute_after_update_trigger ... ok
+test trigger::tests::test_execute_before_delete_trigger ... ok
+test trigger::tests::test_execute_before_insert_with_trigger ... ok
+test trigger::tests::test_execute_before_update_trigger ... ok
+test trigger::tests::test_execute_trigger_body_no_statements ... ok
+test trigger::tests::test_execute_trigger_body_with_set_statement ... ok
+test trigger::tests::test_execute_trigger_select_validates_columns ... ok
+test trigger::tests::test_execute_trigger_select_with_literal_expression ... ok
+test trigger::tests::test_execute_trigger_set_with_invalid_assignments ... ok
+test trigger::tests::test_execute_trigger_set_with_valid_assignments ... ok
+test trigger::tests::test_execute_trigger_sql_empty ... ok
+test trigger::tests::test_execute_trigger_sql_unrecognized ... ok
+test trigger::tests::test_execute_trigger_sql_whitespace ... ok
+test trigger::tests::test_execute_triggers_after_delete ... ok
+test trigger::tests::test_execute_triggers_after_insert ... ok
+test trigger::tests::test_execute_triggers_after_update ... ok
+test trigger::tests::test_execute_triggers_before_delete ... ok
+test trigger::tests::test_execute_triggers_before_insert ... ok
+test trigger::tests::test_execute_triggers_before_update ... ok
+test trigger::tests::test_execute_triggers_no_new_row_for_insert ... ok
+test trigger::tests::test_execute_triggers_no_old_row_for_delete ... ok
+test trigger::tests::test_expand_delete_values ... ok
+test trigger::tests::test_expand_insert_values_basic ... ok
+test trigger::tests::test_expand_insert_values_no_new_row ... ok
+test trigger::tests::test_expand_insert_values_with_new_id ... ok
+test trigger::tests::test_expand_row_variables_new_references ... ok
+test trigger::tests::test_expand_row_variables_no_matching_column ... ok
+test trigger::tests::test_expand_row_variables_old_references ... ok
+test trigger::tests::test_expand_row_variables_uppercase_column ... ok
+test trigger::tests::test_expand_update_values ... ok
+test trigger::tests::test_get_triggers_for_operation_empty ... ok
+test trigger::tests::test_get_triggers_for_operation_with_triggers ... ok
+test trigger::tests::test_list_triggers_for_table ... ok
+test trigger::tests::test_parse_simple_set_assignments_basic ... ok
+test trigger::tests::test_parse_simple_set_assignments_multiple ... ok
+test trigger::tests::test_parse_simple_set_assignments_no_new_reference ... ok
+test trigger::tests::test_parse_simple_set_assignments_old_reference ... ok
+test trigger::tests::test_send_sync ... ok
+test trigger::tests::test_split_body_statements_begin_end ... ok
+test trigger::tests::test_split_body_statements_empty ... ok
+test trigger::tests::test_split_body_statements_multiple ... ok
+test trigger::tests::test_split_body_statements_single_stmt ... ok
+test trigger::tests::test_split_body_statements_with_backslash_escape ... ok
+test trigger::tests::test_split_body_statements_with_escaped_quotes ... ok
+test trigger::tests::test_split_body_statements_with_strings ... ok
+test trigger::tests::test_split_body_with_multiple_semicolons ... ok
+test trigger::tests::test_split_body_with_trailing_semicolon ... ok
+test trigger::tests::test_trigger_event_all_values ... ok
+test trigger::tests::test_trigger_event_conversion ... ok
+test trigger::tests::test_trigger_execution_result_debug ... ok
+test trigger::tests::test_trigger_execution_result_into_record ... ok
+test trigger::tests::test_trigger_execution_result_is_modified ... ok
+test trigger::tests::test_trigger_executor_creation ... ok
+test trigger::tests::test_trigger_executor_with_multiple_tables ... ok
+test trigger::tests::test_trigger_timing_all_values ... ok
+test trigger::tests::test_trigger_timing_conversion ... ok
+test trigger::tests::test_trigger_type_debug ... ok
+test trigger::tests::test_trigger_type_new ... ok
+test trigger::tests::test_value_to_sql_literal_blob ... ok
+test trigger::tests::test_value_to_sql_literal_boolean ... ok
+test trigger::tests::test_value_to_sql_literal_float ... ok
+test trigger::tests::test_value_to_sql_literal_integer ... ok
+test trigger::tests::test_value_to_sql_literal_null ... ok
+test trigger::tests::test_value_to_sql_literal_text ... ok
+test trigger_eval::context::tests::test_eval_context_basic ... ok
+test trigger_eval::context::tests::test_eval_context_with_target ... ok
+test trigger_eval::context::tests::test_trigger_context_both_rows ... ok
+test trigger_eval::context::tests::test_trigger_context_col_names ... ok
+test trigger_eval::context::tests::test_trigger_context_new_row_only ... ok
+test trigger_eval::context::tests::test_trigger_context_old_row_only ... ok
+test trigger_eval::expression::tests::test_evaluate_binary_op_add ... ok
+test trigger_eval::expression::tests::test_evaluate_binary_op_div ... ok
+test trigger_eval::expression::tests::test_evaluate_binary_op_mul ... ok
+test trigger_eval::expression::tests::test_evaluate_binary_op_null_coalesce ... ok
+test trigger_eval::expression::tests::test_evaluate_binary_op_sub ... ok
+test trigger_eval::expression::tests::test_expression_to_bool_false_null ... ok
+test trigger_eval::expression::tests::test_expression_to_bool_true_value ... ok
+test trigger_eval::expression::tests::test_expression_to_value_binary_op ... ok
+test trigger_eval::expression::tests::test_expression_to_value_literal ... ok
+test trigger_eval::expression::tests::test_expression_to_value_unmatched_variant ... ok
+test trigger_eval::expression::tests::test_parse_literal_float ... ok
+test trigger_eval::expression::tests::test_parse_literal_integer ... ok
+test trigger_eval::expression::tests::test_parse_literal_null ... ok
+test trigger_eval::expression::tests::test_parse_literal_string ... ok
+test trigger_eval::expression::tests::test_resolve_identifier_new_row ... ok
+test trigger_eval::expression::tests::test_resolve_identifier_null_when_no_row ... ok
+test trigger_eval::expression::tests::test_resolve_identifier_old_row ... ok
+test trigger_eval::expression::tests::test_resolve_identifier_target_row ... ok
+test vec_simd::tests::test_avg_f64 ... ok
+test vec_simd::tests::test_sum_i64 ... ok
+test vec_simd::tests::test_sum_small ... ok
+test window_executor::tests::test_aggregate_window_avg ... ok
+test window_executor::tests::test_aggregate_window_count ... ok
+test window_executor::tests::test_aggregate_window_sum ... ok
+test window_executor::tests::test_dense_rank_with_ties ... ok
+test window_executor::tests::test_get_frame_rows_default ... ok
+test window_executor::tests::test_get_frame_rows_with_offset ... ok
+test window_executor::tests::test_rank_with_ties ... ok
+test window_executor::tests::test_row_number ... ok
+test window_executor::tests::test_window_multi_partition_key_evaluation ... ok
+test window_executor::tests::test_window_null_partition_key ... ok
+test window_executor::tests::test_window_range_vs_rows_frame ... ok
+test window_executor::tests::test_window_single_row_partition ... ok
+test executor_metrics::tests::test_executor_metrics_timer ... ok
+test executor_metrics::tests::test_executor_metrics_timer_multiple ... ok
+
+test result: ok. 292 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running unittests src/lib.rs (target/debug/deps/sqlrustgo_parser-f50c68e1e13a0684)
+
+running 99 tests
+test lexer::tests::test_lexer_float_number ... ok
+test lexer::tests::test_lexer_boolean_literal ... ok
+test lexer::tests::test_keywords_case_insensitive ... ok
+test lexer::tests::test_all_keywords ... ok
+test lexer::tests::test_lexer_multiple_statements ... ok
+test lexer::tests::test_lexer_negative_number ... ok
+test lexer::tests::test_lexer_null ... ok
+test lexer::tests::test_lexer_operators ... ok
+test lexer::tests::test_lexer_string_literal ... ok
+test lexer::tests::test_operators ... ok
+test lexer::tests::test_simple_select ... ok
+test parser::test_debug_fk ... ok
+test parser::test_debug_exact ... ok
+test parser::test_debug_having ... ok
+test parser::test_debug_cascade ... ok
+test parser::test_debug_idx ... ok
+test parser::test_debug_json_simple ... ok
+test parser::test_debug_json_extract ... ok
+test parser::test_debug_refs2 ... ok
+test parser::test_parse_and_with_null_in_where ... ok
+test parser::test_parse_complex_three_valued_expression ... ok
+test parser::test_debug_refs ... ok
+test parser::test_parse_cross_join ... ok
+test parser::test_parse_is_not_null_expression ... ok
+test parser::test_parse_is_null_expression ... ok
+test parser::test_parse_is_not_null_in_where ... ok
+test parser::test_parse_is_null_in_join_condition ... ok
+test parser::test_parse_join_on_multiple_conditions ... ok
+test parser::test_parse_join_with_table_alias ... ok
+test parser::test_parse_null_literal_is_not_null ... ok
+test parser::test_parse_join_without_on_clause_implicit_inner ... ok
+test parser::test_parse_null_literal_is_null ... ok
+test parser::tests::test_parse_aggregate_avg ... ok
+test parser::test_parse_or_with_null_in_where ... ok
+test parser::tests::test_parse_aggregate_count ... ok
+test parser::tests::test_parse_aggregate_sum ... ok
+test parser::tests::test_parse_aggregate_min_max ... ok
+test parser::tests::test_parse_alter_table_rename_to ... ok
+test parser::tests::test_parse_alter_table_add_column ... ok
+test parser::tests::test_parse_call ... ok
+test parser::tests::test_parse_analyze ... ok
+test parser::tests::test_parse_call_with_args ... ok
+test parser::tests::test_parse_comparison_expression ... ok
+test parser::tests::test_parse_create_with_auto_increment ... ok
+test parser::tests::test_parse_create_with_columns ... ok
+test parser::tests::test_parse_create_with_table_constraint_fk ... ignored
+test parser::tests::test_parse_create_with_not_null ... ok
+test parser::tests::test_parse_delete ... ok
+test parser::tests::test_parse_create_with_primary_key ... ok
+test parser::tests::test_parse_delete_with_where ... ok
+test parser::tests::test_parse_create_with_foreign_key ... ok
+test parser::tests::test_parse_describe ... ok
+test parser::tests::test_parse_desc_alias ... ok
+test parser::tests::test_parse_drop ... ok
+test parser::tests::test_parse_distinct ... ok
+test parser::tests::test_parse_in_list_expression ... ok
+test parser::tests::test_parse_insert ... ok
+test parser::tests::test_parse_full_join ... ok
+test parser::tests::test_parse_insert_select ... ok
+test parser::tests::test_parse_inner_join ... ok
+test parser::tests::test_parse_insert_select_with_columns ... ok
+test parser::tests::test_parse_insert_multi_row ... ok
+test parser::tests::test_parse_insert_with_columns ... ok
+test parser::tests::test_parse_insert_with_values ... ok
+test parser::tests::test_parse_like_expression ... ok
+test parser::tests::test_parse_replace_into ... ok
+test parser::tests::test_parse_qualified_column_names ... ok
+test parser::tests::test_parse_left_join ... ok
+test parser::tests::test_parse_replace_into_with_columns ... ok
+test parser::tests::test_parse_show_columns ... ok
+test parser::tests::test_parse_show_columns_with_like ... ok
+test parser::tests::test_parse_show_tables ... ok
+test parser::tests::test_parse_right_join ... ok
+test parser::tests::test_parse_show_index ... ok
+test parser::tests::test_parse_update ... ok
+test token::tests::test_is_keyword ... ok
+test parser::tests::test_parse_update_with_where ... ok
+test token::tests::test_from_keyword_various ... ok
+test token::tests::test_is_keyword_various ... ok
+test token::tests::test_token_boolean_literal ... ok
+test token::tests::test_token_clone ... ok
+test token::tests::test_token_debug ... ok
+test token::tests::test_token_display ... ok
+test token::tests::test_token_display_data_types ... ok
+test token::tests::test_token_display_keywords ... ok
+test token::tests::test_token_display_operators ... ok
+test token::tests::test_token_display_other_keywords ... ok
+test token::tests::test_token_display_syntax ... ok
+test token::tests::test_token_display_transaction ... ok
+test token::tests::test_token_from_keyword ... ok
+test transaction::tests::test_isolation_level_all_variants ... ok
+test transaction::tests::test_isolation_level_default ... ok
+test transaction::tests::test_isolation_level_variants ... ok
+test transaction::tests::test_transaction_statement_all_variants ... ok
+test transaction::tests::test_transaction_statement_begin ... ok
+test transaction::tests::test_transaction_statement_commit ... ok
+test transaction::tests::test_transaction_statement_rollback ... ok
+test transaction::tests::test_transaction_statement_set_transaction ... ok
+test transaction::tests::test_transaction_statement_start_transaction ... ok
+
+test result: ok. 98 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/debug/deps/sqlrustgo_planner-918800eefc0bc7c6)
+
+running 81 tests
+test logical_plan::tests::test_logical_plan_drop_table ... ok
+test logical_plan::tests::test_logical_plan_empty_relation ... ok
+test logical_plan::tests::test_logical_plan_delete ... ok
+test logical_plan::tests::test_logical_plan_create_table ... ok
+test logical_plan::tests::test_logical_plan_schema_filter ... ok
+test logical_plan::tests::test_logical_plan_schema_limit ... ok
+test logical_plan::tests::test_logical_plan_schema_sort ... ok
+test logical_plan::tests::test_logical_plan_table_scan ... ok
+test logical_plan::tests::test_logical_plan_update ... ok
+test logical_plan::tests::test_logical_plan_values ... ok
+test physical_plan::tests::test_delete_exec ... ok
+test physical_plan::tests::test_aggregate_exec ... ok
+test physical_plan::tests::test_delete_exec_with_predicate ... ok
+test physical_plan::tests::test_filter_exec ... ok
+test physical_plan::tests::test_filter_exec_accessors ... ok
+test physical_plan::tests::test_hash_join_exec ... ok
+test physical_plan::tests::test_limit_exec ... ok
+test physical_plan::tests::test_limit_exec_accessors ... ok
+test physical_plan::tests::test_limit_exec_with_offset ... ok
+test physical_plan::tests::test_projection_exec ... ok
+test physical_plan::tests::test_projection_exec_accessors ... ok
+test physical_plan::tests::test_seq_scan_exec ... ok
+test physical_plan::tests::test_seq_scan_exec_accessors ... ok
+test physical_plan::tests::test_seq_scan_exec_with_projection ... ok
+test physical_plan::tests::test_sort_exec ... ok
+test physical_plan::tests::test_sort_exec_accessors ... ok
+test planner::tests::test_create_table_physical_plan ... ok
+test planner::tests::test_aggregate_physical_plan ... ok
+test planner::tests::test_default_planner_creation ... ok
+test planner::tests::test_default_planner_default ... ok
+test planner::tests::test_delete_physical_plan ... ok
+test planner::tests::test_drop_table_physical_plan ... ok
+test planner::tests::test_empty_relation_physical_plan ... ok
+test planner::tests::test_filter_physical_plan ... ok
+test planner::tests::test_join_physical_plan ... ok
+test planner::tests::test_limit_physical_plan ... ok
+test planner::tests::test_noop_planner ... ok
+test planner::tests::test_noop_planner_create_physical_plan ... ok
+test planner::tests::test_noop_planner_default ... ok
+test planner::tests::test_planner_error_display ... ok
+test planner::tests::test_projection_physical_plan ... ok
+test planner::tests::test_sort_physical_plan ... ok
+test planner::tests::test_subquery_physical_plan ... ok
+test planner::tests::test_table_scan_physical_plan ... ok
+test planner::tests::test_table_scan_with_projection ... ok
+test planner::tests::test_union_physical_plan ... ok
+test planner::tests::test_update_physical_plan ... ok
+test planner::tests::test_values_physical_plan ... ok
+test tests::test_aggregate_function_clone ... ok
+test tests::test_aggregate_function_values ... ok
+test tests::test_column_clone ... ok
+test tests::test_column_display ... ok
+test tests::test_column_new ... ok
+test tests::test_column_new_qualified ... ok
+test tests::test_data_type_clone ... ok
+test tests::test_data_type_display ... ok
+test tests::test_data_type_from_sql_type ... ok
+test tests::test_data_type_partial_eq ... ok
+test tests::test_expr_aggregate_function ... ok
+test tests::test_expr_alias ... ok
+test tests::test_expr_binary_expr ... ok
+test tests::test_expr_clone ... ok
+test tests::test_expr_column ... ok
+test tests::test_expr_display ... ok
+test tests::test_expr_literal ... ok
+test tests::test_expr_qualified_wildcard ... ok
+test tests::test_expr_wildcard ... ok
+test tests::test_field_clone ... ok
+test tests::test_field_new ... ok
+test tests::test_field_new_not_null ... ok
+test tests::test_join_type_clone ... ok
+test tests::test_join_type_values ... ok
+test tests::test_operator_clone ... ok
+test tests::test_operator_display ... ok
+test tests::test_operator_partial_eq ... ok
+test tests::test_schema_clone ... ok
+test tests::test_schema_empty ... ok
+test tests::test_schema_field ... ok
+test tests::test_schema_field_index ... ok
+test tests::test_schema_new ... ok
+test tests::test_sort_expr ... ok
+
+test result: ok. 81 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/debug/deps/sqlrustgo_storage-fae55353eb568cc4)
+
+running 187 tests
+test backup::tests::test_backup_format_invalid ... ok
+test backup::tests::test_backup_format_case_insensitive ... ok
+test backup::tests::test_backup_format_from_str ... ok
+test backup::tests::test_csv_escape ... ok
+test backup::tests::test_csv_escape_blob ... ok
+test backup::tests::test_csv_escape_boolean ... ok
+test backup::tests::test_data_restorer_restore_csv ... ok
+test backup::tests::test_export_csv ... ok
+test backup::tests::test_export_csv_with_quotes ... ok
+test backup::tests::test_export_json ... ok
+test backup::tests::test_json_value_integer ... ok
+test backup::tests::test_export_with_empty_table ... ok
+test backup::tests::test_json_value_string ... ok
+test backup::tests::test_export_sql_with_text_escaping ... ok
+test backup::tests::test_export_sql ... ok
+test backup::tests::test_parse_csv_value ... ok
+test backup::tests::test_parse_csv_value_integer ... ok
+test backup::tests::test_sql_value ... ok
+test backup::tests::test_sql_value_blob ... ok
+test backup::tests::test_sql_value_boolean ... ok
+test binary_format::tests::test_binary_format_error_display ... ok
+test binary_format::tests::test_helpers_write_read_string ... ok
+test binary_format::tests::test_helpers_write_read_u64 ... ok
+test binary_format::tests::test_value_roundtrip_boolean ... ok
+test binary_format::tests::test_value_roundtrip_float ... ok
+test binary_format::tests::test_value_roundtrip_integer ... ok
+test binary_format::tests::test_value_roundtrip_null ... ok
+test binary_format::tests::test_value_roundtrip_text ... ok
+test binary_format::tests::test_value_to_bytes_boolean ... ok
+test binary_format::tests::test_value_to_bytes_float ... ok
+test backup::tests::test_restore_json_invalid ... ok
+test binary_format::tests::test_value_to_bytes_integer ... ok
+test binary_format::tests::test_value_to_bytes_null ... ok
+test backup::tests::test_restore_sql ... ok
+test binary_format::tests::test_value_to_bytes_text ... ok
+test binary_storage::tests::test_binary_storage_exists ... ok
+test binary_storage::tests::test_binary_storage_load_text ... ok
+test binary_storage::tests::test_binary_save_load ... ok
+test binary_storage::tests::test_binary_storage_load_float ... ok
+test bplus_tree::tests::test_bplus_tree_insert_and_search ... ok
+test bplus_tree::tests::test_bplus_tree_range_query ... ok
+test binary_storage::tests::test_binary_storage_new ... ok
+test bplus_tree::tests::test_simple_bplus_tree_is_empty ... ok
+test binary_storage::tests::test_binary_storage_multiple_rows ... ok
+test bplus_tree::tests::test_simple_bplus_tree_keys ... ok
+test bplus_tree::tests::test_simple_bplus_tree_search_all ... ok
+test buffer_pool::tests::test_buffer_pool_basic ... ok
+test buffer_pool::tests::test_buffer_pool_get_page ... ok
+test buffer_pool::tests::test_buffer_pool_hit_rate ... ok
+test buffer_pool::tests::test_buffer_pool_lru_eviction ... ok
+test buffer_pool::tests::test_buffer_pool_prefetch ... ok
+test buffer_pool::tests::test_buffer_pool_remove ... ok
+test buffer_pool::tests::test_buffer_pool_stats ... ok
+test buffer_pool::tests::test_memory_pool ... ok
+test buffer_pool::tests::test_memory_pool_wrong_size ... ok
+test engine::tests::test_evaluate_sql_expression_boolean_and_logical_ops ... ok
+test engine::tests::test_evaluate_sql_expression_integer_comparison ... ok
+test engine::tests::test_evaluate_sql_expression_null_handling ... ok
+test engine::tests::test_evaluate_sql_expression_text_comparison ... ok
+test engine::tests::test_memory_storage_create_and_drop ... ok
+test engine::tests::test_memory_storage_has_table ... ok
+test engine::tests::test_memory_storage_insert_and_scan ... ok
+test engine::tests::test_memory_storage_is_wal_enabled ... ok
+test engine::tests::test_memory_storage_new ... ok
+test engine::tests::test_memory_storage_scan_empty ... ok
+test engine::tests::test_storage_engine_create_and_drop_table ... ok
+test engine::tests::test_storage_engine_delete_all ... ok
+test engine::tests::test_storage_engine_get_table_info ... ok
+test engine::tests::test_storage_engine_has_table_check ... ok
+test engine::tests::test_storage_engine_insert_records ... ok
+test engine::tests::test_storage_engine_send_sync ... ok
+test engine::tests::test_storage_engine_table_not_found ... ok
+test engine::tests::test_storage_engine_table_operations ... ok
+test binary_storage::tests::test_binary_storage_multiple_tables ... ok
+test engine::tests::test_storage_engine_trait_exists ... ok
+test engine::tests::test_storage_engine_update_values ... ok
+test engine::tests::test_storage_update_if_signature ... ok
+test file_storage::tests::test_file_storage_drop_index_no_table ... ok
+test file_storage::tests::test_file_storage_contains_and_drop ... ok
+test file_storage::tests::test_file_storage_empty_tables ... ok
+test file_storage::tests::test_file_storage_add_column ... ok
+test file_storage::tests::test_file_storage ... ok
+test file_storage::tests::test_file_storage_has_index_no_table ... ok
+test file_storage::tests::test_file_storage_get_mut ... ok
+test file_storage::tests::test_file_storage_get_index ... ok
+test file_storage::tests::test_file_storage_index ... ok
+test file_storage::tests::test_file_storage_index_no_matching_rows ... ok
+test file_storage::tests::test_file_storage_insert_with_index_no_index ... ok
+test file_storage::tests::test_file_storage_index_search ... ok
+test file_storage::tests::test_file_storage_persist_nonexistent ... ok
+test file_storage::tests::test_file_storage_range_index_no_table ... ok
+test file_storage::tests::test_file_storage_rename_nonexistent ... ok
+test file_storage::tests::test_file_storage_persist ... ok
+test file_storage::tests::test_file_storage_trigger_operations ... ok
+test file_storage::tests::test_file_storage_range_index_no_results ... ok
+test file_storage::tests::test_file_storage_view_operations ... ok
+test file_storage::tests::test_file_storage_rename_table ... ok
+test page::tests::test_bytes_to_value ... ok
+test page::tests::test_bytes_to_value_integer ... ok
+test page::tests::test_page_creation ... ok
+test file_storage::tests::test_insert_buffer_threshold ... ok
+test page::tests::test_page_data_access ... ok
+test page::tests::test_page_free_space ... ok
+test page::tests::test_page_multiple_rows ... ok
+test page::tests::test_page_page_id ... ok
+test page::tests::test_page_to_from_bytes ... ok
+test file_storage::tests::test_insert_buffering ... ok
+test page::tests::test_page_type ... ok
+test page::tests::test_page_write_read_row ... ok
+test file_storage::tests::test_flush_all_buffers ... ok
+test page::tests::test_value_to_bytes ... ok
+test page::tests::test_value_to_bytes_blob ... ok
+test predicate::tests::test_expr_column ... ok
+test predicate::tests::test_expr_parameter ... ok
+test predicate::tests::test_expr_value ... ok
+test predicate::tests::test_index_op_eq ... ok
+test predicate::tests::test_index_op_range ... ok
+test predicate::tests::test_predicate_and ... ok
+test predicate::tests::test_predicate_debug ... ok
+test predicate::tests::test_predicate_eq ... ok
+test predicate::tests::test_predicate_gt ... ok
+test predicate::tests::test_predicate_gte ... ok
+test predicate::tests::test_predicate_in ... ok
+test predicate::tests::test_predicate_is_not_null ... ok
+test predicate::tests::test_predicate_is_null ... ok
+test predicate::tests::test_predicate_lt ... ok
+test predicate::tests::test_predicate_lte ... ok
+test predicate::tests::test_predicate_not ... ok
+test predicate::tests::test_predicate_or ... ok
+test read_write_split::tests::test_connection_struct ... ok
+test read_write_split::tests::test_consistency_mode_variants ... ok
+test read_write_split::tests::test_increment_decrement_connection_count ... ok
+test read_write_split::tests::test_least_connections_selects_min ... ok
+test read_write_split::tests::test_least_connections_tracks_counts ... ok
+test read_write_split::tests::test_load_balance_strategy_variants ... ok
+test read_write_split::tests::test_query_type_classification ... ok
+test read_write_split::tests::test_read_after_write_consistency ... ok
+test read_write_split::tests::test_read_write_router_add_replica ... ok
+test read_write_split::tests::test_read_write_router_remove_replica ... ok
+test read_write_split::tests::test_read_write_split_config_default ... ok
+test read_write_split::tests::test_replica_node_creation ... ok
+test read_write_split::tests::test_replica_node_with_lag ... ok
+test read_write_split::tests::test_route_result_fields ... ok
+test read_write_split::tests::test_router_multiple_reads_distributed ... ok
+test read_write_split::tests::test_router_read_route ... ok
+test read_write_split::tests::test_router_write_route ... ok
+test vtu_guard::tests::test_vtu_guard_get_table_info_allowed ... ok
+test vtu_guard::tests::test_vtu_guard_scan_allowed ... ok
+test vtu_guard::tests::test_vtu_violation_delete - should panic ... ok
+test vtu_guard::tests::test_vtu_violation_insert - should panic ... ok
+test vtu_guard::tests::test_vtu_violation_update - should panic ... ok
+test wal::tests::test_pitr_recover_table_filter ... ok
+test wal::tests::test_pitr_recover_to_timestamp ... ok
+test wal::tests::test_wal_archive_cleanup ... ok
+test wal::tests::test_recovery_window_info ... ok
+test wal::tests::test_wal_archive_metadata_serialization ... ok
+test wal::tests::test_wal_archive_list_archives ... ok
+test wal::tests::test_wal_entry_empty_key_data ... ok
+test wal::tests::test_wal_entry_from_bytes_truncated ... ok
+test wal::tests::test_wal_entry_large_data ... ok
+test wal::tests::test_wal_5_transactions ... ok
+test wal::tests::test_wal_entry_only_data ... ok
+test wal::tests::test_wal_entry_only_key ... ok
+test wal::tests::test_wal_entry_serialization ... ok
+test wal::tests::test_wal_entry_truncated_v2 ... ok
+test wal::tests::test_wal_entry_type ... ok
+test wal::tests::test_wal_entry_type_coverage ... ok
+test wal::tests::test_wal_entry_with_empty_data ... ok
+test wal::tests::test_wal_archive_manager_creation ... ok
+test wal::tests::test_wal_manager_log_checkpoint ... ok
+test wal::tests::test_wal_large_100k ... ok
+test wal::tests::test_wal_manager_log_rollback ... ok
+test wal::tests::test_wal_manager ... ok
+test wal::tests::test_wal_multiple_transactions ... ok
+test wal::tests::test_wal_mixed_ops ... ok
+test wal::tests::test_wal_perf_100_update ... ok
+test wal::tests::test_wal_reader_read_from_lsn ... ok
+test wal::tests::test_wal_recovery_empty_file ... ok
+test wal::tests::test_wal_recovery_from_corrupted_entries ... ok
+test wal::tests::test_wal_recovery_with_corrupted_length_prefix ... ok
+test wal::tests::test_wal_recovery_with_partially_written_entry ... ok
+test wal::tests::test_wal_write_read ... ok
+test wal::tests::test_wal_writer_append_100_entries ... ok
+test wal::tests::test_wal_writer_current_lsn ... ok
+test wal::tests::test_wal_perf_1000_insert ... ok
+test wal::tests::test_wal_perf_recovery_1mb ... ok
+test wal::tests::test_wal_perf_throughput ... ok
+
+test result: ok. 187 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.30s
+
+     Running unittests src/lib.rs (target/debug/deps/sqlrustgo_transaction-e3a1d6c2ce423ffa)
+
+running 89 tests
+test deadlock::tests::test_deadlock_detector_new ... ok
+test deadlock::tests::test_add_edge ... ok
+test deadlock::tests::test_add_multiple_edges ... ok
+test deadlock::tests::test_complex_wait_for_graph ... ok
+test deadlock::tests::test_default ... ok
+test deadlock::tests::test_detect_cycle ... ok
+test deadlock::tests::test_detect_cycle_from_different_start ... ok
+test deadlock::tests::test_detect_cycle_no_waiters ... ok
+test deadlock::tests::test_no_cycle ... ok
+test deadlock::tests::test_no_cycle_linear_chain ... ok
+test deadlock::tests::test_partial_cycle ... ok
+test deadlock::tests::test_remove_edges_for ... ok
+test deadlock::tests::test_remove_edges_for_removes_from_holders ... ok
+test deadlock::tests::test_self_loop ... ok
+test deadlock::tests::test_two_node_cycle ... ok
+test deadlock::tests::test_visited_contains_current ... ok
+test deadlock::tests::test_with_timeout ... ok
+test dtc::tests::test_change_operation ... ok
+test dtc::tests::test_transaction_context_add_participant ... ok
+test dtc::tests::test_transaction_context_new ... ok
+test dtc::tests::test_transaction_state_transitions ... ok
+test dtc::tests::test_vote_serialization ... ok
+test gid::tests::test_gid_equality ... ok
+test gid::tests::test_gid_display ... ok
+test gid::tests::test_gid_generation ... ok
+test lock::tests::test_exclusive_lock ... ok
+test lock::tests::test_lock_manager_with_deadlock_detector ... ok
+test lock::tests::test_lock_release ... ok
+test lock::tests::test_lock_release_grants_to_waiter ... ok
+test lock::tests::test_lock_upgrade ... ok
+test lock::tests::test_multiple_shared_locks ... ok
+test lock::tests::test_release_all_locks ... ok
+test lock::tests::test_shared_lock ... ok
+test lock::tests::test_shared_lock_conflict ... ok
+test lock_manager::tests::test_lock_acquire_release ... ok
+test lock_manager::tests::test_is_locked ... ok
+test lock_manager::tests::test_get_holder ... ok
+test lock_manager::tests::test_lock_conflict ... ok
+test lock_manager::tests::test_lock_same_gid_succeeds ... ok
+test mvcc::tests::test_row_version_commit ... ok
+test lock_manager::tests::test_row_lock ... ok
+test mvcc::tests::test_row_version_is_visible_committed_after_snapshot ... ok
+test mvcc::tests::test_row_version_is_visible_committed_before_snapshot ... ok
+test mvcc::tests::test_row_version_is_visible_deleted_after_snapshot ... ok
+test mvcc::tests::test_row_version_is_visible_deleted_before_snapshot ... ok
+test mvcc::tests::test_row_version_is_visible_other_uncommitted ... ok
+test mvcc::tests::test_row_version_is_visible_own_uncommitted ... ok
+test mvcc::tests::test_snapshot_visibility ... ok
+test mvcc::tests::test_transaction_abort ... ok
+test mvcc::tests::test_transaction_lifecycle ... ok
+test savepoint::tests::test_add_undo ... ok
+test savepoint::tests::test_add_undo_update ... ok
+test savepoint::tests::test_get_savepoint_count ... ok
+test savepoint::tests::test_nested_savepoints ... ok
+test savepoint::tests::test_release_nonexistent_savepoint ... ok
+test savepoint::tests::test_release_savepoint ... ok
+test savepoint::tests::test_rollback_preserves_earlier_savepoints ... ok
+test savepoint::tests::test_savepoint_create ... ok
+test savepoint::tests::test_savepoint_error_display ... ok
+test savepoint::tests::test_savepoint_new ... ok
+test savepoint::tests::test_savepoint_not_found ... ok
+test savepoint::tests::test_savepoint_override ... ok
+test savepoint::tests::test_undo_record_insert ... ok
+test ssi::tests::test_serialization_graph_cycle_detection ... ok
+test ssi::tests::test_serialization_graph_remove_tx ... ok
+test ssi::tests::test_ssi_detector_no_conflict ... ok
+test ssi::tests::test_ssi_detector_record_read ... ok
+test ssi::tests::test_ssi_detector_sync_no_conflict ... ok
+test ssi::tests::test_ssi_detector_record_write ... ok
+test ssi::tests::test_ssi_detector_sync_release ... ok
+test ssi::tests::test_ssi_detector_sync_rw_conflict ... ok
+test ssi::tests::test_ssi_error_display ... ok
+test transaction_manager::tests::test_begin_transaction ... ok
+test transaction_manager::tests::test_commit_transaction ... ok
+test transaction_manager::tests::test_get_snapshot ... ok
+test transaction_manager::tests::test_get_snapshot_none ... ok
+test transaction_manager::tests::test_isolation_level_default ... ok
+test transaction_manager::tests::test_multiple_transactions ... ok
+test transaction_manager::tests::test_record_read_write ... ok
+test transaction_manager::tests::test_rollback_transaction ... ok
+test version_chain::tests::test_version_chain_append_and_find_visible ... ok
+test version_chain::tests::test_version_chain_delete_visibility ... ok
+test version_chain::tests::test_version_chain_gc_collect_deleted ... ok
+test version_chain::tests::test_version_chain_gc_preserve_active_tx ... ok
+test version_chain::tests::test_version_chain_gc_preserve_recent ... ok
+test version_chain::tests::test_version_chain_not_found ... ok
+test version_chain::tests::test_version_chain_rollback ... ok
+test version_chain::tests::test_version_chain_stats ... ok
+test version_chain::tests::test_version_chain_uncommitted_visible_to_self ... ok
+
+test result: ok. 89 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
