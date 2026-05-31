@@ -13,6 +13,7 @@ pub mod read_write_split;
 pub mod vtu_guard;
 pub mod vtu_ir;
 pub mod wal;
+pub mod wal_legacy;
 pub mod wal_storage;
 
 pub use binary_format::BinaryFormat;
@@ -27,4 +28,6 @@ pub use engine::{
 pub use file_storage::FileStorage;
 pub use page::Page;
 pub use vtu_guard::VtuGuard;
+pub use wal::{FileBackedWalManager, MemoryWalManager, WalManager};
+pub use wal_legacy::{WalEntry, WalEntryType};
 pub use wal_storage::WalStorage;
