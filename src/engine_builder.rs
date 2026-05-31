@@ -8,7 +8,7 @@ use std::sync::{Arc, RwLock};
 
 use sqlrustgo_catalog::Catalog;
 use sqlrustgo_storage::{
-    recovery_engine::{RecoveryEngine, RecoveryEngineImpl, RecoveryReport},
+    recovery_engine::{RecoveryEngine, RecoveryEngineImpl, RecoveryReport, StatefulRecoveryEngine},
     FileBackedWalManager, FileStorage, MemoryStorage, StorageEngine, WalStorage,
 };
 use sqlrustgo_transaction::{IsolationLevel as TmIsolationLevel, TransactionManager};
@@ -169,6 +169,16 @@ pub fn recover_wal(
         SqlError::ExecutionError(format!("Failed to lock storage for recovery: {:?}", e))
     })?;
     let (inner, wal_mgr) = storage.split();
-    let mut recovery = RecoveryEngineImpl;
-    RecoveryEngine::recover(&mut recovery, inner, wal_mgr)
+    let mut recovery = StatefulRecoveryEngine::new();
+    let report = RecoveryEngine::recover(&mut recovery, inner, wal_mgr)?;
+
+    log::info!(
+        "WAL recovery completed: {} committed txns, {} rolled back, {} incomplete, {} entries total",
+        report.committed_txns,
+        report.rolled_back_txns,
+        report.incomplete_txns,
+        report.entries_total
+    );
+
+    Ok(report)
 }
