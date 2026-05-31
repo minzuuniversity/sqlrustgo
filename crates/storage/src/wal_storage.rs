@@ -1,13 +1,17 @@
+use crate::checkpoint::{CheckpointManager, CheckpointMetadata};
 use crate::engine::{
     ColumnDefinition, Record, RowFilter, RowMutation, SqlResult, StorageEngine, TableInfo,
     TriggerInfo, Value,
 };
 use crate::wal::{WalEntry, WalEntryType, WalManager};
+use std::path::PathBuf;
+use std::sync::{Arc, RwLock};
 
 pub struct WalStorage<S: StorageEngine, T: WalManager> {
     inner: S,
     wal: T,
     wal_enabled: bool,
+    checkpoint_manager: Option<Arc<RwLock<CheckpointManager>>>,
 }
 
 impl<S: StorageEngine, T: WalManager> WalStorage<S, T> {
@@ -16,6 +20,20 @@ impl<S: StorageEngine, T: WalManager> WalStorage<S, T> {
             inner,
             wal,
             wal_enabled: true,
+            checkpoint_manager: None,
+        })
+    }
+
+    pub fn with_checkpoint_manager(
+        inner: S,
+        wal: T,
+        checkpoint_manager: Arc<RwLock<CheckpointManager>>,
+    ) -> SqlResult<Self> {
+        Ok(Self {
+            inner,
+            wal,
+            wal_enabled: true,
+            checkpoint_manager: Some(checkpoint_manager),
         })
     }
 
@@ -184,14 +202,15 @@ impl<S: StorageEngine, T: WalManager> WalStorage<S, T> {
 
     pub fn commit_transaction(&mut self) -> SqlResult<()> {
         let tx_id = self.inner.current_tx_id();
-        if self.wal_enabled {
+        let commit_lsn = if self.wal_enabled {
+            let lsn = self.wal.current_lsn();
             let entry = WalEntry {
                 tx_id,
                 entry_type: WalEntryType::Commit,
                 table_id: 0,
                 key: None,
                 data: None,
-                lsn: 0,
+                lsn,
                 timestamp: std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
                     .unwrap()
@@ -199,8 +218,43 @@ impl<S: StorageEngine, T: WalManager> WalStorage<S, T> {
             };
             self.wal.append(entry)?;
             self.wal.sync()?;
+            self.wal.current_lsn()
+        } else {
+            0
+        };
+
+        // Advance checkpoint so truncation can proceed
+        if commit_lsn > 0 {
+            if let Some(cp) = &self.checkpoint_manager {
+                if let Ok(guard) = cp.write() {
+                    guard.record_checkpoint(CheckpointMetadata {
+                        lsn: commit_lsn,
+                        timestamp: std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap()
+                            .as_millis() as u64,
+                        tx_count: 1,
+                        dirty_pages: 0,
+                        file_path: PathBuf::new(),
+                    });
+                }
+            }
         }
+
         self.inner.flush()?;
+
+        // Truncate WAL up to checkpoint
+        if commit_lsn > 0 {
+            if let Some(cp) = &self.checkpoint_manager {
+                if let Ok(guard) = cp.read() {
+                    if let Some(cp_lsn) = guard.last_checkpoint_lsn() {
+                        let cp_lsn = u64::try_from(cp_lsn).unwrap_or(0);
+                        let _ = self.wal.truncate_before(cp_lsn);
+                    }
+                }
+            }
+        }
+
         Ok(())
     }
 
