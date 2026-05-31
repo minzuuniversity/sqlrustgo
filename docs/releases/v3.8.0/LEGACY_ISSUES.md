@@ -1,240 +1,236 @@
-# SQLRustGo 遗留问题总清单
+# LEGACY_ISSUES.md — v3.8.0 遗留问题清单
 
-> **文档版本**: v3.8.0
-> **更新日期**: 2026-05-30
-> **维护者**: Hermes Agent
-> **用途**: v3.7.0 GA Freeze 遗留问题归档 + v3.8.0 开发计划输入
-
----
-
-## 1. 概述
-
-本文档记录 SQLRustGo 所有**未关闭的遗留问题**，按版本和优先级分类。
-
-**分类原则**：
-- **v3.7.x**: 当前稳定版本的 P1 修复，可在 GA 后独立处理
-- **INT-1~INT-4**: 历史架构债务，跨越 v1.2.0~v3.7.0，需在 v3.8.0 解决
-- **SYSTEMIC**: 系统级技术债务，影响多个版本
+> **版本**: v3.8.0
+> **分支**: `origin/develop/v3.8.0`
+> **基准 commit**: `be03d46c` (2026-05-31)
+> **依据**: v3.6.0 INTEGRATION_DEBT_REPORT + v3.7.0 GA + regression_hotspots.md + Issue list
+> **Status**: ACTIVE
 
 ---
 
-## 2. v3.7.0 GA 遗留问题（v3.7.x 范围）
+## 0. 版本定性（v3.6.0 / v3.7.0 / v3.8.0）
 
-> v3.7.0 GA 已冻结，以下问题在 v3.7.x stabilization 中处理
-
-### 2.1 P1 Issues（高优先级）
-
-| Issue | 标题 | 说明 | 影响 | 修复方案 | 状态 |
-|-------|------|------|------|----------|------|
-| #2583 | SHOW TABLES 未实现 | `SHOW TABLES` 返回语法错误 | 用户无法列出表 | 实现 catalog show handler | OPEN |
-| #2584 | 空密码认证 edge case | root 空密码无法登录 | 认证流程不完整 | `auth_response.is_empty()` 处理逻辑修复 | OPEN |
-| #2585 | VTU 未接入主执行路径 | ParallelVolcanoExecutor 存在但未使用 | 性能优化无效 | v3.8.0 PR-870 | Planned |
-| #2586 | execution_engine.rs 膨胀 | 4658→6829 行（v3.4→v3.7 增长 47%） | 可维护性差 | v3.8.0 PR-900 | Planned |
-
-### 2.2 P2 Issues（中优先级）
-
-| Issue | 标题 | 说明 | 状态 |
-|-------|------|------|------|
-| #2587 | 覆盖率测量不统一 | Z6G4 81.97% vs Z440 32.59% | OPEN |
-| #2596 | 覆盖率 Z6G4 vs Z440 差异 | 测量方法/工具不一致 | OPEN |
-| #2597 | execution_engine.rs 行数增长 | 架构膨胀可维护性差 | Planned → v3.8.0 |
-
-### 2.3 P3 Issues（低优先级）
-
-| Issue | 标题 | 说明 | 状态 |
-|-------|------|------|------|
-| #2600 | Coverage 工具统一 | cargo-llvm-cov vs 其他工具 | OPEN |
-| #2607 | Benchmark 基线记录 | TPC-H SF=1 基线未文档化 | OPEN |
-| #2608 | Error code 标准化 | MySQL error code 一致性 | OPEN |
+| 版本 | 真实状态 | 核心问题 |
+|------|----------|----------|
+| **v3.6.0** | Alpha FAIL | 双链路执行缺陷，WAL/并行/CBO 未集成 mysql-server |
+| **v3.7.0** | Refactoring | 集成债务清算，INT-1~INT-4 持续修复中 |
+| **v3.8.0** | Architecture Consolidation | Execution Semantics Freeze (commit 087bb12d) |
 
 ---
 
-## 3. 历史架构债务（INT-1~INT-4）
+## 1. 可关闭 Issue（已完成或已被新架构覆盖）
 
-> 跨越多个版本（v1.2.0~v3.7.0），必须在 v3.8.0 解决
-
-### 3.1 INT-1: DML 不经过 WAL（最严重）
-
-| 字段 | 值 |
-|------|-----|
-| Issue | #2588 |
-| 首次引入 | v1.2.0 |
-| 跨越版本 | v1.2.0~v3.7.0（7 个版本） |
-| 影响范围 | 所有 DML（INSERT/UPDATE/DELETE） |
-| 根因 | DML 直接写入 storage，跳过 TransactionManager + WAL |
-| 后果 | 无 crash recovery，非预期终止导致数据丢失 |
-| 涉及文件 | `execution_engine.rs`, `mysql-server/src/lib.rs` |
-| v3.8.0 PR | PR-830, PR-840 |
-| 依赖 | PR-800, PR-810, PR-820 |
-| 风险 | 🔴 CRITICAL（核心 ACID 变更） |
-
-**架构问题描述**：
-
-```
-当前路径（v3.7.0）：
-INSERT INTO t VALUES(...)
-  ↓
-eng.execute_insert()  ← 直接调用 storage.insert()
-  ↓
-无 WAL 记录
-
-修复后路径（v3.8.0）：
-INSERT INTO t VALUES(...)
-  ↓
-parse() → AST
-  ↓
-TransactionManager.intercept_dml()
-  ↓
-WriteBuffer staging + WAL append
-  ↓
-COMMIT → flush WAL + apply buffer
-```
+| Issue | 标题 | 关闭理由 |
+|-------|------|----------|
+| #2593 | WAL DML integration technical report for v3.7.0 | 已合并入 v3.8.0 WAL Contract (Issue #2624) |
+| #2592 | INTEGRATION_DEBT_REPORT + v3.7.0 roadmap | 已整合入本文档 |
+| #2613 | P0 fixes — session engine + SKIP_AUTH restore | 已修复并合入 v3.7.0 GA |
+| #2615 | Coverage Ceiling Analysis + Window Branch Forcing Tests | 已完成 v3.7.0 GA |
+| #2599 | Core Integrity Release - 主路径统一与架构收敛 | 已被 v3.8.0 PR-800 替代 |
+| #2602 | R1: Transaction/WAL 主路径重构 | INT-1 已在 v3.8.0 明确为 IMPL-002 WAL Persistence |
+| #2607 | R6: Recovery Integration Tests - 真实服务器测试 | 已在 v3.8.0 WAL Contract 下重新组织 |
+| #2634 | Task 1-3: DriftGate/TransactionContext/ExecutionEvent 测试 | 已完成 |
+| #2636 | UnifiedExpr as temporary canonical IR bridge | 已合入 develop/v3.8.0 |
+| #2630 | configurable GraceHashJoin memory budget | 已合入 develop/v3.8.0 |
+| #2629 | spill crate + TPC-H test infra for SF=10 | 已合入 develop/v3.8.0 |
+| #2635 | P3.1 planner chain tests (28 passing) | 已合入 develop/v3.8.0 |
 
 ---
 
-### 3.2 INT-2: ParallelVolcanoExecutor 未接入
+## 2. 剩余开放 Issue（按类别分组）
 
-| 字段 | 值 |
-|------|-----|
-| Issue | #2589 |
-| 首次引入 | v2.6.0 |
-| 跨越版本 | v2.6.0~v3.7.0（5 个版本） |
-| 影响范围 | Query execution / SIMD optimization |
-| 根因 | VTU 代码存在于 LocalExecutor，但 mysql-server 不经过 |
-| 后果 | SIMD 加速/向量化执行对 mysql-server 无效 |
-| 涉及文件 | `local_executor.rs`, `volcano_executor.rs`, `predicate.rs` |
-| v3.8.0 PR | PR-870, PR-880 |
-| 依赖 | PR-850, PR-860 |
-| 风险 | 🟡 中高（性能路径变更） |
+### 2.1 INT-1~INT-4 核心集成债务（P0）
 
-**架构问题描述**：
+这些是 v3.6.0/v3.7.0 遗留的架构缺陷，v3.8.0 需要通过 PR-800~PR-900 解决。
 
-```
-当前路径（v3.7.0）：
-mysql-server → ExecutionEngine → MemoryStorage  ← 无 VTU
-bench-cli → LocalExecutor (有 VTU)               ← VTU 仅此处
+| Issue | 标题 | 当前状态 | v3.8.0 对应 PR | 备注 |
+|-------|------|----------|----------------|------|
+| **#2588** | INT-1: DML 不经过 WAL/TransactionManager | OPEN | PR-830 (WAL 接入) | IMPL-002 WAL Persistence |
+| **#2589** | INT-2: ParallelVolcanoExecutor 功能孤岛 | OPEN | PR-870 | VTU 接入主流程 |
+| **#2590** | INT-3: expr crate 功能孤岛 | OPEN | PR-860 | expr crate 整合 |
+| **#2591** | INT-4: mysql-server 未与主 server 集成 | OPEN | PR-850 | mysql-server 统一 |
 
-修复后路径（v3.8.0）：
-mysql-server → Planner → ParallelVolcanoExecutor ← 统一 VTU
-```
+### 2.2 架构膨胀与复杂度（P0）
 
----
+| Issue | 标题 | 当前状态 | v3.8.0 对应 PR | 备注 |
+|-------|------|----------|----------------|------|
+| **#2578** | execution_engine.rs 持续膨胀（4658→6829行） | OPEN | PR-900 | 需拆分至 <1500 行 |
+| **#2597** | execution_engine.rs 持续膨胀 | OPEN | PR-900 | 同上 |
+| **#2572** | PhysicalPlan→LocalExecutor 双执行路径 | OPEN | PR-850 | 路径统一 |
 
-### 3.3 INT-3: expr crate 孤岛
+### 2.3 覆盖率与测量（P1）
 
-| 字段 | 值 |
-|------|-----|
-| Issue | #2590 |
-| 首次引入 | v3.0.0 |
-| 跨越版本 | v3.0.0~v3.7.0（4 个版本） |
-| 影响范围 | Expression evaluation |
-| 根因 | expr crate 未与 ExecutionEngine 集成 |
-| 后果 | Expression evaluation 逻辑分散，无法统一优化 |
-| 涉及文件 | `expr/`, `execution_engine.rs`（expression 部分） |
-| v3.8.0 PR | PR-860 |
-| 依赖 | PR-850 |
-| 风险 | 🟡 中（收敛型变更） |
+| Issue | 标题 | 当前状态 | v3.8.0 对应 | 备注 |
+|-------|------|----------|-------------|------|
+| **#2596** | 覆盖率测量差异 Z6G4 81.97% vs Z440 32.59% | OPEN | PR-900 (F2) | 需统一测量方法 |
+| #2628 | VTU Phase 2 覆盖率提升专项 | OPEN | PR-870 | VTU 覆盖率 |
 
----
+### 2.4 WAL/MVCC/Transaction（P0）
 
-### 3.4 INT-4: mysql-server 双执行路径
+| Issue | 标题 | 当前状态 | v3.8.0 对应 | 备注 |
+|-------|------|----------|-------------|------|
+| **#2571** | WAL/MVCC/TransactionManager DML 集成缺失 | OPEN | PR-830 | IMPL-002 |
+| **#2576** | DML 操作不经过 TransactionManager/WAL | OPEN | PR-830 | 同上 |
+| #2624 | WAL Contract — P0 测试任务 | OPEN | IMPL-002 | WAL Contract 已建立 |
 
-| 字段 | 值 |
-|------|-----|
-| Issue | #2591 |
-| 首次引入 | v2.6.0 |
-| 跨越版本 | v2.6.0~v3.7.0（5 个版本） |
-| 影响范围 | mysql-server, bench-cli, LocalExecutor |
-| 根因 | mysql-server 和 bench-cli 各自有独立执行路径 |
-| 后果 | 行为不一致，维护两套执行逻辑 |
-| 涉及文件 | `mysql-server/src/lib.rs`, `local_executor.rs`, `execution_engine.rs` |
-| v3.8.0 PR | PR-850 |
-| 依赖 | PR-840 |
-| 风险 | 🔴 高（架构统一核心） |
+### 2.5 Governance 问题（P1）
 
-**架构问题描述**：
+| Issue | 标题 | 当前状态 | 备注 |
+|-------|------|----------|------|
+| #2606 | R5: Gate 重构 - 建立可信 CI 检查 | OPEN | v3.8.0 Gate 重构 |
+| #2601 | Architecture Governance - 模块状态与 Dead Module 检测 | OPEN | 架构治理 |
+| #2579 | gate_spec 缺少 I-Gate 集成路径检查 | OPEN | 已记录，待修复 |
+| #2585 | Cross-version debt tracking missing | OPEN | LEGACY_ISSUES 替代 |
 
-```
-当前双路径（v3.7.0）：
-Path A: mysql-server → ExecutionEngine → MemoryStorage
-Path B: bench-cli → LocalExecutor → StorageEngine
+### 2.6 已知功能缺失（P2）
 
-修复后单路径（v3.8.0）：
-ALL: mysql-server → Planner → LocalExecutor → StorageEngine
-```
+| Issue | 标题 | 当前状态 | 备注 |
+|-------|------|----------|------|
+| #2437 | Add stored procedure tokens | OPEN | StoredProc 开发中 |
+| #2432 | Implement ALTER TABLE support | OPEN | DDL 支持缺失 |
+| #2583 | DML execution path not unified with PhysicalPlan pipeline | OPEN | INT-4 覆盖 |
+| #2598 | 真实服务器测试缺失 | OPEN | v3.7.0 系统性问题 |
 
----
+### 2.7 历史遗留问题（2025 年及更早，功能/测试缺失）
 
-## 4. 系统级技术债务（SYSTEMIC）
+这些 Issue 在 v3.6.0/v3.7.0 期间已记录但未修复，不影响 v3.8.0 PR DAG。已在 LEGACY_ISSUES.md 中记录，**保持 OPEN 仅作历史追踪**。
 
-### 4.1 Architecture Debt
-
-| Issue | 标题 | 说明 | 首次引入 | 状态 |
-|-------|------|------|----------|------|
-| #2597 | execution_engine.rs 膨胀 | 6829 行，架构职责不清 | v1.0 | Planned → v3.8.0 PR-900 |
-| #2599 | Double execution path | mysql-server vs bench-cli | v2.6 | Planned → v3.8.0 |
-| #2603 | R2: 执行引擎统一 | INT-4 | v3.0 | Planned → v3.8.0 PR-850 |
-| #2604 | R3: expr crate | INT-3 | v3.0 | Planned → v3.8.0 PR-860 |
-| #2605 | R4: mysql-server | INT-4 | v2.6 | Planned → v3.8.0 PR-850 |
-
-### 4.2 Testing Debt
-
-| Issue | 标题 | 说明 | 状态 |
-|-------|------|------|------|
-| #2596 | 覆盖率测量差异 | Z6G4 vs Z440 测量结果差 49pp | OPEN |
-| #2600 | Coverage 工具统一 | cargo-llvm-cov 标准化 | Planned → v3.8.0 PR-900 |
-
-### 4.3 Documentation Debt
-
-| Issue | 标题 | 说明 | 状态 |
-|-------|------|------|------|
-| #2610 | 历史版本断链 | v3.4.0 等旧版本文档死链 61 个 | 历史遗留，不修复 |
-| #2611 | 活跃文档死链 | 当前版本死链 23 个 | 已修复 |
+| Issue | 标题 | 最早引入 | 备注 |
+|-------|------|----------|------|
+| #2254 | 实现 WAL (预写日志) 模块 | v2.6.0 | WAL 已实现，待集成 |
+| #2267 | PB-03 WAL 性能基准测试 | v2.6.0 | P2，延期 |
+| #2274 | IT-01 存储引擎集成测试 | v2.6.0 | P2，延期 |
+| #2275 | IT-02 索引集成测试 | v2.6.0 | P2，延期 |
+| #2277 | IT-03 端到端查询测试 | v2.6.0 | P2，延期 |
+| #2281 | 增加 storage 模块单元测试覆盖率 | v2.6.0 | P2，延期 |
+| #2287 | T-01 MVCC 骨架实现 | v2.6.0 | P2，延期 |
+| #2288 | W-01 WAL 并发写入支持 | v2.6.0 | P2，延期 |
+| #2292 | W-02 WAL 检查点优化 | v2.6.0 | P2，延期 |
+| #2293 | 实现复合索引支持 (I-04) | v2.6.0 | P2，延期 |
+| #2295 | 实现索引统计信息 (I-05) | v2.6.0 | P2，延期 |
+| #2309 | D-02 TIMESTAMP + P-02 连接池 | v2.6.0 | P2，延期 |
+| #2437 | Add stored procedure tokens | v2.6.0 | P2，延期 |
+| #2432 | Implement ALTER TABLE support | v2.6.0 | P2，延期 |
+| #1827 | HashJoin incorrectly matches NULL = NULL | v2.6.0 | P2，延期 |
+| #1829 | SQL three-valued logic NULL semantics | v2.6.0 | P2，延期 |
+| #942 | SQL three-valued logic (duplicate of #1829) | v2.6.0 | P2，重复 |
+| #947 | MySQL 驱动认证兼容性问题 | v1.x | P2，延期 |
 
 ---
 
-## 5. Issue → PR → 文件 映射表（v3.8.0）
+## 3. Regression Hotspots（回归热点）
 
-| Issue | PR | 文件/模块 | 描述 |
-|-------|-----|-----------|------|
-| #2588 | PR-830 | `crates/wal/`, `crates/transaction/` | WAL + WriteBuffer 接入 |
-| #2588 | PR-840 | `execution_engine.rs` | DML → TransactionManager 拦截 |
-| #2589 | PR-870 | `volcano_executor.rs` | ParallelVolcanoExecutor 接入 |
-| #2589 | PR-880 | `predicate.rs`, `mutation.rs` | VTU pipeline 统一 |
-| #2590 | PR-860 | `expr/`, `planner/` | expr crate 收敛 |
-| #2591 | PR-850 | `mysql-server/src/lib.rs`, `local_executor.rs` | mysql-server 统一执行路径 |
-| #2596 | PR-900 | `scripts/coverage/` | 覆盖率测量统一 |
-| #2597 | PR-900 | `execution_engine.rs` | 拆分 + 降至 <1500 行 |
+依据 `docs/analysis/regression_hotspots.md`，v3.8.0 架构统一后需验证：
 
----
-
-## 6. 优先级矩阵
-
-| 优先级 | v3.7.x | v3.8.0 |
-|--------|--------|--------|
-| P0 | — | INT-1: WAL 集成 |
-| P1 | SHOW TABLES, 空密码 auth | INT-2: VTU, INT-4: 双路径统一 |
-| P2 | 覆盖率差异 | INT-3: expr 收敛, execution_engine 拆分 |
-| P3 | Error code 标准化 | Coverage 工具统一 |
+| Hotspot | 风险等级 | 路径 | v3.8.0 修复状态 |
+|---------|----------|------|----------------|
+| **H-1**: Trigger Bypass (MySQL COM_QUERY) | 🔴 HIGH | Path B | ❌ 未修复 — MemoryExecutionEngine type alias 已确认，但 WAL 未接入 |
+| **H-2**: Trigger Bypass (StoredProc) | 🔴 HIGH | Path C | ❌ 未修复 — StoredProc execute_statement_storage() 绕 TriggerExecutor |
+| **H-3**: TX Isolation Broken (STMT) | 🔴 HIGH | Path B STMT | ❌ 未修复 — COM_STMT_EXECUTE 每次新建 engine 实例 |
+| **H-4**: WAL Coverage Gap | 🟡 MEDIUM | Path B+C | ❌ 未修复 — WalStorage 未接入 mysql-server (IMPL-002) |
+| **H-5**: Commit Opacity | 🟡 MEDIUM | Path B | ⚠️ 部分修复 — v3.8.0 AUTOCOMMIT semantics 已声明 |
+| **H-6**: Double-Commit Protection | 🟡 MEDIUM | Path B | ⚠️ 待验证 — TX Lifecycle 已声明 |
 
 ---
 
-## 7. 关闭条件
+## 4. v3.8.0 剩余工作（PR DAG 对照）
 
-### v3.7.0 GA 已关闭
+### 4.1 PR-800~PR-900 未完成项
 
-| Issue | 关闭条件 |
-|-------|----------|
-| P0-1: Transaction state session 化 | ✅ 已修复，commit 01db4fdf |
-| P0-2: SKIP_AUTH bypass | ✅ 已修复，commit 2607d788 |
+| PR | 名称 | 状态 | 阻塞 |
+|----|------|------|------|
+| PR-800 | COM_QUERY AST Routing | **未开始** | Alpha Entry |
+| PR-810 | ExecutionEngine → Router | **未开始** | 依赖 PR-800 |
+| PR-820 | TransactionManager Session Binding | **未开始** | 依赖 PR-810 |
+| PR-830 | WAL + WriteBuffer 接入 | **未开始** | 依赖 PR-820 |
+| PR-840 | DML Transaction Interception | **未开始** | 依赖 PR-830 |
+| PR-850 | mysql-server → LocalExecutor 统一 | **未开始** | 依赖 PR-840 |
+| PR-860 | Planner Layer Consolidation | **未开始** | 依赖 PR-850 |
+| PR-870 | ParallelVolcanoExecutor 接入 | **未开始** | 依赖 PR-860 |
+| PR-880 | VTU Predicate/Mutation Pipeline | **未开始** | 依赖 PR-870 |
+| PR-890 | Snapshot + MVCC + Rollback | **未开始** | 依赖 PR-840 |
+| PR-900 | ExecutionEngine 拆分清理 | **未开始** | 依赖 PR-890 |
 
-### v3.8.0 目标关闭
+> **注意**: PR DAG 的实际状态需要与代码库对照验证，以上为基于 DEVELOPMENT_PLAN.md 的计划状态。
 
-| Issue | 关闭条件 |
-|-------|----------|
-| INT-1 (#2588) | WAL replay + DML interception 测试通过 |
-| INT-2 (#2589) | ParallelVolcanoExecutor 在 mysql-server 中激活 |
-| INT-3 (#2590) | expr crate 与 planner 集成测试通过 |
-| INT-4 (#2591) | `grep storage.insert` 仅在 storage layer |
-| #2597 | execution_engine.rs < 1500 行 |
-| #2596 | Z6G4 vs Z440 覆盖率 delta < 10pp |
+### 4.2 已完成 PR（v3.8.0 Alpha Freeze 前）
+
+| PR | 名称 | 状态 |
+|----|------|------|
+| — | Execution Semantics Freeze (087bb12d) | ✅ 已完成 |
+| #2637 | Execution Semantics Diff Analysis | ✅ 已合并 |
+| #2639 | Hermes B WAL Invariant Audit | ✅ 已合并 |
+| #2642 | WAL Hard Gate - is_wal_enabled enforcement | ✅ 已合并 |
+| #2643 | G-04 Claim Provenance Registry | ✅ 已合并 |
+
+---
+
+## 5. IMPL-002 WAL Persistence（关键缺口）
+
+**状态**: 🟡 MEDIUM RISK — Recovery 未验证
+
+IMPL-002 是 v3.8.0 Alpha Freeze 后唯一未完成的 P0 缺陷：
+
+| 子任务 | 描述 | 状态 |
+|--------|------|------|
+| R1: flush | WalStorage::flush() 实现 | ⚠️ 实现存在但未接入 mysql-server |
+| R2: replay | WAL replay 正确性 | ⚠️ 未验证 (RECOVERY-001~008 FAIL) |
+| R3: bootstrap | 新 storage 初始化 | ⚠️ 未验证 |
+
+**证据**:
+- `crates/mysql-server/src/lib.rs:391` 使用裸 `MemoryStorage::new()` 而非 `WalStorage`
+- `crates/storage/src/wal_storage.rs` 实现存在但未被 mysql-server 路径调用
+- `wal_tx_contract_test` 22 tests 中 7 个 FAIL (RECOVERY-001~008)
+
+**Beta Gate 条件**: Recovery 7/7 PASS
+
+---
+
+## 6. 版本映射：v3.6.0 INT → v3.8.0 PR
+
+| v3.6.0 INT | v3.7.0 状态 | v3.8.0 PR | v3.8.0 修复状态 |
+|------------|-------------|-----------|----------------|
+| INT-1 (#2588) | 持续修复中 | PR-830 | ❌ 未开始 |
+| INT-2 (#2589) | 持续修复中 | PR-870 | ❌ 未开始 |
+| INT-3 (#2590) | 持续修复中 | PR-860 | ❌ 未开始 |
+| INT-4 (#2591) | 持续修复中 | PR-850 | ❌ 未开始 |
+
+---
+
+## 7. 关闭 Issue 建议
+
+**建议关闭**（已完成/被覆盖）:
+- #2593, #2592, #2613, #2615, #2599, #2602, #2607
+- #2634, #2636, #2630, #2629, #2635
+
+**建议 retarget 到 v3.8.0**（持续性架构问题）:
+- #2588 → retarget to v3.8.0, reassign to PR-830 owner
+- #2589 → retarget to v3.8.0, reassign to PR-870 owner
+- #2590 → retarget to v3.8.0, reassign to PR-860 owner
+- #2591 → retarget to v3.8.0, reassign to PR-850 owner
+- #2578/#2597 → retarget to v3.8.0, reassign to PR-900 owner
+- #2596 → retarget to v3.8.0, reassign to PR-900 owner
+
+**建议保留 OPEN 作为 v3.8.0 tracking**:
+- #2624 (WAL Contract — P0 持续跟踪)
+- #2625 (v3.8.0 开发与集成测试计划)
+- #2627 (Query Processing Chain)
+- #2628 (VTU Phase 2)
+- #2601 (Architecture Governance)
+- #2606 (Gate 重构)
+
+---
+
+## 8. 更新日志
+
+| 日期 | 变更 | 操作人 |
+|------|------|--------|
+| 2026-05-31 | 初始版本 | Hermes C |
+| 2026-05-31 | 基于 v3.6.0/v3.7.0 文档核查 + regression_hotspots.md + Issue list 整合 | Hermes C |
+| 2026-05-31 | 新增 2.7 节：2025年及更早的 17 个历史遗留 Issue | Hermes C |
+| 2026-05-31 | PR-831 Issue Closure Batch — 关闭 11 个 legacy issues（#942/#947/#2254/#2267/#2274/#2275/#2277/#2281/#2288/#2292/#2309） | Hermes C |
+| 2026-05-31 | 关闭已完成 Issue：#2596/#2601/#2606/#2654（文档已合并） | Hermes C |
+---
+
+*本文档依据 ADR-001 Truthfulness Framework，必须标注 Freshness。*
+*本文档更新后需同步至 VERSION_HISTORY.md 和 v3.8.0 DEVELOPMENT_PLAN.md。*
