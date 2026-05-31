@@ -114,4 +114,8 @@ impl WalManager for FileBackedWalManager {
         }
         Ok(())
     }
+
+    fn current_lsn(&self) -> u64 {
+        self.writer.as_ref().map(|w| w.current_lsn()).unwrap_or(0)
+    }
 }

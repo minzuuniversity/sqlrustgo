@@ -41,6 +41,10 @@ impl WalManager for MemoryWalManager {
         self.entries.retain(|e| e.lsn >= lsn);
         Ok(())
     }
+
+    fn current_lsn(&self) -> u64 {
+        self.entries.iter().map(|e| e.lsn).max().unwrap_or(0)
+    }
 }
 
 #[cfg(test)]
