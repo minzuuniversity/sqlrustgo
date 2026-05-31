@@ -339,27 +339,34 @@ impl<S: StorageEngine, T: WalManager> StorageEngine for WalStorage<S, T> {
     ) -> SqlResult<usize> {
         let table_id = Self::table_name_to_id(table);
 
-        let rows = self.inner.scan(table)?;
-        let keys_to_update: Vec<Vec<u8>> = rows
+        // Step 1: Get all rows and find those matching the filter (before-image)
+        let all_rows = self.inner.scan(table)?;
+        let rows_to_update: Vec<(Vec<u8>, Vec<Value>)> = all_rows
             .iter()
             .filter(|r| Self::row_matches_filter(r, filters))
-            .map(|r| Self::record_key(r))
+            .map(|r| (Self::record_key(r), r.clone()))
             .collect();
 
-        let result = self.inner.update(table, filters, updates)?;
+        let count = rows_to_update.len();
 
-        if !keys_to_update.is_empty() {
-            let updated_rows = self.inner.scan(table)?;
-            for row in &updated_rows {
-                let key = Self::record_key(row);
-                if keys_to_update.contains(&key) {
-                    let new_data = Self::record_to_bytes(row);
-                    self.log_update(table_id, key, new_data)?;
+        if count > 0 {
+            // Step 2: Compute after-image by applying updates to each matching row
+            for (key, mut row) in rows_to_update {
+                for &(col_idx, ref new_val) in updates {
+                    if col_idx < row.len() {
+                        row[col_idx] = new_val.clone();
+                    }
                 }
+                // Step 3: Log the after-image to WAL
+                let new_data = Self::record_to_bytes(&row);
+                self.log_update(table_id, key, new_data)?;
             }
         }
 
-        Ok(result)
+        // Step 4: Call inner update (inner.update may be a stub, but we already logged)
+        let _ = self.inner.update(table, filters, updates)?;
+
+        Ok(count)
     }
 
     fn update_if(
@@ -620,28 +627,38 @@ mod tests {
         col_id.primary_key = true;
         let mut col_val = crate::engine::ColumnDefinition::new("value", "INTEGER");
         col_val.primary_key = false;
-        storage.create_table(&crate::engine::TableInfo {
-            name: "t1".to_string(),
-            columns: vec![col_id, col_val],
-            foreign_keys: vec![],
-            unique_constraints: vec![],
-            check_constraints: vec![],
-            partition_info: None,
-        }).unwrap();
+        storage
+            .create_table(&crate::engine::TableInfo {
+                name: "t1".to_string(),
+                columns: vec![col_id, col_val],
+                foreign_keys: vec![],
+                unique_constraints: vec![],
+                check_constraints: vec![],
+                partition_info: None,
+            })
+            .unwrap();
 
         storage.begin_transaction().unwrap();
-        storage.insert("t1", vec![
-            vec![Value::Integer(1), Value::Integer(10)],
-            vec![Value::Integer(2), Value::Integer(20)],
-        ]).unwrap();
+        storage
+            .insert(
+                "t1",
+                vec![
+                    vec![Value::Integer(1), Value::Integer(10)],
+                    vec![Value::Integer(2), Value::Integer(20)],
+                ],
+            )
+            .unwrap();
         storage.commit_transaction().unwrap();
 
         storage.begin_transaction().unwrap();
-        storage.update("t1", &[Value::Integer(1)], &[(1, Value::Integer(100))]).unwrap();
+        storage
+            .update("t1", &[Value::Integer(1)], &[(1, Value::Integer(100))])
+            .unwrap();
         storage.commit_transaction().unwrap();
 
         let entries = storage.recover().unwrap();
-        let updates: Vec<_> = entries.iter()
+        let updates: Vec<_> = entries
+            .iter()
             .filter(|e| e.entry_type == WalEntryType::Update)
             .collect();
 
