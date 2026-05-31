@@ -498,7 +498,10 @@ fn test_partial_update_write_recovery() {
 }
 
 /// RECOVERY-008: DELETE + UPDATE mixed recovery
-/// TODO: Debug execution engine bug where UPDATE+DELETE in same tx doesn't work
+///
+/// Known issue: ExecutionEngine UPDATE+DELETE mixed transaction semantics incorrect.
+/// Tracked by ISSUE-2737: R2-EXEC-BUG
+/// Not a WAL/Recovery failure - the bug is in ExecutionEngine's delete+reinsert model.
 #[ignore]
 #[test]
 fn test_delete_and_update_mixed_recovery() {
