@@ -1323,11 +1323,12 @@ impl<'a> LocalExecutor<'a> {
                     return Ok(ExecutorResult::empty());
                 }
 
-                // WAL-aware delete via unified facade
-                let deleted = if let Some(ref facade) = self.unified_facade {
-                    facade.execute_dml(|storage| storage.delete(table_name, &[]))?
-                } else {
-                    self.storage.delete(table_name, &[])?
+                // WAL-aware delete via unified facade (fail fast if no WAL)
+                let deleted = match self.unified_facade {
+                    Some(ref facade) => facade.execute_dml(|storage| storage.delete(table_name, &[]))?,
+                    None => return Err(SqlError::ExecutionError(
+                        "DELETE without WAL facade — remove direct storage access".to_string()
+                    )),
                 };
                 Ok(ExecutorResult::new(vec![], deleted))
             }
@@ -1379,11 +1380,12 @@ impl<'a> LocalExecutor<'a> {
                     .map(|e| PredicateCompiler::compile(e))
                     .unwrap_or_else(|| Box::new(|_| true));
 
-                // WAL-aware update via unified facade
-                let affected = if let Some(ref facade) = self.unified_facade {
-                    facade.execute_dml(|storage| storage.update_if(table_name, &predicate, &row_mutation))?
-                } else {
-                    self.storage.update_if(table_name, &predicate, &row_mutation)?
+                // WAL-aware update via unified facade (fail fast if no WAL)
+                let affected = match self.unified_facade {
+                    Some(ref facade) => facade.execute_dml(|storage| storage.update_if(table_name, &predicate, &row_mutation))?,
+                    None => return Err(SqlError::ExecutionError(
+                        "UPDATE without WAL facade — remove direct storage access".to_string()
+                    )),
                 };
                 Ok(ExecutorResult::new(vec![], affected))
             }
