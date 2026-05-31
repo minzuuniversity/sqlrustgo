@@ -112,7 +112,7 @@ impl From<&sqlrustgo_parser::Expression> for UnifiedExpr {
             Expression::IsNotNull(e) => UnifiedExpr::IsNotNull(Box::new(UnifiedExpr::from(e.as_ref()))),
             Expression::InList(expr, list) => UnifiedExpr::InList {
                 expr: Box::new(UnifiedExpr::from(expr.as_ref())),
-                list: list.iter().map(|e| UnifiedExpr::from(e)).collect(),
+                list: list.iter().map(UnifiedExpr::from).collect(),
             },
             Expression::Between(expr, low, high) => UnifiedExpr::Between {
                 expr: Box::new(UnifiedExpr::from(expr.as_ref())),
