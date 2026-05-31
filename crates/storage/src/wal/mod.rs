@@ -65,7 +65,8 @@ pub trait WalTruncationGate: Send + Sync {
 
     /// Check if a given LSN can be truncated
     fn can_truncate(&self, wal_lsn: u64) -> bool {
-        self.safe_truncate_lsn().map_or(false, |cp_lsn| wal_lsn <= cp_lsn)
+        self.safe_truncate_lsn()
+            .is_some_and(|cp_lsn| wal_lsn <= cp_lsn)
     }
 }
 
