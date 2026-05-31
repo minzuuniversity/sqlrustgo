@@ -1,0 +1,2 @@
+/Users/liying/workspace/dev/yinglichina163/sqlrustgo/scripts/gate/check_5_principles.sh: line 41: declare: -A: invalid option
+declare: usage: declare [-afFirtx] [-p] [name[=value] ...]
