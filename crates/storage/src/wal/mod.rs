@@ -55,6 +55,10 @@ pub trait WalManager: Send + Sync {
 
     /// Truncate WAL entries with LSN < `lsn`
     fn truncate_before(&mut self, lsn: u64) -> SqlResult<()>;
+
+    /// Returns the current LSN (Log Sequence Number) after the last append.
+    /// Returns 0 if no entries have been written.
+    fn current_lsn(&self) -> u64;
 }
 
 /// WAL truncation safety gate
