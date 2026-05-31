@@ -91,6 +91,31 @@
 | #2583 | DML execution path not unified with PhysicalPlan pipeline | OPEN | INT-4 覆盖 |
 | #2598 | 真实服务器测试缺失 | OPEN | v3.7.0 系统性问题 |
 
+### 2.7 历史遗留问题（2025 年及更早，功能/测试缺失）
+
+这些 Issue 在 v3.6.0/v3.7.0 期间已记录但未修复，不影响 v3.8.0 PR DAG。已在 LEGACY_ISSUES.md 中记录，**保持 OPEN 仅作历史追踪**。
+
+| Issue | 标题 | 最早引入 | 备注 |
+|-------|------|----------|------|
+| #2254 | 实现 WAL (预写日志) 模块 | v2.6.0 | WAL 已实现，待集成 |
+| #2267 | PB-03 WAL 性能基准测试 | v2.6.0 | P2，延期 |
+| #2274 | IT-01 存储引擎集成测试 | v2.6.0 | P2，延期 |
+| #2275 | IT-02 索引集成测试 | v2.6.0 | P2，延期 |
+| #2277 | IT-03 端到端查询测试 | v2.6.0 | P2，延期 |
+| #2281 | 增加 storage 模块单元测试覆盖率 | v2.6.0 | P2，延期 |
+| #2287 | T-01 MVCC 骨架实现 | v2.6.0 | P2，延期 |
+| #2288 | W-01 WAL 并发写入支持 | v2.6.0 | P2，延期 |
+| #2292 | W-02 WAL 检查点优化 | v2.6.0 | P2，延期 |
+| #2293 | 实现复合索引支持 (I-04) | v2.6.0 | P2，延期 |
+| #2295 | 实现索引统计信息 (I-05) | v2.6.0 | P2，延期 |
+| #2309 | D-02 TIMESTAMP + P-02 连接池 | v2.6.0 | P2，延期 |
+| #2437 | Add stored procedure tokens | v2.6.0 | P2，延期 |
+| #2432 | Implement ALTER TABLE support | v2.6.0 | P2，延期 |
+| #1827 | HashJoin incorrectly matches NULL = NULL | v2.6.0 | P2，延期 |
+| #1829 | SQL three-valued logic NULL semantics | v2.6.0 | P2，延期 |
+| #942 | SQL three-valued logic (duplicate of #1829) | v2.6.0 | P2，重复 |
+| #947 | MySQL 驱动认证兼容性问题 | v1.x | P2，延期 |
+
 ---
 
 ## 3. Regression Hotspots（回归热点）
@@ -202,6 +227,7 @@ IMPL-002 是 v3.8.0 Alpha Freeze 后唯一未完成的 P0 缺陷：
 |------|------|--------|
 | 2026-05-31 | 初始版本 | Hermes C |
 | 2026-05-31 | 基于 v3.6.0/v3.7.0 文档核查 + regression_hotspots.md + Issue list 整合 | Hermes C |
+| 2026-05-31 | 新增 2.7 节：2025年及更早的历史遗留问题 17 个，记录延期原因 | Hermes C |
 
 ---
 
