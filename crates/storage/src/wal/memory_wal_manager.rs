@@ -36,6 +36,11 @@ impl WalManager for MemoryWalManager {
     fn recover(&mut self) -> SqlResult<Vec<WalEntry>> {
         Ok(std::mem::take(&mut self.entries))
     }
+
+    fn truncate_before(&mut self, lsn: u64) -> SqlResult<()> {
+        self.entries.retain(|e| e.lsn >= lsn);
+        Ok(())
+    }
 }
 
 #[cfg(test)]
