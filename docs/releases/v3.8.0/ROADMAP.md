@@ -2,7 +2,7 @@
 
 ## Status: DRAFT
 
-> Baseline: `origin/develop/v3.7.0` (commit 72223a80)
+> **Baseline**: `origin/develop/v3.8.0` (commit 44fea01c) — Execution Semantics Freeze (087bb12d)
 > Full Plan: see `DEVELOPMENT_PLAN.md`
 
 ---
