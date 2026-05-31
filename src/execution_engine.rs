@@ -1885,6 +1885,13 @@ impl ExecutionEngine<MemoryStorage> {
     }
 }
 
+// =============================================================================
+// LAYER 3 — Full WAL Layer (Beta Gate required)
+// Note: with_wal() requires StorageEngine trait to include transaction methods.
+// This is a known gap (StorageEngine missing begin_transaction/commit_transaction/rollback_transaction).
+// Also requires: bplus_tree::index::CompositeKey to be made public (D-1)
+// =============================================================================
+
 fn expression_to_string(expr: &sqlrustgo_parser::Expression) -> String {
     match expr {
         sqlrustgo_parser::Expression::Literal(s) => s.clone(),
