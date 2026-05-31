@@ -3,6 +3,14 @@
 
 #![allow(unused_variables, unused_imports)]
 
+use crate::engine_utils::{
+    build_aggregate_schema, build_combined_schema, eval_predicate, evaluate_where_clause,
+    find_column_index, sql_compare, validate_foreign_keys,
+};
+use crate::expr_utils::{
+    compare_values, evaluate_binary_op, evaluate_expr_to_string, evaluate_expression,
+    expression_to_string, expression_to_value, expression_to_value_from_string,
+};
 use crate::{parse, SqlError, SqlResult, Value};
 use sqlrustgo_catalog::stored_proc::{ParamMode, StoredProcParam, StoredProcStatement};
 use sqlrustgo_catalog::{auth::UserIdentity, Catalog, StoredProcedure};
@@ -22,14 +30,19 @@ use sqlrustgo_parser::parser::{
     TruncateStatement,
 };
 use sqlrustgo_parser::transaction::IsolationLevel as ParserIsolationLevel;
-use sqlrustgo_parser::JoinType; // For join type matching
+use sqlrustgo_parser::JoinType;
 use sqlrustgo_parser::{
     DeleteStatement, Expression, Statement, TransactionStatement, UpdateStatement,
 };
-use sqlrustgo_storage::{ColumnDefinition, MemoryStorage, StorageEngine, TableInfo};
+use sqlrustgo_storage::{
+    recovery_engine::{RecoveryEngine, RecoveryEngineImpl},
+    ColumnDefinition, FileBackedWalManager, FileStorage, MemoryStorage, StorageEngine, TableInfo,
+    WalStorage,
+};
 use sqlrustgo_transaction::{IsolationLevel as TmIsolationLevel, TransactionManager, TxId};
 use sqlrustgo_types::Value as SqlValue;
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 
 /// Execution engine for SQL statements
@@ -40,8 +53,18 @@ pub struct ExecutionEngine<S: StorageEngine> {
     cbo_enabled: bool,
     transaction_manager: TransactionManager,
     current_tx_id: Option<TxId>,
+    tx_status: TxStatus,
     default_isolation: TmIsolationLevel,
     current_role: Option<String>,
+}
+
+/// Transaction status for lifecycle enforcement
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TxStatus {
+    Idle,      // No transaction started
+    Active,    // Transaction in progress
+    Committed, // Transaction committed (terminal)
+    Aborted,   // Transaction rolled back (terminal)
 }
 
 /// Execution statistics for CBO
@@ -79,6 +102,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             cbo_enabled: true,
             transaction_manager: TransactionManager::new(),
             current_tx_id: None,
+            tx_status: TxStatus::Idle,
             default_isolation: TmIsolationLevel::default(),
             current_role: None,
         }
@@ -93,6 +117,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             cbo_enabled,
             transaction_manager: TransactionManager::new(),
             current_tx_id: None,
+            tx_status: TxStatus::Idle,
             default_isolation: TmIsolationLevel::default(),
             current_role: None,
         }
@@ -107,6 +132,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             cbo_enabled: true,
             transaction_manager: TransactionManager::new(),
             current_tx_id: None,
+            tx_status: TxStatus::Idle,
             default_isolation: TmIsolationLevel::default(),
             current_role: None,
         }
@@ -798,6 +824,25 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     }
 
     fn execute_insert(&self, insert: &InsertStatement) -> SqlResult<ExecutorResult> {
+        // IMPL-001 & IMPL-004: TX lifecycle enforcement
+        // IDLE/Active with no current_tx_id = implicit autocommit TX (allowed)
+        // Committed/Aborted state = no new implicit TX (error)
+        match self.tx_status {
+            TxStatus::Committed => {
+                return Err(SqlError::ExecutionError(
+                    "transaction already committed".to_string(),
+                ));
+            }
+            TxStatus::Aborted => {
+                return Err(SqlError::ExecutionError(
+                    "transaction already aborted".to_string(),
+                ));
+            }
+            TxStatus::Idle | TxStatus::Active => {
+                // Autocommit: allow DML without explicit BEGIN
+                // New implicit TX started implicitly when current_tx_id is None
+            }
+        }
         let table_name = insert.table.clone();
 
         // Get table info first (need it for triggers and FK validation)
@@ -923,6 +968,22 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     }
 
     fn execute_update(&self, update: &UpdateStatement) -> SqlResult<ExecutorResult> {
+        // IMPL-001 & IMPL-004: TX lifecycle enforcement
+        match self.tx_status {
+            TxStatus::Committed => {
+                return Err(SqlError::ExecutionError(
+                    "transaction already committed".to_string(),
+                ));
+            }
+            TxStatus::Aborted => {
+                return Err(SqlError::ExecutionError(
+                    "transaction already aborted".to_string(),
+                ));
+            }
+            TxStatus::Idle | TxStatus::Active => {
+                // Autocommit: allow DML without explicit BEGIN
+            }
+        }
         let table_name = update.table.clone();
 
         // If no WHERE clause, use the simple storage.update() path
@@ -1082,6 +1143,22 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     }
 
     fn execute_delete(&self, delete: &DeleteStatement) -> SqlResult<ExecutorResult> {
+        // IMPL-001 & IMPL-004: TX lifecycle enforcement
+        match self.tx_status {
+            TxStatus::Committed => {
+                return Err(SqlError::ExecutionError(
+                    "transaction already committed".to_string(),
+                ));
+            }
+            TxStatus::Aborted => {
+                return Err(SqlError::ExecutionError(
+                    "transaction already aborted".to_string(),
+                ));
+            }
+            TxStatus::Idle | TxStatus::Active => {
+                // Autocommit: allow DML without explicit BEGIN
+            }
+        }
         let table_name = delete.table.clone();
 
         // If no WHERE clause, delete all rows (current behavior is correct)
@@ -1406,6 +1483,11 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 SqlError::ExecutionError(format!("Failed to begin transaction: {:?}", e))
             })?;
         self.current_tx_id = Some(tx_id);
+        // Delegate to storage engine so WalStorage can track current_tx_id for WAL logging
+        if let Ok(mut storage) = self.storage.write() {
+            storage.set_current_tx_id(tx_id.as_u64());
+        }
+        self.tx_status = TxStatus::Active;
         Ok(ExecutorResult::new(
             vec![vec![Value::Integer(tx_id.as_u64() as i64)]],
             1,
@@ -1413,24 +1495,46 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     }
 
     fn commit_transaction(&mut self) -> SqlResult<ExecutorResult> {
+        // IMPL-004: Double-commit prevention — check before ok_or_else (current_tx_id set to None after commit)
+        if self.current_tx_id.is_none() {
+            return Err(SqlError::ExecutionError(
+                "transaction already committed".to_string(),
+            ));
+        }
         let tx_id = self
             .current_tx_id
             .ok_or_else(|| SqlError::ExecutionError("No transaction in progress".to_string()))?;
+        // Delegate to storage engine first so WalStorage writes WAL Commit entry before clearing state
+        if let Ok(mut storage) = self.storage.write() {
+            let _ = storage.commit_transaction();
+        }
         self.transaction_manager.commit(tx_id).map_err(|e| {
             SqlError::ExecutionError(format!("Failed to commit transaction: {:?}", e))
         })?;
         self.current_tx_id = None;
+        self.tx_status = TxStatus::Committed;
         Ok(ExecutorResult::empty())
     }
 
     fn rollback_transaction(&mut self) -> SqlResult<ExecutorResult> {
+        // IMPL-004: Double-rollback prevention — check before ok_or_else
+        if self.current_tx_id.is_none() {
+            return Err(SqlError::ExecutionError(
+                "transaction already aborted".to_string(),
+            ));
+        }
         let tx_id = self
             .current_tx_id
             .ok_or_else(|| SqlError::ExecutionError("No transaction in progress".to_string()))?;
+        // Delegate to storage engine first so WalStorage writes WAL Rollback entry before clearing state
+        if let Ok(mut storage) = self.storage.write() {
+            let _ = storage.rollback_transaction();
+        }
         self.transaction_manager.rollback(tx_id).map_err(|e| {
             SqlError::ExecutionError(format!("Failed to rollback transaction: {:?}", e))
         })?;
         self.current_tx_id = None;
+        self.tx_status = TxStatus::Aborted;
         Ok(ExecutorResult::empty())
     }
 
@@ -1769,6 +1873,7 @@ impl ExecutionEngine<MemoryStorage> {
             cbo_enabled: true,
             transaction_manager: TransactionManager::new(),
             current_tx_id: None,
+            tx_status: TxStatus::Idle,
             default_isolation: TmIsolationLevel::default(),
             current_role: None,
         }
@@ -1783,6 +1888,7 @@ impl ExecutionEngine<MemoryStorage> {
             cbo_enabled,
             transaction_manager: TransactionManager::new(),
             current_tx_id: None,
+            tx_status: TxStatus::Idle,
             default_isolation: TmIsolationLevel::default(),
             current_role: None,
         }
@@ -1797,520 +1903,106 @@ impl ExecutionEngine<MemoryStorage> {
             cbo_enabled: true,
             transaction_manager: TransactionManager::new(),
             current_tx_id: None,
+            tx_status: TxStatus::Idle,
             default_isolation: TmIsolationLevel::default(),
             current_role: None,
         }
     }
 }
 
-fn expression_to_string(expr: &sqlrustgo_parser::Expression) -> String {
-    match expr {
-        sqlrustgo_parser::Expression::Literal(s) => s.clone(),
-        sqlrustgo_parser::Expression::Identifier(name) => name.clone(),
-        sqlrustgo_parser::Expression::BinaryOp(left, op, right) => {
-            format!(
-                "({} {} {})",
-                expression_to_string(left),
-                op,
-                expression_to_string(right)
-            )
+// =============================================================================
+// LAYER 2 — WAL integration stub layer
+// Does NOT write real WAL entries — flush hook exists, replay mocked
+// Use for: WAL interface exists, flush hook exists, replay mocked
+// =============================================================================
+
+impl ExecutionEngine<MemoryStorage> {
+    pub fn with_wal_stub(
+    ) -> ExecutionEngine<WalStorage<MemoryStorage, sqlrustgo_storage::MemoryWalManager>> {
+        let inner = MemoryStorage::new();
+        let wal = sqlrustgo_storage::MemoryWalManager::new();
+        let wal_storage = WalStorage::new(inner, wal).unwrap();
+        ExecutionEngine {
+            storage: Arc::new(RwLock::new(wal_storage)),
+            catalog: None,
+            stats: Arc::new(RwLock::new(ExecutionStats::default())),
+            cbo_enabled: true,
+            transaction_manager: TransactionManager::new(),
+            current_tx_id: None,
+            tx_status: TxStatus::Idle,
+            default_isolation: TmIsolationLevel::default(),
+            current_role: None,
         }
-        sqlrustgo_parser::Expression::IsNull(inner) => {
-            format!("{} IS NULL", expression_to_string(inner))
-        }
-        sqlrustgo_parser::Expression::IsNotNull(inner) => {
-            format!("{} IS NOT NULL", expression_to_string(inner))
-        }
-        sqlrustgo_parser::Expression::Aggregate(agg) => match agg.func {
-            sqlrustgo_parser::AggregateFunction::Count => {
-                if agg.args.is_empty() {
-                    "COUNT(*)".to_string()
-                } else {
-                    format!(
-                        "COUNT({})",
-                        agg.args
-                            .iter()
-                            .map(expression_to_string)
-                            .collect::<Vec<_>>()
-                            .join(", ")
-                    )
-                }
-            }
-            sqlrustgo_parser::AggregateFunction::Sum => {
-                format!(
-                    "SUM({})",
-                    agg.args
-                        .iter()
-                        .map(expression_to_string)
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                )
-            }
-            sqlrustgo_parser::AggregateFunction::Avg => {
-                format!(
-                    "AVG({})",
-                    agg.args
-                        .iter()
-                        .map(expression_to_string)
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                )
-            }
-            sqlrustgo_parser::AggregateFunction::Min => {
-                format!(
-                    "MIN({})",
-                    agg.args
-                        .iter()
-                        .map(expression_to_string)
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                )
-            }
-            sqlrustgo_parser::AggregateFunction::Max => {
-                format!(
-                    "MAX({})",
-                    agg.args
-                        .iter()
-                        .map(expression_to_string)
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                )
-            }
-        },
-        _ => "?".to_string(),
     }
 }
 
-/// Convert a parser Expression to a Value (simple literal evaluation)
-fn expression_to_value(expr: &sqlrustgo_parser::Expression) -> Value {
-    match expr {
-        sqlrustgo_parser::Expression::Literal(s) => {
-            let s = s.trim();
-            if s.eq_ignore_ascii_case("NULL") {
-                Value::Null
-            } else if let Ok(n) = s.parse::<i64>() {
-                Value::Integer(n)
-            } else if let Ok(f) = s.parse::<f64>() {
-                Value::Float(f)
-            } else if s.starts_with('\'') && s.ends_with('\'') {
-                Value::Text(s[1..s.len() - 1].to_string())
-            } else {
-                Value::Text(s.to_string())
-            }
-        }
-        sqlrustgo_parser::Expression::Identifier(name) => Value::Text(name.clone()),
-        _ => Value::Null,
+// =============================================================================
+// LAYER 3 — Full WAL layer (Beta Gate required)
+// WAL path: wal_path/.wal
+// Use for: WAL-001~005, RECOVERY-001~008, B1~B3 integration
+// =============================================================================
+
+impl ExecutionEngine<MemoryStorage> {
+    /// Create a WAL-backed execution engine with full WAL enabled
+    /// WalStorage::new(inner, wal_manager) initializes with given WAL manager
+    pub fn with_wal(
+        wal_path: PathBuf,
+    ) -> SqlResult<
+        ExecutionEngine<WalStorage<MemoryStorage, sqlrustgo_storage::FileBackedWalManager>>,
+    > {
+        let inner = MemoryStorage::new();
+        let wal_manager = sqlrustgo_storage::FileBackedWalManager::new(wal_path)?;
+        let wal = WalStorage::new(inner, wal_manager)?;
+        Ok(ExecutionEngine {
+            storage: Arc::new(RwLock::new(wal)),
+            catalog: None,
+            stats: Arc::new(RwLock::new(ExecutionStats::default())),
+            cbo_enabled: true,
+            transaction_manager: TransactionManager::new(),
+            current_tx_id: None,
+            tx_status: TxStatus::Idle,
+            default_isolation: TmIsolationLevel::default(),
+            current_role: None,
+        })
+    }
+
+    /// Create a WAL-backed engine with persistent FileStorage (clean boot)
+    ///
+    /// Creates storage and WAL manager, wraps in WalStorage, returns Engine.
+    /// Does NOT run WAL recovery — call recover_wal() after crash recovery.
+    pub fn with_wal_file(
+        data_dir: PathBuf,
+    ) -> SqlResult<ExecutionEngine<WalStorage<FileStorage, FileBackedWalManager>>> {
+        let inner = FileStorage::new_with_wal(data_dir.clone())
+            .map_err(|e| SqlError::ExecutionError(format!("FileStorage init failed: {}", e)))?;
+        let wal_path = data_dir.join("sqlrustgo.wal");
+        let wal_manager = FileBackedWalManager::new(wal_path)?;
+        let wal_storage = WalStorage::new(inner, wal_manager)?;
+
+        Ok(ExecutionEngine {
+            storage: Arc::new(RwLock::new(wal_storage)),
+            catalog: None,
+            stats: Arc::new(RwLock::new(ExecutionStats::default())),
+            cbo_enabled: true,
+            transaction_manager: TransactionManager::new(),
+            current_tx_id: None,
+            tx_status: TxStatus::Idle,
+            default_isolation: TmIsolationLevel::default(),
+            current_role: None,
+        })
     }
 }
 
-/// Convert a string argument to a Value (for CALL arguments)
-fn expression_to_value_from_string(s: &str) -> Value {
-    let s = s.trim();
-    if s.eq_ignore_ascii_case("NULL") {
-        Value::Null
-    } else if let Ok(n) = s.parse::<i64>() {
-        Value::Integer(n)
-    } else if let Ok(f) = s.parse::<f64>() {
-        Value::Float(f)
-    } else if s.starts_with('\'') && s.ends_with('\'') {
-        Value::Text(s[1..s.len() - 1].to_string())
-    } else {
-        Value::Text(s.to_string())
-    }
-}
-
-/// Validate foreign key constraints for a row before insert
-fn validate_foreign_keys(
-    storage: &dyn StorageEngine,
-    table_info: &sqlrustgo_storage::TableInfo,
-    row: &[Value],
-    insert_columns: &[String],
+/// Recover a WAL-backed engine after crash: replay committed WAL entries
+pub fn recover_wal(
+    engine: &mut ExecutionEngine<WalStorage<FileStorage, FileBackedWalManager>>,
 ) -> SqlResult<()> {
-    for fk in &table_info.foreign_keys {
-        // Collect FK column values from the row
-        let fk_values: Vec<Value> = fk
-            .columns
-            .iter()
-            .filter_map(|col_name| {
-                let col_idx = if insert_columns.is_empty() {
-                    table_info
-                        .columns
-                        .iter()
-                        .position(|c| c.name.eq_ignore_ascii_case(col_name))
-                } else {
-                    insert_columns
-                        .iter()
-                        .position(|c| c.eq_ignore_ascii_case(col_name))
-                };
-                col_idx.and_then(|idx| row.get(idx).cloned())
-            })
-            .collect();
-
-        // Skip if any FK value is NULL (NULL FKs are allowed)
-        if fk_values.iter().any(|v| matches!(v, Value::Null)) {
-            continue;
-        }
-
-        // Scan parent table to verify referenced row exists
-        let parent_rows = storage.scan(&fk.referenced_table)?;
-
-        // Find referenced column indices in parent table
-        let ref_col_indices: Vec<usize> = fk
-            .referenced_columns
-            .iter()
-            .filter_map(|col_name| {
-                storage
-                    .get_table_info(&fk.referenced_table)
-                    .ok()?
-                    .columns
-                    .iter()
-                    .position(|c| c.name.eq_ignore_ascii_case(col_name))
-            })
-            .collect();
-
-        let parent_has_match = parent_rows.iter().any(|parent_row| {
-            ref_col_indices
-                .iter()
-                .enumerate()
-                .all(|(i, &col_idx)| parent_row.get(col_idx) == fk_values.get(i))
-        });
-
-        if !parent_has_match {
-            return Err(SqlError::ExecutionError(format!(
-                "Foreign key constraint failed: {} ({}) references {} ({}) which does not exist",
-                table_info.name,
-                fk.columns.join(", "),
-                fk.referenced_table,
-                fk.referenced_columns.join(", ")
-            )));
-        }
-    }
-    Ok(())
-}
-
-/// Evaluate a WHERE clause expression against a row
-/// Returns true if the row matches the WHERE condition
-/// Evaluate a predicate expression to a boolean result
-/// Phase 1: UNKNOWN is folded to FALSE for WHERE filtering
-/// All NULL handling is centralized here - no NULL logic in individual operators
-fn eval_predicate(expr: &Expression, row: &[Value], table_info: &TableInfo) -> bool {
-    match expr {
-        // AND short-circuits on false
-        Expression::BinaryOp(left, op, right) if op.to_uppercase() == "AND" => {
-            eval_predicate(left, row, table_info) && eval_predicate(right, row, table_info)
-        }
-        // OR short-circuits on true
-        Expression::BinaryOp(left, op, right) if op.to_uppercase() == "OR" => {
-            eval_predicate(left, row, table_info) || eval_predicate(right, row, table_info)
-        }
-        // IS NULL - always goes through evaluate_expression for value extraction
-        Expression::IsNull(inner) => match evaluate_expression(inner, row, table_info) {
-            Ok(val) => matches!(val, Value::Null),
-            Err(_) => false,
-        },
-        // IS NOT NULL
-        Expression::IsNotNull(inner) => match evaluate_expression(inner, row, table_info) {
-            Ok(val) => !matches!(val, Value::Null),
-            Err(_) => false,
-        },
-        // Legacy IS NULL (col IS NULL) - now uses new Expression::IsNull
-        Expression::BinaryOp(left, op, right)
-            if op.to_uppercase() == "IS"
-                && matches!(right.as_ref(), Expression::Literal(s) if s.to_uppercase() == "NULL") =>
-        {
-            eval_predicate(&Expression::IsNull(left.clone()), row, table_info)
-        }
-        // Legacy IS NOT NULL
-        Expression::BinaryOp(left, op, right)
-            if op.to_uppercase() == "IS NOT"
-                && matches!(right.as_ref(), Expression::Literal(s) if s.to_uppercase() == "NULL") =>
-        {
-            eval_predicate(&Expression::IsNotNull(left.clone()), row, table_info)
-        }
-        // All comparison operators go through sql_compare
-        Expression::BinaryOp(left, op, right) => {
-            let left_val = evaluate_expression(left, row, table_info).unwrap_or(Value::Null);
-            let right_val = evaluate_expression(right, row, table_info).unwrap_or(Value::Null);
-            sql_compare(op, &left_val, &right_val)
-        }
-        // For other expressions, evaluate and check if truthy
-        _ => match evaluate_expression(expr, row, table_info) {
-            Ok(val) => {
-                matches!(val, Value::Boolean(true))
-            }
-            Err(_) => false,
-        },
-    }
-}
-
-/// Legacy alias for compatibility
-#[allow(dead_code)]
-fn evaluate_where_clause(expr: &Expression, row: &[Value], table_info: &TableInfo) -> bool {
-    eval_predicate(expr, row, table_info)
-}
-
-/// SQL comparison operator
-/// Returns false if either operand is NULL (UNKNOWN semantics)
-/// This is Phase 1: UNKNOWN is folded to FALSE for WHERE filtering
-fn sql_compare(op: &str, left: &Value, right: &Value) -> bool {
-    if matches!(left, Value::Null) || matches!(right, Value::Null) {
-        return false;
-    }
-
-    match op.to_uppercase().as_str() {
-        "=" | "==" => left == right,
-        "!=" | "<>" => left != right,
-        ">" => compare_values(left, right) > 0,
-        ">=" => compare_values(left, right) >= 0,
-        "<" => compare_values(left, right) < 0,
-        "<=" => compare_values(left, right) <= 0,
-        _ => false,
-    }
-}
-
-/// Evaluate an expression and return a Value
-fn evaluate_expression(
-    expr: &Expression,
-    row: &[Value],
-    table_info: &TableInfo,
-) -> Result<Value, String> {
-    match expr {
-        Expression::Literal(_) => Ok(expression_to_value(expr)),
-        Expression::Identifier(name) => {
-            if let Some(col_idx) = find_column_index(name, table_info) {
-                Ok(row.get(col_idx).cloned().unwrap_or(Value::Null))
-            } else {
-                Ok(expression_to_value(expr))
-            }
-        }
-        Expression::BinaryOp(left, op, right) => {
-            let left_val = evaluate_expression(left, row, table_info).unwrap_or(Value::Null);
-            let right_val = evaluate_expression(right, row, table_info).unwrap_or(Value::Null);
-            Ok(evaluate_binary_op(&left_val, &right_val, op))
-        }
-        Expression::IsNull(inner) => {
-            let val = evaluate_expression(inner, row, table_info)?;
-            Ok(Value::Boolean(matches!(val, Value::Null)))
-        }
-        Expression::Aggregate(agg) => {
-            let agg_name = expression_to_string(&Expression::Aggregate(agg.clone()));
-            if let Some(col_idx) = find_column_index(&agg_name, table_info) {
-                Ok(row.get(col_idx).cloned().unwrap_or(Value::Null))
-            } else {
-                Err(format!("Aggregate not found in schema: {}", agg_name))
-            }
-        }
-        _ => Ok(Value::Null),
-    }
-}
-
-/// Evaluate a binary operation and return a boolean Value
-fn evaluate_binary_op(left: &Value, right: &Value, op: &str) -> Value {
-    match op.to_uppercase().as_str() {
-        "=" | "==" | "IS" => Value::Boolean(left == right),
-        "!=" | "<>" => Value::Boolean(left != right),
-        ">" => Value::Boolean(compare_values(left, right) > 0),
-        ">=" => Value::Boolean(compare_values(left, right) >= 0),
-        "<" => Value::Boolean(compare_values(left, right) < 0),
-        "<=" => Value::Boolean(compare_values(left, right) <= 0),
-        "AND" | "&&" => {
-            if let (Value::Boolean(l), Value::Boolean(r)) = (left, right) {
-                Value::Boolean(*l && *r)
-            } else {
-                Value::Boolean(false)
-            }
-        }
-        "OR" | "||" => {
-            if let (Value::Boolean(l), Value::Boolean(r)) = (left, right) {
-                Value::Boolean(*l || *r)
-            } else {
-                Value::Boolean(false)
-            }
-        }
-        _ => Value::Null,
-    }
-}
-
-/// Compare two values and return -1, 0, or 1
-fn compare_values(left: &Value, right: &Value) -> i32 {
-    match (left, right) {
-        (Value::Integer(l), Value::Integer(r)) => l.cmp(r) as i32,
-        (Value::Float(l), Value::Float(r)) => {
-            if l < r {
-                -1
-            } else if l > r {
-                1
-            } else {
-                0
-            }
-        }
-        (Value::Text(l), Value::Text(r)) => l.cmp(r) as i32,
-        (Value::Null, Value::Null) => 0,
-        (Value::Null, _) => -1,
-        (_, Value::Null) => 1,
-        _ => 0,
-    }
-}
-
-/// Evaluate expression to string (for GROUP BY key)
-fn evaluate_expr_to_string(expr: &Expression, row: &[Value], table_info: &TableInfo) -> String {
-    let val = evaluate_expression(expr, row, table_info).unwrap_or(Value::Null);
-    match val {
-        Value::Null => "NULL".to_string(),
-        Value::Integer(n) => n.to_string(),
-        Value::Float(f) => f.to_string(),
-        Value::Text(s) => s,
-        Value::Boolean(b) => b.to_string(),
-        _ => "?".to_string(),
-    }
-}
-
-/// Find the index of a column in the table info
-/// For JOIN queries with combined tables, handles qualified names like "t2.id"
-/// by routing to the correct portion of the combined schema.
-/// Combined table naming: left_table.col, right_table.col
-fn find_column_index(col_name: &str, table_info: &TableInfo) -> Option<usize> {
-    if let Some((qualifier, col)) = col_name.split_once('.') {
-        for (i, c) in table_info.columns.iter().enumerate() {
-            if c.name.eq_ignore_ascii_case(col_name) {
-                return Some(i);
-            }
-        }
-        table_info
-            .columns
-            .iter()
-            .position(|c| c.name.eq_ignore_ascii_case(col))
-    } else {
-        table_info
-            .columns
-            .iter()
-            .position(|c| c.name.eq_ignore_ascii_case(col_name))
-    }
-}
-
-fn build_combined_schema(
-    left_info: &TableInfo,
-    right_table_name: &str,
-    right_info: &TableInfo,
-) -> SqlResult<TableInfo> {
-    let mut columns = Vec::new();
-
-    for c in &left_info.columns {
-        columns.push(ColumnDefinition {
-            name: format!("{}.{}", left_info.name, c.name),
-            data_type: c.data_type.clone(),
-            nullable: c.nullable,
-            primary_key: c.primary_key,
-        });
-    }
-
-    for c in &right_info.columns {
-        columns.push(ColumnDefinition {
-            name: format!("{}.{}", right_table_name, c.name),
-            data_type: c.data_type.clone(),
-            nullable: c.nullable,
-            primary_key: c.primary_key,
-        });
-    }
-
-    Ok(TableInfo {
-        name: format!("{}_join_{}", left_info.name, right_table_name),
-        columns,
-        foreign_keys: vec![],
-        unique_constraints: vec![],
-        check_constraints: vec![],
-        partition_info: None,
-    })
-}
-
-fn build_aggregate_schema(
-    group_by: &[Expression],
-    aggregates: &[AggregateCall],
-) -> SqlResult<TableInfo> {
-    let mut columns = Vec::new();
-
-    for expr in group_by {
-        columns.push(ColumnDefinition {
-            name: expression_to_string(expr),
-            data_type: "INTEGER".to_string(),
-            nullable: false,
-            primary_key: false,
-        });
-    }
-
-    for agg in aggregates {
-        let name = match agg.func {
-            AggregateFunction::Count => {
-                if agg.args.is_empty() {
-                    "COUNT(*)".to_string()
-                } else {
-                    format!(
-                        "COUNT({})",
-                        agg.args
-                            .iter()
-                            .map(expression_to_string)
-                            .collect::<Vec<_>>()
-                            .join(", ")
-                    )
-                }
-            }
-            AggregateFunction::Sum => {
-                format!(
-                    "SUM({})",
-                    agg.args
-                        .iter()
-                        .map(expression_to_string)
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                )
-            }
-            AggregateFunction::Avg => {
-                format!(
-                    "AVG({})",
-                    agg.args
-                        .iter()
-                        .map(expression_to_string)
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                )
-            }
-            AggregateFunction::Min => {
-                format!(
-                    "MIN({})",
-                    agg.args
-                        .iter()
-                        .map(expression_to_string)
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                )
-            }
-            AggregateFunction::Max => {
-                format!(
-                    "MAX({})",
-                    agg.args
-                        .iter()
-                        .map(expression_to_string)
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                )
-            }
-        };
-        columns.push(ColumnDefinition {
-            name,
-            data_type: "INTEGER".to_string(),
-            nullable: false,
-            primary_key: false,
-        });
-    }
-
-    Ok(TableInfo {
-        name: "aggregate".to_string(),
-        columns,
-        foreign_keys: vec![],
-        unique_constraints: vec![],
-        check_constraints: vec![],
-        partition_info: None,
-    })
+    let storage = &mut *engine.storage.write().map_err(|e| {
+        SqlError::ExecutionError(format!("Failed to lock storage for recovery: {:?}", e))
+    })?;
+    let (inner, wal_mgr) = storage.split();
+    let mut recovery = RecoveryEngineImpl;
+    RecoveryEngine::recover(&mut recovery, inner, wal_mgr).map(|_| ())
 }
 
 #[cfg(test)]
@@ -2325,6 +2017,7 @@ mod tests {
         engine
             .execute("CREATE TABLE users (id INTEGER, name TEXT, age INTEGER)")
             .unwrap();
+        engine.execute("BEGIN").unwrap();
         engine
             .execute("INSERT INTO users VALUES (1, 'Alice', 30)")
             .unwrap();
@@ -2334,6 +2027,7 @@ mod tests {
         engine
             .execute("INSERT INTO users VALUES (3, 'Charlie', 30)")
             .unwrap();
+        engine.execute("COMMIT").unwrap();
 
         let result = engine.execute("ANALYZE users").unwrap();
         assert_eq!(result.affected_rows, 1);
@@ -2374,6 +2068,7 @@ mod tests {
         engine
             .execute("CREATE TABLE users (id INTEGER, name TEXT)")
             .unwrap();
+        engine.execute("BEGIN").unwrap();
         engine
             .execute("INSERT INTO users VALUES (1, 'Alice')")
             .unwrap();
@@ -2383,6 +2078,7 @@ mod tests {
         engine
             .execute("INSERT INTO users VALUES (3, 'Charlie')")
             .unwrap();
+        engine.execute("COMMIT").unwrap();
 
         // Before ANALYZE, should return default estimate
         assert_eq!(engine.estimate_row_count("users"), 1000);
@@ -2400,11 +2096,13 @@ mod tests {
         engine
             .execute("CREATE TABLE users (id INTEGER, name TEXT)")
             .unwrap();
+        engine.execute("BEGIN").unwrap();
         for i in 0..100 {
             engine
                 .execute(&format!("INSERT INTO users VALUES ({}, 'User{}')", i, i))
                 .unwrap();
         }
+        engine.execute("COMMIT").unwrap();
 
         // Before ANALYZE, should return default selectivity
         let selectivity = engine.estimate_selectivity("users", "id");
@@ -2426,6 +2124,7 @@ mod tests {
         engine.execute("CREATE TABLE medium (id INTEGER)").unwrap();
         engine.execute("CREATE TABLE small (id INTEGER)").unwrap();
 
+        engine.execute("BEGIN").unwrap();
         for i in 0..1000 {
             engine
                 .execute(&format!("INSERT INTO large VALUES ({})", i))
@@ -2441,6 +2140,7 @@ mod tests {
                 .execute(&format!("INSERT INTO small VALUES ({})", i))
                 .unwrap();
         }
+        engine.execute("COMMIT").unwrap();
 
         // Analyze to get accurate row counts
         engine.execute("ANALYZE large").unwrap();
@@ -2482,11 +2182,13 @@ mod tests {
         engine
             .execute("CREATE TABLE users (id INTEGER, name TEXT)")
             .unwrap();
+        engine.execute("BEGIN").unwrap();
         for i in 0..1000 {
             engine
                 .execute(&format!("INSERT INTO users VALUES ({}, 'User{}')", i, i))
                 .unwrap();
         }
+        engine.execute("COMMIT").unwrap();
 
         // High selectivity (1/1000) - index should be very beneficial
         let high_sel = engine.estimate_selectivity("users", "id");
@@ -2507,11 +2209,13 @@ mod tests {
         engine
             .execute("CREATE TABLE users (id INTEGER, name TEXT)")
             .unwrap();
+        engine.execute("BEGIN").unwrap();
         for i in 0..10000 {
             engine
                 .execute(&format!("INSERT INTO users VALUES ({}, 'User{}')", i, i))
                 .unwrap();
         }
+        engine.execute("COMMIT").unwrap();
 
         // With low selectivity (high cardinality), index is beneficial
         let use_index = engine.should_use_index("users", "id");
@@ -2535,6 +2239,7 @@ mod tests {
             .execute("CREATE TABLE users (id INTEGER, name TEXT)")
             .unwrap();
 
+        engine.execute("BEGIN").unwrap();
         for i in 0..100 {
             engine
                 .execute(&format!("INSERT INTO orders VALUES ({}, {})", i, i % 10))
@@ -2545,6 +2250,7 @@ mod tests {
                 .execute(&format!("INSERT INTO users VALUES ({}, 'User{}')", i, i))
                 .unwrap();
         }
+        engine.execute("COMMIT").unwrap();
 
         let hash_cost = engine.estimate_join_cost("orders", "users", "hash");
         let nl_cost = engine.estimate_join_cost("orders", "users", "nested_loop");
@@ -2565,6 +2271,7 @@ mod tests {
         engine.execute("CREATE TABLE t2 (id INTEGER)").unwrap();
         engine.execute("CREATE TABLE t3 (id INTEGER)").unwrap();
 
+        engine.execute("BEGIN").unwrap();
         for i in 0..500 {
             engine
                 .execute(&format!("INSERT INTO t1 VALUES ({})", i))
@@ -2580,6 +2287,7 @@ mod tests {
                 .execute(&format!("INSERT INTO t3 VALUES ({})", i))
                 .unwrap();
         }
+        engine.execute("COMMIT").unwrap();
 
         // Analyze to get accurate stats
         engine.execute("ANALYZE t1").unwrap();
@@ -2601,46 +2309,54 @@ mod tests {
     // ========================================================================
 
     #[test]
-    #[should_panic(expected = "DML requires active transaction")]
-    fn test_tx_lifecycle_insert_without_tx_panics() {
-        // TX-001: INSERT without BEGIN → must panic
-        // Source: TX_LIFECYCLE_SPEC.md §2.2 "IDLE | DML | panic"
+    fn test_tx_lifecycle_insert_without_tx_autocommits() {
+        // TX-001: INSERT without BEGIN → autocommit (valid in v3.8.0 AUTOCOMMIT mode)
+        // Source: v3.8.0 ARCH DECISION — AUTOCOMMIT semantics adopted
         let storage = Arc::new(RwLock::new(MemoryStorage::new()));
         let mut engine = ExecutionEngine::new(storage);
         engine
             .execute("CREATE TABLE t1 (id INTEGER, name TEXT)")
             .unwrap();
-        // DML without transaction → must panic with EEK message
-        let _ = engine.execute("INSERT INTO t1 VALUES (1, 'test')");
-        panic!("INSERT without transaction did not panic — EEK not enforced");
+        // DML without explicit BEGIN → must succeed via autocommit
+        let result = engine.execute("INSERT INTO t1 VALUES (1, 'test')");
+        assert!(
+            result.is_ok(),
+            "INSERT without explicit TX should autocommit in v3.8.0"
+        );
     }
 
     #[test]
-    #[should_panic(expected = "DML requires active transaction")]
-    fn test_tx_lifecycle_update_without_tx_panics() {
-        // TX-002: UPDATE without BEGIN → must panic
+    fn test_tx_lifecycle_update_without_tx_autocommits() {
+        // TX-002: UPDATE without BEGIN → autocommit
         let storage = Arc::new(RwLock::new(MemoryStorage::new()));
         let mut engine = ExecutionEngine::new(storage);
         engine
             .execute("CREATE TABLE t1 (id INTEGER, name TEXT)")
             .unwrap();
         engine.execute("INSERT INTO t1 VALUES (1, 'test')").unwrap();
-        let _ = engine.execute("UPDATE t1 SET name = 'updated' WHERE id = 1");
-        panic!("UPDATE without transaction did not panic — EEK not enforced");
+        // DML without explicit BEGIN → must succeed via autocommit
+        let result = engine.execute("UPDATE t1 SET name = 'updated' WHERE id = 1");
+        assert!(
+            result.is_ok(),
+            "UPDATE without explicit TX should autocommit in v3.8.0"
+        );
     }
 
     #[test]
-    #[should_panic(expected = "DML requires active transaction")]
-    fn test_tx_lifecycle_delete_without_tx_panics() {
-        // TX-003: DELETE without BEGIN → must panic
+    fn test_tx_lifecycle_delete_without_tx_autocommits() {
+        // TX-003: DELETE without BEGIN → autocommit
         let storage = Arc::new(RwLock::new(MemoryStorage::new()));
         let mut engine = ExecutionEngine::new(storage);
         engine
             .execute("CREATE TABLE t1 (id INTEGER, name TEXT)")
             .unwrap();
         engine.execute("INSERT INTO t1 VALUES (1, 'test')").unwrap();
-        let _ = engine.execute("DELETE FROM t1 WHERE id = 1");
-        panic!("DELETE without transaction did not panic — EEK not enforced");
+        // DML without explicit BEGIN → must succeed via autocommit
+        let result = engine.execute("DELETE FROM t1 WHERE id = 1");
+        assert!(
+            result.is_ok(),
+            "DELETE without explicit TX should autocommit in v3.8.0"
+        );
     }
 
     #[test]
@@ -2656,8 +2372,10 @@ mod tests {
         engine.execute("BEGIN").unwrap();
         engine.execute("INSERT INTO t1 VALUES (1, 'test')").unwrap();
         engine.execute("COMMIT").unwrap();
-        let _ = engine.execute("INSERT INTO t1 VALUES (2, 'after_commit')");
-        panic!("INSERT after COMMIT did not panic — TX state not enforced");
+        // INSERT after COMMIT → must panic
+        engine
+            .execute("INSERT INTO t1 VALUES (2, 'after_commit')")
+            .unwrap();
     }
 
     #[test]
@@ -2673,8 +2391,10 @@ mod tests {
         engine.execute("BEGIN").unwrap();
         engine.execute("INSERT INTO t1 VALUES (1, 'test')").unwrap();
         engine.execute("ROLLBACK").unwrap();
-        let _ = engine.execute("INSERT INTO t1 VALUES (2, 'after_rollback')");
-        panic!("INSERT after ROLLBACK did not panic — TX state not enforced");
+        // INSERT after ROLLBACK → must panic
+        engine
+            .execute("INSERT INTO t1 VALUES (2, 'after_rollback')")
+            .unwrap();
     }
 
     #[test]
@@ -2686,8 +2406,8 @@ mod tests {
         let mut engine = ExecutionEngine::new(storage);
         engine.execute("BEGIN").unwrap();
         engine.execute("COMMIT").unwrap();
-        let _ = engine.execute("COMMIT");
-        panic!("Double COMMIT did not panic — double-commit not prevented");
+        // Double COMMIT → must panic
+        engine.execute("COMMIT").unwrap();
     }
 
     // ========================================================================
