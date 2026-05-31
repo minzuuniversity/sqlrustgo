@@ -6,7 +6,7 @@
 > **分支**: `alpha/v3.8.0` (待创建)  
 > **Auditor**: Hermes Agent  
 > **Created**: 2026-05-30  
-> **Status**: DRAFT — For Review  
+> **Status**: ACTIVE — Execution Semantics Freeze 已声明（commit 087bb12d）  
 
 ---
 
