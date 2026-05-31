@@ -150,7 +150,7 @@ impl<S: StorageEngine, T: WalManager> WalStorage<S, T> {
     }
 
     pub fn begin_transaction(&mut self) -> SqlResult<u64> {
-        let tx_id = 0;
+        let tx_id = self.inner.current_tx_id();
         if self.wal_enabled {
             let entry = WalEntry {
                 tx_id,
@@ -170,9 +170,10 @@ impl<S: StorageEngine, T: WalManager> WalStorage<S, T> {
     }
 
     pub fn commit_transaction(&mut self) -> SqlResult<()> {
+        let tx_id = self.inner.current_tx_id();
         if self.wal_enabled {
             let entry = WalEntry {
-                tx_id: 0,
+                tx_id,
                 entry_type: WalEntryType::Commit,
                 table_id: 0,
                 key: None,
@@ -191,9 +192,10 @@ impl<S: StorageEngine, T: WalManager> WalStorage<S, T> {
     }
 
     pub fn rollback_transaction(&mut self) -> SqlResult<()> {
+        let tx_id = self.inner.current_tx_id();
         if self.wal_enabled {
             let entry = WalEntry {
-                tx_id: 0,
+                tx_id,
                 entry_type: WalEntryType::Rollback,
                 table_id: 0,
                 key: None,
@@ -340,7 +342,7 @@ impl<S: StorageEngine, T: WalManager> StorageEngine for WalStorage<S, T> {
     }
 
     fn begin_transaction(&mut self) -> SqlResult<u64> {
-        let tx_id = 0;
+        let tx_id = self.inner.current_tx_id();
         if self.wal_enabled {
             let entry = WalEntry {
                 tx_id,
@@ -360,9 +362,10 @@ impl<S: StorageEngine, T: WalManager> StorageEngine for WalStorage<S, T> {
     }
 
     fn commit_transaction(&mut self) -> SqlResult<()> {
+        let tx_id = self.inner.current_tx_id();
         if self.wal_enabled {
             let entry = WalEntry {
-                tx_id: 0,
+                tx_id,
                 entry_type: WalEntryType::Commit,
                 table_id: 0,
                 key: None,
@@ -381,9 +384,10 @@ impl<S: StorageEngine, T: WalManager> StorageEngine for WalStorage<S, T> {
     }
 
     fn rollback_transaction(&mut self) -> SqlResult<()> {
+        let tx_id = self.inner.current_tx_id();
         if self.wal_enabled {
             let entry = WalEntry {
-                tx_id: 0,
+                tx_id,
                 entry_type: WalEntryType::Rollback,
                 table_id: 0,
                 key: None,
