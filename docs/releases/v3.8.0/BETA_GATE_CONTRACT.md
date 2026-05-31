@@ -22,6 +22,7 @@ v3.8.0 Beta Gate is passed when all four conditions below are satisfied.
 | **B2** | WAL Execution Path | `ExecutionEngine::with_wal(PathBuf)` 可调用 + RECOVERY 测试验证 crash recovery | Path exists + verifiable | ✅ PASS (21/22) |
 | **B3** | Clippy | `cargo clippy --all-features -- -D warnings` | 0 warnings | ✅ PASS (f2725974) |
 | **B4** | Format | `cargo fmt --all -- --check` | exit 0 | ✅ PASS (f2725974) |
+| **B5** | Integration Gate | `bash scripts/gate/check_integration_gate.sh` | exit 0 | ✅ PASS (126c48b1) |
 
 ### B-Functional: Feature Tracking Requirements
 
