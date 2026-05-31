@@ -31,6 +31,10 @@ impl QueryContext {
     pub fn requires_txn(&self) -> bool {
         is_dml(&self.sql)
     }
+
+    pub fn sql(&self) -> &str {
+        &self.sql
+    }
 }
 
 fn is_dml(sql: &str) -> bool {
