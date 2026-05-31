@@ -5,8 +5,8 @@
 pub mod logical_plan;
 pub mod optimizer;
 pub mod physical_plan;
-#[allow(clippy::module_inception)]
 pub mod planner;
+pub mod statement;
 
 // TODO: Add these modules after migration
 // pub mod analyzer;
@@ -21,6 +21,7 @@ pub use physical_plan::{
     SeqScanExec, SortExec,
 };
 pub use planner::{DefaultPlanner, NoOpPlanner, Planner};
+pub use statement::{MergeClause, MergeStatement};
 
 use sqlrustgo_types::Value;
 use std::fmt;
