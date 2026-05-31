@@ -5,9 +5,9 @@
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use rcgen::{CertificateParams, KeyPair};
 use sha1::{Digest, Sha1};
-use sqlrustgo::MemoryExecutionEngine;
+use sqlrustgo::ExecutionEngine;
 use sqlrustgo_parser::{parse, Statement};
-use sqlrustgo_storage::{MemoryStorage, StorageEngine};
+use sqlrustgo_storage::{FileStorage, MemoryStorage, StorageEngine};
 use sqlrustgo_types::{SqlError, Value};
 use std::collections::HashMap;
 use std::io::{Read, Write};
@@ -1073,8 +1073,8 @@ fn make_tls_config() -> rustls::ServerConfig {
 fn do_command_loop<S: Read + Write>(
     stream: &mut S,
     addr: SocketAddr,
-    storage: Arc<RwLock<MemoryStorage>>,
-    engine: Arc<RwLock<MemoryExecutionEngine>>,
+    storage: Arc<RwLock<FileStorage>>,
+    engine: Arc<RwLock<ExecutionEngine<FileStorage>>>,
     cap: u32,
     mut seq: u8,
     ps_manager: &mut PreparedStatementManager,
@@ -1288,7 +1288,7 @@ fn do_command_loop<S: Read + Write>(
                 let final_sql = replace_placeholders(&stmt_sql, &params);
 
                 tracing::info!("STMT EXECUTE (id={}): {}", stmt_id, final_sql);
-                let mut eng = MemoryExecutionEngine::new(storage.clone());
+                let mut eng = ExecutionEngine::new(storage.clone());
                 let parsed = parse(&final_sql);
                 match parsed {
                     Ok(stmt) => {
@@ -1356,7 +1356,7 @@ fn do_command_loop<S: Read + Write>(
 fn handle_connection(
     mut stream: TcpStream,
     addr: SocketAddr,
-    storage: Arc<RwLock<MemoryStorage>>,
+    storage: Arc<RwLock<FileStorage>>,
     tls_config: Arc<rustls::ServerConfig>,
     user_store: UserStore,
 ) {
@@ -1454,8 +1454,8 @@ fn handle_connection(
             tracing::info!("Auth accepted, sending OK packet, seq=3");
             make_ok_packet(3, 0, 0, 0x0002, 0).write_to(&mut tls).ok();
             tracing::info!("Starting command loop, seq=4");
-            let engine: Arc<RwLock<MemoryExecutionEngine>> =
-                Arc::new(RwLock::new(MemoryExecutionEngine::new(storage.clone())));
+            let engine: Arc<RwLock<ExecutionEngine<FileStorage>>> =
+                Arc::new(RwLock::new(ExecutionEngine::new(storage.clone())));
             let mut ps_manager = PreparedStatementManager::new();
             let _ = do_command_loop(
                 &mut tls,
@@ -1506,8 +1506,8 @@ fn handle_connection(
         .write_to(&mut &stream)
         .ok();
     tracing::info!("Starting command loop, seq=3");
-    let engine: Arc<RwLock<MemoryExecutionEngine>> =
-        Arc::new(RwLock::new(MemoryExecutionEngine::new(storage.clone())));
+    let engine: Arc<RwLock<ExecutionEngine<FileStorage>>> =
+        Arc::new(RwLock::new(ExecutionEngine::new(storage.clone())));
     let mut ps_manager = PreparedStatementManager::new();
     let _ = do_command_loop(
         &mut &stream,
@@ -1527,9 +1527,13 @@ pub fn run_server(host: &str, port: u16) -> MySqlResult<()> {
     let tls_config = Arc::new(make_tls_config());
     tracing::info!("TLS ready (self-signed cert)");
 
-    let storage: Arc<RwLock<MemoryStorage>> = Arc::new(RwLock::new(MemoryStorage::new()));
+    // WAL-backed FileStorage for production runtime
+    let wal_data_dir = std::env::temp_dir().join(format!("sqlrustgo_wal_{}", port));
+    let file_storage = FileStorage::new_with_wal(wal_data_dir)
+        .map_err(std::io::Error::other)?;
+    let storage: Arc<RwLock<FileStorage>> = Arc::new(RwLock::new(file_storage));
     {
-        let mut eng = MemoryExecutionEngine::new(storage.clone());
+        let mut eng = ExecutionEngine::new(storage.clone());
         for sql in ["CREATE TABLE content (hash TEXT PRIMARY KEY, doc TEXT NOT NULL, created_at TEXT NOT NULL)",
             "CREATE TABLE vectors (hash_seq TEXT PRIMARY KEY, hash TEXT NOT NULL, embedding TEXT NOT NULL, created_at TEXT NOT NULL)",
             "CREATE TABLE documents (id TEXT PRIMARY KEY, title TEXT, content TEXT, created_at TEXT)"] {
