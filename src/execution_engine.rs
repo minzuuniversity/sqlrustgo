@@ -34,12 +34,12 @@ use sqlrustgo_parser::JoinType;
 use sqlrustgo_parser::{
     DeleteStatement, Expression, Statement, TransactionStatement, UpdateStatement,
 };
+use sqlrustgo_storage::checkpoint::{CheckpointManager, CheckpointMetadata};
 use sqlrustgo_storage::{
     recovery_engine::{RecoveryEngine, RecoveryEngineImpl},
     ColumnDefinition, FileBackedWalManager, FileStorage, MemoryStorage, StorageEngine, TableInfo,
     WalStorage,
 };
-use sqlrustgo_storage::checkpoint::{CheckpointManager, CheckpointMetadata};
 use sqlrustgo_transaction::{IsolationLevel as TmIsolationLevel, TransactionManager, TxId};
 use sqlrustgo_types::Value as SqlValue;
 use std::collections::HashMap;
