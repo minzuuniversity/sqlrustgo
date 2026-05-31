@@ -26,11 +26,10 @@ This document provides the **authoritative test design** for RECOVERY-001~008, s
 | RECOVERY-004 | `test_commit_flush_crash_replays` | `wal_tx_contract_test.rs:411` | ✅ PASS | COMMIT → crash → replay |
 | RECOVERY-005 | `test_partial_insert_write_recovery` | `wal_tx_contract_test.rs:440` | ✅ PASS | Partial INSERT → replay |
 | RECOVERY-006 | `test_partial_update_write_recovery` | `wal_tx_contract_test.rs:469` | ✅ PASS | Partial UPDATE → replay (limited) |
-| RECOVERY-007 | `test_partial_delete_write_recovery` | `wal_tx_contract_test.rs:507` | ⚠️ IGNORED | DELETE replay ordering bug |
+| RECOVERY-007 | `test_partial_delete_write_recovery` | `wal_tx_contract_test.rs:507` | ✅ PASS | DELETE replay ordering bug — PR-840 fixes |
 | RECOVERY-008 | `test_partial_commit_flush_recovery` | `wal_tx_contract_test.rs:531` | ✅ PASS | COMMIT flush → crash → replay |
 
-**Summary**: 7 PASS, 1 IGNORED (RECOVERY-007)
-**Contract**: 21/22 WAL Contract tests PASS (22 total, 1 ignored)
+**Summary**: 8/8 PASS ✅ — all RECOVERY tests now passing
 
 ---
 
@@ -289,8 +288,7 @@ RECOVERY-008: test_partial_commit_flush_recovery
 | Gap | Impact | Mitigation |
 |-----|--------|------------|
 | RECOVERY-001~008 implemented without TEST_DESIGN.md | Non-compliant with P2 | This document provides retroactive coverage |
-| RECOVERY-007 ignored — no current proof for DELETE recovery | DELETE invariant unproven | PR-840 addresses this; re-enable after fix |
-| RECOVERY-006 UPDATE value assertion missing | UPDATE value correctness unproven | Known limitation documented in PR-830E |
+| RECOVERY-006 UPDATE value assertion missing | UPDATE value correctness unproven | Known limitation documented in PR-830E; value-level fix TBD |
 
 **Corrective Action**: All future RECOVERY tests MUST have a TEST_DESIGN.md entry before implementation.
 
