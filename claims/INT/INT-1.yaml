@@ -1,0 +1,161 @@
+# INT-1: DML Operations Bypass WAL and TransactionManager
+
+> **Claim ID**: INT-1
+> **Type**: architectural_risk
+> **Severity**: critical
+> **Introduced**: v1.2.0 (2025)
+> **Target Resolution**: v3.8.0 PR-830, PR-840
+> **Status**: supported
+> **Last Reviewed**: 2026-05-30
+
+---
+
+## Finding: execute_insert Direct Storage Call
+
+**Finding ID**: FIND-INT1-001
+
+### Location
+```
+file: crates/executor/src/execution_engine.rs
+function: execute_insert
+line_range: "120-145"
+```
+
+### Observation
+```rust
+// CURRENT PATH (v3.7.0):
+pub fn execute_insert(&self, ctx: &ExecCtx, plan: &InsertPlan) -> Result<usize> {
+    let storage = self.storage.read();
+    storage.insert(...)?;  // ← No WAL append
+    Ok(rows_affected)
+}
+```
+
+INSERT goes directly to `storage.insert()` without passing through TransactionManager or WAL.
+
+### Expected Path (after PR-830)
+```rust
+pub fn execute_insert(&self, ctx: &ExecCtx, plan: &InsertPlan) -> Result<usize> {
+    let txn = self.txn_manager.begin(ctx.session_id)?;
+    txn.append_wal(WriteRecord::Insert(...))?;  // WAL staging
+    let result = self.storage.insert(...)?;
+    txn.commit()?;
+    Ok(result)
+}
+```
+
+### Evidence
+
+#### commit_sha
+```
+EMPTY — No commit-level evidence yet
+Finding is based on code inspection of execution_engine.rs
+```
+
+> **G-04.1 Compliance**: commit_sha is EMPTY = NOT YET VERIFIED at commit level.
+
+#### test_refs
+```
+- name: test_wal_gap_no_recovery
+  path: crates/executor/tests/wal_gap.rs
+  result: not_found
+```
+**Finding**: No test exists that verifies INSERT survives kill -9 after COMMIT.
+
+#### claim_source_refs
+```
+- type: issue
+  id: 2588
+  url: http://192.168.0.252:3000/openclaw/sqlrustgo/issues/2588
+  note: "Issue is CLAIM SOURCE only — not evidence (G-04.1)"
+```
+
+---
+
+## Finding: execute_update Direct Storage Call
+
+**Finding ID**: FIND-INT1-002
+
+### Location
+```
+file: crates/executor/src/execution_engine.rs
+function: execute_update
+line_range: "200-230"
+```
+
+### Observation
+```rust
+pub fn execute_update(&self, ctx: &ExecCtx, plan: &UpdatePlan) -> Result<usize> {
+    let storage = self.storage.read();
+    storage.update(...)?;  // ← No WAL append
+    Ok(rows_affected)
+}
+```
+
+### Evidence
+
+#### commit_sha
+```
+EMPTY
+```
+
+#### test_refs
+```
+- name: test_wal_recovery_update
+  path: crates/executor/tests/wal_gap.rs
+  result: not_found
+```
+
+---
+
+## Claim Status: supported
+
+**Not verified** because:
+- No commit SHA provides evidence of this pattern
+- Test coverage gap identified (no wal_gap tests)
+- Issue #2588 is a claim source, not evidence
+
+**Evidence chain incomplete** per G-04.
+
+---
+
+## Required for VERIFIED Status
+
+1. **commit_sha**: A commit that introduces or documents the WAL gap
+2. **test_ref**: A test that demonstrates the gap (e.g., `test_kill9_after_insert_committed`)
+3. **ci_run_id**: A CI run that shows the test FAILs
+
+---
+
+## Deferral Record
+
+```yaml
+deferred_to: v3.8.0
+rationale: WAL integration requires Phase 1 (PR-830) which depends on PR-800/810/820
+blockers:
+  - PR-800 (COM_QUERY AST Routing) must land first
+  - PR-810 (ExecutionEngine → Router) must land first
+  - PR-820 (TransactionManager Session Binding) must land first
+last_reviewed_at: 2026-05-30
+reviewed_by: hermes-agent
+```
+
+---
+
+## Gate Evaluation
+
+```
+gate claim evaluate INT-1 --db /tmp/eg.db
+```
+
+Current output:
+```
+claim_id: INT-1
+status: supported
+findings: 2
+evidence_chain_complete: false
+missing: [commit_sha, test_wal_gap]
+staleness: unconfirmed (no evidence timestamp)
+```
+
+**Verdict**: UNVERIFIED (G-04: incomplete evidence chain)
