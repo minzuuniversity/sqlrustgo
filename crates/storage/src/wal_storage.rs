@@ -1,6 +1,6 @@
 use crate::engine::{
-    ColumnDefinition, Record, RowFilter, RowMutation, SqlResult, StorageEngine,
-    TableInfo, TriggerInfo, Value,
+    ColumnDefinition, Record, RowFilter, RowMutation, SqlResult, StorageEngine, TableInfo,
+    TriggerInfo, Value,
 };
 use crate::wal::{WalEntry, WalEntryType, WalManager};
 
