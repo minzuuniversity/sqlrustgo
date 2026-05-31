@@ -2,7 +2,7 @@
 //!
 //! These tests verify WAL behavior and WAL+Storage integration.
 
-use sqlrustgo_storage::wal::{WalManager, WalEntryType};
+use sqlrustgo_storage::wal::{WalEntryType, WalManager};
 use tempfile::TempDir;
 
 #[test]
@@ -24,7 +24,8 @@ fn test_wal_log_single_transaction() {
 
     let tx_id = 1u64;
     wal.log_begin(tx_id).unwrap();
-    wal.log_insert(tx_id, 1, b"table:1".to_vec(), b"data".to_vec()).unwrap();
+    wal.log_insert(tx_id, 1, b"table:1".to_vec(), b"data".to_vec())
+        .unwrap();
     wal.log_commit(tx_id).unwrap();
 
     let entries = wal.recover().unwrap();
@@ -43,17 +44,20 @@ fn test_wal_multiple_transactions() {
 
     // Transaction 1 (commit)
     wal.log_begin(1).unwrap();
-    wal.log_insert(1, 1, b"t1:1".to_vec(), b"data1".to_vec()).unwrap();
+    wal.log_insert(1, 1, b"t1:1".to_vec(), b"data1".to_vec())
+        .unwrap();
     wal.log_commit(1).unwrap();
 
     // Transaction 2 (commit)
     wal.log_begin(2).unwrap();
-    wal.log_insert(2, 1, b"t1:2".to_vec(), b"data2".to_vec()).unwrap();
+    wal.log_insert(2, 1, b"t1:2".to_vec(), b"data2".to_vec())
+        .unwrap();
     wal.log_commit(2).unwrap();
 
     // Transaction 3 (rollback)
     wal.log_begin(3).unwrap();
-    wal.log_insert(3, 1, b"t1:3".to_vec(), b"data3".to_vec()).unwrap();
+    wal.log_insert(3, 1, b"t1:3".to_vec(), b"data3".to_vec())
+        .unwrap();
     wal.log_rollback(3).unwrap();
 
     let entries = wal.recover().unwrap();
@@ -80,11 +84,13 @@ fn test_wal_recovery_uncommitted_transaction() {
     {
         let wal = WalManager::new(wal_path.clone());
         wal.log_begin(1).unwrap();
-        wal.log_insert(1, 1, b"users:1".to_vec(), b"Alice".to_vec()).unwrap();
+        wal.log_insert(1, 1, b"users:1".to_vec(), b"Alice".to_vec())
+            .unwrap();
         wal.log_commit(1).unwrap();
 
         wal.log_begin(2).unwrap();
-        wal.log_insert(2, 1, b"users:2".to_vec(), b"Bob".to_vec()).unwrap();
+        wal.log_insert(2, 1, b"users:2".to_vec(), b"Bob".to_vec())
+            .unwrap();
         // Simulate crash - no commit for tx 2
     }
 
@@ -109,7 +115,8 @@ fn test_wal_checkpoint() {
     let wal = WalManager::new(wal_path);
 
     wal.log_begin(1).unwrap();
-    wal.log_insert(1, 1, b"t:1".to_vec(), b"d".to_vec()).unwrap();
+    wal.log_insert(1, 1, b"t:1".to_vec(), b"d".to_vec())
+        .unwrap();
     wal.log_commit(1).unwrap();
 
     let checkpoint_lsn = wal.checkpoint(1).unwrap();
