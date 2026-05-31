@@ -101,11 +101,9 @@ impl<S: StorageEngine> RecoveryEngine<S> for StatefulRecoveryEngine<S> {
                 // Idempotent — already recovered, return empty report
                 Ok(RecoveryReport::default())
             }
-            RecoveryState::Failed => {
-                Err(crate::engine::SqlError::ExecutionError(
-                    "RecoveryEngine: cannot recover after previous failure".to_string(),
-                ))
-            }
+            RecoveryState::Failed => Err(crate::engine::SqlError::ExecutionError(
+                "RecoveryEngine: cannot recover after previous failure".to_string(),
+            )),
         }
     }
 
