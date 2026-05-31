@@ -42,9 +42,14 @@ impl FileBackedWalManager {
 impl WalManager for FileBackedWalManager {
     fn append(&mut self, entry: WalEntry) -> SqlResult<()> {
         if self.writer.is_none() {
-            self.writer = Some(WalWriter::with_config(&self.wal_path, false, 100).map_err(|e| {
-                crate::engine::SqlError::ExecutionError(format!("WAL writer init failed: {}", e))
-            })?);
+            self.writer = Some(WalWriter::with_config(&self.wal_path, false, 100).map_err(
+                |e| {
+                    crate::engine::SqlError::ExecutionError(format!(
+                        "WAL writer init failed: {}",
+                        e
+                    ))
+                },
+            )?);
         }
         if let Some(ref mut writer) = self.writer {
             writer.append(&entry).map_err(|e| {
