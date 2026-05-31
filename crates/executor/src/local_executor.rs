@@ -49,6 +49,15 @@ struct UnifiedFacade {
 }
 
 impl UnifiedFacade {
+    /// Execute DML through WAL-aware storage
+    fn execute_dml<F, R>(&self, op: F) -> Result<R, SqlError>
+    where
+        F: FnOnce(&mut WalStorage<'a>) -> Result<R, SqlError>,
+    {
+        let mut storage = self.storage.write();
+        op(&mut *storage)
+    }
+
     fn new(storage: &'a dyn StorageEngine, wal_path: Option<PathBuf>) -> Result<Self, SqlError> {
         let wal_storage = match wal_path {
             Some(path) => WalStorage::new(storage, path)
@@ -1314,8 +1323,12 @@ impl<'a> LocalExecutor<'a> {
                     return Ok(ExecutorResult::empty());
                 }
 
-                // Delete all rows from table
-                let deleted = self.storage.delete(table_name, &[])?;
+                // WAL-aware delete via unified facade
+                let deleted = if let Some(ref facade) = self.unified_facade {
+                    facade.execute_dml(|storage| storage.delete(table_name, &[]))?
+                } else {
+                    self.storage.delete(table_name, &[])?
+                };
                 Ok(ExecutorResult::new(vec![], deleted))
             }
             None => Ok(ExecutorResult::empty()),
@@ -1366,7 +1379,12 @@ impl<'a> LocalExecutor<'a> {
                     .map(|e| PredicateCompiler::compile(e))
                     .unwrap_or_else(|| Box::new(|_| true));
 
-                let affected = self.storage.update_if(table_name, &predicate, &row_mutation)?;
+                // WAL-aware update via unified facade
+                let affected = if let Some(ref facade) = self.unified_facade {
+                    facade.execute_dml(|storage| storage.update_if(table_name, &predicate, &row_mutation))?
+                } else {
+                    self.storage.update_if(table_name, &predicate, &row_mutation)?
+                };
                 Ok(ExecutorResult::new(vec![], affected))
             }
             None => Ok(ExecutorResult::empty()),
