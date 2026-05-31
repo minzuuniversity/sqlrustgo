@@ -11,6 +11,7 @@
 )]
 
 pub mod engine_builder;
+pub mod engine_select;
 pub mod engine_utils;
 pub mod execution_engine;
 pub mod expr_utils;
