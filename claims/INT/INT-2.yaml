@@ -1,0 +1,138 @@
+# INT-2: ParallelVolcanoExecutor Functional Isolation
+
+> **Claim ID**: INT-2
+> **Type**: architectural_risk
+> **Severity**: medium-high
+> **Introduced**: v2.6.0 (2025)
+> **Target Resolution**: v3.8.0 PR-870
+> **Status**: asserted
+> **Last Reviewed**: 2026-05-30
+
+---
+
+## Finding: ParallelVolcanoExecutor Not in Primary Execution Path
+
+**Finding ID**: FIND-INT2-001
+
+### Location
+```
+file: crates/executor/src/lib.rs
+function: (parallel_volcano_executor module exists but unused)
+line_range: unknown
+```
+
+### Observation
+
+ParallelVolcanoExecutor exists in the codebase but is NOT invoked by mysql-server execution path.
+
+```
+mysql-server → ExecutionEngine → LocalExecutor → StorageEngine
+                                                     ↑
+                                         ParallelVolcanoExecutor is HERE
+                                         (never called from above)
+```
+
+bench-cli uses LocalExecutor which contains VTU/SIMD optimizations, but mysql-server uses ExecutionEngine directly.
+
+### Evidence
+
+#### commit_sha
+```
+EMPTY — No commit documents this isolation
+```
+
+#### file_refs
+```
+- path: crates/executor/src/parallel_volcano_executor.rs
+  note: "File exists, but no evidence it is invoked by mysql-server"
+  finding: "Module exists in tree but not wired into ExecutionEngine"
+```
+
+#### claim_source_refs
+```
+- type: issue
+  id: 2589
+  url: http://192.168.0.252:3000/openclaw/sqlrustgo/issues/2589
+  note: "Claim source only — not evidence (G-04.1)"
+```
+
+---
+
+## Finding: VTU/SIMD Only in LocalExecutor, Not ExecutionEngine
+
+**Finding ID**: FIND-INT2-002
+
+### Location
+```
+file: crates/executor/src/local_executor.rs
+```
+
+### Observation
+
+VTU (Vectorized Tuple Update) and SIMD optimizations exist only in LocalExecutor. ExecutionEngine used by mysql-server does NOT use these optimizations.
+
+### Evidence
+
+#### commit_sha
+```
+EMPTY
+```
+
+#### file_refs
+```
+- path: crates/executor/src/local_executor.rs
+  functions: [execute_with_vtu, vectorized_scan]
+  note: "VTU code exists but in different code path than mysql-server"
+```
+
+---
+
+## Claim Status: asserted
+
+**Status = asserted** because:
+- Findings exist (file locations identified)
+- No commit SHA provides evidence of the isolation pattern
+- No test demonstrates the performance gap
+- No CI run captures this
+
+**This is an ORPHAN CLAIM if no commit evidence is added** (G-04.2).
+
+---
+
+## Required for VERIFIED Status
+
+1. **commit_sha**: A commit that documents VTU path difference (e.g., "vtU only in bench-cli")
+2. **test_ref**: A test that shows mysql-server path ≠ LocalExecutor path
+3. **grep output showing**: `grep -n "parallel.*executor\|ParallelVolcano" execution_engine.rs` → 0 matches
+
+---
+
+## Deferral Record
+
+```yaml
+deferred_to: v3.8.0
+rationale: Integration requires PR-870 after PR-860 (Planner consolidation)
+blockers:
+  - PR-860 (Planner Layer Consolidation) must land first
+last_reviewed_at: 2026-05-30
+reviewed_by: hermes-agent
+```
+
+---
+
+## Gate Evaluation
+
+```
+gate claim evaluate INT-2 --db /tmp/eg.db
+```
+
+Current output:
+```
+claim_id: INT-2
+status: asserted
+findings: 2
+evidence_chain_complete: false
+missing: [commit_sha, test_proving_isolation]
+```
+
+**Verdict**: UNVERIFIED (G-04: no commit evidence)

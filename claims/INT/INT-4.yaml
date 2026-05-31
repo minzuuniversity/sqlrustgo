@@ -1,0 +1,179 @@
+# INT-4: mysql-server Execution Path Not Unified
+
+> **Claim ID**: INT-4
+> **Type**: architectural_risk
+> **Severity**: critical
+> **Introduced**: v2.6.0 (2025)
+> **Target Resolution**: v3.8.0 PR-850
+> **Status**: supported
+> **Last Reviewed**: 2026-05-30
+
+---
+
+## Finding: mysql-server Uses ExecutionEngine with Hard-coded MemoryStorage
+
+**Finding ID**: FIND-INT4-001
+
+### Location
+```
+file: crates/mysql-server/src/lib.rs
+function: MySqlServer::execute_query
+line_range: "200-280"
+```
+
+### Observation
+
+```rust
+// mysql-server path (v3.7.0):
+impl MySqlServer {
+    pub fn execute_query(&self, query: &str) -> Result<RowSet> {
+        let engine = ExecutionEngine::new(self.storage.clone());
+        // storage is MemoryStorage — hard-coded, not swappable
+        let result = engine.execute_raw(query)?;  // ← bypasses Planner
+        Ok(result)
+    }
+}
+```
+
+### Evidence
+
+#### commit_sha
+```
+EMPTY
+```
+Finding based on code inspection of mysql-server/src/lib.rs at v3.7.0 HEAD.
+
+#### grep_evidence
+```bash
+grep -n "ExecutionEngine::new" crates/mysql-server/src/lib.rs
+# Expected: 1+ match
+```
+
+> **G-04.1 note**: grep output is machine-readable and acceptable as evidence.
+
+#### claim_source_refs
+```
+- type: issue
+  id: 2591
+  url: http://192.168.0.252:3000/openclaw/sqlrustgo/issues/2591
+  note: "Claim source only — not evidence (G-04.1)"
+```
+
+---
+
+## Finding: bench-cli Uses LocalExecutor with Swappable Storage
+
+**Finding ID**: FIND-INT4-002
+
+### Location
+```
+file: tools/bench-cli/src/main.rs
+function: run_benchmark
+```
+
+### Observation
+
+bench-cli uses a different path than mysql-server:
+- bench-cli → LocalExecutor → StorageEngine (swappable)
+- mysql-server → ExecutionEngine → MemoryStorage (hard-coded)
+
+This creates a dual-path problem where SQL behavior may differ between the two clients.
+
+### Evidence
+
+#### commit_sha
+```
+EMPTY
+```
+
+#### file_refs
+```
+- path: tools/bench-cli/src/main.rs
+  finding: "LocalExecutor used with swappable storage backend"
+```
+
+---
+
+## Finding: Storage.insert Called From ExecutionEngine, Not Storage Layer
+
+**Finding ID**: FIND-INT4-003
+
+### Location
+```
+file: crates/executor/src/execution_engine.rs
+function: execute_insert
+line_range: "120-145"
+```
+
+### Observation
+
+This finding overlaps with INT-1 (DML bypasses WAL). Here the concern is:
+```rust
+// execution_engine.rs line ~130:
+storage.insert(...);  // Direct storage call from execution layer
+```
+storage.insert is called from execution_engine.rs, not from a dedicated storage layer.
+
+### Evidence
+
+#### commit_sha
+```
+EMPTY
+```
+
+#### grep_evidence
+```bash
+grep -n "storage\.insert" crates/executor/src/execution_engine.rs
+# Expected: 1+ match showing direct storage call
+```
+
+---
+
+## Claim Status: supported
+
+**Status = supported** because:
+- INT-1 finding (storage.insert directly from execution_engine) is documented
+- But no commit SHA provides authoritative evidence
+- No execution consistency harness shows mysql-server ≠ bench-cli behavior
+- L2 Execution Consistency Gate would catch this if it existed
+
+---
+
+## Required for VERIFIED Status
+
+1. **commit_sha**: A commit that first introduced the dual-path pattern
+2. **test_ref**: `execution_consistency_harness` showing mysql-server vs bench-cli hash mismatch
+3. **ci_run_id**: A CI run where L2 consistency check FAILs
+
+---
+
+## Deferral Record
+
+```yaml
+deferred_to: v3.8.0
+rationale: Requires PR-850 after PR-840 (DML interception)
+blockers:
+  - PR-840 (DML Transaction Interception) must land first
+last_reviewed_at: 2026-05-30
+reviewed_by: hermes-agent
+```
+
+---
+
+## Gate Evaluation
+
+```
+gate claim evaluate INT-4 --db /tmp/eg.db
+```
+
+Current output:
+```
+claim_id: INT-4
+status: supported
+findings: 3
+evidence_chain_complete: false
+missing: [commit_sha, execution_consistency_test]
+staleness: unconfirmed
+```
+
+**Verdict**: UNVERIFIED (G-04: incomplete evidence chain)
