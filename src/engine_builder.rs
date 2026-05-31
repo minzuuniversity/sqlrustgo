@@ -33,6 +33,7 @@ impl ExecutionEngine<MemoryStorage> {
             tx_status: TxStatus::Idle,
             default_isolation: TmIsolationLevel::default(),
             current_role: None,
+            checkpoint_manager: None,
         }
     }
 
@@ -48,6 +49,7 @@ impl ExecutionEngine<MemoryStorage> {
             tx_status: TxStatus::Idle,
             default_isolation: TmIsolationLevel::default(),
             current_role: None,
+            checkpoint_manager: None,
         }
     }
 
@@ -63,6 +65,7 @@ impl ExecutionEngine<MemoryStorage> {
             tx_status: TxStatus::Idle,
             default_isolation: TmIsolationLevel::default(),
             current_role: None,
+            checkpoint_manager: None,
         }
     }
 }
@@ -89,6 +92,7 @@ impl ExecutionEngine<MemoryStorage> {
             tx_status: TxStatus::Idle,
             default_isolation: TmIsolationLevel::default(),
             current_role: None,
+            checkpoint_manager: None,
         }
     }
 }
@@ -120,6 +124,7 @@ impl ExecutionEngine<MemoryStorage> {
             tx_status: TxStatus::Idle,
             default_isolation: TmIsolationLevel::default(),
             current_role: None,
+            checkpoint_manager: None,
         })
     }
 
@@ -146,6 +151,34 @@ impl ExecutionEngine<MemoryStorage> {
             tx_status: TxStatus::Idle,
             default_isolation: TmIsolationLevel::default(),
             current_role: None,
+            checkpoint_manager: None,
+        })
+    }
+
+    /// Create a WAL-backed engine with CheckpointManager for WAL lifecycle control.
+    pub fn with_wal_and_checkpoint(
+        data_dir: PathBuf,
+        checkpoint_dir: PathBuf,
+    ) -> SqlResult<ExecutionEngine<WalStorage<FileStorage, FileBackedWalManager>>> {
+        let inner = FileStorage::new_with_wal(data_dir.clone())
+            .map_err(|e| SqlError::ExecutionError(format!("FileStorage init failed: {}", e)))?;
+        let wal_path = data_dir.join("sqlrustgo.wal");
+        let wal_manager = FileBackedWalManager::new(wal_path)?;
+        let wal_storage = WalStorage::new(inner, wal_manager)?;
+
+        let checkpoint_manager = sqlrustgo_storage::CheckpointManager::with_dir(checkpoint_dir).ok();
+
+        Ok(ExecutionEngine {
+            storage: Arc::new(RwLock::new(wal_storage)),
+            catalog: None,
+            stats: Arc::new(RwLock::new(ExecutionStats::default())),
+            cbo_enabled: true,
+            transaction_manager: TransactionManager::new(),
+            current_tx_id: None,
+            tx_status: TxStatus::Idle,
+            default_isolation: TmIsolationLevel::default(),
+            current_role: None,
+            checkpoint_manager: checkpoint_manager.map(|cp| Arc::new(RwLock::new(cp))),
         })
     }
 
