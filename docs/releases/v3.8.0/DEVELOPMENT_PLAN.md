@@ -3,7 +3,7 @@
 > **Version**: v3.8.0
 > **Type**: Architecture Unification Release
 > **Target**: Execute path consolidation + ACID foundation
-> **Branch**: `origin/develop/v3.8.0` (to be created)
+> **Status**: ACTIVE — Execution Semantics Freeze (commit 087bb12d)
 > **Created**: 2026-05-30
 > **Auditor**: Hermes Agent
 
