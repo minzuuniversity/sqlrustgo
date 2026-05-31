@@ -89,12 +89,34 @@ mod tests {
 
     #[test]
     fn test_event_type_names() {
-        assert_eq!(ExecutionEvent::SqlReceived { sql: "".into() }.event_type(), "SqlReceived");
-        assert_eq!(ExecutionEvent::TxnBegin { txn_id: 1 }.event_type(), "TxnBegin");
-        assert_eq!(ExecutionEvent::TxnCommit { txn_id: 1 }.event_type(), "TxnCommit");
-        assert_eq!(ExecutionEvent::WalBegin { txn_id: 1 }.event_type(), "WalBegin");
-        assert_eq!(ExecutionEvent::StorageRead { table: "t".into(), rows: 0 }.event_type(), "StorageRead");
-        assert_eq!(ExecutionEvent::VtuValidate { result: true }.event_type(), "VtuValidate");
+        assert_eq!(
+            ExecutionEvent::SqlReceived { sql: "".into() }.event_type(),
+            "SqlReceived"
+        );
+        assert_eq!(
+            ExecutionEvent::TxnBegin { txn_id: 1 }.event_type(),
+            "TxnBegin"
+        );
+        assert_eq!(
+            ExecutionEvent::TxnCommit { txn_id: 1 }.event_type(),
+            "TxnCommit"
+        );
+        assert_eq!(
+            ExecutionEvent::WalBegin { txn_id: 1 }.event_type(),
+            "WalBegin"
+        );
+        assert_eq!(
+            ExecutionEvent::StorageRead {
+                table: "t".into(),
+                rows: 0
+            }
+            .event_type(),
+            "StorageRead"
+        );
+        assert_eq!(
+            ExecutionEvent::VtuValidate { result: true }.event_type(),
+            "VtuValidate"
+        );
     }
 
     #[test]
@@ -102,24 +124,44 @@ mod tests {
         let e = ExecutionEvent::TxnBegin { txn_id: 42 };
         assert_eq!(e.txn_id(), Some(42));
 
-        let e = ExecutionEvent::StorageRead { table: "t".into(), rows: 5 };
+        let e = ExecutionEvent::StorageRead {
+            table: "t".into(),
+            rows: 5,
+        };
         assert_eq!(e.txn_id(), None);
     }
 
     #[test]
     fn test_all_variants_cover_event_types() {
         let variants = vec![
-            ExecutionEvent::SqlReceived { sql: "SELECT 1".into() },
+            ExecutionEvent::SqlReceived {
+                sql: "SELECT 1".into(),
+            },
             ExecutionEvent::TxnBegin { txn_id: 1 },
             ExecutionEvent::TxnCommit { txn_id: 1 },
             ExecutionEvent::TxnRollback { txn_id: 1 },
             ExecutionEvent::WalBegin { txn_id: 1 },
-            ExecutionEvent::WalWrite { txn_id: 1, segment: "seg_1".into() },
+            ExecutionEvent::WalWrite {
+                txn_id: 1,
+                segment: "seg_1".into(),
+            },
             ExecutionEvent::WalCommit { txn_id: 1 },
-            ExecutionEvent::StorageRead { table: "t".into(), rows: 10 },
-            ExecutionEvent::StorageWrite { table: "t".into(), rows: 5 },
-            ExecutionEvent::StorageMutation { table: "t".into(), op: DmlOperation::Insert },
-            ExecutionEvent::BoundaryCheck { module: "wal".into(), passed: true },
+            ExecutionEvent::StorageRead {
+                table: "t".into(),
+                rows: 10,
+            },
+            ExecutionEvent::StorageWrite {
+                table: "t".into(),
+                rows: 5,
+            },
+            ExecutionEvent::StorageMutation {
+                table: "t".into(),
+                op: DmlOperation::Insert,
+            },
+            ExecutionEvent::BoundaryCheck {
+                module: "wal".into(),
+                passed: true,
+            },
             ExecutionEvent::VtuValidate { result: false },
         ];
         assert_eq!(variants.len(), 12);
@@ -132,8 +174,10 @@ mod tests {
     #[test]
     fn test_recovery_plan_default() {
         let plan = RecoveryPlan::new(
-            "trace-1".into(), "viol-1".into(),
-            RecoveryType::Crash, RecoveryConfidence::High,
+            "trace-1".into(),
+            "viol-1".into(),
+            RecoveryType::Crash,
+            RecoveryConfidence::High,
             vec!["step1".into()],
         );
         assert!(plan.plan_id.starts_with("RP-"));
