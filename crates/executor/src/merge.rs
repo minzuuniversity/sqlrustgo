@@ -6,7 +6,7 @@
 //! ## VTU Enforcement
 //! ALL DML operations go through ExecutionEngine::execute() - NO direct storage access.
 
-use sqlrustgo_parser::{Expression, MergeStatement};
+use sqlrustgo_planner::{Expr, MergeStatement, Operator};
 use sqlrustgo_storage::{StorageEngine, TableInfo};
 use sqlrustgo_types::{SqlError, SqlResult, Value};
 use std::sync::{Arc, Mutex, RwLock};
@@ -82,7 +82,7 @@ impl MergeExecutor {
                         .zip(clause.update_values.iter())
                         .filter_map(|(col, val)| {
                             find_column_index(col, &target_table_info).map(|col_idx| {
-                                let evaluated = self.eval_merge_value(
+                                let evaluated = self.eval_merge_expr(
                                     val,
                                     source_row,
                                     target_row,
@@ -106,7 +106,7 @@ impl MergeExecutor {
                     .insert_values
                     .iter()
                     .map(|val| {
-                        self.eval_merge_value(
+                        self.eval_merge_expr(
                             val,
                             source_row,
                             &[],
@@ -130,14 +130,18 @@ impl MergeExecutor {
     #[allow(clippy::only_used_in_recursion)]
     fn eval_merge_condition(
         &self,
-        condition: &Expression,
+        condition: &Expr,
         source_row: &[Value],
         target_row: &[Value],
         source_table_info: &TableInfo,
         target_table_info: &TableInfo,
     ) -> bool {
         match condition {
-            Expression::BinaryOp(left, op, right) if op.to_uppercase() == "AND" => {
+            Expr::BinaryExpr {
+                left,
+                op: Operator::And,
+                right,
+            } => {
                 self.eval_merge_condition(
                     left,
                     source_row,
@@ -152,7 +156,11 @@ impl MergeExecutor {
                     target_table_info,
                 )
             }
-            Expression::BinaryOp(left, op, right) if op.to_uppercase() == "OR" => {
+            Expr::BinaryExpr {
+                left,
+                op: Operator::Or,
+                right,
+            } => {
                 self.eval_merge_condition(
                     left,
                     source_row,
@@ -167,7 +175,7 @@ impl MergeExecutor {
                     target_table_info,
                 )
             }
-            Expression::BinaryOp(left, op, right) => {
+            Expr::BinaryExpr { left, op, right } => {
                 let left_val = self.eval_merge_expr(
                     left,
                     source_row,
@@ -182,7 +190,7 @@ impl MergeExecutor {
                     source_table_info,
                     target_table_info,
                 );
-                sql_compare(op, &left_val, &right_val)
+                op_compare(op, &left_val, &right_val)
             }
             _ => false,
         }
@@ -191,24 +199,25 @@ impl MergeExecutor {
     #[allow(clippy::only_used_in_recursion)]
     fn eval_merge_expr(
         &self,
-        expr: &Expression,
+        expr: &Expr,
         source_row: &[Value],
         target_row: &[Value],
         source_table_info: &TableInfo,
         target_table_info: &TableInfo,
     ) -> Value {
         match expr {
-            Expression::Literal(_) => expression_to_value(expr),
-            Expression::Identifier(name) => {
-                if let Some((qualifier, col)) = name.split_once('.') {
+            Expr::Literal(v) => v.clone(),
+            Expr::Column(col) => {
+                if let Some(ref qualifier) = col.relation {
                     let qualifier_lower = qualifier.to_lowercase();
+                    let col_name = &col.name;
                     if qualifier_lower == source_table_info.name.to_lowercase()
                         || qualifier_lower == "source"
                     {
                         if let Some(idx) = source_table_info
                             .columns
                             .iter()
-                            .position(|c| c.name.eq_ignore_ascii_case(col))
+                            .position(|c| c.name.eq_ignore_ascii_case(col_name))
                         {
                             return source_row.get(idx).cloned().unwrap_or(Value::Null);
                         }
@@ -219,7 +228,7 @@ impl MergeExecutor {
                         if let Some(idx) = target_table_info
                             .columns
                             .iter()
-                            .position(|c| c.name.eq_ignore_ascii_case(col))
+                            .position(|c| c.name.eq_ignore_ascii_case(col_name))
                         {
                             return target_row.get(idx).cloned().unwrap_or(Value::Null);
                         }
@@ -228,20 +237,20 @@ impl MergeExecutor {
                 } else if let Some(idx) = target_table_info
                     .columns
                     .iter()
-                    .position(|c| c.name.eq_ignore_ascii_case(name))
+                    .position(|c| c.name.eq_ignore_ascii_case(&col.name))
                 {
                     target_row.get(idx).cloned().unwrap_or(Value::Null)
                 } else if let Some(idx) = source_table_info
                     .columns
                     .iter()
-                    .position(|c| c.name.eq_ignore_ascii_case(name))
+                    .position(|c| c.name.eq_ignore_ascii_case(&col.name))
                 {
                     source_row.get(idx).cloned().unwrap_or(Value::Null)
                 } else {
                     Value::Null
                 }
             }
-            Expression::BinaryOp(left, op, right) => {
+            Expr::BinaryExpr { left, op, right } => {
                 let l = self.eval_merge_expr(
                     left,
                     source_row,
@@ -256,47 +265,38 @@ impl MergeExecutor {
                     source_table_info,
                     target_table_info,
                 );
-                evaluate_binary_op(&l, &r, op)
+                eval_binary_op(&l, &r, op)
             }
             _ => Value::Null,
         }
     }
-
-    fn eval_merge_value(
-        &self,
-        expr: &Expression,
-        source_row: &[Value],
-        target_row: &[Value],
-        source_table_info: &TableInfo,
-        target_table_info: &TableInfo,
-    ) -> Value {
-        self.eval_merge_expr(
-            expr,
-            source_row,
-            target_row,
-            source_table_info,
-            target_table_info,
-        )
-    }
 }
 
 /// Compare two values for a binary operation
-fn evaluate_binary_op(left: &Value, right: &Value, op: &str) -> Value {
-    match op.to_uppercase().as_str() {
-        "=" | "==" | "IS" => Value::Boolean(left == right),
-        "!=" | "<>" => Value::Boolean(left != right),
-        ">" => Value::Boolean(compare_values(left, right) > 0),
-        ">=" => Value::Boolean(compare_values(left, right) >= 0),
-        "<" => Value::Boolean(compare_values(left, right) < 0),
-        "<=" => Value::Boolean(compare_values(left, right) <= 0),
-        "AND" | "&&" => {
+fn eval_binary_op(left: &Value, right: &Value, op: &Operator) -> Value {
+    match op {
+        Operator::Eq | Operator::NotEq => {
+            if matches!(left, Value::Null) || matches!(right, Value::Null) {
+                return Value::Boolean(false);
+            }
+            Value::Boolean(match op {
+                Operator::Eq => left == right,
+                Operator::NotEq => left != right,
+                _ => unreachable!(),
+            })
+        }
+        Operator::Gt => Value::Boolean(compare_values(left, right) > 0),
+        Operator::GtEq => Value::Boolean(compare_values(left, right) >= 0),
+        Operator::Lt => Value::Boolean(compare_values(left, right) < 0),
+        Operator::LtEq => Value::Boolean(compare_values(left, right) <= 0),
+        Operator::And => {
             if let (Value::Boolean(l), Value::Boolean(r)) = (left, right) {
                 Value::Boolean(*l && *r)
             } else {
                 Value::Boolean(false)
             }
         }
-        "OR" | "||" => {
+        Operator::Or => {
             if let (Value::Boolean(l), Value::Boolean(r)) = (left, right) {
                 Value::Boolean(*l || *r)
             } else {
@@ -328,19 +328,19 @@ fn compare_values(left: &Value, right: &Value) -> i32 {
     }
 }
 
-/// SQL comparison operator
-fn sql_compare(op: &str, left: &Value, right: &Value) -> bool {
+/// SQL comparison operator using planner Operator enum
+fn op_compare(op: &Operator, left: &Value, right: &Value) -> bool {
     if matches!(left, Value::Null) || matches!(right, Value::Null) {
         return false;
     }
 
-    match op.to_uppercase().as_str() {
-        "=" | "==" => left == right,
-        "!=" | "<>" => left != right,
-        ">" => compare_values(left, right) > 0,
-        ">=" => compare_values(left, right) >= 0,
-        "<" => compare_values(left, right) < 0,
-        "<=" => compare_values(left, right) <= 0,
+    match op {
+        Operator::Eq => left == right,
+        Operator::NotEq => left != right,
+        Operator::Gt => compare_values(left, right) > 0,
+        Operator::GtEq => compare_values(left, right) >= 0,
+        Operator::Lt => compare_values(left, right) < 0,
+        Operator::LtEq => compare_values(left, right) <= 0,
         _ => false,
     }
 }
@@ -360,30 +360,72 @@ fn find_column_index(col_name: &str, table_info: &TableInfo) -> Option<usize> {
     }
 }
 
-/// Convert an expression to a Value
-fn expression_to_value(expr: &Expression) -> Value {
-    match expr {
-        Expression::Literal(s) => {
-            let s = s.trim();
-            if s.eq_ignore_ascii_case("NULL") {
-                Value::Null
-            } else if s.eq_ignore_ascii_case("TRUE") {
-                Value::Boolean(true)
-            } else if s.eq_ignore_ascii_case("FALSE") {
-                Value::Boolean(false)
-            } else if let Ok(n) = s.parse::<i64>() {
-                Value::Integer(n)
-            } else if let Ok(f) = s.parse::<f64>() {
-                Value::Float(f)
-            } else if s.starts_with('\'') && s.ends_with('\'') {
-                Value::Text(s[1..s.len() - 1].to_string())
-            } else {
-                Value::Text(s.to_string())
-            }
-        }
-        Expression::Identifier(name) => Value::Text(name.clone()),
-        _ => Value::Null,
+/// Convert a value to a SQL string literal
+fn value_to_sql(val: &Value) -> String {
+    match val {
+        Value::Null => "NULL".to_string(),
+        Value::Integer(n) => n.to_string(),
+        Value::Float(f) => f.to_string(),
+        Value::Text(s) => format!("'{}'", s.replace('\'', "''")),
+        Value::Boolean(true) => "TRUE".to_string(),
+        Value::Boolean(false) => "FALSE".to_string(),
+        Value::Blob(_) => "NULL".to_string(),
     }
+}
+
+/// Build an INSERT SQL statement from values
+fn build_insert_sql(table: &str, table_info: &TableInfo, values: &[Value]) -> String {
+    let col_names: Vec<String> = table_info.columns.iter().map(|c| c.name.clone()).collect();
+
+    let values_str = values
+        .iter()
+        .map(value_to_sql)
+        .collect::<Vec<_>>()
+        .join(", ");
+
+    format!(
+        "INSERT INTO {} ({}) VALUES ({})",
+        table,
+        col_names.join(", "),
+        values_str
+    )
+}
+
+/// Build an UPDATE SQL statement with filters
+fn build_update_sql(
+    table: &str,
+    table_info: &TableInfo,
+    updates: &[(usize, Value)],
+    filters: &[Value],
+) -> String {
+    let set_clauses: Vec<String> = updates
+        .iter()
+        .map(|(idx, val)| {
+            let col_name = &table_info.columns[*idx].name;
+            format!("{} = {}", col_name, value_to_sql(val))
+        })
+        .collect();
+
+    let where_clause = if filters.is_empty() {
+        String::new()
+    } else {
+        let conditions: Vec<String> = filters
+            .iter()
+            .enumerate()
+            .map(|(i, v)| {
+                let col_name = &table_info.columns[i].name;
+                format!("{} = {}", col_name, value_to_sql(v))
+            })
+            .collect();
+        format!(" WHERE {}", conditions.join(" AND "))
+    };
+
+    format!(
+        "UPDATE {} SET {}{}",
+        table,
+        set_clauses.join(", "),
+        where_clause
+    )
 }
 
 #[cfg(test)]
@@ -417,74 +459,18 @@ mod tests {
     }
 
     #[test]
-    fn test_evaluate_binary_op() {
+    fn test_eval_binary_op() {
         assert_eq!(
-            evaluate_binary_op(&Value::Integer(1), &Value::Integer(1), "="),
+            eval_binary_op(&Value::Integer(1), &Value::Integer(1), &Operator::Eq),
             Value::Boolean(true)
         );
         assert_eq!(
-            evaluate_binary_op(&Value::Integer(1), &Value::Integer(2), "<"),
+            eval_binary_op(&Value::Integer(1), &Value::Integer(2), &Operator::Lt),
             Value::Boolean(true)
         );
         assert_eq!(
-            evaluate_binary_op(&Value::Boolean(true), &Value::Boolean(true), "AND"),
+            eval_binary_op(&Value::Boolean(true), &Value::Boolean(true), &Operator::And),
             Value::Boolean(true)
-        );
-    }
-
-    #[test]
-    fn test_expression_to_value() {
-        assert_eq!(
-            expression_to_value(&Expression::Literal("42".to_string())),
-            Value::Integer(42)
-        );
-        assert_eq!(
-            expression_to_value(&Expression::Literal("'hello'".to_string())),
-            Value::Text("hello".to_string())
-        );
-        assert_eq!(
-            expression_to_value(&Expression::Literal("NULL".to_string())),
-            Value::Null
-        );
-        assert_eq!(
-            expression_to_value(&Expression::Literal("TRUE".to_string())),
-            Value::Boolean(true)
-        );
-        assert_eq!(
-            expression_to_value(&Expression::Literal("FALSE".to_string())),
-            Value::Boolean(false)
-        );
-        assert_eq!(
-            expression_to_value(&Expression::Identifier("col1".to_string())),
-            Value::Text("col1".to_string())
-        );
-        assert_eq!(
-            expression_to_value(&Expression::BinaryOp(
-                Box::new(Expression::Literal("1".to_string())),
-                "+".to_string(),
-                Box::new(Expression::Literal("2".to_string()))
-            )),
-            Value::Null
-        );
-    }
-
-    #[test]
-    fn test_expression_to_value_float() {
-        assert_eq!(
-            expression_to_value(&Expression::Literal("3.14".to_string())),
-            Value::Float(3.14)
-        );
-        assert_eq!(
-            expression_to_value(&Expression::Literal("'test'".to_string())),
-            Value::Text("test".to_string())
-        );
-        // Unsupported expression returns Null
-        assert_eq!(
-            expression_to_value(&Expression::UnaryOp(
-                "NOT".to_string(),
-                Box::new(Expression::Literal("TRUE".to_string()))
-            )),
-            Value::Null
         );
     }
 
@@ -512,64 +498,72 @@ mod tests {
     }
 
     #[test]
-    fn test_evaluate_binary_op_comparisons() {
-        // == operator
+    fn test_eval_binary_op_comparisons() {
+        // Eq operator
         assert_eq!(
-            evaluate_binary_op(&Value::Integer(5), &Value::Integer(5), "=="),
+            eval_binary_op(&Value::Integer(5), &Value::Integer(5), &Operator::Eq),
             Value::Boolean(true)
         );
-        // IS operator
+        // NotEq operator
         assert_eq!(
-            evaluate_binary_op(&Value::Integer(5), &Value::Integer(5), "IS"),
+            eval_binary_op(&Value::Integer(5), &Value::Integer(3), &Operator::NotEq),
             Value::Boolean(true)
         );
-        // <> operator
+        // GtEq operator
         assert_eq!(
-            evaluate_binary_op(&Value::Integer(5), &Value::Integer(3), "<>"),
+            eval_binary_op(&Value::Integer(5), &Value::Integer(3), &Operator::GtEq),
             Value::Boolean(true)
         );
-        // >= operator
+        // LtEq operator
         assert_eq!(
-            evaluate_binary_op(&Value::Integer(5), &Value::Integer(3), ">="),
+            eval_binary_op(&Value::Integer(3), &Value::Integer(5), &Operator::LtEq),
             Value::Boolean(true)
         );
-        // <= operator
+        // And operator
         assert_eq!(
-            evaluate_binary_op(&Value::Integer(3), &Value::Integer(5), "<="),
-            Value::Boolean(true)
-        );
-        // AND operator
-        assert_eq!(
-            evaluate_binary_op(&Value::Boolean(true), &Value::Boolean(true), "AND"),
+            eval_binary_op(&Value::Boolean(true), &Value::Boolean(true), &Operator::And),
             Value::Boolean(true)
         );
         assert_eq!(
-            evaluate_binary_op(&Value::Boolean(true), &Value::Boolean(false), "AND"),
+            eval_binary_op(
+                &Value::Boolean(true),
+                &Value::Boolean(false),
+                &Operator::And
+            ),
             Value::Boolean(false)
         );
-        // AND with non-boolean
+        // And with non-boolean
         assert_eq!(
-            evaluate_binary_op(&Value::Integer(1), &Value::Integer(1), "AND"),
+            eval_binary_op(&Value::Integer(1), &Value::Integer(1), &Operator::And),
             Value::Boolean(false)
         );
-        // OR operator
+        // Or operator
         assert_eq!(
-            evaluate_binary_op(&Value::Boolean(true), &Value::Boolean(false), "OR"),
+            eval_binary_op(&Value::Boolean(true), &Value::Boolean(false), &Operator::Or),
             Value::Boolean(true)
         );
         assert_eq!(
-            evaluate_binary_op(&Value::Boolean(false), &Value::Boolean(false), "OR"),
+            eval_binary_op(
+                &Value::Boolean(false),
+                &Value::Boolean(false),
+                &Operator::Or
+            ),
             Value::Boolean(false)
         );
-        // OR with non-boolean
+        // Or with non-boolean
         assert_eq!(
-            evaluate_binary_op(&Value::Integer(1), &Value::Integer(1), "OR"),
+            eval_binary_op(&Value::Integer(1), &Value::Integer(1), &Operator::Or),
             Value::Boolean(false)
         );
         // Unknown operator
         assert_eq!(
-            evaluate_binary_op(&Value::Integer(1), &Value::Integer(1), "LIKE"),
+            eval_binary_op(&Value::Integer(1), &Value::Integer(1), &Operator::Like),
             Value::Null
+        );
+        // Null comparisons with Eq
+        assert_eq!(
+            eval_binary_op(&Value::Integer(1), &Value::Null, &Operator::Eq),
+            Value::Boolean(false)
         );
     }
 
@@ -580,23 +574,59 @@ mod tests {
     }
 
     #[test]
-    fn test_sql_compare_edge_cases() {
-        // != operator
-        assert!(sql_compare("!=", &Value::Integer(1), &Value::Integer(2)));
-        assert!(!sql_compare("!=", &Value::Integer(1), &Value::Integer(1)));
-        // >= with matching values
-        assert!(sql_compare(">=", &Value::Integer(5), &Value::Integer(3)));
-        assert!(sql_compare(">=", &Value::Integer(5), &Value::Integer(5)));
-        assert!(!sql_compare(">=", &Value::Integer(3), &Value::Integer(5)));
-        // <= with matching values
-        assert!(sql_compare("<=", &Value::Integer(3), &Value::Integer(5)));
-        assert!(sql_compare("<=", &Value::Integer(5), &Value::Integer(5)));
-        assert!(!sql_compare("<=", &Value::Integer(6), &Value::Integer(5)));
+    fn test_op_compare_edge_cases() {
+        // NotEq operator
+        assert!(op_compare(
+            &Operator::NotEq,
+            &Value::Integer(1),
+            &Value::Integer(2)
+        ));
+        assert!(!op_compare(
+            &Operator::NotEq,
+            &Value::Integer(1),
+            &Value::Integer(1)
+        ));
+        // GtEq with matching values
+        assert!(op_compare(
+            &Operator::GtEq,
+            &Value::Integer(5),
+            &Value::Integer(3)
+        ));
+        assert!(op_compare(
+            &Operator::GtEq,
+            &Value::Integer(5),
+            &Value::Integer(5)
+        ));
+        assert!(!op_compare(
+            &Operator::GtEq,
+            &Value::Integer(3),
+            &Value::Integer(5)
+        ));
+        // LtEq with matching values
+        assert!(op_compare(
+            &Operator::LtEq,
+            &Value::Integer(3),
+            &Value::Integer(5)
+        ));
+        assert!(op_compare(
+            &Operator::LtEq,
+            &Value::Integer(5),
+            &Value::Integer(5)
+        ));
+        assert!(!op_compare(
+            &Operator::LtEq,
+            &Value::Integer(6),
+            &Value::Integer(5)
+        ));
         // Unknown operator
-        assert!(!sql_compare("LIKE", &Value::Integer(1), &Value::Integer(1)));
+        assert!(!op_compare(
+            &Operator::Like,
+            &Value::Integer(1),
+            &Value::Integer(1)
+        ));
         // Null comparisons
-        assert!(!sql_compare("=", &Value::Integer(1), &Value::Null));
-        assert!(!sql_compare("<", &Value::Null, &Value::Null));
+        assert!(!op_compare(&Operator::Eq, &Value::Integer(1), &Value::Null));
+        assert!(!op_compare(&Operator::Lt, &Value::Null, &Value::Null));
     }
 
     /// Build an INSERT SQL statement from values
@@ -674,50 +704,36 @@ mod tests {
     }
 
     #[test]
-    fn test_sql_compare_operators() {
-        // Equality
-        assert!(sql_compare("=", &Value::Integer(1), &Value::Integer(1)));
-        assert!(!sql_compare("=", &Value::Integer(1), &Value::Integer(2)));
-        // Not equal
-        assert!(sql_compare("!=", &Value::Integer(1), &Value::Integer(2)));
-        assert!(sql_compare("<>", &Value::Integer(1), &Value::Integer(2)));
-        // Greater/less than
-        assert!(sql_compare(">", &Value::Integer(2), &Value::Integer(1)));
-        assert!(sql_compare("<", &Value::Integer(1), &Value::Integer(2)));
-        assert!(sql_compare(">=", &Value::Integer(2), &Value::Integer(2)));
-        assert!(sql_compare("<=", &Value::Integer(2), &Value::Integer(2)));
-        // Null handling
-        assert!(!sql_compare("=", &Value::Null, &Value::Integer(1)));
-        assert!(!sql_compare(">", &Value::Null, &Value::Integer(1)));
-    }
-
-    #[test]
-    fn test_evaluate_binary_op_or() {
+    fn test_eval_binary_op_or() {
         assert_eq!(
-            evaluate_binary_op(&Value::Boolean(false), &Value::Boolean(true), "OR"),
+            eval_binary_op(&Value::Boolean(false), &Value::Boolean(true), &Operator::Or),
             Value::Boolean(true)
         );
         assert_eq!(
-            evaluate_binary_op(&Value::Boolean(false), &Value::Boolean(false), "OR"),
+            eval_binary_op(
+                &Value::Boolean(false),
+                &Value::Boolean(false),
+                &Operator::Or
+            ),
             Value::Boolean(false)
         );
     }
 
     #[test]
-    fn test_evaluate_binary_op_string_eq() {
+    fn test_eval_binary_op_string_eq() {
         assert_eq!(
-            evaluate_binary_op(
+            eval_binary_op(
                 &Value::Text("a".to_string()),
                 &Value::Text("a".to_string()),
-                "="
+                &Operator::Eq
             ),
             Value::Boolean(true)
         );
         assert_eq!(
-            evaluate_binary_op(
+            eval_binary_op(
                 &Value::Text("a".to_string()),
                 &Value::Text("b".to_string()),
-                "!="
+                &Operator::NotEq
             ),
             Value::Boolean(true)
         );
