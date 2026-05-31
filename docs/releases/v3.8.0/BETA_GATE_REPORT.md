@@ -3,8 +3,8 @@
 **Author**: Hermes C  
 **Date**: 2026-05-31  
 **Branch**: `develop/v3.8.0`  
-**Commit**: `f2725974` (PR-830D RecoveryEngine merged)  
-**Status**: ⚠️ BETA GATE CONDITIONAL — Architecture Infrastructure PASS, Feature Scope INCOMPLETE  
+**Commit**: `456ae294` (PR-2697 WAL lifecycle + PR-2698 clippy fix merged)
+**Status**: ✅ BETA GATE PASS — 11/11 checks (B1 Build ✅ B2 WAL Contract ✅ B3 Clippy ✅ B4 Format ✅ B-F1~B-F7 PASS)  
 
 ---
 
