@@ -166,7 +166,8 @@ impl ExecutionEngine<MemoryStorage> {
         let wal_manager = FileBackedWalManager::new(wal_path)?;
         let wal_storage = WalStorage::new(inner, wal_manager)?;
 
-        let checkpoint_manager = sqlrustgo_storage::CheckpointManager::with_dir(checkpoint_dir).ok();
+        let checkpoint_manager =
+            sqlrustgo_storage::CheckpointManager::with_dir(checkpoint_dir).ok();
 
         Ok(ExecutionEngine {
             storage: Arc::new(RwLock::new(wal_storage)),
