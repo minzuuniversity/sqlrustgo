@@ -12,3 +12,4 @@ data/tpch-sf01/
 artifacts/coverage/
 .DS_Store
 Cargo.lock
+.worktrees/
