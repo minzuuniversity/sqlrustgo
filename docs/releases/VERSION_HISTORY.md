@@ -254,20 +254,32 @@ v2.5.0
 | **WAL 验证** | TI-3 工作区 | ✅ |
 | **覆盖率** | Alpha Gate FAIL (32.59% Z440) | ❌ |
 
-**发现**：跨版本集成债务（INT-1~INT-4）
+**状态**: Alpha FAIL — 双链路执行缺陷（Path A/B/C 未统一）
+
+**已知缺陷**:
+- 双链路执行：Path A (ExecutionEngine) 与 Path B/C (MySQL Protocol/StoredProc) 行为不一致
+- WAL 未集成：WalStorage 未接入 mysql-server 生产路径 (IMPL-002)
+- INT-3：expr crate 孤岛
 
 ---
 
 ### v3.7.0 (2026-05-30) - GA 集成债务清算
 
+**状态**: Refactoring — 重构里程碑（非生产 GA）
+
 **目标**: 集成债务清算 + 协议栈统一
 
-| Issue | 缺陷 | 优先级 |
-|-------|------|--------|
-| INT-1 | DML 不经过 WAL/TransactionManager | P0 |
-| INT-2 | ParallelVolcanoExecutor 功能孤岛 | P0 |
-| INT-3 | expr crate 孤岛 | P1 |
-| INT-4 | mysql-server 未集成 | P1 |
+| Issue | 缺陷 | 优先级 | 状态 |
+|-------|------|--------|------|
+| INT-1 | DML 不经过 WAL/TransactionManager | P0 | 持续修复中 |
+| INT-2 | ParallelVolcanoExecutor 功能孤岛 | P0 | 持续修复中 |
+| INT-3 | expr crate 孤岛 | P1 | 持续修复中 |
+| INT-4 | mysql-server 双路径（Path A/B/C 未统一） | P1 | 持续修复中 |
+
+**门禁状态**:
+- Alpha/Beta/RC: ✅ PASS
+- GA Gate: ⚠️ CONDITIONAL PASS（R4/R5 SKIP；覆盖率 84.99% 差 0.01pp）
+- **注意**: v3.7.0 为重构里程碑，非生产 GA 认证
 
 **时间线**：
 - 2026-06-06: Alpha Gate（覆盖率 75%+）
