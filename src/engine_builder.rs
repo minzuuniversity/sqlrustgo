@@ -8,7 +8,7 @@ use std::sync::{Arc, RwLock};
 
 use sqlrustgo_catalog::Catalog;
 use sqlrustgo_storage::{
-    recovery_engine::{RecoveryEngine, RecoveryEngineImpl},
+    recovery_engine::{RecoveryEngine, RecoveryEngineImpl, RecoveryReport},
     FileBackedWalManager, FileStorage, MemoryStorage, StorageEngine, WalStorage,
 };
 use sqlrustgo_transaction::{IsolationLevel as TmIsolationLevel, TransactionManager};
@@ -148,16 +148,27 @@ impl ExecutionEngine<MemoryStorage> {
             current_role: None,
         })
     }
+
+    /// Create a WAL-backed engine with persistent FileStorage and automatic recovery.
+    /// This constructor creates storage and WAL manager, then runs recovery automatically.
+    /// For production use with WAL persistence.
+    pub fn with_wal_recovery(
+        data_dir: PathBuf,
+    ) -> SqlResult<ExecutionEngine<WalStorage<FileStorage, FileBackedWalManager>>> {
+        let mut engine = Self::with_wal_file(data_dir)?;
+        recover_wal(&mut engine)?;
+        Ok(engine)
+    }
 }
 
 /// Recover a WAL-backed engine after crash: replay committed WAL entries
 pub fn recover_wal(
     engine: &mut ExecutionEngine<WalStorage<FileStorage, FileBackedWalManager>>,
-) -> SqlResult<()> {
+) -> SqlResult<RecoveryReport> {
     let storage = &mut *engine.storage.write().map_err(|e| {
         SqlError::ExecutionError(format!("Failed to lock storage for recovery: {:?}", e))
     })?;
     let (inner, wal_mgr) = storage.split();
     let mut recovery = RecoveryEngineImpl;
-    RecoveryEngine::recover(&mut recovery, inner, wal_mgr).map(|_| ())
+    RecoveryEngine::recover(&mut recovery, inner, wal_mgr)
 }
