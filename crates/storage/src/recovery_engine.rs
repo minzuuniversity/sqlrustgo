@@ -242,6 +242,23 @@ fn bytes_to_record(data: &[u8]) -> Result<Vec<Value>, crate::engine::SqlError> {
     Ok(record)
 }
 
+fn key_to_filter_values(key: &[u8]) -> Result<Vec<Value>, crate::engine::SqlError> {
+    if key.is_empty() {
+        return Ok(Vec::new());
+    }
+    if key.len() == 8 {
+        let mut buf = [0u8; 8];
+        buf.copy_from_slice(key);
+        return Ok(vec![Value::Integer(i64::from_le_bytes(buf))]);
+    }
+    if let Ok(s) = std::str::from_utf8(key) {
+        return Ok(vec![Value::Text(s.to_string())]);
+    }
+    Err(crate::engine::SqlError::ExecutionError(
+        "RecoveryEngine: cannot parse key to filter values".to_string(),
+    ))
+}
+
 // ---------------------------------------------------------------------------
 // Helpers: WAL entry filtering
 // ---------------------------------------------------------------------------
@@ -374,18 +391,23 @@ impl<S: StorageEngine> RecoveryEngine<S> for RecoveryEngineImpl {
                 storage.insert(&table_name, vec![record])?;
             }
             WalEntryType::Update => {
-                // Current WAL format stores update data as debug-formatted &[(usize, Value)].
-                // Full semantic parsing requires a separate improvement pass.
-                // For now: skip update replay to avoid data corruption.
-                // The Insert/Delete replay covers committed state correctly.
+                log::warn!(
+                    "RecoveryEngine: UPDATE replay skipped for table {} (tx_id={})",
+                    table_name,
+                    entry.tx_id
+                );
             }
             WalEntryType::Delete => {
-                // Current WAL stores key-only (no primary key mapping).
-                // Delete-by-empty-filter removes all rows in the table.
-                // This is correct for full-table deletes; filtered deletes
-                // may lose some precision. A future improvement should store
-                // row keys for filtered deletes.
-                storage.delete(&table_name, &[])?;
+                if let Some(ref key) = entry.key {
+                    let filter_values = key_to_filter_values(key)?;
+                    storage.delete(&table_name, &filter_values)?;
+                } else {
+                    log::warn!(
+                        "RecoveryEngine: DELETE entry without key for table {} - full table delete",
+                        table_name
+                    );
+                    storage.delete(&table_name, &[])?;
+                }
             }
             _ => {
                 // Begin, Commit, Rollback, Checkpoint, Prepare are metadata
@@ -564,5 +586,28 @@ mod tests {
     #[test]
     fn test_recovery_engine_impl_trait_bounds() {
         let _engine: Box<dyn RecoveryEngine<MemoryStorage>> = Box::new(RecoveryEngineImpl);
+    }
+
+    #[test]
+    fn test_key_to_filter_values_integer() {
+        let key = 42i64.to_le_bytes().to_vec();
+        let result = key_to_filter_values(&key).unwrap();
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0], Value::Integer(42));
+    }
+
+    #[test]
+    fn test_key_to_filter_values_text() {
+        let key = b"hello".to_vec();
+        let result = key_to_filter_values(&key).unwrap();
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0], Value::Text("hello".to_string()));
+    }
+
+    #[test]
+    fn test_key_to_filter_values_empty() {
+        let key = vec![];
+        let result = key_to_filter_values(&key).unwrap();
+        assert!(result.is_empty());
     }
 }
