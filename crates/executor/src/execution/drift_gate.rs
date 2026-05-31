@@ -69,11 +69,13 @@ impl DriftViolation {
 /// DriftGate — enforces WAL/TX contract before mutations
 pub struct DriftGate {
     trace_id: String,
+    #[allow(dead_code)]
     policy: GuardPolicy,
 }
 
 pub struct GuardPolicy {
     block_on_critical: bool,
+    #[allow(dead_code)]
     mark_degraded_on_medium: bool,
 }
 
