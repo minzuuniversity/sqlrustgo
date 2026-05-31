@@ -78,27 +78,27 @@ v1.2.0-alpha3
 
 ### 2.3 Beta 阶段
 
-**阶段说明**: 功能基本完成
+**阶段说明**: 功能基本完成 + 功能完整性验证
 
 **特点**:
-- 功能冻结
+- 功能冻结（不接受新功能）
+- 功能追踪进入门禁（Beta Gate 不仅检查 B1-B4，还检查 B-Functional）
 - API 基本稳定
 - 重点修复 Bug
 
 **规则**:
 - 不再接受新功能
 - 只允许 Bug Fix
-
-**Tag 示例**:
-```
-v1.2.0-beta1
-v1.2.0-beta2
-```
+- 必须追踪功能完成状态（FEATURE_CHECKLIST.md）
+- PR-DAG 必须与实际提交一致
 
 **门禁要求**:
-- 编译通过
-- 测试通过率 ≥ 95%
-- Clippy 零警告
+- B1 Build: 编译通过
+- B2 WAL Contract: WAL 执行路径存在且可验证
+- B3 Clippy: 零警告
+- B4 Format: 格式化通过
+- B-F1~B-F3: 关键 PR 已合并或 Deferred
+- B-F4~B-F7: 功能追踪完整，无幽灵 PR
 
 ---
 
