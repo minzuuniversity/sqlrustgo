@@ -1,6 +1,6 @@
 use crate::engine::{
-    ColumnDefinition, Record, RowFilter, RowMutation, SqlResult, StorageEngine, TableInfo, Value,
-    TriggerInfo,
+    ColumnDefinition, Record, RowFilter, RowMutation, SqlError, SqlResult, StorageEngine,
+    TableInfo, TriggerInfo, Value,
 };
 use crate::wal::{WalEntry, WalEntryType, WalManager};
 
@@ -348,6 +348,98 @@ impl<S: StorageEngine, T: WalManager> StorageEngine for WalStorage<S, T> {
 
     fn has_view(&self, name: &str) -> bool {
         self.inner.has_view(name)
+    }
+
+    fn begin_transaction(&mut self) -> SqlResult<u64> {
+        if self.current_tx_id != 0 {
+            return Err(SqlError::ExecutionError(
+                "Transaction already in progress".to_string(),
+            ));
+        }
+        let tx_id = self.current_tx_id + 1;
+        self.current_tx_id = tx_id;
+        if self.wal_enabled {
+            let entry = WalEntry {
+                tx_id,
+                entry_type: WalEntryType::Begin,
+                table_id: 0,
+                key: None,
+                data: None,
+                lsn: 0,
+                timestamp: std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs(),
+            };
+            self.wal.append(entry)?;
+        }
+        Ok(tx_id)
+    }
+
+    fn commit_transaction(&mut self) -> SqlResult<()> {
+        if self.current_tx_id == 0 {
+            return Err(SqlError::ExecutionError(
+                "No transaction in progress".to_string(),
+            ));
+        }
+        let tx_id = self.current_tx_id;
+        if self.wal_enabled {
+            let entry = WalEntry {
+                tx_id,
+                entry_type: WalEntryType::Commit,
+                table_id: 0,
+                key: None,
+                data: None,
+                lsn: 0,
+                timestamp: std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs(),
+            };
+            self.wal.append(entry)?;
+            self.wal.sync()?;
+        }
+        self.current_tx_id = 0;
+        Ok(())
+    }
+
+    fn rollback_transaction(&mut self) -> SqlResult<()> {
+        if self.current_tx_id == 0 {
+            return Err(SqlError::ExecutionError(
+                "No transaction in progress".to_string(),
+            ));
+        }
+        let tx_id = self.current_tx_id;
+        if self.wal_enabled {
+            let entry = WalEntry {
+                tx_id,
+                entry_type: WalEntryType::Rollback,
+                table_id: 0,
+                key: None,
+                data: None,
+                lsn: 0,
+                timestamp: std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs(),
+            };
+            self.wal.append(entry)?;
+            self.wal.sync()?;
+        }
+        self.current_tx_id = 0;
+        Ok(())
+    }
+
+    fn in_transaction(&self) -> bool {
+        self.current_tx_id != 0
+    }
+
+    fn current_tx_id(&self) -> u64 {
+        self.current_tx_id
+    }
+
+    fn set_current_tx_id(&mut self, id: u64) {
+        self.current_tx_id = id;
     }
 
     fn is_wal_enabled(&self) -> bool {
