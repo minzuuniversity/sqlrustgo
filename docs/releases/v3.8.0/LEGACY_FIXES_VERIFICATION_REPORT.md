@@ -3,6 +3,7 @@
 > **版本**: v3.8.0
 > **分支**: `origin/develop/v3.8.0` (commit `456ae294b`)
 > **报告日期**: 2026-06-01
+> **报告版本**: v2（修订版）
 > **分析基准**: LEGACY_ISSUES.md + 实际代码 + 测试结果 + PR 合并记录
 
 ---
@@ -14,7 +15,7 @@
 | **代码集成** | ✅ 正确 | 所有 PR 均正确合并到 `develop/v3.8.0` |
 | **单元测试** | ✅ 317/317 + 283/283 PASS | executor + storage crate |
 | **Clippy** | ✅ 0 warnings | `cargo clippy --all-features -D warnings` |
-| **格式** | ✅ 0 diffs | `cargo fmt --check` |
+| **格式** | ⚠️ 已修复 | `cargo fmt --all -- --check` → EXIT:1 (auto-fix 后 EXIT:0) |
 | **WAL Recovery** | ✅ 21/22 PASS | RECOVERY-001~008 中 1 个已知限制 |
 | **MERGE 语法** | ❌ 未实现 | Parser 不支持 MERGE SQL 语法 |
 | **mysql-server WAL** | ❌ 未接入 | FileStorage 绕过 WAL |
@@ -171,9 +172,31 @@ pub trait WalTruncationGate: Send + Sync {
 - `test_truncation_gate_blocks_before_checkpoint` ✅ — checkpoint 前不允许截断
 - `test_truncation_gate_allows_after_checkpoint` ✅ — checkpoint 后允许截断
 
-**已知缺口**:
-- `needs_checkpoint()` 和 `truncate_before()` 未在 ExecutionEngine 主循环中调用
-- WAL 截断生命周期尚未完全闭合（属于 PR-830F-C 范围）
+**已知缺口 — CRITICAL: PR-830F 生命周期未闭合**:
+
+| 组件 | 状态 | 验证 |
+|------|------|------|
+| `advance_checkpoint()` 定义 | ✅ 已有 (line 219) | `grep` 确认 |
+| `try_truncate_wal()` 定义 | ✅ 已有 (line 237) | `grep` 确认 |
+| `commit_transaction()` 调用 `advance_checkpoint` | ❌ **从未调用** | `grep` 仅返回定义行 |
+| `commit_transaction()` 调用 `try_truncate_wal` | ❌ **从未调用** | `grep` 仅返回定义行 |
+
+```rust
+// execution_engine.rs line 1153-1173 — commit_transaction()
+fn commit_transaction(&mut self) -> SqlResult<ExecutorResult> {
+    // ...
+    if let Ok(mut storage) = self.storage.write() {
+        let _ = storage.commit_transaction();  // ✅ 调用了
+    }
+    self.transaction_manager.commit(tx_id)?;      // ✅ 调用了
+    self.current_tx_id = None;
+    // ❌ advance_checkpoint() 从未调用
+    // ❌ try_truncate_wal() 从未调用
+    Ok(ExecutorResult::empty())
+}
+```
+
+**影响**: WAL 文件会无限增长，PR-830F 的 checkpoint-based truncation 机制从未激活。
 
 ---
 
@@ -247,7 +270,24 @@ if sql_upper.starts_with("MERGE") {
 | **G4** | PR-870: LocalExecutor 缺少 `Arc<Mutex<dyn ExecutionEngine>>` | 无法实例化 MergeExecutor | P1 |
 | **G5** | Update 重放在 Recovery 中跳过 | crash recovery 后 UPDATE 数据不一致 | P1 |
 
-### 4.2 Medium 缺口（影响完整性）
+### 4.2 Critical 缺口 — Truthfulness 违规
+
+| ID | 缺口 | 影响 | 优先级 |
+|----|------|------|--------|
+| **B4** | **Format Truthfulness 违规** | `cargo fmt --all -- --check` → EXIT:1，文档声称 EXIT:0 | 🔴 P0 |
+
+**B4 详细**:
+```
+$ cargo fmt --all -- --check
+EXIT: 1  (违规: merge.rs x4, engine_builder.rs x1, execution_engine.rs x2)
+
+$ cargo fmt --all && cargo fmt --all -- --check
+EXIT: 0  (掩盖了 HEAD 本身的格式问题)
+```
+
+根因: BETA_GATE_CONTRACT.md 声称 B4 "exit 0"，但实际用的是 `cargo fmt --all` (auto-fix) 然后检查，掩盖了 HEAD 的格式问题。
+
+### 4.3 Medium 缺口（影响完整性）
 
 | ID | 缺口 | 影响 | 优先级 |
 |----|------|------|--------|
@@ -256,7 +296,27 @@ if sql_upper.starts_with("MERGE") {
 | **M3** | `eval_merge_expr` 不处理 `UnaryExpr` | NOT 条件在 MERGE 中不支持 | P2 |
 | **M4** | mysql-server 无 crate 级别测试 | R4 修复无自动化验证 | P2 |
 
-### 4.3 回归热点状态 (LEGACY_ISSUES.md Section 3)
+### 4.4 历史架构违规 (AV-001~AV-007 — 来自 v3.7.0 ARCHITECTURE_VIOLATIONS.md)
+
+这些违规在 LEGACY_ISSUES.md 中追踪，仍存在于 v3.8.0 代码库中：
+
+| ID | 文件 | 位置 | 问题 |
+|----|------|------|------|
+| **AV-001** | `trigger.rs` | 429, 507, 509, 531 | `storage.insert/delete` 直接调用 |
+| **AV-002** | `harness.rs` | 274, 315, 375 | `storage.insert` 直接调用 |
+| **AV-003** | `merge.rs` | 88, 107 | `storage.update/insert` 直接调用 |
+| **AV-004** | `parallel_vector_executor.rs` | 689, 706, 724, 743 | `storage.insert` 直接调用 |
+| **AV-005** | `parallel_executor.rs` | 1140, 1145, 1253, 1258, 1578, 1583, 1733, 1738 | `memory_storage.insert` 直接调用 |
+| **AV-006** | `local_executor.rs` | 1054, 1328, 1385, 1469 | `storage.delete/update` 直接调用 |
+| **AV-007** | `vector_executor.rs` | 193, 220, 242, 293 | `storage.insert` 直接调用 |
+
+验证命令:
+```bash
+grep -n "storage.insert\|storage.delete\|storage.update" crates/executor/src/trigger.rs
+grep -n "storage.insert" crates/executor/src/harness.rs
+```
+
+### 4.5 回归热点状态 (LEGACY_ISSUES.md Section 3)
 
 | Hotspot | 风险 | v3.8.0 状态 |
 |---------|------|-------------|
@@ -300,23 +360,35 @@ if sql_upper.starts_with("MERGE") {
 
 ## 六、结论
 
-### 6.1 集成正确性总结
+### 6.1 核实方法缺陷分析
+
+**v1 报告犯的四个错误**:
+
+| 错误 | 严重性 | 说明 |
+|------|--------|------|
+| **错误1**: 运行 `cargo fmt --all` 而非 `cargo fmt --all -- --check` | 🔴 Truthfulness | auto-fix 掩盖了 HEAD 本身的格式违规 |
+| **错误2**: 没有验证 `advance_checkpoint`/`try_truncate_wal` 是否被调用 | 🔴 功能缺失 | 只检查了函数存在，没检查调用点 |
+| **错误3**: 没有检查 AV-001~AV-007 是否仍存在 | 🟡 历史债务 | 应该跨模块 grep storage.insert/delete/update |
+| **错误4**: 混淆 "测试通过" 和 "集成正确" | 🟡 方法论 | PR-870 测试全过但 execute_merge 从未被调用 |
+
+### 6.2 核实结论总结
 
 **✅ 正确集成的 PR**:
 - R2 (WAL Facade): DML 路由到 UnifiedFacade，fail-fast 正确
-- R3 (Expr Convergence): 类型迁移干净，测试通过
+- R3 (Expr Convergence): 类型迁移干净，317 测试通过
 - R4 (mysql-server 引擎复用): 1 行修复解决事务上下文丢失
-- PR-830E (WAL Recovery): One-shot guard 正确实现
-- PR-830F (WAL Lifecycle): CheckpointManager 架构正确
+- PR-830E (WAL Recovery): One-shot guard 正确实现，21/22 测试通过
 - PR-850A/B (Stateless WAL): `tx_id=0` 占位符全部清理
+- PR-870 (VTU Merge): 模块注册完成，但执行路径未连接
 
-**❌ 未完成集成的 PR**:
-- PR-870 (VTU Merge): 架构完成但运行时未连接（Parser 缺失 + execute_merge 未调用）
+**❌ 未完成集成 / 存在缺陷的 PR**:
+- PR-830F (WAL Lifecycle): 架构正确但生命周期未闭合（`advance_checkpoint`/`try_truncate_wal` 从未被调用）
+- PR-870 (VTU Merge): Parser 缺失 + `execute_merge()` 从未被调用
 
-**⚠️ 部分正确（已知缺口）**:
-- H-3 (TX Isolation) 修复了 R4，但 mysql-server FileStorage 仍绕过 WAL
+**⚠️ Truthfulness 违规（需立即修复）**:
+- B4 Format: `cargo fmt --all -- --check` → EXIT:1，文档声称 EXIT:0
 
-### 6.2 测试覆盖总结
+### 6.3 测试覆盖总结
 
 | 指标 | 值 | 状态 |
 |------|---|------|
@@ -324,16 +396,22 @@ if sql_upper.starts_with("MERGE") {
 | Storage 单元测试 | 283/283 PASS | ✅ |
 | WAL Contract 测试 | 21/22 PASS | ✅ |
 | Clippy | 0 warnings | ✅ |
-| Format | 0 diffs | ✅ |
+| Format (auto-fix 后) | 0 diffs | ✅ |
+| Format (直接检查) | 8 违规文件 | ❌ |
 | E2E (mysql-server) | 0 tests | ❌ |
 
-### 6.3 建议
+### 6.4 立即整改行动
 
-1. **关闭已完成的 Issue**: #2690, #2692, #2694, #2695, #2696, #2680, #2682, #2683, #2689 关联的追踪 Issue
-2. **创建新 Issue 追踪未完成项**: Parser MERGE 支持、mysql-server WAL 接入、Update 重放
-3. **添加 E2E 测试**: mysql-server 集成测试覆盖 COM_QUERY + COM_STMT_EXECUTE 事务持久化
+| 优先级 | 任务 | 负责 |
+|--------|------|-------|
+| 🔴 P0 | 修复 B4 Format Truthfulness: 提交 `cargo fmt --all` 结果，更新 BETA_GATE_CONTRACT.md | — |
+| 🔴 P0 | 修复 PR-830F: 在 `commit_transaction` 中调用 `advance_checkpoint`/`try_truncate_wal` | — |
+| 🔴 P0 | 修复 PR-870: Parser 添加 MERGE 语法 | — |
+| 🟡 P1 | 修复 AV-001~AV-007: DML 绕过 WAL 的架构违规 | — |
+| 🟡 P1 | mysql-server 接入 WalStorage | — |
 
 ---
 
 *本报告基于 `develop/v3.8.0` commit `456ae294b` 生成*
-*验证命令: `cargo test -p sqlrustgo-executor --lib` + `cargo test -p sqlrustgo-storage --lib` + `cargo clippy --all-features -- -D warnings`*
+*验证命令: `cargo test -p sqlrustgo-executor --lib` + `cargo test -p sqlrustgo-storage --lib` + `cargo clippy --all-features -- -D warnings` + `cargo fmt --all -- --check`*
+*v2 更新: 添加了 B4 Format Truthfulness 违规、PR-830F 生命周期未闭合、AV-001~AV-007 架构违规的核实结果*
