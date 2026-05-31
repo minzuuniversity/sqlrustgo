@@ -251,7 +251,6 @@ impl<S: StorageEngine, T: WalManager> WalStorage<S, T> {
             if let Some(cp) = &self.checkpoint_manager {
                 if let Ok(guard) = cp.read() {
                     if let Some(cp_lsn) = guard.last_checkpoint_lsn() {
-                        let cp_lsn = u64::try_from(cp_lsn).unwrap_or(0);
                         let _ = self.wal.truncate_before(cp_lsn);
                     }
                 }
