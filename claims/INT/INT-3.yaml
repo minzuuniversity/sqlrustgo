@@ -1,0 +1,93 @@
+# INT-3: expr Crate Functional Isolation
+
+> **Claim ID**: INT-3
+> **Type**: architectural_risk
+> **Severity**: medium
+> **Introduced**: v3.0.0 (2025)
+> **Target Resolution**: v3.8.0 PR-860 (Planner Layer Consolidation)
+> **Status**: asserted
+> **Last Reviewed**: 2026-05-30
+
+---
+
+## Finding: Expression Evaluation Duplicated Across Code Paths
+
+**Finding ID**: FIND-INT3-001
+
+### Location
+```
+file: crates/executor/src/expression.rs
+file: crates/planner/src/expr.rs
+file: crates/optimizer/src/expr_opt.rs
+```
+
+### Observation
+
+Expression evaluation logic is duplicated in multiple crates:
+- `executor::expression` — runtime evaluation
+- `planner::expr` — planning-time evaluation  
+- `optimizer::expr_opt` — optimization-time evaluation
+
+Each has its own Expr enum and evaluation logic. No shared expr crate.
+
+### Evidence
+
+#### commit_sha
+```
+EMPTY — No commit documents this duplication
+```
+
+#### file_refs
+```
+- path: crates/executor/src/expression.rs
+  finding: "Expr enum + eval() method"
+- path: crates/planner/src/expr.rs
+  finding: "Separate Expr enum + eval() method"
+- path: crates/optimizer/src/expr_opt.rs
+  finding: "Third Expr variant + eval() method"
+```
+
+#### claim_source_refs
+```
+- type: issue
+  id: 2590
+  url: http://192.168.0.252:3000/openclaw/sqlrustgo/issues/2590
+  note: "Claim source only — not evidence (G-04.1)"
+```
+
+---
+
+## Claim Status: asserted
+
+**Status = asserted** because:
+- File locations identified (structural finding)
+- No commit SHA proves these are intentionally duplicated vs. evolved independently
+- No test compares behavior across the 3 expr implementations
+- No grep command output shows the duplication pattern
+
+---
+
+## Required for VERIFIED Status
+
+1. **grep evidence**: `grep -rn "pub enum Expr" crates/*/src/*.rs | wc -l` → 3 (proves duplication)
+2. **commit_sha**: A commit where this was first identified or discussed
+3. **test_ref**: A test that shows expression evaluation gives different results across paths
+
+---
+
+## Gate Evaluation
+
+```
+gate claim evaluate INT-3 --db /tmp/eg.db
+```
+
+Current output:
+```
+claim_id: INT-3
+status: asserted
+findings: 1
+evidence_chain_complete: false
+missing: [grep_evidence, commit_sha]
+```
+
+**Verdict**: UNVERIFIED (G-04: no machine-verifiable evidence)
