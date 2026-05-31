@@ -10,9 +10,13 @@
     renamed_and_removed_lints
 )]
 
+pub mod engine_builder;
 pub mod engine_utils;
 pub mod execution_engine;
 pub mod expr_utils;
+
+#[cfg(test)]
+mod execution_engine_tests;
 
 pub use sqlrustgo_executor::{Executor, ExecutorResult};
 pub use sqlrustgo_optimizer::Optimizer as QueryOptimizer;
