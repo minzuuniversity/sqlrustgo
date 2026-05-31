@@ -60,6 +60,8 @@ enum Commands {
         ci_run_id: String,
         /// Artifact name/type
         name: String,
+        /// SHA256 of artifact
+        sha256: String,
         /// Path to graph database (default: ~/.evidence-graph.db)
         #[arg(long)]
         db: Option<PathBuf>,
@@ -111,71 +113,76 @@ fn parse_edge_type(s: &str) -> Option<EdgeType> {
         "VERIFIED_BY" => Some(EdgeType::VerifiedBy),
         "PRODUCES" => Some(EdgeType::Produces),
         "VALIDATES" => Some(EdgeType::Validates),
-        "AFFECTS" => Some(EdgeType::Affects),
+        "REQUIRES" => Some(EdgeType::Requires),
+        "CAUSES" => Some(EdgeType::Causes),
         _ => None,
     }
 }
 
-fn cmd_commit(args: Commit) -> Result<()> {
-    let store = open_store(args.db)?;
+fn cmd_commit(hash: String, author: String, message: String, db: Option<PathBuf>) -> Result<()> {
+    let store = open_store(db)?;
     let ingestor = EvidenceIngestor::new(&store);
-
-    ingestor.ingest_git_commit(&args.hash, &args.author, &args.message)?;
-
-    let node_id = format!("commit_{}", &args.hash[..8]);
+    ingestor.ingest_git_commit(&hash, &author, &message)?;
+    let node_id = format!("commit_{}", &hash[..8]);
     println!("{{\"ingested\": \"{}\", \"type\": \"commit\"}}", node_id);
     Ok(())
 }
 
-fn cmd_ci(args: Ci) -> Result<()> {
-    let store = open_store(args.db)?;
+fn cmd_ci(
+    run_id: String,
+    commit_hash: String,
+    status: String,
+    log_url: Option<String>,
+    db: Option<PathBuf>,
+) -> Result<()> {
+    let store = open_store(db)?;
     let ingestor = EvidenceIngestor::new(&store);
-
-    let node_id = ingestor.ingest_ci_run(
-        &args.run_id,
-        &args.commit_hash,
-        &args.status,
-        args.log_url.as_deref(),
-    )?;
-
-    println!("{{\"ingested\": \"{}\", \"type\": \"ci_run\"}}", node_id);
+    ingestor.ingest_ci_run(&run_id, &commit_hash, &status, log_url.as_deref())?;
+    println!("{{\"ingested\": \"ci_{}\", \"type\": \"ci_run\"}}", run_id);
     Ok(())
 }
 
-fn cmd_artifact(args: Artifact) -> Result<()> {
-    let store = open_store(args.db)?;
+fn cmd_artifact(
+    id: String,
+    ci_run_id: String,
+    name: String,
+    sha256: String,
+    db: Option<PathBuf>,
+) -> Result<()> {
+    let store = open_store(db)?;
     let ingestor = EvidenceIngestor::new(&store);
-
-    let node_id = ingestor.ingest_artifact(&args.id, &args.ci_run_id, &args.name)?;
-
-    println!("{{\"ingested\": \"{}\", \"type\": \"artifact\"}}", node_id);
+    ingestor.ingest_artifact(&id, &ci_run_id, &name, &sha256)?;
+    println!(
+        "{{\"ingested\": \"artifact_{}\", \"type\": \"artifact\"}}",
+        id
+    );
     Ok(())
 }
 
-fn cmd_task(args: Task) -> Result<()> {
-    let store = open_store(args.db)?;
-
+fn cmd_task(task_id: String, description: String, db: Option<PathBuf>) -> Result<()> {
+    let store = open_store(db)?;
     let node = GraphNode::new(
-        args.task_id.clone(),
+        task_id.clone(),
         NodeType::Task,
-        args.description.clone(),
+        description.clone(),
         "plan_ingestion",
     );
-
     store.add_node(&node)?;
-
-    println!("{{\"ingested\": \"{}\", \"type\": \"task\"}}", args.task_id);
+    println!("{{\"ingested\": \"{}\", \"type\": \"task\"}}", task_id);
     Ok(())
 }
 
-fn cmd_link(args: Link) -> Result<()> {
-    let store = open_store(args.db)?;
-
-    let edge_type = parse_edge_type(&args.edge_type)
-        .ok_or_else(|| anyhow::anyhow!("Invalid edge type: {}", args.edge_type))?;
-
+fn cmd_link(
+    from_id: String,
+    to_id: String,
+    edge_type_str: String,
+    db: Option<PathBuf>,
+) -> Result<()> {
+    let store = open_store(db)?;
+    let edge_type = parse_edge_type(&edge_type_str)
+        .ok_or_else(|| anyhow::anyhow!("Invalid edge type: {}", edge_type_str))?;
     use evidence_graph::GraphEdge;
-    let edge = GraphEdge::new(args.from_id.clone(), args.to_id.clone(), edge_type);
+    let edge = GraphEdge::new(from_id.clone(), to_id.clone(), edge_type);
     store.add_edge(&edge)?;
 
     println!(
@@ -185,10 +192,9 @@ fn cmd_link(args: Link) -> Result<()> {
     Ok(())
 }
 
-fn cmd_status(args: Status) -> Result<()> {
-    let store = open_store(args.db)?;
+fn cmd_status(db: Option<PathBuf>) -> Result<()> {
+    let store = open_store(db)?;
     let stats = store.stats()?;
-
     println!("Evidence Graph Statistics");
     println!("=========================");
     println!("Total nodes: {}", stats.node_count);
@@ -206,12 +212,38 @@ fn main() {
     let args = Args::parse();
 
     let result = match args.command {
-        Commands::Commit(args) => cmd_commit(args),
-        Commands::Ci(args) => cmd_ci(args),
-        Commands::Artifact(args) => cmd_artifact(args),
-        Commands::Task(args) => cmd_task(args),
-        Commands::Link(args) => cmd_link(args),
-        Commands::Status(args) => cmd_status(args),
+        Commands::Commit {
+            hash,
+            author,
+            message,
+            db,
+        } => cmd_commit(hash, author, message, db),
+        Commands::Ci {
+            run_id,
+            commit_hash,
+            status,
+            log_url,
+            db,
+        } => cmd_ci(run_id, commit_hash, status, log_url, db),
+        Commands::Artifact {
+            id,
+            ci_run_id,
+            name,
+            sha256,
+            db,
+        } => cmd_artifact(id, ci_run_id, name, sha256, db),
+        Commands::Task {
+            task_id,
+            description,
+            db,
+        } => cmd_task(task_id, description, db),
+        Commands::Link {
+            from_id,
+            to_id,
+            edge_type,
+            db,
+        } => cmd_link(from_id, to_id, edge_type, db),
+        Commands::Status { db } => cmd_status(db),
     };
 
     if let Err(e) = result {
