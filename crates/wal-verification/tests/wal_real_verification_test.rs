@@ -63,9 +63,15 @@ fn test_real_wal_lsn_monotonicity() {
     let mut w = WalWriter::new(&p).unwrap();
     for i in 0..10 {
         w.append(&WalEntry {
-            tx_id: 1, entry_type: WalEntryType::Insert, table_id: 1,
-            key: None, data: Some(vec![i]), lsn: 0, timestamp: i as u64,
-        }).unwrap();
+            tx_id: 1,
+            entry_type: WalEntryType::Insert,
+            table_id: 1,
+            key: None,
+            data: Some(vec![i]),
+            lsn: 0,
+            timestamp: i as u64,
+        })
+        .unwrap();
     }
     w.flush().unwrap();
     let (log, _) = build_wal_log(&p);
@@ -80,10 +86,17 @@ fn test_real_wal_lsn_increasing_per_entry() {
     let mut w = WalWriter::new(&p).unwrap();
     let mut prev = 0u64;
     for i in 0..5 {
-        let lsn = w.append(&WalEntry {
-            tx_id: 1, entry_type: WalEntryType::Insert, table_id: 1,
-            key: None, data: Some(vec![i]), lsn: 0, timestamp: i as u64,
-        }).unwrap();
+        let lsn = w
+            .append(&WalEntry {
+                tx_id: 1,
+                entry_type: WalEntryType::Insert,
+                table_id: 1,
+                key: None,
+                data: Some(vec![i]),
+                lsn: 0,
+                timestamp: i as u64,
+            })
+            .unwrap();
         assert!(lsn >= prev, "LSN must be monotonically increasing");
         prev = lsn;
     }
@@ -102,10 +115,17 @@ fn test_real_wal_no_duplicate_lsn() {
     let mut w = WalWriter::new(&p).unwrap();
     let mut lsns = std::collections::HashSet::new();
     for i in 0..10 {
-        let lsn = w.append(&WalEntry {
-            tx_id: 1, entry_type: WalEntryType::Insert, table_id: 1,
-            key: None, data: Some(vec![i]), lsn: 0, timestamp: i as u64,
-        }).unwrap();
+        let lsn = w
+            .append(&WalEntry {
+                tx_id: 1,
+                entry_type: WalEntryType::Insert,
+                table_id: 1,
+                key: None,
+                data: Some(vec![i]),
+                lsn: 0,
+                timestamp: i as u64,
+            })
+            .unwrap();
         assert!(lsns.insert(lsn), "LSN {} must be unique", lsn);
     }
     w.flush().unwrap();
@@ -122,9 +142,13 @@ fn test_real_wal_write_then_read_consistency() {
     let p = dir.join("wal.log");
     let mut w = WalWriter::new(&p).unwrap();
     let original = WalEntry {
-        tx_id: 42, entry_type: WalEntryType::Insert, table_id: 7,
-        key: Some(vec![1,2,3]), data: Some(vec![10,20,30,40,50]),
-        lsn: 0, timestamp: 1234567890,
+        tx_id: 42,
+        entry_type: WalEntryType::Insert,
+        table_id: 7,
+        key: Some(vec![1, 2, 3]),
+        data: Some(vec![10, 20, 30, 40, 50]),
+        lsn: 0,
+        timestamp: 1234567890,
     };
     w.append(&original).unwrap();
     w.flush().unwrap();
@@ -133,7 +157,7 @@ fn test_real_wal_write_then_read_consistency() {
     assert_eq!(entries.len(), 1);
     assert_eq!(entries[0].tx_id, 42);
     assert_eq!(entries[0].table_id, 7);
-    assert_eq!(entries[0].data, Some(vec![10,20,30,40,50]));
+    assert_eq!(entries[0].data, Some(vec![10, 20, 30, 40, 50]));
     assert_eq!(entries[0].timestamp, 1234567890);
     let _ = fs::remove_dir_all(&dir);
 }
@@ -149,30 +173,66 @@ fn test_real_wal_txn_boundaries() {
     let mut w = WalWriter::new(&p).unwrap();
     // Txn 1
     w.append(&WalEntry {
-        tx_id: 1, entry_type: WalEntryType::Begin, table_id: 0,
-        key: None, data: None, lsn: 0, timestamp: 1,
-    }).unwrap();
+        tx_id: 1,
+        entry_type: WalEntryType::Begin,
+        table_id: 0,
+        key: None,
+        data: None,
+        lsn: 0,
+        timestamp: 1,
+    })
+    .unwrap();
     w.append(&WalEntry {
-        tx_id: 1, entry_type: WalEntryType::Insert, table_id: 1,
-        key: None, data: Some(vec![100]), lsn: 0, timestamp: 2,
-    }).unwrap();
+        tx_id: 1,
+        entry_type: WalEntryType::Insert,
+        table_id: 1,
+        key: None,
+        data: Some(vec![100]),
+        lsn: 0,
+        timestamp: 2,
+    })
+    .unwrap();
     w.append(&WalEntry {
-        tx_id: 1, entry_type: WalEntryType::Commit, table_id: 0,
-        key: None, data: None, lsn: 0, timestamp: 3,
-    }).unwrap();
+        tx_id: 1,
+        entry_type: WalEntryType::Commit,
+        table_id: 0,
+        key: None,
+        data: None,
+        lsn: 0,
+        timestamp: 3,
+    })
+    .unwrap();
     // Txn 2
     w.append(&WalEntry {
-        tx_id: 2, entry_type: WalEntryType::Begin, table_id: 0,
-        key: None, data: None, lsn: 0, timestamp: 4,
-    }).unwrap();
+        tx_id: 2,
+        entry_type: WalEntryType::Begin,
+        table_id: 0,
+        key: None,
+        data: None,
+        lsn: 0,
+        timestamp: 4,
+    })
+    .unwrap();
     w.append(&WalEntry {
-        tx_id: 2, entry_type: WalEntryType::Insert, table_id: 1,
-        key: None, data: Some(vec![200]), lsn: 0, timestamp: 5,
-    }).unwrap();
+        tx_id: 2,
+        entry_type: WalEntryType::Insert,
+        table_id: 1,
+        key: None,
+        data: Some(vec![200]),
+        lsn: 0,
+        timestamp: 5,
+    })
+    .unwrap();
     w.append(&WalEntry {
-        tx_id: 2, entry_type: WalEntryType::Rollback, table_id: 0,
-        key: None, data: None, lsn: 0, timestamp: 6,
-    }).unwrap();
+        tx_id: 2,
+        entry_type: WalEntryType::Rollback,
+        table_id: 0,
+        key: None,
+        data: None,
+        lsn: 0,
+        timestamp: 6,
+    })
+    .unwrap();
     w.flush().unwrap();
     let mut r = WalReader::new(&p).unwrap();
     let entries = r.read_all().unwrap();
@@ -195,18 +255,30 @@ fn test_real_wal_append_after_reopen() {
     {
         let mut w = WalWriter::new(&p).unwrap();
         w.append(&WalEntry {
-            tx_id: 1, entry_type: WalEntryType::Insert, table_id: 1,
-            key: None, data: Some(vec![1]), lsn: 0, timestamp: 1,
-        }).unwrap();
+            tx_id: 1,
+            entry_type: WalEntryType::Insert,
+            table_id: 1,
+            key: None,
+            data: Some(vec![1]),
+            lsn: 0,
+            timestamp: 1,
+        })
+        .unwrap();
         w.flush().unwrap();
     }
     // Reopen and write batch 2
     {
         let mut w = WalWriter::new(&p).unwrap();
         w.append(&WalEntry {
-            tx_id: 2, entry_type: WalEntryType::Insert, table_id: 1,
-            key: None, data: Some(vec![2]), lsn: 0, timestamp: 2,
-        }).unwrap();
+            tx_id: 2,
+            entry_type: WalEntryType::Insert,
+            table_id: 1,
+            key: None,
+            data: Some(vec![2]),
+            lsn: 0,
+            timestamp: 2,
+        })
+        .unwrap();
         w.flush().unwrap();
     }
     // Read all
@@ -229,9 +301,15 @@ fn test_real_wal_invariant_no_duplicate_lsn() {
     let mut w = WalWriter::new(&p).unwrap();
     for i in 0..5 {
         w.append(&WalEntry {
-            tx_id: 1, entry_type: WalEntryType::Insert, table_id: 1,
-            key: None, data: Some(vec![i]), lsn: 0, timestamp: i as u64,
-        }).unwrap();
+            tx_id: 1,
+            entry_type: WalEntryType::Insert,
+            table_id: 1,
+            key: None,
+            data: Some(vec![i]),
+            lsn: 0,
+            timestamp: i as u64,
+        })
+        .unwrap();
     }
     w.flush().unwrap();
     let (log, _) = build_wal_log(&p);
@@ -252,10 +330,15 @@ fn test_real_wal_large_batch() {
     let batch_size = 1000;
     for i in 0..batch_size {
         w.append(&WalEntry {
-            tx_id: i % 10, entry_type: WalEntryType::Insert, table_id: 1,
-            key: None, data: Some(format!("row_{}", i).into_bytes()),
-            lsn: 0, timestamp: i as u64,
-        }).unwrap();
+            tx_id: i % 10,
+            entry_type: WalEntryType::Insert,
+            table_id: 1,
+            key: None,
+            data: Some(format!("row_{}", i).into_bytes()),
+            lsn: 0,
+            timestamp: i as u64,
+        })
+        .unwrap();
     }
     w.flush().unwrap();
     let mut r = WalReader::new(&p).unwrap();
