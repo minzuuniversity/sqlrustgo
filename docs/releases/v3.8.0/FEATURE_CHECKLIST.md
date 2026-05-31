@@ -26,6 +26,7 @@
 | F-13 | PR-880: WAL Recovery Integration | — | ❌ NOT DONE | 未合并 |
 | F-14 | PR-890: WAL TPC-H Validation | — | ❌ NOT DONE | 未合并 |
 | F-15 | PR-900: WAL Performance Baseline | — | ❌ NOT DONE | 未合并 |
+| F-16 | PR-830F: WAL Lifecycle + Checkpoint Truncation | PR-2697 | ✅ DONE | checkpoint-based LSN truncation |
 
 ---
 
@@ -73,7 +74,7 @@
 **追踪 Issue**: #2603 (R2: 执行引擎统一)  
 **影响**: 影响 RC 阶段（不是 Beta 阶段），已在 DEVELOPMENT_PLAN.md 中说明。
 
-### F-07 ~ F-15: PR-810/820/840/850/860/870/880/890/900
+### F-07 ~ F-16: PR-810/820/840/850/860/870/880/890/900
 
 **状态**: NOT DONE, 无追踪  
 **原因**: 这些 PR 是 PR-800 chain 的后续扩展，在 PR-800 核心架构完成前未开始。  
@@ -111,5 +112,5 @@ v3.8.0 Beta Gate 通过了，但实际上大量功能（PR-810~PR-900）未完�
 
 ---
 
-**最后更新**: 2026-05-31  
+**最后更新**: 2026-06-01  
 **更新者**: Hermes C
