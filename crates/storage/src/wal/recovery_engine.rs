@@ -1,39 +1,9 @@
 //! RecoveryEngine — WAL entry interpreter for StorageEngine recovery
-//!
-//! ## Architecture
-//!
-//! ```text
-//! WAL Layer              Recovery Layer           Storage Layer
-//! WalManager.recover() → RecoveryEngine → StorageEngine
-//!        ↓                      ↓                      ↓
-//!   Vec<WalEntry>        apply_entry()         insert/delete/update
-//! ```
-//!
-//! ## Design Principles
-//!
-//! 1. **Recovery is stateless** — RecoveryEngine interprets WAL, doesn't hold state
-//! 2. **Storage remains dumb** — StorageEngine has no WAL/recovery knowledge
-//! 3. **WAL is self-contained** — entries have table_id, not dependent on catalog
 
-use crate::engine::{SqlResult, StorageEngine};
+use crate::engine::{Record, SqlResult, StorageEngine, Value};
 use crate::wal_legacy::{WalEntry, WalEntryType};
 use std::collections::HashSet;
 
-/// RecoveryEngine interprets WAL entries and applies committed transactions to StorageEngine
-///
-/// ## Phase Separation
-///
-/// - **Recovery phase**: Only during startup, before SQL runtime is active
-/// - **Runtime phase**: RecoveryEngine is NOT called
-///
-/// ## Commit Filtering
-///
-/// RecoveryEngine maintains transaction state to filter WAL entries:
-/// - `active_txs`: Transactions that have begun but not yet committed/rolled back
-/// - `committed_txs`: Transactions that have committed (their entries SHOULD be applied)
-/// - `rolled_back_txs`: Transactions that have rolled back (their entries SKIPPED)
-///
-/// Only entries from `committed_txs` are applied to StorageEngine.
 #[derive(Debug, Clone)]
 pub struct RecoveryEngine {
     active_txs: HashSet<u64>,
@@ -42,7 +12,6 @@ pub struct RecoveryEngine {
 }
 
 impl RecoveryEngine {
-    /// Create a new RecoveryEngine
     pub fn new() -> Self {
         Self {
             active_txs: HashSet::new(),
@@ -51,16 +20,9 @@ impl RecoveryEngine {
         }
     }
 
-    /// Apply a single WAL entry to the in-memory transaction state
-    ///
-    /// Returns Ok(()) if entry was processed, Err if transaction was already
-    /// committed/rolled back in a way that indicates corruption.
-    ///
-    /// Note: This does NOT apply the entry to StorageEngine - that's done
-    /// by `recover()` after filtering for committed transactions only.
     pub fn apply_entry<S: StorageEngine>(
         &mut self,
-        _storage: &mut S,
+        storage: &mut S,
         entry: &WalEntry,
     ) -> SqlResult<()> {
         match entry.entry_type {
@@ -76,24 +38,32 @@ impl RecoveryEngine {
                 self.active_txs.remove(&entry.tx_id);
                 self.rolled_back_txs.insert(entry.tx_id);
             }
-            WalEntryType::Insert | WalEntryType::Update | WalEntryType::Delete => {}
+            WalEntryType::Insert => {
+                if !self.committed_txs.contains(&entry.tx_id) {
+                    return Ok(());
+                }
+                if let Some(ref data) = entry.data {
+                    if let Ok(record) = decode_record(data) {
+                        let table_name = format!("table_{}", entry.table_id);
+                        let _ = storage.insert(&table_name, vec![record]);
+                    }
+                }
+            }
+            WalEntryType::Update => {
+                if !self.committed_txs.contains(&entry.tx_id) {
+                    return Ok(());
+                }
+            }
+            WalEntryType::Delete => {
+                if !self.committed_txs.contains(&entry.tx_id) {
+                    return Ok(());
+                }
+            }
             WalEntryType::Checkpoint | WalEntryType::Prepare => {}
         }
         Ok(())
     }
 
-    /// Recover StorageEngine from WAL by applying all committed transactions
-    ///
-    /// # Boot Sequence (after PR-830E)
-    ///
-    /// ```text
-    /// 1. Server Start
-    /// 2. WAL open (FileBackedWalManager::open())
-    /// 3. RecoveryEngine::recover() ← we are here
-    /// 4. StorageEngine warmed up
-    /// 5. ExecutionEngine start
-    /// 6. SQL runtime active
-    /// ```
     pub fn recover<S, W>(storage: &mut S, wal: &mut W) -> SqlResult<RecoveryReport>
     where
         S: StorageEngine,
@@ -109,16 +79,14 @@ impl RecoveryEngine {
         Ok(RecoveryReport {
             committed: engine.committed_txs.len() as u32,
             rolled_back: engine.rolled_back_txs.len() as u32,
-            terminated: 0, // Future use for crashed transactions
+            terminated: 0,
         })
     }
 
-    /// Check if a transaction was committed
     pub fn is_committed(&self, tx_id: u64) -> bool {
         self.committed_txs.contains(&tx_id)
     }
 
-    /// Check if a transaction was rolled back
     pub fn is_rolled_back(&self, tx_id: u64) -> bool {
         self.rolled_back_txs.contains(&tx_id)
     }
@@ -130,18 +98,71 @@ impl Default for RecoveryEngine {
     }
 }
 
-/// Recovery report summary
-///
-/// Generated after WAL replay to report how many transactions were
-/// committed, rolled back, or terminated due to crashes.
 #[derive(Debug, Clone, Default)]
 pub struct RecoveryReport {
-    /// Number of transactions that were committed
     pub committed: u32,
-    /// Number of transactions that were rolled back
     pub rolled_back: u32,
-    /// Number of transactions that were terminated (crashed mid-flight)
     pub terminated: u32,
+}
+
+fn decode_record(data: &[u8]) -> Result<Record, String> {
+    let mut records = Vec::new();
+    let mut offset = 0;
+
+    while offset < data.len() {
+        if data[offset..].len() < 2 {
+            break;
+        }
+
+        let prefix = &data[offset..offset + 2];
+        offset += 2;
+
+        if prefix == b"i:" {
+            if offset + 8 > data.len() {
+                break;
+            }
+            let bytes: [u8; 8] = data[offset..offset + 8].try_into().map_err(|_| "bad int")?;
+            records.push(Value::Integer(i64::from_le_bytes(bytes)));
+            offset += 8;
+        } else if prefix == b"s:" {
+            let end = data[offset..]
+                .iter()
+                .position(|&b| b == 0)
+                .unwrap_or(data.len() - offset);
+            records.push(Value::Text(
+                String::from_utf8(data[offset..offset + end].to_vec()).map_err(|_| "bad text")?,
+            ));
+            offset += end + 1;
+        } else if prefix == b"b:" {
+            if offset >= data.len() {
+                break;
+            }
+            records.push(Value::Boolean(data[offset] != 0));
+            offset += 1;
+        } else if prefix == b"n:" {
+            records.push(Value::Null);
+        } else if prefix == b"f:" {
+            if offset + 8 > data.len() {
+                break;
+            }
+            let bytes: [u8; 8] = data[offset..offset + 8]
+                .try_into()
+                .map_err(|_| "bad float")?;
+            records.push(Value::Float(f64::from_le_bytes(bytes)));
+            offset += 8;
+        } else if prefix == b"B:" {
+            let end = data[offset..]
+                .iter()
+                .position(|&b| b == 0)
+                .unwrap_or(data.len() - offset);
+            records.push(Value::Blob(data[offset..offset + end].to_vec()));
+            offset += end + 1;
+        } else {
+            break;
+        }
+    }
+
+    Ok(records)
 }
 
 #[cfg(test)]
@@ -150,6 +171,7 @@ mod tests {
 
     #[test]
     fn test_recovery_engine_tracks_begin() {
+        let engine = RecoveryEngine::new();
         let entry = WalEntry {
             tx_id: 1,
             entry_type: WalEntryType::Begin,
@@ -168,5 +190,14 @@ mod tests {
         assert_eq!(report.committed, 0);
         assert_eq!(report.rolled_back, 0);
         assert_eq!(report.terminated, 0);
+    }
+
+    #[test]
+    fn test_decode_record_integers() {
+        let data = b"i:\x01\x00\x00\x00\x00\x00\x00\x00i:\x02\x00\x00\x00\x00\x00\x00\x00".to_vec();
+        let record = decode_record(&data).unwrap();
+        assert_eq!(record.len(), 2);
+        assert_eq!(record[0], Value::Integer(1));
+        assert_eq!(record[1], Value::Integer(2));
     }
 }
