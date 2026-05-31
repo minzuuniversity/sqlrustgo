@@ -230,9 +230,11 @@ def should_skip(filepath, linenum, content):
     # Skip vector_executor fixtures
     if 'vector_executor' in filepath:
         return (True, "vector-fixture")
-    # Skip execute_dml closure (WAL-aware path)
-    if 'execute_dml' in content and 'facade' in content:
-        return (True, "facade-closure")
+    # Check if inside execute_dml closure (WAL-aware path) — look back 3 lines
+    if 'storage.delete' in content or 'storage.insert' in content or 'storage.update' in content:
+        r_ctx = run(f'sed -n "{linenum-3},{linenum}p" "{filepath}"')
+        if 'execute_dml' in r_ctx.stdout and 'facade' in r_ctx.stdout:
+            return (True, "facade-closure")
     return (False, None)
 
 for crate in ["executor", "server"]:
