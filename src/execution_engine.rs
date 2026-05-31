@@ -1471,6 +1471,10 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 SqlError::ExecutionError(format!("Failed to begin transaction: {:?}", e))
             })?;
         self.current_tx_id = Some(tx_id);
+        // Delegate to storage engine so WalStorage can track current_tx_id for WAL logging
+        if let Ok(mut storage) = self.storage.write() {
+            storage.set_current_tx_id(tx_id.as_u64());
+        }
         self.tx_status = TxStatus::Active;
         Ok(ExecutorResult::new(
             vec![vec![Value::Integer(tx_id.as_u64() as i64)]],
@@ -1488,6 +1492,10 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         let tx_id = self
             .current_tx_id
             .ok_or_else(|| SqlError::ExecutionError("No transaction in progress".to_string()))?;
+        // Delegate to storage engine first so WalStorage writes WAL Commit entry before clearing state
+        if let Ok(mut storage) = self.storage.write() {
+            let _ = storage.commit_transaction();
+        }
         self.transaction_manager.commit(tx_id).map_err(|e| {
             SqlError::ExecutionError(format!("Failed to commit transaction: {:?}", e))
         })?;
@@ -1506,6 +1514,10 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         let tx_id = self
             .current_tx_id
             .ok_or_else(|| SqlError::ExecutionError("No transaction in progress".to_string()))?;
+        // Delegate to storage engine first so WalStorage writes WAL Rollback entry before clearing state
+        if let Ok(mut storage) = self.storage.write() {
+            let _ = storage.rollback_transaction();
+        }
         self.transaction_manager.rollback(tx_id).map_err(|e| {
             SqlError::ExecutionError(format!("Failed to rollback transaction: {:?}", e))
         })?;
@@ -1893,9 +1905,8 @@ impl ExecutionEngine<MemoryStorage> {
 // =============================================================================
 
 impl ExecutionEngine<MemoryStorage> {
-    pub fn with_wal_stub()
-        -> ExecutionEngine<WalStorage<MemoryStorage, sqlrustgo_storage::MemoryWalManager>>
-    {
+    pub fn with_wal_stub(
+    ) -> ExecutionEngine<WalStorage<MemoryStorage, sqlrustgo_storage::MemoryWalManager>> {
         let inner = MemoryStorage::new();
         let wal = sqlrustgo_storage::MemoryWalManager::new();
         let wal_storage = WalStorage::new(inner, wal).unwrap();
@@ -1924,8 +1935,9 @@ impl ExecutionEngine<MemoryStorage> {
     /// WalStorage::new(inner, wal_manager) initializes with given WAL manager
     pub fn with_wal(
         wal_path: PathBuf,
-    ) -> SqlResult<ExecutionEngine<WalStorage<MemoryStorage, sqlrustgo_storage::FileBackedWalManager>>>
-    {
+    ) -> SqlResult<
+        ExecutionEngine<WalStorage<MemoryStorage, sqlrustgo_storage::FileBackedWalManager>>,
+    > {
         let inner = MemoryStorage::new();
         let wal_manager = sqlrustgo_storage::FileBackedWalManager::new(wal_path)?;
         let wal = WalStorage::new(inner, wal_manager)?;
