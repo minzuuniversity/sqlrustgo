@@ -1,0 +1,16 @@
+# WAL Core Contracts (Minimal)
+# 格式: Contract-ID: description
+# 验证: 每个 contract 必须有对应的 restart 测试
+
+# WAL Durability Contracts
+WAL-001: COMMIT → data survives process restart (verified by SELECT after restart)
+WAL-002: No COMMIT → data does NOT survive process restart
+WAL-003: Multiple committed transactions survive in order
+WAL-004: UPDATE → COMMIT → restart → value is updated (not original)
+WAL-005: DELETE → COMMIT → restart → row does NOT exist
+WAL-006: Recovery replays committed entries only, in order
+WAL-007: Recovery does NOT replay uncommitted transactions
+
+# Storage Contracts
+STG-001: FileStorage data persists across restarts (visible in JSON file)
+STG-002: enable_buffer does not affect COMMIT durability (flush is called)
