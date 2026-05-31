@@ -549,6 +549,11 @@ pub trait StorageEngine: Send + Sync {
     /// Set the current transaction ID (used by WAL integration)
     fn set_current_tx_id(&mut self, _id: u64) {}
 
+    /// Flush any buffered data to durable storage
+    fn flush(&mut self) -> SqlResult<()> {
+        Ok(())
+    }
+
     fn is_wal_enabled(&self) -> bool {
         false
     }
