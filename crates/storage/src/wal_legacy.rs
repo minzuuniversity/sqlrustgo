@@ -202,16 +202,12 @@ impl WalEntry {
 pub struct WalWriter {
     writer: BufWriter<File>,
     lsn: u64,
-    /// Batch mode - only flush when explicitly requested (INSERT 性能优化)
     batch_mode: bool,
-    /// Records since last flush
     records_since_flush: usize,
-    /// Flush threshold
     flush_threshold: usize,
 }
 
 impl WalWriter {
-    /// Create a new WAL writer
     pub fn new(path: &PathBuf) -> std::io::Result<Self> {
         let file = OpenOptions::new().create(true).append(true).open(path)?;
 
@@ -220,9 +216,27 @@ impl WalWriter {
         Ok(Self {
             writer,
             lsn: 0,
-            batch_mode: false, // Default: sync mode for safety
+            batch_mode: false,
             records_since_flush: 0,
             flush_threshold: 100,
+        })
+    }
+
+    pub fn with_config(
+        path: &PathBuf,
+        batch_mode: bool,
+        flush_threshold: usize,
+    ) -> std::io::Result<Self> {
+        let file = OpenOptions::new().create(true).append(true).open(path)?;
+
+        let writer = BufWriter::new(file);
+
+        Ok(Self {
+            writer,
+            lsn: 0,
+            batch_mode,
+            records_since_flush: 0,
+            flush_threshold,
         })
     }
 
@@ -269,7 +283,10 @@ impl WalWriter {
         Ok(())
     }
 
-    /// Get current LSN
+    pub fn get_mut(&mut self) -> &mut BufWriter<File> {
+        &mut self.writer
+    }
+
     pub fn current_lsn(&self) -> u64 {
         self.lsn
     }
