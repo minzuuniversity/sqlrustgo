@@ -18,13 +18,16 @@
 //! 2. **Decoupled**: WalManager does not depend on StorageEngine.
 //! 3. **Testable**: MemoryWalManager enables unit testing without filesystem.
 
-pub mod memory_wal_manager;
 pub mod file_backed_wal_manager;
+pub mod memory_wal_manager;
+pub mod recovery_engine;
 
-pub use memory_wal_manager::MemoryWalManager;
 pub use file_backed_wal_manager::FileBackedWalManager;
+pub use memory_wal_manager::MemoryWalManager;
 
-pub use crate::wal_legacy::{WalEntry, WalEntryType, WalManager as LegacyWalManager, WalWriter, WalReader};
+pub use crate::wal_legacy::{
+    WalEntry, WalEntryType, WalManager as LegacyWalManager, WalReader, WalWriter,
+};
 
 use crate::engine::SqlResult;
 
@@ -101,7 +104,13 @@ pub fn make_rollback_entry(tx_id: u64, lsn: u64) -> WalEntry {
 }
 
 /// Helper to create an INSERT entry
-pub fn make_insert_entry(tx_id: u64, table_id: u64, key: Vec<u8>, data: Vec<u8>, lsn: u64) -> WalEntry {
+pub fn make_insert_entry(
+    tx_id: u64,
+    table_id: u64,
+    key: Vec<u8>,
+    data: Vec<u8>,
+    lsn: u64,
+) -> WalEntry {
     WalEntry {
         tx_id,
         entry_type: WalEntryType::Insert,
@@ -117,7 +126,13 @@ pub fn make_insert_entry(tx_id: u64, table_id: u64, key: Vec<u8>, data: Vec<u8>,
 }
 
 /// Helper to create an UPDATE entry
-pub fn make_update_entry(tx_id: u64, table_id: u64, key: Vec<u8>, data: Vec<u8>, lsn: u64) -> WalEntry {
+pub fn make_update_entry(
+    tx_id: u64,
+    table_id: u64,
+    key: Vec<u8>,
+    data: Vec<u8>,
+    lsn: u64,
+) -> WalEntry {
     WalEntry {
         tx_id,
         entry_type: WalEntryType::Update,
