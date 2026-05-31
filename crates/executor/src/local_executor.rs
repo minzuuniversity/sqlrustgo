@@ -17,6 +17,7 @@ use crate::query_cache::should_cache;
 use crate::query_cache::QueryCache;
 use crate::query_cache_config::{CacheEntry, CacheKey, QueryCacheConfig};
 use crate::sql_normalizer::SqlNormalizer;
+use crate::merge::MergeExecutor;
 use crate::{Executor, ExecutorResult};
 use crate::execution::{ExecutionEngine, QueryContext};
 use parking_lot::RwLock;
@@ -1475,6 +1476,20 @@ impl<'a> LocalExecutor<'a> {
 
         if sql_upper.starts_with("UPDATE") {
             return Err(sqlrustgo_types::SqlError::ExecutionError("UPDATE not yet implemented via ExecutionEngine".to_string()));
+        }
+
+        if sql_upper.starts_with("MERGE") {
+            // VTU path: MERGE via MergeExecutor
+            // MergeExecutor needs Arc<Mutex<dyn ExecutionEngine>> and Arc<RwLock<dyn StorageEngine>>.
+            // LocalExecutor has storage_arc but needs ExecutionEngine wrapper.
+            // MergeStatement requires parser support (SQL → MergeStatement) — current parser
+            // does not support MERGE syntax.
+            // Full implementation requires:
+            // 1. Parser: add MERGE SQL grammar
+            // 2. LocalExecutor: expose Arc<Mutex<dyn ExecutionEngine>>
+            return Err(sqlrustgo_types::SqlError::ExecutionError(
+                "MERGE via ExecutionEngine: wired but needs parser support. ".to_string()
+            ));
         }
 
         Err(sqlrustgo_types::SqlError::ExecutionError("Unsupported DML".to_string()))
