@@ -104,4 +104,14 @@ impl WalManager for FileBackedWalManager {
         }
         Ok(entries)
     }
+
+    fn truncate_before(&mut self, lsn: u64) -> SqlResult<()> {
+        let entries = self.recover()?;
+        let retained: Vec<_> = entries.into_iter().filter(|e| e.lsn >= lsn).collect();
+        self.truncate()?;
+        for entry in &retained {
+            self.append(entry.clone())?;
+        }
+        Ok(())
+    }
 }
