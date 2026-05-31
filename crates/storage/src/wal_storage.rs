@@ -1,6 +1,5 @@
-use crate::bplus_tree::index::CompositeKey;
-use crate::engine::{ColumnDefinition, Record, RowFilter, SqlResult, StorageEngine, TableInfo, Value};
-use crate::wal::{WalEntry, WalEntryType, WalManager};
+use crate::engine::{ColumnDefinition, Record, RowFilter, RowMutation, SqlResult, StorageEngine, TableInfo, Value};
+use crate::wal::{WalEntry, WalManager};
 use std::path::PathBuf;
 
 pub struct WalStorage<S: StorageEngine> {
@@ -175,13 +174,7 @@ impl<S: StorageEngine> WalStorage<S> {
             Value::Boolean(b) => [*b as u8].to_vec(),
             Value::Null => Vec::new(),
             Value::Float(f) => f.to_bits().to_le_bytes().to_vec(),
-            Value::Decimal(d) => format!("{:?}", d).into_bytes(),
             Value::Blob(b) => b.clone(),
-            Value::Date(d) => d.to_le_bytes().to_vec(),
-            Value::Timestamp(ts) => ts.to_le_bytes().to_vec(),
-            Value::Uuid(u) => u.to_le_bytes().to_vec(),
-            Value::Array(arr) => format!("{:?}", arr).into_bytes(),
-            Value::Enum(idx, _) => idx.to_le_bytes().to_vec(),
         }
     }
 
@@ -209,37 +202,9 @@ impl<S: StorageEngine> WalStorage<S> {
                     bytes.extend_from_slice(b"f:");
                     bytes.extend_from_slice(&f.to_bits().to_le_bytes());
                 }
-                Value::Decimal(d) => {
-                    bytes.extend_from_slice(b"d:");
-                    bytes.extend_from_slice(format!("{:?}", d).as_bytes());
-                    bytes.push(0);
-                }
                 Value::Blob(b) => {
                     bytes.extend_from_slice(b"B:");
                     bytes.extend_from_slice(b);
-                    bytes.push(0);
-                }
-                Value::Date(d) => {
-                    bytes.extend_from_slice(b"D:");
-                    bytes.extend_from_slice(&d.to_le_bytes());
-                }
-                Value::Timestamp(ts) => {
-                    bytes.extend_from_slice(b"T:");
-                    bytes.extend_from_slice(&ts.to_le_bytes());
-                }
-                Value::Uuid(u) => {
-                    bytes.extend_from_slice(b"U:");
-                    bytes.extend_from_slice(&u.to_le_bytes());
-                }
-                Value::Array(arr) => {
-                    bytes.extend_from_slice(b"A:");
-                    bytes.extend_from_slice(format!("{:?}", arr).as_bytes());
-                    bytes.push(0);
-                }
-                Value::Enum(idx, name) => {
-                    bytes.extend_from_slice(b"E:");
-                    bytes.extend_from_slice(&idx.to_le_bytes());
-                    bytes.extend_from_slice(name.as_bytes());
                     bytes.push(0);
                 }
             }
@@ -273,19 +238,6 @@ impl<S: StorageEngine> StorageEngine for WalStorage<S> {
         self.inner.scan(table)
     }
 
-    fn get_row(&self, table: &str, row_index: usize) -> SqlResult<Option<Record>> {
-        self.inner.get_row(table, row_index)
-    }
-
-    fn scan_batch(
-        &self,
-        table: &str,
-        offset: usize,
-        limit: usize,
-    ) -> SqlResult<(Vec<Record>, usize, bool)> {
-        self.inner.scan_batch(table, offset, limit)
-    }
-
     fn insert(&mut self, table: &str, records: Vec<Record>) -> SqlResult<()> {
         let table_id = Self::table_name_to_id(table);
         for record in &records {
@@ -294,10 +246,6 @@ impl<S: StorageEngine> StorageEngine for WalStorage<S> {
             self.log_insert(table_id, key, data)?;
         }
         self.inner.insert(table, records)
-    }
-
-    fn bulk_load_tbl_file(&mut self, table_name: &str, filepath: &str) -> SqlResult<usize> {
-        self.inner.bulk_load_tbl_file(table_name, filepath)
     }
 
     fn delete(&mut self, table: &str, filters: &[Value]) -> SqlResult<usize> {
@@ -331,13 +279,13 @@ impl<S: StorageEngine> StorageEngine for WalStorage<S> {
         &mut self,
         table: &str,
         filter: &RowFilter,
-        updates: &[(usize, Value)],
+        mutation: &RowMutation,
     ) -> SqlResult<usize> {
         let table_id = Self::table_name_to_id(table);
         let key = format!("RowFilter-{:p}", filter).into_bytes();
-        let data = format!("{:?}", updates).into_bytes();
+        let data = format!("{:?}", mutation.assignments()).into_bytes();
         self.log_update(table_id, key, data)?;
-        self.inner.update_if(table, filter, updates)
+        self.inner.update_if(table, filter, mutation)
     }
 
     fn create_table(&mut self, info: &TableInfo) -> SqlResult<()> {
@@ -360,71 +308,20 @@ impl<S: StorageEngine> StorageEngine for WalStorage<S> {
         self.inner.list_tables()
     }
 
-    fn create_table_index(
-        &mut self,
-        table: &str,
-        column: &str,
-        column_index: usize,
-    ) -> SqlResult<()> {
-        self.inner.create_table_index(table, column, column_index)
+    fn create_index(&mut self, table: &str, column: &str, column_index: usize) -> SqlResult<()> {
+        self.inner.create_index(table, column, column_index)
     }
 
-    fn create_hash_index(
-        &mut self,
-        table: &str,
-        column: &str,
-        column_index: usize,
-    ) -> SqlResult<()> {
-        self.inner.create_hash_index(table, column, column_index)
+    fn drop_index(&mut self, table: &str, column: &str) -> SqlResult<()> {
+        self.inner.drop_index(table, column)
     }
 
-    fn drop_table_index(&mut self, table: &str, column: &str) -> SqlResult<()> {
-        self.inner.drop_table_index(table, column)
+    fn add_column(&mut self, table: &str, column: ColumnDefinition) -> SqlResult<()> {
+        self.inner.add_column(table, column)
     }
 
-    fn search_index(&self, table: &str, column: &str, key: i64) -> Vec<u32> {
-        self.inner.search_index(table, column, key)
-    }
-
-    fn range_index(&self, table: &str, column: &str, start: i64, end: i64) -> Vec<u32> {
-        self.inner.range_index(table, column, start, end)
-    }
-
-    fn create_composite_index(
-        &mut self,
-        table: &str,
-        columns: Vec<String>,
-    ) -> SqlResult<crate::engine::IndexId> {
-        self.inner.create_composite_index(table, columns)
-    }
-
-    fn search_composite_index(
-        &self,
-        index_id: crate::engine::IndexId,
-        key: &CompositeKey,
-    ) -> SqlResult<Vec<u32>> {
-        self.inner.search_composite_index(index_id, key)
-    }
-
-    fn range_composite_index(
-        &self,
-        index_id: crate::engine::IndexId,
-        start: &CompositeKey,
-        end: &CompositeKey,
-    ) -> SqlResult<Vec<u32>> {
-        self.inner.range_composite_index(index_id, start, end)
-    }
-
-    fn create_view(&mut self, info: crate::engine::ViewInfo) -> SqlResult<()> {
-        self.inner.create_view(info)
-    }
-
-    fn get_view(&self, name: &str) -> Option<crate::engine::ViewInfo> {
-        self.inner.get_view(name)
-    }
-
-    fn list_views(&self) -> Vec<String> {
-        self.inner.list_views()
+    fn rename_table(&mut self, table: &str, new_name: &str) -> SqlResult<()> {
+        self.inner.rename_table(table, new_name)
     }
 
     fn has_view(&self, name: &str) -> bool {
@@ -447,47 +344,8 @@ impl<S: StorageEngine> StorageEngine for WalStorage<S> {
         self.inner.list_triggers(table)
     }
 
-    fn analyze_table(&self, table: &str) -> SqlResult<crate::engine::TableStats> {
-        self.inner.analyze_table(table)
-    }
-
-    fn get_next_auto_increment(&mut self, table: &str, column_index: usize) -> SqlResult<i64> {
-        self.inner.get_next_auto_increment(table, column_index)
-    }
-
-    fn get_auto_increment_counter(&self, table: &str, column_index: usize) -> SqlResult<i64> {
-        self.inner.get_auto_increment_counter(table, column_index)
-    }
-
-    fn on_write_complete(&mut self, table: &str) {
-        self.inner.on_write_complete(table)
-    }
-
-    fn scan_columns(&self, table: &str, column_indices: &[usize]) -> SqlResult<Vec<Record>> {
-        self.inner.scan_columns(table, column_indices)
-    }
-
-    fn set_cancel_flag(&mut self, flag: std::sync::Arc<std::sync::atomic::AtomicBool>) {
-        self.inner.set_cancel_flag(flag)
-    }
-
-    fn clear_cancel_flag(&mut self) {
-        self.inner.clear_cancel_flag()
-    }
-
-    fn cancel_flag(&self) -> Option<std::sync::Arc<std::sync::atomic::AtomicBool>> {
-        self.inner.cancel_flag()
-    }
-
-    fn check_cancelled(&self) -> SqlResult<()> {
-        self.inner.check_cancelled()
-    }
-
-    fn get_referencing_foreign_keys(
-        &self,
-        table: &str,
-    ) -> Vec<crate::engine::ReferencingForeignKey> {
-        self.inner.get_referencing_foreign_keys(table)
+    fn list_indexes(&self, table: &str) -> Vec<(String, String)> {
+        self.inner.list_indexes(table)
     }
 
     fn is_wal_enabled(&self) -> bool {
