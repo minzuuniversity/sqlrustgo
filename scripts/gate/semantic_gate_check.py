@@ -235,6 +235,11 @@ def should_skip(filepath, linenum, content):
         r_ctx = run(f'sed -n "{linenum-3},{linenum}p" "{filepath}"')
         if 'execute_dml' in r_ctx.stdout and 'facade' in r_ctx.stdout:
             return (True, "facade-closure")
+        # Also skip if wrapped in begin_transaction — look back 100 lines
+        # (covers entire DELETE/UPDATE block wrapped in transaction)
+        r_tx = run(f'sed -n "{max(1,linenum-100)},{linenum}p" "{filepath}"')
+        if 'begin_transaction' in r_tx.stdout:
+            return (True, "tx-boundary")
     return (False, None)
 
 for crate in ["executor", "server"]:
