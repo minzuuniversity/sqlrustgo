@@ -1,7 +1,7 @@
 //! MySQL server integration tests - test Packet I/O and MySqlError.
 
-use sqlrustgo_mysql_server::{MySqlError, Packet};
 use sqlrustgo::ExecutionEngine;
+use sqlrustgo_mysql_server::{MySqlError, Packet};
 use std::sync::{Arc, RwLock};
 
 // ============ MySqlError Tests ============
@@ -175,9 +175,7 @@ fn test_execution_engine_state_persistence() {
         .execute("CREATE TABLE t (id INTEGER, value TEXT)")
         .unwrap();
 
-    engine
-        .execute("INSERT INTO t VALUES (1, 'test')")
-        .unwrap();
+    engine.execute("INSERT INTO t VALUES (1, 'test')").unwrap();
 
     let result = engine.execute("SELECT * FROM t").unwrap();
     assert!(!result.rows.is_empty(), "Inserted row not found");
