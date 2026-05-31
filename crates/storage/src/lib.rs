@@ -5,6 +5,7 @@ pub mod binary_format;
 pub mod binary_storage;
 pub mod bplus_tree;
 pub mod buffer_pool;
+pub mod checkpoint;
 pub mod engine;
 pub mod file_storage;
 pub mod page;
