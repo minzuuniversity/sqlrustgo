@@ -92,6 +92,19 @@ impl<S: StorageEngine, T: WalManager> WalStorage<S, T> {
         bytes
     }
 
+    fn row_matches_filter(row: &[Value], filters: &[Value]) -> bool {
+        if filters.is_empty() {
+            return true;
+        }
+        if filters.len() == 1 {
+            return row.first().zip(filters.first()).is_some_and(|(r, f)| r == f);
+        }
+        if filters.len() <= row.len() {
+            return filters.iter().enumerate().all(|(i, f)| &row[i] == f);
+        }
+        false
+    }
+
     fn log_insert(&mut self, table_id: u64, key: Vec<u8>, data: Vec<u8>) -> SqlResult<()> {
         if self.wal_enabled {
             let entry = WalEntry {
@@ -243,8 +256,15 @@ impl<S: StorageEngine, T: WalManager> StorageEngine for WalStorage<S, T> {
 
     fn delete(&mut self, table: &str, filters: &[Value]) -> SqlResult<usize> {
         let table_id = Self::table_name_to_id(table);
-        let key = format!("{:?}", filters).into_bytes();
-        self.log_delete(table_id, key)?;
+
+        let rows = self.inner.scan(table)?;
+        for row in &rows {
+            if Self::row_matches_filter(row, filters) {
+                let key = Self::record_key(row);
+                self.log_delete(table_id, key)?;
+            }
+        }
+
         self.inner.delete(table, filters)
     }
 
@@ -262,9 +282,16 @@ impl<S: StorageEngine, T: WalManager> StorageEngine for WalStorage<S, T> {
         updates: &[(usize, Value)],
     ) -> SqlResult<usize> {
         let table_id = Self::table_name_to_id(table);
-        let key = format!("{:?}", filters).into_bytes();
-        let data = format!("{:?}", updates).into_bytes();
-        self.log_update(table_id, key, data)?;
+
+        let rows = self.inner.scan(table)?;
+        for row in &rows {
+            if Self::row_matches_filter(row, filters) {
+                let key = Self::record_key(row);
+                let old_data = Self::record_to_bytes(row);
+                self.log_update(table_id, key, old_data)?;
+            }
+        }
+
         self.inner.update(table, filters, updates)
     }
 
