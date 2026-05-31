@@ -497,6 +497,25 @@ pub trait StorageEngine: Send + Sync {
     /// Rename a table
     fn rename_table(&mut self, table: &str, new_name: &str) -> SqlResult<()>;
 
+    /// Drop a column from a table
+    fn drop_column(&mut self, _table: &str, _column: &str) -> SqlResult<()> {
+        Err(SqlError::ExecutionError(
+            "drop_column not supported by this storage engine".to_string(),
+        ))
+    }
+
+    /// Modify a column definition
+    fn modify_column(
+        &mut self,
+        _table: &str,
+        _column: &str,
+        _new_def: ColumnDefinition,
+    ) -> SqlResult<()> {
+        Err(SqlError::ExecutionError(
+            "modify_column not supported by this storage engine".to_string(),
+        ))
+    }
+
     /// Create a trigger on a table
     fn create_trigger(&mut self, info: TriggerInfo) -> SqlResult<()>;
 
@@ -514,6 +533,49 @@ pub trait StorageEngine: Send + Sync {
 
     /// Check if a view exists
     fn has_view(&self, name: &str) -> bool;
+
+    /// Begin a transaction, returns a transaction ID
+    fn begin_transaction(&mut self) -> SqlResult<u64> {
+        Err(SqlError::ExecutionError(
+            "Transactions not supported by this storage engine".to_string(),
+        ))
+    }
+
+    /// Commit the current transaction
+    fn commit_transaction(&mut self) -> SqlResult<()> {
+        Err(SqlError::ExecutionError(
+            "Transactions not supported by this storage engine".to_string(),
+        ))
+    }
+
+    /// Rollback the current transaction
+    fn rollback_transaction(&mut self) -> SqlResult<()> {
+        Err(SqlError::ExecutionError(
+            "Transactions not supported by this storage engine".to_string(),
+        ))
+    }
+
+    /// Check if a transaction is in progress
+    fn in_transaction(&self) -> bool {
+        false
+    }
+
+    /// Get the current transaction ID
+    fn current_tx_id(&self) -> u64 {
+        0
+    }
+
+    /// Set the current transaction ID (used by WAL integration)
+    fn set_current_tx_id(&mut self, _id: u64) {}
+
+    /// Flush any buffered data to durable storage
+    fn flush(&mut self) -> SqlResult<()> {
+        Ok(())
+    }
+
+    fn is_wal_enabled(&self) -> bool {
+        false
+    }
 }
 
 /// In-memory storage implementation for testing and caching
@@ -735,6 +797,10 @@ impl StorageEngine for MemoryStorage {
     fn list_indexes(&self, _table: &str) -> Vec<(String, String)> {
         Vec::new()
     }
+
+    fn is_wal_enabled(&self) -> bool {
+        true
+    }
 }
 
 #[cfg(test)]
@@ -801,6 +867,12 @@ mod tests {
     fn test_storage_engine_send_sync() {
         fn _check<T: Send + Sync>() {}
         _check::<MemoryStorage>();
+    }
+
+    #[test]
+    fn test_memory_storage_is_wal_enabled() {
+        let storage = MemoryStorage::new();
+        assert!(storage.is_wal_enabled());
     }
 
     #[test]

@@ -191,6 +191,10 @@ mod tests {
             Ok(0)
         }
 
+        fn delete_if(&mut self, _table: &str, _filter: &RowFilter) -> SqlResult<usize> {
+            Ok(0)
+        }
+
         fn update(
             &mut self,
             _table: &str,
@@ -217,7 +221,14 @@ mod tests {
         }
 
         fn get_table_info(&self, _table: &str) -> SqlResult<TableInfo> {
-            Ok(TableInfo { columns: vec![] })
+            Ok(TableInfo {
+                name: String::new(),
+                columns: vec![],
+                foreign_keys: vec![],
+                unique_constraints: vec![],
+                check_constraints: vec![],
+                partition_info: None,
+            })
         }
 
         fn has_table(&self, _table: &str) -> bool {
