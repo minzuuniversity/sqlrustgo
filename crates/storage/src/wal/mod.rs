@@ -20,7 +20,6 @@
 
 pub mod file_backed_wal_manager;
 pub mod memory_wal_manager;
-pub mod recovery_engine;
 
 pub use file_backed_wal_manager::FileBackedWalManager;
 pub use memory_wal_manager::MemoryWalManager;
