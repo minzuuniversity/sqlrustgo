@@ -10,13 +10,14 @@
 |----|--------|-----------------|--------|
 | #2723 | P0: DELETE via facade | 1 (local_executor.rs:1469) | ✅ Fixed |
 | #2724 | Remove dead teaching_endpoints.rs | 4 (teaching code) | ✅ Fixed |
+| #2734 | SGL classifier: facade-closure detection | 1 false positive fixed | ✅ Fixed |
+| #2735 | P2: openclaw endpoints TX boundary | 2 (openclaw_endpoints.rs) | ✅ Fixed |
 
 ### Remaining Violations
 
-| Location | Lines | P | Type | Fix |
-|----------|-------|---|------|-----|
-| trigger.rs | 429,507,509,531 | P1 | Trigger body DML | Architecture refactor |
-| openclaw_endpoints.rs | 2203,2263 | P2 | Teaching DML | Medium refactor |
+| Location | Lines | P | Type | Status |
+|----------|-------|---|------|--------|
+| trigger.rs | 429,507,509,531 | P1 | Trigger body DML | 🔴 Architecture refactor needed |
 
 ---
 
