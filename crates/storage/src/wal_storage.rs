@@ -115,7 +115,10 @@ impl<S: StorageEngine, T: WalManager> WalStorage<S, T> {
             return true;
         }
         if filters.len() == 1 {
-            return row.first().zip(filters.first()).is_some_and(|(r, f)| r == f);
+            return row
+                .first()
+                .zip(filters.first())
+                .is_some_and(|(r, f)| r == f);
         }
         if filters.len() <= row.len() {
             return filters.iter().enumerate().all(|(i, f)| &row[i] == f);
