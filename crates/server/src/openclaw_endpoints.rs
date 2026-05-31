@@ -459,6 +459,10 @@ impl OpenClawHttpServer {
         port: u16,
         storage: Arc<RwLock<dyn StorageEngine>>,
     ) -> Self {
+        assert!(
+            storage.read().unwrap().is_wal_enabled(),
+            "Storage MUST be WalStorage in production - WAL is mandatory"
+        );
         Self {
             host: host.into(),
             port,
