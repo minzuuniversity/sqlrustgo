@@ -222,7 +222,11 @@ impl WalWriter {
         })
     }
 
-    pub fn with_config(path: &PathBuf, batch_mode: bool, flush_threshold: usize) -> std::io::Result<Self> {
+    pub fn with_config(
+        path: &PathBuf,
+        batch_mode: bool,
+        flush_threshold: usize,
+    ) -> std::io::Result<Self> {
         let file = OpenOptions::new().create(true).append(true).open(path)?;
 
         let writer = BufWriter::new(file);
