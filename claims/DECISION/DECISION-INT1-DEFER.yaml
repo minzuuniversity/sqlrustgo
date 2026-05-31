@@ -1,0 +1,111 @@
+# DECISION: INT-1 Deferred to v3.8.0
+
+> **Decision ID**: DECISION-INT1-DEFER
+> **Type**: deferral_decision
+> **Claim ID**: INT-1
+> **Decision Date**: 2026-05-30
+> **Status**: active
+> **Decided By**: hermes-agent (Z440)
+> **Gate**: G-05 (Claim Audit Rule)
+
+---
+
+## Decision
+
+```
+INT-1 (DML bypasses WAL) is DEFERRED to v3.8.0
+Resolution target: PR-830 + PR-840
+```
+
+---
+
+## Rationale
+
+WAL integration requires architectural prerequisites that cannot be completed in v3.7.x:
+
+### Blockers
+
+1. **PR-800 (COM_QUERY AST Routing)**: Must land before any DML interception can be added
+2. **PR-810 (ExecutionEngine → Router)**: Must land before TransactionManager can be inserted
+3. **PR-820 (TransactionManager Session Binding)**: Must land before WAL can be hooked into sessions
+
+Without PR-800/810/820, there is no clean injection point for WAL append in the DML path.
+
+### Risk Acceptance
+
+If INT-1 is not fixed:
+- Crash after COMMIT may lose data
+- No WAL replay on restart
+
+**This is a known limitation of v3.7.0** and is documented in RELEASE_SUMMARY.md and the Release Contract.
+
+---
+
+## Evidence Required for Close
+
+To close this deferral and mark INT-1 as **mitigated**, the following must exist:
+
+```
+1. commit_sha: PR-830 merge commit
+   - Must show WAL.append() called in execute_insert/execute_update/execute_delete
+
+2. test_ref: crash_recovery_test
+   - path: crates/transaction/tests/wal_recovery.rs
+   - result: pass
+   - Must demonstrate: INSERT → COMMIT → kill -9 → restart → data exists
+
+3. test_ref: dirty_read_prevention_test
+   - path: crates/transaction/tests/isolation.rs
+   - result: pass
+   - Must demonstrate: uncommitted data NOT visible to concurrent SELECT
+
+4. ci_run_id: WAL integration gate run
+   - status: success
+   - jobs: [unit_tests, wal_recovery_test, isolation_test, crash_sim]
+```
+
+---
+
+## Re-evaluation Trigger
+
+This decision must be re-evaluated if:
+- PR-800 does not land by v3.8.0 Alpha cutoff
+- PR-830 scope changes significantly
+- New evidence shows INT-1 impact is wider than originally assessed
+
+---
+
+## G-04.1 Compliance
+
+```
+claim_source_refs:
+  - type: issue
+    id: 2588
+    note: "Claim source only — not evidence"
+
+This decision is itself a Claim (type: deferral_decision).
+Evidence for this decision:
+  - None at commit level (DECISION is a human-authored record)
+  - Prerequisite analysis is architectural reasoning, not machine-verifiable evidence
+
+STATUS = supported (deferral rationale documented, no formal evidence chain)
+```
+
+---
+
+## Gate Evaluation
+
+```
+gate claim evaluate DECISION-INT1-DEFER --db /tmp/eg.db
+```
+
+Current output:
+```
+claim_id: DECISION-INT1-DEFER
+status: supported
+type: deferral_decision
+evidence_chain_complete: false
+missing: [prerequisite_analysis_artifact]
+```
+
+**Verdict**: UNVERIFIED (G-04: decision is documented claim, not formal proof)
