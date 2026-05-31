@@ -26,10 +26,11 @@ use sqlrustgo_parser::JoinType; // For join type matching
 use sqlrustgo_parser::{
     DeleteStatement, Expression, Statement, TransactionStatement, UpdateStatement,
 };
-use sqlrustgo_storage::{ColumnDefinition, MemoryStorage, StorageEngine, TableInfo};
+use sqlrustgo_storage::{ColumnDefinition, MemoryStorage, StorageEngine, TableInfo, WalStorage};
 use sqlrustgo_transaction::{IsolationLevel as TmIsolationLevel, TransactionManager, TxId};
 use sqlrustgo_types::Value as SqlValue;
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 
 /// Execution engine for SQL statements
@@ -1882,6 +1883,58 @@ impl ExecutionEngine<MemoryStorage> {
             default_isolation: TmIsolationLevel::default(),
             current_role: None,
         }
+    }
+}
+
+// =============================================================================
+// LAYER 2 — WAL integration stub layer
+// Does NOT write real WAL entries — flush hook exists, replay mocked
+// Use for: WAL interface exists, flush hook exists, replay mocked
+// =============================================================================
+
+impl ExecutionEngine<MemoryStorage> {
+    /// Create a WAL-backed execution engine with WAL disabled (stub mode)
+    /// Uses WalStorage::new_without_wal() to skip actual WAL writes
+    pub fn with_wal_stub() -> ExecutionEngine<WalStorage<MemoryStorage>> {
+        let inner = MemoryStorage::new();
+        let wal = WalStorage::new_without_wal(inner);
+        ExecutionEngine {
+            storage: Arc::new(RwLock::new(wal)),
+            catalog: None,
+            stats: Arc::new(RwLock::new(ExecutionStats::default())),
+            cbo_enabled: true,
+            transaction_manager: TransactionManager::new(),
+            current_tx_id: None,
+            tx_status: TxStatus::Idle,
+            default_isolation: TmIsolationLevel::default(),
+            current_role: None,
+        }
+    }
+}
+
+// =============================================================================
+// LAYER 3 — Full WAL layer (Beta Gate required)
+// WAL path: wal_path/.wal
+// Use for: WAL-001~005, RECOVERY-001~008, B1~B3 integration
+// =============================================================================
+
+impl ExecutionEngine<MemoryStorage> {
+    /// Create a WAL-backed execution engine with full WAL enabled
+    /// WalStorage::new(inner, wal_path) initializes the WAL manager at the given path
+    pub fn with_wal(wal_path: PathBuf) -> SqlResult<ExecutionEngine<WalStorage<MemoryStorage>>> {
+        let inner = MemoryStorage::new();
+        let wal = WalStorage::new(inner, wal_path)?;
+        Ok(ExecutionEngine {
+            storage: Arc::new(RwLock::new(wal)),
+            catalog: None,
+            stats: Arc::new(RwLock::new(ExecutionStats::default())),
+            cbo_enabled: true,
+            transaction_manager: TransactionManager::new(),
+            current_tx_id: None,
+            tx_status: TxStatus::Idle,
+            default_isolation: TmIsolationLevel::default(),
+            current_role: None,
+        })
     }
 }
 
