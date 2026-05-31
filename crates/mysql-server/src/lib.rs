@@ -1529,8 +1529,7 @@ pub fn run_server(host: &str, port: u16) -> MySqlResult<()> {
 
     // WAL-backed FileStorage for production runtime
     let wal_data_dir = std::env::temp_dir().join(format!("sqlrustgo_wal_{}", port));
-    let file_storage = FileStorage::new_with_wal(wal_data_dir)
-        .map_err(std::io::Error::other)?;
+    let file_storage = FileStorage::new_with_wal(wal_data_dir).map_err(std::io::Error::other)?;
     let storage: Arc<RwLock<FileStorage>> = Arc::new(RwLock::new(file_storage));
     {
         let mut eng = ExecutionEngine::new(storage.clone());
