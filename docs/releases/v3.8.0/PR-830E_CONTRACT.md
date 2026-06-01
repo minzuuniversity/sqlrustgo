@@ -3,6 +3,7 @@
 > **Contract ID**: RECOVERY_CONTRACT_v1
 > **PR**: PR-830E — WAL Recovery Lifecycle
 > **Version**: v3.8.0 Alpha
+> **gate_policy_eval_id**: `run_20260601_016`
 > **Status**: DRAFT — For Review
 
 ---
