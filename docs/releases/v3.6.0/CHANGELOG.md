@@ -4,16 +4,6 @@
 > **分支**: develop/v3.6.0
 > **日期**: 2026-05-30
 > **SSOT**: docs/governance/SSOT_CROSS_CHECK.md
-> **状态**: Alpha FAIL — 双链路执行缺陷（见 README.md 已知缺陷）
-
----
-
-## ⚠️ 版本状态声明
-
-v3.6.0 **不是生产 GA**。声称 GA 但：
-- Alpha Gate 在 Z440 实测 32.59% (<75%) → **Alpha FAIL**
-- GA Gate 未实际执行（GA_GATE_REPORT.md 不存在）
-- 双链路执行缺陷未修复（WAL/并行/CBO 未集成 mysql-server）
 
 ---
 
