@@ -1,14 +1,14 @@
 # v3.5.0 Changelog
 
 > **Version**: 3.5.0
-> **Date**: 2026-05-28
-> **Status**: GA
+> **Date**: TBD
+> **Status**: 开发中 (Alpha)
 > **Branch**: `develop/v3.5.0`
 > **From**: v3.4.0 GA (`d934228b`)
 
 ---
 
-## v3.5.0 (2026-05-28) - GA
+## v3.5.0 (2026-05-27) - 开发中
 
 ### 新增
 
