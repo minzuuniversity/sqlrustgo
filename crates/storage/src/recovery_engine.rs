@@ -240,6 +240,114 @@ fn bytes_to_record(data: &[u8]) -> Result<Vec<Value>, crate::engine::SqlError> {
     Ok(record)
 }
 
+pub(crate) fn bytes_to_filters(data: &[u8]) -> Result<Vec<Value>, crate::engine::SqlError> {
+    bytes_to_record(data)
+}
+
+pub(crate) fn bytes_to_updates(data: &[u8]) -> Result<Vec<(usize, Value)>, crate::engine::SqlError> {
+    if data.len() < 4 {
+        return Err(crate::engine::SqlError::ExecutionError(
+            "RecoveryEngine: truncated updates length".to_string(),
+        ));
+    }
+    let mut pos = 4;
+    let num_pairs = u32::from_le_bytes([data[0], data[1], data[2], data[3]]) as usize;
+
+    let mut updates = Vec::with_capacity(num_pairs);
+    for _ in 0..num_pairs {
+        if pos + 4 > data.len() {
+            return Err(crate::engine::SqlError::ExecutionError(
+                "RecoveryEngine: truncated update column index".to_string(),
+            ));
+        }
+        let col_idx = u32::from_le_bytes([data[pos], data[pos + 1], data[pos + 2], data[pos + 3]]) as usize;
+        pos += 4;
+
+        let value = bytes_to_value(data, &mut pos)?;
+        updates.push((col_idx, value));
+    }
+    Ok(updates)
+}
+
+fn bytes_to_value(data: &[u8], pos: &mut usize) -> Result<Value, crate::engine::SqlError> {
+    if *pos + 2 > data.len() {
+        return Err(crate::engine::SqlError::ExecutionError(
+            "RecoveryEngine: truncated value prefix".to_string(),
+        ));
+    }
+    match &data[*pos..*pos + 2] {
+        b"i:" => {
+            if *pos + 10 > data.len() {
+                return Err(crate::engine::SqlError::ExecutionError(
+                    "RecoveryEngine: truncated Integer".to_string(),
+                ));
+            }
+            let mut buf = [0u8; 8];
+            buf.copy_from_slice(&data[*pos + 2..*pos + 10]);
+            let value = Value::Integer(i64::from_le_bytes(buf));
+            *pos += 10;
+            Ok(value)
+        }
+        b"s:" => {
+            let start = *pos + 2;
+            let end = data[start..].iter().position(|&b| b == 0).ok_or_else(|| {
+                crate::engine::SqlError::ExecutionError(
+                    "RecoveryEngine: Text missing null terminator".to_string(),
+                )
+            })?;
+            let s = std::str::from_utf8(&data[start..start + end]).map_err(|e| {
+                crate::engine::SqlError::ExecutionError(format!(
+                    "RecoveryEngine: invalid UTF-8 in Text: {}",
+                    e
+                ))
+            })?;
+            *pos = start + end + 1;
+            Ok(Value::Text(s.to_string()))
+        }
+        b"b:" => {
+            if *pos + 3 > data.len() {
+                return Err(crate::engine::SqlError::ExecutionError(
+                    "RecoveryEngine: truncated Boolean".to_string(),
+                ));
+            }
+            let value = Value::Boolean(data[*pos + 2] != 0);
+            *pos += 3;
+            Ok(value)
+        }
+        b"n:" => {
+            *pos += 2;
+            Ok(Value::Null)
+        }
+        b"f:" => {
+            if *pos + 10 > data.len() {
+                return Err(crate::engine::SqlError::ExecutionError(
+                    "RecoveryEngine: truncated Float".to_string(),
+                ));
+            }
+            let mut buf = [0u8; 8];
+            buf.copy_from_slice(&data[*pos + 2..*pos + 10]);
+            let value = Value::Float(f64::from_bits(u64::from_le_bytes(buf)));
+            *pos += 10;
+            Ok(value)
+        }
+        b"B:" => {
+            let start = *pos + 2;
+            let end = data[start..].iter().position(|&b| b == 0).ok_or_else(|| {
+                crate::engine::SqlError::ExecutionError(
+                    "RecoveryEngine: Blob missing null terminator".to_string(),
+                )
+            })?;
+            let value = Value::Blob(data[start..start + end].to_vec());
+            *pos = start + end + 1;
+            Ok(value)
+        }
+        _ => Err(crate::engine::SqlError::ExecutionError(format!(
+            "RecoveryEngine: unknown value prefix: {:02x?}",
+            &data[*pos..*pos + 2]
+        ))),
+    }
+}
+
 fn key_to_filter_values(key: &[u8]) -> Result<Vec<Value>, crate::engine::SqlError> {
     if key.is_empty() {
         return Ok(Vec::new());
