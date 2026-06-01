@@ -1,5 +1,8 @@
-use crate::bplus_tree::index::CompositeKey;
-use crate::engine::{ColumnDefinition, Record, RowFilter, SqlResult, StorageEngine, TableInfo, Value};
+use crate::checkpoint::{CheckpointManager, CheckpointMetadata};
+use crate::engine::{
+    ColumnDefinition, Record, RowFilter, RowMutation, SqlResult, StorageEngine, TableInfo,
+    TriggerInfo, Value,
+};
 use crate::wal::{WalEntry, WalEntryType, WalManager};
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
@@ -352,13 +355,13 @@ impl<S: StorageEngine, T: WalManager> StorageEngine for WalStorage<S, T> {
         &mut self,
         table: &str,
         filter: &RowFilter,
-        updates: &[(usize, Value)],
+        mutation: &RowMutation,
     ) -> SqlResult<usize> {
         let table_id = Self::table_name_to_id(table);
         let key = format!("RowFilter-{:p}", filter).into_bytes();
-        let data = format!("{:?}", updates).into_bytes();
+        let data = format!("{:?}", mutation).into_bytes();
         self.log_update(table_id, key, data)?;
-        self.inner.update_if(table, filter, updates)
+        self.inner.update_if(table, filter, mutation)
     }
 
     fn create_table(&mut self, info: &TableInfo) -> SqlResult<()> {
