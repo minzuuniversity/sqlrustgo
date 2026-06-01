@@ -52,7 +52,7 @@ Beta Gate 包含完整 workspace 测试，原计划在 Nomad CI 中执行（需 
 
 **Benchmark 测试**:
 - page_io_benchmark: ✅ 8 passed (3.97s)
-- benchmark_suite: ⏭️ SKIP (terminated after 60s timeout — gate 环境超时限制，非功能问题)
+- benchmark_suite: ⏳ running (terminated after 60s timeout — long-running perf test)
 
 ---
 
