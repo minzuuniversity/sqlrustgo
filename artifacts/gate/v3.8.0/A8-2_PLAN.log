@@ -1,0 +1,9 @@
+=== Plan Integrity Check for vv3.8.0 ===
+Checking VERSION_PLAN.md...
+Checking DEVELOPMENT_PLAN.md...
+Checking TEST_PLAN.md...
+
+Report: /Users/liying/workspace/dev/yinglichina163/sqlrustgo/artifacts/gate/v3.8.0/PLAN_INTEGRITY_REPORT.md
+PASS=2, WARN=3, FAIL=0
+
+✅ Plan integrity check PASSED
