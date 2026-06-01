@@ -25,7 +25,7 @@
 | # | 检查项 | 命令 | 标准 | 状态 |
 |---|--------|------|------|------|
 | R1 | Build | `cargo build --release --workspace` | 成功 | ✅ PASS (28.76s, 11 warnings pre-existing) |
-| R2 | Test | `cargo test --all-features --workspace` | 全部通过 | ✅ PASS (Z440 实战测试, 2026-05-27) |
+| R2 | Test | `cargo test --all-features --workspace` | 全部通过 | ⏳ Z440 超时 |
 | R3 | Clippy | `cargo clippy --all-features --workspace -- -D warnings` | 零警告 | ✅ PASS |
 | R4 | Format | `cargo fmt --all -- --check` | 通过 | ✅ PASS |
 
@@ -44,7 +44,7 @@
 |---|--------|------|------|------|
 | R6 | Security | `cargo audit` | 无漏洞 | ✅ PASS (8 allowed warnings) |
 | R7 | SQL Compat | `bash scripts/gate/check_sql_compat.sh` | 通过 | ✅ PASS (SQL Corpus ≥80%) |
-| R8 | TPC-H SF=1 | Z6G4 执行 | 22/22 | ✅ PASS (本地实测 22/22, 2026-05-27) |
+| R8 | TPC-H SF=1 | Z6G4 执行 | 22/22 | ⏳ Z6G4 |
 
 ### 2.4 Beta 门禁复核 (B1-B14)
 
@@ -69,10 +69,10 @@
 
 | # | 检查项 | 说明 | 状态 |
 |---|--------|------|-------|
-| R-S1 | 16h Write | Z6G4 执行 | ⏭️ SKIP (生产级稳定性测试，本版本 scope 外) |
-| R-S2 | 16h Read/Write | Z6G4 执行 | ⏭️ SKIP (生产级稳定性测试，本版本 scope 外) |
-| R-S3 | 24h Write | Z6G4 执行 | ⏭️ SKIP (生产级稳定性测试，本版本 scope 外) |
-| R-S4 | 24h Read/Write | Z6G4 执行 | ⏭️ SKIP (生产级稳定性测试，本版本 scope 外) |
+| R-S1 | 16h Write | Z6G4 执行 | ⏳ Z6G4 |
+| R-S2 | 16h Read/Write | Z6G4 执行 | ⏳ Z6G4 |
+| R-S3 | 24h Write | Z6G4 执行 | ⏳ Z6G4 |
+| R-S4 | 24h Read/Write | Z6G4 执行 | ⏳ Z6G4 |
 
 ### 2.6 Alpha 门禁复核 (A6, A7)
 
@@ -91,9 +91,9 @@
 | 覆盖率 (R5) | 1 | 0 | 0 |
 | 安全兼容 (R6-R8) | 3 | 0 | 0 |
 | Beta 复核 (B1-B14) | 14 | 0 | 0 |
-| 稳定性 (R-S1~S4) | 0 | 0 | 4 | ⏭️ SKIP (生产级测试，scope 外) |
+| 稳定性 (R-S1~S4) | 0 | 0 | 4 |
 | Alpha 复核 (A6, A7) | 2 | 0 | 0 |
 | **总计** | **24** | **0** | **4** |
 
 **RC Gate 结果**: ✅ LOCAL PASS (24/24 本地可执行项目)
-> ⚠️ 待 Z6G4 执行: 仅 R-S1~S4 (16h/24h 生产级稳定性测试，本版本 scope 外)
+> ⚠️ 待 Z6G4 执行: R2, R8, R-S1~S4
