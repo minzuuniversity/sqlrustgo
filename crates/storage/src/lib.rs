@@ -11,6 +11,7 @@ pub mod file_storage;
 pub mod page;
 pub mod predicate;
 pub mod read_write_split;
+pub mod recovery_engine;
 pub mod vtu_guard;
 pub mod vtu_ir;
 pub mod wal;
@@ -29,4 +30,7 @@ pub use engine::{
 };
 pub use file_storage::FileStorage;
 pub use page::Page;
+pub use recovery_engine::{RecoveryEngine, RecoveryEngineImpl, RecoveryReport};
 pub use vtu_guard::VtuGuard;
+pub use wal::{FileBackedWalManager, MemoryWalManager, WalManager};
+pub use wal_storage::WalStorage;
