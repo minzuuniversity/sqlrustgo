@@ -1,48 +1,73 @@
 {
   "version": "v3.8.0",
-  "timestamp": "2026-05-31T06:35:13Z",
-  "branch": "develop/v3.8.0",
-  "commit": "53ac57a8ca1bef4490c8560b3dcfaf26e82d331a",
+  "timestamp": "2026-05-31T23:44:09Z",
+  "branch": "main",
+  "commit": "cc9a6095ba742b0da78a0e522df9f04a16dce5c1",
   "checks": [
     {
       "id": "A1_BUILD",
-      "stdout_sha256": "89aa52f033a089fe15cf99eb066792af56aed6b207928b0e1cb50d3c6ff871e3",
-      "log": "/Users/liying/workspace/dev/openheart/sqlrustgo/artifacts/gate/v3.8.0/A1_BUILD.log"
+      "stdout_sha256": "bbd5e95e11074c48f11f350929abe3c18611dc6e9bbc780b92a37f6b7237b9bd",
+      "log": "/Users/liying/workspace/dev/yinglichina163/sqlrustgo/artifacts/gate/v3.8.0/A1_BUILD.log"
     },
     {
       "id": "A2_TEST",
-      "stdout_sha256": "60db8b8344842c50366ed31e28ae7998845d5f22777a5d5828d3fa22319bd2cc",
-      "log": "/Users/liying/workspace/dev/openheart/sqlrustgo/artifacts/gate/v3.8.0/A2_TEST.log"
+      "stdout_sha256": "e8b3c94898ee63aca7a850edb29ad182e772a06e3638e5081e41ec4864f2caed",
+      "log": "/Users/liying/workspace/dev/yinglichina163/sqlrustgo/artifacts/gate/v3.8.0/A2_TEST.log"
     },
     {
       "id": "A3_CLIPPY",
-      "stdout_sha256": "f23abbe95f7a204f6d78b72a6d068eb1135b6f82d84eaac78bc0987840901a6e",
-      "log": "/Users/liying/workspace/dev/openheart/sqlrustgo/artifacts/gate/v3.8.0/A3_CLIPPY.log"
+      "stdout_sha256": "be5250e0d3738caab609c704ebe76ab183da3fbd76f6f65b8e79139619865f9e",
+      "log": "/Users/liying/workspace/dev/yinglichina163/sqlrustgo/artifacts/gate/v3.8.0/A3_CLIPPY.log"
     },
     {
       "id": "A4_FORMAT",
-      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-      "log": "/Users/liying/workspace/dev/openheart/sqlrustgo/artifacts/gate/v3.8.0/A4_FORMAT.log"
+      "stdout_sha256": "863600d5efa52df5de207354497939017b520799eba90f06336c0f5b049b8fd6",
+      "log": "/Users/liying/workspace/dev/yinglichina163/sqlrustgo/artifacts/gate/v3.8.0/A4_FORMAT.log"
     },
     {
       "id": "A6-1_REPLAY",
       "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-      "log": "/Users/liying/workspace/dev/openheart/sqlrustgo/artifacts/gate/v3.8.0/A6-1_REPLAY.log"
+      "log": "/Users/liying/workspace/dev/yinglichina163/sqlrustgo/artifacts/gate/v3.8.0/A6-1_REPLAY.log"
     },
     {
       "id": "A6-2_CLAIM",
       "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-      "log": "/Users/liying/workspace/dev/openheart/sqlrustgo/artifacts/gate/v3.8.0/A6-2_CLAIM.log"
+      "log": "/Users/liying/workspace/dev/yinglichina163/sqlrustgo/artifacts/gate/v3.8.0/A6-2_CLAIM.log"
     },
     {
       "id": "A6-3_DECISION",
       "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-      "log": "/Users/liying/workspace/dev/openheart/sqlrustgo/artifacts/gate/v3.8.0/A6-3_DECISION.log"
+      "log": "/Users/liying/workspace/dev/yinglichina163/sqlrustgo/artifacts/gate/v3.8.0/A6-3_DECISION.log"
     },
     {
       "id": "A6-5_ADR",
       "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-      "log": "/Users/liying/workspace/dev/openheart/sqlrustgo/artifacts/gate/v3.8.0/A6-5_ADR.log"
+      "log": "/Users/liying/workspace/dev/yinglichina163/sqlrustgo/artifacts/gate/v3.8.0/A6-5_ADR.log"
+    },
+    {
+      "id": "A7_SGL",
+      "stdout_sha256": "775888d9b30eb449bc78d992651e16d383a61e754333fe2c0402c1945f8de064",
+      "log": "/Users/liying/workspace/dev/yinglichina163/sqlrustgo/artifacts/gate/v3.8.0/A7_SGL.log"
+    },
+    {
+      "id": "A8-1_EVIDENCE",
+      "stdout_sha256": "787d946404811cfcfda44dcfcaf3d4cdf491d04e5218c8983c7c0e9952193e06",
+      "log": "/Users/liying/workspace/dev/yinglichina163/sqlrustgo/artifacts/gate/v3.8.0/A8-1_EVIDENCE.log"
+    },
+    {
+      "id": "A8-2_PLAN",
+      "stdout_sha256": "4eb39d8364004ebad9466be2917086ad44f4624a9193cb1f0edfa00ba3c6fabc",
+      "log": "/Users/liying/workspace/dev/yinglichina163/sqlrustgo/artifacts/gate/v3.8.0/A8-2_PLAN.log"
+    },
+    {
+      "id": "A8-3_ARCH",
+      "stdout_sha256": "f3534bc0d9774a578f3ebbf4adae0d70bdeb1df1be3f1a2c311a26b85e1d3fc5",
+      "log": "/Users/liying/workspace/dev/yinglichina163/sqlrustgo/artifacts/gate/v3.8.0/A8-3_ARCH.log"
+    },
+    {
+      "id": "A9_GOVERNANCE",
+      "stdout_sha256": "14306fcb0d64fca094765bd4f22b9a4456683c9f6b1dff34142ea5684c06a023",
+      "log": "/Users/liying/workspace/dev/yinglichina163/sqlrustgo/artifacts/gate/v3.8.0/A9_GOVERNANCE.log"
     }
   ]
 }
