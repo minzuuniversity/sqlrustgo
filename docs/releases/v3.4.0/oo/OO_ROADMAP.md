@@ -16,11 +16,11 @@
 
 ## 二、Trust Infrastructure
 
-|| 文档 | Issue | 状态 | PR |
-||------|-------|------|-----|
-| PERFORMANCE_GOVERNANCE.md | #1235 | ✅ v3.3.0 已创建 | PR #1243 |
-| CRASH_SIMULATION_FRAMEWORK.md | #1236 | ✅ v3.3.0 已创建 | PR #1244 |
-| WAL_FORMAL_VERIFICATION.md | #1237 | ✅ v3.3.0 已创建 | PR #1247 |
+| 文档 | Issue | 状态 | PR |
+|------|-------|------|-----|
+| [PERFORMANCE_GOVERNANCE.md](./Trust-Infrastructure/PERFORMANCE_GOVERNANCE.md) | #1235 | ✅ v3.3.0 已创建 | PR #1243 |
+| [CRASH_SIMULATION_FRAMEWORK.md](./Trust-Infrastructure/CRASH_SIMULATION_FRAMEWORK.md) | #1236 | ✅ v3.3.0 已创建 | PR #1244 |
+| [WAL_FORMAL_VERIFICATION.md](./Trust-Infrastructure/WAL_FORMAL_VERIFICATION.md) | #1237 | ✅ v3.3.0 已创建 | PR #1247 |
 
 **v3.4.0 验证**：
 
@@ -32,11 +32,11 @@
 
 ## 三、Compliance (P0 合规自动化)
 
-|| 文档 | Issue | 状态 | PR |
-||------|-------|------|-----|
-| COMPLIANCE_AS_CODE_ENGINE.md | #1238 | ✅ v3.3.0 已创建 | PR #1248 |
-| EVIDENCE_ENGINE.md | #1239 | ✅ v3.3.0 已创建 | PR #1249 |
-| PROVENANCE_KNOWLEDGE_GRAPH.md | #1240 | ✅ v3.3.0 已创建 | PR #1250 |
+| 文档 | Issue | 状态 | PR |
+|------|-------|------|-----|
+| [COMPLIANCE_AS_CODE_ENGINE.md](./Compliance/COMPLIANCE_AS_CODE_ENGINE.md) | #1238 | ✅ v3.3.0 已创建 | PR #1248 |
+| [EVIDENCE_ENGINE.md](./Compliance/EVIDENCE_ENGINE.md) | #1239 | ✅ v3.3.0 已创建 | PR #1249 |
+| [PROVENANCE_KNOWLEDGE_GRAPH.md](./Compliance/PROVENANCE_KNOWLEDGE_GRAPH.md) | #1240 | ✅ v3.3.0 已创建 | PR #1250 |
 
 **v3.4.0 验证**：
 
@@ -50,8 +50,8 @@
 
 | 文档 | Issue | 状态 | PR |
 |------|-------|------|-----|
-| WORKFLOW_V2.md | #1241 | ✅ v3.3.0 已创建 | PR #1252 |
-| TRUST_VISUALIZATION.md | #1242 | ✅ v3.3.0 已创建 | PR #1253 |
+| [WORKFLOW_V2.md](./GMP-Management/WORKFLOW_V2.md) | #1241 | ✅ v3.3.0 已创建 | PR #1252 |
+| [TRUST_VISUALIZATION.md](./GMP-Management/TRUST_VISUALIZATION.md) | #1242 | ✅ v3.3.0 已创建 | PR #1253 |
 
 ## 五、GMP API GA 稳定性
 
