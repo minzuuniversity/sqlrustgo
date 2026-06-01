@@ -4,6 +4,7 @@
 **Branch**: `develop/v3.8.0` (HEAD: `126c48b1`)
 **Gate Type**: Integration Gate (post-Beta, pre-RC)
 **Result**: ✅ PASS — 4/4 sections | SGL: 4/5 PASS | WAL: 22/22 + 5/5
+**gate_policy_eval_id**: `run_20260601_002`
 
 ---
 
