@@ -13,16 +13,25 @@ import sys
 import re
 from pathlib import Path
 from collections import defaultdict
+import difflib
 
 def extract_meaningful_text(content):
     """提取有意义的文本内容，去除链接、代码块等"""
+    # 移除 Markdown 链接
     content = re.sub(r'\[([^\]]+)\]\([^\)]+\)', r'\1', content)
+    # 移除图片
     content = re.sub(r'!\[([^\]]*)\]\([^\)]+\)', '', content)
+    # 移除代码块
     content = re.sub(r'```[\s\S]*?```', '', content)
+    # 移除行内代码
     content = re.sub(r'`[^`]+`', '', content)
+    # 移除 HTML 标签
     content = re.sub(r'<[^>]+>', '', content)
+    # 移除标题标记
     content = re.sub(r'^#+\s*', '', content)
+    # 移除表格分隔符
     content = re.sub(r'\|[-:\s]+\|?', '', content)
+    # 移除多余空白
     content = re.sub(r'\n{3,}', '\n\n', content)
     return content.strip()
 
@@ -40,6 +49,7 @@ def get_documents(directory):
 
 def compute_similarity(text1, text2):
     """计算两个文本的相似度"""
+    # 使用简单的单词集合相似度
     words1 = set(re.findall(r'\b\w{4,}\b', text1.lower()))
     words2 = set(re.findall(r'\b\w{4,}\b', text2.lower()))
     if not words1 or not words2:
@@ -72,7 +82,7 @@ def find_duplicates(docs, threshold=0.7):
 def main():
     import argparse
     parser = argparse.ArgumentParser(description='SSOT 重复内容检查')
-    parser.add_argument('--dir', '-d', default='docs/releases', help='文档目录')
+    parser.add_argument('--dir', '-d', default='docs', help='文档目录')
     parser.add_argument('--threshold', '-t', type=float, default=0.7, help='相似度阈值 (0.0-1.0)')
     parser.add_argument('--verbose', '-v', action='store_true', help='详细输出')
     args = parser.parse_args()
