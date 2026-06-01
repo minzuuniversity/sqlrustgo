@@ -270,6 +270,37 @@ impl MergeExecutor {
             _ => Value::Null,
         }
     }
+
+    fn build_insert_sql(&self, table: &str, table_info: &TableInfo, values: &[Value]) -> String {
+        let col_names: Vec<String> = table_info.columns.iter().map(|c| c.name.clone()).collect();
+        let values_str = values.iter().map(|v| self.value_to_sql(v)).collect::<Vec<_>>().join(", ");
+        format!("INSERT INTO {} ({}) VALUES ({})", table, col_names.join(", "), values_str)
+    }
+
+    fn build_update_sql(&self, table: &str, table_info: &TableInfo, updates: &[(usize, Value)], filter: &[Value]) -> String {
+        let set_clauses = updates.iter().filter_map(|(col_idx, val)| {
+            table_info.columns.get(*col_idx).map(|col| format!("{} = {}", col.name, self.value_to_sql(val)))
+        }).collect::<Vec<_>>().join(", ");
+        let where_clause = if !filter.is_empty() {
+            let pk_col = table_info.columns.iter().find(|c| c.primary_key).map(|c| c.name.clone())
+                .unwrap_or_else(|| table_info.columns.first().map(|c| c.name.clone()).unwrap_or_default());
+            let conditions = filter.iter().enumerate().map(|(i, v)| format!("{} = {}", table_info.columns.get(i).map(|c| c.name.as_str()).unwrap_or("id"), self.value_to_sql(v))).collect::<Vec<_>>().join(" AND ");
+            format!(" WHERE {} = {} AND {}", pk_col, filter.first().map(|v| self.value_to_sql(v)).unwrap_or_default(), conditions)
+        } else { String::new() };
+        format!("UPDATE {} SET {}{}", table, set_clauses, where_clause)
+    }
+
+    fn value_to_sql(&self, val: &Value) -> String {
+        match val {
+            Value::Null => "NULL".to_string(),
+            Value::Integer(n) => n.to_string(),
+            Value::Float(f) => f.to_string(),
+            Value::Text(s) => format!("'{}'", s.replace('\'', "''")),
+            Value::Boolean(true) => "TRUE".to_string(),
+            Value::Boolean(false) => "FALSE".to_string(),
+            Value::Blob(_) => "NULL".to_string(),
+        }
+    }
 }
 
 /// Compare two values for a binary operation
