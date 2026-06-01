@@ -4,6 +4,7 @@
 > **Branch**: `develop/v3.8.0` (HEAD: `95951420e`)
 > **Gate**: Five-Dimension Unified Gate (D1~D5)
 > **Result**: ⚡ **DRIFT** — All dimensions validated, SGL-005 DRIFT tracked
+> **gate_policy_eval_id**: `run_20260601_001`
 
 ---
 
