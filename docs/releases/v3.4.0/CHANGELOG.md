@@ -140,10 +140,10 @@ PR: #1297
 
 ## v3.3.0 (2026-05-20) — Industrial Trust Platform GA
 
-See [v3.3.0 Changelog](../v3.3.0/CHANGELOG.md) for complete history.
+See [v3.3.0 Changelog](./v3.3.0/CHANGELOG.md) for complete history.
 
 ---
 
 ## v3.2.0 (2026-05-16) — GMP Framework Core
 
-See [v3.2.0 Changelog](../v3.2.0/CHANGELOG.md) for complete history.
+See [v3.2.0 Changelog](./v3.2.0/CHANGELOG.md) for complete history.
