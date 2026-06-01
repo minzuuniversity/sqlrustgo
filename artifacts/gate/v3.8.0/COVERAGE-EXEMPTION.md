@@ -3,7 +3,9 @@
 **申请日期**: 2026-06-01
 **版本**: v3.8.0
 **Gate**: R5 Coverage Gate
-**申请结果**: PENDING
+**Gitea Issue**: [#2743](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/2743)
+**commit**: `c2919595b` (fix: repair merge corruption + add executor unit tests)
+**申请结果**: Pre-GA Fix Applied
 
 ---
 
