@@ -138,13 +138,14 @@ impl DriftDetector {
             };
 
             serde_json::json!({
-                "statement": "CREATE (v:DriftViolation {violation_id: $id, trace_id: $trace_id, type: $type, severity: $severity, description: $desc, ts: $ts})",
+                "statement": "CREATE (v:DriftViolation {violation_id: $id, trace_id: $trace_id, type: $type, severity: $severity, description: $desc, event_id: $event_id, ts: $ts})",
                 "parameters": {
                     "id": v.violation_id,
                     "trace_id": v.trace_id,
                     "type": violation_type,
                     "severity": severity,
                     "desc": v.description,
+                    "event_id": v.event_id,
                     "ts": v.detected_at,
                 }
             })
