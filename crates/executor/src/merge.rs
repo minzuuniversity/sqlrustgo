@@ -8,7 +8,7 @@
 
 use sqlrustgo_planner::{Expr, MergeStatement, Operator};
 use sqlrustgo_storage::{StorageEngine, TableInfo};
-use sqlrustgo_types::{SqlResult, Value};
+use sqlrustgo_types::{SqlError, SqlResult, Value};
 use std::sync::{Arc, Mutex, RwLock};
 
 use crate::execution::{ExecutionEngine, QueryContext};
@@ -96,12 +96,7 @@ impl MergeExecutor {
 
                     let filter = target_pk_idx.and_then(|pk_idx| target_row.get(pk_idx).cloned());
                     // VTU path: execute UPDATE through ExecutionEngine
-                    let update_sql = build_update_sql(
-                        target_table,
-                        &target_table_info,
-                        &updates,
-                        filter.as_slice(),
-                    );
+                    let update_sql = self.build_update_sql(target_table, &target_table_info, &updates, filter.as_slice());
                     let mut ctx = QueryContext::new(update_sql);
                     self.engine.lock().unwrap().execute(&mut ctx)?;
                     matched_count += 1;
@@ -122,7 +117,7 @@ impl MergeExecutor {
                     .collect();
 
                 // VTU path: execute INSERT through ExecutionEngine
-                let insert_sql = build_insert_sql(target_table, &target_table_info, &values);
+                let insert_sql = self.build_insert_sql(target_table, &target_table_info, &values);
                 let mut ctx = QueryContext::new(insert_sql);
                 self.engine.lock().unwrap().execute(&mut ctx)?;
                 inserted_count += 1;
@@ -633,6 +628,81 @@ mod tests {
         assert!(!op_compare(&Operator::Eq, &Value::Integer(1), &Value::Null));
         assert!(!op_compare(&Operator::Lt, &Value::Null, &Value::Null));
     }
+
+    /// Build an INSERT SQL statement from values
+    fn build_insert_sql(&self, table: &str, table_info: &TableInfo, values: &[Value]) -> String {
+        let col_names: Vec<String> = table_info
+            .columns
+            .iter()
+            .map(|c| c.name.clone())
+            .collect();
+
+        let values_str = values
+            .iter()
+            .map(|v| self.value_to_sql(v))
+            .collect::<Vec<_>>()
+            .join(", ");
+
+        format!(
+            "INSERT INTO {} ({}) VALUES ({})",
+            table,
+            col_names.join(", "),
+            values_str
+        )
+    }
+
+    /// Build an UPDATE SQL statement with filters
+    fn build_update_sql(
+        &self,
+        table: &str,
+        table_info: &TableInfo,
+        updates: &[(usize, Value)],
+        filter: &[Value],
+    ) -> String {
+        let set_clauses = updates
+            .iter()
+            .filter_map(|(col_idx, val)| {
+                table_info.columns.get(*col_idx).map(|col| {
+                    format!("{} = {}", col.name, self.value_to_sql(val))
+                })
+            })
+            .collect::<Vec<_>>()
+            .join(", ");
+
+        let where_clause = if !filter.is_empty() {
+            let pk_col = table_info
+                .columns
+                .iter()
+                .find(|c| c.primary_key)
+                .map(|c| c.name.clone())
+                .unwrap_or_else(|| table_info.columns.first().map(|c| c.name.clone()).unwrap_or_default());
+
+            let filter_str = filter
+                .iter()
+                .map(|v| self.value_to_sql(v))
+                .collect::<Vec<_>>()
+                .join(", ");
+
+            format!(" WHERE {} IN ({})", pk_col, filter_str)
+        } else {
+            String::new()
+        };
+
+        format!("UPDATE {} SET {}{}", table, set_clauses, where_clause)
+    }
+
+    /// Convert a Value to SQL literal string
+    fn value_to_sql(&self, value: &Value) -> String {
+        match value {
+            Value::Null => "NULL".to_string(),
+            Value::Boolean(b) => if *b { "TRUE" } else { "FALSE" }.to_string(),
+            Value::Integer(i) => i.to_string(),
+            Value::Float(f) => f.to_string(),
+            Value::Text(s) => format!("'{}'", s.replace("'", "''")),
+            Value::Blob(b) => format!("X'{:?}'", b),
+        }
+    }
+
     #[test]
     fn test_eval_binary_op_or() {
         assert_eq!(
