@@ -497,6 +497,51 @@ fn test_partial_update_write_recovery() {
     );
 }
 
+/// RECOVERY-006b: UPDATE value recovery validation (L2 runtime evidence)
+///
+/// LAYER 2 (Runtime Evidence) test for Issue #2741.
+///
+/// Contract: UPDATE replay must survive crash AND preserve modified values.
+///
+/// WAL engine uses deferred-write: UPDATE goes to WAL but storage isn't
+/// immediately updated. After COMMIT, engine is dropped which triggers
+/// storage flush of WAL entries.
+///
+/// Current behavior: UPDATE replay is skipped in recovery_engine.rs:391-397
+/// This test SHOULD FAIL until UPDATE replay is implemented.
+#[test]
+fn test_partial_update_value_recovery() {
+    let _dir = TempDir::new().unwrap();
+    let dir = _dir.path();
+    let mut engine = create_wal_engine(dir);
+    engine
+        .execute("CREATE TABLE t (id INTEGER PRIMARY KEY, value TEXT)")
+        .unwrap();
+    engine
+        .execute("INSERT INTO t VALUES (1, 'original')")
+        .unwrap();
+
+    engine.execute("BEGIN").unwrap();
+    engine
+        .execute("UPDATE t SET value = 'updated' WHERE id = 1")
+        .unwrap();
+    engine.execute("COMMIT").unwrap();
+
+    // DROP triggers storage flush of WAL entries (including UPDATE)
+    drop(engine);
+
+    // LAYER 2: Runtime evidence - does UPDATE replay actually work during recovery?
+    // If UPDATE replay is skipped (current behavior), recovered value will be 'original'
+    let mut engine2 = recover_and_rebuild(&dir);
+    let result = engine2.execute("SELECT * FROM t WHERE id = 1").unwrap();
+
+    assert_eq!(
+        result.rows[0][1],
+        sqlrustgo::Value::Text("updated".to_string()),
+        "RECOVERY-006b: UPDATE value must be 'updated' after crash recovery"
+    );
+}
+
 /// RECOVERY-008: DELETE + UPDATE mixed recovery
 ///
 /// Known issue: ExecutionEngine UPDATE+DELETE mixed transaction semantics incorrect.
