@@ -9,8 +9,8 @@
 use std::fs;
 use std::path::PathBuf;
 
-use sqlrustgo_storage::file_storage::FileStorage;
 use sqlrustgo_storage::engine::{ColumnDefinition, RowFilter, RowMutation, TableData, TableInfo};
+use sqlrustgo_storage::file_storage::FileStorage;
 use sqlrustgo_storage::{Record, StorageEngine, Value};
 
 fn temp_dir(name: &str) -> PathBuf {
@@ -53,7 +53,8 @@ fn test_e2e_filestorage_insert_persistence() {
     {
         let mut fs = FileStorage::new(dir.clone()).unwrap();
         let info = make_table_info(table, &["a", "b", "c"]);
-        fs.insert_table(table.into(), TableData { info, rows: vec![] }).unwrap();
+        fs.insert_table(table.into(), TableData { info, rows: vec![] })
+            .unwrap();
         let records: Vec<Record> = col_values.iter().map(|&v| make_record(&[v])).collect();
         fs.insert(table, records).unwrap();
         fs.flush_all_buffers().unwrap();
@@ -67,19 +68,43 @@ fn test_e2e_filestorage_insert_persistence() {
 
     // Phase 4: Verify
     let rows = fs.scan(table).unwrap();
-    assert!(!rows.is_empty(), "FAIL: table empty after restart — INSERT did not persist");
-    assert_eq!(rows.len(), col_values.len(), "FAIL: expected {} rows, got {}", col_values.len(), rows.len());
+    assert!(
+        !rows.is_empty(),
+        "FAIL: table empty after restart — INSERT did not persist"
+    );
+    assert_eq!(
+        rows.len(),
+        col_values.len(),
+        "FAIL: expected {} rows, got {}",
+        col_values.len(),
+        rows.len()
+    );
 
-    let recovered_values: Vec<i64> = rows.iter().filter_map(|r| {
-        if let Value::Integer(n) = &r[0] { Some(*n) } else { None }
-    }).collect();
+    let recovered_values: Vec<i64> = rows
+        .iter()
+        .filter_map(|r| {
+            if let Value::Integer(n) = &r[0] {
+                Some(*n)
+            } else {
+                None
+            }
+        })
+        .collect();
 
     for &expected in &col_values {
-        assert!(recovered_values.contains(&expected), "FAIL: value {} not found after restart", expected);
+        assert!(
+            recovered_values.contains(&expected),
+            "FAIL: value {} not found after restart",
+            expected
+        );
     }
 
     println!("PASS: INSERT persistence proven");
-    println!("Evidence: {} rows with values {:?} survived restart", rows.len(), col_values);
+    println!(
+        "Evidence: {} rows with values {:?} survived restart",
+        rows.len(),
+        col_values
+    );
     let _ = fs::remove_dir_all(&dir);
 }
 
@@ -95,7 +120,8 @@ fn test_e2e_filestorage_update_persistence() {
     {
         let mut fs = FileStorage::new(dir.clone()).unwrap();
         let info = make_table_info(table, &["id", "val"]);
-        fs.insert_table(table.into(), TableData { info, rows: vec![] }).unwrap();
+        fs.insert_table(table.into(), TableData { info, rows: vec![] })
+            .unwrap();
         fs.insert(table, vec![make_record(&[1, 100])]).unwrap();
         fs.flush_all_buffers().unwrap();
         fs.flush().unwrap();
@@ -121,7 +147,11 @@ fn test_e2e_filestorage_update_persistence() {
     match (&rows[0][0], &rows[0][1]) {
         (Value::Integer(id), Value::Integer(val)) => {
             assert_eq!(*id, 1, "FAIL: primary key changed");
-            assert_eq!(*val, 999, "FAIL: UPDATE not recovered — expected 999, got {}", val);
+            assert_eq!(
+                *val, 999,
+                "FAIL: UPDATE not recovered — expected 999, got {}",
+                val
+            );
         }
         _ => panic!("FAIL: unexpected value types after UPDATE recovery"),
     }
@@ -143,8 +173,10 @@ fn test_e2e_filestorage_delete_persistence() {
     {
         let mut fs = FileStorage::new(dir.clone()).unwrap();
         let info = make_table_info(table, &["id"]);
-        fs.insert_table(table.into(), TableData { info, rows: vec![] }).unwrap();
-        fs.insert(table, vec![make_record(&[1]), make_record(&[2])]).unwrap();
+        fs.insert_table(table.into(), TableData { info, rows: vec![] })
+            .unwrap();
+        fs.insert(table, vec![make_record(&[1]), make_record(&[2])])
+            .unwrap();
         fs.flush_all_buffers().unwrap();
         fs.flush().unwrap();
     }
@@ -163,11 +195,20 @@ fn test_e2e_filestorage_delete_persistence() {
     // Phase 4: Restart and verify only id=1 remains
     let fs = FileStorage::new(dir.clone()).unwrap();
     let rows = fs.scan(table).unwrap();
-    assert_eq!(rows.len(), 1, "FAIL: expected 1 row (id=1), got {} — DELETE did not persist", rows.len());
+    assert_eq!(
+        rows.len(),
+        1,
+        "FAIL: expected 1 row (id=1), got {} — DELETE did not persist",
+        rows.len()
+    );
 
     match &rows[0][0] {
         Value::Integer(n) => {
-            assert_eq!(*n, 1, "FAIL: wrong row deleted — expected id=1, got id={}", n);
+            assert_eq!(
+                *n, 1,
+                "FAIL: wrong row deleted — expected id=1, got id={}",
+                n
+            );
         }
         _ => panic!("FAIL: unexpected type after DELETE recovery"),
     }
@@ -189,7 +230,8 @@ fn test_e2e_filestorage_multi_write_persistence() {
     {
         let mut fs = FileStorage::new(dir.clone()).unwrap();
         let info = make_table_info(table, &["id", "data"]);
-        fs.insert_table(table.into(), TableData { info, rows: vec![] }).unwrap();
+        fs.insert_table(table.into(), TableData { info, rows: vec![] })
+            .unwrap();
         fs.insert(table, vec![make_record(&[1, 100])]).unwrap();
         fs.flush_all_buffers().unwrap();
         fs.flush().unwrap();
@@ -210,9 +252,16 @@ fn test_e2e_filestorage_multi_write_persistence() {
     let rows = fs.scan(table).unwrap();
     assert_eq!(rows.len(), 2, "FAIL: expected 2 rows, got {}", rows.len());
 
-    let ids: Vec<i64> = rows.iter().filter_map(|r| {
-        if let Value::Integer(n) = &r[0] { Some(*n) } else { None }
-    }).collect();
+    let ids: Vec<i64> = rows
+        .iter()
+        .filter_map(|r| {
+            if let Value::Integer(n) = &r[0] {
+                Some(*n)
+            } else {
+                None
+            }
+        })
+        .collect();
 
     assert!(ids.contains(&1), "FAIL: row id=1 missing");
     assert!(ids.contains(&2), "FAIL: row id=2 missing");
