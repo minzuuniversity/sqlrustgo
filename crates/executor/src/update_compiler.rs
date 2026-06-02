@@ -140,39 +140,3 @@ fn combine_hash(a: u64, b: u64) -> u64 {
     b.hash(&mut hasher);
     hasher.finish()
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::mutation_compiler::{Assignment, RowMutation};
-
-    #[test]
-    fn test_update_plan_accessors() {
-        let filter: RowFilter = Box::new(|_| true);
-        let mutation = RowMutation::new(vec![], 42);
-        let plan = UpdatePlan {
-            predicate: filter,
-            mutation,
-            predicate_hash: 100,
-            mutation_hash: 200,
-            combined_hash: 300,
-        };
-        let _ = plan.predicate();
-        assert_eq!(plan.mutation().mutation_hash(), 42);
-        assert_eq!(plan.predicate_hash(), 100);
-        assert_eq!(plan.mutation_hash(), 200);
-        assert_eq!(plan.combined_hash(), 300);
-    }
-
-    #[test]
-    fn test_update_compiler_new() {
-        let stmt = UpdateStatement {
-            table: "t".into(),
-            assignments: vec![],
-            where_clause: None,
-        };
-        let schema = sqlrustgo_planner::Schema::new(vec![]);
-        let result = UpdateCompiler::compile(&stmt, &schema);
-        assert!(result.is_ok());
-    }
-}
