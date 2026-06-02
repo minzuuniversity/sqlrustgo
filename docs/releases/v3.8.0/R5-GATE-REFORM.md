@@ -3,6 +3,7 @@
 **Author**: Hermes C
 **Date**: 2026-05-31
 **Status**: RESEARCH COMPLETED
+**gate_policy_eval_id**: `run_20260601_006`
 
 ---
 
