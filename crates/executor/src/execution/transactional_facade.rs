@@ -1,6 +1,6 @@
 use crate::execution::{DriftViolation, TransactionContext, WriteOp};
 use crate::sql_executor::ExecutionResult;
-use sqlrustgo_types::{SqlError, SqlResult};
+use sqlrustgo_types::SqlResult;
 
 pub trait TransactionalFacade: Send + Sync {
     fn begin(&self) -> SqlResult<u64>;
