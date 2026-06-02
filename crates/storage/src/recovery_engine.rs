@@ -240,6 +240,130 @@ fn bytes_to_record(data: &[u8]) -> Result<Vec<Value>, crate::engine::SqlError> {
     Ok(record)
 }
 
+/// Parse the new Update WAL encoding (SPEC-003):
+/// `U:` + record_bytes + `;` + updates_count(u32 LE) + [col_idx(u32 LE) + value_bytes]...
+/// Returns (old_record_for_audit, updates).
+fn bytes_to_record_and_updates(
+    data: &[u8],
+) -> Result<(Vec<Value>, Vec<(usize, Value)>), crate::engine::SqlError> {
+    if data.len() < 3 || &data[0..2] != b"U:" {
+        return Err(crate::engine::SqlError::ExecutionError(
+            "RecoveryEngine: Update data missing U: prefix".to_string(),
+        ));
+    }
+    let mut pos = 2;
+    // Find the ';' separator
+    let sep_pos = data[pos..].iter().position(|&b| b == b';').ok_or_else(|| {
+        crate::engine::SqlError::ExecutionError(
+            "RecoveryEngine: Update data missing ';' separator".to_string(),
+        )
+    })?;
+    let record = bytes_to_record(&data[pos..pos + sep_pos])?;
+    pos += sep_pos + 1;
+    if pos + 4 > data.len() {
+        return Err(crate::engine::SqlError::ExecutionError(
+            "RecoveryEngine: Update data missing updates_count".to_string(),
+        ));
+    }
+    let mut count_bytes = [0u8; 4];
+    count_bytes.copy_from_slice(&data[pos..pos + 4]);
+    let updates_count = u32::from_le_bytes(count_bytes) as usize;
+    pos += 4;
+    let mut updates = Vec::with_capacity(updates_count);
+    for _ in 0..updates_count {
+        if pos + 4 > data.len() {
+            return Err(crate::engine::SqlError::ExecutionError(
+                "RecoveryEngine: Update data truncated at col_idx".to_string(),
+            ));
+        }
+        let mut idx_bytes = [0u8; 4];
+        idx_bytes.copy_from_slice(&data[pos..pos + 4]);
+        let col_idx = u32::from_le_bytes(idx_bytes) as usize;
+        pos += 4;
+        // Decode single Value starting at pos (uses same prefix scheme as bytes_to_record)
+        // We reuse bytes_to_record by reading until the next col_idx boundary;
+        // but bytes_to_record reads multiple values. So we inline a single-value parser.
+        if pos + 2 > data.len() {
+            return Err(crate::engine::SqlError::ExecutionError(
+                "RecoveryEngine: Update data truncated at value prefix".to_string(),
+            ));
+        }
+        let value = match &data[pos..pos + 2] {
+            b"i:" => {
+                if pos + 10 > data.len() {
+                    return Err(crate::engine::SqlError::ExecutionError(
+                        "RecoveryEngine: truncated Integer in update".to_string(),
+                    ));
+                }
+                let mut buf = [0u8; 8];
+                buf.copy_from_slice(&data[pos + 2..pos + 10]);
+                pos += 10;
+                Value::Integer(i64::from_le_bytes(buf))
+            }
+            b"s:" => {
+                let start = pos + 2;
+                let end = data[start..].iter().position(|&b| b == 0).ok_or_else(|| {
+                    crate::engine::SqlError::ExecutionError(
+                        "RecoveryEngine: Text missing null terminator in update".to_string(),
+                    )
+                })?;
+                let s = std::str::from_utf8(&data[start..start + end]).map_err(|e| {
+                    crate::engine::SqlError::ExecutionError(format!(
+                        "RecoveryEngine: invalid UTF-8 in update: {}",
+                        e
+                    ))
+                })?;
+                pos = start + end + 1;
+                Value::Text(s.to_string())
+            }
+            b"b:" => {
+                if pos + 3 > data.len() {
+                    return Err(crate::engine::SqlError::ExecutionError(
+                        "RecoveryEngine: truncated Boolean in update".to_string(),
+                    ));
+                }
+                let v = Value::Boolean(data[pos + 2] != 0);
+                pos += 3;
+                v
+            }
+            b"n:" => {
+                pos += 2;
+                Value::Null
+            }
+            b"f:" => {
+                if pos + 10 > data.len() {
+                    return Err(crate::engine::SqlError::ExecutionError(
+                        "RecoveryEngine: truncated Float in update".to_string(),
+                    ));
+                }
+                let mut buf = [0u8; 8];
+                buf.copy_from_slice(&data[pos + 2..pos + 10]);
+                pos += 10;
+                Value::Float(f64::from_bits(u64::from_le_bytes(buf)))
+            }
+            b"B:" => {
+                let start = pos + 2;
+                let end = data[start..].iter().position(|&b| b == 0).ok_or_else(|| {
+                    crate::engine::SqlError::ExecutionError(
+                        "RecoveryEngine: Blob missing null terminator in update".to_string(),
+                    )
+                })?;
+                let v = Value::Blob(data[start..start + end].to_vec());
+                pos = start + end + 1;
+                v
+            }
+            _ => {
+                return Err(crate::engine::SqlError::ExecutionError(format!(
+                    "RecoveryEngine: unknown value prefix in update: {:02x?}",
+                    &data[pos..pos + 2]
+                )));
+            }
+        };
+        updates.push((col_idx, value));
+    }
+    Ok((record, updates))
+}
+
 fn key_to_filter_values(key: &[u8]) -> Result<Vec<Value>, crate::engine::SqlError> {
     if key.is_empty() {
         return Ok(Vec::new());
@@ -389,11 +513,23 @@ impl<S: StorageEngine> RecoveryEngine<S> for RecoveryEngineImpl {
                 storage.insert(&table_name, vec![record])?;
             }
             WalEntryType::Update => {
-                log::warn!(
-                    "RecoveryEngine: UPDATE replay skipped for table {} (tx_id={})",
-                    table_name,
-                    entry.tx_id
-                );
+                // SPEC-003: Replay Update by parsing U: encoded data
+                // and calling storage.update(table, &filters, &updates).
+                // Previously this branch was a no-op that only logged a warning,
+                // causing crash recovery to lose UPDATE data.
+                let key = entry.key.as_deref().ok_or_else(|| {
+                    crate::engine::SqlError::ExecutionError(
+                        "RecoveryEngine::apply_entry: Update missing key".to_string(),
+                    )
+                })?;
+                let data = entry.data.as_deref().ok_or_else(|| {
+                    crate::engine::SqlError::ExecutionError(
+                        "RecoveryEngine::apply_entry: Update missing data".to_string(),
+                    )
+                })?;
+                let (_old_record, updates) = bytes_to_record_and_updates(data)?;
+                let filter_values = key_to_filter_values(key)?;
+                storage.update(&table_name, &filter_values, &updates)?;
             }
             WalEntryType::Delete => {
                 if let Some(ref key) = entry.key {
@@ -584,6 +720,136 @@ mod tests {
     #[test]
     fn test_recovery_engine_impl_trait_bounds() {
         let _engine: Box<dyn RecoveryEngine<MemoryStorage>> = Box::new(RecoveryEngineImpl);
+    }
+
+    /// SPEC-003: Update WAL replay must actually update the row.
+    /// Previously apply_entry(Update) was a no-op that only logged a warning.
+    /// This test:
+    /// 1. Creates a table, inserts (1, 100)
+    /// 2. Builds a U:-encoded Update entry (SET balance = 900 WHERE id = 1)
+    /// 3. Calls RecoveryEngineImpl::apply_entry directly
+    /// 4. Asserts row was updated to (1, 900)
+    #[test]
+    fn test_update_wal_replay_applies_updates() {
+        use crate::engine::{ColumnDefinition, Record, StorageEngine, TableInfo};
+
+        let mut storage = MemoryStorage::new();
+        // Create table accounts(id INTEGER, balance INTEGER)
+        storage
+            .create_table(&TableInfo {
+                name: "accounts".to_string(),
+                columns: vec![
+                    ColumnDefinition::new("id", "INTEGER"),
+                    ColumnDefinition::new("balance", "INTEGER"),
+                ],
+                foreign_keys: vec![],
+                unique_constraints: vec![],
+                check_constraints: vec![],
+                partition_info: None,
+            })
+            .unwrap();
+
+        // Insert (1, 100)
+        let initial: Record = vec![Value::Integer(1), Value::Integer(100)];
+        storage.insert("accounts", vec![initial]).unwrap();
+
+        // Build U: encoded Update data
+        // Old record bytes: "i:" + 1_LE + "i:" + 100_LE
+        let mut old_record = Vec::new();
+        old_record.extend_from_slice(b"i:");
+        old_record.extend_from_slice(&1i64.to_le_bytes());
+        old_record.extend_from_slice(b"i:");
+        old_record.extend_from_slice(&100i64.to_le_bytes());
+        // Updates: [(1, Value::Integer(900))]
+        let updates: Vec<(usize, Value)> = vec![(1, Value::Integer(900))];
+        let mut data = Vec::new();
+        data.extend_from_slice(b"U:");
+        data.extend_from_slice(&old_record);
+        data.push(b';');
+        data.extend_from_slice(&(updates.len() as u32).to_le_bytes());
+        for (col_idx, value) in &updates {
+            data.extend_from_slice(&(*col_idx as u32).to_le_bytes());
+            // Inline value encoding (mirrors WalStorage::value_to_bytes)
+            match value {
+                Value::Integer(i) => {
+                    data.extend_from_slice(b"i:");
+                    data.extend_from_slice(&i.to_le_bytes());
+                }
+                Value::Text(s) => {
+                    data.extend_from_slice(b"s:");
+                    data.extend_from_slice(s.as_bytes());
+                    data.push(0);
+                }
+                Value::Boolean(b) => {
+                    data.extend_from_slice(b"b:");
+                    data.push(*b as u8);
+                }
+                Value::Null => {
+                    data.extend_from_slice(b"n:");
+                }
+                Value::Float(f) => {
+                    data.extend_from_slice(b"f:");
+                    data.extend_from_slice(&f.to_bits().to_le_bytes());
+                }
+                Value::Blob(b) => {
+                    data.extend_from_slice(b"B:");
+                    data.extend_from_slice(b);
+                    data.push(0);
+                }
+            }
+        }
+        // Key: 1_LE (i64 filter value)
+        let key = 1i64.to_le_bytes().to_vec();
+
+        // Create the Update entry
+        // SPEC-003: table_id is hash("accounts") per table_name_to_id()
+        let table_id = table_name_to_id("accounts");
+        let entry = WalEntry {
+            tx_id: 1,
+            entry_type: WalEntryType::Update,
+            table_id,
+            key: Some(key),
+            data: Some(data),
+            lsn: 5,
+            timestamp: 0,
+        };
+
+        // Resolve back to confirm
+        let resolved_name = resolve_table_name(&storage, table_id).unwrap();
+        assert_eq!(resolved_name, "accounts");
+
+        // Apply
+        let mut engine = RecoveryEngineImpl;
+        engine.apply_entry(&mut storage, &entry).unwrap();
+
+        // Verify the row was updated
+        let rows = storage.scan("accounts").unwrap();
+        assert_eq!(rows.len(), 1, "row should still exist after Update");
+        assert_eq!(rows[0][0], Value::Integer(1));
+        assert_eq!(
+            rows[0][1],
+            Value::Integer(900),
+            "balance should be 900 after Update replay"
+        );
+    }
+
+    /// SPEC-003: bytes_to_record_and_updates round-trip test
+    #[test]
+    fn test_bytes_to_record_and_updates_roundtrip() {
+        // Build an encoded Update data
+        let mut data = Vec::new();
+        data.extend_from_slice(b"U:");
+        data.extend_from_slice(b"i:");
+        data.extend_from_slice(&42i64.to_le_bytes());
+        data.push(b';');
+        data.extend_from_slice(&1u32.to_le_bytes()); // 1 update
+        data.extend_from_slice(&1u32.to_le_bytes()); // col_idx=1
+        data.extend_from_slice(b"i:");
+        data.extend_from_slice(&900i64.to_le_bytes());
+
+        let (record, updates) = bytes_to_record_and_updates(&data).unwrap();
+        assert_eq!(record, vec![Value::Integer(42)]);
+        assert_eq!(updates, vec![(1, Value::Integer(900))]);
     }
 
     #[test]
