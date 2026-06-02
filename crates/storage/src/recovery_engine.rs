@@ -389,7 +389,11 @@ fn replace_by_key<S: StorageEngine>(
 ) -> Result<(), crate::engine::SqlError> {
     let filter_values = key_to_filter_values(key)?;
     storage.delete(table, &filter_values)?;
-    storage.insert(table, vec![new_record])?;
+    // F-09 final fix: use force_insert (not insert) so the replacement row
+    // lands in data.rows directly, not in insert_buffer. Otherwise the
+    // rebuilt inner storage's buffer would accumulate replayed rows and
+    // the next SELECT would see them as duplicates.
+    storage.force_insert(table, new_record)?;
     Ok(())
 }
 
@@ -399,10 +403,14 @@ fn replace_by_key<S: StorageEngine>(
 
 /// Filter WAL entries to only include those from committed transactions.
 ///
-/// A committed transaction = a contiguous run of entries between a `Begin` entry
-/// and a matching `Commit` entry (entries after `Rollback` are dropped). Metadata
-/// entries (Begin/Commit/Rollback/Checkpoint/Prepare) are excluded from the
-/// result.
+/// Rules:
+/// - Standalone DML (Insert/Update/Delete) outside any Begin span is autocommit
+///   and is kept (it was committed when the statement finished).
+/// - DML inside a Begin→Commit span is kept (committed transaction).
+/// - DML inside a Begin→Rollback span is dropped (rolled back).
+/// - DML inside a Begin span with no Commit/Rollback seen (i.e. crash mid-tx)
+///   is dropped (uncommitted).
+/// - Metadata entries (Begin/Commit/Rollback/Checkpoint/Prepare) are dropped.
 ///
 /// F-09 fix: groups are detected by **Begin→Commit/Rollback span**, not by
 /// `tx_id`. Earlier versions grouped by `tx_id` alone which collapsed all
@@ -411,33 +419,53 @@ fn replace_by_key<S: StorageEngine>(
 /// committed. Span-based detection correctly isolates each transaction.
 fn filter_committed_entries(entries: &[WalEntry]) -> Vec<WalEntry> {
     let mut result = Vec::new();
-    let mut current_open = false; // are we inside a Begin→Commit/Rollback span?
+    // Are we currently inside a Begin→Commit/Rollback span?
+    // None = not in any span (autocommit territory).
+    // Some(true) = inside a committed span (Begin seen, Commit not yet).
+    // Some(false) = inside an uncommitted/rolled-back span.
+    enum Span {
+        Autocommit,
+        Open,         // Begin seen, awaiting Commit or Rollback
+    }
+    let mut span = Span::Autocommit;
+    let mut pending: Vec<WalEntry> = Vec::new();
 
     for entry in entries {
+        eprintln!("[filter-ENTRY] type={:?} lsn={} tx_id={}", entry.entry_type, entry.lsn, entry.tx_id);
         match entry.entry_type {
             WalEntryType::Begin => {
-                current_open = true;
+                span = Span::Open;
+                pending.clear();
             }
             WalEntryType::Commit => {
-                current_open = false;
+                // Flush any DML collected in this span (now committed)
+                result.append(&mut pending);
+                span = Span::Autocommit;
             }
             WalEntryType::Rollback => {
-                current_open = false;
-                // Drop any DML collected inside the rolled-back span.
-                // Since we only push when current_open && is DML, simply
-                // resetting current_open at Commit/Rollback is sufficient.
+                // Drop DML in this span (rolled back)
+                pending.clear();
+                span = Span::Autocommit;
             }
             WalEntryType::Insert | WalEntryType::Update | WalEntryType::Delete => {
-                if current_open {
-                    result.push(entry.clone());
+                match span {
+                    Span::Autocommit => {
+                        eprintln!("[filter] AUTOCOMMIT push entry_type={:?} lsn={}", entry.entry_type, entry.lsn);
+                        result.push(entry.clone())
+                    }
+                    Span::Open => {
+                        eprintln!("[filter] OPEN push to pending entry_type={:?} lsn={}", entry.entry_type, entry.lsn);
+                        pending.push(entry.clone())
+                    }
                 }
-                // else: entry belongs to a rolled-back or uncommitted span,
-                //       drop it.
             }
             _ => {} // Checkpoint, Prepare, etc. - skip
         }
     }
 
+    // Any pending DML at end means crash mid-transaction: drop it.
+    // (Span::Open + non-empty pending at EOF = uncommitted; do not flush.)
+    pending.clear();
     result
 }
 
@@ -492,6 +520,7 @@ impl<S: StorageEngine> RecoveryEngine<S> for RecoveryEngineImpl {
 
         // Replay committed DML entries in order
         for entry in &dml_entries {
+            eprintln!("[recover] APPLY entry_type={:?} lsn={}", entry.entry_type, entry.lsn);
             self.apply_entry(storage, entry)?;
             match entry.entry_type {
                 WalEntryType::Insert => report.rows_inserted += 1,
