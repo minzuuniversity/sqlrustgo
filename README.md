@@ -88,7 +88,7 @@ cargo fmt --check
 cargo run --bin sqlrustgo
 ```
 
-**提示**: 更多文档请查阅 [mdBook 用户手册](book/book/index.html)。
+**提示**: 更多文档请查阅 `docs/releases/v3.8.0/` 目录。
 
 ---
 
@@ -308,7 +308,7 @@ SELECT region, revenue FROM regional_sales;
 
 ### 📖 用户文档（mdBook）
 
-> [mdBook 用户手册](book/book/index.html) — 包含完整 SQL 语法参考、部署指南、开发者文档
+> `docs/releases/v3.8.0/` 目录 — 包含完整 SQL 语法参考、部署指南、开发者文档
 
 ### 文档导航
 
@@ -318,7 +318,7 @@ SELECT region, revenue FROM regional_sales;
 | [📝 RELEASE_NOTES](docs/releases/v3.5.0/RELEASE_NOTES.md) | v3.5.0 正式发布说明 |
 | [📖 v3.5.0 文档中心](docs/releases/v3.5.0/) | 当前版本完整文档 |
 | [📊 v3.5.0 GA 门禁报告](docs/releases/v3.5.0/GA_GATE_REPORT.md) | 质量门禁执行证据 |
-| [📈 mdBook 用户手册](book/book/index.html) | 交互式文档 |
+| `docs/releases/v3.8.0/` 目录 | 交互式文档 |
 | [🔧 开发者文档](docs/releases/v3.5.0/DEV_PLAN.md) | 开发计划和路线图 |
 
 ### 历史版本
