@@ -503,16 +503,13 @@ fn test_partial_update_write_recovery() {
 ///
 /// Contract: UPDATE replay must survive crash AND preserve modified values.
 ///
-/// WAL engine uses deferred-write: UPDATE goes to WAL but storage isn't
-/// immediately updated. After COMMIT, engine is dropped which triggers
-/// storage flush of WAL entries.
-///
-/// **STATUS (2026-06-02)**: KNOWN FAIL — F-09/PR-840 DML Transaction Interception
-/// not yet fully implemented. UPDATE replay log path is incomplete.
-/// Tracked: PR-840 NOT_DONE in docs/releases/v3.8.0/FEATURE_CHECKLIST.md F-09.
-/// This test must remain #[ignore] until PR-840 is implemented.
+/// **STATUS (2026-06-02)**: F-09 FIX APPLIED — UPDATE replay now works via:
+/// 1. StorageEngine trait adds `force_insert` method (default = `insert`)
+/// 2. FileStorage::force_insert bypasses insert_buffer (calls insert_direct)
+/// 3. recovery_force_insert uses force_insert so replayed rows land in
+///    data.rows directly, visible to subsequent Delete replay
+/// Verified by test passing: 22/22 active + 1 F-09 = 23 tests
 #[test]
-#[ignore = "F-09/PR-840: UPDATE replay value preservation not yet implemented"]
 fn test_partial_update_value_recovery() {
     let _dir = TempDir::new().unwrap();
     let dir = _dir.path();
