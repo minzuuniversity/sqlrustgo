@@ -252,7 +252,7 @@ pub(crate) fn recovery_force_insert<S: StorageEngine>(
     table: &str,
     record: Vec<Value>,
 ) -> Result<(), crate::engine::SqlError> {
-    storage.insert(table, vec![record])
+    storage.force_insert(table, record)
 }
 
 #[allow(dead_code)]
@@ -399,22 +399,17 @@ fn replace_by_key<S: StorageEngine>(
 
 /// Filter WAL entries to only include those from committed transactions.
 ///
-/// PR-842: entries are walked in append order and split by `Begin`/
-/// `Commit`/`Rollback` boundaries rather than grouped by `tx_id`. This
-/// matters because the production WalStorage writes all entries with
-/// `tx_id = current_tx_id()` (which stays `0` for FileStorage when no
-/// transaction manager is hooked up). Grouping by `tx_id` then conflates
-/// autocommit DML with uncommitted DML that happens to share the same id.
+/// A committed transaction = a contiguous run of entries between a `Begin` entry
+/// and a matching `Commit` entry. We buffer DML inside the open span and
+/// only flush on `Commit`; a `Rollback` discards the buffer; entries seen
+/// without an enclosing `Begin→Commit` span (autocommit-style fragments)
+/// are dropped because we cannot prove they were committed.
 ///
-/// The new rule:
-/// - A `Begin` opens a transaction; subsequent DML entries are accumulated
-///   in a per-tx scratch buffer.
-/// - A `Commit` flushes that buffer into the result (the DML is durable).
-/// - A `Rollback` discards the buffer (the DML is undone).
-/// - DML entries encountered while no transaction is open (i.e. autocommit)
-///   are emitted directly, because the legacy semantics is "autocommit is
-///   already committed by the time it reaches the WAL".
-/// - Metadata entries (Checkpoint, Prepare) are skipped.
+/// F-09 fix: groups are detected by **Begin→Commit/Rollback span**, not by
+/// `tx_id`. Earlier versions grouped by `tx_id` alone which collapsed all
+/// entries (every `begin_transaction` used the same `current_tx_id()` without
+/// incrementing it), causing uncommitted inserts to be replayed as if
+/// committed. Span-based detection correctly isolates each transaction.
 fn filter_committed_entries(entries: &[WalEntry]) -> Vec<WalEntry> {
     let mut result = Vec::new();
     let mut current_tx_dml: Vec<WalEntry> = Vec::new();
@@ -440,9 +435,9 @@ fn filter_committed_entries(entries: &[WalEntry]) -> Vec<WalEntry> {
             WalEntryType::Insert | WalEntryType::Update | WalEntryType::Delete => {
                 if in_tx {
                     current_tx_dml.push(entry.clone());
-                } else {
-                    result.push(entry.clone());
                 }
+                // else: entry belongs to a fragment without a matching
+                //       Begin/Commit span — drop it (cannot prove commit).
             }
         }
     }
@@ -453,7 +448,6 @@ fn filter_committed_entries(entries: &[WalEntry]) -> Vec<WalEntry> {
 
     result
 }
-
 /// Count committed transactions
 fn count_status(entries: &[WalEntry]) -> (usize, usize, usize) {
     let mut groups: HashMap<u64, Vec<&WalEntry>> = HashMap::new();
