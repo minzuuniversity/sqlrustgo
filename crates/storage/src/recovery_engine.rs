@@ -389,11 +389,7 @@ fn replace_by_key<S: StorageEngine>(
 ) -> Result<(), crate::engine::SqlError> {
     let filter_values = key_to_filter_values(key)?;
     storage.delete(table, &filter_values)?;
-    // F-09 final fix: use force_insert (not insert) so the replacement row
-    // lands in data.rows directly, not in insert_buffer. Otherwise the
-    // rebuilt inner storage's buffer would accumulate replayed rows and
-    // the next SELECT would see them as duplicates.
-    storage.force_insert(table, new_record)?;
+    storage.insert(table, vec![new_record])?;
     Ok(())
 }
 
@@ -403,14 +399,11 @@ fn replace_by_key<S: StorageEngine>(
 
 /// Filter WAL entries to only include those from committed transactions.
 ///
-/// Rules:
-/// - Standalone DML (Insert/Update/Delete) outside any Begin span is autocommit
-///   and is kept (it was committed when the statement finished).
-/// - DML inside a Begin→Commit span is kept (committed transaction).
-/// - DML inside a Begin→Rollback span is dropped (rolled back).
-/// - DML inside a Begin span with no Commit/Rollback seen (i.e. crash mid-tx)
-///   is dropped (uncommitted).
-/// - Metadata entries (Begin/Commit/Rollback/Checkpoint/Prepare) are dropped.
+/// A committed transaction = a contiguous run of entries between a `Begin` entry
+/// and a matching `Commit` entry. We buffer DML inside the open span and
+/// only flush on `Commit`; a `Rollback` discards the buffer; entries seen
+/// without an enclosing `Begin→Commit` span (autocommit-style fragments)
+/// are dropped because we cannot prove they were committed.
 ///
 /// F-09 fix: groups are detected by **Begin→Commit/Rollback span**, not by
 /// `tx_id`. Earlier versions grouped by `tx_id` alone which collapsed all
@@ -419,56 +412,42 @@ fn replace_by_key<S: StorageEngine>(
 /// committed. Span-based detection correctly isolates each transaction.
 fn filter_committed_entries(entries: &[WalEntry]) -> Vec<WalEntry> {
     let mut result = Vec::new();
-    // Are we currently inside a Begin→Commit/Rollback span?
-    // None = not in any span (autocommit territory).
-    // Some(true) = inside a committed span (Begin seen, Commit not yet).
-    // Some(false) = inside an uncommitted/rolled-back span.
-    enum Span {
-        Autocommit,
-        Open,         // Begin seen, awaiting Commit or Rollback
-    }
-    let mut span = Span::Autocommit;
-    let mut pending: Vec<WalEntry> = Vec::new();
+    let mut current_tx_dml: Vec<WalEntry> = Vec::new();
+    let mut in_tx = false;
 
     for entry in entries {
-        eprintln!("[filter-ENTRY] type={:?} lsn={} tx_id={}", entry.entry_type, entry.lsn, entry.tx_id);
         match entry.entry_type {
             WalEntryType::Begin => {
-                span = Span::Open;
-                pending.clear();
+                in_tx = true;
+                current_tx_dml.clear();
             }
             WalEntryType::Commit => {
-                // Flush any DML collected in this span (now committed)
-                result.append(&mut pending);
-                span = Span::Autocommit;
-            }
-            WalEntryType::Rollback => {
-                // Drop DML in this span (rolled back)
-                pending.clear();
-                span = Span::Autocommit;
-            }
-            WalEntryType::Insert | WalEntryType::Update | WalEntryType::Delete => {
-                match span {
-                    Span::Autocommit => {
-                        eprintln!("[filter] AUTOCOMMIT push entry_type={:?} lsn={}", entry.entry_type, entry.lsn);
-                        result.push(entry.clone())
-                    }
-                    Span::Open => {
-                        eprintln!("[filter] OPEN push to pending entry_type={:?} lsn={}", entry.entry_type, entry.lsn);
-                        pending.push(entry.clone())
-                    }
+                if in_tx {
+                    result.append(&mut current_tx_dml);
+                    in_tx = false;
                 }
             }
-            _ => {} // Checkpoint, Prepare, etc. - skip
+            WalEntryType::Rollback => {
+                current_tx_dml.clear();
+                in_tx = false;
+            }
+            WalEntryType::Checkpoint | WalEntryType::Prepare => {}
+            WalEntryType::Insert | WalEntryType::Update | WalEntryType::Delete => {
+                if in_tx {
+                    current_tx_dml.push(entry.clone());
+                }
+                // else: entry belongs to a fragment without a matching
+                //       Begin/Commit span — drop it (cannot prove commit).
+            }
         }
     }
 
-    // Any pending DML at end means crash mid-transaction: drop it.
-    // (Span::Open + non-empty pending at EOF = uncommitted; do not flush.)
-    pending.clear();
+    if result.len() > 1 {
+        result.sort_by_key(|e| e.lsn);
+    }
+
     result
 }
-
 /// Count committed transactions
 fn count_status(entries: &[WalEntry]) -> (usize, usize, usize) {
     let mut groups: HashMap<u64, Vec<&WalEntry>> = HashMap::new();
@@ -520,7 +499,6 @@ impl<S: StorageEngine> RecoveryEngine<S> for RecoveryEngineImpl {
 
         // Replay committed DML entries in order
         for entry in &dml_entries {
-            eprintln!("[recover] APPLY entry_type={:?} lsn={}", entry.entry_type, entry.lsn);
             self.apply_entry(storage, entry)?;
             match entry.entry_type {
                 WalEntryType::Insert => report.rows_inserted += 1,
@@ -551,6 +529,17 @@ impl<S: StorageEngine> RecoveryEngine<S> for RecoveryEngineImpl {
                     ));
                 }
                 let record = bytes_to_record(data)?;
+                // F-09 final fix (dual-write dedup): check if the row is
+                // already present in storage. This happens when an autocommit
+                // INSERT was committed (buffer flushed to disk via save_table)
+                // before crash. Without dedup, force_insert would create a
+                // duplicate row during WAL replay.
+                if let Ok(existing) = storage.scan(&table_name) {
+                    if existing.iter().any(|r| r == &record) {
+                        // Row already on disk; skip replay to avoid duplicate.
+                        return Ok(());
+                    }
+                }
                 // During recovery, force direct insert to avoid buffer/direct split
                 // so subsequent scan/delete in same recovery see the inserted row.
                 recovery_force_insert(storage, &table_name, record)?;
