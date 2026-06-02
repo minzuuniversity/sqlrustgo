@@ -2155,56 +2155,76 @@ fn execute_sql(
         }
 
         sqlrustgo_parser::Statement::Delete(delete) => {
-            if !storage.has_table(&delete.table) {
-                return Err(format!("Table '{}' not found", delete.table));
-            }
+            // P2 FIX (SGL-005): Wrap DELETE in transaction boundary (TX-002)
+            let tx_id = storage.begin_transaction()
+                .map_err(|e| format!("DELETE begin_transaction failed: {}", e))?;
 
-            let table_info = storage.get_table_info(&delete.table).ok();
-            let columns = table_info
-                .map(|info| info.columns.clone())
-                .unwrap_or_default();
+            let delete_result = (|| -> Result<(), String> {
+                if !storage.has_table(&delete.table) {
+                    return Err(format!("Table '{}' not found", delete.table));
+                }
 
-            let all_rows = storage.scan(&delete.table).unwrap_or_default();
+                let table_info = storage.get_table_info(&delete.table).ok();
+                let columns = table_info
+                    .map(|info| info.columns.clone())
+                    .unwrap_or_default();
 
-            let rows_to_delete: Vec<&Vec<sqlrustgo_storage::engine::Value>> =
-                if delete.where_clause.is_none() {
-                    all_rows.iter().collect()
-                } else {
-                    all_rows
-                        .iter()
+                let all_rows = storage.scan(&delete.table).unwrap_or_default();
+
+                let rows_to_delete: Vec<&Vec<sqlrustgo_storage::engine::Value>> =
+                    if delete.where_clause.is_none() {
+                        all_rows.iter().collect()
+                    } else {
+                        all_rows
+                            .iter()
+                            .filter(|row| {
+                                if let Some(ref where_clause) = delete.where_clause {
+                                    evaluate_where_clause(where_clause, row, &columns)
+                                } else {
+                                    false
+                                }
+                            })
+                            .collect()
+                    };
+
+                for row in &rows_to_delete {
+                    execute_before_delete_triggers(storage, &delete.table, row)?;
+                }
+
+                let deleted_count = rows_to_delete.len();
+
+                if deleted_count > 0 {
+                    let remaining_rows: Vec<Vec<sqlrustgo_storage::engine::Value>> = all_rows
+                        .into_iter()
                         .filter(|row| {
                             if let Some(ref where_clause) = delete.where_clause {
-                                evaluate_where_clause(where_clause, row, &columns)
+                                !evaluate_where_clause(where_clause, row, &columns)
                             } else {
                                 false
                             }
                         })
-                        .collect()
-                };
+                        .collect();
 
-            for row in &rows_to_delete {
-                execute_before_delete_triggers(storage, &delete.table, row)?;
-            }
-
-            let deleted_count = rows_to_delete.len();
-
-            if deleted_count > 0 {
-                let remaining_rows: Vec<Vec<sqlrustgo_storage::engine::Value>> = all_rows
-                    .into_iter()
-                    .filter(|row| {
-                        if let Some(ref where_clause) = delete.where_clause {
-                            !evaluate_where_clause(where_clause, row, &columns)
-                        } else {
-                            false
-                        }
-                    })
-                    .collect();
-
-                let _ = storage.delete(&delete.table, &[]);
-                if !remaining_rows.is_empty() {
-                    storage
-                        .insert(&delete.table, remaining_rows)
+                    storage.delete(&delete.table, &[])
                         .map_err(|e| e.to_string())?;
+                    if !remaining_rows.is_empty() {
+                        storage
+                            .insert(&delete.table, remaining_rows)
+                            .map_err(|e| e.to_string())?;
+                    }
+                }
+
+                Ok(())
+            })();
+
+            match delete_result {
+                Ok(()) => {
+                    storage.commit_transaction()
+                        .map_err(|e| format!("DELETE commit failed: {}", e))?;
+                }
+                Err(e) => {
+                    let _ = storage.rollback_transaction();
+                    return Err(e);
                 }
             }
 
@@ -2216,54 +2236,74 @@ fn execute_sql(
         }
 
         sqlrustgo_parser::Statement::Update(update) => {
-            if !storage.has_table(&update.table) {
-                return Err(format!("Table '{}' not found", update.table));
-            }
+            // P2 FIX (SGL-005): Wrap UPDATE in transaction boundary (TX-002)
+            let tx_id = storage.begin_transaction()
+                .map_err(|e| format!("UPDATE begin_transaction failed: {}", e))?;
 
-            let table_info = storage.get_table_info(&update.table).ok();
-            let columns = table_info
-                .map(|info| info.columns.clone())
-                .unwrap_or_default();
-
-            let all_rows = storage.scan(&update.table).unwrap_or_default();
-
-            let rows_to_update: Vec<(usize, Vec<sqlrustgo_storage::engine::Value>)> = all_rows
-                .iter()
-                .enumerate()
-                .filter(|(_, row)| {
-                    if let Some(ref where_clause) = update.where_clause {
-                        evaluate_where_clause(where_clause, row, &columns)
-                    } else {
-                        true
-                    }
-                })
-                .map(|(idx, row)| {
-                    let mut new_row = row.clone();
-                    for (col_name, expr) in &update.set_clauses {
-                        if let Some(col_idx) = columns
-                            .iter()
-                            .position(|c| c.name.eq_ignore_ascii_case(col_name))
-                        {
-                            new_row[col_idx] = evaluate_expr(expr, &new_row, &columns);
-                        }
-                    }
-                    let _ =
-                        execute_before_update_triggers(storage, &update.table, row, &mut new_row);
-                    (idx, new_row)
-                })
-                .collect();
-
-            let updated_count = rows_to_update.len();
-
-            if updated_count > 0 {
-                let mut final_rows = all_rows;
-                for (idx, new_row) in rows_to_update {
-                    final_rows[idx] = new_row;
+            let update_result = (|| -> Result<(), String> {
+                if !storage.has_table(&update.table) {
+                    return Err(format!("Table '{}' not found", update.table));
                 }
-                let _ = storage.delete(&update.table, &[]);
-                storage
-                    .insert(&update.table, final_rows)
-                    .map_err(|e| e.to_string())?;
+
+                let table_info = storage.get_table_info(&update.table).ok();
+                let columns = table_info
+                    .map(|info| info.columns.clone())
+                    .unwrap_or_default();
+
+                let all_rows = storage.scan(&update.table).unwrap_or_default();
+
+                let rows_to_update: Vec<(usize, Vec<sqlrustgo_storage::engine::Value>)> = all_rows
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, row)| {
+                        if let Some(ref where_clause) = update.where_clause {
+                            evaluate_where_clause(where_clause, row, &columns)
+                        } else {
+                            true
+                        }
+                    })
+                    .map(|(idx, row)| {
+                        let mut new_row = row.clone();
+                        for (col_name, expr) in &update.set_clauses {
+                            if let Some(col_idx) = columns
+                                .iter()
+                                .position(|c| c.name.eq_ignore_ascii_case(col_name))
+                            {
+                                new_row[col_idx] = evaluate_expr(expr, &new_row, &columns);
+                            }
+                        }
+                        let _ =
+                            execute_before_update_triggers(storage, &update.table, row, &mut new_row);
+                        (idx, new_row)
+                    })
+                    .collect();
+
+                let updated_count = rows_to_update.len();
+
+                if updated_count > 0 {
+                    let mut final_rows = all_rows;
+                    for (idx, new_row) in rows_to_update {
+                        final_rows[idx] = new_row;
+                    }
+                    storage.delete(&update.table, &[])
+                        .map_err(|e| e.to_string())?;
+                    storage
+                        .insert(&update.table, final_rows)
+                        .map_err(|e| e.to_string())?;
+                }
+
+                Ok(())
+            })();
+
+            match update_result {
+                Ok(()) => {
+                    storage.commit_transaction()
+                        .map_err(|e| format!("UPDATE commit failed: {}", e))?;
+                }
+                Err(e) => {
+                    let _ = storage.rollback_transaction();
+                    return Err(e);
+                }
             }
 
             Ok(SqlExecResult {
