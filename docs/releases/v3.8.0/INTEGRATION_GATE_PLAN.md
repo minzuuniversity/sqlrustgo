@@ -1,8 +1,8 @@
 # Integration Gate 接入计划
-
 **Date**: 2026-06-01
 **Author**: Hermes C
 **Status**: DRAFT
+**gate_policy_eval_id**: `run_20260601_007`
 
 ---
 
