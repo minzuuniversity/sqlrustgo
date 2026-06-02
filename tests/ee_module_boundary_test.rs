@@ -14,11 +14,7 @@ const MAX_EXECUTION_ENGINE_LINES: usize = 2000;
 #[test]
 fn ee_01_execution_engine_under_2000_lines() {
     let path = Path::new(EXECUTION_ENGINE_PATH);
-    assert!(
-        path.exists(),
-        "{} must exist",
-        EXECUTION_ENGINE_PATH
-    );
+    assert!(path.exists(), "{} must exist", EXECUTION_ENGINE_PATH);
     let content = fs::read_to_string(path)
         .unwrap_or_else(|e| panic!("read {} failed: {}", EXECUTION_ENGINE_PATH, e));
     let line_count = content.lines().count();
@@ -91,8 +87,7 @@ fn ee_04_submodule_responsibilities_documented() {
 #[test]
 fn ee_05_no_inline_raw_sql_parsing() {
     // execution_engine.rs 不应包含原始 SQL 解析（已下沉到 parser）
-    let content = fs::read_to_string(EXECUTION_ENGINE_PATH)
-        .expect("read execution_engine.rs");
+    let content = fs::read_to_string(EXECUTION_ENGINE_PATH).expect("read execution_engine.rs");
     // 禁止调用 parse() 的内部函数（仅允许公开 API）
     // 这里只检查不出现 "pub fn parse" 这种重复定义
     assert!(
@@ -116,8 +111,7 @@ fn ee_06_engine_select_separated() {
 #[test]
 fn ee_07_engine_builder_constructs_engine() {
     // engine_builder.rs 必须提供构造 ExecutionEngine 的入口
-    let content = fs::read_to_string("src/engine_builder.rs")
-        .expect("read engine_builder.rs");
+    let content = fs::read_to_string("src/engine_builder.rs").expect("read engine_builder.rs");
     assert!(
         content.contains("ExecutionEngine") || content.contains("build"),
         "engine_builder.rs must contain ExecutionEngine construction"
