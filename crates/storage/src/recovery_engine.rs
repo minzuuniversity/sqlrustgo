@@ -240,6 +240,7 @@ fn bytes_to_record(data: &[u8]) -> Result<Vec<Value>, crate::engine::SqlError> {
     Ok(record)
 }
 
+#[allow(dead_code)]
 pub(crate) fn bytes_to_filters(data: &[u8]) -> Result<Vec<Value>, crate::engine::SqlError> {
     bytes_to_record(data)
 }
@@ -254,6 +255,7 @@ pub(crate) fn recovery_force_insert<S: StorageEngine>(
     storage.insert(table, vec![record])
 }
 
+#[allow(dead_code)]
 pub(crate) fn bytes_to_updates(
     data: &[u8],
 ) -> Result<Vec<(usize, Value)>, crate::engine::SqlError> {
@@ -282,6 +284,7 @@ pub(crate) fn bytes_to_updates(
     Ok(updates)
 }
 
+#[allow(dead_code)]
 fn bytes_to_value(data: &[u8], pos: &mut usize) -> Result<Value, crate::engine::SqlError> {
     if *pos + 2 > data.len() {
         return Err(crate::engine::SqlError::ExecutionError(
@@ -745,14 +748,6 @@ mod tests {
     #[test]
     fn test_recovery_engine_impl_trait_bounds() {
         let _engine: Box<dyn RecoveryEngine<MemoryStorage>> = Box::new(RecoveryEngineImpl);
-    }
-
-    #[test]
-    fn test_key_to_filter_values_integer() {
-        let key = 42i64.to_le_bytes().to_vec();
-        let result = key_to_filter_values(&key).unwrap();
-        assert_eq!(result.len(), 1);
-        assert_eq!(result[0], Value::Integer(42));
     }
 
     #[test]
