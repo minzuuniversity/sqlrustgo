@@ -57,6 +57,11 @@ pub struct ExecutionEngine<S: StorageEngine> {
     pub(crate) tx_status: TxStatus,
     pub(crate) default_isolation: TmIsolationLevel,
     pub(crate) current_role: Option<String>,
+    /// CheckpointManager field — reserved for future PR-830F WAL lifecycle
+    /// integration (currently set to None in all engine builders).
+    /// PR-830F lifecycle methods were removed in SPEC-002; the field is
+    /// kept for future re-introduction without changing the public struct layout.
+    #[allow(dead_code)]
     pub(crate) checkpoint_manager: Option<Arc<RwLock<CheckpointManager>>>,
 }
 
