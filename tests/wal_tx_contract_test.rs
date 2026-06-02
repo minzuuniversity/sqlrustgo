@@ -544,9 +544,8 @@ fn test_partial_update_value_recovery() {
 
 /// RECOVERY-008: DELETE + UPDATE mixed recovery
 ///
-/// Known issue: ExecutionEngine UPDATE+DELETE mixed transaction semantics incorrect.
-/// Tracked by ISSUE-2737: R2-EXEC-BUG
-/// Not a WAL/Recovery failure - the bug is in ExecutionEngine's delete+reinsert model.
+/// FIX-2737: ExecutionEngine's execute_delete extracts only primary key
+/// column values for storage.delete(), not all columns.
 #[ignore]
 #[test]
 fn test_delete_and_update_mixed_recovery() {
@@ -554,7 +553,7 @@ fn test_delete_and_update_mixed_recovery() {
     let dir = _dir.path();
     let mut engine = create_wal_engine(dir);
     engine
-        .execute("CREATE TABLE t (id INTEGER, name TEXT)")
+        .execute("CREATE TABLE t (id INTEGER PRIMARY KEY, name TEXT)")
         .unwrap();
 
     engine.execute("INSERT INTO t VALUES (1, 'row_a')").unwrap();
