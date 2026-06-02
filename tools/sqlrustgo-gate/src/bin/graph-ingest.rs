@@ -184,9 +184,10 @@ fn cmd_link(
     use evidence_graph::GraphEdge;
     let edge = GraphEdge::new(from_id.clone(), to_id.clone(), edge_type);
     store.add_edge(&edge)?;
+
     println!(
         "{{\"linked\": \"{} → {} → {}\"}}",
-        from_id, edge_type_str, to_id
+        args.from_id, args.edge_type, args.to_id
     );
     Ok(())
 }
