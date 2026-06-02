@@ -1,232 +1,190 @@
-# SQLRustGo v3.0 开发计划
+# SQLRustGo v3.0.0 开发计划（已同步实际状态）
 
-> **版本**: 3.0
-> **日期**: 2026-03-28
-> **目标**: MySQL 5.6+ 兼容 - 触发器、分区表、全文索引、Auto Tuning
-> **前置条件**: v2.2 GA 发布
-> **预计周期**: 2 个月
-> **Agent**: 多Agent并行开发
-
----
-
-## 1. 版本目标
-
-v3.0 是"MySQL 5.6 兼容版"，补齐 MySQL 标志性的高级特性，真正可以替代 MySQL 用于生产。
+> **版本**: v3.0.0
+> **日期**: 2026-05-06（源同步版）
+> **状态**: Development 阶段已完成，已进入 Alpha (CBO 进行中)
+> **实际开发周期**: 2026-05-05 ~ 2026-05-06（2 天，非计划 12 周）
+> **当前分支**: `develop/v3.0.0` @ `ebdf0487`
 
 ---
 
-## 2. 任务分解
+## 一、当前实测指标
 
-### 2.1 触发器与存储过程 (P0)
-
-| Issue | 任务 | PR估算 | Agent | 优先级 |
-|-------|------|--------|-------|--------|
-| #1301 | 触发器语法解析 (CREATE TRIGGER) | 12 | Claude A | P0 |
-| #1302 | 触发器执行引擎 | 15 | Claude A | P0 |
-| #1303 | 行级触发器 vs 语句级触发器 | 8 | Claude A | P0 |
-| #1304 | 存储过程基础 (无事务) | 20 | Claude A | P0 |
-| #1305 | 存储函数 | 12 | Claude A | P0 |
-
-### 2.2 分区表 (P0)
-
-| Issue | 任务 | PR估算 | Agent | 优先级 |
-|-------|------|--------|-------|--------|
-| #1311 | 分区表语法解析 (RANGE/KEY/HASH) | 10 | OpenCode A | P0 |
-| #1312 | 分区表物理存储设计 | 15 | OpenCode A | P0 |
-| #1313 | 分区裁剪优化 | 12 | OpenCode A | P0 |
-| #1314 | 分区表 DDL (ADD/DROP PARTITION) | 8 | OpenCode A | P0 |
-
-### 2.3 全文索引 (P1)
-
-| Issue | 任务 | PR估算 | Agent | 优先级 |
-|-------|------|--------|-------|--------|
-| #1321 | 全文索引语法 (FULLTEXT INDEX) | 8 | Claude B | P1 |
-| #1322 | 倒排索引实现 | 15 | Claude B | P1 |
-| #1323 | MATCH ... AGAINST 查询 | 10 | Claude B | P1 |
-| #1324 | 中文分词 (结巴/RMM) | 8 | Claude B | P1 |
-
-### 2.4 Prepared Statements (P1)
-
-| Issue | 任务 | PR估算 | Agent | 优先级 |
-|-------|------|--------|-------|--------|
-| #1331 | PREPARE 语句解析 | 6 | OpenCode B | P1 |
-| #1332 | EXECUTE 执行 | 8 | OpenCode B | P1 |
-| #1333 | 参数绑定 (PreparedStatement 缓存) | 10 | OpenCode B | P1 |
-
-### 2.5 高级复制 (P2)
-
-| Issue | 任务 | PR估算 | Agent | 优先级 |
-|-------|------|--------|-------|--------|
-| #1341 | GTID 复制 | 18 | OpenCode A | P2 |
-| #1342 | 延迟复制 | 10 | OpenCode A | P2 |
-| #1343 | 并行复制 (LOGICAL_CLOCK) | 12 | OpenCode A | P2 |
-
-### 2.6 Auto Tuning (P2)
-
-| Issue | 任务 | PR估算 | Agent | 优先级 |
-|-------|------|--------|-------|--------|
-| #1351 | Buffer Pool 自动调参 | 12 | Claude B | P2 |
-| #1352 | 慢查询自动分析 + 建议 | 10 | Claude B | P2 |
-| #1353 | 索引推荐 | 15 | Claude B | P2 |
-
-### 2.7 JSON 函数 (P2)
-
-| Issue | 任务 | PR估算 | Agent | 优先级 |
-|-------|------|--------|-------|--------|
-| #1361 | JSON 数据类型 | 8 | OpenCode B | P2 |
-| #1362 | JSON_EXTRACT / JSON_SET | 10 | OpenCode B | P2 |
-| #1363 | JSON_ARRAY / JSON_OBJECT | 6 | OpenCode B | P2 |
-
-### 2.8 CTE 与递归 (P3)
-
-| Issue | 任务 | PR估算 | Agent | 优先级 |
-|-------|------|--------|-------|--------|
-| #1371 | WITH RECURSIVE 语法 | 15 | Claude A | P3 |
-| #1372 | 递归执行引擎 | 12 | Claude A | P3 |
+| 指标 | 目标 | **当前** | 状态 |
+|------|------|--------|------|
+| Point SELECT QPS | ≥20,000 | **7,312**（待 CBO #392） | 🟡 |
+| UPDATE QPS | ≥10,000 | **42,427** | ✅ |
+| DELETE QPS | ≥5,000 | **62,352** | ✅ |
+| SQL Corpus | ≥98% | **100%** | ✅ |
+| TPC-H SF=0.1 | 22/22 | **22/22** ~10.9s | 🟡 |
+| Sysbench oltp_read_only | — | **17,068 QPS** | ✅ |
+| Sysbench oltp_write_only | — | **37,075 QPS** | ✅ |
+| Sysbench oltp_read_write | — | **19,430 QPS** | ✅ |
 
 ---
 
-## 3. Issue 清单
+## 二、已完成任务（24 项全部合并）
 
-```bash
-# 创建所有 v3.0 Issue
-# 触发器与存储过程
-gh issue create --title "[v3.0][P0] 触发器语法解析" --body "..." --label "enhancement"
-gh issue create --title "[v3.0][P0] 触发器执行引擎" --body "..." --label "enhancement"
-gh issue create --title "[v3.0][P0] 行级/语句级触发器" --body "..." --label "enhancement"
-gh issue create --title "[v3.0][P0] 存储过程基础" --body "..." --label "enhancement"
-gh issue create --title "[v3.0][P0] 存储函数" --body "..." --label "enhancement"
+| 类别 | 任务 | 状态 | 说明 |
+|------|------|------|------|
+| **优化器** | CBO 规则桥接 | ✅ | 3 规则真实调用，86 测试 |
+| **缓存** | 查询缓存 LRU + DML 失效 | ✅ | opencode |
+| **连接** | 连接池 Thread Pool | ✅ | opencode |
+| **提交** | Group Commit WAL 批量 | ✅ | opencode |
+| **INSERT** | INSERT...SELECT | ✅ | |
+| **窗口函数** | NTILE/LEAD/LAG/等 6 函数 | ✅ | |
+| **CTE** | WITH 子句执行 | ✅ | |
+| **信息模式** | INFORMATION_SCHEMA | ✅ | SHOW TABLES/COLUMNS/DESCRIBE |
+| **查询计划** | EXPLAIN ANALYZE | ✅ | |
+| **传输安全** | SSL/TLS | ✅ | rustls + 自签名证书 |
+| **慢查询** | 慢查询日志 | ✅ | |
+| **CI 门禁** | CI Gate (TPC-H + coverage-trend) | ✅ | |
+| **系统变量** | SHOW VARIABLES | ✅ | 15 变量 |
+| **运维** | 运维手册 | ✅ | |
+| **架构决策** | ADR 记录 | ✅ | 5 条 |
+| **API** | API 版本化 + `#[deprecated]` | ✅ | |
+| **迁移** | v2.9→v3.0 迁移指南 | ✅ | |
+| **教学** | 教学模式 | ✅ | |
+| **DDL** | 在线 DDL ADD/DROP/MODIFY/RENAME | ✅ | |
+| **导出** | mysqldump 导出 | ✅ | |
+| **调优** | 性能调优指南 | ✅ | |
+| **内存** | PP-06 内存治理 (512MB 限额) | ✅ | |
+| **形式化证明** | PROOF-026 Write Skew/SSI | ✅ | TLA+ 模型 + 7 测试 |
+| **SQL 测试** | SQL Corpus 100% (485/485) | ✅ | |
+| **协议** | COM_MULTI (0x11) 多语句执行 | ✅ | opencode |
+| **协议** | Prepared Statement 参数绑定修复 | ✅ | opencode |
+| **协议** | BEGIN/COMMIT/ROLLBACK 引擎集成 | ✅ | opencode |
+| **Sysbench** | oltp_read_only / write_only / read_write | ✅ | 17k / 37k / 19k QPS |
+| **Sysbench** | Sysbench 设置指南 (docs) | ✅ | opencode |
 
-# 分区表
-gh issue create --title "[v3.0][P0] 分区表语法解析" --body "..." --label "enhancement"
-gh issue create --title "[v3.0][P0] 分区表物理存储设计" --body "..." --label "enhancement"
-gh issue create --title "[v3.0][P0] 分区裁剪优化" --body "..." --label "enhancement"
-gh issue create --title "[v3.0][P0] 分区表DDL" --body "..." --label "enhancement"
+---
 
-# 全文索引
-gh issue create --title "[v3.0][P1] 全文索引语法" --body "..." --label "enhancement"
-gh issue create --title "[v3.0][P1] 倒排索引实现" --body "..." --label "enhancement"
-gh issue create --title "[v3.0][P1] MATCH查询" --body "..." --label "enhancement"
-gh issue create --title "[v3.0][P1] 中文分词" --body "..." --label "enhancement"
+## 三、未完成/剩余任务
 
-# Prepared Statements
-gh issue create --title "[v3.0][P1] PREPARE语句解析" --body "..." --label "enhancement"
-gh issue create --title "[v3.0][P1] EXECUTE执行" --body "..." --label "enhancement"
-gh issue create --title "[v3.0][P1] PreparedStatement缓存" --body "..." --label "enhancement"
+| 优先级 | 任务 | 难度 | 负责人 | Issue |
+|--------|------|------|--------|-------|
+| **P0** | CBO 代价模型集成 (SimpleCostModel + 索引选择) | 🔴 5-7d | opencode | #392 |
+| **P0** | 事务状态机压力测试 | 🟡 2d | claude | #379 |
+| **P1** | TPC-H SF=1 CI Gate | 🟡 1d | — | #382 |
+| **P1** | Optimizer 测试扩展 | 🟢 2d | claude | #380 |
+| **P1** | Planner 逻辑测试扩展 | 🟢 2d | claude | #381 |
+| **P2** | 连接池并发压力测试 | 🟡 2d | — | — |
+| **P2** | 覆盖率 ≥85% | 🟡 3d | — | — |
+| **P3** | Cargo.toml 版本号 2.x → 3.0.0 验证 | 🟢 0.5d | deepseek | — |
 
-# 高级复制
-gh issue create --title "[v3.0][P2] GTID复制" --body "..." --label "enhancement"
-gh issue create --title "[v3.0][P2] 延迟复制" --body "..." --label "enhancement"
-gh issue create --title "[v3.0][P2] 并行复制" --body "..." --label "enhancement"
+---
 
-# Auto Tuning
-gh issue create --title "[v3.0][P2] Buffer Pool自动调参" --body "..." --label "enhancement"
-gh issue create --title "[v3.0][P2] 慢查询自动分析" --body "..." --label "enhancement"
-gh issue create --title "[v3.0][P2] 索引推荐" --body "..." --label "enhancement"
+## 四、Agent 分工
 
-# JSON
-gh issue create --title "[v3.0][P2] JSON数据类型" --body "..." --label "enhancement"
-gh issue create --title "[v3.0][P2] JSON_EXTRACT" --body "..." --label "enhancement"
-gh issue create --title "[v3.0][P2] JSON_ARRAY/JSON_OBJECT" --body "..." --label "enhancement"
+| Agent | 工作目录 | 负责任务 |
+|-------|---------|---------|
+| **opencode** | `~/workspace/dev/openheart/sqlrustgo` | #392 CBO 代价模型集成 |
+| **claude** | `~/workspace/dev/yinglichina163/sqlrustgo` | #379 #380 #381 |
+| **deepseek** | `~/workspace/dev/openheart/sqlrustgo` | 文档同步 + A-HYG 门禁 + 版本号 |
 
-# CTE
-gh issue create --title "[v3.0][P3] WITH RECURSIVE语法" --body "..." --label "enhancement"
-gh issue create --title "[v3.0][P3] 递归执行引擎" --body "..." --label "enhancement"
+---
+
+## 五、当前分支
+
+`develop/v3.0.0` @ `ebdf0487`
+
+已合并 PR:
+- #388 COM_MULTI + Prepared Statement + Transaction Fixes
+- #390 Prepared Statement 参数绑定修复 + 编译修复
+- #391 TPC-H SF=1 CI Gate (`--sf1`/`--sf0.1` 选项)
+
+---
+
+## 六、v3.1.0 延续任务（来自 v3.0.0 未完成项）
+
+> 基于 gate_lifecycle_tracking.md §7.3 建立
+
+以下任务在 v3.0.0 未完成或未达到 Beta Gate 要求，必须在 v3.1.0 中完成。
+
+### 6.1 P0 任务（阻塞 v3.1.0 Beta Gate）
+
+| 原 Issue | 任务 | v3.0.0 状态 | v3.1.0 目标 | 验收条件 |
+|----------|------|------------|-------------|----------|
+| #451 | SQL Operations 语法支持 | 20% (11/55) | ≥80% (44/55) | `test_sql_corpus_operations` 通过率 ≥80%，涉及 BACKUP, SAVEPOINT, SET TRANSACTION ISOLATION LEVEL, LIMIT/OFFSET, TRUNCATE, REPLACE, SHOW, EXPLAIN ANALYZE, TEMPORARY TABLE, ALTER TABLE INPLACE, BATCH INSERT |
+| #392 | CBO 代价模型集成 | 未开始 | SimpleCostModel 接入 planner | EXPLAIN 能选择索引扫描而非全表；多表 JOIN 按代价排序 |
+| — | TPC-H SF=1 无 OOM | SF=1 曾 OOM | 22/22 无 OOM，p99 < 5s | `check_tpch.sh sf=1` 22/22 全部通过 |
+| #379 | 事务状态机压力测试 | 未开始 | crash_recovery_test 全部 PASS | B-S2 PASS，100 并发 BEGIN/COMMIT/ROLLBACK 无状态泄漏 |
+
+### 6.2 P1 任务（阻塞 v3.1.0 RC Gate）
+
+| 原 Issue | 任务 | v3.0.0 状态 | v3.1.0 目标 | 验收条件 |
+|----------|------|------------|-------------|----------|
+| #380 | Optimizer 测试扩展 | 未开始 | 覆盖率 ≥75% | `cargo llvm-cov -p sqlrustgo-optimizer` ≥ 75% |
+| #381 | Planner 测试扩展 | 未开始 | 覆盖率 ≥80% | `cargo llvm-cov -p sqlrustgo-planner` ≥ 80% |
+| — | 连接池/缓存/Group Commit 正确性 | 部分完成 | 并发压力测试通过 | 连接池泄漏检测、缓存 DML 失效、WAL 崩溃恢复全部 PASS |
+| #382 | TPC-H SF=1 CI Gate | 已完成（PR #391） | — | ✅ 已完成 |
+
+### 6.3 GA 门禁遗留问题修复（来自 GA_GATE_AUDIT.md）
+
+> 基于 GA_GATE_AUDIT.md §四建立
+
+#### P0 — 阻塞 v3.1.0 GA
+
+| 遗留编号 | 任务 | 验收条件 |
+|----------|------|----------|
+| GA-GAP-02 | 实现 G7/G8/G9 QPS 实际测量 | `cargo bench -- point_select` 输出 ≥10,000 ops/s |
+| GA-GAP-03 | 统一 SQL Corpus 阈值为 ≥98% | `test_sql_corpus_all` ≥98%，当前 94.1% |
+
+#### P1 — 阻塞 v3.1.0 RC
+
+| 遗留编号 | 任务 | 验收条件 |
+|----------|------|----------|
+| GA-GAP-01 | 修复 R-05 semver 漏洞或申请豁免 | `cargo audit` 输出不包含 R-05，或 Architect 批准豁免 |
+| GA-GAP-08 | 创建缺失的 3 个文档 | INSTALL.md、DEPLOYMENT_GUIDE.md、QUICK_START.md 存在且内容完整 |
+| GA-GAP-04 | 将 B-S1~B-S5 稳定性测试纳入 GA Gate | check_ga_v300.sh 包含 B-S1~B-S5 检查 |
+
+#### P2 — 建议完成
+
+| 遗留编号 | 任务 | 验收条件 |
+|----------|------|----------|
+| GA-GAP-05 | 实现 MySQL Protocol Test | `docker run --rm mysql:5.7 mysql -h <host> -e "SELECT 1"` 成功 |
+| GA-GAP-06 | 修复 run_integration.sh 退出码验证 | `bash scripts/test/run_integration.sh --quick` 退出码为 0 |
+| GA-GAP-07 | 扩展 formal proofs 检查到 .dfy/.tla | check_ga_v300.sh GA-11 计数 ≥10 个文件（所有格式） |
+
+#### P3 — 规范对齐
+
+| 遗留编号 | 任务 | 验收条件 |
+|----------|------|----------|
+| GA-GAP-09 | 将 GA-8 添加到 gate_spec_v300.md 或从脚本移除 | gate_spec_v300.md 与 check_ga_v300.sh GA-8 定义一致 |
+
+### 6.4 v3.1.0 门禁目标
+
+| 门禁 | 指标 | v3.0.0 实际 | v3.1.0 目标 |
+|------|------|------------|-------------|
+| B2 | 测试通过率 | 94.1% (test_sql_corpus_all) | ≥90% (全量) |
+| B5 | 覆盖率 | — | ≥75% |
+| B9 | SQL Corpus | 94.1% (all) / 20% (operations) | ≥85% |
+| B-S2 | crash_recovery_test | — | 全部 PASS |
+| B-S10 | test_sql_corpus_operations | 20% | ≥80% |
+
+### 6.5 任务追踪机制
+
+```
+v3.0.0: Issue #451 (SQL operations 20%) → OPEN
+         ↓
+v3.1.0 DEVELOPMENT_PLAN.md §6.1 建立延续映射
+         ↓
+v3.1.0 开发期间持续追踪
+         ↓
+修复完成 → PR 合并 → Issue #451 closedByPullRequest
+         ↓
+验证 test_sql_corpus_operations ≥ 80%
 ```
 
----
-
-## 4. 开发顺序
+### 6.6 GA 门禁遗留问题追踪
 
 ```
-Month 1: 触发器 + 分区表
-Week 1:
-  ├── #1301 触发器语法
-  └── #1311 分区表语法
-
-Week 2:
-  ├── #1302 触发器引擎
-  └── #1312 分区表存储
-
-Week 3:
-  ├── #1303 行级触发器
-  ├── #1313 分区裁剪
-  └── #1321 全文索引语法
-
-Week 4:
-  ├── #1304 存储过程基础
-  ├── #1314 分区DDL
-  └── #1322 倒排索引
-
-Month 2: 全文索引 + Prepared + JSON + AutoTuning
-Week 5:
-  ├── #1323 MATCH查询
-  ├── #1331 PREPARE解析
-  └── #1361 JSON类型
-
-Week 6:
-  ├── #1324 中文分词
-  ├── #1332 EXECUTE执行
-  ├── #1333 缓存
-  └── #1362 JSON函数
-
-Week 7:
-  ├── #1341 GTID
-  ├── #1351 Buffer调参
-  └── #1352 慢查询分析
-
-Week 8:
-  ├── #1371 CTE语法
-  ├── #1372 递归引擎
-  └── v3.0 GA 发布
+GA_GATE_AUDIT.md GA-GAP-XX（OPEN）
+    ↓
+v3.1.0 DEVELOPMENT_PLAN.md §6.3 建立延续映射
+    ↓
+创建 Issue（milestone: v3.1.0-ga）
+    ↓
+修复完成 → 验证门禁 PASS → GA_GATE_AUDIT.md 状态改为 CLOSED
 ```
 
----
-
-## 5. 交付物
-
-- [ ] 触发器 (行级/语句级)
-- [ ] 存储过程 + 存储函数
-- [ ] 分区表 (RANGE/KEY/HASH)
-- [ ] 分区裁剪优化
-- [ ] 全文索引 + 中文分词
-- [ ] Prepared Statements + 缓存
-- [ ] GTID 复制
-- [ ] Auto Tuning (Buffer调参 + 索引推荐)
-- [ ] JSON 数据类型 + 函数
-- [ ] CTE RECURSIVE
-- [ ] 性能基准: 50 并发 ≥ 5000 QPS (v2.2 +150%)
-- [ ] MySQL 5.6 兼容性 ≥ 80%
-
----
-
-## 6. 里程碑
-
-| 日期 | 里程碑 |
-|------|--------|
-| Month 1 Week 4 | 触发器 + 分区表核心完成 |
-| Month 2 Week 4 | v3.0 GA 发布 |
-
----
-
-## 7. MySQL 5.6 兼容度目标
-
-| 特性 | 状态 |
-|------|------|
-| 触发器 | ✅ |
-| 存储过程/函数 | ✅ |
-| 分区表 | ✅ |
-| 全文索引 | ✅ |
-| Prepared Statements | ✅ |
-| GTID | ✅ |
-| 延迟复制 | ✅ |
-| 并行复制 | ✅ |
-| JSON 函数 | ✅ |
-| CTE RECURSIVE | ✅ |
-| Auto Tuning | ✅ |
-
-**MySQL 5.6 兼容度: 目标 ≥ 80%**
-
----
-
-**状态**: 📋 规划完成，待创建Issue
