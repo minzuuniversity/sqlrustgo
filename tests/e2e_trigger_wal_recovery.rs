@@ -51,7 +51,10 @@ fn test_trigger_insert_wal_recovery_t001() {
 
         // Verify trigger fired before restart
         let count = extract_count(engine.execute("SELECT COUNT(*) FROM t1_audit"));
-        assert_eq!(count, 1, "T-001 pre-check: trigger should have inserted audit row");
+        assert_eq!(
+            count, 1,
+            "T-001 pre-check: trigger should have inserted audit row"
+        );
     }
 
     // Phase 2: Simulate crash — engine dropped
@@ -68,10 +71,7 @@ fn test_trigger_insert_wal_recovery_t001() {
 
     // Verify main row also survived
     let main_count = extract_count(engine.execute("SELECT COUNT(*) FROM t1 WHERE id = 1"));
-    assert_eq!(
-        main_count, 1,
-        "T-001 FAIL: main row missing after recovery"
-    );
+    assert_eq!(main_count, 1, "T-001 FAIL: main row missing after recovery");
 
     eprintln!("T-001 PASS: Trigger INSERT survived crash + recovery");
 }
