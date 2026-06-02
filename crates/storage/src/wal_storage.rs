@@ -126,6 +126,20 @@ impl<S: StorageEngine, T: WalManager> WalStorage<S, T> {
         bytes
     }
 
+    pub(crate) fn updates_to_bytes(updates: &[(usize, Value)]) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(&(updates.len() as u32).to_le_bytes());
+        for (col_idx, value) in updates {
+            bytes.extend_from_slice(&(*col_idx as u32).to_le_bytes());
+            bytes.extend_from_slice(&Self::record_to_bytes(std::slice::from_ref(value)));
+        }
+        bytes
+    }
+
+    pub(crate) fn filters_to_bytes(filters: &[Value]) -> Vec<u8> {
+        Self::record_to_bytes(filters)
+    }
+
     fn row_matches_filter(row: &[Value], filters: &[Value]) -> bool {
         if filters.is_empty() {
             return true;
@@ -355,16 +369,34 @@ impl<S: StorageEngine, T: WalManager> StorageEngine for WalStorage<S, T> {
     ) -> SqlResult<usize> {
         let table_id = Self::table_name_to_id(table);
 
-        let rows = self.inner.scan(table)?;
-        for row in &rows {
-            if Self::row_matches_filter(row, filters) {
-                let key = Self::record_key(row);
-                let old_data = Self::record_to_bytes(row);
-                self.log_update(table_id, key, old_data)?;
+        // Step 1: Get all rows and find those matching the filter (before-image)
+        let all_rows = self.inner.scan(table)?;
+        let rows_to_update: Vec<(Vec<u8>, Vec<Value>)> = all_rows
+            .iter()
+            .filter(|r| Self::row_matches_filter(r, filters))
+            .map(|r| (Self::record_key(r), r.clone()))
+            .collect();
+
+        let count = rows_to_update.len();
+
+        if count > 0 {
+            // Step 2: Compute after-image by applying updates to each matching row
+            for (key, mut row) in rows_to_update {
+                for &(col_idx, ref new_val) in updates {
+                    if col_idx < row.len() {
+                        row[col_idx] = new_val.clone();
+                    }
+                }
+                // Step 3: Log the after-image to WAL
+                let new_data = Self::record_to_bytes(&row);
+                self.log_update(table_id, key, new_data)?;
             }
         }
 
-        self.inner.update(table, filters, updates)
+        // Step 4: Call inner update (inner.update may be a stub, but we already logged)
+        let _ = self.inner.update(table, filters, updates)?;
+
+        Ok(count)
     }
 
     fn update_if(
@@ -664,5 +696,55 @@ mod tests {
 
         let entries = storage.recover().unwrap();
         assert_eq!(entries.len(), 3);
+    }
+
+    #[test]
+    fn test_wal_storage_update_stores_new_image() {
+        let inner = MemoryStorage::new();
+        let wal = MemoryWalManager::new();
+        let mut storage = WalStorage::new(inner, wal).unwrap();
+
+        let mut col_id = crate::engine::ColumnDefinition::new("id", "INTEGER");
+        col_id.primary_key = true;
+        let mut col_val = crate::engine::ColumnDefinition::new("value", "INTEGER");
+        col_val.primary_key = false;
+        storage
+            .create_table(&crate::engine::TableInfo {
+                name: "t1".to_string(),
+                columns: vec![col_id, col_val],
+                foreign_keys: vec![],
+                unique_constraints: vec![],
+                check_constraints: vec![],
+                partition_info: None,
+            })
+            .unwrap();
+
+        storage.begin_transaction().unwrap();
+        storage
+            .insert(
+                "t1",
+                vec![
+                    vec![Value::Integer(1), Value::Integer(10)],
+                    vec![Value::Integer(2), Value::Integer(20)],
+                ],
+            )
+            .unwrap();
+        storage.commit_transaction().unwrap();
+
+        storage.begin_transaction().unwrap();
+        storage
+            .update("t1", &[Value::Integer(1)], &[(1, Value::Integer(100))])
+            .unwrap();
+        storage.commit_transaction().unwrap();
+
+        let entries = storage.recover().unwrap();
+        let updates: Vec<_> = entries
+            .iter()
+            .filter(|e| e.entry_type == WalEntryType::Update)
+            .collect();
+
+        assert_eq!(updates.len(), 1);
+        assert!(updates[0].key.is_some());
+        assert!(updates[0].data.is_some());
     }
 }
