@@ -1,0 +1,186 @@
+Diff in /Users/liying/workspace/dev/yinglichina163/sqlrustgo/crates/executor/src/execution/context.rs:39:
+         || sql_upper.starts_with("UPDATE")
+         || sql_upper.starts_with("DELETE")
+ }
+[32m+Diff in /Users/liying/workspace/dev/yinglichina163/sqlrustgo/crates/executor/src/execution/context.rs:39:
+         || sql_upper.starts_with("UPDATE")
+         || sql_upper.starts_with("DELETE")
+ }
+[32m+
+
+(B[mDiff in /Users/liying/workspace/dev/yinglichina163/sqlrustgo/crates/executor/src/execution/engine.rs:9:
+     fn commit(&mut self, txn: u64) -> Result<(), SqlError>;
+     fn rollback(&mut self, txn: u64) -> Result<(), SqlError>;
+ }
+[32m+
+(B[mDiff in /Users/liying/workspace/dev/yinglichina163/sqlrustgo/crates/executor/src/execution/engine.rs:9:
+     fn commit(&mut self, txn: u64) -> Result<(), SqlError>;
+     fn rollback(&mut self, txn: u64) -> Result<(), SqlError>;
+ }
+[32m+
+(B[mDiff in /Users/liying/workspace/dev/yinglichina163/sqlrustgo/crates/executor/src/execution/facade.rs:1:
+ use super::context::QueryContext;
+[31m-use super::result::ExecutionResult;
+(B[m use super::engine::ExecutionEngine;
+[32m+use super::result::ExecutionResult;
+(B[m use sqlrustgo_types::{SqlError, Value};
+ 
+ pub struct ExecutionFacade<E: ExecutionEngine> {
+Diff in /Users/liying/workspace/dev/yinglichina163/sqlrustgo/crates/executor/src/execution/facade.rs:26:
+(B[mDiff in /Users/liying/workspace/dev/yinglichina163/sqlrustgo/crates/executor/src/execution/facade.rs:1:
+ use super::context::QueryContext;
+[31m-use super::result::ExecutionResult;
+(B[m use super::engine::ExecutionEngine;
+[32m+use super::result::ExecutionResult;
+(B[m use sqlrustgo_types::{SqlError, Value};
+ 
+ pub struct ExecutionFacade<E: ExecutionEngine> {
+Diff in /Users/liying/workspace/dev/yinglichina163/sqlrustgo/crates/executor/src/execution/facade.rs:26:
+         self.engine.execute(&mut ctx)
+     }
+ }
+[32m+
+         self.engine.execute(&mut ctx)
+     }
+ }
+[32m+
+(B[mDiff in /Users/liying/workspace/dev/yinglichina163/sqlrustgo/crates/executor/src/execution/result.rs:29:
+         self
+     }
+ }
+[32m+
+(B[mDiff in /Users/liying/workspace/dev/yinglichina163/sqlrustgo/crates/executor/src/execution/result.rs:29:
+         self
+     }
+ }
+[32m+
+(B[mDiff in /Users/liying/workspace/dev/yinglichina163/sqlrustgo/crates/executor/src/merge.rs:96:
+ 
+                     let filter = target_pk_idx.and_then(|pk_idx| target_row.get(pk_idx).cloned());
+                     // VTU path: execute UPDATE through ExecutionEngine
+[31m-                    let update_sql = self.build_update_sql(target_table, &target_table_info, &updates, filter.as_slice());
+(B[m[32m+                    let update_sql = self.build_update_sql(
+(B[mDiff in /Users/liying/workspace/dev/yinglichina163/sqlrustgo/crates/executor/src/merge.rs:96:
+ 
+                     let filter = target_pk_idx.and_then(|pk_idx| target_row.get(pk_idx).cloned());
+                     // VTU path: execute UPDATE through ExecutionEngine
+[31m-                    let update_sql = self.build_update_sql(target_table, &target_table_info, &updates, filter.as_slice());
+(B[m[32m+                    let update_sql = self.build_update_sql(
+(B[m[32m+                        target_table,
+(B[m[32m+                        &target_table_info,
+(B[m[32m+                        &updates,
+(B[m[32m+                        filter.as_slice(),
+(B[m[32m+                    );
+(B[m                     let mut ctx = QueryContext::new(update_sql);
+                     self.engine.lock().unwrap().execute(&mut ctx)?;
+(B[m[32m+                        target_table,
+(B[m[32m+                        &target_table_info,
+(B[m[32m+                        &updates,
+(B[m[32m+                        filter.as_slice(),
+(B[m[32m+                    );
+(B[m                     let mut ctx = QueryContext::new(update_sql);
+                     self.engine.lock().unwrap().execute(&mut ctx)?;
+                     matched_count += 1;
+Diff in /Users/liying/workspace/dev/yinglichina163/sqlrustgo/crates/executor/src/merge.rs:631:
+ 
+     /// Build an INSERT SQL statement from values
+     fn build_insert_sql(&self, table: &str, table_info: &TableInfo, values: &[Value]) -> String {
+                     matched_count += 1;
+Diff in /Users/liying/workspace/dev/yinglichina163/sqlrustgo/crates/executor/src/merge.rs:631:
+ 
+     /// Build an INSERT SQL statement from values
+     fn build_insert_sql(&self, table: &str, table_info: &TableInfo, values: &[Value]) -> String {
+[31m-        let col_names: Vec<String> = table_info
+(B[m[31m-            .columns
+(B[m[31m-            .iter()
+(B[m[31m-            .map(|c| c.name.clone())
+(B[m[31m-            .collect();
+(B[m[32m+        let col_names: Vec<String> = table_info.columns.iter().map(|c| c.name.clone()).collect();
+(B[m 
+         let values_str = values
+             .iter()
+Diff in /Users/liying/workspace/dev/yinglichina163/sqlrustgo/crates/executor/src/merge.rs:662:
+         let set_clauses = updates
+             .iter()
+             .filter_map(|(col_idx, val)| {
+[31m-                table_info.columns.get(*col_idx).map(|col| {
+(B[m[31m-                    format!("{} = {}", col.name, self.value_to_sql(val))
+(B[m[31m-                })
+[31m-        let col_names: Vec<String> = table_info
+(B[m[31m-            .columns
+(B[m[31m-            .iter()
+(B[m[31m-            .map(|c| c.name.clone())
+(B[m[31m-            .collect();
+(B[m[32m+        let col_names: Vec<String> = table_info.columns.iter().map(|c| c.name.clone()).collect();
+(B[m 
+         let values_str = values
+             .iter()
+Diff in /Users/liying/workspace/dev/yinglichina163/sqlrustgo/crates/executor/src/merge.rs:662:
+         let set_clauses = updates
+             .iter()
+             .filter_map(|(col_idx, val)| {
+[31m-                table_info.columns.get(*col_idx).map(|col| {
+(B[m[31m-                    format!("{} = {}", col.name, self.value_to_sql(val))
+(B[m[31m-                })
+(B[m[32m+                table_info
+(B[m[32m+                    .columns
+(B[m[32m+                    .get(*col_idx)
+(B[m[32m+                table_info
+(B[m[32m+                    .columns
+(B[m[32m+                    .get(*col_idx)
+(B[m[32m+                    .map(|col| format!("{} = {}", col.name, self.value_to_sql(val)))
+(B[m             })
+             .collect::<Vec<_>>()
+             .join(", ");(B[m[32m+                    .map(|col| format!("{} = {}", col.name, self.value_to_sql(val)))
+(B[m             })
+             .collect::<Vec<_>>()
+             .join(", ");
+Diff in /Users/liying/workspace/dev/yinglichina163/sqlrustgo/crates/executor/src/merge.rs:675:
+                 .iter()
+                 .find(|c| c.primary_key)
+                 .map(|c| c.name.clone())
+Diff in /Users/liying/workspace/dev/yinglichina163/sqlrustgo/crates/executor/src/merge.rs:675:
+                 .iter()
+                 .find(|c| c.primary_key)
+                 .map(|c| c.name.clone())
+[31m-                .unwrap_or_else(|| table_info.columns.first().map(|c| c.name.clone()).unwrap_or_default());
+(B[m[32m+                .unwrap_or_else(|| {
+
+[31m-                .unwrap_or_else(|| table_info.columns.first().map(|c| c.name.clone()).unwrap_or_default());
+(B[m[32m+                .unwrap_or_else(|| {
+(B[m[32m+                    table_info
+(B[m[32m+                        .columns
+(B[m[32m+                    table_info
+(B[m[32m+                        .columns
+(B[m[32m+                        .first()
+(B[m[32m+                        .map(|c| c.name.clone())
+(B[m[32m+                        .unwrap_or_default()
+(B[m[32m+                        .first()
+(B[m[32m+                        .map(|c| c.name.clone())
+(B[m[32m+                        .unwrap_or_default()
+(B[m[32m+                });
+(B[m 
+             let filter_str = filter
+                 .iter()(B[m[32m+                });
+(B[m 
+             let filter_str = filter
+                 .iter()
+
+Diff in /Users/liying/workspace/dev/yinglichina163/sqlrustgo/crates/storage/src/wal_storage.rs:1:
+ use crate::bplus_tree::index::CompositeKey;
+[31m-use crate::engine::{ColumnDefinition, Record, RowFilter, SqlResult, StorageEngine, TableInfo, Value};
+Diff in /Users/liying/workspace/dev/yinglichina163/sqlrustgo/crates/storage/src/wal_storage.rs:1:
+ use crate::bplus_tree::index::CompositeKey;
+[31m-use crate::engine::{ColumnDefinition, Record, RowFilter, SqlResult, StorageEngine, TableInfo, Value};
+(B[m[32m+use crate::engine::{
+(B[m[32m+    ColumnDefinition, Record, RowFilter, SqlResult, StorageEngine, TableInfo, Value,
+(B[m[32m+};
+(B[m use crate::wal::{WalEntry, WalEntryType, WalManager};
+ use std::path::PathBuf;
+ use std::sync::{Arc, RwLock};
+(B[m[32m+use crate::engine::{
+(B[m[32m+    ColumnDefinition, Record, RowFilter, SqlResult, StorageEngine, TableInfo, Value,
+(B[m[32m+};
+(B[m use crate::wal::{WalEntry, WalEntryType, WalManager};
+ use std::path::PathBuf;
+ use std::sync::{Arc, RwLock};

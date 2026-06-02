@@ -38,3 +38,51 @@ impl WriteOp {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_write_op_insert_table_name() {
+        let op = WriteOp::Insert {
+            table: "users".into(),
+            columns: vec!["id".into(), "name".into()],
+            values: vec![vec![Value::Integer(1), Value::Text("alice".into())]],
+        };
+        assert_eq!(op.table_name(), "users");
+        assert_eq!(op.operation_type(), "INSERT");
+    }
+
+    #[test]
+    fn test_write_op_update_table_name() {
+        let op = WriteOp::Update {
+            table: "users".into(),
+            set: vec![("name".into(), Value::Text("bob".into()))],
+            filter: "id = 1".into(),
+        };
+        assert_eq!(op.table_name(), "users");
+        assert_eq!(op.operation_type(), "UPDATE");
+    }
+
+    #[test]
+    fn test_write_op_delete_table_name() {
+        let op = WriteOp::Delete {
+            table: "users".into(),
+            filter: "id = 1".into(),
+        };
+        assert_eq!(op.table_name(), "users");
+        assert_eq!(op.operation_type(), "DELETE");
+    }
+
+    #[test]
+    fn test_write_op_debug() {
+        let op = WriteOp::Insert {
+            table: "t".into(),
+            columns: vec!["c".into()],
+            values: vec![],
+        };
+        let debug = format!("{:?}", op);
+        assert!(debug.contains("Insert"));
+    }
+}
