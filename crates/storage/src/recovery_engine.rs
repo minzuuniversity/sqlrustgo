@@ -275,43 +275,56 @@ fn replace_by_key<S: StorageEngine>(
 
 /// Filter WAL entries to only include those from committed transactions.
 ///
-/// A committed transaction = a group of entries with the same tx_id that
-/// includes a Commit entry. Entries after Begin and before Commit/Rollback
-/// are kept; metadata entries (Begin/Commit/Rollback/Checkpoint/Prepare)
-/// are excluded from the result.
+/// PR-842: entries are walked in append order and split by `Begin`/
+/// `Commit`/`Rollback` boundaries rather than grouped by `tx_id`. This
+/// matters because the production WalStorage writes all entries with
+/// `tx_id = current_tx_id()` (which stays `0` for FileStorage when no
+/// transaction manager is hooked up). Grouping by `tx_id` then conflates
+/// autocommit DML with uncommitted DML that happens to share the same id.
+///
+/// The new rule:
+/// - A `Begin` opens a transaction; subsequent DML entries are accumulated
+///   in a per-tx scratch buffer.
+/// - A `Commit` flushes that buffer into the result (the DML is durable).
+/// - A `Rollback` discards the buffer (the DML is undone).
+/// - DML entries encountered while no transaction is open (i.e. autocommit)
+///   are emitted directly, because the legacy semantics is "autocommit is
+///   already committed by the time it reaches the WAL".
+/// - Metadata entries (Checkpoint, Prepare) are skipped.
 fn filter_committed_entries(entries: &[WalEntry]) -> Vec<WalEntry> {
-    // Group entries by tx_id
-    let mut groups: HashMap<u64, Vec<&WalEntry>> = HashMap::new();
-    for entry in entries {
-        groups.entry(entry.tx_id).or_default().push(entry);
-    }
-
     let mut result = Vec::new();
-    for group in groups.values() {
-        let has_commit = group.iter().any(|e| e.entry_type == WalEntryType::Commit);
-        if has_commit {
-            // Include only DML entries from committed transactions
-            for entry in group {
-                match entry.entry_type {
-                    WalEntryType::Insert | WalEntryType::Update | WalEntryType::Delete => {
-                        result.push((*entry).clone());
-                    }
-                    _ => {} // Skip Begin, Commit, Rollback, Checkpoint, Prepare
+    let mut current_tx_dml: Vec<WalEntry> = Vec::new();
+    let mut in_tx = false;
+
+    for entry in entries {
+        match entry.entry_type {
+            WalEntryType::Begin => {
+                in_tx = true;
+                current_tx_dml.clear();
+            }
+            WalEntryType::Commit => {
+                if in_tx {
+                    result.append(&mut current_tx_dml);
+                    in_tx = false;
+                }
+            }
+            WalEntryType::Rollback => {
+                current_tx_dml.clear();
+                in_tx = false;
+            }
+            WalEntryType::Checkpoint | WalEntryType::Prepare => {}
+            WalEntryType::Insert | WalEntryType::Update | WalEntryType::Delete => {
+                if in_tx {
+                    current_tx_dml.push(entry.clone());
+                } else {
+                    result.push(entry.clone());
                 }
             }
         }
     }
 
-    // Restore original order (entries are already in append-order)
-    // Since entries are append-only, we sort by position in original order
-    if entries.len() > 1 && !result.is_empty() {
-        // Preserve original order by using entry position
-        let position: HashMap<u64, usize> = entries
-            .iter()
-            .enumerate()
-            .map(|(i, e)| (e.lsn, i))
-            .collect();
-        result.sort_by_key(|e| position.get(&e.lsn).copied().unwrap_or(0));
+    if result.len() > 1 {
+        result.sort_by_key(|e| e.lsn);
     }
 
     result
