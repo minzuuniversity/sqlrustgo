@@ -27,6 +27,10 @@ pub struct FileStorage {
     buffer_threshold: usize,
     /// Enable insert buffering
     enable_buffer: bool,
+    /// PR-842: the active transaction id (0 == autocommit). Mirrored from
+    /// the ExecutionEngine via `set_current_tx_id` so `in_transaction()`
+    /// can answer correctly even on the bare FileStorage path.
+    current_tx_id: u64,
 }
 
 impl FileStorage {
@@ -42,6 +46,7 @@ impl FileStorage {
             insert_buffer: HashMap::new(),
             buffer_threshold: 100,
             enable_buffer: true,
+            current_tx_id: 0,
         };
 
         // Load existing tables
@@ -67,6 +72,7 @@ impl FileStorage {
             insert_buffer: HashMap::new(),
             buffer_threshold,
             enable_buffer,
+            current_tx_id: 0,
         };
 
         storage.load_all_tables()?;
@@ -89,7 +95,18 @@ impl FileStorage {
             indexes: RwLock::new(HashMap::new()),
             insert_buffer: HashMap::new(),
             buffer_threshold: 100,
-            enable_buffer: true,
+            // PR-842: disable the insert buffer in WAL mode. With the buffer
+            // enabled, `storage.scan()` cannot see rows that have been
+            // `insert_buffered` but not yet flushed, which breaks UPDATE/DELETE
+            // replay (those need to see the just-inserted rows). Disabling
+            // the buffer here means every insert lands directly in `data.rows`
+            // and is therefore visible to the very next operation. Inserts
+            // that occur inside an explicit BEGIN/COMMIT block are still
+            // routed through the buffer (see `insert` below) so that a
+            // crash before COMMIT does not leak partially applied rows to
+            // disk.
+            enable_buffer: false,
+            current_tx_id: 0,
         };
 
         // Load existing tables
@@ -1259,7 +1276,32 @@ impl FileStorage {
     }
 }
 
+impl FileStorage {
+    /// Discard all row data in every in-memory table while preserving the
+    /// schema. Used by `with_wal_recovery` to make the WAL the sole source
+    /// of truth on startup, so we never end up with both persisted rows
+    /// and replayed rows for the same entries.
+    pub fn clear_all_tables(&mut self) {
+        for (_name, data) in self.tables.iter_mut() {
+            data.rows.clear();
+        }
+        self.insert_buffer.clear();
+    }
+}
+
 impl StorageEngine for FileStorage {
+    fn in_transaction(&self) -> bool {
+        self.current_tx_id != 0
+    }
+
+    fn current_tx_id(&self) -> u64 {
+        self.current_tx_id
+    }
+
+    fn set_current_tx_id(&mut self, id: u64) {
+        self.current_tx_id = id;
+    }
+
     fn scan(&self, table: &str) -> SqlResult<Vec<Record>> {
         Ok(self
             .get_table(table)
@@ -1268,7 +1310,15 @@ impl StorageEngine for FileStorage {
     }
 
     fn insert(&mut self, table: &str, records: Vec<Record>) -> SqlResult<()> {
-        if !self.enable_buffer || records.len() >= self.buffer_threshold {
+        // PR-842: route inserts through the buffer when we are inside a
+        // transaction so that a crash before COMMIT does not leak partially
+        // applied rows to disk. Outside a transaction (autocommit) the
+        // insert is durable immediately. `enable_buffer: false` is
+        // overridden for tx-scoped writes so WAL recovery sees a clean
+        // apply-or-rollback boundary.
+        if self.in_transaction() {
+            self.insert_buffered(table, records)
+        } else if !self.enable_buffer || records.len() >= self.buffer_threshold {
             self.insert_direct(table, records)
         } else {
             self.insert_buffered(table, records)
@@ -1277,12 +1327,31 @@ impl StorageEngine for FileStorage {
 
     fn delete(&mut self, table: &str, filters: &[Value]) -> SqlResult<usize> {
         if let Some(ref mut data) = self.tables.get_mut(table) {
-            let count = data.rows.len();
-            data.rows.clear();
-            let table_data = data.clone();
-            self.save_table(table, &table_data)?;
-            // After full table delete (filters.is_empty()), flush any buffered inserts
-            // to prevent stale buffered data from causing duplicate inserts
+            let original_len = data.rows.len();
+            if filters.is_empty() {
+                data.rows.clear();
+            } else {
+                // Row-level delete: keep rows that do NOT match the filter
+                // (filter values are compared positionally against each row's
+                // values; a row is "matched" when every filter slot equals
+                // the row's value at the same slot).
+                data.rows.retain(|row| {
+                    !filters
+                        .iter()
+                        .enumerate()
+                        .all(|(i, f)| row.get(i).map(|v| v == f).unwrap_or(false))
+                });
+            }
+            let new_len = data.rows.len();
+            let removed = original_len - new_len;
+
+            if removed > 0 || filters.is_empty() {
+                let table_data = data.clone();
+                self.save_table(table, &table_data)?;
+            }
+
+            // After full table delete (filters.is_empty()), flush any buffered
+            // inserts so that subsequent replays see the cleared state.
             if filters.is_empty() {
                 if let Some(records) = self.insert_buffer.remove(table) {
                     if !records.is_empty() {
@@ -1290,7 +1359,7 @@ impl StorageEngine for FileStorage {
                     }
                 }
             }
-            Ok(count)
+            Ok(removed)
         } else {
             Ok(0)
         }
