@@ -110,6 +110,7 @@ impl<S: StorageEngine, T: WalManager> WalStorage<S, T> {
         bytes
     }
 
+    #[allow(dead_code)]
     pub(crate) fn updates_to_bytes(updates: &[(usize, Value)]) -> Vec<u8> {
         let mut bytes = Vec::new();
         bytes.extend_from_slice(&(updates.len() as u32).to_le_bytes());
@@ -120,6 +121,7 @@ impl<S: StorageEngine, T: WalManager> WalStorage<S, T> {
         bytes
     }
 
+    #[allow(dead_code)]
     pub(crate) fn filters_to_bytes(filters: &[Value]) -> Vec<u8> {
         Self::record_to_bytes(filters)
     }
