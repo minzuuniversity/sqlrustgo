@@ -3,6 +3,7 @@
 > **PR Number**: PR-800  
 > **PR Title**: COM_QUERY AST Routing  
 > **Version**: v3.8.0 Phase 0 Architecture Freeze  
+> **gate_policy_eval_id**: `run_20260601_015`  
 > **Branch**: `develop/v3.8.0` (SHA: `745f24f1`)  
 > **Auditor**: Hermes Agent  
 > **Created**: 2026-05-30  
