@@ -3,6 +3,7 @@
 **Date**: 2026-06-01
 **Author**: Hermes C
 **Status**: COMPLETE — SGL-005 5/5 PASS ✅
+**gate_policy_eval_id**: `run_20260601_017`
 
 ### Progress (2026-06-01)
 
