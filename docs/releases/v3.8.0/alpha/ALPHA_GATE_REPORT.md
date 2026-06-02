@@ -166,6 +166,23 @@ Per ADR-001 (Truthfulness Framework):
 
 ---
 
+## 8.1 Architecture Freeze Checks (A7) — 未执行
+
+> ⚠️ **重要说明**: A7 架构冻结检查项在 Alpha 阶段**未实际执行**。
+>
+> Alpha PASS (10/10) 仅基于 A1-A5 和 A6，未包含 A7 检查。以下是已知问题：
+
+| Check | 状态 | 说明 |
+|-------|------|------|
+| A7-1 双路径残留 | ❌ 未验证 | `eng.execute` 仍存在于测试代码中 |
+| A7-2 架构路径可达性 | ⚠️ 部分 | DriftGate/TransactionContext 存在但未验证全链路 |
+| A7-3 ExecutionEngine 行数 | ❌ 未验证 | 预期仍 >1500 行 |
+| A7-4 DriftGate 阻断测试 | ❌ 缺失 | 无负面测试场景 |
+
+**后续改进**: 详见 `ALPHA_STAGE_REVIEW.md` 和 `ALPHA_GATE_CONTRACT.md` A7 章节。
+
+---
+
 ## 9. Changelog
 
 | Date | Change | Author |
