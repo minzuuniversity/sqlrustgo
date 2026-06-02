@@ -12,6 +12,11 @@ pub struct WalStorage<S: StorageEngine, T: WalManager> {
     wal: T,
     wal_enabled: bool,
     checkpoint_manager: Option<Arc<RwLock<CheckpointManager>>>,
+    /// Active transaction id. The ExecutionEngine pushes the real id here
+    /// via `set_current_tx_id`; without this, every WAL entry would carry
+    /// tx_id=0 and the recovery engine could not distinguish autocommit
+    /// DML from uncommitted-but-started DML.
+    current_tx_id: u64,
 }
 
 impl<S: StorageEngine, T: WalManager> WalStorage<S, T> {
@@ -21,6 +26,7 @@ impl<S: StorageEngine, T: WalManager> WalStorage<S, T> {
             wal,
             wal_enabled: true,
             checkpoint_manager: None,
+            current_tx_id: 0,
         })
     }
 
@@ -34,6 +40,7 @@ impl<S: StorageEngine, T: WalManager> WalStorage<S, T> {
             wal,
             wal_enabled: true,
             checkpoint_manager: Some(checkpoint_manager),
+            current_tx_id: 0,
         })
     }
 
@@ -129,7 +136,7 @@ impl<S: StorageEngine, T: WalManager> WalStorage<S, T> {
     fn log_insert(&mut self, table_id: u64, key: Vec<u8>, data: Vec<u8>) -> SqlResult<()> {
         if self.wal_enabled {
             let entry = WalEntry {
-                tx_id: self.inner.current_tx_id(),
+                tx_id: self.current_tx_id,
                 entry_type: WalEntryType::Insert,
                 table_id,
                 key: Some(key),
@@ -148,7 +155,7 @@ impl<S: StorageEngine, T: WalManager> WalStorage<S, T> {
     fn log_delete(&mut self, table_id: u64, key: Vec<u8>) -> SqlResult<()> {
         if self.wal_enabled {
             let entry = WalEntry {
-                tx_id: self.inner.current_tx_id(),
+                tx_id: self.current_tx_id,
                 entry_type: WalEntryType::Delete,
                 table_id,
                 key: Some(key),
@@ -167,7 +174,7 @@ impl<S: StorageEngine, T: WalManager> WalStorage<S, T> {
     fn log_update(&mut self, table_id: u64, key: Vec<u8>, data: Vec<u8>) -> SqlResult<()> {
         if self.wal_enabled {
             let entry = WalEntry {
-                tx_id: self.inner.current_tx_id(),
+                tx_id: self.current_tx_id,
                 entry_type: WalEntryType::Update,
                 table_id,
                 key: Some(key),
@@ -184,7 +191,7 @@ impl<S: StorageEngine, T: WalManager> WalStorage<S, T> {
     }
 
     pub fn begin_transaction(&mut self) -> SqlResult<u64> {
-        let tx_id = self.inner.current_tx_id();
+        let tx_id = self.current_tx_id;
         if self.wal_enabled {
             let entry = WalEntry {
                 tx_id,
@@ -204,7 +211,7 @@ impl<S: StorageEngine, T: WalManager> WalStorage<S, T> {
     }
 
     pub fn commit_transaction(&mut self) -> SqlResult<()> {
-        let tx_id = self.inner.current_tx_id();
+        let tx_id = self.current_tx_id;
         let commit_lsn = if self.wal_enabled {
             let lsn = self.wal.current_lsn();
             let entry = WalEntry {
@@ -261,7 +268,7 @@ impl<S: StorageEngine, T: WalManager> WalStorage<S, T> {
     }
 
     pub fn rollback_transaction(&mut self) -> SqlResult<()> {
-        let tx_id = self.inner.current_tx_id();
+        let tx_id = self.current_tx_id;
         if self.wal_enabled {
             let entry = WalEntry {
                 tx_id,
@@ -287,7 +294,7 @@ impl<S: StorageEngine, T: WalManager> WalStorage<S, T> {
     }
 
     pub fn current_tx_id(&self) -> u64 {
-        self.inner.current_tx_id()
+        self.current_tx_id
     }
 
     pub fn recover(&mut self) -> SqlResult<Vec<WalEntry>> {
@@ -298,6 +305,10 @@ impl<S: StorageEngine, T: WalManager> WalStorage<S, T> {
 impl<S: StorageEngine, T: WalManager> StorageEngine for WalStorage<S, T> {
     fn scan(&self, table: &str) -> SqlResult<Vec<Record>> {
         self.inner.scan(table)
+    }
+
+    fn flush(&mut self) -> SqlResult<()> {
+        self.inner.flush()
     }
 
     fn insert(&mut self, table: &str, records: Vec<Record>) -> SqlResult<()> {
@@ -443,7 +454,7 @@ impl<S: StorageEngine, T: WalManager> StorageEngine for WalStorage<S, T> {
     }
 
     fn begin_transaction(&mut self) -> SqlResult<u64> {
-        let tx_id = self.inner.current_tx_id();
+        let tx_id = self.current_tx_id;
         if self.wal_enabled {
             let entry = WalEntry {
                 tx_id,
@@ -463,7 +474,7 @@ impl<S: StorageEngine, T: WalManager> StorageEngine for WalStorage<S, T> {
     }
 
     fn commit_transaction(&mut self) -> SqlResult<()> {
-        let tx_id = self.inner.current_tx_id();
+        let tx_id = self.current_tx_id;
         if self.wal_enabled {
             let entry = WalEntry {
                 tx_id,
@@ -485,7 +496,7 @@ impl<S: StorageEngine, T: WalManager> StorageEngine for WalStorage<S, T> {
     }
 
     fn rollback_transaction(&mut self) -> SqlResult<()> {
-        let tx_id = self.inner.current_tx_id();
+        let tx_id = self.current_tx_id;
         if self.wal_enabled {
             let entry = WalEntry {
                 tx_id,
@@ -507,14 +518,18 @@ impl<S: StorageEngine, T: WalManager> StorageEngine for WalStorage<S, T> {
     }
 
     fn in_transaction(&self) -> bool {
-        self.inner.in_transaction()
+        self.current_tx_id != 0
     }
 
     fn current_tx_id(&self) -> u64 {
-        self.inner.current_tx_id()
+        self.current_tx_id
     }
 
     fn set_current_tx_id(&mut self, id: u64) {
+        self.current_tx_id = id;
+        // PR-842: also propagate to the inner engine so its in_transaction
+        // gate sees the right state (FileStorage's insert buffers tx-scoped
+        // writes to avoid leaking uncommitted rows to disk on crash).
         self.inner.set_current_tx_id(id);
     }
 
