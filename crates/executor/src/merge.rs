@@ -8,7 +8,7 @@
 
 use sqlrustgo_planner::{Expr, MergeStatement, Operator};
 use sqlrustgo_storage::{StorageEngine, TableInfo};
-use sqlrustgo_types::{SqlResult, Value};
+use sqlrustgo_types::{SqlError, SqlResult, Value};
 use std::sync::{Arc, Mutex, RwLock};
 
 use crate::execution::{ExecutionEngine, QueryContext};
@@ -96,7 +96,7 @@ impl MergeExecutor {
 
                     let filter = target_pk_idx.and_then(|pk_idx| target_row.get(pk_idx).cloned());
                     // VTU path: execute UPDATE through ExecutionEngine
-                    let update_sql = build_update_sql(
+                    let update_sql = self.build_update_sql(
                         target_table,
                         &target_table_info,
                         &updates,
@@ -122,7 +122,7 @@ impl MergeExecutor {
                     .collect();
 
                 // VTU path: execute INSERT through ExecutionEngine
-                let insert_sql = build_insert_sql(target_table, &target_table_info, &values);
+                let insert_sql = self.build_insert_sql(target_table, &target_table_info, &values);
                 let mut ctx = QueryContext::new(insert_sql);
                 self.engine.lock().unwrap().execute(&mut ctx)?;
                 inserted_count += 1;
@@ -275,6 +275,94 @@ impl MergeExecutor {
             _ => Value::Null,
         }
     }
+
+    fn build_insert_sql(&self, table: &str, table_info: &TableInfo, values: &[Value]) -> String {
+        let col_names: Vec<String> = table_info.columns.iter().map(|c| c.name.clone()).collect();
+        let values_str = values
+            .iter()
+            .map(|v| self.value_to_sql(v))
+            .collect::<Vec<_>>()
+            .join(", ");
+        format!(
+            "INSERT INTO {} ({}) VALUES ({})",
+            table,
+            col_names.join(", "),
+            values_str
+        )
+    }
+
+    fn build_update_sql(
+        &self,
+        table: &str,
+        table_info: &TableInfo,
+        updates: &[(usize, Value)],
+        filter: &[Value],
+    ) -> String {
+        let set_clauses = updates
+            .iter()
+            .filter_map(|(col_idx, val)| {
+                table_info
+                    .columns
+                    .get(*col_idx)
+                    .map(|col| format!("{} = {}", col.name, self.value_to_sql(val)))
+            })
+            .collect::<Vec<_>>()
+            .join(", ");
+        let where_clause = if !filter.is_empty() {
+            let pk_col = table_info
+                .columns
+                .iter()
+                .find(|c| c.primary_key)
+                .map(|c| c.name.clone())
+                .unwrap_or_else(|| {
+                    table_info
+                        .columns
+                        .first()
+                        .map(|c| c.name.clone())
+                        .unwrap_or_default()
+                });
+            let conditions = filter
+                .iter()
+                .enumerate()
+                .map(|(i, v)| {
+                    format!(
+                        "{} = {}",
+                        table_info
+                            .columns
+                            .get(i)
+                            .map(|c| c.name.as_str())
+                            .unwrap_or("id"),
+                        self.value_to_sql(v)
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join(" AND ");
+            format!(
+                " WHERE {} = {} AND {}",
+                pk_col,
+                filter
+                    .first()
+                    .map(|v| self.value_to_sql(v))
+                    .unwrap_or_default(),
+                conditions
+            )
+        } else {
+            String::new()
+        };
+        format!("UPDATE {} SET {}{}", table, set_clauses, where_clause)
+    }
+
+    fn value_to_sql(&self, val: &Value) -> String {
+        match val {
+            Value::Null => "NULL".to_string(),
+            Value::Integer(n) => n.to_string(),
+            Value::Float(f) => f.to_string(),
+            Value::Text(s) => format!("'{}'", s.replace('\'', "''")),
+            Value::Boolean(true) => "TRUE".to_string(),
+            Value::Boolean(false) => "FALSE".to_string(),
+            Value::Blob(_) => "NULL".to_string(),
+        }
+    }
 }
 
 /// Compare two values for a binary operation
@@ -365,75 +453,6 @@ fn find_column_index(col_name: &str, table_info: &TableInfo) -> Option<usize> {
     }
 }
 
-/// Convert a value to a SQL string literal
-fn value_to_sql(val: &Value) -> String {
-    match val {
-        Value::Null => "NULL".to_string(),
-        Value::Integer(n) => n.to_string(),
-        Value::Float(f) => f.to_string(),
-        Value::Text(s) => format!("'{}'", s.replace('\'', "''")),
-        Value::Boolean(true) => "TRUE".to_string(),
-        Value::Boolean(false) => "FALSE".to_string(),
-        Value::Blob(_) => "NULL".to_string(),
-    }
-}
-
-/// Build an INSERT SQL statement from values
-fn build_insert_sql(table: &str, table_info: &TableInfo, values: &[Value]) -> String {
-    let col_names: Vec<String> = table_info.columns.iter().map(|c| c.name.clone()).collect();
-
-    let values_str = values
-        .iter()
-        .map(value_to_sql)
-        .collect::<Vec<_>>()
-        .join(", ");
-
-    format!(
-        "INSERT INTO {} ({}) VALUES ({})",
-        table,
-        col_names.join(", "),
-        values_str
-    )
-}
-
-/// Build an UPDATE SQL statement with filters
-fn build_update_sql(
-    table: &str,
-    table_info: &TableInfo,
-    updates: &[(usize, Value)],
-    filters: &[Value],
-) -> String {
-    let set_clauses: Vec<String> = updates
-        .iter()
-        .map(|(idx, val)| {
-            let col_name = &table_info.columns[*idx].name;
-            format!("{} = {}", col_name, value_to_sql(val))
-        })
-        .collect();
-
-    let where_clause = if filters.is_empty() {
-        String::new()
-    } else {
-        let conditions: Vec<String> = filters
-            .iter()
-            .enumerate()
-            .map(|(i, v)| {
-                let col_name = &table_info.columns[i].name;
-                format!("{} = {}", col_name, value_to_sql(v))
-            })
-            .collect();
-        format!(" WHERE {}", conditions.join(" AND "))
-    };
-
-    format!(
-        "UPDATE {} SET {}{}",
-        table,
-        set_clauses.join(", "),
-        where_clause
-    )
-}
-
-#[cfg(test)]
 mod tests {
     use super::*;
 
@@ -633,6 +652,7 @@ mod tests {
         assert!(!op_compare(&Operator::Eq, &Value::Integer(1), &Value::Null));
         assert!(!op_compare(&Operator::Lt, &Value::Null, &Value::Null));
     }
+
     #[test]
     fn test_eval_binary_op_or() {
         assert_eq!(

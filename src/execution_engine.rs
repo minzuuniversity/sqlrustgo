@@ -215,35 +215,6 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         benefit > 0.0
     }
 
-    /// Advance checkpoint after commit
-    pub fn advance_checkpoint(&self, lsn: u64) {
-        if let Some(cp) = &self.checkpoint_manager {
-            if let Ok(mut guard) = cp.write() {
-                guard.record_checkpoint(CheckpointMetadata {
-                    lsn,
-                    timestamp: std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap()
-                        .as_millis() as u64,
-                    tx_count: 1,
-                    dirty_pages: 0,
-                    file_path: PathBuf::new(),
-                });
-            }
-        }
-    }
-
-    /// Try to truncate WAL up to checkpoint
-    pub fn try_truncate_wal(&self, wal: &mut dyn sqlrustgo_storage::WalManager) {
-        if let Some(cp) = &self.checkpoint_manager {
-            if let Ok(guard) = cp.read() {
-                if let Some(lsn) = guard.last_checkpoint_lsn() {
-                    wal.truncate_before(lsn).ok();
-                }
-            }
-        }
-    }
-
     /// Estimate the cost of a join between two tables
     /// join_type: "hash", "nested_loop", "merge"
     pub fn estimate_join_cost(&self, left_table: &str, right_table: &str, join_type: &str) -> f64 {
