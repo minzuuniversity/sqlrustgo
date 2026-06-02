@@ -441,12 +441,15 @@ run_d5_deepseek() {
     echo "  ${BOLD}Principle 6: No False Positives${NC}"
     D5_TOTAL=$((D5_TOTAL+1))
     echo -n "  [D5-6] No fake tests in gate ... "
-    FAKE_TESTS=$(ls tests/crash_recovery_test.rs tests/wal_e2e_recovery_test.rs 2>/dev/null | wc -l | tr -d ' ')
-    if [ -n "$FAKE_TESTS" ] && [ "$FAKE_TESTS" -eq 0 ] 2>/dev/null; then
-        log_pass "D5-6: No fake tests (crash_recovery_test.rs removed)"
+    # Check each legacy fake test file individually (ls returns non-zero if any file missing)
+    FAKE1=$([ -f "tests/crash_recovery_test.rs" ] && echo "1" || echo "0")
+    FAKE2=$([ -f "tests/wal_e2e_recovery_test.rs" ] && echo "1" || echo "0")
+    FAKE_COUNT=$((FAKE1 + FAKE2))
+    if [ "$FAKE_COUNT" -eq 0 ]; then
+        log_pass "D5-6: No fake tests (all legacy test files removed)"
         D5_PASS=$((D5_PASS+1))
     else
-        log_fail "D5-6: Fake tests still present ($FAKE_TESTS)"
+        log_fail "D5-6: Fake/legacy tests still present ($FAKE_COUNT)"
     fi
 
     echo "  ${BOLD}Principle 7: Audit Trail${NC}"
