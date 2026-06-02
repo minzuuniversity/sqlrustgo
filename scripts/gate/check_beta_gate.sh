@@ -117,12 +117,35 @@ INTEG_DURATION=$((INTEG_END - INTEG_START))
 if bash "$SCRIPT_DIR/check_integration_gate.sh" > /tmp/b5_integ.log 2>&1; then
     log_result "B5" "PASS" "Integration Gate passed in ${INTEG_DURATION}s"
 else
-    # Check if it's DRIFT-only (exit 2) vs actual FAIL (exit 1)
-    if grep -q "DRIFT" /tmp/b5_integ.log 2>/dev/null && ! grep -q "FAIL: 0" /tmp/b5_integ.log 2>/dev/null; then
-        log_result "B5" "PASS" "Integration Gate passed (DRIFT-only, non-blocking) in ${INTEG_DURATION}s"
+    # Check for actual FAILs (not just DRIFT)
+    # SGL output: "PASS : N | FAIL : M | DRIFT: K"
+    FAIL_COUNT=$(grep -oP "^FAIL\s*:\s*\K\d+" /tmp/b5_integ.log 2>/dev/null || echo "0")
+    if [ "$FAIL_COUNT" -gt 0 ]; then
+        log_result "B5" "FAIL" "Integration Gate failed (SGL FAIL count: $FAIL_COUNT) - see /tmp/b5_integ.log"
     else
-        log_result "B5" "FAIL" "Integration Gate failed - see /tmp/b5_integ.log"
+        log_result "B5" "PASS" "Integration Gate passed (DRIFT-only, non-blocking) in ${INTEG_DURATION}s"
     fi
+fi
+
+# B5-SGL: SGL Layer-3 Semantic Gate (P0 - blocking)
+# Run semantic_gate_check.py directly as a separate blocking check
+echo -n "B5-SGL Semantic Gate: "
+SGL_START=$(date +%s)
+SGL_OUTPUT=$(python3 "$SCRIPT_DIR/semantic_gate_check.py" 2>&1 || true)
+SGL_EXIT=$?
+SGL_END=$(date +%s)
+SGL_DURATION=$((SGL_END - SGL_START))
+echo "$SGL_OUTPUT" | grep -E "^\[|^SGL-|^$|Summary" | sed 's/^/  /'
+
+if [ $SGL_EXIT -eq 0 ]; then
+    log_result "B5-SGL" "PASS" "SGL all checks passed in ${SGL_DURATION}s"
+elif [ $SGL_EXIT -eq 1 ]; then
+    # Hard FAIL - blocking
+    FAIL_COUNT=$(echo "$SGL_OUTPUT" | grep -oP "^FAIL\s*:\s*\K\d+" || echo "0")
+    log_result "B5-SGL" "FAIL" "SGL hard failures detected (FAIL: $FAIL_COUNT) in ${SGL_DURATION}s"
+else
+    # DRIFT (exit 2) - still blocking per P0 requirement
+    log_result "B5-SGL" "FAIL" "SGL drift detected (exit $SGL_EXIT) in ${SGL_DURATION}s"
 fi
 
 echo ""
