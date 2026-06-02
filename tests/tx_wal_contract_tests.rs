@@ -1,13 +1,13 @@
 //! TX + WAL Contract Tests — Hermes B
-//! 
+//!
 //! Role: QA Lead + Recovery Engineer
-//! 
+//!
 //! Test Plan:
 //!   TX-001~006: Transaction lifecycle enforcement (EEK v0 = Err model)
 //!   WAL-001~005: WAL contract validation
 //!   REPLAY-001~003: WAL replay semantics
 //!   RECOVERY-001~008: Crash recovery
-//! 
+//!
 //! Important: EEK v0 returns Err, NOT panic.
 //! Each test validates the actual Err behavior.
 
@@ -26,13 +26,19 @@ use std::sync::{Arc, RwLock};
 fn test_tx_lifecycle_insert_without_tx_err() {
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));
     let mut engine = ExecutionEngine::new(storage.clone());
-    
-    engine.execute("CREATE TABLE t1 (id INTEGER, name TEXT)").unwrap();
-    
+
+    engine
+        .execute("CREATE TABLE t1 (id INTEGER, name TEXT)")
+        .unwrap();
+
     // DML without transaction → Err
     let result = engine.execute("INSERT INTO t1 VALUES (1, 'test')");
-    assert!(result.is_err(), "INSERT without transaction must return Err, got {:?}", result);
-    
+    assert!(
+        result.is_err(),
+        "INSERT without transaction must return Err, got {:?}",
+        result
+    );
+
     let err = result.unwrap_err();
     assert!(
         err.to_string().contains("transaction") || err.to_string().contains("Transaction"),
@@ -46,13 +52,19 @@ fn test_tx_lifecycle_insert_without_tx_err() {
 fn test_tx_lifecycle_update_without_tx_err() {
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));
     let mut engine = ExecutionEngine::new(storage.clone());
-    
-    engine.execute("CREATE TABLE t1 (id INTEGER, name TEXT)").unwrap();
+
+    engine
+        .execute("CREATE TABLE t1 (id INTEGER, name TEXT)")
+        .unwrap();
     engine.execute("INSERT INTO t1 VALUES (1, 'test')").unwrap();
-    
+
     let result = engine.execute("UPDATE t1 SET name = 'updated' WHERE id = 1");
-    assert!(result.is_err(), "UPDATE without transaction must return Err, got {:?}", result);
-    
+    assert!(
+        result.is_err(),
+        "UPDATE without transaction must return Err, got {:?}",
+        result
+    );
+
     let err = result.unwrap_err();
     assert!(
         err.to_string().contains("transaction") || err.to_string().contains("Transaction"),
@@ -66,13 +78,19 @@ fn test_tx_lifecycle_update_without_tx_err() {
 fn test_tx_lifecycle_delete_without_tx_err() {
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));
     let mut engine = ExecutionEngine::new(storage.clone());
-    
-    engine.execute("CREATE TABLE t1 (id INTEGER, name TEXT)").unwrap();
+
+    engine
+        .execute("CREATE TABLE t1 (id INTEGER, name TEXT)")
+        .unwrap();
     engine.execute("INSERT INTO t1 VALUES (1, 'test')").unwrap();
-    
+
     let result = engine.execute("DELETE FROM t1 WHERE id = 1");
-    assert!(result.is_err(), "DELETE without transaction must return Err, got {:?}", result);
-    
+    assert!(
+        result.is_err(),
+        "DELETE without transaction must return Err, got {:?}",
+        result
+    );
+
     let err = result.unwrap_err();
     assert!(
         err.to_string().contains("transaction") || err.to_string().contains("Transaction"),
@@ -86,15 +104,21 @@ fn test_tx_lifecycle_delete_without_tx_err() {
 fn test_tx_lifecycle_insert_after_commit_err() {
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));
     let mut engine = ExecutionEngine::new(storage.clone());
-    
-    engine.execute("CREATE TABLE t1 (id INTEGER, name TEXT)").unwrap();
+
+    engine
+        .execute("CREATE TABLE t1 (id INTEGER, name TEXT)")
+        .unwrap();
     engine.execute("BEGIN").unwrap();
     engine.execute("INSERT INTO t1 VALUES (1, 'test')").unwrap();
     engine.execute("COMMIT").unwrap();
-    
+
     let result = engine.execute("INSERT INTO t1 VALUES (2, 'after_commit')");
-    assert!(result.is_err(), "INSERT after COMMIT must return Err, got {:?}", result);
-    
+    assert!(
+        result.is_err(),
+        "INSERT after COMMIT must return Err, got {:?}",
+        result
+    );
+
     let err = result.unwrap_err();
     assert!(
         err.to_string().contains("commit") || err.to_string().contains("committed"),
@@ -108,15 +132,21 @@ fn test_tx_lifecycle_insert_after_commit_err() {
 fn test_tx_lifecycle_insert_after_rollback_err() {
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));
     let mut engine = ExecutionEngine::new(storage.clone());
-    
-    engine.execute("CREATE TABLE t1 (id INTEGER, name TEXT)").unwrap();
+
+    engine
+        .execute("CREATE TABLE t1 (id INTEGER, name TEXT)")
+        .unwrap();
     engine.execute("BEGIN").unwrap();
     engine.execute("INSERT INTO t1 VALUES (1, 'test')").unwrap();
     engine.execute("ROLLBACK").unwrap();
-    
+
     let result = engine.execute("INSERT INTO t1 VALUES (2, 'after_rollback')");
-    assert!(result.is_err(), "INSERT after ROLLBACK must return Err, got {:?}", result);
-    
+    assert!(
+        result.is_err(),
+        "INSERT after ROLLBACK must return Err, got {:?}",
+        result
+    );
+
     let err = result.unwrap_err();
     assert!(
         err.to_string().contains("rollback") || err.to_string().contains("abort"),
@@ -130,15 +160,21 @@ fn test_tx_lifecycle_insert_after_rollback_err() {
 fn test_tx_lifecycle_double_commit_err() {
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));
     let mut engine = ExecutionEngine::new(storage.clone());
-    
-    engine.execute("CREATE TABLE t1 (id INTEGER, name TEXT)").unwrap();
+
+    engine
+        .execute("CREATE TABLE t1 (id INTEGER, name TEXT)")
+        .unwrap();
     engine.execute("BEGIN").unwrap();
     engine.execute("INSERT INTO t1 VALUES (1, 'test')").unwrap();
     engine.execute("COMMIT").unwrap();
-    
+
     let result = engine.execute("COMMIT");
-    assert!(result.is_err(), "Second COMMIT must return Err, got {:?}", result);
-    
+    assert!(
+        result.is_err(),
+        "Second COMMIT must return Err, got {:?}",
+        result
+    );
+
     let err = result.unwrap_err();
     assert!(
         err.to_string().contains("commit") || err.to_string().contains("committed"),
@@ -152,12 +188,18 @@ fn test_tx_lifecycle_double_commit_err() {
 fn test_tx_lifecycle_dml_in_readonly_tx_err() {
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));
     let mut engine = ExecutionEngine::new(storage.clone());
-    
-    engine.execute("CREATE TABLE t1 (id INTEGER, name TEXT)").unwrap();
+
+    engine
+        .execute("CREATE TABLE t1 (id INTEGER, name TEXT)")
+        .unwrap();
     engine.execute("BEGIN READONLY").unwrap();
-    
+
     let result = engine.execute("INSERT INTO t1 VALUES (1, 'test')");
-    assert!(result.is_err(), "INSERT in READONLY tx must return Err, got {:?}", result);
+    assert!(
+        result.is_err(),
+        "INSERT in READONLY tx must return Err, got {:?}",
+        result
+    );
 }
 
 // ========================================================================
@@ -170,19 +212,21 @@ fn test_tx_lifecycle_dml_in_readonly_tx_err() {
 fn test_wal_contract_data_page_before_wal_err() {
     // This test verifies WAL ordering: data page cannot be written
     // before its WAL entry is recorded.
-    // 
+    //
     // Implementation: Create scenario where storage page has LSN
     // that is earlier than the corresponding WAL entry LSN.
-    // 
+    //
     // Current EEK v0 behavior: This is a structural test.
     // Real enforcement requires WAL integration (IMPL-002).
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));
     let mut engine = ExecutionEngine::new(storage.clone());
-    
-    engine.execute("CREATE TABLE t1 (id INTEGER, v TEXT)").unwrap();
+
+    engine
+        .execute("CREATE TABLE t1 (id INTEGER, v TEXT)")
+        .unwrap();
     engine.execute("BEGIN").unwrap();
     engine.execute("INSERT INTO t1 VALUES (1, 'test')").unwrap();
-    
+
     // WAL-001: After WAL is implemented, verify data page LSN >= WAL LSN
     // For now, we verify the test infrastructure exists.
     assert!(true, "WAL-001 test infrastructure ready");
@@ -193,11 +237,13 @@ fn test_wal_contract_data_page_before_wal_err() {
 fn test_wal_contract_commit_without_wal_entry_err() {
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));
     let mut engine = ExecutionEngine::new(storage.clone());
-    
-    engine.execute("CREATE TABLE t1 (id INTEGER, v TEXT)").unwrap();
+
+    engine
+        .execute("CREATE TABLE t1 (id INTEGER, v TEXT)")
+        .unwrap();
     engine.execute("BEGIN").unwrap();
     engine.execute("INSERT INTO t1 VALUES (1, 'test')").unwrap();
-    
+
     // WAL-002: If WAL is not written before commit, must fail
     // Current behavior: No WAL enforcement in v0
     let result = engine.execute("COMMIT");
@@ -215,14 +261,16 @@ fn test_wal_contract_commit_without_wal_entry_err() {
 fn test_wal_contract_insert_without_wal_err() {
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));
     let mut engine = ExecutionEngine::new(storage.clone());
-    
-    engine.execute("CREATE TABLE t1 (id INTEGER, v TEXT)").unwrap();
+
+    engine
+        .execute("CREATE TABLE t1 (id INTEGER, v TEXT)")
+        .unwrap();
     engine.execute("BEGIN").unwrap();
-    
+
     // WAL-003: INSERT without WAL entry → Err
     // Current behavior: Succeeds (no WAL enforcement in v0)
     let result = engine.execute("INSERT INTO t1 VALUES (1, 'test')");
-    
+
     // v0: Succeeds because WAL is not enforced
     // v1 (after IMPL-001/IMPL-002): Must fail
     if result.is_ok() {
@@ -243,13 +291,17 @@ fn test_wal_contract_insert_without_wal_err() {
 fn test_wal_contract_update_without_wal_err() {
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));
     let mut engine = ExecutionEngine::new(storage.clone());
-    
-    engine.execute("CREATE TABLE t1 (id INTEGER, v TEXT)").unwrap();
+
+    engine
+        .execute("CREATE TABLE t1 (id INTEGER, v TEXT)")
+        .unwrap();
     engine.execute("BEGIN").unwrap();
-    engine.execute("INSERT INTO t1 VALUES (1, 'initial')").unwrap();
-    
+    engine
+        .execute("INSERT INTO t1 VALUES (1, 'initial')")
+        .unwrap();
+
     let result = engine.execute("UPDATE t1 SET v = 'updated' WHERE id = 1");
-    
+
     if result.is_ok() {
         // WAL not yet enforced in v0
     } else {
@@ -267,13 +319,15 @@ fn test_wal_contract_update_without_wal_err() {
 fn test_wal_contract_delete_without_wal_err() {
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));
     let mut engine = ExecutionEngine::new(storage.clone());
-    
-    engine.execute("CREATE TABLE t1 (id INTEGER, v TEXT)").unwrap();
+
+    engine
+        .execute("CREATE TABLE t1 (id INTEGER, v TEXT)")
+        .unwrap();
     engine.execute("BEGIN").unwrap();
     engine.execute("INSERT INTO t1 VALUES (1, 'test')").unwrap();
-    
+
     let result = engine.execute("DELETE FROM t1 WHERE id = 1");
-    
+
     if result.is_ok() {
         // WAL not yet enforced in v0
     } else {
@@ -326,12 +380,12 @@ fn test_wal_contract_tx_id_uses_correct_lsn() {
 fn test_replay_commit_twice_second_ignored() {
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));
     let mut engine = ExecutionEngine::new(storage.clone());
-    
+
     engine.execute("CREATE TABLE t1 (id INTEGER)").unwrap();
     engine.execute("BEGIN").unwrap();
     engine.execute("INSERT INTO t1 VALUES (1)").unwrap();
     engine.execute("COMMIT").unwrap();
-    
+
     // Second COMMIT should be no-op (idempotent)
     let result = engine.execute("COMMIT");
     // In v0: May return Err "no transaction in progress"
@@ -344,12 +398,14 @@ fn test_replay_commit_twice_second_ignored() {
 fn test_replay_insert_twice_duplicate_ignored() {
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));
     let mut engine = ExecutionEngine::new(storage.clone());
-    
-    engine.execute("CREATE TABLE t1 (id INTEGER PRIMARY KEY)").unwrap();
+
+    engine
+        .execute("CREATE TABLE t1 (id INTEGER PRIMARY KEY)")
+        .unwrap();
     engine.execute("BEGIN").unwrap();
     engine.execute("INSERT INTO t1 VALUES (1)").unwrap();
     engine.execute("COMMIT").unwrap();
-    
+
     // Replay: INSERT same key again → duplicate ignored or Err
     let result = engine.execute("INSERT INTO t1 VALUES (1)");
     assert!(result.is_ok() || result.is_err());
@@ -360,9 +416,9 @@ fn test_replay_insert_twice_duplicate_ignored() {
 fn test_replay_commit_without_begin_err() {
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));
     let mut engine = ExecutionEngine::new(storage.clone());
-    
+
     engine.execute("CREATE TABLE t1 (id INTEGER)").unwrap();
-    
+
     let result = engine.execute("COMMIT");
     assert!(result.is_err(), "COMMIT without BEGIN must return Err");
 }
@@ -372,12 +428,12 @@ fn test_replay_commit_without_begin_err() {
 fn test_replay_delete_twice_second_ignored() {
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));
     let mut engine = ExecutionEngine::new(storage.clone());
-    
+
     engine.execute("CREATE TABLE t1 (id INTEGER)").unwrap();
     engine.execute("BEGIN").unwrap();
     engine.execute("INSERT INTO t1 VALUES (1)").unwrap();
     engine.execute("COMMIT").unwrap();
-    
+
     let result = engine.execute("DELETE FROM t1 WHERE id = 1");
     assert!(result.is_ok() || result.is_err());
 }
@@ -387,12 +443,12 @@ fn test_replay_delete_twice_second_ignored() {
 fn test_replay_rollback_twice_second_ignored() {
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));
     let mut engine = ExecutionEngine::new(storage.clone());
-    
+
     engine.execute("CREATE TABLE t1 (id INTEGER)").unwrap();
     engine.execute("BEGIN").unwrap();
     engine.execute("INSERT INTO t1 VALUES (1)").unwrap();
     engine.execute("ROLLBACK").unwrap();
-    
+
     let result = engine.execute("ROLLBACK");
     assert!(result.is_ok() || result.is_err());
 }
@@ -407,18 +463,22 @@ fn test_replay_rollback_twice_second_ignored() {
 fn test_recovery_begin_then_crash_rolls_back() {
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));
     let mut engine = ExecutionEngine::new(storage.clone());
-    
+
     engine.execute("CREATE TABLE t1 (id INTEGER)").unwrap();
     engine.execute("BEGIN").unwrap();
     engine.execute("INSERT INTO t1 VALUES (1)").unwrap();
-    
+
     // Simulate crash: drop engine (no COMMIT)
     drop(engine);
 
     // Restart: data should be rolled back
     let mut engine2 = ExecutionEngine::new(storage.clone());
     let result = engine2.execute("SELECT * FROM t1").unwrap();
-    assert_eq!(result.rows.len(), 0, "Uncommitted transaction must be rolled back after crash");
+    assert_eq!(
+        result.rows.len(),
+        0,
+        "Uncommitted transaction must be rolled back after crash"
+    );
 }
 
 /// RECOVERY-002: INSERT then crash → rolls back
@@ -426,12 +486,12 @@ fn test_recovery_begin_then_crash_rolls_back() {
 fn test_recovery_insert_then_crash_rolls_back() {
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));
     let mut engine = ExecutionEngine::new(storage.clone());
-    
+
     engine.execute("CREATE TABLE t1 (id INTEGER)").unwrap();
     engine.execute("BEGIN").unwrap();
     engine.execute("INSERT INTO t1 VALUES (1)").unwrap();
     engine.execute("INSERT INTO t1 VALUES (2)").unwrap();
-    
+
     drop(engine);
 
     let mut engine2 = ExecutionEngine::new(storage.clone());
@@ -448,11 +508,11 @@ fn test_recovery_insert_then_crash_rolls_back() {
 fn test_recovery_prepare_then_crash_rolls_back() {
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));
     let mut engine = ExecutionEngine::new(storage.clone());
-    
+
     engine.execute("CREATE TABLE t1 (id INTEGER)").unwrap();
     engine.execute("BEGIN").unwrap();
     engine.execute("INSERT INTO t1 VALUES (1)").unwrap();
-    
+
     drop(engine);
 
     let mut engine2 = ExecutionEngine::new(storage.clone());
@@ -465,17 +525,21 @@ fn test_recovery_prepare_then_crash_rolls_back() {
 fn test_recovery_commit_flush_crash_replays() {
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));
     let mut engine = ExecutionEngine::new(storage.clone());
-    
+
     engine.execute("CREATE TABLE t1 (id INTEGER)").unwrap();
     engine.execute("BEGIN").unwrap();
     engine.execute("INSERT INTO t1 VALUES (1)").unwrap();
     engine.execute("COMMIT").unwrap();
-    
+
     drop(engine);
 
     let mut engine2 = ExecutionEngine::new(storage.clone());
     let result = engine2.execute("SELECT * FROM t1").unwrap();
-    assert_eq!(result.rows.len(), 1, "Committed transaction must survive crash");
+    assert_eq!(
+        result.rows.len(),
+        1,
+        "Committed transaction must survive crash"
+    );
     assert_eq!(result.rows[0][0], sqlrustgo_types::Value::Integer(1));
 }
 
@@ -484,13 +548,15 @@ fn test_recovery_commit_flush_crash_replays() {
 fn test_recovery_partial_insert_write() {
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));
     let mut engine = ExecutionEngine::new(storage.clone());
-    
-    engine.execute("CREATE TABLE t1 (id INTEGER, v TEXT)").unwrap();
+
+    engine
+        .execute("CREATE TABLE t1 (id INTEGER, v TEXT)")
+        .unwrap();
     engine.execute("BEGIN").unwrap();
     engine.execute("INSERT INTO t1 VALUES (1, 'a')").unwrap();
     engine.execute("INSERT INTO t1 VALUES (2, 'b')").unwrap();
     engine.execute("INSERT INTO t1 VALUES (3, 'c')").unwrap();
-    
+
     drop(engine);
 
     let mut engine2 = ExecutionEngine::new(storage.clone());
@@ -503,17 +569,26 @@ fn test_recovery_partial_insert_write() {
 fn test_recovery_partial_update_write() {
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));
     let mut engine = ExecutionEngine::new(storage.clone());
-    
-    engine.execute("CREATE TABLE t1 (id INTEGER, v TEXT)").unwrap();
-    engine.execute("INSERT INTO t1 VALUES (1, 'original')").unwrap();
+
+    engine
+        .execute("CREATE TABLE t1 (id INTEGER, v TEXT)")
+        .unwrap();
+    engine
+        .execute("INSERT INTO t1 VALUES (1, 'original')")
+        .unwrap();
     engine.execute("BEGIN").unwrap();
-    engine.execute("UPDATE t1 SET v = 'updated' WHERE id = 1").unwrap();
-    
+    engine
+        .execute("UPDATE t1 SET v = 'updated' WHERE id = 1")
+        .unwrap();
+
     drop(engine);
 
     let mut engine2 = ExecutionEngine::new(storage.clone());
     let result = engine2.execute("SELECT v FROM t1 WHERE id = 1").unwrap();
-    assert_eq!(result.rows[0][0], sqlrustgo_types::Value::Text("original".to_string()));
+    assert_eq!(
+        result.rows[0][0],
+        sqlrustgo_types::Value::Text("original".to_string())
+    );
 }
 
 /// RECOVERY-007: Partial DELETE write → recovery
@@ -521,13 +596,13 @@ fn test_recovery_partial_update_write() {
 fn test_recovery_partial_delete_write() {
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));
     let mut engine = ExecutionEngine::new(storage.clone());
-    
+
     engine.execute("CREATE TABLE t1 (id INTEGER)").unwrap();
     engine.execute("INSERT INTO t1 VALUES (1)").unwrap();
     engine.execute("INSERT INTO t1 VALUES (2)").unwrap();
     engine.execute("BEGIN").unwrap();
     engine.execute("DELETE FROM t1 WHERE id = 1").unwrap();
-    
+
     drop(engine);
 
     let mut engine2 = ExecutionEngine::new(storage.clone());
@@ -540,12 +615,12 @@ fn test_recovery_partial_delete_write() {
 fn test_recovery_partial_commit_flush() {
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));
     let mut engine = ExecutionEngine::new(storage.clone());
-    
+
     engine.execute("CREATE TABLE t1 (id INTEGER)").unwrap();
     engine.execute("BEGIN").unwrap();
     engine.execute("INSERT INTO t1 VALUES (1)").unwrap();
     engine.execute("COMMIT").unwrap();
-    
+
     drop(engine);
 
     let mut engine2 = ExecutionEngine::new(storage.clone());
@@ -558,18 +633,18 @@ fn test_recovery_partial_commit_flush() {
 fn test_recovery_multiple_tx_crash_order() {
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));
     let mut engine = ExecutionEngine::new(storage.clone());
-    
+
     engine.execute("CREATE TABLE t1 (id INTEGER)").unwrap();
-    
+
     // TX1: committed
     engine.execute("BEGIN").unwrap();
     engine.execute("INSERT INTO t1 VALUES (1)").unwrap();
     engine.execute("COMMIT").unwrap();
-    
+
     // TX2: not committed
     engine.execute("BEGIN").unwrap();
     engine.execute("INSERT INTO t1 VALUES (2)").unwrap();
-    
+
     drop(engine);
 
     let mut engine2 = ExecutionEngine::new(storage.clone());
@@ -583,17 +658,23 @@ fn test_recovery_multiple_tx_crash_order() {
 fn test_recovery_wal_replay_ordering() {
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));
     let mut engine = ExecutionEngine::new(storage.clone());
-    
-    engine.execute("CREATE TABLE t1 (id INTEGER, v TEXT)").unwrap();
-    
+
+    engine
+        .execute("CREATE TABLE t1 (id INTEGER, v TEXT)")
+        .unwrap();
+
     engine.execute("BEGIN").unwrap();
-    engine.execute("INSERT INTO t1 VALUES (1, 'first')").unwrap();
+    engine
+        .execute("INSERT INTO t1 VALUES (1, 'first')")
+        .unwrap();
     engine.execute("COMMIT").unwrap();
-    
+
     engine.execute("BEGIN").unwrap();
-    engine.execute("UPDATE t1 SET v = 'second' WHERE id = 1").unwrap();
+    engine
+        .execute("UPDATE t1 SET v = 'second' WHERE id = 1")
+        .unwrap();
     engine.execute("COMMIT").unwrap();
-    
+
     drop(engine);
 
     let mut engine2 = ExecutionEngine::new(storage.clone());
