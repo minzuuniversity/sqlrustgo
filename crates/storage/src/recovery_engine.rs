@@ -244,6 +244,16 @@ pub(crate) fn bytes_to_filters(data: &[u8]) -> Result<Vec<Value>, crate::engine:
     bytes_to_record(data)
 }
 
+/// Force an insert during recovery, bypassing any insert buffer so subsequent
+/// scan/delete in the same recovery pass see the row in `data.rows` directly.
+pub(crate) fn recovery_force_insert<S: StorageEngine>(
+    storage: &mut S,
+    table: &str,
+    record: Vec<Value>,
+) -> Result<(), crate::engine::SqlError> {
+    storage.insert(table, vec![record])
+}
+
 pub(crate) fn bytes_to_updates(
     data: &[u8],
 ) -> Result<Vec<(usize, Value)>, crate::engine::SqlError> {
@@ -509,7 +519,9 @@ impl<S: StorageEngine> RecoveryEngine<S> for RecoveryEngineImpl {
                     ));
                 }
                 let record = bytes_to_record(data)?;
-                storage.insert(&table_name, vec![record])?;
+                // During recovery, force direct insert to avoid buffer/direct split
+                // so subsequent scan/delete in same recovery see the inserted row.
+                recovery_force_insert(storage, &table_name, record)?;
             }
             WalEntryType::Update => {
                 if let Some(ref key) = entry.key {
