@@ -529,6 +529,17 @@ impl<S: StorageEngine> RecoveryEngine<S> for RecoveryEngineImpl {
                     ));
                 }
                 let record = bytes_to_record(data)?;
+                // F-09 final fix (dual-write dedup): check if the row is
+                // already present in storage. This happens when an autocommit
+                // INSERT was committed (buffer flushed to disk via save_table)
+                // before crash. Without dedup, force_insert would create a
+                // duplicate row during WAL replay.
+                if let Ok(existing) = storage.scan(&table_name) {
+                    if existing.iter().any(|r| r == &record) {
+                        // Row already on disk; skip replay to avoid duplicate.
+                        return Ok(());
+                    }
+                }
                 // During recovery, force direct insert to avoid buffer/direct split
                 // so subsequent scan/delete in same recovery see the inserted row.
                 recovery_force_insert(storage, &table_name, record)?;
