@@ -3,7 +3,7 @@
 > **版本**: v3.8.0 Alpha  
 > **类型**: Gate Contract  
 > **用途**: 定义 Alpha Gate 的检查项、阈值和验证方法  
-> **分支**: `alpha/v3.8.0` (待创建)  
+> **分支**: `develop/v3.8.0`  
 > **Auditor**: Hermes Agent  
 > **Created**: 2026-05-30  
 > **Status**: ACTIVE — Execution Semantics Freeze 已声明（commit 087bb12d）  
@@ -304,9 +304,8 @@ A1-A5 全部 PASS，A6 有 1-2 项 FAIL（可在 Beta 前修复）→ CONDITIONA
 ## 4. Alpha Gate 执行流程
 
 ```
-Step 1: 创建 alpha/v3.8.0 分支
-  git checkout -b alpha/v3.8.0 origin/develop/v3.8.0
-  git push origin alpha/v3.8.0
+Step 1: 确保在 develop/v3.8.0 分支
+  git checkout origin/develop/v3.8.0
 
 Step 2: 执行标准检查 (A1-A5)
   cargo build --release --workspace  # A1
