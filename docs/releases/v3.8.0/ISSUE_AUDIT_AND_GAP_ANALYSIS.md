@@ -3,6 +3,7 @@
 > **分支**: `develop/v3.7.0` (HEAD: `fa729191a`)
 > **日期**: 2026-05-30
 > **Auditor**: Hermes Agent
+> **gate_policy_eval_id**: `run_20260601_013`
 > **用途**: v3.8.0 开发计划输入 + Issue 状态更新依据
 
 ---
