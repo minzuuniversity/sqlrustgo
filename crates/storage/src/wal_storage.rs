@@ -12,6 +12,9 @@ pub struct WalStorage<S: StorageEngine, T: WalManager> {
     wal: T,
     wal_enabled: bool,
     checkpoint_manager: Option<Arc<RwLock<CheckpointManager>>>,
+    /// Monotonically increasing LSN counter for WAL entries.
+    /// Each `append_wal_entry` increments this and assigns the value to the entry.
+    next_lsn: u64,
 }
 
 impl<S: StorageEngine, T: WalManager> WalStorage<S, T> {
@@ -21,6 +24,7 @@ impl<S: StorageEngine, T: WalManager> WalStorage<S, T> {
             wal,
             wal_enabled: true,
             checkpoint_manager: None,
+            next_lsn: 0,
         })
     }
 
@@ -34,7 +38,19 @@ impl<S: StorageEngine, T: WalManager> WalStorage<S, T> {
             wal,
             wal_enabled: true,
             checkpoint_manager: Some(checkpoint_manager),
+            next_lsn: 0,
         })
+    }
+
+    /// Append a WAL entry with a monotonically increasing LSN.
+    /// Returns the assigned LSN.
+    /// PR-830F: This is the single chokepoint for LSN assignment;
+    /// without it, `current_lsn()` returns 0 and checkpoint advance never triggers.
+    fn append_wal_entry(&mut self, mut entry: WalEntry) -> SqlResult<u64> {
+        self.next_lsn += 1;
+        entry.lsn = self.next_lsn;
+        self.wal.append(entry)?;
+        Ok(self.next_lsn)
     }
 
     pub fn inner(&self) -> &S {
@@ -140,7 +156,7 @@ impl<S: StorageEngine, T: WalManager> WalStorage<S, T> {
                     .unwrap()
                     .as_secs(),
             };
-            self.wal.append(entry)?;
+            self.append_wal_entry(entry)?;
         }
         Ok(())
     }
@@ -159,7 +175,7 @@ impl<S: StorageEngine, T: WalManager> WalStorage<S, T> {
                     .unwrap()
                     .as_secs(),
             };
-            self.wal.append(entry)?;
+            self.append_wal_entry(entry)?;
         }
         Ok(())
     }
@@ -178,7 +194,7 @@ impl<S: StorageEngine, T: WalManager> WalStorage<S, T> {
                     .unwrap()
                     .as_secs(),
             };
-            self.wal.append(entry)?;
+            self.append_wal_entry(entry)?;
         }
         Ok(())
     }
@@ -198,7 +214,7 @@ impl<S: StorageEngine, T: WalManager> WalStorage<S, T> {
                     .unwrap()
                     .as_secs(),
             };
-            self.wal.append(entry)?;
+            self.append_wal_entry(entry)?;
         }
         Ok(tx_id)
     }
@@ -219,7 +235,7 @@ impl<S: StorageEngine, T: WalManager> WalStorage<S, T> {
                     .unwrap()
                     .as_secs(),
             };
-            self.wal.append(entry)?;
+            self.append_wal_entry(entry)?;
             self.wal.sync()?;
             self.wal.current_lsn()
         } else {
@@ -275,7 +291,7 @@ impl<S: StorageEngine, T: WalManager> WalStorage<S, T> {
                     .unwrap()
                     .as_secs(),
             };
-            self.wal.append(entry)?;
+            self.append_wal_entry(entry)?;
             self.wal.sync()?;
         }
         self.inner.flush()?;
@@ -439,7 +455,7 @@ impl<S: StorageEngine, T: WalManager> StorageEngine for WalStorage<S, T> {
                     .unwrap()
                     .as_secs(),
             };
-            self.wal.append(entry)?;
+            self.append_wal_entry(entry)?;
         }
         Ok(tx_id)
     }
@@ -459,7 +475,7 @@ impl<S: StorageEngine, T: WalManager> StorageEngine for WalStorage<S, T> {
                     .unwrap()
                     .as_secs(),
             };
-            self.wal.append(entry)?;
+            self.append_wal_entry(entry)?;
             self.wal.sync()?;
         }
         self.inner.flush()?;
@@ -481,7 +497,7 @@ impl<S: StorageEngine, T: WalManager> StorageEngine for WalStorage<S, T> {
                     .unwrap()
                     .as_secs(),
             };
-            self.wal.append(entry)?;
+            self.append_wal_entry(entry)?;
             self.wal.sync()?;
         }
         self.inner.flush()?;
@@ -581,6 +597,57 @@ mod tests {
             .filter(|e| e.entry_type == WalEntryType::Commit)
             .collect();
         assert_eq!(commits.len(), 2);
+    }
+
+    #[test]
+    fn test_pr830f_lifecycle_commit_advances_checkpoint_and_truncates() {
+        use crate::checkpoint::CheckpointManager;
+
+        let inner = MemoryStorage::new();
+        let wal = MemoryWalManager::new();
+        let cp = Arc::new(RwLock::new(CheckpointManager::default()));
+        let mut storage = WalStorage::with_checkpoint_manager(inner, wal, cp.clone()).unwrap();
+
+        // First commit: should set checkpoint_lsn
+        storage.begin_transaction().unwrap();
+        storage.insert("t1", vec![vec![Value::Integer(1)]]).unwrap();
+        storage.commit_transaction().unwrap();
+        let lsn_after_first = cp.read().unwrap().last_checkpoint_lsn();
+        assert!(
+            lsn_after_first.is_some(),
+            "checkpoint LSN must be set after first commit"
+        );
+        let first_lsn = lsn_after_first.unwrap();
+        assert!(first_lsn > 0, "first commit LSN must be > 0");
+
+        // Second commit: checkpoint should advance, WAL truncated before prior checkpoint
+        storage.begin_transaction().unwrap();
+        storage.insert("t1", vec![vec![Value::Integer(2)]]).unwrap();
+        storage.commit_transaction().unwrap();
+        let lsn_after_second = cp.read().unwrap().last_checkpoint_lsn().unwrap();
+        assert!(
+            lsn_after_second > first_lsn,
+            "checkpoint LSN must advance: {} -> {}",
+            first_lsn,
+            lsn_after_second
+        );
+
+        // PR-830F: truncate_before was called on WAL — recover() returns only entries after cp_lsn
+        let entries = storage.recover().unwrap();
+        assert!(
+            !entries.is_empty(),
+            "recover() must still return at least 1 entry (current tx)"
+        );
+        // All retained entries must have lsn >= some new lsn (truncation happened internally)
+        for e in &entries {
+            // The current commit entry is retained; older ones are truncated
+            assert!(
+                e.lsn >= first_lsn,
+                "recovered entry lsn {} must be >= first_lsn {} (truncate worked)",
+                e.lsn,
+                first_lsn
+            );
+        }
     }
 
     #[test]
