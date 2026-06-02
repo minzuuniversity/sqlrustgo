@@ -76,6 +76,13 @@ impl<S: StorageEngine, T: WalManager> WalStorage<S, T> {
         }
     }
 
+    /// Encode a single Value using the same prefix scheme as record_to_bytes.
+    /// Used for encoding update assignments in WAL entries.
+    /// SPEC-003: Update WAL replay correctness
+    fn value_to_bytes(value: &Value) -> Vec<u8> {
+        Self::record_to_bytes(std::slice::from_ref(value))
+    }
+
     fn record_to_bytes(record: &[Value]) -> Vec<u8> {
         let mut bytes = Vec::new();
         for value in record {
@@ -164,8 +171,25 @@ impl<S: StorageEngine, T: WalManager> WalStorage<S, T> {
         Ok(())
     }
 
-    fn log_update(&mut self, table_id: u64, key: Vec<u8>, data: Vec<u8>) -> SqlResult<()> {
+    fn log_update(
+        &mut self,
+        table_id: u64,
+        key: Vec<u8>,
+        old_record: Vec<u8>,
+        updates: &[(usize, Value)],
+    ) -> SqlResult<()> {
         if self.wal_enabled {
+            // SPEC-003: Encode updates so Recovery can replay them.
+            // Format: "U:" + old_record_bytes + ";" + updates_count(u32 LE) + [col_idx(u32 LE) + value_bytes]...
+            let mut data = Vec::new();
+            data.extend_from_slice(b"U:");
+            data.extend_from_slice(&old_record);
+            data.push(b';');
+            data.extend_from_slice(&(updates.len() as u32).to_le_bytes());
+            for (col_idx, value) in updates {
+                data.extend_from_slice(&(*col_idx as u32).to_le_bytes());
+                data.extend_from_slice(&Self::value_to_bytes(value));
+            }
             let entry = WalEntry {
                 tx_id: self.inner.current_tx_id(),
                 entry_type: WalEntryType::Update,
@@ -344,7 +368,8 @@ impl<S: StorageEngine, T: WalManager> StorageEngine for WalStorage<S, T> {
             if Self::row_matches_filter(row, filters) {
                 let key = Self::record_key(row);
                 let old_data = Self::record_to_bytes(row);
-                self.log_update(table_id, key, old_data)?;
+                // SPEC-003: pass `updates` so recovery can replay the update
+                self.log_update(table_id, key, old_data, updates)?;
             }
         }
 
@@ -359,8 +384,34 @@ impl<S: StorageEngine, T: WalManager> StorageEngine for WalStorage<S, T> {
     ) -> SqlResult<usize> {
         let table_id = Self::table_name_to_id(table);
         let key = format!("RowFilter-{:p}", filter).into_bytes();
-        let data = format!("{:?}", mutation).into_bytes();
-        self.log_update(table_id, key, data)?;
+        // SPEC-003: Build U: encoded data from mutation.assignments().
+        // RowFilter closure cannot be encoded in WAL; on replay we apply the
+        // stored assignments to all rows matching the closure semantics via
+        // a no-filter update. This is best-effort for the RowFilter path.
+        let assignments = mutation.assignments();
+        let mut data = Vec::new();
+        data.extend_from_slice(b"U:");
+        data.push(b';');
+        data.extend_from_slice(&(assignments.len() as u32).to_le_bytes());
+        for (col_idx, value) in assignments {
+            data.extend_from_slice(&(*col_idx as u32).to_le_bytes());
+            data.extend_from_slice(&Self::value_to_bytes(value));
+        }
+        let entry = WalEntry {
+            tx_id: self.inner.current_tx_id(),
+            entry_type: WalEntryType::Update,
+            table_id,
+            key: Some(key),
+            data: Some(data),
+            lsn: 0,
+            timestamp: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs(),
+        };
+        if self.wal_enabled {
+            self.wal.append(entry)?;
+        }
         self.inner.update_if(table, filter, mutation)
     }
 
