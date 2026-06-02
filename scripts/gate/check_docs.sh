@@ -1,51 +1,61 @@
 #!/usr/bin/env bash
+# v3.8.0+ Documentation Gate Check
+# Bash 3.2 compatible (macOS default)
+#
+# Checks:
+#   1. Core documentation files (README, CHANGELOG, CONTRIBUTING)
+#   2. v3.8.0 release docs presence
+#   3. Governance docs presence
+#   4. Markdown link validity
+#
+# v1.0 hardcoded checks (SECURITY_REPORT, INSTALL_TEST) were removed —
+# v1.0 GA pre-dates this script by 2+ years. v1.0 docs are historical.
+# See SPEC-010 for migration details.
 
 set -e
 
-echo "=== Running Documentation Gate Check ==="
-
-# 创建文档报告目录
-mkdir -p docs/releases/v1.0.0-rc1
-mkdir -p docs/releases/v1.0.0/api-doc
-
-# 生成API文档
-echo "Building API documentation..."
-cargo doc --no-deps --document-private-items
-
-# 检查API文档是否生成
-if [ ! -d "target/doc/sqlrustgo" ]; then
-    echo "❌ API documentation not generated"
-    exit 1
-fi
-
-# 复制API文档到发布证据目录
-echo "Copying API documentation to release evidence..."
-cp -r target/doc/sqlrustgo docs/releases/v1.0.0/api-doc/
-
-# 检查核心文档是否存在
-echo "Checking core documentation files..."
-
-DOCS_TO_CHECK=(
-    "README.md"
-    "CHANGELOG.md"
-    "CONTRIBUTING.md"
-    "docs/v1.0/rc1/SECURITY_REPORT.md"
-    "docs/v1.0/rc1/INSTALL_TEST.md"
-    "docs/v1.0/rc1/验收文档/门禁验收/RC1门禁验收清单.md"
-)
+echo "=== v3.8.0 Documentation Gate Check ==="
+echo "Bash version: $BASH_VERSION"
+echo ""
 
 MISSING_DOCS=()
 
-for doc in "${DOCS_TO_CHECK[@]}"; do
-    if [ ! -f "$doc" ]; then
-        MISSING_DOCS+=($doc)
-    else
-        echo "✅ $doc exists"
-    fi
+# Core documentation
+CORE_DOCS=(
+    "README.md"
+    "CHANGELOG.md"
+    "CONTRIBUTING.md"
+    "docs/releases/VERSION_HISTORY.md"
+)
 
+# v3.8.0 release docs
+V380_DOCS=(
+    "docs/releases/v3.8.0/DEVELOPMENT_PLAN.md"
+    "docs/releases/v3.8.0/ARCHITECTURE_DECISIONS.md"
+    "docs/releases/v3.8.0/alpha/ALPHA_GATE_CONTRACT.md"
+    "docs/releases/v3.8.0/alpha/ALPHA_GATE_REPORT.md"
+    "docs/releases/v3.8.0/alpha/ALPHA_STAGE_REVIEW.md"
+)
+
+# Governance docs
+GOV_DOCS=(
+    "docs/governance/RELEASE_LIFECYCLE.md"
+    "docs/governance/AI_COLLABORATION.md"
+    "docs/governance/adr/ADR-001-truthfulness-framework.md"
+)
+
+echo "Checking core documentation files..."
+for doc in "${CORE_DOCS[@]}" "${V380_DOCS[@]}" "${GOV_DOCS[@]}"; do
+    if [ ! -f "$doc" ]; then
+        MISSING_DOCS+=("$doc")
+        echo "  ❌ $doc missing"
+    else
+        echo "  ✅ $doc exists"
+    fi
 done
 
 if [ ${#MISSING_DOCS[@]} -gt 0 ]; then
+    echo ""
     echo "❌ Missing documentation files:"
     for doc in "${MISSING_DOCS[@]}"; do
         echo "  - $doc"
@@ -53,66 +63,38 @@ if [ ${#MISSING_DOCS[@]} -gt 0 ]; then
     exit 1
 fi
 
-# 检查文档链接
+# Check markdown links
+echo ""
 echo "Checking documentation links..."
 
-# 检查内部链接（简单检查）
-MARKDOWN_FILES=$(find docs -name "*.md" -type f)
+MARKDOWN_FILES=$(find docs -name "*.md" -type f 2>/dev/null)
 
 BROKEN_LINKS=()
-
 for file in $MARKDOWN_FILES; do
-    # 检查相对链接
-    LINKS=$(grep -oP '\[.*?\]\(\K[^)]+' "$file" | grep -v '^http')
-    
+    # Extract markdown links [text](url)
+    LINKS=$(grep -oE '\[[^]]*\]\([^)]+\)' "$file" 2>/dev/null | \
+            sed -E 's/.*\(([^)]+)\).*/\1/' | grep -v '^http' | grep -v '^#')
     for link in $LINKS; do
-        # 跳过锚点链接
-        if [[ $link == *"#"* ]]; then
-            continue
-        fi
-        
-        # 检查链接是否存在
-        if [ ! -f "$(dirname "$file")/$link" ] && [ ! -d "$(dirname "$file")/$link" ]; then
-            BROKEN_LINKS+=("$file: $link")
+        # Skip anchors
+        if [[ "$link" == \#* ]]; then continue; fi
+        # Check if file/dir exists
+        target="$(dirname "$file")/$link"
+        if [ ! -e "$target" ]; then
+            BROKEN_LINKS+=("$file -> $link")
         fi
     done
 done
 
 if [ ${#BROKEN_LINKS[@]} -gt 0 ]; then
-    echo "⚠️  Potential broken links found:"
+    echo "  ⚠️  Potential broken links found:"
     for link in "${BROKEN_LINKS[@]}"; do
         echo "  - $link"
     done
 else
-    echo "✅ No broken links found"
+    echo "  ✅ No broken links found"
 fi
 
-# 生成文档检查摘要
-echo "Generating documentation check summary..."
-cat > docs/releases/v1.0.0-rc1/docs-summary.md << EOF
-# Documentation Check Report Summary
-
-## Documentation Status
-
-- **API Documentation**: ✅ Generated
-- **Core Documentation**: ✅ All required files exist
-- **Link Check**: $(if [ ${#BROKEN_LINKS[@]} -eq 0 ]; then echo "✅ PASS"; else echo "⚠️  WARNING"; fi)
-
-## Report Files
-
-- **API Documentation**: docs/releases/v1.0.0/api-doc/
-- **Core Documentation**: Various files in docs/
-
-## Check Details
-
-- **API Doc Command**: cargo doc --no-deps --document-private-items
-- **Link Check**: Basic relative link validation
-- **Check Date**: $(date)
-
-## Conclusion
-
-API documentation has been generated and all core documentation files are present.
-EOF
-
-echo "✅ Documentation summary generated: docs/releases/v1.0.0-rc1/docs-summary.md"
+echo ""
 echo "=== Documentation Gate Check Complete ==="
+echo "Core docs: ✅ All present"
+echo "Links: $(if [ ${#BROKEN_LINKS[@]} -eq 0 ]; then echo "✅ PASS"; else echo "⚠️  ${#BROKEN_LINKS[@]} warnings"; fi)"
