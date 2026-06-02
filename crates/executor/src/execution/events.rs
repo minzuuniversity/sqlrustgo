@@ -69,7 +69,7 @@ pub enum RecoveryType {
 }
 
 /// Recovery confidence level
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
 pub enum RecoveryConfidence {
     High,
     Medium,
