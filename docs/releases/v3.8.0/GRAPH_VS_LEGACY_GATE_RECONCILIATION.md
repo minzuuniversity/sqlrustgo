@@ -3,6 +3,7 @@
 > **日期**: 2026-05-30 20:41
 > **分支**: develop/v3.8.0
 > **Auditor**: Hermes Agent
+> **gate_policy_eval_id**: `run_20260601_005`
 
 ---
 
