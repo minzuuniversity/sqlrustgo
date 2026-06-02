@@ -400,9 +400,10 @@ fn replace_by_key<S: StorageEngine>(
 /// Filter WAL entries to only include those from committed transactions.
 ///
 /// A committed transaction = a contiguous run of entries between a `Begin` entry
-/// and a matching `Commit` entry (entries after `Rollback` are dropped). Metadata
-/// entries (Begin/Commit/Rollback/Checkpoint/Prepare) are excluded from the
-/// result.
+/// and a matching `Commit` entry. We buffer DML inside the open span and
+/// only flush on `Commit`; a `Rollback` discards the buffer; entries seen
+/// without an enclosing `Begin→Commit` span (autocommit-style fragments)
+/// are dropped because we cannot prove they were committed.
 ///
 /// F-09 fix: groups are detected by **Begin→Commit/Rollback span**, not by
 /// `tx_id`. Earlier versions grouped by `tx_id` alone which collapsed all
@@ -411,36 +412,42 @@ fn replace_by_key<S: StorageEngine>(
 /// committed. Span-based detection correctly isolates each transaction.
 fn filter_committed_entries(entries: &[WalEntry]) -> Vec<WalEntry> {
     let mut result = Vec::new();
-    let mut current_open = false; // are we inside a Begin→Commit/Rollback span?
+    let mut current_tx_dml: Vec<WalEntry> = Vec::new();
+    let mut in_tx = false;
 
     for entry in entries {
         match entry.entry_type {
             WalEntryType::Begin => {
-                current_open = true;
+                in_tx = true;
+                current_tx_dml.clear();
             }
             WalEntryType::Commit => {
-                current_open = false;
+                if in_tx {
+                    result.append(&mut current_tx_dml);
+                    in_tx = false;
+                }
             }
             WalEntryType::Rollback => {
-                current_open = false;
-                // Drop any DML collected inside the rolled-back span.
-                // Since we only push when current_open && is DML, simply
-                // resetting current_open at Commit/Rollback is sufficient.
+                current_tx_dml.clear();
+                in_tx = false;
             }
+            WalEntryType::Checkpoint | WalEntryType::Prepare => {}
             WalEntryType::Insert | WalEntryType::Update | WalEntryType::Delete => {
-                if current_open {
-                    result.push(entry.clone());
+                if in_tx {
+                    current_tx_dml.push(entry.clone());
                 }
-                // else: entry belongs to a rolled-back or uncommitted span,
-                //       drop it.
+                // else: entry belongs to a fragment without a matching
+                //       Begin/Commit span — drop it (cannot prove commit).
             }
-            _ => {} // Checkpoint, Prepare, etc. - skip
         }
+    }
+
+    if result.len() > 1 {
+        result.sort_by_key(|e| e.lsn);
     }
 
     result
 }
-
 /// Count committed transactions
 fn count_status(entries: &[WalEntry]) -> (usize, usize, usize) {
     let mut groups: HashMap<u64, Vec<&WalEntry>> = HashMap::new();
