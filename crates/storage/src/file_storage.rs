@@ -27,6 +27,8 @@ pub struct FileStorage {
     buffer_threshold: usize,
     /// Enable insert buffering
     enable_buffer: bool,
+    /// Trigger definitions keyed by trigger name, protected by RwLock for concurrent access
+    triggers: RwLock<HashMap<String, TriggerInfo>>,
 }
 
 impl FileStorage {
@@ -42,6 +44,7 @@ impl FileStorage {
             insert_buffer: HashMap::new(),
             buffer_threshold: 100,
             enable_buffer: true,
+            triggers: RwLock::new(HashMap::new()),
         };
 
         // Load existing tables
@@ -67,6 +70,7 @@ impl FileStorage {
             insert_buffer: HashMap::new(),
             buffer_threshold,
             enable_buffer,
+            triggers: RwLock::new(HashMap::new()),
         };
 
         storage.load_all_tables()?;
@@ -89,7 +93,8 @@ impl FileStorage {
             indexes: RwLock::new(HashMap::new()),
             insert_buffer: HashMap::new(),
             buffer_threshold: 100,
-            enable_buffer: true,
+            enable_buffer: true,  // Transaction boundary handled by buffer flush on commit
+            triggers: RwLock::new(HashMap::new()),
         };
 
         // Load existing tables
@@ -97,6 +102,9 @@ impl FileStorage {
 
         // Load existing indexes
         storage.load_all_indexes()?;
+
+        // Load existing triggers
+        storage.load_all_triggers()?;
 
         Ok(storage)
     }
@@ -110,6 +118,73 @@ impl FileStorage {
     fn index_path(&self, table_name: &str, column_name: &str) -> PathBuf {
         self.data_dir
             .join(format!("{}_idx_{}.json", table_name, column_name))
+    }
+
+    /// Get the path for a trigger file (named after the trigger, not the table)
+    fn trigger_path(&self, trigger_name: &str) -> PathBuf {
+        self.data_dir
+            .join(format!("trigger_{}.json", trigger_name))
+    }
+
+    /// Load a single trigger from disk
+    fn load_trigger(&self, trigger_name: &str) -> std::io::Result<TriggerInfo> {
+        let path = self.trigger_path(trigger_name);
+        let file = File::open(&path)?;
+        let reader = BufReader::new(file);
+        let info: TriggerInfo = serde_json::from_reader(reader)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+        Ok(info)
+    }
+
+    /// Save a trigger to disk
+    fn save_trigger(&self, info: &TriggerInfo) -> std::io::Result<()> {
+        let path = self.trigger_path(&info.name);
+        let file = File::create(&path)?;
+        let mut writer = BufWriter::new(file);
+        let json = serde_json::to_string_pretty(info)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+        writer.write_all(json.as_bytes())?;
+        writer.flush()?;
+        Ok(())
+    }
+
+    /// Remove a trigger file from disk (best-effort: missing file is OK)
+    fn remove_trigger_file(&self, trigger_name: &str) -> std::io::Result<()> {
+        let path = self.trigger_path(trigger_name);
+        match fs::remove_file(&path) {
+            Ok(()) => Ok(()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(e) => Err(e),
+        }
+    }
+
+    /// Load all triggers from the data directory
+    fn load_all_triggers(&mut self) -> std::io::Result<()> {
+        if !self.data_dir.exists() {
+            return Ok(());
+        }
+
+        for entry in fs::read_dir(&self.data_dir)? {
+            let entry = entry?;
+            let path = entry.path();
+
+            if let Some(file_name) = path.file_name().and_then(|s| s.to_str()) {
+                if file_name.starts_with("trigger_") && file_name.ends_with(".json") {
+                    if let Some(name) = file_name
+                        .strip_prefix("trigger_")
+                        .and_then(|s| s.strip_suffix(".json"))
+                    {
+                        if let Ok(info) = self.load_trigger(name) {
+                            if let Ok(mut triggers) = self.triggers.write() {
+                                triggers.insert(name.to_string(), info);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(())
     }
 
     /// Load all tables from the data directory
@@ -1509,25 +1584,34 @@ impl StorageEngine for FileStorage {
     }
 
     fn create_trigger(&mut self, info: TriggerInfo) -> SqlResult<()> {
-        let _ = info;
+        // Persist to disk first (WAL-style: write-ahead, then mutate in-memory)
+        self.save_trigger(&info)
+            .map_err(|e| SqlError::ExecutionError(format!("save trigger: {}", e)))?;
+        let mut triggers = self.triggers.write().unwrap();
+        triggers.insert(info.name.clone(), info);
         Ok(())
     }
 
     fn drop_trigger(&mut self, name: &str) -> SqlResult<()> {
-        let _ = name;
-        Err(SqlError::ExecutionError(
-            "Triggers not supported in FileStorage".into(),
-        ))
+        self.remove_trigger_file(name)
+            .map_err(|e| SqlError::ExecutionError(format!("remove trigger: {}", e)))?;
+        let mut triggers = self.triggers.write().unwrap();
+        triggers.remove(name);
+        Ok(())
     }
 
     fn get_trigger(&self, name: &str) -> Option<TriggerInfo> {
-        let _ = name;
-        None
+        let triggers = self.triggers.read().unwrap();
+        triggers.get(name).cloned()
     }
 
     fn list_triggers(&self, table: &str) -> Vec<TriggerInfo> {
-        let _ = table;
-        Vec::new()
+        let triggers = self.triggers.read().unwrap();
+        triggers
+            .values()
+            .filter(|t| t.table_name == table)
+            .cloned()
+            .collect()
     }
 
     fn has_view(&self, name: &str) -> bool {
