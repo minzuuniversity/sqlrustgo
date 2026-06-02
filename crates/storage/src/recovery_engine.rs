@@ -244,7 +244,9 @@ pub(crate) fn bytes_to_filters(data: &[u8]) -> Result<Vec<Value>, crate::engine:
     bytes_to_record(data)
 }
 
-pub(crate) fn bytes_to_updates(data: &[u8]) -> Result<Vec<(usize, Value)>, crate::engine::SqlError> {
+pub(crate) fn bytes_to_updates(
+    data: &[u8],
+) -> Result<Vec<(usize, Value)>, crate::engine::SqlError> {
     if data.len() < 4 {
         return Err(crate::engine::SqlError::ExecutionError(
             "RecoveryEngine: truncated updates length".to_string(),
@@ -260,7 +262,8 @@ pub(crate) fn bytes_to_updates(data: &[u8]) -> Result<Vec<(usize, Value)>, crate
                 "RecoveryEngine: truncated update column index".to_string(),
             ));
         }
-        let col_idx = u32::from_le_bytes([data[pos], data[pos + 1], data[pos + 2], data[pos + 3]]) as usize;
+        let col_idx =
+            u32::from_le_bytes([data[pos], data[pos + 1], data[pos + 2], data[pos + 3]]) as usize;
         pos += 4;
 
         let value = bytes_to_value(data, &mut pos)?;
