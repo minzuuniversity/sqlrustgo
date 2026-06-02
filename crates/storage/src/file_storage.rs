@@ -1261,10 +1261,16 @@ impl FileStorage {
 
 impl StorageEngine for FileStorage {
     fn scan(&self, table: &str) -> SqlResult<Vec<Record>> {
-        Ok(self
+        let mut rows: Vec<Record> = self
             .get_table(table)
             .map(|data| data.rows.clone())
-            .unwrap_or_default())
+            .unwrap_or_default();
+        // F-09 fix: merge insert_buffer so same-transaction SELECT/UPDATE sees
+        // the rows that were just inserted (and not yet flushed to data.rows).
+        if let Some(buffered) = self.insert_buffer.get(table) {
+            rows.extend(buffered.iter().cloned());
+        }
+        Ok(rows)
     }
 
     fn insert(&mut self, table: &str, records: Vec<Record>) -> SqlResult<()> {
@@ -1273,6 +1279,14 @@ impl StorageEngine for FileStorage {
         } else {
             self.insert_buffered(table, records)
         }
+    }
+
+    /// F-09 fix: bypass insert_buffer so WAL recovery can replay entries
+    /// deterministically. Subsequent scan/delete in the same recovery pass
+    /// see the row in `data.rows` directly, avoiding the "3 rows expected 1"
+    /// regression caused by buffered inserts piling up during replay.
+    fn force_insert(&mut self, table: &str, record: Vec<Value>) -> SqlResult<()> {
+        self.insert_direct(table, vec![record])
     }
 
     fn delete(&mut self, table: &str, filters: &[Value]) -> SqlResult<usize> {
