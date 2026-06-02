@@ -1117,6 +1117,10 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         // Delegate to storage engine so WalStorage can track current_tx_id for WAL logging
         if let Ok(mut storage) = self.storage.write() {
             storage.set_current_tx_id(tx_id.as_u64());
+            // F-09 final fix: also call storage.begin_transaction so WalStorage
+            // writes the Begin WAL entry. Without this, WalStorage never sees
+            // a Begin entry, breaking filter_committed_entries span detection.
+            let _ = storage.begin_transaction();
         }
         self.tx_status = TxStatus::Active;
         Ok(ExecutorResult::new(
