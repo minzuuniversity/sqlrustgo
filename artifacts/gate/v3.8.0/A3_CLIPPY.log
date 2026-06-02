@@ -1,28 +1,296 @@
 warning: profiles for the non root package will be ignored, specify profiles at the workspace root:
-package:   /Users/liying/workspace/dev/openheart/sqlrustgo/tools/sqlrustgo-gate/Cargo.toml
-workspace: /Users/liying/workspace/dev/openheart/sqlrustgo/Cargo.toml
+package:   /Users/liying/workspace/dev/yinglichina163/sqlrustgo/tools/sqlrustgo-gate/Cargo.toml
+workspace: /Users/liying/workspace/dev/yinglichina163/sqlrustgo/Cargo.toml
 warning: profiles for the non root package will be ignored, specify profiles at the workspace root:
-package:   /Users/liying/workspace/dev/openheart/sqlrustgo/tools/graph-cli/Cargo.toml
-workspace: /Users/liying/workspace/dev/openheart/sqlrustgo/Cargo.toml
+package:   /Users/liying/workspace/dev/yinglichina163/sqlrustgo/tools/graph-cli/Cargo.toml
+workspace: /Users/liying/workspace/dev/yinglichina163/sqlrustgo/Cargo.toml
 warning: profiles for the non root package will be ignored, specify profiles at the workspace root:
-package:   /Users/liying/workspace/dev/openheart/sqlrustgo/tools/sqlrustgo-gate/Cargo.toml
-workspace: /Users/liying/workspace/dev/openheart/sqlrustgo/Cargo.toml
+package:   /Users/liying/workspace/dev/yinglichina163/sqlrustgo/tools/sqlrustgo-gate/Cargo.toml
+workspace: /Users/liying/workspace/dev/yinglichina163/sqlrustgo/Cargo.toml
 warning: profiles for the non root package will be ignored, specify profiles at the workspace root:
-package:   /Users/liying/workspace/dev/openheart/sqlrustgo/tools/graph-cli/Cargo.toml
-workspace: /Users/liying/workspace/dev/openheart/sqlrustgo/Cargo.toml
-warning: /Users/liying/workspace/dev/openheart/sqlrustgo/crates/wal-verification/Cargo.toml: unused manifest key: tlaplus
-warning: /Users/liying/workspace/dev/openheart/sqlrustgo/crates/wal-verification/Cargo.toml: unused manifest key: tlaplus
-    Checking sqlrustgo-storage v2.5.0 (/Users/liying/workspace/dev/openheart/sqlrustgo/crates/storage)
-    Checking sqlrustgo-storage v2.5.0 (/Users/liying/workspace/dev/openheart/sqlrustgo/crates/storage)
-    Checking sqlrustgo-spill v0.1.0 (/Users/liying/workspace/dev/openheart/sqlrustgo/crates/spill)
-    Checking sqlrustgo-spill v0.1.0 (/Users/liying/workspace/dev/openheart/sqlrustgo/crates/spill)
-    Checking sqlrustgo-optimizer v2.5.0 (/Users/liying/workspace/dev/openheart/sqlrustgo/crates/optimizer)
-    Checking sqlrustgo-optimizer v2.5.0 (/Users/liying/workspace/dev/openheart/sqlrustgo/crates/optimizer)
-    Checking sqlrustgo-transaction v2.5.0 (/Users/liying/workspace/dev/openheart/sqlrustgo/crates/transaction)
-    Checking sqlrustgo-transaction v2.5.0 (/Users/liying/workspace/dev/openheart/sqlrustgo/crates/transaction)
-    Checking sqlrustgo-planner v2.5.0 (/Users/liying/workspace/dev/openheart/sqlrustgo/crates/planner)
-    Checking sqlrustgo-planner v2.5.0 (/Users/liying/workspace/dev/openheart/sqlrustgo/crates/planner)
-    Checking sqlrustgo-executor v2.5.0 (/Users/liying/workspace/dev/openheart/sqlrustgo/crates/executor)
-    Checking sqlrustgo-executor v2.5.0 (/Users/liying/workspace/dev/openheart/sqlrustgo/crates/executor)
-    Finished `dev` profile [unoptimized + debuginfo] target(s) in 1.80s
-    Finished `dev` profile [unoptimized + debuginfo] target(s) in 1.80s
+package:   /Users/liying/workspace/dev/yinglichina163/sqlrustgo/tools/graph-cli/Cargo.toml
+workspace: /Users/liying/workspace/dev/yinglichina163/sqlrustgo/Cargo.toml
+warning: /Users/liying/workspace/dev/yinglichina163/sqlrustgo/crates/wal-verification/Cargo.toml: unused manifest key: tlaplus
+warning: /Users/liying/workspace/dev/yinglichina163/sqlrustgo/crates/wal-verification/Cargo.toml: unused manifest key: tlaplus
+    Checking sqlrustgo-storage v2.5.0 (/Users/liying/workspace/dev/yinglichina163/sqlrustgo/crates/storage)
+    Checking sqlrustgo-storage v2.5.0 (/Users/liying/workspace/dev/yinglichina163/sqlrustgo/crates/storage)
+error[E0425]: cannot find type `CheckpointManager` in this scope
+  --> crates/storage/src/wal_storage.rs:11:43
+   |
+11 |     checkpoint_manager: Option<Arc<RwLock<CheckpointManager>>>,
+   |                                           ^^^^^^^^^^^^^^^^^ not found in this scope
+   |
+help: consider importing this struct through its public re-export
+   |
+ error[E0425]: cannot find type `CheckpointManager` in this scope
+  --> crates/storage/src/wal_storage.rs:11:43
+   |
+11 |     checkpoint_manager: Option<Arc<RwLock<CheckpointManager>>>,
+   |                                           ^^^^^^^^^^^^^^^^^ not found in this scope
+   |
+help: consider importing this struct through its public re-export
+   |
+ 1 + use crate::CheckpointManager;
+   |
+
+1 + use crate::CheckpointManager;
+   |
+
+error[E0425]: cannot find type `CheckpointManager` in this scope
+  --> crates/storage/src/wal_storage.rs:27:40
+   |error[E0425]: cannot find type `CheckpointManager` in this scope
+  --> crates/storage/src/wal_storage.rs:27:40
+   |
+27 |         checkpoint_manager: Arc<RwLock<CheckpointManager>>,
+   |                                        ^^^^^^^^^^^^^^^^^ not found in this scope
+   |
+help: consider importing this struct through its public re-export
+   
+27 |         checkpoint_manager: Arc<RwLock<CheckpointManager>>,
+   |                                        ^^^^^^^^^^^^^^^^^ not found in this scope
+   |
+help: consider importing this struct through its public re-export
+   |
+ 1 + use crate::CheckpointManager;
+   |
+
+|
+ 1 + use crate::CheckpointManager;
+   |
+
+error[E0422]: cannot find struct, variant or union type `CheckpointMetadata` in this scope
+   --> error[E0422]: cannot find struct, variant or union type `CheckpointMetadata` in this scope
+   --> crates/storage/src/wal_storage.rs:230:45
+    |
+230 |                     guard.record_checkpoint(CheckpointMetadata {
+    |                                             ^^^^^^^^^^^^^^^^^^ not found in this scope
+    |
+help: consider importing this struct through its public re-export
+    crates/storage/src/wal_storage.rs:230:45
+    |
+230 |                     guard.record_checkpoint(CheckpointMetadata {
+    |                                             ^^^^^^^^^^^^^^^^^^ not found in this scope
+    |
+help: consider importing this struct through its public re-export
+    |
+  1 + use crate::CheckpointMetadata;
+    |
+
+|
+  1 + use crate::CheckpointMetadata;
+    |
+
+error[E0425]: cannot find type `TriggerInfo` in this scope
+   --> error[E0425]: cannot find type `TriggerInfo` in this scope
+   --> crates/storage/src/wal_storage.rs:400:40
+    |
+400 |     fn create_trigger(&mut self, info: TriggerInfo) -> SqlResult<()> {
+    |                                        ^^^^^^^^^^^ crates/storage/src/wal_storage.rs:400:40
+    |
+400 |     fn create_trigger(&mut self, info: TriggerInfo) -> SqlResult<()> {
+    |                                        ^^^^^^^^^^^ not found in this scope
+    |
+help: consider importing this struct through its public re-export
+    |
+  1 + use crate::TriggerInfo;
+    |
+
+not found in this scope
+    |
+help: consider importing this struct through its public re-export
+    |
+  1 + use crate::TriggerInfo;
+    |
+
+error[E0425]: cannot find type `TriggerInfo` in this scope
+   --> error[E0425]: cannot find type `TriggerInfo` in this scope
+   --> crates/storage/src/wal_storage.rs:408:49
+    |
+408 |     fn get_trigger(&self, name: &str) -> Option<TriggerInfo> {
+    |                                                 ^^^^^^^^^^^ not found in this scope
+    |crates/storage/src/wal_storage.rs:408:49
+    |
+408 |     fn get_trigger(&self, name: &str) -> Option<TriggerInfo> {
+    |                                                 ^^^^^^^^^^^ not found in this scope
+    |
+help: consider importing this struct through its public re-export
+    
+help: consider importing this struct through its public re-export
+    |
+  1 + use crate::TriggerInfo;
+    |
+
+|
+  1 + use crate::TriggerInfo;
+    |
+
+error[E0425]: cannot find type `TriggerInfo` in this scope
+   --> crates/storage/src/wal_storage.rs:412:49
+    |error[E0425]: cannot find type `TriggerInfo` in this scope
+   --> crates/storage/src/wal_storage.rs:412:49
+    |
+412 |     fn list_triggers(&self, table: &str) -> Vec<TriggerInfo> {
+    |                                                 ^^^^^^^^^^^ not found in this scope
+    |
+412 |     fn list_triggers(&self, table: &str) -> Vec<TriggerInfo> {
+    |                                                 ^^^^^^^^^^^ not found in this scope
+    |
+help: consider importing this struct through its public re-export
+    |
+  1 + use crate::TriggerInfo;
+    
+help: consider importing this struct through its public re-export
+    |
+  1 + use crate::TriggerInfo;
+    |
+
+|
+
+error: unused import: `crate::bplus_tree::index::CompositeKey`
+ --> crates/storage/src/wal_storage.rs:1:5
+  |
+1 | use crate::bplus_tree::index::CompositeKey;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |error: unused import: `crate::bplus_tree::index::CompositeKey`
+ --> crates/storage/src/wal_storage.rs:1:5
+  |
+1 | use crate::bplus_tree::index::CompositeKey;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: `-D unused-imports` implied by `-D warnings`
+  = help: to override `-D warnings` add `#[allow(unused_imports)]`
+
+
+  = note: `-D unused-imports` implied by `-D warnings`
+  = help: to override `-D warnings` add `#[allow(unused_imports)]`
+
+error[E0053]: method `update_if` has an incompatible type for trait
+   --> crates/storage/src/wal_storage.rs:355:18
+    |
+355 |         updates: &[(usize, Value)],
+    |                  error[E0053]: method `update_if` has an incompatible type for trait
+   --> crates/storage/src/wal_storage.rs:355:18
+    |
+355 |         updates: &[(usize, Value)],
+    |                  ^^^^^^^^^^^^^^^^^ expected `engine::RowMutation`, found `[(usize, sqlrustgo_types::Value)]`
+    |
+note: type in trait
+   --> crates/storage/src/engine.rs:471:19
+    |
+471 |         mutation: &RowMutation,
+    |                   ^^^^^^^^^^^^^^^^^ expected `engine::RowMutation`, found `[(usize, sqlrustgo_types::Value)]`
+    |
+note: type in trait
+   --> crates/storage/src/engine.rs:471:19
+    |
+471 |         mutation: &RowMutation,
+    |                   ^^^^^^^^^^^^
+    = note: expected signature `fn(&mut wal_storage::WalStorage<_, _>, &_, &std::boxed::Box<_>, &engine::RowMutation) -> std::result::Result<_, _>`
+               found signature `fn(&mut wal_storage::WalStorage<_, _>, &_, &std::boxed::Box<_>, &[(usize, sqlrustgo_types::Value)]) -> std::result::Result<_, _>`
+help: change the parameter type to match the trait
+    ^^^^^^^^^^^^
+    = note: expected signature `fn(&mut wal_storage::WalStorage<_, _>, &_, &std::boxed::Box<_>, &engine::RowMutation) -> std::result::Result<_, _>`
+               found signature `fn(&mut wal_storage::WalStorage<_, _>, &_, &std::boxed::Box<_>, &[(usize, sqlrustgo_types::Value)]) -> std::result::Result<_, _>`
+help: change the parameter type to match the trait
+    |
+355 -         updates: &[(usize, Value)],
+355 +         updates: &engine::RowMutation,
+    |
+
+|
+355 -         updates: &[(usize, Value)],
+355 +         updates: &engine::RowMutation,
+    |
+
+error[E0282]: type annotations needed
+   --> crates/storage/src/wal_storage.rs:229:36
+    |
+229 |                 if let Ok(guard) = cp.write() {
+    |                                    ^^ cannot infer type
+
+error[E0282]: type annotations needed
+   --> crates/storage/src/wal_storage.rs:229:36
+    |
+229 |                 if let Ok(guard) = cp.write() {
+    |                                    ^^ cannot infer type
+
+error[E0282]: type annotations needed
+   --> crates/storage/src/wal_storage.rs:230:21
+    |error[E0282]: type annotations needed
+   --> crates/storage/src/wal_storage.rs:230:21
+    |
+230 |                     guard.record_checkpoint(CheckpointMetadata {
+    |                     ^^^^^ cannot infer type
+
+
+230 |                     guard.record_checkpoint(CheckpointMetadata {
+    |                     ^^^^^ cannot infer type
+
+error[E0282]: type annotations needed
+   --> crates/storage/src/wal_storage.rs:249:36
+    |
+249 |                 if let Ok(guard) = cp.read() {
+    |                                    ^^error[E0282]: type annotations needed
+   --> crates/storage/src/wal_storage.rs:249:36
+    |
+249 |                 if let Ok(guard) = cp.read() {
+    |                                    ^^ cannot infer type
+
+ cannot infer type
+
+error[E0282]: type annotations needed
+   --> error[E0282]: type annotations needed
+   --> crates/storage/src/wal_storage.rs:250:43
+    |
+250 |                     if let Some(cp_lsn) = guard.last_checkpoint_lsn() {
+    |                                           ^^^^^ crates/storage/src/wal_storage.rs:250:43
+    |
+250 |                     if let Some(cp_lsn) = guard.last_checkpoint_lsn() {
+    |                                           ^^^^^ cannot infer type
+
+cannot infer type
+
+error[E0308]: mismatched types
+   --> crates/storage/src/wal_storage.rs:361:45
+    |
+361 |         self.inner.update_if(table, filter, updates)
+    |error[E0308]: mismatched types
+   --> crates/storage/src/wal_storage.rs:361:45
+    |
+361 |         self.inner.update_if(table, filter, updates)
+    |                    ---------                ^^^^^^^ expected `&RowMutation`, found `&[(usize, Value)]`
+    |                    |
+    |                                        ---------                ^^^^^^^ expected `&RowMutation`, found `&[(usize, Value)]`
+    |                    |
+    |                    arguments to this method are incorrect
+    |
+    = note: expected reference `&engine::RowMutation`
+               found reference `&[(usize, sqlrustgo_types::Value)]arguments to this method are incorrect
+    |
+    = note: expected reference `&engine::RowMutation`
+               found reference `&[(usize, sqlrustgo_types::Value)]`
+note: method defined here
+   --> crates/storage/src/engine.rs:467:8
+    |
+467 |     fn update_if(
+    |        ^^^^^^^^^
+`
+note: method defined here
+   --> crates/storage/src/engine.rs:467:8
+    |
+467 |     fn update_if(
+    |        ^^^^^^^^^
+...
+471 |         mutation: &RowMutation,
+    |         --------
+
+...
+471 |         mutation: &RowMutation,
+    |         --------
+
+Some errors have detailed explanations: E0053, E0282, E0308, E0422, E0425.
+For more information about an error, try `rustc --explain E0053`.
+Some errors have detailed explanations: E0053, E0282, E0308, E0422, E0425.
+For more information about an error, try `rustc --explain E0053`.
+error: could not compile `sqlrustgo-storage` (lib) due to 13 previous errors
+error: could not compile `sqlrustgo-storage` (lib) due to 13 previous errors
