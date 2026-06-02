@@ -643,9 +643,42 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         let table_name = update.table.clone();
 
         // If no WHERE clause, use the simple storage.update() path
+        // PR-842 Option A: compute updates from SET clauses (per-row evaluation
+        // collapses to a single value for literal / constant expressions, which
+        // is the common no-WHERE case). For column references, the first row
+        // is used as the evaluation context — for literal values this yields
+        // the correct after-image for every row.
         if update.where_clause.is_none() {
+            let table_info = {
+                let storage = self.storage.read().unwrap();
+                storage.get_table_info(&table_name)?.clone()
+            };
+            let sample_row: Vec<sqlrustgo_types::Value> = {
+                let storage = self.storage.read().unwrap();
+                storage
+                    .scan(&table_name)
+                    .ok()
+                    .and_then(|rows| rows.first().cloned())
+                    .unwrap_or_else(|| {
+                        table_info
+                            .columns
+                            .iter()
+                            .map(|_| sqlrustgo_types::Value::Null)
+                            .collect()
+                    })
+            };
+            let updates: Vec<(usize, sqlrustgo_types::Value)> = update
+                .set_clauses
+                .iter()
+                .filter_map(|(col_name, expr)| {
+                    let col_idx = find_column_index(col_name, &table_info)?;
+                    let new_val = evaluate_expression(expr, &sample_row, &table_info)
+                        .unwrap_or(sqlrustgo_types::Value::Null);
+                    Some((col_idx, new_val))
+                })
+                .collect();
             let mut storage = self.storage.write().unwrap();
-            let count = storage.update(&table_name, &[], &[])?;
+            let count = storage.update(&table_name, &[], &updates)?;
             return Ok(ExecutorResult::new(vec![], count));
         }
 
@@ -867,7 +900,10 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             }
         }
 
-        // Delete all rows and re-insert non-matching ones
+        // PR-842: prefer row-level deletes so WAL records one Delete entry
+        // per matching row and recovery can replay them without losing the
+        // pre-delete buffer state. We still call `storage.delete(table, &[])`
+        // to clear out buffered rows that did not match the WHERE clause.
         let rows_to_keep: Vec<Vec<Value>> = {
             let storage = self.storage.read().unwrap();
             let all_rows = storage.scan(&table_name)?;
@@ -879,9 +915,19 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
 
         {
             let mut storage = self.storage.write().unwrap();
-            storage.delete(&table_name, &[])?; // Delete all
+            // First drop the full table to flush any buffered inserts and
+            // to provide a clean slate (this is what the legacy code did).
+            storage.delete(&table_name, &[])?;
             if !rows_to_keep.is_empty() {
                 storage.insert(&table_name, rows_to_keep)?;
+            }
+            // Then delete the matching rows from the freshly re-inserted set
+            // so WAL records one Delete entry per affected row.
+            for row in &rows_to_delete {
+                let key_values: Vec<Value> = (0..row.len())
+                    .map(|i| row.get(i).cloned().unwrap_or(sqlrustgo_types::Value::Null))
+                    .collect();
+                storage.delete(&table_name, &key_values)?;
             }
         }
 
@@ -1143,9 +1189,13 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 SqlError::ExecutionError(format!("Failed to begin transaction: {:?}", e))
             })?;
         self.current_tx_id = Some(tx_id);
-        // Delegate to storage engine so WalStorage can track current_tx_id for WAL logging
+        // PR-842: also write a `Begin` WAL entry so the recovery engine can
+        // detect explicit transactions and apply the per-tx boundary rule
+        // when filtering committed entries. Without this, every DML entry
+        // appears to be autocommit and uncommitted work leaks into recovery.
         if let Ok(mut storage) = self.storage.write() {
             storage.set_current_tx_id(tx_id.as_u64());
+            let _ = storage.begin_transaction();
         }
         self.tx_status = TxStatus::Active;
         Ok(ExecutorResult::new(
