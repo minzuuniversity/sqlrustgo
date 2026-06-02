@@ -23,7 +23,7 @@ fn create_wal_engine(
 fn recover_and_rebuild(
     dir: &std::path::Path,
 ) -> ExecutionEngine<WalStorage<FileStorage, FileBackedWalManager>> {
-    ExecutionEngine::with_wal_file(dir.to_path_buf()).unwrap()
+    ExecutionEngine::with_wal_recovery(dir.to_path_buf()).unwrap()
 }
 
 // =============================================================================
@@ -494,6 +494,104 @@ fn test_partial_update_write_recovery() {
     assert!(
         count == sqlrustgo_types::Value::Integer(1),
         "row should exist after crash recovery"
+    );
+}
+
+/// RECOVERY-006b: UPDATE value recovery validation (L2 runtime evidence)
+///
+/// LAYER 2 (Runtime Evidence) test for Issue #2741.
+///
+/// Contract: UPDATE replay must survive crash AND preserve modified values.
+///
+/// WAL engine uses deferred-write: UPDATE goes to WAL but storage isn't
+/// immediately updated. After COMMIT, engine is dropped which triggers
+/// storage flush of WAL entries.
+///
+/// **STATUS (2026-06-02)**: KNOWN FAIL — F-09/PR-840 DML Transaction Interception
+/// not yet fully implemented. UPDATE replay log path is incomplete.
+/// Tracked: PR-840 NOT_DONE in docs/releases/v3.8.0/FEATURE_CHECKLIST.md F-09.
+/// This test must remain #[ignore] until PR-840 is implemented.
+#[test]
+#[ignore = "F-09/PR-840: UPDATE replay value preservation not yet implemented"]
+fn test_partial_update_value_recovery() {
+    let _dir = TempDir::new().unwrap();
+    let dir = _dir.path();
+    let mut engine = create_wal_engine(dir);
+    engine
+        .execute("CREATE TABLE t (id INTEGER PRIMARY KEY, value TEXT)")
+        .unwrap();
+    engine
+        .execute("INSERT INTO t VALUES (1, 'original')")
+        .unwrap();
+
+    engine.execute("BEGIN").unwrap();
+    engine
+        .execute("UPDATE t SET value = 'updated' WHERE id = 1")
+        .unwrap();
+    engine.execute("COMMIT").unwrap();
+
+    // DROP triggers storage flush of WAL entries (including UPDATE)
+    drop(engine);
+
+    // LAYER 2: Runtime evidence - does UPDATE replay actually work during recovery?
+    // If UPDATE replay is skipped (current behavior), recovered value will be 'original'
+    let mut engine2 = recover_and_rebuild(&dir);
+    let result = engine2.execute("SELECT * FROM t WHERE id = 1").unwrap();
+
+    assert_eq!(
+        result.rows[0][1],
+        sqlrustgo::Value::Text("updated".to_string()),
+        "RECOVERY-006b: UPDATE value must be 'updated' after crash recovery"
+    );
+}
+
+/// RECOVERY-008: DELETE + UPDATE mixed recovery
+///
+/// Known issue: ExecutionEngine UPDATE+DELETE mixed transaction semantics incorrect.
+/// Tracked by ISSUE-2737: R2-EXEC-BUG
+/// Not a WAL/Recovery failure - the bug is in ExecutionEngine's delete+reinsert model.
+#[ignore]
+#[test]
+fn test_delete_and_update_mixed_recovery() {
+    let _dir = TempDir::new().unwrap();
+    let dir = _dir.path();
+    let mut engine = create_wal_engine(dir);
+    engine
+        .execute("CREATE TABLE t (id INTEGER, name TEXT)")
+        .unwrap();
+
+    engine.execute("INSERT INTO t VALUES (1, 'row_a')").unwrap();
+    engine.execute("INSERT INTO t VALUES (2, 'row_b')").unwrap();
+
+    engine.execute("BEGIN").unwrap();
+    engine
+        .execute("UPDATE t SET name = 'updated_a' WHERE id = 1")
+        .unwrap();
+    engine.execute("DELETE FROM t WHERE id = 2").unwrap();
+    engine.execute("COMMIT").unwrap();
+
+    let before = engine.execute("SELECT * FROM t").unwrap();
+    assert_eq!(before.rows.len(), 1, "should have 1 row before crash");
+    assert_eq!(before.rows[0][0], sqlrustgo_types::Value::Integer(1));
+    assert_eq!(
+        before.rows[0][1],
+        sqlrustgo_types::Value::Text("updated_a".to_string())
+    );
+
+    drop(engine);
+
+    let mut engine2 = recover_and_rebuild(&dir);
+    let result = engine2.execute("SELECT * FROM t").unwrap();
+
+    assert_eq!(result.rows.len(), 1, "only row A should survive");
+    assert_eq!(
+        result.rows[0][0],
+        sqlrustgo_types::Value::Integer(1),
+        "row id=1"
+    );
+    assert_eq!(
+        result.rows[0][1],
+        sqlrustgo_types::Value::Text("updated_a".to_string())
     );
 }
 

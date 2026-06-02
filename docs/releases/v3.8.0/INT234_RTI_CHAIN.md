@@ -3,6 +3,7 @@
 > **Version**: v1.0
 > **Date**: 2026-06-01
 > **Branch**: `develop/v3.8.0` (commit `ee60b9353`)
+> **gate_policy_eval_id**: `run_20260601_012`
 > **Status**: Partial — Gaps Identified, Not Resolved
 > **Governance**: P1 (Verifiable)
 
