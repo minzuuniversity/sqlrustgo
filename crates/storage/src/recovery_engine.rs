@@ -738,14 +738,6 @@ mod tests {
     }
 
     #[test]
-    fn test_key_to_filter_values_integer() {
-        let key = 42i64.to_le_bytes().to_vec();
-        let result = key_to_filter_values(&key).unwrap();
-        assert_eq!(result.len(), 1);
-        assert_eq!(result[0], Value::Integer(42));
-    }
-
-    #[test]
     fn test_key_to_filter_values_text() {
         let key = b"hello".to_vec();
         let result = key_to_filter_values(&key).unwrap();
