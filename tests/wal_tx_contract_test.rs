@@ -633,3 +633,94 @@ fn test_partial_commit_flush_recovery() {
         "both committed rows should survive crash"
     );
 }
+
+/// RECOVERY-009 (L2 Runtime): UPDATE without WHERE clause recovery
+///
+/// Validates that `UPDATE t SET value = 'updated'` (no WHERE) survives crash
+/// recovery with the new value applied. This is the core scenario for
+/// Issue #2741 — the `WalStorage.update()` path must log after-image with
+/// the actual updated value, not a no-op placeholder.
+///
+/// Tracked by: Issue #2741 PR-842 (Option A — ExecutionEngine uses
+/// `storage.update()` with computed updates vector).
+#[test]
+fn test_no_where_update_recovery() {
+    let _dir = TempDir::new().unwrap();
+    let dir = _dir.path();
+    let mut engine = create_wal_engine(dir);
+    engine
+        .execute("CREATE TABLE t (id INTEGER, value TEXT)")
+        .unwrap();
+
+    // Use explicit BEGIN/COMMIT for INSERT — autocommit INSERT goes through
+    // FileStorage's insert buffer and is not visible to subsequent
+    // `storage.update()` calls (which scan `data.rows` only).
+    engine.execute("BEGIN").unwrap();
+    engine
+        .execute("INSERT INTO t VALUES (1, 'original')")
+        .unwrap();
+    engine.execute("COMMIT").unwrap();
+
+    engine.execute("BEGIN").unwrap();
+    engine.execute("UPDATE t SET value = 'updated'").unwrap();
+    engine.execute("COMMIT").unwrap();
+
+    drop(engine);
+
+    let mut engine2 = recover_and_rebuild(dir);
+    let result = engine2
+        .execute("SELECT id, value FROM t WHERE id = 1")
+        .unwrap();
+    assert_eq!(
+        result.rows.len(),
+        1,
+        "row should survive crash after no-WHERE UPDATE"
+    );
+    assert_eq!(result.rows[0][0], sqlrustgo_types::Value::Integer(1));
+    assert_eq!(
+        result.rows[0][1],
+        sqlrustgo_types::Value::Text("updated".to_string()),
+        "recovered value should be 'updated' (L2 runtime evidence for ISSUE-2741)"
+    );
+}
+
+/// RECOVERY-010 (L2 Runtime): UPDATE without WHERE clause — multiple rows
+///
+/// Validates that no-WHERE UPDATE applies to all rows in the table and the
+/// recovered state matches the pre-crash state.
+#[test]
+fn test_no_where_update_multiple_rows_recovery() {
+    let _dir = TempDir::new().unwrap();
+    let dir = _dir.path();
+    let mut engine = create_wal_engine(dir);
+    engine
+        .execute("CREATE TABLE t (id INTEGER, value TEXT)")
+        .unwrap();
+
+    // Wrap all inserts in an explicit transaction so the rows are flushed
+    // before the UPDATE statement (which scans data.rows only).
+    engine.execute("BEGIN").unwrap();
+    engine.execute("INSERT INTO t VALUES (1, 'a')").unwrap();
+    engine.execute("INSERT INTO t VALUES (2, 'b')").unwrap();
+    engine.execute("INSERT INTO t VALUES (3, 'c')").unwrap();
+    engine.execute("COMMIT").unwrap();
+
+    engine.execute("BEGIN").unwrap();
+    engine.execute("UPDATE t SET value = 'changed'").unwrap();
+    engine.execute("COMMIT").unwrap();
+
+    drop(engine);
+
+    let mut engine2 = recover_and_rebuild(dir);
+    let result = engine2
+        .execute("SELECT id, value FROM t ORDER BY id")
+        .unwrap();
+    assert_eq!(result.rows.len(), 3, "all 3 rows should survive crash");
+    for row in &result.rows {
+        assert_eq!(
+            row[1],
+            sqlrustgo_types::Value::Text("changed".to_string()),
+            "all rows should have value='changed' after no-WHERE UPDATE recovery"
+        );
+    }
+}
