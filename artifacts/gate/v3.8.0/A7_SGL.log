@@ -1,0 +1,37 @@
+============================================
+  v3.8.0 Integration Gate — 集成门禁检查
+  Branch: main
+  Commit: cc9a6095b
+============================================
+
+
+=== Section 1: Architecture Static Checks ===
+
+  [C-ARCH-02] LocalExecutor write_buffer field...
+  [PASS] C-ARCH-02: No write_buffer field in LocalExecutor
+  [C-ARCH-05] execution_engine.rs line count...
+  [PASS] C-ARCH-05: execution_engine.rs has     1562 lines (within limit)
+
+=== Section 2: SGL Layer-3 Semantic Gate ===
+
+  [FAIL] SGL: Hard failures detected (exit 1)
+
+=== Section 3: WAL Lifecycle Validation ===
+
+  ========================================
+  ========================================
+  400 |     fn create_trigger(&mut self, info: TriggerInfo) -> SqlResult<()> {
+      = note: expected signature `fn(&mut WalStorage<_, _>, &_, &Box<_>, &RowMutation) -> Result<_, _>`
+                 found signature `fn(&mut WalStorage<_, _>, &_, &Box<_>, &[(usize, sqlrustgo_types::Value)]) -> Result<_, _>`
+  [FAIL] WAL: Some invariant tests failed
+
+============================================
+  Integration Gate Summary
+============================================
+
+  PASS: 2
+  FAIL: 2
+  SKIP: 0
+
+  Result: FAIL — 2 check(s) failed
+============================================
