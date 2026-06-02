@@ -198,6 +198,22 @@ fn commit_transaction(&mut self) -> SqlResult<ExecutorResult> {
 
 **影响**: WAL 文件会无限增长，PR-830F 的 checkpoint-based truncation 机制从未激活。
 
+**v3 修正 (2026-06-02, SPEC-002)**:
+经深度代码审查 + 单元测试，发现实际缺陷更深层:
+- `ExecutionEngine::advance_checkpoint`/`try_truncate_wal` 是 **dead code** (0 调用方)
+- 更严重: `WalStorage` 写入 entry 时 lsn 全部为 0 字面量 (9 处)
+- `current_lsn()` 基于 entry.lsn 计算 → 永远返回 0
+- `commit_transaction` 中 `if commit_lsn > 0` 条件永不触发
+- **PR-830F truncation 机制实际完全没工作**，不仅是 ExecutionEngine 端
+
+修复详见 `docs/releases/v3.8.0/SPEC-002-pr830f-lifecycle.md`:
+1. WalStorage 添加 `next_lsn: u64` 字段 + `append_wal_entry` helper
+2. 9 处 `self.wal.append` → `self.append_wal_entry` (自动分配递增 lsn)
+3. ExecutionEngine 删除 dead code
+4. 新增 `test_pr830f_lifecycle_commit_advances_checkpoint_and_truncates` 验证
+
+**状态**: ✅ **FIXED** (SPEC-002)
+
 ---
 
 ### 2.6 PR-850A/B: Stateless WAL + Tx Context Route A
