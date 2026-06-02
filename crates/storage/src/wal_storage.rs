@@ -17,6 +17,9 @@ pub struct WalStorage<S: StorageEngine, T: WalManager> {
     /// tx_id=0 and the recovery engine could not distinguish autocommit
     /// DML from uncommitted-but-started DML.
     current_tx_id: u64,
+    /// Monotonically increasing LSN counter for WAL entries.
+    /// Each `append_wal_entry` increments this and assigns the value to the entry.
+    next_lsn: u64,
 }
 
 impl<S: StorageEngine, T: WalManager> WalStorage<S, T> {
@@ -27,6 +30,7 @@ impl<S: StorageEngine, T: WalManager> WalStorage<S, T> {
             wal_enabled: true,
             checkpoint_manager: None,
             current_tx_id: 0,
+            next_lsn: 0,
         })
     }
 
@@ -41,7 +45,19 @@ impl<S: StorageEngine, T: WalManager> WalStorage<S, T> {
             wal_enabled: true,
             checkpoint_manager: Some(checkpoint_manager),
             current_tx_id: 0,
+            next_lsn: 0,
         })
+    }
+
+    /// Append a WAL entry with a monotonically increasing LSN.
+    /// Returns the assigned LSN.
+    /// PR-830F: This is the single chokepoint for LSN assignment;
+    /// without it, `current_lsn()` returns 0 and checkpoint advance never triggers.
+    fn append_wal_entry(&mut self, mut entry: WalEntry) -> SqlResult<u64> {
+        self.next_lsn += 1;
+        entry.lsn = self.next_lsn;
+        self.wal.append(entry)?;
+        Ok(self.next_lsn)
     }
 
     pub fn inner(&self) -> &S {
@@ -117,6 +133,7 @@ impl<S: StorageEngine, T: WalManager> WalStorage<S, T> {
         bytes
     }
 
+    #[allow(dead_code)]
     pub(crate) fn updates_to_bytes(updates: &[(usize, Value)]) -> Vec<u8> {
         let mut bytes = Vec::new();
         bytes.extend_from_slice(&(updates.len() as u32).to_le_bytes());
@@ -127,6 +144,7 @@ impl<S: StorageEngine, T: WalManager> WalStorage<S, T> {
         bytes
     }
 
+    #[allow(dead_code)]
     pub(crate) fn filters_to_bytes(filters: &[Value]) -> Vec<u8> {
         Self::record_to_bytes(filters)
     }
@@ -161,7 +179,7 @@ impl<S: StorageEngine, T: WalManager> WalStorage<S, T> {
                     .unwrap()
                     .as_secs(),
             };
-            self.wal.append(entry)?;
+            self.append_wal_entry(entry)?;
         }
         Ok(())
     }
@@ -180,26 +198,26 @@ impl<S: StorageEngine, T: WalManager> WalStorage<S, T> {
                     .unwrap()
                     .as_secs(),
             };
-            self.wal.append(entry)?;
+            self.append_wal_entry(entry)?;
         }
         Ok(())
     }
 
-    fn log_update(&mut self, table_id: u64, key: Vec<u8>, data: Vec<u8>) -> SqlResult<()> {
+    fn log_update(&mut self, table_id: u64, key: Vec<u8>, new_record: Vec<u8>) -> SqlResult<()> {
         if self.wal_enabled {
             let entry = WalEntry {
                 tx_id: self.current_tx_id,
                 entry_type: WalEntryType::Update,
                 table_id,
                 key: Some(key),
-                data: Some(data),
+                data: Some(new_record),
                 lsn: 0,
                 timestamp: std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
                     .unwrap()
                     .as_secs(),
             };
-            self.wal.append(entry)?;
+            self.append_wal_entry(entry)?;
         }
         Ok(())
     }
@@ -219,7 +237,7 @@ impl<S: StorageEngine, T: WalManager> WalStorage<S, T> {
                     .unwrap()
                     .as_secs(),
             };
-            self.wal.append(entry)?;
+            self.append_wal_entry(entry)?;
         }
         Ok(tx_id)
     }
@@ -240,7 +258,7 @@ impl<S: StorageEngine, T: WalManager> WalStorage<S, T> {
                     .unwrap()
                     .as_secs(),
             };
-            self.wal.append(entry)?;
+            self.append_wal_entry(entry)?;
             self.wal.sync()?;
             self.wal.current_lsn()
         } else {
@@ -296,7 +314,7 @@ impl<S: StorageEngine, T: WalManager> WalStorage<S, T> {
                     .unwrap()
                     .as_secs(),
             };
-            self.wal.append(entry)?;
+            self.append_wal_entry(entry)?;
             self.wal.sync()?;
         }
         self.inner.flush()?;
@@ -402,6 +420,8 @@ impl<S: StorageEngine, T: WalManager> StorageEngine for WalStorage<S, T> {
     ) -> SqlResult<usize> {
         let table_id = Self::table_name_to_id(table);
         let key = format!("RowFilter-{:p}", filter).into_bytes();
+        // Encode the mutation as a debug string for WAL; on recovery the
+        // RowFilter closure cannot be reconstructed, so this is best-effort.
         let data = format!("{:?}", mutation).into_bytes();
         self.log_update(table_id, key, data)?;
         self.inner.update_if(table, filter, mutation)
@@ -482,7 +502,7 @@ impl<S: StorageEngine, T: WalManager> StorageEngine for WalStorage<S, T> {
                     .unwrap()
                     .as_secs(),
             };
-            self.wal.append(entry)?;
+            self.append_wal_entry(entry)?;
         }
         Ok(tx_id)
     }
@@ -502,7 +522,7 @@ impl<S: StorageEngine, T: WalManager> StorageEngine for WalStorage<S, T> {
                     .unwrap()
                     .as_secs(),
             };
-            self.wal.append(entry)?;
+            self.append_wal_entry(entry)?;
             self.wal.sync()?;
         }
         self.inner.flush()?;
@@ -524,7 +544,7 @@ impl<S: StorageEngine, T: WalManager> StorageEngine for WalStorage<S, T> {
                     .unwrap()
                     .as_secs(),
             };
-            self.wal.append(entry)?;
+            self.append_wal_entry(entry)?;
             self.wal.sync()?;
         }
         self.inner.flush()?;
@@ -628,6 +648,57 @@ mod tests {
             .filter(|e| e.entry_type == WalEntryType::Commit)
             .collect();
         assert_eq!(commits.len(), 2);
+    }
+
+    #[test]
+    fn test_pr830f_lifecycle_commit_advances_checkpoint_and_truncates() {
+        use crate::checkpoint::CheckpointManager;
+
+        let inner = MemoryStorage::new();
+        let wal = MemoryWalManager::new();
+        let cp = Arc::new(RwLock::new(CheckpointManager::default()));
+        let mut storage = WalStorage::with_checkpoint_manager(inner, wal, cp.clone()).unwrap();
+
+        // First commit: should set checkpoint_lsn
+        storage.begin_transaction().unwrap();
+        storage.insert("t1", vec![vec![Value::Integer(1)]]).unwrap();
+        storage.commit_transaction().unwrap();
+        let lsn_after_first = cp.read().unwrap().last_checkpoint_lsn();
+        assert!(
+            lsn_after_first.is_some(),
+            "checkpoint LSN must be set after first commit"
+        );
+        let first_lsn = lsn_after_first.unwrap();
+        assert!(first_lsn > 0, "first commit LSN must be > 0");
+
+        // Second commit: checkpoint should advance, WAL truncated before prior checkpoint
+        storage.begin_transaction().unwrap();
+        storage.insert("t1", vec![vec![Value::Integer(2)]]).unwrap();
+        storage.commit_transaction().unwrap();
+        let lsn_after_second = cp.read().unwrap().last_checkpoint_lsn().unwrap();
+        assert!(
+            lsn_after_second > first_lsn,
+            "checkpoint LSN must advance: {} -> {}",
+            first_lsn,
+            lsn_after_second
+        );
+
+        // PR-830F: truncate_before was called on WAL — recover() returns only entries after cp_lsn
+        let entries = storage.recover().unwrap();
+        assert!(
+            !entries.is_empty(),
+            "recover() must still return at least 1 entry (current tx)"
+        );
+        // All retained entries must have lsn >= some new lsn (truncation happened internally)
+        for e in &entries {
+            // The current commit entry is retained; older ones are truncated
+            assert!(
+                e.lsn >= first_lsn,
+                "recovered entry lsn {} must be >= first_lsn {} (truncate worked)",
+                e.lsn,
+                first_lsn
+            );
+        }
     }
 
     #[test]
