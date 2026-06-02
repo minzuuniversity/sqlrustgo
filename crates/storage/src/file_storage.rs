@@ -1300,6 +1300,7 @@ mod tests {
 
 impl FileStorage {
     fn insert_direct(&mut self, table: &str, records: Vec<Record>) -> SqlResult<()> {
+        eprintln!("[insert_direct] table={} records_count={} before_len={} CALLED_BY=unknown", table, records.len(), self.tables.get(table).map(|d| d.rows.len()).unwrap_or(999));
         if let Some(ref mut data) = self.tables.get_mut(table) {
             data.rows.extend(records);
             let table_data = data.clone();
@@ -1345,6 +1346,7 @@ impl StorageEngine for FileStorage {
         if let Some(buffered) = self.insert_buffer.get(table) {
             rows.extend(buffered.iter().cloned());
         }
+        eprintln!("[scan] table={} data_rows={} buffer_rows={} merged={}", table, self.get_table(table).map(|d| d.rows.len()).unwrap_or(0), self.insert_buffer.get(table).map(|b| b.len()).unwrap_or(0), rows.len());
         Ok(rows)
     }
 
@@ -1361,6 +1363,7 @@ impl StorageEngine for FileStorage {
     /// see the row in `data.rows` directly, avoiding the "3 rows expected 1"
     /// regression caused by buffered inserts piling up during replay.
     fn force_insert(&mut self, table: &str, record: Vec<Value>) -> SqlResult<()> {
+        eprintln!("[force_insert] table={} record={:?}", table, record);
         self.insert_direct(table, vec![record])
     }
 
