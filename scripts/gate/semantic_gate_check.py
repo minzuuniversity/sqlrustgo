@@ -18,7 +18,16 @@ import os
 import re
 import hashlib
 
-REPO = os.environ.get("GIT_REPO", os.path.expanduser("~/sqlrustgo"))
+# Resolve repo root: GIT_REPO env var > script's grandparent dir > cwd.
+# scripts/gate/semantic_gate_check.py → scripts/gate/ → scripts/ → REPO_ROOT
+# Defaults to ~/sqlrustgo for legacy CI but accepts any path with Cargo.toml.
+# See SPEC-010.
+_SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+REPO = os.environ.get("GIT_REPO") or os.path.dirname(os.path.dirname(_SCRIPT_DIR))
+if not os.path.exists(os.path.join(REPO, "Cargo.toml")):
+    # Fall back to ~/sqlrustgo for legacy CI; if that also doesn't exist,
+    # stay in cwd and let downstream fail with a clear error.
+    REPO = os.path.expanduser("~/sqlrustgo")
 os.chdir(REPO)
 
 RED = "\033[0;31m"
