@@ -1,3 +1,7 @@
+//! Engine SELECT execution — extracted from execution_engine.rs (PR-900)
+//!
+//! Handles SELECT statement dispatch, projection, join planning, and result assembly.
+
 use crate::engine_utils::*;
 use crate::expr_utils::*;
 use crate::{ExecutionEngine, ExecutorResult, SqlError, SqlResult, Value};
