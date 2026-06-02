@@ -1,32 +1,21 @@
 name: Hermes Pipeline
 run-name: ${{ gitea.ref_name }} - ${{ gitea.sha }}
 
-'on':
+on:
   push:
     branches:
       - develop/v2.8.0
+      - develop/v3.7.0
       - beta/v2.8.0
       - ci/gitea-compat
       - ci/v2.8.0-*
-    paths-ignore:
-      - 'docs/**'
-      - '*.md'
-      - ARCHITECTURE_RULES.md
-      - CHANGELOG.md
-      - RELEASE_NOTES.md
   pull_request:
     branches:
       - develop/v2.8.0
+      - develop/v3.7.0
       - beta/v2.8.0
       - ci/gitea-compat
       - ci/v2.8.0-*
-    paths-ignore:
-      - 'docs/**'
-      - '*.md'
-      - VERSION
-      - ARCHITECTURE_RULES.md
-      - CHANGELOG.md
-      - RELEASE_NOTES.md
 
 env:
   CARGO_TERM_COLOR: always
@@ -56,7 +45,6 @@ jobs:
           cd repo
           cargo build --all-features
 
-  # Test: no rebuild needed, lint-build already has the binary
   test:
     runs-on: [hp-z6g4]
     needs: [lint-build]
@@ -85,7 +73,6 @@ jobs:
           echo "Tests: passed=$PASS failed=$FAIL"
           if [ "$FAIL" -gt 0 ]; then exit 1; fi
 
-  # Post-test checks: gate + verify + audit in one job to share clone + build
   postcheck:
     runs-on: [hp-z6g4]
     needs: [test]
@@ -97,16 +84,42 @@ jobs:
           cd repo
           git fetch --depth=1 origin "$GITEA_SHA"
           git checkout "$GITEA_SHA"
-      - name: Run Gate
+      - name: Version detection
+        id: version
         run: |
           cd repo
-          chmod +x gate/hermes_gate.sh
-          bash gate/hermes_gate.sh
-      - name: Run verification
+          # Detect version from branch or VERSION file
+          VERSION="v3.7.0"
+          if git rev-parse --verify origin/develop/v3.8.0 &>/dev/null; then
+            VERSION="v3.8.0"
+          elif git rev-parse --verify origin/develop/v3.7.0 &>/dev/null; then
+            VERSION="v3.7.0"
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+      - name: Gate L1 — Code Quality
         run: |
           cd repo
-          python3 verify/verification_engine.py
-      - name: Run audit
+          chmod +x gate/gate.sh
+          bash gate/gate.sh "${version}" 2>&1 | tee gate_report.log
+      - name: Gate L1 — Coverage
         run: |
           cd repo
-          python3 audit/self_audit.py
+          bash scripts/gate/check_coverage.sh 2>&1 | tee coverage_report.log
+      - name: Evidence Binding Check
+        run: |
+          cd repo
+          mkdir -p gate/evidence_binding_out
+          bash scripts/gate/check_evidence_binding.sh "${version}" "gate/evidence_binding_out/" 2>&1 | tee evidence_binding.log
+      - name: Gate summary
+        if: always()
+        run: |
+          cd repo
+          GATE_FAIL=$(grep -c '\[FAIL\]' gate_report.log 2>/dev/null || echo "0")
+          COVERAGE_FAIL=$(grep -c 'FAIL\|failed' coverage_report.log 2>/dev/null || echo "0")
+          EVIDENCE_FAIL=$(grep -c 'FAIL\|failed\|error' evidence_binding.log 2>/dev/null || echo "0")
+          echo "Gate: failed=$GATE_FAIL coverage=$COVERAGE_FAIL evidence=$EVIDENCE_FAIL"
+          if [ "$GATE_FAIL" -gt 0 ] || [ "$COVERAGE_FAIL" -gt 0 ]; then
+            echo "L1 gate failed"
+            exit 1
+          fi
+          echo "All postcheck gates passed"
