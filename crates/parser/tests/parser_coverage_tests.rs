@@ -1065,3 +1065,256 @@ fn test_parse_boolean_in_where() {
     // Parser doesn't support TRUE boolean literal
     assert!(result.is_err(), "TRUE not supported: {:?}", result);
 }
+
+#[test]
+fn test_parse_alter_table_add_constraint() {
+    let sql =
+        "ALTER TABLE users ADD CONSTRAINT fk_dept FOREIGN KEY (dept_id) REFERENCES departments(id)";
+    let result = parse(sql);
+    let _ = result; // Accept any result — verify parser doesn't panic
+}
+
+#[test]
+fn test_parse_alter_table_alter_column() {
+    let sql = "ALTER TABLE users ALTER COLUMN name SET DEFAULT 'unknown'";
+    let result = parse(sql);
+    let _ = result; // Accept any result — verify parser doesn't panic
+}
+
+#[test]
+fn test_parse_alter_table_drop_column() {
+    let sql = "ALTER TABLE users DROP COLUMN email";
+    let result = parse(sql);
+    let _ = result; // Accept any result — verify parser doesn't panic
+}
+
+#[test]
+fn test_parse_alter_table_rename_constraint() {
+    let sql = "ALTER TABLE users RENAME CONSTRAINT old_fk TO new_fk";
+    let result = parse(sql);
+    let _ = result; // Accept any result — verify parser doesn't panic
+}
+
+#[test]
+fn test_parse_begin_read_only() {
+    let sql = "BEGIN READ ONLY";
+    let result = parse(sql);
+    let _ = result; // Accept any result — verify parser doesn't panic
+}
+
+#[test]
+fn test_parse_begin_read_write() {
+    let sql = "BEGIN READ WRITE";
+    let result = parse(sql);
+    let _ = result; // Accept any result — verify parser doesn't panic
+}
+
+#[test]
+fn test_parse_case_when_else() {
+    let sql = "SELECT CASE WHEN status = 1 THEN 'active' WHEN status = 2 THEN 'inactive' ELSE 'unknown' END FROM users";
+    let result = parse(sql);
+    let _ = result; // Accept any result — verify parser doesn't panic
+}
+
+#[test]
+fn test_parse_deallocate_prepare() {
+    let sql = "DEALLOCATE PREPARE mystmt";
+    let result = parse(sql);
+    let _ = result; // Accept any result — verify parser doesn't panic
+}
+
+#[test]
+fn test_parse_delete_order_by_limit() {
+    let sql = "DELETE FROM users WHERE id > 100 ORDER BY created_at DESC LIMIT 10";
+    let result = parse(sql);
+    let _ = result; // Accept any result — verify parser doesn't panic
+}
+
+#[test]
+fn test_parse_delete_quick() {
+    let sql = "DELETE QUICK FROM users WHERE id = 1";
+    let result = parse(sql);
+    let _ = result; // Accept any result — verify parser doesn't panic
+}
+
+#[test]
+fn test_parse_drop_index_concurrently() {
+    let sql = "DROP INDEX CONCURRENTLY idx_email ON users";
+    let result = parse(sql);
+    let _ = result; // Accept any result — verify parser doesn't panic
+}
+
+#[test]
+fn test_parse_execute_prepared() {
+    let sql = "EXECUTE mystmt USING @id";
+    let result = parse(sql);
+    let _ = result; // Accept any result — verify parser doesn't panic
+}
+
+#[test]
+fn test_parse_explain_analyze() {
+    let sql = "EXPLAIN ANALYZE SELECT * FROM users";
+    let result = parse(sql);
+    let _ = result; // Accept any result — verify parser doesn't panic
+}
+
+#[test]
+fn test_parse_explain_select() {
+    let sql = "EXPLAIN SELECT * FROM users WHERE id = 1";
+    let result = parse(sql);
+    let _ = result; // Accept any result — verify parser doesn't panic
+}
+
+#[test]
+fn test_parse_grant_all() {
+    let sql = "GRANT ALL PRIVILEGES ON mydb.* TO 'admin'@'localhost'";
+    let result = parse(sql);
+    let _ = result; // Accept any result — verify parser doesn't panic
+}
+
+#[test]
+fn test_parse_grant_role() {
+    let sql = "GRANT admin_role TO 'john'@'localhost'";
+    let result = parse(sql);
+    let _ = result; // Accept any result — verify parser doesn't panic
+}
+
+#[test]
+fn test_parse_grant_select_with_grant() {
+    let sql = "GRANT SELECT, INSERT ON mydb.users TO 'app'@'%' WITH GRANT OPTION";
+    let result = parse(sql);
+    let _ = result; // Accept any result — verify parser doesn't panic
+}
+
+#[test]
+fn test_parse_insert_ignore() {
+    let sql = "INSERT IGNORE INTO users (id, name) VALUES (1, 'Bob')";
+    let result = parse(sql);
+    let _ = result; // Accept any result — verify parser doesn't panic
+}
+
+#[test]
+fn test_parse_insert_on_duplicate_key() {
+    let sql = "INSERT INTO users (id, name) VALUES (1, 'Alice') ON DUPLICATE KEY UPDATE name = VALUES(name)";
+    let result = parse(sql);
+    let _ = result; // Accept any result — verify parser doesn't panic
+}
+
+#[test]
+fn test_parse_insert_set() {
+    let sql = "INSERT INTO users SET id = 1, name = 'Alice'";
+    let result = parse(sql);
+    let _ = result; // Accept any result — verify parser doesn't panic
+}
+
+#[test]
+fn test_parse_isolation_read_committed() {
+    let sql = "SET TRANSACTION ISOLATION LEVEL READ COMMITTED";
+    let result = parse(sql);
+    let _ = result; // Accept any result — verify parser doesn't panic
+}
+
+#[test]
+fn test_parse_isolation_read_uncommitted() {
+    let sql = "SET TRANSACTION ISOLATION LEVEL READ UNCOMMITTED";
+    let result = parse(sql);
+    let _ = result; // Accept any result — verify parser doesn't panic
+}
+
+#[test]
+fn test_parse_isolation_repeatable_read() {
+    let sql = "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ";
+    let result = parse(sql);
+    let _ = result; // Accept any result — verify parser doesn't panic
+}
+
+#[test]
+fn test_parse_load_data() {
+    let sql = "LOAD DATA INFILE '/tmp/users.csv' INTO TABLE users FIELDS TERMINATED BY ','";
+    let result = parse(sql);
+    let _ = result; // Accept any result — verify parser doesn't panic
+}
+
+#[test]
+fn test_parse_prepared_statement() {
+    let sql = "PREPARE mystmt FROM 'SELECT * FROM users WHERE id = ?'";
+    let result = parse(sql);
+    let _ = result; // Accept any result — verify parser doesn't panic
+}
+
+#[test]
+fn test_parse_revoke_all() {
+    let sql = "REVOKE ALL PRIVILEGES ON mydb.* FROM 'app'@'%'";
+    let result = parse(sql);
+    let _ = result; // Accept any result — verify parser doesn't panic
+}
+
+#[test]
+fn test_parse_revoke_grant_option() {
+    let sql = "REVOKE GRANT OPTION ON mydb.* FROM 'admin'@'localhost'";
+    let result = parse(sql);
+    let _ = result; // Accept any result — verify parser doesn't panic
+}
+
+#[test]
+fn test_parse_revoke_role() {
+    let sql = "REVOKE admin_role FROM 'john'@'localhost'";
+    let result = parse(sql);
+    let _ = result; // Accept any result — verify parser doesn't panic
+}
+
+#[test]
+fn test_parse_set_transaction_snapshot() {
+    let sql = "SET TRANSACTION SNAPSHOT '00000003-0000001B-1'";
+    let result = parse(sql);
+    let _ = result; // Accept any result — verify parser doesn't panic
+}
+
+#[test]
+fn test_parse_show_create_table() {
+    let sql = "SHOW CREATE TABLE users";
+    let result = parse(sql);
+    let _ = result; // Accept any result — verify parser doesn't panic
+}
+
+#[test]
+fn test_parse_show_table_status() {
+    let sql = "SHOW TABLE STATUS FROM mydb";
+    let result = parse(sql);
+    let _ = result; // Accept any result — verify parser doesn't panic
+}
+
+#[test]
+fn test_parse_truncate_restart_identity() {
+    let sql = "TRUNCATE TABLE users RESTART IDENTITY";
+    let result = parse(sql);
+    let _ = result; // Accept any result — verify parser doesn't panic
+}
+
+#[test]
+fn test_parse_update_with_subquery() {
+    let sql = "UPDATE users SET name = (SELECT name FROM admins WHERE admins.id = users.id)";
+    let result = parse(sql);
+    let _ = result; // Accept any result — verify parser doesn't panic
+}
+
+#[test]
+fn test_parse_window_lead_lag() {
+    let sql = "SELECT LEAD(salary, 1) OVER (ORDER BY id) FROM employees";
+    let result = parse(sql);
+    let _ = result; // Accept any result — verify parser doesn't panic
+}
+
+#[test]
+fn test_parse_window_rank() {
+    let sql = "SELECT RANK() OVER (ORDER BY score DESC) FROM users";
+    let result = parse(sql);
+    let _ = result; // Accept any result — verify parser doesn't panic
+}
+
+#[test]
+fn test_parse_window_row_number() {
+    let sql = "SELECT ROW_NUMBER() OVER (PARTITION BY dept ORDER BY salary DESC) FROM employees";
+    let result = parse(sql);
+    let _ = result; // Accept any result — verify parser doesn't panic
+}
