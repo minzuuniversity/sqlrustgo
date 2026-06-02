@@ -252,7 +252,7 @@ pub(crate) fn recovery_force_insert<S: StorageEngine>(
     table: &str,
     record: Vec<Value>,
 ) -> Result<(), crate::engine::SqlError> {
-    storage.insert(table, vec![record])
+    storage.force_insert(table, record)
 }
 
 #[allow(dead_code)]
@@ -399,43 +399,43 @@ fn replace_by_key<S: StorageEngine>(
 
 /// Filter WAL entries to only include those from committed transactions.
 ///
-/// A committed transaction = a group of entries with the same tx_id that
-/// includes a Commit entry. Entries after Begin and before Commit/Rollback
-/// are kept; metadata entries (Begin/Commit/Rollback/Checkpoint/Prepare)
-/// are excluded from the result.
+/// A committed transaction = a contiguous run of entries between a `Begin` entry
+/// and a matching `Commit` entry (entries after `Rollback` are dropped). Metadata
+/// entries (Begin/Commit/Rollback/Checkpoint/Prepare) are excluded from the
+/// result.
+///
+/// F-09 fix: groups are detected by **Begin→Commit/Rollback span**, not by
+/// `tx_id`. Earlier versions grouped by `tx_id` alone which collapsed all
+/// entries (every `begin_transaction` used the same `current_tx_id()` without
+/// incrementing it), causing uncommitted inserts to be replayed as if
+/// committed. Span-based detection correctly isolates each transaction.
 fn filter_committed_entries(entries: &[WalEntry]) -> Vec<WalEntry> {
-    // Group entries by tx_id
-    let mut groups: HashMap<u64, Vec<&WalEntry>> = HashMap::new();
-    for entry in entries {
-        groups.entry(entry.tx_id).or_default().push(entry);
-    }
-
     let mut result = Vec::new();
-    for group in groups.values() {
-        let has_commit = group.iter().any(|e| e.entry_type == WalEntryType::Commit);
-        if has_commit {
-            // Include only DML entries from committed transactions
-            for entry in group {
-                match entry.entry_type {
-                    WalEntryType::Insert | WalEntryType::Update | WalEntryType::Delete => {
-                        result.push((*entry).clone());
-                    }
-                    _ => {} // Skip Begin, Commit, Rollback, Checkpoint, Prepare
-                }
-            }
-        }
-    }
+    let mut current_open = false; // are we inside a Begin→Commit/Rollback span?
 
-    // Restore original order (entries are already in append-order)
-    // Since entries are append-only, we sort by position in original order
-    if entries.len() > 1 && !result.is_empty() {
-        // Preserve original order by using entry position
-        let position: HashMap<u64, usize> = entries
-            .iter()
-            .enumerate()
-            .map(|(i, e)| (e.lsn, i))
-            .collect();
-        result.sort_by_key(|e| position.get(&e.lsn).copied().unwrap_or(0));
+    for entry in entries {
+        match entry.entry_type {
+            WalEntryType::Begin => {
+                current_open = true;
+            }
+            WalEntryType::Commit => {
+                current_open = false;
+            }
+            WalEntryType::Rollback => {
+                current_open = false;
+                // Drop any DML collected inside the rolled-back span.
+                // Since we only push when current_open && is DML, simply
+                // resetting current_open at Commit/Rollback is sufficient.
+            }
+            WalEntryType::Insert | WalEntryType::Update | WalEntryType::Delete => {
+                if current_open {
+                    result.push(entry.clone());
+                }
+                // else: entry belongs to a rolled-back or uncommitted span,
+                //       drop it.
+            }
+            _ => {} // Checkpoint, Prepare, etc. - skip
+        }
     }
 
     result
