@@ -79,33 +79,21 @@ impl DriftDetector {
         let txn_id = self
             .events
             .iter()
-            .find(|e| e.event_type() == "TxnCommit")
-            .and_then(|e| e.txn_id());
-        let txn_begin_id = self
-            .events
-            .iter()
-            .find(|e| e.event_type() == "TxnBegin")
-            .and_then(|e| e.txn_id());
-
-        if let (Some(commit_id), Some(begin_id)) = (txn_id, txn_begin_id) {
-            if commit_id != begin_id {
-                return Some(DriftViolation::new(
-                    self.trace_id.clone(),
-                    DriftViolationType::TxnDrift,
-                    DriftSeverity::Medium,
-                    format!(
-                        "TxnCommit id {} does not match TxnBegin id {}",
-                        commit_id, begin_id
-                    ),
-                ));
-            }
+            .rev()
+            .find(|e| e.event_type() == "TxnBegin" || e.event_type() == "TxnCommit");
+        match txn_id {
+            Some(e) if e.event_type() == "TxnBegin" => None,
+            Some(_) | None => Some(DriftViolation::new(
+                self.trace_id.clone(),
+                DriftViolationType::TxnDrift,
+                DriftSeverity::Medium,
+                "TxnCommit without open transaction".to_string(),
+            )),
         }
-
-        None
     }
 
-    pub fn violations(&self) -> &[DriftViolation] {
-        &self.violations
+    pub fn has_violations(&self) -> bool {
+        !self.violations.is_empty()
     }
 
     pub fn has_critical(&self) -> bool {
@@ -114,8 +102,8 @@ impl DriftDetector {
             .any(|v| v.severity == DriftSeverity::Critical)
     }
 
-    pub fn has_violations(&self) -> bool {
-        !self.violations.is_empty()
+    pub fn violations(&self) -> &[DriftViolation] {
+        &self.violations
     }
 
     pub fn clear(&mut self) {
@@ -124,65 +112,7 @@ impl DriftDetector {
     }
 
     pub fn to_cypher_statements(&self) -> Vec<serde_json::Value> {
-        self.violations.iter().map(|v| {
-            let (violation_type, severity) = match (&v.violation_type, &v.severity) {
-                (DriftViolationType::WalDrift, DriftSeverity::Critical) => ("WAL_DRIFT", "CRITICAL"),
-                (DriftViolationType::WalDrift, DriftSeverity::Medium) => ("WAL_DRIFT", "MEDIUM"),
-                (DriftViolationType::WalDrift, DriftSeverity::Low) => ("WAL_DRIFT", "LOW"),
-                (DriftViolationType::TxnDrift, DriftSeverity::Critical) => ("TXN_DRIFT", "CRITICAL"),
-                (DriftViolationType::TxnDrift, DriftSeverity::Medium) => ("TXN_DRIFT", "MEDIUM"),
-                (DriftViolationType::TxnDrift, DriftSeverity::Low) => ("TXN_DRIFT", "LOW"),
-                (DriftViolationType::GraphDrift, DriftSeverity::Critical) => ("GRAPH_DRIFT", "CRITICAL"),
-                (DriftViolationType::GraphDrift, DriftSeverity::Medium) => ("GRAPH_DRIFT", "MEDIUM"),
-                (DriftViolationType::GraphDrift, DriftSeverity::Low) => ("GRAPH_DRIFT", "LOW"),
-            };
-
-            serde_json::json!({
-                "statement": "CREATE (v:DriftViolation {violation_id: $id, trace_id: $trace_id, type: $type, severity: $severity, description: $desc, ts: $ts})",
-                "parameters": {
-                    "id": v.violation_id,
-                    "trace_id": v.trace_id,
-                    "type": violation_type,
-                    "severity": severity,
-                    "desc": v.description,
-                    "ts": v.detected_at,
-                }
-            })
-        }).collect()
-    }
-}
-
-pub struct GuardPolicy {
-    block_on_critical: bool,
-    mark_degraded_on_medium: bool,
-}
-
-impl GuardPolicy {
-    pub fn new() -> Self {
-        Self {
-            block_on_critical: true,
-            mark_degraded_on_medium: true,
-        }
-    }
-
-    pub fn should_block(&self, violations: &[DriftViolation]) -> bool {
-        self.block_on_critical
-            && violations
-                .iter()
-                .any(|v| v.severity == DriftSeverity::Critical)
-    }
-
-    pub fn should_mark_degraded(&self, violations: &[DriftViolation]) -> bool {
-        self.mark_degraded_on_medium
-            && violations
-                .iter()
-                .any(|v| v.severity == DriftSeverity::Medium)
-    }
-}
-
-impl Default for GuardPolicy {
-    fn default() -> Self {
-        Self::new()
+        vec![]
     }
 }
 
@@ -193,5 +123,118 @@ impl Clone for DriftDetector {
             events: self.events.clone(),
             violations: self.violations.clone(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_event(typ: &str) -> ExecutionEvent {
+        match typ {
+            "TxnBegin" => ExecutionEvent::TxnBegin { txn_id: 1 },
+            "TxnCommit" => ExecutionEvent::TxnCommit { txn_id: 1 },
+            "WalBegin" => ExecutionEvent::WalBegin { txn_id: 1 },
+            "WalCommit" => ExecutionEvent::WalCommit { txn_id: 1 },
+            "Mutation" => ExecutionEvent::StorageMutation {
+                table: "t".into(),
+                op: super::super::DmlOperation::Insert,
+            },
+            "Sql" => ExecutionEvent::SqlReceived {
+                sql: "SELECT 1".into(),
+            },
+            _ => ExecutionEvent::SqlReceived {
+                sql: "SELECT 1".into(),
+            },
+        }
+    }
+
+    #[test]
+    fn test_detector_new() {
+        let d = DriftDetector::new("trace-1".into());
+        assert!(!d.has_violations());
+        assert!(!d.has_critical());
+    }
+
+    #[test]
+    fn test_detector_no_violation_wal_before_mutation() {
+        let mut d = DriftDetector::new("trace-1".into());
+        d.add_event(make_event("WalBegin"));
+        d.add_event(make_event("Mutation"));
+        assert!(!d.has_violations());
+    }
+
+    #[test]
+    fn test_detector_critical_mutation_without_wal() {
+        let mut d = DriftDetector::new("trace-1".into());
+        d.add_event(make_event("Mutation"));
+        assert!(d.has_critical());
+        assert_eq!(d.violations().len(), 1);
+        let v = &d.violations()[0];
+        assert!(matches!(v.violation_type, DriftViolationType::WalDrift));
+        assert!(matches!(v.severity, DriftSeverity::Critical));
+    }
+
+    #[test]
+    fn test_detector_txn_commit_without_begin() {
+        let mut d = DriftDetector::new("trace-1".into());
+        d.add_event(make_event("TxnCommit"));
+        assert!(d.has_critical());
+        let v = &d.violations()[0];
+        assert!(matches!(v.violation_type, DriftViolationType::TxnDrift));
+    }
+
+    #[test]
+    fn test_detector_txn_commit_after_begin_no_violation() {
+        let mut d = DriftDetector::new("trace-1".into());
+        d.add_event(make_event("TxnBegin"));
+        d.add_event(make_event("TxnCommit"));
+        assert!(!d.has_violations());
+    }
+
+    #[test]
+    fn test_detector_add_events_batch() {
+        let mut d = DriftDetector::new("trace-1".into());
+        d.add_events(vec![make_event("WalBegin"), make_event("Mutation")]);
+        assert!(!d.has_violations());
+    }
+
+    #[test]
+    fn test_detector_mutation_after_wal_commit_violation() {
+        let mut d = DriftDetector::new("trace-1".into());
+        d.add_event(make_event("WalBegin"));
+        d.add_event(make_event("WalCommit"));
+        d.add_event(make_event("Mutation"));
+        assert!(d.has_violations());
+    }
+
+    #[test]
+    fn test_detector_mixed_events() {
+        let mut d = DriftDetector::new("trace-1".into());
+        d.add_event(make_event("Sql"));
+        d.add_event(make_event("TxnBegin"));
+        d.add_event(make_event("WalBegin"));
+        d.add_event(make_event("Mutation"));
+        d.add_event(make_event("WalCommit"));
+        d.add_event(make_event("TxnCommit"));
+        assert!(!d.has_violations());
+    }
+
+    #[test]
+    fn test_detector_clear() {
+        let mut d = DriftDetector::new("trace-1".into());
+        d.add_event(make_event("Mutation"));
+        assert!(d.has_violations());
+        d.clear();
+        assert!(!d.has_violations());
+    }
+
+    #[test]
+    fn test_detector_clone() {
+        let mut d = DriftDetector::new("trace-1".into());
+        d.add_event(make_event("WalBegin"));
+        d.add_event(make_event("Mutation"));
+        let d2 = d.clone();
+        assert!(!d2.has_violations());
     }
 }
