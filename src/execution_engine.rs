@@ -894,9 +894,31 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             }
             // Then delete the matching rows from the freshly re-inserted set
             // so WAL records one Delete entry per affected row.
+            //
+            // FIX-2737: Extract ONLY primary key column values for delete,
+            // not all columns. storage.delete() does full row comparison when
+            // key_values is non-empty, so passing all columns causes delete to
+            // fail if any non-PK column differs (e.g., due to serialization).
+            let pk_indices: Vec<usize> = table_info
+                .columns
+                .iter()
+                .enumerate()
+                .filter(|(_, col)| col.primary_key)
+                .map(|(i, _)| i)
+                .collect();
+
+            // If table has primary keys, use only PK columns for delete.
+            // Otherwise, fall back to all columns (backward compatible).
+            let use_indices: Vec<usize> = if pk_indices.is_empty() {
+                (0..rows_to_delete[0].len()).collect()
+            } else {
+                pk_indices
+            };
+
             for row in &rows_to_delete {
-                let key_values: Vec<Value> = (0..row.len())
-                    .map(|i| row.get(i).cloned().unwrap_or(sqlrustgo_types::Value::Null))
+                let key_values: Vec<Value> = use_indices
+                    .iter()
+                    .map(|&i| row.get(i).cloned().unwrap_or(sqlrustgo_types::Value::Null))
                     .collect();
                 storage.delete(&table_name, &key_values)?;
             }
