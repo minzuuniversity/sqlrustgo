@@ -8,7 +8,7 @@
 
 use sqlrustgo_planner::{Expr, MergeStatement, Operator};
 use sqlrustgo_storage::{StorageEngine, TableInfo};
-use sqlrustgo_types::{SqlError, SqlResult, Value};
+use sqlrustgo_types::{SqlResult, Value};
 use std::sync::{Arc, Mutex, RwLock};
 
 use crate::execution::{ExecutionEngine, QueryContext};
@@ -454,6 +454,7 @@ fn find_column_index(col_name: &str, table_info: &TableInfo) -> Option<usize> {
 }
 
 mod tests {
+    #[allow(unused_imports)]
     use super::*;
 
     #[test]
