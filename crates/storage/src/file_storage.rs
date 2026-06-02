@@ -1275,12 +1275,21 @@ impl StorageEngine for FileStorage {
         }
     }
 
-    fn delete(&mut self, table: &str, _filters: &[Value]) -> SqlResult<usize> {
+    fn delete(&mut self, table: &str, filters: &[Value]) -> SqlResult<usize> {
         if let Some(ref mut data) = self.tables.get_mut(table) {
             let count = data.rows.len();
             data.rows.clear();
             let table_data = data.clone();
             self.save_table(table, &table_data)?;
+            // After full table delete (filters.is_empty()), flush any buffered inserts
+            // to prevent stale buffered data from causing duplicate inserts
+            if filters.is_empty() {
+                if let Some(records) = self.insert_buffer.remove(table) {
+                    if !records.is_empty() {
+                        self.insert_direct(table, records)?;
+                    }
+                }
+            }
             Ok(count)
         } else {
             Ok(0)
@@ -1305,10 +1314,36 @@ impl StorageEngine for FileStorage {
     fn update(
         &mut self,
         table: &str,
-        _filters: &[Value],
-        _updates: &[(usize, Value)],
+        filters: &[Value],
+        updates: &[(usize, Value)],
     ) -> SqlResult<usize> {
-        Ok(self.get_table(table).map(|d| d.rows.len()).unwrap_or(0))
+        let Some(ref mut data) = self.tables.get_mut(table) else {
+            return Ok(0);
+        };
+
+        let mut count = 0;
+        for record in data.rows.iter_mut() {
+            if filters.is_empty()
+                || filters
+                    .iter()
+                    .enumerate()
+                    .all(|(i, f)| record.get(i).map(|v| v == f).unwrap_or(false))
+            {
+                for &(col_idx, ref new_val) in updates {
+                    if col_idx < record.len() {
+                        record[col_idx] = new_val.clone();
+                    }
+                }
+                count += 1;
+            }
+        }
+
+        if count > 0 {
+            let table_data = data.clone();
+            self.save_table(table, &table_data)?;
+        }
+
+        Ok(count)
     }
 
     fn update_if(
