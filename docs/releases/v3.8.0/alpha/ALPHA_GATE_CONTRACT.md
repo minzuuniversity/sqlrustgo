@@ -54,6 +54,17 @@ v3.8.0 是 Architecture Unification Release，不是质量提升版本。PR-800�
 | A6-4 | Freshness PASS | 引用数据必须标注 Freshness | 无过期数据引用 | ADR-001 §G-06 |
 | A6-5 | ADR Updated | Governance ADR 体系存在 | 5 ADRs 存在 | ADR-001~ADR-005 |
 
+### 1.3 Architecture Freeze 检查项（A7）
+
+> ⚠️ **Alpha 阶段实际未充分执行 A7**，此处记录为改进项供后续版本参考。
+
+| ID | Check | Method | Threshold | SSOT Reference |
+|----|-------|--------|-----------|----------------|
+| A7-1 | 双路径残留 | `grep -r "eng.execute" src/ --include="*.rs"` | 应为 0 | AD-002 §双路径消除 |
+| A7-2 | 架构关键路径可达性 | COM_QUERY 必须能走到 LocalExecutor | 路径存在 | AD-002 §单路径执行 |
+| A7-3 | ExecutionEngine 行数 | `wc -l` execution_engine.rs | <1500 行 | AD-001 §ExecutionEngine 拆分 |
+| A7-4 | DriftGate 阻断测试 | 负面测试验证违规被拦截 | 至少 1 个场景 | AD-002 §DriftGate |
+
 ---
 
 ## 2. 各检查项详细说明
@@ -278,6 +289,88 @@ Status: ✅ PASS (5/5 ADRs)
 
 ---
 
+### A7-1: 双路径残留检查
+
+**命令**:
+```bash
+grep -r "eng.execute" crates/*/src/ --include="*.rs" | grep -v "test" | grep -v "#\[allow"
+```
+
+**通过标准**: 结果应为空（0 个匹配）
+
+**注意**: 这是 Alpha 阶段**应执行但实际未执行**的检查项。Alpha PASS 报告 `ALPHA_GATE_REPORT.md` 中未包含此项验证。
+
+**Evidence 格式**:
+```
+=== A7-1: 双路径残留检查 ===
+Command: grep -r "eng.execute" crates/*/src/ --include="*.rs"
+Result: (empty - no raw eng.execute calls)
+Status: ✅ PASS
+```
+
+---
+
+### A7-2: 架构关键路径可达性
+
+**命令**:
+```bash
+# 验证 COM_QUERY 路径存在
+grep -r "DriftGate" crates/*/src/ --include="*.rs" | head -5
+grep -r "TransactionContext" crates/*/src/ --include="*.rs" | head -5
+```
+
+**通过标准**: 关键组件存在调用
+
+**Evidence 格式**:
+```
+=== A7-2: 架构关键路径可达性 ===
+Command: grep -r "DriftGate" crates/*/src/
+Result: Found N references
+Status: ✅ PASS
+```
+
+---
+
+### A7-3: ExecutionEngine 行数
+
+**命令**:
+```bash
+wc -l crates/executor/src/execution_engine.rs
+```
+
+**通过标准**: <1500 行（AD-001 要求）
+
+**注意**: v3.7.0 时为 6829 行，v3.8.0 Alpha 实际约 4000+ 行，PR-900 目标才降至 <1500 行。
+
+**Evidence 格式**:
+```
+=== A7-3: ExecutionEngine 行数 ===
+Command: wc -l crates/executor/src/execution_engine.rs
+Result: 4215 lines
+Status: ⚠️ IN PROGRESS (>1500, target <1500)
+```
+
+---
+
+### A7-4: DriftGate 阻断测试
+
+**命令**:
+```bash
+grep -r "DriftGate" crates/*/tests/ --include="*.rs" | head -5
+```
+
+**通过标准**: 至少 1 个负面测试场景
+
+**Evidence 格式**:
+```
+=== A7-4: DriftGate 阻断测试 ===
+Command: grep -r "DriftGate" crates/*/tests/
+Result: Found N test references
+Status: ⚠️ TODO - 需要集成测试
+```
+
+---
+
 ## 3. Alpha Gate 判定规则
 
 ### PASS
@@ -299,6 +392,17 @@ A1-A5 全部 PASS，A6 有 1-2 项 FAIL（可在 Beta 前修复）→ CONDITIONA
 - A5 Coverage <50% → FAIL
 - A6-1~A6-5 中 3+ 项 FAIL → FAIL
 
+### A7 执行状态说明
+
+> ⚠️ **重要**: A7 架构冻结检查项在 Alpha 阶段**未实际执行**。
+>
+> Alpha 通过时（commit b61548eb）存在以下已知问题：
+> - `eng.execute` 仍存在于测试代码中（双路径未完全消除）
+> - ExecutionEngine 仍 >1500 行（AD-001 拆分目标未完成）
+> - DriftGate 负面测试缺失
+>
+> **改进**: 后续版本 Alpha 门禁应强制执行 A7 检查项。
+
 ---
 
 ## 4. Alpha Gate 执行流程
@@ -318,11 +422,14 @@ Step 3: 执行 Governance 检查 (A6)
   docs/governance/replay/          # A6-1
   docs/governance/adr/             # A6-2~A6-5
 
-Step 4: 记录 ALPHA_GATE_REPORT.md
-  创建: docs/releases/v3.8.0/ALPHA_GATE_REPORT.md
+Step 4: 执行 Architecture Freeze 检查 (A7) [改进项]
+  bash scripts/gate/check_architecture_freeze.sh  # A7-1~A7-4
+
+Step 5: 记录 ALPHA_GATE_REPORT.md
+  创建: docs/releases/v3.8.0/alpha/ALPHA_GATE_REPORT.md
   记录: 实际命令 + 输出 + 结论
 
-Step 5: 如有 FAIL 项
+Step 6: 如有 FAIL 项
   创建 Issue 追踪
   修复后重新执行
 ```
@@ -365,6 +472,17 @@ grep -r "Freshness" docs/releases/v3.8.0/*.md | head -5
 
 # A6-5 ADR Updated
 ls docs/governance/adr/ADR-00*.md
+
+# A7 Architecture Freeze (改进项 - 建议后续版本强制执行)
+# A7-1 双路径残留
+grep -r "eng.execute" crates/*/src/ --include="*.rs" | grep -v "test" | grep -v "allow"
+# A7-2 架构路径可达性
+grep -r "DriftGate" crates/*/src/ --include="*.rs" | head -5
+grep -r "TransactionContext" crates/*/src/ --include="*.rs" | head -5
+# A7-3 ExecutionEngine 行数
+wc -l crates/executor/src/execution_engine.rs
+# A7-4 DriftGate 阻断测试
+grep -r "DriftGate" crates/*/tests/ --include="*.rs" | head -5
 ```
 
 ---
