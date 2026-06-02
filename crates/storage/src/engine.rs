@@ -455,6 +455,16 @@ pub trait StorageEngine: Send + Sync {
     /// Insert rows into a table
     fn insert(&mut self, table: &str, records: Vec<Record>) -> SqlResult<()>;
 
+    /// Force-insert a row bypassing any deferred-write buffer.
+    ///
+    /// Default implementation just calls `insert`. Storage engines that buffer
+    /// inserts (e.g. FileStorage) MUST override this to write directly to
+    /// `data.rows` so subsequent scan/delete in the same call stack see the
+    /// row. Used by WAL recovery to apply replayed entries deterministically.
+    fn force_insert(&mut self, table: &str, record: Vec<Value>) -> SqlResult<()> {
+        self.insert(table, vec![record])
+    }
+
     /// Delete rows matching a filter
     fn delete(&mut self, table: &str, _filters: &[Value]) -> SqlResult<usize>;
     fn delete_if(&mut self, table: &str, filter: &RowFilter) -> SqlResult<usize>;
