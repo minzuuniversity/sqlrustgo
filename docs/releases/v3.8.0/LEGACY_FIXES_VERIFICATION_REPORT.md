@@ -267,7 +267,7 @@ if sql_upper.starts_with("MERGE") {
 | **G2** | PR-870: Parser 不支持 MERGE 语法 | MERGE 语句无法解析 | P0 |
 | **G3** | PR-870: `execute_merge()` 未被调用 | MERGE 路径死代码 | P0 |
 | **G4** | PR-870: LocalExecutor 缺少 `Arc<Mutex<dyn ExecutionEngine>>` | 无法实例化 MergeExecutor | P1 |
-| **G5** | Update 重放在 Recovery 中跳过 | crash recovery 后 UPDATE 数据不一致 | P1 |
+| **G5** | Update 重放在 Recovery 中跳过 | crash recovery 后 UPDATE 数据不一致 | ✅ FIXED (SPEC-003) |
 
 ### 4.2 Critical 缺口 — Truthfulness 违规
 
