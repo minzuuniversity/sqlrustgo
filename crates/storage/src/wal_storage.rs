@@ -196,14 +196,14 @@ impl<S: StorageEngine, T: WalManager> WalStorage<S, T> {
         Ok(())
     }
 
-    fn log_update(&mut self, table_id: u64, key: Vec<u8>, data: Vec<u8>) -> SqlResult<()> {
+    fn log_update(&mut self, table_id: u64, key: Vec<u8>, new_record: Vec<u8>) -> SqlResult<()> {
         if self.wal_enabled {
             let entry = WalEntry {
                 tx_id: self.inner.current_tx_id(),
                 entry_type: WalEntryType::Update,
                 table_id,
                 key: Some(key),
-                data: Some(data),
+                data: Some(new_record),
                 lsn: 0,
                 timestamp: std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
@@ -409,6 +409,8 @@ impl<S: StorageEngine, T: WalManager> StorageEngine for WalStorage<S, T> {
     ) -> SqlResult<usize> {
         let table_id = Self::table_name_to_id(table);
         let key = format!("RowFilter-{:p}", filter).into_bytes();
+        // Encode the mutation as a debug string for WAL; on recovery the
+        // RowFilter closure cannot be reconstructed, so this is best-effort.
         let data = format!("{:?}", mutation).into_bytes();
         self.log_update(table_id, key, data)?;
         self.inner.update_if(table, filter, mutation)
