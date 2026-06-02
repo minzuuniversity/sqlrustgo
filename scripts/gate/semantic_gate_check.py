@@ -198,37 +198,85 @@ else:
 # ============================================================================
 # SGL-005: TX-002 — Storage direct bypass detection (AV-001~AV-007 legacy)
 # Invariant TX-002: "all mutations must go through TransactionManager"
+#
+# Classification rules:
+#   SKIP: harness.rs (test fixtures)
+#   SKIP: #[test] functions
+#   SKIP: wal_transactional_facade.rs (correct via log_mutation)
+#   SKIP: parallel_executor.rs memory_storage (batch loading, non-OLTP)
+#   SKIP: vector_executor.rs (benchmark fixtures)
+#   REAL: trigger.rs (trigger body bypass)
+#   REAL: local_executor.rs non-facade storage ops
 # ============================================================================
 print("\n=== SGL-005: TX-002 — Storage direct bypass detection ===")
 
-# Patterns that indicate direct storage mutations bypassing transaction manager
-bypass_patterns = [
-    r"(?<!storage\.)insert\s*\(",
-    r"(?<!storage\.)update\s*\(",
-    r"(?<!storage\.)delete\s*\(",
-    r"memory_storage\.(insert|update|delete)\s*\(",
-]
-
 violations = []
+skip_reasons = {}
+
+def should_skip(filepath, linenum, content):
+    """Returns (skip: bool, reason: str or None)"""
+    # Skip test files
+    if '[test]' in content or 'fn test_' in content:
+        return (True, "test-function")
+    # Skip harness
+    if 'harness' in filepath:
+        return (True, "test-harness")
+    # Skip wal facade (correct implementation)
+    if 'wal_transactional_facade' in filepath:
+        return (True, "wal-facade")
+    # Skip parallel_executor memory_storage batch loading
+    if 'parallel_executor' in filepath and 'memory_storage' in content:
+        return (True, "batch-loading")
+    # Skip vector_executor fixtures
+    if 'vector_executor' in filepath:
+        return (True, "vector-fixture")
+    # Check if inside execute_dml closure (WAL-aware path) — look back 3 lines
+    if 'storage.delete' in content or 'storage.insert' in content or 'storage.update' in content:
+        r_ctx = run(f'sed -n "{linenum-3},{linenum}p" "{filepath}"')
+        if 'execute_dml' in r_ctx.stdout and 'facade' in r_ctx.stdout:
+            return (True, "facade-closure")
+        # Also skip if wrapped in begin_transaction — look back 100 lines
+        # (covers entire DELETE/UPDATE block wrapped in transaction)
+        r_tx = run(f'sed -n "{max(1,linenum-100)},{linenum}p" "{filepath}"')
+        if 'begin_transaction' in r_tx.stdout:
+            return (True, "tx-boundary")
+    return (False, None)
+
 for crate in ["executor", "server"]:
     crate_path = f"crates/{crate}/src"
     if not os.path.exists(crate_path):
         continue
     r = run(
-        f'grep -rn "storage.insert\\|storage.update\\|storage.delete\\|memory_storage.insert\\|memory_storage.update\\|memory_storage.delete" "{crate_path}/" --include="*.rs" 2>/dev/null | head -10'
+        f'grep -rn "storage.insert\\|storage.update\\|storage.delete\\|memory_storage.insert\\|memory_storage.update\\|memory_storage.delete" "{crate_path}/" --include="*.rs" 2>/dev/null'
     )
     if r.stdout.strip():
         for line in r.stdout.strip().split("\n"):
-            if line and "fn " not in line.split(":")[1] if ":" in line else True:
+            if not line:
+                continue
+            parts = line.split(":")
+            if len(parts) < 3:
+                continue
+            filepath = parts[0]
+            linenum = int(parts[1])
+            content = ":".join(parts[2:])
+
+            skip, reason = should_skip(filepath, linenum, content)
+            if skip:
+                skip_reasons[line] = reason
+            else:
                 violations.append(line)
 
+# Separate real violations from skipped
+skipped = skip_reasons
+print(f"  Skipped: {len(skipped)} (test/batch/facade/harness)")
+print(f"  Real violations: {len(violations)}")
+
 if violations:
-    log_drift(f"SGL-005: TX-002 — {len(violations)} potential storage bypasses (AV-001~AV-007 legacy)")
-    for v in violations[:5]:
+    log_drift(f"SGL-005: TX-002 — {len(violations)} production path storage bypasses (AV-001~AV-007)")
+    for v in violations[:10]:
         print(f"    {v}")
 else:
-    log_pass("SGL-005: No obvious storage bypasses in executor/server crates")
-
+    log_pass("SGL-005: No production path storage bypasses in executor/server crates")
 # ============================================================================
 # Summary
 # ============================================================================
