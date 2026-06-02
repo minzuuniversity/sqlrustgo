@@ -130,10 +130,7 @@ fn vtu_p03_predicate_nested_3_levels() {
 fn vtu_p04_predicate_all_matches_anything() {
     let pred = PredicateIR::All;
     let ti = user_table();
-    assert!(pred.evaluate(
-        &[Value::Integer(1), Value::Integer(20), Value::Null],
-        &ti
-    ));
+    assert!(pred.evaluate(&[Value::Integer(1), Value::Integer(20), Value::Null], &ti));
     assert!(pred.evaluate(&[], &ti));
 }
 
@@ -153,7 +150,11 @@ fn vtu_p06_predicate_type_coercion_int_to_text_observed() {
     });
     let ti = user_table();
     let _ = pred.evaluate(
-        &[Value::Integer(1), Value::Integer(20), Value::Text("x".into())],
+        &[
+            Value::Integer(1),
+            Value::Integer(20),
+            Value::Text("x".into()),
+        ],
         &ti,
     );
 }
@@ -325,7 +326,10 @@ fn vtu_p15_is_not_null_predicate_inverse_of_is_null() {
     let is_null = PredicateIR::Expr(ExprIR::IsNull(Box::new(ExprIR::Column("x".into()))));
     let is_not_null = PredicateIR::Expr(ExprIR::IsNotNull(Box::new(ExprIR::Column("x".into()))));
     let row = vec![Value::Integer(20)];
-    assert_eq!(is_null.evaluate(&row, &ti), !is_not_null.evaluate(&row, &ti));
+    assert_eq!(
+        is_null.evaluate(&row, &ti),
+        !is_not_null.evaluate(&row, &ti)
+    );
 }
 
 #[test]
