@@ -117,6 +117,20 @@ impl<S: StorageEngine, T: WalManager> WalStorage<S, T> {
         bytes
     }
 
+    pub(crate) fn updates_to_bytes(updates: &[(usize, Value)]) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(&(updates.len() as u32).to_le_bytes());
+        for (col_idx, value) in updates {
+            bytes.extend_from_slice(&(*col_idx as u32).to_le_bytes());
+            bytes.extend_from_slice(&Self::record_to_bytes(std::slice::from_ref(value)));
+        }
+        bytes
+    }
+
+    pub(crate) fn filters_to_bytes(filters: &[Value]) -> Vec<u8> {
+        Self::record_to_bytes(filters)
+    }
+
     fn row_matches_filter(row: &[Value], filters: &[Value]) -> bool {
         if filters.is_empty() {
             return true;
