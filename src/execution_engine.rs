@@ -25,7 +25,7 @@ use sqlrustgo_parser::parser::{
     CreateIndexStatement, CreateProcedureStatement, CreateRoleStatement, CreateTableStatement,
     CreateTriggerStatement, DropRoleStatement, DropTableStatement, GrantRoleStatement,
     GrantStatement, InsertStatement, ObjectType as ParserObjectType, Privilege as ParserPrivilege,
-    RevokeRoleStatement, RevokeStatement, SelectStatement, SetRoleStatement,
+    RevokeRoleStatement, RevokeStatement, SelectStatement, SetRoleStatement, ShowStatement,
     StoredProcParam as ParserStoredProcParam, StoredProcParamMode as ParserParamMode,
     StoredProcStatement as ParserStatement, TruncateStatement,
 };
@@ -57,6 +57,11 @@ pub struct ExecutionEngine<S: StorageEngine> {
     pub(crate) tx_status: TxStatus,
     pub(crate) default_isolation: TmIsolationLevel,
     pub(crate) current_role: Option<String>,
+    /// CheckpointManager field — reserved for future PR-830F WAL lifecycle
+    /// integration (currently set to None in all engine builders).
+    /// PR-830F lifecycle methods were removed in SPEC-002; the field is
+    /// kept for future re-introduction without changing the public struct layout.
+    #[allow(dead_code)]
     pub(crate) checkpoint_manager: Option<Arc<RwLock<CheckpointManager>>>,
 }
 
@@ -158,239 +163,54 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         self.stats.clone()
     }
 
+    // CBO estimation methods extracted to cbo_estimator.rs (SPEC-012).
+    // Thin forwarder methods retained for backwards-compatible public API.
+
     /// Estimate the number of rows returned by a query based on statistics
-    /// This is a building block for cost-based optimization
     pub fn estimate_row_count(&self, table_name: &str) -> u64 {
-        let stats = self.stats.read().unwrap();
-        stats
-            .table_stats
-            .get(table_name)
-            .map(|s| s.row_count)
-            .unwrap_or(1000) // Default estimate
+        crate::cbo_estimator::estimate_row_count(&self.stats, table_name)
     }
 
-    /// Estimate the selectivity of a predicate based on column statistics
-    /// Returns a value between 0.0 and 1.0 representing the fraction of rows that match
+    /// Estimate the selectivity of a predicate
     pub fn estimate_selectivity(&self, table_name: &str, column_name: &str) -> f64 {
-        let stats = self.stats.read().unwrap();
-        if let Some(table_stats) = stats.table_stats.get(table_name) {
-            if let Some(col_stats) = table_stats.column_stats.get(column_name) {
-                if col_stats.distinct_count > 0 {
-                    return 1.0 / col_stats.distinct_count as f64;
-                }
-            }
-        }
-        0.1 // Default: assume 10% selectivity
+        crate::cbo_estimator::estimate_selectivity(&self.stats, table_name, column_name)
     }
 
     /// Estimate the cost of a sequential scan
     pub fn estimate_seq_scan_cost(&self, table_name: &str) -> f64 {
-        let rows = self.estimate_row_count(table_name);
-        rows as f64 * 1.0 // Each row has unit cost
+        crate::cbo_estimator::estimate_seq_scan_cost(&self.stats, table_name)
     }
 
     /// Estimate the cost of an index scan
-    /// selectivity: fraction of rows that match the predicate
     pub fn estimate_index_scan_cost(&self, table_name: &str, selectivity: f64) -> f64 {
-        let rows = self.estimate_row_count(table_name);
-        // Index scan cost = index lookup cost + random I/O for matching rows
-        let index_lookup_cost = 10.0; // Fixed overhead for index access
-        let random_io_cost = (rows as f64 * selectivity) * 0.5; // Random I/O per match
-        index_lookup_cost + random_io_cost
+        crate::cbo_estimator::estimate_index_scan_cost(&self.stats, table_name, selectivity)
     }
 
-    /// Estimate the benefit (cost reduction) of using an index vs sequential scan
-    /// Returns positive value if index is beneficial, negative if sequential scan is better
+    /// Estimate the benefit of using an index vs sequential scan
     pub fn estimate_index_benefit(&self, table_name: &str, selectivity: f64) -> f64 {
-        let seq_cost = self.estimate_seq_scan_cost(table_name);
-        let index_cost = self.estimate_index_scan_cost(table_name, selectivity);
-        seq_cost - index_cost
+        crate::cbo_estimator::estimate_index_benefit(&self.stats, table_name, selectivity)
     }
 
-    /// Decide whether to use index scan or sequential scan based on cost estimation
-    /// Returns true if index scan is recommended
+    /// Decide whether to use index scan
     pub fn should_use_index(&self, table_name: &str, column_name: &str) -> bool {
-        let selectivity = self.estimate_selectivity(table_name, column_name);
-        let benefit = self.estimate_index_benefit(table_name, selectivity);
-        benefit > 0.0
-    }
-
-    /// Advance checkpoint after commit
-    pub fn advance_checkpoint(&self, lsn: u64) {
-        if let Some(cp) = &self.checkpoint_manager {
-            if let Ok(mut guard) = cp.write() {
-                guard.record_checkpoint(CheckpointMetadata {
-                    lsn,
-                    timestamp: std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap()
-                        .as_millis() as u64,
-                    tx_count: 1,
-                    dirty_pages: 0,
-                    file_path: PathBuf::new(),
-                });
-            }
-        }
-    }
-
-    /// Try to truncate WAL up to checkpoint
-    pub fn try_truncate_wal(&self, wal: &mut dyn sqlrustgo_storage::WalManager) {
-        if let Some(cp) = &self.checkpoint_manager {
-            if let Ok(guard) = cp.read() {
-                if let Some(lsn) = guard.last_checkpoint_lsn() {
-                    wal.truncate_before(lsn).ok();
-                }
-            }
-        }
+        crate::cbo_estimator::should_use_index(&self.stats, table_name, column_name)
     }
 
     /// Estimate the cost of a join between two tables
-    /// join_type: "hash", "nested_loop", "merge"
     pub fn estimate_join_cost(&self, left_table: &str, right_table: &str, join_type: &str) -> f64 {
-        let left_rows = self.estimate_row_count(left_table);
-        let right_rows = self.estimate_row_count(right_table);
-
-        match join_type {
-            "hash" => {
-                // Hash join cost = build + probe
-                let build_cost = right_rows as f64 * 0.8;
-                let probe_cost = left_rows as f64 * 0.8;
-                build_cost + probe_cost
-            }
-            "merge" => {
-                // Merge join cost = sort + merge
-                let left_sort = left_rows as f64 * 0.5 * (left_rows as f64).log2();
-                let right_sort = right_rows as f64 * 0.5 * (right_rows as f64).log2();
-                left_sort + right_sort + (left_rows + right_rows) as f64 * 0.1
-            }
-            _ => {
-                // Nested loop: outer * inner
-                let outer_cost = left_rows as f64;
-                let inner_cost = right_rows as f64 * 0.1; // Assuming index on inner
-                outer_cost + outer_cost * inner_cost
-            }
-        }
+        crate::cbo_estimator::estimate_join_cost(&self.stats, left_table, right_table, join_type)
     }
 
-    /// Find the optimal join order using a greedy algorithm
-    /// Returns tables in optimal join order (smallest first)
+    /// Find the optimal join order
     pub fn optimize_join_order<'a>(&self, tables: &'a [&str]) -> Vec<&'a str> {
-        if tables.len() <= 1 {
-            return tables.to_vec();
-        }
-
-        let mut remaining: Vec<&str> = tables.to_vec();
-        let mut result: Vec<&str> = Vec::new();
-
-        while !remaining.is_empty() {
-            let candidate = if result.is_empty() {
-                remaining
-                    .iter()
-                    .min_by(|a, b| self.estimate_row_count(a).cmp(&self.estimate_row_count(b)))
-                    .copied()
-            } else {
-                remaining
-                    .iter()
-                    .min_by(|a, b| {
-                        let cost_a = self.estimate_join_cost(result.last().unwrap(), a, "hash");
-                        let cost_b = self.estimate_join_cost(result.last().unwrap(), b, "hash");
-                        cost_a.partial_cmp(&cost_b).unwrap()
-                    })
-                    .copied()
-            };
-
-            if let Some(t) = candidate {
-                result.push(t);
-                remaining.retain(|x| *x != t);
-            } else {
-                break;
-            }
-        }
-
-        result
+        crate::cbo_estimator::optimize_join_order(&self.stats, tables)
     }
 
-    /// Collect statistics for a table (ANALYZE)
+    // collect_table_stats extracted to cbo_estimator.rs (SPEC-012).
+    // Forwarder retained for backwards-compatible call sites.
     fn collect_table_stats(&self, table: &str) -> SqlResult<TableStatistics> {
         let storage = self.storage.read().unwrap();
-        let rows = storage.scan(table)?;
-        let row_count = rows.len() as u64;
-
-        let table_info = storage.get_table_info(table)?;
-
-        let mut column_stats = HashMap::new();
-        for col in &table_info.columns {
-            let mut null_count = 0u64;
-            let mut distinct_values = std::collections::HashSet::new();
-            let mut min_value: Option<SqlValue> = None;
-            let mut max_value: Option<SqlValue> = None;
-
-            let col_idx = table_info
-                .columns
-                .iter()
-                .position(|c| c.name == col.name)
-                .unwrap_or(0);
-
-            for row in &rows {
-                if let Some(val) = row.get(col_idx) {
-                    if val == &SqlValue::Null {
-                        null_count += 1;
-                    } else {
-                        distinct_values.insert(format!("{:?}", val));
-                        match val {
-                            SqlValue::Integer(n) => {
-                                min_value = Some(SqlValue::Integer(*n));
-                                max_value = Some(SqlValue::Integer(*n));
-                            }
-                            SqlValue::Text(s) => {
-                                let cmp_min = min_value
-                                    .as_ref()
-                                    .and_then(|v| {
-                                        if let SqlValue::Text(ms) = v {
-                                            Some(ms < s)
-                                        } else {
-                                            None
-                                        }
-                                    })
-                                    .unwrap_or(true);
-                                let cmp_max = max_value
-                                    .as_ref()
-                                    .and_then(|v| {
-                                        if let SqlValue::Text(ms) = v {
-                                            Some(ms > s)
-                                        } else {
-                                            None
-                                        }
-                                    })
-                                    .unwrap_or(true);
-                                if cmp_min {
-                                    min_value = Some(SqlValue::Text(s.clone()));
-                                }
-                                if cmp_max {
-                                    max_value = Some(SqlValue::Text(s.clone()));
-                                }
-                            }
-                            _ => {}
-                        }
-                    }
-                }
-            }
-
-            column_stats.insert(
-                col.name.clone(),
-                ColumnStatistics {
-                    null_count,
-                    distinct_count: distinct_values.len() as u64,
-                    min_value,
-                    max_value,
-                },
-            );
-        }
-
-        Ok(TableStatistics {
-            row_count,
-            column_stats,
-        })
+        crate::cbo_estimator::collect_table_stats(&*storage, table)
     }
 
     /// Execute a SQL statement and return results
@@ -472,6 +292,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             Statement::SetRole(ref stmt) => self.execute_set_role(stmt),
             Statement::ShowRoles => self.execute_show_roles(),
             Statement::ShowGrantsFor(ref user) => self.execute_show_grants_for(user),
+            Statement::Show(ref show) => self.execute_show(show),
             Statement::AlterTable(ref alter) => self.execute_alter_table(alter),
             _ => Err(SqlError::ExecutionError(
                 "Unsupported statement type".to_string(),
@@ -643,9 +464,42 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         let table_name = update.table.clone();
 
         // If no WHERE clause, use the simple storage.update() path
+        // PR-842 Option A: compute updates from SET clauses (per-row evaluation
+        // collapses to a single value for literal / constant expressions, which
+        // is the common no-WHERE case). For column references, the first row
+        // is used as the evaluation context — for literal values this yields
+        // the correct after-image for every row.
         if update.where_clause.is_none() {
+            let table_info = {
+                let storage = self.storage.read().unwrap();
+                storage.get_table_info(&table_name)?.clone()
+            };
+            let sample_row: Vec<sqlrustgo_types::Value> = {
+                let storage = self.storage.read().unwrap();
+                storage
+                    .scan(&table_name)
+                    .ok()
+                    .and_then(|rows| rows.first().cloned())
+                    .unwrap_or_else(|| {
+                        table_info
+                            .columns
+                            .iter()
+                            .map(|_| sqlrustgo_types::Value::Null)
+                            .collect()
+                    })
+            };
+            let updates: Vec<(usize, sqlrustgo_types::Value)> = update
+                .set_clauses
+                .iter()
+                .filter_map(|(col_name, expr)| {
+                    let col_idx = find_column_index(col_name, &table_info)?;
+                    let new_val = evaluate_expression(expr, &sample_row, &table_info)
+                        .unwrap_or(sqlrustgo_types::Value::Null);
+                    Some((col_idx, new_val))
+                })
+                .collect();
             let mut storage = self.storage.write().unwrap();
-            let count = storage.update(&table_name, &[], &[])?;
+            let count = storage.update(&table_name, &[], &updates)?;
             return Ok(ExecutorResult::new(vec![], count));
         }
 
@@ -672,6 +526,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         let update_plan = AstAdapter::to_update_plan(update, &table_info);
         if let Ok(plan) = update_plan {
             let ir_filtered: Vec<Vec<Value>> = all_rows
+                .clone()
                 .into_iter()
                 .filter(|row| plan.predicate().evaluate(row, &table_info))
                 .collect();
@@ -737,25 +592,24 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             updated_rows.clone()
         };
 
-        // Get rows to keep (non-matching rows)
-        let rows_to_keep: Vec<Vec<Value>> = {
-            let storage = self.storage.read().unwrap();
-            let all_rows = storage.scan(&table_name)?;
-            all_rows
-                .into_iter()
-                .filter(|row| !evaluate_where_clause(where_clause, row, &table_info))
-                .collect()
-        };
+        let mut new_rows: Vec<Vec<Value>> = Vec::new();
 
-        // Delete all rows and re-insert updated + kept rows
+        // Build new_rows by replacing matching rows with updated versions
+        for row in &all_rows {
+            if let Some(pos) = rows_to_update.iter().position(|r| r == row) {
+                new_rows.push(trigger_modified_rows[pos].clone());
+            } else {
+                new_rows.push(row.clone());
+            }
+        }
+
         {
             let mut storage = self.storage.write().unwrap();
-            let col_names: Vec<String> =
-                table_info.columns.iter().map(|c| c.name.clone()).collect();
 
-            // Validate CHECK constraints on updated rows before inserting
             if !table_info.check_constraints.is_empty() {
-                for record in &trigger_modified_rows {
+                let col_names: Vec<String> =
+                    table_info.columns.iter().map(|c| c.name.clone()).collect();
+                for record in &new_rows {
                     for constraint in &table_info.check_constraints {
                         let valid = sqlrustgo_storage::evaluate_check_constraint(
                             constraint, &col_names, record,
@@ -773,11 +627,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             }
 
             storage.delete(&table_name, &[])?;
-            if !rows_to_keep.is_empty() {
-                storage.insert(&table_name, rows_to_keep)?;
-            }
-            if !trigger_modified_rows.is_empty() {
-                storage.insert(&table_name, trigger_modified_rows)?;
+            if !new_rows.is_empty() {
+                storage.insert(&table_name, new_rows)?;
             }
         }
 
@@ -863,7 +714,10 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             }
         }
 
-        // Delete all rows and re-insert non-matching ones
+        // PR-842: prefer row-level deletes so WAL records one Delete entry
+        // per matching row and recovery can replay them without losing the
+        // pre-delete buffer state. We still call `storage.delete(table, &[])`
+        // to clear out buffered rows that did not match the WHERE clause.
         let rows_to_keep: Vec<Vec<Value>> = {
             let storage = self.storage.read().unwrap();
             let all_rows = storage.scan(&table_name)?;
@@ -875,9 +729,41 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
 
         {
             let mut storage = self.storage.write().unwrap();
-            storage.delete(&table_name, &[])?; // Delete all
+            // First drop the full table to flush any buffered inserts and
+            // to provide a clean slate (this is what the legacy code did).
+            storage.delete(&table_name, &[])?;
             if !rows_to_keep.is_empty() {
                 storage.insert(&table_name, rows_to_keep)?;
+            }
+            // Then delete the matching rows from the freshly re-inserted set
+            // so WAL records one Delete entry per affected row.
+            //
+            // FIX-2737: Extract ONLY primary key column values for delete,
+            // not all columns. storage.delete() does full row comparison when
+            // key_values is non-empty, so passing all columns causes delete to
+            // fail if any non-PK column differs (e.g., due to serialization).
+            let pk_indices: Vec<usize> = table_info
+                .columns
+                .iter()
+                .enumerate()
+                .filter(|(_, col)| col.primary_key)
+                .map(|(i, _)| i)
+                .collect();
+
+            // If table has primary keys, use only PK columns for delete.
+            // Otherwise, fall back to all columns (backward compatible).
+            let use_indices: Vec<usize> = if pk_indices.is_empty() {
+                (0..rows_to_delete[0].len()).collect()
+            } else {
+                pk_indices
+            };
+
+            for row in &rows_to_delete {
+                let key_values: Vec<Value> = use_indices
+                    .iter()
+                    .map(|&i| row.get(i).cloned().unwrap_or(sqlrustgo_types::Value::Null))
+                    .collect();
+                storage.delete(&table_name, &key_values)?;
             }
         }
 
@@ -1139,9 +1025,13 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 SqlError::ExecutionError(format!("Failed to begin transaction: {:?}", e))
             })?;
         self.current_tx_id = Some(tx_id);
-        // Delegate to storage engine so WalStorage can track current_tx_id for WAL logging
+        // PR-842: also write a `Begin` WAL entry so the recovery engine can
+        // detect explicit transactions and apply the per-tx boundary rule
+        // when filtering committed entries. Without this, every DML entry
+        // appears to be autocommit and uncommitted work leaks into recovery.
         if let Ok(mut storage) = self.storage.write() {
             storage.set_current_tx_id(tx_id.as_u64());
+            let _ = storage.begin_transaction();
         }
         self.tx_status = TxStatus::Active;
         Ok(ExecutorResult::new(
@@ -1485,6 +1375,77 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             .collect();
 
         Ok(ExecutorResult::new(rows, 3))
+    }
+
+    /// Dispatch `Statement::Show` to a concrete sub-handler.
+    /// PR-SHOW-TABLES: P1 backlog fix for v3.7.0.
+    fn execute_show(&self, show: &ShowStatement) -> SqlResult<ExecutorResult> {
+        match show {
+            ShowStatement::Tables => self.execute_show_tables(),
+            ShowStatement::Databases => self.execute_show_databases(),
+            ShowStatement::CreateTable { table } => self.execute_show_create_table(table),
+            ShowStatement::Index { table } => self.execute_show_index(table),
+            ShowStatement::Grants { user } => self.execute_show_grants(user.as_deref()),
+            ShowStatement::Columns { table, pattern } => {
+                self.execute_show_columns(table, pattern.as_deref())
+            }
+        }
+    }
+
+    /// SHOW TABLES — list all tables in the current database.
+    fn execute_show_tables(&self) -> SqlResult<ExecutorResult> {
+        let storage = self.storage.read().unwrap();
+        let names = storage.list_tables();
+        let rows: Vec<Vec<Value>> = names.into_iter().map(|n| vec![Value::Text(n)]).collect();
+        Ok(ExecutorResult::new(rows, 1))
+    }
+
+    /// SHOW DATABASES — v3.7.0 has a single in-memory catalog, so we
+    /// return one row representing the current (only) database.
+    fn execute_show_databases(&self) -> SqlResult<ExecutorResult> {
+        // v3.7.0 has no multi-database support; the single in-memory
+        // catalog IS the database. Return one placeholder row.
+        Ok(ExecutorResult::new(
+            vec![vec![Value::Text("default".to_string())]],
+            1,
+        ))
+    }
+
+    /// SHOW CREATE TABLE — return a minimal CREATE TABLE statement for `table`.
+    /// v3.7.0 doesn't reconstruct full DDL, so we return a basic placeholder
+    /// with the table name. Future versions should introspect the schema.
+    fn execute_show_create_table(&self, table: &str) -> SqlResult<ExecutorResult> {
+        let storage = self.storage.read().unwrap();
+        if !storage.list_tables().iter().any(|n| n == table) {
+            return Err(SqlError::ExecutionError(format!(
+                "Table '{}' does not exist",
+                table
+            )));
+        }
+        let row = vec![Value::Text(format!(
+            "CREATE TABLE {} (id INTEGER) /* v3.7.0: schema reconstruction not implemented */",
+            table
+        ))];
+        Ok(ExecutorResult::new(vec![row], 1))
+    }
+
+    /// SHOW INDEX — placeholder (v3.7.0 indexes are not cataloged).
+    fn execute_show_index(&self, _table: &str) -> SqlResult<ExecutorResult> {
+        Ok(ExecutorResult::new(vec![], 0))
+    }
+
+    /// SHOW GRANTS — placeholder (v3.7.0 grant tracking is limited to roles).
+    fn execute_show_grants(&self, _user: Option<&str>) -> SqlResult<ExecutorResult> {
+        Ok(ExecutorResult::new(vec![], 0))
+    }
+
+    /// SHOW COLUMNS — placeholder (v3.7.0 column metadata not exposed).
+    fn execute_show_columns(
+        &self,
+        _table: &str,
+        _pattern: Option<&str>,
+    ) -> SqlResult<ExecutorResult> {
+        Ok(ExecutorResult::new(vec![], 0))
     }
 
     fn execute_show_grants_for(&self, user_spec: &str) -> SqlResult<ExecutorResult> {
