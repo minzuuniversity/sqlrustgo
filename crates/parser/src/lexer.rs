@@ -222,6 +222,9 @@ impl<'a> Lexer<'a> {
                     "UPDATE" => Token::Update,
                     "SET" => Token::Set,
                     "DELETE" => Token::Delete,
+                    "MERGE" => Token::Merge,
+                    "USING" => Token::Using,
+                    "MATCHED" => Token::Matched,
                     "CREATE" => Token::Create,
                     "TABLE" => Token::Table,
                     "DROP" => Token::Drop,
@@ -417,6 +420,44 @@ mod tests {
         assert_eq!(tokens[4], Token::Create);
         assert_eq!(tokens[5], Token::Drop);
         assert_eq!(tokens[6], Token::Table);
+    }
+
+    #[test]
+    fn test_merge_keyword_uppercase() {
+        let tokens = Lexer::new("MERGE").tokenize();
+        assert_eq!(tokens[0], Token::Merge);
+    }
+
+    #[test]
+    fn test_merge_keyword_lowercase() {
+        let tokens = Lexer::new("merge").tokenize();
+        assert_eq!(tokens[0], Token::Merge);
+    }
+
+    #[test]
+    fn test_merge_keyword_mixedcase() {
+        let tokens = Lexer::new("Merge").tokenize();
+        assert_eq!(tokens[0], Token::Merge);
+    }
+
+    #[test]
+    fn test_merge_using_when_matched_keywords() {
+        let tokens =
+            Lexer::new("MERGE INTO t USING s ON t.id = s.id WHEN MATCHED THEN UPDATE").tokenize();
+        assert_eq!(tokens[0], Token::Merge);
+        assert_eq!(tokens[1], Token::Into);
+        // tokens[2] = Identifier("t"), tokens[3] = Using, ...
+        assert_eq!(tokens[3], Token::Using);
+        assert_eq!(tokens[5], Token::On);
+        // After "t.id = s.id" comes WHEN
+        let when_pos = tokens
+            .iter()
+            .position(|t| matches!(t, Token::When))
+            .expect("expected WHEN token");
+        assert_eq!(tokens[when_pos], Token::When);
+        assert_eq!(tokens[when_pos + 1], Token::Matched);
+        assert_eq!(tokens[when_pos + 2], Token::Then);
+        assert_eq!(tokens[when_pos + 3], Token::Update);
     }
 
     #[test]
