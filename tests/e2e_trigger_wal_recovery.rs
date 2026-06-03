@@ -197,8 +197,9 @@ fn extract_balance_t1_value(
 ) -> i64 {
     let result = engine.execute(&format!("SELECT value FROM t1 WHERE id = {}", id));
     let rows = result.unwrap().rows;
-    // Column 0 is id, column 1 is value
-    match rows.get(0).and_then(|r| r.get(1)) {
+    // After Sprint 2 SELECT projection, `SELECT value FROM t1` returns a
+    // single column (value), so the row index is 0 (not 1).
+    match rows.get(0).and_then(|r| r.get(0)) {
         Some(sqlrustgo_types::Value::Integer(n)) => *n,
         _ => -1,
     }
