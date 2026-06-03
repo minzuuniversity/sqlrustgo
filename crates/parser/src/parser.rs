@@ -332,6 +332,11 @@ pub struct SelectStatement {
     pub from_subquery: Option<Box<SelectStatement>>,
     pub where_clause: Option<Expression>,
     pub join_clause: Vec<JoinClause>,
+    /// TPC-H Sprint 1c: additional tables from `FROM t1, t2, t3` (after the
+    /// first). The parser auto-rewrites the comma-list form into a chain of
+    /// INNER JOINs using predicates pulled out of the WHERE clause, and
+    /// pushes the resulting JoinClauses into `join_clause`.
+    pub extra_tables: Vec<String>,
     pub aggregates: Vec<AggregateCall>,
     pub group_by: Vec<Expression>,
     pub having: Option<Expression>,
@@ -566,6 +571,80 @@ pub enum Expression {
     CaseWhen(Vec<WhenClause>, Option<Box<Expression>>), // CASE WHEN ... ELSE ... END
     FunctionCall(String, Vec<Expression>),
     WindowCall(WindowCall),
+}
+
+/// Flatten a top-level AND conjunction: `a AND b AND c` -> vec![a, b, c].
+/// If expr is not an AND, returns vec![expr].
+/// TPC-H Sprint 1c: used by the multi-table FROM auto-rewrite to extract
+/// join predicates from the WHERE clause.
+fn flatten_and(expr: &Expression) -> Vec<Expression> {
+    match expr {
+        Expression::BinaryOp(left, op, right) if op.to_uppercase() == "AND" => {
+            let mut v = flatten_and(left);
+            v.extend(flatten_and(right));
+            v
+        }
+        other => vec![other.clone()],
+    }
+}
+
+/// Does the expression reference the given table? Used by TPC-H multi-table
+/// auto-rewrite: "o_orderdate" counts as referencing "orders" because the
+/// table's columns are prefixed with the table name once JOINs combine them.
+/// Also matches explicit qualified references like "orders.o_orderdate".
+fn predicate_references_table(expr: &Expression, table: &str) -> bool {
+    fn visit(e: &Expression, table: &str, found: &mut bool) {
+        if *found {
+            return;
+        }
+        match e {
+            Expression::Identifier(name) => {
+                if let Some((qualifier, _col)) = name.split_once('.') {
+                    if qualifier.eq_ignore_ascii_case(table) {
+                        *found = true;
+                    }
+                } else {
+                    // Heuristic: identifier starts with the table's 1-char prefix
+                    // followed by '_' (TPC-H naming convention: orders -> o_,
+                    // customer -> c_, lineitem -> l_, nation -> n_, etc.).
+                    if table.len() >= 2 {
+                        let tprefix = table[..1].to_lowercase();
+                        let lower = name.to_lowercase();
+                        if lower.starts_with(&tprefix)
+                            && name.len() > 1
+                            && name.as_bytes()[1] == b'_'
+                        {
+                            *found = true;
+                        }
+                    }
+                }
+            }
+            Expression::BinaryOp(l, _, r) => {
+                visit(l, table, found);
+                visit(r, table, found);
+            }
+            Expression::IsNull(inner) | Expression::IsNotNull(inner) => {
+                visit(inner, table, found);
+            }
+            Expression::UnaryOp(_, inner) => {
+                visit(inner, table, found);
+            }
+            Expression::FunctionCall(_, args) => {
+                for a in args {
+                    visit(a, table, found);
+                }
+            }
+            Expression::Aggregate(agg) => {
+                for a in &agg.args {
+                    visit(a, table, found);
+                }
+            }
+            _ => {}
+        }
+    }
+    let mut found = false;
+    visit(expr, table, &mut found);
+    found
 }
 
 /// SQL Parser
@@ -1667,7 +1746,9 @@ impl Parser {
         // Handle SELECT without FROM (e.g., SELECT NULL, SELECT 1, SELECT 'hello')
         // Also handle FROM (subquery) AS alias (TPC-H Q7/Q8/Q9)
         // RParen means this is a subquery whose caller (parent SELECT) will consume the RParen.
-        let (table, from_subquery) = match self.current() {
+        // TPC-H Sprint 1c: also returns extra_tables (multi-table `FROM t1, t2, t3`
+        // list, rest after first).
+        let (table, from_subquery, extra_tables) = match self.current() {
             Some(Token::From) => {
                 self.next(); // consume FROM
                 if matches!(self.current(), Some(Token::LParen)) {
@@ -1683,25 +1764,22 @@ impl Parser {
                         Some(t) => return Err(format!("Expected alias for subquery, got {:?}", t)),
                         None => return Err("Expected alias for subquery".to_string()),
                     };
-                    (alias, Some(Box::new(subquery)))
+                    (alias, Some(Box::new(subquery)), Vec::new())
                 } else {
-                    // FROM table_list — accept multi-table comma-separated list
-                    // (e.g. `FROM t1, t2, t3 WHERE ...`). Consume table names and
-                    // optional aliases until we hit a SELECT clause terminator
-                    // (WHERE/GROUP/ORDER/LIMIT/OFFSET/RPAREN/EOF).
+                    // FROM table_list — TPC-H Sprint 1c: collect table names.
+                    // First goes into `table`; the rest into `extra_tables` for
+                    // later auto-rewrite into chain JOINs.
                     let first_table = match self.next() {
                         Some(Token::Identifier(name)) => name,
                         Some(t) => return Err(format!("Expected table name, got {:?}", t)),
                         None => return Err("Expected table name".to_string()),
                     };
-                    let mut table = first_table.clone();
-                    // Consume remaining tables separated by commas.
-                    // Each may be followed by an optional alias.
+                    let mut tables: Vec<String> = vec![first_table];
                     while matches!(self.current(), Some(Token::Comma)) {
                         self.next(); // consume comma
                         match self.next() {
                             Some(Token::Identifier(name)) => {
-                                table = format!("{}, {}", table, name);
+                                tables.push(name);
                             }
                             Some(t) => {
                                 return Err(format!(
@@ -1712,9 +1790,7 @@ impl Parser {
                             None => return Err("Expected table name after comma".to_string()),
                         }
                     }
-                    // Consume optional alias of the LAST table (e.g. `FROM t1, t2 alias`
-                    // is uncommon but accepted). After this, current should be at a
-                    // clause terminator.
+                    // Consume optional alias of the LAST table (e.g. `FROM t1, t2 alias`).
                     if matches!(self.current(), Some(Token::Identifier(_)))
                         && !matches!(
                             self.current(),
@@ -1726,13 +1802,14 @@ impl Parser {
                                 | Some(Token::Eof)
                         )
                     {
-                        // This is an alias (e.g., `FROM t1, t2 alias`); skip it.
                         self.next();
                     }
-                    (table, None)
+                    let first = tables[0].clone();
+                    let rest: Vec<String> = tables[1..].to_vec();
+                    (first, None, rest)
                 }
             }
-            Some(Token::Eof) | None | Some(Token::RParen) => (String::new(), None),
+            Some(Token::Eof) | None | Some(Token::RParen) => (String::new(), None, Vec::new()),
             Some(t) => return Err(format!("Expected FROM or end of query, got {:?}", t)),
         };
 
@@ -1766,11 +1843,81 @@ impl Parser {
             join_clause.push(self.parse_join_clause()?);
         }
 
+        // TPC-H Sprint 1c: collect additional chained JOINs (JOIN ... JOIN ...).
+        // Each is parsed with parse_join_clause (which consumes one JOIN block).
+        // Stops at WHERE / GROUP / ORDER / LIMIT / OFFSET / RPAREN / EOF.
+        let mut join_chain: Vec<JoinClause> = Vec::new();
+        while matches!(
+            self.current(),
+            Some(Token::Join)
+                | Some(Token::Left)
+                | Some(Token::Right)
+                | Some(Token::Inner)
+                | Some(Token::Full)
+                | Some(Token::Cross)
+        ) {
+            join_chain.push(self.parse_join_clause()?);
+        }
+
         let where_clause = if matches!(self.current(), Some(Token::Where)) {
             self.next();
             Some(self.parse_expression()?)
         } else {
             None
+        };
+
+        // TPC-H Sprint 1c: auto-rewrite `FROM t1, t2, t3 WHERE p1 AND p2 AND ...`
+        // into `FROM t1 JOIN t2 ON p_extracted JOIN t3 ON p_extracted WHERE p_rest`.
+        // For each extra table, find an equality predicate in WHERE that joins
+        // the new table to either the first table or a previously-joined table,
+        // and move it into an ON clause on the new JOIN.
+        let extra_tables = if !extra_tables.is_empty() {
+            // We re-build join_chain (instead of join_clause) since the
+            // existing join_clause is None for the multi-table form.
+            if let Some(ref wc) = where_clause {
+                let mut chain: Vec<JoinClause> = Vec::new();
+                let mut remaining: Vec<Expression> = Vec::new();
+                let conj = flatten_and(wc);
+                for t in &extra_tables {
+                    let mut found: Option<Expression> = None;
+                    let mut rest: Vec<Expression> = Vec::new();
+                    for p in conj.iter().chain(remaining.iter()) {
+                        if found.is_none() && predicate_references_table(p, t) {
+                            found = Some(p.clone());
+                        } else {
+                            rest.push(p.clone());
+                        }
+                    }
+                    let on = found.unwrap_or(Expression::Literal("true".to_string()));
+                    chain.push(JoinClause {
+                        join_type: JoinType::Inner,
+                        table: t.clone(),
+                        alias: None,
+                        on_clause: on,
+                    });
+                    remaining = rest;
+                }
+                // Append the chain to the existing join_clause Vec (which is
+                // already a Vec<JoinClause> on develop/v3.8.0). Pre-existing
+                // joins (if any) take precedence; the auto-rewritten chain
+                // extends them.
+                join_clause.extend(chain);
+            } else {
+                // No WHERE — pure cartesian joins (ON=true).
+                let cart: Vec<JoinClause> = extra_tables
+                    .iter()
+                    .map(|t| JoinClause {
+                        join_type: JoinType::Inner,
+                        table: t.clone(),
+                        alias: None,
+                        on_clause: Expression::Literal("true".to_string()),
+                    })
+                    .collect();
+                join_clause.extend(cart);
+            }
+            Vec::new() // consumed
+        } else {
+            extra_tables
         };
 
         // Parse GROUP BY clause
@@ -1855,6 +2002,7 @@ impl Parser {
             from_subquery,
             where_clause,
             join_clause,
+            extra_tables,
             aggregates,
             group_by,
             having,
@@ -1933,10 +2081,18 @@ impl Parser {
             }
             Some(Token::Left) => {
                 self.next();
+                // Consume optional OUTER keyword (e.g. `LEFT OUTER JOIN`).
+                if matches!(self.current(), Some(Token::Outer)) {
+                    self.next();
+                }
                 JoinType::Left
             }
             Some(Token::Right) => {
                 self.next();
+                // Consume optional OUTER keyword (e.g. `RIGHT OUTER JOIN`).
+                if matches!(self.current(), Some(Token::Outer)) {
+                    self.next();
+                }
                 JoinType::Right
             }
             Some(Token::Full) => {
