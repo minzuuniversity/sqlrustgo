@@ -140,8 +140,12 @@ mod tests {
                 table: "t".into(),
                 op: super::super::DmlOperation::Insert,
             },
-            "Sql" => ExecutionEvent::SqlReceived { sql: "SELECT 1".into() },
-            _ => ExecutionEvent::SqlReceived { sql: "SELECT 1".into() },
+            "Sql" => ExecutionEvent::SqlReceived {
+                sql: "SELECT 1".into(),
+            },
+            _ => ExecutionEvent::SqlReceived {
+                sql: "SELECT 1".into(),
+            },
         }
     }
 
