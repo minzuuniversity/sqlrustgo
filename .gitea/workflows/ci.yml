@@ -119,6 +119,22 @@ jobs:
           cd repo
           mkdir -p gate/evidence_binding_out
           bash scripts/gate/check_evidence_binding.sh "${version}" "gate/evidence_binding_out/" 2>&1 | tee evidence_binding.log
+      - name: Anti-Fabrication Check (AFP v3.8.0+)
+        run: |
+          cd repo
+          chmod +x scripts/gate/check_anti_fabrication.sh
+          bash scripts/gate/check_anti_fabrication.sh 2>&1 | tee anti_fabrication.log
+      - name: Doc Completeness Check (v3.8.0 mandatory docs)
+        run: |
+          cd repo
+          chmod +x scripts/gate/check_docs_consistency.sh
+          bash scripts/gate/check_docs_consistency.sh 2>&1 | tee docs_consistency.log
+      - name: Doc Completeness Check (dedicated, v3.8.0+) [Issue #2941 supplement]
+        run: |
+          cd repo
+          chmod +x scripts/gate/check_document_completeness.sh
+          mkdir -p artifacts/gate/v3.8.0/document_completeness
+          bash scripts/gate/check_document_completeness.sh v3.8.0 artifacts/gate/v3.8.0/document_completeness/ 2>&1 | tee document_completeness.log
       - name: Alpha Gate (SPEC-021)
         run: |
           cd repo
@@ -144,14 +160,16 @@ jobs:
           GATE_FAIL=$(grep -c '\[FAIL\]' gate_report.log 2>/dev/null || echo "0")
           COVERAGE_FAIL=$(grep -c 'FAIL\|failed' coverage_report.log 2>/dev/null || echo "0")
           EVIDENCE_FAIL=$(grep -c 'FAIL\|failed\|error' evidence_binding.log 2>/dev/null || echo "0")
+          AFP_FAIL=$(grep -c 'FAIL\|failed\|error' anti_fabrication.log 2>/dev/null || echo "0")
+          DOCS_FAIL=$(grep -c 'FAIL\|failed\|error' docs_consistency.log 2>/dev/null || echo "0")
           ALPHA_FAIL=$(grep -c '❌ FAIL' alpha_gate.log 2>/dev/null || echo "0")
           RC_GA_FAIL=$(grep -c '❌ FAIL\|blocker' rc_ga_gate.log 2>/dev/null || echo "0")
           AUDIT_FAIL=$(grep -c 'RESULT: FAIL' audit_testing.log 2>/dev/null || echo "0")
           D9_FAIL=$(grep -c '❌ FAIL\|exit 1' full_gate_verification.log 2>/dev/null || echo "0")
           echo "Gate: failed=$GATE_FAIL coverage=$COVERAGE_FAIL evidence=$EVIDENCE_FAIL alpha_gate=$ALPHA_FAIL rc_ga=$RC_GA_FAIL audit=$AUDIT_FAIL d9=$D9_FAIL"
           # SPEC-021: Evidence binding FAIL must block merge (Anti-Fabrication)
-          if [ "$GATE_FAIL" -gt 0 ] || [ "$COVERAGE_FAIL" -gt 0 ] || [ "$EVIDENCE_FAIL" -gt 0 ] || [ "$ALPHA_FAIL" -gt 0 ] || [ "$RC_GA_FAIL" -gt 0 ] || [ "$AUDIT_FAIL" -gt 0 ] || [ "$D9_FAIL" -gt 0 ]; then
-            echo "L1 gate failed (incl. evidence binding / alpha gate / rc-ga gate / audit_testing / D9 full gate)"
+          if [ "$GATE_FAIL" -gt 0 ] || [ "$COVERAGE_FAIL" -gt 0 ] || [ "$EVIDENCE_FAIL" -gt 0 ] || [ "$AFP_FAIL" -gt 0 ] || [ "$DOCS_FAIL" -gt 0 ] || [ "$ALPHA_FAIL" -gt 0 ] || [ "$RC_GA_FAIL" -gt 0 ] || [ "$AUDIT_FAIL" -gt 0 ] || [ "$D9_FAIL" -gt 0 ]; then
+            echo "L1 gate failed (incl. AFP / doc completeness / evidence binding / alpha gate / rc-ga gate / audit_testing / D9 full gate)"
             exit 1
           fi
           echo "All postcheck gates passed"
