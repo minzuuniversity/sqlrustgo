@@ -1901,9 +1901,13 @@ impl Parser {
                             Expression::Identifier(name)
                         };
                         // Check for arithmetic in aggregate arg: SUM(a * b), SUM(a + b)
-                        let expr = if matches!(self.current(), Some(Token::Star)
-                            | Some(Token::Plus) | Some(Token::Minus) | Some(Token::Slash))
-                        {
+                        let expr = if matches!(
+                            self.current(),
+                            Some(Token::Star)
+                                | Some(Token::Plus)
+                                | Some(Token::Minus)
+                                | Some(Token::Slash)
+                        ) {
                             let op = match self.current() {
                                 Some(Token::Star) => "*",
                                 Some(Token::Plus) => "+",
@@ -4133,7 +4137,7 @@ mod tests {
     }
 
     #[test]
-        #[ignore = "Test deferred (see tracking issue or comment context)"]
+    #[ignore = "Test deferred (see tracking issue or comment context)"]
     fn test_parse_create_with_table_constraint_fk() {
         let result = parse("CREATE TABLE orders (id INTEGER, user_id INTEGER, FOREIGN KEY (user_id) REFERENCES users(id))");
         assert!(result.is_ok());
