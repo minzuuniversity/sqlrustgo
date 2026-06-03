@@ -163,210 +163,54 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         self.stats.clone()
     }
 
+    // CBO estimation methods extracted to cbo_estimator.rs (SPEC-012).
+    // Thin forwarder methods retained for backwards-compatible public API.
+
     /// Estimate the number of rows returned by a query based on statistics
-    /// This is a building block for cost-based optimization
     pub fn estimate_row_count(&self, table_name: &str) -> u64 {
-        let stats = self.stats.read().unwrap();
-        stats
-            .table_stats
-            .get(table_name)
-            .map(|s| s.row_count)
-            .unwrap_or(1000) // Default estimate
+        crate::cbo_estimator::estimate_row_count(&self.stats, table_name)
     }
 
-    /// Estimate the selectivity of a predicate based on column statistics
-    /// Returns a value between 0.0 and 1.0 representing the fraction of rows that match
+    /// Estimate the selectivity of a predicate
     pub fn estimate_selectivity(&self, table_name: &str, column_name: &str) -> f64 {
-        let stats = self.stats.read().unwrap();
-        if let Some(table_stats) = stats.table_stats.get(table_name) {
-            if let Some(col_stats) = table_stats.column_stats.get(column_name) {
-                if col_stats.distinct_count > 0 {
-                    return 1.0 / col_stats.distinct_count as f64;
-                }
-            }
-        }
-        0.1 // Default: assume 10% selectivity
+        crate::cbo_estimator::estimate_selectivity(&self.stats, table_name, column_name)
     }
 
     /// Estimate the cost of a sequential scan
     pub fn estimate_seq_scan_cost(&self, table_name: &str) -> f64 {
-        let rows = self.estimate_row_count(table_name);
-        rows as f64 * 1.0 // Each row has unit cost
+        crate::cbo_estimator::estimate_seq_scan_cost(&self.stats, table_name)
     }
 
     /// Estimate the cost of an index scan
-    /// selectivity: fraction of rows that match the predicate
     pub fn estimate_index_scan_cost(&self, table_name: &str, selectivity: f64) -> f64 {
-        let rows = self.estimate_row_count(table_name);
-        // Index scan cost = index lookup cost + random I/O for matching rows
-        let index_lookup_cost = 10.0; // Fixed overhead for index access
-        let random_io_cost = (rows as f64 * selectivity) * 0.5; // Random I/O per match
-        index_lookup_cost + random_io_cost
+        crate::cbo_estimator::estimate_index_scan_cost(&self.stats, table_name, selectivity)
     }
 
-    /// Estimate the benefit (cost reduction) of using an index vs sequential scan
-    /// Returns positive value if index is beneficial, negative if sequential scan is better
+    /// Estimate the benefit of using an index vs sequential scan
     pub fn estimate_index_benefit(&self, table_name: &str, selectivity: f64) -> f64 {
-        let seq_cost = self.estimate_seq_scan_cost(table_name);
-        let index_cost = self.estimate_index_scan_cost(table_name, selectivity);
-        seq_cost - index_cost
+        crate::cbo_estimator::estimate_index_benefit(&self.stats, table_name, selectivity)
     }
 
-    /// Decide whether to use index scan or sequential scan based on cost estimation
-    /// Returns true if index scan is recommended
+    /// Decide whether to use index scan
     pub fn should_use_index(&self, table_name: &str, column_name: &str) -> bool {
-        let selectivity = self.estimate_selectivity(table_name, column_name);
-        let benefit = self.estimate_index_benefit(table_name, selectivity);
-        benefit > 0.0
+        crate::cbo_estimator::should_use_index(&self.stats, table_name, column_name)
     }
 
     /// Estimate the cost of a join between two tables
-    /// join_type: "hash", "nested_loop", "merge"
     pub fn estimate_join_cost(&self, left_table: &str, right_table: &str, join_type: &str) -> f64 {
-        let left_rows = self.estimate_row_count(left_table);
-        let right_rows = self.estimate_row_count(right_table);
-
-        match join_type {
-            "hash" => {
-                // Hash join cost = build + probe
-                let build_cost = right_rows as f64 * 0.8;
-                let probe_cost = left_rows as f64 * 0.8;
-                build_cost + probe_cost
-            }
-            "merge" => {
-                // Merge join cost = sort + merge
-                let left_sort = left_rows as f64 * 0.5 * (left_rows as f64).log2();
-                let right_sort = right_rows as f64 * 0.5 * (right_rows as f64).log2();
-                left_sort + right_sort + (left_rows + right_rows) as f64 * 0.1
-            }
-            _ => {
-                // Nested loop: outer * inner
-                let outer_cost = left_rows as f64;
-                let inner_cost = right_rows as f64 * 0.1; // Assuming index on inner
-                outer_cost + outer_cost * inner_cost
-            }
-        }
+        crate::cbo_estimator::estimate_join_cost(&self.stats, left_table, right_table, join_type)
     }
 
-    /// Find the optimal join order using a greedy algorithm
-    /// Returns tables in optimal join order (smallest first)
+    /// Find the optimal join order
     pub fn optimize_join_order<'a>(&self, tables: &'a [&str]) -> Vec<&'a str> {
-        if tables.len() <= 1 {
-            return tables.to_vec();
-        }
-
-        let mut remaining: Vec<&str> = tables.to_vec();
-        let mut result: Vec<&str> = Vec::new();
-
-        while !remaining.is_empty() {
-            let candidate = if result.is_empty() {
-                remaining
-                    .iter()
-                    .min_by(|a, b| self.estimate_row_count(a).cmp(&self.estimate_row_count(b)))
-                    .copied()
-            } else {
-                remaining
-                    .iter()
-                    .min_by(|a, b| {
-                        let cost_a = self.estimate_join_cost(result.last().unwrap(), a, "hash");
-                        let cost_b = self.estimate_join_cost(result.last().unwrap(), b, "hash");
-                        cost_a.partial_cmp(&cost_b).unwrap()
-                    })
-                    .copied()
-            };
-
-            if let Some(t) = candidate {
-                result.push(t);
-                remaining.retain(|x| *x != t);
-            } else {
-                break;
-            }
-        }
-
-        result
+        crate::cbo_estimator::optimize_join_order(&self.stats, tables)
     }
 
-    /// Collect statistics for a table (ANALYZE)
+    // collect_table_stats extracted to cbo_estimator.rs (SPEC-012).
+    // Forwarder retained for backwards-compatible call sites.
     fn collect_table_stats(&self, table: &str) -> SqlResult<TableStatistics> {
         let storage = self.storage.read().unwrap();
-        let rows = storage.scan(table)?;
-        let row_count = rows.len() as u64;
-
-        let table_info = storage.get_table_info(table)?;
-
-        let mut column_stats = HashMap::new();
-        for col in &table_info.columns {
-            let mut null_count = 0u64;
-            let mut distinct_values = std::collections::HashSet::new();
-            let mut min_value: Option<SqlValue> = None;
-            let mut max_value: Option<SqlValue> = None;
-
-            let col_idx = table_info
-                .columns
-                .iter()
-                .position(|c| c.name == col.name)
-                .unwrap_or(0);
-
-            for row in &rows {
-                if let Some(val) = row.get(col_idx) {
-                    if val == &SqlValue::Null {
-                        null_count += 1;
-                    } else {
-                        distinct_values.insert(format!("{:?}", val));
-                        match val {
-                            SqlValue::Integer(n) => {
-                                min_value = Some(SqlValue::Integer(*n));
-                                max_value = Some(SqlValue::Integer(*n));
-                            }
-                            SqlValue::Text(s) => {
-                                let cmp_min = min_value
-                                    .as_ref()
-                                    .and_then(|v| {
-                                        if let SqlValue::Text(ms) = v {
-                                            Some(ms < s)
-                                        } else {
-                                            None
-                                        }
-                                    })
-                                    .unwrap_or(true);
-                                let cmp_max = max_value
-                                    .as_ref()
-                                    .and_then(|v| {
-                                        if let SqlValue::Text(ms) = v {
-                                            Some(ms > s)
-                                        } else {
-                                            None
-                                        }
-                                    })
-                                    .unwrap_or(true);
-                                if cmp_min {
-                                    min_value = Some(SqlValue::Text(s.clone()));
-                                }
-                                if cmp_max {
-                                    max_value = Some(SqlValue::Text(s.clone()));
-                                }
-                            }
-                            _ => {}
-                        }
-                    }
-                }
-            }
-
-            column_stats.insert(
-                col.name.clone(),
-                ColumnStatistics {
-                    null_count,
-                    distinct_count: distinct_values.len() as u64,
-                    min_value,
-                    max_value,
-                },
-            );
-        }
-
-        Ok(TableStatistics {
-            row_count,
-            column_stats,
-        })
+        crate::cbo_estimator::collect_table_stats(&*storage, table)
     }
 
     /// Execute a SQL statement and return results
