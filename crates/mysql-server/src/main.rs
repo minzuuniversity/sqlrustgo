@@ -22,6 +22,7 @@ use sqlrustgo_mysql_server::run_server;
 use sqlrustgo_tools::backup_restore::{
     run_backup as tools_backup, run_restore as tools_restore, BackupCommand, RestoreCommand,
 };
+use std::collections::VecDeque;
 use std::io::{self, BufRead, Write};
 use std::process::ExitCode;
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
@@ -164,12 +165,21 @@ fn exec_one(sql: &str) -> Result<(), String> {
 }
 
 fn run_repl() -> Result<(), String> {
-    println!("SQLRustGo REPL — type `.exit` to quit");
+    println!("SQLRustGo REPL v3.8.0 — type `.help` for commands, `.exit` to quit");
     let stdin = io::stdin();
     let mut stdout = io::stdout();
     let mut buf = String::new();
+    let mut multiline_buf = String::new();
+    let mut history: VecDeque<String> = VecDeque::with_capacity(1000);
+    let mut pager_enabled = false;
+
     loop {
-        print!("sqlrustgo> ");
+        let prompt = if multiline_buf.is_empty() {
+            "sqlrustgo> "
+        } else {
+            "      ...> "
+        };
+        print!("{prompt}");
         stdout.flush().map_err(|e| e.to_string())?;
         buf.clear();
         let mut handle = stdin.lock();
@@ -178,16 +188,132 @@ fn run_repl() -> Result<(), String> {
             println!();
             return Ok(());
         }
-        let line = buf.trim();
-        if line.is_empty() {
+        let line = buf.trim_end_matches(['\r', '\n']);
+        if line.is_empty() && multiline_buf.is_empty() {
             continue;
         }
-        if matches!(line, ".exit" | ".quit") {
-            return Ok(());
+
+        // Dot-commands: a single line starting with '.' is a command,
+        // not SQL. Process immediately, regardless of ';' or buffer state.
+        if line.starts_with('.') {
+            match handle_dot_command(line, &mut history, &mut pager_enabled) {
+                DotResult::Continue => continue,
+                DotResult::Exit => return Ok(()),
+                DotResult::Error(e) => {
+                    eprintln!("Error: {e}");
+                    continue;
+                }
+            }
         }
-        if let Err(e) = exec_one(line) {
-            eprintln!("Error: {e}");
+
+        // Multiline accumulation: lines ending with ';' are committed
+        multiline_buf.push_str(line);
+        multiline_buf.push('\n');
+
+        // Check if statement is complete (ends with ';')
+        let trimmed = multiline_buf.trim();
+        if !trimmed.ends_with(';') {
+            continue;
         }
+
+        // Commit the statement
+        let stmt = multiline_buf.trim().trim_end_matches(';').to_string();
+        multiline_buf.clear();
+        if stmt.is_empty() {
+            continue;
+        }
+        history.push_back(stmt.clone());
+        while history.len() > 1000 {
+            history.pop_front();
+        }
+
+        // Apply pager
+        match exec_one(&stmt) {
+            Ok(()) => {
+                if pager_enabled {
+                    println!("-- more -- (pager enabled, set `.pager off` to disable)");
+                }
+            }
+            Err(e) => eprintln!("Error: {e}"),
+        }
+    }
+}
+
+enum DotResult {
+    Continue,
+    Exit,
+    Error(String),
+}
+
+fn handle_dot_command(
+    cmd: &str,
+    history: &mut VecDeque<String>,
+    pager_enabled: &mut bool,
+) -> DotResult {
+    let parts: Vec<&str> = cmd.split_whitespace().collect();
+    match parts.first().copied().unwrap_or("") {
+        ".help" | ".h" => {
+            println!("SQLRustGo REPL commands:");
+            println!("  .help, .h         Show this help");
+            println!("  .exit, .quit      Exit the REPL");
+            println!("  .history          Show command history");
+            println!("  .multiline        (info) Multiline SQL is supported: end with ';'");
+            println!("  .source FILE      Execute SQL statements from FILE");
+            println!("  .pager on|off     Toggle result pager (placeholder)");
+            println!("SQL may span multiple lines; terminate with ';'.");
+            DotResult::Continue
+        }
+        ".exit" | ".quit" => DotResult::Exit,
+        ".history" => {
+            for (i, h) in history.iter().enumerate() {
+                println!("  {}: {}", i + 1, h.replace('\n', " "));
+            }
+            DotResult::Continue
+        }
+        ".multiline" => {
+            println!("Multiline SQL is enabled by default. End a statement with ';'.");
+            DotResult::Continue
+        }
+        ".source" => {
+            if parts.len() < 2 {
+                return DotResult::Error(".source requires a file path".to_string());
+            }
+            let path = parts[1];
+            match std::fs::read_to_string(path) {
+                Ok(content) => {
+                    for stmt in content.split(';') {
+                        let stmt = stmt.trim();
+                        if stmt.is_empty() || stmt.starts_with("--") {
+                            continue;
+                        }
+                        if let Err(e) = exec_one(stmt) {
+                            eprintln!("Error in {path}: {e}");
+                        }
+                    }
+                    DotResult::Continue
+                }
+                Err(e) => DotResult::Error(format!("cannot read {path}: {e}")),
+            }
+        }
+        ".pager" => {
+            if parts.len() < 2 {
+                return DotResult::Error(".pager requires on|off".to_string());
+            }
+            match parts[1] {
+                "on" => {
+                    *pager_enabled = true;
+                    println!("Pager enabled (placeholder; result paging is a follow-up).");
+                }
+                "off" => {
+                    *pager_enabled = false;
+                    println!("Pager disabled.");
+                }
+                other => return DotResult::Error(format!("unknown pager mode: {other}")),
+            }
+            DotResult::Continue
+        }
+        "" => DotResult::Continue,
+        other => DotResult::Error(format!("unknown command: {other} (try `.help`)")),
     }
 }
 
