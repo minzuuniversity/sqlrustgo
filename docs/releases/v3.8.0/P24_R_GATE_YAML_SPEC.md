@@ -1,4 +1,6 @@
 # P2-4 SPEC: R-Gate YAML Upgrade
+<!-- env:blocked:no-ci -->
+<!-- gate_policy_eval_id: P24-20260603-no-ci -->
 
 > **Issue**: #2888
 > **Version**: v3.8.0
