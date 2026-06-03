@@ -28,7 +28,11 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 cd "$REPO_ROOT"
 
-PLAN_DOC="$REPO_ROOT/docs/releases/v3.8.0/ARCH_SEM_DEBT_REMEDIATION_PLAN.md"
+PLAN_DOC="$REPO_ROOT/docs/releases/v3.8.0/archived/ARCH_SEM_DEBT_REMEDIATION_PLAN.md"
+# Fallback: docs were reorganized in PR #2933 into archived/ subdir.
+if [ ! -f "$PLAN_DOC" ]; then
+    PLAN_DOC="$REPO_ROOT/docs/releases/v3.8.0/ARCH_SEM_DEBT_REMEDIATION_PLAN.md"
+fi
 CV_DEBT_DOC="$REPO_ROOT/docs/releases/v3.8.0/COMPREHENSIVE_FEATURE_TRACKING.md"
 
 echo "=== D8: Architecture/Semantic Debt Gate (5-Principle P5) ==="
