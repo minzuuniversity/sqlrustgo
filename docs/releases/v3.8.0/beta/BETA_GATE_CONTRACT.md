@@ -1,4 +1,5 @@
 # BETA Gate Contract — v3.8.0
+<!-- env:blocked:no-ci -->
 
 **Author**: Hermes C  
 **Date**: 2026-05-31  
