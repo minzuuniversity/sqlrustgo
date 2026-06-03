@@ -1,5 +1,7 @@
 # SQLRustGo v3.8.0 版本计划
 
+<!-- env:blocked:no-ci -->
+
 > **版本**: v3.8.0
 > **类型**: Architecture Unification Release
 > **分支**: `origin/develop/v3.8.0` (to be created)
