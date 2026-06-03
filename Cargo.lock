@@ -4156,6 +4156,7 @@ dependencies = [
  "sqlrustgo-executor",
  "sqlrustgo-gmp",
  "sqlrustgo-graph",
+ "sqlrustgo-mysql-server",
  "sqlrustgo-optimizer",
  "sqlrustgo-parser",
  "sqlrustgo-planner",
