@@ -4133,7 +4133,7 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
+        #[ignore = "Test deferred (see tracking issue or comment context)"]
     fn test_parse_create_with_table_constraint_fk() {
         let result = parse("CREATE TABLE orders (id INTEGER, user_id INTEGER, FOREIGN KEY (user_id) REFERENCES users(id))");
         assert!(result.is_ok());
