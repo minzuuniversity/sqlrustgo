@@ -36,7 +36,9 @@ cd "$REPO_ROOT"
 # C-ARCH rules (consistent across all gates)
 CARCH01_BY_DESIGN="true"          # txn_manager is by design (PR-830)
 CARCH02_WRITE_BUFFER="forbidden"  # LocalExecutor must NOT have write_buffer
-CARCH05_LIMIT=2000                # execution_engine.rs line limit (B5 Integration Gate)
+CARCH05_LIMIT=1800                # execution_engine.rs line limit (SSOT - all other gate scripts must use this value)
+                                # AD-001 original target was 1500; current 1523. 1800 balances current state with future headroom.
+                                # Issue #2877: unified to 1800 across check_arch_invariants.sh, check_integration_gate.sh, check_rc_ga_gate.sh.
 
 # Coverage threshold
 COVERAGE_MIN=75                   # Alpha: 75%, Beta/RC: 80%
@@ -557,7 +559,7 @@ check_carch_unified() {
         ca_pass=$((ca_pass+1))
     fi
 
-    # C-ARCH-05: execution_engine.rs line limit (2000)
+    # C-ARCH-05: execution_engine.rs line limit (SSOT CARCH05_LIMIT, currently 1800)
     ca_total=$((ca_total+1))
     EE_LINES=$(wc -l < src/execution_engine.rs 2>/dev/null || echo "0")
     echo -n "  [C-ARCH-05] execution_engine.rs ($EE_LINES/$CARCH05_LIMIT lines) ... "
