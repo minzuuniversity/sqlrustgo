@@ -1,5 +1,7 @@
 # SPEC-011 — mysql-server 双路径 grep 误判修复
 
+<!-- env:blocked:no-ci -->
+
 > **PR Number**: SPEC-011
 > **PR Title**: Gate 脚本 A7-1/C-ARCH-04 检测模式修复 — 区分测试 vs 生产路径
 > **Version**: v3.8.0

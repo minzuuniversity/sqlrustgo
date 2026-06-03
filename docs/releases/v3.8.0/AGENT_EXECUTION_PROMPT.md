@@ -1,5 +1,7 @@
 # v3.8.0 门禁执行 — AI Agent 提示词
 
+<!-- env:blocked:no-ci -->
+
 ## 当前状态
 
 - **版本**：v3.8.0 (develop/v3.8.0)
