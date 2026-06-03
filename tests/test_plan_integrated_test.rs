@@ -8,7 +8,7 @@
 fn test_test_plan_integrated_exists() {
     let plan = std::env::current_dir()
         .unwrap()
-        .join("docs/releases/v3.8.0/TEST_PLAN_INTEGRATED.md");
+        .join("docs/releases/v3.8.0/test-design/TEST_PLAN_INTEGRATED.md");
     assert!(plan.exists(), "TEST_PLAN_INTEGRATED.md must exist");
 }
 
@@ -16,7 +16,7 @@ fn test_test_plan_integrated_exists() {
 fn test_test_review_integrated_exists() {
     let review = std::env::current_dir()
         .unwrap()
-        .join("docs/releases/v3.8.0/TEST_REVIEW_INTEGRATED.md");
+        .join("docs/releases/v3.8.0/test-design/TEST_REVIEW_INTEGRATED.md");
     assert!(review.exists(), "TEST_REVIEW_INTEGRATED.md must exist");
 }
 
@@ -24,7 +24,7 @@ fn test_test_review_integrated_exists() {
 fn test_test_acceptance_integrated_exists() {
     let acceptance = std::env::current_dir()
         .unwrap()
-        .join("docs/releases/v3.8.0/TEST_ACCEPTANCE_INTEGRATED.md");
+        .join("docs/releases/v3.8.0/test-acceptance/TEST_ACCEPTANCE_INTEGRATED.md");
     assert!(
         acceptance.exists(),
         "TEST_ACCEPTANCE_INTEGRATED.md must exist"
@@ -35,7 +35,7 @@ fn test_test_acceptance_integrated_exists() {
 fn test_test_plan_53_tests() {
     let plan = std::env::current_dir()
         .unwrap()
-        .join("docs/releases/v3.8.0/TEST_PLAN_INTEGRATED.md");
+        .join("docs/releases/v3.8.0/test-design/TEST_PLAN_INTEGRATED.md");
     let content = std::fs::read_to_string(&plan).expect("plan not found");
     // Must mention all 53 test entries
     // Just check section 4 table has 53 rows
@@ -69,7 +69,7 @@ fn test_test_plan_53_tests() {
 fn test_test_plan_8_gate_dimensions() {
     let plan = std::env::current_dir()
         .unwrap()
-        .join("docs/releases/v3.8.0/TEST_PLAN_INTEGRATED.md");
+        .join("docs/releases/v3.8.0/test-design/TEST_PLAN_INTEGRATED.md");
     let content = std::fs::read_to_string(&plan).expect("plan not found");
     for dim in &["D1", "D2", "D3", "D4", "D5", "D6", "D7", "D8"] {
         assert!(content.contains(dim), "plan must reference {}", dim);
@@ -80,7 +80,7 @@ fn test_test_plan_8_gate_dimensions() {
 fn test_test_plan_4_stages() {
     let plan = std::env::current_dir()
         .unwrap()
-        .join("docs/releases/v3.8.0/TEST_PLAN_INTEGRATED.md");
+        .join("docs/releases/v3.8.0/test-design/TEST_PLAN_INTEGRATED.md");
     let content = std::fs::read_to_string(&plan).expect("plan not found");
     for stage in &["Alpha", "Beta", "RC", "GA"] {
         assert!(content.contains(stage), "plan must reference {}", stage);
@@ -91,7 +91,7 @@ fn test_test_plan_4_stages() {
 fn test_test_review_audit_complete() {
     let review = std::env::current_dir()
         .unwrap()
-        .join("docs/releases/v3.8.0/TEST_REVIEW_INTEGRATED.md");
+        .join("docs/releases/v3.8.0/test-design/TEST_REVIEW_INTEGRATED.md");
     let content = std::fs::read_to_string(&review).expect("review not found");
     // Must have 53 test audits
     let audit_count = content.matches("| ✅ |").count() + content.matches("| ⚠️ TIMEOUT |").count();
@@ -106,7 +106,7 @@ fn test_test_review_audit_complete() {
 fn test_test_acceptance_all_pass() {
     let acceptance = std::env::current_dir()
         .unwrap()
-        .join("docs/releases/v3.8.0/TEST_ACCEPTANCE_INTEGRATED.md");
+        .join("docs/releases/v3.8.0/test-acceptance/TEST_ACCEPTANCE_INTEGRATED.md");
     let content = std::fs::read_to_string(&acceptance).expect("acceptance not found");
     // Must have all 7 stage/dim acceptances as APPROVED
     let approved_count = content.matches("✅ APPROVED").count();
