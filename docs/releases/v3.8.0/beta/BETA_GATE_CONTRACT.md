@@ -24,6 +24,7 @@ v3.8.0 Beta Gate is passed when all four conditions below are satisfied.
 | **B4** | Format | `cargo fmt --all -- --check` | exit 0 | ✅ PASS (f2725974) |
 | **B5** | Integration Gate | `bash scripts/gate/check_integration_gate.sh` | exit 0 | ✅ PASS (126c48b1) |
 | **B5-SGL** | SGL Layer-3 Semantic Gate | `python3 scripts/gate/semantic_gate_check.py` | exit 0 (FAIL blocking) | ✅ PASS (SGL-002/003 fixed) |
+| **B6** | E2E Functional Coverage | `bash scripts/gate/check_beta_e2e.sh` | All E2E tests PASS + F-XX mapping complete | ✅ NEW (SPEC-023) |
 
 ### B-Functional: Feature Tracking Requirements
 
@@ -38,6 +39,7 @@ Beta Gate 不仅检查基础设施（B1-B4），还必须追踪功能完成状�
 | **B-F5** | PR-DAG 一致性 | — | ✅ PASS | DEVELOPMENT_PLAN.md vs git |
 | **B-F6** | Feature Checklist | — | ✅ PASS | docs/releases/v3.8.0/FEATURE_CHECKLIST.md |
 | **B-F7** | 无幽灵 PR | — | ✅ PASS | 所有未合并 PR 有说明 |
+| **B-F8** | E2E ↔ PR DAG 闭环 | SPEC-023 | E2E_PR_DAG_MAPPING.md | ✅ PASS (12/14 features E2E EXISTS, 10/10 E2E files PASS) |
 
 > **注意**: PR-810/820/840/850/860/870/880/890/900 未合并，但属于 RC 阶段任务，不影响 Beta Gate。详见 FEATURE_CHECKLIST.md。
 
