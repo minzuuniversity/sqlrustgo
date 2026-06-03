@@ -1,5 +1,7 @@
 # SQLRustGo v3.8.0 测试系统全面审计报告
 
+<!-- env:blocked:no-ci -->
+
 > **审计日期**: 2026-06-02
 > **分支**: `origin/develop/v3.8.0`
 > **依据**: `sqlrustgo-development-workflow` skill, `TEST_PLAN.md`, `DEVELOPMENT_PLAN.md`

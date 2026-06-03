@@ -1,5 +1,7 @@
 # LEGACY_ISSUES.md — v3.8.0 遗留问题清单
 
+<!-- env:blocked:no-ci -->
+
 > **版本**: v3.8.0
 > **分支**: `origin/develop/v3.8.0`
 > **基准 commit**: `be03d46c` (2026-05-31)
