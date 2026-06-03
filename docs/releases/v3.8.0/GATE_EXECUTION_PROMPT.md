@@ -2,6 +2,8 @@
 
 ## 用途
 
+> **gate_policy_eval_id**: `run_20260601_004`
+
 将此文档内容作为 prompt 提供给其他 AI agent 或 CLI runner，执行 v3.8.0 各阶段门禁检查。
 
 ---
