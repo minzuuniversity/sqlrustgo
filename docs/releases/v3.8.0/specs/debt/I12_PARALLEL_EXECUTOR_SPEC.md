@@ -1,3 +1,10 @@
+<!--
+**Debt ID**: I-12
+**Status**: PARTIAL
+**Implementation PR**: PR fix/i-12-parallel-executor
+**Test Coverage**: 6/6 tests (partial)
+-->
+
 # I-12 SPEC: Parallel Executor (worker thread pool)
 
 > **Issue**: #2833
