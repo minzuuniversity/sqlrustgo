@@ -1,5 +1,7 @@
 # PR-840 ACCEPTANCE — DML Transaction Interception
 
+<!-- env:blocked:no-ci -->
+
 > **PR**: PR-840
 > **Branch**: test/v380-test-coverage-a1-a4
 > **Source SPEC**: PR-840_CONTRACT.md (已存在)

@@ -1,5 +1,7 @@
 # DEFERRED PRs — v3.8.0 未实现功能状态说明
 
+<!-- env:blocked:no-ci -->
+
 > **Created**: 2026-06-02
 > **Auditor**: Hermes Agent
 > **Status**: ACTIVE — 5 个 PR 标记 NOT_DONE，状态诚实记录
