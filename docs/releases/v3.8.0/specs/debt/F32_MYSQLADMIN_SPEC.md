@@ -1,3 +1,10 @@
+<!--
+**Debt ID**: F-32
+**Status**: IMPLEMENTED
+**Implementation PR**: PR fix/f-32-mysqladmin
+**Test Coverage**: 11/11 tests
+-->
+
 # F-32 SPEC: mysqladmin Equivalent
 
 > **Issue**: #2831
