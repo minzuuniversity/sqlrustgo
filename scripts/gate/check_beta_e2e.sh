@@ -86,6 +86,7 @@ E2E_TEST_BINS=(
     "wal_integration_test"
     "e2e_trigger_wal_recovery"
     "mvcc_transaction_test"
+    "cross_path_consistency_test"
     "ci_test"
 )
 
