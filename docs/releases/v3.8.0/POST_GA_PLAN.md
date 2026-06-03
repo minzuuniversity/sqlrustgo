@@ -1,130 +1,185 @@
-# v3.8.0+1 Post-GA Plan — Contract Gap Resolution
+# v3.8.0+1 Post-GA Plan — TX+WAL Contract Gaps Repair
 
-> **Issue**: #2776
-> **Author**: Claude-MacMini
-> **Date**: 2026-06-03
-> **Status**: DRAFT
-> **Based on**: ADR-006, ADR-007, ISSUE-2743
-
----
-
-## 1. Executive Summary
-
-v3.8.0 GA ships with **19/31 TX+WAL contract tests passing**. The 12 failures
-are deferred to v3.8.0+1 per ADR-006 decision (2026-06-03).
-
-| Category | Passed | Failed | Total |
-|----------|--------|--------|-------|
-| TX-Lifecycle | TBD | 4 | TBD |
-| WAL Recovery | TBD | 8 | TBD |
-| **Total** | **19** | **12** | **31** |
+> **Version**: v3.8.0+1
+> **Type**: Post-GA patch release (target: 2026-08-15)
+> **Created**: 2026-06-03
+> **Owner**: claude-macmini (architect)
+> **Refs**: ISSUE-2743, ADR-006, ADR-007, SPEC-013, ADR-011
+> **Branch**: `release/v3.8.0+1` (待创建)
 
 ---
 
-## 2. Contract Gap Classification
+## 1. 目标
 
-### 2.1 TX-Lifecycle Gaps (4 tests)
+修复 v3.8.0 GA defer 的 12 个 TX+WAL contract gap，达到 31/31 PASS。
 
-**Root Cause**: EEK v0 spec requires `DML without active tx → Err`, but current
-implementation uses implicit autocommit.
+### 1.1 入口标准（Entry Criteria）
 
-| Gap ID | Description | Impact | Proposed Fix |
-|--------|-------------|--------|--------------|
-| TX-1 | DML without BEGIN → autocommit (current) vs error (spec) | Behavioral inconsistency | Add `strict_tx_mode` flag |
-| TX-2 | COMMIT without BEGIN → no-op (current) vs error (spec) | Behavioral inconsistency | Add validation |
-| TX-3 | ROLLBACK without BEGIN → no-op (current) vs error (spec) | Behavioral inconsistency | Add validation |
-| TX-4 | SELECT in explicit transaction expected | Behavioral inconsistency | Document expected behavior |
+- [x] v3.8.0 GA 已发布
+- [x] ADR-006 (TX+WAL deferral) accepted
+- [x] ADR-007 (WAL architecture 4 decisions) accepted
+- [x] ADR-007 Decision-4 (read-only mode) implemented
+- [x] ISSUE-2740 (Crash Recovery Empirical) closed
 
-**Fix Approach**:
-- Implement `strict_tx_mode` configuration option
-- When enabled: DML without active tx returns error
-- When disabled (default): autocommit behavior preserved
-- Migration path: deprecate autocommit in v3.9.0, remove in v3.10.0
+### 1.2 出口标准（Exit Criteria）
 
-### 2.2 WAL Recovery Gaps (8 tests)
-
-**Root Cause**: Multi-tx ordering and partial-write semantics differ from spec assumptions.
-
-| Gap ID | Description | Impact | Proposed Fix |
-|--------|-------------|--------|--------------|
-| WAL-1 | Multi-tx LSN ordering not guaranteed | Recovery may replay in wrong order | Implement TXID-ordered replay |
-| WAL-2 | Partial-write idempotency not guaranteed | Duplicate records on replay | Add dedup logic based on PK |
-| WAL-3 | Last-lsn checkpoint may not be latest | Data loss on crash | Implement proper checkpoint |
-| WAL-4 | Transaction boundary blur between WAL entries | Recovery inconsistency | Add TX commit markers |
-| WAL-5 | Buffer flush ordering not deterministic | Non-deterministic recovery | Implement flush ordering |
-| WAL-6 | Delete replay skips updated rows | Data integrity issue | Fix delete predicate |
-| WAL-7 | Insert buffer merge duplicates on replay | Data duplication | Fix buffer merge logic |
-| WAL-8 | COMMIT record may be lost on crash | Transaction not durable | Implement commit guarantee |
-
-**Fix Approach**:
-- Based on ADR-007 (WAL Architecture Clarification) findings
-- Implement TXID-ordered WAL replay
-- Add deduplication based on primary key
-- Implement proper transaction boundary markers
+- [ ] 31/31 contract tests PASS
+- [ ] `tests/tx_wal_contract_tests.rs` from untracked → tracked
+- [ ] 不退化 19 PASS + 5 exp_g + 8 e2e = 32 个现有 test
+- [ ] v3.8.0+1 RC Gate PASS
+- [ ] v3.8.0+1 GA 发布
 
 ---
 
-## 3. v3.8.0+1 Implementation Plan
+## 2. 12 Gap 详细分类
 
-### Phase 1: TX-Lifecycle Fix (2 weeks)
+### 2.1 TX-Lifecycle (4 tests) — Category A
+
+| Test | 当前 | 期望 | 修复路径 |
+|------|------|------|----------|
+| TX-001 DML without active tx | FAIL (Ok) | FAIL (Err) | dual-mode + strict opt-in |
+| TX-002 UPDATE without active tx | FAIL (Ok) | FAIL (Err) | 同上 |
+| TX-003 DELETE without active tx | FAIL (Ok) | FAIL (Err) | 同上 |
+| TX-004 INSERT without active tx | FAIL (Ok) | FAIL (Err) | 同上 |
+
+**根因**：EEK v0 spec 假设 DML without active tx → Err。当前实现 implicit autocommit。
+
+**修复策略（dual-mode）**：
+- 默认（autocommit）：保持当前行为（不破坏 19/19 PASS + 8/8 e2e）
+- 严格（`SQLRUSTGO_EEK_MODE=strict`）：DML without active tx → Err
+- 测试用 strict 模式
+
+### 2.2 WAL Recovery (8 tests) — Category B
+
+| Test | 失败原因 | 修复路径 |
+|------|----------|----------|
+| `test_recovery_begin_then_crash_rolls_back` | Uncommitted BEGIN-only tx 没回滚 | WalStorage log_undo + RecoveryEngine undo phase |
+| `test_recovery_insert_then_crash_rolls_back` | Uncommitted INSERT 没回滚 | 同上 |
+| `test_recovery_prepare_then_crash_rolls_back` | Uncommitted PREPARE 没回滚 | 同上 |
+| `test_recovery_multiple_tx_crash_order` | Multi-tx crash recovery order 错 | WAL replay order 算法（按 LSN 严格） |
+| `test_recovery_partial_insert_write` | Partial INSERT write 错 | Atomic write + WAL 协调 |
+| `test_recovery_partial_update_write` | Partial UPDATE write 错 | 同上 |
+| `test_recovery_partial_delete_write` | Partial DELETE write 错 | 同上 |
+| `test_recovery_crash_during_undo` | Undo 阶段 crash 错 | CRDT-style undo log |
+
+**根因**：`wal_storage.rs` WAL append logic + `recovery_engine.rs` replay 路径不实现 strict ordering + undo 语义。
+
+**风险**：
+- WAL 是数据库核心
+- 5/5 `exp_g_wal_contracts_verified` 必须保持绿色
+- 19/31 contract test 也用相同 WAL 路径
+
+**缓解**：分 3 步 PR，每步独立 gate + 不退化验证。
+
+---
+
+## 3. 实施路线图
+
+### Phase A: TX-Lifecycle (3 weeks)
 
 ```
-Week 1:
-- [ ] Add `strict_tx_mode` configuration option
-- [ ] Implement DML validation without active tx
-- [ ] Add tests for TX-1 through TX-4
+Week A.1 (2026-07-01 ~ 07-05)
+  ├── SPEC: TX-lifecycle dual-mode 设计
+  └── Decision: 默认 autocommit / opt-in strict (环境变量)
 
-Week 2:
-- [ ] Update documentation
-- [ ] Run full contract test suite
-- [ ] Create migration guide
+Week A.2 (2026-07-08 ~ 07-12)
+  ├── PR-A1: SQLRUSTGO_EEK_MODE=strict 实现
+  ├── PR-A2: 5 处 DML 调用点改造
+  └── Gate: 19/19 旧 test 仍 PASS
+
+Week A.3 (2026-07-15 ~ 07-19)
+  ├── PR-A3: 4 个 TX-Lifecycle test 转为 PASS
+  └── Gate: 4/4 新 PASS + 19/19 旧 PASS = 23/23
 ```
 
-### Phase 2: WAL Recovery Fix (4 weeks)
+### Phase B: WAL Recovery (4 weeks)
 
 ```
-Week 1-2:
-- [ ] Implement TXID-ordered WAL replay
-- [ ] Add primary key deduplication
-- [ ] Fix delete replay predicate
+Week B.1 (2026-07-22 ~ 07-26)
+  ├── SPEC: WAL replay order 算法
+  └── Decision: LSN 严格排序 + undo log 格式
 
-Week 3:
-- [ ] Implement proper checkpoint
-- [ ] Add transaction boundary markers
-- [ ] Fix buffer flush ordering
+Week B.2 (2026-07-29 ~ 08-02)
+  ├── PR-B1: WalStorage::log_* 完整 ordering
+  ├── PR-B2: RecoveryEngine 改写（undo phase）
+  └── Gate: 5/5 exp_g + 8/8 e2e 仍 PASS
 
-Week 4:
-- [ ] Integration testing
-- [ ] Run full contract test suite
-- [ ] Performance regression testing
+Week B.3 (2026-08-05 ~ 08-09)
+  ├── PR-B3: Partial-write 修复
+  └── Gate: 23/23 (Phase A baseline) + 4/4 partial-write PASS = 27/27
+
+Week B.4 (2026-08-12 ~ 08-16)
+  ├── PR-B4: Multi-tx ordering
+  └── Gate: 27/27 + 4/4 multi-tx PASS = 31/31 ✅
 ```
+
+### Phase C: Integration + GA (2 weeks)
+
+```
+Week C.1 (2026-08-19 ~ 08-23)
+  ├── PR-C1: tests/tx_wal_contract_tests.rs → tracked
+  └── Gate: 31/31 PASS
+
+Week C.2 (2026-08-26 ~ 08-30)
+  ├── v3.8.0+1 RC Gate
+  ├── v3.8.0+1 GA 发布
+  └── Tag + Release Notes
+```
+
+**总时间表**: 9 周（2026-07-01 ~ 2026-08-30）
 
 ---
 
-## 4. Success Criteria
+## 4. 关键风险与缓解
 
-| Criteria | Target | Verification |
-|----------|--------|--------------|
-| TX-Lifecycle tests | 4/4 PASS | `cargo test tx_wal_contract -- TX-` |
-| WAL Recovery tests | 8/8 PASS | `cargo test tx_wal_contract -- WAL-` |
-| Overall contract tests | 31/31 PASS | `cargo test tx_wal_contract` |
-| No existing test regression | 0 regressions | Full test suite |
-
----
-
-## 5. Risks and Mitigations
-
-| Risk | Likelihood | Impact | Mitigation |
-|------|------------|--------|------------|
-| TX-lifecycle change breaks autocommit callers | Medium | High | Feature flag, gradual rollout |
-| WAL replay change breaks existing tests | Medium | High | Comprehensive test coverage |
-| Schedule overrun | High | Medium | Prioritize critical paths |
+| Risk | Impact | Mitigation |
+|------|--------|------------|
+| 19 PASS 因 lifecycle 改变而 FAIL | High | dual-mode + opt-in strict |
+| 5/5 exp_g 因 WAL 改变而 FAIL | High | 分 3 步 PR + 不退化 gate |
+| Multi-tx ordering 修复引入 bug | Medium | LSN strict + 严格 gate |
+| 时间超期 | Medium | Phase B 可独立延期到 v3.8.0+2 |
 
 ---
 
-## 6. References
+## 5. 依赖项
 
-- [ADR-006: TX+WAL Contract Deferral](../governance/adr/ADR-006-tx-wal-contract-deferral.md)
-- [ADR-007: WAL Architecture Clarification](../governance/adr/ADR-007-wal-architecture-clarification.md)
-- [ISSUE-2743: Contract Test Gaps](../issues/ISSUE-2743_contract_test_gaps.md)
-- [ISSUE-2742: WAL Architecture Clarification](../issues/ISSUE-2742_wal_architecture.md)
+### 5.1 前置（已就绪）
+
+- ✅ ADR-006 (deferral)
+- ✅ ADR-007 (WAL architecture 4 decisions)
+- ✅ ADR-007 Decision-4 (read-only mode)
+- ✅ ISSUE-2740 closed
+
+### 5.2 后续
+
+- Task #2771 (F-09 PR-840 Complete DML) — 可能影响 Phase A.2 DML 调用点
+- Task #2774 (F-07~F-15 Ghost PR Resolution) — 独立工作流
+- Cross-Version Debt 11 ACTIVE — 独立工作流
+
+---
+
+## 6. 状态机
+
+每个 gap item 状态：
+- `OPEN` — 未开始
+- `IN_PROGRESS` — 正在修复
+- `PASS` — 验证通过
+- `REGRESSED` — 引起其他 test 失败（需修复）
+- `DEFERRED` — 推迟到 v3.8.0+2
+
+---
+
+## 7. 关联
+
+- v3.8.0 V380_RECTIFICATION_PLAN_2026-06-03.md §3.3
+- ISSUE-2743 (12 gap details)
+- ADR-006 (deferral)
+- ADR-007 (architecture)
+- ADR-011 (本 SPEC 决策)
+- SPEC-013 (本计划)
+
+## 8. Changelog
+
+| 版本 | 日期 | 作者 | 说明 |
+|------|------|------|------|
+| 1.0 | 2026-06-03 | claude-macmini (architect) | 初始版本：v3.8.0+1 修复计划 |
