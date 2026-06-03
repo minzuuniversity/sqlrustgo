@@ -1,0 +1,18 @@
+{
+    "gate": "D9",
+    "name": "Full Gate Verification",
+    "timestamp": "2026-06-03T20:17:39Z",
+    "pass_count": 6,
+    "fail_count": 1,
+    "drift_count": 1,
+    "results": [
+        "D1-D5 RC/GA: PASS",
+        "D6 Test Inventory: PASS",
+        "D7 INT Debt: PASS",
+        "D8 Arch/Sem Debt: PASS",
+        "Cross-Version Debt: PASS",
+        "Test Plan Consistency: FAIL",
+        "PR Template: PASS",
+        "Evidence Generation: PARTIAL"
+    ]
+}
