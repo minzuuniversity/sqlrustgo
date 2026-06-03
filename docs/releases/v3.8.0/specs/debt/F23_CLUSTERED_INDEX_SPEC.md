@@ -1,3 +1,10 @@
+<!--
+**Debt ID**: F-23
+**Status**: IMPLEMENTED
+**Implementation PR**: PR fix/f-23-clustered-index
+**Test Coverage**: 7/7 tests
+-->
+
 # F-23 SPEC: Clustered Index
 
 > **Issue**: #2824
