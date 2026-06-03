@@ -1,5 +1,7 @@
 # ARCHITECTURE_DECISIONS.md — v3.8.0
 
+<!-- env:blocked:no-ci -->
+
 > **版本**: v3.8.0  
 > **类型**: Architecture Decision Records（架构决策记录）  
 > **用途**: 记录 v3.8.0 架构重构的关键决策，供后续版本追溯  
