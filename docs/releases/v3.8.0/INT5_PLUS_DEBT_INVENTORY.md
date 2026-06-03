@@ -45,7 +45,7 @@
 | F-13 | 触发器 | v2.0.0 | ⚠️ 部分 | ✅ 42 files | F-13 + I-01 |
 | F-14 | CTE 递归 | v2.0.0 | ✅ 已实现 | ✅ | v3.0.0 |
 | F-15 | SERIALIZABLE 隔离级别 | v2.0.0 | ⚠️ 部分 | ✅ 11 files | SSI PR |
-| F-16 | Gap Locking | v2.0.0 | ❌ 未实现 | ❌ DEFERRED to v3.9.0 | |
+| F-16 | Gap Locking | v2.0.0 | ❌ 未实现 | ✅ CLOSED (PR fix/f-16-gap-locking, 7/7 tests) |
 | F-17 | JSON 函数完整 | v2.5.0 | ⚠️ 部分 | ✅ 27 files | |
 | F-18 | INFORMATION_SCHEMA | v2.0.0 | ⚠️ 部分 | ✅ SHOW TABLES (PR-2790/2815) | per recent PR |
 | F-19 | SSL/TLS 加密 | v2.0.0 | ❌ 未实现 | ✅ rustls | |
