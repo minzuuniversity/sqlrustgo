@@ -40,9 +40,10 @@ cd "$REPO_ROOT"
 RELEASE_DIR="$REPO_ROOT/docs/releases/$VERSION"
 
 # ============================================================
-# 结果收集
+# Result collection: individual counters (R_FAIL_COUNT, etc.)
+# instead of an associative array, for bash 3.2 (macOS default)
+# compatibility. See SPEC-010 for details.
 # ============================================================
-declare -A R_RESULTS
 R_FAIL_COUNT=0
 
 # ============================================================
