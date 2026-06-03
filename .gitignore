@@ -13,3 +13,4 @@ artifacts/coverage/
 .DS_Store
 Cargo.lock
 .worktrees/
+v1.0.0/api-doc/*
