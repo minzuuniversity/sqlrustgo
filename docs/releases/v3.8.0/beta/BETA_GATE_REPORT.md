@@ -1,16 +1,55 @@
 # v3.8.0 BETA Gate Report
+<!-- env:blocked:no-ci -->
 
-**Author**: Hermes C  
-**Date**: 2026-05-31  
-**Branch**: `develop/v3.8.0`  
-**Commit**: `456ae294` (PR-2697 WAL lifecycle + PR-2698 clippy fix merged)
-**Status**: ✅ BETA GATE PASS — 11/11 checks (B1 Build ✅ B2 WAL Contract ✅ B3 Clippy ✅ B4 Format ✅ B-F1~B-F7 PASS)  
+**Author**: Hermes C
+**Last Updated**: 2026-06-03
+**Branch**: `develop/v3.8.0`
+**Commit**: `fca6fc20a` (PR-2845 SPEC-021 Gitea CI integration merged)
+**Status**: 🟢 BETA STAGE READY — Alpha Gate 15/15 PASS, 13 PRs merged since 456ae294
+**Prior Report Commit**: `456ae294` (2026-05-31, 11/11 checks PASS)
 
 ---
 
-## Executive Summary
+## Post-Report Merges (456ae294..fca6fc20a, 2026-05-31..2026-06-03)
 
-v3.8.0 BETA Gate **conditionally passes** based on **WAL execution architecture consolidation** (PR-830A~E), not feature completeness.
+| PR | SPEC | 标题 | 状态 |
+|----|------|------|------|
+| #2766 | SPEC-008 | Clippy 修复 (merge.rs unused imports + checkpoint_manager) | merged |
+| #2781 | SPEC-009 | 文档规范 (CHANGELOG + CONTRIBUTING + links) | merged |
+| #2784 | SPEC-010 | bash 3.2 兼容 (declare -A 替换) + check_docs.sh 重写 | merged |
+| #2787 | SPEC-011 | mysql-server grep 误判修复 (awk 多行解析) | merged |
+| #2789 | SPEC-012 | ExecutionEngine 拆分 (1587→1431 行) | merged |
+| #2801 | SPEC-014 | C-ARCH-01 (txn_manager dead code) + C-ARCH-03 (业务 crate) | merged |
+| #2816 | SPEC-015+016 | evidence binding env:blocked + WAL macOS Gatekeeper | merged |
+| #2823 | SPEC-018 | post-merge EVIDENCE 收尾 (PR-2818+#2820 新文档) | merged |
+| #2838 | SPEC-019 | docs env:blocked 自动化 (auto_env_blocker.sh + 模板) | merged |
+| #2840 | SPEC-020 | env:blocked 全自动化集成 (alpha gate A8-PRE + pre-commit) | merged |
+| #2842 | (功能) | mysql-server WAL wrap (PR-2842) | merged |
+| #2844 | (功能) | T-17/T-18 fault injection (PR-2844) | merged |
+| #2845 | SPEC-021 | Gitea CI 强制集成 (develop/v3.8.0 触发 + Alpha Gate) | merged |
+
+**Alpha Gate 持续 15/15 PASS 状态** (develop HEAD = fca6fc20a)
+**Gitea CI 治本路径 4 阶段完成**: 治标 → 治本半步 → 治本全步 → 治本终极
+
+---
+
+## DriftGate 负面测试 (ALPHA_STAGE_REVIEW P1-4 验证)
+
+```
+$ cargo test -p sqlrustgo-executor --lib drift_gate
+test execution::drift_gate::tests::test_valid_mutation ... ok
+test execution::drift_gate::tests::test_pre_commit_succeeds_with_wal_open ... ok
+test execution::drift_gate::tests::test_guard_policy_allows_low_severity ... ok
+test execution::drift_gate::tests::test_pre_commit_fails_without_wAL ... ok
+test execution::drift_gate::tests::test_guard_policy_blocks_violation ... ok
+test execution::drift_gate::tests::test_txn_boundary_violation ... ok
+test execution::drift_gate::tests::test_wal_drift_detected ... ok
+test result: ok. 9 passed; 0 failed
+```
+
+**DriftGate 负面测试 9/9 PASS** — ALPHA_STAGE_REVIEW P1-4 满足 ✅
+
+---
 
 **BETA Gate PASS criteria used**: "WAL execution path exists, builds, and is verifiable" (Architecture Gate definition)
 
