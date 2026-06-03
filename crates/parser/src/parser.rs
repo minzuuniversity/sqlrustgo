@@ -315,7 +315,7 @@ pub struct SelectStatement {
     pub columns: Vec<SelectColumn>,
     pub table: String,
     pub where_clause: Option<Expression>,
-    pub join_clause: Option<JoinClause>,
+    pub join_clause: Vec<JoinClause>,
     pub aggregates: Vec<AggregateCall>,
     pub group_by: Vec<Expression>,
     pub having: Option<Expression>,
@@ -1614,8 +1614,9 @@ impl Parser {
             self.next(); // consume alias
         }
 
-        // Check for JOIN
-        let join_clause = if matches!(
+        // Check for JOIN (one or more chained JOINs: t1 JOIN t2 ... JOIN tN)
+        let mut join_clause: Vec<JoinClause> = Vec::new();
+        while matches!(
             self.current(),
             Some(Token::Join)
                 | Some(Token::Left)
@@ -1624,10 +1625,8 @@ impl Parser {
                 | Some(Token::Full)
                 | Some(Token::Cross)
         ) {
-            Some(self.parse_join_clause()?)
-        } else {
-            None
-        };
+            join_clause.push(self.parse_join_clause()?);
+        }
 
         let where_clause = if matches!(self.current(), Some(Token::Where)) {
             self.next();
@@ -4037,8 +4036,8 @@ mod tests {
         match result.unwrap() {
             Statement::Select(s) => {
                 assert_eq!(s.table, "users");
-                assert!(s.join_clause.is_some());
-                let join = s.join_clause.unwrap();
+                assert!(!s.join_clause.is_empty());
+                let join = &s.join_clause[0];
                 assert_eq!(join.table, "orders");
                 assert_eq!(join.join_type, JoinType::Inner);
             }
@@ -4054,8 +4053,8 @@ mod tests {
         match result.unwrap() {
             Statement::Select(s) => {
                 assert_eq!(s.table, "users");
-                assert!(s.join_clause.is_some());
-                let join = s.join_clause.unwrap();
+                assert!(!s.join_clause.is_empty());
+                let join = &s.join_clause[0];
                 assert_eq!(join.table, "orders");
                 assert_eq!(join.join_type, JoinType::Left);
             }
@@ -4070,8 +4069,8 @@ mod tests {
         match result.unwrap() {
             Statement::Select(s) => {
                 assert_eq!(s.table, "t1");
-                assert!(s.join_clause.is_some());
-                let join = s.join_clause.unwrap();
+                assert!(!s.join_clause.is_empty());
+                let join = &s.join_clause[0];
                 assert_eq!(join.table, "t2");
                 assert_eq!(join.join_type, JoinType::Full);
             }
@@ -4083,8 +4082,8 @@ mod tests {
         match result2.unwrap() {
             Statement::Select(s) => {
                 assert_eq!(s.table, "t1");
-                assert!(s.join_clause.is_some());
-                let join = s.join_clause.unwrap();
+                assert!(!s.join_clause.is_empty());
+                let join = &s.join_clause[0];
                 assert_eq!(join.table, "t2");
                 assert_eq!(join.join_type, JoinType::Full);
             }
@@ -4392,8 +4391,8 @@ mod tests {
         assert!(result.is_ok(), "Parse failed: {:?}", result);
         match result.unwrap() {
             Statement::Select(s) => {
-                assert!(s.join_clause.is_some());
-                assert_eq!(s.join_clause.unwrap().join_type, JoinType::Right);
+                assert!(!s.join_clause.is_empty());
+                assert_eq!(s.join_clause[0].join_type, JoinType::Right);
             }
             _ => panic!("Expected SELECT statement"),
         }
@@ -4995,8 +4994,8 @@ fn test_parse_cross_join() {
     match result.unwrap() {
         Statement::Select(s) => {
             assert_eq!(s.table, "t1");
-            assert!(s.join_clause.is_some());
-            let join = s.join_clause.unwrap();
+            assert!(!s.join_clause.is_empty());
+            let join = &s.join_clause[0];
             assert_eq!(join.table, "t2");
             assert_eq!(join.join_type, JoinType::Cross);
         }
@@ -5010,7 +5009,7 @@ fn test_parse_join_on_multiple_conditions() {
     assert!(result.is_ok(), "Parse failed: {:?}", result);
     match result.unwrap() {
         Statement::Select(s) => {
-            assert!(s.join_clause.is_some());
+            assert!(!s.join_clause.is_empty());
         }
         _ => panic!("Expected SELECT statement"),
     }
@@ -5023,7 +5022,7 @@ fn test_parse_join_with_table_alias() {
     match result.unwrap() {
         Statement::Select(s) => {
             assert_eq!(s.table, "users");
-            assert!(s.join_clause.is_some());
+            assert!(!s.join_clause.is_empty());
         }
         _ => panic!("Expected SELECT statement"),
     }
@@ -5036,8 +5035,8 @@ fn test_parse_join_without_on_clause_implicit_inner() {
     match result.unwrap() {
         Statement::Select(s) => {
             assert_eq!(s.table, "t1");
-            assert!(s.join_clause.is_some());
-            let join = s.join_clause.unwrap();
+            assert!(!s.join_clause.is_empty());
+            let join = &s.join_clause[0];
             assert_eq!(join.join_type, JoinType::Inner);
         }
         _ => panic!("Expected SELECT statement"),
