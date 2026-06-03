@@ -175,7 +175,7 @@ execution_consistency_harness:
 
 ---
 
-### GA Final Gate
+### Planned GA Final Gate (Future Phase)
 
 | Gate | 测试 | 标准 |
 |------|------|------|
