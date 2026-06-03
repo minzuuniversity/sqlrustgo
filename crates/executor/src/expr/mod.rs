@@ -185,6 +185,25 @@ impl From<&sqlrustgo_parser::Expression> for UnifiedExpr {
                     UnifiedExpr::from(pattern.as_ref()),
                 ],
             },
+            // TPC-H Sprint 1 fix (Q8): CaseWhen conversion
+            Expression::CaseWhen(whens, else_val) => UnifiedExpr::CaseWhen {
+                whens: whens
+                    .iter()
+                    .map(|w| {
+                        (
+                            UnifiedExpr::from(&w.condition),
+                            UnifiedExpr::from(&w.result),
+                        )
+                    })
+                    .collect(),
+                else_val: else_val
+                    .as_ref()
+                    .map(|e| Box::new(UnifiedExpr::from(e.as_ref()))),
+            },
+            Expression::FunctionCall(name, args) => UnifiedExpr::FunctionCall {
+                name: name.clone(),
+                args: args.iter().map(UnifiedExpr::from).collect(),
+            },
             _ => UnifiedExpr::Literal(Value::Null),
         }
     }
