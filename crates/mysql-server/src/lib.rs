@@ -2446,8 +2446,10 @@ mod load_local_infile_tests {
     }
 
     #[test]
-    fn test_parse_load_local_infile_sql_with_fields_clause() {
-        let sql = "LOAD DATA LOCAL INFILE '/x.tbl' INTO TABLE t1 FIELDS TERMINATED BY '|'";
+    fn test_parse_load_local_infile_sql_ignores_non_pipe_delim() {
+        // Per spec: only `|` delimiter is supported. The parser ignores
+        // FIELDS TERMINATED BY clause and always returns '|'.
+        let sql = "LOAD DATA LOCAL INFILE '/x.tbl' INTO TABLE t1 FIELDS TERMINATED BY ','";
         let result = parse_load_local_infile_sql(sql);
         assert_eq!(result, Some(("/x.tbl".to_string(), "t1".to_string(), '|')));
     }
