@@ -1,5 +1,7 @@
 # PR-800F SPEC — TransactionalFacade 实现层
 
+<!-- env:blocked:no-ci -->
+
 > **PR Number**: PR-800F (F-06 子项)
 > **PR Title**: TransactionalFacade 实现层 (WalTransactionalFacade)
 > **Version**: v3.8.0 Phase 0 Architecture Freeze

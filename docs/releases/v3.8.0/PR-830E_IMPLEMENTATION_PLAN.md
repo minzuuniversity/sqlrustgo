@@ -1,5 +1,7 @@
 # PR-830E Implementation Plan — WAL Recovery Lifecycle
 
+<!-- env:blocked:no-ci -->
+
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** Implement one-shot WAL recovery guard + RecoveryReport logging for PR-830E.
