@@ -1,5 +1,7 @@
 # PR-800F TEST DESIGN — TransactionalFacade
 
+<!-- env:blocked:no-ci -->
+
 > **PR**: PR-800F
 > **Branch**: test/v380-test-coverage-a1-a4
 > **Source TEST_PLAN**: PR-800F_TRANSACTIONAL_FACADE_TEST_PLAN.md
