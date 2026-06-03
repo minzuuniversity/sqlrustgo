@@ -314,6 +314,11 @@ pub struct AggregateCall {
 pub struct SelectStatement {
     pub columns: Vec<SelectColumn>,
     pub table: String,
+    /// TPC-H Sprint 1b fix (Q7/Q8/Q9): FROM (subquery) AS alias.
+    /// When set, executor first executes the subquery and materializes its
+    /// result into a temporary table named `table`, then runs the outer
+    /// SELECT against that table.
+    pub from_subquery: Option<Box<SelectStatement>>,
     pub where_clause: Option<Expression>,
     pub join_clause: Option<JoinClause>,
     pub aggregates: Vec<AggregateCall>,
@@ -1592,25 +1597,38 @@ impl Parser {
         }
 
         // Handle SELECT without FROM (e.g., SELECT NULL, SELECT 1, SELECT 'hello')
-        let table = match self.current() {
+        // Also handle FROM (subquery) AS alias (TPC-H Q7/Q8/Q9)
+        let (table, from_subquery) = match self.current() {
             Some(Token::From) => {
                 self.next(); // consume FROM
-                match self.next() {
-                    Some(Token::Identifier(name)) => name,
-                    Some(t) => return Err(format!("Expected table name, got {:?}", t)),
-                    None => return Err("Expected table name".to_string()),
+                if matches!(self.current(), Some(Token::LParen)) {
+                    // Sprint 1b: FROM (subquery) AS alias
+                    self.next(); // consume (
+                    let subquery = self.parse_select_statement()?;
+                    self.expect(Token::RParen)?;
+                    if matches!(self.current(), Some(Token::As)) {
+                        self.next();
+                    }
+                    let alias = match self.next() {
+                        Some(Token::Identifier(name)) => name,
+                        Some(t) => return Err(format!("Expected alias for subquery, got {:?}", t)),
+                        None => return Err("Expected alias for subquery".to_string()),
+                    };
+                    (alias, Some(Box::new(subquery)))
+                } else {
+                    match self.next() {
+                        Some(Token::Identifier(name)) => (name, None),
+                        Some(t) => return Err(format!("Expected table name, got {:?}", t)),
+                        None => return Err("Expected table name".to_string()),
+                    }
                 }
             }
-            Some(Token::Eof) | None => {
-                // No FROM clause - this is a SELECT without table (e.g., SELECT 1+1)
-                // Return an empty table name to indicate no table
-                "".to_string()
-            }
+            Some(Token::Eof) | None => ("".to_string(), None),
             Some(t) => return Err(format!("Expected FROM or end of query, got {:?}", t)),
         };
 
-        // Check for table alias (e.g., `FROM users u`)
-        if matches!(self.current(), Some(Token::Identifier(_))) {
+        // Check for table alias (e.g., `FROM users u`) — only when no subquery
+        if from_subquery.is_none() && matches!(self.current(), Some(Token::Identifier(_))) {
             self.next(); // consume alias
         }
 
@@ -1714,6 +1732,7 @@ impl Parser {
         Ok(SelectStatement {
             columns,
             table,
+            from_subquery,
             where_clause,
             join_clause,
             aggregates,
