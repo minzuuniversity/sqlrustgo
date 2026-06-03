@@ -1,0 +1,42 @@
+=== SPEC-008 Pre-existing Clippy Warnings 验证日志 ===
+执行时间: 2026-06-03
+执行者: Hermes Agent
+基线: gitea/develop/v3.8.0 @ 651433468
+工作分支: fix/v3.8.0-merge-unused-imports
+
+=== 修复前 ===
+$ cargo clippy -p sqlrustgo-executor --all-features -- -D warnings
+error: unused import: `SqlError`
+   --> crates/executor/src/merge.rs:11:23
+error: unused import: `super::*`
+   --> crates/executor/src/merge.rs:457:9
+EXIT 1
+
+$ cargo build -p sqlrustgo --all-features
+error: field `checkpoint_manager` is never read
+EXIT 1
+
+=== 修复后 ===
+$ cargo clippy -p sqlrustgo-parser -p sqlrustgo-planner -p sqlrustgo-executor \
+    -p sqlrustgo-storage -p sqlrustgo-transaction -p sqlrustgo-catalog \
+    --all-features -- -D warnings
+Finished `dev` profile [unoptimized + debuginfo] target(s) in 3.41s
+EXIT 0  ✅
+
+$ cargo build --all-features
+Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.32s
+EXIT 0  ✅
+
+=== Tests ===
+$ cargo test -p sqlrustgo-executor --lib
+test result: ok. 327 passed; 0 failed  ✅
+
+$ cargo test -p sqlrustgo-storage --lib
+test result: ok. 287 passed; 0 failed  ✅
+
+=== Format ===
+$ cargo fmt --all -- --check
+EXIT 0  ✅
+
+=== git log ===
+(待 commit)
