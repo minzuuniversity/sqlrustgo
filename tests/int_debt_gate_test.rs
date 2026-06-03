@@ -103,10 +103,7 @@ fn test_d7_no_unknown_status() {
         // bullet-list mention ("- INT-1~INT-4 ..." in SPEC-008/ADR-010).
         let line = content
             .lines()
-            .find(|l| {
-                l.contains(int_id)
-                    && (l.starts_with("| ") || l.starts_with("- "))
-            })
+            .find(|l| l.contains(int_id) && (l.starts_with("| ") || l.starts_with("- ")))
             .unwrap_or_else(|| {
                 panic!(
                     "{} must be in CV debt doc (tried pipe-table and bullet patterns)",
