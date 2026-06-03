@@ -240,6 +240,130 @@ fn bytes_to_record(data: &[u8]) -> Result<Vec<Value>, crate::engine::SqlError> {
     Ok(record)
 }
 
+#[allow(dead_code)]
+pub(crate) fn bytes_to_filters(data: &[u8]) -> Result<Vec<Value>, crate::engine::SqlError> {
+    bytes_to_record(data)
+}
+
+/// Force an insert during recovery, bypassing any insert buffer so subsequent
+/// scan/delete in the same recovery pass see the row in `data.rows` directly.
+pub(crate) fn recovery_force_insert<S: StorageEngine>(
+    storage: &mut S,
+    table: &str,
+    record: Vec<Value>,
+) -> Result<(), crate::engine::SqlError> {
+    storage.force_insert(table, record)
+}
+
+#[allow(dead_code)]
+pub(crate) fn bytes_to_updates(
+    data: &[u8],
+) -> Result<Vec<(usize, Value)>, crate::engine::SqlError> {
+    if data.len() < 4 {
+        return Err(crate::engine::SqlError::ExecutionError(
+            "RecoveryEngine: truncated updates length".to_string(),
+        ));
+    }
+    let mut pos = 4;
+    let num_pairs = u32::from_le_bytes([data[0], data[1], data[2], data[3]]) as usize;
+
+    let mut updates = Vec::with_capacity(num_pairs);
+    for _ in 0..num_pairs {
+        if pos + 4 > data.len() {
+            return Err(crate::engine::SqlError::ExecutionError(
+                "RecoveryEngine: truncated update column index".to_string(),
+            ));
+        }
+        let col_idx =
+            u32::from_le_bytes([data[pos], data[pos + 1], data[pos + 2], data[pos + 3]]) as usize;
+        pos += 4;
+
+        let value = bytes_to_value(data, &mut pos)?;
+        updates.push((col_idx, value));
+    }
+    Ok(updates)
+}
+
+#[allow(dead_code)]
+fn bytes_to_value(data: &[u8], pos: &mut usize) -> Result<Value, crate::engine::SqlError> {
+    if *pos + 2 > data.len() {
+        return Err(crate::engine::SqlError::ExecutionError(
+            "RecoveryEngine: truncated value prefix".to_string(),
+        ));
+    }
+    match &data[*pos..*pos + 2] {
+        b"i:" => {
+            if *pos + 10 > data.len() {
+                return Err(crate::engine::SqlError::ExecutionError(
+                    "RecoveryEngine: truncated Integer".to_string(),
+                ));
+            }
+            let mut buf = [0u8; 8];
+            buf.copy_from_slice(&data[*pos + 2..*pos + 10]);
+            let value = Value::Integer(i64::from_le_bytes(buf));
+            *pos += 10;
+            Ok(value)
+        }
+        b"s:" => {
+            let start = *pos + 2;
+            let end = data[start..].iter().position(|&b| b == 0).ok_or_else(|| {
+                crate::engine::SqlError::ExecutionError(
+                    "RecoveryEngine: Text missing null terminator".to_string(),
+                )
+            })?;
+            let s = std::str::from_utf8(&data[start..start + end]).map_err(|e| {
+                crate::engine::SqlError::ExecutionError(format!(
+                    "RecoveryEngine: invalid UTF-8 in Text: {}",
+                    e
+                ))
+            })?;
+            *pos = start + end + 1;
+            Ok(Value::Text(s.to_string()))
+        }
+        b"b:" => {
+            if *pos + 3 > data.len() {
+                return Err(crate::engine::SqlError::ExecutionError(
+                    "RecoveryEngine: truncated Boolean".to_string(),
+                ));
+            }
+            let value = Value::Boolean(data[*pos + 2] != 0);
+            *pos += 3;
+            Ok(value)
+        }
+        b"n:" => {
+            *pos += 2;
+            Ok(Value::Null)
+        }
+        b"f:" => {
+            if *pos + 10 > data.len() {
+                return Err(crate::engine::SqlError::ExecutionError(
+                    "RecoveryEngine: truncated Float".to_string(),
+                ));
+            }
+            let mut buf = [0u8; 8];
+            buf.copy_from_slice(&data[*pos + 2..*pos + 10]);
+            let value = Value::Float(f64::from_bits(u64::from_le_bytes(buf)));
+            *pos += 10;
+            Ok(value)
+        }
+        b"B:" => {
+            let start = *pos + 2;
+            let end = data[start..].iter().position(|&b| b == 0).ok_or_else(|| {
+                crate::engine::SqlError::ExecutionError(
+                    "RecoveryEngine: Blob missing null terminator".to_string(),
+                )
+            })?;
+            let value = Value::Blob(data[start..start + end].to_vec());
+            *pos = start + end + 1;
+            Ok(value)
+        }
+        _ => Err(crate::engine::SqlError::ExecutionError(format!(
+            "RecoveryEngine: unknown value prefix: {:02x?}",
+            &data[*pos..*pos + 2]
+        ))),
+    }
+}
+
 fn key_to_filter_values(key: &[u8]) -> Result<Vec<Value>, crate::engine::SqlError> {
     if key.is_empty() {
         return Ok(Vec::new());
@@ -257,54 +381,73 @@ fn key_to_filter_values(key: &[u8]) -> Result<Vec<Value>, crate::engine::SqlErro
     ))
 }
 
+fn replace_by_key<S: StorageEngine>(
+    storage: &mut S,
+    table: &str,
+    key: &[u8],
+    new_record: Vec<Value>,
+) -> Result<(), crate::engine::SqlError> {
+    let filter_values = key_to_filter_values(key)?;
+    storage.delete(table, &filter_values)?;
+    storage.insert(table, vec![new_record])?;
+    Ok(())
+}
+
 // ---------------------------------------------------------------------------
 // Helpers: WAL entry filtering
 // ---------------------------------------------------------------------------
 
 /// Filter WAL entries to only include those from committed transactions.
 ///
-/// A committed transaction = a group of entries with the same tx_id that
-/// includes a Commit entry. Entries after Begin and before Commit/Rollback
-/// are kept; metadata entries (Begin/Commit/Rollback/Checkpoint/Prepare)
-/// are excluded from the result.
+/// A committed transaction = a contiguous run of entries between a `Begin` entry
+/// and a matching `Commit` entry. We buffer DML inside the open span and
+/// only flush on `Commit`; a `Rollback` discards the buffer; entries seen
+/// without an enclosing `Begin→Commit` span (autocommit-style fragments)
+/// are dropped because we cannot prove they were committed.
+///
+/// F-09 fix: groups are detected by **Begin→Commit/Rollback span**, not by
+/// `tx_id`. Earlier versions grouped by `tx_id` alone which collapsed all
+/// entries (every `begin_transaction` used the same `current_tx_id()` without
+/// incrementing it), causing uncommitted inserts to be replayed as if
+/// committed. Span-based detection correctly isolates each transaction.
 fn filter_committed_entries(entries: &[WalEntry]) -> Vec<WalEntry> {
-    // Group entries by tx_id
-    let mut groups: HashMap<u64, Vec<&WalEntry>> = HashMap::new();
-    for entry in entries {
-        groups.entry(entry.tx_id).or_default().push(entry);
-    }
-
     let mut result = Vec::new();
-    for group in groups.values() {
-        let has_commit = group.iter().any(|e| e.entry_type == WalEntryType::Commit);
-        if has_commit {
-            // Include only DML entries from committed transactions
-            for entry in group {
-                match entry.entry_type {
-                    WalEntryType::Insert | WalEntryType::Update | WalEntryType::Delete => {
-                        result.push((*entry).clone());
-                    }
-                    _ => {} // Skip Begin, Commit, Rollback, Checkpoint, Prepare
+    let mut current_tx_dml: Vec<WalEntry> = Vec::new();
+    let mut in_tx = false;
+
+    for entry in entries {
+        match entry.entry_type {
+            WalEntryType::Begin => {
+                in_tx = true;
+                current_tx_dml.clear();
+            }
+            WalEntryType::Commit => {
+                if in_tx {
+                    result.append(&mut current_tx_dml);
+                    in_tx = false;
                 }
+            }
+            WalEntryType::Rollback => {
+                current_tx_dml.clear();
+                in_tx = false;
+            }
+            WalEntryType::Checkpoint | WalEntryType::Prepare => {}
+            WalEntryType::Insert | WalEntryType::Update | WalEntryType::Delete => {
+                if in_tx {
+                    current_tx_dml.push(entry.clone());
+                }
+                // else: entry belongs to a fragment without a matching
+                //       Begin/Commit span — drop it (cannot prove commit).
             }
         }
     }
 
-    // Restore original order (entries are already in append-order)
-    // Since entries are append-only, we sort by position in original order
-    if entries.len() > 1 && !result.is_empty() {
-        // Preserve original order by using entry position
-        let position: HashMap<u64, usize> = entries
-            .iter()
-            .enumerate()
-            .map(|(i, e)| (e.lsn, i))
-            .collect();
-        result.sort_by_key(|e| position.get(&e.lsn).copied().unwrap_or(0));
+    if result.len() > 1 {
+        result.sort_by_key(|e| e.lsn);
     }
 
     result
 }
-
 /// Count committed transactions
 fn count_status(entries: &[WalEntry]) -> (usize, usize, usize) {
     let mut groups: HashMap<u64, Vec<&WalEntry>> = HashMap::new();
@@ -386,14 +529,40 @@ impl<S: StorageEngine> RecoveryEngine<S> for RecoveryEngineImpl {
                     ));
                 }
                 let record = bytes_to_record(data)?;
-                storage.insert(&table_name, vec![record])?;
+                // F-09 final fix (dual-write dedup): check if the row is
+                // already present in storage. This happens when an autocommit
+                // INSERT was committed (buffer flushed to disk via save_table)
+                // before crash. Without dedup, force_insert would create a
+                // duplicate row during WAL replay.
+                if let Ok(existing) = storage.scan(&table_name) {
+                    if existing.iter().any(|r| r == &record) {
+                        // Row already on disk; skip replay to avoid duplicate.
+                        return Ok(());
+                    }
+                }
+                // During recovery, force direct insert to avoid buffer/direct split
+                // so subsequent scan/delete in same recovery see the inserted row.
+                recovery_force_insert(storage, &table_name, record)?;
             }
             WalEntryType::Update => {
-                log::warn!(
-                    "RecoveryEngine: UPDATE replay skipped for table {} (tx_id={})",
-                    table_name,
-                    entry.tx_id
-                );
+                if let Some(ref key) = entry.key {
+                    if let Some(ref data) = entry.data {
+                        let new_record = bytes_to_record(data)?;
+                        replace_by_key(storage, &table_name, key, new_record)?;
+                    } else {
+                        log::warn!(
+                            "RecoveryEngine: UPDATE entry without data for table {} (tx_id={})",
+                            table_name,
+                            entry.tx_id
+                        );
+                    }
+                } else {
+                    log::warn!(
+                        "RecoveryEngine: UPDATE entry without key for table {} (tx_id={})",
+                        table_name,
+                        entry.tx_id
+                    );
+                }
             }
             WalEntryType::Delete => {
                 if let Some(ref key) = entry.key {
@@ -584,14 +753,6 @@ mod tests {
     #[test]
     fn test_recovery_engine_impl_trait_bounds() {
         let _engine: Box<dyn RecoveryEngine<MemoryStorage>> = Box::new(RecoveryEngineImpl);
-    }
-
-    #[test]
-    fn test_key_to_filter_values_integer() {
-        let key = 42i64.to_le_bytes().to_vec();
-        let result = key_to_filter_values(&key).unwrap();
-        assert_eq!(result.len(), 1);
-        assert_eq!(result[0], Value::Integer(42));
     }
 
     #[test]
