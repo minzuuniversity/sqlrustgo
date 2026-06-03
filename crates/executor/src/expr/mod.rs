@@ -328,6 +328,28 @@ fn eval_fn(name: &str, args: &[Value]) -> Value {
         // through FunctionCall. We can't reach the target type from here, so
         // pass through the input. Downstream Integer() context coerces.
         "CAST" => args.first().cloned().unwrap_or(Value::Null),
+        // TPC-H Q7/Q8/Q9 use `EXTRACT(YEAR FROM o_orderdate) AS o_year`.
+        // The parser encodes this as FunctionCall("EXTRACT", [Literal(field),
+        // source_expr]). For text dates in YYYY-MM-DD form, the field slices
+        // a fixed offset. Returns Text (matches the input type) so the result
+        // can be used in GROUP BY, ORDER BY, and joins without an Integer
+        // coercion round-trip.
+        "EXTRACT" => {
+            let field = args
+                .first()
+                .map(|v| v.to_sql_string().to_uppercase())
+                .unwrap_or_default();
+            let source = match args.get(1) {
+                Some(v) => v.to_sql_string(),
+                None => return Value::Null,
+            };
+            match field.as_str() {
+                "YEAR" if source.len() >= 4 => Value::Text(source[..4].to_string()),
+                "MONTH" if source.len() >= 7 => Value::Text(source[5..7].to_string()),
+                "DAY" if source.len() >= 10 => Value::Text(source[8..10].to_string()),
+                _ => Value::Null,
+            }
+        }
         _ => Value::Null,
     }
 }
