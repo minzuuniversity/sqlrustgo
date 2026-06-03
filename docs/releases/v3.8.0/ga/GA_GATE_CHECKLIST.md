@@ -201,9 +201,22 @@ bash scripts/gate/check_rc_ga_gate.sh --help       # 帮助
 - ✅ 该脚本内部已实现五维度门禁（D1-D5）+ RC-to-GA checklist
 - ✅ 文档中的命令路径与实际存在的脚本 1:1 对应
 
-### 实际执行的 7 类检查
+### 实际执行的 9 类检查
 
-`check_rc_ga_gate.sh ga` 内部实际运行的检查（按维度）：
+v3.8.0 GA Gate 由两层执行, 真实路径:
+
+```bash
+# Layer 1: 主 gate (5 维度 + 1 测试集成维度)
+bash scripts/gate/check_rc_ga_gate.sh ga
+# Layer 2: 全 8 维度综合验证 (D9 orchestrator)
+bash scripts/gate/check_full_gate_verification.sh
+# Layer 3: 单独 audit
+bash scripts/gate/audit_testing.sh v3.8.0 ga artifacts/audit/v3.8.0
+```
+
+完整维度清单（按层）:
+
+**Layer 1 — check_rc_ga_gate.sh (D1-D5 + D6a + C-ARCH-05):**
 
 | 维度 | 检查项 | 性质 |
 |------|--------|------|
@@ -212,10 +225,31 @@ bash scripts/gate/check_rc_ga_gate.sh --help       # 帮助
 | D3-SGL | SGL-001~005 (Layer-3 语义检查) | 真实脚本 |
 | D4-WAL | INV-1, INV-2, INV-3 (WAL 不变量) | 真实脚本 |
 | D5-DeepSeek | 10 Principles for RC/GA gate | 真实脚本 |
+| D6a-Integration | 49+ integration tests via cargo test --test | 真实 cargo |
 | C-ARCH-05 | execution_engine.rs 行数限制 (SSOT: 1800) | 真实 wc + check |
 
-**结论**：v3.8.0 §8 不再是 fake script。GA 通过的真实路径唯一：
-`bash scripts/gate/check_rc_ga_gate.sh ga`，所有子检查由该脚本分发。
+**Layer 2 — check_full_gate_verification.sh (D1-D8 orchestrator):**
+
+| 维度 | 检查项 | 性质 |
+|------|--------|------|
+| D6b-TestInventory | 62 个 .rs 测试文件 (audit 2026-06) | 真实 cargo |
+| D7-INT Debt | INT-1~5 + 跨版本债 | 真实 check_int_debt.sh |
+| D8-Arch/Sem Debt | ARCH-1~3 + SEM-1~4 | 真实 check_arch_sem_debt.sh |
+| Cross-Version Debt | check_cross_version_debt.sh | 真实脚本 |
+| Test Plan Consistency | TEST_PLAN_INTEGRATED.md vs Cargo.toml | 真实 grep |
+| PR Template | .gitea/pull_request_template.md 存在 | 真实 ls |
+| Evidence Generation | artifacts/gate/v3.8.0/ 产物 | 真实 ls |
+
+**Layer 3 — audit_testing.sh (D5.5):**
+
+| 维度 | 检查项 | 性质 |
+|------|--------|------|
+| D5.5-Audit | TEST_PLAN ↔ Cargo.toml 16 个 [[test]] 对齐 | 真实 audit |
+
+**Gate 脚本索引**: `scripts/gate/README.md` (audit 2026-06-04) 列出 47 个脚本状态 (11 active + 19 internal + 17 deprecated)。
+
+**结论**: v3.8.0 §8 不再是 fake script。GA 通过的真实路径唯一:
+`bash scripts/gate/check_rc_ga_gate.sh ga` + `bash scripts/gate/check_full_gate_verification.sh` + `bash scripts/gate/audit_testing.sh v3.8.0 ga <out>`, 所有子检查由这些脚本分发。
 
 ---
 
