@@ -1193,7 +1193,13 @@ impl Parser {
 
         loop {
             match self.current() {
-                Some(Token::From) | Some(Token::Eof) => break,
+                // RParen = end of containing subquery (caller already consumed the LParen).
+                // Must break here so we don't fall through to "Expected FROM or column name"
+                // when this parse_select_statement is called recursively for FROM (SELECT ...) AS alias.
+                Some(Token::RParen) => break,
+                Some(Token::From) | Some(Token::Eof) => {
+                    break;
+                }
                 Some(Token::Star) => {
                     columns.push(SelectColumn {
                         name: "*".to_string(),
@@ -1572,16 +1578,19 @@ impl Parser {
                             alias: None,
                             expression: None,
                         });
+                        // For !consumed: advance past the column identifier.
+                        // For consumed (table.col): already advanced, current is at next token.
                         if !consumed {
                             self.next();
-                            if matches!(self.current(), Some(Token::As)) {
+                        }
+                        // Handle AS alias for both consumed and !consumed cases.
+                        if matches!(self.current(), Some(Token::As)) {
+                            self.next();
+                            if let Some(Token::Identifier(alias_name)) = self.current() {
+                                let name = alias_name.clone();
                                 self.next();
-                                if let Some(Token::Identifier(alias_name)) = self.current() {
-                                    let name = alias_name.clone();
-                                    self.next();
-                                    if let Some(col) = columns.last_mut() {
-                                        col.alias = Some(name);
-                                    }
+                                if let Some(col) = columns.last_mut() {
+                                    col.alias = Some(name);
                                 }
                             }
                         }
@@ -1598,6 +1607,7 @@ impl Parser {
 
         // Handle SELECT without FROM (e.g., SELECT NULL, SELECT 1, SELECT 'hello')
         // Also handle FROM (subquery) AS alias (TPC-H Q7/Q8/Q9)
+        // RParen means this is a subquery whose caller (parent SELECT) will consume the RParen.
         let (table, from_subquery) = match self.current() {
             Some(Token::From) => {
                 self.next(); // consume FROM
@@ -1616,14 +1626,54 @@ impl Parser {
                     };
                     (alias, Some(Box::new(subquery)))
                 } else {
-                    match self.next() {
-                        Some(Token::Identifier(name)) => (name, None),
+                    // FROM table_list — accept multi-table comma-separated list
+                    // (e.g. `FROM t1, t2, t3 WHERE ...`). Consume table names and
+                    // optional aliases until we hit a SELECT clause terminator
+                    // (WHERE/GROUP/ORDER/LIMIT/OFFSET/RPAREN/EOF).
+                    let first_table = match self.next() {
+                        Some(Token::Identifier(name)) => name,
                         Some(t) => return Err(format!("Expected table name, got {:?}", t)),
                         None => return Err("Expected table name".to_string()),
+                    };
+                    let mut table = first_table.clone();
+                    // Consume remaining tables separated by commas.
+                    // Each may be followed by an optional alias.
+                    while matches!(self.current(), Some(Token::Comma)) {
+                        self.next(); // consume comma
+                        match self.next() {
+                            Some(Token::Identifier(name)) => {
+                                table = format!("{}, {}", table, name);
+                            }
+                            Some(t) => {
+                                return Err(format!(
+                                    "Expected table name after comma, got {:?}",
+                                    t
+                                ));
+                            }
+                            None => return Err("Expected table name after comma".to_string()),
+                        }
                     }
+                    // Consume optional alias of the LAST table (e.g. `FROM t1, t2 alias`
+                    // is uncommon but accepted). After this, current should be at a
+                    // clause terminator.
+                    if matches!(self.current(), Some(Token::Identifier(_)))
+                        && !matches!(
+                            self.current(),
+                            Some(Token::Where)
+                                | Some(Token::Group)
+                                | Some(Token::Order)
+                                | Some(Token::Limit)
+                                | Some(Token::RParen)
+                                | Some(Token::Eof)
+                        )
+                    {
+                        // This is an alias (e.g., `FROM t1, t2 alias`); skip it.
+                        self.next();
+                    }
+                    (table, None)
                 }
             }
-            Some(Token::Eof) | None => ("".to_string(), None),
+            Some(Token::Eof) | None | Some(Token::RParen) => (String::new(), None),
             Some(t) => return Err(format!("Expected FROM or end of query, got {:?}", t)),
         };
 
@@ -2511,7 +2561,15 @@ impl Parser {
                             }
                         }
                     }
-                    self.expect(Token::RParen)?;
+                    // CAST(expr AS TYPE) — args loop may have terminated on AS,
+                    // in which case the closing RParen was already consumed by
+                    // parse_expression (e.g. CAST(SUBSTR(x,1,4) AS INTEGER) where
+                    // parse_expression consumed SUBSTR's RParen). For plain CAST,
+                    // expect RParen now.
+                    if !(name.to_uppercase() == "CAST" && matches!(self.current(), Some(Token::As)))
+                    {
+                        self.expect(Token::RParen)?;
+                    }
 
                     if matches!(self.current(), Some(Token::Over)) {
                         self.next();
@@ -2566,6 +2624,42 @@ impl Parser {
                             },
                         }))
                     } else {
+                        // CAST(expr AS TYPE) — consume optional `AS TYPE` suffix.
+                        // We don't propagate the target type to the executor; the
+                        // executor's `eval_fn` for "CAST" passes the value through,
+                        // and downstream INTEGER()/TEXT() context coerces.
+                        // (TPC-H Q7/Q8/Q9 always use CAST(... AS INTEGER) anyway.)
+                        if name.to_uppercase() == "CAST"
+                            && matches!(self.current(), Some(Token::As))
+                        {
+                            self.next(); // consume AS
+                                         // Accept any token that names a type (Token::Integer, Token::Text,
+                                         // Token::Float, Token::Boolean, or a bare identifier like VARCHAR).
+                            match self.current().cloned() {
+                                Some(Token::Integer) | Some(Token::Text) | Some(Token::Float)
+                                | Some(Token::Boolean) => {
+                                    self.next();
+                                }
+                                Some(Token::Identifier(_)) => {
+                                    // Custom type name like VARCHAR(10) — consume identifier
+                                    // and optional (length) if present.
+                                    self.next();
+                                    if matches!(self.current(), Some(Token::LParen)) {
+                                        self.next();
+                                        while !matches!(self.current(), Some(Token::RParen)) {
+                                            self.next();
+                                        }
+                                        self.expect(Token::RParen)?;
+                                    }
+                                }
+                                _ => {
+                                    return Err(format!(
+                                        "Expected type name after CAST AS, got {:?}",
+                                        self.current()
+                                    ));
+                                }
+                            }
+                        }
                         Ok(Expression::FunctionCall(name, args))
                     }
                 } else {
