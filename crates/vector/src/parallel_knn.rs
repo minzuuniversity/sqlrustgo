@@ -495,7 +495,7 @@ mod tests {
     }
 
     #[test]
-        #[ignore = "Vector parallel kNN test (perf baseline TBD)"]
+    #[ignore = "Vector parallel kNN test (perf baseline TBD)"]
     fn test_parallel_knn_1m_search_performance() {
         let size = 1_000_000;
         let dim = 128;
@@ -556,7 +556,7 @@ mod tests {
     }
 
     #[test]
-        #[ignore = "Vector parallel kNN test (perf baseline TBD)"]
+    #[ignore = "Vector parallel kNN test (perf baseline TBD)"]
     fn test_parallel_knn_scale_performance() {
         let dim = 128;
         let query = vec![0.5f32; dim];
