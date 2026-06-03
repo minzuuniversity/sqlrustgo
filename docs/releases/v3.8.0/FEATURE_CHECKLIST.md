@@ -3,6 +3,7 @@
 > **版本**: v3.8.0  
 > **阶段**: Alpha → Beta  
 > **更新日期**: 2026-05-31  
+> **gate_policy_eval_id**: `run_20260601_010`  
 > **维护者**: Hermes C  
 
 ---
@@ -69,16 +70,49 @@
 
 ### F-06: TransactionalFacade (PR-800)
 
-**状态**: DEFERRED  
-**原因**: PR-800 Foundation 已合并（DriftGate, TransactionContext, WriteOp），但 TransactionalFacade 接口本身未实现。  
-**追踪 Issue**: #2603 (R2: 执行引擎统一)  
+**状态**: DEFERRED
+**原因**: PR-800 Foundation 已合并（DriftGate, TransactionContext, WriteOp），但 TransactionalFacade 接口本身未实现。
+**追踪 Issue**: #2603 (R2: 执行引擎统一)
 **影响**: 影响 RC 阶段（不是 Beta 阶段），已在 DEVELOPMENT_PLAN.md 中说明。
 
 ### F-07 ~ F-16: PR-810/820/840/850/860/870/880/890/900
 
-**状态**: NOT DONE, 无追踪  
-**原因**: 这些 PR 是 PR-800 chain 的后续扩展，在 PR-800 核心架构完成前未开始。  
+**状态**: NOT DONE, 无追踪
+**原因**: 这些 PR 是 PR-800 chain 的后续扩展，在 PR-800 核心架构完成前未开始。
 **影响**: 影响 RC 阶段（不是 Beta 阶段），需要在 RC Gate 前完成或 Deferred。
+
+---
+
+## Alpha 阶段评审发现 (Issue #2682)
+
+> 详见: `docs/releases/v3.8.0/alpha/ALPHA_STAGE_REVIEW.md`
+
+### 问题总结
+
+Alpha Gate PASS (10/10) 存在以下问题：
+
+1. **A7 架构冻结检查未执行**:
+   - A7-1 双路径残留未验证（`eng.execute` 仍存在于测试代码）
+   - A7-2 架构路径可达性未验证
+   - A7-3 ExecutionEngine 行数未验证（预期 >1500 行）
+   - A7-4 DriftGate 阻断测试缺失
+
+2. **PR DAG 执行进度脱节**:
+   - Alpha 通过时 PR-800 仅部分落地（TransactionalFacade DEFERRED）
+   - PR-810~PR-890 均未合并，但门禁未检查
+
+3. **门禁判定过于宽松**:
+   - 过度依赖形式化指标（测试计数、覆盖率）
+   - 缺失架构冻结核心语义验收
+
+### 整改措施
+
+| Issue | Action | Status |
+|-------|--------|--------|
+| A7 未执行 | 在 `ALPHA_GATE_CONTRACT.md` 中增加 A7 定义 | ✅ Done |
+| A7 未执行 | 创建 `scripts/gate/check_architecture_freeze.sh` | ✅ Done |
+| PR DAG 未绑定门禁 | 在 Beta Gate 中强制绑定 PR-DAG | ⏳ Pending |
+| RECOVERY-007 未完成 | 提升为 Beta 门禁必须项 | ⏳ Pending |
 
 ---
 
