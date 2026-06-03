@@ -64,7 +64,7 @@
 | F-32 | mysqladmin 等效 | v2.0.0 | ❌ 未实现 | ❌ DEFERRED | |
 | F-33 | mysqlbinlog | v2.0.0 | ❌ 未实现 | ✅ 7 files | |
 | F-34 | AES-256 存储加密 | v2.8.0 | ❌ 未实现 | ⚠️ partial (2 files) | |
-| F-35 | 密码轮转 | v2.0.0 | ❌ 未实现 | ❌ DEFERRED to v3.2.0+ | |
+| F-35 | 密码轮转 | v2.0.0 | ❌ 未实现 | ✅ CLOSED (PR fix/f-35-password-rotation, 8/8 tests) | |
 | F-36 | 列级权限 | v2.0.0 | ⚠️ 部分 | ✅ 4 files | |
 
 ### F-xx Status Summary
