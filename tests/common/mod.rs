@@ -430,6 +430,12 @@ impl MySqlTestClient {
 
         // 1) Column count packet
         let col_count_pkt = read_packet(&mut self.stream)?;
+        if !col_count_pkt.is_empty() && col_count_pkt[0] == 0xFF {
+            return Err(wire_err::msg(format!(
+                "query `{sql}` returned ERR: {}",
+                String::from_utf8_lossy(&col_count_pkt[3..])
+            )));
+        }
         let mut pos = 0;
         let col_count = read_lenenc_int(&col_count_pkt, &mut pos)? as usize;
 
