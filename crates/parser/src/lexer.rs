@@ -344,6 +344,7 @@ impl<'a> Lexer<'a> {
                     "FULLTEXT" => Token::Fulltext,
                     "OVER" => Token::Over,
                     "BETWEEN" => Token::Between,
+                    "ESCAPE" => Token::Escape,
                     _ => Token::Identifier(ident),
                 }
             }
