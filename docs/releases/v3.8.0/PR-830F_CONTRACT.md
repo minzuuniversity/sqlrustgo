@@ -1,5 +1,7 @@
 # WAL Lifecycle Contract v1
 
+<!-- env:blocked:no-ci -->
+
 > **Contract ID**: WAL_LIFECYCLE_CONTRACT_v1
 > **PR**: PR-830F — WAL Lifecycle Controller
 > **Version**: v3.8.0 Alpha
