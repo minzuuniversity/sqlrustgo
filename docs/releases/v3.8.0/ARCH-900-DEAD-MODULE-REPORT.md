@@ -1,4 +1,6 @@
 # Architecture Governance — Dead Module Detection Report
+
+<!-- env:blocked:no-ci -->
 **Issue**: #2601  
 **Author**: Hermes C  
 **Date**: 2026-05-31  
