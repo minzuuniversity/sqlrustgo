@@ -10,6 +10,7 @@
     renamed_and_removed_lints
 )]
 
+pub mod cbo_estimator;
 pub mod engine_builder;
 pub mod engine_select;
 pub mod engine_utils;

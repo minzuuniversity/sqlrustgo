@@ -3,6 +3,7 @@
 > **Version**: v1.0
 > **Date**: 2026-06-01
 > **Branch**: `develop/v3.8.0` (commit `27ac5f942`)
+> **gate_policy_eval_id**: `run_20260601_011`
 > **Status**: Partial — RTI Chain Established, 1 Gap Remains
 > **Governance**: P1 (Verifiable), P8 (RTI Chain)
 
