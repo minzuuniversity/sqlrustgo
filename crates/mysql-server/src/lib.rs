@@ -1550,12 +1550,12 @@ pub fn run_server_with_listener(listener: TcpListener) -> MySqlResult<()> {
 /// but before the accept loop starts. The test harness uses it to
 /// pre-create the `tester` user with a known password so the `mysql`
 /// crate's auth handshake succeeds.
-    pub(crate) fn run_server_with_listener_and_shutdown_with_bootstrap_and_tables(
-        listener: TcpListener,
-        shutdown: std::sync::Arc<std::sync::atomic::AtomicBool>,
-        bootstrap: Option<Box<dyn FnOnce(&mut UserStore) + Send>>,
-        bootstrap_tables: bool,
-    ) -> MySqlResult<()> {
+pub(crate) fn run_server_with_listener_and_shutdown_with_bootstrap_and_tables(
+    listener: TcpListener,
+    shutdown: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    bootstrap: Option<Box<dyn FnOnce(&mut UserStore) + Send>>,
+    bootstrap_tables: bool,
+) -> MySqlResult<()> {
     let tls_config = Arc::new(make_tls_config());
     tracing::info!("TLS ready (self-signed cert)");
 
@@ -1637,12 +1637,12 @@ pub fn run_server_with_listener_and_shutdown(
 /// bootstrap callback is independent — pass `bootstrap: Some(_)`
 /// to add custom users, `bootstrap: None` to start with the
 /// server's built-in `root` and `mysql` users only.
-    #[allow(dead_code)]
-    pub(crate) fn run_server_with_listener_and_shutdown_with_bootstrap(
-        listener: TcpListener,
-        shutdown: std::sync::Arc<std::sync::atomic::AtomicBool>,
-        bootstrap: Option<Box<dyn FnOnce(&mut UserStore) + Send>>,
-    ) -> MySqlResult<()> {
+#[allow(dead_code)]
+pub(crate) fn run_server_with_listener_and_shutdown_with_bootstrap(
+    listener: TcpListener,
+    shutdown: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    bootstrap: Option<Box<dyn FnOnce(&mut UserStore) + Send>>,
+) -> MySqlResult<()> {
     run_server_with_listener_and_shutdown_with_bootstrap_and_tables(
         listener, shutdown, bootstrap, true,
     )
@@ -2393,6 +2393,23 @@ pub mod testing {
                 .field("port", &self.port)
                 .field("data_dir", &self.data_dir)
                 .finish()
+        }
+    }
+
+    impl EphemeralHandle {
+        /// Build a no-op handle for a server that is **not**
+        /// managed by this process (e.g. a subprocess spawned by
+        /// an L3 acceptance test). Drop on the returned handle is
+        /// inert: it does not touch a data dir, shutdown flag, or
+        /// join a server thread, because those belong to the
+        /// external process.
+        pub fn detached_for_external_server(port: u16) -> Self {
+            Self {
+                port,
+                shutdown: None,
+                join: Mutex::new(None),
+                data_dir: PathBuf::new(),
+            }
         }
     }
 
