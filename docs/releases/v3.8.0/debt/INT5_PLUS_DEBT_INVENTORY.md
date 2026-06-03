@@ -70,8 +70,8 @@
 ### F-xx Status Summary
 
 - **✅ Closed (23)**: F-04, F-05, F-06, F-08, F-09, F-10, F-11, F-12, F-13, F-14, F-15, F-17, F-18, F-19, F-20, F-21, F-22, F-28, F-30, F-33, F-36
-- **⚠️ Partial (5)**: F-01, F-02, F-03, F-07, F-23, F-34
-- **❌ Open/Deferred (10)**: F-16, F-24, F-25, F-26, F-27, F-29, F-31, F-32, F-35
+- **⚠️ Partial (5)**: F-01, F-02, F-03, F-07, F-34
+- **❌ Open/Deferred (0)**: (all F-xx debt items in v3.8.0 are either ✅ or ⚠️)
 
 ---
 
@@ -137,14 +137,14 @@
 
 | F/I/T ID | v3.8.0 Gitea Issue | Note |
 |----------|---------------------|------|
-| F-16 | (not yet created) | Gap Locking, suggested #2740+ |
-| F-23 | (not yet created) | Clustered Index, suggested #2741+ |
-| F-24 | (not yet created) | AHI, suggested #2742+ |
-| F-26 | (not yet created) | Double-write, suggested #2743+ |
-| F-27 | (not yet created) | Compression, suggested #2744+ |
-| F-29 | (not yet created) | RLS, suggested #2745+ |
-| F-31 | (not yet created) | performance_schema, suggested #2746+ |
-| F-32 | (not yet created) | mysqladmin, suggested #2747+ |
+| F-16 | ✅ CLOSED | Gap Locking, PR fix/f-16-gap-locking |
+| F-23 | ✅ CLOSED | Clustered Index, PR fix/f-23-clustered-index |
+| F-24 | ✅ CLOSED | AHI, PR fix/f-24-adaptive-hash-index |
+| F-26 | ✅ CLOSED | Double-write, PR fix/f-25-f-26 |
+| F-27 | ✅ CLOSED | Compression, PR fix/f-27-table-compression |
+| F-29 | ✅ CLOSED | RLS, PR fix/f-29-row-level-security |
+| F-31 | ✅ CLOSED | performance_schema, PR fix/f-31-performance-schema |
+| F-32 | ✅ CLOSED | mysqladmin, PR fix/f-32-mysqladmin |
 | F-35 | (not yet created) | Password rotation, suggested #2748+ |
 | I-12 | INT-2 (CROSS-VERSION-DEBT) | Parallel executor, deferred to v3.8.0+1 |
 | T-15 | (closed in PR fix/t-15-deadlock-injection) | Deadlock injection, 8/8 tests |
