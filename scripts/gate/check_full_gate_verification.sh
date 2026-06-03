@@ -84,9 +84,20 @@ run_gate "Cross-Version Debt" "$SCRIPT_DIR/check_cross_version_debt.sh" 0
 
 # 6. Test Plan Consistency
 echo "--- [Test Plan Consistency] ---"
-PLAN="$REPO_ROOT/docs/releases/v3.8.0/TEST_PLAN_INTEGRATED.md"
-if [ ! -f "$PLAN" ]; then
-    echo "  ❌ TEST_PLAN_INTEGRATED.md not found"
+# v3.8.0 PR-2933 reorganized docs into categorized subdirectories.
+# TEST_PLAN_INTEGRATED.md may live under test-design/ (preferred) or directly
+# under docs/releases/v3.8.0/ (legacy).
+PLAN_PRIMARY="$REPO_ROOT/docs/releases/v3.8.0/test-design/TEST_PLAN_INTEGRATED.md"
+PLAN_LEGACY="$REPO_ROOT/docs/releases/v3.8.0/TEST_PLAN_INTEGRATED.md"
+if [ -f "$PLAN_PRIMARY" ]; then
+    PLAN="$PLAN_PRIMARY"
+elif [ -f "$PLAN_LEGACY" ]; then
+    PLAN="$PLAN_LEGACY"
+else
+    PLAN=""
+fi
+if [ -z "$PLAN" ]; then
+    echo "  ❌ TEST_PLAN_INTEGRATED.md not found (tried test-design/ and legacy)"
     FAIL_COUNT=$((FAIL_COUNT + 1))
     RESULTS+=("Test Plan Consistency: FAIL")
 else
@@ -112,7 +123,18 @@ echo
 echo "--- [PR Template] ---"
 TEMPLATE="$REPO_ROOT/.gitea/pull_request_template.md"
 if [ -f "$TEMPLATE" ]; then
-    if grep -q "5-类文档" "$TEMPLATE" && grep -q "5-原则" "$TEMPLATE"; then
+    # P1-5 PR-2927 wrote the template using "5-类文档" but encoded 5-原则
+    # as "5-Principle" (English in the front-matter). Accept either form
+    # so a future doc-only Chinese rewrite doesn't break this gate.
+    HAS_DOCS=0
+    if grep -q "5-类文档" "$TEMPLATE" || grep -q "5-类文档清单" "$TEMPLATE"; then
+        HAS_DOCS=1
+    fi
+    HAS_PRINCIPLE=0
+    if grep -q "5-原则" "$TEMPLATE" || grep -q "5-Principle" "$TEMPLATE"; then
+        HAS_PRINCIPLE=1
+    fi
+    if [ "$HAS_DOCS" -eq 1 ] && [ "$HAS_PRINCIPLE" -eq 1 ]; then
         echo "  ✅ PASS (template has 5-类文档 + 5-原则)"
         PASS_COUNT=$((PASS_COUNT + 1))
         RESULTS+=("PR Template: PASS")
