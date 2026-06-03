@@ -27,6 +27,12 @@ pub struct FileStorage {
     buffer_threshold: usize,
     /// Enable insert buffering
     enable_buffer: bool,
+    /// PR-842: the active transaction id (0 == autocommit). Mirrored from
+    /// the ExecutionEngine via `set_current_tx_id` so `in_transaction()`
+    /// can answer correctly even on the bare FileStorage path.
+    current_tx_id: u64,
+    /// Trigger definitions keyed by trigger name, protected by RwLock for concurrent access
+    triggers: RwLock<HashMap<String, TriggerInfo>>,
 }
 
 impl FileStorage {
@@ -42,6 +48,8 @@ impl FileStorage {
             insert_buffer: HashMap::new(),
             buffer_threshold: 100,
             enable_buffer: true,
+            current_tx_id: 0,
+            triggers: RwLock::new(HashMap::new()),
         };
 
         // Load existing tables
@@ -67,6 +75,8 @@ impl FileStorage {
             insert_buffer: HashMap::new(),
             buffer_threshold,
             enable_buffer,
+            current_tx_id: 0,
+            triggers: RwLock::new(HashMap::new()),
         };
 
         storage.load_all_tables()?;
@@ -89,7 +99,9 @@ impl FileStorage {
             indexes: RwLock::new(HashMap::new()),
             insert_buffer: HashMap::new(),
             buffer_threshold: 100,
-            enable_buffer: true,
+            enable_buffer: true, // Transaction boundary handled by buffer flush on commit
+            current_tx_id: 0,
+            triggers: RwLock::new(HashMap::new()),
         };
 
         // Load existing tables
@@ -97,6 +109,9 @@ impl FileStorage {
 
         // Load existing indexes
         storage.load_all_indexes()?;
+
+        // Load existing triggers
+        storage.load_all_triggers()?;
 
         Ok(storage)
     }
@@ -110,6 +125,72 @@ impl FileStorage {
     fn index_path(&self, table_name: &str, column_name: &str) -> PathBuf {
         self.data_dir
             .join(format!("{}_idx_{}.json", table_name, column_name))
+    }
+
+    /// Get the path for a trigger file (named after the trigger, not the table)
+    fn trigger_path(&self, trigger_name: &str) -> PathBuf {
+        self.data_dir.join(format!("trigger_{}.json", trigger_name))
+    }
+
+    /// Load a single trigger from disk
+    fn load_trigger(&self, trigger_name: &str) -> std::io::Result<TriggerInfo> {
+        let path = self.trigger_path(trigger_name);
+        let file = File::open(&path)?;
+        let reader = BufReader::new(file);
+        let info: TriggerInfo = serde_json::from_reader(reader)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+        Ok(info)
+    }
+
+    /// Save a trigger to disk
+    fn save_trigger(&self, info: &TriggerInfo) -> std::io::Result<()> {
+        let path = self.trigger_path(&info.name);
+        let file = File::create(&path)?;
+        let mut writer = BufWriter::new(file);
+        let json = serde_json::to_string_pretty(info)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+        writer.write_all(json.as_bytes())?;
+        writer.flush()?;
+        Ok(())
+    }
+
+    /// Remove a trigger file from disk (best-effort: missing file is OK)
+    fn remove_trigger_file(&self, trigger_name: &str) -> std::io::Result<()> {
+        let path = self.trigger_path(trigger_name);
+        match fs::remove_file(&path) {
+            Ok(()) => Ok(()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(e) => Err(e),
+        }
+    }
+
+    /// Load all triggers from the data directory
+    fn load_all_triggers(&mut self) -> std::io::Result<()> {
+        if !self.data_dir.exists() {
+            return Ok(());
+        }
+
+        for entry in fs::read_dir(&self.data_dir)? {
+            let entry = entry?;
+            let path = entry.path();
+
+            if let Some(file_name) = path.file_name().and_then(|s| s.to_str()) {
+                if file_name.starts_with("trigger_") && file_name.ends_with(".json") {
+                    if let Some(name) = file_name
+                        .strip_prefix("trigger_")
+                        .and_then(|s| s.strip_suffix(".json"))
+                    {
+                        if let Ok(info) = self.load_trigger(name) {
+                            if let Ok(mut triggers) = self.triggers.write() {
+                                triggers.insert(name.to_string(), info);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(())
     }
 
     /// Load all tables from the data directory
@@ -1089,15 +1170,16 @@ mod tests {
         let result = storage.create_trigger(trigger_info);
         assert!(result.is_ok());
 
-        // Test drop_trigger returns error (not supported)
+        // PR-2760: drop_trigger is now implemented (FileStorage trigger persistence).
+        // Drop should succeed and return Ok.
         let result = storage.drop_trigger("test_trigger");
-        assert!(result.is_err());
+        assert!(result.is_ok(), "drop_trigger should succeed after PR-2760");
 
-        // Test get_trigger returns None
+        // Test get_trigger returns None (dropped above)
         let result = storage.get_trigger("test_trigger");
         assert!(result.is_none());
 
-        // Test list_triggers returns empty
+        // Test list_triggers returns empty (dropped above)
         let result = storage.list_triggers("test_table");
         assert!(result.is_empty());
 
@@ -1259,29 +1341,102 @@ impl FileStorage {
     }
 }
 
+impl FileStorage {
+    /// Discard all row data in every in-memory table while preserving the
+    /// schema. Used by `with_wal_recovery` to make the WAL the sole source
+    /// of truth on startup, so we never end up with both persisted rows
+    /// and replayed rows for the same entries.
+    pub fn clear_all_tables(&mut self) {
+        for (_name, data) in self.tables.iter_mut() {
+            data.rows.clear();
+        }
+        self.insert_buffer.clear();
+    }
+}
+
 impl StorageEngine for FileStorage {
+    fn in_transaction(&self) -> bool {
+        self.current_tx_id != 0
+    }
+
+    fn current_tx_id(&self) -> u64 {
+        self.current_tx_id
+    }
+
+    fn set_current_tx_id(&mut self, id: u64) {
+        self.current_tx_id = id;
+    }
+
     fn scan(&self, table: &str) -> SqlResult<Vec<Record>> {
-        Ok(self
+        let mut rows: Vec<Record> = self
             .get_table(table)
             .map(|data| data.rows.clone())
-            .unwrap_or_default())
+            .unwrap_or_default();
+        // F-09 fix: merge insert_buffer so same-transaction SELECT/UPDATE sees
+        // the rows that were just inserted (and not yet flushed to data.rows).
+        if let Some(buffered) = self.insert_buffer.get(table) {
+            rows.extend(buffered.iter().cloned());
+        }
+        Ok(rows)
     }
 
     fn insert(&mut self, table: &str, records: Vec<Record>) -> SqlResult<()> {
-        if !self.enable_buffer || records.len() >= self.buffer_threshold {
+        // PR-842: route inserts through the buffer when we are inside a
+        // transaction so that a crash before COMMIT does not leak partially
+        // applied rows to disk. Outside a transaction (autocommit) the
+        // insert is durable immediately. `enable_buffer: false` is
+        // overridden for tx-scoped writes so WAL recovery sees a clean
+        // apply-or-rollback boundary.
+        if self.in_transaction() {
+            self.insert_buffered(table, records)
+        } else if !self.enable_buffer || records.len() >= self.buffer_threshold {
             self.insert_direct(table, records)
         } else {
             self.insert_buffered(table, records)
         }
     }
 
-    fn delete(&mut self, table: &str, _filters: &[Value]) -> SqlResult<usize> {
+    /// F-09 fix: bypass insert_buffer so WAL recovery can replay entries
+    /// deterministically. Subsequent scan/delete in the same recovery pass
+    /// see the row in `data.rows` directly, avoiding the "3 rows expected 1"
+    /// regression caused by buffered inserts piling up during replay.
+    fn force_insert(&mut self, table: &str, record: Vec<Value>) -> SqlResult<()> {
+        self.insert_direct(table, vec![record])
+    }
+
+    fn delete(&mut self, table: &str, filters: &[Value]) -> SqlResult<usize> {
         if let Some(ref mut data) = self.tables.get_mut(table) {
-            let count = data.rows.len();
-            data.rows.clear();
-            let table_data = data.clone();
-            self.save_table(table, &table_data)?;
-            Ok(count)
+            let original_len = data.rows.len();
+            if filters.is_empty() {
+                data.rows.clear();
+            } else {
+                // Row-level delete: keep rows that do NOT match the filter
+                // (filter values are compared positionally against each row's
+                // values; a row is "matched" when every filter slot equals
+                // the row's value at the same slot).
+                data.rows.retain(|row| {
+                    !filters
+                        .iter()
+                        .enumerate()
+                        .all(|(i, f)| row.get(i).map(|v| v == f).unwrap_or(false))
+                });
+            }
+            let new_len = data.rows.len();
+            let removed = original_len - new_len;
+
+            if removed > 0 || filters.is_empty() {
+                let table_data = data.clone();
+                self.save_table(table, &table_data)?;
+            }
+
+            // After full table delete (filters.is_empty()), clear any buffered
+            // inserts. The caller (UPDATE implementation) will re-insert the
+            // correct rows. We do NOT re-insert the buffered rows since they
+            // represent old state that should be replaced, not preserved.
+            if filters.is_empty() {
+                self.insert_buffer.remove(table);
+            }
+            Ok(removed)
         } else {
             Ok(0)
         }
@@ -1305,10 +1460,36 @@ impl StorageEngine for FileStorage {
     fn update(
         &mut self,
         table: &str,
-        _filters: &[Value],
-        _updates: &[(usize, Value)],
+        filters: &[Value],
+        updates: &[(usize, Value)],
     ) -> SqlResult<usize> {
-        Ok(self.get_table(table).map(|d| d.rows.len()).unwrap_or(0))
+        let Some(ref mut data) = self.tables.get_mut(table) else {
+            return Ok(0);
+        };
+
+        let mut count = 0;
+        for record in data.rows.iter_mut() {
+            if filters.is_empty()
+                || filters
+                    .iter()
+                    .enumerate()
+                    .all(|(i, f)| record.get(i).map(|v| v == f).unwrap_or(false))
+            {
+                for &(col_idx, ref new_val) in updates {
+                    if col_idx < record.len() {
+                        record[col_idx] = new_val.clone();
+                    }
+                }
+                count += 1;
+            }
+        }
+
+        if count > 0 {
+            let table_data = data.clone();
+            self.save_table(table, &table_data)?;
+        }
+
+        Ok(count)
     }
 
     fn update_if(
@@ -1474,25 +1655,34 @@ impl StorageEngine for FileStorage {
     }
 
     fn create_trigger(&mut self, info: TriggerInfo) -> SqlResult<()> {
-        let _ = info;
+        // Persist to disk first (WAL-style: write-ahead, then mutate in-memory)
+        self.save_trigger(&info)
+            .map_err(|e| SqlError::ExecutionError(format!("save trigger: {}", e)))?;
+        let mut triggers = self.triggers.write().unwrap();
+        triggers.insert(info.name.clone(), info);
         Ok(())
     }
 
     fn drop_trigger(&mut self, name: &str) -> SqlResult<()> {
-        let _ = name;
-        Err(SqlError::ExecutionError(
-            "Triggers not supported in FileStorage".into(),
-        ))
+        self.remove_trigger_file(name)
+            .map_err(|e| SqlError::ExecutionError(format!("remove trigger: {}", e)))?;
+        let mut triggers = self.triggers.write().unwrap();
+        triggers.remove(name);
+        Ok(())
     }
 
     fn get_trigger(&self, name: &str) -> Option<TriggerInfo> {
-        let _ = name;
-        None
+        let triggers = self.triggers.read().unwrap();
+        triggers.get(name).cloned()
     }
 
     fn list_triggers(&self, table: &str) -> Vec<TriggerInfo> {
-        let _ = table;
-        Vec::new()
+        let triggers = self.triggers.read().unwrap();
+        triggers
+            .values()
+            .filter(|t| t.table_name == table)
+            .cloned()
+            .collect()
     }
 
     fn has_view(&self, name: &str) -> bool {
