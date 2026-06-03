@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+# STATUS: DEPRECATED — see scripts/gate/README.md
+# Reason: not invoked by any active gate (audit 2026-06-04)
+# Action:  do not add new callers; restore via git history if needed
+
 # Beta Entry Verification Script
 # 逐项验证 Beta Gate B1-B8，必须全部 PASS 才能进入 Beta
 # 必须实际运行命令，不能只检查文档存在
