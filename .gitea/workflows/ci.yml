@@ -129,6 +129,12 @@ jobs:
           cd repo
           chmod +x scripts/gate/check_docs_consistency.sh
           bash scripts/gate/check_docs_consistency.sh 2>&1 | tee docs_consistency.log
+      - name: Doc Completeness Check (dedicated, v3.8.0+) [Issue #2941 supplement]
+        run: |
+          cd repo
+          chmod +x scripts/gate/check_document_completeness.sh
+          mkdir -p artifacts/gate/v3.8.0/document_completeness
+          bash scripts/gate/check_document_completeness.sh v3.8.0 artifacts/gate/v3.8.0/document_completeness/ 2>&1 | tee document_completeness.log
       - name: Alpha Gate (SPEC-021)
         run: |
           cd repo
