@@ -1,5 +1,7 @@
 # PR-800 TEST_PLAN — COM_QUERY AST Routing
 
+<!-- env:blocked:no-ci -->
+
 > **PR Number**: PR-800  
 > **PR Title**: COM_QUERY AST Routing  
 > **Version**: v3.8.0 Phase 0 Architecture Freeze  

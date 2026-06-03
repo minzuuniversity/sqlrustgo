@@ -1,5 +1,7 @@
 # PR-840: WAL Replay Correctness Contract
 
+<!-- env:blocked:no-ci -->
+
 > **状态**: 已完成
 > **日期**: 2026-06-01
 > **基于**: PR-830E (RecoveryEngine), PR-830F (WAL Lifecycle)
