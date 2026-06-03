@@ -82,7 +82,6 @@ fn oltp_range_select() {
     );
 }
 
-
 #[test]
 fn oltp_insert() {
     let mut engine = setup_engine();
