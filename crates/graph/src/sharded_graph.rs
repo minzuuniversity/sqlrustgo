@@ -400,7 +400,7 @@ mod tests {
         let user2 = store.create_node("User", PropertyMap::new());
 
         let edge_id = store.create_edge(user1, user2, "KNOWS", PropertyMap::new());
-        assert!(edge_id.is_ok());
+        assert!(edge_id.is_ok(), "expected ok, got: {:?}", edge_id);
         assert_eq!(store.edge_count(), 1);
     }
 
