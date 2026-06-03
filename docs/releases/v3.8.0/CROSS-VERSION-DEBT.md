@@ -1,4 +1,6 @@
 # Cross-Version Debt Tracking — Governance Gap Analysis
+
+<!-- env:blocked:no-ci -->
 **Issue**: #2585  
 **Author**: Hermes C  
 **Date**: 2026-05-31  
