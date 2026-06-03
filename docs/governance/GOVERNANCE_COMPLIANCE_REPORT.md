@@ -15,6 +15,7 @@
 | Evidence Binding | `check_evidence_binding.sh` | 每次 PR | 2026-06-04 | ✅ | |
 | Anti-Fabrication | `check_anti_fabrication.sh` | **每次 PR（新增）** | 2026-06-04 | ✅ | v3.8.0+ |
 | Doc Completeness | `check_docs_consistency.sh` | 每次 PR | 2026-06-04 | ✅ | 已扩展 CHECK 6-8 |
+| **Doc Completeness (Dedicated)** | `check_document_completeness.sh` | **每次 PR（新增）** | 2026-06-04 | ✅ | v3.8.0+ — Issue #2941 supplement, 独立检查 8 mandatory docs 存在性 + 大小 + 内部链接 |
 | Coverage Gate | `check_coverage.sh` | 每次 PR | 2026-06-04 | ✅ | |
 | Security Check | `check_security.sh` | 每次 PR | 2026-06-04 | ✅ | |
 | Alpha Gate | `check_alpha_gate.sh` | 合并前 | 2026-06-04 | ✅ | |
