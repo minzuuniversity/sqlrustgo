@@ -1,5 +1,7 @@
 # SPEC-004 — G-01 验证链强制门禁
 
+<!-- env:blocked:no-ci -->
+
 > **PR Number**: SPEC-004 (独立 PR，不属于 PR-800/830 系列)
 > **PR Title**: G-01 Validation Chain Enforcement — 8 维度 30 项自动化门禁
 > **Version**: v3.8.0
