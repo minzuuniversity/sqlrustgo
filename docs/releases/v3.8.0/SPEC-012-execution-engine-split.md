@@ -1,5 +1,7 @@
 # SPEC-012 — ExecutionEngine 行数拆分 (PR-900 第一阶段)
 
+<!-- env:blocked:no-ci -->
+
 > **PR Number**: SPEC-012
 > **PR Title**: ExecutionEngine 行数拆分 — 1587→1431 (<1500 AD-001 目标)
 > **Version**: v3.8.0

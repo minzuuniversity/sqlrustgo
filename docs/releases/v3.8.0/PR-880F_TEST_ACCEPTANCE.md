@@ -1,5 +1,7 @@
 # PR-880F TEST ACCEPTANCE — VTU Predicate/Mutation Pipeline
 
+<!-- env:blocked:no-ci -->
+
 > **PR**: PR-880F (F-13 增量)
 > **Branch**: test/v380-test-coverage-a1-a4
 > **Created**: 2026-06-02
