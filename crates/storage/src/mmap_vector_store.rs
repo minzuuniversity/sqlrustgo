@@ -280,7 +280,7 @@ mod tests {
     }
 
     #[test]
-    #[ignore] // macOS mmap permission issue with tempfile
+        #[ignore = "macOS mmap permission issue with tempfile"]
     fn test_mmap_save_to_file() {
         let tmp_dir = tempfile::tempdir().unwrap();
         let file_path = tmp_dir.path().join("test_vectors.mmap");
