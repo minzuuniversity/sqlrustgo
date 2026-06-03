@@ -1,9 +1,11 @@
 # Issue-2 (P0): Validation Chain Missing — Test Design Review Gate Absent
 
-**Status**: `UNVERIFIED` — Requirement → Test Design → Assertion chain not established
-**Type**: Governance Blocker (Highest Priority)
+**Status**: `ENFORCED` — `check_validation_chain.sh` 已创建并接入 Gate (SPEC-004 / ADR-009, 2026-06-03)
+**Type**: Governance Blocker (Resolved)
 **Category**: Audit Finding — Validation System Problem
-**Related Rule**: G-01 (proposed)
+**Related Rule**: G-01 (enforced)
+**Resolved by**: SPEC-004 + ADR-009 + PR-XXX
+**Initial run result**: 9 PASS / 5 FAIL / 2 WARN (out of 14 checks) — 5 FAIL 列为后续 PR 修复目标
 
 ---
 
