@@ -1,5 +1,7 @@
 # PR-830F SPEC — WAL Lifecycle Controller (Checkpoint + Truncation)
 
+<!-- env:blocked:no-ci -->
+
 > **PR Number**: PR-830F
 > **PR Title**: WAL Lifecycle Controller — Checkpoint-Based WAL Truncation
 > **Version**: v3.8.0 Alpha
