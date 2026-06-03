@@ -85,7 +85,7 @@ Current: develop/v3.8.0 @ 745f24f1 (FAIL - 2 blockers)
 Step 1: Fix A4_FORMAT (cargo fmt --all) → commit
 Step 2: Fix A5_COVERAGE (use RC gate method) → commit
 Step 3: Re-run check_alpha_v380.sh → expect PASS
-Step 4: Create alpha/v3.8.0 from clean develop/v3.8.0
+Step 4: Continue from clean develop/v3.8.0
 Step 5: Begin PR-800 development on alpha branch
 ```
 
