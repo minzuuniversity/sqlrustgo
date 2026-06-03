@@ -1,0 +1,59 @@
+=== SPEC-003 Update WAL Replay 验证日志 ===
+执行时间: 2026-06-02
+执行者: Hermes Agent
+基线: develop/v3.8.0 @ 95951420e
+工作分支: fix/v3.8.0-update-replay-recovery
+
+=== 关键发现 (执行期) ===
+G5 缺陷确认: recovery_engine.rs:391-397 Update 分支是 noop+warn
+(只有 log::warn!，没有真正的 storage.update 调用)
+
+EXP-G test_wal_004_update_survives 用 with_wal_file (无 crash recovery),
+测的是 FileStorage 持久化, 不是 WAL replay, 所以测试 PASS ≠ Update 重放工作
+
+=== 修复清单 ===
+1. WalStorage 添加 value_to_bytes helper (单值编码)
+2. log_update 签名扩展: log_update(table_id, key, old_record, updates)
+3. 新编码格式: "U:" + old_record + ";" + updates_count(u32 LE) + [col_idx(u32 LE) + value_bytes]...
+4. update() 调用方: 传入 updates
+5. update_if() 调用方: 从 mutation.assignments() 提取, 构造 U: 编码 (无 old_record)
+6. recovery_engine 添加 bytes_to_record_and_updates helper (130+ 行)
+7. apply_entry Update 分支: 真实调用 storage.update(table, &filters, &updates)
+8. 新测试 test_update_wal_replay_applies_updates: 创建表+插入+构造 U: entry+apply+验证
+9. 新测试 test_bytes_to_record_and_updates_roundtrip: 编码解码对称性
+10. 更新 LEGACY_FIXES_REPORT §4.1 G5 状态: ✅ FIXED
+
+=== 验证 ===
+$ cargo fmt --all -- --check
+EXIT: 0  ✅
+
+$ cargo test -p sqlrustgo-storage --lib
+test result: ok. 288 passed; 0 failed  ✅ (286+2 新测试)
+
+$ cargo test -p sqlrustgo-executor --lib
+test result: ok. 317 passed; 0 failed  ✅ (develop/v3.8.0 基线, 无回归)
+
+$ cargo build --all-features
+Finished  ✅ (workspace 编译通过)
+
+=== 新测试证据 ===
+test recovery_engine::tests::test_update_wal_replay_applies_updates ... ok
+- 创建 accounts(id INTEGER, balance INTEGER)
+- INSERT (1, 100)
+- 构造 U: 编码 Update entry (SET balance = 900 WHERE id = 1)
+- apply_entry → balance 变 900 ✅
+
+test recovery_engine::tests::test_bytes_to_record_and_updates_roundtrip ... ok
+- 编码 "U:i:42;u32(1)u32(1)i:900" → (record=[42], updates=[(1, 900)]) ✅
+
+=== git log ===
+(待 commit)
+
+=== 推送状态 ===
+(待推送)
+
+=== Gitea PR ===
+(待创建)
+
+=== 总结 ===
+AC-1 ✅  AC-2 ✅  AC-3 ✅  AC-4 ✅  AC-5 ✅  AC-6 ✅  AC-7 ✅  AC-8 ✅  AC-9 ⏳  AC-10 ⏳
