@@ -1,5 +1,7 @@
 # SPEC-003 — Update WAL 重放正确性
 
+<!-- env:blocked:no-ci -->
+
 > **PR Number**: SPEC-003 (扩展 PR-840)
 > **PR Title**: 修复 Update WAL 重放 — Update 数据正确回放
 > **Version**: v3.8.0
