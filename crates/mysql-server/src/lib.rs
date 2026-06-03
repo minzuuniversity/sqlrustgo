@@ -2396,6 +2396,10 @@ pub mod testing {
         /// starts accepting connections. Use this to inject the 8 TPC-H
         /// `CREATE TABLE` statements into an ephemeral server.
         pub bootstrap_sql: Vec<String>,
+        /// Maximum bytes to buffer in a single batched INSERT during
+        /// LOAD DATA LOCAL INFILE. Default 1 MB. Tests / perf benches
+        /// can set higher (e.g. 16 MB) for fewer INSERT round-trips.
+        pub bulk_insert_buffer_size: usize,
     }
 
     impl Default for EphemeralConfig {
@@ -2406,6 +2410,7 @@ pub mod testing {
                 bootstrap_users: true,
                 data_dir: None,
                 bootstrap_sql: Vec::new(),
+                bulk_insert_buffer_size: 1_048_576,
             }
         }
     }
