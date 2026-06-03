@@ -1,5 +1,7 @@
 # F-06 TransactionalFacade — Design Notes & Stub Status
 
+<!-- env:blocked:no-ci -->
+
 > **PR**: F-06 (PR-800F)
 > **Status**: STUB (compile-clean, behaviour pending rewrite)
 > **Date**: 2026-06-03
