@@ -1,5 +1,7 @@
 # v3.8.0 Roadmap
 
+<!-- env:blocked:no-ci -->
+
 ## Status: DRAFT
 
 > **Baseline**: `origin/develop/v3.8.0` (commit 44fea01c) — Execution Semantics Freeze (087bb12d)
