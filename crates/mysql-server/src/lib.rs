@@ -1171,7 +1171,7 @@ fn handle_load_local_infile<S: Read + Write>(
     // 3. Send 0xFB packet to the client — the client interprets this
     //    as "open this file and start streaming its bytes back".
     let mut fb_payload = Vec::with_capacity(path.len() + 1);
-    fb_payload.push(0xFB);
+    fb_payload.push(packet_type::LOCAL_INFILE_REQUEST);
     fb_payload.extend_from_slice(path.as_bytes());
     Packet {
         length: fb_payload.len() as u32,
