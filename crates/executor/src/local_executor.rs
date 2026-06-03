@@ -30,7 +30,6 @@ use std::time::Instant;
 /// with unified WAL + Transaction facade for VTU contract enforcement
 pub struct LocalExecutor<'a> {
     storage: &'a dyn StorageEngine,
-    txn_manager: Option<&'a TransactionManager>,
     cache: Arc<RwLock<QueryCache>>,
     cache_config: QueryCacheConfig,
     slow_query_log: StdRwLock<Option<query_stats::SlowQueryLog>>,
@@ -108,7 +107,6 @@ impl<'a> LocalExecutor<'a> {
     pub fn new(storage: &'a dyn StorageEngine) -> Self {
         Self {
             storage,
-            txn_manager: None,
             cache: Arc::new(RwLock::new(QueryCache::new(QueryCacheConfig::default()))),
             cache_config: QueryCacheConfig::default(),
             slow_query_log: StdRwLock::new(None),
@@ -117,15 +115,9 @@ impl<'a> LocalExecutor<'a> {
         }
     }
 
-    pub fn with_txn_manager(mut self, txn_manager: &'a TransactionManager) -> Self {
-        self.txn_manager = Some(txn_manager);
-        self
-    }
-
     pub fn with_cache_config(storage: &'a dyn StorageEngine, config: QueryCacheConfig) -> Self {
         Self {
             storage,
-            txn_manager: None,
             unified_facade: None,
             cache: Arc::new(RwLock::new(QueryCache::new(config.clone()))),
             cache_config: config,
