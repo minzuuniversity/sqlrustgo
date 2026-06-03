@@ -262,6 +262,163 @@ path = "tests/stored_procedure_parser_test.rs"
 name = "scheduler_integration_test"
 path = "crates/server/tests/scheduler_integration_test.rs"
 
+# === Added by P0-2 (#2875) — explicit [[test]] entries for 36 default-discovered tests ===
+# Each test file gets a registered entry for visibility in CI/IDE and gate integration.
+# All paths verified to exist via git cat-file -e on origin/develop/v3.8.0.
+
+[[test]]
+name = "adaptive_hash_index_test"
+path = "tests/adaptive_hash_index_test.rs"
+
+[[test]]
+name = "aggregate_functions_test"
+path = "tests/aggregate_functions_test.rs"
+
+[[test]]
+name = "boundary_test"
+path = "tests/boundary_test.rs"
+
+[[test]]
+name = "change_buffer_test"
+path = "tests/change_buffer_test.rs"
+
+[[test]]
+name = "clustered_index_test"
+path = "tests/clustered_index_test.rs"
+
+[[test]]
+name = "concurrency_stress_test"
+path = "tests/concurrency_stress_test.rs"
+
+[[test]]
+name = "distinct_test"
+path = "tests/distinct_test.rs"
+
+[[test]]
+name = "double_write_buffer_test"
+path = "tests/double_write_buffer_test.rs"
+
+[[test]]
+name = "e2e_trigger_wal_recovery"
+path = "tests/e2e_trigger_wal_recovery.rs"
+
+[[test]]
+name = "ee_module_boundary_test"
+path = "tests/ee_module_boundary_test.rs"
+
+[[test]]
+name = "embedded_harness_isolation"
+path = "tests/embedded_harness_isolation.rs"
+
+[[test]]
+name = "embedded_harness_smoke"
+path = "tests/embedded_harness_smoke.rs"
+
+[[test]]
+name = "exp_g_wal_contracts_verified"
+path = "tests/exp_g_wal_contracts_verified.rs"
+
+[[test]]
+name = "expression_operators_test"
+path = "tests/expression_operators_test.rs"
+
+[[test]]
+name = "gap_locking_test"
+path = "tests/gap_locking_test.rs"
+
+[[test]]
+name = "in_value_list_test"
+path = "tests/in_value_list_test.rs"
+
+[[test]]
+name = "limit_clause_test"
+path = "tests/limit_clause_test.rs"
+
+[[test]]
+name = "long_run_stability_72h_test"
+path = "tests/long_run_stability_72h_test.rs"
+
+[[test]]
+name = "long_run_stability_test"
+path = "tests/long_run_stability_test.rs"
+
+[[test]]
+name = "memory_fault_injection_test"
+path = "tests/memory_fault_injection_test.rs"
+
+[[test]]
+name = "mvcc_transaction_test"
+path = "tests/mvcc_transaction_test.rs"
+
+[[test]]
+name = "mysqladmin_test"
+path = "tests/mysqladmin_test.rs"
+
+[[test]]
+name = "network_fault_injection_test"
+path = "tests/network_fault_injection_test.rs"
+
+[[test]]
+name = "parallel_executor_test"
+path = "tests/parallel_executor_test.rs"
+
+[[test]]
+name = "password_rotation_test"
+path = "tests/password_rotation_test.rs"
+
+[[test]]
+name = "performance_schema_test"
+path = "tests/performance_schema_test.rs"
+
+[[test]]
+name = "qps_benchmark_test"
+path = "tests/qps_benchmark_test.rs"
+
+[[test]]
+name = "r_gate_yaml_test"
+path = "tests/r_gate_yaml_test.rs"
+
+[[test]]
+name = "row_level_security_test"
+path = "tests/row_level_security_test.rs"
+
+[[test]]
+name = "show_tables_test"
+path = "tests/show_tables_test.rs"
+
+[[test]]
+name = "table_compression_test"
+path = "tests/table_compression_test.rs"
+
+[[test]]
+name = "test_inventory_gate_test"
+path = "tests/test_inventory_gate_test.rs"
+
+[[test]]
+name = "tpch_full_22_test"
+path = "tests/tpch_full_22_test.rs"
+
+[[test]]
+name = "tpch_gate_test"
+path = "tests/tpch_gate_test.rs"
+
+[[test]]
+name = "tx_wal_contract_tests"
+path = "tests/tx_wal_contract_tests.rs"
+
+[[test]]
+name = "wal_tx_contract_test"
+path = "tests/wal_tx_contract_test.rs"
+
+# === End of P0-2 additions (36 new [[test]] entries) ===
+
+# P0-2 also registers e2e subdir tests with their actual Cargo names
+# (e2e_observability_test, e2e_monitoring_test) to ensure path/name alignment.
+
+[[test]]
+name = "cargo_toml_test_paths_test"
+path = "tests/cargo_toml_test_paths_test.rs"
+
 # Memory limit for tests: 8GB (8 * 1024 * 1024 * 1024 bytes)
 # This prevents any single test from consuming excessive memory
 [profile.test]
