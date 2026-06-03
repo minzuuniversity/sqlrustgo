@@ -116,7 +116,7 @@
 | T-12 | check_regression.sh | ❌ 无 | ✅ scripts/gate/check_regression.sh (or similar) |
 | T-13 | TPC-H in CI | ❌ 无 | ✅ tpch_gate_test |
 | T-14 | Sysbench in CI | ❌ 无 | ⚠️ partial (BENCHMARK.md but not in CI) |
-| T-15 | Deadlock injection | ❌ 无 | ❌ DEFERRED (TLA+ PROOF-026 instead) |
+| T-15 | Deadlock injection | ❌ 无 | ✅ CLOSED (PR fix/t-15-deadlock-injection, 8/8 tests) |
 | T-16 | CPU 80% stress | ❌ 无 | ⚠️ partial (concurrency_stress_test) |
 | T-17 | Network 30% packet loss | ❌ 无 | ❌ DEFERRED |
 | T-18 | Memory fault injection | ❌ 无 | ❌ DEFERRED |
@@ -127,7 +127,7 @@
 
 - **✅ Closed (16)**: T-01, T-02, T-03, T-04, T-05, T-07, T-08, T-09, T-10, T-11, T-12, T-13, T-20
 - **⚠️ Partial (2)**: T-06, T-14, T-16
-- **❌ Open/Deferred (4)**: T-15, T-17, T-18, T-19
+- **❌ Open/Deferred (3)**: T-17, T-18, T-19 (T-15 CLOSED by fix/t-15-deadlock-injection)
 
 ---
 
@@ -145,7 +145,7 @@
 | F-32 | (not yet created) | mysqladmin, suggested #2747+ |
 | F-35 | (not yet created) | Password rotation, suggested #2748+ |
 | I-12 | INT-2 (CROSS-VERSION-DEBT) | Parallel executor, deferred to v3.8.0+1 |
-| T-15 | (not yet created) | Deadlock injection, suggested #2749+ |
+| T-15 | (closed in PR fix/t-15-deadlock-injection) | Deadlock injection, 8/8 tests |
 | T-17 | (not yet created) | Network 30% packet loss, suggested #2750+ |
 | T-18 | (not yet created) | Memory fault injection, suggested #2751+ |
 | T-19 | (not yet created) | Disk I/O delay, suggested #2752+ |
@@ -162,7 +162,7 @@ This document **extends** the existing CROSS-VERSION-DEBT.md (INT-1~INT-4 + ARCH
 |----------|----------------|
 | INT-1, INT-2, INT-3, INT-4 (Integration) | F-16, F-23, F-24, F-26, F-27, F-29, F-31, F-32, F-35 (Feature) |
 | ARCH-1, ARCH-2, ARCH-3 (Architecture) | I-11, I-12 (Integration) |
-| SEM-1, SEM-2, SEM-3, SEM-4 (Semantic) | T-15, T-17, T-18, T-19 (Test) |
+| SEM-1, SEM-2, SEM-3, SEM-4 (Semantic) | T-17, T-18, T-19 (Test) [T-15 closed] |
 
 **Total debt items tracked in v3.8.0**:
 - 4 INT (existing) + 9 F (new) = 13 Integration items
