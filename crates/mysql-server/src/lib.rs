@@ -27,6 +27,7 @@ mod packet_type {
     pub const COM_QUIT: u8 = 0x01;
     pub const COM_INIT_DB: u8 = 0x02;
     pub const COM_QUERY: u8 = 0x03;
+    pub const LOCAL_INFILE_REQUEST: u8 = 0xFB;
     pub const COM_PING: u8 = 0x0e;
     pub const COM_STMT_PREPARE: u8 = 0x16;
     pub const COM_STMT_EXECUTE: u8 = 0x17;
