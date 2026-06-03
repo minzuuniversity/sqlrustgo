@@ -10,5 +10,9 @@ pub trait TransactionalFacade: Send + Sync {
     fn current_tx_id(&self) -> Option<u64>;
     fn execute_write(&self, ctx: &TransactionContext, op: WriteOp) -> SqlResult<ExecutionResult>;
     fn execute_read(&self, sql: &str) -> SqlResult<ExecutionResult>;
-    fn validate_operation(&self, op: &WriteOp, ctx: &TransactionContext) -> Result<(), DriftViolation>;
+    fn validate_operation(
+        &self,
+        op: &WriteOp,
+        ctx: &TransactionContext,
+    ) -> Result<(), DriftViolation>;
 }
