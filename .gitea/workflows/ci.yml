@@ -124,6 +124,15 @@ jobs:
           cd repo
           mkdir -p artifacts/gate/v3.8.0
           bash scripts/gate/check_alpha_v380.sh 2>&1 | tee alpha_gate.log
+      - name: RC/GA Gate — Unified 6-Dim (Issue #2882)
+        run: |
+          cd repo
+          bash scripts/gate/check_rc_ga_gate.sh ga 2>&1 | tee rc_ga_gate.log
+      - name: Test Plan Audit (Issue #2881 → mandatory via #2882)
+        run: |
+          cd repo
+          mkdir -p artifacts/audit/v3.8.0
+          bash scripts/gate/audit_testing.sh v3.8.0 ga artifacts/audit/v3.8.0 2>&1 | tee audit_testing.log
       - name: Gate summary
         if: always()
         run: |
@@ -132,10 +141,12 @@ jobs:
           COVERAGE_FAIL=$(grep -c 'FAIL\|failed' coverage_report.log 2>/dev/null || echo "0")
           EVIDENCE_FAIL=$(grep -c 'FAIL\|failed\|error' evidence_binding.log 2>/dev/null || echo "0")
           ALPHA_FAIL=$(grep -c '❌ FAIL' alpha_gate.log 2>/dev/null || echo "0")
-          echo "Gate: failed=$GATE_FAIL coverage=$COVERAGE_FAIL evidence=$EVIDENCE_FAIL alpha_gate=$ALPHA_FAIL"
+          RC_GA_FAIL=$(grep -c '❌ FAIL\|blocker' rc_ga_gate.log 2>/dev/null || echo "0")
+          AUDIT_FAIL=$(grep -c 'RESULT: FAIL' audit_testing.log 2>/dev/null || echo "0")
+          echo "Gate: failed=$GATE_FAIL coverage=$COVERAGE_FAIL evidence=$EVIDENCE_FAIL alpha_gate=$ALPHA_FAIL rc_ga=$RC_GA_FAIL audit=$AUDIT_FAIL"
           # SPEC-021: Evidence binding FAIL must block merge (Anti-Fabrication)
-          if [ "$GATE_FAIL" -gt 0 ] || [ "$COVERAGE_FAIL" -gt 0 ] || [ "$EVIDENCE_FAIL" -gt 0 ] || [ "$ALPHA_FAIL" -gt 0 ]; then
-            echo "L1 gate failed (incl. evidence binding / alpha gate)"
+          if [ "$GATE_FAIL" -gt 0 ] || [ "$COVERAGE_FAIL" -gt 0 ] || [ "$EVIDENCE_FAIL" -gt 0 ] || [ "$ALPHA_FAIL" -gt 0 ] || [ "$RC_GA_FAIL" -gt 0 ] || [ "$AUDIT_FAIL" -gt 0 ]; then
+            echo "L1 gate failed (incl. evidence binding / alpha gate / rc-ga gate / audit_testing)"
             exit 1
           fi
           echo "All postcheck gates passed"
