@@ -542,11 +542,6 @@ fn test_partial_update_value_recovery() {
     );
 }
 
-/// RECOVERY-008: DELETE + UPDATE mixed recovery
-///
-/// FIX-2737: ExecutionEngine's execute_delete extracts only primary key
-/// column values for storage.delete(), not all columns.
-#[ignore = "F-09/PR-840: UPDATE replay value preservation not yet implemented (deferred per ADR-006)"]
 #[test]
 fn test_delete_and_update_mixed_recovery() {
     let _dir = TempDir::new().unwrap();
