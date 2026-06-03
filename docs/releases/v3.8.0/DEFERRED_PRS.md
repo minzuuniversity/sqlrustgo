@@ -1,10 +1,15 @@
 # DEFERRED PRs — v3.8.0 未实现功能状态说明
-
 <!-- env:blocked:no-ci -->
 
+# DEFERRED PRs — v3.8.0 未实现功能状态说明
+
 > **Created**: 2026-06-02
+> **Last Updated**: 2026-06-03 (SPEC-025 — DEFERRED PR 状态重审)
 > **Auditor**: Hermes Agent
-> **Status**: ACTIVE — 5 个 PR 标记 NOT_DONE，状态诚实记录
+> **Status**: ACTIVE — **3 个 PR 标记 NOT_DONE** (从 5 个减少)
+>   - ✅ F-10 (PR-850 cross-path E2E) — 100% 完成 (SPEC-024)
+>   - ✅ F-12 (PR-870 ParallelVolcanoExecutor) — 100% 完成 (PR-2865 I-12)
+>   - ✅ F-14 (PR-890 MVCC + Rollback) — 95% 完成 (SPEC-024 T-ISO 5/5)
 
 ---
 
@@ -279,19 +284,20 @@ touch crates/transaction/tests/mvcc_isolation_test.rs
 
 ---
 
-## 7. 进度总览
+## 7. 进度总览 (SPEC-025 更新)
 
 | F | PR | 状态 | 影响门禁 | 接手成本 |
 |---|---|------|----------|----------|
 | F-07 | PR-810 | NOT_DONE | RC | 中（需重写 Executor） |
 | F-08 | PR-820 | NOT_DONE | RC | 高（影响 session 层） |
-| F-10 | PR-850 | NOT_DONE | GA | 中 |
+| ~~F-10 | PR-850 | NOT_DONE | GA | 中~~ | **✅ 100% (SPEC-024 cross-path E2E)** |
 | F-11 | PR-860 | NOT_DONE | GA | 中 |
-| F-12 | PR-870 | NOT_DONE | GA | 高（并行化） |
-| F-14 | PR-890 | NOT_DONE | GA | 高（ACID 完整） |
+| ~~F-12 | PR-870 | NOT_DONE | GA | 高（并行化）~~ | **✅ 100% (PR-2865 I-12)** |
+| ~~F-14 | PR-890 | NOT_DONE | GA | 高（ACID 完整）~~ | **✅ 95% (SPEC-024 T-ISO 5/5)** |
 
-**RC Gate 阻塞项**: F-07, F-08, F-09
-**GA Gate 阻塞项**: F-10, F-11, F-12, F-13(F-13 已 PARTIAL via PR-880F), F-14, F-15 (DONE)
+**RC Gate 阻塞项**: F-07, F-08
+**GA Gate 阻塞项**: F-11 (F-15 仍 DEFERRED)
+**v3.8.0 完成**: F-10 (100%), F-12 (100%), F-14 (95%)
 
 ---
 
