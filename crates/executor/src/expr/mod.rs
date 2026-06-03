@@ -304,7 +304,7 @@ fn eval_fn(name: &str, args: &[Value]) -> Value {
             if let (Some(s), Some(start)) = (args.first(), args.get(1)) {
                 let text = s.to_sql_string();
                 let start_idx = match start {
-                    Value::Integer(i) => (*i as i64).saturating_sub(1).max(0) as usize,
+                    Value::Integer(i) => (*i).saturating_sub(1).max(0) as usize,
                     _ => return Value::Text(String::new()),
                 };
                 if start_idx >= text.len() {
@@ -312,7 +312,7 @@ fn eval_fn(name: &str, args: &[Value]) -> Value {
                 }
                 let end = if let Some(len) = args.get(2) {
                     let len = match len {
-                        Value::Integer(i) => (*i as i64).max(0) as usize,
+                        Value::Integer(i) => (*i).max(0) as usize,
                         _ => return Value::Text(String::new()),
                     };
                     (start_idx + len).min(text.len())

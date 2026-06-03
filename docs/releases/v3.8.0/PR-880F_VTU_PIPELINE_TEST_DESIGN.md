@@ -1,5 +1,7 @@
 # PR-880F TEST DESIGN — VTU Predicate/Mutation Pipeline (F-13 增量)
 
+<!-- env:blocked:no-ci -->
+
 > **PR**: PR-880F (F-13 增量)
 > **PR Title**: VTU Predicate/Mutation Pipeline Coverage Gap Fill
 > **Version**: v3.8.0
