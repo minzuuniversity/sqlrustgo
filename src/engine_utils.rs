@@ -156,6 +156,9 @@ pub fn sql_compare(op: &str, left: &Value, right: &Value) -> bool {
         ">=" => crate::expr_utils::compare_values(left, right) >= 0,
         "<" => crate::expr_utils::compare_values(left, right) < 0,
         "<=" => crate::expr_utils::compare_values(left, right) <= 0,
+        // TPC-H Q9: `WHERE p_name LIKE '%green%'`. Substring match with
+        // `%` (any sequence) and `_` (single char) wildcards.
+        "LIKE" => crate::expr_utils::sql_like_match(&left.to_sql_string(), &right.to_sql_string()),
         _ => false,
     }
 }
