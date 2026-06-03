@@ -58,7 +58,7 @@
 | F-26 | 双写缓冲 | v2.5.0 | ❌ 未实现 | ✅ CLOSED (PR fix/f-25-f-26, 6/6 tests) |
 | F-27 | 表压缩 | v2.5.0 | ❌ 未实现 | ❌ DEFERRED to v3.9.0 | |
 | F-28 | XA 两阶段提交验证 | v2.6.0 | ⚠️ 有但不完整 | ✅ 2 files | |
-| F-29 | 行级安全 (RLS) | v2.0.0 | ❌ 未实现 | ❌ DEFERRED to v3.2.0+ | |
+| F-29 | 行级安全 (RLS) | v2.0.0 | ❌ 未实现 | ✅ CLOSED (PR fix/f-29-row-level-security, 6/6 tests) |
 | F-30 | CREATE SEQUENCE | v2.0.0 | ❌ 未实现 | ✅ 11 files | |
 | F-31 | performance_schema | v2.0.0 | ❌ 未实现 | ❌ DEFERRED to v3.2.0+ | |
 | F-32 | mysqladmin 等效 | v2.0.0 | ❌ 未实现 | ✅ CLOSED (PR fix/f-32-mysqladmin, 11/11 tests) |
