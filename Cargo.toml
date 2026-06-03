@@ -119,6 +119,7 @@ sqlrustgo-graph = { path = "crates/graph" }
 sqlrustgo-unified-query = { path = "crates/unified-query" }
 sqlrustgo-mysql-server = { path = "crates/mysql-server" }
 sqlrustgo-distributed = { path = "crates/distributed" }
+sha1 = "0.10"
 
 [package]
 name = "sqlrustgo"
@@ -198,9 +199,6 @@ path = "crates/bench/examples/tpch_data_gen.rs"
 [dependencies.rusqlite]
 version = "0.39"
 features = ["bundled"]
-
-[dev-dependencies.mysql]
-version = "25"
 
 [[test]]
 name = "buffer_pool_test"
