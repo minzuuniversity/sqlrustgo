@@ -1900,6 +1900,23 @@ impl Parser {
                             self.next();
                             Expression::Identifier(name)
                         };
+                        // Check for arithmetic in aggregate arg: SUM(a * b), SUM(a + b)
+                        let expr = if matches!(self.current(), Some(Token::Star)
+                            | Some(Token::Plus) | Some(Token::Minus) | Some(Token::Slash))
+                        {
+                            let op = match self.current() {
+                                Some(Token::Star) => "*",
+                                Some(Token::Plus) => "+",
+                                Some(Token::Minus) => "-",
+                                Some(Token::Slash) => "/",
+                                _ => unreachable!(),
+                            };
+                            self.next();
+                            let rhs = self.parse_expression()?;
+                            Expression::BinaryOp(Box::new(expr), op.to_string(), Box::new(rhs))
+                        } else {
+                            expr
+                        };
                         args.push(expr);
                     }
                     Some(Token::NumberLiteral(n)) => {
