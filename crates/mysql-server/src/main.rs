@@ -14,9 +14,14 @@
 //!   features migrate in a follow-up)
 //! - `gmp` — GMP (AI Native) workflow (placeholder)
 //! - `diag` — diagnostics and dump (placeholder)
+//! - `backup` — backup database to a file
+//! - `restore` — restore database from a backup file
 
 use clap::{Parser, Subcommand};
 use sqlrustgo_mysql_server::run_server;
+use sqlrustgo_tools::backup_restore::{
+    run_backup as tools_backup, run_restore as tools_restore, BackupCommand, RestoreCommand,
+};
 use std::io::{self, BufRead, Write};
 use std::process::ExitCode;
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
@@ -58,6 +63,16 @@ enum Command {
     Gmp,
     /// Diagnostics / catalog dump (placeholder).
     Diag,
+    /// Backup database to a file.
+    Backup {
+        /// Output file path for the backup.
+        output: String,
+    },
+    /// Restore database from a backup file.
+    Restore {
+        /// Input file path to restore from.
+        input: String,
+    },
 }
 
 fn main() -> ExitCode {
@@ -113,6 +128,20 @@ fn main() -> ExitCode {
             eprintln!("diag: full features migrate in a follow-up");
             ExitCode::from(2)
         }
+        Command::Backup { output } => match run_backup(&output) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(e) => {
+                eprintln!("backup error: {e}");
+                ExitCode::from(1)
+            }
+        },
+        Command::Restore { input } => match run_restore(&input) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(e) => {
+                eprintln!("restore error: {e}");
+                ExitCode::from(1)
+            }
+        },
     }
 }
 
@@ -160,4 +189,25 @@ fn run_repl() -> Result<(), String> {
             eprintln!("Error: {e}");
         }
     }
+}
+
+fn run_backup(output: &str) -> Result<(), String> {
+    let cmd = BackupCommand {
+        database: "default".to_string(),
+        output_dir: output.to_string(),
+        backup_type: "full".to_string(),
+        schema_only: false,
+        compress: false,
+    };
+    tools_backup(cmd).map_err(|e| e.to_string())
+}
+
+fn run_restore(input: &str) -> Result<(), String> {
+    let cmd = RestoreCommand {
+        database: "default".to_string(),
+        backup_id: input.to_string(),
+        backup_dir: ".".to_string(),
+        drop_first: false,
+    };
+    tools_restore(cmd).map_err(|e| e.to_string())
 }
