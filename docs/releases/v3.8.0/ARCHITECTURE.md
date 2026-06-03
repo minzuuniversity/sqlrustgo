@@ -1,5 +1,7 @@
 # v3.8.0 Architecture — Server-Level Transaction Model
 
+<!-- env:blocked:no-ci -->
+
 ## Status: DRAFT
 
 > Last updated: 2026-05-30
