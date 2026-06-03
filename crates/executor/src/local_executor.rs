@@ -30,6 +30,7 @@ use std::time::Instant;
 /// with unified WAL + Transaction facade for VTU contract enforcement
 pub struct LocalExecutor<'a> {
     storage: &'a dyn StorageEngine,
+    unified_facade: Option<UnifiedFacade<'a>>,
     cache: Arc<RwLock<QueryCache>>,
     cache_config: QueryCacheConfig,
     slow_query_log: StdRwLock<Option<query_stats::SlowQueryLog>>,
@@ -101,12 +102,20 @@ impl UnifiedFacade {
     fn current_tx_id(&self) -> Option<u64> {
         self.tx_manager.read().get_current_tx_id().map(|t| t.raw())
     }
+
+    /// Set the current transaction ID in WAL storage for WAL entry tracking
+    fn set_tx_id(&mut self, tx_id: u64) {
+        if let Ok(mut storage) = self.storage.try_write() {
+            storage.set_current_tx_id(tx_id);
+        }
+    }
 }
 
 impl<'a> LocalExecutor<'a> {
     pub fn new(storage: &'a dyn StorageEngine) -> Self {
         Self {
             storage,
+            unified_facade: None,
             cache: Arc::new(RwLock::new(QueryCache::new(QueryCacheConfig::default()))),
             cache_config: QueryCacheConfig::default(),
             slow_query_log: StdRwLock::new(None),
@@ -1415,15 +1424,27 @@ impl<'a> ExecutionEngine for LocalExecutor<'a> {
     }
 
     fn begin(&mut self) -> Result<u64, sqlrustgo_types::SqlError> {
-        Err(sqlrustgo_types::SqlError::ExecutionError("TODO".to_string()))
+        let facade = self.unified_facade.as_ref()
+            .ok_or_else(|| sqlrustgo_types::SqlError::ExecutionError("WAL facade required".into()))?;
+        let tx_id = facade.begin()?;
+        // Wire tx_id into WalStorage so every WAL entry carries real tx_id
+        if let Some(ref mut f) = self.unified_facade {
+            f.set_tx_id(tx_id);
+        }
+        Ok(tx_id)
     }
 
     fn commit(&mut self, _txn: u64) -> Result<(), sqlrustgo_types::SqlError> {
-        Err(sqlrustgo_types::SqlError::ExecutionError("TODO".to_string()))
+        let facade = self.unified_facade.as_ref()
+            .ok_or_else(|| sqlrustgo_types::SqlError::ExecutionError("WAL facade required".into()))?;
+        facade.commit()?;
+        Ok(())
     }
 
     fn rollback(&mut self, _txn: u64) -> Result<(), sqlrustgo_types::SqlError> {
-        Err(sqlrustgo_types::SqlError::ExecutionError("TODO".to_string()))
+        let facade = self.unified_facade.as_ref()
+            .ok_or_else(|| sqlrustgo_types::SqlError::ExecutionError("WAL facade required".into()))?;
+        facade.rollback()
     }
 }
 
@@ -1437,11 +1458,11 @@ impl<'a> LocalExecutor<'a> {
         }
 
         if sql_upper.starts_with("INSERT") {
-            return Err(sqlrustgo_types::SqlError::ExecutionError("INSERT not yet implemented via ExecutionEngine".to_string()));
+            return self.execute_insert_sql(ctx);
         }
 
         if sql_upper.starts_with("UPDATE") {
-            return Err(sqlrustgo_types::SqlError::ExecutionError("UPDATE not yet implemented via ExecutionEngine".to_string()));
+            return self.execute_update_sql(ctx);
         }
 
         Err(sqlrustgo_types::SqlError::ExecutionError("Unsupported DML".to_string()))
@@ -1453,6 +1474,118 @@ impl<'a> LocalExecutor<'a> {
         // ALL other storage access in LocalExecutor is a violation
         // TODO: Route through proper txn/wal when ExecutionEngine fully implemented
         Ok(crate::execution::ExecutionResult::ok(0))
+    }
+
+    /// Execute INSERT via SQL text through unified facade
+    fn execute_insert_sql(&self, ctx: &crate::execution::QueryContext) -> Result<crate::execution::ExecutionResult, sqlrustgo_types::SqlError> {
+        use sqlrustgo_parser::parse;
+        use sqlrustgo_parser::Statement;
+
+        let stmt = parse(ctx.sql).map_err(|e| sqlrustgo_types::SqlError::ExecutionError(e))?;
+
+        if let Statement::Insert(insert_stmt) = stmt {
+            let table = insert_stmt.table;
+            // Convert parser expressions to Values
+            let records: Result<Vec<sqlrustgo_storage::Record>, _> = insert_stmt
+                .values
+                .iter()
+                .map(|row| {
+                    row.iter()
+                        .map(|expr| Self::expression_to_value(expr))
+                        .collect()
+                })
+                .collect();
+            let records = records.map_err(|e| sqlrustgo_types::SqlError::ExecutionError(format!("{:?}", e)))?;
+
+            let affected = match self.unified_facade {
+                Some(ref facade) => facade.execute_dml(|storage| {
+                    storage.insert(&table, records.clone())
+                })?,
+                None => {
+                    return Err(sqlrustgo_types::SqlError::ExecutionError(
+                        "INSERT without WAL facade — remove direct storage access".to_string(),
+                    ))
+                }
+            };
+            Ok(crate::execution::ExecutionResult::new(vec![], affected))
+        } else {
+            Err(sqlrustgo_types::SqlError::ExecutionError(
+                "Not an INSERT statement".to_string(),
+            ))
+        }
+    }
+
+    /// Execute UPDATE via SQL text through unified facade
+    fn execute_update_sql(&self, ctx: &crate::execution::QueryContext) -> Result<crate::execution::ExecutionResult, sqlrustgo_types::SqlError> {
+        use sqlrustgo_parser::parse;
+        use sqlrustgo_parser::Statement;
+        use crate::predicate_compiler::PredicateCompiler;
+        use crate::mutation_compiler::MutationCompiler;
+        use crate::mutation_compiler::Assignment;
+
+        let stmt = parse(ctx.sql).map_err(|e| sqlrustgo_types::SqlError::ExecutionError(e))?;
+
+        if let Statement::Update(update_stmt) = stmt {
+            let table = update_stmt.table;
+
+            // Compile SET assignments to MutationIR
+            let assignments: Vec<Assignment> = update_stmt
+                .sets
+                .iter()
+                .map(|(col, expr)| Assignment {
+                    column: col.clone(),
+                    expr: sqlrustgo_planner::Expr::Literal(Self::expression_to_value(expr)),
+                })
+                .collect();
+
+            let row_mutation = MutationCompiler::compile(assignments);
+
+            // Compile WHERE clause to RowFilter
+            let predicate: sqlrustgo_storage::engine::RowFilter = update_stmt
+                .where_clause
+                .as_ref()
+                .map(|e| PredicateCompiler::compile_from_parser_expr(e))
+                .unwrap_or_else(|| Box::new(|_| true));
+
+            let affected = match self.unified_facade {
+                Some(ref facade) => facade.execute_dml(|storage| {
+                    storage.update_if(&table, &predicate, &row_mutation)
+                })?,
+                None => {
+                    return Err(sqlrustgo_types::SqlError::ExecutionError(
+                        "UPDATE without WAL facade — remove direct storage access".to_string(),
+                    ))
+                }
+            };
+            Ok(crate::execution::ExecutionResult::new(vec![], affected))
+        } else {
+            Err(sqlrustgo_types::SqlError::ExecutionError(
+                "Not an UPDATE statement".to_string(),
+            ))
+        }
+    }
+
+    /// Convert a parser Expression to a Value
+    fn expression_to_value(expr: &sqlrustgo_parser::Expression) -> sqlrustgo_types::Value {
+        use sqlrustgo_parser::Expression;
+        match expr {
+            Expression::Literal(s) => {
+                let s = s.trim();
+                if s.eq_ignore_ascii_case("NULL") {
+                    sqlrustgo_types::Value::Null
+                } else if let Ok(n) = s.parse::<i64>() {
+                    sqlrustgo_types::Value::Integer(n)
+                } else if let Ok(f) = s.parse::<f64>() {
+                    sqlrustgo_types::Value::Float(f)
+                } else if s.starts_with('\'') && s.ends_with('\'') {
+                    sqlrustgo_types::Value::Text(s[1..s.len() - 1].to_string())
+                } else {
+                    sqlrustgo_types::Value::Text(s.to_string())
+                }
+            }
+            Expression::Identifier(name) => sqlrustgo_types::Value::Text(name.clone()),
+            _ => sqlrustgo_types::Value::Null,
+        }
     }
 }
 
