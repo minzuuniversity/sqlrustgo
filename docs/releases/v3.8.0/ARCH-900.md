@@ -1,4 +1,6 @@
 # ARCH-900: StorageEngine Trait 拆分研究
+
+<!-- env:blocked:no-ci -->
 **Issue**: #2655  
 **Author**: Hermes C  
 **Date**: 2026-05-31  
