@@ -16,6 +16,11 @@ Architecture Unification Release — 消灭双执行路径，统一 SQL → AST 
 - **Execution Semantics Freeze**: AUTOCOMMIT + WAL Mandatory + MVCC Enabled + TX Lifecycle 强制（commit 087bb12d）
 - **Hermes C Regression Analysis**: 三路径行为差异检测（Path A/B/C）
 - **ExecutionEngine Type Alias**: `MemoryExecutionEngine = ExecutionEngine<MemoryStorage>`
+- **Canonical Binary Consolidation**: `sqlrustgo-mysql-server` 是 v3.8.0+ 唯一执行入口
+  - 子命令：`serve`（默认，MySQL wire 协议）/ `exec "<sql>"` / `repl` / `bench` / `gmp` / `diag`
+  - 旧 binary 退役：`sqlrustgo` / `sqlrustgo-sql-cli` / `sqlrustgo-bench` / `sqlrustgo-bench-cli` / `sqlrustgo-tools` 现在打印 deprecation 提示并指向 canonical entry
+- **Embedded Test Harness Keystone**: `sqlrustgo-mysql-server::testing::start_ephemeral` 启动进程内 MySQL server，便于 e2e 测试通过 wire 协议执行
+- **Raw MySQL Wire-Protocol Test Client**: `tests/common/mod.rs::MySqlTestClient` 不依赖 `mysql` crate，raw TCP + HandshakeResponse41，让测试有完整的 wire 协议控制
 
 ### 门禁状态
 
