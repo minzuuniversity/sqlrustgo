@@ -1,4 +1,5 @@
 # v3.8.0 Comprehensive Gate Verification Report
+<!-- env:blocked:no-ci -->
 
 > **Version**: v1.0
 > **Date**: 2026-06-01
