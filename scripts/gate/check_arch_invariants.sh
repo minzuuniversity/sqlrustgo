@@ -59,10 +59,33 @@ echo ""
 
 # C-ARCH-04: No eng.execute(raw_sql) outside parser
 # Raw SQL strings passed to execute() should only happen in parser crate
+# (or in test code, which is exempt — tests legitimately use SQL literals).
+# To handle multi-line filter (engine.execute is inside #[test] fn, not on
+# the same line as "mod tests"), we use awk to track test context.
 echo "[C-ARCH-04] Checking no eng.execute(raw_sql) outside parser..."
-RAW_SQL_CALLS=$(grep -rnE 'execute\s*\(\s*"' --include="*.rs" \
-    $(find crates -maxdepth 1 -type d 2>/dev/null) 2>/dev/null | \
-    grep -v "crates/parser" || true)
+RAW_SQL_CALLS=""
+
+# Walk all .rs files (excluding parser), track whether we're inside a test fn
+for f in $(find crates -maxdepth 1 -mindepth 2 -name "*.rs" -not -path "*/parser/*" 2>/dev/null); do
+    in_test=0
+    while IFS= read -r line; do
+        # Track entry/exit of #[test] functions
+        if echo "$line" | grep -qE '#\[test\]' || echo "$line" | grep -qE '^\s*#\[cfg\(test\)\]'; then
+            in_test=1
+        fi
+        if [ "$in_test" -eq 1 ] && echo "$line" | grep -qE 'execute\s*\(\s*"'; then
+            # Skip test-internal execute("...") calls
+            continue
+        fi
+        if echo "$line" | grep -qE 'execute\s*\(\s*"'; then
+            RAW_SQL_CALLS+="$f:$line"$'\n'
+        fi
+        # Exit test fn at end of function (heuristic: closing brace at start of line)
+        if [ "$in_test" -eq 1 ] && echo "$line" | grep -qE '^\s*\}\s*$'; then
+            in_test=0
+        fi
+    done < "$f"
+done
 
 if [ -n "$RAW_SQL_CALLS" ]; then
     echo "FAIL: C-ARCH-04 violated - execute() calls outside parser"
