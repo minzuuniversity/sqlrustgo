@@ -1050,8 +1050,7 @@ fn decode_lenenc_int(payload: &[u8], pos: &mut usize) -> Option<u64> {
         if *pos + 3 > payload.len() {
             return None;
         }
-        let v =
-            u32::from_le_bytes([0, payload[*pos], payload[*pos + 1], payload[*pos + 2]]);
+        let v = u32::from_le_bytes([0, payload[*pos], payload[*pos + 1], payload[*pos + 2]]);
         *pos += 3;
         Some(v as u64)
     } else if b0 == 0xfe {
@@ -1205,8 +1204,8 @@ fn decode_param(payload: &[u8], pos: &mut usize, type_code: u8) -> Option<Vec<u8
             // 0 bytes follow.
             Some(Vec::new())
         }
-        VARCHAR | VAR_STRING | STRING | TINY_BLOB | MEDIUM_BLOB | LONG_BLOB | BLOB
-        | ENUM | SET | BIT | JSON => {
+        VARCHAR | VAR_STRING | STRING | TINY_BLOB | MEDIUM_BLOB | LONG_BLOB | BLOB | ENUM | SET
+        | BIT | JSON => {
             // Length-encoded string/blob.
             let len = decode_lenenc_int(payload, pos)?;
             if *pos + (len as usize) > payload.len() {
@@ -1254,10 +1253,7 @@ fn decode_param(payload: &[u8], pos: &mut usize, type_code: u8) -> Option<Vec<u8
 /// This function tolerates a missing `param_count` (e.g. when a
 /// `PreparedStatementInfo` lookup failed) by falling back to scanning
 /// the SQL for `?` markers.
-pub fn parse_stmt_execute_params(
-    payload: &[u8],
-    param_count: u16,
-) -> Vec<StmtParam> {
+pub fn parse_stmt_execute_params(payload: &[u8], param_count: u16) -> Vec<StmtParam> {
     let mut params: Vec<StmtParam> = Vec::new();
     if payload.len() < 9 {
         return params;
@@ -1307,10 +1303,7 @@ pub fn parse_stmt_execute_params(
         // client doesn't provide new param bindings — the server is
         // expected to coerce the raw bytes to the prepared-statement
         // column type. We pick VAR_STRING as the conservative default.
-        let type_code: u8 = type_codes
-            .get(i)
-            .copied()
-            .unwrap_or(mysql_type::VAR_STRING);
+        let type_code: u8 = type_codes.get(i).copied().unwrap_or(mysql_type::VAR_STRING);
         match decode_param(payload, &mut pos, type_code) {
             Some(v) => params.push((v, is_numeric_type(type_code))),
             None => {
@@ -1647,7 +1640,8 @@ fn do_command_loop<S: Read + Write>(
                 // so `?` placeholders were never substituted. Now we parse
                 // the COM_STMT_EXECUTE binary protocol payload to extract
                 // the actual parameter values from the client.
-                let params: Vec<crate::StmtParam> = parse_stmt_execute_params(payload, stmt_param_count);
+                let params: Vec<crate::StmtParam> =
+                    parse_stmt_execute_params(payload, stmt_param_count);
                 let final_sql = replace_placeholders(&stmt_sql, &params);
 
                 tracing::info!("STMT EXECUTE (id={}): {}", stmt_id, final_sql);
