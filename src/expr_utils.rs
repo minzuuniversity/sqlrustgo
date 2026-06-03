@@ -299,6 +299,66 @@ pub fn evaluate_expression(
                 Err(format!("Aggregate not found in schema: {}", agg_name))
             }
         }
+        // TPC-H Q8/Q12/Q14: CASE WHEN cond THEN a ELSE b END.
+        Expression::CaseWhen(when_clauses, else_expr) => {
+            for when_clause in when_clauses {
+                let cond_val = evaluate_expression(&when_clause.condition, row, table_info)?;
+                if matches!(cond_val, Value::Boolean(true)) {
+                    return evaluate_expression(&when_clause.result, row, table_info);
+                }
+            }
+            if let Some(e) = else_expr {
+                evaluate_expression(e, row, table_info)
+            } else {
+                Ok(Value::Null)
+            }
+        }
+        // TPC-H Q13/Q16/Q20: col LIKE pattern / NOT LIKE. The executor uses
+        // the existing pub(crate) `sql_like_match` (TPC-H Q9 fix, PR #2911).
+        Expression::Like(left, pattern, _escape) => {
+            let lv = evaluate_expression(left, row, table_info)?;
+            let pv = evaluate_expression(pattern, row, table_info)?;
+            Ok(Value::Boolean(sql_like_match(&lv.to_sql_string(), &pv.to_sql_string())))
+        }
+        Expression::NotLike(left, pattern, _escape) => {
+            let lv = evaluate_expression(left, row, table_info)?;
+            let pv = evaluate_expression(pattern, row, table_info)?;
+            Ok(Value::Boolean(!sql_like_match(
+                &lv.to_sql_string(),
+                &pv.to_sql_string(),
+            )))
+        }
+        // TPC-H Q1: expr BETWEEN low AND high.
+        Expression::Between(expr, low, high) => {
+            let v = evaluate_expression(expr, row, table_info)?;
+            let lo = evaluate_expression(low, row, table_info)?;
+            let hi = evaluate_expression(high, row, table_info)?;
+            Ok(Value::Boolean(
+                compare_values(&v, &lo) >= 0 && compare_values(&v, &hi) <= 0,
+            ))
+        }
+        Expression::NotBetween(expr, low, high) => {
+            let v = evaluate_expression(expr, row, table_info)?;
+            let lo = evaluate_expression(low, row, table_info)?;
+            let hi = evaluate_expression(high, row, table_info)?;
+            Ok(Value::Boolean(
+                !(compare_values(&v, &lo) >= 0 && compare_values(&v, &hi) <= 0),
+            ))
+        }
+        // TPC-H Q20: col IN (subquery) and col NOT IN (subquery).
+        Expression::In(_, _)
+        | Expression::NotIn(_, _)
+        | Expression::InList(_, _)
+        | Expression::NotInList(_, _)
+        | Expression::Exists(_)
+        | Expression::NotExists(_)
+        | Expression::QuantifiedOp(_, _, _) => {
+            // The executor handles these via the dedicated In/Exists path in
+            // engine_select (Step 2 WHERE). evaluate_expression is only used
+            // for column-projection and aggregate arguments, where In/Exists
+            // appearing directly is unusual; return Null defensively.
+            Ok(Value::Null)
+        }
         _ => Ok(Value::Null),
     }
 }
