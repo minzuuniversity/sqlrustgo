@@ -372,7 +372,25 @@ pub fn evaluate_expression(
 /// `l_extendedprice * (1 - l_discount)` so the arithmetic arms must
 /// actually work.
 pub fn evaluate_binary_op(left: &Value, right: &Value, op: &str) -> Value {
-    match op.to_uppercase().as_str() {
+    // SQL three-valued logic: NULL comparison returns Null (UNKNOWN).
+    // Per SQL standard, only IS [NOT] NULL and IS [NOT] DISTINCT FROM
+    // treat NULL as a known value. Plain `=`, `!=`, `<`, `>`, `<=`, `>=`
+    // with any NULL operand yields Null (which the WHERE evaluator
+    // treats as a non-match, matching the documented SQL semantics).
+    let op_upper = op.to_uppercase();
+    let any_null = matches!(left, Value::Null) || matches!(right, Value::Null);
+    let _both_null = matches!(left, Value::Null) && matches!(right, Value::Null);
+    match op_upper.as_str() {
+        // Equality / inequality: with at least one NULL, the result is
+        // UNKNOWN (Null in this engine). Only `IS NULL` / `IS NOT NULL`
+        // can give a Boolean true/false on NULL — that path uses
+        // Expression::IsNull and never reaches this arm.
+        "=" | "==" | "IS" if any_null => Value::Null,
+        "!=" | "<>" if any_null => Value::Null,
+        ">" | ">=" | "<" | "<=" if any_null => Value::Null,
+        // Boolean IS / IS NOT — same as =/!= but historically also
+        // returns Null on NULL operand (we keep parity).
+        "IS NOT" if any_null => Value::Null,
         "=" | "==" | "IS" => Value::Boolean(left == right),
         "!=" | "<>" => Value::Boolean(left != right),
         ">" => Value::Boolean(compare_values(left, right) > 0),
