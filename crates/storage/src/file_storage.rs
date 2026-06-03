@@ -1429,14 +1429,12 @@ impl StorageEngine for FileStorage {
                 self.save_table(table, &table_data)?;
             }
 
-            // After full table delete (filters.is_empty()), flush any buffered
-            // inserts so that subsequent replays see the cleared state.
+            // After full table delete (filters.is_empty()), clear any buffered
+            // inserts. The caller (UPDATE implementation) will re-insert the
+            // correct rows. We do NOT re-insert the buffered rows since they
+            // represent old state that should be replaced, not preserved.
             if filters.is_empty() {
-                if let Some(records) = self.insert_buffer.remove(table) {
-                    if !records.is_empty() {
-                        self.insert_direct(table, records)?;
-                    }
-                }
+                self.insert_buffer.remove(table);
             }
             Ok(removed)
         } else {
