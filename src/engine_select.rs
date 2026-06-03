@@ -410,8 +410,9 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             &right_table_info,
             right_alias,
         )?;
-        let (left_key_idx, right_key_idx) = match join_key {
-            JoinKey::Pair(li, ri) => (li, ri),
+        let pairs: Vec<(usize, usize)> = match join_key {
+            JoinKey::Pair(li, ri) => vec![(li, ri)],
+            JoinKey::Pairs(v) => v,
             JoinKey::Left(_) | JoinKey::Right(_) => {
                 return Err(SqlError::ExecutionError(
                     "Join ON must be a binary equality between left and right columns".to_string(),
@@ -431,17 +432,37 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         let left_col_count = left_table_info.columns.len();
         let right_col_count = right_table_info.columns.len();
 
+        // Helper: render a composite join key as a single string for hashing.
+        // The key is the tuple of values for the (left|right) column indices
+        // in `pairs`. Any NULL in any component means no match (SQL UNKNOWN
+        // for `=`).
+        let key_of = |row: &[Value], indices: &[(usize, bool)]| -> Option<String> {
+            // indices: (col_idx, is_left)
+            let mut parts: Vec<String> = Vec::with_capacity(indices.len());
+            for (idx, _is_left) in indices {
+                match row.get(*idx) {
+                    Some(Value::Null) => return None,
+                    Some(v) => parts.push(format!("{:?}", v)),
+                    None => return None,
+                }
+            }
+            Some(parts.join("|"))
+        };
+        let left_key_indices: Vec<(usize, bool)> =
+            pairs.iter().map(|(li, _)| (*li, true)).collect();
+        let right_key_indices: Vec<(usize, bool)> =
+            pairs.iter().map(|(_, ri)| (*ri, false)).collect();
+
         let mut matched_results = match join_type {
             JoinType::Inner | JoinType::Left | JoinType::Right | JoinType::Full => {
                 // Hash-based matching
                 // SQL semantics: NULL = NULL is UNKNOWN (not a match), so skip NULL keys
                 let mut right_hash: HashMap<String, Vec<Vec<Value>>> = HashMap::new();
                 for right_row in &right_rows {
-                    if matches!(right_row[right_key_idx], Value::Null) {
-                        // NULL keys can never match in a join
-                        continue;
-                    }
-                    let key = format!("{:?}", right_row[right_key_idx]);
+                    let key = match key_of(right_row, &right_key_indices) {
+                        Some(k) => k,
+                        None => continue,
+                    };
                     right_hash.entry(key).or_default().push(right_row.clone());
                 }
 
@@ -453,12 +474,13 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
 
                 // Match left rows to right
                 for (li, left_row) in left_rows.iter().enumerate() {
-                    // SQL semantics: NULL keys never match
-                    if matches!(left_row[left_key_idx], Value::Null) {
-                        // For LEFT JOIN, this row will be added as unmatched later
-                        continue;
-                    }
-                    let key = format!("{:?}", left_row[left_key_idx]);
+                    let key = match key_of(left_row, &left_key_indices) {
+                        Some(k) => k,
+                        None => {
+                            // NULL in any join key column — no match.
+                            continue;
+                        }
+                    };
                     if let Some(right_match_rows) = right_hash.get(&key) {
                         left_matched.insert(li);
                         for right_row in right_match_rows {
@@ -588,6 +610,37 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     )))
                 }
             }
+            Expression::BinaryOp(left_expr, op, right_expr) if op.to_uppercase() == "AND" => {
+                // TPC-H Q9: `ON a.id = b.a_id AND a.sub_id = b.a_sub`.
+                // Each AND branch must itself be a binary `=` between a
+                // left and a right column. Combine the resulting pairs.
+                let lk = self
+                    .find_join_key_index(left_expr, left_info, left_name, right_info, right_name)?;
+                let rk = self.find_join_key_index(
+                    right_expr, left_info, left_name, right_info, right_name,
+                )?;
+                match (lk, rk) {
+                    (JoinKey::Pair(li1, ri1), JoinKey::Pair(li2, ri2)) => {
+                        Ok(JoinKey::Pairs(vec![(li1, ri1), (li2, ri2)]))
+                    }
+                    (JoinKey::Pairs(mut v), JoinKey::Pair(li, ri)) => {
+                        v.push((li, ri));
+                        Ok(JoinKey::Pairs(v))
+                    }
+                    (JoinKey::Pair(li, ri), JoinKey::Pairs(mut v)) => {
+                        let mut all = vec![(li, ri)];
+                        all.append(&mut v);
+                        Ok(JoinKey::Pairs(all))
+                    }
+                    (JoinKey::Pairs(mut v1), JoinKey::Pairs(v2)) => {
+                        v1.extend(v2);
+                        Ok(JoinKey::Pairs(v1))
+                    }
+                    _ => Err(SqlError::ExecutionError(
+                        "Multi-column AND ON requires each branch to be a binary `=` between left and right columns".to_string(),
+                    )),
+                }
+            }
             Expression::BinaryOp(left_expr, _op, right_expr) => {
                 // Standard SQL: left side of `=` references left table,
                 // right side references right table. Resolve each independently.
@@ -614,11 +667,14 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
 
 /// Which side of a single join a resolved column index belongs to, or a
 /// canonical pair (left, right) for binary `=` ON conditions.
-#[derive(Debug, Clone, Copy)]
+/// `Pairs` carries multiple `(left_idx, right_idx)` pairs for
+/// multi-column ON (`ON a.id = b.a_id AND a.sub_id = b.a_sub`).
+#[derive(Debug, Clone)]
 enum JoinKey {
     Left(usize),
     Right(usize),
     Pair(usize, usize),
+    Pairs(Vec<(usize, usize)>),
 }
 
 /// Look up a column in a (possibly accumulated) schema.
