@@ -1,5 +1,7 @@
 # SPEC-014 — 架构不变式修复（C-ARCH-01 + C-ARCH-03）
 
+<!-- env:blocked:no-ci -->
+
 > **PR Number**: SPEC-014
 > **PR Title**: 架构不变式修复 — 删除 LocalExecutor.txn_manager 死字段 + 修正 C-ARCH-03 业务 crate 检测
 > **Version**: v3.8.0
