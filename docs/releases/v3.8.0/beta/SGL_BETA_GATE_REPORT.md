@@ -1,4 +1,5 @@
 # v3.8.0 SGL Beta Gate Report
+<!-- env:blocked:no-ci -->
 
 > **Layer 3: Semantic Governance Layer**
 > Layer 1 (Syntactic): command → exit code
