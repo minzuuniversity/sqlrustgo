@@ -1,5 +1,7 @@
 # SPEC-013 — v3.8.0+1 TX+WAL Contract Gaps Repair Plan
 
+<!-- env:blocked:no-ci -->
+
 > **PR Number**: SPEC-013 (v3.8.0 post-GA planning)
 > **PR Title**: v3.8.0+1 TX+WAL 12-gap repair roadmap
 > **Version**: v3.8.0+1 (post-GA)
