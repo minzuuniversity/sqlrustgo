@@ -110,3 +110,39 @@ If a bug fix in this doc changes the result of any of the 32 GREEN wire-protocol
 3. Promote the existing `tpch_gate_test.rs` Q1/Q3/Q6 assertions to the same expected values.
 4. Re-run the full 38-test sweep; all 38 should still be GREEN.
 5. Open a PR that closes the bug-fix issue.
+
+## Track 3 progress (post-2026-06-04)
+
+- `LOAD DATA LOCAL INFILE` server-side handler landed in
+  `crates/mysql-server/src/lib.rs` (PR target: this PR's number).
+- `MySqlTestClient::load_local_infile()` client API landed in
+  `tests/common/mod.rs`.
+- 5 integration tests in `tests/load_local_infile_test.rs` (basic, SF=0.1
+  region, SF=0.1 nation, path whitelist, missing file) all GREEN.
+- Path-traversal block: canonicalize + `starts_with(data_dir)` enforced
+  in `handle_load_local_infile`. The `/etc/passwd` test confirms 1146
+  ERR is returned.
+
+### How to use it from a test
+
+```rust
+let mut client = MySqlTestClient::connect_with_config(EphemeralConfig {
+    data_dir: Some("/path/to/tpch/data".into()),
+    ..Default::default()
+})?;
+client.execute("CREATE TABLE region (...)")?;
+let rows_loaded = client.load_local_infile(
+    Path::new("/path/to/tpch/data/region.tbl"),
+    "region",
+)?;
+assert_eq!(rows_loaded, 5);
+```
+
+### What's still required for Q1-Q22 to pass
+
+- The 5 engine bugs (TEXT compare, comma-join, SUM/AVG real, SELECT
+  projection) are owned by the consolidation workstream.
+- The SF=0.1 fixture + value-comparison wire test (issue #2953) is
+  owned by another agent.
+- Once those land, the LOAD DATA INFILE path can be combined with
+  the queries to drive full Q1-Q22 against the canonical binary.
