@@ -1,3 +1,10 @@
+<!--
+**Debt ID**: F-29
+**Status**: IMPLEMENTED
+**Implementation PR**: PR fix/f-29-row-level-security
+**Test Coverage**: 6/6 tests
+-->
+
 # F-29 SPEC: Row-Level Security
 
 > **Issue**: #2829
