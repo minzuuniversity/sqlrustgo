@@ -109,6 +109,89 @@ pub fn expression_to_value(expr: &sqlrustgo_parser::Expression) -> Value {
 }
 
 /// Convert a string argument to a Value (for CALL arguments)
+/// SQL LIKE pattern matcher. `%` matches any sequence (including empty),
+/// `_` matches a single character; all other characters are literal.
+/// Case-insensitive to match MySQL's default LIKE semantics. The
+/// pattern's leading/trailing quotes (set by the literal parser) are
+/// stripped before matching.
+pub(crate) fn sql_like_match(text: &str, pattern: &str) -> bool {
+    // Strip the surrounding single quotes that the literal parser
+    // attaches to string values. `pattern` is usually passed in
+    // already without quotes, but be defensive.
+    let pat = pattern
+        .trim()
+        .strip_prefix('\'')
+        .and_then(|s| s.strip_suffix('\''))
+        .unwrap_or(pattern.trim());
+    let txt = text.to_lowercase();
+    let pat = pat.to_lowercase();
+    like_match_recursive(&txt, &pat)
+}
+
+/// Recursive wildcard matcher. Walks the pattern character by character;
+/// on `%` it tries matching the rest of the pattern against every
+/// suffix of the remaining text. Pure recursive implementation; safe
+/// for the small TPC-H patterns (`%green%`, etc.) but could be
+/// O(len(text) * len(pat)) in the worst case. A DFA-based matcher
+/// would scale better; the recursive version is fine for now.
+fn like_match_recursive(text: &str, pattern: &str) -> bool {
+    let mut t_idx = 0;
+    let mut p_idx = 0;
+    let t_bytes = text.as_bytes();
+    let p_bytes = pattern.as_bytes();
+    let mut star: Option<(usize, usize)> = None; // (text position, pattern position after %)
+
+    while t_idx < t_bytes.len() {
+        if p_idx < p_bytes.len() {
+            match p_bytes[p_idx] {
+                b'%' => {
+                    // Record the position to backtrack to, then advance.
+                    star = Some((t_idx, p_idx + 1));
+                    p_idx += 1;
+                    continue;
+                }
+                b'_' => {
+                    t_idx += 1;
+                    p_idx += 1;
+                    continue;
+                }
+                c if c == t_bytes[t_idx] => {
+                    t_idx += 1;
+                    p_idx += 1;
+                    continue;
+                }
+                _ => {
+                    // Mismatch — if we have a prior `%`, backtrack: advance
+                    // t_idx by one and restart matching from just after the
+                    // saved position. (The saved `ts` is fixed, so we use
+                    // t_idx + 1, not ts + 1, to actually make progress.)
+                    if let Some((_, ps)) = star {
+                        p_idx = ps;
+                        t_idx += 1;
+                        continue;
+                    }
+                    return false;
+                }
+            }
+        } else {
+            // Pattern exhausted but text has more. If we have a prior
+            // `%`, backtrack and advance one more text position.
+            if let Some((_, ps)) = star {
+                p_idx = ps;
+                t_idx += 1;
+                continue;
+            }
+            return false;
+        }
+    }
+
+    // Text exhausted; remaining pattern must be only `%`s.
+    while p_idx < p_bytes.len() && p_bytes[p_idx] == b'%' {
+        p_idx += 1;
+    }
+    p_idx == p_bytes.len()
+}
+
 pub fn expression_to_value_from_string(s: &str) -> Value {
     let s = s.trim();
     if s.eq_ignore_ascii_case("NULL") {
@@ -148,7 +231,23 @@ pub fn evaluate_expression(
             let val = evaluate_expression(inner, row, table_info)?;
             Ok(Value::Boolean(matches!(val, Value::Null)))
         }
-        // TPC-H Q8: `SUM(CASE WHEN n2.n_name = 'GERMANY' THEN ... ELSE 0 END)`.
+        // TPC-H Q9: `WHERE p_name LIKE '%green%'`. Implement SQL LIKE
+        // substring match: `%` matches any sequence (including empty),
+        // `_` matches a single char. No ESCAPE handling yet; that's
+        // a separate follow-up.
+        Expression::Like(expr, pattern, _escape) => {
+            // The parser folds `LIKE` into `Expression::Like(left, pat, _)`,
+            // so this arm fires during WHERE evaluation. Implements the
+            // same wildcard match that the BinaryOp("LIKE") arm goes
+            // through for consistency.
+            let val = evaluate_expression(expr, row, table_info)
+                .map(|v| v.to_sql_string())
+                .unwrap_or_default();
+            let pat = evaluate_expression(pattern, row, table_info)
+                .map(|v| v.to_sql_string())
+                .unwrap_or_default();
+            Ok(Value::Boolean(sql_like_match(&val, &pat)))
+        }
         // Evaluate each WHEN's condition in order; the first one whose
         // value is Boolean(true) (or non-zero/non-null) wins, and we
         // return its THEN expression. If no WHEN matches and an ELSE
@@ -243,6 +342,14 @@ pub fn evaluate_binary_op(left: &Value, right: &Value, op: &str) -> Value {
                 arithmetic_op(left, right, |a, b| a / b, |a, b| a / b)
             }
         }
+        // TPC-H Q9: `WHERE p_name LIKE '%green%'`. The parser emits
+        // `Expression::BinaryOp(left, "LIKE", right)`, so this branch is
+        // the one that actually fires during WHERE evaluation. Both
+        // sides are coerced to text for substring matching.
+        "LIKE" => Value::Boolean(sql_like_match(
+            &left.to_sql_string(),
+            &right.to_sql_string(),
+        )),
         _ => Value::Null,
     }
 }
