@@ -343,6 +343,40 @@ impl MySqlTestClient {
         Self::connect_handle(handle)
     }
 
+    /// Connect to an arbitrary `(host, port)` (e.g. a server spawned
+    /// by another test as a subprocess). Used by the L3 acceptance
+    /// test against the compiled `sqlrustgo-mysql-server` binary.
+    pub fn connect_at(addr: (&str, u16), user: &str, password: &str) -> wire_err::Result<Self> {
+        let (host, port) = addr;
+        let mut stream = TcpStream::connect((host, port))
+            .map_err(|e| wire_err::msg(format!("tcp connect {host}:{port}: {e}")))?;
+        stream
+            .set_read_timeout(Some(READ_TIMEOUT))
+            .map_err(|e| wire_err::msg(format!("set_read_timeout: {e}")))?;
+        stream
+            .set_write_timeout(Some(WRITE_TIMEOUT))
+            .map_err(|e| wire_err::msg(format!("set_write_timeout: {e}")))?;
+
+        let handshake = read_packet(&mut stream)?;
+        let scramble = parse_handshake(&handshake)?;
+        let auth = native_password_auth(password.as_bytes(), &scramble);
+        let resp = build_handshake_response41(user, &auth)?;
+        write_packet(&mut stream, 1, &resp)?;
+        let auth_resp = read_packet(&mut stream)?;
+        check_ok_or_err(2, &auth_resp)?;
+
+        // We don't have an EphemeralHandle here; the caller is
+        // responsible for the server's lifetime. Synthesise a
+        // minimal handle so Drop doesn't try to clean up a
+        // non-existent data dir.
+        let handle = EphemeralHandle::detached_for_external_server(port);
+        Ok(Self {
+            handle,
+            stream,
+            next_seq: 0,
+        })
+    }
+
     /// Connect to an already-running ephemeral server.
     pub fn connect_handle(handle: EphemeralHandle) -> wire_err::Result<Self> {
         let mut stream = TcpStream::connect(("127.0.0.1", handle.port))
