@@ -19,6 +19,24 @@
   SF=0.1+ data-set verification track. See issue #2948 (Track 3)
   and the new issue for the engine-bug fix track.
 
+## SF=0.001 fixture (Issue #2953, 2026-06-04)
+
+A checked-in SF=0.001 fixture + value-correctness scaffold test now
+lives at:
+
+- **Fixture data**: `tests/data/tpch-sf001/{region,nation,supplier,customer,part,partsupp,orders,lineitem}.tbl`
+  (8 tables, 919 rows total, ~150 KB on disk)
+- **Expected result JSON**: `tests/data/tpch-sf001/expected/Q1.json`
+  (hand-computed for Q1: 6 groups, 333 filtered rows)
+- **Wire-protocol test**: `tests/tpch_wire_smoke_sf.rs`
+  (`#[ignore]`-marked, awaiting the 5 engine-bug fixes above;
+  un-ignore the two tests in that file to enable value-correctness
+  assertions in CI)
+
+The fixture is independent of the engine-bug-fix track and was
+authored in parallel by Issue #2953. See PR linking #2953 for the
+commit that lands it.
+
 ## What passes today
 
 | Test surface | File | Result |
