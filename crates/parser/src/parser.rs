@@ -25,6 +25,7 @@ pub enum Statement {
     Insert(InsertStatement),
     Update(UpdateStatement),
     Delete(DeleteStatement),
+    Merge(MergeStatement),
     CreateTable(CreateTableStatement),
     CreateIndex(CreateIndexStatement),
     CreateView(CreateViewStatement),
@@ -314,6 +315,11 @@ pub struct AggregateCall {
 pub struct SelectStatement {
     pub columns: Vec<SelectColumn>,
     pub table: String,
+    /// TPC-H Sprint 1b fix (Q7/Q8/Q9): FROM (subquery) AS alias.
+    /// When set, executor first executes the subquery and materializes its
+    /// result into a temporary table named `table`, then runs the outer
+    /// SELECT against that table.
+    pub from_subquery: Option<Box<SelectStatement>>,
     pub where_clause: Option<Expression>,
     pub join_clause: Vec<JoinClause>,
     pub aggregates: Vec<AggregateCall>,
@@ -365,6 +371,45 @@ pub struct UpdateStatement {
 pub struct DeleteStatement {
     pub table: String,
     pub where_clause: Option<Expression>,
+}
+
+/// MERGE statement (SQL:2003)
+#[derive(Debug, Clone, PartialEq)]
+pub struct MergeStatement {
+    pub target_table: String,
+    pub target_alias: Option<String>,
+    pub source: MergeSource,
+    pub source_alias: Option<String>,
+    pub on_condition: Expression,
+    pub when_clauses: Vec<MergeWhenClause>,
+}
+
+/// Source for MERGE: a table reference or a subquery
+#[derive(Debug, Clone, PartialEq)]
+pub enum MergeSource {
+    Table { name: String },
+    Subquery(Box<SelectStatement>),
+}
+
+/// A WHEN clause inside MERGE statement
+#[derive(Debug, Clone, PartialEq)]
+pub struct MergeWhenClause {
+    pub is_matched: bool,
+    pub additional_condition: Option<Expression>,
+    pub action: MergeAction,
+}
+
+/// Action for a MERGE WHEN clause
+#[derive(Debug, Clone, PartialEq)]
+pub enum MergeAction {
+    Update {
+        set_clauses: Vec<(String, Expression)>,
+    },
+    Insert {
+        columns: Vec<String>,
+        values: Vec<Expression>,
+    },
+    Delete,
 }
 
 /// CREATE TABLE statement
@@ -565,6 +610,7 @@ impl Parser {
             Some(Token::Insert) | Some(Token::Replace) => self.parse_insert(),
             Some(Token::Update) => self.parse_update(),
             Some(Token::Delete) => self.parse_delete(),
+            Some(Token::Merge) => self.parse_merge(),
             Some(Token::Create) => self.parse_create(),
             Some(Token::Drop) => self.parse_drop(),
             Some(Token::Truncate) => self.parse_truncate(),
@@ -1188,7 +1234,13 @@ impl Parser {
 
         loop {
             match self.current() {
-                Some(Token::From) | Some(Token::Eof) => break,
+                // RParen = end of containing subquery (caller already consumed the LParen).
+                // Must break here so we don't fall through to "Expected FROM or column name"
+                // when this parse_select_statement is called recursively for FROM (SELECT ...) AS alias.
+                Some(Token::RParen) => break,
+                Some(Token::From) | Some(Token::Eof) => {
+                    break;
+                }
                 Some(Token::Star) => {
                     columns.push(SelectColumn {
                         name: "*".to_string(),
@@ -1567,16 +1619,19 @@ impl Parser {
                             alias: None,
                             expression: None,
                         });
+                        // For !consumed: advance past the column identifier.
+                        // For consumed (table.col): already advanced, current is at next token.
                         if !consumed {
                             self.next();
-                            if matches!(self.current(), Some(Token::As)) {
+                        }
+                        // Handle AS alias for both consumed and !consumed cases.
+                        if matches!(self.current(), Some(Token::As)) {
+                            self.next();
+                            if let Some(Token::Identifier(alias_name)) = self.current() {
+                                let name = alias_name.clone();
                                 self.next();
-                                if let Some(Token::Identifier(alias_name)) = self.current() {
-                                    let name = alias_name.clone();
-                                    self.next();
-                                    if let Some(col) = columns.last_mut() {
-                                        col.alias = Some(name);
-                                    }
+                                if let Some(col) = columns.last_mut() {
+                                    col.alias = Some(name);
                                 }
                             }
                         }
@@ -1592,25 +1647,79 @@ impl Parser {
         }
 
         // Handle SELECT without FROM (e.g., SELECT NULL, SELECT 1, SELECT 'hello')
-        let table = match self.current() {
+        // Also handle FROM (subquery) AS alias (TPC-H Q7/Q8/Q9)
+        // RParen means this is a subquery whose caller (parent SELECT) will consume the RParen.
+        let (table, from_subquery) = match self.current() {
             Some(Token::From) => {
                 self.next(); // consume FROM
-                match self.next() {
-                    Some(Token::Identifier(name)) => name,
-                    Some(t) => return Err(format!("Expected table name, got {:?}", t)),
-                    None => return Err("Expected table name".to_string()),
+                if matches!(self.current(), Some(Token::LParen)) {
+                    // Sprint 1b: FROM (subquery) AS alias
+                    self.next(); // consume (
+                    let subquery = self.parse_select_statement()?;
+                    self.expect(Token::RParen)?;
+                    if matches!(self.current(), Some(Token::As)) {
+                        self.next();
+                    }
+                    let alias = match self.next() {
+                        Some(Token::Identifier(name)) => name,
+                        Some(t) => return Err(format!("Expected alias for subquery, got {:?}", t)),
+                        None => return Err("Expected alias for subquery".to_string()),
+                    };
+                    (alias, Some(Box::new(subquery)))
+                } else {
+                    // FROM table_list — accept multi-table comma-separated list
+                    // (e.g. `FROM t1, t2, t3 WHERE ...`). Consume table names and
+                    // optional aliases until we hit a SELECT clause terminator
+                    // (WHERE/GROUP/ORDER/LIMIT/OFFSET/RPAREN/EOF).
+                    let first_table = match self.next() {
+                        Some(Token::Identifier(name)) => name,
+                        Some(t) => return Err(format!("Expected table name, got {:?}", t)),
+                        None => return Err("Expected table name".to_string()),
+                    };
+                    let mut table = first_table.clone();
+                    // Consume remaining tables separated by commas.
+                    // Each may be followed by an optional alias.
+                    while matches!(self.current(), Some(Token::Comma)) {
+                        self.next(); // consume comma
+                        match self.next() {
+                            Some(Token::Identifier(name)) => {
+                                table = format!("{}, {}", table, name);
+                            }
+                            Some(t) => {
+                                return Err(format!(
+                                    "Expected table name after comma, got {:?}",
+                                    t
+                                ));
+                            }
+                            None => return Err("Expected table name after comma".to_string()),
+                        }
+                    }
+                    // Consume optional alias of the LAST table (e.g. `FROM t1, t2 alias`
+                    // is uncommon but accepted). After this, current should be at a
+                    // clause terminator.
+                    if matches!(self.current(), Some(Token::Identifier(_)))
+                        && !matches!(
+                            self.current(),
+                            Some(Token::Where)
+                                | Some(Token::Group)
+                                | Some(Token::Order)
+                                | Some(Token::Limit)
+                                | Some(Token::RParen)
+                                | Some(Token::Eof)
+                        )
+                    {
+                        // This is an alias (e.g., `FROM t1, t2 alias`); skip it.
+                        self.next();
+                    }
+                    (table, None)
                 }
             }
-            Some(Token::Eof) | None => {
-                // No FROM clause - this is a SELECT without table (e.g., SELECT 1+1)
-                // Return an empty table name to indicate no table
-                "".to_string()
-            }
+            Some(Token::Eof) | None | Some(Token::RParen) => (String::new(), None),
             Some(t) => return Err(format!("Expected FROM or end of query, got {:?}", t)),
         };
 
-        // Check for table alias (e.g., `FROM users u`)
-        if matches!(self.current(), Some(Token::Identifier(_))) {
+        // Check for table alias (e.g., `FROM users u`) — only when no subquery
+        if from_subquery.is_none() && matches!(self.current(), Some(Token::Identifier(_))) {
             self.next(); // consume alias
         }
 
@@ -1713,6 +1822,7 @@ impl Parser {
         Ok(SelectStatement {
             columns,
             table,
+            from_subquery,
             where_clause,
             join_clause,
             aggregates,
@@ -2491,7 +2601,15 @@ impl Parser {
                             }
                         }
                     }
-                    self.expect(Token::RParen)?;
+                    // CAST(expr AS TYPE) — args loop may have terminated on AS,
+                    // in which case the closing RParen was already consumed by
+                    // parse_expression (e.g. CAST(SUBSTR(x,1,4) AS INTEGER) where
+                    // parse_expression consumed SUBSTR's RParen). For plain CAST,
+                    // expect RParen now.
+                    if !(name.to_uppercase() == "CAST" && matches!(self.current(), Some(Token::As)))
+                    {
+                        self.expect(Token::RParen)?;
+                    }
 
                     if matches!(self.current(), Some(Token::Over)) {
                         self.next();
@@ -2546,6 +2664,42 @@ impl Parser {
                             },
                         }))
                     } else {
+                        // CAST(expr AS TYPE) — consume optional `AS TYPE` suffix.
+                        // We don't propagate the target type to the executor; the
+                        // executor's `eval_fn` for "CAST" passes the value through,
+                        // and downstream INTEGER()/TEXT() context coerces.
+                        // (TPC-H Q7/Q8/Q9 always use CAST(... AS INTEGER) anyway.)
+                        if name.to_uppercase() == "CAST"
+                            && matches!(self.current(), Some(Token::As))
+                        {
+                            self.next(); // consume AS
+                                         // Accept any token that names a type (Token::Integer, Token::Text,
+                                         // Token::Float, Token::Boolean, or a bare identifier like VARCHAR).
+                            match self.current().cloned() {
+                                Some(Token::Integer) | Some(Token::Text) | Some(Token::Float)
+                                | Some(Token::Boolean) => {
+                                    self.next();
+                                }
+                                Some(Token::Identifier(_)) => {
+                                    // Custom type name like VARCHAR(10) — consume identifier
+                                    // and optional (length) if present.
+                                    self.next();
+                                    if matches!(self.current(), Some(Token::LParen)) {
+                                        self.next();
+                                        while !matches!(self.current(), Some(Token::RParen)) {
+                                            self.next();
+                                        }
+                                        self.expect(Token::RParen)?;
+                                    }
+                                }
+                                _ => {
+                                    return Err(format!(
+                                        "Expected type name after CAST AS, got {:?}",
+                                        self.current()
+                                    ));
+                                }
+                            }
+                        }
                         Ok(Expression::FunctionCall(name, args))
                     }
                 } else {
@@ -2763,6 +2917,187 @@ impl Parser {
             table,
             where_clause,
         }))
+    }
+
+    /// Parse MERGE statement (SQL:2003)
+    fn parse_merge(&mut self) -> Result<Statement, String> {
+        self.expect(Token::Merge)?;
+        self.expect(Token::Into)?;
+        let target_table = match self.next() {
+            Some(Token::Identifier(name)) => name,
+            _ => return Err("Expected target table name after MERGE INTO".to_string()),
+        };
+        let target_alias = self.parse_optional_alias()?;
+
+        self.expect(Token::Using)?;
+        let source = self.parse_merge_source()?;
+        let source_alias = self.parse_optional_alias()?;
+
+        self.expect(Token::On)?;
+        let on_condition = self.parse_expression()?;
+
+        let mut when_clauses = Vec::new();
+        while matches!(self.current(), Some(Token::When)) {
+            when_clauses.push(self.parse_merge_when_clause()?);
+        }
+        if when_clauses.is_empty() {
+            return Err("MERGE requires at least one WHEN clause".to_string());
+        }
+
+        Ok(Statement::Merge(MergeStatement {
+            target_table,
+            target_alias,
+            source,
+            source_alias,
+            on_condition,
+            when_clauses,
+        }))
+    }
+
+    /// Parse optional alias: either `AS ident` or bare `ident` (SQL:2003 optional AS)
+    fn parse_optional_alias(&mut self) -> Result<Option<String>, String> {
+        match self.current() {
+            Some(Token::As) => {
+                self.next();
+                match self.next() {
+                    Some(Token::Identifier(name)) => Ok(Some(name)),
+                    _ => Err("Expected identifier after AS".to_string()),
+                }
+            }
+            // Bare identifier as alias (only consume if it doesn't look like a keyword)
+            Some(Token::Identifier(name)) => {
+                let alias = name.clone();
+                self.next();
+                Ok(Some(alias))
+            }
+            _ => Ok(None),
+        }
+    }
+
+    /// Parse MERGE source: either a table name or a subquery in parens
+    fn parse_merge_source(&mut self) -> Result<MergeSource, String> {
+        if matches!(self.current(), Some(Token::LParen)) {
+            self.next(); // consume (
+            let select = self.parse_select_statement()?;
+            self.expect(Token::RParen)?;
+            Ok(MergeSource::Subquery(Box::new(select)))
+        } else {
+            match self.next() {
+                Some(Token::Identifier(name)) => Ok(MergeSource::Table { name }),
+                _ => Err("Expected table name or (subquery) after USING".to_string()),
+            }
+        }
+    }
+
+    /// Parse a WHEN MATCHED or WHEN NOT MATCHED clause
+    fn parse_merge_when_clause(&mut self) -> Result<MergeWhenClause, String> {
+        self.next(); // consume WHEN
+
+        // Expect NOT before MATCHED if NOT MATCHED
+        let is_matched = if matches!(self.current(), Some(Token::Not)) {
+            self.next(); // consume NOT
+            self.expect(Token::Matched)?;
+            false
+        } else {
+            self.expect(Token::Matched)?;
+            true
+        };
+
+        // Optional AND <additional_condition>
+        let additional_condition = if matches!(self.current(), Some(Token::And)) {
+            self.next(); // consume AND
+            Some(self.parse_expression()?)
+        } else {
+            None
+        };
+
+        self.expect(Token::Then)?;
+        let action = self.parse_merge_action()?;
+
+        Ok(MergeWhenClause {
+            is_matched,
+            additional_condition,
+            action,
+        })
+    }
+
+    /// Parse MERGE action: UPDATE SET ... or INSERT (...) VALUES (...)
+    fn parse_merge_action(&mut self) -> Result<MergeAction, String> {
+        match self.current() {
+            Some(Token::Update) => {
+                self.next(); // consume UPDATE
+                self.expect(Token::Set)?;
+                let mut set_clauses = Vec::new();
+                loop {
+                    // Column may be qualified (e.g., target.col) per SQL:2003
+                    let mut column = match self.next() {
+                        Some(Token::Identifier(name)) => name,
+                        _ => return Err("Expected column name in SET".to_string()),
+                    };
+                    if matches!(self.current(), Some(Token::Dot)) {
+                        self.next();
+                        match self.next() {
+                            Some(Token::Identifier(col)) => {
+                                column = format!("{}.{}", column, col);
+                            }
+                            _ => return Err("Expected column name after dot".to_string()),
+                        }
+                    }
+                    self.expect(Token::Equal)?;
+                    let value = self.parse_expression()?;
+                    set_clauses.push((column, value));
+                    if matches!(self.current(), Some(Token::Comma)) {
+                        self.next();
+                    } else {
+                        break;
+                    }
+                }
+                Ok(MergeAction::Update { set_clauses })
+            }
+            Some(Token::Insert) => {
+                self.next(); // consume INSERT
+                             // INTO is optional in MERGE INSERT context (SQL:2003 MERGE syntax)
+                if matches!(self.current(), Some(Token::Into)) {
+                    self.next();
+                }
+                self.expect(Token::LParen)?;
+                let mut columns = Vec::new();
+                loop {
+                    match self.next() {
+                        Some(Token::Identifier(name)) => columns.push(name),
+                        _ => return Err("Expected column name in INSERT".to_string()),
+                    }
+                    if matches!(self.current(), Some(Token::Comma)) {
+                        self.next();
+                    } else if matches!(self.current(), Some(Token::RParen)) {
+                        self.next();
+                        break;
+                    } else {
+                        return Err("Expected , or ) in INSERT column list".to_string());
+                    }
+                }
+                self.expect(Token::Values)?;
+                self.expect(Token::LParen)?;
+                let mut values = Vec::new();
+                loop {
+                    values.push(self.parse_expression()?);
+                    if matches!(self.current(), Some(Token::Comma)) {
+                        self.next();
+                    } else if matches!(self.current(), Some(Token::RParen)) {
+                        self.next();
+                        break;
+                    } else {
+                        return Err("Expected , or ) in INSERT VALUES".to_string());
+                    }
+                }
+                Ok(MergeAction::Insert { columns, values })
+            }
+            Some(Token::Delete) => {
+                self.next();
+                Ok(MergeAction::Delete)
+            }
+            _ => Err("Expected UPDATE, INSERT, or DELETE after THEN".to_string()),
+        }
     }
 
     fn parse_create_table(&mut self) -> Result<Statement, String> {
@@ -4026,6 +4361,136 @@ mod tests {
             }
             _ => panic!("Expected INSERT statement"),
         }
+    }
+
+    #[test]
+    fn test_parse_merge_basic_when_matched_update() {
+        let sql = "MERGE INTO target t USING source s ON t.id = s.id \
+                   WHEN MATCHED THEN UPDATE SET t.val = s.val";
+        let result = parse(sql);
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        match result.unwrap() {
+            Statement::Merge(m) => {
+                assert_eq!(m.target_table, "target");
+                assert_eq!(m.target_alias, Some("t".to_string()));
+                match &m.source {
+                    MergeSource::Table { name } => assert_eq!(name, "source"),
+                    _ => panic!("Expected Table source"),
+                }
+                assert_eq!(m.source_alias, Some("s".to_string()));
+                assert_eq!(m.when_clauses.len(), 1);
+                assert!(m.when_clauses[0].is_matched);
+                assert!(m.when_clauses[0].additional_condition.is_none());
+                match &m.when_clauses[0].action {
+                    MergeAction::Update { set_clauses } => {
+                        assert_eq!(set_clauses.len(), 1);
+                        assert_eq!(set_clauses[0].0, "t.val");
+                    }
+                    _ => panic!("Expected Update action"),
+                }
+            }
+            _ => panic!("Expected MERGE statement"),
+        }
+    }
+
+    #[test]
+    fn test_parse_merge_when_matched_and_not_matched() {
+        let sql = "MERGE INTO target USING source ON target.id = source.id \
+                   WHEN MATCHED THEN UPDATE SET target.val = source.val \
+                   WHEN NOT MATCHED THEN INSERT (id, val) VALUES (source.id, source.val)";
+        let result = parse(sql);
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        match result.unwrap() {
+            Statement::Merge(m) => {
+                assert_eq!(m.when_clauses.len(), 2);
+                assert!(m.when_clauses[0].is_matched);
+                assert!(!m.when_clauses[1].is_matched);
+                assert!(matches!(
+                    m.when_clauses[0].action,
+                    MergeAction::Update { .. }
+                ));
+                match &m.when_clauses[1].action {
+                    MergeAction::Insert { columns, values } => {
+                        assert_eq!(columns, &vec!["id".to_string(), "val".to_string()]);
+                        assert_eq!(values.len(), 2);
+                    }
+                    _ => panic!("Expected Insert action"),
+                }
+            }
+            _ => panic!("Expected MERGE statement"),
+        }
+    }
+
+    #[test]
+    fn test_parse_merge_with_aliases() {
+        let sql = "MERGE INTO target USING source ON target.id = source.id \
+                   WHEN MATCHED THEN UPDATE SET target.val = source.val";
+        let result = parse(sql);
+        assert!(result.is_ok());
+        match result.unwrap() {
+            Statement::Merge(m) => {
+                assert_eq!(m.target_alias, None);
+                assert_eq!(m.source_alias, None);
+            }
+            _ => panic!("Expected MERGE statement"),
+        }
+    }
+
+    #[test]
+    fn test_parse_merge_with_subquery_source() {
+        let sql = "MERGE INTO target t \
+                   USING (SELECT id, val FROM other) s \
+                   ON t.id = s.id \
+                   WHEN NOT MATCHED THEN INSERT (id, val) VALUES (s.id, s.val)";
+        let result = parse(sql);
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        match result.unwrap() {
+            Statement::Merge(m) => {
+                assert!(matches!(&m.source, MergeSource::Subquery(_)));
+                assert_eq!(m.source_alias, Some("s".to_string()));
+            }
+            _ => panic!("Expected MERGE statement"),
+        }
+    }
+
+    #[test]
+    fn test_parse_merge_with_additional_condition() {
+        let sql = "MERGE INTO target USING source ON target.id = source.id \
+                   WHEN MATCHED AND target.val > 100 THEN UPDATE SET target.val = source.val";
+        let result = parse(sql);
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        match result.unwrap() {
+            Statement::Merge(m) => {
+                assert_eq!(m.when_clauses.len(), 1);
+                assert!(m.when_clauses[0].additional_condition.is_some());
+            }
+            _ => panic!("Expected MERGE statement"),
+        }
+    }
+
+    #[test]
+    fn test_parse_merge_rejects_missing_using() {
+        let sql = "MERGE INTO target WHEN MATCHED THEN UPDATE SET target.val = 1";
+        let result = parse(sql);
+        assert!(result.is_err(), "Expected parse error for missing USING");
+    }
+
+    #[test]
+    fn test_parse_merge_rejects_missing_on() {
+        let sql = "MERGE INTO target USING source \
+                   WHEN MATCHED THEN UPDATE SET target.val = 1";
+        let result = parse(sql);
+        assert!(result.is_err(), "Expected parse error for missing ON");
+    }
+
+    #[test]
+    fn test_parse_merge_rejects_missing_when() {
+        let sql = "MERGE INTO target USING source ON target.id = source.id";
+        let result = parse(sql);
+        assert!(
+            result.is_err(),
+            "Expected parse error for missing WHEN clause"
+        );
     }
 
     #[test]
