@@ -1,82 +1,84 @@
 # 当前版本状态
 
-rc/v2.8.0
+alpha/v3.8.0
 
 ## 阶段信息
 
-- **阶段**: RC (候选发布)
-- **当前里程碑**: 三平台协作发布
-- **开始日期**: 2026-04-22
-- **开发分支**: develop/v2.8.0
-- **目标**: 三平台协同 + R-Gate 全量验证 → GA
-- **协作 Issue**: [#11](https://github.com/minzuuniversity/sqlrustgo/issues/11)
+- **阶段**: Alpha (功能开发阶段)
+- **当前里程碑**: Execution Semantics Freeze → TransactionManager 集成
+- **开始日期**: 2026-05-28
+- **开发分支**: develop/v3.8.0
+- **目标**: WAL + MVCC 事务 + TransactionManager → GA
+- **协作 Issue**: [#2778](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/2778)
 
 ## 版本概述
 
-v2.8.0 聚焦 MySQL 5.7 兼容性增强、初步分布式能力和安全加固。
+v3.8.0 将 SQLRustGo 从**查询执行引擎**升级为**服务器级事务数据库**，具备明确的事务生命周期管理。
 
-**核心目标**: 功能覆盖率 83% → 92%，安全性 85% → 92%，初步分布式能力。
+**核心目标**:
+- TransactionManager 事务所有权
+- WriteBuffer DML 暂存
+- COMMIT/ROLLBACK 完整生命周期
+- WAL + MVCC 支持
 
-## v2.8.0 核心任务
+## v3.8.0 核心任务
 
-### Phase A - 兼容性增强 + 分布式基础
-
-| 功能 | 状态 | Issue |
-|------|------|-------|
-| T-11 FULL OUTER JOIN 修复 | ⏳ | #1733 |
-| T-12 TRUNCATE/REPLACE 支持 | ⏳ | #1734 |
-| T-23 分区表完整支持 | ⏳ | - |
-| T-24 主从复制完善 | ⏳ | - |
-
-### Phase B - 初步分布式能力
-
-| 功能 | 状态 | 说明 |
-|------|------|------|
-| T-25 基础故障转移 | ⏳ | 自动主从切换 < 30s |
-| T-26 基础负载均衡 | ⏳ | 轮询/最少连接 |
-| T-27 读写分离路由 | ⏳ | 分片路由 |
-| T-13 窗口函数完善 | ⏳ | #1735 |
-
-### Phase C - 性能优化
+### Phase 1 - TransactionManager 集成
 
 | 功能 | 状态 | Issue |
 |------|------|-------|
-| T-14 SIMD 向量化加速 | ⏳ | #1736 |
-| T-15 Hash Join 并行化 | ⏳ | - |
-| T-16 查询计划器优化 | ⏳ | - |
+| TransactionManager 连接调度层 | ✅ | PR-820 |
+| BEGIN/COMMIT/ROLLBACK 路由 | ✅ | PR-830F |
+| LocalExecutor 保持无状态 | ✅ | PR-830F |
 
-### Phase D - 安全加固
+### Phase 2-3 - WriteBuffer + Commit Engine
 
 | 功能 | 状态 | Issue |
 |------|------|-------|
-| T-17 列级权限控制 | ⏳ | #1737 |
-| T-18 审计告警系统 | ⏳ | - |
-| T-19 数据加密基础 | ⏳ | - |
+| DML 暂存 write_buffer | 🔄 | PR-840 |
+| COMMIT 刷新到 StorageEngine | 🔄 | PR-840 |
+| 无直接 DML → StorageEngine 路径 | 🔄 | PR-840 |
 
-### Phase E - 文档与多语言
+### Phase 4-5 - Rollback + Read Consistency
 
-| 功能 | 状态 |
-|------|------|
-| T-20 英文错误消息 | ⏳ |
-| T-21 英文 API 文档 | ⏳ |
-| T-22 安全加固指南 | ⏳ |
+| 功能 | 状态 | Issue |
+|------|------|-------|
+| ROLLBACK 丢弃 write_buffer | ⏳ | PR-850 |
+| 事务快照 (read-your-writes) | ⏳ | PR-860 |
+| SSI 冲突检测 | ✅ | 已有 |
+
+## v3.8.0 vs v3.7.0
+
+| 方面 | v3.7.0 | v3.8.0 |
+|------|---------|---------|
+| 事务所有权 | 隐式 | 显式 (TransactionManager) |
+| 写暂存 | 直接写 StorageEngine | 暂存 TransactionManager |
+| BEGIN 处理 | N/A | txn_manager.begin() |
+| COMMIT 处理 | N/A | txn_manager.commit() → flush |
+| ROLLBACK 处理 | N/A | txn_manager.rollback() → discard |
+| LocalExecutor | 无状态 | 无状态 (不变) |
+| 读一致性 | StorageEngine 级别 | TransactionManager 快照 |
+| SSI 冲突检测 | Yes | Yes (保留) |
 
 ## 开发时间线
 
 | 版本 | 日期 | 目标 |
 |------|------|------|
-| v2.8.0-alpha | 2026-05-20 | Phase A/B 完成 |
-| v2.8.0-beta | 2026-06-10 | Phase C/D 完成 |
-| v2.8.0-rc | 2026-06-25 | RC 候选 |
-| v2.8.0-GA | 2026-07-05 | 正式发布 |
+| v3.8.0-alpha | 2026-05-28 | Phase 1 完成 |
+| v3.8.0-beta | 2026-06-07 | Phase 2-3 完成 |
+| v3.8.0-rc | 2026-06-21 | Phase 4-5 完成 |
+| v3.8.0-GA | 2026-06-28 | 正式发布 |
 
 ## 相关文档
 
-- [v2.7.0 文档入口](docs/releases/v2.7.0/README.md)
-- [v2.8.0 开发计划](https://github.com/minzuuniversity/sqlrustgo/issues/1731)
+- [v3.8.0 文档入口](docs/releases/v3.8.0/README.md)
+- [v3.8.0 开发计划](docs/releases/v3.8.0/DEVELOPMENT_PLAN.md)
+- [v3.8.0 路线图](docs/releases/v3.8.0/ROADMAP.md)
+- [v3.8.0 版本计划](docs/releases/v3.8.0/VERSION_PLAN.md)
 
 ## 变更历史
 
 | 版本 | 日期 | 说明 |
-|------|------|-------|
-| 1.0 | 2026-04-22 | 创建 v2.8.0 开发分支，基于 v2.7.0 GA |
+|------|------|------|
+| 2.0 | 2026-04-22 | 创建 v2.8.0 开发分支，基于 v2.7.0 GA |
+| 3.0 | 2026-05-28 | 创建 v3.8.0 开发分支，基于 v3.7.0 GA |
