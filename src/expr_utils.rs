@@ -181,7 +181,11 @@ pub fn evaluate_expression(
     }
 }
 
-/// Evaluate a binary operation and return a boolean Value
+/// Evaluate a binary operation. Returns a Boolean for comparison/logical
+/// operators, Integer or Float for arithmetic operators. Float inputs
+/// promote; mixing Float and Integer produces Float. TPC-H Q7/Q8/Q9 use
+/// `l_extendedprice * (1 - l_discount)` so the arithmetic arms must
+/// actually work.
 pub fn evaluate_binary_op(left: &Value, right: &Value, op: &str) -> Value {
     match op.to_uppercase().as_str() {
         "=" | "==" | "IS" => Value::Boolean(left == right),
@@ -204,6 +208,34 @@ pub fn evaluate_binary_op(left: &Value, right: &Value, op: &str) -> Value {
                 Value::Boolean(false)
             }
         }
+        // Arithmetic. Promote to Float if either side is Float so that
+        // `100.0 * (1 - 0.10)` yields `90.0`, not `Integer(90)`.
+        "+" => arithmetic_op(left, right, |a, b| a + b, |a, b| a + b),
+        "-" => arithmetic_op(left, right, |a, b| a - b, |a, b| a - b),
+        "*" => arithmetic_op(left, right, |a, b| a * b, |a, b| a * b),
+        "/" => {
+            if matches!(right, Value::Integer(0) | Value::Float(0.0)) {
+                Value::Null
+            } else {
+                arithmetic_op(left, right, |a, b| a / b, |a, b| a / b)
+            }
+        }
+        _ => Value::Null,
+    }
+}
+
+/// Helper that picks the right arithmetic arm based on the value types.
+/// Returns Null if either side is Null or non-numeric.
+fn arithmetic_op<F, G>(left: &Value, right: &Value, int_op: F, float_op: G) -> Value
+where
+    F: Fn(i64, i64) -> i64,
+    G: Fn(f64, f64) -> f64,
+{
+    match (left, right) {
+        (Value::Integer(a), Value::Integer(b)) => Value::Integer(int_op(*a, *b)),
+        (Value::Float(a), Value::Float(b)) => Value::Float(float_op(*a, *b)),
+        (Value::Integer(a), Value::Float(b)) => Value::Float(float_op(*a as f64, *b)),
+        (Value::Float(a), Value::Integer(b)) => Value::Float(float_op(*a, *b as f64)),
         _ => Value::Null,
     }
 }
