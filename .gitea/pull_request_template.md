@@ -1,87 +1,116 @@
-## PR Title
-<!-- Use Conventional Commits: type(scope): subject -->
-<!-- Examples: feat(executor): add F-23 Clustered Index, fix(gate): P1-1 INT debt -->
+<!--
+PULL_REQUEST_TEMPLATE.md — SQLRustGo PR 模板
+依据: Issue #2883 (P1-5) + Issue #2917 (P1-4 CI gate integration)
+生效: v3.8.0 起所有 PR 必填
+关联: docs/governance/TEST_REVIEW_TEMPLATE.md (5-类文档)
+-->
 
-## Issue Reference
-<!-- Required: link to the Gitea issue this PR closes -->
-Closes #<issue-number>
+## 关联 Issue
 
-## 5-类文档 (Required: 5/5)
-
-<!-- All PRs MUST include or update these 5 documents. Check which apply. -->
-- [ ] **SPEC** (`docs/releases/v3.8.0/<FEATURE>_SPEC.md`)
-- [ ] **TEST_PLAN** (`docs/releases/v3.8.0/TEST_PLAN_INTEGRATED.md` or per-feature)
-- [ ] **TEST_DESIGN** (describes how tests validate the feature)
-- [ ] **REVIEW** (`docs/releases/v3.8.0/TEST_REVIEW_INTEGRATED.md` or per-feature)
-- [ ] **ACCEPTANCE** (`docs/releases/v3.8.0/TEST_ACCEPTANCE_INTEGRATED.md` or per-feature)
-
-## 5-原则 Compliance
-
-<!-- All 5 principles must be satisfied. Mark each. -->
-- [ ] **P1: 有计划必有实现** — Feature is implemented
-- [ ] **P2: 有实现必有测试** — Test file added (path, name)
-- [ ] **P3: 测试必审** — Test reviewed (per-test audit)
-- [ ] **P4: 必须集成到门禁** — Test integrated to gate (D1-D8)
-- [ ] **P5: 未过必记** — Failures documented (or 0 failures)
-
-## Test Information
-
-**New tests added**:
-- File 1: `tests/<name>_test.rs` (N tests)
-- File 2: `tests/<name>_test.rs` (N tests)
-- (or "no new tests" with reason)
-
-**Test results**:
-```
-cargo test --test <name> → N/N PASS
-```
-
-## Gate Integration
-
-<!-- Which 8-dim gate does this PR affect? -->
-- [ ] D1-Alpha
-- [ ] D2-Beta
-- [ ] D3-SGL
-- [ ] D4-WAL
-- [ ] D5-DeepSeek
-- [ ] **D6: Test Inventory** (if new test file)
-- [ ] **D7: INT Debt** (if affects INT-1~4)
-- [ ] **D8: Arch/Sem Debt** (if affects ARCH/SEM)
-
-**Gate command run**:
-```bash
-bash scripts/gate/check_<name>.sh → PASS/DRIFT/FAIL
-```
-
-## Cross-Version Debt (if applicable)
-
-**Affected debt items** (use INT5 / COMPREHENSIVE_FEATURE_TRACKING / INT_DEBT_REMEDIATION_PLAN):
-- F-XX: status (CLOSED / PARTIAL / OPEN)
-- I-XX: status
-- T-XX: status
-- INT-XX: status
-- ARCH-XX: status
-- SEM-XX: status
-
-## Breaking Changes
-
-<!-- List any breaking API/schema changes. Use [NONE] if none. -->
-
-## Checklist
-
-- [ ] Code compiles: `cargo build --all-features`
-- [ ] Tests pass: `cargo test --all-features`
-- [ ] Lint clean: `cargo clippy --all-features -- -D warnings`
-- [ ] Format: `cargo fmt --all`
-- [ ] Docs link: `bash scripts/gate/check_docs_links.sh`
-- [ ] Gate: all 8 dimensions verified
-- [ ] No PENDING placeholders in docs (Truthfulness)
-
-## Auto-Merge Eligibility
-
-- [ ] PR is auto-mergeable (passes all gates)
-- [ ] Or specify why manual merge is needed
+- Issue 编号：`#`
+- 类型：[Bug / Feature / Refactor / Doc / Gate / Spec]
+- 5-Principle: P1 / P2 / P3 / P4 / P5
+- Node 编号: N
 
 ---
 
-🤖 Generated with [Hermes Agent](https://hermes-agent.nousresearch.com) + OpenSpec
+## 一、5-类文档清单（强制）
+
+> 每项必须在 PR 描述或链接文档中提供。无 = 自动 FAIL。
+
+- [ ] **SPEC** — `docs/releases/v3.8.0/PR-XXX_SPEC.md` (设计/范围/接口)
+- [ ] **TEST_PLAN** — `docs/releases/v3.8.0/PR-XXX_TEST_PLAN.md` (覆盖目标/阶段)
+- [ ] **TEST_DESIGN** — `docs/releases/v3.8.0/PR-XXX_TEST_DESIGN.md` (具体测试方法)
+- [ ] **REVIEW** — `docs/releases/v3.8.0/PR-XXX_TEST_REVIEW.md` (独立审核记录)
+- [ ] **ACCEPTANCE** — `docs/releases/v3.8.0/PR-XXX_ACCEPTANCE.md` (门禁执行证据)
+
+> 模板: 参考 `docs/governance/TEST_REVIEW_TEMPLATE.md`
+
+---
+
+## 二、Gate Integration Declaration（强制）
+
+> 此 PR 是否新增/修改/启用了任何 gate 维度？勾选所有相关：
+
+- [ ] D1-Alpha（TPC-H / 核心 SQL）
+- [ ] D2-Beta（SQL 92 / 窗口 / CTE）
+- [ ] D3-SGL（共享全局锁）
+- [ ] D4-WAL（崩溃恢复）
+- [ ] D5-DeepSeek（体验分）
+- [ ] **D6-Integration**（49+ 集成测试，P0-1 引入）
+- [ ] **D5.5-Test Plan Audit**（TEST_PLAN ↔ Cargo.toml，P1-3 引入）
+- [ ] **D7-Arch/Sem Debt**（ARCH-1~3 + SEM-1~4，P1-2 引入）
+- [ ] 其他：_________________
+
+如果勾选任何维度，**必须**说明：
+- 触发阶段: alpha / beta / rc / ga / all
+- 触发脚本: `bash scripts/gate/...`
+- 输出: `artifacts/gate/v3.8.0/...`
+
+---
+
+## 三、Test Command Output（强制）
+
+```bash
+# 必跑：clippy + fmt + build
+cargo clippy --all-features -- -D warnings
+cargo fmt --check --all
+cargo build --all-features
+
+# 必跑：相关 test
+cargo test --test <name> --all-features
+```
+
+**实际结果**:
+- clippy: `[PASS/FAIL]`
+- fmt: `[PASS/FAIL]`
+- build: `[PASS/FAIL]`
+- test: `[X/Y PASS, 0 FAIL]`
+
+> 任何 FAIL 必须在此 PR 修复，否则关闭。
+
+---
+
+## 四、Evidence 清单
+
+- [ ] `artifacts/gate/v3.8.0/evidence.json` 已生成（若涉及 gate 改动）
+- [ ] PR description 中含 `stdout_sha256` 引用（若涉及 alpha gate）
+- [ ] `bash scripts/gate/audit_testing.sh v3.8.0 <stage> <out>` 输出 PASS/WARN
+- [ ] Markdown 链接: `bash scripts/gate/check_docs_links.sh` PASS
+
+---
+
+## 五、合并检查
+
+- [ ] 分支: `fix/issue-<NUMBER>-<slug>` (从 `develop/v3.8.0` 切出)
+- [ ] Commit 格式: `feat/fix/chore(scope): <message>`
+- [ ] 关联 PR 已 force_merge 或正常合并
+- [ ] Worktree 已清理
+- [ ] Issue 已关闭（如果 Closes 关键字）
+
+---
+
+## 六、风险评估
+
+- 兼容性: [None / Backward-compat / Forward-compat / Breaking]
+- 性能影响: [+/-/0, 量化数据]
+- 安全影响: [+/-/0, 描述]
+- 数据迁移: [None / Required]
+
+---
+
+## 七、Checklist
+
+- [ ] 关联 Issue 已指定
+- [ ] 5-类文档已提供
+- [ ] Gate integration 已声明
+- [ ] Test command output 已填写
+- [ ] Evidence 清单已勾选
+- [ ] 合并检查清单已勾选
+- [ ] 风险评估已填写
+
+---
+
+> **本模板强制执行**: 任何缺失项 = PR 自动 require-changes
+> **维护**: Hermes C (hermes@sqlrustgo.ai)
+> **关联**: Issue #2883 (P1-5) / Issue #2917 (P1-4) / Issue #2918 (P1-3)
