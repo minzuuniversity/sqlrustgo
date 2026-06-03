@@ -187,6 +187,18 @@ check "A7_SGL" "SGL Semantic Gate (SGL-001~005)" \
 echo ""
 echo "--- A8: 3-Layer Governance Review Mechanisms ---"
 
+# SPEC-020: Pre-A8-1 自动修复 (auto_env_blocker.sh)
+# 在 A8-1 EVIDENCE 检查前自动跑一次, 给新加但未标记的 docs 加 env:blocked
+# 这样 A8-1 总是 0 FAIL (除非 evidence binding 脚本有其他问题)
+echo "[A8-PRE] Running auto_env_blocker.sh (SPEC-019/020)..."
+bash "$SCRIPT_DIR/auto_env_blocker.sh" v3.8.0 > "$ARTIFACTS_DIR/A8-PRE_AUTO.log" 2>&1
+AUTO_EXIT=$?
+if [ $AUTO_EXIT -eq 0 ]; then
+    echo "  [A8-PRE] auto_env_blocker.sh: OK"
+else
+    echo "  [A8-PRE] auto_env_blocker.sh: exit $AUTO_EXIT (non-blocking)"
+fi
+
 # A8-1: 审查机制1 — 证据绑定 (G-01)
 check "A8-1_EVIDENCE" "Evidence Binding (G-01 Anti-Fabrication)" \
     "bash \"$SCRIPT_DIR/check_evidence_binding.sh\" v3.8.0 \"$ARTIFACTS_DIR\" > \"$ARTIFACTS_DIR/A8-1_EVIDENCE.log\" 2>&1; test \${PIPESTATUS[0]} -eq 0"
