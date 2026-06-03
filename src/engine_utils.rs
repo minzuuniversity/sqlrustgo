@@ -218,16 +218,21 @@ pub fn find_column_index(col_name: &str, table_info: &TableInfo) -> Option<usize
     }
 }
 
+/// Build a combined schema for a single JOIN. Each side's columns are
+/// prefixed with the corresponding prefix string (`alias` if set, else
+/// the table name) so subsequent JOIN ON conditions can route columns
+/// like `n1.n_nationkey` to the correct side.
 pub fn build_combined_schema(
     left_info: &TableInfo,
-    right_table_name: &str,
+    left_prefix: &str,
     right_info: &TableInfo,
+    right_prefix: &str,
 ) -> SqlResult<TableInfo> {
     let mut columns = Vec::new();
 
     for c in &left_info.columns {
         columns.push(ColumnDefinition {
-            name: format!("{}.{}", left_info.name, c.name),
+            name: format!("{}.{}", left_prefix, c.name),
             data_type: c.data_type.clone(),
             nullable: c.nullable,
             primary_key: c.primary_key,
@@ -236,7 +241,7 @@ pub fn build_combined_schema(
 
     for c in &right_info.columns {
         columns.push(ColumnDefinition {
-            name: format!("{}.{}", right_table_name, c.name),
+            name: format!("{}.{}", right_prefix, c.name),
             data_type: c.data_type.clone(),
             nullable: c.nullable,
             primary_key: c.primary_key,
@@ -244,7 +249,7 @@ pub fn build_combined_schema(
     }
 
     Ok(TableInfo {
-        name: format!("{}_join_{}", left_info.name, right_table_name),
+        name: format!("{}_join_{}", left_prefix, right_prefix),
         columns,
         foreign_keys: vec![],
         unique_constraints: vec![],
