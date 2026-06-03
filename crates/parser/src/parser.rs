@@ -25,6 +25,7 @@ pub enum Statement {
     Insert(InsertStatement),
     Update(UpdateStatement),
     Delete(DeleteStatement),
+    Merge(MergeStatement),
     CreateTable(CreateTableStatement),
     CreateIndex(CreateIndexStatement),
     CreateView(CreateViewStatement),
@@ -372,6 +373,45 @@ pub struct DeleteStatement {
     pub where_clause: Option<Expression>,
 }
 
+/// MERGE statement (SQL:2003)
+#[derive(Debug, Clone, PartialEq)]
+pub struct MergeStatement {
+    pub target_table: String,
+    pub target_alias: Option<String>,
+    pub source: MergeSource,
+    pub source_alias: Option<String>,
+    pub on_condition: Expression,
+    pub when_clauses: Vec<MergeWhenClause>,
+}
+
+/// Source for MERGE: a table reference or a subquery
+#[derive(Debug, Clone, PartialEq)]
+pub enum MergeSource {
+    Table { name: String },
+    Subquery(Box<SelectStatement>),
+}
+
+/// A WHEN clause inside MERGE statement
+#[derive(Debug, Clone, PartialEq)]
+pub struct MergeWhenClause {
+    pub is_matched: bool,
+    pub additional_condition: Option<Expression>,
+    pub action: MergeAction,
+}
+
+/// Action for a MERGE WHEN clause
+#[derive(Debug, Clone, PartialEq)]
+pub enum MergeAction {
+    Update {
+        set_clauses: Vec<(String, Expression)>,
+    },
+    Insert {
+        columns: Vec<String>,
+        values: Vec<Expression>,
+    },
+    Delete,
+}
+
 /// CREATE TABLE statement
 #[derive(Debug, Clone, PartialEq)]
 pub struct CreateTableStatement {
@@ -570,6 +610,7 @@ impl Parser {
             Some(Token::Insert) | Some(Token::Replace) => self.parse_insert(),
             Some(Token::Update) => self.parse_update(),
             Some(Token::Delete) => self.parse_delete(),
+            Some(Token::Merge) => self.parse_merge(),
             Some(Token::Create) => self.parse_create(),
             Some(Token::Drop) => self.parse_drop(),
             Some(Token::Truncate) => self.parse_truncate(),
@@ -2879,6 +2920,187 @@ impl Parser {
         }))
     }
 
+    /// Parse MERGE statement (SQL:2003)
+    fn parse_merge(&mut self) -> Result<Statement, String> {
+        self.expect(Token::Merge)?;
+        self.expect(Token::Into)?;
+        let target_table = match self.next() {
+            Some(Token::Identifier(name)) => name,
+            _ => return Err("Expected target table name after MERGE INTO".to_string()),
+        };
+        let target_alias = self.parse_optional_alias()?;
+
+        self.expect(Token::Using)?;
+        let source = self.parse_merge_source()?;
+        let source_alias = self.parse_optional_alias()?;
+
+        self.expect(Token::On)?;
+        let on_condition = self.parse_expression()?;
+
+        let mut when_clauses = Vec::new();
+        while matches!(self.current(), Some(Token::When)) {
+            when_clauses.push(self.parse_merge_when_clause()?);
+        }
+        if when_clauses.is_empty() {
+            return Err("MERGE requires at least one WHEN clause".to_string());
+        }
+
+        Ok(Statement::Merge(MergeStatement {
+            target_table,
+            target_alias,
+            source,
+            source_alias,
+            on_condition,
+            when_clauses,
+        }))
+    }
+
+    /// Parse optional alias: either `AS ident` or bare `ident` (SQL:2003 optional AS)
+    fn parse_optional_alias(&mut self) -> Result<Option<String>, String> {
+        match self.current() {
+            Some(Token::As) => {
+                self.next();
+                match self.next() {
+                    Some(Token::Identifier(name)) => Ok(Some(name)),
+                    _ => Err("Expected identifier after AS".to_string()),
+                }
+            }
+            // Bare identifier as alias (only consume if it doesn't look like a keyword)
+            Some(Token::Identifier(name)) => {
+                let alias = name.clone();
+                self.next();
+                Ok(Some(alias))
+            }
+            _ => Ok(None),
+        }
+    }
+
+    /// Parse MERGE source: either a table name or a subquery in parens
+    fn parse_merge_source(&mut self) -> Result<MergeSource, String> {
+        if matches!(self.current(), Some(Token::LParen)) {
+            self.next(); // consume (
+            let select = self.parse_select_statement()?;
+            self.expect(Token::RParen)?;
+            Ok(MergeSource::Subquery(Box::new(select)))
+        } else {
+            match self.next() {
+                Some(Token::Identifier(name)) => Ok(MergeSource::Table { name }),
+                _ => Err("Expected table name or (subquery) after USING".to_string()),
+            }
+        }
+    }
+
+    /// Parse a WHEN MATCHED or WHEN NOT MATCHED clause
+    fn parse_merge_when_clause(&mut self) -> Result<MergeWhenClause, String> {
+        self.next(); // consume WHEN
+
+        // Expect NOT before MATCHED if NOT MATCHED
+        let is_matched = if matches!(self.current(), Some(Token::Not)) {
+            self.next(); // consume NOT
+            self.expect(Token::Matched)?;
+            false
+        } else {
+            self.expect(Token::Matched)?;
+            true
+        };
+
+        // Optional AND <additional_condition>
+        let additional_condition = if matches!(self.current(), Some(Token::And)) {
+            self.next(); // consume AND
+            Some(self.parse_expression()?)
+        } else {
+            None
+        };
+
+        self.expect(Token::Then)?;
+        let action = self.parse_merge_action()?;
+
+        Ok(MergeWhenClause {
+            is_matched,
+            additional_condition,
+            action,
+        })
+    }
+
+    /// Parse MERGE action: UPDATE SET ... or INSERT (...) VALUES (...)
+    fn parse_merge_action(&mut self) -> Result<MergeAction, String> {
+        match self.current() {
+            Some(Token::Update) => {
+                self.next(); // consume UPDATE
+                self.expect(Token::Set)?;
+                let mut set_clauses = Vec::new();
+                loop {
+                    // Column may be qualified (e.g., target.col) per SQL:2003
+                    let mut column = match self.next() {
+                        Some(Token::Identifier(name)) => name,
+                        _ => return Err("Expected column name in SET".to_string()),
+                    };
+                    if matches!(self.current(), Some(Token::Dot)) {
+                        self.next();
+                        match self.next() {
+                            Some(Token::Identifier(col)) => {
+                                column = format!("{}.{}", column, col);
+                            }
+                            _ => return Err("Expected column name after dot".to_string()),
+                        }
+                    }
+                    self.expect(Token::Equal)?;
+                    let value = self.parse_expression()?;
+                    set_clauses.push((column, value));
+                    if matches!(self.current(), Some(Token::Comma)) {
+                        self.next();
+                    } else {
+                        break;
+                    }
+                }
+                Ok(MergeAction::Update { set_clauses })
+            }
+            Some(Token::Insert) => {
+                self.next(); // consume INSERT
+                             // INTO is optional in MERGE INSERT context (SQL:2003 MERGE syntax)
+                if matches!(self.current(), Some(Token::Into)) {
+                    self.next();
+                }
+                self.expect(Token::LParen)?;
+                let mut columns = Vec::new();
+                loop {
+                    match self.next() {
+                        Some(Token::Identifier(name)) => columns.push(name),
+                        _ => return Err("Expected column name in INSERT".to_string()),
+                    }
+                    if matches!(self.current(), Some(Token::Comma)) {
+                        self.next();
+                    } else if matches!(self.current(), Some(Token::RParen)) {
+                        self.next();
+                        break;
+                    } else {
+                        return Err("Expected , or ) in INSERT column list".to_string());
+                    }
+                }
+                self.expect(Token::Values)?;
+                self.expect(Token::LParen)?;
+                let mut values = Vec::new();
+                loop {
+                    values.push(self.parse_expression()?);
+                    if matches!(self.current(), Some(Token::Comma)) {
+                        self.next();
+                    } else if matches!(self.current(), Some(Token::RParen)) {
+                        self.next();
+                        break;
+                    } else {
+                        return Err("Expected , or ) in INSERT VALUES".to_string());
+                    }
+                }
+                Ok(MergeAction::Insert { columns, values })
+            }
+            Some(Token::Delete) => {
+                self.next();
+                Ok(MergeAction::Delete)
+            }
+            _ => Err("Expected UPDATE, INSERT, or DELETE after THEN".to_string()),
+        }
+    }
+
     fn parse_create_table(&mut self) -> Result<Statement, String> {
         // Check if we need to consume Token::Create (may have been consumed by parse_statement)
         if matches!(self.current(), Some(Token::Create)) {
@@ -4140,6 +4362,136 @@ mod tests {
             }
             _ => panic!("Expected INSERT statement"),
         }
+    }
+
+    #[test]
+    fn test_parse_merge_basic_when_matched_update() {
+        let sql = "MERGE INTO target t USING source s ON t.id = s.id \
+                   WHEN MATCHED THEN UPDATE SET t.val = s.val";
+        let result = parse(sql);
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        match result.unwrap() {
+            Statement::Merge(m) => {
+                assert_eq!(m.target_table, "target");
+                assert_eq!(m.target_alias, Some("t".to_string()));
+                match &m.source {
+                    MergeSource::Table { name } => assert_eq!(name, "source"),
+                    _ => panic!("Expected Table source"),
+                }
+                assert_eq!(m.source_alias, Some("s".to_string()));
+                assert_eq!(m.when_clauses.len(), 1);
+                assert!(m.when_clauses[0].is_matched);
+                assert!(m.when_clauses[0].additional_condition.is_none());
+                match &m.when_clauses[0].action {
+                    MergeAction::Update { set_clauses } => {
+                        assert_eq!(set_clauses.len(), 1);
+                        assert_eq!(set_clauses[0].0, "t.val");
+                    }
+                    _ => panic!("Expected Update action"),
+                }
+            }
+            _ => panic!("Expected MERGE statement"),
+        }
+    }
+
+    #[test]
+    fn test_parse_merge_when_matched_and_not_matched() {
+        let sql = "MERGE INTO target USING source ON target.id = source.id \
+                   WHEN MATCHED THEN UPDATE SET target.val = source.val \
+                   WHEN NOT MATCHED THEN INSERT (id, val) VALUES (source.id, source.val)";
+        let result = parse(sql);
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        match result.unwrap() {
+            Statement::Merge(m) => {
+                assert_eq!(m.when_clauses.len(), 2);
+                assert!(m.when_clauses[0].is_matched);
+                assert!(!m.when_clauses[1].is_matched);
+                assert!(matches!(
+                    m.when_clauses[0].action,
+                    MergeAction::Update { .. }
+                ));
+                match &m.when_clauses[1].action {
+                    MergeAction::Insert { columns, values } => {
+                        assert_eq!(columns, &vec!["id".to_string(), "val".to_string()]);
+                        assert_eq!(values.len(), 2);
+                    }
+                    _ => panic!("Expected Insert action"),
+                }
+            }
+            _ => panic!("Expected MERGE statement"),
+        }
+    }
+
+    #[test]
+    fn test_parse_merge_with_aliases() {
+        let sql = "MERGE INTO target USING source ON target.id = source.id \
+                   WHEN MATCHED THEN UPDATE SET target.val = source.val";
+        let result = parse(sql);
+        assert!(result.is_ok());
+        match result.unwrap() {
+            Statement::Merge(m) => {
+                assert_eq!(m.target_alias, None);
+                assert_eq!(m.source_alias, None);
+            }
+            _ => panic!("Expected MERGE statement"),
+        }
+    }
+
+    #[test]
+    fn test_parse_merge_with_subquery_source() {
+        let sql = "MERGE INTO target t \
+                   USING (SELECT id, val FROM other) s \
+                   ON t.id = s.id \
+                   WHEN NOT MATCHED THEN INSERT (id, val) VALUES (s.id, s.val)";
+        let result = parse(sql);
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        match result.unwrap() {
+            Statement::Merge(m) => {
+                assert!(matches!(&m.source, MergeSource::Subquery(_)));
+                assert_eq!(m.source_alias, Some("s".to_string()));
+            }
+            _ => panic!("Expected MERGE statement"),
+        }
+    }
+
+    #[test]
+    fn test_parse_merge_with_additional_condition() {
+        let sql = "MERGE INTO target USING source ON target.id = source.id \
+                   WHEN MATCHED AND target.val > 100 THEN UPDATE SET target.val = source.val";
+        let result = parse(sql);
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        match result.unwrap() {
+            Statement::Merge(m) => {
+                assert_eq!(m.when_clauses.len(), 1);
+                assert!(m.when_clauses[0].additional_condition.is_some());
+            }
+            _ => panic!("Expected MERGE statement"),
+        }
+    }
+
+    #[test]
+    fn test_parse_merge_rejects_missing_using() {
+        let sql = "MERGE INTO target WHEN MATCHED THEN UPDATE SET target.val = 1";
+        let result = parse(sql);
+        assert!(result.is_err(), "Expected parse error for missing USING");
+    }
+
+    #[test]
+    fn test_parse_merge_rejects_missing_on() {
+        let sql = "MERGE INTO target USING source \
+                   WHEN MATCHED THEN UPDATE SET target.val = 1";
+        let result = parse(sql);
+        assert!(result.is_err(), "Expected parse error for missing ON");
+    }
+
+    #[test]
+    fn test_parse_merge_rejects_missing_when() {
+        let sql = "MERGE INTO target USING source ON target.id = source.id";
+        let result = parse(sql);
+        assert!(
+            result.is_err(),
+            "Expected parse error for missing WHEN clause"
+        );
     }
 
     #[test]
