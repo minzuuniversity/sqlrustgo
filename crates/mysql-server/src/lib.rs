@@ -1135,7 +1135,7 @@ fn handle_load_local_infile<S: Read + Write>(
     _delim: char,
     data_dir: std::path::PathBuf,
     bulk_buf_size: usize,
-    seq: u8,
+    seq: &mut u8,
     _cap: u32,
 ) -> MySqlResult<u64> {
     use crate::load_data::{bulk_insert, parse_tbl_line};
@@ -1175,10 +1175,11 @@ fn handle_load_local_infile<S: Read + Write>(
     fb_payload.extend_from_slice(path.as_bytes());
     Packet {
         length: fb_payload.len() as u32,
-        sequence: seq,
+        sequence: *seq,
         payload: fb_payload,
     }
     .write_to(stream)?;
+    *seq = seq.wrapping_add(1);
 
     // 4. Loop on file content packets until the client signals EOF
     //    with an empty-payload packet.
@@ -1189,6 +1190,7 @@ fn handle_load_local_infile<S: Read + Write>(
 
     loop {
         let pkt = Packet::read_from(stream)?;
+        *seq = pkt.sequence.wrapping_add(1);
         if pkt.payload.is_empty() {
             break;
         }
@@ -1304,7 +1306,7 @@ fn do_command_loop<S: Read + Write>(
                         delim,
                         data_dir,
                         bulk_buf,
-                        seq,
+                        &mut seq,
                         cap,
                     ) {
                         Ok(n) => n,
