@@ -27,11 +27,33 @@ mod packet_type {
     pub const COM_QUIT: u8 = 0x01;
     pub const COM_INIT_DB: u8 = 0x02;
     pub const COM_QUERY: u8 = 0x03;
+    pub const LOCAL_INFILE_REQUEST: u8 = 0xFB;
     pub const COM_PING: u8 = 0x0e;
     pub const COM_STMT_PREPARE: u8 = 0x16;
     pub const COM_STMT_EXECUTE: u8 = 0x17;
     pub const COM_STMT_CLOSE: u8 = 0x19;
 }
+
+// ============================================================================
+// ACTIVE_CONFIG — process-wide handle to the most recently-started
+// ephemeral server's configuration. Set by `start_ephemeral`, read by
+// `do_command_loop` so the LOAD DATA LOCAL INFILE handler can access
+// `data_dir` (for the whitelist check) and `bulk_insert_buffer_size`
+// (for batch boundaries) without threading them through every layer.
+//
+// This is a process-global because:
+//   - In-process ephemeral tests use it: the test creates the server
+//     via `start_ephemeral`, then drives it through the wire protocol.
+//   - The canonical-subprocess entry point is separate (it sets CLI
+//     flags and reads them from a different static). `start_ephemeral`
+//     is the entry point used by every wire-protocol integration test.
+//
+// `OnceLock` enforces a single set per process. If multiple
+// `start_ephemeral` calls happen, only the first wins. Tests that
+// need a fresh config use `EphemeralConfig::default()` for the rest.
+// ============================================================================
+use std::sync::OnceLock;
+static ACTIVE_CONFIG: OnceLock<std::sync::Mutex<testing::EphemeralConfig>> = OnceLock::new();
 
 mod capability {
     pub const LONG_PASSWORD: u32 = 0x00000001;
@@ -68,6 +90,11 @@ pub enum MySqlError {
     Io(std::io::Error),
     Protocol(String),
     Sql(String),
+    /// Generic catch-all error carrying a free-form message. Used by
+    /// helper code paths (e.g. LOAD DATA LOCAL INFILE handler) that
+    /// need to propagate human-readable context without having to
+    /// commit to one of the typed variants above.
+    Other(String),
 }
 
 impl std::fmt::Display for MySqlError {
@@ -76,6 +103,7 @@ impl std::fmt::Display for MySqlError {
             MySqlError::Io(e) => write!(f, "IO: {}", e),
             MySqlError::Protocol(s) => write!(f, "Protocol: {}", s),
             MySqlError::Sql(s) => write!(f, "SQL: {}", s),
+            MySqlError::Other(s) => write!(f, "{}", s),
         }
     }
 }
@@ -714,6 +742,8 @@ fn parse_handshake_response(packet: &Packet) -> MySqlResult<HandshakeResponse> {
         auth_plugin_name: plugin,
     })
 }
+
+mod load_data;
 
 #[allow(dead_code)]
 mod col_type {
@@ -1420,6 +1450,145 @@ fn make_tls_config() -> rustls::ServerConfig {
         .unwrap()
 }
 
+/// Server-side LOAD DATA LOCAL INFILE handler.
+///
+/// Wire-protocol flow:
+/// 1. Whitelist check: `canonicalize(path).starts_with(canonicalize(data_dir))`
+///    so a client can't trick the server into streaming `/etc/passwd`.
+/// 2. Send 0xFB packet to the client carrying the file path. The client
+///    opens that file and starts streaming its bytes back as packet
+///    payloads (≤ 16 MB each).
+/// 3. Loop on content packets until an empty-payload terminator.
+/// 4. Buffer bytes, split on `\n`, parse each line with
+///    `load_data::parse_tbl_line`, batch-insert at
+///    `bulk_buf_size` byte boundaries via `load_data::bulk_insert`.
+/// 5. Return the total rows inserted.
+///
+/// Errors are returned to the caller; the routing site in
+/// `do_command_loop` is responsible for translating them to wire
+/// protocol ERR packets.
+#[allow(
+    clippy::too_many_arguments,
+    reason = "explicit wire-protocol + handler-context args mirror the spec"
+)]
+fn handle_load_local_infile<S: Read + Write>(
+    stream: &mut S,
+    engine: &mut sqlrustgo::ExecutionEngine<
+        sqlrustgo_storage::WalStorage<
+            sqlrustgo_storage::FileStorage,
+            sqlrustgo_storage::FileBackedWalManager,
+        >,
+    >,
+    path: &str,
+    table: &str,
+    _delim: char,
+    data_dir: std::path::PathBuf,
+    bulk_buf_size: usize,
+    seq: &mut u8,
+    _cap: u32,
+) -> MySqlResult<u64> {
+    use crate::load_data::{bulk_insert, parse_tbl_line};
+
+    // 1. Whitelist check — canonicalize both sides and confirm the
+    //    file is inside data_dir. This is the only line of defense
+    //    against a malicious client pointing us at e.g. /etc/passwd.
+    let canonical_path = std::fs::canonicalize(path)
+        .map_err(|e| MySqlError::Other(format!("file not found: {}: {}", path, e)))?;
+    let canonical_data_dir = std::fs::canonicalize(&data_dir).map_err(|e| {
+        MySqlError::Other(format!("data_dir not found: {}: {}", data_dir.display(), e))
+    })?;
+    if !canonical_path.starts_with(&canonical_data_dir) {
+        return Err(MySqlError::Other(format!(
+            "file {:?} not in allowed data_dir {:?}",
+            canonical_path, canonical_data_dir
+        )));
+    }
+
+    // 2. Look up the target table's column count so parse_tbl_line
+    //    can validate each line has the right shape.
+    let col_count = {
+        let storage_arc = engine.storage_ref();
+        let storage = storage_arc
+            .read()
+            .map_err(|e| MySqlError::Other(format!("storage lock poisoned: {}", e)))?;
+        let table_info = storage
+            .get_table_info(table)
+            .map_err(|e| MySqlError::Other(format!("table {}: {}", table, e)))?;
+        table_info.columns.len()
+    };
+
+    // 3. Send 0xFB packet to the client — the client interprets this
+    //    as "open this file and start streaming its bytes back".
+    let mut fb_payload = Vec::with_capacity(path.len() + 1);
+    fb_payload.push(packet_type::LOCAL_INFILE_REQUEST);
+    fb_payload.extend_from_slice(path.as_bytes());
+    Packet {
+        length: fb_payload.len() as u32,
+        sequence: *seq,
+        payload: fb_payload,
+    }
+    .write_to(stream)?;
+    *seq = seq.wrapping_add(1);
+
+    // 4. Loop on file content packets until the client signals EOF
+    //    with an empty-payload packet.
+    let mut buf: Vec<u8> = Vec::with_capacity(bulk_buf_size * 2);
+    let mut total_rows: u64 = 0;
+    let mut pending_rows: Vec<Vec<sqlrustgo_types::Value>> = Vec::new();
+    let mut pending_bytes: usize = 0;
+
+    loop {
+        let pkt = Packet::read_from(stream)?;
+        *seq = pkt.sequence.wrapping_add(1);
+        if pkt.payload.is_empty() {
+            break;
+        }
+        buf.extend_from_slice(&pkt.payload);
+
+        // Drain complete lines from the buffer.
+        while let Some(nl) = buf.iter().position(|&b| b == b'\n') {
+            let line: Vec<u8> = buf.drain(..=nl).collect();
+            let line_str = match std::str::from_utf8(&line) {
+                Ok(s) => s,
+                Err(e) => {
+                    tracing::warn!("non-utf8 line skipped: {}", e);
+                    continue;
+                }
+            };
+            let line_str = line_str.trim_end_matches('\n');
+            if line_str.trim().is_empty() {
+                continue;
+            }
+            match parse_tbl_line(line_str, col_count) {
+                Ok(row) => {
+                    pending_bytes += line_str.len();
+                    pending_rows.push(row);
+                }
+                Err(e) => {
+                    tracing::warn!("parse line error: {}", e);
+                }
+            }
+        }
+
+        // Flush at bulk_buf_size boundary.
+        if pending_bytes >= bulk_buf_size && !pending_rows.is_empty() {
+            let n = bulk_insert(engine, table, std::mem::take(&mut pending_rows))
+                .map_err(|e| MySqlError::Other(format!("bulk_insert: {}", e)))?;
+            total_rows += n;
+            pending_bytes = 0;
+        }
+    }
+
+    // Final flush of any rows that didn't hit a boundary.
+    if !pending_rows.is_empty() {
+        let n = bulk_insert(engine, table, pending_rows)
+            .map_err(|e| MySqlError::Other(format!("bulk_insert: {}", e)))?;
+        total_rows += n;
+    }
+
+    Ok(total_rows)
+}
+
 #[allow(unused_assignments)]
 fn do_command_loop<S: Read + Write>(
     stream: &mut S,
@@ -1457,6 +1626,51 @@ fn do_command_loop<S: Read + Write>(
                     .trim()
                     .to_string();
                 tracing::info!("Query [{}]: {}", addr, q);
+
+                // ROUTE: LOAD DATA LOCAL INFILE
+                //
+                // The MySQL wire protocol for LOAD DATA LOCAL INFILE is
+                // a two-phase dance: the client first sends the SQL
+                // text (handled here), the server replies with a 0xFB
+                // packet naming the file, and then the client streams
+                // the file's bytes back. We pull data_dir and
+                // bulk_insert_buffer_size from the ACTIVE_CONFIG set
+                // by `start_ephemeral` so the handler has the same
+                // values the test used to configure the server.
+                if let Some((path, table, delim)) = parse_load_local_infile_sql(&q) {
+                    let cfg = ACTIVE_CONFIG
+                        .get()
+                        .map(|m| m.lock().unwrap().clone())
+                        .unwrap_or_default();
+                    let data_dir = cfg
+                        .data_dir
+                        .clone()
+                        .unwrap_or_else(|| std::path::PathBuf::from("/tmp"));
+                    let bulk_buf = cfg.bulk_insert_buffer_size;
+                    let n = match handle_load_local_infile(
+                        stream,
+                        &mut engine.write().unwrap(),
+                        &path,
+                        &table,
+                        delim,
+                        data_dir,
+                        bulk_buf,
+                        &mut seq,
+                        cap,
+                    ) {
+                        Ok(n) => n,
+                        Err(e) => {
+                            make_err_packet(seq, 1146u16, "42S02", &e.to_string())
+                                .write_to(stream)?;
+                            seq = seq.wrapping_add(1);
+                            0
+                        }
+                    };
+                    make_ok_packet(seq, n, 0, 0x0002, 0).write_to(stream)?;
+                    seq = seq.wrapping_add(1);
+                    continue;
+                }
+
                 if q.is_empty() {
                     make_ok_packet(seq, 0, 0, 0x0002, 0).write_to(stream)?;
                     seq = seq.wrapping_add(1);
@@ -2708,6 +2922,120 @@ mod integration_tests {
     }
 }
 
+/// Parse a LOAD DATA LOCAL INFILE SQL statement.
+///
+/// Returns (path, table, field_delimiter) if matched, None otherwise.
+/// Only supports the TPC-H .tbl canonical form:
+///     LOAD DATA LOCAL INFILE '<path>' INTO TABLE <table>
+///     [FIELDS TERMINATED BY '<delim>']
+fn parse_load_local_infile_sql(sql: &str) -> Option<(String, String, char)> {
+    let upper = sql.trim().to_uppercase();
+    if !upper.starts_with("LOAD DATA LOCAL INFILE") {
+        return None;
+    }
+
+    // Extract path between first pair of single quotes after INFILE
+    let after_infile = &sql[upper.find("INFILE")? + "INFILE".len()..];
+    let path_start = after_infile.find('\'')? + 1;
+    let path_end_rel = after_infile[path_start..].find('\'')?;
+    let path = after_infile[path_start..path_start + path_end_rel].to_string();
+
+    // Extract table name after "INTO TABLE"
+    let after_into = &sql[upper.find("INTO TABLE")? + "INTO TABLE".len()..];
+    let table_trim = after_into.trim_start();
+    let table: String = table_trim
+        .split_whitespace()
+        .next()
+        .unwrap_or("")
+        .to_string();
+    if table.is_empty() {
+        return None;
+    }
+
+    // Default delimiter is `|` (TPC-H .tbl standard)
+    let delim = '|';
+
+    Some((path, table, delim))
+}
+
+#[cfg(test)]
+mod load_local_infile_tests {
+    use super::*;
+    use std::io::Cursor;
+
+    /// Helper: simulate a client that sends 0xFB-ready file content.
+    fn make_client_packets(file_bytes: &[u8], chunk_size: usize) -> Vec<u8> {
+        let mut out = Vec::new();
+        for chunk in file_bytes.chunks(chunk_size) {
+            // Packet header: 3-byte length + 1-byte seq
+            let len = chunk.len() as u32;
+            out.push((len & 0xFF) as u8);
+            out.push(((len >> 8) & 0xFF) as u8);
+            out.push(((len >> 16) & 0xFF) as u8);
+            out.push(0x00); // seq
+            out.extend_from_slice(chunk);
+        }
+        // Empty terminator
+        out.push(0);
+        out.push(0);
+        out.push(0);
+        out.push(0);
+        out
+    }
+
+    #[test]
+    fn test_parse_tbl_response_stream_basic() {
+        // Verifies that we can read a stream of file content packets + empty terminator.
+        let file = b"1|2|3|\n4|5|6|\n";
+        let bytes = make_client_packets(file, 16);
+
+        let mut stream = Cursor::new(bytes);
+        let mut total = Vec::new();
+        loop {
+            let pkt = Packet::read_from(&mut stream).unwrap();
+            if pkt.payload.is_empty() {
+                break;
+            }
+            total.extend_from_slice(&pkt.payload);
+        }
+        assert_eq!(total, file);
+    }
+
+    #[test]
+    fn test_parse_load_local_infile_sql_basic() {
+        let sql = "LOAD DATA LOCAL INFILE '/tmp/region.tbl' INTO TABLE region";
+        let result = parse_load_local_infile_sql(sql);
+        assert_eq!(
+            result,
+            Some(("/tmp/region.tbl".to_string(), "region".to_string(), '|'))
+        );
+    }
+
+    #[test]
+    fn test_parse_load_local_infile_sql_ignores_non_pipe_delim() {
+        // Per spec: only `|` delimiter is supported. The parser ignores
+        // FIELDS TERMINATED BY clause and always returns '|'.
+        let sql = "LOAD DATA LOCAL INFILE '/x.tbl' INTO TABLE t1 FIELDS TERMINATED BY ','";
+        let result = parse_load_local_infile_sql(sql);
+        assert_eq!(result, Some(("/x.tbl".to_string(), "t1".to_string(), '|')));
+    }
+
+    #[test]
+    fn test_parse_load_local_infile_sql_non_matching() {
+        // Regular SELECT — should NOT match
+        let sql = "SELECT * FROM t1";
+        let result = parse_load_local_infile_sql(sql);
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_parse_load_local_infile_sql_case_insensitive() {
+        let sql = "load data local infile '/y.tbl' into table y";
+        let result = parse_load_local_infile_sql(sql);
+        assert_eq!(result, Some(("/y.tbl".to_string(), "y".to_string(), '|')));
+    }
+}
+
 // ============================================================================
 // Embedded test harness
 //
@@ -2715,7 +3043,12 @@ mod integration_tests {
 // for the contract this module is required to implement.
 // ============================================================================
 
+/// Re-export of [`testing::EphemeralConfig`] at the crate root for
+/// ergonomic test imports (`use sqlrustgo_mysql_server::EphemeralConfig;`).
+pub use testing::EphemeralConfig;
+
 pub mod testing {
+    use crate::ACTIVE_CONFIG;
     use std::net::TcpListener;
     use std::path::PathBuf;
     use std::sync::{Arc, Mutex};
@@ -2750,6 +3083,10 @@ pub mod testing {
         /// starts accepting connections. Use this to inject the 8 TPC-H
         /// `CREATE TABLE` statements into an ephemeral server.
         pub bootstrap_sql: Vec<String>,
+        /// Maximum bytes to buffer in a single batched INSERT during
+        /// LOAD DATA LOCAL INFILE. Default 1 MB. Tests / perf benches
+        /// can set higher (e.g. 16 MB) for fewer INSERT round-trips.
+        pub bulk_insert_buffer_size: usize,
     }
 
     impl Default for EphemeralConfig {
@@ -2760,6 +3097,7 @@ pub mod testing {
                 bootstrap_users: true,
                 data_dir: None,
                 bootstrap_sql: Vec::new(),
+                bulk_insert_buffer_size: 1_048_576,
             }
         }
     }
@@ -2834,6 +3172,12 @@ pub mod testing {
     /// a handle to it. The server runs on a background thread; the
     /// handle's `Drop` joins the thread and cleans up the temp data dir.
     pub fn start_ephemeral(config: EphemeralConfig) -> Result<EphemeralHandle, std::io::Error> {
+        // Publish the config so the server thread's `do_command_loop`
+        // can find the data_dir and bulk buffer size for LOAD DATA
+        // LOCAL INFILE. Only the first call wins; later calls are a
+        // no-op (OnceLock semantics).
+        let _ = ACTIVE_CONFIG.set(std::sync::Mutex::new(config.clone()));
+
         let listener = TcpListener::bind(format!("{}:0", config.host))?;
         let port = listener.local_addr()?.port();
 
