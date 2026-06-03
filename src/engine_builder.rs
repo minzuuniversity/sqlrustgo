@@ -190,6 +190,17 @@ impl ExecutionEngine<MemoryStorage> {
         data_dir: PathBuf,
     ) -> SqlResult<ExecutionEngine<WalStorage<FileStorage, FileBackedWalManager>>> {
         let mut engine = Self::with_wal_file(data_dir)?;
+        // PR-842: clear in-memory rows loaded from t.json before replay so
+        // the WAL is the sole source of truth. Without this the rows
+        // persisted during normal operation would be reapplied by the
+        // recovery engine, producing duplicates on every restart.
+        {
+            let mut storage = engine.storage.write().map_err(|e| {
+                SqlError::ExecutionError(format!("Failed to lock storage: {:?}", e))
+            })?;
+            let (inner, _wal_mgr) = storage.split();
+            inner.clear_all_tables();
+        }
         recover_wal(&mut engine)?;
         Ok(engine)
     }
@@ -205,6 +216,13 @@ pub fn recover_wal(
     let (inner, wal_mgr) = storage.split();
     let mut recovery = StatefulRecoveryEngine::new();
     let report = RecoveryEngine::recover(&mut recovery, inner, wal_mgr)?;
+
+    // Flush any data accumulated in FileStorage's insert buffer during replay
+    // so the post-recovery scan can see the recovered rows. Without this,
+    // `storage.scan()` would only see `data.rows` (which may have been
+    // truncated by row-level DELETE replay) and miss the inserted rows
+    // sitting in the buffer.
+    storage.flush()?;
 
     log::info!(
         "WAL recovery completed: {} committed txns, {} rolled back, {} incomplete, {} entries total",
