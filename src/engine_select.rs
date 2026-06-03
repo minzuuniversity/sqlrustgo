@@ -5,7 +5,10 @@
 use crate::engine_utils::*;
 use crate::expr_utils::*;
 use crate::{ExecutionEngine, ExecutorResult, SqlError, SqlResult, Value};
-use sqlrustgo_parser::{AggregateCall, AggregateFunction, Expression, JoinType, SelectStatement};
+use sqlrustgo_parser::{
+    AggregateCall, AggregateFunction, Expression, JoinClause as ParserJoinClause, JoinType,
+    SelectStatement,
+};
 use sqlrustgo_storage::{StorageEngine, TableInfo};
 
 impl<S: StorageEngine + 'static> ExecutionEngine<S> {
@@ -17,8 +20,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         }
 
         // Step 1: FROM/JOIN - get initial rows and schema
-        let (mut rows, table_info) = if select.join_clause.is_some() {
-            self.execute_join(select)?
+        let (mut rows, table_info) = if !select.join_clause.is_empty() {
+            self.execute_joins(select)?
         } else {
             let rows = storage.scan(&select.table)?;
             let table_info = storage.get_table_info(&select.table)?;
@@ -238,32 +241,70 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         Ok(results)
     }
 
-    /// Execute JOIN and return (rows, combined_schema)
-    /// This function only generates joined rows, does NOT apply WHERE/AGG/HAVING
-    fn execute_join(&self, select: &SelectStatement) -> SqlResult<(Vec<Vec<Value>>, TableInfo)> {
+    /// Execute a chain of JOINs: start from the base table, then apply each
+    /// JoinClause in order (left-associative: t1 JOIN t2 JOIN t3 → ((t1 JOIN t2) JOIN t3)).
+    /// This function only generates joined rows, does NOT apply WHERE/AGG/HAVING.
+    fn execute_joins(&self, select: &SelectStatement) -> SqlResult<(Vec<Vec<Value>>, TableInfo)> {
+        let storage = self.storage.read().unwrap();
+
+        // Seed with the base table from FROM clause
+        let mut rows = storage.scan(&select.table)?;
+        let mut table_info = storage.get_table_info(&select.table)?;
+
+        for join_clause in &select.join_clause {
+            let (new_rows, new_info) =
+                self.execute_single_join(&rows, &table_info, join_clause, &storage)?;
+            rows = new_rows;
+            table_info = new_info;
+        }
+
+        Ok((rows, table_info))
+    }
+
+    /// Execute a single JOIN against an existing (left) row set + schema.
+    /// `join_clause` is consumed separately so callers can iterate a Vec<JoinClause>.
+    fn execute_single_join(
+        &self,
+        left_rows: &[Vec<Value>],
+        left_table_info: &TableInfo,
+        join_clause: &ParserJoinClause,
+        storage: &S,
+    ) -> SqlResult<(Vec<Vec<Value>>, TableInfo)> {
         use sqlrustgo_parser::JoinType as ParserJoinType;
         use std::collections::HashMap;
 
-        let join_clause = select.join_clause.as_ref().unwrap();
-        let left_table_name = select.table.clone();
         let right_table_name = join_clause.table.clone();
 
-        let storage = self.storage.read().unwrap();
-
-        // Scan both tables
-        let left_rows = storage.scan(&left_table_name)?;
+        // Scan the right table fresh each call (left side is already materialized).
         let right_rows = storage.scan(&right_table_name)?;
-
-        // Get table info for column indices
-        let left_table_info = storage.get_table_info(&left_table_name)?;
         let right_table_info = storage.get_table_info(&right_table_name)?;
 
-        // Extract join key column index from ON clause
-        // For "t1.id = t2.id", we need to find which column "id" refers to in each table
-        let left_key_idx =
-            self.find_join_key_index(&join_clause.on_clause, &left_table_info, &select.table)?;
-        let right_key_idx =
-            self.find_join_key_index(&join_clause.on_clause, &right_table_info, &right_table_name)?;
+        // The accumulated left_table_info.name encodes previous joins
+        // (e.g. "t1_join_t2"). Pass that as the qualifier scope for ON clause
+        // resolution. If users reference an unqualified column that lives in
+        // the most-recently-joined left table (e.g. t1.id when accumulated as
+        // "t1_join_t2"), find_join_key_index will fall through to simple-name
+        // lookup.
+        let left_alias = left_table_info.name.clone();
+
+        // Extract join key column indices from ON clause
+        // For "b.num = c.bid" or "t1.id = t2.id", the canonical form
+        // resolves one column from left and one from right.
+        let join_key = self.find_join_key_index(
+            &join_clause.on_clause,
+            &left_table_info,
+            &left_alias,
+            &right_table_info,
+            &right_table_name,
+        )?;
+        let (left_key_idx, right_key_idx) = match join_key {
+            JoinKey::Pair(li, ri) => (li, ri),
+            JoinKey::Left(_) | JoinKey::Right(_) => {
+                return Err(SqlError::ExecutionError(
+                    "Join ON must be a binary equality between left and right columns".to_string(),
+                ));
+            }
+        };
 
         // Determine join type
         let join_type = match join_clause.join_type {
@@ -344,7 +385,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             }
             JoinType::Cross => {
                 let mut results = Vec::new();
-                for left_row in &left_rows {
+                for left_row in left_rows {
                     for right_row in &right_rows {
                         let mut combined = left_row.clone();
                         combined.extend(right_row.clone());
@@ -360,63 +401,136 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         Ok((matched_results, combined_schema))
     }
 
-    /// Find the column index for a join key in a table
-    /// Handles both simple column names and qualified names (e.g., "t1.id")
+    /// Resolve a join-key column index, looking across both sides of the join.
+    /// For multi-join chains, the left side is the accumulated `a_join_b...` and
+    /// would otherwise reject qualifiers that point at a freshly-joined right
+    /// table (or at a table embedded in the accumulated left). Returning a
+    /// `JoinKey { side, index }` lets the caller pick the index in the correct
+    /// row vector.
+    ///
+    /// The accumulated left's column *names* are `left_alias.col`, but the
+    /// `left_alias` is `a_join_b` (or similar). Users typically write
+    /// `b.num = c.bid` where neither qualifier matches the accumulated alias,
+    /// so we also fall back to a column-name search across both sides.
     fn find_join_key_index(
         &self,
         expr: &Expression,
-        table_info: &TableInfo,
-        table_name: &str,
-    ) -> SqlResult<usize> {
+        left_info: &TableInfo,
+        left_name: &str,
+        right_info: &TableInfo,
+        right_name: &str,
+    ) -> SqlResult<JoinKey> {
         match expr {
             Expression::Identifier(name) => {
-                // Check if it's a qualified name like "t1.id"
                 if let Some((qualifier, col_name)) = name.split_once('.') {
-                    // If qualifier matches our table name, use the column name part
-                    if qualifier == table_name {
-                        table_info
-                            .columns
-                            .iter()
-                            .position(|c| c.name.as_str() == col_name)
-                            .ok_or_else(|| {
-                                SqlError::ExecutionError(format!(
-                                    "Column '{}.{}' not found in {}",
-                                    qualifier, col_name, table_name
-                                ))
-                            })
+                    // Qualified name: must match either side
+                    if qualifier == left_name {
+                        let idx = lookup_column(left_info, col_name).ok_or_else(|| {
+                            SqlError::ExecutionError(format!(
+                                "Column '{}.{}' not found in {}",
+                                qualifier, col_name, left_name
+                            ))
+                        })?;
+                        Ok(JoinKey::Left(idx))
+                    } else if qualifier == right_name {
+                        let idx = lookup_column(right_info, col_name).ok_or_else(|| {
+                            SqlError::ExecutionError(format!(
+                                "Column '{}.{}' not found in {}",
+                                qualifier, col_name, right_name
+                            ))
+                        })?;
+                        Ok(JoinKey::Right(idx))
                     } else {
-                        // Qualifier doesn't match this table - column not in this table
+                        // Qualifier doesn't match left or right (e.g. an
+                        // intermediate table already absorbed into left via
+                        // build_combined_schema, where columns are named
+                        // "a_join_b.col" but the user writes "b.col").
+                        // Try column-name lookup on both sides as a best-effort.
+                        if let Some(idx) = lookup_column(left_info, col_name) {
+                            return Ok(JoinKey::Left(idx));
+                        }
+                        if let Some(idx) = lookup_column(right_info, col_name) {
+                            return Ok(JoinKey::Right(idx));
+                        }
                         Err(SqlError::ExecutionError(format!(
-                            "Column '{}' not found in {}",
-                            name, table_name
+                            "Column '{}' not found in either '{}' or '{}'",
+                            name, left_name, right_name
                         )))
                     }
                 } else {
-                    // Simple column name - find its index
-                    table_info
-                        .columns
-                        .iter()
-                        .position(|c| c.name.as_str() == name.as_str())
-                        .ok_or_else(|| {
-                            SqlError::ExecutionError(format!(
-                                "Column '{}' not found in {}",
-                                name, table_name
-                            ))
-                        })
+                    // Unqualified: search both sides
+                    if let Some(idx) = lookup_column(left_info, name) {
+                        return Ok(JoinKey::Left(idx));
+                    }
+                    if let Some(idx) = lookup_column(right_info, name) {
+                        return Ok(JoinKey::Right(idx));
+                    }
+                    Err(SqlError::ExecutionError(format!(
+                        "Column '{}' not found in either '{}' or '{}'",
+                        name, left_name, right_name
+                    )))
                 }
             }
-            Expression::BinaryOp(left, _, right) => {
-                // Try left side first
-                let left_result = self.find_join_key_index(left, table_info, table_name);
-                if left_result.is_ok() {
-                    return left_result;
+            Expression::BinaryOp(left_expr, _op, right_expr) => {
+                // Standard SQL: left side of `=` references left table,
+                // right side references right table. Resolve each independently.
+                let lk = self
+                    .find_join_key_index(left_expr, left_info, left_name, right_info, right_name)?;
+                let rk = self.find_join_key_index(
+                    right_expr, left_info, left_name, right_info, right_name,
+                )?;
+                // We only support the canonical case: one key from each side.
+                match (lk, rk) {
+                    (JoinKey::Left(li), JoinKey::Right(ri)) => Ok(JoinKey::Pair(li, ri)),
+                    (JoinKey::Right(ri), JoinKey::Left(li)) => Ok(JoinKey::Pair(li, ri)),
+                    _ => Err(SqlError::ExecutionError(
+                        "Join condition must reference one column from each side".to_string(),
+                    )),
                 }
-                // Try right side
-                self.find_join_key_index(right, table_info, table_name)
             }
             _ => Err(SqlError::ExecutionError(
                 "Unsupported join condition expression".to_string(),
             )),
         }
     }
+}
+
+/// Which side of a single join a resolved column index belongs to, or a
+/// canonical pair (left, right) for binary `=` ON conditions.
+#[derive(Debug, Clone, Copy)]
+enum JoinKey {
+    Left(usize),
+    Right(usize),
+    Pair(usize, usize),
+}
+
+/// Look up a column in a (possibly accumulated) schema.
+///
+/// `build_combined_schema` rewrites column names as `alias.col`; for chained
+/// joins, the column name may pick up multiple prefixes (e.g. an original
+/// `b.num` becomes `a_join_b.b.num` after a second join). This helper accepts
+/// any of: a bare column name (`num`), a single-prefix form (`b.num`), or
+/// the full accumulated form (`a_join_b.b.num`) — they all map to the same
+/// index.
+fn lookup_column(info: &TableInfo, col_name: &str) -> Option<usize> {
+    // Strip any qualifier from the caller's reference (we only care about
+    // the final segment; the qualifier is matched separately).
+    let bare = col_name.rsplit('.').next().unwrap_or(col_name);
+
+    info.columns.iter().position(|c| {
+        if c.name == col_name {
+            return true;
+        }
+        // The accumulated column name may have one or more `.`-prefix
+        // segments. Find the final segment and compare.
+        if let Some((_, suffix)) = c.name.rsplit_once('.') {
+            if suffix == bare {
+                return true;
+            }
+        }
+        if c.name == bare {
+            return true;
+        }
+        false
+    })
 }
