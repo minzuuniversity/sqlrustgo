@@ -1,4 +1,5 @@
 # SQLRustGo v3.8.0 GA Gate Checklist
+<!-- env:blocked:no-ci -->
 
 > **版本**: v3.8.0
 > **类型**: Architecture Unification Release
