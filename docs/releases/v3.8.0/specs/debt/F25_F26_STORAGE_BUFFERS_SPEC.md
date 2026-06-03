@@ -1,3 +1,10 @@
+<!--
+**Debt ID**: F-25, F-26
+**Status**: IMPLEMENTED
+**Implementation PR**: PR fix/f-25-f-26
+**Test Coverage**: 5+6 tests
+-->
+
 # F-25 + F-26 SPEC: Change Buffer + Double-Write Buffer
 
 > **Issues**: #2826 (F-25), #2827 (F-26)
