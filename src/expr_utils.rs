@@ -318,7 +318,10 @@ pub fn evaluate_expression(
         Expression::Like(left, pattern, _escape) => {
             let lv = evaluate_expression(left, row, table_info)?;
             let pv = evaluate_expression(pattern, row, table_info)?;
-            Ok(Value::Boolean(sql_like_match(&lv.to_sql_string(), &pv.to_sql_string())))
+            Ok(Value::Boolean(sql_like_match(
+                &lv.to_sql_string(),
+                &pv.to_sql_string(),
+            )))
         }
         Expression::NotLike(left, pattern, _escape) => {
             let lv = evaluate_expression(left, row, table_info)?;
