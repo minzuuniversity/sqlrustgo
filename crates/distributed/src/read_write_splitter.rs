@@ -148,6 +148,7 @@ impl ReadWriteSplitter {
             sqlrustgo_parser::Statement::GrantRole(_) => QueryClass::Write,
             sqlrustgo_parser::Statement::RevokeRole(_) => QueryClass::Write,
             sqlrustgo_parser::Statement::SetRole(_) => QueryClass::Write,
+            sqlrustgo_parser::Statement::Merge(_) => QueryClass::Write,
             sqlrustgo_parser::Statement::ShowRoles => QueryClass::Read,
             sqlrustgo_parser::Statement::ShowGrantsFor(_) => QueryClass::Read,
         }
