@@ -1,5 +1,7 @@
 # SPEC-015: v3.6.0 P2-1/P2-2 Deferred Features (FULL OUTER JOIN + Distributed Execution)
 
+<!-- env:blocked:no-ci -->
+
 > **Version**: v3.8.0 (audit + scope clarification)
 > **Branch**: `develop/v3.8.0`
 > **Date**: 2026-06-03
