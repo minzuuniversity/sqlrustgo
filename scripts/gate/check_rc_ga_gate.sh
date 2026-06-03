@@ -446,16 +446,16 @@ run_d6_integration_tests() {
     # Skip the duplicate placeholder "ci_test" and "embedded_harnesssmoke"
     # (Cargo.toml has a separate "ci_test" path=tests/ci_test.rs entry;
     # "embedded_harnesssmoke" without underscore is a typo kept for robustness).
-    local dedup_tests=()
-    declare -A seen
-    for t in "${D6_INTEGRATION_TESTS[@]}"; do
-        if [[ -z "${seen[$t]:-}" ]]; then
-            seen[$t]=1
-            dedup_tests+=("$t")
-        fi
+    # Bash 3.2 compatible: no associative arrays, no nested array expansions.
+    local dedup_tests=""
+    for t in ${D6_INTEGRATION_TESTS}; do
+        case "$dedup_tests" in
+            *"$t"*) ;;
+            *) dedup_tests="$dedup_tests $t" ;;
+        esac
     done
 
-    for test_name in "${dedup_tests[@]}"; do
+    for test_name in $dedup_tests; do
         # Skip tests that don't exist as files (defensive)
         if [[ ! -f "tests/${test_name}.rs" ]]; then
             # Some subdir tests use / separator
