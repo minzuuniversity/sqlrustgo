@@ -1,5 +1,7 @@
 # PR-830F Implementation Plan — WAL Lifecycle Controller
 
+<!-- env:blocked:no-ci -->
+
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** Implement WAL lifecycle controller with CheckpointManager integration and WAL truncation gate.

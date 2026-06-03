@@ -1,4 +1,6 @@
 # 覆盖率测量差异分析
+
+<!-- env:blocked:no-ci -->
 **Issue**: #2596
 **Author**: Hermes C
 **Date**: 2026-05-31
