@@ -1,5 +1,7 @@
 # Historical Feature Coverage Matrix (v3.0.0~v3.6.0) — v3.8.0 Audit
 
+<!-- env:blocked:no-ci -->
+
 > **Version**: v3.8.0
 > **Branch**: `develop/v3.8.0` @ `ccce47c2`
 > **Audit Date**: 2026-06-03
