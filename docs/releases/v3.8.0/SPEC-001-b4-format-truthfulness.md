@@ -1,5 +1,7 @@
 # SPEC-001 — B4 Format Truthfulness 修复
 
+<!-- env:blocked:no-ci -->
+
 > **PR Number**: SPEC-001 (独立修复，不属于 PR-800/830 系列)
 > **PR Title**: 修复 B4 Format Truthfulness 违规 — 消除 auto-fix 掩盖
 > **Version**: v3.8.0
