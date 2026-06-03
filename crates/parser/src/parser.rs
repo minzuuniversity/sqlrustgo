@@ -1614,10 +1614,18 @@ impl Parser {
                             });
                         }
                     } else {
+                        // Sprint 2 SELECT projection: the column is a plain
+                        // identifier (no table prefix, no LParen), so the
+                        // expression should be Identifier(name) so projection
+                        // can evaluate it as a column reference. Previously
+                        // this stored `expression: None` which made the
+                        // projection path fall back to `row.first()`, breaking
+                        // `SELECT col` for any non-first column.
+                        let col_name = name;
                         columns.push(SelectColumn {
-                            name,
+                            name: col_name.clone(),
                             alias: None,
-                            expression: None,
+                            expression: Some(Expression::Identifier(col_name)),
                         });
                         // For !consumed: advance past the column identifier.
                         // For consumed (table.col): already advanced, current is at next token.
