@@ -42,11 +42,31 @@ log_evidence() {
     local id="$1"
     local exit_code="$2"
     local stdout_sha="$(sha256sum "$ARTIFACTS_DIR/${id}.log" 2>/dev/null | cut -d' ' -f1 || echo "unknown")"
+    # P1-6 #2884: external_attestation 来自 CI 环境变量（非 self-referential）
+    # - internal self-hash 保留（防 log 篡改）
+    # - external_attestation 引用外部 CI 系统的 run URL + run id
+    local ext_ci_system="local"
+    local ext_run_id="none"
+    local ext_run_url="none"
+    if [ -n "${GITEA_ACTIONS:-}" ]; then
+        ext_ci_system="gitea-actions"
+        ext_run_id="${GITEA_RUN_NUMBER:-${GITEA_RUN_ID:-unknown}}"
+        ext_run_url="${GITEA_SERVER_URL:-}/api/v1/repos/${GITEA_REPO:-openclaw/sqlrustgo}/actions/runs/${ext_run_id}"
+    elif [ -n "${GITHUB_ACTIONS:-}" ]; then
+        ext_ci_system="github-actions"
+        ext_run_id="${GITHUB_RUN_ID:-unknown}"
+        ext_run_url="${GITHUB_SERVER_URL:-https://github.com}/${GITHUB_REPOSITORY:-openclaw/sqlrustgo}/actions/runs/${ext_run_id}"
+    fi
+    local ext_attestation
+    ext_attestation=$(jq -n \
+        --arg cs "$ext_ci_system" --arg ri "$ext_run_id" --arg ru "$ext_run_url" \
+        '{ci_system: $cs, run_id: $ri, run_url: $ru, self_hash: ("not-yet-verified")}')
     # 将日志追加到 evidence.json
     if [ -f "$ARTIFACTS_DIR/evidence.json" ]; then
         # 临时文件处理
         local tmp=$(mktemp)
-        jq ".checks += [{\"id\": \"$id\", \"exit_code\": $exit_code, \"stdout_sha256\": \"$stdout_sha\", \"log\": \"${ARTIFACTS_DIR}/${id}.log\"}]" \
+        jq --argjson ext "$ext_attestation" \
+            ".checks += [{\"id\": \"$id\", \"exit_code\": $exit_code, \"stdout_sha256\": \"$stdout_sha\", \"external_attestation\": \$ext, \"log\": \"${ARTIFACTS_DIR}/${id}.log\"}]" \
             "$ARTIFACTS_DIR/evidence.json" > "$tmp" && mv "$tmp" "$ARTIFACTS_DIR/evidence.json"
     fi
 }
@@ -229,7 +249,9 @@ for id in A1_BUILD A2_TEST A3_CLIPPY A4_FORMAT A6-1_REPLAY A6-2_CLAIM A6-3_DECIS
         # 检查是否已添加
         if ! grep -q "\"id\": \"$id\"" "$ARTIFACTS_DIR/evidence.json" 2>/dev/null; then
             tmp=$(mktemp)
-            jq ".checks += [{\"id\": \"$id\", \"stdout_sha256\": \"$sha\", \"log\": \"${ARTIFACTS_DIR}/${id}.log\"}]" \
+            # P1-6 #2884: 补全 external_attestation（与 log_evidence 同步）
+            jq --argjson ext "$ext_attestation" \
+                ".checks += [{\"id\": \"$id\", \"stdout_sha256\": \"$sha\", \"external_attestation\": \$ext, \"log\": \"${ARTIFACTS_DIR}/${id}.log\"}]" \
                 "$ARTIFACTS_DIR/evidence.json" > "$tmp" && mv "$tmp" "$ARTIFACTS_DIR/evidence.json"
         fi
     fi
