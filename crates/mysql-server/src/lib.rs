@@ -1550,11 +1550,12 @@ pub fn run_server_with_listener(listener: TcpListener) -> MySqlResult<()> {
 /// but before the accept loop starts. The test harness uses it to
 /// pre-create the `tester` user with a known password so the `mysql`
 /// crate's auth handshake succeeds.
-pub(crate) fn run_server_with_listener_and_shutdown_with_bootstrap_and_tables(
+pub(crate) fn run_server_with_listener_and_shutdown_with_bootstrap_tables_and_sql(
     listener: TcpListener,
     shutdown: std::sync::Arc<std::sync::atomic::AtomicBool>,
     bootstrap: Option<Box<dyn FnOnce(&mut UserStore) + Send>>,
     bootstrap_tables: bool,
+    bootstrap_sql: Vec<String>,
 ) -> MySqlResult<()> {
     let tls_config = Arc::new(make_tls_config());
     tracing::info!("TLS ready (self-signed cert)");
@@ -1578,7 +1579,15 @@ pub(crate) fn run_server_with_listener_and_shutdown_with_bootstrap_and_tables(
                 "CREATE TABLE vectors (hash_seq TEXT PRIMARY KEY, hash TEXT NOT NULL, embedding TEXT NOT NULL, created_at TEXT NOT NULL)",
                 "CREATE TABLE documents (id TEXT PRIMARY KEY, title TEXT, content TEXT, created_at TEXT)"] {
                 if let Err(e) = eng.execute(sql) { tracing::warn!("Init: {}", e); }
+        }
+    }
+    if !bootstrap_sql.is_empty() {
+        let mut eng = ExecutionEngine::new(storage.clone());
+        for sql in &bootstrap_sql {
+            if let Err(e) = eng.execute(sql) {
+                tracing::warn!("Bootstrap SQL failed: {} (sql: {})", e, sql);
             }
+        }
     }
     let mut user_store = UserStore::new();
     if let Some(bs) = bootstrap {
@@ -1628,7 +1637,13 @@ pub fn run_server_with_listener_and_shutdown(
     listener: TcpListener,
     shutdown: std::sync::Arc<std::sync::atomic::AtomicBool>,
 ) -> MySqlResult<()> {
-    run_server_with_listener_and_shutdown_with_bootstrap_and_tables(listener, shutdown, None, true)
+    run_server_with_listener_and_shutdown_with_bootstrap_tables_and_sql(
+        listener,
+        shutdown,
+        None,
+        true,
+        Vec::new(),
+    )
 }
 
 /// Variant of [`run_server_with_listener_and_shutdown`] that also
@@ -1643,8 +1658,12 @@ pub(crate) fn run_server_with_listener_and_shutdown_with_bootstrap(
     shutdown: std::sync::Arc<std::sync::atomic::AtomicBool>,
     bootstrap: Option<Box<dyn FnOnce(&mut UserStore) + Send>>,
 ) -> MySqlResult<()> {
-    run_server_with_listener_and_shutdown_with_bootstrap_and_tables(
-        listener, shutdown, bootstrap, true,
+    run_server_with_listener_and_shutdown_with_bootstrap_tables_and_sql(
+        listener,
+        shutdown,
+        bootstrap,
+        true,
+        Vec::new(),
     )
 }
 
@@ -2361,6 +2380,21 @@ pub mod testing {
         /// to control the user table themselves should set this to
         /// `false` and add their own users via the listener-side API.
         pub bootstrap_users: bool,
+        /// When `Some(path)`, the server uses this directory as its
+        /// data dir instead of auto-creating one under
+        /// `std::env::temp_dir()`. The path must already exist; the
+        /// server does **not** create it. The handle's `Drop` is
+        /// inert on this path (does not `remove_dir_all` it) so the
+        /// caller can pre-stage .tbl data and inspect the dir after
+        /// the test. Useful for the TPC-H wire-protocol smoke test
+        /// that needs to share a data dir between two `start_ephemeral`
+        /// calls (one to import, one to query).
+        pub data_dir: Option<std::path::PathBuf>,
+        /// Extra DDL statements to execute after the internal catalog
+        /// tables (if `bootstrap_tables` is true) and before the server
+        /// starts accepting connections. Use this to inject the 8 TPC-H
+        /// `CREATE TABLE` statements into an ephemeral server.
+        pub bootstrap_sql: Vec<String>,
     }
 
     impl Default for EphemeralConfig {
@@ -2369,6 +2403,8 @@ pub mod testing {
                 host: "127.0.0.1".to_string(),
                 bootstrap_tables: true,
                 bootstrap_users: true,
+                data_dir: None,
+                bootstrap_sql: Vec::new(),
             }
         }
     }
@@ -2426,8 +2462,16 @@ pub mod testing {
                     let _ = handle.join();
                 }
             }
-            // 3. Remove the temporary data directory.
-            let _ = std::fs::remove_dir_all(&self.data_dir);
+            // 3. Remove the temporary data directory, but only if
+            //    it is one we created. An empty path means the
+            //    handle is a no-op (external server); a path the
+            //    test supplied via `EphemeralConfig::data_dir` is
+            //    owned by the test and must not be touched.
+            if !self.data_dir.as_os_str().is_empty()
+                && self.data_dir.starts_with(std::env::temp_dir())
+            {
+                let _ = std::fs::remove_dir_all(&self.data_dir);
+            }
         }
     }
 
@@ -2438,12 +2482,21 @@ pub mod testing {
         let listener = TcpListener::bind(format!("{}:0", config.host))?;
         let port = listener.local_addr()?.port();
 
-        let data_dir = std::env::temp_dir().join(format!(
-            "sqlrustgo_ephemeral_{}_{}",
-            port,
-            std::process::id()
-        ));
-        std::fs::create_dir_all(&data_dir)?;
+        // When the caller supplies a data_dir, the test owns the
+        // directory's lifecycle; we do not create it and we do
+        // not remove it on Drop. When None, we auto-create one
+        // under the OS temp dir and Drop removes it.
+        let externally_owned = config.data_dir.is_some();
+        let data_dir = config.data_dir.unwrap_or_else(|| {
+            std::env::temp_dir().join(format!(
+                "sqlrustgo_ephemeral_{}_{}",
+                port,
+                std::process::id()
+            ))
+        });
+        if !externally_owned {
+            std::fs::create_dir_all(&data_dir)?;
+        }
 
         // Move the listener into the server thread. The accept loop
         // is non-blocking and polls a shutdown flag; Drop sets the
@@ -2460,6 +2513,7 @@ pub mod testing {
         let shutdown_for_thread = Arc::clone(&shutdown);
         let bootstrap_users = config.bootstrap_users;
         let bootstrap_tables_flag = config.bootstrap_tables;
+        let bootstrap_sql = config.bootstrap_sql;
         let join = std::thread::spawn(move || {
             let bootstrap: Option<Box<dyn FnOnce(&mut crate::UserStore) + Send>> =
                 if bootstrap_users {
@@ -2469,11 +2523,12 @@ pub mod testing {
                 } else {
                     None
                 };
-            let _ = crate::run_server_with_listener_and_shutdown_with_bootstrap_and_tables(
+            let _ = crate::run_server_with_listener_and_shutdown_with_bootstrap_tables_and_sql(
                 listener_for_thread,
                 shutdown_for_thread,
                 bootstrap,
                 bootstrap_tables_flag,
+                bootstrap_sql,
             );
         });
 
