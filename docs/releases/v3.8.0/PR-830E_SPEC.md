@@ -1,5 +1,7 @@
 # PR-830E SPEC — WAL Recovery Lifecycle (Startup Recovery)
 
+<!-- env:blocked:no-ci -->
+
 > **PR Number**: PR-830E
 > **PR Title**: WAL Recovery Lifecycle — Startup Recovery with One-Shot Guard
 > **Version**: v3.8.0 Alpha
