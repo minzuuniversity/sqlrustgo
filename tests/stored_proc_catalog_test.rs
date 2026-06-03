@@ -105,7 +105,11 @@ fn test_create_trigger_with_catalog() {
     assert!(create_trigger.is_ok(), "CREATE TRIGGER should succeed");
 
     let insert_result = engine.execute("INSERT INTO users VALUES (1, 'Alice')");
-    assert!(insert_result.is_ok(), "expected ok, got: {:?}", insert_result);
+    assert!(
+        insert_result.is_ok(),
+        "expected ok, got: {:?}",
+        insert_result
+    );
 }
 
 #[test]
