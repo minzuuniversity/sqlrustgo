@@ -25,7 +25,7 @@ use sqlrustgo_parser::parser::{
     CreateIndexStatement, CreateProcedureStatement, CreateRoleStatement, CreateTableStatement,
     CreateTriggerStatement, DropRoleStatement, DropTableStatement, GrantRoleStatement,
     GrantStatement, InsertStatement, ObjectType as ParserObjectType, Privilege as ParserPrivilege,
-    RevokeRoleStatement, RevokeStatement, SelectStatement, SetRoleStatement,
+    RevokeRoleStatement, RevokeStatement, SelectStatement, SetRoleStatement, ShowStatement,
     StoredProcParam as ParserStoredProcParam, StoredProcParamMode as ParserParamMode,
     StoredProcStatement as ParserStatement, TruncateStatement,
 };
@@ -292,6 +292,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             Statement::SetRole(ref stmt) => self.execute_set_role(stmt),
             Statement::ShowRoles => self.execute_show_roles(),
             Statement::ShowGrantsFor(ref user) => self.execute_show_grants_for(user),
+            Statement::Show(ref show) => self.execute_show(show),
             Statement::AlterTable(ref alter) => self.execute_alter_table(alter),
             _ => Err(SqlError::ExecutionError(
                 "Unsupported statement type".to_string(),
@@ -1374,6 +1375,77 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             .collect();
 
         Ok(ExecutorResult::new(rows, 3))
+    }
+
+    /// Dispatch `Statement::Show` to a concrete sub-handler.
+    /// PR-SHOW-TABLES: P1 backlog fix for v3.7.0.
+    fn execute_show(&self, show: &ShowStatement) -> SqlResult<ExecutorResult> {
+        match show {
+            ShowStatement::Tables => self.execute_show_tables(),
+            ShowStatement::Databases => self.execute_show_databases(),
+            ShowStatement::CreateTable { table } => self.execute_show_create_table(table),
+            ShowStatement::Index { table } => self.execute_show_index(table),
+            ShowStatement::Grants { user } => self.execute_show_grants(user.as_deref()),
+            ShowStatement::Columns { table, pattern } => {
+                self.execute_show_columns(table, pattern.as_deref())
+            }
+        }
+    }
+
+    /// SHOW TABLES — list all tables in the current database.
+    fn execute_show_tables(&self) -> SqlResult<ExecutorResult> {
+        let storage = self.storage.read().unwrap();
+        let names = storage.list_tables();
+        let rows: Vec<Vec<Value>> = names.into_iter().map(|n| vec![Value::Text(n)]).collect();
+        Ok(ExecutorResult::new(rows, 1))
+    }
+
+    /// SHOW DATABASES — v3.7.0 has a single in-memory catalog, so we
+    /// return one row representing the current (only) database.
+    fn execute_show_databases(&self) -> SqlResult<ExecutorResult> {
+        // v3.7.0 has no multi-database support; the single in-memory
+        // catalog IS the database. Return one placeholder row.
+        Ok(ExecutorResult::new(
+            vec![vec![Value::Text("default".to_string())]],
+            1,
+        ))
+    }
+
+    /// SHOW CREATE TABLE — return a minimal CREATE TABLE statement for `table`.
+    /// v3.7.0 doesn't reconstruct full DDL, so we return a basic placeholder
+    /// with the table name. Future versions should introspect the schema.
+    fn execute_show_create_table(&self, table: &str) -> SqlResult<ExecutorResult> {
+        let storage = self.storage.read().unwrap();
+        if !storage.list_tables().iter().any(|n| n == table) {
+            return Err(SqlError::ExecutionError(format!(
+                "Table '{}' does not exist",
+                table
+            )));
+        }
+        let row = vec![Value::Text(format!(
+            "CREATE TABLE {} (id INTEGER) /* v3.7.0: schema reconstruction not implemented */",
+            table
+        ))];
+        Ok(ExecutorResult::new(vec![row], 1))
+    }
+
+    /// SHOW INDEX — placeholder (v3.7.0 indexes are not cataloged).
+    fn execute_show_index(&self, _table: &str) -> SqlResult<ExecutorResult> {
+        Ok(ExecutorResult::new(vec![], 0))
+    }
+
+    /// SHOW GRANTS — placeholder (v3.7.0 grant tracking is limited to roles).
+    fn execute_show_grants(&self, _user: Option<&str>) -> SqlResult<ExecutorResult> {
+        Ok(ExecutorResult::new(vec![], 0))
+    }
+
+    /// SHOW COLUMNS — placeholder (v3.7.0 column metadata not exposed).
+    fn execute_show_columns(
+        &self,
+        _table: &str,
+        _pattern: Option<&str>,
+    ) -> SqlResult<ExecutorResult> {
+        Ok(ExecutorResult::new(vec![], 0))
     }
 
     fn execute_show_grants_for(&self, user_spec: &str) -> SqlResult<ExecutorResult> {
