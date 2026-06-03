@@ -168,12 +168,19 @@ pub fn collect_table_stats<S: sqlrustgo_storage::StorageEngine>(
     let rows = engine.scan(table)?;
     let row_count = rows.len() as u64;
 
+    let table_info = engine.get_table_info(table)?;
+    let column_names: Vec<String> = table_info
+        .columns
+        .iter()
+        .map(|c| c.name.clone())
+        .collect();
+
     use sqlrustgo_types::Value;
     let mut column_stats = std::collections::HashMap::new();
     if !rows.is_empty() {
         let num_cols = rows[0].len();
         for col_idx in 0..num_cols {
-            let col_name = format!("col_{}", col_idx);
+            let col_name = column_names.get(col_idx).cloned().unwrap_or_else(|| format!("col_{}", col_idx));
             let mut distinct_values = std::collections::HashSet::new();
             let mut null_count = 0u64;
             for row in &rows {
