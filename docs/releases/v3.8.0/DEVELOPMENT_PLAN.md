@@ -1,5 +1,7 @@
 # SQLRustGo v3.8.0 Architecture Unification — Development Plan
 
+<!-- env:blocked:no-ci -->
+
 > **Version**: v3.8.0
 > **Type**: Architecture Unification Release
 > **Target**: Execute path consolidation + ACID foundation
