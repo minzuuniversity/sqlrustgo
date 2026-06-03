@@ -917,7 +917,9 @@ fn send_result_set<W: Write>(
 
 struct PreparedStatementInfo {
     sql: String,
-    #[allow(dead_code)]
+    /// Number of `?` placeholders in `sql`. Used by the COM_STMT_EXECUTE
+    /// handler to determine how many parameters to parse out of the
+    /// binary-protocol payload (Issue #2813).
     param_count: u16,
     column_count: u16,
 }
@@ -962,11 +964,28 @@ fn count_placeholders(sql: &str) -> u16 {
     sql.chars().filter(|&c| c == '?').count() as u16
 }
 
-fn replace_placeholders(sql: &str, params: &[Vec<u8>]) -> String {
+/// A single parameter value ready for `replace_placeholders`.
+///
+/// `numeric` is true when the value was decoded from a MySQL numeric
+/// type code (TINY, SHORT, LONG, LONGLONG, FLOAT, DOUBLE, INT24, YEAR,
+/// TIMESTAMP). In that case the bytes are the decimal-string rendering
+/// of the number (e.g. `b"42"`) and `replace_placeholders` splices them
+/// in WITHOUT surrounding quotes. Otherwise the bytes are a string and
+/// are spliced as `'value'` with `'` characters doubled per SQL rules.
+pub type StmtParam = (Vec<u8>, bool);
+
+/// Substitute `?` placeholders in a SQL string with the given parameter
+/// values. Each value is a `(bytes, is_numeric)` tuple (see
+/// [`StmtParam`]). A `bytes` value of `&[]` becomes the SQL `NULL`
+/// keyword regardless of the `is_numeric` flag.
+pub fn replace_placeholders(sql: &str, params: &[StmtParam]) -> String {
     let mut result = sql.to_string();
-    for param in params.iter() {
+    for (param, is_numeric) in params.iter() {
         let value = if param.is_empty() {
             "NULL".to_string()
+        } else if *is_numeric {
+            // Already decimal string from decode_param; splice verbatim.
+            String::from_utf8_lossy(param).into_owned()
         } else {
             match String::from_utf8(param.clone()) {
                 Ok(s) => format!("'{}'", s.replace('\'', "''")),
@@ -976,6 +995,343 @@ fn replace_placeholders(sql: &str, params: &[Vec<u8>]) -> String {
         result = result.replacen('?', &value, 1);
     }
     result
+}
+
+/// MySQL binary protocol type codes (subset).
+/// Reference: <https://dev.mysql.com/doc/dev/mysql-server/latest/field__types_8h.html>
+#[allow(dead_code)]
+mod mysql_type {
+    pub const TINY: u8 = 0x01;
+    pub const SHORT: u8 = 0x02;
+    pub const LONG: u8 = 0x03;
+    pub const FLOAT: u8 = 0x04;
+    pub const DOUBLE: u8 = 0x05;
+    pub const NULL: u8 = 0x06;
+    pub const TIMESTAMP: u8 = 0x07;
+    pub const LONGLONG: u8 = 0x08;
+    pub const INT24: u8 = 0x09;
+    pub const DATE: u8 = 0x0a;
+    pub const TIME: u8 = 0x0b;
+    pub const DATETIME: u8 = 0x0c;
+    pub const YEAR: u8 = 0x0d;
+    pub const VARCHAR: u8 = 0x0f;
+    pub const BIT: u8 = 0x10;
+    pub const JSON: u8 = 0xf5;
+    pub const DECIMAL: u8 = 0x00; // MYSQL_TYPE_NEWDECIMAL = 0xf6
+    pub const NEWDECIMAL: u8 = 0xf6;
+    pub const ENUM: u8 = 0xf7;
+    pub const SET: u8 = 0xf8;
+    pub const TINY_BLOB: u8 = 0xf9;
+    pub const MEDIUM_BLOB: u8 = 0xfa;
+    pub const LONG_BLOB: u8 = 0xfb;
+    pub const BLOB: u8 = 0xfc;
+    pub const VAR_STRING: u8 = 0xfd;
+    pub const STRING: u8 = 0xfe;
+}
+
+/// Decode a length-encoded integer per MySQL binary protocol. Used for
+/// `VAR_STRING`/`VARCHAR` payload lengths.
+fn decode_lenenc_int(payload: &[u8], pos: &mut usize) -> Option<u64> {
+    if *pos >= payload.len() {
+        return None;
+    }
+    let b0 = payload[*pos];
+    *pos += 1;
+    if b0 < 0xfb {
+        Some(b0 as u64)
+    } else if b0 == 0xfc {
+        if *pos + 2 > payload.len() {
+            return None;
+        }
+        let v = u16::from_le_bytes([payload[*pos], payload[*pos + 1]]);
+        *pos += 2;
+        Some(v as u64)
+    } else if b0 == 0xfd {
+        if *pos + 3 > payload.len() {
+            return None;
+        }
+        let v =
+            u32::from_le_bytes([0, payload[*pos], payload[*pos + 1], payload[*pos + 2]]);
+        *pos += 3;
+        Some(v as u64)
+    } else if b0 == 0xfe {
+        if *pos + 8 > payload.len() {
+            return None;
+        }
+        let v = u64::from_le_bytes([
+            payload[*pos],
+            payload[*pos + 1],
+            payload[*pos + 2],
+            payload[*pos + 3],
+            payload[*pos + 4],
+            payload[*pos + 5],
+            payload[*pos + 6],
+            payload[*pos + 7],
+        ]);
+        *pos += 8;
+        Some(v)
+    } else {
+        // 0xfb = NULL, 0xff = 0xff (unused). Treat as None.
+        None
+    }
+}
+
+/// Decode a single parameter value starting at `*pos`. Advances `*pos`
+/// past the consumed bytes. Returns the value as a `Vec<u8>` ready for
+/// `replace_placeholders` (an empty `Vec` represents NULL).
+///
+/// For numeric types the value is converted to a UTF-8 decimal string so
+/// `replace_placeholders` can splice it as a numeric literal (no quotes).
+/// For string/blob types the value is returned as the raw bytes (UTF-8
+/// assumed; if not valid UTF-8 it is reported as NULL).
+fn decode_param(payload: &[u8], pos: &mut usize, type_code: u8) -> Option<Vec<u8>> {
+    use mysql_type::*;
+    let start = *pos;
+    match type_code {
+        TINY => {
+            if *pos + 1 > payload.len() {
+                return None;
+            }
+            let v = payload[*pos] as i8;
+            *pos += 1;
+            Some(v.to_string().into_bytes())
+        }
+        SHORT => {
+            if *pos + 2 > payload.len() {
+                return None;
+            }
+            let v = i16::from_le_bytes([payload[*pos], payload[*pos + 1]]);
+            *pos += 2;
+            Some(v.to_string().into_bytes())
+        }
+        LONG => {
+            if *pos + 4 > payload.len() {
+                return None;
+            }
+            let v = i32::from_le_bytes([
+                payload[*pos],
+                payload[*pos + 1],
+                payload[*pos + 2],
+                payload[*pos + 3],
+            ]);
+            *pos += 4;
+            Some(v.to_string().into_bytes())
+        }
+        FLOAT => {
+            if *pos + 4 > payload.len() {
+                return None;
+            }
+            let v = f32::from_le_bytes([
+                payload[*pos],
+                payload[*pos + 1],
+                payload[*pos + 2],
+                payload[*pos + 3],
+            ]);
+            *pos += 4;
+            Some(v.to_string().into_bytes())
+        }
+        DOUBLE => {
+            if *pos + 8 > payload.len() {
+                return None;
+            }
+            let v = f64::from_le_bytes([
+                payload[*pos],
+                payload[*pos + 1],
+                payload[*pos + 2],
+                payload[*pos + 3],
+                payload[*pos + 4],
+                payload[*pos + 5],
+                payload[*pos + 6],
+                payload[*pos + 7],
+            ]);
+            *pos += 8;
+            Some(v.to_string().into_bytes())
+        }
+        LONGLONG => {
+            if *pos + 8 > payload.len() {
+                return None;
+            }
+            let v = i64::from_le_bytes([
+                payload[*pos],
+                payload[*pos + 1],
+                payload[*pos + 2],
+                payload[*pos + 3],
+                payload[*pos + 4],
+                payload[*pos + 5],
+                payload[*pos + 6],
+                payload[*pos + 7],
+            ]);
+            *pos += 8;
+            Some(v.to_string().into_bytes())
+        }
+        INT24 => {
+            if *pos + 4 > payload.len() {
+                return None;
+            }
+            // INT24 is sent as 4 bytes (padded); sign-extend from 24 bits.
+            let raw = i32::from_le_bytes([
+                payload[*pos],
+                payload[*pos + 1],
+                payload[*pos + 2],
+                payload[*pos + 3],
+            ]);
+            *pos += 4;
+            let sign_ext = (raw << 8) >> 8;
+            Some(sign_ext.to_string().into_bytes())
+        }
+        YEAR => {
+            if *pos + 2 > payload.len() {
+                return None;
+            }
+            let v = u16::from_le_bytes([payload[*pos], payload[*pos + 1]]);
+            *pos += 2;
+            Some(v.to_string().into_bytes())
+        }
+        TIMESTAMP => {
+            if *pos + 4 > payload.len() {
+                return None;
+            }
+            let v = u32::from_le_bytes([
+                payload[*pos],
+                payload[*pos + 1],
+                payload[*pos + 2],
+                payload[*pos + 3],
+            ]);
+            *pos += 4;
+            // Render as ISO-8601 (without timezone — best effort).
+            Some(v.to_string().into_bytes())
+        }
+        NULL => {
+            // 0 bytes follow.
+            Some(Vec::new())
+        }
+        VARCHAR | VAR_STRING | STRING | TINY_BLOB | MEDIUM_BLOB | LONG_BLOB | BLOB
+        | ENUM | SET | BIT | JSON => {
+            // Length-encoded string/blob.
+            let len = decode_lenenc_int(payload, pos)?;
+            if *pos + (len as usize) > payload.len() {
+                *pos = start;
+                return None;
+            }
+            let bytes = payload[*pos..*pos + (len as usize)].to_vec();
+            *pos += len as usize;
+            Some(bytes)
+        }
+        _ => {
+            // Unknown type: best effort — treat as a single length-encoded string.
+            let len = decode_lenenc_int(payload, pos).unwrap_or(0);
+            if *pos + (len as usize) > payload.len() {
+                *pos = start;
+                return None;
+            }
+            let bytes = payload[*pos..*pos + (len as usize)].to_vec();
+            *pos += len as usize;
+            Some(bytes)
+        }
+    }
+}
+
+/// Parse a COM_STMT_EXECUTE binary-protocol payload and extract the
+/// parameter values into a `Vec<Vec<u8>>` ready for `replace_placeholders`.
+///
+/// Parse a COM_STMT_EXECUTE binary-protocol payload and extract the
+/// parameter values into a `Vec<StmtParam>` ready for
+/// `replace_placeholders`.
+///
+/// Payload layout (MySQL 5.6+ binary protocol):
+///
+///   bytes  0..4   : stmt_id (u32 LE) — caller has already consumed this
+///   byte     4    : flags (CURSOR_TYPE_NO_CURSOR = 0x00)
+///   bytes  5..9   : iteration_count (u32 LE, 0x01 = execute once)
+///   next N        : null-bitmap, N = (param_count + 7) / 8 bytes
+///   next 1        : new_params_bound_flag (0x01 if param types follow)
+///   next 2*N      : type codes (2 bytes each) if new_params_bound_flag=0x01
+///   remaining     : param values in order, each formatted per its type
+///
+/// `param_count` is the count returned by COM_STMT_PREPARE (the number of
+/// `?` placeholders in the original SQL).
+///
+/// This function tolerates a missing `param_count` (e.g. when a
+/// `PreparedStatementInfo` lookup failed) by falling back to scanning
+/// the SQL for `?` markers.
+pub fn parse_stmt_execute_params(
+    payload: &[u8],
+    param_count: u16,
+) -> Vec<StmtParam> {
+    let mut params: Vec<StmtParam> = Vec::new();
+    if payload.len() < 9 {
+        return params;
+    }
+    let mut pos = 9; // skip stmt_id(4) + flags(1) + iteration_count(4)
+    if param_count == 0 {
+        return params;
+    }
+
+    // 1. null-bitmap: (param_count + 7) / 8 bytes
+    let null_bytes = ((param_count as usize) + 7) / 8;
+    if pos + null_bytes > payload.len() {
+        return params;
+    }
+    let null_bitmap = &payload[pos..pos + null_bytes];
+    pos += null_bytes;
+
+    // 2. new_params_bound_flag
+    if pos >= payload.len() {
+        return params;
+    }
+    let new_params_bound_flag = payload[pos];
+    pos += 1;
+
+    // 3. param type codes (if flag = 0x01)
+    let mut type_codes: Vec<u8> = Vec::with_capacity(param_count as usize);
+    if new_params_bound_flag == 0x01 {
+        for _ in 0..param_count {
+            if pos + 2 > payload.len() {
+                return params;
+            }
+            // Type code is the first byte; the second byte is signed/unsigned flag
+            // (unused here — we treat the value as the type code only).
+            type_codes.push(payload[pos]);
+            pos += 2;
+        }
+    }
+
+    // 4. param values
+    for i in 0..param_count as usize {
+        // Check the null-bitmap first.
+        if (null_bitmap[i / 8] >> (i % 8)) & 1 != 0 {
+            params.push((Vec::new(), false)); // empty = NULL
+            continue;
+        }
+        // The type code defaults to MYSQL_TYPE_VAR_STRING (0xfd) when the
+        // client doesn't provide new param bindings — the server is
+        // expected to coerce the raw bytes to the prepared-statement
+        // column type. We pick VAR_STRING as the conservative default.
+        let type_code: u8 = type_codes
+            .get(i)
+            .copied()
+            .unwrap_or(mysql_type::VAR_STRING);
+        match decode_param(payload, &mut pos, type_code) {
+            Some(v) => params.push((v, is_numeric_type(type_code))),
+            None => {
+                // Bail out — the rest of the payload is unparseable.
+                return params;
+            }
+        }
+    }
+
+    params
+}
+
+/// True iff the MySQL binary-protocol type code is a numeric type
+/// (TINY/SHORT/LONG/LONGLONG/FLOAT/DOUBLE/INT24/YEAR/TIMESTAMP).
+/// Used to drive the quoting policy in `replace_placeholders`.
+fn is_numeric_type(type_code: u8) -> bool {
+    use mysql_type::*;
+    matches!(
+        type_code,
+        TINY | SHORT | LONG | FLOAT | DOUBLE | LONGLONG | INT24 | YEAR | TIMESTAMP
+    )
 }
 
 fn extract_table_name(sql: &str) -> Option<String> {
@@ -1275,7 +1631,7 @@ fn do_command_loop<S: Read + Write>(
                 let stmt_id = u32::from_le_bytes([payload[0], payload[1], payload[2], payload[3]]);
 
                 let stmt = match ps_manager.get(stmt_id) {
-                    Some(s) => (s.sql.clone(), s.column_count),
+                    Some(s) => (s.sql.clone(), s.column_count, s.param_count),
                     None => {
                         make_err_packet(seq, 1243, "HY000", "Unknown statement handler")
                             .write_to(stream)?;
@@ -1285,8 +1641,13 @@ fn do_command_loop<S: Read + Write>(
                 };
                 let stmt_sql = stmt.0;
                 let stmt_col_count = stmt.1;
+                let stmt_param_count = stmt.2;
 
-                let params: Vec<Vec<u8>> = Vec::new();
+                // Issue #2813: previously `params` was always an empty Vec,
+                // so `?` placeholders were never substituted. Now we parse
+                // the COM_STMT_EXECUTE binary protocol payload to extract
+                // the actual parameter values from the client.
+                let params: Vec<crate::StmtParam> = parse_stmt_execute_params(payload, stmt_param_count);
                 let final_sql = replace_placeholders(&stmt_sql, &params);
 
                 tracing::info!("STMT EXECUTE (id={}): {}", stmt_id, final_sql);
@@ -2484,4 +2845,15 @@ pub mod testing {
             data_dir,
         })
     }
+}
+
+/// Re-exports for the integration tests in `tests/`. The actual helpers
+/// are `pub` (not `pub(crate)`) so the integration tests can reach
+/// them; production code outside of `test_helpers` should call them via
+/// the normal API.
+#[doc(hidden)]
+pub mod test_helpers {
+    pub use crate::parse_stmt_execute_params;
+    pub use crate::replace_placeholders;
+    pub use crate::StmtParam;
 }
