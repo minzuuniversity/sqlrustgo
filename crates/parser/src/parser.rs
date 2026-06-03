@@ -2590,6 +2590,39 @@ impl Parser {
                     }
                 } else if matches!(self.current(), Some(Token::LParen)) {
                     self.next();
+                    // EXTRACT(field FROM expr) is a special function-call form
+                    // that doesn't fit the comma-separated arg list. Handle
+                    // it before the general arg-parsing loop so the parser
+                    // doesn't trip on the `FROM` keyword.
+                    if name.to_uppercase() == "EXTRACT" {
+                        // current is the field name (LParen already consumed).
+                        let field_tok = self.current().cloned();
+                        let field_name = match field_tok {
+                            Some(Token::Identifier(s)) => {
+                                self.next();
+                                s
+                            }
+                            other => {
+                                return Err(format!(
+                                    "Expected EXTRACT field name (e.g. YEAR), got {:?}",
+                                    other
+                                ));
+                            }
+                        };
+                        if !matches!(self.current(), Some(Token::From)) {
+                            return Err(format!(
+                                "Expected FROM after EXTRACT field, got {:?}",
+                                self.current()
+                            ));
+                        }
+                        self.next(); // consume FROM
+                        let source_expr = self.parse_expression()?;
+                        self.expect(Token::RParen)?;
+                        return Ok(Expression::FunctionCall(
+                            "EXTRACT".to_string(),
+                            vec![Expression::Literal(field_name), source_expr],
+                        ));
+                    }
                     let mut args = Vec::new();
                     if !matches!(self.current(), Some(Token::RParen)) {
                         loop {
@@ -2700,6 +2733,12 @@ impl Parser {
                                 }
                             }
                         }
+                        // EXTRACT(field FROM expr) — field is a SQL token (YEAR,
+                        // MONTH, DAY, ...). The executor's `EXTRACT` eval_fn
+                        // expects a 2-arg FunctionCall where arg[0] is the
+                        // field name and arg[1] is the source expression. We
+                        // encode it that way: push the field as a quoted
+                        // Literal string so it round-trips through the AST.
                         Ok(Expression::FunctionCall(name, args))
                     }
                 } else {
