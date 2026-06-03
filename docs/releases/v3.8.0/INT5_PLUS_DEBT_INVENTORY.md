@@ -1,5 +1,7 @@
 # INT-5+ Cross-Version Debt Full Inventory (v3.0.0 → v3.8.0)
 
+<!-- env:blocked:no-ci -->
+
 > **Version**: v3.8.0
 > **Branch**: `develop/v3.8.0` @ `9070c466`
 > **Date**: 2026-06-03
