@@ -55,14 +55,16 @@ fn test_d6_handles_subdir_tests() {
         .unwrap()
         .join("scripts/gate/check_test_inventory.sh");
     let content = std::fs::read_to_string(&script).expect("check_test_inventory.sh not found");
-    // Must prefix subdir tests (e2e/ -> e2e_xxx, ci/ -> ci_xxx) to match Cargo.toml
+    // D6b resolves subdir test names via a PATH_TO_NAME map built from
+    // [[test]] blocks in Cargo.toml (so tests/ci/buffer_pool_test.rs uses the
+    // canonical name "buffer_pool_test", not the path-derived "ci_buffer_pool_test").
     assert!(
-        content.contains("rel=\"${rel//\\//_}\""),
-        "must replace path separators with underscores"
+        content.contains("PATH_TO_NAME"),
+        "must build PATH_TO_NAME map from [[test]] blocks"
     );
     assert!(
-        content.contains("e2e_") || content.contains("subdir"),
-        "must handle subdir tests"
+        content.contains("awk") && content.contains("name = "),
+        "must parse [[test]] name = entries"
     );
 }
 
