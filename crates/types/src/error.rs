@@ -61,6 +61,50 @@ pub enum SqlError {
     AuthError(String),
 }
 
+impl SqlError {
+    /// MySQL 5.7 error code for this error.
+    /// Returns 0 (no specific code) for variants without a defined mapping.
+    pub fn mysql_error_code(&self) -> u16 {
+        match self {
+            SqlError::ParseError(_) => 1064,        // ER_PARSE_ERROR
+            SqlError::ExecutionError(_) => 1105,     // ER_UNKNOWN_ERROR (generic)
+            SqlError::TypeMismatch(_) => 1264,        // ER_WARN_DATA_OUT_OF_RANGE (closest)
+            SqlError::DivisionByZero => 1365,        // ER_DIVISION_BY_ZERO
+            SqlError::NullValueError(_) => 1048,      // ER_BAD_NULL_ERROR
+            SqlError::ConstraintViolation(_) => 3819, // ER_CHECK_CONSTRAINT_VIOLATED
+            SqlError::TableNotFound(_) => 1146,       // ER_NO_SUCH_TABLE
+            SqlError::ColumnNotFound(_) => 1054,      // ER_BAD_FIELD_ERROR
+            SqlError::DuplicateKey(_) => 1062,        // ER_DUP_ENTRY
+            SqlError::IoError(_) => 1105,             // ER_UNKNOWN_ERROR
+            SqlError::ProtocolError(_) => 1105,       // ER_UNKNOWN_ERROR
+            SqlError::TimeoutError(_) => 1205,        // ER_LOCK_WAIT_TIMEOUT
+            SqlError::OverflowError(_) => 1366,       // ER_DATA_TOO_LONG
+            SqlError::AuthError(_) => 1045,           // ER_ACCESS_DENIED_ERROR
+        }
+    }
+
+    /// SQLSTATE (5-char) for this error.
+    /// See https://dev.mysql.com/doc/mysql-errors/8.0/en/server-error-reference.html
+    pub fn sqlstate(&self) -> &'static str {
+        match self {
+            SqlError::ParseError(_) => "42000",       // syntax error or access rule violation
+            SqlError::ExecutionError(_) => "HY000",   // general error
+            SqlError::TypeMismatch(_) => "HY000",
+            SqlError::DivisionByZero => "22012",      // division by zero
+            SqlError::NullValueError(_) => "23000",   // integrity constraint violation
+            SqlError::ConstraintViolation(_) => "23000",
+            SqlError::TableNotFound(_) => "42S02",    // base table or view not found
+            SqlError::ColumnNotFound(_) => "42S22",   // column not found
+            SqlError::DuplicateKey(_) => "23000",
+            SqlError::IoError(_) => "HY000",
+            SqlError::ProtocolError(_) => "08S01",    // communication link failure
+            SqlError::TimeoutError(_) => "HY000",
+            SqlError::OverflowError(_) => "22001",    // string data, right truncation
+            SqlError::AuthError(_) => "28000",        // invalid authorization specification
+        }
+    }
+}
+
 /// Result type alias for SQL operations
 pub type SqlResult<T> = Result<T, SqlError>;
 
@@ -252,5 +296,53 @@ mod tests {
         let err = SqlError::AuthError("invalid credentials".to_string());
         let display = format!("{}", err);
         assert!(display.contains("Authentication"));
+    }
+
+    #[test]
+    fn test_mysql_error_codes() {
+        assert_eq!(SqlError::ParseError("x".into()).mysql_error_code(), 1064);
+        assert_eq!(SqlError::TableNotFound("t".into()).mysql_error_code(), 1146);
+        assert_eq!(SqlError::ColumnNotFound("c".into()).mysql_error_code(), 1054);
+        assert_eq!(SqlError::DuplicateKey("k".into()).mysql_error_code(), 1062);
+        assert_eq!(SqlError::DivisionByZero.mysql_error_code(), 1365);
+        assert_eq!(SqlError::AuthError("u".into()).mysql_error_code(), 1045);
+        assert_eq!(SqlError::NullValueError("c".into()).mysql_error_code(), 1048);
+    }
+
+    #[test]
+    fn test_sqlstate_codes() {
+        assert_eq!(SqlError::ParseError("x".into()).sqlstate(), "42000");
+        assert_eq!(SqlError::TableNotFound("t".into()).sqlstate(), "42S02");
+        assert_eq!(SqlError::ColumnNotFound("c".into()).sqlstate(), "42S22");
+        assert_eq!(SqlError::DivisionByZero.sqlstate(), "22012");
+        assert_eq!(SqlError::DuplicateKey("k".into()).sqlstate(), "23000");
+        assert_eq!(SqlError::AuthError("u".into()).sqlstate(), "28000");
+        assert_eq!(SqlError::ProtocolError("p".into()).sqlstate(), "08S01");
+        assert_eq!(SqlError::OverflowError("o".into()).sqlstate(), "22001");
+    }
+
+    #[test]
+    fn test_all_errors_have_codes() {
+        // Every variant must return a non-zero code and a 5-char SQLSTATE
+        let errors = vec![
+            SqlError::ParseError("t".into()),
+            SqlError::ExecutionError("t".into()),
+            SqlError::TypeMismatch("t".into()),
+            SqlError::DivisionByZero,
+            SqlError::NullValueError("t".into()),
+            SqlError::ConstraintViolation("t".into()),
+            SqlError::TableNotFound("t".into()),
+            SqlError::ColumnNotFound("t".into()),
+            SqlError::DuplicateKey("t".into()),
+            SqlError::IoError("t".into()),
+            SqlError::ProtocolError("t".into()),
+            SqlError::TimeoutError("t".into()),
+            SqlError::OverflowError("t".into()),
+            SqlError::AuthError("t".into()),
+        ];
+        for err in &errors {
+            assert!(err.mysql_error_code() > 0, "{err:?} has zero code");
+            assert_eq!(err.sqlstate().len(), 5, "{err:?} bad SQLSTATE");
+        }
     }
 }
