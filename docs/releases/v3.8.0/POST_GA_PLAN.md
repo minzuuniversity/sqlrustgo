@@ -1,4 +1,5 @@
 # v3.8.0+1 Post-GA Plan — TX+WAL Contract Gaps Repair
+<!-- env:blocked:no-ci -->
 
 > **Version**: v3.8.0+1
 > **Type**: Post-GA patch release (target: 2026-08-15)
