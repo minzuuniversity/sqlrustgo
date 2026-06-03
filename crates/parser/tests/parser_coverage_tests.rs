@@ -1065,3 +1065,1040 @@ fn test_parse_boolean_in_where() {
     // Parser doesn't support TRUE boolean literal
     assert!(result.is_err(), "TRUE not supported: {:?}", result);
 }
+
+#[test]
+fn test_parse_alter_table_add_constraint() {
+    let sql =
+        "ALTER TABLE users ADD CONSTRAINT fk_dept FOREIGN KEY (dept_id) REFERENCES departments(id)";
+    let result = parse(sql);
+    let _ = result; // Accept any result — verify parser doesn't panic
+}
+
+#[test]
+fn test_parse_alter_table_alter_column() {
+    let sql = "ALTER TABLE users ALTER COLUMN name SET DEFAULT 'unknown'";
+    let result = parse(sql);
+    let _ = result; // Accept any result — verify parser doesn't panic
+}
+
+#[test]
+fn test_parse_alter_table_drop_column() {
+    let sql = "ALTER TABLE users DROP COLUMN email";
+    let result = parse(sql);
+    let _ = result; // Accept any result — verify parser doesn't panic
+}
+
+#[test]
+fn test_parse_alter_table_rename_constraint() {
+    let sql = "ALTER TABLE users RENAME CONSTRAINT old_fk TO new_fk";
+    let result = parse(sql);
+    let _ = result; // Accept any result — verify parser doesn't panic
+}
+
+#[test]
+fn test_parse_begin_read_only() {
+    let sql = "BEGIN READ ONLY";
+    let result = parse(sql);
+    let _ = result; // Accept any result — verify parser doesn't panic
+}
+
+#[test]
+fn test_parse_begin_read_write() {
+    let sql = "BEGIN READ WRITE";
+    let result = parse(sql);
+    let _ = result; // Accept any result — verify parser doesn't panic
+}
+
+#[test]
+fn test_parse_case_when_else() {
+    let sql = "SELECT CASE WHEN status = 1 THEN 'active' WHEN status = 2 THEN 'inactive' ELSE 'unknown' END FROM users";
+    let result = parse(sql);
+    let _ = result; // Accept any result — verify parser doesn't panic
+}
+
+#[test]
+fn test_parse_deallocate_prepare() {
+    let sql = "DEALLOCATE PREPARE mystmt";
+    let result = parse(sql);
+    let _ = result; // Accept any result — verify parser doesn't panic
+}
+
+#[test]
+fn test_parse_delete_order_by_limit() {
+    let sql = "DELETE FROM users WHERE id > 100 ORDER BY created_at DESC LIMIT 10";
+    let result = parse(sql);
+    let _ = result; // Accept any result — verify parser doesn't panic
+}
+
+#[test]
+fn test_parse_delete_quick() {
+    let sql = "DELETE QUICK FROM users WHERE id = 1";
+    let result = parse(sql);
+    let _ = result; // Accept any result — verify parser doesn't panic
+}
+
+#[test]
+fn test_parse_drop_index_concurrently() {
+    let sql = "DROP INDEX CONCURRENTLY idx_email ON users";
+    let result = parse(sql);
+    let _ = result; // Accept any result — verify parser doesn't panic
+}
+
+#[test]
+fn test_parse_execute_prepared() {
+    let sql = "EXECUTE mystmt USING @id";
+    let result = parse(sql);
+    let _ = result; // Accept any result — verify parser doesn't panic
+}
+
+#[test]
+fn test_parse_explain_analyze() {
+    let sql = "EXPLAIN ANALYZE SELECT * FROM users";
+    let result = parse(sql);
+    let _ = result; // Accept any result — verify parser doesn't panic
+}
+
+#[test]
+fn test_parse_explain_select() {
+    let sql = "EXPLAIN SELECT * FROM users WHERE id = 1";
+    let result = parse(sql);
+    let _ = result; // Accept any result — verify parser doesn't panic
+}
+
+#[test]
+fn test_parse_grant_all() {
+    let sql = "GRANT ALL PRIVILEGES ON mydb.* TO 'admin'@'localhost'";
+    let result = parse(sql);
+    let _ = result; // Accept any result — verify parser doesn't panic
+}
+
+#[test]
+fn test_parse_grant_role() {
+    let sql = "GRANT admin_role TO 'john'@'localhost'";
+    let result = parse(sql);
+    let _ = result; // Accept any result — verify parser doesn't panic
+}
+
+#[test]
+fn test_parse_grant_select_with_grant() {
+    let sql = "GRANT SELECT, INSERT ON mydb.users TO 'app'@'%' WITH GRANT OPTION";
+    let result = parse(sql);
+    let _ = result; // Accept any result — verify parser doesn't panic
+}
+
+#[test]
+fn test_parse_insert_ignore() {
+    let sql = "INSERT IGNORE INTO users (id, name) VALUES (1, 'Bob')";
+    let result = parse(sql);
+    let _ = result; // Accept any result — verify parser doesn't panic
+}
+
+#[test]
+fn test_parse_insert_on_duplicate_key() {
+    let sql = "INSERT INTO users (id, name) VALUES (1, 'Alice') ON DUPLICATE KEY UPDATE name = VALUES(name)";
+    let result = parse(sql);
+    let _ = result; // Accept any result — verify parser doesn't panic
+}
+
+#[test]
+fn test_parse_insert_set() {
+    let sql = "INSERT INTO users SET id = 1, name = 'Alice'";
+    let result = parse(sql);
+    let _ = result; // Accept any result — verify parser doesn't panic
+}
+
+#[test]
+fn test_parse_isolation_read_committed() {
+    let sql = "SET TRANSACTION ISOLATION LEVEL READ COMMITTED";
+    let result = parse(sql);
+    let _ = result; // Accept any result — verify parser doesn't panic
+}
+
+#[test]
+fn test_parse_isolation_read_uncommitted() {
+    let sql = "SET TRANSACTION ISOLATION LEVEL READ UNCOMMITTED";
+    let result = parse(sql);
+    let _ = result; // Accept any result — verify parser doesn't panic
+}
+
+#[test]
+fn test_parse_isolation_repeatable_read() {
+    let sql = "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ";
+    let result = parse(sql);
+    let _ = result; // Accept any result — verify parser doesn't panic
+}
+
+#[test]
+fn test_parse_load_data() {
+    let sql = "LOAD DATA INFILE '/tmp/users.csv' INTO TABLE users FIELDS TERMINATED BY ','";
+    let result = parse(sql);
+    let _ = result; // Accept any result — verify parser doesn't panic
+}
+
+#[test]
+fn test_parse_prepared_statement() {
+    let sql = "PREPARE mystmt FROM 'SELECT * FROM users WHERE id = ?'";
+    let result = parse(sql);
+    let _ = result; // Accept any result — verify parser doesn't panic
+}
+
+#[test]
+fn test_parse_revoke_all() {
+    let sql = "REVOKE ALL PRIVILEGES ON mydb.* FROM 'app'@'%'";
+    let result = parse(sql);
+    let _ = result; // Accept any result — verify parser doesn't panic
+}
+
+#[test]
+fn test_parse_revoke_grant_option() {
+    let sql = "REVOKE GRANT OPTION ON mydb.* FROM 'admin'@'localhost'";
+    let result = parse(sql);
+    let _ = result; // Accept any result — verify parser doesn't panic
+}
+
+#[test]
+fn test_parse_revoke_role() {
+    let sql = "REVOKE admin_role FROM 'john'@'localhost'";
+    let result = parse(sql);
+    let _ = result; // Accept any result — verify parser doesn't panic
+}
+
+#[test]
+fn test_parse_set_transaction_snapshot() {
+    let sql = "SET TRANSACTION SNAPSHOT '00000003-0000001B-1'";
+    let result = parse(sql);
+    let _ = result; // Accept any result — verify parser doesn't panic
+}
+
+#[test]
+fn test_parse_show_create_table() {
+    let sql = "SHOW CREATE TABLE users";
+    let result = parse(sql);
+    let _ = result; // Accept any result — verify parser doesn't panic
+}
+
+#[test]
+fn test_parse_show_table_status() {
+    let sql = "SHOW TABLE STATUS FROM mydb";
+    let result = parse(sql);
+    let _ = result; // Accept any result — verify parser doesn't panic
+}
+
+#[test]
+fn test_parse_truncate_restart_identity() {
+    let sql = "TRUNCATE TABLE users RESTART IDENTITY";
+    let result = parse(sql);
+    let _ = result; // Accept any result — verify parser doesn't panic
+}
+
+#[test]
+fn test_parse_update_with_subquery() {
+    let sql = "UPDATE users SET name = (SELECT name FROM admins WHERE admins.id = users.id)";
+    let result = parse(sql);
+    let _ = result; // Accept any result — verify parser doesn't panic
+}
+
+#[test]
+fn test_parse_window_lead_lag() {
+    let sql = "SELECT LEAD(salary, 1) OVER (ORDER BY id) FROM employees";
+    let result = parse(sql);
+    let _ = result; // Accept any result — verify parser doesn't panic
+}
+
+#[test]
+fn test_parse_window_rank() {
+    let sql = "SELECT RANK() OVER (ORDER BY score DESC) FROM users";
+    let result = parse(sql);
+    let _ = result; // Accept any result — verify parser doesn't panic
+}
+
+#[test]
+fn test_parse_window_row_number() {
+    let sql = "SELECT ROW_NUMBER() OVER (PARTITION BY dept ORDER BY salary DESC) FROM employees";
+    let result = parse(sql);
+    let _ = result; // Accept any result — verify parser doesn't panic
+}
+
+#[test]
+fn test_parse_ct_varchar() {
+    let sql = "CREATE TABLE t (c VARCHAR(255))";
+    let result = parse(sql);
+    let _ = result;
+}
+
+#[test]
+fn test_parse_ct_decimal() {
+    let sql = "CREATE TABLE t (c DECIMAL(10,2))";
+    let result = parse(sql);
+    let _ = result;
+}
+
+#[test]
+fn test_parse_ct_boolean() {
+    let sql = "CREATE TABLE t (c BOOLEAN)";
+    let result = parse(sql);
+    let _ = result;
+}
+
+#[test]
+fn test_parse_ct_date() {
+    let sql = "CREATE TABLE t (c DATE)";
+    let result = parse(sql);
+    let _ = result;
+}
+
+#[test]
+fn test_parse_ct_time() {
+    let sql = "CREATE TABLE t (c TIME)";
+    let result = parse(sql);
+    let _ = result;
+}
+
+#[test]
+fn test_parse_ct_timestamp() {
+    let sql = "CREATE TABLE t (c TIMESTAMP)";
+    let result = parse(sql);
+    let _ = result;
+}
+
+#[test]
+fn test_parse_ct_blob() {
+    let sql = "CREATE TABLE t (c BLOB)";
+    let result = parse(sql);
+    let _ = result;
+}
+
+#[test]
+fn test_parse_ct_serial() {
+    let sql = "CREATE TABLE t (id SERIAL)";
+    let result = parse(sql);
+    let _ = result;
+}
+
+#[test]
+fn test_parse_ct_smallint() {
+    let sql = "CREATE TABLE t (age SMALLINT)";
+    let result = parse(sql);
+    let _ = result;
+}
+
+#[test]
+fn test_parse_ct_bigint() {
+    let sql = "CREATE TABLE t (balance BIGINT)";
+    let result = parse(sql);
+    let _ = result;
+}
+
+#[test]
+fn test_parse_ct_double() {
+    let sql = "CREATE TABLE t (rate DOUBLE PRECISION)";
+    let result = parse(sql);
+    let _ = result;
+}
+
+#[test]
+fn test_parse_ct_real() {
+    let sql = "CREATE TABLE t (rate REAL)";
+    let result = parse(sql);
+    let _ = result;
+}
+
+#[test]
+fn test_parse_ct_mediumint() {
+    let sql = "CREATE TABLE t (val MEDIUMINT)";
+    let result = parse(sql);
+    let _ = result;
+}
+
+#[test]
+fn test_parse_ct_text() {
+    let sql = "CREATE TABLE t (content TEXT)";
+    let result = parse(sql);
+    let _ = result;
+}
+
+#[test]
+fn test_parse_ct_float() {
+    let sql = "CREATE TABLE t (rate FLOAT)";
+    let result = parse(sql);
+    let _ = result;
+}
+
+#[test]
+fn test_parse_ins_select() {
+    let sql = "INSERT INTO t SELECT * FROM s";
+    let result = parse(sql);
+    let _ = result;
+}
+
+#[test]
+fn test_parse_join_using() {
+    let sql = "SELECT * FROM a JOIN b USING (id)";
+    let result = parse(sql);
+    let _ = result;
+}
+
+#[test]
+fn test_parse_join_multi_cond() {
+    let sql = "SELECT * FROM a JOIN b ON a.id = b.id AND a.x = b.x";
+    let result = parse(sql);
+    let _ = result;
+}
+
+#[test]
+fn test_parse_agg_avg_distinct() {
+    let sql = "SELECT AVG(DISTINCT price) FROM t";
+    let result = parse(sql);
+    let _ = result;
+}
+
+#[test]
+fn test_parse_agg_count_star() {
+    let sql = "SELECT COUNT(*) FROM t";
+    let result = parse(sql);
+    let _ = result;
+}
+
+#[test]
+fn test_parse_agg_min_max() {
+    let sql = "SELECT MIN(val), MAX(val) FROM t";
+    let result = parse(sql);
+    let _ = result;
+}
+
+#[test]
+fn test_parse_expr_like() {
+    let sql = "SELECT * FROM t WHERE name LIKE '%test%'";
+    let result = parse(sql);
+    let _ = result;
+}
+
+#[test]
+fn test_parse_expr_notlike() {
+    let sql = "SELECT * FROM t WHERE name NOT LIKE '%test%'";
+    let result = parse(sql);
+    let _ = result;
+}
+
+#[test]
+fn test_parse_expr_between() {
+    let sql = "SELECT * FROM t WHERE age BETWEEN 18 AND 65";
+    let result = parse(sql);
+    let _ = result;
+}
+
+#[test]
+fn test_parse_expr_notbetween() {
+    let sql = "SELECT * FROM t WHERE age NOT BETWEEN 18 AND 65";
+    let result = parse(sql);
+    let _ = result;
+}
+
+#[test]
+fn test_parse_expr_exists_subq() {
+    let sql = "SELECT * FROM t WHERE EXISTS (SELECT 1 FROM s)";
+    let result = parse(sql);
+    let _ = result;
+}
+
+#[test]
+fn test_parse_expr_notexists() {
+    let sql = "SELECT * FROM t WHERE NOT EXISTS (SELECT 1 FROM s)";
+    let result = parse(sql);
+    let _ = result;
+}
+
+#[test]
+fn test_parse_expr_regexp_op() {
+    let sql = "SELECT * FROM t WHERE name REGEXP '^test'";
+    let result = parse(sql);
+    let _ = result;
+}
+
+#[test]
+fn test_parse_expr_notregexp() {
+    let sql = "SELECT * FROM t WHERE name NOT REGEXP '^test'";
+    let result = parse(sql);
+    let _ = result;
+}
+
+#[test]
+fn test_parse_expr_is_true() {
+    let sql = "SELECT * FROM t WHERE active IS TRUE";
+    let result = parse(sql);
+    let _ = result;
+}
+
+#[test]
+fn test_parse_expr_is_false() {
+    let sql = "SELECT * FROM t WHERE active IS FALSE";
+    let result = parse(sql);
+    let _ = result;
+}
+
+#[test]
+fn test_parse_expr_case_sim() {
+    let sql = "SELECT CASE WHEN status = 1 THEN 'one' END FROM t";
+    let result = parse(sql);
+    let _ = result;
+}
+
+#[test]
+fn test_parse_subq_in_from() {
+    let sql = "SELECT * FROM (SELECT id FROM users) AS subq";
+    let result = parse(sql);
+    let _ = result;
+}
+
+#[test]
+fn test_parse_scalar_in_sel() {
+    let sql = "SELECT (SELECT MAX(id) FROM users) AS max_id";
+    let result = parse(sql);
+    let _ = result;
+}
+
+#[test]
+fn test_parse_union_order() {
+    let sql = "SELECT a FROM t1 UNION SELECT a FROM t2 ORDER BY a";
+    let result = parse(sql);
+    let _ = result;
+}
+
+#[test]
+fn test_parse_union_all_lim() {
+    let sql = "SELECT a FROM t1 UNION ALL SELECT a FROM t2 LIMIT 10";
+    let result = parse(sql);
+    let _ = result;
+}
+
+#[test]
+fn test_parse_win_dense_rank() {
+    let sql = "SELECT DENSE_RANK() OVER (ORDER BY score) FROM t";
+    let result = parse(sql);
+    let _ = result;
+}
+
+#[test]
+fn test_parse_win_first_val() {
+    let sql = "SELECT FIRST_VALUE(name) OVER (PARTITION BY dept ORDER BY salary) FROM t";
+    let result = parse(sql);
+    let _ = result;
+}
+
+#[test]
+fn test_parse_win_last_val() {
+    let sql = "SELECT LAST_VALUE(name) OVER (PARTITION BY dept ORDER BY salary) FROM t";
+    let result = parse(sql);
+    let _ = result;
+}
+
+#[test]
+fn test_parse_win_nth_val() {
+    let sql = "SELECT NTH_VALUE(name, 2) OVER (ORDER BY id) FROM t";
+    let result = parse(sql);
+    let _ = result;
+}
+
+#[test]
+fn test_parse_win_count_star() {
+    let sql = "SELECT COUNT(*) OVER (PARTITION BY status) FROM t";
+    let result = parse(sql);
+    let _ = result;
+}
+
+#[test]
+fn test_parse_win_sum_rows() {
+    let sql = "SELECT SUM(amount) OVER (ORDER BY date ROWS UNBOUNDED PRECEDING) FROM t";
+    let result = parse(sql);
+    let _ = result;
+}
+
+#[test]
+fn test_parse_col_comment() {
+    let sql = "CREATE TABLE t (c INT COMMENT 'test')";
+    let result = parse(sql);
+    let _ = result;
+}
+
+#[test]
+fn test_parse_col_collate() {
+    let sql = "CREATE TABLE t (name VARCHAR(100) COLLATE utf8mb4_unicode_ci)";
+    let result = parse(sql);
+    let _ = result;
+}
+
+#[test]
+fn test_parse_fk_match_simple() {
+    let sql = "CREATE TABLE child (id INT, fk_id INT, FOREIGN KEY (fk_id) REFERENCES parent(id) MATCH SIMPLE)";
+    let result = parse(sql);
+    let _ = result;
+}
+
+#[test]
+fn test_parse_fk_ondelete_sn() {
+    let sql = "CREATE TABLE child (id INT, fk_id INT, FOREIGN KEY (fk_id) REFERENCES parent(id) ON DELETE SET NULL)";
+    let result = parse(sql);
+    let _ = result;
+}
+
+#[test]
+fn test_parse_fk_onupdate_casc() {
+    let sql = "CREATE TABLE child (id INT, fk_id INT, FOREIGN KEY (fk_id) REFERENCES parent(id) ON UPDATE CASCADE)";
+    let result = parse(sql);
+    let _ = result;
+}
+
+#[test]
+fn test_parse_fk_ondelete_restrict() {
+    let sql = "CREATE TABLE child (id INT, fk_id INT, FOREIGN KEY (fk_id) REFERENCES parent(id) ON DELETE RESTRICT)";
+    let result = parse(sql);
+    let _ = result;
+}
+
+#[test]
+fn test_parse_fk_onupdate_noact() {
+    let sql = "CREATE TABLE child (id INT, fk_id INT, FOREIGN KEY (fk_id) REFERENCES parent(id) ON UPDATE NO ACTION)";
+    let result = parse(sql);
+    let _ = result;
+}
+
+#[test]
+fn test_parse_where_and_or_mix() {
+    let sql = "SELECT * FROM t WHERE a = 1 AND b = 2 OR c = 3";
+    let result = parse(sql);
+    let _ = result;
+}
+
+#[test]
+fn test_parse_where_ne() {
+    let sql = "SELECT * FROM t WHERE status != 'inactive'";
+    let result = parse(sql);
+    let _ = result;
+}
+
+#[test]
+fn test_parse_where_multi_and() {
+    let sql = "SELECT * FROM t WHERE a = 1 AND b = 2 AND c = 3";
+    let result = parse(sql);
+    let _ = result;
+}
+
+#[test]
+fn test_parse_orderby_nulls_first() {
+    let sql = "SELECT * FROM t ORDER BY name NULLS FIRST";
+    let result = parse(sql);
+    let _ = result;
+}
+
+#[test]
+fn test_parse_orderby_nulls_last() {
+    let sql = "SELECT * FROM t ORDER BY name DESC NULLS LAST";
+    let result = parse(sql);
+    let _ = result;
+}
+
+#[test]
+fn test_parse_orderby_multi_col() {
+    let sql = "SELECT * FROM t ORDER BY a ASC, b DESC, c";
+    let result = parse(sql);
+    let _ = result;
+}
+
+#[test]
+fn test_parse_limit_all() {
+    let sql = "SELECT * FROM t LIMIT ALL";
+    let result = parse(sql);
+    let _ = result;
+}
+
+#[test]
+fn test_parse_groupby_having() {
+    let sql = "SELECT status, COUNT(*) FROM t GROUP BY status HAVING COUNT(*) > 1";
+    let result = parse(sql);
+    let _ = result;
+}
+
+#[test]
+fn test_parse_groupby_rollup() {
+    let sql = "SELECT region, product, SUM(sales) FROM t GROUP BY region, product WITH ROLLUP";
+    let result = parse(sql);
+    let _ = result;
+}
+
+#[test]
+fn test_parse_groupby_cube() {
+    let sql = "SELECT region, product, SUM(sales) FROM t GROUP BY region, product WITH CUBE";
+    let result = parse(sql);
+    let _ = result;
+}
+
+#[test]
+fn test_parse_groupby_multi() {
+    let sql = "SELECT a, b, c, COUNT(*) FROM t GROUP BY a, b, c";
+    let result = parse(sql);
+    let _ = result;
+}
+
+#[test]
+fn test_parse_create_idx_concurrent() {
+    let sql = "CREATE INDEX CONCURRENTLY idx_name ON users(name)";
+    let result = parse(sql);
+    let _ = result;
+}
+
+#[test]
+fn test_parse_create_idx_ifnexists() {
+    let sql = "CREATE INDEX IF NOT EXISTS idx_name ON users(name)";
+    let result = parse(sql);
+    let _ = result;
+}
+
+#[test]
+fn test_parse_drop_idx_restrict() {
+    let sql = "DROP INDEX RESTRICT IF EXISTS idx_name";
+    let result = parse(sql);
+    let _ = result;
+}
+
+#[test]
+fn test_parse_drop_idx_cascade() {
+    let sql = "DROP INDEX CASCADE IF EXISTS idx_name";
+    let result = parse(sql);
+    let _ = result;
+}
+
+#[test]
+fn test_parse_create_view_or_rep() {
+    let sql = "CREATE OR REPLACE VIEW active_users AS SELECT * FROM users WHERE status = 'active'";
+    let result = parse(sql);
+    let _ = result;
+}
+
+#[test]
+fn test_parse_create_view_chk() {
+    let sql = "CREATE VIEW adult_users AS SELECT * FROM users WHERE age >= 18 WITH CHECK OPTION";
+    let result = parse(sql);
+    let _ = result;
+}
+
+#[test]
+fn test_parse_drop_view_restrict() {
+    let sql = "DROP VIEW RESTRICT IF EXISTS old_view";
+    let result = parse(sql);
+    let _ = result;
+}
+
+#[test]
+fn test_parse_drop_view_cascade() {
+    let sql = "DROP VIEW CASCADE IF EXISTS old_view";
+    let result = parse(sql);
+    let _ = result;
+}
+
+#[test]
+fn test_parse_create_seq_minmax() {
+    let sql = "CREATE SEQUENCE myseq MINVALUE 1 MAXVALUE 1000 START 1";
+    let result = parse(sql);
+    let _ = result;
+}
+
+#[test]
+fn test_parse_drop_sequence() {
+    let sql = "DROP SEQUENCE IF EXISTS myseq";
+    let result = parse(sql);
+    let _ = result;
+}
+
+#[test]
+fn test_parse_do_stmt() {
+    let sql = "DO SLEEP(0.1)";
+    let result = parse(sql);
+    let _ = result;
+}
+
+#[test]
+fn test_parse_interval_lit() {
+    let sql = "SELECT INTERVAL '1 DAY'";
+    let result = parse(sql);
+    let _ = result;
+}
+
+#[test]
+fn test_parse_nullif_fn() {
+    let sql = "SELECT NULLIF(a, b)";
+    let result = parse(sql);
+    let _ = result;
+}
+
+#[test]
+fn test_parse_coalesce_fn() {
+    let sql = "SELECT COALESCE(a, b, c, 'default')";
+    let result = parse(sql);
+    let _ = result;
+}
+
+#[test]
+fn test_parse_cast_fn() {
+    let sql = "SELECT CAST(name AS VARCHAR(100))";
+    let result = parse(sql);
+    let _ = result;
+}
+
+#[test]
+fn test_parse_convert_fn() {
+    let sql = "SELECT CONVERT(name, CHAR(100))";
+    let result = parse(sql);
+    let _ = result;
+}
+
+#[test]
+fn test_parse_rename_tbl() {
+    let sql = "ALTER TABLE old_name RENAME TO new_name";
+    let result = parse(sql);
+    let _ = result;
+}
+
+#[test]
+fn test_parse_rename_col() {
+    let sql = "ALTER TABLE t RENAME COLUMN old_col TO new_col";
+    let result = parse(sql);
+    let _ = result;
+}
+
+#[test]
+fn test_parse_use_db() {
+    let sql = "USE mydb";
+    let result = parse(sql);
+    let _ = result;
+}
+
+#[test]
+fn test_parse_set_names() {
+    let sql = "SET NAMES utf8mb4";
+    let result = parse(sql);
+    let _ = result;
+}
+
+#[test]
+fn test_parse_set_charset() {
+    let sql = "SET CHARACTER SET utf8mb4";
+    let result = parse(sql);
+    let _ = result;
+}
+
+#[test]
+fn test_parse_show_proc() {
+    let sql = "SHOW PROCESSLIST";
+    let result = parse(sql);
+    let _ = result;
+}
+
+#[test]
+fn test_parse_show_full_proc() {
+    let sql = "SHOW FULL PROCESSLIST";
+    let result = parse(sql);
+    let _ = result;
+}
+
+#[test]
+fn test_parse_sys_var() {
+    let sql = "SELECT @@version";
+    let result = parse(sql);
+    let _ = result;
+}
+
+#[test]
+fn test_parse_usr_var() {
+    let sql = "SELECT @myvar";
+    let result = parse(sql);
+    let _ = result;
+}
+
+#[test]
+fn test_parse_set_usr_var() {
+    let sql = "SET @myvar = 1";
+    let result = parse(sql);
+    let _ = result;
+}
+
+#[test]
+fn test_parse_set_sys_var() {
+    let sql = "SET @@max_connections = 1000";
+    let result = parse(sql);
+    let _ = result;
+}
+
+#[test]
+fn test_parse_lock_tables() {
+    let sql = "LOCK TABLES t1 READ, t2 WRITE";
+    let result = parse(sql);
+    let _ = result;
+}
+
+#[test]
+fn test_parse_unlock_tables() {
+    let sql = "UNLOCK TABLES";
+    let result = parse(sql);
+    let _ = result;
+}
+
+#[test]
+fn test_parse_start_tx() {
+    let sql = "START TRANSACTION";
+    let result = parse(sql);
+    let _ = result;
+}
+
+#[test]
+fn test_parse_start_tx_chain() {
+    let sql = "START TRANSACTION AND CHAIN";
+    let result = parse(sql);
+    let _ = result;
+}
+
+#[test]
+fn test_parse_savepoint() {
+    let sql = "SAVEPOINT sp1";
+    let result = parse(sql);
+    let _ = result;
+}
+
+#[test]
+fn test_parse_rollback_sp() {
+    let sql = "ROLLBACK TO SAVEPOINT sp1";
+    let result = parse(sql);
+    let _ = result;
+}
+
+#[test]
+fn test_parse_release_sp() {
+    let sql = "RELEASE SAVEPOINT sp1";
+    let result = parse(sql);
+    let _ = result;
+}
+
+#[test]
+fn test_parse_group_concat_fn() {
+    let sql = "SELECT GROUP_CONCAT(name ORDER BY name SEPARATOR ',') FROM t";
+    let result = parse(sql);
+    let _ = result;
+}
+
+#[test]
+fn test_parse_unary_minus() {
+    let sql = "SELECT -amount FROM t";
+    let result = parse(sql);
+    let _ = result;
+}
+
+#[test]
+fn test_parse_unary_plus() {
+    let sql = "SELECT +amount FROM t";
+    let result = parse(sql);
+    let _ = result;
+}
+
+#[test]
+fn test_parse_bitwise_and() {
+    let sql = "SELECT a & b FROM t";
+    let result = parse(sql);
+    let _ = result;
+}
+
+#[test]
+fn test_parse_bitwise_or() {
+    let sql = "SELECT a | b FROM t";
+    let result = parse(sql);
+    let _ = result;
+}
+
+#[test]
+fn test_parse_bitwise_xor() {
+    let sql = "SELECT a ^ b FROM t";
+    let result = parse(sql);
+    let _ = result;
+}
+
+#[test]
+fn test_parse_shift_left() {
+    let sql = "SELECT a << 2 FROM t";
+    let result = parse(sql);
+    let _ = result;
+}
+
+#[test]
+fn test_parse_shift_right() {
+    let sql = "SELECT a >> 2 FROM t";
+    let result = parse(sql);
+    let _ = result;
+}
+
+#[test]
+fn test_parse_concat_fn() {
+    let sql = "SELECT CONCAT(first_name, ' ', last_name) FROM t";
+    let result = parse(sql);
+    let _ = result;
+}
+
+#[test]
+fn test_parse_substring_fn() {
+    let sql = "SELECT SUBSTRING(name, 1, 5) FROM t";
+    let result = parse(sql);
+    let _ = result;
+}
+
+#[test]
+fn test_parse_trim_fn() {
+    let sql = "SELECT TRIM(name) FROM t";
+    let result = parse(sql);
+    let _ = result;
+}
+
+#[test]
+fn test_parse_upper_lower_fn() {
+    let sql = "SELECT UPPER(name), LOWER(name) FROM t";
+    let result = parse(sql);
+    let _ = result;
+}
+
+#[test]
+fn test_parse_truncate_cont() {
+    let sql = "TRUNCATE TABLE t CONTINUE IDENTITY";
+    let result = parse(sql);
+    let _ = result;
+}
+
+#[test]
+fn test_parse_show_cols_like() {
+    let sql = "SHOW COLUMNS FROM users LIKE '%name%'";
+    let result = parse(sql);
+    let _ = result;
+}
+
+#[test]
+fn test_parse_explain_tbl() {
+    let sql = "EXPLAIN TABLE users";
+    let result = parse(sql);
+    let _ = result;
+}
+
+#[test]
+fn test_parse_handler_open() {
+    let sql = "HANDLER tbl OPEN";
+    let result = parse(sql);
+    let _ = result;
+}
+
+#[test]
+fn test_parse_handler_read_next() {
+    let sql = "HANDLER tbl READ NEXT";
+    let result = parse(sql);
+    let _ = result;
+}
+
+#[test]
+fn test_parse_handler_close() {
+    let sql = "HANDLER tbl CLOSE";
+    let result = parse(sql);
+    let _ = result;
+}

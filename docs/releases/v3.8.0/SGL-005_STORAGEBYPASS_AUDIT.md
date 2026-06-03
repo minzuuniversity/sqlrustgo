@@ -2,7 +2,36 @@
 
 **Date**: 2026-06-01
 **Author**: Hermes C
-**Status**: BY-DESIGN — WAL Invariants Proven (22/22 tests), Architecture Clarified
+**Status**: COMPLETE — SGL-005 5/5 PASS ✅
+**gate_policy_eval_id**: `run_20260601_017`
+
+### Progress (2026-06-01)
+
+| PR | Action | Violations Fixed | Status |
+|----|--------|-----------------|--------|
+| #2723 | P0: DELETE via facade | 1 (local_executor.rs:1469) | ✅ Fixed |
+| #2724 | Remove dead teaching_endpoints.rs | 4 (teaching code) | ✅ Fixed |
+| #2734 | SGL classifier: facade-closure detection | 1 false positive fixed | ✅ Fixed |
+| #2735 | P2: openclaw endpoints TX boundary | 2 (openclaw_endpoints.rs) | ✅ Fixed |
+| #2738 | P1: trigger.rs TX boundary all DML | 4 (trigger.rs:429,507,509,531) | ✅ Fixed |
+
+### Final SGL-005 Status
+
+```
+Skipped: 33 (test/batch/facade/harness)
+Real violations: 0
+SGL-005: PASS ✅
+SGL: 5/5 PASS ✅
+```
+
+### All Violations Resolved
+
+| Location | Lines | P | Fix | PR |
+|----------|-------|---|-----|----|
+| local_executor.rs | 1469 | P0 | DELETE via facade | #2723 |
+| teaching_endpoints.rs | (dead) | P2 | Deleted | #2724 |
+| openclaw_endpoints.rs | 2208,2288 | P2 | TX boundary | #2735 |
+| trigger.rs | 429,507,509,531 | P1 | TX boundary | #2738 |
 
 ---
 

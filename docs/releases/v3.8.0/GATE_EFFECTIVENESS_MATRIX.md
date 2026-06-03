@@ -3,6 +3,7 @@
 > 基于 Graph Gate v4.1 vs Legacy Gate 对账报告的升级版
 > 原始版本：Z440 Hermes + ChatGPT analysis
 > 重新实现：Hermes (Z440 primary)
+> **gate_policy_eval_id**: `run_20260601_003`
 
 ## 1. 核心观点回顾
 
