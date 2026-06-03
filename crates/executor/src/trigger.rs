@@ -113,6 +113,24 @@ impl TriggerExecutor {
         self.storage.clone()
     }
 
+    /// INT-4: single chokepoint for trigger-body DML. Opens a transaction, runs
+    /// the closure, commits on success and rolls back on error.
+    fn execute_dml_in_tx<F, R>(&self, op: F) -> SqlResult<R>
+    where
+        F: FnOnce(&mut dyn StorageEngine) -> SqlResult<R>,
+    {
+        let mut storage = self.storage.write().unwrap();
+        storage.begin_transaction()?;
+        let result = op(&mut *storage);
+        match &result {
+            Ok(_) => storage.commit_transaction()?,
+            Err(_) => {
+                let _ = storage.rollback_transaction();
+            }
+        }
+        result
+    }
+
     /// Get all triggers for a specific table
     pub fn get_table_triggers(&self, table: &str) -> Vec<TriggerInfo> {
         self.storage.read().unwrap().list_triggers(table)
@@ -409,40 +427,34 @@ impl TriggerExecutor {
 
         if let sqlrustgo_parser::Statement::Insert(insert) = statement {
             let table_name = insert.table.clone();
-            {
-                let mut storage = self.storage.write().unwrap();
-                let table_info = storage.get_table_info(&table_name)?;
-                let num_cols = table_info.columns.len();
-                let col_names: Vec<String> =
-                    table_info.columns.iter().map(|c| c.name.clone()).collect();
-                storage.begin_transaction()?;
-                let result: SqlResult<()> = (|| {
-                    let trigger_ctx = crate::trigger_eval::TriggerContext::new(new_row, None);
-                    for values in &insert.values {
-                        let mut record = Vec::new();
-                        let eval_ctx = crate::trigger_eval::EvalContext::new(&trigger_ctx, None)
-                            .with_target_col_names(col_names.clone());
-                        for expr in values {
-                            let val = crate::trigger_eval::expression_to_value(
-                                expr,
-                                &eval_ctx,
-                                Some(&col_names),
-                            );
-                            record.push(val);
-                        }
-                        while record.len() < num_cols {
-                            record.push(Value::Null);
-                        }
-                        storage.insert(&table_name, vec![record])?;
+            let table_info = {
+                let storage = self.storage.read().unwrap();
+                storage.get_table_info(&table_name)?
+            };
+            let num_cols = table_info.columns.len();
+            let col_names: Vec<String> =
+                table_info.columns.iter().map(|c| c.name.clone()).collect();
+            self.execute_dml_in_tx(|storage| {
+                let trigger_ctx = crate::trigger_eval::TriggerContext::new(new_row, None);
+                for values in &insert.values {
+                    let mut record = Vec::new();
+                    let eval_ctx = crate::trigger_eval::EvalContext::new(&trigger_ctx, None)
+                        .with_target_col_names(col_names.clone());
+                    for expr in values {
+                        let val = crate::trigger_eval::expression_to_value(
+                            expr,
+                            &eval_ctx,
+                            Some(&col_names),
+                        );
+                        record.push(val);
                     }
-                    Ok(())
-                })();
-                if result.is_err() {
-                    let _ = storage.rollback_transaction();
+                    while record.len() < num_cols {
+                        record.push(Value::Null);
+                    }
+                    storage.insert(&table_name, vec![record])?;
                 }
-                result?;
-                storage.commit_transaction()?;
-            }
+                Ok(())
+            })?;
             Ok(())
         } else {
             Ok(())
@@ -460,9 +472,8 @@ impl TriggerExecutor {
         let statement = parse(&normalized)
             .map_err(|e| SqlError::ExecutionError(format!("Parse error: {}", e)))?;
 
-        let mut storage = self.storage.write().unwrap();
-
         if let sqlrustgo_parser::Statement::Update(update) = statement {
+            let storage = self.storage.read().unwrap();
             let table_name = &update.table;
             let table_info = storage.get_table_info(table_name)?;
             let target_col_names: Vec<String> =
@@ -521,21 +532,15 @@ impl TriggerExecutor {
             }
 
             if has_match {
-                // P1 FIX (SGL-005): Wrap UPDATE DML in transaction boundary
+                // INT-4: routed through execute_dml_in_tx for VTU enforcement
                 let modified = modified_rows.clone();
-                storage.begin_transaction()?;
-                let result: SqlResult<()> = (|| {
+                self.execute_dml_in_tx(|storage| {
                     storage.delete(table_name, &[])?;
                     if !modified.is_empty() {
                         storage.insert(table_name, modified)?;
                     }
                     Ok(())
-                })();
-                if result.is_err() {
-                    let _ = storage.rollback_transaction();
-                }
-                result?;
-                storage.commit_transaction()?;
+                })?;
             }
         }
         Ok(())
@@ -553,17 +558,8 @@ impl TriggerExecutor {
         let statement = parse(&expanded)
             .map_err(|e| SqlError::ExecutionError(format!("Parse error: {}", e)))?;
 
-        let mut storage = self.storage.write().unwrap();
-
         if let sqlrustgo_parser::Statement::Delete(delete) = statement {
-            // P1 FIX (SGL-005): Wrap DELETE in transaction boundary
-            storage.begin_transaction()?;
-            let result = storage.delete(&delete.table, &[]);
-            if result.is_err() {
-                let _ = storage.rollback_transaction();
-            }
-            result?;
-            storage.commit_transaction()?;
+            self.execute_dml_in_tx(|storage| storage.delete(&delete.table, &[]))?;
         }
         Ok(())
     }
