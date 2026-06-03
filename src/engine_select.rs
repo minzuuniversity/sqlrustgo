@@ -336,9 +336,23 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     fn execute_joins(&self, select: &SelectStatement) -> SqlResult<(Vec<Vec<Value>>, TableInfo)> {
         let storage = self.storage.read().unwrap();
 
-        // Seed with the base table from FROM clause
+        // Seed with the base table from FROM clause. If the FROM has an
+        // alias (`FROM t a`), prefix the columns with the alias so the
+        // alias is queryable in subsequent JOIN ON conditions.
         let mut rows = storage.scan(&select.table)?;
-        let mut table_info = storage.get_table_info(&select.table)?;
+        let raw_info = storage.get_table_info(&select.table)?;
+        let base_prefix = select.from_alias.as_ref().unwrap_or(&select.table);
+        let mut table_info = if select.from_alias.is_some() {
+            // Wrap the base columns in alias-prefixed names.
+            let mut new_info = raw_info.clone();
+            new_info.name = base_prefix.clone();
+            for col in &mut new_info.columns {
+                col.name = format!("{}.{}", base_prefix, col.name);
+            }
+            new_info
+        } else {
+            raw_info
+        };
 
         for join_clause in &select.join_clause {
             let (new_rows, new_info) =
@@ -363,28 +377,38 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         use std::collections::HashMap;
 
         let right_table_name = join_clause.table.clone();
+        let right_alias = join_clause.alias.as_ref().unwrap_or(&right_table_name);
 
         // Scan the right table fresh each call (left side is already materialized).
-        let right_rows = storage.scan(&right_table_name)?;
-        let right_table_info = storage.get_table_info(&right_table_name)?;
+        // Wrap right_table_info with the right alias prefix so ON conditions
+        // like `n2.n_nationkey` can route to it.
+        let right_raw_rows = storage.scan(&right_table_name)?;
+        let right_raw_info = storage.get_table_info(&right_table_name)?;
+        let right_rows = right_raw_rows;
+        let mut right_table_info = right_raw_info.clone();
+        if join_clause.alias.is_some() {
+            right_table_info.name = right_alias.clone();
+            for col in &mut right_table_info.columns {
+                col.name = format!("{}.{}", right_alias, col.name);
+            }
+        }
 
         // The accumulated left_table_info.name encodes previous joins
-        // (e.g. "t1_join_t2"). Pass that as the qualifier scope for ON clause
-        // resolution. If users reference an unqualified column that lives in
-        // the most-recently-joined left table (e.g. t1.id when accumulated as
-        // "t1_join_t2"), find_join_key_index will fall through to simple-name
-        // lookup.
+        // (e.g. "a_join_n1_join_customer") and is the qualifier scope
+        // for ON conditions referencing left side columns.
         let left_alias = left_table_info.name.clone();
 
         // Extract join key column indices from ON clause
         // For "b.num = c.bid" or "t1.id = t2.id", the canonical form
         // resolves one column from left and one from right.
+        // Pass the right *alias* (when set) so qualifiers like `n2.col`
+        // route to the right side.
         let join_key = self.find_join_key_index(
             &join_clause.on_clause,
             &left_table_info,
             &left_alias,
             &right_table_info,
-            &right_table_name,
+            right_alias,
         )?;
         let (left_key_idx, right_key_idx) = match join_key {
             JoinKey::Pair(li, ri) => (li, ri),
@@ -485,8 +509,12 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             }
         };
 
-        let combined_schema =
-            build_combined_schema(&left_table_info, &right_table_name, &right_table_info)?;
+        let combined_schema = build_combined_schema(
+            &left_table_info,
+            &left_alias,
+            &right_table_info,
+            right_alias,
+        )?;
         Ok((matched_results, combined_schema))
     }
 
