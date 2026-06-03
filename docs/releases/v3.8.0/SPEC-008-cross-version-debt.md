@@ -1,5 +1,7 @@
 # SPEC-008 — Cross-Version Debt Automation (G-02 follow-up)
 
+<!-- env:blocked:no-ci -->
+
 > **PR Number**: SPEC-008 (governance follow-up)
 > **PR Title**: Cross-Version Debt tracking automation + GA Gate Delta section
 > **Version**: v3.8.0
