@@ -218,7 +218,7 @@ SQLRustGo 项目从 v1.0.0 (2026-02-18) 到 v3.8.0 (2026-06-03) 共发布 **23 �
 | **P2-1** | v3.0.0 GA R5/R10/R11 BLOCKER 未关闭 | P5 | 3 个版本带病发布 | 12h | P2 |
 | **P2-2** | CODEOWNERS 单 reviewer | P5 | 单点风险 | 2h | P2 |
 | **P2-3** | audit_testing.sh 未集成到主门禁 | P4 | 35 测试无审计 | 3h | P2 |
-| **P2-4** | R-Gate YAML 是 v2.9.0 版本未升级 | P4 | 旧门禁仍在跑 | 4h | P2 |
+| **P2-4** | R-Gate YAML 是 v2.9.0 版本未升级 | P4 | 旧门禁仍在跑 | 4h | P2 → ✅ CLOSED (PR fix/p2-4-r-gate-yaml-upgrade) |
 
 **P2 总工作量**: 21 小时
 
