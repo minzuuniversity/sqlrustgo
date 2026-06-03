@@ -311,7 +311,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         }
     }
 
-    fn execute_insert(&self, insert: &InsertStatement) -> SqlResult<ExecutorResult> {
+    fn execute_insert(&mut self, insert: &InsertStatement) -> SqlResult<ExecutorResult> {
         // IMPL-001 & IMPL-004: TX lifecycle enforcement
         // IDLE/Active with no current_tx_id = implicit autocommit TX (allowed)
         // Committed/Aborted state = no new implicit TX (error)
@@ -331,6 +331,22 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 // New implicit TX started implicitly when current_tx_id is None
             }
         }
+        // INT-1: Force DML to go through TransactionManager.
+        // Begin an implicit transaction if none is active, and ensure it
+        // commits when the DML finishes (autocommit semantics).
+        // This call site now matches the documented DML contract: every
+        // INSERT/UPDATE/DELETE must be wrapped by TM.begin_transaction() / TM.commit().
+        let tm_tx_id = if self.current_tx_id.is_none() {
+            let tx_id = self
+                .transaction_manager
+                .begin_transaction(self.default_isolation)
+                .map_err(|e| SqlError::ExecutionError(format!("TM.begin failed: {:?}", e)))?;
+            self.current_tx_id = Some(tx_id);
+            self.tx_status = TxStatus::Active;
+            Some(tx_id)
+        } else {
+            self.current_tx_id
+        };
         let table_name = insert.table.clone();
 
         // Get table info first (need it for triggers and FK validation)
@@ -429,6 +445,21 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             }
         }
 
+        // INT-1: For autocommit (no explicit transaction), commit the
+        // implicit transaction so WAL/MVCC receive the changes. If the
+        // user already started a transaction via BEGIN, leave the
+        // current_tx_id intact so they can COMMIT/ROLLBACK explicitly.
+        // `tm_tx_id == Some(_)` only when we just opened a new implicit
+        // transaction in this function (the if-branch above); the
+        // else-branch returns the existing TxId for an already-open
+        // transaction, in which case the user controls commit/rollback.
+        if self.current_tx_id.is_some() && self.current_tx_id == tm_tx_id {
+            let tx_id = self.current_tx_id.unwrap();
+            let _ = self.transaction_manager.commit(tx_id);
+            self.current_tx_id = None;
+            self.tx_status = TxStatus::Idle;
+        }
+
         Ok(ExecutorResult::new(vec![], insert.values.len()))
     }
 
@@ -455,7 +486,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         true
     }
 
-    fn execute_update(&self, update: &UpdateStatement) -> SqlResult<ExecutorResult> {
+    fn execute_update(&mut self, update: &UpdateStatement) -> SqlResult<ExecutorResult> {
         // IMPL-001 & IMPL-004: TX lifecycle enforcement
         match self.tx_status {
             TxStatus::Committed => {
@@ -472,6 +503,18 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 // Autocommit: allow DML without explicit BEGIN
             }
         }
+        // INT-1: Begin an implicit transaction so TM/WAL receive the change.
+        let tm_tx_id = if self.current_tx_id.is_none() {
+            let tx_id = self
+                .transaction_manager
+                .begin_transaction(self.default_isolation)
+                .map_err(|e| SqlError::ExecutionError(format!("TM.begin failed: {:?}", e)))?;
+            self.current_tx_id = Some(tx_id);
+            self.tx_status = TxStatus::Active;
+            Some(tx_id)
+        } else {
+            self.current_tx_id
+        };
         let table_name = update.table.clone();
 
         // If no WHERE clause, use the simple storage.update() path
@@ -657,10 +700,20 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             }
         }
 
+        // INT-1: For autocommit (no explicit transaction), commit so
+        // WAL/MVCC receive the change. If user already started a TX,
+        // leave current_tx_id intact for explicit COMMIT/ROLLBACK.
+        if self.current_tx_id.is_some() && self.current_tx_id == tm_tx_id {
+            let tx_id = self.current_tx_id.unwrap();
+            let _ = self.transaction_manager.commit(tx_id);
+            self.current_tx_id = None;
+            self.tx_status = TxStatus::Idle;
+        }
+
         Ok(ExecutorResult::new(vec![], count))
     }
 
-    fn execute_delete(&self, delete: &DeleteStatement) -> SqlResult<ExecutorResult> {
+    fn execute_delete(&mut self, delete: &DeleteStatement) -> SqlResult<ExecutorResult> {
         // IMPL-001 & IMPL-004: TX lifecycle enforcement
         match self.tx_status {
             TxStatus::Committed => {
@@ -677,12 +730,31 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 // Autocommit: allow DML without explicit BEGIN
             }
         }
+        // INT-1: Begin an implicit transaction so TM/WAL receive the change.
+        let tm_tx_id = if self.current_tx_id.is_none() {
+            let tx_id = self
+                .transaction_manager
+                .begin_transaction(self.default_isolation)
+                .map_err(|e| SqlError::ExecutionError(format!("TM.begin failed: {:?}", e)))?;
+            self.current_tx_id = Some(tx_id);
+            self.tx_status = TxStatus::Active;
+            Some(tx_id)
+        } else {
+            self.current_tx_id
+        };
         let table_name = delete.table.clone();
 
         // If no WHERE clause, delete all rows (current behavior is correct)
         if delete.where_clause.is_none() {
             let mut storage = self.storage.write().unwrap();
             let count = storage.delete(&table_name, &[])?;
+            // INT-1: Autocommit — commit the implicit TX so WAL/MVCC see this.
+            if self.current_tx_id.is_some() && self.current_tx_id == tm_tx_id {
+                let tx_id = self.current_tx_id.unwrap();
+                let _ = self.transaction_manager.commit(tx_id);
+                self.current_tx_id = None;
+                self.tx_status = TxStatus::Idle;
+            }
             return Ok(ExecutorResult::new(vec![], count));
         }
 
@@ -789,6 +861,16 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             for row in &rows_to_delete {
                 trigger_executor.execute_after_delete(&table_name, row)?;
             }
+        }
+
+        // INT-1: For autocommit (no explicit transaction), commit so
+        // WAL/MVCC receive the change. If user already started a TX,
+        // leave current_tx_id intact for explicit COMMIT/ROLLBACK.
+        if self.current_tx_id.is_some() && self.current_tx_id == tm_tx_id {
+            let tx_id = self.current_tx_id.unwrap();
+            let _ = self.transaction_manager.commit(tx_id);
+            self.current_tx_id = None;
+            self.tx_status = TxStatus::Idle;
         }
 
         Ok(ExecutorResult::new(vec![], count))
@@ -1070,6 +1152,11 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         })?;
         self.current_tx_id = None;
         self.tx_status = TxStatus::Committed;
+        // INT-1: Reset to Idle after commit so the next statement can
+        // either begin a new TX or run in autocommit mode again. Without
+        // this reset, subsequent DML would reject with
+        // "transaction already committed".
+        self.tx_status = TxStatus::Idle;
         Ok(ExecutorResult::empty())
     }
 
@@ -1092,6 +1179,9 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         })?;
         self.current_tx_id = None;
         self.tx_status = TxStatus::Aborted;
+        // INT-1: Reset to Idle so the next DML can begin a new TX or run
+        // in autocommit mode. (Same reasoning as commit_transaction above.)
+        self.tx_status = TxStatus::Idle;
         Ok(ExecutorResult::empty())
     }
 
