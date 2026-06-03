@@ -1,5 +1,7 @@
 # v3.8.0+1 Post-GA Plan — Contract Gap Resolution
 
+<!-- env:blocked:no-ci -->
+
 > **Issue**: #2776
 > **Author**: Claude-MacMini
 > **Date**: 2026-06-03
