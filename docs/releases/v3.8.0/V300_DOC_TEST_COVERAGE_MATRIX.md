@@ -1,5 +1,7 @@
 # v3.0.0 5-Category Doc/Test Coverage Matrix
 
+<!-- env:blocked:no-ci -->
+
 > **Version**: v3.0.0 (audit perspective: v3.8.0)
 > **Branch**: `develop/v3.8.0` @ `ccce47c2`
 > **Audit Date**: 2026-06-03
