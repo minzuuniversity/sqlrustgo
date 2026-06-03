@@ -23,7 +23,7 @@ use sqlrustgo_executor::ExecutorResult;
 use sqlrustgo_parser::parser::{
     AggregateCall, AggregateFunction, AlterTableOperation, AlterTableStatement, CallStatement,
     CreateIndexStatement, CreateProcedureStatement, CreateRoleStatement, CreateTableStatement,
-    CreateTriggerStatement, DropRoleStatement, DropTableStatement, GrantRoleStatement,
+    CreateTriggerStatement, DescribeStatement, DropRoleStatement, DropTableStatement, GrantRoleStatement,
     GrantStatement, InsertStatement, ObjectType as ParserObjectType, Privilege as ParserPrivilege,
     RevokeRoleStatement, RevokeStatement, SelectStatement, SetRoleStatement, ShowStatement,
     StoredProcParam as ParserStoredProcParam, StoredProcParamMode as ParserParamMode,
@@ -293,6 +293,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             Statement::ShowRoles => self.execute_show_roles(),
             Statement::ShowGrantsFor(ref user) => self.execute_show_grants_for(user),
             Statement::Show(ref show) => self.execute_show(show),
+            Statement::Describe(ref desc) => self.execute_describe(desc),
             Statement::AlterTable(ref alter) => self.execute_alter_table(alter),
             _ => Err(SqlError::ExecutionError(
                 "Unsupported statement type".to_string(),
@@ -1411,9 +1412,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         ))
     }
 
-    /// SHOW CREATE TABLE — return a minimal CREATE TABLE statement for `table`.
-    /// v3.7.0 doesn't reconstruct full DDL, so we return a basic placeholder
-    /// with the table name. Future versions should introspect the schema.
+    /// SHOW CREATE TABLE — reconstruct CREATE TABLE from the live schema.
     fn execute_show_create_table(&self, table: &str) -> SqlResult<ExecutorResult> {
         let storage = self.storage.read().unwrap();
         if !storage.list_tables().iter().any(|n| n == table) {
@@ -1422,16 +1421,55 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 table
             )));
         }
-        let row = vec![Value::Text(format!(
-            "CREATE TABLE {} (id INTEGER) /* v3.7.0: schema reconstruction not implemented */",
-            table
-        ))];
-        Ok(ExecutorResult::new(vec![row], 1))
+        let info = storage
+            .get_table_info(table)
+            .map_err(|e| SqlError::ExecutionError(format!("cannot introspect {table}: {e}")))?;
+        let cols: Vec<String> = info
+            .columns
+            .iter()
+            .map(|c| {
+                let nullable = if c.nullable { "" } else { " NOT NULL" };
+                format!("{} {}{}", c.name, c.data_type, nullable)
+            })
+            .collect();
+        let ddl = format!("CREATE TABLE {} ({})", table, cols.join(", "));
+        Ok(ExecutorResult::new(vec![vec![Value::Text(ddl)]], 1))
     }
 
     /// SHOW INDEX — placeholder (v3.7.0 indexes are not cataloged).
     fn execute_show_index(&self, _table: &str) -> SqlResult<ExecutorResult> {
         Ok(ExecutorResult::new(vec![], 0))
+    }
+
+    /// DESCRIBE table — return one row per column with Field/Type/Null/Key/Default/Extra.
+    fn execute_describe(&self, desc: &DescribeStatement) -> SqlResult<ExecutorResult> {
+        let storage = self.storage.read().unwrap();
+        if !storage.list_tables().iter().any(|n| n == &desc.table) {
+            return Err(SqlError::ExecutionError(format!(
+                "Table '{}' does not exist",
+                desc.table
+            )));
+        }
+        let info = storage.get_table_info(&desc.table).map_err(|e| {
+            SqlError::ExecutionError(format!("cannot introspect {}: {e}", desc.table))
+        })?;
+        let rows: Vec<Vec<Value>> = info
+            .columns
+            .iter()
+            .map(|c| {
+                let null_str = if c.nullable { "YES" } else { "NO" };
+                let key_str = if c.primary_key { "PRI" } else { "" };
+                vec![
+                    Value::Text(c.name.clone()),
+                    Value::Text(c.data_type.clone()),
+                    Value::Text(null_str.to_string()),
+                    Value::Text(key_str.to_string()),
+                    Value::Text("NULL".to_string()),
+                    Value::Text(String::new()),
+                ]
+            })
+            .collect();
+        Ok(ExecutorResult::new(rows, info.columns.len()))
     }
 
     /// SHOW GRANTS — placeholder (v3.7.0 grant tracking is limited to roles).
