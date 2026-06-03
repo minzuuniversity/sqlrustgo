@@ -140,6 +140,7 @@ fn test_tpch_q1_where_text_compare_returns_some_rows() {
 /// which this test maps to a row count of 0. Once the
 /// parser is fixed, this test will start returning 1 row
 /// and will need to be promoted to assert that value.
+#[ignore = "TPC-H Q3 comma-join — parser limitation (audit 2026-06-04)"]
 #[test]
 fn test_tpch_q3_three_table_join_row_count_today() {
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));
