@@ -1,0 +1,60 @@
+=== SPEC-002 PR-830F WAL Lifecycle 验证日志 ===
+执行时间: 2026-06-02
+执行者: Hermes Agent
+基线: main @ 33c418af7
+工作分支: fix/v3.8.0-pr830f-lifecycle @ f251cec1c
+
+=== 关键发现 (执行期发现) ===
+LEGACY_FIXES_REPORT §2.5 判断偏差: PR-830F 不仅 ExecutionEngine 端未调用
+advance_checkpoint/try_truncate_wal, 而且 WalStorage 端 checkpoint advance
+条件 'if commit_lsn > 0' 永不触发 (因 lsn 全部为 0 字面量).
+
+DEBUG 输出 (修复前):
+[DEBUG] cp.last_checkpoint = None
+[DEBUG] cp.last_checkpoint_lsn = None
+
+修复后:
+[DEBUG] cp.last_checkpoint = Some(CheckpointMetadata { lsn: 3, ... })
+[DEBUG] cp.last_checkpoint_lsn = Some(3)   ← 3 = begin+insert+commit
+
+=== 修复清单 ===
+1. WalStorage 添加 next_lsn: u64 字段
+2. WalStorage::new + with_checkpoint_manager 初始化 next_lsn: 0
+3. WalStorage 添加 append_wal_entry helper (递增 next_lsn, 赋值给 entry.lsn)
+4. 9 处 self.wal.append(entry)? → self.append_wal_entry(entry)?
+5. ExecutionEngine 删除 advance_checkpoint + try_truncate_wal (28 行 dead code)
+6. 新增 test_pr830f_lifecycle_commit_advances_checkpoint_and_truncates
+
+=== 验证 ===
+$ cargo fmt --all -- --check
+EXIT: 0  ✅ (基线: 1)
+
+$ cargo test -p sqlrustgo-storage --lib
+test result: ok. 287 passed; 0 failed  ✅ (286+1)
+
+$ cargo test -p sqlrustgo-executor --lib
+test result: ok. 327 passed; 0 failed  ✅ (无回归)
+
+$ cargo build --all-features
+Finished  ✅ (workspace 编译通过)
+
+$ cargo clippy -p sqlrustgo-executor --all-features
+warnings: 2 (与基线 33c418af7 相同, pre-existing)
+- merge.rs:11 unused `SqlError`
+- merge.rs:457 unused `super::*`
+✅ 未引入新警告
+
+=== git log ===
+$ git log -1 --format="%H %s"
+f251cec1c fix(storage): PR-830F WAL lifecycle — add next_lsn counter + remove EE dead code
+
+=== 推送状态 ===
+- gitea:    ✅ f251cec1c
+- gitcode:  ✅ f251cec1c
+- gitee:    ✅ f251cec1c
+
+=== Gitea PR ===
+(待创建)
+
+=== 总结 ===
+AC-1 ✅  AC-2 ✅  AC-3 ✅  AC-4 ✅  AC-5 ✅  AC-6 ✅  AC-7 ✅  AC-8 ✅  AC-9 ✅  AC-10 ⏳ (待推送)
