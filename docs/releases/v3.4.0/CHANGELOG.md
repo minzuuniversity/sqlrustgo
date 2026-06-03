@@ -5,10 +5,14 @@
 > **Status**: GA (正式发布)
 > **Branch**: `main`
 > **HEAD**: `d934228b` (RC coverage threshold fix)
-> **GA from**: `d934228b` (executor stored proc coverage tests)
 
 ---
 
+
+## 版本元数据
+
+| v3.4.0 | 2026-05-24 | GA |
+|---|------|----|
 ## v3.4.0 (2026-05-24) - GA
 
 ### Added
