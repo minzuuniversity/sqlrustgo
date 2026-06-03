@@ -6,16 +6,20 @@ on:
     branches:
       - develop/v2.8.0
       - develop/v3.7.0
+      - develop/v3.8.0
       - beta/v2.8.0
       - ci/gitea-compat
       - ci/v2.8.0-*
+      - ci/v3.8.0-*
   pull_request:
     branches:
       - develop/v2.8.0
       - develop/v3.7.0
+      - develop/v3.8.0
       - beta/v2.8.0
       - ci/gitea-compat
       - ci/v2.8.0-*
+      - ci/v3.8.0-*
 
 env:
   CARGO_TERM_COLOR: always
@@ -105,11 +109,21 @@ jobs:
         run: |
           cd repo
           bash scripts/gate/check_coverage.sh 2>&1 | tee coverage_report.log
+      - name: Auto env:blocked (SPEC-021)
+        run: |
+          cd repo
+          chmod +x scripts/gate/auto_env_blocker.sh
+          bash scripts/gate/auto_env_blocker.sh v3.8.0 2>&1 | tee auto_env_block.log || true
       - name: Evidence Binding Check
         run: |
           cd repo
           mkdir -p gate/evidence_binding_out
           bash scripts/gate/check_evidence_binding.sh "${version}" "gate/evidence_binding_out/" 2>&1 | tee evidence_binding.log
+      - name: Alpha Gate (SPEC-021)
+        run: |
+          cd repo
+          mkdir -p artifacts/gate/v3.8.0
+          bash scripts/gate/check_alpha_v380.sh 2>&1 | tee alpha_gate.log
       - name: Gate summary
         if: always()
         run: |
@@ -117,9 +131,11 @@ jobs:
           GATE_FAIL=$(grep -c '\[FAIL\]' gate_report.log 2>/dev/null || echo "0")
           COVERAGE_FAIL=$(grep -c 'FAIL\|failed' coverage_report.log 2>/dev/null || echo "0")
           EVIDENCE_FAIL=$(grep -c 'FAIL\|failed\|error' evidence_binding.log 2>/dev/null || echo "0")
-          echo "Gate: failed=$GATE_FAIL coverage=$COVERAGE_FAIL evidence=$EVIDENCE_FAIL"
-          if [ "$GATE_FAIL" -gt 0 ] || [ "$COVERAGE_FAIL" -gt 0 ]; then
-            echo "L1 gate failed"
+          ALPHA_FAIL=$(grep -c '❌ FAIL' alpha_gate.log 2>/dev/null || echo "0")
+          echo "Gate: failed=$GATE_FAIL coverage=$COVERAGE_FAIL evidence=$EVIDENCE_FAIL alpha_gate=$ALPHA_FAIL"
+          # SPEC-021: Evidence binding FAIL must block merge (Anti-Fabrication)
+          if [ "$GATE_FAIL" -gt 0 ] || [ "$COVERAGE_FAIL" -gt 0 ] || [ "$EVIDENCE_FAIL" -gt 0 ] || [ "$ALPHA_FAIL" -gt 0 ]; then
+            echo "L1 gate failed (incl. evidence binding / alpha gate)"
             exit 1
           fi
           echo "All postcheck gates passed"
