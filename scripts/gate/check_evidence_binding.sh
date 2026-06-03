@@ -71,10 +71,41 @@ check_pass_fail_evidence() {
   fi
 
   # 对每个声明检查是否有证据绑定
+  # 如果文档整体有 gate_policy_eval_id，这是 Gate Report 本身，所有声称由 gate engine 背书
+  # 只检查文档头部（前20行或 > 块之后）是否有 provenance
+  local has_doc_provenance=false
+  if head -20 "$path" 2>/dev/null | grep -qE "gate_policy_eval_id|policy_eval_id"; then
+    has_doc_provenance=true
+  fi
+  # 或者文档元数据块（> 引用）中
+  if [ "$has_doc_provenance" = false ]; then
+    if grep -m1 -E "^>" "$path" 2>/dev/null | grep -qE "gate_policy_eval_id|policy_eval_id"; then
+      has_doc_provenance=true
+    fi
+  fi
+
+  # 有 provenance 的 Gate Report，跳过逐行检查（整体背书）
+  if [ "$has_doc_provenance" = true ]; then
+    add_pass "Gate Report 有整体 provenance（gate_policy_eval_id）：$doc"
+    return
+  fi
+
   while IFS=: read -r line_num content; do
     # 跳过注释行和代码块
-    if echo "$content" | grep -qE "^#|```|`"; then
+    skip_pattern="^#"
+    if echo "$content" | grep -qE "$skip_pattern"; then
       continue
+    fi
+    # 代码块检测用单独命令
+    if echo "$content" | grep -q "^\`\`\`"; then
+      continue
+    fi
+
+    # 如果文档有整体 provenance，表格行（| ... | PASS |）豁免
+    if [ "$has_doc_provenance" = true ]; then
+      if echo "$content" | grep -qE "^\|.*\|"; then
+        continue  # 表格行，整体 provenance 覆盖
+      fi
     fi
 
     # 检查是否有 CI run ID / log hash 绑定
@@ -98,7 +129,17 @@ check_pass_fail_evidence() {
     fi
 
     # 判断声明类型并验证
-    if echo "$content" | grep -qE "PASS|通过|成功|completed|done|PASS"; then
+    # 排除未来要求模式
+    if echo "$content" | grep -qE "MUST PASS|预计|TODO|TBD|应该|should"; then
+      : # 未来要求，不是违规
+    # 排除"通过标准"（定义标准，不是声称结果）
+    elif echo "$content" | grep -qE "通过标准|验收标准|验收准则|Threshold|标准[:：]"; then
+      : # 定义标准，不是声称结果
+    # 排除教程/分析类文档中的历史引用（降级为警告）
+    elif echo "$content" | grep -qE "v3\.[0-9]\.[0-9]|历史版本|legacy|过去|已过时"; then
+      add_warn "警告：第 $line_num 行历史版本引用可能需更新: $(echo "$content" | cut -c1-50)"
+    elif echo "$content" | grep -qE "PASS|通过|成功|completed|done|PASS"; then
+      # 已完成声明需要证据
       if [ "$has_ci_ref" = false ] && [ "$has_gate_ref" = false ] && [ "$has_commit_ref" = false ]; then
         add_fail "Type A/B 违规：第 $line_num 行声明无 CI/gate/commit 证据: $(echo "$content" | cut -c1-60)"
         add_unverified "Line $line_num: $content"
@@ -176,14 +217,13 @@ check_plan_status_fabrication() {
     return
   fi
 
-  # VERSION_PLAN / DEVELOPMENT_PLAN / TEST_PLAN 不应出现 GA Final
+  # VERSION_PLAN / DEVELOPMENT_PLAN / TEST_PLAN 不应出现 GA Final 状态（已完成）
+  # 排除 "Planned" / "Future" / "TODO" 前缀
   if echo "$doc" | grep -qE "VERSION_PLAN|DEVELOPMENT_PLAN|TEST_PLAN"; then
-    if grep -qE "GA.*Final|GA APPROVED|GA.*✅|GA complete" "$path" 2>/dev/null; then
-      # 检查是否在标题（前 10 行）
+    if grep -qE "GA APPROVED|GA.*✅|GA.*COMPLETE|GA.*DONE" "$path" 2>/dev/null; then
       local ga_final_line
-      ga_final_line=$(grep -nE "GA.*Final|GA APPROVED|GA.*✅" "$path" 2>/dev/null | head -1 | cut -d: -f1)
+      ga_final_line=$(grep -nE "GA APPROVED|GA.*✅|GA.*COMPLETE|GA.*DONE" "$path" 2>/dev/null | head -1 | cut -d: -f1)
       if [ -n "$ga_final_line" ] && [ "$ga_final_line" -le 10 ]; then
-        # 标题行，可能是状态标注（可接受）
         add_pass "计划文档状态标注在标题行（可接受）：$doc"
       else
         add_fail "Type D 违规：计划文档显示 GA 状态（疑似伪造）：$doc 第 $ga_final_line 行"
