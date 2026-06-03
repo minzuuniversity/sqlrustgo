@@ -29,7 +29,7 @@ fn test_large_integer_positive() {
 }
 
 #[test]
-#[ignore]
+#[ignore = "Boundary edge-case test (run with --ignored when needed)"]
 fn test_large_integer_negative() {
     let sql = "SELECT -9223372036854775808";
     let result = parse(sql);
@@ -86,7 +86,7 @@ fn test_tab_and_newline_in_string() {
 }
 
 #[test]
-#[ignore]
+#[ignore = "Boundary edge-case test (run with --ignored when needed)"]
 fn test_zero_division_parsing() {
     let sql = "SELECT 1 / 0";
     let result = parse(sql);
@@ -110,7 +110,7 @@ fn test_max_table_name_length() {
 }
 
 #[test]
-#[ignore] // Parser: deeply nested subqueries - requires subquery in FROM support
+#[ignore = "Parser: deeply nested subqueries - requires subquery in FROM support"]
 fn test_deeply_nested_subquery() {
     let sql = "SELECT * FROM (SELECT * FROM (SELECT * FROM t) AS a) AS b";
     let result = parse(sql);
