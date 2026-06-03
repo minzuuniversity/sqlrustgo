@@ -201,6 +201,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 AggregateFunction::Sum => {
                     // TPC-H Sprint 1 fix (Q8/Q9): accept Float in Sum.
                     // l_extendedprice * (1 - l_discount) returns Float.
+                    // Q6 fix: empty result set returns 0 (not Null) for COUNT/SUM semantic.
                     let mut int_sum: i64 = 0;
                     let mut float_sum: f64 = 0.0;
                     let mut any_float = false;
@@ -223,10 +224,10 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                             _ => {}
                         }
                     }
-                    if any_float {
+                    if values.is_empty() {
+                        Value::Integer(0)
+                    } else if any_float {
                         Value::Float(float_sum)
-                    } else if values.iter().all(|v| matches!(v, Value::Null)) {
-                        Value::Null
                     } else {
                         Value::Integer(int_sum)
                     }
