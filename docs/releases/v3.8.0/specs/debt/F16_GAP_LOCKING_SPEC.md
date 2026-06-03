@@ -1,3 +1,10 @@
+<!--
+**Debt ID**: F-16
+**Status**: IMPLEMENTED
+**Implementation PR**: PR fix/f-16-gap-locking
+**Test Coverage**: 7/7 tests
+-->
+
 # F-16 SPEC: Gap Locking
 
 > **Issue**: #2822
