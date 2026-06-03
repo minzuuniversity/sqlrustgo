@@ -148,6 +148,29 @@ pub fn evaluate_expression(
             let val = evaluate_expression(inner, row, table_info)?;
             Ok(Value::Boolean(matches!(val, Value::Null)))
         }
+        // TPC-H Q8: `SUM(CASE WHEN n2.n_name = 'GERMANY' THEN ... ELSE 0 END)`.
+        // Evaluate each WHEN's condition in order; the first one whose
+        // value is Boolean(true) (or non-zero/non-null) wins, and we
+        // return its THEN expression. If no WHEN matches and an ELSE
+        // is present, return its value; otherwise Null. This matches
+        // the executor's UnifiedExpr::CaseWhen semantics.
+        Expression::CaseWhen(whens, else_val) => {
+            for w in whens {
+                let cond_val = evaluate_expression(&w.condition, row, table_info)?;
+                if matches!(cond_val, Value::Boolean(true)) {
+                    return evaluate_expression(&w.result, row, table_info);
+                }
+                // SQL CASE treats non-Boolean non-null values as truthy
+                // when used as conditions; mirror that.
+                if !matches!(cond_val, Value::Null | Value::Boolean(false)) {
+                    return evaluate_expression(&w.result, row, table_info);
+                }
+            }
+            match else_val {
+                Some(e) => evaluate_expression(e, row, table_info),
+                None => Ok(Value::Null),
+            }
+        }
         // TPC-H Q7/Q8/Q9: EXTRACT(field FROM col). The parser encodes this
         // as FunctionCall("EXTRACT", [Literal(field), source_expr]). We
         // dispatch on the field name and slice the source (which we expect
