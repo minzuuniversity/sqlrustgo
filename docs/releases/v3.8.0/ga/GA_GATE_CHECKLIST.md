@@ -173,44 +173,48 @@
 
 ## 8. 门禁执行脚本
 
+**SSOT 入口**：`scripts/gate/check_rc_ga_gate.sh`
+
+GA Gate 的真实执行入口是 [`check_rc_ga_gate.sh`](../../../../scripts/gate/check_rc_ga_gate.sh)，
+支持五阶段分级调用：
+
 ```bash
-#!/bin/bash
-# scripts/gate/check_ga_v3.8.0.sh
-
-set -e
-
-echo "=== v3.8.0 GA Gate ==="
-
-echo "[L1] Unit Correctness..."
-cargo test -p sqlrustgo-parser --lib --quiet
-cargo test -p sqlrustgo-executor --lib --quiet
-cargo test -p sqlrustgo-storage --lib --quiet
-cargo test -p sqlrustgo-transaction --lib --quiet
-cargo clippy --all-features --quiet
-cargo fmt -- --check
-
-echo "[L2] Execution Consistency..."
-python3 scripts/test/execution_consistency_harness.py --corpus data/sql_corpus.json --paths mysql-server,bench-cli,direct
-cargo test -p sqlrustgo-integration-tests --quiet
-
-echo "[L3] ACID Verification..."
-python3 scripts/test/isolation_test_suite.py --all
-python3 scripts/test/crash_sim.py --all
-python3 scripts/test/execution_divergence.py --all
-
-echo "[L4] Architecture..."
-bash scripts/test/arch_check.sh
-bash scripts/test/vtu_path_check.sh
-
-echo "[L5] Performance..."
-./target/release/sqlrustgo-bench-cli tpch-bench --queries all
-bash scripts/bench/qps_regression.sh
-
-echo "[L6] Documentation..."
-bash scripts/docs/ssot_cross_check.sh
-
-echo "=== GA Gate PASSED ==="
+# v3.8.0 GA Gate 入口（SSOT 真实脚本）
+bash scripts/gate/check_rc_ga_gate.sh ga           # 完整 GA gate (D1+D2+D3+D4+D5+RC-to-GA checklist)
+bash scripts/gate/check_rc_ga_gate.sh rc           # RC gate
+bash scripts/gate/check_rc_ga_gate.sh beta         # Beta gate
+bash scripts/gate/check_rc_ga_gate.sh alpha        # Alpha gate (D1 only)
+bash scripts/gate/check_rc_ga_gate.sh all          # 五维度全开
+bash scripts/gate/check_rc_ga_gate.sh --help       # 帮助
 ```
+
+### 为什么 §8 不再是"fake script"
+
+**历史**：v3.7.0 的 §8 是一段伪 `#!/bin/bash` 文档块，混合了
+真实命令（`cargo test`）和**不存在的脚本**（`scripts/test/arch_check.sh`、
+`scripts/test/vtu_path_check.sh`、`scripts/test/isolation_test_suite.py` 等），
+违反 P5（未通过的必须有记录）原则。
+
+**v3.8.0 修复（Issue #2878）**：
+- ✅ §8 改为指向真实 SSOT 脚本 `check_rc_ga_gate.sh`
+- ✅ 该脚本内部已实现五维度门禁（D1-D5）+ RC-to-GA checklist
+- ✅ 文档中的命令路径与实际存在的脚本 1:1 对应
+
+### 实际执行的 7 类检查
+
+`check_rc_ga_gate.sh ga` 内部实际运行的检查（按维度）：
+
+| 维度 | 检查项 | 性质 |
+|------|--------|------|
+| D1-Alpha | L1 + Clippy + Format + Coverage + ADR | 真实 cargo/脚本 |
+| D2-Beta | Build + WAL Contract + Integration Gate | 真实 cargo/脚本 |
+| D3-SGL | SGL-001~005 (Layer-3 语义检查) | 真实脚本 |
+| D4-WAL | INV-1, INV-2, INV-3 (WAL 不变量) | 真实脚本 |
+| D5-DeepSeek | 10 Principles for RC/GA gate | 真实脚本 |
+| C-ARCH-05 | execution_engine.rs 行数限制 (SSOT: 1800) | 真实 wc + check |
+
+**结论**：v3.8.0 §8 不再是 fake script。GA 通过的真实路径唯一：
+`bash scripts/gate/check_rc_ga_gate.sh ga`，所有子检查由该脚本分发。
 
 ---
 
