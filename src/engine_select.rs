@@ -195,6 +195,20 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 .collect()
         };
 
+        // Step 6: DISTINCT — apply deduplication if select.distinct is set.
+        // V380 F-12 fix: parser sets select.distinct but executor was ignoring it.
+        // Use a HashSet of Value vectors to track seen rows.
+        let projected_rows: Vec<Vec<Value>> = if select.distinct {
+            use std::collections::HashSet;
+            let mut seen: HashSet<Vec<Value>> = HashSet::new();
+            projected_rows
+                .into_iter()
+                .filter(|row| seen.insert(row.clone()))
+                .collect()
+        } else {
+            projected_rows
+        };
+
         let row_count = projected_rows.len();
         Ok(ExecutorResult::new(projected_rows, row_count))
     }
@@ -220,6 +234,14 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     if agg.args.is_empty() {
                         // COUNT(*) - count all rows
                         Value::Integer(rows.len() as i64)
+                    } else if agg.distinct {
+                        // COUNT(DISTINCT col) - count unique non-NULL values
+                        use std::collections::HashSet;
+                        let unique: HashSet<_> = values
+                            .iter()
+                            .filter(|v| !matches!(v, Value::Null))
+                            .collect();
+                        Value::Integer(unique.len() as i64)
                     } else {
                         // COUNT(col) - count non-NULL values
                         let non_null_count =
