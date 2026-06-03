@@ -469,6 +469,23 @@ path = "tests/tpch_value_correctness_test.rs"
 name = "ci_test"
 path = "tests/ci/ci_test.rs"
 
+# v3.8.0 feature integration tests
+[[test]]
+name = "alter_table_test"
+path = "tests/alter_table_test.rs"
+
+[[test]]
+name = "truncate_table_test"
+path = "tests/truncate_table_test.rs"
+
+[[test]]
+name = "insert_odku_test"
+path = "tests/insert_odku_test.rs"
+
+[[test]]
+name = "replace_test"
+path = "tests/replace_test.rs"
+
 # Memory limit for tests: 8GB (8 * 1024 * 1024 * 1024 bytes)
 # This prevents any single test from consuming excessive memory
 [profile.test]
