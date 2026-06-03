@@ -240,6 +240,45 @@ fn check_ok_or_err(seq_expected: u8, payload: &[u8]) -> wire_err::Result<()> {
     }
 }
 
+/// Parse an OK (0x00) or ERR (0xFF) packet and return the
+/// `affected_rows` from the OK packet. Used by `load_local_infile`
+/// and any other command that needs the affected row count.
+///
+/// OK packet layout:
+///   1     0x00 header
+///   lenenc affected_rows
+///   lenenc last_insert_id
+///   2     status_flags
+///   2     warnings
+///
+/// ERR packet layout:
+///   1     0xff header
+///   2     error_code
+///   1     '#' marker
+///   5     SQL state
+///   N     error message (utf-8)
+fn parse_ok_packet_affected(pkt: &[u8]) -> wire_err::Result<u64> {
+    if pkt.is_empty() {
+        return Err(wire_err::msg("parse_ok_packet_affected: empty packet"));
+    }
+    if pkt[0] == 0x00 {
+        let mut pos = 1;
+        read_lenenc_int(pkt, &mut pos)
+    } else if pkt[0] == 0xff {
+        let msg = if pkt.len() > 9 {
+            String::from_utf8_lossy(&pkt[9..]).into_owned()
+        } else {
+            String::from_utf8_lossy(pkt).into_owned()
+        };
+        Err(wire_err::msg(format!("server ERR: {msg}")))
+    } else {
+        Err(wire_err::msg(format!(
+            "unexpected packet first byte 0x{:02x}",
+            pkt[0]
+        )))
+    }
+}
+
 /// Parse a length-encoded integer per the MySQL protocol (used for
 /// column counts in the COM_QUERY result-set header).
 fn read_lenenc_int(payload: &[u8], pos: &mut usize) -> wire_err::Result<u64> {
@@ -519,5 +558,65 @@ impl MySqlTestClient {
         let p = build_com_quit();
         write_packet(&mut self.stream, 0, &p)?;
         Ok(())
+    }
+
+    /// Send LOAD DATA LOCAL INFILE over the wire.
+    ///
+    /// 1. Sends COM_QUERY with the LOAD DATA LOCAL INFILE SQL.
+    /// 2. Reads the 0xFB packet from the server (the server's
+    ///    "send me the file" request).
+    /// 3. Streams the file content in ≤ 16 MB chunks.
+    /// 4. Sends an empty packet to signal end-of-file.
+    /// 5. Reads the final OK or ERR packet.
+    ///
+    /// Returns the number of rows affected (from the OK packet's
+    /// `affected_rows` field) or an error describing why the
+    /// server rejected the load. The path must be inside the
+    /// server's `data_dir` whitelist (see `EphemeralConfig::data_dir`).
+    pub fn load_local_infile(
+        &mut self,
+        path: &std::path::Path,
+        table: &str,
+    ) -> wire_err::Result<u64> {
+        // 1. COM_QUERY
+        let sql = format!(
+            "LOAD DATA LOCAL INFILE '{}' INTO TABLE {}",
+            path.display(),
+            table
+        );
+        let p = build_com_query(&sql);
+        write_packet(&mut self.stream, 0, &p)?;
+        let mut seq: u8 = 1;
+
+        // 2. Read 0xFB packet (server's request for the file)
+        let fb_pkt = read_packet(&mut self.stream)?;
+        // The server may respond with ERR (0xFF) immediately if the file
+        // fails validation (e.g. outside data_dir whitelist). Surface that
+        // real reason instead of a misleading "expected 0xFB" message.
+        if fb_pkt.first().copied() == Some(0x00) || fb_pkt.first().copied() == Some(0xFF) {
+            return parse_ok_packet_affected(&fb_pkt);
+        }
+        if fb_pkt.first().copied() != Some(0xFB) {
+            return Err(wire_err::msg(format!(
+                "expected 0xFB packet, got first byte 0x{:02X}",
+                fb_pkt.first().copied().unwrap_or(0)
+            )));
+        }
+        seq = seq.wrapping_add(1);
+
+        // 3. Stream file content in ≤ 16 MB chunks
+        let file_bytes = std::fs::read(path)
+            .map_err(|e| wire_err::msg(format!("read file {}: {}", path.display(), e)))?;
+        for chunk in file_bytes.chunks(16 * 1024 * 1024) {
+            write_packet(&mut self.stream, seq, chunk)?;
+            seq = seq.wrapping_add(1);
+        }
+
+        // 4. Empty terminator
+        write_packet(&mut self.stream, seq, &[])?;
+
+        // 5. Read OK or ERR
+        let resp = read_packet(&mut self.stream)?;
+        parse_ok_packet_affected(&resp)
     }
 }
