@@ -129,21 +129,21 @@ fn cross_path_update_consistency() {
         e.execute(setup).unwrap();
         e.execute(insert).unwrap();
         e.execute(update).unwrap();
-        e.execute(select).unwrap().rows[0][1].clone()
+        e.execute(select).unwrap().rows[0][0].clone()
     };
     let r2 = {
         let mut e = create_wal_memory_engine();
         e.execute(setup).unwrap();
         e.execute(insert).unwrap();
         e.execute(update).unwrap();
-        e.execute(select).unwrap().rows[0][1].clone()
+        e.execute(select).unwrap().rows[0][0].clone()
     };
     let r3 = {
         let mut e = create_wal_file_engine(dir.path());
         e.execute(setup).unwrap();
         e.execute(insert).unwrap();
         e.execute(update).unwrap();
-        e.execute(select).unwrap().rows[0][1].clone()
+        e.execute(select).unwrap().rows[0][0].clone()
     };
 
     let expected = sqlrustgo_types::Value::Integer(200);
