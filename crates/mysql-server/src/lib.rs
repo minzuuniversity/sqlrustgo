@@ -109,7 +109,7 @@ struct UserPassword {
 }
 
 #[derive(Debug, Clone, Default)]
-struct UserStore {
+pub(crate) struct UserStore {
     users: HashMap<String, UserPassword>,
 }
 
@@ -1369,6 +1369,7 @@ fn handle_connection(
         .set_write_timeout(Some(std::time::Duration::from_secs(60)))
         .ok();
     stream.set_nodelay(true).ok();
+    let _ = stream.set_nonblocking(false);
     tracing::info!("Connection from {}", addr);
 
     let scramble1: [u8; 8] = rand::random();
@@ -1544,9 +1545,16 @@ pub fn run_server_with_listener(listener: TcpListener) -> MySqlResult<()> {
 /// having to connect. This is the entry point used by the test
 /// harness; production callers should use the simpler
 /// `run_server_with_listener` form.
-pub fn run_server_with_listener_and_shutdown(
+///
+/// `bootstrap` is invoked once after the storage layer is wired up
+/// but before the accept loop starts. The test harness uses it to
+/// pre-create the `tester` user with a known password so the `mysql`
+/// crate's auth handshake succeeds.
+pub fn run_server_with_listener_and_shutdown_with_bootstrap_and_tables(
     listener: TcpListener,
     shutdown: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    bootstrap: Option<Box<dyn FnOnce(&mut UserStore) + Send>>,
+    bootstrap_tables: bool,
 ) -> MySqlResult<()> {
     let tls_config = Arc::new(make_tls_config());
     tracing::info!("TLS ready (self-signed cert)");
@@ -1564,15 +1572,18 @@ pub fn run_server_with_listener_and_shutdown(
         .map_err(|e| MySqlError::Sql(format!("WalStorage init failed: {}", e)))?;
     let storage: Arc<RwLock<WalStorage<FileStorage, FileBackedWalManager>>> =
         Arc::new(RwLock::new(wal_storage));
-    {
+    if bootstrap_tables {
         let mut eng = ExecutionEngine::new(storage.clone());
         for sql in ["CREATE TABLE content (hash TEXT PRIMARY KEY, doc TEXT NOT NULL, created_at TEXT NOT NULL)",
-            "CREATE TABLE vectors (hash_seq TEXT PRIMARY KEY, hash TEXT NOT NULL, embedding TEXT NOT NULL, created_at TEXT NOT NULL)",
-            "CREATE TABLE documents (id TEXT PRIMARY KEY, title TEXT, content TEXT, created_at TEXT)"] {
-            if let Err(e) = eng.execute(sql) { tracing::warn!("Init: {}", e); }
-        }
+                "CREATE TABLE vectors (hash_seq TEXT PRIMARY KEY, hash TEXT NOT NULL, embedding TEXT NOT NULL, created_at TEXT NOT NULL)",
+                "CREATE TABLE documents (id TEXT PRIMARY KEY, title TEXT, content TEXT, created_at TEXT)"] {
+                if let Err(e) = eng.execute(sql) { tracing::warn!("Init: {}", e); }
+            }
     }
-    let user_store = UserStore::new();
+    let mut user_store = UserStore::new();
+    if let Some(bs) = bootstrap {
+        bs(&mut user_store);
+    }
 
     // Non-blocking accept so the loop can check the shutdown flag
     // even when no client is connecting. The 50ms sleep is the
@@ -1605,6 +1616,35 @@ pub fn run_server_with_listener_and_shutdown(
         }
     }
     Ok(())
+}
+
+/// Variant of [`run_server_with_listener`] that returns promptly when
+/// `shutdown` is set to `true`. The accept loop is driven in
+/// non-blocking mode so it can poll the shutdown flag without a client
+/// having to connect. This is the entry point used by the test
+/// harness; production callers should use the simpler
+/// `run_server_with_listener` form.
+pub fn run_server_with_listener_and_shutdown(
+    listener: TcpListener,
+    shutdown: std::sync::Arc<std::sync::atomic::AtomicBool>,
+) -> MySqlResult<()> {
+    run_server_with_listener_and_shutdown_with_bootstrap_and_tables(listener, shutdown, None, true)
+}
+
+/// Variant of [`run_server_with_listener_and_shutdown`] that also
+/// pre-creates the internal catalog tables (`content`, `vectors`,
+/// `documents`) unless `bootstrap_tables` is `false`. The user
+/// bootstrap callback is independent — pass `bootstrap: Some(_)`
+/// to add custom users, `bootstrap: None` to start with the
+/// server's built-in `root` and `mysql` users only.
+pub fn run_server_with_listener_and_shutdown_with_bootstrap(
+    listener: TcpListener,
+    shutdown: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    bootstrap: Option<Box<dyn FnOnce(&mut UserStore) + Send>>,
+) -> MySqlResult<()> {
+    run_server_with_listener_and_shutdown_with_bootstrap_and_tables(
+        listener, shutdown, bootstrap, true,
+    )
 }
 
 // ============================================================================
@@ -2310,12 +2350,24 @@ pub mod testing {
     #[derive(Debug, Clone)]
     pub struct EphemeralConfig {
         pub host: String,
+        /// If `true` (the default), the server pre-creates the
+        /// internal catalog tables (`content`, `vectors`, `documents`).
+        /// Tests that want a clean catalog should set this to `false`.
+        pub bootstrap_tables: bool,
+        /// If `true` (the default), the server pre-creates a `tester`
+        /// user with password `tester` so the raw wire-protocol client
+        /// (and the `mysql` crate) can authenticate. Tests that want
+        /// to control the user table themselves should set this to
+        /// `false` and add their own users via the listener-side API.
+        pub bootstrap_users: bool,
     }
 
     impl Default for EphemeralConfig {
         fn default() -> Self {
             Self {
                 host: "127.0.0.1".to_string(),
+                bootstrap_tables: true,
+                bootstrap_users: true,
             }
         }
     }
@@ -2378,13 +2430,32 @@ pub mod testing {
         // Move the listener into the server thread. The accept loop
         // is non-blocking and polls a shutdown flag; Drop sets the
         // flag and joins the thread (the loop exits within 50ms).
+        //
+        // When `config.bootstrap_users` is true (default) the
+        // bootstrap callback pre-creates a `tester` user with the
+        // well-known password `tester` so the raw wire-protocol
+        // client can authenticate. Tests that want full control over
+        // the user table should pass `bootstrap_users: false` and
+        // add their own users via the listener-side API.
         let listener_for_thread = listener;
         let shutdown = Arc::new(std::sync::atomic::AtomicBool::new(false));
         let shutdown_for_thread = Arc::clone(&shutdown);
+        let bootstrap_users = config.bootstrap_users;
+        let bootstrap_tables_flag = config.bootstrap_tables;
         let join = std::thread::spawn(move || {
-            let _ = crate::run_server_with_listener_and_shutdown(
+            let bootstrap: Option<Box<dyn FnOnce(&mut crate::UserStore) + Send>> =
+                if bootstrap_users {
+                    Some(Box::new(|user_store: &mut crate::UserStore| {
+                        user_store.add_user("tester", "tester");
+                    }))
+                } else {
+                    None
+                };
+            let _ = crate::run_server_with_listener_and_shutdown_with_bootstrap_and_tables(
                 listener_for_thread,
                 shutdown_for_thread,
+                bootstrap,
+                bootstrap_tables_flag,
             );
         });
 
