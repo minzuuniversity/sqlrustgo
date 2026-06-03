@@ -525,6 +525,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         let update_plan = AstAdapter::to_update_plan(update, &table_info);
         if let Ok(plan) = update_plan {
             let ir_filtered: Vec<Vec<Value>> = all_rows
+                .clone()
                 .into_iter()
                 .filter(|row| plan.predicate().evaluate(row, &table_info))
                 .collect();
@@ -592,20 +593,12 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
 
         let mut new_rows: Vec<Vec<Value>> = Vec::new();
 
-        let all_current_rows: Vec<Vec<Value>> = {
-            let storage = self.storage.read().unwrap();
-            storage.scan(&table_name)?
-        };
-
-        for row in all_current_rows {
-            if evaluate_where_clause(where_clause, &row, &table_info) {
-                if let Some(pos) = rows_to_update.iter().position(|r| r == &row) {
-                    new_rows.push(trigger_modified_rows[pos].clone());
-                } else {
-                    new_rows.push(row);
-                }
+        // Build new_rows by replacing matching rows with updated versions
+        for row in &all_rows {
+            if let Some(pos) = rows_to_update.iter().position(|r| r == row) {
+                new_rows.push(trigger_modified_rows[pos].clone());
             } else {
-                new_rows.push(row);
+                new_rows.push(row.clone());
             }
         }
 
