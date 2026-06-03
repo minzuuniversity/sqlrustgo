@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+# STATUS: DEPRECATED — see scripts/gate/README.md
+# Reason: not invoked by any active gate (audit 2026-06-04)
+# Action:  do not add new callers; restore via git history if needed
+
 # pre-commit hook — SPEC-020 自动化 docs env:blocked
 #
 # 安装: cp scripts/gate/pre-commit-env-blocker .git/hooks/pre-commit
