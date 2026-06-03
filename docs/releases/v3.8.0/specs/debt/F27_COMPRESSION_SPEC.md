@@ -1,3 +1,10 @@
+<!--
+**Debt ID**: F-27
+**Status**: IMPLEMENTED
+**Implementation PR**: PR fix/f-27-table-compression
+**Test Coverage**: 8/8 tests
+-->
+
 # F-27 SPEC: Table Compression
 
 > **Issue**: #2828
