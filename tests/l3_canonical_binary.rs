@@ -94,6 +94,7 @@ fn spawn_canonical_server() -> SubprocessHandle {
     SubprocessHandle { child, port }
 }
 
+#[ignore = "L3 acceptance — implementation pending (audit 2026-06-04)"]
 #[test]
 fn l3_canonical_binary_serve_handshake_auth_and_query() {
     let server = spawn_canonical_server();

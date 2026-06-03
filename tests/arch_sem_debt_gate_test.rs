@@ -31,7 +31,7 @@ fn test_d8_tracks_all_7_items() {
 fn test_d8_remediation_plan_exists() {
     let plan = std::env::current_dir()
         .unwrap()
-        .join("docs/releases/v3.8.0/ARCH_SEM_DEBT_REMEDIATION_PLAN.md");
+        .join("docs/releases/v3.8.0/archived/ARCH_SEM_DEBT_REMEDIATION_PLAN.md");
     assert!(plan.exists(), "remediation plan must exist");
     let content = std::fs::read_to_string(&plan).expect("plan not found");
     for item in &[
@@ -45,7 +45,7 @@ fn test_d8_remediation_plan_exists() {
 fn test_d8_remediation_plan_effort() {
     let plan = std::env::current_dir()
         .unwrap()
-        .join("docs/releases/v3.8.0/ARCH_SEM_DEBT_REMEDIATION_PLAN.md");
+        .join("docs/releases/v3.8.0/archived/ARCH_SEM_DEBT_REMEDIATION_PLAN.md");
     let content = std::fs::read_to_string(&plan).expect("plan not found");
     // Total effort ~138h
     assert!(
@@ -58,7 +58,7 @@ fn test_d8_remediation_plan_effort() {
 fn test_d8_remediation_plan_v390_target() {
     let plan = std::env::current_dir()
         .unwrap()
-        .join("docs/releases/v3.8.0/ARCH_SEM_DEBT_REMEDIATION_PLAN.md");
+        .join("docs/releases/v3.8.0/archived/ARCH_SEM_DEBT_REMEDIATION_PLAN.md");
     let content = std::fs::read_to_string(&plan).expect("plan not found");
     // Each item must target v3.9.0+
     let v390_count = content.matches("v3.9.0").count();
@@ -109,7 +109,7 @@ fn test_d8_gate_runs_correctly() {
 fn test_d8_no_p0_missing_in_plan() {
     let plan = std::env::current_dir()
         .unwrap()
-        .join("docs/releases/v3.8.0/ARCH_SEM_DEBT_REMEDIATION_PLAN.md");
+        .join("docs/releases/v3.8.0/archived/ARCH_SEM_DEBT_REMEDIATION_PLAN.md");
     let content = std::fs::read_to_string(&plan).expect("plan not found");
     // P0 items must have detailed steps
     for p0 in &["ARCH-1", "SEM-1"] {
