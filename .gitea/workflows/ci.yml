@@ -133,6 +133,10 @@ jobs:
           cd repo
           mkdir -p artifacts/audit/v3.8.0
           bash scripts/gate/audit_testing.sh v3.8.0 ga artifacts/audit/v3.8.0 2>&1 | tee audit_testing.log
+      - name: "D9 Full Gate Verification (8 dim: D1-D8 + cross-version + test plan + PR template)"
+        run: |
+          cd repo
+          bash scripts/gate/check_full_gate_verification.sh 2>&1 | tee full_gate_verification.log
       - name: Gate summary
         if: always()
         run: |
@@ -143,10 +147,11 @@ jobs:
           ALPHA_FAIL=$(grep -c '❌ FAIL' alpha_gate.log 2>/dev/null || echo "0")
           RC_GA_FAIL=$(grep -c '❌ FAIL\|blocker' rc_ga_gate.log 2>/dev/null || echo "0")
           AUDIT_FAIL=$(grep -c 'RESULT: FAIL' audit_testing.log 2>/dev/null || echo "0")
-          echo "Gate: failed=$GATE_FAIL coverage=$COVERAGE_FAIL evidence=$EVIDENCE_FAIL alpha_gate=$ALPHA_FAIL rc_ga=$RC_GA_FAIL audit=$AUDIT_FAIL"
+          D9_FAIL=$(grep -c '❌ FAIL\|exit 1' full_gate_verification.log 2>/dev/null || echo "0")
+          echo "Gate: failed=$GATE_FAIL coverage=$COVERAGE_FAIL evidence=$EVIDENCE_FAIL alpha_gate=$ALPHA_FAIL rc_ga=$RC_GA_FAIL audit=$AUDIT_FAIL d9=$D9_FAIL"
           # SPEC-021: Evidence binding FAIL must block merge (Anti-Fabrication)
-          if [ "$GATE_FAIL" -gt 0 ] || [ "$COVERAGE_FAIL" -gt 0 ] || [ "$EVIDENCE_FAIL" -gt 0 ] || [ "$ALPHA_FAIL" -gt 0 ] || [ "$RC_GA_FAIL" -gt 0 ] || [ "$AUDIT_FAIL" -gt 0 ]; then
-            echo "L1 gate failed (incl. evidence binding / alpha gate / rc-ga gate / audit_testing)"
+          if [ "$GATE_FAIL" -gt 0 ] || [ "$COVERAGE_FAIL" -gt 0 ] || [ "$EVIDENCE_FAIL" -gt 0 ] || [ "$ALPHA_FAIL" -gt 0 ] || [ "$RC_GA_FAIL" -gt 0 ] || [ "$AUDIT_FAIL" -gt 0 ] || [ "$D9_FAIL" -gt 0 ]; then
+            echo "L1 gate failed (incl. evidence binding / alpha gate / rc-ga gate / audit_testing / D9 full gate)"
             exit 1
           fi
           echo "All postcheck gates passed"
