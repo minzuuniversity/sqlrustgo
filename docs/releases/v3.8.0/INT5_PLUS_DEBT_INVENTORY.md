@@ -52,7 +52,7 @@
 | F-20 | 慢查询日志 | v2.0.0 | ❌ 未实现 | ✅ 4 files | |
 | F-21 | 在线 DDL | v2.0.0 | ⚠️ 阻塞式 | ✅ 6 files (AlterTable) | |
 | F-22 | Prepared Statement | v2.6.0 | ⚠️ 有缺陷 | ✅ 7 files | |
-| F-23 | 聚簇索引 | v2.5.0 | ❌ 未实现 | ⚠️ partial (1 file) | v3.1.0 target → v3.8.0+1 |
+| F-23 | 聚簇索引 | v2.5.0 | ❌ 未实现 | ✅ CLOSED (PR fix/f-23-clustered-index, 7/7 tests) |
 | F-24 | 自适应哈希索引 (AHI) | v2.5.0 | ❌ 未实现 | ✅ CLOSED (PR fix/f-24-adaptive-hash-index, 7/7 tests) |
 | F-25 | Change Buffer | v2.5.0 | ⚠️ 部分 | ✅ CLOSED (PR fix/f-25-f-26, 5/5 tests) |
 | F-26 | 双写缓冲 | v2.5.0 | ❌ 未实现 | ✅ CLOSED (PR fix/f-25-f-26, 6/6 tests) |
