@@ -1,5 +1,7 @@
 # PR-900F TEST ACCEPTANCE — ExecutionEngine Module Boundary
 
+<!-- env:blocked:no-ci -->
+
 > **PR**: PR-900F (F-15 增量)
 > **Branch**: test/v380-test-coverage-a1-a4
 > **Created**: 2026-06-02
