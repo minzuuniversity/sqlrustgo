@@ -1,5 +1,7 @@
 # v3.8.0 TEST REVIEW — 整体测试审核
 
+<!-- env:blocked:no-ci -->
+
 > **Version**: v3.8.0
 > **Branch**: `test/v380-test-coverage-a1-a4`
 > **Reviewer**: Hermes Agent (self-review, 独立于实现)
