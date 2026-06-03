@@ -13,6 +13,8 @@ pub mod result;
 pub mod telemetry;
 pub mod trace;
 pub mod transaction_context;
+pub mod transactional_facade;
+pub mod wal_transactional_facade;
 pub mod write_op;
 
 // Re-export types for external use
