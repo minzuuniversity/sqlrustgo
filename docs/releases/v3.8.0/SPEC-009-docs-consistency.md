@@ -1,5 +1,7 @@
 # SPEC-009 — 文档规范 (Docs Consistency)
 
+<!-- env:blocked:no-ci -->
+
 > **PR Number**: SPEC-009
 > **PR Title**: 文档规范修复 — CHANGELOG 版本条目 + 重复 commit + broken links + CONTRIBUTING
 > **Version**: v3.8.0
