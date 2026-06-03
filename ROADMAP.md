@@ -212,7 +212,7 @@ SQLRustGo
 - 87.36% 覆盖率
 - 39 项单元测试
 
-### 4.8 v3.8.0 - 事务数据库平台 🔄 开发中
+### 4.8 v3.8.0 - 事务数据库平台 🔄 Alpha (P0 完成, P1 进行中)
 
 **目标发布日期**: 2026-06-28
 
@@ -221,6 +221,8 @@ SQLRustGo
 - WriteBuffer DML 暂存
 - WAL + MVCC 支持
 - COMMIT/ROLLBACK 完整生命周期
+- **MERGE 完整路径** (G1-G4 已闭环): WAL bypass + Parser MERGE + LocalExecutor ExecutionEngine + MERGE dispatch (PR #2842, #2849, #2862, #2867)
+- **Gate 集成** (P0-1~5): 49+ 集成测试覆盖 / SSOT 1800 阈值 / 真 §8 脚本 / D6 维度
 
 **技术栈**:
 - 显式事务管理
