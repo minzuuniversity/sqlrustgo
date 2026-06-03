@@ -90,13 +90,13 @@
 | I-09 | 连接池 | network | ⚠️ 部分 | ✅ 8 files stress |
 | I-10 | Group Commit | transaction | ⚠️ 部分 | ✅ PR-830A~E |
 | I-11 | CBO 代价模型 | optimizer | ⚠️ 部分 | ⚠️ partial (CBO 3 rules) |
-| I-12 | 并行执行 | executor | ⚠️ 部分 | ⚠️ DEFERRED (POST_GA_PLAN) |
+| I-12 | 并行执行 | executor | ⚠️ 部分 | ⚠️ PARTIAL (PR fix/i-12-parallel-executor, 6/6 tests) |
 
 ### I-xx Status Summary
 
 - **✅ Closed (10)**: I-01~I-10
 - **⚠️ Partial (1)**: I-11
-- **❌ Open/Deferred (1)**: I-12 (INT-2 in CROSS-VERSION-DEBT)
+- **❌ Open/Deferred (0)**: I-12 PARTIAL via PR fix/i-12-parallel-executor
 
 ---
 
