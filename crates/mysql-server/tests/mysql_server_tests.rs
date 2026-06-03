@@ -1,6 +1,8 @@
 //! MySQL server integration tests - test Packet I/O and MySqlError.
 
+use sqlrustgo::ExecutionEngine;
 use sqlrustgo_mysql_server::{MySqlError, Packet};
+use std::sync::{Arc, RwLock};
 
 // ============ MySqlError Tests ============
 
@@ -160,4 +162,37 @@ fn test_packet_payload_various_bytes() {
     let mut cursor = std::io::Cursor::new(buf);
     let read = Packet::read_from(&mut cursor).unwrap();
     assert_eq!(read.payload, payload);
+}
+
+// ============ ExecutionEngine State Tests ============
+
+#[test]
+fn test_execution_engine_state_persistence() {
+    let storage = Arc::new(RwLock::new(sqlrustgo_storage::MemoryStorage::new()));
+    let mut engine = ExecutionEngine::new(storage);
+
+    engine
+        .execute("CREATE TABLE t (id INTEGER, value TEXT)")
+        .unwrap();
+
+    engine.execute("INSERT INTO t VALUES (1, 'test')").unwrap();
+
+    let result = engine.execute("SELECT * FROM t").unwrap();
+    assert!(!result.rows.is_empty(), "Inserted row not found");
+    assert_eq!(result.rows[0][0], sqlrustgo_types::Value::Integer(1));
+    assert_eq!(
+        result.rows[0][1],
+        sqlrustgo_types::Value::Text("test".to_string())
+    );
+
+    engine
+        .execute("UPDATE t SET value = 'updated' WHERE id = 1")
+        .unwrap();
+
+    let result = engine.execute("SELECT * FROM t").unwrap();
+    assert_eq!(result.rows[0][0], sqlrustgo_types::Value::Integer(1));
+    assert_eq!(
+        result.rows[0][1],
+        sqlrustgo_types::Value::Text("updated".to_string())
+    );
 }

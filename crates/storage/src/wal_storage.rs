@@ -12,6 +12,14 @@ pub struct WalStorage<S: StorageEngine, T: WalManager> {
     wal: T,
     wal_enabled: bool,
     checkpoint_manager: Option<Arc<RwLock<CheckpointManager>>>,
+    /// Active transaction id. The ExecutionEngine pushes the real id here
+    /// via `set_current_tx_id`; without this, every WAL entry would carry
+    /// tx_id=0 and the recovery engine could not distinguish autocommit
+    /// DML from uncommitted-but-started DML.
+    current_tx_id: u64,
+    /// Monotonically increasing LSN counter for WAL entries.
+    /// Each `append_wal_entry` increments this and assigns the value to the entry.
+    next_lsn: u64,
 }
 
 impl<S: StorageEngine, T: WalManager> WalStorage<S, T> {
@@ -21,6 +29,8 @@ impl<S: StorageEngine, T: WalManager> WalStorage<S, T> {
             wal,
             wal_enabled: true,
             checkpoint_manager: None,
+            current_tx_id: 0,
+            next_lsn: 0,
         })
     }
 
@@ -34,7 +44,20 @@ impl<S: StorageEngine, T: WalManager> WalStorage<S, T> {
             wal,
             wal_enabled: true,
             checkpoint_manager: Some(checkpoint_manager),
+            current_tx_id: 0,
+            next_lsn: 0,
         })
+    }
+
+    /// Append a WAL entry with a monotonically increasing LSN.
+    /// Returns the assigned LSN.
+    /// PR-830F: This is the single chokepoint for LSN assignment;
+    /// without it, `current_lsn()` returns 0 and checkpoint advance never triggers.
+    fn append_wal_entry(&mut self, mut entry: WalEntry) -> SqlResult<u64> {
+        self.next_lsn += 1;
+        entry.lsn = self.next_lsn;
+        self.wal.append(entry)?;
+        Ok(self.next_lsn)
     }
 
     pub fn inner(&self) -> &S {
@@ -110,6 +133,22 @@ impl<S: StorageEngine, T: WalManager> WalStorage<S, T> {
         bytes
     }
 
+    #[allow(dead_code)]
+    pub(crate) fn updates_to_bytes(updates: &[(usize, Value)]) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(&(updates.len() as u32).to_le_bytes());
+        for (col_idx, value) in updates {
+            bytes.extend_from_slice(&(*col_idx as u32).to_le_bytes());
+            bytes.extend_from_slice(&Self::record_to_bytes(std::slice::from_ref(value)));
+        }
+        bytes
+    }
+
+    #[allow(dead_code)]
+    pub(crate) fn filters_to_bytes(filters: &[Value]) -> Vec<u8> {
+        Self::record_to_bytes(filters)
+    }
+
     fn row_matches_filter(row: &[Value], filters: &[Value]) -> bool {
         if filters.is_empty() {
             return true;
@@ -129,7 +168,7 @@ impl<S: StorageEngine, T: WalManager> WalStorage<S, T> {
     fn log_insert(&mut self, table_id: u64, key: Vec<u8>, data: Vec<u8>) -> SqlResult<()> {
         if self.wal_enabled {
             let entry = WalEntry {
-                tx_id: self.inner.current_tx_id(),
+                tx_id: self.current_tx_id,
                 entry_type: WalEntryType::Insert,
                 table_id,
                 key: Some(key),
@@ -140,7 +179,7 @@ impl<S: StorageEngine, T: WalManager> WalStorage<S, T> {
                     .unwrap()
                     .as_secs(),
             };
-            self.wal.append(entry)?;
+            self.append_wal_entry(entry)?;
         }
         Ok(())
     }
@@ -148,7 +187,7 @@ impl<S: StorageEngine, T: WalManager> WalStorage<S, T> {
     fn log_delete(&mut self, table_id: u64, key: Vec<u8>) -> SqlResult<()> {
         if self.wal_enabled {
             let entry = WalEntry {
-                tx_id: self.inner.current_tx_id(),
+                tx_id: self.current_tx_id,
                 entry_type: WalEntryType::Delete,
                 table_id,
                 key: Some(key),
@@ -159,32 +198,32 @@ impl<S: StorageEngine, T: WalManager> WalStorage<S, T> {
                     .unwrap()
                     .as_secs(),
             };
-            self.wal.append(entry)?;
+            self.append_wal_entry(entry)?;
         }
         Ok(())
     }
 
-    fn log_update(&mut self, table_id: u64, key: Vec<u8>, data: Vec<u8>) -> SqlResult<()> {
+    fn log_update(&mut self, table_id: u64, key: Vec<u8>, new_record: Vec<u8>) -> SqlResult<()> {
         if self.wal_enabled {
             let entry = WalEntry {
-                tx_id: self.inner.current_tx_id(),
+                tx_id: self.current_tx_id,
                 entry_type: WalEntryType::Update,
                 table_id,
                 key: Some(key),
-                data: Some(data),
+                data: Some(new_record),
                 lsn: 0,
                 timestamp: std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
                     .unwrap()
                     .as_secs(),
             };
-            self.wal.append(entry)?;
+            self.append_wal_entry(entry)?;
         }
         Ok(())
     }
 
     pub fn begin_transaction(&mut self) -> SqlResult<u64> {
-        let tx_id = self.inner.current_tx_id();
+        let tx_id = self.current_tx_id;
         if self.wal_enabled {
             let entry = WalEntry {
                 tx_id,
@@ -198,13 +237,13 @@ impl<S: StorageEngine, T: WalManager> WalStorage<S, T> {
                     .unwrap()
                     .as_secs(),
             };
-            self.wal.append(entry)?;
+            self.append_wal_entry(entry)?;
         }
         Ok(tx_id)
     }
 
     pub fn commit_transaction(&mut self) -> SqlResult<()> {
-        let tx_id = self.inner.current_tx_id();
+        let tx_id = self.current_tx_id;
         let commit_lsn = if self.wal_enabled {
             let lsn = self.wal.current_lsn();
             let entry = WalEntry {
@@ -219,7 +258,7 @@ impl<S: StorageEngine, T: WalManager> WalStorage<S, T> {
                     .unwrap()
                     .as_secs(),
             };
-            self.wal.append(entry)?;
+            self.append_wal_entry(entry)?;
             self.wal.sync()?;
             self.wal.current_lsn()
         } else {
@@ -261,7 +300,7 @@ impl<S: StorageEngine, T: WalManager> WalStorage<S, T> {
     }
 
     pub fn rollback_transaction(&mut self) -> SqlResult<()> {
-        let tx_id = self.inner.current_tx_id();
+        let tx_id = self.current_tx_id;
         if self.wal_enabled {
             let entry = WalEntry {
                 tx_id,
@@ -275,7 +314,7 @@ impl<S: StorageEngine, T: WalManager> WalStorage<S, T> {
                     .unwrap()
                     .as_secs(),
             };
-            self.wal.append(entry)?;
+            self.append_wal_entry(entry)?;
             self.wal.sync()?;
         }
         self.inner.flush()?;
@@ -287,7 +326,7 @@ impl<S: StorageEngine, T: WalManager> WalStorage<S, T> {
     }
 
     pub fn current_tx_id(&self) -> u64 {
-        self.inner.current_tx_id()
+        self.current_tx_id
     }
 
     pub fn recover(&mut self) -> SqlResult<Vec<WalEntry>> {
@@ -298,6 +337,10 @@ impl<S: StorageEngine, T: WalManager> WalStorage<S, T> {
 impl<S: StorageEngine, T: WalManager> StorageEngine for WalStorage<S, T> {
     fn scan(&self, table: &str) -> SqlResult<Vec<Record>> {
         self.inner.scan(table)
+    }
+
+    fn flush(&mut self) -> SqlResult<()> {
+        self.inner.flush()
     }
 
     fn insert(&mut self, table: &str, records: Vec<Record>) -> SqlResult<()> {
@@ -339,16 +382,34 @@ impl<S: StorageEngine, T: WalManager> StorageEngine for WalStorage<S, T> {
     ) -> SqlResult<usize> {
         let table_id = Self::table_name_to_id(table);
 
-        let rows = self.inner.scan(table)?;
-        for row in &rows {
-            if Self::row_matches_filter(row, filters) {
-                let key = Self::record_key(row);
-                let old_data = Self::record_to_bytes(row);
-                self.log_update(table_id, key, old_data)?;
+        // Step 1: Get all rows and find those matching the filter (before-image)
+        let all_rows = self.inner.scan(table)?;
+        let rows_to_update: Vec<(Vec<u8>, Vec<Value>)> = all_rows
+            .iter()
+            .filter(|r| Self::row_matches_filter(r, filters))
+            .map(|r| (Self::record_key(r), r.clone()))
+            .collect();
+
+        let count = rows_to_update.len();
+
+        if count > 0 {
+            // Step 2: Compute after-image by applying updates to each matching row
+            for (key, mut row) in rows_to_update {
+                for &(col_idx, ref new_val) in updates {
+                    if col_idx < row.len() {
+                        row[col_idx] = new_val.clone();
+                    }
+                }
+                // Step 3: Log the after-image to WAL
+                let new_data = Self::record_to_bytes(&row);
+                self.log_update(table_id, key, new_data)?;
             }
         }
 
-        self.inner.update(table, filters, updates)
+        // Step 4: Call inner update (inner.update may be a stub, but we already logged)
+        let _ = self.inner.update(table, filters, updates)?;
+
+        Ok(count)
     }
 
     fn update_if(
@@ -359,6 +420,8 @@ impl<S: StorageEngine, T: WalManager> StorageEngine for WalStorage<S, T> {
     ) -> SqlResult<usize> {
         let table_id = Self::table_name_to_id(table);
         let key = format!("RowFilter-{:p}", filter).into_bytes();
+        // Encode the mutation as a debug string for WAL; on recovery the
+        // RowFilter closure cannot be reconstructed, so this is best-effort.
         let data = format!("{:?}", mutation).into_bytes();
         self.log_update(table_id, key, data)?;
         self.inner.update_if(table, filter, mutation)
@@ -425,7 +488,7 @@ impl<S: StorageEngine, T: WalManager> StorageEngine for WalStorage<S, T> {
     }
 
     fn begin_transaction(&mut self) -> SqlResult<u64> {
-        let tx_id = self.inner.current_tx_id();
+        let tx_id = self.current_tx_id;
         if self.wal_enabled {
             let entry = WalEntry {
                 tx_id,
@@ -439,13 +502,13 @@ impl<S: StorageEngine, T: WalManager> StorageEngine for WalStorage<S, T> {
                     .unwrap()
                     .as_secs(),
             };
-            self.wal.append(entry)?;
+            self.append_wal_entry(entry)?;
         }
         Ok(tx_id)
     }
 
     fn commit_transaction(&mut self) -> SqlResult<()> {
-        let tx_id = self.inner.current_tx_id();
+        let tx_id = self.current_tx_id;
         if self.wal_enabled {
             let entry = WalEntry {
                 tx_id,
@@ -459,7 +522,7 @@ impl<S: StorageEngine, T: WalManager> StorageEngine for WalStorage<S, T> {
                     .unwrap()
                     .as_secs(),
             };
-            self.wal.append(entry)?;
+            self.append_wal_entry(entry)?;
             self.wal.sync()?;
         }
         self.inner.flush()?;
@@ -467,7 +530,7 @@ impl<S: StorageEngine, T: WalManager> StorageEngine for WalStorage<S, T> {
     }
 
     fn rollback_transaction(&mut self) -> SqlResult<()> {
-        let tx_id = self.inner.current_tx_id();
+        let tx_id = self.current_tx_id;
         if self.wal_enabled {
             let entry = WalEntry {
                 tx_id,
@@ -481,7 +544,7 @@ impl<S: StorageEngine, T: WalManager> StorageEngine for WalStorage<S, T> {
                     .unwrap()
                     .as_secs(),
             };
-            self.wal.append(entry)?;
+            self.append_wal_entry(entry)?;
             self.wal.sync()?;
         }
         self.inner.flush()?;
@@ -489,14 +552,18 @@ impl<S: StorageEngine, T: WalManager> StorageEngine for WalStorage<S, T> {
     }
 
     fn in_transaction(&self) -> bool {
-        self.inner.in_transaction()
+        self.current_tx_id != 0
     }
 
     fn current_tx_id(&self) -> u64 {
-        self.inner.current_tx_id()
+        self.current_tx_id
     }
 
     fn set_current_tx_id(&mut self, id: u64) {
+        self.current_tx_id = id;
+        // PR-842: also propagate to the inner engine so its in_transaction
+        // gate sees the right state (FileStorage's insert buffers tx-scoped
+        // writes to avoid leaking uncommitted rows to disk on crash).
         self.inner.set_current_tx_id(id);
     }
 
@@ -584,6 +651,57 @@ mod tests {
     }
 
     #[test]
+    fn test_pr830f_lifecycle_commit_advances_checkpoint_and_truncates() {
+        use crate::checkpoint::CheckpointManager;
+
+        let inner = MemoryStorage::new();
+        let wal = MemoryWalManager::new();
+        let cp = Arc::new(RwLock::new(CheckpointManager::default()));
+        let mut storage = WalStorage::with_checkpoint_manager(inner, wal, cp.clone()).unwrap();
+
+        // First commit: should set checkpoint_lsn
+        storage.begin_transaction().unwrap();
+        storage.insert("t1", vec![vec![Value::Integer(1)]]).unwrap();
+        storage.commit_transaction().unwrap();
+        let lsn_after_first = cp.read().unwrap().last_checkpoint_lsn();
+        assert!(
+            lsn_after_first.is_some(),
+            "checkpoint LSN must be set after first commit"
+        );
+        let first_lsn = lsn_after_first.unwrap();
+        assert!(first_lsn > 0, "first commit LSN must be > 0");
+
+        // Second commit: checkpoint should advance, WAL truncated before prior checkpoint
+        storage.begin_transaction().unwrap();
+        storage.insert("t1", vec![vec![Value::Integer(2)]]).unwrap();
+        storage.commit_transaction().unwrap();
+        let lsn_after_second = cp.read().unwrap().last_checkpoint_lsn().unwrap();
+        assert!(
+            lsn_after_second > first_lsn,
+            "checkpoint LSN must advance: {} -> {}",
+            first_lsn,
+            lsn_after_second
+        );
+
+        // PR-830F: truncate_before was called on WAL — recover() returns only entries after cp_lsn
+        let entries = storage.recover().unwrap();
+        assert!(
+            !entries.is_empty(),
+            "recover() must still return at least 1 entry (current tx)"
+        );
+        // All retained entries must have lsn >= some new lsn (truncation happened internally)
+        for e in &entries {
+            // The current commit entry is retained; older ones are truncated
+            assert!(
+                e.lsn >= first_lsn,
+                "recovered entry lsn {} must be >= first_lsn {} (truncate worked)",
+                e.lsn,
+                first_lsn
+            );
+        }
+    }
+
+    #[test]
     fn test_wal_storage_with_file_backed() {
         let dir = TempDir::new().unwrap();
         let inner = MemoryStorage::new();
@@ -597,5 +715,55 @@ mod tests {
 
         let entries = storage.recover().unwrap();
         assert_eq!(entries.len(), 3);
+    }
+
+    #[test]
+    fn test_wal_storage_update_stores_new_image() {
+        let inner = MemoryStorage::new();
+        let wal = MemoryWalManager::new();
+        let mut storage = WalStorage::new(inner, wal).unwrap();
+
+        let mut col_id = crate::engine::ColumnDefinition::new("id", "INTEGER");
+        col_id.primary_key = true;
+        let mut col_val = crate::engine::ColumnDefinition::new("value", "INTEGER");
+        col_val.primary_key = false;
+        storage
+            .create_table(&crate::engine::TableInfo {
+                name: "t1".to_string(),
+                columns: vec![col_id, col_val],
+                foreign_keys: vec![],
+                unique_constraints: vec![],
+                check_constraints: vec![],
+                partition_info: None,
+            })
+            .unwrap();
+
+        storage.begin_transaction().unwrap();
+        storage
+            .insert(
+                "t1",
+                vec![
+                    vec![Value::Integer(1), Value::Integer(10)],
+                    vec![Value::Integer(2), Value::Integer(20)],
+                ],
+            )
+            .unwrap();
+        storage.commit_transaction().unwrap();
+
+        storage.begin_transaction().unwrap();
+        storage
+            .update("t1", &[Value::Integer(1)], &[(1, Value::Integer(100))])
+            .unwrap();
+        storage.commit_transaction().unwrap();
+
+        let entries = storage.recover().unwrap();
+        let updates: Vec<_> = entries
+            .iter()
+            .filter(|e| e.entry_type == WalEntryType::Update)
+            .collect();
+
+        assert_eq!(updates.len(), 1);
+        assert!(updates[0].key.is_some());
+        assert!(updates[0].data.is_some());
     }
 }

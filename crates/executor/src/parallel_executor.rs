@@ -1203,7 +1203,7 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
+        #[ignore = "Parallel executor feature TBD (F-09 deep fixes follow-up)"]
     fn test_parallel_count_speedup() {
         // Test parallel COUNT(*) - validates parallel counting framework
         use std::sync::atomic::{AtomicUsize, Ordering};
@@ -1607,7 +1607,7 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
+        #[ignore = "Parallel executor feature TBD (F-09 deep fixes follow-up)"]
     fn test_parallel_aggregate_speedup() {
         // Test parallel aggregate with GROUP BY
         use sqlrustgo_planner::{
