@@ -152,9 +152,9 @@ lru-cache.workspace = true
 ctrlc.workspace = true
 serde_json.workspace = true
 
-[[test]]
-name = "ci_test"
-path = "tests/ci_test.rs"
+# Canonical name `ci_test` is owned by the subdir file (tests/ci/ci_test.rs).
+# The legacy top-level tests/ci_test.rs was removed because it shadowed the
+# subdir test with identical content.
 
 [[bench]]
 name = "sql_operations"
@@ -449,9 +449,24 @@ path = "tests/wire_protocol_smoke.rs"
 name = "cross_path_consistency_test"
 path = "tests/cross_path_consistency_test.rs"
 
+# L3 acceptance + D9 self-tests: registered so D9 (check_full_gate_verification.sh)
+# can run them via `cargo test --test <name>`. Without these entries D9 fails
+# with "ERROR (no test result)" because cargo's test discovery cannot find them.
+[[test]]
+name = "e2e_canonical_subprocess"
+path = "tests/e2e_canonical_subprocess.rs"
+
+[[test]]
+name = "pr_template_and_full_gate_test"
+path = "tests/pr_template_and_full_gate_test.rs"
+
+[[test]]
+name = "tpch_value_correctness_test"
+path = "tests/tpch_value_correctness_test.rs"
+
 # Aliases for ci/ subdir tests (basename != cargo name)
 [[test]]
-name = "ci_ci_test"
+name = "ci_test"
 path = "tests/ci/ci_test.rs"
 
 # Memory limit for tests: 8GB (8 * 1024 * 1024 * 1024 bytes)
