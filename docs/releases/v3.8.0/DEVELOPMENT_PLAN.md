@@ -69,6 +69,26 @@ PR-890  Snapshot + MVCC + Rollback 完成     ← ACID完成层（依赖840）
 PR-900  ExecutionEngine 拆分清理             ← 收尾重构（依赖890）
 ```
 
+### 2.1 PR DAG 实际执行状态
+
+> ⚠️ **Alpha 阶段评审发现**: PR DAG 与实际执行偏差较大。详见 `ALPHA_STAGE_REVIEW.md`。
+
+| PR | 规划阶段 | 实际状态 | 说明 |
+|----|----------|----------|------|
+| PR-800 (COM_QUERY AST Routing) | Phase 0 | ⚠️ 部分落地 | TransactionalFacade DEFERRED (#2603) |
+| PR-810 (ExecutionEngine → Router) | Phase 0 | ❌ 未合并 | 无 Issue 追踪 |
+| PR-820 (TransactionManager Session Binding) | Phase 1 | ❌ 未合并 | 无 Issue 追踪 |
+| PR-830 (WAL + WriteBuffer) | Phase 1 | ✅ 已合并 | PR-830A~E + PR-830F |
+| PR-840 (DML Transaction Interception) | Phase 1 | ❌ 未合并 | 无 Issue 追踪 |
+| PR-850 (mysql-server → LocalExecutor) | Phase 2 | ❌ 未合并 | 无 Issue 追踪 |
+| PR-860 (Planner Layer Consolidation) | Phase 2 | ❌ 未合并 | 无 Issue 追踪 |
+| PR-870 (ParallelVolcanoExecutor) | Phase 2 | ❌ 未合并 | 无 Issue 追踪 |
+| PR-880 (VTU Predicate/Mutation Pipeline) | Phase 3 | ❌ 未合并 | 无 Issue 追踪 |
+| PR-890 (Snapshot + MVCC + Rollback) | Phase 3 | ❌ 未合并 | 无 Issue 追踪 |
+| PR-900 (ExecutionEngine 拆分清理) | Phase 4 | ❌ 未合并 | 无 Issue 追踪 |
+
+**改进建议**: Beta Gate 应强制执行 `scripts/gate/check_pr_dag.sh`，验证要求的 PR 是否已合并。
+
 ---
 
 ## 3. 阶段目标（Alpha / Beta / RC / GA）
