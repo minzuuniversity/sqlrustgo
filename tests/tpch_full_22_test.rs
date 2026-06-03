@@ -221,7 +221,11 @@ fn test_tpch_full_22_queries() {
         let q_path = qdir.join(format!("q{}.sql", q));
         if !q_path.exists() {
             eprintln!("  {} ... ⚠️  query file not found", q_name);
-            results.push((Box::leak(q_name.into_boxed_str()), Duration::ZERO, Err("file not found".to_string())));
+            results.push((
+                Box::leak(q_name.into_boxed_str()),
+                Duration::ZERO,
+                Err("file not found".to_string()),
+            ));
             continue;
         }
         let q_sql = fs::read_to_string(&q_path)

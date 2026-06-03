@@ -1,85 +1,205 @@
-name: R-Gate Verification
+name: R-Gate v3.8.0 — 5-Dimension Integrated Gate
+
+# v3.8.0 modernized gate system to 5 dimensions (D1-D5).
+# This workflow replaces the v2.9.0-era r-gate.yml that called deprecated scripts.
+#
+# Dimensions (per scripts/gate/check_rc_ga_gate.sh):
+#   D1-Alpha   : Build + Test + Clippy + Format + Coverage + Governance
+#   D2-Beta    : WAL Contract + Integration Gate
+#   D3-SGL     : Layer-3 Semantic Gate (SGL-001~005)
+#   D4-WAL     : WAL invariant validation (INV-1, INV-2, INV-3)
+#   D5-DeepSeek: 10 Principles for RC/GA
+#
+# 5-Principle alignment (from COMPREHENSIVE_FEATURE_TRACKING.md):
+#   P1: 有计划必有实现
+#   P2: 有实现必有测试
+#   P3: 测试必审
+#   P4: 必须集成到门禁测试 ← THIS WORKFLOW ENFORCES THIS
+#   P5: 未过必记
 
 on:
   pull_request:
-    branches: [develop/v2.9.0]
+    branches: [develop/v3.8.0, main]
   push:
-    branches: [develop/v2.9.0]
+    branches: [develop/v3.8.0, main]
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
 
 jobs:
-  gate-r1-r7:
-    name: R1-R7 Core Gates
+  # ============================================================
+  # Stage 1: Alpha Gate (D1-Alpha)
+  # ============================================================
+  alpha-gate:
+    name: Alpha Gate (D1)
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      - name: Install Rust
+      - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
-      - name: R1: Build Check
-        run: cargo build --all-features
+      - name: Cache cargo registry & target
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
 
-      - name: R2: Test Suite
-        run: cargo test --all-features
+      - name: "A1-A5: Standard checks"
+        run: bash scripts/gate/check_alpha_v380.sh
 
-      - name: R3: Clippy Lint
-        run: cargo clippy --all-features -- -D warnings
+      - name: Upload alpha artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: alpha-gate-artifacts
+          path: artifacts/gate/v3.8.0/
+          retention-days: 30
 
-      - name: R4: Format Check
-        run: cargo fmt --all -- --check
-
-      - name: R5: Coverage Check
-        run: bash scripts/gate/check_coverage.sh
-
-      - name: R6: Security Audit
-        run: bash scripts/gate/check_security.sh
-
-      - name: R7: Documentation Links
-        run: bash scripts/gate/check_docs_links.sh
-
-  gate-r8-sql-compat:
-    name: R8: SQL Compatibility
+  # ============================================================
+  # Stage 2: RC/GA Gate (D1-D5 integrated)
+  # ============================================================
+  rc-ga-gate:
+    name: RC/GA Gate (D1-D5)
     runs-on: ubuntu-latest
+    needs: alpha-gate
+    if: github.event_name == 'push' || contains(github.event.pull_request.labels.*.name, 'rc-ready')
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
-      - name: Install Rust
+        with:
+          fetch-depth: 0
+
+      - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
-      - name: R8: SQL Corpus Check
-        run: bash scripts/gate/check_sql_compat.sh
 
-  gate-r9-performance:
-    name: R9: Performance Baseline
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-      - name: R9: Performance Check
-        run: bash scripts/gate/check_perf_baseline.sh
+      - name: Cache cargo registry & target
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
 
-  gate-r10-proof:
-    name: R10: Formal Proof
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: R10: Proof Registry Check
-        run: bash scripts/gate/check_proof.sh
-
-  gate-attack-surface:
-    name: G-Gate: Attack Surface
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: G-Gate: Attack Surface Check
-        run: bash scripts/gate/check_attack_surface.sh
-
-  merge-gate:
-    name: Merge Eligibility
-    needs: [gate-r1-r7, gate-r8-sql-compat, gate-r9-performance, gate-r10-proof, gate-attack-surface]
-    runs-on: ubuntu-latest
-    if: always()
-    steps:
-      - name: Check All Gates
+      - name: Run 5-dim integrated gate
         run: |
-          echo "All required gates passed"
-          echo "Ready for merge"
+          if [ "${{ github.event_name }}" == "push" ] && [ "${{ github.ref }}" == "refs/heads/main" ]; then
+            # GA: full D1-D5 + L2-L3
+            bash scripts/gate/check_rc_ga_gate.sh ga
+          else
+            # RC: D1-D4 + D5-Principles
+            bash scripts/gate/check_rc_ga_gate.sh rc
+          fi
+
+      - name: Upload RC/GA artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rc-ga-gate-artifacts
+          path: artifacts/gate/v3.8.0/
+          retention-days: 90
+
+  # ============================================================
+  # Stage 3: Test Inventory Audit (5-Principle P4 enforcement)
+  # ============================================================
+  test-inventory-audit:
+    name: Test Inventory Audit (P4)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Count tests in tests/ directory
+        id: count_tests
+        run: |
+          TESTS_DIR_COUNT=$(find tests -name "*.rs" -type f 2>/dev/null | wc -l)
+          echo "tests_dir_count=$TESTS_DIR_COUNT" >> $GITHUB_OUTPUT
+          echo "Total test files: $TESTS_DIR_COUNT"
+
+      - name: Count tests referenced in check_rc_ga_gate.sh
+        id: count_referenced
+        run: |
+          REFERENCED=$(grep -E "cargo test --test" scripts/gate/check_rc_ga_gate.sh 2>/dev/null | wc -l)
+          echo "referenced_count=$REFERENCED" >> $GITHUB_OUTPUT
+          echo "Tests referenced in gate: $REFERENCED"
+
+      - name: 'Check P4: 5-Principle "必须集成到门禁测试"'
+        run: |
+          TESTS_DIR_COUNT=${{ steps.count_tests.outputs.tests_dir_count }}
+          REFERENCED=${{ steps.count_referenced.outputs.referenced_count }}
+          INTEGRATION_RATIO=$(awk "BEGIN {printf \"%.1f\", ($REFERENCED / $TESTS_DIR_COUNT) * 100}")
+          echo "Test integration ratio: ${INTEGRATION_RATIO}% ($REFERENCED/$TESTS_DIR_COUNT)"
+
+          # 5-Principle P4 target: 95%+
+          if [ "$INTEGRATION_RATIO" -lt "95" ]; then
+            echo "::warning::5-Principle P4 violation: only ${INTEGRATION_RATIO}% of tests integrated to gate (target: 95%+)"
+            echo "::warning::See COMPREHENSIVE_FEATURE_TRACKING.md §3 and issue #2874 (P0-1)"
+            exit 1
+          else
+            echo "✅ 5-Principle P4 satisfied: ${INTEGRATION_RATIO}% ≥ 95%"
+          fi
+
+  # ============================================================
+  # Stage 4: Cross-Version Debt Gate (4-Principle P5 enforcement)
+  # ============================================================
+  cross-version-debt:
+    name: Cross-Version Debt Gate (P5)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run cross-version debt gate
+        run: bash scripts/gate/check_cross_version_debt.sh
+
+      - name: Verify 0 ACTIVE debt
+        run: |
+          ACTIVE_COUNT=$(bash scripts/gate/check_cross_version_debt.sh 2>&1 | grep -c "ACTIVE" || true)
+          echo "ACTIVE debt count: $ACTIVE_COUNT"
+          if [ "$ACTIVE_COUNT" -gt "0" ]; then
+            echo "::error::Cross-version debt has $ACTIVE_COUNT ACTIVE items - see INT5_PLUS_DEBT_INVENTORY.md"
+            exit 1
+          else
+            echo "✅ Cross-version debt: 0 ACTIVE"
+          fi
+
+  # ============================================================
+  # Merge Eligibility (gates merge based on all stages)
+  # ============================================================
+  merge-gate:
+    name: Merge Eligibility (all stages)
+    needs: [alpha-gate, test-inventory-audit, cross-version-debt]
+    # rc-ga-gate is required only for push to main or rc-ready labels
+    if: always() || contains(github.event.pull_request.labels.*.name, 'rc-ready')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify all required gates passed
+        run: |
+          echo "=== Gate Results ==="
+          echo "alpha-gate:        ${{ needs.alpha-gate.result }}"
+          echo "test-inventory:    ${{ needs.test-inventory-audit.result }}"
+          echo "cross-version:     ${{ needs.cross-version-debt.result }}"
+          if [ "${{ github.event_name }}" == "push" ] && [ "${{ github.ref }}" == "refs/heads/main" ]; then
+            echo "rc-ga-gate:        ${{ needs.rc-ga-gate.result }}"
+          fi
+
+          if [ "${{ needs.alpha-gate.result }}" != "success" ] || \
+             [ "${{ needs.test-inventory-audit.result }}" != "success" ] || \
+             [ "${{ needs.cross-version-debt.result }}" != "success" ]; then
+            echo "::error::Required gate(s) failed - merge blocked"
+            exit 1
+          fi
+
+          echo "✅ All required gates passed - merge eligible"
