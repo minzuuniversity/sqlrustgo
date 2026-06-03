@@ -417,6 +417,43 @@ path = "tests/wal_tx_contract_test.rs"
 name = "cargo_toml_test_paths_test"
 path = "tests/cargo_toml_test_paths_test.rs"
 
+# P1-1 / P1-2 / P1-3 self-tests (added by P1-3 to fix orphan test files)
+# These test the gate scripts themselves and need explicit [[test]] entries
+# to avoid being silently skipped by `cargo test`.
+
+[[test]]
+name = "int_debt_gate_test"
+path = "tests/int_debt_gate_test.rs"
+
+[[test]]
+name = "arch_sem_debt_gate_test"
+path = "tests/arch_sem_debt_gate_test.rs"
+
+[[test]]
+name = "test_plan_integrated_test"
+path = "tests/test_plan_integrated_test.rs"
+
+# Other P1.x self-tests that need explicit registration:
+# - l3_canonical_binary (P-X), wire_protocol_smoke (P-X), cross_path_consistency_test (P-X)
+# These are owned by other PRs; P1-3 just registers them for visibility.
+
+[[test]]
+name = "l3_canonical_binary"
+path = "tests/l3_canonical_binary.rs"
+
+[[test]]
+name = "wire_protocol_smoke"
+path = "tests/wire_protocol_smoke.rs"
+
+[[test]]
+name = "cross_path_consistency_test"
+path = "tests/cross_path_consistency_test.rs"
+
+# Aliases for ci/ subdir tests (basename != cargo name)
+[[test]]
+name = "ci_ci_test"
+path = "tests/ci/ci_test.rs"
+
 # Memory limit for tests: 8GB (8 * 1024 * 1024 * 1024 bytes)
 # This prevents any single test from consuming excessive memory
 [profile.test]
