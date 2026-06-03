@@ -204,6 +204,63 @@ pub fn evaluate_binary_op(left: &Value, right: &Value, op: &str) -> Value {
                 Value::Boolean(false)
             }
         }
+        // Arithmetic — promote Integer to Float when mixed.
+        "+" => match (left, right) {
+            (Value::Integer(l), Value::Integer(r)) => Value::Integer(l + r),
+            (Value::Float(l), Value::Float(r)) => Value::Float(l + r),
+            (Value::Integer(l), Value::Float(r)) => Value::Float((*l as f64) + r),
+            (Value::Float(l), Value::Integer(r)) => Value::Float(l + (*r as f64)),
+            (Value::Null, _) | (_, Value::Null) => Value::Null,
+            _ => Value::Null,
+        },
+        "-" => match (left, right) {
+            (Value::Integer(l), Value::Integer(r)) => Value::Integer(l - r),
+            (Value::Float(l), Value::Float(r)) => Value::Float(l - r),
+            (Value::Integer(l), Value::Float(r)) => Value::Float((*l as f64) - r),
+            (Value::Float(l), Value::Integer(r)) => Value::Float(l - (*r as f64)),
+            (Value::Null, _) | (_, Value::Null) => Value::Null,
+            _ => Value::Null,
+        },
+        "*" => match (left, right) {
+            (Value::Integer(l), Value::Integer(r)) => Value::Integer(l * r),
+            (Value::Float(l), Value::Float(r)) => Value::Float(l * r),
+            (Value::Integer(l), Value::Float(r)) => Value::Float((*l as f64) * r),
+            (Value::Float(l), Value::Integer(r)) => Value::Float(l * (*r as f64)),
+            (Value::Null, _) | (_, Value::Null) => Value::Null,
+            _ => Value::Null,
+        },
+        "/" => match (left, right) {
+            (Value::Integer(l), Value::Integer(r)) => {
+                if *r == 0 {
+                    Value::Null
+                } else {
+                    Value::Integer(l / r)
+                }
+            }
+            (Value::Float(l), Value::Float(r)) => {
+                if *r == 0.0 {
+                    Value::Null
+                } else {
+                    Value::Float(l / r)
+                }
+            }
+            (Value::Integer(l), Value::Float(r)) => {
+                if *r == 0.0 {
+                    Value::Null
+                } else {
+                    Value::Float((*l as f64) / r)
+                }
+            }
+            (Value::Float(l), Value::Integer(r)) => {
+                if *r == 0 {
+                    Value::Null
+                } else {
+                    Value::Float(l / (*r as f64))
+                }
+            }
+            (Value::Null, _) | (_, Value::Null) => Value::Null,
+            _ => Value::Null,
+        },
         _ => Value::Null,
     }
 }
@@ -216,6 +273,27 @@ pub fn compare_values(left: &Value, right: &Value) -> i32 {
             if l < r {
                 -1
             } else if l > r {
+                1
+            } else {
+                0
+            }
+        }
+        // Cross-type: coerce Integer to Float for comparison.
+        (Value::Integer(l), Value::Float(r)) => {
+            let lf = *l as f64;
+            if lf < *r {
+                -1
+            } else if lf > *r {
+                1
+            } else {
+                0
+            }
+        }
+        (Value::Float(l), Value::Integer(r)) => {
+            let rf = *r as f64;
+            if l < &rf {
+                -1
+            } else if l > &rf {
                 1
             } else {
                 0
