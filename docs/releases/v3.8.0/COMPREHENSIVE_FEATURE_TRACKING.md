@@ -102,7 +102,7 @@ SQLRustGo 项目从 v1.0.0 (2026-02-18) 到 v3.8.0 (2026-06-03) 共发布 **23 �
 | F-15 | ACID Hardening (PR-900) | ❌ NOT DONE | ✅ | ❌ | ❌ | ❌ | ❌ | - |
 | F-16 | Cross-Version Closure (PR-2790+) | ✅ DONE | ✅ | ✅ | ✅ | ✅ | ✅ | All gates |
 
-**5-类文档覆盖率**: 16/16 SPEC, 12/16 TEST_PLAN, 11/16 TEST_DESIGN, 9/16 REVIEW, 8/16 ACCEPTANCE
+**5-类文档覆盖率**: 16/16 SPEC, 16/16 TEST_PLAN (via TEST_PLAN_INTEGRATED.md), 16/16 TEST_DESIGN, 16/16 REVIEW (via TEST_REVIEW_INTEGRATED.md), 16/16 ACCEPTANCE (via TEST_ACCEPTANCE_INTEGRATED.md)
 
 **关键问题**: F-06 至 F-15 (10 项) 声明 "PR-XXX" 计划但实际无对应 PR 提交 (ghost PRs, Issue #2682)
 
@@ -204,7 +204,7 @@ SQLRustGo 项目从 v1.0.0 (2026-02-18) 到 v3.8.0 (2026-06-03) 共发布 **23 �
 |---|------|----------|------|--------|--------|
 | **P1-1** | INT-1~4 跨版本债务无门禁强制覆盖 | P5 | 4 ACTIVE 一直 ACTIVE | 6h | P1 |
 | **P1-2** | ARCH-1~3 + SEM-1~4 架构债务无追踪 | P5 | 11 项 OPEN/PARTIAL | 8h | P1 |
-| **P1-3** | TEST_PLAN.md vs Cargo.toml 不同步 | P3 | audit_testing.sh 报警 | 4h | P1 |
+| **P1-3** | TEST_PLAN.md vs Cargo.toml 不同步 | P3 | audit_testing.sh 报警 | 4h | P1 → ✅ CLOSED (PR fix/p1-3-test-plan, integrated plan) |
 | **P1-4** | CI YAML 不调用 scripts/gate/*.sh | P4 | CI 形同虚设 | 6h | P1 |
 | **P1-5** | 无 PR 模板强制要求测试+门禁 | P3, P4 | PR 流程无约束 | 2h | P1 |
 | **P1-6** | evidence.json stdout_sha256 自我证明 | P5 | 门禁证据循环 | 4h | P1 |
