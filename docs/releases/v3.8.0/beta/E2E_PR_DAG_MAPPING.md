@@ -46,6 +46,9 @@
 | F-20 | F-35 Password Rotation | PR-2846 | `tests/password_rotation_test.rs` | ✅ EXISTS (8 tests) | (新增) | openspec validated |
 | F-21 | F-29 Row-Level Security | PR-2852 | `tests/row_level_security_test.rs` | ✅ EXISTS (6 tests) | (新增) | openspec validated |
 | F-22 | G2 MERGE statement syntax | PR-2849 | (parser tests) | 🟡 PARTIAL | (新增) | Parser layer fixed, executor pending PR-870 |
+| F-23 | F-24 Adaptive Hash Index | PR-2853 | (existing) | (TBD) | (新增) | (新增 — 待 E2E 跟踪) |
+| **F-14-ext** | **MVCC 隔离级别补全 (T-ISO-01~05)** | **SPEC-024** | **`tests/mvcc_transaction_test.rs`** | **✅ EXISTS (5 tests)** | **(新增)** | **基于现有 Snapshot API 纯测试** |
+| **F-10-ext** | **mysql-server cross-path E2E** | **SPEC-024** | **`tests/cross_path_consistency_test.rs`** | **✅ EXISTS (5 tests)** | **(新增)** | **3 路径 SELECT/INSERT/UPDATE/DELETE/ERROR 一致** |
 
 ### 统计
 
