@@ -1,3 +1,10 @@
+<!--
+**Debt ID**: F-24
+**Status**: IMPLEMENTED
+**Implementation PR**: PR fix/f-24-adaptive-hash-index
+**Test Coverage**: 7/7 tests
+-->
+
 # F-24 SPEC: Adaptive Hash Index
 
 > **Issue**: #2825
