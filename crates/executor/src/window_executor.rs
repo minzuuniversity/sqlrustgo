@@ -767,7 +767,6 @@ mod tests {
 
     // NOTE: Empty partition test removed - causes panic (frame_rows.first() on empty vec).
     // This is an edge-case implementation bug, not a coverage gap.
-    // #[test] fn test_window_empty_partition() { ... }
 
     #[test]
     fn test_row_number() {
