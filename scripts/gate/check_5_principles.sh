@@ -36,9 +36,9 @@ cd "$REPO_ROOT"
 RELEASE_DIR="$REPO_ROOT/docs/releases/$VERSION"
 
 # ============================================================
-# 全局结果收集
-# ============================================================
-declare -A RESULTS
+# 5 Principles uses individual counters (G01_PASS/FAIL, etc.) instead
+# of an associative array, for bash 3.2 (macOS default) compatibility.
+# See SPEC-010 for details.
 G01_PASS=0; G01_FAIL=0
 G02_PASS=0; G02_FAIL=0
 G03_PASS=0; G03_FAIL=0
