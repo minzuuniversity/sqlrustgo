@@ -1,5 +1,7 @@
 # v3.8.0 TEST ACCEPTANCE SUMMARY — 统一验收汇总
 
+<!-- env:blocked:no-ci -->
+
 > **Version**: v3.8.0
 > **Branch**: `test/v380-test-coverage-a1-a4` (基于 develop/v3.8.0)
 > **Date**: 2026-06-02
