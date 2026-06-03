@@ -299,6 +299,12 @@ pub enum AggregateFunction {
 pub struct JoinClause {
     pub join_type: JoinType,
     pub table: String,
+    /// TPC-H Q7/Q8/Q9: same table referenced multiple times via different
+    /// aliases (e.g. `nation n1 JOIN ... JOIN nation n2 ON ...`). When set,
+    /// the executor uses this as the column-name prefix in the
+    /// accumulated join schema; the user can then refer to columns via
+    /// the alias (`n1.n_nationkey`).
+    pub alias: Option<String>,
     pub on_clause: Expression,
 }
 
@@ -315,6 +321,10 @@ pub struct AggregateCall {
 pub struct SelectStatement {
     pub columns: Vec<SelectColumn>,
     pub table: String,
+    /// TPC-H Q7/Q8/Q9: FROM `t a` stores `table = "t"`, `from_alias = "a"`.
+    /// The executor uses the alias as the column-name prefix in the
+    /// scan schema so the user can write `a.col` in subsequent JOIN ON.
+    pub from_alias: Option<String>,
     /// TPC-H Sprint 1b fix (Q7/Q8/Q9): FROM (subquery) AS alias.
     /// When set, executor first executes the subquery and materializes its
     /// result into a temporary table named `table`, then runs the outer
@@ -1726,10 +1736,21 @@ impl Parser {
             Some(t) => return Err(format!("Expected FROM or end of query, got {:?}", t)),
         };
 
-        // Check for table alias (e.g., `FROM users u`) — only when no subquery
-        if from_subquery.is_none() && matches!(self.current(), Some(Token::Identifier(_))) {
-            self.next(); // consume alias
-        }
+        // Check for table alias (e.g., `FROM users u`) — only when no subquery.
+        // TPC-H Q7/Q8/Q9 use `nation n1, nation n2` to reference the same
+        // table twice; the alias is the routing key in subsequent JOIN ON
+        // conditions.
+        let from_alias: Option<String> =
+            if from_subquery.is_none() && matches!(self.current(), Some(Token::Identifier(_))) {
+                let alias = match self.current().cloned() {
+                    Some(Token::Identifier(a)) => a,
+                    _ => return Err("Expected alias identifier".to_string()),
+                };
+                self.next();
+                Some(alias)
+            } else {
+                None
+            };
 
         // Check for JOIN (one or more chained JOINs: t1 JOIN t2 ... JOIN tN)
         let mut join_clause: Vec<JoinClause> = Vec::new();
@@ -1830,6 +1851,7 @@ impl Parser {
         Ok(SelectStatement {
             columns,
             table,
+            from_alias,
             from_subquery,
             where_clause,
             join_clause,
@@ -1950,10 +1972,20 @@ impl Parser {
             None => return Err("Expected table name".to_string()),
         };
 
-        // Check for table alias (e.g., `JOIN orders o`)
-        if matches!(self.current(), Some(Token::Identifier(_))) {
-            self.next(); // consume alias
-        }
+        // Check for table alias (e.g., `JOIN orders o`).
+        // TPC-H Q7/Q8/Q9: `JOIN nation n1 ON ...` — the alias is what the
+        // executor uses as the column-name prefix in the accumulated
+        // join schema, so `n1.n_nationkey` can be resolved.
+        let alias: Option<String> = if matches!(self.current(), Some(Token::Identifier(_))) {
+            let a = match self.current().cloned() {
+                Some(Token::Identifier(name)) => name,
+                _ => return Err("Expected alias identifier".to_string()),
+            };
+            self.next();
+            Some(a)
+        } else {
+            None
+        };
 
         // Parse ON condition (optional for CROSS JOIN)
         let on_clause = if matches!(self.current(), Some(Token::On)) {
@@ -1966,6 +1998,7 @@ impl Parser {
         Ok(JoinClause {
             join_type,
             table,
+            alias,
             on_clause,
         })
     }
