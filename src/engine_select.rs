@@ -166,8 +166,37 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             rows
         };
 
-        let row_count = limited_rows.len();
-        Ok(ExecutorResult::new(limited_rows, row_count))
+        // Step 5: SELECT projection — apply each `select.columns` expression
+        // to the accumulated row and emit a row of projected values. This
+        // is what makes `SELECT EXTRACT(YEAR FROM col) AS o_year` actually
+        // return `o_year` instead of the full table schema.
+        //
+        // Sprint 2: SELECT * (no columns or a `*` entry) skips projection
+        // and returns the accumulated rows as-is — that's the existing
+        // behavior, just made explicit here.
+        let is_star = select.columns.is_empty() || select.columns.iter().any(|c| c.name == "*");
+        let projected_rows: Vec<Vec<Value>> = if is_star {
+            limited_rows
+        } else {
+            limited_rows
+                .into_iter()
+                .map(|row| {
+                    select
+                        .columns
+                        .iter()
+                        .map(|col| match &col.expression {
+                            Some(expr) => {
+                                evaluate_expression(expr, &row, &table_info).unwrap_or(Value::Null)
+                            }
+                            None => row.first().cloned().unwrap_or(Value::Null),
+                        })
+                        .collect()
+                })
+                .collect()
+        };
+
+        let row_count = projected_rows.len();
+        Ok(ExecutorResult::new(projected_rows, row_count))
     }
 
     fn compute_aggregates(
