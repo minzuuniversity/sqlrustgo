@@ -7,8 +7,6 @@
 //! available as `sqlrustgo-mysql-server repl`).
 
 fn main() {
-    eprintln!(
-        "sqlrustgo: DEPRECATED since v3.8.0 — use `sqlrustgo-mysql-server repl` instead"
-    );
+    eprintln!("sqlrustgo: DEPRECATED since v3.8.0 — use `sqlrustgo-mysql-server repl` instead");
     println!("SQLRustGo v3.8.0 (canonical entry: sqlrustgo-mysql-server)");
 }
