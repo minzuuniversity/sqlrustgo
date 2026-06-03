@@ -440,7 +440,7 @@ D6_INTEGRATION_TESTS=(
 )
 
 run_d6_integration_tests() {
-    log_header "D6: Integration Test Coverage Gate (Issue #2874)"
+    log_header "D6a: Integration Test Coverage Gate (Issue #2874) — see check_full_gate_verification.sh for D6 Test Inventory"
 
     # Build a one-shot manifest of all integration tests we should track.
     # Skip the duplicate placeholder "ci_test" and "embedded_harnesssmoke"
@@ -752,7 +752,7 @@ ${NC}"
     echo "  D3-SGL:    PASS=$D3_PASS | FAIL=$D3_FAILS | DRIFT=$D3_DRIFTS"
     echo "  D4-WAL:    $D4_PASS/$D4_TOTAL"
     echo "  D5-DeepSeek: $D5_PASS/$D5_TOTAL"
-    echo "  D6-Integration: $D6_PASS/$D6_TOTAL (FAIL: $D6_FAIL)"
+    echo "  D6a-Integration: $D6_PASS/$D6_TOTAL (FAIL: $D6_FAIL)  (D6-TestInventory in check_full_gate_verification.sh)"
     echo ""
 
     # Determine gate verdict
