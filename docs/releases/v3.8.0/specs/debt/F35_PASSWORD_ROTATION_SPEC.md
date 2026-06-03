@@ -1,3 +1,10 @@
+<!--
+**Debt ID**: F-35
+**Status**: IMPLEMENTED
+**Implementation PR**: PR fix/f-35-password-rotation
+**Test Coverage**: 8/8 tests
+-->
+
 # F-35 SPEC: Password Rotation
 
 > **Issue**: #2832
