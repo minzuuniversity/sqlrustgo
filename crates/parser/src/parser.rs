@@ -2081,10 +2081,18 @@ impl Parser {
             }
             Some(Token::Left) => {
                 self.next();
+                // Consume optional OUTER keyword (e.g. `LEFT OUTER JOIN`).
+                if matches!(self.current(), Some(Token::Outer)) {
+                    self.next();
+                }
                 JoinType::Left
             }
             Some(Token::Right) => {
                 self.next();
+                // Consume optional OUTER keyword (e.g. `RIGHT OUTER JOIN`).
+                if matches!(self.current(), Some(Token::Outer)) {
+                    self.next();
+                }
                 JoinType::Right
             }
             Some(Token::Full) => {
