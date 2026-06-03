@@ -518,17 +518,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         Ok((matched_results, combined_schema))
     }
 
-    /// Resolve a join-key column index, looking across both sides of the join.
-    /// For multi-join chains, the left side is the accumulated `a_join_b...` and
-    /// would otherwise reject qualifiers that point at a freshly-joined right
-    /// table (or at a table embedded in the accumulated left). Returning a
-    /// `JoinKey { side, index }` lets the caller pick the index in the correct
-    /// row vector.
-    ///
-    /// The accumulated left's column *names* are `left_alias.col`, but the
-    /// `left_alias` is `a_join_b` (or similar). Users typically write
-    /// `b.num = c.bid` where neither qualifier matches the accumulated alias,
-    /// so we also fall back to a column-name search across both sides.
+    /// Find the column index for a join key in a table
+    /// Handles both simple column names and qualified names (e.g., "t1.id")
     fn find_join_key_index(
         &self,
         expr: &Expression,
