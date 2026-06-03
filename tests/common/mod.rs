@@ -590,6 +590,12 @@ impl MySqlTestClient {
 
         // 2. Read 0xFB packet (server's request for the file)
         let fb_pkt = read_packet(&mut self.stream)?;
+        // The server may respond with ERR (0xFF) immediately if the file
+        // fails validation (e.g. outside data_dir whitelist). Surface that
+        // real reason instead of a misleading "expected 0xFB" message.
+        if fb_pkt.first().copied() == Some(0x00) || fb_pkt.first().copied() == Some(0xFF) {
+            return parse_ok_packet_affected(&fb_pkt);
+        }
         if fb_pkt.first().copied() != Some(0xFB) {
             return Err(wire_err::msg(format!(
                 "expected 0xFB packet, got first byte 0x{:02X}",
