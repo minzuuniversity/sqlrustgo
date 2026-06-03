@@ -2356,6 +2356,118 @@ mod integration_tests {
     }
 }
 
+/// Parse a LOAD DATA LOCAL INFILE SQL statement.
+///
+/// Returns (path, table, field_delimiter) if matched, None otherwise.
+/// Only supports the TPC-H .tbl canonical form:
+///     LOAD DATA LOCAL INFILE '<path>' INTO TABLE <table>
+///     [FIELDS TERMINATED BY '<delim>']
+fn parse_load_local_infile_sql(sql: &str) -> Option<(String, String, char)> {
+    let upper = sql.trim().to_uppercase();
+    if !upper.starts_with("LOAD DATA LOCAL INFILE") {
+        return None;
+    }
+
+    // Extract path between first pair of single quotes after INFILE
+    let after_infile = &sql[upper.find("INFILE")? + "INFILE".len()..];
+    let path_start = after_infile.find('\'')? + 1;
+    let path_end_rel = after_infile[path_start..].find('\'')?;
+    let path = after_infile[path_start..path_start + path_end_rel].to_string();
+
+    // Extract table name after "INTO TABLE"
+    let after_into = &sql[upper.find("INTO TABLE")? + "INTO TABLE".len()..];
+    let table_trim = after_into.trim_start();
+    let table: String = table_trim
+        .split_whitespace()
+        .next()
+        .unwrap_or("")
+        .to_string();
+    if table.is_empty() {
+        return None;
+    }
+
+    // Default delimiter is `|` (TPC-H .tbl standard)
+    let delim = '|';
+
+    Some((path, table, delim))
+}
+
+#[cfg(test)]
+mod load_local_infile_tests {
+    use super::*;
+    use std::io::Cursor;
+
+    /// Helper: simulate a client that sends 0xFB-ready file content.
+    fn make_client_packets(file_bytes: &[u8], chunk_size: usize) -> Vec<u8> {
+        let mut out = Vec::new();
+        for chunk in file_bytes.chunks(chunk_size) {
+            // Packet header: 3-byte length + 1-byte seq
+            let len = chunk.len() as u32;
+            out.push((len & 0xFF) as u8);
+            out.push(((len >> 8) & 0xFF) as u8);
+            out.push(((len >> 16) & 0xFF) as u8);
+            out.push(0x00); // seq
+            out.extend_from_slice(chunk);
+        }
+        // Empty terminator
+        out.push(0);
+        out.push(0);
+        out.push(0);
+        out.push(0);
+        out
+    }
+
+    #[test]
+    fn test_parse_tbl_response_stream_basic() {
+        // Verifies that we can read a stream of file content packets + empty terminator.
+        let file = b"1|2|3|\n4|5|6|\n";
+        let bytes = make_client_packets(file, 16);
+
+        let mut stream = Cursor::new(bytes);
+        let mut total = Vec::new();
+        loop {
+            let pkt = Packet::read_from(&mut stream).unwrap();
+            if pkt.payload.is_empty() {
+                break;
+            }
+            total.extend_from_slice(&pkt.payload);
+        }
+        assert_eq!(total, file);
+    }
+
+    #[test]
+    fn test_parse_load_local_infile_sql_basic() {
+        let sql = "LOAD DATA LOCAL INFILE '/tmp/region.tbl' INTO TABLE region";
+        let result = parse_load_local_infile_sql(sql);
+        assert_eq!(
+            result,
+            Some(("/tmp/region.tbl".to_string(), "region".to_string(), '|'))
+        );
+    }
+
+    #[test]
+    fn test_parse_load_local_infile_sql_with_fields_clause() {
+        let sql = "LOAD DATA LOCAL INFILE '/x.tbl' INTO TABLE t1 FIELDS TERMINATED BY '|'";
+        let result = parse_load_local_infile_sql(sql);
+        assert_eq!(result, Some(("/x.tbl".to_string(), "t1".to_string(), '|')));
+    }
+
+    #[test]
+    fn test_parse_load_local_infile_sql_non_matching() {
+        // Regular SELECT — should NOT match
+        let sql = "SELECT * FROM t1";
+        let result = parse_load_local_infile_sql(sql);
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_parse_load_local_infile_sql_case_insensitive() {
+        let sql = "load data local infile '/y.tbl' into table y";
+        let result = parse_load_local_infile_sql(sql);
+        assert_eq!(result, Some(("/y.tbl".to_string(), "y".to_string(), '|')));
+    }
+}
+
 // ============================================================================
 // Embedded test harness
 //
