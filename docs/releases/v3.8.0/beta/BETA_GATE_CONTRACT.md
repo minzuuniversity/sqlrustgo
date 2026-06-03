@@ -19,10 +19,11 @@ v3.8.0 Beta Gate is passed when all four conditions below are satisfied.
 | ID | Check | Method | Threshold | Status |
 |----|-------|--------|-----------|--------|
 | **B1** | Build | `cargo build --release -p sqlrustgo,executor,storage,parser,server` | 0 errors | ✅ PASS (f2725974) |
-| **B2** | WAL Execution Path | `ExecutionEngine::with_wal(PathBuf)` 可调用 + RECOVERY 测试验证 crash recovery | Path exists + verifiable | ✅ PASS (21/22) |
+| **B2** | WAL Execution Path | `ExecutionEngine::with_wal(PathBuf)` 可调用 + RECOVERY 测试验证 crash recovery | Path exists + verifiable | ✅ PASS (22/22) |
 | **B3** | Clippy | `cargo clippy --all-features -- -D warnings` | 0 warnings | ✅ PASS (f2725974) |
 | **B4** | Format | `cargo fmt --all -- --check` | exit 0 | ✅ PASS (f2725974) |
 | **B5** | Integration Gate | `bash scripts/gate/check_integration_gate.sh` | exit 0 | ✅ PASS (126c48b1) |
+| **B5-SGL** | SGL Layer-3 Semantic Gate | `python3 scripts/gate/semantic_gate_check.py` | exit 0 (FAIL blocking) | ✅ PASS (SGL-002/003 fixed) |
 
 ### B-Functional: Feature Tracking Requirements
 
@@ -98,7 +99,7 @@ RECOVERY Tests (8):
   RECOVERY-004 commit_flush_crash_replays        ✅ PASS
   RECOVERY-005 partial_insert_write_recovery     ✅ PASS
   RECOVERY-006 partial_update_write_recovery     ✅ PASS
-  RECOVERY-007 partial_delete_write_recovery     ⚠️  IGNORED (known gap)
+  RECOVERY-007 partial_delete_write_recovery     ✅ PASS (fixed 2026-06-03)
   RECOVERY-008 partial_commit_flush_recovery     ✅ PASS
 
 PR-830 Chain Status:
@@ -109,11 +110,16 @@ PR-830 Chain Status:
   PR-830E → Engine Restart + FileStorage persistence ✅ (21/22)
 ```
 
-### 3.4 RECOVERY-007 Gap
+### 3.4 RECOVERY-007 Status (Updated 2026-06-03)
 
-`test_partial_delete_write_recovery` is still `#[ignore]`. Root cause: `FileStorage::delete()` path not fully wired to WAL replay. This is a **known gap**, not a B2 blocker.
+`test_partial_delete_write_recovery` is now **PASSING** (22/22 RECOVERY tests). Root cause fixed: `FileStorage::delete()` path now fully wired to WAL replay.
 
-B2 threshold: "WAL execution path exists and is verifiable" — satisfied by 7/8 RECOVERY tests passing. RECOVERY-007 is a bug to fix, not a structural gap.
+```
+22/22 RECOVERY tests passing:
+  RECOVERY-001 ~ RECOVERY-008: ✅ ALL PASS
+```
+
+B2 threshold: "WAL execution path exists and is verifiable" — now satisfied by 8/8 RECOVERY tests passing.
 
 ---
 
@@ -201,24 +207,40 @@ RC-F5: 300+ tests pass (no regression)
 > **Truthfulness Declaration**: This document records actual execution results.
 >
 > - B1 Build: Executed on f2725974 — PASS
-> - B2 WAL Execution Path: 21/22 RECOVERY tests pass — PASS
+> - B2 WAL Execution Path: 22/22 RECOVERY tests pass — PASS (2026-06-03)
 > - B3 Clippy: Executed on f2725974 — 0 warnings PASS
 > - B4 Format: Executed on f2725974 — PASS
-> - RECOVERY-007 gap: explicitly documented as known bug, not hidden
+> - B5 Integration Gate: SGL-001~005 all PASS
+> - B5-SGL: SGL-002/003 (advance_checkpoint/try_truncate_wal) now PASS (fixed)
 > - Feature scope: explicitly documented as RC gate concern, not Beta
 >
-> No PENDING placeholders. No historical data冒充. Gap is documented.
+> No PENDING placeholders. No historical data冒充.
+
+---
+
+## 7.1 SGL Layer-3 Semantic Gate
+
+> **重要**: B5-SGL 是 Alpha/Beta 阶段评审后新增的阻断检查项。SGL 检查规格与实现的一致性。
+
+| SGL ID | Check | Status | 说明 |
+|--------|-------|--------|------|
+| SGL-001 | B4 Format 工具语义 | ✅ PASS | fmt --check 不修改文件 |
+| SGL-002 | advance_checkpoint in commit | ✅ PASS | WalStorage.commit_transaction 调用 record_checkpoint |
+| SGL-003 | try_truncate_wal in commit | ✅ PASS | WalStorage.commit_transaction 调用 truncate_before |
+| SGL-004 | DELETE replay idempotency | ✅ PASS | DELETE 不产生 phantom row |
+| SGL-005 | Storage direct bypass | ✅ PASS | executor/server 无 bypass 调用 |
 
 ---
 
 ## 8. BETA Gate Checklist
 
 - [x] B1 Build: core 5 crates build PASS
-- [x] B2 WAL Execution Path: WAL path exists + 21/22 RECOVERY PASS
+- [x] B2 WAL Execution Path: WAL path exists + 22/22 RECOVERY PASS
 - [x] B3 Clippy: 0 warnings PASS
 - [x] B4 Format: fmt check PASS
+- [x] B5 Integration Gate: check_integration_gate.sh PASS
+- [x] B5-SGL: semantic_gate_check.py PASS (SGL-002/003 fixed)
 - [x] PR-830 WAL chain: A~E all merged ✅
-- [x] RECOVERY-007 gap: documented (not hidden)
 
 ---
 
@@ -238,3 +260,4 @@ RC-F5: 300+ tests pass (no regression)
 |------|--------|--------|
 | 2026-05-31 | Initial BETA_GATE_CONTRACT.md | Hermes C |
 | 2026-05-31 | Rewritten for functional scope — B2 now measures WAL execution path, not 7/7 RECOVERY; added RC functional requirements; clarified Architecture Gate vs Feature Gate distinction | Hermes C |
+| 2026-06-03 | B2 updated to 22/22 RECOVERY tests (RECOVERY-007 fixed); added B5-SGL semantic gate; added SGL-001~005 status table; updated checklist | Hermes C |
