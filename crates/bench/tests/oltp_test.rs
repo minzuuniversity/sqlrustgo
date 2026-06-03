@@ -82,31 +82,6 @@ fn oltp_range_select() {
     );
 }
 
-// NOTE: UPDATE is parsed but not fully executed in executor
-// #[test]
-// fn oltp_update_index() {
-//     let mut engine = setup_engine();
-//     setup_sbtest(&mut engine);
-
-//     let mut success_count = 0;
-//     let iterations = 100;
-
-//     for i in 1..=iterations {
-//         let id = (i % 10000) + 1;
-//         match engine.execute(&format!(
-//             "UPDATE sbtest1 SET k = k + 1 WHERE id = {}",
-//             id
-//         )) {
-//             Ok(_) => success_count += 1,
-//             Err(_) => {}
-//         }
-//     }
-
-//     assert_eq!(
-//         success_count, iterations,
-//         "All index updates should succeed"
-//     );
-// }
 
 #[test]
 fn oltp_insert() {
