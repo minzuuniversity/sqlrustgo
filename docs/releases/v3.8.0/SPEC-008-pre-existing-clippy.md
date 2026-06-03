@@ -1,5 +1,7 @@
 # SPEC-008 — Pre-existing Clippy Warnings 修复
 
+<!-- env:blocked:no-ci -->
+
 > **PR Number**: SPEC-008
 > **PR Title**: 修复 v3.8.0 pre-existing clippy warnings (Alpha gate A3)
 > **Version**: v3.8.0
