@@ -13,6 +13,63 @@ use sqlrustgo_storage::{StorageEngine, TableInfo};
 
 impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     pub(crate) fn execute_select(&self, select: &SelectStatement) -> SqlResult<ExecutorResult> {
+        // Sprint 1b fix (Q7/Q8/Q9): handle FROM (subquery) AS alias by
+        // first executing the subquery to materialize its result into a
+        // synthetic in-memory table, then running the outer SELECT against
+        // it. We collect the materialized rows + schema before acquiring
+        // the storage read lock to avoid reentrant lock issues.
+        let materialized: Option<(Vec<Vec<Value>>, TableInfo)> =
+            if let Some(subq) = &select.from_subquery {
+                // Drop the read lock (if held) and execute subquery; subquery
+                // itself takes a read lock internally. Since the outer has not
+                // yet acquired a lock, this is a fresh acquisition.
+                let sub_result = self.execute_select(subq)?;
+                // Build a synthetic TableInfo from the subquery's column list.
+                let mut table_info = TableInfo {
+                    name: select.table.clone(),
+                    columns: Vec::new(),
+                    foreign_keys: Vec::new(),
+                    unique_constraints: Vec::new(),
+                    check_constraints: Vec::new(),
+                    partition_info: None,
+                };
+                for col in &subq.columns {
+                    let col_name = col.alias.clone().unwrap_or_else(|| col.name.clone());
+                    // Type inference: peek at the first non-null value
+                    let inferred_type_str: String = sub_result
+                        .rows
+                        .iter()
+                        .find(|r| r.iter().any(|v| !matches!(v, Value::Null)))
+                        .and_then(|first_row| {
+                            let col_idx = subq
+                                .columns
+                                .iter()
+                                .position(|c| c.alias.as_ref().unwrap_or(&c.name) == &col_name)?;
+                            first_row.get(col_idx).map(|v| match v {
+                                Value::Integer(_) => "INTEGER",
+                                Value::Float(_) => "FLOAT",
+                                Value::Text(_) => "TEXT",
+                                Value::Boolean(_) => "BOOLEAN",
+                                Value::Blob(_) => "BLOB",
+                                Value::Null => "NULL",
+                            })
+                        })
+                        .unwrap_or("TEXT")
+                        .to_string();
+                    table_info
+                        .columns
+                        .push(sqlrustgo_storage::ColumnDefinition {
+                            name: col_name,
+                            data_type: inferred_type_str,
+                            nullable: true,
+                            primary_key: false,
+                        });
+                }
+                Some((sub_result.rows, table_info))
+            } else {
+                None
+            };
+
         let storage = self.storage.read().unwrap();
 
         if select.table.is_empty() {
@@ -22,6 +79,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         // Step 1: FROM/JOIN - get initial rows and schema
         let (mut rows, table_info) = if !select.join_clause.is_empty() {
             self.execute_joins(select)?
+        } else if let Some((rows, info)) = materialized {
+            (rows, info)
         } else {
             let rows = storage.scan(&select.table)?;
             let table_info = storage.get_table_info(&select.table)?;
