@@ -8,6 +8,7 @@
 //!   - Float-parseable → f64
 //!   - Otherwise → Text
 
+use sqlrustgo::{ExecutionEngine, MemoryStorage};
 use sqlrustgo_types::Value as SqlValue;
 
 pub fn parse_tbl_line(line: &str, expected_columns: usize) -> Result<Vec<SqlValue>, String> {
@@ -49,9 +50,75 @@ pub fn parse_tbl_line(line: &str, expected_columns: usize) -> Result<Vec<SqlValu
     Ok(record)
 }
 
+/// Build a single multi-row INSERT and execute it.
+///
+/// Returns the number of rows inserted (from affected_rows).
+pub fn bulk_insert(
+    engine: &mut ExecutionEngine<MemoryStorage>,
+    table: &str,
+    rows: Vec<Vec<SqlValue>>,
+) -> Result<u64, String> {
+    if rows.is_empty() {
+        return Ok(0);
+    }
+
+    let mut values_sql = String::with_capacity(rows.len() * 32);
+    for (i, row) in rows.iter().enumerate() {
+        if i > 0 {
+            values_sql.push_str(", ");
+        }
+        values_sql.push('(');
+        for (j, v) in row.iter().enumerate() {
+            if j > 0 {
+                values_sql.push_str(", ");
+            }
+            values_sql.push_str(&sql_value_literal(v));
+        }
+        values_sql.push(')');
+    }
+
+    let sql = format!("INSERT INTO {} VALUES {}", table, values_sql);
+    let result = engine
+        .execute(&sql)
+        .map_err(|e| format!("bulk_insert execute failed: {}", e))?;
+    Ok(result.affected_rows as u64)
+}
+
+fn sql_value_literal(v: &SqlValue) -> String {
+    match v {
+        SqlValue::Null => "NULL".to_string(),
+        SqlValue::Integer(i) => i.to_string(),
+        SqlValue::Float(f) => f.to_string(),
+        SqlValue::Text(s) => format!("'{}'", s.replace('\'', "''")),
+        _ => format!("'{}'", v),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use sqlrustgo::{ExecutionEngine, MemoryStorage};
+    use std::sync::{Arc, RwLock};
+
+    #[test]
+    fn test_bulk_insert_three_rows() {
+        let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+        let mut engine = ExecutionEngine::new(storage.clone());
+        engine
+            .execute("CREATE TABLE t1 (id INTEGER, name TEXT)")
+            .unwrap();
+
+        let rows = vec![
+            vec![SqlValue::Integer(1), SqlValue::Text("a".to_string())],
+            vec![SqlValue::Integer(2), SqlValue::Text("b".to_string())],
+            vec![SqlValue::Integer(3), SqlValue::Text("c".to_string())],
+        ];
+        let n = bulk_insert(&mut engine, "t1", rows).unwrap();
+        assert_eq!(n, 3);
+
+        let result = engine.execute("SELECT COUNT(*) FROM t1").unwrap();
+        assert_eq!(result.rows.len(), 1);
+    }
 
     #[test]
     fn test_parse_tbl_line_basic_text() {
