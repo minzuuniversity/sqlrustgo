@@ -8,7 +8,8 @@
 //!   - Float-parseable → f64
 //!   - Otherwise → Text
 
-use sqlrustgo::{ExecutionEngine, MemoryStorage};
+use sqlrustgo::ExecutionEngine;
+use sqlrustgo_storage::StorageEngine;
 use sqlrustgo_types::Value as SqlValue;
 
 pub fn parse_tbl_line(line: &str, expected_columns: usize) -> Result<Vec<SqlValue>, String> {
@@ -53,8 +54,12 @@ pub fn parse_tbl_line(line: &str, expected_columns: usize) -> Result<Vec<SqlValu
 /// Build a single multi-row INSERT and execute it.
 ///
 /// Returns the number of rows inserted (from affected_rows).
-pub fn bulk_insert(
-    engine: &mut ExecutionEngine<MemoryStorage>,
+///
+/// Generic over the storage backend so it works with both
+/// `MemoryStorage` (used in unit tests) and `WalStorage<FileStorage,
+/// FileBackedWalManager>` (the production ephemeral server's engine).
+pub fn bulk_insert<S: StorageEngine + 'static>(
+    engine: &mut ExecutionEngine<S>,
     table: &str,
     rows: Vec<Vec<SqlValue>>,
 ) -> Result<u64, String> {
