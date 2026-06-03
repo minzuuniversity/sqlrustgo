@@ -1,3 +1,7 @@
+//! Engine SELECT execution — extracted from execution_engine.rs (PR-900)
+//!
+//! Handles SELECT statement dispatch, projection, join planning, and result assembly.
+
 use crate::engine_utils::*;
 use crate::expr_utils::*;
 use crate::{ExecutionEngine, ExecutorResult, SqlError, SqlResult, Value};
@@ -133,39 +137,71 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     }
                 }
                 AggregateFunction::Sum => {
-                    let int_values: Vec<i64> = values
-                        .iter()
-                        .filter_map(|v| {
-                            if let Value::Integer(n) = v {
-                                Some(*n)
-                            } else {
-                                None
+                    // TPC-H Sprint 1 fix (Q8/Q9): accept Float in Sum.
+                    // l_extendedprice * (1 - l_discount) returns Float.
+                    let mut int_sum: i64 = 0;
+                    let mut float_sum: f64 = 0.0;
+                    let mut any_float = false;
+                    for v in &values {
+                        match v {
+                            Value::Integer(n) => {
+                                if any_float {
+                                    float_sum += *n as f64;
+                                } else {
+                                    int_sum += n;
+                                }
                             }
-                        })
-                        .collect();
-                    if int_values.is_empty() {
+                            Value::Float(f) => {
+                                if !any_float {
+                                    float_sum = int_sum as f64;
+                                    any_float = true;
+                                }
+                                float_sum += f;
+                            }
+                            _ => {}
+                        }
+                    }
+                    if any_float {
+                        Value::Float(float_sum)
+                    } else if values.iter().all(|v| matches!(v, Value::Null)) {
                         Value::Null
                     } else {
-                        Value::Integer(int_values.iter().sum())
+                        Value::Integer(int_sum)
                     }
                 }
                 AggregateFunction::Avg => {
-                    let sum: i64 = values
-                        .iter()
-                        .filter_map(|v| {
-                            if let Value::Integer(n) = v {
-                                Some(*n)
-                            } else {
-                                None
+                    // TPC-H Sprint 1 fix (Q1): AVG over Float.
+                    let mut int_sum: i64 = 0;
+                    let mut float_sum: f64 = 0.0;
+                    let mut any_float = false;
+                    let mut count: i64 = 0;
+                    for v in &values {
+                        match v {
+                            Value::Integer(n) => {
+                                if any_float {
+                                    float_sum += *n as f64;
+                                } else {
+                                    int_sum += n;
+                                }
+                                count += 1;
                             }
-                        })
-                        .sum();
-                    let count = values
-                        .iter()
-                        .filter(|v| matches!(v, Value::Integer(_)))
-                        .count();
+                            Value::Float(f) => {
+                                if !any_float {
+                                    float_sum = int_sum as f64;
+                                    any_float = true;
+                                }
+                                float_sum += f;
+                                count += 1;
+                            }
+                            _ => {}
+                        }
+                    }
                     if count > 0 {
-                        Value::Integer(sum / count as i64)
+                        if any_float {
+                            Value::Float(float_sum / count as f64)
+                        } else {
+                            Value::Integer(int_sum / count)
+                        }
                     } else {
                         Value::Null
                     }
