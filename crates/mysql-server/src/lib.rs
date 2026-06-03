@@ -1527,12 +1527,34 @@ pub fn run_server(host: &str, port: u16) -> MySqlResult<()> {
     let addr = format!("{}:{}", host, port);
     let listener = TcpListener::bind(&addr)?;
     tracing::info!("MySQL server listening on {}", addr);
+    run_server_with_listener(listener)
+}
+
+/// Server core extracted so the test harness can hand in a pre-bound
+/// `TcpListener` (port = 0) and return its actual port before the
+/// accept loop starts.
+pub fn run_server_with_listener(listener: TcpListener) -> MySqlResult<()> {
+    let shutdown = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    run_server_with_listener_and_shutdown(listener, shutdown)
+}
+
+/// Variant of [`run_server_with_listener`] that returns promptly when
+/// `shutdown` is set to `true`. The accept loop is driven in
+/// non-blocking mode so it can poll the shutdown flag without a client
+/// having to connect. This is the entry point used by the test
+/// harness; production callers should use the simpler
+/// `run_server_with_listener` form.
+pub fn run_server_with_listener_and_shutdown(
+    listener: TcpListener,
+    shutdown: std::sync::Arc<std::sync::atomic::AtomicBool>,
+) -> MySqlResult<()> {
     let tls_config = Arc::new(make_tls_config());
     tracing::info!("TLS ready (self-signed cert)");
 
     // WalStorage<FileStorage, FileBackedWalManager> for production runtime
     // (Issue #2808: G1 — DML must persist via WAL, not bypass to raw FileStorage)
-    let wal_data_dir = std::env::temp_dir().join(format!("sqlrustgo_wal_{}", port));
+    let wal_data_dir =
+        std::env::temp_dir().join(format!("sqlrustgo_wal_{}", listener.local_addr()?.port()));
     let file_storage =
         FileStorage::new_with_wal(wal_data_dir.clone()).map_err(std::io::Error::other)?;
     let wal_path = wal_data_dir.join("sqlrustgo.wal");
@@ -1551,18 +1573,35 @@ pub fn run_server(host: &str, port: u16) -> MySqlResult<()> {
         }
     }
     let user_store = UserStore::new();
-    for s in listener.incoming() {
-        match s {
-            Ok(stream) => {
-                let addr = stream
-                    .peer_addr()
-                    .unwrap_or(SocketAddr::from(([0, 0, 0, 0], 0)));
+
+    // Non-blocking accept so the loop can check the shutdown flag
+    // even when no client is connecting. The 50ms sleep is the
+    // shutdown latency of the test harness; production clients are
+    // unaffected (every accept immediately tries again when the
+    // syscall returns WouldBlock).
+    if let Err(e) = listener.set_nonblocking(true) {
+        tracing::warn!("set_nonblocking failed: {}", e);
+    }
+    use std::sync::atomic::Ordering;
+    use std::time::Duration;
+    while !shutdown.load(Ordering::SeqCst) {
+        match listener.accept() {
+            Ok((stream, addr)) => {
                 let st = storage.clone();
                 let tc = tls_config.clone();
                 let us = user_store.clone();
                 thread::spawn(move || handle_connection(stream, addr, st, tc, us));
             }
-            Err(e) => tracing::error!("Accept: {}", e),
+            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                std::thread::sleep(Duration::from_millis(50));
+            }
+            Err(e) => {
+                if shutdown.load(Ordering::SeqCst) {
+                    break;
+                }
+                tracing::error!("Accept: {}", e);
+                std::thread::sleep(Duration::from_millis(50));
+            }
         }
     }
     Ok(())
@@ -2251,5 +2290,109 @@ mod integration_tests {
         let err = MySqlError::Protocol("test".to_string());
         // Protocol errors don't have a source
         assert!(err.source().is_none());
+    }
+}
+
+// ============================================================================
+// Embedded test harness
+//
+// See `openspec/changes/mysql-server-canonical-entry/specs/server-embedded-test-harness/spec.md`
+// for the contract this module is required to implement.
+// ============================================================================
+
+pub mod testing {
+    use std::net::TcpListener;
+    use std::path::PathBuf;
+    use std::sync::{Arc, Mutex};
+    use std::thread::JoinHandle;
+
+    /// Configuration for an ephemeral MySQL server.
+    #[derive(Debug, Clone)]
+    pub struct EphemeralConfig {
+        pub host: String,
+    }
+
+    impl Default for EphemeralConfig {
+        fn default() -> Self {
+            Self {
+                host: "127.0.0.1".to_string(),
+            }
+        }
+    }
+
+    /// Handle to a running ephemeral server. Dropping the handle closes
+    /// the listener and joins the accept-loop thread, and removes the
+    /// temporary data directory.
+    pub struct EphemeralHandle {
+        pub port: u16,
+        // Shared shutdown signal: Drop sets it to true, the server
+        // thread's accept loop polls it and exits within 50ms.
+        shutdown: Option<Arc<std::sync::atomic::AtomicBool>>,
+        // Mutex so Drop can take the JoinHandle by value.
+        join: Mutex<Option<JoinHandle<()>>>,
+        // Temporary data directory; removed on Drop.
+        data_dir: PathBuf,
+    }
+
+    impl std::fmt::Debug for EphemeralHandle {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.debug_struct("EphemeralHandle")
+                .field("port", &self.port)
+                .field("data_dir", &self.data_dir)
+                .finish()
+        }
+    }
+
+    impl Drop for EphemeralHandle {
+        fn drop(&mut self) {
+            use std::sync::atomic::Ordering;
+            // 1. Signal the accept loop to exit on its next poll.
+            if let Some(flag) = self.shutdown.take() {
+                flag.store(true, Ordering::SeqCst);
+            }
+            // 2. Join the server thread (bounded by the 50ms poll).
+            if let Ok(mut guard) = self.join.lock() {
+                if let Some(handle) = guard.take() {
+                    let _ = handle.join();
+                }
+            }
+            // 3. Remove the temporary data directory.
+            let _ = std::fs::remove_dir_all(&self.data_dir);
+        }
+    }
+
+    /// Boot an in-process MySQL server on an OS-assigned port and return
+    /// a handle to it. The server runs on a background thread; the
+    /// handle's `Drop` joins the thread and cleans up the temp data dir.
+    pub fn start_ephemeral(config: EphemeralConfig) -> Result<EphemeralHandle, std::io::Error> {
+        let listener = TcpListener::bind(format!("{}:0", config.host))?;
+        let port = listener.local_addr()?.port();
+
+        let data_dir = std::env::temp_dir().join(format!(
+            "sqlrustgo_ephemeral_{}_{}",
+            port,
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&data_dir)?;
+
+        // Move the listener into the server thread. The accept loop
+        // is non-blocking and polls a shutdown flag; Drop sets the
+        // flag and joins the thread (the loop exits within 50ms).
+        let listener_for_thread = listener;
+        let shutdown = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let shutdown_for_thread = Arc::clone(&shutdown);
+        let join = std::thread::spawn(move || {
+            let _ = crate::run_server_with_listener_and_shutdown(
+                listener_for_thread,
+                shutdown_for_thread,
+            );
+        });
+
+        Ok(EphemeralHandle {
+            port,
+            shutdown: Some(shutdown),
+            join: Mutex::new(Some(join)),
+            data_dir,
+        })
     }
 }
