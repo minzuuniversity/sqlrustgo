@@ -236,7 +236,7 @@ mod tests {
         };
 
         let results = adapter.execute(&request, &plan).await;
-        assert!(results.is_ok());
+        assert!(results.is_ok(), "expected ok, got: {:?}", results);
 
         let graph_results = results.unwrap();
         assert!(!graph_results.is_empty());
