@@ -1,5 +1,7 @@
 # SPEC-005 — G-01 follow-up: 38 `#[ignore]` 理由补充
 
+<!-- env:blocked:no-ci -->
+
 > **PR Number**: SPEC-005 (G-01 follow-up)
 > **PR Title**: Add reasons to 38 `#[ignore]` tests (G-01 §2.4.2)
 > **Version**: v3.8.0
