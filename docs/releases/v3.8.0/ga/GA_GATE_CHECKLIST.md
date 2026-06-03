@@ -153,6 +153,24 @@
 
 ---
 
+## 7.5 Cross-Version Debt Gate
+
+| ID | 检查项 | 命令/文件 | 标准 |
+|----|--------|------------|------|
+| CV-01 | INT-1~INT-4 状态已追踪 | `bash scripts/gate/check_cross_version_debt.sh` | PASS |
+| CV-02 | Ghost PR 已正式 Defer | `docs/governance/adr/ADR-010-ghost-pr-resolution.md` | 存在 |
+| CV-03 | v3.8.0+1 Post-GA Plan 存在 | `docs/releases/v3.8.0/POST_GA_PLAN.md` | 存在 |
+
+**Cross-Version Debt Summary**:
+| Debt ID | 问题 | 首次出现 | 状态 |
+|---------|------|----------|------|
+| INT-1 | DML 不经过 WAL/TransactionManager | v1.2.0 | ACTIVE (→ v3.9.0) |
+| INT-2 | ParallelVolcanoExecutor 孤岛 | v2.6.0 | ACTIVE (→ v3.9.0) |
+| INT-3 | expr crate 功能孤岛 | v3.0.0 | ACTIVE (→ v3.9.0) |
+| INT-4 | mysql-server 未与主 server 集成 | v2.6.0 | ACTIVE (→ v3.9.0) |
+
+---
+
 ## 8. 门禁执行脚本
 
 ```bash
