@@ -23,11 +23,7 @@ use sqlrustgo_mysql_server::test_helpers::StmtParam;
 ///
 /// A param is considered NULL iff its entry in the `params` slice is
 /// `(0x06, &[])` (i.e. the explicit NULL type code).
-fn stmt_payload(
-    stmt_id: u32,
-    params: &[(u8, &[u8])],
-    new_params_bound: bool,
-) -> Vec<u8> {
+fn stmt_payload(stmt_id: u32, params: &[(u8, &[u8])], new_params_bound: bool) -> Vec<u8> {
     let mut null_bitmap: u8 = 0;
     for (i, (tc, _)) in params.iter().enumerate() {
         if *tc == 0x06 {
