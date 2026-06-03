@@ -1,5 +1,7 @@
 # SPEC-010 — Bash 3.2 兼容性 + v1.0 脚本清理
 
+<!-- env:blocked:no-ci -->
+
 > **PR Number**: SPEC-010
 > **PR Title**: Gate 脚本 Bash 3.2 兼容 + 重写 check_docs.sh 为 v3.8.0-aware
 > **Version**: v3.8.0
