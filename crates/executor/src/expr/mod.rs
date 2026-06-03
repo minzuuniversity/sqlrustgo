@@ -185,6 +185,25 @@ impl From<&sqlrustgo_parser::Expression> for UnifiedExpr {
                     UnifiedExpr::from(pattern.as_ref()),
                 ],
             },
+            // TPC-H Sprint 1 fix (Q8): CaseWhen conversion
+            Expression::CaseWhen(whens, else_val) => UnifiedExpr::CaseWhen {
+                whens: whens
+                    .iter()
+                    .map(|w| {
+                        (
+                            UnifiedExpr::from(&w.condition),
+                            UnifiedExpr::from(&w.result),
+                        )
+                    })
+                    .collect(),
+                else_val: else_val
+                    .as_ref()
+                    .map(|e| Box::new(UnifiedExpr::from(e.as_ref()))),
+            },
+            Expression::FunctionCall(name, args) => UnifiedExpr::FunctionCall {
+                name: name.clone(),
+                args: args.iter().map(UnifiedExpr::from).collect(),
+            },
             _ => UnifiedExpr::Literal(Value::Null),
         }
     }
@@ -280,6 +299,35 @@ fn eval_fn(name: &str, args: &[Value]) -> Value {
             .first()
             .map(|v| Value::Text(v.to_sql_string().trim().to_string()))
             .unwrap_or(Value::Null),
+        // TPC-H Sprint 1 fix (Q7/Q8/Q9): SUBSTR(x, start, length)
+        "SUBSTR" | "SUBSTRING" => {
+            if let (Some(s), Some(start)) = (args.first(), args.get(1)) {
+                let text = s.to_sql_string();
+                let start_idx = match start {
+                    Value::Integer(i) => (*i as i64).saturating_sub(1).max(0) as usize,
+                    _ => return Value::Text(String::new()),
+                };
+                if start_idx >= text.len() {
+                    return Value::Text(String::new());
+                }
+                let end = if let Some(len) = args.get(2) {
+                    let len = match len {
+                        Value::Integer(i) => (*i as i64).max(0) as usize,
+                        _ => return Value::Text(String::new()),
+                    };
+                    (start_idx + len).min(text.len())
+                } else {
+                    text.len()
+                };
+                Value::Text(text[start_idx..end].to_string())
+            } else {
+                Value::Null
+            }
+        }
+        // TPC-H Sprint 1 fix (Q7/Q8/Q9): CAST(x AS TYPE) — parser routes CAST
+        // through FunctionCall. We can't reach the target type from here, so
+        // pass through the input. Downstream Integer() context coerces.
+        "CAST" => args.first().cloned().unwrap_or(Value::Null),
         _ => Value::Null,
     }
 }
