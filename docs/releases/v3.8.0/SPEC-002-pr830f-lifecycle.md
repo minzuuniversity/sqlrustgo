@@ -1,5 +1,7 @@
 # SPEC-002 — PR-830F WAL Lifecycle Controller 闭合
 
+<!-- env:blocked:no-ci -->
+
 > **PR Number**: SPEC-002 (扩展 PR-830F)
 > **PR Title**: 修复 PR-830F WAL 生命周期 "未闭合" 问题
 > **Version**: v3.8.0
