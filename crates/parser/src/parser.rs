@@ -2030,57 +2030,18 @@ impl Parser {
         } else if !matches!(self.current(), Some(Token::RParen)) {
             loop {
                 match self.current() {
-                    Some(Token::Identifier(name)) => {
-                        let name = name.clone();
-                        let expr = if matches!(self.peek(), Some(Token::Dot)) {
-                            let table = name.clone();
-                            self.next();
-                            self.expect(Token::Dot)?;
-                            match self.current().cloned() {
-                                Some(Token::Identifier(col)) => {
-                                    self.next();
-                                    Expression::Identifier(format!("{}.{}", table, col))
-                                }
-                                Some(t) => {
-                                    return Err(format!("Expected column name, got {:?}", t))
-                                }
-                                None => return Err("Expected column name".to_string()),
-                            }
-                        } else {
-                            self.next();
-                            Expression::Identifier(name)
-                        };
-                        // Check for arithmetic in aggregate arg: SUM(a * b), SUM(a + b)
-                        let expr = if matches!(
-                            self.current(),
-                            Some(Token::Star)
-                                | Some(Token::Plus)
-                                | Some(Token::Minus)
-                                | Some(Token::Slash)
-                        ) {
-                            let op = match self.current() {
-                                Some(Token::Star) => "*",
-                                Some(Token::Plus) => "+",
-                                Some(Token::Minus) => "-",
-                                Some(Token::Slash) => "/",
-                                _ => unreachable!(),
-                            };
-                            self.next();
-                            let rhs = self.parse_expression()?;
-                            Expression::BinaryOp(Box::new(expr), op.to_string(), Box::new(rhs))
-                        } else {
-                            expr
-                        };
-                        args.push(expr);
-                    }
-                    Some(Token::NumberLiteral(n)) => {
-                        args.push(Expression::Literal(n.clone()));
-                        self.next();
-                    }
+                    Some(Token::RParen) => break,
                     Some(Token::Comma) => {
                         self.next();
                     }
-                    _ => break,
+                    _ => {
+                        // General expression — covers CASE WHEN, function
+                        // calls (EXTRACT, CAST, …), nested aggregates, and
+                        // the simple Identifier/NumberLiteral forms that
+                        // the old hand-rolled match used to handle.
+                        let expr = self.parse_expression()?;
+                        args.push(expr);
+                    }
                 }
             }
         }
