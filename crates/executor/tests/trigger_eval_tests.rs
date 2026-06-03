@@ -290,7 +290,7 @@ fn test_expression_to_value_subquery() {
         columns: vec![],
         table: "t".to_string(),
         where_clause: None,
-        join_clause: None,
+        join_clause: vec![],
         aggregates: vec![],
         group_by: vec![],
         having: None,
