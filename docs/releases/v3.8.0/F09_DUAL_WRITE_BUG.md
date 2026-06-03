@@ -1,5 +1,7 @@
 # F-09 Dual-Write Bug — Investigation Note
 
+<!-- env:blocked:no-ci -->
+
 > **Status**: KNOWN (not yet fixed in v3.8.0)
 > **Created**: 2026-06-03
 > **Investigator**: Hermes Agent
