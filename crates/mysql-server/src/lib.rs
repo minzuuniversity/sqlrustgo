@@ -716,6 +716,8 @@ fn parse_handshake_response(packet: &Packet) -> MySqlResult<HandshakeResponse> {
     })
 }
 
+mod load_data;
+
 #[allow(dead_code)]
 mod col_type {
     pub const TINY: u8 = 0x01;
