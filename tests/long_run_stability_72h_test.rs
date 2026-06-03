@@ -146,7 +146,7 @@ fn spawn_monitor_thread(
 }
 
 #[test]
-#[ignore]
+#[ignore = "72h long-running stability test (run with --ignored, dedicated test env)"]
 fn test_sustained_write_72h() {
     let duration = Duration::from_secs(TEST_DURATION_HOURS * 3600);
     let start = Instant::now();
@@ -229,7 +229,7 @@ fn test_sustained_write_72h() {
 }
 
 #[test]
-#[ignore]
+#[ignore = "72h long-running stability test (run with --ignored, dedicated test env)"]
 fn test_sustained_write_concurrent_72h() {
     let duration = Duration::from_secs(TEST_DURATION_HOURS * 3600);
     let start = Instant::now();
@@ -304,7 +304,7 @@ fn test_sustained_write_concurrent_72h() {
 }
 
 #[test]
-#[ignore]
+#[ignore = "72h long-running stability test (run with --ignored, dedicated test env)"]
 fn test_sustained_read_72h() {
     let duration = Duration::from_secs(TEST_DURATION_HOURS * 3600);
 
@@ -384,7 +384,7 @@ fn test_sustained_read_72h() {
 }
 
 #[test]
-#[ignore]
+#[ignore = "72h long-running stability test (run with --ignored, dedicated test env)"]
 fn test_concurrent_read_write_72h() {
     let duration = Duration::from_secs(TEST_DURATION_HOURS * 3600);
     let start = Instant::now();
