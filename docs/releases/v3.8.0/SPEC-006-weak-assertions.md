@@ -1,5 +1,7 @@
 # SPEC-006 — G-01 follow-up: 5 weak assertions 修复
 
+<!-- env:blocked:no-ci -->
+
 > **PR Number**: SPEC-006 (G-01 follow-up)
 > **PR Title**: Fix 5 weak `assert!(*.is_ok())` assertions (G-01 §2.3.1)
 > **Version**: v3.8.0
