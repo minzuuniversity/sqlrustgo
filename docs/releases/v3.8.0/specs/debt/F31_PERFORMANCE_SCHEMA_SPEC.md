@@ -1,3 +1,10 @@
+<!--
+**Debt ID**: F-31
+**Status**: IMPLEMENTED
+**Implementation PR**: PR fix/f-31-performance-schema
+**Test Coverage**: 7/7 tests
+-->
+
 # F-31 SPEC: performance_schema
 
 > **Issue**: #2830
