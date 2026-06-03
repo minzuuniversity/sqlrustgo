@@ -70,8 +70,8 @@ run_gate() {
 # 1. D1-D5: RC/GA gate (must PASS)
 run_gate "D1-D5 RC/GA" "$SCRIPT_DIR/check_rc_ga_gate.sh" 0
 
-# 2. D6: Test inventory (must PASS or DRIFT)
-run_gate "D6 Test Inventory" "$SCRIPT_DIR/check_test_inventory.sh" 0
+# 2. D6b: Test inventory (must PASS or DRIFT) — distinct from D6a-Integration in check_rc_ga_gate.sh
+run_gate "D6b Test Inventory" "$SCRIPT_DIR/check_test_inventory.sh" 0
 
 # 3. D7: INT debt (DRIFT acceptable with plan)
 run_gate "D7 INT Debt" "$SCRIPT_DIR/check_int_debt.sh" 0
