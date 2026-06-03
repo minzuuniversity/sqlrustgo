@@ -1,5 +1,7 @@
 # SPEC-007 — G-01 follow-up: 清理 2 个 commented-out tests
 
+<!-- env:blocked:no-ci -->
+
 > **PR Number**: SPEC-007 (G-01 follow-up)
 > **PR Title**: Remove 2 commented-out `#[test]` blocks (G-01 §2.4.4)
 > **Version**: v3.8.0
