@@ -2,10 +2,10 @@
 <!-- env:blocked:no-ci -->
 
 **Author**: Hermes C
-**Last Updated**: 2026-06-03
+**Last Updated**: 2026-06-03 (SPEC-025)
 **Branch**: `develop/v3.8.0`
-**Commit**: `fca6fc20a` (PR-2845 SPEC-021 Gitea CI integration merged)
-**Status**: 🟢 BETA STAGE READY — Alpha Gate 15/15 PASS, 13 PRs merged since 456ae294
+**Commit**: `83a4974aa` (PR-2873 Comprehensive Feature Tracking + PR-2872 SPEC-024 + PR-2866 TPC-H Q1-Q22 Part 1 + PR-2865 I-12 Parallel Executor)
+**Status**: 🟢 BETA STAGE READY — Alpha Gate 15/15 PASS, 18 PRs merged since 456ae294
 **Prior Report Commit**: `456ae294` (2026-05-31, 11/11 checks PASS)
 
 ---
@@ -27,6 +27,12 @@
 | #2842 | (功能) | mysql-server WAL wrap (PR-2842) | merged |
 | #2844 | (功能) | T-17/T-18 fault injection (PR-2844) | merged |
 | #2845 | SPEC-021 | Gitea CI 强制集成 (develop/v3.8.0 触发 + Alpha Gate) | merged |
+| #2847 | SPEC-022 | BETA Stage 启动 — 报告更新 + DriftGate 验证 | merged |
+| #2856 | SPEC-023 | BETA Gate E2E 闭环 (F-XX ↔ E2E test 映射 + 自动跑) | merged |
+| **#2865** | **I-12** | **feat(executor): Parallel Executor (Closes #2833, INT-2)** | **merged (F-12 100% 完成)** |
+| **#2866** | **TPC-H** | **feat(tpch): TPC-H Q1-Q22 Part 1 (4/22 pass)** | **merged** |
+| **#2872** | **SPEC-024** | **BETA 测试补充 (F-14 T-ISO + F-10 cross-path)** | **merged** |
+| **#2873** | **(audit)** | **Comprehensive Feature Tracking + DAG (15 Gitea Issues)** | **merged** |
 
 **Alpha Gate 持续 15/15 PASS 状态** (develop HEAD = fca6fc20a)
 **Gitea CI 治本路径 4 阶段完成**: 治标 → 治本半步 → 治本全步 → 治本终极
