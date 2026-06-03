@@ -2439,7 +2439,12 @@ impl Parser {
         }
 
         // LIKE / NOT LIKE
-        if matches!(self.current(), Some(Token::Like)) {
+        // The lexer's keyword map doesn't include LIKE, so it arrives
+        // as Token::Identifier("LIKE") even when the user wrote the
+        // bare keyword. Match both encodings to keep WHERE compatibility.
+        if matches!(self.current(), Some(Token::Like))
+            || matches!(self.current(), Some(Token::Identifier(ref ident)) if ident.to_uppercase() == "LIKE")
+        {
             self.next();
             let pattern = self.parse_additive_expression()?;
             let escape = if matches!(self.current(), Some(Token::Escape)) {
