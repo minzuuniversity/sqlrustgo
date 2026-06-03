@@ -84,7 +84,7 @@ fn test_duplicate_procedure_error() {
     let mut engine = ExecutionEngine::with_memory_and_catalog(catalog.clone());
 
     let create1 = engine.execute("CREATE PROCEDURE test_dup() BEGIN SELECT 1; END");
-    assert!(create1.is_ok());
+    assert!(create1.is_ok(), "expected ok, got: {:?}", create1);
 
     let create2 = engine.execute("CREATE PROCEDURE test_dup() BEGIN SELECT 2; END");
     assert!(create2.is_err(), "Duplicate procedure should return error");
@@ -105,7 +105,7 @@ fn test_create_trigger_with_catalog() {
     assert!(create_trigger.is_ok(), "CREATE TRIGGER should succeed");
 
     let insert_result = engine.execute("INSERT INTO users VALUES (1, 'Alice')");
-    assert!(insert_result.is_ok());
+    assert!(insert_result.is_ok(), "expected ok, got: {:?}", insert_result);
 }
 
 #[test]
