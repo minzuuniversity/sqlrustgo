@@ -64,3 +64,34 @@ authentication still works.
   `EphemeralConfig { bootstrap_tables: false, .. }`
 - WHEN it runs `SHOW TABLES` against the empty database
 - THEN the result set SHALL have zero rows
+
+## Bulk loader: LOAD DATA LOCAL INFILE
+
+The wire stack supports the MySQL `LOAD DATA LOCAL INFILE` protocol
+for bulk-loading TBL data without per-row INSERT round-trips.
+
+### Packet sequence
+
+1. Client → Server: `COM_QUERY` with SQL
+   `LOAD DATA LOCAL INFILE '<path>' INTO TABLE <t>`
+2. Server: validates `<path>` is inside the configured `data_dir`
+   (canonicalize + `starts_with`); rejects with 1146 ERR otherwise.
+3. Server → Client: 0xFB packet, payload = path.
+4. Client → Server: stream of file-content packets (≤ 16 MB each),
+   terminated by an empty packet.
+5. Server: batches lines into multi-row INSERTs at the
+   `bulk_insert_buffer_size` boundary (default 1 MB).
+6. Server → Client: OK packet with `affected_rows = total rows loaded`.
+
+### Configuration
+
+- `EphemeralConfig.data_dir` (existing): the only directory the server
+  will read from. Required for LOAD DATA LOCAL INFILE to work.
+- `EphemeralConfig.bulk_insert_buffer_size` (new, default 1 MB):
+  threshold for flushing the in-memory batch to disk.
+
+### Test surface
+
+- `tests/load_local_infile_test.rs` — 5 tests, all green.
+- Regression: `cargo test --tests` keeps the existing 38/38 wire-
+  protocol tests green.
