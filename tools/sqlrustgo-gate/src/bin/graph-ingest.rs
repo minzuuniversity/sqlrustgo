@@ -187,7 +187,7 @@ fn cmd_link(
 
     println!(
         "{{\"linked\": \"{} → {} → {}\"}}",
-        args.from_id, args.edge_type, args.to_id
+        from_id, edge_type_str, to_id
     );
     Ok(())
 }
