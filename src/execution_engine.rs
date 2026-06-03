@@ -163,6 +163,16 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         self.stats.clone()
     }
 
+    /// Read-only access to the underlying storage handle.
+    ///
+    /// Returned as `&Arc<RwLock<S>>` so callers can lock it themselves
+    /// and read table info, scan rows, etc. without taking `&mut self`
+    /// on the engine. Required by the LOAD DATA LOCAL INFILE handler
+    /// to look up the target table's column count.
+    pub fn storage_ref(&self) -> &Arc<RwLock<S>> {
+        &self.storage
+    }
+
     // CBO estimation methods extracted to cbo_estimator.rs (SPEC-012).
     // Thin forwarder methods retained for backwards-compatible public API.
 
