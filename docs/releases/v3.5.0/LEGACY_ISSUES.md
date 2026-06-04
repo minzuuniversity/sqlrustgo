@@ -61,7 +61,7 @@
 | #1364 | 本地 LLM 推理支持（Ollama） | 支持 chat/embeddings，模型自动缓存 | OPEN |
 | #1362 | LLM 合规判断引擎 | 多语言规则解析，判断延迟 < 500ms | OPEN |
 | #1361 | AI 偏差调查助手 | 偏差报告生成，提供纠正措施建议 | OPEN |
-| #1326 | DiskGraphStore Cypher 支持 | 延续 v3.4.0 开发，完成 Cypher 执行 | OPEN |
+| #1326 | DiskGraphStore Cypher 支持 | PR #1327 已合并，31 个 Cypher 测试通过（含 DiskGraphStore 集成测试） | CLOSED | #1327 |
 
 ### 3.2 P1 Issue（Beta 目标）
 
@@ -101,3 +101,4 @@
 |------|------|----------|
 | v1.0 | 2026-05-24 | 初始创建，建立 v3.4.0 遗留项映射 |
 | v1.1 | 2026-05-25 | 新增 P0/P1 Issue 映射表（#1361-#1369 + #1326） |
+| v1.2 | 2026-05-26 | #1326 已完成（PR #1327 合并），标记 CLOSED |
