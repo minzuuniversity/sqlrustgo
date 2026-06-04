@@ -163,13 +163,7 @@ impl StabilityWindow {
             regression_trend: self.regression_trend(),
             anomaly_score: self.anomaly_score(),
             is_degraded: self.is_degraded(),
-            recent_results: self
-                .history
-                .iter()
-                .rev()
-                .take(5)
-                .map(|s| s.clone())
-                .collect(),
+            recent_results: self.history.iter().rev().take(5).cloned().collect(),
         }
     }
 }
