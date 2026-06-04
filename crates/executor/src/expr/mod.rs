@@ -335,17 +335,14 @@ pub fn eval_fn(name: &str, args: &[Value]) -> Value {
                 };
                 let result = match modifier.as_str() {
                     "__TRIM_LEADING__" => {
-                        // trim from the left only
-                        let mut out = trimmed.clone();
                         // Re-trim from the right using the standard
                         // `trim_end_matches` only (so we don't re-strip
                         // leading chars we just preserved).
                         if rem.is_empty() {
-                            out = s.trim_start().to_string();
+                            s.trim_start().to_string()
                         } else {
-                            out = s.trim_start_matches(|c| rem.contains(c)).to_string();
+                            s.trim_start_matches(|c| rem.contains(c)).to_string()
                         }
-                        out
                     }
                     "__TRIM_TRAILING__" => {
                         if rem.is_empty() {
@@ -596,9 +593,9 @@ pub fn eval_fn(name: &str, args: &[Value]) -> Value {
         }
         // DATE_ADD(date, INTERVAL n unit) — text dates only (YYYY-MM-DD)
         // Supports unit: DAY, MONTH, YEAR
-        "DATE_ADD" | "ADDDATE" => date_add_sub(&args, true),
+        "DATE_ADD" | "ADDDATE" => date_add_sub(args, true),
         // DATE_SUB(date, INTERVAL n unit)
-        "DATE_SUB" | "SUBDATE" => date_add_sub(&args, false),
+        "DATE_SUB" | "SUBDATE" => date_add_sub(args, false),
         // TPC-H Q7/Q8/Q9 use `EXTRACT(YEAR FROM o_orderdate) AS o_year`.
         // The parser encodes this as FunctionCall("EXTRACT", [Literal(field),
         // source_expr]). For text dates in YYYY-MM-DD form, the field slices
@@ -688,13 +685,7 @@ pub fn eval_fn(name: &str, args: &[Value]) -> Value {
         // ROLLUP/CUBE result rows which are stored with a sentinel
         // `_rollup_<col>` marker injected by the engine. Without the
         // marker (no ROLLUP/CUBE), GROUPING always returns 0.
-        "GROUPING" => {
-            if args.is_empty() {
-                Value::Integer(0)
-            } else {
-                Value::Integer(0) // see note above
-            }
-        }
+        "GROUPING" => Value::Integer(0),
         // GROUP_CONCAT — aggregate concatenator. Supports SEPARATOR.
         "GROUP_CONCAT" => group_concat(args),
         _ => Value::Null,
@@ -703,8 +694,10 @@ pub fn eval_fn(name: &str, args: &[Value]) -> Value {
 
 /// DATE_ADD / DATE_SUB helper. Operates on text dates in YYYY-MM-DD form.
 /// Accepts args in either order:
-///   - [date_text, n, unit_text]
-///   - [date_text, n] (default unit = DAY)
+///
+/// - [date_text, n, unit_text]
+/// - [date_text, n] (default unit = DAY)
+///
 /// Returns Value::Text (new date) or Value::Null on bad input.
 fn date_add_sub(args: &[Value], add: bool) -> Value {
     if args.len() < 2 {
@@ -730,7 +723,7 @@ fn date_add_sub(args: &[Value], add: bool) -> Value {
             let y: i64 = date_str[..4].parse().unwrap_or(0);
             let m: i64 = date_str[5..7].parse().unwrap_or(1);
             let d: i64 = date_str[8..10].parse().unwrap_or(1);
-            let mut total_days = days_from_civil(y, m, d) + sign * n;
+            let total_days = days_from_civil(y, m, d) + sign * n;
             let (ny, nm, nd) = civil_from_days(total_days);
             Value::Text(format!("{:04}-{:02}-{:02}", ny, nm, nd))
         }
@@ -764,7 +757,7 @@ fn date_add_sub(args: &[Value], add: bool) -> Value {
 fn days_from_civil(y: i64, m: i64, d: i64) -> i64 {
     let y = if m <= 2 { y - 1 } else { y };
     let era = y.div_euclid(400);
-    let yoe = y.rem_euclid(400) as i64; // [0, 399]
+    let yoe = y.rem_euclid(400); // [0, 399]
     let m = if m > 2 { m - 3 } else { m + 9 }; // [0, 11]
     let doy = (153 * m + 2) / 5 + d - 1; // [0, 365]
     let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy; // [0, 146096]
@@ -774,7 +767,7 @@ fn days_from_civil(y: i64, m: i64, d: i64) -> i64 {
 fn civil_from_days(z: i64) -> (i64, i64, i64) {
     let z = z + 719468;
     let era = z.div_euclid(146097);
-    let doe = z.rem_euclid(146097) as i64;
+    let doe = z.rem_euclid(146097);
     let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
     let y = yoe + era * 400;
     let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
