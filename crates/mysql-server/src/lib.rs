@@ -134,6 +134,7 @@ impl From<&str> for MySqlError {
     }
 }
 pub type MySqlResult<T> = Result<T, MySqlError>;
+pub(crate) type UserStoreBootstrap = Box<dyn FnOnce(&mut UserStore) + Send>;
 
 // User storage for mysql_native_password authentication
 #[derive(Debug, Clone)]
@@ -1299,7 +1300,7 @@ pub fn parse_stmt_execute_params(payload: &[u8], param_count: u16) -> Vec<StmtPa
     }
 
     // 1. null-bitmap: (param_count + 7) / 8 bytes
-    let null_bytes = ((param_count as usize) + 7) / 8;
+    let null_bytes = (param_count as usize).div_ceil(8);
     if pos + null_bytes > payload.len() {
         return params;
     }
@@ -2168,7 +2169,7 @@ pub fn run_server_with_listener(listener: TcpListener) -> MySqlResult<()> {
 pub(crate) fn run_server_with_listener_and_shutdown_with_bootstrap_tables_and_sql(
     listener: TcpListener,
     shutdown: std::sync::Arc<std::sync::atomic::AtomicBool>,
-    bootstrap: Option<Box<dyn FnOnce(&mut UserStore) + Send>>,
+    bootstrap: Option<UserStoreBootstrap>,
     bootstrap_tables: bool,
     bootstrap_sql: Vec<String>,
     data_dir: Option<std::path::PathBuf>,
@@ -2277,7 +2278,7 @@ pub fn run_server_with_listener_and_shutdown(
 pub(crate) fn run_server_with_listener_and_shutdown_with_bootstrap(
     listener: TcpListener,
     shutdown: std::sync::Arc<std::sync::atomic::AtomicBool>,
-    bootstrap: Option<Box<dyn FnOnce(&mut UserStore) + Send>>,
+    bootstrap: Option<UserStoreBootstrap>,
 ) -> MySqlResult<()> {
     run_server_with_listener_and_shutdown_with_bootstrap_tables_and_sql(
         listener,
@@ -3285,14 +3286,13 @@ pub mod testing {
         let bootstrap_tables_flag = config.bootstrap_tables;
         let bootstrap_sql = config.bootstrap_sql;
         let join = std::thread::spawn(move || {
-            let bootstrap: Option<Box<dyn FnOnce(&mut crate::UserStore) + Send>> =
-                if bootstrap_users {
-                    Some(Box::new(|user_store: &mut crate::UserStore| {
-                        user_store.add_user("tester", "tester");
-                    }))
-                } else {
-                    None
-                };
+            let bootstrap: Option<crate::UserStoreBootstrap> = if bootstrap_users {
+                Some(Box::new(|user_store: &mut crate::UserStore| {
+                    user_store.add_user("tester", "tester");
+                }))
+            } else {
+                None
+            };
             let _ = crate::run_server_with_listener_and_shutdown_with_bootstrap_tables_and_sql(
                 listener_for_thread,
                 shutdown_for_thread,
