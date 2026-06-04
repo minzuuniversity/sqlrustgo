@@ -663,14 +663,9 @@ fn find_join_predicate(
                 // The "new table" can be referenced by either its
                 // full name (e.g. "supplier") or its TPC-H prefix
                 // (e.g. "s"). Try both.
-                let new_prefix = new_table
-                    .split('_')
-                    .next()
-                    .unwrap_or(new_table);
+                let new_prefix = new_table.split('_').next().unwrap_or(new_table);
                 let new_alts: Vec<&str> = vec![new_table, new_prefix];
-                let left_has_new = left_refs
-                    .iter()
-                    .any(|t| new_alts.iter().any(|n| n == t));
+                let left_has_new = left_refs.iter().any(|t| new_alts.iter().any(|n| n == t));
                 let right_has_new = right_refs
                     .iter()
                     .any(|t| new_alts.iter().any(|n| n == t));
@@ -2322,11 +2317,20 @@ impl Parser {
                     Vec::new()
                 } else {
                     let mut v = vec![table.clone()];
-                    if let Some(prefix) = table.split('_').next() {
-                        if prefix != table {
-                            v.push(prefix.to_string());
-                        }
-                    }
+                    // TPC-H 1-char prefix (e.g. "supplier" -> "s",
+                    // "partsupp" -> "ps", "nation" -> "n"). The
+                    // underscore-separated prefix is what
+                    // `collect_referenced_tables` extracts from
+                    // unqualified column names like `s_suppkey`.
+                    let prefix = if table.contains('_') {
+                        // "partsupp" -> "ps"; "customer" -> "c"
+                        let underscore = table.find('_').unwrap();
+                        &table[..underscore]
+                    } else {
+                        // "nation" -> "n"; "supplier" -> "s"
+                        &table[..1]
+                    };
+                    v.push(prefix.to_string());
                     if let Some(ref a) = from_alias {
                         v.push(a.clone());
                     }
@@ -2389,15 +2393,16 @@ impl Parser {
                     // its full name or its underscore-separated
                     // prefix.
                     joined.push(t.clone());
-                    if let Some(prefix) = t.split('_').next() {
-                        if prefix != t {
-                            joined.push(prefix.to_string());
-                        }
-                    }
+                    // TPC-H 1-char/2-char prefix extraction
+                    // (see the base-table seed above for rationale).
+                    let prefix = if t.contains('_') {
+                        let underscore = t.find('_').unwrap();
+                        t[..underscore].to_string()
+                    } else {
+                        t[..1].to_string()
+                    };
+                    joined.push(prefix);
                 }
-                // Append the chain to the existing join_clause Vec (which is
-                // already a Vec<JoinClause> on develop/v3.8.0). Pre-existing
-                // joins (if any) take precedence; the auto-rewritten chain
                 // extends them.
                 join_clause.extend(chain);
             } else {
