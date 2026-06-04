@@ -1618,24 +1618,69 @@ impl Parser {
                 Some(Token::NumberLiteral(ref n)) => {
                     let n_str = n.to_string();
                     self.next();
-                    let alias = if matches!(self.current(), Some(Token::As)) {
+                    // If the next token is a binary operator (e.g., `1 - 2`,
+                    // `1 + 2`), parse the right side and build a BinaryOp.
+                    // Otherwise treat as a bare literal column.
+                    if matches!(
+                        self.current(),
+                        Some(Token::Plus)
+                            | Some(Token::Minus)
+                            | Some(Token::Star)
+                            | Some(Token::Slash)
+                            | Some(Token::Percent)
+                    ) {
+                        let op = match self.current() {
+                            Some(Token::Plus) => "+",
+                            Some(Token::Minus) => "-",
+                            Some(Token::Star) => "*",
+                            Some(Token::Slash) => "/",
+                            Some(Token::Percent) => "%",
+                            _ => unreachable!(),
+                        };
                         self.next();
-                        match self.current() {
-                            Some(Token::Identifier(name)) => {
-                                let alias_name = name.clone();
+                        let right = self.parse_expression()?;
+                        let expr = Expression::BinaryOp(
+                            Box::new(Expression::Literal(n_str.clone())),
+                            op.to_string(),
+                            Box::new(right),
+                        );
+                        let alias = if matches!(self.current(), Some(Token::As)) {
+                            self.next();
+                            if let Some(Token::Identifier(name)) = self.current() {
+                                let a = name.clone();
                                 self.next();
-                                Some(alias_name)
+                                Some(a)
+                            } else {
+                                None
                             }
-                            _ => None,
-                        }
+                        } else {
+                            None
+                        };
+                        columns.push(SelectColumn {
+                            name: format!("{:?}", expr),
+                            alias,
+                            expression: Some(expr),
+                        });
                     } else {
-                        None
-                    };
-                    columns.push(SelectColumn {
-                        name: n_str.clone(),
-                        alias,
-                        expression: Some(Expression::Literal(n_str)),
-                    });
+                        let alias = if matches!(self.current(), Some(Token::As)) {
+                            self.next();
+                            match self.current() {
+                                Some(Token::Identifier(name)) => {
+                                    let alias_name = name.clone();
+                                    self.next();
+                                    Some(alias_name)
+                                }
+                                _ => None,
+                            }
+                        } else {
+                            None
+                        };
+                        columns.push(SelectColumn {
+                            name: n_str.clone(),
+                            alias,
+                            expression: Some(Expression::Literal(n_str)),
+                        });
+                    }
                 }
                 // Handle StringLiteral in SELECT (e.g., SELECT 'hello')
                 Some(Token::StringLiteral(ref s)) => {
@@ -3378,7 +3423,12 @@ impl Parser {
                 }
             }
             Some(Token::LParen) => {
-                self.next();
+                // parse_expression_in_parens consumes the LParen itself,
+                // so we do NOT call self.next() here. The previous code
+                // called self.next() and then in_parens also called
+                // self.next(), which double-advanced the cursor and
+                // caused "Expected number after -" failures on expressions
+                // like `l_extendedprice * (1 - l_discount)`.
                 match self.current() {
                     Some(Token::Select) => {
                         let subquery = self.parse_select_statement()?;
