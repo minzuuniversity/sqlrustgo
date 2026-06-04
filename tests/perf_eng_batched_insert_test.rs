@@ -8,8 +8,12 @@
 //!
 //! **Date**: 2026-06-04
 //! **Issue**: #3013 (P1 - TPC-H 22/22 sprint, unblocks SF=0.01 lineitem import)
-//! **Strategy**: full `ExecutionEngine<WalStorage<FileStorage, FileBackedWalManager>>`
-//!   stack so the path is the same as the user-facing `eng.execute("INSERT …")`.
+//! **Strategy**: drive the batched INSERT through the canonical
+//!   `start_ephemeral` MySQL server. Internally the server uses the same
+//!   `ExecutionEngine<WalStorage<FileStorage, FileBackedWalManager>>` stack,
+//!   so this exercises the exact user-facing insert path plus the wire
+//!   protocol round-trip overhead. Pre-fix O(N²) manifests as a wire-level
+//!   timeout; post-fix the same path lands within the thresholds below.
 //!
 //! **Mode**: `#[ignore]` — run with `cargo test --release --test perf_eng_batched_insert_test -- --ignored --nocapture`
 //!
@@ -28,34 +32,24 @@
 //! The 1 s / 10 s thresholds are intentionally tighter than the original
 //! 5 s / 30 s to surface regressions earlier (see PR review).
 
-use sqlrustgo::ExecutionEngine;
-use sqlrustgo_storage::engine::Value;
-use sqlrustgo_types::SqlResult;
+mod common;
+
+use common::MySqlTestClient;
+use sqlrustgo_mysql_server::testing::{start_ephemeral, EphemeralConfig};
 use std::time::Instant;
 use tempfile::TempDir;
 
-fn make_wal_engine(
-    dir: &std::path::Path,
-) -> ExecutionEngine<
-    sqlrustgo_storage::WalStorage<
-        sqlrustgo_storage::FileStorage,
-        sqlrustgo_storage::FileBackedWalManager,
-    >,
-> {
-    ExecutionEngine::with_wal_file(dir.to_path_buf()).unwrap()
-}
-
-fn extract_count(result: SqlResult<sqlrustgo::ExecutorResult>) -> i64 {
-    if let Ok(res) = result {
-        if let Some(row) = res.rows.into_iter().next() {
-            if let Some(v) = row.into_iter().next() {
-                if let Value::Integer(n) = v {
-                    return n;
-                }
-            }
-        }
-    }
-    0
+fn open_client(data_dir: &std::path::Path) -> MySqlTestClient {
+    let cfg = EphemeralConfig {
+        host: "127.0.0.1".to_string(),
+        bootstrap_tables: false,
+        bootstrap_users: true,
+        data_dir: Some(data_dir.to_path_buf()),
+        bootstrap_sql: Vec::new(),
+        bulk_insert_buffer_size: 1_048_576,
+    };
+    let handle = start_ephemeral(cfg).expect("start_ephemeral");
+    MySqlTestClient::connect_handle(handle).expect("MySqlTestClient::connect_handle")
 }
 
 #[test]
@@ -63,14 +57,12 @@ fn extract_count(result: SqlResult<sqlrustgo::ExecutorResult>) -> i64 {
 fn perf_1000_row_batched_insert_under_1s() {
     let temp_dir = TempDir::new().unwrap();
     let data_dir = temp_dir.path().to_path_buf();
+    let mut client = open_client(&data_dir);
 
-    let mut engine = make_wal_engine(&data_dir);
-
-    engine
-        .execute("CREATE TABLE t (id INTEGER, name TEXT, value INTEGER)")
+    client
+        .exec("CREATE TABLE t (id INTEGER, name TEXT, value INTEGER)")
         .expect("CREATE TABLE failed");
 
-    // Build a single multi-row INSERT statement (the user's exact pain path).
     let mut sql = String::from("INSERT INTO t VALUES ");
     for i in 0..1000i64 {
         if i > 0 {
@@ -80,13 +72,15 @@ fn perf_1000_row_batched_insert_under_1s() {
     }
 
     let start = Instant::now();
-    engine.execute(&sql).expect("INSERT 1000 rows failed");
+    client.exec(&sql).expect("INSERT 1000 rows failed");
     let elapsed = start.elapsed();
 
-    let count = extract_count(engine.execute("SELECT COUNT(*) FROM t"));
+    let count = client
+        .query_one_i64("SELECT COUNT(*) FROM t")
+        .expect("COUNT");
     assert_eq!(count, 1000, "row count mismatch after batched INSERT");
 
-    println!("=== 1000-row batched INSERT (issue #3013 P1 fix verification) ===");
+    println!("=== 1000-row batched INSERT (issue #3013 P1 fix verification, wire) ===");
     println!("  Elapsed:   {} ms", elapsed.as_millis());
     println!("  Threshold: < 1000 ms (release build)");
     println!("  Rows:      {}", count);
@@ -102,14 +96,12 @@ fn perf_1000_row_batched_insert_under_1s() {
 fn perf_10000_row_batched_insert_under_10s() {
     let temp_dir = TempDir::new().unwrap();
     let data_dir = temp_dir.path().to_path_buf();
+    let mut client = open_client(&data_dir);
 
-    let mut engine = make_wal_engine(&data_dir);
-
-    engine
-        .execute("CREATE TABLE t (id INTEGER, name TEXT, value INTEGER)")
+    client
+        .exec("CREATE TABLE t (id INTEGER, name TEXT, value INTEGER)")
         .expect("CREATE TABLE failed");
 
-    // Build a single multi-row INSERT statement.
     let mut sql = String::from("INSERT INTO t VALUES ");
     for i in 0..10000i64 {
         if i > 0 {
@@ -119,13 +111,15 @@ fn perf_10000_row_batched_insert_under_10s() {
     }
 
     let start = Instant::now();
-    engine.execute(&sql).expect("INSERT 10000 rows failed");
+    client.exec(&sql).expect("INSERT 10000 rows failed");
     let elapsed = start.elapsed();
 
-    let count = extract_count(engine.execute("SELECT COUNT(*) FROM t"));
+    let count = client
+        .query_one_i64("SELECT COUNT(*) FROM t")
+        .expect("COUNT");
     assert_eq!(count, 10000, "row count mismatch after batched INSERT");
 
-    println!("=== 10000-row batched INSERT (issue #3013 P1 fix verification) ===");
+    println!("=== 10000-row batched INSERT (issue #3013 P1 fix verification, wire) ===");
     println!("  Elapsed:   {} ms", elapsed.as_millis());
     println!("  Threshold: < 10000 ms (release build)");
     println!("  Rows:      {}", count);
