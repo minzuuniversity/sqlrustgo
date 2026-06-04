@@ -6,8 +6,20 @@
 //! 3. WalStorage<FileStorage, FileBackedWalManager> (L3, persistent, mysql-server actual)
 //!
 //! Per DEFERRED_PRS.md §3.4 推荐测试矩阵.
+//!
+//! Phase 2a migration (OpenSpec §2): only path 3 (the production
+//! "mysql-server actual" stack) must be driven over the wire protocol.
+//! Paths 1 and 2 are below the wire-protocol layer (they exercise
+//! the same `ExecutionEngine` code paths the wire server uses
+//! internally) and stay as in-process calls per the spec
+//! "in-process direct-call tests are kept for unit tests below
+//! the wire-protocol layer".
 
+mod common;
+
+use common::MySqlTestClient;
 use sqlrustgo::{ExecutionEngine, MemoryExecutionEngine};
+use sqlrustgo_mysql_server::testing::{start_ephemeral, EphemeralConfig};
 use sqlrustgo_storage::{
     FileBackedWalManager, FileStorage, MemoryStorage, MemoryWalManager, StorageEngine, WalStorage,
 };
@@ -26,10 +38,17 @@ fn create_wal_memory_engine() -> ExecutionEngine<WalStorage<MemoryStorage, Memor
     ExecutionEngine::new(storage_arc)
 }
 
-fn create_wal_file_engine(
-    dir: &std::path::Path,
-) -> ExecutionEngine<WalStorage<FileStorage, FileBackedWalManager>> {
-    ExecutionEngine::with_wal_file(dir.to_path_buf()).expect("Failed to create WAL file engine")
+fn create_wal_file_engine(dir: &std::path::Path) -> MySqlTestClient {
+    let cfg = EphemeralConfig {
+        host: "127.0.0.1".to_string(),
+        bootstrap_tables: false,
+        bootstrap_users: true,
+        data_dir: Some(dir.to_path_buf()),
+        bootstrap_sql: Vec::new(),
+        bulk_insert_buffer_size: 1_048_576,
+    };
+    let handle = start_ephemeral(cfg).expect("start_ephemeral");
+    MySqlTestClient::connect_handle(handle).expect("MySqlTestClient::connect_handle")
 }
 
 /// Cross-path SELECT: 3 路径应返回相同行数 + 相同内容
@@ -43,40 +62,62 @@ fn cross_path_select_consistency() {
         "INSERT INTO t VALUES (3, 'charlie')",
     ];
 
-    // Path 1: MemoryStorage
-    let mut p1 = create_memory_engine();
-    for sql in &setup_sql {
-        p1.execute(sql).expect("Path 1 setup failed");
+    let r1 = {
+        let mut e = create_memory_engine();
+        for sql in &setup_sql {
+            e.execute(sql).expect("Path 1 setup failed");
+        }
+        e.execute("SELECT id, name FROM t ORDER BY id")
+            .expect("Path 1 SELECT failed")
+            .rows
+    };
+
+    let r2 = {
+        let mut e = create_wal_memory_engine();
+        for sql in &setup_sql {
+            e.execute(sql).expect("Path 2 setup failed");
+        }
+        e.execute("SELECT id, name FROM t ORDER BY id")
+            .expect("Path 2 SELECT failed")
+            .rows
+    };
+
+    let r3 = {
+        let mut c = create_wal_file_engine(dir.path());
+        for sql in &setup_sql {
+            c.exec(sql).expect("Path 3 setup failed");
+        }
+        c.query_rows("SELECT id, name FROM t ORDER BY id")
+            .expect("Path 3 SELECT failed")
+    };
+
+    assert_eq!(r1.len(), 3, "Path 1 should have 3 rows");
+    assert_eq!(r2.len(), 3, "Path 2 should have 3 rows");
+    assert_eq!(r3.len(), 3, "Path 3 should have 3 rows");
+
+    let r1_str: Vec<Vec<String>> = r1
+        .iter()
+        .map(|row| row.iter().map(value_to_compare_string).collect())
+        .collect();
+    let r2_str: Vec<Vec<String>> = r2
+        .iter()
+        .map(|row| row.iter().map(value_to_compare_string).collect())
+        .collect();
+
+    assert_eq!(r1_str, r2_str, "Memory vs WAL memory results differ");
+    assert_eq!(r2_str, r3, "WAL memory vs WAL file results differ");
+}
+
+fn value_to_compare_string(v: &sqlrustgo_types::Value) -> String {
+    use sqlrustgo_types::Value;
+    match v {
+        Value::Null => String::new(),
+        Value::Integer(i) => i.to_string(),
+        Value::Float(f) => f.to_string(),
+        Value::Text(s) => s.clone(),
+        Value::Boolean(b) => b.to_string(),
+        Value::Blob(b) => String::from_utf8_lossy(b).to_string(),
     }
-    let r1 = p1
-        .execute("SELECT id, name FROM t ORDER BY id")
-        .expect("Path 1 SELECT failed");
-
-    // Path 2: WAL memory
-    let mut p2 = create_wal_memory_engine();
-    for sql in &setup_sql {
-        p2.execute(sql).expect("Path 2 setup failed");
-    }
-    let r2 = p2
-        .execute("SELECT id, name FROM t ORDER BY id")
-        .expect("Path 2 SELECT failed");
-
-    // Path 3: WAL file (mysql-server actual)
-    let mut p3 = create_wal_file_engine(dir.path());
-    for sql in &setup_sql {
-        p3.execute(sql).expect("Path 3 setup failed");
-    }
-    let r3 = p3
-        .execute("SELECT id, name FROM t ORDER BY id")
-        .expect("Path 3 SELECT failed");
-
-    assert_eq!(r1.rows.len(), 3, "Path 1 should have 3 rows");
-    assert_eq!(r2.rows.len(), 3, "Path 2 should have 3 rows");
-    assert_eq!(r3.rows.len(), 3, "Path 3 should have 3 rows");
-
-    // 3 路径结果应完全一致
-    assert_eq!(r1.rows, r2.rows, "Memory vs WAL memory results differ");
-    assert_eq!(r2.rows, r3.rows, "WAL memory vs WAL file results differ");
 }
 
 /// Cross-path INSERT: 3 路径都能看到插入
@@ -84,7 +125,6 @@ fn cross_path_select_consistency() {
 fn cross_path_insert_visibility() {
     let dir = TempDir::new().unwrap();
 
-    // Direct test: 3 paths separately
     let r1 = {
         let mut e = create_memory_engine();
         e.execute("CREATE TABLE t (id INTEGER)").unwrap();
@@ -92,6 +132,7 @@ fn cross_path_insert_visibility() {
         e.execute("INSERT INTO t VALUES (2)").unwrap();
         e.execute("SELECT COUNT(*) FROM t").unwrap().rows[0][0].clone()
     };
+
     let r2 = {
         let mut e = create_wal_memory_engine();
         e.execute("CREATE TABLE t (id INTEGER)").unwrap();
@@ -99,19 +140,18 @@ fn cross_path_insert_visibility() {
         e.execute("INSERT INTO t VALUES (2)").unwrap();
         e.execute("SELECT COUNT(*) FROM t").unwrap().rows[0][0].clone()
     };
+
     let r3 = {
-        let mut e = create_wal_file_engine(dir.path());
-        e.execute("CREATE TABLE t (id INTEGER)").unwrap();
-        e.execute("INSERT INTO t VALUES (1)").unwrap();
-        e.execute("INSERT INTO t VALUES (2)").unwrap();
-        e.execute("SELECT COUNT(*) FROM t").unwrap().rows[0][0].clone()
+        let mut c = create_wal_file_engine(dir.path());
+        c.exec("CREATE TABLE t (id INTEGER)").unwrap();
+        c.exec("INSERT INTO t VALUES (1)").unwrap();
+        c.exec("INSERT INTO t VALUES (2)").unwrap();
+        c.query_one_i64("SELECT COUNT(*) FROM t").unwrap()
     };
 
     assert_eq!(r1, sqlrustgo_types::Value::Integer(2));
     assert_eq!(r2, sqlrustgo_types::Value::Integer(2));
-    assert_eq!(r3, sqlrustgo_types::Value::Integer(2));
-    assert_eq!(r1, r2);
-    assert_eq!(r2, r3);
+    assert_eq!(r3, 2);
 }
 
 /// Cross-path UPDATE: 3 路径结果一致
@@ -131,6 +171,7 @@ fn cross_path_update_consistency() {
         e.execute(update).unwrap();
         e.execute(select).unwrap().rows[0][0].clone()
     };
+
     let r2 = {
         let mut e = create_wal_memory_engine();
         e.execute(setup).unwrap();
@@ -138,17 +179,18 @@ fn cross_path_update_consistency() {
         e.execute(update).unwrap();
         e.execute(select).unwrap().rows[0][0].clone()
     };
+
     let r3 = {
-        let mut e = create_wal_file_engine(dir.path());
-        e.execute(setup).unwrap();
-        e.execute(insert).unwrap();
-        e.execute(update).unwrap();
-        e.execute(select).unwrap().rows[0][0].clone()
+        let mut c = create_wal_file_engine(dir.path());
+        c.exec(setup).unwrap();
+        c.exec(insert).unwrap();
+        c.exec(update).unwrap();
+        c.query_rows(select).unwrap()[0][0].clone()
     };
 
-    let expected = sqlrustgo_types::Value::Integer(200);
-    assert_eq!(r1, expected);
-    assert_eq!(r2, expected);
+    let expected = "200";
+    assert_eq!(format!("{r1:?}"), "Integer(200)");
+    assert_eq!(format!("{r2:?}"), "Integer(200)");
     assert_eq!(r3, expected);
 }
 
@@ -169,6 +211,7 @@ fn cross_path_delete_consistency() {
         e.execute(delete).unwrap();
         e.execute(select).unwrap().rows[0][0].clone()
     };
+
     let r2 = {
         let mut e = create_wal_memory_engine();
         e.execute(setup).unwrap();
@@ -176,18 +219,19 @@ fn cross_path_delete_consistency() {
         e.execute(delete).unwrap();
         e.execute(select).unwrap().rows[0][0].clone()
     };
+
     let r3 = {
-        let mut e = create_wal_file_engine(dir.path());
-        e.execute(setup).unwrap();
-        e.execute(insert).unwrap();
-        e.execute(delete).unwrap();
-        e.execute(select).unwrap().rows[0][0].clone()
+        let mut c = create_wal_file_engine(dir.path());
+        c.exec(setup).unwrap();
+        c.exec(insert).unwrap();
+        c.exec(delete).unwrap();
+        c.query_one_i64(select).unwrap()
     };
 
     let zero = sqlrustgo_types::Value::Integer(0);
     assert_eq!(r1, zero);
     assert_eq!(r2, zero);
-    assert_eq!(r3, zero);
+    assert_eq!(r3, 0);
 }
 
 /// Cross-path error consistency: 3 路径错误 SQL 应产生错误
@@ -205,6 +249,6 @@ fn cross_path_error_consistency() {
     assert!(r2.is_err(), "Path 2 should error on missing table");
 
     let mut p3 = create_wal_file_engine(dir.path());
-    let r3 = p3.execute(bad_sql);
+    let r3 = p3.query_rows(bad_sql);
     assert!(r3.is_err(), "Path 3 should error on missing table");
 }
