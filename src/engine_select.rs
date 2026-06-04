@@ -163,10 +163,10 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     agg_result_rows.retain(|row| eval_predicate(having_expr, row, &having_schema));
                 }
 
-                /// MySQL 5.7 WITH ROLLUP / WITH CUBE — emit grouping-set
-                /// subtotal rows. We aggregate the already-grouped rows in
-                /// successive passes (k+1 levels for ROLLUP, 2^k for CUBE)
-                /// and append a NULL-padded subtotal row for each level.
+                // MySQL 5.7 WITH ROLLUP / WITH CUBE — emit grouping-set
+                // subtotal rows. We aggregate the already-grouped rows in
+                // successive passes (k+1 levels for ROLLUP, 2^k for CUBE)
+                // and append a NULL-padded subtotal row for each level.
                 if select.with_rollup {
                     let k = group_exprs.len();
                     // Levels: drop trailing i group cols (i=1..k), leaving
@@ -196,7 +196,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                                 .join("\x00");
                             subtotal_groups.entry(key).or_default().push(row.clone());
                         }
-                        for (key, group_rows) in subtotal_groups.iter() {
+                        for (key, _group_rows) in subtotal_groups.iter() {
                             let parts: Vec<&str> = key.split('\x00').collect();
                             let mut combined: Vec<Value> =
                                 parts.iter().map(|s| decode_value_key(s)).collect();
