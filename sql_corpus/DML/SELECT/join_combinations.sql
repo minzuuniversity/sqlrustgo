@@ -1,3 +1,16 @@
+-- === SETUP ===
+CREATE TABLE users (id INT PRIMARY KEY, name TEXT);
+INSERT INTO users VALUES (1, 'Alice'), (2, 'Bob'), (3, 'Carol'), (4, 'Dave'), (5, 'Eve');
+CREATE TABLE products (id INT PRIMARY KEY, name TEXT);
+INSERT INTO products VALUES (10, 'Widget'), (20, 'Gadget'), (30, 'Gizmo'), (40, 'Thingamajig'), (50, 'Doohickey'),
+                              (60, 'Whatsit'), (70, 'Whatchamacallit'), (80, 'Contraption'), (90, 'Gimmick'), (100, 'Apparatus');
+CREATE TABLE orders (order_id INT PRIMARY KEY, user_id INT, total REAL);
+INSERT INTO orders VALUES (101, 1, 50.0), (102, 2, 75.0), (103, 1, 30.0);
+CREATE TABLE order_items (order_id INT, product_id INT, qty INT);
+INSERT INTO order_items VALUES (101, 10, 2), (102, 20, 1), (103, 30, 4);
+CREATE TABLE employees (id INT PRIMARY KEY, name TEXT, manager_id INT);
+INSERT INTO employees VALUES (1, 'CEO', NULL), (2, 'CTO', 1), (3, 'CFO', 1), (4, 'Eng1', 2), (5, 'Eng2', 2);
+
 -- === CASE: Cross Join ===
 -- EXPECT: 50 rows (5 users x 10 products)
 SELECT u.id as user_id, p.id as product_id, u.name, p.name as product_name
