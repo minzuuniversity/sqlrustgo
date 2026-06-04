@@ -1,3 +1,9 @@
+-- === SETUP ===
+CREATE TABLE users (id INT PRIMARY KEY, name TEXT);
+INSERT INTO users VALUES (1, 'Alice'), (2, 'Bob'), (3, 'Carol'), (4, 'Dave'), (5, 'Eve');
+CREATE TABLE orders (order_id INT PRIMARY KEY, user_id INT, total REAL);
+INSERT INTO orders VALUES (101, 1, 50.0), (102, 2, 75.0), (103, 1, 30.0);
+
 -- === CASE: Outer Join Test Suite ===
 
 -- === CASE: CASE: Left Join Basic ===
