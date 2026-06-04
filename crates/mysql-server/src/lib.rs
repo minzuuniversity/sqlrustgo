@@ -3151,13 +3151,27 @@ pub mod testing {
     /// temporary data directory.
     pub struct EphemeralHandle {
         pub port: u16,
-        // Shared shutdown signal: Drop sets it to true, the server
-        // thread's accept loop polls it and exits within 50ms.
+        // Shared shutdown signal: Drop sets it to true, the
+        // server thread's accept loop polls it and exits within 50ms.
         shutdown: Option<Arc<std::sync::atomic::AtomicBool>>,
         // Mutex so Drop can take the JoinHandle by value.
         join: Mutex<Option<JoinHandle<()>>>,
-        // Temporary data directory; removed on Drop.
+        // Temporary data directory; removed on Drop ONLY when the
+        // server auto-created it. When the test supplied a path via
+        // `EphemeralConfig::data_dir`, the path is caller-owned and
+        // Drop must not touch it (caller decides when to clean up,
+        // and may want to point a second `start_ephemeral` at it
+        // for recovery-style tests).
         data_dir: PathBuf,
+        // True iff the server created `data_dir` itself and owns the
+        // cleanup. False when the test supplied the path through
+        // `EphemeralConfig::data_dir`. The previous Drop logic used
+        // `data_dir.starts_with(std::env::temp_dir())` to discriminate,
+        // which is incorrect because the canonical test pattern uses
+        // `tempfile::TempDir` whose paths are also under temp_dir —
+        // the auto-generated `sqlrustgo_ephemeral_<port>_<pid>` and
+        // the test's `tmpdir/.tmpXXXX` both match the prefix.
+        externally_owned: bool,
     }
 
     impl std::fmt::Debug for EphemeralHandle {
@@ -3182,6 +3196,7 @@ pub mod testing {
                 shutdown: None,
                 join: Mutex::new(None),
                 data_dir: PathBuf::new(),
+                externally_owned: true,
             }
         }
     }
@@ -3199,14 +3214,15 @@ pub mod testing {
                     let _ = handle.join();
                 }
             }
-            // 3. Remove the temporary data directory, but only if
-            //    it is one we created. An empty path means the
-            //    handle is a no-op (external server); a path the
-            //    test supplied via `EphemeralConfig::data_dir` is
-            //    owned by the test and must not be touched.
-            if !self.data_dir.as_os_str().is_empty()
-                && self.data_dir.starts_with(std::env::temp_dir())
-            {
+            // 3. Remove the temporary data directory ONLY if the
+            //    server created it. When the test supplied the path
+            //    via `EphemeralConfig::data_dir` (e.g. for
+            //    recovery-style tests that share the dir between two
+            //    `start_ephemeral` calls), Drop is a no-op for the
+            //    data dir and the caller is responsible for cleanup.
+            //    An empty path means the handle is a no-op (external
+            //    server spawned by another process).
+            if !self.externally_owned && !self.data_dir.as_os_str().is_empty() {
                 let _ = std::fs::remove_dir_all(&self.data_dir);
             }
         }
@@ -3283,6 +3299,7 @@ pub mod testing {
             shutdown: Some(shutdown),
             join: Mutex::new(Some(join)),
             data_dir,
+            externally_owned,
         })
     }
 }
