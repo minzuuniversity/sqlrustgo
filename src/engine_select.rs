@@ -181,10 +181,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                         }
                         for (key, group_rows) in subtotal_groups.iter() {
                             let parts: Vec<&str> = key.split('\x00').collect();
-                            let mut combined: Vec<Value> = parts
-                                .iter()
-                                .map(|s| decode_value_key(s))
-                                .collect();
+                            let mut combined: Vec<Value> =
+                                parts.iter().map(|s| decode_value_key(s)).collect();
                             // Pad NULLs for the dropped i columns
                             for _ in 0..i {
                                 combined.push(Value::Null);
