@@ -226,26 +226,28 @@ fn install_signal_handler() -> std::io::Result<()> {
     Ok(())
 }
 
-fn exec_one(sql: &str) -> Result<(), String> {
-    use sqlrustgo::{ExecutionEngine, MemoryStorage};
-    use std::sync::{Arc, RwLock};
-    let storage = Arc::new(RwLock::new(MemoryStorage::new()));
-    let mut engine = ExecutionEngine::new(storage);
-    match engine.execute(sql) {
-        Ok(result) => {
-            for row in &result.rows {
-                let cells: Vec<String> = row.iter().map(|v| format!("{v:?}")).collect();
-                println!("{}", cells.join(" | "));
-            }
-            println!("({} rows)", result.rows.len());
-            Ok(())
-        }
-        Err(e) => Err(format!("{e}")),
-    }
+use sqlrustgo::MemoryExecutionEngine;
+use std::sync::{Arc, RwLock};
+
+/// CLI-01 Stage 2: Shared REPL engine factory
+///
+/// All REPL statements share a single engine so that CREATE TABLE, INSERT,
+/// SELECT in the same REPL session see the same catalog and data.
+fn make_shared_engine() -> MemoryExecutionEngine {
+    let storage = Arc::new(RwLock::new(sqlrustgo::MemoryStorage::new()));
+    MemoryExecutionEngine::new(storage)
 }
+
+fn exec_one(sql: &str) -> Result<(), String> {
+    let mut engine = make_shared_engine();
+    exec_with_engine_and_options(&mut engine, sql, true)
+}
+
 
 fn run_repl() -> Result<(), String> {
     println!("SQLRustGo REPL v3.8.0 — type `.help` for commands, `.exit` to quit");
+    // CLI-01 Stage 2: ONE shared engine for the entire REPL session
+    let mut engine = make_shared_engine();
     let stdin = io::stdin();
     let mut stdout = io::stdout();
     let mut buf = String::new();
@@ -315,9 +317,9 @@ fn run_repl() -> Result<(), String> {
             history.pop_front();
         }
 
-        // Apply pager + timing + headers (CLI-01 Stage 1)
+        // Apply pager + timing + headers (CLI-01 Stage 1) + persistence (Stage 2)
         let start = std::time::Instant::now();
-        match exec_one_with_options(&stmt, headers_enabled) {
+        match exec_with_engine_and_options(&mut engine, &stmt, headers_enabled) {
             Ok(()) => {
                 if timing_enabled {
                     let elapsed = start.elapsed();
@@ -332,12 +334,12 @@ fn run_repl() -> Result<(), String> {
     }
 }
 
-/// CLI-01 Stage 1: exec_one with headers option
-fn exec_one_with_options(sql: &str, headers_enabled: bool) -> Result<(), String> {
-    use sqlrustgo::{ExecutionEngine, MemoryStorage};
-    use std::sync::{Arc, RwLock};
-    let storage = Arc::new(RwLock::new(MemoryStorage::new()));
-    let mut engine = ExecutionEngine::new(storage);
+/// CLI-01 Stage 1+2: exec with shared engine + headers option
+fn exec_with_engine_and_options(
+    engine: &mut MemoryExecutionEngine,
+    sql: &str,
+    headers_enabled: bool,
+) -> Result<(), String> {
     match engine.execute(sql) {
         Ok(result) => {
             if headers_enabled && !result.rows.is_empty() {
@@ -381,16 +383,16 @@ fn handle_dot_command(
             println!("  .help, .h         Show this help");
             println!("  .exit, .quit      Exit the REPL");
             println!("  .history          Show command history");
+            println!("  .tables           List tables (SHOW TABLES)");
+            println!("  .schema TABLE     Describe table (DESCRIBE TABLE)");
+            println!("  .databases        List databases (SHOW DATABASES)");
+            println!("  .version          Show SQLRustGo version");
+            println!("  .timing on|off    Toggle execution time display");
+            println!("  .headers on|off   Toggle column header display");
+            println!("  .clear            Clear the screen");
             println!("  .multiline        (info) Multiline SQL is supported: end with ';'");
             println!("  .source FILE      Execute SQL statements from FILE");
             println!("  .pager on|off     Toggle result pager (placeholder)");
-            println!("  .tables           List all tables (shortcut for SHOW TABLES)");
-            println!("  .schema TABLE     Describe table schema (shortcut for DESCRIBE TABLE)");
-            println!("  .databases        List all databases (shortcut for SHOW DATABASES)");
-            println!("  .version          Show SQLRustGo version");
-            println!("  .timing on|off    Toggle query execution time display");
-            println!("  .headers on|off   Toggle column headers display");
-            println!("  .clear            Clear the screen");
             println!("SQL may span multiple lines; terminate with ';'.");
             DotResult::Continue
         }
