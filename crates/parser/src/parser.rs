@@ -35,6 +35,10 @@ pub enum Statement {
     Truncate(TruncateStatement),
     Analyze(AnalyzeStatement),
     WithSelect(WithSelect),
+    /// WITH-clause followed by a DML statement (INSERT / UPDATE / DELETE).
+    /// The CTE definitions are evaluated first, then the DML body is
+    /// executed with the CTE tables materialized.
+    WithDml(WithDmlStatement),
     AlterTable(AlterTableStatement),
     Call(CallStatement),
     CreateProcedure(CreateProcedureStatement),
@@ -189,6 +193,14 @@ pub struct WithClause {
 pub struct WithSelect {
     pub with_clause: Option<WithClause>,
     pub select: SelectStatement,
+}
+
+/// WITH-clause followed by a DML statement (INSERT / UPDATE / DELETE).
+/// The body is any of the standard DML statement variants.
+#[derive(Debug, Clone, PartialEq)]
+pub struct WithDmlStatement {
+    pub with_clause: WithClause,
+    pub body: Box<Statement>,
 }
 
 /// ANALYZE statement for collecting statistics
@@ -1225,7 +1237,11 @@ impl Parser {
     fn parse_select_or_union(&mut self) -> Result<Statement, String> {
         let first_select = self.parse_select_statement()?;
 
-        if matches!(self.current(), Some(Token::Union)) {
+        let mut current = Statement::Select(first_select);
+        // A SELECT can be followed by zero or more UNION / UNION ALL
+        // chains. Each chain consumes a new SELECT and wraps the
+        // existing `current` as the left side of a new UnionStatement.
+        while matches!(self.current(), Some(Token::Union)) {
             self.next();
             let union_all = if matches!(self.current(), Some(Token::All)) {
                 self.next();
@@ -1233,16 +1249,14 @@ impl Parser {
             } else {
                 false
             };
-            let second_select = self.parse_select_statement()?;
-
-            return Ok(Statement::Union(UnionStatement {
-                left: Box::new(Statement::Select(first_select)),
-                right: Box::new(Statement::Select(second_select)),
+            let next_select = self.parse_select_statement()?;
+            current = Statement::Union(UnionStatement {
+                left: Box::new(current),
+                right: Box::new(Statement::Select(next_select)),
                 union_all,
-            }));
+            });
         }
-
-        Ok(Statement::Select(first_select))
+        Ok(current)
     }
 
     fn parse_with_select(&mut self) -> Result<Statement, String> {
@@ -1288,7 +1302,14 @@ impl Parser {
 
             self.expect(Token::As)?;
             self.expect(Token::LParen)?;
-            let subquery = self.parse_select_or_union()?;
+            // Detect nested WITH: if the subquery itself starts with
+            // `WITH`, recurse into parse_with_select so the nested
+            // WithSelect is parsed correctly.
+            let subquery = if matches!(self.current(), Some(Token::With)) {
+                self.parse_with_select()?
+            } else {
+                self.parse_select_or_union()?
+            };
             self.expect(Token::RParen)?;
 
             ctes.push(CommonTableExpression {
@@ -1304,11 +1325,26 @@ impl Parser {
             break;
         }
 
-        let select = self.parse_select_statement()?;
-
-        Ok(Statement::WithSelect(WithSelect {
-            with_clause: Some(WithClause { recursive, ctes }),
-            select,
+        let with_clause = WithClause { recursive, ctes };
+        // The body following the CTE list can be either a SELECT (the
+        // standard WithSelect case) or a DML statement (INSERT, UPDATE,
+        // DELETE) when the user wrote e.g. `WITH cte AS (...) UPDATE t ...`.
+        // We dispatch on the next token to handle both.
+        let body = match self.current() {
+            Some(Token::Insert) | Some(Token::Replace) => self.parse_insert()?,
+            Some(Token::Update) => self.parse_update()?,
+            Some(Token::Delete) => self.parse_delete()?,
+            _ => {
+                let select = self.parse_select_statement()?;
+                return Ok(Statement::WithSelect(WithSelect {
+                    with_clause: Some(with_clause),
+                    select,
+                }));
+            }
+        };
+        Ok(Statement::WithDml(WithDmlStatement {
+            with_clause,
+            body: Box::new(body),
         }))
     }
 
@@ -1336,6 +1372,13 @@ impl Parser {
                 Some(Token::RParen) | Some(Token::Union) => break,
                 Some(Token::From) | Some(Token::Eof) => {
                     break;
+                }
+                // `||` (string concat): in column position, fall through to
+                // expression parser to handle `'Level ' || n` (Or token between
+                // two primary expressions). This requires special-casing
+                // because `||` is the same token as boolean `OR`.
+                Some(Token::Or) => {
+                    return Err("Unexpected '||' / 'OR' at start of column".to_string());
                 }
                 Some(Token::Star) => {
                     columns.push(SelectColumn {
@@ -1598,6 +1641,43 @@ impl Parser {
                 Some(Token::StringLiteral(ref s)) => {
                     let s_owned = s.clone();
                     self.next();
+                    // After a string literal, allow `|| <expr>` to build a
+                    // string-concat expression. The lexer's `||` produces
+                    // `Token::Or`, so we special-case it here (this is the
+                    // same path Identifier uses for the `is_operator` /
+                    // `op` branches).
+                    if matches!(self.current(), Some(Token::Or)) {
+                        self.next();
+                        let right = self.parse_expression()?;
+                        let expr = Expression::BinaryOp(
+                            Box::new(Expression::Literal(format!("'{}'", s_owned))),
+                            "||".to_string(),
+                            Box::new(right),
+                        );
+                        let alias = if matches!(self.current(), Some(Token::As)) {
+                            self.next();
+                            match self.current() {
+                                Some(Token::Identifier(name)) => {
+                                    let alias_name = name.clone();
+                                    self.next();
+                                    Some(alias_name)
+                                }
+                                Some(Token::Level) => {
+                                    self.next();
+                                    Some("LEVEL".to_string())
+                                }
+                                _ => None,
+                            }
+                        } else {
+                            None
+                        };
+                        columns.push(SelectColumn {
+                            name: format!("{:?}", expr),
+                            alias,
+                            expression: Some(expr),
+                        });
+                        continue;
+                    }
                     let alias = if matches!(self.current(), Some(Token::As)) {
                         self.next();
                         match self.current() {
@@ -1724,6 +1804,9 @@ impl Parser {
                             || matches!(self.current(), Some(Token::Less))
                             || matches!(self.current(), Some(Token::GreaterEqual))
                             || matches!(self.current(), Some(Token::LessEqual))
+                            // `||` is `Token::Or` (string concat) — operator in
+                            // expression position.
+                            || matches!(self.current(), Some(Token::Or))
                     } else {
                         matches!(self.peek(), Some(Token::Plus))
                             || matches!(self.peek(), Some(Token::Minus))
@@ -1737,6 +1820,8 @@ impl Parser {
                             || matches!(self.peek(), Some(Token::GreaterEqual))
                             || matches!(self.peek(), Some(Token::LessEqual))
                             || matches!(self.peek(), Some(Token::LParen))
+                            // `||` peek — see above.
+                            || matches!(self.peek(), Some(Token::Or))
                     };
 
                     if is_operator {
@@ -1754,6 +1839,8 @@ impl Parser {
                                 Some(Token::Less) => "<",
                                 Some(Token::GreaterEqual) => ">=",
                                 Some(Token::LessEqual) => "<=",
+                                // `||` is `Token::Or` — string concat.
+                                Some(Token::Or) => "||",
                                 _ => return Err("Expected operator".to_string()),
                             };
                             self.next();
