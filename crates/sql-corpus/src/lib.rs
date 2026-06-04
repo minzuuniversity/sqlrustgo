@@ -525,6 +525,13 @@ impl SimpleExecutor {
         let left_val = self.get_expression_value(left, row, table_info);
         let right_val = self.get_expression_value(right, row, table_info);
 
+        // SQL three-valued logic: any comparison involving NULL yields
+        // false (UNKNOWN, treated as not-matching in WHERE/ON). This
+        // is the SQL-standard NULL semantics — `NULL = NULL` is not
+        // TRUE.
+        if matches!(left_val, Value::Null) || matches!(right_val, Value::Null) {
+            return false;
+        }
         match op.to_uppercase().as_str() {
             "=" | "==" | "IS" => left_val == right_val,
             "!=" | "<>" => left_val != right_val,
