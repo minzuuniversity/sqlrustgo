@@ -140,7 +140,6 @@ fn test_tpch_q1_where_text_compare_returns_some_rows() {
 /// which this test maps to a row count of 0. Once the
 /// parser is fixed, this test will start returning 1 row
 /// and will need to be promoted to assert that value.
-#[ignore = "TPC-H Q3 comma-join — parser limitation (audit 2026-06-04)"]
 #[test]
 fn test_tpch_q3_three_table_join_row_count_today() {
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));
@@ -170,10 +169,12 @@ fn test_tpch_q3_three_table_join_row_count_today() {
         Ok(r) => r.rows.len(),
         Err(_) => 0,
     };
+    // TPC-H Q3-shape: customer JOIN orders JOIN lineitem with the
+    // `FROM a, b, c` (comma-join) form, matching by FK.
+    // The 3-way comma-join is now parsed and executed correctly
+    // (re-audited 2026-06-04 during RC1). The seed data yields 1 row.
     assert_eq!(
-        row_count, 0,
-        "Q3-shape returns 0 rows today (parser rejects `FROM a, b, c`). \
-         When the comma-join is fixed this should become 1 — the test will \
-         start failing and must be promoted to assert_eq!(row_count, 1)."
+        row_count, 1,
+        "Q3 comma-join with matching FK should return 1 row (audit 2026-06-04)"
     );
 }
