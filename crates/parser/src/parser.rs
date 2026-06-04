@@ -686,6 +686,18 @@ fn find_join_predicate(
             if op == "=" {
                 let left_refs = collect_referenced_tables(l);
                 let right_refs = collect_referenced_tables(r);
+                // Phase 4 (TPCH-01 Q15): skip predicates that reference
+                // synthetic __subq_N derived-table names. These are
+                // predicates that belong INSIDE the derived subquery
+                // (e.g. l_shipdate >= '1995-09-01' from a Q15
+                // `FROM t, (SELECT ... WHERE l_shipdate >= ...) AS rev`),
+                // not the outer join chain. Using them as outer JOIN
+                // ONs produces wrong tables.
+                if left_refs.iter().any(|t| t.starts_with("__subq_"))
+                    || right_refs.iter().any(|t| t.starts_with("__subq_"))
+                {
+                    continue;
+                }
                 // The "new table" can be referenced by either its
                 // full name (e.g. "supplier"), its TPC-H prefix
                 // (e.g. "s"), or (Phase 2) its inline alias
@@ -2480,20 +2492,58 @@ impl Parser {
                             }
                         }
                     } else {
+                        // Phase 4 (TPCH-01 Q15): skip predicates referencing
+                        // synthetic __subq_N derived-table names in BOTH
+                        // the conjunction (from the original WHERE) AND the
+                        // remaining (from previous extra_table picks). These
+                        // belong inside the derived subquery, not the outer
+                        // join chain.
+                        let is_derived_ref = |p: &Expression| -> bool {
+                            match p {
+                                Expression::BinaryOp(l, _, r) => {
+                                    let lr = collect_referenced_tables(l);
+                                    let rr = collect_referenced_tables(r);
+                                    lr.iter().any(|t| t.starts_with("__subq_"))
+                                        || rr.iter().any(|t| t.starts_with("__subq_"))
+                                }
+                                _ => false,
+                            }
+                        };
                         for p in &conj {
-                            if found.is_none() && predicate_references_table(p, &table_name) {
+                            if found.is_none()
+                                && !is_derived_ref(p)
+                                && predicate_references_table(p, &table_name)
+                            {
                                 found = Some(p.clone());
                             } else {
                                 rest.push(p.clone());
                             }
                         }
                         for p in &remaining {
-                            if found.is_none() && predicate_references_table(p, &table_name) {
+                            if found.is_none()
+                                && !is_derived_ref(p)
+                                && predicate_references_table(p, &table_name)
+                            {
                                 found = Some(p.clone());
                             } else {
                                 rest.push(p.clone());
                             }
                         }
+                    }
+                    // Phase 4 (TPCH-01 Q15): if we couldn't find a proper
+                    // ON predicate for a derived table (__subq_N), keep
+                    // its predicate in the outer WHERE clause instead of
+                    // emitting a CROSS JOIN with `on=true` (which would
+                    // later be rejected as "Unsupported join condition").
+                    if found.is_none() && table_name.starts_with("__subq_") {
+                        // Don't push a JoinClause for derived tables with
+                        // no resolvable ON. The materialized subquery rows
+                        // will be cross-joined naturally by the executor
+                        // (each row of supplier gets cross-joined with all
+                        // rows of revenue, then outer WHERE filters).
+                        remaining = rest;
+                        joined.push(table_name.clone());
+                        continue;
                     }
                     let on = found.unwrap_or(Expression::Literal("true".to_string()));
                     chain.push(JoinClause {
