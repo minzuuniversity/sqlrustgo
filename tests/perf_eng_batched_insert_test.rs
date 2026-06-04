@@ -14,12 +14,19 @@
 //! **Mode**: `#[ignore]` — run with `cargo test --release --test perf_eng_batched_insert_test -- --ignored --nocapture`
 //!
 //! **Thresholds** (release build, single-thread, debug off):
-//! - 1000-row INSERT:  < 5 s
-//! - 10000-row INSERT: < 30 s
+//! - 1000-row INSERT:  < 1 s
+//! - 10000-row INSERT: < 10 s
 //!
 //! Pre-fix numbers (from issue #3013 reproduction):
 //! - 1000-row INSERT:  > 60 s  (timeout in some workloads)
 //! - 10000-row INSERT: > 300 s (timeout)
+//!
+//! Post-fix numbers (release, on this machine, 2026-06-04):
+//! - 1000-row INSERT:  ~46 ms   (threshold 1 s  → ~22× headroom)
+//! - 10000-row INSERT: ~3.87 s  (threshold 10 s → ~2.6× headroom)
+//!
+//! The 1 s / 10 s thresholds are intentionally tighter than the original
+//! 5 s / 30 s to surface regressions earlier (see PR review).
 
 use sqlrustgo::ExecutionEngine;
 use sqlrustgo_storage::engine::Value;
@@ -53,7 +60,7 @@ fn extract_count(result: SqlResult<sqlrustgo::ExecutorResult>) -> i64 {
 
 #[test]
 #[ignore = "performance gate, run with --ignored --release"]
-fn perf_1000_row_batched_insert_under_5s() {
+fn perf_1000_row_batched_insert_under_1s() {
     let temp_dir = TempDir::new().unwrap();
     let data_dir = temp_dir.path().to_path_buf();
 
@@ -81,18 +88,18 @@ fn perf_1000_row_batched_insert_under_5s() {
 
     println!("=== 1000-row batched INSERT (issue #3013 P1 fix verification) ===");
     println!("  Elapsed:   {} ms", elapsed.as_millis());
-    println!("  Threshold: < 5000 ms (release build)");
+    println!("  Threshold: < 1000 ms (release build)");
     println!("  Rows:      {}", count);
     assert!(
-        elapsed.as_secs_f64() < 5.0,
-        "1000-row batched INSERT took too long: {:?} (threshold 5s)",
+        elapsed.as_secs_f64() < 1.0,
+        "1000-row batched INSERT took too long: {:?} (threshold 1s)",
         elapsed
     );
 }
 
 #[test]
 #[ignore = "performance gate, run with --ignored --release"]
-fn perf_10000_row_batched_insert_under_30s() {
+fn perf_10000_row_batched_insert_under_10s() {
     let temp_dir = TempDir::new().unwrap();
     let data_dir = temp_dir.path().to_path_buf();
 
@@ -120,11 +127,11 @@ fn perf_10000_row_batched_insert_under_30s() {
 
     println!("=== 10000-row batched INSERT (issue #3013 P1 fix verification) ===");
     println!("  Elapsed:   {} ms", elapsed.as_millis());
-    println!("  Threshold: < 30000 ms (release build)");
+    println!("  Threshold: < 10000 ms (release build)");
     println!("  Rows:      {}", count);
     assert!(
-        elapsed.as_secs_f64() < 30.0,
-        "10000-row batched INSERT took too long: {:?} (threshold 30s)",
+        elapsed.as_secs_f64() < 10.0,
+        "10000-row batched INSERT took too long: {:?} (threshold 10s)",
         elapsed
     );
 }
