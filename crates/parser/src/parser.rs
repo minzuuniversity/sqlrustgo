@@ -339,6 +339,11 @@ pub struct SelectStatement {
     pub extra_tables: Vec<String>,
     pub aggregates: Vec<AggregateCall>,
     pub group_by: Vec<Expression>,
+    /// MySQL 5.7 WITH ROLLUP: emit hierarchical subtotals
+    /// (NULL in trailing group columns).
+    pub with_rollup: bool,
+    /// MySQL 5.7 WITH CUBE: emit 2^k subtotals over all subsets.
+    pub with_cube: bool,
     pub having: Option<Expression>,
     pub order_by: Vec<OrderByExpression>,
     pub limit: Option<u64>,
@@ -1587,6 +1592,53 @@ impl Parser {
                         expression: Some(Expression::Literal(val.to_string())),
                     });
                 }
+                // MySQL 5.7: INSERT(str,...) and REPLACE(str,...) as
+                // scalar functions in the SELECT list. Same logic as
+                // parse_primary_expression's INSERT/REPLACE branch.
+                Some(Token::Insert) | Some(Token::Replace) => {
+                    let name = match self.current() {
+                        Some(Token::Insert) => "INSERT",
+                        Some(Token::Replace) => "REPLACE",
+                        _ => unreachable!(),
+                    };
+                    self.next();
+                    if !matches!(self.current(), Some(Token::LParen)) {
+                        return Err(format!(
+                            "Expected '(' after {name} in SELECT list; \
+                             {name} as statement requires a table target"
+                        ));
+                    }
+                    self.next();
+                    let mut args = Vec::new();
+                    if !matches!(self.current(), Some(Token::RParen)) {
+                        loop {
+                            args.push(self.parse_expression()?);
+                            if matches!(self.current(), Some(Token::Comma)) {
+                                self.next();
+                            } else {
+                                break;
+                            }
+                        }
+                    }
+                    self.expect(Token::RParen)?;
+                    let alias = if matches!(self.current(), Some(Token::As)) {
+                        self.next();
+                        if let Some(Token::Identifier(n)) = self.current() {
+                            let a = n.clone();
+                            self.next();
+                            Some(a)
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    };
+                    columns.push(SelectColumn {
+                        name: format!("{:?}", Expression::FunctionCall(name.to_string(), args.clone())),
+                        alias,
+                        expression: Some(Expression::FunctionCall(name.to_string(), args)),
+                    });
+                }
                 Some(Token::Identifier(_)) => {
                     let start_position = self.position;
                     let (name, consumed, _is_expression) = match self.current().cloned() {
@@ -1938,6 +1990,27 @@ impl Parser {
             Vec::new()
         };
 
+        // Parse optional WITH ROLLUP / WITH CUBE modifier (MySQL 5.7)
+        // Both are SQL grouping-set extensions. Parsed here and
+        // attached to the SelectStatement for downstream executors.
+        let mut with_rollup = false;
+        let mut with_cube = false;
+        if !group_by.is_empty() && matches!(self.current(), Some(Token::With)) {
+            self.next(); // consume WITH
+            if matches!(self.current(), Some(Token::Rollup)) {
+                self.next();
+                with_rollup = true;
+            } else if matches!(self.current(), Some(Token::Cube)) {
+                self.next();
+                with_cube = true;
+            } else {
+                return Err(format!(
+                    "Expected ROLLUP or CUBE after WITH, got {:?}",
+                    self.current()
+                ));
+            }
+        }
+
         // Parse HAVING clause
         let having = if matches!(self.current(), Some(Token::Having)) {
             self.next();
@@ -2014,6 +2087,8 @@ impl Parser {
             extra_tables,
             aggregates,
             group_by,
+            with_rollup,
+            with_cube,
             having,
             order_by,
             limit,
@@ -2743,6 +2818,38 @@ impl Parser {
     /// Parse primary expression (identifier, literal, or parenthesized)
     fn parse_primary_expression(&mut self) -> Result<Expression, String> {
         match self.current() {
+            // Allow SQL keywords INSERT / REPLACE to act as scalar function
+            // names when followed by `(`. MySQL has these as both statement
+            // keywords and string functions; in expression position the
+            // function interpretation wins.
+            Some(Token::Insert) | Some(Token::Replace) => {
+                let name = match self.current() {
+                    Some(Token::Insert) => "INSERT",
+                    Some(Token::Replace) => "REPLACE",
+                    _ => unreachable!(),
+                };
+                self.next();
+                if !matches!(self.current(), Some(Token::LParen)) {
+                    return Err(format!(
+                        "Expected '(' after {name} in expression position; \
+                         {name} as statement requires a table target"
+                    ));
+                }
+                self.next();
+                let mut args = Vec::new();
+                if !matches!(self.current(), Some(Token::RParen)) {
+                    loop {
+                        args.push(self.parse_expression()?);
+                        if matches!(self.current(), Some(Token::Comma)) {
+                            self.next();
+                        } else {
+                            break;
+                        }
+                    }
+                }
+                self.expect(Token::RParen)?;
+                Ok(Expression::FunctionCall(name.to_string(), args))
+            }
             Some(Token::Identifier(_)) => {
                 let name = match self.current() {
                     Some(Token::Identifier(n)) => n.clone(),
