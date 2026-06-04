@@ -300,10 +300,188 @@ pub fn eval_fn(name: &str, args: &[Value]) -> Value {
             .first()
             .map(|v| Value::Integer(v.to_sql_string().len() as i64))
             .unwrap_or(Value::Null),
-        "TRIM" => args
+        // TRIM — MySQL 5.7 supports both:
+        //   TRIM(str)                     — trim whitespace (default)
+        //   TRIM(LEADING/TRAILING/BOTH remstr FROM str)
+        // The 3-arg form is not parseable in the current SELECT list
+        // path (no FROM keyword handling), so we only support the
+        // 1-arg (default whitespace) and 2-arg `TRIM(remstr, str)`
+        // forms. The standard 1-arg behavior trims whitespace.
+        "TRIM" => match args.len() {
+            1 => args
+                .first()
+                .map(|v| Value::Text(v.to_sql_string().trim().to_string()))
+                .unwrap_or(Value::Null),
+            // TRIM(remstr, str) — trim remstr from both ends
+            2 => {
+                let rem = args[0].to_sql_string();
+                let s = args[1].to_sql_string();
+                if rem.is_empty() {
+                    Value::Text(s.trim().to_string())
+                } else {
+                    Value::Text(s.trim_matches(|c| rem.contains(c)).to_string())
+                }
+            }
+            _ => Value::Null,
+        },
+        "LTRIM" => args
             .first()
-            .map(|v| Value::Text(v.to_sql_string().trim().to_string()))
+            .map(|v| Value::Text(v.to_sql_string().trim_start().to_string()))
             .unwrap_or(Value::Null),
+        "RTRIM" => args
+            .first()
+            .map(|v| Value::Text(v.to_sql_string().trim_end().to_string()))
+            .unwrap_or(Value::Null),
+        // MySQL 5.7: LEFT(str, len) / RIGHT(str, len)
+        // len < 0 returns empty string (MySQL semantics).
+        "LEFT" => {
+            if let (Some(s), Some(n)) = (args.first(), args.get(1)) {
+                let text = s.to_sql_string();
+                let len = match n {
+                    Value::Integer(i) => *i,
+                    _ => return Value::Text(String::new()),
+                };
+                if len <= 0 {
+                    Value::Text(String::new())
+                } else {
+                    let n = (len as usize).min(text.len());
+                    Value::Text(text[..n].to_string())
+                }
+            } else {
+                Value::Null
+            }
+        }
+        "RIGHT" => {
+            if let (Some(s), Some(n)) = (args.first(), args.get(1)) {
+                let text = s.to_sql_string();
+                let len = match n {
+                    Value::Integer(i) => *i,
+                    _ => return Value::Text(String::new()),
+                };
+                if len <= 0 {
+                    Value::Text(String::new())
+                } else {
+                    let n = (len as usize).min(text.len());
+                    Value::Text(text[text.len() - n..].to_string())
+                }
+            } else {
+                Value::Null
+            }
+        }
+        // LPAD(str, len, pad) / RPAD(str, len, pad)
+        // If len <= strlen(str), truncate. If len > strlen(str), pad.
+        // If pad is empty, returns NULL.
+        "LPAD" | "RPAD" => {
+            let dir_is_left = matches!(name.to_uppercase().as_str(), "LPAD");
+            if let (Some(s), Some(len_v), Some(pad)) =
+                (args.first(), args.get(1), args.get(2))
+            {
+                let text = s.to_sql_string();
+                let pad_str = pad.to_sql_string();
+                let len = match len_v {
+                    Value::Integer(i) => *i,
+                    _ => return Value::Null,
+                };
+                if pad_str.is_empty() {
+                    return Value::Null;
+                }
+                if (len as usize) <= text.len() {
+                    if dir_is_left {
+                        Value::Text(text[..len as usize].to_string())
+                    } else {
+                        let start = text.len() - len as usize;
+                        Value::Text(text[start..].to_string())
+                    }
+                } else {
+                    let mut pad_repeat = String::new();
+                    let needed = len as usize - text.len();
+                    while pad_repeat.len() < needed {
+                        pad_repeat.push_str(&pad_str);
+                    }
+                    pad_repeat.truncate(needed);
+                    if dir_is_left {
+                        let mut out = String::with_capacity(len as usize);
+                        out.push_str(&pad_repeat);
+                        out.push_str(&text);
+                        Value::Text(out)
+                    } else {
+                        let mut out = String::with_capacity(len as usize);
+                        out.push_str(&text);
+                        out.push_str(&pad_repeat);
+                        Value::Text(out)
+                    }
+                }
+            } else {
+                Value::Null
+            }
+        }
+        // REPEAT(str, count) — count <= 0 returns empty
+        "REPEAT" => {
+            if let (Some(s), Some(n)) = (args.first(), args.get(1)) {
+                let text = s.to_sql_string();
+                let count = match n {
+                    Value::Integer(i) => *i,
+                    _ => return Value::Text(String::new()),
+                };
+                if count <= 0 {
+                    Value::Text(String::new())
+                } else {
+                    Value::Text(text.repeat(count as usize))
+                }
+            } else {
+                Value::Null
+            }
+        }
+        // REVERSE(str) — byte-reversed (not Unicode-aware; same as
+        // MySQL's REVERSE for ASCII)
+        "REVERSE" => args
+            .first()
+            .map(|v| Value::Text(v.to_sql_string().chars().rev().collect()))
+            .unwrap_or(Value::Null),
+        // SPACE(n) — n spaces; n <= 0 returns empty
+        "SPACE" => {
+            let n = match args.first() {
+                Some(Value::Integer(i)) => *i,
+                _ => return Value::Text(String::new()),
+            };
+            if n <= 0 {
+                Value::Text(String::new())
+            } else {
+                Value::Text(" ".repeat(n as usize))
+            }
+        }
+        // FIELD(str, str1, str2, ...) — index of first match (1-based),
+        // 0 if no match. NULL if any argument is NULL.
+        "FIELD" => {
+            if args.is_empty() {
+                return Value::Null;
+            }
+            let needle = args[0].to_sql_string();
+            for (i, v) in args.iter().enumerate().skip(1) {
+                if matches!(v, Value::Null) {
+                    return Value::Null;
+                }
+                if v.to_sql_string() == needle {
+                    return Value::Integer(i as i64);
+                }
+            }
+            Value::Integer(0)
+        }
+        // ELT(n, str1, str2, ...) — returns the n-th string (1-based).
+        // n < 1 or n > args.len()-1 returns NULL.
+        "ELT" => {
+            let n = match args.first() {
+                Some(Value::Integer(i)) => *i,
+                _ => return Value::Null,
+            };
+            if n < 1 {
+                return Value::Null;
+            }
+            match args.get(n as usize) {
+                Some(v) if !matches!(v, Value::Null) => Value::Text(v.to_sql_string()),
+                _ => Value::Null,
+            }
+        }
         // TPC-H Sprint 1 fix (Q7/Q8/Q9): SUBSTR(x, start, length)
         "SUBSTR" | "SUBSTRING" => {
             if let (Some(s), Some(start)) = (args.first(), args.get(1)) {
