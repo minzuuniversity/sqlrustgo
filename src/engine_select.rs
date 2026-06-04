@@ -13,12 +13,14 @@ use sqlrustgo_storage::{StorageEngine, TableInfo};
 use std::cell::RefCell;
 use std::collections::HashMap;
 
-/// Phase 3 (TPCH-01 Q15): thread-local registry of materialized
-/// derived subquery results. Populated by `execute_joins` before the
-/// join chain runs; consumed by `execute_single_join` when it encounters
-/// a `__subq_N` synthetic table name.
+type DerivedResult = (Vec<Vec<Value>>, TableInfo);
+
+// Phase 3 (TPCH-01 Q15): thread-local registry of materialized
+// derived subquery results. Populated by `execute_joins` before the
+// join chain runs; consumed by `execute_single_join` when it encounters
+// a `__subq_N` synthetic table name.
 thread_local! {
-    static DERIVED_RESULTS: RefCell<HashMap<String, (Vec<Vec<Value>>, TableInfo)>> =
+    static DERIVED_RESULTS: RefCell<HashMap<String, DerivedResult>> =
         RefCell::new(HashMap::new());
 }
 
@@ -34,7 +36,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 // Drop the read lock (if held) and execute subquery; subquery
                 // itself takes a read lock internally. Since the outer has not
                 // yet acquired a lock, this is a fresh acquisition.
-                let sub_result = self.execute_select(&*subq)?;
+                let sub_result = self.execute_select(subq)?;
                 // Build a synthetic TableInfo from the subquery's column list.
                 let mut table_info = TableInfo {
                     name: select.table.clone(),
@@ -522,7 +524,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         let derived_subqueries = get_and_clear_derived_subqueries();
         if !derived_subqueries.is_empty() {
             for (name, subq) in &derived_subqueries {
-                let sub_result = self.execute_select(&*subq)?;
+                let sub_result = self.execute_select(subq)?;
                 let mut table_info = TableInfo {
                     name: name.clone(),
                     columns: Vec::new(),
@@ -553,12 +555,14 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                         })
                         .unwrap_or("TEXT")
                         .to_string();
-                    table_info.columns.push(sqlrustgo_storage::ColumnDefinition {
-                        name: col_name,
-                        data_type: inferred_type_str,
-                        nullable: true,
-                        primary_key: false,
-                    });
+                    table_info
+                        .columns
+                        .push(sqlrustgo_storage::ColumnDefinition {
+                            name: col_name,
+                            data_type: inferred_type_str,
+                            nullable: true,
+                            primary_key: false,
+                        });
                 }
                 DERIVED_RESULTS.with(|cell| {
                     cell.borrow_mut()
@@ -595,12 +599,16 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         // Phase 3 (TPCH-01 Q15): if the right table is a synthetic __subq_N
         // from a derived subquery, use the materialized rows from the registry
         // instead of scanning storage (which has no entry for synthetic names).
-        let (right_raw_rows, right_raw_info) =
-            if let Some((rows, info)) = DERIVED_RESULTS.with(|cell| cell.borrow().get(&right_table_name).cloned()) {
-                (rows, info)
-            } else {
-                (storage.scan(&right_table_name)?, storage.get_table_info(&right_table_name)?)
-            };
+        let (right_raw_rows, right_raw_info) = if let Some((rows, info)) =
+            DERIVED_RESULTS.with(|cell| cell.borrow().get(&right_table_name).cloned())
+        {
+            (rows, info)
+        } else {
+            (
+                storage.scan(&right_table_name)?,
+                storage.get_table_info(&right_table_name)?,
+            )
+        };
         let right_rows = right_raw_rows;
         let mut right_table_info = right_raw_info.clone();
         if join_clause.alias.is_some() {
@@ -767,7 +775,10 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         right_info: &TableInfo,
         right_name: &str,
     ) -> SqlResult<JoinKey> {
-        eprintln!("DBG find_join_key_index: left={} right={} expr={:?}", left_name, right_name, expr);
+        eprintln!(
+            "DBG find_join_key_index: left={} right={} expr={:?}",
+            left_name, right_name, expr
+        );
         match expr {
             Expression::Identifier(name) => {
                 if let Some((qualifier, col_name)) = name.split_once('.') {
