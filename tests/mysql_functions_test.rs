@@ -37,10 +37,9 @@ fn test_select_coalesce() {
 fn test_select_nullif() {
     let mut e = fresh();
     e.execute("CREATE TABLE t (id INTEGER, x INTEGER)").unwrap();
-    e.execute("INSERT INTO t VALUES (1, 5), (2, 5), (3, 6)").unwrap();
-    let r = e
-        .execute("SELECT NULLIF(x, 5) FROM t ORDER BY id")
+    e.execute("INSERT INTO t VALUES (1, 5), (2, 5), (3, 6)")
         .unwrap();
+    let r = e.execute("SELECT NULLIF(x, 5) FROM t ORDER BY id").unwrap();
     assert!(matches!(&r.rows[0][0], sqlrustgo::Value::Null));
     assert!(matches!(&r.rows[1][0], sqlrustgo::Value::Null));
     assert_eq!(r.rows[2][0], sqlrustgo::Value::Integer(6));
@@ -64,8 +63,6 @@ fn test_select_date_sub() {
     let mut e = fresh();
     e.execute("CREATE TABLE t (id INTEGER, d TEXT)").unwrap();
     e.execute("INSERT INTO t VALUES (1, '2026-06-04')").unwrap();
-    let r = e
-        .execute("SELECT DATE_SUB(d, 10, 'DAY') FROM t")
-        .unwrap();
+    let r = e.execute("SELECT DATE_SUB(d, 10, 'DAY') FROM t").unwrap();
     assert_eq!(r.rows[0][0], sqlrustgo::Value::Text("2026-05-25".into()));
 }
