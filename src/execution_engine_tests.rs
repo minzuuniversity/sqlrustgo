@@ -488,6 +488,9 @@ fn test_select_count_star_no_from_returns_one_one_row() {
     let r = engine
         .execute("SELECT COUNT(*)")
         .expect("SELECT COUNT(*) should succeed");
-    assert_eq!(r.affected_rows, 1, "COUNT(*) without FROM must return 1 row");
+    assert_eq!(
+        r.affected_rows, 1,
+        "COUNT(*) without FROM must return 1 row"
+    );
     assert_eq!(r.rows, vec![vec![Value::Integer(1)]]);
 }
