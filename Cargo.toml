@@ -486,6 +486,10 @@ path = "tests/insert_odku_test.rs"
 name = "replace_test"
 path = "tests/replace_test.rs"
 
+[[test]]
+name = "int4_explicit_tx_test"
+path = "tests/int4_explicit_tx_test.rs"
+
 # Memory limit for tests: 8GB (8 * 1024 * 1024 * 1024 bytes)
 # This prevents any single test from consuming excessive memory
 [profile.test]
