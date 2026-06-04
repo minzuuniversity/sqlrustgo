@@ -775,10 +775,9 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         right_info: &TableInfo,
         right_name: &str,
     ) -> SqlResult<JoinKey> {
-        eprintln!(
-            "DBG find_join_key_index: left={} right={} expr={:?}",
-            left_name, right_name, expr
-        );
+        // v3.8.0-rc2: DBG noise disabled for cleaner test output.
+        // Enable locally by uncommenting to debug find_join_key_index.
+        // eprintln!("DBG find_join_key_index: left={} right={} expr={:?}", left_name, right_name, expr);
         match expr {
             Expression::Identifier(name) => {
                 if let Some((qualifier, col_name)) = name.split_once('.') {
