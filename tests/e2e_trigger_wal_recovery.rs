@@ -6,201 +6,187 @@
 //! T-002: UPDATE via trigger → WAL → Crash → Recovery → Updated Value Correct
 //! T-003: DELETE via trigger → WAL → Crash → Recovery → Row Absent
 //!
-//! Uses full ExecutionEngine + WalStorage stack (not just storage layer).
+//! Phase 2a migration: drive every SQL through the canonical
+//! `start_ephemeral` MySQL server. Each test boots a fresh server
+//! per phase so the engine-drop "crash" is honest — the new
+//! server reads the data from the shared data_dir (which the
+//! `EphemeralConfig::data_dir` field makes possible; see PR #3049).
 
-use sqlrustgo::ExecutionEngine;
-use sqlrustgo_storage::{FileBackedWalManager, FileStorage, WalStorage};
+mod common;
+
+use common::MySqlTestClient;
+use sqlrustgo_mysql_server::testing::{start_ephemeral, EphemeralConfig};
 use tempfile::TempDir;
 
-fn make_wal_engine(
-    dir: &std::path::Path,
-) -> ExecutionEngine<WalStorage<FileStorage, FileBackedWalManager>> {
-    ExecutionEngine::with_wal_file(dir.to_path_buf()).unwrap()
+fn open(data_dir: &std::path::Path) -> MySqlTestClient {
+    let cfg = EphemeralConfig {
+        host: "127.0.0.1".to_string(),
+        bootstrap_tables: false,
+        bootstrap_users: true,
+        data_dir: Some(data_dir.to_path_buf()),
+        bootstrap_sql: Vec::new(),
+        bulk_insert_buffer_size: 1_048_576,
+    };
+    let handle = start_ephemeral(cfg).expect("start_ephemeral");
+    MySqlTestClient::connect_handle(handle).expect("MySqlTestClient::connect_handle")
 }
-
-fn recover_engine(
-    dir: &std::path::Path,
-) -> ExecutionEngine<WalStorage<FileStorage, FileBackedWalManager>> {
-    ExecutionEngine::with_wal_file(dir.to_path_buf()).unwrap()
-}
-
-// ─── T-001: Trigger INSERT ───────────────────────────────────────────────────
 
 #[test]
 fn test_trigger_insert_wal_recovery_t001() {
     let temp_dir = TempDir::new().unwrap();
     let data_dir = temp_dir.path().to_path_buf();
 
-    // Phase 1: Setup — create trigger
     {
-        let mut engine = make_wal_engine(&data_dir);
+        let mut client = open(&data_dir);
 
-        // Create main table and audit table
-        let _ = engine.execute("CREATE TABLE t1 (id INTEGER, value INTEGER)");
-        let _ = engine.execute("CREATE TABLE t1_audit (id INTEGER, orig_value INTEGER)");
+        client
+            .exec("CREATE TABLE t1 (id INTEGER, value INTEGER)")
+            .unwrap();
+        client
+            .exec("CREATE TABLE t1_audit (id INTEGER, orig_value INTEGER)")
+            .unwrap();
 
-        // Register BEFORE INSERT trigger — copies to audit table
-        let _ = engine.execute(
-            "CREATE TRIGGER t1_insert_audit BEFORE INSERT ON t1 FOR EACH ROW BEGIN INSERT INTO t1_audit VALUES (NEW.id, NEW.value) END"
-        );
+        client
+            .exec(
+                "CREATE TRIGGER t1_insert_audit BEFORE INSERT ON t1 FOR EACH ROW BEGIN INSERT INTO t1_audit VALUES (NEW.id, NEW.value) END",
+            )
+            .unwrap();
 
-        // Insert via trigger context
-        engine.execute("BEGIN").unwrap();
-        let _ = engine.execute("INSERT INTO t1 VALUES (1, 100)");
-        engine.execute("COMMIT").unwrap();
+        client.exec("BEGIN").unwrap();
+        client.exec("INSERT INTO t1 VALUES (1, 100)").unwrap();
+        client.exec("COMMIT").unwrap();
 
-        // Verify trigger fired before restart
-        let count = extract_count(engine.execute("SELECT COUNT(*) FROM t1_audit"));
+        let count = client
+            .query_one_i64("SELECT COUNT(*) FROM t1_audit")
+            .unwrap();
         assert_eq!(
             count, 1,
             "T-001 pre-check: trigger should have inserted audit row"
         );
     }
 
-    // Phase 2: Simulate crash — engine dropped
+    let mut client = open(&data_dir);
 
-    // Phase 3: Restart and recover
-    let mut engine = recover_engine(&data_dir);
-
-    // Phase 4: Verify — audit row must survive via WAL
-    let audit_count = extract_count(engine.execute("SELECT COUNT(*) FROM t1_audit"));
+    let audit_count = client
+        .query_one_i64("SELECT COUNT(*) FROM t1_audit")
+        .unwrap();
     assert_eq!(
         audit_count, 1,
         "T-001 FAIL: audit row missing after recovery — trigger INSERT did not survive crash"
     );
 
-    // Verify main row also survived
-    let main_count = extract_count(engine.execute("SELECT COUNT(*) FROM t1 WHERE id = 1"));
+    let main_count = client
+        .query_one_i64("SELECT COUNT(*) FROM t1 WHERE id = 1")
+        .unwrap();
     assert_eq!(main_count, 1, "T-001 FAIL: main row missing after recovery");
 
-    eprintln!("T-001 PASS: Trigger INSERT survived crash + recovery");
+    println!("T-001 PASS: Trigger INSERT survived crash + recovery");
 }
-
-// ─── T-002: Trigger UPDATE ───────────────────────────────────────────────────
 
 #[test]
 fn test_trigger_update_wal_recovery_t002() {
     let temp_dir = TempDir::new().unwrap();
     let data_dir = temp_dir.path().to_path_buf();
 
-    // Phase 1: Setup
     {
-        let mut engine = make_wal_engine(&data_dir);
+        let mut client = open(&data_dir);
 
-        let _ = engine.execute("CREATE TABLE t1 (id INTEGER, value INTEGER)");
-        let _ = engine.execute(
-            "CREATE TRIGGER t1_update_log BEFORE UPDATE ON t1 FOR EACH ROW BEGIN UPDATE t1 SET value = NEW.value WHERE id = OLD.id END"
+        client
+            .exec("CREATE TABLE t1 (id INTEGER, value INTEGER)")
+            .unwrap();
+        client
+            .exec(
+                "CREATE TRIGGER t1_update_log BEFORE UPDATE ON t1 FOR EACH ROW BEGIN UPDATE t1 SET value = NEW.value WHERE id = OLD.id END",
+            )
+            .unwrap();
+
+        client.exec("BEGIN").unwrap();
+        client.exec("INSERT INTO t1 VALUES (1, 100)").unwrap();
+        client.exec("COMMIT").unwrap();
+    }
+
+    {
+        let mut client = open(&data_dir);
+
+        client.exec("BEGIN").unwrap();
+        client
+            .exec("UPDATE t1 SET value = 999 WHERE id = 1")
+            .unwrap();
+        client.exec("COMMIT").unwrap();
+
+        let rows = client
+            .query_rows("SELECT value FROM t1 WHERE id = 1")
+            .unwrap();
+        assert_eq!(
+            rows[0][0], "999",
+            "T-002 pre-check: UPDATE should set value=999"
         );
-
-        // Setup initial row
-        engine.execute("BEGIN").unwrap();
-        let _ = engine.execute("INSERT INTO t1 VALUES (1, 100)");
-        engine.execute("COMMIT").unwrap();
     }
 
-    // Phase 2: Execute UPDATE
-    {
-        let mut engine = make_wal_engine(&data_dir);
+    let mut client = open(&data_dir);
 
-        engine.execute("BEGIN").unwrap();
-        let _ = engine.execute("UPDATE t1 SET value = 999 WHERE id = 1");
-        engine.execute("COMMIT").unwrap();
-
-        // Verify before crash
-        let balance = extract_balance_t1_value(&mut engine, 1);
-        assert_eq!(balance, 999, "T-002 pre-check: UPDATE should set value=999");
-    }
-
-    // Phase 3: Simulate crash
-
-    // Phase 4: Restart and verify
-    let mut engine = recover_engine(&data_dir);
-
-    let balance = extract_balance_t1_value(&mut engine, 1);
+    let rows = client
+        .query_rows("SELECT value FROM t1 WHERE id = 1")
+        .unwrap();
     assert_eq!(
-        balance, 999,
+        rows[0][0], "999",
         "T-002 FAIL: expected value=999, got {} — UPDATE via trigger did not survive crash",
-        balance
+        rows[0][0]
     );
 
-    eprintln!("T-002 PASS: Trigger UPDATE survived crash + recovery");
+    println!("T-002 PASS: Trigger UPDATE survived crash + recovery");
 }
-
-// ─── T-003: Trigger DELETE ───────────────────────────────────────────────────
 
 #[test]
 fn test_trigger_delete_wal_recovery_t003() {
     let temp_dir = TempDir::new().unwrap();
     let data_dir = temp_dir.path().to_path_buf();
 
-    // Phase 1: Setup
     {
-        let mut engine = make_wal_engine(&data_dir);
+        let mut client = open(&data_dir);
 
-        let _ = engine.execute("CREATE TABLE t1 (id INTEGER, value INTEGER)");
-        let _ = engine.execute(
-            "CREATE TRIGGER t1_delete_backup BEFORE DELETE ON t1 FOR EACH ROW BEGIN INSERT INTO t1 SELECT * FROM t1 WHERE id = old.id END"
-        );
+        client
+            .exec("CREATE TABLE t1 (id INTEGER, value INTEGER)")
+            .unwrap();
+        client
+            .exec(
+                "CREATE TRIGGER t1_delete_backup BEFORE DELETE ON t1 FOR EACH ROW BEGIN INSERT INTO t1 SELECT * FROM t1 WHERE id = old.id END",
+            )
+            .unwrap();
 
-        // Pre-populate rows
-        engine.execute("BEGIN").unwrap();
-        let _ = engine.execute("INSERT INTO t1 VALUES (1, 100)");
-        let _ = engine.execute("INSERT INTO t1 VALUES (2, 200)");
-        engine.execute("COMMIT").unwrap();
+        client.exec("BEGIN").unwrap();
+        client.exec("INSERT INTO t1 VALUES (1, 100)").unwrap();
+        client.exec("INSERT INTO t1 VALUES (2, 200)").unwrap();
+        client.exec("COMMIT").unwrap();
     }
 
-    // Phase 2: Execute DELETE
     {
-        let mut engine = make_wal_engine(&data_dir);
+        let mut client = open(&data_dir);
 
-        engine.execute("BEGIN").unwrap();
-        let _ = engine.execute("DELETE FROM t1 WHERE id = 1");
-        engine.execute("COMMIT").unwrap();
+        client.exec("BEGIN").unwrap();
+        client.exec("DELETE FROM t1 WHERE id = 1").unwrap();
+        client.exec("COMMIT").unwrap();
 
-        // Verify before crash — id=1 should be gone
-        let count = extract_count(engine.execute("SELECT COUNT(*) FROM t1 WHERE id = 1"));
+        let count = client
+            .query_one_i64("SELECT COUNT(*) FROM t1 WHERE id = 1")
+            .unwrap();
         assert_eq!(count, 0, "T-003 pre-check: row id=1 should be deleted");
     }
 
-    // Phase 3: Simulate crash
+    let mut client = open(&data_dir);
 
-    // Phase 4: Restart and verify
-    let mut engine = recover_engine(&data_dir);
-
-    let count = extract_count(engine.execute("SELECT COUNT(*) FROM t1 WHERE id = 1"));
+    let count = client
+        .query_one_i64("SELECT COUNT(*) FROM t1 WHERE id = 1")
+        .unwrap();
     assert_eq!(
         count, 0,
         "T-003 FAIL: row id=1 still present after recovery — DELETE via trigger did not survive crash"
     );
 
-    // id=2 should still exist
-    let count2 = extract_count(engine.execute("SELECT COUNT(*) FROM t1 WHERE id = 2"));
+    let count2 = client
+        .query_one_i64("SELECT COUNT(*) FROM t1 WHERE id = 2")
+        .unwrap();
     assert_eq!(count2, 1, "T-003 FAIL: row id=2 should still exist");
 
-    eprintln!("T-003 PASS: Trigger DELETE survived crash + recovery");
-}
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-fn extract_count(result: sqlrustgo_types::SqlResult<sqlrustgo::ExecutorResult>) -> i64 {
-    let rows = result.unwrap().rows;
-    match rows.first().and_then(|r| r.first()) {
-        Some(sqlrustgo_types::Value::Integer(n)) => *n,
-        _ => -1,
-    }
-}
-
-/// For "SELECT value FROM t1 WHERE id = X" — value is at index 1
-fn extract_balance_t1_value(
-    engine: &mut ExecutionEngine<WalStorage<FileStorage, FileBackedWalManager>>,
-    id: i64,
-) -> i64 {
-    let result = engine.execute(&format!("SELECT value FROM t1 WHERE id = {}", id));
-    let rows = result.unwrap().rows;
-    // After Sprint 2 SELECT projection, `SELECT value FROM t1` returns a
-    // single column (value), so the row index is 0 (not 1).
-    match rows.get(0).and_then(|r| r.get(0)) {
-        Some(sqlrustgo_types::Value::Integer(n)) => *n,
-        _ => -1,
-    }
+    println!("T-003 PASS: Trigger DELETE survived crash + recovery");
 }
