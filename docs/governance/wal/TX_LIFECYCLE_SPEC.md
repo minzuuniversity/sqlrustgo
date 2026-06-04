@@ -50,17 +50,22 @@
 | MODIFYING | ROLLBACK | ABORTED | 清除修改，恢复快照 |
 | ACTIVE | ROLLBACK | ABORTED | 清除 tx 上下文 |
 
-### 2.2 非法转换（必须 panic）
+### 2.2 非法转换（v3.8.0 实际行为）
 
-| 当前状态 | 操作 | 期望行为 |
-|----------|------|----------|
-| IDLE | DML | ❌ panic: "no active transaction" |
-| ACTIVE | DML without tx | ❌ panic: "DML requires active transaction" |
-| COMMITTED | DML | ❌ panic: "transaction already committed" |
-| COMMITTED | COMMIT | ❌ panic: "transaction already committed" |
-| ABORTED | DML | ❌ panic: "transaction already aborted" |
-| ABORTED | COMMIT | ❌ panic: "transaction already aborted" |
-| ANY | COMMIT after ROLLBACK | ❌ panic: "cannot commit after rollback" |
+| 当前状态 | 操作 | 期望行为 | 实际行为 (v3.8.0+) | 备注 |
+|----------|------|----------|---------------------|------|
+| IDLE | DML | panic | ✅ autocommit (隐式 BEGIN/COMMIT) | 友好行为，无需显式 BEGIN |
+| ACTIVE | DML without tx | panic | ✅ autocommit | 同上 |
+| COMMITTED | DML | panic | ✅ autocommit | PR-3019 INT-1 fix 改为 autocommit（提升可用性） |
+| COMMITTED | COMMIT | panic | ✅ panic | `tx_status == Committed`，仍硬 panic（见 `test_tx_lifecycle_double_commit_panics`）|
+| ABORTED | DML | panic | ✅ autocommit | 同 COMMITTED \| DML 行 |
+| ABORTED | COMMIT | panic | ✅ panic | 同 COMMITTED \| COMMIT 行 |
+| ANY | COMMIT after ROLLBACK | panic | ✅ panic | ROLLBACK 后 tx_state 仍显式 panic |
+
+> 修订历史: 2026-06-04 (#3082)
+> - COMMITTED | DML, ABORTED | DML: 由"必须 panic"改为"autocommit"，反映 v3.8.0 INT-1 (PR-3019) 实际行为
+> - 验证测试: `test_tx_lifecycle_insert_after_commit_autocommits`,
+>   `test_tx_lifecycle_insert_after_rollback_autocommits`
 
 ---
 
@@ -223,27 +228,28 @@ impl VtuGuard {
 
 ## 7. 测试验证矩阵
 
-| Test ID | 状态转换 | 操作 | 期望结果 | 当前状态 |
+| Test ID | 状态转换 | 操作 | 期望结果 | 当前状态 (2026-06-04) |
 |--------|----------|------|----------|----------|
-| TX-001 | IDLE → DML | INSERT | panic | ❌ 缺失 |
+| TX-001 | IDLE → DML | INSERT | autocommit (v3.8.0+) | ✅ `test_tx_lifecycle_insert_without_tx_autocommits` |
 | TX-002 | ACTIVE → MODIFYING | INSERT | 进入 MODIFYING | ❌ 缺失 |
 | TX-003 | MODIFYING → COMMITTED | COMMIT | 进入 COMMITTED | ✅ 存在 |
 | TX-004 | MODIFYING → ABORTED | ROLLBACK | 进入 ABORTED | ✅ 存在 |
-| TX-005 | COMMITTED → DML | INSERT | panic | ❌ 缺失 |
-| TX-006 | ABORTED → DML | INSERT | panic | ❌ 缺失 |
+| TX-005 | COMMITTED → DML | INSERT | autocommit (v3.8.0+) | ✅ `test_tx_lifecycle_insert_after_commit_autocommits` (#3082) |
+| TX-006 | ABORTED → DML | INSERT | autocommit (v3.8.0+) | ✅ `test_tx_lifecycle_insert_after_rollback_autocommits` (#3082) |
 | TX-007 | IDLE → ROLLBACK | ROLLBACK | panic | ✅ 存在 |
 | TX-008 | BEGIN → COMMIT | COMMIT | 进入 COMMITTED | ✅ 存在 |
 | TX-009 | BEGIN → ROLLBACK | ROLLBACK | 进入 ABORTED | ✅ 存在 |
+| TX-010 | COMMITTED → COMMIT | COMMIT | panic | ✅ `test_tx_lifecycle_double_commit_panics` |
 | WAL-001 | WAL before data | Insert | WAL 在前 | ❌ 缺失 |
 | WAL-002 | data before WAL | Insert | panic | ❌ 缺失 |
 | WAL-003 | commit before WAL | Commit | panic | ❌ 缺失 |
 | REPLAY-001 | Commit twice | Replay | 第二次忽略 | ❌ 缺失 |
-| REPLAY-002 | Insert twice | Replay | duplicate 忽略 | ❌ 缺失 |
+| REPLAY-002 | Insert twice | Replay | duplicate 忽略 | ❌ 缺失（#3083 跟踪）|
 | RECOVERY-001 | crash before commit | Recovery | 回滚 | ❌ 缺失 |
 
 ---
 
-**文档状态**: DRAFT
+**文档状态**: v3.8.0-aligned (修订 #3082)
 **作者**: Hermes A (Contract Guardian)
 **日期**: 2026-05-31
-**版本**: v0.1
+**版本**: v0.2 (2026-06-04: 反映 PR-3019 INT-1 + #3082 修复)
