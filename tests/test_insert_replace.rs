@@ -1,6 +1,9 @@
 use sqlrustgo::{ExecutionEngine, MemoryStorage, StorageEngine};
 use std::sync::{Arc, RwLock};
-fn e() -> ExecutionEngine<MemoryStorage> { let s = Arc::new(RwLock::new(MemoryStorage::new())); ExecutionEngine::new(s) }
+fn e() -> ExecutionEngine<MemoryStorage> {
+    let s = Arc::new(RwLock::new(MemoryStorage::new()));
+    ExecutionEngine::new(s)
+}
 #[test]
 fn test_insert_basic() {
     let mut x = e();
@@ -30,7 +33,9 @@ fn test_replace_basic() {
     let mut x = e();
     x.execute("CREATE TABLE t (s TEXT)").unwrap();
     x.execute("INSERT INTO t VALUES ('hello world')").unwrap();
-    let r = x.execute("SELECT REPLACE(s, 'world', 'Rust') FROM t").unwrap();
+    let r = x
+        .execute("SELECT REPLACE(s, 'world', 'Rust') FROM t")
+        .unwrap();
     assert_eq!(r.rows[0][0], sqlrustgo::Value::Text("hello Rust".into()));
 }
 #[test]
