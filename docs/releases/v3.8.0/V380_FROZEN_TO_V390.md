@@ -1,10 +1,91 @@
-# v3.8.0 → v3.9.0 交接 (按 ChatGPT 第二轮最终判断)
+# v3.9.0 Frozen Items (从 v3.8.0 Beta 阶段冻结)
 
-> **Date**: 2026-06-04
+> **Date**: 2026-06-04 (rewritten after Route B decision)
 > **Author**: Hermes Agent
-> **Audience**: v3.9.0 开发团队
-> **基于**: ChatGPT 第二轮评估 (2026-06-04)
-> **Prior**: V380_TO_V390_HANDOVER.md (PR-3028), 本文档完全重写
+> **Audience**: v3.9.0+ 后续版本开发团队
+> **Status**: v3.8.0 走完整生命周期到 GA, **不创建 v3.9.0**.
+>            本文档列出从 v3.8.0 冻结到后续版本的工作项.
+
+---
+
+## 0. 路线决策 (2026-06-04, user directive)
+
+**原路线**: v3.8.0 Beta → v3.9.0 Alpha → v3.9.0 Beta (双重版本碎片化)
+
+**新路线 (Route B)**:
+```
+v3.8.0-beta  →  v3.8.0-rc1  →  v3.8.0-rc2  →  v3.8.0-ga
+```
+
+**理由**:
+- 当前工作属于"补完与收敛",不是"新增能力"
+- SIMD / Parallel / Vector / 新优化器 等"全新架构增强"明确冻结到 v3.9.0+ 后续
+- 用户难以理解连续多个"半成品版本"
+
+**本文档用途**: 列出从 v3.8.0 冻结到 v3.9.0 的工作项, 作为后续版本 backlog.
+
+---
+
+## 1. 冻结清单 (FROZEN to v3.9.0+)
+
+### 1.1 性能工程 (Performance Engineering)
+
+| 模块 | 说明 | 规格 |
+|------|------|------|
+| SIMD Executor | 向量化执行 | INT-2 Phase 2+ |
+| Parallel Executor 主路径 | 集成到 ExecutionEngine | INT-2 Phase 3-4 (SPEC #3014) |
+| sysbench OLTP_READ_WRITE | MySQL 5.7 比较 | PERF-01 Phase 2-3 (SPEC #3015) |
+| 索引统计 | #2295 | backlog |
+
+### 1.2 新增能力 (New Capabilities)
+
+| 模块 | 说明 | 规格 |
+|------|------|------|
+| Vector SQL 表面 | CREATE VECTOR INDEX + ORDER BY vector_distance | VEC-01 Phase 2-5 (SPEC #3016) |
+| CTE Recursive | 递归 CTE 解析器 | #2987 |
+| MySQL 5.7 高级函数 (续) | ROLLUP / CUBE / INSERT / REPLACE / RANK 等 | #2988 follow-up |
+| 新优化器 | CBO 重构 / Histogram-based | TBD |
+
+### 1.3 集成债务 (Integration Debt)
+
+| 模块 | 说明 |
+|------|------|
+| I-12 Parallel Executor 完整集成 | 与 ExecutionEngine::execute 路由 (SPEC #3014) |
+| wal-verification 工具 | 当前废弃, 待重新设计 |
+
+### 1.4 暂不实施 (Parked)
+
+| 项目 | 原因 |
+|------|------|
+| F-32 mysqladmin | 工具完整度低, 后置 (#2937) |
+| Graph Database (Cypher) | 暂未列入主线 |
+
+---
+
+## 2. v3.9.0 (后续) 入口标准
+
+v3.9.0 启动条件:
+1. v3.8.0-ga tag 已打
+2. CHANGELOG.md v3.8.0-ga 段已发布
+3. main 分支已同步 v3.8.0-ga (需 PM 授权)
+4. v3.8.0-ga 后 24h 灰度期无 critical issue
+
+---
+
+## 3. 旧版 HANDOVER 文档
+
+旧 `V380_TO_V390_HANDOVER.md` (PR-3029) 内容已重写为本文件.
+原始版本在 git history 中可追溯 (`git log --all -- docs/releases/v3.8.0/V380_TO_V390_HANDOVER.md`).
+
+---
+
+## 4. References
+
+- `docs/releases/v3.8.0/RELEASE_NOTES.md` — v3.8.0 主发布说明
+- `docs/releases/v3.8.0/verify/SERVER_01_ALPHA_ACCEPTANCE.md` — Server 验收
+- `docs/governance/EXECUTION_SEMANTICS.md` — SEM-1 contract
+- `docs/governance/ISSUE_CLOSING_VERIFICATION.md` — Issue 关闭规则
+
 
 ---
 

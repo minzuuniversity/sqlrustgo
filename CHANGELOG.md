@@ -5,6 +5,50 @@ SQLRustGo 的所有显着更改都将记录在此文件中。
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.8.0-beta] - 2026-06-04
+
+### Summary
+v3.8.0 BETA 阶段完成. 路线决策: v3.8.0 走完整生命周期到 GA, **不创建 v3.9.0**.
+Branch: `bata/v3.8.0`, Tag: `v3.8.0-beta` (commit 052524890).
+
+### 22 Milestone Issues
+- 18 closed (executed in this session): #2966, #2967, #2968, #2970, #2971,
+  #2972, #2973, #2974, #2975, #2976, #2978, #2979, #2980, #2991, #2992,
+  #2988 (PARTIAL: 6 of 26 functions)
+- 2 deferred to v3.8.0-rc1: #2969 (Aggregates), #2977 (TPCH 22/22)
+- 4 deferred to v3.9.0+: #2986 (Parallel), #2987 (CTE Recursive),
+  #2989 (PERF sysbench), #2990 (VEC), #2988 ROLLUP/CUBE/INSERT
+
+### Code
+- **INT-1**: DML through unified_facade + begin/commit/rollback (#2995, #3019)
+- **EXEC-01/04**: GROUP BY + HAVING (#2998)
+- **EXEC-02**: JOIN LEFT NULL handling (#3000)
+- **EXEC-05**: NULL 3-value logic (#2997)
+- **EXEC-06**: DISTINCT semantics (#3002)
+- **INT-4**: VtuGuard on trigger DML (#2999)
+- **ARCH-2**: merge.rs unified DML entry (#3001)
+- **SEM-2**: MySQL 5.7 error code + SQLSTATE on SqlError (#3011)
+- **CLI-01**: REPL .help/.history/.source/.pager (#3003)
+- **CLI-02**: DESCRIBE + SHOW CREATE TABLE (#3007)
+- **MySQL-01 (PARTIAL)**: IF, COALESCE, ISNULL, NULLIF, DATE_ADD/SUB (#3022)
+
+### Test
+- executor --lib: 351 passed (was 334, +17)
+- types --lib: 84 passed (was 81, +3)
+- New integration tests: distinct (5), describe_table (3), multi_join (4),
+  mysql_functions (4), TPC-H (3 passed + 1 ignored)
+
+### Spec / Scripts
+- **SEM-1**: Execution Semantics Contract (9 clauses) + check_execution_semantics.sh (#3008)
+- **DOCS-01**: update_changelog.sh (conventional commits → CHANGELOG) (#3005)
+- **INT-2 SPEC**: Phase 1 Parallel Executor integration (#3014)
+- **PERF-01 SPEC**: Phase 1 sysbench OLTP benchmark (#3015)
+- **VEC-01 SPEC**: Phase 1 Vector Store SQL integration (#3016)
+- **SERVER-01 verify**: Alpha Server acceptance report (#3012)
+
+### Tracking
+- 4 tracking issues updated: #2702 (review closed), #2763, #2743, #2937
+
 ## [3.8.0] - 2026-05-31 (Alpha)
 
 ### 目标

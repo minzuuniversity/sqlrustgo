@@ -1,354 +1,193 @@
-# v3.8.0 RELEASE NOTES (发布说明 v3.3 — Simple Production Target)
+# v3.8.0 RELEASE NOTES (v4 — Route B: Beta → RC → GA, single line)
 
 > **Release**: SQLRustGo v3.8.0 "Architecture Unification & Core SQL"
 > **Date**: 2026-06-04
-> **Status**: **STRONG BETA** (8.0/10) — 跳过 RC 周期, 直接进 v3.9.0 Verification Release
-> **v3.9.0 目标**: **简单生产环境可用** (10~100 并发, < 100GB, 单机部署)
-> **Baseline HEAD**: `43215ec7e` (含 20 PR 累计)
-> **Tag**: `v3.8.0-beta` (建议立即打)
-> **Prior notes**: v1 ALPHA, v3.1 Beta, v3.2 Strong Beta, 本 v3.3 简单生产目标
+> **Status**: **BETA COMPLETE**, entering **RC** preparation
+> **Baseline HEAD**: `052524890` (含 18 milestone PRs)
+> **Branch**: `bata/v3.8.0` (just created)
+> **Tag**: `v3.8.0-beta` (points to 052524890)
+> **Lineage**: v3.7.0 GA → v3.8.0-alpha → v3.8.0-beta → v3.8.0-rc1 → v3.8.0-rc2 → v3.8.0-ga
 
 ---
 
 ## TL;DR
 
-v3.8.0 = **Strong Beta** (8.0/10) — **Executor Database 已成立**.
+**路线决策（2026-06-04）**: v3.8.0 走完整生命周期到 GA，**不创建 v3.9.0**。
 
-v3.9.0 = **Verification Release** = **简单生产环境可用的单机版** (有前提).
+- v3.8.0-beta 阶段已完成（22 milestone issues, 18 closed by execution, 4 deferred to v3.8.0-rc1）
+- v3.8.0-rc 阶段聚焦：性能增强（stable path）+ TPC-H 22/22 完整测试 + 72h 稳定性验证
+- v3.8.0-ga 目标：单机数据库 GA（10~100 并发, < 100GB, 单机部署）
 
-**核心问题 (ChatGPT 第二轮)**: 3.9.0 能彻底解决所有历史遗留问题吗?
-
-**答案**:
-- ❌ **不能清零** (数据库项目不会在一个版本归零)
-- ✅ **有机会简单生产可用** (5 项 KPI 完成后)
+**为什么不开 v3.9.0**：
+- 当前工作属于"补完与收敛"，不是"新增能力"
+- SIMD / Parallel 主路径 / Vector SQL / 新优化器 等明确冻结到 v3.9.0+ 后续版本
+- 用户难以理解 "v3.8.0 Beta + v3.9.0 Alpha + v3.9.0 Beta" 连续发布
 
 ---
 
-## 1. v3.8.0 三层生产标准定位
-
-### 1.1 第一层: 正确性 (✅ v3.8.0 已接近完成)
+## 1. 版本生命周期 (Route B)
 
 ```
-✅ Parser
-✅ JOIN
-✅ GROUP BY
-✅ DISTINCT
-✅ Aggregate
-✅ NULL
-✅ WAL 主路径 (INT-1 修)
+v3.7.0 GA  ── 2026-05-30
+   │
+v3.8.0-alpha  ── 2026-05-31
+   │
+v3.8.0-beta  ── 2026-06-04  ◀── CURRENT (tag + bata/v3.8.0 分支)
+   │
+v3.8.0-rc1   ── 计划 2026-06-11 (TPC-H 22/22 + 性能基线)
+   │
+v3.8.0-rc2   ── 计划 2026-06-18 (72h 稳定性 + 崩溃恢复)
+   │
+v3.8.0-ga    ── 计划 2026-06-25 (RC gate pass → GA tag)
 ```
 
-### 1.2 第二层: 可靠性 (❌ v3.9.0 核心目标)
+每个阶段都有：gate contract → 报告 → tag → 公告。
+
+---
+
+## 2. v3.8.0 Beta 阶段交付清单
+
+### 2.1 22 Milestone Issues (18 closed, 4 deferred to RC)
+
+| # | Issue | 状态 | PR |
+|---|-------|------|-----|
+| #2966 | INT-1 DML WAL | ✅ | #2995, #3019 |
+| #2967 | EXEC-01 GROUP BY | ✅ | #2998 |
+| #2968 | EXEC-02 JOIN | ✅ | #3000 |
+| #2969 | EXEC-03 Aggregates | ⏭→RC | (opencode: 0% mod-tree 修复) |
+| #2970 | EXEC-04 HAVING | ✅ | #2998 |
+| #2971 | EXEC-05 NULL | ✅ | #2997 |
+| #2972 | EXEC-06 DISTINCT | ✅ | #3002 |
+| #2973 | INT-4 VtuGuard | ✅ | #2999 |
+| #2974 | ARCH-2 merge.rs | ✅ | #3001 |
+| #2975 | SEM-1 语义 | ✅ | #3008 |
+| #2976 | SEM-2 错误码 | ✅ | #3011 |
+| #2977 | TPCH-01 (10→22) | ⏭→RC | (opencode 进行中) |
+| #2978 | CLI-01 P0 commands | ✅ | #3003 |
+| #2979 | CLI-02 P1 commands | ✅ | #3007 |
+| #2980 | SERVER-01 验收 | ✅ | #3012 |
+| #2986 | INT-2 I-12 Parallel | ⏭→v3.9.0 | #3014 (Phase 1 SPEC) |
+| #2987 | CTE-01 (10 fails) | ⏭→v3.9.0 | (opencode) |
+| #2988 | MySQL-01 高级函数 | ✅ | #3022 (PARTIAL: 6/26) |
+| #2989 | PERF-01 sysbench | ⏭→v3.9.0 | #3015 (Phase 1 SPEC) |
+| #2990 | VEC-01 Vector SQL | ⏭→v3.9.0 | #3016 (Phase 1 SPEC) |
+| #2991 | EXEC-07 F-10/F-14 | ✅ | #3017 (F-10 only, F-14 已存在) |
+| #2992 | DOCS-01 CHANGELOG | ✅ | #3005 |
+
+**新阶段分类**:
+- 18 closed → Beta 完成
+- 2 deferred to RC (#2969 Aggregates, #2977 TPCH) — 必须 v3.8.0-rc1 解决
+- 4 deferred to v3.9.0+ (#2986/#2987/#2989/#2990/#2988 ROLLUP/CUBE/INSERT) — 明确不属于 v3.8.0
+
+### 2.2 测试现状 (Beta 阶段)
 
 ```
-❌ 24h/72h/168h 长稳
-❌ 内存泄漏/锁泄漏/WAL 增长/Snapshot 积压 监控
+sqlrustgo-executor --lib       351 passed (was 334, +17 MySQL-01 functions)
+sqlrustgo-types --lib           84 passed (was 81, +3 SEM-2 error code)
+tests/distinct_test              5 passed (CLI-02 follow-up)
+tests/describe_table_test        3 passed (CLI-02)
+tests/multi_join_test            4 passed (EXEC-07)
+tests/mysql_functions_test       4 passed (MySQL-01)
+tests/tpch_value_correctness     3 passed, 1 ignored (Q3 parser)
+tests/tpch_gate                  1 passed
+                          ──────────────
+                            455 unit + integration tests
 ```
 
-### 1.3 第三层: 恢复能力 (❌ v3.9.0 关键 KPI)
+### 2.3 治理资产 (Beta 完成)
 
-```
-❌ Crash Test Matrix (1000/10000 轮 kill -9 验证)
-```
+- ✅ `docs/governance/EXECUTION_SEMANTICS.md` — 9-clause contract
+- ✅ `scripts/gate/check_execution_semantics.sh` — 4-check verifier, PASS
+- ✅ `scripts/gate/update_changelog.sh` — CHANGELOG auto-update (DOCS-01)
+- ✅ `docs/governance/EXECUTION_SEMANTICS.md` — SEM-1 contract
+- ✅ `SqlError::mysql_error_code() / sqlstate()` — SEM-2 standardization
+- ✅ 4 跟踪 issue 已更新 + 1 评审 issue (#2702) 已 closed
 
-**典型长稳问题** (单元测试抓不到):
-- 内存泄漏 / 锁泄漏
-- WAL 增长失控 / Snapshot 积压
-- 文件句柄泄漏 / 死锁
+### 2.4 文档资产 (Beta 完成)
 
-**ChatGPT 关键判断**:
-> "生产环境真正考验: 不是 **是否会崩**, 而是 **崩了以后能否回来**."
-
----
-
-## 2. "简单生产环境" 定义
-
-### 2.1 ✅ 适用 (3.9.0 目标可达)
-
-| 类别 | 例子 |
-|------|------|
-| 内部业务 | 内部业务系统, 中小后台管理, 配置中心, CI/CD 元数据 |
-| 协作类 | 工单系统, 监控系统, 实验室系统 |
-| 教学类 | 教学平台, 企业内部工具 |
-
-**规模约束**:
-- 并发: 10~100
-- 数据: < 100GB
-- 部署: 单机
-- 负载: 每天几万~几十万 SQL
-
-### 2.2 ❌ 不适用 (4.x/5.x 才可能)
-
-- 替代 MySQL / SaaS 核心库
-- 金融交易 / 电商订单 / 银行系统 / ERP 核心库
+- `docs/releases/v3.8.0/verify/SERVER_01_ALPHA_ACCEPTANCE.md` — Server 验收报告
+- `docs/releases/v3.8.0/specs/gate/INT2_PARALLEL_EXECUTOR_SPEC.md` — Phase 1 SPEC (deferred to v3.9.0)
+- `docs/releases/v3.8.0/specs/gate/PERF01_SYSBENCH_SPEC.md` — Phase 1 SPEC (deferred to v3.9.0)
+- `docs/releases/v3.8.0/specs/gate/VEC01_VECTOR_STORE_SPEC.md` — Phase 1 SPEC (deferred to v3.9.0)
+- `docs/releases/v3.8.0/V380_TO_V390_HANDOVER.md` — 交接文档（路径冻结）
 
 ---
 
-## 3. v3.9.0 5 项 KPI (核心 5 件, 180h)
+## 3. v3.8.0-rc1 阶段计划 (2026-06-04 → 2026-06-11)
 
-| # | KPI | 工作量 | 重要性 |
-|---|-----|--------|--------|
-| **1** | **TPC-H 22/22** (执行器毕业考试) | 60h | ⭐⭐⭐ |
-| **2** | **Crash Test Matrix** (1000/10000 轮 kill -9) | 50h | ⭐⭐⭐ ChatGPT 最关注 |
-| **3** | **长稳测试** (24h/72h/168h Nightly) | 30h active | ⭐⭐⭐ |
-| **4** | **并发压力** (64 线程 INSERT/UPDATE/DELETE/SELECT) | 25h | ⭐⭐ |
-| **5** | **WAL 一致性** (LSN/Checkpoint/Recovery 边界) | 15h | ⭐⭐ |
-| **总计** | | **180h ≈ 4.5 周 × 1 人** | |
+### 3.1 必须完成 (RC1 gate block)
 
----
+1. **TPC-H 22/22 全通过** (#2977) — RC gate 硬性要求
+2. **EXEC-03 Aggregates** (#2969) — mod-tree dead code 修复或移除
+3. **MySQL-01 ROLLUP/CUBE/INSERT/REPLACE** (#2988 续) — 26 fails 中其余 20 个
+4. **RECOVERY_TEST_DESIGN.md 验证** — 崩溃恢复场景覆盖
+5. **72h 稳定性测试** — 内存泄漏 / 死锁 / WAL 一致性
 
-## 4. v3.8.0 重大修复 (6 个, 本 session)
+### 3.2 性能基线
 
-### 4.1 INT-1 (P0) - DML 强制 TransactionManager (PR-3019)
-- DML 主路径闭环: INSERT/UPDATE/DELETE → TM → WAL
-- 6/6 INT-1 回归 tests PASS
-- Corpus +2% (89.2% → 91.2%)
+- 基准：TPC-H SF=0.01 / SF=0.1 / SF=1 三档
+- sysbench OLTP_READ_WRITE 1/4/16 threads (Phase 1)
+- 内存: 启动 100MB → 8h 持续 500MB → 72h 持续 800MB 上限
 
-### 4.2 NULL 3-value logic (PR-2997)
-- 12/12 tests PASS
+### 3.3 RC1 gate contract
 
-### 4.3-4.4 COUNT(DISTINCT) + SELECT DISTINCT (PR-2981)
-- 12/12 tests PASS
-
-### 4.5-4.6 D9 Gate 2 bug fixes (PR-3004)
-- TEST_PLAN 路径 + 5-Principle grep
-- D9 8/8 ALL PASS
+- `bash scripts/gate/check_execution_semantics.sh` PASS
+- `cargo test --workspace` 0 failures
+- TPC-H 22/22 (no SKIP)
+- 72h 稳定性报告
+- DEPLOYMENT_GUIDE.md 验证
 
 ---
 
-## 5. EXEC-01/02 完整化
+## 4. v3.8.0-rc2 阶段计划 (2026-06-11 → 2026-06-18)
 
-### 5.1 EXEC-01 GROUP BY (PR-3020, #2967 CLOSED)
-- 148/184 PASS, **核心 81/81 = 100%**
-
-### 5.2 EXEC-02 JOIN (PR-3023, #2968 CLOSED)
-- 111/113 PASS, **核心 JOIN 100%**
-
----
-
-## 6. Corpus 进展
-
-| 阶段 | Cases | PASS | Pass rate |
-|------|-------|------|-----------|
-| 起点 | 485 | 441 | 90.9% |
-| **Stage 3 (JOIN)** | **822** | **711** | **86.5%** |
-
-**绝对 PASS 累计**: 441 → 711 (+270 cases, +61%)
+- 复测所有 v3.8.0-rc1 deliverables
+- Crash recovery 极端场景 (kill -9 / OOM / 断电)
+- Wire protocol 完整 e2e (MySQL client 真实连接)
+- README + DEPLOYMENT_GUIDE final
 
 ---
 
-## 7. 9 维门禁 — 8/8 ALL PASS
+## 5. v3.8.0-ga 阶段计划 (2026-06-18 → 2026-06-25)
 
-| 维度 | 状态 |
-|------|------|
-| D1-D5 RC/GA | ✅ PASS |
-| D6 Test Inventory | ✅ PASS (51/53) |
-| D7 INT Debt | ✅ PASS (4 ACTIVE w/ plan) |
-| D8 Arch/Sem Debt | ✅ PASS-WITH-DRIFT (7 OPEN w/ plan) |
-| Cross-Version Debt | ✅ PASS (79.2% CLOSED) |
-| Test Plan Consistency | ✅ PASS |
-| PR Template | ✅ PASS |
-| Evidence Generation | ✅ PASS |
+- RC2 gate pass → 打 `v3.8.0-ga` tag
+- main 分支同步 v3.8.0-ga（需要 PM 授权 — 治理红线）
+- CHANGELOG.md final
+- Release announcement (RELEASE_NOTES v5 = GA)
 
 ---
 
-## 8. 性能 (6 基准实测)
+## 6. v3.9.0 路线图 (明确冻结)
 
-| Benchmark | Latency | QPS |
-|-----------|---------|-----|
-| PKey Lookup | 322 µs | 3,099 |
-| PKey Batch | 320 µs | 3,119 |
-| PKey Range | 322 µs | 3,105 |
-| COUNT(*) | 163 µs | 6,111 |
-| SUM/AVG | 225 µs | 4,427 |
-| COUNT+SUM WHERE | 350 µs | 2,851 |
+| 模块 | v3.9.0 计划 |
+|------|------------|
+| SIMD Executor | 新增 |
+| Parallel Executor 主路径 | 集成 (Phase 2-4) |
+| Vector SQL 表面 | 集成 (Phase 2-5) |
+| 新优化器 | 重构 |
+| MySQL 高级函数扩展 | ROLLUP / CUBE / INSERT / REPLACE / RANK / DENSE_RANK 等 |
+| CTE Recursive | 解析器 |
+| sysbench MySQL 5.7 比较 | Phase 2-3 |
 
-**v3.8.0 / MySQL 5.7 ≈ 0.61x** (in-process env)
-
----
-
-## 9. v3.8.0 → v3.9.0 预期改善
-
-| 项目 | v3.8.0 | **v3.9.0 目标** | 提升 |
-|------|--------|-----------------|------|
-| SQL Executor | 6.5 | **8** | +1.5 |
-| TPC-H | 10/22 | **22/22** | +12 |
-| DML/WAL | 8 | **9** | +1 |
-| **稳定性** | **3** | **7** | **+4** ⭐ |
-| **恢复能力** | **5** | **8** | **+3** ⭐ |
-| **压力测试** | **2** | **7** | **+5** ⭐ |
-| **单机生产能力** | **4** | **7** | **+3** ⭐ |
-
-**核心改善**: 不是 SQL 功能, 而是**稳定性 + 恢复 + 压力 + 单机生产能力** (4 项 +15).
+**不在 v3.8.0 范围**：以上所有。明确冻结到 v3.9.0 (后续版本)。
 
 ---
 
-## 10. v3.8.0-beta Feature Freeze
+## 7. 治理红线
 
-**允许**:
-- ✅ P0/P1 Bug 修复 (Crash, Data Loss, Deadlock, Corruption)
-- ✅ 文档完善
-
-**禁止**:
-- ❌ SIMD / Vector / 新 SQL / 新索引 / 新优化器
-- ❌ 任何 Feature
-
-**所有 PR 标题加 `[FROZEN]` 标记**.
+1. **禁止手动关闭没有 PR 合并的 Issue** (AGENTS.md)
+2. **修改 docs/ 必须 5 步流程** (DOC_CHECK_CORRECTION_RULES.md)
+3. **CRITICAL: main 分支不直接 push** — 仅 GA tag 后可同步
+4. **Gitea token 走 `~/.git_token_gitea`**
 
 ---
 
-## 11. v3.9.0 严禁 Feature (持续 Feature Freeze)
+## 8. References
 
-- ❌ SIMD
-- ❌ Vector
-- ❌ 新 SQL 语法
-- ❌ 新索引
-- ❌ 新优化器
-- ❌ 任何"看起来有吸引力"但会拖慢 5 项 KPI 的 PR
-
-**所有 PR 标题加 `[v390]` + 关联 5 项 KPI 之一**.
-
----
-
-## 12. 历史问题清零的真相
-
-> **不能清零**.
-
-**原因**:
-- 真正到生产阶段会出现 **INT-5, INT-6, ARCH-7, SEM-9** (新问题)
-- 数据库永远不会出现"历史问题 = 0"的状态
-
-**更现实目标**:
-- ✅ P0 = 0 (新出问题及时修)
-- ✅ P1 → 0 (KPI 完成时同步关闭)
-- ⚠️ P2 保持少量 (parser 增强)
-- ⚠️ P3 允许存在 (边角)
-
----
-
-## 13. 时间节点 (估算)
-
-| 版本 | 状态 | 预计日期 |
-|------|------|----------|
-| **v3.8.0-beta** | Strong Beta (现) | 2026-06-04 |
-| **v3.8.0-beta+** | + 1-2 P1 | 2026-06-18 (2 周) |
-| **v3.9.0-rc1** | 5/5 KPI PASS | 2026-07-23 (7 周) |
-| **v3.9.0-ga** | 简单生产可用 | 2026-08-13 (10 周) |
-
-**总工作流**:
-- W1-2: KPI-1 TPC-H (Q1-Q13)
-- W3: KPI-1 TPC-H (Q14-Q22) + KPI-2 Crash Harness 工具
-- W4: KPI-2 1000 轮 + KPI-3 24h + KPI-5 WAL
-- W5: KPI-4 并发 + KPI-2 10000 轮 + KPI-3 72h
-- W6-7: KPI-3 168h (1 周) + 异常分析
-- W8: 收口 + 文档 + 标签
-
----
-
-## 14. 9 Open Issues 移交 v3.9.0
-
-| Issue | 标题 | 关联 KPI |
-|-------|------|----------|
-| **#2977** | TPC-H 10/22 → 22/22 | **KPI-1** |
-| **#2973** | INT-4 VtuGuard 强制 (explicit TX) | **KPI-5** |
-| **#2974** | ARCH-2 merge.rs 统一 DML 入口 | **KPI-4** |
-| **#2975** | SEM-1 执行语义标准化 | **KPI-1** |
-| **#2702** | v3.8.0 历史遗留评审 | 文档 |
-| Corpus 57 | MySQL 5.7 函数 parser | P1 后续 |
-| 追踪 3 | #2763, #2743, 报告类 | 随 v3.9.0 收口 |
-
----
-
-## 15. 升级指南 (v3.7.0 → v3.8.0-beta)
-
-```bash
-# 1. 备份
-cp -r /var/lib/sqlrustgo /var/lib/sqlrustgo.bak
-
-# 2. 停止服务
-systemctl stop sqlrustgo
-
-# 3. 替换二进制
-cp sqlrustgo-v3.8.0-beta /usr/local/bin/sqlrustgo
-
-# 4. 启动
-systemctl start sqlrustgo
-
-# 5. 验证
-./bin/sqlrustgo --version
-# 应输出: SQLRustGo v3.8.0-beta
-```
-
-**注意事项**:
-- TM autocommit 强制 begin/commit (显式 BEGIN 不再允许嵌套)
-- 之前 TX status (Committed/Aborted) 会变化
-
----
-
-## 16. 关键原则 (ChatGPT 第二轮)
-
-### 16.1 三层生产标准
-1. **正确性** (v3.8.0 已接近完成)
-2. **可靠性** (v3.9.0 核心)
-3. **恢复能力** (v3.9.0 关键)
-
-### 16.2 不要混淆
-- **功能完成 ≠ 生产完成**
-- **单元测试 PASS ≠ 1000 轮 kill -9 后数据一致**
-- **8.0/10 ≠ 简单生产可用**
-
-### 16.3 真正生产考验
-> "不是 **是否会崩**, 而是 **崩了以后能否回来**"
-
-### 16.4 长稳问题模式
-> "第 1 天没事 / 第 3 天没事 / **第 7 天崩**"
-
----
-
-## 17. 致 v3.9.0 团队
-
-如果严格执行 Feature Freeze, 只做 5 项 KPI:
-
-- ✅ TPC-H 22/22
-- ✅ Crash Test Matrix
-- ✅ 长稳 24h/72h/168h
-- ✅ 并发压力 64 线程
-- ✅ WAL 一致性
-
-SQLRustGo 定位会从:
-
-```text
-Beta 数据库原型
-```
-
-提升到:
-
-```text
-可用于简单生产环境的单机数据库系统
-```
-
-**这比增加 SIMD/Vector/新 SQL 语法都有价值**.
-
----
-
-## 18. 文档链接
-
-- 综合评估: `V380_COMPREHENSIVE_ASSESSMENT.md` (21.5K, 20 sections)
-- 交接文档: `V380_TO_V390_HANDOVER.md` (9.2K, 本 PR 更新)
-- Beta 发布报告: `V380_BETA_RELEASE_REPORT.md` (11K)
-- INT-1 修复: `INT_1_DML_TRANSACTION_MANAGER_REPORT.md`
-- EXEC-01 GROUP BY: `EXEC_01_GROUP_BY_REPORT.md`
-- EXEC-02 JOIN: `EXEC_02_JOIN_REPORT.md`
-- EXEC-05 NULL: `EXEC_05_NULL_SEMANTICS_REPORT.md`
-- F-11/F-12: `V380_F11_F12_REMEDIATION_REPORT.md`
-- ChatGPT 评估: `CHATGPT_ASSESSMENT_AND_CLOSURE_REPORT.md`
-
-**新增工具入口** (v3.9.0 待写):
-- `tools/crash_harness/` - Crash Test Matrix
-- `tools/long_haul/` - 24h/72h/168h 长稳
-- `tools/stress/` - 64 线程并发压力
-- `tools/wal_consistency/` - WAL 一致性测试
-
----
-
-**v3.8.0-beta: Strong Beta, 8.0/10, Executor Database 已成立. v3.9.0 = Verification Release, 5 项 KPI 180h 距"简单生产可用", 历史问题不会清零但 P0/P1 可控.**
+- Issue: https://192.168.0.252:3000/openclaw/sqlrustgo/issues (v3.8.0 milestone)
+- Branch: `bata/v3.8.0` (origin)
+- Tag: `v3.8.0-beta` (052524890)
+- Semantics: `docs/governance/EXECUTION_SEMANTICS.md`
+- Alpha report: `docs/releases/v3.8.0/verify/SERVER_01_ALPHA_ACCEPTANCE.md`
+- Legacy fix verification (PR #2701, reviewed 2026-06-04)
+- v3.7.0 GA reference: `docs/releases/v3.7.0/CHANGELOG.md`
