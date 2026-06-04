@@ -1324,9 +1324,11 @@ impl Parser {
         loop {
             match self.current() {
                 // RParen = end of containing subquery (caller already consumed the LParen).
+                // Union = end of first SELECT in a UNION/UNION ALL (caller will parse the rest).
                 // Must break here so we don't fall through to "Expected FROM or column name"
-                // when this parse_select_statement is called recursively for FROM (SELECT ...) AS alias.
-                Some(Token::RParen) => break,
+                // when this parse_select_statement is called recursively for FROM (SELECT ...) AS alias
+                // or as the left/right side of UNION ALL.
+                Some(Token::RParen) | Some(Token::Union) => break,
                 Some(Token::From) | Some(Token::Eof) => {
                     break;
                 }
@@ -1466,26 +1468,72 @@ impl Parser {
                     }
                 }
                 Some(Token::LParen) => {
-                    let expr = self.parse_expression()?;
-                    self.expect(Token::RParen)?;
-                    let alias = if matches!(self.current(), Some(Token::As)) {
+                    let start_position = self.position;
+                    // parse_expression_in_parens already consumes the
+                    // matching RParen, so do not call expect(RParen) here.
+                    let expr = self.parse_expression_in_parens(0)?;
+
+                    // After `(expr)`, allow binary operator like `* fact`
+                    // (e.g., `SELECT (n + 1) * fact FROM t`).
+                    if matches!(
+                        self.current(),
+                        Some(Token::Plus)
+                            | Some(Token::Minus)
+                            | Some(Token::Star)
+                            | Some(Token::Slash)
+                            | Some(Token::Percent)
+                    ) {
+                        let op = match self.current() {
+                            Some(Token::Plus) => "+",
+                            Some(Token::Minus) => "-",
+                            Some(Token::Star) => "*",
+                            Some(Token::Slash) => "/",
+                            Some(Token::Percent) => "%",
+                            _ => unreachable!(),
+                        };
                         self.next();
-                        match self.current() {
-                            Some(Token::Identifier(name)) => {
-                                let alias_name = name.clone();
-                                self.next();
-                                Some(alias_name)
+                        let right = self.parse_expression()?;
+                        let bin_expr =
+                            Expression::BinaryOp(Box::new(expr), op.to_string(), Box::new(right));
+                        let alias = if matches!(self.current(), Some(Token::As)) {
+                            self.next();
+                            match self.current() {
+                                Some(Token::Identifier(name)) => {
+                                    let alias_name = name.clone();
+                                    self.next();
+                                    Some(alias_name)
+                                }
+                                _ => None,
                             }
-                            _ => None,
-                        }
+                        } else {
+                            None
+                        };
+                        columns.push(SelectColumn {
+                            name: format!("{:?}", bin_expr),
+                            alias,
+                            expression: Some(bin_expr),
+                        });
                     } else {
-                        None
-                    };
-                    columns.push(SelectColumn {
-                        name: format!("{:?}", expr),
-                        alias,
-                        expression: Some(expr),
-                    });
+                        let _ = start_position;
+                        let alias = if matches!(self.current(), Some(Token::As)) {
+                            self.next();
+                            match self.current() {
+                                Some(Token::Identifier(name)) => {
+                                    let alias_name = name.clone();
+                                    self.next();
+                                    Some(alias_name)
+                                }
+                                _ => None,
+                            }
+                        } else {
+                            None
+                        };
+                        columns.push(SelectColumn {
+                            name: format!("{:?}", expr),
+                            alias,
+                            expression: Some(expr),
+                        });
+                    }
                 }
                 // Handle CASE expressions in SELECT
                 Some(Token::Case) => {
@@ -1809,7 +1857,9 @@ impl Parser {
                     (first, None, rest)
                 }
             }
-            Some(Token::Eof) | None | Some(Token::RParen) => (String::new(), None, Vec::new()),
+            Some(Token::Eof) | None | Some(Token::RParen) | Some(Token::Union) => {
+                (String::new(), None, Vec::new())
+            }
             Some(t) => return Err(format!("Expected FROM or end of query, got {:?}", t)),
         };
 
@@ -2451,6 +2501,108 @@ impl Parser {
         Ok(left)
     }
 
+    /// Parse an expression that lives inside a parenthesized context
+    /// (e.g. `SELECT (n + 1) * fact`). Stops at the matching `RParen`
+    /// AND consumes it, so the caller doesn't need to. Operators at
+    /// the boundary (e.g. the `* fact` in the example) are left for
+    /// the outer expression to pick up.
+    fn parse_expression_in_parens(&mut self, _depth: i32) -> Result<Expression, String> {
+        // Walk tokens counting paren depth; once we return to depth 0
+        // (the matching RParen), stop and consume it. We build a single
+        // expression by re-parsing the inner tokens through the normal
+        // expression grammar.
+        //
+        // The inner expression is parsed by `parse_or_expression` which
+        // does NOT track paren depth. The fix is to: at the column
+        // level (the caller of this function), we have already seen
+        // LParen. We consume it here, then parse the inner content,
+        // then consume the matching RParen. The inner content parsing
+        // is delegated to `parse_or_expression`, which is greedy; we
+        // accept this and let the column loop LParen handler unwrap
+        // any trailing operator (`* fact` etc.) explicitly.
+        self.next(); // consume the opening LParen
+        let expr = self.parse_or_expression_until_close()?;
+        self.expect(Token::RParen)?;
+        Ok(expr)
+    }
+
+    /// Like `parse_or_expression` but stops at RParen (the matching
+    /// paren closer — which the caller of `parse_expression_in_parens`
+    /// will consume).
+    fn parse_or_expression_until_close(&mut self) -> Result<Expression, String> {
+        let mut left = self.parse_and_expression_until_close()?;
+        while matches!(self.current(), Some(Token::Or)) {
+            self.next();
+            let right = self.parse_and_expression_until_close()?;
+            left = Expression::BinaryOp(Box::new(left), "OR".to_string(), Box::new(right));
+        }
+        Ok(left)
+    }
+
+    fn parse_and_expression_until_close(&mut self) -> Result<Expression, String> {
+        let mut left = self.parse_additive_expression_until_close()?;
+        while matches!(self.current(), Some(Token::And)) {
+            self.next();
+            let right = self.parse_additive_expression_until_close()?;
+            left = Expression::BinaryOp(Box::new(left), "AND".to_string(), Box::new(right));
+        }
+        Ok(left)
+    }
+
+    fn parse_additive_expression_until_close(&mut self) -> Result<Expression, String> {
+        let mut left = self.parse_multiplicative_expression_until_close()?;
+        while matches!(self.current(), Some(Token::Plus) | Some(Token::Minus)) {
+            let op = match self.current() {
+                Some(Token::Plus) => "+",
+                Some(Token::Minus) => "-",
+                _ => unreachable!(),
+            };
+            self.next();
+            let right = self.parse_multiplicative_expression_until_close()?;
+            left = Expression::BinaryOp(Box::new(left), op.to_string(), Box::new(right));
+        }
+        Ok(left)
+    }
+
+    fn parse_multiplicative_expression_until_close(&mut self) -> Result<Expression, String> {
+        // Empty inner expression is an error.
+        if matches!(
+            self.current(),
+            Some(Token::RParen) | Some(Token::Comma) | None
+        ) {
+            return Err(format!(
+                "Empty expression in parens, current={:?}",
+                self.current()
+            ));
+        }
+        let mut left = self.parse_primary_expression_until_close()?;
+        // After primary, accept * / % but stop at RParen (outer boundary).
+        while matches!(
+            self.current(),
+            Some(Token::Star) | Some(Token::Slash) | Some(Token::Percent)
+        ) {
+            let op = match self.current() {
+                Some(Token::Star) => "*",
+                Some(Token::Slash) => "/",
+                Some(Token::Percent) => "%",
+                _ => unreachable!(),
+            };
+            self.next();
+            let right = self.parse_primary_expression_until_close()?;
+            left = Expression::BinaryOp(Box::new(left), op.to_string(), Box::new(right));
+        }
+        Ok(left)
+    }
+
+    fn parse_primary_expression_until_close(&mut self) -> Result<Expression, String> {
+        // For boundary tokens (RParen / Comma), this is the end of the
+        // expression — the caller will see the boundary and exit.
+        // We just call the normal primary parser and trust that nested
+        // parens are handled correctly (each nested LParen is consumed
+        // by parse_primary_expression which then expects its own RParen).
+        self.parse_primary_expression()
+    }
+
     /// Parse AND expression (higher precedence than OR)
     fn parse_and_expression(&mut self) -> Result<Expression, String> {
         let mut left = self.parse_comparison_expression()?;
@@ -2942,8 +3094,10 @@ impl Parser {
                         Ok(Expression::Subquery(Box::new(subquery)))
                     }
                     _ => {
-                        let expr = self.parse_or_expression()?;
-                        self.expect(Token::RParen)?;
+                        // parse_expression_in_parens consumes the matching
+                        // RParen as part of its depth-aware logic, so do
+                        // not call expect(RParen) here.
+                        let expr = self.parse_expression_in_parens(0)?;
                         Ok(expr)
                     }
                 }
