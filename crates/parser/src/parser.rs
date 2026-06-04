@@ -1722,7 +1722,8 @@ impl Parser {
                 }
                 // MySQL 5.7: LEFT/RIGHT/INSERT/REPLACE as scalar functions
                 // in the SELECT list. Same logic as parse_primary_expression.
-                Some(Token::Left) | Some(Token::Right) | Some(Token::Insert) | Some(Token::Replace) => {
+                Some(Token::Left) | Some(Token::Right) | Some(Token::Insert)
+                | Some(Token::Replace) => {
                     let name = match self.current() {
                         Some(Token::Left) => "LEFT",
                         Some(Token::Right) => "RIGHT",
@@ -3155,6 +3156,79 @@ impl Parser {
                             "EXTRACT".to_string(),
                             vec![Expression::Literal(field_name), source_expr],
                         ));
+                    }
+                    // TRIM(LEADING/TRAILING/BOTH remstr FROM str) — MySQL 5.7
+                    // standard form, with optional modifier keyword. The
+                    // general arg-parsing loop above would fail on the
+                    // FROM keyword (it only knows Comma as separator), so
+                    // handle it explicitly here. Args are emitted in
+                    // [modifier_sentinel, remstr, str] order; the executor
+                    // dispatches on args.len() and args[0]. Sentinel
+                    // strings: "__TRIM_LEADING__", "__TRIM_TRAILING__",
+                    // "__TRIM_BOTH__".
+                    //   TRIM(s)                                 -> 1 arg  (existing)
+                    //   TRIM(remstr, s)                         -> 2 args (existing)
+                    //   TRIM(remstr FROM s)                     -> [Literal("__TRIM_BOTH__"), remstr, s]
+                    //   TRIM(LEADING remstr FROM s)            -> [Literal("__TRIM_LEADING__"), remstr, s]
+                    //   TRIM(TRAILING remstr FROM s)           -> [Literal("__TRIM_TRAILING__"), remstr, s]
+                    //   TRIM(BOTH remstr FROM s)               -> [Literal("__TRIM_BOTH__"), remstr, s]
+                    if name.to_uppercase() == "TRIM" {
+                        // Detect optional modifier keyword (LEADING/TRAILING/BOTH).
+                        // The lexer treats these as identifiers (not reserved
+                        // words), so we match on Identifier + value comparison.
+                        let mut modifier: Option<String> = None;
+                        if let Some(Token::Identifier(m)) = self.current() {
+                            let m_upper = m.to_uppercase();
+                            if m_upper == "LEADING" || m_upper == "TRAILING" || m_upper == "BOTH" {
+                                modifier = Some(m_upper);
+                                self.next(); // consume modifier keyword
+                            }
+                        }
+                        // Enter the 3-arg FROM form if:
+                        //   - we just consumed a modifier keyword, OR
+                        //   - the current token is the remstr expression
+                        //     and the NEXT-after-it token is FROM
+                        //     (peek without consuming the remstr), OR
+                        //   - the current token is FROM itself (no-modifier
+                        //     form like `TRIM(FROM s)` — rare but parseable
+                        //     by accepting it as the default BOTH form).
+                        let from_after_remstr = !matches!(
+                            self.current(),
+                            Some(Token::RParen) | Some(Token::Comma) | None
+                        ) && matches!(self.peek(), Some(Token::From));
+                        let from_now = matches!(self.current(), Some(Token::From));
+                        if modifier.is_some() || from_after_remstr || from_now {
+                            let mod_str = modifier.unwrap_or_else(|| "BOTH".to_string());
+                            let sentinel = match mod_str.as_str() {
+                                "LEADING" => "__TRIM_LEADING__",
+                                "TRAILING" => "__TRIM_TRAILING__",
+                                _ => "__TRIM_BOTH__",
+                            };
+                            // If the current token is FROM (no-modifier case
+                            // with empty remstr), skip directly to the str
+                            // expression and treat remstr as empty string.
+                            let remstr = if from_now {
+                                Expression::Literal("".to_string())
+                            } else {
+                                self.parse_expression()?
+                            };
+                            if !matches!(self.current(), Some(Token::From)) {
+                                return Err(format!(
+                                    "Expected FROM in TRIM({} ... FROM ...), got {:?}",
+                                    mod_str,
+                                    self.current()
+                                ));
+                            }
+                            self.next(); // consume FROM
+                            let str_expr = self.parse_expression()?;
+                            self.expect(Token::RParen)?;
+                            return Ok(Expression::FunctionCall(
+                                "TRIM".to_string(),
+                                vec![Expression::Literal(sentinel.to_string()), remstr, str_expr],
+                            ));
+                        }
+                        // No modifier and no FROM → fall through to the
+                        // standard comma-separated arg loop below.
                     }
                     let mut args = Vec::new();
                     if !matches!(self.current(), Some(Token::RParen)) {
