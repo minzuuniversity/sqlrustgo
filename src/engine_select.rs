@@ -764,30 +764,18 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 // Recurse into the `=` arm and ignore the LIKE arm.
                 if is_like_predicate(left_expr) {
                     return self.find_join_key_index(
-                        right_expr,
-                        left_info,
-                        left_name,
-                        right_info,
-                        right_name,
+                        right_expr, left_info, left_name, right_info, right_name,
                     );
                 }
                 if is_like_predicate(right_expr) {
                     return self.find_join_key_index(
-                        left_expr,
-                        left_info,
-                        left_name,
-                        right_info,
-                        right_name,
+                        left_expr, left_info, left_name, right_info, right_name,
                     );
                 }
                 let lk = self
                     .find_join_key_index(left_expr, left_info, left_name, right_info, right_name)?;
                 let rk = self.find_join_key_index(
-                    right_expr,
-                    left_info,
-                    left_name,
-                    right_info,
-                    right_name,
+                    right_expr, left_info, left_name, right_info, right_name,
                 )?;
                 match (lk, rk) {
                     (JoinKey::Pair(li1, ri1), JoinKey::Pair(li2, ri2)) => {
@@ -852,7 +840,10 @@ enum JoinKey {
 /// where one arm of the AND is a post-join filter (LIKE / NOT LIKE)
 /// rather than a join key (binary `=`).
 fn is_like_predicate(expr: &Expression) -> bool {
-    matches!(expr, Expression::Like(_, _, _) | Expression::NotLike(_, _, _))
+    matches!(
+        expr,
+        Expression::Like(_, _, _) | Expression::NotLike(_, _, _)
+    )
 }
 
 /// Look up a column in a (possibly accumulated) schema.
