@@ -1,199 +1,358 @@
-# v3.8.0 遗留问题与 v3.9.0 整改计划
+# v3.8.0 → v3.9.0 交接 (按 ChatGPT 第二轮最终判断)
 
 > **Date**: 2026-06-04
 > **Author**: Hermes Agent
 > **Audience**: v3.9.0 开发团队
-> **Prior report**: `V380_COMPREHENSIVE_ASSESSMENT.md` (21.5K, 20 sections)
+> **基于**: ChatGPT 第二轮评估 (2026-06-04)
+> **Prior**: V380_TO_V390_HANDOVER.md (PR-3028), 本文档完全重写
 
 ---
 
-## 0. TL;DR
+## 0. 核心判断 (ChatGPT 最终)
 
-v3.8.0 进入 **Feature Freeze**. 9 open issues 移交 v3.9.0.
-v3.9.0 = **Verification Release** (4 项 KPI, 无新 Feature).
-**总 180h ≈ 4.5 周 × 1 人** → v3.9.0 = 第一个真正可讨论 RC 的版本.
+**问题**: 3.9.0 能彻底解决所有历史遗留问题，提供一个可以初步用于**简单生产环境**的单机版吗？
 
----
-
-## 1. v3.8.0 遗留问题 (9 Open)
-
-### 1.1 P0 (0)
-~~#2966 INT-1 DML Bypass~~ — **CLOSED (PR-3019)** ✅
-
-### 1.2 P1 (5)
-
-| Issue | 标题 | 详情 | 阶段 |
-|-------|------|------|------|
-| **#2977** | TPC-H 10/22 → 22/22 | Stage 4 (用户跳过, v3.9.0 必做) | **KPI-1** |
-| **#2973** | INT-4 VtuGuard 强制 DML 经过 TM | explicit TX wrap 待补 (autocommit 已修) | **KPI-2** |
-| **#2974** | ARCH-2 merge.rs 统一 DML 入口 | 标准化 DML 入口 | **KPI-2** |
-| **#2975** | SEM-1 执行语义标准化 | NULL/比较/算术语义统一 | **KPI-2** |
-| **#2702** | v3.8.0 历史遗留问题改进核实 | 评审请求 | v3.8.0 PR 验证 |
-
-### 1.3 P2 (1)
-- **Corpus 57 fail (MySQL 5.7 高级函数 parser)** — parser 增强, P1 后续
-
-### 1.4 追踪 (3)
-- #2763, #2743, 历史报告类
+**答案**:
+- ❌ **不能彻底解决所有历史遗留问题** (数据库项目不会在一个版本里把所有债务归零)
+- ✅ **有机会做到"简单生产环境可用的单机版"** (前提: 严格 Feature Freeze + 5 项条件)
 
 ---
 
-## 2. v3.8.0 已知不达 RC 门槛 (4 项)
+## 1. "简单生产环境"定义
 
-| 项 | 内容 | 状态 |
-|----|------|------|
-| 1 | Transaction/WAL 主路径统一 | ✅ INT-1 修 |
-| 2 | TPC-H 10/22 → 22/22 | ❌ 待 v3.9.0 KPI-1 |
-| 3 | Corpus Failures 分类清零 | ⚠️ 57 fail 全是 MySQL 5.7 函数 parser |
-| 4 | 系统级压力测试 | ❌ 待 v3.9.0 KPI-3 |
-| 5 | 长时间稳定性 (24h-168h) | ❌ 待 v3.9.0 KPI-4 |
+### 1.1 ✅ 适用 (3.9.0 目标可达)
+
+| 类别 | 例子 |
+|------|------|
+| 内部业务 | 内部业务系统, 中小后台管理, 配置中心, CI/CD 元数据 |
+| 协作类 | 工单系统, 监控系统, 实验室系统 |
+| 教学类 | 教学平台, 企业内部工具 |
+
+**规模约束**:
+- 并发: 10~100
+- 数据: < 100GB
+- 部署: 单机
+- 负载: 每天几万~几十万 SQL
+
+### 1.2 ❌ 不适用 (4.x/5.x 才可能)
+
+- 替代 MySQL
+- SaaS 核心库
+- 金融交易, 电商订单, 银行系统, ERP 核心库
 
 ---
 
-## 3. v3.9.0 整改计划 (4 项 KPI)
+## 2. 数据库生产可用的三层标准
 
-### 3.1 KPI-1: TPC-H 22/22 (60h)
+### 2.1 第一层: 正确性 (v3.8.0 已接近完成)
 
-**目标**: TPC-H Q1-Q22 全部跑通 (结果正确, 不要求极致性能).
+```
+✅ Parser
+✅ JOIN
+✅ GROUP BY
+✅ DISTINCT
+✅ Aggregate
+✅ NULL
+✅ WAL 主路径 (INT-1 修)
+```
 
-| Task | 详情 | 工作量 | 状态 |
-|------|------|--------|------|
-| T1.1 Q1-Q8 基础聚合 | COUNT/SUM/AVG/GROUP BY/HAVING | 10h | v3.8.0 GROUP BY 核心 100% 已具备 |
-| T1.2 Q9-Q13 JOIN | INNER/LEFT/multi-join | 15h | v3.8.0 JOIN 核心 100% 已具备 |
-| T1.3 Q14-Q17 表达式 | CASE WHEN/CAST | 10h | 部分已具备, 需补全 |
-| T1.4 Q18-Q22 子查询+窗口 | Subquery/CTE/Window | 25h | **主要瓶颈** |
+**这是 Beta 阶段的核心**.
 
-**TPC-H 路线**:
-1. 第 1 周: Q1-Q13 (基础聚合 + JOIN) — 25h
-2. 第 2 周: Q14-Q17 (表达式) — 10h  
-3. 第 3 周: Q18-Q22 (子查询+窗口) — 25h
+### 2.2 第二层: 可靠性 (v3.9.0 核心目标)
 
-**验证**:
-- 用 `tpc-h/` 测试套件 (PR-2902 已集成)
-- 每个 Q 跑 100 次, 验证结果稳定性
-- 与 MySQL 5.7 结果对比 (值正确性, Phase 2d TPC-H value-correctness gate)
+```
+❌ 24h 持续运行
+❌ 72h 持续运行
+❌ 168h 持续运行
+```
 
-### 3.2 KPI-2: 架构债务收口 (50h)
+**这是 v3.9.0 重点**.
 
-| Task | 详情 | 工作量 | Issue |
-|------|------|--------|-------|
-| T2.1 INT-4 VtuGuard 强制 | explicit TX wrap | 15h | #2973 |
-| T2.2 ARCH-2 merge.rs 统一 DML | 标准化入口 | 15h | #2974 |
-| T2.3 SEM-1 执行语义 | NULL/比较/算术统一 | 20h | #2975 |
+**典型长稳问题** (单元测试抓不到):
+- 内存泄漏
+- 锁泄漏
+- WAL 增长失控
+- Snapshot 积压
+- 文件句柄泄漏
+- 死锁
 
-**关键路径**:
-- INT-4 修法: 给 VtuGuard 加 explicit_tx_mode flag, 让 BEGIN/COMMIT 路径也走 VtuGuard
-- ARCH-2 修法: 重构 `execution_engine.rs`, 把 INSERT/UPDATE/DELETE 入口统一到 `merge_dml.rs`
-- SEM-1 修法: 写 `SEMANTICS.md` 标准文档, 列出所有 SQL 操作的语义约定
+### 2.3 第三层: 恢复能力 (v3.9.0 关键 KPI)
 
-### 3.3 KPI-3: 压力测试 (40h)
+**ChatGPT 最关注这层**:
+
+```text
+生产环境真正考验:
+不是 "是否会崩"
+而是 "崩了以后能否回来"
+```
+
+**Crash Test Matrix** (v3.9.0 必须建立):
+```
+执行 SQL
+  ↓
+随机 kill -9
+  ↓
+重启
+  ↓
+校验数据
+  ↓
+循环 1000/10000 轮
+```
+
+---
+
+## 3. v3.9.0 错误 vs 正确路线
+
+### 3.1 ❌ 错误路线 (禁止)
+
+继续做 SIMD / Vector / 新 SQL 函数 / 更多索引, 不会提高生产可用性.
+
+### 3.2 ✅ 正确路线 (Feature Freeze + 5 项 KPI)
+
+| # | KPI | 内容 | 工作量 |
+|---|-----|------|--------|
+| **1** | TPC-H 22/22 | 执行器毕业考试 | 60h |
+| **2** | Crash Test Matrix | 1000/10000 轮 kill -9 验证 | 50h |
+| **3** | 长稳测试 | 24h/72h/168h Nightly | 30h active |
+| **4** | 并发压力 | 64 线程 INSERT/UPDATE/DELETE/SELECT | 25h |
+| **5** | WAL 一致性 | LSN/Checkpoint/Recovery 边界 | 15h |
+| **总计** | | | **180h** |
+
+**6 严禁**:
+- ❌ SIMD
+- ❌ Vector
+- ❌ 新 SQL 语法
+- ❌ 新索引
+- ❌ 新优化器
+- ❌ 任何 Feature 提交
+
+---
+
+## 4. 5 项 KPI 详细
+
+### 4.1 KPI-1: TPC-H 22/22 (60h)
+
+| 阶段 | 内容 | 工作量 |
+|------|------|--------|
+| Q1-Q8 基础聚合 | COUNT/SUM/AVG/GROUP BY/HAVING | 10h |
+| Q9-Q13 JOIN | INNER/LEFT/multi-join | 15h |
+| Q14-Q17 表达式 | CASE WHEN/CAST | 10h |
+| Q18-Q22 子查询+窗口 | Subquery/CTE/Window | 25h |
+
+**v3.8.0 已具备**: GROUP BY 81/81 + JOIN 核心 100% (基础聚合+JOIN 不再是瓶颈).
+
+**v3.9.0 主攻**: Q18-Q22 (子查询+窗口) — **主要瓶颈**.
+
+### 4.2 KPI-2: Crash Test Matrix (50h, ChatGPT 最关注)
 
 | Task | 详情 | 工作量 |
 |------|------|--------|
-| T3.1 1M SQL 自动执行 | 持续 INSERT/UPDATE/DELETE/SELECT 混合 | 15h |
-| T3.2 10M SQL 极限测试 | 24h 跑完 10M SQL | 15h |
-| T3.3 崩溃恢复压力 | 每 100K SQL 强制 kill -9 验证 WAL recovery | 10h |
+| Crash Harness 工具 | `tools/crash_harness/` 自动 kill -9 + 重启 + 校验 | 20h |
+| 1000 轮循环 | 持续 INSERT/UPDATE/DELETE/SELECT 混合 + 随机 kill | 15h |
+| 10000 轮极限 | 7×24 跑完 10K 轮 | 15h |
 
-**工具链**:
-- 写 `tools/stress_runner/` (基于现有 wire protocol)
-- 自动生成 SQL 模板 (1K 个)
-- CI 集成: 每日 nightly + 每周 full stress
+**核心验证**:
+```rust
+// 伪代码
+for i in 0..10000 {
+    // 1. 执行一批 SQL
+    exec_batch(&random_sqls(10))?;
+    
+    // 2. 随机 kill -9 (30% 概率)
+    if rand::random::<f32>() < 0.3 {
+        kill_process();
+    }
+    
+    // 3. 重启
+    restart_engine()?;
+    
+    // 4. 校验数据一致性
+    assert_data_consistent()?;
+}
+```
 
-### 3.4 KPI-4: 长稳测试 (30h active)
+**关键不变量**:
+- 提交的事务不丢失 (WAL fsync 验证)
+- 未提交的事务回滚 (Undo log 验证)
+- Page checksum 一致
+- 索引与表数据一致
+
+### 4.3 KPI-3: 长稳测试 (30h active, 168h wait)
 
 | Task | 详情 | 工作量 |
 |------|------|--------|
-| T4.1 24h 持续运行 | CI nightly 跑 24h 无 crash | 5h |
-| T4.2 72h 持续运行 | 模拟 3 天业务负载 | 10h |
-| T4.3 168h 持续运行 | 模拟 1 周业务负载 | 15h |
+| 24h Nightly | CI 每日跑 24h 无 crash | 5h |
+| 72h Weekly | 模拟 3 天业务负载 | 10h |
+| 168h Monthly | 模拟 1 周业务负载 | 15h |
 
-**注**: 168h 实际等待 1 周, 工作量是"维护脚本 + 异常分析".
-**主要验证**:
-- 无 Crash
-- 无 Data Loss (WAL recovery 验证)
-- 无 Deadlock
-- 无 Corruption
-- 内存泄漏 (heaptrack 监控)
-- 磁盘 I/O 异常
+**监控指标**:
+- Heap 内存增长 (heaptrack)
+- File descriptor 数量
+- 活跃事务数
+- WAL 文件大小
+- Checkpoint 频率
+- Deadlock 计数
 
----
+### 4.4 KPI-4: 并发压力 (25h)
 
-## 4. v3.9.0 时间节点 (估算)
+| Task | 详情 | 工作量 |
+|------|------|--------|
+| 64 线程混合负载 | 持续 INSERT/UPDATE/DELETE/SELECT | 15h |
+| 锁竞争测试 | 高并发同一行更新 | 5h |
+| MVCC 隔离验证 | 读写并发下 snapshot 一致性 | 5h |
 
-| Week | 阶段 | 内容 | 工作量 |
-|------|------|------|--------|
-| W1 | KPI-1 T1.1-1.2 | TPC-H Q1-Q13 | 25h |
-| W2 | KPI-1 T1.3-1.4 + KPI-2 T2.1 | TPC-H Q14-Q22 + INT-4 | 35h |
-| W3 | KPI-2 T2.2-2.3 | ARCH-2 + SEM-1 | 35h |
-| W4 | KPI-3 T3.1-3.3 | 压力测试 | 40h |
-| W5 | KPI-4 T4.1-4.3 | 长稳测试 (active work) | 30h |
-| W5-W12 | KPI-4 168h | 长稳测试 (wait) | 0h active |
-| **总计** | | | **165h active + 168h wait** |
+### 4.5 KPI-5: WAL 一致性 (15h)
 
-**预计日期**:
-- v3.9.0-rc1: 2026-07-09 (5 周 active)
-- v3.9.0-ga: 2026-07-23 (5 周 active + 2 周 wait)
+| Task | 详情 | 工作量 |
+|------|------|--------|
+| LSN 单调性 | 所有 LSN 严格递增 | 3h |
+| Checkpoint 边界 | 强制 checkpoint 时不丢数据 | 5h |
+| Recovery 全场景 | partial write / torn page / OOM | 7h |
 
 ---
 
-## 5. v3.9.0 不允许的 Feature
+## 5. v3.8.0 → v3.9.0 预期改善
 
-按 ChatGPT 路线图, v3.9.0 是 **Verification Release**, 不接受新 Feature:
+| 项目 | v3.8.0 | **v3.9.0 目标** | 提升 |
+|------|--------|-----------------|------|
+| SQL Executor | 6.5 | **8** | +1.5 |
+| TPC-H | 10/22 | **22/22** | +12 |
+| DML/WAL | 8 | **9** | +1 |
+| **稳定性** | **3** | **7** | **+4** ⭐ |
+| **恢复能力** | **5** | **8** | **+3** ⭐ |
+| **压力测试** | **2** | **7** | **+5** ⭐ |
+| **单机生产能力** | **4** | **7** | **+3** ⭐ |
 
-- ❌ SIMD 集成 (v3.10.0+ 考虑)
-- ❌ Vector 集成
-- ❌ 新 SQL 语法 (CTE/MySQL 8.0 等)
-- ❌ 新索引 (B+ tree/AHI/Change Buffer 改进)
-- ❌ 新优化器特性
-- ❌ 任何"看起来有吸引力"但会拖慢 KPI 验证的 PR
-
-**所有 PR 必须在标题加 `[v390]` 标记 + 关联 4 项 KPI 之一**.
-
----
-
-## 6. v3.8.0 Feature Freeze 持续
-
-v3.8.0-beta 进入 **Feature Freeze**. 只接受:
-
-- ✅ P0/P1 Bug 修复 (Crash, Data Loss, Deadlock, Corruption)
-- ✅ 文档完善 (DOC 5 步流程)
-- ✅ 9 维门禁的 bug fix
+**核心改善**: 不是 SQL 功能, 而是**稳定性 + 恢复 + 压力 + 单机生产能力** (4 项 +15).
 
 ---
 
-## 7. 关键文档入口
+## 6. 9 Open Issues 移交
 
-- 综合评估: `docs/releases/v3.8.0/V380_COMPREHENSIVE_ASSESSMENT.md` (21.5K, 20 sections)
-- 发布说明: `docs/releases/v3.8.0/RELEASE_NOTES.md` (v3.2)
-- Beta 发布报告: `docs/releases/v3.8.0/V380_BETA_RELEASE_REPORT.md` (11K)
-- 9 维门禁脚本: `scripts/gate/check_*.sh` (9 个)
+### 6.1 P1 (5, 全部移交 v3.9.0)
+
+| Issue | 标题 | 关联 KPI |
+|-------|------|----------|
+| **#2977** | TPC-H 10/22 → 22/22 | **KPI-1** |
+| **#2973** | INT-4 VtuGuard 强制 (explicit TX) | **KPI-5 (WAL 一致性)** |
+| **#2974** | ARCH-2 merge.rs 统一 DML 入口 | **KPI-4 (并发)** |
+| **#2975** | SEM-1 执行语义标准化 | **KPI-1 (TPC-H 子查询)** |
+| **#2702** | v3.8.0 历史遗留评审 | 文档 |
+
+### 6.2 P2 (1)
+- Corpus 57 MySQL 5.7 函数 parser (P1 后续, v3.9.x 考虑)
+
+### 6.3 追踪 (3)
+- #2763, #2743, 历史报告类 (随 v3.9.0 收口)
+
+---
+
+## 7. 历史问题清零的真相 (按 ChatGPT)
+
+> **不能清零**.
+
+原因:
+- 真正到生产阶段会出现 **INT-5, INT-6, ARCH-7, SEM-9** (新问题)
+- 数据库永远不会出现"历史问题 = 0"的状态
+- 更现实目标: **P0 = 0, P1 = 0, 允许存在少量 P2/P3**
+
+**v3.9.0 目标**:
+- ✅ P0 保持 0 (新出问题及时修)
+- ✅ P1 → 0 (KPI 完成时同步关闭)
+- ⚠️ P2 保持少量 (parser 增强)
+- ⚠️ P3 允许存在 (边角)
+
+---
+
+## 8. 时间节点 (估算)
+
+| 版本 | 状态 | 预计日期 |
+|------|------|----------|
+| **v3.8.0-beta** | Strong Beta (现) | 2026-06-04 |
+| **v3.8.0-beta+** | Strong Beta + 1-2 P1 | 2026-06-18 (2 周) |
+| **v3.9.0-rc1** | 5/5 KPI PASS | 2026-07-23 (7 周) |
+| **v3.9.0-ga** | 简单生产可用 | 2026-08-13 (10 周) |
+
+**总工作流**:
+- W1-2: KPI-1 TPC-H (Q1-Q13)
+- W3: KPI-1 TPC-H (Q14-Q22) + KPI-2 Crash Harness 工具
+- W4: KPI-2 1000 轮 + KPI-3 24h + KPI-5 WAL
+- W5: KPI-4 并发 + KPI-2 10000 轮 + KPI-3 72h
+- W6-7: KPI-3 168h (1 周) + 异常分析
+- W8: 收口 + 文档 + 标签
+
+---
+
+## 9. v3.9.0 禁止 Feature (持续 Feature Freeze)
+
+- ❌ SIMD
+- ❌ Vector
+- ❌ 新 SQL 语法
+- ❌ 新索引
+- ❌ 新优化器
+- ❌ 任何"看起来有吸引力"但会拖慢 KPI 的 PR
+
+**所有 PR 标题必须加 `[v390]` + 关联 5 项 KPI 之一**.
+
+---
+
+## 10. 关键原则 (ChatGPT 第二轮)
+
+### 10.1 不要混淆
+- **功能完成 ≠ 生产完成**
+- **单元测试 PASS ≠ 1000 轮 kill -9 后数据一致**
+- **8.0/10 ≠ 简单生产可用**
+
+### 10.2 三层标准
+1. **正确性** (v3.8.0 已接近完成)
+2. **可靠性** (v3.9.0 核心)
+3. **恢复能力** (v3.9.0 关键 KPI)
+
+### 10.3 长稳问题模式
+"第 1 天没事 / 第 3 天没事 / **第 7 天崩**" — 内存泄漏, 锁泄漏, WAL 增长, Snapshot 积压, FD 泄漏, 死锁
+
+### 10.4 生产环境真正考验
+"不是 **是否会崩**, 而是 **崩了以后能否回来**"
+
+---
+
+## 11. 致 v3.9.0 团队
+
+如果严格执行 Feature Freeze, 只做 5 项 KPI:
+
+- ✅ TPC-H 22/22
+- ✅ Crash Test Matrix (1000/10000 轮)
+- ✅ 长稳 24h/72h/168h
+- ✅ 并发压力 64 线程
+- ✅ WAL 一致性
+
+那么 SQLRustGo 的定位会从:
+
+```text
+Beta 数据库原型
+```
+
+提升到:
+
+```text
+可用于简单生产环境的单机数据库系统
+```
+
+**这比增加 SIMD/Vector/新 SQL 语法都有价值**.
+
+---
+
+## 12. 文档链接
+
+- 综合评估: `V380_COMPREHENSIVE_ASSESSMENT.md` (21.5K)
+- 发布说明: `RELEASE_NOTES.md` (v3.2)
+- 9 维门禁: `scripts/gate/check_*.sh`
 - TPC-H 套件: `tpc-h/` + `crates/sql-corpus`
-- 压力测试工具 (待写): `tools/stress_runner/`
-- 长稳测试脚本 (待写): `tools/long_haul/`
+- **Crash Harness 工具 (待写)**: `tools/crash_harness/`
+- **长稳测试脚本 (待写)**: `tools/long_haul/`
+- **并发压力工具 (待写)**: `tools/stress/`
+- **WAL 一致性测试 (待写)**: `tools/wal_consistency/`
 
 ---
 
-## 8. 致 v3.9.0 团队
-
-**核心原则 (按 ChatGPT 评估)**:
-1. **Feature Test Pass ≠ System Integration Pass**: 关键路径闭环, 而非数量堆
-2. **TPC-H 是组合压力测试**: Join + Aggregate + Subquery + Sort + Expression
-3. **1M SQL 跑过 ≠ 稳定**: 1000 次正常, 1001 次可能炸掉
-4. **8.0/10 ≠ GA Ready**: 8.0/10 仍只是 Strong Beta
-
-**不要做的事**:
-- 不要在 v3.9.0 周期内追"更多功能"
-- 不要把 v3.8.0 拉长成无限膨胀的发布周期
-- 不要在压力测试中"跳过 1001 次"
-
-**做 4 件事**:
-- TPC-H 22/22 (KPI-1)
-- 架构债务收口 (KPI-2)
-- 压力测试 (KPI-3)
-- 长稳测试 (KPI-4)
-
-完成后, v3.9.0 = **第一个真正有资格讨论 RC 的版本**.
-
----
-
-**v3.9.0 = Verification Release, 180h 距 RC, 4 项 KPI 决定一切.**
+**v3.9.0 = Verification Release, 5 项 KPI, 180h 距"简单生产可用", 数据库永远不会历史清零, 但可以做到 4 项 P0/P1 全部 0.**
