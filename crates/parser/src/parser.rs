@@ -673,21 +673,21 @@ fn find_join_predicate(
                 };
                 let left_has_new = left_refs.iter().any(|t| new_alts.iter().any(|n| n == t));
                 let right_has_new = right_refs.iter().any(|t| new_alts.iter().any(|n| n == t));
-                if left_has_new && !right_has_new {
-                    if right_refs
+                if left_has_new
+                    && !right_has_new
+                    && right_refs
                         .iter()
                         .all(|t| joined_tables.is_empty() || joined_tables.iter().any(|j| j == t))
-                    {
-                        return Some(p.clone());
-                    }
+                {
+                    return Some(p.clone());
                 }
-                if right_has_new && !left_has_new {
-                    if left_refs
+                if right_has_new
+                    && !left_has_new
+                    && left_refs
                         .iter()
                         .all(|t| joined_tables.is_empty() || joined_tables.iter().any(|j| j == t))
-                    {
-                        return Some(p.clone());
-                    }
+                {
+                    return Some(p.clone());
                 }
             }
         }
