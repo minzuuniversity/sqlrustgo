@@ -1640,11 +1640,12 @@ impl Parser {
                         expression: Some(Expression::Literal(val.to_string())),
                     });
                 }
-                // MySQL 5.7: INSERT(str,...) and REPLACE(str,...) as
-                // scalar functions in the SELECT list. Same logic as
-                // parse_primary_expression's INSERT/REPLACE branch.
-                Some(Token::Insert) | Some(Token::Replace) => {
+                // MySQL 5.7: LEFT/RIGHT/INSERT/REPLACE as scalar functions
+                // in the SELECT list. Same logic as parse_primary_expression.
+                Some(Token::Left) | Some(Token::Right) | Some(Token::Insert) | Some(Token::Replace) => {
                     let name = match self.current() {
+                        Some(Token::Left) => "LEFT",
+                        Some(Token::Right) => "RIGHT",
                         Some(Token::Insert) => "INSERT",
                         Some(Token::Replace) => "REPLACE",
                         _ => unreachable!(),
@@ -2970,12 +2971,14 @@ impl Parser {
     /// Parse primary expression (identifier, literal, or parenthesized)
     fn parse_primary_expression(&mut self) -> Result<Expression, String> {
         match self.current() {
-            // Allow SQL keywords INSERT / REPLACE to act as scalar function
-            // names when followed by `(`. MySQL has these as both statement
-            // keywords and string functions; in expression position the
-            // function interpretation wins.
-            Some(Token::Insert) | Some(Token::Replace) => {
+            // Allow SQL keywords LEFT, RIGHT, INSERT, REPLACE to act as
+            // scalar function names when followed by `(`. MySQL has these
+            // as both statement keywords and string functions; in
+            // expression position the function interpretation wins.
+            Some(Token::Left) | Some(Token::Right) | Some(Token::Insert) | Some(Token::Replace) => {
                 let name = match self.current() {
+                    Some(Token::Left) => "LEFT",
+                    Some(Token::Right) => "RIGHT",
                     Some(Token::Insert) => "INSERT",
                     Some(Token::Replace) => "REPLACE",
                     _ => unreachable!(),
