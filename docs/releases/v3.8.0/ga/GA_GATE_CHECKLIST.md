@@ -162,13 +162,13 @@
 | CV-02 | Ghost PR 已正式 Defer | `docs/governance/adr/ADR-010-ghost-pr-resolution.md` | 存在 |
 | CV-03 | v3.8.0+1 Post-GA Plan 存在 | `docs/releases/v3.8.0/POST_GA_PLAN.md` | 存在 |
 
-**Cross-Version Debt Summary**:
+**Cross-Version Debt Summary** (2026-06-04 sync, PR #3097 audit + #3100 fix):
 | Debt ID | 问题 | 首次出现 | 状态 |
 |---------|------|----------|------|
-| INT-1 | DML 不经过 WAL/TransactionManager | v1.2.0 | ACTIVE (→ v3.9.0) |
-| INT-2 | ParallelVolcanoExecutor 孤岛 | v2.6.0 | ACTIVE (→ v3.9.0) |
-| INT-3 | expr crate 功能孤岛 | v3.0.0 | ACTIVE (→ v3.9.0) |
-| INT-4 | mysql-server 未与主 server 集成 | v2.6.0 | ACTIVE (→ v3.9.0) |
+| INT-1 | DML 不经过 WAL/TransactionManager | v1.2.0 | ✅ CLOSED (PR-3019 #2966 + PR-3050 fix) |
+| INT-2 | ParallelVolcanoExecutor 孤岛 | v2.6.0 | ⚠️ ACTIVE w/ v3.9.0+ plan (INT_DEBT_REMEDIATION_PLAN §2) |
+| INT-3 | expr crate 功能孤岛 | v3.0.0 | ⚠️ ACTIVE w/ v3.9.0+ plan (INT_DEBT_REMEDIATION_PLAN §3) |
+| INT-4 | mysql-server 未与主 server 集成 | v2.6.0 | ✅ CLOSED (PR-2999 #2973 + PR-3051 explicit TX path) |
 
 ---
 
