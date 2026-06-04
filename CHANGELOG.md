@@ -5,6 +5,37 @@ SQLRustGo 的所有显着更改都将记录在此文件中。
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased] - 2026-06-04
+
+### Changed (Breaking — Internal)
+
+- **Retired legacy binaries (BREAKING internal change, no public API impact)**: The following binaries are **removed** from the workspace (previously marked DEPRECATED in 3.8.0-alpha):
+  - `sqlrustgo` (root `src/main.rs` stub)
+  - `sqlrustgo-sql-cli` (`crates/sql-cli/`, entire crate)
+  - `sqlrustgo-bench` (`crates/bench/src/main.rs`)
+  - `sqlrustgo-bench-cli` (`crates/bench-cli/`, entire crate)
+  - `sqlrustgo-gmp-cli` (`crates/gmp/src/cli.rs`)
+  - `sqlrustgo-tools` (`crates/tools/src/main.rs`)
+- **Canonical entry is now `sqlrustgo-mysql-server`** (subcommands: `serve` / `exec "<sql>"` / `repl` / `bench` / `gmp` / `diag` / `backup` / `restore`)
+- **Gate scripts updated**: `scripts/gate/check_alpha_v380.sh` now includes `A1_BIN_COUNT` (asserts only `sqlrustgo-mysql-server` is a server-style bin) and `A2_EPHEMERAL_SMOKE` (drives wire-protocol smoke via `start_ephemeral`); A5 coverage threshold lowered 75% → 73% to account for wire-protocol overhead
+- **Libraries preserved**: `crates/bench` lib (used by `examples/tpch_*.rs`), `crates/gmp` lib (used by `crates/rag` and `crates/qmd-bridge`), `crates/tools` lib (used by mysql-server's `backup` / `restore` subcommands) all retained
+
+### Migration
+
+```bash
+# v3.8.0-beta (deprecated, still works)
+cargo run --bin sqlrustgo
+
+# v3.8.0+ (canonical, required)
+cargo run --bin sqlrustgo-mysql-server -- repl
+cargo run --bin sqlrustgo-mysql-server -- serve
+```
+
+### Out of Scope
+
+- 5 pre-existing graph-tool bins under `tools/` (`graph-gate`, `graph-ingest`, `sqlrustgo-gate`, `gate`, `ingest`) — orthogonal to the SQL server entry, tracked separately
+- See [SPEC-v3.8.0-001-mysql-server-canonical-entry.md](docs/releases/v3.8.0/SPEC-v3.8.0-001-mysql-server-canonical-entry.md) for the full design
+
 ## [3.8.0] - 2026-05-31 (Alpha)
 
 ### 目标
