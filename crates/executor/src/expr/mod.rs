@@ -335,14 +335,13 @@ pub fn eval_fn(name: &str, args: &[Value]) -> Value {
                 };
                 let result = match modifier.as_str() {
                     "__TRIM_LEADING__" => {
-                        // Re-trim from the right using the standard
-                        // `trim_end_matches` only (so we don't re-strip
-                        // leading chars we just preserved).
-                        if rem.is_empty() {
+                        // trim from the left only
+                        let out = if rem.is_empty() {
                             s.trim_start().to_string()
                         } else {
                             s.trim_start_matches(|c| rem.contains(c)).to_string()
-                        }
+                        };
+                        out
                     }
                     "__TRIM_TRAILING__" => {
                         if rem.is_empty() {
@@ -693,6 +692,7 @@ pub fn eval_fn(name: &str, args: &[Value]) -> Value {
 }
 
 /// DATE_ADD / DATE_SUB helper. Operates on text dates in YYYY-MM-DD form.
+/// Accepts args in either order:
 /// Accepts args in either order:
 ///
 /// - [date_text, n, unit_text]
