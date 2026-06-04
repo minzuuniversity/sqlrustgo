@@ -66,10 +66,10 @@ impl SqlError {
     /// Returns 0 (no specific code) for variants without a defined mapping.
     pub fn mysql_error_code(&self) -> u16 {
         match self {
-            SqlError::ParseError(_) => 1064,        // ER_PARSE_ERROR
-            SqlError::ExecutionError(_) => 1105,     // ER_UNKNOWN_ERROR (generic)
+            SqlError::ParseError(_) => 1064,          // ER_PARSE_ERROR
+            SqlError::ExecutionError(_) => 1105,      // ER_UNKNOWN_ERROR (generic)
             SqlError::TypeMismatch(_) => 1264,        // ER_WARN_DATA_OUT_OF_RANGE (closest)
-            SqlError::DivisionByZero => 1365,        // ER_DIVISION_BY_ZERO
+            SqlError::DivisionByZero => 1365,         // ER_DIVISION_BY_ZERO
             SqlError::NullValueError(_) => 1048,      // ER_BAD_NULL_ERROR
             SqlError::ConstraintViolation(_) => 3819, // ER_CHECK_CONSTRAINT_VIOLATED
             SqlError::TableNotFound(_) => 1146,       // ER_NO_SUCH_TABLE
@@ -87,20 +87,20 @@ impl SqlError {
     /// See https://dev.mysql.com/doc/mysql-errors/8.0/en/server-error-reference.html
     pub fn sqlstate(&self) -> &'static str {
         match self {
-            SqlError::ParseError(_) => "42000",       // syntax error or access rule violation
-            SqlError::ExecutionError(_) => "HY000",   // general error
+            SqlError::ParseError(_) => "42000", // syntax error or access rule violation
+            SqlError::ExecutionError(_) => "HY000", // general error
             SqlError::TypeMismatch(_) => "HY000",
-            SqlError::DivisionByZero => "22012",      // division by zero
-            SqlError::NullValueError(_) => "23000",   // integrity constraint violation
+            SqlError::DivisionByZero => "22012", // division by zero
+            SqlError::NullValueError(_) => "23000", // integrity constraint violation
             SqlError::ConstraintViolation(_) => "23000",
-            SqlError::TableNotFound(_) => "42S02",    // base table or view not found
-            SqlError::ColumnNotFound(_) => "42S22",   // column not found
+            SqlError::TableNotFound(_) => "42S02", // base table or view not found
+            SqlError::ColumnNotFound(_) => "42S22", // column not found
             SqlError::DuplicateKey(_) => "23000",
             SqlError::IoError(_) => "HY000",
-            SqlError::ProtocolError(_) => "08S01",    // communication link failure
+            SqlError::ProtocolError(_) => "08S01", // communication link failure
             SqlError::TimeoutError(_) => "HY000",
-            SqlError::OverflowError(_) => "22001",    // string data, right truncation
-            SqlError::AuthError(_) => "28000",        // invalid authorization specification
+            SqlError::OverflowError(_) => "22001", // string data, right truncation
+            SqlError::AuthError(_) => "28000",     // invalid authorization specification
         }
     }
 }
@@ -302,11 +302,17 @@ mod tests {
     fn test_mysql_error_codes() {
         assert_eq!(SqlError::ParseError("x".into()).mysql_error_code(), 1064);
         assert_eq!(SqlError::TableNotFound("t".into()).mysql_error_code(), 1146);
-        assert_eq!(SqlError::ColumnNotFound("c".into()).mysql_error_code(), 1054);
+        assert_eq!(
+            SqlError::ColumnNotFound("c".into()).mysql_error_code(),
+            1054
+        );
         assert_eq!(SqlError::DuplicateKey("k".into()).mysql_error_code(), 1062);
         assert_eq!(SqlError::DivisionByZero.mysql_error_code(), 1365);
         assert_eq!(SqlError::AuthError("u".into()).mysql_error_code(), 1045);
-        assert_eq!(SqlError::NullValueError("c".into()).mysql_error_code(), 1048);
+        assert_eq!(
+            SqlError::NullValueError("c".into()).mysql_error_code(),
+            1048
+        );
     }
 
     #[test]
