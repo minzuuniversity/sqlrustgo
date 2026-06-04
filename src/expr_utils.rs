@@ -299,6 +299,20 @@ pub fn evaluate_expression(
                 Err(format!("Aggregate not found in schema: {}", agg_name))
             }
         }
+        // MySQL 5.7 function dispatch (Issue #2988 / MySQL-01).
+        // The crate-level `sqlrustgo-executor::expr::eval_fn` is the
+        // single source of truth for the function table. We delegate
+        // here so that `engine_select.rs` (which uses this
+        // `evaluate_expression`) gets the same behavior as the
+        // `UnifiedExpr` path. Avoid duplicating the function table.
+        Expression::FunctionCall(name, args) => {
+            use sqlrustgo_executor::expr::eval_fn as dispatch_fn;
+            let vals: Vec<Value> = args
+                .iter()
+                .map(|a| evaluate_expression(a, row, table_info).unwrap_or(Value::Null))
+                .collect();
+            Ok(dispatch_fn(name, &vals))
+        }
         // TPC-H Q8/Q12/Q14: CASE WHEN cond THEN a ELSE b END.
         Expression::CaseWhen(when_clauses, else_expr) => {
             for when_clause in when_clauses {
