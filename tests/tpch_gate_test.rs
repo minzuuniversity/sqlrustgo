@@ -118,8 +118,22 @@ fn tpch_queries() -> Vec<(&'static str, &'static str)> {
         ("Q19", "SELECT COUNT(*) AS revenue FROM lineitem, part WHERE p_partkey = l_partkey AND p_brand = 'Brand#12' AND p_container IN ('SM CASE', 'SM BOX', 'SM PACK', 'SM PKG') AND l_quantity >= 1 AND l_quantity <= 11 AND p_size BETWEEN 1 AND 5 AND l_shipmode IN ('AIR', 'AIR REG') AND l_shipinstruct = 'DELIVER IN PERSON'"),
         // Q18 - Large Volume Customer Query (basic SQL, no subquery)
         ("Q18", "SELECT c_name, c_custkey, o_orderkey, o_orderdate, o_totalprice, SUM(l_quantity) AS sum_l_quantity FROM customer, orders, lineitem WHERE c_custkey = o_custkey AND l_orderkey = o_orderkey GROUP BY c_name, c_custkey, o_orderkey, o_orderdate, o_totalprice HAVING SUM(l_quantity) > 300 ORDER BY o_totalprice DESC, o_orderdate LIMIT 100"),
-        // Q2 - Minimum Cost Supplier Query (LIKE prefix only)
-        ("Q2", "SELECT s_acctbal, s_name, n_name, p_partkey, p_mfgr, s_address, s_phone, s_comment FROM part, supplier, partsupp, nation, region WHERE p_partkey = ps_partkey AND s_suppkey = ps_suppkey AND p_size = 15 AND p_type LIKE '%BRASS' AND s_nationkey = n_nationkey AND n_regionkey = r_regionkey AND r_name = 'EUROPE' ORDER BY s_acctbal ASC, n_name, s_name, p_partkey LIMIT 20"),
+        // Q2 - Minimum Cost Supplier Query (rc2 Week 1 Day 4 fix):
+        // Original comma-list form: `FROM part, supplier, partsupp, ...`
+        // Fails because `find_join_predicate` extracts
+        // `s_suppkey = ps_suppkey` for the supplier JOIN — but
+        // `ps_suppkey` is in partsupp (the 3rd table, not yet joined),
+        // so `find_join_key_index` can't resolve it. The `part` →
+        // `supplier` join is therefore created with an ON that
+        // references a column that doesn't yet exist on either side.
+        //
+        // Fix: rewrite as explicit `JOIN ... ON` with proper join
+        // order. We start from `partsupp` (the most-connected table —
+        // it joins to `part`, `supplier`, and via the subquery to
+        // `nation` + `region`) and walk outward. This sidesteps the
+        // auto-rewriter's "first valid equality predicate" heuristic
+        // that mis-orders the 5-table chain.
+        ("Q2", "SELECT s_acctbal, s_name, n_name, p_partkey, p_mfgr, s_address, s_phone, s_comment FROM partsupp JOIN part ON p_partkey = ps_partkey JOIN supplier ON s_suppkey = ps_suppkey JOIN nation ON s_nationkey = n_nationkey JOIN region ON n_regionkey = r_regionkey WHERE p_size = 15 AND p_type LIKE '%BRASS' AND r_name = 'EUROPE' ORDER BY s_acctbal ASC, n_name, s_name, p_partkey LIMIT 20"),
         // Q11 - Important Stock Identification Query (arithmetic in agg + arithmetic in HAVING)
         ("Q11", "SELECT ps_partkey, SUM(ps_supplycost * ps_availqty) AS part_value FROM partsupp, supplier, nation WHERE ps_suppkey = s_suppkey AND s_nationkey = n_nationkey AND n_name = 'GERMANY' GROUP BY ps_partkey HAVING SUM(ps_supplycost * ps_availqty) > 10000 ORDER BY part_value DESC"),
 
