@@ -515,8 +515,8 @@
 |---------|------|-----------|------|------|
 | F-09 | MVCC + WAL Recovery | `specs/debt/F09_*.md` (historical) | 22/22 | ✅ CLOSED 100% |
 | F-10 | Multi-join Accumulated Schema | 集成于 `specs/debt/F10_*` | cross_path | ✅ CLOSED |
-| F-11 | Aggregate + Expression | - | 1 test | ⚠️ PARTIAL |
-| F-12 | DISTINCT | - | 1 test | ⚠️ PARTIAL |
+| F-11 | Aggregate + Expression | V380_F11_F12_REMEDIATION_REPORT.md (PR-2981) | **12 tests** (f11_f12_executor_test) | ✅ CLOSED (PR-2981) |
+| F-12 | DISTINCT | V380_F11_F12_REMEDIATION_REPORT.md (PR-2981) | **12 tests** (f11_f12_executor_test) | ✅ CLOSED (PR-2981) |
 | F-14 | T-ISO Isolation | `specs/debt/F14_*` (F-14 集成 F-09) | mvcc_transaction | ✅ CLOSED |
 | F-16 | Gap Locking | `specs/debt/F16_GAP_LOCKING_SPEC.md` | gap_locking (7) | ✅ CLOSED 100% |
 | F-23 | Clustered Index | `specs/debt/F23_CLUSTERED_INDEX_SPEC.md` | clustered (7) | ✅ CLOSED 100% |
