@@ -300,19 +300,20 @@ pub fn eval_fn(name: &str, args: &[Value]) -> Value {
             .first()
             .map(|v| Value::Integer(v.to_sql_string().len() as i64))
             .unwrap_or(Value::Null),
-        // TRIM — MySQL 5.7 supports both:
-        //   TRIM(str)                     — trim whitespace (default)
-        //   TRIM(LEADING/TRAILING/BOTH remstr FROM str)
-        // The 3-arg form is not parseable in the current SELECT list
-        // path (no FROM keyword handling), so we only support the
-        // 1-arg (default whitespace) and 2-arg `TRIM(remstr, str)`
-        // forms. The standard 1-arg behavior trims whitespace.
+        // TRIM — MySQL 5.7 supports four forms:
+        //   TRIM(str)                                 — 1-arg, trim whitespace
+        //   TRIM(remstr, str)                         — 2-arg comma form
+        //   TRIM([LEADING|TRAILING|BOTH] remstr FROM str) — 3-arg sentinel form
+        // The 3-arg form is produced by the parser with a sentinel
+        // string-literal modifier as args[0]:
+        //   "__TRIM_LEADING__" | "__TRIM_TRAILING__" | "__TRIM_BOTH__"
+        // See: https://dev.mysql.com/doc/refman/5.7/en/string-functions.html#function_trim
         "TRIM" => match args.len() {
             1 => args
                 .first()
                 .map(|v| Value::Text(v.to_sql_string().trim().to_string()))
                 .unwrap_or(Value::Null),
-            // TRIM(remstr, str) — trim remstr from both ends
+            // TRIM(remstr, str) — 2-arg comma form, trim remstr from both ends
             2 => {
                 let rem = args[0].to_sql_string();
                 let s = args[1].to_sql_string();
@@ -321,6 +322,42 @@ pub fn eval_fn(name: &str, args: &[Value]) -> Value {
                 } else {
                     Value::Text(s.trim_matches(|c| rem.contains(c)).to_string())
                 }
+            }
+            // TRIM([LEADING|TRAILING|BOTH] remstr FROM str) — 3-arg sentinel form
+            3 => {
+                let modifier = args[0].to_sql_string();
+                let rem = args[1].to_sql_string();
+                let s = args[2].to_sql_string();
+                let trimmed = if rem.is_empty() {
+                    s.trim().to_string()
+                } else {
+                    s.trim_matches(|c| rem.contains(c)).to_string()
+                };
+                let result = match modifier.as_str() {
+                    "__TRIM_LEADING__" => {
+                        // trim from the left only
+                        let mut out = trimmed.clone();
+                        // Re-trim from the right using the standard
+                        // `trim_end_matches` only (so we don't re-strip
+                        // leading chars we just preserved).
+                        if rem.is_empty() {
+                            out = s.trim_start().to_string();
+                        } else {
+                            out = s.trim_start_matches(|c| rem.contains(c)).to_string();
+                        }
+                        out
+                    }
+                    "__TRIM_TRAILING__" => {
+                        if rem.is_empty() {
+                            s.trim_end().to_string()
+                        } else {
+                            s.trim_end_matches(|c| rem.contains(c)).to_string()
+                        }
+                    }
+                    // "__TRIM_BOTH__" or any other sentinel
+                    _ => trimmed,
+                };
+                Value::Text(result)
             }
             _ => Value::Null,
         },
@@ -373,9 +410,7 @@ pub fn eval_fn(name: &str, args: &[Value]) -> Value {
         // If pad is empty, returns NULL.
         "LPAD" | "RPAD" => {
             let dir_is_left = matches!(name.to_uppercase().as_str(), "LPAD");
-            if let (Some(s), Some(len_v), Some(pad)) =
-                (args.first(), args.get(1), args.get(2))
-            {
+            if let (Some(s), Some(len_v), Some(pad)) = (args.first(), args.get(1), args.get(2)) {
                 let text = s.to_sql_string();
                 let pad_str = pad.to_sql_string();
                 let len = match len_v {
@@ -806,7 +841,11 @@ fn stddev_variance(args: &[Value], pop: bool) -> Value {
 }
 
 /// Bit aggregate operators.
-enum BitOp { And, Or, Xor }
+enum BitOp {
+    And,
+    Or,
+    Xor,
+}
 
 fn bit_aggregate(args: &[Value], op: BitOp) -> Value {
     let mut acc: Option<i64> = None;
@@ -853,7 +892,6 @@ fn group_concat(args: &[Value]) -> Value {
         .join(separator);
     Value::Text(joined)
 }
-
 
 fn cast_val(val: &Value, target_type: &str) -> Value {
     match target_type.to_uppercase().as_str() {
@@ -1094,7 +1132,10 @@ mod tests {
     #[test]
     fn test_variance_pop() {
         // Variance of [1, 2, 3] is 2/3 (population).
-        let v = eval_fn("VARIANCE", &[Value::Integer(1), Value::Integer(2), Value::Integer(3)]);
+        let v = eval_fn(
+            "VARIANCE",
+            &[Value::Integer(1), Value::Integer(2), Value::Integer(3)],
+        );
         match v {
             Value::Float(f) => assert!((f - 0.6667).abs() < 0.001, "got {f}"),
             _ => panic!("VARIANCE should return Float"),
