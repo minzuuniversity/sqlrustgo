@@ -37,9 +37,10 @@ PULL_REQUEST_TEMPLATE.md — SQLRustGo PR 模板
 - [ ] D3-SGL（共享全局锁）
 - [ ] D4-WAL（崩溃恢复）
 - [ ] D5-DeepSeek（体验分）
-- [ ] **D6-Integration**（49+ 集成测试，P0-1 引入）
 - [ ] **D5.5-Test Plan Audit**（TEST_PLAN ↔ Cargo.toml，P1-3 引入）
-- [ ] **D7-Arch/Sem Debt**（ARCH-1~3 + SEM-1~4，P1-2 引入）
+- [ ] **D6-Integration**（49+ 集成测试，P0-1 引入）
+- [ ] **D7-INT Debt**（INT-1~12 跨版本集成债务）
+- [ ] **D8-Arch/Sem Debt**（ARCH-1~3 + SEM-1~4，P1-2 引入）
 - [ ] 其他：_________________
 
 如果勾选任何维度，**必须**说明：
