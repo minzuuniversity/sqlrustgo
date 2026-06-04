@@ -18,7 +18,7 @@
 //! - `restore` — restore database from a backup file
 
 use clap::{Parser, Subcommand};
-use sqlrustgo_mysql_server::run_server;
+use sqlrustgo_mysql_server::{run_server_v2, run_server};
 use sqlrustgo_tools::backup_restore::{
     run_backup as tools_backup, run_restore as tools_restore, BackupCommand, RestoreCommand,
 };
@@ -147,7 +147,8 @@ fn main() -> ExitCode {
             }
 
             tracing::info!("SQLRustGo MySQL Server starting on {}:{}", host, port);
-            if let Err(e) = run_server(&host, port) {
+            // SERVER-01 Stage 2: use v2 with all options
+            if let Err(e) = run_server_v2(&host, port, &data_dir, max_connections, &auth_mode) {
                 tracing::error!("server error: {e}");
                 return ExitCode::from(1);
             }
