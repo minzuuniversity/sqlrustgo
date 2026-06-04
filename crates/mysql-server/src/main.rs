@@ -172,6 +172,8 @@ fn run_repl() -> Result<(), String> {
     let mut multiline_buf = String::new();
     let mut history: VecDeque<String> = VecDeque::with_capacity(1000);
     let mut pager_enabled = false;
+    let mut timing_enabled = false; // CLI-01 Stage 1
+    let mut headers_enabled = true; // CLI-01 Stage 1
 
     loop {
         let prompt = if multiline_buf.is_empty() {
@@ -196,7 +198,13 @@ fn run_repl() -> Result<(), String> {
         // Dot-commands: a single line starting with '.' is a command,
         // not SQL. Process immediately, regardless of ';' or buffer state.
         if line.starts_with('.') {
-            match handle_dot_command(line, &mut history, &mut pager_enabled) {
+            match handle_dot_command(
+                line,
+                &mut history,
+                &mut pager_enabled,
+                &mut timing_enabled,
+                &mut headers_enabled,
+            ) {
                 DotResult::Continue => continue,
                 DotResult::Exit => return Ok(()),
                 DotResult::Error(e) => {
@@ -227,15 +235,49 @@ fn run_repl() -> Result<(), String> {
             history.pop_front();
         }
 
-        // Apply pager
-        match exec_one(&stmt) {
+        // Apply pager + timing + headers (CLI-01 Stage 1)
+        let start = std::time::Instant::now();
+        match exec_one_with_options(&stmt, headers_enabled) {
             Ok(()) => {
+                if timing_enabled {
+                    let elapsed = start.elapsed();
+                    println!("Time: {:.3} ms", elapsed.as_secs_f64() * 1000.0);
+                }
                 if pager_enabled {
                     println!("-- more -- (pager enabled, set `.pager off` to disable)");
                 }
             }
             Err(e) => eprintln!("Error: {e}"),
         }
+    }
+}
+
+/// CLI-01 Stage 1: exec_one with headers option
+fn exec_one_with_options(sql: &str, headers_enabled: bool) -> Result<(), String> {
+    use sqlrustgo::{ExecutionEngine, MemoryStorage};
+    use std::sync::{Arc, RwLock};
+    let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+    let mut engine = ExecutionEngine::new(storage);
+    match engine.execute(sql) {
+        Ok(result) => {
+            if headers_enabled && !result.rows.is_empty() {
+                // CLI-01: print column headers (first row keys if map-like,
+                // else generic "col_N" labels)
+                if let Some(first_row) = result.rows.first() {
+                    let headers: Vec<String> = (0..first_row.len())
+                        .map(|i| format!("col_{i}"))
+                        .collect();
+                    println!("{}", headers.join(" | "));
+                }
+            }
+            for row in &result.rows {
+                let cells: Vec<String> = row.iter().map(|v| format!("{v:?}")).collect();
+                println!("{}", cells.join(" | "));
+            }
+            println!("({} rows)", result.rows.len());
+            Ok(())
+        }
+        Err(e) => Err(format!("{e}")),
     }
 }
 
@@ -249,6 +291,8 @@ fn handle_dot_command(
     cmd: &str,
     history: &mut VecDeque<String>,
     pager_enabled: &mut bool,
+    timing_enabled: &mut bool,
+    headers_enabled: &mut bool,
 ) -> DotResult {
     let parts: Vec<&str> = cmd.split_whitespace().collect();
     match parts.first().copied().unwrap_or("") {
@@ -260,6 +304,13 @@ fn handle_dot_command(
             println!("  .multiline        (info) Multiline SQL is supported: end with ';'");
             println!("  .source FILE      Execute SQL statements from FILE");
             println!("  .pager on|off     Toggle result pager (placeholder)");
+            println!("  .tables           List all tables (shortcut for SHOW TABLES)");
+            println!("  .schema TABLE     Describe table schema (shortcut for DESCRIBE TABLE)");
+            println!("  .databases        List all databases (shortcut for SHOW DATABASES)");
+            println!("  .version          Show SQLRustGo version");
+            println!("  .timing on|off    Toggle query execution time display");
+            println!("  .headers on|off   Toggle column headers display");
+            println!("  .clear            Clear the screen");
             println!("SQL may span multiple lines; terminate with ';'.");
             DotResult::Continue
         }
@@ -310,6 +361,79 @@ fn handle_dot_command(
                 }
                 other => return DotResult::Error(format!("unknown pager mode: {other}")),
             }
+            DotResult::Continue
+        }
+        ".tables" => {
+            // CLI-01: shortcut for SHOW TABLES
+            match exec_one("SHOW TABLES") {
+                Ok(()) => DotResult::Continue,
+                Err(e) => DotResult::Error(format!("SHOW TABLES failed: {e}")),
+            }
+        }
+        ".schema" => {
+            // CLI-01: shortcut for DESCRIBE TABLE
+            if parts.len() < 2 {
+                return DotResult::Error(".schema requires a table name".to_string());
+            }
+            let table = parts[1];
+            let sql = format!("DESCRIBE TABLE {table}");
+            match exec_one(&sql) {
+                Ok(()) => DotResult::Continue,
+                Err(e) => DotResult::Error(format!("DESCRIBE TABLE {table} failed: {e}")),
+            }
+        }
+        ".databases" => {
+            // CLI-01: shortcut for SHOW DATABASES
+            match exec_one("SHOW DATABASES") {
+                Ok(()) => DotResult::Continue,
+                Err(e) => DotResult::Error(format!("SHOW DATABASES failed: {e}")),
+            }
+        }
+        ".version" => {
+            // CLI-01: show version
+            println!("SQLRustGo v3.8.0-beta (Strong Beta, 8.0/10)");
+            println!("Target: v3.8.0 GA (long convergence version)");
+            DotResult::Continue
+        }
+        ".timing" => {
+            // CLI-01: toggle timing
+            if parts.len() < 2 {
+                return DotResult::Error(".timing requires on|off".to_string());
+            }
+            match parts[1] {
+                "on" => {
+                    *timing_enabled = true;
+                    println!("Timing enabled.");
+                }
+                "off" => {
+                    *timing_enabled = false;
+                    println!("Timing disabled.");
+                }
+                other => return DotResult::Error(format!("unknown timing mode: {other}")),
+            }
+            DotResult::Continue
+        }
+        ".headers" => {
+            // CLI-01: toggle column headers
+            if parts.len() < 2 {
+                return DotResult::Error(".headers requires on|off".to_string());
+            }
+            match parts[1] {
+                "on" => {
+                    *headers_enabled = true;
+                    println!("Headers enabled.");
+                }
+                "off" => {
+                    *headers_enabled = false;
+                    println!("Headers disabled.");
+                }
+                other => return DotResult::Error(format!("unknown headers mode: {other}")),
+            }
+            DotResult::Continue
+        }
+        ".clear" => {
+            // CLI-01: clear screen (ANSI escape)
+            print!("\x1B[2J\x1B[1;1H");
             DotResult::Continue
         }
         "" => DotResult::Continue,
