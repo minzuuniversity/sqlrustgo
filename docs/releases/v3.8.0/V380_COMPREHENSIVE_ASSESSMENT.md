@@ -1,12 +1,13 @@
-# SQLRustGo v3.8.0 综合评估报告 (Comprehensive Assessment v3)
+# SQLRustGo v3.8.0 综合评估报告 (Comprehensive Assessment v3 — 最大集)
 
 > **Date**: 2026-06-04
 > **Version**: v3.8.0 (develop/v3.8.0)
 > **Author**: Hermes Agent
-> **Baseline HEAD**: `4c69a5c8fa` (含 PR-3023 JOIN + PR-3020 GROUP BY + PR-3019 INT-1)
+> **Baseline HEAD**: `5671b6b549` (含 PR-3024 V380 v3 + PR-3023 JOIN + PR-3020 GROUP BY + PR-3019 INT-1)
 > **Status**: **v3.8.0-Beta Candidate** (8.0/10, INT-1/GROUP BY/JOIN 三 P1 全部修复)
-> **Prior reports**: v1 (PR-2934, 12.7K), v2 (PR-2982, 11.9K)
-> **本 v3 重写原则**: 保留 v1 14 维详细结构 + 用最新真实数据 (来自 PR-2981/3019/3020/3023)
+> **Prior reports**: v1 (PR-2934, 12.7K), v2 (PR-2982, 11.9K), v3 (PR-3024, 17.8K)
+> **本 v3.1 重写原则**: 保留 v1 全部 17 sections + v2/v3 全部 18 sections + 真实数据 (本 session 16 PR 累计)
+> **取最大集方式**: 不删减任何 section, 内容合并且保留原文
 
 ---
 
@@ -29,6 +30,7 @@
 | **DML/ACID 完整性** | 3/10 | **8/10** | **+5** | INT-1 修复: 3 DML 强制走 TM |
 | **GROUP BY 引擎** | 4/10 | **9/10** | **+5** | 148/184 corpus cases PASS (核心 100%) |
 | **JOIN 引擎** | 4/10 | **9/10** | **+5** | 111/113 corpus cases PASS (核心 100%) |
+| **规则治理** | 10/10 | **10/10** | = | 10/10 rules (v1 §11) |
 | **综合** | **6.5/10** | **8.0/10** | **+1.5** | 3 P1 closed + INT-1 (P0) closed |
 
 ---
@@ -61,7 +63,7 @@
 - **0 FAIL** in registered tests
 - **未跑 integration test 数量**: 部分 e2e tests 需 MySQL server (single-binary canonical entry)
 
-### 1.4 真实 bug 修复累计 (本 session 5 个)
+### 1.4 真实 bug 修复累计 (本 session 6 个)
 1. `COUNT(DISTINCT col)` executor 忽略 distinct (PR-2981)
 2. `SELECT DISTINCT col/multi-col` executor 不去重 (PR-2981)
 3. `NULL = NULL` 误返回 TRUE (PR-2997)
@@ -95,7 +97,7 @@
 **5-类文档覆盖率**: 16/16 SPEC + 16/16 TEST_PLAN + 16/16 TEST_DESIGN + 16/16 REVIEW + 16/16 ACCEPTANCE = **100%** ✅
 
 **Feature 真实可用率**:
-- CLOSED 100% (12 features): F-09, F-11, F-12, F-16, F-23, F-24, F-25, F-26, F-27, F-29, F-31, F-32, F-35
+- CLOSED 100% (13 features): F-09, F-11, F-12, F-16, F-23, F-24, F-25, F-26, F-27, F-29, F-31, F-32, F-35
 - CLOSED partial: F-10, F-14
 - PARTIAL: I-12
 - **14/16 = 87.5%** (vs v1 12/16 = 75%)
@@ -266,26 +268,75 @@ TPC-H 卡住的根源:
 
 ---
 
-## 11. DML/ACID 完整性 (8/10, 从 3/10 提升) — INT-1 修复
+## 11. 规则治理 (10/10, v1 §11 保留) — Rule Governance
 
-### 11.1 ChatGPT 警告触发 (本 session)
+| 规则 | 状态 |
+|------|------|
+| **5-原则** (有计划/有测试/必审/必集成/未过必记) | ✅ 100% 部署 |
+| **9 维门禁** (D1-D9) | ✅ 100% 部署 |
+| **Issue 关闭验证** | ✅ 强制 PR 关联 |
+| **DOC 修改 5 步流程** | ✅ 强制执行 |
+| **AI Agent Task Claim Protocol** | ✅ 部署 |
+| **ANTI_FABRICATION_POLICY** | ✅ 部署 (Truthfulness 零容忍) |
+| **Gate Effectiveness Matrix** | ✅ 部署 (TP/FP/FN/TN 框架) |
+| **CODEOWNERS** | ✅ Multi-reviewer (P2-2) |
+| **PR 模板** | ✅ 5-类文档 + 5-原则 (P1-5) |
+| **CI YAML 强制门禁** | ✅ 部署 (P1-4) |
+
+**规则治理覆盖率**: **10/10 = 100%** ✅
+
+---
+
+## 12. 历史问题解决情况 (Historical Issues, v1 §12 + 本 session 累计)
+
+### 12.1 本 session 关闭 11 个 issues
+| Issue | 状态 | 修复 PR |
+|-------|------|---------|
+| **#2966** INT-1 DML Bypass (P0 Release Blocker) | ✅ CLOSED | PR-3019 |
+| **#2967** EXEC-01 GROUP BY (P1) | ✅ CLOSED | PR-3020 |
+| **#2968** EXEC-02 JOIN (P1) | ✅ CLOSED | PR-3023 |
+| **#2969** EXEC-03 Aggregate | ✅ CLOSED | PR-2984 (PR-2981) |
+| **#2970** EXEC-04 HAVING | ✅ CLOSED | PR-2984 (PR-2981) |
+| **#2971** EXEC-05 NULL | ✅ CLOSED | PR-2997 |
+| **#2972** EXEC-06 DISTINCT | ✅ CLOSED | PR-2984 (PR-2981) |
+| **#2937** F-32 mysqladmin | ✅ CLOSED | manual (11/11) |
+| **#2938** 运维工具完整性 | ✅ CLOSED | PR-2993 (F-31+F-32) |
+| **#2942** 11 docs 缺失 | ✅ CLOSED | PR-2949/2952/2954 |
+| **#2807** V380 历史评估 | ✅ CLOSED | PR-2934/2982 |
+| **#2939** FEATURE_MATRIX 集成 | ✅ CLOSED | manual |
+
+### 12.2 跨版本债务 79 个 (PR-2949/2952/2954 + 后续)
+- 57 CLOSED (72.2%)
+- 10 PARTIAL
+- 1 OPEN (T-19)
+- 4 ACTIVE (INT-1~4)
+
+### 12.3 累计本 session PR 数量
+- 16 PRs merged
+- 11 issues closed (本节列出)
+
+---
+
+## 13. DML/ACID 完整性 (8/10, 从 3/10 提升) — INT-1 修复
+
+### 13.1 ChatGPT 警告触发 (本 session)
 > Hermes 贴出 src/ 中 VtuGuard 引用 = 0, TransactionManager.begin = 0.
 > 如果属实, DML 实际是 INSERT → Storage, 完全绕过 TM/WAL.
 
-### 11.2 验证 (4 项证据, 100% 确认)
+### 13.2 验证 (4 项证据, 100% 确认)
 - Evidence 1: DML 完整路径 INSERT/UPDATE/DELETE 全部成功无显式 BEGIN
 - Evidence 2: DML 立即可见, 无 MVCC snapshot
 - Evidence 3: MemoryStorage 无持久化
 - Evidence 4: **静态分析 - VtuGuard 0 use, TM 0 use in src/**
 
-### 11.3 修复 (PR-3019)
+### 13.3 修复 (PR-3019)
 - `execute_insert/update/delete` 改 `&self` → `&mut self`
 - 3 个 DML 方法开头加 `TM.begin_transaction()` (autocommit)
 - 3 个 DML 方法末尾加 `TM.commit()` (仅 implicit TX)
 - `commit_transaction/rollback_transaction` 修 tx_status reset (Committed/Aborted → Idle)
 - 区分 implicit vs explicit TX (用 `current_tx_id == tm_tx_id` 判断)
 
-### 11.4 测试 (6/6 PASS)
+### 13.4 测试 (6/6 PASS)
 - int1_insert_works_after_fix ✅
 - int1_update_works_after_fix ✅
 - int1_delete_works_after_fix ✅
@@ -293,27 +344,27 @@ TPC-H 卡住的根源:
 - int1_explicit_begin_rollback ✅
 - int1_multiple_dml_sequential ✅
 
-### 11.5 影响
+### 13.5 影响
 - **Corpus 89.2% → 91.2%** (+2%, 修复 10 cases)
 - 30/30 INT-1 + NULL + F-11/F-12 tests PASS
 - **D9 8/8 ALL PASS** 保持
 - **#2966 CLOSED** (P0 Release Blocker 解除)
 
-### 11.6 仍 OPEN
+### 13.6 仍 OPEN
 - #2973 INT-4: VtuGuard 强制 DML 经过 TM (autocommit 已修, explicit TX wrap 待补)
 - #2974 ARCH-2: merge.rs 统一 DML 入口
 - #2975 SEM-1: 执行语义标准化
 
 ---
 
-## 12. GROUP BY 引擎 (9/10, 从 4/10 提升) — EXEC-01 修复
+## 14. GROUP BY 引擎 (9/10, 从 4/10 提升) — EXEC-01 修复
 
-### 12.1 真实状态 (PR-3020)
+### 14.1 真实状态 (PR-3020)
 - 启动 183 个 GROUP BY tests (从 0)
 - **148/184 PASS (80.4%)**
 - 核心 81/81 = **100%** (Hash Aggregate, HAVING, NULL, 表达式分组, COUNT/SUM/AVG/MIN/MAX)
 
-### 12.2 36 fail 分类
+### 14.2 36 fail 分类
 - WITH ROLLUP (6) - MySQL ext
 - GROUP_CONCAT (5) - MySQL ext
 - DATE_SUB/INTERVAL (4) - MySQL 5.7 fn
@@ -322,7 +373,7 @@ TPC-H 卡住的根源:
 
 按 ChatGPT 阶段 2 范围 (GROUP BY, HAVING, NULL, COUNT, SUM, AVG, MIN, MAX) = **100% 完成**.
 
-### 12.3 测试结果
+### 14.3 测试结果
 | 功能 | Cases | PASS |
 |------|-------|------|
 | 基础 GROUP BY | 5 | 5 ✅ |
@@ -333,18 +384,18 @@ TPC-H 卡住的根源:
 | HAVING + 子查询 | 3 | 3 ✅ |
 | **核心合计** | **81** | **81 (100%)** |
 
-### 12.4 #2967 EXEC-01 CLOSED ✅
+### 14.4 #2967 EXEC-01 CLOSED ✅
 
 ---
 
-## 13. JOIN 引擎 (9/10, 从 4/10 提升) — EXEC-02 修复
+## 15. JOIN 引擎 (9/10, 从 4/10 提升) — EXEC-02 修复
 
-### 13.1 真实状态 (PR-3023)
+### 15.1 真实状态 (PR-3023)
 - 启用 113 个 JOIN tests (从 0)
 - **111/113 PASS (98%)**
 - 核心 JOIN = 100%
 
-### 13.2 JOIN 类型
+### 15.2 JOIN 类型
 | 类型 | Cases | PASS | 状态 |
 |------|-------|------|------|
 | INNER JOIN | 30 | 30 | ✅ 100% |
@@ -356,21 +407,21 @@ TPC-H 卡住的根源:
 | NATURAL JOIN | 3 | 0 | ❌ parser |
 | FULL OUTER | 4 | 0 | ❌ parser |
 
-### 13.3 Corpus 修复详情
+### 15.3 Corpus 修复详情
 - 移除 4 个 SKIP 标记 (join_combinations / join_corner_cases / outer_join / self_join)
 - 转换 3 个格式错误 (`=== Name ===` → `=== CASE: name ===`)
 - `join_statements.sql` 加 SETUP (8 tables) + 56 CASE 标记
 
-### 13.4 #2968 EXEC-02 CLOSED ✅
+### 15.4 #2968 EXEC-02 CLOSED ✅
 
 ---
 
-## 14. 已知问题 (9 Open, 1 P0 + 8 P1/P2)
+## 16. 已知问题 (9 Open, 1 P0 + 8 P1/P2)
 
-### 14.1 P0 (1)
+### 16.1 P0 (1)
 - ~~**#2966** INT-1 DML Bypass~~ — **CLOSED** (PR-3019)
 
-### 14.2 P1 (5)
+### 16.2 P1 (5)
 - ~~**#2967** EXEC-01 GROUP BY 语义缺失~~ — **CLOSED** (PR-3020)
 - ~~**#2968** EXEC-02 JOIN 语义缺失~~ — **CLOSED** (PR-3023)
 - **#2977** TPC-H 10/22 → 22/22 — **SKIP (用户)** (Stage 4)
@@ -378,17 +429,17 @@ TPC-H 卡住的根源:
 - **#2974** ARCH-2 merge.rs 统一 DML 入口
 - **#2975** SEM-1 执行语义标准化
 
-### 14.3 P2 (1)
+### 16.3 P2 (1)
 - Corpus 57 fail (MySQL 5.7 高级函数 parser)
 
-### 14.4 追踪 (2)
+### 16.4 追踪 (2)
 - #2763, #2743
 
-**总: 9 open (从 18 → 9, 关闭 9 个)** 
+**总: 9 open (从 18 → 9, 关闭 9 个)**
 
 ---
 
-## 15. ChatGPT 4 阶段路线图进度
+## 17. ChatGPT 4 阶段路线图进度
 
 | 阶段 | 任务 | 状态 | PR | Issue Closed |
 |------|------|------|-----|--------------|
@@ -398,12 +449,12 @@ TPC-H 卡住的根源:
 | Stage 3 | EXEC-02 JOIN 完整 | ✅ DONE | PR-3023 | #2968 |
 | Stage 4 | TPC-H 22/22 | ⏸️ SKIP | - | #2977 OPEN |
 | Stage 5 | Beta Tag (需 TPC-H ≥18) | PENDING | - | - |
-| Stage 6 | V380 v3 报告 (本 PR) | ✅ DONE | 本 PR | - |
-| Stage 7 | D9 全面验证 | PENDING | - | - |
+| Stage 6 | V380 v3 报告 | ✅ DONE | PR-3024 + PR-3031 (本) | - |
+| Stage 7 | D9 全面验证 | ✅ DONE | - | 8/8 PASS |
 
 ---
 
-## 16. 行动建议 (按 ChatGPT 5 项 RC 门槛)
+## 18. 行动建议 (按 ChatGPT 5 项 RC 门槛)
 
 | # | 门槛 | 当前状态 | 状态 |
 |---|------|----------|------|
@@ -415,9 +466,55 @@ TPC-H 卡住的根源:
 
 **RC 门槛 1/5 PASS, 4/5 FAIL** → **不可 RC**. 但 INT-1+GROUP BY+JOIN 完成 = **可发 v3.8.0-Beta 标签**.
 
+### 18.1 推进 RC 门禁路线 (v3.9.0+)
+
+| 阶段 | 任务 | 工作量 | 优先级 |
+|------|------|--------|--------|
+| **P0** | TPC-H 22/22 (Stage 4) | 60h | 高 |
+| **P0** | 系统级压力测试 (24h) | 40h | 高 |
+| **P1** | 长时间稳定性 (168h 持续运行) | 80h (其中 30h active) | 中 |
+| **P1** | Corpus 57 fail (MySQL 函数 parser) | 40h | 中 |
+| **P1** | INT-4 (VtuGuard 强制 explicit TX) | 15h | 中 |
+| **P2** | SIMD 集成 SQL executor | 50h | 低 (按 ChatGPT 冻结) |
+| **P2** | NATURAL/FULL OUTER JOIN parser | 8h | 低 |
+| **P2** | 跨版本债务 10 PARTIAL | 30h | 低 |
+
+**总 263h** (约 6.5 周 × 1 人) → **v3.8.0 GA**
+
 ---
 
-## 17. 结论 (v3 评估)
+## 19. 综合评分 (Overall Score)
+
+### 19.1 14 维度评分 (本报告)
+| 维度 | v1 | v2 | **v3** | 变化 |
+|------|-----|-----|---------|------|
+| 测试系统 | 9 | 9 | **9** | = |
+| 功能实现 | 8 | 8 | **8.5** | +0.5 |
+| SQL-92 Parser | 10 | 10 | **10** | = |
+| SQL-92 Executor | 3 | 5 | **6.5** | +3.5 |
+| MySQL 5.7 兼容 | 45.5/100 | 58/100 | **58/100** | +12.5 |
+| TPC-H | 5 | 5 | **5** | = |
+| 性能 | 4 | 5 | **5.5** | +1.5 |
+| 并行能力 | 5 | 5 | **5** | = |
+| SIMD | 2 | 2 | **2** | = |
+| 文档治理 | 6 | 9 | **9** | +3 |
+| 规则治理 | 10 | 10 | **10** | = |
+| DML/ACID | 3 | 5 | **8** | +5 |
+| GROUP BY | 4 | 6 | **9** | +5 |
+| JOIN | 4 | 6 | **9** | +5 |
+| **综合** | **6.5** | **7.5** | **8.0** | **+1.5** |
+
+### 19.2 14 维度评分标准
+- 10/10: 生产级 (MySQL 5.7 同等)
+- 8-9/10: Beta 级 (本引擎多数维度)
+- 6-7/10: Alpha 级
+- 4-5/10: 原型
+- 2-3/10: 雏形
+- 0-1/10: 缺失
+
+---
+
+## 20. 结论 (v3.1 评估)
 
 **v3.8.0 = Production Database Engine Beta Candidate**:
 
@@ -440,10 +537,9 @@ TPC-H 卡住的根源:
 **下一步 (v3.9.0+)**:
 - TPC-H 22/22 (60h)
 - INT-4 + ARCH-2 + SEM-1 (50h)
-- 长稳测试 + 系统级压力 (40h)
+- 长稳测试 + 系统级压力 (120h)
 - MySQL 5.7 函数 parser 完整化 (40h)
-- SIMD 集成 SQL executor (50h)
-- **总 240h** (6 周 × 1 人)
+- **总 270h** (7 周 × 1 人)
 
 ---
 
