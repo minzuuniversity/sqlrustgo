@@ -1,0 +1,13 @@
+{
+  "query": "q9.sql",
+  "sqlite_sql_source": "sqlite_rewrite (EXTRACT(YEAR FROM x) → strftime('%Y', x))",
+  "engines": {
+    "sqlite": {
+      "row_count": 0,
+      "first_3_rows": [],
+      "error": null
+    }
+  },
+  "consensus_row_count": 0,
+  "consensus": true
+}
