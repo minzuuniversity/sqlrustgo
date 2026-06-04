@@ -281,7 +281,12 @@ fn eval_unary_op(val: &Value, op: &str) -> Value {
     }
 }
 
-fn eval_fn(name: &str, args: &[Value]) -> Value {
+/// MySQL 5.7 / SQL scalar function dispatch.
+/// Single source of truth for the function table. Called from the
+/// `UnifiedExpr::FunctionCall` arm of `evaluate` (this module) and
+/// from the legacy `Expression::FunctionCall` arm in
+/// `src/expr_utils.rs` (the binary engine path).
+pub fn eval_fn(name: &str, args: &[Value]) -> Value {
     match name.to_uppercase().as_str() {
         "LOWER" => args
             .first()
@@ -328,6 +333,59 @@ fn eval_fn(name: &str, args: &[Value]) -> Value {
         // through FunctionCall. We can't reach the target type from here, so
         // pass through the input. Downstream Integer() context coerces.
         "CAST" => args.first().cloned().unwrap_or(Value::Null),
+        // MySQL 5.7 function compatibility (Issue #2988 / MySQL-01)
+        // IF(cond, then, else) — ternary; 2-arg form: IF(cond, NULL)
+        "IF" | "IFF" => {
+            if args.len() < 2 {
+                Value::Null
+            } else {
+                let cond = &args[0];
+                let then_v = &args[1];
+                let else_v = args.get(2).cloned().unwrap_or(Value::Null);
+                let truthy = match cond {
+                    Value::Boolean(b) => *b,
+                    Value::Null => false,
+                    Value::Integer(0) => false,
+                    Value::Float(f) if *f == 0.0 => false,
+                    _ => true,
+                };
+                if truthy {
+                    then_v.clone()
+                } else {
+                    else_v
+                }
+            }
+        }
+        // COALESCE(a, b, c, ...) — first non-NULL
+        "COALESCE" => args
+            .iter()
+            .find(|v| !matches!(v, Value::Null))
+            .cloned()
+            .unwrap_or(Value::Null),
+        // ISNULL(x) — same as IS NULL, returns Boolean
+        "ISNULL" => args
+            .first()
+            .map(|v| Value::Boolean(matches!(v, Value::Null)))
+            .unwrap_or(Value::Null),
+        // NULLIF(a, b) — NULL if equal, else a
+        "NULLIF" => {
+            if args.len() < 2 {
+                Value::Null
+            } else {
+                let a = &args[0];
+                let b = &args[1];
+                if a == b {
+                    Value::Null
+                } else {
+                    a.clone()
+                }
+            }
+        }
+        // DATE_ADD(date, INTERVAL n unit) — text dates only (YYYY-MM-DD)
+        // Supports unit: DAY, MONTH, YEAR
+        "DATE_ADD" | "ADDDATE" => date_add_sub(&args, true),
+        // DATE_SUB(date, INTERVAL n unit)
+        "DATE_SUB" | "SUBDATE" => date_add_sub(&args, false),
         // TPC-H Q7/Q8/Q9 use `EXTRACT(YEAR FROM o_orderdate) AS o_year`.
         // The parser encodes this as FunctionCall("EXTRACT", [Literal(field),
         // source_expr]). For text dates in YYYY-MM-DD form, the field slices
@@ -351,6 +409,109 @@ fn eval_fn(name: &str, args: &[Value]) -> Value {
             }
         }
         _ => Value::Null,
+    }
+}
+
+/// DATE_ADD / DATE_SUB helper. Operates on text dates in YYYY-MM-DD form.
+/// Accepts args in either order:
+///   - [date_text, n, unit_text]
+///   - [date_text, n] (default unit = DAY)
+/// Returns Value::Text (new date) or Value::Null on bad input.
+fn date_add_sub(args: &[Value], add: bool) -> Value {
+    if args.len() < 2 {
+        return Value::Null;
+    }
+    let date_str = args[0].to_sql_string();
+    if date_str.len() < 10 {
+        return Value::Null;
+    }
+    let n = match args[1] {
+        Value::Integer(i) => i,
+        _ => return Value::Null,
+    };
+    let unit = args
+        .get(2)
+        .map(|v| v.to_sql_string().to_uppercase())
+        .unwrap_or_else(|| "DAY".to_string());
+    let sign = if add { 1 } else { -1 };
+    match unit.as_str() {
+        "DAY" => {
+            // Approximate: shift the day portion; for simplicity, do integer
+            // day math on YYYYMMDD-formatted number to handle month/year wrap.
+            let y: i64 = date_str[..4].parse().unwrap_or(0);
+            let m: i64 = date_str[5..7].parse().unwrap_or(1);
+            let d: i64 = date_str[8..10].parse().unwrap_or(1);
+            let mut total_days = days_from_civil(y, m, d) + sign * n;
+            let (ny, nm, nd) = civil_from_days(total_days);
+            Value::Text(format!("{:04}-{:02}-{:02}", ny, nm, nd))
+        }
+        "MONTH" => {
+            let y: i64 = date_str[..4].parse().unwrap_or(0);
+            let m: i64 = date_str[5..7].parse().unwrap_or(1);
+            let d: i64 = date_str[8..10].parse().unwrap_or(1);
+            let total_months = y * 12 + (m - 1) + sign * n;
+            let ny = total_months.div_euclid(12);
+            let nm = total_months.rem_euclid(12) + 1;
+            // Clamp day to last day of new month
+            let nd = d.min(days_in_month(ny, nm));
+            Value::Text(format!("{:04}-{:02}-{:02}", ny, nm, nd))
+        }
+        "YEAR" => {
+            let y: i64 = date_str[..4].parse().unwrap_or(0);
+            let m: &str = &date_str[5..7];
+            let d: &str = &date_str[8..10];
+            let ny = y + sign * n;
+            let nd_max = days_in_month(ny, m.parse().unwrap_or(1));
+            let d_int: i64 = d.parse().unwrap_or(1);
+            let nd = d_int.min(nd_max);
+            Value::Text(format!("{:04}-{}-{:02}", ny, m, nd))
+        }
+        _ => Value::Null,
+    }
+}
+
+/// Howard Hinnant's days_from_civil: number of days since 1970-01-01
+/// (or any other civil date), proleptic Gregorian.
+fn days_from_civil(y: i64, m: i64, d: i64) -> i64 {
+    let y = if m <= 2 { y - 1 } else { y };
+    let era = y.div_euclid(400);
+    let yoe = y.rem_euclid(400) as i64; // [0, 399]
+    let m = if m > 2 { m - 3 } else { m + 9 }; // [0, 11]
+    let doy = (153 * m + 2) / 5 + d - 1; // [0, 365]
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy; // [0, 146096]
+    era * 146097 + doe - 719468
+}
+
+fn civil_from_days(z: i64) -> (i64, i64, i64) {
+    let z = z + 719468;
+    let era = z.div_euclid(146097);
+    let doe = z.rem_euclid(146097) as i64;
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+    let y = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = if m <= 2 { y + 1 } else { y };
+    (y, m, d)
+}
+
+fn is_leap(y: i64) -> bool {
+    (y % 4 == 0 && y % 100 != 0) || y % 400 == 0
+}
+
+fn days_in_month(y: i64, m: i64) -> i64 {
+    match m {
+        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+        4 | 6 | 9 | 11 => 30,
+        2 => {
+            if is_leap(y) {
+                29
+            } else {
+                28
+            }
+        }
+        _ => 30,
     }
 }
 
@@ -401,6 +562,168 @@ fn compare_cmp(left: &Value, right: &Value, op: &str) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // ----- IF -----
+    #[test]
+    fn test_if_true_returns_then() {
+        let v = eval_fn(
+            "IF",
+            &[Value::Boolean(true), Value::Integer(1), Value::Integer(2)],
+        );
+        assert_eq!(v, Value::Integer(1));
+    }
+
+    #[test]
+    fn test_if_false_returns_else() {
+        let v = eval_fn(
+            "IF",
+            &[Value::Boolean(false), Value::Integer(1), Value::Integer(2)],
+        );
+        assert_eq!(v, Value::Integer(2));
+    }
+
+    #[test]
+    fn test_if_null_cond_returns_else() {
+        let v = eval_fn(
+            "IF",
+            &[Value::Null, Value::Integer(1), Value::Integer(2)],
+        );
+        assert_eq!(v, Value::Integer(2));
+    }
+
+    #[test]
+    fn test_if_two_arg_form() {
+        // IF(cond, then) — else is NULL
+        let v = eval_fn("IF", &[Value::Boolean(false), Value::Integer(7)]);
+        assert_eq!(v, Value::Null);
+    }
+
+    #[test]
+    fn test_if_zero_is_false() {
+        let v = eval_fn(
+            "IF",
+            &[Value::Integer(0), Value::Text("yes".into()), Value::Text("no".into())],
+        );
+        assert_eq!(v, Value::Text("no".into()));
+    }
+
+    // ----- COALESCE -----
+    #[test]
+    fn test_coalesce_first_non_null() {
+        let v = eval_fn(
+            "COALESCE",
+            &[Value::Null, Value::Null, Value::Integer(3), Value::Integer(4)],
+        );
+        assert_eq!(v, Value::Integer(3));
+    }
+
+    #[test]
+    fn test_coalesce_all_null() {
+        let v = eval_fn("COALESCE", &[Value::Null, Value::Null]);
+        assert_eq!(v, Value::Null);
+    }
+
+    // ----- ISNULL -----
+    #[test]
+    fn test_isnull_true() {
+        let v = eval_fn("ISNULL", &[Value::Null]);
+        assert_eq!(v, Value::Boolean(true));
+    }
+
+    #[test]
+    fn test_isnull_false() {
+        let v = eval_fn("ISNULL", &[Value::Integer(1)]);
+        assert_eq!(v, Value::Boolean(false));
+    }
+
+    // ----- NULLIF -----
+    #[test]
+    fn test_nullif_equal() {
+        let v = eval_fn("NULLIF", &[Value::Integer(5), Value::Integer(5)]);
+        assert_eq!(v, Value::Null);
+    }
+
+    #[test]
+    fn test_nullif_not_equal() {
+        let v = eval_fn("NULLIF", &[Value::Integer(5), Value::Integer(6)]);
+        assert_eq!(v, Value::Integer(5));
+    }
+
+    // ----- DATE_ADD / DATE_SUB -----
+    #[test]
+    fn test_date_add_day() {
+        let v = eval_fn(
+            "DATE_ADD",
+            &[
+                Value::Text("2026-06-04".into()),
+                Value::Integer(7),
+                Value::Text("DAY".into()),
+            ],
+        );
+        assert_eq!(v, Value::Text("2026-06-11".into()));
+    }
+
+    #[test]
+    fn test_date_add_month() {
+        let v = eval_fn(
+            "DATE_ADD",
+            &[
+                Value::Text("2026-01-15".into()),
+                Value::Integer(1),
+                Value::Text("MONTH".into()),
+            ],
+        );
+        assert_eq!(v, Value::Text("2026-02-15".into()));
+    }
+
+    #[test]
+    fn test_date_add_year_leap_clamp() {
+        // 2024-02-29 + 1 year = 2025-02-28 (clamped, 2025 is not leap)
+        let v = eval_fn(
+            "DATE_ADD",
+            &[
+                Value::Text("2024-02-29".into()),
+                Value::Integer(1),
+                Value::Text("YEAR".into()),
+            ],
+        );
+        assert_eq!(v, Value::Text("2025-02-28".into()));
+    }
+
+    #[test]
+    fn test_date_sub_day() {
+        let v = eval_fn(
+            "DATE_SUB",
+            &[
+                Value::Text("2026-06-04".into()),
+                Value::Integer(10),
+                Value::Text("DAY".into()),
+            ],
+        );
+        assert_eq!(v, Value::Text("2026-05-25".into()));
+    }
+
+    #[test]
+    fn test_date_add_cross_year() {
+        let v = eval_fn(
+            "DATE_ADD",
+            &[
+                Value::Text("2026-12-25".into()),
+                Value::Integer(10),
+                Value::Text("DAY".into()),
+            ],
+        );
+        assert_eq!(v, Value::Text("2027-01-04".into()));
+    }
+
+    #[test]
+    fn test_date_add_bad_input_returns_null() {
+        let v = eval_fn(
+            "DATE_ADD",
+            &[Value::Text("nope".into()), Value::Integer(1), Value::Text("DAY".into())],
+        );
+        assert_eq!(v, Value::Null);
+    }
 
     #[test]
     fn test_literal_int() {
