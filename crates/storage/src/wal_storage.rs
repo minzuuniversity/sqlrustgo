@@ -322,7 +322,12 @@ impl<S: StorageEngine, T: WalManager> WalStorage<S, T> {
     }
 
     pub fn in_transaction(&self) -> bool {
-        self.inner.in_transaction()
+        // INT-4: report transaction state from the WAL layer's own
+        // current_tx_id (set by `set_current_tx_id` / facade), not the
+        // inner engine which only knows about its own write-buffer
+        // state. This keeps VtuGuard's `assert_dml_safe` correct when
+        // the executor opens a TX through the unified facade.
+        self.current_tx_id != 0
     }
 
     pub fn current_tx_id(&self) -> u64 {
