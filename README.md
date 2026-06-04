@@ -18,7 +18,7 @@
 
 SQLRustGo 是一个纯 Rust 实现的 SQL 执行引擎，支持完整 SQL-92 语法、窗口函数、CTE、CBO 成本优化器、WAL + MVCC 事务、向量存储与图存储，以及 AI Native GMP 工作流。
 
-> **v3.8.0 当前状态 (2026-06-04)**: **Strong Beta** (8.0/10) — INT-1 (P0 Release Blocker) 已修复 (DML 真实走 TransactionManager), GROUP BY/JOIN 核心 100%, Corpus 86.5%, D9 9 维门禁 8/8 ALL PASS. **不追 RC**, 直接进入 **v3.9.0 Verification Release** (TPC-H 22/22 + 系统级压力 + 长稳 + 架构债务收口). 详见 [RELEASE_NOTES.md](docs/releases/v3.8.0/RELEASE_NOTES.md) 与 [V380_COMPREHENSIVE_ASSESSMENT.md](docs/releases/v3.8.0/V380_COMPREHENSIVE_ASSESSMENT.md).
+> **v3.8.0 当前状态 (2026-06-04)**: **Strong Beta** (8.0/10) — INT-1 (P0 Release Blocker) 已修复 (DML 真实走 TransactionManager), GROUP BY/JOIN 核心 100%, Corpus 86.5%, D9 9 维门禁 8/8 ALL PASS. **v3.8.0 是长期收敛版本** (beta → rc1 → rc2 → ga), **不创建 3.9.0**. 详见 [RELEASE_NOTES.md](docs/releases/v3.8.0/RELEASE_NOTES.md), [V380_ROADMAP.md](docs/releases/v3.8.0/V380_ROADMAP.md) 与 [V380_COMPREHENSIVE_ASSESSMENT.md](docs/releases/v3.8.0/V380_COMPREHENSIVE_ASSESSMENT.md).
 
 ---
 
@@ -392,36 +392,47 @@ cargo llvm-cov report --open
 
 ---
 
-## v3.9.0 路线图 (Verification Release)
+## v3.8.0 路线图 (长期收敛, 不创建 3.9.0)
 
-按 ChatGPT 评估, v3.8.0 **不追 RC**, 直接进入 **v3.9.0 Verification Release** (无新 Feature, 只做验证).
+按 ChatGPT 第三轮评估, v3.8.0 = **长期收敛版本** (beta → rc1 → rc2 → ga), 不开 3.9.0.
 
-### 4 项 KPI (KPI-1 必须 PASS 才讨论 RC)
+### 4 阶段 (总 270h ≈ 7 周 active + 1 周 wait)
 
-| KPI | 内容 | 目标 | 工作量 |
-|-----|------|------|--------|
-| **KPI-1** | TPC-H | 10/22 → **22/22** | 60h |
-| **KPI-2** | 架构债务收口 | INT-4 + ARCH-2 + SEM-1 | 50h |
-| **KPI-3** | 压力测试 | 1M/10M SQL 自动执行 | 40h |
-| **KPI-4** | 长稳测试 | 24h/72h/168h CI Nightly | 30h active |
+| 阶段 | 状态 | 工作量 | 时间 |
+|------|------|--------|------|
+| ✅ **v3.8.0-beta** | Strong Beta 8.0/10 | 0 (已完成) | 2026-06-04 (现) |
+| **v3.8.0-rc1** | 7 项完成 + TPC-H 22/22 | 100h | 2026-06-25 (3 周) |
+| **v3.8.0-rc2** | 72h 长稳 + Crash 1000 轮 | 100h | 2026-07-16 (6 周) |
+| **v3.8.0-ga** | 168h 长稳 + GA 收口 | 70h | 2026-08-13 (10 周) |
 
-**总计 ~180h ≈ 4.5 周 × 1 人** → v3.9.0 = 第一个有资格讨论 RC 的版本
+### rc1 必须完成 (7 项)
 
-### v3.8.0-beta 冻结规则 (Feature Freeze)
+1. **SEM-1** 执行语义标准化 (20h, #2975)
+2. **ARCH-2** merge.rs 统一 DML (15h, #2974)
+3. **CLI-01** Client CLI 补全 (15h)
+4. **SERVER-01** Alpha Server 成立 (10h)
+5. **TPC-H 22/22** (40h, #2977)
+6. **Corpus ≥95%** (并行)
+7. **Crash Harness** 工具 (10h)
+
+### v3.8.0 整个周期 Feature Freeze
 
 **允许**:
 - ✅ P0/P1 Bug 修复 (Crash, Data Loss, Deadlock, Corruption)
-- ✅ 文档完善 (DOC 5 步流程)
+- ✅ 文档完善
+- ✅ 9 维门禁的 bug fix
 
-**禁止**:
-- ❌ SIMD 集成
-- ❌ Vector 集成
-- ❌ 新 SQL 语法
-- ❌ 新索引
-- ❌ 新优化器特性
+**禁止 (整个 10 周周期)**:
+- ❌ SIMD 集成 (v3.9.0+)
+- ❌ Vector SQL 集成 (v4.0+)
+- ❌ Parallel Executor 主路径 (v3.9.0+)
+- ❌ 新优化器 (v3.9.0+)
+- ❌ MySQL 高级函数大规模补齐 (v3.9.0+)
 - ❌ 任何 Feature 提交
 
-详见 [V380_COMPREHENSIVE_ASSESSMENT.md §18](docs/releases/v3.8.0/V380_COMPREHENSIVE_ASSESSMENT.md)
+**所有 PR 标题加 `[v380]` + 关联 4 阶段之一**.
+
+详见 [V380_ROADMAP.md](docs/releases/v3.8.0/V380_ROADMAP.md)
 
 ---
 
