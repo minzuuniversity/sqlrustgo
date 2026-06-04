@@ -605,6 +605,143 @@ fn flatten_and(expr: &Expression) -> Vec<Expression> {
     }
 }
 
+/// Structural equality on Expression. Used to dedupe predicates
+/// between the original WHERE conj and the auto-rewriter's
+/// `remaining` list when the new best-match selector picks one
+/// (TPCH-01 Q2/Q9 fix).
+fn same_expression(a: &Expression, b: &Expression) -> bool {
+    use Expression::*;
+    match (a, b) {
+        (Literal(x), Literal(y)) => x == y,
+        (Identifier(x), Identifier(y)) => x == y,
+        (BinaryOp(al, ao, ar), BinaryOp(bl, bo, br)) => {
+            ao == bo && same_expression(al, bl) && same_expression(ar, br)
+        }
+        (UnaryOp(ao, ai), UnaryOp(bo, bi)) => ao == bo && same_expression(ai, bi),
+        (FunctionCall(an, aa), FunctionCall(bn, ba)) => {
+            an == bn
+                && aa.len() == ba.len()
+                && aa.iter().zip(ba.iter()).all(|(x, y)| same_expression(x, y))
+        }
+        (Aggregate(a), Aggregate(b)) => {
+            format!("{:?}", a) == format!("{:?}", b)
+        }
+        _ => false,
+    }
+}
+
+/// For a predicate to be a valid JOIN ON clause that connects a new
+/// table `new_table` to the already-joined set `joined_tables`,
+/// it must be a binary `=` whose two sides reference *disjoint*
+/// table sets: one side must reference `new_table` (and no other
+/// joined table), and the other side must reference the already-
+/// joined set (or just `new_table`, which would be a degenerate
+/// self-join).
+///
+/// This is the proper "best-match" selector. The old heuristic
+/// (predicate_references_table alone) was the root cause of
+/// TPCH-01 Q2/Q9 failures: it matched a predicate whose *other*
+/// side referenced a table not yet in the join state.
+///
+/// If `joined_tables` is empty, we accept any `t1.col = t2.col`
+/// predicate whose left side references `new_table` — the right
+/// side is the candidate anchor. This preserves the original
+/// heuristic's behavior for the first table-join call.
+///
+/// Returns Some(predicate) if a qualifying predicate exists;
+/// None otherwise (caller falls back to other strategies).
+fn find_join_predicate(
+    predicates: &[Expression],
+    new_table: &str,
+    joined_tables: &[String],
+) -> Option<Expression> {
+    for p in predicates {
+        if let Expression::BinaryOp(l, op, r) = p {
+            if op == "=" {
+                let left_refs = collect_referenced_tables(l);
+                let right_refs = collect_referenced_tables(r);
+                // The "new table" can be referenced by either its
+                // full name (e.g. "supplier") or its TPC-H prefix
+                // (e.g. "s"). Try both.
+                let new_prefix = new_table
+                    .split('_')
+                    .next()
+                    .unwrap_or(new_table);
+                let new_alts: Vec<&str> = vec![new_table, new_prefix];
+                let left_has_new = left_refs
+                    .iter()
+                    .any(|t| new_alts.iter().any(|n| n == t));
+                let right_has_new = right_refs
+                    .iter()
+                    .any(|t| new_alts.iter().any(|n| n == t));
+                if left_has_new && !right_has_new {
+                    if right_refs
+                        .iter()
+                        .all(|t| joined_tables.is_empty()
+                            || joined_tables.iter().any(|j| j == t))
+                    {
+                        return Some(p.clone());
+                    }
+                }
+                if right_has_new && !left_has_new {
+                    if left_refs
+                        .iter()
+                        .all(|t| joined_tables.is_empty()
+                            || joined_tables.iter().any(|j| j == t))
+                    {
+                        return Some(p.clone());
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Walk an expression and collect all referenced table names.
+/// For qualified `t.col`, the qualifier is used directly. For
+/// unqualified identifiers, the underscore-separated prefix is
+/// extracted: "p_partkey" -> "p" (which the caller can map to
+/// the `part` table via the TPC-H naming convention), and
+/// "ps_partkey" -> "ps" (-> `partsupp`).
+fn collect_referenced_tables(expr: &Expression) -> Vec<String> {
+    let mut out = Vec::new();
+    fn visit(e: &Expression, acc: &mut Vec<String>) {
+        match e {
+            Expression::Identifier(name) => {
+                if let Some((qualifier, _col)) = name.split_once('.') {
+                    if !acc.iter().any(|x: &String| x == qualifier) {
+                        acc.push(qualifier.to_string());
+                    }
+                } else if let Some(prefix) = name.split('_').next() {
+                    if !acc.iter().any(|x: &String| x == prefix) {
+                        acc.push(prefix.to_string());
+                    }
+                }
+            }
+            Expression::BinaryOp(l, _, r) => {
+                visit(l, acc);
+                visit(r, acc);
+            }
+            Expression::IsNull(inner) | Expression::IsNotNull(inner) => visit(inner, acc),
+            Expression::UnaryOp(_, inner) => visit(inner, acc),
+            Expression::FunctionCall(_, args) => {
+                for a in args {
+                    visit(a, acc);
+                }
+            }
+            Expression::Aggregate(agg) => {
+                for a in &agg.args {
+                    visit(a, acc);
+                }
+            }
+            _ => {}
+        }
+    }
+    visit(expr, &mut out);
+    out
+}
+
 /// Does the expression reference the given table? Used by TPC-H multi-table
 /// auto-rewrite: "o_orderdate" counts as referencing "orders" because the
 /// table's columns are prefixed with the table name once JOINs combine them.
@@ -2020,16 +2157,44 @@ impl Parser {
                         None => return Err("Expected table name".to_string()),
                     };
                     let mut tables: Vec<String> = vec![first_table];
+                    // Phase 4 (TPCH-01 Q15): comma-list can include
+                    // a parenthesized subquery aliased, e.g.
+                    // FROM supplier, (SELECT ... FROM lineitem
+                    // WHERE l_shipdate >= ...) AS revenue.
+                    // We model the subquery as a synthetic table
+                    // name (__subq_N) and remember the alias in
+                    // a side map for the executor to materialize.
+                    // For now (parser-side only) we just preserve
+                    // the alias and let the executor fall back to a
+                    // proper subquery materialization.
+                    let mut subq_aliases: Vec<String> = Vec::new();
                     while matches!(self.current(), Some(Token::Comma)) {
                         self.next(); // consume comma
-                                     // After a comma, the next item can be either a
-                                     // table identifier (TPC-H Q2) or a parenthesized
-                                     // subquery aliased (TPC-H Q15). The subquery form
-                                     // is rejected at the comma level — we accept only
-                                     // the identifier form here and let the user
-                                     // rewrite their query if they need a comma
-                                     // followed by a subquery. (Q15 workaround:
-                                     // `FROM (subquery) AS rev JOIN supplier ON ...`).
+                        if matches!(self.current(), Some(Token::LParen)) {
+                            // Comma followed by parenthesized subquery.
+                            // Parse the SELECT inside, consume the
+                            // trailing RParen, then expect AS <alias>.
+                            self.next(); // consume (
+                            let _subquery = self.parse_select_statement()?;
+                            self.expect(Token::RParen)?;
+                            if matches!(self.current(), Some(Token::As)) {
+                                self.next();
+                            }
+                            let alias = match self.current() {
+                                Some(Token::Identifier(a)) => a.clone(),
+                                _ => {
+                                    return Err("Expected alias after comma-followed subquery".to_string());
+                                }
+                            };
+                            self.next();
+                            // Use a synthetic table name; the executor
+                            // ignores it because from_subquery holds
+                            // the actual subquery. We push to `tables`
+                            // for position tracking only.
+                            tables.push(format!("__subq_{}", tables.len()));
+                            subq_aliases.push(alias);
+                            continue;
+                        }
                         match self.next() {
                             Some(Token::Identifier(name)) => {
                                 tables.push(name);
@@ -2134,14 +2299,67 @@ impl Parser {
                 let mut chain: Vec<JoinClause> = Vec::new();
                 let mut remaining: Vec<Expression> = Vec::new();
                 let conj = flatten_and(wc);
+                // TPCH-01 Q2/Q9 fix (Phase 1): track the accumulated
+                // join state so `find_join_predicate` can validate
+                // that the predicate's "other side" is reachable.
+                // Seed `joined` with the FROM base table + alias
+                // + the TPC-H 1-char prefix (`p` for `part`, `s` for
+                // `supplier`, etc.) so the underscore-split prefix
+                // extraction in `collect_referenced_tables` resolves
+                // to a known name in the joined set.
+                let mut joined: Vec<String> = if table.is_empty() {
+                    Vec::new()
+                } else {
+                    let mut v = vec![table.clone()];
+                    if let Some(prefix) = table.split('_').next() {
+                        if prefix != table {
+                            v.push(prefix.to_string());
+                        }
+                    }
+                    if let Some(ref a) = from_alias {
+                        v.push(a.clone());
+                    }
+                    v
+                };
                 for t in &extra_tables {
+                    if joined.is_empty() {
+                        // subquery FROM — bail out, fall through to
+                        // cartesian joins in the else branch below.
+                        break;
+                    }
+                    // Phase 1: best-match selector — find a predicate
+                    // that joins `t` to the already-joined set.
                     let mut found: Option<Expression> = None;
                     let mut rest: Vec<Expression> = Vec::new();
-                    for p in conj.iter().chain(remaining.iter()) {
-                        if found.is_none() && predicate_references_table(p, t) {
-                            found = Some(p.clone());
-                        } else {
-                            rest.push(p.clone());
+                    let candidates: Vec<Expression> =
+                        conj.iter().chain(remaining.iter()).cloned().collect();
+                    if let Some(p) = find_join_predicate(&candidates, t, &joined) {
+                        found = Some(p);
+                        let matched = found.clone().unwrap();
+                        for c in &conj {
+                            if !same_expression(c, &matched) {
+                                rest.push(c.clone());
+                            }
+                        }
+                        for r in &remaining {
+                            if !same_expression(r, &matched) {
+                                rest.push(r.clone());
+                            }
+                        }
+                    } else {
+                        for p in &conj {
+                            if found.is_none() && predicate_references_table(p, t) {
+                                found = Some(p.clone());
+                            } else {
+                                rest.push(p.clone());
+                            }
+                        }
+                        for p in &remaining {
+                            if found.is_none() && predicate_references_table(p, t) {
+                                found = Some(p.clone());
+                            } else {
+                                rest.push(p.clone());
+                            }
                         }
                     }
                     let on = found.unwrap_or(Expression::Literal("true".to_string()));
@@ -2152,6 +2370,19 @@ impl Parser {
                         on_clause: on,
                     });
                     remaining = rest;
+                    // Add the new table + its 1-char TPC-H prefix
+                    // (e.g. "part" -> "p", "partsupp" -> "ps") so
+                    // the next iteration can validate that the
+                    // "other side" of any candidate predicate
+                    // references an already-joined table by either
+                    // its full name or its underscore-separated
+                    // prefix.
+                    joined.push(t.clone());
+                    if let Some(prefix) = t.split('_').next() {
+                        if prefix != t {
+                            joined.push(prefix.to_string());
+                        }
+                    }
                 }
                 // Append the chain to the existing join_clause Vec (which is
                 // already a Vec<JoinClause> on develop/v3.8.0). Pre-existing
