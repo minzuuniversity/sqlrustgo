@@ -59,6 +59,33 @@ pub trait WalManager: Send + Sync {
     /// Returns the current LSN (Log Sequence Number) after the last append.
     /// Returns 0 if no entries have been written.
     fn current_lsn(&self) -> u64;
+
+    /// Returns `true` if batch mode is currently enabled.
+    ///
+    /// Batch mode allows the implementor to buffer multiple `append` calls
+    /// into a single `flush`, avoiding per-record fsyncs on the hot path.
+    /// Used by `WalStorage::insert` to amortize WAL cost over batched DML
+    /// (issue #3013). Default: `false` (no batching supported).
+    fn is_batch_mode(&self) -> bool {
+        false
+    }
+
+    /// Returns the auto-flush threshold used while batch mode is enabled.
+    /// Default: `100`.
+    fn flush_threshold(&self) -> usize {
+        100
+    }
+
+    /// Enable or disable batch mode.
+    ///
+    /// When transitioning from `true` → `false`, implementations should
+    /// flush any buffered records so durability is preserved at the boundary.
+    /// Default: no-op (batching unsupported).
+    fn set_batch_mode(&mut self, _enable: bool) {}
+
+    /// Set the auto-flush threshold (records between auto-flushes while in
+    /// batch mode). Default: no-op.
+    fn set_flush_threshold(&mut self, _threshold: usize) {}
 }
 
 /// WAL truncation safety gate
