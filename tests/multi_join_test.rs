@@ -16,10 +16,12 @@ fn test_three_way_inner_join_count() {
     e.execute("CREATE TABLE a (id INTEGER, x INTEGER)").unwrap();
     e.execute("CREATE TABLE b (id INTEGER, y INTEGER)").unwrap();
     e.execute("CREATE TABLE c (id INTEGER, z INTEGER)").unwrap();
-    e.execute("INSERT INTO a VALUES (1,10),(2,20),(3,30)").unwrap();
+    e.execute("INSERT INTO a VALUES (1,10),(2,20),(3,30)")
+        .unwrap();
     e.execute("INSERT INTO b VALUES (1,100),(2,200),(3,300),(4,400)")
         .unwrap();
-    e.execute("INSERT INTO c VALUES (1,1000),(2,2000),(3,3000)").unwrap();
+    e.execute("INSERT INTO c VALUES (1,1000),(2,2000),(3,3000)")
+        .unwrap();
     let r = e
         .execute("SELECT COUNT(*) FROM a JOIN b ON a.id = b.id JOIN c ON b.id = c.id")
         .unwrap();
@@ -35,8 +37,10 @@ fn test_three_way_inner_join_count() {
 fn test_left_join_with_null_match() {
     let mut e = fresh_engine();
     e.execute("CREATE TABLE a (id INTEGER, name TEXT)").unwrap();
-    e.execute("CREATE TABLE b (id INTEGER, value INTEGER)").unwrap();
-    e.execute("INSERT INTO a VALUES (1,'x'),(2,'y'),(3,'z')").unwrap();
+    e.execute("CREATE TABLE b (id INTEGER, value INTEGER)")
+        .unwrap();
+    e.execute("INSERT INTO a VALUES (1,'x'),(2,'y'),(3,'z')")
+        .unwrap();
     e.execute("INSERT INTO b VALUES (1,100),(3,300)").unwrap();
     let r = e
         .execute("SELECT a.id, b.value FROM a LEFT JOIN b ON a.id = b.id")
@@ -62,7 +66,9 @@ fn test_two_way_inner_join_count() {
     e.execute("CREATE TABLE b (id INTEGER)").unwrap();
     e.execute("INSERT INTO a VALUES (1),(2),(3),(4)").unwrap();
     e.execute("INSERT INTO b VALUES (1),(2),(3)").unwrap();
-    let r = e.execute("SELECT COUNT(*) FROM a JOIN b ON a.id = b.id").unwrap();
+    let r = e
+        .execute("SELECT COUNT(*) FROM a JOIN b ON a.id = b.id")
+        .unwrap();
     let count = match &r.rows[0][0] {
         sqlrustgo::Value::Integer(n) => *n,
         _ => panic!("expected integer count"),
@@ -81,5 +87,9 @@ fn test_left_join_no_matches_yields_left_rows() {
     let r = e
         .execute("SELECT a.id, b.id FROM a LEFT JOIN b ON a.id = b.id")
         .unwrap();
-    assert_eq!(r.rows.len(), 3, "LEFT JOIN with empty right still emits 3 rows");
+    assert_eq!(
+        r.rows.len(),
+        3,
+        "LEFT JOIN with empty right still emits 3 rows"
+    );
 }
