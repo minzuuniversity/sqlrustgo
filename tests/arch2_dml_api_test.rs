@@ -14,15 +14,18 @@
 fn arch2_dml_api_is_public() {
     // 编译期验证: 如果 execute_insert/update/delete 不是 pub fn, 这里编译失败
     type E = sqlrustgo::ExecutionEngine<sqlrustgo_storage::MemoryStorage>;
-    let _ptr_insert: fn(&mut E, &sqlrustgo_parser::parser::InsertStatement)
-        -> sqlrustgo_types::SqlResult<sqlrustgo_executor::ExecutorResult>
-        = E::execute_insert;
-    let _ptr_update: fn(&mut E, &sqlrustgo_parser::parser::UpdateStatement)
-        -> sqlrustgo_types::SqlResult<sqlrustgo_executor::ExecutorResult>
-        = E::execute_update;
-    let _ptr_delete: fn(&mut E, &sqlrustgo_parser::parser::DeleteStatement)
-        -> sqlrustgo_types::SqlResult<sqlrustgo_executor::ExecutorResult>
-        = E::execute_delete;
+    let _ptr_insert: fn(
+        &mut E,
+        &sqlrustgo_parser::parser::InsertStatement,
+    ) -> sqlrustgo_types::SqlResult<sqlrustgo_executor::ExecutorResult> = E::execute_insert;
+    let _ptr_update: fn(
+        &mut E,
+        &sqlrustgo_parser::parser::UpdateStatement,
+    ) -> sqlrustgo_types::SqlResult<sqlrustgo_executor::ExecutorResult> = E::execute_update;
+    let _ptr_delete: fn(
+        &mut E,
+        &sqlrustgo_parser::parser::DeleteStatement,
+    ) -> sqlrustgo_types::SqlResult<sqlrustgo_executor::ExecutorResult> = E::execute_delete;
 }
 
 #[test]
@@ -55,6 +58,14 @@ fn arch2_dml_autocommit_int1() {
     let r2 = engine.execute("INSERT INTO t VALUES (2)");
     let r3 = engine.execute("INSERT INTO t VALUES (3)");
     assert!(r1.is_ok());
-    assert!(r2.is_ok(), "Second insert (autocommit) should succeed: {:?}", r2.err());
-    assert!(r3.is_ok(), "Third insert (autocommit) should succeed: {:?}", r3.err());
+    assert!(
+        r2.is_ok(),
+        "Second insert (autocommit) should succeed: {:?}",
+        r2.err()
+    );
+    assert!(
+        r3.is_ok(),
+        "Third insert (autocommit) should succeed: {:?}",
+        r3.err()
+    );
 }
