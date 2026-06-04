@@ -191,6 +191,15 @@ HandshakeV10, accepts HandshakeResponse41 + mysql_native_password auth,
 and dispatches COM_QUERY to the executor. The executor's data-plane is
 the next layer of work (tracked in v3.8.0-rc1).
 
+Tracking issues (created 2026-06-04):
+
+- D-L3-05-1 → http://192.168.0.252:3000/openclaw/sqlrustgo/issues/3072
+  (`SELECT 1` returns 0 rows; root cause at `src/engine_select.rs:75-77`)
+- D-L3-05-2 → http://192.168.0.252:3000/openclaw/sqlrustgo/issues/3073
+  (`SELECT <expr>` hangs; suspected same code path)
+- D-L3-05-3 → http://192.168.0.252:3000/openclaw/sqlrustgo/issues/3074
+  (`--auth-mode none` flag is non-functional; `const SKIP_AUTH` ignores env var)
+
 ================================================================================
 7. ARTEFACTS
 ================================================================================
