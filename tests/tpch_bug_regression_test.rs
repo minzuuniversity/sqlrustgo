@@ -25,7 +25,8 @@ use std::fs;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 
-const FIXTURE_DIR: &str = "/home/openclaw/dev/yinglichina163/sqlrustgo/.worktrees/tpch-22-bugfixes/tests/data/tpch-sf001";
+const FIXTURE_DIR: &str =
+    "/home/openclaw/dev/yinglichina163/sqlrustgo/.worktrees/tpch-22-bugfixes/tests/data/tpch-sf001";
 
 const DDL: &[&str] = &[
     "CREATE TABLE region (r_regionkey INTEGER, r_name TEXT, r_comment TEXT)",
@@ -57,8 +58,8 @@ fn make_engine_with_sf001() -> ExecutionEngine<MemoryStorage> {
     ];
     for tbl in tables {
         let path = base.join(format!("{}.tbl", tbl));
-        let content = fs::read_to_string(&path)
-            .unwrap_or_else(|e| panic!("read {}: {}", path.display(), e));
+        let content =
+            fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {}", path.display(), e));
         let col_types = lookup_column_types(tbl);
         for line in content.lines() {
             if line.is_empty() {
@@ -185,7 +186,14 @@ fn test_bug3_tpch_q1_no_column_name_text_cells() {
     // After fix: each row should be 2 cells, and NONE of them should be the
     // column-name strings "l_returnflag" or "sum_qty" (bug #3 symptom).
     for (i, row) in r.rows.iter().enumerate() {
-        assert_eq!(row.len(), 2, "row[{}] should have 2 cells, got {}: {:?}", i, row.len(), row);
+        assert_eq!(
+            row.len(),
+            2,
+            "row[{}] should have 2 cells, got {}: {:?}",
+            i,
+            row.len(),
+            row
+        );
         for (j, cell) in row.iter().enumerate() {
             if let Some(text) = first_text_cell(&[cell.clone()]) {
                 assert_ne!(
@@ -286,7 +294,8 @@ fn test_bug5_tpch_q1_avg_real_quantity_nonnull() {
         assert!(
             avg > 0.0,
             "row[{}] AVG(l_quantity) should be > 0 (real col), got {}",
-            i, avg
+            i,
+            avg
         );
     }
 }
@@ -304,7 +313,8 @@ fn test_bug5_tpch_q1_avg_real_extendedprice_nonnull() {
         assert!(
             avg > 0.0,
             "row[{}] AVG(l_extendedprice) should be > 0 (real col), got {}",
-            i, avg
+            i,
+            avg
         );
     }
 }
