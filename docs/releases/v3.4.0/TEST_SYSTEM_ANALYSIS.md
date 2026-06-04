@@ -335,33 +335,33 @@ EOF
 
 | 任务 | 命令 | 状态 |
 |------|------|------|
-| 删除废弃 gate 脚本 | `rm scripts/gate/check_alpha_v300.sh` | ✅ DONE (2026-05-27) |
-| 创建 v3.4.0 gate 脚本 | `cat > check_beta_v340.sh` | ✅ DONE (已存在) |
-| 更新 .gitignore | 添加 `gate_results_*.json` | ✅ DONE (2026-05-27) |
+| 删除废弃 gate 脚本 | `rm scripts/gate/check_alpha_v300.sh` 等 | ⏳ |
+| 创建 v3.4.0 gate 脚本 | `cat > check_beta_v340.sh` | ⏳ |
+| 更新 .gitignore | 添加 `gate_results_*.json` | ⏳ |
 
 ### Phase 2: 测试标记 (1 天)
 
 | 任务 | 文件 | 状态 |
 |------|------|------|
-| TPC-H SF=10 标记 `#[ignore]` | `tests/tpch_sf10_test.rs` | ⏭️ N/A (文件不存在) |
-| 72h 测试标记 `#[ignore]` | `tests/stability_72h_test.rs` | ✅ DONE (已标记 4个测试 #[ignore]) |
-| 添加内存配置到 Cargo.toml | `Cargo.toml` | ✅ DONE (已有 [profile.release] opt-level=3) |
+| TPC-H SF=10 标记 `#[ignore]` | `tests/tpch_sf10_test.rs` | ⏳ |
+| 72h 测试标记 `#[ignore]` | `tests/stability_72h_test.rs` | ⏳ |
+| 添加内存配置到 Cargo.toml | `Cargo.toml` | ⏳ |
 
 ### Phase 3: 门禁框架 (2 天)
 
 | 任务 | 状态 |
 |------|------|
-| 创建通用 `check_gate.sh` 框架 | ✅ DONE (已存在) |
-| 实现 Gate 文档解析 | ✅ DONE (hermes_gate.sh) |
-| 添加 JSON 报告生成 | ✅ DONE (scripts/gate/) |
+| 创建通用 `check_gate.sh` 框架 | ⏳ |
+| 实现 Gate 文档解析 | ⏳ |
+| 添加 JSON 报告生成 | ⏳ |
 
 ### Phase 4: CI 集成 (1 天)
 
 | 任务 | 状态 |
 |------|------|
-| 更新 Gitea Actions workflow | ✅ DONE (ngate-ci.yml, rc-gate.yml 等) |
-| 配置内存感知测试 runner | ✅ DONE (Z440 80c/408GB) |
-| 添加 gate 结果上传 | ✅ DONE (hermes_gate.sh webhook) |
+| 更新 Gitea Actions workflow | ⏳ |
+| 配置内存感知测试 runner | ⏳ |
+| 添加 gate 结果上传 | ⏳ |
 
 ---
 
