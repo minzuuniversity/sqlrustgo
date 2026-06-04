@@ -1,0 +1,43 @@
+[1m[0;34m
+╔══════════════════════════════════════════════════════════════════════╗
+║       v3.8.0 RC/GA Unified Gate — Five-Dimension Integration         ║
+║                                                                      ║
+║   D1: Alpha Gate  (A1-A5 + A6-1~5)                                  ║
+║   D2: Beta Gate   (B1-B5 + Integration)                              ║
+║   D3: SGL Gate    (SGL-001~005, semantic layer)                     ║
+║   D4: WAL Gate    (INV-1, INV-2, INV-3)                              ║
+║   D5: DeepSeek    (10 principles for RC/GA)                         ║
+╚══════════════════════════════════════════════════════════════════════╝
+[0m
+Branch: develop/v3.8.0
+Commit: c97b8407
+Gate:   all
+
+
+[1m[0;34m═══════════════════════════════════════════════════════════[0m
+[1m[0;34m  D1: Alpha Gate — Standard Quality + Governance[0m
+[1m[0;34m═══════════════════════════════════════════════════════════[0m
+
+  [A1] Build (release, core 6 crates) ...     [0;32m✓ PASS[0m A1 Build
+  [A2] Test (lib, core 6 crates) ...     [0;32m✓ PASS[0m A2 Test
+  [A3] Clippy (core) ...     [0;32m✓ PASS[0m A3 Clippy
+  [A4] Format (core) ...     [0;32m✓ PASS[0m A4 Format
+  [A5] Coverage (L1 8 crates) ...     [0;32m✓ PASS[0m A5 Coverage: 84% (min: 75%)
+
+  [1m--- A6: Governance ---[0m
+  [A6-1] Replay Graph exists ...     [0;32m✓ PASS[0m A6-1 Replay Graph
+  [A6-2] Claim Registry exists ...     [0;32m✓ PASS[0m A6-2 Claim Registry
+  [A6-3] Decision Registry exists ...     [0;32m✓ PASS[0m A6-3 Decision Registry
+  [A6-4] Freshness markers ...     [0;32m✓ PASS[0m A6-4 Freshness
+  [A6-5] ADR-001~ADR-005 exist ...     [0;32m✓ PASS[0m A6-5 ADR-001~ADR-005
+
+  D1 Result: 10/10
+
+[1m[0;34m═══════════════════════════════════════════════════════════[0m
+[1m[0;34m  D2: Beta Gate — WAL Contract + Integration Gate[0m
+[1m[0;34m═══════════════════════════════════════════════════════════[0m
+
+  [B1] Build ...     [0;32m✓ PASS[0m B1 Build
+  [B2] WAL Contract (22 tests) ...   → 26 passed, 0 failed
+    [0;32m✓ PASS[0m B2 WAL Contract: 26/22 PASS
+  [B3] Clippy ... 
