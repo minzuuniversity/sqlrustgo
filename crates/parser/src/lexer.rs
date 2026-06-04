@@ -210,6 +210,21 @@ impl<'a> Lexer<'a> {
                     Token::Less
                 }
             }
+            '|' => {
+                // `||` is string concatenation in MySQL/PostgreSQL/Oracle SQL.
+                // Token is `Or` (also used for boolean OR) — the parser and
+                // evaluator distinguish based on operand type at runtime.
+                if self.input[self.position..].starts_with("||") {
+                    self.position += 2;
+                    Token::Or
+                } else {
+                    // Single `|` is not a valid SQL token in our grammar;
+                    // fall through to identifier path which will treat it
+                    // as a stray identifier (and the parser will reject it).
+                    self.position += 1;
+                    Token::Identifier("|".to_string())
+                }
+            }
             _ if ch.is_alphabetic() || ch == '_' => {
                 let ident = self.read_identifier();
                 match ident.to_uppercase().as_str() {
