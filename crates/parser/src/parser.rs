@@ -630,29 +630,33 @@ fn same_expression(a: &Expression, b: &Expression) -> bool {
     }
 }
 
-/// For a predicate to be a valid JOIN ON clause that connects a new
-/// table `new_table` to the already-joined set `joined_tables`,
-/// it must be a binary `=` whose two sides reference *disjoint*
-/// table sets: one side must reference `new_table` (and no other
-/// joined table), and the other side must reference the already-
-/// joined set (or just `new_table`, which would be a degenerate
-/// self-join).
+/// Pick the best equality predicate that joins `new_table` to the
+/// already-joined set `joined_tables`.
 ///
-/// This is the proper "best-match" selector. The old heuristic
-/// (predicate_references_table alone) was the root cause of
-/// TPCH-01 Q2/Q9 failures: it matched a predicate whose *other*
-/// side referenced a table not yet in the join state.
+/// For a predicate to be a valid JOIN ON clause that connects a new
+/// table to the already-joined set, it must be a binary `=` whose
+/// two sides reference *disjoint* table sets: one side must
+/// reference `new_table` (and no other joined table), and the other
+/// side must reference the already-joined set (or just `new_table`,
+/// which would be a degenerate self-join).
 ///
 /// If `joined_tables` is empty, we accept any `t1.col = t2.col`
 /// predicate whose left side references `new_table` — the right
-/// side is the candidate anchor. This preserves the original
-/// heuristic's behavior for the first table-join call.
+/// side is the candidate anchor.
+///
+/// Phase 2 (TPCH-01 Q7/Q21 fix): the caller may pass an `alias`
+/// (e.g. `Some("n1")` for `nation n1`) so qualifiers like
+/// `n1.n_nationkey` are recognised as referencing the new table
+/// (the bare `nation` table name would not be found inside
+/// `n1.n_nationkey` because the SQL writer used the alias as the
+/// qualifier, not the table name).
 ///
 /// Returns Some(predicate) if a qualifying predicate exists;
 /// None otherwise (caller falls back to other strategies).
 fn find_join_predicate(
     predicates: &[Expression],
     new_table: &str,
+    new_alias: Option<&str>,
     joined_tables: &[String],
 ) -> Option<Expression> {
     for p in predicates {
@@ -661,19 +665,20 @@ fn find_join_predicate(
                 let left_refs = collect_referenced_tables(l);
                 let right_refs = collect_referenced_tables(r);
                 // The "new table" can be referenced by either its
-                // full name (e.g. "supplier") or its TPC-H prefix
-                // (e.g. "s"). Try both.
+                // full name (e.g. "supplier"), its TPC-H prefix
+                // (e.g. "s"), or (Phase 2) its inline alias
+                // (e.g. "n1"). Try all three.
                 let new_prefix = new_table.split('_').next().unwrap_or(new_table);
-                let new_alts: Vec<&str> = vec![new_table, new_prefix];
+                let new_alts: Vec<&str> = match new_alias {
+                    Some(a) => vec![new_table, new_prefix, a],
+                    None => vec![new_table, new_prefix],
+                };
                 let left_has_new = left_refs.iter().any(|t| new_alts.iter().any(|n| n == t));
-                let right_has_new = right_refs
-                    .iter()
-                    .any(|t| new_alts.iter().any(|n| n == t));
+                let right_has_new = right_refs.iter().any(|t| new_alts.iter().any(|n| n == t));
                 if left_has_new && !right_has_new {
                     if right_refs
                         .iter()
-                        .all(|t| joined_tables.is_empty()
-                            || joined_tables.iter().any(|j| j == t))
+                        .all(|t| joined_tables.is_empty() || joined_tables.iter().any(|j| j == t))
                     {
                         return Some(p.clone());
                     }
@@ -681,8 +686,7 @@ fn find_join_predicate(
                 if right_has_new && !left_has_new {
                     if left_refs
                         .iter()
-                        .all(|t| joined_tables.is_empty()
-                            || joined_tables.iter().any(|j| j == t))
+                        .all(|t| joined_tables.is_empty() || joined_tables.iter().any(|j| j == t))
                     {
                         return Some(p.clone());
                     }
@@ -2207,10 +2211,8 @@ impl Parser {
                             subq_aliases.push(alias);
                             continue;
                         }
-                        match self.next() {
-                            Some(Token::Identifier(name)) => {
-                                tables.push(name);
-                            }
+                        let consumed_name = match self.next() {
+                            Some(Token::Identifier(name)) => name,
                             Some(t) => {
                                 return Err(format!(
                                     "Expected table name after comma, got {:?} \
@@ -2219,21 +2221,47 @@ impl Parser {
                                 ));
                             }
                             None => return Err("Expected table name after comma".to_string()),
+                        };
+                        // Phase 2 (TPCH-01 Q7/Q21 fix): handle inline alias
+                        // for *each* table in the comma list. The previous
+                        // design attached the alias to the LAST table only,
+                        // which silently dropped `n1` from `nation n1, nation n2`
+                        // (TPC-H Q7) and `l1` from `lineitem l1, lineitem l2`
+                        // (TPC-H Q21). The auto-rewrite then had no way to
+                        // know what qualifier `n1.n_nationkey` resolved to.
+                        //
+                        // We encode the alias into the table name with a
+                        // `|` separator (e.g. `nation|n1`) so the auto-rewrite
+                        // selector loop downstream can recover both pieces.
+                        let token_after = self.current();
+                        if matches!(token_after, Some(Token::Identifier(_)))
+                            && !matches!(
+                                token_after,
+                                Some(Token::Where)
+                                    | Some(Token::Group)
+                                    | Some(Token::Order)
+                                    | Some(Token::Limit)
+                                    | Some(Token::RParen)
+                                    | Some(Token::Eof)
+                                    | Some(Token::Comma)
+                                    | Some(Token::Join)
+                                    | Some(Token::Left)
+                                    | Some(Token::Right)
+                                    | Some(Token::Inner)
+                                    | Some(Token::Full)
+                                    | Some(Token::Cross)
+                                    | Some(Token::On)
+                                    | Some(Token::As)
+                            )
+                        {
+                            if let Some(Token::Identifier(a)) = self.next() {
+                                tables.push(format!("{}|{}", consumed_name, a));
+                            } else {
+                                tables.push(consumed_name);
+                            }
+                        } else {
+                            tables.push(consumed_name);
                         }
-                    }
-                    // Consume optional alias of the LAST table (e.g. `FROM t1, t2 alias`).
-                    if matches!(self.current(), Some(Token::Identifier(_)))
-                        && !matches!(
-                            self.current(),
-                            Some(Token::Where)
-                                | Some(Token::Group)
-                                | Some(Token::Order)
-                                | Some(Token::Limit)
-                                | Some(Token::RParen)
-                                | Some(Token::Eof)
-                        )
-                    {
-                        self.next();
                     }
                     let first = tables[0].clone();
                     let rest: Vec<String> = tables[1..].to_vec();
@@ -2348,13 +2376,38 @@ impl Parser {
                         // cartesian joins in the else branch below.
                         break;
                     }
+                    // Phase 2 (TPCH-01 Q7/Q21 fix): split the
+                    // `table|alias` encoding produced by the
+                    // comma-list parser (see the FROM-clause loop
+                    // above). `t` may be `nation`, `nation|n1`, or
+                    // a synthetic `__subq_N`. The auto-rewrite
+                    // selector needs the bare table name to match
+                    // TPC-H column prefixes, and the alias to
+                    // populate the JoinClause that the executor
+                    // consumes.
+                    let (table_name, table_alias) = match t.find('|') {
+                        Some(idx) => {
+                            let n = t[..idx].to_string();
+                            let a = t[idx + 1..].to_string();
+                            (n, Some(a))
+                        }
+                        None => (t.clone(), None),
+                    };
                     // Phase 1: best-match selector — find a predicate
                     // that joins `t` to the already-joined set.
+                    // Phase 2: also pass the inline alias (if any)
+                    // so qualifiers like `n1.col` are recognised as
+                    // referencing the new table.
                     let mut found: Option<Expression> = None;
                     let mut rest: Vec<Expression> = Vec::new();
                     let candidates: Vec<Expression> =
                         conj.iter().chain(remaining.iter()).cloned().collect();
-                    if let Some(p) = find_join_predicate(&candidates, t, &joined) {
+                    if let Some(p) = find_join_predicate(
+                        &candidates,
+                        &table_name,
+                        table_alias.as_deref(),
+                        &joined,
+                    ) {
                         found = Some(p);
                         let matched = found.clone().unwrap();
                         for c in &conj {
@@ -2369,14 +2422,18 @@ impl Parser {
                         }
                     } else {
                         for p in &conj {
-                            if found.is_none() && predicate_references_table(p, t) {
+                            if found.is_none()
+                                && predicate_references_table(p, &table_name)
+                            {
                                 found = Some(p.clone());
                             } else {
                                 rest.push(p.clone());
                             }
                         }
                         for p in &remaining {
-                            if found.is_none() && predicate_references_table(p, t) {
+                            if found.is_none()
+                                && predicate_references_table(p, &table_name)
+                            {
                                 found = Some(p.clone());
                             } else {
                                 rest.push(p.clone());
@@ -2386,8 +2443,8 @@ impl Parser {
                     let on = found.unwrap_or(Expression::Literal("true".to_string()));
                     chain.push(JoinClause {
                         join_type: JoinType::Inner,
-                        table: t.clone(),
-                        alias: None,
+                        table: table_name.clone(),
+                        alias: table_alias.clone(),
                         on_clause: on,
                     });
                     remaining = rest;
@@ -2398,16 +2455,24 @@ impl Parser {
                     // references an already-joined table by either
                     // its full name or its underscore-separated
                     // prefix.
-                    joined.push(t.clone());
+                    joined.push(table_name.clone());
                     // TPC-H 1-char/2-char prefix extraction
                     // (see the base-table seed above for rationale).
-                    let prefix = if t.contains('_') {
-                        let underscore = t.find('_').unwrap();
-                        t[..underscore].to_string()
+                    let prefix = if table_name.contains('_') {
+                        let underscore = table_name.find('_').unwrap();
+                        table_name[..underscore].to_string()
                     } else {
-                        t[..1].to_string()
+                        table_name[..1].to_string()
                     };
                     joined.push(prefix);
+                    // Phase 2: also push the inline alias (e.g.
+                    // "n1" for `nation n1`) so subsequent
+                    // `find_join_predicate` calls recognise
+                    // qualifiers like `n1.n_nationkey` as
+                    // referencing an already-joined table.
+                    if let Some(a) = table_alias {
+                        joined.push(a);
+                    }
                 }
                 // extends them.
                 join_clause.extend(chain);
