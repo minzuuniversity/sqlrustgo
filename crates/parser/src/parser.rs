@@ -1763,7 +1763,10 @@ impl Parser {
                         None
                     };
                     columns.push(SelectColumn {
-                        name: format!("{:?}", Expression::FunctionCall(name.to_string(), args.clone())),
+                        name: format!(
+                            "{:?}",
+                            Expression::FunctionCall(name.to_string(), args.clone())
+                        ),
                         alias,
                         expression: Some(Expression::FunctionCall(name.to_string(), args)),
                     });
@@ -1780,6 +1783,15 @@ impl Parser {
                                     Some(Token::Identifier(col)) => {
                                         self.next();
                                         (format!("{}.{}", table, col), true, false)
+                                    }
+                                    // `Level` is a reserved token (used for
+                                    // transaction isolation levels) but can
+                                    // appear as a user-chosen column name in
+                                    // `tbl.Level` (e.g. `oc.level`). Accept
+                                    // it here as a column name.
+                                    Some(Token::Level) => {
+                                        self.next();
+                                        (format!("{}.level", table), true, false)
                                     }
                                     Some(t) => {
                                         return Err(format!("Expected column name, got {:?}", t))
@@ -1965,14 +1977,14 @@ impl Parser {
                     let mut tables: Vec<String> = vec![first_table];
                     while matches!(self.current(), Some(Token::Comma)) {
                         self.next(); // consume comma
-                        // After a comma, the next item can be either a
-                        // table identifier (TPC-H Q2) or a parenthesized
-                        // subquery aliased (TPC-H Q15). The subquery form
-                        // is rejected at the comma level — we accept only
-                        // the identifier form here and let the user
-                        // rewrite their query if they need a comma
-                        // followed by a subquery. (Q15 workaround:
-                        // `FROM (subquery) AS rev JOIN supplier ON ...`).
+                                     // After a comma, the next item can be either a
+                                     // table identifier (TPC-H Q2) or a parenthesized
+                                     // subquery aliased (TPC-H Q15). The subquery form
+                                     // is rejected at the comma level — we accept only
+                                     // the identifier form here and let the user
+                                     // rewrite their query if they need a comma
+                                     // followed by a subquery. (Q15 workaround:
+                                     // `FROM (subquery) AS rev JOIN supplier ON ...`).
                         match self.next() {
                             Some(Token::Identifier(name)) => {
                                 tables.push(name);
