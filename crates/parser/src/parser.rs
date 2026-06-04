@@ -623,9 +623,7 @@ fn same_expression(a: &Expression, b: &Expression) -> bool {
                 && aa.len() == ba.len()
                 && aa.iter().zip(ba.iter()).all(|(x, y)| same_expression(x, y))
         }
-        (Aggregate(a), Aggregate(b)) => {
-            format!("{:?}", a) == format!("{:?}", b)
-        }
+        (Aggregate(a), Aggregate(b)) => format!("{:?}", a) == format!("{:?}", b),
         _ => false,
     }
 }
@@ -1905,11 +1903,8 @@ impl Parser {
                 // functions in the SELECT list. Same logic as
                 // parse_primary_expression.
                 // INT-4 / CTE-01: see Token::Level in Token::Level AS alias path
-                Some(Token::Left)
-                | Some(Token::Right)
-                | Some(Token::Insert)
-                | Some(Token::Replace)
-                | Some(Token::If) => {
+                Some(Token::Left) | Some(Token::Right) | Some(Token::Insert)
+                | Some(Token::Replace) | Some(Token::If) => {
                     let name = match self.current() {
                         Some(Token::Left) => "LEFT",
                         Some(Token::Right) => "RIGHT",
@@ -2199,7 +2194,9 @@ impl Parser {
                             let alias = match self.current() {
                                 Some(Token::Identifier(a)) => a.clone(),
                                 _ => {
-                                    return Err("Expected alias after comma-followed subquery".to_string());
+                                    return Err(
+                                        "Expected alias after comma-followed subquery".to_string()
+                                    );
                                 }
                             };
                             self.next();
@@ -2422,18 +2419,14 @@ impl Parser {
                         }
                     } else {
                         for p in &conj {
-                            if found.is_none()
-                                && predicate_references_table(p, &table_name)
-                            {
+                            if found.is_none() && predicate_references_table(p, &table_name) {
                                 found = Some(p.clone());
                             } else {
                                 rest.push(p.clone());
                             }
                         }
                         for p in &remaining {
-                            if found.is_none()
-                                && predicate_references_table(p, &table_name)
-                            {
+                            if found.is_none() && predicate_references_table(p, &table_name) {
                                 found = Some(p.clone());
                             } else {
                                 rest.push(p.clone());
@@ -3437,10 +3430,7 @@ impl Parser {
             // scalar function names when followed by `(`. MySQL has these
             // as both statement keywords and string functions; in
             // expression position the function interpretation wins.
-            Some(Token::Left)
-            | Some(Token::Right)
-            | Some(Token::Insert)
-            | Some(Token::Replace)
+            Some(Token::Left) | Some(Token::Right) | Some(Token::Insert) | Some(Token::Replace)
             | Some(Token::If) => {
                 let name = match self.current() {
                     Some(Token::Left) => "LEFT",
