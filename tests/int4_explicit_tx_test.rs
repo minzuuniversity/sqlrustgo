@@ -3,8 +3,8 @@
 //! **Issue**: #2973
 //! **Status**: Implemented (PR for #2973, LocalExecutor + UnifiedFacade path)
 
-use sqlrustgo_storage::{MemoryStorage, StorageEngine, VtuGuard, WalStorage};
 use sqlrustgo_storage::wal::MemoryWalManager;
+use sqlrustgo_storage::{MemoryStorage, StorageEngine, VtuGuard, WalStorage};
 use sqlrustgo_transaction::manager::TransactionManager;
 
 #[test]
@@ -14,7 +14,10 @@ fn test_int4_begin_commit_roundtrip() {
     assert!(!tx_mgr.is_in_transaction(), "starts outside any TX");
     let tx_id = tx_mgr.begin().expect("BEGIN");
     assert!(tx_mgr.is_in_transaction(), "inside TX after BEGIN");
-    assert_eq!(tx_mgr.get_current_tx_id().map(|t| t.as_u64()), Some(tx_id.as_u64()));
+    assert_eq!(
+        tx_mgr.get_current_tx_id().map(|t| t.as_u64()),
+        Some(tx_id.as_u64())
+    );
     tx_mgr.commit().expect("COMMIT");
     assert!(!tx_mgr.is_in_transaction(), "back to idle after COMMIT");
     assert!(tx_mgr.get_current_tx_id().is_none());
@@ -55,10 +58,7 @@ fn test_int4_begin_multi_dml_reuses_single_tx_id() {
 fn test_int4_commit_or_rollback_without_begin_rejected() {
     let mut tx_mgr = TransactionManager::new();
     let c = tx_mgr.commit();
-    assert!(
-        c.is_err(),
-        "COMMIT without BEGIN must error (INT-4 safety)"
-    );
+    assert!(c.is_err(), "COMMIT without BEGIN must error (INT-4 safety)");
     let r = tx_mgr.rollback();
     assert!(
         r.is_err(),
