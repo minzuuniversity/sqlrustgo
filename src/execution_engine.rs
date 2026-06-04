@@ -410,6 +410,33 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             let mut storage = self.storage.write().unwrap();
             let col_names: Vec<String> =
                 table_info.columns.iter().map(|c| c.name.clone()).collect();
+
+            if !insert.is_replace && table_info.columns.iter().any(|c| c.primary_key) {
+                let existing_rows = storage.scan(&table_name)?;
+                for new_record in &processed_records {
+                    for existing in &existing_rows {
+                        if self.record_matches_unique_key(existing, new_record, &table_info) {
+                            let pk_repr = table_info
+                                .columns
+                                .iter()
+                                .enumerate()
+                                .find_map(|(i, c)| {
+                                    if c.primary_key {
+                                        new_record.get(i).map(|v| v.to_sql_string())
+                                    } else {
+                                        None
+                                    }
+                                })
+                                .unwrap_or_else(|| "?".to_string());
+                            return Err(SqlError::ExecutionError(format!(
+                                "Duplicate entry '{}' for key 'PRIMARY'",
+                                pk_repr
+                            )));
+                        }
+                    }
+                }
+            }
+
             for record in &processed_records {
                 if !table_info.foreign_keys.is_empty() {
                     validate_foreign_keys(&*storage, &table_info, record, &insert.columns)?;
