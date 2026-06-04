@@ -2148,20 +2148,33 @@ pub fn run_server_with_listener(listener: TcpListener) -> MySqlResult<()> {
 /// but before the accept loop starts. The test harness uses it to
 /// pre-create the `tester` user with a known password so the `mysql`
 /// crate's auth handshake succeeds.
+///
+/// `data_dir`, when `Some(path)`, becomes the on-disk location for
+/// the WAL and the table files (i.e. the entire server state). When
+/// `None`, the server falls back to a per-listener-port temp dir.
+/// Passing `Some(path)` is what lets a test stop a server and start
+/// a new one against the same dir, observing WAL recovery. The path
+/// is **not** created or removed by the server: lifecycle is owned
+/// by the caller (matching the convention already documented on
+/// `EphemeralConfig::data_dir`).
 pub(crate) fn run_server_with_listener_and_shutdown_with_bootstrap_tables_and_sql(
     listener: TcpListener,
     shutdown: std::sync::Arc<std::sync::atomic::AtomicBool>,
     bootstrap: Option<Box<dyn FnOnce(&mut UserStore) + Send>>,
     bootstrap_tables: bool,
     bootstrap_sql: Vec<String>,
+    data_dir: Option<std::path::PathBuf>,
 ) -> MySqlResult<()> {
     let tls_config = Arc::new(make_tls_config());
     tracing::info!("TLS ready (self-signed cert)");
 
     // WalStorage<FileStorage, FileBackedWalManager> for production runtime
     // (Issue #2808: G1 — DML must persist via WAL, not bypass to raw FileStorage)
-    let wal_data_dir =
-        std::env::temp_dir().join(format!("sqlrustgo_wal_{}", listener.local_addr()?.port()));
+    let wal_data_dir = match data_dir {
+        Some(p) => p,
+        None => std::env::temp_dir()
+            .join(format!("sqlrustgo_wal_{}", listener.local_addr()?.port())),
+    };
     let file_storage =
         FileStorage::new_with_wal(wal_data_dir.clone()).map_err(std::io::Error::other)?;
     let wal_path = wal_data_dir.join("sqlrustgo.wal");
@@ -2241,6 +2254,7 @@ pub fn run_server_with_listener_and_shutdown(
         None,
         true,
         Vec::new(),
+        None,
     )
 }
 
@@ -2262,6 +2276,7 @@ pub(crate) fn run_server_with_listener_and_shutdown_with_bootstrap(
         bootstrap,
         true,
         Vec::new(),
+        None,
     )
 }
 
@@ -3210,12 +3225,14 @@ pub mod testing {
         let listener = TcpListener::bind(format!("{}:0", config.host))?;
         let port = listener.local_addr()?.port();
 
+        let data_dir_for_thread = config.data_dir.clone();
+
         // When the caller supplies a data_dir, the test owns the
         // directory's lifecycle; we do not create it and we do
         // not remove it on Drop. When None, we auto-create one
         // under the OS temp dir and Drop removes it.
-        let externally_owned = config.data_dir.is_some();
-        let data_dir = config.data_dir.unwrap_or_else(|| {
+        let externally_owned = data_dir_for_thread.is_some();
+        let data_dir = data_dir_for_thread.clone().unwrap_or_else(|| {
             std::env::temp_dir().join(format!(
                 "sqlrustgo_ephemeral_{}_{}",
                 port,
@@ -3257,6 +3274,7 @@ pub mod testing {
                 bootstrap,
                 bootstrap_tables_flag,
                 bootstrap_sql,
+                data_dir_for_thread,
             );
         });
 
