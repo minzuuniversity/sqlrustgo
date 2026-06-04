@@ -57,13 +57,22 @@ fn server01_serve_help_shows_new_args() {
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
-    assert!(combined.contains("--data-dir"), "serve --help should show --data-dir");
+    assert!(
+        combined.contains("--data-dir"),
+        "serve --help should show --data-dir"
+    );
     assert!(
         combined.contains("--max-connections"),
         "serve --help should show --max-connections"
     );
-    assert!(combined.contains("--auth-mode"), "serve --help should show --auth-mode");
-    assert!(combined.contains("--verbose"), "serve --help should show --verbose");
+    assert!(
+        combined.contains("--auth-mode"),
+        "serve --help should show --auth-mode"
+    );
+    assert!(
+        combined.contains("--verbose"),
+        "serve --help should show --verbose"
+    );
 }
 
 #[test]
@@ -104,7 +113,10 @@ fn server01_serve_no_args_uses_defaults() {
     let _ = child.kill();
     let output = child.wait_with_output().expect("Failed to read output");
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("SQLRustGo"), "banner should mention SQLRustGo");
+    assert!(
+        stdout.contains("SQLRustGo"),
+        "banner should mention SQLRustGo"
+    );
     assert!(
         stdout.contains("MySQL wire-protocol server"),
         "banner should mention wire-protocol"
@@ -112,7 +124,10 @@ fn server01_serve_no_args_uses_defaults() {
     assert!(stdout.contains("Listen:"), "banner should show Listen:");
     assert!(stdout.contains("Data dir:"), "banner should show Data dir:");
     assert!(stdout.contains("Max conn:"), "banner should show Max conn:");
-    assert!(stdout.contains("Auth mode:"), "banner should show Auth mode:");
+    assert!(
+        stdout.contains("Auth mode:"),
+        "banner should show Auth mode:"
+    );
     assert!(
         stdout.contains("Ready to accept connections."),
         "banner should show ready message"
@@ -178,7 +193,10 @@ fn server01_serve_with_max_connections_arg() {
     let _ = child.kill();
     let output = child.wait_with_output().expect("Failed to read output");
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("42"), "banner should show custom max conn 42");
+    assert!(
+        stdout.contains("42"),
+        "banner should show custom max conn 42"
+    );
 }
 
 #[test]
