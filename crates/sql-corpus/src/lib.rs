@@ -260,7 +260,7 @@ impl SimpleExecutor {
         // and re-use the existing execution logic.
         match &*with_dml.body {
             Statement::Insert(insert) => {
-                let records = self.evaluate_insert_values(&insert)?;
+                let records = self.evaluate_insert_values(insert)?;
                 self.storage
                     .insert(&insert.table, records)
                     .map_err(|e| format!("Insert error: {:?}", e))?;
@@ -602,8 +602,8 @@ impl SimpleExecutor {
                 // the operation is `||`, fall through to text concat for
                 // safety.
                 match (left, right) {
-                    (Value::Text(l), r) => Value::Text(format!("{}{}", l, r.to_string())),
-                    (l, Value::Text(r)) => Value::Text(format!("{}{}", l.to_string(), r)),
+                    (Value::Text(l), r) => Value::Text(format!("{}{}", l, r)),
+                    (l, Value::Text(r)) => Value::Text(format!("{}{}", l, r)),
                     (Value::Boolean(l), Value::Boolean(r)) => Value::Boolean(*l || *r),
                     (Value::Integer(l), Value::Integer(r)) => Value::Text(format!("{}{}", l, r)),
                     _ => Value::Null,
