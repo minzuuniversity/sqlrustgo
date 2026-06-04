@@ -1,20 +1,32 @@
-# v3.8.0 Bata 完成 + 本会话治理报告 (2026-06-04)
+# v3.8.0 Beta 完成 + 本会话治理报告 (2026-06-04)
+
+> ⚠️ **Spelling note**: "Bata" in this document is a misspelling of "Beta"
+> (legacy from the original session text).
+>
+> - The filename `V380_BATA_COMPLETION_REPORT.md` and the historical
+>   tag/commit messages keep the original "BATA" spelling for
+>   **immutability of historical records** (changing them would
+>   rewrite git history).
+> - The branch name `bata/v3.8.0` was **renamed to `beta/v3.8.0`**
+>   on 2026-06-04 (commit `5ab99373e1` is identical; only the ref name
+>   changed across 4 remote mirrors).
+> - **All prose in this document** has been updated to use "Beta".
 
 > **Issue**: #3031 (closed)
-> **Branch**: `bata/v3.8.0` (Bata 阶段独立 branch)
+> **Branch**: `bata/v3.8.0` (Beta 阶段独立 branch)
 > **Tag**: `v3.8.0-beta` @ `052524890`
 > **Develop HEAD**: `f7da16de` (Ga 主线)
 > **路线**: **Route B** (v3.8.0-beta → rc1 → rc2 → ga, **不创建 v3.9.0**)
 
-## 1. v3.8.0 Bata 阶段概览
+## 1. v3.8.0 Beta 阶段概览
 
 ### 1.1 状态总结
 
 | 维度 | 数据 |
 |------|------|
-| Bata branch | `bata/v3.8.0` |
-| Bata tag | `v3.8.0-beta` @ `052524890` |
-| Bata 公告 commit | `34cd64d7` |
+| Beta branch | `bata/v3.8.0` |
+| Beta tag | `v3.8.0-beta` @ `052524890` |
+| Beta 公告 commit | `34cd64d7` |
 | Milestone issues | 22 (18 closed, 4 deferred to v3.8.0-rc1/v3.9.0+) |
 | Milestone PRs | 18 closed |
 | 治理类 issue | **0 open priority/p0/p1/p2** |
@@ -32,7 +44,7 @@
 
 **本会话新增 3 个治理 PR**, 累计 (含其他 session): 26 PRs 合并 to develop/v3.8.0
 
-### 1.3 v3.8.0 Bata 关键问题关闭 (本会话)
+### 1.3 v3.8.0 Beta 关键问题关闭 (本会话)
 
 | # | Title | Closing PR | Notes |
 |---|-------|-----------|-------|
@@ -40,8 +52,8 @@
 | #2973 | INT-4 VtuGuard | PR #2999 | TriggerExecutor.execute_dml_in_tx helper + VtuGuard.execute_dml |
 | #2974 | ARCH-2 merge.rs | PR #3001 | harness.rs dead fixture 删 + ARCH-2 bypass CI gate |
 | #2743 | R5 Coverage | (c2919595b) | 81.62% > 80%, 23 unit tests |
-| #2763 | 进展报告 | (Bata 公告取代) | outdated report, Bata 完成取代 |
-| #3031 | Bata 完成公告 | (34cd64d7 on bata/v3.8.0) | Route B 决策落地 |
+| #2763 | 进展报告 | (Beta 公告取代) | outdated report, Beta 完成取代 |
+| #3031 | Beta 完成公告 | (34cd64d7 on bata/v3.8.0) | Route B 决策落地 |
 
 ## 2. v3.8.0 真 open (Bata 阶段后) — 4 个
 
