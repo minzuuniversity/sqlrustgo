@@ -52,7 +52,7 @@
 |-----|------|------|
 | D1-D5 RC/GA | ✅ PASS | Alpha 10/10, RC 10/10 |
 | D6 Test Inventory | ✅ PASS | 51/53 tests integrated |
-| D7 INT Debt | ✅ PASS (DRIFT) | 4 ACTIVE w/ v3.9.0+ plan |
+| D7 INT Debt | ✅ PASS (DRIFT) | 2 CLOSED (INT-1, INT-4) + 2 ACTIVE (INT-2, INT-3) w/ v3.9.0+ plan |
 | D8 Arch/Sem Debt | ✅ PASS (DRIFT) | 7 OPEN w/ plan |
 | D9 Full Gate | ✅ PASS | **8/8 dimensions** (本 session 修 2 bug: TEST_PLAN path + 5-Principle match) |
 
