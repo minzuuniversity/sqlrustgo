@@ -55,12 +55,13 @@ fn cli03_init_sql_replays_create_and_inserts() {
          INSERT INTO cli03_basic VALUES (2, 'b');\n",
     )
     .unwrap();
-    let (code, out, _err) = run_repl_with_args(
-        &["--init-sql", path],
-        "SELECT * FROM cli03_basic;\n.exit\n",
-    );
+    let (code, out, _err) =
+        run_repl_with_args(&["--init-sql", path], "SELECT * FROM cli03_basic;\n.exit\n");
     assert_eq!(code, 0);
-    assert!(out.contains("[init-sql] replayed 3 statements"), "got: {out}");
+    assert!(
+        out.contains("[init-sql] replayed 3 statements"),
+        "got: {out}"
+    );
     assert!(out.contains("Integer(1)"), "missing row 1: {out}");
     assert!(out.contains("Text(\"a\")"), "missing val a: {out}");
     assert!(out.contains("Integer(2)"), "missing row 2: {out}");
@@ -87,7 +88,10 @@ fn cli03_cross_session_persistence() {
          SELECT * FROM cli03_cross;\n.exit\n",
     );
     assert_eq!(code, 0);
-    assert!(out.contains("[init-sql] replayed 3 statements"), "got: {out}");
+    assert!(
+        out.contains("[init-sql] replayed 3 statements"),
+        "got: {out}"
+    );
     assert!(out.contains("Text(\"s1\")"), "missing s1: {out}");
     assert!(out.contains("Text(\"s1b\")"), "missing s1b: {out}");
     assert!(out.contains("Text(\"s2\")"), "missing s2: {out}");
@@ -105,10 +109,15 @@ fn cli03_save_on_exit_creates_file() {
     );
     assert_eq!(code, 0);
     // Stage 3 limitation: dumped 0 statements (placeholder) but file is created
-    assert!(std::path::Path::new(path).exists(), "save file not created: {out}");
+    assert!(
+        std::path::Path::new(path).exists(),
+        "save file not created: {out}"
+    );
     let content = std::fs::read_to_string(path).unwrap();
-    assert!(content.contains("SQLRustGo v3.8.0-rc1 REPL state dump"),
-            "missing header: {content}");
+    assert!(
+        content.contains("SQLRustGo v3.8.0-rc1 REPL state dump"),
+        "missing header: {content}"
+    );
     std::fs::remove_file(path).ok();
 }
 
@@ -129,12 +138,12 @@ fn cli03_empty_init_sql_runs_normally() {
     // Empty file is valid; should be a no-op replay (0 statements)
     let path = "/tmp/cli03_empty.sql";
     std::fs::write(path, "").unwrap();
-    let (code, out, _err) = run_repl_with_args(
-        &["--init-sql", path],
-        "SELECT 1;\n.exit\n",
-    );
+    let (code, out, _err) = run_repl_with_args(&["--init-sql", path], "SELECT 1;\n.exit\n");
     assert_eq!(code, 0);
-    assert!(out.contains("[init-sql] replayed 0 statements"), "got: {out}");
+    assert!(
+        out.contains("[init-sql] replayed 0 statements"),
+        "got: {out}"
+    );
     std::fs::remove_file(path).ok();
 }
 
@@ -150,10 +159,8 @@ fn cli03_init_sql_with_comments_and_blank_lines() {
          INSERT INTO cli03_comm VALUES (42);\n",
     )
     .unwrap();
-    let (code, out, _err) = run_repl_with_args(
-        &["--init-sql", path],
-        "SELECT * FROM cli03_comm;\n.exit\n",
-    );
+    let (code, out, _err) =
+        run_repl_with_args(&["--init-sql", path], "SELECT * FROM cli03_comm;\n.exit\n");
     assert_eq!(code, 0);
     // Comments don't add to statement count
     assert!(out.contains("replayed 2 statements"), "got: {out}");
@@ -168,6 +175,12 @@ fn cli03_no_args_default_memory_storage() {
     assert_eq!(code, 0);
     assert!(out.contains("SQLRustGo REPL v3.8.0"));
     // No [init-sql] or [save-on-exit] banner
-    assert!(!out.contains("[init-sql]"), "should not show init-sql: {out}");
-    assert!(!out.contains("[save-on-exit]"), "should not show save-on-exit: {out}");
+    assert!(
+        !out.contains("[init-sql]"),
+        "should not show init-sql: {out}"
+    );
+    assert!(
+        !out.contains("[save-on-exit]"),
+        "should not show save-on-exit: {out}"
+    );
 }
