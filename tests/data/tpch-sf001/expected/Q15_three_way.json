@@ -1,0 +1,17 @@
+{
+  "query": "q15.sql",
+  "sqlite_sql_source": "standard_tpch_q.sql",
+  "engines": {
+    "sqlite": {
+      "row_count": 4,
+      "first_3_rows": [
+        "2|Supplier#000000002|89eJ5ksX3ImxJ46ksyODfF |15-679-861-2259|230886.5806",
+        "3|Supplier#000000003|qY,eOMh4i3kfgOI8v84C2Dw8X |20-445-711-3401|202763.9868",
+        "1|Supplier#000000001| N kD4on9OM Ipw3,wr0V |27-918-335-1736|192836.3885"
+      ],
+      "error": null
+    }
+  },
+  "consensus_row_count": 4,
+  "consensus": true
+}
