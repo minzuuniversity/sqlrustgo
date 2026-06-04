@@ -313,6 +313,7 @@ pub fn evaluate_expression(
                 .collect();
             Ok(dispatch_fn(name, &vals))
         }
+        // TPC-H Q8/Q12/Q14: CASE WHEN cond THEN a ELSE b END.
         Expression::NotLike(left, pattern, _escape) => {
             let lv = evaluate_expression(left, row, table_info)?;
             let pv = evaluate_expression(pattern, row, table_info)?;
