@@ -751,10 +751,37 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 // TPC-H Q9: `ON a.id = b.a_id AND a.sub_id = b.a_sub`.
                 // Each AND branch must itself be a binary `=` between a
                 // left and a right column. Combine the resulting pairs.
+                //
+                // TPC-H Q13: `ON c_custkey = o_custkey AND o_comment NOT LIKE
+                // '%special%requests%'` — one arm is a LIKE/NOT LIKE
+                // predicate (it is a post-join filter, not a join key).
+                // Recurse into the `=` arm and ignore the LIKE arm.
+                if is_like_predicate(left_expr) {
+                    return self.find_join_key_index(
+                        right_expr,
+                        left_info,
+                        left_name,
+                        right_info,
+                        right_name,
+                    );
+                }
+                if is_like_predicate(right_expr) {
+                    return self.find_join_key_index(
+                        left_expr,
+                        left_info,
+                        left_name,
+                        right_info,
+                        right_name,
+                    );
+                }
                 let lk = self
                     .find_join_key_index(left_expr, left_info, left_name, right_info, right_name)?;
                 let rk = self.find_join_key_index(
-                    right_expr, left_info, left_name, right_info, right_name,
+                    right_expr,
+                    left_info,
+                    left_name,
+                    right_info,
+                    right_name,
                 )?;
                 match (lk, rk) {
                     (JoinKey::Pair(li1, ri1), JoinKey::Pair(li2, ri2)) => {
@@ -812,6 +839,14 @@ enum JoinKey {
     Right(usize),
     Pair(usize, usize),
     Pairs(Vec<(usize, usize)>),
+}
+
+/// Is this expression a LIKE / NOT LIKE predicate? Used by
+/// TPC-H Q13 (`ON c_custkey = o_custkey AND o_comment NOT LIKE '...'`)
+/// where one arm of the AND is a post-join filter (LIKE / NOT LIKE)
+/// rather than a join key (binary `=`).
+fn is_like_predicate(expr: &Expression) -> bool {
+    matches!(expr, Expression::Like(_, _, _) | Expression::NotLike(_, _, _))
 }
 
 /// Look up a column in a (possibly accumulated) schema.
