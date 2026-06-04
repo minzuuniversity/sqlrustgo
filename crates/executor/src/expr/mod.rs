@@ -408,6 +408,56 @@ pub fn eval_fn(name: &str, args: &[Value]) -> Value {
                 _ => Value::Null,
             }
         }
+        // MySQL 5.7 string functions (Issue #2988 / MySQL-01 follow-up).
+        // REPLACE(str, from_str, to_str) — replaces ALL occurrences.
+        "REPLACE" => {
+            if args.len() < 3 {
+                Value::Null
+            } else {
+                Value::Text(args[0].to_sql_string().replace(
+                    &args[1].to_sql_string(),
+                    &args[2].to_sql_string(),
+                ))
+            }
+        }
+        // INSERT(str, pos, len, newstr) — pos is 1-based.
+        // MySQL semantics:
+        //   - pos <= 0 or pos > length(str): returns str unchanged
+        //   - len <= 0: returns str with newstr inserted at pos (no deletion)
+        //   - len > remaining: clips to end
+        "INSERT" => {
+            if args.len() < 4 {
+                return Value::Null;
+            }
+            let s = args[0].to_sql_string();
+            let pos_i: i64 = match &args[1] {
+                Value::Integer(n) => *n,
+                _ => return Value::Null,
+            };
+            let len_i: i64 = match &args[2] {
+                Value::Integer(n) => *n,
+                _ => return Value::Null,
+            };
+            let newstr = args[3].to_sql_string();
+            if pos_i <= 0 || (pos_i as usize) > s.len() {
+                return Value::Text(s);
+            }
+            let pos0 = (pos_i as usize) - 1;
+            if len_i <= 0 {
+                // Pure insert: no deletion
+                let mut out = String::with_capacity(s.len() + newstr.len());
+                out.push_str(&s[..pos0]);
+                out.push_str(&newstr);
+                out.push_str(&s[pos0..]);
+                return Value::Text(out);
+            }
+            let len = (len_i as usize).min(s.len() - pos0);
+            let mut out = String::with_capacity(s.len() + newstr.len());
+            out.push_str(&s[..pos0]);
+            out.push_str(&newstr);
+            out.push_str(&s[pos0 + len..]);
+            Value::Text(out)
+        }
         _ => Value::Null,
     }
 }
