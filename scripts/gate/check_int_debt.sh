@@ -25,20 +25,30 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 cd "$REPO_ROOT"
 
-CROSS_VERSION_DEBT_DOC="$REPO_ROOT/docs/releases/v3.8.0/archived/CROSS-VERSION-DEBT.md"
-# Fallback: docs were reorganized in PR #2933 into archived/ subdir.
-if [ ! -f "$CROSS_VERSION_DEBT_DOC" ]; then
-    CROSS_VERSION_DEBT_DOC="$REPO_ROOT/docs/releases/v3.8.0/CROSS-VERSION-DEBT.md"
-fi
-# Final fallback: PR #2943 added SPEC-008 which lists INT-1~4 status
-if [ ! -f "$CROSS_VERSION_DEBT_DOC" ]; then
-    CROSS_VERSION_DEBT_DOC="$REPO_ROOT/docs/releases/v3.8.0/specs/gate/SPEC-008-cross-version-debt.md"
-fi
-DEBT_PLAN_DOC="$REPO_ROOT/docs/releases/v3.8.0/archived/INT_DEBT_REMEDIATION_PLAN.md"
-# Fallback: docs were reorganized in PR #2933 into archived/ subdir.
-if [ ! -f "$DEBT_PLAN_DOC" ]; then
-    DEBT_PLAN_DOC="$REPO_ROOT/docs/releases/v3.8.0/INT_DEBT_REMEDIATION_PLAN.md"
-fi
+# resolve_doc_path: try candidate paths in priority order, return first existing.
+# Fixes the silent PASS bug found in audit #3100: prior logic only checked
+# `archived/` and root `docs/releases/v3.8.0/`, but after PR #2933 docs reorg
+# the canonical CROSS-VERSION-DEBT.md lives under `debt/`.
+resolve_doc_path() {
+    local rel="$1"
+    shift
+    for d in "$@"; do
+        local candidate="$REPO_ROOT/docs/releases/v3.8.0/${d}${rel}"
+        if [ -f "$candidate" ]; then
+            echo "$candidate"
+            return 0
+        fi
+    done
+    # Return the highest-priority candidate so the error message points to it.
+    echo "$REPO_ROOT/docs/releases/v3.8.0/${1}${rel}"
+    return 1
+}
+
+CROSS_VERSION_DEBT_DOC=$(resolve_doc_path "CROSS-VERSION-DEBT.md" \
+    "debt/" "archived/" "" "specs/gate/SPEC-008-cross-version-debt.md")
+
+DEBT_PLAN_DOC=$(resolve_doc_path "INT_DEBT_REMEDIATION_PLAN.md" \
+    "debt/" "archived/" "")
 
 echo "=== D7: Cross-Version INT Debt Gate (5-Principle P5) ==="
 echo
@@ -56,20 +66,21 @@ DEFERRED_WITHOUT_PLAN=0
 FAILED_ITEMS=()
 
 for int_id in INT-1 INT-2 INT-3 INT-4; do
-    # Find status in CROSS-VERSION-DEBT.md (prefer archived/ after PR #2933 reorganize)
-    CV_DEBT="$REPO_ROOT/docs/releases/v3.8.0/archived/CROSS-VERSION-DEBT.md"
-    if [ ! -f "$CV_DEBT" ]; then
-        CV_DEBT="$REPO_ROOT/docs/releases/v3.8.0/CROSS-VERSION-DEBT.md"
-    fi
-    status_line=$(grep -E "^\| $int_id \|" "$CV_DEBT" | head -1)
+    # Find status in CROSS-VERSION-DEBT.md (post PR #2933 reorg: prefer debt/)
+    CV_DEBT=$(resolve_doc_path "CROSS-VERSION-DEBT.md" \
+        "debt/" "archived/" "" "specs/gate/SPEC-008-cross-version-debt.md")
+    # Match `| INT-N |` or `| **INT-N** |` (bold markers in tables).
+    status_line=$(grep -E "^\|[[:space:]]*\*?\*?$int_id\*?\*?[[:space:]]*\|" "$CV_DEBT" | head -1)
     if [ -z "$status_line" ]; then
             echo "  [$int_id] NOT FOUND in $CV_DEBT"
         FAILED_ITEMS+=("$int_id (not in CV debt doc)")
         continue
     fi
 
-    # Extract status (last field before trailing empty)
-    status=$(echo "$status_line" | awk -F'|' '{for(i=NF;i>=1;i--) if(length($i)>0) {print $i; exit}}' | xargs)
+    # Extract the status column (column 4 in CROSS-VERSION-DEBT.md table:
+    # | ID | Topic | Status | Closing PR | Notes |). Strip emoji markers
+    # (✅/⚠️/❌) and bold so the case branch below matches.
+    status=$(echo "$status_line" | awk -F'|' '{gsub(/^[[:space:]]+|[[:space:]]+$/, "", $4); gsub(/\*\*?/, "", $4); print $4}' | sed -E 's/[✅⚠️❌]//g' | xargs)
     echo -n "  [$int_id] status=$status"
 
     case "$status" in
