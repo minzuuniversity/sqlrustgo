@@ -104,9 +104,7 @@ fn is_mainline_module(name: &str) -> bool {
             | "common"
             | "information-schema"
             | "server"
-            | "sql-cli"
             | "bench"
-            | "bench-cli"
             | "telemetry"
             | "tools"
     )
