@@ -452,3 +452,48 @@ fn test_wal_contract_delete_without_wal_panics() {
     let _ = engine.execute("DELETE FROM t1 WHERE id = 1");
     panic!("DELETE without WAL did not panic — WAL not enforced");
 }
+
+// === Fix for #3072 (D-L3-05-1) — SELECT <expr> without FROM ===
+
+#[test]
+fn test_select_literal_no_from_returns_one_row() {
+    let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+    let mut engine = ExecutionEngine::new(storage);
+    let r = engine.execute("SELECT 1").expect("SELECT 1 should succeed");
+    assert_eq!(r.affected_rows, 1, "SELECT 1 must return 1 row");
+    assert_eq!(r.rows.len(), 1);
+    assert_eq!(r.rows[0], vec![Value::Integer(1)]);
+}
+
+#[test]
+fn test_select_arithmetic_no_from_returns_one_row() {
+    let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+    let mut engine = ExecutionEngine::new(storage);
+    let r = engine
+        .execute("SELECT 1+1")
+        .expect("SELECT 1+1 should succeed");
+    assert_eq!(r.affected_rows, 1);
+    assert_eq!(r.rows, vec![vec![Value::Integer(2)]]);
+}
+
+#[test]
+fn test_select_string_literal_no_from_returns_one_row() {
+    let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+    let mut engine = ExecutionEngine::new(storage);
+    let r = engine
+        .execute("SELECT 'hello'")
+        .expect("SELECT 'hello' should succeed");
+    assert_eq!(r.affected_rows, 1);
+    assert_eq!(r.rows, vec![vec![Value::Text("hello".to_string())]]);
+}
+
+#[test]
+fn test_select_count_star_no_from_returns_one_one_row() {
+    let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+    let mut engine = ExecutionEngine::new(storage);
+    let r = engine
+        .execute("SELECT COUNT(*)")
+        .expect("SELECT COUNT(*) should succeed");
+    assert_eq!(r.affected_rows, 1, "COUNT(*) without FROM must return 1 row");
+    assert_eq!(r.rows, vec![vec![Value::Integer(1)]]);
+}
