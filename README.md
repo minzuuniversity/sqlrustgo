@@ -1,17 +1,24 @@
 # SQLRustGo
 
-> **Last updated**: 2026-05-30
-> **Commit**: [`e0ddabbe`](http://192.168.0.252:3000/openclaw/sqlrustgo/commit/e0ddabbe) @ develop/v3.7.0
+> **Last updated**: 2026-06-04
+> **Current dev branch**: [`c024980c`](http://192.168.0.252:3000/openclaw/sqlrustgo/commit/c024980c) @ develop/v3.8.0
+> **Latest stable**: v3.7.0 (GA, 2026-05-31)
+> **Latest beta**: v3.8.0-beta (Strong Beta, 2026-06-04, 8.0/10)
 
 <p align="center">
   <img src="https://img.shields.io/badge/Rust-1.85+-dea584?style=flat-square&logo=rust" alt="Rust">
-  <img src="https://img.shields.io/badge/version-v3.7.0--GA-green?style=flat-square" alt="Version">
+  <img src="https://img.shields.io/badge/v3.7.0-GA-green?style=flat-square" alt="GA">
+  <img src="https://img.shields.io/badge/v3.8.0-Strong%20Beta-blue?style=flat-square" alt="Beta">
   <img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="License">
-  <img src="https://img.shields.io/badge/TPC--H-22%2F22%20PASS-cyan?style=flat-square" alt="TPC-H">
-  <img src="https://img.shields.io/badge/coverage-87.36%25-brightgreen?style=flat-square" alt="Coverage">
+  <img src="https://img.shields.io/badge/TPC--H-10%2F22-yellow?style=flat-square" alt="TPC-H">
+  <img src="https://img.shields.io/badge/Corpus-86.5%25-yellow?style=flat-square" alt="Corpus">
+  <img src="https://img.shields.io/badge/9--Dim%20Gate-8%2F8%20PASS-brightgreen?style=flat-square" alt="D9">
+  <img src="https://img.shields.io/badge/INT--1%20(P0)-CLOSED-brightgreen?style=flat-square" alt="INT-1">
 </p>
 
 SQLRustGo 是一个纯 Rust 实现的 SQL 执行引擎，支持完整 SQL-92 语法、窗口函数、CTE、CBO 成本优化器、WAL + MVCC 事务、向量存储与图存储，以及 AI Native GMP 工作流。
+
+> **v3.8.0 当前状态 (2026-06-04)**: **Strong Beta** (8.0/10) — INT-1 (P0 Release Blocker) 已修复 (DML 真实走 TransactionManager), GROUP BY/JOIN 核心 100%, Corpus 86.5%, D9 9 维门禁 8/8 ALL PASS. **不追 RC**, 直接进入 **v3.9.0 Verification Release** (TPC-H 22/22 + 系统级压力 + 长稳 + 架构债务收口). 详见 [RELEASE_NOTES.md](docs/releases/v3.8.0/RELEASE_NOTES.md) 与 [V380_COMPREHENSIVE_ASSESSMENT.md](docs/releases/v3.8.0/V380_COMPREHENSIVE_ASSESSMENT.md).
 
 ---
 
@@ -354,6 +361,27 @@ cargo llvm-cov report --open
 
 ## Changelog
 
+### [3.8.0-beta] - 2026-06-04 (Strong Beta, 8.0/10) — **当前开发版本**
+
+- **状态**: **Strong Beta** (8.0/10) — 跳过 RC 周期, 直接进入 v3.9.0
+- **INT-1 (P0 Release Blocker) CLOSED**: DML 真实走 TransactionManager (PR-3019)
+- **核心 SQL 引擎 100%**: Parser 18/18 + Executor 30/30 + GROUP BY 81/81 + JOIN 100%
+- **Corpus 86.5%**: 711/822 cases PASS (Stage 1-3 累计 +270 cases)
+- **6 真实 bug 修复**: COUNT(DISTINCT), SELECT DISTINCT, NULL=NULL, D9 路径, D9 5-Principle, INT-1
+- **9 维门禁**: D9 8/8 ALL PASS (D1-D5 + D6/D7/D8 + Cross-Version + Test Plan + PR Template + Evidence)
+- **11 issues 关闭**: #2966/2967/2968/2969/2970/2971/2972/2937/2938/2942/2807
+
+详见 [RELEASE_NOTES.md](docs/releases/v3.8.0/RELEASE_NOTES.md), [V380_COMPREHENSIVE_ASSESSMENT.md](docs/releases/v3.8.0/V380_COMPREHENSIVE_ASSESSMENT.md), [V380_BETA_RELEASE_REPORT.md](docs/releases/v3.8.0/V380_BETA_RELEASE_REPORT.md)
+
+**不适用**: ❌ 生产 OLTP/财务/订单/银行 (需要 v3.8.0-GA), ❌ 大数据量 (TPC-H 22/22 仍待 v3.9.0)
+**适用**: ✅ 开发/CI/教学/实验/内部工具
+
+### [3.7.0] - 2026-05-31 (GA) — **最新稳定版本**
+
+- **AI Native GMP Platform** — AI Agent Layer + Ollama 本地推理 + GMP Retrieval v3
+- **门禁**：Alpha/Beta/RC/GA 全部 ✅ PASS
+- **覆盖率**：L1 87.36%，TPC-H 22/22 ✅
+
 ### [3.5.0] - 2026-05-28 (GA)
 
 - **AI Native GMP Platform** — AI Agent Layer + Ollama 本地推理 + GMP Retrieval v3
@@ -361,6 +389,39 @@ cargo llvm-cov report --open
 - **覆盖率**：L1 87.36%，TPC-H 22/22 ✅
 
 详见 [CHANGELOG.md](CHANGELOG.md)
+
+---
+
+## v3.9.0 路线图 (Verification Release)
+
+按 ChatGPT 评估, v3.8.0 **不追 RC**, 直接进入 **v3.9.0 Verification Release** (无新 Feature, 只做验证).
+
+### 4 项 KPI (KPI-1 必须 PASS 才讨论 RC)
+
+| KPI | 内容 | 目标 | 工作量 |
+|-----|------|------|--------|
+| **KPI-1** | TPC-H | 10/22 → **22/22** | 60h |
+| **KPI-2** | 架构债务收口 | INT-4 + ARCH-2 + SEM-1 | 50h |
+| **KPI-3** | 压力测试 | 1M/10M SQL 自动执行 | 40h |
+| **KPI-4** | 长稳测试 | 24h/72h/168h CI Nightly | 30h active |
+
+**总计 ~180h ≈ 4.5 周 × 1 人** → v3.9.0 = 第一个有资格讨论 RC 的版本
+
+### v3.8.0-beta 冻结规则 (Feature Freeze)
+
+**允许**:
+- ✅ P0/P1 Bug 修复 (Crash, Data Loss, Deadlock, Corruption)
+- ✅ 文档完善 (DOC 5 步流程)
+
+**禁止**:
+- ❌ SIMD 集成
+- ❌ Vector 集成
+- ❌ 新 SQL 语法
+- ❌ 新索引
+- ❌ 新优化器特性
+- ❌ 任何 Feature 提交
+
+详见 [V380_COMPREHENSIVE_ASSESSMENT.md §18](docs/releases/v3.8.0/V380_COMPREHENSIVE_ASSESSMENT.md)
 
 ---
 
