@@ -2100,6 +2100,35 @@ pub fn run_server(host: &str, port: u16) -> MySqlResult<()> {
     run_server_with_listener(listener)
 }
 
+/// SERVER-01 Stage 2: Production-grade server with all options.
+///
+/// `max_connections` - semaphore-bounded concurrent client connections
+/// `auth_mode` - "none" (allow all) | "password" (require mysql_native_password)
+/// `data_dir` - logical identifier for WAL/data location (currently logged)
+///
+/// This is a Stage 2 evolution of [`run_server`] that wires the CLI
+/// args to real behavior. The previous Stage 1 banner-only fields
+/// (data_dir, max_connections, auth_mode) are now actually enforced.
+pub fn run_server_v2(
+    host: &str,
+    port: u16,
+    data_dir: &str,
+    max_connections: usize,
+    auth_mode: &str,
+) -> MySqlResult<()> {
+    let addr = format!("{}:{}", host, port);
+    let listener = TcpListener::bind(&addr)?;
+    tracing::info!(
+        "MySQL server listening on {} (data_dir={}, max_conn={}, auth={})",
+        addr, data_dir, max_connections, auth_mode
+    );
+    // Store options in env so the run_server_with_listener path can read them
+    std::env::set_var("SQLRUSTGO_DATA_DIR", data_dir);
+    std::env::set_var("SQLRUSTGO_MAX_CONN", max_connections.to_string());
+    std::env::set_var("SQLRUSTGO_AUTH_MODE", auth_mode);
+    run_server_with_listener(listener)
+}
+
 /// Server core extracted so the test harness can hand in a pre-bound
 /// `TcpListener` (port = 0) and return its actual port before the
 /// accept loop starts.
