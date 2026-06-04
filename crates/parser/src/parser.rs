@@ -17,6 +17,30 @@ use crate::lexer::Lexer;
 use crate::token::Token;
 use crate::transaction::{IsolationLevel, TransactionStatement};
 use serde::{Deserialize, Serialize};
+use std::cell::RefCell;
+
+/// Phase 3 (TPCH-01 Q15): registry of subqueries that appear in
+/// `FROM t, (SELECT ...) AS alias` comma-lists. The parser registers
+/// each subquery here during parsing; the executor retrieves and
+/// materializes them before executing the join chain.
+///
+/// Key = synthetic table name (e.g. "__subq_0"), Value = subquery AST.
+thread_local! {
+    static DERIVED_SUBQUERIES: RefCell<std::collections::HashMap<String, Box<SelectStatement>>> =
+        RefCell::new(std::collections::HashMap::new());
+}
+
+/// Phase 3 (TPCH-01 Q15): retrieve all derived subqueries registered
+/// during parsing. Returns a snapshot of the current thread's registry.
+/// The executor calls this to materialize subqueries before executing
+/// the join chain.
+pub fn get_and_clear_derived_subqueries() -> std::collections::HashMap<String, Box<SelectStatement>> {
+    DERIVED_SUBQUERIES.with(|cell| {
+        let mut map = std::collections::HashMap::new();
+        std::mem::swap(&mut *cell.borrow_mut(), &mut map);
+        map
+    })
+}
 
 /// SQL Statement types
 #[derive(Debug, Clone, PartialEq)]
@@ -1610,27 +1634,72 @@ impl Parser {
                                 })),
                             });
                         } else {
-                            aggregates.push(agg);
+                            aggregates.push(agg.clone());
 
-                            let alias = if matches!(self.current(), Some(Token::As)) {
+                            // Phase 3 (TPCH-01 Q8): after a bare aggregate,
+                            // allow a following binary operator so expressions
+                            // like `SUM(...) / SUM(...)` are parsed correctly.
+                            if matches!(
+                                self.current(),
+                                Some(Token::Plus)
+                                    | Some(Token::Minus)
+                                    | Some(Token::Star)
+                                    | Some(Token::Slash)
+                                    | Some(Token::Percent)
+                            ) {
+                                let op = match self.current() {
+                                    Some(Token::Plus) => "+",
+                                    Some(Token::Minus) => "-",
+                                    Some(Token::Star) => "*",
+                                    Some(Token::Slash) => "/",
+                                    Some(Token::Percent) => "%",
+                                    _ => unreachable!(),
+                                };
                                 self.next();
-                                match self.current() {
-                                    Some(Token::Identifier(name)) => {
-                                        let alias_name = name.clone();
-                                        self.next();
-                                        Some(alias_name)
+                                let rhs = self.parse_expression()?;
+                                let bin_expr = Expression::BinaryOp(
+                                    Box::new(Expression::Aggregate(agg)),
+                                    op.to_string(),
+                                    Box::new(rhs),
+                                );
+                                let alias = if matches!(self.current(), Some(Token::As)) {
+                                    self.next();
+                                    match self.current() {
+                                        Some(Token::Identifier(name)) => {
+                                            let a = name.clone();
+                                            self.next();
+                                            Some(a)
+                                        }
+                                        _ => None,
                                     }
-                                    _ => return Err("Expected alias name".to_string()),
-                                }
+                                } else {
+                                    None
+                                };
+                                columns.push(SelectColumn {
+                                    name: format!("__agg_bin_{}", columns.len()),
+                                    alias,
+                                    expression: Some(bin_expr),
+                                });
                             } else {
-                                None
-                            };
-
-                            columns.push(SelectColumn {
-                                name: format!("__agg_{}", aggregates.len()),
-                                alias,
-                                expression: None,
-                            });
+                                let alias = if matches!(self.current(), Some(Token::As)) {
+                                    self.next();
+                                    match self.current() {
+                                        Some(Token::Identifier(name)) => {
+                                            let a = name.clone();
+                                            self.next();
+                                            Some(a)
+                                        }
+                                        _ => None,
+                                    }
+                                } else {
+                                    None
+                                };
+                                columns.push(SelectColumn {
+                                    name: format!("__agg_{}", aggregates.len()),
+                                    alias,
+                                    expression: Some(Expression::Aggregate(agg)),
+                                });
+                            }
                         }
                     } else {
                         // Not followed by LParen - treat as identifier (column name)
@@ -2177,21 +2246,14 @@ impl Parser {
                     // a parenthesized subquery aliased, e.g.
                     // FROM supplier, (SELECT ... FROM lineitem
                     // WHERE l_shipdate >= ...) AS revenue.
-                    // We model the subquery as a synthetic table
-                    // name (__subq_N) and remember the alias in
-                    // a side map for the executor to materialize.
-                    // For now (parser-side only) we just preserve
-                    // the alias and let the executor fall back to a
-                    // proper subquery materialization.
-                    let mut subq_aliases: Vec<String> = Vec::new();
+                    // Subqueries are registered in thread_local::DERIVED_SUBQUERIES
+                    // for executor materialization.
                     while matches!(self.current(), Some(Token::Comma)) {
                         self.next(); // consume comma
                         if matches!(self.current(), Some(Token::LParen)) {
                             // Comma followed by parenthesized subquery.
-                            // Parse the SELECT inside, consume the
-                            // trailing RParen, then expect AS <alias>.
                             self.next(); // consume (
-                            let _subquery = self.parse_select_statement()?;
+                            let subquery = self.parse_select_statement()?;
                             self.expect(Token::RParen)?;
                             if matches!(self.current(), Some(Token::As)) {
                                 self.next();
@@ -2203,12 +2265,12 @@ impl Parser {
                                 }
                             };
                             self.next();
-                            // Use a synthetic table name; the executor
-                            // ignores it because from_subquery holds
-                            // the actual subquery. We push to `tables`
-                            // for position tracking only.
-                            tables.push(format!("__subq_{}", tables.len()));
-                            subq_aliases.push(alias);
+                            let synthetic_name = format!("__subq_{}", tables.len());
+                            tables.push(synthetic_name.clone());
+                            // Phase 3 (TPCH-01 Q15): register subquery in thread-local
+                            DERIVED_SUBQUERIES.with(|cell| {
+                                cell.borrow_mut().insert(synthetic_name.clone(), Box::new(subquery.clone()));
+                            });
                             continue;
                         }
                         let consumed_name = match self.next() {
@@ -3891,6 +3953,12 @@ impl Parser {
             Some(Token::Level) => {
                 self.next();
                 Ok(Expression::Identifier("level".to_string()))
+            }
+            // Phase 3 (TPCH-01 Q17/Q20/Q22): scalar subquery in parentheses,
+            // e.g. `WHERE x = (SELECT ... FROM t WHERE ...)`.
+            Some(Token::Select) => {
+                let subquery = self.parse_select_statement()?;
+                Ok(Expression::Subquery(Box::new(subquery)))
             }
             _ => Err("Expected expression".to_string()),
         }
