@@ -19,8 +19,29 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(dirname "$(dirname "$SCRIPT_DIR")")"
-CROSS_VERSION_DEBT_DOC="$REPO_DIR/docs/releases/v3.8.0/CROSS-VERSION-DEBT.md"
-INT5_INVENTORY_DOC="$REPO_DIR/docs/releases/v3.8.0/INT5_PLUS_DEBT_INVENTORY.md"
+# v3.8.0 PR-2933 reorganized docs into categorized subdirectories.
+# Prefer the canonical reorg location (debt/CROSS-VERSION-DEBT.md) which
+# contains the formatted status tables. Fall back to legacy root or SPEC.
+CROSS_VERSION_DEBT_DOC=""
+for candidate in \
+    "$REPO_DIR/docs/releases/v3.8.0/CROSS-VERSION-DEBT.md" \
+    "$REPO_DIR/docs/releases/v3.8.0/debt/CROSS-VERSION-DEBT.md" \
+    "$REPO_DIR/docs/releases/v3.8.0/archived/CROSS-VERSION-DEBT.md" \
+    "$REPO_DIR/docs/releases/v3.8.0/specs/gate/SPEC-008-cross-version-debt.md" ; do
+    if [ -f "$candidate" ]; then
+        CROSS_VERSION_DEBT_DOC="$candidate"
+        break
+    fi
+done
+INT5_INVENTORY_DOC=""
+for candidate in \
+    "$REPO_DIR/docs/releases/v3.8.0/INT5_PLUS_DEBT_INVENTORY.md" \
+    "$REPO_DIR/docs/releases/v3.8.0/debt/INT5_PLUS_DEBT_INVENTORY.md" ; do
+    if [ -f "$candidate" ]; then
+        INT5_INVENTORY_DOC="$candidate"
+        break
+    fi
+done
 
 STRICT_MODE=false
 if [ "${1:-}" = "--strict" ]; then
@@ -33,11 +54,11 @@ pwd
 
 # Check that required docs exist
 MISSING_DOCS=()
-if [ ! -f "$CROSS_VERSION_DEBT_DOC" ]; then
-    MISSING_DOCS+=("$CROSS_VERSION_DEBT_DOC")
+if [ -z "$CROSS_VERSION_DEBT_DOC" ]; then
+    MISSING_DOCS+=("$REPO_DIR/docs/releases/v3.8.0/CROSS-VERSION-DEBT.md (or archived/ or specs/gate/SPEC-008-cross-version-debt.md)")
 fi
-if [ ! -f "$INT5_INVENTORY_DOC" ]; then
-    MISSING_DOCS+=("$INT5_INVENTORY_DOC")
+if [ -z "$INT5_INVENTORY_DOC" ]; then
+    MISSING_DOCS+=("$REPO_DIR/docs/releases/v3.8.0/INT5_PLUS_DEBT_INVENTORY.md (or debt/)")
 fi
 if [ ${#MISSING_DOCS[@]} -gt 0 ]; then
     echo "❌ FAIL: Required docs missing:"
@@ -46,7 +67,9 @@ if [ ${#MISSING_DOCS[@]} -gt 0 ]; then
     done
     exit 1
 fi
-echo "✅ Both CROSS-VERSION-DEBT.md and INT5_PLUS_DEBT_INVENTORY.md exist"
+echo "✅ Cross-version debt docs resolved:"
+echo "    CROSS-VERSION-DEBT: $(realpath --relative-to="$REPO_DIR" "$CROSS_VERSION_DEBT_DOC" 2>/dev/null || echo "$CROSS_VERSION_DEBT_DOC")"
+echo "    INT5_INVENTORY:      $(realpath --relative-to="$REPO_DIR" "$INT5_INVENTORY_DOC" 2>/dev/null || echo "$INT5_INVENTORY_DOC")"
 
 declare -A DEBT_STATUS
 TOTAL=0
