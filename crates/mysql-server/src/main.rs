@@ -18,7 +18,7 @@
 //! - `restore` — restore database from a backup file
 
 use clap::{Parser, Subcommand};
-use sqlrustgo_mysql_server::{run_server_v2, run_server};
+use sqlrustgo_mysql_server::{run_server, run_server_v2};
 use sqlrustgo_tools::backup_restore::{
     run_backup as tools_backup, run_restore as tools_restore, BackupCommand, RestoreCommand,
 };
@@ -239,7 +239,6 @@ fn exec_one(sql: &str) -> Result<(), String> {
     let mut engine = make_shared_engine();
     exec_with_engine_and_options(&mut engine, sql, true)
 }
-
 
 fn run_repl() -> Result<(), String> {
     println!("SQLRustGo REPL v3.8.0 — type `.help` for commands, `.exit` to quit");
