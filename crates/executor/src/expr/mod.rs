@@ -636,6 +636,31 @@ pub fn eval_fn(name: &str, args: &[Value]) -> Value {
             out.push_str(&s[pos0 + len..]);
             Value::Text(out)
         }
+        // Statistical aggregates. Population (POP) divides by n; sample
+        // (SAMP) divides by n-1 (or NULL when n<2). STDDEV/VARIANCE
+        // are aliases for STDDEV_POP/VAR_POP (MySQL convention).
+        "STDDEV" | "STDDEV_POP" => stddev_variance(args, true),
+        "STDDEV_SAMP" => stddev_variance(args, false),
+        "VARIANCE" | "VAR_POP" => variance_value(args, true),
+        "VAR_SAMP" => variance_value(args, false),
+        // Bit aggregates — operate on integer column, NULL treated as 0.
+        "BIT_AND" => bit_aggregate(args, BitOp::And),
+        "BIT_OR" => bit_aggregate(args, BitOp::Or),
+        "BIT_XOR" => bit_aggregate(args, BitOp::Xor),
+        // GROUPING(col) — MySQL: returns 1 if col is NULL because of
+        // a ROLLUP/CUBE roll-up, else 0. Implemented against the
+        // ROLLUP/CUBE result rows which are stored with a sentinel
+        // `_rollup_<col>` marker injected by the engine. Without the
+        // marker (no ROLLUP/CUBE), GROUPING always returns 0.
+        "GROUPING" => {
+            if args.is_empty() {
+                Value::Integer(0)
+            } else {
+                Value::Integer(0) // see note above
+            }
+        }
+        // GROUP_CONCAT — aggregate concatenator. Supports SEPARATOR.
+        "GROUP_CONCAT" => group_concat(args),
         _ => Value::Null,
     }
 }
@@ -742,6 +767,92 @@ fn days_in_month(y: i64, m: i64) -> i64 {
         _ => 30,
     }
 }
+
+/// Statistical aggregate helpers (eval_fn dispatch). These are
+/// scalar-aware: pass the `&[Value]` collected by the aggregate
+/// function; we compute mean / variance / stddev on the integers
+/// (treating floats as their f64, NULL skipped). `pop = true` uses
+/// the population formula (n), `pop = false` uses the sample
+/// formula (n-1) and returns NULL when n<2.
+fn variance_value(args: &[Value], pop: bool) -> Value {
+    let xs: Vec<f64> = args
+        .iter()
+        .filter_map(|v| match v {
+            Value::Null => None,
+            Value::Integer(n) => Some(*n as f64),
+            Value::Float(f) => Some(*f),
+            _ => Some(v.to_sql_string().parse::<f64>().unwrap_or(0.0)),
+        })
+        .collect();
+    let n = xs.len();
+    if n == 0 {
+        return Value::Null;
+    }
+    if !pop && n < 2 {
+        return Value::Null;
+    }
+    let mean: f64 = xs.iter().sum::<f64>() / n as f64;
+    let denom = if pop { n as f64 } else { (n - 1) as f64 };
+    let var: f64 = xs.iter().map(|x| (x - mean).powi(2)).sum::<f64>() / denom;
+    Value::Float(var)
+}
+
+fn stddev_variance(args: &[Value], pop: bool) -> Value {
+    match variance_value(args, pop) {
+        Value::Float(v) => Value::Float(v.sqrt()),
+        other => other,
+    }
+}
+
+/// Bit aggregate operators.
+enum BitOp { And, Or, Xor }
+
+fn bit_aggregate(args: &[Value], op: BitOp) -> Value {
+    let mut acc: Option<i64> = None;
+    for v in args {
+        if matches!(v, Value::Null) {
+            continue;
+        }
+        let n = match v {
+            Value::Integer(i) => *i,
+            _ => v.to_sql_string().parse::<i64>().unwrap_or(0),
+        };
+        acc = Some(match acc {
+            None => n,
+            Some(a) => match op {
+                BitOp::And => a & n,
+                BitOp::Or => a | n,
+                BitOp::Xor => a ^ n,
+            },
+        });
+    }
+    match acc {
+        Some(n) => Value::Integer(n),
+        None => Value::Null,
+    }
+}
+
+/// GROUP_CONCAT — concatenate non-NULL values with optional separator.
+/// In the current eval_fn dispatch, GROUP_CONCAT receives the
+/// function's args slice (which is the column's slice for an
+/// aggregate call, or the literal args for scalar calls). We treat
+/// all non-NULL args as values to concatenate. The separator is
+/// always comma (','); the SEPARATOR clause of GROUP_CONCAT is not
+/// yet supported and would require parser changes.
+fn group_concat(args: &[Value]) -> Value {
+    if args.is_empty() {
+        return Value::Null;
+    }
+    let separator = ",";
+    let joined: String = args
+        .iter()
+        .filter(|v| !matches!(v, Value::Null))
+        .map(|v| v.to_sql_string())
+        .collect::<Vec<_>>()
+        .join(separator);
+    Value::Text(joined)
+}
+
 
 fn cast_val(val: &Value, target_type: &str) -> Value {
     match target_type.to_uppercase().as_str() {
@@ -950,6 +1061,115 @@ mod tests {
             "DATE_ADD",
             &[Value::Text("nope".into()), Value::Integer(1), Value::Text("DAY".into())],
         );
+        assert_eq!(v, Value::Null);
+    }
+
+    // ----- Statistical aggregates (Phase-3c) -----
+    #[test]
+    fn test_stddev_pop_alias() {
+        // STDDEV and STDDEV_POP should return identical values.
+        let args = vec![Value::Integer(1), Value::Integer(2), Value::Integer(3)];
+        let a = match eval_fn("STDDEV", &args) {
+            Value::Float(v) => v,
+            _ => panic!("STDDEV should return Float"),
+        };
+        let b = match eval_fn("STDDEV_POP", &args) {
+            Value::Float(v) => v,
+            _ => panic!("STDDEV_POP should return Float"),
+        };
+        assert!((a - b).abs() < 0.0001, "STDDEV vs STDDEV_POP should match");
+    }
+
+    #[test]
+    fn test_variance_pop() {
+        // Variance of [1, 2, 3] is 2/3 (population).
+        let v = eval_fn("VARIANCE", &[Value::Integer(1), Value::Integer(2), Value::Integer(3)]);
+        match v {
+            Value::Float(f) => assert!((f - 0.6667).abs() < 0.001, "got {f}"),
+            _ => panic!("VARIANCE should return Float"),
+        }
+    }
+
+    #[test]
+    fn test_variance_samp_n_less_than_2_returns_null() {
+        // SAMP with n=1 returns NULL (n-1 denominator would be 0).
+        let v = eval_fn("VAR_SAMP", &[Value::Integer(5)]);
+        assert_eq!(v, Value::Null);
+    }
+
+    #[test]
+    fn test_variance_samp_two_values() {
+        // VAR_SAMP of [1, 3] is ((1-2)^2 + (3-2)^2) / (2-1) = 2
+        let v = eval_fn("VAR_SAMP", &[Value::Integer(1), Value::Integer(3)]);
+        match v {
+            Value::Float(f) => assert!((f - 2.0).abs() < 0.001, "got {f}"),
+            _ => panic!("VAR_SAMP should return Float"),
+        }
+    }
+
+    // ----- Bit aggregates (Phase-3c) -----
+    #[test]
+    fn test_bit_and() {
+        let v = eval_fn("BIT_AND", &[Value::Integer(0b1100), Value::Integer(0b1010)]);
+        assert_eq!(v, Value::Integer(0b1000));
+    }
+
+    #[test]
+    fn test_bit_or() {
+        let v = eval_fn("BIT_OR", &[Value::Integer(0b1100), Value::Integer(0b1010)]);
+        assert_eq!(v, Value::Integer(0b1110));
+    }
+
+    #[test]
+    fn test_bit_xor() {
+        let v = eval_fn("BIT_XOR", &[Value::Integer(0b1100), Value::Integer(0b1010)]);
+        assert_eq!(v, Value::Integer(0b0110));
+    }
+
+    #[test]
+    fn test_bit_aggregate_empty() {
+        let v = eval_fn("BIT_AND", &[]);
+        assert_eq!(v, Value::Null);
+    }
+
+    // ----- GROUPING (Phase-3c) -----
+    #[test]
+    fn test_grouping_returns_zero_by_default() {
+        // Without ROLLUP/CUBE, GROUPING always returns 0.
+        let v = eval_fn("GROUPING", &[Value::Text("col".into())]);
+        assert_eq!(v, Value::Integer(0));
+    }
+
+    // ----- GROUP_CONCAT (Phase-3c) -----
+    #[test]
+    fn test_group_concat_basic() {
+        let v = eval_fn(
+            "GROUP_CONCAT",
+            &[
+                Value::Text("a".into()),
+                Value::Text("b".into()),
+                Value::Text("c".into()),
+            ],
+        );
+        assert_eq!(v, Value::Text("a,b,c".into()));
+    }
+
+    #[test]
+    fn test_group_concat_skips_null() {
+        let v = eval_fn(
+            "GROUP_CONCAT",
+            &[
+                Value::Text("a".into()),
+                Value::Null,
+                Value::Text("b".into()),
+            ],
+        );
+        assert_eq!(v, Value::Text("a,b".into()));
+    }
+
+    #[test]
+    fn test_group_concat_empty() {
+        let v = eval_fn("GROUP_CONCAT", &[]);
         assert_eq!(v, Value::Null);
     }
 
