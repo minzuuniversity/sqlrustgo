@@ -27,15 +27,15 @@ pub fn format_decision(d: &GateDecision) -> String {
     out.push(format!("RISK:     {:.2}", d.risk_score));
     out.push(format!("STABLE:   {:.2}", d.stability_score));
     out.push(format!("DRIFT:    {:.2}", d.drift_score));
-    out.push(format!(""));
+    out.push(String::new());
     out.push(format!("decision: {}", d.mode));
     if !d.reasons.is_empty() {
-        out.push(format!("reasons:"));
+        out.push("reasons:".to_string());
         for r in &d.reasons {
             out.push(format!("  - {}", r));
         }
     }
-    out.push(format!(""));
+    out.push(String::new());
     if let Some(warning) = &d.warning {
         out.push(format!("WARNING: {}", warning));
     }
