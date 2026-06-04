@@ -319,9 +319,9 @@ run_d3_sgl() {
         done
 
     # Parse SGL results
-    SGL_PASS=$(echo "$SGL_OUTPUT" | grep -oP "^  PASS\s*:\s*\K\d+" | head -1 || echo "0")
-    SGL_FAIL=$(echo "$SGL_OUTPUT" | grep -oP "^  FAIL\s*:\s*\K\d+" | head -1 || echo "0")
-    SGL_DRIFT=$(echo "$SGL_OUTPUT" | grep -oP "^  DRIFT\s*:\s*\K\d+" | head -1 || echo "0")
+    SGL_PASS=$(echo "$SGL_OUTPUT" | grep -oE "^  PASS\s*:\s*[0-9]+" | grep -oE "[0-9]+" | head -1 || echo "0")
+    SGL_FAIL=$(echo "$SGL_OUTPUT" | grep -oE "^  FAIL\s*:\s*[0-9]+" | grep -oE "[0-9]+" | head -1 || echo "0")
+    SGL_DRIFT=$(echo "$SGL_OUTPUT" | grep -oE "^  DRIFT\s*:\s*[0-9]+" | grep -oE "[0-9]+" | head -1 || echo "0")
 
     D3_TOTAL=5
     D3_PASS=$((SGL_PASS))
@@ -348,8 +348,8 @@ run_d4_wal() {
                 echo -e "    $line"
             done
 
-        WAL_PASSED=$(echo "$WAL_INV_OUTPUT" | grep -oP "Passed:\s*\K\d+" | head -1 || echo "0")
-        WAL_FAILED=$(echo "$WAL_INV_OUTPUT" | grep -oP "Failed:\s*\K\d+" | head -1 || echo "0")
+        WAL_PASSED=$(echo "$WAL_INV_OUTPUT" | grep -oE "Passed:\s*[0-9]+" | grep -oE "[0-9]+" | head -1 || echo "0")
+        WAL_FAILED=$(echo "$WAL_INV_OUTPUT" | grep -oE "Failed:\s*[0-9]+" | grep -oE "[0-9]+" | head -1 || echo "0")
 
         D4_TOTAL=5
         D4_PASS=$((WAL_PASSED))
