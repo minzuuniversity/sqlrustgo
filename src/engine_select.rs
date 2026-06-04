@@ -6,10 +6,21 @@ use crate::engine_utils::*;
 use crate::expr_utils::*;
 use crate::{ExecutionEngine, ExecutorResult, SqlError, SqlResult, Value};
 use sqlrustgo_parser::{
-    AggregateCall, AggregateFunction, Expression, JoinClause as ParserJoinClause, JoinType,
-    SelectStatement,
+    get_and_clear_derived_subqueries, AggregateCall, AggregateFunction, Expression,
+    JoinClause as ParserJoinClause, JoinType, SelectStatement,
 };
 use sqlrustgo_storage::{StorageEngine, TableInfo};
+use std::cell::RefCell;
+use std::collections::HashMap;
+
+/// Phase 3 (TPCH-01 Q15): thread-local registry of materialized
+/// derived subquery results. Populated by `execute_joins` before the
+/// join chain runs; consumed by `execute_single_join` when it encounters
+/// a `__subq_N` synthetic table name.
+thread_local! {
+    static DERIVED_RESULTS: RefCell<HashMap<String, (Vec<Vec<Value>>, TableInfo)>> =
+        RefCell::new(HashMap::new());
+}
 
 impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     pub(crate) fn execute_select(&self, select: &SelectStatement) -> SqlResult<ExecutorResult> {
@@ -23,7 +34,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 // Drop the read lock (if held) and execute subquery; subquery
                 // itself takes a read lock internally. Since the outer has not
                 // yet acquired a lock, this is a fresh acquisition.
-                let sub_result = self.execute_select(subq)?;
+                let sub_result = self.execute_select(&*subq)?;
                 // Build a synthetic TableInfo from the subquery's column list.
                 let mut table_info = TableInfo {
                     name: select.table.clone(),
@@ -506,6 +517,56 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             raw_info
         };
 
+        // Phase 3 (TPCH-01 Q15): materialize any derived subqueries from
+        // `FROM t, (SELECT ...) AS alias` before the join chain runs.
+        let derived_subqueries = get_and_clear_derived_subqueries();
+        if !derived_subqueries.is_empty() {
+            for (name, subq) in &derived_subqueries {
+                let sub_result = self.execute_select(&*subq)?;
+                let mut table_info = TableInfo {
+                    name: name.clone(),
+                    columns: Vec::new(),
+                    foreign_keys: Vec::new(),
+                    unique_constraints: Vec::new(),
+                    check_constraints: Vec::new(),
+                    partition_info: None,
+                };
+                for col in &subq.columns {
+                    let col_name = col.alias.clone().unwrap_or_else(|| col.name.clone());
+                    let inferred_type_str: String = sub_result
+                        .rows
+                        .iter()
+                        .find(|r| r.iter().any(|v| !matches!(v, Value::Null)))
+                        .and_then(|first_row| {
+                            let col_idx = subq
+                                .columns
+                                .iter()
+                                .position(|c| c.alias.as_ref().unwrap_or(&c.name) == &col_name)?;
+                            first_row.get(col_idx).map(|v| match v {
+                                Value::Integer(_) => "INTEGER",
+                                Value::Float(_) => "FLOAT",
+                                Value::Text(_) => "TEXT",
+                                Value::Boolean(_) => "BOOLEAN",
+                                Value::Blob(_) => "BLOB",
+                                Value::Null => "NULL",
+                            })
+                        })
+                        .unwrap_or("TEXT")
+                        .to_string();
+                    table_info.columns.push(sqlrustgo_storage::ColumnDefinition {
+                        name: col_name,
+                        data_type: inferred_type_str,
+                        nullable: true,
+                        primary_key: false,
+                    });
+                }
+                DERIVED_RESULTS.with(|cell| {
+                    cell.borrow_mut()
+                        .insert(name.clone(), (sub_result.rows, table_info));
+                });
+            }
+        }
+
         for join_clause in &select.join_clause {
             let (new_rows, new_info) =
                 self.execute_single_join(&rows, &table_info, join_clause, &storage)?;
@@ -531,11 +592,15 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         let right_table_name = join_clause.table.clone();
         let right_alias = join_clause.alias.as_ref().unwrap_or(&right_table_name);
 
-        // Scan the right table fresh each call (left side is already materialized).
-        // Wrap right_table_info with the right alias prefix so ON conditions
-        // like `n2.n_nationkey` can route to it.
-        let right_raw_rows = storage.scan(&right_table_name)?;
-        let right_raw_info = storage.get_table_info(&right_table_name)?;
+        // Phase 3 (TPCH-01 Q15): if the right table is a synthetic __subq_N
+        // from a derived subquery, use the materialized rows from the registry
+        // instead of scanning storage (which has no entry for synthetic names).
+        let (right_raw_rows, right_raw_info) =
+            if let Some((rows, info)) = DERIVED_RESULTS.with(|cell| cell.borrow().get(&right_table_name).cloned()) {
+                (rows, info)
+            } else {
+                (storage.scan(&right_table_name)?, storage.get_table_info(&right_table_name)?)
+            };
         let right_rows = right_raw_rows;
         let mut right_table_info = right_raw_info.clone();
         if join_clause.alias.is_some() {
@@ -702,6 +767,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         right_info: &TableInfo,
         right_name: &str,
     ) -> SqlResult<JoinKey> {
+        eprintln!("DBG find_join_key_index: left={} right={} expr={:?}", left_name, right_name, expr);
         match expr {
             Expression::Identifier(name) => {
                 if let Some((qualifier, col_name)) = name.split_once('.') {
