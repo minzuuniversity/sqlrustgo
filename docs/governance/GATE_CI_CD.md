@@ -151,3 +151,16 @@ When all gates pass:
 
 *Document verified by: openclaw*
 *Date: 2026-05-02*
+
+---
+
+## 附录 A：v3.8.0 起生效的 A2 步骤更新
+
+`scripts/gate/check_alpha_v380.sh` 的 A2 步骤在 v3.8.0 引入 `A2_EPHEMERAL_SMOKE` 子检查，强制走线协议：
+
+```
+A2_TEST          cargo test --lib (核心 6 crates)
+A2_EPHEMERAL_SMOKE  cargo test --test embedded_harness_smoke --test embedded_harness_isolation
+```
+
+任何 e2e / 集成测试若声明"通过 A2"，必须同时通过 `A2_EPHEMERAL_SMOKE`（即通过 `sqlrustgo-mysql-server` 的 wire protocol 路径）。详细规范见 [SPEC-v3.8.0-001](../releases/v3.8.0/SPEC-v3.8.0-001-mysql-server-canonical-entry.md) §5。
