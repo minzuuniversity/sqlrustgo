@@ -1321,7 +1321,16 @@ impl<'a> LocalExecutor<'a> {
 
                 // WAL-aware delete via unified facade (fail fast if no WAL)
                 let deleted = match self.unified_facade {
-                    Some(ref facade) => facade.execute_dml(|storage| storage.delete(table_name, &[]))?,
+                    Some(ref facade) => {
+                        let tx_id_before = facade.current_tx_id();
+                        let r = facade.execute_dml(|storage| storage.delete(table_name, &[]))?;
+                        if !self.is_in_explicit_tx() {
+                            let _ = facade.commit();
+                        } else if let Some(id) = tx_id_before {
+                            facade.set_tx_id(id);
+                        }
+                        r
+                    },
                     None => return Err(SqlError::ExecutionError(
                         "DELETE without WAL facade — remove direct storage access".to_string()
                     )),
@@ -1449,13 +1458,90 @@ impl<'a> ExecutionEngine for LocalExecutor<'a> {
 }
 
 impl<'a> LocalExecutor<'a> {
-    /// Execute DML (INSERT/UPDATE/DELETE) through proper transaction boundary
+    /// INT-4: detect SQL-level explicit transaction control (BEGIN/COMMIT/ROLLBACK).
+    /// Returns Some(result) if the SQL is a TX control statement, None otherwise.
+    fn execute_tx_control(&mut self, sql_upper: &str) -> Result<Option<crate::execution::ExecutionResult>, sqlrustgo_types::SqlError> {
+        let trimmed = sql_upper.trim();
+        let begin_kw = trimmed == "BEGIN" || trimmed.starts_with("BEGIN ") || trimmed.starts_with("BEGIN\t")
+            || trimmed == "START TRANSACTION"
+            || (trimmed.starts_with("START TRANSACTION ") || trimmed.starts_with("START TRANSACTION\t"));
+        let commit_kw = trimmed == "COMMIT" || trimmed.starts_with("COMMIT ") || trimmed.starts_with("COMMIT\t")
+            || trimmed == "END";
+        let rollback_kw = trimmed == "ROLLBACK" || trimmed.starts_with("ROLLBACK ") || trimmed.starts_with("ROLLBACK\t")
+            || trimmed == "ABORT";
+
+        if begin_kw {
+            let facade = self.unified_facade.as_ref().ok_or_else(|| {
+                sqlrustgo_types::SqlError::ExecutionError("BEGIN without WAL facade".into())
+            })?;
+            if facade.is_in_transaction() {
+                return Err(sqlrustgo_types::SqlError::ExecutionError(
+                    "BEGIN inside active transaction — COMMIT or ROLLBACK first".into(),
+                ));
+            }
+            let tx_id = facade.begin()?;
+            facade.set_tx_id(tx_id);
+            return Ok(Some(crate::execution::ExecutionResult::ok(0)));
+        }
+        if commit_kw {
+            let facade = self.unified_facade.as_ref().ok_or_else(|| {
+                sqlrustgo_types::SqlError::ExecutionError("COMMIT without WAL facade".into())
+            })?;
+            if !facade.is_in_transaction() {
+                return Err(sqlrustgo_types::SqlError::ExecutionError(
+                    "COMMIT without BEGIN".into(),
+                ));
+            }
+            facade.commit()?;
+            return Ok(Some(crate::execution::ExecutionResult::ok(0)));
+        }
+        if rollback_kw {
+            let facade = self.unified_facade.as_ref().ok_or_else(|| {
+                sqlrustgo_types::SqlError::ExecutionError("ROLLBACK without WAL facade".into())
+            })?;
+            if !facade.is_in_transaction() {
+                return Err(sqlrustgo_types::SqlError::ExecutionError(
+                    "ROLLBACK without BEGIN".into(),
+                ));
+            }
+            facade.rollback()?;
+            return Ok(Some(crate::execution::ExecutionResult::ok(0)));
+        }
+        Ok(None)
+    }
+
+    /// INT-4: true when an explicit BEGIN has been issued and neither COMMIT nor
+    /// ROLLBACK has closed the transaction. DML inside an explicit TX must
+    /// reuse the open tx_id and must not autocommit.
+    fn is_in_explicit_tx(&self) -> bool {
+        self.unified_facade
+            .as_ref()
+            .map(|f| f.is_in_transaction())
+            .unwrap_or(false)
+    }
+
+    /// Execute DML (INSERT/UPDATE/DELETE) through proper transaction 边界
     fn execute_dml(&mut self, ctx: &mut crate::execution::QueryContext) -> Result<crate::execution::ExecutionResult, sqlrustgo_types::SqlError> {
         let sql_upper = ctx.sql.to_uppercase();
+
+        if let Some(rx) = self.execute_tx_control(&sql_upper)? {
+            return Ok(rx);
+        }
 
         if sql_upper.starts_with("DELETE") {
             return self.execute_delete_sql(ctx);
         }
+
+        if sql_upper.starts_with("INSERT") {
+            return self.execute_insert_sql(ctx);
+        }
+
+        if sql_upper.starts_with("UPDATE") {
+            return self.execute_update_sql(ctx);
+        }
+
+        Err(sqlrustgo_types::SqlError::ExecutionError("Unsupported DML".to_string()))
+    }
 
         if sql_upper.starts_with("INSERT") {
             return self.execute_insert_sql(ctx);
@@ -1477,7 +1563,7 @@ impl<'a> LocalExecutor<'a> {
     }
 
     /// Execute INSERT via SQL text through unified facade
-    fn execute_insert_sql(&self, ctx: &crate::execution::QueryContext) -> Result<crate::execution::ExecutionResult, sqlrustgo_types::SqlError> {
+    fn execute_insert_sql(&self, ctx: &mut crate::execution::QueryContext) -> Result<crate::execution::ExecutionResult, sqlrustgo_types::SqlError> {
         use sqlrustgo_parser::parse;
         use sqlrustgo_parser::Statement;
 
@@ -1497,10 +1583,23 @@ impl<'a> LocalExecutor<'a> {
                 .collect();
             let records = records.map_err(|e| sqlrustgo_types::SqlError::ExecutionError(format!("{:?}", e)))?;
 
+            // INT-4: in explicit TX (BEGIN) reuse open tx_id; outside, autocommit.
+            let in_explicit = self.is_in_explicit_tx();
             let affected = match self.unified_facade {
-                Some(ref facade) => facade.execute_dml(|storage| {
-                    storage.insert(&table, records.clone())
-                })?,
+                Some(ref facade) => {
+                    let tx_id_before = facade.current_tx_id();
+                    let r = facade.execute_dml(|storage| {
+                        storage.insert(&table, records.clone())
+                    })?;
+                    if !in_explicit {
+                        let _ = facade.commit();
+                    } else if let Some(_id) = tx_id_before {
+                        // Re-affirm tx_id on the facade so subsequent DML
+                        // statements share the same open transaction.
+                        facade.set_tx_id(_id);
+                    }
+                    r
+                }
                 None => {
                     return Err(sqlrustgo_types::SqlError::ExecutionError(
                         "INSERT without WAL facade — remove direct storage access".to_string(),
@@ -1548,9 +1647,18 @@ impl<'a> LocalExecutor<'a> {
                 .unwrap_or_else(|| Box::new(|_| true));
 
             let affected = match self.unified_facade {
-                Some(ref facade) => facade.execute_dml(|storage| {
-                    storage.update_if(&table, &predicate, &row_mutation)
-                })?,
+                Some(ref facade) => {
+                    let tx_id_before = facade.current_tx_id();
+                    let r = facade.execute_dml(|storage| {
+                        storage.update_if(&table, &predicate, &row_mutation)
+                    })?;
+                    if !self.is_in_explicit_tx() {
+                        let _ = facade.commit();
+                    } else if let Some(id) = tx_id_before {
+                        facade.set_tx_id(id);
+                    }
+                    r
+                }
                 None => {
                     return Err(sqlrustgo_types::SqlError::ExecutionError(
                         "UPDATE without WAL facade — remove direct storage access".to_string(),
