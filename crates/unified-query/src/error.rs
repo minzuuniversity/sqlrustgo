@@ -20,6 +20,16 @@ pub enum QueryResult<T> {
     Err(String),
 }
 
+impl<T: std::fmt::Debug> std::fmt::Debug for QueryResult<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            QueryResult::Ok(t) => f.debug_tuple("Ok").field(t).finish(),
+            QueryResult::Partial(warnings) => f.debug_tuple("Partial").field(warnings).finish(),
+            QueryResult::Err(msg) => f.debug_tuple("Err").field(msg).finish(),
+        }
+    }
+}
+
 impl<T> QueryResult<T> {
     pub fn is_ok(&self) -> bool {
         matches!(self, QueryResult::Ok(_))
