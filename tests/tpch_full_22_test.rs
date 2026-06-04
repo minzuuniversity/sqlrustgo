@@ -282,4 +282,20 @@ fn test_tpch_full_22_queries() {
     } else {
         eprintln!("✅ TPC-H Full 22 PASSED ({} queries)", passed);
     }
+
+    // RC1 gate baseline: 13/22 passing pre-RC1 (audit 2026-06-04).
+    // Real target is 22/22; tracked as #2977. The baseline assertion
+    // here catches regressions: any drop below 13 is a hard fail.
+    // For CI gating in pre-RC, set TPCH_RC1_STRICT=1 to require 22/22.
+    let min_required = if env::var("TPCH_RC1_STRICT").as_deref() == Ok("1") {
+        22
+    } else {
+        13
+    };
+    assert!(
+        passed >= min_required,
+        "TPC-H RC1 gate: {passed}/22 passed (need >= {min_required}); \
+         {failed} failed. Set TPCH_RC1_STRICT=1 to require 22/22. \
+         Tracked as #2977."
+    );
 }
