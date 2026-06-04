@@ -72,15 +72,21 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
 
         let storage = self.storage.read().unwrap();
 
-        if select.table.is_empty() {
-            return Ok(ExecutorResult::new(vec![], 0));
-        }
-
         // Step 1: FROM/JOIN - get initial rows and schema
         let (mut rows, table_info) = if !select.join_clause.is_empty() {
             self.execute_joins(select)?
         } else if let Some((rows, info)) = materialized {
             (rows, info)
+        } else if select.table.is_empty() {
+            let empty_schema = TableInfo {
+                name: String::new(),
+                columns: Vec::new(),
+                foreign_keys: Vec::new(),
+                unique_constraints: Vec::new(),
+                check_constraints: Vec::new(),
+                partition_info: None,
+            };
+            (vec![Vec::new()], empty_schema)
         } else {
             let rows = storage.scan(&select.table)?;
             let table_info = storage.get_table_info(&select.table)?;
