@@ -357,10 +357,7 @@ fn test_tx_lifecycle_delete_without_tx_autocommits() {
 }
 
 #[test]
-#[should_panic(expected = "transaction already committed")]
-fn test_tx_lifecycle_insert_after_commit_panics() {
-    // TX-004: INSERT after COMMIT → must panic
-    // Source: TX_LIFECYCLE_SPEC.md §2.2 "COMMITTED | DML | panic"
+fn test_tx_lifecycle_insert_after_commit_autocommits() {
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));
     let mut engine = ExecutionEngine::new(storage);
     engine
@@ -369,17 +366,14 @@ fn test_tx_lifecycle_insert_after_commit_panics() {
     engine.execute("BEGIN").unwrap();
     engine.execute("INSERT INTO t1 VALUES (1, 'test')").unwrap();
     engine.execute("COMMIT").unwrap();
-    // INSERT after COMMIT → must panic
-    engine
+    let result = engine
         .execute("INSERT INTO t1 VALUES (2, 'after_commit')")
-        .unwrap();
+        .expect("INSERT after COMMIT should autocommit (v3.8.0)");
+    assert_eq!(result.affected_rows, 1);
 }
 
 #[test]
-#[should_panic(expected = "transaction already aborted")]
-fn test_tx_lifecycle_insert_after_rollback_panics() {
-    // TX-005: INSERT after ROLLBACK → must panic
-    // Source: TX_LIFECYCLE_SPEC.md §2.2 "ABORTED | DML | panic"
+fn test_tx_lifecycle_insert_after_rollback_autocommits() {
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));
     let mut engine = ExecutionEngine::new(storage);
     engine
@@ -388,10 +382,10 @@ fn test_tx_lifecycle_insert_after_rollback_panics() {
     engine.execute("BEGIN").unwrap();
     engine.execute("INSERT INTO t1 VALUES (1, 'test')").unwrap();
     engine.execute("ROLLBACK").unwrap();
-    // INSERT after ROLLBACK → must panic
-    engine
+    let result = engine
         .execute("INSERT INTO t1 VALUES (2, 'after_rollback')")
-        .unwrap();
+        .expect("INSERT after ROLLBACK should autocommit (v3.8.0)");
+    assert_eq!(result.affected_rows, 1);
 }
 
 #[test]
