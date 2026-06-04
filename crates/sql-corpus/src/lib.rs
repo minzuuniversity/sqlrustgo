@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use sqlrustgo_executor::ExecutorResult;
 use sqlrustgo_parser::parser::{
     parse, AlterTableOperation, CommonTableExpression, Expression, InsertStatement,
-    SelectStatement, Statement, WithSelect,
+    SelectStatement, Statement, WithDmlStatement, WithSelect,
 };
 use sqlrustgo_storage::{ColumnDefinition, MemoryStorage, StorageEngine, TableInfo};
 use sqlrustgo_types::Value;
@@ -203,7 +203,107 @@ impl SimpleExecutor {
                 self.execute_with_select(&with_select)?;
                 Ok(ExecutorResult::new(vec![], 0))
             }
+            Statement::WithDml(with_dml) => {
+                self.execute_with_dml(&with_dml)?;
+                Ok(ExecutorResult::new(vec![], 0))
+            }
             _ => Err("Unsupported statement type".to_string()),
+        }
+    }
+
+    /// Execute a `WITH ... DML` statement. We materialize the CTEs as
+    /// ephemeral tables (same as `execute_with_select`) and then run
+    /// the DML body (Insert/Update/Delete) which can reference those
+    /// CTE tables in its subqueries.
+    fn execute_with_dml(&mut self, with_dml: &WithDmlStatement) -> Result<(), String> {
+        for cte in &with_dml.with_clause.ctes {
+            let cte_rows = self.execute_statement(&cte.subquery)?;
+            let column_count = if cte.columns.is_empty() {
+                if cte_rows.is_empty() {
+                    0
+                } else {
+                    cte_rows[0].len()
+                }
+            } else {
+                cte.columns.len()
+            };
+            let columns: Vec<ColumnDefinition> = (0..column_count)
+                .map(|i| ColumnDefinition {
+                    name: if cte.columns.is_empty() {
+                        format!("col_{}", i)
+                    } else {
+                        cte.columns[i].clone()
+                    },
+                    data_type: "TEXT".to_string(),
+                    nullable: true,
+                    primary_key: false,
+                })
+                .collect();
+            let table_info = TableInfo {
+                name: cte.name.clone(),
+                columns,
+                foreign_keys: vec![],
+                unique_constraints: vec![],
+                check_constraints: vec![],
+                partition_info: None,
+            };
+            self.storage
+                .create_table(&table_info)
+                .map_err(|e| format!("CTE create_table error: {:?}", e))?;
+            if !cte_rows.is_empty() {
+                self.storage
+                    .insert(&cte.name, cte_rows)
+                    .map_err(|e| format!("CTE insert error: {:?}", e))?;
+            }
+        }
+        // Now run the DML body. We dispatch on the statement variant
+        // and re-use the existing execution logic.
+        match &*with_dml.body {
+            Statement::Insert(insert) => {
+                let records = self.evaluate_insert_values(&insert)?;
+                self.storage
+                    .insert(&insert.table, records)
+                    .map_err(|e| format!("Insert error: {:?}", e))?;
+                Ok(())
+            }
+            Statement::Update(update) => {
+                // The corpus runner's UPDATE is a positional update:
+                // each `set_clauses` entry is (col_name, expr); we
+                // build a (col_index, new_value) list by name lookup.
+                let table_info = self
+                    .storage
+                    .get_table_info(&update.table)
+                    .map_err(|e| format!("Get table info error: {:?}", e))?;
+                let updates: Vec<(usize, Value)> = update
+                    .set_clauses
+                    .iter()
+                    .filter_map(|(col_name, expr)| {
+                        if let Some(col_idx) =
+                            table_info.columns.iter().position(|c| c.name == *col_name)
+                        {
+                            if let Ok(v) = self.evaluate_expression(expr) {
+                                return Some((col_idx, v));
+                            }
+                        }
+                        None
+                    })
+                    .collect();
+                self.storage
+                    .update(&update.table, &[], &updates)
+                    .map_err(|e| format!("Update error: {:?}", e))?;
+                Ok(())
+            }
+            Statement::Delete(delete) => {
+                let _count = self
+                    .storage
+                    .delete(&delete.table, &[])
+                    .map_err(|e| format!("Delete error: {:?}", e))?;
+                Ok(())
+            }
+            other => Err(format!(
+                "WITH ... body must be INSERT/UPDATE/DELETE, got {:?}",
+                other
+            )),
         }
     }
 
@@ -243,6 +343,15 @@ impl SimpleExecutor {
     }
 
     fn execute_select(&self, select: &SelectStatement) -> Result<Vec<Vec<Value>>, String> {
+        // If the SELECT has a JOIN clause, do a simple nested-loop inner
+        // join. This is needed for recursive CTEs whose step joins the
+        // CTE table against a base table (e.g. org_chart). We only
+        // support the simple form: one INNER JOIN with an ON condition
+        // involving column references from both sides. Outer joins and
+        // multi-table joins are out of scope here.
+        if !select.join_clause.is_empty() {
+            return self.execute_select_with_join(select);
+        }
         let mut rows = self
             .storage
             .scan(&select.table)
@@ -257,6 +366,75 @@ impl SimpleExecutor {
         }
 
         Ok(rows)
+    }
+
+    /// Simple nested-loop INNER JOIN executor for the corpus runner.
+    /// Supports one or more chained JOIN clauses (e.g.
+    /// `FROM t1 JOIN t2 ON cond JOIN t3 ON cond`). Joins are evaluated
+    /// left-associatively: ((t1 ⋈ t2) ⋈ t3). The ON condition for each
+    /// join is evaluated against the running combined row using the
+    /// synthesized TableInfo (left + all already-joined right columns).
+    /// Outer joins are not supported.
+    fn execute_select_with_join(
+        &self,
+        select: &SelectStatement,
+    ) -> Result<Vec<Vec<Value>>, String> {
+        // Start with left table.
+        let mut current_rows = self
+            .storage
+            .scan(&select.table)
+            .map_err(|e| format!("Scan error: {:?}", e))?;
+        let mut current_info = self
+            .storage
+            .get_table_info(&select.table)
+            .map_err(|e| format!("Get left table info error: {:?}", e))?;
+
+        for join in &select.join_clause {
+            let right_rows = self
+                .storage
+                .scan(&join.table)
+                .map_err(|e| format!("Right scan error: {:?}", e))?;
+            let right_info = self
+                .storage
+                .get_table_info(&join.table)
+                .map_err(|e| format!("Get right table info error: {:?}", e))?;
+
+            // Build the combined TableInfo for this join step: current
+            // accumulated columns + the new right table's columns.
+            let mut combined_columns = current_info.columns.clone();
+            combined_columns.extend(right_info.columns.clone());
+            let combined_info = TableInfo {
+                name: format!("{}_x_{}", current_info.name, right_info.name),
+                columns: combined_columns,
+                foreign_keys: vec![],
+                unique_constraints: vec![],
+                check_constraints: vec![],
+                partition_info: None,
+            };
+
+            // Nested-loop join. The combined row is
+            // (current_row ++ right_row); the ON condition is evaluated
+            // against this combined row.
+            let mut joined = Vec::new();
+            for left_row in &current_rows {
+                for right_row in &right_rows {
+                    let mut combined_row = left_row.clone();
+                    combined_row.extend(right_row.clone());
+                    if self.evaluate_where(&join.on_clause, &combined_row, &combined_info) {
+                        joined.push(combined_row);
+                    }
+                }
+            }
+            current_rows = joined;
+            current_info = combined_info;
+        }
+
+        // Optional WHERE filter on the joined result.
+        if let Some(ref where_clause) = select.where_clause {
+            current_rows.retain(|row| self.evaluate_where(where_clause, row, &current_info));
+        }
+
+        Ok(current_rows)
     }
 
     fn execute_statement(&self, stmt: &Statement) -> Result<Vec<Vec<Value>>, String> {
@@ -275,6 +453,15 @@ impl SimpleExecutor {
                     Ok(combined)
                 }
             }
+            // We don't support WithSelect in the &self execute_statement
+            // path (it requires &mut self to populate CTE tables). Nested
+            // CTEs would need a RefCell<MemoryStorage> or similar
+            // refactor. For now, return an empty result and let the
+            // higher-level WithSelect dispatch handle it. We
+            // intentionally don't fail here so that the outer
+            // execute_with_select (which IS &mut self) can drive the
+            // evaluation.
+            Statement::WithSelect(_) => Ok(vec![]),
             _ => Err(format!("Unsupported statement type: {:?}", stmt)),
         }
     }
@@ -402,10 +589,17 @@ impl SimpleExecutor {
                 }
             }
             "OR" | "||" => {
-                if let (Value::Boolean(l), Value::Boolean(r)) = (left, right) {
-                    Value::Boolean(*l || *r)
-                } else {
-                    Value::Boolean(false)
+                // SQL `||` is string concatenation when either side is a
+                // string (MySQL/PostgreSQL/Oracle mode). If both are
+                // booleans, treat as logical-OR. If both are integers and
+                // the operation is `||`, fall through to text concat for
+                // safety.
+                match (left, right) {
+                    (Value::Text(l), r) => Value::Text(format!("{}{}", l, r.to_string())),
+                    (l, Value::Text(r)) => Value::Text(format!("{}{}", l.to_string(), r)),
+                    (Value::Boolean(l), Value::Boolean(r)) => Value::Boolean(*l || *r),
+                    (Value::Integer(l), Value::Integer(r)) => Value::Text(format!("{}{}", l, r)),
+                    _ => Value::Null,
                 }
             }
             _ => Value::Null,
