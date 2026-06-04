@@ -495,6 +495,26 @@ echo "✅ Formulog check PASSED"
 - Docker (for TLA+)
 - Python 3.8+ (for Formulog)
 
+### A.3 L3 Acceptance Evidence (v3.8.0+)
+
+The following artefacts capture L3 (Layer-3) acceptance evidence — real
+end-to-end system interaction, not model-checking or unit tests — as
+required by `docs/governance/FORMAL_VERIFICATION_E2E.md` policy.
+
+| L3 ID | Description | Evidence file | Source change |
+|-------|-------------|---------------|---------------|
+| L3-05 | MySQL CLI handshake + `SELECT 1` over wire protocol (system client → `sqlrustgo-mysql-server`) | [`artifacts/gate/v3.8.0/L3-05_mysql_cli_handshake.log`](../../artifacts/gate/v3.8.0/L3-05_mysql_cli_handshake.log) | `openspec/changes/mysql-server-canonical-entry` §8 |
+
+Each L3 evidence file:
+
+1. Identifies the spec item it covers (task number + openspec change).
+2. Names the system-under-test and the harness used (system CLI or
+   protocol-equivalent substitute when the canonical binary is missing
+   on the host — substitution is documented inline).
+3. Captures verbatim transcript of the run, including non-zero exits
+   and pre-existing server-side defects that block full pass.
+4. Cross-references the openspec change and the merged PR.
+
 ---
 
 > **Note**: This is a live document. Update as the E2E workflow evolves.
