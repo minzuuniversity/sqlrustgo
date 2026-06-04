@@ -2120,7 +2120,10 @@ pub fn run_server_v2(
     let listener = TcpListener::bind(&addr)?;
     tracing::info!(
         "MySQL server listening on {} (data_dir={}, max_conn={}, auth={})",
-        addr, data_dir, max_connections, auth_mode
+        addr,
+        data_dir,
+        max_connections,
+        auth_mode
     );
     // Store options in env so the run_server_with_listener path can read them
     std::env::set_var("SQLRUSTGO_DATA_DIR", data_dir);
@@ -2172,8 +2175,9 @@ pub(crate) fn run_server_with_listener_and_shutdown_with_bootstrap_tables_and_sq
     // (Issue #2808: G1 — DML must persist via WAL, not bypass to raw FileStorage)
     let wal_data_dir = match data_dir {
         Some(p) => p,
-        None => std::env::temp_dir()
-            .join(format!("sqlrustgo_wal_{}", listener.local_addr()?.port())),
+        None => {
+            std::env::temp_dir().join(format!("sqlrustgo_wal_{}", listener.local_addr()?.port()))
+        }
     };
     let file_storage =
         FileStorage::new_with_wal(wal_data_dir.clone()).map_err(std::io::Error::other)?;
