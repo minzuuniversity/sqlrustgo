@@ -1,0 +1,17 @@
+{
+  "query": "q10.sql",
+  "sqlite_sql_source": "standard_tpch_q.sql",
+  "engines": {
+    "sqlite": {
+      "row_count": 9,
+      "first_3_rows": [
+        "10|10|174446.0544|20-504-587-5677|IRAN|Customer#000000010|TcCS5wM2S |HOUSEHOLD",
+        "7|7|116759.5163|13-806-545-9701|GERMANY|Customer#000000007|0WFN1Z6Bzf6QyaNh55,kWEkDKpmk |FURNITURE",
+        "5|5|99671.0715|13-750-942-6364|ETHIOPIA|Customer#000000005|KcKwF4nx1Y7E9bFZrK5t5hJvc|AUTOMOBILE"
+      ],
+      "error": null
+    }
+  },
+  "consensus_row_count": 9,
+  "consensus": true
+}
