@@ -19,12 +19,12 @@ use crate::transaction::{IsolationLevel, TransactionStatement};
 use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
 
-/// Phase 3 (TPCH-01 Q15): registry of subqueries that appear in
-/// `FROM t, (SELECT ...) AS alias` comma-lists. The parser registers
-/// each subquery here during parsing; the executor retrieves and
-/// materializes them before executing the join chain.
-///
-/// Key = synthetic table name (e.g. "__subq_0"), Value = subquery AST.
+// Phase 3 (TPCH-01 Q15): registry of subqueries that appear in
+// `FROM t, (SELECT ...) AS alias` comma-lists. The parser registers
+// each subquery here during parsing; the executor retrieves and
+// materializes them before executing the join chain.
+//
+// Key = synthetic table name (e.g. "__subq_0"), Value = subquery AST.
 thread_local! {
     static DERIVED_SUBQUERIES: RefCell<std::collections::HashMap<String, Box<SelectStatement>>> =
         RefCell::new(std::collections::HashMap::new());
@@ -34,7 +34,8 @@ thread_local! {
 /// during parsing. Returns a snapshot of the current thread's registry.
 /// The executor calls this to materialize subqueries before executing
 /// the join chain.
-pub fn get_and_clear_derived_subqueries() -> std::collections::HashMap<String, Box<SelectStatement>> {
+pub fn get_and_clear_derived_subqueries() -> std::collections::HashMap<String, Box<SelectStatement>>
+{
     DERIVED_SUBQUERIES.with(|cell| {
         let mut map = std::collections::HashMap::new();
         std::mem::swap(&mut *cell.borrow_mut(), &mut map);
@@ -2265,7 +2266,7 @@ impl Parser {
                             if matches!(self.current(), Some(Token::As)) {
                                 self.next();
                             }
-                            let alias = match self.current() {
+                            let _alias = match self.current() {
                                 Some(Token::Identifier(a)) => a.clone(),
                                 _ => {
                                     return Err(
@@ -2278,7 +2279,8 @@ impl Parser {
                             tables.push(synthetic_name.clone());
                             // Phase 3 (TPCH-01 Q15): register subquery in thread-local
                             DERIVED_SUBQUERIES.with(|cell| {
-                                cell.borrow_mut().insert(synthetic_name.clone(), Box::new(subquery.clone()));
+                                cell.borrow_mut()
+                                    .insert(synthetic_name.clone(), Box::new(subquery.clone()));
                             });
                             continue;
                         }
