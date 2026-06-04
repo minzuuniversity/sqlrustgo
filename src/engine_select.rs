@@ -146,6 +146,132 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     agg_result_rows.retain(|row| eval_predicate(having_expr, row, &having_schema));
                 }
 
+                /// MySQL 5.7 WITH ROLLUP / WITH CUBE — emit grouping-set
+                /// subtotal rows. We aggregate the already-grouped rows in
+                /// successive passes (k+1 levels for ROLLUP, 2^k for CUBE)
+                /// and append a NULL-padded subtotal row for each level.
+                if select.with_rollup {
+                    let k = group_exprs.len();
+                    // Levels: drop trailing i group cols (i=1..k), leaving
+                    // a grand-total row when all are dropped.
+                    for i in (1..=k).rev() {
+                        // Subtotal over rows that match the (k-i) leading
+                        // group columns, ignoring the last i.
+                        let prefix_len = k - i;
+                        let mut subtotal_groups: std::collections::HashMap<
+                            String,
+                            Vec<Vec<Value>>,
+                        > = std::collections::HashMap::new();
+                        for row in &agg_result_rows {
+                            let key = (0..prefix_len)
+                                .map(|idx| {
+                                    let v = row.get(idx).cloned().unwrap_or(Value::Null);
+                                    match v {
+                                        Value::Null => "NULL".to_string(),
+                                        Value::Integer(n) => format!("I{}", n),
+                                        Value::Float(f) => format!("F{}", f),
+                                        Value::Text(s) => format!("T{}", s),
+                                        Value::Boolean(b) => format!("B{}", b as i32),
+                                        Value::Blob(b) => format!("X{}", b.len()),
+                                    }
+                                })
+                                .collect::<Vec<_>>()
+                                .join("\x00");
+                            subtotal_groups.entry(key).or_default().push(row.clone());
+                        }
+                        for (key, group_rows) in subtotal_groups.iter() {
+                            let parts: Vec<&str> = key.split('\x00').collect();
+                            let mut combined: Vec<Value> = parts
+                                .iter()
+                                .map(|s| decode_value_key(s))
+                                .collect();
+                            // Pad NULLs for the dropped i columns
+                            for _ in 0..i {
+                                combined.push(Value::Null);
+                            }
+                            // Re-aggregate the original rows of each parent
+                            // group (so SUM stays correct across rolled-up
+                            // levels). We pull the matching pre-aggregation
+                            // rows by re-joining on the full original key.
+                            let mut parent_rows: Vec<Vec<Value>> = Vec::new();
+                            for orig_row in &rows {
+                                let orig_key = group_exprs
+                                    .iter()
+                                    .map(|expr| {
+                                        evaluate_expr_to_string(expr, orig_row, &table_info)
+                                    })
+                                    .collect::<Vec<_>>()
+                                    .join("\x00");
+                                let orig_parts: Vec<&str> = orig_key.split('\x00').collect();
+                                let prefix_match = (0..prefix_len).all(|idx| {
+                                    let a = decode_value_key(orig_parts[idx]);
+                                    a == combined[idx]
+                                });
+                                if prefix_match {
+                                    parent_rows.push(orig_row.clone());
+                                }
+                            }
+                            let agg_values = self.compute_aggregates(
+                                &select.aggregates,
+                                &parent_rows,
+                                &table_info,
+                            )?;
+                            combined.extend(agg_values);
+                            agg_result_rows.push(combined);
+                        }
+                    }
+                }
+                if select.with_cube {
+                    let k = group_exprs.len();
+                    // All 2^k subsets; the existing groups at mask=2^k-1
+                    // (i.e. all cols) are the originals we already have.
+                    if k <= 5 {
+                        let full_mask = (1u32 << k) - 1;
+                        for mask in 0..full_mask {
+                            let mut cube_groups: std::collections::HashMap<
+                                String,
+                                Vec<Vec<Value>>,
+                            > = std::collections::HashMap::new();
+                            for row in &rows {
+                                let key_parts: Vec<String> = (0..k)
+                                    .map(|idx| {
+                                        if mask & (1 << idx) != 0 {
+                                            let expr = &group_exprs[idx];
+                                            evaluate_expr_to_string(expr, row, &table_info)
+                                        } else {
+                                            "NULL".to_string()
+                                        }
+                                    })
+                                    .collect();
+                                let key = key_parts.join("\x00");
+                                cube_groups.entry(key).or_default().push(row.clone());
+                            }
+                            for (key, group_rows) in cube_groups.iter() {
+                                let parts: Vec<&str> = key.split('\x00').collect();
+                                let combined: Vec<Value> = (0..k)
+                                    .map(|idx| {
+                                        if mask & (1 << idx) != 0 {
+                                            decode_value_key(parts[idx])
+                                        } else {
+                                            Value::Null
+                                        }
+                                    })
+                                    .collect();
+                                let agg_values = self.compute_aggregates(
+                                    &select.aggregates,
+                                    group_rows,
+                                    &table_info,
+                                )?;
+                                let mut row = combined;
+                                row.extend(agg_values);
+                                if mask != full_mask {
+                                    agg_result_rows.push(row);
+                                }
+                            }
+                        }
+                    }
+                }
+
                 let row_count = agg_result_rows.len();
                 return Ok(ExecutorResult::new(agg_result_rows, row_count));
             }
@@ -719,4 +845,33 @@ fn lookup_column(info: &TableInfo, col_name: &str) -> Option<usize> {
         }
         false
     })
+}
+
+/// Decode a value key string (encoded by the inline match above in
+/// the ROLLUP / CUBE loops) back into a `Value`. Pairs with the
+/// I/F/T/B/X prefix scheme so round-trips work for the common types.
+fn decode_value_key(s: &str) -> Value {
+    if s == "NULL" {
+        return Value::Null;
+    }
+    if s.is_empty() {
+        return Value::Null;
+    }
+    match s.as_bytes()[0] {
+        b'I' => s[1..]
+            .parse::<i64>()
+            .map(Value::Integer)
+            .unwrap_or(Value::Null),
+        b'F' => s[1..]
+            .parse::<f64>()
+            .map(Value::Float)
+            .unwrap_or(Value::Null),
+        b'T' => Value::Text(s[1..].to_string()),
+        b'B' => match s.as_bytes().get(1).copied() {
+            Some(b'1') => Value::Boolean(true),
+            _ => Value::Boolean(false),
+        },
+        b'X' => Value::Blob(Vec::new()),
+        _ => Value::Null,
+    }
 }
