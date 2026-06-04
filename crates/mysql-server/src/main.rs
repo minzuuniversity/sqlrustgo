@@ -627,15 +627,13 @@ fn dump_engine_to_sql(engine: &MemoryExecutionEngine, path: &str) -> Result<usiz
     // sqlite_master-like internal table. If that fails, we just
     // emit a placeholder.
     let probe = "SELECT name FROM sqlite_master WHERE type='table';";
-    let mut count = 0;
     if let Ok(()) = write_dump_via_select(engine, &mut f, probe) {
         // success
     } else {
         writeln!(f, "-- (no internal table probe available in this build)").ok();
     }
     // Always succeed even if probe fails — the file is a placeholder.
-    count = 0;
-    Ok(count)
+    Ok(0)
 }
 
 /// Helper: run a SELECT and write results as INSERT statements.
