@@ -592,10 +592,11 @@ pub fn eval_fn(name: &str, args: &[Value]) -> Value {
             if args.len() < 3 {
                 Value::Null
             } else {
-                Value::Text(args[0].to_sql_string().replace(
-                    &args[1].to_sql_string(),
-                    &args[2].to_sql_string(),
-                ))
+                Value::Text(
+                    args[0]
+                        .to_sql_string()
+                        .replace(&args[1].to_sql_string(), &args[2].to_sql_string()),
+                )
             }
         }
         // INSERT(str, pos, len, newstr) — pos is 1-based.
@@ -923,10 +924,7 @@ mod tests {
 
     #[test]
     fn test_if_null_cond_returns_else() {
-        let v = eval_fn(
-            "IF",
-            &[Value::Null, Value::Integer(1), Value::Integer(2)],
-        );
+        let v = eval_fn("IF", &[Value::Null, Value::Integer(1), Value::Integer(2)]);
         assert_eq!(v, Value::Integer(2));
     }
 
@@ -941,7 +939,11 @@ mod tests {
     fn test_if_zero_is_false() {
         let v = eval_fn(
             "IF",
-            &[Value::Integer(0), Value::Text("yes".into()), Value::Text("no".into())],
+            &[
+                Value::Integer(0),
+                Value::Text("yes".into()),
+                Value::Text("no".into()),
+            ],
         );
         assert_eq!(v, Value::Text("no".into()));
     }
@@ -951,7 +953,12 @@ mod tests {
     fn test_coalesce_first_non_null() {
         let v = eval_fn(
             "COALESCE",
-            &[Value::Null, Value::Null, Value::Integer(3), Value::Integer(4)],
+            &[
+                Value::Null,
+                Value::Null,
+                Value::Integer(3),
+                Value::Integer(4),
+            ],
         );
         assert_eq!(v, Value::Integer(3));
     }
@@ -1059,7 +1066,11 @@ mod tests {
     fn test_date_add_bad_input_returns_null() {
         let v = eval_fn(
             "DATE_ADD",
-            &[Value::Text("nope".into()), Value::Integer(1), Value::Text("DAY".into())],
+            &[
+                Value::Text("nope".into()),
+                Value::Integer(1),
+                Value::Text("DAY".into()),
+            ],
         );
         assert_eq!(v, Value::Null);
     }
