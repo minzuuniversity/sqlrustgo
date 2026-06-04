@@ -311,7 +311,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         }
     }
 
-    fn execute_insert(&mut self, insert: &InsertStatement) -> SqlResult<ExecutorResult> {
+    pub fn execute_insert(&mut self, insert: &InsertStatement) -> SqlResult<ExecutorResult> {
         // IMPL-001 & IMPL-004: TX lifecycle enforcement
         // IDLE/Active with no current_tx_id = implicit autocommit TX (allowed)
         // Committed/Aborted state = no new implicit TX (error)
@@ -486,7 +486,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         true
     }
 
-    fn execute_update(&mut self, update: &UpdateStatement) -> SqlResult<ExecutorResult> {
+    pub fn execute_update(&mut self, update: &UpdateStatement) -> SqlResult<ExecutorResult> {
         // IMPL-001 & IMPL-004: TX lifecycle enforcement
         match self.tx_status {
             TxStatus::Committed => {
@@ -713,7 +713,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         Ok(ExecutorResult::new(vec![], count))
     }
 
-    fn execute_delete(&mut self, delete: &DeleteStatement) -> SqlResult<ExecutorResult> {
+    pub fn execute_delete(&mut self, delete: &DeleteStatement) -> SqlResult<ExecutorResult> {
         // IMPL-001 & IMPL-004: TX lifecycle enforcement
         match self.tx_status {
             TxStatus::Committed => {
