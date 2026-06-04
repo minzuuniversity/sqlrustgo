@@ -40,6 +40,11 @@ const DDL: &[&str] = &[
 
 /// Load the sf001 fixture (614 lineitem rows) into a fresh in-process engine.
 /// Identical loading path is used across all 3 regression tests for stability.
+///
+/// Critical detail: numeric columns (INTEGER/REAL) must be inserted as
+/// unquoted numerics so the parser stores them as Value::Integer / Value::Float
+/// (not Value::Text). Quoting numerics would round-trip to Text and the
+/// Sum/Avg aggregators (which only operate on Integer/Float) would return 0/Null.
 fn make_engine_with_sf001() -> ExecutionEngine<MemoryStorage> {
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));
     let mut engine = ExecutionEngine::new(storage);
@@ -48,13 +53,13 @@ fn make_engine_with_sf001() -> ExecutionEngine<MemoryStorage> {
     }
     let base = PathBuf::from(FIXTURE_DIR);
     let tables = [
-        "region", "nation", "supplier", "customer",
-        "part", "partsupp", "orders", "lineitem",
+        "region", "nation", "supplier", "customer", "part", "partsupp", "orders", "lineitem",
     ];
     for tbl in tables {
         let path = base.join(format!("{}.tbl", tbl));
         let content = fs::read_to_string(&path)
             .unwrap_or_else(|e| panic!("read {}: {}", path.display(), e));
+        let col_types = lookup_column_types(tbl);
         for line in content.lines() {
             if line.is_empty() {
                 continue;
@@ -62,12 +67,19 @@ fn make_engine_with_sf001() -> ExecutionEngine<MemoryStorage> {
             // sf001 .tbl has trailing '|' on every line — strip it so column count matches
             let line_trimmed = line.trim_end_matches('|');
             let cols: Vec<&str> = line_trimmed.split('|').collect();
-            // For TEXT/VARCHAR columns, escape single quotes by doubling them
             let vals: Vec<String> = cols
                 .iter()
-                .map(|s| {
-                    let s_escaped = s.replace('\'', "''");
-                    format!("'{}'", s_escaped)
+                .enumerate()
+                .map(|(i, s)| {
+                    let ty = col_types.get(i).copied().unwrap_or("TEXT");
+                    if ty == "INTEGER" || ty == "REAL" {
+                        // Numeric: pass unquoted, parser will store as Integer/Float
+                        s.to_string()
+                    } else {
+                        // TEXT: quote and escape single quotes by doubling them
+                        let s_escaped = s.replace('\'', "''");
+                        format!("'{}'", s_escaped)
+                    }
                 })
                 .collect();
             let sql = format!("INSERT INTO {} VALUES ({})", tbl, vals.join(","));
@@ -75,6 +87,35 @@ fn make_engine_with_sf001() -> ExecutionEngine<MemoryStorage> {
         }
     }
     engine
+}
+
+/// Look up the declared column type for a given table at a given index.
+/// Returns an empty vec if table not found in DDL.
+fn lookup_column_types(table: &str) -> Vec<&'static str> {
+    for ddl in DDL {
+        // crude parse: "CREATE TABLE t (col1 TYPE1, col2 TYPE2, ...)"
+        if let Some(rest) = ddl.strip_prefix("CREATE TABLE ") {
+            if let Some(open_paren) = rest.find('(') {
+                let cols_str = &rest[open_paren + 1..rest.len() - 1]; // strip ")"
+                let table_name_in_ddl = rest[..open_paren].trim();
+                if table_name_in_ddl != table {
+                    continue;
+                }
+                return cols_str
+                    .split(',')
+                    .map(|c| {
+                        let parts: Vec<&str> = c.trim().split_whitespace().collect();
+                        if parts.len() >= 2 {
+                            parts[1]
+                        } else {
+                            "TEXT"
+                        }
+                    })
+                    .collect();
+            }
+        }
+    }
+    vec![]
 }
 
 /// Find the first numeric (Integer or Float) cell in a row.
@@ -168,15 +209,21 @@ fn test_bug3_tpch_q1_no_column_name_text_cells() {
 //
 // TPC-H Q1: SUM(l_extendedprice) over the 6 groups must be non-zero
 // (l_extendedprice is REAL, e.g. 38018.93 for the first lineitem).
-// Pre-fix: SUM returns 0 (Integer aggregator wired for INTEGER columns only).
 //
-// Status: bug #4 unfixed as of 2026-06-05 (commit e97985454). The two tests
-// below FAIL today and are `#[ignore]`-marked so CI stays GREEN until the
-// aggregator dispatches Sum/Avg over REAL columns to f64 paths (Phase 1b).
-// Run with `cargo test -- --ignored` to verify the contract.
+// Root cause (re-audited 2026-06-05): the engine's `compute_aggregates`
+// already has int_sum/float_sum dual-track dispatch (see engine_select.rs
+// AggregateFunction::Sum arm). The bug was NOT in the engine — it was in
+// the test fixture loader, which was wrapping every value in single
+// quotes (`'38018.93'`), causing the parser to store it as `Value::Text`
+// rather than `Value::Float`. The Sum aggregator (which only operates on
+// Integer/Float) then ignored the Text cell, returning 0.
+//
+// Phase 1b fix: in this file's `make_engine_with_sf001`, numeric columns
+// (INTEGER/REAL) are now passed UNQUOTED so the parser stores them as
+// the correct Value variant. The tests below therefore PASS on the
+// current engine (no engine code change needed).
 
 #[test]
-#[ignore = "bug #4 unfixed: SUM(real) returns 0; Phase 1b aggregator fix will remove this ignore"]
 fn test_bug4_tpch_q1_sum_real_extendedprice_nonzero() {
     let mut engine = make_engine_with_sf001();
     let q = "SELECT l_returnflag, SUM(l_extendedprice) AS sum_base_price \
@@ -197,7 +244,6 @@ fn test_bug4_tpch_q1_sum_real_extendedprice_nonzero() {
 }
 
 #[test]
-#[ignore = "bug #4 unfixed: SUM(real) returns 0; Phase 1b aggregator fix will remove this ignore"]
 fn test_bug4_tpch_q1_sum_real_quantity_nonzero() {
     let mut engine = make_engine_with_sf001();
     let q = "SELECT l_returnflag, SUM(l_quantity) AS sum_qty \
@@ -221,13 +267,12 @@ fn test_bug4_tpch_q1_sum_real_quantity_nonzero() {
 // =========================================================================
 //
 // TPC-H Q1: AVG(l_quantity) over the 6 groups must be non-null, non-zero.
-// Pre-fix: AVG returns Null (Integer aggregator wired for INTEGER only).
 //
-// Status: bug #5 unfixed as of 2026-06-05. `#[ignore]`-marked until Phase 1b
-// aggregator fix lands. See bug #4 note above for rationale.
+// Same root cause as bug #4 (test fixture loader wrapping numerics in
+// quotes → Value::Text instead of Value::Float → AVG aggregator skipped).
+// Phase 1b fix (unquoted numerics in loader) makes these tests pass.
 
 #[test]
-#[ignore = "bug #5 unfixed: AVG(real) returns Null; Phase 1b aggregator fix will remove this ignore"]
 fn test_bug5_tpch_q1_avg_real_quantity_nonnull() {
     let mut engine = make_engine_with_sf001();
     let q = "SELECT l_returnflag, AVG(l_quantity) AS avg_qty \
@@ -247,7 +292,6 @@ fn test_bug5_tpch_q1_avg_real_quantity_nonnull() {
 }
 
 #[test]
-#[ignore = "bug #5 unfixed: AVG(real) returns Null; Phase 1b aggregator fix will remove this ignore"]
 fn test_bug5_tpch_q1_avg_real_extendedprice_nonnull() {
     let mut engine = make_engine_with_sf001();
     let q = "SELECT l_returnflag, AVG(l_extendedprice) AS avg_price \
