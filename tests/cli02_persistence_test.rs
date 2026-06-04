@@ -68,7 +68,10 @@ fn cli02_persistence_multiple_inserts() {
     let (stdout, _stderr, _code) = run_repl_script(
         "CREATE TABLE cli02_m (n INT);\nINSERT INTO cli02_m VALUES (10);\nINSERT INTO cli02_m VALUES (20);\nINSERT INTO cli02_m VALUES (30);\nSELECT * FROM cli02_m;\n.exit\n",
     );
-    assert!(stdout.contains("(3 rows)"), "should have 3 rows after 3 inserts");
+    assert!(
+        stdout.contains("(3 rows)"),
+        "should have 3 rows after 3 inserts"
+    );
     assert!(stdout.contains("Integer(10)"));
     assert!(stdout.contains("Integer(20)"));
     assert!(stdout.contains("Integer(30)"));
@@ -103,7 +106,10 @@ fn cli02_help_shows_all_dot_commands() {
     let (stdout, _stderr, _code) = run_repl_script(".help\n.exit\n");
     assert!(stdout.contains(".tables"), ".help should show .tables");
     assert!(stdout.contains(".schema"), ".help should show .schema");
-    assert!(stdout.contains(".databases"), ".help should show .databases");
+    assert!(
+        stdout.contains(".databases"),
+        ".help should show .databases"
+    );
     assert!(stdout.contains(".version"), ".help should show .version");
     assert!(stdout.contains(".timing"), ".help should show .timing");
     assert!(stdout.contains(".headers"), ".help should show .headers");
@@ -112,10 +118,12 @@ fn cli02_help_shows_all_dot_commands() {
 
 #[test]
 fn cli02_persistence_timing_still_works() {
-    let (stdout, _stderr, _code) = run_repl_script(
-        ".timing on\nCREATE TABLE cli02_t (id INT);\n.exit\n",
+    let (stdout, _stderr, _code) =
+        run_repl_script(".timing on\nCREATE TABLE cli02_t (id INT);\n.exit\n");
+    assert!(
+        stdout.contains("Timing enabled"),
+        ".timing on should print Timing enabled"
     );
-    assert!(stdout.contains("Timing enabled"), ".timing on should print Timing enabled");
 }
 
 #[test]
