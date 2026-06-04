@@ -1902,15 +1902,21 @@ impl Parser {
                         expression: Some(Expression::Literal(val.to_string())),
                     });
                 }
-                // MySQL 5.7: LEFT/RIGHT/INSERT/REPLACE as scalar functions
-                // in the SELECT list. Same logic as parse_primary_expression.
-                Some(Token::Left) | Some(Token::Right) | Some(Token::Insert)
-                | Some(Token::Replace) => {
+                // MySQL 5.7: LEFT/RIGHT/INSERT/REPLACE/IF as scalar
+                // functions in the SELECT list. Same logic as
+                // parse_primary_expression.
+                // INT-4 / CTE-01: see Token::Level in Token::Level AS alias path
+                Some(Token::Left)
+                | Some(Token::Right)
+                | Some(Token::Insert)
+                | Some(Token::Replace)
+                | Some(Token::If) => {
                     let name = match self.current() {
                         Some(Token::Left) => "LEFT",
                         Some(Token::Right) => "RIGHT",
                         Some(Token::Insert) => "INSERT",
                         Some(Token::Replace) => "REPLACE",
+                        Some(Token::If) => "IF",
                         _ => unreachable!(),
                     };
                     self.next();
@@ -3357,16 +3363,21 @@ impl Parser {
     /// Parse primary expression (identifier, literal, or parenthesized)
     fn parse_primary_expression(&mut self) -> Result<Expression, String> {
         match self.current() {
-            // Allow SQL keywords LEFT, RIGHT, INSERT, REPLACE to act as
+            // Allow SQL keywords LEFT, RIGHT, INSERT, REPLACE, IF to act as
             // scalar function names when followed by `(`. MySQL has these
             // as both statement keywords and string functions; in
             // expression position the function interpretation wins.
-            Some(Token::Left) | Some(Token::Right) | Some(Token::Insert) | Some(Token::Replace) => {
+            Some(Token::Left)
+            | Some(Token::Right)
+            | Some(Token::Insert)
+            | Some(Token::Replace)
+            | Some(Token::If) => {
                 let name = match self.current() {
                     Some(Token::Left) => "LEFT",
                     Some(Token::Right) => "RIGHT",
                     Some(Token::Insert) => "INSERT",
                     Some(Token::Replace) => "REPLACE",
+                    Some(Token::If) => "IF",
                     _ => unreachable!(),
                 };
                 self.next();
@@ -3443,6 +3454,7 @@ impl Parser {
                             vec![Expression::Literal(field_name), source_expr],
                         ));
                     }
+
                     // TRIM(LEADING/TRAILING/BOTH remstr FROM str) — MySQL 5.7
                     // standard form, with optional modifier keyword. The
                     // general arg-parsing loop above would fail on the
@@ -3515,6 +3527,29 @@ impl Parser {
                         }
                         // No modifier and no FROM → fall through to the
                         // standard comma-separated arg loop below.
+                    }
+
+                    // POSITION(substr IN str) — MySQL 5.7 special form, like EXTRACT.
+                    // We must parse the needle WITHOUT going through
+                    // parse_comparison_expression, because that function
+                    // would interpret the `IN` as the start of an IN-list
+                    // operator and try to consume a `(`. The needle here
+                    // is just a primary expression (literal or column).
+                    if name.to_uppercase() == "POSITION" {
+                        let needle = self.parse_primary_expression()?;
+                        if !matches!(self.current(), Some(Token::In)) {
+                            return Err(format!(
+                                "Expected IN after POSITION needle, got {:?}",
+                                self.current()
+                            ));
+                        }
+                        self.next(); // consume IN
+                        let haystack = self.parse_primary_expression()?;
+                        self.expect(Token::RParen)?;
+                        return Ok(Expression::FunctionCall(
+                            "POSITION".to_string(),
+                            vec![needle, haystack],
+                        ));
                     }
                     let mut args = Vec::new();
                     if !matches!(self.current(), Some(Token::RParen)) {
