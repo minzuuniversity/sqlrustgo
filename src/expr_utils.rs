@@ -313,30 +313,6 @@ pub fn evaluate_expression(
                 .collect();
             Ok(dispatch_fn(name, &vals))
         }
-        // TPC-H Q8/Q12/Q14: CASE WHEN cond THEN a ELSE b END.
-        Expression::CaseWhen(when_clauses, else_expr) => {
-            for when_clause in when_clauses {
-                let cond_val = evaluate_expression(&when_clause.condition, row, table_info)?;
-                if matches!(cond_val, Value::Boolean(true)) {
-                    return evaluate_expression(&when_clause.result, row, table_info);
-                }
-            }
-            if let Some(e) = else_expr {
-                evaluate_expression(e, row, table_info)
-            } else {
-                Ok(Value::Null)
-            }
-        }
-        // TPC-H Q13/Q16/Q20: col LIKE pattern / NOT LIKE. The executor uses
-        // the existing pub(crate) `sql_like_match` (TPC-H Q9 fix, PR #2911).
-        Expression::Like(left, pattern, _escape) => {
-            let lv = evaluate_expression(left, row, table_info)?;
-            let pv = evaluate_expression(pattern, row, table_info)?;
-            Ok(Value::Boolean(sql_like_match(
-                &lv.to_sql_string(),
-                &pv.to_sql_string(),
-            )))
-        }
         Expression::NotLike(left, pattern, _escape) => {
             let lv = evaluate_expression(left, row, table_info)?;
             let pv = evaluate_expression(pattern, row, table_info)?;
