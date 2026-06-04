@@ -336,7 +336,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         // commits when the DML finishes (autocommit semantics).
         // This call site now matches the documented DML contract: every
         // INSERT/UPDATE/DELETE must be wrapped by TM.begin_transaction() / TM.commit().
-        let tm_tx_id = if self.current_tx_id.is_none() {
+        let started_implicit = self.current_tx_id.is_none();
+        let tm_tx_id = if started_implicit {
             let tx_id = self
                 .transaction_manager
                 .begin_transaction(self.default_isolation)
@@ -449,11 +450,15 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         // implicit transaction so WAL/MVCC receive the changes. If the
         // user already started a transaction via BEGIN, leave the
         // current_tx_id intact so they can COMMIT/ROLLBACK explicitly.
-        // `tm_tx_id == Some(_)` only when we just opened a new implicit
-        // transaction in this function (the if-branch above); the
-        // else-branch returns the existing TxId for an already-open
-        // transaction, in which case the user controls commit/rollback.
-        if self.current_tx_id.is_some() && self.current_tx_id == tm_tx_id {
+        // `started_implicit` is true ONLY when we entered the
+        // current_tx_id-was-None branch above and started a fresh
+        // transaction ourselves; the else branch returns the existing
+        // TxId for an already-open transaction, in which case the user
+        // controls commit/rollback. The previous `tm_tx_id == Some(_)`
+        // check was incorrect because the else branch also wraps the
+        // existing tx_id in Some, so it always matched and incorrectly
+        // committed explicit transactions.
+        if started_implicit {
             let tx_id = self.current_tx_id.unwrap();
             let _ = self.transaction_manager.commit(tx_id);
             self.current_tx_id = None;
@@ -504,7 +509,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             }
         }
         // INT-1: Begin an implicit transaction so TM/WAL receive the change.
-        let tm_tx_id = if self.current_tx_id.is_none() {
+        let started_implicit = self.current_tx_id.is_none();
+        let tm_tx_id = if started_implicit {
             let tx_id = self
                 .transaction_manager
                 .begin_transaction(self.default_isolation)
@@ -703,7 +709,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         // INT-1: For autocommit (no explicit transaction), commit so
         // WAL/MVCC receive the change. If user already started a TX,
         // leave current_tx_id intact for explicit COMMIT/ROLLBACK.
-        if self.current_tx_id.is_some() && self.current_tx_id == tm_tx_id {
+        if started_implicit {
             let tx_id = self.current_tx_id.unwrap();
             let _ = self.transaction_manager.commit(tx_id);
             self.current_tx_id = None;
@@ -731,7 +737,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             }
         }
         // INT-1: Begin an implicit transaction so TM/WAL receive the change.
-        let tm_tx_id = if self.current_tx_id.is_none() {
+        let started_implicit = self.current_tx_id.is_none();
+        let tm_tx_id = if started_implicit {
             let tx_id = self
                 .transaction_manager
                 .begin_transaction(self.default_isolation)
@@ -749,7 +756,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             let mut storage = self.storage.write().unwrap();
             let count = storage.delete(&table_name, &[])?;
             // INT-1: Autocommit — commit the implicit TX so WAL/MVCC see this.
-            if self.current_tx_id.is_some() && self.current_tx_id == tm_tx_id {
+            if started_implicit {
                 let tx_id = self.current_tx_id.unwrap();
                 let _ = self.transaction_manager.commit(tx_id);
                 self.current_tx_id = None;
@@ -866,7 +873,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         // INT-1: For autocommit (no explicit transaction), commit so
         // WAL/MVCC receive the change. If user already started a TX,
         // leave current_tx_id intact for explicit COMMIT/ROLLBACK.
-        if self.current_tx_id.is_some() && self.current_tx_id == tm_tx_id {
+        if started_implicit {
             let tx_id = self.current_tx_id.unwrap();
             let _ = self.transaction_manager.commit(tx_id);
             self.current_tx_id = None;
