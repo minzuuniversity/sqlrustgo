@@ -6,7 +6,8 @@
 use serde::{Deserialize, Serialize};
 use sqlrustgo_executor::ExecutorResult;
 use sqlrustgo_parser::parser::{
-    parse, AlterTableOperation, Expression, InsertStatement, SelectStatement, Statement, WithSelect,
+    parse, AlterTableOperation, CommonTableExpression, Expression, InsertStatement,
+    SelectStatement, Statement, WithSelect,
 };
 use sqlrustgo_storage::{ColumnDefinition, MemoryStorage, StorageEngine, TableInfo};
 use sqlrustgo_types::Value;
@@ -441,47 +442,157 @@ impl SimpleExecutor {
     fn execute_with_select(&mut self, with_select: &WithSelect) -> Result<(), String> {
         if let Some(ref with_clause) = with_select.with_clause {
             for cte in &with_clause.ctes {
-                let cte_rows = self.execute_statement(&cte.subquery)?;
-                let column_count = if cte.columns.is_empty() {
-                    if cte_rows.is_empty() {
-                        0
-                    } else {
-                        cte_rows[0].len()
-                    }
+                if with_clause.recursive {
+                    // Recursive CTE: the subquery must be a UNION (or UNION ALL)
+                    // between a non-recursive seed and a recursive part. Iterate
+                    // until the recursive part returns no new rows or the depth
+                    // limit (default 1000) is reached.
+                    self.execute_recursive_cte(cte, with_clause.recursive)?;
                 } else {
-                    cte.columns.len()
-                };
-                let columns: Vec<ColumnDefinition> = (0..column_count)
-                    .map(|i| ColumnDefinition {
-                        name: if cte.columns.is_empty() {
-                            format!("col_{}", i)
+                    let cte_rows = self.execute_statement(&cte.subquery)?;
+                    let column_count = if cte.columns.is_empty() {
+                        if cte_rows.is_empty() {
+                            0
                         } else {
-                            cte.columns[i].clone()
-                        },
-                        data_type: "TEXT".to_string(),
-                        nullable: true,
-                        primary_key: false,
-                    })
-                    .collect();
-                let table_info = TableInfo {
-                    name: cte.name.clone(),
-                    columns,
-                    foreign_keys: vec![],
-                    unique_constraints: vec![],
-                    check_constraints: vec![],
-                    partition_info: None,
-                };
-                self.storage
-                    .create_table(&table_info)
-                    .map_err(|e| format!("Create CTE table error: {:?}", e))?;
-                if !cte_rows.is_empty() {
+                            cte_rows[0].len()
+                        }
+                    } else {
+                        cte.columns.len()
+                    };
+                    let columns: Vec<ColumnDefinition> = (0..column_count)
+                        .map(|i| ColumnDefinition {
+                            name: if cte.columns.is_empty() {
+                                format!("col_{}", i)
+                            } else {
+                                cte.columns[i].clone()
+                            },
+                            data_type: "TEXT".to_string(),
+                            nullable: true,
+                            primary_key: false,
+                        })
+                        .collect();
+                    let table_info = TableInfo {
+                        name: cte.name.clone(),
+                        columns,
+                        foreign_keys: vec![],
+                        unique_constraints: vec![],
+                        check_constraints: vec![],
+                        partition_info: None,
+                    };
                     self.storage
-                        .insert(&cte.name, cte_rows)
-                        .map_err(|e| format!("Insert CTE rows error: {:?}", e))?;
+                        .create_table(&table_info)
+                        .map_err(|e| format!("Create CTE table error: {:?}", e))?;
+                    if !cte_rows.is_empty() {
+                        self.storage
+                            .insert(&cte.name, cte_rows)
+                            .map_err(|e| format!("Insert CTE rows error: {:?}", e))?;
+                    }
                 }
             }
         }
         self.execute_select(&with_select.select)?;
+        Ok(())
+    }
+
+    /// Recursive CTE executor: a non-recursive seed UNION (ALL) a recursive
+    /// step that references the CTE itself. The step is iterated until it
+    /// returns no rows (fixed point) or the depth limit is hit.
+    fn execute_recursive_cte(
+        &mut self,
+        cte: &CommonTableExpression,
+        _recursive: bool,
+    ) -> Result<(), String> {
+        // The recursive subquery must be a UNION/UNION ALL between two
+        // SELECT statements; the second SELECT may reference `cte.name`.
+        let (seed, step, union_all) = match &*cte.subquery {
+            Statement::Union(u) => (&*u.left, &*u.right, u.union_all),
+            other => {
+                return Err(format!(
+                    "Recursive CTE body must be UNION/UNION ALL of two SELECTs, got {:?}",
+                    other
+                ))
+            }
+        };
+
+        // Create the CTE table once. The schema is inferred from the
+        // first row of the seed (or 0 columns if the seed is empty).
+        let seed_rows = self.execute_statement(seed)?;
+        let column_count = if !cte.columns.is_empty() {
+            cte.columns.len()
+        } else if !seed_rows.is_empty() {
+            seed_rows[0].len()
+        } else {
+            0
+        };
+        let columns: Vec<ColumnDefinition> = (0..column_count)
+            .map(|i| ColumnDefinition {
+                name: if !cte.columns.is_empty() {
+                    cte.columns[i].clone()
+                } else {
+                    format!("col_{}", i)
+                },
+                data_type: "TEXT".to_string(),
+                nullable: true,
+                primary_key: false,
+            })
+            .collect();
+        let table_info = TableInfo {
+            name: cte.name.clone(),
+            columns,
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
+        };
+        self.storage
+            .create_table(&table_info)
+            .map_err(|e| format!("Create recursive CTE table error: {:?}", e))?;
+
+        // Iteration 0: insert the seed.
+        if !seed_rows.is_empty() {
+            self.storage
+                .insert(&cte.name, seed_rows.clone())
+                .map_err(|e| format!("Insert seed rows error: {:?}", e))?;
+        }
+        let mut total_rows = seed_rows.len();
+        let max_depth: usize = 1000;
+        for _depth in 0..max_depth {
+            let step_rows = self.execute_statement(step)?;
+            if step_rows.is_empty() {
+                break;
+            }
+            if union_all {
+                self.storage
+                    .insert(&cte.name, step_rows.clone())
+                    .map_err(|e| format!("Insert step rows error: {:?}", e))?;
+                total_rows += step_rows.len();
+            } else {
+                // UNION: deduplicate against existing rows.
+                let existing: Vec<Vec<Value>> = self
+                    .storage
+                    .scan(&cte.name)
+                    .map_err(|e| format!("Scan error: {:?}", e))?;
+                let mut new_rows = Vec::new();
+                for r in &step_rows {
+                    if !existing.contains(r) && !new_rows.contains(r) {
+                        new_rows.push(r.clone());
+                    }
+                }
+                if new_rows.is_empty() {
+                    break;
+                }
+                self.storage
+                    .insert(&cte.name, new_rows.clone())
+                    .map_err(|e| format!("Insert step rows error: {:?}", e))?;
+                total_rows += new_rows.len();
+            }
+            if total_rows > 1_000_000 {
+                return Err(format!(
+                    "Recursive CTE {} exceeded 1,000,000 row cap",
+                    cte.name
+                ));
+            }
+        }
         Ok(())
     }
 }
