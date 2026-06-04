@@ -15,8 +15,6 @@ members = [
     "crates/network",
     "crates/agentsql",
     "crates/bench",
-    "crates/bench-cli",
-    "crates/sql-cli",
     "crates/tools",
     "crates/sqlancer",
     "crates/transaction-stress",
