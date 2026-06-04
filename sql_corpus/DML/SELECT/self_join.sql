@@ -1,3 +1,11 @@
+-- === SETUP ===
+CREATE TABLE users (id INT PRIMARY KEY, name TEXT, email TEXT);
+INSERT INTO users VALUES (1, 'Alice', '[email protected]');
+INSERT INTO users VALUES (2, 'Bob',   '[email protected]');
+INSERT INTO users VALUES (3, 'Carol', '[email protected]');
+INSERT INTO users VALUES (4, 'Dave',  '[email protected]');
+INSERT INTO users VALUES (5, 'Eve',   '[email protected]');
+
 -- === CASE: Self Join Test Suite ===
 
 -- === CASE: CASE: Self join basic ===
