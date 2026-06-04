@@ -658,7 +658,9 @@ mod tests {
         let path = dir.path().to_path_buf();
 
         let store = DiskGraphStore::new(path.clone());
-        assert!(store.is_ok(), "expected ok, got: {:?}", store);
+        if let Err(e) = &store {
+            panic!("DiskGraphStore::new failed: {e:?}");
+        }
         assert!(path.join(META_FILE).exists());
     }
 
