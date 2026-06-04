@@ -18,7 +18,7 @@
 //! - `restore` — restore database from a backup file
 
 use clap::{Parser, Subcommand};
-use sqlrustgo_mysql_server::{run_server, run_server_v2};
+use sqlrustgo_mysql_server::run_server_v2;
 use sqlrustgo_tools::backup_restore::{
     run_backup as tools_backup, run_restore as tools_restore, BackupCommand, RestoreCommand,
 };
