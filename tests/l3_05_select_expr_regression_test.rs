@@ -16,8 +16,7 @@
 use sqlrustgo::{ExecutionEngine, MemoryStorage, StorageEngine};
 use std::sync::{Arc, RwLock};
 
-const SCHEMA_DDL: &[&str] = &[
-    "CREATE TABLE lineitem (
+const SCHEMA_DDL: &[&str] = &["CREATE TABLE lineitem (
         l_orderkey      INTEGER,
         l_partkey       INTEGER,
         l_suppkey       INTEGER,
@@ -34,8 +33,7 @@ const SCHEMA_DDL: &[&str] = &[
         l_shipinstruct  TEXT,
         l_shipmode      TEXT,
         l_comment       TEXT
-    )",
-];
+    )"];
 
 const SEED_DML: &[&str] = &[
     "INSERT INTO lineitem VALUES (1, 1, 1, 1, 17, 1000.0, 0.04, 0.02, 'N', 'O', '1998-09-01', '1998-09-02', '1998-09-10', 'NONE', 'TRUCK', 'comment1')",
