@@ -1983,6 +1983,16 @@ impl Parser {
                 Some(Token::Comma) => {
                     self.next();
                 }
+                // INT-4 / CTE-01: accept `LEVEL` as a bare column reference
+                // in the SELECT list (e.g. `SELECT level FROM t`).
+                Some(Token::Level) => {
+                    self.next();
+                    columns.push(SelectColumn {
+                        name: "level".to_string(),
+                        alias: None,
+                        expression: Some(Expression::Identifier("level".to_string())),
+                    });
+                }
                 _ => {
                     return Err("Expected FROM or column name".to_string());
                 }
@@ -3536,6 +3546,15 @@ impl Parser {
                 } else {
                     Ok(Expression::Aggregate(agg))
                 }
+            }
+            // INT-4 / CTE-01: `LEVEL` is a reserved token (used for
+            // transaction isolation levels) but can also be a column
+            // name (e.g. `WHERE level <= 2` referencing a column
+            // called `level`). Treat it as an Identifier when it
+            // appears in expression position.
+            Some(Token::Level) => {
+                self.next();
+                Ok(Expression::Identifier("level".to_string()))
             }
             _ => Err("Expected expression".to_string()),
         }
