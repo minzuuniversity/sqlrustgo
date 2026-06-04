@@ -1,0 +1,17 @@
+{
+  "query": "q3.sql",
+  "sqlite_sql_source": "standard_tpch_q.sql",
+  "engines": {
+    "sqlite": {
+      "row_count": 10,
+      "first_3_rows": [
+        "119|285396.9605|1992-08-06|0",
+        "33|266237.1301|1993-03-06|0",
+        "105|246549.0842|1993-08-11|0"
+      ],
+      "error": null
+    }
+  },
+  "consensus_row_count": 10,
+  "consensus": true
+}
