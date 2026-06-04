@@ -119,10 +119,7 @@ fn main() -> ExitCode {
             // SERVER-01: print startup banner
             println!("SQLRustGo v3.8.0-beta (Strong Beta, 8.0/10)");
             println!("MySQL wire-protocol server");
-            println!(
-                "  Listen:     {}:{}",
-                host, port
-            );
+            println!("  Listen:     {}:{}", host, port);
             println!("  Data dir:   {}", data_dir);
             println!("  Max conn:   {}", max_connections);
             println!("  Auth mode:  {}", auth_mode);
@@ -346,9 +343,8 @@ fn exec_with_engine_and_options(
                 // CLI-01: print column headers (first row keys if map-like,
                 // else generic "col_N" labels)
                 if let Some(first_row) = result.rows.first() {
-                    let headers: Vec<String> = (0..first_row.len())
-                        .map(|i| format!("col_{i}"))
-                        .collect();
+                    let headers: Vec<String> =
+                        (0..first_row.len()).map(|i| format!("col_{i}")).collect();
                     println!("{}", headers.join(" | "));
                 }
             }
