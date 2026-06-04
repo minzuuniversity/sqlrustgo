@@ -21,7 +21,12 @@ const SERVER_VERSION: &str = "8.0.33-SQLRustGo";
 #[allow(dead_code)]
 const AUTH_PLUGIN: &str = "mysql_native_password";
 const SCRAMBLE_LENGTH: usize = 20;
-const SKIP_AUTH: bool = false;
+
+fn skip_auth() -> bool {
+    std::env::var("SQLRUSTGO_AUTH_MODE")
+        .map(|v| v.eq_ignore_ascii_case("none"))
+        .unwrap_or(false)
+}
 
 mod packet_type {
     pub const COM_QUIT: u8 = 0x01;
@@ -2008,7 +2013,7 @@ fn handle_connection(
                 resp.auth_plugin_name,
                 resp.auth_response.len()
             );
-            let auth_ok = if SKIP_AUTH {
+            let auth_ok = if skip_auth() {
                 true
             } else if resp.auth_response.is_empty() {
                 tracing::warn!("Empty auth response for user {}", resp.username);
@@ -2059,7 +2064,7 @@ fn handle_connection(
         resp.capability_flags,
         resp.auth_response.len()
     );
-    let auth_ok = if SKIP_AUTH {
+    let auth_ok = if skip_auth() {
         true
     } else if resp.auth_response.is_empty() {
         tracing::warn!("Empty auth response for user {}", resp.username);
