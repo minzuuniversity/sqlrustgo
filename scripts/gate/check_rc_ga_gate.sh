@@ -194,7 +194,7 @@ run_d1_alpha() {
     # A6-3: Decision Registry
     gov_total=$((gov_total+1))
     echo -n "  [A6-3] Decision Registry exists ... "
-    if [ -f "docs/releases/v3.8.0/ARCHITECTURE_DECISIONS.md" ]; then
+    if [ -f "docs/releases/v3.8.0/design/ARCHITECTURE_DECISIONS.md" ]; then
         log_pass "A6-3 Decision Registry"
         gov_pass=$((gov_pass+1))
     else
