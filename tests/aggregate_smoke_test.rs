@@ -19,7 +19,8 @@ fn fresh() -> ExecutionEngine<MemoryStorage> {
 fn aggregate_5_basics() {
     let mut x = fresh();
     x.execute("CREATE TABLE t (id INTEGER, v INTEGER)").unwrap();
-    x.execute("INSERT INTO t VALUES (1,10),(2,20),(3,30),(4,40),(5,50)").unwrap();
+    x.execute("INSERT INTO t VALUES (1,10),(2,20),(3,30),(4,40),(5,50)")
+        .unwrap();
     assert_eq!(
         x.execute("SELECT COUNT(*) FROM t").unwrap().rows[0][0],
         sqlrustgo::Value::Integer(5)
@@ -41,7 +42,8 @@ fn aggregate_5_basics() {
 fn aggregate_group_by() {
     let mut x = fresh();
     x.execute("CREATE TABLE t (g TEXT, v INTEGER)").unwrap();
-    x.execute("INSERT INTO t VALUES ('a',1),('a',2),('b',3),('b',4),('b',5)").unwrap();
+    x.execute("INSERT INTO t VALUES ('a',1),('a',2),('b',3),('b',4),('b',5)")
+        .unwrap();
     let r = x
         .execute("SELECT g, SUM(v), COUNT(*) FROM t GROUP BY g")
         .unwrap();
@@ -82,7 +84,8 @@ fn aggregate_group_by() {
 fn aggregate_having() {
     let mut x = fresh();
     x.execute("CREATE TABLE t (g TEXT, v INTEGER)").unwrap();
-    x.execute("INSERT INTO t VALUES ('a',1),('a',2),('b',3),('b',4),('b',5)").unwrap();
+    x.execute("INSERT INTO t VALUES ('a',1),('a',2),('b',3),('b',4),('b',5)")
+        .unwrap();
     let r = x
         .execute("SELECT g, SUM(v) FROM t GROUP BY g HAVING SUM(v) > 5")
         .unwrap();
