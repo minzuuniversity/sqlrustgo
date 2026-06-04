@@ -75,8 +75,7 @@ fn cli01_version_command() {
 
 #[test]
 fn cli01_timing_on_off() {
-    let (stdout, _stderr, _code) =
-        run_repl_script(".timing on\nSELECT 1;\n.timing off\n.exit\n");
+    let (stdout, _stderr, _code) = run_repl_script(".timing on\nSELECT 1;\n.timing off\n.exit\n");
     assert!(stdout.contains("Timing enabled"));
     assert!(stdout.contains("Timing disabled"));
 }
@@ -103,8 +102,7 @@ fn cli01_tables_command_runs() {
 fn cli01_schema_requires_table() {
     let (stdout, stderr, _code) = run_repl_script(".schema\n.exit\n");
     assert!(
-        stdout.contains("requires a table name")
-            || stderr.contains("requires a table name"),
+        stdout.contains("requires a table name") || stderr.contains("requires a table name"),
         ".schema without table should error"
     );
 }
