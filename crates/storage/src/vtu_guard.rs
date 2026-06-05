@@ -372,4 +372,58 @@ mod tests {
         let guarded = VtuGuard::new(storage, "int4_assert_in_tx");
         guarded.assert_dml_safe("insert", "t");
     }
+
+    /// #3129: ARCH-3 obstruction 1 — verify MemoryStorage::in_transaction()
+    /// now reflects the current_tx_id field (was always false before fix).
+    #[test]
+    fn test_3129_memory_storage_in_transaction_reflects_tx_id() {
+        let mut storage = crate::MemoryStorage::new();
+        // Initial: no TX → false
+        assert!(!storage.in_transaction(), "fresh storage must not be in TX");
+        assert_eq!(storage.current_tx_id(), 0);
+
+        // After set_current_tx_id(7) → true
+        storage.set_current_tx_id(7);
+        assert!(storage.in_transaction(), "TX id 7 must mark storage as in-tx");
+        assert_eq!(storage.current_tx_id(), 7);
+
+        // Back to 0 → false
+        storage.set_current_tx_id(0);
+        assert!(!storage.in_transaction(), "TX id 0 must mark storage as idle");
+        assert_eq!(storage.current_tx_id(), 0);
+    }
+
+    /// #3129: ARCH-3 obstruction 2 — verify VtuGuard::assert_dml_safe
+    /// passes when MemoryStorage is in a transaction (covers tests that
+    /// previously would panic with "VTU VIOLATION").
+    #[test]
+    fn test_3129_vtu_guard_passes_in_tx_with_memory_storage() {
+        let mut storage = crate::MemoryStorage::new();
+        storage.set_current_tx_id(123);
+        let guarded = VtuGuard::new(storage, "arch3_in_tx_memory");
+        // Must NOT panic
+        guarded.assert_dml_safe("insert", "users");
+    }
+
+    /// #3129: ARCH-3 — verify DML via VtuGuard::execute_dml succeeds
+    /// when MemoryStorage is in an implicit TX.
+    #[test]
+    fn test_3129_vtu_guard_execute_dml_with_memory_storage_in_tx() {
+        let mut storage = crate::MemoryStorage::new();
+        let info = TableInfo {
+            name: "t".to_string(),
+            columns: vec![],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
+        };
+        storage.create_table(&info).unwrap();
+        storage.set_current_tx_id(99);
+
+        let mut guarded = VtuGuard::new(storage, "arch3_execute_dml_memory");
+        // execute_dml routes through inner — no VTU violation
+        let result: SqlResult<usize> = guarded.execute_dml(|inner| inner.delete("t", &[]));
+        assert_eq!(result.unwrap(), 0);
+    }
 }
