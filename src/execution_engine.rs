@@ -67,6 +67,7 @@ pub struct ExecutionEngine<S: StorageEngine> {
     #[allow(dead_code)]
     pub(crate) checkpoint_manager: Option<Arc<RwLock<CheckpointManager>>>,
     pub(crate) parallel_degree: usize,
+    pub(crate) stmt_cache: sqlrustgo_cache::PreparedStatementCache,
 }
 
 /// Transaction status for lifecycle enforcement
@@ -118,6 +119,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             current_role: None,
             checkpoint_manager: None,
             parallel_degree: 1,
+            stmt_cache: sqlrustgo_cache::PreparedStatementCache::new(100),
         }
     }
 
@@ -135,6 +137,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             current_role: None,
             checkpoint_manager: None,
             parallel_degree: 1,
+            stmt_cache: sqlrustgo_cache::PreparedStatementCache::new(100),
         }
     }
 
@@ -152,6 +155,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             current_role: None,
             checkpoint_manager: None,
             parallel_degree: 1,
+            stmt_cache: sqlrustgo_cache::PreparedStatementCache::new(100),
         }
     }
 
@@ -330,6 +334,9 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             Statement::Show(ref show) => self.execute_show(show),
             Statement::Describe(ref desc) => self.execute_describe(desc),
             Statement::AlterTable(ref alter) => self.execute_alter_table(alter),
+            Statement::Prepare { ref name, ref sql } => self.execute_prepare(name, sql),
+            Statement::Execute { ref name, ref params } => self.execute_execute(name, params),
+            Statement::Deallocate { ref name } => self.execute_deallocate(name),
             _ => Err(SqlError::ExecutionError(
                 "Unsupported statement type".to_string(),
             )),
@@ -1790,5 +1797,43 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         }
 
         Ok(ExecutorResult::empty())
+    }
+
+    fn execute_prepare(&mut self, name: &str, sql: &str) -> SqlResult<ExecutorResult> {
+        let parsed = sqlrustgo_parser::parse(sql).map_err(|e| {
+            SqlError::ParseError(format!("PREPARE failed to parse SQL: {}", e))
+        })?;
+        self.stmt_cache.prepare(name, sql, parsed);
+        Ok(ExecutorResult::empty())
+    }
+
+    fn execute_execute(
+        &mut self,
+        name: &str,
+        params: &[sqlrustgo_parser::Expression],
+    ) -> SqlResult<ExecutorResult> {
+        let sql = self.stmt_cache.execute_with_sql(name).ok_or_else(|| {
+            SqlError::ExecutionError(format!(
+                "prepared statement '{}' not found (call PREPARE first)",
+                name
+            ))
+        })?;
+        if !params.is_empty() {
+            return Err(SqlError::ExecutionError(
+                "EXECUTE ... USING with bind parameters is not yet supported in v3.9.0; \
+                 use direct parameter substitution in the SQL body for now"
+                    .to_string(),
+            ));
+        }
+        self.execute(&sql)
+    }
+
+    fn execute_deallocate(&mut self, name: &str) -> SqlResult<ExecutorResult> {
+        self.stmt_cache.deallocate(name);
+        Ok(ExecutorResult::empty())
+    }
+
+    pub fn stmt_cache_stats(&self) -> sqlrustgo_cache::CacheStats {
+        self.stmt_cache.stats()
     }
 }
