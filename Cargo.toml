@@ -475,6 +475,10 @@ path = "tests/ci/ci_test.rs"
 [[test]]
 name = "alter_table_test"
 path = "tests/alter_table_test.rs"
+# ARCH-3 (#3169) — VtuGuard main-path enforcement
+[[test]]
+name = "arch3_vtu_main_path_test"
+path = "tests/arch3_vtu_main_path_test.rs"
 
 [[test]]
 name = "truncate_table_test"
