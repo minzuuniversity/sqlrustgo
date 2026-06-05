@@ -102,6 +102,11 @@ pub fn expression_to_value(expr: &sqlrustgo_parser::Expression) -> Value {
         // fallback arm when the column lookup fails — see the
         // `Expression::Identifier` arm in `evaluate_expression` for the
         // full single-source-of-truth delegation.
+        // P0-2 §4.12: delegated to `executor::expr::eval_unary_op` /
+        // `cast_val` for the corresponding arms. The Identifier
+        // fallback path here is preserved for the non-row path
+        // (used by `expression_to_value` callers like the EXTRACT
+        // arm in the legacy `evaluate_expression`).
         sqlrustgo_parser::Expression::Identifier(name) => Value::Text(name.clone()),
         _ => Value::Null,
     }
@@ -163,6 +168,23 @@ pub fn evaluate_expression(
                 &table_info.columns,
             ))
         }
+        Expression::UnaryOp(op, inner) => {
+            // P0-2 §4.12: delegated to `executor::expr::eval_unary_op`.
+            // The operator is applied to the *evaluated* inner value.
+            // The arm was previously absent (UnaryOp fell through to
+            // `_ => Ok(Value::Null)`), so this adds real new
+            // functionality (TPC-H Q5/Q8 use NOT in HAVING).
+            let val = evaluate_expression(inner, row, table_info)?;
+            Ok(sqlrustgo_executor::expr::eval_unary_op(&val, op))
+        }
+        // P0-2 §4.13 (Cast): DEFERRED. The `sqlrustgo_parser::Expression`
+        // enum does not currently have a `Cast` variant; the parser
+        // expresses casts via `FunctionCall("CAST", ...)` instead.
+        // Adding a dedicated `Cast` arm here would require a parser
+        // change (new enum variant + parser changes) which is out of
+        // scope for P0-2. The `executor::expr::cast_val` function
+        // IS available (P0-2 §4.13 doc) for future use. Tracked in
+        // the OpenSpec tasks.md §4.13.
         Expression::BinaryOp(left, op, right) => {
             let left_val = evaluate_expression(left, row, table_info).unwrap_or(Value::Null);
             let right_val = evaluate_expression(right, row, table_info).unwrap_or(Value::Null);
