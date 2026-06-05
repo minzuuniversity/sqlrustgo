@@ -984,8 +984,8 @@ impl SqlCorpus {
                         // Also check if the SQL ends with UNION (mid-statement
                         // UNION means the next line is still part of this case)
                         let trimmed_sql = c.sql.trim_end();
-                        let ends_with_union = trimmed_sql.ends_with("UNION")
-                            || trimmed_sql.ends_with("UNION ALL");
+                        let ends_with_union =
+                            trimmed_sql.ends_with("UNION") || trimmed_sql.ends_with("UNION ALL");
                         unclosed_parens || ends_with_union
                     })
                     .unwrap_or(false);
@@ -1002,7 +1002,11 @@ impl SqlCorpus {
                     // doesn't have `--` comments, but the corpus uses
                     // them as subquery labels).
                     let comment_text = trimmed.trim_start_matches("-- ").trim();
-                    current_case.as_mut().unwrap().sql.push_str(&format!("-- {}", comment_text));
+                    current_case
+                        .as_mut()
+                        .unwrap()
+                        .sql
+                        .push_str(&format!("-- {}", comment_text));
                 }
 
                 let case_name = trimmed
@@ -1202,4 +1206,3 @@ fn split_sql_statements(sql: &str) -> Vec<&str> {
     }
     out
 }
-
