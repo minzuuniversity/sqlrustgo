@@ -264,6 +264,26 @@ pub fn eval_literal_from_str(s: &str) -> Value {
     if s.eq_ignore_ascii_case("NULL") {
         return Value::Null;
     }
+    // Boolean keywords: MySQL 5.7 uses TRUE/FALSE as 1/0 in INTEGER context.
+    // We preserve the same convention as the legacy `expr_utils`
+    // (Literal arm was `Value::Text(s)` fallback) BUT the unified
+    // arm here maps TRUE/FALSE to Integer(1)/Integer(0) so that
+    // `NOT TRUE` evaluates to a Boolean. (See P0-2 §4.12.
+    // Without this, `Literal("TRUE")` was Text("TRUE") and `NOT TRUE`
+    // went through to_bool(Text) which returns true, negating to
+    // false — wrong.)
+    //
+    // **Note**: this is a *behavior change* from the legacy
+    // `expr_utils::expression_to_value` Literal arm, which would
+    // have returned `Value::Text("TRUE")` for `Literal("TRUE")`. The
+    // change is intentional and tracked in the OpenSpec tasks.md
+    // §4.12 — the UnaryOp arm cannot work without this.
+    if s.eq_ignore_ascii_case("TRUE") {
+        return Value::Integer(1);
+    }
+    if s.eq_ignore_ascii_case("FALSE") {
+        return Value::Integer(0);
+    }
     if let Ok(n) = s.parse::<i64>() {
         return Value::Integer(n);
     }
@@ -687,7 +707,19 @@ fn eval_binary_op(left: &Value, right: &Value, op: &str) -> Value {
     }
 }
 
-fn eval_unary_op(val: &Value, op: &str) -> Value {
+/// Evaluate the parser-AST `Expression::UnaryOp(op, expr)` arm.
+/// Currently supports `NOT` / `!`; any other op returns `Value::Null`.
+///
+/// This is the single source of truth for the parser-AST `UnaryOp`
+/// branch. The legacy `src/expr_utils.rs::evaluate_expression` `Expression::UnaryOp` arm
+/// (P0-2 §4.12) is a thin delegation to this function.
+///
+/// **Semantics:**
+/// - `eval_unary_op(true, "NOT")` → `Value::Boolean(false)`
+/// - `eval_unary_op(0, "NOT")` → `Value::Boolean(true)` (0 is falsy via `to_bool`)
+/// - `eval_unary_op(1, "NOT")` → `Value::Boolean(false)` (1 is truthy via `to_bool`)
+/// - `eval_unary_op(_, "UNKNOWN")` → `Value::Null`
+pub fn eval_unary_op(val: &Value, op: &str) -> Value {
     match op.to_uppercase().as_str() {
         "NOT" | "!" => Value::Boolean(!to_bool(val)),
         _ => Value::Null,
@@ -1299,7 +1331,21 @@ fn group_concat(args: &[Value]) -> Value {
     Value::Text(joined)
 }
 
-fn cast_val(val: &Value, target_type: &str) -> Value {
+/// Evaluate the parser-AST `Expression::Cast{expr, target_type}` arm:
+/// converts a value to the target type per MySQL 5.7 cast semantics.
+///
+/// This is the single source of truth for the parser-AST `Cast` branch.
+/// The legacy `src/expr_utils.rs::evaluate_expression` `Expression::Cast`
+/// arm (P0-2 §4.13) is a thin delegation to this function.
+///
+/// **Semantics:**
+/// - `cast_val(Integer(42), "INTEGER")` → `Integer(42)` (idempotent)
+/// - `cast_val(Text("42"), "INTEGER")` → `Integer(42)` (parse text)
+/// - `cast_val(Text("not a number"), "INTEGER")` → `Integer(0)` (parse fail → 0)
+/// - `cast_val(Float(2.7), "INTEGER")` → `Integer(2)` (truncate)
+/// - `cast_val(_, "TEXT")` → `Text(to_sql_string())` (any → text)
+/// - `cast_val(_, "UNKNOWN_TYPE")` → `val.clone()` (passthrough)
+pub fn cast_val(val: &Value, target_type: &str) -> Value {
     match target_type.to_uppercase().as_str() {
         "INTEGER" | "INT" => match val {
             Value::Integer(i) => Value::Integer(*i),
