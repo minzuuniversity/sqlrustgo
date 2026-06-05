@@ -499,6 +499,14 @@ path = "tests/soak_test.rs"
 [[test]]
 name = "soak_test_harness"
 path = "tests/soak_test_harness.rs"
+# P1-4 (#3176) — Upgrade Test (v3.8 → v3.9, 50+ scenarios)
+[[test]]
+name = "upgrade_test"
+path = "tests/upgrade_test.rs"
+# P1-4 (#3176) — Upgrade Test Harness (shared helper)
+[[test]]
+name = "upgrade_test_harness"
+path = "tests/upgrade_test_harness.rs"
 
 [[test]]
 name = "truncate_table_test"
