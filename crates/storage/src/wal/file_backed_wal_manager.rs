@@ -118,4 +118,30 @@ impl WalManager for FileBackedWalManager {
     fn current_lsn(&self) -> u64 {
         self.writer.as_ref().map(|w| w.current_lsn()).unwrap_or(0)
     }
+
+    fn is_batch_mode(&self) -> bool {
+        self.writer
+            .as_ref()
+            .map(|w| w.is_batch_mode())
+            .unwrap_or(false)
+    }
+
+    fn flush_threshold(&self) -> usize {
+        self.writer
+            .as_ref()
+            .map(|w| w.flush_threshold())
+            .unwrap_or(100)
+    }
+
+    fn set_batch_mode(&mut self, enable: bool) {
+        if let Some(ref mut writer) = self.writer {
+            writer.enable_batch_mode(enable);
+        }
+    }
+
+    fn set_flush_threshold(&mut self, threshold: usize) {
+        if let Some(ref mut writer) = self.writer {
+            writer.set_flush_threshold(threshold);
+        }
+    }
 }
