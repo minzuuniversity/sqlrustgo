@@ -348,6 +348,32 @@ pub fn compare_values(left: &Value, right: &Value) -> i32 {
                 0
             }
         }
+        // TPC-H Q11 / Q14 fix: cross-type comparison (Float vs Integer,
+        // Integer vs Float). Previously the `_ => 0` catch-all returned
+        // 0, making `Float(3160502.6) > Integer(0)` always evaluate to
+        // `0 > 0 = false` (rejected every HAVING row). Promote the
+        // Integer side to Float for the comparison so the numeric
+        // ordering works.
+        (Value::Float(l), Value::Integer(r)) => {
+            let r = *r as f64;
+            if l < &r {
+                -1
+            } else if l > &r {
+                1
+            } else {
+                0
+            }
+        }
+        (Value::Integer(l), Value::Float(r)) => {
+            let l = *l as f64;
+            if &l < r {
+                -1
+            } else if &l > r {
+                1
+            } else {
+                0
+            }
+        }
         (Value::Text(l), Value::Text(r)) => l.cmp(r) as i32,
         (Value::Null, Value::Null) => 0,
         (Value::Null, _) => -1,
