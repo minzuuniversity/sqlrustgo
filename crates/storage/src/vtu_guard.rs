@@ -397,12 +397,18 @@ mod tests {
 
         // After set_current_tx_id(7) → true
         storage.set_current_tx_id(7);
-        assert!(storage.in_transaction(), "TX id 7 must mark storage as in-tx");
+        assert!(
+            storage.in_transaction(),
+            "TX id 7 must mark storage as in-tx"
+        );
         assert_eq!(storage.current_tx_id(), 7);
 
         // Back to 0 → false
         storage.set_current_tx_id(0);
-        assert!(!storage.in_transaction(), "TX id 0 must mark storage as idle");
+        assert!(
+            !storage.in_transaction(),
+            "TX id 0 must mark storage as idle"
+        );
         assert_eq!(storage.current_tx_id(), 0);
     }
 
