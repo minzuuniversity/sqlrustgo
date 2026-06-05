@@ -2079,14 +2079,16 @@ impl Parser {
                         if !matches!(self.current(), Some(Token::Comma)) {
                             return Err(format!(
                                 "Expected ',' in {}(...), got {:?}",
-                                name, self.current()
+                                name,
+                                self.current()
                             ));
                         }
                         self.next(); // consume Comma
                         if !matches!(self.current(), Some(Token::Interval)) {
                             return Err(format!(
                                 "Expected INTERVAL in {}(...), got {:?}",
-                                name, self.current()
+                                name,
+                                self.current()
                             ));
                         }
                         self.next(); // consume INTERVAL
@@ -2107,7 +2109,10 @@ impl Parser {
                         self.expect(Token::RParen)?;
                         let args = vec![date_expr, n_expr, Expression::Literal(unit)];
                         columns.push(SelectColumn {
-                            name: format!("{:?}", Expression::FunctionCall(name.to_string(), args.clone())),
+                            name: format!(
+                                "{:?}",
+                                Expression::FunctionCall(name.to_string(), args.clone())
+                            ),
                             alias: None,
                             expression: Some(Expression::FunctionCall(name.to_string(), args)),
                         });
@@ -2126,7 +2131,10 @@ impl Parser {
                         self.expect(Token::RParen)?;
                         let args = vec![needle, haystack];
                         columns.push(SelectColumn {
-                            name: format!("{:?}", Expression::FunctionCall(name.to_string(), args.clone())),
+                            name: format!(
+                                "{:?}",
+                                Expression::FunctionCall(name.to_string(), args.clone())
+                            ),
                             alias: None,
                             expression: Some(Expression::FunctionCall(name.to_string(), args)),
                         });
@@ -3885,14 +3893,16 @@ impl Parser {
                         if !matches!(self.current(), Some(Token::Comma)) {
                             return Err(format!(
                                 "Expected ',' in {}(...), got {:?}",
-                                name, self.current()
+                                name,
+                                self.current()
                             ));
                         }
                         self.next(); // consume Comma
                         if !matches!(self.current(), Some(Token::Interval)) {
                             return Err(format!(
                                 "Expected INTERVAL in {}(...), got {:?}",
-                                name, self.current()
+                                name,
+                                self.current()
                             ));
                         }
                         self.next(); // consume INTERVAL
