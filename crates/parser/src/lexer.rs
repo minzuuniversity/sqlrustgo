@@ -104,9 +104,12 @@ impl<'a> Lexer<'a> {
     }
 
     /// Read a string literal (single-quoted) - handles Unicode correctly
+    /// and MySQL-style backslash escapes (\\n, \\t, \\, etc.).
+    /// Without backslash handling, `ESCAPE '\\\\'` would produce a
+    /// 2-char string instead of MySQL's 1-char backslash.
     fn read_string(&mut self) -> String {
         self.position += 1; // Skip opening quote
-        let start = self.position;
+        let mut result = String::new();
 
         while !self.is_eof() {
             let ch = self.peek_char();
@@ -115,15 +118,36 @@ impl<'a> Lexer<'a> {
                 let remaining = &self.input[self.position..];
                 if remaining.starts_with("''") {
                     self.position += 2;
+                    result.push('\'');
                     continue;
                 }
                 break;
             }
+            if ch == '\\' {
+                // MySQL backslash escape
+                self.position += 1; // consume backslash
+                let next = self.peek_char();
+                let resolved = match next {
+                    'n' => '\n',
+                    't' => '\t',
+                    'r' => '\r',
+                    '\\' => '\\',
+                    '\'' => '\'',
+                    '"' => '"',
+                    '0' => '\0',
+                    _ => next, // unknown escape, keep as-is
+                };
+                result.push(resolved);
+                if !self.is_eof() {
+                    self.position += 1;
+                }
+                continue;
+            }
             // Move by character, not by byte, to handle Unicode
+            result.push(ch);
             self.position += ch.len_utf8();
         }
 
-        let result = self.input[start..self.position].to_string();
         if !self.is_eof() {
             self.position += 1; // Skip closing quote
         }
