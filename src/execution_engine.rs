@@ -23,11 +23,12 @@ use sqlrustgo_executor::ExecutorResult;
 use sqlrustgo_parser::parser::{
     AggregateCall, AggregateFunction, AlterTableOperation, AlterTableStatement, CallStatement,
     CreateIndexStatement, CreateProcedureStatement, CreateRoleStatement, CreateTableStatement,
-    CreateTriggerStatement, DropRoleStatement, DropTableStatement, GrantRoleStatement,
-    GrantStatement, InsertStatement, ObjectType as ParserObjectType, Privilege as ParserPrivilege,
-    RevokeRoleStatement, RevokeStatement, SelectStatement, SetRoleStatement, ShowStatement,
-    StoredProcParam as ParserStoredProcParam, StoredProcParamMode as ParserParamMode,
-    StoredProcStatement as ParserStatement, TruncateStatement,
+    CreateTriggerStatement, DescribeStatement, DropRoleStatement, DropTableStatement,
+    GrantRoleStatement, GrantStatement, InsertStatement, ObjectType as ParserObjectType,
+    Privilege as ParserPrivilege, RevokeRoleStatement, RevokeStatement, SelectStatement,
+    SetRoleStatement, ShowStatement, StoredProcParam as ParserStoredProcParam,
+    StoredProcParamMode as ParserParamMode, StoredProcStatement as ParserStatement,
+    TruncateStatement,
 };
 use sqlrustgo_parser::transaction::IsolationLevel as ParserIsolationLevel;
 use sqlrustgo_parser::JoinType;
@@ -163,6 +164,16 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         self.stats.clone()
     }
 
+    /// Read-only access to the underlying storage handle.
+    ///
+    /// Returned as `&Arc<RwLock<S>>` so callers can lock it themselves
+    /// and read table info, scan rows, etc. without taking `&mut self`
+    /// on the engine. Required by the LOAD DATA LOCAL INFILE handler
+    /// to look up the target table's column count.
+    pub fn storage_ref(&self) -> &Arc<RwLock<S>> {
+        &self.storage
+    }
+
     // CBO estimation methods extracted to cbo_estimator.rs (SPEC-012).
     // Thin forwarder methods retained for backwards-compatible public API.
 
@@ -293,6 +304,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             Statement::ShowRoles => self.execute_show_roles(),
             Statement::ShowGrantsFor(ref user) => self.execute_show_grants_for(user),
             Statement::Show(ref show) => self.execute_show(show),
+            Statement::Describe(ref desc) => self.execute_describe(desc),
             Statement::AlterTable(ref alter) => self.execute_alter_table(alter),
             _ => Err(SqlError::ExecutionError(
                 "Unsupported statement type".to_string(),
@@ -300,7 +312,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         }
     }
 
-    fn execute_insert(&self, insert: &InsertStatement) -> SqlResult<ExecutorResult> {
+    pub fn execute_insert(&mut self, insert: &InsertStatement) -> SqlResult<ExecutorResult> {
         // IMPL-001 & IMPL-004: TX lifecycle enforcement
         // IDLE/Active with no current_tx_id = implicit autocommit TX (allowed)
         // Committed/Aborted state = no new implicit TX (error)
@@ -320,6 +332,28 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 // New implicit TX started implicitly when current_tx_id is None
             }
         }
+        // INT-1: Force DML to go through TransactionManager.
+        // Begin an implicit transaction if none is active, and ensure it
+        // commits when the DML finishes (autocommit semantics).
+        // This call site now matches the documented DML contract: every
+        // INSERT/UPDATE/DELETE must be wrapped by TM.begin_transaction() / TM.commit().
+        let started_implicit = self.current_tx_id.is_none();
+        let tm_tx_id = if started_implicit {
+            let tx_id = self
+                .transaction_manager
+                .begin_transaction(self.default_isolation)
+                .map_err(|e| SqlError::ExecutionError(format!("TM.begin failed: {:?}", e)))?;
+            self.current_tx_id = Some(tx_id);
+            self.tx_status = TxStatus::Active;
+            // #3129: propagate TX id to storage so VtuGuard::assert_dml_safe
+            // can verify in_transaction() (PR-3019 was missing this step).
+            if let Ok(mut storage) = self.storage.write() {
+                storage.set_current_tx_id(tx_id.as_u64());
+            }
+            Some(tx_id)
+        } else {
+            self.current_tx_id
+        };
         let table_name = insert.table.clone();
 
         // Get table info first (need it for triggers and FK validation)
@@ -381,6 +415,33 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             let mut storage = self.storage.write().unwrap();
             let col_names: Vec<String> =
                 table_info.columns.iter().map(|c| c.name.clone()).collect();
+
+            if !insert.is_replace && table_info.columns.iter().any(|c| c.primary_key) {
+                let existing_rows = storage.scan(&table_name)?;
+                for new_record in &processed_records {
+                    for existing in &existing_rows {
+                        if self.record_matches_unique_key(existing, new_record, &table_info) {
+                            let pk_repr = table_info
+                                .columns
+                                .iter()
+                                .enumerate()
+                                .find_map(|(i, c)| {
+                                    if c.primary_key {
+                                        new_record.get(i).map(|v| v.to_sql_string())
+                                    } else {
+                                        None
+                                    }
+                                })
+                                .unwrap_or_else(|| "?".to_string());
+                            return Err(SqlError::ExecutionError(format!(
+                                "Duplicate entry '{}' for key 'PRIMARY'",
+                                pk_repr
+                            )));
+                        }
+                    }
+                }
+            }
+
             for record in &processed_records {
                 if !table_info.foreign_keys.is_empty() {
                     validate_foreign_keys(&*storage, &table_info, record, &insert.columns)?;
@@ -418,6 +479,25 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             }
         }
 
+        // INT-1: For autocommit (no explicit transaction), commit the
+        // implicit transaction so WAL/MVCC receive the changes. If the
+        // user already started a transaction via BEGIN, leave the
+        // current_tx_id intact so they can COMMIT/ROLLBACK explicitly.
+        // `started_implicit` is true ONLY when we entered the
+        // current_tx_id-was-None branch above and started a fresh
+        // transaction ourselves; the else branch returns the existing
+        // TxId for an already-open transaction, in which case the user
+        // controls commit/rollback. The previous `tm_tx_id == Some(_)`
+        // check was incorrect because the else branch also wraps the
+        // existing tx_id in Some, so it always matched and incorrectly
+        // committed explicit transactions.
+        if started_implicit {
+            let tx_id = self.current_tx_id.unwrap();
+            let _ = self.transaction_manager.commit(tx_id);
+            self.current_tx_id = None;
+            self.tx_status = TxStatus::Idle;
+        }
+
         Ok(ExecutorResult::new(vec![], insert.values.len()))
     }
 
@@ -444,7 +524,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         true
     }
 
-    fn execute_update(&self, update: &UpdateStatement) -> SqlResult<ExecutorResult> {
+    pub fn execute_update(&mut self, update: &UpdateStatement) -> SqlResult<ExecutorResult> {
         // IMPL-001 & IMPL-004: TX lifecycle enforcement
         match self.tx_status {
             TxStatus::Committed => {
@@ -461,6 +541,24 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 // Autocommit: allow DML without explicit BEGIN
             }
         }
+        // INT-1: Begin an implicit transaction so TM/WAL receive the change.
+        let started_implicit = self.current_tx_id.is_none();
+        let tm_tx_id = if started_implicit {
+            let tx_id = self
+                .transaction_manager
+                .begin_transaction(self.default_isolation)
+                .map_err(|e| SqlError::ExecutionError(format!("TM.begin failed: {:?}", e)))?;
+            self.current_tx_id = Some(tx_id);
+            self.tx_status = TxStatus::Active;
+            // #3129: propagate TX id to storage so VtuGuard::assert_dml_safe
+            // can verify in_transaction() (PR-3019 was missing this step).
+            if let Ok(mut storage) = self.storage.write() {
+                storage.set_current_tx_id(tx_id.as_u64());
+            }
+            Some(tx_id)
+        } else {
+            self.current_tx_id
+        };
         let table_name = update.table.clone();
 
         // If no WHERE clause, use the simple storage.update() path
@@ -646,10 +744,20 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             }
         }
 
+        // INT-1: For autocommit (no explicit transaction), commit so
+        // WAL/MVCC receive the change. If user already started a TX,
+        // leave current_tx_id intact for explicit COMMIT/ROLLBACK.
+        if started_implicit {
+            let tx_id = self.current_tx_id.unwrap();
+            let _ = self.transaction_manager.commit(tx_id);
+            self.current_tx_id = None;
+            self.tx_status = TxStatus::Idle;
+        }
+
         Ok(ExecutorResult::new(vec![], count))
     }
 
-    fn execute_delete(&self, delete: &DeleteStatement) -> SqlResult<ExecutorResult> {
+    pub fn execute_delete(&mut self, delete: &DeleteStatement) -> SqlResult<ExecutorResult> {
         // IMPL-001 & IMPL-004: TX lifecycle enforcement
         match self.tx_status {
             TxStatus::Committed => {
@@ -666,12 +774,37 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 // Autocommit: allow DML without explicit BEGIN
             }
         }
+        // INT-1: Begin an implicit transaction so TM/WAL receive the change.
+        let started_implicit = self.current_tx_id.is_none();
+        let tm_tx_id = if started_implicit {
+            let tx_id = self
+                .transaction_manager
+                .begin_transaction(self.default_isolation)
+                .map_err(|e| SqlError::ExecutionError(format!("TM.begin failed: {:?}", e)))?;
+            self.current_tx_id = Some(tx_id);
+            self.tx_status = TxStatus::Active;
+            // #3129: propagate TX id to storage so VtuGuard::assert_dml_safe
+            // can verify in_transaction() (PR-3019 was missing this step).
+            if let Ok(mut storage) = self.storage.write() {
+                storage.set_current_tx_id(tx_id.as_u64());
+            }
+            Some(tx_id)
+        } else {
+            self.current_tx_id
+        };
         let table_name = delete.table.clone();
 
         // If no WHERE clause, delete all rows (current behavior is correct)
         if delete.where_clause.is_none() {
             let mut storage = self.storage.write().unwrap();
             let count = storage.delete(&table_name, &[])?;
+            // INT-1: Autocommit — commit the implicit TX so WAL/MVCC see this.
+            if started_implicit {
+                let tx_id = self.current_tx_id.unwrap();
+                let _ = self.transaction_manager.commit(tx_id);
+                self.current_tx_id = None;
+                self.tx_status = TxStatus::Idle;
+            }
             return Ok(ExecutorResult::new(vec![], count));
         }
 
@@ -778,6 +911,16 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             for row in &rows_to_delete {
                 trigger_executor.execute_after_delete(&table_name, row)?;
             }
+        }
+
+        // INT-1: For autocommit (no explicit transaction), commit so
+        // WAL/MVCC receive the change. If user already started a TX,
+        // leave current_tx_id intact for explicit COMMIT/ROLLBACK.
+        if started_implicit {
+            let tx_id = self.current_tx_id.unwrap();
+            let _ = self.transaction_manager.commit(tx_id);
+            self.current_tx_id = None;
+            self.tx_status = TxStatus::Idle;
         }
 
         Ok(ExecutorResult::new(vec![], count))
@@ -1059,6 +1202,11 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         })?;
         self.current_tx_id = None;
         self.tx_status = TxStatus::Committed;
+        // INT-1: Reset to Idle after commit so the next statement can
+        // either begin a new TX or run in autocommit mode again. Without
+        // this reset, subsequent DML would reject with
+        // "transaction already committed".
+        self.tx_status = TxStatus::Idle;
         Ok(ExecutorResult::empty())
     }
 
@@ -1081,6 +1229,9 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         })?;
         self.current_tx_id = None;
         self.tx_status = TxStatus::Aborted;
+        // INT-1: Reset to Idle so the next DML can begin a new TX or run
+        // in autocommit mode. (Same reasoning as commit_transaction above.)
+        self.tx_status = TxStatus::Idle;
         Ok(ExecutorResult::empty())
     }
 
@@ -1411,9 +1562,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         ))
     }
 
-    /// SHOW CREATE TABLE — return a minimal CREATE TABLE statement for `table`.
-    /// v3.7.0 doesn't reconstruct full DDL, so we return a basic placeholder
-    /// with the table name. Future versions should introspect the schema.
+    /// SHOW CREATE TABLE — reconstruct CREATE TABLE from the live schema.
     fn execute_show_create_table(&self, table: &str) -> SqlResult<ExecutorResult> {
         let storage = self.storage.read().unwrap();
         if !storage.list_tables().iter().any(|n| n == table) {
@@ -1422,16 +1571,55 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 table
             )));
         }
-        let row = vec![Value::Text(format!(
-            "CREATE TABLE {} (id INTEGER) /* v3.7.0: schema reconstruction not implemented */",
-            table
-        ))];
-        Ok(ExecutorResult::new(vec![row], 1))
+        let info = storage
+            .get_table_info(table)
+            .map_err(|e| SqlError::ExecutionError(format!("cannot introspect {table}: {e}")))?;
+        let cols: Vec<String> = info
+            .columns
+            .iter()
+            .map(|c| {
+                let nullable = if c.nullable { "" } else { " NOT NULL" };
+                format!("{} {}{}", c.name, c.data_type, nullable)
+            })
+            .collect();
+        let ddl = format!("CREATE TABLE {} ({})", table, cols.join(", "));
+        Ok(ExecutorResult::new(vec![vec![Value::Text(ddl)]], 1))
     }
 
     /// SHOW INDEX — placeholder (v3.7.0 indexes are not cataloged).
     fn execute_show_index(&self, _table: &str) -> SqlResult<ExecutorResult> {
         Ok(ExecutorResult::new(vec![], 0))
+    }
+
+    /// DESCRIBE table — return one row per column with Field/Type/Null/Key/Default/Extra.
+    fn execute_describe(&self, desc: &DescribeStatement) -> SqlResult<ExecutorResult> {
+        let storage = self.storage.read().unwrap();
+        if !storage.list_tables().iter().any(|n| n == &desc.table) {
+            return Err(SqlError::ExecutionError(format!(
+                "Table '{}' does not exist",
+                desc.table
+            )));
+        }
+        let info = storage.get_table_info(&desc.table).map_err(|e| {
+            SqlError::ExecutionError(format!("cannot introspect {}: {e}", desc.table))
+        })?;
+        let rows: Vec<Vec<Value>> = info
+            .columns
+            .iter()
+            .map(|c| {
+                let null_str = if c.nullable { "YES" } else { "NO" };
+                let key_str = if c.primary_key { "PRI" } else { "" };
+                vec![
+                    Value::Text(c.name.clone()),
+                    Value::Text(c.data_type.clone()),
+                    Value::Text(null_str.to_string()),
+                    Value::Text(key_str.to_string()),
+                    Value::Text("NULL".to_string()),
+                    Value::Text(String::new()),
+                ]
+            })
+            .collect();
+        Ok(ExecutorResult::new(rows, info.columns.len()))
     }
 
     /// SHOW GRANTS — placeholder (v3.7.0 grant tracking is limited to roles).
