@@ -1,4 +1,5 @@
 # SQLRustGo v3.8.0 GA Gate Checklist
+<!-- env:blocked:no-ci -->
 
 > **版本**: v3.8.0
 > **类型**: Architecture Unification Release
@@ -134,7 +135,7 @@
 | L6-1 | GA Gate Report exists | `ls docs/releases/v3.8.0/GA_GATE_REPORT.md` | 文件存在 |
 | L6-2 | Changelog complete | `scripts/docs/changelog_check.sh` | 所有 PR 已记录 |
 | L6-3 | Migration guide | `ls docs/releases/v3.8.0/MIGRATION_GUIDE.md` | 文件存在 |
-| L6-4 | API reference | `ls docs/releases/v3.8.0/API_REFERENCE.md` | 文件存在 |
+| L6-4 | API reference | `ls docs/releases/v3.8.0/API_DOCUMENTATION.md` | 文件存在 |
 | L6-5 | SSOT cross-check | `bash scripts/docs/ssot_cross_check.sh` | PASS |
 
 ---
@@ -161,56 +162,94 @@
 | CV-02 | Ghost PR 已正式 Defer | `docs/governance/adr/ADR-010-ghost-pr-resolution.md` | 存在 |
 | CV-03 | v3.8.0+1 Post-GA Plan 存在 | `docs/releases/v3.8.0/POST_GA_PLAN.md` | 存在 |
 
-**Cross-Version Debt Summary**:
+**Cross-Version Debt Summary** (2026-06-04 sync, PR #3097 audit + #3100 fix):
 | Debt ID | 问题 | 首次出现 | 状态 |
 |---------|------|----------|------|
-| INT-1 | DML 不经过 WAL/TransactionManager | v1.2.0 | ACTIVE (→ v3.9.0) |
-| INT-2 | ParallelVolcanoExecutor 孤岛 | v2.6.0 | ACTIVE (→ v3.9.0) |
-| INT-3 | expr crate 功能孤岛 | v3.0.0 | ACTIVE (→ v3.9.0) |
-| INT-4 | mysql-server 未与主 server 集成 | v2.6.0 | ACTIVE (→ v3.9.0) |
+| INT-1 | DML 不经过 WAL/TransactionManager | v1.2.0 | ✅ CLOSED (PR-3019 #2966 + PR-3050 fix) |
+| INT-2 | ParallelVolcanoExecutor 孤岛 | v2.6.0 | ⚠️ ACTIVE w/ v3.9.0+ plan (INT_DEBT_REMEDIATION_PLAN §2) |
+| INT-3 | expr crate 功能孤岛 | v3.0.0 | ⚠️ ACTIVE w/ v3.9.0+ plan (INT_DEBT_REMEDIATION_PLAN §3) |
+| INT-4 | mysql-server 未与主 server 集成 | v2.6.0 | ✅ CLOSED (PR-2999 #2973 + PR-3051 explicit TX path) |
 
 ---
 
 ## 8. 门禁执行脚本
 
+**SSOT 入口**：`scripts/gate/check_rc_ga_gate.sh`
+
+GA Gate 的真实执行入口是 [`check_rc_ga_gate.sh`](../../../../scripts/gate/check_rc_ga_gate.sh)，
+支持五阶段分级调用：
+
 ```bash
-#!/bin/bash
-# scripts/gate/check_ga_v3.8.0.sh
-
-set -e
-
-echo "=== v3.8.0 GA Gate ==="
-
-echo "[L1] Unit Correctness..."
-cargo test -p sqlrustgo-parser --lib --quiet
-cargo test -p sqlrustgo-executor --lib --quiet
-cargo test -p sqlrustgo-storage --lib --quiet
-cargo test -p sqlrustgo-transaction --lib --quiet
-cargo clippy --all-features --quiet
-cargo fmt -- --check
-
-echo "[L2] Execution Consistency..."
-python3 scripts/test/execution_consistency_harness.py --corpus data/sql_corpus.json --paths mysql-server,bench-cli,direct
-cargo test -p sqlrustgo-integration-tests --quiet
-
-echo "[L3] ACID Verification..."
-python3 scripts/test/isolation_test_suite.py --all
-python3 scripts/test/crash_sim.py --all
-python3 scripts/test/execution_divergence.py --all
-
-echo "[L4] Architecture..."
-bash scripts/test/arch_check.sh
-bash scripts/test/vtu_path_check.sh
-
-echo "[L5] Performance..."
-./target/release/sqlrustgo-bench-cli tpch-bench --queries all
-bash scripts/bench/qps_regression.sh
-
-echo "[L6] Documentation..."
-bash scripts/docs/ssot_cross_check.sh
-
-echo "=== GA Gate PASSED ==="
+# v3.8.0 GA Gate 入口（SSOT 真实脚本）
+bash scripts/gate/check_rc_ga_gate.sh ga           # 完整 GA gate (D1+D2+D3+D4+D5+RC-to-GA checklist)
+bash scripts/gate/check_rc_ga_gate.sh rc           # RC gate
+bash scripts/gate/check_rc_ga_gate.sh beta         # Beta gate
+bash scripts/gate/check_rc_ga_gate.sh alpha        # Alpha gate (D1 only)
+bash scripts/gate/check_rc_ga_gate.sh all          # 五维度全开
+bash scripts/gate/check_rc_ga_gate.sh --help       # 帮助
 ```
+
+### 为什么 §8 不再是"fake script"
+
+**历史**：v3.7.0 的 §8 是一段伪 `#!/bin/bash` 文档块，混合了
+真实命令（`cargo test`）和**不存在的脚本**（`scripts/test/arch_check.sh`、
+`scripts/test/vtu_path_check.sh`、`scripts/test/isolation_test_suite.py` 等），
+违反 P5（未通过的必须有记录）原则。
+
+**v3.8.0 修复（Issue #2878）**：
+- ✅ §8 改为指向真实 SSOT 脚本 `check_rc_ga_gate.sh`
+- ✅ 该脚本内部已实现五维度门禁（D1-D5）+ RC-to-GA checklist
+- ✅ 文档中的命令路径与实际存在的脚本 1:1 对应
+
+### 实际执行的 9 类检查
+
+v3.8.0 GA Gate 由两层执行, 真实路径:
+
+```bash
+# Layer 1: 主 gate (5 维度 + 1 测试集成维度)
+bash scripts/gate/check_rc_ga_gate.sh ga
+# Layer 2: 全 8 维度综合验证 (D9 orchestrator)
+bash scripts/gate/check_full_gate_verification.sh
+# Layer 3: 单独 audit
+bash scripts/gate/audit_testing.sh v3.8.0 ga artifacts/audit/v3.8.0
+```
+
+完整维度清单（按层）:
+
+**Layer 1 — check_rc_ga_gate.sh (D1-D5 + D6a + C-ARCH-05):**
+
+| 维度 | 检查项 | 性质 |
+|------|--------|------|
+| D1-Alpha | L1 + Clippy + Format + Coverage + ADR | 真实 cargo/脚本 |
+| D2-Beta | Build + WAL Contract + Integration Gate | 真实 cargo/脚本 |
+| D3-SGL | SGL-001~005 (Layer-3 语义检查) | 真实脚本 |
+| D4-WAL | INV-1, INV-2, INV-3 (WAL 不变量) | 真实脚本 |
+| D5-DeepSeek | 10 Principles for RC/GA gate | 真实脚本 |
+| D6a-Integration | 49+ integration tests via cargo test --test | 真实 cargo |
+| C-ARCH-05 | execution_engine.rs 行数限制 (SSOT: 1800) | 真实 wc + check |
+
+**Layer 2 — check_full_gate_verification.sh (D1-D8 orchestrator):**
+
+| 维度 | 检查项 | 性质 |
+|------|--------|------|
+| D6b-TestInventory | 62 个 .rs 测试文件 (audit 2026-06) | 真实 cargo |
+| D7-INT Debt | INT-1~5 + 跨版本债 | 真实 check_int_debt.sh |
+| D8-Arch/Sem Debt | ARCH-1~3 + SEM-1~4 | 真实 check_arch_sem_debt.sh |
+| Cross-Version Debt | check_cross_version_debt.sh | 真实脚本 |
+| Test Plan Consistency | TEST_PLAN_INTEGRATED.md vs Cargo.toml | 真实 grep |
+| PR Template | .gitea/pull_request_template.md 存在 | 真实 ls |
+| Evidence Generation | artifacts/gate/v3.8.0/ 产物 | 真实 ls |
+
+**Layer 3 — audit_testing.sh (D5.5):**
+
+| 维度 | 检查项 | 性质 |
+|------|--------|------|
+| D5.5-Audit | TEST_PLAN ↔ Cargo.toml 16 个 [[test]] 对齐 | 真实 audit |
+
+**Gate 脚本索引**: `scripts/gate/README.md` (audit 2026-06-04) 列出 47 个脚本状态 (11 active + 19 internal + 17 deprecated)。
+
+**结论**: v3.8.0 §8 不再是 fake script。GA 通过的真实路径唯一:
+`bash scripts/gate/check_rc_ga_gate.sh ga` + `bash scripts/gate/check_full_gate_verification.sh` + `bash scripts/gate/audit_testing.sh v3.8.0 ga <out>`, 所有子检查由这些脚本分发。
 
 ---
 
