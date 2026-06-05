@@ -1,5 +1,3 @@
--- === SKIP ===
-
 -- SQLCorpus: JOIN Corner Cases
 -- Edge cases and stress tests for JOIN operations
 
@@ -16,6 +14,16 @@ CREATE TABLE departments (id INTEGER PRIMARY KEY, name TEXT, budget INTEGER);
 INSERT INTO departments VALUES (1, 'Engineering', 100000);
 INSERT INTO departments VALUES (2, 'Sales', 50000);
 INSERT INTO departments VALUES (3, 'Marketing', 30000);
+
+-- Projects table for nested_join case
+CREATE TABLE projects (id INTEGER PRIMARY KEY, name TEXT, dept_id INTEGER);
+INSERT INTO projects VALUES (1, 'ProjectA', 1), (2, 'ProjectB', 1), (3, 'ProjectC', 2);
+
+-- Additional tables for the CASE: join_to_empty / join_with_null_on_condition cases
+CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT, email TEXT);
+INSERT INTO users VALUES (1, 'Alice', 'alice@example.com');
+INSERT INTO users VALUES (2, 'Bob', NULL);
+INSERT INTO users VALUES (3, 'Charlie', 'charlie@example.com');
 
 -- === CASE: self_join ===
 SELECT e1.name AS employee, e2.name AS manager FROM employees e1 JOIN employees e2 ON e1.manager_id = e2.id;
