@@ -64,7 +64,7 @@
 | GROUP BY | ✅ | v3.4.0 | PASS | SQL-92 | 含 HAVING |
 | ORDER BY | ✅ | v3.0.0 | PASS | SQL-92 | ASC/DESC, 多列 |
 | LIMIT / OFFSET | ✅ | v3.4.0 | PASS | SQL-92 | 优化为 TopN |
-| DISTINCT | ✅ | v3.4.0 | 1 test | F-12 SPEC | F-12 PARTIAL, parser 100% |
+| DISTINCT | ✅ | v3.4.0 | **18 tests** (distinct_test 6 + f11_f12_executor_test 12) | F-12 | CLOSED (PR-2981) |
 | 子查询 (简单 IN/EXISTS) | ✅ | v3.5.0 | partial | - | 相关子查询部分场景不通过 |
 | 相关子查询 (Correlated) | ⚠️ | v3.5.0 | partial | - | F-12 范围, executor 边界 |
 | CTE (WITH) | 🟡 | plan v3.9.0+ | - | - | 已登记 ARCH-SEM 债务 |
@@ -100,7 +100,7 @@
 | AVG | ✅ | v3.0.0 | PASS | F-11 SPEC | |
 | MIN / MAX | ✅ | v3.0.0 | PASS | F-11 SPEC | |
 | GROUP_CONCAT | 🟡 | plan v3.9.0+ | - | - | MySQL 扩展 |
-| DISTINCT 聚合 (COUNT DISTINCT) | ⚠️ | v3.4.0 | 1 test | F-11 | PARTIAL |
+| DISTINCT 聚合 (COUNT DISTINCT) | ✅ | v3.4.0 | **12 tests** (f11_f12_executor_test) | F-11 | CLOSED (PR-2981) |
 
 **总体**: 6/7 PASS, 1/7 PARTIAL
 
