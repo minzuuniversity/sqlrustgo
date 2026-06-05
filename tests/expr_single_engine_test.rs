@@ -486,3 +486,201 @@ fn test_notlike_delegation() {
         );
     }
 }
+
+#[test]
+fn test_between_delegation() {
+    // Contract test for P0-2 §4.7 (Between).
+    use sqlrustgo_executor::expr::{compare_values, eval_between};
+    use sqlrustgo_parser::Expression as ParserExpr;
+    use sqlrustgo_storage::TableInfo;
+
+    let table_info = TableInfo::default();
+    let empty_row: Vec<Value> = vec![];
+
+    let cases: &[(Value, Value, Value, bool)] = &[
+        // value BETWEEN low AND high (inclusive both ends)
+        (
+            Value::Integer(5),
+            Value::Integer(1),
+            Value::Integer(10),
+            true,
+        ),
+        (
+            Value::Integer(0),
+            Value::Integer(1),
+            Value::Integer(10),
+            false,
+        ),
+        (
+            Value::Integer(1),
+            Value::Integer(1),
+            Value::Integer(10),
+            true,
+        ), // inclusive low
+        (
+            Value::Integer(10),
+            Value::Integer(1),
+            Value::Integer(10),
+            true,
+        ), // inclusive high
+        (
+            Value::Integer(11),
+            Value::Integer(1),
+            Value::Integer(10),
+            false,
+        ),
+        // Text lexicographic (TPC-H Q12: l_shipdate BETWEEN '1995-01-01' AND '1996-12-31')
+        (
+            Value::Text("1995-06-15".into()),
+            Value::Text("1995-01-01".into()),
+            Value::Text("1996-12-31".into()),
+            true,
+        ),
+        (
+            Value::Text("1994-12-31".into()),
+            Value::Text("1995-01-01".into()),
+            Value::Text("1996-12-31".into()),
+            false,
+        ),
+        // NULL semantics: NULL sorts before any non-NULL
+        (Value::Null, Value::Integer(1), Value::Integer(10), false),
+        (Value::Integer(5), Value::Null, Value::Integer(10), true), // low=Null, 5 > Null → true
+        (Value::Integer(5), Value::Integer(1), Value::Null, false), // high=Null, 5 < Null → false
+    ];
+
+    let mut failures: Vec<String> = Vec::new();
+
+    for (value, low, high, _expected) in cases {
+        // Path 1: legacy facade — build `Expression::Between(Literal(value), Literal(low), Literal(high))`.
+        let expr_between = ParserExpr::Between(
+            Box::new(ParserExpr::Literal(format_value_for_literal(value.clone()))),
+            Box::new(ParserExpr::Literal(format_value_for_literal(low.clone()))),
+            Box::new(ParserExpr::Literal(format_value_for_literal(high.clone()))),
+        );
+        let from_facade =
+            sqlrustgo::expr_utils::evaluate_expression(&expr_between, &empty_row, &table_info);
+
+        // Path 2: new single-source-of-truth
+        let from_evaluator = eval_between(value, low, high);
+
+        // Sanity: also verify compare_values is consistent
+        let cv_low = compare_values(value, low);
+        let cv_high = compare_values(value, high);
+        let from_evaluator_via_cv = Value::Boolean(cv_low >= 0 && cv_high <= 0);
+
+        if from_facade != Ok(from_evaluator.clone()) {
+            failures.push(format!(
+                "value={value:?} low={low:?} high={high:?}: facade={from_facade:?} evaluator={from_evaluator:?}"
+            ));
+        }
+        if from_evaluator != from_evaluator_via_cv {
+            failures.push(format!(
+                "internal inconsistency: eval_between={from_evaluator:?} but compare_values logic says {from_evaluator_via_cv:?}"
+            ));
+        }
+    }
+
+    assert!(
+        failures.is_empty(),
+        "INT-3 Between delegation: facade and executor::expr disagree on the following inputs:\n{}",
+        failures.join("\n")
+    );
+}
+
+/// Helper to convert a `Value` into the literal string form expected
+/// by `Expression::Literal`. The legacy `expression_to_value` parses
+/// these strings back to `Value`s, so we use the same convention for
+/// the test inputs.
+fn format_value_for_literal(v: Value) -> String {
+    match v {
+        Value::Null => "NULL".to_string(),
+        Value::Integer(i) => i.to_string(),
+        Value::Float(f) => f.to_string(),
+        Value::Text(s) => format!("'{}'", s),
+        Value::Boolean(b) => if b { "TRUE" } else { "FALSE" }.to_string(),
+        // For non-exhaustive enum, fall back to Debug.
+        other => format!("{:?}", other),
+    }
+}
+
+#[test]
+fn test_between_known_outputs() {
+    use sqlrustgo_executor::expr::{eval_between, eval_not_between};
+
+    // Basic integer range
+    assert_eq!(
+        eval_between(&Value::Integer(5), &Value::Integer(1), &Value::Integer(10)),
+        Value::Boolean(true)
+    );
+    assert_eq!(
+        eval_between(&Value::Integer(0), &Value::Integer(1), &Value::Integer(10)),
+        Value::Boolean(false)
+    );
+
+    // Inclusive boundaries
+    assert_eq!(
+        eval_between(&Value::Integer(1), &Value::Integer(1), &Value::Integer(10)),
+        Value::Boolean(true),
+        "low boundary is inclusive"
+    );
+    assert_eq!(
+        eval_between(&Value::Integer(10), &Value::Integer(1), &Value::Integer(10)),
+        Value::Boolean(true),
+        "high boundary is inclusive"
+    );
+
+    // TPC-H Q1: l_quantity BETWEEN 1 AND 50
+    assert_eq!(
+        eval_between(&Value::Integer(25), &Value::Integer(1), &Value::Integer(50)),
+        Value::Boolean(true)
+    );
+    assert_eq!(
+        eval_between(&Value::Integer(0), &Value::Integer(1), &Value::Integer(50)),
+        Value::Boolean(false)
+    );
+
+    // NULL semantics
+    assert_eq!(
+        eval_between(&Value::Null, &Value::Integer(1), &Value::Integer(10)),
+        Value::Boolean(false),
+        "NULL sorts before any non-NULL, so NULL < low"
+    );
+
+    // NotBetween
+    assert_eq!(
+        eval_not_between(&Value::Integer(5), &Value::Integer(1), &Value::Integer(10)),
+        Value::Boolean(false)
+    );
+    assert_eq!(
+        eval_not_between(&Value::Integer(0), &Value::Integer(1), &Value::Integer(10)),
+        Value::Boolean(true)
+    );
+}
+
+#[test]
+fn test_compare_values_known_outputs() {
+    use sqlrustgo_executor::expr::compare_values;
+
+    // Integer comparison
+    assert_eq!(compare_values(&Value::Integer(1), &Value::Integer(1)), 0);
+    assert_eq!(compare_values(&Value::Integer(1), &Value::Integer(2)), -1);
+    assert_eq!(compare_values(&Value::Integer(2), &Value::Integer(1)), 1);
+
+    // Float comparison
+    assert_eq!(compare_values(&Value::Float(1.0), &Value::Float(1.0)), 0);
+    assert_eq!(compare_values(&Value::Float(1.0), &Value::Float(2.0)), -1);
+
+    // Text lexicographic
+    assert_eq!(
+        compare_values(&Value::Text("a".into()), &Value::Text("b".into())),
+        -1
+    );
+
+    // NULL semantics
+    assert_eq!(compare_values(&Value::Null, &Value::Null), 0);
+    assert_eq!(compare_values(&Value::Null, &Value::Integer(1)), -1);
+    assert_eq!(compare_values(&Value::Integer(1), &Value::Null), 1);
+
+    // Mixed types: treated as equal
+    assert_eq!(compare_values(&Value::Integer(1), &Value::Float(1.0)), 0);
+}
