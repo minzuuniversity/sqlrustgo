@@ -5,7 +5,28 @@ SQLRustGo 的所有显着更改都将记录在此文件中。
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased] - 2026-06-04
+## [Unreleased] - 2026-06-05
+
+### Fixed
+
+- **PR #3131 (Issue #2988)**: Parser — MySQL 5.7 keyword-as-identifier + scalar function dispatch. Corpus +68 cases, 86.5% → 94.2% pass rate.
+- **PR #3132 (Issue #2977)**: TPC-H Q2 ("Minimum Cost Supplier Query") — 5-table comma-join key resolution bug. TPC-H 21/22 → **22/22 ✅** in `tpch_gate_test`.
+- **PR #3142**: ORDER BY execution in SELECT — was parsed but ignored by executor. TPC-H Q18/Q4 unblocked at wire round-trip.
+- **PR #3134 (Issue #3110)**: Savepoint basic test scaffolding — `tests/savepoint_test.rs` + `undo_log_len` getter (foundation for full Savepoint integration).
+
+### Changed (Internal / Docs Sync)
+
+- **PR #3137 (Issue #3107 #3111)**: FEATURE_MATRIX.md §1.5 F-11/F-12 contradiction fixed; D6 证据重跑.
+- **PR #3138 (Issue #3136)**: TPC-H 22 root-cause analysis — `execute_joins` comma-list path drops rows (related to Q2 fix in #3132).
+- **PR #3139 (Issue #3102 #3103)**: 标 10 孤岛 F-XX (no integration with main path) + 5 无实现 (no implementation) debt items, all DEFERRED with v3.9.0+ plan.
+- **PR #3140 (Issue #3099 #3100)**: GA docs + compile fix (`with_cube` / `with_rollup` regression).
+- **PR #3141 (Issue #3106)**: `check_cross_version_debt.sh` Part 5 — Code Reality Check (cross-references actual Rust file/test existence, not just markdown).
+
+### Gates
+
+- `scripts/gate/check_docs_links.sh` — **PASS** (all markdown links valid)
+- `scripts/gate/check_docs_consistency.sh` — **PASS** (all 11 mandatory docs present, FEATURE_MATRIX ≥50 features, SECURITY_POLICY has known limitations)
+- RC gate: D1=10/10 D2=5/5 D3=DRIFT(1 tracked) D4=5/5 D5=9/10 — **0 blockers**
 
 ### Changed (Breaking — Internal)
 
