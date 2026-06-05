@@ -48,16 +48,17 @@ else
     pass "C-ARCH-02: No write_buffer field in LocalExecutor"
 fi
 
-# C-ARCH-05: execution_engine.rs line count — limit is 2000
-# The 1500-line limit was arbitrary. Real metric: no single file should be a God Object.
-# Hard limit: 2000 lines (prevents unbounded growth)
+# C-ARCH-05: execution_engine.rs line count — SSOT: check_rc_ga_gate.sh (1800)
+# The 1500-line limit was AD-001 target (now superseded). 2000 was too lenient.
+# Unified SSOT: 1800 lines (balances current 1523 baseline with future headroom).
+# Other gate scripts (check_arch_invariants.sh, check_integration_gate.sh) must use the same value.
 echo "  [C-ARCH-05] execution_engine.rs line count..."
 EE_LINES=$(wc -l < src/execution_engine.rs)
-EE_LIMIT=2000
+EE_LIMIT=1800
 if [ "$EE_LINES" -gt "$EE_LIMIT" ]; then
-    fail "C-ARCH-05: execution_engine.rs has $EE_LINES lines (limit: $EE_LIMIT)"
+    fail "C-ARCH-05: execution_engine.rs has $EE_LINES lines (limit: $EE_LIMIT, SSOT: check_rc_ga_gate.sh)"
 else
-    pass "C-ARCH-05: execution_engine.rs has $EE_LINES lines (within limit)"
+    pass "C-ARCH-05: execution_engine.rs has $EE_LINES lines (within limit $EE_LIMIT)"
 fi
 
 # =============================================
