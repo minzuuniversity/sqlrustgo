@@ -186,6 +186,10 @@ name = "tpch_bench"
 harness = false
 
 [[bench]]
+name = "qps_bench"
+harness = false
+
+[[bench]]
 name = "bench_columnar"
 harness = false
 
@@ -562,6 +566,14 @@ path = "tests/simd_test.rs"
 [[test]]
 name = "simd_harness"
 path = "tests/simd_harness.rs"
+# G16 Compatibility — v3.8.0 → v3.9.0 升级兼容 (5 cases: 4 + 回滚)
+[[test]]
+name = "v380_to_v390_full_upgrade_test"
+path = "tests/v380_to_v390_full_upgrade_test.rs"
+# G16 Compatibility Harness (shared helper)
+[[test]]
+name = "compatibility_harness"
+path = "tests/compatibility_harness.rs"
 
 [[test]]
 name = "truncate_table_test"
