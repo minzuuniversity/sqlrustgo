@@ -6,47 +6,49 @@
 //! `docs/discovery/2026-06-05-tpch-22-sf001-corrupt.md` for why that fixture
 //! was wrong.
 //!
-//! ## What this measures
+//! ## Loading strategy
 //!
-//! For each of the 22 standard TPC-H queries (from `queries/q*.sql`),
-//! - Run the same SQL against an in-process sqlrustgo `ExecutionEngine`
-//!   with the SF=0.01 fixture loaded.
-//! - Run the same SQL against a vanilla SQLite database with the same fixture
-//!   loaded.
-//! - Compare `row_count` between the two.
-//! - Report the result category: MATCHED / MISMATCHED / ERR (engine error).
+//! Uses the same `SCHEMA_SQL` + `load_tbl_file` style as
+//! `tests/tpch_full_22_test.rs` (which passes 22/22 in-process in ~7 min).
+//! Critical lessons learned:
 //!
-//! ## What to expect
-//!
-//! Macmini's PR #3124 reported 6/22 PASS on this fixture via their
-//! `tpch_value_test_v2` gate. Their "6/22" used a slightly different test
-//! (per-row value comparison, not just row_count) so the row_count number may
-//! be higher. The real baseline will be produced by this test.
+//! 1. The DDL must declare `PRIMARY KEY` and `NOT NULL` constraints as the
+//!    real engine path (`execute_insert`) takes a different code path for
+//!    tables with primary keys — without the constraint, the audit
+//!    silently produces wrong row counts and triggers a different executor
+//!    branch.
+//! 2. Loading via `engine.execute("INSERT INTO ...")` in a loop is too
+//!    slow / deadlocks the engine's internal `Arc<RwLock<Storage>>` after
+//!    ~80k rows. Direct `StorageEngine::insert()` in batches of 10000 is
+//!    the working path.
+//! 3. The engine that runs the queries must be created **before** the
+//!    fixture loader starts inserting rows, so that `TableInfo` is
+//!    consistent for both the loader's `storage.write()` calls and the
+//!    query engine's `storage.read()` calls. If you create the query
+//!    engine *after* loading, you get an empty schema for queries.
 
-use sqlrustgo::{ExecutionEngine, MemoryStorage};
+use sqlrustgo::{ExecutionEngine, MemoryStorage, StorageEngine};
 use sqlrustgo_types::Value as SqlValue;
 use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
+use std::sync::{Arc, RwLock};
 
 const FIXTURE_DIR: &str = "/home/openclaw/sqlrustgo-tpch/data";
 const QUERIES_DIR: &str = "queries";
 const TMP_DIR: &str = "/tmp/tpch_22_sf01_audit";
 
-/// DDL matches the **standard TPC-H column order** in the canonical
-/// `/home/openclaw/sqlrustgo-tpch/data/*.tbl` files (not the sqlrustgo
-/// internal order used elsewhere in the engine). When the engine has a
-/// canonical loader, this DDL should be replaced with the engine's
-/// `Storage::default_schema_for(tpch_sf01)`.
-const DDL: &[&str] = &[
-    "CREATE TABLE region (r_regionkey INTEGER, r_name TEXT, r_comment TEXT)",
-    "CREATE TABLE nation (n_nationkey INTEGER, n_name TEXT, n_regionkey INTEGER, n_comment TEXT)",
-    "CREATE TABLE supplier (s_suppkey INTEGER, s_name TEXT, s_address TEXT, s_nationkey INTEGER, s_phone TEXT, s_acctbal INTEGER, s_comment TEXT)",
-    "CREATE TABLE customer (c_custkey INTEGER, c_name TEXT, c_address TEXT, c_nationkey INTEGER, c_phone TEXT, c_acctbal INTEGER, c_mktsegment TEXT, c_comment TEXT)",
-    "CREATE TABLE part (p_partkey INTEGER, p_name TEXT, p_mfgr TEXT, p_brand TEXT, p_type TEXT, p_size INTEGER, p_container TEXT, p_retailprice INTEGER, p_comment TEXT)",
-    "CREATE TABLE partsupp (ps_partkey INTEGER, ps_suppkey INTEGER, ps_availqty INTEGER, ps_supplycost INTEGER, ps_comment TEXT)",
-    "CREATE TABLE orders (o_orderkey INTEGER, o_custkey INTEGER, o_orderstatus TEXT, o_totalprice INTEGER, o_orderdate TEXT, o_orderpriority TEXT, o_clerk TEXT, o_shippriority INTEGER, o_comment TEXT)",
-    "CREATE TABLE lineitem (l_orderkey INTEGER, l_partkey INTEGER, l_suppkey INTEGER, l_linenumber INTEGER, l_quantity INTEGER, l_extendedprice INTEGER, l_discount INTEGER, l_tax INTEGER, l_returnflag TEXT, l_linestatus TEXT, l_shipdate TEXT, l_commitdate TEXT, l_receiptdate TEXT, l_shipinstruct TEXT, l_shipmode TEXT, l_comment TEXT)",
+/// Schema matches the real engine code path (`execute_insert` branches on
+/// primary key). Column order matches the standard TPC-H .tbl files.
+const SCHEMA_SQL: &[&str] = &[
+    "CREATE TABLE region (r_regionkey INTEGER PRIMARY KEY, r_name TEXT NOT NULL, r_comment TEXT)",
+    "CREATE TABLE nation (n_nationkey INTEGER PRIMARY KEY, n_name TEXT NOT NULL, n_regionkey INTEGER NOT NULL, n_comment TEXT)",
+    "CREATE TABLE supplier (s_suppkey INTEGER PRIMARY KEY, s_name TEXT NOT NULL, s_address TEXT NOT NULL, s_nationkey INTEGER NOT NULL, s_phone TEXT NOT NULL, s_acctbal REAL NOT NULL, s_comment TEXT)",
+    "CREATE TABLE customer (c_custkey INTEGER PRIMARY KEY, c_name TEXT NOT NULL, c_address TEXT NOT NULL, c_nationkey INTEGER NOT NULL, c_phone TEXT NOT NULL, c_acctbal REAL NOT NULL, c_mktsegment TEXT, c_comment TEXT)",
+    "CREATE TABLE part (p_partkey INTEGER PRIMARY KEY, p_name TEXT NOT NULL, p_mfgr TEXT NOT NULL, p_brand TEXT NOT NULL, p_type TEXT NOT NULL, p_size INTEGER NOT NULL, p_container TEXT NOT NULL, p_retailprice REAL NOT NULL, p_comment TEXT)",
+    "CREATE TABLE partsupp (ps_partkey INTEGER NOT NULL, ps_suppkey INTEGER NOT NULL, ps_availqty INTEGER NOT NULL, ps_supplycost REAL NOT NULL, ps_comment TEXT, PRIMARY KEY (ps_partkey, ps_suppkey))",
+    "CREATE TABLE orders (o_orderkey INTEGER PRIMARY KEY, o_custkey INTEGER NOT NULL, o_orderstatus TEXT NOT NULL, o_totalprice REAL NOT NULL, o_orderdate TEXT NOT NULL, o_orderpriority TEXT, o_clerk TEXT, o_shippriority INTEGER, o_comment TEXT)",
+    "CREATE TABLE lineitem (l_orderkey INTEGER NOT NULL, l_partkey INTEGER NOT NULL, l_suppkey INTEGER NOT NULL, l_linenumber INTEGER NOT NULL, l_quantity REAL NOT NULL, l_extendedprice REAL NOT NULL, l_discount REAL NOT NULL, l_tax REAL NOT NULL, l_returnflag TEXT, l_linestatus TEXT, l_shipdate TEXT, l_commitdate TEXT, l_receiptdate TEXT, l_shipinstruct TEXT, l_shipmode TEXT, l_comment TEXT, PRIMARY KEY (l_orderkey, l_linenumber))",
 ];
 
 const TABLES: &[&str] = &[
@@ -54,7 +56,7 @@ const TABLES: &[&str] = &[
 ];
 
 fn lookup_col_types(table: &str) -> Vec<&'static str> {
-    for ddl in DDL {
+    for ddl in SCHEMA_SQL {
         if let Some(rest) = ddl.strip_prefix("CREATE TABLE ") {
             if let Some(open) = rest.find('(') {
                 let cols_str = &rest[open + 1..rest.len() - 1];
@@ -63,12 +65,23 @@ fn lookup_col_types(table: &str) -> Vec<&'static str> {
                 }
                 return cols_str
                     .split(',')
-                    .map(|c| {
-                        let p: Vec<&str> = c.trim().split_whitespace().collect();
+                    .filter_map(|c| {
+                        let c = c.trim();
+                        // Skip "PRIMARY KEY (...)" / "FOREIGN KEY ..." table
+                        // constraints; only return a type for real columns.
+                        if c.starts_with("PRIMARY KEY")
+                            || c.starts_with("FOREIGN KEY")
+                            || c.starts_with("UNIQUE")
+                            || c.starts_with("CHECK")
+                            || c.starts_with("CONSTRAINT")
+                        {
+                            return None;
+                        }
+                        let p: Vec<&str> = c.split_whitespace().collect();
                         if p.len() >= 2 {
-                            p[1]
+                            Some(p[1])
                         } else {
-                            "TEXT"
+                            Some("TEXT")
                         }
                     })
                     .collect();
@@ -78,75 +91,66 @@ fn lookup_col_types(table: &str) -> Vec<&'static str> {
     vec![]
 }
 
-fn load_engine_with_sf01() -> ExecutionEngine<MemoryStorage> {
-    let storage = std::sync::Arc::new(std::sync::RwLock::new(MemoryStorage::new()));
-    let mut engine = ExecutionEngine::new(storage);
-    for d in DDL {
-        engine.execute(d).expect("DDL");
-    }
-    let base = PathBuf::from(FIXTURE_DIR);
-    let mut skipped = 0usize;
-    for tbl in TABLES {
-        let path = base.join(format!("{}.tbl", tbl));
-        let content = std::fs::read_to_string(&path).expect("read fixture");
-        let col_types = lookup_col_types(tbl);
-        // Build one multi-row INSERT to amortize per-statement overhead.
-        const CHUNK: usize = 500;
-        let mut chunk_rows: Vec<String> = Vec::with_capacity(CHUNK);
-        let mut n_rows = 0usize;
-        for line in content.lines() {
-            if line.is_empty() {
-                continue;
-            }
-            let trimmed = line.trim_end_matches('|');
-            let cols: Vec<&str> = trimmed.split('|').collect();
-            if cols.len() != col_types.len() {
-                skipped += 1;
-                continue;
-            }
-            let vals: Vec<String> = cols
-                .iter()
-                .enumerate()
-                .map(|(i, s)| {
-                    let ty = col_types.get(i).copied().unwrap_or("TEXT");
-                    if ty == "INTEGER" || ty == "REAL" {
-                        s.to_string()
-                    } else {
-                        format!("'{}'", s.replace('\'', "''"))
-                    }
-                })
-                .collect();
-            chunk_rows.push(format!("({})", vals.join(",")));
-            n_rows += 1;
-            if chunk_rows.len() >= CHUNK {
-                let sql = format!(
-                    "INSERT INTO {} VALUES {}",
-                    tbl,
-                    chunk_rows.join(",")
-                );
-                if let Err(e) = engine.execute(&sql) {
-                    eprintln!("WARN: engine INSERT chunk failed on {tbl}: {e}");
+/// Load a .tbl file into MemoryStorage using batch insert. Mirrors the
+/// `load_tbl_file` in `tests/tpch_full_22_test.rs`.
+fn load_tbl_file(
+    storage: &Arc<RwLock<MemoryStorage>>,
+    tbl_name: &str,
+    tbl_path: &PathBuf,
+    columns: usize,
+) -> Result<usize, String> {
+    let content = fs::read_to_string(tbl_path)
+        .map_err(|e| format!("Cannot read {}: {}", tbl_path.display(), e))?;
+    const BATCH_SIZE: usize = 10000;
+    let mut batch: Vec<Vec<SqlValue>> = Vec::with_capacity(BATCH_SIZE);
+    let mut count = 0;
+    for line in content.lines() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        let values: Vec<&str> = line.split('|').collect();
+        if values.len() < columns {
+            continue;
+        }
+        let record: Vec<SqlValue> = values[..columns]
+            .iter()
+            .map(|v| {
+                let s = v.trim();
+                if s.is_empty() {
+                    SqlValue::Null
+                } else if let Ok(i) = s.parse::<i64>() {
+                    SqlValue::Integer(i)
+                } else if let Ok(f) = s.parse::<f64>() {
+                    SqlValue::Float(f)
+                } else {
+                    SqlValue::Text(s.to_string())
                 }
-                chunk_rows.clear();
-            }
+            })
+            .collect();
+        batch.push(record);
+        if batch.len() >= BATCH_SIZE {
+            let mut storage = storage.write().map_err(|e| format!("Lock error: {}", e))?;
+            storage
+                .insert(tbl_name, batch.clone())
+                .map_err(|e| format!("Insert error: {}", e))?;
+            count += batch.len();
+            batch.clear();
         }
-        if !chunk_rows.is_empty() {
-            let sql = format!("INSERT INTO {} VALUES {}", tbl, chunk_rows.join(","));
-            if let Err(e) = engine.execute(&sql) {
-                eprintln!("WARN: engine INSERT final chunk failed on {tbl}: {e}");
-            }
-        }
-        eprintln!("[load] {tbl}: {n_rows} rows inserted (chunks of {})", CHUNK);
     }
-    if skipped > 0 {
-        eprintln!("WARN: {skipped} fixture rows skipped due to column-count mismatch");
+    if !batch.is_empty() {
+        let mut storage = storage.write().map_err(|e| format!("Lock error: {}", e))?;
+        storage
+            .insert(tbl_name, batch.clone())
+            .map_err(|e| format!("Insert error: {}", e))?;
+        count += batch.len();
     }
-    engine
+    Ok(count)
 }
 
 fn build_sqlite_init_sql() -> String {
     let mut sql_buffer = String::new();
-    for ddl in DDL {
+    for ddl in SCHEMA_SQL {
         sql_buffer.push_str(ddl);
         sql_buffer.push(';');
         sql_buffer.push('\n');
@@ -222,9 +226,41 @@ fn eval_22_vs_sqlite_sf01_canonical() {
         "\n=== TPC-H 22 audit on CANONICAL SF=0.01 fixture ({}) ===\n",
         FIXTURE_DIR
     );
-    let mut engine = load_engine_with_sf01();
-    let db_path = load_sqlite_with_sf01();
 
+    // 1. Create storage + engine *first* so TableInfo is consistent for
+    //    both DDL and the loader.
+    let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+    let mut engine = ExecutionEngine::new(storage.clone());
+
+    // 2. DDL.
+    eprintln!("[1/3] Creating schema...");
+    for ddl in SCHEMA_SQL {
+        engine
+            .execute(ddl)
+            .unwrap_or_else(|e| panic!("DDL failed: {ddl} - {e}"));
+    }
+    eprintln!("  Schema created ({} tables)", SCHEMA_SQL.len());
+
+    // 3. Load fixture via direct storage.insert (batched).
+    eprintln!("[2/3] Loading fixture via storage.insert() in batches of 10000 ...");
+    let base = PathBuf::from(FIXTURE_DIR);
+    let mut total_rows = 0usize;
+    for tbl in TABLES {
+        let tbl_path = base.join(format!("{}.tbl", tbl));
+        let col_types = lookup_col_types(tbl);
+        let n = load_tbl_file(&storage, tbl, &tbl_path, col_types.len())
+            .unwrap_or_else(|e| panic!("Failed to load {tbl}: {e}"));
+        eprintln!("  {tbl}: {n} rows");
+        total_rows += n;
+    }
+    eprintln!("  total: {total_rows} rows");
+
+    // 4. SQLite baseline.
+    eprintln!("[3/3] Loading SQLite baseline ...");
+    let db_path = load_sqlite_with_sf01();
+    eprintln!("  SQLite ready at {db_path}");
+
+    // 5. Run 22 queries.
     let mut matched = 0usize;
     let mut mismatched = 0usize;
     let mut err_count = 0usize;
@@ -239,24 +275,22 @@ fn eval_22_vs_sqlite_sf01_canonical() {
             sqlite_err += 1;
         }
 
-        let engine_count: Option<usize> = match engine.execute(&format!(
-            "SELECT COUNT(*) FROM ({}) sub",
-            sql
-        )) {
-            Ok(r) => r
-                .rows
-                .first()
-                .and_then(|row| row.first())
-                .and_then(|v| match v {
-                    SqlValue::Integer(i) => Some(*i as usize),
-                    SqlValue::Float(f) => Some(*f as usize),
-                    _ => None,
-                }),
-            Err(e) => {
-                eprintln!("Engine ERR Q{q}: {e}");
-                None
-            }
-        };
+        let engine_count: Option<usize> =
+            match engine.execute(&format!("SELECT COUNT(*) FROM ({}) sub", sql)) {
+                Ok(r) => r
+                    .rows
+                    .first()
+                    .and_then(|row| row.first())
+                    .and_then(|v| match v {
+                        SqlValue::Integer(i) => Some(*i as usize),
+                        SqlValue::Float(f) => Some(*f as usize),
+                        _ => None,
+                    }),
+                Err(e) => {
+                    eprintln!("Engine ERR Q{q}: {e}");
+                    None
+                }
+            };
 
         let cat = match (engine_count, sqlite_count) {
             (Some(e), Some(s)) if e == s => {
@@ -281,7 +315,7 @@ fn eval_22_vs_sqlite_sf01_canonical() {
             q, engine_count, sqlite_count, cat
         );
     }
-    println!("\n=== Totals ===");
+    println!("\n=== Totals ({} rows loaded) ===", total_rows);
     println!("MATCHED   : {matched}/22");
     println!("MISMATCHED: {mismatched}/22");
     println!("ERR(engine): {err_count}/22");
