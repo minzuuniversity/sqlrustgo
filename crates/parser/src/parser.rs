@@ -630,6 +630,46 @@ fn flatten_and(expr: &Expression) -> Vec<Expression> {
     }
 }
 
+/// Check whether all tables referenced by a predicate's left and
+/// right sides are "known" to the current join context, i.e. either
+/// the new table, its TPC-H prefix, its inline alias, or already
+/// in `joined`. Used by the relaxed fallback in the FROM
+/// auto-rewriter (TPC-H Q2) to reject predicates that would later
+/// fail the executor's `find_join_key_index` because they reference
+/// a not-yet-joined table (e.g. Q2 joining supplier with
+/// `s_suppkey = ps_suppkey` where `ps_suppkey` lives in
+/// not-yet-joined `partsupp`).
+fn predicate_fully_resolvable(
+    p: &Expression,
+    new_table: &str,
+    new_alias: Option<&str>,
+    joined: &[String],
+) -> bool {
+    if let Expression::BinaryOp(l, op, r) = p {
+        if op == "=" {
+            let new_prefix: &str = if new_table.contains('_') {
+                let us = new_table.find('_').unwrap();
+                &new_table[..us]
+            } else if new_table == "partsupp" {
+                "ps"
+            } else {
+                &new_table[..1]
+            };
+            let lr = collect_referenced_tables(l);
+            let rr = collect_referenced_tables(r);
+            let is_known = |t: &str| -> bool {
+                t == new_table
+                    || t == new_prefix
+                    || new_alias == Some(t)
+                    || joined.iter().any(|j| j == t)
+            };
+            return lr.iter().all(|t| is_known(t.as_str()))
+                && rr.iter().all(|t| is_known(t.as_str()));
+        }
+    }
+    false
+}
+
 /// Structural equality on Expression. Used to dedupe predicates
 /// between the original WHERE conj and the auto-rewriter's
 /// `remaining` list when the new best-match selector picks one
@@ -2511,10 +2551,25 @@ impl Parser {
                                 _ => false,
                             }
                         };
+                        // Phase 5 (TPCH-01 Q2): in the relaxed fallback,
+                        // additionally require the candidate predicate to
+                        // be fully resolvable in the current join context
+                        // (no references to not-yet-joined tables). The
+                        // strict check already enforces this; the relaxed
+                        // fallback used to be more permissive and would
+                        // promote `s_suppkey = ps_suppkey` (Q2) as the
+                        // JOIN ON for supplier, which then fails the
+                        // executor's `find_join_key_index`.
                         for p in &conj {
                             if found.is_none()
                                 && !is_derived_ref(p)
                                 && predicate_references_table(p, &table_name)
+                                && predicate_fully_resolvable(
+                                    p,
+                                    &table_name,
+                                    table_alias.as_deref(),
+                                    &joined,
+                                )
                             {
                                 found = Some(p.clone());
                             } else {
@@ -2525,6 +2580,12 @@ impl Parser {
                             if found.is_none()
                                 && !is_derived_ref(p)
                                 && predicate_references_table(p, &table_name)
+                                && predicate_fully_resolvable(
+                                    p,
+                                    &table_name,
+                                    table_alias.as_deref(),
+                                    &joined,
+                                )
                             {
                                 found = Some(p.clone());
                             } else {
