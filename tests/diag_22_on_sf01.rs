@@ -109,12 +109,9 @@ fn run_q(engine: &mut ExecutionEngine<MemoryStorage>, qnum: u8) -> Result<i64, S
     let sql = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
     let sql = sql.trim().trim_end_matches(';');
     let r = engine.execute(sql).map_err(|e| e.to_string())?;
-    let cnt = match r.rows.first().and_then(|row| row.first()) {
-        Some(SqlValue::Integer(n)) => *n,
-        Some(SqlValue::Float(f)) => *f as i64,
-        _ => -1,
-    };
-    Ok(cnt)
+    // Return the row count of the result set (not the first value).
+    // SUM/COUNT/etc. produce 1 row; SELECT * produces N rows.
+    Ok(r.rows.len() as i64)
 }
 
 #[test]
