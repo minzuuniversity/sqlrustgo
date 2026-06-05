@@ -28,12 +28,14 @@ use sqlrustgo_parser::parser::{
     Privilege as ParserPrivilege, RevokeRoleStatement, RevokeStatement, SelectStatement,
     SetRoleStatement, ShowStatement, StoredProcParam as ParserStoredProcParam,
     StoredProcParamMode as ParserParamMode, StoredProcStatement as ParserStatement,
-    TruncateStatement,
+    TruncateStatement, // SEM-1 (#3172)
 };
 use sqlrustgo_parser::transaction::IsolationLevel as ParserIsolationLevel;
 use sqlrustgo_parser::JoinType;
 use sqlrustgo_parser::{
     DeleteStatement, Expression, Statement, TransactionStatement, UpdateStatement,
+    // SEM-1 (#3172)
+    SavepointOp,
 };
 use sqlrustgo_storage::checkpoint::{CheckpointManager, CheckpointMetadata};
 use sqlrustgo_storage::{
@@ -312,6 +314,10 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 self.execute_create_procedure(create_proc)
             }
             Statement::Transaction(ref txn) => self.execute_transaction(txn),
+            // SEM-1 (#3172): SAVEPOINT/ROLLBACK TO SAVEPOINT/RELEASE SAVEPOINT
+            Statement::SavepointStatement { ref name, op } => {
+                self.execute_savepoint(name, op)
+            }
             Statement::Grant(ref grant) => self.execute_grant(grant),
             Statement::Revoke(ref revoke) => self.execute_revoke(revoke),
             Statement::CreateRole(ref stmt) => self.execute_create_role(stmt),
@@ -1240,6 +1246,50 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         // this reset, subsequent DML would reject with
         // "transaction already committed".
         self.tx_status = TxStatus::Idle;
+        Ok(ExecutorResult::empty())
+    }
+
+    /// SEM-1 (#3172): Execute SAVEPOINT/ROLLBACK TO SAVEPOINT/RELEASE SAVEPOINT.
+    ///
+    /// Routes the parsed statement to the per-tx SavepointManager. The
+    /// physical undo of tuple changes is deferred to a future iteration;
+    /// this method only manages the savepoint namespace and the undo-log
+    /// cursor.
+    fn execute_savepoint(&mut self, name: &str, op: SavepointOp) -> SqlResult<ExecutorResult> {
+        // An active transaction is required for any savepoint operation.
+        let tx_id = self.current_tx_id.ok_or_else(|| {
+            SqlError::ExecutionError(
+                "SAVEPOINT / ROLLBACK TO SAVEPOINT / RELEASE SAVEPOINT \
+                 requires an active transaction (BEGIN or implicit autocommit TX)"
+                    .to_string(),
+            )
+        })?;
+        match op {
+            SavepointOp::Save => self
+                .transaction_manager
+                .savepoint(tx_id, name.to_string())
+                .map_err(|e| {
+                    SqlError::ExecutionError(format!("SAVEPOINT {} failed: {}", name, e))
+                })?,
+            SavepointOp::RollbackTo => self
+                .transaction_manager
+                .rollback_to_savepoint(tx_id, name)
+                .map_err(|e| {
+                    SqlError::ExecutionError(format!(
+                        "ROLLBACK TO SAVEPOINT {} failed: {}",
+                        name, e
+                    ))
+                })?,
+            SavepointOp::Release => self
+                .transaction_manager
+                .release_savepoint(tx_id, name)
+                .map_err(|e| {
+                    SqlError::ExecutionError(format!(
+                        "RELEASE SAVEPOINT {} failed: {}",
+                        name, e
+                    ))
+                })?,
+        }
         Ok(ExecutorResult::empty())
     }
 
