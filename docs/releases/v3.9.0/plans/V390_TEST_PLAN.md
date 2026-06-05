@@ -1,12 +1,14 @@
-# SQLRustGo v3.9.0 测试计划 — G1-G10 门禁 + 100+ 场景矩阵
+# SQLRustGo v3.9.0 测试计划 — G1-G16 门禁 + 100+ 场景矩阵
 
 <!-- env:blocked:no-ci -->
 
 > **配套文档**: `V390_VERSION_PLAN.md` (战略) / `V390_DEVELOPMENT_PLAN.md` (任务)
-> **关联补充**: `V390_TEST_PLAN_SUPPLEMENT_PERF.md` (G11-G15 性能/Sysbench/QPS/稳定性/崩溃)
+> **关联补充**:
+> - `V390_TEST_PLAN_SUPPLEMENT_PERF.md` (G11-G15 性能/Sysbench/QPS/稳定性/崩溃)
+> - `V390_TEST_PLAN_ROUND2_REVIEW.md` (G16 Compatibility + Perf Baseline + Soak 重分配)
 > **创建日期**: 2026-06-05
-> **基于**: ChatGPT 架构师 2026-06-05 G1-G10 门禁建议
-> **目标**: 100% 覆盖可靠性 + 集成 + 审计
+> **基于**: ChatGPT 架构师 G1-G10 + 用户评审 Round 2 (G16 + Baseline)
+> **目标**: 100% 覆盖治理 GA + 性能 + 稳定性 + 升级兼容
 
 ---
 
@@ -41,11 +43,14 @@
 
 ### 0.3 合计
 
-**347h (G1-G10) + 72h (G11-G15) = 419h** (12 周, 1 人满负载)
+**347h (G1-G10) + 72h (G11-G15) + 12h (G16 + Baseline) = 431h** (12 周, 1 人满负载)
 
 **G11-G15 详细设计**: 见 `V390_TEST_PLAN_SUPPLEMENT_PERF.md`
 
+**G16 Compatibility + Perf Baseline + G13 Soak 调整**: 见 `V390_TEST_PLAN_ROUND2_REVIEW.md`
+
 **注意**: G11-G14 仅在 RC/GA 前真实运行, 不可 CI (24h + 真实进程). G15 报告是 GA 验收强制要求 (GE3 PERFORMANCE_REPORT.md).
+G13 Soak 调整: GA 仅 24h 强制, 72h/168h 推迟到 Post-GA Nightly/Weekly.
 
 ---
 
