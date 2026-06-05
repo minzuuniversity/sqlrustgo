@@ -64,6 +64,7 @@ pub struct ExecutionEngine<S: StorageEngine> {
     /// kept for future re-introduction without changing the public struct layout.
     #[allow(dead_code)]
     pub(crate) checkpoint_manager: Option<Arc<RwLock<CheckpointManager>>>,
+    pub(crate) parallel_degree: usize,
 }
 
 /// Transaction status for lifecycle enforcement
@@ -114,6 +115,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             default_isolation: TmIsolationLevel::default(),
             current_role: None,
             checkpoint_manager: None,
+            parallel_degree: 1,
         }
     }
 
@@ -130,6 +132,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             default_isolation: TmIsolationLevel::default(),
             current_role: None,
             checkpoint_manager: None,
+            parallel_degree: 1,
         }
     }
 
@@ -146,6 +149,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             default_isolation: TmIsolationLevel::default(),
             current_role: None,
             checkpoint_manager: None,
+            parallel_degree: 1,
         }
     }
 
@@ -157,6 +161,20 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     /// Enable or disable CBO
     pub fn set_cbo_enabled(&mut self, enabled: bool) {
         self.cbo_enabled = enabled;
+    }
+
+    pub fn parallel_degree(&self) -> usize {
+        self.parallel_degree
+    }
+
+    pub fn set_parallel_degree(&mut self, degree: usize) {
+        self.parallel_degree = degree.max(1);
+    }
+
+    pub fn build_parallel_executor(
+        &self,
+    ) -> sqlrustgo_executor::parallel_executor::ParallelVolcanoExecutor {
+        sqlrustgo_executor::parallel_executor::ParallelVolcanoExecutor::new(self.parallel_degree)
     }
 
     /// Get table statistics for CBO
