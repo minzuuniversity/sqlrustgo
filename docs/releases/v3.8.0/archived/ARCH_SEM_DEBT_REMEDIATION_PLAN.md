@@ -6,7 +6,7 @@
 > **Purpose**: v3.9.0+ 整改计划 for 7 ACTIVE architecture/semantic debt items
 > **5-Principle**: P5 (未通过的必须有记录和后续改进)
 
-## 1. ARCH-1: execution_engine.rs 6829 行 (阈值 1500-2000)
+## 1. ARCH-1: execution_engine.rs 单文件过大 (阈值 1500-2000)
 
 **Status**: ✅ CLOSED (2026-06-04, line count stabilized at 1696 < 2000 threshold)
 **Since**: v3.0.0 (CLOSED in v3.8.0; line count was misstated as 6829 in earlier plan versions)
@@ -112,7 +112,7 @@ ROLLBACK only marks as "rolled back" but doesn't undo tuple changes.
 
 ---
 
-## 5. SEM-2: SHOW TABLES 部分实现
+## 5. SEM-2: SHOW TABLES 多 schema 支持
 
 **Status**: ✅ CLOSED (2026-06-04, PR-2790/2815)
 **Since**: v3.7.0 (CLOSED in v3.8.0)
