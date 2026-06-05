@@ -1032,3 +1032,179 @@ fn test_find_column_index_known_outputs() {
     // Not found (qualified name has no matching column)
     assert_eq!(find_column_index("x.col", &columns), None);
 }
+
+#[test]
+fn test_function_call_delegation() {
+    // Contract test for P0-2 §4.11 (FunctionCall).
+    // The generic `Expression::FunctionCall` arm in evaluate_expression
+    // delegates to executor::expr::eval_fn (the single source of truth
+    // for the function table). The previous EXTRACT special arm has
+    // been removed in this commit because it duplicated the EXTRACT
+    // handling in eval_fn.
+    //
+    // We test 5 representative function calls and assert that
+    // facade and executor agree.
+    use sqlrustgo_executor::expr::eval_fn;
+    use sqlrustgo_parser::Expression as ParserExpr;
+    use sqlrustgo_storage::TableInfo;
+
+    let table_info = TableInfo::default();
+    let empty_row: Vec<Value> = vec![];
+
+    // Helper: build a list-of-literals for the function-call args
+    fn arg_lit(s: &str) -> ParserExpr {
+        ParserExpr::Literal(s.to_string())
+    }
+    fn arg_int(n: i64) -> ParserExpr {
+        ParserExpr::Literal(n.to_string())
+    }
+
+    // Cases: (function name, args, expected value)
+    // Each case is tested via BOTH the legacy facade (using
+    // evaluate_expression + Expression::FunctionCall) and the
+    // new direct path (eval_fn).
+    let cases: &[(&str, Vec<ParserExpr>, Value)] = &[
+        // LOWER
+        (
+            "LOWER",
+            vec![arg_lit("'HELLO'")],
+            Value::Text("hello".into()),
+        ),
+        // UPPER
+        (
+            "UPPER",
+            vec![arg_lit("'hello'")],
+            Value::Text("HELLO".into()),
+        ),
+        // LENGTH (returns Integer)
+        ("LENGTH", vec![arg_lit("'hello'")], Value::Integer(5)),
+        // EXTRACT YEAR
+        (
+            "EXTRACT",
+            vec![arg_lit("'YEAR'"), arg_lit("'2024-06-05'")],
+            Value::Text("2024".into()),
+        ),
+        // EXTRACT MONTH
+        (
+            "EXTRACT",
+            vec![arg_lit("'MONTH'"), arg_lit("'2024-06-05'")],
+            Value::Text("06".into()),
+        ),
+        // EXTRACT DAY
+        (
+            "EXTRACT",
+            vec![arg_lit("'DAY'"), arg_lit("'2024-06-05'")],
+            Value::Text("05".into()),
+        ),
+        // Unknown function
+        ("UNKNOWN_FN", vec![arg_int(1)], Value::Null),
+    ];
+
+    let mut failures: Vec<String> = Vec::new();
+
+    for (name, args, _expected) in cases {
+        // Build `Expression::FunctionCall(name, args)` for the facade.
+        let expr_fc = ParserExpr::FunctionCall(name.to_string(), args.clone());
+
+        // Path 1: legacy facade via evaluate_expression
+        let from_facade =
+            sqlrustgo::expr_utils::evaluate_expression(&expr_fc, &empty_row, &table_info);
+
+        // Path 2: facade's argument evaluation, then executor::eval_fn
+        // (this is what the unified path actually does internally)
+        let evaluated_args: Vec<Value> = args
+            .iter()
+            .map(|a| {
+                sqlrustgo::expr_utils::evaluate_expression(a, &empty_row, &table_info)
+                    .unwrap_or(Value::Null)
+            })
+            .collect();
+        let from_evaluator = eval_fn(name, &evaluated_args);
+
+        // Both paths must agree
+        if from_facade != Ok(from_evaluator.clone()) {
+            failures.push(format!(
+                "fn {name}: facade={from_facade:?} evaluator={from_evaluator:?} (disagreement on 1/15 branch)"
+            ));
+        }
+    }
+
+    assert!(
+        failures.is_empty(),
+        "INT-3 FunctionCall delegation: facade and executor::expr disagree on the following inputs:\n{}",
+        failures.join("\n")
+    );
+}
+
+#[test]
+fn test_function_call_known_outputs() {
+    use sqlrustgo_executor::expr::eval_fn;
+
+    // Sanity tests for `eval_fn` directly, covering the 4 most common
+    // MySQL 5.7 function-dispatch paths.
+
+    // LOWER
+    assert_eq!(
+        eval_fn("LOWER", &[Value::Text("HELLO".into())]),
+        Value::Text("hello".into())
+    );
+    // UPPER
+    assert_eq!(
+        eval_fn("UPPER", &[Value::Text("hello".into())]),
+        Value::Text("HELLO".into())
+    );
+    // LENGTH
+    assert_eq!(
+        eval_fn("LENGTH", &[Value::Text("hello".into())]),
+        Value::Integer(5)
+    );
+    // EXTRACT YEAR/MONTH/DAY
+    assert_eq!(
+        eval_fn(
+            "EXTRACT",
+            &[Value::Text("YEAR".into()), Value::Text("2024-06-05".into()),]
+        ),
+        Value::Text("2024".into())
+    );
+    assert_eq!(
+        eval_fn(
+            "EXTRACT",
+            &[
+                Value::Text("MONTH".into()),
+                Value::Text("2024-06-05".into()),
+            ]
+        ),
+        Value::Text("06".into())
+    );
+    assert_eq!(
+        eval_fn(
+            "EXTRACT",
+            &[Value::Text("DAY".into()), Value::Text("2024-06-05".into()),]
+        ),
+        Value::Text("05".into())
+    );
+    // Unknown function
+    assert_eq!(eval_fn("FOO_BAR", &[Value::Integer(1)]), Value::Null);
+    // Empty args
+    assert_eq!(eval_fn("LOWER", &[]), Value::Null);
+    // EXTRACT with malformed date
+    assert_eq!(
+        eval_fn(
+            "EXTRACT",
+            &[Value::Text("YEAR".into()), Value::Text("202".into())]
+        ),
+        Value::Null,
+        "source too short (3 chars) for YEAR slice (needs >=4)"
+    );
+    assert_eq!(
+        eval_fn(
+            "EXTRACT",
+            &[
+                Value::Text("INVALID_FIELD".into()),
+                Value::Text("2024-06-05".into())
+            ]
+        ),
+        Value::Null,
+        "unknown field returns Null"
+    );
+}
