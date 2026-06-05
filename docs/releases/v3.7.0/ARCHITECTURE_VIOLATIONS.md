@@ -8,10 +8,10 @@
 
 | 严重级别 | 当前数量 | Policy |
 |---------|---------|--------|
-| CRITICAL | 7 | **禁止新增** |
+| CRITICAL | 3 (CLOSED in v3.8.0 INT-4 / ARCH-2) | **禁止新增** |
 | HIGH | 3 | **禁止新增** |
 | MEDIUM | 0 | - |
-| **TOTAL** | **10** | **必须逐步减少** |
+| **TOTAL** | **6** (CRITICAL 4 → 0, baseline whitelist 3 + HIGH 3) | **必须逐步减少** |
 
 ## 基线冻结政策
 
@@ -31,17 +31,17 @@ policy:
 
 ## 违规详情
 
-### CRITICAL 违规 (7)
+### CRITICAL 违规 (3 ACTIVE / 4 CLOSED in v3.8.0)
 
-| ID | Rule | File | Line | Description |
-|----|------|------|------|-------------|
-| AV-001 | F1-DML_WITHOUT_TXN | `executor/src/trigger.rs` | 427,505,507,529 | storage.insert/delete 直接调用 |
-| AV-002 | F1-DML_WITHOUT_TXN | `executor/src/harness.rs` | 274,315,375 | storage.insert 直接调用 |
-| AV-003 | F1-DML_WITHOUT_TXN | `executor/src/merge.rs` | 88,107 | storage.update/insert 直接调用 |
-| AV-004 | F1-DML_WITHOUT_TXN | `executor/src/parallel_vector_executor.rs` | 689,706,724,743 | storage.insert 直接调用 |
-| AV-005 | F1-DML_WITHOUT_TXN | `executor/src/parallel_executor.rs` | 1140,1145,1253,1258,1578,1583,1661,1666,1733,1738 | memory_storage.insert 直接调用 |
-| AV-006 | F1-DML_WITHOUT_TXN | `executor/src/local_executor.rs` | 1054 | storage.delete 直接调用 |
-| AV-007 | F1-DML_WITHOUT_TXN | `executor/src/vector_executor.rs` | 193,220,242,293 | storage.insert 直接调用 |
+| ID | Rule | File | Line | Description | Status |
+|----|------|------|------|-------------|--------|
+| AV-001 | F1-DML_WITHOUT_TXN | `executor/src/trigger.rs` | 427,505,507,529 | storage.insert/delete 直接调用 | ✅ **CLOSED** (INT-4, PR #2999) — DML 通过 `execute_dml_in_tx` helper |
+| AV-002 | F1-DML_WITHOUT_TXN | `executor/src/harness.rs` | 274,315,375 | storage.insert 直接调用 | ✅ **CLOSED** (ARCH-2, PR #3000) — 3 个 dead fixture fn 删除 |
+| AV-003 | F1-DML_WITHOUT_TXN | `executor/src/merge.rs` | 88,107 | storage.update/insert 直接调用 | ✅ **CLOSED** (G3, PR #2862) — DML 通过 `self.engine.execute(&mut ctx)` |
+| AV-006 | F1-DML_WITHOUT_TXN | `executor/src/local_executor.rs` | 1054 | storage.delete 直接调用 | ✅ **CLOSED** (ARCH-2) — `execute_delete_sql` 已是 noop placeholder, 未触碰 storage |
+| AV-004 | F1-DML_WITHOUT_TXN | `executor/src/parallel_vector_executor.rs` | 689,706,724,743 | storage.insert 直接调用 | ⚠️ WHITELIST (test block, ISOLATED) |
+| AV-005 | F1-DML_WITHOUT_TXN | `executor/src/parallel_executor.rs` | 1140,1145,1253,1258,1578,1583,1661,1666,1733,1738 | memory_storage.insert 直接调用 | ⚠️ WHITELIST (test block, ISOLATED) |
+| AV-007 | F1-DML_WITHOUT_TXN | `executor/src/vector_executor.rs` | 193,220,242,293 | storage.insert 直接调用 | ⚠️ WHITELIST (test block, ISOLATED) |
 
 ### HIGH 违规 (3)
 

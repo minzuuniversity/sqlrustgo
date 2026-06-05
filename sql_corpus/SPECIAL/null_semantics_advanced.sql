@@ -1,6 +1,23 @@
--- === SKIP ===
+-- NULL Semantics Test Suite
 
--- === NULL Semantics Test Suite ===
+-- === SETUP ===
+CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT, email TEXT);
+CREATE TABLE orders (id INTEGER PRIMARY KEY, user_id INTEGER, total INTEGER);
+INSERT INTO users VALUES (1, 'Alice', 'alice@example.com');
+INSERT INTO users VALUES (2, 'Bob', NULL);
+INSERT INTO users VALUES (3, 'Charlie', 'charlie@example.com');
+INSERT INTO users VALUES (4, 'Dave', NULL);
+INSERT INTO users VALUES (5, 'Eve', 'eve@example.com');
+INSERT INTO users VALUES (6, 'Frank', NULL);
+INSERT INTO users VALUES (7, 'Grace', 'grace@example.com');
+INSERT INTO users VALUES (8, 'Heidi', NULL);
+INSERT INTO users VALUES (9, 'Ivan', 'ivan@example.com');
+INSERT INTO users VALUES (10, 'Judy', NULL);
+INSERT INTO orders VALUES (1, 1, 100);
+INSERT INTO orders VALUES (2, 2, NULL);
+INSERT INTO orders VALUES (3, 3, 200);
+INSERT INTO orders VALUES (4, 4, NULL);
+INSERT INTO orders VALUES (5, 5, 300);
 
 -- === CASE: IS NULL ===
 -- EXPECT: 2 rows
