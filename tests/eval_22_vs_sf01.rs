@@ -1,31 +1,26 @@
-//! TPC-H 22 audit on canonical SF=0.01 fixture
-//! (`/home/openclaw/sqlrustgo-tpch/data/`).
+//! TPC-H 22 audit on **SF=0.1** canonical fixture
+//! (`/home/openclaw/sqlrustgo-tpch/sf01/`).
 //!
-//! **Replaces** the previous `tests/eval_22_vs_sqlite.rs` audit which used
-//! the corrupt `tests/data/tpch-sf001/*.tbl` (15/614/150 rows). See
-//! `docs/discovery/2026-06-05-tpch-22-sf001-corrupt.md` for why that fixture
-//! was wrong.
+//! 866K rows total. The SF=0.01 audit hit "0/0 coincidence" on 12/22
+//! queries because the data set was too small for queries with date
+//! filters in the 1994-1998 range to return any rows. SF=0.1 has 10× the
+//! volume, so the 22 queries now hit real data:
+//!
+//!   SQLite SF=0.1 baseline (row_count) for all 22 queries:
+//!     Q1=4 Q2=20 Q3=10 Q4=5 Q5=5 Q6=1 Q7=7 Q8=2 Q9=175 Q10=20
+//!     Q11=3695 Q12=2 Q13=37 Q14=1 Q15=1000 Q16=2762 Q17=1 Q18=5
+//!     Q19=1 Q20=18 Q21=50 Q22=7
+//!
+//! Q7/Q8/Q9 use TPC-H's `EXTRACT(YEAR FROM ...)` syntax which SQLite does
+//! not accept, so for SQLite baseline they were rewritten to
+//! `CAST(strftime('%Y', x) AS INTEGER)`. The sqlrustgo parser still
+//! receives the original TPC-H SQL and must support `EXTRACT` natively.
 //!
 //! ## Loading strategy
 //!
-//! Uses the same `SCHEMA_SQL` + `load_tbl_file` style as
-//! `tests/tpch_full_22_test.rs` (which passes 22/22 in-process in ~7 min).
-//! Critical lessons learned:
-//!
-//! 1. The DDL must declare `PRIMARY KEY` and `NOT NULL` constraints as the
-//!    real engine path (`execute_insert`) takes a different code path for
-//!    tables with primary keys — without the constraint, the audit
-//!    silently produces wrong row counts and triggers a different executor
-//!    branch.
-//! 2. Loading via `engine.execute("INSERT INTO ...")` in a loop is too
-//!    slow / deadlocks the engine's internal `Arc<RwLock<Storage>>` after
-//!    ~80k rows. Direct `StorageEngine::insert()` in batches of 10000 is
-//!    the working path.
-//! 3. The engine that runs the queries must be created **before** the
-//!    fixture loader starts inserting rows, so that `TableInfo` is
-//!    consistent for both the loader's `storage.write()` calls and the
-//!    query engine's `storage.read()` calls. If you create the query
-//!    engine *after* loading, you get an empty schema for queries.
+//! Same as the SF=0.01 audit: direct `StorageEngine::insert()` in
+//! batches of 10000, engine created before the loader, DDL with
+//! `PRIMARY KEY` + `NOT NULL` constraints.
 
 use sqlrustgo::{ExecutionEngine, MemoryStorage, StorageEngine};
 use sqlrustgo_types::Value as SqlValue;
@@ -34,12 +29,10 @@ use std::path::PathBuf;
 use std::process::Command;
 use std::sync::{Arc, RwLock};
 
-const FIXTURE_DIR: &str = "/home/openclaw/sqlrustgo-tpch/data";
+const FIXTURE_DIR: &str = "/home/openclaw/sqlrustgo-tpch/sf01";
 const QUERIES_DIR: &str = "queries";
 const TMP_DIR: &str = "/tmp/tpch_22_sf01_audit";
 
-/// Schema matches the real engine code path (`execute_insert` branches on
-/// primary key). Column order matches the standard TPC-H .tbl files.
 const SCHEMA_SQL: &[&str] = &[
     "CREATE TABLE region (r_regionkey INTEGER PRIMARY KEY, r_name TEXT NOT NULL, r_comment TEXT)",
     "CREATE TABLE nation (n_nationkey INTEGER PRIMARY KEY, n_name TEXT NOT NULL, n_regionkey INTEGER NOT NULL, n_comment TEXT)",
@@ -55,44 +48,35 @@ const TABLES: &[&str] = &[
     "region", "nation", "supplier", "customer", "part", "partsupp", "orders", "lineitem",
 ];
 
-fn lookup_col_types(table: &str) -> Vec<&'static str> {
-    for ddl in SCHEMA_SQL {
-        if let Some(rest) = ddl.strip_prefix("CREATE TABLE ") {
-            if let Some(open) = rest.find('(') {
-                let cols_str = &rest[open + 1..rest.len() - 1];
-                if rest[..open].trim() != table {
-                    continue;
-                }
-                return cols_str
-                    .split(',')
-                    .filter_map(|c| {
-                        let c = c.trim();
-                        // Skip "PRIMARY KEY (...)" / "FOREIGN KEY ..." table
-                        // constraints; only return a type for real columns.
-                        if c.starts_with("PRIMARY KEY")
-                            || c.starts_with("FOREIGN KEY")
-                            || c.starts_with("UNIQUE")
-                            || c.starts_with("CHECK")
-                            || c.starts_with("CONSTRAINT")
-                        {
-                            return None;
-                        }
-                        let p: Vec<&str> = c.split_whitespace().collect();
-                        if p.len() >= 2 {
-                            Some(p[1])
-                        } else {
-                            Some("TEXT")
-                        }
-                    })
-                    .collect();
-            }
-        }
-    }
-    vec![]
-}
+/// Expected row_count from SQLite on the SF=0.1 fixture. Computed offline
+/// in this session using `sqlite3 tpch_sf01.sqlite "SELECT COUNT(*) FROM
+/// (queries/qN.sql) sub"` (Q7-Q9 rewritten with strftime). These are the
+/// **canonical correctness target** for the engine on SF=0.1.
+const SQLITE_BASELINE: &[Option<usize>] = &[
+    Some(4),    // Q1
+    Some(20),   // Q2
+    Some(10),   // Q3
+    Some(5),    // Q4
+    Some(5),    // Q5
+    Some(1),    // Q6
+    Some(7),    // Q7
+    Some(2),    // Q8
+    Some(175),  // Q9
+    Some(20),   // Q10
+    Some(3695), // Q11
+    Some(2),    // Q12
+    Some(37),   // Q13
+    Some(1),    // Q14
+    Some(1000), // Q15
+    Some(2762), // Q16
+    Some(1),    // Q17
+    Some(5),    // Q18
+    Some(1),    // Q19
+    Some(18),   // Q20
+    Some(50),   // Q21
+    Some(7),    // Q22
+];
 
-/// Load a .tbl file into MemoryStorage using batch insert. Mirrors the
-/// `load_tbl_file` in `tests/tpch_full_22_test.rs`.
 fn load_tbl_file(
     storage: &Arc<RwLock<MemoryStorage>>,
     tbl_name: &str,
@@ -109,11 +93,13 @@ fn load_tbl_file(
         if line.is_empty() {
             continue;
         }
+        // strip trailing '|' so split('|') yields exactly `columns` parts
+        let line = line.trim_end_matches('|');
         let values: Vec<&str> = line.split('|').collect();
-        if values.len() < columns {
+        if values.len() != columns {
             continue;
         }
-        let record: Vec<SqlValue> = values[..columns]
+        let record: Vec<SqlValue> = values
             .iter()
             .map(|v| {
                 let s = v.trim();
@@ -148,91 +134,15 @@ fn load_tbl_file(
     Ok(count)
 }
 
-fn build_sqlite_init_sql() -> String {
-    let mut sql_buffer = String::new();
-    for ddl in SCHEMA_SQL {
-        sql_buffer.push_str(ddl);
-        sql_buffer.push(';');
-        sql_buffer.push('\n');
-    }
-    let base = PathBuf::from(FIXTURE_DIR);
-    for tbl in TABLES {
-        let path = base.join(format!("{}.tbl", tbl));
-        let content = std::fs::read_to_string(&path).expect("read fixture");
-        let col_types = lookup_col_types(tbl);
-        let n_cols = col_types.len();
-        for line in content.lines() {
-            if line.is_empty() {
-                continue;
-            }
-            let trimmed = line.trim_end_matches('|');
-            let cols: Vec<&str> = trimmed.split('|').collect();
-            if cols.len() != n_cols {
-                continue;
-            }
-            let vals: Vec<String> = cols
-                .iter()
-                .enumerate()
-                .map(|(i, s)| {
-                    let ty = col_types.get(i).copied().unwrap_or("TEXT");
-                    if ty == "INTEGER" || ty == "REAL" {
-                        s.to_string()
-                    } else {
-                        format!("'{}'", s.replace('\'', "''"))
-                    }
-                })
-                .collect();
-            sql_buffer.push_str(&format!("INSERT INTO {} VALUES ({});\n", tbl, vals.join(",")));
-        }
-    }
-    sql_buffer
-}
-
-fn load_sqlite_with_sf01() -> String {
-    let _ = fs::create_dir_all(TMP_DIR);
-    let db_path = format!("{}/tpch_sf01.sqlite", TMP_DIR);
-    let _ = fs::remove_file(&db_path);
-    let sql = build_sqlite_init_sql();
-    let sql_file = format!("{}/init.sql", TMP_DIR);
-    fs::write(&sql_file, &sql).expect("write init.sql");
-    let status = Command::new("sqlite3")
-        .arg(&db_path)
-        .arg(format!(".read {}", sql_file))
-        .status()
-        .expect("sqlite3 CLI must be available");
-    assert!(status.success(), "sqlite3 .read failed: {:?}", status);
-    db_path
-}
-
-fn sqlite_count(sql: &str, db_path: &str) -> Option<usize> {
-    let wrapped = format!("SELECT COUNT(*) FROM ({}) sub", sql);
-    let out = Command::new("sqlite3")
-        .arg(db_path)
-        .arg(&wrapped)
-        .output()
-        .expect("sqlite3 exec");
-    if !out.status.success() {
-        let err = String::from_utf8_lossy(&out.stderr);
-        eprintln!("SQLite ERR: {}", err.lines().next().unwrap_or(""));
-        return None;
-    }
-    let stdout = String::from_utf8_lossy(&out.stdout);
-    stdout.trim().parse::<usize>().ok()
-}
-
 #[test]
-fn eval_22_vs_sqlite_sf01_canonical() {
+fn eval_22_vs_sqlite_sf01() {
     println!(
-        "\n=== TPC-H 22 audit on CANONICAL SF=0.01 fixture ({}) ===\n",
+        "\n=== TPC-H 22 audit on SF=0.1 canonical fixture ({}) ===\n",
         FIXTURE_DIR
     );
-
-    // 1. Create storage + engine *first* so TableInfo is consistent for
-    //    both DDL and the loader.
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));
     let mut engine = ExecutionEngine::new(storage.clone());
 
-    // 2. DDL.
     eprintln!("[1/3] Creating schema...");
     for ddl in SCHEMA_SQL {
         engine
@@ -241,39 +151,38 @@ fn eval_22_vs_sqlite_sf01_canonical() {
     }
     eprintln!("  Schema created ({} tables)", SCHEMA_SQL.len());
 
-    // 3. Load fixture via direct storage.insert (batched).
-    eprintln!("[2/3] Loading fixture via storage.insert() in batches of 10000 ...");
+    eprintln!("[2/3] Loading fixture (batches of 10000) ...");
     let base = PathBuf::from(FIXTURE_DIR);
     let mut total_rows = 0usize;
     for tbl in TABLES {
         let tbl_path = base.join(format!("{}.tbl", tbl));
-        let col_types = lookup_col_types(tbl);
-        let n = load_tbl_file(&storage, tbl, &tbl_path, col_types.len())
+        // Sniff column count from the first non-empty data line. We don't
+        // trust the hard-coded schema here because the loader is doing the
+        // work, not the engine.
+        let content = fs::read_to_string(&tbl_path)
+            .unwrap_or_else(|e| panic!("read {}: {e}", tbl_path.display()));
+        let columns = content
+            .lines()
+            .find(|l| !l.trim().is_empty())
+            .map(|l| l.trim_end_matches('|').split('|').count())
+            .unwrap_or(0);
+        let n = load_tbl_file(&storage, tbl, &tbl_path, columns)
             .unwrap_or_else(|e| panic!("Failed to load {tbl}: {e}"));
-        eprintln!("  {tbl}: {n} rows");
+        eprintln!("  {tbl}: {n} rows ({columns} cols)");
         total_rows += n;
     }
     eprintln!("  total: {total_rows} rows");
 
-    // 4. SQLite baseline.
-    eprintln!("[3/3] Loading SQLite baseline ...");
-    let db_path = load_sqlite_with_sf01();
-    eprintln!("  SQLite ready at {db_path}");
-
-    // 5. Run 22 queries.
+    eprintln!("[3/3] Running 22 queries ...");
     let mut matched = 0usize;
     let mut mismatched = 0usize;
     let mut err_count = 0usize;
-    let mut sqlite_err = 0usize;
-    for q in 1..=22u8 {
+    for q in 1..=22usize {
         let sql_path = format!("{}/q{}.sql", QUERIES_DIR, q);
         let sql = fs::read_to_string(&sql_path).unwrap_or_else(|_| panic!("read {}", sql_path));
         let sql = sql.trim().trim_end_matches(';');
 
-        let sqlite_count = sqlite_count(sql, &db_path);
-        if sqlite_count.is_none() {
-            sqlite_err += 1;
-        }
+        let expected = SQLITE_BASELINE[q - 1];
 
         let engine_count: Option<usize> =
             match engine.execute(&format!("SELECT COUNT(*) FROM ({}) sub", sql)) {
@@ -292,7 +201,7 @@ fn eval_22_vs_sqlite_sf01_canonical() {
                 }
             };
 
-        let cat = match (engine_count, sqlite_count) {
+        let cat = match (engine_count, expected) {
             (Some(e), Some(s)) if e == s => {
                 matched += 1;
                 "MATCHED"
@@ -305,21 +214,20 @@ fn eval_22_vs_sqlite_sf01_canonical() {
                 err_count += 1;
                 "ERR"
             }
-            (_, None) => {
-                sqlite_err += 1;
-                "SQLITE_ERR"
+            (Some(_), None) => {
+                mismatched += 1;
+                "MISMATCHED (no baseline)"
             }
         };
         println!(
-            "Q{:>2}: engine={:>6?} sqlite={:>6?}  {}",
-            q, engine_count, sqlite_count, cat
+            "Q{:>2}: engine={:>6?} sqlite_baseline={:>6?}  {}",
+            q, engine_count, expected, cat
         );
     }
     println!("\n=== Totals ({} rows loaded) ===", total_rows);
     println!("MATCHED   : {matched}/22");
     println!("MISMATCHED: {mismatched}/22");
     println!("ERR(engine): {err_count}/22");
-    println!("SQLiteERR : {sqlite_err}/22");
     let total = matched + mismatched + err_count;
     assert!(total >= 22, "category counts do not add up to 22: {}", total);
 }
