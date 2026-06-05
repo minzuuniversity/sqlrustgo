@@ -35,6 +35,7 @@ impl ExecutionEngine<MemoryStorage> {
             current_role: None,
             checkpoint_manager: None,
             parallel_degree: 1,
+            stmt_cache: sqlrustgo_cache::PreparedStatementCache::new(100),
         }
     }
 
@@ -52,6 +53,7 @@ impl ExecutionEngine<MemoryStorage> {
             current_role: None,
             checkpoint_manager: None,
             parallel_degree: 1,
+            stmt_cache: sqlrustgo_cache::PreparedStatementCache::new(100),
         }
     }
 
@@ -69,6 +71,7 @@ impl ExecutionEngine<MemoryStorage> {
             current_role: None,
             checkpoint_manager: None,
             parallel_degree: 1,
+            stmt_cache: sqlrustgo_cache::PreparedStatementCache::new(100),
         }
     }
 }
@@ -97,6 +100,7 @@ impl ExecutionEngine<MemoryStorage> {
             current_role: None,
             checkpoint_manager: None,
             parallel_degree: 1,
+            stmt_cache: sqlrustgo_cache::PreparedStatementCache::new(100),
         }
     }
 }
@@ -130,6 +134,7 @@ impl ExecutionEngine<MemoryStorage> {
             current_role: None,
             checkpoint_manager: None,
             parallel_degree: 1,
+            stmt_cache: sqlrustgo_cache::PreparedStatementCache::new(100),
         })
     }
 
@@ -158,6 +163,7 @@ impl ExecutionEngine<MemoryStorage> {
             current_role: None,
             checkpoint_manager: None,
             parallel_degree: 1,
+            stmt_cache: sqlrustgo_cache::PreparedStatementCache::new(100),
         })
     }
 
@@ -187,6 +193,7 @@ impl ExecutionEngine<MemoryStorage> {
             current_role: None,
             checkpoint_manager: checkpoint_manager.map(|cp| Arc::new(RwLock::new(cp))),
             parallel_degree: 1,
+            stmt_cache: sqlrustgo_cache::PreparedStatementCache::new(100),
         })
     }
 
