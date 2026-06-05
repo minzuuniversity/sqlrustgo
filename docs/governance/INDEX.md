@@ -54,7 +54,7 @@
 
 ## 3. Gate 脚本与门禁
 
-### 3.1 11 个 Active Gate 脚本
+### 3.1 12 个 Active Gate 脚本 (v3.9.0 加 G1)
 
 | 脚本 | 用途 | 入口 |
 |------|------|------|
@@ -64,6 +64,7 @@
 | `scripts/gate/check_arch_sem_debt.sh` | **D8 ARCH-1~3 + SEM-1~4** | `bash .../check_arch_sem_debt.sh` |
 | `scripts/gate/check_cross_version_debt.sh` | **72 跨版本债务项 + Part 5 Code Reality Check** (修 #3106) | `bash .../check_cross_version_debt.sh` |
 | `scripts/gate/check_arch2_no_bypass.sh` | **ARCH-2 storage.* bypass** (修 #3101) | `bash .../check_arch2_no_bypass.sh` |
+| `scripts/gate/check_g1_tpch_baseline.sh` | **G1 TPC-H 22/22 不可退化** (v3.9.0 #3186 baseline hash) | `bash .../check_g1_tpch_baseline.sh` |
 | `scripts/gate/audit_testing.sh` | **D5.5 TEST_PLAN ↔ Cargo.toml 16 个 [[test]] 对齐** | `bash .../audit_testing.sh v3.8.0 ga <out>` |
 | `scripts/gate/check_docs_links.sh` | markdown 链接检查 | `bash .../check_docs_links.sh [--all]` |
 | `scripts/gate/check_docs_consistency.sh` | 版本状态/链接/历史一致性 | `bash .../check_docs_consistency.sh` |

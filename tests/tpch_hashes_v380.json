@@ -1,0 +1,26 @@
+{
+  "_comment": [
+    "BUMP WORKFLOW (read before editing):",
+    "1. Run `python3 scripts/gate/tpch_hash_compare.py --capture` against the target tree.",
+    "2. Copy the printed 64-char hex into `tpc_h_hash_sha256` below.",
+    "3. Update `captured_from` to the new commit SHA (or tag).",
+    "4. Update `captured_at` to today's date.",
+    "5. Commit the change; the PR diff must show the hash field as the only material change.",
+    "",
+    "A legitimate bump is required for any change that alters the row count, column values, or row order (after sort) of any of TPC-H Q1..Q22. The PR description must explain WHY the hash changed (e.g., 'Q5 now returns correct rows after fix for subquery flattening').",
+    "",
+    "An accidental bump (no legitimate output change) is detectable: the diff is small and the new hash has no provenance. The G1 shell gate does not auto-bump; it always requires this file to be updated by a human-reviewed PR."
+  ],
+  "version": "v3.8.0",
+  "captured_at": "PENDING",
+  "captured_from": "PENDING — to be filled after first successful TPC-H 22/22 run on develop/v3.9.0 (see openspec/changes/g1-tpch-baseline/tasks.md §1.4)",
+  "tpc_h_hash_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "tpc_h_queries": 22,
+  "tpc_h_test_files": [
+    "tests/tpch_gate_test.rs",
+    "tests/tpch_full_22_test.rs"
+  ],
+  "scale_factor": 0.1,
+  "runner": "Z6G4 (Linux x86_64)",
+  "status": "PENDING — TPC-H 22/22 baseline hash not yet captured. The gate infrastructure (Python script + Rust test + shell gate + CI step) is in place; the actual SHA-256 will be filled in by a follow-up commit after a single 30-60 minute TPC-H 22/22 run completes. Until then, the G1 gate will fail by design (placeholder hash != real hash), and the test will print a clear 'PENDING: run --capture' message. See issue #3186 follow-up notes for the planned capture session."
+}
