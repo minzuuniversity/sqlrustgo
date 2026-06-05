@@ -1570,6 +1570,19 @@ impl Parser {
             false
         };
 
+        // MySQL 5.7 SELECT modifiers: HIGH_PRIORITY, SQL_CACHE,
+        // SQL_NO_CACHE, SQL_CALC_FOUND_ROWS. All optional; consume
+        // any sequence of them before the column list begins.
+        while matches!(
+            self.current(),
+            Some(Token::HighPriority)
+                | Some(Token::SqlCache)
+                | Some(Token::SqlNoCache)
+                | Some(Token::SqlCalcFoundRows)
+        ) {
+            self.next();
+        }
+
         let mut columns = Vec::new();
         let mut aggregates = Vec::new();
 
@@ -2021,18 +2034,31 @@ impl Parser {
                         expression: Some(Expression::Literal(val.to_string())),
                     });
                 }
-                // MySQL 5.7: LEFT/RIGHT/INSERT/REPLACE/IF as scalar
-                // functions in the SELECT list. Same logic as
+                // MySQL 5.7: LEFT/RIGHT/INSERT/REPLACE/IF/CONVERT/DATE_ADD/DATE_SUB/SUBSTRING/POSITION
+                // as scalar functions in the SELECT list. Same logic as
                 // parse_primary_expression.
                 // INT-4 / CTE-01: see Token::Level in Token::Level AS alias path
-                Some(Token::Left) | Some(Token::Right) | Some(Token::Insert)
-                | Some(Token::Replace) | Some(Token::If) => {
+                Some(Token::Left)
+                | Some(Token::Right)
+                | Some(Token::Insert)
+                | Some(Token::Replace)
+                | Some(Token::If)
+                | Some(Token::Convert)
+                | Some(Token::DateAdd)
+                | Some(Token::DateSub)
+                | Some(Token::Substring)
+                | Some(Token::Position) => {
                     let name = match self.current() {
                         Some(Token::Left) => "LEFT",
                         Some(Token::Right) => "RIGHT",
                         Some(Token::Insert) => "INSERT",
                         Some(Token::Replace) => "REPLACE",
                         Some(Token::If) => "IF",
+                        Some(Token::Convert) => "CONVERT",
+                        Some(Token::DateAdd) => "DATE_ADD",
+                        Some(Token::DateSub) => "DATE_SUB",
+                        Some(Token::Substring) => "SUBSTRING",
+                        Some(Token::Position) => "POSITION",
                         _ => unreachable!(),
                     };
                     self.next();
@@ -2043,6 +2069,69 @@ impl Parser {
                         ));
                     }
                     self.next();
+                    // DATE_ADD/DATE_SUB(expr, INTERVAL n unit) and
+                    // POSITION(needle IN haystack) — MySQL 5.7 special
+                    // forms. Dispatch here to bypass the general
+                    // arg-parsing loop which would choke on the
+                    // `INTERVAL` and `IN` keywords.
+                    if name == "DATE_ADD" || name == "DATE_SUB" {
+                        let date_expr = self.parse_primary_expression()?;
+                        if !matches!(self.current(), Some(Token::Comma)) {
+                            return Err(format!(
+                                "Expected ',' in {}(...), got {:?}",
+                                name, self.current()
+                            ));
+                        }
+                        self.next(); // consume Comma
+                        if !matches!(self.current(), Some(Token::Interval)) {
+                            return Err(format!(
+                                "Expected INTERVAL in {}(...), got {:?}",
+                                name, self.current()
+                            ));
+                        }
+                        self.next(); // consume INTERVAL
+                        let n_expr = self.parse_primary_expression()?;
+                        let unit = match self.current() {
+                            Some(Token::Identifier(u)) => {
+                                let s = u.clone();
+                                self.next();
+                                s
+                            }
+                            _ => {
+                                return Err(format!(
+                                    "Expected unit (DAY/MONTH/...) after INTERVAL n in {}(...)",
+                                    name
+                                ));
+                            }
+                        };
+                        self.expect(Token::RParen)?;
+                        let args = vec![date_expr, n_expr, Expression::Literal(unit)];
+                        columns.push(SelectColumn {
+                            name: format!("{:?}", Expression::FunctionCall(name.to_string(), args.clone())),
+                            alias: None,
+                            expression: Some(Expression::FunctionCall(name.to_string(), args)),
+                        });
+                        continue;
+                    }
+                    if name == "POSITION" {
+                        let needle = self.parse_primary_expression()?;
+                        if !matches!(self.current(), Some(Token::In)) {
+                            return Err(format!(
+                                "Expected IN after POSITION needle, got {:?}",
+                                self.current()
+                            ));
+                        }
+                        self.next(); // consume IN
+                        let haystack = self.parse_primary_expression()?;
+                        self.expect(Token::RParen)?;
+                        let args = vec![needle, haystack];
+                        columns.push(SelectColumn {
+                            name: format!("{:?}", Expression::FunctionCall(name.to_string(), args.clone())),
+                            alias: None,
+                            expression: Some(Expression::FunctionCall(name.to_string(), args)),
+                        });
+                        continue;
+                    }
                     let mut args = Vec::new();
                     if !matches!(self.current(), Some(Token::RParen)) {
                         loop {
@@ -3601,18 +3690,37 @@ impl Parser {
     /// Parse primary expression (identifier, literal, or parenthesized)
     fn parse_primary_expression(&mut self) -> Result<Expression, String> {
         match self.current() {
-            // Allow SQL keywords LEFT, RIGHT, INSERT, REPLACE, IF to act as
-            // scalar function names when followed by `(`. MySQL has these
-            // as both statement keywords and string functions; in
-            // expression position the function interpretation wins.
-            Some(Token::Left) | Some(Token::Right) | Some(Token::Insert) | Some(Token::Replace)
-            | Some(Token::If) => {
+            // MySQL 5.7: LEFT/RIGHT/INSERT/REPLACE/IF/CONVERT/DATE_ADD/DATE_SUB/SUBSTRING/POSITION
+            // and ROLLUP/CUBE (as function calls in GROUP BY context, e.g.
+            // `GROUP BY ROLLUP(department)`) as scalar function names
+            // when followed by `(`. MySQL has these as both statement
+            // keywords and string functions; in expression position the
+            // function interpretation wins.
+            Some(Token::Left)
+            | Some(Token::Right)
+            | Some(Token::Insert)
+            | Some(Token::Replace)
+            | Some(Token::If)
+            | Some(Token::Convert)
+            | Some(Token::DateAdd)
+            | Some(Token::DateSub)
+            | Some(Token::Substring)
+            | Some(Token::Position)
+            | Some(Token::Rollup)
+            | Some(Token::Cube) => {
                 let name = match self.current() {
                     Some(Token::Left) => "LEFT",
                     Some(Token::Right) => "RIGHT",
                     Some(Token::Insert) => "INSERT",
                     Some(Token::Replace) => "REPLACE",
                     Some(Token::If) => "IF",
+                    Some(Token::Convert) => "CONVERT",
+                    Some(Token::DateAdd) => "DATE_ADD",
+                    Some(Token::DateSub) => "DATE_SUB",
+                    Some(Token::Substring) => "SUBSTRING",
+                    Some(Token::Position) => "POSITION",
+                    Some(Token::Rollup) => "ROLLUP",
+                    Some(Token::Cube) => "CUBE",
                     _ => unreachable!(),
                 };
                 self.next();
@@ -3764,13 +3872,57 @@ impl Parser {
                         // standard comma-separated arg loop below.
                     }
 
-                    // POSITION(substr IN str) — MySQL 5.7 special form, like EXTRACT.
-                    // We must parse the needle WITHOUT going through
-                    // parse_comparison_expression, because that function
-                    // would interpret the `IN` as the start of an IN-list
-                    // operator and try to consume a `(`. The needle here
-                    // is just a primary expression (literal or column).
-                    if name.to_uppercase() == "POSITION" {
+                    // DATE_ADD/DATE_SUB(expr, INTERVAL n unit) — MySQL 5.7
+                    // special form. The general arg-parsing loop below
+                    // would treat `INTERVAL` as a bare identifier and
+                    // fail on the unit suffix (DAY, MONTH, …). We
+                    // dispatch here, mirroring EXTRACT(field FROM expr)
+                    // and TRIM(LEADING … FROM …). Args are emitted as
+                    // [date, n, unit_string] so the executor can apply
+                    // the offset directly.
+                    if name == "DATE_ADD" || name == "DATE_SUB" {
+                        let date_expr = self.parse_primary_expression()?;
+                        if !matches!(self.current(), Some(Token::Comma)) {
+                            return Err(format!(
+                                "Expected ',' in {}(...), got {:?}",
+                                name, self.current()
+                            ));
+                        }
+                        self.next(); // consume Comma
+                        if !matches!(self.current(), Some(Token::Interval)) {
+                            return Err(format!(
+                                "Expected INTERVAL in {}(...), got {:?}",
+                                name, self.current()
+                            ));
+                        }
+                        self.next(); // consume INTERVAL
+                        let n_expr = self.parse_primary_expression()?;
+                        let unit = match self.current() {
+                            Some(Token::Identifier(u)) => {
+                                let s = u.clone();
+                                self.next();
+                                s
+                            }
+                            _ => {
+                                return Err(format!(
+                                    "Expected unit (DAY/MONTH/...) after INTERVAL n in {}(...)",
+                                    name
+                                ));
+                            }
+                        };
+                        self.expect(Token::RParen)?;
+                        return Ok(Expression::FunctionCall(
+                            name.to_string(),
+                            vec![date_expr, n_expr, Expression::Literal(unit)],
+                        ));
+                    }
+                    // POSITION(needle IN haystack) — MySQL 5.7 special form.
+                    // The general arg-parsing loop below would treat
+                    // `IN` as the start of an IN-list operator and try
+                    // to consume a `(`. The needle here is a primary
+                    // expression. Mirrors EXTRACT(field FROM expr) and
+                    // DATE_ADD(expr, INTERVAL n unit).
+                    if name == "POSITION" {
                         let needle = self.parse_primary_expression()?;
                         if !matches!(self.current(), Some(Token::In)) {
                             return Err(format!(
@@ -3940,9 +4092,31 @@ impl Parser {
                 // self.next(), which double-advanced the cursor and
                 // caused "Expected number after -" failures on expressions
                 // like `l_extendedprice * (1 - l_discount)`.
-                match self.current() {
-                    Some(Token::Select) => {
-                        let subquery = self.parse_select_statement()?;
+                // PEEK at next token for subquery detection.
+                match self.peek() {
+                    Some(Token::Select) | Some(Token::With) => {
+                        // Consume the opening LParen before parsing the
+                        // SELECT/WITH subquery, since parse_select_or_union
+                        // expects the cursor to be at the first token of
+                        // the SELECT statement, not at the LParen.
+                        self.next();
+                        // (SELECT ...) subquery: extract the SelectStatement
+                        // out of the returned Statement enum.
+                        let stmt = self.parse_select_or_union()?;
+                        let subquery = match stmt {
+                            Statement::Select(s) => s,
+                            Statement::Union(u) => {
+                                // UNION subquery: synthesise a SelectStatement
+                                // by wrapping the UNION in a FROM-context.
+                                // For now, return the left side as a fallback.
+                                if let Statement::Select(left) = *u.left {
+                                    left
+                                } else {
+                                    return Err("Unsupported subquery form".to_string());
+                                }
+                            }
+                            _ => return Err("Expected subquery".to_string()),
+                        };
                         self.expect(Token::RParen)?;
                         Ok(Expression::Subquery(Box::new(subquery)))
                     }
@@ -4056,6 +4230,38 @@ impl Parser {
             Some(Token::Level) => {
                 self.next();
                 Ok(Expression::Identifier("level".to_string()))
+            }
+            // MySQL 5.7 type names (CHAR, TEXT, INT, FLOAT, BOOLEAN) used
+            // as bare identifiers in expression position. E.g.
+            // `CONVERT(price, CHAR)` — the second argument is the
+            // `CHAR` type name but the parser can't tell at this
+            // stage; we emit an Identifier and let the executor
+            // interpret it via the enclosing function dispatch.
+            Some(Token::Text) => {
+                self.next();
+                Ok(Expression::Identifier("TEXT".to_string()))
+            }
+            // MySQL 5.7 INTERVAL keyword used as a bare identifier
+            // (DATE_ADD(expr, INTERVAL n unit) parses INTERVAL via
+            // a special form in the column list path, but the unit
+            // suffix is matched as a regular identifier; INTERVAL
+            // itself is also accepted for symmetry with other
+            // reserved-keyword-as-identifier fallbacks).
+            Some(Token::Interval) => {
+                self.next();
+                Ok(Expression::Identifier("INTERVAL".to_string()))
+            }
+            Some(Token::Integer) => {
+                self.next();
+                Ok(Expression::Identifier("INTEGER".to_string()))
+            }
+            Some(Token::Float) => {
+                self.next();
+                Ok(Expression::Identifier("FLOAT".to_string()))
+            }
+            Some(Token::Boolean) => {
+                self.next();
+                Ok(Expression::Identifier("BOOLEAN".to_string()))
             }
             // Phase 3 (TPCH-01 Q17/Q20/Q22): scalar subquery in parentheses,
             // e.g. `WHERE x = (SELECT ... FROM t WHERE ...)`.
