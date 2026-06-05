@@ -363,6 +363,7 @@ impl<'a> Lexer<'a> {
                     "SQL_NO_CACHE" => Token::SqlNoCache,
                     "SQL_CALC_FOUND_ROWS" => Token::SqlCalcFoundRows,
                     "CONVERT" => Token::Convert,
+                    "DATE" => Token::Date,
                     "DATE_ADD" => Token::DateAdd,
                     "DATE_SUB" => Token::DateSub,
                     "SUBSTRING" => Token::Substring,
