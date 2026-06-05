@@ -1355,6 +1355,7 @@ impl StoredProcExecutor {
             sqlrustgo_parser::Expression::Aggregate(_) => Value::Null,
             sqlrustgo_parser::Expression::FunctionCall(_, _) => Value::Null,
             sqlrustgo_parser::Expression::WindowCall(_) => Value::Null,
+            sqlrustgo_parser::Expression::SubqueryField(_, _) => Value::Null,
         }
     }
 
