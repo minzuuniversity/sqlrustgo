@@ -88,6 +88,18 @@ pub enum Statement {
         name: String,
         op: SavepointOp,
     },
+
+    Prepare {
+        name: String,
+        sql: String,
+    },
+    Execute {
+        name: String,
+        params: Vec<Expression>,
+    },
+    Deallocate {
+        name: String,
+    },
 }
 
 /// SEM-1 (#3172): Savepoint operation kind.
@@ -974,6 +986,9 @@ impl Parser {
             Some(Token::Savepoint) => self.parse_savepoint_statement(),
             // SEM-1 (#3172): RELEASE SAVEPOINT dispatcher
             Some(Token::Release) => self.parse_release_savepoint(),
+            Some(Token::Prepare) => self.parse_prepare(),
+            Some(Token::Execute) => self.parse_execute(),
+            Some(Token::Deallocate) => self.parse_deallocate(),
             // SEM-1 (#3172): ROLLBACK — peek for `TO` to route to
             // savepoint handling; otherwise plain ROLLBACK [WORK].
             Some(Token::Rollback) if self.peek() == Some(&Token::To) => {
@@ -1140,6 +1155,46 @@ impl Parser {
             name,
             op: SavepointOp::Release,
         })
+    }
+
+    fn parse_prepare(&mut self) -> Result<Statement, String> {
+        self.expect(Token::Prepare)?;
+        let name = match self.next() {
+            Some(Token::Identifier(n)) => n,
+            Some(t) => return Err(format!("Expected prepared statement name, got {:?}", t)),
+            None => return Err("Expected prepared statement name, got EOF".to_string()),
+        };
+        self.expect(Token::As)?;
+        let sql = match self.next() {
+            Some(Token::StringLiteral(s)) => s,
+            Some(t) => return Err(format!("Expected SQL string literal, got {:?}", t)),
+            None => return Err("Expected SQL string literal, got EOF".to_string()),
+        };
+        if sql.trim().is_empty() {
+            return Err("PREPARE requires non-empty SQL body".to_string());
+        }
+        Ok(Statement::Prepare { name, sql })
+    }
+
+    fn parse_execute(&mut self) -> Result<Statement, String> {
+        self.expect(Token::Execute)?;
+        let name = match self.next() {
+            Some(Token::Identifier(n)) => n,
+            Some(t) => return Err(format!("Expected prepared statement name, got {:?}", t)),
+            None => return Err("Expected prepared statement name, got EOF".to_string()),
+        };
+        let params = Vec::new();
+        Ok(Statement::Execute { name, params })
+    }
+
+    fn parse_deallocate(&mut self) -> Result<Statement, String> {
+        self.expect(Token::Deallocate)?;
+        let name = match self.next() {
+            Some(Token::Identifier(n)) => n,
+            Some(t) => return Err(format!("Expected prepared statement name, got {:?}", t)),
+            None => return Err("Expected prepared statement name, got EOF".to_string()),
+        };
+        Ok(Statement::Deallocate { name })
     }
 
     fn parse_start_transaction(&mut self) -> Result<Statement, String> {
