@@ -83,12 +83,27 @@ check_pass_fail_evidence() {
       has_doc_provenance=true
     fi
   fi
+  # SPEC-015: 检查环境限制标记 — 文档含 env:blocked:no-ci 表明作者已诚实
+  # 标注"无 Gitea CI, 接受本地 verification log 证据"。
+  local has_env_blocked=false
+  if grep -qE "env:blocked:no-ci|env-blocked-no-ci" "$path" 2>/dev/null; then
+    has_env_blocked=true
+  fi
 
   # 有 provenance 的 Gate Report，跳过逐行检查（整体背书）
   if [ "$has_doc_provenance" = true ]; then
     add_pass "Gate Report 有整体 provenance（gate_policy_eval_id）：$doc"
     return
   fi
+
+  # SPEC-015: 有 env:blocked 标记 — 文档已诚实标注环境限制，所有 PASS/FAIL 声明视为 WARN
+  if [ "$has_env_blocked" = true ]; then
+    add_warn "文档标注环境限制 (env:blocked:no-ci): $doc (无 Gitea CI, 接受本地 verification log 证据)"
+    return
+  fi
+
+  # SPEC-015: 整文档无 provenance 且无 env:blocked 标记 — 仍是 FAIL (作者需补充证据)
+  # 行为不变（仍逐行检查），但提供清晰的修复指引
 
   while IFS=: read -r line_num content; do
     # 跳过注释行和代码块

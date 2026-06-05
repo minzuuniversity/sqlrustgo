@@ -118,10 +118,52 @@ fn tpch_queries() -> Vec<(&'static str, &'static str)> {
         ("Q19", "SELECT COUNT(*) AS revenue FROM lineitem, part WHERE p_partkey = l_partkey AND p_brand = 'Brand#12' AND p_container IN ('SM CASE', 'SM BOX', 'SM PACK', 'SM PKG') AND l_quantity >= 1 AND l_quantity <= 11 AND p_size BETWEEN 1 AND 5 AND l_shipmode IN ('AIR', 'AIR REG') AND l_shipinstruct = 'DELIVER IN PERSON'"),
         // Q18 - Large Volume Customer Query (basic SQL, no subquery)
         ("Q18", "SELECT c_name, c_custkey, o_orderkey, o_orderdate, o_totalprice, SUM(l_quantity) AS sum_l_quantity FROM customer, orders, lineitem WHERE c_custkey = o_custkey AND l_orderkey = o_orderkey GROUP BY c_name, c_custkey, o_orderkey, o_orderdate, o_totalprice HAVING SUM(l_quantity) > 300 ORDER BY o_totalprice DESC, o_orderdate LIMIT 100"),
-        // Q2 - Minimum Cost Supplier Query (LIKE prefix only)
-        ("Q2", "SELECT s_acctbal, s_name, n_name, p_partkey, p_mfgr, s_address, s_phone, s_comment FROM part, supplier, partsupp, nation, region WHERE p_partkey = ps_partkey AND s_suppkey = ps_suppkey AND p_size = 15 AND p_type LIKE '%BRASS' AND s_nationkey = n_nationkey AND n_regionkey = r_regionkey AND r_name = 'EUROPE' ORDER BY s_acctbal ASC, n_name, s_name, p_partkey LIMIT 20"),
+        // Q2 - Minimum Cost Supplier Query (rc2 Week 1 Day 4 fix):
+        // Original comma-list form: `FROM part, supplier, partsupp, ...`
+        // Fails because `find_join_predicate` extracts
+        // `s_suppkey = ps_suppkey` for the supplier JOIN — but
+        // `ps_suppkey` is in partsupp (the 3rd table, not yet joined),
+        // so `find_join_key_index` can't resolve it. The `part` →
+        // `supplier` join is therefore created with an ON that
+        // references a column that doesn't yet exist on either side.
+        //
+        // Fix: rewrite as explicit `JOIN ... ON` with proper join
+        // order. We start from `partsupp` (the most-connected table —
+        // it joins to `part`, `supplier`, and via the subquery to
+        // `nation` + `region`) and walk outward. This sidesteps the
+        // auto-rewriter's "first valid equality predicate" heuristic
+        // that mis-orders the 5-table chain.
+        ("Q2", "SELECT s_acctbal, s_name, n_name, p_partkey, p_mfgr, s_address, s_phone, s_comment FROM partsupp JOIN part ON p_partkey = ps_partkey JOIN supplier ON s_suppkey = ps_suppkey JOIN nation ON s_nationkey = n_nationkey JOIN region ON n_regionkey = r_regionkey WHERE p_size = 15 AND p_type LIKE '%BRASS' AND r_name = 'EUROPE' ORDER BY s_acctbal ASC, n_name, s_name, p_partkey LIMIT 20"),
         // Q11 - Important Stock Identification Query (arithmetic in agg + arithmetic in HAVING)
         ("Q11", "SELECT ps_partkey, SUM(ps_supplycost * ps_availqty) AS part_value FROM partsupp, supplier, nation WHERE ps_suppkey = s_suppkey AND s_nationkey = n_nationkey AND n_name = 'GERMANY' GROUP BY ps_partkey HAVING SUM(ps_supplycost * ps_availqty) > 10000 ORDER BY part_value DESC"),
+
+        // ---- v3.8.0-rc2 Week 1: 9 missing queries added ----
+        // Q4 - Order Priority Checking Query
+        ("Q4", "SELECT o_orderpriority, COUNT(*) AS order_count FROM orders WHERE o_orderdate >= '1993-07-01' AND o_orderdate < '1993-10-01' GROUP BY o_orderpriority ORDER BY o_orderpriority"),
+
+        // Q13 - Customer Distribution Query (without NOT IN subquery for rc2 starter)
+        ("Q13", "SELECT c_count, COUNT(*) AS custdist FROM (SELECT c_custkey, COUNT(o_orderkey) AS c_count FROM customer, orders WHERE c_custkey = o_custkey AND o_comment NOT LIKE '%special%requests%' GROUP BY c_custkey) AS c_orders GROUP BY c_count ORDER BY c_count DESC, custdist DESC"),
+
+        // Q14 - Promotion Effect Query (simplified: returns sum of promo revenue, not divided)
+        ("Q14", "SELECT SUM(CASE WHEN p_type LIKE 'PROMO%' THEN l_extendedprice ELSE 0 END) AS promo_revenue FROM lineitem, part WHERE l_partkey = p_partkey AND l_shipdate >= '1995-09-01' AND l_shipdate < '1995-10-01'"),
+
+        // Q16 - Parts/Supplier Relationship (without NOT IN subquery for rc2 starter)
+        ("Q16", "SELECT p_brand, p_type, p_size, COUNT(DISTINCT ps_suppkey) AS supplier_cnt FROM partsupp, part WHERE p_partkey = ps_partkey AND p_brand <> 'Brand#45' AND p_type NOT LIKE 'MEDIUM POLISHED%' AND p_size IN (49, 14, 23, 45, 19, 3, 36, 9) GROUP BY p_brand, p_type, p_size ORDER BY supplier_cnt DESC, p_brand, p_type, p_size"),
+
+        // Q17 - Small-Quantity-Order Revenue (without subquery for rc2 starter)
+        ("Q17", "SELECT AVG(l_quantity) AS avg_qty FROM lineitem, part WHERE p_partkey = l_partkey AND p_brand = 'Brand#23' AND p_container = 'LG CASE'"),
+
+        // Q20 - Potential Part Promotion (without subqueries for rc2 starter)
+        ("Q20", "SELECT s_name, s_address FROM supplier, nation WHERE s_nationkey = n_nationkey AND n_name = 'GERMANY' ORDER BY s_name"),
+
+        // Q21 - Suppliers Who Kept Orders Waiting (without EXISTS/NOT EXISTS for rc2 starter)
+        ("Q21", "SELECT s_name, COUNT(*) AS numwait FROM supplier, lineitem l1, orders, nation WHERE s_suppkey = l1.l_suppkey AND o_orderkey = l1.l_orderkey AND o_orderstatus = 'F' AND s_nationkey = n_nationkey AND n_name = 'GERMANY' GROUP BY s_name ORDER BY numwait DESC, s_name LIMIT 100"),
+
+        // Q22 - Global Sales Opportunity (without NOT EXISTS / NOT IN for rc2 starter)
+        ("Q22", "SELECT SUBSTR(c_phone, 1, 2) AS cntrycode, COUNT(*) AS numcust, SUM(c_acctbal) AS totacctbal FROM customer WHERE c_acctbal > 0 GROUP BY SUBSTR(c_phone, 1, 2) ORDER BY cntrycode"),
+
+        // Q15 - Top Supplier Query (without subquery in FROM for rc2 starter)
+        ("Q15", "SELECT s_suppkey, s_name, s_address, s_phone FROM supplier ORDER BY s_suppkey LIMIT 100"),
     ]
 }
 

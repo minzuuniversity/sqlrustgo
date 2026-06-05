@@ -289,8 +289,11 @@ fn test_expression_to_value_subquery() {
     let expr = Expression::Subquery(Box::new(sqlrustgo_parser::SelectStatement {
         columns: vec![],
         table: "t".to_string(),
+        from_alias: None,
+        from_subquery: None,
         where_clause: None,
-        join_clause: None,
+        join_clause: vec![],
+        extra_tables: vec![],
         aggregates: vec![],
         group_by: vec![],
         having: None,
@@ -298,6 +301,8 @@ fn test_expression_to_value_subquery() {
         limit: None,
         offset: None,
         distinct: false,
+        with_cube: false,
+        with_rollup: false,
     }));
     let result = expression_to_value(&expr, &eval_ctx, None);
     assert_eq!(result, Value::Null);
