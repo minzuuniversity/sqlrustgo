@@ -68,14 +68,7 @@ const SCHEMA_DDL: &[&str] = &[
 ];
 
 const TABLES: &[&str] = &[
-    "region",
-    "nation",
-    "supplier",
-    "customer",
-    "part",
-    "partsupp",
-    "orders",
-    "lineitem",
+    "region", "nation", "supplier", "customer", "part", "partsupp", "orders", "lineitem",
 ];
 
 struct SharedServer {
@@ -230,20 +223,14 @@ fn test_tpch_22_queries_wire_roundtrip() {
                         // not be ordered, and engine order may not match
                         // SQLite's secondary sort. Sort both and compare
                         // as multisets.
-                        let mut actual_first3: Vec<String> = rows
-                            .iter()
-                            .take(3)
-                            .map(|row| row.join("|"))
-                            .collect();
+                        let mut actual_first3: Vec<String> =
+                            rows.iter().take(3).map(|row| row.join("|")).collect();
                         actual_first3.sort();
                         let mut expected_sorted = expected_first3.clone();
                         expected_sorted.sort();
                         if actual_first3 != expected_sorted {
                             fail += 1;
-                            fail_details.push(format!(
-                                "Q{}: first 3 rows differ (sorted)",
-                                qnum
-                            ));
+                            fail_details.push(format!("Q{}: first 3 rows differ (sorted)", qnum));
                             continue;
                         }
                         pass += 1;
