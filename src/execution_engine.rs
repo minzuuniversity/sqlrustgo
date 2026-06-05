@@ -313,6 +313,11 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     }
 
     pub fn execute_insert(&mut self, insert: &InsertStatement) -> SqlResult<ExecutorResult> {
+        // ARCH-3 (#3169): VtuGuard main-path enforcement (P0-1, Blocker-3)
+        sqlrustgo_storage::vtu_guard::VtuGuard::<()>::assert_path_for_dml(
+            "execute_insert",
+            &insert.table,
+        );
         // IMPL-001 & IMPL-004: TX lifecycle enforcement
         // IDLE/Active with no current_tx_id = implicit autocommit TX (allowed)
         // Committed/Aborted state = no new implicit TX (error)
@@ -525,6 +530,11 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     }
 
     pub fn execute_update(&mut self, update: &UpdateStatement) -> SqlResult<ExecutorResult> {
+        // ARCH-3 (#3169): VtuGuard main-path enforcement (P0-1, Blocker-3)
+        sqlrustgo_storage::vtu_guard::VtuGuard::<()>::assert_path_for_dml(
+            "execute_update",
+            &update.table,
+        );
         // IMPL-001 & IMPL-004: TX lifecycle enforcement
         match self.tx_status {
             TxStatus::Committed => {
@@ -758,6 +768,11 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     }
 
     pub fn execute_delete(&mut self, delete: &DeleteStatement) -> SqlResult<ExecutorResult> {
+        // ARCH-3 (#3169): VtuGuard main-path enforcement (P0-1, Blocker-3)
+        sqlrustgo_storage::vtu_guard::VtuGuard::<()>::assert_path_for_dml(
+            "execute_delete",
+            &delete.table,
+        );
         // IMPL-001 & IMPL-004: TX lifecycle enforcement
         match self.tx_status {
             TxStatus::Committed => {
