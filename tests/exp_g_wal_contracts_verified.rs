@@ -19,14 +19,15 @@ fn extract_count(result: sqlrustgo_types::SqlResult<sqlrustgo::ExecutorResult>) 
     }
 }
 
-// Balance is at index 1 for "SELECT balance FROM ..."
+// After Sprint 2 SELECT projection, `SELECT balance FROM accounts` returns
+// a single column (balance) at index 0. The previous test assumed
+// `r.get(1)` because the executor used to return the full row.
 fn extract_balance(
     result: sqlrustgo_types::SqlResult<sqlrustgo::ExecutorResult>,
 ) -> sqlrustgo_types::Value {
     let rows = result.unwrap().rows;
-    // rows[0] = full row [id, balance], balance is at index 1
     rows.get(0)
-        .and_then(|r| r.get(1))
+        .and_then(|r| r.get(0))
         .cloned()
         .unwrap_or(sqlrustgo_types::Value::Null)
 }
