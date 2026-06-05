@@ -3,13 +3,16 @@
 <!-- env:blocked:no-ci -->
 
 > **配套文档**: `V390_VERSION_PLAN.md` (战略) / `V390_DEVELOPMENT_PLAN.md` (任务)
+> **关联补充**: `V390_TEST_PLAN_SUPPLEMENT_PERF.md` (G11-G15 性能/Sysbench/QPS/稳定性/崩溃)
 > **创建日期**: 2026-06-05
 > **基于**: ChatGPT 架构师 2026-06-05 G1-G10 门禁建议
 > **目标**: 100% 覆盖可靠性 + 集成 + 审计
 
 ---
 
-## 0. 测试总览 (G1-G10)
+## 0. 测试总览 (G1-G15)
+
+### 0.1 核心门禁 (G1-G10, 单元级 / mock)
 
 | Gate | 主题 | 测试类型 | 工作量 | 阶段 |
 |------|------|----------|--------|------|
@@ -19,13 +22,34 @@
 | G4 | ARCH-3 Complete | 单元 + gate 自动化 | 40h | Phase 1 |
 | G5 | SEM-1 Savepoint | 单元 + e2e | 28h | Phase 2 |
 | G6 | Backup / Restore | 单元 + e2e + 100+ scenarios | 40h | Phase 3 |
-| G7 | 24h Soak | 长周期 + 监控 | 48h | Phase 4 |
-| G8 | Crash Matrix | 100+ scenarios | 40h | Phase 4 |
+| G7 | 24h Soak (压缩时间) | 长周期 + 监控 | 48h | Phase 4 |
+| G8 | Crash Matrix (100+ scenarios) | 单元 + mock | 40h | Phase 4 |
 | G9 | Upgrade Test | 自动化 + 50+ scenarios | 40h | Phase 4 |
 | G10 | Audit Log + 时间旅行 | 单元 + e2e | 44h | Phase 5 |
-| **合计** | | | **347h** | |
+| **小计** | | | **347h** | |
 
-**注意**: 总测试工作量 (347h) 包含在开发工作量 (451h) 内, 不重复计算.
+### 0.2 性能 + 稳定性 (G11-G15, 真实运行, 仅 RC/GA)
+
+| Gate | 主题 | 测试类型 | 工作量 | 阶段 |
+|------|------|----------|--------|------|
+| G11 | QPS / TPS 基准 | 性能基准 | 16h | Phase 6 |
+| G12 | Sysbench OLTP | 行业标准 | 8h | Phase 6 |
+| G13 | 24h+ 稳定性 | 真实长跑 | 24h | Phase 6 |
+| G14 | 真实崩溃测试 | 进程级注入 | 16h | Phase 6 |
+| G15 | Performance Report | 汇总 + GA 验收 | 8h | Phase 6 |
+| **小计** | | | **72h** | |
+
+### 0.3 合计
+
+**347h (G1-G10) + 72h (G11-G15) = 419h** (12 周, 1 人满负载)
+
+**G11-G15 详细设计**: 见 `V390_TEST_PLAN_SUPPLEMENT_PERF.md`
+
+**注意**: G11-G14 仅在 RC/GA 前真实运行, 不可 CI (24h + 真实进程). G15 报告是 GA 验收强制要求 (GE3 PERFORMANCE_REPORT.md).
+
+---
+
+## 1. 原有 G1-G10 章节 (保持不变)
 
 ---
 
