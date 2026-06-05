@@ -32,8 +32,17 @@
 For each of the 13 remaining branches, add a sub-task below. Each sub-task is identical in shape to §3 (one `eval_*` function in executor, one delegation in `expr_utils`, one test in `expr_single_engine_test`). Estimated 2-3 hours per branch.
 
 - [ ] 4.1 **Branch 2: BinaryOp** — `eval_binary_op(left, op, right)` (delegates to existing `executor::expr::eval_binary_op` if present, else adds a wrapper)
+  - **DEFERRED 2026-06-05 (Hermes Agent, session 2)**: The existing `crates/executor::expr::eval_binary_op` is a *simplified* implementation (Integer-only arithmetic, no Float promotion, no `IS NOT` handling, no `LIKE` routing). The legacy `src/expr_utils.rs::evaluate_binary_op` is the *full* implementation (Float promotion, `LIKE`→`sql_like_match`, three-valued logic, `IS NOT`, arithmetic divide-by-zero, etc.). Per OpenSpec Decision D2 ("preserves exact semantics"), a naive delegation would silently regress TPC-H. This branch requires a **4-way split** into sub-tasks:
+    - [ ] 4.1.1 **BinaryOp sub-task: arithmetic** (`+`, `-`, `*`, `/` with Float promotion) — port `arithmetic_op` helper from `expr_utils` to `executor::expr`, add `pub fn eval_arithmetic(left, op, right) -> Value`
+    - [ ] 4.1.2 **BinaryOp sub-task: comparison** (`=`, `!=`, `<`, `<=`, `>`, `>=`, `IS`, `IS NOT` with three-valued NULL logic) — port `compare_values` + NULL handling, add `pub fn eval_comparison(left, op, right) -> Value`
+    - [ ] 4.1.3 **BinaryOp sub-task: logical** (`AND`/`&&`, `OR`/`||` with bool promotion) — add `pub fn eval_logical(left, op, right) -> Value`
+    - [ ] 4.1.4 **BinaryOp sub-task: LIKE routing** (the parser's `BinaryOp(left, "LIKE", right)` arm delegates to `sql_like_match`) — already factored; just add the wrapper `pub fn eval_like_via_binary(left, right) -> Value`
+  - Estimated 6-8 hours total (vs 2-3h for a "simple" branch). Will be split into 4 separate follow-up PRs after §4.2-§4.14 are done.
+  - This defer is captured in PR #3200's commit message and `tasks.md` so subsequent AI agents don't try to do it as a single 2-3h change.
 - [ ] 4.2 **Branch 3: IsNull** — `eval_is_null(inner)` (returns `Value::Boolean` based on inner evaluation)
+  - **DONE 2026-06-05 in PR #3200 (commit 2/2)**: `pub fn eval_is_null(value: &Value) -> Value` added to `crates/executor/src/expr/mod.rs`. `src/expr_utils.rs::evaluate_expression` `Expression::IsNull` arm now delegates. Test `test_isnull_delegation` PASS (5 inputs × 2 paths compared).
 - [ ] 4.3 **Branch 4: IsNotNull** — `eval_is_not_null(inner)`
+  - **DONE 2026-06-05 in PR #3200 (commit 2/2)**: `pub fn eval_is_not_null(value: &Value) -> Value` added. **Side effect**: fixed a long-standing bug in `src/expr_utils.rs::evaluate_expression` where `Expression::IsNotNull` had no explicit arm and fell through to `_ => Ok(Value::Null)`. The fix is in the same commit (delegation makes it impossible to reintroduce the bug). `test_isnull_delegation` covers the regression for `IS NOT NULL` on empty strings.
 - [ ] 4.4 **Branch 5: Aggregate (Count/Sum/Avg/Min/Max)** — `eval_aggregate(agg_func, args)`
 - [ ] 4.5 **Branch 6: Like** — `eval_like(text, pattern)` (case-insensitive `%`/`_` matching, identical to existing `sql_like_match` in `expr_utils`)
 - [ ] 4.6 **Branch 7: NotLike** — `eval_not_like(text, pattern)` (`!` of `eval_like`)
