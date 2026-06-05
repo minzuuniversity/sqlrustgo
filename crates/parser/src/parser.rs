@@ -1617,6 +1617,27 @@ impl Parser {
                     });
                     self.next();
                 }
+                // NULL literal in column position (e.g. `SELECT NULL as order_id`)
+                Some(Token::Null) => {
+                    self.next();
+                    let alias = if matches!(self.current(), Some(Token::As)) {
+                        self.next();
+                        if let Some(Token::Identifier(n)) = self.current() {
+                            let a = n.clone();
+                            self.next();
+                            Some(a)
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    };
+                    columns.push(SelectColumn {
+                        name: "NULL".to_string(),
+                        alias,
+                        expression: Some(Expression::Literal("NULL".to_string())),
+                    });
+                }
                 // Handle aggregate functions: COUNT(*), SUM(col), etc.
                 // Only treat as aggregate if followed by LParen
                 Some(Token::Count) | Some(Token::Sum) | Some(Token::Avg) | Some(Token::Min)
