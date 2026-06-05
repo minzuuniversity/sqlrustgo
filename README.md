@@ -1,17 +1,24 @@
 # SQLRustGo
 
-> **Last updated**: 2026-05-30
-> **Commit**: [`e0ddabbe`](http://192.168.0.252:3000/openclaw/sqlrustgo/commit/e0ddabbe) @ develop/v3.7.0
+> **Last updated**: 2026-06-05
+> **Current dev branch**: [`d53acb3c`](http://192.168.0.252:3000/openclaw/sqlrustgo/commit/d53acb3c) @ develop/v3.8.0
+> **Latest stable**: v3.7.0 (GA, 2026-05-31)
+> **Latest beta**: v3.8.0-rc1 (RC, 2026-06-05, TPC-H 22/22)
 
 <p align="center">
   <img src="https://img.shields.io/badge/Rust-1.85+-dea584?style=flat-square&logo=rust" alt="Rust">
-  <img src="https://img.shields.io/badge/version-v3.7.0--GA-green?style=flat-square" alt="Version">
+  <img src="https://img.shields.io/badge/v3.7.0-GA-green?style=flat-square" alt="GA">
+  <img src="https://img.shields.io/badge/v3.8.0-Strong%20Beta-blue?style=flat-square" alt="Beta">
   <img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="License">
-  <img src="https://img.shields.io/badge/TPC--H-22%2F22%20PASS-cyan?style=flat-square" alt="TPC-H">
-  <img src="https://img.shields.io/badge/coverage-87.36%25-brightgreen?style=flat-square" alt="Coverage">
+  <img src="https://img.shields.io/badge/TPC--H-22%2F22-brightgreen?style=flat-square" alt="TPC-H">
+  <img src="https://img.shields.io/badge/Corpus-100.0%25-brightgreen?style=flat-square" alt="Corpus">
+  <img src="https://img.shields.io/badge/9--Dim%20Gate-8%2F8%20PASS-brightgreen?style=flat-square" alt="D9">
+  <img src="https://img.shields.io/badge/INT--1%20(P0)-CLOSED-brightgreen?style=flat-square" alt="INT-1">
 </p>
 
 SQLRustGo 是一个纯 Rust 实现的 SQL 执行引擎，支持完整 SQL-92 语法、窗口函数、CTE、CBO 成本优化器、WAL + MVCC 事务、向量存储与图存储，以及 AI Native GMP 工作流。
+
+> **v3.8.0 当前状态 (2026-06-05)**: **RC1** (Strong Beta → RC) — INT-1 (P0) 已修复, GROUP BY/JOIN 核心 100%, **Corpus 100.0%** (818/818), TPC-H 22/22, D9 9 维门禁 8/8 ALL PASS. 详见 [RELEASE_NOTES.md](docs/releases/v3.8.0/RELEASE_NOTES.md), [MYSQL_5_7_KEYWORD_FUNCTION_FIX_REPORT.md](docs/releases/v3.8.0/MYSQL_5_7_KEYWORD_FUNCTION_FIX_REPORT.md). **v3.8.0 是长期收敛版本** (beta → rc1 → rc2 → ga), **不创建 3.9.0**. 详见 [RELEASE_NOTES.md](docs/releases/v3.8.0/RELEASE_NOTES.md), [V380_ROADMAP.md](docs/releases/v3.8.0/V380_ROADMAP.md) 与 [V380_COMPREHENSIVE_ASSESSMENT.md](docs/releases/v3.8.0/V380_COMPREHENSIVE_ASSESSMENT.md).
 
 ---
 
@@ -354,6 +361,38 @@ cargo llvm-cov report --open
 
 ## Changelog
 
+### [3.8.0-rc1] - 2026-06-05 (RC) — **当前开发版本**
+
+- **状态**: **Release Candidate** — RC 门禁 10/10 PASS, 0 blockers
+- **TPC-H 22/22 ✅** (PR #3132, 修复 Q2 join key resolution bug)
+- **Corpus 100.0%** (PRs #3131/#3145/#3153/#3156/#3161 — MySQL 5.7 keyword-as-identifier + scalar function + UNION/derived tables, +112 cases, #2988 fully closed)
+- **GA Doc Gate PASS** (PR #3140, PR #3141, `docs/releases/v3.8.0/ga/GA_GATE_REPORT.md`)
+- **8 PRs merged since beta**: #3131 #3134 #3137 #3138 #3139 #3140 #3141 #3142
+- **Issue 关闭**: #2977 (TPC-H Q2)
+
+详见 [V380_RC1_RELEASE_NOTES.md](docs/releases/v3.8.0/V380_RC1_RELEASE_NOTES.md), [GA_GATE_REPORT.md](docs/releases/v3.8.0/ga/GA_GATE_REPORT.md)
+
+### [3.8.0-beta] - 2026-06-04 (Strong Beta, 8.0/10)
+
+- **状态**: **Strong Beta** (8.0/10) — 跳过 RC 周期, 直接进入 v3.9.0
+- **INT-1 (P0 Release Blocker) CLOSED**: DML 真实走 TransactionManager (PR-3019)
+- **核心 SQL 引擎 100%**: Parser 18/18 + Executor 30/30 + GROUP BY 81/81 + JOIN 100%
+- **Corpus 100.0%** (rc1 final — 818/818, #2988 MySQL-01 fully closed)
+- **6 真实 bug 修复**: COUNT(DISTINCT), SELECT DISTINCT, NULL=NULL, D9 路径, D9 5-Principle, INT-1
+- **9 维门禁**: D9 8/8 ALL PASS (D1-D5 + D6/D7/D8 + Cross-Version + Test Plan + PR Template + Evidence)
+- **11 issues 关闭**: #2966/2967/2968/2969/2970/2971/2972/2937/2938/2942/2807
+
+详见 [RELEASE_NOTES.md](docs/releases/v3.8.0/RELEASE_NOTES.md), [V380_COMPREHENSIVE_ASSESSMENT.md](docs/releases/v3.8.0/V380_COMPREHENSIVE_ASSESSMENT.md), [V380_BETA_RELEASE_REPORT.md](docs/releases/v3.8.0/V380_BETA_RELEASE_REPORT.md)
+
+**不适用**: ❌ 生产 OLTP/财务/订单/银行 (需要 v3.8.0-GA), ❌ 大数据量 (TPC-H 22/22 仍待 v3.9.0)
+**适用**: ✅ 开发/CI/教学/实验/内部工具
+
+### [3.7.0] - 2026-05-31 (GA) — **最新稳定版本**
+
+- **AI Native GMP Platform** — AI Agent Layer + Ollama 本地推理 + GMP Retrieval v3
+- **门禁**：Alpha/Beta/RC/GA 全部 ✅ PASS
+- **覆盖率**：L1 87.36%，TPC-H 22/22 ✅
+
 ### [3.5.0] - 2026-05-28 (GA)
 
 - **AI Native GMP Platform** — AI Agent Layer + Ollama 本地推理 + GMP Retrieval v3
@@ -361,6 +400,50 @@ cargo llvm-cov report --open
 - **覆盖率**：L1 87.36%，TPC-H 22/22 ✅
 
 详见 [CHANGELOG.md](CHANGELOG.md)
+
+---
+
+## v3.8.0 路线图 (长期收敛, 不创建 3.9.0)
+
+按 ChatGPT 第三轮评估, v3.8.0 = **长期收敛版本** (beta → rc1 → rc2 → ga), 不开 3.9.0.
+
+### 4 阶段 (总 270h ≈ 7 周 active + 1 周 wait)
+
+| 阶段 | 状态 | 工作量 | 时间 |
+|------|------|--------|------|
+| ✅ **v3.8.0-beta** | Strong Beta 8.0/10 | 0 (已完成) | 2026-06-04 (现) |
+| **v3.8.0-rc1** | 7 项完成 + TPC-H 22/22 | 100h | 2026-06-25 (3 周) |
+| **v3.8.0-rc2** | 72h 长稳 + Crash 1000 轮 | 100h | 2026-07-16 (6 周) |
+| **v3.8.0-ga** | 168h 长稳 + GA 收口 | 70h | 2026-08-13 (10 周) |
+
+### rc1 必须完成 (7 项)
+
+1. **SEM-1** 执行语义标准化 (20h, #2975)
+2. **ARCH-2** merge.rs 统一 DML (15h, #2974)
+3. **CLI-01** Client CLI 补全 (15h)
+4. **SERVER-01** Alpha Server 成立 (10h)
+5. **TPC-H 22/22** (40h, #2977)
+6. **Corpus ≥95%** ✅ ACHIEVED (100.0% at rc1 — 818/818, #2988 closed)
+7. **Crash Harness** 工具 (10h)
+
+### v3.8.0 整个周期 Feature Freeze
+
+**允许**:
+- ✅ P0/P1 Bug 修复 (Crash, Data Loss, Deadlock, Corruption)
+- ✅ 文档完善
+- ✅ 9 维门禁的 bug fix
+
+**禁止 (整个 10 周周期)**:
+- ❌ SIMD 集成 (v3.9.0+)
+- ❌ Vector SQL 集成 (v4.0+)
+- ❌ Parallel Executor 主路径 (v3.9.0+)
+- ❌ 新优化器 (v3.9.0+)
+- ❌ MySQL 高级函数大规模补齐 (v3.9.0+)
+- ❌ 任何 Feature 提交
+
+**所有 PR 标题加 `[v380]` + 关联 4 阶段之一**.
+
+详见 [V380_ROADMAP.md](docs/releases/v3.8.0/V380_ROADMAP.md)
 
 ---
 

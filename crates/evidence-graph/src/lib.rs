@@ -8,7 +8,7 @@
 //! - AI is OUTSIDE trust boundary: can only reference evidence, never generate it
 
 use chrono::{DateTime, Utc};
-use rusqlite::{params, Connection, Result as SqlResult};
+use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 use thiserror::Error;
@@ -67,6 +67,7 @@ impl NodeType {
         }
     }
 
+    #[allow(clippy::should_implement_trait)]
     pub fn from_str(s: &str) -> Option<Self> {
         match s {
             "task" => Some(NodeType::Task),
@@ -110,6 +111,7 @@ impl EdgeType {
         }
     }
 
+    #[allow(clippy::should_implement_trait)]
     pub fn from_str(s: &str) -> Option<Self> {
         match s {
             "IMPLEMENTED_BY" => Some(EdgeType::ImplementedBy),

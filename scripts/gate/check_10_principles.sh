@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+# STATUS: DEPRECATED — see scripts/gate/README.md
+# Reason: not invoked by any active gate (audit 2026-06-04)
+# Action:  do not add new callers; restore via git history if needed
+
 #
 # check_10_principles.sh — 10原则 R1-R10 全量追踪
 #
