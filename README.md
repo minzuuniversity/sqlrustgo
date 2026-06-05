@@ -11,14 +11,14 @@
   <img src="https://img.shields.io/badge/v3.8.0-Strong%20Beta-blue?style=flat-square" alt="Beta">
   <img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="License">
   <img src="https://img.shields.io/badge/TPC--H-22%2F22-brightgreen?style=flat-square" alt="TPC-H">
-  <img src="https://img.shields.io/badge/Corpus-94.2%25-brightgreen?style=flat-square" alt="Corpus">
+  <img src="https://img.shields.io/badge/Corpus-100.0%25-brightgreen?style=flat-square" alt="Corpus">
   <img src="https://img.shields.io/badge/9--Dim%20Gate-8%2F8%20PASS-brightgreen?style=flat-square" alt="D9">
   <img src="https://img.shields.io/badge/INT--1%20(P0)-CLOSED-brightgreen?style=flat-square" alt="INT-1">
 </p>
 
 SQLRustGo 是一个纯 Rust 实现的 SQL 执行引擎，支持完整 SQL-92 语法、窗口函数、CTE、CBO 成本优化器、WAL + MVCC 事务、向量存储与图存储，以及 AI Native GMP 工作流。
 
-> **v3.8.0 当前状态 (2026-06-04)**: **Strong Beta** (8.0/10) — INT-1 (P0 Release Blocker) 已修复 (DML 真实走 TransactionManager), GROUP BY/JOIN 核心 100%, Corpus 86.5%, D9 9 维门禁 8/8 ALL PASS. **v3.8.0 是长期收敛版本** (beta → rc1 → rc2 → ga), **不创建 3.9.0**. 详见 [RELEASE_NOTES.md](docs/releases/v3.8.0/RELEASE_NOTES.md), [V380_ROADMAP.md](docs/releases/v3.8.0/V380_ROADMAP.md) 与 [V380_COMPREHENSIVE_ASSESSMENT.md](docs/releases/v3.8.0/V380_COMPREHENSIVE_ASSESSMENT.md).
+> **v3.8.0 当前状态 (2026-06-05)**: **RC1** (Strong Beta → RC) — INT-1 (P0) 已修复, GROUP BY/JOIN 核心 100%, **Corpus 100.0%** (818/818), TPC-H 22/22, D9 9 维门禁 8/8 ALL PASS. 详见 [RELEASE_NOTES.md](docs/releases/v3.8.0/RELEASE_NOTES.md), [MYSQL_5_7_KEYWORD_FUNCTION_FIX_REPORT.md](docs/releases/v3.8.0/MYSQL_5_7_KEYWORD_FUNCTION_FIX_REPORT.md). **v3.8.0 是长期收敛版本** (beta → rc1 → rc2 → ga), **不创建 3.9.0**. 详见 [RELEASE_NOTES.md](docs/releases/v3.8.0/RELEASE_NOTES.md), [V380_ROADMAP.md](docs/releases/v3.8.0/V380_ROADMAP.md) 与 [V380_COMPREHENSIVE_ASSESSMENT.md](docs/releases/v3.8.0/V380_COMPREHENSIVE_ASSESSMENT.md).
 
 ---
 
@@ -365,7 +365,7 @@ cargo llvm-cov report --open
 
 - **状态**: **Release Candidate** — RC 门禁 10/10 PASS, 0 blockers
 - **TPC-H 22/22 ✅** (PR #3132, 修复 Q2 join key resolution bug)
-- **Corpus 94.2%** (PR #3131, MySQL 5.7 keyword-as-identifier + scalar function, +68 cases)
+- **Corpus 100.0%** (PRs #3131/#3145/#3153/#3156/#3161 — MySQL 5.7 keyword-as-identifier + scalar function + UNION/derived tables, +112 cases, #2988 fully closed)
 - **GA Doc Gate PASS** (PR #3140, PR #3141, `docs/releases/v3.8.0/ga/GA_GATE_REPORT.md`)
 - **8 PRs merged since beta**: #3131 #3134 #3137 #3138 #3139 #3140 #3141 #3142
 - **Issue 关闭**: #2977 (TPC-H Q2)
@@ -377,7 +377,7 @@ cargo llvm-cov report --open
 - **状态**: **Strong Beta** (8.0/10) — 跳过 RC 周期, 直接进入 v3.9.0
 - **INT-1 (P0 Release Blocker) CLOSED**: DML 真实走 TransactionManager (PR-3019)
 - **核心 SQL 引擎 100%**: Parser 18/18 + Executor 30/30 + GROUP BY 81/81 + JOIN 100%
-- **Corpus 86.5%** (at beta cutoff; rc1 → 94.2%)
+- **Corpus 100.0%** (rc1 final — 818/818, #2988 MySQL-01 fully closed)
 - **6 真实 bug 修复**: COUNT(DISTINCT), SELECT DISTINCT, NULL=NULL, D9 路径, D9 5-Principle, INT-1
 - **9 维门禁**: D9 8/8 ALL PASS (D1-D5 + D6/D7/D8 + Cross-Version + Test Plan + PR Template + Evidence)
 - **11 issues 关闭**: #2966/2967/2968/2969/2970/2971/2972/2937/2938/2942/2807
@@ -423,7 +423,7 @@ cargo llvm-cov report --open
 3. **CLI-01** Client CLI 补全 (15h)
 4. **SERVER-01** Alpha Server 成立 (10h)
 5. **TPC-H 22/22** (40h, #2977)
-6. **Corpus ≥95%** (并行)
+6. **Corpus ≥95%** ✅ ACHIEVED (100.0% at rc1 — 818/818, #2988 closed)
 7. **Crash Harness** 工具 (10h)
 
 ### v3.8.0 整个周期 Feature Freeze
