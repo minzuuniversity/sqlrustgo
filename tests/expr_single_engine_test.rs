@@ -844,3 +844,191 @@ fn test_case_when_known_outputs() {
     });
     assert_eq!(result, Ok(Value::Null));
 }
+
+#[test]
+fn test_identifier_delegation() {
+    // Contract test for P0-2 §4.10 (Identifier).
+    use sqlrustgo_executor::expr::eval_identifier;
+    use sqlrustgo_parser::Expression as ParserExpr;
+    use sqlrustgo_storage::{ColumnDefinition, TableInfo};
+
+    // Table with 3 columns: simple, qualified, multi-join-accumulated
+    let columns = vec![
+        ColumnDefinition {
+            name: "id".to_string(),
+            data_type: "INTEGER".to_string(),
+            nullable: false,
+            primary_key: true,
+        },
+        ColumnDefinition {
+            name: "t.name".to_string(),
+            data_type: "TEXT".to_string(),
+            nullable: false,
+            primary_key: false,
+        },
+        ColumnDefinition {
+            name: "a_join_b.a.tag".to_string(),
+            data_type: "TEXT".to_string(),
+            nullable: false,
+            primary_key: false,
+        },
+    ];
+    let table_info = TableInfo {
+        name: "test".to_string(),
+        columns: columns.clone(),
+        foreign_keys: vec![],
+        unique_constraints: vec![],
+        check_constraints: vec![],
+        partition_info: None,
+    };
+    let row: Vec<Value> = vec![
+        Value::Integer(42),
+        Value::Text("Alice".into()),
+        Value::Text("tag_value".into()),
+    ];
+
+    // Cases: (input, expected)
+    let cases: &[(&str, Value)] = &[
+        // Simple column
+        ("id", Value::Integer(42)),
+        // Qualified: `t.name` → matches column `t.name` directly
+        ("t.name", Value::Text("Alice".into())),
+        // Multi-join: `a.tag` → trailing 2 segments match `a_join_b.a.tag`
+        ("a.tag", Value::Text("tag_value".into())),
+        // Bare `tag` (no qualifier) → trailing-segment match
+        ("tag", Value::Text("tag_value".into())),
+        // Unknown column → fallback Value::Text(name)
+        ("unknown_col", Value::Text("unknown_col".into())),
+    ];
+
+    let mut failures: Vec<String> = Vec::new();
+
+    for (input, expected) in cases {
+        // Path 1: legacy facade via `evaluate_expression`
+        let expr_id = ParserExpr::Identifier(input.to_string());
+        let from_facade = sqlrustgo::expr_utils::evaluate_expression(&expr_id, &row, &table_info);
+
+        // Path 2: new single-source-of-truth
+        let from_evaluator = eval_identifier(input, &row, &columns);
+
+        if from_facade != Ok(expected.clone()) {
+            failures.push(format!(
+                "facade mismatch for {input:?}: facade={from_facade:?} expected={expected:?}"
+            ));
+        }
+        if from_evaluator != *expected {
+            failures.push(format!(
+                "evaluator mismatch for {input:?}: evaluator={from_evaluator:?} expected={expected:?}"
+            ));
+        }
+    }
+
+    assert!(
+        failures.is_empty(),
+        "INT-3 Identifier delegation: facade and/or executor::expr disagree:\n{}",
+        failures.join("\n")
+    );
+}
+
+#[test]
+fn test_identifier_known_outputs() {
+    use sqlrustgo_executor::expr::eval_identifier;
+    use sqlrustgo_storage::ColumnDefinition;
+
+    let columns = vec![
+        ColumnDefinition {
+            name: "id".to_string(),
+            data_type: "INTEGER".to_string(),
+            nullable: false,
+            primary_key: true,
+        },
+        ColumnDefinition {
+            name: "user_name".to_string(),
+            data_type: "TEXT".to_string(),
+            nullable: false,
+            primary_key: false,
+        },
+    ];
+    let row: Vec<Value> = vec![Value::Integer(7), Value::Text("bob".into())];
+
+    // Found
+    assert_eq!(eval_identifier("id", &row, &columns), Value::Integer(7));
+    assert_eq!(
+        eval_identifier("user_name", &row, &columns),
+        Value::Text("bob".into())
+    );
+    // Case-insensitive
+    assert_eq!(
+        eval_identifier("ID", &row, &columns),
+        Value::Integer(7),
+        "case-insensitive match"
+    );
+    assert_eq!(
+        eval_identifier("USER_NAME", &row, &columns),
+        Value::Text("bob".into()),
+        "case-insensitive match"
+    );
+    // Not found → fallback
+    assert_eq!(
+        eval_identifier("missing", &row, &columns),
+        Value::Text("missing".into()),
+        "unknown column returns Value::Text(name)"
+    );
+    // Out of bounds
+    assert_eq!(
+        eval_identifier("id", &[], &columns),
+        Value::Null,
+        "out-of-bounds row returns Null"
+    );
+}
+
+#[test]
+fn test_find_column_index_known_outputs() {
+    use sqlrustgo_executor::expr::find_column_index;
+    use sqlrustgo_storage::ColumnDefinition;
+
+    let columns = vec![
+        ColumnDefinition {
+            name: "id".to_string(),
+            data_type: "INTEGER".to_string(),
+            nullable: false,
+            primary_key: true,
+        },
+        ColumnDefinition {
+            name: "t.col".to_string(),
+            data_type: "TEXT".to_string(),
+            nullable: false,
+            primary_key: false,
+        },
+        ColumnDefinition {
+            name: "a_join_b.a.deep".to_string(),
+            data_type: "TEXT".to_string(),
+            nullable: false,
+            primary_key: false,
+        },
+    ];
+
+    // Exact match
+    assert_eq!(find_column_index("id", &columns), Some(0));
+    // Case-insensitive
+    assert_eq!(find_column_index("ID", &columns), Some(0));
+    // Qualified: exact match
+    assert_eq!(find_column_index("t.col", &columns), Some(1));
+    // Multi-join trailing-segment match
+    assert_eq!(
+        find_column_index("a.deep", &columns),
+        Some(2),
+        "trailing 2 segments match"
+    );
+    // Unqualified trailing-segment match
+    assert_eq!(
+        find_column_index("deep", &columns),
+        Some(2),
+        "bare name matches trailing segment"
+    );
+    // Not found (qualifier doesn't match any column)
+    assert_eq!(find_column_index("nope", &columns), None);
+    assert_eq!(find_column_index("a.nope", &columns), None);
+    // Not found (qualified name has no matching column)
+    assert_eq!(find_column_index("x.col", &columns), None);
+}
