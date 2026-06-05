@@ -362,6 +362,57 @@ pub fn eval_not_between(value: &Value, low: &Value, high: &Value) -> Value {
     Value::Boolean(!(compare_values(value, low) >= 0 && compare_values(value, high) <= 0))
 }
 
+/// Evaluate a parser-AST `Expression::CaseWhen(whens, else_val)` arm.
+///
+/// This is the single source of truth for the parser-AST `CaseWhen`
+/// branch. The legacy `src/expr_utils.rs::evaluate_expression`
+/// `Expression::CaseWhen` arm is a thin delegation to this function
+/// (P0-2 §4.9).
+///
+/// **Semantics (identical to the legacy arm):**
+/// - For each `WhenClause` in `whens`:
+///   1. Evaluate the `condition` via `evaluate_fn`.
+///   2. If the condition's value is `Value::Boolean(true)`, evaluate
+///      and return the `result`.
+///   3. **SQL CASE extension**: if the condition's value is *not*
+///      `Value::Null` and *not* `Value::Boolean(false)` (i.e., any
+///      truthy non-Boolean like `Integer(1)` or `Text("yes")`),
+///      evaluate and return the `result`. This mirrors the legacy
+///      `expr_utils` behavior (which mirrors SQL CASE's
+///      truthiness-of-non-Booleans rule).
+/// - If no WHEN matches:
+///   1. If `else_val` is `Some`, evaluate it and return.
+///   2. Otherwise, return `Ok(Value::Null)`.
+///
+/// The function is parameterized over a `evaluate_fn` closure that
+/// handles the actual evaluation of inner expressions. This decouples
+/// the algorithm from the row/columns/table_info state (which lives
+/// in the caller, e.g. `expr_utils::evaluate_expression`).
+pub fn eval_case_when<F>(
+    whens: &[sqlrustgo_parser::parser::WhenClause],
+    else_val: Option<&sqlrustgo_parser::Expression>,
+    evaluate_fn: F,
+) -> Result<Value, String>
+where
+    F: Fn(&sqlrustgo_parser::Expression) -> Result<Value, String>,
+{
+    for w in whens {
+        let cond_val = evaluate_fn(&w.condition)?;
+        if matches!(cond_val, Value::Boolean(true)) {
+            return evaluate_fn(&w.result);
+        }
+        // SQL CASE treats non-Boolean non-null values as truthy
+        // when used as conditions; mirror that.
+        if !matches!(cond_val, Value::Null | Value::Boolean(false)) {
+            return evaluate_fn(&w.result);
+        }
+    }
+    match else_val {
+        Some(e) => evaluate_fn(e),
+        None => Ok(Value::Null),
+    }
+}
+
 /// Look up a pre-computed aggregate value in a row by its canonical name
 /// (the string form produced by `expr_utils::expression_to_string` for an
 /// `Expression::Aggregate`, e.g. `"COUNT(*)"`, `"SUM(l_quantity)"`, etc.).
