@@ -811,16 +811,39 @@ impl ParallelVolcanoExecutor {
                 Value::Integer(sum)
             }
             AggregateFunction::Avg => {
-                let mut sum: i64 = 0;
-                let mut count = 0;
+                // v3.8.0-rc2 Day 7: AVG MUST return Float (parallel
+                // executor variant). Same fix as local_executor.
+                let mut int_sum: i64 = 0;
+                let mut float_sum: f64 = 0.0;
+                let mut any_float = false;
+                let mut count: i64 = 0;
                 for v in values {
-                    if let Value::Integer(n) = v {
-                        sum += n;
-                        count += 1;
+                    match v {
+                        Value::Integer(n) => {
+                            if any_float {
+                                float_sum += *n as f64;
+                            } else {
+                                int_sum += n;
+                            }
+                            count += 1;
+                        }
+                        Value::Float(f) => {
+                            if !any_float {
+                                float_sum = int_sum as f64;
+                                any_float = true;
+                            }
+                            float_sum += f;
+                            count += 1;
+                        }
+                        _ => {}
                     }
                 }
                 if count > 0 {
-                    Value::Integer(sum / count as i64)
+                    if any_float {
+                        Value::Float(float_sum / count as f64)
+                    } else {
+                        Value::Float(int_sum as f64 / count as f64)
+                    }
                 } else {
                     Value::Null
                 }
