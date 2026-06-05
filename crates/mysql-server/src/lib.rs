@@ -1637,8 +1637,7 @@ fn handle_load_local_infile<S: Read + Write>(
             // even if buf is non-empty. The remaining bytes in buf
             // are a partial line that will complete in a later
             // packet.
-            let pending: Vec<Vec<sqlrustgo_types::Value>> =
-                pending_rows.drain(..).collect();
+            let pending: Vec<Vec<sqlrustgo_types::Value>> = pending_rows.drain(..).collect();
             last_flush_kept_rows = 0;
             let n = bulk_insert(engine, table, pending)
                 .map_err(|e| MySqlError::Other(format!("bulk_insert: {}", e)))?;
