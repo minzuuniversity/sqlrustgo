@@ -3,7 +3,7 @@
 
 -- === CASE: inner_join_section ===
 -- === SETUP ===
-CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT, email TEXT, owner_id INTEGER);
+CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT, email TEXT, owner_id INTEGER, city_id INTEGER);
 CREATE TABLE orders (id INTEGER PRIMARY KEY, user_id INTEGER, total INTEGER);
 CREATE TABLE products (id INTEGER PRIMARY KEY, name TEXT, category_id INTEGER, owner_id INTEGER, price INTEGER);
 CREATE TABLE categories (id INTEGER PRIMARY KEY, name TEXT);
@@ -11,7 +11,9 @@ CREATE TABLE order_items (id INTEGER PRIMARY KEY, order_id INTEGER, product_id I
 CREATE TABLE employees (id INTEGER PRIMARY KEY, name TEXT, manager_id INTEGER, department_id INTEGER);
 CREATE TABLE table_a (id INTEGER PRIMARY KEY, name TEXT);
 CREATE TABLE table_b (id INTEGER PRIMARY KEY, name TEXT);
-INSERT INTO users VALUES (1, 'Alice', 'alice@example.com', NULL), (2, 'Bob', 'bob@test.org', NULL), (3, 'Charlie', 'c@x.com', 1);
+CREATE TABLE cities (id INTEGER PRIMARY KEY, name TEXT);
+INSERT INTO cities VALUES (1, 'NYC'), (2, 'LA'), (3, 'SF');
+INSERT INTO users VALUES (1, 'Alice', 'alice@example.com', NULL, 1), (2, 'Bob', 'bob@test.org', NULL, 2), (3, 'Charlie', 'c@x.com', 1, 3);
 INSERT INTO orders VALUES (1, 1, 500), (2, 1, 200), (3, 2, 150), (4, 3, 300);
 INSERT INTO products VALUES (1, 'Apple', 1, 1, 100), (2, 'Banana', 1, 1, 50), (3, 'Cherry', 2, 2, 200);
 INSERT INTO categories VALUES (1, 'Fruit'), (2, 'Veggie');
