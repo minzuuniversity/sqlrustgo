@@ -4024,6 +4024,7 @@ dependencies = [
  "serde_yaml",
  "sha1 0.10.6",
  "sqlrustgo-admin",
+ "sqlrustgo-cache",
  "sqlrustgo-catalog",
  "sqlrustgo-common",
  "sqlrustgo-distributed",
@@ -4113,6 +4114,16 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "zipf",
+]
+
+[[package]]
+name = "sqlrustgo-cache"
+version = "2.5.0"
+dependencies = [
+ "parking_lot",
+ "sqlrustgo-parser",
+ "sqlrustgo-types",
+ "tempfile",
 ]
 
 [[package]]
