@@ -184,3 +184,163 @@ fn test_isnull_known_outputs() {
         Value::Boolean(true)
     );
 }
+
+#[test]
+fn test_aggregate_delegation() {
+    // Contract test for P0-2 §4.4 (Aggregate).
+    // The two paths (legacy `expr_utils::evaluate_expression` and the
+    // new `executor::expr::eval_aggregate_lookup`) must return equal
+    // `Value`s for every (row, column, agg_call) input.
+
+    use sqlrustgo_executor::expr::eval_aggregate_lookup;
+    use sqlrustgo_parser::{AggregateCall, AggregateFunction, Expression as ParserExpr};
+    use sqlrustgo_storage::{ColumnDefinition, TableInfo};
+
+    // Build a table_info with one column named "COUNT(*)" and one named
+    // "SUM(l_quantity)" — the canonical forms produced by
+    // `expression_to_string(Expression::Aggregate(Count{args:[]}))`
+    // and `expression_to_string(Expression::Aggregate(Sum{[l_quantity]}))`.
+    let table_info = TableInfo {
+        name: "agg_test".to_string(),
+        columns: vec![
+            ColumnDefinition {
+                name: "COUNT(*)".to_string(),
+                data_type: "INTEGER".to_string(),
+                nullable: false,
+                primary_key: false,
+            },
+            ColumnDefinition {
+                name: "SUM(l_quantity)".to_string(),
+                data_type: "FLOAT".to_string(),
+                nullable: false,
+                primary_key: false,
+            },
+        ],
+        foreign_keys: vec![],
+        unique_constraints: vec![],
+        check_constraints: vec![],
+        partition_info: None,
+    };
+
+    // Pre-aggregated row (the SELECT/GROUP BY phase would have filled these).
+    let row = vec![Value::Integer(42), Value::Float(1234.5)];
+
+    // Case 1: COUNT(*)
+    let agg_count = AggregateCall {
+        func: AggregateFunction::Count,
+        args: vec![],
+        distinct: false,
+    };
+    let expr_count = ParserExpr::Aggregate(agg_count);
+
+    // Path 1: legacy facade
+    let from_facade_count =
+        sqlrustgo::expr_utils::evaluate_expression(&expr_count, &row, &table_info);
+
+    // Path 2: new single-source-of-truth
+    let agg_name_count = sqlrustgo::expr_utils::expression_to_string(&expr_count);
+    let from_evaluator_count = eval_aggregate_lookup(
+        &agg_name_count,
+        &row,
+        &table_info
+            .columns
+            .iter()
+            .map(|c| c.name.clone())
+            .collect::<Vec<_>>(),
+    );
+
+    assert_eq!(
+        from_facade_count,
+        Ok(from_evaluator_count.expect("COUNT(*) should be in row")),
+        "INT-3 Aggregate (COUNT(*)) delegation: facade and executor::expr disagree"
+    );
+
+    // Case 2: SUM(l_quantity)
+    let agg_sum = AggregateCall {
+        func: AggregateFunction::Sum,
+        args: vec![ParserExpr::Identifier("l_quantity".to_string())],
+        distinct: false,
+    };
+    let expr_sum = ParserExpr::Aggregate(agg_sum);
+
+    let from_facade_sum = sqlrustgo::expr_utils::evaluate_expression(&expr_sum, &row, &table_info);
+    let agg_name_sum = sqlrustgo::expr_utils::expression_to_string(&expr_sum);
+    let from_evaluator_sum = eval_aggregate_lookup(
+        &agg_name_sum,
+        &row,
+        &table_info
+            .columns
+            .iter()
+            .map(|c| c.name.clone())
+            .collect::<Vec<_>>(),
+    );
+
+    assert_eq!(
+        from_facade_sum,
+        Ok(from_evaluator_sum.expect("SUM(l_quantity) should be in row")),
+        "INT-3 Aggregate (SUM(l_quantity)) delegation: facade and executor::expr disagree"
+    );
+
+    // Case 3: missing aggregate (no column named "AVG(price)")
+    let agg_avg = AggregateCall {
+        func: AggregateFunction::Avg,
+        args: vec![ParserExpr::Identifier("price".to_string())],
+        distinct: false,
+    };
+    let expr_avg = ParserExpr::Aggregate(agg_avg);
+    let from_facade_avg = sqlrustgo::expr_utils::evaluate_expression(&expr_avg, &row, &table_info);
+    let agg_name_avg = sqlrustgo::expr_utils::expression_to_string(&expr_avg);
+    let from_evaluator_avg = eval_aggregate_lookup(
+        &agg_name_avg,
+        &row,
+        &table_info
+            .columns
+            .iter()
+            .map(|c| c.name.clone())
+            .collect::<Vec<_>>(),
+    );
+
+    // Both should be None / Err with the same "Aggregate not found" message
+    assert!(
+        from_facade_avg.is_err(),
+        "facade should return Err for missing aggregate"
+    );
+    assert!(
+        from_evaluator_avg.is_none(),
+        "evaluator should return None for missing aggregate"
+    );
+    let err_msg = from_facade_avg.unwrap_err();
+    assert!(
+        err_msg.contains(&agg_name_avg),
+        "facade error should mention the missing aggregate name, got: {}",
+        err_msg
+    );
+}
+
+#[test]
+fn test_aggregate_known_outputs() {
+    use sqlrustgo_executor::expr::eval_aggregate_lookup;
+
+    let column_names = vec!["COUNT(*)".to_string(), "SUM(x)".to_string()];
+    let row = vec![Value::Integer(7), Value::Float(2.5)];
+
+    assert_eq!(
+        eval_aggregate_lookup("COUNT(*)", &row, &column_names),
+        Some(Value::Integer(7))
+    );
+    assert_eq!(
+        eval_aggregate_lookup("sum(x)", &row, &column_names),
+        Some(Value::Float(2.5)),
+        "case-insensitive match"
+    );
+    assert_eq!(
+        eval_aggregate_lookup("MIN(z)", &row, &column_names),
+        None,
+        "missing aggregate returns None"
+    );
+    assert_eq!(
+        eval_aggregate_lookup("COUNT(*)", &[], &column_names),
+        None,
+        "empty row returns None (out-of-bounds lookup)"
+    );
+}
