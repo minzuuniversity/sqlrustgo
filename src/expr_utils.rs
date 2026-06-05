@@ -276,20 +276,18 @@ pub fn evaluate_expression(
         }
         // TPC-H Q1: expr BETWEEN low AND high.
         Expression::Between(expr, low, high) => {
+            // P0-2 §4.7: delegated to `executor::expr::eval_between`.
             let v = evaluate_expression(expr, row, table_info)?;
             let lo = evaluate_expression(low, row, table_info)?;
             let hi = evaluate_expression(high, row, table_info)?;
-            Ok(Value::Boolean(
-                compare_values(&v, &lo) >= 0 && compare_values(&v, &hi) <= 0,
-            ))
+            Ok(sqlrustgo_executor::expr::eval_between(&v, &lo, &hi))
         }
         Expression::NotBetween(expr, low, high) => {
+            // P0-2 §4.8: delegated to `executor::expr::eval_not_between`.
             let v = evaluate_expression(expr, row, table_info)?;
             let lo = evaluate_expression(low, row, table_info)?;
             let hi = evaluate_expression(high, row, table_info)?;
-            Ok(Value::Boolean(
-                !(compare_values(&v, &lo) >= 0 && compare_values(&v, &hi) <= 0),
-            ))
+            Ok(sqlrustgo_executor::expr::eval_not_between(&v, &lo, &hi))
         }
         // TPC-H Q20: col IN (subquery) and col NOT IN (subquery).
         Expression::In(_, _)
@@ -394,25 +392,15 @@ where
     }
 }
 
-/// Compare two values and return -1, 0, or 1
+/// Compare two values — DEPRECATED, delegates to
+/// `sqlrustgo_executor::expr::compare_values` (P0-2 §4.7).
+///
+/// Kept as a 1-line shim during the transition. `src/engine_utils.rs`
+/// still calls this shim; a follow-up PR (per OpenSpec Decision D3)
+/// will migrate `engine_utils.rs` to import the executor function
+/// directly, at which point this shim can be removed.
 pub fn compare_values(left: &Value, right: &Value) -> i32 {
-    match (left, right) {
-        (Value::Integer(l), Value::Integer(r)) => l.cmp(r) as i32,
-        (Value::Float(l), Value::Float(r)) => {
-            if l < r {
-                -1
-            } else if l > r {
-                1
-            } else {
-                0
-            }
-        }
-        (Value::Text(l), Value::Text(r)) => l.cmp(r) as i32,
-        (Value::Null, Value::Null) => 0,
-        (Value::Null, _) => -1,
-        (_, Value::Null) => 1,
-        _ => 0,
-    }
+    sqlrustgo_executor::expr::compare_values(left, right)
 }
 
 /// Evaluate expression to string (for GROUP BY key)
