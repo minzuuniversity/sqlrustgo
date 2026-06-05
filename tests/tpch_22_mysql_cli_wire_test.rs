@@ -74,7 +74,9 @@ impl Server {
         let bin = if bin.exists() {
             bin
         } else {
-            PathBuf::from("/home/ai/sqlrustgo/.worktrees/tpch-22-real/target/debug/sqlrustgo-mysql-server")
+            PathBuf::from(
+                "/home/ai/sqlrustgo/.worktrees/tpch-22-real/target/debug/sqlrustgo-mysql-server",
+            )
         };
         if !bin.exists() {
             return Err(format!("binary not found at {:?}", bin));
@@ -83,7 +85,10 @@ impl Server {
         // Find a free port.
         let listener =
             std::net::TcpListener::bind("127.0.0.1:0").map_err(|e| format!("bind: {}", e))?;
-        let port = listener.local_addr().map_err(|e| format!("addr: {}", e))?.port();
+        let port = listener
+            .local_addr()
+            .map_err(|e| format!("addr: {}", e))?
+            .port();
         drop(listener);
 
         let child = Command::new(&bin)
@@ -129,7 +134,13 @@ impl Drop for Server {
 }
 
 /// Run a SQL statement via `mysql` CLI. Returns (stdout, stderr, exit_code).
-fn mysql_exec(host: &str, port: u16, user: &str, db: Option<&str>, sql: &str) -> (String, String, i32) {
+fn mysql_exec(
+    host: &str,
+    port: u16,
+    user: &str,
+    db: Option<&str>,
+    sql: &str,
+) -> (String, String, i32) {
     let mut cmd = Command::new("mysql");
     cmd.args(["-h", host, "-P", &port.to_string(), "-u", user])
         .args(["--protocol=TCP", "--default-character-set=utf8mb4"]);
@@ -158,14 +169,7 @@ const SCHEMA_DDL: &[&str] = &[
 ];
 
 const TABLES: &[&str] = &[
-    "region",
-    "nation",
-    "supplier",
-    "customer",
-    "part",
-    "partsupp",
-    "orders",
-    "lineitem",
+    "region", "nation", "supplier", "customer", "part", "partsupp", "orders", "lineitem",
 ];
 
 const EXPECTED_COUNTS: &[(&str, u64)] = &[
@@ -226,7 +230,8 @@ fn test_tpch_22_mysql_cli_wire() {
     let mut server = Server::start(&data_dir).expect("start server");
     eprintln!(
         "[server] spawned on port {} (pid {:?})",
-        server.port, server.child.id()
+        server.port,
+        server.child.id()
     );
     server.wait_ready().expect("server readiness");
     eprintln!("[server] ready");
@@ -236,7 +241,10 @@ fn test_tpch_22_mysql_cli_wire() {
     for (i, ddl) in SCHEMA_DDL.iter().enumerate() {
         let (out, err, code) = mysql_exec("127.0.0.1", server.port, "tester", None, ddl);
         if code != 0 {
-            panic!("DDL #{} failed (exit {}): stdout={:?}, stderr={:?}", i, code, out, err);
+            panic!(
+                "DDL #{} failed (exit {}): stdout={:?}, stderr={:?}",
+                i, code, out, err
+            );
         }
     }
 
