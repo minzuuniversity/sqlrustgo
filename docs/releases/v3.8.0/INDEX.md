@@ -1,7 +1,7 @@
 # v3.8.0 文档索引
 
 > 文档已按生命周期（alpha/beta/rc/ga）和功能模块（design/test-design/specs/debt）重组。
-> 上次整理：2026-06-04
+> 上次整理：2026-06-05
 
 ## 门禁报告
 
@@ -26,6 +26,7 @@
 
 ### GA 清单
 - [GA 放行清单](ga/GA_GATE_CHECKLIST.md)
+- [GA 门禁报告](ga/GA_GATE_REPORT.md) (2026-06-05, ✅ PASS)
 
 ## 功能设计
 
