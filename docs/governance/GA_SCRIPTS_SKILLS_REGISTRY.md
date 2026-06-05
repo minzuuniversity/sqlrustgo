@@ -31,7 +31,7 @@
 
 数据源: `scripts/gate/README.md` (audit 2026-06-04)
 
-### 1.2 Active 11 个 (GA gate 必跑)
+### 1.2 Active 12 个 (GA gate 必跑)
 
 | 脚本 | 用途 | 调用方式 | Owner |
 |------|------|----------|-------|
@@ -41,6 +41,7 @@
 | `check_arch_sem_debt.sh` | **D8 ARCH-1~3 + SEM-1~4 状态** | `bash scripts/gate/check_arch_sem_debt.sh` | hermes |
 | `check_cross_version_debt.sh` | **跨版本 72 债务项** (F-XX + I-XX + T-XX + INT-XX) | `bash scripts/gate/check_cross_version_debt.sh` | hermes |
 | `check_arch2_no_bypass.sh` | **ARCH-2 storage.* bypass** (v3.8.0 #3101 修复) | `bash scripts/gate/check_arch2_no_bypass.sh` | hermes |
+| `check_g1_tpch_baseline.sh` | **G1 TPC-H 22/22 不可退化** (v3.9.0 #3186 baseline hash) | `bash scripts/gate/check_g1_tpch_baseline.sh` | hermes |
 | `audit_testing.sh` | **D5.5 测试 audit** (TEST_PLAN ↔ Cargo.toml 16 个 [[test]] 对齐) | `bash scripts/gate/audit_testing.sh v3.8.0 ga <out>` | hermes |
 | `check_docs_links.sh` | **markdown 链接检查** | `bash scripts/gate/check_docs_links.sh [--all]` | hermes |
 | `check_docs_consistency.sh` | **版本状态/链接/历史一致性** | `bash scripts/gate/check_docs_consistency.sh` | hermes |
