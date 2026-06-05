@@ -5,7 +5,7 @@
 #[allow(unused_imports)]
 use sqlrustgo_planner::{
     AggregateExec, AggregateFunction, Expr, FilterExec, HashJoinExec, IndexScanExec, JoinType,
-    Operator, PhysicalPlan, PreparedStatementManager, ProjectionExec, SortMergeJoinExec,
+    LimitExec, Operator, PhysicalPlan, PreparedStatementManager, ProjectionExec, SortMergeJoinExec,
 };
 use sqlrustgo_storage::StorageEngine;
 use sqlrustgo_types::{SqlError, SqlResult, Value};
@@ -657,16 +657,42 @@ impl<'a> LocalExecutor<'a> {
                 }
             }
             AggregateFunction::Avg => {
-                let mut sum: i64 = 0;
-                let mut count = 0;
+                // v3.8.0-rc2 Day 7: AVG MUST return Float even when
+                // all input values are Integer — otherwise
+                // `Value::Integer(int_sum / count)` is integer-
+                // truncated (e.g. 1323/50 = 26 instead of 26.46).
+                // SQLite/MySQL always return REAL for AVG.
+                let mut int_sum: i64 = 0;
+                let mut float_sum: f64 = 0.0;
+                let mut any_float = false;
+                let mut count: i64 = 0;
                 for v in values {
-                    if let Value::Integer(n) = v {
-                        sum += n;
-                        count += 1;
+                    match v {
+                        Value::Integer(n) => {
+                            if any_float {
+                                float_sum += *n as f64;
+                            } else {
+                                int_sum += n;
+                            }
+                            count += 1;
+                        }
+                        Value::Float(f) => {
+                            if !any_float {
+                                float_sum = int_sum as f64;
+                                any_float = true;
+                            }
+                            float_sum += f;
+                            count += 1;
+                        }
+                        _ => {}
                     }
                 }
                 if count > 0 {
-                    Value::Integer(sum / count as i64)
+                    if any_float {
+                        Value::Float(float_sum / count as f64)
+                    } else {
+                        Value::Float(int_sum as f64 / count as f64)
+                    }
                 } else {
                     Value::Null
                 }
@@ -1408,8 +1434,20 @@ impl<'a> LocalExecutor<'a> {
         // Execute child first
         let child_result = self.execute(children[0])?;
 
-        // Limit would go here
-        Ok(child_result)
+        // v3.8.0-rc2 Day 7: actually apply LIMIT/OFFSET (was stub
+        // that returned the full child_result, causing Q3 / Q15
+        // to return all rows instead of LIMIT 10).
+        let limit_exec = plan
+            .as_any()
+            .downcast_ref::<sqlrustgo_planner::LimitExec>();
+        let (limit, offset) = match limit_exec {
+            Some(p) => (p.limit(), p.offset().unwrap_or(0)),
+            None => (child_result.rows.len(), 0),
+        };
+        let start = offset.min(child_result.rows.len());
+        let end = start.saturating_add(limit).min(child_result.rows.len());
+        let new_rows: Vec<Vec<Value>> = child_result.rows[start..end].to_vec();
+        Ok(ExecutorResult::new(new_rows, child_result.affected_rows))
     }
 }
 
