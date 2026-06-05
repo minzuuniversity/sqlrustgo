@@ -333,6 +333,104 @@ pub fn eval_aggregate_lookup(
     row.get(idx).cloned()
 }
 
+/// SQL `LIKE` pattern matcher: `%` matches any sequence (including
+/// empty), `_` matches a single character; all other characters are
+/// literal. Case-insensitive to match MySQL's default `LIKE` semantics.
+/// The pattern's leading/trailing quotes (set by the literal parser)
+/// are stripped before matching.
+///
+/// This is the single source of truth for the parser-AST
+/// `Expression::Like` and `Expression::NotLike` arms. The legacy
+/// `src/expr_utils.rs::evaluate_expression` `Expression::Like` /
+/// `Expression::NotLike` arms (and the `BinaryOp("LIKE", ...)` arm in
+/// `evaluate_binary_op`) all delegate to this function (P0-2 §4.5 +
+/// §4.6).
+///
+/// **Semantics (identical to the legacy `sql_like_match`):**
+/// - `sql_like_match("hello", "%ell%")` → `true`
+/// - `sql_like_match("hello", "world")` → `false`
+/// - `sql_like_match("'hello'", "%ell%")` → `true` (quotes stripped
+///   from pattern, defensively)
+/// - `sql_like_match("HELLO", "%ell%")` → `true` (case-insensitive
+///   on both text and pattern)
+pub fn sql_like_match(text: &str, pattern: &str) -> bool {
+    // Strip the surrounding single quotes that the literal parser
+    // attaches to string values. `pattern` is usually passed in
+    // already without quotes, but be defensive.
+    let pat = pattern
+        .trim()
+        .strip_prefix('\'')
+        .and_then(|s| s.strip_suffix('\''))
+        .unwrap_or(pattern.trim());
+    let txt = text.to_lowercase();
+    let pat = pat.to_lowercase();
+    like_match_recursive(&txt, &pat)
+}
+
+/// Recursive wildcard matcher. Walks the pattern character by character;
+/// on `%` it tries matching the rest of the pattern against every
+/// suffix of the remaining text. Pure recursive implementation; safe
+/// for the small TPC-H patterns (`%green%`, etc.) but could be
+/// O(len(text) * len(pat)) in the worst case. A DFA-based matcher
+/// would scale better; the recursive version is fine for now.
+fn like_match_recursive(text: &str, pattern: &str) -> bool {
+    let mut t_idx = 0;
+    let mut p_idx = 0;
+    let t_bytes = text.as_bytes();
+    let p_bytes = pattern.as_bytes();
+    let mut star: Option<(usize, usize)> = None; // (text position, pattern position after %)
+
+    while t_idx < t_bytes.len() {
+        if p_idx < p_bytes.len() {
+            match p_bytes[p_idx] {
+                b'%' => {
+                    // Record the position to backtrack to, then advance.
+                    star = Some((t_idx, p_idx + 1));
+                    p_idx += 1;
+                    continue;
+                }
+                b'_' => {
+                    t_idx += 1;
+                    p_idx += 1;
+                    continue;
+                }
+                c if c == t_bytes[t_idx] => {
+                    t_idx += 1;
+                    p_idx += 1;
+                    continue;
+                }
+                _ => {
+                    // Mismatch — if we have a prior `%`, backtrack: advance
+                    // t_idx by one and restart matching from just after the
+                    // saved position. (The saved `ts` is fixed, so we use
+                    // t_idx + 1, not ts + 1, to actually make progress.)
+                    if let Some((_, ps)) = star {
+                        p_idx = ps;
+                        t_idx += 1;
+                        continue;
+                    }
+                    return false;
+                }
+            }
+        } else {
+            // Pattern exhausted but text has more. If we have a prior
+            // `%`, backtrack and advance one more text position.
+            if let Some((_, ps)) = star {
+                p_idx = ps;
+                t_idx += 1;
+                continue;
+            }
+            return false;
+        }
+    }
+
+    // Text exhausted; remaining pattern must be only `%`s.
+    while p_idx < p_bytes.len() && p_bytes[p_idx] == b'%' {
+        p_idx += 1;
+    }
+    p_idx == p_bytes.len()
+}
+
 fn parse_lit(s: &str) -> Value {
     let s = s.trim();
     if s.eq_ignore_ascii_case("NULL") {
