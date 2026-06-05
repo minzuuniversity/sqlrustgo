@@ -534,6 +534,14 @@ path = "tests/hash_chain_test.rs"
 [[test]]
 name = "hash_chain_harness"
 path = "tests/hash_chain_harness.rs"
+# P3-2 (#3181) — Statistics (ANALYZE TABLE, 20+ tests, 5 categories)
+[[test]]
+name = "statistics_test"
+path = "tests/statistics_test.rs"
+# P3-2 (#3181) — Statistics Harness (shared helper)
+[[test]]
+name = "statistics_harness"
+path = "tests/statistics_harness.rs"
 
 [[test]]
 name = "truncate_table_test"
