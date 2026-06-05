@@ -219,8 +219,24 @@ pub fn evaluate_expression(
             Ok(evaluate_binary_op(&left_val, &right_val, op))
         }
         Expression::IsNull(inner) => {
+            // P0-2 §4.2: delegated to `executor::expr::eval_is_null`
+            // (single source of truth for the IsNull branch).
             let val = evaluate_expression(inner, row, table_info)?;
-            Ok(Value::Boolean(matches!(val, Value::Null)))
+            Ok(sqlrustgo_executor::expr::eval_is_null(&val))
+        }
+        Expression::IsNotNull(inner) => {
+            // P0-2 §4.3: delegated to `executor::expr::eval_is_not_null`.
+            // **Pre-existing bug fixed by this PR**: `evaluate_expression`
+            // previously had no explicit `Expression::IsNotNull` arm; the
+            // call fell through to the wildcard `_ => Ok(Value::Null)`
+            // arm, returning `Value::Null` for every `IS NOT NULL` query
+            // (e.g. `WHERE col IS NOT NULL` would silently never match).
+            // The new explicit arm + delegation to `executor::expr` (where
+            // the UnifiedExpr::IsNotNull implementation has been correct
+            // since v3.8.0) fixes this. Verified by
+            // `test_isnull_delegation`'s "empty string (not null)" case.
+            let val = evaluate_expression(inner, row, table_info)?;
+            Ok(sqlrustgo_executor::expr::eval_is_not_null(&val))
         }
         // TPC-H Q9: `WHERE p_name LIKE '%green%'`. Implement SQL LIKE
         // substring match: `%` matches any sequence (including empty),
