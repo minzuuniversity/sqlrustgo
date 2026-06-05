@@ -220,26 +220,12 @@ pub fn evaluate_expression(
             })
         }
         // TPC-H Q7/Q8/Q9: EXTRACT(field FROM col). The parser encodes this
-        // as FunctionCall("EXTRACT", [Literal(field), source_expr]). We
-        // dispatch on the field name and slice the source (which we expect
-        // to be a Text date in YYYY-MM-DD form). Returns Null on shape
-        // mismatch so a downstream operator can decide.
-        Expression::FunctionCall(name, args) if name.to_uppercase() == "EXTRACT" => {
-            let field = args
-                .first()
-                .map(|e| expression_to_value(e).to_sql_string().to_uppercase())
-                .unwrap_or_default();
-            let source = match args.get(1) {
-                Some(e) => evaluate_expression(e, row, table_info)?.to_sql_string(),
-                None => return Ok(Value::Null),
-            };
-            Ok(match field.as_str() {
-                "YEAR" if source.len() >= 4 => Value::Text(source[..4].to_string()),
-                "MONTH" if source.len() >= 7 => Value::Text(source[5..7].to_string()),
-                "DAY" if source.len() >= 10 => Value::Text(source[8..10].to_string()),
-                _ => Value::Null,
-            })
-        }
+        // as FunctionCall("EXTRACT", [Literal(field), source_expr]). The
+        // // generic `Expression::FunctionCall` arm below handles EXTRACT
+        // // via `executor::expr::eval_fn` (which contains the same
+        // // YEAR/MONTH/DAY slicing logic in a single, deduplicated
+        // // implementation). P0-2 §4.11 removes the previous
+        // // duplicate, special-cased arm that lived here.
         Expression::Aggregate(agg) => {
             // P0-2 §4.4: delegated to `executor::expr::eval_aggregate_lookup`.
             // The aggregate is *not* computed here; it is looked up from
