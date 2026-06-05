@@ -231,6 +231,439 @@ impl From<&sqlrustgo_planner::Expr> for UnifiedExpr {
 }
 
 // Evaluation helpers
+
+/// Evaluate a parser-AST `Expression::Literal(&str)` to a `Value`.
+///
+/// This is the single source of truth for "what does this literal look
+/// like as a Value?". The legacy `src/expr_utils.rs::expression_to_value`
+/// `Expression::Literal` arm is a thin delegation to this function.
+///
+/// **Semantics (intentionally identical to the legacy `expr_utils` Literal
+/// arm; do not change without coordinating the P0-2 OpenSpec change):**
+///
+/// | input               | output              |
+/// |---------------------|---------------------|
+/// | `"NULL"`            | `Value::Null`       |
+/// | `"42"`              | `Value::Integer(42)`|
+/// | `"3.14"`            | `Value::Float(3.14)`|
+/// | `"'hello'"`         | `Value::Text("hello")`|
+/// | `"hello"` (unquoted)| `Value::Text("hello")`|
+/// | `"  42  "` (trim)   | `Value::Integer(42)`|
+///
+/// **Note:** This function does *not* currently match the internal
+/// `parse_lit` helper in this file. `parse_lit` is more aggressive
+/// (it maps `TRUE`/`FALSE` to `Integer(1/0)` and truncates `f64` to
+/// `Integer`); the legacy `expr_utils` Literal arm is more conservative
+/// (it preserves `f64`). We deliberately do NOT replace `parse_lit`
+/// here, because `parse_lit` is the implementation of `UnifiedExpr::Literal`
+/// conversion and has its own existing test coverage in this file. The
+/// two functions coexist for now; P0-2 §4.5-4.13 will reconcile the
+/// differences as the remaining 13 branches are delegated.
+pub fn eval_literal_from_str(s: &str) -> Value {
+    let s = s.trim();
+    if s.eq_ignore_ascii_case("NULL") {
+        return Value::Null;
+    }
+    // Boolean keywords: MySQL 5.7 uses TRUE/FALSE as 1/0 in INTEGER context.
+    // We preserve the same convention as the legacy `expr_utils`
+    // (Literal arm was `Value::Text(s)` fallback) BUT the unified
+    // arm here maps TRUE/FALSE to Integer(1)/Integer(0) so that
+    // `NOT TRUE` evaluates to a Boolean. (See P0-2 §4.12.
+    // Without this, `Literal("TRUE")` was Text("TRUE") and `NOT TRUE`
+    // went through to_bool(Text) which returns true, negating to
+    // false — wrong.)
+    //
+    // **Note**: this is a *behavior change* from the legacy
+    // `expr_utils::expression_to_value` Literal arm, which would
+    // have returned `Value::Text("TRUE")` for `Literal("TRUE")`. The
+    // change is intentional and tracked in the OpenSpec tasks.md
+    // §4.12 — the UnaryOp arm cannot work without this.
+    if s.eq_ignore_ascii_case("TRUE") {
+        return Value::Integer(1);
+    }
+    if s.eq_ignore_ascii_case("FALSE") {
+        return Value::Integer(0);
+    }
+    if let Ok(n) = s.parse::<i64>() {
+        return Value::Integer(n);
+    }
+    if let Ok(f) = s.parse::<f64>() {
+        return Value::Float(f);
+    }
+    if s.starts_with('\'') && s.ends_with('\'') && s.len() >= 2 {
+        return Value::Text(s[1..s.len() - 1].to_string());
+    }
+    Value::Text(s.to_string())
+}
+
+/// Evaluate the parser-AST `Expression::IsNull` arm: returns
+/// `Value::Boolean(true)` if `value` is `Value::Null`, else
+/// `Value::Boolean(false)`.
+///
+/// This is the single source of truth for "is this value null?". The
+/// legacy `src/expr_utils.rs::evaluate_expression` `Expression::IsNull`
+/// arm is a thin delegation to this function (P0-2 §4.2).
+///
+/// **Semantics (identical to the legacy arm and to
+/// `UnifiedExpr::IsNull::evaluate`):**
+/// - `eval_is_null(&Value::Null)`       → `Value::Boolean(true)`
+/// - `eval_is_null(&Value::Integer(0))` → `Value::Boolean(false)`
+/// - `eval_is_null(&Value::Text(""))`   → `Value::Boolean(false)` (empty string is not null)
+/// - `eval_is_null(&Value::Boolean(false))` → `Value::Boolean(false)`
+pub fn eval_is_null(value: &Value) -> Value {
+    Value::Boolean(matches!(value, Value::Null))
+}
+
+/// Inverse of [`eval_is_null`]. P0-2 §4.3.
+pub fn eval_is_not_null(value: &Value) -> Value {
+    Value::Boolean(!matches!(value, Value::Null))
+}
+
+/// Compare two values, returning -1, 0, or 1.
+///
+/// This is the single source of truth for SQL value comparison. The
+/// legacy `src/expr_utils.rs::compare_values` is a 1-line shim that
+/// delegates to this function (P0-2 §4.7, §4.8, plus consumed by
+/// `executor::expr::eval_between`).
+///
+/// **Semantics (identical to the legacy function):**
+/// | `left`           | `right`         | result |
+/// |------------------|-----------------|--------|
+/// | `Integer(l)`     | `Integer(r)`    | `l.cmp(r) as i32` |
+/// | `Float(l)`       | `Float(r)`      | `-1 / 0 / 1` (NaN-unaware) |
+/// | `Text(l)`        | `Text(r)`       | `l.cmp(r) as i32` |
+/// | `Null`           | `Null`          | `0` |
+/// | `Null`           | non-Null        | `-1` (NULL sorts first) |
+/// | non-Null         | `Null`          | `1` (NULL sorts last) |
+/// | mixed types      | (other)         | `0` (equal) |
+pub fn compare_values(left: &Value, right: &Value) -> i32 {
+    match (left, right) {
+        (Value::Integer(l), Value::Integer(r)) => l.cmp(r) as i32,
+        (Value::Float(l), Value::Float(r)) => {
+            if l < r {
+                -1
+            } else if l > r {
+                1
+            } else {
+                0
+            }
+        }
+        (Value::Text(l), Value::Text(r)) => l.cmp(r) as i32,
+        (Value::Null, Value::Null) => 0,
+        (Value::Null, _) => -1,
+        (_, Value::Null) => 1,
+        _ => 0,
+    }
+}
+
+/// Evaluate the parser-AST `Expression::Between(expr, low, high)` arm:
+/// returns `Value::Boolean(true)` if `low <= value <= high`, else
+/// `Value::Boolean(false)`.
+///
+/// This is the single source of truth for the parser-AST `Between`
+/// branch. The legacy `src/expr_utils.rs::evaluate_expression`
+/// `Expression::Between` arm is a thin delegation to this function
+/// (P0-2 §4.7).
+///
+/// **Semantics (identical to the legacy arm):**
+/// - `eval_between(5, 1, 10)` → `Value::Boolean(true)`
+/// - `eval_between(0, 1, 10)` → `Value::Boolean(false)`
+/// - `eval_between(5, 5, 10)` → `Value::Boolean(true)` (inclusive low)
+/// - `eval_between(10, 1, 10)` → `Value::Boolean(true)` (inclusive high)
+/// - `eval_between(Null, 1, 10)` → `Value::Boolean(false)` (NULL
+///   sorts before any non-NULL per `compare_values` semantics, so
+///   `compare_values(&Null, &lo) = -1 < 0`)
+pub fn eval_between(value: &Value, low: &Value, high: &Value) -> Value {
+    Value::Boolean(compare_values(value, low) >= 0 && compare_values(value, high) <= 0)
+}
+
+/// Inverse of [`eval_between`]. P0-2 §4.8.
+pub fn eval_not_between(value: &Value, low: &Value, high: &Value) -> Value {
+    Value::Boolean(!(compare_values(value, low) >= 0 && compare_values(value, high) <= 0))
+}
+
+/// Look up a column index in a `TableInfo.columns` list by name, with
+/// case-insensitive matching, qualified-name stripping, and
+/// multi-join trailing-segment handling.
+///
+/// This is the single source of truth for column-name resolution. The
+/// legacy `src/expr_utils.rs::find_column_index` is a 1-line shim that
+/// delegates to this function (P0-2 §4.10).
+///
+/// **Semantics (identical to the legacy function):**
+/// - Fast path: exact case-insensitive match on the full column name.
+/// - If `col_name` contains a `.` (qualified), strip the qualifier and
+///   try the bare column name. If the column was accumulated from a
+///   multi-join (e.g. `a_join_b.t.col`), try matching the trailing N
+///   segments of the accumulated name against the user's N segments.
+/// - If `col_name` has no `.` (unqualified), try a trailing-segment
+///   match against each accumulated column (so bare `tag` resolves
+///   against `a_join_b.a.tag`).
+/// - Returns `Some(idx)` for a match, `None` otherwise.
+///
+/// The `ColumnDefinition` type is `sqlrustgo_storage::ColumnDefinition`.
+/// We define a local struct that the public function uses (rather than
+/// a free function over `&[String]`) so that the multi-join logic
+/// reads naturally.
+pub fn find_column_index(
+    col_name: &str,
+    columns: &[sqlrustgo_storage::ColumnDefinition],
+) -> Option<usize> {
+    // Fast path: exact match.
+    if let Some(idx) = columns
+        .iter()
+        .position(|c| c.name.eq_ignore_ascii_case(col_name))
+    {
+        return Some(idx);
+    }
+
+    if let Some((_qualifier, col)) = col_name.split_once('.') {
+        // Qualified: prefer the unqualified column-name match (works for the
+        // first-JOIN case where columns are named `t.col`).
+        if let Some(idx) = columns
+            .iter()
+            .position(|c| c.name.eq_ignore_ascii_case(col))
+        {
+            return Some(idx);
+        }
+        // Multi-join: the accumulated column may be `a_join_b.t.col`; match
+        // when the user's `qualifier.col` is the trailing two segments.
+        let user_segments: Vec<&str> = col_name.split('.').collect();
+        for (i, c) in columns.iter().enumerate() {
+            let col_segments: Vec<&str> = c.name.split('.').collect();
+            if col_segments.len() >= user_segments.len()
+                && col_segments[col_segments.len() - user_segments.len()..] == user_segments[..]
+            {
+                return Some(i);
+            }
+        }
+        None
+    } else {
+        // Unqualified: try a trailing-segment match so bare `tag` still
+        // resolves against the accumulated `a_join_b.a.tag`.
+        for (i, c) in columns.iter().enumerate() {
+            if let Some((_, tail)) = c.name.rsplit_once('.') {
+                if tail.eq_ignore_ascii_case(col_name) {
+                    return Some(i);
+                }
+            }
+        }
+        // Last fallback: no match.
+        None
+    }
+}
+
+/// Evaluate the parser-AST `Expression::Identifier(name)` arm: looks up
+/// the column by name and returns the value from the row. If the
+/// column is not in the schema, returns `Value::Text(name)` (the
+/// legacy fallback for unqualified identifiers that happen to be
+/// string literals).
+///
+/// This is the single source of truth for the parser-AST `Identifier`
+/// branch. The legacy `src/expr_utils.rs::evaluate_expression`
+/// `Expression::Identifier` arm is a thin delegation to this function
+/// (P0-2 §4.10).
+///
+/// **Semantics (identical to the legacy arm):**
+/// - If `name` is a column in `table_info`, return `row[idx]`
+///   (cloned, defaulting to `Value::Null` if out of bounds).
+/// - If `name` is *not* a column (e.g., a string literal used as a
+///   column name in a specific dialect), return `Value::Text(name)`.
+pub fn eval_identifier(
+    name: &str,
+    row: &[Value],
+    columns: &[sqlrustgo_storage::ColumnDefinition],
+) -> Value {
+    if let Some(col_idx) = find_column_index(name, columns) {
+        row.get(col_idx).cloned().unwrap_or(Value::Null)
+    } else {
+        Value::Text(name.to_string())
+    }
+}
+
+/// Evaluate a parser-AST `Expression::CaseWhen(whens, else_val)` arm.
+///
+/// This is the single source of truth for the parser-AST `CaseWhen`
+/// branch. The legacy `src/expr_utils.rs::evaluate_expression`
+/// `Expression::CaseWhen` arm is a thin delegation to this function
+/// (P0-2 §4.9).
+///
+/// **Semantics (identical to the legacy arm):**
+/// - For each `WhenClause` in `whens`:
+///   1. Evaluate the `condition` via `evaluate_fn`.
+///   2. If the condition's value is `Value::Boolean(true)`, evaluate
+///      and return the `result`.
+///   3. **SQL CASE extension**: if the condition's value is *not*
+///      `Value::Null` and *not* `Value::Boolean(false)` (i.e., any
+///      truthy non-Boolean like `Integer(1)` or `Text("yes")`),
+///      evaluate and return the `result`. This mirrors the legacy
+///      `expr_utils` behavior (which mirrors SQL CASE's
+///      truthiness-of-non-Booleans rule).
+/// - If no WHEN matches:
+///   1. If `else_val` is `Some`, evaluate it and return.
+///   2. Otherwise, return `Ok(Value::Null)`.
+///
+/// The function is parameterized over a `evaluate_fn` closure that
+/// handles the actual evaluation of inner expressions. This decouples
+/// the algorithm from the row/columns/table_info state (which lives
+/// in the caller, e.g. `expr_utils::evaluate_expression`).
+pub fn eval_case_when<F>(
+    whens: &[sqlrustgo_parser::parser::WhenClause],
+    else_val: Option<&sqlrustgo_parser::Expression>,
+    evaluate_fn: F,
+) -> Result<Value, String>
+where
+    F: Fn(&sqlrustgo_parser::Expression) -> Result<Value, String>,
+{
+    for w in whens {
+        let cond_val = evaluate_fn(&w.condition)?;
+        if matches!(cond_val, Value::Boolean(true)) {
+            return evaluate_fn(&w.result);
+        }
+        // SQL CASE treats non-Boolean non-null values as truthy
+        // when used as conditions; mirror that.
+        if !matches!(cond_val, Value::Null | Value::Boolean(false)) {
+            return evaluate_fn(&w.result);
+        }
+    }
+    match else_val {
+        Some(e) => evaluate_fn(e),
+        None => Ok(Value::Null),
+    }
+}
+
+/// Look up a pre-computed aggregate value in a row by its canonical name
+/// (the string form produced by `expr_utils::expression_to_string` for an
+/// `Expression::Aggregate`, e.g. `"COUNT(*)"`, `"SUM(l_quantity)"`, etc.).
+///
+/// This is the single source of truth for the parser-AST
+/// `Expression::Aggregate` arm. The legacy
+/// `src/expr_utils.rs::evaluate_expression` `Expression::Aggregate` arm
+/// is a thin delegation to this function (P0-2 §4.4).
+///
+/// **Semantics (identical to the legacy arm):**
+/// - `eval_aggregate_lookup(agg_name, row, column_names)` returns the
+///   `Value` at `row[i]` where `column_names[i]` matches `agg_name`
+///   case-insensitively.
+/// - Returns `None` if no column matches — the caller should map this
+///   to an error (the legacy arm does
+///   `Err("Aggregate not found in schema: ...")`, the OpenSpec design
+///   keeps that error shape so the wire-protocol path's error message
+///   is unchanged).
+/// - This is **NOT** an actual aggregate computation; aggregate values
+///   are computed in the SELECT/GROUP BY phase of the executor and
+///   stored in the row before this function is called. The legacy arm
+///   is also a lookup, not a computation, so the delegation preserves
+///   behavior.
+pub fn eval_aggregate_lookup(
+    agg_name: &str,
+    row: &[Value],
+    column_names: &[String],
+) -> Option<Value> {
+    let idx = column_names
+        .iter()
+        .position(|c| c.eq_ignore_ascii_case(agg_name))?;
+    row.get(idx).cloned()
+}
+
+/// SQL `LIKE` pattern matcher: `%` matches any sequence (including
+/// empty), `_` matches a single character; all other characters are
+/// literal. Case-insensitive to match MySQL's default `LIKE` semantics.
+/// The pattern's leading/trailing quotes (set by the literal parser)
+/// are stripped before matching.
+///
+/// This is the single source of truth for the parser-AST
+/// `Expression::Like` and `Expression::NotLike` arms. The legacy
+/// `src/expr_utils.rs::evaluate_expression` `Expression::Like` /
+/// `Expression::NotLike` arms (and the `BinaryOp("LIKE", ...)` arm in
+/// `evaluate_binary_op`) all delegate to this function (P0-2 §4.5 +
+/// §4.6).
+///
+/// **Semantics (identical to the legacy `sql_like_match`):**
+/// - `sql_like_match("hello", "%ell%")` → `true`
+/// - `sql_like_match("hello", "world")` → `false`
+/// - `sql_like_match("'hello'", "%ell%")` → `true` (quotes stripped
+///   from pattern, defensively)
+/// - `sql_like_match("HELLO", "%ell%")` → `true` (case-insensitive
+///   on both text and pattern)
+pub fn sql_like_match(text: &str, pattern: &str) -> bool {
+    // Strip the surrounding single quotes that the literal parser
+    // attaches to string values. `pattern` is usually passed in
+    // already without quotes, but be defensive.
+    let pat = pattern
+        .trim()
+        .strip_prefix('\'')
+        .and_then(|s| s.strip_suffix('\''))
+        .unwrap_or(pattern.trim());
+    let txt = text.to_lowercase();
+    let pat = pat.to_lowercase();
+    like_match_recursive(&txt, &pat)
+}
+
+/// Recursive wildcard matcher. Walks the pattern character by character;
+/// on `%` it tries matching the rest of the pattern against every
+/// suffix of the remaining text. Pure recursive implementation; safe
+/// for the small TPC-H patterns (`%green%`, etc.) but could be
+/// O(len(text) * len(pat)) in the worst case. A DFA-based matcher
+/// would scale better; the recursive version is fine for now.
+fn like_match_recursive(text: &str, pattern: &str) -> bool {
+    let mut t_idx = 0;
+    let mut p_idx = 0;
+    let t_bytes = text.as_bytes();
+    let p_bytes = pattern.as_bytes();
+    let mut star: Option<(usize, usize)> = None; // (text position, pattern position after %)
+
+    while t_idx < t_bytes.len() {
+        if p_idx < p_bytes.len() {
+            match p_bytes[p_idx] {
+                b'%' => {
+                    // Record the position to backtrack to, then advance.
+                    star = Some((t_idx, p_idx + 1));
+                    p_idx += 1;
+                    continue;
+                }
+                b'_' => {
+                    t_idx += 1;
+                    p_idx += 1;
+                    continue;
+                }
+                c if c == t_bytes[t_idx] => {
+                    t_idx += 1;
+                    p_idx += 1;
+                    continue;
+                }
+                _ => {
+                    // Mismatch — if we have a prior `%`, backtrack: advance
+                    // t_idx by one and restart matching from just after the
+                    // saved position. (The saved `ts` is fixed, so we use
+                    // t_idx + 1, not ts + 1, to actually make progress.)
+                    if let Some((_, ps)) = star {
+                        p_idx = ps;
+                        t_idx += 1;
+                        continue;
+                    }
+                    return false;
+                }
+            }
+        } else {
+            // Pattern exhausted but text has more. If we have a prior
+            // `%`, backtrack and advance one more text position.
+            if let Some((_, ps)) = star {
+                p_idx = ps;
+                t_idx += 1;
+                continue;
+            }
+            return false;
+        }
+    }
+
+    // Text exhausted; remaining pattern must be only `%`s.
+    while p_idx < p_bytes.len() && p_bytes[p_idx] == b'%' {
+        p_idx += 1;
+    }
+    p_idx == p_bytes.len()
+}
+
 fn parse_lit(s: &str) -> Value {
     let s = s.trim();
     if s.eq_ignore_ascii_case("NULL") {
@@ -274,7 +707,19 @@ fn eval_binary_op(left: &Value, right: &Value, op: &str) -> Value {
     }
 }
 
-fn eval_unary_op(val: &Value, op: &str) -> Value {
+/// Evaluate the parser-AST `Expression::UnaryOp(op, expr)` arm.
+/// Currently supports `NOT` / `!`; any other op returns `Value::Null`.
+///
+/// This is the single source of truth for the parser-AST `UnaryOp`
+/// branch. The legacy `src/expr_utils.rs::evaluate_expression` `Expression::UnaryOp` arm
+/// (P0-2 §4.12) is a thin delegation to this function.
+///
+/// **Semantics:**
+/// - `eval_unary_op(true, "NOT")` → `Value::Boolean(false)`
+/// - `eval_unary_op(0, "NOT")` → `Value::Boolean(true)` (0 is falsy via `to_bool`)
+/// - `eval_unary_op(1, "NOT")` → `Value::Boolean(false)` (1 is truthy via `to_bool`)
+/// - `eval_unary_op(_, "UNKNOWN")` → `Value::Null`
+pub fn eval_unary_op(val: &Value, op: &str) -> Value {
     match op.to_uppercase().as_str() {
         "NOT" | "!" => Value::Boolean(!to_bool(val)),
         _ => Value::Null,
@@ -886,7 +1331,21 @@ fn group_concat(args: &[Value]) -> Value {
     Value::Text(joined)
 }
 
-fn cast_val(val: &Value, target_type: &str) -> Value {
+/// Evaluate the parser-AST `Expression::Cast{expr, target_type}` arm:
+/// converts a value to the target type per MySQL 5.7 cast semantics.
+///
+/// This is the single source of truth for the parser-AST `Cast` branch.
+/// The legacy `src/expr_utils.rs::evaluate_expression` `Expression::Cast`
+/// arm (P0-2 §4.13) is a thin delegation to this function.
+///
+/// **Semantics:**
+/// - `cast_val(Integer(42), "INTEGER")` → `Integer(42)` (idempotent)
+/// - `cast_val(Text("42"), "INTEGER")` → `Integer(42)` (parse text)
+/// - `cast_val(Text("not a number"), "INTEGER")` → `Integer(0)` (parse fail → 0)
+/// - `cast_val(Float(2.7), "INTEGER")` → `Integer(2)` (truncate)
+/// - `cast_val(_, "TEXT")` → `Text(to_sql_string())` (any → text)
+/// - `cast_val(_, "UNKNOWN_TYPE")` → `val.clone()` (passthrough)
+pub fn cast_val(val: &Value, target_type: &str) -> Value {
     match target_type.to_uppercase().as_str() {
         "INTEGER" | "INT" => match val {
             Value::Integer(i) => Value::Integer(*i),
