@@ -94,6 +94,14 @@ pub fn expression_to_value(expr: &sqlrustgo_parser::Expression) -> Value {
         sqlrustgo_parser::Expression::Literal(s) => {
             sqlrustgo_executor::expr::eval_literal_from_str(s)
         }
+        // P0-2 §4.10: delegated to `executor::expr::eval_literal_from_str`-
+        // style helper. For an Identifier (not a literal), the legacy
+        // fallback was `Value::Text(name.clone())` (treat the identifier
+        // as a string literal when not in the schema). Preserved here
+        // because the same path is also reached via `evaluate_expression`'s
+        // fallback arm when the column lookup fails — see the
+        // `Expression::Identifier` arm in `evaluate_expression` for the
+        // full single-source-of-truth delegation.
         sqlrustgo_parser::Expression::Identifier(name) => Value::Text(name.clone()),
         _ => Value::Null,
     }
@@ -145,11 +153,15 @@ pub fn evaluate_expression(
     match expr {
         Expression::Literal(_) => Ok(expression_to_value(expr)),
         Expression::Identifier(name) => {
-            if let Some(col_idx) = find_column_index(name, table_info) {
-                Ok(row.get(col_idx).cloned().unwrap_or(Value::Null))
-            } else {
-                Ok(expression_to_value(expr))
-            }
+            // P0-2 §4.10: delegated to `executor::expr::eval_identifier`.
+            // Looks up the column by name; if not found, falls back to
+            // `Value::Text(name)` (the legacy behavior for unqualified
+            // identifiers that happen to be string literals).
+            Ok(sqlrustgo_executor::expr::eval_identifier(
+                name,
+                row,
+                &table_info.columns,
+            ))
         }
         Expression::BinaryOp(left, op, right) => {
             let left_val = evaluate_expression(left, row, table_info).unwrap_or(Value::Null);
@@ -418,48 +430,14 @@ pub fn evaluate_expr_to_string(expr: &Expression, row: &[Value], table_info: &Ta
 /// so the lookup also matches the user reference against the trailing
 /// segments of the accumulated column name. `a.tag` still resolves to the
 /// `a_join_b.a.tag` column, and bare `tag` resolves by its final segment.
+#[allow(dead_code)] // P0-2 §4.10: shim is currently unused (the
+                    // `evaluate_expression` Identifier arm delegates
+                    // directly to `executor::expr::eval_identifier`).
+                    // Kept during the transition; a follow-up PR
+                    // will either remove it or migrate the few
+                    // remaining callers.
 pub(crate) fn find_column_index(col_name: &str, table_info: &TableInfo) -> Option<usize> {
-    // Fast path: exact match.
-    if let Some(idx) = table_info
-        .columns
-        .iter()
-        .position(|c| c.name.eq_ignore_ascii_case(col_name))
-    {
-        return Some(idx);
-    }
-
-    if let Some((_qualifier, col)) = col_name.split_once('.') {
-        // Qualified: prefer the unqualified column-name match (works for the
-        // first-JOIN case where columns are named `t.col`).
-        if let Some(idx) = table_info
-            .columns
-            .iter()
-            .position(|c| c.name.eq_ignore_ascii_case(col))
-        {
-            return Some(idx);
-        }
-        // Multi-join: the accumulated column may be `a_join_b.t.col`; match
-        // when the user's `qualifier.col` is the trailing two segments.
-        let user_segments: Vec<&str> = col_name.split('.').collect();
-        for (i, c) in table_info.columns.iter().enumerate() {
-            let col_segments: Vec<&str> = c.name.split('.').collect();
-            if col_segments.len() >= user_segments.len()
-                && col_segments[col_segments.len() - user_segments.len()..] == user_segments[..]
-            {
-                return Some(i);
-            }
-        }
-        None
-    } else {
-        // Unqualified: try a trailing-segment match so bare `tag` still
-        // resolves against the accumulated `a_join_b.a.tag`.
-        for (i, c) in table_info.columns.iter().enumerate() {
-            if let Some((_, tail)) = c.name.rsplit_once('.') {
-                if tail.eq_ignore_ascii_case(col_name) {
-                    return Some(i);
-                }
-            }
-        }
-        None
-    }
+    // P0-2 §4.10: delegated to `executor::expr::find_column_index`
+    // (single source of truth for column-name resolution).
+    sqlrustgo_executor::expr::find_column_index(col_name, &table_info.columns)
 }
