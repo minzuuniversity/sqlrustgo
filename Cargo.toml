@@ -518,6 +518,22 @@ path = "tests/audit_log_test.rs"
 [[test]]
 name = "audit_log_harness"
 path = "tests/audit_log_harness.rs"
+# P2-2 (#3178) — Time Travel Query (20+ tests, 5 categories)
+[[test]]
+name = "time_travel_test"
+path = "tests/time_travel_test.rs"
+# P2-2 (#3178) — Time Travel Harness (shared helper)
+[[test]]
+name = "time_travel_harness"
+path = "tests/time_travel_harness.rs"
+# P2-3 (#3179) — Hash Chain (20+ tests, 4 categories)
+[[test]]
+name = "hash_chain_test"
+path = "tests/hash_chain_test.rs"
+# P2-3 (#3179) — Hash Chain Harness (shared helper)
+[[test]]
+name = "hash_chain_harness"
+path = "tests/hash_chain_harness.rs"
 
 [[test]]
 name = "truncate_table_test"
