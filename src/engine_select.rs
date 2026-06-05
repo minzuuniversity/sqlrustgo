@@ -289,6 +289,43 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     }
                 }
 
+                // v3.8.0-rc2 Day 7: apply ORDER BY before returning.
+                let agg_result_rows = if !select.order_by.is_empty() {
+                    let mut keyed: Vec<(Vec<Value>, Vec<Value>)> = agg_result_rows
+                        .into_iter()
+                        .map(|row| {
+                            let keys: Vec<Value> = select
+                                .order_by
+                                .iter()
+                                .map(|ob_expr| {
+                                    // ORDER BY column reference. For aggregate
+                                    // path, the row is [group_key..., agg_value...].
+                                    // Try alias-or-name in select.columns first.
+                                    if let Expression::Identifier(col_name) = &ob_expr.expression {
+                                        if let Some(idx) = select
+                                            .columns
+                                            .iter()
+                                            .position(|c| {
+                                                c.alias.as_deref() == Some(col_name)
+                                                    || c.name == *col_name
+                                            })
+                                        {
+                                            if idx < row.len() {
+                                                return row[idx].clone();
+                                            }
+                                        }
+                                    }
+                                    Value::Null
+                                })
+                                .collect();
+                            (keys, row)
+                        })
+                        .collect();
+                    keyed.sort_by(|a, b| a.0.cmp(&b.0));
+                    keyed.into_iter().map(|(_, row)| row).collect()
+                } else {
+                    agg_result_rows
+                };
                 let row_count = agg_result_rows.len();
                 return Ok(ExecutorResult::new(agg_result_rows, row_count));
             }
@@ -307,9 +344,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             }
         } else {
             rows
-        };
-
-        // Step 5: SELECT projection — apply each `select.columns` expression
+        }; // Step 5: SELECT projection — apply each `select.columns` expression
         // to the accumulated row and emit a row of projected values. This
         // is what makes `SELECT EXTRACT(YEAR FROM col) AS o_year` actually
         // return `o_year` instead of the full table schema.
@@ -317,11 +352,30 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         // Sprint 2: SELECT * (no columns or a `*` entry) skips projection
         // and returns the accumulated rows as-is — that's the existing
         // behavior, just made explicit here.
+        //
+        // v3.8.0-rc2 Day 7: also collect the projected column NAMES so
+        // that the subsequent ORDER BY step can resolve column references
+        // by name (`ORDER BY l_orderkey`).
         let is_star = select.columns.is_empty() || select.columns.iter().any(|c| c.name == "*");
-        let projected_rows: Vec<Vec<Value>> = if is_star {
-            limited_rows
+        let projected_with_names: (Vec<String>, Vec<Vec<Value>>) = if is_star {
+            let names: Vec<String> = if !table_info.columns.is_empty()
+                && table_info.columns.len()
+                    == limited_rows.first().map(|r| r.len()).unwrap_or(0)
+            {
+                table_info.columns.iter().map(|c| c.name.clone()).collect()
+            } else {
+                (1..=limited_rows.first().map(|r| r.len()).unwrap_or(0))
+                    .map(|i| format!("c{}", i))
+                    .collect()
+            };
+            (names, limited_rows)
         } else {
-            limited_rows
+            let names: Vec<String> = select
+                .columns
+                .iter()
+                .map(|c| c.alias.clone().unwrap_or_else(|| c.name.clone()))
+                .collect();
+            let rows: Vec<Vec<Value>> = limited_rows
                 .into_iter()
                 .map(|row| {
                     select
@@ -335,8 +389,10 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                         })
                         .collect()
                 })
-                .collect()
+                .collect();
+            (names, rows)
         };
+        let (projected_column_names, projected_rows) = projected_with_names;
 
         // Step 6: DISTINCT — apply deduplication if select.distinct is set.
         // V380 F-12 fix: parser sets select.distinct but executor was ignoring it.
@@ -348,6 +404,93 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 .into_iter()
                 .filter(|row| seen.insert(row.clone()))
                 .collect()
+        } else {
+            projected_rows
+        };
+
+        // Step 7: ORDER BY — apply sort if select.order_by is non-empty.
+        // v3.8.0-rc2 Week 1 Day 7: ORDER BY is parsed but was never
+        // applied in the executor. This caused Q1, Q3, Q4, Q13, Q15
+        // to return rows in storage order rather than the requested
+        // ORDER BY order, breaking value assertions vs SQLite.
+        //
+        // Implementation: for each ORDER BY expression, we evaluate
+        // it against each row to get a sort key. We sort by a
+        // tuple of sort-key values using Vec<Value>'s default Ord
+        // implementation. Vec::sort_by is stable, so equal keys
+        // preserve input order.
+        let projected_rows: Vec<Vec<Value>> = if !select.order_by.is_empty() {
+            let mut keyed: Vec<(Vec<Value>, Vec<Value>)> = projected_rows
+                .into_iter()
+                .map(|row| {
+                    let keys: Vec<Value> = select
+                        .order_by
+                        .iter()
+                        .map(|ob_expr| {
+                            // ORDER BY column reference (e.g. "l_orderkey")
+                            // or a positional integer (e.g. "ORDER BY 1").
+                            match &ob_expr.expression {
+                                Expression::Identifier(col_name) => {
+                                    // Look up by name in projected_column_names.
+                                    if let Some(idx) = projected_column_names
+                                        .iter()
+                                        .position(|n| n == col_name)
+                                    {
+                                        if idx < row.len() {
+                                            return row[idx].clone();
+                                        }
+                                    }
+                                    // Fallback: try the underlying table's columns.
+                                    if let Some(idx) = table_info
+                                        .columns
+                                        .iter()
+                                        .position(|c| c.name == *col_name)
+                                    {
+                                        if idx < row.len() {
+                                            return row[idx].clone();
+                                        }
+                                    }
+                                    Value::Null
+                                }
+                                Expression::Literal(lit_str) => {
+                                    // Try parsing as positional integer (1-based).
+                                    if let Ok(idx_1based) = lit_str.parse::<usize>() {
+                                        let idx = idx_1based.saturating_sub(1);
+                                        if idx < row.len() {
+                                            return row[idx].clone();
+                                        }
+                                    }
+                                    // Otherwise try as a literal Value via Integer parse.
+                                    if let Ok(i) = lit_str.parse::<i64>() {
+                                        return Value::Integer(i);
+                                    }
+                                    Value::Null
+                                }
+                                _ => Value::Null, // unsupported in ORDER BY for now
+                            }
+                        })
+                        .collect();
+                    (keys, row)
+                })
+                .collect();
+                    // Sort. Each order_by has an `ascending` flag;
+                    // v3.8.0-rc2 Day 7: respect ASC/DESC. Q13 uses
+                    // DESC, which my earlier version ignored.
+                    keyed.sort_by(|a, b| {
+                        for (i, ob) in select.order_by.iter().enumerate() {
+                            let ord = if i < a.0.len() && i < b.0.len() {
+                                a.0[i].cmp(&b.0[i])
+                            } else {
+                                std::cmp::Ordering::Equal
+                            };
+                            let ord = if ob.ascending { ord } else { ord.reverse() };
+                            if ord != std::cmp::Ordering::Equal {
+                                return ord;
+                            }
+                        }
+                        std::cmp::Ordering::Equal
+                    });
+                    keyed.into_iter().map(|(_, row)| row).collect()
         } else {
             projected_rows
         };
