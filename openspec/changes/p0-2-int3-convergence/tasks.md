@@ -55,7 +55,8 @@ For each of the 13 remaining branches, add a sub-task below. Each sub-task is id
 - [ ] 4.6 **Branch 7: NotLike** — `eval_not_like(text, pattern)` (`!` of `eval_like`)
   - **DONE 2026-06-05 in PR #3200 (commit 4/5)**: The `Expression::NotLike` arm in `src/expr_utils.rs::evaluate_expression` now calls `executor::expr::sql_like_match` directly (the same function used by the `Like` arm). No new `pub fn eval_not_like` is needed; the negation is done in the arm with `!sql_like_match(...)`. Test `test_notlike_delegation` covers 3 inputs.
 - [ ] 4.7 **Branch 8: Between** — `eval_between(expr, low, high)` (uses `eval_binary_op` for the bounds)
-- [ ] 4.8 **Branch 9: CaseWhen** — `eval_case_when(whens, else_val)` (walks the `Vec<(cond, result)>`)
+- [ ] 4.8 **Branch 8: NotBetween** — `eval_not_between(value, low, high)` (inverse of `eval_between`)
+  - **DONE 2026-06-05 in PR #3200 (commit 5/6)**: `pub fn eval_not_between(value, low, high) -> Value` added to `crates/executor/src/expr/mod.rs` (built on compare_values, with `!` negation). The `Expression::NotBetween` arm in `src/expr_utils.rs::evaluate_expression` now calls it directly. Same behavior as the legacy `!compare_values(...)` pattern.
 - [ ] 4.9 **Branch 10: Identifier** — `eval_identifier(name, row, columns)` (column lookup with `Value::Null` fallback)
 - [ ] 4.10 **Branch 11: FunctionCall (EXTRACT and others)** — `eval_function_call(name, args)` (already mostly in `executor::expr::eval_fn`; verify all parser FunctionCall variants are covered)
 - [ ] 4.11 **Branch 12: UnaryOp** — `eval_unary_op(op, expr)` (`-`, `+`, `NOT`)
