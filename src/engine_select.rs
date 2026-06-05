@@ -302,14 +302,10 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                                     // path, the row is [group_key..., agg_value...].
                                     // Try alias-or-name in select.columns first.
                                     if let Expression::Identifier(col_name) = &ob_expr.expression {
-                                        if let Some(idx) = select
-                                            .columns
-                                            .iter()
-                                            .position(|c| {
-                                                c.alias.as_deref() == Some(col_name)
-                                                    || c.name == *col_name
-                                            })
-                                        {
+                                        if let Some(idx) = select.columns.iter().position(|c| {
+                                            c.alias.as_deref() == Some(col_name)
+                                                || c.name == *col_name
+                                        }) {
                                             if idx < row.len() {
                                                 return row[idx].clone();
                                             }
@@ -345,22 +341,21 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         } else {
             rows
         }; // Step 5: SELECT projection — apply each `select.columns` expression
-        // to the accumulated row and emit a row of projected values. This
-        // is what makes `SELECT EXTRACT(YEAR FROM col) AS o_year` actually
-        // return `o_year` instead of the full table schema.
-        //
-        // Sprint 2: SELECT * (no columns or a `*` entry) skips projection
-        // and returns the accumulated rows as-is — that's the existing
-        // behavior, just made explicit here.
-        //
-        // v3.8.0-rc2 Day 7: also collect the projected column NAMES so
-        // that the subsequent ORDER BY step can resolve column references
-        // by name (`ORDER BY l_orderkey`).
+           // to the accumulated row and emit a row of projected values. This
+           // is what makes `SELECT EXTRACT(YEAR FROM col) AS o_year` actually
+           // return `o_year` instead of the full table schema.
+           //
+           // Sprint 2: SELECT * (no columns or a `*` entry) skips projection
+           // and returns the accumulated rows as-is — that's the existing
+           // behavior, just made explicit here.
+           //
+           // v3.8.0-rc2 Day 7: also collect the projected column NAMES so
+           // that the subsequent ORDER BY step can resolve column references
+           // by name (`ORDER BY l_orderkey`).
         let is_star = select.columns.is_empty() || select.columns.iter().any(|c| c.name == "*");
         let projected_with_names: (Vec<String>, Vec<Vec<Value>>) = if is_star {
             let names: Vec<String> = if !table_info.columns.is_empty()
-                && table_info.columns.len()
-                    == limited_rows.first().map(|r| r.len()).unwrap_or(0)
+                && table_info.columns.len() == limited_rows.first().map(|r| r.len()).unwrap_or(0)
             {
                 table_info.columns.iter().map(|c| c.name.clone()).collect()
             } else {
@@ -432,19 +427,16 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                             match &ob_expr.expression {
                                 Expression::Identifier(col_name) => {
                                     // Look up by name in projected_column_names.
-                                    if let Some(idx) = projected_column_names
-                                        .iter()
-                                        .position(|n| n == col_name)
+                                    if let Some(idx) =
+                                        projected_column_names.iter().position(|n| n == col_name)
                                     {
                                         if idx < row.len() {
                                             return row[idx].clone();
                                         }
                                     }
                                     // Fallback: try the underlying table's columns.
-                                    if let Some(idx) = table_info
-                                        .columns
-                                        .iter()
-                                        .position(|c| c.name == *col_name)
+                                    if let Some(idx) =
+                                        table_info.columns.iter().position(|c| c.name == *col_name)
                                     {
                                         if idx < row.len() {
                                             return row[idx].clone();
@@ -473,24 +465,24 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     (keys, row)
                 })
                 .collect();
-                    // Sort. Each order_by has an `ascending` flag;
-                    // v3.8.0-rc2 Day 7: respect ASC/DESC. Q13 uses
-                    // DESC, which my earlier version ignored.
-                    keyed.sort_by(|a, b| {
-                        for (i, ob) in select.order_by.iter().enumerate() {
-                            let ord = if i < a.0.len() && i < b.0.len() {
-                                a.0[i].cmp(&b.0[i])
-                            } else {
-                                std::cmp::Ordering::Equal
-                            };
-                            let ord = if ob.ascending { ord } else { ord.reverse() };
-                            if ord != std::cmp::Ordering::Equal {
-                                return ord;
-                            }
-                        }
+            // Sort. Each order_by has an `ascending` flag;
+            // v3.8.0-rc2 Day 7: respect ASC/DESC. Q13 uses
+            // DESC, which my earlier version ignored.
+            keyed.sort_by(|a, b| {
+                for (i, ob) in select.order_by.iter().enumerate() {
+                    let ord = if i < a.0.len() && i < b.0.len() {
+                        a.0[i].cmp(&b.0[i])
+                    } else {
                         std::cmp::Ordering::Equal
-                    });
-                    keyed.into_iter().map(|(_, row)| row).collect()
+                    };
+                    let ord = if ob.ascending { ord } else { ord.reverse() };
+                    if ord != std::cmp::Ordering::Equal {
+                        return ord;
+                    }
+                }
+                std::cmp::Ordering::Equal
+            });
+            keyed.into_iter().map(|(_, row)| row).collect()
         } else {
             projected_rows
         };

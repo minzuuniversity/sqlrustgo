@@ -148,10 +148,10 @@ fn load_three_way(q_num: u32) -> Result<(u32, Vec<String>), String> {
     if !path.exists() {
         return Err(format!("expected file not found: {}", path.display()));
     }
-    let content = std::fs::read_to_string(&path)
-        .map_err(|e| format!("read {}: {}", path.display(), e))?;
-    let v: serde_json::Value = serde_json::from_str(&content)
-        .map_err(|e| format!("parse {}: {}", path.display(), e))?;
+    let content =
+        std::fs::read_to_string(&path).map_err(|e| format!("read {}: {}", path.display(), e))?;
+    let v: serde_json::Value =
+        serde_json::from_str(&content).map_err(|e| format!("parse {}: {}", path.display(), e))?;
     let rc = v["engines"]["sqlite"]["row_count"]
         .as_u64()
         .ok_or_else(|| format!("sqlite row_count missing in {}", path.display()))?
@@ -245,12 +245,8 @@ fn test_tpch_22_value_assertions() {
         let (actual_rc, actual_first3) = match exec_result {
             Ok(r) => {
                 let rc = r.rows.len() as u32;
-                let first3: Vec<String> = r
-                    .rows
-                    .iter()
-                    .take(3)
-                    .map(|row| format_row(row))
-                    .collect();
+                let first3: Vec<String> =
+                    r.rows.iter().take(3).map(|row| format_row(row)).collect();
                 (rc, first3)
             }
             Err(e) => {
@@ -273,7 +269,12 @@ fn test_tpch_22_value_assertions() {
         let rows_ok = actual_sorted == expected_sorted;
         if rc_ok && rows_ok {
             pass += 1;
-            eprintln!("  Q{}: OK rc={} first3.len={}", q_num, actual_rc, actual_first3.len());
+            eprintln!(
+                "  Q{}: OK rc={} first3.len={}",
+                q_num,
+                actual_rc,
+                actual_first3.len()
+            );
         } else {
             fail += 1;
             let detail = format!(
