@@ -14,3 +14,11 @@ artifacts/coverage/
 Cargo.lock
 .worktrees/
 v1.0.0/api-doc/*
+# GitNexus tool artifacts (auto-injected, not for tracking)
+.gitnexus/
+CLAUDE.md
+.claude/skills/
+
+# Server LOAD DATA side effects: .json (table metadata dumps) and .wal (WAL files) emitted into data_dir at runtime
+tests/data/tpch-sf001/*.json
+tests/data/tpch-sf001/*.wal

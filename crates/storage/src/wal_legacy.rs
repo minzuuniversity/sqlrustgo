@@ -250,6 +250,22 @@ impl WalWriter {
         }
     }
 
+    /// Returns true if batch mode is enabled (no per-append flush).
+    pub fn is_batch_mode(&self) -> bool {
+        self.batch_mode
+    }
+
+    /// Returns the current auto-flush threshold used in batch mode.
+    pub fn flush_threshold(&self) -> usize {
+        self.flush_threshold
+    }
+
+    /// Set the auto-flush threshold (records between auto-flushes in batch mode).
+    /// Has no effect when batch mode is disabled.
+    pub fn set_flush_threshold(&mut self, threshold: usize) {
+        self.flush_threshold = threshold;
+    }
+
     /// Append an entry to the WAL
     pub fn append(&mut self, entry: &WalEntry) -> std::io::Result<u64> {
         let lsn = self.lsn;
