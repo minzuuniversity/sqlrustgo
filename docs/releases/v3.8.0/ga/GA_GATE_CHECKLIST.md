@@ -135,7 +135,7 @@
 | L6-1 | GA Gate Report exists | `ls docs/releases/v3.8.0/GA_GATE_REPORT.md` | 文件存在 |
 | L6-2 | Changelog complete | `scripts/docs/changelog_check.sh` | 所有 PR 已记录 |
 | L6-3 | Migration guide | `ls docs/releases/v3.8.0/MIGRATION_GUIDE.md` | 文件存在 |
-| L6-4 | API reference | `ls docs/releases/v3.8.0/API_REFERENCE.md` | 文件存在 |
+| L6-4 | API reference | `ls docs/releases/v3.8.0/API_DOCUMENTATION.md` | 文件存在 |
 | L6-5 | SSOT cross-check | `bash scripts/docs/ssot_cross_check.sh` | PASS |
 
 ---
