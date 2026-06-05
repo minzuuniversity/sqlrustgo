@@ -2047,7 +2047,9 @@ impl Parser {
                 | Some(Token::DateAdd)
                 | Some(Token::DateSub)
                 | Some(Token::Substring)
-                | Some(Token::Position) => {
+                | Some(Token::Position)
+                | Some(Token::Text)
+                | Some(Token::Interval) => {
                     let name = match self.current() {
                         Some(Token::Left) => "LEFT",
                         Some(Token::Right) => "RIGHT",
@@ -2059,6 +2061,8 @@ impl Parser {
                         Some(Token::DateSub) => "DATE_SUB",
                         Some(Token::Substring) => "SUBSTRING",
                         Some(Token::Position) => "POSITION",
+                        Some(Token::Text) => "CHAR",
+                        Some(Token::Interval) => "INTERVAL",
                         _ => unreachable!(),
                     };
                     self.next();
@@ -2132,6 +2136,34 @@ impl Parser {
                         });
                         continue;
                     }
+                    if name == "SUBSTRING" {
+                        // SUBSTRING(str [FROM n] [FOR len]) — ANSI form
+                        let str_expr = self.parse_primary_expression()?;
+                        let mut args = vec![str_expr];
+                        if matches!(self.current(), Some(Token::From)) {
+                            self.next(); // consume FROM
+                            args.push(self.parse_expression()?);
+                            if matches!(self.current(), Some(Token::For)) {
+                                self.next(); // consume FOR
+                                args.push(self.parse_expression()?);
+                            }
+                        } else if matches!(self.current(), Some(Token::Comma)) {
+                            // MySQL comma form: SUBSTRING(str, n) or SUBSTRING(str, n, len)
+                            self.next();
+                            args.push(self.parse_expression()?);
+                            if matches!(self.current(), Some(Token::Comma)) {
+                                self.next();
+                                args.push(self.parse_expression()?);
+                            }
+                        }
+                        self.expect(Token::RParen)?;
+                        columns.push(SelectColumn {
+                            name: format!("{:?}", Expression::FunctionCall(name.to_string(), args.clone())),
+                            alias: None,
+                            expression: Some(Expression::FunctionCall(name.to_string(), args)),
+                        });
+                        continue;
+                    }
                     let mut args = Vec::new();
                     if !matches!(self.current(), Some(Token::RParen)) {
                         loop {
@@ -2187,6 +2219,15 @@ impl Parser {
                                         self.next();
                                         (format!("{}.level", table), true, false)
                                     }
+                                    // `table.*` — qualified star (e.g.
+                                    // `SELECT orders.* FROM orders JOIN users`).
+                                    // Emit a Star column with a special name
+                                    // so the executor can resolve it from
+                                    // the joined tables.
+                                    Some(Token::Star) => {
+                                        self.next();
+                                        (format!("{}.*", table), true, false)
+                                    }
                                     Some(t) => {
                                         return Err(format!("Expected column name, got {:?}", t))
                                     }
@@ -2213,6 +2254,9 @@ impl Parser {
                             // `||` is `Token::Or` (string concat) — operator in
                             // expression position.
                             || matches!(self.current(), Some(Token::Or))
+                            // JSON path operators (MySQL 5.7).
+                            || matches!(self.current(), Some(Token::JsonArrow))
+                            || matches!(self.current(), Some(Token::JsonArrowText))
                     } else {
                         matches!(self.peek(), Some(Token::Plus))
                             || matches!(self.peek(), Some(Token::Minus))
@@ -2228,6 +2272,9 @@ impl Parser {
                             || matches!(self.peek(), Some(Token::LParen))
                             // `||` peek — see above.
                             || matches!(self.peek(), Some(Token::Or))
+                            // JSON path operators (MySQL 5.7).
+                            || matches!(self.peek(), Some(Token::JsonArrow))
+                            || matches!(self.peek(), Some(Token::JsonArrowText))
                     };
 
                     if is_operator {
@@ -2247,6 +2294,9 @@ impl Parser {
                                 Some(Token::LessEqual) => "<=",
                                 // `||` is `Token::Or` — string concat.
                                 Some(Token::Or) => "||",
+                                // JSON path operators (MySQL 5.7).
+                                Some(Token::JsonArrow) => "->",
+                                Some(Token::JsonArrowText) => "->>",
                                 _ => return Err("Expected operator".to_string()),
                             };
                             self.next();
@@ -2972,14 +3022,41 @@ impl Parser {
             self.next();
         }
 
-        // Parse joined table name
-        let table = match self.current().cloned() {
-            Some(Token::Identifier(name)) => {
+        // Parse joined table name OR subquery (e.g. `JOIN (SELECT ...) AS sub`).
+        let table = if matches!(self.current(), Some(Token::LParen)) {
+            // Subquery in JOIN: parse the parenthesized SELECT, then expect
+            // AS alias. We register the subquery in DERIVED_SUBQUERIES under
+            // a synthetic name "__subq_<alias>" and use that as the table
+            // name so the executor can materialize it before the join.
+            self.next(); // consume LParen
+            let subquery = self.parse_select_statement()?;
+            self.expect(Token::RParen)?;
+            // Expect AS alias (or just bare alias, MySQL allows both).
+            if matches!(self.current(), Some(Token::As)) {
                 self.next();
-                name
             }
-            Some(t) => return Err(format!("Expected table name, got {:?}", t)),
-            None => return Err("Expected table name".to_string()),
+            let alias_name = match self.current().cloned() {
+                Some(Token::Identifier(name)) => {
+                    self.next();
+                    name
+                }
+                _ => return Err("Expected alias after JOIN subquery".to_string()),
+            };
+            let synthetic_name = format!("__subq_{}", alias_name);
+            DERIVED_SUBQUERIES.with(|cell| {
+                cell.borrow_mut()
+                    .insert(synthetic_name.clone(), Box::new(subquery));
+            });
+            synthetic_name
+        } else {
+            match self.current().cloned() {
+                Some(Token::Identifier(name)) => {
+                    self.next();
+                    name
+                }
+                Some(t) => return Err(format!("Expected table name, got {:?}", t)),
+                None => return Err("Expected table name".to_string()),
+            }
         };
 
         // Check for table alias (e.g., `JOIN orders o`).
@@ -3289,10 +3366,41 @@ impl Parser {
     /// Supports: comparison operators (=, !=, >, <, >=, <=)
     /// Logical operators: AND, OR
     fn parse_expression(&mut self) -> Result<Expression, String> {
-        self.parse_or_expression()
+        // Try JSON path first (column -> '$.path' or column ->> '$.path').
+        // Falls through to OR expression if no JSON arrow.
+        let mut left = self.parse_or_expression()?;
+        while matches!(self.current(), Some(Token::JsonArrow) | Some(Token::JsonArrowText)) {
+            let op = match self.current() {
+                Some(Token::JsonArrow) => "->",
+                Some(Token::JsonArrowText) => "->>",
+                _ => unreachable!(),
+            };
+            self.next();
+            let right = self.parse_or_expression()?;
+            left = Expression::BinaryOp(Box::new(left), op.to_string(), Box::new(right));
+        }
+        Ok(left)
     }
 
     /// Parse OR expression (lowest precedence)
+    /// Parse JSON path expression: `column -> '$.path'` or `column ->> '$.path'`
+    /// (MySQL 5.7 JSON operators). Emits a BinaryOp with the operator
+    /// "->" or "->>" so the executor can apply JSON_EXTRACT/JSON_UNQUOTE.
+    fn parse_json_path_expression(&mut self) -> Result<Expression, String> {
+        let mut left = self.parse_multiplicative_expression()?;
+        while matches!(self.current(), Some(Token::JsonArrow) | Some(Token::JsonArrowText)) {
+            let op = match self.current() {
+                Some(Token::JsonArrow) => "->",
+                Some(Token::JsonArrowText) => "->>",
+                _ => unreachable!(),
+            };
+            self.next();
+            let right = self.parse_primary_expression()?;
+            left = Expression::BinaryOp(Box::new(left), op.to_string(), Box::new(right));
+        }
+        Ok(left)
+    }
+
     fn parse_or_expression(&mut self) -> Result<Expression, String> {
         let mut left = self.parse_and_expression()?;
 
@@ -3731,6 +3839,106 @@ impl Parser {
                     ));
                 }
                 self.next();
+                // DATE_ADD/DATE_SUB(expr, INTERVAL n unit) — MySQL 5.7
+                // special form (mirrors the Identifier arm special form).
+                if name == "DATE_ADD" || name == "DATE_SUB" {
+                    let date_expr = self.parse_primary_expression()?;
+                    if !matches!(self.current(), Some(Token::Comma)) {
+                        return Err(format!(
+                            "Expected ',' in {}(...), got {:?}",
+                            name, self.current()
+                        ));
+                    }
+                    self.next(); // consume Comma
+                    if !matches!(self.current(), Some(Token::Interval)) {
+                        return Err(format!(
+                            "Expected INTERVAL in {}(...), got {:?}",
+                            name, self.current()
+                        ));
+                    }
+                    self.next(); // consume INTERVAL
+                    let n_expr = self.parse_primary_expression()?;
+                    let unit = match self.current() {
+                        Some(Token::Identifier(u)) => {
+                            let s = u.clone();
+                            self.next();
+                            s
+                        }
+                        _ => {
+                            return Err(format!(
+                                "Expected unit (DAY/MONTH/...) after INTERVAL n in {}(...)",
+                                name
+                            ));
+                        }
+                    };
+                    self.expect(Token::RParen)?;
+                    return Ok(Expression::FunctionCall(
+                        name.to_string(),
+                        vec![date_expr, n_expr, Expression::Literal(unit)],
+                    ));
+                }
+                // POSITION(needle IN haystack) — MySQL 5.7 special form.
+                if name == "POSITION" {
+                    let needle = self.parse_primary_expression()?;
+                    if !matches!(self.current(), Some(Token::In)) {
+                        return Err(format!(
+                            "Expected IN after POSITION needle, got {:?}",
+                            self.current()
+                        ));
+                    }
+                    self.next(); // consume IN
+                    let haystack = self.parse_primary_expression()?;
+                    self.expect(Token::RParen)?;
+                    return Ok(Expression::FunctionCall(
+                        "POSITION".to_string(),
+                        vec![needle, haystack],
+                    ));
+                }
+                // SUBSTRING(str [FROM n] [FOR len]) — ANSI/SQL standard form
+                // (MySQL uses SUBSTRING(str, n) or SUBSTRING(str FROM n) for the
+                // two-arg form, plus SUBSTRING(str, n, len) for the three-arg
+                // form). Dispatch the FROM/FOR form here so the general
+                // arg-parsing loop doesn't choke on the keywords.
+                if name == "SUBSTRING" {
+                    let str_expr = self.parse_primary_expression()?;
+                    if matches!(self.current(), Some(Token::From)) {
+                        self.next(); // consume FROM
+                        let from_expr = self.parse_primary_expression()?;
+                        if matches!(self.current(), Some(Token::For)) {
+                            self.next(); // consume FOR
+                            let for_expr = self.parse_primary_expression()?;
+                            self.expect(Token::RParen)?;
+                            return Ok(Expression::FunctionCall(
+                                "SUBSTRING".to_string(),
+                                vec![str_expr, from_expr, for_expr],
+                            ));
+                        }
+                        self.expect(Token::RParen)?;
+                        return Ok(Expression::FunctionCall(
+                            "SUBSTRING".to_string(),
+                            vec![str_expr, from_expr],
+                        ));
+                    }
+                    // Comma-separated form: SUBSTRING(str, n) or SUBSTRING(str, n, len)
+                    if !matches!(self.current(), Some(Token::RParen)) {
+                        if !matches!(self.current(), Some(Token::Comma)) {
+                            return Err(format!(
+                                "Expected ',' or FROM in SUBSTRING, got {:?}",
+                                self.current()
+                            ));
+                        }
+                        self.next(); // consume Comma
+                        let mut args = vec![str_expr, self.parse_expression()?];
+                        if matches!(self.current(), Some(Token::Comma)) {
+                            self.next();
+                            args.push(self.parse_expression()?);
+                        }
+                        self.expect(Token::RParen)?;
+                        return Ok(Expression::FunctionCall("SUBSTRING".to_string(), args));
+                    }
+                    self.expect(Token::RParen)?;
+                    return Ok(Expression::FunctionCall("SUBSTRING".to_string(), vec![str_expr]));
+                }
                 let mut args = Vec::new();
                 if !matches!(self.current(), Some(Token::RParen)) {
                     loop {
@@ -3933,10 +4141,54 @@ impl Parser {
                         self.next(); // consume IN
                         let haystack = self.parse_primary_expression()?;
                         self.expect(Token::RParen)?;
-                        return Ok(Expression::FunctionCall(
-                            "POSITION".to_string(),
-                            vec![needle, haystack],
-                        ));
+                        return Ok(Expression::FunctionCall("POSITION".to_string(), vec![needle, haystack]));
+                    }
+                    // GROUP_CONCAT([DISTINCT] expr [ORDER BY expr [ASC|DESC]] [SEPARATOR str])
+                    // — MySQL 5.7 aggregate special form. Emit args as a
+                    // flat vec, with optional DISTINCT/ORDER BY/SEPARATOR
+                    // encoded as sentinels so the executor can dispatch.
+                    //   GROUP_CONCAT(x)              -> [Literal("__NO_DISTINCT__"), x]
+                    //   GROUP_CONCAT(DISTINCT x)     -> [Literal("__DISTINCT__"), x]
+                    //   GROUP_CONCAT(DISTINCT x ORDER BY y)        -> [..., Literal("__ORDER_BY__"), y]
+                    //   GROUP_CONCAT(DISTINCT x SEPARATOR s)        -> [..., Literal("__SEPARATOR__"), s]
+                    if name.to_uppercase() == "GROUP_CONCAT" {
+                        let mut gc_args = Vec::new();
+                        let _distinct = if matches!(self.current(), Some(Token::Distinct)) {
+                            self.next();
+                            gc_args.push(Expression::Literal("__DISTINCT__".to_string()));
+                            true
+                        } else {
+                            gc_args.push(Expression::Literal("__NO_DISTINCT__".to_string()));
+                            false
+                        };
+                        if !matches!(self.current(), Some(Token::RParen)) {
+                            gc_args.push(self.parse_expression()?);
+                        }
+                        // Optional ORDER BY clause
+                        if matches!(self.current(), Some(Token::Order)) {
+                            self.next(); // consume ORDER
+                            self.expect(Token::By)?;
+                            gc_args.push(Expression::Literal("__ORDER_BY__".to_string()));
+                            gc_args.push(self.parse_expression()?);
+                            // Optional ASC/DESC after ORDER BY expr
+                            if matches!(self.current(), Some(Token::Asc)) {
+                                self.next();
+                                gc_args.push(Expression::Literal("__ASC__".to_string()));
+                            } else if matches!(self.current(), Some(Token::Desc)) {
+                                self.next();
+                                gc_args.push(Expression::Literal("__DESC__".to_string()));
+                            }
+                        }
+                        // Optional SEPARATOR clause
+                        if matches!(self.current(), Some(Token::Identifier(ref sep_ident))
+                            if sep_ident.to_uppercase() == "SEPARATOR")
+                        {
+                            self.next(); // consume SEPARATOR
+                            gc_args.push(Expression::Literal("__SEPARATOR__".to_string()));
+                            gc_args.push(self.parse_expression()?);
+                        }
+                        self.expect(Token::RParen)?;
+                        return Ok(Expression::FunctionCall("GROUP_CONCAT".to_string(), gc_args));
                     }
                     let mut args = Vec::new();
                     if !matches!(self.current(), Some(Token::RParen)) {
@@ -4232,14 +4484,31 @@ impl Parser {
                 Ok(Expression::Identifier("level".to_string()))
             }
             // MySQL 5.7 type names (CHAR, TEXT, INT, FLOAT, BOOLEAN) used
-            // as bare identifiers in expression position. E.g.
-            // `CONVERT(price, CHAR)` — the second argument is the
-            // `CHAR` type name but the parser can't tell at this
-            // stage; we emit an Identifier and let the executor
+            // both as bare identifiers (e.g. `CONVERT(price, CHAR)`) and
+            // as function names (e.g. `CHAR(65, 66, 67)` to produce the
+            // string "ABC"). When followed by `(`, treat as a function
+            // call; otherwise emit an Identifier and let the executor
             // interpret it via the enclosing function dispatch.
             Some(Token::Text) => {
+                if matches!(self.peek(), Some(Token::LParen)) {
+                    self.next();
+                    self.next(); // consume LParen
+                    let mut args = Vec::new();
+                    if !matches!(self.current(), Some(Token::RParen)) {
+                        loop {
+                            args.push(self.parse_expression()?);
+                            if matches!(self.current(), Some(Token::Comma)) {
+                                self.next();
+                            } else {
+                                break;
+                            }
+                        }
+                    }
+                    self.expect(Token::RParen)?;
+                    return Ok(Expression::FunctionCall("CHAR".to_string(), args));
+                }
                 self.next();
-                Ok(Expression::Identifier("TEXT".to_string()))
+                Ok(Expression::Identifier("CHAR".to_string()))
             }
             // MySQL 5.7 INTERVAL keyword used as a bare identifier
             // (DATE_ADD(expr, INTERVAL n unit) parses INTERVAL via
@@ -4247,7 +4516,27 @@ impl Parser {
             // suffix is matched as a regular identifier; INTERVAL
             // itself is also accepted for symmetry with other
             // reserved-keyword-as-identifier fallbacks).
+            // When followed by `(`, treat as a function call
+            // (e.g. `INTERVAL(5, 1, 3, 5, 7, 9)` returns the index
+            // of the first value > 5 in the list).
             Some(Token::Interval) => {
+                if matches!(self.peek(), Some(Token::LParen)) {
+                    self.next();
+                    self.next(); // consume LParen
+                    let mut args = Vec::new();
+                    if !matches!(self.current(), Some(Token::RParen)) {
+                        loop {
+                            args.push(self.parse_expression()?);
+                            if matches!(self.current(), Some(Token::Comma)) {
+                                self.next();
+                            } else {
+                                break;
+                            }
+                        }
+                    }
+                    self.expect(Token::RParen)?;
+                    return Ok(Expression::FunctionCall("INTERVAL".to_string(), args));
+                }
                 self.next();
                 Ok(Expression::Identifier("INTERVAL".to_string()))
             }
