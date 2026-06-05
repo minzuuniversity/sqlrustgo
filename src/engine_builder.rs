@@ -34,6 +34,7 @@ impl ExecutionEngine<MemoryStorage> {
             default_isolation: TmIsolationLevel::default(),
             current_role: None,
             checkpoint_manager: None,
+            parallel_degree: 1,
         }
     }
 
@@ -50,6 +51,7 @@ impl ExecutionEngine<MemoryStorage> {
             default_isolation: TmIsolationLevel::default(),
             current_role: None,
             checkpoint_manager: None,
+            parallel_degree: 1,
         }
     }
 
@@ -66,6 +68,7 @@ impl ExecutionEngine<MemoryStorage> {
             default_isolation: TmIsolationLevel::default(),
             current_role: None,
             checkpoint_manager: None,
+            parallel_degree: 1,
         }
     }
 }
@@ -93,6 +96,7 @@ impl ExecutionEngine<MemoryStorage> {
             default_isolation: TmIsolationLevel::default(),
             current_role: None,
             checkpoint_manager: None,
+            parallel_degree: 1,
         }
     }
 }
@@ -125,6 +129,7 @@ impl ExecutionEngine<MemoryStorage> {
             default_isolation: TmIsolationLevel::default(),
             current_role: None,
             checkpoint_manager: None,
+            parallel_degree: 1,
         })
     }
 
@@ -152,6 +157,7 @@ impl ExecutionEngine<MemoryStorage> {
             default_isolation: TmIsolationLevel::default(),
             current_role: None,
             checkpoint_manager: None,
+            parallel_degree: 1,
         })
     }
 
@@ -180,6 +186,7 @@ impl ExecutionEngine<MemoryStorage> {
             default_isolation: TmIsolationLevel::default(),
             current_role: None,
             checkpoint_manager: checkpoint_manager.map(|cp| Arc::new(RwLock::new(cp))),
+            parallel_degree: 1,
         })
     }
 
