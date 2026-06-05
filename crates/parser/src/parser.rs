@@ -594,6 +594,11 @@ pub enum Expression {
     Identifier(String),
     BinaryOp(Box<Expression>, String, Box<Expression>),
     Subquery(Box<SelectStatement>),
+    /// Postfix field access on a parenthesized expression: `(subq).col`.
+    /// Used for things like `(ST_dump(...).geom)` and `(SELECT ...).col`.
+    /// The executor can dispatch on the (Subquery, field) pair to extract
+    /// the named field from the subquery result.
+    SubqueryField(Box<Expression>, String),
     In(Box<Expression>, Box<SelectStatement>),
     NotIn(Box<Expression>, Box<SelectStatement>),
     InList(Box<Expression>, Vec<Expression>), // MySQL: col IN (1, 2, 3)
@@ -2034,6 +2039,63 @@ impl Parser {
                         expression: Some(Expression::Literal(val.to_string())),
                     });
                 }
+                // DATE keyword: can be a function call `DATE(x)` or a column
+                // name (e.g. `AS date`). Check LParen to disambiguate.
+                Some(Token::Date) => {
+                    if matches!(self.peek(), Some(Token::LParen)) {
+                        // DATE(x) — treat as function call
+                        self.next(); // consume DATE
+                        self.next(); // consume LParen
+                        let mut args = Vec::new();
+                        if !matches!(self.current(), Some(Token::RParen)) {
+                            loop {
+                                args.push(self.parse_expression()?);
+                                if matches!(self.current(), Some(Token::Comma)) {
+                                    self.next();
+                                } else {
+                                    break;
+                                }
+                            }
+                        }
+                        let alias = if matches!(self.current(), Some(Token::As)) {
+                            self.next();
+                            if let Some(Token::Identifier(n)) = self.current() {
+                                let a = n.clone();
+                                self.next();
+                                Some(a)
+                            } else {
+                                None
+                            }
+                        } else {
+                            None
+                        };
+                        columns.push(SelectColumn {
+                            name: format!("{:?}", Expression::FunctionCall("DATE".to_string(), args.clone())),
+                            alias,
+                            expression: Some(Expression::FunctionCall("DATE".to_string(), args)),
+                        });
+                    } else {
+                        // DATE as column name (e.g. `AS date` or `GROUP BY date`)
+                        self.next();
+                        let alias = if matches!(self.current(), Some(Token::As)) {
+                            self.next();
+                            if let Some(Token::Identifier(n)) = self.current() {
+                                let a = n.clone();
+                                self.next();
+                                Some(a)
+                            } else {
+                                None
+                            }
+                        } else {
+                            None
+                        };
+                        columns.push(SelectColumn {
+                            name: "date".to_string(),
+                            alias,
+                            expression: Some(Expression::Identifier("date".to_string())),
+                        });
+                    }
+                }
                 // MySQL 5.7: LEFT/RIGHT/INSERT/REPLACE/IF/CONVERT/DATE_ADD/DATE_SUB/SUBSTRING/POSITION
                 // as scalar functions in the SELECT list. Same logic as
                 // parse_primary_expression.
@@ -2083,16 +2145,14 @@ impl Parser {
                         if !matches!(self.current(), Some(Token::Comma)) {
                             return Err(format!(
                                 "Expected ',' in {}(...), got {:?}",
-                                name,
-                                self.current()
+                                name, self.current()
                             ));
                         }
                         self.next(); // consume Comma
                         if !matches!(self.current(), Some(Token::Interval)) {
                             return Err(format!(
                                 "Expected INTERVAL in {}(...), got {:?}",
-                                name,
-                                self.current()
+                                name, self.current()
                             ));
                         }
                         self.next(); // consume INTERVAL
@@ -2111,13 +2171,23 @@ impl Parser {
                             }
                         };
                         self.expect(Token::RParen)?;
+                        // Handle optional AS alias
+                        let alias = if matches!(self.current(), Some(Token::As)) {
+                            self.next();
+                            if let Some(Token::Identifier(n)) = self.current() {
+                                let a = n.clone();
+                                self.next();
+                                Some(a)
+                            } else {
+                                None
+                            }
+                        } else {
+                            None
+                        };
                         let args = vec![date_expr, n_expr, Expression::Literal(unit)];
                         columns.push(SelectColumn {
-                            name: format!(
-                                "{:?}",
-                                Expression::FunctionCall(name.to_string(), args.clone())
-                            ),
-                            alias: None,
+                            name: format!("{:?}", Expression::FunctionCall(name.to_string(), args.clone())),
+                            alias,
                             expression: Some(Expression::FunctionCall(name.to_string(), args)),
                         });
                         continue;
@@ -2135,10 +2205,7 @@ impl Parser {
                         self.expect(Token::RParen)?;
                         let args = vec![needle, haystack];
                         columns.push(SelectColumn {
-                            name: format!(
-                                "{:?}",
-                                Expression::FunctionCall(name.to_string(), args.clone())
-                            ),
+                            name: format!("{:?}", Expression::FunctionCall(name.to_string(), args.clone())),
                             alias: None,
                             expression: Some(Expression::FunctionCall(name.to_string(), args)),
                         });
@@ -2166,10 +2233,7 @@ impl Parser {
                         }
                         self.expect(Token::RParen)?;
                         columns.push(SelectColumn {
-                            name: format!(
-                                "{:?}",
-                                Expression::FunctionCall(name.to_string(), args.clone())
-                            ),
+                            name: format!("{:?}", Expression::FunctionCall(name.to_string(), args.clone())),
                             alias: None,
                             expression: Some(Expression::FunctionCall(name.to_string(), args)),
                         });
@@ -3380,10 +3444,7 @@ impl Parser {
         // Try JSON path first (column -> '$.path' or column ->> '$.path').
         // Falls through to OR expression if no JSON arrow.
         let mut left = self.parse_or_expression()?;
-        while matches!(
-            self.current(),
-            Some(Token::JsonArrow) | Some(Token::JsonArrowText)
-        ) {
+        while matches!(self.current(), Some(Token::JsonArrow) | Some(Token::JsonArrowText)) {
             let op = match self.current() {
                 Some(Token::JsonArrow) => "->",
                 Some(Token::JsonArrowText) => "->>",
@@ -3392,6 +3453,25 @@ impl Parser {
             self.next();
             let right = self.parse_or_expression()?;
             left = Expression::BinaryOp(Box::new(left), op.to_string(), Box::new(right));
+        }
+        // Postfix field access: `(expr).col` (e.g. `f(x).col` where f(x) is a
+        // function call result with named field access). Mirrors the
+        // JSON-path dispatch above.
+        while matches!(self.current(), Some(Token::Dot)) {
+            self.next();
+            let field = match self.current().cloned() {
+                Some(Token::Identifier(name)) => {
+                    self.next();
+                    name
+                }
+                Some(Token::Level) => {
+                    self.next();
+                    "level".to_string()
+                }
+                Some(t) => return Err(format!("Expected field name after '.', got {:?}", t)),
+                None => return Err("Expected field name after '.'".to_string()),
+            };
+            left = Expression::SubqueryField(Box::new(left), field);
         }
         Ok(left)
     }
@@ -3402,10 +3482,7 @@ impl Parser {
     /// "->" or "->>" so the executor can apply JSON_EXTRACT/JSON_UNQUOTE.
     fn parse_json_path_expression(&mut self) -> Result<Expression, String> {
         let mut left = self.parse_multiplicative_expression()?;
-        while matches!(
-            self.current(),
-            Some(Token::JsonArrow) | Some(Token::JsonArrowText)
-        ) {
+        while matches!(self.current(), Some(Token::JsonArrow) | Some(Token::JsonArrowText)) {
             let op = match self.current() {
                 Some(Token::JsonArrow) => "->",
                 Some(Token::JsonArrowText) => "->>",
@@ -3436,23 +3513,185 @@ impl Parser {
     /// the boundary (e.g. the `* fact` in the example) are left for
     /// the outer expression to pick up.
     fn parse_expression_in_parens(&mut self, _depth: i32) -> Result<Expression, String> {
-        // Walk tokens counting paren depth; once we return to depth 0
-        // (the matching RParen), stop and consume it. We build a single
-        // expression by re-parsing the inner tokens through the normal
-        // expression grammar.
-        //
-        // The inner expression is parsed by `parse_or_expression` which
-        // does NOT track paren depth. The fix is to: at the column
-        // level (the caller of this function), we have already seen
-        // LParen. We consume it here, then parse the inner content,
-        // then consume the matching RParen. The inner content parsing
-        // is delegated to `parse_or_expression`, which is greedy; we
-        // accept this and let the column loop LParen handler unwrap
-        // any trailing operator (`* fact` etc.) explicitly.
+        // Depth-aware paren tracking: the inner function call's args loop
+        // calls parse_expression which greedily consumes RParens. So when
+        // we see an RParen, we don't know if it's the outer matching one
+        // or an inner function's closer. Track paren depth: increment on
+        // LParen, decrement on RParen, only consume when depth == 0.
         self.next(); // consume the opening LParen
-        let expr = self.parse_or_expression_until_close()?;
-        self.expect(Token::RParen)?;
+        let mut depth: i32 = 0;
+        let mut expr = self.parse_or_expression_until_close_with_depth(&mut depth)?;
+        // The inner expression may have consumed RParens for inner function
+        // calls. Walk forward consuming RParens until depth == 0.
+        loop {
+            if matches!(self.current(), Some(Token::RParen)) && depth == 0 {
+                self.next();
+                break;
+            } else if matches!(self.current(), Some(Token::RParen)) {
+                self.next();
+                depth -= 1;
+            } else {
+                // Postfix Dot handling: (expr).col
+                if matches!(self.current(), Some(Token::Dot)) {
+                    self.next();
+                    let field = match self.current().cloned() {
+                        Some(Token::Identifier(name)) => {
+                            self.next();
+                            name
+                        }
+                        Some(Token::Level) => {
+                            self.next();
+                            "level".to_string()
+                        }
+                        Some(t) => return Err(format!("Expected field name after '.', got {:?}", t)),
+                        None => return Err("Expected field name after '.'".to_string()),
+                    };
+                    expr = Expression::SubqueryField(Box::new(expr), field);
+                } else {
+                    return Err(format!(
+                        "Expected RParen in parens, depth={}, current={:?}",
+                        depth, self.current()
+                    ));
+                }
+            }
+        }
         Ok(expr)
+    }
+
+    /// Like `parse_or_expression_until_close` but tracks paren depth
+    /// by incrementing on LParen and decrementing on RParen. The depth
+    /// is used by the caller to know when the matching outer RParen
+    /// has been reached (depth == 0 again).
+    fn parse_or_expression_until_close_with_depth(
+        &mut self,
+        depth: &mut i32,
+    ) -> Result<Expression, String> {
+        let mut left = self.parse_and_expression_until_close_with_depth(depth)?;
+        while matches!(self.current(), Some(Token::Or)) {
+            self.next();
+            let right = self.parse_and_expression_until_close_with_depth(depth)?;
+            left = Expression::BinaryOp(Box::new(left), "OR".to_string(), Box::new(right));
+        }
+        Ok(left)
+    }
+
+    fn parse_and_expression_until_close_with_depth(
+        &mut self,
+        depth: &mut i32,
+    ) -> Result<Expression, String> {
+        let mut left =
+            self.parse_comparison_expression_until_close_with_depth(depth)?;
+        while matches!(self.current(), Some(Token::And)) {
+            self.next();
+            let right =
+                self.parse_comparison_expression_until_close_with_depth(depth)?;
+            left = Expression::BinaryOp(Box::new(left), "AND".to_string(), Box::new(right));
+        }
+        Ok(left)
+    }
+
+    fn parse_comparison_expression_until_close_with_depth(
+        &mut self,
+        depth: &mut i32,
+    ) -> Result<Expression, String> {
+        let mut left = self.parse_additive_expression_until_close_with_depth(depth)?;
+        // Comparison operators: =, !=, <, >, <=, >=
+        while matches!(
+            self.current(),
+            Some(Token::Equal)
+                | Some(Token::NotEqual)
+                | Some(Token::Less)
+                | Some(Token::Greater)
+                | Some(Token::LessEqual)
+                | Some(Token::GreaterEqual)
+        ) {
+            let op = match self.current() {
+                Some(Token::Equal) => "=",
+                Some(Token::NotEqual) => "!=",
+                Some(Token::Less) => "<",
+                Some(Token::Greater) => ">",
+                Some(Token::LessEqual) => "<=",
+                Some(Token::GreaterEqual) => ">=",
+                _ => unreachable!(),
+            };
+            self.next();
+            let right = self.parse_additive_expression_until_close_with_depth(depth)?;
+            left = Expression::BinaryOp(Box::new(left), op.to_string(), Box::new(right));
+        }
+        Ok(left)
+    }
+
+    fn parse_additive_expression_until_close_with_depth(
+        &mut self,
+        depth: &mut i32,
+    ) -> Result<Expression, String> {
+        let mut left = self.parse_multiplicative_expression_until_close_with_depth(depth)?;
+        while matches!(self.current(), Some(Token::Plus) | Some(Token::Minus)) {
+            let op = match self.current() {
+                Some(Token::Plus) => "+",
+                Some(Token::Minus) => "-",
+                _ => unreachable!(),
+            };
+            self.next();
+            let right = self.parse_multiplicative_expression_until_close_with_depth(depth)?;
+            left = Expression::BinaryOp(Box::new(left), op.to_string(), Box::new(right));
+        }
+        Ok(left)
+    }
+
+    fn parse_multiplicative_expression_until_close_with_depth(
+        &mut self,
+        depth: &mut i32,
+    ) -> Result<Expression, String> {
+        if matches!(
+            self.current(),
+            Some(Token::RParen) | Some(Token::Comma) | None
+        ) {
+            return Err(format!(
+                "Empty expression in parens, current={:?}",
+                self.current()
+            ));
+        }
+        let mut left = self.parse_primary_expression_with_depth(depth)?;
+        while matches!(
+            self.current(),
+            Some(Token::Star) | Some(Token::Slash) | Some(Token::Percent)
+        ) {
+            let op = match self.current() {
+                Some(Token::Star) => "*",
+                Some(Token::Slash) => "/",
+                Some(Token::Percent) => "%",
+                _ => unreachable!(),
+            };
+            self.next();
+            let right = self.parse_primary_expression_with_depth(depth)?;
+            left = Expression::BinaryOp(Box::new(left), op.to_string(), Box::new(right));
+        }
+        Ok(left)
+    }
+
+    fn parse_primary_expression_with_depth(
+        &mut self,
+        depth: &mut i32,
+    ) -> Result<Expression, String> {
+        // If we see LParen, increment depth and parse the inner expression.
+        // If we see RParen, decrement depth and return a placeholder
+        // (the caller will consume the RParen).
+        match self.current() {
+            Some(Token::LParen) => {
+                *depth += 1;
+                self.next();
+                // Parse inner expression until matching RParen
+                let inner = self.parse_or_expression_until_close_with_depth(depth)?;
+                // Consume the matching RParen (the one that brought us back to depth)
+                if matches!(self.current(), Some(Token::RParen)) {
+                    *depth -= 1;
+                    self.next();
+                }
+                Ok(inner)
+            }
+            _ => self.parse_primary_expression(),
+        }
     }
 
     /// Like `parse_or_expression` but stops at RParen (the matching
@@ -3827,6 +4066,7 @@ impl Parser {
             | Some(Token::Replace)
             | Some(Token::If)
             | Some(Token::Convert)
+            | Some(Token::Date)
             | Some(Token::DateAdd)
             | Some(Token::DateSub)
             | Some(Token::Substring)
@@ -3840,6 +4080,7 @@ impl Parser {
                     Some(Token::Replace) => "REPLACE",
                     Some(Token::If) => "IF",
                     Some(Token::Convert) => "CONVERT",
+                    Some(Token::Date) => "DATE",
                     Some(Token::DateAdd) => "DATE_ADD",
                     Some(Token::DateSub) => "DATE_SUB",
                     Some(Token::Substring) => "SUBSTRING",
@@ -3863,16 +4104,14 @@ impl Parser {
                     if !matches!(self.current(), Some(Token::Comma)) {
                         return Err(format!(
                             "Expected ',' in {}(...), got {:?}",
-                            name,
-                            self.current()
+                            name, self.current()
                         ));
                     }
                     self.next(); // consume Comma
                     if !matches!(self.current(), Some(Token::Interval)) {
                         return Err(format!(
                             "Expected INTERVAL in {}(...), got {:?}",
-                            name,
-                            self.current()
+                            name, self.current()
                         ));
                     }
                     self.next(); // consume INTERVAL
@@ -3956,10 +4195,7 @@ impl Parser {
                         return Ok(Expression::FunctionCall("SUBSTRING".to_string(), args));
                     }
                     self.expect(Token::RParen)?;
-                    return Ok(Expression::FunctionCall(
-                        "SUBSTRING".to_string(),
-                        vec![str_expr],
-                    ));
+                    return Ok(Expression::FunctionCall("SUBSTRING".to_string(), vec![str_expr]));
                 }
                 let mut args = Vec::new();
                 if !matches!(self.current(), Some(Token::RParen)) {
@@ -4115,16 +4351,14 @@ impl Parser {
                         if !matches!(self.current(), Some(Token::Comma)) {
                             return Err(format!(
                                 "Expected ',' in {}(...), got {:?}",
-                                name,
-                                self.current()
+                                name, self.current()
                             ));
                         }
                         self.next(); // consume Comma
                         if !matches!(self.current(), Some(Token::Interval)) {
                             return Err(format!(
                                 "Expected INTERVAL in {}(...), got {:?}",
-                                name,
-                                self.current()
+                                name, self.current()
                             ));
                         }
                         self.next(); // consume INTERVAL
@@ -4165,10 +4399,7 @@ impl Parser {
                         self.next(); // consume IN
                         let haystack = self.parse_primary_expression()?;
                         self.expect(Token::RParen)?;
-                        return Ok(Expression::FunctionCall(
-                            "POSITION".to_string(),
-                            vec![needle, haystack],
-                        ));
+                        return Ok(Expression::FunctionCall("POSITION".to_string(), vec![needle, haystack]));
                     }
                     // GROUP_CONCAT([DISTINCT] expr [ORDER BY expr [ASC|DESC]] [SEPARATOR str])
                     // — MySQL 5.7 aggregate special form. Emit args as a
@@ -4215,10 +4446,7 @@ impl Parser {
                             gc_args.push(self.parse_expression()?);
                         }
                         self.expect(Token::RParen)?;
-                        return Ok(Expression::FunctionCall(
-                            "GROUP_CONCAT".to_string(),
-                            gc_args,
-                        ));
+                        return Ok(Expression::FunctionCall("GROUP_CONCAT".to_string(), gc_args));
                     }
                     let mut args = Vec::new();
                     if !matches!(self.current(), Some(Token::RParen)) {
@@ -4400,13 +4628,53 @@ impl Parser {
                             _ => return Err("Expected subquery".to_string()),
                         };
                         self.expect(Token::RParen)?;
-                        Ok(Expression::Subquery(Box::new(subquery)))
+                        // Optional postfix field access: (subquery).col
+                        // (e.g. `(SELECT ... FROM t) AS sub` outer usage
+                        //  or `(ST_dump(...).geom)`)
+                        let mut expr = Expression::Subquery(Box::new(subquery));
+                        while matches!(self.current(), Some(Token::Dot)) {
+                            self.next();
+                            let field = match self.current().cloned() {
+                                Some(Token::Identifier(name)) => {
+                                    self.next();
+                                    name
+                                }
+                                Some(Token::Level) => {
+                                    self.next();
+                                    "level".to_string()
+                                }
+                                Some(t) => return Err(format!("Expected field name after '.', got {:?}", t)),
+                                None => return Err("Expected field name after '.'".to_string()),
+                            };
+                            // For now, wrap as a column reference (the executor
+                            // can dispatch on the Subquery+Identifier pair).
+                            expr = Expression::SubqueryField(Box::new(expr), field);
+                        }
+                        Ok(expr)
                     }
                     _ => {
                         // parse_expression_in_parens consumes the matching
                         // RParen as part of its depth-aware logic, so do
                         // not call expect(RParen) here.
-                        let expr = self.parse_expression_in_parens(0)?;
+                        let mut expr = self.parse_expression_in_parens(0)?;
+                        // Optional postfix field access: (expr).col
+                        // (e.g. `(ST_dump(...).geom)`, `(subq).col`)
+                        while matches!(self.current(), Some(Token::Dot)) {
+                            self.next();
+                            let field = match self.current().cloned() {
+                                Some(Token::Identifier(name)) => {
+                                    self.next();
+                                    name
+                                }
+                                Some(Token::Level) => {
+                                    self.next();
+                                    "level".to_string()
+                                }
+                                Some(t) => return Err(format!("Expected field name after '.', got {:?}", t)),
+                                None => return Err("Expected field name after '.'".to_string()),
+                            };
+                            expr = Expression::SubqueryField(Box::new(expr), field);
+                        }
                         Ok(expr)
                     }
                 }
