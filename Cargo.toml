@@ -485,6 +485,10 @@ path = "tests/arch3_vtu_main_path_test.rs"
 [[test]]
 name = "int3_single_expression_test"
 path = "tests/int3_single_expression_test.rs"
+# SEM-1 (#3172) — Savepoint
+[[test]]
+name = "sem1_savepoint_test"
+path = "tests/sem1_savepoint_test.rs"
 
 [[test]]
 name = "truncate_table_test"
