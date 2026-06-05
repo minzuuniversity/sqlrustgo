@@ -342,7 +342,44 @@ impl SimpleExecutor {
         }
     }
 
-    fn execute_select(&self, select: &SelectStatement) -> Result<Vec<Vec<Value>>, String> {
+    fn execute_select(&mut self, select: &SelectStatement) -> Result<Vec<Vec<Value>>, String> {
+        // Phase 3 (TPCH-01 Q15): materialise any derived subqueries
+        // registered by the parser (via the global DERIVED_SUBQUERIES
+        // thread-local). The parser emits `__subq_<alias>` as the table
+        // name and registers the subquery AST here. We execute each
+        // subquery and store the results in a synthetic table that
+        // the rest of the executor can scan.
+        let derived = sqlrustgo_parser::get_and_clear_derived_subqueries();
+        for (name, subquery) in &derived {
+            let rows = self.execute_select(subquery)?;
+            // Build a synthetic TableInfo from the first row's column count
+            // (or fall back to 0 columns if empty).
+            let column_count = if rows.is_empty() { 0 } else { rows[0].len() };
+            let columns: Vec<ColumnDefinition> = (0..column_count)
+                .map(|i| ColumnDefinition {
+                    name: format!("col_{}", i),
+                    data_type: "TEXT".to_string(),
+                    nullable: true,
+                    primary_key: false,
+                })
+                .collect();
+            let table_info = TableInfo {
+                name: name.clone(),
+                columns,
+                foreign_keys: vec![],
+                unique_constraints: vec![],
+                check_constraints: vec![],
+                partition_info: None,
+            };
+            self.storage
+                .create_table(&table_info)
+                .map_err(|e| format!("Create derived table error: {:?}", e))?;
+            if !rows.is_empty() {
+                self.storage
+                    .insert(name, rows)
+                    .map_err(|e| format!("Insert derived rows error: {:?}", e))?;
+            }
+        }
         // If the SELECT has a JOIN clause, do a simple nested-loop inner
         // join. This is needed for recursive CTEs whose step joins the
         // CTE table against a base table (e.g. org_chart). We only
@@ -437,7 +474,7 @@ impl SimpleExecutor {
         Ok(current_rows)
     }
 
-    fn execute_statement(&self, stmt: &Statement) -> Result<Vec<Vec<Value>>, String> {
+    fn execute_statement(&mut self, stmt: &Statement) -> Result<Vec<Vec<Value>>, String> {
         match stmt {
             Statement::Select(select) => self.execute_select(select),
             Statement::Union(union_stmt) => {
@@ -885,8 +922,39 @@ impl SqlCorpus {
                 }
                 setup_sql.clear();
             } else if trimmed.starts_with("-- === CASE:") {
-                if let Some(case) = current_case.take() {
-                    results.push(self.execute_case(case, &setup_sql));
+                // Only treat as a new case boundary if we're NOT inside
+                // an unclosed paren (e.g. a subquery in JOIN). The
+                // corpus file has inner `CASE:` comments as labels
+                // for subqueries, not as separate test cases.
+                let in_subquery = current_case
+                    .as_ref()
+                    .map(|c| {
+                        // Count unclosed LParens in the accumulated SQL
+                        let opens = c.sql.matches('(').count();
+                        let closes = c.sql.matches(')').count();
+                        let unclosed_parens = opens > closes;
+                        // Also check if the SQL ends with UNION (mid-statement
+                        // UNION means the next line is still part of this case)
+                        let trimmed_sql = c.sql.trim_end();
+                        let ends_with_union = trimmed_sql.ends_with("UNION")
+                            || trimmed_sql.ends_with("UNION ALL");
+                        unclosed_parens || ends_with_union
+                    })
+                    .unwrap_or(false);
+                if !in_subquery {
+                    if let Some(case) = current_case.take() {
+                        results.push(self.execute_case(case, &setup_sql));
+                    }
+                } else {
+                    // Inside a subquery: the comment is part of the SQL
+                    if !current_case.as_ref().unwrap().sql.is_empty() {
+                        current_case.as_mut().unwrap().sql.push('\n');
+                    }
+                    // Strip the `--` prefix from the comment (since SQL
+                    // doesn't have `--` comments, but the corpus uses
+                    // them as subquery labels).
+                    let comment_text = trimmed.trim_start_matches("-- ").trim();
+                    current_case.as_mut().unwrap().sql.push_str(&format!("-- {}", comment_text));
                 }
 
                 let case_name = trimmed
