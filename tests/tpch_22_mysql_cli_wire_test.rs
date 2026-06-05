@@ -326,45 +326,41 @@ fn test_tpch_22_mysql_cli_wire() {
                     ));
                     continue;
                 }
-        // Compare as sets. mysql --batch with --silent (or default)
-        // outputs rows tab-separated; the JSON reference uses `|`.
-        // Compare as sets. mysql --batch with --silent (or default)
-        // outputs rows tab-separated; the JSON reference uses `|`.
-        // We convert TAB to `|` first so the comparison is sane.
-        //
-        // Float columns may have precision differences (e.g. SQLite
-        // prints `2498742.616109` while f64->string prints
-        // `2498742.6161089996`). The numeric value is identical;
-        // we compare parsed floats with a small epsilon to absorb
-        // that.
-        let to_pipe = |r: &String| r.replace('\t', "|");
-        let actual_piped: Vec<String> = actual_first3.iter().map(to_pipe).collect();
-        let expected_piped: Vec<String> = expected_first3.clone();
-        let parse_loose = |s: &str| -> Vec<Option<f64>> {
-            s.split('|').map(|c| c.parse::<f64>().ok()).collect()
-        };
-        let normalize = |r: &str| -> String {
-            let cols = parse_loose(r);
-            let ref_cols_str: Vec<&str> = r.split('|').collect();
-            cols.iter()
-                .zip(ref_cols_str.iter())
-                .map(|(n, raw)| match n {
-                    Some(v) if raw.parse::<i64>().is_err() => format!("{:.6}", v),
-                    _ => (*raw).to_string(),
-                })
-                .collect::<Vec<_>>()
-                .join("|")
-        };
-        let mut actual_normalized: Vec<String> = actual_piped
-            .iter()
-            .map(|r| normalize(r))
-            .collect();
-        actual_normalized.sort();
-        let mut expected_normalized: Vec<String> = expected_piped
-            .iter()
-            .map(|r| normalize(r))
-            .collect();
-        expected_normalized.sort();
+                // Compare as sets. mysql --batch with --silent (or default)
+                // outputs rows tab-separated; the JSON reference uses `|`.
+                // Compare as sets. mysql --batch with --silent (or default)
+                // outputs rows tab-separated; the JSON reference uses `|`.
+                // We convert TAB to `|` first so the comparison is sane.
+                //
+                // Float columns may have precision differences (e.g. SQLite
+                // prints `2498742.616109` while f64->string prints
+                // `2498742.6161089996`). The numeric value is identical;
+                // we compare parsed floats with a small epsilon to absorb
+                // that.
+                let to_pipe = |r: &String| r.replace('\t', "|");
+                let actual_piped: Vec<String> = actual_first3.iter().map(to_pipe).collect();
+                let expected_piped: Vec<String> = expected_first3.clone();
+                let parse_loose = |s: &str| -> Vec<Option<f64>> {
+                    s.split('|').map(|c| c.parse::<f64>().ok()).collect()
+                };
+                let normalize = |r: &str| -> String {
+                    let cols = parse_loose(r);
+                    let ref_cols_str: Vec<&str> = r.split('|').collect();
+                    cols.iter()
+                        .zip(ref_cols_str.iter())
+                        .map(|(n, raw)| match n {
+                            Some(v) if raw.parse::<i64>().is_err() => format!("{:.6}", v),
+                            _ => (*raw).to_string(),
+                        })
+                        .collect::<Vec<_>>()
+                        .join("|")
+                };
+                let mut actual_normalized: Vec<String> =
+                    actual_piped.iter().map(|r| normalize(r)).collect();
+                actual_normalized.sort();
+                let mut expected_normalized: Vec<String> =
+                    expected_piped.iter().map(|r| normalize(r)).collect();
+                expected_normalized.sort();
                 if actual_normalized != expected_normalized {
                     fail += 1;
                     fail_details.push(format!(
