@@ -1208,3 +1208,67 @@ fn test_function_call_known_outputs() {
         "unknown field returns Null"
     );
 }
+
+#[test]
+fn test_unary_op_delegation() {
+    // Contract test for P0-2 §4.12 (UnaryOp).
+    use sqlrustgo_executor::expr::eval_unary_op;
+    use sqlrustgo_parser::Expression as ParserExpr;
+    use sqlrustgo_storage::TableInfo;
+
+    let table_info = TableInfo::default();
+    let empty_row: Vec<Value> = vec![];
+
+    // Cases: (input_value, op, expected)
+    // We test the underlying `eval_unary_op` directly and via the
+    // facade through `Expression::UnaryOp`.
+    let cases: &[(Value, &str, Value)] = &[
+        // NOT on Boolean
+        (Value::Boolean(true), "NOT", Value::Boolean(false)),
+        (Value::Boolean(false), "NOT", Value::Boolean(true)),
+        // NOT on Integer (uses to_bool: 0 → false, non-0 → true)
+        (Value::Integer(0), "NOT", Value::Boolean(true)),
+        (Value::Integer(1), "NOT", Value::Boolean(false)),
+        (Value::Integer(42), "NOT", Value::Boolean(false)),
+        // "!" alias for NOT
+        (Value::Boolean(true), "!", Value::Boolean(false)),
+        (Value::Integer(0), "!", Value::Boolean(true)),
+        // Unknown operator
+        (Value::Integer(5), "UNKNOWN", Value::Null),
+        // NOT on Null
+        (Value::Null, "NOT", Value::Boolean(true)),
+        // Case-insensitive operator
+        (Value::Boolean(true), "not", Value::Boolean(false)),
+    ];
+
+    let mut failures: Vec<String> = Vec::new();
+
+    for (input, op, _expected) in cases {
+        // Path 1: facade via `Expression::UnaryOp(op, Literal(value))`
+        let input_str = match input {
+            Value::Null => "NULL".to_string(),
+            Value::Integer(i) => i.to_string(),
+            Value::Boolean(b) => if *b { "TRUE" } else { "FALSE" }.to_string(),
+            Value::Float(f) => f.to_string(),
+            _ => format!("{:?}", input),
+        };
+        let expr_un = ParserExpr::UnaryOp(op.to_string(), Box::new(ParserExpr::Literal(input_str)));
+        let from_facade =
+            sqlrustgo::expr_utils::evaluate_expression(&expr_un, &empty_row, &table_info);
+
+        // Path 2: new single-source-of-truth
+        let from_evaluator = eval_unary_op(input, op);
+
+        if from_facade != Ok(from_evaluator.clone()) {
+            failures.push(format!(
+                "UnaryOp({op:?}, {input:?}): facade={from_facade:?} evaluator={from_evaluator:?}"
+            ));
+        }
+    }
+
+    assert!(
+        failures.is_empty(),
+        "INT-3 UnaryOp delegation: facade and executor::expr disagree:\n{}",
+        failures.join("\n")
+    );
+}
