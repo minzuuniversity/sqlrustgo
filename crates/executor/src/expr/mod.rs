@@ -299,6 +299,69 @@ pub fn eval_is_not_null(value: &Value) -> Value {
     Value::Boolean(!matches!(value, Value::Null))
 }
 
+/// Compare two values, returning -1, 0, or 1.
+///
+/// This is the single source of truth for SQL value comparison. The
+/// legacy `src/expr_utils.rs::compare_values` is a 1-line shim that
+/// delegates to this function (P0-2 §4.7, §4.8, plus consumed by
+/// `executor::expr::eval_between`).
+///
+/// **Semantics (identical to the legacy function):**
+/// | `left`           | `right`         | result |
+/// |------------------|-----------------|--------|
+/// | `Integer(l)`     | `Integer(r)`    | `l.cmp(r) as i32` |
+/// | `Float(l)`       | `Float(r)`      | `-1 / 0 / 1` (NaN-unaware) |
+/// | `Text(l)`        | `Text(r)`       | `l.cmp(r) as i32` |
+/// | `Null`           | `Null`          | `0` |
+/// | `Null`           | non-Null        | `-1` (NULL sorts first) |
+/// | non-Null         | `Null`          | `1` (NULL sorts last) |
+/// | mixed types      | (other)         | `0` (equal) |
+pub fn compare_values(left: &Value, right: &Value) -> i32 {
+    match (left, right) {
+        (Value::Integer(l), Value::Integer(r)) => l.cmp(r) as i32,
+        (Value::Float(l), Value::Float(r)) => {
+            if l < r {
+                -1
+            } else if l > r {
+                1
+            } else {
+                0
+            }
+        }
+        (Value::Text(l), Value::Text(r)) => l.cmp(r) as i32,
+        (Value::Null, Value::Null) => 0,
+        (Value::Null, _) => -1,
+        (_, Value::Null) => 1,
+        _ => 0,
+    }
+}
+
+/// Evaluate the parser-AST `Expression::Between(expr, low, high)` arm:
+/// returns `Value::Boolean(true)` if `low <= value <= high`, else
+/// `Value::Boolean(false)`.
+///
+/// This is the single source of truth for the parser-AST `Between`
+/// branch. The legacy `src/expr_utils.rs::evaluate_expression`
+/// `Expression::Between` arm is a thin delegation to this function
+/// (P0-2 §4.7).
+///
+/// **Semantics (identical to the legacy arm):**
+/// - `eval_between(5, 1, 10)` → `Value::Boolean(true)`
+/// - `eval_between(0, 1, 10)` → `Value::Boolean(false)`
+/// - `eval_between(5, 5, 10)` → `Value::Boolean(true)` (inclusive low)
+/// - `eval_between(10, 1, 10)` → `Value::Boolean(true)` (inclusive high)
+/// - `eval_between(Null, 1, 10)` → `Value::Boolean(false)` (NULL
+///   sorts before any non-NULL per `compare_values` semantics, so
+///   `compare_values(&Null, &lo) = -1 < 0`)
+pub fn eval_between(value: &Value, low: &Value, high: &Value) -> Value {
+    Value::Boolean(compare_values(value, low) >= 0 && compare_values(value, high) <= 0)
+}
+
+/// Inverse of [`eval_between`]. P0-2 §4.8.
+pub fn eval_not_between(value: &Value, low: &Value, high: &Value) -> Value {
+    Value::Boolean(!(compare_values(value, low) >= 0 && compare_values(value, high) <= 0))
+}
+
 /// Look up a pre-computed aggregate value in a row by its canonical name
 /// (the string form produced by `expr_utils::expression_to_string` for an
 /// `Expression::Aggregate`, e.g. `"COUNT(*)"`, `"SUM(l_quantity)"`, etc.).
