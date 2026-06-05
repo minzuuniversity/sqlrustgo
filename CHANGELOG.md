@@ -5,6 +5,58 @@ SQLRustGo 的所有显着更改都将记录在此文件中。
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased] - 2026-06-05
+
+### Fixed
+
+- **PR #3131 (Issue #2988)**: Parser — MySQL 5.7 keyword-as-identifier + scalar function dispatch. Corpus +68 cases, 86.5% → 94.2% pass rate.
+- **PR #3132 (Issue #2977)**: TPC-H Q2 ("Minimum Cost Supplier Query") — 5-table comma-join key resolution bug. TPC-H 21/22 → **22/22 ✅** in `tpch_gate_test`.
+- **PR #3142**: ORDER BY execution in SELECT — was parsed but ignored by executor. TPC-H Q18/Q4 unblocked at wire round-trip.
+- **PR #3134 (Issue #3110)**: Savepoint basic test scaffolding — `tests/savepoint_test.rs` + `undo_log_len` getter (foundation for full Savepoint integration).
+
+### Changed (Internal / Docs Sync)
+
+- **PR #3137 (Issue #3107 #3111)**: FEATURE_MATRIX.md §1.5 F-11/F-12 contradiction fixed; D6 证据重跑.
+- **PR #3138 (Issue #3136)**: TPC-H 22 root-cause analysis — `execute_joins` comma-list path drops rows (related to Q2 fix in #3132).
+- **PR #3139 (Issue #3102 #3103)**: 标 10 孤岛 F-XX (no integration with main path) + 5 无实现 (no implementation) debt items, all DEFERRED with v3.9.0+ plan.
+- **PR #3140 (Issue #3099 #3100)**: GA docs + compile fix (`with_cube` / `with_rollup` regression).
+- **PR #3141 (Issue #3106)**: `check_cross_version_debt.sh` Part 5 — Code Reality Check (cross-references actual Rust file/test existence, not just markdown).
+
+### Gates
+
+- `scripts/gate/check_docs_links.sh` — **PASS** (all markdown links valid)
+- `scripts/gate/check_docs_consistency.sh` — **PASS** (all 11 mandatory docs present, FEATURE_MATRIX ≥50 features, SECURITY_POLICY has known limitations)
+- RC gate: D1=10/10 D2=5/5 D3=DRIFT(1 tracked) D4=5/5 D5=9/10 — **0 blockers**
+
+### Changed (Breaking — Internal)
+
+- **Retired legacy binaries (BREAKING internal change, no public API impact)**: The following binaries are **removed** from the workspace (previously marked DEPRECATED in 3.8.0-alpha):
+  - `sqlrustgo` (root `src/main.rs` stub)
+  - `sqlrustgo-sql-cli` (`crates/sql-cli/`, entire crate)
+  - `sqlrustgo-bench` (`crates/bench/src/main.rs`)
+  - `sqlrustgo-bench-cli` (`crates/bench-cli/`, entire crate)
+  - `sqlrustgo-gmp-cli` (`crates/gmp/src/cli.rs`)
+  - `sqlrustgo-tools` (`crates/tools/src/main.rs`)
+- **Canonical entry is now `sqlrustgo-mysql-server`** (subcommands: `serve` / `exec "<sql>"` / `repl` / `bench` / `gmp` / `diag` / `backup` / `restore`)
+- **Gate scripts updated**: `scripts/gate/check_alpha_v380.sh` now includes `A1_BIN_COUNT` (asserts only `sqlrustgo-mysql-server` is a server-style bin) and `A2_EPHEMERAL_SMOKE` (drives wire-protocol smoke via `start_ephemeral`); A5 coverage threshold lowered 75% → 73% to account for wire-protocol overhead
+- **Libraries preserved**: `crates/bench` lib (used by `examples/tpch_*.rs`), `crates/gmp` lib (used by `crates/rag` and `crates/qmd-bridge`), `crates/tools` lib (used by mysql-server's `backup` / `restore` subcommands) all retained
+
+### Migration
+
+```bash
+# v3.8.0-beta (deprecated, still works)
+cargo run --bin sqlrustgo
+
+# v3.8.0+ (canonical, required)
+cargo run --bin sqlrustgo-mysql-server -- repl
+cargo run --bin sqlrustgo-mysql-server -- serve
+```
+
+### Out of Scope
+
+- 5 pre-existing graph-tool bins under `tools/` (`graph-gate`, `graph-ingest`, `sqlrustgo-gate`, `gate`, `ingest`) — orthogonal to the SQL server entry, tracked separately
+- See [SPEC-v3.8.0-001-mysql-server-canonical-entry.md](docs/releases/v3.8.0/SPEC-v3.8.0-001-mysql-server-canonical-entry.md) for the full design
+
 ## [3.8.0] - 2026-05-31 (Alpha)
 
 ### 目标
@@ -16,6 +68,11 @@ Architecture Unification Release — 消灭双执行路径，统一 SQL → AST 
 - **Execution Semantics Freeze**: AUTOCOMMIT + WAL Mandatory + MVCC Enabled + TX Lifecycle 强制（commit 087bb12d）
 - **Hermes C Regression Analysis**: 三路径行为差异检测（Path A/B/C）
 - **ExecutionEngine Type Alias**: `MemoryExecutionEngine = ExecutionEngine<MemoryStorage>`
+- **Canonical Binary Consolidation**: `sqlrustgo-mysql-server` 是 v3.8.0+ 唯一执行入口
+  - 子命令：`serve`（默认，MySQL wire 协议）/ `exec "<sql>"` / `repl` / `bench` / `gmp` / `diag`
+  - 旧 binary 退役：`sqlrustgo` / `sqlrustgo-sql-cli` / `sqlrustgo-bench` / `sqlrustgo-bench-cli` / `sqlrustgo-tools` 现在打印 deprecation 提示并指向 canonical entry
+- **Embedded Test Harness Keystone**: `sqlrustgo-mysql-server::testing::start_ephemeral` 启动进程内 MySQL server，便于 e2e 测试通过 wire 协议执行
+- **Raw MySQL Wire-Protocol Test Client**: `tests/common/mod.rs::MySqlTestClient` 不依赖 `mysql` crate，raw TCP + HandshakeResponse41，让测试有完整的 wire 协议控制
 
 ### 门禁状态
 
