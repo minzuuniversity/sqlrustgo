@@ -322,6 +322,25 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 } else {
                     agg_result_rows
                 };
+                // v3.8.0-rc2 Day 7: apply LIMIT/OFFSET before returning
+                // from the aggregate path. Previously LIMIT was
+                // applied in Step 4 which only ran on the non-aggregate
+                // branch, so GROUP BY + LIMIT queries (Q3, Q15) returned
+                // all rows instead of the limited top-N.
+                let agg_result_rows = if let Some(limit) = select.limit {
+                    let offset = select.offset.unwrap_or(0) as usize;
+                    if offset >= agg_result_rows.len() {
+                        vec![]
+                    } else {
+                        agg_result_rows
+                            .into_iter()
+                            .skip(offset)
+                            .take(limit as usize)
+                            .collect()
+                    }
+                } else {
+                    agg_result_rows
+                };
                 let row_count = agg_result_rows.len();
                 return Ok(ExecutorResult::new(agg_result_rows, row_count));
             }
@@ -563,6 +582,12 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 }
                 AggregateFunction::Avg => {
                     // TPC-H Sprint 1 fix (Q1): AVG over Float.
+                    // v3.8.0-rc2 Day 7: AVG MUST return Float even when
+                    // all input values are Integer — otherwise
+                    // `AVG(quantity)` over integer quantities yields
+                    // `Value::Integer(int_sum / count)` which is
+                    // integer-truncated (e.g. 1323/50 = 26 instead of
+                    // 26.46). SQLite/MySQL always return REAL for AVG.
                     let mut int_sum: i64 = 0;
                     let mut float_sum: f64 = 0.0;
                     let mut any_float = false;
@@ -589,10 +614,13 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                         }
                     }
                     if count > 0 {
+                        // Always return Float for AVG. Even if all
+                        // inputs are Integer, the average is a
+                        // fractional quantity.
                         if any_float {
                             Value::Float(float_sum / count as f64)
                         } else {
-                            Value::Integer(int_sum / count)
+                            Value::Float(int_sum as f64 / count as f64)
                         }
                     } else {
                         Value::Null
