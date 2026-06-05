@@ -131,12 +131,17 @@ arch:
 sem:
   - id: SEM-1
     title: "ROLLBACK MVCC stub"
-    state: OPEN
-    owner: unassigned
+    state: IN_PROGRESS
+    progress: 30%
+    progress_metric: |
+      PR #3134 (2026-06-05) 创建 tests/savepoint_test.rs (9 tests PASS) — SavepointManager 单元测试
+      + undo_log_len getter
+      完整 MVCC snapshot restore + TransactionManager 集成仍待
+    owner: openclaw
     target_release: v3.9.0
     review_date: "2026-09-01"
-    blocked_reason: "SavepointManager 集成主路径 + MVCC snapshot restore 未实现"
-    related_followup: 3129  # 部分跟踪; INT-2 完成后才能开始
+    blocking: ["INT-2 主路径集成 (依赖此)"]
+    related_followup: 3146  # INT-3 完整合并 + INT-2 ParallelExecutor 跟踪
 
   - id: SEM-2
     title: "SHOW TABLES partial"
@@ -164,10 +169,13 @@ sem:
 
   - id: SEM-4
     title: "Coverage 测量差异 (Z6G4 82% vs Z440 32%)"
-    state: OPEN
-    owner: unassigned
+    state: IN_PROGRESS
+    progress: 0%
+    progress_metric: "需统一 CI runner 测量方法 (check_coverage.sh 增强)"
+    owner: openclaw
     target_release: v3.9.0
     review_date: "2026-09-01"
+    note: "已分配 owner + target_release 但尚未开始实施"
 
 # =============================================================================
 # F-XX — Feature Gap (36 items, v3.0.0 baseline)
