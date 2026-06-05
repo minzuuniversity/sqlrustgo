@@ -4,60 +4,69 @@ INSERT INTO users VALUES (1, 'Alice'), (2, 'Bob'), (3, 'Carol'), (4, 'Dave'), (5
 CREATE TABLE orders (order_id INT PRIMARY KEY, user_id INT, total REAL);
 INSERT INTO orders VALUES (101, 1, 50.0), (102, 2, 75.0), (103, 1, 30.0);
 
+CREATE TABLE products (id INT PRIMARY KEY, name TEXT, price INT);
+INSERT INTO products VALUES (1, 'Apple', 100), (2, 'Banana', 50), (3, 'Cherry', 200), (4, 'Date', 80), (5, 'Elderberry', 150);
+
+CREATE TABLE order_items (id INT PRIMARY KEY, order_id INT, product_id INT, quantity INT);
+INSERT INTO order_items VALUES (1, 101, 1, 2), (2, 101, 2, 1), (3, 102, 3, 1), (4, 103, 1, 3), (5, 102, 4, 1);
+
+CREATE TABLE employees (id INT PRIMARY KEY, name TEXT, manager_id INT);
+INSERT INTO employees VALUES (1, 'CEO', NULL), (2, 'VP_Eng', 1), (3, 'VP_Sales', 1), (4, 'Eng1', 2), (5, 'Eng2', 2), (6, 'Sales1', 3);
+
 -- === CASE: Outer Join Test Suite ===
 
--- === CASE: CASE: Left Join Basic ===
+-- === CASE: Left Join Basic ===
 -- EXPECT: 10 rows
 SELECT u.id, u.name, o.order_id, o.total
 FROM users u LEFT JOIN orders o ON u.id = o.user_id;
 
--- === CASE: CASE: Left Join with NULL handling ===
+-- === CASE: Left Join with NULL handling ===
 -- EXPECT: 5 rows
 SELECT u.id, u.name, o.order_id
 FROM users u LEFT JOIN orders o ON u.id = o.user_id
 WHERE o.order_id IS NULL;
 
--- === CASE: CASE: Right Join Basic ===
+-- === CASE: Right Join Basic ===
 -- EXPECT: 15 rows
 SELECT u.id, u.name, o.order_id, o.total
 FROM users u RIGHT JOIN orders o ON u.id = o.user_id;
 
--- === CASE: CASE: Right Join with NULL handling ===
+-- === CASE: Right Join with NULL handling ===
 -- EXPECT: 3 rows
 SELECT u.id, u.name, o.order_id
 FROM users u RIGHT JOIN orders o ON u.id = o.user_id
 WHERE u.id IS NULL;
 
--- === CASE: CASE: Full Outer Join Basic ===
+-- === CASE: Full Outer Join Basic ===
 -- EXPECT: 20 rows
 SELECT u.id, u.name, o.order_id, o.total
 FROM users u FULL OUTER JOIN orders o ON u.id = o.user_id;
 
--- === CASE: CASE: Full Outer Join with WHERE filter ===
+-- === CASE: Full Outer Join with WHERE filter ===
 -- EXPECT: 18 rows
 SELECT u.id, u.name, o.order_id, o.total
 FROM users u FULL OUTER JOIN orders o ON u.id = o.user_id
 WHERE u.id > 5;
 
--- === CASE: CASE: Left Join with aggregate ===
+-- === CASE: Left Join with aggregate ===
 -- EXPECT: 5 rows
 SELECT u.id, u.name, COUNT(o.order_id) as order_count, SUM(o.total) as total_spent
 FROM users u LEFT JOIN orders o ON u.id = o.user_id
 GROUP BY u.id, u.name
 ORDER BY u.id;
 
--- === CASE: CASE: Right Join with aggregate ===
+-- === CASE: Right Join with aggregate ===
 -- EXPECT: 10 rows
 SELECT u.id, u.name, COUNT(o.order_id) as order_count
 FROM users u RIGHT JOIN orders o ON u.id = o.user_id
 GROUP BY u.id, u.name;
 
--- === CASE: CASE: Full Outer Join with COALESCE ===
+-- === CASE: Full Outer Join with COALESCE ===
 -- EXPECT: 20 rows
 SELECT COALESCE(u.id, 0) as user_id, COALESCE(u.name, 'Unknown') as user_name, o.order_id
 FROM users u FULL OUTER JOIN orders o ON u.id = o.user_id;
 
--- === CASE: CASE: Multi-table Left Join ===
+-- === CASE: Multi-table Left Join ===
 -- EXPECT: 30 rows
 SELECT u.id, u.name, o.order_id, p.product_id, p.name as product_name
 FROM users u
@@ -65,47 +74,47 @@ LEFT JOIN orders o ON u.id = o.user_id
 LEFT JOIN order_items oi ON o.order_id = oi.order_id
 LEFT JOIN products p ON oi.product_id = p.product_id;
 
--- === CASE: CASE: Left Join with subquery in ON clause ===
+-- === CASE: Left Join with subquery in ON clause ===
 -- EXPECT: 10 rows
 SELECT u.id, u.name, o.order_id
 FROM users u
 LEFT JOIN orders o ON u.id = o.user_id AND o.total > (SELECT AVG(total) FROM orders);
 
--- === CASE: CASE: Self Join with Left Join ===
+-- === CASE: Self Join with Left Join ===
 -- EXPECT: 5 rows
 SELECT e.id, e.name as employee, m.name as manager
 FROM employees e
 LEFT JOIN employees m ON e.manager_id = m.id;
 
--- === CASE: CASE: Left Join with CASE expression ===
+-- === CASE: Left Join with CASE expression ===
 -- EXPECT: 10 rows
 SELECT u.id, u.name,
   CASE WHEN o.order_id IS NULL THEN 'No Orders' ELSE 'Has Orders' END as order_status
 FROM users u LEFT JOIN orders o ON u.id = o.user_id;
 
--- === CASE: CASE: Right Join with DISTINCT ===
+-- === CASE: Right Join with DISTINCT ===
 -- EXPECT: 8 rows
 SELECT DISTINCT o.user_id, u.name
 FROM users u RIGHT JOIN orders o ON u.id = o.user_id;
 
--- === CASE: CASE: Full Outer Join with UNION ===
+-- === CASE: Full Outer Join with UNION ===
 -- EXPECT: 15 rows
 SELECT u.id, u.name, 'User' as type FROM users u
 UNION ALL
 SELECT 0 as id, 'Anonymous' as name, 'Guest' as type FROM orders LIMIT 5;
 
--- === CASE: CASE: Left Join using USING clause ===
+-- === CASE: Left Join using USING clause ===
 -- EXPECT: 5 rows
 SELECT order_id, user_name, total
 FROM users LEFT JOIN orders USING (user_id);
 
--- === CASE: CASE: Left Join with IN clause ===
+-- === CASE: Left Join with IN clause ===
 -- EXPECT: 3 rows
 SELECT u.id, u.name, o.order_id
 FROM users u LEFT JOIN orders o ON u.id = o.user_id
 WHERE u.id IN (1, 2, 3);
 
--- === CASE: CASE: Left Join with BETWEEN ===
+-- === CASE: Left Join with BETWEEN ===
 -- EXPECT: 6 rows
 SELECT u.id, u.name, o.order_id, o.total
 FROM users u LEFT JOIN orders o ON u.id = o.user_id
