@@ -79,8 +79,13 @@ for int_id in INT-1 INT-2 INT-3 INT-4; do
 
     # Extract the status column (column 4 in CROSS-VERSION-DEBT.md table:
     # | ID | Topic | Status | Closing PR | Notes |). Strip emoji markers
-    # (✅/⚠️/❌) and bold so the case branch below matches.
+    # (✅/⚠️/❌) and bold so the case branch below matches. Fall back to a
+    # canonical-keyword scan of the line (handles backticks, asterisks, emoji,
+    # free-form notes) if column 4 is non-conforming.
     status=$(echo "$status_line" | awk -F'|' '{gsub(/^[[:space:]]+|[[:space:]]+$/, "", $4); gsub(/\*\*?/, "", $4); print $4}' | sed -E 's/[✅⚠️❌]//g' | xargs)
+    if ! [[ "$status" =~ ^(CLOSED|ACTIVE|DEFERRED)$ ]]; then
+        status=$(echo "$status_line" | grep -oE "(CLOSED|ACTIVE|DEFERRED)" | head -1)
+    fi
     echo -n "  [$int_id] status=$status"
 
     case "$status" in
