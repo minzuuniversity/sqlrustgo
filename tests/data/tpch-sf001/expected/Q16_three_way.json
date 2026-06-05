@@ -1,0 +1,17 @@
+{
+  "query": "q16.sql",
+  "sqlite_sql_source": "standard_tpch_q.sql",
+  "engines": {
+    "sqlite": {
+      "row_count": 7,
+      "first_3_rows": [
+        "Brand#13|LARGE ANODIZED TIN|23|4",
+        "Brand#22|LARGE ANODIZED TIN|23|4",
+        "Brand#23|ECONOMY PLATED STEEL|19|4"
+      ],
+      "error": null
+    }
+  },
+  "consensus_row_count": 7,
+  "consensus": true
+}

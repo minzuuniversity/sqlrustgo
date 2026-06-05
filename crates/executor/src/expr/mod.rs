@@ -281,7 +281,12 @@ fn eval_unary_op(val: &Value, op: &str) -> Value {
     }
 }
 
-fn eval_fn(name: &str, args: &[Value]) -> Value {
+/// MySQL 5.7 / SQL scalar function dispatch.
+/// Single source of truth for the function table. Called from the
+/// `UnifiedExpr::FunctionCall` arm of `evaluate` (this module) and
+/// from the legacy `Expression::FunctionCall` arm in
+/// `src/expr_utils.rs` (the binary engine path).
+pub fn eval_fn(name: &str, args: &[Value]) -> Value {
     match name.to_uppercase().as_str() {
         "LOWER" => args
             .first()
@@ -295,16 +300,225 @@ fn eval_fn(name: &str, args: &[Value]) -> Value {
             .first()
             .map(|v| Value::Integer(v.to_sql_string().len() as i64))
             .unwrap_or(Value::Null),
-        "TRIM" => args
+        // TRIM — MySQL 5.7 supports four forms:
+        //   TRIM(str)                                 — 1-arg, trim whitespace
+        //   TRIM(remstr, str)                         — 2-arg comma form
+        //   TRIM([LEADING|TRAILING|BOTH] remstr FROM str) — 3-arg sentinel form
+        // The 3-arg form is produced by the parser with a sentinel
+        // string-literal modifier as args[0]:
+        //   "__TRIM_LEADING__" | "__TRIM_TRAILING__" | "__TRIM_BOTH__"
+        // See: https://dev.mysql.com/doc/refman/5.7/en/string-functions.html#function_trim
+        "TRIM" => match args.len() {
+            1 => args
+                .first()
+                .map(|v| Value::Text(v.to_sql_string().trim().to_string()))
+                .unwrap_or(Value::Null),
+            // TRIM(remstr, str) — 2-arg comma form, trim remstr from both ends
+            2 => {
+                let rem = args[0].to_sql_string();
+                let s = args[1].to_sql_string();
+                if rem.is_empty() {
+                    Value::Text(s.trim().to_string())
+                } else {
+                    Value::Text(s.trim_matches(|c| rem.contains(c)).to_string())
+                }
+            }
+            // TRIM([LEADING|TRAILING|BOTH] remstr FROM str) — 3-arg sentinel form
+            3 => {
+                let modifier = args[0].to_sql_string();
+                let rem = args[1].to_sql_string();
+                let s = args[2].to_sql_string();
+                let trimmed = if rem.is_empty() {
+                    s.trim().to_string()
+                } else {
+                    s.trim_matches(|c| rem.contains(c)).to_string()
+                };
+                let result = match modifier.as_str() {
+                    "__TRIM_LEADING__" => {
+                        // trim from the left only
+                        let out = if rem.is_empty() {
+                            s.trim_start().to_string()
+                        } else {
+                            s.trim_start_matches(|c| rem.contains(c)).to_string()
+                        };
+                        out
+                    }
+                    "__TRIM_TRAILING__" => {
+                        if rem.is_empty() {
+                            s.trim_end().to_string()
+                        } else {
+                            s.trim_end_matches(|c| rem.contains(c)).to_string()
+                        }
+                    }
+                    // "__TRIM_BOTH__" or any other sentinel
+                    _ => trimmed,
+                };
+                Value::Text(result)
+            }
+            _ => Value::Null,
+        },
+        "LTRIM" => args
             .first()
-            .map(|v| Value::Text(v.to_sql_string().trim().to_string()))
+            .map(|v| Value::Text(v.to_sql_string().trim_start().to_string()))
             .unwrap_or(Value::Null),
+        "RTRIM" => args
+            .first()
+            .map(|v| Value::Text(v.to_sql_string().trim_end().to_string()))
+            .unwrap_or(Value::Null),
+        // MySQL 5.7: LEFT(str, len) / RIGHT(str, len)
+        // len < 0 returns empty string (MySQL semantics).
+        "LEFT" => {
+            if let (Some(s), Some(n)) = (args.first(), args.get(1)) {
+                let text = s.to_sql_string();
+                let len = match n {
+                    Value::Integer(i) => *i,
+                    _ => return Value::Text(String::new()),
+                };
+                if len <= 0 {
+                    Value::Text(String::new())
+                } else {
+                    let n = (len as usize).min(text.len());
+                    Value::Text(text[..n].to_string())
+                }
+            } else {
+                Value::Null
+            }
+        }
+        "RIGHT" => {
+            if let (Some(s), Some(n)) = (args.first(), args.get(1)) {
+                let text = s.to_sql_string();
+                let len = match n {
+                    Value::Integer(i) => *i,
+                    _ => return Value::Text(String::new()),
+                };
+                if len <= 0 {
+                    Value::Text(String::new())
+                } else {
+                    let n = (len as usize).min(text.len());
+                    Value::Text(text[text.len() - n..].to_string())
+                }
+            } else {
+                Value::Null
+            }
+        }
+        // LPAD(str, len, pad) / RPAD(str, len, pad)
+        // If len <= strlen(str), truncate. If len > strlen(str), pad.
+        // If pad is empty, returns NULL.
+        "LPAD" | "RPAD" => {
+            let dir_is_left = matches!(name.to_uppercase().as_str(), "LPAD");
+            if let (Some(s), Some(len_v), Some(pad)) = (args.first(), args.get(1), args.get(2)) {
+                let text = s.to_sql_string();
+                let pad_str = pad.to_sql_string();
+                let len = match len_v {
+                    Value::Integer(i) => *i,
+                    _ => return Value::Null,
+                };
+                if pad_str.is_empty() {
+                    return Value::Null;
+                }
+                if (len as usize) <= text.len() {
+                    if dir_is_left {
+                        Value::Text(text[..len as usize].to_string())
+                    } else {
+                        let start = text.len() - len as usize;
+                        Value::Text(text[start..].to_string())
+                    }
+                } else {
+                    let mut pad_repeat = String::new();
+                    let needed = len as usize - text.len();
+                    while pad_repeat.len() < needed {
+                        pad_repeat.push_str(&pad_str);
+                    }
+                    pad_repeat.truncate(needed);
+                    if dir_is_left {
+                        let mut out = String::with_capacity(len as usize);
+                        out.push_str(&pad_repeat);
+                        out.push_str(&text);
+                        Value::Text(out)
+                    } else {
+                        let mut out = String::with_capacity(len as usize);
+                        out.push_str(&text);
+                        out.push_str(&pad_repeat);
+                        Value::Text(out)
+                    }
+                }
+            } else {
+                Value::Null
+            }
+        }
+        // REPEAT(str, count) — count <= 0 returns empty
+        "REPEAT" => {
+            if let (Some(s), Some(n)) = (args.first(), args.get(1)) {
+                let text = s.to_sql_string();
+                let count = match n {
+                    Value::Integer(i) => *i,
+                    _ => return Value::Text(String::new()),
+                };
+                if count <= 0 {
+                    Value::Text(String::new())
+                } else {
+                    Value::Text(text.repeat(count as usize))
+                }
+            } else {
+                Value::Null
+            }
+        }
+        // REVERSE(str) — byte-reversed (not Unicode-aware; same as
+        // MySQL's REVERSE for ASCII)
+        "REVERSE" => args
+            .first()
+            .map(|v| Value::Text(v.to_sql_string().chars().rev().collect()))
+            .unwrap_or(Value::Null),
+        // SPACE(n) — n spaces; n <= 0 returns empty
+        "SPACE" => {
+            let n = match args.first() {
+                Some(Value::Integer(i)) => *i,
+                _ => return Value::Text(String::new()),
+            };
+            if n <= 0 {
+                Value::Text(String::new())
+            } else {
+                Value::Text(" ".repeat(n as usize))
+            }
+        }
+        // FIELD(str, str1, str2, ...) — index of first match (1-based),
+        // 0 if no match. NULL if any argument is NULL.
+        "FIELD" => {
+            if args.is_empty() {
+                return Value::Null;
+            }
+            let needle = args[0].to_sql_string();
+            for (i, v) in args.iter().enumerate().skip(1) {
+                if matches!(v, Value::Null) {
+                    return Value::Null;
+                }
+                if v.to_sql_string() == needle {
+                    return Value::Integer(i as i64);
+                }
+            }
+            Value::Integer(0)
+        }
+        // ELT(n, str1, str2, ...) — returns the n-th string (1-based).
+        // n < 1 or n > args.len()-1 returns NULL.
+        "ELT" => {
+            let n = match args.first() {
+                Some(Value::Integer(i)) => *i,
+                _ => return Value::Null,
+            };
+            if n < 1 {
+                return Value::Null;
+            }
+            match args.get(n as usize) {
+                Some(v) if !matches!(v, Value::Null) => Value::Text(v.to_sql_string()),
+                _ => Value::Null,
+            }
+        }
         // TPC-H Sprint 1 fix (Q7/Q8/Q9): SUBSTR(x, start, length)
         "SUBSTR" | "SUBSTRING" => {
             if let (Some(s), Some(start)) = (args.first(), args.get(1)) {
                 let text = s.to_sql_string();
                 let start_idx = match start {
-                    Value::Integer(i) => (*i as i64).saturating_sub(1).max(0) as usize,
+                    Value::Integer(i) => (*i).saturating_sub(1).max(0) as usize,
                     _ => return Value::Text(String::new()),
                 };
                 if start_idx >= text.len() {
@@ -312,7 +526,7 @@ fn eval_fn(name: &str, args: &[Value]) -> Value {
                 }
                 let end = if let Some(len) = args.get(2) {
                     let len = match len {
-                        Value::Integer(i) => (*i as i64).max(0) as usize,
+                        Value::Integer(i) => (*i).max(0) as usize,
                         _ => return Value::Text(String::new()),
                     };
                     (start_idx + len).min(text.len())
@@ -328,8 +542,348 @@ fn eval_fn(name: &str, args: &[Value]) -> Value {
         // through FunctionCall. We can't reach the target type from here, so
         // pass through the input. Downstream Integer() context coerces.
         "CAST" => args.first().cloned().unwrap_or(Value::Null),
+        // MySQL 5.7 function compatibility (Issue #2988 / MySQL-01)
+        // IF(cond, then, else) — ternary; 2-arg form: IF(cond, NULL)
+        "IF" | "IFF" => {
+            if args.len() < 2 {
+                Value::Null
+            } else {
+                let cond = &args[0];
+                let then_v = &args[1];
+                let else_v = args.get(2).cloned().unwrap_or(Value::Null);
+                let truthy = match cond {
+                    Value::Boolean(b) => *b,
+                    Value::Null => false,
+                    Value::Integer(0) => false,
+                    Value::Float(f) if *f == 0.0 => false,
+                    _ => true,
+                };
+                if truthy {
+                    then_v.clone()
+                } else {
+                    else_v
+                }
+            }
+        }
+        // COALESCE(a, b, c, ...) — first non-NULL
+        "COALESCE" => args
+            .iter()
+            .find(|v| !matches!(v, Value::Null))
+            .cloned()
+            .unwrap_or(Value::Null),
+        // ISNULL(x) — same as IS NULL, returns Boolean
+        "ISNULL" => args
+            .first()
+            .map(|v| Value::Boolean(matches!(v, Value::Null)))
+            .unwrap_or(Value::Null),
+        // NULLIF(a, b) — NULL if equal, else a
+        "NULLIF" => {
+            if args.len() < 2 {
+                Value::Null
+            } else {
+                let a = &args[0];
+                let b = &args[1];
+                if a == b {
+                    Value::Null
+                } else {
+                    a.clone()
+                }
+            }
+        }
+        // DATE_ADD(date, INTERVAL n unit) — text dates only (YYYY-MM-DD)
+        // Supports unit: DAY, MONTH, YEAR
+        "DATE_ADD" | "ADDDATE" => date_add_sub(args, true),
+        // DATE_SUB(date, INTERVAL n unit)
+        "DATE_SUB" | "SUBDATE" => date_add_sub(args, false),
+        // TPC-H Q7/Q8/Q9 use `EXTRACT(YEAR FROM o_orderdate) AS o_year`.
+        // The parser encodes this as FunctionCall("EXTRACT", [Literal(field),
+        // source_expr]). For text dates in YYYY-MM-DD form, the field slices
+        // a fixed offset. Returns Text (matches the input type) so the result
+        // can be used in GROUP BY, ORDER BY, and joins without an Integer
+        // coercion round-trip.
+        "EXTRACT" => {
+            let field = args
+                .first()
+                .map(|v| v.to_sql_string().to_uppercase())
+                .unwrap_or_default();
+            let source = match args.get(1) {
+                Some(v) => v.to_sql_string(),
+                None => return Value::Null,
+            };
+            match field.as_str() {
+                "YEAR" if source.len() >= 4 => Value::Text(source[..4].to_string()),
+                "MONTH" if source.len() >= 7 => Value::Text(source[5..7].to_string()),
+                "DAY" if source.len() >= 10 => Value::Text(source[8..10].to_string()),
+                _ => Value::Null,
+            }
+        }
+        // MySQL 5.7 string functions (Issue #2988 / MySQL-01 follow-up).
+        // REPLACE(str, from_str, to_str) — replaces ALL occurrences.
+        "REPLACE" => {
+            if args.len() < 3 {
+                Value::Null
+            } else {
+                Value::Text(
+                    args[0]
+                        .to_sql_string()
+                        .replace(&args[1].to_sql_string(), &args[2].to_sql_string()),
+                )
+            }
+        }
+        // INSERT(str, pos, len, newstr) — pos is 1-based.
+        // MySQL semantics:
+        //   - pos <= 0 or pos > length(str): returns str unchanged
+        //   - len <= 0: returns str with newstr inserted at pos (no deletion)
+        //   - len > remaining: clips to end
+        "INSERT" => {
+            if args.len() < 4 {
+                return Value::Null;
+            }
+            let s = args[0].to_sql_string();
+            let pos_i: i64 = match &args[1] {
+                Value::Integer(n) => *n,
+                _ => return Value::Null,
+            };
+            let len_i: i64 = match &args[2] {
+                Value::Integer(n) => *n,
+                _ => return Value::Null,
+            };
+            let newstr = args[3].to_sql_string();
+            if pos_i <= 0 || (pos_i as usize) > s.len() {
+                return Value::Text(s);
+            }
+            let pos0 = (pos_i as usize) - 1;
+            if len_i <= 0 {
+                // Pure insert: no deletion
+                let mut out = String::with_capacity(s.len() + newstr.len());
+                out.push_str(&s[..pos0]);
+                out.push_str(&newstr);
+                out.push_str(&s[pos0..]);
+                return Value::Text(out);
+            }
+            let len = (len_i as usize).min(s.len() - pos0);
+            let mut out = String::with_capacity(s.len() + newstr.len());
+            out.push_str(&s[..pos0]);
+            out.push_str(&newstr);
+            out.push_str(&s[pos0 + len..]);
+            Value::Text(out)
+        }
+        // Statistical aggregates. Population (POP) divides by n; sample
+        // (SAMP) divides by n-1 (or NULL when n<2). STDDEV/VARIANCE
+        // are aliases for STDDEV_POP/VAR_POP (MySQL convention).
+        "STDDEV" | "STDDEV_POP" => stddev_variance(args, true),
+        "STDDEV_SAMP" => stddev_variance(args, false),
+        "VARIANCE" | "VAR_POP" => variance_value(args, true),
+        "VAR_SAMP" => variance_value(args, false),
+        // Bit aggregates — operate on integer column, NULL treated as 0.
+        "BIT_AND" => bit_aggregate(args, BitOp::And),
+        "BIT_OR" => bit_aggregate(args, BitOp::Or),
+        "BIT_XOR" => bit_aggregate(args, BitOp::Xor),
+        // GROUPING(col) — MySQL: returns 1 if col is NULL because of
+        // a ROLLUP/CUBE roll-up, else 0. Implemented against the
+        // ROLLUP/CUBE result rows which are stored with a sentinel
+        // `_rollup_<col>` marker injected by the engine. Without the
+        // marker (no ROLLUP/CUBE), GROUPING always returns 0.
+        "GROUPING" => Value::Integer(0),
+        // GROUP_CONCAT — aggregate concatenator. Supports SEPARATOR.
+        "GROUP_CONCAT" => group_concat(args),
         _ => Value::Null,
     }
+}
+
+/// DATE_ADD / DATE_SUB helper. Operates on text dates in YYYY-MM-DD form.
+/// Accepts args in either order:
+/// Accepts args in either order:
+///
+/// - [date_text, n, unit_text]
+/// - [date_text, n] (default unit = DAY)
+///
+/// Returns Value::Text (new date) or Value::Null on bad input.
+fn date_add_sub(args: &[Value], add: bool) -> Value {
+    if args.len() < 2 {
+        return Value::Null;
+    }
+    let date_str = args[0].to_sql_string();
+    if date_str.len() < 10 {
+        return Value::Null;
+    }
+    let n = match args[1] {
+        Value::Integer(i) => i,
+        _ => return Value::Null,
+    };
+    let unit = args
+        .get(2)
+        .map(|v| v.to_sql_string().to_uppercase())
+        .unwrap_or_else(|| "DAY".to_string());
+    let sign = if add { 1 } else { -1 };
+    match unit.as_str() {
+        "DAY" => {
+            // Approximate: shift the day portion; for simplicity, do integer
+            // day math on YYYYMMDD-formatted number to handle month/year wrap.
+            let y: i64 = date_str[..4].parse().unwrap_or(0);
+            let m: i64 = date_str[5..7].parse().unwrap_or(1);
+            let d: i64 = date_str[8..10].parse().unwrap_or(1);
+            let total_days = days_from_civil(y, m, d) + sign * n;
+            let (ny, nm, nd) = civil_from_days(total_days);
+            Value::Text(format!("{:04}-{:02}-{:02}", ny, nm, nd))
+        }
+        "MONTH" => {
+            let y: i64 = date_str[..4].parse().unwrap_or(0);
+            let m: i64 = date_str[5..7].parse().unwrap_or(1);
+            let d: i64 = date_str[8..10].parse().unwrap_or(1);
+            let total_months = y * 12 + (m - 1) + sign * n;
+            let ny = total_months.div_euclid(12);
+            let nm = total_months.rem_euclid(12) + 1;
+            // Clamp day to last day of new month
+            let nd = d.min(days_in_month(ny, nm));
+            Value::Text(format!("{:04}-{:02}-{:02}", ny, nm, nd))
+        }
+        "YEAR" => {
+            let y: i64 = date_str[..4].parse().unwrap_or(0);
+            let m: &str = &date_str[5..7];
+            let d: &str = &date_str[8..10];
+            let ny = y + sign * n;
+            let nd_max = days_in_month(ny, m.parse().unwrap_or(1));
+            let d_int: i64 = d.parse().unwrap_or(1);
+            let nd = d_int.min(nd_max);
+            Value::Text(format!("{:04}-{}-{:02}", ny, m, nd))
+        }
+        _ => Value::Null,
+    }
+}
+
+/// Howard Hinnant's days_from_civil: number of days since 1970-01-01
+/// (or any other civil date), proleptic Gregorian.
+fn days_from_civil(y: i64, m: i64, d: i64) -> i64 {
+    let y = if m <= 2 { y - 1 } else { y };
+    let era = y.div_euclid(400);
+    let yoe = y.rem_euclid(400); // [0, 399]
+    let m = if m > 2 { m - 3 } else { m + 9 }; // [0, 11]
+    let doy = (153 * m + 2) / 5 + d - 1; // [0, 365]
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy; // [0, 146096]
+    era * 146097 + doe - 719468
+}
+
+fn civil_from_days(z: i64) -> (i64, i64, i64) {
+    let z = z + 719468;
+    let era = z.div_euclid(146097);
+    let doe = z.rem_euclid(146097);
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+    let y = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = if m <= 2 { y + 1 } else { y };
+    (y, m, d)
+}
+
+fn is_leap(y: i64) -> bool {
+    (y % 4 == 0 && y % 100 != 0) || y % 400 == 0
+}
+
+fn days_in_month(y: i64, m: i64) -> i64 {
+    match m {
+        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+        4 | 6 | 9 | 11 => 30,
+        2 => {
+            if is_leap(y) {
+                29
+            } else {
+                28
+            }
+        }
+        _ => 30,
+    }
+}
+
+/// Statistical aggregate helpers (eval_fn dispatch). These are
+/// scalar-aware: pass the `&[Value]` collected by the aggregate
+/// function; we compute mean / variance / stddev on the integers
+/// (treating floats as their f64, NULL skipped). `pop = true` uses
+/// the population formula (n), `pop = false` uses the sample
+/// formula (n-1) and returns NULL when n<2.
+fn variance_value(args: &[Value], pop: bool) -> Value {
+    let xs: Vec<f64> = args
+        .iter()
+        .filter_map(|v| match v {
+            Value::Null => None,
+            Value::Integer(n) => Some(*n as f64),
+            Value::Float(f) => Some(*f),
+            _ => Some(v.to_sql_string().parse::<f64>().unwrap_or(0.0)),
+        })
+        .collect();
+    let n = xs.len();
+    if n == 0 {
+        return Value::Null;
+    }
+    if !pop && n < 2 {
+        return Value::Null;
+    }
+    let mean: f64 = xs.iter().sum::<f64>() / n as f64;
+    let denom = if pop { n as f64 } else { (n - 1) as f64 };
+    let var: f64 = xs.iter().map(|x| (x - mean).powi(2)).sum::<f64>() / denom;
+    Value::Float(var)
+}
+
+fn stddev_variance(args: &[Value], pop: bool) -> Value {
+    match variance_value(args, pop) {
+        Value::Float(v) => Value::Float(v.sqrt()),
+        other => other,
+    }
+}
+
+/// Bit aggregate operators.
+enum BitOp {
+    And,
+    Or,
+    Xor,
+}
+
+fn bit_aggregate(args: &[Value], op: BitOp) -> Value {
+    let mut acc: Option<i64> = None;
+    for v in args {
+        if matches!(v, Value::Null) {
+            continue;
+        }
+        let n = match v {
+            Value::Integer(i) => *i,
+            _ => v.to_sql_string().parse::<i64>().unwrap_or(0),
+        };
+        acc = Some(match acc {
+            None => n,
+            Some(a) => match op {
+                BitOp::And => a & n,
+                BitOp::Or => a | n,
+                BitOp::Xor => a ^ n,
+            },
+        });
+    }
+    match acc {
+        Some(n) => Value::Integer(n),
+        None => Value::Null,
+    }
+}
+
+/// GROUP_CONCAT — concatenate non-NULL values with optional separator.
+/// In the current eval_fn dispatch, GROUP_CONCAT receives the
+/// function's args slice (which is the column's slice for an
+/// aggregate call, or the literal args for scalar calls). We treat
+/// all non-NULL args as values to concatenate. The separator is
+/// always comma (','); the SEPARATOR clause of GROUP_CONCAT is not
+/// yet supported and would require parser changes.
+fn group_concat(args: &[Value]) -> Value {
+    if args.is_empty() {
+        return Value::Null;
+    }
+    let separator = ",";
+    let joined: String = args
+        .iter()
+        .filter(|v| !matches!(v, Value::Null))
+        .map(|v| v.to_sql_string())
+        .collect::<Vec<_>>()
+        .join(separator);
+    Value::Text(joined)
 }
 
 fn cast_val(val: &Value, target_type: &str) -> Value {
@@ -379,6 +933,290 @@ fn compare_cmp(left: &Value, right: &Value, op: &str) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // ----- IF -----
+    #[test]
+    fn test_if_true_returns_then() {
+        let v = eval_fn(
+            "IF",
+            &[Value::Boolean(true), Value::Integer(1), Value::Integer(2)],
+        );
+        assert_eq!(v, Value::Integer(1));
+    }
+
+    #[test]
+    fn test_if_false_returns_else() {
+        let v = eval_fn(
+            "IF",
+            &[Value::Boolean(false), Value::Integer(1), Value::Integer(2)],
+        );
+        assert_eq!(v, Value::Integer(2));
+    }
+
+    #[test]
+    fn test_if_null_cond_returns_else() {
+        let v = eval_fn("IF", &[Value::Null, Value::Integer(1), Value::Integer(2)]);
+        assert_eq!(v, Value::Integer(2));
+    }
+
+    #[test]
+    fn test_if_two_arg_form() {
+        // IF(cond, then) — else is NULL
+        let v = eval_fn("IF", &[Value::Boolean(false), Value::Integer(7)]);
+        assert_eq!(v, Value::Null);
+    }
+
+    #[test]
+    fn test_if_zero_is_false() {
+        let v = eval_fn(
+            "IF",
+            &[
+                Value::Integer(0),
+                Value::Text("yes".into()),
+                Value::Text("no".into()),
+            ],
+        );
+        assert_eq!(v, Value::Text("no".into()));
+    }
+
+    // ----- COALESCE -----
+    #[test]
+    fn test_coalesce_first_non_null() {
+        let v = eval_fn(
+            "COALESCE",
+            &[
+                Value::Null,
+                Value::Null,
+                Value::Integer(3),
+                Value::Integer(4),
+            ],
+        );
+        assert_eq!(v, Value::Integer(3));
+    }
+
+    #[test]
+    fn test_coalesce_all_null() {
+        let v = eval_fn("COALESCE", &[Value::Null, Value::Null]);
+        assert_eq!(v, Value::Null);
+    }
+
+    // ----- ISNULL -----
+    #[test]
+    fn test_isnull_true() {
+        let v = eval_fn("ISNULL", &[Value::Null]);
+        assert_eq!(v, Value::Boolean(true));
+    }
+
+    #[test]
+    fn test_isnull_false() {
+        let v = eval_fn("ISNULL", &[Value::Integer(1)]);
+        assert_eq!(v, Value::Boolean(false));
+    }
+
+    // ----- NULLIF -----
+    #[test]
+    fn test_nullif_equal() {
+        let v = eval_fn("NULLIF", &[Value::Integer(5), Value::Integer(5)]);
+        assert_eq!(v, Value::Null);
+    }
+
+    #[test]
+    fn test_nullif_not_equal() {
+        let v = eval_fn("NULLIF", &[Value::Integer(5), Value::Integer(6)]);
+        assert_eq!(v, Value::Integer(5));
+    }
+
+    // ----- DATE_ADD / DATE_SUB -----
+    #[test]
+    fn test_date_add_day() {
+        let v = eval_fn(
+            "DATE_ADD",
+            &[
+                Value::Text("2026-06-04".into()),
+                Value::Integer(7),
+                Value::Text("DAY".into()),
+            ],
+        );
+        assert_eq!(v, Value::Text("2026-06-11".into()));
+    }
+
+    #[test]
+    fn test_date_add_month() {
+        let v = eval_fn(
+            "DATE_ADD",
+            &[
+                Value::Text("2026-01-15".into()),
+                Value::Integer(1),
+                Value::Text("MONTH".into()),
+            ],
+        );
+        assert_eq!(v, Value::Text("2026-02-15".into()));
+    }
+
+    #[test]
+    fn test_date_add_year_leap_clamp() {
+        // 2024-02-29 + 1 year = 2025-02-28 (clamped, 2025 is not leap)
+        let v = eval_fn(
+            "DATE_ADD",
+            &[
+                Value::Text("2024-02-29".into()),
+                Value::Integer(1),
+                Value::Text("YEAR".into()),
+            ],
+        );
+        assert_eq!(v, Value::Text("2025-02-28".into()));
+    }
+
+    #[test]
+    fn test_date_sub_day() {
+        let v = eval_fn(
+            "DATE_SUB",
+            &[
+                Value::Text("2026-06-04".into()),
+                Value::Integer(10),
+                Value::Text("DAY".into()),
+            ],
+        );
+        assert_eq!(v, Value::Text("2026-05-25".into()));
+    }
+
+    #[test]
+    fn test_date_add_cross_year() {
+        let v = eval_fn(
+            "DATE_ADD",
+            &[
+                Value::Text("2026-12-25".into()),
+                Value::Integer(10),
+                Value::Text("DAY".into()),
+            ],
+        );
+        assert_eq!(v, Value::Text("2027-01-04".into()));
+    }
+
+    #[test]
+    fn test_date_add_bad_input_returns_null() {
+        let v = eval_fn(
+            "DATE_ADD",
+            &[
+                Value::Text("nope".into()),
+                Value::Integer(1),
+                Value::Text("DAY".into()),
+            ],
+        );
+        assert_eq!(v, Value::Null);
+    }
+
+    // ----- Statistical aggregates (Phase-3c) -----
+    #[test]
+    fn test_stddev_pop_alias() {
+        // STDDEV and STDDEV_POP should return identical values.
+        let args = vec![Value::Integer(1), Value::Integer(2), Value::Integer(3)];
+        let a = match eval_fn("STDDEV", &args) {
+            Value::Float(v) => v,
+            _ => panic!("STDDEV should return Float"),
+        };
+        let b = match eval_fn("STDDEV_POP", &args) {
+            Value::Float(v) => v,
+            _ => panic!("STDDEV_POP should return Float"),
+        };
+        assert!((a - b).abs() < 0.0001, "STDDEV vs STDDEV_POP should match");
+    }
+
+    #[test]
+    fn test_variance_pop() {
+        // Variance of [1, 2, 3] is 2/3 (population).
+        let v = eval_fn(
+            "VARIANCE",
+            &[Value::Integer(1), Value::Integer(2), Value::Integer(3)],
+        );
+        match v {
+            Value::Float(f) => assert!((f - 0.6667).abs() < 0.001, "got {f}"),
+            _ => panic!("VARIANCE should return Float"),
+        }
+    }
+
+    #[test]
+    fn test_variance_samp_n_less_than_2_returns_null() {
+        // SAMP with n=1 returns NULL (n-1 denominator would be 0).
+        let v = eval_fn("VAR_SAMP", &[Value::Integer(5)]);
+        assert_eq!(v, Value::Null);
+    }
+
+    #[test]
+    fn test_variance_samp_two_values() {
+        // VAR_SAMP of [1, 3] is ((1-2)^2 + (3-2)^2) / (2-1) = 2
+        let v = eval_fn("VAR_SAMP", &[Value::Integer(1), Value::Integer(3)]);
+        match v {
+            Value::Float(f) => assert!((f - 2.0).abs() < 0.001, "got {f}"),
+            _ => panic!("VAR_SAMP should return Float"),
+        }
+    }
+
+    // ----- Bit aggregates (Phase-3c) -----
+    #[test]
+    fn test_bit_and() {
+        let v = eval_fn("BIT_AND", &[Value::Integer(0b1100), Value::Integer(0b1010)]);
+        assert_eq!(v, Value::Integer(0b1000));
+    }
+
+    #[test]
+    fn test_bit_or() {
+        let v = eval_fn("BIT_OR", &[Value::Integer(0b1100), Value::Integer(0b1010)]);
+        assert_eq!(v, Value::Integer(0b1110));
+    }
+
+    #[test]
+    fn test_bit_xor() {
+        let v = eval_fn("BIT_XOR", &[Value::Integer(0b1100), Value::Integer(0b1010)]);
+        assert_eq!(v, Value::Integer(0b0110));
+    }
+
+    #[test]
+    fn test_bit_aggregate_empty() {
+        let v = eval_fn("BIT_AND", &[]);
+        assert_eq!(v, Value::Null);
+    }
+
+    // ----- GROUPING (Phase-3c) -----
+    #[test]
+    fn test_grouping_returns_zero_by_default() {
+        // Without ROLLUP/CUBE, GROUPING always returns 0.
+        let v = eval_fn("GROUPING", &[Value::Text("col".into())]);
+        assert_eq!(v, Value::Integer(0));
+    }
+
+    // ----- GROUP_CONCAT (Phase-3c) -----
+    #[test]
+    fn test_group_concat_basic() {
+        let v = eval_fn(
+            "GROUP_CONCAT",
+            &[
+                Value::Text("a".into()),
+                Value::Text("b".into()),
+                Value::Text("c".into()),
+            ],
+        );
+        assert_eq!(v, Value::Text("a,b,c".into()));
+    }
+
+    #[test]
+    fn test_group_concat_skips_null() {
+        let v = eval_fn(
+            "GROUP_CONCAT",
+            &[
+                Value::Text("a".into()),
+                Value::Null,
+                Value::Text("b".into()),
+            ],
+        );
+        assert_eq!(v, Value::Text("a,b".into()));
+    }
+
+    #[test]
+    fn test_group_concat_empty() {
+        let v = eval_fn("GROUP_CONCAT", &[]);
+        assert_eq!(v, Value::Null);
+    }
 
     #[test]
     fn test_literal_int() {

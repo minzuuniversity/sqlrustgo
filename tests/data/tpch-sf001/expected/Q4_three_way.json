@@ -1,0 +1,17 @@
+{
+  "query": "q4.sql",
+  "sqlite_sql_source": "standard_tpch_q.sql",
+  "engines": {
+    "sqlite": {
+      "row_count": 4,
+      "first_3_rows": [
+        "1-URGENT|3",
+        "2-HIGH|1",
+        "4-NOT SPECIFIED|1"
+      ],
+      "error": null
+    }
+  },
+  "consensus_row_count": 4,
+  "consensus": true
+}
