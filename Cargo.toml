@@ -30,17 +30,7 @@ members = [
     "crates/graph",
     "crates/distributed",
     "crates/unified-storage",
-    "crates/unified-query",
-    "crates/sql-corpus",
-    "crates/types",
-    "crates/mysql-server",
-    "crates/qmd-bridge",
-
-    "crates/spill",
-    "crates/wal-verification",
-    "crates/evidence-graph",
-    "tools/sqlrustgo-gate",
-    "tools/graph-cli",
+    "crates/admin",
 ]
 
 [workspace.package]
@@ -52,6 +42,8 @@ license = "MIT"
 [workspace.dependencies]
 sqlrustgo-common = { path = "crates/common" }
 rayon = "1.10"
+flate2 = "1.0"
+chrono = "0.4"
 sqlrustgo-types = { path = "crates/types" }
 sqlrustgo-parser = { path = "crates/parser" }
 sqlrustgo-planner = { path = "crates/planner" }
@@ -113,6 +105,8 @@ sqlrustgo-telemetry = { path = "crates/telemetry" }
 sqlrustgo-gmp = { path = "crates/gmp" }
 query-stats = { path = "crates/query-stats" }
 sqlrustgo-tools = { path = "crates/tools" }
+sqlrustgo-admin = { path = "crates/admin" }
+sqlrustgo-storage = { path = "crates/storage" }
 sqlrustgo-vector = { path = "crates/vector" }
 sqlrustgo-graph = { path = "crates/graph" }
 sqlrustgo-unified-query = { path = "crates/unified-query" }
