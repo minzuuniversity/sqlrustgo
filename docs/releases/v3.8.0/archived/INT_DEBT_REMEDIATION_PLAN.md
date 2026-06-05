@@ -8,7 +8,7 @@
 > **2026-06-04 sync**: Per PR #3097 audit + Issue #3104, INT-1/INT-4 已 CLOSED
 > (PR-3019+PR-3050 / PR-2999+PR-3051). 仅 INT-2/INT-3 仍 ACTIVE.
 
-## 1. INT-1: DML 不经过 WAL/TransactionManager
+## 1. INT-1: DML force TransactionManager
 
 **Status**: ✅ CLOSED (2026-06-04, PR-3019 #2966 + PR-3050 explicit TX path fix)
 **Since**: v1.2.0 (7 versions affected; CLOSED in v3.8.0)
@@ -88,7 +88,7 @@ defines its own. Two parallel implementations, code duplication.
 
 ---
 
-## 4. INT-4: mysql-server 未与主 server 集成
+## 4. INT-4: VtuGuard enforcement
 
 **Status**: ✅ CLOSED (2026-06-04, PR-2999 #2973 + PR-3051 explicit TX path)
 **Since**: v2.6.0 (5 versions affected; CLOSED in v3.8.0)
@@ -100,7 +100,6 @@ defines its own. Two parallel implementations, code duplication.
 `crates/server/` is the main server. Both maintained separately, divergent features.
 
 ### Remediation (CLOSED 2026-06-04)
-
 | Step | Effort | Owner | Status |
 |------|--------|-------|--------|
 | 1. VtuGuard.execute_dml on trigger DML | — | — | ✅ CLOSED (PR-2999) |
@@ -113,7 +112,7 @@ defines its own. Two parallel implementations, code duplication.
 **Cross-reference**: docs/releases/v3.8.0/historical/LEGACY_ISSUES_2026-06-05_AUDIT.md §3
 **Migration test**: tests/int1_fix_verification_test.rs, tests/int1_bypass_evidence_test.rs
 
----
+This debt is no longer active.
 
 ## 5. Total Effort & Timeline
 
