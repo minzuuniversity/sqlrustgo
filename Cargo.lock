@@ -4075,6 +4075,7 @@ dependencies = [
  "proptest",
  "query-stats",
  "rand 0.8.6",
+ "rayon",
  "rusqlite",
  "serde",
  "serde_json",
