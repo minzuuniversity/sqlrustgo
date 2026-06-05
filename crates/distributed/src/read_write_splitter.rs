@@ -143,6 +143,10 @@ impl ReadWriteSplitter {
             sqlrustgo_parser::Statement::DropIndex(_) => QueryClass::Write,
             sqlrustgo_parser::Statement::DropView(_) => QueryClass::Write,
             sqlrustgo_parser::Statement::Truncate(_) => QueryClass::Write,
+            // SEM-1 (#3172): SAVEPOINT/ROLLBACK TO SAVEPOINT/RELEASE
+            // SAVEPOINT modify per-tx undo log; treat as Write so the
+            // distributed router sends them to the primary.
+            sqlrustgo_parser::Statement::SavepointStatement { .. } => QueryClass::Write,
             sqlrustgo_parser::Statement::AlterTable(_) => QueryClass::Write,
             sqlrustgo_parser::Statement::Grant(_) => QueryClass::Write,
             sqlrustgo_parser::Statement::Revoke(_) => QueryClass::Write,
