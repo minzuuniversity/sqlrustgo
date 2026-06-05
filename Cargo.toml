@@ -542,6 +542,14 @@ path = "tests/statistics_test.rs"
 [[test]]
 name = "statistics_harness"
 path = "tests/statistics_harness.rs"
+# P3-3 (#3182) — Cost Optimizer (CBO, 20+ tests, 5 categories)
+[[test]]
+name = "cost_optimizer_test"
+path = "tests/cost_optimizer_test.rs"
+# P3-3 (#3182) — Cost Optimizer Harness (shared helper)
+[[test]]
+name = "cost_optimizer_harness"
+path = "tests/cost_optimizer_harness.rs"
 
 [[test]]
 name = "truncate_table_test"
