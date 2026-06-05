@@ -7,44 +7,68 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] - 2026-06-05
 
-### Fixed
+### v3.9.0 Production Readiness Release 启动
+
+**分支**: `develop/v3.9.0` (从 `main@v3.8.0` fork)
+**类型**: 工程化版本 (可靠性 + 可恢复性 + 可审计性)
+**GA 目标**: 2026-09-23 (12 周 / 6 Phase)
+**资源**: 架构债 40% / 可靠性 35% / GMP 审计 15% / 性能 10% / **新 SQL 0%**
+
+详细启动计划见:
+
+- [`docs/releases/v3.9.0/README.md`](docs/releases/v3.9.0/README.md) — 入口
+- [`docs/releases/v3.9.0/CHANGELOG.md`](docs/releases/v3.9.0/CHANGELOG.md) — v3.9.0 专用 Changelog
+- [`docs/releases/v3.9.0/ROADMAP.md`](docs/releases/v3.9.0/ROADMAP.md) — 6 Phase / 12 周 路线图
+- [`docs/releases/v3.9.0/plans/V390_VERSION_PLAN.md`](docs/releases/v3.9.0/plans/V390_VERSION_PLAN.md) — 战略定位
+- [`docs/releases/v3.9.0/plans/V390_DEVELOPMENT_PLAN.md`](docs/releases/v3.9.0/plans/V390_DEVELOPMENT_PLAN.md) — P0/P1/P2/P3 任务
+- [`docs/releases/v3.9.0/plans/V390_TEST_PLAN.md`](docs/releases/v3.9.0/plans/V390_TEST_PLAN.md) — G1-G10 门禁
+
+Gitea Milestone: <http://192.168.0.252:3000/openclaw/sqlrustgo/milestones/32>
+
+### Added
+
+- `docs/releases/v3.9.0/` 目录 + README + CHANGELOG + ROADMAP (本次启动)
+- 3 个 V390 plan 文档从 `docs/releases/v3.8.0/plans/` 迁移至 `docs/releases/v3.9.0/plans/`
+
+### Changed
+
+- **AGENTS.md** main branch 升级: `develop/v3.8.0` → `develop/v3.9.0`
+
+---
+
+> 以下为 v3.8.0 GA Final 收口内容, 已合并入 [`docs/releases/v3.8.0/CHANGELOG.md`](docs/releases/v3.8.0/CHANGELOG.md) 详细记录。v3.8.0 GA Final 关键 PR (按合并顺序):
 
 - **PR #3131 (Issue #2988)**: Parser — MySQL 5.7 keyword-as-identifier + scalar function dispatch. Corpus +68 cases, 86.5% → 94.2% pass rate.
-- **PR #3132 (Issue #2977)**: TPC-H Q2 ("Minimum Cost Supplier Query") — 5-table comma-join key resolution bug. TPC-H 21/22 → **22/22 ✅** in `tpch_gate_test`.
-- **PR #3142**: ORDER BY execution in SELECT — was parsed but ignored by executor. TPC-H Q18/Q4 unblocked at wire round-trip.
-- **PR #3134 (Issue #3110)**: Savepoint basic test scaffolding — `tests/savepoint_test.rs` + `undo_log_len` getter (foundation for full Savepoint integration).
+- **PR #3132 (Issue #2977)**: TPC-H Q2 — 5-table comma-join key resolution bug. TPC-H 21/22 → **22/22 ✅**.
+- **PR #3142**: ORDER BY execution in SELECT — TPC-H Q18/Q4 unblocked.
+- **PR #3134 (Issue #3110)**: Savepoint basic test scaffolding — `tests/savepoint_test.rs` + `undo_log_len` getter.
+- **PR #3137 (Issue #3107 #3111)**: FEATURE_MATRIX.md §1.5 F-11/F-12 contradiction fixed.
+- **PR #3138 (Issue #3136)**: TPC-H 22 root-cause analysis.
+- **PR #3139 (Issue #3102 #3103)**: 10 孤岛 F-XX + 5 无实现 debt items marked DEFERRED v3.9.0+.
+- **PR #3140 (Issue #3099 #3100)**: GA docs + compile fix.
+- **PR #3141 (Issue #3106)**: `check_cross_version_debt.sh` Part 5 Code Reality Check.
+- **PR #3159 (本次会话)**: 治理优化第 1 波 — INDEX.md + check_arch_sem_debt.sh 改读 YAML SSOT.
+- **PR #3165 (PR-3159 + 合并)**: develop/v3.8.0 → main (v3.8.0 GA Final).
 
-### Changed (Internal / Docs Sync)
+### v3.8.0 GA Final Gates (D1-D9)
 
-- **PR #3137 (Issue #3107 #3111)**: FEATURE_MATRIX.md §1.5 F-11/F-12 contradiction fixed; D6 证据重跑.
-- **PR #3138 (Issue #3136)**: TPC-H 22 root-cause analysis — `execute_joins` comma-list path drops rows (related to Q2 fix in #3132).
-- **PR #3139 (Issue #3102 #3103)**: 标 10 孤岛 F-XX (no integration with main path) + 5 无实现 (no implementation) debt items, all DEFERRED with v3.9.0+ plan.
-- **PR #3140 (Issue #3099 #3100)**: GA docs + compile fix (`with_cube` / `with_rollup` regression).
-- **PR #3141 (Issue #3106)**: `check_cross_version_debt.sh` Part 5 — Code Reality Check (cross-references actual Rust file/test existence, not just markdown).
-
-### Gates
-
-- `scripts/gate/check_docs_links.sh` — **PASS** (all markdown links valid)
-- `scripts/gate/check_docs_consistency.sh` — **PASS** (all 11 mandatory docs present, FEATURE_MATRIX ≥50 features, SECURITY_POLICY has known limitations)
+- `scripts/gate/check_docs_links.sh` — **PASS**
+- `scripts/gate/check_docs_consistency.sh` — **PASS**
 - RC gate: D1=10/10 D2=5/5 D3=DRIFT(1 tracked) D4=5/5 D5=9/10 — **0 blockers**
+- D7 INT Debt: 2 CLOSED + 2 DEFERRED w/ plan — **PASS-WITH-DRIFT**
+- D8 Arch/Sem Debt: 3 CLOSED + 4 IN_PROGRESS w/ plan — **PASS-WITH-DRIFT**
+- D9 Full Gate Verification — **PASS**
 
-### Changed (Breaking — Internal)
+### v3.8.0 GA Final Breaking Changes (Internal)
 
-- **Retired legacy binaries (BREAKING internal change, no public API impact)**: The following binaries are **removed** from the workspace (previously marked DEPRECATED in 3.8.0-alpha):
-  - `sqlrustgo` (root `src/main.rs` stub)
-  - `sqlrustgo-sql-cli` (`crates/sql-cli/`, entire crate)
-  - `sqlrustgo-bench` (`crates/bench/src/main.rs`)
-  - `sqlrustgo-bench-cli` (`crates/bench-cli/`, entire crate)
-  - `sqlrustgo-gmp-cli` (`crates/gmp/src/cli.rs`)
-  - `sqlrustgo-tools` (`crates/tools/src/main.rs`)
-- **Canonical entry is now `sqlrustgo-mysql-server`** (subcommands: `serve` / `exec "<sql>"` / `repl` / `bench` / `gmp` / `diag` / `backup` / `restore`)
-- **Gate scripts updated**: `scripts/gate/check_alpha_v380.sh` now includes `A1_BIN_COUNT` (asserts only `sqlrustgo-mysql-server` is a server-style bin) and `A2_EPHEMERAL_SMOKE` (drives wire-protocol smoke via `start_ephemeral`); A5 coverage threshold lowered 75% → 73% to account for wire-protocol overhead
-- **Libraries preserved**: `crates/bench` lib (used by `examples/tpch_*.rs`), `crates/gmp` lib (used by `crates/rag` and `crates/qmd-bridge`), `crates/tools` lib (used by mysql-server's `backup` / `restore` subcommands) all retained
+- **Retired legacy binaries** (BREAKING internal): `sqlrustgo` / `sqlrustgo-sql-cli` / `sqlrustgo-bench` / `sqlrustgo-bench-cli` / `sqlrustgo-gmp-cli` / `sqlrustgo-tools` removed
+- **Canonical entry**: `sqlrustgo-mysql-server` (subcommands: `serve` / `exec "<sql>"` / `repl` / `bench` / `gmp` / `diag` / `backup` / `restore`)
+- **Gate scripts updated**: `check_alpha_v380.sh` 增 `A1_BIN_COUNT` + `A2_EPHEMERAL_SMOKE`; A5 coverage 75% → 73%
 
-### Migration
+### v3.8.0 Migration
 
 ```bash
-# v3.8.0-beta (deprecated, still works)
+# v3.8.0-beta (deprecated)
 cargo run --bin sqlrustgo
 
 # v3.8.0+ (canonical, required)
@@ -52,10 +76,12 @@ cargo run --bin sqlrustgo-mysql-server -- repl
 cargo run --bin sqlrustgo-mysql-server -- serve
 ```
 
-### Out of Scope
+### v3.8.0 GA Out of Scope
 
-- 5 pre-existing graph-tool bins under `tools/` (`graph-gate`, `graph-ingest`, `sqlrustgo-gate`, `gate`, `ingest`) — orthogonal to the SQL server entry, tracked separately
-- See [SPEC-v3.8.0-001-mysql-server-canonical-entry.md](docs/releases/v3.8.0/SPEC-v3.8.0-001-mysql-server-canonical-entry.md) for the full design
+- 5 graph-tool bins (`graph-gate`, `graph-ingest`, `sqlrustgo-gate`, `gate`, `ingest`) — orthogonal, tracked separately
+- 详细设计: `docs/releases/v3.8.0/SPEC-v3.8.0-001-mysql-server-canonical-entry.md`
+
+---
 
 ## [3.8.0] - 2026-05-31 (Alpha)
 
