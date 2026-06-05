@@ -299,11 +299,17 @@ pub fn evaluate_expression(
             })
         }
         Expression::Aggregate(agg) => {
+            // P0-2 §4.4: delegated to `executor::expr::eval_aggregate_lookup`.
+            // The aggregate is *not* computed here; it is looked up from
+            // a pre-aggregated column in the row by its canonical name
+            // (e.g. "COUNT(*)", "SUM(l_quantity)"). See the doc comment
+            // on `executor::expr::eval_aggregate_lookup` for why.
             let agg_name = expression_to_string(&Expression::Aggregate(agg.clone()));
-            if let Some(col_idx) = find_column_index(&agg_name, table_info) {
-                Ok(row.get(col_idx).cloned().unwrap_or(Value::Null))
-            } else {
-                Err(format!("Aggregate not found in schema: {}", agg_name))
+            let column_names: Vec<String> =
+                table_info.columns.iter().map(|c| c.name.clone()).collect();
+            match sqlrustgo_executor::expr::eval_aggregate_lookup(&agg_name, row, &column_names) {
+                Some(v) => Ok(v),
+                None => Err(format!("Aggregate not found in schema: {}", agg_name)),
             }
         }
         // MySQL 5.7 function dispatch (Issue #2988 / MySQL-01).
