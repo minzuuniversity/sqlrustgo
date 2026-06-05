@@ -16,6 +16,7 @@ on:
       - develop/v2.8.0
       - develop/v3.7.0
       - develop/v3.8.0
+      - develop/v3.9.0
       - beta/v2.8.0
       - ci/gitea-compat
       - ci/v2.8.0-*
@@ -76,6 +77,16 @@ jobs:
           FAIL=$(grep -c 'test result: FAILED' test_report.log 2>/dev/null || echo "0")
           echo "Tests: passed=$PASS failed=$FAIL"
           if [ "$FAIL" -gt 0 ]; then exit 1; fi
+      - name: Gate G1 — TPC-H 22/22 baseline (issue #3186)
+        if: github.event_name == 'pull_request' || contains(github.ref, 'develop/v3.9.0')
+        run: |
+          cd repo
+          chmod +x scripts/gate/check_g1_tpch_baseline.sh
+          bash scripts/gate/check_g1_tpch_baseline.sh 2>&1 | tee g1_report.log
+        # NOTE: this step currently fails by design until the baseline hash in
+        # tests/tpch_hashes_v380.json is filled in (see the OpenSpec change
+        # g1-tpch-baseline). Once filled, this step is the single source of
+        # truth for "did anything change in TPC-H output?".
 
   postcheck:
     runs-on: [hp-z6g4]
