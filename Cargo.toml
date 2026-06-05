@@ -491,6 +491,14 @@ path = "tests/crash_test_framework.rs"
 [[test]]
 name = "crash_test_harness"
 path = "tests/crash_test_harness.rs"
+# P1-3 (#3175) — Soak Test (3-level smoke equivalent)
+[[test]]
+name = "soak_test"
+path = "tests/soak_test.rs"
+# P1-3 (#3175) — Soak Test Harness (shared helper)
+[[test]]
+name = "soak_test_harness"
+path = "tests/soak_test_harness.rs"
 
 [[test]]
 name = "truncate_table_test"
