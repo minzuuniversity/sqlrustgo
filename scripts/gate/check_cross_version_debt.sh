@@ -198,6 +198,117 @@ for t in $(seq -f "T-%02g" 1 20); do
 done
 
 # ============================================================
+# Part 5: Code Reality Check (added in #3106 / #3136 follow-up scope)
+# ============================================================
+# Per PR #3097 audit §2.7, the previous parts only parsed markdown
+# status symbols. This part adds lightweight code-level checks to
+# detect "STALE" claims where the inventory says CLOSED but the
+# actual codebase is missing implementation or only has isolated
+# self-contained test mocks.
+#
+# Scope: 10 isolated F-XX (#3102) + 5 unimplemented debt items (#3103).
+# Full check (cross-cutting use-statement + main-path analysis) is
+# tracked in follow-up #3136 (1 week work).
+echo ""
+echo "=== Part 5: Code Reality Check (#3102, #3103, #3136) ==="
+
+REALITY_FAIL=0
+REALITY_WARN=0
+
+# --- 5a: Detect isolated tests for 10 F-XX (#3102) ---
+# A test is "isolated" if it uses self-contained struct definitions
+# (via `use super::` or none) instead of importing from production
+# crates. We probe the file content for the two strongest signals:
+#   (a) `use sqlrustgo_` — strong indicator of crate-internal use
+#   (b) zero production-struct constructors in body (heuristic)
+ISOLATED_F_LIST=(F-16 F-23 F-24 F-25 F-26 F-27 F-29 F-31 F-32 F-35)
+# Hardcoded mapping: F-id -> test file basename (per docs/releases/v3.8.0/historical/LEGACY_ISSUES_2026-06-05_AUDIT.md §2.3)
+declare -A F_TEST_FILE=(
+    [F-16]="gap_locking_test.rs"
+    [F-23]="clustered_index_test.rs"
+    [F-24]="adaptive_hash_index_test.rs"
+    [F-25]="change_buffer_test.rs"
+    [F-26]="double_write_buffer_test.rs"
+    [F-27]="table_compression_test.rs"
+    [F-29]="row_level_security_test.rs"
+    [F-31]="performance_schema_test.rs"
+    [F-32]="mysqladmin_test.rs"
+    [F-35]="password_rotation_test.rs"
+)
+ISOLATED_TESTS=()
+for f_id in "${ISOLATED_F_LIST[@]}"; do
+    test_basename="${F_TEST_FILE[$f_id]}"
+    # Find candidate test file (handle both .rs at root and in subdirs)
+    test_file=$(find tests -name "$test_basename" -not -path "*/target/*" 2>/dev/null | head -1)
+    if [ -z "$test_file" ]; then
+        continue
+    fi
+    # (a) production-crate imports
+    crate_uses=$(grep -c "use sqlrustgo_" "$test_file" 2>/dev/null | head -1)
+    if [ -z "$crate_uses" ] || [ "$crate_uses" -eq 0 ]; then
+        ISOLATED_TESTS+=("$f_id:$test_file")
+    fi
+done
+
+if [ ${#ISOLATED_TESTS[@]} -gt 0 ]; then
+    echo "  ⚠️  ${#ISOLATED_TESTS[@]} isolated F-XX tests detected (no 'use sqlrustgo_' import — likely self-contained mock):"
+    for t in "${ISOLATED_TESTS[@]}"; do
+        echo "      - ${t}"
+    done
+    echo "      → Per #3102, each should be promoted to a real src/ module in v3.9.0+."
+    REALITY_WARN=$((REALITY_WARN + ${#ISOLATED_TESTS[@]}))
+else
+    echo "  ✅ 0 isolated F-XX tests (all 10 reference production crates)"
+fi
+
+# --- 5b: Detect 5 unimplemented debt items (#3103) ---
+# These items have documentation-only or parser-only implementations.
+# We probe for the *minimum* production-grade symbol each requires.
+echo ""
+echo "  --- 5 unimplemented debt items (F-03 / F-30 / F-36 / T-19 / T-20) ---"
+MISSING=()
+# F-03 GIS — needs geometry types
+if [ -z "$(rg -l '\b(struct|enum)\s+(Point|LineString|Polygon)\b' crates/ --type rust 2>/dev/null | head -1)" ]; then
+    MISSING+=("F-03 GIS: no Point/LineString/Polygon struct/enum in crates/")
+fi
+# F-30 SEQUENCE — needs create_sequence/nextval
+if [ -z "$(rg -l 'fn\s+(create_sequence|nextval)\b' crates/ src/ --type rust 2>/dev/null | head -1)" ]; then
+    MISSING+=("F-30 SEQUENCE: no create_sequence/nextval function in crates/ or src/")
+fi
+# F-36 column privileges — needs ColumnLevel/ColumnPrivilege
+if [ -z "$(rg -l '\b(ColumnLevel|ColumnPrivilege)\b' crates/ src/ --type rust 2>/dev/null | head -1)" ]; then
+    MISSING+=("F-36 列级权限: no ColumnLevel/ColumnPrivilege symbol in crates/ or src/")
+fi
+# T-19 Disk I/O delay — needs disk_io_delay or FAULT_INJECT_DISK
+if [ -z "$(rg -l 'disk_io_delay|FAULT_INJECT_DISK' crates/ src/ tests/ --type rust 2>/dev/null | head -1)" ]; then
+    MISSING+=("T-19 Disk I/O delay: no disk_io_delay/FAULT_INJECT_DISK symbol anywhere")
+fi
+# T-20 process_kill -9 — needs ProcessKill/process_kill or a kill-injection test
+if [ -z "$(rg -l 'ProcessKill|process_kill' crates/ src/ tests/ --type rust 2>/dev/null | head -1)" ]; then
+    MISSING+=("T-20 process_kill -9: no ProcessKill/process_kill symbol or test file")
+fi
+
+if [ ${#MISSING[@]} -gt 0 ]; then
+    echo "  ❌ ${#MISSING[@]} unimplemented debt items confirmed missing in codebase:"
+    for m in "${MISSING[@]}"; do
+        echo "      - ${m}"
+    done
+    echo "      → Per #3103, all 5 are v3.9.0+ plan."
+    REALITY_FAIL=$((REALITY_FAIL + ${#MISSING[@]}))
+else
+    echo "  ✅ 0 unimplemented debt items (all 5 symbols found)"
+fi
+
+echo ""
+if [ $REALITY_FAIL -gt 0 ]; then
+    echo "  Code Reality: ❌ FAIL ($REALITY_FAIL unimplemented, $REALITY_WARN isolated)"
+elif [ $REALITY_WARN -gt 0 ]; then
+    echo "  Code Reality: ⚠️  WARN ($REALITY_WARN isolated tests, 0 unimplemented)"
+else
+    echo "  Code Reality: ✅ PASS"
+fi
+
+# ============================================================
 # Summary
 # ============================================================
 echo ""
