@@ -142,7 +142,40 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     }
                 }
 
-                return Ok(ExecutorResult::new(vec![agg_values], 1));
+                // TPC-H Q14: column expression may be a BinaryOp over
+                // aggregate calls (e.g. `100.00 * SUM(...) / SUM(...)`).
+                // The `compute_aggregates` above returns the raw aggregate
+                // values; we now project the column expression evaluated
+                // against those values as a synthetic row. Without this
+                // step, Q14 would return 2 raw SUM values instead of
+                // the `100.00 * SUM(...) / SUM(...)` result.
+                let agg_schema = build_aggregate_schema(&[], &select.aggregates)?;
+                let projected: Vec<Vec<Value>> = if select.columns.is_empty()
+                    || select.columns.iter().any(|c| c.name == "*")
+                {
+                    vec![agg_values.clone()]
+                } else {
+                    select
+                        .columns
+                        .iter()
+                        .map(|col| {
+                            match &col.expression {
+                                Some(expr) => evaluate_expression(
+                                    expr,
+                                    &agg_values,
+                                    &agg_schema,
+                                )
+                                .unwrap_or(Value::Null),
+                                None => agg_values.first().cloned().unwrap_or(Value::Null),
+                            }
+                        })
+                        .collect::<Vec<_>>()
+                        .into_iter()
+                        .map(|v| vec![v])
+                        .collect()
+                };
+                let row_count = projected.len();
+                return Ok(ExecutorResult::new(projected, row_count));
             } else {
                 let mut groups: std::collections::HashMap<String, Vec<Vec<Value>>> =
                     std::collections::HashMap::new();
