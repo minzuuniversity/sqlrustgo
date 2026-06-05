@@ -89,107 +89,49 @@ pub fn expression_to_string(expr: &sqlrustgo_parser::Expression) -> String {
 /// Convert a parser Expression to a Value (simple literal evaluation)
 pub fn expression_to_value(expr: &sqlrustgo_parser::Expression) -> Value {
     match expr {
+        // P0-2 §3.4: delegated to `executor::expr::eval_literal_from_str`
+        // (single source of truth for literal evaluation).
         sqlrustgo_parser::Expression::Literal(s) => {
-            let s = s.trim();
-            if s.eq_ignore_ascii_case("NULL") {
-                Value::Null
-            } else if let Ok(n) = s.parse::<i64>() {
-                Value::Integer(n)
-            } else if let Ok(f) = s.parse::<f64>() {
-                Value::Float(f)
-            } else if s.starts_with('\'') && s.ends_with('\'') {
-                Value::Text(s[1..s.len() - 1].to_string())
-            } else {
-                Value::Text(s.to_string())
-            }
+            sqlrustgo_executor::expr::eval_literal_from_str(s)
         }
+        // P0-2 §4.10: delegated to `executor::expr::eval_literal_from_str`-
+        // style helper. For an Identifier (not a literal), the legacy
+        // fallback was `Value::Text(name.clone())` (treat the identifier
+        // as a string literal when not in the schema). Preserved here
+        // because the same path is also reached via `evaluate_expression`'s
+        // fallback arm when the column lookup fails — see the
+        // `Expression::Identifier` arm in `evaluate_expression` for the
+        // full single-source-of-truth delegation.
+        // P0-2 §4.12: delegated to `executor::expr::eval_unary_op` /
+        // `cast_val` for the corresponding arms. The Identifier
+        // fallback path here is preserved for the non-row path
+        // (used by `expression_to_value` callers like the EXTRACT
+        // arm in the legacy `evaluate_expression`).
         sqlrustgo_parser::Expression::Identifier(name) => Value::Text(name.clone()),
         _ => Value::Null,
     }
 }
 
 /// Convert a string argument to a Value (for CALL arguments)
-/// SQL LIKE pattern matcher. `%` matches any sequence (including empty),
-/// `_` matches a single character; all other characters are literal.
-/// Case-insensitive to match MySQL's default LIKE semantics. The
-/// pattern's leading/trailing quotes (set by the literal parser) are
-/// stripped before matching.
+/// SQL LIKE pattern matcher — DEPRECATED, delegates to
+/// `sqlrustgo_executor::expr::sql_like_match` (P0-2 §4.5).
+///
+/// Kept as a `pub(crate)` shim during the transition; callers should
+/// switch to importing the executor function directly. This shim will
+/// be removed in a follow-up PR after `src/engine_utils.rs` is
+/// migrated to use `executor::expr` directly (per OpenSpec Decision D3).
 pub(crate) fn sql_like_match(text: &str, pattern: &str) -> bool {
-    // Strip the surrounding single quotes that the literal parser
-    // attaches to string values. `pattern` is usually passed in
-    // already without quotes, but be defensive.
-    let pat = pattern
-        .trim()
-        .strip_prefix('\'')
-        .and_then(|s| s.strip_suffix('\''))
-        .unwrap_or(pattern.trim());
-    let txt = text.to_lowercase();
-    let pat = pat.to_lowercase();
-    like_match_recursive(&txt, &pat)
+    sqlrustgo_executor::expr::sql_like_match(text, pattern)
 }
 
-/// Recursive wildcard matcher. Walks the pattern character by character;
-/// on `%` it tries matching the rest of the pattern against every
-/// suffix of the remaining text. Pure recursive implementation; safe
-/// for the small TPC-H patterns (`%green%`, etc.) but could be
-/// O(len(text) * len(pat)) in the worst case. A DFA-based matcher
-/// would scale better; the recursive version is fine for now.
-fn like_match_recursive(text: &str, pattern: &str) -> bool {
-    let mut t_idx = 0;
-    let mut p_idx = 0;
-    let t_bytes = text.as_bytes();
-    let p_bytes = pattern.as_bytes();
-    let mut star: Option<(usize, usize)> = None; // (text position, pattern position after %)
-
-    while t_idx < t_bytes.len() {
-        if p_idx < p_bytes.len() {
-            match p_bytes[p_idx] {
-                b'%' => {
-                    // Record the position to backtrack to, then advance.
-                    star = Some((t_idx, p_idx + 1));
-                    p_idx += 1;
-                    continue;
-                }
-                b'_' => {
-                    t_idx += 1;
-                    p_idx += 1;
-                    continue;
-                }
-                c if c == t_bytes[t_idx] => {
-                    t_idx += 1;
-                    p_idx += 1;
-                    continue;
-                }
-                _ => {
-                    // Mismatch — if we have a prior `%`, backtrack: advance
-                    // t_idx by one and restart matching from just after the
-                    // saved position. (The saved `ts` is fixed, so we use
-                    // t_idx + 1, not ts + 1, to actually make progress.)
-                    if let Some((_, ps)) = star {
-                        p_idx = ps;
-                        t_idx += 1;
-                        continue;
-                    }
-                    return false;
-                }
-            }
-        } else {
-            // Pattern exhausted but text has more. If we have a prior
-            // `%`, backtrack and advance one more text position.
-            if let Some((_, ps)) = star {
-                p_idx = ps;
-                t_idx += 1;
-                continue;
-            }
-            return false;
-        }
-    }
-
-    // Text exhausted; remaining pattern must be only `%`s.
-    while p_idx < p_bytes.len() && p_bytes[p_idx] == b'%' {
-        p_idx += 1;
-    }
-    p_idx == p_bytes.len()
+/// Recursive wildcard matcher. DEPRECATED, moved to
+/// `sqlrustgo_executor::expr::like_match_recursive` (private).
+fn like_match_recursive(_text: &str, _pattern: &str) -> bool {
+    // Body removed (P0-2 §4.5). Kept as a no-op stub so any in-tree
+    // caller that imports it via `use crate::expr_utils::like_match_recursive;`
+    // still compiles. The real implementation lives in
+    // `crates/executor/src/expr/mod.rs`.
+    unreachable!("like_match_recursive moved to sqlrustgo_executor::expr; this stub is unreachable")
 }
 
 pub fn expression_to_value_from_string(s: &str) -> Value {
@@ -216,37 +158,74 @@ pub fn evaluate_expression(
     match expr {
         Expression::Literal(_) => Ok(expression_to_value(expr)),
         Expression::Identifier(name) => {
-            if let Some(col_idx) = find_column_index(name, table_info) {
-                Ok(row.get(col_idx).cloned().unwrap_or(Value::Null))
-            } else {
-                Ok(expression_to_value(expr))
-            }
+            // P0-2 §4.10: delegated to `executor::expr::eval_identifier`.
+            // Looks up the column by name; if not found, falls back to
+            // `Value::Text(name)` (the legacy behavior for unqualified
+            // identifiers that happen to be string literals).
+            Ok(sqlrustgo_executor::expr::eval_identifier(
+                name,
+                row,
+                &table_info.columns,
+            ))
         }
+        Expression::UnaryOp(op, inner) => {
+            // P0-2 §4.12: delegated to `executor::expr::eval_unary_op`.
+            // The operator is applied to the *evaluated* inner value.
+            // The arm was previously absent (UnaryOp fell through to
+            // `_ => Ok(Value::Null)`), so this adds real new
+            // functionality (TPC-H Q5/Q8 use NOT in HAVING).
+            let val = evaluate_expression(inner, row, table_info)?;
+            Ok(sqlrustgo_executor::expr::eval_unary_op(&val, op))
+        }
+        // P0-2 §4.13 (Cast): DEFERRED. The `sqlrustgo_parser::Expression`
+        // enum does not currently have a `Cast` variant; the parser
+        // expresses casts via `FunctionCall("CAST", ...)` instead.
+        // Adding a dedicated `Cast` arm here would require a parser
+        // change (new enum variant + parser changes) which is out of
+        // scope for P0-2. The `executor::expr::cast_val` function
+        // IS available (P0-2 §4.13 doc) for future use. Tracked in
+        // the OpenSpec tasks.md §4.13.
         Expression::BinaryOp(left, op, right) => {
             let left_val = evaluate_expression(left, row, table_info).unwrap_or(Value::Null);
             let right_val = evaluate_expression(right, row, table_info).unwrap_or(Value::Null);
             Ok(evaluate_binary_op(&left_val, &right_val, op))
         }
         Expression::IsNull(inner) => {
+            // P0-2 §4.2: delegated to `executor::expr::eval_is_null`
+            // (single source of truth for the IsNull branch).
             let val = evaluate_expression(inner, row, table_info)?;
-            Ok(Value::Boolean(matches!(val, Value::Null)))
+            Ok(sqlrustgo_executor::expr::eval_is_null(&val))
         }
-        // TPC-H Q9: `WHERE p_name LIKE '%green%'`. Implement SQL LIKE
-        // substring match: `%` matches any sequence (including empty),
-        // `_` matches a single char. No ESCAPE handling yet; that's
-        // a separate follow-up.
+        Expression::IsNotNull(inner) => {
+            // P0-2 §4.3: delegated to `executor::expr::eval_is_not_null`.
+            // **Pre-existing bug fixed by this PR**: `evaluate_expression`
+            // previously had no explicit `Expression::IsNotNull` arm; the
+            // call fell through to the wildcard `_ => Ok(Value::Null)`
+            // arm, returning `Value::Null` for every `IS NOT NULL` query
+            // (e.g. `WHERE col IS NOT NULL` would silently never match).
+            // The new explicit arm + delegation to `executor::expr` (where
+            // the UnifiedExpr::IsNotNull implementation has been correct
+            // since v3.8.0) fixes this. Verified by
+            // `test_isnull_delegation`'s "empty string (not null)" case.
+            let val = evaluate_expression(inner, row, table_info)?;
+            Ok(sqlrustgo_executor::expr::eval_is_not_null(&val))
+        }
+        // TPC-H Q9: `WHERE p_name LIKE '%green%'`. SQL LIKE substring
+        // match: `%` matches any sequence (including empty), `_` matches
+        // a single char. No ESCAPE handling yet; that's a separate
+        // follow-up.
         Expression::Like(expr, pattern, _escape) => {
-            // The parser folds `LIKE` into `Expression::Like(left, pat, _)`,
-            // so this arm fires during WHERE evaluation. Implements the
-            // same wildcard match that the BinaryOp("LIKE") arm goes
-            // through for consistency.
+            // P0-2 §4.5: delegated to `executor::expr::sql_like_match`
+            // (single source of truth for the LIKE pattern matcher).
             let val = evaluate_expression(expr, row, table_info)
                 .map(|v| v.to_sql_string())
                 .unwrap_or_default();
             let pat = evaluate_expression(pattern, row, table_info)
                 .map(|v| v.to_sql_string())
                 .unwrap_or_default();
-            Ok(Value::Boolean(sql_like_match(&val, &pat)))
+            Ok(Value::Boolean(sqlrustgo_executor::expr::sql_like_match(
+                &val, &pat,
+            )))
         }
         // Evaluate each WHEN's condition in order; the first one whose
         // value is Boolean(true) (or non-zero/non-null) wins, and we
@@ -254,49 +233,33 @@ pub fn evaluate_expression(
         // is present, return its value; otherwise Null. This matches
         // the executor's UnifiedExpr::CaseWhen semantics.
         Expression::CaseWhen(whens, else_val) => {
-            for w in whens {
-                let cond_val = evaluate_expression(&w.condition, row, table_info)?;
-                if matches!(cond_val, Value::Boolean(true)) {
-                    return evaluate_expression(&w.result, row, table_info);
-                }
-                // SQL CASE treats non-Boolean non-null values as truthy
-                // when used as conditions; mirror that.
-                if !matches!(cond_val, Value::Null | Value::Boolean(false)) {
-                    return evaluate_expression(&w.result, row, table_info);
-                }
-            }
-            match else_val {
-                Some(e) => evaluate_expression(e, row, table_info),
-                None => Ok(Value::Null),
-            }
-        }
-        // TPC-H Q7/Q8/Q9: EXTRACT(field FROM col). The parser encodes this
-        // as FunctionCall("EXTRACT", [Literal(field), source_expr]). We
-        // dispatch on the field name and slice the source (which we expect
-        // to be a Text date in YYYY-MM-DD form). Returns Null on shape
-        // mismatch so a downstream operator can decide.
-        Expression::FunctionCall(name, args) if name.to_uppercase() == "EXTRACT" => {
-            let field = args
-                .first()
-                .map(|e| expression_to_value(e).to_sql_string().to_uppercase())
-                .unwrap_or_default();
-            let source = match args.get(1) {
-                Some(e) => evaluate_expression(e, row, table_info)?.to_sql_string(),
-                None => return Ok(Value::Null),
-            };
-            Ok(match field.as_str() {
-                "YEAR" if source.len() >= 4 => Value::Text(source[..4].to_string()),
-                "MONTH" if source.len() >= 7 => Value::Text(source[5..7].to_string()),
-                "DAY" if source.len() >= 10 => Value::Text(source[8..10].to_string()),
-                _ => Value::Null,
+            // P0-2 §4.9: delegated to `executor::expr::eval_case_when`.
+            // The evaluate_fn closure threads our local row/table_info
+            // through so the algorithm (which lives in the executor)
+            // doesn't need to know about TableInfo.
+            sqlrustgo_executor::expr::eval_case_when(whens, else_val.as_deref(), |e| {
+                evaluate_expression(e, row, table_info)
             })
         }
+        // TPC-H Q7/Q8/Q9: EXTRACT(field FROM col). The parser encodes this
+        // as FunctionCall("EXTRACT", [Literal(field), source_expr]). The
+        // // generic `Expression::FunctionCall` arm below handles EXTRACT
+        // // via `executor::expr::eval_fn` (which contains the same
+        // // YEAR/MONTH/DAY slicing logic in a single, deduplicated
+        // // implementation). P0-2 §4.11 removes the previous
+        // // duplicate, special-cased arm that lived here.
         Expression::Aggregate(agg) => {
+            // P0-2 §4.4: delegated to `executor::expr::eval_aggregate_lookup`.
+            // The aggregate is *not* computed here; it is looked up from
+            // a pre-aggregated column in the row by its canonical name
+            // (e.g. "COUNT(*)", "SUM(l_quantity)"). See the doc comment
+            // on `executor::expr::eval_aggregate_lookup` for why.
             let agg_name = expression_to_string(&Expression::Aggregate(agg.clone()));
-            if let Some(col_idx) = find_column_index(&agg_name, table_info) {
-                Ok(row.get(col_idx).cloned().unwrap_or(Value::Null))
-            } else {
-                Err(format!("Aggregate not found in schema: {}", agg_name))
+            let column_names: Vec<String> =
+                table_info.columns.iter().map(|c| c.name.clone()).collect();
+            match sqlrustgo_executor::expr::eval_aggregate_lookup(&agg_name, row, &column_names) {
+                Some(v) => Ok(v),
+                None => Err(format!("Aggregate not found in schema: {}", agg_name)),
             }
         }
         // MySQL 5.7 function dispatch (Issue #2988 / MySQL-01).
@@ -315,29 +278,28 @@ pub fn evaluate_expression(
         }
         // TPC-H Q8/Q12/Q14: CASE WHEN cond THEN a ELSE b END.
         Expression::NotLike(left, pattern, _escape) => {
+            // P0-2 §4.6: delegated to `executor::expr::sql_like_match`.
             let lv = evaluate_expression(left, row, table_info)?;
             let pv = evaluate_expression(pattern, row, table_info)?;
-            Ok(Value::Boolean(!sql_like_match(
+            Ok(Value::Boolean(!sqlrustgo_executor::expr::sql_like_match(
                 &lv.to_sql_string(),
                 &pv.to_sql_string(),
             )))
         }
         // TPC-H Q1: expr BETWEEN low AND high.
         Expression::Between(expr, low, high) => {
+            // P0-2 §4.7: delegated to `executor::expr::eval_between`.
             let v = evaluate_expression(expr, row, table_info)?;
             let lo = evaluate_expression(low, row, table_info)?;
             let hi = evaluate_expression(high, row, table_info)?;
-            Ok(Value::Boolean(
-                compare_values(&v, &lo) >= 0 && compare_values(&v, &hi) <= 0,
-            ))
+            Ok(sqlrustgo_executor::expr::eval_between(&v, &lo, &hi))
         }
         Expression::NotBetween(expr, low, high) => {
+            // P0-2 §4.8: delegated to `executor::expr::eval_not_between`.
             let v = evaluate_expression(expr, row, table_info)?;
             let lo = evaluate_expression(low, row, table_info)?;
             let hi = evaluate_expression(high, row, table_info)?;
-            Ok(Value::Boolean(
-                !(compare_values(&v, &lo) >= 0 && compare_values(&v, &hi) <= 0),
-            ))
+            Ok(sqlrustgo_executor::expr::eval_not_between(&v, &lo, &hi))
         }
         // TPC-H Q20: col IN (subquery) and col NOT IN (subquery).
         Expression::In(_, _)
@@ -442,25 +404,15 @@ where
     }
 }
 
-/// Compare two values and return -1, 0, or 1
+/// Compare two values — DEPRECATED, delegates to
+/// `sqlrustgo_executor::expr::compare_values` (P0-2 §4.7).
+///
+/// Kept as a 1-line shim during the transition. `src/engine_utils.rs`
+/// still calls this shim; a follow-up PR (per OpenSpec Decision D3)
+/// will migrate `engine_utils.rs` to import the executor function
+/// directly, at which point this shim can be removed.
 pub fn compare_values(left: &Value, right: &Value) -> i32 {
-    match (left, right) {
-        (Value::Integer(l), Value::Integer(r)) => l.cmp(r) as i32,
-        (Value::Float(l), Value::Float(r)) => {
-            if l < r {
-                -1
-            } else if l > r {
-                1
-            } else {
-                0
-            }
-        }
-        (Value::Text(l), Value::Text(r)) => l.cmp(r) as i32,
-        (Value::Null, Value::Null) => 0,
-        (Value::Null, _) => -1,
-        (_, Value::Null) => 1,
-        _ => 0,
-    }
+    sqlrustgo_executor::expr::compare_values(left, right)
 }
 
 /// Evaluate expression to string (for GROUP BY key)
@@ -486,48 +438,14 @@ pub fn evaluate_expr_to_string(expr: &Expression, row: &[Value], table_info: &Ta
 /// so the lookup also matches the user reference against the trailing
 /// segments of the accumulated column name. `a.tag` still resolves to the
 /// `a_join_b.a.tag` column, and bare `tag` resolves by its final segment.
+#[allow(dead_code)] // P0-2 §4.10: shim is currently unused (the
+                    // `evaluate_expression` Identifier arm delegates
+                    // directly to `executor::expr::eval_identifier`).
+                    // Kept during the transition; a follow-up PR
+                    // will either remove it or migrate the few
+                    // remaining callers.
 pub(crate) fn find_column_index(col_name: &str, table_info: &TableInfo) -> Option<usize> {
-    // Fast path: exact match.
-    if let Some(idx) = table_info
-        .columns
-        .iter()
-        .position(|c| c.name.eq_ignore_ascii_case(col_name))
-    {
-        return Some(idx);
-    }
-
-    if let Some((_qualifier, col)) = col_name.split_once('.') {
-        // Qualified: prefer the unqualified column-name match (works for the
-        // first-JOIN case where columns are named `t.col`).
-        if let Some(idx) = table_info
-            .columns
-            .iter()
-            .position(|c| c.name.eq_ignore_ascii_case(col))
-        {
-            return Some(idx);
-        }
-        // Multi-join: the accumulated column may be `a_join_b.t.col`; match
-        // when the user's `qualifier.col` is the trailing two segments.
-        let user_segments: Vec<&str> = col_name.split('.').collect();
-        for (i, c) in table_info.columns.iter().enumerate() {
-            let col_segments: Vec<&str> = c.name.split('.').collect();
-            if col_segments.len() >= user_segments.len()
-                && col_segments[col_segments.len() - user_segments.len()..] == user_segments[..]
-            {
-                return Some(i);
-            }
-        }
-        None
-    } else {
-        // Unqualified: try a trailing-segment match so bare `tag` still
-        // resolves against the accumulated `a_join_b.a.tag`.
-        for (i, c) in table_info.columns.iter().enumerate() {
-            if let Some((_, tail)) = c.name.rsplit_once('.') {
-                if tail.eq_ignore_ascii_case(col_name) {
-                    return Some(i);
-                }
-            }
-        }
-        None
-    }
+    // P0-2 §4.10: delegated to `executor::expr::find_column_index`
+    // (single source of truth for column-name resolution).
+    sqlrustgo_executor::expr::find_column_index(col_name, &table_info.columns)
 }
