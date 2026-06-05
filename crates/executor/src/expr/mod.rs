@@ -276,6 +276,29 @@ pub fn eval_literal_from_str(s: &str) -> Value {
     Value::Text(s.to_string())
 }
 
+/// Evaluate the parser-AST `Expression::IsNull` arm: returns
+/// `Value::Boolean(true)` if `value` is `Value::Null`, else
+/// `Value::Boolean(false)`.
+///
+/// This is the single source of truth for "is this value null?". The
+/// legacy `src/expr_utils.rs::evaluate_expression` `Expression::IsNull`
+/// arm is a thin delegation to this function (P0-2 §4.2).
+///
+/// **Semantics (identical to the legacy arm and to
+/// `UnifiedExpr::IsNull::evaluate`):**
+/// - `eval_is_null(&Value::Null)`       → `Value::Boolean(true)`
+/// - `eval_is_null(&Value::Integer(0))` → `Value::Boolean(false)`
+/// - `eval_is_null(&Value::Text(""))`   → `Value::Boolean(false)` (empty string is not null)
+/// - `eval_is_null(&Value::Boolean(false))` → `Value::Boolean(false)`
+pub fn eval_is_null(value: &Value) -> Value {
+    Value::Boolean(matches!(value, Value::Null))
+}
+
+/// Inverse of [`eval_is_null`]. P0-2 §4.3.
+pub fn eval_is_not_null(value: &Value) -> Value {
+    Value::Boolean(!matches!(value, Value::Null))
+}
+
 fn parse_lit(s: &str) -> Value {
     let s = s.trim();
     if s.eq_ignore_ascii_case("NULL") {
