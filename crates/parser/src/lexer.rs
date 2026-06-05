@@ -50,14 +50,24 @@ impl<'a> Lexer<'a> {
         ch
     }
 
-    /// Skip whitespace characters
+    /// Skip whitespace characters and SQL line comments (`-- ...`).
+    /// MySQL 5.7 standard line comments start with `--` and run to the
+    /// end of the line. The previous lexer didn't handle these, so
+    /// `-- === CASE: j_032 ===` inside a subquery was tokenised as
+    /// `Minus, Minus, Equal, Equal, ...` and broke the parser.
     fn skip_whitespace(&mut self) {
         while !self.is_eof() {
             let ch = self.peek_char();
-            if !ch.is_whitespace() {
+            if ch == '-' && self.input[self.position..].starts_with("--") {
+                // Line comment: skip to end of line
+                while !self.is_eof() && self.peek_char() != '\n' {
+                    self.position += 1;
+                }
+            } else if !ch.is_whitespace() {
                 break;
+            } else {
+                self.position += 1;
             }
-            self.position += 1;
         }
     }
 
