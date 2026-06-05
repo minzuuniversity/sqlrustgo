@@ -550,6 +550,10 @@ path = "tests/cost_optimizer_test.rs"
 [[test]]
 name = "cost_optimizer_harness"
 path = "tests/cost_optimizer_harness.rs"
+# P3-4 (#3183) — ParallelExecutor Harness (shared helper, NOTE: parallel_executor_test already exists at line ~357 from P0-3)
+[[test]]
+name = "parallel_executor_harness"
+path = "tests/parallel_executor_harness.rs"
 
 [[test]]
 name = "truncate_table_test"
