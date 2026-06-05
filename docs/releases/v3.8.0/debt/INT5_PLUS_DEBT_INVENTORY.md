@@ -71,8 +71,10 @@
 
 - **✅ Truly Closed (production-integrated, 12)**: F-04, F-05, F-06, F-08, F-09, F-10, F-13, F-14, F-15, F-18, F-19, F-20, F-21, F-22, F-28, F-33 (16 — see "Truly closed" set in audit §2.3)
 - **⚠️ ISOLATED (test-PASS but no main-path integration, 10)**: F-16, F-23, F-24, F-25, F-26, F-27, F-29, F-31, F-32, F-35 — v3.9.0+ plan: real integration (#3102)
+- **🟡 PARTIAL CLOSED (INT-3, 1/15 branches 委托)**: `src/expr_utils.rs::evaluate_expression` 的 `FunctionCall` 分支已委托给 `sqlrustgo_executor::expr::eval_fn` (2026-06-05 调查). 其他 14 分支 (Literal, BinaryOp, IsNull, Aggregate, Like, NotLike, Between, CaseWhen, Identifier, etc.) 仍自己实现. 完整合并跟踪 #3146. **总进度: 1/15 (~7%)**
 - **⚠️ Partial (4)**: F-01, F-02, F-07, F-34
 - **❌ Open/Not Implemented (3)**: F-03 (GIS), F-30 (SEQUENCE), F-36 (列权限) — v3.9.0+ plan: full implementation (#3103)
+- **🔴 ACTIVE (INT-2, 0% 进展)**: `ParallelVolcanoExecutor` 1762 行实现完整, 但 `crates/executor/src/lib.rs` 缺 `pub mod parallel_executor` 声明, 主路径 (src/) 完全不调用. v3.9.0+ plan 完整主路径集成 (#3146). **总进度: 0%**
 - **Audit context**: Per PR #3097 §2.3, 23/36 "closed" claim is misleading; 10 are isolated tests and 3 are not actually implemented.
 
 ---
