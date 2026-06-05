@@ -51,6 +51,7 @@ license = "MIT"
 
 [workspace.dependencies]
 sqlrustgo-common = { path = "crates/common" }
+rayon = "1.10"
 sqlrustgo-types = { path = "crates/types" }
 sqlrustgo-parser = { path = "crates/parser" }
 sqlrustgo-planner = { path = "crates/planner" }
@@ -149,6 +150,7 @@ bytes.workspace = true
 lru-cache.workspace = true
 ctrlc.workspace = true
 serde_json.workspace = true
+rayon.workspace = true
 
 # Canonical name `ci_test` is owned by the subdir file (tests/ci/ci_test.rs).
 # The legacy top-level tests/ci_test.rs was removed because it shadowed the
