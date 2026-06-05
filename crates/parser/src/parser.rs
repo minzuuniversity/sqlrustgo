@@ -2166,7 +2166,10 @@ impl Parser {
                         }
                         self.expect(Token::RParen)?;
                         columns.push(SelectColumn {
-                            name: format!("{:?}", Expression::FunctionCall(name.to_string(), args.clone())),
+                            name: format!(
+                                "{:?}",
+                                Expression::FunctionCall(name.to_string(), args.clone())
+                            ),
                             alias: None,
                             expression: Some(Expression::FunctionCall(name.to_string(), args)),
                         });
@@ -3377,7 +3380,10 @@ impl Parser {
         // Try JSON path first (column -> '$.path' or column ->> '$.path').
         // Falls through to OR expression if no JSON arrow.
         let mut left = self.parse_or_expression()?;
-        while matches!(self.current(), Some(Token::JsonArrow) | Some(Token::JsonArrowText)) {
+        while matches!(
+            self.current(),
+            Some(Token::JsonArrow) | Some(Token::JsonArrowText)
+        ) {
             let op = match self.current() {
                 Some(Token::JsonArrow) => "->",
                 Some(Token::JsonArrowText) => "->>",
@@ -3396,7 +3402,10 @@ impl Parser {
     /// "->" or "->>" so the executor can apply JSON_EXTRACT/JSON_UNQUOTE.
     fn parse_json_path_expression(&mut self) -> Result<Expression, String> {
         let mut left = self.parse_multiplicative_expression()?;
-        while matches!(self.current(), Some(Token::JsonArrow) | Some(Token::JsonArrowText)) {
+        while matches!(
+            self.current(),
+            Some(Token::JsonArrow) | Some(Token::JsonArrowText)
+        ) {
             let op = match self.current() {
                 Some(Token::JsonArrow) => "->",
                 Some(Token::JsonArrowText) => "->>",
@@ -3854,14 +3863,16 @@ impl Parser {
                     if !matches!(self.current(), Some(Token::Comma)) {
                         return Err(format!(
                             "Expected ',' in {}(...), got {:?}",
-                            name, self.current()
+                            name,
+                            self.current()
                         ));
                     }
                     self.next(); // consume Comma
                     if !matches!(self.current(), Some(Token::Interval)) {
                         return Err(format!(
                             "Expected INTERVAL in {}(...), got {:?}",
-                            name, self.current()
+                            name,
+                            self.current()
                         ));
                     }
                     self.next(); // consume INTERVAL
@@ -3945,7 +3956,10 @@ impl Parser {
                         return Ok(Expression::FunctionCall("SUBSTRING".to_string(), args));
                     }
                     self.expect(Token::RParen)?;
-                    return Ok(Expression::FunctionCall("SUBSTRING".to_string(), vec![str_expr]));
+                    return Ok(Expression::FunctionCall(
+                        "SUBSTRING".to_string(),
+                        vec![str_expr],
+                    ));
                 }
                 let mut args = Vec::new();
                 if !matches!(self.current(), Some(Token::RParen)) {
@@ -4151,7 +4165,10 @@ impl Parser {
                         self.next(); // consume IN
                         let haystack = self.parse_primary_expression()?;
                         self.expect(Token::RParen)?;
-                        return Ok(Expression::FunctionCall("POSITION".to_string(), vec![needle, haystack]));
+                        return Ok(Expression::FunctionCall(
+                            "POSITION".to_string(),
+                            vec![needle, haystack],
+                        ));
                     }
                     // GROUP_CONCAT([DISTINCT] expr [ORDER BY expr [ASC|DESC]] [SEPARATOR str])
                     // — MySQL 5.7 aggregate special form. Emit args as a
@@ -4198,7 +4215,10 @@ impl Parser {
                             gc_args.push(self.parse_expression()?);
                         }
                         self.expect(Token::RParen)?;
-                        return Ok(Expression::FunctionCall("GROUP_CONCAT".to_string(), gc_args));
+                        return Ok(Expression::FunctionCall(
+                            "GROUP_CONCAT".to_string(),
+                            gc_args,
+                        ));
                     }
                     let mut args = Vec::new();
                     if !matches!(self.current(), Some(Token::RParen)) {
