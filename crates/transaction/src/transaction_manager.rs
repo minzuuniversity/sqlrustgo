@@ -37,6 +37,13 @@ pub struct ActiveTransaction {
     pub read_keys: Vec<Vec<u8>>,
     /// Keys written by this transaction
     pub write_keys: Vec<Vec<u8>>,
+    /// SEM-1 (#3172): per-transaction savepoint manager.
+    /// SAVEPOINT/ROLLBACK TO SAVEPOINT/RELEASE SAVEPOINT operate on this
+    /// per-tx state. The savepoints are NOT persisted to WAL in this
+    /// iteration; physical rollback of tuple changes is deferred to a
+    /// future PR (the API is in place so callers can begin using the
+    /// statement-level semantics today).
+    pub savepoint_manager: crate::savepoint::SavepointManager,
 }
 
 impl ActiveTransaction {
@@ -48,6 +55,7 @@ impl ActiveTransaction {
             state: TransactionState::Active,
             read_keys: Vec::new(),
             write_keys: Vec::new(),
+            savepoint_manager: crate::savepoint::SavepointManager::new(),
         }
     }
 }
@@ -179,6 +187,79 @@ impl TransactionManager {
         self.active_transactions
             .get(&tx_id)
             .map(|at| at.snapshot.clone())
+    }
+
+    /// SEM-1 (#3172): Create or reset a SAVEPOINT in the named transaction.
+    ///
+    /// The MySQL 5.7 semantics: if a savepoint with this name already
+    /// exists, RESET its undo position to the current undo-log length
+    /// (so subsequent DML before the next SAVEPOINT/RELEASE is captured
+    /// by this name). Otherwise, register a new savepoint.
+    ///
+    /// # Errors
+    /// Returns an error if the transaction is not active.
+    pub fn savepoint(&mut self, tx_id: TxId, name: String) -> Result<(), SsiError> {
+        let active = self
+            .active_transactions
+            .get_mut(&tx_id)
+            .ok_or(SsiError::TransactionNotFound { tx_id })?;
+        active
+            .savepoint_manager
+            .savepoint(name)
+            .map_err(|e| match e {
+                crate::savepoint::SavepointError::NotFound => {
+                    SsiError::TransactionNotFound { tx_id }
+                }
+                crate::savepoint::SavepointError::InvalidOperation => {
+                    SsiError::LockTimeout
+                }
+            })
+    }
+
+    /// SEM-1 (#3172): ROLLBACK TO SAVEPOINT.
+    ///
+    /// Rolls back (in name only — physical undo is deferred) all DML
+    /// changes made after the named savepoint was set. The savepoint
+    /// itself is preserved; nested savepoints after it are discarded.
+    pub fn rollback_to_savepoint(&mut self, tx_id: TxId, name: &str) -> Result<(), SsiError> {
+        let active = self
+            .active_transactions
+            .get_mut(&tx_id)
+            .ok_or(SsiError::TransactionNotFound { tx_id })?;
+        active
+            .savepoint_manager
+            .rollback_to(name)
+            .map_err(|e| match e {
+                crate::savepoint::SavepointError::NotFound => {
+                    SsiError::LockTimeout
+                }
+                crate::savepoint::SavepointError::InvalidOperation => {
+                    SsiError::LockTimeout
+                }
+            })
+    }
+
+    /// SEM-1 (#3172): RELEASE SAVEPOINT.
+    ///
+    /// Removes the savepoint from the stack. The undo-log entries are
+    /// kept (they may still be needed by outer savepoints). A
+    /// non-existent savepoint is a no-op (matches MySQL behaviour).
+    pub fn release_savepoint(&mut self, tx_id: TxId, name: &str) -> Result<(), SsiError> {
+        let active = self
+            .active_transactions
+            .get_mut(&tx_id)
+            .ok_or(SsiError::TransactionNotFound { tx_id })?;
+        active
+            .savepoint_manager
+            .release_savepoint(name)
+            .map_err(|e| match e {
+                crate::savepoint::SavepointError::NotFound => {
+                    SsiError::LockTimeout
+                }
+                crate::savepoint::SavepointError::InvalidOperation => {
+                    SsiError::LockTimeout
+                }
+            })
     }
 }
 
