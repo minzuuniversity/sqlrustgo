@@ -1,4 +1,11 @@
 -- === ENABLE FOR C-03 JSON ===
+-- === SETUP ===
+CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT, email TEXT);
+INSERT INTO users VALUES (1, 'Alice', 'alice@example.com');
+INSERT INTO users VALUES (2, 'Bob', 'bob@test.org');
+INSERT INTO users VALUES (3, 'Charlie', 'c@x.com');
+INSERT INTO users VALUES (4, 'Dave', 'dave@x.com');
+INSERT INTO users VALUES (5, 'Eve', 'eve@x.com');
 
 -- === JSON Functions Test Suite ===
 
