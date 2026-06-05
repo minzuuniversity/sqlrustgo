@@ -379,6 +379,10 @@ name = "row_level_security_test"
 path = "tests/row_level_security_test.rs"
 
 [[test]]
+name = "savepoint_test"
+path = "tests/savepoint_test.rs"
+
+[[test]]
 name = "show_tables_test"
 path = "tests/show_tables_test.rs"
 
