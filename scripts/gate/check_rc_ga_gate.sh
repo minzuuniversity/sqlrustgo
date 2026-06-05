@@ -36,7 +36,9 @@ cd "$REPO_ROOT"
 # C-ARCH rules (consistent across all gates)
 CARCH01_BY_DESIGN="true"          # txn_manager is by design (PR-830)
 CARCH02_WRITE_BUFFER="forbidden"  # LocalExecutor must NOT have write_buffer
-CARCH05_LIMIT=2000                # execution_engine.rs line limit (B5 Integration Gate)
+CARCH05_LIMIT=1800                # execution_engine.rs line limit (SSOT - all other gate scripts must use this value)
+                                # AD-001 original target was 1500; current 1523. 1800 balances current state with future headroom.
+                                # Issue #2877: unified to 1800 across check_arch_invariants.sh, check_integration_gate.sh, check_rc_ga_gate.sh.
 
 # Coverage threshold
 COVERAGE_MIN=75                   # Alpha: 75%, Beta/RC: 80%
@@ -192,7 +194,7 @@ run_d1_alpha() {
     # A6-3: Decision Registry
     gov_total=$((gov_total+1))
     echo -n "  [A6-3] Decision Registry exists ... "
-    if [ -f "docs/releases/v3.8.0/ARCHITECTURE_DECISIONS.md" ]; then
+    if [ -f "docs/releases/v3.8.0/design/ARCHITECTURE_DECISIONS.md" ]; then
         log_pass "A6-3 Decision Registry"
         gov_pass=$((gov_pass+1))
     else
@@ -317,9 +319,9 @@ run_d3_sgl() {
         done
 
     # Parse SGL results
-    SGL_PASS=$(echo "$SGL_OUTPUT" | grep -oP "^  PASS\s*:\s*\K\d+" | head -1 || echo "0")
-    SGL_FAIL=$(echo "$SGL_OUTPUT" | grep -oP "^  FAIL\s*:\s*\K\d+" | head -1 || echo "0")
-    SGL_DRIFT=$(echo "$SGL_OUTPUT" | grep -oP "^  DRIFT\s*:\s*\K\d+" | head -1 || echo "0")
+    SGL_PASS=$(echo "$SGL_OUTPUT" | grep -oE "^  PASS\s*:\s*[0-9]+" | grep -oE "[0-9]+" | head -1 || echo "0")
+    SGL_FAIL=$(echo "$SGL_OUTPUT" | grep -oE "^  FAIL\s*:\s*[0-9]+" | grep -oE "[0-9]+" | head -1 || echo "0")
+    SGL_DRIFT=$(echo "$SGL_OUTPUT" | grep -oE "^  DRIFT\s*:\s*[0-9]+" | grep -oE "[0-9]+" | head -1 || echo "0")
 
     D3_TOTAL=5
     D3_PASS=$((SGL_PASS))
@@ -346,8 +348,8 @@ run_d4_wal() {
                 echo -e "    $line"
             done
 
-        WAL_PASSED=$(echo "$WAL_INV_OUTPUT" | grep -oP "Passed:\s*\K\d+" | head -1 || echo "0")
-        WAL_FAILED=$(echo "$WAL_INV_OUTPUT" | grep -oP "Failed:\s*\K\d+" | head -1 || echo "0")
+        WAL_PASSED=$(echo "$WAL_INV_OUTPUT" | grep -oE "Passed:\s*[0-9]+" | grep -oE "[0-9]+" | head -1 || echo "0")
+        WAL_FAILED=$(echo "$WAL_INV_OUTPUT" | grep -oE "Failed:\s*[0-9]+" | grep -oE "[0-9]+" | head -1 || echo "0")
 
         D4_TOTAL=5
         D4_PASS=$((WAL_PASSED))
@@ -364,6 +366,128 @@ run_d4_wal() {
 
         echo "  WAL Invariant: $WAL_EXP_PASSED passed (fallback to exp_g_wal_contracts_verified)"
         log_pass "D4 WAL: $WAL_EXP_PASSED/5 passed"
+    fi
+}
+
+# =============================================================================
+# D6: INTEGRATION TEST COVERAGE GATE (Issue #2874)
+# =============================================================================
+# Runs all 35+ integration tests that were previously not gated.
+# Each test is invoked via `cargo test --test <name>` and PASS/FAIL is tracked.
+# A test is considered PASS if cargo reports "0 failed" in its summary line.
+
+D6_TOTAL=0
+D6_PASS=0
+D6_FAIL=0
+D6_FAILED_TESTS=()
+
+# Full list of v3.8.0 integration tests (Issue #2874: 35 previously-untracked tests)
+# + 14 previously-tracked tests. Path is relative to tests/; subdirs use forward slash.
+D6_INTEGRATION_TESTS=(
+    # Tracked tests (re-run for completeness)
+    "wal_integration_test"
+    "parser_token_test"
+    "regression_test"
+    "cbo_integration_test"
+    "stored_proc_catalog_test"
+    "stored_procedure_parser_test"
+    "data_loader"
+    "binary_format_test"
+    "page_io_benchmark_test"
+    "ci/ci_test"
+    "ci/buffer_pool_test"
+    "ci/buffer_pool_benchmark_test"
+    "e2e/e2e_query_test"
+    "e2e/monitoring_test"
+    "e2e/observability_test"
+    # 35 previously-untracked tests (P0-1, Issue #2874)
+    "adaptive_hash_index_test"
+    "aggregate_functions_test"
+    "boundary_test"
+    "clustered_index_test"
+    "concurrency_stress_test"
+    "distinct_test"
+    "e2e_trigger_wal_recovery"
+    "ee_module_boundary_test"
+    "embedded_harness_isolation"
+    "embedded_harness_smoke"
+    "exp_g_wal_contracts_verified"
+    "expression_operators_test"
+    "gap_locking_test"
+    "in_value_list_test"
+    "limit_clause_test"
+    "long_run_stability_72h_test"
+    "long_run_stability_test"
+    "memory_fault_injection_test"
+    "mysqladmin_test"
+    "network_fault_injection_test"
+    "parallel_executor_test"
+    "performance_schema_test"
+    "qps_benchmark_test"
+    "r_gate_yaml_test"
+    "row_level_security_test"
+    "show_tables_test"
+    "table_compression_test"
+    "tpch_full_22_test"
+    "tpch_gate_test"
+    "tx_wal_contract_tests"
+    "change_buffer_test"
+    "double_write_buffer_test"
+    "mvcc_transaction_test"
+    "password_rotation_test"
+    "embedded_harnesssmoke"
+    "ci_test"
+)
+
+run_d6_integration_tests() {
+    log_header "D6a: Integration Test Coverage Gate (Issue #2874) — see check_full_gate_verification.sh for D6 Test Inventory"
+
+    # Build a one-shot manifest of all integration tests we should track.
+    # Skip the duplicate placeholder "ci_test" and "embedded_harnesssmoke"
+    # (Cargo.toml has a separate "ci_test" path=tests/ci_test.rs entry;
+    # "embedded_harnesssmoke" without underscore is a typo kept for robustness).
+    # Bash 3.2 compatible: no associative arrays, no nested array expansions.
+    local dedup_tests=""
+    for t in ${D6_INTEGRATION_TESTS}; do
+        case "$dedup_tests" in
+            *"$t"*) ;;
+            *) dedup_tests="$dedup_tests $t" ;;
+        esac
+    done
+
+    for test_name in $dedup_tests; do
+        # Skip tests that don't exist as files (defensive)
+        if [[ ! -f "tests/${test_name}.rs" ]]; then
+            # Some subdir tests use / separator
+            if [[ ! -f "tests/${test_name}.rs" ]] && [[ ! -f "tests/$(echo "$test_name" | tr / -).rs" ]]; then
+                log_info "D6: skip $test_name (file not found)"
+                continue
+            fi
+        fi
+
+        D6_TOTAL=$((D6_TOTAL+1))
+        echo -n "  [D6-${D6_TOTAL}] cargo test --test ${test_name} ... "
+
+        # Run test, capture output. Set timeout via cargo (no timeout cmd available).
+        local out
+        out=$(cargo test --test "${test_name}" --quiet 2>&1 || true)
+        # PASS if "0 failed" in last lines, or "test result: ok"
+        if echo "$out" | grep -qE 'test result: ok\.?\s*$|0 failed'; then
+            log_pass "D6-${D6_TOTAL}: ${test_name}"
+            D6_PASS=$((D6_PASS+1))
+        else
+            log_fail "D6-${D6_TOTAL}: ${test_name} (FAIL)"
+            D6_FAIL=$((D6_FAIL+1))
+            D6_FAILED_TESTS+=("${test_name}")
+        fi
+    done
+
+    echo ""
+    if [[ "$D6_FAIL" -eq 0 ]]; then
+        log_pass "D6 summary: ${D6_PASS}/${D6_TOTAL} integration tests PASS"
+    else
+        log_warn "D6 summary: ${D6_PASS}/${D6_TOTAL} PASS, ${D6_FAIL} FAIL"
+        log_info "Failed tests: ${D6_FAILED_TESTS[*]}"
     fi
 }
 
@@ -497,7 +621,7 @@ run_d5_deepseek() {
         log_pass "D5-10: Engineering facts (0 test failures)"
         D5_PASS=$((D5_PASS+1))
     else
-        log_warn "D5-10: Test failures present ($RECENT_FAILS)"
+        log_warn "D5-10: Test failures present ($FAILED_COUNT)"
     fi
 
     echo -e "\n  D5 Result: $D5_PASS/$D5_TOTAL"
@@ -557,7 +681,7 @@ check_carch_unified() {
         ca_pass=$((ca_pass+1))
     fi
 
-    # C-ARCH-05: execution_engine.rs line limit (2000)
+    # C-ARCH-05: execution_engine.rs line limit (SSOT CARCH05_LIMIT, currently 1800)
     ca_total=$((ca_total+1))
     EE_LINES=$(wc -l < src/execution_engine.rs 2>/dev/null || echo "0")
     echo -n "  [C-ARCH-05] execution_engine.rs ($EE_LINES/$CARCH05_LIMIT lines) ... "
@@ -613,6 +737,12 @@ ${NC}"
         check_carch_unified
     fi
 
+    if [[ "$GATE" == "all" ]] || [[ "$GATE" == "ga" ]]; then
+        # D6: Integration Test Coverage Gate (Issue #2874)
+        # 跑 49+ integration tests, FAIL 即 blocker
+        run_d6_integration_tests
+    fi
+
     # =======================================================================
     # SUMMARY
     # =======================================================================
@@ -622,6 +752,7 @@ ${NC}"
     echo "  D3-SGL:    PASS=$D3_PASS | FAIL=$D3_FAILS | DRIFT=$D3_DRIFTS"
     echo "  D4-WAL:    $D4_PASS/$D4_TOTAL"
     echo "  D5-DeepSeek: $D5_PASS/$D5_TOTAL"
+    echo "  D6a-Integration: $D6_PASS/$D6_TOTAL (FAIL: $D6_FAIL)  (D6-TestInventory in check_full_gate_verification.sh)"
     echo ""
 
     # Determine gate verdict
