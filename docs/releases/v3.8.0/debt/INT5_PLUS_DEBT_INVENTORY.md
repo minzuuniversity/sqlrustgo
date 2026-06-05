@@ -32,7 +32,7 @@
 |----|---------|----------|-------------|-------------|--------|
 | F-01 | CREATE EVENT 事件调度器 | v2.0.0 | ❌ 未实现 | ⚠️ partial (35 files 有 event) | `crates/executor/src/trigger.rs` |
 | F-02 | FULLTEXT 全文索引 | v2.0.0 | ❌ 未实现 | ⚠️ partial (3 files) | partial impl |
-| F-03 | GIS 空间数据类型 | v2.0.0 | ❌ 未实现 | ⚠️ partial (40 files) | per src/ |
+| F-03 | GIS 空间数据类型 | v2.0.0 | ❌ 未实现 | ❌ NOT IMPLEMENTED | ❌ OPEN — no Point/LineString/Polygon/WKT/WKB code. "40 files" claim is false (false positives: backup/pitr/bench). v3.9.0+ plan: full implementation (#3103) |
 | F-04 | INSERT...SELECT | v2.6.0 | ✅ 已实现 | ✅ in execute_insert | v3.0.0 Alpha |
 | F-05 | 窗口函数 (NTILE/LEAD/LAG/...) | v2.8.0 | ✅ 已实现 | ✅ window_executor | v3.0.0 Alpha |
 | F-06 | CTE 执行 (WITH 递归) | v2.6.0 | ✅ 已实现 | ✅ in executor | v3.0.0 Alpha |
@@ -45,33 +45,35 @@
 | F-13 | 触发器 | v2.0.0 | ⚠️ 部分 | ✅ 42 files | F-13 + I-01 |
 | F-14 | CTE 递归 | v2.0.0 | ✅ 已实现 | ✅ | v3.0.0 |
 | F-15 | SERIALIZABLE 隔离级别 | v2.0.0 | ⚠️ 部分 | ✅ 11 files | SSI PR |
-| F-16 | Gap Locking | v2.0.0 | ❌ 未实现 | ✅ CLOSED (PR fix/f-16-gap-locking, 7/7 tests) |
+| F-16 | Gap Locking | v2.0.0 | ❌ 未实现 | ✅ CLOSED (PR fix/f-16-gap-locking, 7/7 tests) | ⚠️ ISOLATED — tests in `tests/gap_locking_test.rs` use self-contained mock; v3.9.0+ plan: real B+ tree integration (#3102) |
 | F-17 | JSON 函数完整 | v2.5.0 | ⚠️ 部分 | ✅ 27 files | |
 | F-18 | INFORMATION_SCHEMA | v2.0.0 | ⚠️ 部分 | ✅ SHOW TABLES (PR-2790/2815) | per recent PR |
 | F-19 | SSL/TLS 加密 | v2.0.0 | ❌ 未实现 | ✅ rustls | |
 | F-20 | 慢查询日志 | v2.0.0 | ❌ 未实现 | ✅ 4 files | |
 | F-21 | 在线 DDL | v2.0.0 | ⚠️ 阻塞式 | ✅ 6 files (AlterTable) | |
 | F-22 | Prepared Statement | v2.6.0 | ⚠️ 有缺陷 | ✅ 7 files | |
-| F-23 | 聚簇索引 | v2.5.0 | ❌ 未实现 | ✅ CLOSED (PR fix/f-23-clustered-index, 7/7 tests) |
-| F-24 | 自适应哈希索引 (AHI) | v2.5.0 | ❌ 未实现 | ✅ CLOSED (PR fix/f-24-adaptive-hash-index, 7/7 tests) |
-| F-25 | Change Buffer | v2.5.0 | ⚠️ 部分 | ✅ CLOSED (PR fix/f-25-f-26, 5/5 tests) |
-| F-26 | 双写缓冲 | v2.5.0 | ❌ 未实现 | ✅ CLOSED (PR fix/f-25-f-26, 6/6 tests) |
-| F-27 | 表压缩 | v2.5.0 | ❌ 未实现 | ✅ CLOSED (PR fix/f-27-table-compression, 8/8 tests) |
+| F-23 | 聚簇索引 | v2.5.0 | ❌ 未实现 | ✅ CLOSED (PR fix/f-23-clustered-index, 7/7 tests) | ⚠️ ISOLATED — `tests/clustered_index_test.rs` uses BTreeMap self-contained; v3.9.0+ plan: real disk-based B+ tree integration (#3102) |
+| F-24 | 自适应哈希索引 (AHI) | v2.5.0 | ❌ 未实现 | ✅ CLOSED (PR fix/f-24-adaptive-hash-index, 7/7 tests) | ⚠️ ISOLATED — in-memory mock; v3.9.0+ plan: real B+ tree integration (#3102) |
+| F-25 | Change Buffer | v2.5.0 | ⚠️ 部分 | ✅ CLOSED (PR fix/f-25-f-26, 5/5 tests) | ⚠️ ISOLATED — ChangeOp enum inlined in test; v3.9.0+ plan: real storage integration (#3102) |
+| F-26 | 双写缓冲 | v2.5.0 | ❌ 未实现 | ✅ CLOSED (PR fix/f-25-f-26, 6/6 tests) | ⚠️ ISOLATED — in-memory mock; v3.9.0+ plan: real fsync integration (#3102) |
+| F-27 | 表压缩 | v2.5.0 | ❌ 未实现 | ✅ CLOSED (PR fix/f-27-table-compression, 8/8 tests) | ⚠️ ISOLATED — RLE only (not LZ4/zstd as FEATURE_MATRIX §2.3 states); v3.9.0+ plan: real LZ4/zstd integration (#3102) |
 | F-28 | XA 两阶段提交验证 | v2.6.0 | ⚠️ 有但不完整 | ✅ 2 files | |
-| F-29 | 行级安全 (RLS) | v2.0.0 | ❌ 未实现 | ✅ CLOSED (PR fix/f-29-row-level-security, 6/6 tests) |
-| F-30 | CREATE SEQUENCE | v2.0.0 | ❌ 未实现 | ✅ 11 files | |
-| F-31 | performance_schema | v2.0.0 | ❌ 未实现 | ✅ CLOSED (PR fix/f-31-performance-schema, 7/7 tests) |
-| F-32 | mysqladmin 等效 | v2.0.0 | ❌ 未实现 | ✅ CLOSED (PR fix/f-32-mysqladmin, 11/11 tests) |
+| F-29 | 行级安全 (RLS) | v2.0.0 | ❌ 未实现 | ✅ CLOSED (PR fix/f-29-row-level-security, 6/6 tests) | ⚠️ ISOLATED — in-memory catalog, simple = predicate only; v3.9.0+ plan: real executor integration (#3102) |
+| F-30 | CREATE SEQUENCE | v2.0.0 | ❌ 未实现 | ❌ NOT IMPLEMENTED | ❌ OPEN — no `create_sequence` / `nextval` code; only 1 drop_sequence parser test. v3.9.0+ plan: full implementation (#3103) |
+| F-31 | performance_schema | v2.0.0 | ❌ 未实现 | ✅ CLOSED (PR fix/f-31-performance-schema, 7/7 tests) | ⚠️ ISOLATED — in-memory mock; v3.9.0+ plan: real instrumentation hooks + SELECT * FROM performance_schema.* (#3102) |
+| F-32 | mysqladmin 等效 | v2.0.0 | ❌ 未实现 | ✅ CLOSED (PR fix/f-32-mysqladmin, 11/11 tests) | ⚠️ ISOLATED — in-test mock; real CLI binary deferred to v3.9.0+ (#3102) |
 | F-33 | mysqlbinlog | v2.0.0 | ❌ 未实现 | ✅ 7 files | |
 | F-34 | AES-256 存储加密 | v2.8.0 | ❌ 未实现 | ⚠️ partial (2 files) | |
-| F-35 | 密码轮转 | v2.0.0 | ❌ 未实现 | ✅ CLOSED (PR fix/f-35-password-rotation, 8/8 tests) | |
-| F-36 | 列级权限 | v2.0.0 | ⚠️ 部分 | ✅ 4 files | |
+| F-35 | 密码轮转 | v2.0.0 | ❌ 未实现 | ✅ CLOSED (PR fix/f-35-password-rotation, 8/8 tests) | ⚠️ ISOLATED — in-memory only; v3.9.0+ plan: promote to `src/auth/password_rotation.rs` + ALTER USER PASSWORD EXPIRE parser (#3102) |
+| F-36 | 列级权限 | v2.0.0 | ⚠️ 部分 | ❌ NOT IMPLEMENTED | ❌ OPEN — no `ColumnLevel` / `ColumnPrivilege` code. "4 files" claim is false. v3.9.0+ plan: full implementation (#3103) |
 
 ### F-xx Status Summary
 
-- **✅ Closed (23)**: F-04, F-05, F-06, F-08, F-09, F-10, F-11, F-12, F-13, F-14, F-15, F-17, F-18, F-19, F-20, F-21, F-22, F-28, F-30, F-33, F-36
-- **⚠️ Partial (5)**: F-01, F-02, F-03, F-07, F-34
-- **❌ Open/Deferred (0)**: (all F-xx debt items in v3.8.0 are either ✅ or ⚠️)
+- **✅ Truly Closed (production-integrated, 12)**: F-04, F-05, F-06, F-08, F-09, F-10, F-13, F-14, F-15, F-18, F-19, F-20, F-21, F-22, F-28, F-33 (16 — see "Truly closed" set in audit §2.3)
+- **⚠️ ISOLATED (test-PASS but no main-path integration, 10)**: F-16, F-23, F-24, F-25, F-26, F-27, F-29, F-31, F-32, F-35 — v3.9.0+ plan: real integration (#3102)
+- **⚠️ Partial (4)**: F-01, F-02, F-07, F-34
+- **❌ Open/Not Implemented (3)**: F-03 (GIS), F-30 (SEQUENCE), F-36 (列权限) — v3.9.0+ plan: full implementation (#3103)
+- **Audit context**: Per PR #3097 §2.3, 23/36 "closed" claim is misleading; 10 are isolated tests and 3 are not actually implemented.
 
 ---
 
@@ -122,14 +124,17 @@
 | T-16 | CPU 80% stress | ❌ 无 | ⚠️ partial (concurrency_stress_test) |
 | T-17 | Network 30% packet loss | ❌ 无 | ✅ CLOSED (PR fix/t-17-t-18-fault-injection, 7/7 tests) |
 | T-18 | Memory fault injection | ❌ 无 | ✅ CLOSED (PR fix/t-17-t-18-fault-injection, 7/7 tests) |
-| T-19 | Disk I/O delay | ❌ 无 | ❌ DEFERRED |
-| T-20 | Process kill -9 mid-transaction | ❌ 无 | ✅ e2e_crash_recovery_proof |
+| T-19 | Disk I/O delay | ❌ 无 | ❌ NOT IMPLEMENTED | ❌ OPEN — no `disk_io_delay` / `FAULT_INJECT_DISK` code. 0 commits, 0 SPEC. v3.9.0+ plan: full implementation (#3103) |
+| T-20 | Process kill -9 mid-transaction | ❌ 无 | ❌ NOT IMPLEMENTED | ❌ OPEN — no `process_kill` / `ProcessKill` test file. "e2e_crash_recovery_proof" file does not exist. v3.9.0+ plan: full implementation (#3103) |
 
 ### T-xx Status Summary
 
-- **✅ Closed (16)**: T-01, T-02, T-03, T-04, T-05, T-07, T-08, T-09, T-10, T-11, T-12, T-13, T-20
-- **⚠️ Partial (2)**: T-06, T-14, T-16
-- **❌ Open/Deferred (1)**: T-19 (T-15, T-17, T-18 CLOSED by fix/t-15 + fix/t-17-t-18 PRs)
+- **✅ Truly Closed (10)**: T-01, T-02, T-03, T-04, T-07, T-08, T-09, T-10, T-11, T-13
+- **⚠️ ISOLATED (mock tests, 3)**: T-15, T-17, T-18 — in-process mock, not real fault injection; v3.9.0+ plan
+- **⚠️ Partial (3)**: T-06 (optimizer tests, actually improved by audit), T-14 (Sysbench spec only, not in CI), T-16 (CPU 80% stress partial)
+- **✅ Mis-attributed (2)**: T-05 (crash_recovery_test.rs), T-12 (check_regression.sh) — claimed closed but file does not exist
+- **❌ Open/Not Implemented (2)**: T-19 (Disk I/O delay), T-20 (process_kill -9) — v3.9.0+ plan: full implementation (#3103)
+- **Audit context**: Per PR #3097 §2.4, T-19/T-20 are completely unimplemented, T-05/T-12 files don't exist, T-15/T-17/T-18 are mocks.
 
 ---
 
