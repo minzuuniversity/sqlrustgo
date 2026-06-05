@@ -17,7 +17,7 @@ pub use parser::{
     CreateProcedureStatement, CreateTableStatement, CreateTriggerStatement, CreateViewStatement,
     DeleteStatement, DropIndexStatement, DropTableStatement, DropViewStatement, Expression,
     ForeignKeyRef, InsertStatement, JoinClause, JoinType, MergeAction, MergeSource, MergeStatement,
-    MergeWhenClause, SelectColumn, SelectStatement, Statement, StoredProcParam,
+    MergeWhenClause, SavepointOp, SelectColumn, SelectStatement, Statement, StoredProcParam,
     StoredProcParamMode, StoredProcStatement, TableConstraint, UpdateStatement, WithClause,
     WithSelect,
 };
