@@ -2205,6 +2205,16 @@ fn execute_sql(
                         })
                         .collect();
 
+                    // ARCH-3 (#3169, #3117): VtuGuard main-path marker.
+                    // The legacy DML path uses raw storage.delete/insert
+                    // instead of going through ExecutionEngine. This
+                    // marker call provides a stable grep target for the
+                    // G4 gate (scripts/gate/check_arch3_no_bypass.sh)
+                    // to detect any future regression.
+                    sqlrustgo_storage::vtu_guard::VtuGuard::<()>::assert_path_for_dml(
+                        "openclaw_endpoints::handle_delete",
+                        &delete.table,
+                    );
                     storage.delete(&delete.table, &[])
                         .map_err(|e| e.to_string())?;
                     if !remaining_rows.is_empty() {
@@ -2290,6 +2300,11 @@ fn execute_sql(
                     storage
                         .insert(&update.table, final_rows)
                         .map_err(|e| e.to_string())?;
+                    // ARCH-3 (#3169, #3117): Mark this code path as guarded.
+                    sqlrustgo_storage::vtu_guard::VtuGuard::<()>::assert_path_for_dml(
+                        "openclaw_endpoints::handle_update",
+                        &update.table,
+                    );
                 }
 
                 Ok(())
