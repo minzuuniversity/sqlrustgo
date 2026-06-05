@@ -217,68 +217,148 @@ Gate: 6D 32+/33 ✅  (D1 10/10 + D2 5/5 + D3 4/5+DRIFT + D4 5/5 + D5 9/10 + D6a 
 
 ## 3. v3.9.0 路线图建议
 
-### 3.1 v3.9.0 主题: **收敛与集成 (Convergence & Integration)**
+> **v3.2 校准 (2026-06-05, ChatGPT 架构师评审)**:
+> v3.9.0 主题从"收敛与集成"重新定位为 **"Production Readiness Release"**.
+> 资源分配从 50%+ SQL 功能 → 40% 架构债 + 35% 可靠性 + 15% GMP 审计 + 10% 性能 + 0% 新 SQL.
+> 新增 G6-G10 门禁 (Backup/Restore, Soak Test, Crash Matrix, Upgrade Test, Audit Log + 时间旅行).
+> 详细计划见 [`plans/V390_VERSION_PLAN.md`](../plans/V390_VERSION_PLAN.md) / [`plans/V390_DEVELOPMENT_PLAN.md`](../plans/V390_DEVELOPMENT_PLAN.md) / [`plans/V390_TEST_PLAN.md`](../plans/V390_TEST_PLAN.md).
 
-v3.8.0 完成了**架构统一**（双路径 → 单路径），v3.9.0 应完成**集成收敛**（孤岛 → 主路径）。
+### 3.1 v3.9.0 主题: **Production Readiness Release — Single-Node Production Candidate**
 
-### 3.2 v3.9.0 优先级与工作量
+**核心问题反转** (ChatGPT 评审 #7):
 
-#### Tier 1: P0 (必须 v3.9.0 完成, 否则新债积累)
+| 时期 | 核心问题 |
+|------|----------|
+| v3.8.0 之前 | SQL 能力够不够? 还缺什么 SQL 函数? |
+| **v3.9.0 开始** | **数据库死了以后还能不能回来?** 备份能不能恢复? 升级会不会坏数据? 7×24h 运行会不会崩? 审计能不能追溯? |
 
-| Item | Issue | 工作量 | 依赖 | 风险 |
-|------|-------|--------|------|------|
-| INT-3 expr 完整合并 (14/15 分支委托) | #3108/#3146 | 32h (5-6 天) | 无 | 中 (需 regression 验证) |
-| INT-2 ParallelExecutor 主路径 | #3108/#3146 | 30h (4-5 天 + perf) | INT-3 完成 | 中-高 (并发正确性) |
-| VtuGuard 主路径集成 (execute_update_sql) | #3109 | 16h (2 天) | 无 (子集已修) | 低 |
-| openclaw_endpoints VtuGuard 包装 | #3117 | 24h (3 天) | VtuGuard 主路径 | 中 |
-| Savepoint MVCC 真实还原 | SEM-1 | 28h (3.5 天) | 无 | 高 (正确性) |
+**拒绝的版本定位**:
+- ❌ "Feature Release" (继续堆 SQL 功能, 收益下降)
+- ❌ "Distributed Database" (分布式太早, 单节点可靠性都没验证)
 
-**Tier 1 总计**: 130h (~ 16 工作日 / 3.2 周)
+**采纳的版本定位**:
+- ✅ "Production Readiness Release" (工程化 + 可靠性)
+- ✅ "Single-Node Production Candidate" (单机生产就绪)
 
-#### Tier 2: P1 (v3.9.0 中后期)
+### 3.2 v3.9.0 资源分配 (ChatGPT 建议)
 
+| 方向 | **新占比 (ChatGPT)** | 旧 v3.9.0 路线图 | 差异 |
+|------|---------------------|------------------|------|
+| **架构债 (INT/ARCH/SEM)** | **40%** (180h) | ~50% (Tier 1 = 130h) | -10% (推向 v3.10+) |
+| **可靠性 (Recovery/Backup/Soak)** | **35%** (158h) | 0% | **+158h (新增)** |
+| **GMP 审计能力** | **15%** (68h) | 0% | **+68h (新增)** |
+| **性能优化** | **10%** (45h) | ~30% (Tier 2 = 160h + Tier 3 部分) | -20% |
+| **新 SQL 功能** | **0%** | ~20% (Tier 3 = 228h) | -20% (推 v3.10+) |
+| **合计** | **451h** (~ 12 周) | 518h (~ 12.9 周) | -67h (聚焦可靠性) |
+
+**关键决策**:
+- v3.9.0 **不再新增 SQL 功能** (Window Function, CTE, 高级函数全部推 v3.10+)
+- v3.9.0 重点是 **证明数据库能稳定运行 + 能恢复 + 不会坏数据**
+
+### 3.3 v3.9.0 优先级与工作量 (新分类, 4 档 16 任务)
+
+#### P0 (Phase 1-2, 4 项, 130h, 40%) — 架构债
 | Item | Issue | 工作量 | 依赖 |
 |------|-------|--------|------|
-| check_cross_version_debt.sh 升级 | #3136 | 40h (1 周) | 无 |
-| TPC-H Track 3 SF>=1 性能 | #2948 | 40h (1 周) | 性能债基线 |
-| 10 孤岛 F-XX 测试集成 | F-23~35 | 80h (2 周) | #3136 治理 |
+| P0-1 | ARCH-3 Complete (VtuGuard 主路径强制) | 40h | 无 (#3129 子集已修) |
+| P0-2 | INT-3 Single Expression Engine | 32h | 无 |
+| P0-3 | INT-2 ParallelExecutor 真集成 | 30h | P0-2 |
+| P0-4 | SEM-1 Savepoint MVCC 真实还原 | 28h | 无 |
 
-**Tier 2 总计**: 160h (~ 4 周)
-
-#### Tier 3: P2 (v3.9.0 后期 / v3.10)
-
+#### P1 (Phase 3-4, 4 项, 168h, 35%) — **生产可靠性 (新增)**
 | Item | 描述 | 工作量 |
 |------|------|--------|
-| F-30 SEQUENCE | 完整实现 | 40h |
-| F-36 列级权限 | 完整实现 | 60h |
-| F-03 GIS | 空间索引 | 80h |
-| T-19/20 故障注入 | 测试债 | 16h |
-| ARCH-2 mysql-server vs bench-cli | execute_update_sql 文本路径 | 32h |
+| P1-1 | **Backup / Restore / Verify CLI + PITR** | 40h |
+| P1-2 | **Crash Test Framework (100+ scenarios)** | 40h |
+| P1-3 | **Soak Test (24h / 72h / 168h)** | 48h |
+| P1-4 | **Upgrade Test (v3.8 → v3.9)** | 40h |
 
-**Tier 3 总计**: 228h (~ 5.7 周)
+#### P2 (Phase 5, 3 项, 68h, 15%) — **GMP 能力 (新增)**
+| Item | 描述 | 工作量 |
+|------|------|--------|
+| P2-1 | **Audit Log (审计日志)** | 24h |
+| P2-2 | **时间旅行查询 (AS OF TIMESTAMP)** | 24h |
+| P2-3 | **不可篡改审计链 (Hash Chain)** | 20h |
 
-### 3.3 v3.9.0 时间分配 (12 周 RC)
+#### P3 (Phase 6, 5 项, 85h, 10%) — 性能优化
+| Item | 描述 | 工作量 |
+|------|------|--------|
+| P3-1 | Prepared Statement Cache | 12h |
+| P3-2 | Statistics (ANALYZE TABLE) | 16h |
+| P3-3 | Cost Optimizer | 24h |
+| P3-4 | INT-2 ParallelExecutor 优化 | 18h |
+| P3-5 | SIMD 集成 SQL Executor | 15h |
+
+**新分类总计: 451h (4 档 16 任务)**
+
+**推到 v3.10+** (旧 v3.9.0 Tier 2+3):
+- check_cross_version_debt.sh 升级 (40h) → v3.10+
+- TPC-H Track 3 SF>=1 性能 (40h) → v3.10+ (或 v3.9.0 P3 后续)
+- 10 孤岛 F-XX 测试集成 (80h) → v3.10+
+- F-30 SEQUENCE (40h) → v3.10+
+- F-36 列级权限 (60h) → v3.10+
+- F-03 GIS (80h) → v3.10+
+- T-19/20 故障注入 (16h) → v3.10+ (部分被 v3.9.0 P1-2 覆盖)
+- ARCH-2 mysql-server vs bench-cli (32h) → v3.10+
+- 10 孤岛 F-XX 跟踪 (200h) → v3.10+
+
+### 3.4 v3.9.0 时间分配 (12 周 RC, 6 Phases)
 
 ```
-Phase 1 (W1-2): INT-3 完整合并 + VtuGuard 主路径        (Tier 1 优先)
-Phase 2 (W3-4): INT-2 ParallelExecutor + openclaw VtuGuard  (Tier 1 续)
-Phase 3 (W5-6): Savepoint MVCC + cross-version gate 升级    (Tier 1 收口 + Tier 2)
-Phase 4 (W7-8): TPC-H Track 3 性能基准                   (Tier 2)
-Phase 5 (W9-10): 10 F-XX 孤岛测试集成 + 治理              (Tier 2)
-Phase 6 (W11-12): RC/GA 门禁 + v3.9.0 收口                (RC/GA)
+Phase 0 (W0):   分支 + SPEC (5 SPEC 完成)                  40h
+Phase 1 (W1-2): P0-1 ARCH-3 + P0-3 INT-3                  72h
+Phase 2 (W3-4): P0-2 INT-2 + P0-4 SEM-1                 58h
+Phase 3 (W5-6): P1-1 Backup/Restore + P1-2 Crash        80h
+Phase 4 (W7-8): P1-3 Soak + P1-4 Upgrade                88h
+Phase 5 (W9-10): P2-1/2/3 Audit + Time Travel          68h
+Phase 6 (W11-12): P3 性能优化 + 收口 + GA 发布            85h
+              合计 451h (~ 12 周, 1 人)
 ```
 
-### 3.4 v3.9.0 GA 门禁新增要求
+### 3.5 v3.9.0 GA 门禁 (G1-G10, 全新 10 维)
 
-| 维度 | v3.8.0 要求 | v3.9.0 新增 |
-|------|------------|------------|
-| L1 Unit | ≥ 当前 | + 14/15 委托分支测试 |
-| L2 Execution | hash 一致 | + ParallelExecutor 路径 hash 一致 |
-| L3 ACID | 49 tests | + Savepoint ROLLBACK 真实还原测试 |
-| L4 Architecture | 1696/1800 lines | + VtuGuard 零白名单 (gate 真实检测) |
-| L5 Performance | TPC-H 22/22 SF=0.1 | + SF=1 22/22 + 并行 ≤ sequential |
-| L6 Documentation | 6D | + INT-2/INT-3/ARCH-3/SEM-1 全 CLOSED |
-| Cross-Version | 2/4 INT CLOSED | 4/4 INT CLOSED + 4/4 SEM CLOSED + 0 ARCH |
+**新门禁取代旧的 L1-L6 + Cross-Version**:
+
+| Gate | 主题 | 验证 | 阻断? |
+|------|------|------|------|
+| **G1** | 22/22 TPC-H 保持 | `cargo test --test tpch_gate_test` 22/22 PASS | **是** |
+| **G2** | INT-2 关闭 | ParallelExecutor 主路径集成 + perf 不退化 | **是** |
+| **G3** | INT-3 关闭 | Single Expression Engine (14 委托 + TPC-H 22/22) | **是** |
+| **G4** | ARCH-3 关闭 | VtuGuard 主路径强制 (`grep bypass = 0`) | **是** |
+| **G5** | SEM-1 关闭 | Savepoint ROLLBACK 真实还原 | **是** |
+| **G6** | **Backup/Restore** | 100+ scenarios PASS + PITR | **是** |
+| **G7** | **24h Soak Test** | 无内存/句柄/锁泄漏 + WAL 不异常增长 | **是** |
+| **G8** | **Crash Matrix** | 100+ scenarios PASS (8 类崩溃注入) | **是** |
+| **G9** | **Upgrade Test** | v3.8 → v3.9 数据可读 (50+ scenarios) | **是** |
+| **G10** | **Audit + Time Travel** | 40+ tests PASS (审计 + AS OF TIMESTAMP) | ⚠️ (不阻断, 但 GMP 受损) |
+
+**v3.8.0 GA 门禁 L1-L6** → v3.9.0 简化为 G1 (TPC-H 保持) + G6-G9 (新可靠性门禁).
+
+**v3.8.0 Cross-Version Debt** → v3.9.0 全部关闭 (G2/G3/G4/G5 = 4 项 INT/ARCH/SEM).
+
+### 3.6 v3.9.0 → Production Grade 演进 (v3.9.0+ 之后)
+
+如需从 **GA** 演进到 **Production Grade** (ChatGPT 评审), 需额外:
+
+| 工作 | 估计 |
+|------|------|
+| 24h-168h Soak Test (72h/168h 真实跑) | 80h |
+| 真实 MySQL 5.7 SF=1 性能对比 (服务器级) | 40h |
+| 跨版本升级路径测试 (v3.7 → v3.8 → v3.9) | 40h |
+| 运维监控/告警/备份/恢复流程 (生产级) | 80h |
+| 分布式 (推 v3.10+) | - |
+| **总** | **240h (6 周)** |
+
+**演进路径**:
+```
+v3.8.0-GA (PASS, 实用型 8.4~8.7/10)
+   ↓ v3.9.0 完成 G1-G10
+v3.9.0-GA (Single-Node Production Candidate)
+   ↓ v3.9.0+ 6 周补完
+v3.9.0-Production-Grade (Single-Node Production Engine)
+   ↓ v3.10+ 分布式
+v3.10+ (Distributed Production Database)
+```
 
 ---
 
