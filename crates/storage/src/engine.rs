@@ -594,6 +594,9 @@ pub struct MemoryStorage {
     table_infos: HashMap<String, TableInfo>,
     triggers: HashMap<String, TriggerInfo>,
     views: HashSet<String>,
+    /// Tracks the current transaction ID for VtuGuard::assert_dml_safe.
+    /// VtuGuard checks S::in_transaction() which returns `current_tx_id != 0`.
+    current_tx_id: u64,
 }
 
 impl MemoryStorage {
@@ -603,6 +606,7 @@ impl MemoryStorage {
             table_infos: HashMap::new(),
             triggers: HashMap::new(),
             views: HashSet::new(),
+            current_tx_id: 0,
         }
     }
 }
@@ -810,6 +814,18 @@ impl StorageEngine for MemoryStorage {
 
     fn is_wal_enabled(&self) -> bool {
         true
+    }
+
+    fn in_transaction(&self) -> bool {
+        self.current_tx_id != 0
+    }
+
+    fn current_tx_id(&self) -> u64 {
+        self.current_tx_id
+    }
+
+    fn set_current_tx_id(&mut self, id: u64) {
+        self.current_tx_id = id;
     }
 }
 
