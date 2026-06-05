@@ -62,7 +62,7 @@ have separate code paths for query execution. Same engine, different front-ends.
 
 ## 3. ARCH-3: VTU 未完全接入 (5% regression risk)
 
-**Status**: OPEN
+**Status**: ⚠️ PARTIAL (PR-3140 解决 ARCH-3 子集, 剩余 v3.9.0)
 **Since**: v3.5.0
 **Severity**: P1 (regression risk)
 **Impact**: 5% of update paths bypass VTU (Vectorized Tuple Update); correctness drift
@@ -70,6 +70,26 @@ have separate code paths for query execution. Same engine, different front-ends.
 ### Root Cause
 `crates/executor/src/update.rs` has 3 code paths; only 1 uses VTU. Other 2 use
 legacy row-by-row update.
+
+### 进度 (2026-06-05, PR #3140)
+
+**完成**: #3129 ARCH-3 阻塞 1+2 (PR-3140 合并)
+
+| 阻塞 | 修复 | 文件 | 状态 |
+|------|------|------|------|
+| 1. `MemoryStorage::in_transaction()` 永远 false | 新增 `current_tx_id: u64` field + 真实 trait impl | `crates/storage/src/engine.rs:597,818-827` | ✅ DONE |
+| 2. autocommit 路径缺 `set_current_tx_id` | `execute_insert/update/delete` 添加 storage.set_current_tx_id(tx_id.as_u64()) | `src/execution_engine.rs:348-352, 553-557, 786-790` | ✅ DONE |
+| 3. ARCH-3 VtuGuard 集成测试 | 3 个 #3129 测试覆盖两障碍 | `crates/storage/src/vtu_guard.rs:381-429` | ✅ DONE |
+
+**新增测试** (全部通过):
+- `test_3129_memory_storage_in_transaction_reflects_tx_id`
+- `test_3129_vtu_guard_passes_in_tx_with_memory_storage`
+- `test_3129_vtu_guard_execute_dml_with_memory_storage_in_tx`
+
+### 剩余 ARCH-3 (v3.9.0)
+- `execute_truncate` 仍 `&self` (非 autocommit 路径, DDL 边缘)
+- 移除 `check_arch2_no_bypass.sh` 中 `src/execution_engine.rs` 白名单 (待 ARCH-3 完整修复后)
+- VtuGuard 接到 ExecutionEngine 主路径 (而非仅外部 chokepoint)
 
 ### Remediation Plan (v3.9.0)
 
