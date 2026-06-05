@@ -156,6 +156,9 @@ pub fn sql_compare(op: &str, left: &Value, right: &Value) -> bool {
         ">=" => crate::expr_utils::compare_values(left, right) >= 0,
         "<" => crate::expr_utils::compare_values(left, right) < 0,
         "<=" => crate::expr_utils::compare_values(left, right) <= 0,
+        // TPC-H Q9: `WHERE p_name LIKE '%green%'`. Substring match with
+        // `%` (any sequence) and `_` (single char) wildcards.
+        "LIKE" => crate::expr_utils::sql_like_match(&left.to_sql_string(), &right.to_sql_string()),
         _ => false,
     }
 }
@@ -164,35 +167,75 @@ pub fn sql_compare(op: &str, left: &Value, right: &Value) -> bool {
 /// For JOIN queries with combined tables, handles qualified names like "t2.id"
 /// by routing to the correct portion of the combined schema.
 /// Combined table naming: left_table.col, right_table.col
+///
+/// For multi-join chains, `build_combined_schema` accumulates prefixes
+/// (e.g. an `a.tag` column becomes `a_join_b.a.tag` after a second join),
+/// so the lookup also matches the user reference against the trailing
+/// segments of the accumulated column name. `a.tag` still resolves to the
+/// `a_join_b.a.tag` column, and bare `tag` resolves by its final segment.
 pub fn find_column_index(col_name: &str, table_info: &TableInfo) -> Option<usize> {
+    // First pass: exact match (preserves prior behavior, fast path for the
+    // non-accumulated case where the user wrote the same prefixed name the
+    // engine stored).
+    if let Some(idx) = table_info
+        .columns
+        .iter()
+        .position(|c| c.name.eq_ignore_ascii_case(col_name))
+    {
+        return Some(idx);
+    }
+
     if let Some((_qualifier, col)) = col_name.split_once('.') {
-        for (i, c) in table_info.columns.iter().enumerate() {
-            if c.name.eq_ignore_ascii_case(col_name) {
-                return Some(i);
-            }
-        }
-        table_info
+        // Qualified: prefer the unqualified column-name match (works for the
+        // first-JOIN case where columns are named `t.col`).
+        if let Some(idx) = table_info
             .columns
             .iter()
             .position(|c| c.name.eq_ignore_ascii_case(col))
+        {
+            return Some(idx);
+        }
+        // Multi-join: the accumulated column may be `a_join_b.t.col`; match
+        // when the user's `qualifier.col` is the trailing two segments.
+        let user_segments: Vec<&str> = col_name.split('.').collect();
+        for (i, c) in table_info.columns.iter().enumerate() {
+            let col_segments: Vec<&str> = c.name.split('.').collect();
+            if col_segments.len() >= user_segments.len()
+                && col_segments[col_segments.len() - user_segments.len()..] == user_segments[..]
+            {
+                return Some(i);
+            }
+        }
+        None
     } else {
-        table_info
-            .columns
-            .iter()
-            .position(|c| c.name.eq_ignore_ascii_case(col_name))
+        // Unqualified: try a trailing-segment match so bare `tag` still
+        // resolves against the accumulated `a_join_b.a.tag`.
+        for (i, c) in table_info.columns.iter().enumerate() {
+            if let Some((_, tail)) = c.name.rsplit_once('.') {
+                if tail.eq_ignore_ascii_case(col_name) {
+                    return Some(i);
+                }
+            }
+        }
+        None
     }
 }
 
+/// Build a combined schema for a single JOIN. Each side's columns are
+/// prefixed with the corresponding prefix string (`alias` if set, else
+/// the table name) so subsequent JOIN ON conditions can route columns
+/// like `n1.n_nationkey` to the correct side.
 pub fn build_combined_schema(
     left_info: &TableInfo,
-    right_table_name: &str,
+    left_prefix: &str,
     right_info: &TableInfo,
+    right_prefix: &str,
 ) -> SqlResult<TableInfo> {
     let mut columns = Vec::new();
 
     for c in &left_info.columns {
         columns.push(ColumnDefinition {
-            name: format!("{}.{}", left_info.name, c.name),
+            name: format!("{}.{}", left_prefix, c.name),
             data_type: c.data_type.clone(),
             nullable: c.nullable,
             primary_key: c.primary_key,
@@ -201,7 +244,7 @@ pub fn build_combined_schema(
 
     for c in &right_info.columns {
         columns.push(ColumnDefinition {
-            name: format!("{}.{}", right_table_name, c.name),
+            name: format!("{}.{}", right_prefix, c.name),
             data_type: c.data_type.clone(),
             nullable: c.nullable,
             primary_key: c.primary_key,
@@ -209,7 +252,7 @@ pub fn build_combined_schema(
     }
 
     Ok(TableInfo {
-        name: format!("{}_join_{}", left_info.name, right_table_name),
+        name: format!("{}_join_{}", left_prefix, right_prefix),
         columns,
         foreign_keys: vec![],
         unique_constraints: vec![],
