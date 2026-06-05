@@ -638,6 +638,29 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         let pairs: Vec<(usize, usize)> = match join_key {
             JoinKey::Pair(li, ri) => vec![(li, ri)],
             JoinKey::Pairs(v) => v,
+            JoinKey::All => {
+                // Phase 5 (TPCH-01 Q2): cartesian product join — used
+                // when the parser cannot find a fully-resolvable JOIN
+                // ON predicate (e.g. when the only candidate references
+                // a not-yet-joined table). All left rows match all
+                // right rows; the outer WHERE filter then narrows
+                // results.
+                let mut cross = Vec::with_capacity(left_rows.len() * right_rows.len());
+                for left_row in left_rows {
+                    for right_row in &right_rows {
+                        let mut combined = left_row.clone();
+                        combined.extend(right_row.clone());
+                        cross.push(combined);
+                    }
+                }
+                let combined_schema = build_combined_schema(
+                    &left_table_info,
+                    &left_alias,
+                    &right_table_info,
+                    right_alias,
+                )?;
+                return Ok((cross, combined_schema));
+            }
             JoinKey::Left(_) | JoinKey::Right(_) => {
                 return Err(SqlError::ExecutionError(
                     "Join ON must be a binary equality between left and right columns".to_string(),
@@ -779,6 +802,14 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         // Enable locally by uncommenting to debug find_join_key_index.
         // eprintln!("DBG find_join_key_index: left={} right={} expr={:?}", left_name, right_name, expr);
         match expr {
+            Expression::Literal(_) => {
+                // Phase 5 (TPCH-01 Q2): the parser emits `Literal("true")`
+                // for cartesian joins when no resolvable ON predicate is
+                // found (e.g. a 5-table comma-join whose predicate
+                // references a not-yet-joined table). Signal cartesian
+                // matching back to the caller.
+                Ok(JoinKey::All)
+            }
             Expression::Identifier(name) => {
                 if let Some((qualifier, col_name)) = name.split_once('.') {
                     // Qualified name: must match either side
@@ -909,6 +940,7 @@ enum JoinKey {
     Right(usize),
     Pair(usize, usize),
     Pairs(Vec<(usize, usize)>),
+    All,
 }
 
 /// Is this expression a LIKE / NOT LIKE predicate? Used by
