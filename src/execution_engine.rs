@@ -345,6 +345,11 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 .map_err(|e| SqlError::ExecutionError(format!("TM.begin failed: {:?}", e)))?;
             self.current_tx_id = Some(tx_id);
             self.tx_status = TxStatus::Active;
+            // #3129: propagate TX id to storage so VtuGuard::assert_dml_safe
+            // can verify in_transaction() (PR-3019 was missing this step).
+            if let Ok(mut storage) = self.storage.write() {
+                storage.set_current_tx_id(tx_id.as_u64());
+            }
             Some(tx_id)
         } else {
             self.current_tx_id
@@ -545,6 +550,11 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 .map_err(|e| SqlError::ExecutionError(format!("TM.begin failed: {:?}", e)))?;
             self.current_tx_id = Some(tx_id);
             self.tx_status = TxStatus::Active;
+            // #3129: propagate TX id to storage so VtuGuard::assert_dml_safe
+            // can verify in_transaction() (PR-3019 was missing this step).
+            if let Ok(mut storage) = self.storage.write() {
+                storage.set_current_tx_id(tx_id.as_u64());
+            }
             Some(tx_id)
         } else {
             self.current_tx_id
@@ -773,6 +783,11 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 .map_err(|e| SqlError::ExecutionError(format!("TM.begin failed: {:?}", e)))?;
             self.current_tx_id = Some(tx_id);
             self.tx_status = TxStatus::Active;
+            // #3129: propagate TX id to storage so VtuGuard::assert_dml_safe
+            // can verify in_transaction() (PR-3019 was missing this step).
+            if let Ok(mut storage) = self.storage.write() {
+                storage.set_current_tx_id(tx_id.as_u64());
+            }
             Some(tx_id)
         } else {
             self.current_tx_id
