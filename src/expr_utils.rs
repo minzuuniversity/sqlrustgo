@@ -199,21 +199,13 @@ pub fn evaluate_expression(
         // is present, return its value; otherwise Null. This matches
         // the executor's UnifiedExpr::CaseWhen semantics.
         Expression::CaseWhen(whens, else_val) => {
-            for w in whens {
-                let cond_val = evaluate_expression(&w.condition, row, table_info)?;
-                if matches!(cond_val, Value::Boolean(true)) {
-                    return evaluate_expression(&w.result, row, table_info);
-                }
-                // SQL CASE treats non-Boolean non-null values as truthy
-                // when used as conditions; mirror that.
-                if !matches!(cond_val, Value::Null | Value::Boolean(false)) {
-                    return evaluate_expression(&w.result, row, table_info);
-                }
-            }
-            match else_val {
-                Some(e) => evaluate_expression(e, row, table_info),
-                None => Ok(Value::Null),
-            }
+            // P0-2 §4.9: delegated to `executor::expr::eval_case_when`.
+            // The evaluate_fn closure threads our local row/table_info
+            // through so the algorithm (which lives in the executor)
+            // doesn't need to know about TableInfo.
+            sqlrustgo_executor::expr::eval_case_when(whens, else_val.as_deref(), |e| {
+                evaluate_expression(e, row, table_info)
+            })
         }
         // TPC-H Q7/Q8/Q9: EXTRACT(field FROM col). The parser encodes this
         // as FunctionCall("EXTRACT", [Literal(field), source_expr]). We
