@@ -231,6 +231,51 @@ impl From<&sqlrustgo_planner::Expr> for UnifiedExpr {
 }
 
 // Evaluation helpers
+
+/// Evaluate a parser-AST `Expression::Literal(&str)` to a `Value`.
+///
+/// This is the single source of truth for "what does this literal look
+/// like as a Value?". The legacy `src/expr_utils.rs::expression_to_value`
+/// `Expression::Literal` arm is a thin delegation to this function.
+///
+/// **Semantics (intentionally identical to the legacy `expr_utils` Literal
+/// arm; do not change without coordinating the P0-2 OpenSpec change):**
+///
+/// | input               | output              |
+/// |---------------------|---------------------|
+/// | `"NULL"`            | `Value::Null`       |
+/// | `"42"`              | `Value::Integer(42)`|
+/// | `"3.14"`            | `Value::Float(3.14)`|
+/// | `"'hello'"`         | `Value::Text("hello")`|
+/// | `"hello"` (unquoted)| `Value::Text("hello")`|
+/// | `"  42  "` (trim)   | `Value::Integer(42)`|
+///
+/// **Note:** This function does *not* currently match the internal
+/// `parse_lit` helper in this file. `parse_lit` is more aggressive
+/// (it maps `TRUE`/`FALSE` to `Integer(1/0)` and truncates `f64` to
+/// `Integer`); the legacy `expr_utils` Literal arm is more conservative
+/// (it preserves `f64`). We deliberately do NOT replace `parse_lit`
+/// here, because `parse_lit` is the implementation of `UnifiedExpr::Literal`
+/// conversion and has its own existing test coverage in this file. The
+/// two functions coexist for now; P0-2 §4.5-4.13 will reconcile the
+/// differences as the remaining 13 branches are delegated.
+pub fn eval_literal_from_str(s: &str) -> Value {
+    let s = s.trim();
+    if s.eq_ignore_ascii_case("NULL") {
+        return Value::Null;
+    }
+    if let Ok(n) = s.parse::<i64>() {
+        return Value::Integer(n);
+    }
+    if let Ok(f) = s.parse::<f64>() {
+        return Value::Float(f);
+    }
+    if s.starts_with('\'') && s.ends_with('\'') && s.len() >= 2 {
+        return Value::Text(s[1..s.len() - 1].to_string());
+    }
+    Value::Text(s.to_string())
+}
+
 fn parse_lit(s: &str) -> Value {
     let s = s.trim();
     if s.eq_ignore_ascii_case("NULL") {
