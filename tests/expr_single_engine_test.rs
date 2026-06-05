@@ -684,3 +684,163 @@ fn test_compare_values_known_outputs() {
     // Mixed types: treated as equal
     assert_eq!(compare_values(&Value::Integer(1), &Value::Float(1.0)), 0);
 }
+
+#[test]
+fn test_case_when_delegation() {
+    // Contract test for P0-2 §4.9 (CaseWhen).
+    use sqlrustgo_executor::expr::eval_case_when;
+    use sqlrustgo_parser::parser::WhenClause;
+    use sqlrustgo_parser::Expression as ParserExpr;
+    use sqlrustgo_storage::TableInfo;
+
+    let table_info = TableInfo::default();
+    let empty_row: Vec<Value> = vec![];
+
+    // TPC-H Q12-style:
+    //   CASE WHEN l_shipmode IN ('MAIL', 'SHIP') THEN l_receiptdate ELSE l_commitdate END
+    // Simplified: a list of when-then-else clauses.
+
+    // Helper: build a Literal-clause (condition -> result)
+    fn lit(s: &str) -> ParserExpr {
+        ParserExpr::Literal(s.to_string())
+    }
+    fn wc(cond: &str, result: &str) -> WhenClause {
+        WhenClause {
+            condition: lit(cond),
+            result: lit(result),
+        }
+    }
+    fn int_lit(n: i64) -> ParserExpr {
+        ParserExpr::Literal(n.to_string())
+    }
+    fn int_wc(cond: i64, result: i64) -> WhenClause {
+        wc(&cond.to_string(), &result.to_string())
+    }
+
+    // Cases: (whens, else_val, expected)
+    let cases: Vec<(Vec<WhenClause>, Option<ParserExpr>, Value)> = vec![
+        // 1. TPC-H-style: WHEN 1=1 THEN 'A' WHEN 2=2 THEN 'B' ELSE 'C' END
+        //    The condition is evaluated via evaluate_fn. We use literal
+        //    conditions that the facade's `evaluate_expression` will
+        //    parse via `eval_literal_from_str`.
+        (
+            vec![wc("1", "'A'"), wc("2", "'B'")],
+            Some(lit("'C'")),
+            Value::Text("A".into()),
+        ),
+        // 2. First WHEN matches via non-Boolean truthy (integer 1)
+        //    The condition `1` evaluates to Integer(1) which is
+        //    not Null and not Boolean(false), so it's truthy per
+        //    the SQL CASE extension.
+        (
+            vec![int_wc(1, 100), int_wc(2, 200)],
+            Some(int_lit(999)),
+            Value::Integer(100),
+        ),
+        // 3. No WHEN matches, ELSE is taken
+        //    Per the legacy `expr_utils` rule: any non-Null, non-Boolean(false)
+        //    value is truthy. Integer(0) IS truthy by this rule (only
+        //    `Value::Boolean(false)` is falsy; `Value::Null` is also
+        //    "not truthy", see below). So this case actually MATCHES at
+        //    the first WHEN.
+        (
+            vec![int_wc(0, 100)],
+            Some(int_lit(999)),
+            Value::Integer(100),
+        ),
+        // 4. No WHEN matches (using a NULL condition), no ELSE -> Null
+        (vec![wc("NULL", "100")], None, Value::Null),
+        // 5. Empty whens, ELSE returned
+        (vec![], Some(lit("'X'")), Value::Text("X".into())),
+        // 6. Empty whens, no ELSE -> Null
+        (vec![], None, Value::Null),
+    ];
+
+    let mut failures: Vec<String> = Vec::new();
+
+    for (i, (whens, else_val, expected)) in cases.iter().enumerate() {
+        // Build `Expression::CaseWhen(whens, else_val)` for the facade.
+        let expr_cw = ParserExpr::CaseWhen(whens.clone(), else_val.clone().map(Box::new));
+        let from_facade =
+            sqlrustgo::expr_utils::evaluate_expression(&expr_cw, &empty_row, &table_info);
+
+        // Path 2: new single-source-of-truth
+        let from_evaluator = eval_case_when(whens, else_val.as_ref(), |e| {
+            sqlrustgo::expr_utils::evaluate_expression(e, &empty_row, &table_info)
+        });
+
+        if from_facade != Ok(expected.clone()) || from_evaluator != Ok(expected.clone()) {
+            failures.push(format!(
+                "case {i}: whens={whens:?} else={else_val:?} expected={expected:?} facade={from_facade:?} evaluator={from_evaluator:?}"
+            ));
+        }
+    }
+
+    assert!(
+        failures.is_empty(),
+        "INT-3 CaseWhen delegation: facade and/or executor::expr disagree on the following inputs:\n{}",
+        failures.join("\n")
+    );
+}
+
+#[test]
+fn test_case_when_known_outputs() {
+    use sqlrustgo_executor::expr::eval_case_when;
+    use sqlrustgo_parser::parser::WhenClause;
+    use sqlrustgo_parser::Expression as ParserExpr;
+
+    let empty_row: Vec<Value> = vec![];
+    let table_info = sqlrustgo_storage::TableInfo::default();
+
+    fn lit(s: &str) -> ParserExpr {
+        ParserExpr::Literal(s.to_string())
+    }
+    fn wc(cond: &str, result: &str) -> WhenClause {
+        WhenClause {
+            condition: lit(cond),
+            result: lit(result),
+        }
+    }
+
+    // 1. Single matching WHEN (Boolean(true) condition)
+    let whens = vec![wc("1", "'A'")];
+    let result = eval_case_when(&whens, Some(&lit("'B'")), |e| {
+        sqlrustgo::expr_utils::evaluate_expression(e, &empty_row, &table_info)
+    });
+    assert_eq!(result, Ok(Value::Text("A".into())));
+
+    // 2. Non-matching WHEN (Boolean(false) condition) → falls through
+    let whens = vec![wc("NULL", "'A'")]; // NULL is not Boolean(true) and not truthy
+    let result = eval_case_when(&whens, Some(&lit("'B'")), |e| {
+        sqlrustgo::expr_utils::evaluate_expression(e, &empty_row, &table_info)
+    });
+    assert_eq!(result, Ok(Value::Text("B".into())));
+
+    // 3. Multiple WHENs, second matches
+    let whens = vec![wc("NULL", "'A'"), wc("5", "'B'")];
+    let result = eval_case_when(&whens, Some(&lit("'C'")), |e| {
+        sqlrustgo::expr_utils::evaluate_expression(e, &empty_row, &table_info)
+    });
+    assert_eq!(result, Ok(Value::Text("B".into())));
+
+    // 4. Non-Boolean truthy: integer 1 → matches
+    let whens = vec![WhenClause {
+        condition: lit("1"),
+        result: lit("100"),
+    }];
+    let result = eval_case_when(&whens, Some(&lit("999")), |e| {
+        sqlrustgo::expr_utils::evaluate_expression(e, &empty_row, &table_info)
+    });
+    assert_eq!(
+        result,
+        Ok(Value::Integer(100)),
+        "integer 1 is truthy (non-null, non-Boolean(false)) per SQL CASE extension"
+    );
+
+    // 5. No ELSE, no match → Null
+    let whens = vec![wc("NULL", "'A'")];
+    let result = eval_case_when(&whens, None, |e| {
+        sqlrustgo::expr_utils::evaluate_expression(e, &empty_row, &table_info)
+    });
+    assert_eq!(result, Ok(Value::Null));
+}
