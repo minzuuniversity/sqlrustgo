@@ -5,7 +5,7 @@
 #[allow(unused_imports)]
 use sqlrustgo_planner::{
     AggregateExec, AggregateFunction, Expr, FilterExec, HashJoinExec, IndexScanExec, JoinType,
-    Operator, PhysicalPlan, PreparedStatementManager, ProjectionExec, SortMergeJoinExec,
+    LimitExec, Operator, PhysicalPlan, PreparedStatementManager, ProjectionExec, SortMergeJoinExec,
 };
 use sqlrustgo_storage::StorageEngine;
 use sqlrustgo_types::{SqlError, SqlResult, Value};
@@ -30,6 +30,7 @@ use std::time::Instant;
 /// with unified WAL + Transaction facade for VTU contract enforcement
 pub struct LocalExecutor<'a> {
     storage: &'a dyn StorageEngine,
+    unified_facade: Option<UnifiedFacade<'a>>,
     cache: Arc<RwLock<QueryCache>>,
     cache_config: QueryCacheConfig,
     slow_query_log: StdRwLock<Option<query_stats::SlowQueryLog>>,
@@ -101,12 +102,20 @@ impl UnifiedFacade {
     fn current_tx_id(&self) -> Option<u64> {
         self.tx_manager.read().get_current_tx_id().map(|t| t.raw())
     }
+
+    /// Set the current transaction ID in WAL storage for WAL entry tracking
+    fn set_tx_id(&mut self, tx_id: u64) {
+        if let Ok(mut storage) = self.storage.try_write() {
+            storage.set_current_tx_id(tx_id);
+        }
+    }
 }
 
 impl<'a> LocalExecutor<'a> {
     pub fn new(storage: &'a dyn StorageEngine) -> Self {
         Self {
             storage,
+            unified_facade: None,
             cache: Arc::new(RwLock::new(QueryCache::new(QueryCacheConfig::default()))),
             cache_config: QueryCacheConfig::default(),
             slow_query_log: StdRwLock::new(None),
@@ -648,16 +657,42 @@ impl<'a> LocalExecutor<'a> {
                 }
             }
             AggregateFunction::Avg => {
-                let mut sum: i64 = 0;
-                let mut count = 0;
+                // v3.8.0-rc2 Day 7: AVG MUST return Float even when
+                // all input values are Integer — otherwise
+                // `Value::Integer(int_sum / count)` is integer-
+                // truncated (e.g. 1323/50 = 26 instead of 26.46).
+                // SQLite/MySQL always return REAL for AVG.
+                let mut int_sum: i64 = 0;
+                let mut float_sum: f64 = 0.0;
+                let mut any_float = false;
+                let mut count: i64 = 0;
                 for v in values {
-                    if let Value::Integer(n) = v {
-                        sum += n;
-                        count += 1;
+                    match v {
+                        Value::Integer(n) => {
+                            if any_float {
+                                float_sum += *n as f64;
+                            } else {
+                                int_sum += n;
+                            }
+                            count += 1;
+                        }
+                        Value::Float(f) => {
+                            if !any_float {
+                                float_sum = int_sum as f64;
+                                any_float = true;
+                            }
+                            float_sum += f;
+                            count += 1;
+                        }
+                        _ => {}
                     }
                 }
                 if count > 0 {
-                    Value::Integer(sum / count as i64)
+                    if any_float {
+                        Value::Float(float_sum / count as f64)
+                    } else {
+                        Value::Float(int_sum as f64 / count as f64)
+                    }
                 } else {
                     Value::Null
                 }
@@ -1312,7 +1347,16 @@ impl<'a> LocalExecutor<'a> {
 
                 // WAL-aware delete via unified facade (fail fast if no WAL)
                 let deleted = match self.unified_facade {
-                    Some(ref facade) => facade.execute_dml(|storage| storage.delete(table_name, &[]))?,
+                    Some(ref facade) => {
+                        let tx_id_before = facade.current_tx_id();
+                        let r = facade.execute_dml(|storage| storage.delete(table_name, &[]))?;
+                        if !self.is_in_explicit_tx() {
+                            let _ = facade.commit();
+                        } else if let Some(id) = tx_id_before {
+                            facade.set_tx_id(id);
+                        }
+                        r
+                    },
                     None => return Err(SqlError::ExecutionError(
                         "DELETE without WAL facade — remove direct storage access".to_string()
                     )),
@@ -1390,8 +1434,20 @@ impl<'a> LocalExecutor<'a> {
         // Execute child first
         let child_result = self.execute(children[0])?;
 
-        // Limit would go here
-        Ok(child_result)
+        // v3.8.0-rc2 Day 7: actually apply LIMIT/OFFSET (was stub
+        // that returned the full child_result, causing Q3 / Q15
+        // to return all rows instead of LIMIT 10).
+        let limit_exec = plan
+            .as_any()
+            .downcast_ref::<sqlrustgo_planner::LimitExec>();
+        let (limit, offset) = match limit_exec {
+            Some(p) => (p.limit(), p.offset().unwrap_or(0)),
+            None => (child_result.rows.len(), 0),
+        };
+        let start = offset.min(child_result.rows.len());
+        let end = start.saturating_add(limit).min(child_result.rows.len());
+        let new_rows: Vec<Vec<Value>> = child_result.rows[start..end].to_vec();
+        Ok(ExecutorResult::new(new_rows, child_result.affected_rows))
     }
 }
 
@@ -1415,33 +1471,122 @@ impl<'a> ExecutionEngine for LocalExecutor<'a> {
     }
 
     fn begin(&mut self) -> Result<u64, sqlrustgo_types::SqlError> {
-        Err(sqlrustgo_types::SqlError::ExecutionError("TODO".to_string()))
+        let facade = self.unified_facade.as_ref()
+            .ok_or_else(|| sqlrustgo_types::SqlError::ExecutionError("WAL facade required".into()))?;
+        let tx_id = facade.begin()?;
+        // Wire tx_id into WalStorage so every WAL entry carries real tx_id
+        if let Some(ref mut f) = self.unified_facade {
+            f.set_tx_id(tx_id);
+        }
+        Ok(tx_id)
     }
 
     fn commit(&mut self, _txn: u64) -> Result<(), sqlrustgo_types::SqlError> {
-        Err(sqlrustgo_types::SqlError::ExecutionError("TODO".to_string()))
+        let facade = self.unified_facade.as_ref()
+            .ok_or_else(|| sqlrustgo_types::SqlError::ExecutionError("WAL facade required".into()))?;
+        facade.commit()?;
+        Ok(())
     }
 
     fn rollback(&mut self, _txn: u64) -> Result<(), sqlrustgo_types::SqlError> {
-        Err(sqlrustgo_types::SqlError::ExecutionError("TODO".to_string()))
+        let facade = self.unified_facade.as_ref()
+            .ok_or_else(|| sqlrustgo_types::SqlError::ExecutionError("WAL facade required".into()))?;
+        facade.rollback()
     }
 }
 
 impl<'a> LocalExecutor<'a> {
-    /// Execute DML (INSERT/UPDATE/DELETE) through proper transaction boundary
+    /// INT-4: detect SQL-level explicit transaction control (BEGIN/COMMIT/ROLLBACK).
+    /// Returns Some(result) if the SQL is a TX control statement, None otherwise.
+    fn execute_tx_control(&mut self, sql_upper: &str) -> Result<Option<crate::execution::ExecutionResult>, sqlrustgo_types::SqlError> {
+        let trimmed = sql_upper.trim();
+        let begin_kw = trimmed == "BEGIN" || trimmed.starts_with("BEGIN ") || trimmed.starts_with("BEGIN\t")
+            || trimmed == "START TRANSACTION"
+            || (trimmed.starts_with("START TRANSACTION ") || trimmed.starts_with("START TRANSACTION\t"));
+        let commit_kw = trimmed == "COMMIT" || trimmed.starts_with("COMMIT ") || trimmed.starts_with("COMMIT\t")
+            || trimmed == "END";
+        let rollback_kw = trimmed == "ROLLBACK" || trimmed.starts_with("ROLLBACK ") || trimmed.starts_with("ROLLBACK\t")
+            || trimmed == "ABORT";
+
+        if begin_kw {
+            let facade = self.unified_facade.as_ref().ok_or_else(|| {
+                sqlrustgo_types::SqlError::ExecutionError("BEGIN without WAL facade".into())
+            })?;
+            if facade.is_in_transaction() {
+                return Err(sqlrustgo_types::SqlError::ExecutionError(
+                    "BEGIN inside active transaction — COMMIT or ROLLBACK first".into(),
+                ));
+            }
+            let tx_id = facade.begin()?;
+            facade.set_tx_id(tx_id);
+            return Ok(Some(crate::execution::ExecutionResult::ok(0)));
+        }
+        if commit_kw {
+            let facade = self.unified_facade.as_ref().ok_or_else(|| {
+                sqlrustgo_types::SqlError::ExecutionError("COMMIT without WAL facade".into())
+            })?;
+            if !facade.is_in_transaction() {
+                return Err(sqlrustgo_types::SqlError::ExecutionError(
+                    "COMMIT without BEGIN".into(),
+                ));
+            }
+            facade.commit()?;
+            return Ok(Some(crate::execution::ExecutionResult::ok(0)));
+        }
+        if rollback_kw {
+            let facade = self.unified_facade.as_ref().ok_or_else(|| {
+                sqlrustgo_types::SqlError::ExecutionError("ROLLBACK without WAL facade".into())
+            })?;
+            if !facade.is_in_transaction() {
+                return Err(sqlrustgo_types::SqlError::ExecutionError(
+                    "ROLLBACK without BEGIN".into(),
+                ));
+            }
+            facade.rollback()?;
+            return Ok(Some(crate::execution::ExecutionResult::ok(0)));
+        }
+        Ok(None)
+    }
+
+    /// INT-4: true when an explicit BEGIN has been issued and neither COMMIT nor
+    /// ROLLBACK has closed the transaction. DML inside an explicit TX must
+    /// reuse the open tx_id and must not autocommit.
+    fn is_in_explicit_tx(&self) -> bool {
+        self.unified_facade
+            .as_ref()
+            .map(|f| f.is_in_transaction())
+            .unwrap_or(false)
+    }
+
+    /// Execute DML (INSERT/UPDATE/DELETE) through proper transaction 边界
     fn execute_dml(&mut self, ctx: &mut crate::execution::QueryContext) -> Result<crate::execution::ExecutionResult, sqlrustgo_types::SqlError> {
         let sql_upper = ctx.sql.to_uppercase();
+
+        if let Some(rx) = self.execute_tx_control(&sql_upper)? {
+            return Ok(rx);
+        }
 
         if sql_upper.starts_with("DELETE") {
             return self.execute_delete_sql(ctx);
         }
 
         if sql_upper.starts_with("INSERT") {
-            return Err(sqlrustgo_types::SqlError::ExecutionError("INSERT not yet implemented via ExecutionEngine".to_string()));
+            return self.execute_insert_sql(ctx);
         }
 
         if sql_upper.starts_with("UPDATE") {
-            return Err(sqlrustgo_types::SqlError::ExecutionError("UPDATE not yet implemented via ExecutionEngine".to_string()));
+            return self.execute_update_sql(ctx);
+        }
+
+        Err(sqlrustgo_types::SqlError::ExecutionError("Unsupported DML".to_string()))
+    }
+
+        if sql_upper.starts_with("INSERT") {
+            return self.execute_insert_sql(ctx);
+        }
+
+        if sql_upper.starts_with("UPDATE") {
+            return self.execute_update_sql(ctx);
         }
 
         Err(sqlrustgo_types::SqlError::ExecutionError("Unsupported DML".to_string()))
@@ -1453,6 +1598,140 @@ impl<'a> LocalExecutor<'a> {
         // ALL other storage access in LocalExecutor is a violation
         // TODO: Route through proper txn/wal when ExecutionEngine fully implemented
         Ok(crate::execution::ExecutionResult::ok(0))
+    }
+
+    /// Execute INSERT via SQL text through unified facade
+    fn execute_insert_sql(&self, ctx: &mut crate::execution::QueryContext) -> Result<crate::execution::ExecutionResult, sqlrustgo_types::SqlError> {
+        use sqlrustgo_parser::parse;
+        use sqlrustgo_parser::Statement;
+
+        let stmt = parse(ctx.sql).map_err(|e| sqlrustgo_types::SqlError::ExecutionError(e))?;
+
+        if let Statement::Insert(insert_stmt) = stmt {
+            let table = insert_stmt.table;
+            // Convert parser expressions to Values
+            let records: Result<Vec<sqlrustgo_storage::Record>, _> = insert_stmt
+                .values
+                .iter()
+                .map(|row| {
+                    row.iter()
+                        .map(|expr| Self::expression_to_value(expr))
+                        .collect()
+                })
+                .collect();
+            let records = records.map_err(|e| sqlrustgo_types::SqlError::ExecutionError(format!("{:?}", e)))?;
+
+            // INT-4: in explicit TX (BEGIN) reuse open tx_id; outside, autocommit.
+            let in_explicit = self.is_in_explicit_tx();
+            let affected = match self.unified_facade {
+                Some(ref facade) => {
+                    let tx_id_before = facade.current_tx_id();
+                    let r = facade.execute_dml(|storage| {
+                        storage.insert(&table, records.clone())
+                    })?;
+                    if !in_explicit {
+                        let _ = facade.commit();
+                    } else if let Some(_id) = tx_id_before {
+                        // Re-affirm tx_id on the facade so subsequent DML
+                        // statements share the same open transaction.
+                        facade.set_tx_id(_id);
+                    }
+                    r
+                }
+                None => {
+                    return Err(sqlrustgo_types::SqlError::ExecutionError(
+                        "INSERT without WAL facade — remove direct storage access".to_string(),
+                    ))
+                }
+            };
+            Ok(crate::execution::ExecutionResult::new(vec![], affected))
+        } else {
+            Err(sqlrustgo_types::SqlError::ExecutionError(
+                "Not an INSERT statement".to_string(),
+            ))
+        }
+    }
+
+    /// Execute UPDATE via SQL text through unified facade
+    fn execute_update_sql(&self, ctx: &crate::execution::QueryContext) -> Result<crate::execution::ExecutionResult, sqlrustgo_types::SqlError> {
+        use sqlrustgo_parser::parse;
+        use sqlrustgo_parser::Statement;
+        use crate::predicate_compiler::PredicateCompiler;
+        use crate::mutation_compiler::MutationCompiler;
+        use crate::mutation_compiler::Assignment;
+
+        let stmt = parse(ctx.sql).map_err(|e| sqlrustgo_types::SqlError::ExecutionError(e))?;
+
+        if let Statement::Update(update_stmt) = stmt {
+            let table = update_stmt.table;
+
+            // Compile SET assignments to MutationIR
+            let assignments: Vec<Assignment> = update_stmt
+                .sets
+                .iter()
+                .map(|(col, expr)| Assignment {
+                    column: col.clone(),
+                    expr: sqlrustgo_planner::Expr::Literal(Self::expression_to_value(expr)),
+                })
+                .collect();
+
+            let row_mutation = MutationCompiler::compile(assignments);
+
+            // Compile WHERE clause to RowFilter
+            let predicate: sqlrustgo_storage::engine::RowFilter = update_stmt
+                .where_clause
+                .as_ref()
+                .map(|e| PredicateCompiler::compile_from_parser_expr(e))
+                .unwrap_or_else(|| Box::new(|_| true));
+
+            let affected = match self.unified_facade {
+                Some(ref facade) => {
+                    let tx_id_before = facade.current_tx_id();
+                    let r = facade.execute_dml(|storage| {
+                        storage.update_if(&table, &predicate, &row_mutation)
+                    })?;
+                    if !self.is_in_explicit_tx() {
+                        let _ = facade.commit();
+                    } else if let Some(id) = tx_id_before {
+                        facade.set_tx_id(id);
+                    }
+                    r
+                }
+                None => {
+                    return Err(sqlrustgo_types::SqlError::ExecutionError(
+                        "UPDATE without WAL facade — remove direct storage access".to_string(),
+                    ))
+                }
+            };
+            Ok(crate::execution::ExecutionResult::new(vec![], affected))
+        } else {
+            Err(sqlrustgo_types::SqlError::ExecutionError(
+                "Not an UPDATE statement".to_string(),
+            ))
+        }
+    }
+
+    /// Convert a parser Expression to a Value
+    fn expression_to_value(expr: &sqlrustgo_parser::Expression) -> sqlrustgo_types::Value {
+        use sqlrustgo_parser::Expression;
+        match expr {
+            Expression::Literal(s) => {
+                let s = s.trim();
+                if s.eq_ignore_ascii_case("NULL") {
+                    sqlrustgo_types::Value::Null
+                } else if let Ok(n) = s.parse::<i64>() {
+                    sqlrustgo_types::Value::Integer(n)
+                } else if let Ok(f) = s.parse::<f64>() {
+                    sqlrustgo_types::Value::Float(f)
+                } else if s.starts_with('\'') && s.ends_with('\'') {
+                    sqlrustgo_types::Value::Text(s[1..s.len() - 1].to_string())
+                } else {
+                    sqlrustgo_types::Value::Text(s.to_string())
+                }
+            }
+            Expression::Identifier(name) => sqlrustgo_types::Value::Text(name.clone()),
+            _ => sqlrustgo_types::Value::Null,
+        }
     }
 }
 
