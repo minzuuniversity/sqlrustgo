@@ -1,0 +1,83 @@
+{
+  "scale": 0.001,
+  "source": "sf001 lineitem.tbl (614 rows, 1 query: Q1)",
+  "queries": {
+    "Q1": {
+      "row_count": 6,
+      "rows": [
+        {
+          "l_returnflag": "A",
+          "l_linestatus": "F",
+          "sum_qty": 1323,
+          "sum_base_price": 2568812.31,
+          "sum_disc_price": 2425515.81,
+          "sum_charge": 2498742.62,
+          "avg_qty": 26.46,
+          "avg_price": 51376.25,
+          "avg_disc": 0.05,
+          "count_order": 50
+        },
+        {
+          "l_returnflag": "A",
+          "l_linestatus": "O",
+          "sum_qty": 1839,
+          "sum_base_price": 2886179.75,
+          "sum_disc_price": 2728690.69,
+          "sum_charge": 2840286.59,
+          "avg_qty": 28.73,
+          "avg_price": 45096.56,
+          "avg_disc": 0.05,
+          "count_order": 64
+        },
+        {
+          "l_returnflag": "N",
+          "l_linestatus": "F",
+          "sum_qty": 1405,
+          "sum_base_price": 2469085.98,
+          "sum_disc_price": 2338847.35,
+          "sum_charge": 2444180.3,
+          "avg_qty": 28.1,
+          "avg_price": 49381.72,
+          "avg_disc": 0.06,
+          "count_order": 50
+        },
+        {
+          "l_returnflag": "N",
+          "l_linestatus": "O",
+          "sum_qty": 1212,
+          "sum_base_price": 2608414.53,
+          "sum_disc_price": 2480996.29,
+          "sum_charge": 2565613.83,
+          "avg_qty": 23.31,
+          "avg_price": 50161.82,
+          "avg_disc": 0.05,
+          "count_order": 52
+        },
+        {
+          "l_returnflag": "R",
+          "l_linestatus": "F",
+          "sum_qty": 1408,
+          "sum_base_price": 2645836.91,
+          "sum_disc_price": 2511314.25,
+          "sum_charge": 2596223.63,
+          "avg_qty": 25.6,
+          "avg_price": 48106.13,
+          "avg_disc": 0.05,
+          "count_order": 55
+        },
+        {
+          "l_returnflag": "R",
+          "l_linestatus": "O",
+          "sum_qty": 1661,
+          "sum_base_price": 3344908.78,
+          "sum_disc_price": 3158164.86,
+          "sum_charge": 3262322.08,
+          "avg_qty": 26.79,
+          "avg_price": 53950.14,
+          "avg_disc": 0.05,
+          "count_order": 62
+        }
+      ]
+    }
+  }
+}

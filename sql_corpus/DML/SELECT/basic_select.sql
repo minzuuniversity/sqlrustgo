@@ -769,7 +769,7 @@ SELECT name FROM users WHERE IF(age > 25, country = 'USA', 1=1);
 -- EXPECT: rows 2
 
 -- === CASE: Select with nested IF
-SELECT name, IF(age > 35, 'Very Old', IF(age > 30, 'Old', IF(age > 25, 'Young', 'Very Young')) FROM users;
+SELECT name, IF(age > 35, 'Very Old', IF(age > 30, 'Old', IF(age > 25, 'Young', 'Very Young'))) FROM users;
 -- EXPECT: rows 10
 
 -- === CASE: Select with DATEDIFF in HAVING
@@ -1413,7 +1413,7 @@ SELECT ST_astext(ST_buffer(ST_geomfromtext('POINT(0 0)'), 1)) FROM users;
 -- EXPECT: rows 10
 
 -- === CASE: Select with ST_centroid
-SELECT ST_astext(ST_centroid(ST_geomfromtext('POLYGON((0 0,1 0,1 1,0 1,0 0))')) FROM users;
+SELECT ST_astext(ST_centroid(ST_geomfromtext('POLYGON((0 0,1 0,1 1,0 1,0 0))'))) FROM users;
 -- EXPECT: rows 10
 
 -- === CASE: Select with ST_area
@@ -1425,7 +1425,7 @@ SELECT ST_length(ST_geomfromtext('LINESTRING(0 0,1 1,2 2)')) FROM users;
 -- EXPECT: rows 10
 
 -- === CASE: Select with ST_exteriorring
-SELECT ST_astext(ST_exteriorring(ST_geomfromtext('POLYGON((0 0,1 0,1 1,0 1,0 0))')) FROM users;
+SELECT ST_astext(ST_exteriorring(ST_geomfromtext('POLYGON((0 0,1 0,1 1,0 1,0 0))'))) FROM users;
 -- EXPECT: rows 10
 
 -- === CASE: Select with ST_interiorringn
@@ -1481,7 +1481,7 @@ SELECT ST_astext(ST_pointfromwkb(ST_aswkb(ST_geomfromtext('POINT(1 1)')))) FROM 
 -- EXPECT: rows 10
 
 -- === CASE: Select with ST_polyfromwkb
-SELECT ST_astext(ST_polyfromwkb(ST_aswkb(ST_geomfromtext('POLYGON((0 0,1 0,1 1,0 1,0 0))'))) FROM users;
+SELECT ST_astext(ST_polyfromwkb(ST_aswkb(ST_geomfromtext('POLYGON((0 0,1 0,1 1,0 1,0 0))')))) FROM users;
 -- EXPECT: rows 10
 
 -- === CASE: Select with ST_mlinefromwkb
@@ -1493,7 +1493,7 @@ SELECT ST_astext(ST_mpointfromwkb(ST_aswkb(ST_geomfromtext('MULTIPOINT(0 0,1 1)'
 -- EXPECT: rows 10
 
 -- === CASE: Select with ST_mpolyfromwkb
-SELECT ST_astext(ST_mpolyfromwkb(ST_aswkb(ST_geomfromtext('MULTIPOLYGON(((0 0,1 0,1 1,0 1,0 0)))')) FROM users;
+SELECT ST_astext(ST_mpolyfromwkb(ST_aswkb(ST_geomfromtext('MULTIPOLYGON(((0 0,1 0,1 1,0 1,0 0)))')))) FROM users;
 -- EXPECT: rows 10
 
 -- === CASE: Select with ST_wkbtosql
