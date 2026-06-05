@@ -92,6 +92,13 @@ impl SavepointManager {
     pub fn get_savepoint_count(&self) -> usize {
         self.savepoints.len()
     }
+
+    /// Number of entries currently in the undo log. Added in #3110 so
+    /// external tests can verify rollback behaviour without exposing the
+    /// private `undo_log` field.
+    pub fn undo_log_len(&self) -> usize {
+        self.undo_log.len()
+    }
 }
 
 impl Default for SavepointManager {
