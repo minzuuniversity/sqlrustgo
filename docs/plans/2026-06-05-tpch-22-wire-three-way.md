@@ -168,3 +168,155 @@ If you are picking this up, the **two highest-leverage actions** are:
 The 4-PR arc (3086 → 3089 → 3093 → 3095) is the model for how TPC-H
 work should be broken up going forward: one PR per phase, each PR
 ships a runnable test, no PR leaves CI red.
+
+## 9. Phase 5: Next-step options (audit-driven, ranked by user-visible value)
+
+> **Added**: 2026-06-05 04:45 UTC+8, after the
+> `eval_22_vs_sqlite` audit at `acc8d5a90` and the
+> `2026-06-05-tpch-22-6pr-completion-correction.md` retrospective.
+> **Source data**: `docs/discovery/2026-06-05-tpch-22-eval-full.md`
+> (the 10/22 row_count-correct / 4/22 non-coincidental
+> / 8 MISMATCH / 4 ERROR / 0 wire breakdown).
+
+The 6-PR thread shipped a misleading "22/22" claim. The real
+status is:
+
+- **In-process row_count matches SQLite**: 10/22 (4/22 if you
+  discount 0-coincidence matches)
+- **In-process engine crashes on Q2/Q8/Q9/Q15**: 4/22
+- **In-process row_count wrong for Q3/Q4/Q5/Q10/Q12/Q13/Q14/Q16**:
+  8/22
+- **Wire protocol**: 0/22 (blocked by server LOAD DATA EAGAIN)
+
+The five Phase 5 options below are independent and can be
+combined; recommended order is **D → A → B**, with C and E
+optional.
+
+### Option A: Fix the 8 MISMATCHed queries (in-process row_count)
+
+- **What**: One PR per query for Q3, Q4, Q5, Q10, Q12, Q13, Q14,
+  Q16. Each PR is a parser/executor fix + a row_count regression
+  test in `eval_22_vs_sqlite` style.
+- **Why first**: these are the **silent killers**. Engine returns
+  a number, test passes, result is wrong. Easy to ship the wrong
+  answer without anyone noticing.
+- **Effort**: 3-5 days total. Q4, Q5, Q10, Q12, Q13, Q16 are
+  GROUP BY with multi-table joins (likely join-chain row drops);
+  Q3 is similar but smaller. Q14 is COUNT(DISTINCT) over a
+  multi-table join (off by an order of magnitude).
+- **Output**: 18/22 in-process row_count matches SQLite (Q2/Q8/Q9/Q15
+  still crash but no longer silently wrong).
+- **PR shape**: 1-2 PRs per query. Always include a
+  per-query regression test that asserts row_count (not just
+  "doesn't crash").
+
+### Option B: Fix the server LOAD DATA EAGAIN bug
+
+- **What**: Diagnose and fix `handle_load_local_infile` in
+  `crates/mysql-server/src/lib.rs` (around line 1545). Three
+  hypothesised root causes documented in
+  `docs/discovery/2026-06-05-orders-load-eagain.md`. Most likely:
+  the `pending_bytes` accounting vs `bulk_buf_size` boundary
+  check.
+- **Why**: this is the only thing standing between us and 22/22
+  wire round-trip. The wire test prototype is recoverable from
+  session history.
+- **Effort**: 2-3 hours.
+- **Output**: 8/8 tables loadable. Wire test restores. 13-15/22
+  wire PASS (everything except Q7/Q8/Q9 due to EXTRACT, plus
+  Q2/Q15 until their in-process fixes land).
+- **PR shape**: 1 fix PR + 1 wire test PR (the test must be
+  added with the fix to prove the bug is gone).
+
+### Option C: Add `EXTRACT(YEAR FROM ...)` parser support
+
+- **What**: Add `EXTRACT` as a function call in the parser so
+  `EXTRACT(YEAR FROM o_orderdate)` becomes a real expression,
+  then implement the executor-side `EXTRACT` function for the
+  year/month/day variants.
+- **Why**: unblocks Q7/Q8/Q9 in-process and wire. Without it,
+  these three queries silently return 0 and the "doesn't crash"
+  gate thinks they're fine.
+- **Effort**: 1-2 hours.
+- **Output**: +3 to the in-process and wire tallies (assuming
+  executor can handle the function call after the parser fix).
+
+### Option D: Tighten the in-process "22/22 PASS" gate (D0 + D1)
+
+- **What**: Replace the 1-character-prefix "doesn't crash"
+  assertion in `tpch_full_22_test` with a row_count comparison
+  against the SQLite baseline JSONs. Promote
+  `tests/eval_22_vs_sqlite.rs` from a diagnostic to a CI-enforced
+  test. As a follow-up, fail the build when row_count drops
+  below the current 10/22 baseline.
+- **Why first**: 30 minutes of work that **immediately prevents
+  the next PR from silently re-introducing wrong row_count.**
+  Without this gate, Options A and B can ship "doesn't crash"
+  fixes that get row_count wrong and we never notice.
+- **Effort**: 30 minutes for D0 (rename + change assertion),
+  1 hour for D1 (promote to gate + baseline assertion).
+- **Output**: 1 new test that fails today (10/22) and forces
+  every future fix to also fix row_count. This is the single
+  most cost-effective change in the whole thread.
+- **PR shape**: 1 PR for D0, 1 PR for D1. The eval_22_vs_sqlite
+  test already exists; D0 is a rename and assertion swap, D1 is
+  a gate integration.
+
+### Option E: Declare the thread done; move TPC-H continuation to v3.9.0
+
+- **What**: Mark Issue #2977 as "Phase 1-4 + Phase 2 closure
+  shipped; remaining work (12 queries, server LOAD DATA, EXTRACT)
+  deferred to v3.9.0 per the v3.8.0 RC1 closure report." Don't
+  open new PRs; the existing 4 functional PRs are good enough.
+- **Why considered**: The 6 PR thread already shipped; CI is
+  green; the v3.8.0 RC1 closure report listed Q2/Q9 hub-spoke
+  reordering and EXTRACT as v3.9.0 work. Calling it done is
+  consistent with the v3.8.0 release plan.
+- **Cost of choosing E**: **The 4 MISMATCHed queries (Q3, Q10,
+  Q14, Q16) and the 4 CRASHed queries (Q2, Q8, Q9, Q15) ship
+  in v3.8.0 as known-wrong.** This is what we did for v3.8.0-
+  rc1; doing it again for v3.8.0 GA is a deliberate choice.
+- **Mitigation**: E is acceptable **only if** at minimum
+  Option D0 runs first (the "doesn't crash" gate is at least
+  replaced with "row_count ≤ 10" so v3.8.0 GA doesn't claim
+  improvement on a broken baseline). Without D, E is a silent
+  regression.
+
+### Recommended combination: D + A + B
+
+D is 30 minutes. A is the bulk of the work. B unblocks the
+wire-protocol story (independently valuable for non-TPC-H use
+cases — generic LOAD DATA users hit this same bug). C is
+nice-to-have. E is acceptable if v3.8.0 truly is feature complete
+and v3.9.0 has the bandwidth for TPC-H continuation.
+
+**Effort estimate for D + A + B**: 4-6 days of focused work, 1
+week elapsed with PR review cycles. C adds 1-2 hours at the end
+if time permits.
+
+### Suggested first PR if picking D + A + B tomorrow
+
+```
+1. PR "test(tpch): promote eval_22_vs_sqlite to CI gate"
+   - Rename tests/eval_22_vs_sqlite.rs to tpch_22_inprocess_correctness_test.rs
+   - Change the assertion to "assert passed >= 10 (current baseline)"
+   - Land. CI now enforces the row_count baseline.
+
+2. PR "fix(tpch): Q3 row_count 8 → 10 (3-table join drops)"
+   - One query at a time. 1-2 PRs per query.
+   - Each PR ends with eval_22_vs_sqlite showing +1 pass.
+
+3. PR "fix(mysql-server): handle_load_local_infile EAGAIN on 9+ col / 150+ row tables"
+   - Diagnose first (1 hour with tracing), then fix (1 hour).
+   - Restore tests/tpch_full_22_wire_test.rs as the wire test.
+```
+
+### One-line summary for each option
+
+| Option | One-liner | Effort | Output |
+|---|---|---|---|
+| **A** | Fix 8 MISMATCHed queries (Q3, Q4, Q5, Q10, Q12, Q13, Q14, Q16) | 3-5 days | 18/22 in-process row_count correct |
+| **B** | Fix server LOAD DATA EAGAIN | 2-3 hours | Wire test restores; 13-15/22 wire PASS |
+| **C** | Add `EXTRACT(YEAR FROM ...)` parser/executor support | 1-2 hours | Q7/Q8/Q9 unblocked (+3) |
+| **D** | Tighten in-process "22/22" gate to assert row_count vs SQLite | 30 min | CI now enforces row_count baseline |
+| **E** | Declare done; defer remaining to v3.9.0 | 0 hours | v3.8.0 GA ships with 4 known-wrong + 4 known-crash queries |
