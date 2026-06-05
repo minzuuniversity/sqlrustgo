@@ -81,6 +81,25 @@ pub enum Statement {
     SetRole(SetRoleStatement),
     ShowRoles,
     ShowGrantsFor(String),
+    /// SEM-1 (#3172): SAVEPOINT/ROLLBACK TO SAVEPOINT/RELEASE SAVEPOINT.
+    /// MySQL 5.7 savepoint control statements. The `name` is the user-supplied
+    /// identifier; `op` selects among the three forms.
+    SavepointStatement {
+        name: String,
+        op: SavepointOp,
+    },
+}
+
+/// SEM-1 (#3172): Savepoint operation kind.
+#[derive(Debug, Clone, PartialEq)]
+pub enum SavepointOp {
+    /// `SAVEPOINT <name>` — register or reset a savepoint.
+    Save,
+    /// `ROLLBACK TO SAVEPOINT <name>` — roll back to the savepoint
+    /// (the savepoint itself is preserved; nested ones after it are dropped).
+    RollbackTo,
+    /// `RELEASE SAVEPOINT <name>` — remove the savepoint from the stack.
+    Release,
 }
 
 /// UNION statement
@@ -940,11 +959,27 @@ impl Parser {
             Some(Token::With) => self.parse_with_select(),
             Some(Token::Alter) => self.parse_alter_table(),
             Some(Token::Call) => self.parse_call(),
+            // SEM-1 (#3172): Rollback is now dispatched via the SAVEPOINT
+            // arms below. The `parse_transaction` group no longer
+            // accepts Token::Rollback so that the ROLLBACK TO SAVEPOINT
+            // peek (which requires us to NOT be inside parse_transaction
+            // first) actually wins. Regular ROLLBACK [WORK] is handled
+            // by the `Some(Token::Rollback)` arm at the bottom of this
+            // match, which calls parse_rollback.
             Some(Token::Begin)
             | Some(Token::Commit)
-            | Some(Token::Rollback)
             | Some(Token::Set)
             | Some(Token::Start) => self.parse_transaction(),
+            // SEM-1 (#3172): SAVEPOINT dispatcher
+            Some(Token::Savepoint) => self.parse_savepoint_statement(),
+            // SEM-1 (#3172): RELEASE SAVEPOINT dispatcher
+            Some(Token::Release) => self.parse_release_savepoint(),
+            // SEM-1 (#3172): ROLLBACK — peek for `TO` to route to
+            // savepoint handling; otherwise plain ROLLBACK [WORK].
+            Some(Token::Rollback) if self.peek() == Some(&Token::To) => {
+                self.parse_savepoint_statement()
+            }
+            Some(Token::Rollback) => self.parse_rollback(),
             Some(Token::Grant) => self.parse_grant(),
             Some(Token::Revoke) => self.parse_revoke(),
             Some(Token::Show) => self.parse_show(),
@@ -1043,6 +1078,68 @@ impl Parser {
         Ok(Statement::Transaction(TransactionStatement::Rollback {
             work,
         }))
+    }
+
+    /// SEM-1 (#3172): Parse SAVEPOINT/ROLLBACK TO SAVEPOINT/RELEASE SAVEPOINT.
+    ///
+    /// MySQL 5.7 syntax:
+    ///   `SAVEPOINT <name>;`
+    ///   `ROLLBACK [WORK] TO SAVEPOINT <name>;`
+    ///   `RELEASE SAVEPOINT <name>;`
+    ///
+    /// We disambiguate by looking at the first token after the optional
+    /// `WORK` keyword: if it's `TO`, this is a rollback-to; if it's
+    /// `SAVEPOINT`, this is a release; otherwise the original ROLLBACK
+    /// path (handled by parse_rollback) should be invoked.
+    fn parse_savepoint_statement(&mut self) -> Result<Statement, String> {
+        // We are called when current() == Token::Savepoint OR
+        // (Token::Rollback with next token = TO).
+        let op = if self.current() == Some(&Token::Savepoint) {
+            self.next(); // consume SAVEPOINT
+            SavepointOp::Save
+        } else {
+            // ROLLBACK [WORK] TO SAVEPOINT <name>
+            debug_assert_eq!(self.current(), Some(&Token::Rollback));
+            self.next(); // consume ROLLBACK
+            if self.current() == Some(&Token::Work) {
+                self.next();
+            }
+            self.expect(Token::To)?;
+            self.expect(Token::Savepoint)?;
+            SavepointOp::RollbackTo
+        };
+        // Parse the savepoint name.
+        let name = match self.next() {
+            Some(Token::Identifier(n)) => n,
+            Some(t) => {
+                return Err(format!(
+                    "Expected savepoint name (identifier), got {:?}",
+                    t
+                ))
+            }
+            None => return Err("Expected savepoint name, got EOF".to_string()),
+        };
+        Ok(Statement::SavepointStatement { name, op })
+    }
+
+    /// SEM-1 (#3172): Parse `RELEASE SAVEPOINT <name>`.
+    fn parse_release_savepoint(&mut self) -> Result<Statement, String> {
+        self.expect(Token::Release)?;
+        self.expect(Token::Savepoint)?;
+        let name = match self.next() {
+            Some(Token::Identifier(n)) => n,
+            Some(t) => {
+                return Err(format!(
+                    "Expected savepoint name (identifier), got {:?}",
+                    t
+                ))
+            }
+            None => return Err("Expected savepoint name, got EOF".to_string()),
+        };
+        Ok(Statement::SavepointStatement {
+            name,
+            op: SavepointOp::Release,
+        })
     }
 
     fn parse_start_transaction(&mut self) -> Result<Statement, String> {
