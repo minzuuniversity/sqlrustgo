@@ -299,6 +299,40 @@ pub fn eval_is_not_null(value: &Value) -> Value {
     Value::Boolean(!matches!(value, Value::Null))
 }
 
+/// Look up a pre-computed aggregate value in a row by its canonical name
+/// (the string form produced by `expr_utils::expression_to_string` for an
+/// `Expression::Aggregate`, e.g. `"COUNT(*)"`, `"SUM(l_quantity)"`, etc.).
+///
+/// This is the single source of truth for the parser-AST
+/// `Expression::Aggregate` arm. The legacy
+/// `src/expr_utils.rs::evaluate_expression` `Expression::Aggregate` arm
+/// is a thin delegation to this function (P0-2 §4.4).
+///
+/// **Semantics (identical to the legacy arm):**
+/// - `eval_aggregate_lookup(agg_name, row, column_names)` returns the
+///   `Value` at `row[i]` where `column_names[i]` matches `agg_name`
+///   case-insensitively.
+/// - Returns `None` if no column matches — the caller should map this
+///   to an error (the legacy arm does
+///   `Err("Aggregate not found in schema: ...")`, the OpenSpec design
+///   keeps that error shape so the wire-protocol path's error message
+///   is unchanged).
+/// - This is **NOT** an actual aggregate computation; aggregate values
+///   are computed in the SELECT/GROUP BY phase of the executor and
+///   stored in the row before this function is called. The legacy arm
+///   is also a lookup, not a computation, so the delegation preserves
+///   behavior.
+pub fn eval_aggregate_lookup(
+    agg_name: &str,
+    row: &[Value],
+    column_names: &[String],
+) -> Option<Value> {
+    let idx = column_names
+        .iter()
+        .position(|c| c.eq_ignore_ascii_case(agg_name))?;
+    row.get(idx).cloned()
+}
+
 fn parse_lit(s: &str) -> Value {
     let s = s.trim();
     if s.eq_ignore_ascii_case("NULL") {
