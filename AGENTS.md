@@ -8,9 +8,9 @@
 
 ## Branch Strategy
 
-- **Main development branch**: `develop/v3.8.0`
+- **Main development branch**: `develop/v3.9.0`
 - **DO NOT modify `main` branch directly**
-- Create feature branches from `develop/v3.8.0`
+- Create feature branches from `develop/v3.9.0`
 - Use git worktrees for isolated feature work: `git worktree add .worktrees/<name> -b feature/<name>`
 
 ## Essential Commands
@@ -159,7 +159,7 @@ git config user.email "claude@macmini.dev"
 ssh -T gitea-macmini
 
 # Git ls-remote 测试
-git ls-remote origin refs/heads/develop/v3.8.0
+git ls-remote origin refs/heads/develop/v3.9.0
 ```
 
 ### Gitea Web UI
