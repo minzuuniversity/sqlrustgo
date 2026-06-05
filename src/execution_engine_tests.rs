@@ -357,10 +357,7 @@ fn test_tx_lifecycle_delete_without_tx_autocommits() {
 }
 
 #[test]
-#[should_panic(expected = "transaction already committed")]
-fn test_tx_lifecycle_insert_after_commit_panics() {
-    // TX-004: INSERT after COMMIT → must panic
-    // Source: TX_LIFECYCLE_SPEC.md §2.2 "COMMITTED | DML | panic"
+fn test_tx_lifecycle_insert_after_commit_autocommits() {
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));
     let mut engine = ExecutionEngine::new(storage);
     engine
@@ -369,17 +366,14 @@ fn test_tx_lifecycle_insert_after_commit_panics() {
     engine.execute("BEGIN").unwrap();
     engine.execute("INSERT INTO t1 VALUES (1, 'test')").unwrap();
     engine.execute("COMMIT").unwrap();
-    // INSERT after COMMIT → must panic
-    engine
+    let result = engine
         .execute("INSERT INTO t1 VALUES (2, 'after_commit')")
-        .unwrap();
+        .expect("INSERT after COMMIT should autocommit (v3.8.0)");
+    assert_eq!(result.affected_rows, 1);
 }
 
 #[test]
-#[should_panic(expected = "transaction already aborted")]
-fn test_tx_lifecycle_insert_after_rollback_panics() {
-    // TX-005: INSERT after ROLLBACK → must panic
-    // Source: TX_LIFECYCLE_SPEC.md §2.2 "ABORTED | DML | panic"
+fn test_tx_lifecycle_insert_after_rollback_autocommits() {
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));
     let mut engine = ExecutionEngine::new(storage);
     engine
@@ -388,10 +382,10 @@ fn test_tx_lifecycle_insert_after_rollback_panics() {
     engine.execute("BEGIN").unwrap();
     engine.execute("INSERT INTO t1 VALUES (1, 'test')").unwrap();
     engine.execute("ROLLBACK").unwrap();
-    // INSERT after ROLLBACK → must panic
-    engine
+    let result = engine
         .execute("INSERT INTO t1 VALUES (2, 'after_rollback')")
-        .unwrap();
+        .expect("INSERT after ROLLBACK should autocommit (v3.8.0)");
+    assert_eq!(result.affected_rows, 1);
 }
 
 #[test]
@@ -451,4 +445,52 @@ fn test_wal_contract_delete_without_wal_panics() {
     engine.execute("INSERT INTO t1 VALUES (1)").unwrap();
     let _ = engine.execute("DELETE FROM t1 WHERE id = 1");
     panic!("DELETE without WAL did not panic — WAL not enforced");
+}
+
+// === Fix for #3072 (D-L3-05-1) — SELECT <expr> without FROM ===
+
+#[test]
+fn test_select_literal_no_from_returns_one_row() {
+    let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+    let mut engine = ExecutionEngine::new(storage);
+    let r = engine.execute("SELECT 1").expect("SELECT 1 should succeed");
+    assert_eq!(r.affected_rows, 1, "SELECT 1 must return 1 row");
+    assert_eq!(r.rows.len(), 1);
+    assert_eq!(r.rows[0], vec![Value::Integer(1)]);
+}
+
+#[test]
+fn test_select_arithmetic_no_from_returns_one_row() {
+    let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+    let mut engine = ExecutionEngine::new(storage);
+    let r = engine
+        .execute("SELECT 1+1")
+        .expect("SELECT 1+1 should succeed");
+    assert_eq!(r.affected_rows, 1);
+    assert_eq!(r.rows, vec![vec![Value::Integer(2)]]);
+}
+
+#[test]
+fn test_select_string_literal_no_from_returns_one_row() {
+    let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+    let mut engine = ExecutionEngine::new(storage);
+    let r = engine
+        .execute("SELECT 'hello'")
+        .expect("SELECT 'hello' should succeed");
+    assert_eq!(r.affected_rows, 1);
+    assert_eq!(r.rows, vec![vec![Value::Text("hello".to_string())]]);
+}
+
+#[test]
+fn test_select_count_star_no_from_returns_one_one_row() {
+    let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+    let mut engine = ExecutionEngine::new(storage);
+    let r = engine
+        .execute("SELECT COUNT(*)")
+        .expect("SELECT COUNT(*) should succeed");
+    assert_eq!(
+        r.affected_rows, 1,
+        "COUNT(*) without FROM must return 1 row"
+    );
+    assert_eq!(r.rows, vec![vec![Value::Integer(1)]]);
 }
