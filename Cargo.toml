@@ -31,6 +31,7 @@ members = [
     "crates/distributed",
     "crates/unified-storage",
     "crates/admin",
+    "crates/cache",
 ]
 
 [workspace.package]
@@ -61,6 +62,7 @@ sqlrustgo-vector = { path = "crates/vector" }
 sqlrustgo-graph = { path = "crates/graph" }
 sqlrustgo-sql-corpus = { path = "crates/sql-corpus" }
 sqlrustgo-qmd-bridge = { path = "crates/qmd-bridge" }
+sqlrustgo-cache = { path = "crates/cache" }
 
 tokio = { version = "1.0", features = ["full"] }
 tonic = "0.14"
@@ -129,6 +131,7 @@ sqlrustgo-planner.workspace = true
 sqlrustgo-optimizer.workspace = true
 sqlrustgo-executor.workspace = true
 sqlrustgo-storage.workspace = true
+sqlrustgo-cache.workspace = true
 sqlrustgo-catalog.workspace = true
 sqlrustgo-transaction.workspace = true
 sqlrustgo-server.workspace = true
