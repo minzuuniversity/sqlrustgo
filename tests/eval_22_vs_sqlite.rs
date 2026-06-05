@@ -3,9 +3,9 @@
 //! 这是 Issue #2977 真"完成度"评估 — 不只是 "not crash" 而是 "row_count 对不对".
 //! 目的: 给李哥看 TPC-H 22 线程的真正状态 (in-process 跟 SQLite 的差距).
 
+use serde_json::Value as JsonValue;
 use sqlrustgo::{ExecutionEngine, MemoryStorage};
 use sqlrustgo_types::Value as SqlValue;
-use serde_json::Value as JsonValue;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
@@ -122,10 +122,20 @@ fn eval_22_in_process_vs_sqlite() {
                 if let Some(exp) = expected {
                     if (r.rows.len() as i64) == exp {
                         passed += 1;
-                        summary.push(format!("Q{:2}: PASS  actual={} expected={}", q, r.rows.len(), exp));
+                        summary.push(format!(
+                            "Q{:2}: PASS  actual={} expected={}",
+                            q,
+                            r.rows.len(),
+                            exp
+                        ));
                     } else {
                         mismatched += 1;
-                        summary.push(format!("Q{:2}: MISMATCH  actual={} expected={}", q, r.rows.len(), exp));
+                        summary.push(format!(
+                            "Q{:2}: MISMATCH  actual={} expected={}",
+                            q,
+                            r.rows.len(),
+                            exp
+                        ));
                     }
                 } else {
                     summary.push(format!("Q{:2}: OK  rows={} (no expected)", q, r.rows.len()));
