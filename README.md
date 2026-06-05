@@ -1,17 +1,17 @@
 # SQLRustGo
 
-> **Last updated**: 2026-06-04
-> **Current dev branch**: [`c024980c`](http://192.168.0.252:3000/openclaw/sqlrustgo/commit/c024980c) @ develop/v3.8.0
+> **Last updated**: 2026-06-05
+> **Current dev branch**: [`d53acb3c`](http://192.168.0.252:3000/openclaw/sqlrustgo/commit/d53acb3c) @ develop/v3.8.0
 > **Latest stable**: v3.7.0 (GA, 2026-05-31)
-> **Latest beta**: v3.8.0-beta (Strong Beta, 2026-06-04, 8.0/10)
+> **Latest beta**: v3.8.0-rc1 (RC, 2026-06-05, TPC-H 22/22)
 
 <p align="center">
   <img src="https://img.shields.io/badge/Rust-1.85+-dea584?style=flat-square&logo=rust" alt="Rust">
   <img src="https://img.shields.io/badge/v3.7.0-GA-green?style=flat-square" alt="GA">
   <img src="https://img.shields.io/badge/v3.8.0-Strong%20Beta-blue?style=flat-square" alt="Beta">
   <img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="License">
-  <img src="https://img.shields.io/badge/TPC--H-10%2F22-yellow?style=flat-square" alt="TPC-H">
-  <img src="https://img.shields.io/badge/Corpus-86.5%25-yellow?style=flat-square" alt="Corpus">
+  <img src="https://img.shields.io/badge/TPC--H-22%2F22-brightgreen?style=flat-square" alt="TPC-H">
+  <img src="https://img.shields.io/badge/Corpus-94.2%25-brightgreen?style=flat-square" alt="Corpus">
   <img src="https://img.shields.io/badge/9--Dim%20Gate-8%2F8%20PASS-brightgreen?style=flat-square" alt="D9">
   <img src="https://img.shields.io/badge/INT--1%20(P0)-CLOSED-brightgreen?style=flat-square" alt="INT-1">
 </p>
@@ -361,12 +361,23 @@ cargo llvm-cov report --open
 
 ## Changelog
 
-### [3.8.0-beta] - 2026-06-04 (Strong Beta, 8.0/10) — **当前开发版本**
+### [3.8.0-rc1] - 2026-06-05 (RC) — **当前开发版本**
+
+- **状态**: **Release Candidate** — RC 门禁 10/10 PASS, 0 blockers
+- **TPC-H 22/22 ✅** (PR #3132, 修复 Q2 join key resolution bug)
+- **Corpus 94.2%** (PR #3131, MySQL 5.7 keyword-as-identifier + scalar function, +68 cases)
+- **GA Doc Gate PASS** (PR #3140, PR #3141, `docs/releases/v3.8.0/ga/GA_GATE_REPORT.md`)
+- **8 PRs merged since beta**: #3131 #3134 #3137 #3138 #3139 #3140 #3141 #3142
+- **Issue 关闭**: #2977 (TPC-H Q2)
+
+详见 [V380_RC1_RELEASE_NOTES.md](docs/releases/v3.8.0/V380_RC1_RELEASE_NOTES.md), [GA_GATE_REPORT.md](docs/releases/v3.8.0/ga/GA_GATE_REPORT.md)
+
+### [3.8.0-beta] - 2026-06-04 (Strong Beta, 8.0/10)
 
 - **状态**: **Strong Beta** (8.0/10) — 跳过 RC 周期, 直接进入 v3.9.0
 - **INT-1 (P0 Release Blocker) CLOSED**: DML 真实走 TransactionManager (PR-3019)
 - **核心 SQL 引擎 100%**: Parser 18/18 + Executor 30/30 + GROUP BY 81/81 + JOIN 100%
-- **Corpus 86.5%**: 711/822 cases PASS (Stage 1-3 累计 +270 cases)
+- **Corpus 86.5%** (at beta cutoff; rc1 → 94.2%)
 - **6 真实 bug 修复**: COUNT(DISTINCT), SELECT DISTINCT, NULL=NULL, D9 路径, D9 5-Principle, INT-1
 - **9 维门禁**: D9 8/8 ALL PASS (D1-D5 + D6/D7/D8 + Cross-Version + Test Plan + PR Template + Evidence)
 - **11 issues 关闭**: #2966/2967/2968/2969/2970/2971/2972/2937/2938/2942/2807
