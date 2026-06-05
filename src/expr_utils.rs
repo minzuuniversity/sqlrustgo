@@ -89,19 +89,10 @@ pub fn expression_to_string(expr: &sqlrustgo_parser::Expression) -> String {
 /// Convert a parser Expression to a Value (simple literal evaluation)
 pub fn expression_to_value(expr: &sqlrustgo_parser::Expression) -> Value {
     match expr {
+        // P0-2 §3.4: delegated to `executor::expr::eval_literal_from_str`
+        // (single source of truth for literal evaluation).
         sqlrustgo_parser::Expression::Literal(s) => {
-            let s = s.trim();
-            if s.eq_ignore_ascii_case("NULL") {
-                Value::Null
-            } else if let Ok(n) = s.parse::<i64>() {
-                Value::Integer(n)
-            } else if let Ok(f) = s.parse::<f64>() {
-                Value::Float(f)
-            } else if s.starts_with('\'') && s.ends_with('\'') {
-                Value::Text(s[1..s.len() - 1].to_string())
-            } else {
-                Value::Text(s.to_string())
-            }
+            sqlrustgo_executor::expr::eval_literal_from_str(s)
         }
         sqlrustgo_parser::Expression::Identifier(name) => Value::Text(name.clone()),
         _ => Value::Null,
