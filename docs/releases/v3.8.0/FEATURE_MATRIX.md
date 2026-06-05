@@ -455,6 +455,17 @@
 - F-35 Password Rotation 8/8 ✅
 - I-12 Parallel Executor 6/6 ✅ (未集成主路径)
 
+**⚠️ 真实状态纠正 (2026-06-05, per PR #3097 audit + #3102/#3103 fix)**:
+
+- "12/16 100% CLOSED" 实际是 **10 真实 + 5 PARTIAL + 1 STALE**:
+  - **10 真实 100%** (按 SPEC 范围单元测试 PASS + SPEC 诚实声明 in-memory): F-16, F-23, F-24, F-25, F-26, F-27, F-29, F-31, F-32, F-35
+  - **5 PARTIAL** (测试 PASS 但与生产代码零集成 - "孤岛"): F-10, F-11, F-12, F-14, I-12 — v3.9.0+ plan (#3102)
+  - **1 STALE** (ACID 违规已修 PR-3090 但 FEATURE_MATRIX 未同步): F-09
+
+- F-30 / F-36 / F-03 (GIS) / T-19 / T-20: 实际**完全无实现**，INT5+ INVENTORY 已加 v3.9.0+ plan (#3103)
+
+详见: `docs/releases/v3.8.0/historical/LEGACY_ISSUES_2026-06-05_AUDIT.md` §2.3-2.4
+
 ---
 
 ## 12. 兼容性说明 (Compatibility)
