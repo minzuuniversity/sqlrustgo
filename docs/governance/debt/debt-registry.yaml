@@ -106,17 +106,24 @@ arch:
 
   - id: ARCH-3
     title: "VTU 主路径集成"
-    state: BLOCKED
+    state: IN_PROGRESS
     owner: openclaw
     target_release: v3.9.0
     review_date: "2026-09-01"
-    blocked_reason: "MemoryStorage::in_transaction 永远 false 触发 panic"
-    progress: 0%
-    progress_metric: "VtuGuard.execute_dml 主路径零调用"
+    progress: 60%
+    progress_metric: |
+      PR #3152 (2026-06-05) 修复 2 个阻塞:
+        1. MemoryStorage::in_transaction() 新增 current_tx_id field + 真实 impl
+        2. execute_insert/update/delete autocommit set_current_tx_id 补全
+      execute_truncate 仍 &self (deferred to DDL refactor)
+    verification_evidence: |
+      PR-3152 5ed7a1d7 + 65c1e4aa
+      cargo test 16/16 F-XX PASS
+      6 INT-1/4 验证测试 PASS
     blocking:
-      - "MemoryStorage::in_transaction stub 修复"
-      - "execute_insert/update/delete autocommit set_current_tx_id 补全"
-    related_followup: 3129
+      - "execute_truncate DDL refactor (1 子任务)"
+      - "INT-2 Parallel Executor 集成 (依赖此)"
+    related_followup: 3129  # PR-3152 已 RESOLVED
 
 # =============================================================================
 # SEM — Semantic Debt (4 items, from v3.0.0+ era)
