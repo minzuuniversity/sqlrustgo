@@ -1,0 +1,15 @@
+{
+  "query": "q14.sql",
+  "sqlite_sql_source": "standard_tpch_q.sql",
+  "engines": {
+    "sqlite": {
+      "row_count": 1,
+      "first_3_rows": [
+        "20.566435157167"
+      ],
+      "error": null
+    }
+  },
+  "consensus_row_count": 1,
+  "consensus": true
+}

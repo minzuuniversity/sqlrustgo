@@ -35,7 +35,7 @@ cargo fmt --check --all
 cargo fmt --all
 
 # Run REPL
-cargo run --bin sqlrustgo
+cargo run --bin sqlrustgo-mysql-server -- repl
 
 # Run doc tests
 cargo test --doc
