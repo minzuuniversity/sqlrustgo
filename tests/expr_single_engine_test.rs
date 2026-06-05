@@ -344,3 +344,145 @@ fn test_aggregate_known_outputs() {
         "empty row returns None (out-of-bounds lookup)"
     );
 }
+
+#[test]
+fn test_like_delegation() {
+    // Contract test for P0-2 §4.5 + §4.6 (Like / NotLike).
+    // The two paths (legacy `expr_utils::evaluate_expression` and the
+    // new `executor::expr::sql_like_match`) must return equal `Value`s
+    // for every (text, pattern) input.
+    //
+    // Note: Like arms internally call `sql_like_match` (now in
+    // `executor::expr`). We test that the legacy shim in `expr_utils`
+    // and the real implementation in `executor::expr` agree.
+    use sqlrustgo_executor::expr::sql_like_match as executor_sql_like_match;
+    use sqlrustgo_parser::Expression as ParserExpr;
+    use sqlrustgo_storage::TableInfo;
+
+    let table_info = TableInfo::default();
+    let empty_row: Vec<Value> = vec![];
+
+    // Pairs of (text, pattern) with expected match result.
+    let cases: &[(&str, &str, bool)] = &[
+        // Basic wildcards
+        ("hello", "%ell%", true),
+        ("hello", "world", false),
+        ("hello", "hello", true), // exact match
+        ("hello", "HELLO", true), // case-insensitive
+        ("hello", "hell%", true), // trailing wildcard
+        ("hello", "%ello", true), // leading wildcard
+        ("hello", "h_llo", true), // single-char wildcard
+        ("hello", "h_lo", false), // _ matches exactly 1 char
+        ("hello", "%", true),     // % matches anything
+        ("", "%", true),          // % matches empty
+        ("", "", true),           // empty matches empty
+        ("abc", "", false),       // non-empty ≠ empty
+        // Quoted pattern (the literal parser adds quotes; the matcher strips them)
+        ("hello", "'%ell%'", true),
+        ("hello", "'world'", false),
+        // TPC-H-style
+        ("green tea kettle", "%green%", true),
+        ("apple", "%green%", false),
+    ];
+
+    let mut failures: Vec<(String, String)> = Vec::new();
+
+    for (text, pattern, expected) in cases {
+        // Path 1: legacy facade — build a single-row vec and use
+        // `evaluate_expression` with `Expression::Like`.
+        // We put the text and pattern in the row as Identifiers
+        // (or use Literal as inner for simplicity).
+        // Simpler: build `Expression::Like(Literal(text), Literal(pattern), None)`
+        // but that requires a `row` and `table_info` for the inner
+        // Literal evaluation. Use empty row and default table_info.
+        let expr_like = ParserExpr::Like(
+            Box::new(ParserExpr::Literal(text.to_string())),
+            Box::new(ParserExpr::Literal(pattern.to_string())),
+            None,
+        );
+        let from_facade =
+            sqlrustgo::expr_utils::evaluate_expression(&expr_like, &empty_row, &table_info);
+
+        // Path 2: the new single-source-of-truth
+        let from_evaluator = executor_sql_like_match(text, pattern);
+
+        let expected_val = Value::Boolean(*expected);
+        let facade_val = from_facade.clone().unwrap_or(Value::Null);
+        if facade_val != expected_val || from_evaluator != *expected {
+            failures.push((
+                format!("text={text:?} pattern={pattern:?}"),
+                format!(
+                    "facade={facade_val:?} evaluator={from_evaluator} expected={expected_val:?}"
+                ),
+            ));
+        }
+    }
+
+    assert!(
+        failures.is_empty(),
+        "INT-3 Like delegation: facade and executor::expr disagree on the following inputs:\n{}",
+        failures
+            .iter()
+            .map(|(label, diff)| format!("  - {label}: {diff}"))
+            .collect::<Vec<_>>()
+            .join("\n")
+    );
+}
+
+#[test]
+fn test_like_known_outputs() {
+    use sqlrustgo_executor::expr::sql_like_match;
+
+    // TPC-H Q9 pattern: `WHERE p_name LIKE '%green%'`
+    assert!(sql_like_match("green tea kettle", "%green%"));
+    assert!(sql_like_match("GREEN TEA KETTLE", "%green%")); // case-insensitive
+    assert!(!sql_like_match("apple", "%green%"));
+
+    // Single-char wildcard
+    assert!(sql_like_match("hello", "h_llo"));
+    assert!(!sql_like_match("hello", "h_lo"));
+    assert!(!sql_like_match("hello", "hello_"));
+
+    // Edge cases
+    assert!(sql_like_match("", "%"));
+    assert!(sql_like_match("anything", "%"));
+    assert!(!sql_like_match("anything", ""));
+    assert!(sql_like_match("", ""));
+
+    // Quoted pattern (literal parser adds quotes)
+    assert!(sql_like_match("hello", "'%ell%'"));
+    assert!(!sql_like_match("hello", "'world'"));
+}
+
+#[test]
+fn test_notlike_delegation() {
+    // Contract test for P0-2 §4.6 (NotLike).
+    use sqlrustgo_executor::expr::sql_like_match;
+    use sqlrustgo_parser::Expression as ParserExpr;
+    use sqlrustgo_storage::TableInfo;
+
+    let table_info = TableInfo::default();
+    let empty_row: Vec<Value> = vec![];
+
+    let cases: &[(&str, &str)] = &[
+        ("hello", "world"),
+        ("hello", "hell"), // not a wildcard
+        ("apple", "%green%"),
+    ];
+
+    for (text, pattern) in cases {
+        let expr_notlike = ParserExpr::NotLike(
+            Box::new(ParserExpr::Literal(text.to_string())),
+            Box::new(ParserExpr::Literal(pattern.to_string())),
+            None,
+        );
+        let from_facade =
+            sqlrustgo::expr_utils::evaluate_expression(&expr_notlike, &empty_row, &table_info);
+        let expected = Value::Boolean(!sql_like_match(text, pattern));
+        assert_eq!(
+            from_facade,
+            Ok(expected.clone()),
+            "INT-3 NotLike delegation: facade={from_facade:?} executor::expr={expected:?} for text={text:?} pattern={pattern:?}"
+        );
+    }
+}
