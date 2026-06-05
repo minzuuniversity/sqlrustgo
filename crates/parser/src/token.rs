@@ -195,6 +195,10 @@ pub enum Token {
     Greater,
     Less,
     GreaterEqual,
+    /// MySQL 5.7 JSON path operator: `column -> path` returns JSON value
+    JsonArrow,
+    /// MySQL 5.7 JSON path operator (unquoted): `column ->> path` returns text
+    JsonArrowText,
     LessEqual,
     And,
     Or,
@@ -399,6 +403,8 @@ impl fmt::Display for Token {
             Token::Greater => write!(f, ">"),
             Token::Less => write!(f, "<"),
             Token::GreaterEqual => write!(f, ">="),
+            Token::JsonArrow => write!(f, "->"),
+            Token::JsonArrowText => write!(f, "->>"),
             Token::LessEqual => write!(f, "<="),
             Token::And => write!(f, "AND"),
             Token::Or => write!(f, "OR"),
