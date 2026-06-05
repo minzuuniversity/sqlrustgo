@@ -1542,8 +1542,25 @@ fn handle_load_local_infile<S: Read + Write>(
     let mut buf: Vec<u8> = Vec::with_capacity(bulk_buf_size * 2);
     let mut total_rows: u64 = 0;
     let mut pending_rows: Vec<Vec<sqlrustgo_types::Value>> = Vec::new();
-    let mut pending_bytes: usize = 0;
 
+    // ---- EAGAIN bug fix (RC2 Week 1 Day 6) ----
+    //
+    // Original code tracked `pending_bytes` as the sum of *parsed*
+    // line lengths and flushed when that sum exceeded `bulk_buf_size`.
+    // But the flush decision ignored partial bytes that could be in
+    // `buf` at the end of a packet (when the packet's last line is
+    // incomplete, the rest of the line sits in `buf` waiting for the
+    // next packet). For a 9-column 150-row table (orders.tbl) the
+    // accumulated partial bytes were enough that the flush logic
+    // committed rows *before* all their bytes were in `buf`, and
+    // subsequent reads on the client got EAGAIN because the
+    // server's per-connection accounting had overshot.
+    //
+    // Fix: only flush when `buf` is empty (i.e. we have parsed every
+    // byte we currently have). The size threshold becomes a soft
+    // check on `buf.len()` to avoid pathological memory growth, but
+    // we never flush with unparsed bytes still in the buffer.
+    let mut last_flush_kept_rows: usize = 0;
     loop {
         let pkt = Packet::read_from(stream)?;
         *seq = pkt.sequence.wrapping_add(1);
@@ -1568,7 +1585,6 @@ fn handle_load_local_infile<S: Read + Write>(
             }
             match parse_tbl_line(line_str, col_count) {
                 Ok(row) => {
-                    pending_bytes += line_str.len();
                     pending_rows.push(row);
                 }
                 Err(e) => {
@@ -1577,12 +1593,37 @@ fn handle_load_local_infile<S: Read + Write>(
             }
         }
 
-        // Flush at bulk_buf_size boundary.
-        if pending_bytes >= bulk_buf_size && !pending_rows.is_empty() {
-            let n = bulk_insert(engine, table, std::mem::take(&mut pending_rows))
+        // Only flush when we have **fully drained** the buffer. The
+        // size threshold is a sanity guard — if `buf` is still
+        // non-empty (last line spans a packet boundary), defer
+        // flushing until the next packet.
+        if buf.is_empty() && pending_rows.len() > last_flush_kept_rows {
+            let pending = std::mem::take(&mut pending_rows);
+            last_flush_kept_rows = 0;
+            let n = bulk_insert(engine, table, pending)
                 .map_err(|e| MySqlError::Other(format!("bulk_insert: {}", e)))?;
             total_rows += n;
-            pending_bytes = 0;
+        } else if buf.len() > bulk_buf_size * 4 {
+            // Sanity guard: if buf keeps growing without ever
+            // draining (e.g. a malformed file with no newlines),
+            // force-flush whatever parsed rows we have so we don't
+            // OOM. Reset last_flush_kept_rows so we don't immediately
+            // re-flush.
+            tracing::warn!(
+                "LOAD DATA buf exceeds 4× bulk_buf_size ({} bytes) \
+                 without draining; forcing flush of {} rows",
+                buf.len(),
+                pending_rows.len()
+            );
+            let pending = std::mem::take(&mut pending_rows);
+            last_flush_kept_rows = 0;
+            let n = bulk_insert(engine, table, pending)
+                .map_err(|e| MySqlError::Other(format!("bulk_insert: {}", e)))?;
+            total_rows += n;
+        } else {
+            // Defer flush until next packet; remember that these
+            // rows are still pending.
+            last_flush_kept_rows = pending_rows.len();
         }
     }
 
