@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub enum UndoRecord {
     Insert { key: Vec<u8> },
     Delete { key: Vec<u8>, old_value: Vec<u8> },
@@ -42,6 +42,17 @@ impl std::error::Error for SavepointError {}
 pub struct SavepointManager {
     savepoints: Vec<Savepoint>,
     undo_log: Vec<UndoRecord>,
+}
+
+// Manual Debug impl (auto-derive would work too, but the inner types
+// already impl Debug via the additions above).
+impl std::fmt::Debug for SavepointManager {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SavepointManager")
+            .field("savepoints", &self.savepoints)
+            .field("undo_log_len", &self.undo_log.len())
+            .finish()
+    }
 }
 
 impl SavepointManager {
