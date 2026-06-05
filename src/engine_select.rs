@@ -5,6 +5,9 @@
 use crate::engine_utils::*;
 use crate::expr_utils::*;
 use crate::{ExecutionEngine, ExecutorResult, SqlError, SqlResult, Value};
+use sqlrustgo_executor::parallel_executor::{
+    ParallelExecutor, ParallelVolcanoExecutor, PARALLEL_MIN_ROWS,
+};
 use sqlrustgo_parser::{
     get_and_clear_derived_subqueries, AggregateCall, AggregateFunction, Expression,
     JoinClause as ParserJoinClause, JoinType, SelectStatement,
@@ -105,6 +108,20 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             let table_info = storage.get_table_info(&select.table)?;
             (rows, table_info)
         };
+
+        if self.parallel_degree > 1
+            && rows.len() >= PARALLEL_MIN_ROWS
+        {
+            if let Some(ref where_expr) = select.where_clause {
+                let parallel = ParallelVolcanoExecutor::new(self.parallel_degree);
+                let partitions = parallel.partition_scan(rows, self.parallel_degree);
+                rows = self.filter_partitions_parallel(
+                    partitions,
+                    where_expr,
+                    &table_info,
+                );
+            }
+        }
 
         // Step 2: WHERE
         if let Some(ref where_expr) = select.where_clause {
@@ -1174,5 +1191,30 @@ fn decode_value_key(s: &str) -> Value {
         },
         b'X' => Value::Blob(Vec::new()),
         _ => Value::Null,
+    }
+}
+
+impl<S: StorageEngine + 'static> ExecutionEngine<S> {
+    fn filter_partitions_parallel(
+        &self,
+        partitions: Vec<Vec<Vec<Value>>>,
+        where_expr: &Expression,
+        table_info: &TableInfo,
+    ) -> Vec<Vec<Value>> {
+        use rayon::prelude::*;
+        let where_expr = where_expr.clone();
+        let table_info = table_info.clone();
+        let filtered: Vec<Vec<Vec<Value>>> = partitions
+            .into_par_iter()
+            .map(|mut part| {
+                part.retain(|row| eval_predicate(&where_expr, row, &table_info));
+                part
+            })
+            .collect();
+        let mut merged: Vec<Vec<Value>> = Vec::new();
+        for part in filtered {
+            merged.extend(part);
+        }
+        merged
     }
 }
