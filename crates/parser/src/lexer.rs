@@ -156,8 +156,16 @@ impl<'a> Lexer<'a> {
                 Token::Plus
             }
             '-' => {
-                self.position += 1;
-                Token::Minus
+                if self.input[self.position..].starts_with("->>") {
+                    self.position += 3;
+                    Token::JsonArrowText
+                } else if self.input[self.position..].starts_with("->") {
+                    self.position += 2;
+                    Token::JsonArrow
+                } else {
+                    self.position += 1;
+                    Token::Minus
+                }
             }
             '/' => {
                 self.position += 1;
