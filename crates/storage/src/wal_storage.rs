@@ -322,7 +322,12 @@ impl<S: StorageEngine, T: WalManager> WalStorage<S, T> {
     }
 
     pub fn in_transaction(&self) -> bool {
-        self.inner.in_transaction()
+        // INT-4: report transaction state from the WAL layer's own
+        // current_tx_id (set by `set_current_tx_id` / facade), not the
+        // inner engine which only knows about its own write-buffer
+        // state. This keeps VtuGuard's `assert_dml_safe` correct when
+        // the executor opens a TX through the unified facade.
+        self.current_tx_id != 0
     }
 
     pub fn current_tx_id(&self) -> u64 {
@@ -345,10 +350,45 @@ impl<S: StorageEngine, T: WalManager> StorageEngine for WalStorage<S, T> {
 
     fn insert(&mut self, table: &str, records: Vec<Record>) -> SqlResult<()> {
         let table_id = Self::table_name_to_id(table);
-        for record in &records {
-            let key = Self::record_key(record);
-            let data = Self::record_to_bytes(record);
-            self.log_insert(table_id, key, data)?;
+        // P1 fix (issue #3013): batched WAL write to avoid N fsyncs.
+        // Default WalManager config does per-record flush (batch_mode=false),
+        // so a 1000-row INSERT was 1000 flushes. Enable batch mode with a high
+        // threshold so the N log_inserts accumulate in the BufWriter, then
+        // call `wal.flush()` once at the end. Restore the prior settings so
+        // callers using the storage outside of batched INSERTs are unaffected.
+        //
+        // Durability trade-off: a crash mid-batch may lose up to N rows of
+        // WAL-buffered entries. This matches MySQL's
+        // `innodb_flush_log_at_trx_commit=2` semantics and is acceptable for
+        // benchmark/load-data use cases (TPC-H SF=0.01 import, LOAD DATA bulk
+        // loader, sysbench prepare). Single-row INSERTs are unaffected because
+        // the caller typically commits the transaction between calls.
+        if self.wal_enabled && !records.is_empty() {
+            let prev_batch_mode = self.wal.is_batch_mode();
+            let prev_threshold = self.wal.flush_threshold();
+            self.wal.set_batch_mode(true);
+            self.wal.set_flush_threshold(usize::MAX);
+            let result: SqlResult<()> = (|| {
+                for record in &records {
+                    let key = Self::record_key(record);
+                    let data = Self::record_to_bytes(record);
+                    self.log_insert(table_id, key, data)?;
+                }
+                self.wal.flush()
+            })();
+            // Restore prior settings (best-effort; WAL consistency is unaffected
+            // either way because we flushed before restoring).
+            self.wal.set_flush_threshold(prev_threshold);
+            if !prev_batch_mode {
+                self.wal.set_batch_mode(false);
+            }
+            result?;
+        } else {
+            for record in &records {
+                let key = Self::record_key(record);
+                let data = Self::record_to_bytes(record);
+                self.log_insert(table_id, key, data)?;
+            }
         }
         self.inner.insert(table, records)
     }

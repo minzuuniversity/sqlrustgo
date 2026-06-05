@@ -6,84 +6,91 @@
 //!
 //! **Fix**: Add `Statement::Show` dispatch + `execute_show_databases` and
 //! `execute_show_tables` handlers using `StorageEngine::list_tables()`.
+//!
+//! **Phase 2a migration**: driven through the wire protocol via the
+//! embedded `start_ephemeral` harness (see
+//! `openspec/changes/mysql-server-canonical-entry/specs/wire-protocol-execution/spec.md`).
 
-use sqlrustgo::MemoryExecutionEngine;
-use sqlrustgo_storage::MemoryStorage;
-use std::sync::{Arc, RwLock};
+mod common;
 
-fn make_engine() -> MemoryExecutionEngine {
-    let storage = Arc::new(RwLock::new(MemoryStorage::new()));
-    MemoryExecutionEngine::new(storage)
+use common::MySqlTestClient;
+use sqlrustgo_mysql_server::testing::EphemeralConfig;
+
+fn clean_client() -> MySqlTestClient {
+    MySqlTestClient::connect_with_config(EphemeralConfig {
+        bootstrap_tables: false,
+        ..EphemeralConfig::default()
+    })
+    .expect("ephemeral server (clean catalog) + raw client should come up")
 }
 
 #[test]
 fn show_tables_on_empty_db_returns_empty_result() {
-    let mut engine = make_engine();
-    let result = engine.execute("SHOW TABLES").unwrap();
+    let mut client = clean_client();
+    let rows = client
+        .query_rows("SHOW TABLES")
+        .expect("SHOW TABLES should succeed");
     assert_eq!(
-        result.rows.len(),
+        rows.len(),
         0,
         "SHOW TABLES on empty DB should return 0 rows, got {}",
-        result.rows.len()
+        rows.len()
     );
 }
 
 #[test]
 fn show_tables_lists_all_created_tables() {
-    let mut engine = make_engine();
-    engine.execute("CREATE TABLE t1 (id INTEGER)").unwrap();
-    engine
-        .execute("CREATE TABLE t2 (id INTEGER, name TEXT)")
-        .unwrap();
-    engine.execute("CREATE TABLE t3 (id INTEGER)").unwrap();
+    let mut client = clean_client();
+    client
+        .exec("CREATE TABLE t1 (id INTEGER)")
+        .expect("CREATE t1");
+    client
+        .exec("CREATE TABLE t2 (id INTEGER, name TEXT)")
+        .expect("CREATE t2");
+    client
+        .exec("CREATE TABLE t3 (id INTEGER)")
+        .expect("CREATE t3");
 
-    let result = engine.execute("SHOW TABLES").unwrap();
-    let names: Vec<String> = result
-        .rows
-        .iter()
-        .filter_map(|row| match row.first() {
-            Some(sqlrustgo::Value::Text(s)) => Some(s.clone()),
-            _ => None,
-        })
-        .collect();
-    assert_eq!(names.len(), 3, "expected 3 tables, got {:?}", names);
-    assert!(names.contains(&"t1".to_string()));
-    assert!(names.contains(&"t2".to_string()));
-    assert!(names.contains(&"t3".to_string()));
+    let rows = client
+        .query_rows("SHOW TABLES")
+        .expect("SHOW TABLES should succeed");
+    assert_eq!(rows.len(), 3, "expected 3 tables, got {:?}", rows);
+    let names: Vec<&str> = rows.iter().map(|r| r[0].as_str()).collect();
+    assert!(names.contains(&"t1"));
+    assert!(names.contains(&"t2"));
+    assert!(names.contains(&"t3"));
 }
 
 #[test]
 fn show_databases_returns_one_row() {
-    let mut engine = make_engine();
-    // v3.7.0 has a single in-memory catalog. SHOW DATABASES returns one
-    // row representing the current (only) database.
-    let result = engine.execute("SHOW DATABASES").unwrap();
+    let mut client = clean_client();
+    let rows = client
+        .query_rows("SHOW DATABASES")
+        .expect("SHOW DATABASES should succeed");
     assert!(
-        result.rows.len() >= 1,
-        "SHOW DATABASES should return at least one row, got {}",
-        result.rows.len()
+        !rows.is_empty(),
+        "SHOW DATABASES should return at least one row, got 0"
     );
 }
 
 #[test]
 fn show_tables_after_drop_reflects_drop() {
-    let mut engine = make_engine();
-    engine.execute("CREATE TABLE keep_me (id INTEGER)").unwrap();
-    engine.execute("CREATE TABLE drop_me (id INTEGER)").unwrap();
-    engine.execute("DROP TABLE drop_me").unwrap();
+    let mut client = clean_client();
+    client
+        .exec("CREATE TABLE keep_me (id INTEGER)")
+        .expect("CREATE keep_me");
+    client
+        .exec("CREATE TABLE drop_me (id INTEGER)")
+        .expect("CREATE drop_me");
+    client.exec("DROP TABLE drop_me").expect("DROP drop_me");
 
-    let result = engine.execute("SHOW TABLES").unwrap();
-    let names: Vec<String> = result
-        .rows
-        .iter()
-        .filter_map(|row| match row.first() {
-            Some(sqlrustgo::Value::Text(s)) => Some(s.clone()),
-            _ => None,
-        })
-        .collect();
-    assert!(names.contains(&"keep_me".to_string()));
+    let rows = client
+        .query_rows("SHOW TABLES")
+        .expect("SHOW TABLES should succeed");
+    let names: Vec<&str> = rows.iter().map(|r| r[0].as_str()).collect();
+    assert!(names.contains(&"keep_me"));
     assert!(
-        !names.contains(&"drop_me".to_string()),
+        !names.contains(&"drop_me"),
         "drop_me should not appear after DROP"
     );
 }
