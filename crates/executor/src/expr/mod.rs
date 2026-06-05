@@ -362,6 +362,105 @@ pub fn eval_not_between(value: &Value, low: &Value, high: &Value) -> Value {
     Value::Boolean(!(compare_values(value, low) >= 0 && compare_values(value, high) <= 0))
 }
 
+/// Look up a column index in a `TableInfo.columns` list by name, with
+/// case-insensitive matching, qualified-name stripping, and
+/// multi-join trailing-segment handling.
+///
+/// This is the single source of truth for column-name resolution. The
+/// legacy `src/expr_utils.rs::find_column_index` is a 1-line shim that
+/// delegates to this function (P0-2 §4.10).
+///
+/// **Semantics (identical to the legacy function):**
+/// - Fast path: exact case-insensitive match on the full column name.
+/// - If `col_name` contains a `.` (qualified), strip the qualifier and
+///   try the bare column name. If the column was accumulated from a
+///   multi-join (e.g. `a_join_b.t.col`), try matching the trailing N
+///   segments of the accumulated name against the user's N segments.
+/// - If `col_name` has no `.` (unqualified), try a trailing-segment
+///   match against each accumulated column (so bare `tag` resolves
+///   against `a_join_b.a.tag`).
+/// - Returns `Some(idx)` for a match, `None` otherwise.
+///
+/// The `ColumnDefinition` type is `sqlrustgo_storage::ColumnDefinition`.
+/// We define a local struct that the public function uses (rather than
+/// a free function over `&[String]`) so that the multi-join logic
+/// reads naturally.
+pub fn find_column_index(
+    col_name: &str,
+    columns: &[sqlrustgo_storage::ColumnDefinition],
+) -> Option<usize> {
+    // Fast path: exact match.
+    if let Some(idx) = columns
+        .iter()
+        .position(|c| c.name.eq_ignore_ascii_case(col_name))
+    {
+        return Some(idx);
+    }
+
+    if let Some((_qualifier, col)) = col_name.split_once('.') {
+        // Qualified: prefer the unqualified column-name match (works for the
+        // first-JOIN case where columns are named `t.col`).
+        if let Some(idx) = columns
+            .iter()
+            .position(|c| c.name.eq_ignore_ascii_case(col))
+        {
+            return Some(idx);
+        }
+        // Multi-join: the accumulated column may be `a_join_b.t.col`; match
+        // when the user's `qualifier.col` is the trailing two segments.
+        let user_segments: Vec<&str> = col_name.split('.').collect();
+        for (i, c) in columns.iter().enumerate() {
+            let col_segments: Vec<&str> = c.name.split('.').collect();
+            if col_segments.len() >= user_segments.len()
+                && col_segments[col_segments.len() - user_segments.len()..] == user_segments[..]
+            {
+                return Some(i);
+            }
+        }
+        None
+    } else {
+        // Unqualified: try a trailing-segment match so bare `tag` still
+        // resolves against the accumulated `a_join_b.a.tag`.
+        for (i, c) in columns.iter().enumerate() {
+            if let Some((_, tail)) = c.name.rsplit_once('.') {
+                if tail.eq_ignore_ascii_case(col_name) {
+                    return Some(i);
+                }
+            }
+        }
+        // Last fallback: no match.
+        None
+    }
+}
+
+/// Evaluate the parser-AST `Expression::Identifier(name)` arm: looks up
+/// the column by name and returns the value from the row. If the
+/// column is not in the schema, returns `Value::Text(name)` (the
+/// legacy fallback for unqualified identifiers that happen to be
+/// string literals).
+///
+/// This is the single source of truth for the parser-AST `Identifier`
+/// branch. The legacy `src/expr_utils.rs::evaluate_expression`
+/// `Expression::Identifier` arm is a thin delegation to this function
+/// (P0-2 §4.10).
+///
+/// **Semantics (identical to the legacy arm):**
+/// - If `name` is a column in `table_info`, return `row[idx]`
+///   (cloned, defaulting to `Value::Null` if out of bounds).
+/// - If `name` is *not* a column (e.g., a string literal used as a
+///   column name in a specific dialect), return `Value::Text(name)`.
+pub fn eval_identifier(
+    name: &str,
+    row: &[Value],
+    columns: &[sqlrustgo_storage::ColumnDefinition],
+) -> Value {
+    if let Some(col_idx) = find_column_index(name, columns) {
+        row.get(col_idx).cloned().unwrap_or(Value::Null)
+    } else {
+        Value::Text(name.to_string())
+    }
+}
+
 /// Evaluate a parser-AST `Expression::CaseWhen(whens, else_val)` arm.
 ///
 /// This is the single source of truth for the parser-AST `CaseWhen`
