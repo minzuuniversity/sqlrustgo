@@ -276,7 +276,8 @@ fn bootstrap_and_query(query: &str) -> Vec<Vec<String>> {
 /// is the *first* place where the post-fix value assertion lives
 /// (see `tpch_wire_smoke_sf_q1_value_correctness`).
 #[test]
-#[ignore = "awaits 5 engine bug fixes (see docs/audit/status/2026-06-04-tpch-phase2d-status.md)"]
+// v3.8.0-rc2 Week 1 Day 6: EAGAIN bug fixed, can run real value
+// correctness. Was #[ignore] before PR-3125.
 fn tpch_wire_smoke_sf001_fixture_loads_and_q1_executes() {
     // Verify the fixture is committed
     let dir = fixture_dir();
@@ -309,8 +310,9 @@ fn tpch_wire_smoke_sf001_fixture_loads_and_q1_executes() {
 /// This test is `#[ignore]` because the 5 pre-existing engine
 /// bugs block it today. The engine-bug-fix track removes the
 /// `#[ignore]` as part of the value-correctness rollout.
-#[test]
-#[ignore = "awaits 5 engine bug fixes (see docs/audit/status/2026-06-04-tpch-phase2d-status.md)"]
+    #[test]
+    // v3.8.0-rc2 Week 1 Day 6: EAGAIN bug fixed, can run real value
+    // correctness. Was #[ignore] before PR-3125.
 fn tpch_wire_smoke_sf001_q1_value_correctness() {
     use serde_json::Value;
     let expected_path = expected_dir().join("Q1.json");
