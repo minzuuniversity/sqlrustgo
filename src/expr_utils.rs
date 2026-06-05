@@ -100,87 +100,25 @@ pub fn expression_to_value(expr: &sqlrustgo_parser::Expression) -> Value {
 }
 
 /// Convert a string argument to a Value (for CALL arguments)
-/// SQL LIKE pattern matcher. `%` matches any sequence (including empty),
-/// `_` matches a single character; all other characters are literal.
-/// Case-insensitive to match MySQL's default LIKE semantics. The
-/// pattern's leading/trailing quotes (set by the literal parser) are
-/// stripped before matching.
+/// SQL LIKE pattern matcher — DEPRECATED, delegates to
+/// `sqlrustgo_executor::expr::sql_like_match` (P0-2 §4.5).
+///
+/// Kept as a `pub(crate)` shim during the transition; callers should
+/// switch to importing the executor function directly. This shim will
+/// be removed in a follow-up PR after `src/engine_utils.rs` is
+/// migrated to use `executor::expr` directly (per OpenSpec Decision D3).
 pub(crate) fn sql_like_match(text: &str, pattern: &str) -> bool {
-    // Strip the surrounding single quotes that the literal parser
-    // attaches to string values. `pattern` is usually passed in
-    // already without quotes, but be defensive.
-    let pat = pattern
-        .trim()
-        .strip_prefix('\'')
-        .and_then(|s| s.strip_suffix('\''))
-        .unwrap_or(pattern.trim());
-    let txt = text.to_lowercase();
-    let pat = pat.to_lowercase();
-    like_match_recursive(&txt, &pat)
+    sqlrustgo_executor::expr::sql_like_match(text, pattern)
 }
 
-/// Recursive wildcard matcher. Walks the pattern character by character;
-/// on `%` it tries matching the rest of the pattern against every
-/// suffix of the remaining text. Pure recursive implementation; safe
-/// for the small TPC-H patterns (`%green%`, etc.) but could be
-/// O(len(text) * len(pat)) in the worst case. A DFA-based matcher
-/// would scale better; the recursive version is fine for now.
-fn like_match_recursive(text: &str, pattern: &str) -> bool {
-    let mut t_idx = 0;
-    let mut p_idx = 0;
-    let t_bytes = text.as_bytes();
-    let p_bytes = pattern.as_bytes();
-    let mut star: Option<(usize, usize)> = None; // (text position, pattern position after %)
-
-    while t_idx < t_bytes.len() {
-        if p_idx < p_bytes.len() {
-            match p_bytes[p_idx] {
-                b'%' => {
-                    // Record the position to backtrack to, then advance.
-                    star = Some((t_idx, p_idx + 1));
-                    p_idx += 1;
-                    continue;
-                }
-                b'_' => {
-                    t_idx += 1;
-                    p_idx += 1;
-                    continue;
-                }
-                c if c == t_bytes[t_idx] => {
-                    t_idx += 1;
-                    p_idx += 1;
-                    continue;
-                }
-                _ => {
-                    // Mismatch — if we have a prior `%`, backtrack: advance
-                    // t_idx by one and restart matching from just after the
-                    // saved position. (The saved `ts` is fixed, so we use
-                    // t_idx + 1, not ts + 1, to actually make progress.)
-                    if let Some((_, ps)) = star {
-                        p_idx = ps;
-                        t_idx += 1;
-                        continue;
-                    }
-                    return false;
-                }
-            }
-        } else {
-            // Pattern exhausted but text has more. If we have a prior
-            // `%`, backtrack and advance one more text position.
-            if let Some((_, ps)) = star {
-                p_idx = ps;
-                t_idx += 1;
-                continue;
-            }
-            return false;
-        }
-    }
-
-    // Text exhausted; remaining pattern must be only `%`s.
-    while p_idx < p_bytes.len() && p_bytes[p_idx] == b'%' {
-        p_idx += 1;
-    }
-    p_idx == p_bytes.len()
+/// Recursive wildcard matcher. DEPRECATED, moved to
+/// `sqlrustgo_executor::expr::like_match_recursive` (private).
+fn like_match_recursive(_text: &str, _pattern: &str) -> bool {
+    // Body removed (P0-2 §4.5). Kept as a no-op stub so any in-tree
+    // caller that imports it via `use crate::expr_utils::like_match_recursive;`
+    // still compiles. The real implementation lives in
+    // `crates/executor/src/expr/mod.rs`.
+    unreachable!("like_match_recursive moved to sqlrustgo_executor::expr; this stub is unreachable")
 }
 
 pub fn expression_to_value_from_string(s: &str) -> Value {
@@ -238,22 +176,22 @@ pub fn evaluate_expression(
             let val = evaluate_expression(inner, row, table_info)?;
             Ok(sqlrustgo_executor::expr::eval_is_not_null(&val))
         }
-        // TPC-H Q9: `WHERE p_name LIKE '%green%'`. Implement SQL LIKE
-        // substring match: `%` matches any sequence (including empty),
-        // `_` matches a single char. No ESCAPE handling yet; that's
-        // a separate follow-up.
+        // TPC-H Q9: `WHERE p_name LIKE '%green%'`. SQL LIKE substring
+        // match: `%` matches any sequence (including empty), `_` matches
+        // a single char. No ESCAPE handling yet; that's a separate
+        // follow-up.
         Expression::Like(expr, pattern, _escape) => {
-            // The parser folds `LIKE` into `Expression::Like(left, pat, _)`,
-            // so this arm fires during WHERE evaluation. Implements the
-            // same wildcard match that the BinaryOp("LIKE") arm goes
-            // through for consistency.
+            // P0-2 §4.5: delegated to `executor::expr::sql_like_match`
+            // (single source of truth for the LIKE pattern matcher).
             let val = evaluate_expression(expr, row, table_info)
                 .map(|v| v.to_sql_string())
                 .unwrap_or_default();
             let pat = evaluate_expression(pattern, row, table_info)
                 .map(|v| v.to_sql_string())
                 .unwrap_or_default();
-            Ok(Value::Boolean(sql_like_match(&val, &pat)))
+            Ok(Value::Boolean(sqlrustgo_executor::expr::sql_like_match(
+                &val, &pat,
+            )))
         }
         // Evaluate each WHEN's condition in order; the first one whose
         // value is Boolean(true) (or non-zero/non-null) wins, and we
@@ -328,9 +266,10 @@ pub fn evaluate_expression(
         }
         // TPC-H Q8/Q12/Q14: CASE WHEN cond THEN a ELSE b END.
         Expression::NotLike(left, pattern, _escape) => {
+            // P0-2 §4.6: delegated to `executor::expr::sql_like_match`.
             let lv = evaluate_expression(left, row, table_info)?;
             let pv = evaluate_expression(pattern, row, table_info)?;
-            Ok(Value::Boolean(!sql_like_match(
+            Ok(Value::Boolean(!sqlrustgo_executor::expr::sql_like_match(
                 &lv.to_sql_string(),
                 &pv.to_sql_string(),
             )))
