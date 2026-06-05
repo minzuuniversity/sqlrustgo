@@ -66,6 +66,19 @@ impl<S> VtuGuard<S> {
             );
         }
     }
+
+    /// Static assertion marker: ALL DML paths must explicitly call this method.
+    ///
+    /// Used by the ARCH-3 (#3169) gate
+    /// `scripts/gate/check_arch3_no_bypass.sh` to verify that
+    /// `ExecutionEngine::execute_insert/update/delete` are the ONLY entry
+    /// points for DML. The function is intentionally side-effect-free at
+    /// runtime; it documents intent and provides a stable grep target.
+    ///
+    /// Reference: docs/openspec/3169-arch3-vtu-main-path.md
+    pub fn assert_path_for_dml(op: &'static str, table: &str) {
+        let _ = (op, table);
+    }
 }
 
 impl<S: StorageEngine> StorageEngine for VtuGuard<S> {
