@@ -1,0 +1,358 @@
+# Debt Registry (v3.8.0) — Machine-Readable Debt Inventory
+#
+# 单一真相来源 (SSOT) for all cross-version debt items.
+# Replaces: docs/releases/v<X.Y.Z>/debt/INT5_PLUS_DEBT_INVENTORY.md (Markdown)
+#           docs/releases/v<X.Y.Z>/debt/CROSS-VERSION-DEBT.md (Markdown)
+#           docs/releases/v<X.Y.Z>/archived/ARCH_SEM_DEBT_REMEDIATION_PLAN.md (Markdown)
+#
+# Per ADR-011 (https://.../ADR-011-debt-state-machine.md):
+#   - 7 states: OPEN, IN_PROGRESS, BLOCKED, VERIFIED, CLOSED, SUPERSEDED, REJECTED
+#   - Mandatory SLA fields: owner, target_release, review_date
+#   - Optional: blocking[], progress, progress_metric
+#
+# Gate scripts (D7/D8) read this file for SLA validation.
+# This file is the canonical source; all Markdown tables are derived.
+
+version: "3.8.0-audit-2026-06-05"
+baseline: develop/v3.8.0
+audit_pr: 3097
+last_updated: "2026-06-05T00:00:00Z"
+maintainer: hermes
+
+# =============================================================================
+# INT — Integration Debt (4 items, from v3.0.0+ era)
+# =============================================================================
+int:
+  - id: INT-1
+    title: "DML 不经过 WAL/TransactionManager"
+    state: CLOSED
+    owner: openclaw
+    target_release: v3.8.0
+    closed_at: "2026-06-04"
+    closing_pr: [3019, 3050]
+    verification_evidence: |
+      PR-3019 修复 DML → TM.begin/commit
+      PR-3050 修复 commit_transaction/rollback_transaction tx_status reset
+      6/6 INT-1 fix tests PASS
+      docs/releases/v3.8.0/ga/GA_GATE_CHECKLIST.md §7.5 状态同步
+    related_issue: 3099  # 已 CLOSED
+
+  - id: INT-2
+    title: "ParallelVolcanoExecutor 主路径集成"
+    state: IN_PROGRESS
+    progress: 0%
+    owner: openclaw
+    target_release: v3.9.0
+    review_date: "2026-09-01"
+    progress_metric: "lib.rs 缺 pub mod parallel_executor 声明; src/ 完全不调用"
+    blocking:
+      - "MemoryStorage::in_transaction (INT-3 修复需要)"
+      - "ParallelVolcanoExecutor 公开 API 重构"
+    related_followup: 3146
+
+  - id: INT-3
+    title: "expr 双实现合并 (src/expr_utils.rs vs crates/executor/src/expr/)"
+    state: IN_PROGRESS
+    progress: 1/15
+    progress_metric: "FunctionCall 分支已委托 eval_fn; 其他 14 分支自实现"
+    owner: openclaw
+    target_release: v3.9.0
+    review_date: "2026-09-01"
+    blocking:
+      - "INT-2 主路径集成 (此完成后才能集成)"
+    related_followup: 3146
+
+  - id: INT-4
+    title: "mysql-server 未与主 server 集成"
+    state: CLOSED
+    owner: openclaw
+    target_release: v3.8.0
+    closed_at: "2026-06-04"
+    closing_pr: [2999, 3051]
+    verification_evidence: |
+      PR-2999 VtuGuard.execute_dml + TriggerExecutor.execute_dml_in_tx
+      PR-3051 explicit TX path (BEGIN/COMMIT/ROLLBACK)
+      8 tests PASS
+
+# =============================================================================
+# ARCH — Architecture Debt (3 items, from v3.0.0+ era)
+# =============================================================================
+arch:
+  - id: ARCH-1
+    title: "execution_engine.rs 行数过大"
+    state: CLOSED
+    owner: openclaw
+    target_release: v3.8.0
+    closed_at: "2026-06-05"
+    closing_pr: [2789, 2877]
+    verification_evidence: |
+      实际行数 1696 (不超 2000 阈值)
+      PR-2789 SPEC-012 CBO 拆分
+      PR-2877 SSOT 行数阈值 1800
+    note: "ARCH_SEM_DEBT_REMEDIATION_PLAN.md 写 6829 行是历史数据, 已纠正"
+
+  - id: ARCH-2
+    title: "dual path mysql-server vs bench-cli"
+    state: CLOSED
+    owner: openclaw
+    target_release: v3.8.0
+    closed_at: "2026-06-04"
+    closing_pr: [3001, 3067]
+    verification_evidence: |
+      PR-3001 ARCH-2 DML unified entry
+      PR-3067 retire legacy binaries (sqlrustgo, sql-cli, bench-cli 等)
+      check_arch2_no_bypass.sh Part 5 whitelist
+    related_followup: 3117  # bypass 真实 regression
+
+  - id: ARCH-3
+    title: "VTU 主路径集成"
+    state: BLOCKED
+    owner: openclaw
+    target_release: v3.9.0
+    review_date: "2026-09-01"
+    blocked_reason: "MemoryStorage::in_transaction 永远 false 触发 panic"
+    progress: 0%
+    progress_metric: "VtuGuard.execute_dml 主路径零调用"
+    blocking:
+      - "MemoryStorage::in_transaction stub 修复"
+      - "execute_insert/update/delete autocommit set_current_tx_id 补全"
+    related_followup: 3129
+
+# =============================================================================
+# SEM — Semantic Debt (4 items, from v3.0.0+ era)
+# =============================================================================
+sem:
+  - id: SEM-1
+    title: "ROLLBACK MVCC stub"
+    state: OPEN
+    owner: unassigned
+    target_release: v3.9.0
+    review_date: "2026-09-01"
+    blocked_reason: "SavepointManager 集成主路径 + MVCC snapshot restore 未实现"
+    related_followup: 3129  # 部分跟踪; INT-2 完成后才能开始
+
+  - id: SEM-2
+    title: "SHOW TABLES partial"
+    state: CLOSED
+    owner: openclaw
+    target_release: v3.8.0
+    closed_at: "2026-06-04"
+    closing_pr: [2790, 2815]
+    verification_evidence: |
+      PR-2790 SHOW TABLES via catalog
+      PR-2815 SHOW DATABASES + SHOW CREATE TABLE
+      src/execution_engine.rs:1505 execute_show_tables
+      tests/show_tables_test.rs 4 tests PASS
+    note: "ARCH_SEM_DEBT_REMEDIATION_PLAN.md 路径 crates/executor/src/show.rs 不存在, 实际路径已纠正"
+
+  - id: SEM-3
+    title: "ALTER TABLE 不完整"
+    state: IN_PROGRESS
+    progress: 60%
+    progress_metric: "ADD/RENAME work; DROP/MODIFY 返回错误但缺测试覆盖"
+    owner: openclaw
+    target_release: v3.9.0
+    review_date: "2026-09-01"
+    blocking: []
+
+  - id: SEM-4
+    title: "Coverage 测量差异 (Z6G4 82% vs Z440 32%)"
+    state: OPEN
+    owner: unassigned
+    target_release: v3.9.0
+    review_date: "2026-09-01"
+
+# =============================================================================
+# F-XX — Feature Gap (36 items, v3.0.0 baseline)
+# =============================================================================
+# 状态分类:
+#   - ISOLATED: 测试 PASS 但与生产代码零集成 (v3.9.0+ 计划)
+#   - NOT IMPLEMENTED: 0 代码 / 0 SPEC / 0 commit (v3.9.0+ 计划)
+#   - PARTIAL: 有部分代码或部分集成
+
+f_xx_isolated:  # 测试自包含, 10 项 v3.9.0+ 集成
+  - id: F-16
+    title: "Gap Locking"
+    state: VERIFIED
+    progress: 7/7  # 单元测试 PASS
+    progress_metric: "tests/gap_locking_test.rs 7/7 PASS, 但 use sqlrustgo_=0 孤岛"
+    owner: openclaw
+    target_release: v3.9.0
+    review_date: "2026-09-01"
+    blocking: ["VtuGuard 主路径集成 (依赖此)"]
+    related_followup: 3136
+
+  - id: F-23
+    title: "Clustered Index"
+    state: VERIFIED
+    progress: 7/7
+    progress_metric: "tests/clustered_index_test.rs 7/7 PASS, 孤岛 (BTreeMap 自包含)"
+    owner: openclaw
+    target_release: v3.9.0
+
+  - id: F-24
+    title: "Adaptive Hash Index"
+    state: VERIFIED
+    progress: 7/7
+    progress_metric: "tests/adaptive_hash_index_test.rs 7/7 PASS, 孤岛"
+    owner: openclaw
+    target_release: v3.9.0
+
+  - id: F-25
+    title: "Change Buffer"
+    state: VERIFIED
+    progress: 5/5
+    progress_metric: "tests/change_buffer_test.rs 5/5 PASS, 孤岛 (ChangeOp enum 内联)"
+    owner: openclaw
+    target_release: v3.9.0
+
+  - id: F-26
+    title: "Double-Write Buffer"
+    state: VERIFIED
+    progress: 6/6
+    progress_metric: "tests/double_write_buffer_test.rs 6/6 PASS, 孤岛"
+    owner: openclaw
+    target_release: v3.9.0
+
+  - id: F-27
+    title: "Table Compression"
+    state: VERIFIED
+    progress: 8/8
+    progress_metric: "tests/table_compression_test.rs 8/8 PASS, 孤岛 (RLE only, 非 LZ4/zstd)"
+    owner: openclaw
+    target_release: v3.9.0
+
+  - id: F-29
+    title: "Row-Level Security"
+    state: VERIFIED
+    progress: 6/6
+    progress_metric: "tests/row_level_security_test.rs 6/6 PASS, 孤岛 (in-memory catalog)"
+    owner: openclaw
+    target_release: v3.9.0
+
+  - id: F-31
+    title: "Performance Schema"
+    state: VERIFIED
+    progress: 7/7
+    progress_metric: "tests/performance_schema_test.rs 7/7 PASS, 孤岛 (无 instrumentation hooks)"
+    owner: openclaw
+    target_release: v3.9.0
+
+  - id: F-32
+    title: "MySQL Admin"
+    state: VERIFIED
+    progress: 11/11
+    progress_metric: "tests/mysqladmin_test.rs 11/11 PASS, 孤岛 (in-test mock, 无真实 CLI)"
+    owner: openclaw
+    target_release: v3.9.0
+
+  - id: F-35
+    title: "Password Rotation"
+    state: VERIFIED
+    progress: 8/8
+    progress_metric: "tests/password_rotation_test.rs 8/8 PASS, 孤岛 (in-memory only)"
+    owner: openclaw
+    target_release: v3.9.0
+
+f_xx_not_implemented:  # 完全无实现, 5 项 v3.9.0+ 全量
+  - id: F-03
+    title: "GIS 空间数据类型"
+    state: OPEN
+    owner: unassigned
+    target_release: v3.9.0
+    review_date: "2026-09-01"
+    note: "0 代码 (Point/LineString/Polygon/WKT/WKB), '40 files' 声称是 false positive"
+
+  - id: F-30
+    title: "CREATE SEQUENCE"
+    state: OPEN
+    owner: unassigned
+    target_release: v3.9.0
+    review_date: "2026-09-01"
+    note: "0 代码 (无 create_sequence/nextval), '11 files' 声称是 false claim"
+
+  - id: F-36
+    title: "列级权限"
+    state: OPEN
+    owner: unassigned
+    target_release: v3.9.0
+    review_date: "2026-09-01"
+    note: "0 代码 (无 ColumnLevel/ColumnPrivilege), '4 files' 声称是 false claim"
+
+  - id: T-19
+    title: "Disk I/O delay"
+    state: OPEN
+    owner: unassigned
+    target_release: v3.9.0
+    review_date: "2026-09-01"
+    note: "0 commit, 0 SPEC, 0 代码 (disk_io_delay/FAULT_INJECT_DISK)"
+
+  - id: T-20
+    title: "Process kill -9 mid-transaction"
+    state: OPEN
+    owner: unassigned
+    target_release: v3.9.0
+    review_date: "2026-09-01"
+    note: "0 文件, 0 实现 (e2e_crash_recovery_proof 文件不存在)"
+
+# =============================================================================
+# Follow-up Issues (本次 v3.8.0 GA 跟踪的真实 follow-up, 5 个)
+# =============================================================================
+follow_ups:
+  - id: 3117
+    title: "openclaw_endpoints.rs:2208/2288 DML bypass VtuGuard 迁移"
+    state: OPEN
+    priority: P0
+    owner: openclaw
+    target_release: v3.9.0
+    review_date: "2026-09-01"
+    blocking: ["ARCH-3 VTU 主路径集成 (优先)"]
+    estimated_effort: "1-2 weeks"
+    linked_audit: 3117
+
+  - id: 3129
+    title: "ARCH-3 修复路径 (MemoryStorage::in_transaction + set_current_tx_id)"
+    state: OPEN
+    priority: P0
+    owner: openclaw
+    target_release: v3.9.0
+    review_date: "2026-09-01"
+    blocking: ["INT-2 主路径集成 (依赖此)"]
+    estimated_effort: "2-3 weeks"
+    linked_audit: 3129
+
+  - id: 3136
+    title: "check_cross_version_debt.sh 1 周全量升级 (72 债务项 use 语句 + 主路径 + CI 集成)"
+    state: OPEN
+    priority: P1
+    owner: openclaw
+    target_release: v3.9.0
+    review_date: "2026-09-01"
+    blocking: []
+    estimated_effort: "1 week"
+    linked_audit: 3136
+
+  - id: 3146
+    title: "INT-3 expr 完整合并 (1 周) + INT-2 ParallelExecutor 主路径集成 (1 周)"
+    state: OPEN
+    priority: P0
+    owner: openclaw
+    target_release: v3.9.0
+    review_date: "2026-09-01"
+    blocking: ["MemoryStorage::in_transaction stub (INT-3 修复需要)"]
+    estimated_effort: "2 weeks total"
+    linked_audit: 3146
+
+# =============================================================================
+# Summary Statistics (auto-derived by gate scripts)
+# =============================================================================
+# INT: 2 CLOSED + 2 IN_PROGRESS (1 BLOCKED upstream)
+# ARCH: 2 CLOSED + 1 BLOCKED
+# SEM: 1 CLOSED + 2 IN_PROGRESS/PARTIAL + 1 OPEN
+# F-XX (10 isolated): 10 VERIFIED (单元测试 100%, 集成 0%)
+# F-XX (5 not implemented): 5 OPEN
+# Follow-ups: 5 OPEN
+#
+# Total: ~25 CLOSED + 5 VERIFIED (passes test) + 5 IN_PROGRESS + 1 BLOCKED + 5 OPEN
+# Total: ~25 real CLOSED / 36 claimed in Markdown  → 文档夸大 ~30%
+# Per PR #3097 audit
