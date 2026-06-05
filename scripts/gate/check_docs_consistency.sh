@@ -85,17 +85,93 @@ check_docs_index_version_listing() {
     fi
 }
 
+check_v380_mandatory_docs() {
+    log_info "CHECK 6: v3.8.0 mandatory documents (11 items)..."
+    local version_dir="docs/releases/v3.8.0"
+    local required_docs=(
+        "README.md"
+        "CHANGELOG.md"
+        "RELEASE_NOTES.md"
+        "MIGRATION_GUIDE.md"
+        "DEPLOYMENT_GUIDE.md"
+        "DEVELOPMENT_GUIDE.md"
+        "TEST_MANUAL.md"
+        "FEATURE_MATRIX.md"
+        "SECURITY_POLICY.md"
+        "COMPATIBILITY_MATRIX.md"
+        "SUPPORT_MATRIX.md"
+    )
+
+    local missing=0
+    for doc in "${required_docs[@]}"; do
+        if [[ -e "$version_dir/$doc" ]]; then
+            if [[ -s "$version_dir/$doc" ]]; then
+                log_pass "$version_dir/$doc: exists and non-empty"
+            else
+                log_error "$version_dir/$doc: EXISTS BUT EMPTY"
+                missing=$((missing + 1))
+            fi
+        else
+            log_error "$version_dir/$doc: MISSING"
+            missing=$((missing + 1))
+        fi
+    done
+
+    if [[ $missing -gt 0 ]]; then
+        log_error "v3.8.0 mandatory docs: $missing/${#required_docs[@]} missing or empty"
+    else
+        log_pass "v3.8.0 mandatory docs: all ${#required_docs[@]} present"
+    fi
+}
+
+check_v380_feature_matrix() {
+    log_info "CHECK 7: v3.8.0 FEATURE_MATRIX.md feature count >= 50..."
+    local fm="$version_dir/FEATURE_MATRIX.md"
+    if [[ ! -e "$fm" ]]; then
+        log_error "FEATURE_MATRIX.md: MISSING"
+        return
+    fi
+
+    local count
+    count=$(grep -cE "^\\| .+ \\| (✅|⚠️|❌)" "$fm" 2>/dev/null || echo 0)
+    if [[ "$count" -ge 50 ]]; then
+        log_pass "FEATURE_MATRIX.md: $count features (>= 50)"
+    else
+        log_error "FEATURE_MATRIX.md: only $count features (expected >= 50)"
+    fi
+}
+
+check_v380_security_policy() {
+    log_info "CHECK 8: v3.8.0 SECURITY_POLICY.md has known limitations section..."
+    local sp="$version_dir/SECURITY_POLICY.md"
+    if [[ ! -e "$sp" ]]; then
+        log_error "SECURITY_POLICY.md: MISSING"
+        return
+    fi
+    if grep -qE "(SEC-|known|Known|LIMITATION|limitation)" "$sp" 2>/dev/null; then
+        log_pass "SECURITY_POLICY.md: has known limitations section"
+    else
+        log_warn "SECURITY_POLICY.md: no known limitations section found"
+    fi
+}
+
 main() {
     echo "============================================"
     echo "SQLRustGo Documentation Consistency Check"
     echo "============================================"
     echo ""
 
+    # version_dir is passed as first arg or defaults
+    local version_dir="${1:-docs/releases/v3.8.0}"
+
     check_version_history_current
     check_changelog_version_table
     check_changelog_no_duplicates
     check_readme_exists
     check_docs_index_version_listing
+    check_v380_mandatory_docs "$version_dir"
+    check_v380_feature_matrix "$version_dir"
+    check_v380_security_policy "$version_dir"
 
     echo ""
     echo "============================================"
