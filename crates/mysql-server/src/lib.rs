@@ -1597,6 +1597,18 @@ fn handle_load_local_infile<S: Read + Write>(
         // size threshold is a sanity guard — if `buf` is still
         // non-empty (last line spans a packet boundary), defer
         // flushing until the next packet.
+        //
+        // v3.8.0-rc2 Day 7 follow-up: also flush periodically when
+        // pending_rows grows large, EVEN if buf is non-empty. This
+        // is needed because some clients (notably the `mysql` CLI
+        // with LOAD DATA LOCAL INFILE) send the entire file in one
+        // big packet with a long delay between the data packet and
+        // the EOF packet. Without the periodic flush, we wait
+        // indefinitely for an EOF that comes only after the data
+        // is fully drained, and bulk_insert on the entire pending
+        // set blocks the accept loop long enough that the client
+        // times out.
+        const PERIODIC_FLUSH_ROWS: usize = 100;
         if buf.is_empty() && pending_rows.len() > last_flush_kept_rows {
             let pending = std::mem::take(&mut pending_rows);
             last_flush_kept_rows = 0;
@@ -1616,6 +1628,17 @@ fn handle_load_local_infile<S: Read + Write>(
                 pending_rows.len()
             );
             let pending = std::mem::take(&mut pending_rows);
+            last_flush_kept_rows = 0;
+            let n = bulk_insert(engine, table, pending)
+                .map_err(|e| MySqlError::Other(format!("bulk_insert: {}", e)))?;
+            total_rows += n;
+        } else if pending_rows.len() >= PERIODIC_FLUSH_ROWS {
+            // Periodic flush: every PERIODIC_FLUSH_ROWS rows, flush
+            // even if buf is non-empty. The remaining bytes in buf
+            // are a partial line that will complete in a later
+            // packet.
+            let pending: Vec<Vec<sqlrustgo_types::Value>> =
+                pending_rows.drain(..).collect();
             last_flush_kept_rows = 0;
             let n = bulk_insert(engine, table, pending)
                 .map_err(|e| MySqlError::Other(format!("bulk_insert: {}", e)))?;
@@ -2177,6 +2200,20 @@ pub fn run_server_v2(
     std::env::set_var("SQLRUSTGO_DATA_DIR", data_dir);
     std::env::set_var("SQLRUSTGO_MAX_CONN", max_connections.to_string());
     std::env::set_var("SQLRUSTGO_AUTH_MODE", auth_mode);
+    // v3.8.0-rc2 Week 1 Day 7: also publish the data_dir to
+    // ACTIVE_CONFIG so that the LOAD DATA LOCAL INFILE handler
+    // recognizes files inside the data dir as in-whitelist.
+    // Without this, only the in-process test harness (which calls
+    // `start_ephemeral`) can issue LOAD DATA — a real `mysql`
+    // client connecting to a server started by `run_server_v2`
+    // would get "not in allowed data_dir" because ACTIVE_CONFIG
+    // was never populated.
+    use crate::testing::EphemeralConfig;
+    let cfg = EphemeralConfig {
+        data_dir: Some(std::path::PathBuf::from(data_dir)),
+        ..Default::default()
+    };
+    let _ = crate::ACTIVE_CONFIG.set(std::sync::Mutex::new(cfg));
     run_server_with_listener(listener)
 }
 
