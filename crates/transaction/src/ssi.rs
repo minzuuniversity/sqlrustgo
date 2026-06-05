@@ -14,6 +14,21 @@ pub enum SsiError {
         reason: String,
     },
     LockTimeout,
+    /// SEM-1 (#3172): named transaction (tx_id) was not found in the
+    /// active-transactions map. Returned by SAVEPOINT/ROLLBACK TO
+    /// SAVEPOINT/RELEASE SAVEPOINT when the session has no active
+    /// transaction.
+    TransactionNotFound {
+        tx_id: TxId,
+    },
+    /// SEM-1 (#3172): generic savepoint operation failure (e.g. ROLLBACK
+    /// TO SAVEPOINT name with an unknown savepoint). The user-visible
+    /// error message contains the savepoint name and root cause.
+    SavepointError {
+        tx_id: TxId,
+        name: String,
+        reason: String,
+    },
 }
 
 impl std::fmt::Display for SsiError {
@@ -32,6 +47,16 @@ impl std::fmt::Display for SsiError {
             }
             SsiError::LockTimeout => {
                 write!(f, "SSI lock timeout")
+            }
+            SsiError::TransactionNotFound { tx_id } => {
+                write!(f, "Transaction not found: tx {}", tx_id)
+            }
+            SsiError::SavepointError { tx_id, name, reason } => {
+                write!(
+                    f,
+                    "Savepoint error in tx {} (savepoint '{}'): {}",
+                    tx_id, name, reason
+                )
             }
         }
     }
