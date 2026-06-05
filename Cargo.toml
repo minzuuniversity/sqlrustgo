@@ -507,6 +507,14 @@ path = "tests/upgrade_test.rs"
 [[test]]
 name = "upgrade_test_harness"
 path = "tests/upgrade_test_harness.rs"
+# P2-1 (#3177) — Audit Log (20+ tests, 7 categories)
+[[test]]
+name = "audit_log_test"
+path = "tests/audit_log_test.rs"
+# P2-1 (#3177) — Audit Log Harness (shared helper)
+[[test]]
+name = "audit_log_harness"
+path = "tests/audit_log_harness.rs"
 
 [[test]]
 name = "truncate_table_test"
