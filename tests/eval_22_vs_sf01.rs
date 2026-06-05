@@ -182,7 +182,11 @@ fn build_sqlite_init_sql() -> String {
                     }
                 })
                 .collect();
-            sql_buffer.push_str(&format!("INSERT INTO {} VALUES ({});\n", tbl, vals.join(",")));
+            sql_buffer.push_str(&format!(
+                "INSERT INTO {} VALUES ({});\n",
+                tbl,
+                vals.join(",")
+            ));
         }
     }
     sql_buffer
@@ -321,5 +325,9 @@ fn eval_22_vs_sqlite_sf01_canonical() {
     println!("ERR(engine): {err_count}/22");
     println!("SQLiteERR : {sqlite_err}/22");
     let total = matched + mismatched + err_count;
-    assert!(total >= 22, "category counts do not add up to 22: {}", total);
+    assert!(
+        total >= 22,
+        "category counts do not add up to 22: {}",
+        total
+    );
 }
