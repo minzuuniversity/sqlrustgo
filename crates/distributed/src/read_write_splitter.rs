@@ -125,6 +125,11 @@ impl ReadWriteSplitter {
             sqlrustgo_parser::Statement::Call(_) => QueryClass::Read,
             sqlrustgo_parser::Statement::Union(_) => QueryClass::Read,
             sqlrustgo_parser::Statement::WithSelect(_) => QueryClass::Read,
+            // WITH ... DML: classify based on the body. If the body is a
+            // read-only statement, classify as Read; otherwise Write.
+            sqlrustgo_parser::Statement::WithDml(with_dml) => {
+                Self::classify_statement(&with_dml.body)
+            }
             // Write queries
             sqlrustgo_parser::Statement::Insert(_) => QueryClass::Write,
             sqlrustgo_parser::Statement::Update(_) => QueryClass::Write,
@@ -142,6 +147,7 @@ impl ReadWriteSplitter {
             sqlrustgo_parser::Statement::Grant(_) => QueryClass::Write,
             sqlrustgo_parser::Statement::Revoke(_) => QueryClass::Write,
             sqlrustgo_parser::Statement::Transaction(_) => QueryClass::Write,
+            sqlrustgo_parser::Statement::Merge(_) => QueryClass::Write,
             sqlrustgo_parser::Statement::Analyze(_) => QueryClass::Write,
             sqlrustgo_parser::Statement::CreateRole(_) => QueryClass::Write,
             sqlrustgo_parser::Statement::DropRole(_) => QueryClass::Write,
