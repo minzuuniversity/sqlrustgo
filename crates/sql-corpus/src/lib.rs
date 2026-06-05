@@ -90,6 +90,26 @@ impl SimpleExecutor {
                 let count = rows.len();
                 Ok(ExecutorResult::new(rows, count))
             }
+            Statement::Union(union_stmt) => {
+                // Phase 4: UNION executor support. Execute both sides
+                // and combine (UNION ALL keeps duplicates, UNION removes).
+                // We use execute_statement (which is &mut self) so the
+                // derived-subquery materialisation path from execute_select
+                // is reachable from the UNION dispatcher too.
+                let left_rows = self.execute_statement(&union_stmt.left)?;
+                let right_rows = self.execute_statement(&union_stmt.right)?;
+                let combined = if union_stmt.union_all {
+                    left_rows.into_iter().chain(right_rows).collect()
+                } else {
+                    let mut c = left_rows;
+                    c.extend(right_rows);
+                    c.sort();
+                    c.dedup();
+                    c
+                };
+                let count = combined.len();
+                Ok(ExecutorResult::new(combined, count))
+            }
             Statement::Delete(delete) => {
                 // If no WHERE clause, delete all rows
                 if delete.where_clause.is_none() {
@@ -386,8 +406,36 @@ impl SimpleExecutor {
         // support the simple form: one INNER JOIN with an ON condition
         // involving column references from both sides. Outer joins and
         // multi-table joins are out of scope here.
-        if !select.join_clause.is_empty() {
-            return self.execute_select_with_join(select);
+        // Handle FROM (subquery) AS alias FIRST (before the join check)
+        // because a SELECT with a from_subquery AND a join_clause is
+        // valid (e.g. `(sub) JOIN t ON ...`). The from_subquery creates
+        // the synthetic table that the join then scans as the left side.
+        if let Some(ref subq) = select.from_subquery {
+            let rows = self.execute_select(subq)?;
+            let column_count = if rows.is_empty() { 0 } else { rows[0].len() };
+            let columns: Vec<ColumnDefinition> = (0..column_count)
+                .map(|i| ColumnDefinition {
+                    name: format!("col_{}", i),
+                    data_type: "TEXT".to_string(),
+                    nullable: true,
+                    primary_key: false,
+                })
+                .collect();
+            let table_info = TableInfo {
+                name: select.table.clone(),
+                columns,
+                foreign_keys: vec![],
+                unique_constraints: vec![],
+                check_constraints: vec![],
+                partition_info: None,
+            };
+            // Create table only if it doesn't exist yet
+            let _ = self.storage.create_table(&table_info);
+            if !rows.is_empty() {
+                self.storage
+                    .insert(&select.table, rows)
+                    .map_err(|e| format!("Insert from_subquery rows error: {:?}", e))?;
+            }
         }
         let mut rows = self
             .storage
@@ -1059,9 +1107,12 @@ impl SqlCorpus {
             },
         }
     }
-
     fn execute_sql(&mut self, sql: &str) -> Result<ExecutorResult, String> {
-        let statements: Vec<&str> = sql.split(';').filter(|s| !s.trim().is_empty()).collect();
+        // Split on ';' but respect single-quoted string literals. The
+        // previous naive `sql.split(';')` would split inside literals
+        // like `'; '` (used in GROUP_CONCAT SEPARATOR), breaking the
+        // resulting fragments with unterminated quotes.
+        let statements: Vec<&str> = split_sql_statements(sql);
         let mut last_result = Ok(ExecutorResult::new(vec![], 0));
 
         for stmt in statements {
@@ -1116,3 +1167,39 @@ pub struct CorpusSummary {
     pub failed: usize,
     pub pass_rate: f64,
 }
+
+/// Split a SQL string into statements, respecting single-quoted
+/// string literals. The previous naive `sql.split(';')` would
+/// split inside literals like `'; '` (used in GROUP_CONCAT
+/// SEPARATOR), breaking the resulting fragments.
+fn split_sql_statements(sql: &str) -> Vec<&str> {
+    let mut out: Vec<&str> = Vec::new();
+    let mut start = 0;
+    let mut in_string = false;
+    let mut prev_was_escape = false;
+    for (i, ch) in sql.char_indices() {
+        if prev_was_escape {
+            prev_was_escape = false;
+            continue;
+        }
+        if ch == '\\' {
+            prev_was_escape = true;
+            continue;
+        }
+        if ch == '\'' {
+            in_string = !in_string;
+        } else if ch == ';' && !in_string {
+            let stmt = sql[start..i].trim();
+            if !stmt.is_empty() {
+                out.push(stmt);
+            }
+            start = i + 1;
+        }
+    }
+    let tail = sql[start..].trim();
+    if !tail.is_empty() {
+        out.push(tail);
+    }
+    out
+}
+
