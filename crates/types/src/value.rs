@@ -78,15 +78,36 @@ impl PartialOrd for Value {
 impl Ord for Value {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         use std::cmp::Ordering;
+        // Total-order on the discriminant first, so mixed types
+        // (e.g. `Integer` vs `Text`) never compare Equal. This is
+        // required by `sort_by` (Rust's panicking sort), which mandates
+        // a strict weak ordering. TPC-H 22 ORDER BY can sort rows
+        // whose projected columns have heterogeneous Value types
+        // (e.g. the leading key is a TEXT region name and the
+        // fallback key is an INTEGER rank) and any two such rows
+        // would otherwise sort to the same position.
+        let disc = |v: &Value| match v {
+            Value::Null => 0u8,
+            Value::Boolean(_) => 1,
+            Value::Integer(_) => 2,
+            Value::Float(_) => 3,
+            Value::Text(_) => 4,
+            Value::Blob(_) => 5,
+        };
+        match (disc(self), disc(other)) {
+            (a, b) if a != b => return a.cmp(&b),
+            _ => {}
+        }
         match (self, other) {
             (Value::Null, Value::Null) => Ordering::Equal,
-            (Value::Null, _) => Ordering::Greater,
-            (_, Value::Null) => Ordering::Less,
             (Value::Boolean(a), Value::Boolean(b)) => a.cmp(b),
             (Value::Integer(a), Value::Integer(b)) => a.cmp(b),
             (Value::Float(a), Value::Float(b)) => a.partial_cmp(b).unwrap_or(Ordering::Equal),
             (Value::Text(a), Value::Text(b)) => a.cmp(b),
             (Value::Blob(a), Value::Blob(b)) => a.cmp(b),
+            // Same discriminant but different subtype — unreachable
+            // for the current Value enum (each discriminant is unique),
+            // but be defensive against future variants.
             _ => Ordering::Equal,
         }
     }
@@ -329,5 +350,67 @@ mod tests {
         assert_ne!(Value::Integer(1), Value::Integer(2));
         assert_ne!(Value::Text("a".to_string()), Value::Text("b".to_string()));
         assert_ne!(Value::Blob(vec![0x01]), Value::Blob(vec![0x02]));
+    }
+
+    /// Regression: Value::Ord must be a STRICT WEAK ORDERING. Mixed
+    /// discriminant pairs (Integer vs Text) used to return
+    /// Ordering::Equal, which made `sort_by` panic with
+    /// "user-provided comparison function does not correctly
+    /// implement a total order" (TPC-H 22 ORDER BY after the Q8
+    /// parser fix unblocked more queries). Verify mixed pairs
+    /// resolve to Less or Greater, never Equal, and that
+    /// transitivity holds.
+    #[test]
+    fn test_value_ord_is_total() {
+        let mut values = vec![
+            Value::Null,
+            Value::Boolean(false),
+            Value::Boolean(true),
+            Value::Integer(-1),
+            Value::Integer(0),
+            Value::Integer(1),
+            Value::Float(0.5),
+            Value::Float(1.5),
+            Value::Text("a".to_string()),
+            Value::Text("b".to_string()),
+            Value::Blob(vec![0x01]),
+            Value::Blob(vec![0x02]),
+        ];
+        let sorted: Vec<Value> = {
+            let mut v = values.clone();
+            v.sort();
+            v
+        };
+        // Discriminant must be strictly increasing (Null < Boolean <
+        // Integer < Float < Text < Blob) — and within each type, the
+        // natural order must hold.
+        for w in sorted.windows(2) {
+            assert!(w[0] < w[1], "Expected {:?} < {:?}", w[0], w[1]);
+        }
+        // Sort must be stable and idempotent.
+        values.sort();
+        let again = values.clone();
+        values.sort();
+        assert_eq!(values, again);
+        // Cross-type pairs (Integer vs Text, Integer vs Boolean, ...)
+        // must NEVER compare Equal.
+        let cross = vec![
+            (Value::Integer(0), Value::Boolean(false)),
+            (Value::Integer(0), Value::Float(0.0)),
+            (Value::Integer(0), Value::Text("x".to_string())),
+            (Value::Integer(0), Value::Blob(vec![0])),
+            (Value::Float(0.0), Value::Text("x".to_string())),
+            (Value::Text("x".to_string()), Value::Blob(vec![0])),
+            (Value::Boolean(false), Value::Integer(0)),
+            (Value::Boolean(false), Value::Text("x".to_string())),
+        ];
+        for (a, b) in cross {
+            assert_ne!(
+                a.cmp(&b),
+                std::cmp::Ordering::Equal,
+                "{:?} vs {:?} must not compare Equal",
+                a, b
+            );
+        }
     }
 }
