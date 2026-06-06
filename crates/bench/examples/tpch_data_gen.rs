@@ -70,14 +70,21 @@ impl TpchDataGenerator {
     }
 
     // TPC-H spec: nation has 25 rows (5 per region).
+    // Order matters: regionkey = i/5. The spec defines the canonical list
+    // per region, NOT alphabetical, so use the exact TPC-H names.
     fn generate_nation(&self) -> std::io::Result<()> {
         let mut tbl = File::create(self.output_dir.join("nation.tbl"))?;
         let names = [
-            "ALGERIA", "ARGENTINA", "BRAZIL", "CANADA", "EGYPT",
-            "ETHIOPIA", "FRANCE", "GERMANY", "INDIA", "INDONESIA",
-            "IRAN", "IRAQ", "JAPAN", "JORDAN", "KENYA",
-            "MOROCCO", "PERU", "CHINA", "ROMANIA", "SAUDI ARABIA",
-            "VIETNAM", "RUSSIA", "UNITED KINGDOM", "UNITED STATES", "MEXICO",
+            // AFRICA (regionkey=0)
+            "ALGERIA", "ETHIOPIA", "KENYA", "MOROCCO", "MOZAMBIQUE",
+            // AMERICA (regionkey=1)
+            "ARGENTINA", "BRAZIL", "CANADA", "PERU", "UNITED STATES",
+            // ASIA (regionkey=2)
+            "CHINA", "INDIA", "INDONESIA", "JAPAN", "VIETNAM",
+            // EUROPE (regionkey=3)
+            "FRANCE", "GERMANY", "ROMANIA", "RUSSIA", "UNITED KINGDOM",
+            // MIDDLE EAST (regionkey=4)
+            "EGYPT", "IRAN", "IRAQ", "JORDAN", "SAUDI ARABIA",
         ];
         for (i, name) in names.iter().enumerate() {
             let regionkey = i / 5;
