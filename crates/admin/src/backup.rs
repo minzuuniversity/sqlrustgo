@@ -1,4 +1,4 @@
-use crate::manifest::{sha256_file, FileEntry, Manifest};
+use crate::manifest::{sha256_file, Manifest};
 use flate2::read::GzDecoder;
 use flate2::write::GzEncoder;
 use flate2::Compression;
@@ -100,6 +100,7 @@ fn write_tar_header<W: Write>(w: &mut W, name: &str, size: u64) -> Result<(), Ba
     Ok(())
 }
 
+#[allow(dead_code)] // reserved for tar archive finalization
 fn write_tar_end_marker<W: Write>(w: &mut W) -> Result<(), BackupError> {
     let z = [0u8; 512];
     w.write_all(&z).map_err(BackupError::Io)?;
@@ -121,7 +122,7 @@ pub fn tar_extract_all(input: &Path, out_dir: &Path) -> Result<Vec<String>, Back
     let mut entries = Vec::new();
     let mut offset = 0usize;
     while offset + 512 <= bytes.len() {
-        if &bytes[offset..offset + 512] == &[0u8; 512] {
+        if bytes[offset..offset + 512] == [0u8; 512][..] {
             break;
         }
         let header = &bytes[offset..offset + 512];
@@ -135,7 +136,7 @@ pub fn tar_extract_all(input: &Path, out_dir: &Path) -> Result<Vec<String>, Back
         let size_str = String::from_utf8_lossy(size_bytes).to_string();
         let size: u64 = u64::from_str_radix(size_str.trim_end_matches('\0').trim(), 8)
             .map_err(|_| BackupError::CorruptTar)?;
-        let blocks = (size + 511) / 512;
+        let blocks = size.div_ceil(512);
         let data_start = offset + 512;
         let data_end = data_start + size as usize;
         if data_end > bytes.len() {
@@ -146,9 +147,7 @@ pub fn tar_extract_all(input: &Path, out_dir: &Path) -> Result<Vec<String>, Back
         if let Some(parent) = out_path.parent() {
             fs::create_dir_all(parent).map_err(BackupError::Io)?;
         }
-        if name == "manifest.json" {
-            fs::write(&out_path, data).map_err(BackupError::Io)?;
-        } else if name.starts_with("data/") || name.starts_with("wal/") {
+        if name == "manifest.json" || name.starts_with("data/") || name.starts_with("wal/") {
             fs::write(&out_path, data).map_err(BackupError::Io)?;
         }
         entries.push(name);
@@ -166,7 +165,7 @@ pub fn tar_extract_one(input: &Path, name: &str) -> Result<Vec<u8>, BackupError>
     let bytes = decode_gzip_or_raw(&compressed)?;
     let mut offset = 0usize;
     while offset + 512 <= bytes.len() {
-        if &bytes[offset..offset + 512] == &[0u8; 512] {
+        if bytes[offset..offset + 512] == [0u8; 512][..] {
             break;
         }
         let header = &bytes[offset..offset + 512];
@@ -179,7 +178,7 @@ pub fn tar_extract_one(input: &Path, name: &str) -> Result<Vec<u8>, BackupError>
         let size_str = String::from_utf8_lossy(&header[124..136]).to_string();
         let size: u64 = u64::from_str_radix(size_str.trim_end_matches('\0').trim(), 8)
             .map_err(|_| BackupError::CorruptTar)?;
-        let blocks = (size + 511) / 512;
+        let blocks = size.div_ceil(512);
         let data_start = offset + 512;
         let data_end = data_start + size as usize;
         if data_end > bytes.len() {
