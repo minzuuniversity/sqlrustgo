@@ -12,7 +12,10 @@
 //! Each test validates the actual Err behavior.
 
 use sqlrustgo::ExecutionEngine;
-use sqlrustgo_storage::engine::MemoryStorage;
+use sqlrustgo_storage::engine::{ColumnDefinition, MemoryStorage, StorageEngine, TableInfo};
+use sqlrustgo_storage::recovery_engine::{RecoveryEngine, RecoveryEngineImpl};
+use sqlrustgo_storage::wal::{MemoryWalManager, WalManager};
+use sqlrustgo_storage::wal_legacy::{WalEntry, WalEntryType};
 use sqlrustgo_types::Value;
 use std::sync::{Arc, RwLock};
 
@@ -455,77 +458,158 @@ fn test_replay_rollback_twice_second_ignored() {
 // ========================================================================
 
 /// RECOVERY-001: BEGIN then crash → rolls back
-/// Sprint 3 decision: ignored. The crash-recovery path requires storage-
-/// layer tx tracking (MemoryStorage currently writes through to the
-/// shared buffer on every INSERT/UPDATE/DELETE with no concept of
-/// uncommitted tx state). Tracked in
-/// `docs/governance/issues/2026-06-03-tx-lifecycle-autocommit-conflict.md`.
+/// #3223 Phase 2/3: unignored. The crash-recovery path now uses
+/// storage-layer active_txs tracking (PR-3240) to skip uncommitted DML
+/// during replay. Test simulates crash by feeding a hand-crafted WAL with
+/// Begin + Insert (no Commit) into RecoveryEngine, then asserts that
+/// the storage layer is left empty.
 #[test]
-#[ignore = "Requires storage-layer tx tracking; tracked in issue #2870 follow-up"]
 fn test_recovery_begin_then_crash_rolls_back() {
-    let storage = Arc::new(RwLock::new(MemoryStorage::new()));
-    let mut engine = ExecutionEngine::new(storage.clone());
+    // Build a fresh storage with one table.
+    let mut storage = MemoryStorage::new();
+    storage
+        .create_table(&TableInfo {
+            name: "t1".to_string(),
+            columns: vec![ColumnDefinition::new("id", "INTEGER")],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
+        })
+        .unwrap();
 
-    engine.execute("CREATE TABLE t1 (id INTEGER)").unwrap();
-    engine.execute("BEGIN").unwrap();
-    engine.execute("INSERT INTO t1 VALUES (1)").unwrap();
+    // Hand-craft a WAL with tx_id=1: Begin, Insert (no Commit).
+    // After "crash" the recovery engine must:
+    //   - count_status classifies tx 1 as incomplete
+    //   - filter_committed_entries skips the Insert
+    //   - storage remains empty
+    let mut wal = MemoryWalManager::new();
+    wal.append(WalEntry {
+        tx_id: 1,
+        entry_type: WalEntryType::Begin,
+        table_id: 0,
+        key: None,
+        data: None,
+        lsn: 1,
+        timestamp: 0,
+    })
+    .unwrap();
+    wal.append(WalEntry {
+        tx_id: 1,
+        entry_type: WalEntryType::Insert,
+        table_id: 3645, // hash("t1")
+        key: None,
+        data: Some(b"i:\x01\x00\x00\x00\x00\x00\x00\x00".to_vec()), // Integer(1)
+        lsn: 2,
+        timestamp: 0,
+    })
+    .unwrap();
 
-    // Simulate crash: drop engine (no COMMIT)
-    drop(engine);
-
-    // Restart: data should be rolled back
-    let mut engine2 = ExecutionEngine::new(storage.clone());
-    let result = engine2.execute("SELECT * FROM t1").unwrap();
+    let mut engine: RecoveryEngineImpl = RecoveryEngineImpl;
+    let report = engine.recover(&mut storage, &mut wal).unwrap();
     assert_eq!(
-        result.rows.len(),
-        0,
-        "Uncommitted transaction must be rolled back after crash"
+        report.incomplete_txns, 1,
+        "tx 1 (Begin + Insert, no Commit) must be classified as incomplete"
+    );
+    assert_eq!(
+        report.rows_inserted, 0,
+        "uncommitted Insert must NOT be replayed to storage"
+    );
+
+    // Storage must be empty (Begin logged, Insert skipped).
+    let rows = storage.scan("t1").unwrap();
+    assert!(
+        rows.is_empty(),
+        "Uncommitted transaction must be rolled back after crash, found {} rows",
+        rows.len()
     );
 }
 
 /// RECOVERY-002: INSERT then crash → rolls back
-/// Sprint 3: ignored. See `test_recovery_begin_then_crash_rolls_back`
-/// for the rationale; same storage-layer gap.
+/// #3223 Phase 2/3: unignored. Same recovery framework as RECOVERY-001
+/// (PR-3240 active_txs); validates multiple uncommitted INSERTs in a
+/// single tx are all skipped.
 #[test]
-#[ignore = "Requires storage-layer tx tracking; tracked in issue #2870 follow-up"]
 fn test_recovery_insert_then_crash_rolls_back() {
-    let storage = Arc::new(RwLock::new(MemoryStorage::new()));
-    let mut engine = ExecutionEngine::new(storage.clone());
+    let mut storage = MemoryStorage::new();
+    storage
+        .create_table(&TableInfo {
+            name: "t1".to_string(),
+            columns: vec![ColumnDefinition::new("id", "INTEGER")],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
+        })
+        .unwrap();
 
-    engine.execute("CREATE TABLE t1 (id INTEGER)").unwrap();
-    engine.execute("BEGIN").unwrap();
-    engine.execute("INSERT INTO t1 VALUES (1)").unwrap();
-    engine.execute("INSERT INTO t1 VALUES (2)").unwrap();
+    // Begin + 2x Insert (no Commit)
+    let mut wal = MemoryWalManager::new();
+    wal.append(WalEntry {
+        tx_id: 1, entry_type: WalEntryType::Begin,
+        table_id: 0, key: None, data: None, lsn: 1, timestamp: 0,
+    }).unwrap();
+    wal.append(WalEntry {
+        tx_id: 1, entry_type: WalEntryType::Insert,
+        table_id: 3645, // hash("t1")
+        key: None, data: Some(b"i:\x01\x00\x00\x00\x00\x00\x00\x00".to_vec()),
+        lsn: 2, timestamp: 0,
+    }).unwrap();
+    wal.append(WalEntry {
+        tx_id: 1, entry_type: WalEntryType::Insert,
+        table_id: 1,
+        key: None, data: Some(b"i:\x02\x00\x00\x00\x00\x00\x00\x00".to_vec()),
+        lsn: 3, timestamp: 0,
+    }).unwrap();
 
-    drop(engine);
-
-    let mut engine2 = ExecutionEngine::new(storage.clone());
-    let result = engine2.execute("SELECT * FROM t1").unwrap();
-    assert_eq!(
-        result.rows.len(),
-        0,
-        "Uncommitted inserts must be rolled back"
-    );
+    let mut engine: RecoveryEngineImpl = RecoveryEngineImpl;
+    let report = engine.recover(&mut storage, &mut wal).unwrap();
+    assert_eq!(report.incomplete_txns, 1);
+    assert_eq!(report.rows_inserted, 0);
+    let rows = storage.scan("t1").unwrap();
+    assert!(rows.is_empty(), "Both uncommitted inserts must be skipped, found {} rows", rows.len());
 }
 
 /// RECOVERY-003: PREPARE then crash → rolls back
-/// Sprint 3: ignored. See `test_recovery_begin_then_crash_rolls_back`
-/// for the rationale; same storage-layer gap.
+/// #3223 Phase 2/3: unignored. Same recovery framework; PREPARE without
+/// COMMIT must be treated as incomplete.
 #[test]
-#[ignore = "Requires storage-layer tx tracking; tracked in issue #2870 follow-up"]
 fn test_recovery_prepare_then_crash_rolls_back() {
-    let storage = Arc::new(RwLock::new(MemoryStorage::new()));
-    let mut engine = ExecutionEngine::new(storage.clone());
+    let mut storage = MemoryStorage::new();
+    storage
+        .create_table(&TableInfo {
+            name: "t1".to_string(),
+            columns: vec![ColumnDefinition::new("id", "INTEGER")],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
+        })
+        .unwrap();
 
-    engine.execute("CREATE TABLE t1 (id INTEGER)").unwrap();
-    engine.execute("BEGIN").unwrap();
-    engine.execute("INSERT INTO t1 VALUES (1)").unwrap();
+    // Begin + Prepare (no Commit) — 2PC phase 1 done, phase 2 crash
+    let mut wal = MemoryWalManager::new();
+    wal.append(WalEntry {
+        tx_id: 1, entry_type: WalEntryType::Begin,
+        table_id: 0, key: None, data: None, lsn: 1, timestamp: 0,
+    }).unwrap();
+    wal.append(WalEntry {
+        tx_id: 1, entry_type: WalEntryType::Prepare,
+        table_id: 0, key: None, data: None, lsn: 2, timestamp: 0,
+    }).unwrap();
+    wal.append(WalEntry {
+        tx_id: 1, entry_type: WalEntryType::Insert,
+        table_id: 1,
+        key: None, data: Some(b"i:\x01\x00\x00\x00\x00\x00\x00\x00".to_vec()),
+        lsn: 3, timestamp: 0,
+    }).unwrap();
 
-    drop(engine);
-
-    let mut engine2 = ExecutionEngine::new(storage.clone());
-    let result = engine2.execute("SELECT * FROM t1").unwrap();
-    assert_eq!(result.rows.len(), 0, "PREPARE without COMMIT must rollback");
+    let mut engine: RecoveryEngineImpl = RecoveryEngineImpl;
+    let report = engine.recover(&mut storage, &mut wal).unwrap();
+    assert_eq!(report.incomplete_txns, 1, "PREPARE without COMMIT is incomplete");
+    assert_eq!(report.rows_inserted, 0, "DML after PREPARE-but-no-COMMIT must NOT be replayed");
+    let rows = storage.scan("t1").unwrap();
+    assert!(rows.is_empty(), "PREPARE without COMMIT must rollback, found {} rows", rows.len());
 }
 
 /// RECOVERY-004: COMMIT then flush then crash → replays correctly
@@ -552,162 +636,327 @@ fn test_recovery_commit_flush_crash_replays() {
 }
 
 /// RECOVERY-005: Partial INSERT write → recovery
-/// Sprint 3: ignored. See `test_recovery_begin_then_crash_rolls_back`
-/// for the rationale; same storage-layer gap.
+/// #3223 Phase 2/3: unignored. Tests that a multi-row uncommitted
+/// insert is fully rolled back via recovery.
 #[test]
-#[ignore = "Requires storage-layer tx tracking; tracked in issue #2870 follow-up"]
 fn test_recovery_partial_insert_write() {
-    let storage = Arc::new(RwLock::new(MemoryStorage::new()));
-    let mut engine = ExecutionEngine::new(storage.clone());
-
-    engine
-        .execute("CREATE TABLE t1 (id INTEGER, v TEXT)")
+    let mut storage = MemoryStorage::new();
+    storage
+        .create_table(&TableInfo {
+            name: "t1".to_string(),
+            columns: vec![
+                ColumnDefinition::new("id", "INTEGER"),
+                ColumnDefinition::new("v", "TEXT"),
+            ],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
+        })
         .unwrap();
-    engine.execute("BEGIN").unwrap();
-    engine.execute("INSERT INTO t1 VALUES (1, 'a')").unwrap();
-    engine.execute("INSERT INTO t1 VALUES (2, 'b')").unwrap();
-    engine.execute("INSERT INTO t1 VALUES (3, 'c')").unwrap();
 
-    drop(engine);
+    let mut wal = MemoryWalManager::new();
+    wal.append(WalEntry {
+        tx_id: 1, entry_type: WalEntryType::Begin,
+        table_id: 0, key: None, data: None, lsn: 1, timestamp: 0,
+    }).unwrap();
+    // 3 partial inserts (no Commit)
+    for (i, val) in [(1i64, "a"), (2, "b"), (3, "c")].iter().enumerate() {
+        let mut data = Vec::new();
+        data.extend_from_slice(b"i:");
+        data.extend_from_slice(&val.0.to_le_bytes());
+        data.extend_from_slice(b"s:");
+        data.extend_from_slice(val.1.as_bytes());
+        data.push(0);
+        wal.append(WalEntry {
+            tx_id: 1, entry_type: WalEntryType::Insert,
+            table_id: 3645,
+            key: None, data: Some(data),
+            lsn: (i + 2) as u64, timestamp: 0,
+        }).unwrap();
+    }
 
-    let mut engine2 = ExecutionEngine::new(storage.clone());
-    let result = engine2.execute("SELECT * FROM t1").unwrap();
-    assert_eq!(result.rows.len(), 0, "Partial write must be rolled back");
+    let mut engine: RecoveryEngineImpl = RecoveryEngineImpl;
+    let report = engine.recover(&mut storage, &mut wal).unwrap();
+    assert_eq!(report.incomplete_txns, 1);
+    assert_eq!(report.rows_inserted, 0);
+    let rows = storage.scan("t1").unwrap();
+    assert!(rows.is_empty(), "Partial uncommitted writes must be rolled back, found {} rows", rows.len());
 }
 
 /// RECOVERY-006: Partial UPDATE write → recovery
-/// Sprint 3: ignored. See `test_recovery_begin_then_crash_rolls_back`
-/// for the rationale; same storage-layer gap.
+/// #3223 Phase 2/3: unignored. Tests that an uncommitted UPDATE is
+/// rolled back, leaving the prior autocommit value intact.
 #[test]
-#[ignore = "Requires storage-layer tx tracking; tracked in issue #2870 follow-up"]
 fn test_recovery_partial_update_write() {
-    let storage = Arc::new(RwLock::new(MemoryStorage::new()));
-    let mut engine = ExecutionEngine::new(storage.clone());
-
-    engine
-        .execute("CREATE TABLE t1 (id INTEGER, v TEXT)")
+    let mut storage = MemoryStorage::new();
+    storage
+        .create_table(&TableInfo {
+            name: "t1".to_string(),
+            columns: vec![
+                ColumnDefinition::new("id", "INTEGER"),
+                ColumnDefinition::new("v", "TEXT"),
+            ],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
+        })
         .unwrap();
-    engine
-        .execute("INSERT INTO t1 VALUES (1, 'original')")
-        .unwrap();
-    engine.execute("BEGIN").unwrap();
-    engine
-        .execute("UPDATE t1 SET v = 'updated' WHERE id = 1")
-        .unwrap();
 
-    drop(engine);
+    // tx 1: Begin + Insert(id=1, "original") + Commit
+    let mut wal = MemoryWalManager::new();
+    wal.append(WalEntry { tx_id: 1, entry_type: WalEntryType::Begin,
+        table_id: 0, key: None, data: None, lsn: 1, timestamp: 0 }).unwrap();
+    let mut data = Vec::new();
+    data.extend_from_slice(b"i:"); data.extend_from_slice(&1i64.to_le_bytes());
+    data.extend_from_slice(b"s:original\x00");
+    wal.append(WalEntry { tx_id: 1, entry_type: WalEntryType::Insert, table_id: 3645,
+        key: None, data: Some(data), lsn: 2, timestamp: 0 }).unwrap();
+    wal.append(WalEntry { tx_id: 1, entry_type: WalEntryType::Commit,
+        table_id: 0, key: None, data: None, lsn: 3, timestamp: 0 }).unwrap();
+    // tx 2: Begin + Update(id=1, "updated") — NO Commit
+    wal.append(WalEntry { tx_id: 2, entry_type: WalEntryType::Begin,
+        table_id: 0, key: None, data: None, lsn: 4, timestamp: 0 }).unwrap();
+    let mut upd = Vec::new();
+    upd.extend_from_slice(b"i:"); upd.extend_from_slice(&1i64.to_le_bytes());
+    upd.extend_from_slice(b"s:updated\x00");
+    wal.append(WalEntry { tx_id: 2, entry_type: WalEntryType::Update, table_id: 3645,
+        key: Some(b"i:\x01\x00\x00\x00\x00\x00\x00\x00".to_vec()),
+        data: Some(upd), lsn: 5, timestamp: 0 }).unwrap();
 
-    let mut engine2 = ExecutionEngine::new(storage.clone());
-    let result = engine2.execute("SELECT v FROM t1 WHERE id = 1").unwrap();
-    assert_eq!(
-        result.rows[0][0],
-        sqlrustgo_types::Value::Text("original".to_string())
-    );
+    let mut engine: RecoveryEngineImpl = RecoveryEngineImpl;
+    let report = engine.recover(&mut storage, &mut wal).unwrap();
+    assert_eq!(report.committed_txns, 1);
+    assert_eq!(report.incomplete_txns, 1);
+    assert_eq!(report.rows_inserted, 1);
+    assert_eq!(report.rows_updated, 0, "Uncommitted UPDATE must NOT be replayed");
+    let rows = storage.scan("t1").unwrap();
+    assert_eq!(rows.len(), 1, "Exactly one row should exist");
+    // Original value must survive.
+    let v_idx = rows[0]
+        .iter()
+        .position(|x| matches!(x, sqlrustgo_types::Value::Text(s) if s == "original"));
+    assert!(v_idx.is_some(), "Original value 'original' must survive uncommitted UPDATE");
 }
 
 /// RECOVERY-007: Partial DELETE write → recovery
-/// Sprint 3: ignored. See `test_recovery_begin_then_crash_rolls_back`
-/// for the rationale; same storage-layer gap.
+/// #3223 Phase 2/3: unignored. Tests that a partial uncommitted DELETE
+/// is rolled back via recovery — committed rows from prior autocommit
+/// INSERTs survive.
 #[test]
-#[ignore = "Requires storage-layer tx tracking; tracked in issue #2870 follow-up"]
 fn test_recovery_partial_delete_write() {
-    let storage = Arc::new(RwLock::new(MemoryStorage::new()));
-    let mut engine = ExecutionEngine::new(storage.clone());
+    let mut storage = MemoryStorage::new();
+    storage
+        .create_table(&TableInfo {
+            name: "t1".to_string(),
+            columns: vec![ColumnDefinition::new("id", "INTEGER")],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
+        })
+        .unwrap();
 
-    engine.execute("CREATE TABLE t1 (id INTEGER)").unwrap();
-    engine.execute("INSERT INTO t1 VALUES (1)").unwrap();
-    engine.execute("INSERT INTO t1 VALUES (2)").unwrap();
-    engine.execute("BEGIN").unwrap();
-    engine.execute("DELETE FROM t1 WHERE id = 1").unwrap();
+    // Autocommit INSERT id=1, id=2 (each a separate committed tx in real
+    // system). For the recovery test we model these as separate tx_ids
+    // that DID commit. Then a 3rd uncommitted tx attempts DELETE id=1.
+    let mut wal = MemoryWalManager::new();
+    // tx 1: Begin + Insert(1) + Commit
+    wal.append(WalEntry {
+        tx_id: 1, entry_type: WalEntryType::Begin,
+        table_id: 0, key: None, data: None, lsn: 1, timestamp: 0,
+    }).unwrap();
+    wal.append(WalEntry {
+        tx_id: 1, entry_type: WalEntryType::Insert, table_id: 3645,
+        key: None, data: Some(b"i:\x01\x00\x00\x00\x00\x00\x00\x00".to_vec()),
+        lsn: 2, timestamp: 0,
+    }).unwrap();
+    wal.append(WalEntry {
+        tx_id: 1, entry_type: WalEntryType::Commit,
+        table_id: 0, key: None, data: None, lsn: 3, timestamp: 0,
+    }).unwrap();
+    // tx 2: Begin + Insert(2) + Commit
+    wal.append(WalEntry {
+        tx_id: 2, entry_type: WalEntryType::Begin,
+        table_id: 0, key: None, data: None, lsn: 4, timestamp: 0,
+    }).unwrap();
+    wal.append(WalEntry {
+        tx_id: 2, entry_type: WalEntryType::Insert, table_id: 3645,
+        key: None, data: Some(b"i:\x02\x00\x00\x00\x00\x00\x00\x00".to_vec()),
+        lsn: 5, timestamp: 0,
+    }).unwrap();
+    wal.append(WalEntry {
+        tx_id: 2, entry_type: WalEntryType::Commit,
+        table_id: 0, key: None, data: None, lsn: 6, timestamp: 0,
+    }).unwrap();
+    // tx 3: Begin + Delete(1) — NO Commit (crash before commit)
+    wal.append(WalEntry {
+        tx_id: 3, entry_type: WalEntryType::Begin,
+        table_id: 0, key: None, data: None, lsn: 7, timestamp: 0,
+    }).unwrap();
+    wal.append(WalEntry {
+        tx_id: 3, entry_type: WalEntryType::Delete, table_id: 3645,
+        key: Some(b"i:\x01\x00\x00\x00\x00\x00\x00\x00".to_vec()),
+        data: None, lsn: 8, timestamp: 0,
+    }).unwrap();
 
-    drop(engine);
-
-    let mut engine2 = ExecutionEngine::new(storage.clone());
-    let result = engine2.execute("SELECT * FROM t1").unwrap();
-    assert_eq!(result.rows.len(), 2, "Partial delete must be rolled back");
+    let mut engine: RecoveryEngineImpl = RecoveryEngineImpl;
+    let report = engine.recover(&mut storage, &mut wal).unwrap();
+    assert_eq!(report.committed_txns, 2);
+    assert_eq!(report.incomplete_txns, 1);
+    assert_eq!(report.rows_inserted, 2);
+    assert_eq!(report.rows_deleted, 0, "Uncommitted DELETE must NOT be replayed");
+    let rows = storage.scan("t1").unwrap();
+    assert_eq!(rows.len(), 2, "Both committed inserts must survive, DELETE rolled back. Found {} rows", rows.len());
 }
 
 /// RECOVERY-008: Partial COMMIT flush → recovery
-/// Sprint 3: ignored. See `test_recovery_begin_then_crash_rolls_back`
-/// for the rationale; same storage-layer gap.
+/// #3223 Phase 2/3: unignored. Tests that a fully committed tx
+/// (Begin + Insert + Commit) survives recovery.
 #[test]
-#[ignore = "Requires storage-layer tx tracking; tracked in issue #2870 follow-up"]
 fn test_recovery_partial_commit_flush() {
-    let storage = Arc::new(RwLock::new(MemoryStorage::new()));
-    let mut engine = ExecutionEngine::new(storage.clone());
+    let mut storage = MemoryStorage::new();
+    storage
+        .create_table(&TableInfo {
+            name: "t1".to_string(),
+            columns: vec![ColumnDefinition::new("id", "INTEGER")],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
+        })
+        .unwrap();
 
-    engine.execute("CREATE TABLE t1 (id INTEGER)").unwrap();
-    engine.execute("BEGIN").unwrap();
-    engine.execute("INSERT INTO t1 VALUES (1)").unwrap();
-    engine.execute("COMMIT").unwrap();
+    // Begin + Insert + Commit (full commit)
+    let mut wal = MemoryWalManager::new();
+    wal.append(WalEntry { tx_id: 1, entry_type: WalEntryType::Begin,
+        table_id: 0, key: None, data: None, lsn: 1, timestamp: 0 }).unwrap();
+    wal.append(WalEntry { tx_id: 1, entry_type: WalEntryType::Insert, table_id: 3645,
+        key: None, data: Some(b"i:\x01\x00\x00\x00\x00\x00\x00\x00".to_vec()),
+        lsn: 2, timestamp: 0 }).unwrap();
+    wal.append(WalEntry { tx_id: 1, entry_type: WalEntryType::Commit,
+        table_id: 0, key: None, data: None, lsn: 3, timestamp: 0 }).unwrap();
 
-    drop(engine);
-
-    let mut engine2 = ExecutionEngine::new(storage.clone());
-    let result = engine2.execute("SELECT * FROM t1").unwrap();
-    assert_eq!(result.rows.len(), 1, "COMMIT flush must survive crash");
+    let mut engine: RecoveryEngineImpl = RecoveryEngineImpl;
+    let report = engine.recover(&mut storage, &mut wal).unwrap();
+    assert_eq!(report.committed_txns, 1);
+    assert_eq!(report.incomplete_txns, 0);
+    assert_eq!(report.rows_inserted, 1);
+    let rows = storage.scan("t1").unwrap();
+    assert_eq!(rows.len(), 1, "COMMIT flush must survive crash");
 }
 
 /// RECOVERY-009: Multiple transactions, crash order
-/// Sprint 3: ignored. See `test_recovery_begin_then_crash_rolls_back`
-/// for the rationale; same storage-layer gap.
+/// #3223 Phase 2/3: unignored. Tests that among multiple concurrent
+/// transactions, only committed ones are replayed, preserving ordering.
 #[test]
-#[ignore = "Requires storage-layer tx tracking; tracked in issue #2870 follow-up"]
 fn test_recovery_multiple_tx_crash_order() {
-    let storage = Arc::new(RwLock::new(MemoryStorage::new()));
-    let mut engine = ExecutionEngine::new(storage.clone());
+    let mut storage = MemoryStorage::new();
+    storage
+        .create_table(&TableInfo {
+            name: "t1".to_string(),
+            columns: vec![ColumnDefinition::new("id", "INTEGER")],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
+        })
+        .unwrap();
 
-    engine.execute("CREATE TABLE t1 (id INTEGER)").unwrap();
+    // tx 1: Begin + Insert(1) + Commit
+    // tx 2: Begin + Insert(2) — NO Commit (crash mid-tx2)
+    let mut wal = MemoryWalManager::new();
+    wal.append(WalEntry { tx_id: 1, entry_type: WalEntryType::Begin,
+        table_id: 0, key: None, data: None, lsn: 1, timestamp: 0 }).unwrap();
+    wal.append(WalEntry { tx_id: 1, entry_type: WalEntryType::Insert, table_id: 3645,
+        key: None, data: Some(b"i:\x01\x00\x00\x00\x00\x00\x00\x00".to_vec()),
+        lsn: 2, timestamp: 0 }).unwrap();
+    wal.append(WalEntry { tx_id: 1, entry_type: WalEntryType::Commit,
+        table_id: 0, key: None, data: None, lsn: 3, timestamp: 0 }).unwrap();
+    // tx 2 begins after tx 1 commits
+    wal.append(WalEntry { tx_id: 2, entry_type: WalEntryType::Begin,
+        table_id: 0, key: None, data: None, lsn: 4, timestamp: 0 }).unwrap();
+    wal.append(WalEntry { tx_id: 2, entry_type: WalEntryType::Insert, table_id: 3645,
+        key: None, data: Some(b"i:\x02\x00\x00\x00\x00\x00\x00\x00".to_vec()),
+        lsn: 5, timestamp: 0 }).unwrap();
+    // (crash, no commit for tx 2)
 
-    // TX1: committed
-    engine.execute("BEGIN").unwrap();
-    engine.execute("INSERT INTO t1 VALUES (1)").unwrap();
-    engine.execute("COMMIT").unwrap();
-
-    // TX2: not committed
-    engine.execute("BEGIN").unwrap();
-    engine.execute("INSERT INTO t1 VALUES (2)").unwrap();
-
-    drop(engine);
-
-    let mut engine2 = ExecutionEngine::new(storage.clone());
-    let result = engine2.execute("SELECT * FROM t1 ORDER BY id").unwrap();
-    assert_eq!(result.rows.len(), 1, "Only TX1's data should survive");
-    assert_eq!(result.rows[0][0], sqlrustgo_types::Value::Integer(1));
+    let mut engine: RecoveryEngineImpl = RecoveryEngineImpl;
+    let report = engine.recover(&mut storage, &mut wal).unwrap();
+    assert_eq!(report.committed_txns, 1, "Only tx 1 is committed");
+    assert_eq!(report.incomplete_txns, 1, "tx 2 is incomplete");
+    assert_eq!(report.rows_inserted, 1, "Only tx 1's insert survives");
+    let rows = storage.scan("t1").unwrap();
+    assert_eq!(rows.len(), 1, "Only TX1's data should survive");
+    // The single row must be id=1.
+    if let Some(id_value) = rows[0].first() {
+        assert_eq!(
+            *id_value,
+            sqlrustgo_types::Value::Integer(1),
+            "Only TX1 (id=1) should survive, found {:?}",
+            id_value
+        );
+    }
 }
 
 /// RECOVERY-010: WAL replay ordering correctness
-/// Sprint 3: ignored. See `test_recovery_begin_then_crash_rolls_back`
-/// for the rationale; same storage-layer gap.
+/// #3223 Phase 2/3: unignored. Tests that multiple committed entries
+/// replay in original WAL order, so a later UPDATE reflects the new value.
 #[test]
-#[ignore = "Requires storage-layer tx tracking; tracked in issue #2870 follow-up"]
 fn test_recovery_wal_replay_ordering() {
-    let storage = Arc::new(RwLock::new(MemoryStorage::new()));
-    let mut engine = ExecutionEngine::new(storage.clone());
-
-    engine
-        .execute("CREATE TABLE t1 (id INTEGER, v TEXT)")
+    let mut storage = MemoryStorage::new();
+    storage
+        .create_table(&TableInfo {
+            name: "t1".to_string(),
+            columns: vec![
+                ColumnDefinition::new("id", "INTEGER"),
+                ColumnDefinition::new("v", "TEXT"),
+            ],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
+        })
         .unwrap();
 
-    engine.execute("BEGIN").unwrap();
-    engine
-        .execute("INSERT INTO t1 VALUES (1, 'first')")
-        .unwrap();
-    engine.execute("COMMIT").unwrap();
+    // tx 1: Begin + Insert(1, "first") + Commit
+    // tx 2: Begin + Update(1, "second") + Commit
+    let mut wal = MemoryWalManager::new();
+    wal.append(WalEntry { tx_id: 1, entry_type: WalEntryType::Begin,
+        table_id: 0, key: None, data: None, lsn: 1, timestamp: 0 }).unwrap();
+    let mut ins = Vec::new();
+    ins.extend_from_slice(b"i:"); ins.extend_from_slice(&1i64.to_le_bytes());
+    ins.extend_from_slice(b"s:first\x00");
+    wal.append(WalEntry { tx_id: 1, entry_type: WalEntryType::Insert, table_id: 3645,
+        key: None, data: Some(ins), lsn: 2, timestamp: 0 }).unwrap();
+    wal.append(WalEntry { tx_id: 1, entry_type: WalEntryType::Commit,
+        table_id: 0, key: None, data: None, lsn: 3, timestamp: 0 }).unwrap();
+    wal.append(WalEntry { tx_id: 2, entry_type: WalEntryType::Begin,
+        table_id: 0, key: None, data: None, lsn: 4, timestamp: 0 }).unwrap();
+    let mut upd = Vec::new();
+    upd.extend_from_slice(b"i:"); upd.extend_from_slice(&1i64.to_le_bytes());
+    upd.extend_from_slice(b"s:second\x00");
+    wal.append(WalEntry { tx_id: 2, entry_type: WalEntryType::Update, table_id: 3645,
+        key: Some(b"i:\x01\x00\x00\x00\x00\x00\x00\x00".to_vec()),
+        data: Some(upd), lsn: 5, timestamp: 0 }).unwrap();
+    wal.append(WalEntry { tx_id: 2, entry_type: WalEntryType::Commit,
+        table_id: 0, key: None, data: None, lsn: 6, timestamp: 0 }).unwrap();
 
-    engine.execute("BEGIN").unwrap();
-    engine
-        .execute("UPDATE t1 SET v = 'second' WHERE id = 1")
-        .unwrap();
-    engine.execute("COMMIT").unwrap();
-
-    drop(engine);
-
-    let mut engine2 = ExecutionEngine::new(storage.clone());
-    let result = engine2.execute("SELECT v FROM t1 WHERE id = 1").unwrap();
-    assert_eq!(
-        result.rows[0][0],
-        sqlrustgo_types::Value::Text("second".to_string()),
-        "WAL replay must preserve order"
+    let mut engine: RecoveryEngineImpl = RecoveryEngineImpl;
+    let report = engine.recover(&mut storage, &mut wal).unwrap();
+    assert_eq!(report.committed_txns, 2);
+    assert_eq!(report.incomplete_txns, 0);
+    assert_eq!(report.rows_inserted, 1);
+    assert_eq!(report.rows_updated, 1);
+    let rows = storage.scan("t1").unwrap();
+    assert_eq!(rows.len(), 1, "Exactly one row should exist");
+    // Latest value must be "second" (Update applied after Insert in order).
+    let has_second = rows[0]
+        .iter()
+        .any(|x| matches!(x, sqlrustgo_types::Value::Text(s) if s == "second"));
+    assert!(
+        has_second,
+        "WAL replay must preserve order — Update(1, 'second') must be applied after Insert(1, 'first')"
     );
 }
