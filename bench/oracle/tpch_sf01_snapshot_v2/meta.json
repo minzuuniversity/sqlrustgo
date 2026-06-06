@@ -1,0 +1,62 @@
+{
+  "comparator_states": {
+    "DATA_LIMITATION": "PG returns 0 rows; cannot verify engine without non-zero reference",
+    "ENGINE_ISSUE": "PG returns N>0; engine returns 0 (missing data)",
+    "FAIL": "semantic mismatch with PG oracle",
+    "PASS": "semantic match (accounting for NULL/empty semantics)",
+    "TIMEOUT": "engine did not complete in time (non-verifiable)"
+  },
+  "created_at": "2026-06-06T23:31:45.043485+00:00",
+  "data_source": "/tmp/tpch_sf01_v2 (regenerated with discount fix)",
+  "freeze_rule": "DO NOT mutate PG while this snapshot is active. Use reads only.",
+  "frozen": true,
+  "psql_strict_flags": [
+    "-X",
+    "-v",
+    "ON_ERROR_STOP=1",
+    "-q",
+    "-t",
+    "-A"
+  ],
+  "row_semantics": {
+    "empty_relation": "0 rows",
+    "exists_subquery": "0 or 1 row (boolean)",
+    "group_by": "0+ rows matching the data",
+    "scalar_aggregate": "1 row (with NULL value if no input rows)"
+  },
+  "snapshot_name": "tpch_sf01_snapshot_v2",
+  "tables": {
+    "customer": {
+      "row_count": 1500,
+      "sample_md5": "f7e7b6ab7f3dc63bc71ce9016f54bb0b"
+    },
+    "lineitem": {
+      "row_count": 60000,
+      "sample_md5": "18c627928d947f81a9383ef6c9ea010f"
+    },
+    "nation": {
+      "row_count": 25,
+      "sample_md5": "3878a2088f49a37490bcb66dc084d5df"
+    },
+    "orders": {
+      "row_count": 15000,
+      "sample_md5": "6fecf0782a41b82b140e536ac65a61a9"
+    },
+    "part": {
+      "row_count": 2000,
+      "sample_md5": "cc745c36d691218380ece00660fcb2a3"
+    },
+    "partsupp": {
+      "row_count": 8000,
+      "sample_md5": "6c182e35f58bd990c6d4d18b09a46ee9"
+    },
+    "region": {
+      "row_count": 5,
+      "sample_md5": "c4f6f933e11b857da4316389573ab1ac"
+    },
+    "supplier": {
+      "row_count": 100,
+      "sample_md5": "76a4a28891c3c55f2d5fd83e992ab711"
+    }
+  }
+}
