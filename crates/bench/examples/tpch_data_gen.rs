@@ -34,7 +34,12 @@ impl TpchDataGenerator {
 
         let row_counts = self.get_row_counts();
 
+        self.generate_region()?;
+        self.generate_nation()?;
+        self.generate_supplier(100 * row_counts.customer / 1500)?;
         self.generate_customer(row_counts.customer)?;
+        self.generate_part(2000 * row_counts.customer / 1500)?;
+        self.generate_partsupp(8000 * row_counts.customer / 1500)?;
         self.generate_orders(row_counts.orders)?;
         self.generate_lineitem(row_counts.lineitem)?;
 
@@ -53,8 +58,144 @@ impl TpchDataGenerator {
         }
     }
 
+    // TPC-H spec: region has 5 rows (1 row per region, fixed).
+    fn generate_region(&self) -> std::io::Result<()> {
+        let mut tbl = File::create(self.output_dir.join("region.tbl"))?;
+        let names = ["AFRICA", "AMERICA", "ASIA", "EUROPE", "MIDDLE EAST"];
+        for (i, name) in names.iter().enumerate() {
+            writeln!(tbl, "{}|{}|lar deposits. Special", i, name)?;
+        }
+        println!("  region.tbl: 5 rows");
+        Ok(())
+    }
+
+    // TPC-H spec: nation has 25 rows (5 per region).
+    fn generate_nation(&self) -> std::io::Result<()> {
+        let mut tbl = File::create(self.output_dir.join("nation.tbl"))?;
+        let names = [
+            "ALGERIA", "ARGENTINA", "BRAZIL", "CANADA", "EGYPT",
+            "ETHIOPIA", "FRANCE", "GERMANY", "INDIA", "INDONESIA",
+            "IRAN", "IRAQ", "JAPAN", "JORDAN", "KENYA",
+            "MOROCCO", "PERU", "CHINA", "ROMANIA", "SAUDI ARABIA",
+            "VIETNAM", "RUSSIA", "UNITED KINGDOM", "UNITED STATES", "MEXICO",
+        ];
+        for (i, name) in names.iter().enumerate() {
+            let regionkey = i / 5;
+            writeln!(tbl, "{}|{}|{}| haggle. carefully final", i, name, regionkey)?;
+        }
+        println!("  nation.tbl: 25 rows");
+        Ok(())
+    }
+
+    // TPC-H spec: supplier is SF * 10000 (SF=1 → 100 rows; 4-way uses 100)
+    fn generate_supplier(&self, count: usize) -> std::io::Result<()> {
+        let mut tbl = File::create(self.output_dir.join("supplier.tbl"))?;
+        let mut rng = rand::thread_rng();
+        for i in 1..=count {
+            let suppkey = i;
+            let name = format!("Supplier#{:09}", suppkey);
+            let address = format!(
+                "{} {} {} {} {}",
+                rng.gen::<u32>() % 100,
+                self.random_string(10, &mut rng),
+                self.random_string(4, &mut rng),
+                self.random_number(9, &mut rng),
+                self.random_number(6, &mut rng)
+            );
+            let nationkey = (rng.gen::<u32>() % 25) + 1; // 1..=25
+            let phone = format!(
+                "{}-{}-{}",
+                self.random_number(3, &mut rng),
+                self.random_number(4, &mut rng),
+                self.random_number(4, &mut rng)
+            );
+            let acctbal = (rng.gen::<f64>() * 9999.99 - 999.99).round() / 100.0;
+            let comment = self.random_string(63, &mut rng);
+            writeln!(
+                tbl,
+                "{}|{}|{}|{}|{}|{:.2}|{}",
+                suppkey, name, address, nationkey, phone, acctbal, comment
+            )?;
+        }
+        println!("  supplier.tbl: {} rows", count);
+        Ok(())
+    }
+
+    // TPC-H spec: part is SF * 200000 (SF=1 → 2000 rows)
+    fn generate_part(&self, count: usize) -> std::io::Result<()> {
+        let mut tbl = File::create(self.output_dir.join("part.tbl"))?;
+        let mut rng = rand::thread_rng();
+        let mfgrs = ["Manufacturer#1", "Manufacturer#2", "Manufacturer#3", "Manufacturer#4", "Manufacturer#5"];
+        let brands = [
+            "Brand#11", "Brand#12", "Brand#13", "Brand#14", "Brand#15",
+            "Brand#21", "Brand#22", "Brand#23", "Brand#24", "Brand#25",
+            "Brand#31", "Brand#32", "Brand#33", "Brand#34", "Brand#35",
+            "Brand#41", "Brand#42", "Brand#43", "Brand#44", "Brand#45",
+            "Brand#51", "Brand#52", "Brand#53", "Brand#54", "Brand#55",
+        ];
+        let containers = [
+            "SM CASE", "LG BOX", "MED BAG", "MED BOX", "LG CASE",
+            "SM PACK", "SM PKG", "MED PACK", "WRAP PKG", "SM JAR",
+        ];
+        let types = [
+            "STANDARD POLISHED TIN", "SMALL POLISHED COPPER", "MEDIUM PLATED STEEL",
+            "STANDARD BRUSHED COPPER", "SMALL ANODIZED NICKEL", "MEDIUM ANODIZED TIN",
+            "LARGE POLISHED BRASS", "SMALL PLATED COPPER", "MEDIUM BRUSHED TIN",
+            "LARGE ANODIZED STEEL", "ECONOMY BRUSHED NICKEL", "PROMO ANODIZED BRASS",
+        ];
+        for i in 1..=count {
+            let partkey = i;
+            let name = format!(
+                "{} {} {}",
+                types[rng.gen::<usize>() % types.len()],
+                self.random_string(7, &mut rng).to_lowercase(),
+                self.random_string(7, &mut rng).to_lowercase()
+            );
+            let mfgr = mfgrs[rng.gen::<usize>() % mfgrs.len()].to_string();
+            let brand = brands[rng.gen::<usize>() % brands.len()].to_string();
+            let ptype = types[rng.gen::<usize>() % types.len()];
+            let size = 1 + rng.gen::<u32>() % 50;
+            let container = containers[rng.gen::<usize>() % containers.len()].to_string();
+            let retailprice = (rng.gen::<f64>() * 2099.0 + 900.0).round() / 100.0;
+            let comment = self.random_string(7, &mut rng);
+            writeln!(
+                tbl,
+                "{}|{}|{}|{}|{}|{}|{}|{:.2}|{}",
+                partkey, name, mfgr, brand, ptype, size, container, retailprice, comment
+            )?;
+        }
+        println!("  part.tbl: {} rows", count);
+        Ok(())
+    }
+
+    // TPC-H spec: partsupp is SF * 800000 (SF=1 → 8000 rows)
+    fn generate_partsupp(&self, count: usize) -> std::io::Result<()> {
+        let mut tbl = File::create(self.output_dir.join("partsupp.tbl"))?;
+        let mut rng = rand::thread_rng();
+        // 4-way harness: count=8000 for SF=1. distribute over (partkey, suppkey) pairs.
+        // partsupp key is (ps_partkey, ps_suppkey). partkey 1..=2000, suppkey 1..=100
+        // → 200000 pairs. We sample 8000 of them.
+        let part_count = 2000usize;
+        let supp_count = 100usize;
+        for i in 1..=count {
+            let ps_partkey = (i % part_count) + 1;
+            let ps_suppkey = ((i / part_count) % supp_count) + 1;
+            let ps_availqty = rng.gen::<u32>() % 9999 + 1;
+            let ps_supplycost = (rng.gen::<f64>() * 1000.0 + 1.0).round() / 100.0;
+            let ps_comment = self.random_string(63, &mut rng);
+            writeln!(
+                tbl,
+                "{}|{}|{}|{:.2}|{}",
+                ps_partkey, ps_suppkey, ps_availqty, ps_supplycost, ps_comment
+            )?;
+        }
+        println!("  partsupp.tbl: {} rows", count);
+        Ok(())
+    }
+
     fn generate_customer(&self, count: usize) -> std::io::Result<()> {
         let mut file = File::create(self.output_dir.join("customer.csv"))?;
+        let mut tbl = File::create(self.output_dir.join("customer.tbl"))?;
         writeln!(
             file,
             "c_custkey,c_name,c_address,c_nationkey,c_phone,c_acctbal,c_mktsegment,c_comment"
@@ -96,14 +237,22 @@ impl TpchDataGenerator {
                 "{},{},{},{},{},{:.2},{},{}",
                 custkey, name, address, nationkey, phone, acctbal, mktsegment, comment
             )?;
+            // TBL: no header, pipe-separated
+            writeln!(
+                tbl,
+                "{}|{}|{}|{}|{}|{:.2}|{}|{}",
+                custkey, name, address, nationkey, phone, acctbal, mktsegment, comment
+            )?;
         }
 
         println!("  customer.csv: {} rows", count);
+        println!("  customer.tbl: {} rows", count);
         Ok(())
     }
 
     fn generate_orders(&self, count: usize) -> std::io::Result<()> {
         let mut file = File::create(self.output_dir.join("orders.csv"))?;
+        let mut tbl = File::create(self.output_dir.join("orders.tbl"))?;
         writeln!(file, "o_orderkey,o_custkey,o_orderstatus,o_totalprice,o_orderdate,o_orderpriority,o_clerk,o_shippriority,o_comment")?;
 
         let mut rng = rand::thread_rng();
@@ -134,18 +283,38 @@ impl TpchDataGenerator {
                 shippriority,
                 comment
             )?;
+            // TBL: no header, pipe-separated
+            writeln!(
+                tbl,
+                "{}|{}|{}|{:.2}|{}|{}|{}|{}|{}",
+                orderkey,
+                custkey,
+                status,
+                totalprice,
+                orderdate,
+                priority,
+                clerk,
+                shippriority,
+                comment
+            )?;
         }
 
         println!("  orders.csv: {} rows", count);
+        println!("  orders.tbl: {} rows", count);
         Ok(())
     }
 
     fn generate_lineitem(&self, count: usize) -> std::io::Result<()> {
-        let mut file = File::create(self.output_dir.join("lineitem.csv"))?;
-        writeln!(file, "l_orderkey,l_partkey,l_suppkey,l_linenumber,l_quantity,l_extendedprice,l_discount,l_tax,l_returnflag,l_shipdate,l_commitdate,l_receiptdate,l_shipinstruct,l_shipmode,l_comment")?;
+        // TPC-H spec: 16 columns. l_linestatus MUST be column 10 (between
+        // l_returnflag and l_shipdate) so that GROUP BY l_returnflag,
+        // l_linestatus (Q1) sees the right value.
+        let mut csv = File::create(self.output_dir.join("lineitem.csv"))?;
+        // Also write TBL (pipe-delimited, no header) for the 4-way harness
+        let mut tbl = File::create(self.output_dir.join("lineitem.tbl"))?;
 
         let mut rng = rand::thread_rng();
         let return_flags = ["N", "R", "A"];
+        let line_statuses = ["O", "F"]; // O=open, F=filled (TPC-H spec)
         let shipmodes = ["AIR", "AIR REG", "FOB", "MAIL", "RAIL", "SHIP", "TRUCK"];
         let instructs = [
             "DELIVER IN PERSON",
@@ -153,6 +322,8 @@ impl TpchDataGenerator {
             "TAKE BACK RETURN",
             "COLLECT COD",
         ];
+
+        writeln!(csv, "l_orderkey,l_partkey,l_suppkey,l_linenumber,l_quantity,l_extendedprice,l_discount,l_tax,l_returnflag,l_linestatus,l_shipdate,l_commitdate,l_receiptdate,l_shipinstruct,l_shipmode,l_comment")?;
 
         for i in 1..=count {
             let orderkey = ((i as f64 / 15.0).floor() as usize) + 1;
@@ -165,6 +336,7 @@ impl TpchDataGenerator {
             let discount = (rng.gen::<f64>() * 0.10).round() / 100.0;
             let tax = (rng.gen::<f64>() * 0.08).round() / 100.0;
             let returnflag = return_flags[rng.gen::<usize>() % 3];
+            let linestatus = line_statuses[rng.gen::<usize>() % 2];
             let shipdate = self.random_date(1992, 1998, &mut rng);
             let commitdate = self.random_date(1992, 1998, &mut rng);
             let receiptdate = self.random_date(1993, 1999, &mut rng);
@@ -173,8 +345,8 @@ impl TpchDataGenerator {
             let comment = self.random_string(14, &mut rng);
 
             writeln!(
-                file,
-                "{},{},{},{},{},{:.2},{:.2},{:.2},{},{},{},{},{},{},{}",
+                csv,
+                "{},{},{},{},{},{:.2},{:.2},{:.2},{},{},{},{},{},{},{},{}",
                 orderkey,
                 partkey,
                 suppkey,
@@ -184,6 +356,29 @@ impl TpchDataGenerator {
                 discount,
                 tax,
                 returnflag,
+                linestatus,
+                shipdate,
+                commitdate,
+                receiptdate,
+                instruct,
+                shipmode,
+                comment
+            )?;
+            // TBL: pipe-delimited, NO header, trailing newline only.
+            // 16 columns in spec order.
+            writeln!(
+                tbl,
+                "{}|{}|{}|{}|{}|{:.2}|{:.2}|{:.2}|{}|{}|{}|{}|{}|{}|{}|{}",
+                orderkey,
+                partkey,
+                suppkey,
+                linenumber,
+                quantity,
+                extendedprice,
+                discount,
+                tax,
+                returnflag,
+                linestatus,
                 shipdate,
                 commitdate,
                 receiptdate,
@@ -194,6 +389,7 @@ impl TpchDataGenerator {
         }
 
         println!("  lineitem.csv: {} rows", count);
+        println!("  lineitem.tbl: {} rows", count);
         Ok(())
     }
 
