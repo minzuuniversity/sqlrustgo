@@ -801,6 +801,27 @@ fn find_join_predicate(
                 };
                 let left_has_new = left_refs.iter().any(|t| new_alts.iter().any(|n| n == t));
                 let right_has_new = right_refs.iter().any(|t| new_alts.iter().any(|n| n == t));
+                // Phase 6 (TPCH-01 Q8 fix): a real join key must reference
+                // a table on BOTH sides of the `=`. A column-vs-literal
+                // equality (e.g. `n2.n_name = 'GERMANY'`,
+                // `r_name = 'EUROPE'`) is a WHERE filter, not a join key,
+                // and must stay in the outer WHERE clause. Using such a
+                // predicate as an ON clause produces a cartesian join
+                // (JoinKey::All) that explodes with 6+ tables.
+                //
+                // TPC-H convention: when one side is an unqualified
+                // column (no table ref) and the other side is the new
+                // table, treat the unqualified column as referencing
+                // the ALREADY-JOINED side via TPC-H prefix matching
+                // (e.g. `c_custkey = o_custkey` joins customer to orders
+                // via "c" prefix → customer, "o" prefix → orders).
+                let left_is_col = matches!(l.as_ref(), Expression::Identifier(_));
+                let right_is_col = matches!(r.as_ref(), Expression::Identifier(_));
+                if !left_is_col || !right_is_col {
+                    // One side is a literal or function — NOT a join key.
+                    // Skip this predicate; keep in outer WHERE via `rest`.
+                    continue;
+                }
                 if left_has_new
                     && !right_has_new
                     && right_refs
@@ -865,6 +886,20 @@ fn collect_referenced_tables(expr: &Expression) -> Vec<String> {
     }
     visit(expr, &mut out);
     out
+}
+
+/// Is the expression a binary `=` between two column references (not column vs literal)?
+/// Used by TPC-H multi-table auto-rewrite to distinguish real join keys
+/// (e.g. `c_custkey = o_custkey`) from filters (e.g. `n2.n_name = 'GERMANY'`).
+/// The latter should stay in WHERE, not be promoted to an ON clause.
+fn is_binary_column_equality(expr: &Expression) -> bool {
+    if let Expression::BinaryOp(l, op, r) = expr {
+        if op == "=" {
+            return matches!(l.as_ref(), Expression::Identifier(_))
+                && matches!(r.as_ref(), Expression::Identifier(_));
+        }
+    }
+    false
 }
 
 /// Does the expression reference the given table? Used by TPC-H multi-table
@@ -3117,9 +3152,18 @@ impl Parser {
                         // promote `s_suppkey = ps_suppkey` (Q2) as the
                         // JOIN ON for supplier, which then fails the
                         // executor's `find_join_key_index`.
+                        //
+                        // Phase 6 (TPCH-01 Q8 fix): additionally require the
+                        // predicate to be a binary `=` between two COLUMN
+                        // references, not a column-vs-literal. Q8 has
+                        // `n2.n_name = 'GERMANY'` as a filter, and the
+                        // parser would otherwise promote it as the ON
+                        // clause for n2 (no real join key exists), which
+                        // makes the executor reject it.
                         for p in &conj {
                             if found.is_none()
                                 && !is_derived_ref(p)
+                                && is_binary_column_equality(p)
                                 && predicate_references_table(p, &table_name)
                                 && predicate_fully_resolvable(
                                     p,
@@ -3136,6 +3180,7 @@ impl Parser {
                         for p in &remaining {
                             if found.is_none()
                                 && !is_derived_ref(p)
+                                && is_binary_column_equality(p)
                                 && predicate_references_table(p, &table_name)
                                 && predicate_fully_resolvable(
                                     p,
