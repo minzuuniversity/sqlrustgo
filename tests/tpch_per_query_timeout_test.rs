@@ -127,13 +127,20 @@ fn test_tpch_22_with_per_query_timeout() {
         let start = Instant::now();
         let (tx, rx) = std::sync::mpsc::channel::<Result<usize, String>>();
         let sql_for_thread = sql.clone();
-        let engine_ptr = &mut engine as *mut ExecutionEngine<MemoryStorage>;
         // SAFETY: the test process is single-threaded at this point
         // (we are not in #[tokio::test]). The spawned thread is the
-        // only one touching the engine, and the test does not touch
-        // the engine again until after `rx` reports back. We do not
-        // rely on any of the engine's interior mutability for soundness.
+        // only one touching the engine until `rx` reports back. We
+        // cast the mutable reference to a usize (raw address) to
+        // satisfy the Send bound, then cast it back to a raw
+        // pointer inside the worker closure. The pointer is only
+        // dereferenced after we re-acquire the original borrow
+        // (which is fine because the test thread is blocked on
+        // `rx.recv_timeout` and does not touch `engine` until after
+        // the worker finishes).
+        let engine_addr: usize =
+            &mut engine as *mut ExecutionEngine<MemoryStorage> as usize;
         let handle = std::thread::spawn(move || unsafe {
+            let engine_ptr = engine_addr as *mut ExecutionEngine<MemoryStorage>;
             let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 (*engine_ptr).execute(&sql_for_thread)
             }));
