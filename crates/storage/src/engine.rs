@@ -889,6 +889,49 @@ mod tests {
         assert_eq!(result.len(), 2);
     }
 
+    /// Regression test for Issue #3276 (Sprint 1.5 cell-level diff).
+    /// Ensures the public `insert()` API preserves the Value type
+    /// (Integer vs Float vs Text) for round-trip retrieval. This is the
+    /// storage-layer contract that the SUM(REAL)=0 fix depends on:
+    /// a `Value::Float(100.5)` written via insert() MUST come back as
+    /// `Value::Float(100.5)` (not coerced to Integer or Null).
+    #[test]
+    fn test_memory_storage_insert_scan_preserves_real_type() {
+        let mut storage = MemoryStorage::new();
+        storage.tables.insert(
+            "lineitem".to_string(),
+            vec![
+                vec![Value::Integer(10), Value::Float(100.5), Value::Float(0.05)],
+                vec![Value::Integer(20), Value::Float(200.5), Value::Float(0.10)],
+                vec![Value::Integer(30), Value::Float(300.5), Value::Float(0.05)],
+            ],
+        );
+        let result = storage.scan("lineitem").unwrap();
+        assert_eq!(result.len(), 3);
+        for (i, row) in result.iter().enumerate() {
+            assert!(
+                matches!(row[0], Value::Integer(_)),
+                "row[{}] col 0 (q INTEGER) must remain Integer, got {:?}",
+                i,
+                row[0]
+            );
+            assert!(
+                matches!(row[1], Value::Float(_)),
+                "row[{}] col 1 (p REAL) must remain Float, got {:?}",
+                i,
+                row[1]
+            );
+            assert!(
+                matches!(row[2], Value::Float(_)),
+                "row[{}] col 2 (d REAL) must remain Float, got {:?}",
+                i,
+                row[2]
+            );
+        }
+        assert_eq!(result[0][1], Value::Float(100.5));
+        assert_eq!(result[2][1], Value::Float(300.5));
+    }
+
     #[test]
     fn test_storage_engine_send_sync() {
         fn _check<T: Send + Sync>() {}
