@@ -128,10 +128,14 @@ pub fn load_tbl_inserts(table: &str, cols: usize, tbl_path: &Path, engine: Engin
                 let s = fields[i].trim();
                 if s.is_empty() {
                     "NULL".to_string()
-                } else if s.parse::<i64>().is_ok() {
+                } else if s.parse::<i64>().is_ok() || s.parse::<f64>().is_ok() {
+                    // TPC-H TBL files contain integers and floats in the
+                    // same unquoted column. Distinguish via parse: integers
+                    // (e.g. "1234") parse as i64, floats (e.g. "6322.20")
+                    // only parse as f64. Both must be unquoted so the
+                    // engine stores them as Integer/Float (not Text).
                     s.to_string()
                 } else {
-                    // Quote string with single quotes
                     format!("'{}'", s.replace('\'', "''"))
                 }
             })
