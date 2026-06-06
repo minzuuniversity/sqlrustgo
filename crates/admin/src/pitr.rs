@@ -22,7 +22,7 @@ pub fn pitr_replay(wal_path: &Path, target_time: u64) -> Result<PitrResult, Back
             wal_path.display()
         )));
     }
-    let mut reader = WalReader::new(&wal_path.to_path_buf()).map_err(|e| BackupError::Io(e))?;
+    let mut reader = WalReader::new(&wal_path.to_path_buf()).map_err(BackupError::Io)?;
     let entries = reader.read_all().map_err(BackupError::Io)?;
     Ok(pitr_replay_entries(&entries, target_time))
 }
@@ -33,6 +33,7 @@ pub fn pitr_replay_entries(entries: &[WalEntry], target_time: u64) -> PitrResult
     let mut active_at_target: HashSet<u64> = HashSet::new();
     let mut applied = 0;
     let mut skipped = 0;
+    #[allow(unused_assignments)] // scanned is reported in PitrReport
     let mut scanned = 0;
 
     let in_window: Vec<&WalEntry> = entries
