@@ -28,6 +28,7 @@ pub struct PreparedStatementCache {
 
 struct CacheEntry {
     sql: String,
+    #[allow(dead_code)] // reserved for future prepared-statement execution API
     statement: Statement,
 }
 
