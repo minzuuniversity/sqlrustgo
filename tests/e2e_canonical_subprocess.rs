@@ -358,7 +358,21 @@ fn e2e_unknown_subcommand_fails_nonzero() {
         .expect("run canonical binary with bogus subcommand");
     assert!(
         !out.status.success(),
-        "unknown subcommand should exit non-zero"
+        "unknown subcommand should exit non-zero, got status: {:?}\n\
+         stdout: {}\n\
+         stderr: {}",
+        out.status.code(),
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr),
+    );
+    // Per openspec/specs/mysql-server-canonical-entry/spec.md, the
+    // canonical binary MUST exit with code 64 (EX_USAGE) for unknown
+    // subcommands. Tightened in #3221 follow-up after PR-3249 wired
+    // up the EX_USAGE translation (was exit 2 from clap).
+    assert_eq!(
+        out.status.code(),
+        Some(64),
+        "unknown subcommand must exit 64 (EX_USAGE) per mysql-server-canonical-entry spec"
     );
 }
 
