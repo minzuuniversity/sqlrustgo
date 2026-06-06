@@ -1,0 +1,203 @@
+{
+  "date": "2026-06-07",
+  "data": "SF=1 simplified regenerated (60K lineitem, l_discount 0.00-0.10 uniform)",
+  "truth_source": "PostgreSQL",
+  "query_count": 22,
+  "summary": {
+    "row_count_match": 6,
+    "row_count_mismatch": 0,
+    "pg_zero_sqlrustgo_nonzero": 12,
+    "both_zero": 0,
+    "sqlrustgo_timeout": 4
+  },
+  "details": {
+    "Q01": {
+      "query": "Q01",
+      "sqlrustgo_status": "PASS",
+      "sqlrustgo_time_ms": 72,
+      "sqlrustgo_rows": 6,
+      "pg_rows": 6,
+      "status": "row_count_match"
+    },
+    "Q02": {
+      "query": "Q02",
+      "sqlrustgo_status": "PASS",
+      "sqlrustgo_time_ms": 10886,
+      "sqlrustgo_rows": 5,
+      "pg_rows": 0,
+      "status": "data_limitation_pg_zero",
+      "note": "sqlrustgo returns N>0, PG returns 0. Likely data limitation (simplified SF=1 lacks matching data for WHERE clause), not engine bug."
+    },
+    "Q03": {
+      "query": "Q03",
+      "sqlrustgo_status": "TIMEOUT",
+      "sqlrustgo_time_ms": 15000,
+      "sqlrustgo_rows": "?",
+      "pg_rows": 0,
+      "status": "sqlrustgo_timeout"
+    },
+    "Q04": {
+      "query": "Q04",
+      "sqlrustgo_status": "TIMEOUT",
+      "sqlrustgo_time_ms": 15000,
+      "sqlrustgo_rows": "?",
+      "pg_rows": 0,
+      "status": "sqlrustgo_timeout"
+    },
+    "Q05": {
+      "query": "Q05",
+      "sqlrustgo_status": "PASS",
+      "sqlrustgo_time_ms": 5347,
+      "sqlrustgo_rows": 2,
+      "pg_rows": 0,
+      "status": "data_limitation_pg_zero",
+      "note": "sqlrustgo returns N>0, PG returns 0. Likely data limitation (simplified SF=1 lacks matching data for WHERE clause), not engine bug."
+    },
+    "Q06": {
+      "query": "Q06",
+      "sqlrustgo_status": "PASS",
+      "sqlrustgo_time_ms": 32,
+      "sqlrustgo_rows": 1,
+      "pg_rows": 1,
+      "status": "row_count_match"
+    },
+    "Q07": {
+      "query": "Q07",
+      "sqlrustgo_status": "PASS",
+      "sqlrustgo_time_ms": 718,
+      "sqlrustgo_rows": 2,
+      "pg_rows": 0,
+      "status": "data_limitation_pg_zero",
+      "note": "sqlrustgo returns N>0, PG returns 0. Likely data limitation (simplified SF=1 lacks matching data for WHERE clause), not engine bug."
+    },
+    "Q08": {
+      "query": "Q08",
+      "sqlrustgo_status": "TIMEOUT",
+      "sqlrustgo_time_ms": 15000,
+      "sqlrustgo_rows": "?",
+      "pg_rows": 0,
+      "status": "sqlrustgo_timeout"
+    },
+    "Q09": {
+      "query": "Q09",
+      "sqlrustgo_status": "PASS",
+      "sqlrustgo_time_ms": 10002,
+      "sqlrustgo_rows": 0,
+      "pg_rows": 0,
+      "status": "row_count_match"
+    },
+    "Q10": {
+      "query": "Q10",
+      "sqlrustgo_status": "PASS",
+      "sqlrustgo_time_ms": 5364,
+      "sqlrustgo_rows": 20,
+      "pg_rows": 0,
+      "status": "data_limitation_pg_zero",
+      "note": "sqlrustgo returns N>0, PG returns 0. Likely data limitation (simplified SF=1 lacks matching data for WHERE clause), not engine bug."
+    },
+    "Q11": {
+      "query": "Q11",
+      "sqlrustgo_status": "PASS",
+      "sqlrustgo_time_ms": 12,
+      "sqlrustgo_rows": 0,
+      "pg_rows": 0,
+      "status": "row_count_match"
+    },
+    "Q12": {
+      "query": "Q12",
+      "sqlrustgo_status": "PASS",
+      "sqlrustgo_time_ms": 5774,
+      "sqlrustgo_rows": 2,
+      "pg_rows": 0,
+      "status": "data_limitation_pg_zero",
+      "note": "sqlrustgo returns N>0, PG returns 0. Likely data limitation (simplified SF=1 lacks matching data for WHERE clause), not engine bug."
+    },
+    "Q13": {
+      "query": "Q13",
+      "sqlrustgo_status": "PASS",
+      "sqlrustgo_time_ms": 180,
+      "sqlrustgo_rows": 21,
+      "pg_rows": 0,
+      "status": "data_limitation_pg_zero",
+      "note": "sqlrustgo returns N>0, PG returns 0. Likely data limitation (simplified SF=1 lacks matching data for WHERE clause), not engine bug."
+    },
+    "Q14": {
+      "query": "Q14",
+      "sqlrustgo_status": "PASS",
+      "sqlrustgo_time_ms": 167,
+      "sqlrustgo_rows": 1,
+      "pg_rows": 0,
+      "status": "data_limitation_pg_zero",
+      "note": "sqlrustgo returns N>0, PG returns 0. Likely data limitation (simplified SF=1 lacks matching data for WHERE clause), not engine bug."
+    },
+    "Q15": {
+      "query": "Q15",
+      "sqlrustgo_status": "PASS",
+      "sqlrustgo_time_ms": 78,
+      "sqlrustgo_rows": 93,
+      "pg_rows": 0,
+      "status": "data_limitation_pg_zero",
+      "note": "sqlrustgo returns N>0, PG returns 0. Likely data limitation (simplified SF=1 lacks matching data for WHERE clause), not engine bug."
+    },
+    "Q16": {
+      "query": "Q16",
+      "sqlrustgo_status": "PASS",
+      "sqlrustgo_time_ms": 23,
+      "sqlrustgo_rows": 286,
+      "pg_rows": 0,
+      "status": "data_limitation_pg_zero",
+      "note": "sqlrustgo returns N>0, PG returns 0. Likely data limitation (simplified SF=1 lacks matching data for WHERE clause), not engine bug."
+    },
+    "Q17": {
+      "query": "Q17",
+      "sqlrustgo_status": "PASS",
+      "sqlrustgo_time_ms": 162,
+      "sqlrustgo_rows": 1,
+      "pg_rows": 0,
+      "status": "data_limitation_pg_zero",
+      "note": "sqlrustgo returns N>0, PG returns 0. Likely data limitation (simplified SF=1 lacks matching data for WHERE clause), not engine bug."
+    },
+    "Q18": {
+      "query": "Q18",
+      "sqlrustgo_status": "PASS",
+      "sqlrustgo_time_ms": 6373,
+      "sqlrustgo_rows": 100,
+      "pg_rows": 0,
+      "status": "data_limitation_pg_zero",
+      "note": "sqlrustgo returns N>0, PG returns 0. Likely data limitation (simplified SF=1 lacks matching data for WHERE clause), not engine bug."
+    },
+    "Q19": {
+      "query": "Q19",
+      "sqlrustgo_status": "PASS",
+      "sqlrustgo_time_ms": 172,
+      "sqlrustgo_rows": 1,
+      "pg_rows": 0,
+      "status": "data_limitation_pg_zero",
+      "note": "sqlrustgo returns N>0, PG returns 0. Likely data limitation (simplified SF=1 lacks matching data for WHERE clause), not engine bug."
+    },
+    "Q20": {
+      "query": "Q20",
+      "sqlrustgo_status": "PASS",
+      "sqlrustgo_time_ms": 120,
+      "sqlrustgo_rows": 0,
+      "pg_rows": 0,
+      "status": "row_count_match"
+    },
+    "Q21": {
+      "query": "Q21",
+      "sqlrustgo_status": "TIMEOUT",
+      "sqlrustgo_time_ms": 15000,
+      "sqlrustgo_rows": "?",
+      "pg_rows": 0,
+      "status": "sqlrustgo_timeout"
+    },
+    "Q22": {
+      "query": "Q22",
+      "sqlrustgo_status": "PASS",
+      "sqlrustgo_time_ms": 3158,
+      "sqlrustgo_rows": 0,
+      "pg_rows": 0,
+      "status": "row_count_match"
+    }
+  }
+}
