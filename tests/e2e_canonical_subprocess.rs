@@ -52,6 +52,14 @@ impl Drop for SubprocessHandle {
 /// accept, and return both the subprocess handle (so the test
 /// can hold the server alive) and a `MySqlTestClient` that
 /// talks to it.
+///
+/// Retries up to 5 times on bind/connect failure. The fix for
+/// a port race that was observed when running with default
+/// test threads: two parallel workers can probe the same
+/// ephemeral port, drop their TcpListener, and one of them
+/// hands the same port to the subprocess before the other
+/// has finished. The retry loop keeps the failure rate low
+/// without forcing `--test-threads=1`.
 fn spawn_canonical_with_client() -> (SubprocessHandle, MySqlTestClient) {
     let bin = canonical_binary();
     assert!(
@@ -60,36 +68,63 @@ fn spawn_canonical_with_client() -> (SubprocessHandle, MySqlTestClient) {
          run `cargo build -p sqlrustgo-mysql-server` first"
     );
 
-    // Pre-pick a free port to avoid races.
-    let probe = std::net::TcpListener::bind("127.0.0.1:0").expect("bind probe port");
-    let port = probe.local_addr().expect("probe local_addr").port();
-    drop(probe);
+    const MAX_ATTEMPTS: u32 = 5;
+    let mut last_err: Option<String> = None;
+    for attempt in 1..=MAX_ATTEMPTS {
+        // Pre-pick a free port to avoid races.
+        let probe = std::net::TcpListener::bind("127.0.0.1:0").expect("bind probe port");
+        let port = probe.local_addr().expect("probe local_addr").port();
+        drop(probe);
 
-    let child = Command::new(&bin)
-        .arg("serve")
-        .args(["--host", "127.0.0.1"])
-        .args(["--port", &port.to_string()])
-        .args(["--log-level", "warn"])
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
-        .expect("spawn sqlrustgo-mysql-server serve");
+        let mut child = match Command::new(&bin)
+            .arg("serve")
+            .args(["--host", "127.0.0.1"])
+            .args(["--port", &port.to_string()])
+            .args(["--log-level", "warn"])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+        {
+            Ok(c) => c,
+            Err(e) => {
+                last_err = Some(format!("spawn attempt {attempt}: {e}"));
+                std::thread::sleep(Duration::from_millis(50 * attempt as u64));
+                continue;
+            }
+        };
 
-    let deadline = std::time::Instant::now() + Duration::from_secs(5);
-    let addr = std::net::SocketAddr::from(([127, 0, 0, 1], port));
-    loop {
-        if TcpStream::connect_timeout(&addr, Duration::from_millis(100)).is_ok() {
-            break;
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        let addr = std::net::SocketAddr::from(([127, 0, 0, 1], port));
+        let mut ready = false;
+        while std::time::Instant::now() < deadline {
+            if TcpStream::connect_timeout(&addr, Duration::from_millis(100)).is_ok() {
+                ready = true;
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(50));
         }
-        if std::time::Instant::now() >= deadline {
-            panic!("canonical server did not become reachable on 127.0.0.1:{port} within 5s");
+        if !ready {
+            let _ = child.kill();
+            let _ = child.wait();
+            last_err = Some(format!("server did not become reachable within 5s on port {port}"));
+            std::thread::sleep(Duration::from_millis(50 * attempt as u64));
+            continue;
         }
-        std::thread::sleep(Duration::from_millis(50));
+
+        match MySqlTestClient::connect_at(("127.0.0.1", port), "root", "") {
+            Ok(client) => return (SubprocessHandle { child, port }, client),
+            Err(e) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                last_err = Some(format!("MySQL handshake attempt {attempt}: {e}"));
+                std::thread::sleep(Duration::from_millis(50 * attempt as u64));
+            }
+        }
     }
-
-    let client = MySqlTestClient::connect_at(("127.0.0.1", port), "root", "")
-        .expect("MySqlTestClient should connect to canonical subprocess server");
-    (SubprocessHandle { child, port }, client)
+    panic!(
+        "spawn_canonical_with_client failed after {MAX_ATTEMPTS} attempts; last err: {}",
+        last_err.unwrap_or_else(|| "(none)".to_string())
+    );
 }
 
 // =========================================================================
