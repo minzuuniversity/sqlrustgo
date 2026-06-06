@@ -183,6 +183,34 @@ fn test_predicate_not_exists() {
     assert!(result.is_ok(), "NOT EXISTS failed: {:?}", result);
 }
 
+#[test]
+fn test_predicate_not_exists_select_star() {
+    let result = parse(
+        "SELECT * FROM customer WHERE NOT EXISTS (SELECT * FROM orders WHERE o_custkey = c_custkey)",
+    );
+    assert!(
+        result.is_ok(),
+        "NOT EXISTS (SELECT * ...) failed: {:?}",
+        result
+    );
+}
+
+#[test]
+fn test_tpch_q22_full_shape() {
+    let sql = "\
+SELECT cntrycode, COUNT(*) AS numcust, SUM(c_acctbal) AS totacctbal FROM (
+  SELECT SUBSTR(c_phone, 1, 2) AS cntrycode, c_acctbal FROM customer
+  WHERE c_acctbal > 0
+    AND NOT EXISTS (SELECT * FROM orders WHERE o_custkey = c_custkey)
+) AS custsale GROUP BY cntrycode ORDER BY cntrycode";
+    let result = parse(sql);
+    assert!(
+        result.is_ok(),
+        "TPC-H Q22 full shape parse failed: {:?}",
+        result
+    );
+}
+
 // ============ P1.2: 聚合函数解析 ============
 
 #[test]
