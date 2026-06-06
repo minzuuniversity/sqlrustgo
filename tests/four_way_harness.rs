@@ -323,9 +323,9 @@ pub fn setup_external_db(engine: Engine, data_dir: &Path) -> Result<(), String> 
                     "-u", "tpch", "-ptpch", "-D", "tpch_test",
                     "--local-infile=1",
                     "-e", &format!(
-                        "LOAD DATA LOCAL INFILE '{:?}' INTO TABLE {} \
+                        "LOAD DATA LOCAL INFILE '{}' INTO TABLE {} \
                          FIELDS TERMINATED BY '|' LINES TERMINATED BY '\\n';",
-                        tbl_path, table
+                        tbl_path.display(), table
                     ),
                 ])
                 .output()
@@ -334,8 +334,8 @@ pub fn setup_external_db(engine: Engine, data_dir: &Path) -> Result<(), String> 
                 .args([
                     "-U", "liying", "-d", "tpch_test",
                     "-c", &format!(
-                        "COPY {} FROM '{:?}' WITH (FORMAT csv, DELIMITER '|');",
-                        table, tbl_path
+                        "\\copy {} FROM '{}' WITH (FORMAT csv, DELIMITER '|')",
+                        table, tbl_path.display()
                     ),
                 ])
                 .output()
