@@ -28,6 +28,15 @@ use std::cell::RefCell;
 thread_local! {
     static DERIVED_SUBQUERIES: RefCell<std::collections::HashMap<String, Box<SelectStatement>>> =
         RefCell::new(std::collections::HashMap::new());
+    // Phase 9 (TPCH-01 Q15): parallel map of synthetic __subq_N -> alias
+    // (e.g. __subq_1 -> "revenue"). Populated by the comma-followed
+    // subquery branch in the FROM clause; consumed by the multi-table
+    // auto-rewrite loop when it builds the JoinClause. Without this map
+    // the JoinClause for a derived table loses its alias, so the outer
+    // `revenue.l_suppkey` qualifier in the WHERE clause cannot be
+    // resolved against the materialized subquery's columns.
+    static DERIVED_ALIASES: RefCell<std::collections::HashMap<String, String>> =
+        RefCell::new(std::collections::HashMap::new());
 }
 
 /// Phase 3 (TPCH-01 Q15): retrieve all derived subqueries registered
@@ -2872,17 +2881,42 @@ impl Parser {
                             if matches!(self.current(), Some(Token::As)) {
                                 self.next();
                             }
-                            let _alias = match self.current() {
+                            let alias_name = match self.current() {
                                 Some(Token::Identifier(a)) => a.clone(),
                                 _ => {
                                     return Err(
-                                        "Expected alias after comma-followed subquery".to_string()
+                                        "Expected alias after comma-followed subquery".to_string(),
                                     );
                                 }
                             };
                             self.next();
+                            // The synthetic name is based on the position
+                            // in `tables` before any push, so the
+                            // downstream auto-rewrite can find this entry
+                            // at that same position.
                             let synthetic_name = format!("__subq_{}", tables.len());
                             tables.push(synthetic_name.clone());
+                            // Phase 9 (TPCH-01 Q15): also encode the alias
+                            // into the synthetic name as `__subq_N|alias`
+                            // (the alias reuses the same __subq_N index)
+                            // so the downstream auto-rewrite loop in the
+                            // `else` arm can recover the alias when it
+                            // builds the JoinClause. Without this, the
+                            // outer `revenue.l_suppkey` qualifier cannot
+                            // be resolved against the materialized
+                            // __subq_N table by the executor.
+                            //
+                            // We DON'T push a second entry to `tables`
+                            // because that would shift downstream
+                            // indices. Instead, we use a small parallel
+                            // thread-local map: derived_aliases[__subq_N] = alias.
+                            // (See `DERIVED_ALIASES` below.)
+                            DERIVED_ALIASES.with(|cell| {
+                                cell.borrow_mut().insert(
+                                    synthetic_name.clone(),
+                                    alias_name.clone(),
+                                );
+                            });
                             // Phase 3 (TPCH-01 Q15): register subquery in thread-local
                             DERIVED_SUBQUERIES.with(|cell| {
                                 cell.borrow_mut()
@@ -3067,6 +3101,19 @@ impl Parser {
                     if let Some(ref a) = from_alias {
                         v.push(a.clone());
                     }
+                    // Phase 7 (TPCH-01 Q15): seed `joined` with any
+                    // comma-list synthetic derived tables (__subq_N) and
+                    // their aliases, so subsequent find_join_predicate
+                    // and predicate_references_table calls can resolve
+                    // qualifiers like `revenue.l_suppkey` to the right
+                    // table. We do this by reading the thread-local
+                    // DERIVED_SUBQUERIES map, which the comma loop has
+                    // already populated with `__subq_N` -> SelectStatement.
+                    for (key, _subq) in DERIVED_SUBQUERIES.with(|cell| {
+                        cell.borrow().iter().map(|(k, v)| (k.clone(), v.clone())).collect::<Vec<_>>()
+                    }) {
+                        v.push(key.clone());
+                    }
                     v
                 };
                 for t in &extra_tables {
@@ -3195,19 +3242,42 @@ impl Parser {
                             }
                         }
                     }
-                    // Phase 4 (TPCH-01 Q15): if we couldn't find a proper
-                    // ON predicate for a derived table (__subq_N), keep
-                    // its predicate in the outer WHERE clause instead of
-                    // emitting a CROSS JOIN with `on=true` (which would
-                    // later be rejected as "Unsupported join condition").
+                    // Phase 8 (TPCH-01 Q15): for derived tables (__subq_N),
+                    // emit a cartesian JoinClause with ON=true so the
+                    // executor's `execute_joins` materializes the
+                    // subquery into `DERIVED_RESULTS` and the outer
+                    // WHERE clause (`s_suppkey = revenue.l_suppkey`)
+                    // filters the cross product down to the real rows.
+                    // The previous `continue` left `join_clause` empty
+                    // for the derived table, so executor's
+                    // `execute_select` saw `select.join_clause.is_empty()`
+                    // and used `select.table` (just `supplier`) for
+                    // scan, never materializing __subq_N.
                     if found.is_none() && table_name.starts_with("__subq_") {
-                        // Don't push a JoinClause for derived tables with
-                        // no resolvable ON. The materialized subquery rows
-                        // will be cross-joined naturally by the executor
-                        // (each row of supplier gets cross-joined with all
-                        // rows of revenue, then outer WHERE filters).
+                        // Phase 10 (TPCH-01 Q15): pull the alias from the
+                        // DERIVED_ALIASES thread-local map (populated by
+                        // the comma-followed subquery branch). Without
+                        // this, the JoinClause has alias=None and the
+                        // outer WHERE `revenue.l_suppkey` qualifier
+                        // cannot be resolved to a known joined table.
+                        let alias_for_join: Option<String> = table_alias
+                            .clone()
+                            .or_else(|| {
+                                DERIVED_ALIASES.with(|cell| {
+                                    cell.borrow().get(&table_name).cloned()
+                                })
+                            });
+                        chain.push(JoinClause {
+                            join_type: JoinType::Inner,
+                            table: table_name.clone(),
+                            alias: alias_for_join.clone(),
+                            on_clause: Expression::Literal("true".to_string()),
+                        });
                         remaining = rest;
                         joined.push(table_name.clone());
+                        if let Some(a) = alias_for_join {
+                            joined.push(a);
+                        }
                         continue;
                     }
                     let on = found.unwrap_or(Expression::Literal("true".to_string()));
