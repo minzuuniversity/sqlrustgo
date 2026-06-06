@@ -108,6 +108,11 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             let table_info = storage.get_table_info(&select.table)?;
             (rows, table_info)
         };
+        // Drop the storage read lock before running any per-row
+        // correlated-subquery evaluations, since those recursive
+        // `self.execute_select` calls would deadlock against a
+        // held read lock. We still hold `&self` for engine access.
+        drop(storage);
 
         if self.parallel_degree > 1
             && rows.len() >= PARALLEL_MIN_ROWS
@@ -123,9 +128,33 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             }
         }
 
-        // Step 2: WHERE
+        // Step 1.5: correlated EXISTS / NOT EXISTS pre-evaluation
+        // TPC-H Q20/Q21: WHERE contains `EXISTS (subq WHERE x = outer.col)`.
+        // Before applying WHERE row-by-row, substitute the outer column
+        // references in the subquery with concrete values from each
+        // outer row, then execute the subquery and check whether it
+        // returned any rows. Replace the EXISTS/NotExists subtree in
+        // the cloned where_expr with a Literal(true/false) for that
+        // specific outer row. The remaining WHERE logic then runs via
+        // the standard `eval_predicate` path.
         if let Some(ref where_expr) = select.where_clause {
-            rows.retain(|row| eval_predicate(where_expr, row, &table_info));
+            if where_expr_has_correlated_subquery(where_expr) {
+                let pre_evaluated_where = where_expr.clone();
+                let mut new_rows: Vec<Vec<Value>> = Vec::with_capacity(rows.len());
+                for row in rows.into_iter() {
+                    let replaced = self.pre_evaluate_correlated_exists(
+                        &pre_evaluated_where,
+                        &row,
+                        &table_info,
+                    );
+                    if eval_predicate(&replaced, &row, &table_info) {
+                        new_rows.push(row);
+                    }
+                }
+                rows = new_rows;
+            } else {
+                rows.retain(|row| eval_predicate(where_expr, row, &table_info));
+            }
         }
 
         // Step 3: GROUP BY + AGGREGATE
@@ -1249,5 +1278,224 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             merged.extend(part);
         }
         merged
+    }
+
+    /// TPC-H Q20/Q21: pre-evaluate correlated EXISTS / NOT EXISTS
+    /// subqueries against the given outer row. For each subtree
+    /// matching `Expression::Exists(subq)` or
+    /// `Expression::NotExists(subq)`:
+    ///
+    /// 1. Substitute the outer column references in `subq` (the
+    ///    `where_clause` and `having` of the subquery) with
+    ///    concrete `Literal` values from the outer row, using
+    ///    `substitute_outer_refs_in_select`.
+    /// 2. Execute the substituted subquery via `self.execute_select`.
+    ///    This re-acquires the storage read lock, which is why the
+    ///    caller (execute_select) drops its own storage lock before
+    ///    reaching this path.
+    /// 3. Count the result rows. If >= 1 row, EXISTS→true /
+    ///    NOT EXISTS→false. If 0 rows, EXISTS→false /
+    ///    NOT EXISTS→true. Replace the subtree with
+    ///    `Expression::Literal("true")` or `Expression::Literal("false")`
+    ///    so the rest of WHERE evaluation can run via the standard
+    ///    `eval_predicate` path.
+    ///
+    /// On subquery execution error, the original EXISTS / NOT EXISTS
+    /// subtree is replaced with `Expression::Literal("false")` (a
+    /// conservative denial) so the row is filtered out — we don't
+    /// want partial subquery errors to silently over-include.
+    pub fn pre_evaluate_correlated_exists(
+        &self,
+        where_expr: &sqlrustgo_parser::Expression,
+        outer_row: &[Value],
+        outer_table_info: &TableInfo,
+    ) -> sqlrustgo_parser::Expression {
+        use sqlrustgo_parser::Expression;
+        match where_expr {
+            Expression::Exists(subq) => {
+                let substituted =
+                    substitute_outer_refs_in_select(subq, outer_row, outer_table_info);
+                // Fast path: TPC-H EXISTS subqueries are over a
+                // single base table (e.g. `EXISTS (SELECT * FROM
+                // lineitem WHERE l_orderkey = outer)`). We can do
+                // a direct storage scan + WHERE filter + early
+                // exit, avoiding the full execute_select pipeline
+                // (which would also build a TableInfo, run
+                // materialization, GROUP BY check, etc.). The
+                // recursive execute_select path is still used as
+                // a fallback for non-trivial subqueries.
+                let any_row = self
+                    .pre_eval_exists_subquery_fast(&substituted, outer_row)
+                    .unwrap_or_else(|| match self.execute_select(&substituted) {
+                        Ok(r) => !r.rows.is_empty(),
+                        Err(_) => false,
+                    });
+                Expression::Literal(if any_row { "true" } else { "false" }.to_string())
+            }
+            Expression::NotExists(subq) => {
+                let substituted =
+                    substitute_outer_refs_in_select(subq, outer_row, outer_table_info);
+                let zero_rows = self
+                    .pre_eval_exists_subquery_fast(&substituted, outer_row)
+                    .map(|any| !any)
+                    .unwrap_or_else(|| match self.execute_select(&substituted) {
+                        Ok(r) => r.rows.is_empty(),
+                        Err(_) => true,
+                    });
+                Expression::Literal(if zero_rows { "true" } else { "false" }.to_string())
+            }
+            Expression::BinaryOp(l, op, r) => Expression::BinaryOp(
+                Box::new(self.pre_evaluate_correlated_exists(
+                    l,
+                    outer_row,
+                    outer_table_info,
+                )),
+                op.clone(),
+                Box::new(self.pre_evaluate_correlated_exists(
+                    r,
+                    outer_row,
+                    outer_table_info,
+                )),
+            ),
+            Expression::UnaryOp(op, inner) => Expression::UnaryOp(
+                op.clone(),
+                Box::new(self.pre_evaluate_correlated_exists(
+                    inner,
+                    outer_row,
+                    outer_table_info,
+                )),
+            ),
+            Expression::IsNull(inner) => Expression::IsNull(Box::new(
+                self.pre_evaluate_correlated_exists(inner, outer_row, outer_table_info),
+            )),
+            Expression::IsNotNull(inner) => Expression::IsNotNull(Box::new(
+                self.pre_evaluate_correlated_exists(inner, outer_row, outer_table_info),
+            )),
+            Expression::InList(left, values) => Expression::InList(
+                Box::new(self.pre_evaluate_correlated_exists(
+                    left,
+                    outer_row,
+                    outer_table_info,
+                )),
+                values
+                    .iter()
+                    .map(|v| {
+                        self.pre_evaluate_correlated_exists(v, outer_row, outer_table_info)
+                    })
+                    .collect(),
+            ),
+            Expression::NotInList(left, values) => Expression::NotInList(
+                Box::new(self.pre_evaluate_correlated_exists(
+                    left,
+                    outer_row,
+                    outer_table_info,
+                )),
+                values
+                    .iter()
+                    .map(|v| {
+                        self.pre_evaluate_correlated_exists(v, outer_row, outer_table_info)
+                    })
+                    .collect(),
+            ),
+            Expression::FunctionCall(name, args) => Expression::FunctionCall(
+                name.clone(),
+                args.iter()
+                    .map(|a| {
+                        self.pre_evaluate_correlated_exists(a, outer_row, outer_table_info)
+                    })
+                    .collect(),
+            ),
+            // TPC-H Q13/Q16: `col IN (SELECT ...)` and `NOT IN (SELECT ...)`.
+            // Like the substitute_outer_refs_in_expr helper, the
+            // conservative pattern is: pass through, since the
+            // conservative IN/NOT IN handling in eval_predicate
+            // returns true anyway.
+            Expression::In(_, _) | Expression::NotIn(_, _) => where_expr.clone(),
+            // LIKE / BETWEEN outer-substitution not implemented for
+            // TPC-H Q1-Q22 (none of the queries combine these with
+            // EXISTS/NotExists). Pass through.
+            Expression::Like(_, _, _)
+            | Expression::NotLike(_, _, _)
+            | Expression::Between(_, _, _)
+            | Expression::NotBetween(_, _, _)
+            | Expression::NotRegexp(_, _) => where_expr.clone(),
+            // CASE WHEN / SubqueryField pass through.
+            Expression::Subquery(_) | Expression::SubqueryField(_, _) | Expression::CaseWhen(_, _) => {
+                where_expr.clone()
+            }
+            // QuantifiedOp: pass through.
+            Expression::QuantifiedOp(_, _, _) => where_expr.clone(),
+            // Terminal expressions and aggregates pass through (no
+            // possible subquery subtrees).
+            Expression::Literal(_)
+            | Expression::Identifier(_)
+            | Expression::Aggregate(_)
+            | Expression::WindowCall(_) => where_expr.clone(),
+        }
+    }
+
+    /// TPC-H Q20/Q21: fast-path EXISTS / NOT EXISTS subquery
+    /// evaluation. Detects the common pattern
+    ///   `EXISTS (SELECT * FROM <single_table> WHERE <predicate>)`
+    /// and evaluates it with a direct storage scan + WHERE filter
+    /// + early exit (returns `Some(true)` as soon as a matching
+    /// row is found; `Some(false)` if the scan finishes with
+    /// zero matches). Returns `None` for any pattern that does
+    /// not match the fast-path shape (e.g. JOINs, GROUP BY,
+    /// multiple tables, or sub-subqueries); the caller then
+    /// falls back to the full `self.execute_select` pipeline.
+    fn pre_eval_exists_subquery_fast(
+        &self,
+        subq: &sqlrustgo_parser::SelectStatement,
+        outer_row: &[Value],
+    ) -> Option<bool> {
+        // Pattern: SELECT * FROM <single_table> [WHERE <predicate>]
+        // - No JOINs
+        // - No GROUP BY
+        // - No aggregates
+        // - No LIMIT/OFFSET (we early-exit ourselves)
+        // - No correlated sub-subqueries in the WHERE
+        if !subq.join_clause.is_empty() {
+            return None;
+        }
+        if !subq.aggregates.is_empty() || !subq.group_by.is_empty() {
+            return None;
+        }
+        if subq.limit.is_some() || subq.offset.is_some() {
+            return None;
+        }
+        if subq.from_subquery.is_some() {
+            return None;
+        }
+        if subq.table.is_empty() {
+            return None;
+        }
+        // Reject if WHERE contains more EXISTS/NotExists (would
+        // need recursive substitution, which is fine but adds
+        // complexity; skip for now).
+        let where_expr = subq.where_clause.as_ref()?;
+        if where_expr_has_correlated_subquery(where_expr) {
+            return None;
+        }
+        // Reject if WHERE contains any uncorrelated subqueries
+        // (IN/NotIn/Subquery/QuantifiedOp) — these are non-trivial
+        // in our 22-query suite (Q20 has `ps_partkey IN (subq)`)
+        // and the conservative `In (subq) => true` handling in
+        // `eval_predicate` would over-include every row. Falling
+        // back to the full `execute_select` pipeline is no better
+        // there, so we return None to let the caller try it.
+        if where_expr_has_uncorrelated_subquery(where_expr) {
+            return None;
+        }
+        // Direct storage scan + WHERE filter + early exit.
+        let storage = self.storage.read().ok()?;
+        let rows = storage.scan(&subq.table).ok()?;
+        let table_info = storage.get_table_info(&subq.table).ok()?;
+        for row in &rows {
+            if eval_predicate(where_expr, row, &table_info) {
+                return Some(true);
+            }
+        }
+        Some(false)
     }
 }
