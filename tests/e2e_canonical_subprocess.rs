@@ -96,7 +96,6 @@ fn spawn_canonical_with_client() -> (SubprocessHandle, MySqlTestClient) {
 // DDL — Data Definition Language
 // =========================================================================
 
-#[ignore = "L3 acceptance — implementation pending (audit 2026-06-04)"]
 #[test]
 fn e2e_ddl_create_insert_select_drop() {
     let (_server, mut c) = spawn_canonical_with_client();
@@ -131,7 +130,6 @@ fn e2e_ddl_create_insert_select_drop() {
     }
 }
 
-#[ignore = "L3 acceptance — implementation pending (audit 2026-06-04)"]
 #[test]
 fn e2e_ddl_multiple_tables() {
     let (_server, mut c) = spawn_canonical_with_client();
@@ -151,7 +149,6 @@ fn e2e_ddl_multiple_tables() {
 // DML — Data Manipulation Language
 // =========================================================================
 
-#[ignore = "L3 acceptance — implementation pending (audit 2026-06-04)"]
 #[test]
 fn e2e_dml_insert_update_delete() {
     let (_server, mut c) = spawn_canonical_with_client();
@@ -182,7 +179,6 @@ fn e2e_dml_insert_update_delete() {
 // DQL — Data Query Language
 // =========================================================================
 
-#[ignore = "L3 acceptance — implementation pending (audit 2026-06-04)"]
 #[test]
 fn e2e_dql_where_order_by() {
     let (_server, mut c) = spawn_canonical_with_client();
@@ -201,7 +197,6 @@ fn e2e_dql_where_order_by() {
     assert_eq!(got, vec![3, 4, 5]);
 }
 
-#[ignore = "L3 acceptance — implementation pending (audit 2026-06-04)"]
 #[test]
 fn e2e_dql_aggregate_count_sum() {
     let (_server, mut c) = spawn_canonical_with_client();
@@ -215,7 +210,6 @@ fn e2e_dql_aggregate_count_sum() {
     assert_eq!(sum, 150);
 }
 
-#[ignore = "L3 acceptance — implementation pending (audit 2026-06-04)"]
 #[test]
 fn e2e_dql_limit() {
     let (_server, mut c) = spawn_canonical_with_client();
@@ -233,7 +227,6 @@ fn e2e_dql_limit() {
 // Transactions
 // =========================================================================
 
-#[ignore = "L3 acceptance — implementation pending (audit 2026-06-04)"]
 #[test]
 fn e2e_tx_begin_commit_visible() {
     let (_server, mut c) = spawn_canonical_with_client();
@@ -252,7 +245,6 @@ fn e2e_tx_begin_commit_visible() {
     );
 }
 
-#[ignore = "L3 acceptance — implementation pending (audit 2026-06-04)"]
 #[test]
 fn e2e_tx_begin_rollback_returns_ok() {
     let (_server, mut c) = spawn_canonical_with_client();
@@ -276,7 +268,6 @@ fn e2e_tx_begin_rollback_returns_ok() {
 // SHOW — catalog introspection
 // =========================================================================
 
-#[ignore = "L3 acceptance — implementation pending (audit 2026-06-04)"]
 #[test]
 fn e2e_show_tables_after_creates() {
     let (_server, mut c) = spawn_canonical_with_client();
@@ -293,7 +284,6 @@ fn e2e_show_tables_after_creates() {
     assert!(!names.is_empty(), "SHOW TABLES should return ≥ 1 table");
 }
 
-#[ignore = "L3 acceptance — implementation pending (audit 2026-06-04)"]
 #[test]
 fn e2e_show_databases_one_or_more() {
     let (_server, mut c) = spawn_canonical_with_client();
@@ -308,7 +298,6 @@ fn e2e_show_databases_one_or_more() {
 // Subcommand / binary surface
 // =========================================================================
 
-#[ignore = "L3 acceptance — implementation pending (audit 2026-06-04)"]
 #[test]
 fn e2e_help_lists_every_subcommand() {
     let bin = canonical_binary();
@@ -325,7 +314,6 @@ fn e2e_help_lists_every_subcommand() {
     }
 }
 
-#[ignore = "L3 acceptance — implementation pending (audit 2026-06-04)"]
 #[test]
 fn e2e_unknown_subcommand_fails_nonzero() {
     let bin = canonical_binary();
@@ -339,7 +327,6 @@ fn e2e_unknown_subcommand_fails_nonzero() {
     );
 }
 
-#[ignore = "L3 acceptance — implementation pending (audit 2026-06-04)"]
 #[test]
 fn e2e_exec_subcommand_runs_sql() {
     let bin = canonical_binary();
@@ -358,7 +345,6 @@ fn e2e_exec_subcommand_runs_sql() {
     );
 }
 
-#[ignore = "L3 acceptance — implementation pending (audit 2026-06-04)"]
 #[test]
 fn e2e_bench_subcommand_prints_migration_notice() {
     let bin = canonical_binary();
@@ -375,7 +361,6 @@ fn e2e_bench_subcommand_prints_migration_notice() {
     );
 }
 
-#[ignore = "L3 acceptance — implementation pending (audit 2026-06-04)"]
 #[test]
 fn e2e_legacy_binary_sqlrustgo_deprecated() {
     let bin = workspace_root()
