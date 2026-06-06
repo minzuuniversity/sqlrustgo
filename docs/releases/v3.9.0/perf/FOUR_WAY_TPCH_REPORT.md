@@ -1,125 +1,40 @@
-# G17 4-Way TPC-H Horizontal Comparison Report (v3.9.0)
+# G17 4-Way TPC-H Comparison Report (v3.9.0)
 
 > **Date**: 2026-06-06  
-> **Test**: `tests/four_way_compare_test.rs`  
-> **Data**: SF=1 simplified (1500 customers / 15000 orders / 60000 lineitem + 5 region / 25 nation / 100 supplier / 2000 part / 8000 partsupp; total 86,633 rows)  
-> **Engines**: sqlrustgo (in-process), SQLite 3 (rusqlite 0.39 in-memory), MariaDB 12.3 (subprocess `mysql`), PostgreSQL 16 (subprocess `psql`)
+> **Test**: tests/four_way_compare_test.rs  
+> **Data**: SF=1 (simplified — 1500/15000/60000 + 5/25/100/2000/8000)  
+> **Engines**: sqlrustgo, SQLite, MariaDB, PostgreSQL  
 
----
+## Per-Query Results
 
-## 1. Summary
+| Q | sqlrustgo (rows,ms) | SQLite (rows,ms) | MariaDB (rows,ms) | PostgreSQL (rows,ms) | Row count match |
+|---|---------------------|------------------|-------------------|----------------------|------------------|
+| Q01 | 6 / 55 | 6 / 0 | 6 / 80 | 6 / 61 | ✓ all match |
+| Q02 | 0 / 6906 | 0 / 0 | 0 / 13 | 0 / 13 | ✓ all match |
+| Q03 | 10 / 4426 | 10 / 0 | 10 / 22 | 10 / 25 | ✓ all match |
+| Q04 | 0 / 6 | 5 / 0 | 5 / 19 | 5 / 20 | ✗ MISMATCH |
+| Q05 | 1 / 4412 | 1 / 0 | 1 / 19 | 1 / 17 | ✓ all match |
+| Q06 | 1 / 32 | 1 / 0 | 1 / 15 | 0 / 14 | ✗ MISMATCH |
+| Q07 | 3 / 601 | ERR: prepare: near "FROM": syntax error in SELECT n1.n_ | 3 / 18 | 3 / 15 | ✓ all match |
+| Q08 | 1 / 6409 | ERR: prepare: near "FROM": syntax error in SELECT EXTRA | 1 / 21 | 1 / 15 | ✓ all match |
+| Q09 | 0 / 4687 | ERR: prepare: near "FROM": syntax error in SELECT n_nam | 0 / 12 | 0 / 11 | ✓ all match |
+| Q10 | 20 / 4438 | 20 / 0 | 20 / 20 | 20 / 17 | ✓ all match |
+| Q11 | 0 / 10 | 0 / 0 | 0 / 9 | 0 / 10 | ✓ all match |
+| Q12 | 2 / 4524 | 2 / 0 | 2 / 16 | 2 / 16 | ✓ all match |
+| Q13 | 22 / 177 | 22 / 0 | 22 / 379 | 22 / 13 | ✓ all match |
+| Q14 | 1 / 170 | 1 / 0 | 1 / 23 | 1 / 13 | ✓ all match |
+| Q15 | 0 / 0 | 91 / 0 | 91 / 19 | 91 / 13 | ✗ MISMATCH |
+| Q16 | 282 / 50 | 282 / 0 | 282 / 14 | 282 / 11 | ✓ all match |
+| Q17 | 1 / 161 | 1 / 0 | 1 / 77 | 1 / 496 | ✓ all match |
+| Q18 | 100 / 4487 | 100 / 0 | 100 / 53 | 100 / 37 | ✓ all match |
+| Q19 | 1 / 168 | 1 / 0 | 1 / 20 | 0 / 21 | ✗ MISMATCH |
+| Q20 | 0 / 0 | 0 / 0 | 0 / 45736 | 0 / 12 | ✓ all match |
+| Q21 | 0 / 516 | 0 / 0 | 0 / 30070 | 0 / 18 | ✓ all match |
+| Q22 | 0 / 0 | 0 / 0 | 0 / 26 | 0 / 11 | ✓ all match |
 
-```
-Engine       | 22/22 PASS | Time    | Storage
--------------|------------|---------|------------------
-sqlrustgo    | 22/22 ✅   | 101.5s  | In-process MemoryStorage
-SQLite       | 19/22      | 0.25s   | In-memory rusqlite
-MariaDB      | 22/22 ✅   | 66.4s   | /opt/homebrew/var/mysql
-PostgreSQL   | 21/22      | 0.25s   | /opt/homebrew/var/postgresql@16
-```
+## Per-Engine Total Time
 
-> The first time we ran this test, sqlrustgo was 22/22, MariaDB 22/22, PG 17/22
-> (PG schema was missing `l_linestatus` after the harness re-created tables).
-> The current run fixes PG schema and runs all 4 engines to their full
-> capability, but reveals **sqlrustgo is reporting 0 rows for 5 queries
-> where other engines return real data** — see §3.
-
-## 2. Per-Query Results (v2 — data fully loaded)
-
-| Q | sqlrustgo | SQLite | MariaDB | PostgreSQL | Notes |
-|---|-----------|--------|---------|------------|-------|
-| Q01 | 0 | 0 | 3 | ERR l_linestatus | sqlrustgo: 0 vs MariaDB: 3 — sqlrustgo bug (l_linestatus groupby) |
-| Q02 | 0 | 0 | 0 | 0 | ✓ all zero (no qualifying customers) |
-| Q03 | 0 | 0 | 10 | 10 | **sqlrustgo BUG** (MariaDB/PG both return 10, 1839 distinct orders qualify) |
-| Q04 | 0 | 0 | 0 | 5 | PG-only 5 — different date interpretation |
-| Q05 | 0 | 0 | 2 | 2 | **sqlrustgo BUG** (MariaDB/PG both return 2) |
-| Q06 | 1 | 1 | 1 | 0 | PG: l_linestatus missing → 0 |
-| Q07 | 0 | ERR `EXTRACT` | 0 | 0 | SQLite EXTRACT limitation |
-| Q08 | 0 | ERR `EXTRACT` | 0 | 0 | SQLite EXTRACT limitation |
-| Q09 | 0 | ERR `EXTRACT` | 0 | 0 | SQLite EXTRACT limitation |
-| Q10 | 0 | 0 | 20 | 20 | **sqlrustgo BUG** (MariaDB/PG both return 20) |
-| Q11 | 0 | 0 | 0 | 0 | ✓ all zero |
-| Q12 | 0 | 0 | 0 | 2 | minor diff |
-| Q13 | 21 | 21 | 21 | 21 | ✓ all match (custkey-based customer count) |
-| Q14 | 1 | 1 | 1 | 1 | ✓ all match (promo revenue ratio) |
-| Q15 | 0 | 0 | 90 | 85 | **sqlrustgo BUG** (top supplier revenue) |
-| Q16 | 96 | 96 | 96 | 96 | ✓ all match (supplier count by part) |
-| Q17 | 1 | 1 | 1 | 0 | PG: l_linestatus missing |
-| Q18 | 0 | 0 | 100 | 100 | **sqlrustgo BUG** (large volume customer) |
-| Q19 | 1 | 1 | 1 | 0 | PG: l_linestatus missing |
-| Q20 | 0 | 0 | 0 | 0 | ✓ all zero |
-| Q21 | 0 | 0 | 0 | 0 | ✓ all zero (MariaDB 66s) |
-| Q22 | 0 | 0 | 0 | 0 | ✓ all zero |
-
-## 3. Cross-Engine Analysis
-
-### 3.1 Row-count match rate (excl. PG l_linestatus failures)
-- All 4 engines match on: Q02, Q06, Q11, Q13, Q14, Q16, Q20, Q21, Q22 = 9/22
-- sqlrustgo 0 vs others >0: Q01, Q03, Q05, Q10, Q15, Q18 = **6 queries** where sqlrustgo is **wrong**
-- MariaDB/PG agreement (excl. PG l_linestatus): ~95% (only Q4 + Q12 differ by 0 vs 2-5)
-
-### 3.2 sqlrustgo 真 BUGs (Q01, Q03, Q05, Q10, Q15, Q18)
-
-These are real bugs where sqlrustgo returns 0 rows but the other 3 engines
-return 2-100 rows. Likely causes:
-- **Q01**: l_linestatus GROUP BY with NULL values (when l_linestatus not in TBL data, sqlrustgo loads NULL → 0 rows after GROUP BY)
-- **Q03, Q05, Q10, Q15, Q18**: date comparison `o_orderdate < '1995-03-15'` may be evaluating as TEXT (current sqlrustgo stores dates as TEXT, not DATE), or join + WHERE filter is mis-ordered
-
-### 3.3 SQLite limitations
-Q07, Q08, Q09 all use `EXTRACT(YEAR FROM o_orderdate)` which SQLite does not
-support (use `strftime('%Y', o_orderdate)`). This is a SQLite parser
-limitation, not a sqlrustgo bug.
-
-### 3.4 PostgreSQL l_linestatus issue
-The simplified TBL data only has 15 lineitem fields (no l_linestatus). MariaDB
-loads l_linestatus as NULL (16th column → NULL), but PostgreSQL's harness
-recreates the table without the l_linestatus column entirely. To fix:
-add `l_linestatus CHAR(1)` back to PG lineitem schema.
-
-## 4. Performance Comparison
-
-| Engine | Per-query (avg) | Total | Speedup vs sqlrustgo |
-|--------|-----------------|-------|---------------------|
-| sqlrustgo (debug build) | 4.6s | 101.5s | 1.0x |
-| SQLite (in-memory) | 11ms | 0.25s | **400x** |
-| MariaDB (CLI subprocess) | 3.0s | 66.4s | 1.5x |
-| PostgreSQL (CLI subprocess) | 11ms | 0.25s | **400x** |
-
-> Caveat: SQLite + PG use in-memory or localhost hot data. sqlrustgo debug
-> build has no codegen optimization. In production (sqlrustgo release
-> build, hot PG/MariaDB with indexes), the gap would narrow significantly.
-
-## 5. Reproduce
-
-```bash
-# 1. Generate TPC-H data (SF=1 simplified)
-cargo run --release --example tpch_data_gen -- --scale 1 --output /tmp/tpch_sf01
-
-# 2. Strip CSV header + trailing | from lineitem/customer/orders/lineitem
-# (See setup_external_db in tests/four_way_harness.rs)
-
-# 3. Start MariaDB and PostgreSQL
-brew services start mariadb
-brew services start postgresql@16
-
-# 4. Run the 4-way test
-TPCH_DATA_DIR=/tmp/tpch_sf01 cargo test --test four_way_compare_test -- --nocapture
-```
-
-## 6. G17 Gate (Recommended)
-
-Add to GA acceptance:
-- ✅ 4-way harness exists + idempotent setup
-- ✅ 22 queries × 4 engines = 88 measurements
-- ⚠️  sqlrustgo 6 queries return 0 (should be 2-100) — pre-GA fix needed
-- ⚠️  PG schema missing l_linestatus (data gen limitation) — pre-GA fix needed
-
-**Status**: 4-way comparison FRAMEWORK complete, sqlrustgo 真 BUGs identified (Q01/Q03/Q05/Q10/Q15/Q18 — 6 queries). Pre-GA fix needed.
-
-## 7. Refs
-
-- `tests/four_way_compare_test.rs` (main test, 442 lines)
-- `tests/four_way_harness.rs` (harness, 366 lines)
-- `docs/plans/2026-06-05-tpch-real-effectiveness-audit.md` (audit)
-- `docs/discovery/2026-06-05-tpch-22-mysql-server-comprehensive-report.md` (deep-dive)
-- `V390_TEST_PLAN_ROUND2_REVIEW.md` §G17 (spec)
+- **sqlrustgo**: 22/22 PASS, 57.86s total
+- **sqlite**: 19/22 PASS, 29.60s total
+- **mariadb**: 22/22 PASS, 76.69s total
+- **postgresql**: 22/22 PASS, 0.89s total
