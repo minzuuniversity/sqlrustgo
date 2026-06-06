@@ -42,7 +42,8 @@ v3.9.0/
 │   ├── RC1_RELEASE_NOTES.md
 │   ├── RC1_GATE_REPORT.md
 │   ├── RC2_RELEASE_NOTES.md
-│   └── RC2_GATE_REPORT.md
+│   ├── RC2_GATE_REPORT.md
+│   └── RC3_PLAN.md                   # Adjusted rc2 → rc3 → rc4 → ga plan
 ├── ga/                                # GA 阶段文档 (Phase 6)
 │   └── (待创建)
 ├── perf/                              # 性能基线 (W11 G11-G16)

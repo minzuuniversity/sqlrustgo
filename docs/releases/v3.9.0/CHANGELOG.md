@@ -85,5 +85,16 @@
 
 | 版本 | 发布日期 | 阶段 |
 |------|---------|------|
-| v3.9.0 | 2026-09-23 (目标) | RC1 (16/16 closed + G11-G16) |
+| v3.9.0-rc2 | 2026-06-05 | RC2 (form-only validation milestone) |
+| v3.9.0-rc1 | 2026-06-05 | RC1 (form-only validation milestone) |
+| v3.9.0-beta | 2026-06-05 | Beta (form-only validation milestone) |
+| v3.9.0-alpha1 | 2026-06-05 | Alpha (entry baseline) |
+| v3.9.0-rc3 | (planned) | after P0 issues closed (server perf + L3 + TX/WAL) |
+| v3.9.0-rc4 | (planned) | after P1 issues closed (Z6G4 real runs) |
+| v3.9.0-ga | (planned, 2026-09-23) | after all 13 critical-path items closed + 168h real soak |
 | v3.8.0 | 2026-06-04 | Strong Beta |
+
+🔴 **HONESTY NOTE (2026-06-05)**: rc1, beta, rc2 were cut based on form-only gate validation. See
+`docs/audit/status/2026-06-06-test-authenticity-analysis-v390.md` for verified findings.
+Real production-equivalent coverage at rc2: ~35%. 13 critical-path items (#3221-#3231) must be
+closed before legitimate v3.9.0-ga cut.
