@@ -469,6 +469,10 @@ path = "tests/pr_template_and_full_gate_test.rs"
 name = "tpch_value_correctness_test"
 path = "tests/tpch_value_correctness_test.rs"
 
+[[test]]
+name = "tpch_per_query_timeout_test"
+path = "tests/tpch_per_query_timeout_test.rs"
+
 # Aliases for ci/ subdir tests (basename != cargo name)
 [[test]]
 name = "ci_test"
