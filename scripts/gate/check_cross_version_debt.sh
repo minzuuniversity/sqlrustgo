@@ -299,9 +299,106 @@ else
     echo "  ✅ 0 unimplemented debt items (all 5 symbols found)"
 fi
 
+# --- 5c: Detect F-XX main-path functions in execution_engine.rs (#3136) ---
+# A closed F-XX must have at least one `fn execute_{keyword}_*` (or
+# `fn {keyword}_*`) in src/execution_engine.rs. We map each F-id to a
+# keyword derived from the test basename. Without this, the gate would
+# accept any ✅ in markdown as proof of closure (文档验证文档).
 echo ""
-if [ $REALITY_FAIL -gt 0 ]; then
-    echo "  Code Reality: ❌ FAIL ($REALITY_FAIL unimplemented, $REALITY_WARN isolated)"
+echo "  --- 10 F-XX main-path detection (#3136 Part 2: rg 'fn execute_.* {FXX}') ---"
+MAIN_PATH_MISSING=()
+declare -A F_KEYWORD=(
+    [F-16]="gap_lock"
+    [F-23]="clustered_index"
+    [F-24]="adaptive_hash"
+    [F-25]="change_buffer"
+    [F-26]="double_write"
+    [F-27]="table_compression"
+    [F-29]="row_level_security"
+    [F-31]="performance_schema"
+    [F-32]="mysqladmin"
+    [F-35]="password_rotation"
+)
+for f_id in "${!F_KEYWORD[@]}"; do
+    kw="${F_KEYWORD[$f_id]}"
+    if [ -z "$(rg -l "fn\\s+execute_${kw}\\b|fn\\s+${kw}_\\w+\\s*\\(" src/execution_engine.rs 2>/dev/null | head -1)" ] \
+       && [ -z "$(rg -l "fn\\s+${kw}\\b" src/execution_engine.rs 2>/dev/null | head -1)" ]; then
+        MAIN_PATH_MISSING+=("$f_id:no execute_${kw}* or ${kw}* in src/execution_engine.rs")
+    fi
+done
+if [ ${#MAIN_PATH_MISSING[@]} -gt 0 ]; then
+    echo "  ⚠️  ${#MAIN_PATH_MISSING[@]} F-XX missing main-path function in src/execution_engine.rs:"
+    for m in "${MAIN_PATH_MISSING[@]}"; do
+        echo "      - ${m}"
+    done
+    echo "      → Per #3136, these cannot be considered CLOSED without executor integration."
+    REALITY_WARN=$((REALITY_WARN + ${#MAIN_PATH_MISSING[@]}))
+else
+    echo "  ✅ All 10 F-XX have main-path functions in src/execution_engine.rs"
+fi
+
+# --- 5d: Detect F-XX SPEC docs existence (#3136 Part 3) ---
+# A closed F-XX must have a spec at docs/releases/v3.8.0/specs/debt/
+# naming convention F{id-without-dash}_{KEYWORD}_SPEC.md.
+echo ""
+echo "  --- 10 F-XX SPEC docs detection (#3136 Part 3: docs/.../specs/debt/F{XX}_*.md) ---"
+SPEC_MISSING=()
+SPEC_DIR="$REPO_DIR/docs/releases/v3.8.0/specs/debt"
+for f_id in "${!F_TEST_FILE[@]}"; do
+    # Convert F-16 -> F16
+    spec_prefix=$(echo "$f_id" | tr -d '-')
+    if [ ! -d "$SPEC_DIR" ]; then
+        SPEC_MISSING+=("$f_id:SPEC directory missing: $SPEC_DIR")
+        continue
+    fi
+    if [ -z "$(ls "$SPEC_DIR"/${spec_prefix}_*_SPEC.md 2>/dev/null | head -1)" ]; then
+        SPEC_MISSING+=("$f_id:no ${spec_prefix}_*_SPEC.md in specs/debt/")
+    fi
+done
+if [ ${#SPEC_MISSING[@]} -gt 0 ]; then
+    echo "  ⚠️  ${#SPEC_MISSING[@]} F-XX missing SPEC docs:"
+    for m in "${SPEC_MISSING[@]}"; do
+        echo "      - ${m}"
+    done
+    echo "      → Per #3136, CLOSED status requires spec docs."
+    REALITY_WARN=$((REALITY_WARN + ${#SPEC_MISSING[@]}))
+else
+    echo "  ✅ All 10 F-XX have SPEC docs in specs/debt/"
+fi
+
+# --- 5e: Detect F-XX test names registered in CI D6_INTEGRATION_TESTS (#3136 Part 4) ---
+# A closed F-XX must have its test file basename registered in
+# scripts/gate/check_rc_ga_gate.sh D6_INTEGRATION_TESTS array. Without
+# CI registration, "closed in markdown" gives no signal.
+echo ""
+echo "  --- 10 F-XX CI D6_INTEGRATION_TESTS registration (#3136 Part 4) ---"
+CI_MISSING=()
+D6_ARRAY_FILE="$REPO_DIR/scripts/gate/check_rc_ga_gate.sh"
+for f_id in "${!F_TEST_FILE[@]}"; do
+    test_basename="${F_TEST_FILE[$f_id]}"
+    # Strip .rs extension (D6 array uses basenames without .rs)
+    test_name="${test_basename%.rs}"
+    if [ -f "$D6_ARRAY_FILE" ] && ! grep -qE "\"$test_name\"|^$test_name\\b" "$D6_ARRAY_FILE" 2>/dev/null; then
+        CI_MISSING+=("$f_id:'$test_name' not in check_rc_ga_gate.sh D6_INTEGRATION_TESTS")
+    fi
+done
+if [ ${#CI_MISSING[@]} -gt 0 ]; then
+    echo "  ⚠️  ${#CI_MISSING[@]} F-XX not registered in CI D6_INTEGRATION_TESTS:"
+    for m in "${CI_MISSING[@]}"; do
+        echo "      - ${m}"
+    done
+    echo "      → Per #3136, CLOSED status requires CI registration."
+    REALITY_WARN=$((REALITY_WARN + ${#CI_MISSING[@]}))
+else
+    echo "  ✅ All 10 F-XX registered in CI D6_INTEGRATION_TESTS"
+fi
+
+echo ""
+# Code Reality severity: FAIL when unimplemented symbols (5b) OR
+# missing F-XX main-path functions (5c) detected; otherwise WARN.
+# Per #3136, missing main-path = cannot be considered CLOSED.
+if [ $REALITY_FAIL -gt 0 ] || [ ${#MAIN_PATH_MISSING[@]} -gt 0 ]; then
+    echo "  Code Reality: ❌ FAIL (${REALITY_FAIL} unimplemented, ${#MAIN_PATH_MISSING[@]} missing main-path, ${REALITY_WARN} isolated)"
 elif [ $REALITY_WARN -gt 0 ]; then
     echo "  Code Reality: ⚠️  WARN ($REALITY_WARN isolated tests, 0 unimplemented)"
 else
