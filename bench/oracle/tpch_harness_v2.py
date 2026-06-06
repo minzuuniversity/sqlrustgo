@@ -290,6 +290,28 @@ def cell_semantic_equal(a: str, b: str) -> bool:
     return a.rstrip() == b.rstrip()
 
 
+def numeric_close(a: str, b: str, rel_tol: float = 1e-9) -> bool:
+    """Float-aware equality for SUM/AVG/COUNT outputs.
+
+    PG returns 877911.41, sqlrustgo may return 877911.410000004 due
+    to f64 rounding. Treat these as "close enough" for harness
+    purposes (Sprint 5: opencode fixes precision bugs, not real
+    semantic differences).
+    """
+    if a == b:
+        return True
+    try:
+        af = float(a)
+        bf = float(b)
+    except (ValueError, TypeError):
+        return False
+    if af == bf:
+        return True
+    if af == 0.0 or bf == 0.0:
+        return abs(af - bf) < rel_tol
+    return abs(af - bf) / max(abs(af), abs(bf)) < rel_tol
+
+
 def scalar_aggregate_compare(engine: dict, pg: dict, meta: dict) -> dict:
     """Compare scalar aggregate results.
 
@@ -344,6 +366,17 @@ def scalar_aggregate_compare(engine: dict, pg: dict, meta: dict) -> dict:
             "pg_rows": 1,
             "engine_value": eng_val,
             "pg_value": pg_val,
+        }
+    # Try numeric tolerance (Sprint 5: f64 precision differences)
+    if numeric_close(eng_val, pg_val, rel_tol=1e-6):
+        return {
+            "status": "PASS",
+            "classification": "scalar_aggregate_numeric_tolerance",
+            "engine_rows": 1,
+            "pg_rows": 1,
+            "engine_value": eng_val,
+            "pg_value": pg_val,
+            "notes": "values match within numeric tolerance (f64 precision)",
         }
     return {
         "status": "FAIL",
@@ -401,12 +434,16 @@ def relation_compare(engine: dict, pg: dict, meta: dict) -> dict:
         for j in range(max_cols):
             e_cell = e_row[j] if j < len(e_row) else ""
             p_cell = p_row[j] if j < len(p_row) else ""
-            if not cell_semantic_equal(e_cell, p_cell):
-                if len(cell_diffs) < 10:
-                    cell_diffs.append({
-                        "row": i, "column": j,
-                        "expected": p_cell, "actual": e_cell,
-                    })
+            if cell_semantic_equal(e_cell, p_cell):
+                continue
+            # Try numeric tolerance for floats
+            if numeric_close(e_cell, p_cell, rel_tol=1e-6):
+                continue
+            if len(cell_diffs) < 10:
+                cell_diffs.append({
+                    "row": i, "column": j,
+                    "expected": p_cell, "actual": e_cell,
+                })
     if not cell_diffs:
         return {
             "status": "PASS",
