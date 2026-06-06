@@ -51,13 +51,28 @@ pub fn parse_tbl_line(line: &str, expected_columns: usize) -> Result<Vec<SqlValu
     Ok(record)
 }
 
-/// Build a single multi-row INSERT and execute it.
+/// Bulk-insert pre-parsed records directly into storage, bypassing
+/// the SQL parser.
 ///
-/// Returns the number of rows inserted (from affected_rows).
+/// Returns the number of rows inserted (== rows.len() on success).
 ///
 /// Generic over the storage backend so it works with both
 /// `MemoryStorage` (used in unit tests) and `WalStorage<FileStorage,
 /// FileBackedWalManager>` (the production ephemeral server's engine).
+///
+/// ## Why bypass the parser?
+///
+/// The previous implementation built a single
+/// `INSERT INTO t VALUES (...), (...), ...` string (~2 MB for a 60 000-row
+/// lineitem.tbl) and ran it through `engine.execute()`, which re-parses
+/// the entire SQL string every call. On canonical SF=0.01 a 60 000-row
+/// lineitem load took >5 min through that path.
+///
+/// `engine.bulk_insert_records(table, rows)` takes pre-parsed records
+/// and hands them straight to `Storage::insert`, which writes to the
+/// buffer pool + WAL in one go. No parser, no AST allocation, no
+/// multi-MB string concatenation. Same transactional guarantees as a
+/// SQL INSERT (auto-commit per call).
 pub fn bulk_insert<S: StorageEngine + 'static>(
     engine: &mut ExecutionEngine<S>,
     table: &str,
@@ -67,28 +82,20 @@ pub fn bulk_insert<S: StorageEngine + 'static>(
         return Ok(0);
     }
 
-    let mut values_sql = String::with_capacity(rows.len() * 32);
-    for (i, row) in rows.iter().enumerate() {
-        if i > 0 {
-            values_sql.push_str(", ");
-        }
-        values_sql.push('(');
-        for (j, v) in row.iter().enumerate() {
-            if j > 0 {
-                values_sql.push_str(", ");
-            }
-            values_sql.push_str(&sql_value_literal(v));
-        }
-        values_sql.push(')');
-    }
-
-    let sql = format!("INSERT INTO {} VALUES {}", table, values_sql);
-    let result = engine
-        .execute(&sql)
-        .map_err(|e| format!("bulk_insert execute failed: {}", e))?;
-    Ok(result.affected_rows as u64)
+    // Convert Vec<Vec<SqlValue>> into the storage's Record type. They are
+    // the same shape (Record == Vec<Value>), so the conversion is a
+    // cheap type-coercion rather than a clone.
+    let records: Vec<sqlrustgo_storage::Record> = rows;
+    let n = engine
+        .bulk_insert_records(table, records)
+        .map_err(|e| format!("bulk_insert_records failed: {}", e))?;
+    Ok(n)
 }
 
+// Kept for future use (e.g. tests, debug printing). The hot path now
+// hands pre-parsed records straight to `Storage::insert` and never
+// builds SQL literals.
+#[allow(dead_code)]
 fn sql_value_literal(v: &SqlValue) -> String {
     match v {
         SqlValue::Null => "NULL".to_string(),
