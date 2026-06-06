@@ -198,6 +198,34 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         &self.storage
     }
 
+    /// Bulk-insert pre-parsed records directly into storage, bypassing
+    /// the SQL parser. This is the LOAD DATA LOCAL INFILE hot path: a
+    /// 60 000-row lineitem.tbl used to take >5 min because the previous
+    /// implementation built a single `INSERT INTO ... VALUES (...), (...), ...`
+    /// SQL string (~2 MB for lineitem) and ran it through `execute()`,
+    /// which re-parses the SQL every batch. With this method we hand the
+    /// pre-parsed `Vec<Record>` straight to `Storage::insert`, which
+    /// writes to the buffer pool + WAL in one go. Same transactional
+    /// guarantees as a SQL INSERT (auto-commit per call), but no parser,
+    /// no AST allocation, and no 2 MB string concatenation.
+    ///
+    /// Returns the number of rows inserted (== records.len() on success).
+    pub fn bulk_insert_records(
+        &self,
+        table: &str,
+        records: Vec<sqlrustgo_storage::Record>,
+    ) -> SqlResult<u64> {
+        let n = records.len() as u64;
+        let mut storage = self
+            .storage
+            .write()
+            .map_err(|e| SqlError::IoError(format!("storage lock poisoned: {}", e)))?;
+        storage
+            .insert(table, records)
+            .map_err(|e| SqlError::ExecutionError(format!("bulk_insert_records: {}", e)))?;
+        Ok(n)
+    }
+
     // CBO estimation methods extracted to cbo_estimator.rs (SPEC-012).
     // Thin forwarder methods retained for backwards-compatible public API.
 
