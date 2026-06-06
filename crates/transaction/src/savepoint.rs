@@ -1,5 +1,3 @@
-use serde::{Deserialize, Serialize};
-
 #[derive(Debug, Clone)]
 pub enum UndoRecord {
     Insert { key: Vec<u8> },
