@@ -471,6 +471,7 @@ def main():
     p_run.add_argument("--engine-bin", help="Path to sqlrustgo binary (Sprint 5: optional)")
     p_run.add_argument("--report", help="Output JSON report path")
     p_run.add_argument("--query", help="Run single query (Q1..Q22)")
+    p_run.add_argument("--timeout", type=int, default=15, help="Per-query timeout in seconds (default 15)")
 
     p_val = sub.add_parser("validate", help="Validate PG matches snapshot fingerprint")
     p_val.add_argument("--snapshot", required=True)
@@ -545,7 +546,7 @@ def main():
                 print(f"  {q}: SKIP (file not found)", file=sys.stderr)
                 continue
             sql = sql_path.read_text().strip().rstrip(";")
-            verdict = run_one(q, sql)
+            verdict = run_one(q, sql, timeout_sec=args.timeout)
             icon = {"PASS": "✓", "FAIL": "✗", "TIMEOUT": "⏱", "DATA_LIMITATION": "?",
                     "ENGINE_ISSUE": "✗"}.get(verdict.status, "?")
             print(f"  {verdict.query:3} {icon} {verdict.status:18} "
