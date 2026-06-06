@@ -2068,16 +2068,7 @@ impl Parser {
                         expression: Some(expr),
                     });
                 }
-                // Handle NULL literal in SELECT
-                Some(Token::Null) => {
-                    columns.push(SelectColumn {
-                        name: "NULL".to_string(),
-                        alias: None,
-                        expression: Some(Expression::Literal("NULL".to_string())),
-                    });
-                    self.next();
-                }
-                // Handle NumberLiteral in SELECT (e.g., SELECT 123, SELECT 3.14)
+                // Handle aggregate functions: COUNT(*), SUM(col), etc.
                 Some(Token::NumberLiteral(ref n)) => {
                     let n_str = n.to_string();
                     self.next();
@@ -2784,7 +2775,7 @@ impl Parser {
                         // we do need to consume them so the outer parse can
                         // continue. Walk tokens counting parens.
                         let mut depth = 1;
-                        while depth > 0 && !matches!(self.current(), None) {
+                        while depth > 0 && self.current().is_some() {
                             match self.current() {
                                 Some(Token::LParen) => {
                                     depth += 1;
@@ -3936,6 +3927,7 @@ impl Parser {
     /// Parse JSON path expression: `column -> '$.path'` or `column ->> '$.path'`
     /// (MySQL 5.7 JSON operators). Emits a BinaryOp with the operator
     /// "->" or "->>" so the executor can apply JSON_EXTRACT/JSON_UNQUOTE.
+    #[allow(dead_code)] // reserved for future JSON-aware subquery parsing
     fn parse_json_path_expression(&mut self) -> Result<Expression, String> {
         let mut left = self.parse_multiplicative_expression()?;
         while matches!(
@@ -4157,6 +4149,7 @@ impl Parser {
     /// Like `parse_or_expression` but stops at RParen (the matching
     /// paren closer — which the caller of `parse_expression_in_parens`
     /// will consume).
+    #[allow(dead_code)] // reserved for future subquery-in-parens AST nodes
     fn parse_or_expression_until_close(&mut self) -> Result<Expression, String> {
         let mut left = self.parse_and_expression_until_close()?;
         while matches!(self.current(), Some(Token::Or)) {
@@ -4167,6 +4160,7 @@ impl Parser {
         Ok(left)
     }
 
+    #[allow(dead_code)] // reserved for future subquery-in-parens AST nodes
     fn parse_and_expression_until_close(&mut self) -> Result<Expression, String> {
         let mut left = self.parse_additive_expression_until_close()?;
         while matches!(self.current(), Some(Token::And)) {
@@ -4177,6 +4171,7 @@ impl Parser {
         Ok(left)
     }
 
+    #[allow(dead_code)] // reserved for future subquery-in-parens AST nodes
     fn parse_additive_expression_until_close(&mut self) -> Result<Expression, String> {
         let mut left = self.parse_multiplicative_expression_until_close()?;
         while matches!(self.current(), Some(Token::Plus) | Some(Token::Minus)) {
@@ -4192,6 +4187,7 @@ impl Parser {
         Ok(left)
     }
 
+    #[allow(dead_code)] // reserved for future subquery-in-parens AST nodes
     fn parse_multiplicative_expression_until_close(&mut self) -> Result<Expression, String> {
         // Empty inner expression is an error.
         if matches!(
@@ -4222,6 +4218,7 @@ impl Parser {
         Ok(left)
     }
 
+    #[allow(dead_code)] // reserved for future subquery-in-parens AST nodes
     fn parse_primary_expression_until_close(&mut self) -> Result<Expression, String> {
         // For boundary tokens (RParen / Comma), this is the end of the
         // expression — the caller will see the boundary and exit.
