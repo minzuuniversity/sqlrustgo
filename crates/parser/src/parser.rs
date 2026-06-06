@@ -778,8 +778,23 @@ fn find_join_predicate(
                 // The "new table" can be referenced by either its
                 // full name (e.g. "supplier"), its TPC-H prefix
                 // (e.g. "s"), or (Phase 2) its inline alias
-                // (e.g. "n1"). Try all three.
-                let new_prefix = new_table.split('_').next().unwrap_or(new_table);
+                // (e.g. "n1"). Try all three. We use the same
+                // TPC-H table-name -> column-prefix map as in
+                // `parse_select_statement`'s `joined` builder so the
+                // prefix extracted here matches what
+                // `collect_referenced_tables` produces from the
+                // predicate's column identifiers.
+                let new_prefix: &str = match new_table {
+                    "region" => "r",
+                    "nation" => "n",
+                    "supplier" => "s",
+                    "customer" => "c",
+                    "part" => "p",
+                    "partsupp" => "ps",
+                    "orders" => "o",
+                    "lineitem" => "l",
+                    _ => new_table.split('_').next().unwrap_or(new_table),
+                };
                 let new_alts: Vec<&str> = match new_alias {
                     Some(a) => vec![new_table, new_prefix, a],
                     None => vec![new_table, new_prefix],
@@ -1742,6 +1757,7 @@ impl Parser {
 
         let mut columns = Vec::new();
         let mut aggregates = Vec::new();
+        
 
         loop {
             match self.current() {
@@ -2416,12 +2432,31 @@ impl Parser {
                             }
                         }
                         self.expect(Token::RParen)?;
+                        // TPC-H Q22: SUBSTRING(...) AS alias. The
+                        // SUBSTRING path previously forgot to consume
+                        // the optional `AS <name>` suffix, so
+                        // `SELECT SUBSTR(c_phone, 1, 2) AS cntrycode
+                        // FROM customer` failed with "Expected FROM
+                        // or column name" because the parser saw
+                        // `AS` and dropped out of the column loop.
+                        let alias = if matches!(self.current(), Some(Token::As)) {
+                            self.next();
+                            if let Some(Token::Identifier(n)) = self.current() {
+                                let a = n.clone();
+                                self.next();
+                                Some(a)
+                            } else {
+                                None
+                            }
+                        } else {
+                            None
+                        };
                         columns.push(SelectColumn {
                             name: format!(
                                 "{:?}",
                                 Expression::FunctionCall(name.to_string(), args.clone())
                             ),
-                            alias: None,
+                            alias,
                             expression: Some(Expression::FunctionCall(name.to_string(), args)),
                         });
                         continue;
@@ -2974,13 +3009,33 @@ impl Parser {
                     // underscore-separated prefix is what
                     // `collect_referenced_tables` extracts from
                     // unqualified column names like `s_suppkey`.
-                    let prefix = if table.contains('_') {
-                        // "partsupp" -> "ps"; "customer" -> "c"
-                        let underscore = table.find('_').unwrap();
-                        &table[..underscore]
-                    } else {
-                        // "nation" -> "n"; "supplier" -> "s"
-                        &table[..1]
+                    // TPC-H table-name -> TPC-H column-prefix
+                    // mapping. The 1-char-or-underscore heuristic
+                    // breaks for `partsupp` (no underscore; naive
+                    // slice gives "p" but the TPC-H prefix is "ps").
+                    // Use a hard-coded map for the 8 TPC-H tables to
+                    // keep the column-prefix extraction in sync with
+                    // `collect_referenced_tables` (which also handles
+                    // these by their known prefixes).
+                    let prefix: &str = match table.as_str() {
+                        "region" => "r",
+                        "nation" => "n",
+                        "supplier" => "s",
+                        "customer" => "c",
+                        "part" => "p",
+                        "partsupp" => "ps",
+                        "orders" => "o",
+                        "lineitem" => "l",
+                        _ => {
+                            // Fall back to the old heuristic for any
+                            // non-TPC-H table the user may define.
+                            if table.contains('_') {
+                                let underscore = table.find('_').unwrap();
+                                &table[..underscore]
+                            } else {
+                                &table[..1]
+                            }
+                        }
                     };
                     v.push(prefix.to_string());
                     if let Some(ref a) = from_alias {
@@ -3020,6 +3075,12 @@ impl Parser {
                     let mut rest: Vec<Expression> = Vec::new();
                     let candidates: Vec<Expression> =
                         conj.iter().chain(remaining.iter()).cloned().collect();
+                    let _found = find_join_predicate(
+                        &conj,
+                        &table_name,
+                        table_alias.as_deref(),
+                        &joined,
+                    );
                     if let Some(p) = find_join_predicate(
                         &candidates,
                         &table_name,
@@ -3263,6 +3324,28 @@ impl Parser {
             None
         };
 
+        // Post-processing pass: scan the column list for
+        // `FunctionCall("SUM"|"AVG"|"COUNT"|"MIN"|"MAX", args)` and
+        // re-register them as `Expression::Aggregate` plus add to the
+        // `aggregates` list. This is the catch-up path for expressions
+        // like `100.00 * SUM(...) / SUM(...)` (Q14) where the parser's
+        // "after-a-bare-aggregate" special case only fires when the
+        // aggregate is the first token of the column. With this fix
+        // `Q14: 100.00 * SUM(...) / SUM(...)` registers both SUMs as
+        // aggregates and produces 1 row (instead of 0 or 5000).
+        let mut extra_aggregates: Vec<AggregateCall> = Vec::new();
+        
+        for col in &columns {
+            Self::find_aggregates_in_expr(&col.expression.clone().unwrap_or(Expression::Literal("NULL".to_string())), &mut extra_aggregates);
+        }
+        
+        for agg in &extra_aggregates {
+            if !aggregates.iter().any(|a| {
+                a.func == agg.func && a.args == agg.args
+            }) {
+                aggregates.push(agg.clone());
+            }
+        }
         Ok(SelectStatement {
             columns,
             table,
@@ -3281,6 +3364,85 @@ impl Parser {
             offset,
             distinct,
         })
+    }
+
+    /// Walk an expression tree looking for `FunctionCall` whose name
+    /// is a known aggregate (SUM/AVG/COUNT/MIN/MAX). When found,
+    /// emit a corresponding `AggregateCall` into `out`. This is the
+    /// catch-up pass for cases like `100.00 * SUM(...) / SUM(...)`
+    /// (Q14) where the parser's "after-a-bare-aggregate" special
+    /// case only fires when the aggregate is the leftmost token of
+    /// the column expression.
+    fn find_aggregates_in_expr(expr: &Expression, out: &mut Vec<AggregateCall>) {
+        match expr {
+            Expression::FunctionCall(name, args) => {
+                let upper = name.to_uppercase();
+                if let Some(func) = match upper.as_str() {
+                    "SUM" => Some(AggregateFunction::Sum),
+                    "AVG" => Some(AggregateFunction::Avg),
+                    "COUNT" => Some(AggregateFunction::Count),
+                    "MIN" => Some(AggregateFunction::Min),
+                    "MAX" => Some(AggregateFunction::Max),
+                    _ => None,
+                } {
+                    out.push(AggregateCall {
+                        func,
+                        args: args.clone(),
+                        distinct: false,
+                    });
+                }
+                for a in args {
+                    Self::find_aggregates_in_expr(a, out);
+                }
+            }
+            // TPC-H Q14 / Q11: aggregates may already be in `Expression::Aggregate`
+            // form (when they came from `parse_expression` via `parse_primary`).
+            // Re-register them in the `aggregates` Vec so the engine's
+            // `if !select.aggregates.is_empty()` branch fires.
+            Expression::Aggregate(agg) => {
+                out.push(agg.clone());
+                for a in &agg.args {
+                    Self::find_aggregates_in_expr(a, out);
+                }
+            }
+            Expression::BinaryOp(left, _op, right) => {
+                Self::find_aggregates_in_expr(left, out);
+                Self::find_aggregates_in_expr(right, out);
+            }
+            Expression::UnaryOp(_op, inner) => {
+                Self::find_aggregates_in_expr(inner, out);
+            }
+            Expression::CaseWhen(whens, else_val) => {
+                for w in whens {
+                    Self::find_aggregates_in_expr(&w.condition, out);
+                    Self::find_aggregates_in_expr(&w.result, out);
+                }
+                if let Some(e) = else_val {
+                    Self::find_aggregates_in_expr(e, out);
+                }
+            }
+            Expression::Like(inner, pat, _esc) => {
+                Self::find_aggregates_in_expr(inner, out);
+                Self::find_aggregates_in_expr(pat, out);
+            }
+            Expression::InList(left, values) => {
+                Self::find_aggregates_in_expr(left, out);
+                for v in values {
+                    Self::find_aggregates_in_expr(v, out);
+                }
+            }
+            Expression::NotInList(left, values) => {
+                Self::find_aggregates_in_expr(left, out);
+                for v in values {
+                    Self::find_aggregates_in_expr(v, out);
+                }
+            }
+            Expression::IsNull(inner)
+            | Expression::IsNotNull(inner) => {
+                Self::find_aggregates_in_expr(inner, out);
+            }
+            _ => {}
+        }
     }
 
     fn parse_expression_list(&mut self) -> Result<Vec<Expression>, String> {
