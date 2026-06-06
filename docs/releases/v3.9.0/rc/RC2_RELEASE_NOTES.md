@@ -7,6 +7,15 @@
 > **Stage**: **RC2** (post-rc1, pre-ga, 1 week soak window)
 > **Type**: **Production Readiness Release** (engineering hardening, no new SQL)
 
+> 🔴 **HONESTY NOTE (added 2026-06-05)**: v3.9.0-rc2 was cut based on **form-only gate validation**.
+> The "10/10 G1-G10 PASS" framing was misleading: G1 didn't actually run TPC-H, the soak harness is simulated,
+> and 77 `#[ignore]` tests + 43 TBD perf placeholders were not flagged. See
+> `docs/audit/status/2026-06-06-test-authenticity-analysis-v390.md` for verified findings.
+>
+> **rc2 is a form-only validation milestone, not a production-ready candidate.** Real production-equivalent
+> coverage at rc2 time: ~35%. 13 critical-path items must be closed before v3.9.0-ga.
+> See `RC3_PLAN.md` for the adjusted rc2 → rc3 → rc4 → ga plan.
+
 ---
 
 ## 1. Stage Summary
