@@ -4,6 +4,7 @@ use crate::engine::{
     TriggerInfo, Value,
 };
 use crate::wal::{WalEntry, WalEntryType, WalManager};
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 
@@ -20,6 +21,13 @@ pub struct WalStorage<S: StorageEngine, T: WalManager> {
     /// Monotonically increasing LSN counter for WAL entries.
     /// Each `append_wal_entry` increments this and assigns the value to the entry.
     next_lsn: u64,
+    /// #3223 Phase 1: Active transaction set with their last WAL LSN.
+    /// Populated on `begin_transaction` (insert), drained on
+    /// `commit_transaction`/`rollback_transaction` (remove).
+    /// `RecoveryEngine` will use `is_tx_active` during replay to skip
+    /// uncommitted DML.
+    /// Empty for autocommit (tx_id=0) — the legacy single-active-tx model.
+    active_txs: HashMap<u64, u64>,
 }
 
 impl<S: StorageEngine, T: WalManager> WalStorage<S, T> {
@@ -31,6 +39,7 @@ impl<S: StorageEngine, T: WalManager> WalStorage<S, T> {
             checkpoint_manager: None,
             current_tx_id: 0,
             next_lsn: 0,
+            active_txs: HashMap::new(),
         })
     }
 
@@ -46,7 +55,21 @@ impl<S: StorageEngine, T: WalManager> WalStorage<S, T> {
             checkpoint_manager: Some(checkpoint_manager),
             current_tx_id: 0,
             next_lsn: 0,
+            active_txs: HashMap::new(),
         })
+    }
+
+    /// #3223 Phase 1: Returns true if `tx_id` is currently in an open
+    /// transaction (Begin logged but no Commit/Rollback yet).
+    /// Will be used by `RecoveryEngine` during WAL replay to identify
+    /// uncommitted DML that must be rolled back.
+    pub fn is_tx_active(&self, tx_id: u64) -> bool {
+        self.active_txs.contains_key(&tx_id)
+    }
+
+    /// #3223 Phase 1: Returns snapshot of active tx ids (for tests/diagnostics).
+    pub fn active_tx_ids(&self) -> Vec<u64> {
+        self.active_txs.keys().copied().collect()
     }
 
     /// Append a WAL entry with a monotonically increasing LSN.
@@ -237,7 +260,12 @@ impl<S: StorageEngine, T: WalManager> WalStorage<S, T> {
                     .unwrap()
                     .as_secs(),
             };
-            self.append_wal_entry(entry)?;
+            let lsn = self.append_wal_entry(entry)?;
+            // #3223 Phase 1: track active tx → LSN for crash recovery.
+            // Skip autocommit (tx_id=0) — the legacy model.
+            if tx_id != 0 {
+                self.active_txs.insert(tx_id, lsn);
+            }
         }
         Ok(tx_id)
     }
@@ -296,6 +324,8 @@ impl<S: StorageEngine, T: WalManager> WalStorage<S, T> {
             }
         }
 
+        // #3223 Phase 1: remove from active set on commit.
+        self.active_txs.remove(&tx_id);
         Ok(())
     }
 
@@ -318,6 +348,8 @@ impl<S: StorageEngine, T: WalManager> WalStorage<S, T> {
             self.wal.sync()?;
         }
         self.inner.flush()?;
+        // #3223 Phase 1: remove from active set on rollback.
+        self.active_txs.remove(&tx_id);
         Ok(())
     }
 
@@ -542,7 +574,12 @@ impl<S: StorageEngine, T: WalManager> StorageEngine for WalStorage<S, T> {
                     .unwrap()
                     .as_secs(),
             };
-            self.append_wal_entry(entry)?;
+            let lsn = self.append_wal_entry(entry)?;
+            // #3223 Phase 1: track active tx → LSN for crash recovery.
+            // Skip autocommit (tx_id=0) — the legacy model.
+            if tx_id != 0 {
+                self.active_txs.insert(tx_id, lsn);
+            }
         }
         Ok(tx_id)
     }
@@ -565,6 +602,8 @@ impl<S: StorageEngine, T: WalManager> StorageEngine for WalStorage<S, T> {
             self.append_wal_entry(entry)?;
             self.wal.sync()?;
         }
+        // #3223 Phase 1: remove from active set on commit.
+        self.active_txs.remove(&tx_id);
         self.inner.flush()?;
         Ok(())
     }
@@ -587,6 +626,8 @@ impl<S: StorageEngine, T: WalManager> StorageEngine for WalStorage<S, T> {
             self.append_wal_entry(entry)?;
             self.wal.sync()?;
         }
+        // #3223 Phase 1: remove from active set on rollback.
+        self.active_txs.remove(&tx_id);
         self.inner.flush()?;
         Ok(())
     }
@@ -805,5 +846,50 @@ mod tests {
         assert_eq!(updates.len(), 1);
         assert!(updates[0].key.is_some());
         assert!(updates[0].data.is_some());
+    }
+
+    // ===== #3223 Phase 1: active_txs HashMap tracking tests =====
+
+    #[test]
+    fn test_active_txs_autocommit_skipped() {
+        // Legacy autocommit (tx_id=0) is not tracked in active_txs.
+        let mut storage =
+            WalStorage::new(MemoryStorage::new(), MemoryWalManager::new()).unwrap();
+        assert!(storage.active_tx_ids().is_empty());
+        let tx_id = storage.begin_transaction().unwrap();
+        assert_eq!(tx_id, 0);
+        assert!(
+            storage.active_tx_ids().is_empty(),
+            "autocommit (tx_id=0) must not be tracked in active_txs"
+        );
+    }
+
+    #[test]
+    fn test_active_txs_lifecycle_begin_commit() {
+        // Explicit tx is tracked on Begin, removed on Commit.
+        let mut storage =
+            WalStorage::new(MemoryStorage::new(), MemoryWalManager::new()).unwrap();
+        storage.set_current_tx_id(42);
+        assert!(!storage.is_tx_active(42));
+
+        storage.begin_transaction().unwrap();
+        assert!(storage.is_tx_active(42));
+        assert_eq!(storage.active_tx_ids(), vec![42]);
+
+        storage.commit_transaction().unwrap();
+        assert!(!storage.is_tx_active(42));
+        assert!(storage.active_tx_ids().is_empty());
+    }
+
+    #[test]
+    fn test_active_txs_lifecycle_begin_rollback() {
+        // Rollback also removes from active_txs.
+        let mut storage =
+            WalStorage::new(MemoryStorage::new(), MemoryWalManager::new()).unwrap();
+        storage.set_current_tx_id(7);
+        storage.begin_transaction().unwrap();
+        assert!(storage.is_tx_active(7));
+        storage.rollback_transaction().unwrap();
+        assert!(!storage.is_tx_active(7));
     }
 }
