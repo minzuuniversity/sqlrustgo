@@ -85,7 +85,7 @@ impl Manifest {
     pub fn write_to(&self, path: &Path) -> std::io::Result<()> {
         let json = self
             .to_json()
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
+            .map_err(|e| std::io::Error::other(e.to_string()))?;
         let mut f = fs::File::create(path)?;
         f.write_all(json.as_bytes())?;
         Ok(())
@@ -95,7 +95,7 @@ impl Manifest {
         let mut s = String::new();
         fs::File::open(path)?.read_to_string(&mut s)?;
         Self::from_json(&s)
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
+            .map_err(|e| std::io::Error::other(e.to_string()))
     }
 }
 
