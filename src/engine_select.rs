@@ -628,7 +628,11 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 AggregateFunction::Sum => {
                     // TPC-H Sprint 1 fix (Q8/Q9): accept Float in Sum.
                     // l_extendedprice * (1 - l_discount) returns Float.
-                    // Q6 fix: empty result set returns 0 (not Null) for COUNT/SUM semantic.
+                    // Sprint 5 #3290 fix: empty result set returns NULL
+                    // (not Integer(0)) to match SQL standard and SQLite/
+                    // MariaDB. PG returns 0 rows in this case; we still
+                    // return 1 row with NULL, matching SQL standard +
+                    // other 3 engines (sqlite/mariadb/sqlrustgo).
                     let mut int_sum: i64 = 0;
                     let mut float_sum: f64 = 0.0;
                     let mut any_float = false;
@@ -652,7 +656,10 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                         }
                     }
                     if values.is_empty() {
-                        Value::Integer(0)
+                        // SQL standard: SUM over empty set is NULL.
+                        // PG returns 0 rows, others return 1 row with NULL.
+                        // We follow the standard (NULL), not PG's quirk.
+                        Value::Null
                     } else if any_float {
                         Value::Float(float_sum)
                     } else {
