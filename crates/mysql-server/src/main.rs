@@ -104,7 +104,31 @@ enum Command {
 }
 
 fn main() -> ExitCode {
-    let cli = Cli::parse();
+    // Use try_parse_from so we can translate clap's default exit code 2
+    // (clap error) to EX_USAGE (64) per
+    // openspec/specs/mysql-server-canonical-entry/spec.md (unknown
+    // subcommand scenario: "exits with code 64 (EX_USAGE) and prints a
+    // one-line usage hint"). We keep clap's two-stage behavior: parse
+    // error -> 64, runtime error -> 1.
+    let cli = match Cli::try_parse_from(std::env::args()) {
+        Ok(cli) => cli,
+        Err(e) => {
+            // e.exit() == 2 for clap errors (e.g. unknown subcommand,
+            // missing arg, --help, --version). The spec only mandates
+            // exit 64 for unknown subcommands, but the canonical
+            // binary treats all clap-level errors as EX_USAGE so the
+            if matches!(
+                e.kind(),
+                clap::error::ErrorKind::DisplayHelp | clap::error::ErrorKind::DisplayVersion
+            ) {
+                // Print help/version and exit 0 (clap already wrote it).
+                let _ = e.print();
+                return ExitCode::SUCCESS;
+            }
+            let _ = e.print();
+            return ExitCode::from(64); // EX_USAGE
+        }
+    };
 
     let filter =
         EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(&cli.log_level));
