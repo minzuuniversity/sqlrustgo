@@ -31,13 +31,20 @@ v3.9.0/
 ├── ROADMAP.md                         # 6 Phase 路线图
 │
 ├── alpha/                             # Alpha 阶段文档 (Phase 1-2)
-│   └── (待创建)
+│   ├── ALPHA_BASELINE_REPORT.md
+│   ├── ALPHA_GATE_CONTRACT.md
+│   ├── ALPHA_GATE_REPORT.md
+│   └── ALPHA_STAGE_REVIEW.md
 ├── beta/                              # Beta 阶段文档 (Phase 3-4)
-│   └── (待创建)
+│   ├── BETA_RELEASE_NOTES.md
+│   └── SOAK_72H_REPORT.md
 ├── rc/                                # RC 阶段文档 (Phase 5)
-│   └── (待创建)
+│   ├── RC1_RELEASE_NOTES.md
+│   └── RC1_GATE_REPORT.md
 ├── ga/                                # GA 阶段文档 (Phase 6)
 │   └── (待创建)
+├── perf/                              # 性能基线 (W11 G11-G16)
+│   └── PERFORMANCE_BASELINE.md
 │
 ├── debt/                              # 债务跟踪
 │   └── (从 v3.8.0 迁移)
