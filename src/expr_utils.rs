@@ -126,6 +126,7 @@ pub(crate) fn sql_like_match(text: &str, pattern: &str) -> bool {
 
 /// Recursive wildcard matcher. DEPRECATED, moved to
 /// `sqlrustgo_executor::expr::like_match_recursive` (private).
+#[allow(dead_code)] // stub retained for backward import compatibility (see P0-2 §4.5)
 fn like_match_recursive(_text: &str, _pattern: &str) -> bool {
     // Body removed (P0-2 §4.5). Kept as a no-op stub so any in-tree
     // caller that imports it via `use crate::expr_utils::like_match_recursive;`
