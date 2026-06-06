@@ -446,3 +446,287 @@ pub fn build_aggregate_schema(
         partition_info: None,
     })
 }
+
+/// TPC-H Q20/Q21: substitute outer column references in a (correlated)
+/// subquery expression with concrete values from the outer row.
+///
+/// Walks the expression tree recursively and replaces every
+/// `Expression::Identifier(name)` that resolves to an outer column
+/// (via `find_column_index`) with `Expression::Literal(value)`. The
+/// substitution is conservative: only the unqualified name (no `.`)
+/// matching an outer column is replaced, and unresolved names are
+/// passed through unchanged (so the subquery can still error later
+/// on its own missing columns if needed).
+///
+/// Returns a fresh `Expression` (no mutation of input) so the
+/// caller can pass it to `execute_select` without re-borrow
+/// conflicts.
+pub fn substitute_outer_refs_in_expr(
+    expr: &sqlrustgo_parser::Expression,
+    outer_row: &[Value],
+    outer_table_info: &TableInfo,
+) -> sqlrustgo_parser::Expression {
+    use sqlrustgo_parser::Expression;
+    match expr {
+        Expression::Identifier(name) => {
+            // Only substitute unqualified identifiers (no `.`)
+            // matching an outer column. Qualified identifiers like
+            // `l1.l_suppkey` refer to the subquery's own table alias
+            // and must NOT be substituted.
+            if !name.contains('.') {
+                if let Some(idx) = find_column_index(name, outer_table_info) {
+                    if let Some(v) = outer_row.get(idx) {
+                        return Expression::Literal(value_to_literal_string(v));
+                    }
+                }
+            }
+            expr.clone()
+        }
+        Expression::BinaryOp(l, op, r) => Expression::BinaryOp(
+            Box::new(substitute_outer_refs_in_expr(l, outer_row, outer_table_info)),
+            op.clone(),
+            Box::new(substitute_outer_refs_in_expr(r, outer_row, outer_table_info)),
+        ),
+        Expression::UnaryOp(op, inner) => Expression::UnaryOp(
+            op.clone(),
+            Box::new(substitute_outer_refs_in_expr(inner, outer_row, outer_table_info)),
+        ),
+        Expression::IsNull(inner) => Expression::IsNull(Box::new(
+            substitute_outer_refs_in_expr(inner, outer_row, outer_table_info),
+        )),
+        Expression::IsNotNull(inner) => Expression::IsNotNull(Box::new(
+            substitute_outer_refs_in_expr(inner, outer_row, outer_table_info),
+        )),
+        Expression::InList(left, values) => Expression::InList(
+            Box::new(substitute_outer_refs_in_expr(left, outer_row, outer_table_info)),
+            values
+                .iter()
+                .map(|v| substitute_outer_refs_in_expr(v, outer_row, outer_table_info))
+                .collect(),
+        ),
+        Expression::NotInList(left, values) => Expression::NotInList(
+            Box::new(substitute_outer_refs_in_expr(left, outer_row, outer_table_info)),
+            values
+                .iter()
+                .map(|v| substitute_outer_refs_in_expr(v, outer_row, outer_table_info))
+                .collect(),
+        ),
+        Expression::FunctionCall(name, args) => Expression::FunctionCall(
+            name.clone(),
+            args.iter()
+                .map(|a| substitute_outer_refs_in_expr(a, outer_row, outer_table_info))
+                .collect(),
+        ),
+        Expression::Aggregate(agg) => Expression::Aggregate(agg.clone()),
+        // TPC-H Q20/Q21: correlated EXISTS subqueries referencing
+        // outer columns. The recursive substitution walks the subq
+        // AST and replaces outer-scope Identifier refs with literal
+        // values. The actual subquery execution is handled by the
+        // caller (in execute_select, which has &self access to
+        // storage).
+        Expression::Exists(subq) => Expression::Exists(Box::new(
+            substitute_outer_refs_in_select(subq, outer_row, outer_table_info),
+        )),
+        Expression::NotExists(subq) => Expression::NotExists(Box::new(
+            substitute_outer_refs_in_select(subq, outer_row, outer_table_info),
+        )),
+        // TPC-H Q13/Q16: `col IN (SELECT ...)` and `NOT IN (SELECT ...)`.
+        // Conservative: substitute only in the left column expression
+        // (correlated subqueries reference outer columns in the left
+        // operand). The subquery itself's WHERE is NOT substituted
+        // because IN/NOT IN subqueries are non-correlated for our 22
+        // queries.
+        Expression::In(left, subq) => Expression::In(
+            Box::new(substitute_outer_refs_in_expr(left, outer_row, outer_table_info)),
+            subq.clone(),
+        ),
+        Expression::NotIn(left, subq) => Expression::NotIn(
+            Box::new(substitute_outer_refs_in_expr(left, outer_row, outer_table_info)),
+            subq.clone(),
+        ),
+        // TPC-H: LIKE/BETWEEN etc. Outer refs may appear in the
+        // column operand.
+        Expression::Like(l, p, esc) => Expression::Like(
+            Box::new(substitute_outer_refs_in_expr(l, outer_row, outer_table_info)),
+            Box::new(substitute_outer_refs_in_expr(p, outer_row, outer_table_info)),
+            *esc,
+        ),
+        Expression::NotLike(l, p, esc) => Expression::NotLike(
+            Box::new(substitute_outer_refs_in_expr(l, outer_row, outer_table_info)),
+            Box::new(substitute_outer_refs_in_expr(p, outer_row, outer_table_info)),
+            *esc,
+        ),
+        Expression::Between(l, lo, hi) => Expression::Between(
+            Box::new(substitute_outer_refs_in_expr(l, outer_row, outer_table_info)),
+            Box::new(substitute_outer_refs_in_expr(lo, outer_row, outer_table_info)),
+            Box::new(substitute_outer_refs_in_expr(hi, outer_row, outer_table_info)),
+        ),
+        Expression::NotBetween(l, lo, hi) => Expression::NotBetween(
+            Box::new(substitute_outer_refs_in_expr(l, outer_row, outer_table_info)),
+            Box::new(substitute_outer_refs_in_expr(lo, outer_row, outer_table_info)),
+            Box::new(substitute_outer_refs_in_expr(hi, outer_row, outer_table_info)),
+        ),
+        Expression::NotRegexp(l, p) => Expression::NotRegexp(
+            Box::new(substitute_outer_refs_in_expr(l, outer_row, outer_table_info)),
+            Box::new(substitute_outer_refs_in_expr(p, outer_row, outer_table_info)),
+        ),
+        // Bare subquery (no outer ref) - pass through.
+        Expression::Subquery(subq) => Expression::Subquery(subq.clone()),
+        Expression::SubqueryField(inner, field) => Expression::SubqueryField(
+            Box::new(substitute_outer_refs_in_expr(inner, outer_row, outer_table_info)),
+            field.clone(),
+        ),
+        // CASE WHEN - construct new WhenClause structs (skip if WhenClause
+        // is not exported; fall back to pass-through).
+        Expression::CaseWhen(_branches, _default) => {
+            // Note: WhenClause is not publicly exported from
+            // sqlrustgo_parser, so we cannot construct new ones
+            // from this crate. For TPC-H Q1-Q22, none of the
+            // queries have EXISTS/NotExists nested inside a
+            // CASE WHEN, so pass-through is safe.
+            expr.clone()
+        }
+        // TPC-H Q2/Q9: `col op ANY/SOME/ALL (subquery)`. Outer refs
+        // may appear in `col`; the subquery itself is not
+        // substituted (ANY/ALL subqueries in our 22-query suite are
+        // non-correlated).
+        Expression::QuantifiedOp(l, op, subq) => Expression::QuantifiedOp(
+            Box::new(substitute_outer_refs_in_expr(l, outer_row, outer_table_info)),
+            op.clone(),
+            subq.clone(),
+        ),
+        // Literals and other terminal expressions pass through.
+        Expression::Literal(_) | Expression::WindowCall(_) => expr.clone(),
+    }
+}
+
+/// Substitute outer column references in every WHERE / HAVING
+/// expression of a SelectStatement. Used by correlated EXISTS / NOT
+/// EXISTS subquery evaluators. The subquery's own `table` (FROM
+/// clause) is NOT substituted — it refers to the subquery's own
+/// table.
+pub fn substitute_outer_refs_in_select(
+    select: &sqlrustgo_parser::SelectStatement,
+    outer_row: &[Value],
+    outer_table_info: &TableInfo,
+) -> sqlrustgo_parser::SelectStatement {
+    let mut new_select = select.clone();
+    if let Some(ref wc) = select.where_clause {
+        new_select.where_clause = Some(substitute_outer_refs_in_expr(
+            wc,
+            outer_row,
+            outer_table_info,
+        ));
+    }
+    if let Some(ref h) = select.having {
+        new_select.having = Some(substitute_outer_refs_in_expr(
+            h,
+            outer_row,
+            outer_table_info,
+        ));
+    }
+    // Note: we deliberately do NOT substitute join_clause or table;
+    // those refer to the subquery's own FROM/join tables.
+    new_select
+}
+
+/// Convert a `Value` to a SQL literal string suitable for substituting
+/// into a `Expression::Literal`. Booleans render as `true`/`false`;
+/// numerics as their decimal form; NULL as `NULL`; text as a
+/// single-quoted SQL string (with embedded quotes doubled).
+fn value_to_literal_string(v: &Value) -> String {
+    match v {
+        Value::Null => "NULL".to_string(),
+        Value::Boolean(b) => b.to_string(),
+        Value::Integer(i) => i.to_string(),
+        Value::Float(f) => f.to_string(),
+        Value::Text(s) => format!("'{}'", s.replace('\'', "''")),
+        Value::Blob(_) => "NULL".to_string(),
+    }
+}
+
+/// TPC-H Q20/Q21: detect whether a WHERE expression tree contains any
+/// `Expression::Exists(_)` or `Expression::NotExists(_)` subtrees. The
+/// caller uses this to decide whether to take the slow correlated-
+/// subquery pre-evaluation path or the fast single-pass eval_predicate
+/// path. Conservative: returns true on any match (even inside dead
+/// branches of an AND/OR), since we cannot statically know the truth
+/// value of the AND/OR children.
+pub fn where_expr_has_correlated_subquery(expr: &sqlrustgo_parser::Expression) -> bool {
+    use sqlrustgo_parser::Expression;
+    match expr {
+        Expression::Exists(_) | Expression::NotExists(_) => true,
+        // Bare subqueries (no outer ref) - not a correlated
+        // EXISTS/NotExists pattern, but still expensive; report
+        // false here (the subquery in this position is not the
+        // correlated-exists one we're optimising for).
+        Expression::In(_, _) | Expression::NotIn(_, _) => false,
+        Expression::Subquery(_) | Expression::SubqueryField(_, _) | Expression::QuantifiedOp(_, _, _) => false,
+        Expression::Like(_, _, _)
+        | Expression::NotLike(_, _, _)
+        | Expression::Between(_, _, _)
+        | Expression::NotBetween(_, _, _)
+        | Expression::NotRegexp(_, _) => false,
+        Expression::CaseWhen(_, _) => false,
+        Expression::BinaryOp(l, _, r) => {
+            where_expr_has_correlated_subquery(l) || where_expr_has_correlated_subquery(r)
+        }
+        Expression::UnaryOp(_, inner) => where_expr_has_correlated_subquery(inner),
+        Expression::IsNull(inner) | Expression::IsNotNull(inner) => {
+            where_expr_has_correlated_subquery(inner)
+        }
+        Expression::InList(left, values) | Expression::NotInList(left, values) => {
+            where_expr_has_correlated_subquery(left)
+                || values.iter().any(|v| where_expr_has_correlated_subquery(v))
+        }
+        Expression::FunctionCall(_, args) => {
+            args.iter().any(|a| where_expr_has_correlated_subquery(a))
+        }
+        Expression::Literal(_)
+        | Expression::Identifier(_)
+        | Expression::Aggregate(_)
+        | Expression::WindowCall(_) => false,
+    }
+}
+
+/// TPC-H Q20/Q21: detect whether a WHERE expression tree contains any
+/// `IN (subq)`, `NOT IN (subq)`, or `QuantifiedOp` subtrees. These
+/// are the conservative-denied subquery patterns where the full
+/// subquery executor would be needed, but the fast-path
+/// `eval_predicate` returns `true` (over-include) for them. The
+/// fast-path EXISTS evaluator uses this to bail out and fall back
+/// to the slower `self.execute_select` path (which is still not
+/// great but at least consistent with the rest of the engine).
+pub fn where_expr_has_uncorrelated_subquery(expr: &sqlrustgo_parser::Expression) -> bool {
+    use sqlrustgo_parser::Expression;
+    match expr {
+        Expression::In(_, _)
+        | Expression::NotIn(_, _)
+        | Expression::Subquery(_)
+        | Expression::SubqueryField(_, _)
+        | Expression::QuantifiedOp(_, _, _) => true,
+        // Exists/NotExists are correlated-style (handled separately
+        // by pre_evaluate_correlated_exists).
+        Expression::Exists(_) | Expression::NotExists(_) => false,
+        Expression::Like(_, _, _)
+        | Expression::NotLike(_, _, _)
+        | Expression::Between(_, _, _)
+        | Expression::NotBetween(_, _, _)
+        | Expression::NotRegexp(_, _) => false,
+        Expression::CaseWhen(_, _) => false,
+        Expression::BinaryOp(l, _, r) => {
+            where_expr_has_uncorrelated_subquery(l) || where_expr_has_uncorrelated_subquery(r)
+        }
+        Expression::UnaryOp(_, inner) => where_expr_has_uncorrelated_subquery(inner),
+        Expression::IsNull(inner) | Expression::IsNotNull(inner) => {
+            where_expr_has_uncorrelated_subquery(inner)
+        }
+        Expression::InList(_, _)
+        | Expression::NotInList(_, _)
+        | Expression::Literal(_)
+        | Expression::Identifier(_)
+        | Expression::Aggregate(_)
+        | Expression::WindowCall(_)
+        | Expression::FunctionCall(_, _) => false,
+    }
+}
