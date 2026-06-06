@@ -85,6 +85,7 @@
 
 | 版本 | 发布日期 | 阶段 |
 |------|---------|------|
+| v3.9.0 | (unreleased, 2026-09-23 目标) | GA baseline placeholder — see HONESTY NOTE below |
 | v3.9.0-rc2 | 2026-06-05 | RC2 (form-only validation milestone) |
 | v3.9.0-rc1 | 2026-06-05 | RC1 (form-only validation milestone) |
 | v3.9.0-beta | 2026-06-05 | Beta (form-only validation milestone) |
