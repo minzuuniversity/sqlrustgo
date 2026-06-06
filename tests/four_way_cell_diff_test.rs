@@ -216,6 +216,14 @@ struct SingleCellDiff {
     actual: String,
 }
 
+/// TPC-H Sprint 1.5 (#3290): trim trailing whitespace from cell
+/// values before comparing. PG stores CHAR(N) and pads to N chars;
+/// sqlrustgo stores TEXT and returns as-is. This makes Q04/Q12/Q15/
+/// Q16 cell_diff non-bugs — they would be clean_match after trim.
+fn trim_trailing_ws(s: &str) -> &str {
+    s.trim_end_matches(|c: char| c == ' ' || c == '\t')
+}
+
 fn diff_rows(pg: &[Vec<String>], other: &[Vec<String>]) -> (usize, Vec<SingleCellDiff>) {
     let mut sorted_pg = pg.to_vec();
     sorted_pg.sort();
@@ -229,8 +237,8 @@ fn diff_rows(pg: &[Vec<String>], other: &[Vec<String>]) -> (usize, Vec<SingleCel
         let other_row = &sorted_other[i];
         let max_cols = pg_row.len().max(other_row.len());
         for j in 0..max_cols {
-            let pg_val = pg_row.get(j).cloned().unwrap_or_default();
-            let other_val = other_row.get(j).cloned().unwrap_or_default();
+            let pg_val = trim_trailing_ws(&pg_row.get(j).cloned().unwrap_or_default()).to_string();
+            let other_val = trim_trailing_ws(&other_row.get(j).cloned().unwrap_or_default()).to_string();
             if pg_val != other_val {
                 if diffs.len() < max_diffs {
                     diffs.push(SingleCellDiff {
