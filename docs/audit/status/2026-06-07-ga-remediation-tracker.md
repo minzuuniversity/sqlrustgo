@@ -36,8 +36,8 @@ Total open issues: 27 (13 new sub-issues + 14 carry-overs).
 | #3265 | P0/S3 | blocked-user | 72h soak | No (needs Z6G4) |
 | #3266 | P0/S4 | blocked-user | 168h soak (GA gate) | No (needs Z6G4) |
 | #3267 | P1/R1 | ai-claim | Crash monkey | **DONE locally** (commit 63579eb2, 4/4 PASS, 100k in 0.41s) |
-| #3268 | P1/R2 | ai-claim | Recovery fuzzer | **Yes** (next candidate) |
-| #3269 | P1/R3 | ai-claim | Expand recovery 9→50+ scenarios | **Yes** (medium) |
+| #3268 | P1/R2 | ai-claim | Recovery fuzzer | **DONE locally** (commit 2415d23a, 14/14 PASS, 50k in 0.38s) |
+| #3269 | P1/R3 | ai-claim | Expand recovery 9→50+ scenarios | **Yes** (medium, next candidate) |
 | #3270 | P1/INT-2 | blocked-user | Cross-version upgrade chain | No (multi-week) |
 | #3271 | P1/INT-3 | blocked-user | Mixed-scenario integration | No (multi-week) |
 
@@ -54,9 +54,10 @@ Total open issues: 27 (13 new sub-issues + 14 carry-overs).
 - 4 soak/perf carry-overs re-classified, not closed
 
 ### Phase 3 (Recovery hardening, 3 days)
-- **R1 (crash monkey)**: ✅ IMPLEMENTED LOCALLY. commit 63579eb2, 4/4 tests PASS, 100k iteration sweep in 0.41s. Push pending (Gitea unreachable).
-- **R2 (recovery fuzzer)**: not yet started
-- **R3 (50+ scenarios)**: not yet started
+- **R1 (crash monkey)**: ✅ IMPLEMENTED LOCALLY. commit 63579eb2, 4/4 tests PASS, 100k iteration sweep in 0.41s.
+- **R2 (recovery fuzzer)**: ✅ IMPLEMENTED LOCALLY. commit 2415d23a, 14/14 tests PASS, 50k adversarial patterns in 0.38s. 0 panics. 15 distinct adversarial WAL patterns covered.
+- **R3 (50+ scenarios)**: not yet started. Builds on R1+R2.
+- All 3 R-series commits on `fix/ga-p1-r1-crash-monkey` branch, awaiting Z6G4/Gitea recovery for push.
 
 ### Phase 4 (INT, 2-3 weeks)
 - **INT-2 + INT-3**: blocked on user (cross-version binaries + multi-week work)
@@ -86,13 +87,12 @@ These are the "ghost" issues from the v3.8.x era. Will be re-evaluated after PR-
 
 ## 6. Z440-Actionable Backlog (priority order)
 
-1. **R2** (#3268) — Recovery fuzzer: random WAL with adversarial patterns. Z440-only, 1-2 days. *Recommended next.*
-2. **R3** (#3269) — Expand recovery 9→50+ scenarios. Builds on R1+R2. 3 days.
-3. **T3** (#3260) — `cargo test tpch_verify` (after T1+T2 land). 1-2 days.
-4. **T5** (#3262) — TPC-H CI gate (after T3). 2-3 hours.
-5. **P2 A1** — tx_wal ignore 6→0 cleanup. 1 day.
-6. **P2 A2** — clippy 98 test errors → 0. 1-2 days.
-7. **P2 A3** — coverage statistics. 2-3 hours.
+1. **R3** (#3269) — Expand recovery 9→50+ scenarios. Builds on R1+R2. 1-2 days. *Recommended next.*
+2. **T3** (#3260) — `cargo test tpch_verify` (after T1+T2 land). 1-2 days.
+3. **T5** (#3262) — TPC-H CI gate (after T3). 2-3 hours.
+4. **P2 A1** — tx_wal ignore 6→0 cleanup. 1 day.
+5. **P2 A2** — clippy 98 test errors → 0. 1-2 days.
+6. **P2 A3** — coverage statistics. 2-3 hours.
 
 ## 7. Recommendations for Next Session
 
