@@ -9,32 +9,32 @@
 
 | Q | sqlrustgo (rows,ms) | SQLite (rows,ms) | MariaDB (rows,ms) | PostgreSQL (rows,ms) | Row count match |
 |---|---------------------|------------------|-------------------|----------------------|------------------|
-| Q01 | 6 / 51 | 6 / 0 | 6 / 82 | 6 / 66 | ✓ all match |
-| Q02 | 0 / 6332 | 0 / 0 | 0 / 13 | 0 / 15 | ✓ all match |
-| Q03 | 10 / 3806 | 10 / 0 | 10 / 25 | 10 / 26 | ✓ all match |
-| Q04 | 0 / 5 | 5 / 0 | 5 / 21 | 5 / 22 | ✗ MISMATCH |
-| Q05 | 1 / 3731 | 1 / 0 | 1 / 21 | 1 / 18 | ✓ all match |
-| Q06 | 1 / 30 | 1 / 0 | 1 / 17 | 0 / 17 | ✗ MISMATCH |
-| Q07 | 3 / 530 | ERR: prepare: near "FROM": syntax error in SELECT n1.n_ | 3 / 19 | 3 / 16 | ✓ all match |
-| Q08 | 1 / 5744 | ERR: prepare: near "FROM": syntax error in SELECT EXTRA | 1 / 20 | 1 / 17 | ✓ all match |
-| Q09 | 0 / 3967 | ERR: prepare: near "FROM": syntax error in SELECT n_nam | 0 / 11 | 0 / 11 | ✓ all match |
-| Q10 | 20 / 3861 | 20 / 0 | 20 / 20 | 20 / 19 | ✓ all match |
-| Q11 | 0 / 10 | 0 / 0 | 0 / 9 | 0 / 10 | ✓ all match |
-| Q12 | 2 / 3599 | 2 / 0 | 2 / 17 | 2 / 19 | ✓ all match |
-| Q13 | 22 / 171 | 22 / 0 | 22 / 376 | 22 / 14 | ✓ all match |
-| Q14 | 1 / 163 | 1 / 0 | 1 / 23 | 1 / 14 | ✓ all match |
-| Q15 | 91 / 79 | 91 / 0 | 91 / 21 | 91 / 14 | ✓ all match |
-| Q16 | 282 / 22 | 282 / 0 | 282 / 16 | 282 / 12 | ✓ all match |
-| Q17 | 1 / 158 | 1 / 0 | 1 / 78 | 1 / 480 | ✓ all match |
-| Q18 | 100 / 3846 | 100 / 0 | 100 / 55 | 100 / 34 | ✓ all match |
-| Q19 | 1 / 164 | 1 / 0 | 1 / 22 | 0 / 21 | ✗ MISMATCH |
-| Q20 | 0 / 0 | 0 / 0 | 0 / 44965 | 0 / 11 | ✓ all match |
-| Q21 | 0 / 443 | 0 / 0 | 0 / 29725 | 0 / 17 | ✓ all match |
-| Q22 | 0 / 0 | 0 / 0 | 0 / 31 | 0 / 10 | ✓ all match |
+| Q01 | 6 / 55 | 6 / 0 | 6 / 71 | 6 / 53 | ✓ all match |
+| Q02 | 0 / 7993 | 0 / 0 | 0 / 11 | 0 / 11 | ✓ all match |
+| Q03 | 10 / 4528 | 10 / 0 | 10 / 20 | 10 / 19 | ✓ all match |
+| Q04 | 5 / 6 | 5 / 0 | 5 / 17 | 5 / 14 | ✓ all match |
+| Q05 | 1 / 4605 | 1 / 0 | 1 / 18 | 1 / 12 | ✓ all match |
+| Q06 | 1 / 31 | 1 / 0 | 1 / 14 | 0 / 12 | ✗ MISMATCH |
+| Q07 | 3 / 615 | ERR: prepare: near "FROM": syntax error in SELECT n1.n_ | 3 / 17 | 3 / 12 | ✓ all match |
+| Q08 | 1 / 6648 | ERR: prepare: near "FROM": syntax error in SELECT EXTRA | 1 / 19 | 1 / 12 | ✓ all match |
+| Q09 | 0 / 5022 | ERR: prepare: near "FROM": syntax error in SELECT n_nam | 0 / 11 | 0 / 9 | ✓ all match |
+| Q10 | 20 / 4733 | 20 / 0 | 20 / 19 | 20 / 14 | ✓ all match |
+| Q11 | 0 / 12 | 0 / 0 | 0 / 9 | 0 / 8 | ✓ all match |
+| Q12 | 2 / 5825 | 2 / 0 | 2 / 16 | 2 / 14 | ✓ all match |
+| Q13 | 22 / 191 | 22 / 0 | 22 / 390 | 22 / 12 | ✓ all match |
+| Q14 | 1 / 180 | 1 / 0 | 1 / 18 | 1 / 12 | ✓ all match |
+| Q15 | 91 / 88 | 91 / 0 | 91 / 15 | 91 / 12 | ✓ all match |
+| Q16 | 282 / 25 | 282 / 0 | 282 / 12 | 282 / 10 | ✓ all match |
+| Q17 | 1 / 177 | 1 / 0 | 1 / 81 | 1 / 529 | ✓ all match |
+| Q18 | 100 / 8132 | 100 / 0 | 100 / 51 | 100 / 35 | ✓ all match |
+| Q19 | 1 / 224 | 1 / 0 | 1 / 25 | 0 / 20 | ✗ MISMATCH |
+| Q20 | 6 / 0 | 0 / 0 | 0 / 49333 | 0 / 9 | ✗ MISMATCH |
+| Q21 | 6 / 949 | 0 / 0 | 0 / 32729 | 0 / 15 | ✗ MISMATCH |
+| Q22 | 0 / 1 | 0 / 0 | 0 / 22 | 0 / 9 | ✓ all match |
 
 ## Per-Engine Total Time
 
-- **sqlrustgo**: 22/22 PASS, 51.89s total
-- **sqlite**: 19/22 PASS, 29.68s total
-- **mariadb**: 22/22 PASS, 75.60s total
-- **postgresql**: 22/22 PASS, 0.89s total
+- **sqlrustgo**: 22/22 PASS, 66.02s total
+- **sqlite**: 19/22 PASS, 41.47s total
+- **mariadb**: 22/22 PASS, 82.93s total
+- **postgresql**: 22/22 PASS, 0.87s total
