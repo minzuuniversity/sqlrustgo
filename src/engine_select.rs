@@ -104,8 +104,17 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             };
             (vec![Vec::new()], empty_schema)
         } else {
-            let rows = storage.scan(&select.table)?;
-            let table_info = storage.get_table_info(&select.table)?;
+            // Sprint 5 v4: the parser may encode the inline alias
+            // into `select.table` as `table|alias`. Storage has only
+            // the bare table name, so strip the `|alias` suffix
+            // before the lookup.
+            let lookup_table = select
+                .table
+                .split_once('|')
+                .map(|(t, _)| t)
+                .unwrap_or(&select.table);
+            let rows = storage.scan(lookup_table)?;
+            let table_info = storage.get_table_info(lookup_table)?;
             (rows, table_info)
         };
         // Drop the storage read lock before running any per-row
@@ -165,10 +174,10 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     }
                 }
                 rows = new_rows;
-            } else {
-                rows.retain(|row| eval_predicate(where_expr, row, &table_info));
-            }
+        } else {
+            rows.retain(|row| eval_predicate(where_expr, row, &table_info));
         }
+    }
 
         // Step 3: GROUP BY + AGGREGATE
         if !select.aggregates.is_empty() {
@@ -792,13 +801,22 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     fn execute_joins(&self, select: &SelectStatement) -> SqlResult<(Vec<Vec<Value>>, TableInfo)> {
         let storage = self.storage.read().unwrap();
 
-        // Seed with the base table from FROM clause. If the FROM has an
-        // alias (`FROM t a`), prefix the columns with the alias so the
-        // alias is queryable in subsequent JOIN ON conditions.
-        let mut rows = storage.scan(&select.table)?;
-        let raw_info = storage.get_table_info(&select.table)?;
-        let base_prefix = select.from_alias.as_ref().unwrap_or(&select.table);
-        let mut table_info = if select.from_alias.is_some() {
+        // Sprint 5 v4: the parser encodes the inline alias into the
+        // table name as `table|alias` (e.g. `emp|e`). Storage has only
+        // the bare table name, so strip the `|alias` suffix before the
+        // storage lookup.  The alias (and the base_prefix below) are
+        // still used for column-name qualification.
+        let (base_table, base_alias) = match select.table.split_once('|') {
+            Some((t, a)) => (t.to_string(), Some(a.to_string())),
+            None => (select.table.clone(), select.from_alias.clone()),
+        };
+        let base_prefix = base_alias
+            .as_ref()
+            .unwrap_or(&base_table);
+
+        let mut rows = storage.scan(&base_table)?;
+        let raw_info = storage.get_table_info(&base_table)?;
+        let mut table_info = if base_alias.is_some() {
             // Wrap the base columns in alias-prefixed names.
             let mut new_info = raw_info.clone();
             new_info.name = base_prefix.clone();
