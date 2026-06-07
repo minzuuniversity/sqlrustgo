@@ -577,19 +577,18 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         }
 
         // Step 4: LIMIT / OFFSET
-        let limited_rows = if let Some(limit) = select.limit {
-            let offset = select.offset.unwrap_or(0);
-            if offset as usize >= rows.len() {
-                vec![]
-            } else {
-                rows.into_iter()
-                    .skip(offset as usize)
-                    .take(limit as usize)
-                    .collect()
-            }
-        } else {
-            rows
-        }; // Step 5: SELECT projection — apply each `select.columns` expression
+        //
+        // Fix for #3282 (Sprint 5): LIMIT used to be applied here,
+        // BEFORE ORDER BY (Step 7). That broke any
+        // `ORDER BY col [DESC] LIMIT n` query — the engine would
+        // take the first n rows in storage order, then "sort"
+        // them, returning storage-order top n instead of the
+        // highest/lowest n. The canonical case was TPC-H Q18's
+        // `ORDER BY o_totalprice DESC LIMIT 100` which returned
+        // the storage-order top 100 instead of the highest-total
+        // top 100. LIMIT/OFFSET are now applied in Step 8 (after
+        // ORDER BY) below.
+        let limited_rows = rows; // Step 5: SELECT projection — apply each `select.columns` expression
            // to the accumulated row and emit a row of projected values. This
            // is what makes `SELECT EXTRACT(YEAR FROM col) AS o_year` actually
            // return `o_year` instead of the full table schema.
@@ -663,6 +662,16 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         // tuple of sort-key values using Vec<Value>'s default Ord
         // implementation. Vec::sort_by is stable, so equal keys
         // preserve input order.
+        //
+        // Fix for #3282 (Sprint 5): LIMIT/OFFSET used to be applied
+        // BEFORE ORDER BY (Step 4) which broke any `ORDER BY col
+        // LIMIT n` query — the engine would take the first n rows
+        // in storage order and then "sort" them, producing results
+        // that look correct on the first n rows but are actually
+        // out of order. The canonical case was TPC-H Q18's
+        // `ORDER BY o_totalprice DESC LIMIT 100` which returned
+        // the storage-order top 100 instead of the highest-total
+        // top 100. Moved LIMIT to Step 8 (after ORDER BY).
         let projected_rows: Vec<Vec<Value>> = if !select.order_by.is_empty() {
             let mut keyed: Vec<(Vec<Value>, Vec<Value>)> = projected_rows
                 .into_iter()
@@ -732,6 +741,24 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 std::cmp::Ordering::Equal
             });
             keyed.into_iter().map(|(_, row)| row).collect()
+        } else {
+            projected_rows
+        };
+
+        // Step 8: LIMIT / OFFSET — apply after ORDER BY so that
+        // `ORDER BY col [DESC] LIMIT n` returns the correct top/bottom n.
+        // See Step 4 above for the historical reason this moved.
+        let projected_rows: Vec<Vec<Value>> = if let Some(limit) = select.limit {
+            let offset = select.offset.unwrap_or(0);
+            if offset as usize >= projected_rows.len() {
+                vec![]
+            } else {
+                projected_rows
+                    .into_iter()
+                    .skip(offset as usize)
+                    .take(limit as usize)
+                    .collect()
+            }
         } else {
             projected_rows
         };
