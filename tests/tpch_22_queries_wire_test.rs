@@ -81,6 +81,11 @@ static SHARED: OnceLock<SharedServer> = OnceLock::new();
 
 fn shared() -> &'static SharedServer {
     SHARED.get_or_init(|| {
+        // SF 0.001 (~600 lineitem rows) is used for the wire test because
+        // the wire protocol path has an EAGAIN bug on larger data
+        // (PR-3128). For in-process operator regression, see
+        // tests/operators/. For full SF 0.1 / SF 1.0 testing, see
+        // tests/tpch_sf01_inprocess_test.rs (planned).
         let data_dir = PathBuf::from("tests/data/tpch-sf001");
         let config = EphemeralConfig {
             data_dir: Some(data_dir.clone()),
