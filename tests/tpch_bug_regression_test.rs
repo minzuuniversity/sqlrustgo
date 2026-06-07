@@ -25,8 +25,7 @@ use std::fs;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 
-const FIXTURE_DIR: &str =
-    "/home/openclaw/dev/yinglichina163/sqlrustgo/.worktrees/tpch-22-bugfixes/tests/data/tpch-sf001";
+const FIXTURE_DIR: &str = "tests/data/tpch-sf001";
 
 const DDL: &[&str] = &[
     "CREATE TABLE region (r_regionkey INTEGER, r_name TEXT, r_comment TEXT)",
