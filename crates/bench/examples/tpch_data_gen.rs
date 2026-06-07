@@ -340,8 +340,14 @@ impl TpchDataGenerator {
             let quantity = (rng.gen::<u32>() % 50) + 1;
             let extendedprice =
                 (quantity as f64 * (rng.gen::<f64>() * 1000.0 + 100.0)).round() / 100.0;
-            let discount = (rng.gen::<f64>() * 0.10).round() / 100.0;
-            let tax = (rng.gen::<f64>() * 0.08).round() / 100.0;
+            // TPC-H spec: discount 0.00..0.10, tax 0.00..0.08. Use a
+            // 0-100 integer (0-10000) for fine-grained control and
+            // divide to get proper distribution. Old code used
+            // (rng * 0.10).round() / 100.0 which always rounded to 0
+            // — this is the root cause of TPC-H Q6/Q19 row_count
+            // mismatch in the 4-way harness (sibling Sprint 1.5).
+            let discount = (rng.gen::<u32>() % 11) as f64 / 100.0; // 0.00..0.10
+            let tax = (rng.gen::<u32>() % 9) as f64 / 100.0; // 0.00..0.08
             let returnflag = return_flags[rng.gen::<usize>() % 3];
             let linestatus = line_statuses[rng.gen::<usize>() % 2];
             let shipdate = self.random_date(1992, 1998, &mut rng);

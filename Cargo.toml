@@ -599,6 +599,18 @@ path = "tests/replace_test.rs"
 name = "int4_explicit_tx_test"
 path = "tests/int4_explicit_tx_test.rs"
 
+[[test]]
+name = "operators_aggregate"
+path = "tests/operators/aggregate.rs"
+
+[[test]]
+name = "operators_join"
+path = "tests/operators/join.rs"
+
+[[test]]
+name = "operators_exists"
+path = "tests/operators/exists.rs"
+
 # Memory limit for tests: 8GB (8 * 1024 * 1024 * 1024 bytes)
 # This prevents any single test from consuming excessive memory
 [profile.test]
