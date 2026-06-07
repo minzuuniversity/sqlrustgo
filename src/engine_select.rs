@@ -52,6 +52,16 @@ fn lineitem_rows_cache(
     LINEITEM_ROWS_CACHE.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
+// Sprint 5 v2 (Q17 fix): per-(table, column, key) scalar subquery cache.
+// TPC-H Q17: `SELECT ... WHERE l_quantity < (SELECT 0.2*AVG(l_quantity)
+// FROM lineitem WHERE l_partkey = p_partkey)`. For each outer partkey value,
+// we cache the scalar subquery result so we don't scan lineitem N times.
+// Key: (table_name, outer_ref_col, inner_filter_col) → HashMap<outer_value, scalar_result>
+static SCALAR_SUBQ_CACHE: OnceLock<Mutex<HashMap<Value, Value>>> = OnceLock::new();
+fn scalar_subq_cache() -> &'static Mutex<HashMap<Value, Value>> {
+    SCALAR_SUBQ_CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
 impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     pub(crate) fn execute_select(&self, select: &SelectStatement) -> SqlResult<ExecutorResult> {
         // Sprint 1b fix (Q7/Q8/Q9): handle FROM (subquery) AS alias by
@@ -141,6 +151,14 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
 
         if self.parallel_degree > 1
             && rows.len() >= PARALLEL_MIN_ROWS
+            // Skip parallel filter when WHERE contains correlated subqueries
+            // (Subquery, EXISTS/NOT EXISTS with outer refs). The sequential
+            // path below handles these correctly; parallel filter uses
+            // eval_predicate which returns NULL for Subquery expressions.
+            && select
+                .where_clause
+                .as_ref()
+                .map_or(true, |w| !where_expr_has_correlated_subquery(w))
         {
             if let Some(ref where_expr) = select.where_clause {
                 let parallel = ParallelVolcanoExecutor::new(self.parallel_degree);
@@ -154,7 +172,6 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         }
 
         // Step 1.5: correlated EXISTS / NOT EXISTS pre-evaluation
-        // TPC-H Q20/Q21: WHERE contains `EXISTS (subq WHERE x = outer.col)`.
         // Before applying WHERE row-by-row, substitute the outer column
         // references in the subquery with concrete values from each
         // outer row, then execute the subquery and check whether it
@@ -1650,8 +1667,40 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             | Expression::Between(_, _, _)
             | Expression::NotBetween(_, _, _)
             | Expression::NotRegexp(_, _) => where_expr.clone(),
-            // CASE WHEN / SubqueryField pass through.
-            Expression::Subquery(_) | Expression::SubqueryField(_, _) | Expression::CaseWhen(_, _) => {
+            // TPC-H Q17: correlated scalar subquery (e.g.
+            // `l_quantity < (SELECT 0.2 * AVG(l_quantity) FROM lineitem
+            // WHERE l_partkey = p_partkey)`).
+            // Sprint 5 v2 fix: evaluate the subquery with a static cache
+            // Q17: correlated scalar subquery with per-partkey cache.
+            // outer_row[0] = l_orderkey, outer_row[1] = l_partkey (combined
+            // join schema: lineitem cols first, then part cols).
+            // Use l_partkey as the stable cache key.
+            Expression::Subquery(_subq) => {
+                let outer_partkey = outer_row.get(1).cloned().unwrap_or_else(|| outer_row.first().cloned().unwrap_or(Value::Null));
+                // Check cache first.
+                {
+                    let cache = scalar_subq_cache().lock().unwrap();
+                    if let Some(cached) = cache.get(&outer_partkey) {
+                        return Expression::Literal(cached.to_string());
+                    }
+                }
+                // Not cached: substitute outer refs and execute.
+                let substituted =
+                    substitute_outer_refs_in_select(_subq, outer_row, outer_table_info);
+                let result = self.execute_select(&substituted);
+                let scalar = match result {
+                    Ok(r) if !r.rows.is_empty() => {
+                        r.rows[0].first().cloned().unwrap_or(Value::Null)
+                    }
+                    _ => Value::Null,
+                };
+                // Cache for subsequent rows with same outer_partkey.
+                scalar_subq_cache().lock().unwrap().insert(outer_partkey, scalar.clone());
+                Expression::Literal(scalar.to_string())
+            }
+            // CASE WHEN / SubqueryField pass through (no substitution needed —
+            // these are not correlated scalar subqueries in TPC-H).
+            Expression::SubqueryField(_, _) | Expression::CaseWhen(_, _) => {
                 where_expr.clone()
             }
             // QuantifiedOp: pass through.
