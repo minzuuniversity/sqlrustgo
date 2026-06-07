@@ -611,6 +611,11 @@ path = "tests/operators/join.rs"
 name = "operators_exists"
 path = "tests/operators/exists.rs"
 
+# Issue #3285 reproduction (Sprint 4)
+[[test]]
+name = "repro_3285_real_preservation"
+path = "tests/repro_3285_real_preservation_test.rs"
+
 # Memory limit for tests: 8GB (8 * 1024 * 1024 * 1024 bytes)
 # This prevents any single test from consuming excessive memory
 [profile.test]
