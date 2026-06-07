@@ -221,12 +221,18 @@ pub fn eval_predicate(expr: &Expression, row: &[Value], table_info: &TableInfo) 
             // matches the IN/NOT IN pattern.
             true
         }
-        // For other expressions, evaluate and check if truthy
+        // For other expressions, evaluate and check if truthy.
+        // The "TRUE"/"FALSE" literal now maps to Value::Boolean
+        // (see parse_lit in crates/executor/src/expr/mod.rs), so
+        // the simple `Value::Boolean(true)` check below works for
+        // both correlated-EXISTS substitution and ordinary
+        // boolean-typed literals. We deliberately do NOT treat
+        // other values (integers, dates, etc.) as truthy — that
+        // would incorrectly accept, e.g., a date comparison that
+        // returned Value::Text("1993-07-01").
         _ => match crate::expr_utils::evaluate_expression(expr, row, table_info) {
-            Ok(val) => {
-                matches!(val, Value::Boolean(true))
-            }
-            Err(_) => false,
+            Ok(Value::Boolean(true)) => true,
+            _ => false,
         },
     }
 }
