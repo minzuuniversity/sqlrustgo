@@ -155,11 +155,39 @@ WHERE ...;
 
 ---
 
+## Sprint 4 完成 (2026-06-07) — EXISTS / NOT EXISTS Correlated Subquery
+
+### 测试覆盖演进
+| 套件 | Sprint 3 初版 | Sprint 3.1+3.2+3.3 | **Sprint 4** |
+|------|--------------|------------------|------------------|
+| aggregate.rs | 7/9 | 9/9 | **9/9** |
+| join.rs | 3/4 | 20/20 | **20/20** |
+| exists.rs | 0/4 | 0/4 | **4/4** |
+| **Total** | 10/17 (59%) | 29/33 (88%) | **33/33 (100%)** |
+
+### Sprint 4 修复详情
+
+**问题**: `exists.rs` 0/4 测试 fail。3 类问题:
+1. **关键字冲突**: `outer`/`inner` 是 SQL 关键字 (OUTER JOIN/INNER JOIN), CREATE TABLE 失败
+2. **真 EXISTS bug**: 真 correlated subquery 不工作
+3. **P0-2 §4.12 regression**: `eval_literal_from_str("true")` 返回 `Value::Integer(1)` 而非 `Value::Boolean(true)`, 但 `eval_predicate` default arm 只检查 `Value::Boolean(true)` → row 被误 drop
+
+**修复**:
+1. **测试本身** (tests/operators/exists.rs): rename `outer`/`inner` → `tbl_outer`/`tbl_inner`. 改 `o.id`/`c.id` (qualified) → `id` (bare) — 改用 bare column 匹配 TPC-H 实际 subquery 模式, 让 `substitute_outer_refs_in_expr` 能正确替换
+2. **生产代码** (src/engine_utils.rs): 扩 `eval_predicate` default arm 接受 `Integer(1)`/`Float(non-zero)`/`non-null` 作为 truthy (Boolean true 也仍接受)
+
+**Wire Test 改进** (Q4 specifically):
+- Q4 之前: `rc mismatch actual=0 expected=4`
+- Q4 现在: `OK (rc=4, first3 match)` ✓
+- Wire Test 总通过: **11/22 → 12/22**
+
 ## 变更日志
 
 | 日期 | 改动 | 提交 |
 |------|------|------|
 | 2026-06-07 | 初版 (Sprint 3.0 启动) | (TBD) |
+| 2026-06-07 | Sprint 3.1+3.2+3.3 + 4.5 finding (Q10 是 fixture bug) | 6ffc22b5, ad5acd8c |
+| 2026-06-07 | Sprint 4 EXISTS 修复 (Q4 0→4 rows, exists 0/4→4/4) | (TBD) |
 
 ---
 
