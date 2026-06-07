@@ -433,8 +433,37 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 } else {
                     agg_result_rows
                 };
-                let row_count = agg_result_rows.len();
-                return Ok(ExecutorResult::new(agg_result_rows, row_count));
+                // Sprint 5 v3: apply SELECT projection. The raw
+                // agg_result_rows are [group_keys..., aggregates...]
+                // but the SELECT may list columns in a different order
+                // (Q3: SELECT l_orderkey, revenue, o_orderdate,
+                // o_shippriority). The no-GROUP-BY branch above does
+                // the same projection; we mirror it here.
+                let agg_schema = build_aggregate_schema(group_exprs, &select.aggregates)?;
+                let projected_rows: Vec<Vec<Value>> = if select.columns.is_empty()
+                    || select.columns.iter().any(|c| c.name == "*")
+                {
+                    agg_result_rows
+                } else {
+                    agg_result_rows
+                        .into_iter()
+                        .map(|row| {
+                            select
+                                .columns
+                                .iter()
+                                .map(|col| match &col.expression {
+                                    Some(expr) => {
+                                        evaluate_expression(expr, &row, &agg_schema)
+                                            .unwrap_or(Value::Null)
+                                    }
+                                    None => row.first().cloned().unwrap_or(Value::Null),
+                                })
+                                .collect()
+                        })
+                        .collect()
+                };
+                let row_count = projected_rows.len();
+                return Ok(ExecutorResult::new(projected_rows, row_count));
             }
         }
 
