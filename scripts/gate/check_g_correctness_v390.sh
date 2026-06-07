@@ -30,18 +30,18 @@ echo
 if [ "${TPCH_SF01_ALL:-0}" = "1" ]; then
     echo "[1/3] Running tpch_sf01_inprocess_test (TPCH_SF01_ALL=1, full 22)..."
     cargo test --test tpch_sf01_inprocess_test --all-features -- --nocapture > /tmp/gate_c_run.log 2>&1 || true
-    grep -E "Q [0-9]+: ok|Q [0-9]+: ERR|=== TPC-H|test result" /tmp/gate_c_run.log
+    grep -E "Q[[:space:]]*[0-9]+: ok|Q[[:space:]]*[0-9]+: ERR|=== TPC-H|test result" /tmp/gate_c_run.log
     THRESHOLD=21
 else
     echo "[1/3] Running tpch_sf01_inprocess_test (smoke 6, fast)..."
     cargo test --test tpch_sf01_inprocess_test --all-features -- --nocapture > /tmp/gate_c_run.log 2>&1 || true
-    grep -E "Q [0-9]+: ok|Q [0-9]+: ERR|=== TPC-H|test result" /tmp/gate_c_run.log
+    grep -E "Q[[:space:]]*[0-9]+: ok|Q[[:space:]]*[0-9]+: ERR|=== TPC-H|test result" /tmp/gate_c_run.log
     THRESHOLD=6
 fi
 echo
 
-PASS=$(grep -c "Q [0-9]\+: ok" /tmp/gate_c_run.log || true)
-ERR=$(grep -c "Q [0-9]\+: ERR" /tmp/gate_c_run.log || true)
+PASS=$(grep -cE "Q[[:space:]]*[0-9]+: ok" /tmp/gate_c_run.log || true)
+ERR=$(grep -cE "Q[[:space:]]*[0-9]+: ERR" /tmp/gate_c_run.log || true)
 TOTAL=$((PASS + ERR))
 echo "[2/3] Results: $PASS PASS, $ERR ERR (out of $TOTAL)"
 
