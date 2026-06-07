@@ -15,6 +15,7 @@ use sqlrustgo_parser::{
 use sqlrustgo_storage::{StorageEngine, TableInfo};
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::sync::{Mutex, OnceLock};
 
 type DerivedResult = (Vec<Vec<Value>>, TableInfo);
 
@@ -25,6 +26,30 @@ type DerivedResult = (Vec<Vec<Value>>, TableInfo);
 thread_local! {
     static DERIVED_RESULTS: RefCell<HashMap<String, DerivedResult>> =
         RefCell::new(HashMap::new());
+}
+
+// Sprint 5 v2: per-column index for correlated EXISTS. TPC-H
+// Q4/Q21 use `EXISTS (SELECT * FROM lineitem WHERE
+// l_orderkey = o_orderkey AND ...)`, where the per-outer-row
+// scan was N×M. We build a one-shot index for each column on
+// the first call, then reuse it for subsequent calls.
+static LINEITEM_INDEX_CACHE: OnceLock<
+    Mutex<HashMap<String, HashMap<Value, Vec<usize>>>>,
+> = OnceLock::new();
+fn lineitem_index_cache() -> &'static Mutex<HashMap<String, HashMap<Value, Vec<usize>>>> {
+    LINEITEM_INDEX_CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+// Companion cache for the actual inner table rows. We cache
+// the rows under an Arc so subsequent per-outer-row calls
+// don't pay the deep-clone cost of MemoryStorage::scan()
+// (which does `.cloned()` on 60K lineitem rows each call).
+static LINEITEM_ROWS_CACHE: OnceLock<
+    Mutex<HashMap<String, std::sync::Arc<Vec<Vec<Value>>>>>,
+> = OnceLock::new();
+fn lineitem_rows_cache(
+) -> &'static Mutex<HashMap<String, std::sync::Arc<Vec<Vec<Value>>>>> {
+    LINEITEM_ROWS_CACHE.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
 impl<S: StorageEngine + 'static> ExecutionEngine<S> {
@@ -1645,10 +1670,121 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         if where_expr_has_uncorrelated_subquery(where_expr) {
             return None;
         }
-        // Direct storage scan + WHERE filter + early exit.
         let storage = self.storage.read().ok()?;
-        let rows = storage.scan(&subq.table).ok()?;
         let table_info = storage.get_table_info(&subq.table).ok()?;
+
+        // Sprint 5 v2 fix: for correlated EXISTS in TPC-H Q4/Q21
+        // (`EXISTS (SELECT * FROM lineitem WHERE l_orderkey = o_orderkey AND ...)`),
+        // the naive scan reads 60K lineitem rows for every outer
+        // row, giving 60K × 1851 = 111M comparisons (TIMEOUT).
+        //
+        // Optimization: detect a simple
+        // `<inner_col> = <outer_col_ref>` equality in the WHERE
+        // (after substitution it's `<inner_col> = Literal`), build
+        // a one-shot HashMap index (cached at module scope), and
+        // only test the matching subset.
+        let mut idx_col: Option<usize> = None;
+        let mut target_value: Option<Value> = None;
+        if let sqlrustgo_parser::Expression::BinaryOp(l, op, r) = where_expr {
+            if op == "AND" {
+                for side in [&**l, &**r] {
+                    if let sqlrustgo_parser::Expression::BinaryOp(bl, eq_op, br) = side {
+                        if eq_op == "=" {
+                            let inner_cols: std::collections::HashSet<String> = table_info
+                                .columns
+                                .iter()
+                                .map(|c| c.name.to_lowercase())
+                                .collect();
+                            let (inner_name, target_val) = match (bl.as_ref(), br.as_ref()) {
+                                (
+                                    sqlrustgo_parser::Expression::Identifier(iname),
+                                    sqlrustgo_parser::Expression::Literal(s),
+                                ) => {
+                                    let in_lc = iname.to_lowercase();
+                                    if inner_cols.contains(&in_lc) {
+                                        (Some(in_lc), Some(s.clone()))
+                                    } else {
+                                        (None, None)
+                                    }
+                                }
+                                (
+                                    sqlrustgo_parser::Expression::Literal(s),
+                                    sqlrustgo_parser::Expression::Identifier(iname),
+                                ) => {
+                                    let in_lc = iname.to_lowercase();
+                                    if inner_cols.contains(&in_lc) {
+                                        (Some(in_lc), Some(s.clone()))
+                                    } else {
+                                        (None, None)
+                                    }
+                                }
+                                _ => (None, None),
+                            };
+                            if let (Some(inner), Some(s)) = (inner_name, target_val) {
+                                if let Some(idx) = table_info
+                                    .columns
+                                    .iter()
+                                    .position(|c| c.name.to_lowercase() == inner)
+                                {
+                                    let parsed = sqlrustgo_types::parse_sql_literal(&s);
+                                    idx_col = Some(idx);
+                                    target_value = Some(parsed);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if let (Some(idx), Some(target)) = (idx_col, target_value) {
+            // Use a 2-level cache: the table rows themselves (Arc
+            // for cheap sharing) and the per-column index.
+            let rows_cache = lineitem_rows_cache();
+            let idx_cache = lineitem_index_cache();
+            // Get or build the rows.
+            let table_name = subq.table.clone();
+            let rows_arc: std::sync::Arc<Vec<Vec<Value>>> = {
+                let mut rc = rows_cache.lock().unwrap();
+                if let Some(c) = rc.get(&table_name) {
+                    c.clone()
+                } else {
+                    let rows = storage.scan(&subq.table).ok()?;
+                    let arc = std::sync::Arc::new(rows);
+                    rc.insert(table_name.clone(), arc.clone());
+                    arc
+                }
+            };
+            // Get or build the index for this column.
+            let cache_key = format!("{}:{}", table_name, idx);
+            let candidate_ids: Vec<usize> = {
+                let mut ic = idx_cache.lock().unwrap();
+                if !ic.contains_key(&cache_key) {
+                    let mut new_index: std::collections::HashMap<Value, Vec<usize>> =
+                        std::collections::HashMap::new();
+                    for (i, r) in rows_arc.iter().enumerate() {
+                        if let Some(v) = r.get(idx) {
+                            new_index.entry(v.clone()).or_default().push(i);
+                        }
+                    }
+                    ic.insert(cache_key.clone(), new_index);
+                }
+                ic.get(&cache_key)
+                    .unwrap()
+                    .get(&target)
+                    .cloned()
+                    .unwrap_or_default()
+            };
+            // Test the candidates (typically ~5-7 per outer row).
+            for i in &candidate_ids {
+                if eval_predicate(where_expr, &rows_arc[*i], &table_info) {
+                    return Some(true);
+                }
+            }
+            return Some(false);
+        }
+
+        // Direct storage scan + WHERE filter + early exit.
+        let rows = storage.scan(&subq.table).ok()?;
         for row in &rows {
             if eval_predicate(where_expr, row, &table_info) {
                 return Some(true);
