@@ -33,12 +33,15 @@ fn sum_real_column_returns_real() {
     e.execute("INSERT INTO t VALUES (100.5)").unwrap();
     e.execute("INSERT INTO t VALUES (200.5)").unwrap();
     let r = e.execute("SELECT SUM(p) FROM t").unwrap();
-    let s = r.rows[0][0].to_string();
-    assert!(
-        s.contains('.'),
-        "SUM(REAL) must return Float, got {s}"
+    assert_eq!(
+        r.rows[0][0].type_name(),
+        "FLOAT",
+        "SUM(REAL) must return Float type"
     );
-    let v: f64 = s.parse().unwrap();
+    let v = match &r.rows[0][0] {
+        sqlrustgo::Value::Float(f) => *f,
+        other => panic!("expected Value::Float, got {other:?}"),
+    };
     assert!((v - 301.0).abs() < 0.01, "expected ~301.0, got {v}");
 }
 
@@ -55,12 +58,15 @@ fn sum_real_with_null_values_skips_nulls() {
 }
 
 #[test]
-fn sum_empty_table_returns_zero_not_null() {
+fn sum_empty_table_returns_null_per_sql_standard() {
     let mut e = engine();
     e.execute("CREATE TABLE t (p REAL)").unwrap();
     let r = e.execute("SELECT SUM(p) FROM t").unwrap();
-    let s = r.rows[0][0].to_string();
-    assert_eq!(s, "0", "empty SUM must return 0 not NULL");
+    assert_eq!(
+        r.rows[0][0],
+        sqlrustgo::Value::Null,
+        "SUM of empty set must return NULL (SQL standard + PG + SQLite + MySQL)"
+    );
 }
 
 #[test]
@@ -72,7 +78,10 @@ fn avg_integer_column_returns_float() {
     e.execute("INSERT INTO t VALUES (30)").unwrap();
     let r = e.execute("SELECT AVG(q) FROM t").unwrap();
     let v: f64 = r.rows[0][0].to_string().parse().unwrap();
-    assert!((v - 20.0).abs() < 0.01, "AVG(Integer) must be Float, got {v}");
+    assert!(
+        (v - 20.0).abs() < 0.01,
+        "AVG(Integer) must be Float, got {v}"
+    );
 }
 
 #[test]
@@ -106,7 +115,11 @@ fn count_column_skips_nulls() {
     e.execute("INSERT INTO t VALUES (2)").unwrap();
     e.execute("INSERT INTO t VALUES (NULL)").unwrap();
     let r = e.execute("SELECT COUNT(q) FROM t").unwrap();
-    assert_eq!(r.rows[0][0].to_string(), "2", "COUNT(col) should skip NULLs");
+    assert_eq!(
+        r.rows[0][0].to_string(),
+        "2",
+        "COUNT(col) should skip NULLs"
+    );
 }
 
 #[test]
