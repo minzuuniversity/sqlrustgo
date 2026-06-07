@@ -438,11 +438,16 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     agg_result_rows
                 } else {
                     // Build group-by schema (column names in order).
+                    // Identifier expressions use their name. For
+                    // function calls (e.g. EXTRACT(YEAR FROM col) in
+                    // TPC-H Q7/Q8/Q9), use a stable hash so the
+                    // re-projection can match by alias later.
                     let group_schema: Vec<String> = group_exprs
                         .iter()
-                        .map(|expr| match expr {
+                        .enumerate()
+                        .map(|(i, expr)| match expr {
                             Expression::Identifier(n) => n.clone(),
-                            _ => format!("__gb{}", 0),
+                            _ => format!("__gb_{}", i),
                         })
                         .collect();
                     // Build the row-side schema:
@@ -468,7 +473,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                         .chain(agg_default_names.iter().cloned())
                         .collect();
                     // Build lookup maps.
-                    let group_set: std::collections::HashMap<String, usize> = group_schema
+                    let mut group_set: std::collections::HashMap<String, usize> = group_schema
                         .iter()
                         .enumerate()
                         .map(|(i, n)| (n.to_lowercase(), i))
@@ -479,30 +484,13 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                         .map(|(i, n)| (n.to_lowercase(), i + group_schema.len()))
                         .collect();
                     // For each SELECT column, determine if it's an
-                    // aggregate reference. Walk select.aggregates in
-                    // order and pair with SELECT columns that are
-                    // aggregates. The alias of the i-th aggregate
-                    // SELECT column maps to agg position i.
-                    // To do this, we check each SELECT column's
-                    // expression: if it's Expression::Aggregate or
-                    // contains one, the i-th aggregate in select.aggregates
-                    // matches. We track aggregate index via a counter.
+                    // aggregate reference or a non-aggregate GROUP BY
+                    // expression. Walk select.aggregates in order and
+                    // pair with SELECT columns that are aggregates.
+                    // The alias of the i-th aggregate SELECT column
+                    // maps to agg position i.
                     let mut agg_alias_to_pos: std::collections::HashMap<String, usize> =
                         std::collections::HashMap::new();
-                    for (i, agg) in select.aggregates.iter().enumerate() {
-                        let pos = i + group_schema.len();
-                        // Default name from func
-                        let default_name = match agg.func {
-                            AggregateFunction::Sum => "sum",
-                            AggregateFunction::Count => "count",
-                            AggregateFunction::Avg => "avg",
-                            AggregateFunction::Min => "min",
-                            AggregateFunction::Max => "max",
-                        };
-                        agg_alias_to_pos.insert(default_name.to_string(), pos);
-                    }
-                    // Now find SELECT columns that are aggregate
-                    // references and record their alias → agg position.
                     let mut agg_select_idx = 0usize;
                     for col in select.columns.iter() {
                         let is_agg = match &col.expression {
@@ -514,28 +502,41 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                             _ => false,
                         };
                         if is_agg {
-                            let default_name = match select
-                                .aggregates
-                                .get(agg_select_idx)
-                                .map(|a| a.func.clone())
-                            {
-                                Some(AggregateFunction::Sum) => "sum",
-                                Some(AggregateFunction::Count) => "count",
-                                Some(AggregateFunction::Avg) => "avg",
-                                Some(AggregateFunction::Min) => "min",
-                                Some(AggregateFunction::Max) => "max",
-                                _ => "agg",
-                            };
                             let pos = agg_select_idx + group_schema.len();
                             if let Some(alias) = &col.alias {
                                 agg_alias_to_pos.insert(alias.clone(), pos);
                             }
-                            // Also map the synthetic name
                             if col.alias.is_none() {
                                 agg_alias_to_pos.insert(col.name.clone(), pos);
                             }
-                            agg_alias_to_pos.insert(default_name.to_string(), pos);
                             agg_select_idx += 1;
+                        }
+                    }
+                    // Sprint 5 fix: also map non-aggregate SELECT
+                    // columns (like EXTRACT in GROUP BY) to their
+                    // GROUP BY position. Compare the SELECT col's
+                    // expression structurally to each group_expr.
+                    for (i, gexpr) in group_exprs.iter().enumerate() {
+                        for col in select.columns.iter() {
+                            // Match by expression structural equality
+                            // (FunctionCall EXTRACT in both), OR by
+                            // alias pointing to __gb_N if no match
+                            let is_match = match &col.expression {
+                                Some(expr) => expr == gexpr,
+                                _ => false,
+                            };
+                            if is_match {
+                                // Map both alias and the synthetic
+                                // group_schema name to position i
+                                if let Some(alias) = &col.alias {
+                                    group_set
+                                        .entry(alias.to_lowercase())
+                                        .or_insert(i);
+                                }
+                                group_set
+                                    .entry(col.name.to_lowercase())
+                                    .or_insert(i);
+                            }
                         }
                     }
                     // Re-project each row
