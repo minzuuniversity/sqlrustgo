@@ -1083,7 +1083,16 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                         // intermediate table already absorbed into left via
                         // build_combined_schema, where columns are named
                         // "a_join_b.col" but the user writes "b.col").
-                        // Try column-name lookup on both sides as a best-effort.
+                        if let Some(idx) =
+                            lookup_qualified_column(left_info, qualifier, col_name)
+                        {
+                            return Ok(JoinKey::Left(idx));
+                        }
+                        if let Some(idx) =
+                            lookup_qualified_column(right_info, qualifier, col_name)
+                        {
+                            return Ok(JoinKey::Right(idx));
+                        }
                         if let Some(idx) = lookup_column(left_info, col_name) {
                             return Ok(JoinKey::Left(idx));
                         }
@@ -1231,6 +1240,18 @@ fn lookup_column(info: &TableInfo, col_name: &str) -> Option<usize> {
             return true;
         }
         false
+    })
+}
+
+fn lookup_qualified_column(
+    info: &TableInfo,
+    qualifier: &str,
+    col_name: &str,
+) -> Option<usize> {
+    let needle = format!("{qualifier}.{col_name}");
+    let suffix = format!(".{qualifier}.{col_name}");
+    info.columns.iter().position(|c| {
+        c.name == needle || c.name.ends_with(&suffix)
     })
 }
 
