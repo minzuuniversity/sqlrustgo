@@ -662,12 +662,16 @@ pub fn where_expr_has_correlated_subquery(expr: &sqlrustgo_parser::Expression) -
     use sqlrustgo_parser::Expression;
     match expr {
         Expression::Exists(_) | Expression::NotExists(_) => true,
+        // TPC-H Q17: correlated scalar subquery. This triggers the
+        // pre_evaluate_correlated_exists path which executes the subquery
+        // per outer row and substitutes the scalar value.
+        Expression::Subquery(_) => true,
         // Bare subqueries (no outer ref) - not a correlated
         // EXISTS/NotExists pattern, but still expensive; report
         // false here (the subquery in this position is not the
         // correlated-exists one we're optimising for).
         Expression::In(_, _) | Expression::NotIn(_, _) => false,
-        Expression::Subquery(_) | Expression::SubqueryField(_, _) | Expression::QuantifiedOp(_, _, _) => false,
+        Expression::SubqueryField(_, _) | Expression::QuantifiedOp(_, _, _) => false,
         Expression::Like(_, _, _)
         | Expression::NotLike(_, _, _)
         | Expression::Between(_, _, _)
