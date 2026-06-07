@@ -320,3 +320,46 @@ WHERE ...;
 - Q21: 4-table correlated EXISTS perf, 需 multi-column index (#3316)
 - Q15: comma-list subquery JOIN column reordering (s_address ↔ s_nationkey swap)
 - Comma-list self-join 不 filter self-match (新发现, test added, fix pending)
+
+### Sprint 5 v5 (feat/v390-operator-regression-suite, 2026-06-08)
+
+> **Gate-C v3.9.0 PASS!** comma-list self-join 修复 + Operator Regression 34/34
+
+### comma-list self-join 修复 (Sprint 5 v5)
+**Bug**: `FROM emp e, emp m WHERE e.mgr_id = m.id` 返回 3 行 (含 self-match), 不是 2 行。
+**根因**: Parser 在 while 循环 (处理 `,`) 之前处理 first table 的 alias. 因此:
+  - `e` 被 consumed as from_alias
+  - While 循环检查 current() == Comma? No (current = comma 之后) → 跳过
+  - 第二个 `emp m` 完全丢失 (extra_tables=[])
+  - Engine 单表扫描 + 无 WHERE 过滤 → 3 行 self-matches
+
+**修复** (commit 4eac8c50):
+1. `crates/parser/src/parser.rs`: 在 table_list arm 内 inline 处理 first table alias (encoded as `emp|e` in tables[0]). Comma 循环现在能看到 comma.
+2. `crates/parser/src/parser.rs`: 删除 redundant from_alias check (alias 已在 table name).
+3. `src/engine_select.rs`: 在 storage scan / get_table_info 前 strip `|alias` suffix.
+
+**结果**:
+- `FROM emp e, emp m WHERE e.mgr_id = m.id` → 2 行 (正确, 匹配 explicit JOIN 行为)
+- `join_self_join_comma_list_excludes_self_match` test 从 FAIL → PASS
+
+### Gate-C v3.9.0 Correctness Gate
+新增 `scripts/gate/check_g_correctness_v390.sh`:
+- 默认 smoke 6 (Q1/Q4/Q6/Q13/Q14/Q19) — fast (<10s)
+- `TPCH_SF01_ALL=1` 跑 full 22 (10+ min, Q21 timeout)
+- 阈值: smoke 6/6 + Operator Regression 30/30
+- 当前状态: **PASS** (smoke 6/6 + Operator 9+21=30/30)
+
+### 状态总览 (Sprint 1-5 全)
+| Stage | Status | Result |
+|-------|--------|--------|
+| Sprint 1: Failure Matrix | ✅ | 4-way harness |
+| Sprint 1.5: Cell Diff | ✅ | PG truth source |
+| Sprint 2: Subsystem classification | ✅ | 22×8 grid |
+| Sprint 3: Operator Regression | ✅ | 34/34 PASS |
+| Sprint 3.2: Multi-Join | ✅ | Q3 col order |
+| Sprint 4: EXISTS correlated | ✅ | Q4 fix (PR #3295) |
+| Sprint 5 v1: SF 0.1 + Q4 perf | ✅ | +2000x speedup |
+| Sprint 5 v2: Q17 fix (PR #3319) | ✅ | develop/v3.9.0 |
+| Sprint 5 v3: FP tolerance + projection | ✅ | 14/22 wire |
+| Sprint 5 v4: SF 0.1 20/22 | ✅ | in-process |
+| Sprint 5 v5: self-join + Gate-C | ✅ | **Gate-C PASS** |
