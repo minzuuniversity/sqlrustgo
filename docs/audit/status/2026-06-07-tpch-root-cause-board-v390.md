@@ -189,6 +189,31 @@ WHERE ...;
 - `o.amount` (qualified alias projection) 在 JOIN 后返回字面字符串. 表是 `c.c.id, c.c.name, o.o.id, o.o.cust_id, o.o.amount` (double prefix). `eval_identifier` 找不到精确 match → fallback `Value::Text("o.amount")`. **已记录为单独 Issue**, 不在 Sprint 3 范围
 - Self-join `emp e, emp m WHERE e.mgr_id = m.id` (comma-list 形式) 返回 self-matches. 显式 JOIN 形式工作正常. Parser comma-list auto-rewrite 在 alias 情况下不产生 JoinClause. **已记录为单独 Issue**
 
+### 🚨 **重大发现 (2026-06-07 Sprint 4.5)**: TPC-H SF=0.001 Fixture 数据列错乱
+
+**调查 Q10 0-row regression 时发现**:
+- 期望: `customer.tbl` 字段顺序 = `c_custkey|c_name|c_address|c_nationkey|c_phone|c_acctbal|c_mktsegment|c_comment` (8 字段)
+- 实际: `customer.tbl` 字段顺序 = `c_custkey|c_nationkey|c_name|c_address|c_phone|c_acctbal|c_mktsegment|c_comment|<empty>` (9 字段 + 末尾空)
+- **c_nationkey 在 field 2 (不是 4)**
+- `c_mktsegment` 的值是 "AUTOMOBILE"/"BUILDING" 等枚举
+- `c_comment` 字段被截断, 第一个字符 "carefully" 变成 "arefully"
+
+**这是 #3256 fixture 损坏的具体表现** (我之前只看到了 Q14 的 p_type 问题, 没意识到 customer.tbl 也是坏的)
+
+**对 Q10 的影响**:
+- Sprint 1.5 cell diff (60K lineitem, 不同 fixture) → Q10 cell_diff (20 rows ✓ 但 cell 值错)
+- Sprint 3 wire test (614 lineitem, 损坏 fixture) → Q10 0 rows (因为 LOAD DATA INFILE 把 phone 字段当 c_nationkey, 查 1-800-200-9931 vs nation 0-24 → 不匹配)
+
+**验证 Sprint 3.2 修复正常工作**:
+- 用 correct field mapping 加载 → 4-table Q10 核心 = **614 rows** ✓
+- 3-table customer+orders+lineitem = 614 rows ✓
+- 2-table customer+nation = 15 rows ✓
+
+**结论**:
+- Sprint 3.2 修复是正确的, Q10 0-row 是 fixture 数据错位导致 (与 engine 无关)
+- 需要修复 #3256 重新生成正确 fixture
+- Sprint 1.5 (60K 数据) 应该是 SF=0.01 的不同 fixture, Q10 cell_diff 仍可被 Sprint 5 验证
+
 ### Total Sprint 3
 - 测试: 17 → 33 (新增 16)
 - 通过: 10 → 29 (88%)
@@ -197,5 +222,6 @@ WHERE ...;
 ### 关联提交
 - Sprint 3 PR #3234: 初始 17 unit tests (合并 d28551cbf822)
 - Sprint 3.1: aggregate 测试预期修正
-- Sprint 3.2: Multi-Join 修复 (3-table chain) - 待合并
-- Sprint 3.3: Join suite 扩展 4→20 - 待合并
+- Sprint 3.2: Multi-Join 修复 (3-table chain) - 已 push, 待合并
+- Sprint 3.3: Join suite 扩展 4→20 - 已 push, 待合并
+- Sprint 4.5: Q10 fixture corruption 调查 - 完成, 真相 = #3256 损坏数据
