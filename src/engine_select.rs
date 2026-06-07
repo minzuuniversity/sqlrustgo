@@ -420,6 +420,156 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 } else {
                     agg_result_rows
                 };
+
+                // TPC-H Sprint 5 fix: re-project rows according to
+                // SELECT column order. The aggregate path above
+                // produces rows in [group_key..., aggregate_value...]
+                // order, but the SELECT clause may interleave
+                // aggregates with group columns (e.g. Q3:
+                // `SELECT l_orderkey, SUM(...), o_orderdate, ...`
+                // produces [l_orderkey, o_orderdate, o_shippriority, SUM]
+                // but the SELECT order is [l_orderkey, SUM, o_orderdate, ...]).
+                // Without this re-projection, Q3/Q10/Q15/Q18 cell
+                // values appear in the wrong columns.
+                let is_star_agg = select.columns.is_empty()
+                    || select.columns.iter().any(|c| c.name == "*");
+                let agg_result_rows = if is_star_agg || select.columns.len() <= 1 {
+                    // Star / single column: no re-projection needed
+                    agg_result_rows
+                } else {
+                    // Build group-by schema (column names in order).
+                    let group_schema: Vec<String> = group_exprs
+                        .iter()
+                        .map(|expr| match expr {
+                            Expression::Identifier(n) => n.clone(),
+                            _ => format!("__gb{}", 0),
+                        })
+                        .collect();
+                    // Build the row-side schema:
+                    //   [group_col_names..., agg_default_names...]
+                    // The agg default names are "sum", "count", "avg",
+                    // "min", "max" (lowercased function name) at
+                    // select.aggregates order.
+                    let agg_default_names: Vec<String> = select
+                        .aggregates
+                        .iter()
+                        .map(|a| match a.func {
+                            AggregateFunction::Sum => "sum",
+                            AggregateFunction::Count => "count",
+                            AggregateFunction::Avg => "avg",
+                            AggregateFunction::Min => "min",
+                            AggregateFunction::Max => "max",
+                        })
+                        .map(|s| s.to_string())
+                        .collect();
+                    let full_schema: Vec<String> = group_schema
+                        .iter()
+                        .cloned()
+                        .chain(agg_default_names.iter().cloned())
+                        .collect();
+                    // Build lookup maps.
+                    let group_set: std::collections::HashMap<String, usize> = group_schema
+                        .iter()
+                        .enumerate()
+                        .map(|(i, n)| (n.to_lowercase(), i))
+                        .collect();
+                    let agg_set: std::collections::HashMap<String, usize> = agg_default_names
+                        .iter()
+                        .enumerate()
+                        .map(|(i, n)| (n.to_lowercase(), i + group_schema.len()))
+                        .collect();
+                    // For each SELECT column, determine if it's an
+                    // aggregate reference. Walk select.aggregates in
+                    // order and pair with SELECT columns that are
+                    // aggregates. The alias of the i-th aggregate
+                    // SELECT column maps to agg position i.
+                    // To do this, we check each SELECT column's
+                    // expression: if it's Expression::Aggregate or
+                    // contains one, the i-th aggregate in select.aggregates
+                    // matches. We track aggregate index via a counter.
+                    let mut agg_alias_to_pos: std::collections::HashMap<String, usize> =
+                        std::collections::HashMap::new();
+                    for (i, agg) in select.aggregates.iter().enumerate() {
+                        let pos = i + group_schema.len();
+                        // Default name from func
+                        let default_name = match agg.func {
+                            AggregateFunction::Sum => "sum",
+                            AggregateFunction::Count => "count",
+                            AggregateFunction::Avg => "avg",
+                            AggregateFunction::Min => "min",
+                            AggregateFunction::Max => "max",
+                        };
+                        agg_alias_to_pos.insert(default_name.to_string(), pos);
+                    }
+                    // Now find SELECT columns that are aggregate
+                    // references and record their alias → agg position.
+                    let mut agg_select_idx = 0usize;
+                    for col in select.columns.iter() {
+                        let is_agg = match &col.expression {
+                            Some(Expression::Aggregate(_)) => true,
+                            Some(Expression::BinaryOp(l, _, r)) => {
+                                matches!(l.as_ref(), Expression::Aggregate(_))
+                                    || matches!(r.as_ref(), Expression::Aggregate(_))
+                            }
+                            _ => false,
+                        };
+                        if is_agg {
+                            let default_name = match select
+                                .aggregates
+                                .get(agg_select_idx)
+                                .map(|a| a.func.clone())
+                            {
+                                Some(AggregateFunction::Sum) => "sum",
+                                Some(AggregateFunction::Count) => "count",
+                                Some(AggregateFunction::Avg) => "avg",
+                                Some(AggregateFunction::Min) => "min",
+                                Some(AggregateFunction::Max) => "max",
+                                _ => "agg",
+                            };
+                            let pos = agg_select_idx + group_schema.len();
+                            if let Some(alias) = &col.alias {
+                                agg_alias_to_pos.insert(alias.clone(), pos);
+                            }
+                            // Also map the synthetic name
+                            if col.alias.is_none() {
+                                agg_alias_to_pos.insert(col.name.clone(), pos);
+                            }
+                            agg_alias_to_pos.insert(default_name.to_string(), pos);
+                            agg_select_idx += 1;
+                        }
+                    }
+                    // Re-project each row
+                    agg_result_rows
+                        .into_iter()
+                        .map(|row| {
+                            select
+                                .columns
+                                .iter()
+                                .map(|col| {
+                                    let target_name = col
+                                        .alias
+                                        .clone()
+                                        .unwrap_or_else(|| col.name.clone());
+                                    let key = target_name.to_lowercase();
+                                    // Try group col first
+                                    if let Some(&i) = group_set.get(&key) {
+                                        return row.get(i).cloned().unwrap_or(Value::Null);
+                                    }
+                                    // Try aggregate default name
+                                    if let Some(&i) = agg_set.get(&key) {
+                                        return row.get(i).cloned().unwrap_or(Value::Null);
+                                    }
+                                    // Try aggregate alias map
+                                    if let Some(&i) = agg_alias_to_pos.get(&key) {
+                                        return row.get(i).cloned().unwrap_or(Value::Null);
+                                    }
+                                    Value::Null
+                                })
+                                .collect()
+                        })
+                        .collect()
+                };
+
                 let row_count = agg_result_rows.len();
                 return Ok(ExecutorResult::new(agg_result_rows, row_count));
             }
