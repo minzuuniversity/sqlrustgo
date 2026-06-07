@@ -616,6 +616,11 @@ path = "tests/operators/exists.rs"
 name = "repro_3285_real_preservation"
 path = "tests/repro_3285_real_preservation_test.rs"
 
+# Issue #3282 reproduction (Sprint 5)
+[[test]]
+name = "repro_3282_orderby_desc"
+path = "tests/repro_3282_orderby_desc_test.rs"
+
 # Memory limit for tests: 8GB (8 * 1024 * 1024 * 1024 bytes)
 # This prevents any single test from consuming excessive memory
 [profile.test]
