@@ -1,0 +1,74 @@
+{
+  "data_source": "/tmp/tpch_sf01_v2 (regenerated with discount fix)",
+  "generated_at": "2026-06-06T23:39:04.151132+00:00",
+  "snapshot": "tpch_sf01_snapshot_v2",
+  "summary": {
+    "FAIL": 4,
+    "PASS": 3
+  },
+  "verdicts": [
+    {
+      "classification": "cell_diff",
+      "duration_ms": 48,
+      "engine_rows": 6,
+      "notes": "",
+      "pg_rows": 6,
+      "query": "Q1",
+      "status": "FAIL"
+    },
+    {
+      "classification": "value_mismatch",
+      "duration_ms": 30,
+      "engine_rows": 1,
+      "notes": "",
+      "pg_rows": 1,
+      "query": "Q6",
+      "status": "FAIL"
+    },
+    {
+      "classification": "value_mismatch",
+      "duration_ms": 171,
+      "engine_rows": 1,
+      "notes": "",
+      "pg_rows": 1,
+      "query": "Q14",
+      "status": "FAIL"
+    },
+    {
+      "classification": "value_mismatch",
+      "duration_ms": 163,
+      "engine_rows": 1,
+      "notes": "",
+      "pg_rows": 1,
+      "query": "Q17",
+      "status": "FAIL"
+    },
+    {
+      "classification": "scalar_aggregate",
+      "duration_ms": 175,
+      "engine_rows": 1,
+      "notes": "",
+      "pg_rows": 1,
+      "query": "Q19",
+      "status": "PASS"
+    },
+    {
+      "classification": "exists_subquery",
+      "duration_ms": 114,
+      "engine_rows": 0,
+      "notes": "",
+      "pg_rows": 0,
+      "query": "Q20",
+      "status": "PASS"
+    },
+    {
+      "classification": "group_by",
+      "duration_ms": 2777,
+      "engine_rows": 0,
+      "notes": "",
+      "pg_rows": 0,
+      "query": "Q22",
+      "status": "PASS"
+    }
+  ]
+}
