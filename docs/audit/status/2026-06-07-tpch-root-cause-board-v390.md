@@ -253,3 +253,42 @@ WHERE ...;
 - Sprint 3.2: Multi-Join 修复 (3-table chain) - 已 push, 待合并
 - Sprint 3.3: Join suite 扩展 4→20 - 已 push, 待合并
 - Sprint 4.5: Q10 fixture corruption 调查 - 完成, 真相 = #3256 损坏数据
+- Sprint 4: EXISTS correlated 修复 (`eval_predicate` P0-2 §4.12 compat) - 4/4 PASS
+
+---
+
+## 三、Sprint 5 (SF 0.1 数据迁移 + In-Process Test)
+
+> **2026-06-08**: 放弃 SF 0.001 (无测试价值), 切到 SF 0.1 (proper 60K lineitem, 1500 customer) 数据; SF 1.0 待 dbgen 部署
+
+### 数据迁移
+- Source: `/System/Volumes/Data/private/tmp/tpch_sf01/` (8 .tbl, 8.1MB, 86,630 rows total)
+- Dest: `tests/data/tpch-sf01/` (gitignored; setup via `scripts/setup_tpch_sf01.sh`)
+- 字段顺序正确: customer.tbl `c_custkey|c_name|c_address|c_nationkey|...` (c_nationkey 在 field 4, 与 SF 0.001 损坏 fixture 不同)
+- Row counts: region 5 / nation 25 / supplier 100 / customer 1500 / part 2000 / partsupp 8000 / orders 15000 / lineitem 60000
+
+### Wire Test 在 SF 0.1 的状态
+- **EAGAIN bug 重现** (PR-3128): 加载 60K lineitem 时 wire protocol 失败 (`Resource temporarily unavailable (os error 35)`)
+- 决策: wire test 继续用 SF 0.001 (注释说明), 等 PR-3128 修复后再升级
+- 19/22 wire test fail on SF 0.1 (Q4 Sprint 4 修复后 ✓), 其余 EAGAIN 阻塞
+
+### In-Process Test 状态 (Sprint 5 new)
+- File: `tests/tpch_sf01_inprocess_test.rs`
+- API: `bulk_insert_records` (bypass wire protocol)
+- Load 8 tables: 175ms (in-memory, 86K rows)
+- 性能 initial (debug build):
+  - Q1 (price-summary): 167ms ✓
+  - Q4 (order-priority): 5min+ ✗ (EXISTS scan O(orders×lineitem) = 900M)
+  - Q2/Q3: 30-50s
+  - 全 22 query: 10+ min (默认 smoke 6: Q1/Q4/Q6/Q13/Q14/Q19)
+- **Q4 性能发现**: Sprint 4 EXISTS fix 正确, 但 SF 0.1 上没有 early-exit 索引, 退化为 O(outer×inner) 全表扫描
+
+### Sprint 5 待办 (修正顺序)
+1. Q4 EXISTS 加 index-aware early-exit (`l_orderkey` 索引)
+2. 全部 22 query smoke 跑完 + 对比 PG truth
+3. Sprint 1.5 Cell Diff 在 SF 0.1 上重跑
+4. SF 1.0 数据生成 (dbgen 待部署)
+5. 修复 EAGAIN (PR-3128) 升级 wire test 到 SF 0.1
+
+### Sprint 5 提交
+- `d2a6611c` test(tpch): Sprint 5 — in-process SF 0.1 test (push to origin/gitea/gitcode)
