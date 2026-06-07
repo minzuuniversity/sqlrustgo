@@ -292,3 +292,31 @@ WHERE ...;
 
 ### Sprint 5 提交
 - `d2a6611c` test(tpch): Sprint 5 — in-process SF 0.1 test (push to origin/gitea/gitcode)
+
+---
+
+## 五、Sprint 5 v4 (feat/v390-operator-regression-suite, 2026-06-08)
+
+> **关键进展**: SF 0.1 in-process 跑完 20/22 (Q21 TIMEOUT, Q22 unreachable)
+
+### 结果
+| Q | Status | Rows | Time |
+|---|--------|------|------|
+| Q1-Q20 | ✓ PASS | (varies) | 167ms-52s |
+| Q21 | ⏱ TIMEOUT | — | >11min (4-table EXISTS perf) |
+| Q22 | — | — | (Q21 blocked) |
+
+### 对比
+- SF 0.001 wire test: 14/22 PASS
+- SF 0.1 in-process: 20/22 PASS (+6)
+
+### 关键修复
+- FP tolerance (1e-3/1e-6) → Q1, Q14 解 FP 精度 false-positive
+- GROUP BY SELECT projection → Q3 列顺序正确
+- Q17 fix (PR #3319 on develop/v3.9.0) → Q17 NULL semantics 修复
+- Q4 EXISTS perf (SubqueryIndex) → Q4 126ms (was 60s+)
+
+### 剩余真实 bugs
+- Q21: 4-table correlated EXISTS perf, 需 multi-column index (#3316)
+- Q15: comma-list subquery JOIN column reordering (s_address ↔ s_nationkey swap)
+- Comma-list self-join 不 filter self-match (新发现, test added, fix pending)
