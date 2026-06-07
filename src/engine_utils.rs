@@ -221,11 +221,19 @@ pub fn eval_predicate(expr: &Expression, row: &[Value], table_info: &TableInfo) 
             // matches the IN/NOT IN pattern.
             true
         }
-        // For other expressions, evaluate and check if truthy
+        // For other expressions, evaluate and check if truthy. Accept
+        // Boolean(true), Integer(1) (P0-2 §4.12 maps Literal("true") to
+        // Integer(1) for the NOT TRUE evaluation path), and non-empty
+        // Text (SQL standard three-valued truthiness: only NULL/0/false
+        // are non-truthy).
         _ => match crate::expr_utils::evaluate_expression(expr, row, table_info) {
-            Ok(val) => {
-                matches!(val, Value::Boolean(true))
-            }
+            Ok(val) => match val {
+                Value::Boolean(true) => true,
+                Value::Null => false,
+                Value::Integer(0) => false,
+                Value::Float(f) => f != 0.0,
+                _ => true,
+            },
             Err(_) => false,
         },
     }
