@@ -411,3 +411,35 @@ fn join_three_tables_distinct_keys_no_ambiguity() {
     let cols: Vec<String> = r.rows[0].iter().map(|v| v.to_string()).collect();
     assert_eq!(cols, vec!["a1", "b1", "c1"]);
 }
+
+#[test]
+fn join_self_join_comma_list_excludes_self_match() {
+    let mut e = engine();
+    e.execute("CREATE TABLE emp (id INTEGER, mgr_id INTEGER, name TEXT)")
+        .unwrap();
+    e.execute("INSERT INTO emp VALUES (1, NULL, 'CEO')").unwrap();
+    e.execute("INSERT INTO emp VALUES (2, 1, 'CTO')").unwrap();
+    e.execute("INSERT INTO emp VALUES (3, 1, 'CFO')").unwrap();
+    let r = e
+        .execute(
+            "SELECT e.name, m.name FROM emp e, emp m WHERE e.mgr_id = m.id ORDER BY e.name",
+        )
+        .unwrap();
+    assert_eq!(
+        r.rows.len(),
+        2,
+        "only CTO and CFO report to CEO; self-matches (e.g. CEO->CEO) must be filtered"
+    );
+    let names: Vec<(String, String)> = r
+        .rows
+        .iter()
+        .map(|row| (row[0].to_string(), row[1].to_string()))
+        .collect();
+    assert_eq!(
+        names,
+        vec![
+            ("CFO".to_string(), "CEO".to_string()),
+            ("CTO".to_string(), "CEO".to_string()),
+        ]
+    );
+}
