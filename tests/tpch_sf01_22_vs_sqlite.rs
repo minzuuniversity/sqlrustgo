@@ -34,19 +34,34 @@ fn lookup_col_types(table: &str) -> Vec<&'static str> {
     let start = ddl.find('(').unwrap() + 1;
     let end = ddl.rfind(')').unwrap();
     let inner = &ddl[start..end];
-    inner
+    // TPC-H Sprint 5 v7: strip inline `PRIMARY KEY` modifier from
+    // each column definition (e.g. `s_suppkey INTEGER PRIMARY KEY`)
+    // so the type token index doesn't shift. Otherwise
+    // s_suppkey would be filtered out and s_name would be
+    // assigned to the first type slot, causing the loader to
+    // store s_suppkey as TEXT.
+    let tokens: Vec<&str> = inner
         .split(',')
         .map(|c| {
             let c = c.trim();
-            if c.eq_ignore_ascii_case("PRIMARY KEY") || c.contains("PRIMARY KEY") {
+            if c.eq_ignore_ascii_case("PRIMARY KEY") {
                 ""
+            } else if let Some(idx) = c.find("PRIMARY KEY") {
+                // Strip the inline `PRIMARY KEY` modifier.
+                let stripped = c[..idx].trim().to_string();
+                Box::leak(stripped.into_boxed_str()) as &str
             } else {
-                let tokens: Vec<&str> = c.split_whitespace().collect();
-                if tokens.len() >= 2 { tokens[1] } else { "" }
+                c
             }
         })
         .filter(|s| !s.is_empty())
-        .collect()
+        .map(|c| {
+            let toks: Vec<&str> = c.split_whitespace().collect();
+            if toks.len() >= 2 { toks[1] } else { "" }
+        })
+        .filter(|s| !s.is_empty())
+        .collect();
+    tokens
 }
 
 fn load_tbl(storage: &Arc<RwLock<MemoryStorage>>, tbl: &str) -> usize {
@@ -75,10 +90,10 @@ fn load_tbl(storage: &Arc<RwLock<MemoryStorage>>, tbl: &str) -> usize {
 
 fn build_engine() -> (ExecutionEngine<MemoryStorage>, Arc<RwLock<MemoryStorage>>) {
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+    let mut engine = ExecutionEngine::new(storage.clone());
     for ddl in SCHEMA_SQL {
-        ExecutionEngine::new(storage.clone()).execute(ddl).expect("ddl");
+        engine.execute(ddl).expect("ddl");
     }
-    let engine = ExecutionEngine::new(storage.clone());
     (engine, storage)
 }
 
