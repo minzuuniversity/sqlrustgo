@@ -473,6 +473,10 @@ path = "tests/tpch_value_correctness_test.rs"
 name = "tpch_per_query_timeout_test"
 path = "tests/tpch_per_query_timeout_test.rs"
 
+[[test]]
+name = "harness_validation_test"
+path = "tests/harness_validation_test.rs"
+
 # Aliases for ci/ subdir tests (basename != cargo name)
 [[test]]
 name = "ci_test"
@@ -606,6 +610,16 @@ path = "tests/operators/join.rs"
 [[test]]
 name = "operators_exists"
 path = "tests/operators/exists.rs"
+
+# Issue #3285 reproduction (Sprint 4)
+[[test]]
+name = "repro_3285_real_preservation"
+path = "tests/repro_3285_real_preservation_test.rs"
+
+# Issue #3282 reproduction (Sprint 5)
+[[test]]
+name = "repro_3282_orderby_desc"
+path = "tests/repro_3282_orderby_desc_test.rs"
 
 # Memory limit for tests: 8GB (8 * 1024 * 1024 * 1024 bytes)
 # This prevents any single test from consuming excessive memory
