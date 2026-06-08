@@ -1,15 +1,13 @@
 {
   "query": "q5.sql",
-  "sqlite_sql_source": "standard_tpch_q.sql",
+  "sqlite_sql_source": "extracted_from_tpch_value_test_v2",
   "engines": {
     "sqlite": {
-      "row_count": 1,
-      "first_3_rows": [
-        "BRAZIL|129315.4935"
-      ],
+      "row_count": 0,
+      "first_3_rows": [],
       "error": null
     }
   },
-  "consensus_row_count": 1,
+  "consensus_row_count": 0,
   "consensus": true
 }
