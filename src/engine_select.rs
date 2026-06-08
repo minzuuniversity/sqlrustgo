@@ -411,7 +411,15 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 }
 
                 // v3.8.0-rc2 Day 7: apply ORDER BY before returning.
+                // Sprint 5 v2 fix (Q3/Q10/Q15/Q18 cell_diff): for
+                // aggregate-typed ORDER BY references (e.g.
+                // `ORDER BY revenue DESC` where `revenue` is a SUM
+                // alias), the position in the row is offset by
+                // group_schema.len() (the aggregate tail starts
+                // after the group-by columns). Also respect
+                // ascending/DESC direction.
                 let agg_result_rows = if !select.order_by.is_empty() {
+                    let group_schema_len = group_exprs.len();
                     let mut keyed: Vec<(Vec<Value>, Vec<Value>)> = agg_result_rows
                         .into_iter()
                         .map(|row| {
@@ -419,16 +427,43 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                                 .order_by
                                 .iter()
                                 .map(|ob_expr| {
-                                    // ORDER BY column reference. For aggregate
-                                    // path, the row is [group_key..., agg_value...].
-                                    // Try alias-or-name in select.columns first.
                                     if let Expression::Identifier(col_name) = &ob_expr.expression {
                                         if let Some(idx) = select.columns.iter().position(|c| {
                                             c.alias.as_deref() == Some(col_name)
                                                 || c.name == *col_name
                                         }) {
-                                            if idx < row.len() {
-                                                return row[idx].clone();
+                                            let col = &select.columns[idx];
+                                            let col_expr = col.expression.as_ref();
+                                            let is_aggregate = match col_expr {
+                                                Some(Expression::Aggregate(_)) => true,
+                                                Some(Expression::BinaryOp(_, _, r)) => {
+                                                    matches!(r.as_ref(), Expression::Aggregate(_))
+                                                }
+                                                _ => false,
+                                            } || (col.alias.is_none()
+                                                && idx >= group_schema_len);
+                                            let actual_idx = if is_aggregate {
+                                                let agg_pos_in_select = select
+                                                    .columns
+                                                    .iter()
+                                                    .take(idx)
+                                                    .filter(|c| {
+                                                        let ce = c.expression.as_ref();
+                                                        match ce {
+                                                            Some(Expression::Aggregate(_)) => true,
+                                                            Some(Expression::BinaryOp(_, _, r)) => {
+                                                                matches!(r.as_ref(), Expression::Aggregate(_))
+                                                            }
+                                                            _ => false,
+                                                        }
+                                                    })
+                                                    .count();
+                                                group_schema_len + agg_pos_in_select
+                                            } else {
+                                                idx
+                                            };
+                                            if actual_idx < row.len() {
+                                                return row[actual_idx].clone();
                                             }
                                         }
                                     }
@@ -438,7 +473,21 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                             (keys, row)
                         })
                         .collect();
-                    keyed.sort_by(|a, b| a.0.cmp(&b.0));
+                    // Apply sort with per-column ASC/DESC.
+                    for (i, ob_expr) in select.order_by.iter().enumerate() {
+                        let ascending = ob_expr.ascending;
+                        keyed.sort_by(|a, b| {
+                            let av = a.0.get(i);
+                            let bv = b.0.get(i);
+                            let ord = match (av, bv) {
+                                (Some(x), Some(y)) => x.cmp(y),
+                                (Some(_), None) => std::cmp::Ordering::Greater,
+                                (None, Some(_)) => std::cmp::Ordering::Less,
+                                (None, None) => std::cmp::Ordering::Equal,
+                            };
+                            if ascending { ord } else { ord.reverse() }
+                        });
+                    }
                     keyed.into_iter().map(|(_, row)| row).collect()
                 } else {
                     agg_result_rows
