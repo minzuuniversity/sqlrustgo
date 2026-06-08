@@ -278,11 +278,20 @@ pub fn eval_literal_from_str(s: &str) -> Value {
     // have returned `Value::Text("TRUE")` for `Literal("TRUE")`. The
     // change is intentional and tracked in the OpenSpec tasks.md
     // §4.12 — the UnaryOp arm cannot work without this.
+    //
+    // Sprint 5 v2 fix: return Value::Boolean(true/false) instead of
+    // Value::Integer(1/0). The Integer form silently broke
+    // correlated-EXISTS substitution in TPC-H Q4: the substituted
+    // where_expr evaluates `Literal("true")` to Integer(1), and
+    // the catch-all in `eval_predicate` checks
+    // `matches!(val, Value::Boolean(true))` which fails on
+    // Integer(1), so all rows are dropped (Q4 returns 0 rows
+    // instead of 5).
     if s.eq_ignore_ascii_case("TRUE") {
-        return Value::Integer(1);
+        return Value::Boolean(true);
     }
     if s.eq_ignore_ascii_case("FALSE") {
-        return Value::Integer(0);
+        return Value::Boolean(false);
     }
     if let Ok(n) = s.parse::<i64>() {
         return Value::Integer(n);
@@ -696,10 +705,19 @@ fn parse_lit(s: &str) -> Value {
         return Value::Null;
     }
     if s.eq_ignore_ascii_case("TRUE") {
-        return Value::Integer(1);
+        // Sprint 5 v2 fix: return Value::Boolean(true) so
+        // eval_predicate's `matches!(val, Value::Boolean(true))`
+        // truthiness check works correctly. Previously this
+        // returned Value::Integer(1), which silently broke
+        // correlated-EXISTS substitution in TPC-H Q4 — the
+        // substituted where_expr evaluates the literal "true"
+        // to Integer(1), and the catch-all `matches!(val,
+        // Value::Boolean(true))` returns false, so all rows
+        // are dropped (Q4 returns 0 rows instead of 5).
+        return Value::Boolean(true);
     }
     if s.eq_ignore_ascii_case("FALSE") {
-        return Value::Integer(0);
+        return Value::Boolean(false);
     }
     let unquoted =
         if (s.starts_with('\'') && s.ends_with('\'')) || (s.starts_with('"') && s.ends_with('"')) {
