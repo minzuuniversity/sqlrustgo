@@ -81,6 +81,11 @@ static SHARED: OnceLock<SharedServer> = OnceLock::new();
 
 fn shared() -> &'static SharedServer {
     SHARED.get_or_init(|| {
+        // SF 0.001 (~600 lineitem rows) is used for the wire test because
+        // the wire protocol path has an EAGAIN bug on larger data
+        // (PR-3128). For in-process operator regression, see
+        // tests/operators/. For full SF 0.1 / SF 1.0 testing, see
+        // tests/tpch_sf01_inprocess_test.rs (planned).
         let data_dir = PathBuf::from("tests/data/tpch-sf001");
         let config = EphemeralConfig {
             data_dir: Some(data_dir.clone()),
@@ -149,6 +154,45 @@ fn read_three_way(qnum: u8) -> Option<(u64, Vec<String>)> {
         })
         .unwrap_or_default();
     Some((rc, first3))
+}
+
+/// FP-tolerant row equality: split each row on `|`, parse each
+/// cell as f64 (when possible), and accept either exact string
+/// match OR numeric match within 1e-3 absolute / 1e-6 relative
+/// error. Non-numeric cells (e.g. `A`, `F`, `N`, `O` in Q1) use
+/// exact string equality. Rows with different field counts or
+/// non-matching non-numeric cells fall back to exact equality.
+fn rows_fp_eq(actual: &[String], expected: &[String]) -> bool {
+    if actual.len() != expected.len() {
+        return false;
+    }
+    for (a, e) in actual.iter().zip(expected.iter()) {
+        let a_cells: Vec<&str> = a.split('|').collect();
+        let e_cells: Vec<&str> = e.split('|').collect();
+        if a_cells.len() != e_cells.len() {
+            return false;
+        }
+        for (ac, ec) in a_cells.iter().zip(e_cells.iter()) {
+            if ac == ec {
+                continue;
+            }
+            match (ac.parse::<f64>(), ec.parse::<f64>()) {
+                (Ok(av), Ok(ev)) => {
+                    let abs_err = (av - ev).abs();
+                    let rel_err = if ev != 0.0 {
+                        abs_err / ev.abs()
+                    } else {
+                        abs_err
+                    };
+                    if abs_err > 1e-3 && rel_err > 1e-6 {
+                        return false;
+                    }
+                }
+                _ => return false,
+            }
+        }
+    }
+    true
 }
 
 #[test]
@@ -223,13 +267,28 @@ fn test_tpch_22_queries_wire_roundtrip() {
                         // not be ordered, and engine order may not match
                         // SQLite's secondary sort. Sort both and compare
                         // as multisets.
+                        //
+                        // Sprint 5 v3: use FP-tolerant comparison. The
+                        // SQLite truth source rounds floats to ~6 decimal
+                        // places; sqlrustgo's IEEE-754 result exposes
+                        // the full ~16 sig-fig precision. A pure string
+                        // compare flags e.g. 2498742.6161089996 vs
+                        // 2498742.616109 as different even though they
+                        // agree to 1e-6. The numeric compare below
+                        // accepts 1e-3 absolute or 1e-6 relative error
+                        // per cell, which is well below the TPC-H
+                        // cell-diff threshold for Q1.
                         let mut actual_first3: Vec<String> =
                             rows.iter().take(3).map(|row| row.join("|")).collect();
                         actual_first3.sort();
                         let mut expected_sorted = expected_first3.clone();
                         expected_sorted.sort();
-                        if actual_first3 != expected_sorted {
+                        if !rows_fp_eq(&actual_first3, &expected_sorted) {
                             fail += 1;
+                            eprintln!("[Q{} ACTUAL]", qnum);
+                            for r in &actual_first3 { eprintln!("  {}", r); }
+                            eprintln!("[Q{} EXPECTED]", qnum);
+                            for r in &expected_sorted { eprintln!("  {}", r); }
                             fail_details.push(format!("Q{}: first 3 rows differ (sorted)", qnum));
                             continue;
                         }
