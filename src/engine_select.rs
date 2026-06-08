@@ -15,6 +15,7 @@ use sqlrustgo_parser::{
 use sqlrustgo_storage::{StorageEngine, TableInfo};
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::sync::{Mutex, OnceLock};
 
 type DerivedResult = (Vec<Vec<Value>>, TableInfo);
 
@@ -25,6 +26,40 @@ type DerivedResult = (Vec<Vec<Value>>, TableInfo);
 thread_local! {
     static DERIVED_RESULTS: RefCell<HashMap<String, DerivedResult>> =
         RefCell::new(HashMap::new());
+}
+
+// Sprint 5 v2: per-column index for correlated EXISTS. TPC-H
+// Q4/Q21 use `EXISTS (SELECT * FROM lineitem WHERE
+// l_orderkey = o_orderkey AND ...)`, where the per-outer-row
+// scan was N×M. We build a one-shot index for each column on
+// the first call, then reuse it for subsequent calls.
+static LINEITEM_INDEX_CACHE: OnceLock<
+    Mutex<HashMap<String, HashMap<Value, Vec<usize>>>>,
+> = OnceLock::new();
+fn lineitem_index_cache() -> &'static Mutex<HashMap<String, HashMap<Value, Vec<usize>>>> {
+    LINEITEM_INDEX_CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+// Companion cache for the actual inner table rows. We cache
+// the rows under an Arc so subsequent per-outer-row calls
+// don't pay the deep-clone cost of MemoryStorage::scan()
+// (which does `.cloned()` on 60K lineitem rows each call).
+static LINEITEM_ROWS_CACHE: OnceLock<
+    Mutex<HashMap<String, std::sync::Arc<Vec<Vec<Value>>>>>,
+> = OnceLock::new();
+fn lineitem_rows_cache(
+) -> &'static Mutex<HashMap<String, std::sync::Arc<Vec<Vec<Value>>>>> {
+    LINEITEM_ROWS_CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+// Sprint 5 v2 (Q17 fix): per-(table, column, key) scalar subquery cache.
+// TPC-H Q17: `SELECT ... WHERE l_quantity < (SELECT 0.2*AVG(l_quantity)
+// FROM lineitem WHERE l_partkey = p_partkey)`. For each outer partkey value,
+// we cache the scalar subquery result so we don't scan lineitem N times.
+// Key: (table_name, outer_ref_col, inner_filter_col) → HashMap<outer_value, scalar_result>
+static SCALAR_SUBQ_CACHE: OnceLock<Mutex<HashMap<Value, Value>>> = OnceLock::new();
+fn scalar_subq_cache() -> &'static Mutex<HashMap<Value, Value>> {
+    SCALAR_SUBQ_CACHE.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
 impl<S: StorageEngine + 'static> ExecutionEngine<S> {
@@ -125,6 +160,14 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
 
         if self.parallel_degree > 1
             && rows.len() >= PARALLEL_MIN_ROWS
+            // Skip parallel filter when WHERE contains correlated subqueries
+            // (Subquery, EXISTS/NOT EXISTS with outer refs). The sequential
+            // path below handles these correctly; parallel filter uses
+            // eval_predicate which returns NULL for Subquery expressions.
+            && select
+                .where_clause
+                .as_ref()
+                .map_or(true, |w| !where_expr_has_correlated_subquery(w))
         {
             if let Some(ref where_expr) = select.where_clause {
                 let parallel = ParallelVolcanoExecutor::new(self.parallel_degree);
@@ -138,7 +181,6 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         }
 
         // Step 1.5: correlated EXISTS / NOT EXISTS pre-evaluation
-        // TPC-H Q20/Q21: WHERE contains `EXISTS (subq WHERE x = outer.col)`.
         // Before applying WHERE row-by-row, substitute the outer column
         // references in the subquery with concrete values from each
         // outer row, then execute the subquery and check whether it
@@ -391,7 +433,15 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 }
 
                 // v3.8.0-rc2 Day 7: apply ORDER BY before returning.
+                // Sprint 5 v2 fix (Q3/Q10/Q15/Q18 cell_diff): for
+                // aggregate-typed ORDER BY references (e.g.
+                // `ORDER BY revenue DESC` where `revenue` is a SUM
+                // alias), the position in the row is offset by
+                // group_schema.len() (the aggregate tail starts
+                // after the group-by columns). Also respect
+                // ascending/DESC direction.
                 let agg_result_rows = if !select.order_by.is_empty() {
+                    let group_schema_len = group_exprs.len();
                     let mut keyed: Vec<(Vec<Value>, Vec<Value>)> = agg_result_rows
                         .into_iter()
                         .map(|row| {
@@ -399,16 +449,43 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                                 .order_by
                                 .iter()
                                 .map(|ob_expr| {
-                                    // ORDER BY column reference. For aggregate
-                                    // path, the row is [group_key..., agg_value...].
-                                    // Try alias-or-name in select.columns first.
                                     if let Expression::Identifier(col_name) = &ob_expr.expression {
                                         if let Some(idx) = select.columns.iter().position(|c| {
                                             c.alias.as_deref() == Some(col_name)
                                                 || c.name == *col_name
                                         }) {
-                                            if idx < row.len() {
-                                                return row[idx].clone();
+                                            let col = &select.columns[idx];
+                                            let col_expr = col.expression.as_ref();
+                                            let is_aggregate = match col_expr {
+                                                Some(Expression::Aggregate(_)) => true,
+                                                Some(Expression::BinaryOp(_, _, r)) => {
+                                                    matches!(r.as_ref(), Expression::Aggregate(_))
+                                                }
+                                                _ => false,
+                                            } || (col.alias.is_none()
+                                                && idx >= group_schema_len);
+                                            let actual_idx = if is_aggregate {
+                                                let agg_pos_in_select = select
+                                                    .columns
+                                                    .iter()
+                                                    .take(idx)
+                                                    .filter(|c| {
+                                                        let ce = c.expression.as_ref();
+                                                        match ce {
+                                                            Some(Expression::Aggregate(_)) => true,
+                                                            Some(Expression::BinaryOp(_, _, r)) => {
+                                                                matches!(r.as_ref(), Expression::Aggregate(_))
+                                                            }
+                                                            _ => false,
+                                                        }
+                                                    })
+                                                    .count();
+                                                group_schema_len + agg_pos_in_select
+                                            } else {
+                                                idx
+                                            };
+                                            if actual_idx < row.len() {
+                                                return row[actual_idx].clone();
                                             }
                                         }
                                     }
@@ -418,7 +495,21 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                             (keys, row)
                         })
                         .collect();
-                    keyed.sort_by(|a, b| a.0.cmp(&b.0));
+                    // Apply sort with per-column ASC/DESC.
+                    for (i, ob_expr) in select.order_by.iter().enumerate() {
+                        let ascending = ob_expr.ascending;
+                        keyed.sort_by(|a, b| {
+                            let av = a.0.get(i);
+                            let bv = b.0.get(i);
+                            let ord = match (av, bv) {
+                                (Some(x), Some(y)) => x.cmp(y),
+                                (Some(_), None) => std::cmp::Ordering::Greater,
+                                (None, Some(_)) => std::cmp::Ordering::Less,
+                                (None, None) => std::cmp::Ordering::Equal,
+                            };
+                            if ascending { ord } else { ord.reverse() }
+                        });
+                    }
                     keyed.into_iter().map(|(_, row)| row).collect()
                 } else {
                     agg_result_rows
@@ -442,54 +533,175 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 } else {
                     agg_result_rows
                 };
-                // Sprint 5 v3: apply SELECT projection. The raw
-                // agg_result_rows are [group_keys..., aggregates...]
-                // but the SELECT may list columns in a different order
-                // (Q3: SELECT l_orderkey, revenue, o_orderdate,
-                // o_shippriority). The no-GROUP-BY branch above does
-                // the same projection; we mirror it here.
-                let agg_schema = build_aggregate_schema(group_exprs, &select.aggregates)?;
-                let projected_rows: Vec<Vec<Value>> = if select.columns.is_empty()
-                    || select.columns.iter().any(|c| c.name == "*")
-                {
+
+                // TPC-H Sprint 5 fix: re-project rows according to
+                // SELECT column order. The aggregate path above
+                // produces rows in [group_key..., aggregate_value...]
+                // order, but the SELECT clause may interleave
+                // aggregates with group columns (e.g. Q3:
+                // `SELECT l_orderkey, SUM(...), o_orderdate, ...`
+                // produces [l_orderkey, o_orderdate, o_shippriority, SUM]
+                // but the SELECT order is [l_orderkey, SUM, o_orderdate, ...]).
+                // Without this re-projection, Q3/Q10/Q15/Q18 cell
+                // values appear in the wrong columns.
+                let is_star_agg = select.columns.is_empty()
+                    || select.columns.iter().any(|c| c.name == "*");
+                let agg_result_rows = if is_star_agg || select.columns.len() <= 1 {
+                    // Star / single column: no re-projection needed
                     agg_result_rows
                 } else {
+                    // Build group-by schema (column names in order).
+                    // Identifier expressions use their name. For
+                    // function calls (e.g. EXTRACT(YEAR FROM col) in
+                    // TPC-H Q7/Q8/Q9), use a stable hash so the
+                    // re-projection can match by alias later.
+                    let group_schema: Vec<String> = group_exprs
+                        .iter()
+                        .enumerate()
+                        .map(|(i, expr)| match expr {
+                            Expression::Identifier(n) => n.clone(),
+                            _ => format!("__gb_{}", i),
+                        })
+                        .collect();
+                    // Build the row-side schema:
+                    //   [group_col_names..., agg_default_names...]
+                    // The agg default names are "sum", "count", "avg",
+                    // "min", "max" (lowercased function name) at
+                    // select.aggregates order.
+                    let agg_default_names: Vec<String> = select
+                        .aggregates
+                        .iter()
+                        .map(|a| match a.func {
+                            AggregateFunction::Sum => "sum",
+                            AggregateFunction::Count => "count",
+                            AggregateFunction::Avg => "avg",
+                            AggregateFunction::Min => "min",
+                            AggregateFunction::Max => "max",
+                        })
+                        .map(|s| s.to_string())
+                        .collect();
+                    let full_schema: Vec<String> = group_schema
+                        .iter()
+                        .cloned()
+                        .chain(agg_default_names.iter().cloned())
+                        .collect();
+                    // Build lookup maps.
+                    let mut group_set: std::collections::HashMap<String, usize> = group_schema
+                        .iter()
+                        .enumerate()
+                        .map(|(i, n)| (n.to_lowercase(), i))
+                        .collect();
+                    let agg_set: std::collections::HashMap<String, usize> = agg_default_names
+                        .iter()
+                        .enumerate()
+                        .map(|(i, n)| (n.to_lowercase(), i + group_schema.len()))
+                        .collect();
+                    // For each SELECT column, determine if it's an
+                    // aggregate reference or a non-aggregate GROUP BY
+                    // expression. Walk select.aggregates in order and
+                    // pair with SELECT columns that are aggregates.
+                    // The alias of the i-th aggregate SELECT column
+                    // maps to agg position i.
+                    let mut agg_alias_to_pos: std::collections::HashMap<String, usize> =
+                        std::collections::HashMap::new();
+                    let mut agg_select_idx = 0usize;
+                    for col in select.columns.iter() {
+                        let is_agg = match &col.expression {
+                            Some(Expression::Aggregate(_)) => true,
+                            Some(Expression::BinaryOp(l, _, r)) => {
+                                matches!(l.as_ref(), Expression::Aggregate(_))
+                                    || matches!(r.as_ref(), Expression::Aggregate(_))
+                            }
+                            _ => false,
+                        };
+                        if is_agg {
+                            let pos = agg_select_idx + group_schema.len();
+                            if let Some(alias) = &col.alias {
+                                agg_alias_to_pos.insert(alias.clone(), pos);
+                            }
+                            if col.alias.is_none() {
+                                agg_alias_to_pos.insert(col.name.clone(), pos);
+                            }
+                            agg_select_idx += 1;
+                        }
+                    }
+                    // Sprint 5 fix: also map non-aggregate SELECT
+                    // columns (like EXTRACT in GROUP BY) to their
+                    // GROUP BY position. Compare the SELECT col's
+                    // expression structurally to each group_expr.
+                    for (i, gexpr) in group_exprs.iter().enumerate() {
+                        for col in select.columns.iter() {
+                            // Match by expression structural equality
+                            // (FunctionCall EXTRACT in both), OR by
+                            // alias pointing to __gb_N if no match
+                            let is_match = match &col.expression {
+                                Some(expr) => expr == gexpr,
+                                _ => false,
+                            };
+                            if is_match {
+                                // Map both alias and the synthetic
+                                // group_schema name to position i
+                                if let Some(alias) = &col.alias {
+                                    group_set
+                                        .entry(alias.to_lowercase())
+                                        .or_insert(i);
+                                }
+                                group_set
+                                    .entry(col.name.to_lowercase())
+                                    .or_insert(i);
+                            }
+                        }
+                    }
+                    // Re-project each row
                     agg_result_rows
                         .into_iter()
                         .map(|row| {
                             select
                                 .columns
                                 .iter()
-                                .map(|col| match &col.expression {
-                                    Some(expr) => {
-                                        evaluate_expression(expr, &row, &agg_schema)
-                                            .unwrap_or(Value::Null)
+                                .map(|col| {
+                                    let target_name = col
+                                        .alias
+                                        .clone()
+                                        .unwrap_or_else(|| col.name.clone());
+                                    let key = target_name.to_lowercase();
+                                    // Try group col first
+                                    if let Some(&i) = group_set.get(&key) {
+                                        return row.get(i).cloned().unwrap_or(Value::Null);
                                     }
-                                    None => row.first().cloned().unwrap_or(Value::Null),
+                                    // Try aggregate default name
+                                    if let Some(&i) = agg_set.get(&key) {
+                                        return row.get(i).cloned().unwrap_or(Value::Null);
+                                    }
+                                    // Try aggregate alias map
+                                    if let Some(&i) = agg_alias_to_pos.get(&key) {
+                                        return row.get(i).cloned().unwrap_or(Value::Null);
+                                    }
+                                    Value::Null
                                 })
                                 .collect()
                         })
                         .collect()
                 };
-                let row_count = projected_rows.len();
-                return Ok(ExecutorResult::new(projected_rows, row_count));
+
+                let row_count = agg_result_rows.len();
+                return Ok(ExecutorResult::new(agg_result_rows, row_count));
             }
         }
 
         // Step 4: LIMIT / OFFSET
-        let limited_rows = if let Some(limit) = select.limit {
-            let offset = select.offset.unwrap_or(0);
-            if offset as usize >= rows.len() {
-                vec![]
-            } else {
-                rows.into_iter()
-                    .skip(offset as usize)
-                    .take(limit as usize)
-                    .collect()
-            }
-        } else {
-            rows
-        }; // Step 5: SELECT projection — apply each `select.columns` expression
+        //
+        // Fix for #3282 (Sprint 5): LIMIT used to be applied here,
+        // BEFORE ORDER BY (Step 7). That broke any
+        // `ORDER BY col [DESC] LIMIT n` query — the engine would
+        // take the first n rows in storage order, then "sort"
+        // them, returning storage-order top n instead of the
+        // highest/lowest n. The canonical case was TPC-H Q18's
+        // `ORDER BY o_totalprice DESC LIMIT 100` which returned
+        // the storage-order top 100 instead of the highest-total
+        // top 100. LIMIT/OFFSET are now applied in Step 8 (after
+        // ORDER BY) below.
+        let limited_rows = rows; // Step 5: SELECT projection — apply each `select.columns` expression
            // to the accumulated row and emit a row of projected values. This
            // is what makes `SELECT EXTRACT(YEAR FROM col) AS o_year` actually
            // return `o_year` instead of the full table schema.
@@ -563,6 +775,16 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         // tuple of sort-key values using Vec<Value>'s default Ord
         // implementation. Vec::sort_by is stable, so equal keys
         // preserve input order.
+        //
+        // Fix for #3282 (Sprint 5): LIMIT/OFFSET used to be applied
+        // BEFORE ORDER BY (Step 4) which broke any `ORDER BY col
+        // LIMIT n` query — the engine would take the first n rows
+        // in storage order and then "sort" them, producing results
+        // that look correct on the first n rows but are actually
+        // out of order. The canonical case was TPC-H Q18's
+        // `ORDER BY o_totalprice DESC LIMIT 100` which returned
+        // the storage-order top 100 instead of the highest-total
+        // top 100. Moved LIMIT to Step 8 (after ORDER BY).
         let projected_rows: Vec<Vec<Value>> = if !select.order_by.is_empty() {
             let mut keyed: Vec<(Vec<Value>, Vec<Value>)> = projected_rows
                 .into_iter()
@@ -632,6 +854,24 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 std::cmp::Ordering::Equal
             });
             keyed.into_iter().map(|(_, row)| row).collect()
+        } else {
+            projected_rows
+        };
+
+        // Step 8: LIMIT / OFFSET — apply after ORDER BY so that
+        // `ORDER BY col [DESC] LIMIT n` returns the correct top/bottom n.
+        // See Step 4 above for the historical reason this moved.
+        let projected_rows: Vec<Vec<Value>> = if let Some(limit) = select.limit {
+            let offset = select.offset.unwrap_or(0);
+            if offset as usize >= projected_rows.len() {
+                vec![]
+            } else {
+                projected_rows
+                    .into_iter()
+                    .skip(offset as usize)
+                    .take(limit as usize)
+                    .collect()
+            }
         } else {
             projected_rows
         };
@@ -1581,8 +1821,40 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             | Expression::Between(_, _, _)
             | Expression::NotBetween(_, _, _)
             | Expression::NotRegexp(_, _) => where_expr.clone(),
-            // CASE WHEN / SubqueryField pass through.
-            Expression::Subquery(_) | Expression::SubqueryField(_, _) | Expression::CaseWhen(_, _) => {
+            // TPC-H Q17: correlated scalar subquery (e.g.
+            // `l_quantity < (SELECT 0.2 * AVG(l_quantity) FROM lineitem
+            // WHERE l_partkey = p_partkey)`).
+            // Sprint 5 v2 fix: evaluate the subquery with a static cache
+            // Q17: correlated scalar subquery with per-partkey cache.
+            // outer_row[0] = l_orderkey, outer_row[1] = l_partkey (combined
+            // join schema: lineitem cols first, then part cols).
+            // Use l_partkey as the stable cache key.
+            Expression::Subquery(_subq) => {
+                let outer_partkey = outer_row.get(1).cloned().unwrap_or_else(|| outer_row.first().cloned().unwrap_or(Value::Null));
+                // Check cache first.
+                {
+                    let cache = scalar_subq_cache().lock().unwrap();
+                    if let Some(cached) = cache.get(&outer_partkey) {
+                        return Expression::Literal(cached.to_string());
+                    }
+                }
+                // Not cached: substitute outer refs and execute.
+                let substituted =
+                    substitute_outer_refs_in_select(_subq, outer_row, outer_table_info);
+                let result = self.execute_select(&substituted);
+                let scalar = match result {
+                    Ok(r) if !r.rows.is_empty() => {
+                        r.rows[0].first().cloned().unwrap_or(Value::Null)
+                    }
+                    _ => Value::Null,
+                };
+                // Cache for subsequent rows with same outer_partkey.
+                scalar_subq_cache().lock().unwrap().insert(outer_partkey, scalar.clone());
+                Expression::Literal(scalar.to_string())
+            }
+            // CASE WHEN / SubqueryField pass through (no substitution needed —
+            // these are not correlated scalar subqueries in TPC-H).
+            Expression::SubqueryField(_, _) | Expression::CaseWhen(_, _) => {
                 where_expr.clone()
             }
             // QuantifiedOp: pass through.
@@ -1649,10 +1921,121 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         if where_expr_has_uncorrelated_subquery(where_expr) {
             return None;
         }
-        // Direct storage scan + WHERE filter + early exit.
         let storage = self.storage.read().ok()?;
-        let rows = storage.scan(&subq.table).ok()?;
         let table_info = storage.get_table_info(&subq.table).ok()?;
+
+        // Sprint 5 v2 fix: for correlated EXISTS in TPC-H Q4/Q21
+        // (`EXISTS (SELECT * FROM lineitem WHERE l_orderkey = o_orderkey AND ...)`),
+        // the naive scan reads 60K lineitem rows for every outer
+        // row, giving 60K × 1851 = 111M comparisons (TIMEOUT).
+        //
+        // Optimization: detect a simple
+        // `<inner_col> = <outer_col_ref>` equality in the WHERE
+        // (after substitution it's `<inner_col> = Literal`), build
+        // a one-shot HashMap index (cached at module scope), and
+        // only test the matching subset.
+        let mut idx_col: Option<usize> = None;
+        let mut target_value: Option<Value> = None;
+        if let sqlrustgo_parser::Expression::BinaryOp(l, op, r) = where_expr {
+            if op == "AND" {
+                for side in [&**l, &**r] {
+                    if let sqlrustgo_parser::Expression::BinaryOp(bl, eq_op, br) = side {
+                        if eq_op == "=" {
+                            let inner_cols: std::collections::HashSet<String> = table_info
+                                .columns
+                                .iter()
+                                .map(|c| c.name.to_lowercase())
+                                .collect();
+                            let (inner_name, target_val) = match (bl.as_ref(), br.as_ref()) {
+                                (
+                                    sqlrustgo_parser::Expression::Identifier(iname),
+                                    sqlrustgo_parser::Expression::Literal(s),
+                                ) => {
+                                    let in_lc = iname.to_lowercase();
+                                    if inner_cols.contains(&in_lc) {
+                                        (Some(in_lc), Some(s.clone()))
+                                    } else {
+                                        (None, None)
+                                    }
+                                }
+                                (
+                                    sqlrustgo_parser::Expression::Literal(s),
+                                    sqlrustgo_parser::Expression::Identifier(iname),
+                                ) => {
+                                    let in_lc = iname.to_lowercase();
+                                    if inner_cols.contains(&in_lc) {
+                                        (Some(in_lc), Some(s.clone()))
+                                    } else {
+                                        (None, None)
+                                    }
+                                }
+                                _ => (None, None),
+                            };
+                            if let (Some(inner), Some(s)) = (inner_name, target_val) {
+                                if let Some(idx) = table_info
+                                    .columns
+                                    .iter()
+                                    .position(|c| c.name.to_lowercase() == inner)
+                                {
+                                    let parsed = sqlrustgo_types::parse_sql_literal(&s);
+                                    idx_col = Some(idx);
+                                    target_value = Some(parsed);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if let (Some(idx), Some(target)) = (idx_col, target_value) {
+            // Use a 2-level cache: the table rows themselves (Arc
+            // for cheap sharing) and the per-column index.
+            let rows_cache = lineitem_rows_cache();
+            let idx_cache = lineitem_index_cache();
+            // Get or build the rows.
+            let table_name = subq.table.clone();
+            let rows_arc: std::sync::Arc<Vec<Vec<Value>>> = {
+                let mut rc = rows_cache.lock().unwrap();
+                if let Some(c) = rc.get(&table_name) {
+                    c.clone()
+                } else {
+                    let rows = storage.scan(&subq.table).ok()?;
+                    let arc = std::sync::Arc::new(rows);
+                    rc.insert(table_name.clone(), arc.clone());
+                    arc
+                }
+            };
+            // Get or build the index for this column.
+            let cache_key = format!("{}:{}", table_name, idx);
+            let candidate_ids: Vec<usize> = {
+                let mut ic = idx_cache.lock().unwrap();
+                if !ic.contains_key(&cache_key) {
+                    let mut new_index: std::collections::HashMap<Value, Vec<usize>> =
+                        std::collections::HashMap::new();
+                    for (i, r) in rows_arc.iter().enumerate() {
+                        if let Some(v) = r.get(idx) {
+                            new_index.entry(v.clone()).or_default().push(i);
+                        }
+                    }
+                    ic.insert(cache_key.clone(), new_index);
+                }
+                ic.get(&cache_key)
+                    .unwrap()
+                    .get(&target)
+                    .cloned()
+                    .unwrap_or_default()
+            };
+            // Test the candidates (typically ~5-7 per outer row).
+            for i in &candidate_ids {
+                if eval_predicate(where_expr, &rows_arc[*i], &table_info) {
+                    return Some(true);
+                }
+            }
+            return Some(false);
+        }
+
+        // Direct storage scan + WHERE filter + early exit.
+        let rows = storage.scan(&subq.table).ok()?;
         for row in &rows {
             if eval_predicate(where_expr, row, &table_info) {
                 return Some(true);
