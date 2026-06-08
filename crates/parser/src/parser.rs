@@ -2864,7 +2864,43 @@ impl Parser {
                         Some(t) => return Err(format!("Expected table name, got {:?}", t)),
                         None => return Err("Expected table name".to_string()),
                     };
-                    let mut tables: Vec<String> = vec![first_table];
+                    // Sprint 5 v4: handle the FIRST table's inline alias
+                    // BEFORE the comma loop, so the loop sees the comma
+                    // (not the alias as the next token). Without this,
+                    // `FROM emp e, emp m` parses with `e` consumed as the
+                    // from_alias after the loop, leaving the comma and
+                    // `emp m` unconsumed (extra_tables=[], the second
+                    // table is lost).
+                    let first_table_with_alias: String =
+                        if matches!(self.current(), Some(Token::Identifier(_)))
+                            && !matches!(
+                                self.current(),
+                                Some(Token::Where)
+                                    | Some(Token::Group)
+                                    | Some(Token::Order)
+                                    | Some(Token::Limit)
+                                    | Some(Token::RParen)
+                                    | Some(Token::Eof)
+                                    | Some(Token::Comma)
+                                    | Some(Token::Join)
+                                    | Some(Token::Left)
+                                    | Some(Token::Right)
+                                    | Some(Token::Inner)
+                                    | Some(Token::Full)
+                                    | Some(Token::Cross)
+                                    | Some(Token::On)
+                                    | Some(Token::As)
+                            )
+                        {
+                            if let Some(Token::Identifier(a)) = self.next() {
+                                format!("{}|{}", first_table, a)
+                            } else {
+                                first_table.clone()
+                            }
+                        } else {
+                            first_table.clone()
+                        };
+                    let mut tables: Vec<String> = vec![first_table_with_alias];
                     // Phase 4 (TPCH-01 Q15): comma-list can include
                     // a parenthesized subquery aliased, e.g.
                     // FROM supplier, (SELECT ... FROM lineitem
@@ -2987,21 +3023,12 @@ impl Parser {
             Some(t) => return Err(format!("Expected FROM or end of query, got {:?}", t)),
         };
 
-        // Check for table alias (e.g., `FROM users u`) — only when no subquery.
-        // TPC-H Q7/Q8/Q9 use `nation n1, nation n2` to reference the same
-        // table twice; the alias is the routing key in subsequent JOIN ON
-        // conditions.
-        let from_alias: Option<String> =
-            if from_subquery.is_none() && matches!(self.current(), Some(Token::Identifier(_))) {
-                let alias = match self.current().cloned() {
-                    Some(Token::Identifier(a)) => a,
-                    _ => return Err("Expected alias identifier".to_string()),
-                };
-                self.next();
-                Some(alias)
-            } else {
-                None
-            };
+        // Sprint 5 v4: the first table's inline alias (e.g. `FROM emp e`)
+        // is now consumed in the table_list arm above, encoded into
+        // `table` as `emp|e`. The original from_alias field is kept None
+        // here for backwards compat; the executor reads the alias from
+        // the table name's `|` suffix.
+        let from_alias: Option<String> = None;
 
         // Check for JOIN (one or more chained JOINs: t1 JOIN t2 ... JOIN tN)
         let mut join_clause: Vec<JoinClause> = Vec::new();
