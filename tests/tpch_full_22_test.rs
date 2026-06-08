@@ -212,9 +212,15 @@ fn test_tpch_full_22_queries() {
         total_rows, import_elapsed
     );
 
-    // Run Q1..Q22
+    // Run Q1..Q22 with per-query timeout (Sprint 5: 15s default)
+    // to prevent N² EXISTS scans (Q3/Q4/Q8/Q21) from hanging the suite.
     eprintln!("\n[3/3] Running TPC-H Q1..Q22...");
-    let mut results: Vec<(&str, Duration, Result<usize, String>)> = Vec::new();
+    let per_query_timeout_sec: u64 = std::env::var("TPCH_TIMEOUT_SECS")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(15);
+    eprintln!("    per-query timeout: {}s", per_query_timeout_sec);
+    let mut results: Vec<(&str, Duration, Result<usize, String>, bool)> = Vec::new();
 
     for q in 1..=22 {
         let q_name = format!("Q{}", q);
@@ -225,6 +231,7 @@ fn test_tpch_full_22_queries() {
                 Box::leak(q_name.into_boxed_str()),
                 Duration::ZERO,
                 Err("file not found".to_string()),
+                false,
             ));
             continue;
         }
@@ -235,16 +242,51 @@ fn test_tpch_full_22_queries() {
             .to_string();
 
         let start = Instant::now();
-        let result = engine.execute(&q_sql);
+        // Per-query timeout: use a spawned thread + mpsc so we can
+        // skip the query if it doesn't complete in time (N² EXISTS
+        // scans would otherwise hang the whole suite).
+        let (tx, rx) = std::sync::mpsc::channel::<Result<usize, String>>();
+        let engine_ptr: usize = &mut engine as *mut _ as usize;
+        let sql_owned = q_sql.clone();
+        let handle = std::thread::spawn(move || unsafe {
+            let engine_ref = engine_ptr as *mut ExecutionEngine<MemoryStorage>;
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                match (*engine_ref).execute(&sql_owned) {
+                    Ok(exec) => Ok(exec.rows.len()),
+                    Err(e) => Err(e.to_string()),
+                }
+            }));
+            let payload = match result {
+                Ok(r) => r,
+                Err(_) => Err("panic".to_string()),
+            };
+            let _ = tx.send(payload);
+        });
+        let result = match rx.recv_timeout(Duration::from_secs(per_query_timeout_sec)) {
+            Ok(payload) => {
+                let _ = handle.join();
+                payload
+            }
+            Err(_) => {
+                // Timed out — detach the thread (it'll keep running
+                // but won't block the test). Record as Err.
+                eprintln!("  {} ... ⏱ TIMEOUT ({}s) — N² EXISTS, detached", q_name, per_query_timeout_sec);
+                results.push((
+                    Box::leak(q_name.into_boxed_str()),
+                    start.elapsed(),
+                    Err(format!("timeout >{}s", per_query_timeout_sec)),
+                    true, // timed_out
+                ));
+                continue;
+            }
+        };
         let elapsed = start.elapsed();
 
-        let row_count = match &result {
-            Ok(exec) => Ok(exec.rows.len()),
-            Err(e) => Err(format!("{}", e)),
-        };
+        // result is already Result<usize, String> (row count)
+        let row_count = result;
 
         let q_name_static: &'static str = Box::leak(q_name.clone().into_boxed_str());
-        results.push((q_name_static, elapsed, row_count));
+        results.push((q_name_static, elapsed, row_count, false));
     }
 
     // Report
@@ -252,8 +294,9 @@ fn test_tpch_full_22_queries() {
     let total = results.len();
     let passed = results.iter().filter(|r| r.2.is_ok()).count();
     let failed = total - passed;
+    let timed_out = results.iter().filter(|r| r.3).count();
 
-    for (q_name, elapsed, result) in &results {
+    for (q_name, elapsed, result, was_timeout) in &results {
         match result {
             Ok(n) => eprintln!("✅ {}: {} rows ({:?})", q_name, n, elapsed),
             Err(e) => {
@@ -262,12 +305,16 @@ fn test_tpch_full_22_queries() {
                 } else {
                     e.clone()
                 };
-                eprintln!("❌ {}: {} ({:?})", q_name, truncated, elapsed);
+                let icon = if *was_timeout { "⏱" } else { "❌" };
+                eprintln!("{} {}: {} ({:?})", icon, q_name, truncated, elapsed);
             }
         }
     }
 
-    eprintln!("\nTotal: {}/{} passed, {} failed", passed, total, failed);
+    eprintln!(
+        "\nTotal: {}/{} passed, {} failed, {} timeout",
+        passed, total, failed, timed_out
+    );
     eprintln!("Import time: {:?}", import_elapsed);
     eprintln!();
 
