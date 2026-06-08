@@ -221,20 +221,18 @@ pub fn eval_predicate(expr: &Expression, row: &[Value], table_info: &TableInfo) 
             // matches the IN/NOT IN pattern.
             true
         }
-        // For other expressions, evaluate and check if truthy. Accept
-        // Boolean(true), Integer(1) (P0-2 §4.12 maps Literal("true") to
-        // Integer(1) for the NOT TRUE evaluation path), and non-empty
-        // Text (SQL standard three-valued truthiness: only NULL/0/false
-        // are non-truthy).
+        // For other expressions, evaluate and check if truthy.
+        // The "TRUE"/"FALSE" literal now maps to Value::Boolean
+        // (see parse_lit in crates/executor/src/expr/mod.rs), so
+        // the simple `Value::Boolean(true)` check below works for
+        // both correlated-EXISTS substitution and ordinary
+        // boolean-typed literals. We deliberately do NOT treat
+        // other values (integers, dates, etc.) as truthy — that
+        // would incorrectly accept, e.g., a date comparison that
+        // returned Value::Text("1993-07-01").
         _ => match crate::expr_utils::evaluate_expression(expr, row, table_info) {
-            Ok(val) => match val {
-                Value::Boolean(true) => true,
-                Value::Null => false,
-                Value::Integer(0) => false,
-                Value::Float(f) => f != 0.0,
-                _ => true,
-            },
-            Err(_) => false,
+            Ok(Value::Boolean(true)) => true,
+            _ => false,
         },
     }
 }
@@ -664,12 +662,16 @@ pub fn where_expr_has_correlated_subquery(expr: &sqlrustgo_parser::Expression) -
     use sqlrustgo_parser::Expression;
     match expr {
         Expression::Exists(_) | Expression::NotExists(_) => true,
+        // TPC-H Q17: correlated scalar subquery. This triggers the
+        // pre_evaluate_correlated_exists path which executes the subquery
+        // per outer row and substitutes the scalar value.
+        Expression::Subquery(_) => true,
         // Bare subqueries (no outer ref) - not a correlated
         // EXISTS/NotExists pattern, but still expensive; report
         // false here (the subquery in this position is not the
         // correlated-exists one we're optimising for).
         Expression::In(_, _) | Expression::NotIn(_, _) => false,
-        Expression::Subquery(_) | Expression::SubqueryField(_, _) | Expression::QuantifiedOp(_, _, _) => false,
+        Expression::SubqueryField(_, _) | Expression::QuantifiedOp(_, _, _) => false,
         Expression::Like(_, _, _)
         | Expression::NotLike(_, _, _)
         | Expression::Between(_, _, _)
