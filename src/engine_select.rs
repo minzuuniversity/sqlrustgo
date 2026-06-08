@@ -1714,6 +1714,22 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         }
     }
 
+    /// Local copy of `parser::flatten_and` (kept private there).
+    /// Splits a top-level `a AND b AND c` chain into its
+    /// conjuncts; non-AND expressions return a single-element
+    /// vector. TPC-H Q21 l3 has a 3-way AND; we need to inspect
+    /// each conjunct for an indexable equality.
+    fn flatten_and_local(expr: &Expression) -> Vec<Expression> {
+        match expr {
+            Expression::BinaryOp(left, op, right) if op.to_uppercase() == "AND" => {
+                let mut v = Self::flatten_and_local(left);
+                v.extend(Self::flatten_and_local(right));
+                v
+            }
+            other => vec![other.clone()],
+        }
+    }
+
     /// TPC-H Q20/Q21: fast-path EXISTS / NOT EXISTS subquery
     /// evaluation. Detects the common pattern
     ///   `EXISTS (SELECT * FROM <single_table> WHERE <predicate>)`
@@ -1782,52 +1798,62 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         // only test the matching subset.
         let mut idx_col: Option<usize> = None;
         let mut target_value: Option<Value> = None;
-        if let sqlrustgo_parser::Expression::BinaryOp(l, op, r) = where_expr {
-            if op == "AND" {
-                for side in [&**l, &**r] {
-                    if let sqlrustgo_parser::Expression::BinaryOp(bl, eq_op, br) = side {
-                        if eq_op == "=" {
-                            let inner_cols: std::collections::HashSet<String> = table_info
-                                .columns
-                                .iter()
-                                .map(|c| c.name.to_lowercase())
-                                .collect();
-                            let (inner_name, target_val) = match (bl.as_ref(), br.as_ref()) {
-                                (
-                                    sqlrustgo_parser::Expression::Identifier(iname),
-                                    sqlrustgo_parser::Expression::Literal(s),
-                                ) => {
-                                    let in_lc = iname.to_lowercase();
-                                    if inner_cols.contains(&in_lc) {
-                                        (Some(in_lc), Some(s.clone()))
-                                    } else {
-                                        (None, None)
-                                    }
-                                }
-                                (
-                                    sqlrustgo_parser::Expression::Literal(s),
-                                    sqlrustgo_parser::Expression::Identifier(iname),
-                                ) => {
-                                    let in_lc = iname.to_lowercase();
-                                    if inner_cols.contains(&in_lc) {
-                                        (Some(in_lc), Some(s.clone()))
-                                    } else {
-                                        (None, None)
-                                    }
-                                }
-                                _ => (None, None),
-                            };
-                            if let (Some(inner), Some(s)) = (inner_name, target_val) {
-                                if let Some(idx) = table_info
-                                    .columns
-                                    .iter()
-                                    .position(|c| c.name.to_lowercase() == inner)
-                                {
-                                    let parsed = sqlrustgo_types::parse_sql_literal(&s);
-                                    idx_col = Some(idx);
-                                    target_value = Some(parsed);
-                                }
+        // TPC-H Q21 l3: `l3.l_orderkey = X AND l3.l_suppkey <> Y
+        // AND l3.l_receiptdate > l3.l_commitdate` — the indexable
+        // equality may be nested under multiple AND levels. Walk
+        // the top-level AND conjuncts and pick the first one that
+        // is `<inner_col> = <literal>`.
+        for conjunct in Self::flatten_and_local(where_expr) {
+            if let sqlrustgo_parser::Expression::BinaryOp(bl, eq_op, br) = &conjunct {
+                if eq_op == "=" {
+                    let inner_cols: std::collections::HashSet<String> = table_info
+                        .columns
+                        .iter()
+                        .map(|c| c.name.to_lowercase())
+                        .collect();
+                    let (inner_name, target_val) = match (bl.as_ref(), br.as_ref()) {
+                        (
+                            sqlrustgo_parser::Expression::Identifier(iname),
+                            sqlrustgo_parser::Expression::Literal(s),
+                        ) => {
+                            let in_lc = iname.to_lowercase();
+                            let unqualified = in_lc
+                                .rsplit_once('.')
+                                .map(|(_, c)| c.to_string())
+                                .unwrap_or_else(|| in_lc.clone());
+                            if inner_cols.contains(&unqualified) {
+                                (Some(unqualified), Some(s.clone()))
+                            } else {
+                                (None, None)
                             }
+                        }
+                        (
+                            sqlrustgo_parser::Expression::Literal(s),
+                            sqlrustgo_parser::Expression::Identifier(iname),
+                        ) => {
+                            let in_lc = iname.to_lowercase();
+                            let unqualified = in_lc
+                                .rsplit_once('.')
+                                .map(|(_, c)| c.to_string())
+                                .unwrap_or_else(|| in_lc.clone());
+                            if inner_cols.contains(&unqualified) {
+                                (Some(unqualified), Some(s.clone()))
+                            } else {
+                                (None, None)
+                            }
+                        }
+                        _ => (None, None),
+                    };
+                    if let (Some(inner), Some(s)) = (inner_name, target_val) {
+                        if let Some(idx) = table_info
+                            .columns
+                            .iter()
+                            .position(|c| c.name.to_lowercase() == inner)
+                        {
+                            let parsed = sqlrustgo_types::parse_sql_literal(&s);
+                            idx_col = Some(idx);
+                            target_value = Some(parsed);
+                            break;
                         }
                     }
                 }
