@@ -101,16 +101,23 @@ PASS=0
 FAIL=0
 for n in $(seq 1 22); do
     sql=$(cat "$QUERIES_DIR/q${n}.sql")
-    out=$(sqlite3 -separator "|" "$DB" "$sql" 2>&1) || {
+    sql_stripped="${sql%;}"  # strip trailing semicolon for wrapping
+    # Run the query to a temp file (preserves trailing newlines that
+    # shell command substitution would strip — important to
+    # distinguish 0 rows from 1 row with NULL).
+    out_file=$(mktemp -t tpch_baseline_XXXXXX)
+    sqlite3 -separator "|" "$DB" "$sql" > "$out_file" 2>&1 || {
         echo "  Q${n}: ERROR (sqlite failed)"
         FAIL=$((FAIL + 1))
+        rm -f "$out_file"
         continue
     }
-    if [ -z "$out" ]; then
-        rc=0
-    else
-        rc=$(echo "$out" | wc -l | tr -d ' ')
-    fi
+    # Use a wrapper COUNT to get the true row count (handles empty
+    # result vs 1-NULL-row case correctly).
+    rc=$(sqlite3 "$DB" "SELECT count(*) FROM ($sql_stripped)" 2>/dev/null)
+    if [ -z "$rc" ]; then rc=0; fi
+    out=$(cat "$out_file")
+    rm -f "$out_file"
     if [ "$rc" -eq 0 ]; then
         # Empty result (no rows) — sqlite output is blank
         rc=0
