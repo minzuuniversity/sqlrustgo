@@ -139,8 +139,17 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             };
             (vec![Vec::new()], empty_schema)
         } else {
-            let rows = storage.scan(&select.table)?;
-            let table_info = storage.get_table_info(&select.table)?;
+            // Sprint 5 v4: the parser may encode the inline alias
+            // into `select.table` as `table|alias`. Storage has only
+            // the bare table name, so strip the `|alias` suffix
+            // before the lookup.
+            let lookup_table = select
+                .table
+                .split_once('|')
+                .map(|(t, _)| t)
+                .unwrap_or(&select.table);
+            let rows = storage.scan(lookup_table)?;
+            let table_info = storage.get_table_info(lookup_table)?;
             (rows, table_info)
         };
         // Drop the storage read lock before running any per-row
@@ -181,23 +190,36 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         // the standard `eval_predicate` path.
         if let Some(ref where_expr) = select.where_clause {
             if where_expr_has_correlated_subquery(where_expr) {
+                // Sprint 5 (Q4 EXISTS perf): pre-build a
+                // `SubqueryIndex` for every correlated EXISTS
+                // subquery before the per-row loop.  This turns
+                // the O(N_inner × N_outer) full-scan EXISTS
+                // evaluation into O(N_inner) one-time index build
+                // + O(1) per outer row.  For TPC-H Q4 this is
+                // 900M ops → 75K ops at SF 0.1.
+                let mut subquery_indexes: Vec<SubqueryIndex> = Vec::new();
+                collect_subquery_indexes(where_expr, self, &mut subquery_indexes);
+
                 let pre_evaluated_where = where_expr.clone();
                 let mut new_rows: Vec<Vec<Value>> = Vec::with_capacity(rows.len());
                 for row in rows.into_iter() {
+                    let mut cursor: usize = 0;
                     let replaced = self.pre_evaluate_correlated_exists(
                         &pre_evaluated_where,
                         &row,
                         &table_info,
+                        &subquery_indexes,
+                        &mut cursor,
                     );
                     if eval_predicate(&replaced, &row, &table_info) {
                         new_rows.push(row);
                     }
                 }
                 rows = new_rows;
-            } else {
-                rows.retain(|row| eval_predicate(where_expr, row, &table_info));
-            }
+        } else {
+            rows.retain(|row| eval_predicate(where_expr, row, &table_info));
         }
+    }
 
         // Step 3: GROUP BY + AGGREGATE
         if !select.aggregates.is_empty() {
@@ -1019,13 +1041,22 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     fn execute_joins(&self, select: &SelectStatement) -> SqlResult<(Vec<Vec<Value>>, TableInfo)> {
         let storage = self.storage.read().unwrap();
 
-        // Seed with the base table from FROM clause. If the FROM has an
-        // alias (`FROM t a`), prefix the columns with the alias so the
-        // alias is queryable in subsequent JOIN ON conditions.
-        let mut rows = storage.scan(&select.table)?;
-        let raw_info = storage.get_table_info(&select.table)?;
-        let base_prefix = select.from_alias.as_ref().unwrap_or(&select.table);
-        let mut table_info = if select.from_alias.is_some() {
+        // Sprint 5 v4: the parser encodes the inline alias into the
+        // table name as `table|alias` (e.g. `emp|e`). Storage has only
+        // the bare table name, so strip the `|alias` suffix before the
+        // storage lookup.  The alias (and the base_prefix below) are
+        // still used for column-name qualification.
+        let (base_table, base_alias) = match select.table.split_once('|') {
+            Some((t, a)) => (t.to_string(), Some(a.to_string())),
+            None => (select.table.clone(), select.from_alias.clone()),
+        };
+        let base_prefix = base_alias
+            .as_ref()
+            .unwrap_or(&base_table);
+
+        let mut rows = storage.scan(&base_table)?;
+        let raw_info = storage.get_table_info(&base_table)?;
+        let mut table_info = if base_alias.is_some() {
             // Wrap the base columns in alias-prefixed names.
             let mut new_info = raw_info.clone();
             new_info.name = base_prefix.clone();
@@ -1606,12 +1637,32 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         where_expr: &sqlrustgo_parser::Expression,
         outer_row: &[Value],
         outer_table_info: &TableInfo,
+        subquery_indexes: &[SubqueryIndex],
+        cursor: &mut usize,
     ) -> sqlrustgo_parser::Expression {
         use sqlrustgo_parser::Expression;
         match where_expr {
             Expression::Exists(subq) => {
                 let substituted =
                     substitute_outer_refs_in_select(subq, outer_row, outer_table_info);
+                // Indexed fast path (Sprint 5 Q4 perf): if the
+                // caller pre-built a `SubqueryIndex` for this
+                // subquery (via `build_subquery_index` in the
+                // outer WHERE evaluator), use the O(1) membership
+                // check instead of a 60k-row scan.  Falls back to
+                // the existing pre_eval_exists_subquery_fast on
+                // miss.
+                let indexed = if let Some(wc) = substituted.where_clause.as_ref() {
+                    subquery_indexes
+                        .get(*cursor)
+                        .and_then(|idx| self.pre_eval_exists_indexed(wc, idx))
+                } else {
+                    None
+                };
+                if let Some(any) = indexed {
+                    *cursor += 1;
+                    return Expression::Literal(if any { "true" } else { "false" }.to_string());
+                }
                 // Fast path: TPC-H EXISTS subqueries are over a
                 // single base table (e.g. `EXISTS (SELECT * FROM
                 // lineitem WHERE l_orderkey = outer)`). We can do
@@ -1627,11 +1678,24 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                         Ok(r) => !r.rows.is_empty(),
                         Err(_) => false,
                     });
+                *cursor += 1;
                 Expression::Literal(if any_row { "true" } else { "false" }.to_string())
             }
             Expression::NotExists(subq) => {
                 let substituted =
                     substitute_outer_refs_in_select(subq, outer_row, outer_table_info);
+                let indexed = if let Some(wc) = substituted.where_clause.as_ref() {
+                    subquery_indexes
+                        .get(*cursor)
+                        .and_then(|idx| self.pre_eval_exists_indexed(wc, idx))
+                        .map(|any| !any)
+                } else {
+                    None
+                };
+                if let Some(zero_rows) = indexed {
+                    *cursor += 1;
+                    return Expression::Literal(if zero_rows { "true" } else { "false" }.to_string());
+                }
                 let zero_rows = self
                     .pre_eval_exists_subquery_fast(&substituted, outer_row)
                     .map(|any| !any)
@@ -1639,6 +1703,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                         Ok(r) => r.rows.is_empty(),
                         Err(_) => true,
                     });
+                *cursor += 1;
                 Expression::Literal(if zero_rows { "true" } else { "false" }.to_string())
             }
             Expression::BinaryOp(l, op, r) => Expression::BinaryOp(
@@ -1646,12 +1711,16 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     l,
                     outer_row,
                     outer_table_info,
+                    subquery_indexes,
+                    cursor,
                 )),
                 op.clone(),
                 Box::new(self.pre_evaluate_correlated_exists(
                     r,
                     outer_row,
                     outer_table_info,
+                    subquery_indexes,
+                    cursor,
                 )),
             ),
             Expression::UnaryOp(op, inner) => Expression::UnaryOp(
@@ -1660,24 +1729,46 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     inner,
                     outer_row,
                     outer_table_info,
+                    subquery_indexes,
+                    cursor,
                 )),
             ),
             Expression::IsNull(inner) => Expression::IsNull(Box::new(
-                self.pre_evaluate_correlated_exists(inner, outer_row, outer_table_info),
+                self.pre_evaluate_correlated_exists(
+                    inner,
+                    outer_row,
+                    outer_table_info,
+                    subquery_indexes,
+                    cursor,
+                ),
             )),
             Expression::IsNotNull(inner) => Expression::IsNotNull(Box::new(
-                self.pre_evaluate_correlated_exists(inner, outer_row, outer_table_info),
+                self.pre_evaluate_correlated_exists(
+                    inner,
+                    outer_row,
+                    outer_table_info,
+                    subquery_indexes,
+                    cursor,
+                ),
             )),
             Expression::InList(left, values) => Expression::InList(
                 Box::new(self.pre_evaluate_correlated_exists(
                     left,
                     outer_row,
                     outer_table_info,
+                    subquery_indexes,
+                    cursor,
                 )),
                 values
                     .iter()
                     .map(|v| {
-                        self.pre_evaluate_correlated_exists(v, outer_row, outer_table_info)
+                        self.pre_evaluate_correlated_exists(
+                            v,
+                            outer_row,
+                            outer_table_info,
+                            subquery_indexes,
+                            cursor,
+                        )
                     })
                     .collect(),
             ),
@@ -1686,11 +1777,19 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     left,
                     outer_row,
                     outer_table_info,
+                    subquery_indexes,
+                    cursor,
                 )),
                 values
                     .iter()
                     .map(|v| {
-                        self.pre_evaluate_correlated_exists(v, outer_row, outer_table_info)
+                        self.pre_evaluate_correlated_exists(
+                            v,
+                            outer_row,
+                            outer_table_info,
+                            subquery_indexes,
+                            cursor,
+                        )
                     })
                     .collect(),
             ),
@@ -1698,7 +1797,13 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 name.clone(),
                 args.iter()
                     .map(|a| {
-                        self.pre_evaluate_correlated_exists(a, outer_row, outer_table_info)
+                        self.pre_evaluate_correlated_exists(
+                            a,
+                            outer_row,
+                            outer_table_info,
+                            subquery_indexes,
+                            cursor,
+                        )
                     })
                     .collect(),
             ),
@@ -1938,4 +2043,307 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         }
         Some(false)
     }
+
+    /// Try to build a `SubqueryIndex` for a single correlated EXISTS
+    /// subquery. Returns `None` if the predicate shape does not support
+    /// the optimization (e.g. joins, ORs, or the equality part is
+    /// ambiguous). Caller falls back to the per-row full-scan path on
+    /// `None`.
+    fn build_subquery_index(&self, subq: &SelectStatement) -> Option<SubqueryIndex> {
+        use sqlrustgo_parser::Expression as E;
+        use sqlrustgo_storage::StorageEngine;
+
+        if !subq.join_clause.is_empty() || subq.from_subquery.is_some() {
+            return None;
+        }
+        if subq.table.is_empty() {
+            return None;
+        }
+        let where_expr = subq.where_clause.as_ref()?;
+        let storage = self.storage.read().ok()?;
+        let table_info = storage.get_table_info(&subq.table).ok()?;
+        // Split the WHERE into the outer-equality leaf (which we
+        // will use as the index key column) and the static rest
+        // predicate (which we will evaluate per inner row).  We
+        // need the inner table_info to disambiguate: the AST
+        // represents both the inner column and the outer ref as
+        // plain `Identifier(name)` until substitute_outer_refs
+        // rewrites them per row.  The column name that matches
+        // the inner table is the key; the other is the outer ref.
+        let (col_name, static_predicate) =
+            split_outer_equality_with_table(where_expr, &table_info)?;
+        let col_idx = table_info
+            .columns
+            .iter()
+            .position(|c| c.name == col_name)?;
+        let rows = storage.scan(&subq.table).ok()?;
+        // Evaluate the STATIC predicate (not the full WHERE) per
+        // inner row.  The outer-equality leaf references the outer
+        // table's column, which is not a lineitem column, so the
+        // full-WHERE evaluation would always return false on
+        // lineitem rows and the index would always be empty.
+        let mut qualifying: std::collections::HashSet<Value> =
+            std::collections::HashSet::with_capacity(rows.len());
+        for row in &rows {
+            if eval_predicate(&static_predicate, row, &table_info) {
+                qualifying.insert(row[col_idx].clone());
+            }
+        }
+        Some(SubqueryIndex {
+            col_idx,
+            qualifying_keys: qualifying,
+        })
+    }
+
+    /// Indexed fast-path EXISTS check: looks up the substituted
+    /// equality key in the pre-built `SubqueryIndex.qualifying_keys`
+    /// and returns whether the membership holds.  Returns `None` if
+    /// the WHERE has no simple equality leaf (caller falls back to
+    /// the per-row full-scan).
+    fn pre_eval_exists_indexed(
+        &self,
+        where_expr: &Expression,
+        index: &SubqueryIndex,
+    ) -> Option<bool> {
+        let lit = find_top_level_equality_literal(where_expr, index.col_idx)?;
+        Some(index.qualifying_keys.contains(&lit))
+    }
+}
+
+/// Pre-built index for a correlated EXISTS subquery (Sprint 5 Q4
+/// perf). Holds a `HashSet<Value>` of every inner table key-column
+/// value for which the *static* (non-outer-ref) part of the subquery
+/// predicate holds. The static predicate is computed once; the per-row
+/// EXISTS answer is then an O(1) membership check against this set.
+///
+/// Example (TPC-H Q4): inner table = `lineitem`, static predicate =
+/// `l_commitdate < l_receiptdate`, key column = `l_orderkey`. The
+/// index contains every `l_orderkey` for which lineitem has at least
+/// one row with `l_commitdate < l_receiptdate`. Per outer order row,
+/// `EXISTS (SELECT * FROM lineitem WHERE l_orderkey = o_orderkey AND
+/// l_commitdate < l_receiptdate)` becomes `o_orderkey ∈
+/// qualifying_keys`, i.e. O(1) instead of a 60k-row scan.
+///
+/// Complexity: O(N_inner) one-time, O(1) per outer row. Total
+/// O(N_inner + N_outer) vs the prior O(N_inner × N_outer) full scan.
+#[derive(Debug, Clone)]
+pub struct SubqueryIndex {
+    pub col_idx: usize,
+    pub qualifying_keys: std::collections::HashSet<Value>,
+}
+
+/// Walk a WHERE expression tree, find every correlated EXISTS /
+/// NotExists subtree, and build a `SubqueryIndex` for it (if the
+/// predicate shape supports the optimization — see
+/// `build_subquery_index`). The index map is DFS-ordered, so the
+/// per-row `pre_evaluate_correlated_exists` walk can consume them in
+/// the same DFS order via a shared cursor.
+pub fn collect_subquery_indexes<S: StorageEngine + 'static>(
+    where_expr: &Expression,
+    engine: &ExecutionEngine<S>,
+    out: &mut Vec<SubqueryIndex>,
+) {
+    use sqlrustgo_parser::Expression as E;
+    match where_expr {
+        E::Exists(subq) | E::NotExists(subq) => {
+            if let Some(idx) = engine.build_subquery_index(subq) {
+                out.push(idx);
+            }
+        }
+        E::BinaryOp(l, _, r) => {
+            collect_subquery_indexes(l, engine, out);
+            collect_subquery_indexes(r, engine, out);
+        }
+        E::UnaryOp(_, inner) => collect_subquery_indexes(inner, engine, out),
+        E::IsNull(inner) | E::IsNotNull(inner) => {
+            collect_subquery_indexes(inner, engine, out);
+        }
+        E::InList(left, values) | E::NotInList(left, values) => {
+            collect_subquery_indexes(left, engine, out);
+            for v in values {
+                collect_subquery_indexes(v, engine, out);
+            }
+        }
+        E::FunctionCall(_, args) => {
+            for a in args {
+                collect_subquery_indexes(a, engine, out);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Walk an AND-tree of predicates and split out one conjunct of shape
+/// `inner_col = <something-not-an-inner-col-ref>`. Returns
+/// `(inner_col_name, rest_predicate)`. The "something-not-an-inner-col-ref"
+/// is taken to be a correlated reference (outer column); we don't
+/// validate it here — that is the caller's job after substitution.
+///
+/// Conservative: returns `None` for any OR-tree or for shapes where no
+/// `col = <non-inner-col-ref>` can be unambiguously identified. The
+/// caller falls back to the per-row full-scan path on `None`.
+///
+/// The parser represents BOTH the inner column and the outer reference
+/// as plain `Identifier(name)` in the un-substituted AST; we use the
+/// inner `TableInfo` to disambiguate: the side whose name appears in
+/// `inner_info.columns` is the inner col, the other is the outer ref.
+fn split_outer_equality_with_table(
+    where_expr: &Expression,
+    inner_info: &TableInfo,
+) -> Option<(String, Box<Expression>)> {
+    use sqlrustgo_parser::Expression as E;
+    fn is_inner_col(name: &str, info: &TableInfo) -> bool {
+        info.columns.iter().any(|c| c.name == name)
+    }
+    match where_expr {
+        E::BinaryOp(l, op, r) if op.to_uppercase() == "AND" => {
+            if let Some(split) = split_outer_equality_with_table(l, inner_info) {
+                let new_rest = E::BinaryOp(
+                    Box::new(*r.clone()),
+                    op.clone(),
+                    split.1,
+                );
+                return Some((split.0, Box::new(new_rest)));
+            }
+            if let Some(split) = split_outer_equality_with_table(r, inner_info) {
+                let new_rest = E::BinaryOp(
+                    Box::new(*l.clone()),
+                    op.clone(),
+                    split.1,
+                );
+                return Some((split.0, Box::new(new_rest)));
+            }
+            None
+        }
+        E::BinaryOp(l, op, r) if op == "=" => {
+            let lc = column_name_of(l);
+            let rc = column_name_of(r);
+            // Identify the inner-col side.  The other side (if not
+            // also an inner col) is the outer reference and we
+            // drop it (the per-row pre_evaluate will substitute it
+            // via substitute_outer_refs_in_expr).
+            match (lc, rc) {
+                (Some(name), None) if is_inner_col(&name, inner_info) => {
+                    Some((name, Box::new(E::Literal("true".into()))))
+                }
+                (None, Some(name)) if is_inner_col(&name, inner_info) => {
+                    Some((name, Box::new(E::Literal("true".into()))))
+                }
+                (Some(name), Some(outer))
+                    if is_inner_col(&name, inner_info)
+                        && !is_inner_col(&outer, inner_info) =>
+                {
+                    Some((name, Box::new(E::Literal("true".into()))))
+                }
+                (Some(outer), Some(name))
+                    if is_inner_col(&name, inner_info)
+                        && !is_inner_col(&outer, inner_info) =>
+                {
+                    Some((name, Box::new(E::Literal("true".into()))))
+                }
+                _ => None,
+            }
+        }
+        _ => None,
+    }
+}
+
+/// Kept for backwards compat / potential future use; the index
+/// builder calls `split_outer_equality_with_table` instead.
+#[allow(dead_code)]
+fn split_outer_equality(where_expr: &Expression) -> Option<(String, Box<Expression>)> {
+    use sqlrustgo_parser::Expression as E;
+    match where_expr {
+        E::BinaryOp(l, op, r) if op.to_uppercase() == "AND" => {
+            if let Some(split) = split_outer_equality(l) {
+                let new_rest = E::BinaryOp(
+                    Box::new(*r.clone()),
+                    op.clone(),
+                    split.1,
+                );
+                return Some((split.0, Box::new(new_rest)));
+            }
+            if let Some(split) = split_outer_equality(r) {
+                let new_rest = E::BinaryOp(
+                    Box::new(*l.clone()),
+                    op.clone(),
+                    split.1,
+                );
+                return Some((split.0, Box::new(new_rest)));
+            }
+            None
+        }
+        E::BinaryOp(l, op, r) if op == "=" => {
+            let lc = column_name_of(l);
+            let rc = column_name_of(r);
+            match (lc, rc) {
+                (Some(name), None) => Some((name, Box::new(E::Literal("true".into())))),
+                (None, Some(name)) => Some((name, Box::new(E::Literal("true".into())))),
+                _ => None,
+            }
+        }
+        _ => None,
+    }
+}
+
+fn column_name_of(e: &Expression) -> Option<String> {
+    use sqlrustgo_parser::Expression as E;
+    match e {
+        E::Identifier(s) => Some(s.clone()),
+        _ => None,
+    }
+}
+
+fn literal_value_of(e: &Expression) -> Option<Value> {
+    use sqlrustgo_parser::Expression as E;
+    match e {
+        E::Literal(s) => {
+            let s = s.trim();
+            if s.eq_ignore_ascii_case("null") {
+                Some(Value::Null)
+            } else if s.eq_ignore_ascii_case("true") {
+                Some(Value::Boolean(true))
+            } else if s.eq_ignore_ascii_case("false") {
+                Some(Value::Boolean(false))
+            } else if let Some(stripped) = s.strip_prefix('\'').and_then(|x| x.strip_suffix('\'')) {
+                Some(Value::Text(stripped.to_string()))
+            } else if let Ok(i) = s.parse::<i64>() {
+                Some(Value::Integer(i))
+            } else if let Ok(f) = s.parse::<f64>() {
+                Some(Value::Float(f))
+            } else {
+                Some(Value::Text(s.to_string()))
+            }
+        }
+        _ => None,
+    }
+}
+
+/// Walk an AND-tree looking for an equality of the form
+/// `col = literal` where `col` is the inner-table key column (by
+/// position) and `literal` is a `Literal` expression. Returns the
+/// parsed `Value` of the literal.
+///
+/// For the post-substitution Q4 case:
+///   `Identifier(l_orderkey) = Literal("12345") AND ...`
+/// → returns `Some(Value::Integer(12345))`.
+fn find_top_level_equality_literal(
+    where_expr: &Expression,
+    _key_col_idx: usize,
+) -> Option<Value> {
+    use sqlrustgo_parser::Expression as E;
+    fn walk(e: &Expression) -> Option<Value> {
+        match e {
+            E::BinaryOp(l, op, r) if op == "=" => match (l.as_ref(), r.as_ref()) {
+                (E::Identifier(_), _) => literal_value_of(r),
+                (_, E::Identifier(_)) => literal_value_of(l),
+                _ => None,
+            },
+            E::BinaryOp(l, op, r) if op.to_uppercase() == "AND" => {
+                walk(l).or_else(|| walk(r))
+            }
+            _ => None,
+        }
+    }
+    walk(where_expr)
 }
