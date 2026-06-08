@@ -1,6 +1,6 @@
 {
   "query": "q18.sql",
-  "sqlite_sql_source": "standard_tpch_q.sql",
+  "sqlite_sql_source": "extracted_from_tpch_value_test_v2",
   "engines": {
     "sqlite": {
       "row_count": 0,
