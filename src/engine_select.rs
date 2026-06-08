@@ -1174,13 +1174,16 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             JoinType::Inner | JoinType::Left | JoinType::Right | JoinType::Full => {
                 // Hash-based matching
                 // SQL semantics: NULL = NULL is UNKNOWN (not a match), so skip NULL keys
-                let mut right_hash: HashMap<String, Vec<Vec<Value>>> = HashMap::new();
-                for right_row in &right_rows {
+                // Store the original index alongside each right row so RIGHT/FULL
+                // join bookkeeping is O(1) per match (was O(right_rows.len()) per
+                // match via Vec::contains — catastrophic for 60K+ lineitem).
+                let mut right_hash: HashMap<String, Vec<(usize, &Vec<Value>)>> = HashMap::new();
+                for (ri, right_row) in right_rows.iter().enumerate() {
                     let key = match key_of(right_row, &right_key_indices) {
                         Some(k) => k,
                         None => continue,
                     };
-                    right_hash.entry(key).or_default().push(right_row.clone());
+                    right_hash.entry(key).or_default().push((ri, right_row));
                 }
 
                 let mut matched: Vec<Vec<Value>> = Vec::new();
@@ -1200,13 +1203,12 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     };
                     if let Some(right_match_rows) = right_hash.get(&key) {
                         left_matched.insert(li);
-                        for right_row in right_match_rows {
-                            // Find the original right row index
-                            if let Some(ri) = right_rows.iter().position(|r| r == right_row) {
-                                right_matched.insert(ri);
-                            }
+                        for (ri, right_row) in right_match_rows {
+                            // TPC-H Q9 fix: O(1) index tracking instead of
+                            // O(right_rows.len()) `right_rows.iter().position(...)`
+                            right_matched.insert(*ri);
                             let mut combined = left_row.clone();
-                            combined.extend(right_row.clone());
+                            combined.extend((*right_row).clone());
                             matched.push(combined);
                         }
                     }
