@@ -1,0 +1,36 @@
+{
+  "query": 10,
+  "row_count": 20,
+  "first_3_rows": [
+    [
+      "823",
+      "Customer#000000823",
+      "2991.94",
+      "32.29",
+      "MOZAMBIQUE",
+      "45 pMwKJmfIVY JhRS 359493468 357530",
+      "756-3816-7801",
+      "LsOKlyYRUDOIVZNqdBqPffILMGJst"
+    ],
+    [
+      "1023",
+      "Customer#000001023",
+      "2108.81",
+      "29.53",
+      "INDIA",
+      "71 BpvvRPbjCm VEQj 972114431 665545",
+      "548-4314-5941",
+      "DaGpjTRxUCCCkpmcNSbbJpVlnqesv"
+    ],
+    [
+      "737",
+      "Customer#000000737",
+      "2088.42",
+      "69.32",
+      "CANADA",
+      "32 RUALHxyvoO BCSe 869629376 548168",
+      "906-1088-4418",
+      "CNJpiFNhlOFdXNdtlNyUsEdTjOWtb"
+    ]
+  ]
+}
