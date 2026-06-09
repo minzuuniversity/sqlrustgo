@@ -1037,10 +1037,9 @@ impl Parser {
             // first) actually wins. Regular ROLLBACK [WORK] is handled
             // by the `Some(Token::Rollback)` arm at the bottom of this
             // match, which calls parse_rollback.
-            Some(Token::Begin)
-            | Some(Token::Commit)
-            | Some(Token::Set)
-            | Some(Token::Start) => self.parse_transaction(),
+            Some(Token::Begin) | Some(Token::Commit) | Some(Token::Set) | Some(Token::Start) => {
+                self.parse_transaction()
+            }
             // SEM-1 (#3172): SAVEPOINT dispatcher
             Some(Token::Savepoint) => self.parse_savepoint_statement(),
             // SEM-1 (#3172): RELEASE SAVEPOINT dispatcher
@@ -1185,12 +1184,7 @@ impl Parser {
         // Parse the savepoint name.
         let name = match self.next() {
             Some(Token::Identifier(n)) => n,
-            Some(t) => {
-                return Err(format!(
-                    "Expected savepoint name (identifier), got {:?}",
-                    t
-                ))
-            }
+            Some(t) => return Err(format!("Expected savepoint name (identifier), got {:?}", t)),
             None => return Err("Expected savepoint name, got EOF".to_string()),
         };
         Ok(Statement::SavepointStatement { name, op })
@@ -1202,12 +1196,7 @@ impl Parser {
         self.expect(Token::Savepoint)?;
         let name = match self.next() {
             Some(Token::Identifier(n)) => n,
-            Some(t) => {
-                return Err(format!(
-                    "Expected savepoint name (identifier), got {:?}",
-                    t
-                ))
-            }
+            Some(t) => return Err(format!("Expected savepoint name (identifier), got {:?}", t)),
             None => return Err("Expected savepoint name, got EOF".to_string()),
         };
         Ok(Statement::SavepointStatement {
@@ -1801,7 +1790,6 @@ impl Parser {
 
         let mut columns = Vec::new();
         let mut aggregates = Vec::new();
-        
 
         loop {
             match self.current() {
@@ -2921,7 +2909,7 @@ impl Parser {
                                 Some(Token::Identifier(a)) => a.clone(),
                                 _ => {
                                     return Err(
-                                        "Expected alias after comma-followed subquery".to_string(),
+                                        "Expected alias after comma-followed subquery".to_string()
                                     );
                                 }
                             };
@@ -2948,10 +2936,8 @@ impl Parser {
                             // thread-local map: derived_aliases[__subq_N] = alias.
                             // (See `DERIVED_ALIASES` below.)
                             DERIVED_ALIASES.with(|cell| {
-                                cell.borrow_mut().insert(
-                                    synthetic_name.clone(),
-                                    alias_name.clone(),
-                                );
+                                cell.borrow_mut()
+                                    .insert(synthetic_name.clone(), alias_name.clone());
                             });
                             // Phase 3 (TPCH-01 Q15): register subquery in thread-local
                             DERIVED_SUBQUERIES.with(|cell| {
@@ -3137,7 +3123,10 @@ impl Parser {
                     // DERIVED_SUBQUERIES map, which the comma loop has
                     // already populated with `__subq_N` -> SelectStatement.
                     for (key, _subq) in DERIVED_SUBQUERIES.with(|cell| {
-                        cell.borrow().iter().map(|(k, v)| (k.clone(), v.clone())).collect::<Vec<_>>()
+                        cell.borrow()
+                            .iter()
+                            .map(|(k, v)| (k.clone(), v.clone()))
+                            .collect::<Vec<_>>()
                     }) {
                         v.push(key.clone());
                     }
@@ -3178,9 +3167,8 @@ impl Parser {
                     // `on=Literal("true")` and produces a cartesian
                     // product (Q15 returns 0 rows instead of 91).
                     if table_alias.is_none() && table_name.starts_with("__subq_") {
-                        table_alias = DERIVED_ALIASES.with(|cell| {
-                            cell.borrow().get(&table_name).cloned()
-                        });
+                        table_alias =
+                            DERIVED_ALIASES.with(|cell| cell.borrow().get(&table_name).cloned());
                     }
                     // Phase 1: best-match selector — find a predicate
                     // that joins `t` to the already-joined set.
@@ -3191,12 +3179,8 @@ impl Parser {
                     let mut rest: Vec<Expression> = Vec::new();
                     let candidates: Vec<Expression> =
                         conj.iter().chain(remaining.iter()).cloned().collect();
-                    let _found = find_join_predicate(
-                        &conj,
-                        &table_name,
-                        table_alias.as_deref(),
-                        &joined,
-                    );
+                    let _found =
+                        find_join_predicate(&conj, &table_name, table_alias.as_deref(), &joined);
                     if let Some(p) = find_join_predicate(
                         &candidates,
                         &table_name,
@@ -3303,13 +3287,9 @@ impl Parser {
                         // this, the JoinClause has alias=None and the
                         // outer WHERE `revenue.l_suppkey` qualifier
                         // cannot be resolved to a known joined table.
-                        let alias_for_join: Option<String> = table_alias
-                            .clone()
-                            .or_else(|| {
-                                DERIVED_ALIASES.with(|cell| {
-                                    cell.borrow().get(&table_name).cloned()
-                                })
-                            });
+                        let alias_for_join: Option<String> = table_alias.clone().or_else(|| {
+                            DERIVED_ALIASES.with(|cell| cell.borrow().get(&table_name).cloned())
+                        });
                         chain.push(JoinClause {
                             join_type: JoinType::Inner,
                             table: table_name.clone(),
@@ -3483,15 +3463,21 @@ impl Parser {
         // `Q14: 100.00 * SUM(...) / SUM(...)` registers both SUMs as
         // aggregates and produces 1 row (instead of 0 or 5000).
         let mut extra_aggregates: Vec<AggregateCall> = Vec::new();
-        
+
         for col in &columns {
-            Self::find_aggregates_in_expr(&col.expression.clone().unwrap_or(Expression::Literal("NULL".to_string())), &mut extra_aggregates);
+            Self::find_aggregates_in_expr(
+                &col.expression
+                    .clone()
+                    .unwrap_or(Expression::Literal("NULL".to_string())),
+                &mut extra_aggregates,
+            );
         }
-        
+
         for agg in &extra_aggregates {
-            if !aggregates.iter().any(|a| {
-                a.func == agg.func && a.args == agg.args
-            }) {
+            if !aggregates
+                .iter()
+                .any(|a| a.func == agg.func && a.args == agg.args)
+            {
                 aggregates.push(agg.clone());
             }
         }
@@ -3586,8 +3572,7 @@ impl Parser {
                     Self::find_aggregates_in_expr(v, out);
                 }
             }
-            Expression::IsNull(inner)
-            | Expression::IsNotNull(inner) => {
+            Expression::IsNull(inner) | Expression::IsNotNull(inner) => {
                 Self::find_aggregates_in_expr(inner, out);
             }
             _ => {}
