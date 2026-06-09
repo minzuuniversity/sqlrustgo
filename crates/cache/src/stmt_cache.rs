@@ -185,7 +185,10 @@ mod tests {
         cache.prepare("s1", "SELECT 1", make_test_stmt());
         cache.prepare("s2", "SELECT 2", make_test_stmt());
         cache.prepare("s3", "SELECT 3", make_test_stmt());
-        assert!(cache.execute_with_sql("s1").is_none(), "s1 should be evicted");
+        assert!(
+            cache.execute_with_sql("s1").is_none(),
+            "s1 should be evicted"
+        );
         assert!(cache.execute_with_sql("s2").is_some());
         assert!(cache.execute_with_sql("s3").is_some());
         let stats = cache.stats();
@@ -199,7 +202,10 @@ mod tests {
         cache.prepare("s2", "SELECT 2", make_test_stmt());
         let _ = cache.execute_with_sql("s1");
         cache.prepare("s3", "SELECT 3", make_test_stmt());
-        assert!(cache.execute_with_sql("s1").is_some(), "s1 should be promoted, s2 evicted");
+        assert!(
+            cache.execute_with_sql("s1").is_some(),
+            "s1 should be promoted, s2 evicted"
+        );
         assert!(cache.execute_with_sql("s2").is_none());
     }
 
