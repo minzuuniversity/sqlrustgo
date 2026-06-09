@@ -7,7 +7,7 @@
 > **主题**: Single-Node Production Candidate
 > **分支**: `develop/v3.9.0` (从 `main@v3.8.0` fork)
 > **创建日期**: 2026-06-05
-> **状态**: Draft (基于 ChatGPT 架构师 2026-06-05 战略建议)
+> **状态**: ACTIVE (RC2 后期, form-only, 参考 V390_COMPREHENSIVE_ASSESSMENT.md)
 > **Auditor**: Hermes Agent
 
 ---
@@ -155,13 +155,13 @@ SQLRustGo 作为默认/中小规模后端, PostgreSQL 作为可选分布式后�
 
 | 日期 | 阶段 | 目标 |
 |------|------|------|
-| W0 (2026-07-01) | 分支 + SPEC | develop/v3.9.0 创建, 5 SPEC 完成 |
+| W0 (2026-06-05) | 分支 + SPEC | develop/v3.9.0 创建, 5 SPEC 完成 |
 | W2 (2026-07-15) | Phase 1 收口 | ARCH-3 + INT-3 关闭 |
 | W4 (2026-07-29) | Phase 2 收口 | INT-2 + Savepoint 关闭 |
 | W6 (2026-08-12) | Phase 3 收口 | Backup/Restore + Crash Matrix |
 | W8 (2026-08-26) | Phase 4 收口 | Soak + Upgrade |
 | W10 (2026-09-09) | Phase 5 收口 | GMP 审计 + 时间旅行 |
-| W12 (2026-09-23) | Phase 6 收口 | v3.9.0 GA 发布 |
+| W12 (2026-09-23) | Phase 6 收口 | v3.9.0 GA 发布 (at risk, 参考 RC3_PLAN.md) |
 
 **注**: 实际日期取决于 v3.8.0 何时正式 GA (用户授权 main 同步) 和团队容量.
 
