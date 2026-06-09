@@ -10,15 +10,29 @@ use std::time::Instant;
 fn parse(line: &str, n: usize) -> Option<Record> {
     let s = line.trim_end_matches('\n').trim_end_matches('\r');
     let parts: Vec<&str> = s.split('|').collect();
-    let parts: Vec<&str> = if parts.last() == Some(&"") { parts[..parts.len() - 1].to_vec() } else { parts };
-    if parts.len() < n { return None; }
-    let row: Vec<SqlValue> = parts[..n].iter().map(|v| {
-        let s = v.trim();
-        if s.is_empty() { SqlValue::Null }
-        else if let Ok(i) = s.parse::<i64>() { SqlValue::Integer(i) }
-        else if let Ok(f) = s.parse::<f64>() { SqlValue::Float(f) }
-        else { SqlValue::Text(s.to_string()) }
-    }).collect();
+    let parts: Vec<&str> = if parts.last() == Some(&"") {
+        parts[..parts.len() - 1].to_vec()
+    } else {
+        parts
+    };
+    if parts.len() < n {
+        return None;
+    }
+    let row: Vec<SqlValue> = parts[..n]
+        .iter()
+        .map(|v| {
+            let s = v.trim();
+            if s.is_empty() {
+                SqlValue::Null
+            } else if let Ok(i) = s.parse::<i64>() {
+                SqlValue::Integer(i)
+            } else if let Ok(f) = s.parse::<f64>() {
+                SqlValue::Float(f)
+            } else {
+                SqlValue::Text(s.to_string())
+            }
+        })
+        .collect();
     Some(row)
 }
 
@@ -48,7 +62,9 @@ fn main() {
         let content = std::fs::read_to_string(&path).expect("read");
         let mut recs: Vec<Record> = Vec::with_capacity(1024);
         for line in content.lines() {
-            if let Some(r) = parse(line, *ncols) { recs.push(r); }
+            if let Some(r) = parse(line, *ncols) {
+                recs.push(r);
+            }
         }
         e.bulk_insert_records(name, recs).unwrap();
         eprintln!("  {} loaded", name);
@@ -60,5 +76,7 @@ fn main() {
     let t0 = Instant::now();
     let r = e.execute(q21).expect("q21");
     eprintln!("Q21: rc={} in {:?}", r.rows.len(), t0.elapsed());
-    for row in &r.rows { eprintln!("  {:?}", row); }
+    for row in &r.rows {
+        eprintln!("  {:?}", row);
+    }
 }
