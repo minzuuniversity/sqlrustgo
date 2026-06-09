@@ -853,8 +853,7 @@ mod tests {
     #[test]
     fn test_active_txs_autocommit_skipped() {
         // Legacy autocommit (tx_id=0) is not tracked in active_txs.
-        let mut storage =
-            WalStorage::new(MemoryStorage::new(), MemoryWalManager::new()).unwrap();
+        let mut storage = WalStorage::new(MemoryStorage::new(), MemoryWalManager::new()).unwrap();
         assert!(storage.active_tx_ids().is_empty());
         let tx_id = storage.begin_transaction().unwrap();
         assert_eq!(tx_id, 0);
@@ -867,8 +866,7 @@ mod tests {
     #[test]
     fn test_active_txs_lifecycle_begin_commit() {
         // Explicit tx is tracked on Begin, removed on Commit.
-        let mut storage =
-            WalStorage::new(MemoryStorage::new(), MemoryWalManager::new()).unwrap();
+        let mut storage = WalStorage::new(MemoryStorage::new(), MemoryWalManager::new()).unwrap();
         storage.set_current_tx_id(42);
         assert!(!storage.is_tx_active(42));
 
@@ -884,8 +882,7 @@ mod tests {
     #[test]
     fn test_active_txs_lifecycle_begin_rollback() {
         // Rollback also removes from active_txs.
-        let mut storage =
-            WalStorage::new(MemoryStorage::new(), MemoryWalManager::new()).unwrap();
+        let mut storage = WalStorage::new(MemoryStorage::new(), MemoryWalManager::new()).unwrap();
         storage.set_current_tx_id(7);
         storage.begin_transaction().unwrap();
         assert!(storage.is_tx_active(7));
