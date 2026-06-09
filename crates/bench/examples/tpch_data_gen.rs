@@ -76,15 +76,35 @@ impl TpchDataGenerator {
         let mut tbl = File::create(self.output_dir.join("nation.tbl"))?;
         let names = [
             // AFRICA (regionkey=0)
-            "ALGERIA", "ETHIOPIA", "KENYA", "MOROCCO", "MOZAMBIQUE",
+            "ALGERIA",
+            "ETHIOPIA",
+            "KENYA",
+            "MOROCCO",
+            "MOZAMBIQUE",
             // AMERICA (regionkey=1)
-            "ARGENTINA", "BRAZIL", "CANADA", "PERU", "UNITED STATES",
+            "ARGENTINA",
+            "BRAZIL",
+            "CANADA",
+            "PERU",
+            "UNITED STATES",
             // ASIA (regionkey=2)
-            "CHINA", "INDIA", "INDONESIA", "JAPAN", "VIETNAM",
+            "CHINA",
+            "INDIA",
+            "INDONESIA",
+            "JAPAN",
+            "VIETNAM",
             // EUROPE (regionkey=3)
-            "FRANCE", "GERMANY", "ROMANIA", "RUSSIA", "UNITED KINGDOM",
+            "FRANCE",
+            "GERMANY",
+            "ROMANIA",
+            "RUSSIA",
+            "UNITED KINGDOM",
             // MIDDLE EAST (regionkey=4)
-            "EGYPT", "IRAN", "IRAQ", "JORDAN", "SAUDI ARABIA",
+            "EGYPT",
+            "IRAN",
+            "IRAQ",
+            "JORDAN",
+            "SAUDI ARABIA",
         ];
         for (i, name) in names.iter().enumerate() {
             let regionkey = i / 5;
@@ -132,23 +152,36 @@ impl TpchDataGenerator {
     fn generate_part(&self, count: usize) -> std::io::Result<()> {
         let mut tbl = File::create(self.output_dir.join("part.tbl"))?;
         let mut rng = rand::thread_rng();
-        let mfgrs = ["Manufacturer#1", "Manufacturer#2", "Manufacturer#3", "Manufacturer#4", "Manufacturer#5"];
+        let mfgrs = [
+            "Manufacturer#1",
+            "Manufacturer#2",
+            "Manufacturer#3",
+            "Manufacturer#4",
+            "Manufacturer#5",
+        ];
         let brands = [
-            "Brand#11", "Brand#12", "Brand#13", "Brand#14", "Brand#15",
-            "Brand#21", "Brand#22", "Brand#23", "Brand#24", "Brand#25",
-            "Brand#31", "Brand#32", "Brand#33", "Brand#34", "Brand#35",
-            "Brand#41", "Brand#42", "Brand#43", "Brand#44", "Brand#45",
-            "Brand#51", "Brand#52", "Brand#53", "Brand#54", "Brand#55",
+            "Brand#11", "Brand#12", "Brand#13", "Brand#14", "Brand#15", "Brand#21", "Brand#22",
+            "Brand#23", "Brand#24", "Brand#25", "Brand#31", "Brand#32", "Brand#33", "Brand#34",
+            "Brand#35", "Brand#41", "Brand#42", "Brand#43", "Brand#44", "Brand#45", "Brand#51",
+            "Brand#52", "Brand#53", "Brand#54", "Brand#55",
         ];
         let containers = [
-            "SM CASE", "LG BOX", "MED BAG", "MED BOX", "LG CASE",
-            "SM PACK", "SM PKG", "MED PACK", "WRAP PKG", "SM JAR",
+            "SM CASE", "LG BOX", "MED BAG", "MED BOX", "LG CASE", "SM PACK", "SM PKG", "MED PACK",
+            "WRAP PKG", "SM JAR",
         ];
         let types = [
-            "STANDARD POLISHED TIN", "SMALL POLISHED COPPER", "MEDIUM PLATED STEEL",
-            "STANDARD BRUSHED COPPER", "SMALL ANODIZED NICKEL", "MEDIUM ANODIZED TIN",
-            "LARGE POLISHED BRASS", "SMALL PLATED COPPER", "MEDIUM BRUSHED TIN",
-            "LARGE ANODIZED STEEL", "ECONOMY BRUSHED NICKEL", "PROMO ANODIZED BRASS",
+            "STANDARD POLISHED TIN",
+            "SMALL POLISHED COPPER",
+            "MEDIUM PLATED STEEL",
+            "STANDARD BRUSHED COPPER",
+            "SMALL ANODIZED NICKEL",
+            "MEDIUM ANODIZED TIN",
+            "LARGE POLISHED BRASS",
+            "SMALL PLATED COPPER",
+            "MEDIUM BRUSHED TIN",
+            "LARGE ANODIZED STEEL",
+            "ECONOMY BRUSHED NICKEL",
+            "PROMO ANODIZED BRASS",
         ];
         for i in 1..=count {
             let partkey = i;

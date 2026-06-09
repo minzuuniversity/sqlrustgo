@@ -409,7 +409,8 @@ mod tests {
                 a.cmp(&b),
                 std::cmp::Ordering::Equal,
                 "{:?} vs {:?} must not compare Equal",
-                a, b
+                a,
+                b
             );
         }
     }
