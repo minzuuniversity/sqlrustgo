@@ -222,15 +222,21 @@ fn test_tpch_22_queries_wire_roundtrip() {
     // 2. Load all 8 tables via LOAD DATA LOCAL INFILE.
     //    This exercises the EAGAIN-bug-fixed path.
     eprintln!("[2/3] Loading 8 tables via LOAD DATA LOCAL INFILE");
+    // v3.9.0 (PR #3321) regenerated the fixture with standard
+    // schema; row counts are now smaller (a true SF 0.001 scaling
+    // rather than the previous ad-hoc mix).  All 8 tables fit the
+    // TPC-H SF=0.001 spec ratio:
+    //   region=5, nation=25, supplier=10, customer=50, part=50,
+    //   partsupp=200, orders=500, lineitem=501
     let expected_counts: &[(&str, u64)] = &[
         ("region", 5),
         ("nation", 25),
         ("supplier", 10),
-        ("customer", 15),
-        ("part", 20),
-        ("partsupp", 80),
-        ("orders", 150),
-        ("lineitem", 614),
+        ("customer", 50),
+        ("part", 50),
+        ("partsupp", 200),
+        ("orders", 500),
+        ("lineitem", 501),
     ];
     for (tbl, expected) in expected_counts {
         let n = load_tbl(&mut client, tbl);
