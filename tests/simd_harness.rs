@@ -76,25 +76,41 @@ pub fn detect_simd() -> SimdConfig {
 /// SIMD-style element-wise equality (mock — scalar fallback).
 pub fn simd_eq_i32(a: &[i32], b: &[i32]) -> Vec<bool> {
     let n = a.len().min(b.len());
-    a.iter().take(n).zip(b.iter().take(n)).map(|(x, y)| x == y).collect()
+    a.iter()
+        .take(n)
+        .zip(b.iter().take(n))
+        .map(|(x, y)| x == y)
+        .collect()
 }
 
 /// SIMD-style element-wise less-than.
 pub fn simd_lt_i32(a: &[i32], b: &[i32]) -> Vec<bool> {
     let n = a.len().min(b.len());
-    a.iter().take(n).zip(b.iter().take(n)).map(|(x, y)| x < y).collect()
+    a.iter()
+        .take(n)
+        .zip(b.iter().take(n))
+        .map(|(x, y)| x < y)
+        .collect()
 }
 
 /// SIMD-style element-wise greater-than.
 pub fn simd_gt_i32(a: &[i32], b: &[i32]) -> Vec<bool> {
     let n = a.len().min(b.len());
-    a.iter().take(n).zip(b.iter().take(n)).map(|(x, y)| x > y).collect()
+    a.iter()
+        .take(n)
+        .zip(b.iter().take(n))
+        .map(|(x, y)| x > y)
+        .collect()
 }
 
 /// SIMD-style element-wise not-equal.
 pub fn simd_ne_i32(a: &[i32], b: &[i32]) -> Vec<bool> {
     let n = a.len().min(b.len());
-    a.iter().take(n).zip(b.iter().take(n)).map(|(x, y)| x != y).collect()
+    a.iter()
+        .take(n)
+        .zip(b.iter().take(n))
+        .map(|(x, y)| x != y)
+        .collect()
 }
 
 /// SIMD-style sum (mock — scalar fallback).
@@ -124,13 +140,20 @@ pub fn simd_max_i32(a: &[i32]) -> Option<i32> {
 /// SIMD-style dot product.
 pub fn simd_dot_product_f32(a: &[f32], b: &[f32]) -> f32 {
     let n = a.len().min(b.len());
-    a.iter().take(n).zip(b.iter().take(n)).map(|(x, y)| x * y).sum()
+    a.iter()
+        .take(n)
+        .zip(b.iter().take(n))
+        .map(|(x, y)| x * y)
+        .sum()
 }
 
 /// SIMD-style batch distance — returns the dot product of query
 /// against each vector.
 pub fn simd_batch_distance(query: &[f32], vectors: &[Vec<f32>]) -> Vec<f32> {
-    vectors.iter().map(|v| simd_dot_product_f32(query, v)).collect()
+    vectors
+        .iter()
+        .map(|v| simd_dot_product_f32(query, v))
+        .collect()
 }
 
 /// String find (char) — scalar fallback.
