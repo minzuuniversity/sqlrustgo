@@ -1,0 +1,24 @@
+{
+  "query": 16,
+  "row_count": 282,
+  "first_3_rows": [
+    [
+      "Brand#11",
+      "ECONOMY BRUSHED NICKEL",
+      "3",
+      "4"
+    ],
+    [
+      "Brand#11",
+      "ECONOMY BRUSHED NICKEL",
+      "14",
+      "4"
+    ],
+    [
+      "Brand#11",
+      "LARGE POLISHED BRASS",
+      "23",
+      "4"
+    ]
+  ]
+}
