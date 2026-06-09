@@ -292,9 +292,13 @@ fn test_tpch_22_queries_wire_roundtrip() {
                         if !rows_fp_eq(&actual_first3, &expected_sorted) {
                             fail += 1;
                             eprintln!("[Q{} ACTUAL]", qnum);
-                            for r in &actual_first3 { eprintln!("  {}", r); }
+                            for r in &actual_first3 {
+                                eprintln!("  {}", r);
+                            }
                             eprintln!("[Q{} EXPECTED]", qnum);
-                            for r in &expected_sorted { eprintln!("  {}", r); }
+                            for r in &expected_sorted {
+                                eprintln!("  {}", r);
+                            }
                             fail_details.push(format!("Q{}: first 3 rows differ (sorted)", qnum));
                             continue;
                         }
