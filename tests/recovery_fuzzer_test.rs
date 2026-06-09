@@ -22,9 +22,7 @@ use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use sqlrustgo_storage::engine::{ColumnDefinition, MemoryStorage, StorageEngine, TableInfo};
 use sqlrustgo_storage::recovery_engine::{RecoveryEngine, RecoveryEngineImpl};
-use sqlrustgo_storage::wal::{
-    MemoryWalManager, WalEntry, WalEntryType, WalManager,
-};
+use sqlrustgo_storage::wal::{MemoryWalManager, WalEntry, WalEntryType, WalManager};
 use std::collections::HashSet;
 
 const HASH_T: u64 = 116; // hash("t")
@@ -44,12 +42,7 @@ fn fresh_storage() -> MemoryStorage {
 }
 
 /// Append a single WAL entry with the given LSN, type, tx_id.
-fn append(
-    wal: &mut MemoryWalManager,
-    lsn: u64,
-    tx_id: u64,
-    entry_type: WalEntryType,
-) {
+fn append(wal: &mut MemoryWalManager, lsn: u64, tx_id: u64, entry_type: WalEntryType) {
     wal.append(WalEntry {
         tx_id,
         entry_type,
@@ -213,7 +206,10 @@ fn r2_lsn_gaps() {
         },
     ];
     let report = run_and_assert(entries);
-    assert_eq!(report.committed_txns, 2, "two distinct txns, both committed");
+    assert_eq!(
+        report.committed_txns, 2,
+        "two distinct txns, both committed"
+    );
     assert_eq!(report.incomplete_txns, 0);
     assert_eq!(report.rolled_back_txns, 0);
 }
@@ -380,9 +376,16 @@ fn r2_long_tx_with_checkpoint() {
         },
     ];
     let report = run_and_assert(entries);
-    assert_eq!(report.committed_txns, 1, "Checkpoint must not affect committed count");
+    assert_eq!(
+        report.committed_txns, 1,
+        "Checkpoint must not affect committed count"
+    );
     // rows_inserted == 1 (the INSERT replayed)
-    assert!(report.rows_inserted >= 1, "at least 1 row inserted (got {})", report.rows_inserted);
+    assert!(
+        report.rows_inserted >= 1,
+        "at least 1 row inserted (got {})",
+        report.rows_inserted
+    );
 }
 
 #[test]
@@ -627,9 +630,7 @@ fn r2_random_fuzz_full_50k_iterations() {
             );
         }
     }
-    eprintln!(
-        "[recovery-fuzzer-full] DONE  err_count={err_count}  panic_count={panic_count}"
-    );
+    eprintln!("[recovery-fuzzer-full] DONE  err_count={err_count}  panic_count={panic_count}");
     assert_eq!(panic_count, 0, "no panics allowed");
 }
 
@@ -656,8 +657,11 @@ fn r2_seed_reproducibility() {
             // minimal valid payload (the test does not care about the
             // post-recovery storage contents; only that recover()
             // doesn't panic and the report is consistent).
-            let data = matches!(entry_type, WalEntryType::Insert | WalEntryType::Update | WalEntryType::Delete)
-                .then(|| b"i:\x01\0\0\0\0\0\0\0".to_vec());
+            let data = matches!(
+                entry_type,
+                WalEntryType::Insert | WalEntryType::Update | WalEntryType::Delete
+            )
+            .then(|| b"i:\x01\0\0\0\0\0\0\0".to_vec());
             entries.push(WalEntry {
                 tx_id,
                 entry_type,

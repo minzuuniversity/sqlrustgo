@@ -94,7 +94,8 @@ mod harness {
 
         let memory_growth_pct = if config.memory_baseline_bytes > 0 {
             ((memory_current - config.memory_baseline_bytes) as f64
-                / config.memory_baseline_bytes as f64) * 100.0
+                / config.memory_baseline_bytes as f64)
+                * 100.0
         } else {
             0.0
         };
@@ -152,7 +153,11 @@ fn test_soak_24h_smoke_p1_3() {
     let report = run_soak_smoke(&config);
     assert_eq!(report.duration_seconds, 60);
     assert_eq!(report.queries_executed, 300);
-    assert!(report.passed(), "24h smoke must pass: {:?}", report.alert_reason);
+    assert!(
+        report.passed(),
+        "24h smoke must pass: {:?}",
+        report.alert_reason
+    );
 }
 
 #[test]
@@ -189,7 +194,11 @@ fn test_soak_72h_smoke_p1_3() {
     let report = run_soak_smoke(&config);
     assert_eq!(report.duration_seconds, 180);
     assert_eq!(report.queries_executed, 900);
-    assert!(report.passed(), "72h smoke must pass: {:?}", report.alert_reason);
+    assert!(
+        report.passed(),
+        "72h smoke must pass: {:?}",
+        report.alert_reason
+    );
 }
 
 #[test]
@@ -209,7 +218,11 @@ fn test_soak_168h_smoke_p1_3() {
     let report = run_soak_smoke(&config);
     assert_eq!(report.duration_seconds, 420);
     assert_eq!(report.queries_executed, 2100);
-    assert!(report.passed(), "168h smoke must pass: {:?}", report.alert_reason);
+    assert!(
+        report.passed(),
+        "168h smoke must pass: {:?}",
+        report.alert_reason
+    );
 }
 
 #[test]
@@ -219,7 +232,11 @@ fn test_soak_168h_smoke_no_lock_leak_proxy_p1_3() {
     // check lock-manager held count.
     let config = default_config(420);
     let report = run_soak_smoke(&config);
-    assert!(report.fd_growth <= 5, "FD growth {} exceeds +5 threshold", report.fd_growth);
+    assert!(
+        report.fd_growth <= 5,
+        "FD growth {} exceeds +5 threshold",
+        report.fd_growth
+    );
 }
 
 // --------------------------------------------------------------------
@@ -257,7 +274,10 @@ fn test_soak_alert_message_when_exceeds_threshold_p1_3() {
         ..SoakConfig::default()
     };
     let report = run_soak_smoke(&config);
-    assert!(report.alert_triggered, "tight threshold should trigger alert");
+    assert!(
+        report.alert_triggered,
+        "tight threshold should trigger alert"
+    );
     assert!(!report.alert_reason.is_empty(), "alert reason must be set");
     assert!(!report.passed());
 }
