@@ -617,6 +617,24 @@ pub fn substitute_outer_refs_in_select(
     outer_table_info: &TableInfo,
 ) -> sqlrustgo_parser::SelectStatement {
     let mut new_select = select.clone();
+    // TPC-H Q21: the subquery is `FROM lineitem l2 WHERE
+    // l2.l_orderkey = l1.l_orderkey`. The unqualified
+    // substitution skips qualified names like `l1.l_orderkey`
+    // because it can't tell them apart from the subquery's own
+    // `l2.l_orderkey`. Build a set of the subquery's own
+    // qualifiers (alias if set, else the table name) so the
+    // post-pass can replace outer refs without touching the
+    // subquery's own columns.
+    let own_qualifiers: Vec<String> = {
+        let mut q = Vec::new();
+        if !select.table.is_empty() {
+            q.push(select.table.to_lowercase());
+        }
+        if let Some(ref a) = select.from_alias {
+            q.push(a.to_lowercase());
+        }
+        q
+    };
     if let Some(ref wc) = select.where_clause {
         new_select.where_clause = Some(substitute_outer_refs_in_expr(
             wc,
@@ -631,9 +649,84 @@ pub fn substitute_outer_refs_in_select(
             outer_table_info,
         ));
     }
+    // Post-pass: replace qualified identifiers whose qualifier
+    // is NOT one of the subquery's own. This catches
+    // `l1.l_orderkey` -> Literal when `l1` is the outer alias
+    // and the column exists in outer_table_info.
+    if let Some(ref mut wc) = new_select.where_clause {
+        substitute_qualified_outer_refs_in_place(wc, outer_row, outer_table_info, &own_qualifiers);
+    }
+    if let Some(ref mut h) = new_select.having {
+        substitute_qualified_outer_refs_in_place(h, outer_row, outer_table_info, &own_qualifiers);
+    }
     // Note: we deliberately do NOT substitute join_clause or table;
     // those refer to the subquery's own FROM/join tables.
     new_select
+}
+
+/// Walk an expression tree and replace qualified `Identifier` nodes
+/// whose qualifier does NOT match any of the subquery's own
+/// qualifiers with the corresponding outer value, when
+/// `find_column_index` can resolve the name. This is the
+/// second-pass for TPC-H Q21-style `l1.col = l2.col` patterns.
+fn substitute_qualified_outer_refs_in_place(
+    expr: &mut sqlrustgo_parser::Expression,
+    outer_row: &[Value],
+    outer_table_info: &TableInfo,
+    own_qualifiers: &[String],
+) {
+    use sqlrustgo_parser::Expression;
+    match expr {
+        Expression::Identifier(name) => {
+            if let Some((qualifier, _col)) = name.split_once('.') {
+                let qual_lower = qualifier.to_lowercase();
+                if !own_qualifiers.iter().any(|q| q == &qual_lower) {
+                    if let Some(idx) = find_column_index(name, outer_table_info) {
+                        if let Some(v) = outer_row.get(idx) {
+                            *expr = Expression::Literal(value_to_literal_string(v));
+                        }
+                    }
+                }
+            }
+        }
+        Expression::BinaryOp(l, _, r) => {
+            substitute_qualified_outer_refs_in_place(l, outer_row, outer_table_info, own_qualifiers);
+            substitute_qualified_outer_refs_in_place(r, outer_row, outer_table_info, own_qualifiers);
+        }
+        Expression::UnaryOp(_, inner)
+        | Expression::IsNull(inner)
+        | Expression::IsNotNull(inner) => {
+            substitute_qualified_outer_refs_in_place(inner, outer_row, outer_table_info, own_qualifiers);
+        }
+        Expression::InList(left, values)
+        | Expression::NotInList(left, values) => {
+            substitute_qualified_outer_refs_in_place(left, outer_row, outer_table_info, own_qualifiers);
+            for v in values {
+                substitute_qualified_outer_refs_in_place(v, outer_row, outer_table_info, own_qualifiers);
+            }
+        }
+        Expression::FunctionCall(_, args) => {
+            for a in args {
+                substitute_qualified_outer_refs_in_place(a, outer_row, outer_table_info, own_qualifiers);
+            }
+        }
+        Expression::Exists(_)
+        | Expression::NotExists(_)
+        | Expression::In(_, _)
+        | Expression::NotIn(_, _)
+        | Expression::Subquery(_)
+        | Expression::SubqueryField(_, _)
+        | Expression::QuantifiedOp(_, _, _)
+        | Expression::Like(_, _, _)
+        | Expression::NotLike(_, _, _)
+        | Expression::Between(_, _, _)
+        | Expression::NotBetween(_, _, _)
+        | Expression::CaseWhen(_, _)
+        | Expression::NotRegexp(_, _)
+        | Expression::Aggregate(_)
+        | Expression::Literal(_)
+        | Expression::WindowCall(_) => {}
+    }
 }
 
 /// Convert a `Value` to a SQL literal string suitable for substituting
