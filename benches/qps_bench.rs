@@ -170,7 +170,11 @@ fn bench_insert(c: &mut Criterion) {
         group.bench_with_input(BenchmarkId::from_parameter(threads), &threads, |b, &t| {
             b.iter(|| {
                 let storage = Arc::new(RwLock::new(MemoryStorage::new()));
-                storage.write().unwrap().create_table(&create_table_info()).unwrap();
+                storage
+                    .write()
+                    .unwrap()
+                    .create_table(&create_table_info())
+                    .unwrap();
                 let handles: Vec<_> = (0..t)
                     .map(|tid| {
                         let s = Arc::clone(&storage);
@@ -211,10 +215,11 @@ fn bench_update(c: &mut Criterion) {
                                 let id = ((tid * 500 + i) % 10_000) as i64;
                                 // update col 2 to "updated-i"
                                 let updates = vec![(2usize, Value::Text(format!("upd-{}", i)))];
-                                let _ = s
-                                    .write()
-                                    .unwrap()
-                                    .update("qps_bench", &[Value::Integer(id)], &updates);
+                                let _ = s.write().unwrap().update(
+                                    "qps_bench",
+                                    &[Value::Integer(id)],
+                                    &updates,
+                                );
                             }
                         })
                     })
@@ -258,10 +263,11 @@ fn bench_mixed_oltp(c: &mut Criterion) {
                                     // UPDATE 20%
                                     let id = ((tid * 1000 + i) % 10_000) as i64;
                                     let updates = vec![(2usize, Value::Text(format!("mix-{}", i)))];
-                                    let _ = s
-                                        .write()
-                                        .unwrap()
-                                        .update("qps_bench", &[Value::Integer(id)], &updates);
+                                    let _ = s.write().unwrap().update(
+                                        "qps_bench",
+                                        &[Value::Integer(id)],
+                                        &updates,
+                                    );
                                 } else {
                                     // INSERT 10% (rare)
                                     let rows = vec![vec![
