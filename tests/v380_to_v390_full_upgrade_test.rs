@@ -297,7 +297,7 @@ fn test_g16_summary_aggregate() {
 
     assert!(all_pass);
     assert_eq!(total_rows, 5_000); // 1_000 × 5 cases
-    assert_eq!(total_tables, 5);   // 1 × 5 cases
+    assert_eq!(total_tables, 5); // 1 × 5 cases
     assert!(total_recovery_ms > 0);
     assert!(total_recovery_ms < 1000); // All cases should complete in <1s
 }
