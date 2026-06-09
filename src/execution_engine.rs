@@ -21,21 +21,44 @@ use sqlrustgo_executor::trigger::{
 };
 use sqlrustgo_executor::ExecutorResult;
 use sqlrustgo_parser::parser::{
-    AggregateCall, AggregateFunction, AlterTableOperation, AlterTableStatement, CallStatement,
-    CreateIndexStatement, CreateProcedureStatement, CreateRoleStatement, CreateTableStatement,
-    CreateTriggerStatement, DescribeStatement, DropRoleStatement, DropTableStatement,
-    GrantRoleStatement, GrantStatement, InsertStatement, ObjectType as ParserObjectType,
-    Privilege as ParserPrivilege, RevokeRoleStatement, RevokeStatement, SelectStatement,
-    SetRoleStatement, ShowStatement, StoredProcParam as ParserStoredProcParam,
-    StoredProcParamMode as ParserParamMode, StoredProcStatement as ParserStatement,
+    AggregateCall,
+    AggregateFunction,
+    AlterTableOperation,
+    AlterTableStatement,
+    CallStatement,
+    CreateIndexStatement,
+    CreateProcedureStatement,
+    CreateRoleStatement,
+    CreateTableStatement,
+    CreateTriggerStatement,
+    DescribeStatement,
+    DropRoleStatement,
+    DropTableStatement,
+    GrantRoleStatement,
+    GrantStatement,
+    InsertStatement,
+    ObjectType as ParserObjectType,
+    Privilege as ParserPrivilege,
+    RevokeRoleStatement,
+    RevokeStatement,
+    SelectStatement,
+    SetRoleStatement,
+    ShowStatement,
+    StoredProcParam as ParserStoredProcParam,
+    StoredProcParamMode as ParserParamMode,
+    StoredProcStatement as ParserStatement,
     TruncateStatement, // SEM-1 (#3172)
 };
 use sqlrustgo_parser::transaction::IsolationLevel as ParserIsolationLevel;
 use sqlrustgo_parser::JoinType;
 use sqlrustgo_parser::{
-    DeleteStatement, Expression, Statement, TransactionStatement, UpdateStatement,
+    DeleteStatement,
+    Expression,
     // SEM-1 (#3172)
     SavepointOp,
+    Statement,
+    TransactionStatement,
+    UpdateStatement,
 };
 use sqlrustgo_storage::checkpoint::{CheckpointManager, CheckpointMetadata};
 use sqlrustgo_storage::{
@@ -347,9 +370,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             }
             Statement::Transaction(ref txn) => self.execute_transaction(txn),
             // SEM-1 (#3172): SAVEPOINT/ROLLBACK TO SAVEPOINT/RELEASE SAVEPOINT
-            Statement::SavepointStatement { ref name, op } => {
-                self.execute_savepoint(name, op)
-            }
+            Statement::SavepointStatement { ref name, op } => self.execute_savepoint(name, op),
             Statement::Grant(ref grant) => self.execute_grant(grant),
             Statement::Revoke(ref revoke) => self.execute_revoke(revoke),
             Statement::CreateRole(ref stmt) => self.execute_create_role(stmt),
@@ -363,7 +384,10 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             Statement::Describe(ref desc) => self.execute_describe(desc),
             Statement::AlterTable(ref alter) => self.execute_alter_table(alter),
             Statement::Prepare { ref name, ref sql } => self.execute_prepare(name, sql),
-            Statement::Execute { ref name, ref params } => self.execute_execute(name, params),
+            Statement::Execute {
+                ref name,
+                ref params,
+            } => self.execute_execute(name, params),
             Statement::Deallocate { ref name } => self.execute_deallocate(name),
             _ => Err(SqlError::ExecutionError(
                 "Unsupported statement type".to_string(),
@@ -1319,10 +1343,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 .transaction_manager
                 .release_savepoint(tx_id, name)
                 .map_err(|e| {
-                    SqlError::ExecutionError(format!(
-                        "RELEASE SAVEPOINT {} failed: {}",
-                        name, e
-                    ))
+                    SqlError::ExecutionError(format!("RELEASE SAVEPOINT {} failed: {}", name, e))
                 })?,
         }
         Ok(ExecutorResult::empty())
@@ -1828,9 +1849,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     }
 
     fn execute_prepare(&mut self, name: &str, sql: &str) -> SqlResult<ExecutorResult> {
-        let parsed = sqlrustgo_parser::parse(sql).map_err(|e| {
-            SqlError::ParseError(format!("PREPARE failed to parse SQL: {}", e))
-        })?;
+        let parsed = sqlrustgo_parser::parse(sql)
+            .map_err(|e| SqlError::ParseError(format!("PREPARE failed to parse SQL: {}", e)))?;
         self.stmt_cache.prepare(name, sql, parsed);
         Ok(ExecutorResult::empty())
     }
