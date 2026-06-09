@@ -15,8 +15,7 @@ fn project_root() -> std::path::PathBuf {
 
 fn read_source(rel: &str) -> String {
     let p = project_root().join(rel);
-    fs::read_to_string(&p)
-        .unwrap_or_else(|e| panic!("Failed to read {}: {}", rel, e))
+    fs::read_to_string(&p).unwrap_or_else(|e| panic!("Failed to read {}: {}", rel, e))
 }
 
 #[test]
@@ -64,7 +63,8 @@ fn test_int3_single_paren_walker_uses_is_some() {
     // `!is_none()` form.
     let parser = read_source("crates/parser/src/parser.rs");
     let count_is_some = parser.matches(".is_some()").count();
-    let count_is_none_neg = parser.matches("! .is_none()").count() + parser.matches("!.is_none()").count();
+    let count_is_none_neg =
+        parser.matches("! .is_none()").count() + parser.matches("!.is_none()").count();
     assert!(
         count_is_some > 0,
         "expected at least one is_some() call (per clippy::needless_bool guidance)"
