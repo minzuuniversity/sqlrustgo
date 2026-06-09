@@ -270,7 +270,10 @@ fn test_tpch_full_22_queries() {
             Err(_) => {
                 // Timed out — detach the thread (it'll keep running
                 // but won't block the test). Record as Err.
-                eprintln!("  {} ... ⏱ TIMEOUT ({}s) — N² EXISTS, detached", q_name, per_query_timeout_sec);
+                eprintln!(
+                    "  {} ... ⏱ TIMEOUT ({}s) — N² EXISTS, detached",
+                    q_name, per_query_timeout_sec
+                );
                 results.push((
                     Box::leak(q_name.into_boxed_str()),
                     start.elapsed(),

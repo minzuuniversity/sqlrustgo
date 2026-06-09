@@ -560,28 +560,46 @@ fn test_recovery_insert_then_crash_rolls_back() {
     // Begin + 2x Insert (no Commit)
     let mut wal = MemoryWalManager::new();
     wal.append(WalEntry {
-        tx_id: 1, entry_type: WalEntryType::Begin,
-        table_id: 0, key: None, data: None, lsn: 1, timestamp: 0,
-    }).unwrap();
+        tx_id: 1,
+        entry_type: WalEntryType::Begin,
+        table_id: 0,
+        key: None,
+        data: None,
+        lsn: 1,
+        timestamp: 0,
+    })
+    .unwrap();
     wal.append(WalEntry {
-        tx_id: 1, entry_type: WalEntryType::Insert,
+        tx_id: 1,
+        entry_type: WalEntryType::Insert,
         table_id: 3645, // hash("t1")
-        key: None, data: Some(b"i:\x01\x00\x00\x00\x00\x00\x00\x00".to_vec()),
-        lsn: 2, timestamp: 0,
-    }).unwrap();
+        key: None,
+        data: Some(b"i:\x01\x00\x00\x00\x00\x00\x00\x00".to_vec()),
+        lsn: 2,
+        timestamp: 0,
+    })
+    .unwrap();
     wal.append(WalEntry {
-        tx_id: 1, entry_type: WalEntryType::Insert,
+        tx_id: 1,
+        entry_type: WalEntryType::Insert,
         table_id: 1,
-        key: None, data: Some(b"i:\x02\x00\x00\x00\x00\x00\x00\x00".to_vec()),
-        lsn: 3, timestamp: 0,
-    }).unwrap();
+        key: None,
+        data: Some(b"i:\x02\x00\x00\x00\x00\x00\x00\x00".to_vec()),
+        lsn: 3,
+        timestamp: 0,
+    })
+    .unwrap();
 
     let mut engine: RecoveryEngineImpl = RecoveryEngineImpl;
     let report = engine.recover(&mut storage, &mut wal).unwrap();
     assert_eq!(report.incomplete_txns, 1);
     assert_eq!(report.rows_inserted, 0);
     let rows = storage.scan("t1").unwrap();
-    assert!(rows.is_empty(), "Both uncommitted inserts must be skipped, found {} rows", rows.len());
+    assert!(
+        rows.is_empty(),
+        "Both uncommitted inserts must be skipped, found {} rows",
+        rows.len()
+    );
 }
 
 /// RECOVERY-003: PREPARE then crash → rolls back
@@ -604,26 +622,52 @@ fn test_recovery_prepare_then_crash_rolls_back() {
     // Begin + Prepare (no Commit) — 2PC phase 1 done, phase 2 crash
     let mut wal = MemoryWalManager::new();
     wal.append(WalEntry {
-        tx_id: 1, entry_type: WalEntryType::Begin,
-        table_id: 0, key: None, data: None, lsn: 1, timestamp: 0,
-    }).unwrap();
+        tx_id: 1,
+        entry_type: WalEntryType::Begin,
+        table_id: 0,
+        key: None,
+        data: None,
+        lsn: 1,
+        timestamp: 0,
+    })
+    .unwrap();
     wal.append(WalEntry {
-        tx_id: 1, entry_type: WalEntryType::Prepare,
-        table_id: 0, key: None, data: None, lsn: 2, timestamp: 0,
-    }).unwrap();
+        tx_id: 1,
+        entry_type: WalEntryType::Prepare,
+        table_id: 0,
+        key: None,
+        data: None,
+        lsn: 2,
+        timestamp: 0,
+    })
+    .unwrap();
     wal.append(WalEntry {
-        tx_id: 1, entry_type: WalEntryType::Insert,
+        tx_id: 1,
+        entry_type: WalEntryType::Insert,
         table_id: 1,
-        key: None, data: Some(b"i:\x01\x00\x00\x00\x00\x00\x00\x00".to_vec()),
-        lsn: 3, timestamp: 0,
-    }).unwrap();
+        key: None,
+        data: Some(b"i:\x01\x00\x00\x00\x00\x00\x00\x00".to_vec()),
+        lsn: 3,
+        timestamp: 0,
+    })
+    .unwrap();
 
     let mut engine: RecoveryEngineImpl = RecoveryEngineImpl;
     let report = engine.recover(&mut storage, &mut wal).unwrap();
-    assert_eq!(report.incomplete_txns, 1, "PREPARE without COMMIT is incomplete");
-    assert_eq!(report.rows_inserted, 0, "DML after PREPARE-but-no-COMMIT must NOT be replayed");
+    assert_eq!(
+        report.incomplete_txns, 1,
+        "PREPARE without COMMIT is incomplete"
+    );
+    assert_eq!(
+        report.rows_inserted, 0,
+        "DML after PREPARE-but-no-COMMIT must NOT be replayed"
+    );
     let rows = storage.scan("t1").unwrap();
-    assert!(rows.is_empty(), "PREPARE without COMMIT must rollback, found {} rows", rows.len());
+    assert!(
+        rows.is_empty(),
+        "PREPARE without COMMIT must rollback, found {} rows",
+        rows.len()
+    );
 }
 
 /// RECOVERY-004: COMMIT then flush then crash → replays correctly
@@ -671,9 +715,15 @@ fn test_recovery_partial_insert_write() {
 
     let mut wal = MemoryWalManager::new();
     wal.append(WalEntry {
-        tx_id: 1, entry_type: WalEntryType::Begin,
-        table_id: 0, key: None, data: None, lsn: 1, timestamp: 0,
-    }).unwrap();
+        tx_id: 1,
+        entry_type: WalEntryType::Begin,
+        table_id: 0,
+        key: None,
+        data: None,
+        lsn: 1,
+        timestamp: 0,
+    })
+    .unwrap();
     // 3 partial inserts (no Commit)
     for (i, val) in [(1i64, "a"), (2, "b"), (3, "c")].iter().enumerate() {
         let mut data = Vec::new();
@@ -683,11 +733,15 @@ fn test_recovery_partial_insert_write() {
         data.extend_from_slice(val.1.as_bytes());
         data.push(0);
         wal.append(WalEntry {
-            tx_id: 1, entry_type: WalEntryType::Insert,
+            tx_id: 1,
+            entry_type: WalEntryType::Insert,
             table_id: 3645,
-            key: None, data: Some(data),
-            lsn: (i + 2) as u64, timestamp: 0,
-        }).unwrap();
+            key: None,
+            data: Some(data),
+            lsn: (i + 2) as u64,
+            timestamp: 0,
+        })
+        .unwrap();
     }
 
     let mut engine: RecoveryEngineImpl = RecoveryEngineImpl;
@@ -695,7 +749,11 @@ fn test_recovery_partial_insert_write() {
     assert_eq!(report.incomplete_txns, 1);
     assert_eq!(report.rows_inserted, 0);
     let rows = storage.scan("t1").unwrap();
-    assert!(rows.is_empty(), "Partial uncommitted writes must be rolled back, found {} rows", rows.len());
+    assert!(
+        rows.is_empty(),
+        "Partial uncommitted writes must be rolled back, found {} rows",
+        rows.len()
+    );
 }
 
 /// RECOVERY-006: Partial UPDATE write → recovery
@@ -720,38 +778,85 @@ fn test_recovery_partial_update_write() {
 
     // tx 1: Begin + Insert(id=1, "original") + Commit
     let mut wal = MemoryWalManager::new();
-    wal.append(WalEntry { tx_id: 1, entry_type: WalEntryType::Begin,
-        table_id: 0, key: None, data: None, lsn: 1, timestamp: 0 }).unwrap();
+    wal.append(WalEntry {
+        tx_id: 1,
+        entry_type: WalEntryType::Begin,
+        table_id: 0,
+        key: None,
+        data: None,
+        lsn: 1,
+        timestamp: 0,
+    })
+    .unwrap();
     let mut data = Vec::new();
-    data.extend_from_slice(b"i:"); data.extend_from_slice(&1i64.to_le_bytes());
+    data.extend_from_slice(b"i:");
+    data.extend_from_slice(&1i64.to_le_bytes());
     data.extend_from_slice(b"s:original\x00");
-    wal.append(WalEntry { tx_id: 1, entry_type: WalEntryType::Insert, table_id: 3645,
-        key: None, data: Some(data), lsn: 2, timestamp: 0 }).unwrap();
-    wal.append(WalEntry { tx_id: 1, entry_type: WalEntryType::Commit,
-        table_id: 0, key: None, data: None, lsn: 3, timestamp: 0 }).unwrap();
+    wal.append(WalEntry {
+        tx_id: 1,
+        entry_type: WalEntryType::Insert,
+        table_id: 3645,
+        key: None,
+        data: Some(data),
+        lsn: 2,
+        timestamp: 0,
+    })
+    .unwrap();
+    wal.append(WalEntry {
+        tx_id: 1,
+        entry_type: WalEntryType::Commit,
+        table_id: 0,
+        key: None,
+        data: None,
+        lsn: 3,
+        timestamp: 0,
+    })
+    .unwrap();
     // tx 2: Begin + Update(id=1, "updated") — NO Commit
-    wal.append(WalEntry { tx_id: 2, entry_type: WalEntryType::Begin,
-        table_id: 0, key: None, data: None, lsn: 4, timestamp: 0 }).unwrap();
+    wal.append(WalEntry {
+        tx_id: 2,
+        entry_type: WalEntryType::Begin,
+        table_id: 0,
+        key: None,
+        data: None,
+        lsn: 4,
+        timestamp: 0,
+    })
+    .unwrap();
     let mut upd = Vec::new();
-    upd.extend_from_slice(b"i:"); upd.extend_from_slice(&1i64.to_le_bytes());
+    upd.extend_from_slice(b"i:");
+    upd.extend_from_slice(&1i64.to_le_bytes());
     upd.extend_from_slice(b"s:updated\x00");
-    wal.append(WalEntry { tx_id: 2, entry_type: WalEntryType::Update, table_id: 3645,
+    wal.append(WalEntry {
+        tx_id: 2,
+        entry_type: WalEntryType::Update,
+        table_id: 3645,
         key: Some(b"i:\x01\x00\x00\x00\x00\x00\x00\x00".to_vec()),
-        data: Some(upd), lsn: 5, timestamp: 0 }).unwrap();
+        data: Some(upd),
+        lsn: 5,
+        timestamp: 0,
+    })
+    .unwrap();
 
     let mut engine: RecoveryEngineImpl = RecoveryEngineImpl;
     let report = engine.recover(&mut storage, &mut wal).unwrap();
     assert_eq!(report.committed_txns, 1);
     assert_eq!(report.incomplete_txns, 1);
     assert_eq!(report.rows_inserted, 1);
-    assert_eq!(report.rows_updated, 0, "Uncommitted UPDATE must NOT be replayed");
+    assert_eq!(
+        report.rows_updated, 0,
+        "Uncommitted UPDATE must NOT be replayed"
+    );
     let rows = storage.scan("t1").unwrap();
     assert_eq!(rows.len(), 1, "Exactly one row should exist");
     // Original value must survive.
     let v_idx = rows[0]
         .iter()
         .position(|x| matches!(x, sqlrustgo_types::Value::Text(s) if s == "original"));
-    assert!(v_idx.is_some(), "Original value 'original' must survive uncommitted UPDATE");
+    assert!(
+        v_idx.is_some(),
+        "Original value 'original' must survive uncommitted UPDATE"
+    );
 }
 
 /// RECOVERY-007: Partial DELETE write → recovery
@@ -778,51 +883,104 @@ fn test_recovery_partial_delete_write() {
     let mut wal = MemoryWalManager::new();
     // tx 1: Begin + Insert(1) + Commit
     wal.append(WalEntry {
-        tx_id: 1, entry_type: WalEntryType::Begin,
-        table_id: 0, key: None, data: None, lsn: 1, timestamp: 0,
-    }).unwrap();
+        tx_id: 1,
+        entry_type: WalEntryType::Begin,
+        table_id: 0,
+        key: None,
+        data: None,
+        lsn: 1,
+        timestamp: 0,
+    })
+    .unwrap();
     wal.append(WalEntry {
-        tx_id: 1, entry_type: WalEntryType::Insert, table_id: 3645,
-        key: None, data: Some(b"i:\x01\x00\x00\x00\x00\x00\x00\x00".to_vec()),
-        lsn: 2, timestamp: 0,
-    }).unwrap();
+        tx_id: 1,
+        entry_type: WalEntryType::Insert,
+        table_id: 3645,
+        key: None,
+        data: Some(b"i:\x01\x00\x00\x00\x00\x00\x00\x00".to_vec()),
+        lsn: 2,
+        timestamp: 0,
+    })
+    .unwrap();
     wal.append(WalEntry {
-        tx_id: 1, entry_type: WalEntryType::Commit,
-        table_id: 0, key: None, data: None, lsn: 3, timestamp: 0,
-    }).unwrap();
+        tx_id: 1,
+        entry_type: WalEntryType::Commit,
+        table_id: 0,
+        key: None,
+        data: None,
+        lsn: 3,
+        timestamp: 0,
+    })
+    .unwrap();
     // tx 2: Begin + Insert(2) + Commit
     wal.append(WalEntry {
-        tx_id: 2, entry_type: WalEntryType::Begin,
-        table_id: 0, key: None, data: None, lsn: 4, timestamp: 0,
-    }).unwrap();
+        tx_id: 2,
+        entry_type: WalEntryType::Begin,
+        table_id: 0,
+        key: None,
+        data: None,
+        lsn: 4,
+        timestamp: 0,
+    })
+    .unwrap();
     wal.append(WalEntry {
-        tx_id: 2, entry_type: WalEntryType::Insert, table_id: 3645,
-        key: None, data: Some(b"i:\x02\x00\x00\x00\x00\x00\x00\x00".to_vec()),
-        lsn: 5, timestamp: 0,
-    }).unwrap();
+        tx_id: 2,
+        entry_type: WalEntryType::Insert,
+        table_id: 3645,
+        key: None,
+        data: Some(b"i:\x02\x00\x00\x00\x00\x00\x00\x00".to_vec()),
+        lsn: 5,
+        timestamp: 0,
+    })
+    .unwrap();
     wal.append(WalEntry {
-        tx_id: 2, entry_type: WalEntryType::Commit,
-        table_id: 0, key: None, data: None, lsn: 6, timestamp: 0,
-    }).unwrap();
+        tx_id: 2,
+        entry_type: WalEntryType::Commit,
+        table_id: 0,
+        key: None,
+        data: None,
+        lsn: 6,
+        timestamp: 0,
+    })
+    .unwrap();
     // tx 3: Begin + Delete(1) — NO Commit (crash before commit)
     wal.append(WalEntry {
-        tx_id: 3, entry_type: WalEntryType::Begin,
-        table_id: 0, key: None, data: None, lsn: 7, timestamp: 0,
-    }).unwrap();
+        tx_id: 3,
+        entry_type: WalEntryType::Begin,
+        table_id: 0,
+        key: None,
+        data: None,
+        lsn: 7,
+        timestamp: 0,
+    })
+    .unwrap();
     wal.append(WalEntry {
-        tx_id: 3, entry_type: WalEntryType::Delete, table_id: 3645,
+        tx_id: 3,
+        entry_type: WalEntryType::Delete,
+        table_id: 3645,
         key: Some(b"i:\x01\x00\x00\x00\x00\x00\x00\x00".to_vec()),
-        data: None, lsn: 8, timestamp: 0,
-    }).unwrap();
+        data: None,
+        lsn: 8,
+        timestamp: 0,
+    })
+    .unwrap();
 
     let mut engine: RecoveryEngineImpl = RecoveryEngineImpl;
     let report = engine.recover(&mut storage, &mut wal).unwrap();
     assert_eq!(report.committed_txns, 2);
     assert_eq!(report.incomplete_txns, 1);
     assert_eq!(report.rows_inserted, 2);
-    assert_eq!(report.rows_deleted, 0, "Uncommitted DELETE must NOT be replayed");
+    assert_eq!(
+        report.rows_deleted, 0,
+        "Uncommitted DELETE must NOT be replayed"
+    );
     let rows = storage.scan("t1").unwrap();
-    assert_eq!(rows.len(), 2, "Both committed inserts must survive, DELETE rolled back. Found {} rows", rows.len());
+    assert_eq!(
+        rows.len(),
+        2,
+        "Both committed inserts must survive, DELETE rolled back. Found {} rows",
+        rows.len()
+    );
 }
 
 /// RECOVERY-008: Partial COMMIT flush → recovery
@@ -844,13 +1002,36 @@ fn test_recovery_partial_commit_flush() {
 
     // Begin + Insert + Commit (full commit)
     let mut wal = MemoryWalManager::new();
-    wal.append(WalEntry { tx_id: 1, entry_type: WalEntryType::Begin,
-        table_id: 0, key: None, data: None, lsn: 1, timestamp: 0 }).unwrap();
-    wal.append(WalEntry { tx_id: 1, entry_type: WalEntryType::Insert, table_id: 3645,
-        key: None, data: Some(b"i:\x01\x00\x00\x00\x00\x00\x00\x00".to_vec()),
-        lsn: 2, timestamp: 0 }).unwrap();
-    wal.append(WalEntry { tx_id: 1, entry_type: WalEntryType::Commit,
-        table_id: 0, key: None, data: None, lsn: 3, timestamp: 0 }).unwrap();
+    wal.append(WalEntry {
+        tx_id: 1,
+        entry_type: WalEntryType::Begin,
+        table_id: 0,
+        key: None,
+        data: None,
+        lsn: 1,
+        timestamp: 0,
+    })
+    .unwrap();
+    wal.append(WalEntry {
+        tx_id: 1,
+        entry_type: WalEntryType::Insert,
+        table_id: 3645,
+        key: None,
+        data: Some(b"i:\x01\x00\x00\x00\x00\x00\x00\x00".to_vec()),
+        lsn: 2,
+        timestamp: 0,
+    })
+    .unwrap();
+    wal.append(WalEntry {
+        tx_id: 1,
+        entry_type: WalEntryType::Commit,
+        table_id: 0,
+        key: None,
+        data: None,
+        lsn: 3,
+        timestamp: 0,
+    })
+    .unwrap();
 
     let mut engine: RecoveryEngineImpl = RecoveryEngineImpl;
     let report = engine.recover(&mut storage, &mut wal).unwrap();
@@ -881,19 +1062,57 @@ fn test_recovery_multiple_tx_crash_order() {
     // tx 1: Begin + Insert(1) + Commit
     // tx 2: Begin + Insert(2) — NO Commit (crash mid-tx2)
     let mut wal = MemoryWalManager::new();
-    wal.append(WalEntry { tx_id: 1, entry_type: WalEntryType::Begin,
-        table_id: 0, key: None, data: None, lsn: 1, timestamp: 0 }).unwrap();
-    wal.append(WalEntry { tx_id: 1, entry_type: WalEntryType::Insert, table_id: 3645,
-        key: None, data: Some(b"i:\x01\x00\x00\x00\x00\x00\x00\x00".to_vec()),
-        lsn: 2, timestamp: 0 }).unwrap();
-    wal.append(WalEntry { tx_id: 1, entry_type: WalEntryType::Commit,
-        table_id: 0, key: None, data: None, lsn: 3, timestamp: 0 }).unwrap();
+    wal.append(WalEntry {
+        tx_id: 1,
+        entry_type: WalEntryType::Begin,
+        table_id: 0,
+        key: None,
+        data: None,
+        lsn: 1,
+        timestamp: 0,
+    })
+    .unwrap();
+    wal.append(WalEntry {
+        tx_id: 1,
+        entry_type: WalEntryType::Insert,
+        table_id: 3645,
+        key: None,
+        data: Some(b"i:\x01\x00\x00\x00\x00\x00\x00\x00".to_vec()),
+        lsn: 2,
+        timestamp: 0,
+    })
+    .unwrap();
+    wal.append(WalEntry {
+        tx_id: 1,
+        entry_type: WalEntryType::Commit,
+        table_id: 0,
+        key: None,
+        data: None,
+        lsn: 3,
+        timestamp: 0,
+    })
+    .unwrap();
     // tx 2 begins after tx 1 commits
-    wal.append(WalEntry { tx_id: 2, entry_type: WalEntryType::Begin,
-        table_id: 0, key: None, data: None, lsn: 4, timestamp: 0 }).unwrap();
-    wal.append(WalEntry { tx_id: 2, entry_type: WalEntryType::Insert, table_id: 3645,
-        key: None, data: Some(b"i:\x02\x00\x00\x00\x00\x00\x00\x00".to_vec()),
-        lsn: 5, timestamp: 0 }).unwrap();
+    wal.append(WalEntry {
+        tx_id: 2,
+        entry_type: WalEntryType::Begin,
+        table_id: 0,
+        key: None,
+        data: None,
+        lsn: 4,
+        timestamp: 0,
+    })
+    .unwrap();
+    wal.append(WalEntry {
+        tx_id: 2,
+        entry_type: WalEntryType::Insert,
+        table_id: 3645,
+        key: None,
+        data: Some(b"i:\x02\x00\x00\x00\x00\x00\x00\x00".to_vec()),
+        lsn: 5,
+        timestamp: 0,
+    })
+    .unwrap();
     // (crash, no commit for tx 2)
 
     let mut engine: RecoveryEngineImpl = RecoveryEngineImpl;
@@ -937,25 +1156,74 @@ fn test_recovery_wal_replay_ordering() {
     // tx 1: Begin + Insert(1, "first") + Commit
     // tx 2: Begin + Update(1, "second") + Commit
     let mut wal = MemoryWalManager::new();
-    wal.append(WalEntry { tx_id: 1, entry_type: WalEntryType::Begin,
-        table_id: 0, key: None, data: None, lsn: 1, timestamp: 0 }).unwrap();
+    wal.append(WalEntry {
+        tx_id: 1,
+        entry_type: WalEntryType::Begin,
+        table_id: 0,
+        key: None,
+        data: None,
+        lsn: 1,
+        timestamp: 0,
+    })
+    .unwrap();
     let mut ins = Vec::new();
-    ins.extend_from_slice(b"i:"); ins.extend_from_slice(&1i64.to_le_bytes());
+    ins.extend_from_slice(b"i:");
+    ins.extend_from_slice(&1i64.to_le_bytes());
     ins.extend_from_slice(b"s:first\x00");
-    wal.append(WalEntry { tx_id: 1, entry_type: WalEntryType::Insert, table_id: 3645,
-        key: None, data: Some(ins), lsn: 2, timestamp: 0 }).unwrap();
-    wal.append(WalEntry { tx_id: 1, entry_type: WalEntryType::Commit,
-        table_id: 0, key: None, data: None, lsn: 3, timestamp: 0 }).unwrap();
-    wal.append(WalEntry { tx_id: 2, entry_type: WalEntryType::Begin,
-        table_id: 0, key: None, data: None, lsn: 4, timestamp: 0 }).unwrap();
+    wal.append(WalEntry {
+        tx_id: 1,
+        entry_type: WalEntryType::Insert,
+        table_id: 3645,
+        key: None,
+        data: Some(ins),
+        lsn: 2,
+        timestamp: 0,
+    })
+    .unwrap();
+    wal.append(WalEntry {
+        tx_id: 1,
+        entry_type: WalEntryType::Commit,
+        table_id: 0,
+        key: None,
+        data: None,
+        lsn: 3,
+        timestamp: 0,
+    })
+    .unwrap();
+    wal.append(WalEntry {
+        tx_id: 2,
+        entry_type: WalEntryType::Begin,
+        table_id: 0,
+        key: None,
+        data: None,
+        lsn: 4,
+        timestamp: 0,
+    })
+    .unwrap();
     let mut upd = Vec::new();
-    upd.extend_from_slice(b"i:"); upd.extend_from_slice(&1i64.to_le_bytes());
+    upd.extend_from_slice(b"i:");
+    upd.extend_from_slice(&1i64.to_le_bytes());
     upd.extend_from_slice(b"s:second\x00");
-    wal.append(WalEntry { tx_id: 2, entry_type: WalEntryType::Update, table_id: 3645,
+    wal.append(WalEntry {
+        tx_id: 2,
+        entry_type: WalEntryType::Update,
+        table_id: 3645,
         key: Some(b"i:\x01\x00\x00\x00\x00\x00\x00\x00".to_vec()),
-        data: Some(upd), lsn: 5, timestamp: 0 }).unwrap();
-    wal.append(WalEntry { tx_id: 2, entry_type: WalEntryType::Commit,
-        table_id: 0, key: None, data: None, lsn: 6, timestamp: 0 }).unwrap();
+        data: Some(upd),
+        lsn: 5,
+        timestamp: 0,
+    })
+    .unwrap();
+    wal.append(WalEntry {
+        tx_id: 2,
+        entry_type: WalEntryType::Commit,
+        table_id: 0,
+        key: None,
+        data: None,
+        lsn: 6,
+        timestamp: 0,
+    })
+    .unwrap();
 
     let mut engine: RecoveryEngineImpl = RecoveryEngineImpl;
     let report = engine.recover(&mut storage, &mut wal).unwrap();
