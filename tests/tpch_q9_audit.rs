@@ -129,7 +129,10 @@ fn test_tpch_22_inprocess_sf001() {
             sql.to_string()
         };
         let sqlite_out = Command::new("sqlite3")
-            .args(["/tmp/tpch_3way_sf001.db", &format!("SELECT COUNT(*) FROM ({}) sub", sqlite_sql)])
+            .args([
+                "/tmp/tpch_3way_sf001.db",
+                &format!("SELECT COUNT(*) FROM ({}) sub", sqlite_sql),
+            ])
             .output()
             .ok();
         let s_rc: Option<i64> = sqlite_out
@@ -140,7 +143,9 @@ fn test_tpch_22_inprocess_sf001() {
         // the result set, not a result column.
         let wrap = format!("SELECT COUNT(*) AS c FROM ({}) sub", sql);
         let engine_count: Option<i64> = match engine.execute(&wrap) {
-            Ok(r) => r.rows.first()
+            Ok(r) => r
+                .rows
+                .first()
                 .and_then(|row| row.first())
                 .and_then(|v| match v {
                     SqlValue::Integer(i) => Some(*i),
@@ -154,17 +159,34 @@ fn test_tpch_22_inprocess_sf001() {
         };
 
         let cat = match (engine_count, s_rc) {
-            (Some(e), Some(s)) if e == s => { matched += 1; "MATCH" }
-            (Some(_), Some(_)) => { mismatched += 1; "MISMATCH" }
-            (None, _) => { err_count += 1; "ERR" }
-            (Some(_), None) => { mismatched += 1; "MISMATCH (no baseline)" }
+            (Some(e), Some(s)) if e == s => {
+                matched += 1;
+                "MATCH"
+            }
+            (Some(_), Some(_)) => {
+                mismatched += 1;
+                "MISMATCH"
+            }
+            (None, _) => {
+                err_count += 1;
+                "ERR"
+            }
+            (Some(_), None) => {
+                mismatched += 1;
+                "MISMATCH (no baseline)"
+            }
         };
-        eprintln!("Q{:>2}: engine={:>6?} sqlite={:>6?}  {}", q, engine_count, s_rc, cat);
+        eprintln!(
+            "Q{:>2}: engine={:>6?} sqlite={:>6?}  {}",
+            q, engine_count, s_rc, cat
+        );
     }
     eprintln!("\n=== Totals ({} rows loaded) ===", total_rows);
     eprintln!("MATCHED   : {matched}/22");
     eprintln!("MISMATCHED: {mismatched}/22");
     eprintln!("ERR       : {err_count}/22");
-    assert!(mismatched == 0 && err_count == 0,
-        "TPC-H gate failure: {mismatched} mismatched, {err_count} errors");
+    assert!(
+        mismatched == 0 && err_count == 0,
+        "TPC-H gate failure: {mismatched} mismatched, {err_count} errors"
+    );
 }
