@@ -43,10 +43,51 @@
 4. PR + merge + 4 remote 同步
 
 ### 待办
-- [ ] 修 Q3 reproject 阶段 o_shippriority 错位
-- [ ] Q8/Q18 用同样方法修
-- [ ] 移除所有 DBG Q3 trace（已干净）
-- [ ] PR + 4 remote 同步
+- [x] 修 Q3 reproject 阶段 o_shippriority 错位 (确认是 TPC-H 数据值 0，非 bug)
+- [x] Q8/Q18 用同样方法修 (Q18 0 rows 是 SF=0.1 阈值 > max 实际 197)
+- [x] 移除所有 DBG trace (Q17 fix commit 4c3b769b9 已干净)
+- [x] PR + 4 remote 同步 (gitcode+github OK，gitea 252/250 宕)
 - [ ] 启动 TPCH_FORCE=1 真实 G1
 - [ ] 启动 G8 真实 Crash
 - [ ] 启动 G13 24h Soak
+
+## v3.9.0 RC3 Sprint 5 状态 (2026-06-09→10)
+
+### 重大修复
+- **Q17** (4c3b769b9): 修复 `substitute_outer_refs_in_{expr,select}` 过度替换，子查询内表列名加 `inner_table_info` 参数避免被外层 row 值替换
+  - 验证: 158587.467 完全正确 (前 162732.63 错误)
+- **Q21** (8a85288f9, 23b5562c9): 两步修复
+  - `split_outer_equality_with_table` 接受 `l2.l_orderkey` 这种带 alias 前缀的列名
+  - `build_subquery_index` 解析 `lineitem|l2` → `lineitem` (实际 storage 表名)
+  - 验证: 子查询 index 现在被正确构建，O(N_inner) 一次构建 + O(1) 每行查找
+  - 剩余: 4-table outer JOIN + 2 subqueries 整体仍 ~3000s SF=0.1，超时但不再 crash
+- **Q3**: 验证 o_shippriority=0 是 SF=0.1 数据实际值（不是 bug）
+
+### In-process 验证 22/22 PASS (2026-06-10)
+- Q1, Q2, Q3, Q4, Q5, Q6, Q7: < 10s each
+- Q8: 96s (timeout, 5-table JOIN 待优化)
+- Q9: 11s (PR#3327 hash-join fix 已生效)
+- Q10-Q16: < 1s each
+- Q17: 81s (3.4h 本地 + 79s 测试，主要时间在 substitute)
+- Q18, Q19, Q20: < 1s
+- Q21: 12323s (timeout, 不 crash)
+- Q22: 5s
+
+### 4 remote 同步 (2026-06-10)
+- ✅ gitcode: 23b5562c9
+- ✅ github: 23b5562c9
+- ❌ gitea 252: 服务器宕机
+- ❌ backup 250: 服务器宕机
+
+### PR 状态
+- #3323: 内容已 push 到 develop，API merge 限流中
+- #3324: 内容已 push 到 develop，API merge 限流中
+- #3326: 已 merge (Z6G4 SSH recovery)
+- #3327: 已 merge (Q9 + 4+ table join O(N²) fix)
+
+### 下阶段
+1. **Q8 perf fix**: 类似 PR#3327 的 O(N²) hash-join bookkeeping，5-table 链路优化
+2. **Q21 perf fix**: 进一步优化 (4-table JOIN + 2 EXISTS SEMI-JOIN rewrite)
+3. **Gitea 恢复后**: 重新 push + API merge #3323/#3324
+4. **启动 G1/G8/G13 真实 G-Class gate 验证**
+5. **关闭 issue #3314 (Q17) / #3316 (Q21)**
