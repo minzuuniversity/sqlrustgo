@@ -106,15 +106,27 @@ for n in $(seq 1 22); do
     # shell command substitution would strip — important to
     # distinguish 0 rows from 1 row with NULL).
     out_file=$(mktemp -t tpch_baseline_XXXXXX)
-    sqlite3 -separator "|" "$DB" "$sql" > "$out_file" 2>&1 || {
-        echo "  Q${n}: ERROR (sqlite failed)"
-        FAIL=$((FAIL + 1))
-        rm -f "$out_file"
-        continue
-    }
-    # Use a wrapper COUNT to get the true row count (handles empty
-    # result vs 1-NULL-row case correctly).
-    rc=$(sqlite3 "$DB" "SELECT count(*) FROM ($sql_stripped)" 2>/dev/null)
+    # TPC-H Sprint 5 v8: Q7/Q8/Q9 use EXTRACT(YEAR FROM ...) which
+    # SQLite does not support. Use MariaDB for these; SQLite for
+    # the rest.
+    if echo " 7 8 9 " | grep -q " $n "; then
+        mysql -B -N tpch_sf01 -e "$sql" > "$out_file" 2>&1 || {
+            echo "  Q${n}: ERROR (mariadb failed)"
+            FAIL=$((FAIL + 1))
+            rm -f "$out_file"
+            continue
+        }
+        tr '\\t' '|' < "$out_file" > "$out_file.tmp" && mv "$out_file.tmp" "$out_file"
+        rc=$(mysql -B -N tpch_sf01 -e "SELECT COUNT(*) FROM ($sql_stripped) AS x" 2>/dev/null | head -1)
+    else
+        sqlite3 -separator "|" "$DB" "$sql" > "$out_file" 2>&1 || {
+            echo "  Q${n}: ERROR (sqlite failed)"
+            FAIL=$((FAIL + 1))
+            rm -f "$out_file"
+            continue
+        }
+        rc=$(sqlite3 "$DB" "SELECT count(*) FROM ($sql_stripped)" 2>/dev/null)
+    fi
     if [ -z "$rc" ]; then rc=0; fi
     out=$(cat "$out_file")
     rm -f "$out_file"
