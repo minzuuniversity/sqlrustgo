@@ -2147,9 +2147,18 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         if subq.table.is_empty() {
             return None;
         }
+        // TPC-H Q21's subqueries use `FROM lineitem l2`; the parser
+        // stores this as `table: "lineitem|l2"` (the `|alias` suffix
+        // pattern, also used by execute_joins). Storage has only
+        // the bare table name `lineitem`. Strip the `|alias` suffix
+        // so the storage lookup can find the real table.
+        let real_table: &str = match subq.table.find('|') {
+            Some(d) => &subq.table[..d],
+            None => &subq.table,
+        };
         let where_expr = subq.where_clause.as_ref()?;
         let storage = self.storage.read().ok()?;
-        let table_info = storage.get_table_info(&subq.table).ok()?;
+        let table_info = storage.get_table_info(real_table).ok()?;
         // Split the WHERE into the outer-equality leaf (which we
         // will use as the index key column) and the static rest
         // predicate (which we will evaluate per inner row).  We
@@ -2169,7 +2178,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             _ => col_name.as_str(),
         };
         let col_idx = table_info.columns.iter().position(|c| c.name == bare_col)?;
-        let rows = storage.scan(&subq.table).ok()?;
+        let rows = storage.scan(real_table).ok()?;
         // Evaluate the STATIC predicate (not the full WHERE) per
         // inner row.  The outer-equality leaf references the outer
         // table's column, which is not a lineitem column, so the
