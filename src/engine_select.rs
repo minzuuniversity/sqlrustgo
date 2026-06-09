@@ -2160,7 +2160,15 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         // the inner table is the key; the other is the outer ref.
         let (col_name, static_predicate) =
             split_outer_equality_with_table(where_expr, &table_info)?;
-        let col_idx = table_info.columns.iter().position(|c| c.name == col_name)?;
+        // split_outer_equality_with_table may return a qualified
+        // name like `l2.l_orderkey` for an aliased subquery FROM
+        // (TPC-H Q21); the table_info stores unqualified names,
+        // so strip any single alias prefix before column lookup.
+        let bare_col = match col_name.rfind('.') {
+            Some(d) if d + 1 < col_name.len() => &col_name[d + 1..],
+            _ => col_name.as_str(),
+        };
+        let col_idx = table_info.columns.iter().position(|c| c.name == bare_col)?;
         let rows = storage.scan(&subq.table).ok()?;
         // Evaluate the STATIC predicate (not the full WHERE) per
         // inner row.  The outer-equality leaf references the outer
@@ -2277,8 +2285,22 @@ fn split_outer_equality_with_table(
     inner_info: &TableInfo,
 ) -> Option<(String, Box<Expression>)> {
     use sqlrustgo_parser::Expression as E;
+    /// TPC-H Q21 uses `EXISTS (SELECT * FROM lineitem l2 WHERE
+    /// l2.l_orderkey = l1.l_orderkey)`. The inner-col side comes
+    /// in qualified as `l2.l_orderkey`, but the inner table_info
+    /// stores unqualified column names (`l_orderkey`). Strip a
+    /// single alias prefix before lookup so Q21-style subqueries
+    /// are recognised. Q4/Q17 don't qualify, so this is a no-op
+    /// for them.
+    fn strip_table_prefix(name: &str) -> String {
+        match name.rfind('.') {
+            Some(d) if d + 1 < name.len() => name[d + 1..].to_string(),
+            _ => name.to_string(),
+        }
+    }
     fn is_inner_col(name: &str, info: &TableInfo) -> bool {
-        info.columns.iter().any(|c| c.name == name)
+        let bare = strip_table_prefix(name);
+        info.columns.iter().any(|c| c.name == bare)
     }
     match where_expr {
         E::BinaryOp(l, op, r) if op.to_uppercase() == "AND" => {
