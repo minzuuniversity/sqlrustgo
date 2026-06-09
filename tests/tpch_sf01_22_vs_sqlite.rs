@@ -57,7 +57,11 @@ fn lookup_col_types(table: &str) -> Vec<&'static str> {
         .filter(|s| !s.is_empty())
         .map(|c| {
             let toks: Vec<&str> = c.split_whitespace().collect();
-            if toks.len() >= 2 { toks[1] } else { "" }
+            if toks.len() >= 2 {
+                toks[1]
+            } else {
+                ""
+            }
         })
         .filter(|s| !s.is_empty())
         .collect();
@@ -70,19 +74,31 @@ fn load_tbl(storage: &Arc<RwLock<MemoryStorage>>, tbl: &str) -> usize {
     let types = lookup_col_types(tbl);
     let mut n = 0usize;
     for line in content.lines() {
-        if line.is_empty() { continue; }
+        if line.is_empty() {
+            continue;
+        }
         let fields: Vec<&str> = line.split('|').collect();
         let mut vals: Vec<SqlValue> = Vec::new();
         for (i, f) in fields.iter().enumerate() {
             let t = types.get(i).copied().unwrap_or("TEXT");
             vals.push(match t.to_uppercase().as_str() {
-                "INTEGER" => f.parse::<i64>().map(SqlValue::Integer).unwrap_or(SqlValue::Null),
-                "REAL" => f.parse::<f64>().map(SqlValue::Float).unwrap_or(SqlValue::Null),
+                "INTEGER" => f
+                    .parse::<i64>()
+                    .map(SqlValue::Integer)
+                    .unwrap_or(SqlValue::Null),
+                "REAL" => f
+                    .parse::<f64>()
+                    .map(SqlValue::Float)
+                    .unwrap_or(SqlValue::Null),
                 _ => SqlValue::Text(f.to_string()),
             });
         }
         let row: Vec<SqlValue> = vals;
-        storage.write().unwrap().insert(tbl, vec![row]).expect("insert");
+        storage
+            .write()
+            .unwrap()
+            .insert(tbl, vec![row])
+            .expect("insert");
         n += 1;
     }
     n
@@ -157,6 +173,9 @@ fn tpch_sf01_22_vs_sqlite() {
     // (Q5, Q15, Q16 are pre-existing derived-table / comma-list bugs;
     // Q7, Q8, Q9 skip due to EXTRACT not supported in sqlrustgo yet).
     if fail > 0 {
-        eprintln!("NOTE: {} queries fail vs SQLite (pre-existing, separate Sprint work)", fail);
+        eprintln!(
+            "NOTE: {} queries fail vs SQLite (pre-existing, separate Sprint work)",
+            fail
+        );
     }
 }

@@ -212,9 +212,7 @@ pub fn eval_predicate(expr: &Expression, row: &[Value], table_info: &TableInfo) 
         // shipping delay), so the row count is close to the correct
         // answer. The GROUP BY o_orderpriority produces 5 distinct
         // priorities in both the conservative and the true answer.
-        Expression::Exists(_subq) => {
-            true
-        }
+        Expression::Exists(_subq) => true,
         Expression::NotExists(_subq) => {
             // TPC-H Q4 only uses NOT EXISTS in other queries (none in
             // our 22-query suite as of v3.9.0-rc2). Conservative true
@@ -489,29 +487,51 @@ pub fn substitute_outer_refs_in_expr(
             expr.clone()
         }
         Expression::BinaryOp(l, op, r) => Expression::BinaryOp(
-            Box::new(substitute_outer_refs_in_expr(l, outer_row, outer_table_info)),
+            Box::new(substitute_outer_refs_in_expr(
+                l,
+                outer_row,
+                outer_table_info,
+            )),
             op.clone(),
-            Box::new(substitute_outer_refs_in_expr(r, outer_row, outer_table_info)),
+            Box::new(substitute_outer_refs_in_expr(
+                r,
+                outer_row,
+                outer_table_info,
+            )),
         ),
         Expression::UnaryOp(op, inner) => Expression::UnaryOp(
             op.clone(),
-            Box::new(substitute_outer_refs_in_expr(inner, outer_row, outer_table_info)),
+            Box::new(substitute_outer_refs_in_expr(
+                inner,
+                outer_row,
+                outer_table_info,
+            )),
         ),
-        Expression::IsNull(inner) => Expression::IsNull(Box::new(
-            substitute_outer_refs_in_expr(inner, outer_row, outer_table_info),
-        )),
+        Expression::IsNull(inner) => Expression::IsNull(Box::new(substitute_outer_refs_in_expr(
+            inner,
+            outer_row,
+            outer_table_info,
+        ))),
         Expression::IsNotNull(inner) => Expression::IsNotNull(Box::new(
             substitute_outer_refs_in_expr(inner, outer_row, outer_table_info),
         )),
         Expression::InList(left, values) => Expression::InList(
-            Box::new(substitute_outer_refs_in_expr(left, outer_row, outer_table_info)),
+            Box::new(substitute_outer_refs_in_expr(
+                left,
+                outer_row,
+                outer_table_info,
+            )),
             values
                 .iter()
                 .map(|v| substitute_outer_refs_in_expr(v, outer_row, outer_table_info))
                 .collect(),
         ),
         Expression::NotInList(left, values) => Expression::NotInList(
-            Box::new(substitute_outer_refs_in_expr(left, outer_row, outer_table_info)),
+            Box::new(substitute_outer_refs_in_expr(
+                left,
+                outer_row,
+                outer_table_info,
+            )),
             values
                 .iter()
                 .map(|v| substitute_outer_refs_in_expr(v, outer_row, outer_table_info))
@@ -530,9 +550,11 @@ pub fn substitute_outer_refs_in_expr(
         // values. The actual subquery execution is handled by the
         // caller (in execute_select, which has &self access to
         // storage).
-        Expression::Exists(subq) => Expression::Exists(Box::new(
-            substitute_outer_refs_in_select(subq, outer_row, outer_table_info),
-        )),
+        Expression::Exists(subq) => Expression::Exists(Box::new(substitute_outer_refs_in_select(
+            subq,
+            outer_row,
+            outer_table_info,
+        ))),
         Expression::NotExists(subq) => Expression::NotExists(Box::new(
             substitute_outer_refs_in_select(subq, outer_row, outer_table_info),
         )),
@@ -543,43 +565,103 @@ pub fn substitute_outer_refs_in_expr(
         // because IN/NOT IN subqueries are non-correlated for our 22
         // queries.
         Expression::In(left, subq) => Expression::In(
-            Box::new(substitute_outer_refs_in_expr(left, outer_row, outer_table_info)),
+            Box::new(substitute_outer_refs_in_expr(
+                left,
+                outer_row,
+                outer_table_info,
+            )),
             subq.clone(),
         ),
         Expression::NotIn(left, subq) => Expression::NotIn(
-            Box::new(substitute_outer_refs_in_expr(left, outer_row, outer_table_info)),
+            Box::new(substitute_outer_refs_in_expr(
+                left,
+                outer_row,
+                outer_table_info,
+            )),
             subq.clone(),
         ),
         // TPC-H: LIKE/BETWEEN etc. Outer refs may appear in the
         // column operand.
         Expression::Like(l, p, esc) => Expression::Like(
-            Box::new(substitute_outer_refs_in_expr(l, outer_row, outer_table_info)),
-            Box::new(substitute_outer_refs_in_expr(p, outer_row, outer_table_info)),
+            Box::new(substitute_outer_refs_in_expr(
+                l,
+                outer_row,
+                outer_table_info,
+            )),
+            Box::new(substitute_outer_refs_in_expr(
+                p,
+                outer_row,
+                outer_table_info,
+            )),
             *esc,
         ),
         Expression::NotLike(l, p, esc) => Expression::NotLike(
-            Box::new(substitute_outer_refs_in_expr(l, outer_row, outer_table_info)),
-            Box::new(substitute_outer_refs_in_expr(p, outer_row, outer_table_info)),
+            Box::new(substitute_outer_refs_in_expr(
+                l,
+                outer_row,
+                outer_table_info,
+            )),
+            Box::new(substitute_outer_refs_in_expr(
+                p,
+                outer_row,
+                outer_table_info,
+            )),
             *esc,
         ),
         Expression::Between(l, lo, hi) => Expression::Between(
-            Box::new(substitute_outer_refs_in_expr(l, outer_row, outer_table_info)),
-            Box::new(substitute_outer_refs_in_expr(lo, outer_row, outer_table_info)),
-            Box::new(substitute_outer_refs_in_expr(hi, outer_row, outer_table_info)),
+            Box::new(substitute_outer_refs_in_expr(
+                l,
+                outer_row,
+                outer_table_info,
+            )),
+            Box::new(substitute_outer_refs_in_expr(
+                lo,
+                outer_row,
+                outer_table_info,
+            )),
+            Box::new(substitute_outer_refs_in_expr(
+                hi,
+                outer_row,
+                outer_table_info,
+            )),
         ),
         Expression::NotBetween(l, lo, hi) => Expression::NotBetween(
-            Box::new(substitute_outer_refs_in_expr(l, outer_row, outer_table_info)),
-            Box::new(substitute_outer_refs_in_expr(lo, outer_row, outer_table_info)),
-            Box::new(substitute_outer_refs_in_expr(hi, outer_row, outer_table_info)),
+            Box::new(substitute_outer_refs_in_expr(
+                l,
+                outer_row,
+                outer_table_info,
+            )),
+            Box::new(substitute_outer_refs_in_expr(
+                lo,
+                outer_row,
+                outer_table_info,
+            )),
+            Box::new(substitute_outer_refs_in_expr(
+                hi,
+                outer_row,
+                outer_table_info,
+            )),
         ),
         Expression::NotRegexp(l, p) => Expression::NotRegexp(
-            Box::new(substitute_outer_refs_in_expr(l, outer_row, outer_table_info)),
-            Box::new(substitute_outer_refs_in_expr(p, outer_row, outer_table_info)),
+            Box::new(substitute_outer_refs_in_expr(
+                l,
+                outer_row,
+                outer_table_info,
+            )),
+            Box::new(substitute_outer_refs_in_expr(
+                p,
+                outer_row,
+                outer_table_info,
+            )),
         ),
         // Bare subquery (no outer ref) - pass through.
         Expression::Subquery(subq) => Expression::Subquery(subq.clone()),
         Expression::SubqueryField(inner, field) => Expression::SubqueryField(
-            Box::new(substitute_outer_refs_in_expr(inner, outer_row, outer_table_info)),
+            Box::new(substitute_outer_refs_in_expr(
+                inner,
+                outer_row,
+                outer_table_info,
+            )),
             field.clone(),
         ),
         // CASE WHEN - construct new WhenClause structs (skip if WhenClause
@@ -597,7 +679,11 @@ pub fn substitute_outer_refs_in_expr(
         // substituted (ANY/ALL subqueries in our 22-query suite are
         // non-correlated).
         Expression::QuantifiedOp(l, op, subq) => Expression::QuantifiedOp(
-            Box::new(substitute_outer_refs_in_expr(l, outer_row, outer_table_info)),
+            Box::new(substitute_outer_refs_in_expr(
+                l,
+                outer_row,
+                outer_table_info,
+            )),
             op.clone(),
             subq.clone(),
         ),
@@ -690,24 +776,53 @@ fn substitute_qualified_outer_refs_in_place(
             }
         }
         Expression::BinaryOp(l, _, r) => {
-            substitute_qualified_outer_refs_in_place(l, outer_row, outer_table_info, own_qualifiers);
-            substitute_qualified_outer_refs_in_place(r, outer_row, outer_table_info, own_qualifiers);
+            substitute_qualified_outer_refs_in_place(
+                l,
+                outer_row,
+                outer_table_info,
+                own_qualifiers,
+            );
+            substitute_qualified_outer_refs_in_place(
+                r,
+                outer_row,
+                outer_table_info,
+                own_qualifiers,
+            );
         }
         Expression::UnaryOp(_, inner)
         | Expression::IsNull(inner)
         | Expression::IsNotNull(inner) => {
-            substitute_qualified_outer_refs_in_place(inner, outer_row, outer_table_info, own_qualifiers);
+            substitute_qualified_outer_refs_in_place(
+                inner,
+                outer_row,
+                outer_table_info,
+                own_qualifiers,
+            );
         }
-        Expression::InList(left, values)
-        | Expression::NotInList(left, values) => {
-            substitute_qualified_outer_refs_in_place(left, outer_row, outer_table_info, own_qualifiers);
+        Expression::InList(left, values) | Expression::NotInList(left, values) => {
+            substitute_qualified_outer_refs_in_place(
+                left,
+                outer_row,
+                outer_table_info,
+                own_qualifiers,
+            );
             for v in values {
-                substitute_qualified_outer_refs_in_place(v, outer_row, outer_table_info, own_qualifiers);
+                substitute_qualified_outer_refs_in_place(
+                    v,
+                    outer_row,
+                    outer_table_info,
+                    own_qualifiers,
+                );
             }
         }
         Expression::FunctionCall(_, args) => {
             for a in args {
-                substitute_qualified_outer_refs_in_place(a, outer_row, outer_table_info, own_qualifiers);
+                substitute_qualified_outer_refs_in_place(
+                    a,
+                    outer_row,
+                    outer_table_info,
+                    own_qualifiers,
+                );
             }
         }
         Expression::Exists(_)
