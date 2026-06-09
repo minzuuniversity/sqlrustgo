@@ -15,7 +15,9 @@ use std::path::PathBuf;
 use std::time::Instant;
 
 mod four_way_harness;
-use four_way_harness::{compare_row_counts, setup_external_db, Engine, QueryResult, TABLE_COLS, default_data_dir};
+use four_way_harness::{
+    compare_row_counts, default_data_dir, setup_external_db, Engine, QueryResult, TABLE_COLS,
+};
 
 /// One entry per (engine, query) produced by the harness.
 #[derive(Debug, Default)]
@@ -33,7 +35,10 @@ fn test_four_way_tpch_22() {
 
     let data_dir = default_data_dir();
     if !data_dir.exists() {
-        eprintln!("\n=== G17 4-Way TPC-H [SKIPPED — TPCH_DATA_DIR={:?} not found] ===", data_dir);
+        eprintln!(
+            "\n=== G17 4-Way TPC-H [SKIPPED — TPCH_DATA_DIR={:?} not found] ===",
+            data_dir
+        );
         return;
     }
 
@@ -62,31 +67,51 @@ fn test_four_way_tpch_22() {
             queries.push((q, s.trim().trim_end_matches(';').to_string()));
         }
     }
-    eprintln!("[queries] Loaded {} queries from {:?}", queries.len(), query_dir);
+    eprintln!(
+        "[queries] Loaded {} queries from {:?}",
+        queries.len(),
+        query_dir
+    );
 
     // ---- 3. Run on sqlrustgo (in-process) ----
     eprintln!("\n[sqlrustgo] Running 22 queries...");
     let start = Instant::now();
-    results.by_engine.insert(Engine::SqlRustGo, run_sqlrustgo(&queries, &data_dir));
-    results.durations_ms.insert(Engine::SqlRustGo, start.elapsed().as_millis());
+    results
+        .by_engine
+        .insert(Engine::SqlRustGo, run_sqlrustgo(&queries, &data_dir));
+    results
+        .durations_ms
+        .insert(Engine::SqlRustGo, start.elapsed().as_millis());
 
     // ---- 4. Run on SQLite (in-process rusqlite) ----
     eprintln!("[sqlite] Running 22 queries...");
     let start = Instant::now();
-    results.by_engine.insert(Engine::Sqlite, run_sqlite(&queries, &data_dir));
-    results.durations_ms.insert(Engine::Sqlite, start.elapsed().as_millis());
+    results
+        .by_engine
+        .insert(Engine::Sqlite, run_sqlite(&queries, &data_dir));
+    results
+        .durations_ms
+        .insert(Engine::Sqlite, start.elapsed().as_millis());
 
     // ---- 5. Run on MariaDB (subprocess mysql) ----
     eprintln!("[mariadb] Running 22 queries...");
     let start = Instant::now();
-    results.by_engine.insert(Engine::MariaDb, run_mariadb(&queries));
-    results.durations_ms.insert(Engine::MariaDb, start.elapsed().as_millis());
+    results
+        .by_engine
+        .insert(Engine::MariaDb, run_mariadb(&queries));
+    results
+        .durations_ms
+        .insert(Engine::MariaDb, start.elapsed().as_millis());
 
     // ---- 6. Run on PostgreSQL (subprocess psql) ----
     eprintln!("[postgresql] Running 22 queries...");
     let start = Instant::now();
-    results.by_engine.insert(Engine::PostgreSql, run_postgresql(&queries));
-    results.durations_ms.insert(Engine::PostgreSql, start.elapsed().as_millis());
+    results
+        .by_engine
+        .insert(Engine::PostgreSql, run_postgresql(&queries));
+    results
+        .durations_ms
+        .insert(Engine::PostgreSql, start.elapsed().as_millis());
 
     // ---- 7. Compare + report ----
     print_summary(&results);
@@ -205,11 +230,8 @@ fn run_sqlite(queries: &[(u8, String)], data_dir: &PathBuf) -> Vec<QueryResult> 
                     all_rows.push(vals);
                 }
                 qr.row_count = all_rows.len();
-                let mut sample: Vec<String> = all_rows
-                    .into_iter()
-                    .take(5)
-                    .map(|r| r.join("|"))
-                    .collect();
+                let mut sample: Vec<String> =
+                    all_rows.into_iter().take(5).map(|r| r.join("|")).collect();
                 sample.sort();
                 qr.sample_rows = sample;
             }
@@ -300,7 +322,15 @@ fn print_summary(results: &FourWayResults) {
         let cell = |e: Engine| -> String {
             match row(e) {
                 Some(r) if r.passed() => format!("{} ({:.0}ms)", r.row_count, r.duration_ms as f64),
-                Some(r) => format!("ERR: {}", r.error.as_deref().unwrap_or("?").chars().take(30).collect::<String>()),
+                Some(r) => format!(
+                    "ERR: {}",
+                    r.error
+                        .as_deref()
+                        .unwrap_or("?")
+                        .chars()
+                        .take(30)
+                        .collect::<String>()
+                ),
                 None => "?".to_string(),
             }
         };
@@ -374,12 +404,23 @@ fn write_report(results: &FourWayResults) {
     out.push_str("|---|---------------------|------------------|-------------------|----------------------|------------------|\n");
     for q in 1..=22u8 {
         let row = |e: Engine| {
-            results.by_engine.get(&e).and_then(|v| v.iter().find(|r| r.query == q))
+            results
+                .by_engine
+                .get(&e)
+                .and_then(|v| v.iter().find(|r| r.query == q))
         };
         let cell = |e: Engine| -> String {
             match row(e) {
                 Some(r) if r.passed() => format!("{} / {}", r.row_count, r.duration_ms),
-                Some(r) => format!("ERR: {}", r.error.as_deref().unwrap_or("?").chars().take(50).collect::<String>()),
+                Some(r) => format!(
+                    "ERR: {}",
+                    r.error
+                        .as_deref()
+                        .unwrap_or("?")
+                        .chars()
+                        .take(50)
+                        .collect::<String>()
+                ),
                 None => "?".to_string(),
             }
         };
@@ -415,7 +456,12 @@ fn write_report(results: &FourWayResults) {
                 .get(&e)
                 .map(|v| v.iter().filter(|r| r.passed()).count())
                 .unwrap_or(0);
-            out.push_str(&format!("- **{}**: {}/22 PASS, {:.2}s total\n", e, pass, *d as f64 / 1000.0));
+            out.push_str(&format!(
+                "- **{}**: {}/22 PASS, {:.2}s total\n",
+                e,
+                pass,
+                *d as f64 / 1000.0
+            ));
         }
     }
 

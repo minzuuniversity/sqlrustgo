@@ -16,10 +16,26 @@ fn test_storage_insert_path() {
         s.insert(
             "t",
             vec![
-                vec![SqlValue::Text("1992-01-01".to_string()), SqlValue::Integer(1), SqlValue::Float(0.05)],
-                vec![SqlValue::Text("1994-01-01".to_string()), SqlValue::Integer(2), SqlValue::Float(0.07)],
-                vec![SqlValue::Text("1995-01-01".to_string()), SqlValue::Integer(3), SqlValue::Float(0.06)],
-                vec![SqlValue::Text("1996-12-31".to_string()), SqlValue::Integer(4), SqlValue::Float(0.10)],
+                vec![
+                    SqlValue::Text("1992-01-01".to_string()),
+                    SqlValue::Integer(1),
+                    SqlValue::Float(0.05),
+                ],
+                vec![
+                    SqlValue::Text("1994-01-01".to_string()),
+                    SqlValue::Integer(2),
+                    SqlValue::Float(0.07),
+                ],
+                vec![
+                    SqlValue::Text("1995-01-01".to_string()),
+                    SqlValue::Integer(3),
+                    SqlValue::Float(0.06),
+                ],
+                vec![
+                    SqlValue::Text("1996-12-31".to_string()),
+                    SqlValue::Integer(4),
+                    SqlValue::Float(0.10),
+                ],
             ],
         )
         .expect("insert");
@@ -29,5 +45,8 @@ fn test_storage_insert_path() {
     let r2 = engine
         .execute("SELECT a FROM t WHERE a >= '1994-01-01'")
         .expect(">=");
-    eprintln!("storage.insert path - a >= '1994-01-01' (expect 3): {:?}", r2.rows);
+    eprintln!(
+        "storage.insert path - a >= '1994-01-01' (expect 3): {:?}",
+        r2.rows
+    );
 }
