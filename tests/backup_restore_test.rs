@@ -3,7 +3,9 @@ use sqlrustgo_admin::manifest::{sha256_file, Manifest};
 use sqlrustgo_admin::pitr;
 use sqlrustgo_admin::restore;
 use sqlrustgo_admin::verify;
-use sqlrustgo_storage::wal::{make_begin_entry, make_commit_entry, make_insert_entry, WalEntry, WalEntryType, WalWriter};
+use sqlrustgo_storage::wal::{
+    make_begin_entry, make_commit_entry, make_insert_entry, WalEntry, WalEntryType, WalWriter,
+};
 use std::fs;
 use std::io::Write;
 use std::path::Path;
@@ -135,12 +137,24 @@ fn test_verify_corrupted_data() {
     }
     let new_staging = data_dir.path().join("stage2");
     fs::create_dir_all(&new_staging).unwrap();
-    fs::write(new_staging.join("manifest.json"), serde_json::to_string_pretty(&manifest).unwrap()).unwrap();
+    fs::write(
+        new_staging.join("manifest.json"),
+        serde_json::to_string_pretty(&manifest).unwrap(),
+    )
+    .unwrap();
     fs::create_dir_all(new_staging.join("data")).unwrap();
-    fs::write(new_staging.join("data").join("users.json"), b"originally-expected").unwrap();
+    fs::write(
+        new_staging.join("data").join("users.json"),
+        b"originally-expected",
+    )
+    .unwrap();
     fs::write(new_staging.join("data").join("orders.json"), b"[]").unwrap();
     fs::create_dir_all(new_staging.join("data").join("nested")).unwrap();
-    fs::write(new_staging.join("data").join("nested").join("items.json"), b"[]").unwrap();
+    fs::write(
+        new_staging.join("data").join("nested").join("items.json"),
+        b"[]",
+    )
+    .unwrap();
     let r = verify::verify_extracted(&new_staging, &manifest);
     assert!(!r.errors.is_empty(), "checksum should detect corruption");
 }
@@ -160,7 +174,10 @@ fn test_verify_corrupted_wal() {
     fs::write(&wal_path, b"corrupted wal bytes").unwrap();
     let manifest = Manifest::read_from(&staging.join("manifest.json")).unwrap();
     let r = verify::verify_extracted(&staging, &manifest);
-    assert!(!r.errors.is_empty(), "WAL checksum should detect corruption");
+    assert!(
+        !r.errors.is_empty(),
+        "WAL checksum should detect corruption"
+    );
 }
 
 #[test]
@@ -196,7 +213,12 @@ fn test_backup_idempotent() {
     let r1 = backup::physical_backup(&data_path, None, &out1).unwrap();
     let r2 = backup::physical_backup(&data_path, None, &out2).unwrap();
     assert_eq!(r1.manifest.data_files.len(), r2.manifest.data_files.len());
-    for (a, b) in r1.manifest.data_files.iter().zip(r2.manifest.data_files.iter()) {
+    for (a, b) in r1
+        .manifest
+        .data_files
+        .iter()
+        .zip(r2.manifest.data_files.iter())
+    {
         assert_eq!(a.sha256, b.sha256);
     }
 }
@@ -272,7 +294,10 @@ fn test_pitr_with_active_tx_at_target() {
     let dir = TempDir::new().unwrap();
     let wal = dir.path().join("test.wal");
     let mut writer = WalWriter::with_config(&wal, false, 100).unwrap();
-    for (i, et) in [WalEntryType::Begin, WalEntryType::Insert].iter().enumerate() {
+    for (i, et) in [WalEntryType::Begin, WalEntryType::Insert]
+        .iter()
+        .enumerate()
+    {
         let mut e = match et {
             WalEntryType::Begin => make_begin_entry(1),
             WalEntryType::Insert => make_insert_entry(1, 1, vec![1], vec![1], 0),
@@ -623,21 +648,29 @@ fn test_backup_then_modify_then_backup_differs() {
     let out2 = dir.path().join("b2.tar.gz");
     backup::physical_backup(dir.path(), None, &out2).unwrap();
     let m1 = Manifest::read_from(
-        &backup::tar_extract_one(&out1, "manifest.json").ok().and_then(|b| {
-            let staging = dir.path().join("stage1");
-            fs::create_dir_all(&staging).ok()?;
-            fs::write(staging.join("manifest.json"), &b).ok()?;
-            Some(staging.join("manifest.json"))
-        }).unwrap(),
-    ).unwrap();
+        &backup::tar_extract_one(&out1, "manifest.json")
+            .ok()
+            .and_then(|b| {
+                let staging = dir.path().join("stage1");
+                fs::create_dir_all(&staging).ok()?;
+                fs::write(staging.join("manifest.json"), &b).ok()?;
+                Some(staging.join("manifest.json"))
+            })
+            .unwrap(),
+    )
+    .unwrap();
     let m2 = Manifest::read_from(
-        &backup::tar_extract_one(&out2, "manifest.json").ok().and_then(|b| {
-            let staging = dir.path().join("stage2");
-            fs::create_dir_all(&staging).ok()?;
-            fs::write(staging.join("manifest.json"), &b).ok()?;
-            Some(staging.join("manifest.json"))
-        }).unwrap(),
-    ).unwrap();
+        &backup::tar_extract_one(&out2, "manifest.json")
+            .ok()
+            .and_then(|b| {
+                let staging = dir.path().join("stage2");
+                fs::create_dir_all(&staging).ok()?;
+                fs::write(staging.join("manifest.json"), &b).ok()?;
+                Some(staging.join("manifest.json"))
+            })
+            .unwrap(),
+    )
+    .unwrap();
     assert_ne!(m1.data_files[0].sha256, m2.data_files[0].sha256);
 }
 
@@ -648,7 +681,10 @@ fn test_verify_after_data_modification_fails() {
     backup::physical_backup(&data_path, None, &out).unwrap();
     fs::write(data_path.join("users.json"), b"modified").unwrap();
     let r = verify::verify_backup(&out).unwrap();
-    assert!(r.errors.is_empty(), "backup is intact, source modification doesn't affect backup");
+    assert!(
+        r.errors.is_empty(),
+        "backup is intact, source modification doesn't affect backup"
+    );
     assert_eq!(r.verified_files, 3);
 }
 
@@ -695,7 +731,10 @@ fn test_backup_manifest_sha256_unique() {
     let r1_data = fs::read(&out1).unwrap();
     let r2_data = fs::read(&out2).unwrap();
     assert_eq!(r1.manifest.data_files, r2.manifest.data_files);
-    assert_ne!(r1_data, r2_data, "compressed bytes may differ due to metadata");
+    assert_ne!(
+        r1_data, r2_data,
+        "compressed bytes may differ due to metadata"
+    );
 }
 
 #[test]
@@ -705,7 +744,11 @@ fn test_restore_preserves_nested_dirs() {
     backup::physical_backup(&data_path, None, &out).unwrap();
     let restore_dir = TempDir::new().unwrap();
     restore::physical_restore(&out, restore_dir.path()).unwrap();
-    let nested = restore_dir.path().join("data").join("nested").join("items.json");
+    let nested = restore_dir
+        .path()
+        .join("data")
+        .join("nested")
+        .join("items.json");
     assert!(nested.exists());
     assert_eq!(fs::read(&nested).unwrap(), b"[]");
 }
