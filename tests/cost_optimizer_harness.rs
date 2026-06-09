@@ -125,7 +125,10 @@ pub struct CostEstimate {
 
 impl CostEstimate {
     pub fn passed(&self) -> bool {
-        self.cost >= 0.0 && self.cost.is_finite() && self.selectivity > 0.0 && self.selectivity <= 1.0
+        self.cost >= 0.0
+            && self.cost.is_finite()
+            && self.selectivity > 0.0
+            && self.selectivity <= 1.0
     }
 }
 

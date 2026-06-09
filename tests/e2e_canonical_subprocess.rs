@@ -106,7 +106,9 @@ fn spawn_canonical_with_client() -> (SubprocessHandle, MySqlTestClient) {
         if !ready {
             let _ = child.kill();
             let _ = child.wait();
-            last_err = Some(format!("server did not become reachable within 5s on port {port}"));
+            last_err = Some(format!(
+                "server did not become reachable within 5s on port {port}"
+            ));
             std::thread::sleep(Duration::from_millis(50 * attempt as u64));
             continue;
         }
