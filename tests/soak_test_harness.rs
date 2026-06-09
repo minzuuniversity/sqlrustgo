@@ -122,7 +122,8 @@ pub fn run_soak_smoke(config: &SoakConfig) -> SoakReport {
 
     let memory_growth_pct = if config.memory_baseline_bytes > 0 {
         ((memory_current - config.memory_baseline_bytes) as f64
-            / config.memory_baseline_bytes as f64) * 100.0
+            / config.memory_baseline_bytes as f64)
+            * 100.0
     } else {
         0.0
     };
