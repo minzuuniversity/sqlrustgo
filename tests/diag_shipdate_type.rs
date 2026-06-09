@@ -62,20 +62,35 @@ fn test_shipdate_actual_value() {
     eprintln!("loaded {} lineitem rows", n);
 
     // Get l_shipdate value
-    let r = engine.execute("SELECT l_shipdate FROM lineitem LIMIT 5").unwrap();
+    let r = engine
+        .execute("SELECT l_shipdate FROM lineitem LIMIT 5")
+        .unwrap();
     eprintln!("first 5 shipdates: {:?}", r.rows);
 
     // Now compare
-    let r2 = engine.execute("SELECT COUNT(*) FROM lineitem WHERE l_shipdate >= '1994-01-01'").unwrap();
-    eprintln!("shipdate >= '1994-01-01' (expect ~45000, got 60000): {:?}", r2.rows);
+    let r2 = engine
+        .execute("SELECT COUNT(*) FROM lineitem WHERE l_shipdate >= '1994-01-01'")
+        .unwrap();
+    eprintln!(
+        "shipdate >= '1994-01-01' (expect ~45000, got 60000): {:?}",
+        r2.rows
+    );
 
-    let r3 = engine.execute("SELECT COUNT(*) FROM lineitem WHERE l_shipdate < '1995-01-01'").unwrap();
-    eprintln!("shipdate < '1995-01-01' (expect ~7500, got 60000): {:?}", r3.rows);
+    let r3 = engine
+        .execute("SELECT COUNT(*) FROM lineitem WHERE l_shipdate < '1995-01-01'")
+        .unwrap();
+    eprintln!(
+        "shipdate < '1995-01-01' (expect ~7500, got 60000): {:?}",
+        r3.rows
+    );
 
     // Check storage directly
     let s = storage.read().unwrap();
     if let Some(rows) = s.scan("lineitem").ok() {
         eprintln!("storage directly - first row: {:?}", rows.first());
-        eprintln!("storage directly - l_shipdate value of row 0: {:?}", rows.first().and_then(|r| r.get(10)));
+        eprintln!(
+            "storage directly - l_shipdate value of row 0: {:?}",
+            rows.first().and_then(|r| r.get(10))
+        );
     }
 }
