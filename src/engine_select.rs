@@ -33,9 +33,8 @@ thread_local! {
 // l_orderkey = o_orderkey AND ...)`, where the per-outer-row
 // scan was N×M. We build a one-shot index for each column on
 // the first call, then reuse it for subsequent calls.
-static LINEITEM_INDEX_CACHE: OnceLock<
-    Mutex<HashMap<String, HashMap<Value, Vec<usize>>>>,
-> = OnceLock::new();
+static LINEITEM_INDEX_CACHE: OnceLock<Mutex<HashMap<String, HashMap<Value, Vec<usize>>>>> =
+    OnceLock::new();
 fn lineitem_index_cache() -> &'static Mutex<HashMap<String, HashMap<Value, Vec<usize>>>> {
     LINEITEM_INDEX_CACHE.get_or_init(|| Mutex::new(HashMap::new()))
 }
@@ -44,11 +43,9 @@ fn lineitem_index_cache() -> &'static Mutex<HashMap<String, HashMap<Value, Vec<u
 // the rows under an Arc so subsequent per-outer-row calls
 // don't pay the deep-clone cost of MemoryStorage::scan()
 // (which does `.cloned()` on 60K lineitem rows each call).
-static LINEITEM_ROWS_CACHE: OnceLock<
-    Mutex<HashMap<String, std::sync::Arc<Vec<Vec<Value>>>>>,
-> = OnceLock::new();
-fn lineitem_rows_cache(
-) -> &'static Mutex<HashMap<String, std::sync::Arc<Vec<Vec<Value>>>>> {
+static LINEITEM_ROWS_CACHE: OnceLock<Mutex<HashMap<String, std::sync::Arc<Vec<Vec<Value>>>>>> =
+    OnceLock::new();
+fn lineitem_rows_cache() -> &'static Mutex<HashMap<String, std::sync::Arc<Vec<Vec<Value>>>>> {
     LINEITEM_ROWS_CACHE.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
@@ -172,11 +169,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             if let Some(ref where_expr) = select.where_clause {
                 let parallel = ParallelVolcanoExecutor::new(self.parallel_degree);
                 let partitions = parallel.partition_scan(rows, self.parallel_degree);
-                rows = self.filter_partitions_parallel(
-                    partitions,
-                    where_expr,
-                    &table_info,
-                );
+                rows = self.filter_partitions_parallel(partitions, where_expr, &table_info);
             }
         }
 
@@ -216,16 +209,16 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     }
                 }
                 rows = new_rows;
-        } else {
-            rows.retain(|row| eval_predicate(where_expr, row, &table_info));
+            } else {
+                rows.retain(|row| eval_predicate(where_expr, row, &table_info));
+            }
         }
-    }
 
         // Step 3: GROUP BY + AGGREGATE
         if !select.aggregates.is_empty() {
             let group_exprs = &select.group_by;
             if group_exprs.is_empty() {
-                    let mut agg_values =
+                let mut agg_values =
                     self.compute_aggregates(&select.aggregates, &rows, &table_info)?;
 
                 if let Some(ref having_expr) = select.having {
@@ -243,30 +236,23 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 // step, Q14 would return 2 raw SUM values instead of
                 // the `100.00 * SUM(...) / SUM(...)` result.
                 let agg_schema = build_aggregate_schema(&[], &select.aggregates)?;
-                let projected: Vec<Vec<Value>> = if select.columns.is_empty()
-                    || select.columns.iter().any(|c| c.name == "*")
-                {
-                    vec![agg_values.clone()]
-                } else {
-                    select
-                        .columns
-                        .iter()
-                        .map(|col| {
-                            match &col.expression {
-                                Some(expr) => evaluate_expression(
-                                    expr,
-                                    &agg_values,
-                                    &agg_schema,
-                                )
-                                .unwrap_or(Value::Null),
+                let projected: Vec<Vec<Value>> =
+                    if select.columns.is_empty() || select.columns.iter().any(|c| c.name == "*") {
+                        vec![agg_values.clone()]
+                    } else {
+                        select
+                            .columns
+                            .iter()
+                            .map(|col| match &col.expression {
+                                Some(expr) => evaluate_expression(expr, &agg_values, &agg_schema)
+                                    .unwrap_or(Value::Null),
                                 None => agg_values.first().cloned().unwrap_or(Value::Null),
-                            }
-                        })
-                        .collect::<Vec<_>>()
-                        .into_iter()
-                        .map(|v| vec![v])
-                        .collect()
-                };
+                            })
+                            .collect::<Vec<_>>()
+                            .into_iter()
+                            .map(|v| vec![v])
+                            .collect()
+                    };
                 let row_count = projected.len();
                 return Ok(ExecutorResult::new(projected, row_count));
             } else {
@@ -474,7 +460,10 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                                                         match ce {
                                                             Some(Expression::Aggregate(_)) => true,
                                                             Some(Expression::BinaryOp(_, _, r)) => {
-                                                                matches!(r.as_ref(), Expression::Aggregate(_))
+                                                                matches!(
+                                                                    r.as_ref(),
+                                                                    Expression::Aggregate(_)
+                                                                )
                                                             }
                                                             _ => false,
                                                         }
@@ -507,7 +496,11 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                                 (None, Some(_)) => std::cmp::Ordering::Less,
                                 (None, None) => std::cmp::Ordering::Equal,
                             };
-                            if ascending { ord } else { ord.reverse() }
+                            if ascending {
+                                ord
+                            } else {
+                                ord.reverse()
+                            }
                         });
                     }
                     keyed.into_iter().map(|(_, row)| row).collect()
@@ -544,8 +537,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 // but the SELECT order is [l_orderkey, SUM, o_orderdate, ...]).
                 // Without this re-projection, Q3/Q10/Q15/Q18 cell
                 // values appear in the wrong columns.
-                let is_star_agg = select.columns.is_empty()
-                    || select.columns.iter().any(|c| c.name == "*");
+                let is_star_agg =
+                    select.columns.is_empty() || select.columns.iter().any(|c| c.name == "*");
                 let agg_result_rows = if is_star_agg || select.columns.len() <= 1 {
                     // Star / single column: no re-projection needed
                     agg_result_rows
@@ -642,21 +635,15 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                                 // Map both alias and the synthetic
                                 // group_schema name to position i
                                 if let Some(alias) = &col.alias {
-                                    group_set
-                                        .entry(alias.to_lowercase())
-                                        .or_insert(i);
+                                    group_set.entry(alias.to_lowercase()).or_insert(i);
                                 }
-                                group_set
-                                    .entry(col.name.to_lowercase())
-                                    .or_insert(i);
+                                group_set.entry(col.name.to_lowercase()).or_insert(i);
                             }
                         }
                     }
                     // Re-project each row
-                    let agg_schema_for_reproject = build_aggregate_schema(
-                        group_exprs,
-                        &select.aggregates,
-                    )?;
+                    let agg_schema_for_reproject =
+                        build_aggregate_schema(group_exprs, &select.aggregates)?;
                     agg_result_rows
                         .into_iter()
                         .map(|row| {
@@ -664,10 +651,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                                 .columns
                                 .iter()
                                 .map(|col| {
-                                    let target_name = col
-                                        .alias
-                                        .clone()
-                                        .unwrap_or_else(|| col.name.clone());
+                                    let target_name =
+                                        col.alias.clone().unwrap_or_else(|| col.name.clone());
                                     let key = target_name.to_lowercase();
                                     // TPC-H Q8 / Q14: if the SELECT
                                     // column expression is a BinaryOp
@@ -737,17 +722,17 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         // top 100. LIMIT/OFFSET are now applied in Step 8 (after
         // ORDER BY) below.
         let limited_rows = rows; // Step 5: SELECT projection — apply each `select.columns` expression
-           // to the accumulated row and emit a row of projected values. This
-           // is what makes `SELECT EXTRACT(YEAR FROM col) AS o_year` actually
-           // return `o_year` instead of the full table schema.
-           //
-           // Sprint 2: SELECT * (no columns or a `*` entry) skips projection
-           // and returns the accumulated rows as-is — that's the existing
-           // behavior, just made explicit here.
-           //
-           // v3.8.0-rc2 Day 7: also collect the projected column NAMES so
-           // that the subsequent ORDER BY step can resolve column references
-           // by name (`ORDER BY l_orderkey`).
+                                 // to the accumulated row and emit a row of projected values. This
+                                 // is what makes `SELECT EXTRACT(YEAR FROM col) AS o_year` actually
+                                 // return `o_year` instead of the full table schema.
+                                 //
+                                 // Sprint 2: SELECT * (no columns or a `*` entry) skips projection
+                                 // and returns the accumulated rows as-is — that's the existing
+                                 // behavior, just made explicit here.
+                                 //
+                                 // v3.8.0-rc2 Day 7: also collect the projected column NAMES so
+                                 // that the subsequent ORDER BY step can resolve column references
+                                 // by name (`ORDER BY l_orderkey`).
         let is_star = select.columns.is_empty() || select.columns.iter().any(|c| c.name == "*");
         let projected_with_names: (Vec<String>, Vec<Vec<Value>>) = if is_star {
             let names: Vec<String> = if !table_info.columns.is_empty()
@@ -1085,9 +1070,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             Some((t, a)) => (t.to_string(), Some(a.to_string())),
             None => (select.table.clone(), select.from_alias.clone()),
         };
-        let base_prefix = base_alias
-            .as_ref()
-            .unwrap_or(&base_table);
+        let base_prefix = base_alias.as_ref().unwrap_or(&base_table);
 
         let mut rows = storage.scan(&base_table)?;
         let raw_info = storage.get_table_info(&base_table)?;
@@ -1420,13 +1403,10 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                         // intermediate table already absorbed into left via
                         // build_combined_schema, where columns are named
                         // "a_join_b.col" but the user writes "b.col").
-                        if let Some(idx) =
-                            lookup_qualified_column(left_info, qualifier, col_name)
-                        {
+                        if let Some(idx) = lookup_qualified_column(left_info, qualifier, col_name) {
                             return Ok(JoinKey::Left(idx));
                         }
-                        if let Some(idx) =
-                            lookup_qualified_column(right_info, qualifier, col_name)
+                        if let Some(idx) = lookup_qualified_column(right_info, qualifier, col_name)
                         {
                             return Ok(JoinKey::Right(idx));
                         }
@@ -1580,16 +1560,12 @@ fn lookup_column(info: &TableInfo, col_name: &str) -> Option<usize> {
     })
 }
 
-fn lookup_qualified_column(
-    info: &TableInfo,
-    qualifier: &str,
-    col_name: &str,
-) -> Option<usize> {
+fn lookup_qualified_column(info: &TableInfo, qualifier: &str, col_name: &str) -> Option<usize> {
     let needle = format!("{qualifier}.{col_name}");
     let suffix = format!(".{qualifier}.{col_name}");
-    info.columns.iter().position(|c| {
-        c.name == needle || c.name.ends_with(&suffix)
-    })
+    info.columns
+        .iter()
+        .position(|c| c.name == needle || c.name.ends_with(&suffix))
 }
 
 /// Decode a value key string (encoded by the inline match above in
@@ -1731,7 +1707,9 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 };
                 if let Some(zero_rows) = indexed {
                     *cursor += 1;
-                    return Expression::Literal(if zero_rows { "true" } else { "false" }.to_string());
+                    return Expression::Literal(
+                        if zero_rows { "true" } else { "false" }.to_string(),
+                    );
                 }
                 let zero_rows = self
                     .pre_eval_exists_subquery_fast(&substituted, outer_row)
@@ -1770,24 +1748,24 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     cursor,
                 )),
             ),
-            Expression::IsNull(inner) => Expression::IsNull(Box::new(
-                self.pre_evaluate_correlated_exists(
+            Expression::IsNull(inner) => {
+                Expression::IsNull(Box::new(self.pre_evaluate_correlated_exists(
                     inner,
                     outer_row,
                     outer_table_info,
                     subquery_indexes,
                     cursor,
-                ),
-            )),
-            Expression::IsNotNull(inner) => Expression::IsNotNull(Box::new(
-                self.pre_evaluate_correlated_exists(
+                )))
+            }
+            Expression::IsNotNull(inner) => {
+                Expression::IsNotNull(Box::new(self.pre_evaluate_correlated_exists(
                     inner,
                     outer_row,
                     outer_table_info,
                     subquery_indexes,
                     cursor,
-                ),
-            )),
+                )))
+            }
             Expression::InList(left, values) => Expression::InList(
                 Box::new(self.pre_evaluate_correlated_exists(
                     left,
@@ -1867,7 +1845,10 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             // join schema: lineitem cols first, then part cols).
             // Use l_partkey as the stable cache key.
             Expression::Subquery(_subq) => {
-                let outer_partkey = outer_row.get(1).cloned().unwrap_or_else(|| outer_row.first().cloned().unwrap_or(Value::Null));
+                let outer_partkey = outer_row
+                    .get(1)
+                    .cloned()
+                    .unwrap_or_else(|| outer_row.first().cloned().unwrap_or(Value::Null));
                 // Check cache first.
                 {
                     let cache = scalar_subq_cache().lock().unwrap();
@@ -1886,14 +1867,15 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     _ => Value::Null,
                 };
                 // Cache for subsequent rows with same outer_partkey.
-                scalar_subq_cache().lock().unwrap().insert(outer_partkey, scalar.clone());
+                scalar_subq_cache()
+                    .lock()
+                    .unwrap()
+                    .insert(outer_partkey, scalar.clone());
                 Expression::Literal(scalar.to_string())
             }
             // CASE WHEN / SubqueryField pass through (no substitution needed —
             // these are not correlated scalar subqueries in TPC-H).
-            Expression::SubqueryField(_, _) | Expression::CaseWhen(_, _) => {
-                where_expr.clone()
-            }
+            Expression::SubqueryField(_, _) | Expression::CaseWhen(_, _) => where_expr.clone(),
             // QuantifiedOp: pass through.
             Expression::QuantifiedOp(_, _, _) => where_expr.clone(),
             // Terminal expressions and aggregates pass through (no
@@ -2135,10 +2117,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         // the inner table is the key; the other is the outer ref.
         let (col_name, static_predicate) =
             split_outer_equality_with_table(where_expr, &table_info)?;
-        let col_idx = table_info
-            .columns
-            .iter()
-            .position(|c| c.name == col_name)?;
+        let col_idx = table_info.columns.iter().position(|c| c.name == col_name)?;
         let rows = storage.scan(&subq.table).ok()?;
         // Evaluate the STATIC predicate (not the full WHERE) per
         // inner row.  The outer-equality leaf references the outer
@@ -2261,19 +2240,11 @@ fn split_outer_equality_with_table(
     match where_expr {
         E::BinaryOp(l, op, r) if op.to_uppercase() == "AND" => {
             if let Some(split) = split_outer_equality_with_table(l, inner_info) {
-                let new_rest = E::BinaryOp(
-                    Box::new(*r.clone()),
-                    op.clone(),
-                    split.1,
-                );
+                let new_rest = E::BinaryOp(Box::new(*r.clone()), op.clone(), split.1);
                 return Some((split.0, Box::new(new_rest)));
             }
             if let Some(split) = split_outer_equality_with_table(r, inner_info) {
-                let new_rest = E::BinaryOp(
-                    Box::new(*l.clone()),
-                    op.clone(),
-                    split.1,
-                );
+                let new_rest = E::BinaryOp(Box::new(*l.clone()), op.clone(), split.1);
                 return Some((split.0, Box::new(new_rest)));
             }
             None
@@ -2293,14 +2264,12 @@ fn split_outer_equality_with_table(
                     Some((name, Box::new(E::Literal("true".into()))))
                 }
                 (Some(name), Some(outer))
-                    if is_inner_col(&name, inner_info)
-                        && !is_inner_col(&outer, inner_info) =>
+                    if is_inner_col(&name, inner_info) && !is_inner_col(&outer, inner_info) =>
                 {
                     Some((name, Box::new(E::Literal("true".into()))))
                 }
                 (Some(outer), Some(name))
-                    if is_inner_col(&name, inner_info)
-                        && !is_inner_col(&outer, inner_info) =>
+                    if is_inner_col(&name, inner_info) && !is_inner_col(&outer, inner_info) =>
                 {
                     Some((name, Box::new(E::Literal("true".into()))))
                 }
@@ -2319,19 +2288,11 @@ fn split_outer_equality(where_expr: &Expression) -> Option<(String, Box<Expressi
     match where_expr {
         E::BinaryOp(l, op, r) if op.to_uppercase() == "AND" => {
             if let Some(split) = split_outer_equality(l) {
-                let new_rest = E::BinaryOp(
-                    Box::new(*r.clone()),
-                    op.clone(),
-                    split.1,
-                );
+                let new_rest = E::BinaryOp(Box::new(*r.clone()), op.clone(), split.1);
                 return Some((split.0, Box::new(new_rest)));
             }
             if let Some(split) = split_outer_equality(r) {
-                let new_rest = E::BinaryOp(
-                    Box::new(*l.clone()),
-                    op.clone(),
-                    split.1,
-                );
+                let new_rest = E::BinaryOp(Box::new(*l.clone()), op.clone(), split.1);
                 return Some((split.0, Box::new(new_rest)));
             }
             None
@@ -2390,10 +2351,7 @@ fn literal_value_of(e: &Expression) -> Option<Value> {
 /// For the post-substitution Q4 case:
 ///   `Identifier(l_orderkey) = Literal("12345") AND ...`
 /// → returns `Some(Value::Integer(12345))`.
-fn find_top_level_equality_literal(
-    where_expr: &Expression,
-    _key_col_idx: usize,
-) -> Option<Value> {
+fn find_top_level_equality_literal(where_expr: &Expression, _key_col_idx: usize) -> Option<Value> {
     use sqlrustgo_parser::Expression as E;
     fn walk(e: &Expression) -> Option<Value> {
         match e {
@@ -2402,9 +2360,7 @@ fn find_top_level_equality_literal(
                 (_, E::Identifier(_)) => literal_value_of(l),
                 _ => None,
             },
-            E::BinaryOp(l, op, r) if op.to_uppercase() == "AND" => {
-                walk(l).or_else(|| walk(r))
-            }
+            E::BinaryOp(l, op, r) if op.to_uppercase() == "AND" => walk(l).or_else(|| walk(r)),
             _ => None,
         }
     }
