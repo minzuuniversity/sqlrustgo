@@ -203,7 +203,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         if !select.aggregates.is_empty() {
             let group_exprs = &select.group_by;
             if group_exprs.is_empty() {
-                let mut agg_values =
+                    let mut agg_values =
                     self.compute_aggregates(&select.aggregates, &rows, &table_info)?;
 
                 if let Some(ref having_expr) = select.having {
@@ -582,6 +582,10 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                         }
                     }
                     // Re-project each row
+                    let agg_schema_for_reproject = build_aggregate_schema(
+                        group_exprs,
+                        &select.aggregates,
+                    )?;
                     agg_result_rows
                         .into_iter()
                         .map(|row| {
@@ -594,6 +598,37 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                                         .clone()
                                         .unwrap_or_else(|| col.name.clone());
                                     let key = target_name.to_lowercase();
+                                    // TPC-H Q8 / Q14: if the SELECT
+                                    // column expression is a BinaryOp
+                                    // over aggregates (e.g.
+                                    // `SUM(...) / SUM(...)` or
+                                    // `100.00 * SUM(...) / SUM(...)`),
+                                    // we MUST re-evaluate the
+                                    // expression against the row's
+                                    // aggregate values, not just
+                                    // look up a single column. The
+                                    // previous lookup-by-alias
+                                    // path returned only the first
+                                    // aggregate operand (e.g. 932.71
+                                    // for Q8 mkt_share) and dropped
+                                    // the rest of the expression.
+                                    let needs_reval = match &col.expression {
+                                        Some(Expression::BinaryOp(l, _, r)) => {
+                                            matches!(l.as_ref(), Expression::Aggregate(_))
+                                                || matches!(r.as_ref(), Expression::Aggregate(_))
+                                        }
+                                        _ => false,
+                                    };
+                                    if needs_reval {
+                                        if let Some(expr) = &col.expression {
+                                            return crate::expr_utils::evaluate_expression(
+                                                expr,
+                                                &row,
+                                                &agg_schema_for_reproject,
+                                            )
+                                            .unwrap_or(Value::Null);
+                                        }
+                                    }
                                     // Try group col first
                                     if let Some(&i) = group_set.get(&key) {
                                         return row.get(i).cloned().unwrap_or(Value::Null);
