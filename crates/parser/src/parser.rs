@@ -3158,7 +3158,7 @@ impl Parser {
                     // TPC-H column prefixes, and the alias to
                     // populate the JoinClause that the executor
                     // consumes.
-                    let (table_name, table_alias) = match t.find('|') {
+                    let (table_name, mut table_alias) = match t.find('|') {
                         Some(idx) => {
                             let n = t[..idx].to_string();
                             let a = t[idx + 1..].to_string();
@@ -3166,6 +3166,22 @@ impl Parser {
                         }
                         None => (t.clone(), None),
                     };
+                    // TPC-H Q15 (Sprint 5 v7): for synthetic
+                    // __subq_N derived tables, recover the alias
+                    // (e.g. "revenue") from the DERIVED_ALIASES
+                    // thread-local map. The alias is set by the
+                    // comma-followed-subquery branch in
+                    // parse_select_statement and is critical for
+                    // find_join_predicate to resolve outer WHERE
+                    // qualifiers like `revenue.l_suppkey` to this
+                    // table. Without it, the join falls back to
+                    // `on=Literal("true")` and produces a cartesian
+                    // product (Q15 returns 0 rows instead of 91).
+                    if table_alias.is_none() && table_name.starts_with("__subq_") {
+                        table_alias = DERIVED_ALIASES.with(|cell| {
+                            cell.borrow().get(&table_name).cloned()
+                        });
+                    }
                     // Phase 1: best-match selector — find a predicate
                     // that joins `t` to the already-joined set.
                     // Phase 2: also pass the inline alias (if any)
