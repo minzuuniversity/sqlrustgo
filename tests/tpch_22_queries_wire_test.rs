@@ -228,6 +228,8 @@ fn test_tpch_22_queries_wire_roundtrip() {
     // TPC-H SF=0.001 spec ratio:
     //   region=5, nation=25, supplier=10, customer=50, part=50,
     //   partsupp=200, orders=500, lineitem=501
+    // Updated 2026-06-10: previous hardcoded counts (15/20/80/150/614) predate
+    // Sprint 7 fixture regeneration and are now stale.
     let expected_counts: &[(&str, u64)] = &[
         ("region", 5),
         ("nation", 25),
