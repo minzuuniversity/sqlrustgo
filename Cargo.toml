@@ -620,6 +620,39 @@ path = "tests/operators/join.rs"
 name = "operators_exists"
 path = "tests/operators/exists.rs"
 
+# Issue #3283 Sprint 3 Operator Regression Suite
+[[test]]
+name = "operators_aggregate_sum_real"
+path = "tests/operators/aggregate_sum_real.rs"
+
+[[test]]
+name = "operators_multi_join_3_table"
+path = "tests/operators/multi_join_3_table.rs"
+
+[[test]]
+name = "operators_aggregate_case_when"
+path = "tests/operators/aggregate_case_when.rs"
+
+[[test]]
+name = "operators_aggregate_like_filter"
+path = "tests/operators/aggregate_like_filter.rs"
+
+[[test]]
+name = "operators_date_string_compare"
+path = "tests/operators/date_string_compare.rs"
+
+[[test]]
+name = "operators_exists_correlated"
+path = "tests/operators/exists_correlated.rs"
+
+[[test]]
+name = "operators_order_by_desc"
+path = "tests/operators/order_by_desc.rs"
+
+[[test]]
+name = "operators_char_padding"
+path = "tests/operators/char_padding.rs"
+
 # Issue #3285 reproduction (Sprint 4)
 [[test]]
 name = "repro_3285_real_preservation"
