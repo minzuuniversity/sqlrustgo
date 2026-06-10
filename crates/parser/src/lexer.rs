@@ -286,6 +286,8 @@ impl<'a> Lexer<'a> {
                     "TABLE" => Token::Table,
                     "DROP" => Token::Drop,
                     "ALTER" => Token::Alter,
+                    "TRUNCATE" => Token::Truncate,
+                    "DUPLICATE" => Token::Duplicate,
                     "INDEX" => Token::Index,
                     "ON" => Token::On,
                     "PRIMARY" => Token::Primary,
