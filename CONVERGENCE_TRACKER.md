@@ -206,3 +206,17 @@ closed-not-merged (manual workaround): 3
 - Strategy: extract equi-join keys from WHERE → use as hash join (instead of cartesian)
 - Estimated effort: ~3h
 - Status: draft, not implemented in this session (skill `gitea-api-merge-rate-limit-workaround` saved for future sessions)
+
+### Q8 perf fix 实施尝试 (Task1-2 部分)
+- **Task1**: 在 `tests/tpch_sf01_inprocess_test.rs` 加 per-query perf budget assertion (Q8 60s, Q9 30s, Q21 7200s, others 10s) — 实施 + revert (测试需要 fix 才能过)
+- **Task2-4 探索**: 发现 Q8 真正的瓶颈 = `n2` join 时 `n2.n_name = 'GERMANY'` filter 未被 push down，导致60K × 25 = 1.5M 中间行
+- 尝试实施 `pre_filter_right_table` 单表 filter pushdown — 多次 patch 因结构复杂 + lint errors revert
+- **结论**: Pre-filter pushdown 需要更精细的 Expression walker，是比 plan 估计更复杂的改动（Q8 perf fix 实际需要 6-8h 而非 3h）
+
+### Q8 fix 真实路径 (Sprint 6 起点)
+- 文件: `src/engine_select.rs:1258-1280` 是 `JoinKey::All` 路径 (cartesian product)
+- Q8 在 n2/region join 触发此路径（n2 只有单表 filter `n2.n_name = 'GERMANY'`，region 同理 `r_name = 'EUROPE'`）
+- 真实修复需要:
+  1. 单表 WHERE 谓词 pushdown (在 cartesian 前 filter right_rows)
+  2. 或修改 parser 让它识别 `n.col = literal` 单表 predicate 作为 JOIN ON
+- Plan已记录，未来 session 可以接手
