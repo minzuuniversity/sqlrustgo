@@ -560,6 +560,22 @@ impl MySqlTestClient {
         Ok(())
     }
 
+    /// Override the read/write timeouts on the underlying TCP stream.
+    /// SF=0.1 wire test needs >30s for Q17; default 5s is too short.
+    pub fn set_timeouts(
+        &mut self,
+        read: std::time::Duration,
+        write: std::time::Duration,
+    ) -> wire_err::Result<()> {
+        self.stream
+            .set_read_timeout(Some(read))
+            .map_err(|e| wire_err::msg(format!("set_read_timeout: {e}")))?;
+        self.stream
+            .set_write_timeout(Some(write))
+            .map_err(|e| wire_err::msg(format!("set_write_timeout: {e}")))?;
+        Ok(())
+    }
+
     /// Send LOAD DATA LOCAL INFILE over the wire.
     ///
     /// 1. Sends COM_QUERY with the LOAD DATA LOCAL INFILE SQL.
