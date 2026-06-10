@@ -195,8 +195,14 @@ closed-not-merged (manual workaround): 3
 ### Open PR
 - #3332: feat(tests): SF=0.1 MySQL-server wired TPC-H 22/22 (feature request, not a bug fix)
 
-### 4 remote 最终同步 @ `113c68227`
-- origin (252 SSH): 113c68227
-- gitea (252 HTTPS): 113c68227
-- gitcode: 113c68227
-- backup (250): 113c68227
+### 4 remote 最终同步 @ `be8eba2b5`
+- origin (252 SSH): be8eba2b5
+- gitea (252 HTTPS): be8eba2b5
+- gitcode: be8eba2b5
+- backup (250): be8eba2b5
+
+### Q8 perf fix plan 创建 (Post-RC3 Sprint)
+- File: `docs/plans/2026-06-11-tpch-q8-cartesian-join-fix.md`
+- Strategy: extract equi-join keys from WHERE → use as hash join (instead of cartesian)
+- Estimated effort: ~3h
+- Status: draft, not implemented in this session (skill `gitea-api-merge-rate-limit-workaround` saved for future sessions)
