@@ -1,4 +1,4 @@
-# SQLRustGo v2.5.0
+# SQLRustGo v3.9.0
 
 [workspace]
 members = [
@@ -32,10 +32,19 @@ members = [
     "crates/unified-storage",
     "crates/admin",
     "crates/cache",
+    "crates/evidence-graph",
+    "crates/mysql-server",
+    "crates/qmd-bridge",
+    "crates/security",
+    "crates/spill",
+    "crates/sql-corpus",
+    "crates/types",
+    "crates/unified-query",
+    "crates/wal-verification",
 ]
 
 [workspace.package]
-version = "2.5.0"
+version = "3.9.0"
 edition = "2021"
 authors = ["SQLRustGo Team"]
 license = "MIT"
