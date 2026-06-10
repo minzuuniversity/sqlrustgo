@@ -1,15 +1,24 @@
 {
-  "query": 7,
-  "row_count": 3,
-  "first_3_rows": [
-    [
-      "GERMANY\tFRANCE\t1993\t868.9800"
-    ],
-    [
-      "GERMANY\tFRANCE\t1995\t3329.0500"
-    ],
-    [
-      "GERMANY\tFRANCE\t1997\t903.8200"
+    "query": 7,
+    "row_count": 3,
+    "first_3_rows": [
+        [
+            "GERMANY",
+            "FRANCE",
+            "1993",
+            "868.98"
+        ],
+        [
+            "GERMANY",
+            "FRANCE",
+            "1995",
+            "3329.05"
+        ],
+        [
+            "GERMANY",
+            "FRANCE",
+            "1997",
+            "903.82"
+        ]
     ]
-  ]
 }
