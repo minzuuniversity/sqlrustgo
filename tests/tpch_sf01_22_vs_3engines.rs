@@ -84,7 +84,10 @@ fn to_md_value(v: &SqlValue) -> String {
     match v {
         SqlValue::Null => "NULL".to_string(),
         SqlValue::Integer(i) => i.to_string(),
-        SqlValue::Float(f) => f.to_string(),
+        // Sprint 5 v10: round floats to 4 decimal places so cross-engine
+        // comparisons ignore tiny precision differences (e.g.
+        // 25.585054252712634 vs 25.585054).
+        SqlValue::Float(f) => format!("{:.4}", f),
         SqlValue::Text(s) => s.clone(),
         SqlValue::Boolean(b) => b.to_string(),
         SqlValue::Blob(_) => "BLOB".to_string(),
@@ -141,8 +144,20 @@ fn tpch_sf01_22_vs_mariadb_cell() {
         let sr_set: std::collections::HashSet<String> = sr_strings.iter().cloned().collect();
         let md_result = run_md(&sql);
         let md_count = if md_result.is_ok() { run_md_count(&sql) } else { 0 };
+        // Sprint 5 v10: normalize MD output to match our engine's
+        // pipe-separated + 4dp float format.
         let md_strings: Vec<String> = match md_result {
-            Ok(s) => s.lines().filter(|l| !l.is_empty()).map(|l| l.to_string()).collect(),
+            Ok(s) => s.lines().filter(|l| !l.is_empty()).map(|l| {
+                l.split('\t').map(|c| {
+                    if let Ok(f) = c.parse::<f64>() {
+                        if f == f.trunc() && c.contains('.') {
+                            format!("{}", f as i64)
+                        } else {
+                            format!("{:.4}", f)
+                        }
+                    } else { c.to_string() }
+                }).collect::<Vec<_>>().join("|")
+            }).collect(),
             Err(_) => vec![],
         };
         let md_set: std::collections::HashSet<String> = md_strings.iter().cloned().collect();
