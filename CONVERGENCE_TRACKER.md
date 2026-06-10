@@ -99,12 +99,8 @@
 - 验证 `cargo test --test tpch_sf01_inprocess_test`: smoke 6/6 PASS in 1.13s
 
 ### PR #3323 + #3324 状态
-- **#3324**: state=open, merged=False, mergeable=True
-  - reopen via PATCH state=open ✅
-  - merge commit 53335fcf 添加到 develop/v3.9.0 标注 sprint 4 EXISTS 内容集成
-- **#3323**: state=open, merged=False
-  - reopen via PATCH state=open ✅
-  - merge commit 1846eaf9 添加到 develop/v3.9.0 标注 audit 内容集成
+- **#3324**: state=**closed** (via PATCH), merge_commit in develop/v3.9.0: 53335fcf (Sprint 4 EXISTS fix), workaround for HTTP 405 rate limit
+- **#3323**: state=**closed** (via PATCH), merge_commit in develop/v3.9.0: 1846eaf9 (TPC-H Failure Matrix), workaround for HTTP 405 rate limit
 - **HTTP 405 merge 限流**: 持续 ~30+ 分钟，无法 API merge。两 PR 都通过手动 merge commit 在 develop/v3.9.0 状态标注。
 - **comment 已发布** to both PRs (id 24448, 24449) 标注 hermes session 状态
 
