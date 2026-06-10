@@ -46,7 +46,7 @@
 | 文档 | 类型 | 状态 | 用途 |
 |------|------|------|------|
 | **`GA_GOVERNANCE_DEMO_v3.8.0.md`** | 主报告 | ACTIVE | v3.8.0 GA 7h 治理示范 (14 PR + 12 Issue + 3 follow-up) |
-| **`GA_SCRIPTS_SKILLS_REGISTRY.md`** | 工具注册表 | ACTIVE | 47 gate 脚本 + 16 skills + 27 Gitea API 模板 + 18 rg/grep 模板 |
+| **`GA_SCRIPTS_SKILLS_REGISTRY.md`** | 工具注册表 | ACTIVE | 78 gate 脚本 (v3.9.0 audit 重统计) + 16 skills + 27 Gitea API 模板 + 18 rg/grep 模板 |
 | **`REGRESSION_AUDIT_2026-06-05.md`** | 回归报告 | ACTIVE | 本次会话回归检查 (在 `docs/releases/v3.8.0/historical/`) |
 | `docs/releases/v3.8.0/historical/LEGACY_ISSUES_2026-06-05_AUDIT.md` | 审计报告 | ACTIVE | 13 项治理债务审计 (271 行) |
 
@@ -71,7 +71,7 @@
 | `scripts/gate/check_docs.sh` | 文档完整性 | `bash .../check_docs.sh` |
 | `scripts/gate/check_test_inventory.sh` | **D6b 62 测试文件 inventory** | `bash .../check_test_inventory.sh` |
 
-**完整注册表 (47 脚本 + Active/Internal/Deprecated 分类)**: `GA_SCRIPTS_SKILLS_REGISTRY.md` §1
+**完整注册表 (78 脚本 + Active/Internal/Deprecated 分类)**: `GA_SCRIPTS_SKILLS_REGISTRY.md` §1 (v3.9.0 audit 重统计 2026-06-11)
 
 ### 3.2 治理流程图
 
