@@ -59,6 +59,50 @@ fn scalar_subq_cache() -> &'static Mutex<HashMap<Value, Value>> {
     SCALAR_SUBQ_CACHE.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
+fn extract_first_literal_from_where(select: &SelectStatement) -> Option<Value> {
+    use sqlrustgo_parser::Expression;
+    fn walk(expr: &Expression, out: &mut Option<Value>) {
+        if out.is_some() {
+            return;
+        }
+        match expr {
+            Expression::Literal(s) => {
+                *out = Some(Value::Text(s.clone()));
+                return;
+            }
+            Expression::BinaryOp(l, _, r) => {
+                walk(l, out);
+                walk(r, out);
+            }
+            Expression::UnaryOp(_, inner) => walk(inner, out),
+            Expression::IsNull(inner) | Expression::IsNotNull(inner) => walk(inner, out),
+            Expression::InList(l, vs) => {
+                walk(l, out);
+                for v in vs { walk(v, out); }
+            }
+            Expression::NotInList(l, vs) => {
+                walk(l, out);
+                for v in vs { walk(v, out); }
+            }
+            Expression::Between(l, lo, hi) => { walk(l, out); walk(lo, out); walk(hi, out); }
+            Expression::NotBetween(l, lo, hi) => { walk(l, out); walk(lo, out); walk(hi, out); }
+            Expression::Like(l, p, _) | Expression::NotLike(l, p, _) => {
+                walk(l, out);
+                walk(p, out);
+            }
+            Expression::FunctionCall(_, args) => {
+                for a in args { walk(a, out); }
+            }
+            _ => {}
+        }
+    }
+    let mut out = None;
+    if let Some(ref wc) = select.where_clause {
+        walk(wc, &mut out);
+    }
+    out
+}
+
 impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     pub(crate) fn execute_select(&self, select: &SelectStatement) -> SqlResult<ExecutorResult> {
         // Sprint 1b fix (Q7/Q8/Q9): handle FROM (subquery) AS alias by
@@ -277,6 +321,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                                 Value::Null
                             } else if let Ok(n) = s.parse::<i64>() {
                                 Value::Integer(n)
+                            } else if let Ok(f) = s.parse::<f64>() {
+                                Value::Float(f)
                             } else {
                                 Value::Text(s.to_string())
                             }
@@ -479,15 +525,19 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                                         }
                                     }
                                     Value::Null
-                                })
+                                 })
                                 .collect();
                             (keys, row)
                         })
                         .collect();
-                    // Apply sort with per-column ASC/DESC.
-                    for (i, ob_expr) in select.order_by.iter().enumerate() {
-                        let ascending = ob_expr.ascending;
-                        keyed.sort_by(|a, b| {
+                    // Sprint 5 v11 fix: single-pass multi-column sort.
+                    // Multiple `sort_by` calls in a loop discard the
+                    // previous column's order; Q18 needs
+                    // `o_totalprice DESC, o_orderdate ASC` to keep
+                    // DESC ordering for ties instead of re-sorting
+                    // by o_orderdate alone.
+                    keyed.sort_by(|a, b| {
+                        for (i, ob_expr) in select.order_by.iter().enumerate() {
                             let av = a.0.get(i);
                             let bv = b.0.get(i);
                             let ord = match (av, bv) {
@@ -496,13 +546,13 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                                 (None, Some(_)) => std::cmp::Ordering::Less,
                                 (None, None) => std::cmp::Ordering::Equal,
                             };
-                            if ascending {
-                                ord
-                            } else {
-                                ord.reverse()
+                            let resolved = if ob_expr.ascending { ord } else { ord.reverse() };
+                            if resolved != std::cmp::Ordering::Equal {
+                                return resolved;
                             }
-                        });
-                    }
+                        }
+                        std::cmp::Ordering::Equal
+                    });
                     keyed.into_iter().map(|(_, row)| row).collect()
                 } else {
                     agg_result_rows
@@ -1836,29 +1886,23 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             | Expression::Between(_, _, _)
             | Expression::NotBetween(_, _, _)
             | Expression::NotRegexp(_, _) => where_expr.clone(),
-            // TPC-H Q17: correlated scalar subquery (e.g.
-            // `l_quantity < (SELECT 0.2 * AVG(l_quantity) FROM lineitem
-            // WHERE l_partkey = p_partkey)`).
-            // Sprint 5 v2 fix: evaluate the subquery with a static cache
-            // Q17: correlated scalar subquery with per-partkey cache.
-            // outer_row[0] = l_orderkey, outer_row[1] = l_partkey (combined
-            // join schema: lineitem cols first, then part cols).
-            // Use l_partkey as the stable cache key.
+            // Sprint 5 v11 fix (Q17): cache key must be the substituted
+// outer ref value, not outer_row[1]. In JOIN contexts the
+// referenced column may be at a different index (Q17: lineitem
+// cols 0-15, part cols 16-24; `p_partkey` is at index 16).
             Expression::Subquery(_subq) => {
-                let outer_partkey = outer_row
-                    .get(1)
-                    .cloned()
-                    .unwrap_or_else(|| outer_row.first().cloned().unwrap_or(Value::Null));
-                // Check cache first.
+                let substituted =
+                    substitute_outer_refs_in_select(_subq, outer_row, outer_table_info);
+                let cache_key: Value = extract_first_literal_from_where(&substituted)
+                    .unwrap_or_else(|| {
+                        Value::Text(format!("__no_subst_{}_{:?}", outer_row.len(), outer_row.first()))
+                    });
                 {
                     let cache = scalar_subq_cache().lock().unwrap();
-                    if let Some(cached) = cache.get(&outer_partkey) {
+                    if let Some(cached) = cache.get(&cache_key) {
                         return Expression::Literal(cached.to_string());
                     }
                 }
-                // Not cached: substitute outer refs and execute.
-                let substituted =
-                    substitute_outer_refs_in_select(_subq, outer_row, outer_table_info);
                 let result = self.execute_select(&substituted);
                 let scalar = match result {
                     Ok(r) if !r.rows.is_empty() => {
@@ -1866,11 +1910,10 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     }
                     _ => Value::Null,
                 };
-                // Cache for subsequent rows with same outer_partkey.
                 scalar_subq_cache()
                     .lock()
                     .unwrap()
-                    .insert(outer_partkey, scalar.clone());
+                    .insert(cache_key, scalar.clone());
                 Expression::Literal(scalar.to_string())
             }
             // CASE WHEN / SubqueryField pass through (no substitution needed —
