@@ -1225,12 +1225,166 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
 
         for join_clause in &select.join_clause {
             let (new_rows, new_info) =
-                self.execute_single_join(&rows, &table_info, join_clause, &storage)?;
+                self.execute_single_join(&rows, &table_info, join_clause, &storage, &select.where_clause)?;
             rows = new_rows;
             table_info = new_info;
         }
 
         Ok((rows, table_info))
+    }
+
+    /// Pre-filter the right-side table of a cartesian (JoinKey::All) JOIN
+    /// using single-table predicates from the WHERE clause.
+    ///
+    /// TPC-H Q8 hits the cartesian path when joining `nation n2` because
+    /// `n2.n_name = 'GERMANY'` is a filter on n2 that can't be resolved
+    /// by the parser's ON-predicate resolution.  Without pre-filtering,
+    /// we cartesian-product 60K lineitem rows with all 25 nations (1.5M rows).
+    /// With pre-filtering, we first select only the GERMANY row from n2,
+    /// reducing the cartesian to 60K × 1 = 60K rows.
+    ///
+    /// Returns `None` if the join should proceed normally (no filter applies).
+    fn pre_filter_cartesian_right_table(
+        right_rows: Vec<Vec<Value>>,
+        right_info: &TableInfo,
+        right_alias: &str,
+        join_clause: &ParserJoinClause,
+        where_clause: &Option<Expression>,
+    ) -> Vec<Vec<Value>> {
+        use sqlrustgo_parser::Expression as E;
+
+        // Only apply when we have a cartesian join with a WHERE clause.
+        let Some(where_expr) = where_clause else {
+            return right_rows;
+        };
+
+        let table_prefix = format!("{}.", right_alias);
+
+        // Build set of valid column names for this table (unqualified).
+        let col_names: std::collections::HashSet<&str> = right_info
+            .columns
+            .iter()
+            .map(|c| c.name.as_str())
+            .collect();
+
+        /// Returns true if this expression references ONLY the right table's columns.
+        fn only_refs_right_table(expr: &E, tp: &str, cn: &std::collections::HashSet<&str>) -> bool {
+            let mut ok = true;
+            fn walk(e: &E, tp: &str, cn: &std::collections::HashSet<&str>, ok: &mut bool) {
+                match e {
+                    E::Identifier(name) => {
+                        if name.starts_with(tp) {
+                            // qualified to right table — OK
+                        } else if cn.contains(name.as_str()) {
+                            // bare column in right table — OK
+                        } else {
+                            *ok = false; // references a different table
+                        }
+                    }
+                    E::BinaryOp(l, _, r) => { walk(l, tp, cn, ok); walk(r, tp, cn, ok); }
+                    E::UnaryOp(_, inner) => walk(inner, tp, cn, ok),
+                    E::Like(l, p, _) | E::NotLike(l, p, _) => { walk(l, tp, cn, ok); walk(p, tp, cn, ok); }
+                    E::InList(l, vals) | E::NotInList(l, vals) => {
+                        walk(l, tp, cn, ok);
+                        for v in vals { walk(v, tp, cn, ok); }
+                    }
+                    E::CaseWhen(whens, else_e) => {
+                        for w in whens { walk(&w.condition, tp, cn, ok); }
+                        if let Some(e) = else_e.as_ref() { walk(e, tp, cn, ok); }
+                    }
+                    E::FunctionCall(_, args) => { for a in args { walk(a, tp, cn, ok); } }
+                    _ => {}
+                }
+            }
+            walk(expr, tp, cn, &mut ok);
+            ok
+        }
+
+        /// Collect top-level AND predicates that only reference the right table.
+        fn collect_right_table_preds(
+            expr: &E,
+            tp: &str,
+            cn: &std::collections::HashSet<&str>,
+        ) -> Vec<E> {
+            match expr {
+                E::BinaryOp(l, op, r) if op.as_str() == "AND" => {
+                    let mut preds = collect_right_table_preds(l, tp, cn);
+                    preds.extend(collect_right_table_preds(r, tp, cn));
+                    preds
+                }
+                _ => {
+                    if only_refs_right_table(expr, tp, cn) {
+                        vec![expr.clone()]
+                    } else {
+                        vec![]
+                    }
+                }
+            }
+        }
+
+        let preds = collect_right_table_preds(where_expr, &table_prefix, &col_names);
+        if preds.is_empty() {
+            return right_rows;
+        }
+
+        // Evaluate predicates: for simple equality `alias.col = literal`,
+        // do a direct index lookup.  Complex predicates are skipped (keep row).
+        let mut filtered: Vec<Vec<Value>> = Vec::with_capacity(right_rows.len());
+
+        for row in right_rows {
+            let mut pass = true;
+            for pred in &preds {
+                if let E::BinaryOp(l, op, r) = pred {
+                    if op.as_str() == "=" {
+                        // Extract (col_name, literal_string) from `alias.col = lit`
+                        let (col_name, lit_str) = match (l.as_ref(), r.as_ref()) {
+                            (E::Identifier(name), E::Literal(lit)) => {
+                                if !name.starts_with(&table_prefix) {
+                                    continue;
+                                }
+                                let col = name.strip_prefix(&table_prefix).unwrap_or(name);
+                                let s: &str = lit;
+                                (col, s)
+                            }
+                            (E::Literal(lit), E::Identifier(name)) => {
+                                if !name.starts_with(&table_prefix) {
+                                    continue;
+                                }
+                                let col = name.strip_prefix(&table_prefix).unwrap_or(name);
+                                let s: &str = lit;
+                                (col, s)
+                            }
+                            _ => { continue; }
+                        };
+
+                        // Find column index.
+                        let col_idx = right_info.columns.iter().position(|c| c.name == col_name);
+                        let Some(col_idx) = col_idx else { continue; };
+                        let Some(row_val) = row.get(col_idx) else { continue; };
+
+                        // Compare.
+                        let matches = match (row_val, lit_str) {
+                            (Value::Integer(i), s) => {
+                                s.parse::<i64>().map(|j| i == &j).unwrap_or(false)
+                            }
+                            (Value::Float(f), s) => {
+                                s.parse::<f64>().map(|g| (f - g).abs() < 1e-9).unwrap_or(false)
+                            }
+                            (Value::Text(t), s) => t == s,
+                            _ => false,
+                        };
+                        if !matches {
+                            pass = false;
+                            break;
+                        }
+                    }
+                }
+            }
+            if pass {
+                filtered.push(row);
+            }
+        }
+        filtered
     }
 
     /// Execute a single JOIN against an existing (left) row set + schema.
@@ -1241,6 +1395,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         left_table_info: &TableInfo,
         join_clause: &ParserJoinClause,
         storage: &S,
+        where_clause: &Option<Expression>,
     ) -> SqlResult<(Vec<Vec<Value>>, TableInfo)> {
         use sqlrustgo_parser::JoinType as ParserJoinType;
         use std::collections::HashMap;
@@ -1291,6 +1446,18 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             JoinKey::Pair(li, ri) => vec![(li, ri)],
             JoinKey::Pairs(v) => v,
             JoinKey::All => {
+                // Sprint 5 v4 (Q8/Q9 perf): pre-filter right_rows using
+                // single-table predicates from the WHERE clause before the
+                // cartesian product.  This avoids 60K × 25 = 1.5M row
+                // intermediate results when joining a filtered nation table.
+                let right_rows = Self::pre_filter_cartesian_right_table(
+                    right_rows,
+                    &right_table_info,
+                    right_alias,
+                    join_clause,
+                    where_clause,
+                );
+
                 // Phase 5 (TPCH-01 Q2): cartesian product join — used
                 // when the parser cannot find a fully-resolvable JOIN
                 // ON predicate (e.g. when the only candidate references
