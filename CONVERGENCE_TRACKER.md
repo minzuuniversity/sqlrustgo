@@ -129,3 +129,45 @@ e90833aed Merge PR#3323 + PR#3324
 - DELETE ❌ 405 too
 
 诊断: Gitea 对特定 merge 端点加了持续反滥用限流，需要 admin 介入清限流或等待更长（小时级别）。
+
+## 最终 Hermes session 状态 (2026-06-10 20:10)
+
+### Gitea API merge 端点 HTTP 405 sustained ~40 分钟
+- 关闭后 PATCH state=open (后) 重开再试仍405
+- 4 个 endpoints 中只 POST /pulls/{n}/merge 被限流
+- 最后 workaround: PR#3324 也已 closed (via PATCH) + comment 24462 标注 sprint 4 EXISTS 已集成
+
+### Issue 跟踪状态
+- **#3314 (Q17 value_mismatch)**: state=closed (since 2026-06-07, my Q17 fix integrated via Sprint 5 v11 commit 2b93fac01)
+- **#3316 (Q21 TIMEOUT)**: state=open, comment 24461 posted
+- **#3311 (Q3) / #3312 (Q8) / #3313 (Q10) / #3315 (Q18)**: state=open, comments 24457-24460 posted
+- **#3322 (Q21 perf)**: state=closed (manual), comment 24465 posted
+- **#3332 (feat: 60K wire test)**: state=open (feature request)
+- **#3283 (P0 Operator regression)**: state=open (big effort)
+
+### PR 状态
+- #3323 (closed, manual merge commit 1846eaf9)
+- #3324 (closed, manual merge commit 53335fcf, comment 24462)
+- #3322 (closed, comment 24465)
+- #3320 (Q17 fix, closed)
+- #3325 (Q3/Q10/Q18 fix, closed-merged)
+- #3327 (Q9 + 4+ table fix, closed-merged)
+- #3332 (open — 60K wire test feature)
+
+### 4 remote 最终同步 @ `00f6f90ff`
+- origin (252 SSH): 00f6f90ff
+- gitea (252 HTTPS): 00f6f90ff
+- gitcode: 00f6f90ff
+- backup (250): 00f6f90ff
+
+### 本地验证
+- cargo build --release PASS
+- Q1 spot-check: 44ms, 6 rows ✅
+- cargo test in-process smoke: 6/6 PASS in 1.13s ✅
+- Q17: 158587.467 (my fix, integrated in develop via Sprint 5 v11)
+
+### 下次 hermes session 起点
+- Q8 perf 优化 (5-table JOIN hash-join 推广)
+- Q21 多列 index (l_orderkey, l_suppkey) 完整 rewrite
+- 真实 G7/G13 Soak (需 Z6G4)
+- 关闭 #3283 P0 Operator regression test suite
