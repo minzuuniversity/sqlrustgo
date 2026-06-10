@@ -33,9 +33,10 @@ thread_local! {
 // l_orderkey = o_orderkey AND ...)`, where the per-outer-row
 // scan was N×M. We build a one-shot index for each column on
 // the first call, then reuse it for subsequent calls.
-static LINEITEM_INDEX_CACHE: OnceLock<Mutex<HashMap<String, HashMap<Value, Vec<usize>>>>> =
-    OnceLock::new();
-fn lineitem_index_cache() -> &'static Mutex<HashMap<String, HashMap<Value, Vec<usize>>>> {
+type LineitemIndexMap = HashMap<String, HashMap<Value, Vec<usize>>>;
+type LineitemRowsMap = HashMap<String, std::sync::Arc<Vec<Vec<Value>>>>;
+static LINEITEM_INDEX_CACHE: OnceLock<Mutex<LineitemIndexMap>> = OnceLock::new();
+fn lineitem_index_cache() -> &'static Mutex<LineitemIndexMap> {
     LINEITEM_INDEX_CACHE.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
@@ -43,9 +44,8 @@ fn lineitem_index_cache() -> &'static Mutex<HashMap<String, HashMap<Value, Vec<u
 // the rows under an Arc so subsequent per-outer-row calls
 // don't pay the deep-clone cost of MemoryStorage::scan()
 // (which does `.cloned()` on 60K lineitem rows each call).
-static LINEITEM_ROWS_CACHE: OnceLock<Mutex<HashMap<String, std::sync::Arc<Vec<Vec<Value>>>>>> =
-    OnceLock::new();
-fn lineitem_rows_cache() -> &'static Mutex<HashMap<String, std::sync::Arc<Vec<Vec<Value>>>>> {
+static LINEITEM_ROWS_CACHE: OnceLock<Mutex<LineitemRowsMap>> = OnceLock::new();
+fn lineitem_rows_cache() -> &'static Mutex<LineitemRowsMap> {
     LINEITEM_ROWS_CACHE.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
@@ -68,7 +68,6 @@ fn extract_first_literal_from_where(select: &SelectStatement) -> Option<Value> {
         match expr {
             Expression::Literal(s) => {
                 *out = Some(Value::Text(s.clone()));
-                return;
             }
             Expression::BinaryOp(l, _, r) => {
                 walk(l, out);
@@ -78,20 +77,34 @@ fn extract_first_literal_from_where(select: &SelectStatement) -> Option<Value> {
             Expression::IsNull(inner) | Expression::IsNotNull(inner) => walk(inner, out),
             Expression::InList(l, vs) => {
                 walk(l, out);
-                for v in vs { walk(v, out); }
+                for v in vs {
+                    walk(v, out);
+                }
             }
             Expression::NotInList(l, vs) => {
                 walk(l, out);
-                for v in vs { walk(v, out); }
+                for v in vs {
+                    walk(v, out);
+                }
             }
-            Expression::Between(l, lo, hi) => { walk(l, out); walk(lo, out); walk(hi, out); }
-            Expression::NotBetween(l, lo, hi) => { walk(l, out); walk(lo, out); walk(hi, out); }
+            Expression::Between(l, lo, hi) => {
+                walk(l, out);
+                walk(lo, out);
+                walk(hi, out);
+            }
+            Expression::NotBetween(l, lo, hi) => {
+                walk(l, out);
+                walk(lo, out);
+                walk(hi, out);
+            }
             Expression::Like(l, p, _) | Expression::NotLike(l, p, _) => {
                 walk(l, out);
                 walk(p, out);
             }
             Expression::FunctionCall(_, args) => {
-                for a in args { walk(a, out); }
+                for a in args {
+                    walk(a, out);
+                }
             }
             _ => {}
         }
@@ -205,10 +218,10 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             // (Subquery, EXISTS/NOT EXISTS with outer refs). The sequential
             // path below handles these correctly; parallel filter uses
             // eval_predicate which returns NULL for Subquery expressions.
-            && select
+            && !select
                 .where_clause
                 .as_ref()
-                .map_or(true, |w| !where_expr_has_correlated_subquery(w))
+                .is_some_and(where_expr_has_correlated_subquery)
         {
             if let Some(ref where_expr) = select.where_clause {
                 let parallel = ParallelVolcanoExecutor::new(self.parallel_degree);
@@ -543,7 +556,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                                         }
                                     }
                                     Value::Null
-                                 })
+                                })
                                 .collect();
                             (keys, row)
                         })
@@ -564,7 +577,11 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                                 (None, Some(_)) => std::cmp::Ordering::Less,
                                 (None, None) => std::cmp::Ordering::Equal,
                             };
-                            let resolved = if ob_expr.ascending { ord } else { ord.reverse() };
+                            let resolved = if ob_expr.ascending {
+                                ord
+                            } else {
+                                ord.reverse()
+                            };
                             if resolved != std::cmp::Ordering::Equal {
                                 return resolved;
                             }
@@ -641,7 +658,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                         })
                         .map(|s| s.to_string())
                         .collect();
-                    let full_schema: Vec<String> = group_schema
+                    let _full_schema: Vec<String> = group_schema
                         .iter()
                         .cloned()
                         .chain(agg_default_names.iter().cloned())
@@ -1905,15 +1922,19 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             | Expression::NotBetween(_, _, _)
             | Expression::NotRegexp(_, _) => where_expr.clone(),
             // Sprint 5 v11 fix (Q17): cache key must be the substituted
-// outer ref value, not outer_row[1]. In JOIN contexts the
-// referenced column may be at a different index (Q17: lineitem
-// cols 0-15, part cols 16-24; `p_partkey` is at index 16).
+            // outer ref value, not outer_row[1]. In JOIN contexts the
+            // referenced column may be at a different index (Q17: lineitem
+            // cols 0-15, part cols 16-24; `p_partkey` is at index 16).
             Expression::Subquery(_subq) => {
                 let substituted =
                     substitute_outer_refs_in_select(_subq, outer_row, outer_table_info);
                 let cache_key: Value = extract_first_literal_from_where(&substituted)
                     .unwrap_or_else(|| {
-                        Value::Text(format!("__no_subst_{}_{:?}", outer_row.len(), outer_row.first()))
+                        Value::Text(format!(
+                            "__no_subst_{}_{:?}",
+                            outer_row.len(),
+                            outer_row.first()
+                        ))
                     });
                 {
                     let cache = scalar_subq_cache().lock().unwrap();
@@ -1964,20 +1985,19 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         }
     }
 
-    /// TPC-H Q20/Q21: fast-path EXISTS / NOT EXISTS subquery
-    /// evaluation. Detects the common pattern
-    ///   `EXISTS (SELECT * FROM <single_table> WHERE <predicate>)`
-    /// and evaluates it with a direct storage scan + WHERE filter
-    /// + early exit (returns `Some(true)` as soon as a matching
-    /// row is found; `Some(false)` if the scan finishes with
-    /// zero matches). Returns `None` for any pattern that does
-    /// not match the fast-path shape (e.g. JOINs, GROUP BY,
-    /// multiple tables, or sub-subqueries); the caller then
-    /// falls back to the full `self.execute_select` pipeline.
+    /// TPC-H Q20/Q21: fast-path EXISTS / NOT EXISTS subquery evaluation.
+    /// Detects the common pattern `EXISTS (SELECT * FROM <single_table>
+    /// WHERE <predicate>)` and evaluates it with a direct storage scan +
+    /// WHERE filter + early exit. Returns `Some(true)` as soon as a
+    /// matching row is found; `Some(false)` if the scan finishes with zero
+    /// matches. Returns `None` for any pattern that does not match the
+    /// fast-path shape (e.g. JOINs, GROUP BY, multiple tables, or
+    /// sub-subqueries); the caller then falls back to the full
+    /// `self.execute_select` pipeline.
     fn pre_eval_exists_subquery_fast(
         &self,
         subq: &sqlrustgo_parser::SelectStatement,
-        outer_row: &[Value],
+        _outer_row: &[Value],
     ) -> Option<bool> {
         // Pattern: SELECT * FROM <single_table> [WHERE <predicate>]
         // - No JOINs
@@ -2156,9 +2176,6 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     /// ambiguous). Caller falls back to the per-row full-scan path on
     /// `None`.
     fn build_subquery_index(&self, subq: &SelectStatement) -> Option<SubqueryIndex> {
-        use sqlrustgo_parser::Expression as E;
-        use sqlrustgo_storage::StorageEngine;
-
         if !subq.join_clause.is_empty() || subq.from_subquery.is_some() {
             return None;
         }
