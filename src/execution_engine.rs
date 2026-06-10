@@ -509,6 +509,35 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 for new_record in &processed_records {
                     for existing in &existing_rows {
                         if self.record_matches_unique_key(existing, new_record, &table_info) {
+                            // ODKU path: if on_duplicate_key_update is set,
+                            // translate this INSERT into an UPDATE of the
+                            // existing row instead of erroring out. We
+                            // apply the column=value updates (the parser
+                            // captures them as (String, Expression) tuples).
+                            if let Some(ref updates) = insert.on_duplicate_key_update {
+                                // Build a new row by copying the existing row
+                                // and overwriting the named columns with the
+                                // ODKU assignment values.
+                                let col_names: Vec<String> =
+                                    table_info.columns.iter().map(|c| c.name.clone()).collect();
+                                let mut updated = existing.clone();
+                                for (col_name, expr) in updates {
+                                    if let Some(idx) = col_names.iter().position(|n| n == col_name)
+                                    {
+                                        let val = expression_to_value(expr);
+                                        if idx < updated.len() {
+                                            updated[idx] = val;
+                                        }
+                                    }
+                                }
+                                // Delete the old row and insert the updated
+                                // row in its place. Storage currently has
+                                // no per-PK update API, so we go via
+                                // delete+insert.
+                                storage.delete(&table_name, &[])?;
+                                storage.insert(&table_name, vec![updated])?;
+                                continue;
+                            }
                             let pk_repr = table_info
                                 .columns
                                 .iter()
