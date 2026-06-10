@@ -11,7 +11,8 @@ fn run_sql(sql: &str) -> Result<String, String> {
     let mut child = Command::new("cargo")
         .args(["run", "--bin", "sqlrustgo-mysql-server", "--", "exec", sql])
         .current_dir(
-            "/Users/liying/workspace/dev/yinglichina163/sqlrustgo/.worktrees/feature-tests",
+            std::env::var("SQLRUSTGO_REPO_ROOT")
+                .map_err(|_| "SQLRUSTGO_REPO_ROOT env var must be set to repo root".to_string())?,
         )
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
