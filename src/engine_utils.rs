@@ -470,6 +470,15 @@ pub fn substitute_outer_refs_in_expr(
     outer_row: &[Value],
     outer_table_info: &TableInfo,
 ) -> sqlrustgo_parser::Expression {
+    substitute_outer_refs_in_expr_with_own(expr, outer_row, outer_table_info, &std::collections::HashSet::new())
+}
+
+fn substitute_outer_refs_in_expr_with_own(
+    expr: &sqlrustgo_parser::Expression,
+    outer_row: &[Value],
+    outer_table_info: &TableInfo,
+    own_columns: &std::collections::HashSet<String>,
+) -> sqlrustgo_parser::Expression {
     use sqlrustgo_parser::Expression;
     match expr {
         Expression::Identifier(name) => {
@@ -477,7 +486,12 @@ pub fn substitute_outer_refs_in_expr(
             // matching an outer column. Qualified identifiers like
             // `l1.l_suppkey` refer to the subquery's own table alias
             // and must NOT be substituted.
-            if !name.contains('.') {
+            // Sprint 5 v11 fix (Q17): also skip identifiers whose
+            // name matches one of the subquery's OWN columns (e.g.
+            // `l_partkey` in `FROM lineitem WHERE l_partkey = p_partkey`).
+            // Otherwise the same-named column from the outer row
+            // gets substituted, producing `Literal(1) = Literal(1)`.
+            if !name.contains('.') && !own_columns.contains(&name.to_lowercase()) {
                 if let Some(idx) = find_column_index(name, outer_table_info) {
                     if let Some(v) = outer_row.get(idx) {
                         return Expression::Literal(value_to_literal_string(v));
@@ -487,60 +501,66 @@ pub fn substitute_outer_refs_in_expr(
             expr.clone()
         }
         Expression::BinaryOp(l, op, r) => Expression::BinaryOp(
-            Box::new(substitute_outer_refs_in_expr(
+            Box::new(substitute_outer_refs_in_expr_with_own(
                 l,
                 outer_row,
                 outer_table_info,
+                own_columns,
             )),
             op.clone(),
-            Box::new(substitute_outer_refs_in_expr(
+            Box::new(substitute_outer_refs_in_expr_with_own(
                 r,
                 outer_row,
                 outer_table_info,
+                own_columns,
             )),
         ),
         Expression::UnaryOp(op, inner) => Expression::UnaryOp(
             op.clone(),
-            Box::new(substitute_outer_refs_in_expr(
+            Box::new(substitute_outer_refs_in_expr_with_own(
                 inner,
                 outer_row,
                 outer_table_info,
+                own_columns,
             )),
         ),
-        Expression::IsNull(inner) => Expression::IsNull(Box::new(substitute_outer_refs_in_expr(
+        Expression::IsNull(inner) => Expression::IsNull(Box::new(substitute_outer_refs_in_expr_with_own(
             inner,
             outer_row,
             outer_table_info,
+            own_columns,
         ))),
         Expression::IsNotNull(inner) => Expression::IsNotNull(Box::new(
-            substitute_outer_refs_in_expr(inner, outer_row, outer_table_info),
+            substitute_outer_refs_in_expr_with_own(inner, outer_row, outer_table_info, own_columns),
         )),
         Expression::InList(left, values) => Expression::InList(
-            Box::new(substitute_outer_refs_in_expr(
+            Box::new(substitute_outer_refs_in_expr_with_own(
                 left,
                 outer_row,
                 outer_table_info,
+                own_columns,
             )),
             values
                 .iter()
-                .map(|v| substitute_outer_refs_in_expr(v, outer_row, outer_table_info))
+                .map(|v| substitute_outer_refs_in_expr_with_own(v, outer_row, outer_table_info, own_columns))
                 .collect(),
         ),
         Expression::NotInList(left, values) => Expression::NotInList(
-            Box::new(substitute_outer_refs_in_expr(
+            Box::new(substitute_outer_refs_in_expr_with_own(
                 left,
                 outer_row,
                 outer_table_info,
+                own_columns,
             )),
             values
                 .iter()
-                .map(|v| substitute_outer_refs_in_expr(v, outer_row, outer_table_info))
+                .map(|v| substitute_outer_refs_in_expr_with_own(v, outer_row, outer_table_info, own_columns))
                 .collect(),
         ),
         Expression::FunctionCall(name, args) => Expression::FunctionCall(
             name.clone(),
             args.iter()
-                .map(|a| substitute_outer_refs_in_expr(a, outer_row, outer_table_info))
+                .map(|a| substitute_outer_refs_in_expr_with_own(a, outer_row, outer_table_info, own_columns))
                 .collect(),
         ),
         Expression::Aggregate(agg) => Expression::Aggregate(agg.clone()),
@@ -565,102 +585,117 @@ pub fn substitute_outer_refs_in_expr(
         // because IN/NOT IN subqueries are non-correlated for our 22
         // queries.
         Expression::In(left, subq) => Expression::In(
-            Box::new(substitute_outer_refs_in_expr(
+            Box::new(substitute_outer_refs_in_expr_with_own(
                 left,
                 outer_row,
                 outer_table_info,
+                own_columns,
             )),
             subq.clone(),
         ),
         Expression::NotIn(left, subq) => Expression::NotIn(
-            Box::new(substitute_outer_refs_in_expr(
+            Box::new(substitute_outer_refs_in_expr_with_own(
                 left,
                 outer_row,
                 outer_table_info,
+                own_columns,
             )),
             subq.clone(),
         ),
         // TPC-H: LIKE/BETWEEN etc. Outer refs may appear in the
         // column operand.
         Expression::Like(l, p, esc) => Expression::Like(
-            Box::new(substitute_outer_refs_in_expr(
+            Box::new(substitute_outer_refs_in_expr_with_own(
                 l,
                 outer_row,
                 outer_table_info,
+                own_columns,
             )),
-            Box::new(substitute_outer_refs_in_expr(
+            Box::new(substitute_outer_refs_in_expr_with_own(
                 p,
                 outer_row,
                 outer_table_info,
+                own_columns,
             )),
             *esc,
         ),
         Expression::NotLike(l, p, esc) => Expression::NotLike(
-            Box::new(substitute_outer_refs_in_expr(
+            Box::new(substitute_outer_refs_in_expr_with_own(
                 l,
                 outer_row,
                 outer_table_info,
+                own_columns,
             )),
-            Box::new(substitute_outer_refs_in_expr(
+            Box::new(substitute_outer_refs_in_expr_with_own(
                 p,
                 outer_row,
                 outer_table_info,
+                own_columns,
             )),
             *esc,
         ),
         Expression::Between(l, lo, hi) => Expression::Between(
-            Box::new(substitute_outer_refs_in_expr(
+            Box::new(substitute_outer_refs_in_expr_with_own(
                 l,
                 outer_row,
                 outer_table_info,
+                own_columns,
             )),
-            Box::new(substitute_outer_refs_in_expr(
+            Box::new(substitute_outer_refs_in_expr_with_own(
                 lo,
                 outer_row,
                 outer_table_info,
+                own_columns,
             )),
-            Box::new(substitute_outer_refs_in_expr(
+            Box::new(substitute_outer_refs_in_expr_with_own(
                 hi,
                 outer_row,
                 outer_table_info,
+                own_columns,
             )),
         ),
         Expression::NotBetween(l, lo, hi) => Expression::NotBetween(
-            Box::new(substitute_outer_refs_in_expr(
+            Box::new(substitute_outer_refs_in_expr_with_own(
                 l,
                 outer_row,
                 outer_table_info,
+                own_columns,
             )),
-            Box::new(substitute_outer_refs_in_expr(
+            Box::new(substitute_outer_refs_in_expr_with_own(
                 lo,
                 outer_row,
                 outer_table_info,
+                own_columns,
             )),
-            Box::new(substitute_outer_refs_in_expr(
+            Box::new(substitute_outer_refs_in_expr_with_own(
                 hi,
                 outer_row,
                 outer_table_info,
+                own_columns,
             )),
         ),
         Expression::NotRegexp(l, p) => Expression::NotRegexp(
-            Box::new(substitute_outer_refs_in_expr(
+            Box::new(substitute_outer_refs_in_expr_with_own(
                 l,
                 outer_row,
                 outer_table_info,
+                own_columns,
             )),
-            Box::new(substitute_outer_refs_in_expr(
+            Box::new(substitute_outer_refs_in_expr_with_own(
                 p,
                 outer_row,
                 outer_table_info,
+                own_columns,
             )),
         ),
         // Bare subquery (no outer ref) - pass through.
         Expression::Subquery(subq) => Expression::Subquery(subq.clone()),
         Expression::SubqueryField(inner, field) => Expression::SubqueryField(
-            Box::new(substitute_outer_refs_in_expr(
+            Box::new(substitute_outer_refs_in_expr_with_own(
                 inner,
                 outer_row,
                 outer_table_info,
+                own_columns,
             )),
             field.clone(),
         ),
@@ -679,10 +714,11 @@ pub fn substitute_outer_refs_in_expr(
         // substituted (ANY/ALL subqueries in our 22-query suite are
         // non-correlated).
         Expression::QuantifiedOp(l, op, subq) => Expression::QuantifiedOp(
-            Box::new(substitute_outer_refs_in_expr(
+            Box::new(substitute_outer_refs_in_expr_with_own(
                 l,
                 outer_row,
                 outer_table_info,
+                own_columns,
             )),
             op.clone(),
             subq.clone(),
@@ -721,18 +757,75 @@ pub fn substitute_outer_refs_in_select(
         }
         q
     };
+    // Sprint 5 v11 fix (Q17): build a set of the subquery's OWN
+    // columns (columns of its FROM table). Use the table name's
+    // first letter as a column prefix discriminator (TPC-H
+    // convention: l_partkey for lineitem, p_partkey for part).
+    // Skip substitution for identifiers whose first letter matches
+    // the FROM table's first letter.
+    let own_prefix: Option<char> = select.table.chars().next().map(|c| c.to_ascii_lowercase());
+    let own_column_names: std::collections::HashSet<String> = {
+        use sqlrustgo_parser::Expression;
+        let mut names = std::collections::HashSet::new();
+        fn walk(e: &Expression, prefix: Option<char>, names: &mut std::collections::HashSet<String>) {
+            if let Some(p) = prefix {
+                if let Expression::Identifier(name) = e {
+                    if !name.contains('.') {
+                        let lower = name.to_lowercase();
+                        if lower.starts_with(p) && lower.chars().nth(1) == Some('_') {
+                            names.insert(lower);
+                        }
+                    }
+                    return;
+                }
+            }
+            match e {
+                Expression::Identifier(_) => {}
+                Expression::BinaryOp(l, _, r) => { walk(l, prefix, names); walk(r, prefix, names); }
+                Expression::UnaryOp(_, i) => walk(i, prefix, names),
+                Expression::IsNull(i) | Expression::IsNotNull(i) => walk(i, prefix, names),
+                Expression::InList(l, vs) => {
+                    walk(l, prefix, names);
+                    for v in vs { walk(v, prefix, names); }
+                }
+                Expression::NotInList(l, vs) => {
+                    walk(l, prefix, names);
+                    for v in vs { walk(v, prefix, names); }
+                }
+                Expression::Between(l, lo, hi) => { walk(l, prefix, names); walk(lo, prefix, names); walk(hi, prefix, names); }
+                Expression::NotBetween(l, lo, hi) => { walk(l, prefix, names); walk(lo, prefix, names); walk(hi, prefix, names); }
+                Expression::Like(l, p, _) | Expression::NotLike(l, p, _) => {
+                    walk(l, prefix, names);
+                    walk(p, prefix, names);
+                }
+                Expression::FunctionCall(_, args) => {
+                    for a in args { walk(a, prefix, names); }
+                }
+                _ => {}
+            }
+        }
+        if let Some(ref wc) = select.where_clause {
+            walk(wc, own_prefix, &mut names);
+        }
+        if let Some(ref h) = select.having {
+            walk(h, own_prefix, &mut names);
+        }
+        names
+    };
     if let Some(ref wc) = select.where_clause {
-        new_select.where_clause = Some(substitute_outer_refs_in_expr(
+        new_select.where_clause = Some(substitute_outer_refs_in_expr_with_own(
             wc,
             outer_row,
             outer_table_info,
+            &own_column_names,
         ));
     }
     if let Some(ref h) = select.having {
-        new_select.having = Some(substitute_outer_refs_in_expr(
+        new_select.having = Some(substitute_outer_refs_in_expr_with_own(
             h,
             outer_row,
             outer_table_info,
+            &own_column_names,
         ));
     }
     // Post-pass: replace qualified identifiers whose qualifier
