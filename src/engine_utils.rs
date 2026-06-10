@@ -228,10 +228,10 @@ pub fn eval_predicate(expr: &Expression, row: &[Value], table_info: &TableInfo) 
         // other values (integers, dates, etc.) as truthy — that
         // would incorrectly accept, e.g., a date comparison that
         // returned Value::Text("1993-07-01").
-        _ => match crate::expr_utils::evaluate_expression(expr, row, table_info) {
-            Ok(Value::Boolean(true)) => true,
-            _ => false,
-        },
+        _ => matches!(
+            crate::expr_utils::evaluate_expression(expr, row, table_info),
+            Ok(Value::Boolean(true))
+        ),
     }
 }
 
@@ -470,7 +470,12 @@ pub fn substitute_outer_refs_in_expr(
     outer_row: &[Value],
     outer_table_info: &TableInfo,
 ) -> sqlrustgo_parser::Expression {
-    substitute_outer_refs_in_expr_with_own(expr, outer_row, outer_table_info, &std::collections::HashSet::new())
+    substitute_outer_refs_in_expr_with_own(
+        expr,
+        outer_row,
+        outer_table_info,
+        &std::collections::HashSet::new(),
+    )
 }
 
 fn substitute_outer_refs_in_expr_with_own(
@@ -524,12 +529,9 @@ fn substitute_outer_refs_in_expr_with_own(
                 own_columns,
             )),
         ),
-        Expression::IsNull(inner) => Expression::IsNull(Box::new(substitute_outer_refs_in_expr_with_own(
-            inner,
-            outer_row,
-            outer_table_info,
-            own_columns,
-        ))),
+        Expression::IsNull(inner) => Expression::IsNull(Box::new(
+            substitute_outer_refs_in_expr_with_own(inner, outer_row, outer_table_info, own_columns),
+        )),
         Expression::IsNotNull(inner) => Expression::IsNotNull(Box::new(
             substitute_outer_refs_in_expr_with_own(inner, outer_row, outer_table_info, own_columns),
         )),
@@ -542,7 +544,14 @@ fn substitute_outer_refs_in_expr_with_own(
             )),
             values
                 .iter()
-                .map(|v| substitute_outer_refs_in_expr_with_own(v, outer_row, outer_table_info, own_columns))
+                .map(|v| {
+                    substitute_outer_refs_in_expr_with_own(
+                        v,
+                        outer_row,
+                        outer_table_info,
+                        own_columns,
+                    )
+                })
                 .collect(),
         ),
         Expression::NotInList(left, values) => Expression::NotInList(
@@ -554,13 +563,27 @@ fn substitute_outer_refs_in_expr_with_own(
             )),
             values
                 .iter()
-                .map(|v| substitute_outer_refs_in_expr_with_own(v, outer_row, outer_table_info, own_columns))
+                .map(|v| {
+                    substitute_outer_refs_in_expr_with_own(
+                        v,
+                        outer_row,
+                        outer_table_info,
+                        own_columns,
+                    )
+                })
                 .collect(),
         ),
         Expression::FunctionCall(name, args) => Expression::FunctionCall(
             name.clone(),
             args.iter()
-                .map(|a| substitute_outer_refs_in_expr_with_own(a, outer_row, outer_table_info, own_columns))
+                .map(|a| {
+                    substitute_outer_refs_in_expr_with_own(
+                        a,
+                        outer_row,
+                        outer_table_info,
+                        own_columns,
+                    )
+                })
                 .collect(),
         ),
         Expression::Aggregate(agg) => Expression::Aggregate(agg.clone()),
@@ -767,7 +790,11 @@ pub fn substitute_outer_refs_in_select(
     let own_column_names: std::collections::HashSet<String> = {
         use sqlrustgo_parser::Expression;
         let mut names = std::collections::HashSet::new();
-        fn walk(e: &Expression, prefix: Option<char>, names: &mut std::collections::HashSet<String>) {
+        fn walk(
+            e: &Expression,
+            prefix: Option<char>,
+            names: &mut std::collections::HashSet<String>,
+        ) {
             if let Some(p) = prefix {
                 if let Expression::Identifier(name) = e {
                     if !name.contains('.') {
@@ -781,25 +808,42 @@ pub fn substitute_outer_refs_in_select(
             }
             match e {
                 Expression::Identifier(_) => {}
-                Expression::BinaryOp(l, _, r) => { walk(l, prefix, names); walk(r, prefix, names); }
+                Expression::BinaryOp(l, _, r) => {
+                    walk(l, prefix, names);
+                    walk(r, prefix, names);
+                }
                 Expression::UnaryOp(_, i) => walk(i, prefix, names),
                 Expression::IsNull(i) | Expression::IsNotNull(i) => walk(i, prefix, names),
                 Expression::InList(l, vs) => {
                     walk(l, prefix, names);
-                    for v in vs { walk(v, prefix, names); }
+                    for v in vs {
+                        walk(v, prefix, names);
+                    }
                 }
                 Expression::NotInList(l, vs) => {
                     walk(l, prefix, names);
-                    for v in vs { walk(v, prefix, names); }
+                    for v in vs {
+                        walk(v, prefix, names);
+                    }
                 }
-                Expression::Between(l, lo, hi) => { walk(l, prefix, names); walk(lo, prefix, names); walk(hi, prefix, names); }
-                Expression::NotBetween(l, lo, hi) => { walk(l, prefix, names); walk(lo, prefix, names); walk(hi, prefix, names); }
+                Expression::Between(l, lo, hi) => {
+                    walk(l, prefix, names);
+                    walk(lo, prefix, names);
+                    walk(hi, prefix, names);
+                }
+                Expression::NotBetween(l, lo, hi) => {
+                    walk(l, prefix, names);
+                    walk(lo, prefix, names);
+                    walk(hi, prefix, names);
+                }
                 Expression::Like(l, p, _) | Expression::NotLike(l, p, _) => {
                     walk(l, prefix, names);
                     walk(p, prefix, names);
                 }
                 Expression::FunctionCall(_, args) => {
-                    for a in args { walk(a, prefix, names); }
+                    for a in args {
+                        walk(a, prefix, names);
+                    }
                 }
                 _ => {}
             }
@@ -988,11 +1032,9 @@ pub fn where_expr_has_correlated_subquery(expr: &sqlrustgo_parser::Expression) -
         }
         Expression::InList(left, values) | Expression::NotInList(left, values) => {
             where_expr_has_correlated_subquery(left)
-                || values.iter().any(|v| where_expr_has_correlated_subquery(v))
+                || values.iter().any(where_expr_has_correlated_subquery)
         }
-        Expression::FunctionCall(_, args) => {
-            args.iter().any(|a| where_expr_has_correlated_subquery(a))
-        }
+        Expression::FunctionCall(_, args) => args.iter().any(where_expr_has_correlated_subquery),
         Expression::Literal(_)
         | Expression::Identifier(_)
         | Expression::Aggregate(_)
