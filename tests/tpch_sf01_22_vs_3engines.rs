@@ -21,7 +21,9 @@ const SCHEMA_SQL: &[&str] = &[
     "CREATE TABLE orders (o_orderkey INTEGER PRIMARY KEY, o_custkey INTEGER NOT NULL, o_orderstatus TEXT NOT NULL, o_totalprice REAL NOT NULL, o_orderdate TEXT NOT NULL, o_orderpriority TEXT, o_clerk TEXT, o_shippriority INTEGER, o_comment TEXT)",
     "CREATE TABLE lineitem (l_orderkey INTEGER NOT NULL, l_partkey INTEGER NOT NULL, l_suppkey INTEGER NOT NULL, l_linenumber INTEGER NOT NULL, l_quantity REAL NOT NULL, l_extendedprice REAL NOT NULL, l_discount REAL NOT NULL, l_tax REAL NOT NULL, l_returnflag TEXT, l_linestatus TEXT, l_shipdate TEXT, l_commitdate TEXT, l_receiptdate TEXT, l_shipinstruct TEXT, l_shipmode TEXT, l_comment TEXT, PRIMARY KEY (l_orderkey, l_linenumber))",
 ];
-const TABLES: &[&str] = &["region","nation","supplier","customer","part","partsupp","orders","lineitem"];
+const TABLES: &[&str] = &[
+    "region", "nation", "supplier", "customer", "part", "partsupp", "orders", "lineitem",
+];
 
 fn lookup_col_types(table: &str) -> Vec<&'static str> {
     let ddl = SCHEMA_SQL.iter().find(|s| s.contains(table)).expect("ddl");
@@ -32,16 +34,23 @@ fn lookup_col_types(table: &str) -> Vec<&'static str> {
         .split(',')
         .map(|c| {
             let c = c.trim();
-            if c.eq_ignore_ascii_case("PRIMARY KEY") { "" }
-            else if let Some(idx) = c.find("PRIMARY KEY") {
+            if c.eq_ignore_ascii_case("PRIMARY KEY") {
+                ""
+            } else if let Some(idx) = c.find("PRIMARY KEY") {
                 let stripped = c[..idx].trim().to_string();
                 Box::leak(stripped.into_boxed_str()) as &str
-            } else { c }
+            } else {
+                c
+            }
         })
         .filter(|s| !s.is_empty())
         .map(|c| {
             let toks: Vec<&str> = c.split_whitespace().collect();
-            if toks.len() >= 2 { toks[1] } else { "" }
+            if toks.len() >= 2 {
+                toks[1]
+            } else {
+                ""
+            }
         })
         .filter(|s| !s.is_empty())
         .collect();
@@ -54,18 +63,30 @@ fn load_tbl(storage: &Arc<RwLock<MemoryStorage>>, tbl: &str) -> usize {
     let types = lookup_col_types(tbl);
     let mut n = 0usize;
     for line in content.lines() {
-        if line.is_empty() { continue; }
+        if line.is_empty() {
+            continue;
+        }
         let fields: Vec<&str> = line.split('|').collect();
         let mut vals: Vec<SqlValue> = Vec::new();
         for (i, f) in fields.iter().enumerate() {
             let t = types.get(i).copied().unwrap_or("TEXT");
             vals.push(match t.to_uppercase().as_str() {
-                "INTEGER" => f.parse::<i64>().map(SqlValue::Integer).unwrap_or(SqlValue::Null),
-                "REAL" => f.parse::<f64>().map(SqlValue::Float).unwrap_or(SqlValue::Null),
+                "INTEGER" => f
+                    .parse::<i64>()
+                    .map(SqlValue::Integer)
+                    .unwrap_or(SqlValue::Null),
+                "REAL" => f
+                    .parse::<f64>()
+                    .map(SqlValue::Float)
+                    .unwrap_or(SqlValue::Null),
                 _ => SqlValue::Text(f.to_string()),
             });
         }
-        storage.write().unwrap().insert(tbl, vec![vals]).expect("insert");
+        storage
+            .write()
+            .unwrap()
+            .insert(tbl, vec![vals])
+            .expect("insert");
         n += 1;
     }
     n
@@ -121,13 +142,23 @@ fn run_md_count(sql: &str) -> usize {
         .args(&["-B", "-N", "tpch_sf01", "-e", &count_sql])
         .output()
         .expect("mysql count");
-    String::from_utf8_lossy(&out.stdout).trim().parse().unwrap_or(0)
+    String::from_utf8_lossy(&out.stdout)
+        .trim()
+        .parse()
+        .unwrap_or(0)
 }
 
 #[test]
 fn tpch_sf01_22_vs_mariadb_cell() {
-    if !PathBuf::from(DATA_DIR).exists() { panic!("fixture missing"); }
-    if Command::new("mysql").arg("-e").arg("SELECT 1").output().is_err() {
+    if !PathBuf::from(DATA_DIR).exists() {
+        panic!("fixture missing");
+    }
+    if Command::new("mysql")
+        .arg("-e")
+        .arg("SELECT 1")
+        .output()
+        .is_err()
+    {
         eprintln!("MariaDB not available, skipping");
         return;
     }
@@ -147,44 +178,69 @@ fn tpch_sf01_22_vs_mariadb_cell() {
         let r = engine.execute(&sql).expect("engine execute");
         let elapsed = t0.elapsed();
         let sr_rows = r.rows.len();
-        let sr_strings: Vec<String> = r.rows.iter().map(|row| {
-            row.iter().map(to_md_value).collect::<Vec<_>>().join("|")
-        }).collect();
+        let sr_strings: Vec<String> = r
+            .rows
+            .iter()
+            .map(|row| row.iter().map(to_md_value).collect::<Vec<_>>().join("|"))
+            .collect();
         let sr_set: std::collections::HashSet<String> = sr_strings.iter().cloned().collect();
         let md_result = run_md(&sql);
-        let md_count = if md_result.is_ok() { run_md_count(&sql) } else { 0 };
+        let md_count = if md_result.is_ok() {
+            run_md_count(&sql)
+        } else {
+            0
+        };
         // Sprint 5 v10: normalize MD output to match our engine's
         // pipe-separated + 4dp float format.
         let md_strings: Vec<String> = match md_result {
-            Ok(s) => s.lines().filter(|l| !l.is_empty()).map(|l| {
-                l.split('\t').map(|c| {
-                    if let Ok(f) = c.parse::<f64>() {
-                        // MariaDB returns Integer as Float-with-.0 (e.g. 823.0000)
-                        // and Float with at most 4dp (e.g. 2941.6500). Normalize
-                        // to: integer-valued floats drop the decimal; non-integer
-                        // floats keep 4dp. The engine returns Integer as plain
-                        // "823" and Float as "823.0000", so we apply the same
-                        // normalization to make them comparable.
-                        if f == f.trunc() {
-                            format!("{}", f as i64)
-                        } else {
-                            format!("{:.4}", f)
-                        }
-                    } else { c.to_string() }
-                }).collect::<Vec<_>>().join("|")
-            }).collect(),
-            Err(_) => vec![],
-        };
+ Ok(s) => s
+ .lines()
+ .filter(|l| !l.is_empty())
+ .map(|l| {
+ l.split('\t')
+ .map(|c| {
+ if let Ok(f) = c.parse::<f64>() {
+ if f == f.trunc() && c.contains('.') {
+ format!("{}", f as i64)
+ } else {
+ format!("{:.4}", f)
+ }
+ } else {
+ c.to_string()
+ }
+ })
+ .collect::<Vec<_>>()
+ .join("|")
+ })
+ .collect(),
+ Err(_) => vec![],
+ };
         let md_set: std::collections::HashSet<String> = md_strings.iter().cloned().collect();
         let cell_match = sr_set == md_set;
-        let status = if sr_rows == md_count && cell_match { "PASS" } else { "FAIL" };
-        if status == "PASS" { pass += 1 } else { fail += 1 };
+        let status = if sr_rows == md_count && cell_match {
+            "PASS"
+        } else {
+            "FAIL"
+        };
+        if status == "PASS" {
+            pass += 1
+        } else {
+            fail += 1
+        };
         let diff_info = if !cell_match && sr_rows == md_count {
-            format!(" [{} rows differ]", sr_set.symmetric_difference(&md_set).count())
+            format!(
+                " [{} rows differ]",
+                sr_set.symmetric_difference(&md_set).count()
+            )
         } else if sr_rows != md_count {
             format!(" [rc sr={} md={}]", sr_rows, md_count)
-        } else { "".to_string() };
-        eprintln!("  Q{:2}: {} (rc={}, md={}, {}{}) in {:?}", n, status, sr_rows, md_count, "cell-match", diff_info, elapsed);
+        } else {
+            "".to_string()
+        };
+        eprintln!(
+            "  Q{:2}: {} (rc={}, md={}, {}{}) in {:?}",
+            n, status, sr_rows, md_count, "cell-match", diff_info, elapsed
+        );
     }
     eprintln!();
     eprintln!("=== Summary: pass={} fail={} ===", pass, fail);
