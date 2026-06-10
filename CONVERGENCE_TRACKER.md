@@ -171,3 +171,32 @@ e90833aed Merge PR#3323 + PR#3324
 - Q21 多列 index (l_orderkey, l_suppkey) 完整 rewrite
 - 真实 G7/G13 Soak (需 Z6G4)
 - 关闭 #3283 P0 Operator regression test suite
+
+## 最终 PR 状态 (2026-06-10 20:15)
+
+```
+Total PRs: 10
+merged: 6, closed+merged: 6
+still open: 1 (#3332 — 60K wire test feature)
+closed-not-merged (manual workaround): 3
+  #3323 (TPC-H Failure Matrix v1) - manual merge commit 1846eaf9
+  #3324 (Sprint 4 EXISTS fix) - manual merge commit 53335fcf
+  #3322 (Q21 perf) - comment 24465 only
+```
+
+### 已 merge 成功的 6 个 PR
+- #3321: [v390] fix(fixture): regenerate TPC-H SF=0.001 fixture
+- #3325: fix(executor): Q3/Q10/Q18 cell_diff — aggregate alias in ORDER BY
+- #3326: docs(runbook): Z6G4 SSH recovery procedure
+- #3327: fix(engine): TPC-H Q9 + 4+ table join hang (O(N^2))
+- #3328: docs(v3.9.0): Q9 hang fix gate report
+- #3329: test(v3.9.0): 22/22 TPC-H in-process audit
+
+### Open PR
+- #3332: feat(tests): SF=0.1 MySQL-server wired TPC-H 22/22 (feature request, not a bug fix)
+
+### 4 remote 最终同步 @ `113c68227`
+- origin (252 SSH): 113c68227
+- gitea (252 HTTPS): 113c68227
+- gitcode: 113c68227
+- backup (250): 113c68227
