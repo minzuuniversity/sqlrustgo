@@ -10,6 +10,13 @@ echo ""
 
 cd "$PROJECT_ROOT"
 
+# Ensure cargo is on PATH (CI runners may not have it in default PATH).
+if ! command -v cargo >/dev/null 2>&1; then
+    if [ -x "$HOME/.cargo/bin/cargo" ]; then
+        export PATH="$HOME/.cargo/bin:$PATH"
+    fi
+fi
+
 ATTACK_SURFACE_DOC="docs/security/attack_surface/ATTACK_SURFACE_ANALYSIS.md"
 
 echo "[1/3] Checking attack surface documentation..."
