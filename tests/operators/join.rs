@@ -417,13 +417,12 @@ fn join_self_join_comma_list_excludes_self_match() {
     let mut e = engine();
     e.execute("CREATE TABLE emp (id INTEGER, mgr_id INTEGER, name TEXT)")
         .unwrap();
-    e.execute("INSERT INTO emp VALUES (1, NULL, 'CEO')").unwrap();
+    e.execute("INSERT INTO emp VALUES (1, NULL, 'CEO')")
+        .unwrap();
     e.execute("INSERT INTO emp VALUES (2, 1, 'CTO')").unwrap();
     e.execute("INSERT INTO emp VALUES (3, 1, 'CFO')").unwrap();
     let r = e
-        .execute(
-            "SELECT e.name, m.name FROM emp e, emp m WHERE e.mgr_id = m.id ORDER BY e.name",
-        )
+        .execute("SELECT e.name, m.name FROM emp e, emp m WHERE e.mgr_id = m.id ORDER BY e.name")
         .unwrap();
     assert_eq!(
         r.rows.len(),
