@@ -78,7 +78,12 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 HASH_FILE = REPO_ROOT / "tests" / "tpch_hashes_v380.json"
 QUERIES_DIR = REPO_ROOT / "queries"
-BASELINE_DATA_DIR = Path(os.environ.get("TPCH_DATA_DIR", str(Path.home() / "sqlrustgo-tpch" / "data")))
+# Sprint 5 v15: Use tests/data/tpch-sf01 (SF=0.1, 60K lineitem) as the default
+# baseline data dir. This matches the Sprint 5 v13 cross-engine cell-level
+# tests (MariaDB, PostgreSQL, SQLite, SQLite wire) and gives a non-trivial
+# 21/22 query coverage (Q21 still times out at 300s per Issue #3316).
+# Override with TPCH_DATA_DIR env var for SF=0.01 or other scales.
+BASELINE_DATA_DIR = Path(os.environ.get("TPCH_DATA_DIR", str(Path(__file__).resolve().parents[2] / "tests" / "data" / "tpch-sf01")))
 
 QUERY_RE = re.compile(r"^Q(\d+):\s*(.*)$", re.MULTILINE)
 HASH_LEN = 64
@@ -151,8 +156,10 @@ def run_tpch_full_22(timeout_per_query_s: int = 600, overall_timeout_s: int = 18
         # stdout already. We print a warning and return the captured
         # stdout anyway; the caller (cmd_capture/cmd_check) will detect
         # partial data via len(results) != 22.
-        if "TPC-H Full 22 Query Gate" in proc.stdout and "=== TPC-H Full 22 Results" in proc.stdout:
-            print(f"[hash] WARNING: cargo test exited {proc.returncode} but stdout has 22-query output; parsing anyway", file=sys.stderr)
+        # Sprint 5 v15: eprintln! goes to stderr; check combined output
+        combined = (proc.stdout or "") + "\n" + (proc.stderr or "")
+        if "TPC-H Full 22 Query Gate" in combined and "=== TPC-H Full 22 Results" in combined:
+            print(f"[hash] WARNING: cargo test exited {proc.returncode} but combined output has 22-query data; parsing anyway", file=sys.stderr)
         else:
             die(f"cargo test failed (exit {proc.returncode}); cannot hash.\n"
                 f"  stderr (last 20 lines):\n{chr(10).join(proc.stderr.splitlines()[-20:])}")
