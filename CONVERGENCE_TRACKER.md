@@ -243,3 +243,54 @@ closed-not-merged (manual workaround): 3
 - #3250 (250 Gitea) - merged
 - develop/v3.9.0 on backup: 7686e10b
 - gitcode/github/backup OK, origin 252 仍宕
+
+## Sprint 6 最终汇总 (2026-06-11)
+
+### 4 慢查询全部修复 ✅
+
+| Query | 修复前 | 修复后 | 加速 | PR | 根因 |
+|-------|--------|--------|------|------|------|
+| Q9 | 32s | 4.9s | 7x | #3249/#3334 | 6-table cartesian JOIN 无谓 filter |
+| Q17 | 30s | 0.18s | 165x | #3250/#3336 | correlated scalar aggregate 重复扫描 60K lineitems |
+| Q8 | 30s | 0.20s | 150x | #3251/#3341 | pre_filter column lookup 不认 `<alias>.<col>` |
+| Q21 | timeout | 1.7s | 17x | #3251/#3341/#3342 | subq table 编码 `"lineitem\|l2"` → storage.scan 失败 |
+
+### 关键设计
+
+1. **SCALAR_AGG_INDEX_CACHE** (Q17): 模块级 HashMap，按 `(table, key_col, agg_func, agg_arg, op_factor)` 索引；首次访问时全表扫一次并按 key_col 分组聚合，后续 O(1) lookup
+2. **pre_eval_exists_subquery_fast 修复** (Q21): 复用 Q21 之前的 `build_subquery_index strip \|alias` 模式；存储层 cache key 也用 real table name 让 alias 共享
+3. **pre_filter alias-aware** (Q8): 列索引查找同时支持 bare name 和 `<alias>.<col>` 形式
+
+### 4 Remote 同步 (2026-06-11 21:45)
+
+| Remote | develop/v3.9.0 HEAD |
+|--------|---------------------|
+| origin (252) | `25d6908a5` |
+| backup (250) | `25d6908a5` |
+| gitcode | `25d6908a5` |
+| github | `25d6908a5` |
+
+### Issues 处理 (2026-06-11)
+
+- **#3248** (Q20): 已在 250 上 close；comment 252 (Q20 6 vs PG 0 不是 bug — fixture 数据问题)
+- **#3261** (Q4/Q8/Q9/Q15): 已 close；comment 验证 Q9 fix 在 #3249/#3334
+- **#3283** (operator tests): 已 close；34/38 PASS, 4 known FAIL
+- **#3311** (Q3): 已 close
+- **#3312** (Q8): 已 close (via #3337 sync)；comment 验证 PR #3341 150x speedup
+- **#3313** (Q10): 已 close
+- **#3315** (Q18): 仍 open — 需要单独 fix 5-table JOIN + ORDER BY
+- **#3316** (Q21): 已 close (via #3342)；comment 验证 22/22 PASS
+- **#3330** (Q13): 已 close
+
+### RC3 → GA 准备
+
+- 22/22 query smoke test PASS (Q8 0.2s, Q21 1.7s, Q17 0.2s, Q9 4.9s)
+- 4-engine cell-level: 22/22 PASS (Q21 matches PG exactly)
+- 待办：Sprint 7 = 24/72/168h Soak + INT-2/INT-3 测试 → 6 P0 GA 门禁
+
+### 关键 commit hashes
+
+- Q17 fix: `37dc42da9` (PR #3336 on 252 / #3250 on 250)
+- Q8/Q21 fix: `69a13472a` (PR #3341 on 252 / #3251 on 250)
+- Q21 predicate pushdown (better fix): `31afb6dce` (PR #3342 on 252)
+- Q9 fix: `d08fd5d18` (PR #3249 / #3334)
