@@ -40,16 +40,20 @@ fn order_by_desc_simple() {
 fn order_by_desc_asc_compound() {
     // Q18 pattern: ORDER BY o_totalprice DESC, o_orderdate (tiebreak ASC)
     let mut e = engine();
-    e.execute("CREATE TABLE orders (o_orderkey INTEGER, o_totalprice INTEGER, o_orderdate TEXT)").unwrap();
+    e.execute("CREATE TABLE orders (o_orderkey INTEGER, o_totalprice INTEGER, o_orderdate TEXT)")
+        .unwrap();
     // Two orders with same totalprice = 100, different dates
-    e.execute("INSERT INTO orders VALUES (1, 100, '1995-03-15')").unwrap();
-    e.execute("INSERT INTO orders VALUES (2, 100, '1994-01-01')").unwrap();
-    e.execute("INSERT INTO orders VALUES (3, 200, '1995-01-01')").unwrap();
-    e.execute("INSERT INTO orders VALUES (4, 50, '1995-05-01')").unwrap();
-    let r = e.execute(
-        "SELECT o_orderkey FROM orders ORDER BY o_totalprice DESC, o_orderdate",
-    )
-    .unwrap();
+    e.execute("INSERT INTO orders VALUES (1, 100, '1995-03-15')")
+        .unwrap();
+    e.execute("INSERT INTO orders VALUES (2, 100, '1994-01-01')")
+        .unwrap();
+    e.execute("INSERT INTO orders VALUES (3, 200, '1995-01-01')")
+        .unwrap();
+    e.execute("INSERT INTO orders VALUES (4, 50, '1995-05-01')")
+        .unwrap();
+    let r = e
+        .execute("SELECT o_orderkey FROM orders ORDER BY o_totalprice DESC, o_orderdate")
+        .unwrap();
     // Expected: 3 (200), 2 (100, 1994-01-01), 1 (100, 1995-03-15), 4 (50)
     assert_eq!(r.rows[0][0].to_string(), "3");
     assert_eq!(r.rows[1][0].to_string(), "2");
@@ -79,7 +83,9 @@ fn order_by_with_limit() {
     e.execute("INSERT INTO t VALUES (20)").unwrap();
     e.execute("INSERT INTO t VALUES (50)").unwrap();
     e.execute("INSERT INTO t VALUES (40)").unwrap();
-    let r = e.execute("SELECT val FROM t ORDER BY val DESC LIMIT 3").unwrap();
+    let r = e
+        .execute("SELECT val FROM t ORDER BY val DESC LIMIT 3")
+        .unwrap();
     assert_eq!(r.rows.len(), 3);
     assert_eq!(r.rows[0][0].to_string(), "50");
     assert_eq!(r.rows[1][0].to_string(), "40");
