@@ -15,16 +15,25 @@ use std::process::{Command, Stdio};
 
 /// Run REPL with stdin script
 fn run_repl_script(script: &str) -> (String, String, i32) {
+    // cargo test sets CARGO_BIN_EXE_<name> for integration tests; use it
+    // first so tests find the binary regardless of cwd.
     let bin = std::env::var("CARGO_BIN_EXE_sqlrustgo-mysql-server")
         .ok()
         .or_else(|| std::env::var("SQLRUSTGO_BIN").ok())
         .unwrap_or_else(|| {
-            let path = std::path::Path::new("target/release/sqlrustgo-mysql-server");
-            if path.exists() {
-                path.to_string_lossy().to_string()
-            } else {
-                "../cli1/target/release/sqlrustgo-mysql-server".to_string()
+            // Fall back: search for the binary in common locations.
+            for candidate in [
+                "target/release/sqlrustgo-mysql-server",
+                "target/debug/sqlrustgo-mysql-server",
+                "../target/release/sqlrustgo-mysql-server",
+                "../target/debug/sqlrustgo-mysql-server",
+            ] {
+                if std::path::Path::new(candidate).exists() {
+                    return candidate.to_string();
+                }
             }
+            // Absolute last-resort: assume PATH lookup works.
+            "sqlrustgo-mysql-server".to_string()
         });
 
     let mut child = Command::new(&bin)

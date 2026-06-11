@@ -66,12 +66,24 @@ fn diag_q11_where_only() {
     eprintln!("loaded: partsupp={}, supplier={}, nation={}", n1, n2, n3);
 
     // Step 1: just 3-way join without WHERE - should produce cross product
-    let r1 = engine.execute("SELECT COUNT(*) FROM partsupp, supplier, nation").unwrap();
-    eprintln!("Q11 3-way cross: rows.len() = {} (expected {})", r1.rows.len(), r1.rows.first().and_then(|r| r.first().cloned()).unwrap_or(sqlrustgo_types::Value::Null));
+    let r1 = engine
+        .execute("SELECT COUNT(*) FROM partsupp, supplier, nation")
+        .unwrap();
+    eprintln!(
+        "Q11 3-way cross: rows.len() = {} (expected {})",
+        r1.rows.len(),
+        r1.rows
+            .first()
+            .and_then(|r| r.first().cloned())
+            .unwrap_or(sqlrustgo_types::Value::Null)
+    );
 
     // Step 2: with WHERE filter (Germany)
     let r2 = engine.execute("SELECT COUNT(*) FROM partsupp, supplier, nation WHERE ps_suppkey = s_suppkey AND s_nationkey = n_nationkey AND n_name = 'GERMANY'").unwrap();
-    eprintln!("Q11 with WHERE: rows.len() = {} (expected 8000-ish)", r2.rows.len());
+    eprintln!(
+        "Q11 with WHERE: rows.len() = {} (expected 8000-ish)",
+        r2.rows.len()
+    );
 
     // Step 3: explicit JOIN
     let r3 = engine.execute("SELECT COUNT(*) FROM partsupp INNER JOIN supplier ON ps_suppkey = s_suppkey INNER JOIN nation ON s_nationkey = n_nationkey WHERE n_name = 'GERMANY'").unwrap();

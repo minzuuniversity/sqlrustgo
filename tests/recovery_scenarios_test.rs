@@ -132,7 +132,9 @@ fn recover_run(entries: Vec<WalEntry>) -> sqlrustgo_storage::recovery_engine::Re
         wal.append(e).expect("append");
     }
     let mut engine: RecoveryEngineImpl = RecoveryEngineImpl;
-    engine.recover(&mut storage, &mut wal).expect("recover should not Err")
+    engine
+        .recover(&mut storage, &mut wal)
+        .expect("recover should not Err")
 }
 
 // =========================================================================
@@ -142,8 +144,12 @@ fn recover_run(entries: Vec<WalEntry>) -> sqlrustgo_storage::recovery_engine::Re
 #[test]
 fn r3_a01_two_tx_both_commit() {
     let entries = vec![
-        begin_entry(1, 1), insert_entry(1, 2, 10), commit_entry(1, 3),
-        begin_entry(2, 4), insert_entry(2, 5, 20), commit_entry(2, 6),
+        begin_entry(1, 1),
+        insert_entry(1, 2, 10),
+        commit_entry(1, 3),
+        begin_entry(2, 4),
+        insert_entry(2, 5, 20),
+        commit_entry(2, 6),
     ];
     let r = recover_run(entries);
     assert_eq!(r.committed_txns, 2);
@@ -155,8 +161,12 @@ fn r3_a01_two_tx_both_commit() {
 #[test]
 fn r3_a02_two_tx_first_rollback_second_commit() {
     let entries = vec![
-        begin_entry(1, 1), insert_entry(1, 2, 10), rollback_entry(1, 3),
-        begin_entry(2, 4), insert_entry(2, 5, 20), commit_entry(2, 6),
+        begin_entry(1, 1),
+        insert_entry(1, 2, 10),
+        rollback_entry(1, 3),
+        begin_entry(2, 4),
+        insert_entry(2, 5, 20),
+        commit_entry(2, 6),
     ];
     let r = recover_run(entries);
     assert_eq!(r.committed_txns, 1);
@@ -170,9 +180,14 @@ fn r3_a02_two_tx_first_rollback_second_commit() {
 fn r3_a03_three_tx_mixed() {
     // tx 1 commit, tx 2 rollback, tx 3 incomplete
     let entries = vec![
-        begin_entry(1, 1), insert_entry(1, 2, 1), commit_entry(1, 3),
-        begin_entry(2, 4), insert_entry(2, 5, 2), rollback_entry(2, 6),
-        begin_entry(3, 7), insert_entry(3, 8, 3),
+        begin_entry(1, 1),
+        insert_entry(1, 2, 1),
+        commit_entry(1, 3),
+        begin_entry(2, 4),
+        insert_entry(2, 5, 2),
+        rollback_entry(2, 6),
+        begin_entry(3, 7),
+        insert_entry(3, 8, 3),
         // no commit for tx 3
     ];
     let r = recover_run(entries);
@@ -188,12 +203,16 @@ fn r3_a04_interleaved_5_tx() {
     let mut entries = vec![];
     let mut lsn = 1;
     for tx in 1..=5 {
-        entries.push(begin_entry(tx, lsn)); lsn += 1;
-        entries.push(insert_entry(tx, lsn, tx as i64 * 10)); lsn += 1;
+        entries.push(begin_entry(tx, lsn));
+        lsn += 1;
+        entries.push(insert_entry(tx, lsn, tx as i64 * 10));
+        lsn += 1;
         if tx % 2 == 0 {
-            entries.push(rollback_entry(tx, lsn)); lsn += 1;
+            entries.push(rollback_entry(tx, lsn));
+            lsn += 1;
         } else {
-            entries.push(commit_entry(tx, lsn)); lsn += 1;
+            entries.push(commit_entry(tx, lsn));
+            lsn += 1;
         }
     }
     let r = recover_run(entries);
@@ -208,20 +227,30 @@ fn r3_a05_concurrent_inserts_same_table() {
     // Two tx insert the same id; only one should succeed at the
     // storage level (duplicate row is skipped per line 535-539).
     let entries = vec![
-        begin_entry(1, 1), insert_entry(1, 2, 100), commit_entry(1, 3),
-        begin_entry(2, 4), insert_entry(2, 5, 100), commit_entry(2, 6),
+        begin_entry(1, 1),
+        insert_entry(1, 2, 100),
+        commit_entry(1, 3),
+        begin_entry(2, 4),
+        insert_entry(2, 5, 100),
+        commit_entry(2, 6),
     ];
     let r = recover_run(entries);
     // Both commit cleanly from the WAL classifier's perspective;
     // dedup is the storage's job.
     assert_eq!(r.committed_txns, 2);
-    assert_eq!(r.rows_inserted, 2, "both counted; dedup happens at force_insert");
+    assert_eq!(
+        r.rows_inserted, 2,
+        "both counted; dedup happens at force_insert"
+    );
 }
 
 #[test]
 fn r3_a06_insert_then_delete_in_same_tx() {
     let entries = vec![
-        begin_entry(1, 1), insert_entry(1, 2, 1), delete_entry(1, 3, 1), commit_entry(1, 4),
+        begin_entry(1, 1),
+        insert_entry(1, 2, 1),
+        delete_entry(1, 3, 1),
+        commit_entry(1, 4),
     ];
     let r = recover_run(entries);
     assert_eq!(r.committed_txns, 1);
@@ -233,7 +262,10 @@ fn r3_a06_insert_then_delete_in_same_tx() {
 fn r3_a07_double_begin_same_tx() {
     // Two Begin for the same tx_id. Should not crash.
     let entries = vec![
-        begin_entry(1, 1), begin_entry(1, 2), insert_entry(1, 3, 1), commit_entry(1, 4),
+        begin_entry(1, 1),
+        begin_entry(1, 2),
+        insert_entry(1, 3, 1),
+        commit_entry(1, 4),
     ];
     let r = recover_run(entries);
     assert_eq!(r.committed_txns, 1);
@@ -243,8 +275,10 @@ fn r3_a07_double_begin_same_tx() {
 #[test]
 fn r3_a08_double_commit_same_tx() {
     let entries = vec![
-        begin_entry(1, 1), insert_entry(1, 2, 1),
-        commit_entry(1, 3), commit_entry(1, 4),
+        begin_entry(1, 1),
+        insert_entry(1, 2, 1),
+        commit_entry(1, 3),
+        commit_entry(1, 4),
     ];
     let r = recover_run(entries);
     // Both commits for the same tx still count as 1 committed tx
@@ -253,9 +287,7 @@ fn r3_a08_double_commit_same_tx() {
 
 #[test]
 fn r3_a09_tx_with_no_dml() {
-    let entries = vec![
-        begin_entry(1, 1), commit_entry(1, 2),
-    ];
+    let entries = vec![begin_entry(1, 1), commit_entry(1, 2)];
     let r = recover_run(entries);
     assert_eq!(r.committed_txns, 1);
     assert_eq!(r.rows_inserted, 0);
@@ -265,8 +297,10 @@ fn r3_a09_tx_with_no_dml() {
 fn r3_a10_nested_logically_overlapping_tx() {
     // tx 1 starts, tx 2 starts, tx 1 commits, tx 2 still in flight at crash.
     let entries = vec![
-        begin_entry(1, 1), insert_entry(1, 2, 1),
-        begin_entry(2, 3), insert_entry(2, 4, 2),
+        begin_entry(1, 1),
+        insert_entry(1, 2, 1),
+        begin_entry(2, 3),
+        insert_entry(2, 4, 2),
         commit_entry(1, 5),
         // tx 2 not committed
     ];
@@ -309,8 +343,10 @@ fn r3_a12_rollback_after_commit() {
     // tx 1 commit then rollback. Both present. Classifier should treat
     // as one committed (commit seen).
     let entries = vec![
-        begin_entry(1, 1), insert_entry(1, 2, 1),
-        commit_entry(1, 3), rollback_entry(1, 4),
+        begin_entry(1, 1),
+        insert_entry(1, 2, 1),
+        commit_entry(1, 3),
+        rollback_entry(1, 4),
     ];
     let r = recover_run(entries);
     assert_eq!(r.committed_txns, 1, "commit wins over later rollback");
@@ -330,10 +366,16 @@ fn r3_a13_many_begin_no_close() {
 fn r3_a14_zigzag_commit() {
     // tx 1 commit, tx 2 incomplete, tx 3 commit, tx 4 incomplete
     let entries = vec![
-        begin_entry(1, 1), insert_entry(1, 2, 1), commit_entry(1, 3),
-        begin_entry(2, 4), insert_entry(2, 5, 2), // no close
-        begin_entry(3, 6), insert_entry(3, 7, 3), commit_entry(3, 8),
-        begin_entry(4, 9), insert_entry(4, 10, 4), // no close
+        begin_entry(1, 1),
+        insert_entry(1, 2, 1),
+        commit_entry(1, 3),
+        begin_entry(2, 4),
+        insert_entry(2, 5, 2), // no close
+        begin_entry(3, 6),
+        insert_entry(3, 7, 3),
+        commit_entry(3, 8),
+        begin_entry(4, 9),
+        insert_entry(4, 10, 4), // no close
     ];
     let r = recover_run(entries);
     assert_eq!(r.committed_txns, 2);
@@ -345,9 +387,14 @@ fn r3_a14_zigzag_commit() {
 fn r3_a15_idempotent_recover() {
     // Running recover() twice on the same WAL should yield the same report.
     let entries = vec![
-        begin_entry(1, 1), insert_entry(1, 2, 1), commit_entry(1, 3),
-        begin_entry(2, 4), insert_entry(2, 5, 2), rollback_entry(2, 6),
-        begin_entry(3, 7), insert_entry(3, 8, 3),
+        begin_entry(1, 1),
+        insert_entry(1, 2, 1),
+        commit_entry(1, 3),
+        begin_entry(2, 4),
+        insert_entry(2, 5, 2),
+        rollback_entry(2, 6),
+        begin_entry(3, 7),
+        insert_entry(3, 8, 3),
     ];
     let r1 = recover_run(entries.clone());
     let r2 = recover_run(entries);
@@ -364,8 +411,10 @@ fn r3_a15_idempotent_recover() {
 #[test]
 fn r3_b01_prepare_then_commit() {
     let entries = vec![
-        begin_entry(1, 1), insert_entry(1, 2, 1),
-        prepare_entry(1, 3), commit_entry(1, 4),
+        begin_entry(1, 1),
+        insert_entry(1, 2, 1),
+        prepare_entry(1, 3),
+        commit_entry(1, 4),
     ];
     let r = recover_run(entries);
     assert_eq!(r.committed_txns, 1);
@@ -376,8 +425,10 @@ fn r3_b01_prepare_then_commit() {
 #[test]
 fn r3_b02_prepare_then_rollback() {
     let entries = vec![
-        begin_entry(1, 1), insert_entry(1, 2, 1),
-        prepare_entry(1, 3), rollback_entry(1, 4),
+        begin_entry(1, 1),
+        insert_entry(1, 2, 1),
+        prepare_entry(1, 3),
+        rollback_entry(1, 4),
     ];
     let r = recover_run(entries);
     assert_eq!(r.rolled_back_txns, 1);
@@ -388,7 +439,8 @@ fn r3_b02_prepare_then_rollback() {
 #[test]
 fn r3_b03_prepare_only_no_close() {
     let entries = vec![
-        begin_entry(1, 1), insert_entry(1, 2, 1),
+        begin_entry(1, 1),
+        insert_entry(1, 2, 1),
         prepare_entry(1, 3),
         // no commit/rollback
     ];
@@ -402,8 +454,10 @@ fn r3_b03_prepare_only_no_close() {
 #[test]
 fn r3_b04_double_prepare_same_tx() {
     let entries = vec![
-        begin_entry(1, 1), insert_entry(1, 2, 1),
-        prepare_entry(1, 3), prepare_entry(1, 4),
+        begin_entry(1, 1),
+        insert_entry(1, 2, 1),
+        prepare_entry(1, 3),
+        prepare_entry(1, 4),
         commit_entry(1, 5),
     ];
     let r = recover_run(entries);
@@ -415,8 +469,12 @@ fn r3_b04_double_prepare_same_tx() {
 fn r3_b05_2pc_two_tx_both_prepared() {
     // Both tx in 2PC phase 1, neither commits before crash.
     let entries = vec![
-        begin_entry(1, 1), insert_entry(1, 2, 1), prepare_entry(1, 3),
-        begin_entry(2, 4), insert_entry(2, 5, 2), prepare_entry(2, 6),
+        begin_entry(1, 1),
+        insert_entry(1, 2, 1),
+        prepare_entry(1, 3),
+        begin_entry(2, 4),
+        insert_entry(2, 5, 2),
+        prepare_entry(2, 6),
         // both incomplete
     ];
     let r = recover_run(entries);
@@ -428,8 +486,13 @@ fn r3_b05_2pc_two_tx_both_prepared() {
 fn r3_b06_2pc_split_commit() {
     // tx 1 commits, tx 2 prepared but no commit
     let entries = vec![
-        begin_entry(1, 1), insert_entry(1, 2, 1), prepare_entry(1, 3), commit_entry(1, 4),
-        begin_entry(2, 5), insert_entry(2, 6, 2), prepare_entry(2, 7),
+        begin_entry(1, 1),
+        insert_entry(1, 2, 1),
+        prepare_entry(1, 3),
+        commit_entry(1, 4),
+        begin_entry(2, 5),
+        insert_entry(2, 6, 2),
+        prepare_entry(2, 7),
     ];
     let r = recover_run(entries);
     assert_eq!(r.committed_txns, 1);
@@ -440,8 +503,14 @@ fn r3_b06_2pc_split_commit() {
 #[test]
 fn r3_b07_2pc_first_commits_second_rolls_back() {
     let entries = vec![
-        begin_entry(1, 1), insert_entry(1, 2, 1), prepare_entry(1, 3), commit_entry(1, 4),
-        begin_entry(2, 5), insert_entry(2, 6, 2), prepare_entry(2, 7), rollback_entry(2, 8),
+        begin_entry(1, 1),
+        insert_entry(1, 2, 1),
+        prepare_entry(1, 3),
+        commit_entry(1, 4),
+        begin_entry(2, 5),
+        insert_entry(2, 6, 2),
+        prepare_entry(2, 7),
+        rollback_entry(2, 8),
     ];
     let r = recover_run(entries);
     assert_eq!(r.committed_txns, 1);
@@ -464,9 +533,17 @@ fn r3_b08_prepare_without_begin() {
 fn r3_b09_2pc_3_cohorts() {
     // 3 tx all prepared; 1 commits, 1 rolls back, 1 incomplete.
     let entries = vec![
-        begin_entry(1, 1), insert_entry(1, 2, 1), prepare_entry(1, 3), commit_entry(1, 4),
-        begin_entry(2, 5), insert_entry(2, 6, 2), prepare_entry(2, 7), rollback_entry(2, 8),
-        begin_entry(3, 9), insert_entry(3, 10, 3), prepare_entry(3, 11),
+        begin_entry(1, 1),
+        insert_entry(1, 2, 1),
+        prepare_entry(1, 3),
+        commit_entry(1, 4),
+        begin_entry(2, 5),
+        insert_entry(2, 6, 2),
+        prepare_entry(2, 7),
+        rollback_entry(2, 8),
+        begin_entry(3, 9),
+        insert_entry(3, 10, 3),
+        prepare_entry(3, 11),
     ];
     let r = recover_run(entries);
     assert_eq!(r.committed_txns, 1);
@@ -478,7 +555,9 @@ fn r3_b09_2pc_3_cohorts() {
 #[test]
 fn r3_b10_2pc_with_checkpoint() {
     let entries = vec![
-        begin_entry(1, 1), insert_entry(1, 2, 1), prepare_entry(1, 3),
+        begin_entry(1, 1),
+        insert_entry(1, 2, 1),
+        prepare_entry(1, 3),
         checkpoint_entry(4),
         commit_entry(1, 5),
     ];
@@ -490,8 +569,12 @@ fn r3_b10_2pc_with_checkpoint() {
 #[test]
 fn r3_b11_prepare_with_multiple_dml() {
     let entries = vec![
-        begin_entry(1, 1), insert_entry(1, 2, 1), insert_entry(1, 3, 2),
-        insert_entry(1, 4, 3), prepare_entry(1, 5), commit_entry(1, 6),
+        begin_entry(1, 1),
+        insert_entry(1, 2, 1),
+        insert_entry(1, 3, 2),
+        insert_entry(1, 4, 3),
+        prepare_entry(1, 5),
+        commit_entry(1, 6),
     ];
     let r = recover_run(entries);
     assert_eq!(r.committed_txns, 1);
@@ -501,8 +584,14 @@ fn r3_b11_prepare_with_multiple_dml() {
 #[test]
 fn r3_b12_2pc_uneven_lsns() {
     let entries = vec![
-        begin_entry(1, 1), prepare_entry(1, 1000), insert_entry(1, 1001, 1), commit_entry(1, 2000),
-        begin_entry(2, 3000), insert_entry(2, 3001, 2), prepare_entry(2, 9999), rollback_entry(2, 10000),
+        begin_entry(1, 1),
+        prepare_entry(1, 1000),
+        insert_entry(1, 1001, 1),
+        commit_entry(1, 2000),
+        begin_entry(2, 3000),
+        insert_entry(2, 3001, 2),
+        prepare_entry(2, 9999),
+        rollback_entry(2, 10000),
     ];
     let r = recover_run(entries);
     assert_eq!(r.committed_txns, 1);
@@ -519,7 +608,10 @@ fn r3_c01_duplicate_insert_same_pk_in_one_tx() {
     // Single tx inserts id=1 twice then commits. force_insert
     // dedupes the second.
     let entries = vec![
-        begin_entry(1, 1), insert_entry(1, 2, 1), insert_entry(1, 3, 1), commit_entry(1, 4),
+        begin_entry(1, 1),
+        insert_entry(1, 2, 1),
+        insert_entry(1, 3, 1),
+        commit_entry(1, 4),
     ];
     let r = recover_run(entries);
     assert_eq!(r.committed_txns, 1);
@@ -531,8 +623,12 @@ fn r3_c01_duplicate_insert_same_pk_in_one_tx() {
 fn r3_c02_duplicate_insert_across_two_committed_tx() {
     // tx 1 and tx 2 both insert id=1 and commit. Dedup applies.
     let entries = vec![
-        begin_entry(1, 1), insert_entry(1, 2, 1), commit_entry(1, 3),
-        begin_entry(2, 4), insert_entry(2, 5, 1), commit_entry(2, 6),
+        begin_entry(1, 1),
+        insert_entry(1, 2, 1),
+        commit_entry(1, 3),
+        begin_entry(2, 4),
+        insert_entry(2, 5, 1),
+        commit_entry(2, 6),
     ];
     let r = recover_run(entries);
     assert_eq!(r.committed_txns, 2);
@@ -543,7 +639,9 @@ fn r3_c02_duplicate_insert_across_two_committed_tx() {
 fn r3_c03_delete_nonexistent_row() {
     // DELETE id=999 (never inserted) then commit. Should be a no-op.
     let entries = vec![
-        begin_entry(1, 1), delete_entry(1, 2, 999), commit_entry(1, 3),
+        begin_entry(1, 1),
+        delete_entry(1, 2, 999),
+        commit_entry(1, 3),
     ];
     let r = recover_run(entries);
     assert_eq!(r.committed_txns, 1);
@@ -554,8 +652,10 @@ fn r3_c03_delete_nonexistent_row() {
 #[test]
 fn r3_c04_delete_same_row_twice_in_tx() {
     let entries = vec![
-        begin_entry(1, 1), insert_entry(1, 2, 1),
-        delete_entry(1, 3, 1), delete_entry(1, 4, 1),
+        begin_entry(1, 1),
+        insert_entry(1, 2, 1),
+        delete_entry(1, 3, 1),
+        delete_entry(1, 4, 1),
         commit_entry(1, 5),
     ];
     let r = recover_run(entries);
@@ -568,8 +668,10 @@ fn r3_c04_delete_same_row_twice_in_tx() {
 fn r3_c05_insert_then_delete_then_insert_same_id() {
     // id=1: inserted, deleted, inserted again — net 1 row in storage.
     let entries = vec![
-        begin_entry(1, 1), insert_entry(1, 2, 1),
-        delete_entry(1, 3, 1), insert_entry(1, 4, 1),
+        begin_entry(1, 1),
+        insert_entry(1, 2, 1),
+        delete_entry(1, 3, 1),
+        insert_entry(1, 4, 1),
         commit_entry(1, 5),
     ];
     let r = recover_run(entries);
@@ -582,7 +684,9 @@ fn r3_c05_insert_then_delete_then_insert_same_id() {
 fn r3_c06_rollback_after_duplicate_insert() {
     // Both inserts of id=1 then rollback. Storage should be empty.
     let entries = vec![
-        begin_entry(1, 1), insert_entry(1, 2, 1), insert_entry(1, 3, 1),
+        begin_entry(1, 1),
+        insert_entry(1, 2, 1),
+        insert_entry(1, 3, 1),
         rollback_entry(1, 4),
     ];
     let r = recover_run(entries);
@@ -607,8 +711,13 @@ fn r3_c07_many_distinct_ids_in_one_tx() {
 fn r3_c08_delete_id_then_insert_same_id_in_other_tx() {
     // tx 1: insert+delete id=1, commit. tx 2: insert id=1, commit.
     let entries = vec![
-        begin_entry(1, 1), insert_entry(1, 2, 1), delete_entry(1, 3, 1), commit_entry(1, 4),
-        begin_entry(2, 5), insert_entry(2, 6, 1), commit_entry(2, 7),
+        begin_entry(1, 1),
+        insert_entry(1, 2, 1),
+        delete_entry(1, 3, 1),
+        commit_entry(1, 4),
+        begin_entry(2, 5),
+        insert_entry(2, 6, 1),
+        commit_entry(2, 7),
     ];
     let r = recover_run(entries);
     assert_eq!(r.committed_txns, 2);
@@ -618,9 +727,7 @@ fn r3_c08_delete_id_then_insert_same_id_in_other_tx() {
 
 #[test]
 fn r3_c09_insert_with_zero_id() {
-    let entries = vec![
-        begin_entry(1, 1), insert_entry(1, 2, 0), commit_entry(1, 3),
-    ];
+    let entries = vec![begin_entry(1, 1), insert_entry(1, 2, 0), commit_entry(1, 3)];
     let r = recover_run(entries);
     assert_eq!(r.committed_txns, 1);
     assert_eq!(r.rows_inserted, 1);
@@ -629,7 +736,9 @@ fn r3_c09_insert_with_zero_id() {
 #[test]
 fn r3_c10_insert_with_negative_id() {
     let entries = vec![
-        begin_entry(1, 1), insert_entry(1, 2, -42), commit_entry(1, 3),
+        begin_entry(1, 1),
+        insert_entry(1, 2, -42),
+        commit_entry(1, 3),
     ];
     let r = recover_run(entries);
     assert_eq!(r.committed_txns, 1);
@@ -681,10 +790,7 @@ fn r3_d02_lsn_zero() {
 
 #[test]
 fn r3_d03_lsn_max_u64() {
-    let entries = vec![
-        begin_entry(1, u64::MAX - 1),
-        commit_entry(1, u64::MAX),
-    ];
+    let entries = vec![begin_entry(1, u64::MAX - 1), commit_entry(1, u64::MAX)];
     let r = recover_run(entries);
     assert_eq!(r.committed_txns, 1);
 }
@@ -753,7 +859,9 @@ fn r3_d10_single_entry_prepare_only() {
 #[test]
 fn r3_d11_huge_tx_id() {
     let entries = vec![
-        begin_entry(u64::MAX, 1), insert_entry(u64::MAX, 2, 1), commit_entry(u64::MAX, 3),
+        begin_entry(u64::MAX, 1),
+        insert_entry(u64::MAX, 2, 1),
+        commit_entry(u64::MAX, 3),
     ];
     let r = recover_run(entries);
     assert_eq!(r.committed_txns, 1);
@@ -765,8 +873,10 @@ fn r3_d12_consecutive_commits_5() {
     let mut entries = Vec::new();
     let mut lsn = 1;
     for tx in 1..=5 {
-        entries.push(begin_entry(tx, lsn)); lsn += 1;
-        entries.push(commit_entry(tx, lsn)); lsn += 1;
+        entries.push(begin_entry(tx, lsn));
+        lsn += 1;
+        entries.push(commit_entry(tx, lsn));
+        lsn += 1;
     }
     let r = recover_run(entries);
     assert_eq!(r.committed_txns, 5);
