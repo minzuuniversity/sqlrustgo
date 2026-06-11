@@ -509,6 +509,10 @@ path = "tests/int3_single_expression_test.rs"
 [[test]]
 name = "int3_mixed_scenario_test"
 path = "tests/integration/int3_mixed_scenario_test.rs"
+# INT-2 (#3270) — MySQL server restart persistence (DDL/DML survive drop+restart)
+[[test]]
+name = "int2_mysql_server_persistence_test"
+path = "tests/integration/int2_mysql_server_persistence_test.rs"
 # SEM-1 (#3172) — Savepoint
 [[test]]
 name = "sem1_savepoint_test"
