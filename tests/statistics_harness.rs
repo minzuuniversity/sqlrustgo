@@ -123,7 +123,9 @@ impl MockTableStats {
     }
 
     pub fn estimate_selectivity(&self, column: &str) -> f64 {
-        self.column(column).map(|c| c.eq_selectivity()).unwrap_or(1.0)
+        self.column(column)
+            .map(|c| c.eq_selectivity())
+            .unwrap_or(1.0)
     }
 }
 
