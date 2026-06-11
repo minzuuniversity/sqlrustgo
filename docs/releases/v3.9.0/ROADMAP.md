@@ -4,8 +4,24 @@
 
 > **配套文档**: `README.md` (入口) / `plans/V390_VERSION_PLAN.md` (战略) / `plans/V390_DEVELOPMENT_PLAN.md` (任务) / `plans/V390_TEST_PLAN.md` (测试)
 > **创建日期**: 2026-06-05
-> **GA 目标**: 2026-09-23 (at risk, 调整后 22-26 周, 参考 RC3_PLAN.md)
-> **当前阶段**: Phase 6 收口 (form-only) → RC3 待启动
+> **GA 目标**: **2026-12-15 (回退至 RC3, Hermes 2026-06-12 审计)**
+> **当前阶段**: **RC3 P0 cut 待启动** (回退 2026-06-12)
+> **关键决策**: 见 [Hermes 审计 #3252](http://192.168.0.250:3000/openclaw/sqlrustgo/issues/3252) — 真实生产级覆盖率仅 ~35%, 推迟 GA 3 月
+
+**RC3 启动条件** (Hermes 审计 11 critical-path items):
+
+- [ ] **SGL-005 fix**: 0 production storage bypasses (当前 2: local_executor.rs:1630/1691)
+- [ ] **check_rc_ga_gate.sh** 包含 D7 reliability (G6-G10 gate scripts)
+- [ ] **6 Sprint 5 v2 残余 TPC-H 差异** (#3238 Q3, #3239 Q8, #3240 Q10, #3241 Q17, #3242 Q18, #3243 Q21) — 全部 CLOSED
+- [ ] **#3223 storage-layer tx tracking** (issue #2870 修 + unignore 9 tx_wal re tests)
+- [ ] **#3230 unignore 8 tpch_wire_smoke_sf tests** (value-correctness gate)
+- [ ] **#3231 TPC-H 22/22 SHA-256 baseline** (real, replace placeholder)
+- [ ] **#3228 unignore 10 long_run_stability tests** (>1h wall-clock)
+- [ ] **#3225 真实 24h/72h wall-clock soak** on Z6G4 (not simulated)
+- [ ] **#3229 真实 168h wall-clock soak** (GA-final blocker)
+- [ ] **#3224 Z6G4 真实 perf 测量** + 填 PERFORMANCE_BASELINE.md
+
+**完整审计报告**: `/tmp/v390_audit_report.md` (本地路径)
 
 ---
 
