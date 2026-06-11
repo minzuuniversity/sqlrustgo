@@ -26,7 +26,6 @@ use std::time::{Duration, Instant};
 use sqlrustgo::{ExecutionEngine, MemoryStorage};
 use std::sync::RwLock;
 
-
 /// TPC-H Q1 (simplified for the integration test) — single-table aggregation
 const TPC_H_Q1: &str = "
 SELECT l_returnflag, l_linestatus, COUNT(*), SUM(l_quantity), AVG(l_quantity)
