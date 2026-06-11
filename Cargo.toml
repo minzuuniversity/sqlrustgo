@@ -513,6 +513,10 @@ path = "tests/integration/int3_mixed_scenario_test.rs"
 [[test]]
 name = "int2_mysql_server_persistence_test"
 path = "tests/integration/int2_mysql_server_persistence_test.rs"
+# INT-2 (#3270) — Cross-version upgrade (synthetic v3.8.0 file format readable by v3.9.0)
+[[test]]
+name = "int2_cross_version_upgrade_test"
+path = "tests/integration/int2_cross_version_upgrade_test.rs"
 # SEM-1 (#3172) — Savepoint
 [[test]]
 name = "sem1_savepoint_test"
