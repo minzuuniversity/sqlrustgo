@@ -24,7 +24,9 @@
 
 mod four_way_harness;
 
-use four_way_harness::{default_data_dir, run_psql_sql, run_mysql_sql, Engine, QueryResult, TABLE_COLS};
+use four_way_harness::{
+    default_data_dir, run_mysql_sql, run_psql_sql, Engine, QueryResult, TABLE_COLS,
+};
 use std::collections::BTreeMap;
 use std::fs;
 use std::io::Write;
@@ -54,7 +56,10 @@ fn normalize_sqlrustgo_cell(s: &str) -> String {
     if s == "Null" || s == "Null()" {
         return String::new();
     }
-    if let Some(inner) = s.strip_prefix("Text(\"").and_then(|x| x.strip_suffix("\")")) {
+    if let Some(inner) = s
+        .strip_prefix("Text(\"")
+        .and_then(|x| x.strip_suffix("\")"))
+    {
         return inner.replace("\\\"", "\"").replace("\\\\", "\\");
     }
     if let Some(inner) = s.strip_prefix("Integer(").and_then(|x| x.strip_suffix(")")) {
@@ -165,7 +170,10 @@ fn run_sqlite_queries(queries: &[(u8, String)], data_dir: &Path) -> BTreeMap<u8,
     out
 }
 
-fn run_sqlrustgo_queries(queries: &[(u8, String)], data_dir: &Path) -> BTreeMap<u8, Vec<Vec<String>>> {
+fn run_sqlrustgo_queries(
+    queries: &[(u8, String)],
+    data_dir: &Path,
+) -> BTreeMap<u8, Vec<Vec<String>>> {
     use sqlrustgo::{ExecutionEngine, MemoryStorage};
     use std::sync::{Arc, RwLock};
     let mut out = BTreeMap::new();
@@ -243,10 +251,18 @@ fn diff_rows(pg: &[Vec<String>], other: &[Vec<String>]) -> (usize, Vec<SingleCel
             }
         }
     }
-    (max_diffs.saturating_sub(diffs.len()).min(sorted_pg.len().min(sorted_other.len())), diffs)
+    (
+        max_diffs
+            .saturating_sub(diffs.len())
+            .min(sorted_pg.len().min(sorted_other.len())),
+        diffs,
+    )
 }
 
-fn diff_rows_normalized(pg: &[Vec<String>], other_norm: &[Vec<String>]) -> (usize, Vec<SingleCellDiff>) {
+fn diff_rows_normalized(
+    pg: &[Vec<String>],
+    other_norm: &[Vec<String>],
+) -> (usize, Vec<SingleCellDiff>) {
     let mut sorted_pg = pg.to_vec();
     sorted_pg.sort();
     let mut sorted_other = other_norm.to_vec();
@@ -273,7 +289,12 @@ fn diff_rows_normalized(pg: &[Vec<String>], other_norm: &[Vec<String>]) -> (usiz
             }
         }
     }
-    (max_diffs.saturating_sub(diffs.len()).min(sorted_pg.len().min(sorted_other.len())), diffs)
+    (
+        max_diffs
+            .saturating_sub(diffs.len())
+            .min(sorted_pg.len().min(sorted_other.len())),
+        diffs,
+    )
 }
 
 fn compute_diffs(
@@ -382,7 +403,11 @@ fn write_json_report(
             if !d.first_mismatches.is_empty() {
                 writeln!(file, "        \"first_mismatches\": [").unwrap();
                 for (j, m) in d.first_mismatches.iter().enumerate() {
-                    let mcomma = if j < d.first_mismatches.len() - 1 { "," } else { "" };
+                    let mcomma = if j < d.first_mismatches.len() - 1 {
+                        ","
+                    } else {
+                        ""
+                    };
                     writeln!(
                         file,
                         "          {{\"row\": {}, \"column\": {}, \"expected\": {:?}, \"actual\": {:?}}}{c}",
