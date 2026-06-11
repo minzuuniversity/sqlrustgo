@@ -223,7 +223,6 @@ fn oltp_aggregation() {
     assert!(result.is_ok(), "Aggregation with HAVING should succeed");
 }
 
-
 // =====================================================================
 // G12 Sysbench OLTP Extended Tests (23 more, total 30+)
 // =====================================================================
@@ -237,7 +236,13 @@ fn oltp_range_scan_100() {
     for i in 0..100 {
         let lo = (i * 100) + 1;
         let hi = lo + 50;
-        if engine.execute(&format!("SELECT COUNT(*) FROM sbtest1 WHERE id BETWEEN {} AND {}", lo, hi)).is_ok() {
+        if engine
+            .execute(&format!(
+                "SELECT COUNT(*) FROM sbtest1 WHERE id BETWEEN {} AND {}",
+                lo, hi
+            ))
+            .is_ok()
+        {
             ok += 1;
         }
     }
@@ -252,7 +257,10 @@ fn oltp_point_select_batch_1000() {
     let mut ok = 0;
     for i in 1..=1000 {
         let id = (i % 10000) + 1;
-        if engine.execute(&format!("SELECT c FROM sbtest1 WHERE id = {}", id)).is_ok() {
+        if engine
+            .execute(&format!("SELECT c FROM sbtest1 WHERE id = {}", id))
+            .is_ok()
+        {
             ok += 1;
         }
     }
@@ -267,7 +275,10 @@ fn oltp_secondary_index_scan_500() {
     let mut ok = 0;
     for i in 0..500 {
         let k = i % 1000;
-        if engine.execute(&format!("SELECT id FROM sbtest1 WHERE k = {}", k)).is_ok() {
+        if engine
+            .execute(&format!("SELECT id FROM sbtest1 WHERE k = {}", k))
+            .is_ok()
+        {
             ok += 1;
         }
     }
@@ -282,7 +293,10 @@ fn oltp_update_by_id_200() {
     let mut ok = 0;
     for i in 1..=200 {
         let id = (i % 10000) + 1;
-        if engine.execute(&format!("UPDATE sbtest1 SET k = {} WHERE id = {}", i, id)).is_ok() {
+        if engine
+            .execute(&format!("UPDATE sbtest1 SET k = {} WHERE id = {}", i, id))
+            .is_ok()
+        {
             ok += 1;
         }
     }
@@ -296,7 +310,10 @@ fn oltp_delete_by_id_100() {
     setup_sbtest(&mut engine);
     let mut ok = 0;
     for i in 1..=100 {
-        if engine.execute(&format!("DELETE FROM sbtest1 WHERE id = {}", i)).is_ok() {
+        if engine
+            .execute(&format!("DELETE FROM sbtest1 WHERE id = {}", i))
+            .is_ok()
+        {
             ok += 1;
         }
     }
@@ -365,7 +382,13 @@ fn oltp_group_by_k_20() {
     let mut ok = 0;
     for i in 0..20 {
         let offset = i * 50;
-        if engine.execute(&format!("SELECT k, COUNT(*) FROM sbtest1 WHERE k > {} GROUP BY k LIMIT 5", offset)).is_ok() {
+        if engine
+            .execute(&format!(
+                "SELECT k, COUNT(*) FROM sbtest1 WHERE k > {} GROUP BY k LIMIT 5",
+                offset
+            ))
+            .is_ok()
+        {
             ok += 1;
         }
     }
@@ -378,7 +401,10 @@ fn oltp_order_by_50() {
     setup_sbtest(&mut engine);
     let mut ok = 0;
     for _ in 0..50 {
-        if engine.execute("SELECT id, k FROM sbtest1 ORDER BY k LIMIT 10").is_ok() {
+        if engine
+            .execute("SELECT id, k FROM sbtest1 ORDER BY k LIMIT 10")
+            .is_ok()
+        {
             ok += 1;
         }
     }
@@ -391,7 +417,10 @@ fn oltp_distinct_20() {
     setup_sbtest(&mut engine);
     let mut ok = 0;
     for _ in 0..20 {
-        if engine.execute("SELECT DISTINCT k FROM sbtest1 LIMIT 100").is_ok() {
+        if engine
+            .execute("SELECT DISTINCT k FROM sbtest1 LIMIT 100")
+            .is_ok()
+        {
             ok += 1;
         }
     }
@@ -408,7 +437,10 @@ fn oltp_concurrent_point_select_4_threads() {
     for tid in 0..4 {
         for i in 0..200 {
             let id = (tid * 250 + i) % 10000 + 1;
-            if engine.execute(&format!("SELECT c FROM sbtest1 WHERE id = {}", id)).is_ok() {
+            if engine
+                .execute(&format!("SELECT c FROM sbtest1 WHERE id = {}", id))
+                .is_ok()
+            {
                 total_ok += 1;
             }
         }
@@ -428,13 +460,19 @@ fn oltp_concurrent_mixed_4_threads() {
             if op < 3 {
                 // SELECT
                 let id = (tid * 250 + i) % 10000 + 1;
-                if engine.execute(&format!("SELECT c FROM sbtest1 WHERE id = {}", id)).is_ok() {
+                if engine
+                    .execute(&format!("SELECT c FROM sbtest1 WHERE id = {}", id))
+                    .is_ok()
+                {
                     total_ok += 1;
                 }
             } else {
                 // UPDATE
                 let id = (tid * 250 + i) % 10000 + 1;
-                if engine.execute(&format!("UPDATE sbtest1 SET k = {} WHERE id = {}", i, id)).is_ok() {
+                if engine
+                    .execute(&format!("UPDATE sbtest1 SET k = {} WHERE id = {}", i, id))
+                    .is_ok()
+                {
                     total_ok += 1;
                 }
             }
@@ -461,7 +499,10 @@ fn oltp_count_with_filter_50() {
     let mut ok = 0;
     for i in 0..50 {
         let k = i * 20;
-        if engine.execute(&format!("SELECT COUNT(*) FROM sbtest1 WHERE k < {}", k)).is_ok() {
+        if engine
+            .execute(&format!("SELECT COUNT(*) FROM sbtest1 WHERE k < {}", k))
+            .is_ok()
+        {
             ok += 1;
         }
     }
@@ -475,7 +516,10 @@ fn oltp_indexed_lookup_500() {
     let mut ok = 0;
     for i in 0..500 {
         let k = i % 1000;
-        if engine.execute(&format!("SELECT COUNT(id) FROM sbtest1 WHERE k = {}", k)).is_ok() {
+        if engine
+            .execute(&format!("SELECT COUNT(id) FROM sbtest1 WHERE k = {}", k))
+            .is_ok()
+        {
             ok += 1;
         }
     }
@@ -489,7 +533,13 @@ fn oltp_varchar_like_30() {
     let mut ok = 0;
     for i in 0..30 {
         let prefix = format!("pad.{}", i * 100);
-        if engine.execute(&format!("SELECT id FROM sbtest1 WHERE c LIKE '{}%' LIMIT 5", prefix)).is_ok() {
+        if engine
+            .execute(&format!(
+                "SELECT id FROM sbtest1 WHERE c LIKE '{}%' LIMIT 5",
+                prefix
+            ))
+            .is_ok()
+        {
             ok += 1;
         }
     }
@@ -504,7 +554,13 @@ fn oltp_range_with_order_50() {
     for i in 0..50 {
         let lo = (i * 100) + 1;
         let hi = lo + 200;
-        if engine.execute(&format!("SELECT id, k FROM sbtest1 WHERE id BETWEEN {} AND {} ORDER BY id", lo, hi)).is_ok() {
+        if engine
+            .execute(&format!(
+                "SELECT id, k FROM sbtest1 WHERE id BETWEEN {} AND {} ORDER BY id",
+                lo, hi
+            ))
+            .is_ok()
+        {
             ok += 1;
         }
     }
@@ -517,7 +573,10 @@ fn oltp_aggregation_with_aliases_20() {
     setup_sbtest(&mut engine);
     let mut ok = 0;
     for _ in 0..20 {
-        if engine.execute("SELECT COUNT(*) AS total, AVG(k) AS avg_k, MAX(k) AS max_k FROM sbtest1").is_ok() {
+        if engine
+            .execute("SELECT COUNT(*) AS total, AVG(k) AS avg_k, MAX(k) AS max_k FROM sbtest1")
+            .is_ok()
+        {
             ok += 1;
         }
     }
@@ -531,7 +590,13 @@ fn oltp_subquery_count_20() {
     let mut ok = 0;
     for i in 0..20 {
         let k = i * 50;
-        if engine.execute(&format!("SELECT id FROM sbtest1 WHERE k = (SELECT MIN(k) FROM sbtest1 WHERE k >= {})", k)).is_ok() {
+        if engine
+            .execute(&format!(
+                "SELECT id FROM sbtest1 WHERE k = (SELECT MIN(k) FROM sbtest1 WHERE k >= {})",
+                k
+            ))
+            .is_ok()
+        {
             ok += 1;
         }
     }
@@ -545,11 +610,20 @@ fn oltp_insert_select_round_trip_100() {
     setup_sbtest(&mut engine);
     let mut ok = 0;
     for i in 1..=100 {
-        if engine.execute(&format!(
-            "INSERT INTO sbtest1 VALUES ({}, {}, 'new.{}', 'new{}')",
-            10000 + i, i % 100, i, i
-        )).is_ok() {
-            if engine.execute(&format!("SELECT c FROM sbtest1 WHERE id = {}", 10000 + i)).is_ok() {
+        if engine
+            .execute(&format!(
+                "INSERT INTO sbtest1 VALUES ({}, {}, 'new.{}', 'new{}')",
+                10000 + i,
+                i % 100,
+                i,
+                i
+            ))
+            .is_ok()
+        {
+            if engine
+                .execute(&format!("SELECT c FROM sbtest1 WHERE id = {}", 10000 + i))
+                .is_ok()
+            {
                 ok += 1;
             }
         }
@@ -564,7 +638,13 @@ fn oltp_batch_update_50() {
     setup_sbtest(&mut engine);
     let mut ok = 0;
     for i in 0..50 {
-        if engine.execute(&format!("UPDATE sbtest1 SET k = k + 1 WHERE k < {}", i * 20)).is_ok() {
+        if engine
+            .execute(&format!(
+                "UPDATE sbtest1 SET k = k + 1 WHERE k < {}",
+                i * 20
+            ))
+            .is_ok()
+        {
             ok += 1;
         }
     }
