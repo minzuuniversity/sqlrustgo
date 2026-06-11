@@ -22,3 +22,5 @@ CLAUDE.md
 # Server LOAD DATA side effects: .json (table metadata dumps) and .wal (WAL files) emitted into data_dir at runtime
 tests/data/tpch-sf001/*.json
 tests/data/tpch-sf001/*.wal
+tests/data/tpch-sf01/*.json
+tests/data/tpch-sf01/*.wal
