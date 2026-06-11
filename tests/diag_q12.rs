@@ -66,14 +66,19 @@ fn diag_q12_case_when() {
 
     // Step 1: count lineitem passing the date/shipmode filter
     let r1 = engine.execute("SELECT COUNT(*) FROM lineitem WHERE l_shipmode IN ('MAIL', 'SHIP') AND l_commitdate < l_receiptdate AND l_shipdate < l_commitdate AND l_receiptdate >= '1994-01-01' AND l_receiptdate < '1995-01-01'").unwrap();
-    eprintln!("Step 1: filtered lineitem count (expect ~6200): {:?}", r1.rows);
+    eprintln!(
+        "Step 1: filtered lineitem count (expect ~6200): {:?}",
+        r1.rows
+    );
 
     // Step 2: count lineitem with join
     let r2 = engine.execute("SELECT COUNT(*) FROM orders, lineitem WHERE l_orderkey = o_orderkey AND l_shipmode IN ('MAIL', 'SHIP') AND l_commitdate < l_receiptdate AND l_shipdate < l_commitdate AND l_receiptdate >= '1994-01-01' AND l_receiptdate < '1995-01-01'").unwrap();
     eprintln!("Step 2: with join count (expect ~6200): {:?}", r2.rows);
 
     // Step 3: simple CASE WHEN without join
-    let r3 = engine.execute("SELECT SUM(CASE WHEN o_orderpriority = '1-URGENT' THEN 1 ELSE 0 END) FROM orders").unwrap();
+    let r3 = engine
+        .execute("SELECT SUM(CASE WHEN o_orderpriority = '1-URGENT' THEN 1 ELSE 0 END) FROM orders")
+        .unwrap();
     eprintln!("Step 3: SUM(CASE) on orders (expect ~800): {:?}", r3.rows);
 
     // Step 4: full Q12

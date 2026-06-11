@@ -19,7 +19,11 @@ fn repro_3285_real_insert_preserves_type() {
     let r = e.execute("SELECT q FROM t").unwrap();
     let val = &r.rows[0][0];
     println!("\n  Result type: {:?}, value: {:?}", val, val);
-    assert_eq!(*val, Value::Float(100.5), "REAL preservation: expected Value::Float(100.5)");
+    assert_eq!(
+        *val,
+        Value::Float(100.5),
+        "REAL preservation: expected Value::Float(100.5)"
+    );
 }
 
 #[test]
@@ -31,7 +35,11 @@ fn repro_3285_sum_real_returns_correct_value() {
     let r = e.execute("SELECT SUM(q) FROM t").unwrap();
     let val = &r.rows[0][0];
     println!("\n  SUM result type: {:?}, value: {:?}", val, val);
-    assert_eq!(*val, Value::Float(301.0), "SUM(REAL) should preserve float type");
+    assert_eq!(
+        *val,
+        Value::Float(301.0),
+        "SUM(REAL) should preserve float type"
+    );
 }
 
 #[test]
