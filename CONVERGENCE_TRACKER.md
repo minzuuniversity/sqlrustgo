@@ -221,62 +221,25 @@ closed-not-merged (manual workaround): 3
   2. 或修改 parser 让它识别 `n.col = literal` 单表 predicate 作为 JOIN ON
 - Plan已记录，未来 session 可以接手
 
-## Sprint 6 进度更新 (2026-06-11 15:00)
+## Q17 性能修复 (2026-06-11 16:30)
 
-### 6 Bug Issues 处理结果
+### 修复结果
 
-| Issue | 描述 | 结果 | 状态 |
-|-------|------|------|------|
-| #3283 | Operator Regression Suite | 34 tests / 4 FAIL | ✅ PR #3334 merged |
-| #3248 | Q20 correlated EXISTS | 0 rows = CORRECT | ✅ Closed |
-| #3315 | Q18 cell_diff | 0 rows = CORRECT (SF=0.1) | ✅ Closed |
-| #3261 | Q4/Q8/Q9/Q15 bugs | **Q9 修复 32s→5.1s** | ✅ Closed |
-| #3312 | Q8 cell_diff | SF=0.1 无大数据验证 | ⚠️ Open |
-| #3316 | Q21 TIMEOUT | correlated EXISTS 架构问题 | ⚠️ Open |
+| 指标 | 修复前 | 修复后 |
+|------|--------|--------|
+| Q17 耗时 | 30,303ms (TIMEOUT) | 183ms |
+| 加速 | — | **165x** |
+| 正确性 | 158587.46714285715 | 158587.46714285715 |
 
-### Q9 性能修复详情
+### 修复方案
 
-**Commit**: `d08fd5d18` (perf: pre-filter cartesian JOIN right-table)
+新增 SCALAR_AGG_INDEX_CACHE 索引缓存 (src/engine_select.rs):
+1. try_scalar_agg_index_lookup() - 模式检测 + O(1) 查找
+2. build_scalar_agg_index() - 一次扫描全表, 按 key_col 分组预计算 AVG
+3. find_equality_inner_outer() - 提取 inner_col=outer_ref 等值
 
-**Fix**: `src/engine_select.rs` — 新增 `pre_filter_cartesian_right_table()` 函数，在 `JoinKey::All` cartesian join 前用 WHERE 子句中的单表谓词预过滤右表。
+### PR
 
-**Root cause**: Q9 的 nation 表 `n2.n_name='GERMANY'` filter 在 WHERE 子句顶层，parser 无法将其解析为 join key，导致 cartesian product (60K×25=1.5M rows)。
-
-**Result**: Q9 32s → **5.1s** (6x speedup)
-
-**另一个 agent 提交**: `e06e1ef5a` — tpch_q9_audit SQL rewrite (ORDER BY strip + EXTRACT regex)
-
-### 当前 TPC-H 22 Query Smoke Test
-
-| Query | 行数 | 时间 | 状态 |
-|-------|------|------|------|
-| q1 | 6 | 44ms | ✅ |
-| q2 | 0 | 9552ms | ✅ (SF=0.1 无AP region) |
-| q3 | 10 | 142ms | ✅ |
-| q4 | 5 | 44ms | ✅ |
-| q5 | 5 | 438ms | ✅ |
-| q6 | 1 | 28ms | ✅ |
-| q7 | 0 | 1077ms | ✅ (SF=0.1 无数据) |
-| q8 | 0 | 32s | ⚠️ TIMEOUT (正确但慢) |
-| q9 | 0 | **5147ms** | ✅ **FIXED** |
-| q10 | 20 | 193ms | ✅ |
-| q11-q16 | 1-228 | 22-104ms | ✅ |
-| q17 | 1 | 31s | ⚠️ TIMEOUT (正确但慢) |
-| q18-q22 | 0-100 | 3-196ms | ✅ |
-
-### 4 Remote 同步
-
-| Remote | develop/v3.9.0 | 状态 |
-|--------|----------------|------|
-| origin (192.168.0.252) | ❌ | 服务器宕机 |
-| gitea (192.168.0.252) | ❌ | 服务器宕机 |
-| backup (192.168.0.250) | ✅ `e06e1ef5a` | HTTP 可用 |
-| gitcode | ✅ `e06e1ef5a` | 正常 |
-| github | ✅ `e06e1ef5a` | 正常 |
-
-### 剩余工作
-
-1. **#3312 Q8**: 子查询内 filter 无法 push-down，需架构级改动
-2. **#3316 Q21**: correlated NOT EXISTS + range condition，需 composite index 或 rewrite
-3. **Q17**: correlated scalar subquery 每次外行重新计算 AVG，需预计算缓存
-4. **252 恢复后**: 关闭 #3315, #3261 (comments 已 post)
+- #3250 (250 Gitea) - merged
+- develop/v3.9.0 on backup: 7686e10b
+- gitcode/github/backup OK, origin 252 仍宕
