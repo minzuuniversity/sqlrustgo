@@ -70,7 +70,10 @@ fn diag_q11_having() {
 
     // Step 2: GROUP BY (no HAVING)
     let r2 = engine.execute("SELECT ps_partkey, SUM(ps_supplycost * ps_availqty) AS part_value FROM partsupp, supplier, nation WHERE ps_suppkey = s_suppkey AND s_nationkey = n_nationkey AND n_name = 'GERMANY' GROUP BY ps_partkey").unwrap();
-    eprintln!("Step 2: with GROUP BY (expect 1060 groups): {}", r2.rows.len());
+    eprintln!(
+        "Step 2: with GROUP BY (expect 1060 groups): {}",
+        r2.rows.len()
+    );
 
     // Step 3: with HAVING
     let r3 = engine.execute("SELECT ps_partkey FROM partsupp, supplier, nation WHERE ps_suppkey = s_suppkey AND s_nationkey = n_nationkey AND n_name = 'GERMANY' GROUP BY ps_partkey HAVING SUM(ps_supplycost * ps_availqty) > 10000").unwrap();
