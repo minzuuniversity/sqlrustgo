@@ -1,5 +1,34 @@
 //! TPC-H 22 audit on **SF=0.01** canonical fixture (in-process).
 //! Compare sqlrustgo row counts to SQLite ground truth.
+//!
+//! ## Fixture path refresh (v3.9.0, branch fix/q13-not-in-subquery)
+//!
+//! Originally this audit pointed at `/tmp/tpch_3way_sf001/clean` — a
+//! one-shot Sprint 5 v8 staging directory that has since been cleaned up.
+//! The replacement lives in the worktree:
+//!
+//! - `tests/data/tpch-sf01/` — 8 `.tbl` files for region/nation/supplier/
+//!   customer/part/partsupp/orders/lineitem (lineitem ≈ 60 000 rows,
+//!   SF=0.01 canonical — see commit `044338ff`).
+//!
+//! The companion SQLite ground-truth DB at `/tmp/tpch_3way_sf001.db` was
+//! likewise rebuilt from the same `.tbl` files (Python loader) and is
+//! reused as `/tmp/tpch_sf01_audit.db`.
+//!
+//! To regenerate the SQLite baseline if it is missing:
+//!
+//! ```text
+//! python3 scripts/dev/build_tpch_sf01_sqlite.py
+//! ```
+//!
+//! ## Q9 hang fix (commit 3e7d5e56)
+//!
+//! The 6-table join in Q9 used to hang for 30+ minutes at SF=0.01 because
+//! RIGHT/FULL join bookkeeping did an O(N) `Vec::position(...)` per match
+//! in `execute_single_join`. The fix stores the row index alongside the
+//! `&Vec<Value>` in the right-side hashmap (see `src/engine_select.rs`
+//! around line 1346), turning the bookkeeping into O(1) per match and
+//! letting Q9 complete in <1 s on SF=0.01 (lineitem=60K).
 
 use sqlrustgo::{ExecutionEngine, MemoryStorage, StorageEngine};
 use sqlrustgo_types::Value as SqlValue;
@@ -8,8 +37,22 @@ use std::path::PathBuf;
 use std::process::Command;
 use std::sync::{Arc, RwLock};
 
-const FIXTURE_DIR: &str = "/tmp/tpch_3way_sf001/clean";
+/// SF=0.01 canonical fixture directory (60 000 lineitem rows).
+///
+/// Resolved relative to the manifest dir at test time so this test is
+/// independent of the developer machine layout.
+const FIXTURE_DIR_RELATIVE: &str = "tests/data/tpch-sf01";
+
+/// SQLite ground-truth database rebuilt from the same `.tbl` files.
+const SQLITE_BASELINE_DB: &str = "/tmp/tpch_sf01_audit.db";
+
 const QUERIES_DIR: &str = "/home/ai/sqlrustgo/queries";
+
+fn fixture_dir() -> PathBuf {
+    // CARGO_MANIFEST_DIR points at the worktree root for integration tests
+    // (tests/*.rs), which is where `tests/data/tpch-sf01/` lives.
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(FIXTURE_DIR_RELATIVE)
+}
 
 const SCHEMA_SQL: &[&str] = &[
     "CREATE TABLE region (r_regionkey INTEGER PRIMARY KEY, r_name TEXT NOT NULL, r_comment TEXT)",
@@ -83,7 +126,7 @@ fn load_tbl_file(
 }
 
 #[test]
-fn test_tpch_22_inprocess_sf001() {
+fn test_tpch_22_inprocess_sf01() {
     eprintln!("\n=== TPC-H 22 in-process audit (SF=0.01, AFTER Q9 O(1) hash fix) ===\n");
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));
     let mut engine = ExecutionEngine::new(storage.clone());
@@ -95,7 +138,7 @@ fn test_tpch_22_inprocess_sf001() {
     }
     eprintln!("  Schema created ({} tables)", SCHEMA_SQL.len());
 
-    let base = PathBuf::from(FIXTURE_DIR);
+    let base = fixture_dir();
     let mut total_rows = 0usize;
     for tbl in TABLES {
         let tbl_path = base.join(format!("{}.tbl", tbl));
@@ -121,16 +164,42 @@ fn test_tpch_22_inprocess_sf001() {
         let sql = sql.trim().trim_end_matches(';');
 
         // SQLite ground truth
+        // Strip the trailing `ORDER BY ...` clause from the SQL before
+        // wrapping in `SELECT COUNT(*) FROM (...) sub`. ORDER BY in a
+        // subquery is a no-op for row count anyway, but SQLite's parser
+        // rejects nested `(SELECT ... ORDER BY) sub` with a syntax
+        // error. Engine wrapper tolerates ORDER BY, but we want the
+        // SQLite baseline to succeed.
+        let sql_no_order = sql
+            .rsplit_once("ORDER BY")
+            .map(|(head, _)| head.trim().trim_end_matches(';'))
+            .unwrap_or(sql);
+        // `EXTRACT(YEAR FROM X) [AS Y]` → `CAST(strftime('%Y', X) AS INTEGER) [AS Y]`.
+        // This handles both the SELECT projection (with alias) and any
+        // GROUP BY (often without alias — SQLite doesn't accept EXTRACT
+        // at all, so we must rewrite it everywhere it appears).
         let sqlite_sql = if q == 7 || q == 8 || q == 9 {
-            sql.replace("EXTRACT(YEAR FROM ", "CAST(strftime('%Y', ")
-                .replace(") AS o_year", ") AS INTEGER) AS o_year")
-                .replace(") AS l_year", ") AS INTEGER) AS l_year")
+            let re_extract =
+                regex::Regex::new(r"EXTRACT\(YEAR FROM ([^)]+)\)(?: AS (\w+))?").unwrap();
+            re_extract
+                .replace_all(&sql_no_order, |caps: &regex::Captures| {
+                    let col = caps.get(1).unwrap().as_str();
+                    match caps.get(2) {
+                        Some(alias) => format!(
+                            "CAST(strftime('%Y', {}) AS INTEGER) AS {}",
+                            col,
+                            alias.as_str()
+                        ),
+                        None => format!("CAST(strftime('%Y', {}) AS INTEGER)", col),
+                    }
+                })
+                .to_string()
         } else {
-            sql.to_string()
+            sql_no_order.to_string()
         };
         let sqlite_out = Command::new("sqlite3")
             .args([
-                "/tmp/tpch_3way_sf001.db",
+                SQLITE_BASELINE_DB,
                 &format!("SELECT COUNT(*) FROM ({}) sub", sqlite_sql),
             ])
             .output()
