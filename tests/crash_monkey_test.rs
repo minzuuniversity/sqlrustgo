@@ -241,7 +241,10 @@ fn crash_monkey_smoke_100_iterations() {
             "ep {ep}: committed({committed}) > completed({completed})"
         );
         // Storage row count is bounded by completed INSERTs.
-        assert!(rows <= 10_000, "ep {ep}: row count {rows} unreasonably large");
+        assert!(
+            rows <= 10_000,
+            "ep {ep}: row count {rows} unreasonably large"
+        );
     }
 }
 
