@@ -294,3 +294,39 @@ closed-not-merged (manual workaround): 3
 - Q8/Q21 fix: `69a13472a` (PR #3341 on 252 / #3251 on 250)
 - Q21 predicate pushdown (better fix): `31afb6dce` (PR #3342 on 252)
 - Q9 fix: `d08fd5d18` (PR #3249 / #3334)
+
+## Sprint 7 进展 (2026-06-11)
+
+### 6 P0 GA Gates 状态
+
+| Gate | 状态 | 备注 |
+|------|------|------|
+| **G1 TPC-H 22/22 保持** | ✅ PASS | 22/22 on real TPC-H data, 21/22 on stub 4-part data (Q2 timeout, data char) |
+| **G2 INT-2 ParallelExecutor** | ✅ PASS | #3199 merged |
+| **G3 INT-3 Single Expression** | ✅ PASS | #3335 merged (refactor p0-2) |
+| **G4 ARCH-3 Complete** | ✅ PASS | legacy |
+| **G5 SEM-1 Savepoint** | ✅ PASS | legacy |
+| **G6 Backup/Restore** | ✅ PASS | legacy |
+| **G7 24h Soak 压缩** | ✅ PASS | 10/10 unit tests, 3-level equivalence verified |
+| **G8 Crash Matrix** | 🟡 pending | Sprint 8 |
+| **G9 Upgrade** | 🟡 pending | Sprint 8 |
+| **G10 Audit Log** | 🟡 pending | Sprint 8 |
+| G11-G15 Perf/Sysbench/Stability/Real-Crash/Report | 🟡 RC/GA 前 |
+
+### Q18 调查结论 (issue #3315)
+
+**不是 bug，是数据特性。** Q18 SQL `HAVING SUM(l_quantity) > 300`，但测试数据 `/tmp/tpch_sf01_v2/` max SUM per order = **197**（4 lineitems × ~49）。0 orders 满足阈值 → 0 rows 是正确结果。
+
+DuckDB dbgen 在 SF=0.1 上 max SUM = 312（不同生成器）。要真正验证 Q18 的 5-table JOIN + 100-row sort bug，需要：
+1. SF=1+ fixture（orders 有更多 lineitems）
+2. 或匹配 dbgen 的生成器
+
+Issue #3315 留 open，分类为 P3 / future-sprint。
+
+### Gate script cargo PATH fix (3 scripts)
+
+- `scripts/gate/check_p13_soak_test.sh` (G7)
+- `scripts/gate/check_g13_stability.sh` (G13)
+- `scripts/gate/check_g1_tpch_22_22.sh` (G1)
+
+修复：CI runner 通常只有 `$HOME/.cargo/bin/cargo`，添加到 PATH if missing。
