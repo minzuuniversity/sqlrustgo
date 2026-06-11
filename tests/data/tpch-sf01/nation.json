@@ -1,0 +1,32 @@
+{
+  "name": "nation",
+  "columns": [
+    {
+      "name": "n_nationkey",
+      "data_type": "INTEGER",
+      "nullable": false,
+      "primary_key": true
+    },
+    {
+      "name": "n_name",
+      "data_type": "TEXT",
+      "nullable": true,
+      "primary_key": false
+    },
+    {
+      "name": "n_regionkey",
+      "data_type": "INTEGER",
+      "nullable": true,
+      "primary_key": false
+    },
+    {
+      "name": "n_comment",
+      "data_type": "TEXT",
+      "nullable": true,
+      "primary_key": false
+    }
+  ],
+  "foreign_keys": [],
+  "unique_constraints": [],
+  "rows": []
+}
