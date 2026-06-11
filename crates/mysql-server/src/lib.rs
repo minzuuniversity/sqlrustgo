@@ -925,7 +925,13 @@ fn send_result_set<W: Write>(
         )?;
         seq = seq.wrapping_add(1);
     }
-    if cap & capability::DEPRECATE_EOF == 0 {
+    // Always send inter-record EOF (classic protocol). The conditional
+    // (cap & DEPRECATE_EOF) was omitting the EOF when the client advertised
+    // the new protocol, but mysql CLI 8.0.46 + libmysqlclient 8.0.46
+    // still expect the EOF packet. Forcing classic EOF here is the minimal
+    // correct behavior; the new protocol path can be re-introduced once
+    // the client has caught up. See .hermes/SET_NAMES_DIAGNOSIS.md.
+    {
         make_eof_packet(seq, 0x0002).write_to(w)?;
         seq = seq.wrapping_add(1);
     }
@@ -1681,7 +1687,15 @@ fn do_command_loop<S: Read + Write>(
         let payload = &pkt.payload[1..];
         seq = pkt.sequence.wrapping_add(1);
         match cmd {
-            packet_type::COM_QUIT => break,
+            packet_type::COM_QUIT => {
+                // MySQL wire protocol: server MUST send OK packet on COM_QUIT
+                // before closing the connection, so the client can release
+                // its read() and exit cleanly. Without this, mysql CLI and
+                // pymysql hang in recv() after sending COM_QUIT (Issue #SET-NAMES-HANG).
+                make_ok_packet(seq, 0, 0, 0x0002, 0).write_to(stream)?;
+                seq = seq.wrapping_add(1);
+                break;
+            }
             packet_type::COM_PING => {
                 make_ok_packet(seq, 0, 0, 0x0002, 0).write_to(stream)?;
                 seq = seq.wrapping_add(1);
@@ -2263,9 +2277,38 @@ pub(crate) fn run_server_with_listener_and_shutdown_with_bootstrap_tables_and_sq
             std::env::temp_dir().join(format!("sqlrustgo_wal_{}", listener.local_addr()?.port()))
         }
     };
-    let file_storage =
+    let mut file_storage =
         FileStorage::new_with_wal(wal_data_dir.clone()).map_err(std::io::Error::other)?;
     let wal_path = wal_data_dir.join("sqlrustgo.wal");
+    // INT-2 (#3270 partial): replay any uncommitted WAL entries from
+    // the previous process lifetime so DML/DDL that was journaled but
+    // not yet flushed to FileStorage's persisted table files is
+    // restored on restart. The recovery engine walks the WAL from the
+    // last checkpoint, applies each committed entry to the inner
+    // FileStorage, then we flush so a subsequent restart does not
+    // re-apply the same entries.
+    {
+        use sqlrustgo_storage::recovery_engine::{RecoveryEngine, StatefulRecoveryEngine};
+        let mut recovery: StatefulRecoveryEngine<FileStorage> = StatefulRecoveryEngine::new();
+        let mut wal_manager_for_recovery = FileBackedWalManager::new(wal_path.clone())
+            .map_err(|e| MySqlError::Sql(format!("WAL manager (recovery) init failed: {}", e)))?;
+        match recovery.recover(&mut file_storage, &mut wal_manager_for_recovery) {
+            Ok(report) => {
+                tracing::info!(
+                    "WAL recovery: total={} committed_txns={} rows_inserted={} rows_updated={} rows_deleted={}",
+                    report.entries_total,
+                    report.committed_txns,
+                    report.rows_inserted,
+                    report.rows_updated,
+                    report.rows_deleted
+                );
+                let _ = file_storage.flush();
+            }
+            Err(e) => {
+                tracing::warn!("WAL recovery skipped: {}", e);
+            }
+        }
+    }
     let wal_manager = FileBackedWalManager::new(wal_path)
         .map_err(|e| MySqlError::Sql(format!("WAL manager init failed: {}", e)))?;
     let wal_storage = WalStorage::new(file_storage, wal_manager)
