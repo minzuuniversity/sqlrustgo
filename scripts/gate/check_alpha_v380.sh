@@ -19,6 +19,13 @@ TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 mkdir -p "$ARTIFACTS_DIR"
 cd "$PROJECT_ROOT"
 
+# Ensure cargo is on PATH (CI runners may not have it in default PATH).
+if ! command -v cargo >/dev/null 2>&1; then
+    if [ -x "$HOME/.cargo/bin/cargo" ]; then
+        export PATH="$HOME/.cargo/bin:$PATH"
+    fi
+fi
+
 PASS=0; TOTAL=0; BLOCKERS=0
 
 # === 辅助函数 ===
