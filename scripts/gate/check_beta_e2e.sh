@@ -20,6 +20,13 @@ VERSION="${1:-v3.8.0}"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$REPO_ROOT"
 
+# Ensure cargo is on PATH (CI runners may not have it in default PATH).
+if ! command -v cargo >/dev/null 2>&1; then
+    if [ -x "$HOME/.cargo/bin/cargo" ]; then
+        export PATH="$HOME/.cargo/bin:$PATH"
+    fi
+fi
+
 MAPPING_FILE="docs/releases/${VERSION}/beta/E2E_PR_DAG_MAPPING.md"
 
 if [ ! -f "$MAPPING_FILE" ]; then
