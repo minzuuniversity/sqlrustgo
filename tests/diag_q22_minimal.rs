@@ -6,7 +6,9 @@ use sqlrustgo::{ExecutionEngine, MemoryStorage, StorageEngine};
 fn diag_q22_minimal() {
     let storage = std::sync::Arc::new(std::sync::RwLock::new(MemoryStorage::new()));
     let mut engine = ExecutionEngine::new(storage.clone());
-    engine.execute("CREATE TABLE customer (c_custkey INTEGER PRIMARY KEY, c_phone TEXT)").unwrap();
+    engine
+        .execute("CREATE TABLE customer (c_custkey INTEGER PRIMARY KEY, c_phone TEXT)")
+        .unwrap();
 
     let r = engine.execute("SELECT SUBSTR(c_phone, 1, 2) FROM customer");
     eprintln!("SUBSTR FROM: {:?}", r.err());
