@@ -22,17 +22,23 @@ fn engine() -> ExecutionEngine<MemoryStorage> {
 #[test]
 fn date_greater_equal_text_literal() {
     let mut e = engine();
-    e.execute("CREATE TABLE orders (o_orderdate TEXT, o_total INTEGER)").unwrap();
-    e.execute("INSERT INTO orders VALUES ('1993-07-01', 100)").unwrap();
-    e.execute("INSERT INTO orders VALUES ('1993-09-15', 200)").unwrap();
-    e.execute("INSERT INTO orders VALUES ('1994-01-15', 300)").unwrap();
-    e.execute("INSERT INTO orders VALUES ('1994-08-02', 400)").unwrap();
+    e.execute("CREATE TABLE orders (o_orderdate TEXT, o_total INTEGER)")
+        .unwrap();
+    e.execute("INSERT INTO orders VALUES ('1993-07-01', 100)")
+        .unwrap();
+    e.execute("INSERT INTO orders VALUES ('1993-09-15', 200)")
+        .unwrap();
+    e.execute("INSERT INTO orders VALUES ('1994-01-15', 300)")
+        .unwrap();
+    e.execute("INSERT INTO orders VALUES ('1994-08-02', 400)")
+        .unwrap();
     // Range: '1993-10-01' to '1994-01-01'
-    let r = e.execute(
-        "SELECT SUM(o_total) FROM orders \
+    let r = e
+        .execute(
+            "SELECT SUM(o_total) FROM orders \
          WHERE o_orderdate >= '1993-10-01' AND o_orderdate < '1994-01-01'",
-    )
-    .unwrap();
+        )
+        .unwrap();
     // Only 1993-09-15 (200) and 1994-01-15 (300) — wait that's outside range
     // Actually: 1993-10-01 to 1993-12-31
     // Matches: 1994-01-15? No, that's >= 1994-01-01
@@ -44,17 +50,23 @@ fn date_greater_equal_text_literal() {
 #[test]
 fn date_range_with_matches() {
     let mut e = engine();
-    e.execute("CREATE TABLE orders (o_orderdate TEXT, o_total INTEGER)").unwrap();
-    e.execute("INSERT INTO orders VALUES ('1993-07-01', 100)").unwrap();
-    e.execute("INSERT INTO orders VALUES ('1993-09-15', 200)").unwrap();
-    e.execute("INSERT INTO orders VALUES ('1994-01-15', 300)").unwrap();
-    e.execute("INSERT INTO orders VALUES ('1994-08-02', 400)").unwrap();
+    e.execute("CREATE TABLE orders (o_orderdate TEXT, o_total INTEGER)")
+        .unwrap();
+    e.execute("INSERT INTO orders VALUES ('1993-07-01', 100)")
+        .unwrap();
+    e.execute("INSERT INTO orders VALUES ('1993-09-15', 200)")
+        .unwrap();
+    e.execute("INSERT INTO orders VALUES ('1994-01-15', 300)")
+        .unwrap();
+    e.execute("INSERT INTO orders VALUES ('1994-08-02', 400)")
+        .unwrap();
     // Range: '1993-07-01' to '1994-01-01' (Q6)
-    let r = e.execute(
-        "SELECT SUM(o_total) FROM orders \
+    let r = e
+        .execute(
+            "SELECT SUM(o_total) FROM orders \
          WHERE o_orderdate >= '1993-07-01' AND o_orderdate < '1994-01-01'",
-    )
-    .unwrap();
+        )
+        .unwrap();
     // Matches: 1993-07-01 (100) + 1993-09-15 (200) = 300
     assert_eq!(r.rows[0][0].to_string(), "300");
 }
@@ -63,13 +75,15 @@ fn date_range_with_matches() {
 fn date_equality_count() {
     let mut e = engine();
     e.execute("CREATE TABLE orders (o_orderdate TEXT)").unwrap();
-    e.execute("INSERT INTO orders VALUES ('1995-03-15')").unwrap();
-    e.execute("INSERT INTO orders VALUES ('1995-03-15')").unwrap();
-    e.execute("INSERT INTO orders VALUES ('1995-04-01')").unwrap();
-    let r = e.execute(
-        "SELECT COUNT(*) FROM orders WHERE o_orderdate < '1995-03-15'",
-    )
-    .unwrap();
+    e.execute("INSERT INTO orders VALUES ('1995-03-15')")
+        .unwrap();
+    e.execute("INSERT INTO orders VALUES ('1995-03-15')")
+        .unwrap();
+    e.execute("INSERT INTO orders VALUES ('1995-04-01')")
+        .unwrap();
+    let r = e
+        .execute("SELECT COUNT(*) FROM orders WHERE o_orderdate < '1995-03-15'")
+        .unwrap();
     assert_eq!(r.rows[0][0].to_string(), "0");
 }
 
