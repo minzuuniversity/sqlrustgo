@@ -1,0 +1,17 @@
+{
+  "query": 12,
+  "row_count": 2,
+  "first_3_rows": [
+    [
+      "MAIL",
+      "35",
+      "37"
+    ],
+    [
+      "SHIP",
+      "28",
+      "59"
+    ]
+  ],
+  "sha256": "f05524b7e716e7116cbf642f56fc4467d7ae9cbd37cb40a0f33eb725beeb01f2"
+}
