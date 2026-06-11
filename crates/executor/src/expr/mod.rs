@@ -1874,7 +1874,8 @@ mod tests {
         assert_eq!(parse_lit("42"), Value::Integer(42));
         assert_eq!(parse_lit("'hello'"), Value::Text("hello".into()));
         assert_eq!(parse_lit("NULL"), Value::Null);
-        assert_eq!(parse_lit("TRUE"), Value::Integer(1));
+        assert_eq!(parse_lit("TRUE"), Value::Boolean(true));
+        assert_eq!(parse_lit("FALSE"), Value::Boolean(false));
     }
 
     #[test]
