@@ -104,7 +104,13 @@ fn make_engine() -> Option<ExecutionEngine<MemoryStorage>> {
         if let Err(e) = engine.execute(&format!(
             "INSERT INTO {tbl} VALUES {}",
             rows.iter()
-                .map(|r| format!("({})", r.iter().map(|v| format!("'{}'", v.replace('\'', "''"))).collect::<Vec<_>>().join(",")))
+                .map(|r| format!(
+                    "({})",
+                    r.iter()
+                        .map(|v| format!("'{}'", v.replace('\'', "''")))
+                        .collect::<Vec<_>>()
+                        .join(",")
+                ))
                 .collect::<Vec<_>>()
                 .join(",")
         )) {
