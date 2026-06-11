@@ -530,11 +530,31 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                                         }
                                     }
                                 }
-                                // Delete the old row and insert the updated
-                                // row in its place. Storage currently has
-                                // no per-PK update API, so we go via
-                                // delete+insert.
-                                storage.delete(&table_name, &[])?;
+                                // Delete ONLY the row whose primary key matched
+                                // the ODKU conflict (not the whole table).
+                                // Storage has no per-PK delete API; we use
+                                // delete_if with a closure that checks each
+                                // row against the existing PK columns.
+                                let pk_indices: Vec<usize> = table_info
+                                    .columns
+                                    .iter()
+                                    .enumerate()
+                                    .filter_map(|(i, c)| if c.primary_key { Some(i) } else { None })
+                                    .collect();
+                                let pk_existing: Vec<Value> = pk_indices
+                                    .iter()
+                                    .filter_map(|&i| existing.get(i).cloned())
+                                    .collect();
+                                let filter: sqlrustgo_storage::RowFilter = Box::new(move |row| {
+                                    pk_existing.iter().enumerate().all(|(pos, p)| {
+                                        pk_indices
+                                            .get(pos)
+                                            .and_then(|&i| row.get(i))
+                                            .map(|v| v == p)
+                                            .unwrap_or(false)
+                                    })
+                                });
+                                let _n = storage.delete_if(&table_name, &filter)?;
                                 storage.insert(&table_name, vec![updated])?;
                                 continue;
                             }
