@@ -49,7 +49,11 @@ mod harness {
         }
         pub fn rows_per_partition(&self) -> usize {
             let n = self.num_partitions();
-            if n == 0 { 0 } else { self.total_rows() / n }
+            if n == 0 {
+                0
+            } else {
+                self.total_rows() / n
+            }
         }
     }
 
@@ -272,7 +276,9 @@ fn test_parallel_exchange_broadcast_p3_4() {
 #[test]
 fn test_parallel_exchange_repartition_p3_4() {
     // Repartition: redistribute rows from N source partitions to M target partitions
-    let source: Vec<Vec<usize>> = (0..4).map(|i| vec![i * 10, i * 10 + 1, i * 10 + 2]).collect();
+    let source: Vec<Vec<usize>> = (0..4)
+        .map(|i| vec![i * 10, i * 10 + 1, i * 10 + 2])
+        .collect();
     let target_partitions = 3;
     let mut target: Vec<Vec<usize>> = vec![Vec::new(); target_partitions];
     for partition in &source {
@@ -287,9 +293,7 @@ fn test_parallel_exchange_repartition_p3_4() {
 #[test]
 fn test_parallel_exchange_gather_p3_4() {
     // Gather: N partitions → 1 consumer
-    let partitions: Vec<Vec<usize>> = (0..4)
-        .map(|i| vec![i * 10, i * 10 + 1])
-        .collect();
+    let partitions: Vec<Vec<usize>> = (0..4).map(|i| vec![i * 10, i * 10 + 1]).collect();
     let gathered: Vec<usize> = partitions.iter().flatten().copied().collect();
     assert_eq!(gathered.len(), 8);
     assert_eq!(gathered, vec![0, 1, 10, 11, 20, 21, 30, 31]);

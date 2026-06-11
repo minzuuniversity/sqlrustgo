@@ -128,10 +128,7 @@ impl MockMvccEngine {
 
     /// Run a time-travel query.
     pub fn query(&self, q: &TimeTravelQuery) -> TimeTravelResult {
-        let versions = self
-            .chains
-            .get(&q.table)
-            .and_then(|t| t.get(&q.key));
+        let versions = self.chains.get(&q.table).and_then(|t| t.get(&q.key));
 
         let Some(versions) = versions else {
             return TimeTravelResult {
