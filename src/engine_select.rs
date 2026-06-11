@@ -1224,8 +1224,13 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         }
 
         for join_clause in &select.join_clause {
-            let (new_rows, new_info) =
-                self.execute_single_join(&rows, &table_info, join_clause, &storage, &select.where_clause)?;
+            let (new_rows, new_info) = self.execute_single_join(
+                &rows,
+                &table_info,
+                join_clause,
+                &storage,
+                &select.where_clause,
+            )?;
             rows = new_rows;
             table_info = new_info;
         }
@@ -1261,11 +1266,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         let table_prefix = format!("{}.", right_alias);
 
         // Build set of valid column names for this table (unqualified).
-        let col_names: std::collections::HashSet<&str> = right_info
-            .columns
-            .iter()
-            .map(|c| c.name.as_str())
-            .collect();
+        let col_names: std::collections::HashSet<&str> =
+            right_info.columns.iter().map(|c| c.name.as_str()).collect();
 
         /// Returns true if this expression references ONLY the right table's columns.
         fn only_refs_right_table(expr: &E, tp: &str, cn: &std::collections::HashSet<&str>) -> bool {
@@ -1281,18 +1283,34 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                             *ok = false; // references a different table
                         }
                     }
-                    E::BinaryOp(l, _, r) => { walk(l, tp, cn, ok); walk(r, tp, cn, ok); }
+                    E::BinaryOp(l, _, r) => {
+                        walk(l, tp, cn, ok);
+                        walk(r, tp, cn, ok);
+                    }
                     E::UnaryOp(_, inner) => walk(inner, tp, cn, ok),
-                    E::Like(l, p, _) | E::NotLike(l, p, _) => { walk(l, tp, cn, ok); walk(p, tp, cn, ok); }
+                    E::Like(l, p, _) | E::NotLike(l, p, _) => {
+                        walk(l, tp, cn, ok);
+                        walk(p, tp, cn, ok);
+                    }
                     E::InList(l, vals) | E::NotInList(l, vals) => {
                         walk(l, tp, cn, ok);
-                        for v in vals { walk(v, tp, cn, ok); }
+                        for v in vals {
+                            walk(v, tp, cn, ok);
+                        }
                     }
                     E::CaseWhen(whens, else_e) => {
-                        for w in whens { walk(&w.condition, tp, cn, ok); }
-                        if let Some(e) = else_e.as_ref() { walk(e, tp, cn, ok); }
+                        for w in whens {
+                            walk(&w.condition, tp, cn, ok);
+                        }
+                        if let Some(e) = else_e.as_ref() {
+                            walk(e, tp, cn, ok);
+                        }
                     }
-                    E::FunctionCall(_, args) => { for a in args { walk(a, tp, cn, ok); } }
+                    E::FunctionCall(_, args) => {
+                        for a in args {
+                            walk(a, tp, cn, ok);
+                        }
+                    }
                     _ => {}
                 }
             }
@@ -1354,22 +1372,29 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                                 let s: &str = lit;
                                 (col, s)
                             }
-                            _ => { continue; }
+                            _ => {
+                                continue;
+                            }
                         };
 
                         // Find column index.
                         let col_idx = right_info.columns.iter().position(|c| c.name == col_name);
-                        let Some(col_idx) = col_idx else { continue; };
-                        let Some(row_val) = row.get(col_idx) else { continue; };
+                        let Some(col_idx) = col_idx else {
+                            continue;
+                        };
+                        let Some(row_val) = row.get(col_idx) else {
+                            continue;
+                        };
 
                         // Compare.
                         let matches = match (row_val, lit_str) {
                             (Value::Integer(i), s) => {
                                 s.parse::<i64>().map(|j| i == &j).unwrap_or(false)
                             }
-                            (Value::Float(f), s) => {
-                                s.parse::<f64>().map(|g| (f - g).abs() < 1e-9).unwrap_or(false)
-                            }
+                            (Value::Float(f), s) => s
+                                .parse::<f64>()
+                                .map(|g| (f - g).abs() < 1e-9)
+                                .unwrap_or(false),
                             (Value::Text(t), s) => t == s,
                             _ => false,
                         };
@@ -2466,16 +2491,11 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     has_non_correlated_in_subq(l) || has_non_correlated_in_subq(r)
                 }
                 E::UnaryOp(_, inner) => has_non_correlated_in_subq(inner),
-                E::IsNull(inner) | E::IsNotNull(inner) => {
-                    has_non_correlated_in_subq(inner)
-                }
+                E::IsNull(inner) | E::IsNotNull(inner) => has_non_correlated_in_subq(inner),
                 E::InList(l, vs) | E::NotInList(l, vs) => {
-                    has_non_correlated_in_subq(l)
-                        || vs.iter().any(has_non_correlated_in_subq)
+                    has_non_correlated_in_subq(l) || vs.iter().any(has_non_correlated_in_subq)
                 }
-                E::FunctionCall(_, args) => {
-                    args.iter().any(has_non_correlated_in_subq)
-                }
+                E::FunctionCall(_, args) => args.iter().any(has_non_correlated_in_subq),
                 _ => false,
             }
         }
@@ -2511,11 +2531,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             // Collect projection column names so an Identifier that
             // exactly matches one is recognized as an inner ref
             // even without the prefix check.
-            let projection_names: Vec<String> = subq
-                .columns
-                .iter()
-                .map(|c| c.name.clone())
-                .collect();
+            let projection_names: Vec<String> =
+                subq.columns.iter().map(|c| c.name.clone()).collect();
 
             // Walk an expression and report `true` if it contains
             // a bare `Identifier` that is neither prefixed with the
@@ -2527,22 +2544,20 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             ) -> bool {
                 match expr {
                     E::Identifier(name) => {
-                        !name.starts_with(prefix)
-                            && !projection_names.iter().any(|p| p == name)
+                        !name.starts_with(prefix) && !projection_names.iter().any(|p| p == name)
                     }
                     E::BinaryOp(l, _, r) => {
                         contains_outer_ref(l, prefix, projection_names)
                             || contains_outer_ref(r, prefix, projection_names)
                     }
-                    E::UnaryOp(_, inner) => {
-                        contains_outer_ref(inner, prefix, projection_names)
-                    }
+                    E::UnaryOp(_, inner) => contains_outer_ref(inner, prefix, projection_names),
                     E::IsNull(inner) | E::IsNotNull(inner) => {
                         contains_outer_ref(inner, prefix, projection_names)
                     }
                     E::InList(l, vs) | E::NotInList(l, vs) => {
                         contains_outer_ref(l, prefix, projection_names)
-                            || vs.iter()
+                            || vs
+                                .iter()
                                 .any(|v| contains_outer_ref(v, prefix, projection_names))
                     }
                     E::In(l, sub) | E::NotIn(l, sub) => {
@@ -2564,14 +2579,14 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                             || contains_outer_ref(lo, prefix, projection_names)
                             || contains_outer_ref(hi, prefix, projection_names)
                     }
-E::CaseWhen(whens, else_expr) => {
+                    E::CaseWhen(whens, else_expr) => {
                         whens.iter().any(|when| {
                             let (w, t) = (&when.condition, &when.result);
                             contains_outer_ref(w, prefix, projection_names)
                                 || contains_outer_ref(t, prefix, projection_names)
-                        }) || else_expr.as_ref().map_or(false, |e| {
-                            contains_outer_ref(e, prefix, projection_names)
-                        })
+                        }) || else_expr
+                            .as_ref()
+                            .map_or(false, |e| contains_outer_ref(e, prefix, projection_names))
                     }
                     _ => false,
                 }
@@ -2670,9 +2685,9 @@ E::CaseWhen(whens, else_expr) => {
                         ))
                     }
                 }
-                E::UnaryOp(op, inner) => rewrite(engine, inner).map(|n| {
-                    E::UnaryOp(op.clone(), Box::new(n))
-                }),
+                E::UnaryOp(op, inner) => {
+                    rewrite(engine, inner).map(|n| E::UnaryOp(op.clone(), Box::new(n)))
+                }
                 E::IsNull(inner) | E::IsNotNull(inner) => {
                     rewrite(engine, inner).map(|n| match expr {
                         E::IsNull(_) => E::IsNull(Box::new(n)),
@@ -2724,8 +2739,7 @@ E::CaseWhen(whens, else_expr) => {
                 }
                 E::FunctionCall(name, args) => {
                     let mut changed = false;
-                    let mut new_args: Vec<Expression> =
-                        Vec::with_capacity(args.len());
+                    let mut new_args: Vec<Expression> = Vec::with_capacity(args.len());
                     for a in args {
                         if let Some(na) = rewrite(engine, a) {
                             changed = true;
@@ -2767,7 +2781,7 @@ fn execute_subq_for_first_col<S: sqlrustgo_storage::StorageEngine + 'static>(
         .into_iter()
         .filter_map(|row| row.into_iter().next())
         .collect();
-Ok(first)
+    Ok(first)
 }
 
 /// Pre-built index for a correlated EXISTS subquery (Sprint 5 Q4
