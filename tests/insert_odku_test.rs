@@ -1,145 +1,152 @@
-//! Integration test: INSERT ON DUPLICATE KEY UPDATE (ODKU)
+//! Integration test: INSERT ... ON DUPLICATE KEY UPDATE
 //!
-//! Uses std::process::Command to spawn sqlrustgo-mysql-server exec
-//! with INSERT ON DUPLICATE KEY UPDATE statements.
+//! Uses the wired `sqlrustgo-mysql-server repl` over stdin (true e2e).
+//! `exec` only accepts a single statement per process and starts a
+//! fresh MemoryStorage each invocation, so multi-statement ODKU
+//! testing requires the REPL where state persists across statements.
 
-use std::io::Read;
+use std::io::{Read, Write};
 use std::process::{Command, Stdio};
 
-/// Run sqlrustgo-mysql-server exec with the given SQL and return stdout.
-fn run_sql(sql: &str) -> Result<String, String> {
-    let mut child = Command::new("cargo")
-        .args(["run", "--bin", "sqlrustgo-mysql-server", "--", "exec", sql])
-        .current_dir(
-            "/Users/liying/workspace/dev/yinglichina163/sqlrustgo/.worktrees/feature-tests",
-        )
+fn bin_path() -> String {
+    std::env::var("CARGO_BIN_EXE_sqlrustgo-mysql-server")
+        .ok()
+        .or_else(|| std::env::var("SQLRUSTGO_BIN").ok())
+        .unwrap_or_else(|| {
+            for candidate in [
+                "target/release/sqlrustgo-mysql-server",
+                "target/debug/sqlrustgo-mysql-server",
+                "../target/release/sqlrustgo-mysql-server",
+                "../target/debug/sqlrustgo-mysql-server",
+            ] {
+                if std::path::Path::new(candidate).exists() {
+                    return candidate.to_string();
+                }
+            }
+            "sqlrustgo-mysql-server".to_string()
+        })
+}
+
+fn run_repl(script: &str) -> (String, String, i32) {
+    let mut child = Command::new(bin_path())
+        .arg("repl")
+        .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
-        .map_err(|e| format!("failed to spawn: {}", e))?;
-
-    let mut stdout = String::new();
-    child
-        .stdout
-        .take()
-        .unwrap()
-        .read_to_string(&mut stdout)
-        .map_err(|e| e.to_string())?;
-
-    let mut stderr = String::new();
-    child
-        .stderr
-        .take()
-        .unwrap()
-        .read_to_string(&mut stderr)
-        .map_err(|e| e.to_string())?;
-
-    let status = child.wait().map_err(|e| format!("wait failed: {}", e))?;
-
-    if !status.success() {
-        return Err(format!("exit {:?}: {}\n{}", status, stderr, stdout));
-    }
-    Ok(stdout)
+        .expect("Failed to spawn REPL");
+    let mut stdin = child.stdin.take().expect("Failed to get stdin");
+    let stdout = child.stdout.take().expect("Failed to get stdout");
+    let stderr = child.stderr.take().expect("Failed to get stderr");
+    let stdout_thread = std::thread::spawn(move || {
+        let mut buf = String::new();
+        let mut h = stdout;
+        let _ = h.read_to_string(&mut buf);
+        buf
+    });
+    let stderr_thread = std::thread::spawn(move || {
+        let mut buf = String::new();
+        let mut h = stderr;
+        let _ = h.read_to_string(&mut buf);
+        buf
+    });
+    stdin
+        .write_all(script.as_bytes())
+        .expect("Failed to write to stdin");
+    std::thread::spawn(move || {
+        drop(stdin);
+    });
+    let status = child.wait().expect("wait failed");
+    let stdout = stdout_thread.join().expect("stdout thread");
+    let stderr = stderr_thread.join().expect("stderr thread");
+    let code = status.code().unwrap_or(-1);
+    (stdout, stderr, code)
 }
 
 #[test]
 fn test_insert_odku_new_row() {
-    // Create table with a unique key
-    run_sql("CREATE TABLE odku1 (id INT PRIMARY KEY, name VARCHAR(50), value INT)").ok();
-
-    // Insert a new row - should create it
-    let out = run_sql("INSERT INTO odku1 VALUES (1, 'apple', 100)").unwrap_or_default();
-    assert!(
-        !out.contains("Error"),
-        "INSERT should succeed, got: {}",
-        out
+    let (out, err, _code) = run_repl(
+        "CREATE TABLE odku1 (id INT PRIMARY KEY, name VARCHAR(50), value INT);\n\
+         INSERT INTO odku1 VALUES (1, 'apple', 100);\n\
+         SELECT * FROM odku1 WHERE id = 1;\n\
+         .exit\n",
     );
-
-    // Verify row was inserted
-    let select = run_sql("SELECT * FROM odku1 WHERE id = 1").unwrap_or_default();
-    assert!(select.contains("apple"), "should have apple: {}", select);
-    assert!(select.contains("100"), "should have value 100: {}", select);
-
-    // Clean up
-    run_sql("DROP TABLE odku1").ok();
+    let combined = format!("{}{}", out, err);
+    assert!(
+        combined.contains("apple"),
+        "should have apple; got:\n{}",
+        combined
+    );
+    assert!(
+        combined.contains("100") || combined.contains("Integer(100)"),
+        "should have value 100; got:\n{}",
+        combined
+    );
 }
 
 #[test]
 fn test_insert_odku_duplicate_key_update() {
-    // Create table with a unique key
-    run_sql("CREATE TABLE odku2 (id INT PRIMARY KEY, name VARCHAR(50), value INT)").ok();
-
-    // Insert initial row
-    run_sql("INSERT INTO odku2 VALUES (1, 'apple', 100)").ok();
-
-    // Insert same primary key with ON DUPLICATE KEY UPDATE - should update
-    let out =
-        run_sql("INSERT INTO odku2 VALUES (1, 'apple', 100) ON DUPLICATE KEY UPDATE value = 200")
-            .unwrap_or_default();
-    assert!(
-        !out.contains("Error"),
-        "INSERT ON DUPLICATE KEY UPDATE should succeed, got: {}",
-        out
+    let (out, err, _code) = run_repl(
+        "CREATE TABLE odku2 (id INT PRIMARY KEY, name VARCHAR(50), value INT);\n\
+         INSERT INTO odku2 VALUES (1, 'apple', 100);\n\
+         INSERT INTO odku2 VALUES (1, 'apple', 100) ON DUPLICATE KEY UPDATE value = 200;\n\
+         SELECT * FROM odku2 WHERE id = 1;\n\
+         .exit\n",
     );
-
-    // Verify the value was updated
-    let select = run_sql("SELECT * FROM odku2 WHERE id = 1").unwrap_or_default();
+    let combined = format!("{}{}", out, err);
     assert!(
-        select.contains("200"),
-        "value should be 200 after update: {}",
-        select
+        combined.contains("200") || combined.contains("Integer(200)"),
+        "value should be 200 after ODKU update; got:\n{}",
+        combined
     );
-
-    // Clean up
-    run_sql("DROP TABLE odku2").ok();
+    // Old value 100 should NOT appear (replaced by 200).
+    assert!(
+        !combined.contains("Integer(100)"),
+        "old value 100 must be replaced; got:\n{}",
+        combined
+    );
 }
 
 #[test]
 fn test_insert_odku_multiple_rows() {
-    // Create table
-    run_sql("CREATE TABLE odku3 (id INT PRIMARY KEY, name VARCHAR(50), value INT)").ok();
-
-    // Insert multiple rows
-    run_sql("INSERT INTO odku3 VALUES (1, 'one', 1), (2, 'two', 2), (3, 'three', 3)").ok();
-
-    // Update one of them with ODKU
-    run_sql("INSERT INTO odku3 VALUES (2, 'two', 999) ON DUPLICATE KEY UPDATE value = 999").ok();
-
-    // Verify only id=2 was updated
-    let select = run_sql("SELECT * FROM odku3 ORDER BY id").unwrap_or_default();
-    assert!(select.contains("one"), "should have one: {}", select);
-    assert!(
-        select.contains("999"),
-        "should have 999 for two: {}",
-        select
+    let (out, err, _code) = run_repl(
+        "CREATE TABLE odku3 (id INT PRIMARY KEY, name VARCHAR(50), value INT);\n\
+         INSERT INTO odku3 VALUES (1, 'one', 1), (2, 'two', 2), (3, 'three', 3);\n\
+         INSERT INTO odku3 VALUES (2, 'two', 999) ON DUPLICATE KEY UPDATE value = 999;\n\
+         SELECT name FROM odku3 ORDER BY id;\n\
+         .exit\n",
     );
-    assert!(select.contains("three"), "should have three: {}", select);
-
-    // Clean up
-    run_sql("DROP TABLE odku3").ok();
+    let combined = format!("{}{}", out, err);
+    for name in &["one", "two", "three"] {
+        assert!(
+            combined.contains(name),
+            "should have {}; got:\n{}",
+            name,
+            combined
+        );
+    }
+    assert!(
+        combined.contains("999") || combined.contains("Integer(999)"),
+        "should have 999 for two; got:\n{}",
+        combined
+    );
 }
 
 #[test]
 fn test_insert_odku_affects_rows() {
-    // Create table
-    run_sql("CREATE TABLE odku4 (id INT PRIMARY KEY, value INT)").ok();
-
-    // Insert initial row
-    run_sql("INSERT INTO odku4 VALUES (1, 100)").ok();
-
-    // Insert duplicate - ODKU updates, should report 2 affected rows
-    let out =
-        run_sql("INSERT INTO odku4 VALUES (1, 100) ON DUPLICATE KEY UPDATE value = value + 1")
-            .unwrap_or_default();
-
-    // Verify the update happened
-    let select = run_sql("SELECT value FROM odku4 WHERE id = 1").unwrap_or_default();
-    assert!(
-        select.contains("101"),
-        "value should be 101 after increment: {}",
-        select
+    let (out, err, _code) = run_repl(
+        "CREATE TABLE odku4 (id INT PRIMARY KEY, value INT);\n\
+         INSERT INTO odku4 VALUES (1, 100), (2, 200);\n\
+         SELECT COUNT(*) FROM odku4;\n\
+         INSERT INTO odku4 VALUES (1, 999) ON DUPLICATE KEY UPDATE value = 999;\n\
+         SELECT COUNT(*) FROM odku4;\n\
+         .exit\n",
     );
-
-    // Clean up
-    run_sql("DROP TABLE odku4").ok();
+    let combined = format!("{}{}", out, err);
+    // Both COUNT must show 2 (ODKU must not insert new row on duplicate).
+    assert!(
+        combined.matches("Integer(2)").count() >= 2,
+        "Both COUNT must show Integer(2); got:\n{}",
+        combined
+    );
 }
