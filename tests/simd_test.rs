@@ -27,12 +27,23 @@ mod harness {
 
     impl SimdConfig {
         pub fn new(target_arch: TargetArch, simd_lanes: usize) -> Self {
-            Self { simd_lanes, target_arch }
+            Self {
+                simd_lanes,
+                target_arch,
+            }
         }
-        pub fn x86_sse2() -> Self { Self::new(TargetArch::X86_64, 4) }
-        pub fn x86_avx2() -> Self { Self::new(TargetArch::X86_64, 8) }
-        pub fn aarch64_neon() -> Self { Self::new(TargetArch::Aarch64, 4) }
-        pub fn unknown() -> Self { Self::new(TargetArch::Unknown, 1) }
+        pub fn x86_sse2() -> Self {
+            Self::new(TargetArch::X86_64, 4)
+        }
+        pub fn x86_avx2() -> Self {
+            Self::new(TargetArch::X86_64, 8)
+        }
+        pub fn aarch64_neon() -> Self {
+            Self::new(TargetArch::Aarch64, 4)
+        }
+        pub fn unknown() -> Self {
+            Self::new(TargetArch::Unknown, 1)
+        }
     }
 
     pub fn detect_simd() -> SimdConfig {
@@ -86,11 +97,19 @@ mod harness {
     }
 
     pub fn simd_avg_i32(a: &[i32]) -> f64 {
-        if a.is_empty() { 0.0 } else { simd_sum_i32(a) as f64 / a.len() as f64 }
+        if a.is_empty() {
+            0.0
+        } else {
+            simd_sum_i32(a) as f64 / a.len() as f64
+        }
     }
 
-    pub fn simd_min_i32(a: &[i32]) -> Option<i32> { a.iter().min().copied() }
-    pub fn simd_max_i32(a: &[i32]) -> Option<i32> { a.iter().max().copied() }
+    pub fn simd_min_i32(a: &[i32]) -> Option<i32> {
+        a.iter().min().copied()
+    }
+    pub fn simd_max_i32(a: &[i32]) -> Option<i32> {
+        a.iter().max().copied()
+    }
 
     pub fn simd_dot_product_f32(a: &[f32], b: &[f32]) -> f32 {
         let n = a.len().min(b.len());
@@ -108,15 +127,21 @@ mod harness {
             .collect()
     }
 
-    pub fn string_find_char(s: &str, c: char) -> Option<usize> { s.find(c) }
-    pub fn string_find_substring(s: &str, sub: &str) -> Option<usize> { s.find(sub) }
-    pub fn ascii_lower(s: &str) -> String { s.to_ascii_lowercase() }
+    pub fn string_find_char(s: &str, c: char) -> Option<usize> {
+        s.find(c)
+    }
+    pub fn string_find_substring(s: &str, sub: &str) -> Option<usize> {
+        s.find(sub)
+    }
+    pub fn ascii_lower(s: &str) -> String {
+        s.to_ascii_lowercase()
+    }
 }
 
 use harness::{
-    ascii_lower, detect_simd, simd_avg_i32, simd_batch_distance, simd_dot_product_f32,
-    simd_eq_i32, simd_gt_i32, simd_lt_i32, simd_max_i32, simd_min_i32, simd_ne_i32,
-    simd_sum_i32, string_find_char, string_find_substring, SimdConfig, TargetArch,
+    ascii_lower, detect_simd, simd_avg_i32, simd_batch_distance, simd_dot_product_f32, simd_eq_i32,
+    simd_gt_i32, simd_lt_i32, simd_max_i32, simd_min_i32, simd_ne_i32, simd_sum_i32,
+    string_find_char, string_find_substring, SimdConfig, TargetArch,
 };
 
 // --------------------------------------------------------------------
