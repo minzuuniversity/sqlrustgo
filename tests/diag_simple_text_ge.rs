@@ -5,11 +5,11 @@ use sqlrustgo::{ExecutionEngine, MemoryStorage, StorageEngine};
 #[test]
 fn test_simple_text_ge() {
     let mut engine = ExecutionEngine::with_memory();
+    engine.execute("CREATE TABLE t (a TEXT)").expect("create");
     engine
-        .execute("CREATE TABLE t (a TEXT)")
-        .expect("create");
-    engine
-        .execute("INSERT INTO t VALUES ('1992-01-01'), ('1994-01-01'), ('1995-01-01'), ('1996-12-31')")
+        .execute(
+            "INSERT INTO t VALUES ('1992-01-01'), ('1994-01-01'), ('1995-01-01'), ('1996-12-31')",
+        )
         .expect("insert");
 
     // All rows
@@ -29,6 +29,8 @@ fn test_simple_text_ge() {
     eprintln!("a < '1995-01-01' (expect 2): {:?}", r3.rows);
 
     // a = '1994-01-01' should return 1
-    let r4 = engine.execute("SELECT a FROM t WHERE a = '1994-01-01'").expect("=");
+    let r4 = engine
+        .execute("SELECT a FROM t WHERE a = '1994-01-01'")
+        .expect("=");
     eprintln!("a = '1994-01-01' (expect 1): {:?}", r4.rows);
 }

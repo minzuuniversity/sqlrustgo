@@ -73,15 +73,21 @@ fn diag_q14_q16() {
     // So Q14 legitimately returns 0 rows for SUM
 
     // Q16: p_size IN
-    let r2 = engine.execute("SELECT COUNT(*) FROM part WHERE p_size IN (49, 14, 23, 45, 19, 3, 36, 9)").unwrap();
+    let r2 = engine
+        .execute("SELECT COUNT(*) FROM part WHERE p_size IN (49, 14, 23, 45, 19, 3, 36, 9)")
+        .unwrap();
     eprintln!("Q16 step1 part p_size IN: {:?}", r2.rows);
 
     // Q16: p_brand <>
-    let r3 = engine.execute("SELECT COUNT(*) FROM part WHERE p_brand <> 'Brand#45'").unwrap();
+    let r3 = engine
+        .execute("SELECT COUNT(*) FROM part WHERE p_brand <> 'Brand#45'")
+        .unwrap();
     eprintln!("Q16 step2 brand not Brand#45: {:?}", r3.rows);
 
     // Q16: p_type NOT LIKE
-    let r4 = engine.execute("SELECT COUNT(*) FROM part WHERE p_type NOT LIKE 'MEDIUM POLISHED%'").unwrap();
+    let r4 = engine
+        .execute("SELECT COUNT(*) FROM part WHERE p_type NOT LIKE 'MEDIUM POLISHED%'")
+        .unwrap();
     eprintln!("Q16 step3 type NOT LIKE: {:?}", r4.rows);
 
     // Q16: full
