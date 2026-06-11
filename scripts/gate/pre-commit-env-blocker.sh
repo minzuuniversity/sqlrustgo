@@ -18,6 +18,13 @@ set -euo pipefail
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 cd "$REPO_ROOT"
 
+# Ensure cargo is on PATH (CI runners may not have it in default PATH).
+if ! command -v cargo >/dev/null 2>&1; then
+    if [ -x "$HOME/.cargo/bin/cargo" ]; then
+        export PATH="$HOME/.cargo/bin:$PATH"
+    fi
+fi
+
 # Detect staged .md files in docs/releases/v*/
 staged_md=$(git diff --cached --name-only --diff-filter=AM | grep -E "^docs/releases/v[0-9]+\.[0-9]+\.[0-9]+/.*\.md$" || true)
 
