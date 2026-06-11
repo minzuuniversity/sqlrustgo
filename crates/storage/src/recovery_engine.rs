@@ -468,29 +468,44 @@ fn count_status(entries: &[WalEntry]) -> (usize, usize, usize) {
     let mut incomplete = 0;
 
     for group in groups.values() {
+        let has_begin = group.iter().any(|e| e.entry_type == WalEntryType::Begin);
         let has_commit = group.iter().any(|e| e.entry_type == WalEntryType::Commit);
         let has_rollback = group.iter().any(|e| e.entry_type == WalEntryType::Rollback);
-        if has_commit {
-            committed += 1;
-        } else if has_rollback {
-            rolled_back += 1;
-        } else if group.iter().any(|e| {
+        let has_dml = group.iter().any(|e| {
             matches!(
                 e.entry_type,
                 WalEntryType::Insert | WalEntryType::Update | WalEntryType::Delete
             )
-        }) {
-            // Autocommit / orphan DML: no BEGIN/COMMIT pair
-            // (the MySQL wire-protocol exec path on a single-
-            // statement connection writes DML directly to the
-            // WAL). WalStorage::insert/update/delete only
-            // returns Ok after `inner.*` succeeded AND the WAL
-            // fsync returned, so the entry is durably committed.
+        });
+        let has_prepare = group.iter().any(|e| e.entry_type == WalEntryType::Prepare);
+
+        if has_commit {
+            committed += 1;
+        } else if has_rollback {
+            rolled_back += 1;
+        } else if has_dml && !has_begin && !has_prepare {
+            // Autocommit: no BEGIN/COMMIT pair
+            // (the MySQL wire-protocol exec path on a single-statement
+            // connection writes DML directly to the WAL).
+            // WalStorage::insert/update/delete only returns Ok after
+            // `inner.*` succeeded AND the WAL fsync returned, so the
+            // entry is durably committed.
+            //
+            // Hermes 2026-06-12 fix (issue #3223):
+            // - If BEGIN was seen, the DML belongs to an explicit TX
+            //   → incomplete (no COMMIT/ROLLBACK).
+            // - If PREPARE was seen without COMMIT (2PC), the DML
+            //   is not durable → incomplete.
+            // - If PREPARE was seen with DML but no COMMIT, the
+            //   prepare phase is not durably committed → incomplete.
             committed += 1;
         } else if group
             .iter()
             .any(|e| e.entry_type != WalEntryType::Checkpoint)
         {
+            // No COMMIT/ROLLBACK: BEGIN + DML or BEGIN + PREPARE
+            // without COMMIT means the transaction was not durably
+            // committed before crash. Mark as incomplete.
             incomplete += 1;
         }
     }
