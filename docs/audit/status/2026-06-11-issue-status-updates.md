@@ -1,6 +1,6 @@
 # Issue Status Update — Sprint 5 v15-v16 Wrap-Up (2026-06-11)
 
-> **Date**: 2026-06-11
+> **Date**: 2026-06-11 (original) | **2026-06-12** (followup: Issue #3271 closed)
 > **Author**: Hermes / claude-macmini
 > **Status**: All Sprint 5 v15-v16 issues updated per `docs/governance/ISSUE_CLOSING_VERIFICATION.md`
 
@@ -12,7 +12,7 @@
 |-------|-------|------------|-------------|--------|
 | **#3316** | TPC-H Q21 TIMEOUT | closed (2026-06-10, PR #3342) | closed | No change |
 | **#2808 G1** | mysql-server FileStorage 绕过 WAL | closed (PR #3348) | closed | No change |
-| **#3271** | INT-3 Mixed-scenario integration | open | **open** + status comment | Partial: 4/6 spec items |
+| **#3271** | INT-3 Mixed-scenario integration | open | **closed (2026-06-12, PR #3359)** | Spec-complete acceptance delivered |
 | **#3270** | Cross-version upgrade chain | open | **open** + status comment | Blocked-on-user |
 
 ---
@@ -96,3 +96,25 @@ Already closed when PR #3348 was merged. The G1 invariant ("所有 DML 操作经
 ---
 
 *Generated 2026-06-11 by Hermes / claude-macmini*
+
+
+---
+
+## Followup (2026-06-12): Issue #3271 spec-complete delivered
+
+After the original wrap-up, Issue #3271 was driven to closure in a follow-up sprint cycle:
+
+- **PR #3359** ([e4711142](https://192.168.0.252:3000/openclaw/sqlrustgo/commit/e4711142)): INT-3 spec-complete acceptance test file (`tests/integration/int3_spec_complete_test.rs`, 525 lines, 4 tests) added without modifying the original INT-3 file (preserves PR #3335 audit trail).
+- **Tests delivered**:
+  1. `int3_spec_sha1_stability_100_iterations` — TPC-H Q1 determinism (100 runs, identical hash)
+  2. `int3_spec_wal_append_stress_concurrent` — 4 parallel threads × 250 rows = 1000 exact
+  3. `int3_spec_crash_recovery_under_5s` — 3 cycles of (write + Drop + recovery) at ~1.5ms each
+  4. `int3_spec_full_mixed_scenario` — full 4-thread spec, 200K TPC-H + 22K DDL + 149K WAL + 7 crash cycles in 3s
+- **Verification**: 4/4 PASS in 3.58s; 0 regression (original INT-3 + TPC-H + INT-2 still PASS)
+- **Closure verification** (per `ISSUE_CLOSING_VERIFICATION.md` §2.1):
+  1. ✅ PR #3359 merged to `develop/v3.9.0` (commit `e4711142`)
+  2. ✅ Code integrated on develop HEAD `5eb1a858`
+  3. ✅ Tests pass: `cargo test --release --test int3_spec_complete_test -- --test-threads=1` → 4/4 PASS
+  4. ✅ Status doc updated with closure record
+
+Issue #3271 closed at 2026-06-11T22:44:24Z.
