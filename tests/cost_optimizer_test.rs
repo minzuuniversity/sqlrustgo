@@ -127,8 +127,10 @@ mod harness {
 
     pub fn estimate_cost(plan: &MockPlan) -> CostEstimate {
         let cost = match plan.kind {
-            PlanKind::SeqScan => plan.page_count as f64 * DEFAULT_IO_COST_PER_PAGE
-                + plan.row_count as f64 * DEFAULT_CPU_COST_PER_ROW,
+            PlanKind::SeqScan => {
+                plan.page_count as f64 * DEFAULT_IO_COST_PER_PAGE
+                    + plan.row_count as f64 * DEFAULT_CPU_COST_PER_ROW
+            }
             PlanKind::IndexScan => {
                 let n = (plan.row_count as f64).max(2.0);
                 let log_n = n.log2();
@@ -347,8 +349,7 @@ fn test_cbo_filter_range_p3_3() {
 #[test]
 fn test_cbo_filter_multi_condition_p3_3() {
     // Multi-condition: selectivities multiply.
-    let p = MockPlan::seq_scan(1_000_000, 10_000)
-        .with_selectivity(0.01 * 0.5 * 0.2); // 3 conditions
+    let p = MockPlan::seq_scan(1_000_000, 10_000).with_selectivity(0.01 * 0.5 * 0.2); // 3 conditions
     let e = estimate_cost(&p);
     assert!(e.passed());
     let base = estimate_cost(&MockPlan::seq_scan(1_000_000, 10_000));
