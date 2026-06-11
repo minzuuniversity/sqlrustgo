@@ -20,7 +20,7 @@ use serde::{Deserialize, Serialize};
 use sqlrustgo::{ExecutionEngine, MemoryStorage};
 use std::io::{Read, Write};
 use std::sync::{Arc, RwLock};
-use std::time::{Instant};
+use std::time::Instant;
 
 #[derive(Debug, Serialize, Deserialize)]
 struct RunResult {
@@ -45,8 +45,7 @@ const SCHEMA_SQL: &[&str] = &[
 ];
 
 const TABLES: &[&str] = &[
-    "region", "nation", "supplier", "customer",
-    "part", "partsupp", "orders", "lineitem",
+    "region", "nation", "supplier", "customer", "part", "partsupp", "orders", "lineitem",
 ];
 
 fn load_data(engine: &mut ExecutionEngine<MemoryStorage>, data_dir: &str) {
@@ -61,7 +60,9 @@ fn load_data(engine: &mut ExecutionEngine<MemoryStorage>, data_dir: &str) {
             Err(_) => continue,
         };
         for line in content.lines() {
-            if line.is_empty() { continue; }
+            if line.is_empty() {
+                continue;
+            }
             let line_trimmed = line.trim_end_matches('|');
             let cols: Vec<&str> = line_trimmed.split('|').collect();
             let mut vals: Vec<String> = Vec::new();
@@ -91,12 +92,7 @@ fn format_value(v: &sqlrustgo::Value) -> String {
     }
 }
 
-fn run_query(
-    sql: &str,
-    query_name: &str,
-    data_dir: &str,
-    timeout_sec: u64,
-) -> RunResult {
+fn run_query(sql: &str, query_name: &str, data_dir: &str, timeout_sec: u64) -> RunResult {
     let start = Instant::now();
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));
     let mut engine = ExecutionEngine::new(storage);
@@ -117,7 +113,11 @@ fn run_query(
         Ok(exec) => RunResult {
             engine: "sqlrustgo".to_string(),
             query: query_name.to_string(),
-            rows: exec.rows.iter().map(|r| r.iter().map(format_value).collect()).collect(),
+            rows: exec
+                .rows
+                .iter()
+                .map(|r| r.iter().map(format_value).collect())
+                .collect(),
             row_count: exec.rows.len(),
             duration_ms: exec_ms,
             error: None,
@@ -152,7 +152,13 @@ fn main() {
             "--query" => {
                 query_name = args[i + 1].clone();
                 let path = format!("queries/{}.sql", args[i + 1].to_lowercase());
-                query_sql = Some(std::fs::read_to_string(&path).unwrap_or_default().trim().trim_end_matches(';').to_string());
+                query_sql = Some(
+                    std::fs::read_to_string(&path)
+                        .unwrap_or_default()
+                        .trim()
+                        .trim_end_matches(';')
+                        .to_string(),
+                );
                 i += 2;
             }
             "--sql" => {
@@ -165,11 +171,15 @@ fn main() {
             }
             "--help" | "-h" => {
                 eprintln!("Usage: tpch_run_query --query Q6 [--data-dir DIR] [--timeout SEC]");
-                eprintln!("       tpch_run_query --sql 'SELECT ...' [--data-dir DIR] [--timeout SEC]");
+                eprintln!(
+                    "       tpch_run_query --sql 'SELECT ...' [--data-dir DIR] [--timeout SEC]"
+                );
                 eprintln!("       echo 'SELECT ...' | tpch_run_query");
                 std::process::exit(0);
             }
-            _ => { i += 1; }
+            _ => {
+                i += 1;
+            }
         }
     }
 

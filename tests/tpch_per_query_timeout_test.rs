@@ -64,7 +64,10 @@ fn make_engine() -> Option<ExecutionEngine<MemoryStorage>> {
         }
         let content = match fs::read_to_string(&path) {
             Ok(c) => c,
-            Err(e) => { eprintln!("read {}: {e}", path.display()); continue; }
+            Err(e) => {
+                eprintln!("read {}: {e}", path.display());
+                continue;
+            }
         };
         for line in content.lines() {
             if line.is_empty() {
@@ -106,7 +109,10 @@ fn test_tpch_22_with_per_query_timeout() {
     let mut fail = 0u32;
     let mut timed_out = 0u32;
 
-    println!("\n=== TPC-H 22 with per-query timeout {}s ===", timeout_secs);
+    println!(
+        "\n=== TPC-H 22 with per-query timeout {}s ===",
+        timeout_secs
+    );
 
     for q in 1..=22 {
         let qfile = queries_dir.join(format!("q{q}.sql"));
@@ -116,7 +122,11 @@ fn test_tpch_22_with_per_query_timeout() {
         }
         let sql = match fs::read_to_string(&qfile) {
             Ok(s) => s,
-            Err(e) => { println!("  Q{q:02}: ERROR read: {e}"); fail += 1; continue; }
+            Err(e) => {
+                println!("  Q{q:02}: ERROR read: {e}");
+                fail += 1;
+                continue;
+            }
         };
 
         // Run the query in a worker thread, with the main thread
@@ -137,8 +147,7 @@ fn test_tpch_22_with_per_query_timeout() {
         // (which is fine because the test thread is blocked on
         // `rx.recv_timeout` and does not touch `engine` until after
         // the worker finishes).
-        let engine_addr: usize =
-            &mut engine as *mut ExecutionEngine<MemoryStorage> as usize;
+        let engine_addr: usize = &mut engine as *mut ExecutionEngine<MemoryStorage> as usize;
         let handle = std::thread::spawn(move || unsafe {
             let engine_ptr = engine_addr as *mut ExecutionEngine<MemoryStorage>;
             let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
