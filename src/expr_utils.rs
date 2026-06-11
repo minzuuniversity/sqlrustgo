@@ -108,6 +108,12 @@ pub fn expression_to_value(expr: &sqlrustgo_parser::Expression) -> Value {
         // (used by `expression_to_value` callers like the EXTRACT
         // arm in the legacy `evaluate_expression`).
         sqlrustgo_parser::Expression::Identifier(name) => Value::Text(name.clone()),
+        // ODKU UPDATE assignment: ignore LHS identifier, recurse on RHS.
+        // The parser emits `BinaryOp(Identifier(col), "=", right)` for
+        // the SET clause; we want only the right-hand side evaluated.
+        sqlrustgo_parser::Expression::BinaryOp(_, op, right) if op == "=" => {
+            expression_to_value(right)
+        }
         _ => Value::Null,
     }
 }
