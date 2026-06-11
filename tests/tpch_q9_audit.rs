@@ -164,20 +164,41 @@ fn test_tpch_22_inprocess_sf01() {
         let sql = sql.trim().trim_end_matches(';');
 
         // SQLite ground truth
-        let sqlite_sql = if q == 7 || q == 8 || q == 9 {
-            sql.replace("EXTRACT(YEAR FROM ", "CAST(strftime('%Y', ")
-                .replace(") AS o_year", ") AS INTEGER) AS o_year")
-                .replace(") AS l_year", ") AS INTEGER) AS l_year")
-        } else {
-            sql.to_string()
-        };
-        let sqlite_out = Command::new("sqlite3")
-            .args([
-                SQLITE_BASELINE_DB,
-                &format!("SELECT COUNT(*) FROM ({}) sub", sqlite_sql),
-            ])
-            .output()
-            .ok();
+// Strip the trailing `ORDER BY ...` clause from the SQL before
+// wrapping in `SELECT COUNT(*) FROM (...) sub`. ORDER BY in a
+// subquery is a no-op for row count anyway, but SQLite's parser
+// rejects nested `(SELECT ... ORDER BY) sub` with a syntax
+// error. Engine wrapper tolerates ORDER BY, but we want the
+// SQLite baseline to succeed.
+ let sql_no_order = sql
+ .rsplit_once("ORDER BY")
+ .map(|(head, _)| head.trim().trim_end_matches(';'))
+ .unwrap_or(sql);
+// `EXTRACT(YEAR FROM X) [AS Y]` → `CAST(strftime('%Y', X) AS INTEGER) [AS Y]`.
+// This handles both the SELECT projection (with alias) and any
+// GROUP BY (often without alias — SQLite doesn't accept EXTRACT
+// at all, so we must rewrite it everywhere it appears).
+ let sqlite_sql = if q ==7 || q ==8 || q ==9 {
+ let re_extract = regex::Regex::new(r"EXTRACT\(YEAR FROM ([^)]+)\)(?: AS (\w+))?").unwrap();
+ re_extract
+ .replace_all(&sql_no_order, |caps: &regex::Captures| {
+ let col = caps.get(1).unwrap().as_str();
+ match caps.get(2) {
+ Some(alias) => format!("CAST(strftime('%Y', {}) AS INTEGER) AS {}", col, alias.as_str()),
+ None => format!("CAST(strftime('%Y', {}) AS INTEGER)", col),
+ }
+ })
+ .to_string()
+ } else {
+ sql_no_order.to_string()
+ };
+ let sqlite_out = Command::new("sqlite3")
+ .args([
+ SQLITE_BASELINE_DB,
+ &format!("SELECT COUNT(*) FROM ({}) sub", sqlite_sql),
+ ])
+ .output()
+ .ok();
         let s_rc: Option<i64> = sqlite_out
             .as_ref()
             .and_then(|o| String::from_utf8_lossy(&o.stdout).trim().parse().ok());
