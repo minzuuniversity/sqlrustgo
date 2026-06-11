@@ -378,3 +378,28 @@ Apply `cargo PATH` auto-detect preamble to **all 57 gate scripts** in `scripts/g
 - W12 D1-2: Real 24h Soak (Z6G4 only)
 - W12 D3-4: Real 8-case Crash run (Z6G4 only)
 - #3315 Q18: needs SF=1+ fixture for verification
+
+## Sprint 9 完成 (2026-06-12, PR Conflict Resolution)
+
+### PR Conflict Resolution
+- #3359 INT-3 spec-complete: merged directly (no conflict)
+- #3344 C-ARCH-05 ODKU refactor → conflict resolved → PR #3360 merged ✅
+- #3347 7 mandatory docs → conflict resolved (QUICK_START.md took develop version) → PR #3361 merged ✅
+- #3363 C-ARCH-05 RC3: closed as superseded by #3360 ✅
+
+### Gitea 252 宕机恢复
+- 宕机时间: ~07:05-07:30 CST
+- 原因: 未知（SSH/HTTP 全掉）
+- 恢复: 自行重启（无人工干预）
+- Z6G4 也在宕机期间重启
+
+### Remote Sync 状态 (@ c557493f2)
+- origin (252): ✅
+- backup (250): ✅
+- github: ✅
+- gitcode: ❌ blocked (pre-receive hook 强制 LFS migration, 无 git-lfs)
+
+### Z6G4 最终验证
+- develop/v3.9.0 at c557493f2 ✅
+- 22/22 TPC-H smoke: ✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅
+- G1/G7/G8 gates: ✅ PASS
