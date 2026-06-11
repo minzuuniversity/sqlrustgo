@@ -109,6 +109,7 @@ serde_yaml = "0.9"
 rand = "0.8"
 clap = { version = "4.0", features = ["derive"] }
 proptest = "1.1"
+regex = "1"
 sqlrustgo-server = { path = "crates/server" }
 sqlrustgo-transaction = { path = "crates/transaction" }
 sqlrustgo-security = { path = "crates/security" }
