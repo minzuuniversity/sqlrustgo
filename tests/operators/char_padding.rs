@@ -26,9 +26,11 @@ fn engine() -> ExecutionEngine<MemoryStorage> {
 fn char_15_padding_insert_and_select() {
     let mut e = engine();
     // c_phone is CHAR(15) in TPC-H
-    e.execute("CREATE TABLE customer (c_phone CHAR(15))").unwrap();
+    e.execute("CREATE TABLE customer (c_phone CHAR(15))")
+        .unwrap();
     // Insert a 10-char phone number
-    e.execute("INSERT INTO customer VALUES ('123-456-78')").unwrap();
+    e.execute("INSERT INTO customer VALUES ('123-456-78')")
+        .unwrap();
     let r = e.execute("SELECT c_phone FROM customer").unwrap();
     let stored = r.rows[0][0].to_string();
     assert_eq!(
@@ -50,7 +52,8 @@ fn char_15_full_width_stays_at_15() {
     // A value exactly 15 chars stays at 15 (no truncation)
     let mut e = engine();
     e.execute("CREATE TABLE t (s CHAR(15))").unwrap();
-    e.execute("INSERT INTO t VALUES ('ABCDEFGHIJKLMNO')").unwrap();
+    e.execute("INSERT INTO t VALUES ('ABCDEFGHIJKLMNO')")
+        .unwrap();
     let r = e.execute("SELECT s FROM t").unwrap();
     assert_eq!(r.rows[0][0].to_string().len(), 15);
     assert_eq!(r.rows[0][0].to_string(), "ABCDEFGHIJKLMNO");
@@ -62,10 +65,9 @@ fn char_comparison_with_constant() {
     let mut e = engine();
     e.execute("CREATE TABLE t (s CHAR(15))").unwrap();
     e.execute("INSERT INTO t VALUES ('hello')").unwrap();
-    let r = e.execute(
-        "SELECT COUNT(*) FROM t WHERE s = 'hello'",
-    )
-    .unwrap();
+    let r = e
+        .execute("SELECT COUNT(*) FROM t WHERE s = 'hello'")
+        .unwrap();
     assert_eq!(r.rows[0][0].to_string(), "1");
 }
 
@@ -77,5 +79,10 @@ fn char_25_padding() {
     e.execute("INSERT INTO t VALUES ('short')").unwrap();
     let r = e.execute("SELECT s FROM t").unwrap();
     let stored = r.rows[0][0].to_string();
-    assert_eq!(stored.len(), 25, "CHAR(25) should pad to 25, got len={}", stored.len());
+    assert_eq!(
+        stored.len(),
+        25,
+        "CHAR(25) should pad to 25, got len={}",
+        stored.len()
+    );
 }
