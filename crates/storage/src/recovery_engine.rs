@@ -435,9 +435,17 @@ fn filter_committed_entries(entries: &[WalEntry]) -> Vec<WalEntry> {
             WalEntryType::Insert | WalEntryType::Update | WalEntryType::Delete => {
                 if in_tx {
                     current_tx_dml.push(entry.clone());
+                } else {
+                    // Autocommit / orphan DML path: the entry was
+                    // written without an enclosing BEGIN/COMMIT
+                    // pair. The caller (WalStorage::insert/
+                    // update/delete) only returns Ok after
+                    // `inner.*` succeeded AND the WAL fsync
+                    // returned, so the entry is durably committed.
+                    // Replay it. (Used by the MySQL wire-protocol
+                    // exec path on a single-statement connection.)
+                    result.push(entry.clone());
                 }
-                // else: entry belongs to a fragment without a matching
-                //       Begin/Commit span — drop it (cannot prove commit).
             }
         }
     }
@@ -460,16 +468,44 @@ fn count_status(entries: &[WalEntry]) -> (usize, usize, usize) {
     let mut incomplete = 0;
 
     for group in groups.values() {
+        let has_begin = group.iter().any(|e| e.entry_type == WalEntryType::Begin);
         let has_commit = group.iter().any(|e| e.entry_type == WalEntryType::Commit);
         let has_rollback = group.iter().any(|e| e.entry_type == WalEntryType::Rollback);
+        let has_dml = group.iter().any(|e| {
+            matches!(
+                e.entry_type,
+                WalEntryType::Insert | WalEntryType::Update | WalEntryType::Delete
+            )
+        });
+        let has_prepare = group.iter().any(|e| e.entry_type == WalEntryType::Prepare);
+
         if has_commit {
             committed += 1;
         } else if has_rollback {
             rolled_back += 1;
+        } else if has_dml && !has_begin && !has_prepare {
+            // Autocommit: no BEGIN/COMMIT pair
+            // (the MySQL wire-protocol exec path on a single-statement
+            // connection writes DML directly to the WAL).
+            // WalStorage::insert/update/delete only returns Ok after
+            // `inner.*` succeeded AND the WAL fsync returned, so the
+            // entry is durably committed.
+            //
+            // Hermes 2026-06-12 fix (issue #3223):
+            // - If BEGIN was seen, the DML belongs to an explicit TX
+            //   → incomplete (no COMMIT/ROLLBACK).
+            // - If PREPARE was seen without COMMIT (2PC), the DML
+            //   is not durable → incomplete.
+            // - If PREPARE was seen with DML but no COMMIT, the
+            //   prepare phase is not durably committed → incomplete.
+            committed += 1;
         } else if group
             .iter()
             .any(|e| e.entry_type != WalEntryType::Checkpoint)
         {
+            // No COMMIT/ROLLBACK: BEGIN + DML or BEGIN + PREPARE
+            // without COMMIT means the transaction was not durably
+            // committed before crash. Mark as incomplete.
             incomplete += 1;
         }
     }
