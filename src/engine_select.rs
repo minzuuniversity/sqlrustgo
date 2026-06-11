@@ -1459,8 +1459,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                         // is set (line 1480-1484), so we match either
                         // the bare name or `<alias>.<col>`.
                         let col_idx = right_info.columns.iter().position(|c| {
-                            c.name == col_name
-                                || c.name == format!("{}.{}", right_alias, col_name)
+                            c.name == col_name || c.name == format!("{}.{}", right_alias, col_name)
                         });
                         let Some(col_idx) = col_idx else {
                             continue;
@@ -2235,7 +2234,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     self.try_scalar_agg_index_lookup(_subq, outer_row, outer_table_info)
                 {
                     return Expression::Literal(lit.to_string());
-                } 
+                }
                 let substituted =
                     substitute_outer_refs_in_select(_subq, outer_row, outer_table_info);
                 let cache_key: Value = extract_first_literal_from_where(&substituted)
