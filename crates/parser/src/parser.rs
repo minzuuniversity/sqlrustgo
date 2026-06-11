@@ -8134,7 +8134,11 @@ fn test_parse_join_with_table_alias() {
     assert!(result.is_ok(), "Parse failed: {:?}", result);
     match result.unwrap() {
         Statement::Select(s) => {
-            assert_eq!(s.table, "users");
+            // Parser stores the FROM table as `base|alias` (e.g.
+            // `users|u` for `FROM users u`); the test was originally
+            // written for the legacy encoding of just `base`.
+            let (base, _alias) = s.table.split_once('|').unwrap_or((s.table.as_str(), ""));
+            assert_eq!(base, "users");
             assert!(!s.join_clause.is_empty());
         }
         _ => panic!("Expected SELECT statement"),
