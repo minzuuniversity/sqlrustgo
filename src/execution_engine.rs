@@ -401,47 +401,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             "execute_insert",
             &insert.table,
         );
-        // IMPL-001 & IMPL-004: TX lifecycle enforcement
-        // IDLE/Active with no current_tx_id = implicit autocommit TX (allowed)
-        // Committed/Aborted state = no new implicit TX (error)
-        match self.tx_status {
-            TxStatus::Committed => {
-                return Err(SqlError::ExecutionError(
-                    "transaction already committed".to_string(),
-                ));
-            }
-            TxStatus::Aborted => {
-                return Err(SqlError::ExecutionError(
-                    "transaction already aborted".to_string(),
-                ));
-            }
-            TxStatus::Idle | TxStatus::Active => {
-                // Autocommit: allow DML without explicit BEGIN
-                // New implicit TX started implicitly when current_tx_id is None
-            }
-        }
-        // INT-1: Force DML to go through TransactionManager.
-        // Begin an implicit transaction if none is active, and ensure it
-        // commits when the DML finishes (autocommit semantics).
-        // This call site now matches the documented DML contract: every
-        // INSERT/UPDATE/DELETE must be wrapped by TM.begin_transaction() / TM.commit().
-        let started_implicit = self.current_tx_id.is_none();
-        let tm_tx_id = if started_implicit {
-            let tx_id = self
-                .transaction_manager
-                .begin_transaction(self.default_isolation)
-                .map_err(|e| SqlError::ExecutionError(format!("TM.begin failed: {:?}", e)))?;
-            self.current_tx_id = Some(tx_id);
-            self.tx_status = TxStatus::Active;
-            // #3129: propagate TX id to storage so VtuGuard::assert_dml_safe
-            // can verify in_transaction() (PR-3019 was missing this step).
-            if let Ok(mut storage) = self.storage.write() {
-                storage.set_current_tx_id(tx_id.as_u64());
-            }
-            Some(tx_id)
-        } else {
-            self.current_tx_id
-        };
+        let (tm_tx_id, started_implicit) =
+            self.begin_implicit_dml_tx("execute_insert", &insert.table)?;
         let table_name = insert.table.clone();
 
         // Get table info first (need it for triggers and FK validation)
@@ -451,15 +412,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         };
 
         // Convert expressions to records
-        let mut all_records: Vec<Vec<Value>> = Vec::new();
-        for row_exprs in &insert.values {
-            let mut record = Vec::with_capacity(row_exprs.len());
-            for (_i, expr) in row_exprs.iter().enumerate() {
-                let val = expression_to_value(expr);
-                record.push(val);
-            }
-            all_records.push(record);
-        }
+        let all_records = Self::build_insert_records(&insert.values);
 
         // For REPLACE INTO: if insert.values has a unique/key conflict, delete old row first
         if insert.is_replace {
@@ -509,33 +462,14 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 for new_record in &processed_records {
                     for existing in &existing_rows {
                         if self.record_matches_unique_key(existing, new_record, &table_info) {
-                            // ODKU path: if on_duplicate_key_update is set,
-                            // translate this INSERT into an UPDATE of the
-                            // existing row instead of erroring out. We
-                            // apply the column=value updates (the parser
-                            // captures them as (String, Expression) tuples).
                             if let Some(ref updates) = insert.on_duplicate_key_update {
-                                // Build a new row by copying the existing row
-                                // and overwriting the named columns with the
-                                // ODKU assignment values.
-                                let col_names: Vec<String> =
-                                    table_info.columns.iter().map(|c| c.name.clone()).collect();
-                                let mut updated = existing.clone();
-                                for (col_name, expr) in updates {
-                                    if let Some(idx) = col_names.iter().position(|n| n == col_name)
-                                    {
-                                        let val = expression_to_value(expr);
-                                        if idx < updated.len() {
-                                            updated[idx] = val;
-                                        }
-                                    }
-                                }
-                                // Delete the old row and insert the updated
-                                // row in its place. Storage currently has
-                                // no per-PK update API, so we go via
-                                // delete+insert.
-                                storage.delete(&table_name, &[])?;
-                                storage.insert(&table_name, vec![updated])?;
+                                Self::apply_odku(
+                                    &mut *storage,
+                                    &table_name,
+                                    &table_info,
+                                    existing,
+                                    updates,
+                                )?;
                                 continue;
                             }
                             let pk_repr = table_info
@@ -563,7 +497,6 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 if !table_info.foreign_keys.is_empty() {
                     validate_foreign_keys(&*storage, &table_info, record, &insert.columns)?;
                 }
-                // Validate CHECK constraints
                 if !table_info.check_constraints.is_empty() {
                     for constraint in &table_info.check_constraints {
                         let valid = sqlrustgo_storage::evaluate_check_constraint(
@@ -596,24 +529,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             }
         }
 
-        // INT-1: For autocommit (no explicit transaction), commit the
-        // implicit transaction so WAL/MVCC receive the changes. If the
-        // user already started a transaction via BEGIN, leave the
-        // current_tx_id intact so they can COMMIT/ROLLBACK explicitly.
-        // `started_implicit` is true ONLY when we entered the
-        // current_tx_id-was-None branch above and started a fresh
-        // transaction ourselves; the else branch returns the existing
-        // TxId for an already-open transaction, in which case the user
-        // controls commit/rollback. The previous `tm_tx_id == Some(_)`
-        // check was incorrect because the else branch also wraps the
-        // existing tx_id in Some, so it always matched and incorrectly
-        // committed explicit transactions.
-        if started_implicit {
-            let tx_id = self.current_tx_id.unwrap();
-            let _ = self.transaction_manager.commit(tx_id);
-            self.current_tx_id = None;
-            self.tx_status = TxStatus::Idle;
-        }
+        // INT-1: autocommit — leave the commit decision to the helper.
+        self.commit_implicit_dml_tx(started_implicit);
 
         Ok(ExecutorResult::new(vec![], insert.values.len()))
     }
@@ -647,40 +564,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             "execute_update",
             &update.table,
         );
-        // IMPL-001 & IMPL-004: TX lifecycle enforcement
-        match self.tx_status {
-            TxStatus::Committed => {
-                return Err(SqlError::ExecutionError(
-                    "transaction already committed".to_string(),
-                ));
-            }
-            TxStatus::Aborted => {
-                return Err(SqlError::ExecutionError(
-                    "transaction already aborted".to_string(),
-                ));
-            }
-            TxStatus::Idle | TxStatus::Active => {
-                // Autocommit: allow DML without explicit BEGIN
-            }
-        }
-        // INT-1: Begin an implicit transaction so TM/WAL receive the change.
-        let started_implicit = self.current_tx_id.is_none();
-        let tm_tx_id = if started_implicit {
-            let tx_id = self
-                .transaction_manager
-                .begin_transaction(self.default_isolation)
-                .map_err(|e| SqlError::ExecutionError(format!("TM.begin failed: {:?}", e)))?;
-            self.current_tx_id = Some(tx_id);
-            self.tx_status = TxStatus::Active;
-            // #3129: propagate TX id to storage so VtuGuard::assert_dml_safe
-            // can verify in_transaction() (PR-3019 was missing this step).
-            if let Ok(mut storage) = self.storage.write() {
-                storage.set_current_tx_id(tx_id.as_u64());
-            }
-            Some(tx_id)
-        } else {
-            self.current_tx_id
-        };
+        let (tm_tx_id, started_implicit) =
+            self.begin_implicit_dml_tx("execute_update", &update.table)?;
         let table_name = update.table.clone();
 
         // If no WHERE clause, use the simple storage.update() path
@@ -743,22 +628,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             .filter(|row| evaluate_where_clause(where_clause, row, &table_info))
             .collect();
 
-        let update_plan = AstAdapter::to_update_plan(update, &table_info);
-        if let Ok(plan) = update_plan {
-            let ir_filtered: Vec<Vec<Value>> = all_rows
-                .clone()
-                .into_iter()
-                .filter(|row| plan.predicate().evaluate(row, &table_info))
-                .collect();
-
-            if ir_filtered.len() != rows_to_update.len() {
-                eprintln!(
-                    "[IR VALIDATION] Predicate mismatch: legacy={}, ir={}",
-                    rows_to_update.len(),
-                    ir_filtered.len()
-                );
-            }
-        }
+        Self::ir_validate_update_filter(&all_rows, &table_info, &rows_to_update, update);
 
         let count = rows_to_update.len();
 
@@ -776,41 +646,16 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             .collect();
 
         // Apply SET expressions to each matching row
-        let updated_rows: Vec<Vec<Value>> = rows_to_update
-            .iter()
-            .map(|row| {
-                let mut new_row = row.clone();
-                for &(col_idx, ref set_expr) in &set_col_indices {
-                    let new_val =
-                        evaluate_expression(set_expr, &new_row, &table_info).unwrap_or(Value::Null);
-                    if col_idx < new_row.len() {
-                        new_row[col_idx] = new_val;
-                    }
-                }
-                new_row
-            })
-            .collect();
+        let updated_rows = Self::apply_set_clauses(&rows_to_update, &set_col_indices, &table_info);
 
-        // Execute BEFORE UPDATE triggers
+        // Execute BEFORE UPDATE triggers (if any)
         let trigger_executor = TriggerExecutor::new(self.storage.clone());
-        let before_triggers = trigger_executor.get_triggers_for_operation(
+        let trigger_modified_rows = Self::run_before_update_triggers(
+            &trigger_executor,
             &table_name,
-            ExecTriggerTiming::Before,
-            ExecTriggerEvent::Update,
-        );
-
-        let trigger_modified_rows: Vec<Vec<Value>> = if !before_triggers.is_empty() {
-            let mut modified = Vec::new();
-            for (i, updated_row) in updated_rows.iter().enumerate() {
-                let old_row = &rows_to_update[i];
-                let result =
-                    trigger_executor.execute_before_update(&table_name, old_row, updated_row)?;
-                modified.push(result);
-            }
-            modified
-        } else {
-            updated_rows.clone()
-        };
+            &rows_to_update,
+            &updated_rows,
+        )?;
 
         let mut new_rows: Vec<Vec<Value>> = Vec::new();
 
@@ -866,15 +711,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             }
         }
 
-        // INT-1: For autocommit (no explicit transaction), commit so
-        // WAL/MVCC receive the change. If user already started a TX,
-        // leave current_tx_id intact for explicit COMMIT/ROLLBACK.
-        if started_implicit {
-            let tx_id = self.current_tx_id.unwrap();
-            let _ = self.transaction_manager.commit(tx_id);
-            self.current_tx_id = None;
-            self.tx_status = TxStatus::Idle;
-        }
+        // INT-1: autocommit — leave the commit decision to the helper.
+        self.commit_implicit_dml_tx(started_implicit);
 
         Ok(ExecutorResult::new(vec![], count))
     }
@@ -885,53 +723,17 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             "execute_delete",
             &delete.table,
         );
-        // IMPL-001 & IMPL-004: TX lifecycle enforcement
-        match self.tx_status {
-            TxStatus::Committed => {
-                return Err(SqlError::ExecutionError(
-                    "transaction already committed".to_string(),
-                ));
-            }
-            TxStatus::Aborted => {
-                return Err(SqlError::ExecutionError(
-                    "transaction already aborted".to_string(),
-                ));
-            }
-            TxStatus::Idle | TxStatus::Active => {
-                // Autocommit: allow DML without explicit BEGIN
-            }
-        }
-        // INT-1: Begin an implicit transaction so TM/WAL receive the change.
-        let started_implicit = self.current_tx_id.is_none();
-        let tm_tx_id = if started_implicit {
-            let tx_id = self
-                .transaction_manager
-                .begin_transaction(self.default_isolation)
-                .map_err(|e| SqlError::ExecutionError(format!("TM.begin failed: {:?}", e)))?;
-            self.current_tx_id = Some(tx_id);
-            self.tx_status = TxStatus::Active;
-            // #3129: propagate TX id to storage so VtuGuard::assert_dml_safe
-            // can verify in_transaction() (PR-3019 was missing this step).
-            if let Ok(mut storage) = self.storage.write() {
-                storage.set_current_tx_id(tx_id.as_u64());
-            }
-            Some(tx_id)
-        } else {
-            self.current_tx_id
-        };
+        let (tm_tx_id, started_implicit) =
+            self.begin_implicit_dml_tx("execute_delete", &delete.table)?;
         let table_name = delete.table.clone();
 
         // If no WHERE clause, delete all rows (current behavior is correct)
         if delete.where_clause.is_none() {
             let mut storage = self.storage.write().unwrap();
             let count = storage.delete(&table_name, &[])?;
+            drop(storage);
             // INT-1: Autocommit — commit the implicit TX so WAL/MVCC see this.
-            if started_implicit {
-                let tx_id = self.current_tx_id.unwrap();
-                let _ = self.transaction_manager.commit(tx_id);
-                self.current_tx_id = None;
-                self.tx_status = TxStatus::Idle;
-            }
+            self.commit_implicit_dml_tx(started_implicit);
             return Ok(ExecutorResult::new(vec![], count));
         }
 
@@ -1040,15 +842,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             }
         }
 
-        // INT-1: For autocommit (no explicit transaction), commit so
-        // WAL/MVCC receive the change. If user already started a TX,
-        // leave current_tx_id intact for explicit COMMIT/ROLLBACK.
-        if started_implicit {
-            let tx_id = self.current_tx_id.unwrap();
-            let _ = self.transaction_manager.commit(tx_id);
-            self.current_tx_id = None;
-            self.tx_status = TxStatus::Idle;
-        }
+        // INT-1: autocommit — leave the commit decision to the helper.
+        self.commit_implicit_dml_tx(started_implicit);
 
         Ok(ExecutorResult::new(vec![], count))
     }
@@ -1912,5 +1707,157 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
 
     pub fn stmt_cache_stats(&self) -> sqlrustgo_cache::CacheStats {
         self.stmt_cache.stats()
+    }
+
+    /// Begin an implicit TX for DML. Returns `(tx_id, started_implicit)`.
+    /// `started_implicit` is `true` ONLY when this call started a fresh TX.
+    fn begin_implicit_dml_tx(
+        &mut self,
+        op: &'static str,
+        _table: &str,
+    ) -> SqlResult<(Option<TxId>, bool)> {
+        match self.tx_status {
+            TxStatus::Committed => {
+                return Err(SqlError::ExecutionError(
+                    "transaction already committed".to_string(),
+                ));
+            }
+            TxStatus::Aborted => {
+                return Err(SqlError::ExecutionError(
+                    "transaction already aborted".to_string(),
+                ));
+            }
+            TxStatus::Idle | TxStatus::Active => {}
+        }
+        let _ = op;
+        if self.current_tx_id.is_none() {
+            let tx_id = self
+                .transaction_manager
+                .begin_transaction(self.default_isolation)
+                .map_err(|e| SqlError::ExecutionError(format!("TM.begin failed: {:?}", e)))?;
+            self.current_tx_id = Some(tx_id);
+            self.tx_status = TxStatus::Active;
+            if let Ok(mut storage) = self.storage.write() {
+                storage.set_current_tx_id(tx_id.as_u64());
+            }
+            Ok((Some(tx_id), true))
+        } else {
+            Ok((self.current_tx_id, false))
+        }
+    }
+
+    /// Commit the implicit DML TX started by `begin_implicit_dml_tx`.
+    /// Idempotent when `started_implicit` is `false` (user controls commit/rollback).
+    fn commit_implicit_dml_tx(&mut self, started_implicit: bool) {
+        if started_implicit {
+            let tx_id = self.current_tx_id.unwrap();
+            let _ = self.transaction_manager.commit(tx_id);
+            self.current_tx_id = None;
+            self.tx_status = TxStatus::Idle;
+        }
+    }
+
+    /// Convert `INSERT VALUES` expression rows to materialised `Value` records.
+    fn build_insert_records(values: &[Vec<Expression>]) -> Vec<Vec<Value>> {
+        values
+            .iter()
+            .map(|row_exprs| row_exprs.iter().map(expression_to_value).collect())
+            .collect()
+    }
+
+    /// Apply `ON DUPLICATE KEY UPDATE`: delete existing row + re-insert with updates.
+    /// Storage has no per-PK update API, so we go via delete+insert.
+    fn apply_odku(
+        storage: &mut dyn StorageEngine,
+        table_name: &str,
+        table_info: &sqlrustgo_storage::TableInfo,
+        existing_row: &[Value],
+        updates: &[(String, Expression)],
+    ) -> SqlResult<()> {
+        let col_names: Vec<String> = table_info.columns.iter().map(|c| c.name.clone()).collect();
+        let mut updated = existing_row.to_vec();
+        for (col_name, expr) in updates {
+            if let Some(idx) = col_names.iter().position(|n| n == col_name) {
+                let val = expression_to_value(expr);
+                if idx < updated.len() {
+                    updated[idx] = val;
+                }
+            }
+        }
+        storage.delete(table_name, &[])?;
+        storage.insert(table_name, vec![updated])?;
+        Ok(())
+    }
+
+    /// Apply UPDATE SET-clause expressions to each matching row.
+    fn apply_set_clauses(
+        rows_to_update: &[Vec<Value>],
+        set_col_indices: &[(usize, &Expression)],
+        table_info: &sqlrustgo_storage::TableInfo,
+    ) -> Vec<Vec<Value>> {
+        rows_to_update
+            .iter()
+            .map(|row| {
+                let mut new_row = row.clone();
+                for &(col_idx, set_expr) in set_col_indices {
+                    let new_val =
+                        evaluate_expression(set_expr, &new_row, table_info).unwrap_or(Value::Null);
+                    if col_idx < new_row.len() {
+                        new_row[col_idx] = new_val;
+                    }
+                }
+                new_row
+            })
+            .collect()
+    }
+
+    /// Run BEFORE UPDATE triggers; return rows transformed by triggers
+    /// (or unmodified if no triggers). Extracted from `execute_update`.
+    fn run_before_update_triggers(
+        trigger_executor: &TriggerExecutor,
+        table_name: &str,
+        rows_to_update: &[Vec<Value>],
+        updated_rows: &[Vec<Value>],
+    ) -> SqlResult<Vec<Vec<Value>>> {
+        let before_triggers = trigger_executor.get_triggers_for_operation(
+            table_name,
+            ExecTriggerTiming::Before,
+            ExecTriggerEvent::Update,
+        );
+        if before_triggers.is_empty() {
+            return Ok(updated_rows.to_vec());
+        }
+        let mut modified = Vec::new();
+        for (i, updated_row) in updated_rows.iter().enumerate() {
+            let old_row = &rows_to_update[i];
+            let result =
+                trigger_executor.execute_before_update(table_name, old_row, updated_row)?;
+            modified.push(result);
+        }
+        Ok(modified)
+    }
+
+    /// Cross-validate legacy WHERE filter against IR plan; warn on mismatch.
+    fn ir_validate_update_filter(
+        all_rows: &[Vec<Value>],
+        table_info: &sqlrustgo_storage::TableInfo,
+        rows_to_update: &[Vec<Value>],
+        update: &UpdateStatement,
+    ) {
+        let Ok(plan) = AstAdapter::to_update_plan(update, table_info) else {
+            return;
+        };
+        let ir_filtered: Vec<Vec<Value>> = all_rows
+            .iter()
+            .filter(|row| plan.predicate().evaluate(row, table_info))
+            .cloned()
+            .collect();
+        if ir_filtered.len() != rows_to_update.len() {
+            eprintln!(
+                "[IR VALIDATION] Predicate mismatch: legacy={}, ir={}",
+                rows_to_update.len(),
+                ir_filtered.len()
+            );
+        }
     }
 }
