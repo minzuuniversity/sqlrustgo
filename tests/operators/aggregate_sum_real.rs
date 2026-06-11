@@ -65,9 +65,5 @@ fn sum_real_mixed_with_integer_preserves_real() {
     e.execute("INSERT INTO t VALUES (20.5)").unwrap();
     let r = e.execute("SELECT SUM(v) FROM t").unwrap();
     let s: f64 = r.rows[0][0].to_string().parse().unwrap_or(0.0);
-    assert!(
-        (s - 41.0).abs() < 1e-6,
-        "SUM(v) should be 41.0, got {}",
-        s
-    );
+    assert!((s - 41.0).abs() < 1e-6, "SUM(v) should be 41.0, got {}", s);
 }
