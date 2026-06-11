@@ -285,7 +285,10 @@ fn test_audit_record_delete_with_old_value_p2_1() {
         .row_id("42")
         .old("{\"id\":42,\"name\":\"alice\"}")
         .build(1, 1700000000);
-    assert_eq!(ev.old_value.as_deref(), Some("{\"id\":42,\"name\":\"alice\"}"));
+    assert_eq!(
+        ev.old_value.as_deref(),
+        Some("{\"id\":42,\"name\":\"alice\"}")
+    );
     assert_eq!(ev.new_value, None); // DELETE has no after
     store.events.push(ev);
 }
@@ -389,8 +392,7 @@ fn test_audit_checksum_compute_p2_1() {
     // The real impl uses SHA-256. The harness uses a simplified
     // hash (multiply + add + xor). Both must produce a non-empty
     // 16-char hex string.
-    let ev = AuditEventBuilder::new("alice", AuditAction::Create, "users")
-        .build(1, 1700000000);
+    let ev = AuditEventBuilder::new("alice", AuditAction::Create, "users").build(1, 1700000000);
     assert_eq!(ev.checksum.len(), 16);
     assert!(ev.checksum.chars().all(|c| c.is_ascii_hexdigit()));
 }

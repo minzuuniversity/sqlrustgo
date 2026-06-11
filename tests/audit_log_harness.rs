@@ -171,7 +171,11 @@ impl AuditStore {
     }
 
     pub fn query_by_user(&self, user: &str) -> Vec<AuditEvent> {
-        self.events.iter().filter(|e| e.user == user).cloned().collect()
+        self.events
+            .iter()
+            .filter(|e| e.user == user)
+            .cloned()
+            .collect()
     }
 
     pub fn query_by_table(&self, table: &str) -> Vec<AuditEvent> {
@@ -246,7 +250,11 @@ mod harness_tests {
     #[test]
     fn store_record_and_query() {
         let mut store = AuditStore::new();
-        store.record(AuditEventBuilder::new("alice", AuditAction::Create, "users"));
+        store.record(AuditEventBuilder::new(
+            "alice",
+            AuditAction::Create,
+            "users",
+        ));
         store.record(AuditEventBuilder::new("bob", AuditAction::Update, "orders"));
         assert_eq!(store.count(), 2);
         assert_eq!(store.query_by_user("alice").len(), 1);
@@ -256,7 +264,11 @@ mod harness_tests {
     #[test]
     fn checksum_verified_after_record() {
         let mut store = AuditStore::new();
-        store.record(AuditEventBuilder::new("alice", AuditAction::Create, "users"));
+        store.record(AuditEventBuilder::new(
+            "alice",
+            AuditAction::Create,
+            "users",
+        ));
         assert!(store.verify_all());
     }
 
