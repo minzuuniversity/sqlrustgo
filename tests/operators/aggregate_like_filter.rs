@@ -18,19 +18,27 @@ fn engine() -> ExecutionEngine<MemoryStorage> {
 }
 
 fn load_fixture(e: &mut ExecutionEngine<MemoryStorage>) {
-    e.execute("CREATE TABLE p (p_name TEXT, p_val INTEGER)").unwrap();
-    e.execute("INSERT INTO p VALUES ('forest almond', 1)").unwrap();
-    e.execute("INSERT INTO p VALUES ('forest blue', 2)").unwrap();
-    e.execute("INSERT INTO p VALUES ('lemon yellow', 3)").unwrap();
-    e.execute("INSERT INTO p VALUES ('forest green', 4)").unwrap();
-    e.execute("INSERT INTO p VALUES ('almond chocolate', 5)").unwrap();
+    e.execute("CREATE TABLE p (p_name TEXT, p_val INTEGER)")
+        .unwrap();
+    e.execute("INSERT INTO p VALUES ('forest almond', 1)")
+        .unwrap();
+    e.execute("INSERT INTO p VALUES ('forest blue', 2)")
+        .unwrap();
+    e.execute("INSERT INTO p VALUES ('lemon yellow', 3)")
+        .unwrap();
+    e.execute("INSERT INTO p VALUES ('forest green', 4)")
+        .unwrap();
+    e.execute("INSERT INTO p VALUES ('almond chocolate', 5)")
+        .unwrap();
 }
 
 #[test]
 fn like_prefix_filters_correctly() {
     let mut e = engine();
     load_fixture(&mut e);
-    let r = e.execute("SELECT COUNT(*) FROM p WHERE p_name LIKE 'forest%'").unwrap();
+    let r = e
+        .execute("SELECT COUNT(*) FROM p WHERE p_name LIKE 'forest%'")
+        .unwrap();
     assert_eq!(r.rows[0][0].to_string(), "3");
 }
 
@@ -38,7 +46,9 @@ fn like_prefix_filters_correctly() {
 fn like_with_aggregate() {
     let mut e = engine();
     load_fixture(&mut e);
-    let r = e.execute("SELECT SUM(p_val) FROM p WHERE p_name LIKE 'forest%'").unwrap();
+    let r = e
+        .execute("SELECT SUM(p_val) FROM p WHERE p_name LIKE 'forest%'")
+        .unwrap();
     assert_eq!(r.rows[0][0].to_string(), "7");
 }
 
@@ -46,7 +56,9 @@ fn like_with_aggregate() {
 fn like_no_match_returns_zero() {
     let mut e = engine();
     load_fixture(&mut e);
-    let r = e.execute("SELECT COUNT(*) FROM p WHERE p_name LIKE 'banana%'").unwrap();
+    let r = e
+        .execute("SELECT COUNT(*) FROM p WHERE p_name LIKE 'banana%'")
+        .unwrap();
     assert_eq!(r.rows[0][0].to_string(), "0");
 }
 
@@ -59,7 +71,9 @@ fn like_with_underscore_wildcard() {
     e.execute("INSERT INTO t VALUES ('abc')").unwrap();
     e.execute("INSERT INTO t VALUES ('abcd')").unwrap();
     e.execute("INSERT INTO t VALUES ('a')").unwrap();
-    let r = e.execute("SELECT COUNT(*) FROM t WHERE s LIKE 'ab_'").unwrap();
+    let r = e
+        .execute("SELECT COUNT(*) FROM t WHERE s LIKE 'ab_'")
+        .unwrap();
     // Matches 'abc' only (3 chars: ab + 1)
     assert_eq!(r.rows[0][0].to_string(), "1");
 }
