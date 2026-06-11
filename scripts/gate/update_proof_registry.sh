@@ -18,6 +18,13 @@ echo ""
 
 cd "$PROJECT_ROOT"
 
+# Ensure cargo is on PATH (CI runners may not have it in default PATH).
+if ! command -v cargo >/dev/null 2>&1; then
+    if [ -x "$HOME/.cargo/bin/cargo" ]; then
+        export PATH="$HOME/.cargo/bin:$PATH"
+    fi
+fi
+
 # 创建临时数组存储proof信息
 declare -a proofs
 total=0
