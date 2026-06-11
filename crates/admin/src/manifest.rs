@@ -94,8 +94,7 @@ impl Manifest {
     pub fn read_from(path: &Path) -> std::io::Result<Self> {
         let mut s = String::new();
         fs::File::open(path)?.read_to_string(&mut s)?;
-        Self::from_json(&s)
-            .map_err(|e| std::io::Error::other(e.to_string()))
+        Self::from_json(&s).map_err(|e| std::io::Error::other(e.to_string()))
     }
 }
 
