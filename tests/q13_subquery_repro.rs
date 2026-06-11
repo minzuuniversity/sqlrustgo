@@ -88,9 +88,7 @@ fn make_engine() -> ExecutionEngine<MemoryStorage> {
         )
         .unwrap();
 
-    let data = PathBuf::from(
-        "/home/ai/sqlrustgo/.worktrees/v39-wired-audit/tests/data/tpch-sf001",
-    );
+    let data = PathBuf::from("/home/ai/sqlrustgo/.worktrees/v39-wired-audit/tests/data/tpch-sf001");
     let schemas: Vec<(&str, usize)> = vec![
         ("region", 3),
         ("nation", 4),
@@ -134,9 +132,7 @@ fn q13_bare_subquery_row_count() {
     // match the LIKE pattern. Per SQLite baseline (22-22-AUDIT), this
     // returns 7 rows.
     let r = engine
-        .execute(
-            "SELECT o_custkey FROM orders WHERE o_comment LIKE '%special%requests%'",
-        )
+        .execute("SELECT o_custkey FROM orders WHERE o_comment LIKE '%special%requests%'")
         .unwrap();
     eprintln!("bare subquery returned {} rows", r.rows.len());
     assert!(
