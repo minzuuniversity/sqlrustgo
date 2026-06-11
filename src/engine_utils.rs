@@ -129,37 +129,91 @@ pub fn eval_predicate(expr: &Expression, row: &[Value], table_info: &TableInfo) 
         // produces Expression::InList; we evaluate the left operand and
         // check membership against the right-hand list of literals.
         Expression::InList(left, values) => {
-            let left_val = crate::expr_utils::evaluate_expression(left, row, table_info)
+            let left_val_raw = crate::expr_utils::evaluate_expression(left, row, table_info)
                 .unwrap_or(Value::Null);
-            if matches!(left_val, Value::Null) {
+            if matches!(left_val_raw, Value::Null) {
                 return false;
             }
-            values.iter().any(|v| {
-                let right_val = crate::expr_utils::evaluate_expression(v, row, table_info)
-                    .unwrap_or(Value::Null);
-                if matches!(right_val, Value::Null) {
-                    false
+            // Sprint 6 Q13 fix: when the outer column is stored as
+            // TEXT (e.g. `customer.c_custkey` in the Sprint 7
+            // SF=0.001 fixture, which stores INT keys as TEXT),
+            // the subquery-derived list values may come back as
+            // `Value::Integer(n)` from `parse_lit` and the
+            // cross-type compare falls into the `_ => 0` catch-all
+            // — making every row look like a match. Normalize: if
+            // the outer value is TEXT, coerce every list value
+            // through its string representation before comparing.
+            let left_val = match &left_val_raw {
+                Value::Text(s) => Value::Text(s.clone()),
+                _ => left_val_raw.clone(),
+            };
+            let coerce = |v: Value| -> Value {
+                if matches!(left_val, Value::Text(_)) {
+                    Value::Text(match v {
+                        Value::Integer(n) => n.to_string(),
+                        Value::Float(f) => f.to_string(),
+                        Value::Text(s) => s,
+                        Value::Boolean(b) => b.to_string(),
+                        Value::Null => return Value::Null,
+                        Value::Blob(_) => return Value::Null,
+                    })
                 } else {
-                    crate::expr_utils::compare_values(&left_val, &right_val) == 0
+                    v
                 }
-            })
+            };
+            let left_for_cmp = left_val.clone();
+            let mut result = false;
+            for v in values {
+                let right_val_raw = crate::expr_utils::evaluate_expression(v, row, table_info)
+                    .unwrap_or(Value::Null);
+                let right_val = coerce(right_val_raw);
+                if matches!(right_val, Value::Null) {
+                    continue;
+                }
+                if crate::expr_utils::compare_values(&left_for_cmp, &right_val) == 0 {
+                    result = true;
+                    break;
+                }
+            }
+            result
         }
         // TPC-H Q13/Q16: `col NOT IN (literal, ...)`.
         Expression::NotInList(left, values) => {
-            let left_val = crate::expr_utils::evaluate_expression(left, row, table_info)
+            let left_val_raw = crate::expr_utils::evaluate_expression(left, row, table_info)
                 .unwrap_or(Value::Null);
-            if matches!(left_val, Value::Null) {
+            if matches!(left_val_raw, Value::Null) {
                 return false;
             }
-            // NOT IN: false if any value matches; true if all don't match.
-            // If any list value is NULL, the result is UNKNOWN → false.
+            // Sprint 6 Q13 fix: see InList arm above for the
+            // rationale — coerce list values to the outer
+            // column's type when it is TEXT.
+            let left_val = match &left_val_raw {
+                Value::Text(s) => Value::Text(s.clone()),
+                _ => left_val_raw.clone(),
+            };
+            let left_for_cmp = left_val.clone();
+            let mut coerce = |v: Value| -> Value {
+                if matches!(left_val, Value::Text(_)) {
+                    Value::Text(match v {
+                        Value::Integer(n) => n.to_string(),
+                        Value::Float(f) => f.to_string(),
+                        Value::Text(s) => s,
+                        Value::Boolean(b) => b.to_string(),
+                        Value::Null => return Value::Null,
+                        Value::Blob(_) => return Value::Null,
+                    })
+                } else {
+                    v
+                }
+            };
             for v in values {
-                let right_val = crate::expr_utils::evaluate_expression(v, row, table_info)
+                let right_val_raw = crate::expr_utils::evaluate_expression(v, row, table_info)
                     .unwrap_or(Value::Null);
+                let right_val = coerce(right_val_raw);
                 if matches!(right_val, Value::Null) {
                     return false;
                 }
-                if crate::expr_utils::compare_values(&left_val, &right_val) == 0 {
+                if crate::expr_utils::compare_values(&left_for_cmp, &right_val) == 0 {
                     return false;
                 }
             }
