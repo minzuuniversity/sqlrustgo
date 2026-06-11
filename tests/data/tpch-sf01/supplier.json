@@ -1,0 +1,2351 @@
+{
+  "name": "supplier",
+  "columns": [
+    {
+      "name": "s_suppkey",
+      "data_type": "INTEGER",
+      "nullable": false,
+      "primary_key": true
+    },
+    {
+      "name": "s_name",
+      "data_type": "TEXT",
+      "nullable": true,
+      "primary_key": false
+    },
+    {
+      "name": "s_address",
+      "data_type": "TEXT",
+      "nullable": true,
+      "primary_key": false
+    },
+    {
+      "name": "s_nationkey",
+      "data_type": "INTEGER",
+      "nullable": true,
+      "primary_key": false
+    },
+    {
+      "name": "s_phone",
+      "data_type": "TEXT",
+      "nullable": true,
+      "primary_key": false
+    },
+    {
+      "name": "s_acctbal",
+      "data_type": "REAL",
+      "nullable": true,
+      "primary_key": false
+    },
+    {
+      "name": "s_comment",
+      "data_type": "TEXT",
+      "nullable": true,
+      "primary_key": false
+    }
+  ],
+  "foreign_keys": [],
+  "unique_constraints": [],
+  "rows": [
+    [
+      {
+        "Integer": 1
+      },
+      {
+        "Text": "Supplier#000000001"
+      },
+      {
+        "Text": "56 HRZDNeHYvk EoWP 307730757 356619"
+      },
+      {
+        "Integer": 21
+      },
+      {
+        "Text": "374-7348-4948"
+      },
+      {
+        "Float": 77.0
+      },
+      {
+        "Text": "oskXsTKpypzBccLnSNGjTnmWAhSYLWzBoTeSUEqVKdEsegxgpJZGpPTDmPjGkyY"
+      }
+    ],
+    [
+      {
+        "Integer": 2
+      },
+      {
+        "Text": "Supplier#000000002"
+      },
+      {
+        "Text": "28 dHJoUgGvDK unnF 830009909 673567"
+      },
+      {
+        "Integer": 20
+      },
+      {
+        "Text": "981-4732-2925"
+      },
+      {
+        "Float": 20.59
+      },
+      {
+        "Text": "YdWtcBBsNtUXYZdSTvVAkQQvdspChXMfMUNvJkfaSHehBbsrtkVFeSSLXuvRRAW"
+      }
+    ],
+    [
+      {
+        "Integer": 3
+      },
+      {
+        "Text": "Supplier#000000003"
+      },
+      {
+        "Text": "69 QWNDIfNseI cqtj 176448836 820858"
+      },
+      {
+        "Integer": 21
+      },
+      {
+        "Text": "321-4759-6549"
+      },
+      {
+        "Float": 68.1
+      },
+      {
+        "Text": "vYDBnxiNihFzEZHEUIlnGekaCoTKGfMzjizhZAKldiXzGkWqktoBOUsrHIorqUg"
+      }
+    ],
+    [
+      {
+        "Integer": 4
+      },
+      {
+        "Text": "Supplier#000000004"
+      },
+      {
+        "Text": "96 DnEMGSSSHI nMXf 382797023 526138"
+      },
+      {
+        "Integer": 25
+      },
+      {
+        "Text": "893-8479-7891"
+      },
+      {
+        "Float": 25.25
+      },
+      {
+        "Text": "KEhMSSDLwlyZpCoXipaAyFskvNQnOloLTsHDaYkRniENOIViEakZBlmrydLESFA"
+      }
+    ],
+    [
+      {
+        "Integer": 5
+      },
+      {
+        "Text": "Supplier#000000005"
+      },
+      {
+        "Text": "10 uMgCljexDD ytkb 966803326 425722"
+      },
+      {
+        "Integer": 2
+      },
+      {
+        "Text": "095-8435-1945"
+      },
+      {
+        "Float": 15.14
+      },
+      {
+        "Text": "BybQpZxVaenCjxwYqFmHUCiLojkrutrJTePJYYIeFWgoZEeXNYiqAOVBuAlGTpS"
+      }
+    ],
+    [
+      {
+        "Integer": 6
+      },
+      {
+        "Text": "Supplier#000000006"
+      },
+      {
+        "Text": "27 AAZwaanbrw MZUG 004640688 983336"
+      },
+      {
+        "Integer": 20
+      },
+      {
+        "Text": "063-4477-8852"
+      },
+      {
+        "Float": 34.38
+      },
+      {
+        "Text": "hiJpiLwVSDfQpEndJXzUcWXbhUzBvAvKvlOCeXUYIfrFeGrNnuCySTKQsfmqVMU"
+      }
+    ],
+    [
+      {
+        "Integer": 7
+      },
+      {
+        "Text": "Supplier#000000007"
+      },
+      {
+        "Text": "24 ASlkWlkgEJ ZZNV 754780893 972236"
+      },
+      {
+        "Integer": 13
+      },
+      {
+        "Text": "918-9659-0200"
+      },
+      {
+        "Float": 74.08
+      },
+      {
+        "Text": "ZtsnANEFZETthvezliqFZKqVJpIFMXDmYYjYFxAjZSGOSIsapAlljIQrChGoBgm"
+      }
+    ],
+    [
+      {
+        "Integer": 8
+      },
+      {
+        "Text": "Supplier#000000008"
+      },
+      {
+        "Text": "98 uhZWtbKLLi vyMm 926220824 322930"
+      },
+      {
+        "Integer": 4
+      },
+      {
+        "Text": "603-8792-8495"
+      },
+      {
+        "Float": 82.27
+      },
+      {
+        "Text": "eRgvIvdqXsabqwxcsipQWbBQRwepGJJVRcWwnnBtzvyCKIzCRxkgKXkCzLhYAYZ"
+      }
+    ],
+    [
+      {
+        "Integer": 9
+      },
+      {
+        "Text": "Supplier#000000009"
+      },
+      {
+        "Text": "65 nyYMrkIUZi fMOu 451480625 994326"
+      },
+      {
+        "Integer": 18
+      },
+      {
+        "Text": "815-2542-8713"
+      },
+      {
+        "Float": 54.61
+      },
+      {
+        "Text": "VFIjTwJpBHXKrgQhOnYLDOKSmqctjTSKheusjJazZISOFXqxlgFLfLebjfdefNv"
+      }
+    ],
+    [
+      {
+        "Integer": 10
+      },
+      {
+        "Text": "Supplier#000000010"
+      },
+      {
+        "Text": "87 yPJnuIJBZe ZenV 858515704 886612"
+      },
+      {
+        "Integer": 23
+      },
+      {
+        "Text": "501-5568-3112"
+      },
+      {
+        "Float": 0.74
+      },
+      {
+        "Text": "ZMdeHKGWHugHNaCIbOvGKYwZvXLBykFltZOPMSvjnAZmfbdrlyMCDKsiPvCKGAc"
+      }
+    ],
+    [
+      {
+        "Integer": 11
+      },
+      {
+        "Text": "Supplier#000000011"
+      },
+      {
+        "Text": "99 bAWisCoaiK Eaff 056735616 961628"
+      },
+      {
+        "Integer": 24
+      },
+      {
+        "Text": "763-7512-9268"
+      },
+      {
+        "Float": 31.22
+      },
+      {
+        "Text": "IYkzcpZAJrkYIjiyiUzNNvLWigYaqARMiXhNDkRqjtEoNZqJOvZegowUKEHTpqG"
+      }
+    ],
+    [
+      {
+        "Integer": 12
+      },
+      {
+        "Text": "Supplier#000000012"
+      },
+      {
+        "Text": "59 DbRCilgRYP xeKK 879727480 155083"
+      },
+      {
+        "Integer": 9
+      },
+      {
+        "Text": "670-3911-1729"
+      },
+      {
+        "Float": 14.1
+      },
+      {
+        "Text": "VcrazuJdBZGKpmTnvlhDQGmzelOqZqQhmzFHHINLTGeoPjRwNbgojVaifzfSihC"
+      }
+    ],
+    [
+      {
+        "Integer": 13
+      },
+      {
+        "Text": "Supplier#000000013"
+      },
+      {
+        "Text": "35 raEKeBoNEL rlcf 094185981 699886"
+      },
+      {
+        "Integer": 1
+      },
+      {
+        "Text": "960-8986-4251"
+      },
+      {
+        "Float": 48.61
+      },
+      {
+        "Text": "uxaLDRxSmNAfVwRyyOavjNvZtutTJVjmBTBSsJYtftHEpQnsNulCkHcWEYTYesL"
+      }
+    ],
+    [
+      {
+        "Integer": 14
+      },
+      {
+        "Text": "Supplier#000000014"
+      },
+      {
+        "Text": "64 rIFYkDsYwh hCJJ 017620378 734612"
+      },
+      {
+        "Integer": 16
+      },
+      {
+        "Text": "665-6753-4824"
+      },
+      {
+        "Float": 70.16
+      },
+      {
+        "Text": "iKDyxunCSAElCnPvRnuPfpDncFqxJLzwyORfvTdziwGcrIpJgOKoxHoNBKYRZSq"
+      }
+    ],
+    [
+      {
+        "Integer": 15
+      },
+      {
+        "Text": "Supplier#000000015"
+      },
+      {
+        "Text": "72 gEMjwhgyFJ mawP 074995335 648375"
+      },
+      {
+        "Integer": 12
+      },
+      {
+        "Text": "800-8969-8084"
+      },
+      {
+        "Float": 52.63
+      },
+      {
+        "Text": "RYtONgPEoeXigsumCZVkrouikaFgcrMjCaCdxfUEZaegoxogLpPswshwjQDbaMQ"
+      }
+    ],
+    [
+      {
+        "Integer": 16
+      },
+      {
+        "Text": "Supplier#000000016"
+      },
+      {
+        "Text": "79 YhvPosMSks Tpvm 264014581 576925"
+      },
+      {
+        "Integer": 6
+      },
+      {
+        "Text": "948-8723-8272"
+      },
+      {
+        "Float": 23.31
+      },
+      {
+        "Text": "RQFGCRUEULpWMCTjDTvhXrINaqWXrqumfRFvkGTFZRumbKFfFQvzCrpAymoGBql"
+      }
+    ],
+    [
+      {
+        "Integer": 17
+      },
+      {
+        "Text": "Supplier#000000017"
+      },
+      {
+        "Text": "69 CoZSVOSRaB UfrJ 010787433 055885"
+      },
+      {
+        "Integer": 18
+      },
+      {
+        "Text": "910-7689-5632"
+      },
+      {
+        "Float": 76.77
+      },
+      {
+        "Text": "BIjscnXzsUlhXJIMvgVewwFvtuGXdIHGnoJAHAlYEtNYIexIeimgVcrAwVZpAYj"
+      }
+    ],
+    [
+      {
+        "Integer": 18
+      },
+      {
+        "Text": "Supplier#000000018"
+      },
+      {
+        "Text": "20 GxdmNiCYiF QdUB 944481645 303364"
+      },
+      {
+        "Integer": 20
+      },
+      {
+        "Text": "580-8743-1243"
+      },
+      {
+        "Float": 31.79
+      },
+      {
+        "Text": "pfwcgTLkYdkKqryYvqZRgedzPEiBDXtOehuFgcFOfsxWNaRrMGlOJAHWNddOZmi"
+      }
+    ],
+    [
+      {
+        "Integer": 19
+      },
+      {
+        "Text": "Supplier#000000019"
+      },
+      {
+        "Text": "50 hONoMRxtvn DVDW 088836321 298847"
+      },
+      {
+        "Integer": 19
+      },
+      {
+        "Text": "429-6253-8630"
+      },
+      {
+        "Float": 82.68
+      },
+      {
+        "Text": "kOUEHdSuofvhHbbATQzWQrLiCmbdbMZWlZTxgwCniXcJDeBHRHEQrfgSsXdtPXq"
+      }
+    ],
+    [
+      {
+        "Integer": 20
+      },
+      {
+        "Text": "Supplier#000000020"
+      },
+      {
+        "Text": "6 fCVYvhnPWs mbJL 544726955 858012"
+      },
+      {
+        "Integer": 13
+      },
+      {
+        "Text": "521-0440-7114"
+      },
+      {
+        "Float": 72.12
+      },
+      {
+        "Text": "QdVmdUqLCejRhzHDrazTcBMlsAmXlVwmoAlZximAnNoQFppyudbuKtSgtszjRsi"
+      }
+    ],
+    [
+      {
+        "Integer": 21
+      },
+      {
+        "Text": "Supplier#000000021"
+      },
+      {
+        "Text": "7 gbWYDVnFej tVad 780518332 819382"
+      },
+      {
+        "Integer": 23
+      },
+      {
+        "Text": "586-2534-2137"
+      },
+      {
+        "Float": 88.39
+      },
+      {
+        "Text": "SZzeiqRgdciZrcZUTyJQnNSpaohvVBIRHdCAOGxbiUKTBPFynyYVhViYrjSlKLM"
+      }
+    ],
+    [
+      {
+        "Integer": 22
+      },
+      {
+        "Text": "Supplier#000000022"
+      },
+      {
+        "Text": "62 HyAzJxXvHJ ynTF 906339127 083550"
+      },
+      {
+        "Integer": 1
+      },
+      {
+        "Text": "073-3369-5338"
+      },
+      {
+        "Float": 74.61
+      },
+      {
+        "Text": "hxxCApxsIbfpttYJEIcsXBoPiaLalVFwTPYtkQhhbAbFnoIVBeJiRvWSuiMYsGE"
+      }
+    ],
+    [
+      {
+        "Integer": 23
+      },
+      {
+        "Text": "Supplier#000000023"
+      },
+      {
+        "Text": "93 zrbhokQtMT tyzD 149205664 998976"
+      },
+      {
+        "Integer": 9
+      },
+      {
+        "Text": "923-9161-2861"
+      },
+      {
+        "Float": 29.78
+      },
+      {
+        "Text": "xGlbYxLKoyQBwZdTYpmRXzbSvDikqBqnwNqZxNTdtYUJNcjZAQYzKFgNtrUNfDJ"
+      }
+    ],
+    [
+      {
+        "Integer": 24
+      },
+      {
+        "Text": "Supplier#000000024"
+      },
+      {
+        "Text": "54 lAjNLZEzCG XZxV 712069451 961553"
+      },
+      {
+        "Integer": 20
+      },
+      {
+        "Text": "972-4095-8982"
+      },
+      {
+        "Float": 24.15
+      },
+      {
+        "Text": "kYouYrIHYzKFGOhyoQxmDajgYFAXfsytmogstmTgSZpqAlyyCrKxyAreEhVXCgU"
+      }
+    ],
+    [
+      {
+        "Integer": 25
+      },
+      {
+        "Text": "Supplier#000000025"
+      },
+      {
+        "Text": "57 bLsKBCWocZ GyQN 954560801 634782"
+      },
+      {
+        "Integer": 16
+      },
+      {
+        "Text": "608-6562-8330"
+      },
+      {
+        "Float": 5.79
+      },
+      {
+        "Text": "tHGYDRCfBqEwCKmOGjRXEtGDZARYeLGElFpNyIwhZmtgODMtvsVfqJxoGuXJBvn"
+      }
+    ],
+    [
+      {
+        "Integer": 26
+      },
+      {
+        "Text": "Supplier#000000026"
+      },
+      {
+        "Text": "0 yuCgHRoJHZ gjUL 840878445 776816"
+      },
+      {
+        "Integer": 21
+      },
+      {
+        "Text": "766-6707-9170"
+      },
+      {
+        "Float": 86.91
+      },
+      {
+        "Text": "fkjVXUICisiPeIMTPrkkwQilhrnMXtSSoGfCpwqfadeZUchRLoJbZsOImOcYcBU"
+      }
+    ],
+    [
+      {
+        "Integer": 27
+      },
+      {
+        "Text": "Supplier#000000027"
+      },
+      {
+        "Text": "20 FrueAYBglE YIJt 269032514 081251"
+      },
+      {
+        "Integer": 15
+      },
+      {
+        "Text": "421-7280-2203"
+      },
+      {
+        "Float": 83.37
+      },
+      {
+        "Text": "OlGLXpKjjgjawtAIcJvYStSLpDNrnoijwHXOBrWFCUnWZgdblNufQvxDTINmuKr"
+      }
+    ],
+    [
+      {
+        "Integer": 28
+      },
+      {
+        "Text": "Supplier#000000028"
+      },
+      {
+        "Text": "87 nSyFjNPKbU GWEu 529651879 295802"
+      },
+      {
+        "Integer": 23
+      },
+      {
+        "Text": "130-6153-1633"
+      },
+      {
+        "Float": 7.68
+      },
+      {
+        "Text": "ZkgWnFvvwzHaCzvpMHoKsLpsegHyqjgcWbFOExtqauzqVWTvCYDixFrDLNhGXzW"
+      }
+    ],
+    [
+      {
+        "Integer": 29
+      },
+      {
+        "Text": "Supplier#000000029"
+      },
+      {
+        "Text": "2 ESMyNzOQCL jeGn 892534804 831491"
+      },
+      {
+        "Integer": 24
+      },
+      {
+        "Text": "095-1259-5309"
+      },
+      {
+        "Float": 1.81
+      },
+      {
+        "Text": "GeLyCYEIBkGFdyPEGvVvSJqXytUFgvjsoCXYEovGsDogvjbWjWVvtFciIIONbpn"
+      }
+    ],
+    [
+      {
+        "Integer": 30
+      },
+      {
+        "Text": "Supplier#000000030"
+      },
+      {
+        "Text": "43 UFpTdStfQM MNHi 583203489 600116"
+      },
+      {
+        "Integer": 21
+      },
+      {
+        "Text": "753-1820-0415"
+      },
+      {
+        "Float": 74.77
+      },
+      {
+        "Text": "FawXmSfGvonmfzCziRFRZiyZappDqVQPHfPmSCIwvuLUqyfTzvijsbQxcIMwrpu"
+      }
+    ],
+    [
+      {
+        "Integer": 31
+      },
+      {
+        "Text": "Supplier#000000031"
+      },
+      {
+        "Text": "78 SrtbvFsjlM uhWg 922703200 108347"
+      },
+      {
+        "Integer": 14
+      },
+      {
+        "Text": "401-9061-2165"
+      },
+      {
+        "Float": 1.76
+      },
+      {
+        "Text": "sxQfBYtuplYENCAqUzPPGqKiAmmVSwegAEnlVeDtZHxTcnfraeiJyouGmtkOCom"
+      }
+    ],
+    [
+      {
+        "Integer": 32
+      },
+      {
+        "Text": "Supplier#000000032"
+      },
+      {
+        "Text": "69 kkcJhDeXww Onwx 693576900 981776"
+      },
+      {
+        "Integer": 1
+      },
+      {
+        "Text": "727-4551-4031"
+      },
+      {
+        "Float": 67.43
+      },
+      {
+        "Text": "XfJijHzJAsTMNtjWUUVzNtXRAceeKyGSmFmQBQcyawvlvzzwjbrjhIEEocrxZXb"
+      }
+    ],
+    [
+      {
+        "Integer": 33
+      },
+      {
+        "Text": "Supplier#000000033"
+      },
+      {
+        "Text": "79 yQuyCghldo EFCO 049764579 136746"
+      },
+      {
+        "Integer": 21
+      },
+      {
+        "Text": "743-8942-0121"
+      },
+      {
+        "Float": 9.58
+      },
+      {
+        "Text": "tiVtxauRLjkjCiWrPZUNPhLwllxspHBUmalpZVKaMFeqUohrrzxRukVUatfsjnn"
+      }
+    ],
+    [
+      {
+        "Integer": 34
+      },
+      {
+        "Text": "Supplier#000000034"
+      },
+      {
+        "Text": "9 TXAKcWYszh tPHv 756456306 520112"
+      },
+      {
+        "Integer": 2
+      },
+      {
+        "Text": "183-2123-9436"
+      },
+      {
+        "Float": -8.49
+      },
+      {
+        "Text": "ZvThLGJrMTCiQwlFlqgbokpcWTTExypHPsydXHmmTjoaXPhdwGmxZyvaHlDlNvK"
+      }
+    ],
+    [
+      {
+        "Integer": 35
+      },
+      {
+        "Text": "Supplier#000000035"
+      },
+      {
+        "Text": "91 CvGtMcSfaD dKah 467973498 010185"
+      },
+      {
+        "Integer": 20
+      },
+      {
+        "Text": "876-7857-6312"
+      },
+      {
+        "Float": 67.16
+      },
+      {
+        "Text": "XXdErdRSnrPiDJpwqetVsWNBoTNNzNzIzVwNjeIFzyKKQifskjGmbguADFymfIT"
+      }
+    ],
+    [
+      {
+        "Integer": 36
+      },
+      {
+        "Text": "Supplier#000000036"
+      },
+      {
+        "Text": "61 zjHbtsmCzN OxLN 881960595 331224"
+      },
+      {
+        "Integer": 11
+      },
+      {
+        "Text": "142-7223-5977"
+      },
+      {
+        "Float": -6.74
+      },
+      {
+        "Text": "rRTNPzKrVKhjJJCYShUchNHLflRvpowmJYDDQDtxSRSkpGZPaixisOcVvfGHakS"
+      }
+    ],
+    [
+      {
+        "Integer": 37
+      },
+      {
+        "Text": "Supplier#000000037"
+      },
+      {
+        "Text": "3 rAzPQZAahg cPFV 824385383 853918"
+      },
+      {
+        "Integer": 4
+      },
+      {
+        "Text": "823-4676-6915"
+      },
+      {
+        "Float": 58.26
+      },
+      {
+        "Text": "ByxjsPCLKbUfXMAqIovJHkZOLCrFhSiGyyAxGKoJoWjmszsbNXLSrsYQDVsceqB"
+      }
+    ],
+    [
+      {
+        "Integer": 38
+      },
+      {
+        "Text": "Supplier#000000038"
+      },
+      {
+        "Text": "7 DOttRYidEL PrqQ 399355748 272394"
+      },
+      {
+        "Integer": 21
+      },
+      {
+        "Text": "981-0015-9248"
+      },
+      {
+        "Float": 22.43
+      },
+      {
+        "Text": "IUbOsklYisqYyPAowycZWRRvWktlvUtvnXLoUXYXkavYwBoZTSGlYBeRdcPJHkn"
+      }
+    ],
+    [
+      {
+        "Integer": 39
+      },
+      {
+        "Text": "Supplier#000000039"
+      },
+      {
+        "Text": "63 xcUSOeYyHy RtOt 862320387 084427"
+      },
+      {
+        "Integer": 20
+      },
+      {
+        "Text": "802-7777-6242"
+      },
+      {
+        "Float": -3.18
+      },
+      {
+        "Text": "PtrvmdKNqmWLGZxyPtjEzwEYabCNtPqxYKGDNTNJCJMxQiUdjZtJqWCfGZGpxJt"
+      }
+    ],
+    [
+      {
+        "Integer": 40
+      },
+      {
+        "Text": "Supplier#000000040"
+      },
+      {
+        "Text": "16 pskLrfdKKn haez 272952417 905871"
+      },
+      {
+        "Integer": 23
+      },
+      {
+        "Text": "631-1137-2721"
+      },
+      {
+        "Float": 80.4
+      },
+      {
+        "Text": "hDvFUYnkCkYoaJEnIykdiUogrSliSJmxONfYBoNRnllFYvJXenOtsiBNPbObuzX"
+      }
+    ],
+    [
+      {
+        "Integer": 41
+      },
+      {
+        "Text": "Supplier#000000041"
+      },
+      {
+        "Text": "78 gMtSCDlKxh ijdY 352259680 276831"
+      },
+      {
+        "Integer": 16
+      },
+      {
+        "Text": "087-1526-3456"
+      },
+      {
+        "Float": 24.57
+      },
+      {
+        "Text": "nvOkTrIgqVOvTuupdRheGOgvzoYEAesFXykDAYkkrMwUNDIIjNvLRmfownCfzRX"
+      }
+    ],
+    [
+      {
+        "Integer": 42
+      },
+      {
+        "Text": "Supplier#000000042"
+      },
+      {
+        "Text": "5 SAbWxnJRLE xaWk 632338337 064876"
+      },
+      {
+        "Integer": 17
+      },
+      {
+        "Text": "362-7032-8649"
+      },
+      {
+        "Float": 30.55
+      },
+      {
+        "Text": "ACQwtrFSUThDZQFQNvkzTPwVjODiUrYzmjdgUhpPuuXGLcJBUlUXIYHJPJuDFaF"
+      }
+    ],
+    [
+      {
+        "Integer": 43
+      },
+      {
+        "Text": "Supplier#000000043"
+      },
+      {
+        "Text": "85 HXMeBAzZbu cCWo 441801228 219914"
+      },
+      {
+        "Integer": 6
+      },
+      {
+        "Text": "123-7665-8348"
+      },
+      {
+        "Float": 77.59
+      },
+      {
+        "Text": "cSpTssccDYeapOTwPFmXvuspHyPcwNeLcuWHWUNyUMkVpfMFwlRQnxRyGqJsRbn"
+      }
+    ],
+    [
+      {
+        "Integer": 44
+      },
+      {
+        "Text": "Supplier#000000044"
+      },
+      {
+        "Text": "50 uQKqrBDVwc RcSX 387458665 596510"
+      },
+      {
+        "Integer": 11
+      },
+      {
+        "Text": "216-4854-9889"
+      },
+      {
+        "Float": 38.95
+      },
+      {
+        "Text": "KRczwIwIMqpQEZIjYLBSwDqTxkAsDeeREzdlTeLwsArAAjAqLwAfcjJuSQWFKOA"
+      }
+    ],
+    [
+      {
+        "Integer": 45
+      },
+      {
+        "Text": "Supplier#000000045"
+      },
+      {
+        "Text": "65 NLnNGSKLXz amnc 533053274 301022"
+      },
+      {
+        "Integer": 20
+      },
+      {
+        "Text": "961-8350-1937"
+      },
+      {
+        "Float": 85.74
+      },
+      {
+        "Text": "LAubRveVKucUfBQAdgQdGzbScrUfJKLPzHsfqPOXrGNvTiGRLQhOyGgtmjnWZzV"
+      }
+    ],
+    [
+      {
+        "Integer": 46
+      },
+      {
+        "Text": "Supplier#000000046"
+      },
+      {
+        "Text": "45 jnFprBYNkL sTps 947420994 426978"
+      },
+      {
+        "Integer": 16
+      },
+      {
+        "Text": "392-5729-5663"
+      },
+      {
+        "Float": 82.26
+      },
+      {
+        "Text": "SoXMrHyEYXgOYZFHVNaRidfEeoOLtISCzbRyNGFpHUSQomNjaVegZfIDkfRuWse"
+      }
+    ],
+    [
+      {
+        "Integer": 47
+      },
+      {
+        "Text": "Supplier#000000047"
+      },
+      {
+        "Text": "47 avlfltLUtz iWKN 997141719 764540"
+      },
+      {
+        "Integer": 22
+      },
+      {
+        "Text": "385-2136-1150"
+      },
+      {
+        "Float": 44.01
+      },
+      {
+        "Text": "YnkudWIWdSDzGDuCFPLDaaKqncEMKxUCmLfjsuMCqAQFYsWdxOnPkStcRCnJugU"
+      }
+    ],
+    [
+      {
+        "Integer": 48
+      },
+      {
+        "Text": "Supplier#000000048"
+      },
+      {
+        "Text": "63 syCQyJWQop UPQR 895878064 535609"
+      },
+      {
+        "Integer": 16
+      },
+      {
+        "Text": "783-2337-3779"
+      },
+      {
+        "Float": 45.17
+      },
+      {
+        "Text": "OJYLomISlIpERcfFhXxBrNUQfzJYbSRoPwLytGvfYXGNjZJEBUvSuHdzEekkDjB"
+      }
+    ],
+    [
+      {
+        "Integer": 49
+      },
+      {
+        "Text": "Supplier#000000049"
+      },
+      {
+        "Text": "56 JzAtVnXlqL IHsN 865779378 228555"
+      },
+      {
+        "Integer": 10
+      },
+      {
+        "Text": "650-5023-1225"
+      },
+      {
+        "Float": 82.02
+      },
+      {
+        "Text": "SHOtBnFmcfEFHInHlgWDDpotuAVsekPQfQkcXaoHlQxqjFaxzZcGatgOdPONFHc"
+      }
+    ],
+    [
+      {
+        "Integer": 50
+      },
+      {
+        "Text": "Supplier#000000050"
+      },
+      {
+        "Text": "7 stsnNiMYnd OOWk 010085897 159263"
+      },
+      {
+        "Integer": 23
+      },
+      {
+        "Text": "377-3412-0037"
+      },
+      {
+        "Float": 87.18
+      },
+      {
+        "Text": "HKTlvnivunmNcwKFlKpuFqDlnmZzTBNcqMRyOEviqSbWeJLLbThfaNfTUbdgDoH"
+      }
+    ],
+    [
+      {
+        "Integer": 51
+      },
+      {
+        "Text": "Supplier#000000051"
+      },
+      {
+        "Text": "85 HPTZGHYlcu jnzX 816242855 445264"
+      },
+      {
+        "Integer": 2
+      },
+      {
+        "Text": "030-0168-2984"
+      },
+      {
+        "Float": 62.65
+      },
+      {
+        "Text": "YzKeTOIphWMhPrpnWmzcegDxiJTrdAImsnIVlOBGjrzikQrQyBbIABENkOvTxqg"
+      }
+    ],
+    [
+      {
+        "Integer": 52
+      },
+      {
+        "Text": "Supplier#000000052"
+      },
+      {
+        "Text": "9 SpULUGyfXC Xkue 821298587 983233"
+      },
+      {
+        "Integer": 25
+      },
+      {
+        "Text": "847-7640-6171"
+      },
+      {
+        "Float": 18.0
+      },
+      {
+        "Text": "iCTZkWogOCPVIaNRJudWyllTnZmyKuKFNdgsNiJwjkaGhyCzfBwHMqqLEpiWMEH"
+      }
+    ],
+    [
+      {
+        "Integer": 53
+      },
+      {
+        "Text": "Supplier#000000053"
+      },
+      {
+        "Text": "95 iRGNojiRdn ApfC 752983384 133351"
+      },
+      {
+        "Integer": 24
+      },
+      {
+        "Text": "470-7670-3692"
+      },
+      {
+        "Float": 47.03
+      },
+      {
+        "Text": "sGpEsszOcOXvUPDlnvnTNkvqprtvOKJQctITiHdjxrkdyvwhlyCFiexFZyNsoFj"
+      }
+    ],
+    [
+      {
+        "Integer": 54
+      },
+      {
+        "Text": "Supplier#000000054"
+      },
+      {
+        "Text": "2 KaoCgSrXBT XAyY 906806467 691450"
+      },
+      {
+        "Integer": 2
+      },
+      {
+        "Text": "770-8712-6987"
+      },
+      {
+        "Float": 55.7
+      },
+      {
+        "Text": "PIcYTyqmQaNvNJgbvqZrUfjcZUMWwXVlfuThNALgSaRLZyUqYVJrPBWzWUggmcj"
+      }
+    ],
+    [
+      {
+        "Integer": 55
+      },
+      {
+        "Text": "Supplier#000000055"
+      },
+      {
+        "Text": "42 JuGdaAZflB eyTP 253131237 340768"
+      },
+      {
+        "Integer": 11
+      },
+      {
+        "Text": "821-7947-3115"
+      },
+      {
+        "Float": -6.76
+      },
+      {
+        "Text": "zxrPQeWiraxQjofaSkkutwmsjdxqRoPXFnhCmlqZvToCFffGxPHorUkKkahFRTe"
+      }
+    ],
+    [
+      {
+        "Integer": 56
+      },
+      {
+        "Text": "Supplier#000000056"
+      },
+      {
+        "Text": "83 vtyXsEfiUs fpQB 430349270 886671"
+      },
+      {
+        "Integer": 11
+      },
+      {
+        "Text": "013-7926-3782"
+      },
+      {
+        "Float": 88.85
+      },
+      {
+        "Text": "mFGfGVUPaThdmoRmWaacVDEgiZpHetAazlXniBXZuLlcPuTuksNWaXwqpcyYIKX"
+      }
+    ],
+    [
+      {
+        "Integer": 57
+      },
+      {
+        "Text": "Supplier#000000057"
+      },
+      {
+        "Text": "4 sFSgtpcVxp iXnz 195624458 764816"
+      },
+      {
+        "Integer": 3
+      },
+      {
+        "Text": "687-2685-8255"
+      },
+      {
+        "Float": 75.56
+      },
+      {
+        "Text": "DDpdKsJSdWyHGEeOAQMKiQCxcdziXxSQHiCWhAZWNopgqvAITjuPRmPCYGfKHtT"
+      }
+    ],
+    [
+      {
+        "Integer": 58
+      },
+      {
+        "Text": "Supplier#000000058"
+      },
+      {
+        "Text": "22 zOqWOTtbyj ycWJ 875290784 650788"
+      },
+      {
+        "Integer": 19
+      },
+      {
+        "Text": "652-5535-5236"
+      },
+      {
+        "Float": 83.36
+      },
+      {
+        "Text": "XbESTsrtQWCJyaSnUGmbwENgWNIhJWmSdCrKYaSMvtsiOPYqWhKVeYaSQfAnRSL"
+      }
+    ],
+    [
+      {
+        "Integer": 59
+      },
+      {
+        "Text": "Supplier#000000059"
+      },
+      {
+        "Text": "42 LyHEoicLte YRHT 277519099 640201"
+      },
+      {
+        "Integer": 10
+      },
+      {
+        "Text": "120-9578-9686"
+      },
+      {
+        "Float": 63.68
+      },
+      {
+        "Text": "JAclnyoGJawbTeaCUMBHgNkAcKozPtrnsHsfpeZpSwrTScPwkfGyCbnwBqvWxTi"
+      }
+    ],
+    [
+      {
+        "Integer": 60
+      },
+      {
+        "Text": "Supplier#000000060"
+      },
+      {
+        "Text": "37 QXWgcPoatV JOKK 982001710 116323"
+      },
+      {
+        "Integer": 18
+      },
+      {
+        "Text": "333-6939-5808"
+      },
+      {
+        "Float": -2.91
+      },
+      {
+        "Text": "hJZKHCMGVobjDmfauGSRYlxzFSMlGYxgPrnEkIVPjnwyEAZnTKxZkDADltmIKXF"
+      }
+    ],
+    [
+      {
+        "Integer": 61
+      },
+      {
+        "Text": "Supplier#000000061"
+      },
+      {
+        "Text": "47 yiSOkNxwDB MYTS 411150294 827901"
+      },
+      {
+        "Integer": 12
+      },
+      {
+        "Text": "287-3621-5803"
+      },
+      {
+        "Float": 87.71
+      },
+      {
+        "Text": "jXGLRDterVYOIxsliJKRAUfLPkzohtTOCLbOAfSsAkcaRVTqzaxzZHjTxosLRKp"
+      }
+    ],
+    [
+      {
+        "Integer": 62
+      },
+      {
+        "Text": "Supplier#000000062"
+      },
+      {
+        "Text": "50 BzMhIoLNrh iVrp 736196329 993378"
+      },
+      {
+        "Integer": 23
+      },
+      {
+        "Text": "941-0831-7338"
+      },
+      {
+        "Float": 49.73
+      },
+      {
+        "Text": "gBEFJRzTfRvqmDqBzoRuxyHEOMIqUXCGGqNglMDrbHNpUEsQpUiZkJdATlwUqDI"
+      }
+    ],
+    [
+      {
+        "Integer": 63
+      },
+      {
+        "Text": "Supplier#000000063"
+      },
+      {
+        "Text": "85 MWrMuzmDvs ljti 528360824 734366"
+      },
+      {
+        "Integer": 12
+      },
+      {
+        "Text": "653-6663-3091"
+      },
+      {
+        "Float": 79.16
+      },
+      {
+        "Text": "AfMZmtKhPOEDgJBtjIEEbpIHZKPfPQNlPTNwLqEKCIVVinKJgCRTFgKherniDIX"
+      }
+    ],
+    [
+      {
+        "Integer": 64
+      },
+      {
+        "Text": "Supplier#000000064"
+      },
+      {
+        "Text": "48 xKXKORqYiC dSEm 993128779 416846"
+      },
+      {
+        "Integer": 21
+      },
+      {
+        "Text": "287-6764-0074"
+      },
+      {
+        "Float": 29.42
+      },
+      {
+        "Text": "AegxlXZHEndHrSNmiyvVNJESJeyLlvNnhxJTeVHmrbDqlaLBQbQcCXVyOSOAYci"
+      }
+    ],
+    [
+      {
+        "Integer": 65
+      },
+      {
+        "Text": "Supplier#000000065"
+      },
+      {
+        "Text": "64 PdwWKbPiUI DkFK 590457025 561632"
+      },
+      {
+        "Integer": 18
+      },
+      {
+        "Text": "234-7310-8179"
+      },
+      {
+        "Float": 57.93
+      },
+      {
+        "Text": "MPGrhNieneIiFKpIVCjPksbuqiUTLGMZGubdDOjDvAJAuPypxBKUfYsFCPZneDU"
+      }
+    ],
+    [
+      {
+        "Integer": 66
+      },
+      {
+        "Text": "Supplier#000000066"
+      },
+      {
+        "Text": "58 ERemlIxikO QHjU 698083933 398257"
+      },
+      {
+        "Integer": 12
+      },
+      {
+        "Text": "302-5288-6245"
+      },
+      {
+        "Float": 41.4
+      },
+      {
+        "Text": "mviwRulEhoIsGqfqvGaACfnbnYdOqlXgpJNYGhkxuWYNIqGLEvBYiCtxWPwhrGT"
+      }
+    ],
+    [
+      {
+        "Integer": 67
+      },
+      {
+        "Text": "Supplier#000000067"
+      },
+      {
+        "Text": "43 xyigPabqxV Sgmt 095785771 376732"
+      },
+      {
+        "Integer": 23
+      },
+      {
+        "Text": "968-9362-9765"
+      },
+      {
+        "Float": 28.81
+      },
+      {
+        "Text": "yitNcwTguyPVIRODIqcDEZlRsASHkbrapLczdGOnOFvuSWdClDKwnjtNKKLsSZa"
+      }
+    ],
+    [
+      {
+        "Integer": 68
+      },
+      {
+        "Text": "Supplier#000000068"
+      },
+      {
+        "Text": "83 XsuEVRbIMg uTAh 016616851 505275"
+      },
+      {
+        "Integer": 22
+      },
+      {
+        "Text": "791-2414-7965"
+      },
+      {
+        "Float": 28.31
+      },
+      {
+        "Text": "QCEwaYPjkHQcBFINtkSOSyHBsMQZWsMfPvgPtxGwswBSVgNPubsSmeMuYLufENP"
+      }
+    ],
+    [
+      {
+        "Integer": 69
+      },
+      {
+        "Text": "Supplier#000000069"
+      },
+      {
+        "Text": "39 gXfBEfcjiz LHEh 690822428 823106"
+      },
+      {
+        "Integer": 14
+      },
+      {
+        "Text": "269-9477-4454"
+      },
+      {
+        "Float": 17.88
+      },
+      {
+        "Text": "fImNGmEQNJeGhrJLXRERiDZCCAZJZxYfGoKZHvLMcDOruYmWsQTPKNXyEVIRRKG"
+      }
+    ],
+    [
+      {
+        "Integer": 70
+      },
+      {
+        "Text": "Supplier#000000070"
+      },
+      {
+        "Text": "17 jcJFGqnTvk FKBM 608174027 303773"
+      },
+      {
+        "Integer": 24
+      },
+      {
+        "Text": "523-2751-5274"
+      },
+      {
+        "Float": 39.26
+      },
+      {
+        "Text": "mNrTpbttpklYwIbYwjhmVJfSxbGwjshWxvuePOsKyqxRwYbMwATCITegGTWBLtl"
+      }
+    ],
+    [
+      {
+        "Integer": 71
+      },
+      {
+        "Text": "Supplier#000000071"
+      },
+      {
+        "Text": "38 PlcGcGAKga dGMO 179119762 943272"
+      },
+      {
+        "Integer": 14
+      },
+      {
+        "Text": "187-5605-2139"
+      },
+      {
+        "Float": 45.85
+      },
+      {
+        "Text": "lfSyAwHzoQInbqDORJLpNgmyXAeCQsvxptvOXlpEBtVJtvKOvYtnhtKQuCAXKXw"
+      }
+    ],
+    [
+      {
+        "Integer": 72
+      },
+      {
+        "Text": "Supplier#000000072"
+      },
+      {
+        "Text": "14 PsDYomfGFs HScq 162798824 385767"
+      },
+      {
+        "Integer": 2
+      },
+      {
+        "Text": "183-4007-6142"
+      },
+      {
+        "Float": 23.68
+      },
+      {
+        "Text": "rpDjsYgtWcpNzdnEPZRSrduOWZBXrJCixefpsRmeNlfjxGxmpOVBfcraqblYiDK"
+      }
+    ],
+    [
+      {
+        "Integer": 73
+      },
+      {
+        "Text": "Supplier#000000073"
+      },
+      {
+        "Text": "47 eVfyJRFRiv lRQP 184836755 183735"
+      },
+      {
+        "Integer": 7
+      },
+      {
+        "Text": "697-8472-2447"
+      },
+      {
+        "Float": 10.31
+      },
+      {
+        "Text": "xXnvMrIsMqTtRGxXWkuMibpWoAsLHRDmtROycIMBUJvjxxChqmLLEtIQsxQuCVy"
+      }
+    ],
+    [
+      {
+        "Integer": 74
+      },
+      {
+        "Text": "Supplier#000000074"
+      },
+      {
+        "Text": "64 ShKKzAAyKk UozG 581776433 654828"
+      },
+      {
+        "Integer": 5
+      },
+      {
+        "Text": "737-3675-9345"
+      },
+      {
+        "Float": 86.53
+      },
+      {
+        "Text": "EukHubbJOnsqAvyVlmzlVqwZNTBWUWlYtpBYqADEpFDAgUrUVkTGBGjPTkjNxxn"
+      }
+    ],
+    [
+      {
+        "Integer": 75
+      },
+      {
+        "Text": "Supplier#000000075"
+      },
+      {
+        "Text": "20 BKQRbJLlnk WZZS 372910183 368830"
+      },
+      {
+        "Integer": 25
+      },
+      {
+        "Text": "572-4055-8336"
+      },
+      {
+        "Float": 40.56
+      },
+      {
+        "Text": "jxAdXyjliNtiFQimzJYeDfvVVfEGNKOxMPsBrySpsisTkXbCdqnahRpotkFdhoS"
+      }
+    ],
+    [
+      {
+        "Integer": 76
+      },
+      {
+        "Text": "Supplier#000000076"
+      },
+      {
+        "Text": "29 ewqPshbTcS Umqo 392396099 710365"
+      },
+      {
+        "Integer": 14
+      },
+      {
+        "Text": "226-1632-9904"
+      },
+      {
+        "Float": 39.8
+      },
+      {
+        "Text": "PnLFtQxzeehsxrImrIduCqPzythbIkFEuZjClUEKYNXqiNiRAQECvptmveqZENi"
+      }
+    ],
+    [
+      {
+        "Integer": 77
+      },
+      {
+        "Text": "Supplier#000000077"
+      },
+      {
+        "Text": "11 oLxGfglLPX UlHV 058283551 925827"
+      },
+      {
+        "Integer": 3
+      },
+      {
+        "Text": "889-7833-9206"
+      },
+      {
+        "Float": -1.43
+      },
+      {
+        "Text": "tHTBhkMMxajQAqgctctDEeHfPTZfUPHoeEQqmXpQnJdCqILeezYotbSRzrKYoqC"
+      }
+    ],
+    [
+      {
+        "Integer": 78
+      },
+      {
+        "Text": "Supplier#000000078"
+      },
+      {
+        "Text": "88 frMuRNSSEo OLIj 910251139 055717"
+      },
+      {
+        "Integer": 7
+      },
+      {
+        "Text": "630-4384-7650"
+      },
+      {
+        "Float": 37.3
+      },
+      {
+        "Text": "PjpToZtZFCvahnznSEMDubqsBvqKYHbkrpSOuYZgQQEQizdLPZuaDBPfRnOTnOK"
+      }
+    ],
+    [
+      {
+        "Integer": 79
+      },
+      {
+        "Text": "Supplier#000000079"
+      },
+      {
+        "Text": "37 rctEVcBFTH udkb 352596160 838496"
+      },
+      {
+        "Integer": 25
+      },
+      {
+        "Text": "031-8761-6420"
+      },
+      {
+        "Float": 11.28
+      },
+      {
+        "Text": "pOUVyrGGWsnXwHuCyvvkHuXusNoWDrNKiuxrwXTkCdIVrpmIFXhDzdiieaWrrmT"
+      }
+    ],
+    [
+      {
+        "Integer": 80
+      },
+      {
+        "Text": "Supplier#000000080"
+      },
+      {
+        "Text": "6 FoSezTLQHD pRyp 862577299 227861"
+      },
+      {
+        "Integer": 14
+      },
+      {
+        "Text": "826-3266-4184"
+      },
+      {
+        "Float": 63.54
+      },
+      {
+        "Text": "rZNWewXgrhmrdNGMLHAZNhUJRCXWSXrtkCioKyisugXaynlUgdbqlIpAZJhxoQP"
+      }
+    ],
+    [
+      {
+        "Integer": 81
+      },
+      {
+        "Text": "Supplier#000000081"
+      },
+      {
+        "Text": "96 SUfxFaGVkw NYZB 214538530 420840"
+      },
+      {
+        "Integer": 21
+      },
+      {
+        "Text": "049-3826-4714"
+      },
+      {
+        "Float": 79.05
+      },
+      {
+        "Text": "HoQyDHZsJkWllTypFDLLynqFePurBreYFTwLvUmRNpcVgttueqTKNSBEJDUQrak"
+      }
+    ],
+    [
+      {
+        "Integer": 82
+      },
+      {
+        "Text": "Supplier#000000082"
+      },
+      {
+        "Text": "99 uFBQHrIIFl qfid 616735645 070269"
+      },
+      {
+        "Integer": 1
+      },
+      {
+        "Text": "142-8329-0813"
+      },
+      {
+        "Float": 1.05
+      },
+      {
+        "Text": "jWhnHZSHImsWSPfybnibmHfuErTwbCFIctkqieCOBKXubbNXnWYWHjcBTVwZdhO"
+      }
+    ],
+    [
+      {
+        "Integer": 83
+      },
+      {
+        "Text": "Supplier#000000083"
+      },
+      {
+        "Text": "30 TaJxlMyjPH WOPl 941587275 127472"
+      },
+      {
+        "Integer": 10
+      },
+      {
+        "Text": "490-4689-0789"
+      },
+      {
+        "Float": 1.64
+      },
+      {
+        "Text": "zTlZIaydlnNZaBcXWwLOdFKtZpOeGylGuNhpStALJpperjytqBCxLOQTJPppusG"
+      }
+    ],
+    [
+      {
+        "Integer": 84
+      },
+      {
+        "Text": "Supplier#000000084"
+      },
+      {
+        "Text": "9 fFDNxuLAsR rcSX 805407661 919268"
+      },
+      {
+        "Integer": 3
+      },
+      {
+        "Text": "292-8080-5710"
+      },
+      {
+        "Float": 51.45
+      },
+      {
+        "Text": "mrGoXcLaEpcyycCJaFsKhhTDYdzGOIypCBjlPbnUonLQKAFasjYFLaDwFGdcgDH"
+      }
+    ],
+    [
+      {
+        "Integer": 85
+      },
+      {
+        "Text": "Supplier#000000085"
+      },
+      {
+        "Text": "2 MfcRsPyeeL EoDL 592184388 319110"
+      },
+      {
+        "Integer": 24
+      },
+      {
+        "Text": "125-8686-9072"
+      },
+      {
+        "Float": 37.92
+      },
+      {
+        "Text": "ytdoJqJVdoXJrzTAgJUIrESJmXaDxXafiLVstOXaFzryHQRWRPohCfCRoxsnxLd"
+      }
+    ],
+    [
+      {
+        "Integer": 86
+      },
+      {
+        "Text": "Supplier#000000086"
+      },
+      {
+        "Text": "66 HLdyfUMQBS tGkU 573240225 271231"
+      },
+      {
+        "Integer": 22
+      },
+      {
+        "Text": "817-7889-6649"
+      },
+      {
+        "Float": -6.88
+      },
+      {
+        "Text": "SBfIHAQzHlFQQkAwBXStKIgXNUWEiudmnTfpOcGPUZUMBMvzCpukteKlVdUjItc"
+      }
+    ],
+    [
+      {
+        "Integer": 87
+      },
+      {
+        "Text": "Supplier#000000087"
+      },
+      {
+        "Text": "32 sALqQAXpkP eAes 964400515 867132"
+      },
+      {
+        "Integer": 7
+      },
+      {
+        "Text": "724-0642-8814"
+      },
+      {
+        "Float": 30.17
+      },
+      {
+        "Text": "NsNZPGLsDTUOmGpYSvWSdHYYSxxmwAclEuYGMclsZGVRkYFuIPplGZLKWajfrDd"
+      }
+    ],
+    [
+      {
+        "Integer": 88
+      },
+      {
+        "Text": "Supplier#000000088"
+      },
+      {
+        "Text": "39 wpboYtRWOA CVOI 827283357 589169"
+      },
+      {
+        "Integer": 20
+      },
+      {
+        "Text": "127-1157-6421"
+      },
+      {
+        "Float": 3.52
+      },
+      {
+        "Text": "DGEoWUtJzgEJTifMjWFWdRjPyMOFfbwJsTVSkAVMjVuvmkkKAmProLdJxGFZbIs"
+      }
+    ],
+    [
+      {
+        "Integer": 89
+      },
+      {
+        "Text": "Supplier#000000089"
+      },
+      {
+        "Text": "55 bAlPnwjvZo NqWV 255458130 718278"
+      },
+      {
+        "Integer": 15
+      },
+      {
+        "Text": "022-3428-6239"
+      },
+      {
+        "Float": 55.17
+      },
+      {
+        "Text": "JLbXBtTodwqpcNeJPaiatKtoEqqtEnGsokbwAkxKAdqzPYSzjalhaiplsmIsBao"
+      }
+    ],
+    [
+      {
+        "Integer": 90
+      },
+      {
+        "Text": "Supplier#000000090"
+      },
+      {
+        "Text": "67 wEEKOOoNuy ngCg 917076254 233045"
+      },
+      {
+        "Integer": 8
+      },
+      {
+        "Text": "841-0118-9563"
+      },
+      {
+        "Float": 38.98
+      },
+      {
+        "Text": "UvIucOktYNJYVYomDoayRzzLDpDYQRAZJTZAJXXMOVUxOGKOKePCLJBMxMQsoAz"
+      }
+    ],
+    [
+      {
+        "Integer": 91
+      },
+      {
+        "Text": "Supplier#000000091"
+      },
+      {
+        "Text": "27 WGfEuLvPlx IBwt 863461135 281674"
+      },
+      {
+        "Integer": 17
+      },
+      {
+        "Text": "853-2179-9701"
+      },
+      {
+        "Float": 44.53
+      },
+      {
+        "Text": "jhMMwkzTRHPVDBSXncGxhLszgwgvwvHSTXnEjoiTcoTFzZAubKOIHWoWUejjRLU"
+      }
+    ],
+    [
+      {
+        "Integer": 92
+      },
+      {
+        "Text": "Supplier#000000092"
+      },
+      {
+        "Text": "73 JUTsjawdVE mhpc 003441479 751408"
+      },
+      {
+        "Integer": 20
+      },
+      {
+        "Text": "592-9360-0298"
+      },
+      {
+        "Float": 40.79
+      },
+      {
+        "Text": "xRKLOWQQfjEUYRWcnfcrovEowjVKscmncktGJDGHBlsWpZfcbNJZJiWeTYKmgRT"
+      }
+    ],
+    [
+      {
+        "Integer": 93
+      },
+      {
+        "Text": "Supplier#000000093"
+      },
+      {
+        "Text": "70 JOBGTbBMLA GNOQ 224634929 265903"
+      },
+      {
+        "Integer": 8
+      },
+      {
+        "Text": "894-3047-2152"
+      },
+      {
+        "Float": 56.17
+      },
+      {
+        "Text": "YSawvqikbKcnCkyCXZgZSjIhLcPaWxXMSITAcqbiYapPnBERHzlLkovoZEopYmA"
+      }
+    ],
+    [
+      {
+        "Integer": 94
+      },
+      {
+        "Text": "Supplier#000000094"
+      },
+      {
+        "Text": "25 nyyfjmtEWy YLpu 851692878 197538"
+      },
+      {
+        "Integer": 24
+      },
+      {
+        "Text": "854-0999-8611"
+      },
+      {
+        "Float": 17.46
+      },
+      {
+        "Text": "nkPkNCvVOePGuhncaXdmbtCNNJQXYnywNhbOAnOpQkfLaCwQlnMISKqwUwpMzeH"
+      }
+    ],
+    [
+      {
+        "Integer": 95
+      },
+      {
+        "Text": "Supplier#000000095"
+      },
+      {
+        "Text": "84 cDhIfkoFJI nyQi 206579178 299738"
+      },
+      {
+        "Integer": 20
+      },
+      {
+        "Text": "152-3129-9797"
+      },
+      {
+        "Float": 59.36
+      },
+      {
+        "Text": "PdygZdxmOpRQcvUMffzOhkSHoVbutAWpinGksDjEHFgXbXBupqpkPdGhQJVQvxH"
+      }
+    ],
+    [
+      {
+        "Integer": 96
+      },
+      {
+        "Text": "Supplier#000000096"
+      },
+      {
+        "Text": "10 FaoquoGBQl JiLw 624455754 104721"
+      },
+      {
+        "Integer": 16
+      },
+      {
+        "Text": "335-1763-1199"
+      },
+      {
+        "Float": 2.21
+      },
+      {
+        "Text": "DvtsZBUIaiKObXHJGabhtuVyErDUmzRzcKPZGeSgLdUgJbErJDmFMPaxmyPLUXo"
+      }
+    ],
+    [
+      {
+        "Integer": 97
+      },
+      {
+        "Text": "Supplier#000000097"
+      },
+      {
+        "Text": "79 xTZyQnYlQP RVTA 455400111 326725"
+      },
+      {
+        "Integer": 18
+      },
+      {
+        "Text": "627-8050-7358"
+      },
+      {
+        "Float": 30.11
+      },
+      {
+        "Text": "dLwYKltLBczhlzfKTJBtWuyOAvngGuovpwWgpxJPcVXKGRaCwRLEloCytzAMWZq"
+      }
+    ],
+    [
+      {
+        "Integer": 98
+      },
+      {
+        "Text": "Supplier#000000098"
+      },
+      {
+        "Text": "30 jdQesYezsH JyIY 598982100 797331"
+      },
+      {
+        "Integer": 25
+      },
+      {
+        "Text": "511-0986-9517"
+      },
+      {
+        "Float": 36.07
+      },
+      {
+        "Text": "kuCpCopioQxFrhuQEAfDjRVQZWXaUhCjuSgePuBzLfuBVvXXRRxXpXZsTMTDzLe"
+      }
+    ],
+    [
+      {
+        "Integer": 99
+      },
+      {
+        "Text": "Supplier#000000099"
+      },
+      {
+        "Text": "44 SsotEHTdVb EVfR 048237812 379703"
+      },
+      {
+        "Integer": 21
+      },
+      {
+        "Text": "795-6347-5624"
+      },
+      {
+        "Float": 88.56
+      },
+      {
+        "Text": "LVqtJphdUqryylcqrcyWFmNBxLBojMMDJIoIqpOQKodEyNXHpkArVpSpiQHQlAL"
+      }
+    ],
+    [
+      {
+        "Integer": 100
+      },
+      {
+        "Text": "Supplier#000000100"
+      },
+      {
+        "Text": "88 eQcNORJEmk Pcxn 391489278 143714"
+      },
+      {
+        "Integer": 17
+      },
+      {
+        "Text": "296-1387-8442"
+      },
+      {
+        "Float": 36.47
+      },
+      {
+        "Text": "snktyYkCDbTGNMRLgJUwjHDZYljpMBOQCllltDVKxxoffxepLcHMsMLLICeSoiX"
+      }
+    ]
+  ]
+}
