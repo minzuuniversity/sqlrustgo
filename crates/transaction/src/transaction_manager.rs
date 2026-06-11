@@ -210,9 +210,7 @@ impl TransactionManager {
                 crate::savepoint::SavepointError::NotFound => {
                     SsiError::TransactionNotFound { tx_id }
                 }
-                crate::savepoint::SavepointError::InvalidOperation => {
-                    SsiError::LockTimeout
-                }
+                crate::savepoint::SavepointError::InvalidOperation => SsiError::LockTimeout,
             })
     }
 
@@ -230,12 +228,8 @@ impl TransactionManager {
             .savepoint_manager
             .rollback_to(name)
             .map_err(|e| match e {
-                crate::savepoint::SavepointError::NotFound => {
-                    SsiError::LockTimeout
-                }
-                crate::savepoint::SavepointError::InvalidOperation => {
-                    SsiError::LockTimeout
-                }
+                crate::savepoint::SavepointError::NotFound => SsiError::LockTimeout,
+                crate::savepoint::SavepointError::InvalidOperation => SsiError::LockTimeout,
             })
     }
 
@@ -253,12 +247,8 @@ impl TransactionManager {
             .savepoint_manager
             .release_savepoint(name)
             .map_err(|e| match e {
-                crate::savepoint::SavepointError::NotFound => {
-                    SsiError::LockTimeout
-                }
-                crate::savepoint::SavepointError::InvalidOperation => {
-                    SsiError::LockTimeout
-                }
+                crate::savepoint::SavepointError::NotFound => SsiError::LockTimeout,
+                crate::savepoint::SavepointError::InvalidOperation => SsiError::LockTimeout,
             })
     }
 }

@@ -4,7 +4,8 @@
 
 > **配套文档**: `README.md` (入口) / `plans/V390_VERSION_PLAN.md` (战略) / `plans/V390_DEVELOPMENT_PLAN.md` (任务) / `plans/V390_TEST_PLAN.md` (测试)
 > **创建日期**: 2026-06-05
-> **GA 目标**: 2026-09-23
+> **GA 目标**: 2026-09-23 (at risk, 调整后 22-26 周, 参考 RC3_PLAN.md)
+> **当前阶段**: Phase 6 收口 (form-only) → RC3 待启动
 
 ---
 
@@ -153,7 +154,7 @@ Phase0  Phase1      Phase2      Phase3      Phase4      Phase5      Phase6
 
 **预期产物**:
 - 性能基线报告
-- GA 治理报告: `docs/governance/GA_GOVERNANCE_DEMO_v3.9.0.md`
+- GA 治理报告: `docs/releases/v3.9.0/ga/GA_GATE_REPORT.md`
 - Tag: v3.9.0
 
 ---
