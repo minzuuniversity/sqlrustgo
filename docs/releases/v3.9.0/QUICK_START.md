@@ -19,28 +19,25 @@ benchmark PASS** milestone.
   (SF=0.001, in-process) and 22/22 over the wire protocol
 - 21/22 match against SQLite at SF=0.01 (Q22 is a known
   multi-COUNT expression divergence)
-- Three-engine baseline: engine / SQLite / PostgreSQL side-by-side
+- Q8/Q9/Q17/Q21 perf: all < 2s (Q8=200ms, Q21=1.7s)
 - Q13 subquery fix: NOT IN (subquery_with_LIKE) now correctly
   excludes zero customers (previously returned 0 rows)
 - Q7/Q8/Q9 SQLite baseline fix: ORDER BY stripping + EXTRACT(YEAR
-  FROM) regex rewrite so the SQLite reference matches engine output
+  FROM) regex rewrite
 - SGL-001 cargo fmt + B3 clippy clean (0 errors, 0 hard fails)
 - Plan integrity gate: IR plan + legacy path cross-validation
-- 4-engine wired test (engine / SQLite / MariaDB / PostgreSQL) for
-  Sprint 3 Operator Regression Suite
+- 4-engine wired test (engine / SQLite / MariaDB / PostgreSQL)
 - DuckDB baseline added for additional TPC-H coverage
-- INT-3 mixed-scenario DML tests added
+- INT-2 cross-version upgrade (synthetic v3.8.0 file format)
+- MySQL server restart persistence (WAL replay on startup)
 
 ## Install
 
 ### Pre-built binary (recommended for evaluation)
 
 ```bash
-# Linux x86_64
 curl -L https://github.com/openclaw/sqlrustgo/releases/download/v3.9.0/sqlrustgo-v3.9.0-linux-x86_64.tar.gz | tar xz
 sudo mv sqlrustgo /usr/local/bin/
-
-# Verify
 sqlrustgo --version
 # → sqlrustgo v3.9.0
 ```
@@ -55,132 +52,116 @@ cargo build --release
 ./target/release/sqlrustgo --version
 ```
 
-Requirements:
-- Rust 1.75+ (`rustup install stable`)
-- A C linker (`gcc` / `cc` / `clang`)
-- 4 GB RAM for a release build (in-process tests want 8 GB)
+Requirements: Rust 1.75+, a C linker (gcc/cc/clang).
 
 ## First server
 
 ```bash
-# In-memory mode (no persistence — fastest start)
+# In-memory mode (no persistence)
 sqlrustgo server --port 5432
 
 # With persistence
-mkdir -p /var/lib/sqlrustgo
+mkdir -p /var/lib/sqlrustgo/{data,wal,snapshots}
 sqlrustgo server --port 5432 --data-dir /var/lib/sqlrustgo
-
-# Foreground verbose
-RUST_LOG=info sqlrustgo server --port 5432 --data-dir /var/lib/sqlrustgo
 ```
 
-The server speaks the PostgreSQL wire protocol (v3), so any
-PostgreSQL client works.
+The server speaks PostgreSQL v3 wire protocol.
 
 ## First query
 
 ```bash
-# CLI REPL
-sqlrustgo cli
-sqlrustgo> SELECT 1 + 1 AS two;
- two
------
-   2
-(1 row)
-
-# Single command
 sqlrustgo cli -c "SELECT 1 + 1 AS two;"
-
-# psql
-psql -h localhost -p 5432 -U sqlrustgo -c "SELECT 1 + 1 AS two;"
-
-# Python (psycopg2)
-psql -h localhost -p 5432 -c "SELECT version();" | head -3
+psql -h localhost -p 5432 -c "SELECT 1 + 1 AS two;"
 ```
 
-## Run the TPC-H 22-query suite
+## Run TPC-H 22-query suite
 
 ```bash
-# Generate SF=0.001 fixture (6 MB, 22 queries run in ~2.3s)
 sqlrustgo tpch generate --sf 0.001 --output tests/data/tpch-sf001
-
-# Run all 22 queries in-process
 cargo test --test tpch_full_22_test -- --nocapture
 # Expected: test result: ok. 22 passed; 0 failed
-
-# Run via wire protocol
 cargo test --test tpch_22_queries_wire_test -- --nocapture
-# Expected: test result: ok. 22 passed; 0 failed
-
-# Three-way comparison: engine vs SQLite vs (optionally) PostgreSQL
-cargo test --test tpch_sf01_22_vs_3engines -- --nocapture
-# Expected: 21/22 PASS, 1 known divergence (Q22)
+# Expected: 22/22 wire PASS
 ```
+
+## Troubleshooting
+
+### Server won't start
+```bash
+ss -tlnp | grep :5432
+sqlrustgo server --port 5433
+```
+
+### Tests fail with "fixture not found"
+```bash
+sqlrustgo tpch generate --sf 0.001 --output tests/data/tpch-sf001
+```
+
+### Build is slow
+```bash
+cargo install mold
+export RUSTFLAGS="-C link-arg=-fuse-ld=mold"
+```
+
+### Tests OOM
+Reduce fixture scale: `sqlrustgo tpch generate --sf 0.0001`.
+
+## Next steps
+
+- [FEATURE_MATRIX.md](FEATURE_MATRIX.md) — full feature list
+- [RELEASE_NOTES.md](RELEASE_NOTES.md) — what changed since v3.8.0
+- [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md) — production deployment
+- [MIGRATION_GUIDE.md](MIGRATION_GUIDE.md) — upgrade from v3.8.0
+- [INSTALL.md](INSTALL.md) — full build options
+- [CHANGELOG.md](CHANGELOG.md) — per-commit history
+- [EVALUATION_REPORT.md](EVALUATION_REPORT.md) — TPC-H results
+
 
 ## Architecture at a glance
 
 - **Parser** (`crates/parser/`): recursive-descent, ~30 KLOC
 - **Planner + IR** (`src/planner.rs`, `crates/ir/`):
-  IR-based plans with cross-validation against legacy
+  IR-based plans with cross-validation against legacy path
 - **Optimizer** (`src/cbo_estimator.rs`): cost-based with histogram
   stats
-- **Executor** (`src/execution_engine.rs`): pull-based iterator
-  model
+- **Executor** (`src/execution_engine.rs`): pull-based iterator model
 - **Storage** (`crates/storage/`): MVCC + heap pages
 - **WAL** (`crates/wal/`): write-ahead log with group commit
 - **Wire** (`src/wire_protocol.rs`): PostgreSQL v3 protocol
 
-## Troubleshooting
+## Five-Engine Baseline
 
-### Server won't start: "address already in use"
+v3.9.0 ships reference cell-level baselines for five engines:
 
-```bash
-# Find what's using the port
-ss -tlnp | grep :5432
-# Or change the port
-sqlrustgo server --port 5433
-```
+| Engine | Status | Reference |
+|---|---|---|
+| SQLRustGo v3.9.0 | 22/22 PASS | This release |
+| SQLite 3.45+ | baseline | Reference |
+| MariaDB 10.11+ | baseline | Wire test (optional) |
+| PostgreSQL 15+ | baseline | Wire test (optional) |
+| DuckDB 0.10+ | baseline | Reference (v3.9.0+) |
 
-### Tests fail with "fixture not found"
+## Wire protocol support
 
-```bash
-# Re-generate the fixture
-sqlrustgo tpch generate --sf 0.001 --output tests/data/tpch-sf001
-# Or set TPCH_FIXTURE env var
-export TPCH_FIXTURE=tests/data/tpch-sf001
-```
+| Protocol | Status |
+|---|---|
+| PostgreSQL v3 | ✅ Simple + extended query |
+| TLS (PostgreSQL) | ✅ sslmode=require |
+| SCRAM-SHA-256 auth | ✅ |
+| MySQL | ❌ Out of scope |
 
-### Build is slow
+## Storage engine
 
-```bash
-# Use mold linker (Linux) for 3-5x faster link
-cargo install mold
-export RUSTFLAGS="-C link-arg=-fuse-ld=mold"
+| Feature | Status |
+|---|---|
+| Heap pages (8 KB) | ✅ |
+| MVCC | ✅ Snapshot isolation |
+| WAL | ✅ Group commit |
+| Checkpointing | ✅ Fuzzy |
+| Crash recovery | ✅ REDO only (no UNDO) |
 
-# Or use sccache for incremental builds
-cargo install sccache
-export RUSTC_WRAPPER=sccache
-```
+## SQL coverage
 
-### Tests panic with "out of memory"
-
-TPC-H 22-query suite needs ~4 GB RAM at SF=0.01. Reduce the
-fixture scale:
-
-```bash
-sqlrustgo tpch generate --sf 0.0001 --output tests/data/tpch-sf0001
-export TPCH_FIXTURE=tests/data/tpch-sf0001
-```
-
-## Next steps
-
-- [`FEATURE_MATRIX.md`](FEATURE_MATRIX.md) — full feature list and
-  SQL92 coverage
-- [`RELEASE_NOTES.md`](RELEASE_NOTES.md) — what changed since v3.8.0
-- [`DEPLOYMENT_GUIDE.md`](DEPLOYMENT_GUIDE.md) — production
-  deployment with systemd + TLS
-- [`MIGRATION_GUIDE.md`](MIGRATION_GUIDE.md) — upgrade from v3.8.0
-- [`EVALUATION_REPORT.md`](EVALUATION_REPORT.md) — TPC-H results
-  vs SQLite + PostgreSQL
-- [`INSTALL.md`](INSTALL.md) — full build options and platform notes
-- [`CHANGELOG.md`](CHANGELOG.md) — per-commit history
+Full TPC-H 22/22 PASS. SQL92 core (DML/joins/aggregates) is
+production-quality. Window functions and recursive CTEs are not yet
+implemented (see FEATURE_MATRIX.md for the complete list).
