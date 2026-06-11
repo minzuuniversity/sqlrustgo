@@ -2277,9 +2277,38 @@ pub(crate) fn run_server_with_listener_and_shutdown_with_bootstrap_tables_and_sq
             std::env::temp_dir().join(format!("sqlrustgo_wal_{}", listener.local_addr()?.port()))
         }
     };
-    let file_storage =
+    let mut file_storage =
         FileStorage::new_with_wal(wal_data_dir.clone()).map_err(std::io::Error::other)?;
     let wal_path = wal_data_dir.join("sqlrustgo.wal");
+    // INT-2 (#3270 partial): replay any uncommitted WAL entries from
+    // the previous process lifetime so DML/DDL that was journaled but
+    // not yet flushed to FileStorage's persisted table files is
+    // restored on restart. The recovery engine walks the WAL from the
+    // last checkpoint, applies each committed entry to the inner
+    // FileStorage, then we flush so a subsequent restart does not
+    // re-apply the same entries.
+    {
+        use sqlrustgo_storage::recovery_engine::{RecoveryEngine, StatefulRecoveryEngine};
+        let mut recovery: StatefulRecoveryEngine<FileStorage> = StatefulRecoveryEngine::new();
+        let mut wal_manager_for_recovery = FileBackedWalManager::new(wal_path.clone())
+            .map_err(|e| MySqlError::Sql(format!("WAL manager (recovery) init failed: {}", e)))?;
+        match recovery.recover(&mut file_storage, &mut wal_manager_for_recovery) {
+            Ok(report) => {
+                tracing::info!(
+                    "WAL recovery: total={} committed_txns={} rows_inserted={} rows_updated={} rows_deleted={}",
+                    report.entries_total,
+                    report.committed_txns,
+                    report.rows_inserted,
+                    report.rows_updated,
+                    report.rows_deleted
+                );
+                let _ = file_storage.flush();
+            }
+            Err(e) => {
+                tracing::warn!("WAL recovery skipped: {}", e);
+            }
+        }
+    }
     let wal_manager = FileBackedWalManager::new(wal_path)
         .map_err(|e| MySqlError::Sql(format!("WAL manager init failed: {}", e)))?;
     let wal_storage = WalStorage::new(file_storage, wal_manager)
