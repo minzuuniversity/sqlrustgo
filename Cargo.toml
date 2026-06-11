@@ -109,6 +109,7 @@ serde_yaml = "0.9"
 rand = "0.8"
 clap = { version = "4.0", features = ["derive"] }
 proptest = "1.1"
+regex = "1"
 sqlrustgo-server = { path = "crates/server" }
 sqlrustgo-transaction = { path = "crates/transaction" }
 sqlrustgo-security = { path = "crates/security" }
@@ -508,6 +509,18 @@ path = "tests/int3_single_expression_test.rs"
 [[test]]
 name = "int3_mixed_scenario_test"
 path = "tests/integration/int3_mixed_scenario_test.rs"
+# INT-3 (#3271) — Spec-complete acceptance (WAL append stress + crash-recover + SHA-256 stability)
+[[test]]
+name = "int3_spec_complete_test"
+path = "tests/integration/int3_spec_complete_test.rs"
+# INT-2 (#3270) — MySQL server restart persistence (DDL/DML survive drop+restart)
+[[test]]
+name = "int2_mysql_server_persistence_test"
+path = "tests/integration/int2_mysql_server_persistence_test.rs"
+# INT-2 (#3270) — Cross-version upgrade (synthetic v3.8.0 file format readable by v3.9.0)
+[[test]]
+name = "int2_cross_version_upgrade_test"
+path = "tests/integration/int2_cross_version_upgrade_test.rs"
 # SEM-1 (#3172) — Savepoint
 [[test]]
 name = "sem1_savepoint_test"
