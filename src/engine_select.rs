@@ -1253,7 +1253,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         right_rows: Vec<Vec<Value>>,
         right_info: &TableInfo,
         right_alias: &str,
-        join_clause: &ParserJoinClause,
+        _join_clause: &ParserJoinClause,
         where_clause: &Option<Expression>,
     ) -> Vec<Vec<Value>> {
         use sqlrustgo_parser::Expression as E;
@@ -2586,7 +2586,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                                 || contains_outer_ref(t, prefix, projection_names)
                         }) || else_expr
                             .as_ref()
-                            .map_or(false, |e| contains_outer_ref(e, prefix, projection_names))
+                            .is_some_and(|e| contains_outer_ref(e, prefix, projection_names))
                     }
                     _ => false,
                 }
