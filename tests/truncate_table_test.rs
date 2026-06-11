@@ -1,124 +1,139 @@
 //! Integration test: TRUNCATE TABLE
 //!
-//! Uses std::process::Command to spawn sqlrustgo-mysql-server exec
-//! with TRUNCATE TABLE statements.
+//! Uses the wired `sqlrustgo-mysql-server repl` over stdin (true
+//! e2e). `exec` only accepts a single statement per process and
+//! starts a fresh MemoryStorage each invocation, so multi-statement
+//! DDL testing requires the REPL where state persists across
+//! statements.
 
-use std::io::Read;
+use std::io::{Read, Write};
 use std::process::{Command, Stdio};
 
-/// Run sqlrustgo-mysql-server exec with the given SQL and return stdout.
-fn run_sql(sql: &str) -> Result<String, String> {
-    let mut child = Command::new("cargo")
-        .args(["run", "--bin", "sqlrustgo-mysql-server", "--", "exec", sql])
-        .current_dir(
-            "/Users/liying/workspace/dev/yinglichina163/sqlrustgo/.worktrees/feature-tests",
-        )
+/// Locate the mysql-server binary (cargo test sets CARGO_BIN_EXE_<name>).
+fn bin_path() -> String {
+    std::env::var("CARGO_BIN_EXE_sqlrustgo-mysql-server")
+        .ok()
+        .or_else(|| std::env::var("SQLRUSTGO_BIN").ok())
+        .unwrap_or_else(|| {
+            for candidate in [
+                "target/release/sqlrustgo-mysql-server",
+                "target/debug/sqlrustgo-mysql-server",
+                "../target/release/sqlrustgo-mysql-server",
+                "../target/debug/sqlrustgo-mysql-server",
+            ] {
+                if std::path::Path::new(candidate).exists() {
+                    return candidate.to_string();
+                }
+            }
+            "sqlrustgo-mysql-server".to_string()
+        })
+}
+
+/// Run a multi-statement REPL script; return (stdout, stderr, exit_code).
+fn run_repl(script: &str) -> (String, String, i32) {
+    let mut child = Command::new(bin_path())
+        .arg("repl")
+        .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
-        .map_err(|e| format!("failed to spawn: {}", e))?;
-
-    let mut stdout = String::new();
-    child
-        .stdout
-        .take()
-        .unwrap()
-        .read_to_string(&mut stdout)
-        .map_err(|e| e.to_string())?;
-
-    let mut stderr = String::new();
-    child
-        .stderr
-        .take()
-        .unwrap()
-        .read_to_string(&mut stderr)
-        .map_err(|e| e.to_string())?;
-
-    let status = child.wait().map_err(|e| format!("wait failed: {}", e))?;
-
-    if !status.success() {
-        return Err(format!("exit {:?}: {}\n{}", status, stderr, stdout));
-    }
-    Ok(stdout)
+        .expect("Failed to spawn REPL");
+    let mut stdin = child.stdin.take().expect("Failed to get stdin");
+    let stdout = child.stdout.take().expect("Failed to get stdout");
+    let stderr = child.stderr.take().expect("Failed to get stderr");
+    let stdout_thread = std::thread::spawn(move || {
+        let mut buf = String::new();
+        let mut h = stdout;
+        let _ = h.read_to_string(&mut buf);
+        buf
+    });
+    let stderr_thread = std::thread::spawn(move || {
+        let mut buf = String::new();
+        let mut h = stderr;
+        let _ = h.read_to_string(&mut buf);
+        buf
+    });
+    stdin
+        .write_all(script.as_bytes())
+        .expect("Failed to write to stdin");
+    std::thread::spawn(move || {
+        drop(stdin);
+    });
+    let status = child.wait().expect("wait failed");
+    let stdout = stdout_thread.join().expect("stdout thread");
+    let stderr = stderr_thread.join().expect("stderr thread");
+    let code = status.code().unwrap_or(-1);
+    (stdout, stderr, code)
 }
 
 #[test]
 fn test_truncate_empty_table() {
-    // Create an empty table
-    run_sql("CREATE TABLE tr1 (id INT PRIMARY KEY, name VARCHAR(50))").ok();
-
-    // Truncate should succeed even on empty table
-    let out = run_sql("TRUNCATE TABLE tr1").unwrap_or_default();
-    assert!(
-        !out.contains("Error"),
-        "TRUNCATE TABLE on empty table should succeed, got: {}",
-        out
+    let (out, _err, _code) = run_repl(
+        "CREATE TABLE tr1 (id INT PRIMARY KEY, name VARCHAR(50));\n\
+         TRUNCATE TABLE tr1;\n\
+         .exit\n",
     );
-
-    // Clean up
-    run_sql("DROP TABLE tr1").ok();
+    // TRUNCATE on an empty table should not error. The REPL prints
+    // (0 rows) for empty results and an "Error:" prefix for failures.
+    assert!(
+        !_err.contains("Error") && !out.contains("Error"),
+        "TRUNCATE on empty table should succeed; got stdout:\n{}\nstderr:\n{}",
+        out,
+        _err
+    );
 }
 
 #[test]
 fn test_truncate_table_with_data() {
-    // Create table and insert data
-    run_sql("CREATE TABLE tr2 (id INT PRIMARY KEY, value INT)").ok();
-    run_sql("INSERT INTO tr2 VALUES (1, 100)").ok();
-    run_sql("INSERT INTO tr2 VALUES (2, 200)").ok();
-    run_sql("INSERT INTO tr2 VALUES (3, 300)").ok();
-
-    // Verify data exists
-    let select_out = run_sql("SELECT COUNT(*) FROM tr2").unwrap_or_default();
-    assert!(
-        select_out.contains("3") || select_out.contains("3 rows"),
-        "Should have 3 rows before truncate, got: {}",
-        select_out
+    let (out, err, _code) = run_repl(
+        "CREATE TABLE tr2 (id INT PRIMARY KEY, value INT);\n\
+         INSERT INTO tr2 VALUES (1, 100),(2, 200),(3, 300);\n\
+         SELECT COUNT(*) FROM tr2;\n\
+         TRUNCATE TABLE tr2;\n\
+         SELECT COUNT(*) FROM tr2;\n\
+         .exit\n",
     );
-
-    // Truncate should delete all rows
-    let out = run_sql("TRUNCATE TABLE tr2").unwrap_or_default();
+    let combined = format!("{}{}", out, err);
+    // First COUNT must show 3 rows; after TRUNCATE, the second
+    // COUNT must show 0 rows. If the parser breaks on TRUNCATE the
+    // second COUNT never runs and the output will be missing the
+    // expected pattern.
     assert!(
-        !out.contains("Error"),
-        "TRUNCATE TABLE should succeed, got: {}",
-        out
+        combined.contains("Integer(3)") || combined.contains("3\n"),
+        "Expected pre-TRUNCATE count of 3, got stdout:\n{}\nstderr:\n{}",
+        out,
+        err
     );
-
-    // Verify table is empty
-    let select_out = run_sql("SELECT COUNT(*) FROM tr2").unwrap_or_default();
     assert!(
-        select_out.contains("0") || select_out.contains("0 rows"),
-        "Should have 0 rows after truncate, got: {}",
-        select_out
+        combined.contains("Integer(0)") || combined.contains("0\n"),
+        "Expected post-TRUNCATE count of 0, got stdout:\n{}\nstderr:\n{}",
+        out,
+        err
     );
-
-    // Clean up
-    run_sql("DROP TABLE tr2").ok();
 }
 
 #[test]
 fn test_truncate_and_reinsert() {
-    // Create table and insert data
-    run_sql("CREATE TABLE tr3 (id INT PRIMARY KEY, name VARCHAR(50))").ok();
-    run_sql("INSERT INTO tr3 VALUES (1, 'alice')").ok();
-    run_sql("INSERT INTO tr3 VALUES (2, 'bob')").ok();
-
-    // Truncate
-    run_sql("TRUNCATE TABLE tr3").ok();
-
-    // Re-insert different data
-    run_sql("INSERT INTO tr3 VALUES (10, 'charlie')").ok();
-    run_sql("INSERT INTO tr3 VALUES (20, 'david')").ok();
-
-    // Verify new data
-    let out = run_sql("SELECT * FROM tr3").unwrap_or_default();
-    assert!(out.contains("charlie"), "should have charlie: {}", out);
-    assert!(out.contains("david"), "should have david: {}", out);
-    assert!(
-        !out.contains("alice") && !out.contains("bob"),
-        "should NOT have alice/bob: {}",
-        out
+    let (out, err, _code) = run_repl(
+        "CREATE TABLE tr3 (id INT PRIMARY KEY, name VARCHAR(50));\n\
+         INSERT INTO tr3 VALUES (1, 'alice'),(2, 'bob');\n\
+         TRUNCATE TABLE tr3;\n\
+         INSERT INTO tr3 VALUES (10, 'charlie'),(20, 'david');\n\
+         SELECT name FROM tr3 ORDER BY id;\n\
+         .exit\n",
     );
-
-    // Clean up
-    run_sql("DROP TABLE tr3").ok();
+    let combined = format!("{}{}", out, err);
+    assert!(
+        combined.contains("charlie") && combined.contains("david"),
+        "After TRUNCATE+re-INSERT, SELECT must show charlie and david; got stdout:\n{}\nstderr:\n{}",
+        out,
+        err
+    );
+    // alice/bob should be GONE (truncated).
+    assert!(
+        !combined.contains("alice") && !combined.contains("bob"),
+        "Truncated rows (alice/bob) must not appear; got stdout:\n{}\nstderr:\n{}",
+        out,
+        err
+    );
 }
