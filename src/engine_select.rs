@@ -135,8 +135,11 @@ fn extract_first_literal_from_where(select: &SelectStatement) -> Option<Value> {
 }
 
 /// Convert a [`Value`] to its string-literal representation as expected
-/// by [`Expression::Literal`].  Used to render scalar aggregate results
-/// for the fast-path index lookup.
+/// by [`Expression::Literal`].  Reserved for future scalar aggregate
+/// results in the fast-path index lookup (currently the lookup path
+/// uses `to_sql_string` directly; this helper stays as a typed
+/// formatter when that path is re-introduced).
+#[allow(dead_code)]
 fn value_to_literal_string_v(v: &Value) -> String {
     match v {
         Value::Null => "NULL".to_string(),
@@ -1459,8 +1462,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                         // is set (line 1480-1484), so we match either
                         // the bare name or `<alias>.<col>`.
                         let col_idx = right_info.columns.iter().position(|c| {
-                            c.name == col_name
-                                || c.name == format!("{}.{}", right_alias, col_name)
+                            c.name == col_name || c.name == format!("{}.{}", right_alias, col_name)
                         });
                         let Some(col_idx) = col_idx else {
                             continue;
@@ -2235,7 +2237,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     self.try_scalar_agg_index_lookup(_subq, outer_row, outer_table_info)
                 {
                     return Expression::Literal(lit.to_string());
-                } 
+                }
                 let substituted =
                     substitute_outer_refs_in_select(_subq, outer_row, outer_table_info);
                 let cache_key: Value = extract_first_literal_from_where(&substituted)
@@ -2729,30 +2731,25 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         // 4. Projection must be of the shape
         //      `op_factor * AGG(col)`  (or `AGG(col)` directly with op_factor = 1.0).
         //    The Aggregate must be the single `agg` we found.
-        let op_factor: f64;
-        match proj_expr {
-            E::Aggregate(agg_inner) if agg_inner == agg => {
-                op_factor = 1.0;
-            }
-            E::BinaryOp(l, op, r) if op == "*" => {
-                op_factor = match (l.as_ref(), r.as_ref()) {
-                    (E::Literal(s), E::Aggregate(agg_inner)) => {
-                        if agg_inner != agg {
-                            return None;
-                        }
-                        s.parse::<f64>().ok()?
+        let op_factor: f64 = match proj_expr {
+            E::Aggregate(agg_inner) if agg_inner == agg => 1.0,
+            E::BinaryOp(l, op, r) if op == "*" => match (l.as_ref(), r.as_ref()) {
+                (E::Literal(s), E::Aggregate(agg_inner)) => {
+                    if agg_inner != agg {
+                        return None;
                     }
-                    (E::Aggregate(agg_inner), E::Literal(s)) => {
-                        if agg_inner != agg {
-                            return None;
-                        }
-                        s.parse::<f64>().ok()?
+                    s.parse::<f64>().ok()?
+                }
+                (E::Aggregate(agg_inner), E::Literal(s)) => {
+                    if agg_inner != agg {
+                        return None;
                     }
-                    _ => return None,
-                };
-            }
+                    s.parse::<f64>().ok()?
+                }
+                _ => return None,
+            },
             _ => return None,
-        }
+        };
         let agg_arg_expr: &E = agg.args.first()?;
         // 5. WHERE must be `<inner_col> = <outer_ref>` (possibly wrapped in
         //    AND with trivial static predicates, but for TPC-H Q17 it's
@@ -3609,10 +3606,7 @@ fn build_scalar_agg_index(
                         entry.1 += 1;
                     }
                     Some(V::Float(f)) => {
-                        if !entry.2 {
-                            entry.0 = entry.0; // already f64
-                            entry.2 = true;
-                        }
+                        entry.2 = true;
                         entry.0 += f;
                         entry.1 += 1;
                     }
