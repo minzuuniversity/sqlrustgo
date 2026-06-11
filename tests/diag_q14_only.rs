@@ -65,14 +65,22 @@ fn diag_q14_only() {
     // Q14 full
     let r = engine.execute("SELECT 100.00 * SUM(CASE WHEN p_type LIKE 'PROMO%' THEN l_extendedprice * (1 - l_discount) ELSE 0 END) / SUM(l_extendedprice * (1 - l_discount)) AS promo_revenue FROM lineitem, part WHERE l_partkey = p_partkey AND l_shipdate >= '1995-09-01' AND l_shipdate < '1995-10-01'");
     match r {
-        Ok(result) => eprintln!("Q14: rows = {}, first row = {:?}", result.rows.len(), result.rows.first()),
+        Ok(result) => eprintln!(
+            "Q14: rows = {}, first row = {:?}",
+            result.rows.len(),
+            result.rows.first()
+        ),
         Err(e) => eprintln!("Q14 ERR: {}", e),
     }
 
     // Just 1994 (will have data)
     let r2 = engine.execute("SELECT 100.00 * SUM(CASE WHEN p_type LIKE 'PROMO%' THEN l_extendedprice * (1 - l_discount) ELSE 0 END) / SUM(l_extendedprice * (1 - l_discount)) AS promo_revenue FROM lineitem, part WHERE l_partkey = p_partkey AND l_shipdate >= '1994-09-01' AND l_shipdate < '1994-10-01'");
     match r2 {
-        Ok(result) => eprintln!("Q14 1994-09: rows = {}, first row = {:?}", result.rows.len(), result.rows.first()),
+        Ok(result) => eprintln!(
+            "Q14 1994-09: rows = {}, first row = {:?}",
+            result.rows.len(),
+            result.rows.first()
+        ),
         Err(e) => eprintln!("Q14 1994-09 ERR: {}", e),
     }
 }

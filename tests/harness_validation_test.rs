@@ -35,7 +35,9 @@ fn make_engine_with_data() -> Option<ExecutionEngine<MemoryStorage>> {
             Err(_) => continue,
         };
         for line in content.lines() {
-            if line.is_empty() { continue; }
+            if line.is_empty() {
+                continue;
+            }
             let line_trimmed = line.trim_end_matches('|');
             let cols: Vec<&str> = line_trimmed.split('|').collect();
             let mut vals: Vec<String> = Vec::new();
@@ -92,7 +94,9 @@ fn test_q6_aggregate_returns_one_row() {
     // Sprint 5 (#3288): SUM(empty)=NULL means Q6 returns 1 row with
     // NULL when filter matches nothing. But Q6 with v2 data matches
     // some rows (6076.93), so we get 1 row with REAL value.
-    let Some(mut engine) = make_engine_with_data() else { return; };
+    let Some(mut engine) = make_engine_with_data() else {
+        return;
+    };
     let q6 = "SELECT SUM(l_extendedprice * l_discount) AS revenue FROM lineitem WHERE l_shipdate >= '1994-01-01' AND l_shipdate < '1995-01-01' AND l_discount BETWEEN 0.06 AND 0.08 AND l_quantity < 25";
     let count = run_count(&mut engine, q6);
     assert!(count.is_some(), "Q6 should complete (not timeout)");
@@ -102,7 +106,9 @@ fn test_q6_aggregate_returns_one_row() {
 #[test]
 fn test_q14_aggregate_returns_one_row() {
     // Q14: SUM(CASE WHEN ... END) / SUM(...) - always 1 row
-    let Some(mut engine) = make_engine_with_data() else { return; };
+    let Some(mut engine) = make_engine_with_data() else {
+        return;
+    };
     let q14 = "SELECT 100.00 * SUM(CASE WHEN p_type LIKE 'PROMO%' THEN l_extendedprice * (1 - l_discount) ELSE 0 END) / SUM(l_extendedprice * (1 - l_discount)) AS promo_revenue FROM lineitem, part WHERE l_partkey = p_partkey AND l_shipdate >= '1995-09-01' AND l_shipdate < '1995-10-01'";
     let count = run_count(&mut engine, q14);
     assert!(count.is_some(), "Q14 should complete (not timeout)");
@@ -129,7 +135,9 @@ fn test_q1_groupby_returns_six_rows() {
 fn test_q11_in_subquery_returns_zero() {
     // Q11: IN subquery. Should return 0 rows with v2 data (no big suppliers).
     // Or whatever the data shows. We just verify it completes.
-    let Some(mut engine) = make_engine_with_data() else { return; };
+    let Some(mut engine) = make_engine_with_data() else {
+        return;
+    };
     let q11 = "SELECT ps_partkey, SUM(ps_supplycost * ps_availqty) AS value FROM partsupp, supplier, nation WHERE ps_suppkey = s_suppkey AND s_nationkey = n_nationkey AND n_name = 'GERMANY' GROUP BY ps_partkey HAVING SUM(ps_supplycost * ps_availqty) > (SELECT SUM(ps_supplycost * ps_availqty) * 0.0001000000 FROM partsupp, supplier, nation WHERE ps_suppkey = s_suppkey AND s_nationkey = n_nationkey AND n_name = 'GERMANY') ORDER BY value DESC";
     let count = run_count(&mut engine, q11);
     // Q11 may timeout due to N^2 - that's OK
