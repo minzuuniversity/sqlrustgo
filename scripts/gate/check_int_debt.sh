@@ -25,6 +25,13 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 cd "$REPO_ROOT"
 
+# Ensure cargo is on PATH (CI runners may not have it in default PATH).
+if ! command -v cargo >/dev/null 2>&1; then
+    if [ -x "$HOME/.cargo/bin/cargo" ]; then
+        export PATH="$HOME/.cargo/bin:$PATH"
+    fi
+fi
+
 # resolve_doc_path: try candidate paths in priority order, return first existing.
 # Fixes the silent PASS bug found in audit #3100: prior logic only checked
 # `archived/` and root `docs/releases/v3.8.0/`, but after PR #2933 docs reorg
