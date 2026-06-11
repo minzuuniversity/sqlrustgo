@@ -21,21 +21,44 @@ use sqlrustgo_executor::trigger::{
 };
 use sqlrustgo_executor::ExecutorResult;
 use sqlrustgo_parser::parser::{
-    AggregateCall, AggregateFunction, AlterTableOperation, AlterTableStatement, CallStatement,
-    CreateIndexStatement, CreateProcedureStatement, CreateRoleStatement, CreateTableStatement,
-    CreateTriggerStatement, DescribeStatement, DropRoleStatement, DropTableStatement,
-    GrantRoleStatement, GrantStatement, InsertStatement, ObjectType as ParserObjectType,
-    Privilege as ParserPrivilege, RevokeRoleStatement, RevokeStatement, SelectStatement,
-    SetRoleStatement, ShowStatement, StoredProcParam as ParserStoredProcParam,
-    StoredProcParamMode as ParserParamMode, StoredProcStatement as ParserStatement,
+    AggregateCall,
+    AggregateFunction,
+    AlterTableOperation,
+    AlterTableStatement,
+    CallStatement,
+    CreateIndexStatement,
+    CreateProcedureStatement,
+    CreateRoleStatement,
+    CreateTableStatement,
+    CreateTriggerStatement,
+    DescribeStatement,
+    DropRoleStatement,
+    DropTableStatement,
+    GrantRoleStatement,
+    GrantStatement,
+    InsertStatement,
+    ObjectType as ParserObjectType,
+    Privilege as ParserPrivilege,
+    RevokeRoleStatement,
+    RevokeStatement,
+    SelectStatement,
+    SetRoleStatement,
+    ShowStatement,
+    StoredProcParam as ParserStoredProcParam,
+    StoredProcParamMode as ParserParamMode,
+    StoredProcStatement as ParserStatement,
     TruncateStatement, // SEM-1 (#3172)
 };
 use sqlrustgo_parser::transaction::IsolationLevel as ParserIsolationLevel;
 use sqlrustgo_parser::JoinType;
 use sqlrustgo_parser::{
-    DeleteStatement, Expression, Statement, TransactionStatement, UpdateStatement,
+    DeleteStatement,
+    Expression,
     // SEM-1 (#3172)
     SavepointOp,
+    Statement,
+    TransactionStatement,
+    UpdateStatement,
 };
 use sqlrustgo_storage::checkpoint::{CheckpointManager, CheckpointMetadata};
 use sqlrustgo_storage::{
@@ -347,9 +370,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             }
             Statement::Transaction(ref txn) => self.execute_transaction(txn),
             // SEM-1 (#3172): SAVEPOINT/ROLLBACK TO SAVEPOINT/RELEASE SAVEPOINT
-            Statement::SavepointStatement { ref name, op } => {
-                self.execute_savepoint(name, op)
-            }
+            Statement::SavepointStatement { ref name, op } => self.execute_savepoint(name, op),
             Statement::Grant(ref grant) => self.execute_grant(grant),
             Statement::Revoke(ref revoke) => self.execute_revoke(revoke),
             Statement::CreateRole(ref stmt) => self.execute_create_role(stmt),
@@ -363,7 +384,10 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             Statement::Describe(ref desc) => self.execute_describe(desc),
             Statement::AlterTable(ref alter) => self.execute_alter_table(alter),
             Statement::Prepare { ref name, ref sql } => self.execute_prepare(name, sql),
-            Statement::Execute { ref name, ref params } => self.execute_execute(name, params),
+            Statement::Execute {
+                ref name,
+                ref params,
+            } => self.execute_execute(name, params),
             Statement::Deallocate { ref name } => self.execute_deallocate(name),
             _ => Err(SqlError::ExecutionError(
                 "Unsupported statement type".to_string(),
@@ -485,6 +509,55 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 for new_record in &processed_records {
                     for existing in &existing_rows {
                         if self.record_matches_unique_key(existing, new_record, &table_info) {
+                            // ODKU path: if on_duplicate_key_update is set,
+                            // translate this INSERT into an UPDATE of the
+                            // existing row instead of erroring out. We
+                            // apply the column=value updates (the parser
+                            // captures them as (String, Expression) tuples).
+                            if let Some(ref updates) = insert.on_duplicate_key_update {
+                                // Build a new row by copying the existing row
+                                // and overwriting the named columns with the
+                                // ODKU assignment values.
+                                let col_names: Vec<String> =
+                                    table_info.columns.iter().map(|c| c.name.clone()).collect();
+                                let mut updated = existing.clone();
+                                for (col_name, expr) in updates {
+                                    if let Some(idx) = col_names.iter().position(|n| n == col_name)
+                                    {
+                                        let val = expression_to_value(expr);
+                                        if idx < updated.len() {
+                                            updated[idx] = val;
+                                        }
+                                    }
+                                }
+                                // Delete ONLY the row whose primary key matched
+                                // the ODKU conflict (not the whole table).
+                                // Storage has no per-PK delete API; we use
+                                // delete_if with a closure that checks each
+                                // row against the existing PK columns.
+                                let pk_indices: Vec<usize> = table_info
+                                    .columns
+                                    .iter()
+                                    .enumerate()
+                                    .filter_map(|(i, c)| if c.primary_key { Some(i) } else { None })
+                                    .collect();
+                                let pk_existing: Vec<Value> = pk_indices
+                                    .iter()
+                                    .filter_map(|&i| existing.get(i).cloned())
+                                    .collect();
+                                let filter: sqlrustgo_storage::RowFilter = Box::new(move |row| {
+                                    pk_existing.iter().enumerate().all(|(pos, p)| {
+                                        pk_indices
+                                            .get(pos)
+                                            .and_then(|&i| row.get(i))
+                                            .map(|v| v == p)
+                                            .unwrap_or(false)
+                                    })
+                                });
+                                let _n = storage.delete_if(&table_name, &filter)?;
+                                storage.insert(&table_name, vec![updated])?;
+                                continue;
+                            }
                             let pk_repr = table_info
                                 .columns
                                 .iter()
@@ -1319,10 +1392,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 .transaction_manager
                 .release_savepoint(tx_id, name)
                 .map_err(|e| {
-                    SqlError::ExecutionError(format!(
-                        "RELEASE SAVEPOINT {} failed: {}",
-                        name, e
-                    ))
+                    SqlError::ExecutionError(format!("RELEASE SAVEPOINT {} failed: {}", name, e))
                 })?,
         }
         Ok(ExecutorResult::empty())
@@ -1828,9 +1898,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     }
 
     fn execute_prepare(&mut self, name: &str, sql: &str) -> SqlResult<ExecutorResult> {
-        let parsed = sqlrustgo_parser::parse(sql).map_err(|e| {
-            SqlError::ParseError(format!("PREPARE failed to parse SQL: {}", e))
-        })?;
+        let parsed = sqlrustgo_parser::parse(sql)
+            .map_err(|e| SqlError::ParseError(format!("PREPARE failed to parse SQL: {}", e)))?;
         self.stmt_cache.prepare(name, sql, parsed);
         Ok(ExecutorResult::empty())
     }

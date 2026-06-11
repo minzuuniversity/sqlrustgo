@@ -1,6 +1,6 @@
 {
   "query": "q8.sql",
-  "sqlite_sql_source": "extracted_from_tpch_value_test_v2",
+  "sqlite_sql_source": "fresh_pyscript_2026-06-10_Sprint7_fixture",
   "engines": {
     "sqlite": {
       "row_count": 0,
@@ -9,5 +9,6 @@
     }
   },
   "consensus_row_count": 0,
-  "consensus": true
+  "consensus": true,
+  "regenerated": "2026-06-10, Sprint 7 fixture (dbgen -s 0.001 subset, c_custkey 1-50, o_orderkey 1-500)"
 }
