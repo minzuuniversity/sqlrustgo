@@ -435,9 +435,17 @@ fn filter_committed_entries(entries: &[WalEntry]) -> Vec<WalEntry> {
             WalEntryType::Insert | WalEntryType::Update | WalEntryType::Delete => {
                 if in_tx {
                     current_tx_dml.push(entry.clone());
+                } else {
+                    // Autocommit / orphan DML path: the entry was
+                    // written without an enclosing BEGIN/COMMIT
+                    // pair. The caller (WalStorage::insert/
+                    // update/delete) only returns Ok after
+                    // `inner.*` succeeded AND the WAL fsync
+                    // returned, so the entry is durably committed.
+                    // Replay it. (Used by the MySQL wire-protocol
+                    // exec path on a single-statement connection.)
+                    result.push(entry.clone());
                 }
-                // else: entry belongs to a fragment without a matching
-                //       Begin/Commit span — drop it (cannot prove commit).
             }
         }
     }
@@ -466,6 +474,19 @@ fn count_status(entries: &[WalEntry]) -> (usize, usize, usize) {
             committed += 1;
         } else if has_rollback {
             rolled_back += 1;
+        } else if group.iter().any(|e| {
+            matches!(
+                e.entry_type,
+                WalEntryType::Insert | WalEntryType::Update | WalEntryType::Delete
+            )
+        }) {
+            // Autocommit / orphan DML: no BEGIN/COMMIT pair
+            // (the MySQL wire-protocol exec path on a single-
+            // statement connection writes DML directly to the
+            // WAL). WalStorage::insert/update/delete only
+            // returns Ok after `inner.*` succeeded AND the WAL
+            // fsync returned, so the entry is durably committed.
+            committed += 1;
         } else if group
             .iter()
             .any(|e| e.entry_type != WalEntryType::Checkpoint)
