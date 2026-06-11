@@ -51,7 +51,11 @@ impl std::fmt::Display for SsiError {
             SsiError::TransactionNotFound { tx_id } => {
                 write!(f, "Transaction not found: tx {}", tx_id)
             }
-            SsiError::SavepointError { tx_id, name, reason } => {
+            SsiError::SavepointError {
+                tx_id,
+                name,
+                reason,
+            } => {
                 write!(
                     f,
                     "Savepoint error in tx {} (savepoint '{}'): {}",

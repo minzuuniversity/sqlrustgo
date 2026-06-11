@@ -42,7 +42,12 @@ impl Engine {
         }
     }
     pub fn all() -> [Engine; 4] {
-        [Engine::SqlRustGo, Engine::Sqlite, Engine::MariaDb, Engine::PostgreSql]
+        [
+            Engine::SqlRustGo,
+            Engine::Sqlite,
+            Engine::MariaDb,
+            Engine::PostgreSql,
+        ]
     }
 }
 
@@ -181,7 +186,15 @@ pub fn compare_row_counts(results: &[QueryResult]) -> bool {
 /// Run a single SQL statement via the mysql CLI (for MariaDB).
 pub fn run_mysql_sql(sql: &str) -> Result<String, String> {
     let output = Command::new("/opt/homebrew/bin/mysql")
-        .args(["-u", "tpch", "-ptpch", "-D", "tpch_test", "--batch", "--skip-column-names"])
+        .args([
+            "-u",
+            "tpch",
+            "-ptpch",
+            "-D",
+            "tpch_test",
+            "--batch",
+            "--skip-column-names",
+        ])
         .arg("--execute")
         .arg(sql)
         .stdout(Stdio::piped())
@@ -219,8 +232,11 @@ pub fn setup_external_db(engine: Engine, data_dir: &Path) -> Result<(), String> 
         Engine::MariaDb => {
             Command::new("/opt/homebrew/bin/mysql")
                 .args([
-                    "-u", "tpch", "-ptpch",
-                    "-e", "CREATE DATABASE IF NOT EXISTS tpch_test;",
+                    "-u",
+                    "tpch",
+                    "-ptpch",
+                    "-e",
+                    "CREATE DATABASE IF NOT EXISTS tpch_test;",
                 ])
                 .stdout(Stdio::null())
                 .stderr(Stdio::null())
@@ -231,8 +247,12 @@ pub fn setup_external_db(engine: Engine, data_dir: &Path) -> Result<(), String> 
             // Idempotent: try CREATE DATABASE, ignore "already exists" error
             Command::new("/opt/homebrew/opt/postgresql@16/bin/psql")
                 .args([
-                    "-U", "liying", "-d", "postgres",
-                    "-c", "CREATE DATABASE tpch_test;",
+                    "-U",
+                    "liying",
+                    "-d",
+                    "postgres",
+                    "-c",
+                    "CREATE DATABASE tpch_test;",
                 ])
                 .stdout(Stdio::null())
                 .stderr(Stdio::null())
@@ -247,8 +267,15 @@ pub fn setup_external_db(engine: Engine, data_dir: &Path) -> Result<(), String> 
         Engine::MariaDb => {
             let out = Command::new("/opt/homebrew/bin/mysql")
                 .args([
-                    "-u", "tpch", "-ptpch", "-D", "tpch_test", "-N", "-B",
-                    "-e", "SELECT COUNT(*) FROM lineitem;",
+                    "-u",
+                    "tpch",
+                    "-ptpch",
+                    "-D",
+                    "tpch_test",
+                    "-N",
+                    "-B",
+                    "-e",
+                    "SELECT COUNT(*) FROM lineitem;",
                 ])
                 .output()
                 .map_err(|e| format!("count: {}", e))?;
@@ -258,8 +285,14 @@ pub fn setup_external_db(engine: Engine, data_dir: &Path) -> Result<(), String> 
         Engine::PostgreSql => {
             let out = Command::new("/opt/homebrew/opt/postgresql@16/bin/psql")
                 .args([
-                    "-U", "liying", "-d", "tpch_test", "-t", "-A",
-                    "-c", "SELECT COUNT(*) FROM lineitem;",
+                    "-U",
+                    "liying",
+                    "-d",
+                    "tpch_test",
+                    "-t",
+                    "-A",
+                    "-c",
+                    "SELECT COUNT(*) FROM lineitem;",
                 ])
                 .output()
                 .map_err(|e| format!("count: {}", e))?;
@@ -269,7 +302,10 @@ pub fn setup_external_db(engine: Engine, data_dir: &Path) -> Result<(), String> 
         _ => false,
     };
     if already_loaded {
-        eprintln!("[{}] Already loaded (60000 lineitem rows) — skipping", engine.name());
+        eprintln!(
+            "[{}] Already loaded (60000 lineitem rows) — skipping",
+            engine.name()
+        );
         return Ok(());
     }
 
@@ -306,14 +342,22 @@ pub fn setup_external_db(engine: Engine, data_dir: &Path) -> Result<(), String> 
     if engine == Engine::PostgreSql {
         let _ = Command::new("/opt/homebrew/opt/postgresql@16/bin/psql")
             .args([
-                "-U", "liying", "-d", "tpch_test",
-                "-c", "ALTER TABLE part ALTER COLUMN p_type TYPE VARCHAR(35);",
+                "-U",
+                "liying",
+                "-d",
+                "tpch_test",
+                "-c",
+                "ALTER TABLE part ALTER COLUMN p_type TYPE VARCHAR(35);",
             ])
             .output();
         let _ = Command::new("/opt/homebrew/opt/postgresql@16/bin/psql")
             .args([
-                "-U", "liying", "-d", "tpch_test",
-                "-c", "ALTER TABLE part ALTER COLUMN p_comment TYPE VARCHAR(60);",
+                "-U",
+                "liying",
+                "-d",
+                "tpch_test",
+                "-c",
+                "ALTER TABLE part ALTER COLUMN p_comment TYPE VARCHAR(60);",
             ])
             .output();
     }
@@ -324,22 +368,33 @@ pub fn setup_external_db(engine: Engine, data_dir: &Path) -> Result<(), String> 
         let r = match engine {
             Engine::MariaDb => Command::new("/opt/homebrew/bin/mysql")
                 .args([
-                    "-u", "tpch", "-ptpch", "-D", "tpch_test",
+                    "-u",
+                    "tpch",
+                    "-ptpch",
+                    "-D",
+                    "tpch_test",
                     "--local-infile=1",
-                    "-e", &format!(
+                    "-e",
+                    &format!(
                         "LOAD DATA LOCAL INFILE '{}' INTO TABLE {} \
                          FIELDS TERMINATED BY '|' LINES TERMINATED BY '\\n';",
-                        tbl_path.display(), table
+                        tbl_path.display(),
+                        table
                     ),
                 ])
                 .output()
                 .map_err(|e| format!("load {}: {}", table, e))?,
             Engine::PostgreSql => Command::new("/opt/homebrew/opt/postgresql@16/bin/psql")
                 .args([
-                    "-U", "liying", "-d", "tpch_test",
-                    "-c", &format!(
+                    "-U",
+                    "liying",
+                    "-d",
+                    "tpch_test",
+                    "-c",
+                    &format!(
                         "\\copy {} FROM '{}' WITH (FORMAT csv, DELIMITER '|')",
-                        table, tbl_path.display()
+                        table,
+                        tbl_path.display()
                     ),
                 ])
                 .output()

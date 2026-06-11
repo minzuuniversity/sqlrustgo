@@ -61,11 +61,15 @@ fn diag_q12_deep() {
     load(&storage, "lineitem", 16);
 
     // IN clause test
-    let r1 = engine.execute("SELECT COUNT(*) FROM lineitem WHERE l_shipmode IN ('MAIL', 'SHIP')").unwrap();
+    let r1 = engine
+        .execute("SELECT COUNT(*) FROM lineitem WHERE l_shipmode IN ('MAIL', 'SHIP')")
+        .unwrap();
     eprintln!("shipmode IN: {:?}", r1.rows);
 
     // < test on dates
-    let r2 = engine.execute("SELECT COUNT(*) FROM lineitem WHERE l_commitdate < l_receiptdate").unwrap();
+    let r2 = engine
+        .execute("SELECT COUNT(*) FROM lineitem WHERE l_commitdate < l_receiptdate")
+        .unwrap();
     eprintln!("commit < receipt: {:?}", r2.rows);
 
     // AND chain
