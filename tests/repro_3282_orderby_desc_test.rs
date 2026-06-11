@@ -175,7 +175,10 @@ fn repro_3282_tpch_q18_orders_desc_returns_max_totalprice() {
     // Run the Q18 simplified order-by-DESC query
     let q = "SELECT o_orderkey, o_totalprice FROM orders ORDER BY o_totalprice DESC LIMIT 5";
     let r = engine.execute(q).expect("Q orders DESC");
-    assert!(!r.rows.is_empty(), "ORDER BY DESC LIMIT 5 should return rows");
+    assert!(
+        !r.rows.is_empty(),
+        "ORDER BY DESC LIMIT 5 should return rows"
+    );
 
     let top_total: f64 = match &r.rows[0][1] {
         Value::Float(f) => *f,
@@ -207,7 +210,8 @@ fn repro_3282_tpch_q18_orders_desc_returns_max_totalprice() {
         assert!(
             a >= b,
             "Q18 rows must be in DESC order by o_totalprice: got {} then {}",
-            a, b
+            a,
+            b
         );
     }
 }
