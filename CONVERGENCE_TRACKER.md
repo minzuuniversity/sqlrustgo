@@ -220,3 +220,26 @@ closed-not-merged (manual workaround): 3
   1. 单表 WHERE 谓词 pushdown (在 cartesian 前 filter right_rows)
   2. 或修改 parser 让它识别 `n.col = literal` 单表 predicate 作为 JOIN ON
 - Plan已记录，未来 session 可以接手
+
+## Q17 性能修复 (2026-06-11 16:30)
+
+### 修复结果
+
+| 指标 | 修复前 | 修复后 |
+|------|--------|--------|
+| Q17 耗时 | 30,303ms (TIMEOUT) | 183ms |
+| 加速 | — | **165x** |
+| 正确性 | 158587.46714285715 | 158587.46714285715 |
+
+### 修复方案
+
+新增 SCALAR_AGG_INDEX_CACHE 索引缓存 (src/engine_select.rs):
+1. try_scalar_agg_index_lookup() - 模式检测 + O(1) 查找
+2. build_scalar_agg_index() - 一次扫描全表, 按 key_col 分组预计算 AVG
+3. find_equality_inner_outer() - 提取 inner_col=outer_ref 等值
+
+### PR
+
+- #3250 (250 Gitea) - merged
+- develop/v3.9.0 on backup: 7686e10b
+- gitcode/github/backup OK, origin 252 仍宕
