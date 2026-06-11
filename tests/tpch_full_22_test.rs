@@ -245,14 +245,17 @@ fn test_tpch_full_22_queries() {
         // Per-query timeout: use a spawned thread + mpsc so we can
         // skip the query if it doesn't complete in time (N² EXISTS
         // scans would otherwise hang the whole suite).
-        let (tx, rx) = std::sync::mpsc::channel::<Result<usize, String>>();
+        // Sprint 5 v15: return Vec<Vec<Value>> so we can also print
+        // rows for the G1 SHA-256 baseline (Issue #3262).
+        let (tx, rx) =
+            std::sync::mpsc::channel::<Result<Vec<Vec<sqlrustgo_types::Value>>, String>>();
         let engine_ptr: usize = &mut engine as *mut _ as usize;
         let sql_owned = q_sql.clone();
         let handle = std::thread::spawn(move || unsafe {
             let engine_ref = engine_ptr as *mut ExecutionEngine<MemoryStorage>;
             let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 match (*engine_ref).execute(&sql_owned) {
-                    Ok(exec) => Ok(exec.rows.len()),
+                    Ok(exec) => Ok(exec.rows),
                     Err(e) => Err(e.to_string()),
                 }
             }));
@@ -285,8 +288,40 @@ fn test_tpch_full_22_queries() {
         };
         let elapsed = start.elapsed();
 
-        // result is already Result<usize, String> (row count)
-        let row_count = result;
+        // Sprint 5 v15: result is now Result<Vec<Vec<Value>>, String>.
+        // We keep the row count for the gate assertion, but ALSO print
+        // the rows in a hash-comparable format (one row per line, cells
+        // pipe-separated) for the G1 SHA-256 baseline script.
+        let row_count = match &result {
+            Ok(rows) => Ok(rows.len()),
+            Err(_) => Err(result.as_ref().err().cloned().unwrap_or_default()),
+        };
+        if let Ok(rows) = &result {
+            eprintln!("---rows---");
+            for r in rows {
+                let cells: Vec<String> = r
+                    .iter()
+                    .map(|v| match v {
+                        sqlrustgo_types::Value::Null => "NULL".to_string(),
+                        sqlrustgo_types::Value::Integer(i) => i.to_string(),
+                        sqlrustgo_types::Value::Float(f) => {
+                            // Use Rust's default float printing (no rounding) for
+                            // deterministic hashing. The hash compare script
+                            // handles integer-valued floats via parse+f64.
+                            if f.is_finite() && *f == f.trunc() {
+                                format!("{}", *f as i64)
+                            } else {
+                                format!("{}", f)
+                            }
+                        }
+                        sqlrustgo_types::Value::Text(s) => s.clone(),
+                        _ => "?".to_string(),
+                    })
+                    .collect();
+                eprintln!("{}", cells.join("|"));
+            }
+            eprintln!("---end---");
+        }
 
         let q_name_static: &'static str = Box::leak(q_name.clone().into_boxed_str());
         results.push((q_name_static, elapsed, row_count, false));
