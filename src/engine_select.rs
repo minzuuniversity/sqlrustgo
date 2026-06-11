@@ -2157,7 +2157,9 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 // (table, key_col, agg_func, agg_arg) and look up O(1)
                 // per outer row. Q17 was 30s on SF=0.1 (cached per
                 // partkey, but each cache miss re-scanned 60K lineitems).
-                if let Some(lit) = self.try_scalar_agg_index_lookup(_subq, outer_row, outer_table_info) {
+                if let Some(lit) =
+                    self.try_scalar_agg_index_lookup(_subq, outer_row, outer_table_info)
+                {
                     return Expression::Literal(lit.to_string());
                 } else {
                 }
@@ -2524,11 +2526,15 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             E::BinaryOp(l, op, r) if op == "*" => {
                 op_factor = match (l.as_ref(), r.as_ref()) {
                     (E::Literal(s), E::Aggregate(agg_inner)) => {
-                        if agg_inner != agg { return None; }
+                        if agg_inner != agg {
+                            return None;
+                        }
                         s.parse::<f64>().ok()?
                     }
                     (E::Aggregate(agg_inner), E::Literal(s)) => {
-                        if agg_inner != agg { return None; }
+                        if agg_inner != agg {
+                            return None;
+                        }
                         s.parse::<f64>().ok()?
                     }
                     _ => return None,
@@ -2545,9 +2551,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         // an equality leaf.
         let (inner_col_name, outer_ref_pos) =
             find_equality_inner_outer(where_expr, agg_arg_expr, &subq.table, outer_table_info)
-                .or_else(|| {
-                    None
-                })?;
+                .or_else(|| None)?;
         // Strip `|alias` from subq.table (TPC-H pattern from Q21).
         let real_table: &str = match subq.table.find('|') {
             Some(d) => &subq.table[..d],
@@ -2557,7 +2561,10 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         // ── Resolve columns ──────────────────────────────────────────
         let storage = self.storage.read().ok()?;
         let table_info = storage.get_table_info(real_table).ok()?;
-        let key_col_idx = table_info.columns.iter().position(|c| c.name == inner_col_name)?;
+        let key_col_idx = table_info
+            .columns
+            .iter()
+            .position(|c| c.name == inner_col_name)?;
         let agg_col_idx: Option<usize> = match agg_arg_expr {
             E::Identifier(name) => table_info.columns.iter().position(|c| c.name == *name),
             // If agg arg is an expression, skip the fast path (would
@@ -2572,7 +2579,11 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         // Two queries with identical (table,key,agg,op) share the index.
         let cache_key = format!(
             "{}|{}|{:?}|{}|{}",
-            real_table, key_col_idx, agg.func, agg_col_idx.unwrap_or(usize::MAX), op_factor
+            real_table,
+            key_col_idx,
+            agg.func,
+            agg_col_idx.unwrap_or(usize::MAX),
+            op_factor
         );
 
         // ── Get or build the index ──────────────────────────────────
@@ -2586,9 +2597,16 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 // computing the aggregate per key_col value.
                 let rows = storage.scan(real_table).ok()?;
                 let new_map = build_scalar_agg_index(
-                    &rows, &table_info, key_col_idx, agg_col_idx, agg.func.clone(), op_factor,
+                    &rows,
+                    &table_info,
+                    key_col_idx,
+                    agg_col_idx,
+                    agg.func.clone(),
+                    op_factor,
                 );
-                let entry = ScalarAggIndexEntry { map: std::sync::Arc::new(new_map) };
+                let entry = ScalarAggIndexEntry {
+                    map: std::sync::Arc::new(new_map),
+                };
                 let mut cache = scalar_agg_index_cache().lock().unwrap();
                 cache.insert(cache_key.clone(), entry.clone());
                 entry
@@ -3239,7 +3257,10 @@ fn find_equality_inner_outer(
     // as a strong hint that the inner column referenced in the equality
     // is one of the inner table's columns — but the equality leaf
     // itself can also use any inner column.
-    let own_prefix: Option<char> = inner_table_name.chars().next().map(|c| c.to_ascii_lowercase());
+    let own_prefix: Option<char> = inner_table_name
+        .chars()
+        .next()
+        .map(|c| c.to_ascii_lowercase());
     let inner_col_lower = match agg_arg_expr {
         E::Identifier(n) => Some(n.to_lowercase()),
         _ => None,
@@ -3252,7 +3273,11 @@ fn find_equality_inner_outer(
         }
         // 2. Match by basename after stripping any `alias.` prefix.
         let basename = name.rsplit_once('.').map(|(_, c)| c).unwrap_or(name);
-        if let Some(idx) = outer_table_info.columns.iter().position(|c| c.name == basename) {
+        if let Some(idx) = outer_table_info
+            .columns
+            .iter()
+            .position(|c| c.name == basename)
+        {
             return Some(idx);
         }
         // 3. Match by basename after stripping a `alias.` prefix
@@ -3316,13 +3341,10 @@ fn find_equality_inner_outer(
                 };
                 Some((inner_col, outer_idx))
             }
-            E::BinaryOp(l, op, r) if op.to_uppercase() == "AND" => walk(
-                l,
-                own_prefix,
-                inner_col_hint,
-                outer_table_info,
-            )
-            .or_else(|| walk(r, own_prefix, inner_col_hint, outer_table_info)),
+            E::BinaryOp(l, op, r) if op.to_uppercase() == "AND" => {
+                walk(l, own_prefix, inner_col_hint, outer_table_info)
+                    .or_else(|| walk(r, own_prefix, inner_col_hint, outer_table_info))
+            }
             _ => None,
         }
     }
@@ -3416,4 +3438,3 @@ fn build_scalar_agg_index(
     }
     result
 }
-
