@@ -4063,6 +4063,7 @@ dependencies = [
  "query-stats",
  "rand 0.8.6",
  "rayon",
+ "regex",
  "rusqlite",
  "serde",
  "serde_json",
