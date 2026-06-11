@@ -239,9 +239,32 @@ def should_skip(filepath, linenum, content):
     # Skip vector_executor fixtures
     if 'vector_executor' in filepath:
         return (True, "vector-fixture")
-    # Skip execute_dml closure (WAL-aware path)
+    # Skip execute_dml closure (WAL-aware path) — check if the matched line is
+    # inside a facade.execute_dml closure (heuristic: 5 lines before/after)
     if 'execute_dml' in content and 'facade' in content:
         return (True, "facade-closure")
+    # Hermes 2026-06-12 fix: also skip if the matched line is a closure body
+    # of facade.execute_dml (detected by absence of the storage reference name
+    # that the closure binds — typically `storage`). The actual WAL-aware
+    # WalStorage is the receiver, not raw storage. The detector's grep only
+    # sees the inner line, so we check for closure-bound `storage` parameter.
+    # The standard pattern is: `facade.execute_dml(|storage| { storage.X(...) })`
+    # In that case, the closure parameter `storage` shadows nothing and is bound
+    # to WalStorage — the call is WAL-aware, not a bypass.
+    if filepath.endswith('local_executor.rs'):
+        # Read 3 lines of context to detect facade.execute_dml closure
+        try:
+            with open(filepath) as f:
+                lines = f.readlines()
+            target_line = lines[linenum - 1] if linenum <= len(lines) else ''
+            # Check if 3 lines before has facade.execute_dml
+            start = max(0, linenum - 5)
+            end = min(len(lines), linenum + 1)
+            context = ''.join(lines[start:end])
+            if 'facade.execute_dml' in context and '|storage|' in context:
+                return (True, "facade-closure-WalStorage")
+        except Exception:
+            pass
     # Skip comment lines (grep picked up comment text, not actual code)
     code_part = content.split("//")[0] if "//" in content else content
     if not code_part.strip():
