@@ -494,6 +494,11 @@ path = "tests/arch3_vtu_main_path_test.rs"
 [[test]]
 name = "int3_single_expression_test"
 path = "tests/int3_single_expression_test.rs"
+
+# INT-3 (#3271) — Mixed-scenario integration (WAL + DDL + TPC-H)
+[[test]]
+name = "int3_mixed_scenario_test"
+path = "tests/integration/int3_mixed_scenario_test.rs"
 # SEM-1 (#3172) — Savepoint
 [[test]]
 name = "sem1_savepoint_test"
