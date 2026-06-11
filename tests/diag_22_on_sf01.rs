@@ -68,7 +68,10 @@ fn load_tbl_file(
     Ok(count)
 }
 
-fn setup_8_tables(engine: &mut ExecutionEngine<MemoryStorage>, storage: &Arc<RwLock<MemoryStorage>>) {
+fn setup_8_tables(
+    engine: &mut ExecutionEngine<MemoryStorage>,
+    storage: &Arc<RwLock<MemoryStorage>>,
+) {
     let ddls = [
         "CREATE TABLE region (r_regionkey INTEGER PRIMARY KEY, r_name TEXT NOT NULL, r_comment TEXT)",
         "CREATE TABLE nation (n_nationkey INTEGER PRIMARY KEY, n_name TEXT NOT NULL, n_regionkey INTEGER NOT NULL, n_comment TEXT)",
