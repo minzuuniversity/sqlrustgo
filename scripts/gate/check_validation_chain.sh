@@ -21,6 +21,13 @@ set -uo pipefail
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$REPO_ROOT"
 
+# Ensure cargo is on PATH (CI runners may not have it in default PATH).
+if ! command -v cargo >/dev/null 2>&1; then
+    if [ -x "$HOME/.cargo/bin/cargo" ]; then
+        export PATH="$HOME/.cargo/bin:$PATH"
+    fi
+fi
+
 # Optional output dir
 OUT_DIR="${1:-}"
 if [ -n "$OUT_DIR" ]; then
