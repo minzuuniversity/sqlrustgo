@@ -22,6 +22,16 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 cd "$PROJECT_ROOT"
 
+# Ensure cargo is on PATH (CI runners may not have it in default PATH).
+# OpenSpec 3175 followup: many agents/VMs only have cargo via
+# `$HOME/.cargo/bin/cargo` (rustup default). Add it to PATH if missing
+# so the gate is self-contained.
+if ! command -v cargo >/dev/null 2>&1; then
+    if [ -x "$HOME/.cargo/bin/cargo" ]; then
+        export PATH="$HOME/.cargo/bin:$PATH"
+    fi
+fi
+
 echo "=== G7 Gate: P1-3 (#3175) Soak Test ==="
 
 # 1. harness file
