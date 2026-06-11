@@ -324,8 +324,8 @@ fn test_stats_multi_mixed_selectivity_p3_2() {
     let t = MockTableStats::new("users")
         .with_row_count(1000)
         .add_column(MockColumnStats::new("id").with_distinct(1000)) // sel = 0.001
-        .add_column(MockColumnStats::new("gender").with_distinct(2))  // sel = 0.5
-        .add_column(MockColumnStats::new("flag").with_distinct(1));   // sel = 1.0
+        .add_column(MockColumnStats::new("gender").with_distinct(2)) // sel = 0.5
+        .add_column(MockColumnStats::new("flag").with_distinct(1)); // sel = 1.0
     let r = run_analyze(&t);
     assert!((r.min_eq_selectivity - 0.001).abs() < 1e-9);
     assert!((r.max_eq_selectivity - 1.0).abs() < 1e-9);
