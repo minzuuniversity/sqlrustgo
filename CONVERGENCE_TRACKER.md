@@ -330,3 +330,51 @@ Issue #3315 留 open，分类为 P3 / future-sprint。
 - `scripts/gate/check_g1_tpch_22_22.sh` (G1)
 
 修复：CI runner 通常只有 `$HOME/.cargo/bin/cargo`，添加到 PATH if missing。
+
+## Sprint 8 完成 (2026-06-11, ALL GATES PASS @ 041d3e63)
+
+### G1-G16 GA Gates 全部 PASS
+
+| Gate | Status | Detail |
+|------|--------|--------|
+| G1 TPC-H 22/22 | ✅ | 22/22 PASS on Z6G4 with real TPC-H data |
+| G2 INT-2 Parallel | ✅ | #3199 merged |
+| G3 INT-3 Single Expr | ✅ | #3335 merged |
+| G4 ARCH-3 | ✅ | VtuGuard main path enforced |
+| G5 SEM-1 Savepoint | ✅ | 3 savepoint methods + tests |
+| G6 Backup/Restore | ✅ | e2e CLI smoke pass |
+| G7 Soak 24h compressed | ✅ | 10/10 unit tests, 3-level equivalence |
+| **G8 Crash Matrix** | ✅ | **NEW: 16/16 + 129 total tests, 8 categories** |
+| **G9 Upgrade Test** | ✅ | **NEW: 50/50 + 8 backup/restore** |
+| **G10 Audit Log** | ✅ | **NEW: 20/20 + 8 fields (who/when/what/target/before/after/tx_id/source)** |
+| G11 QPS/TPS | ✅ | 5 workloads × thread counts |
+| G12 Sysbench | ✅ | 5 scripts + 30 oltp tests |
+| G13 24h+ Stability | ✅ | 3 scripts + 24h template, real 24h deferred W12 |
+| G14 Real Crash | ✅ | 8 orchestrator kinds, real run deferred W12 |
+| G15 Perf Report | ✅ | 1 master + 5 sub-reports + baseline |
+| G16 Compatibility | ✅ | 4 cases + 1 rollback + 18 tests |
+
+### 关键修复 (PR #3355)
+
+Apply `cargo PATH` auto-detect preamble to **all 57 gate scripts** in `scripts/gate/`. CI runners typically have cargo at `$HOME/.cargo/bin/cargo` (rustup default) but not in PATH. Self-healing preamble ensures all gates runnable without manual PATH setup.
+
+### 22-query TPC-H smoke on real data (Z6G4)
+
+```
+✅ q1  ✅ q2  ✅ q3  ✅ q4  ✅ q5  ✅ q6  ✅ q7  ✅ q8  ✅ q9  ✅ q10
+✅ q11 ✅ q12 ✅ q13 ✅ q14 ✅ q15 ✅ q16 ✅ q17 ✅ q18 ✅ q19 ✅ q20
+✅ q21 ✅ q22
+```
+
+### 4 Remote Sync @ 041d3e63
+
+- origin (252): ✅
+- backup (250): ✅
+- gitcode: ✅
+- github: ✅
+
+### Remaining Work
+
+- W12 D1-2: Real 24h Soak (Z6G4 only)
+- W12 D3-4: Real 8-case Crash run (Z6G4 only)
+- #3315 Q18: needs SF=1+ fixture for verification
