@@ -65,7 +65,10 @@ fn shared() -> &'static SharedServer {
         };
         let handle = start_ephemeral(config).expect("start_ephemeral");
         let port = handle.port;
-        SharedServer { _handle: handle, port }
+        SharedServer {
+            _handle: handle,
+            port,
+        }
     })
 }
 
@@ -110,7 +113,8 @@ fn read_baseline(qnum: u8) -> Option<(u64, Vec<Vec<String>>)> {
                 .map(|row| {
                     row.as_array()
                         .map(|cells| {
-                            cells.iter()
+                            cells
+                                .iter()
                                 .filter_map(|c| c.as_str().map(|s| s.to_string()))
                                 .collect()
                         })
@@ -121,8 +125,6 @@ fn read_baseline(qnum: u8) -> Option<(u64, Vec<Vec<String>>)> {
         .unwrap_or_default();
     Some((rc, rows))
 }
-
-
 
 #[test]
 fn test_tpch_sf01_22_queries_wire_roundtrip() {
@@ -200,7 +202,9 @@ fn test_tpch_sf01_22_queries_wire_roundtrip() {
                         actual_first3.sort();
                         expected_first3.sort();
                         let cell_eq = |a: &str, b: &str| -> bool {
-                            if a == b { return true; }
+                            if a == b {
+                                return true;
+                            }
                             match (a.parse::<f64>(), b.parse::<f64>()) {
                                 (Ok(av), Ok(bv)) => {
                                     let abs = (av - bv).abs();
@@ -211,8 +215,7 @@ fn test_tpch_sf01_22_queries_wire_roundtrip() {
                             }
                         };
                         let rows_eq = |a: &[String], b: &[String]| -> bool {
-                            a.len() == b.len()
-                                && a.iter().zip(b.iter()).all(|(x, y)| cell_eq(x, y))
+                            a.len() == b.len() && a.iter().zip(b.iter()).all(|(x, y)| cell_eq(x, y))
                         };
                         if !actual_first3
                             .iter()
