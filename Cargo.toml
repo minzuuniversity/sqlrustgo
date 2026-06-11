@@ -509,6 +509,10 @@ path = "tests/int3_single_expression_test.rs"
 [[test]]
 name = "int3_mixed_scenario_test"
 path = "tests/integration/int3_mixed_scenario_test.rs"
+# INT-3 (#3271) — Spec-complete acceptance (WAL append stress + crash-recover + SHA-256 stability)
+[[test]]
+name = "int3_spec_complete_test"
+path = "tests/integration/int3_spec_complete_test.rs"
 # INT-2 (#3270) — MySQL server restart persistence (DDL/DML survive drop+restart)
 [[test]]
 name = "int2_mysql_server_persistence_test"
