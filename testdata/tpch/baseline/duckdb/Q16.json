@@ -1,0 +1,25 @@
+{
+  "query": 16,
+  "row_count": 282,
+  "first_3_rows": [
+    [
+      "Brand#11",
+      "ECONOMY BRUSHED NICKEL",
+      "3",
+      "4"
+    ],
+    [
+      "Brand#11",
+      "ECONOMY BRUSHED NICKEL",
+      "14",
+      "4"
+    ],
+    [
+      "Brand#11",
+      "LARGE POLISHED BRASS",
+      "23",
+      "4"
+    ]
+  ],
+  "sha256": "c7e021f1ea2a28b82ab23e0bebd3804c9bf579180a2e0d0f8982e1af9745ed37"
+}
