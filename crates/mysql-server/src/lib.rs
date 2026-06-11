@@ -925,7 +925,13 @@ fn send_result_set<W: Write>(
         )?;
         seq = seq.wrapping_add(1);
     }
-    if cap & capability::DEPRECATE_EOF == 0 {
+    // Always send inter-record EOF (classic protocol). The conditional
+    // (cap & DEPRECATE_EOF) was omitting the EOF when the client advertised
+    // the new protocol, but mysql CLI 8.0.46 + libmysqlclient 8.0.46
+    // still expect the EOF packet. Forcing classic EOF here is the minimal
+    // correct behavior; the new protocol path can be re-introduced once
+    // the client has caught up. See .hermes/SET_NAMES_DIAGNOSIS.md.
+    {
         make_eof_packet(seq, 0x0002).write_to(w)?;
         seq = seq.wrapping_add(1);
     }
@@ -1681,7 +1687,15 @@ fn do_command_loop<S: Read + Write>(
         let payload = &pkt.payload[1..];
         seq = pkt.sequence.wrapping_add(1);
         match cmd {
-            packet_type::COM_QUIT => break,
+            packet_type::COM_QUIT => {
+                // MySQL wire protocol: server MUST send OK packet on COM_QUIT
+                // before closing the connection, so the client can release
+                // its read() and exit cleanly. Without this, mysql CLI and
+                // pymysql hang in recv() after sending COM_QUIT (Issue #SET-NAMES-HANG).
+                make_ok_packet(seq, 0, 0, 0x0002, 0).write_to(stream)?;
+                seq = seq.wrapping_add(1);
+                break;
+            }
             packet_type::COM_PING => {
                 make_ok_packet(seq, 0, 0, 0x0002, 0).write_to(stream)?;
                 seq = seq.wrapping_add(1);
