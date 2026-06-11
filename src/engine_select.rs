@@ -1409,8 +1409,14 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                             }
                         };
 
-                        // Find column index.
-                        let col_idx = right_info.columns.iter().position(|c| c.name == col_name);
+                        // Find column index. The right_info columns
+                        // are renamed to `<alias>.<col>` when an alias
+                        // is set (line 1480-1484), so we match either
+                        // the bare name or `<alias>.<col>`.
+                        let col_idx = right_info.columns.iter().position(|c| {
+                            c.name == col_name
+                                || c.name == format!("{}.{}", right_alias, col_name)
+                        });
                         let Some(col_idx) = col_idx else {
                             continue;
                         };
@@ -2275,7 +2281,16 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             return None;
         }
         let storage = self.storage.read().ok()?;
-        let table_info = storage.get_table_info(&subq.table).ok()?;
+        // Q21 fix: the subquery table may be encoded as
+        // "lineitem|l2" (table|alias). The storage layer doesn't
+        // know about the alias suffix, so strip it before looking
+        // up the real table info.
+        let real_subq_table: String = subq
+            .table
+            .find('|')
+            .map(|d| subq.table[..d].to_string())
+            .unwrap_or_else(|| subq.table.clone());
+        let table_info = storage.get_table_info(&real_subq_table).ok()?;
 
         // Sprint 5 v2 fix: for correlated EXISTS in TPC-H Q4/Q21
         // (`EXISTS (SELECT * FROM lineitem WHERE l_orderkey = o_orderkey AND ...)`),
@@ -2355,14 +2370,15 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             // for cheap sharing) and the per-column index.
             let rows_cache = lineitem_rows_cache();
             let idx_cache = lineitem_index_cache();
-            // Get or build the rows.
-            let table_name = subq.table.clone();
+            // Get or build the rows. Cache under the real table
+            // name (without `|alias`) so aliases share the index.
+            let table_name = real_subq_table.clone();
             let rows_arc: std::sync::Arc<Vec<Vec<Value>>> = {
                 let mut rc = rows_cache.lock().unwrap();
                 if let Some(c) = rc.get(&table_name) {
                     c.clone()
                 } else {
-                    let rows = storage.scan(&subq.table).ok()?;
+                    let rows = storage.scan(&real_subq_table).ok()?;
                     let arc = std::sync::Arc::new(rows);
                     rc.insert(table_name.clone(), arc.clone());
                     arc
