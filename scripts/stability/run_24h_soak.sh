@@ -38,8 +38,11 @@ if [ ! -x "$SQLRUSTGO_BIN" ]; then
 fi
 
 # 启动 server (后台)
-echo "[1/3] Starting sqlrustgo server..."
-nohup "$SQLRUSTGO_BIN" --port 3306 --data-dir "$RESULTS_DIR/data" > "$LOG_FILE" 2>&1 &
+# v3.9.0: `sqlrustgo-mysql-server` 改为 subcommand-CLI (see `serve --help`).
+# Old (v3.8.0-rc2): `--port 3306 --data-dir ...`
+# New (v3.9.0+): `serve --port 3306 --data-dir ...`
+echo "[1/3] Starting sqlrustgo server (subcommand: serve)..."
+nohup "$SQLRUSTGO_BIN" serve --port 3306 --data-dir "$RESULTS_DIR/data" > "$LOG_FILE" 2>&1 &
 SERVER_PID=$!
 echo $SERVER_PID > "$PID_FILE"
 echo "  Server PID: $SERVER_PID"
@@ -60,7 +63,7 @@ nohup sysbench oltp_read_write \
     --mysql-host=127.0.0.1 --mysql-port=3306 \
     --mysql-user=root --mysql-password="$MYSQL_PASSWORD" \
     --mysql-db=sbtest --table-size=10000 --tables=1 \
-    --threads=8 --time=$((HOURS*3600)) \
+    --threads=8 --time=$(awk -v hours="$HOURS" 'BEGIN { printf "%d", hours * 3600 }') \
     --report-interval=60 \
     run > "$SYSBENCH_LOG" 2>&1 &
 SYSBENCH_PID=$!
@@ -70,7 +73,8 @@ echo "  sysbench PID: $SYSBENCH_PID"
 echo "[3/3] Monitoring (${INTERVAL}s interval)..."
 echo "ts,rss_mb,fd_count,cpu_pct,wal_mb,lock_count" > "$METRICS_FILE"
 
-END_TS=$(($(date +%s) + HOURS*3600))
+# v3.9.0 fix: bash $(( )) is integer-only; HOURS=0.5 used to fail. Use awk for float arithmetic.
+END_TS=$(awk -v hours="$HOURS" 'BEGIN { printf "%d", systime() + hours * 3600 }')
 while [ $(date +%s) -lt $END_TS ]; do
     TS=$(date '+%Y-%m-%d %H:%M:%S')
     if ! kill -0 $SERVER_PID 2>/dev/null; then
