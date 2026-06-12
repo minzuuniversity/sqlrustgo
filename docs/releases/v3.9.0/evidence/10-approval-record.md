@@ -32,7 +32,7 @@ Hermes Agent (QA / Verification)     ____________  Date: 2026-06-13
 This release is **APPROVED CONDITIONALLY** pending:
 1. 24h real soak completion on 250 (in progress, 1607+ samples, 0 errors)
 2. Close #3264 with 24h PASS evidence
-3. Tag v3.9.0-rc5 + push to all remotes
+3. Tag v3.9.0-ga-candidate + push to all remotes
 
 After conditions met:
 - 72h real soak (issue #3265)
