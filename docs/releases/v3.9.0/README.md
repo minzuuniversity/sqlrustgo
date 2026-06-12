@@ -7,7 +7,7 @@
 > **主题**: Single-Node Production Candidate
 > **分支**: `develop/v3.9.0` (从 `main@v3.8.0` fork)
 > **创建日期**: 2026-06-05
-> **GA 目标**: 2026-09-23 (12 周 / 6 Phase)
+> **GA 目标**: 2026-12-15 (per Hermes audit #3252, deferred from 2026-09-23)
 
 ---
 
