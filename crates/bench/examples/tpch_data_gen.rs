@@ -36,10 +36,10 @@ impl TpchDataGenerator {
 
         self.generate_region()?;
         self.generate_nation()?;
-        self.generate_supplier(100 * row_counts.customer / 1500)?;
+        self.generate_supplier(10_000 * row_counts.customer / 150_000)?;
         self.generate_customer(row_counts.customer)?;
-        self.generate_part(2000 * row_counts.customer / 1500)?;
-        self.generate_partsupp(8000 * row_counts.customer / 1500)?;
+        self.generate_part(200_000 * row_counts.customer / 150_000)?;
+        self.generate_partsupp(800_000 * row_counts.customer / 150_000)?;
         self.generate_orders(row_counts.orders)?;
         self.generate_lineitem(row_counts.lineitem)?;
 
@@ -50,11 +50,18 @@ impl TpchDataGenerator {
     }
 
     fn get_row_counts(&self) -> RowCounts {
+        // TPC-H spec row counts at SF=1:
+        //   customer   = 150,000    (NOT 1,500)
+        //   orders     = 1,500,000  (NOT 15,000)
+        //   lineitem   = 6,000,000  (NOT 60,000)
+        // The previous formula (`1500.0 * sf` etc.) was 100x off —
+        // a "fake SF=1" that actually generated SF=0.01. Fixed for
+        // Track 3 of Issue #2948 (real-data wire-protocol TPC-H).
         let sf = self.scale as f64;
         RowCounts {
-            customer: (1500.0 * sf) as usize,
-            orders: (15000.0 * sf) as usize,
-            lineitem: (60000.0 * sf) as usize,
+            customer: (150_000.0 * sf) as usize,
+            orders: (1_500_000.0 * sf) as usize,
+            lineitem: (6_000_000.0 * sf) as usize,
         }
     }
 
