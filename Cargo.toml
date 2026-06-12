@@ -200,6 +200,10 @@ name = "qps_bench"
 harness = false
 
 [[bench]]
+name = "tpch_wire_bench"
+harness = false
+
+[[bench]]
 name = "bench_columnar"
 harness = false
 
