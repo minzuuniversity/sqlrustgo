@@ -113,7 +113,7 @@ fn test_insert_odku_multiple_rows() {
         "CREATE TABLE odku3 (id INT PRIMARY KEY, name VARCHAR(50), value INT);\n\
          INSERT INTO odku3 VALUES (1, 'one', 1), (2, 'two', 2), (3, 'three', 3);\n\
          INSERT INTO odku3 VALUES (2, 'two', 999) ON DUPLICATE KEY UPDATE value = 999;\n\
-         SELECT name FROM odku3 ORDER BY id;\n\
+         SELECT name, value FROM odku3 ORDER BY id;\n\
          .exit\n",
     );
     let combined = format!("{}{}", out, err);
