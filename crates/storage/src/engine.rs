@@ -398,6 +398,11 @@ pub struct ColumnDefinition {
     pub nullable: bool,
     #[serde(default)]
     pub primary_key: bool,
+    /// SQL CHAR(N) / VARCHAR(N) declared max length. See
+    /// `sqlrustgo-catalog::column::ColumnDefinition::char_max_length` for
+    /// semantics. `None` (default) means no length cap.
+    #[serde(default)]
+    pub char_max_length: Option<usize>,
 }
 
 impl ColumnDefinition {
@@ -407,6 +412,7 @@ impl ColumnDefinition {
             data_type: data_type.to_string(),
             nullable: false,
             primary_key: false,
+            char_max_length: None,
         }
     }
 }
