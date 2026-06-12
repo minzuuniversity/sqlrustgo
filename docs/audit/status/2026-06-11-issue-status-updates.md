@@ -1,6 +1,6 @@
 # Issue Status Update — Sprint 5 v15-v16 Wrap-Up (2026-06-11)
 
-> **Date**: 2026-06-11 (original) | **2026-06-12** (followup: Issue #3271 closed)
+> **Date**: 2026-06-11 (original) | **2026-06-12** (followup: Issues #3271 and #3315 closed)
 > **Author**: Hermes / claude-macmini
 > **Status**: All Sprint 5 v15-v16 issues updated per `docs/governance/ISSUE_CLOSING_VERIFICATION.md`
 
@@ -14,6 +14,7 @@
 | **#2808 G1** | mysql-server FileStorage 绕过 WAL | closed (PR #3348) | closed | No change |
 | **#3271** | INT-3 Mixed-scenario integration | open | **closed (2026-06-12, PR #3359)** | Spec-complete acceptance delivered |
 | **#3270** | Cross-version upgrade chain | open | **open** + status comment | Blocked-on-user |
+| **#3315** | TPC-H Q18 cell_diff (5-table JOIN with subquery) | open | **closed (2026-06-12)** | Sprint 5 v11 fix `2b93fac0` verified |
 
 ---
 
@@ -79,7 +80,8 @@ Already closed when PR #3348 was merged. The G1 invariant ("所有 DML 操作经
 
 1. **Issue #3270**: Posted status comment (id 24672) documenting partial fulfillment + closure-policy reasoning
 2. **Issue #3271**: Posted status comment (id 24678) explaining partial completion + recommended next steps
-3. **Issues #3316, #2808**: No action (already closed)
+3. **Issue #3315**: Posted closure comment (id 24778) + closed via Gitea API (2026-06-12). Closure verified per §2.1: commit `2b93fac0` merged, code integrated, 22/22 + 4-engine cell-level PASS, lint/fmt clean.
+4. **Issues #3316, #2808**: No action (already closed)
 
 ## Recommended Next Sprint Work
 
@@ -118,3 +120,34 @@ After the original wrap-up, Issue #3271 was driven to closure in a follow-up spr
   4. ✅ Status doc updated with closure record
 
 Issue #3271 closed at 2026-06-11T22:44:24Z.
+
+
+---
+
+## Followup (2026-06-12): Issue #3315 Q18 cell_diff closed
+
+Re-verified Q18 cell-level match on develop HEAD `b5ae6f11` after Sprint 5 v15-v16 wrap-up:
+
+### Verification results (re-run on 2026-06-12)
+- **TPC-H 22/22 row count**: `cargo test --test tpch_full_22_test -- --test-threads=1` → 1/1 PASS in 5.60s
+- **4-engine cell-level cross-check**: `cargo test --test tpch_sf01_22_vs_3engines` → 2/2 PASS in 79.71s
+  - Q18 vs MariaDB: `rc=100, md=100, cell-match` ✓
+  - Q18 vs PostgreSQL: `rc=100, pg=100, cell-match` ✓
+- **Per-query timing**: Q18 in 175.34ms (rc, pg cell-match)
+
+### Why this is closure, not status update
+- Earlier status comment (2026-06-11 17:26) reported "Q18 returns 0 rows" — this was a **transient measurement** during a separate TPC-H load issue, **not a Q18 engine regression**.
+- Q18 has been PASSing cell-level from commit `2b93fac0` (Sprint 5 v11, 2026-06-11 00:22) onwards.
+- Closure comment (id 24778) cites 4 §2.1 conditions:
+  1. PR/fix merged: `2b93fac0` → develop HEAD `b5ae6f11`
+  2. Code integrated in `src/engine_utils.rs` (Float group-by decode) and `src/engine_select.rs` (multi-col sort)
+  3. Tests pass: 22/22 row count + 4-engine cell-level
+  4. Lint clean (`cargo clippy --all-features -- -D warnings`), fmt clean
+- Issue state transitioned `open → closed` at 2026-06-12 via Gitea API PATCH.
+
+### Sprint 5 v11 fix details (Q18 = Bug Z)
+- **Bug Z.1**: GROUP BY key built as String and decoded back, but decode only recognized Integer literals → Float values became Text, breaking Float-aware sort. Fix: Float-aware sort path.
+- **Bug Z.2**: Multi-column sort used `o_orderdate` alone, discarding `o_totalprice DESC` for non-tie rows. Fix: single-pass `sort_by` comparing all columns left-to-right with prior column as tiebreaker.
+- Reference: Q18 top row matches MariaDB exactly: Customer#420 / order 2677 / 999.98 / sum=394.
+
+Issue #3315 closed at 2026-06-12.
