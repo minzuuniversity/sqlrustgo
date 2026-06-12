@@ -2362,15 +2362,79 @@ pub(crate) fn run_server_with_listener_and_shutdown_with_bootstrap_tables_and_sq
 
     // WalStorage<FileStorage, FileBackedWalManager> for production runtime
     // (Issue #2808: G1 — DML must persist via WAL, not bypass to raw FileStorage)
+    //
+    // Issue #3257 fix: when no `data_dir` is provided, use a *stable* directory
+    // under the current working directory (`.sqlrustgo/data/`) rather than a
+    // port-keyed /tmp path. The old port-keyed /tmp path caused stale WAL
+    // files to persist across restarts and trigger 20+ minute recovery on a
+    // 9.9 GB WAL (see Issue #3257). The new default is:
+    //   1. Predictable: developers can find the WAL on disk
+    //   2. Persistent: data survives server restarts on the same port
+    //   3. Clean: an empty default is a fresh, empty data dir
+    // For ephemeral/test usage, callers should still pass an explicit
+    // `data_dir` (e.g. the test harness's `start_ephemeral` does this).
     let wal_data_dir = match data_dir {
         Some(p) => p,
         None => {
-            std::env::temp_dir().join(format!("sqlrustgo_wal_{}", listener.local_addr()?.port()))
+            let port = listener.local_addr()?.port();
+            let cwd_default = std::env::current_dir()
+                .unwrap_or_else(|_| std::path::PathBuf::from("."))
+                .join(".sqlrustgo")
+                .join("data");
+            // Issue #3257: prefer SQLRUSTGO_DATA_DIR env var, then cwd default.
+            // The env var lets operators point at a stable location for
+            // long-running deployments without code changes.
+            match std::env::var("SQLRUSTGO_DATA_DIR") {
+                Ok(s) if !s.is_empty() => {
+                    tracing::info!(
+                        "WAL data_dir from SQLRUSTGO_DATA_DIR env: {} (port {})",
+                        s,
+                        port
+                    );
+                    std::path::PathBuf::from(s)
+                }
+                _ => {
+                    tracing::info!(
+                        "WAL data_dir default (cwd/.sqlrustgo/data/): {} (port {})",
+                        cwd_default.display(),
+                        port
+                    );
+                    cwd_default
+                }
+            }
         }
     };
+    if let Some(parent) = wal_data_dir.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let _ = std::fs::create_dir_all(&wal_data_dir);
     let mut file_storage =
         FileStorage::new_with_wal(wal_data_dir.clone()).map_err(std::io::Error::other)?;
     let wal_path = wal_data_dir.join("sqlrustgo.wal");
+    // Issue #3257: emit a warning if the WAL file is suspiciously large at
+    // startup. This catches stale WAL files left over from previous
+    // configurations (the port-keyed /tmp regression) or from long-running
+    // servers that never had WAL rotation enabled.
+    if let Ok(meta) = std::fs::metadata(&wal_path) {
+        let size_mb = meta.len() / (1024 * 1024);
+        if size_mb >= 100 {
+            tracing::warn!(
+                "WAL file is large: {} ({} MB) at {}. \
+                 This may indicate a stale WAL from a previous process. \
+                 Recovery time will scale with file size; \
+                 consider passing --data-dir to isolate runs, or pruning the WAL manually.",
+                wal_path.display(),
+                size_mb,
+                wal_path.display()
+            );
+        } else {
+            tracing::info!(
+                "WAL file size at startup: {} ({} MB)",
+                wal_path.display(),
+                size_mb
+            );
+        }
+    }
     // INT-2 (#3270 partial): replay any uncommitted WAL entries from
     // the previous process lifetime so DML/DDL that was journaled but
     // not yet flushed to FileStorage's persisted table files is
