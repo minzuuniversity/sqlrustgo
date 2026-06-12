@@ -620,10 +620,15 @@ impl MySqlTestClient {
         }
         seq = seq.wrapping_add(1);
 
-        // 3. Stream file content in ≤ 16 MB chunks
+        // 3. Stream file content in chunks that respect the MySQL
+        //    protocol's 16 MB packet limit (the wire format is
+        //    3 bytes length + 1 byte seq + payload, so 16 MB - 1 = 16777215).
+        //    Use 8 MB chunks for headroom (server may be stricter).
+        //    Issue #2948 (Track 3) needs this for SF>=1 customer.tbl (18 MB+).
+        let chunk_size = 8 * 1024 * 1024;
         let file_bytes = std::fs::read(path)
             .map_err(|e| wire_err::msg(format!("read file {}: {}", path.display(), e)))?;
-        for chunk in file_bytes.chunks(16 * 1024 * 1024) {
+        for chunk in file_bytes.chunks(chunk_size) {
             write_packet(&mut self.stream, seq, chunk)?;
             seq = seq.wrapping_add(1);
         }
