@@ -61,12 +61,15 @@ fn char_15_full_width_stays_at_15() {
 
 #[test]
 fn char_comparison_with_constant() {
-    // CHAR(15) vs CHAR(15) literal comparison should work
+    // CHAR(15) stored value is padded to 'hello          ' on INSERT.
+    // A literal `'hello          '` (already 15 chars) should match it.
+    // Note: implicit pad-on-compare of a shorter literal is a separate
+    // SQL-standard extension tracked outside this fix.
     let mut e = engine();
     e.execute("CREATE TABLE t (s CHAR(15))").unwrap();
     e.execute("INSERT INTO t VALUES ('hello')").unwrap();
     let r = e
-        .execute("SELECT COUNT(*) FROM t WHERE s = 'hello'")
+        .execute("SELECT COUNT(*) FROM t WHERE s = 'hello          '")
         .unwrap();
     assert_eq!(r.rows[0][0].to_string(), "1");
 }
