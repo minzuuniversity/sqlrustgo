@@ -2406,6 +2406,30 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             ) {
                 continue;
             }
+            // SKIP IS NULL / IS NOT NULL on a single column:
+            // `right.col IS NULL` in a WHERE clause of a LEFT JOIN
+            // is the standard SQL anti-join pattern
+            //   `LEFT JOIN b ON ... WHERE b.y IS NULL`
+            // which means "rows in `a` with no match in `b`".
+            // Pushing it down to the right-table scan filter would
+            // drop every right row, collapsing the join to a
+            // cartesian-NULL and returning wrong results. The
+            // post-join WHERE filter handles these correctly.
+            // Detected as either the dedicated `IsNull`/`IsNotNull`
+            // variant or the legacy `BinaryOp(<col>, "IS", Literal("NULL"))`
+            // / `"IS NOT"` form (which `eval_predicate` lowers
+            // internally to the variant form).
+            if matches!(conjunct, Expression::IsNull(_) | Expression::IsNotNull(_)) {
+                continue;
+            }
+            if let Expression::BinaryOp(_, ref op, ref right) = conjunct {
+                let op_up = op.to_uppercase();
+                if (op_up == "IS" || op_up == "IS NOT")
+                    && matches!(right.as_ref(), Expression::Literal(s) if s.to_uppercase() == "NULL")
+                {
+                    continue;
+                }
+            }
             // Collect tables referenced by the conjunct
             let refs = Self::collect_referenced_tables_local(&conjunct);
             if refs.len() != 1 {
