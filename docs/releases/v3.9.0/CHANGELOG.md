@@ -5,7 +5,7 @@
 > **分支**: `develop/v3.9.0` (从 `main@v3.8.0` fork)
 > **创建日期**: 2026-06-05
 > **GA 目标**: 2026-09-23
-> **当前阶段**: **RC2 (form-only)** → RC3 待启动 (参考 V390_COMPREHENSIVE_ASSESSMENT.md)
+> **当前阶段**: **RC7** (2026-06-12, awaiting 24h/72h/168h soak for GA cut, see GA_GATE_REPORT.md)
 > **前版本**: v3.8.0
 
 ---
@@ -90,9 +90,12 @@
 | v3.9.0-rc1 | 2026-06-05 | RC1 (form-only validation milestone) |
 | v3.9.0-beta | 2026-06-05 | Beta (form-only validation milestone) |
 | v3.9.0-alpha1 | 2026-06-05 | Alpha (entry baseline) |
-| v3.9.0-rc3 | (planned) | after P0 issues closed (server perf + L3 + TX/WAL) |
-| v3.9.0-rc4 | (planned) | after P1 issues closed (Z6G4 real runs) |
-| v3.9.0-ga | (planned, 2026-09-23) | after all 13 critical-path items closed + 168h real soak |
+| v3.9.0-rc3 | 2026-06-12 | All 5 RC3 P0 blockers closed, G1-G16 PASS |
+| v3.9.0-rc4 | 2026-06-12 | RC4 gate PASS (G1/G7/G8/G9/G13), SHA-256 + QPS baseline, un-ignore tests |
+| v3.9.0-rc5 | 2026-06-12 | G2 substance + Z6G4 QPS baseline + cross-version upgrade chain |
+| v3.9.0-rc6 | 2026-06-12 | INT-2/INT-3 full substance tests (Issues #3146, #3108) |
+| v3.9.0-rc7 | 2026-06-12 | Performance docs + MariaDB comparison (PR #3363) |
+| v3.9.0-ga | (planned, 2026-12-15) | after 24h/72h/168h real soak + all GA blocker issues closed |
 | v3.8.0 | 2026-06-04 | Strong Beta |
 
 🔴 **HONESTY NOTE (2026-06-05)**: rc1, beta, rc2 were cut based on form-only gate validation. See
