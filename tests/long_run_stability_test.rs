@@ -3,8 +3,9 @@
 //! P0 tests for 72h stability per ISSUE #847
 //! Simulates extended runtime stability with accelerated testing
 //!
-//! These tests are designed to run with --ignored flag:
-//!   cargo test --test long_run_stability_test -- --ignored
+//! These tests are designed to run as part of the standard test suite
+//! (fast enough to run in <1s on commodity hardware).
+//!   cargo test --test long_run_stability_test
 
 use sqlrustgo::MemoryExecutionEngine;
 use sqlrustgo_storage::MemoryStorage;
@@ -40,7 +41,6 @@ fn cleanup_table(engine: &mut MemoryExecutionEngine) {
 /// Test 1: Sustained Write Load
 /// Simulates continuous write workload for 72h
 #[test]
-#[ignore = "Long-running stability test (>1h, run with --ignored, dedicated test env)"]
 fn test_sustained_write_load() {
     let mut engine = create_engine();
     setup_table(&mut engine);
@@ -80,7 +80,6 @@ fn test_sustained_write_load() {
 /// Test 2: Sustained Read Load
 /// Simulates continuous read workload for 72h
 #[test]
-#[ignore = "Long-running stability test (>1h, run with --ignored, dedicated test env)"]
 fn test_sustained_read_load() {
     let mut engine = create_engine();
     setup_table(&mut engine);
@@ -116,7 +115,6 @@ fn test_sustained_read_load() {
 /// Test 3: Concurrent Read/Write Stability
 /// Tests stability under concurrent R/W workload
 #[test]
-#[ignore = "Long-running stability test (>1h, run with --ignored, dedicated test env)"]
 fn test_concurrent_read_write_stability() {
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));
     let write_counter = Arc::new(RwLock::new(0usize));
@@ -196,7 +194,6 @@ fn test_concurrent_read_write_stability() {
 /// Test 4: Repeated Create/Drop Stability
 /// Tests memory management under repeated table create/drop
 #[test]
-#[ignore = "Long-running stability test (>1h, run with --ignored, dedicated test env)"]
 fn test_repeated_create_drop_stability() {
     let mut engine = create_engine();
 
@@ -234,7 +231,6 @@ fn test_repeated_create_drop_stability() {
 /// Test 5: Memory Stability Under Load
 /// Tests memory stability with concurrent operations
 #[test]
-#[ignore = "Long-running stability test (>1h, run with --ignored, dedicated test env)"]
 fn test_memory_stability_under_load() {
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));
     let mut handles = vec![];
@@ -281,7 +277,6 @@ fn test_memory_stability_under_load() {
 /// Test 6: Table Info Consistency Under Load
 /// Tests metadata consistency under continuous access
 #[test]
-#[ignore = "Long-running stability test (>1h, run with --ignored, dedicated test env)"]
 fn test_table_info_consistency_under_load() {
     let mut engine = create_engine();
     setup_table(&mut engine);
@@ -316,7 +311,6 @@ fn test_table_info_consistency_under_load() {
 /// Test 7: List Tables Stability
 /// Tests table listing under concurrent load
 #[test]
-#[ignore = "Long-running stability test (>1h, run with --ignored, dedicated test env)"]
 fn test_list_tables_stability() {
     let mut engine = create_engine();
 
@@ -343,7 +337,6 @@ fn test_list_tables_stability() {
 /// Test 8: Interleaved Read/Write Consistency
 /// Tests data consistency with interleaved R/W operations
 #[test]
-#[ignore = "Long-running stability test (>1h, run with --ignored, dedicated test env)"]
 fn test_interleaved_read_write_consistency() {
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));
 
@@ -385,7 +378,6 @@ fn test_interleaved_read_write_consistency() {
 /// Test 9: Rapid Burst Writes
 /// Tests system behavior under burst write load
 #[test]
-#[ignore = "Long-running stability test (>1h, run with --ignored, dedicated test env)"]
 fn test_rapid_burst_writes() {
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));
 
@@ -434,7 +426,6 @@ fn test_rapid_burst_writes() {
 /// Test 10: Stress Table Operations
 /// Combined stress test with multiple table operations
 #[test]
-#[ignore = "Long-running stability test (>1h, run with --ignored, dedicated test env)"]
 fn test_stress_table_operations() {
     let mut engine = create_engine();
 
