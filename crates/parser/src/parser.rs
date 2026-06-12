@@ -5808,6 +5808,29 @@ impl Parser {
             _ => "INTEGER".to_string(),
         };
 
+        // Consume parenthesized type arguments e.g. VARCHAR(50), DECIMAL(10,2)
+        if matches!(self.current(), Some(Token::LParen)) {
+            self.next();
+            // Skip everything until matching RParen (handles commas inside e.g. DECIMAL(10,2))
+            let mut depth = 1;
+            while depth > 0 {
+                match self.current() {
+                    Some(Token::LParen) => {
+                        depth += 1;
+                        self.next();
+                    }
+                    Some(Token::RParen) => {
+                        depth -= 1;
+                        self.next();
+                    }
+                    Some(_) => {
+                        self.next();
+                    }
+                    None => break,
+                }
+            }
+        }
+
         let mut nullable = true;
         let mut primary_key = false;
         let mut auto_increment = false;
