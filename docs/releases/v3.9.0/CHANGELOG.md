@@ -4,13 +4,13 @@
 > **类型**: **Production Readiness Release** (工程化版本, 非功能版本)
 > **分支**: `develop/v3.9.0` (从 `main@v3.8.0` fork)
 > **创建日期**: 2026-06-05
-> **GA 目标**: 2026-09-23
+> **GA 目标**: 2026-12-15 (per Hermes audit #3252, deferred from 2026-09-23)
 > **当前阶段**: **RC7** (2026-06-12, awaiting 24h/72h/168h soak for GA cut, see GA_GATE_REPORT.md)
 > **前版本**: v3.8.0
 
 ---
 
-## v3.9.0 (Unreleased - 2026-09-23 目标)
+## v3.9.0 (Unreleased - 2026-12-15 目标)
 
 ### 重大变更 (Breaking Changes)
 
@@ -85,7 +85,7 @@
 
 | 版本 | 发布日期 | 阶段 |
 |------|---------|------|
-| v3.9.0 | (unreleased, 2026-09-23 目标) | GA baseline placeholder — see HONESTY NOTE below |
+| v3.9.0 | (unreleased, 2026-12-15 目标) | GA baseline placeholder — see HONESTY NOTE below |
 | v3.9.0-rc2 | 2026-06-05 | RC2 (form-only validation milestone) |
 | v3.9.0-rc1 | 2026-06-05 | RC1 (form-only validation milestone) |
 | v3.9.0-beta | 2026-06-05 | Beta (form-only validation milestone) |
