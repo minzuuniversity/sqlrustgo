@@ -2,7 +2,7 @@
 
 > **Status: 🟡 READY (gates G1-G16 PASS, 24h/72h/168h soak running on 250/Z6G4)**
 > **Date**: 2026-06-13
-> **Latest tag**: `v3.9.0-rc7` at `0868910f1` (2026-06-12)
+> **Latest tag**: `v3.9.0-rc7` at `642ff9cf9` (2026-06-12 16:52)
 > **GA pending**: 24h/72h/168h soak completion (250 24h running, 671+ samples, 0 errors)
 
 ## 1. Gate Summary (G1-G15)
@@ -68,7 +68,7 @@
 | 168h real | GA-final | TBD | ⏳ pending 72h completion |
 
 **Current 250 24h soak**: 843 samples, 0 errors, 1h18m elapsed
-**Z6G4 5th outage**: 2026-06-12 17:21, ~12min, awaiting user physical restart
+**Z6G4 outages (cumulative 2026-06-12)**: 5+ confirmed, network switch intermittent, 252+250 unreachable ~50min, recovered 2026-06-12 17:00; 5th at 17:21; self-healing scripts installed (see `docs/governance/REMOTE_LIMITS.md`)
 
 ## 5. Issues Closed (June 12, 2026)
 
