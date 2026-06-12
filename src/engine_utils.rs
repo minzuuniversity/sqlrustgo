@@ -393,6 +393,7 @@ pub fn build_combined_schema(
             data_type: c.data_type.clone(),
             nullable: c.nullable,
             primary_key: c.primary_key,
+            char_max_length: c.char_max_length,
         });
     }
 
@@ -402,6 +403,7 @@ pub fn build_combined_schema(
             data_type: c.data_type.clone(),
             nullable: c.nullable,
             primary_key: c.primary_key,
+            char_max_length: c.char_max_length,
         });
     }
 
@@ -427,6 +429,7 @@ pub fn build_aggregate_schema(
             data_type: "INTEGER".to_string(),
             nullable: false,
             primary_key: false,
+            char_max_length: None,
         });
     }
 
@@ -492,6 +495,7 @@ pub fn build_aggregate_schema(
             data_type: "INTEGER".to_string(),
             nullable: false,
             primary_key: false,
+            char_max_length: None,
         });
     }
 
