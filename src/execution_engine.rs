@@ -459,9 +459,13 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
 
             if !insert.is_replace && table_info.columns.iter().any(|c| c.primary_key) {
                 let existing_rows = storage.scan(&table_name)?;
-                for new_record in &processed_records {
+                let mut odku_handled_indices: std::collections::HashSet<usize> =
+                    std::collections::HashSet::new();
+                for (new_idx, new_record) in processed_records.iter().enumerate() {
+                    let mut matched = false;
                     for existing in &existing_rows {
                         if self.record_matches_unique_key(existing, new_record, &table_info) {
+                            matched = true;
                             if let Some(ref updates) = insert.on_duplicate_key_update {
                                 Self::apply_odku(
                                     &mut *storage,
@@ -470,50 +474,88 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                                     existing,
                                     updates,
                                 )?;
-                                continue;
+                                odku_handled_indices.insert(new_idx);
                             }
-                            let pk_repr = table_info
-                                .columns
-                                .iter()
-                                .enumerate()
-                                .find_map(|(i, c)| {
-                                    if c.primary_key {
-                                        new_record.get(i).map(|v| v.to_sql_string())
-                                    } else {
-                                        None
-                                    }
-                                })
-                                .unwrap_or_else(|| "?".to_string());
-                            return Err(SqlError::ExecutionError(format!(
-                                "Duplicate entry '{}' for key 'PRIMARY'",
-                                pk_repr
-                            )));
+                            break;
+                        }
+                    }
+                    if matched && insert.on_duplicate_key_update.is_none() {
+                        let pk_repr = table_info
+                            .columns
+                            .iter()
+                            .enumerate()
+                            .find_map(|(i, c)| {
+                                if c.primary_key {
+                                    new_record.get(i).map(|v| v.to_sql_string())
+                                } else {
+                                    None
+                                }
+                            })
+                            .unwrap_or_else(|| "?".to_string());
+                        return Err(SqlError::ExecutionError(format!(
+                            "Duplicate entry '{}' for key 'PRIMARY'",
+                            pk_repr
+                        )));
+                    }
+                }
+                // Filter out ODUK-handled records — they're already updated in storage
+                let to_insert: Vec<Vec<Value>> = processed_records
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(i, r)| {
+                        if odku_handled_indices.contains(&i) {
+                            None
+                        } else {
+                            Some(r.clone())
+                        }
+                    })
+                    .collect();
+                if !to_insert.is_empty() {
+                    for record in &to_insert {
+                        if !table_info.foreign_keys.is_empty() {
+                            validate_foreign_keys(&*storage, &table_info, record, &insert.columns)?;
+                        }
+                        if !table_info.check_constraints.is_empty() {
+                            for constraint in &table_info.check_constraints {
+                                let valid = sqlrustgo_storage::evaluate_check_constraint(
+                                    constraint, &col_names, record,
+                                )?;
+                                if !valid {
+                                    return Err(format!(
+                                        "CHECK constraint '{}' violated: {}",
+                                        constraint.name.as_deref().unwrap_or("unnamed"),
+                                        constraint.expression
+                                    )
+                                    .into());
+                                }
+                            }
+                        }
+                    }
+                    storage.insert(&table_name, to_insert)?;
+                }
+            } else {
+                for record in &processed_records {
+                    if !table_info.foreign_keys.is_empty() {
+                        validate_foreign_keys(&*storage, &table_info, record, &insert.columns)?;
+                    }
+                    if !table_info.check_constraints.is_empty() {
+                        for constraint in &table_info.check_constraints {
+                            let valid = sqlrustgo_storage::evaluate_check_constraint(
+                                constraint, &col_names, record,
+                            )?;
+                            if !valid {
+                                return Err(format!(
+                                    "CHECK constraint '{}' violated: {}",
+                                    constraint.name.as_deref().unwrap_or("unnamed"),
+                                    constraint.expression
+                                )
+                                .into());
+                            }
                         }
                     }
                 }
+                storage.insert(&table_name, processed_records)?;
             }
-
-            for record in &processed_records {
-                if !table_info.foreign_keys.is_empty() {
-                    validate_foreign_keys(&*storage, &table_info, record, &insert.columns)?;
-                }
-                if !table_info.check_constraints.is_empty() {
-                    for constraint in &table_info.check_constraints {
-                        let valid = sqlrustgo_storage::evaluate_check_constraint(
-                            constraint, &col_names, record,
-                        )?;
-                        if !valid {
-                            return Err(format!(
-                                "CHECK constraint '{}' violated: {}",
-                                constraint.name.as_deref().unwrap_or("unnamed"),
-                                constraint.expression
-                            )
-                            .into());
-                        }
-                    }
-                }
-            }
-            storage.insert(&table_name, processed_records)?;
         }
 
         // Execute AFTER INSERT triggers
@@ -1775,17 +1817,31 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         updates: &[(String, Expression)],
     ) -> SqlResult<()> {
         let col_names: Vec<String> = table_info.columns.iter().map(|c| c.name.clone()).collect();
-        let mut updated = existing_row.to_vec();
-        for (col_name, expr) in updates {
-            if let Some(idx) = col_names.iter().position(|n| n == col_name) {
+
+        // Build update list (column index -> new value)
+        let update: Vec<(usize, Value)> = updates
+            .iter()
+            .filter_map(|(col_name, expr)| {
+                let idx = col_names.iter().position(|n| n == col_name)?;
                 let val = expression_to_value(expr);
-                if idx < updated.len() {
-                    updated[idx] = val;
-                }
-            }
+                Some((idx, val))
+            })
+            .collect();
+
+        // Find PK column values for the filter
+        let pk_values: Vec<Value> = table_info
+            .columns
+            .iter()
+            .enumerate()
+            .filter(|(_, c)| c.primary_key)
+            .filter_map(|(i, _)| existing_row.get(i).cloned())
+            .collect();
+
+        // Use storage.update() with PK filter to update only the matching row
+        if !pk_values.is_empty() && !update.is_empty() {
+            storage.update(table_name, &pk_values, &update)?;
         }
-        storage.delete(table_name, &[])?;
-        storage.insert(table_name, vec![updated])?;
+
         Ok(())
     }
 
