@@ -734,7 +734,25 @@ fn parse_lit(s: &str) -> Value {
     Value::Text(unquoted.to_string())
 }
 
-fn eval_binary_op(left: &Value, right: &Value, op: &str) -> Value {
+/// Evaluate a binary operation. P0-2 §4.14: this is the single source of
+/// truth for parser-AST `Expression::BinaryOp`.
+///
+/// **Semantics** (see OpenSpec tasks.md §4.14):
+/// - Comparison operators (`=`, `==`, `!=`, `<>`, `>`, `>=`, `<`, `<=`) return `Value::Boolean`.
+/// - Logical operators (`AND`/`&&`, `OR`/`||`) return `Value::Boolean`.
+/// - Arithmetic operators (`+`, `-`, `*`, `/`) return `Value::Integer`.
+///   - **Note**: the legacy `src/expr_utils.rs::evaluate_binary_op` also
+///     supports Float promotion and SQL three-valued NULL logic; the
+///     unified implementation here handles the integer and boolean
+///     paths only. The legacy function is kept for callers that need
+///     Float/NULL handling. Tracked for follow-up consolidation.
+/// - Unknown operators return `Value::Null`.
+///
+/// The `src/expr_utils.rs::evaluate_expression` `BinaryOp` arm
+/// delegates here; if a Float/NULL result is needed, the executor path
+/// in `engine_select.rs` (which has the legacy function) takes
+/// precedence. See P0-2 §4.14 and Decision D3 in OpenSpec.
+pub fn eval_binary_op(left: &Value, right: &Value, op: &str) -> Value {
     match op.to_uppercase().as_str() {
         "=" | "==" => Value::Boolean(left == right && !matches!(left, Value::Null)),
         "!=" | "<>" => Value::Boolean(left != right && !matches!(left, Value::Null)),
