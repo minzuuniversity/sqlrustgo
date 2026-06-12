@@ -163,7 +163,16 @@ pub fn evaluate_expression(
     table_info: &TableInfo,
 ) -> Result<Value, String> {
     match expr {
-        Expression::Literal(_) => Ok(expression_to_value(expr)),
+        Expression::Literal(_) => {
+            // P0-2 §4.15: delegated to `executor::expr::eval_literal_from_str`
+            // (single source of truth for the Literal branch).
+            Ok(sqlrustgo_executor::expr::eval_literal_from_str(
+                match expr {
+                    Expression::Literal(s) => s,
+                    _ => unreachable!(),
+                },
+            ))
+        }
         Expression::Identifier(name) => {
             // P0-2 §4.10: delegated to `executor::expr::eval_identifier`.
             // Looks up the column by name; if not found, falls back to
@@ -193,9 +202,13 @@ pub fn evaluate_expression(
         // IS available (P0-2 §4.13 doc) for future use. Tracked in
         // the OpenSpec tasks.md §4.13.
         Expression::BinaryOp(left, op, right) => {
+            // P0-2 §4.14: delegated to `executor::expr::eval_binary_op`
+            // (single source of truth for the BinaryOp branch).
             let left_val = evaluate_expression(left, row, table_info).unwrap_or(Value::Null);
             let right_val = evaluate_expression(right, row, table_info).unwrap_or(Value::Null);
-            Ok(evaluate_binary_op(&left_val, &right_val, op))
+            Ok(sqlrustgo_executor::expr::eval_binary_op(
+                &left_val, &right_val, op,
+            ))
         }
         Expression::IsNull(inner) => {
             // P0-2 §4.2: delegated to `executor::expr::eval_is_null`
