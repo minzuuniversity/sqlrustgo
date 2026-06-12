@@ -1,8 +1,8 @@
 # SQLRustGo
 
-> **Last updated**: 2026-06-05
-> **Current dev branch**: [`d53acb3c`](http://192.168.0.252:3000/openclaw/sqlrustgo/commit/d53acb3c) @ develop/v3.8.0
-> **Latest stable**: v3.7.0 (GA, 2026-05-31)
+> **Last updated**: 2026-06-13
+> **Current dev branch**: [`3c051c458`](http://192.168.0.252:3000/openclaw/sqlrustgo/commit/3c051c458) @ develop/v3.9.0
+> **Latest stable**: v3.8.0 (GA, 2026-06-08) | v3.9.0-rc7 (in soak, GA target 2026-12-15)
 > **Latest beta**: v3.8.0-rc1 (RC, 2026-06-05, TPC-H 22/22)
 
 <p align="center">
