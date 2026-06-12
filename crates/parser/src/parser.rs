@@ -567,6 +567,10 @@ pub struct ColumnDefinition {
     pub auto_increment: bool,
     pub default_value: Option<String>,
     pub references: Option<ForeignKeyRef>,
+    /// Max length for CHAR(N) / VARCHAR(N). Captured at parse time so
+    /// the engine can apply SQL-standard space padding on INSERT.
+    /// `None` means unbounded / no padding (TEXT, INTEGER, etc.).
+    pub char_max_length: Option<usize>,
 }
 
 /// Foreign key referential action
@@ -2365,27 +2369,61 @@ impl Parser {
                             ));
                         }
                         self.next(); // consume Comma
-                        if !matches!(self.current(), Some(Token::Interval)) {
-                            return Err(format!(
-                                "Expected INTERVAL in {}(...), got {:?}",
-                                name,
-                                self.current()
-                            ));
-                        }
-                        self.next(); // consume INTERVAL
-                        let n_expr = self.parse_primary_expression()?;
-                        let unit = match self.current() {
-                            Some(Token::Identifier(u)) => {
-                                let s = u.clone();
-                                self.next();
-                                s
-                            }
-                            _ => {
+                                     // Two accepted forms (both MySQL 5.7):
+                                     //   1. DATE_ADD(d, n, 'UNIT')                 — 3-arg, n then string unit
+                                     //   2. DATE_ADD(d, INTERVAL n UNIT)            — SQL standard with INTERVAL keyword
+                                     // Try (1) first: if the next token is not the
+                                     // `INTERVAL` keyword, treat it as a 3-arg call.
+                        let (n_expr, unit) = if matches!(self.current(), Some(Token::Interval)) {
+                            self.next(); // consume INTERVAL
+                            let n_expr = self.parse_primary_expression()?;
+                            let unit = match self.current() {
+                                Some(Token::Identifier(u)) => {
+                                    let s = u.clone();
+                                    self.next();
+                                    s
+                                }
+                                _ => {
+                                    return Err(format!(
+                                        "Expected unit (DAY/MONTH/...) after INTERVAL n in {}(...)",
+                                        name
+                                    ));
+                                }
+                            };
+                            (n_expr, unit)
+                        } else {
+                            // 3-arg MySQL form: n may be any primary
+                            // expression (typically a NumberLiteral),
+                            // followed by a string-literal unit.
+                            let n_expr = self.parse_primary_expression()?;
+                            if !matches!(self.current(), Some(Token::Comma)) {
                                 return Err(format!(
-                                    "Expected unit (DAY/MONTH/...) after INTERVAL n in {}(...)",
-                                    name
+                                    "Expected ',' before unit in 3-arg {}(d, n, 'UNIT'), got {:?}",
+                                    name,
+                                    self.current()
                                 ));
                             }
+                            self.next(); // consume Comma
+                            let unit = match self.current() {
+                                Some(Token::StringLiteral(u)) => {
+                                    let s = u.clone();
+                                    self.next();
+                                    s
+                                }
+                                Some(Token::Identifier(u)) => {
+                                    let s = u.clone();
+                                    self.next();
+                                    s
+                                }
+                                _ => {
+                                    return Err(format!(
+                                        "Expected string-literal unit in 3-arg {}(d, n, 'UNIT'), got {:?}",
+                                        name,
+                                        self.current()
+                                    ));
+                                }
+                            };
+                            (n_expr, unit)
                         };
                         self.expect(Token::RParen)?;
                         // Handle optional AS alias
@@ -4615,8 +4653,10 @@ impl Parser {
                     ));
                 }
                 self.next();
-                // DATE_ADD/DATE_SUB(expr, INTERVAL n unit) — MySQL 5.7
-                // special form (mirrors the Identifier arm special form).
+                // DATE_ADD/DATE_SUB supports two MySQL 5.7 forms:
+                //   (a) DATE_ADD(d, n, 'UNIT')                 — 3-arg
+                //   (b) DATE_ADD(d, INTERVAL n UNIT)            — SQL standard
+                // Mirrors the Identifier arm special form.
                 if name == "DATE_ADD" || name == "DATE_SUB" {
                     let date_expr = self.parse_primary_expression()?;
                     if !matches!(self.current(), Some(Token::Comma)) {
@@ -4627,27 +4667,53 @@ impl Parser {
                         ));
                     }
                     self.next(); // consume Comma
-                    if !matches!(self.current(), Some(Token::Interval)) {
-                        return Err(format!(
-                            "Expected INTERVAL in {}(...), got {:?}",
-                            name,
-                            self.current()
-                        ));
-                    }
-                    self.next(); // consume INTERVAL
-                    let n_expr = self.parse_primary_expression()?;
-                    let unit = match self.current() {
-                        Some(Token::Identifier(u)) => {
-                            let s = u.clone();
-                            self.next();
-                            s
-                        }
-                        _ => {
+                    let (n_expr, unit) = if matches!(self.current(), Some(Token::Interval)) {
+                        self.next(); // consume INTERVAL
+                        let n_expr = self.parse_primary_expression()?;
+                        let unit = match self.current() {
+                            Some(Token::Identifier(u)) => {
+                                let s = u.clone();
+                                self.next();
+                                s
+                            }
+                            _ => {
+                                return Err(format!(
+                                    "Expected unit (DAY/MONTH/...) after INTERVAL n in {}(...)",
+                                    name
+                                ));
+                            }
+                        };
+                        (n_expr, unit)
+                    } else {
+                        let n_expr = self.parse_primary_expression()?;
+                        if !matches!(self.current(), Some(Token::Comma)) {
                             return Err(format!(
-                                "Expected unit (DAY/MONTH/...) after INTERVAL n in {}(...)",
-                                name
+                                "Expected ',' before unit in 3-arg {}(d, n, 'UNIT'), got {:?}",
+                                name,
+                                self.current()
                             ));
                         }
+                        self.next(); // consume Comma
+                        let unit = match self.current() {
+                            Some(Token::StringLiteral(u)) => {
+                                let s = u.clone();
+                                self.next();
+                                s
+                            }
+                            Some(Token::Identifier(u)) => {
+                                let s = u.clone();
+                                self.next();
+                                s
+                            }
+                            _ => {
+                                return Err(format!(
+                                    "Expected string-literal unit in 3-arg {}(d, n, 'UNIT'), got {:?}",
+                                    name,
+                                    self.current()
+                                ));
+                            }
+                        };
+                        (n_expr, unit)
                     };
                     self.expect(Token::RParen)?;
                     return Ok(Expression::FunctionCall(
@@ -4879,27 +4945,53 @@ impl Parser {
                             ));
                         }
                         self.next(); // consume Comma
-                        if !matches!(self.current(), Some(Token::Interval)) {
-                            return Err(format!(
-                                "Expected INTERVAL in {}(...), got {:?}",
-                                name,
-                                self.current()
-                            ));
-                        }
-                        self.next(); // consume INTERVAL
-                        let n_expr = self.parse_primary_expression()?;
-                        let unit = match self.current() {
-                            Some(Token::Identifier(u)) => {
-                                let s = u.clone();
-                                self.next();
-                                s
-                            }
-                            _ => {
+                        let (n_expr, unit) = if matches!(self.current(), Some(Token::Interval)) {
+                            self.next(); // consume INTERVAL
+                            let n_expr = self.parse_primary_expression()?;
+                            let unit = match self.current() {
+                                Some(Token::Identifier(u)) => {
+                                    let s = u.clone();
+                                    self.next();
+                                    s
+                                }
+                                _ => {
+                                    return Err(format!(
+                                        "Expected unit (DAY/MONTH/...) after INTERVAL n in {}(...)",
+                                        name
+                                    ));
+                                }
+                            };
+                            (n_expr, unit)
+                        } else {
+                            let n_expr = self.parse_primary_expression()?;
+                            if !matches!(self.current(), Some(Token::Comma)) {
                                 return Err(format!(
-                                    "Expected unit (DAY/MONTH/...) after INTERVAL n in {}(...)",
-                                    name
+                                    "Expected ',' before unit in 3-arg {}(d, n, 'UNIT'), got {:?}",
+                                    name,
+                                    self.current()
                                 ));
                             }
+                            self.next(); // consume Comma
+                            let unit = match self.current() {
+                                Some(Token::StringLiteral(u)) => {
+                                    let s = u.clone();
+                                    self.next();
+                                    s
+                                }
+                                Some(Token::Identifier(u)) => {
+                                    let s = u.clone();
+                                    self.next();
+                                    s
+                                }
+                                _ => {
+                                    return Err(format!(
+                                        "Expected string-literal unit in 3-arg {}(d, n, 'UNIT'), got {:?}",
+                                        name,
+                                        self.current()
+                                    ));
+                                }
+                            };
+                            (n_expr, unit)
                         };
                         self.expect(Token::RParen)?;
                         return Ok(Expression::FunctionCall(
@@ -5808,9 +5900,22 @@ impl Parser {
             _ => "INTEGER".to_string(),
         };
 
-        // Consume parenthesized type arguments e.g. VARCHAR(50), DECIMAL(10,2)
+        // Consume parenthesized type arguments e.g. VARCHAR(50), DECIMAL(10,2).
+        // For CHAR(N) / VARCHAR(N) we also capture N into `char_max_length`
+        // so the engine can apply SQL-standard space padding on INSERT.
+        let mut char_max_length: Option<usize> = None;
         if matches!(self.current(), Some(Token::LParen)) {
             self.next();
+            if matches!(data_type.as_str(), "CHAR" | "VARCHAR") {
+                if let Some(Token::NumberLiteral(n)) = self.current() {
+                    if let Ok(parsed) = n.parse::<usize>() {
+                        if parsed > 0 {
+                            char_max_length = Some(parsed);
+                        }
+                    }
+                    self.next();
+                }
+            }
             // Skip everything until matching RParen (handles commas inside e.g. DECIMAL(10,2))
             let mut depth = 1;
             while depth > 0 {
@@ -5897,6 +6002,7 @@ impl Parser {
             auto_increment,
             default_value,
             references,
+            char_max_length,
         })
     }
 
