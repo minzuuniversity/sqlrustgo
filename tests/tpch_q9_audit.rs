@@ -46,7 +46,14 @@ const FIXTURE_DIR_RELATIVE: &str = "tests/data/tpch-sf01";
 /// SQLite ground-truth database rebuilt from the same `.tbl` files.
 const SQLITE_BASELINE_DB: &str = "/tmp/tpch_sf01_audit.db";
 
-const QUERIES_DIR: &str = "/home/ai/sqlrustgo/queries";
+/// Queries directory resolved relative to the worktree manifest dir
+/// so this audit runs correctly from any worktree (not just the main
+/// `/home/ai/sqlrustgo` checkout). Mirrors `FIXTURE_DIR_RELATIVE`.
+const QUERIES_DIR_RELATIVE: &str = "queries";
+
+fn queries_dir() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(QUERIES_DIR_RELATIVE)
+}
 
 fn fixture_dir() -> PathBuf {
     // CARGO_MANIFEST_DIR points at the worktree root for integration tests
@@ -159,7 +166,7 @@ fn test_tpch_22_inprocess_sf01() {
     let mut mismatched = 0;
     let mut err_count = 0;
     for q in 1..=22 {
-        let sql_path = format!("{}/q{}.sql", QUERIES_DIR, q);
+        let sql_path = queries_dir().join(format!("q{}.sql", q));
         let sql = fs::read_to_string(&sql_path).unwrap();
         let sql = sql.trim().trim_end_matches(';');
 
