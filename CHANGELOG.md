@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 **分支**: `develop/v3.9.0` (从 `main@v3.8.0` fork)
 **类型**: 工程化版本 (可靠性 + 可恢复性 + 可审计性)
-**GA 目标**: 2026-09-23 (12 周 / 6 Phase)
+**当前状态**: RC7 (2026-06-12), GA 目标 2026-12-15 (per Hermes audit #3252, deferred from 2026-09-23)
 **资源**: 架构债 40% / 可靠性 35% / GMP 审计 15% / 性能 10% / **新 SQL 0%**
 
 详细启动计划见:
