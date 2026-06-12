@@ -1439,7 +1439,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tempfile",
- "thiserror 1.0.69",
+ "thiserror 2.0.18",
 ]
 
 [[package]]
@@ -2266,7 +2266,7 @@ dependencies = [
  "sqlrustgo",
  "sqlrustgo-catalog",
  "sqlrustgo-storage",
- "thiserror 1.0.69",
+ "thiserror 2.0.18",
 ]
 
 [[package]]
@@ -3318,7 +3318,7 @@ dependencies = [
  "parking_lot",
  "serde",
  "sqlrustgo",
- "thiserror 1.0.69",
+ "thiserror 2.0.18",
 ]
 
 [[package]]
@@ -4043,7 +4043,7 @@ dependencies = [
  "sqlrustgo",
  "sqlrustgo-parser",
  "sqlrustgo-storage",
- "thiserror 1.0.69",
+ "thiserror 2.0.18",
 ]
 
 [[package]]
@@ -4121,7 +4121,7 @@ dependencies = [
  "sqlrustgo-rag",
  "sqlrustgo-storage",
  "sqlrustgo-types",
- "thiserror 1.0.69",
+ "thiserror 2.0.18",
  "tokio",
  "tokio-test",
  "tracing",
@@ -4198,7 +4198,7 @@ dependencies = [
  "sqlrustgo-parser",
  "sqlrustgo-vector",
  "tempfile",
- "thiserror 1.0.69",
+ "thiserror 2.0.18",
  "tokio",
  "tokio-stream",
  "tonic",
@@ -4239,7 +4239,7 @@ dependencies = [
  "rusqlite",
  "serde",
  "serde_json",
- "thiserror 1.0.69",
+ "thiserror 2.0.18",
 ]
 
 [[package]]
@@ -4276,7 +4276,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tempfile",
- "thiserror 1.0.69",
+ "thiserror 2.0.18",
 ]
 
 [[package]]
@@ -4299,7 +4299,7 @@ dependencies = [
  "sqlrustgo-storage",
  "sqlrustgo-tools",
  "sqlrustgo-types",
- "thiserror 1.0.69",
+ "thiserror 2.0.18",
  "tracing",
  "tracing-subscriber",
 ]
@@ -4368,7 +4368,7 @@ dependencies = [
  "sqlrustgo-graph",
  "sqlrustgo-types",
  "sqlrustgo-vector",
- "thiserror 1.0.69",
+ "thiserror 2.0.18",
  "tokio",
  "tokio-test",
  "tracing",
@@ -4442,7 +4442,7 @@ dependencies = [
  "parking_lot",
  "serde",
  "tempfile",
- "thiserror 1.0.69",
+ "thiserror 2.0.18",
  "tracing",
 ]
 
@@ -4758,7 +4758,7 @@ dependencies = [
  "parking_lot",
  "serde",
  "tempfile",
- "thiserror 1.0.69",
+ "thiserror 2.0.18",
  "toml",
 ]
 
@@ -4782,7 +4782,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tempfile",
- "thiserror 1.0.69",
+ "thiserror 2.0.18",
 ]
 
 [[package]]
@@ -4796,7 +4796,7 @@ dependencies = [
  "serde_json",
  "tempfile",
  "test-registry",
- "thiserror 1.0.69",
+ "thiserror 2.0.18",
  "tokio",
 ]
 
@@ -5285,7 +5285,7 @@ dependencies = [
  "rand 0.8.6",
  "sqlrustgo",
  "sqlrustgo-storage",
- "thiserror 1.0.69",
+ "thiserror 2.0.18",
 ]
 
 [[package]]
