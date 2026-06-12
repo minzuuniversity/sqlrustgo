@@ -1416,10 +1416,18 @@ pub fn parse_stmt_execute_params(
             params.push((Vec::new(), false));
             continue;
         }
-        let type_code: u8 = type_codes
+        // Server is the source of truth for parameter types (it knows the
+        // schema). The client's `type_codes` from `new_params_bound_flag`
+        // are advisory only — some clients (sysbench 1.0.20) advertise
+        // MYSQL_TYPE_VAR_STRING (0xfd) for every parameter regardless of
+        // the underlying column type, which causes INT64 values to be
+        // misread as length-encoded strings (Issue #3372 follow-up).
+        // Prefer the prepared statement's type, falling back to the
+        // client's advertised type only when we have no schema info.
+        let type_code: u8 = prepared_param_types
             .get(i)
             .copied()
-            .or_else(|| prepared_param_types.get(i).copied())
+            .or_else(|| type_codes.get(i).copied())
             .unwrap_or(mysql_type::VAR_STRING);
         match decode_param(payload, &mut pos, type_code) {
             Some(v) => params.push((v, is_numeric_type(type_code))),
