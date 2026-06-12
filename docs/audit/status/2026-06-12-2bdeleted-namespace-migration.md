@@ -1,19 +1,30 @@
 # Gitea 2bdeleted Namespace Migration (2026-06-12)
 
-> **范围**: 本次操作目标为 **250 (origin + gitea 别名) Gitea 主仓库** (`http://192.168.0.250:3000`)。
-> **未触碰**: **252 (252 别名) 独立 Gitea 实例** (`http://192.168.0.252:3000`) — 该实例有独立历史 (520 root 分支 + 37 个 2bdeleted, 包含 archive/v1.x 系列), 与 250 无关, 不在本任务范围。
+> **范围**: 本次操作覆盖 **250 + 252 两个 Gitea 主节点**。
+> - **250** (`origin` + `gitea` 别名): http://192.168.0.250:3000
+> - **252** (`252` 别名): http://192.168.0.252:3000
 
 ## 目标
 
-将 Gitea 250 主仓库上已合并 / 已关闭的 fix / docs / governance / test / sync / feature / audit 等开发分支移入 `2bdeleted/` 命名空间，根目录只保留受保护的 `develop / rc / alpha / beta / ga / release / main` 分支。
+将 Gitea 上已合并 / 已关闭的 fix / docs / governance / test / sync / feature / audit 等开发分支移入 `2bdeleted/` 命名空间，根目录只保留受保护的 `develop / rc / rc1 / alpha / beta / ga / release / main` 分支。
 
 ## 执行前状态 (2026-06-12 09:00 UTC)
+
+### Gitea 250 (origin + gitea)
 
 | 类别 | 数量 |
 |------|------|
 | 根目录非 2bdeleted 分支总数 | 187 |
 | 2bdeleted 已存在分支 | 29 |
 | 受保护分支 | 34 (develop×10, rc×1, rc1×10, alpha×2, beta×1, ga×1, main, release×8) |
+
+### Gitea 252
+
+| 类别 | 数量 |
+|------|------|
+| 根目录非 2bdeleted 分支总数 | 520 |
+| 2bdeleted 已存在分支 | 37 |
+| 受保护分支 | 78 (develop×9, rc×12, rc1×9, alpha×10 [含 root], beta×8, ga×11, release×16, main, gate×2) |
 
 ## 受保护前缀 (per user spec)
 
@@ -90,14 +101,31 @@ Gitea API POST/PATCH refs 返回 405 Method Not Allowed, 所以使用 git push �
 
 ## 执行后状态 (2026-06-12)
 
+### Gitea 250
+
 | 类别 | 数量 |
 |------|------|
 | 根目录非 2bdeleted 分支 | 34 (全部受保护) |
-| 2bdeleted 总分支 | 208 (29 已存在 + 179 新增) |
+| 2bdeleted 总分支 | 207 (29 已存在 + 179 新增 − 1 test canary) |
+
+### Gitea 252
+
+| 类别 | 数量 |
+|------|------|
+| 根目录非 2bdeleted 分支 | 78 (全部受保护) |
+| 2bdeleted 总分支 | 461 (37 已存在 + 424 新增) |
+
+### 总体
+
+| 指标 | 值 |
+|------|------|
+| 迁移分支总数 | 603 (250: 179 + 252: 424) |
 | 迁移过程中丢失的分支 | 0 |
 | 迁移过程中破坏的 PR / Issue 引用 | 0 (Gitea 上 PR 引用 commit SHA, 不依赖分支路径) |
 
 ## 验证
+
+### Gitea 250
 
 ```bash
 $ git for-each-ref --format='%(refname:short)' refs/remotes/origin 2>/dev/null | \
@@ -105,10 +133,21 @@ $ git for-each-ref --format='%(refname:short)' refs/remotes/origin 2>/dev/null |
 34
 
 $ git ls-remote --heads origin '2bdeleted/*' 2>&1 | wc -l
-208
+207
 ```
 
-### 根目录受保护分支 (34, 全部保留)
+### Gitea 252
+
+```bash
+$ git for-each-ref --format='%(refname:short)' refs/remotes/252 2>/dev/null | \
+    grep -v 2bdeleted | grep -v HEAD | grep -v "^252$" | wc -l
+78
+
+$ git ls-remote --heads 252 '2bdeleted/*' 2>&1 | wc -l
+461
+```
+
+### 250 受保护分支 (34, 全部保留)
 
 ```text
 alpha-gate-update, alpha-version-bump
@@ -126,13 +165,43 @@ release/v380-release-notes, v380-strongbeta-readme, v380-to-v390-handover-v2,
 release/v380-v3-report, v380-v4-maxunion
 ```
 
+### 252 受保护分支 (78, 含历史版本)
+
+```text
+alpha-gate-update, alpha-version-bump
+alpha/v2.0.0, alpha/v2.6.0, alpha/v2.9.0, alpha/v3.0.0, alpha/v3.1.0,
+alpha/v3.2.0, alpha/v3.3.0, alpha/v3.4.0
+beta/v1.4.0, beta/v2.9.0, beta/v3.0.0, beta/v3.1.0, beta/v3.2.0,
+beta/v3.3.0, beta/v3.4.0, beta/v3.8.0
+develop/v2.8.0, develop/v2.9.0, develop/v3.1.0, develop/v3.6.0,
+develop/v3.6.0-local, develop/v3.7.0, develop/v3.8.0,
+develop/v3.8.0-claim-registry, develop/v3.9.0
+ga/v1.0.0, ga/v1.1.0, ga/v1.2.0, ga/v1.4.0, ga/v1.6.0, ga/v2.0.0,
+ga/v2.6.0, ga/v2.9.0, ga/v3.2.0, ga/v3.3.0, ga/v3.8.0
+gate-audit-v3.7.0, gate/set-operations-test
+main
+rc/v1.0.0, rc/v1.1.0, rc/v1.2.0, rc/v1.4.0, rc/v1.6.0, rc/v2.0.0,
+rc/v2.6.0, rc/v2.9.0, rc/v3.1.0, rc/v3.2.0, rc/v3.3.0, rc/v3.5.0-rc2
+rc1/exec-03-aggregates, rc1/main-integration, rc1/mysql-01-rollup-cube,
+rc1/mysql-01b-string-funcs, rc1/mysql-01c-aggs, rc1/tpch-22-of-22,
+rc1/tpch-22of22-v380, rc1/tpch-phase2-parser-alias, rc1/tpch-phase25-engine-columns
+release/v2.8.0, release/v2.9.0-ga, release/v3.0.0, release/v3.1.0,
+release/v3.1.0-ga-final, release/v3.1.0-golden, release/v3.2.0,
+release/v3.8.0, release/v3.9.0-q21-merge, release/v380-beta-report,
+release/v380-rc-redefine, release/v380-release-notes,
+release/v380-strongbeta-readme, release/v380-to-v390-handover-v2,
+release/v380-v3-report, release/v380-v4-maxunion
+```
+
 ## 风险评估
 
 1. **PR 引用**: Gitea PR 引用 commit SHA 而非分支路径, 迁移后 PR 链接仍有效 ✅
 2. **Issue 引用**: Issue 中 `branch:` 字段在 Gitea UI 上仍可解析 (会跳转 404, 但 commit 引用正常) ⚠️
-3. **本地 clone**: 用户本地 `git fetch --prune` 会自动清理 179 个 stale tracking branches ✅
+3. **本地 clone**: 用户本地 `git fetch --prune` 会自动清理 603 个 stale tracking branches ✅
 4. **未合并分支审查**: 之前的分析 (2026-06-12) 确认所有被移动的分支都是 MERGED (例如 fix/issue-2625-exec, audit/v380-*) 或 STALE 临时分支 (例如 tmp/, test-push-temp) ✅
 5. **v3.8.0-claim-registry** 保留: 可能是活跃的 claim-registry 工作流 (虽然带 develop/ 前缀, 但用户明确要求保留 develop/*) ✅
+6. **252 历史分支**: 252 上的 `archive/v1.x`, `alpha/v2.x`, `release/v1.x-v3.x` 等历史版本分支均按规则保留 (符合 protected 前缀), 完整保留项目历史 ✅
+7. **bad object 处理**: 1 个 252 分支 (`sync/v390-sync-backup-20260612-2`) 的 SHA 不在本地 repo, 已通过 `git fetch <sha>` 单独拉取并创建 ✅
 
 ## 后续行动
 
