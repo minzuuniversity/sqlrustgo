@@ -6,8 +6,8 @@
 |-------|-------|
 | **Version** | v3.9.0-rc7 (in progress to GA) |
 | **Release Type** | Production Readiness Release |
-| **Tag (latest)** | v3.9.0-rc7 @ `0868910f1` |
-| **Tag (current tip)** | `541b63c70` (post-#3370 ODUK bugfix) |
+| **Tag (latest)** | v3.9.0-rc7 @ `642ff9cf9` |
+| **Tag (current tip)** | `8a83e2553` (post-#3378 REMOTE_LIMITS + #3377 .gitattributes) |
 | **GA Target** | 2026-12-15 (per Hermes audit #3252) |
 | **Release Manager** | yinglichina8848 (with Hermes Agent) |
 | **Build Environment** | Mac mini (M2) + Z6G4 (build) + Z440 (backup) |
