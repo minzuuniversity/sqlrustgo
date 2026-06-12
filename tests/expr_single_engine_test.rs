@@ -208,12 +208,14 @@ fn test_aggregate_delegation() {
                 data_type: "INTEGER".to_string(),
                 nullable: false,
                 primary_key: false,
+                char_max_length: None,
             },
             ColumnDefinition {
                 name: "SUM(l_quantity)".to_string(),
                 data_type: "FLOAT".to_string(),
                 nullable: false,
                 primary_key: false,
+                char_max_length: None,
             },
         ],
         foreign_keys: vec![],
@@ -859,18 +861,21 @@ fn test_identifier_delegation() {
             data_type: "INTEGER".to_string(),
             nullable: false,
             primary_key: true,
+            char_max_length: None,
         },
         ColumnDefinition {
             name: "t.name".to_string(),
             data_type: "TEXT".to_string(),
             nullable: false,
             primary_key: false,
+            char_max_length: None,
         },
         ColumnDefinition {
             name: "a_join_b.a.tag".to_string(),
             data_type: "TEXT".to_string(),
             nullable: false,
             primary_key: false,
+            char_max_length: None,
         },
     ];
     let table_info = TableInfo {
@@ -941,12 +946,14 @@ fn test_identifier_known_outputs() {
             data_type: "INTEGER".to_string(),
             nullable: false,
             primary_key: true,
+            char_max_length: None,
         },
         ColumnDefinition {
             name: "user_name".to_string(),
             data_type: "TEXT".to_string(),
             nullable: false,
             primary_key: false,
+            char_max_length: None,
         },
     ];
     let row: Vec<Value> = vec![Value::Integer(7), Value::Text("bob".into())];
@@ -993,18 +1000,21 @@ fn test_find_column_index_known_outputs() {
             data_type: "INTEGER".to_string(),
             nullable: false,
             primary_key: true,
+            char_max_length: None,
         },
         ColumnDefinition {
             name: "t.col".to_string(),
             data_type: "TEXT".to_string(),
             nullable: false,
             primary_key: false,
+            char_max_length: None,
         },
         ColumnDefinition {
             name: "a_join_b.a.deep".to_string(),
             data_type: "TEXT".to_string(),
             nullable: false,
             primary_key: false,
+            char_max_length: None,
         },
     ];
 
