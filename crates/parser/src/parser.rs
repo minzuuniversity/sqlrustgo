@@ -567,6 +567,10 @@ pub struct ColumnDefinition {
     pub auto_increment: bool,
     pub default_value: Option<String>,
     pub references: Option<ForeignKeyRef>,
+    /// Max length for CHAR(N) / VARCHAR(N). Captured at parse time so
+    /// the engine can apply SQL-standard space padding on INSERT.
+    /// `None` means unbounded / no padding (TEXT, INTEGER, etc.).
+    pub char_max_length: Option<usize>,
 }
 
 /// Foreign key referential action
@@ -5808,9 +5812,22 @@ impl Parser {
             _ => "INTEGER".to_string(),
         };
 
-        // Consume parenthesized type arguments e.g. VARCHAR(50), DECIMAL(10,2)
+        // Consume parenthesized type arguments e.g. VARCHAR(50), DECIMAL(10,2).
+        // For CHAR(N) / VARCHAR(N) we also capture N into `char_max_length`
+        // so the engine can apply SQL-standard space padding on INSERT.
+        let mut char_max_length: Option<usize> = None;
         if matches!(self.current(), Some(Token::LParen)) {
             self.next();
+            if matches!(data_type.as_str(), "CHAR" | "VARCHAR") {
+                if let Some(Token::NumberLiteral(n)) = self.current() {
+                    if let Ok(parsed) = n.parse::<usize>() {
+                        if parsed > 0 {
+                            char_max_length = Some(parsed);
+                        }
+                    }
+                    self.next();
+                }
+            }
             // Skip everything until matching RParen (handles commas inside e.g. DECIMAL(10,2))
             let mut depth = 1;
             while depth > 0 {
@@ -5897,6 +5914,7 @@ impl Parser {
             auto_increment,
             default_value,
             references,
+            char_max_length,
         })
     }
 
