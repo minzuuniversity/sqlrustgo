@@ -1,7 +1,7 @@
 # v3.9.0 GA Gate Status Report (Governance Compliance)
 
 > **Date**: 2026-06-13
-> **Tag**: v3.9.0-rc7 (`0868910f1`) — current tip `541b63c70` (post-#3370 ODUK bugfix)
+> **Tag**: v3.9.0-rc7 (`642ff9cf9`) — current tip `8a83e2553` (post-#3378 REMOTE_LIMITS + #3377 .gitattributes)
 > **Status**: 🟡 **READY for GA cut** (pending 24h real soak completion on 250)
 > **GA Target**: 2026-12-15 (per Hermes audit #3252)
 > **依据**: `docs/governance/RC_TO_GA_GATE_CHECKLIST.md` + `RELEASE_LIFECYCLE.md`
@@ -43,7 +43,7 @@
 
 | Item | Status | 依据 |
 |------|--------|------|
-| C-ARCH-05: `execution_engine.rs` 1919 > 1800 | 🟡 DRIFT | RELEASE_NOTES.md §8 "C-ARCH-05: execution_engine.rs 1863 > 1800 ... per SSOT this is DRIFT, not blocking for v3.9.0 GA; needs ~63 lines further extraction in v3.9.1" |
+| C-ARCH-05: `execution_engine.rs` 1919 > 1800 | 🟡 DRIFT | Per SSOT this is DRIFT, not blocking for v3.9.0 GA; needs ~119 lines further extraction to reach 1800 cap (deferred to v3.9.1). RELEASE_NOTES.md §8 confirms governance waiver. |
 | Security: 3 vulnerabilities in `crates/bench` | 🟡 DRIFT | Only affects benchmark crate, not production binary |
 | Coverage script `--skip` invalid option | 🟡 Tooling | cargo-llvm-cov version mismatch, not blocking |
 
@@ -134,12 +134,12 @@ All 4 remotes in sync.
 
 1. **验证 24h soak 0 errors** → `tail metrics.csv | grep errors=0`
 2. **Close #3264** with evidence (24h PASS)
-3. **Tag v3.9.0-rc5** at current tip
+3. **Tag v3.9.0-ga-candidate** at current tip (after 24h PASS)
 4. **Push tag to all 4 remotes**
 5. **Update GA_GATE_REPORT.md** to mark G13 24h PASS
 6. **Start 72h soak on 250** (issue #3265)
-7. **Announce v3.9.0-rc5** to stakeholders
-8. (72h 跑完后) cut **v3.9.0-ga-candidate**, run 168h soak
+7. **Announce v3.9.0-ga-candidate** to stakeholders
+8. (72h 跑完后) cut **v3.9.0-ga-candidate-2**, run 168h soak
 9. (168h 跑完后) cut **v3.9.0-ga**, merge to main, close all issues
 
 ---
