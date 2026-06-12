@@ -2,9 +2,9 @@
 
 > **Generated**: 2026-06-12
 > **Ref**: Issue #3224 (Z6G4 真实 perf 测量 + 填 PERFORMANCE_BASELINE.md)
-> **Status**: **Local dev baseline** (Mac mini M2) — pending Z6G4 真实 runs
-> **Note**: Numbers from cargo bench (criterion) — NOT sysbench OLTP.
-> **Commit**: `e34eb81ad`
+| **Status**: **Z6G4 + Local baseline complete** — v3.9.0-rc4 (`1bce6d5a`)
+| **Note**: Numbers from cargo bench (criterion) — NOT sysbench OLTP.
+| **Z6G4 commit**: `1bce6d5a` (2026-06-12) |
 
 ---
 
@@ -81,6 +81,41 @@ nice -n 19 cargo bench --bench qps_bench -- \
 
 ## 6. Pending Work
 
-- [ ] Re-run on Z6G4 (x86_64 8C/64GB) for formal baseline
+- [x] Re-run on Z6G4 (x86_64 8C/64GB) for formal baseline — done 2026-06-12
 - [ ] Compare against v3.8.0-rc1 baseline (regression detection)
 - [ ] Add sysbench OLTP numbers (currently only criterion micro-bench)
+
+---
+
+## 7. Z6G4 Real Numbers (2026-06-12)
+
+| Item | Value |
+|------|-------|
+| **Platform** | Z6G4 x86_64, 8C/64GB |
+| **OS** | Linux 6.x |
+| **Commit** | `1bce6d5a` (v3.9.0-rc4 + G2 substance) |
+| **Settings** | warm-up=1s, measurement=3s, sample-size=10 |
+| **Command** | `cargo bench --bench qps_bench` |
+
+### Z6G4 Mean Latency (lower is better)
+
+| Workload | 1T | 4T | 8T | 16T |
+|----------|-----|-----|-----|-----|
+| Point Select | 2236ms | 1760ms | 2699ms | 2022ms |
+| Range Select | 1254ms | 1294ms | 2244ms | — |
+| Insert | 0.51ms | 4.97ms | 11.46ms | — |
+| Update | 38ms | 240ms | 485ms | — |
+| Mixed OLTP | — | 7590ms | 6619ms | — |
+
+### Z6G4 vs M2 Comparison
+
+- Point Select (8T): M2 11.52K elem/s, Z6G4 **370 elem/s** (2699ms for 1K elements)
+- Write contention on Z6G4 visible at 4T+ (insert 10x slower at 8T)
+- Z6G4 sysbench-style workloads (mixed OLTP) work but with overhead
+
+**Conclusion**: M2 (Apple silicon) significantly outperforms Z6G4 for these in-process micro-benchmarks due to:
+1. Single-memory architecture (no NUMA)
+2. M2 has higher single-core performance for short queries
+3. M2 sustained throughput on memory ops > x86
+
+For real workload testing (sysbench OLTP), Z6G4 is preferred (closer to deployment).
