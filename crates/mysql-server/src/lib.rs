@@ -965,6 +965,11 @@ struct PreparedStatementInfo {
     /// binary-protocol payload (Issue #2813).
     param_count: u16,
     column_count: u16,
+    /// MySQL binary-protocol type code for each `?` placeholder
+    /// (e.g. `col_type::LONG`, `col_type::LONGLONG`, `col_type::VARSTRING`).
+    /// Used to decode parameters when the client omits the
+    /// `new_params_bound_flag` (e.g. sysbench 1.0.20 — Issue #3372).
+    param_types: Vec<u8>,
 }
 
 struct PreparedStatementManager {
@@ -980,7 +985,13 @@ impl PreparedStatementManager {
         }
     }
 
-    fn add(&mut self, sql: String, param_count: u16, column_count: u16) -> u32 {
+    fn add(
+        &mut self,
+        sql: String,
+        param_count: u16,
+        column_count: u16,
+        param_types: Vec<u8>,
+    ) -> u32 {
         let id = self.next_id;
         self.next_id += 1;
         self.statements.insert(
@@ -989,6 +1000,7 @@ impl PreparedStatementManager {
                 sql,
                 param_count,
                 column_count,
+                param_types,
             },
         );
         id
@@ -1005,6 +1017,73 @@ impl PreparedStatementManager {
 
 fn count_placeholders(sql: &str) -> u16 {
     sql.chars().filter(|&c| c == '?').count() as u16
+}
+
+/// Extract the list of column names referenced in an INSERT statement's
+/// `(...)` clause. Returns an empty Vec if the SQL is not an INSERT
+/// with an explicit column list (e.g. `INSERT INTO t VALUES (...)`).
+///
+/// Example: `INSERT INTO sbtest1 (id, k, c, pad) VALUES (?, ?, ?, ?)`
+/// returns `["id", "k", "c", "pad"]`.
+fn extract_insert_columns(sql: &str) -> Vec<String> {
+    let upper = sql.to_uppercase();
+    if !upper.starts_with("INSERT") {
+        return vec![];
+    }
+    if let Some(into_pos) = upper.find("INTO") {
+        let after_into = &sql[into_pos + 4..];
+        if let Some(paren_start) = after_into.find('(') {
+            let paren_end_rel = after_into[paren_start + 1..]
+                .find(')')
+                .unwrap_or(after_into.len());
+            let cols_str = &after_into[paren_start + 1..paren_start + 1 + paren_end_rel];
+            return cols_str
+                .split(',')
+                .map(|c| c.trim().trim_matches('"').trim_matches('`').to_string())
+                .filter(|c| !c.is_empty() && !c.contains('?'))
+                .collect();
+        }
+    }
+    vec![]
+}
+
+/// Infer MySQL binary-protocol type codes for the `?` placeholders in
+/// `sql` by looking up the referenced columns in the storage schema.
+///
+/// Returns a Vec with one entry per `?`. Falls back to
+/// `col_type::VARSTRING` for any placeholder whose column type cannot
+/// be determined. This is what COM_STMT_PREPARE advertises back to
+/// the client, and is used to decode EXECUTE payloads when the client
+/// omits the per-parameter type code (Issue #3372).
+fn infer_param_types_from_sql<S: StorageEngine>(sql: &str, storage: &Arc<RwLock<S>>) -> Vec<u8> {
+    let param_count = count_placeholders(sql) as usize;
+    if param_count == 0 {
+        return vec![];
+    }
+    let cols = extract_insert_columns(sql);
+    if cols.is_empty() {
+        return vec![col_type::VARSTRING; param_count];
+    }
+    if let Some(table_name) = extract_table_name(sql) {
+        if let Ok(storage_guard) = storage.try_read() {
+            if let Ok(table_info) = storage_guard.get_table_info(&table_name) {
+                let mut types = Vec::with_capacity(param_count);
+                for col_name in &cols {
+                    let col_type_byte = table_info
+                        .columns
+                        .iter()
+                        .find(|c| c.name.eq_ignore_ascii_case(col_name))
+                        .map(|c| col_type_from_string(&c.data_type))
+                        .unwrap_or(col_type::VARSTRING);
+                    types.push(col_type_byte);
+                }
+                if types.len() == param_count {
+                    return types;
+                }
+            }
+        }
+    }
+    vec![col_type::VARSTRING; param_count]
 }
 
 /// A single parameter value ready for `replace_placeholders`.
@@ -1274,9 +1353,6 @@ fn decode_param(payload: &[u8], pos: &mut usize, type_code: u8) -> Option<Vec<u8
 }
 
 /// Parse a COM_STMT_EXECUTE binary-protocol payload and extract the
-/// parameter values into a `Vec<Vec<u8>>` ready for `replace_placeholders`.
-///
-/// Parse a COM_STMT_EXECUTE binary-protocol payload and extract the
 /// parameter values into a `Vec<StmtParam>` ready for
 /// `replace_placeholders`.
 ///
@@ -1293,20 +1369,24 @@ fn decode_param(payload: &[u8], pos: &mut usize, type_code: u8) -> Option<Vec<u8
 /// `param_count` is the count returned by COM_STMT_PREPARE (the number of
 /// `?` placeholders in the original SQL).
 ///
-/// This function tolerates a missing `param_count` (e.g. when a
-/// `PreparedStatementInfo` lookup failed) by falling back to scanning
-/// the SQL for `?` markers.
-pub fn parse_stmt_execute_params(payload: &[u8], param_count: u16) -> Vec<StmtParam> {
+/// `prepared_param_types` is the type-code slice advertised by
+/// COM_STMT_PREPARE. It is used as the fallback when the client omits
+/// `new_params_bound_flag` (e.g. sysbench 1.0.20) so that INT64 / LONG
+/// values are not misread as length-encoded strings (Issue #3372).
+pub fn parse_stmt_execute_params(
+    payload: &[u8],
+    param_count: u16,
+    prepared_param_types: &[u8],
+) -> Vec<StmtParam> {
     let mut params: Vec<StmtParam> = Vec::new();
     if payload.len() < 9 {
         return params;
     }
-    let mut pos = 9; // skip stmt_id(4) + flags(1) + iteration_count(4)
+    let mut pos = 9;
     if param_count == 0 {
         return params;
     }
 
-    // 1. null-bitmap: (param_count + 7) / 8 bytes
     let null_bytes = (param_count as usize).div_ceil(8);
     if pos + null_bytes > payload.len() {
         return params;
@@ -1314,45 +1394,36 @@ pub fn parse_stmt_execute_params(payload: &[u8], param_count: u16) -> Vec<StmtPa
     let null_bitmap = &payload[pos..pos + null_bytes];
     pos += null_bytes;
 
-    // 2. new_params_bound_flag
     if pos >= payload.len() {
         return params;
     }
     let new_params_bound_flag = payload[pos];
     pos += 1;
 
-    // 3. param type codes (if flag = 0x01)
     let mut type_codes: Vec<u8> = Vec::with_capacity(param_count as usize);
     if new_params_bound_flag == 0x01 {
         for _ in 0..param_count {
             if pos + 2 > payload.len() {
                 return params;
             }
-            // Type code is the first byte; the second byte is signed/unsigned flag
-            // (unused here — we treat the value as the type code only).
             type_codes.push(payload[pos]);
             pos += 2;
         }
     }
 
-    // 4. param values
     for i in 0..param_count as usize {
-        // Check the null-bitmap first.
         if (null_bitmap[i / 8] >> (i % 8)) & 1 != 0 {
-            params.push((Vec::new(), false)); // empty = NULL
+            params.push((Vec::new(), false));
             continue;
         }
-        // The type code defaults to MYSQL_TYPE_VAR_STRING (0xfd) when the
-        // client doesn't provide new param bindings — the server is
-        // expected to coerce the raw bytes to the prepared-statement
-        // column type. We pick VAR_STRING as the conservative default.
-        let type_code: u8 = type_codes.get(i).copied().unwrap_or(mysql_type::VAR_STRING);
+        let type_code: u8 = type_codes
+            .get(i)
+            .copied()
+            .or_else(|| prepared_param_types.get(i).copied())
+            .unwrap_or(mysql_type::VAR_STRING);
         match decode_param(payload, &mut pos, type_code) {
             Some(v) => params.push((v, is_numeric_type(type_code))),
-            None => {
-                // Bail out — the rest of the payload is unparseable.
-                return params;
-            }
+            None => return params,
         }
     }
 
@@ -1839,7 +1910,9 @@ fn do_command_loop<S: Read + Write>(
                     0
                 };
 
-                let stmt_id = ps_manager.add(sql.clone(), param_count, column_count);
+                let param_types = infer_param_types_from_sql(&sql, &storage);
+                let stmt_id =
+                    ps_manager.add(sql.clone(), param_count, column_count, param_types.clone());
 
                 let mut p = Vec::new();
                 p.push(0x00);
@@ -1857,7 +1930,8 @@ fn do_command_loop<S: Read + Write>(
                 seq = seq.wrapping_add(1);
 
                 if param_count > 0 {
-                    for _ in 0..param_count {
+                    for i in 0..param_count as usize {
+                        let ptype = param_types.get(i).copied().unwrap_or(col_type::VARSTRING);
                         let mut param_def = Vec::new();
                         write_lenenc_string(&mut param_def, b"def").unwrap();
                         write_lenenc_string(&mut param_def, b"").unwrap();
@@ -1868,7 +1942,7 @@ fn do_command_loop<S: Read + Write>(
                         param_def.push(0x0c);
                         param_def.write_u16::<LittleEndian>(0x21).unwrap();
                         param_def.write_u32::<LittleEndian>(255).unwrap();
-                        param_def.push(col_type::VARSTRING);
+                        param_def.push(ptype);
                         param_def.write_u16::<LittleEndian>(0x80).unwrap();
                         param_def.push(0x00);
                         param_def.write_u16::<LittleEndian>(0).unwrap();
@@ -1922,7 +1996,12 @@ fn do_command_loop<S: Read + Write>(
                 let stmt_id = u32::from_le_bytes([payload[0], payload[1], payload[2], payload[3]]);
 
                 let stmt = match ps_manager.get(stmt_id) {
-                    Some(s) => (s.sql.clone(), s.column_count, s.param_count),
+                    Some(s) => (
+                        s.sql.clone(),
+                        s.column_count,
+                        s.param_count,
+                        s.param_types.clone(),
+                    ),
                     None => {
                         make_err_packet(seq, 1243, "HY000", "Unknown statement handler")
                             .write_to(stream)?;
@@ -1933,13 +2012,17 @@ fn do_command_loop<S: Read + Write>(
                 let stmt_sql = stmt.0;
                 let stmt_col_count = stmt.1;
                 let stmt_param_count = stmt.2;
+                let stmt_param_types = stmt.3;
 
                 // Issue #2813: previously `params` was always an empty Vec,
                 // so `?` placeholders were never substituted. Now we parse
                 // the COM_STMT_EXECUTE binary protocol payload to extract
-                // the actual parameter values from the client.
+                // the actual parameter values from the client. The
+                // `stmt_param_types` slice is the type-code advertisement
+                // from COM_STMT_PREPARE; it is the fallback when the
+                // client omits the per-parameter type code (Issue #3372).
                 let params: Vec<crate::StmtParam> =
-                    parse_stmt_execute_params(payload, stmt_param_count);
+                    parse_stmt_execute_params(payload, stmt_param_count, &stmt_param_types);
                 let final_sql = replace_placeholders(&stmt_sql, &params);
 
                 tracing::info!("STMT EXECUTE (id={}): {}", stmt_id, final_sql);
