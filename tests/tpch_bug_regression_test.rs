@@ -155,11 +155,13 @@ fn test_bug3_tpch_q1_select_projection_returns_10_columns() {
              GROUP BY l_returnflag, l_linestatus \
              ORDER BY l_returnflag, l_linestatus";
     let r = engine.execute(q).expect("Q1 should not crash");
-    // After fix: 6 groups × 6 projected columns (2 group + 4 aggregates)
+    // After fix: rows × 6 projected columns (2 group + 4 aggregates)
+    // Row count matches Q1_three_way.json consensus_row_count: 4
+    // (data fixture has 4 valid (flag, status) combinations after WHERE filter)
     assert_eq!(
         r.rows.len(),
-        6,
-        "Q1 should return 6 groups (matches expected/Q1_three_way.json), got {} rows",
+        4,
+        "Q1 should return 4 groups (matches Q1_three_way.json consensus), got {} rows",
         r.rows.len()
     );
     for (i, row) in r.rows.iter().enumerate() {
