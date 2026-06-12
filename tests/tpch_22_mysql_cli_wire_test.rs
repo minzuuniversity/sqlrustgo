@@ -65,18 +65,20 @@ struct Server {
 impl Server {
     fn start(data_dir: &PathBuf) -> Result<Self, String> {
         // Build the binary in debug mode if not present.
-        let bin = std::env::current_exe()
-            .ok()
-            .and_then(|p| p.parent().map(|d| d.to_path_buf()))
-            .map(|d| d.join("sqlrustgo-mysql-server"))
-            .ok_or_else(|| "could not find binary directory".to_string())?;
-        // Fall back: search PATH or use system binary
+        // Use CARGO_TARGET_DIR if set, else fall back to target/debug/ relative to repo root.
+        let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .to_path_buf();
+        let target_dir = std::env::var("CARGO_TARGET_DIR")
+            .map(PathBuf::from)
+            .unwrap_or_else(|_| repo_root.join("target"));
+        let bin = target_dir.join("debug").join("sqlrustgo-mysql-server");
         let bin = if bin.exists() {
             bin
         } else {
-            PathBuf::from(
-                "/home/ai/sqlrustgo/.worktrees/tpch-22-real/target/debug/sqlrustgo-mysql-server",
-            )
+            // Fallback to repo_root/target/debug (for non-CARGO_TARGET_DIR environments)
+            repo_root.join("target").join("debug").join("sqlrustgo-mysql-server")
         };
         if !bin.exists() {
             return Err(format!("binary not found at {:?}", bin));
