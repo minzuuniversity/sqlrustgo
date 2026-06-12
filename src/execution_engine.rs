@@ -451,6 +451,30 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             all_records.clone()
         };
 
+        // Apply CHAR(N) trailing-space padding per SQL standard (#3283 Task 8)
+        let processed_records: Vec<Vec<Value>> = processed_records
+            .into_iter()
+            .map(|mut record| {
+                for (idx, col) in table_info.columns.iter().enumerate() {
+                    if let Some(n) = col.char_max_length {
+                        if idx < record.len() {
+                            if let Value::Text(s) = &record[idx] {
+                                if s.len() < n {
+                                    let mut padded = String::with_capacity(n);
+                                    padded.push_str(s);
+                                    for _ in s.len()..n {
+                                        padded.push(' ');
+                                    }
+                                    record[idx] = Value::Text(padded);
+                                }
+                            }
+                        }
+                    }
+                }
+                record
+            })
+            .collect();
+
         // Validate FK and CHECK constraints, then insert
         {
             let mut storage = self.storage.write().unwrap();
@@ -900,6 +924,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 data_type: c.data_type.clone(),
                 nullable: !c.primary_key,
                 primary_key: c.primary_key,
+                char_max_length: c.char_max_length,
             })
             .collect();
         let info = TableInfo {
@@ -1687,6 +1712,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     data_type: data_type.clone(),
                     nullable: *nullable,
                     primary_key: false,
+                    char_max_length: None,
                 };
                 storage.add_column(&alter.table_name, column)?;
             }
@@ -1703,6 +1729,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     data_type: data_type.clone(),
                     nullable: *nullable,
                     primary_key: false,
+                    char_max_length: None,
                 };
                 storage.modify_column(&alter.table_name, name, column)?;
             }
