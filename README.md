@@ -1,14 +1,14 @@
 # SQLRustGo
 
 > **Last updated**: 2026-06-13
-> **Current dev branch**: [`3c051c458`](http://192.168.0.252:3000/openclaw/sqlrustgo/commit/3c051c458) @ develop/v3.9.0
+> **Current dev branch**: [`8a83e2553`](http://192.168.0.252:3000/openclaw/sqlrustgo/commit/8a83e2553) @ develop/v3.9.0
 > **Latest stable**: v3.8.0 (GA, 2026-06-08) | v3.9.0-rc7 (in soak, GA target 2026-12-15)
-> **Latest beta**: v3.8.0-rc1 (RC, 2026-06-05, TPC-H 22/22)
+> **Latest RC**: v3.9.0-rc7 (RC, 2026-06-12, G1-G16 PASS, awaiting 24h real soak)
 
 <p align="center">
   <img src="https://img.shields.io/badge/Rust-1.85+-dea584?style=flat-square&logo=rust" alt="Rust">
-  <img src="https://img.shields.io/badge/v3.7.0-GA-green?style=flat-square" alt="GA">
-  <img src="https://img.shields.io/badge/v3.8.0-Strong%20Beta-blue?style=flat-square" alt="Beta">
+  <img src="https://img.shields.io/badge/v3.8.0-GA-green?style=flat-square" alt="GA">
+  <img src="https://img.shields.io/badge/v3.9.0-rc7-yellow?style=flat-square" alt="RC7">
   <img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="License">
   <img src="https://img.shields.io/badge/TPC--H-22%2F22-brightgreen?style=flat-square" alt="TPC-H">
   <img src="https://img.shields.io/badge/Corpus-100.0%25-brightgreen?style=flat-square" alt="Corpus">

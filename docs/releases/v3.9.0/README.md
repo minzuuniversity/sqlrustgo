@@ -43,8 +43,11 @@ v3.9.0/
 │   ├── RC1_GATE_REPORT.md
 │   ├── RC2_RELEASE_NOTES.md
 │   ├── RC2_GATE_REPORT.md
-│   └── RC3_PLAN.md                   # Adjusted rc2 → rc3 → rc4 → ga plan
-├── ga/                                # GA 阶段文档 (Phase 6)
+│   ├── RC3_PLAN.md
+│   ├── RC3_RELEASE_NOTES.md
+│   └── RC3_GATE_REPORT.md
+├── evidence/                          # GA 阶段证据 (Phase 6, 11 files)
+├── ga/                                # 待创建: GA 发布物目录 (Phase 6)
 │   └── (待创建)
 ├── perf/                              # 性能基线 (W11 G11-G16)
 │   └── PERFORMANCE_BASELINE.md
