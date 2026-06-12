@@ -78,7 +78,10 @@ impl Server {
             bin
         } else {
             // Fallback to repo_root/target/debug (for non-CARGO_TARGET_DIR environments)
-            repo_root.join("target").join("debug").join("sqlrustgo-mysql-server")
+            repo_root
+                .join("target")
+                .join("debug")
+                .join("sqlrustgo-mysql-server")
         };
         if !bin.exists() {
             return Err(format!("binary not found at {:?}", bin));
