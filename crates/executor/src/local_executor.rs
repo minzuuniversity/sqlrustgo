@@ -2698,12 +2698,14 @@ mod tests {
                         data_type: "INTEGER".to_string(),
                         nullable: false,
                         primary_key: true,
+                        char_max_length: None,
                     },
                     sqlrustgo_storage::ColumnDefinition {
                         name: "name".to_string(),
                         data_type: "TEXT".to_string(),
                         nullable: true,
                         primary_key: false,
+                        char_max_length: None,
                     },
                 ],
                 ..Default::default()
@@ -2720,12 +2722,14 @@ mod tests {
                         data_type: "INTEGER".to_string(),
                         nullable: false,
                         primary_key: true,
+                        char_max_length: None,
                     },
                     sqlrustgo_storage::ColumnDefinition {
                         name: "value".to_string(),
                         data_type: "INTEGER".to_string(),
                         nullable: true,
                         primary_key: false,
+                        char_max_length: None,
                     },
                 ],
                 ..Default::default()
@@ -2812,12 +2816,14 @@ mod tests {
                         data_type: DataType::Integer,
                         nullable: false,
                         primary_key: true,
+                        char_max_length: None,
                     },
                     sqlrustgo_storage::ColumnDefinition {
                         name: "age".to_string(),
                         data_type: DataType::Integer,
                         nullable: true,
                         primary_key: false,
+                        char_max_length: None,
                     },
                 ],
                 ..Default::default()
