@@ -24,3 +24,6 @@ tests/data/tpch-sf001/*.json
 tests/data/tpch-sf001/*.wal
 tests/data/tpch-sf01/*.json
 tests/data/tpch-sf01/*.wal
+
+# Stability test output directories (timestamps appended) — not for tracking
+test_results/
