@@ -26,6 +26,7 @@
 git clone https://github.com/minzuuniversity/sqlrustgo.git
 cd sqlrustgo
 git checkout v3.9.0-rc7
+# Latest commits post-rc7: #3370 ODUK bugfix, #3375 final 4-remote sync, #3377 .gitattributes (LFS), #3378 REMOTE_LIMITS.md
 cargo build --release
 cargo test --all-features
 ```
