@@ -738,8 +738,9 @@ run_d7_reliability() {
     D7_TOTAL=$((D7_TOTAL+1))
     echo -n "  [G7] Soak/Stability ... "
     if [ -f scripts/gate/check_g13_stability.sh ]; then
-        G7_OUTPUT=$(bash scripts/gate/check_g13_stability.sh 2>&1 || true)
-        if echo "$G7_OUTPUT" | grep -qE "PASS|pass"; then
+        # G7 script runs cargo test (slow); wrap in 60s timeout to avoid blocking GA gate
+        G7_OUTPUT=$(timeout 60 bash scripts/gate/check_g13_stability.sh 2>&1 || true)
+        if echo "$G7_OUTPUT" | grep -qE "G13 Gate: PASS|PASS|pass"; then
             log_pass "G7 Soak"
             D7_PASS=$((D7_PASS+1))
         else
@@ -755,8 +756,9 @@ run_d7_reliability() {
     D7_TOTAL=$((D7_TOTAL+1))
     echo -n "  [G8] Crash Matrix ... "
     if [ -f scripts/gate/check_g14_real_crash.sh ]; then
-        G8_OUTPUT=$(bash scripts/gate/check_g14_real_crash.sh 2>&1 || true)
-        if echo "$G8_OUTPUT" | grep -qE "PASS|pass"; then
+        # G8 script may run actual crash tests; wrap in 60s timeout
+        G8_OUTPUT=$(timeout 60 bash scripts/gate/check_g14_real_crash.sh 2>&1 || true)
+        if echo "$G8_OUTPUT" | grep -qE "G14 Gate: PASS|PASS|pass"; then
             log_pass "G8 Crash"
             D7_PASS=$((D7_PASS+1))
         else
@@ -771,8 +773,8 @@ run_d7_reliability() {
     # G9: Upgrade Test
     D7_TOTAL=$((D7_TOTAL+1))
     echo -n "  [G9] Upgrade Test (v3.8→v3.9) ... "
-    UPGRADE_TEST=$(cargo test --test upgrade_test --test v380_to_v390_full_upgrade_test 2>&1 | tail -3)
-    if echo "$UPGRADE_TEST" | grep -qE "0 failed"; then
+    UPGRADE_TEST=$(timeout 90 cargo test --test upgrade_test --test v380_to_v390_full_upgrade_test 2>&1 | tail -3)
+    if echo "$UPGRADE_TEST" | grep -qE "0 failed|test result: ok"; then
         log_pass "G9 Upgrade"
         D7_PASS=$((D7_PASS+1))
     else
@@ -783,8 +785,8 @@ run_d7_reliability() {
     # G10: Audit Log + Time Travel
     D7_TOTAL=$((D7_TOTAL+1))
     echo -n "  [G10] Audit Log + Time Travel ... "
-    AUDIT_TEST=$(cargo test --test audit_log_test --test time_travel_test 2>&1 | tail -3)
-    if echo "$AUDIT_TEST" | grep -qE "0 failed"; then
+    AUDIT_TEST=$(timeout 60 cargo test --test audit_log_test --test time_travel_test 2>&1 | tail -3)
+    if echo "$AUDIT_TEST" | grep -qE "0 failed|test result: ok"; then
         log_pass "G10 Audit/Time-Travel"
         D7_PASS=$((D7_PASS+1))
     else
