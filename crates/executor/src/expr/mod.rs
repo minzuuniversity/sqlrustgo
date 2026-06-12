@@ -740,18 +740,26 @@ fn parse_lit(s: &str) -> Value {
 /// **Semantics** (see OpenSpec tasks.md §4.14):
 /// - Comparison operators (`=`, `==`, `!=`, `<>`, `>`, `>=`, `<`, `<=`) return `Value::Boolean`.
 /// - Logical operators (`AND`/`&&`, `OR`/`||`) return `Value::Boolean`.
-/// - Arithmetic operators (`+`, `-`, `*`, `/`) return `Value::Integer`.
-///   - **Note**: the legacy `src/expr_utils.rs::evaluate_binary_op` also
-///     supports Float promotion and SQL three-valued NULL logic; the
-///     unified implementation here handles the integer and boolean
-///     paths only. The legacy function is kept for callers that need
-///     Float/NULL handling. Tracked for follow-up consolidation.
+/// - Arithmetic operators (`+`, `-`, `*`, `/`):
+///   - `Integer OP Integer` → `Integer`
+///   - Either operand `Float` → `Float` (Integer promotes to Float)
+///   - Either operand `Null` (and the other non-Null) → `Null`
+///   - Both `Null` → `Null`
+///   - Division by zero `Integer` → 0 (SQLite/MariaDB parity);
+///     division by zero `Float` → `Null` (standard SQL).
 /// - Unknown operators return `Value::Null`.
 ///
 /// The `src/expr_utils.rs::evaluate_expression` `BinaryOp` arm
 /// delegates here; if a Float/NULL result is needed, the executor path
 /// in `engine_select.rs` (which has the legacy function) takes
-/// precedence. See P0-2 §4.14 and Decision D3 in OpenSpec.
+/// précédence. See P0-2 §4.14 and Decision D3 in OpenSpec.
+///
+/// **Bug fix 2026-06-13 (TPC-H Q1 SUM with computed expression):**
+/// previously the arithmetic operators only handled `Integer`, so any
+/// `Float` operand silently became `0` via `as_integer().unwrap_or(0)`,
+/// causing `SUM(l_extendedprice * (1 - l_discount))` to return `0`
+/// instead of the expected real value. The new path promotes to `Float`
+/// whenever either operand is `Float`, matching PostgreSQL/SQLite.
 pub fn eval_binary_op(left: &Value, right: &Value, op: &str) -> Value {
     match op.to_uppercase().as_str() {
         "=" | "==" => Value::Boolean(left == right && !matches!(left, Value::Null)),
@@ -759,13 +767,80 @@ pub fn eval_binary_op(left: &Value, right: &Value, op: &str) -> Value {
         ">" | "<" | ">=" | "<=" => compare_cmp(left, right, op),
         "AND" | "&&" => Value::Boolean(to_bool(left) && to_bool(right)),
         "OR" | "||" => Value::Boolean(to_bool(left) || to_bool(right)),
-        "+" => Value::Integer(left.as_integer().unwrap_or(0) + right.as_integer().unwrap_or(0)),
-        "-" => Value::Integer(left.as_integer().unwrap_or(0) - right.as_integer().unwrap_or(0)),
-        "*" => Value::Integer(left.as_integer().unwrap_or(0) * right.as_integer().unwrap_or(0)),
-        "/" => {
-            Value::Integer(left.as_integer().unwrap_or(0) / right.as_integer().unwrap_or(0).max(1))
-        }
+        "+" | "-" | "*" | "/" => eval_arithmetic(left, right, op),
         _ => Value::Null,
+    }
+}
+
+/// Arithmetic helper. Returns `Null` if either operand is `Null`.
+/// Promotes to `Float` if either operand is `Float`. Division by zero
+/// returns `0` for `Integer` (SQLite/MariaDB parity) and `Null` for
+/// `Float` (standard SQL). Boolean operands are treated as `0`/`1`.
+fn eval_arithmetic(left: &Value, right: &Value, op: &str) -> Value {
+    if matches!(left, Value::Null) || matches!(right, Value::Null) {
+        return Value::Null;
+    }
+    let any_float = matches!(left, Value::Float(_)) || matches!(right, Value::Float(_));
+    if any_float {
+        let l = to_f64(left);
+        let r = to_f64(right);
+        if r == 0.0 && op == "/" {
+            return Value::Null;
+        }
+        let result = match op {
+            "+" => l + r,
+            "-" => l - r,
+            "*" => l * r,
+            "/" => l / r,
+            _ => unreachable!(),
+        };
+        Value::Float(result)
+    } else {
+        let l = to_i64(left);
+        let r = to_i64(right);
+        let result = match op {
+            "+" => l.wrapping_add(r),
+            "-" => l.wrapping_sub(r),
+            "*" => l.wrapping_mul(r),
+            "/" => {
+                if r == 0 {
+                    0
+                } else {
+                    l / r
+                }
+            }
+            _ => unreachable!(),
+        };
+        Value::Integer(result)
+    }
+}
+
+fn to_f64(v: &Value) -> f64 {
+    match v {
+        Value::Integer(n) => *n as f64,
+        Value::Float(f) => *f,
+        Value::Boolean(b) => {
+            if *b {
+                1.0
+            } else {
+                0.0
+            }
+        }
+        Value::Null | Value::Text(_) | Value::Blob(_) => 0.0,
+    }
+}
+
+fn to_i64(v: &Value) -> i64 {
+    match v {
+        Value::Integer(n) => *n,
+        Value::Boolean(b) => {
+            if *b {
+                1
+            } else {
+                0
+            }
+        }
+        Value::Null | Value::Float(_) | Value::Text(_) | Value::Blob(_) => 0,
     }
 }
 
@@ -1905,6 +1980,35 @@ mod tests {
         assert_eq!(
             eval_binary_op(&Value::Integer(3), &Value::Integer(4), "*"),
             Value::Integer(12)
+        );
+    }
+
+    /// Regression test for the TPC-H Q1 SUM with computed expression bug
+    /// (2026-06-13). Previously `Float OP Float` returned `0` because
+    /// `as_integer().unwrap_or(0)` silently coerced `Float` operands
+    /// to `0`. The fix promotes to `Float` whenever either operand is
+    /// `Float`, matching PostgreSQL/SQLite semantics.
+    #[test]
+    fn test_arithmetic_float_promotion() {
+        assert_eq!(
+            eval_binary_op(&Value::Float(100.5), &Value::Float(0.95), "*"),
+            Value::Float(95.475)
+        );
+        assert_eq!(
+            eval_binary_op(&Value::Integer(100), &Value::Float(0.5), "+"),
+            Value::Float(100.5)
+        );
+        assert_eq!(
+            eval_binary_op(&Value::Float(1.0), &Value::Float(0.0), "/"),
+            Value::Null
+        );
+        assert_eq!(
+            eval_binary_op(&Value::Null, &Value::Integer(1), "+"),
+            Value::Null
+        );
+        assert_eq!(
+            eval_binary_op(&Value::Integer(1), &Value::Null, "*"),
+            Value::Null
         );
     }
 }
