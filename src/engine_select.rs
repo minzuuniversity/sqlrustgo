@@ -203,6 +203,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                             data_type: inferred_type_str,
                             nullable: true,
                             primary_key: false,
+                            char_max_length: None,
                         });
                 }
                 Some((sub_result.rows, table_info))
@@ -1249,6 +1250,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                             data_type: inferred_type_str,
                             nullable: true,
                             primary_key: false,
+                            char_max_length: None,
                         });
                 }
                 DERIVED_RESULTS.with(|cell| {
