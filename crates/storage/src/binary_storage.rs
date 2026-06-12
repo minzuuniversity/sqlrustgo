@@ -127,6 +127,7 @@ impl BinaryTableStorage {
                 },
                 nullable: true,
                 primary_key: false,
+                char_max_length: None,
             })
             .collect();
 
