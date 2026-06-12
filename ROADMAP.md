@@ -229,13 +229,20 @@ SQLRustGo
 - 写缓冲
 - 快照隔离
 
-### 4.9 v3.9 - MVCC 完整实现 ⏳ 计划中
+### 4.9 v3.9 - Production Readiness ✅ RC7 (awaiting soak)
 
-**预计**: v3.8.0 GA 之后
+**状态 (2026-06-12)**: v3.9.0-rc7
+**GA 目标**: 2026-12-15 (per Hermes audit #3252)
+**Gates**: G1-G16 ALL PASS, 36 substance tests PASS
+**Open issues**: 5 soak-related (#3264/#3265/#3266, #3225, #3229)
+**See**: `docs/releases/v3.9.0/GA_GATE_REPORT.md`
 
-**核心功能**:
-- 完整 MVCC 实现
-- 两阶段提交
+**核心改进 (已完成)**:
+- 完整 MVCC (v3.8.0 已完成, v3.9.0 在此基础上深化)
+- Backup/Restore 100+ 场景 (G6)
+- Crash Matrix 100+ 场景 (G8)
+- 24h/72h/168h real soak (running)
+- Cross-version upgrade chain (v3.6→v3.7→v3.8→v3.9)
 
 ### 4.10 v3.10 - Serverless 执行 ⏳ 计划中
 
