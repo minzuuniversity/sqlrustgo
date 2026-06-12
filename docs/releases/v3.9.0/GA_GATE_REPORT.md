@@ -1,8 +1,9 @@
 # v3.9.0 GA Gate Report
 
-> **Status: 🟡 READY (gates G1-G15 PASS, 24h/72h/168h soak running on 250/Z6G4)**
-> **Date**: 2026-06-12
-> **Tag**: `v3.9.0-rc4` at `450d8b736` (cut); GA pending 24h/72h/168h soak completion
+> **Status: 🟡 READY (gates G1-G16 PASS, 24h/72h/168h soak running on 250/Z6G4)**
+> **Date**: 2026-06-13
+> **Latest tag**: `v3.9.0-rc7` at `0868910f1` (2026-06-12)
+> **GA pending**: 24h/72h/168h soak completion (250 24h running, 671+ samples, 0 errors)
 
 ## 1. Gate Summary (G1-G15)
 
