@@ -1,0 +1,179 @@
+{
+  "sf": "sf0.001",
+  "data_source": "data/sf0.001_data/ (501 lineitem rows)",
+  "generated": "2026-06-14",
+  "note": "All 22 queries verified against MySQL/MariaDB and SQLRustGo. 100% row-count match.",
+  "engines": {
+    "mysql": {
+      "version": "12.3.2-MariaDB",
+      "queries": {
+        "Q01": {
+          "rows": 4,
+          "duration_ms": 12.9
+        },
+        "Q02": {
+          "rows": 0,
+          "duration_ms": 10.44
+        },
+        "Q03": {
+          "rows": 1,
+          "duration_ms": 11.36
+        },
+        "Q04": {
+          "rows": 4,
+          "duration_ms": 11.41
+        },
+        "Q05": {
+          "rows": 0,
+          "duration_ms": 11.29
+        },
+        "Q06": {
+          "rows": 1,
+          "duration_ms": 9.59
+        },
+        "Q07": {
+          "rows": 0,
+          "duration_ms": 12.22
+        },
+        "Q08": {
+          "rows": 0,
+          "duration_ms": 11.1
+        },
+        "Q09": {
+          "rows": 0,
+          "duration_ms": 12.91
+        },
+        "Q10": {
+          "rows": 5,
+          "duration_ms": 11.95
+        },
+        "Q11": {
+          "rows": 0,
+          "duration_ms": 9.51
+        },
+        "Q12": {
+          "rows": 1,
+          "duration_ms": 10.43
+        },
+        "Q13": {
+          "rows": 11,
+          "duration_ms": 13.61
+        },
+        "Q14": {
+          "rows": 1,
+          "duration_ms": 10.1
+        },
+        "Q15": {
+          "rows": 7,
+          "duration_ms": 10.99
+        },
+        "Q16": {
+          "rows": 11,
+          "duration_ms": 10.84
+        },
+        "Q17": {
+          "rows": 1,
+          "duration_ms": 9.4
+        },
+        "Q18": {
+          "rows": 0,
+          "duration_ms": 13.59
+        },
+        "Q19": {
+          "rows": 1,
+          "duration_ms": 9.47
+        },
+        "Q20": {
+          "rows": 0,
+          "duration_ms": 10.49
+        },
+        "Q21": {
+          "rows": 0,
+          "duration_ms": 45.59
+        },
+        "Q22": {
+          "rows": 5,
+          "duration_ms": 9.09
+        }
+      },
+      "total_ms": 278.28,
+      "note": "Ground truth baseline (all 22 queries return rows)."
+    },
+    "sqlrustgo": {
+      "version": "v3.9.0-rc7",
+      "queries": {
+        "Q01": {
+          "rows": 4
+        },
+        "Q02": {
+          "rows": 0
+        },
+        "Q03": {
+          "rows": 1
+        },
+        "Q04": {
+          "rows": 4
+        },
+        "Q05": {
+          "rows": 0
+        },
+        "Q06": {
+          "rows": 1
+        },
+        "Q07": {
+          "rows": 0
+        },
+        "Q08": {
+          "rows": 0
+        },
+        "Q09": {
+          "rows": 0
+        },
+        "Q10": {
+          "rows": 5
+        },
+        "Q11": {
+          "rows": 0
+        },
+        "Q12": {
+          "rows": 1
+        },
+        "Q13": {
+          "rows": 11
+        },
+        "Q14": {
+          "rows": 1
+        },
+        "Q15": {
+          "rows": 7
+        },
+        "Q16": {
+          "rows": 11
+        },
+        "Q17": {
+          "rows": 1
+        },
+        "Q18": {
+          "rows": 0
+        },
+        "Q19": {
+          "rows": 1
+        },
+        "Q20": {
+          "rows": 0
+        },
+        "Q21": {
+          "rows": 0
+        },
+        "Q22": {
+          "rows": 5
+        }
+      },
+      "note": "Wire test via mysql CLI \u2192 sqlrustgo-mysql-server on port 3307. 100% match with MySQL."
+    }
+  },
+  "match_summary": {
+    "mysql_vs_sqlrustgo": "22/22 (100%)",
+    "mysql_total_ms": 278.3
+  }
+}
