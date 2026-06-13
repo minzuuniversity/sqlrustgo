@@ -177,16 +177,24 @@ for i in 1 2 3 4 5 6 7 8 9 10; do
     fi
 done
 
-# [2] Load TPC-H fixture (if requested)
+# [2] Load TPC-H fixture (if requested) — prefer INSERT mode (works on all
+#    v3.9.0 binaries); fallback to LOAD DATA mode for recent PR-3233+ binaries.
 if [ "$FIXTURE" != "none" ]; then
     echo "[2/5] Loading TPC-H fixture: $FIXTURE ..."
-    if [ -f "$SCRIPT_DIR/load_tpch_fixture.sh" ]; then
+    LOADER_INSERT="$SCRIPT_DIR/load_tpch_fixture_insert.sh"
+    LOADER_LD="$SCRIPT_DIR/load_tpch_fixture.sh"
+    if [ -f "$LOADER_INSERT" ] && [ "${TPC_H_LOADER_MODE:-insert}" = "insert" ]; then
         HOST="$HOST" PORT="$PORT" FIXTURE="$FIXTURE" \
-            bash "$SCRIPT_DIR/load_tpch_fixture.sh" || {
-            echo "WARN: TPC-H fixture load failed; continuing (sysbench will still run)" >&2
+            bash "$LOADER_INSERT" || {
+            echo "WARN: TPC-H fixture (INSERT mode) load failed; continuing" >&2
+        }
+    elif [ -f "$LOADER_LD" ]; then
+        HOST="$HOST" PORT="$PORT" FIXTURE="$FIXTURE" \
+            bash "$LOADER_LD" || {
+            echo "WARN: TPC-H fixture (LOAD DATA mode) load failed; continuing" >&2
         }
     else
-        echo "  WARN: load_tpch_fixture.sh missing; skipping fixture load" >&2
+        echo "  WARN: no TPC-H loader script found; skipping fixture load" >&2
     fi
 else
     echo "[2/5] FIXTURE=none, skipping"
