@@ -76,6 +76,9 @@ impl ExchangeMode {
 }
 
 /// Exchange specification — concrete config for a single exchange step.
+///
+/// v3.9.0: skeleton with no AggFunction (just identity concat).
+/// v3.10 T1: add `agg_kind: Option<AggMergeKind>` for real dispatch.
 #[derive(Debug, Clone)]
 pub struct ExchangeSpec {
     pub mode: ExchangeMode,
@@ -87,6 +90,28 @@ pub struct ExchangeSpec {
     /// Safety guard: refuse to broadcast inputs larger than this.
     /// Default 16MB (matches 3185 spec §三 broadcast OOM 缓解).
     pub broadcast_max_bytes: usize,
+    /// v3.10 T1: how to merge partial aggregate results (Gather mode only).
+    /// None = identity concat (current T0 behavior). Some(...) = real merge.
+    pub agg_merge: Option<AggMergeKind>,
+}
+
+/// How to merge partial aggregate results from N partitions into 1.
+///
+/// Maps to `crates/executor/src/vectorization.rs::AggFunction` 5 variants.
+/// Exchange-side enum (not directly coupled) so v3.10 exchange.rs stays
+/// independent of vectorization types until wired in v3.10 main path.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum AggMergeKind {
+    /// Sum all partial counts → total count.
+    Count,
+    /// Sum all partial sums → total sum.
+    Sum,
+    /// Sum + count → avg (only valid for numeric columns).
+    Avg,
+    /// MIN(partial_min) → global min.
+    Min,
+    /// MAX(partial_max) → global max.
+    Max,
 }
 
 impl ExchangeSpec {
@@ -215,18 +240,29 @@ pub trait ExchangeOperator: Send + Sync {
 /// Gather (1→1) — sum/merge partial results.
 ///
 /// v3.9.0: identity (return as-is) — framework stage, not full impl.
-/// v3.10: real merge by AggregationKind (COUNT/SUM/MIN/MAX/AVG).
-pub struct GatherExchange;
+/// v3.10 T1: real merge by AggMergeKind (Count/Sum/Avg/Min/Max).
+///
+/// `kind: None` → identity concat (T0 behavior, current).
+/// `kind: Some(AggMergeKind::Count)` → sum partial counts (T1 new).
+pub struct GatherExchange {
+    pub kind: Option<AggMergeKind>,
+}
 
 impl ExchangeOperator for GatherExchange {
     fn execute(&self, inputs: Vec<Vec<Record>>) -> SqlResult<Vec<Vec<Record>>> {
-        // v3.9.0 stub: just concatenate all inputs.
-        // v3.10 will dispatch on aggregation kind (COUNT: sum longs, SUM: sum decimals, etc.)
-        let mut out = Vec::with_capacity(inputs.iter().map(|p| p.len()).sum());
-        for partition in inputs {
-            out.extend(partition);
+        // v3.9.0 stub path: identity concat (preserves T0 behavior).
+        // v3.10 T1 path: dispatch by AggMergeKind.
+        match self.kind {
+            None => {
+                // T0 behavior — keep for v3.9.0 compat
+                let mut out = Vec::with_capacity(inputs.iter().map(|p| p.len()).sum());
+                for partition in inputs {
+                    out.extend(partition);
+                }
+                Ok(vec![out])
+            }
+            Some(kind) => gather_merge(inputs, kind),
         }
-        Ok(vec![out])
     }
 
     fn estimate_cost(&self, input_rows: usize) -> ExchangeCost {
@@ -239,6 +275,200 @@ impl ExchangeOperator for GatherExchange {
 
     fn mode(&self) -> ExchangeMode {
         ExchangeMode::Gather
+    }
+}
+
+/// v3.10 T1: real partial-result merge.
+///
+/// Expects each input partition to contain exactly 1 row (the partial
+/// aggregate result from that partition). The first column holds the
+/// aggregate value; for Avg, second column is the partial count.
+fn gather_merge(inputs: Vec<Vec<Record>>, kind: AggMergeKind) -> SqlResult<Vec<Vec<Record>>> {
+    use sqlrustgo_types::Value;
+
+    // v3.10 T1: this is the production path. v3.9.0 callers pass kind=None
+    // and never reach here, so this code is "exercisable" but not "wired".
+    if inputs.is_empty() {
+        return Ok(vec![vec![]]);
+    }
+    let mut all_rows: Vec<Record> = Vec::with_capacity(inputs.iter().map(|p| p.len()).sum());
+    for p in inputs {
+        all_rows.extend(p);
+    }
+
+    // For each "value" column, fold the partials by AggMergeKind.
+    // Output: single row, same arity as input.
+    if all_rows.is_empty() {
+        return Ok(vec![vec![]]);
+    }
+    let arity = all_rows[0].len();
+    let mut out_row: Vec<Value> = Vec::with_capacity(arity);
+    for col_idx in 0..arity {
+        out_row.push(merge_column(&all_rows, col_idx, kind)?);
+    }
+    Ok(vec![out_row])
+}
+
+/// Merge a single column across partitions according to AggMergeKind.
+fn merge_column(
+    rows: &[Record],
+    col_idx: usize,
+    kind: AggMergeKind,
+) -> SqlResult<Value> {
+    use sqlrustgo_types::Value;
+
+    // Collect non-null partials.
+    let partials: Vec<&Value> = rows
+        .iter()
+        .filter_map(|r| r.get(col_idx))
+        .filter(|v| !matches!(v, Value::Null))
+        .collect();
+
+    if partials.is_empty() {
+        return Ok(Value::Null);
+    }
+
+    match kind {
+        AggMergeKind::Count => {
+            // Count: sum partial counts (each partial is itself a count).
+            let mut total: i64 = 0;
+            for v in &partials {
+                if let Value::Integer(n) = v {
+                    total = total.checked_add(*n).ok_or_else(|| {
+                        SqlError::RuntimeError("Count overflow".to_string())
+                    })?;
+                } else {
+                    return Err(SqlError::RuntimeError(format!(
+                        "Count expects Integer partial, got {:?}",
+                        v
+                    )));
+                }
+            }
+            Ok(Value::Integer(total))
+        }
+        AggMergeKind::Sum => {
+            // Sum: sum partial sums. Handle Integer + Float.
+            let mut int_total: Option<i64> = Some(0);
+            let mut float_total: f64 = 0.0;
+            let mut has_float = false;
+            for v in &partials {
+                match v {
+                    Value::Integer(n) => {
+                        if let Some(t) = int_total {
+                            int_total = t.checked_add(*n);
+                        }
+                    }
+                    Value::Float(f) => {
+                        has_float = true;
+                        float_total += f;
+                    }
+                    _ => {
+                        return Err(SqlError::RuntimeError(format!(
+                            "Sum expects numeric partial, got {:?}",
+                            v
+                        )));
+                    }
+                }
+            }
+            if has_float {
+                // Promote: combine int partials as floats.
+                if let Some(t) = int_total {
+                    float_total += t as f64;
+                }
+                Ok(Value::Float(float_total))
+            } else {
+                Ok(Value::Integer(int_total.unwrap_or(0)))
+            }
+        }
+        AggMergeKind::Avg => {
+            // Avg: needs (sum_partial, count_partial) pair.
+            // Convention: even columns = sum partials, odd = count partials.
+            // For single-column Avg, caller must have aggregated count elsewhere.
+            // This impl handles the 2-column form: col_idx=sum, col_idx+1=count.
+            let sum_col = col_idx;
+            let count_col = col_idx + 1;
+            if count_col >= rows[0].len() {
+                return Err(SqlError::RuntimeError(
+                    "Avg needs (sum, count) column pair".to_string(),
+                ));
+            }
+            let mut sum: f64 = 0.0;
+            let mut count: i64 = 0;
+            for row in rows {
+                if let (Some(s), Some(c)) = (row.get(sum_col), row.get(count_col)) {
+                    if !matches!(s, Value::Null) && !matches!(c, Value::Null) {
+                        sum += match s {
+                            Value::Integer(n) => *n as f64,
+                            Value::Float(f) => *f,
+                            _ => 0.0,
+                        };
+                        if let Value::Integer(n) = c {
+                            count += n;
+                        }
+                    }
+                }
+            }
+            if count == 0 {
+                Ok(Value::Null)
+            } else {
+                Ok(Value::Float(sum / count as f64))
+            }
+        }
+        AggMergeKind::Min => {
+            // Min: MIN of all partial MINs.
+            let mut best: Option<Value> = None;
+            for v in &partials {
+                best = Some(match &best {
+                    None => (*v).clone(),
+                    Some(cur) => {
+                        if compare_values(v, cur) == std::cmp::Ordering::Less {
+                            (*v).clone()
+                        } else {
+                            cur.clone()
+                        }
+                    }
+                });
+            }
+            Ok(best.unwrap_or(Value::Null))
+        }
+        AggMergeKind::Max => {
+            // Max: MAX of all partial MAXs.
+            let mut best: Option<Value> = None;
+            for v in &partials {
+                best = Some(match &best {
+                    None => (*v).clone(),
+                    Some(cur) => {
+                        if compare_values(v, cur) == std::cmp::Ordering::Greater {
+                            (*v).clone()
+                        } else {
+                            cur.clone()
+                        }
+                    }
+                });
+            }
+            Ok(best.unwrap_or(Value::Null))
+        }
+    }
+}
+
+/// Compare two SQL values for MIN/MAX. Returns Ordering.
+///
+/// Supports: Integer, Float, Text (lexicographic), Date (string compare).
+fn compare_values(a: &Value, b: &Value) -> std::cmp::Ordering {
+    use sqlrustgo_types::Value;
+    match (a, b) {
+        (Value::Integer(x), Value::Integer(y)) => x.cmp(y),
+        (Value::Float(x), Value::Float(y)) => x.partial_cmp(y).unwrap_or(std::cmp::Ordering::Equal),
+        (Value::Integer(x), Value::Float(y)) => {
+            (*x as f64).partial_cmp(y).unwrap_or(std::cmp::Ordering::Equal)
+        }
+        (Value::Float(x), Value::Integer(y)) => {
+            x.partial_cmp(&(*y as f64)).unwrap_or(std::cmp::Ordering::Equal)
+        }
+        (Value::Text(x), Value::Text(y)) => x.cmp(y),
+        (Value::Date(x), Value::Date(y)) => x.cmp(y),
+        (Value::Timestamp(x), Value::Timestamp(y)) => x.cmp(y),
+        _ => std::cmp::Ordering::Equal, // Null, mixed types: equal (degraded)
     }
 }
 
@@ -320,7 +550,9 @@ impl ExchangeOperator for RepartitionExchange {
 pub fn from_spec(spec: &ExchangeSpec) -> SqlResult<Box<dyn ExchangeOperator>> {
     spec.validate()?;
     Ok(match spec.mode {
-        ExchangeMode::Gather => Box::new(GatherExchange),
+        ExchangeMode::Gather => Box::new(GatherExchange {
+            kind: spec.agg_merge,
+        }),
         ExchangeMode::Broadcast => Box::new(BroadcastExchange {
             max_bytes: spec.broadcast_max_bytes,
         }),
@@ -415,5 +647,145 @@ mod tests {
         assert_eq!(out.len(), 3);
         let total: usize = out.iter().map(|p| p.len()).sum();
         assert_eq!(total, 10);
+    }
+
+    // =================================================================
+    // T1 tests — real AggMergeKind dispatch (v3.10 T1 spec)
+    // =================================================================
+
+    /// T1.1: Count partials sum correctly (3 partitions × 100 = 300).
+    #[test]
+    fn test_t1_gather_count_merges_partials() {
+        use sqlrustgo_types::Value;
+        // 3 partitions, each with 1 row containing partial count
+        let inputs: Vec<Vec<Record>> = vec![
+            vec![vec![Value::Integer(100)]],
+            vec![vec![Value::Integer(100)]],
+            vec![vec![Value::Integer(100)]],
+        ];
+        let mut spec = ExchangeSpec::gather();
+        spec.agg_merge = Some(AggMergeKind::Count);
+        let out = run_exchange(&spec, inputs).unwrap();
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].len(), 1);
+        assert_eq!(out[0][0][0], Value::Integer(300));
+    }
+
+    /// T1.2: Sum partials sum correctly (Integer).
+    #[test]
+    fn test_t1_gather_sum_merges_integers() {
+        use sqlrustgo_types::Value;
+        let inputs: Vec<Vec<Record>> = vec![
+            vec![vec![Value::Integer(50)]],
+            vec![vec![Value::Integer(75)]],
+            vec![vec![Value::Integer(125)]],
+        ];
+        let mut spec = ExchangeSpec::gather();
+        spec.agg_merge = Some(AggMergeKind::Sum);
+        let out = run_exchange(&spec, inputs).unwrap();
+        assert_eq!(out[0][0][0], Value::Integer(250));
+    }
+
+    /// T1.3: Sum partials with Float promotion.
+    #[test]
+    fn test_t1_gather_sum_promotes_to_float() {
+        use sqlrustgo_types::Value;
+        let inputs: Vec<Vec<Record>> = vec![
+            vec![vec![Value::Integer(50)]],
+            vec![vec![Value::Float(1.5)]],
+        ];
+        let mut spec = ExchangeSpec::gather();
+        spec.agg_merge = Some(AggMergeKind::Sum);
+        let out = run_exchange(&spec, inputs).unwrap();
+        // 50 + 1.5 = 51.5 (Float promotion)
+        assert_eq!(out[0][0][0], Value::Float(51.5));
+    }
+
+    /// T1.4: Avg uses 2-column (sum, count) pair.
+    #[test]
+    fn test_t1_gather_avg_uses_pair() {
+        use sqlrustgo_types::Value;
+        // 3 partitions each contribute (sum_partial, count_partial)
+        // Total sum = 100+200+300 = 600, total count = 5+10+15 = 30
+        // avg = 600 / 30 = 20.0
+        let inputs: Vec<Vec<Record>> = vec![
+            vec![vec![Value::Integer(100), Value::Integer(5)]],
+            vec![vec![Value::Integer(200), Value::Integer(10)]],
+            vec![vec![Value::Integer(300), Value::Integer(15)]],
+        ];
+        let mut spec = ExchangeSpec::gather();
+        spec.agg_merge = Some(AggMergeKind::Avg);
+        let out = run_exchange(&spec, inputs).unwrap();
+        assert_eq!(out[0][0][0], Value::Float(20.0));
+    }
+
+    /// T1.5: Min picks smallest across partitions.
+    #[test]
+    fn test_t1_gather_min_picks_smallest() {
+        use sqlrustgo_types::Value;
+        let inputs: Vec<Vec<Record>> = vec![
+            vec![vec![Value::Integer(50)]],
+            vec![vec![Value::Integer(5)]],
+            vec![vec![Value::Integer(100)]],
+        ];
+        let mut spec = ExchangeSpec::gather();
+        spec.agg_merge = Some(AggMergeKind::Min);
+        let out = run_exchange(&spec, inputs).unwrap();
+        assert_eq!(out[0][0][0], Value::Integer(5));
+    }
+
+    /// T1.6: Max picks largest across partitions.
+    #[test]
+    fn test_t1_gather_max_picks_largest() {
+        use sqlrustgo_types::Value;
+        let inputs: Vec<Vec<Record>> = vec![
+            vec![vec![Value::Integer(50)]],
+            vec![vec![Value::Integer(5)]],
+            vec![vec![Value::Integer(1000)]],
+        ];
+        let mut spec = ExchangeSpec::gather();
+        spec.agg_merge = Some(AggMergeKind::Max);
+        let out = run_exchange(&spec, inputs).unwrap();
+        assert_eq!(out[0][0][0], Value::Integer(1000));
+    }
+
+    /// T1.7: NULL partials are skipped (not counted as 0).
+    #[test]
+    fn test_t1_gather_skips_null_partials() {
+        use sqlrustgo_types::Value;
+        let inputs: Vec<Vec<Record>> = vec![
+            vec![vec![Value::Integer(10)]],
+            vec![vec![Value::Null]], // skipped
+            vec![vec![Value::Integer(20)]],
+        ];
+        let mut spec = ExchangeSpec::gather();
+        spec.agg_merge = Some(AggMergeKind::Sum);
+        let out = run_exchange(&spec, inputs).unwrap();
+        // 10 + 20 = 30 (NULL skipped, not 0)
+        assert_eq!(out[0][0][0], Value::Integer(30));
+    }
+
+    /// T1.8: Backward compat — kind=None still does identity concat (T0 behavior).
+    #[test]
+    fn test_t1_gather_none_preserves_t0_behavior() {
+        let inputs = vec![make_rows(3), make_rows(2), make_rows(1)];
+        let out = run_exchange(&ExchangeSpec::gather(), inputs).unwrap();
+        // Should still concatenate (T0 behavior unchanged)
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].len(), 6);
+    }
+
+    /// T1.9: Count overflow is detected.
+    #[test]
+    fn test_t1_gather_count_overflow_detected() {
+        use sqlrustgo_types::Value;
+        let inputs: Vec<Vec<Record>> = vec![
+            vec![vec![Value::Integer(i64::MAX)]],
+            vec![vec![Value::Integer(1)]],
+        ];
+        let mut spec = ExchangeSpec::gather();
+        spec.agg_merge = Some(AggMergeKind::Count);
+        let result = run_exchange(&spec, inputs);
+        assert!(result.is_err());
     }
 }
