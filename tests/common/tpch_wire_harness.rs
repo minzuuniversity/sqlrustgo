@@ -25,39 +25,37 @@ pub const TABLES: &[&str] = &[
     "region", "nation", "supplier", "customer", "part", "partsupp", "orders", "lineitem",
 ];
 
-/// Start ephemeral server + load SF=0.001 fixture (data_dir = fixture dir so
-/// LOAD DATA LOCAL INFILE can whitelist the .tbl files).
-pub fn start_sf001() -> MySqlTestClient {
-    let data_dir = PathBuf::from(SF001_DIR);
+/// Start ephemeral server + load fixture dir via LOAD DATA LOCAL INFILE.
+///
+/// `timeout_s`: Some(s) → set read/write timeouts to s seconds; None → use
+/// the `MySqlTestClient` default (5s for read, 5s for write).
+fn start_with_fixture(fixture_dir: &str, timeout_s: Option<u64>) -> MySqlTestClient {
+    let data_dir = PathBuf::from(fixture_dir);
     let config = EphemeralConfig {
         data_dir: Some(data_dir),
         bootstrap_tables: false,
         bootstrap_users: true,
         ..Default::default()
     };
-    let handle = start_ephemeral(config).expect("start_ephemeral for sf001");
-    let mut client = MySqlTestClient::connect_handle(handle).expect("connect_handle for sf001");
-    load_fixture(&mut client, SF001_DIR);
+    let handle = start_ephemeral(config).expect("start_ephemeral");
+    let mut client = MySqlTestClient::connect_handle(handle).expect("connect_handle");
+    if let Some(t) = timeout_s {
+        client
+            .set_timeouts(Duration::from_secs(t), Duration::from_secs(t))
+            .expect("set_timeouts");
+    }
+    load_fixture(&mut client, fixture_dir);
     client
 }
 
-/// Start ephemeral server + load SF=0.1 fixture with 60s timeouts (data_dir
-/// = fixture dir so LOAD DATA LOCAL INFILE can whitelist the .tbl files).
+/// Start ephemeral server + load SF=0.001 fixture (5s default timeouts).
+pub fn start_sf001() -> MySqlTestClient {
+    start_with_fixture(SF001_DIR, None)
+}
+
+/// Start ephemeral server + load SF=0.1 fixture (60s timeouts for larger data).
 pub fn start_sf01() -> MySqlTestClient {
-    let data_dir = PathBuf::from(SF01_DIR);
-    let config = EphemeralConfig {
-        data_dir: Some(data_dir),
-        bootstrap_tables: false,
-        bootstrap_users: true,
-        ..Default::default()
-    };
-    let handle = start_ephemeral(config).expect("start_ephemeral for sf01");
-    let mut client = MySqlTestClient::connect_handle(handle).expect("connect_handle for sf01");
-    client
-        .set_timeouts(Duration::from_secs(60), Duration::from_secs(60))
-        .expect("set_timeouts");
-    load_fixture(&mut client, SF01_DIR);
-    client
+    start_with_fixture(SF01_DIR, Some(60))
 }
 
 /// Load all 8 .tbl files via LOAD DATA LOCAL INFILE
