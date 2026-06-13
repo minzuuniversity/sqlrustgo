@@ -1,95 +1,175 @@
 {
   "sf": "sf0.01",
-  "data_source": "data/sf0.01_data/ (60K lineitem rows)",
-  "generated": "2026-06-13",
-  "note": "Row counts captured by running each query via mysql CLI. Cell values captured separately for verification.",
+  "data_source": "data/sf0.01_data/ (60K lineitem rows, 86K total rows)",
+  "generated": "2026-06-14",
+  "note": "Row counts captured by running each query via mysql CLI. Data files include trailing | per TPC-H spec.",
   "engines": {
     "mysql": {
       "version": "12.3.2-MariaDB",
       "queries": {
-        "Q01": {"rows": 4, "duration_ms": 60.0},
-        "Q02": {"rows": 0, "duration_ms": 73.6},
-        "Q03": {"rows": 1, "duration_ms": 32.9},
-        "Q04": {"rows": 4, "duration_ms": 53.5},
-        "Q05": {"rows": 0, "duration_ms": 57.3},
-        "Q06": {"rows": 1, "duration_ms": 46.4},
-        "Q07": {"rows": 0, "duration_ms": 77.4},
-        "Q08": {"rows": 0, "duration_ms": 41.3},
-        "Q09": {"rows": 0, "duration_ms": 60.0},
-        "Q10": {"rows": 5, "duration_ms": 48.3},
-        "Q11": {"rows": 0, "duration_ms": 49.6},
-        "Q12": {"rows": 1, "duration_ms": 62.2},
-        "Q13": {"rows": 11, "duration_ms": 46.9},
-        "Q14": {"rows": 1, "duration_ms": 52.2},
-        "Q15": {"rows": 7, "duration_ms": 55.6},
-        "Q16": {"rows": 11, "duration_ms": 58.6},
-        "Q17": {"rows": 1, "duration_ms": 47.6},
-        "Q18": {"rows": 0, "duration_ms": 59.6},
-        "Q19": {"rows": 1, "duration_ms": 50.9},
-        "Q20": {"rows": 0, "duration_ms": 54.5},
-        "Q21": {"rows": 0, "duration_ms": 121.6},
-        "Q22": {"rows": 5, "duration_ms": 44.3}
+        "Q01": {
+          "rows": 6,
+          "duration_ms": 48.76
+        },
+        "Q02": {
+          "rows": 0,
+          "duration_ms": 9.85
+        },
+        "Q03": {
+          "rows": 10,
+          "duration_ms": 90.69
+        },
+        "Q04": {
+          "rows": 5,
+          "duration_ms": 22.25
+        },
+        "Q05": {
+          "rows": 1,
+          "duration_ms": 43.83
+        },
+        "Q06": {
+          "rows": 1,
+          "duration_ms": 18.2
+        },
+        "Q07": {
+          "rows": 3,
+          "duration_ms": 20.68
+        },
+        "Q08": {
+          "rows": 1,
+          "duration_ms": 46.15
+        },
+        "Q09": {
+          "rows": 0,
+          "duration_ms": 230.44
+        },
+        "Q10": {
+          "rows": 20,
+          "duration_ms": 53.96
+        },
+        "Q11": {
+          "rows": 0,
+          "duration_ms": 11.53
+        },
+        "Q12": {
+          "rows": 2,
+          "duration_ms": 19.39
+        },
+        "Q13": {
+          "rows": 22,
+          "duration_ms": 390.72
+        },
+        "Q14": {
+          "rows": 1,
+          "duration_ms": 18.26
+        },
+        "Q15": {
+          "rows": 91,
+          "duration_ms": 18.74
+        },
+        "Q16": {
+          "rows": 282,
+          "duration_ms": 10.35
+        },
+        "Q17": {
+          "rows": 1,
+          "duration_ms": 77.07
+        },
+        "Q18": {
+          "rows": 100,
+          "duration_ms": 92.19
+        },
+        "Q19": {
+          "rows": 1,
+          "duration_ms": 18.42
+        },
+        "Q20": {
+          "rows": 0,
+          "duration_ms": 10.0
+        },
+        "Q21": {
+          "rows": 0,
+          "duration_ms": 42481.17
+        },
+        "Q22": {
+          "rows": 0,
+          "duration_ms": 15.56
+        }
       },
-      "total_ms": 1309,
-      "note": "Reference baseline — MySQL/MariaDB row counts are ground truth"
-    },
-    "sqlite": {
-      "version": "3.51.0",
-      "queries": {
-        "Q01": {"rows": 8},
-        "Q02": {"rows": 0},
-        "Q03": {"rows": 12},
-        "Q04": {"rows": 7},
-        "Q05": {"rows": 3},
-        "Q06": {"rows": 2},
-        "Q07": {"rows": -1, "err": "SQLite vendor: extra subquery"},
-        "Q08": {"rows": -1, "err": "SQLite vendor: extra subquery"},
-        "Q09": {"rows": -1, "err": "SQLite vendor: extra subquery"},
-        "Q10": {"rows": 22},
-        "Q11": {"rows": 0},
-        "Q12": {"rows": 4},
-        "Q13": {"rows": 24},
-        "Q14": {"rows": 3},
-        "Q15": {"rows": 93},
-        "Q16": {"rows": 284},
-        "Q17": {"rows": 3},
-        "Q18": {"rows": 102},
-        "Q19": {"rows": 2},
-        "Q20": {"rows": 0},
-        "Q21": {"rows": 0},
-        "Q22": {"rows": 0}
-      },
-      "note": "SQLite row counts differ from MySQL due to .separator| parser specifics. Q7-9 fail on extra subquery (SQLite-specific syntax). NOT a fair reference for SQLRustGo."
+      "total_ms": 43748.21,
+      "note": "Ground truth baseline. 22/22 queries return rows."
     },
     "sqlrustgo": {
       "version": "v3.9.0-rc7",
       "queries": {
-        "Q01": {"rows": 4},
-        "Q02": {"rows": 0},
-        "Q03": {"rows": 1},
-        "Q04": {"rows": 4},
-        "Q05": {"rows": 0},
-        "Q06": {"rows": 1},
-        "Q07": {"rows": 0},
-        "Q08": {"rows": 0},
-        "Q09": {"rows": 0},
-        "Q10": {"rows": 5},
-        "Q11": {"rows": 0},
-        "Q12": {"rows": 1},
-        "Q13": {"rows": 11},
-        "Q14": {"rows": 1},
-        "Q15": {"rows": 7},
-        "Q16": {"rows": 11},
-        "Q17": {"rows": 1},
-        "Q18": {"rows": 0},
-        "Q19": {"rows": 1},
-        "Q20": {"rows": 0},
-        "Q21": {"rows": 0},
-        "Q22": {"rows": 5}
+        "Q01": {
+          "rows": 4
+        },
+        "Q02": {
+          "rows": 0
+        },
+        "Q03": {
+          "rows": 1
+        },
+        "Q04": {
+          "rows": 4
+        },
+        "Q05": {
+          "rows": 0
+        },
+        "Q06": {
+          "rows": 1
+        },
+        "Q07": {
+          "rows": 0
+        },
+        "Q08": {
+          "rows": 0
+        },
+        "Q09": {
+          "rows": 0
+        },
+        "Q10": {
+          "rows": 5
+        },
+        "Q11": {
+          "rows": 0
+        },
+        "Q12": {
+          "rows": 1
+        },
+        "Q13": {
+          "rows": 11
+        },
+        "Q14": {
+          "rows": 1
+        },
+        "Q15": {
+          "rows": 7
+        },
+        "Q16": {
+          "rows": 11
+        },
+        "Q17": {
+          "rows": 1
+        },
+        "Q18": {
+          "rows": 0
+        },
+        "Q19": {
+          "rows": 1
+        },
+        "Q20": {
+          "rows": 0
+        },
+        "Q21": {
+          "rows": 0
+        },
+        "Q22": {
+          "rows": 5
+        }
       },
-      "total_ms": 2573,
-      "match_mysql": "22/22",
-      "note": "Captured via wire test (mysql CLI → sqlrustgo-mysql-server on port 3307). 100% row-count match with MySQL baseline."
+      "note": "Captured via wire test (mysql CLI \u2192 sqlrustgo-mysql-server). Different lineitem subset (4 groups vs 6); matches PG ground truth for that subset. Needs re-run on current 60K data to verify 22/22 match MySQL."
     }
   }
 }
