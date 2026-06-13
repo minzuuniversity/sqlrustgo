@@ -77,18 +77,31 @@ for i in 1 2 3 4 5 6 7 8 9 10; do
     fi
 done
 
-# [2] Load TPC-H fixture (prefer INSERT mode — works on all v3.9.0 binaries;
-#    LOAD DATA mode requires recent PR-3233+ binary with fixed data_dir path)
+# [2] Load TPC-H fixture
+#   LOADER selects fixture path. Default = loaddata (macmini path, ~10x faster).
+#   Set TPC_H_LOADER to point at load_tpch_fixture_insert.sh for legacy.
+#   LOAD DATA needs:
+#     - server's --data-dir whitelist (so .tbl paths must be inside DATA_DIR)
+#     - binary built with macmini 3-bug fix (PR-3267/#3382) for stable path resolve
 echo ""
-echo "[2/4] Loading TPC-H fixture: $FIXTURE (INSERT mode) ..."
-LOADER="${TPC_H_LOADER:-$SCRIPT_DIR/load_tpch_fixture_insert.sh}"
+echo "[2/4] Loading TPC-H fixture: $FIXTURE (LOAD DATA mode) ..."
+LOADER="${TPC_H_LOADER:-$SCRIPT_DIR/load_tpch_fixture_loaddata.sh}"
 if [ -f "$LOADER" ]; then
     HOST="$HOST" PORT="$PORT" FIXTURE="$FIXTURE" \
+        SERVER_DATA_DIR="$DATA_DIR" \
         bash "$LOADER" || {
         echo "WARN: fixture load failed; continuing (queries may error)" >&2
     }
 else
-    echo "  WARN: $LOADER missing; skipping" >&2
+    # Fallback to INSERT mode if LOADDATA loader not found
+    echo "  WARN: $LOADER missing; falling back to INSERT mode" >&2
+    LOADER="$SCRIPT_DIR/load_tpch_fixture_insert.sh"
+    if [ -f "$LOADER" ]; then
+        HOST="$HOST" PORT="$PORT" FIXTURE="$FIXTURE" \
+            bash "$LOADER" || {
+            echo "WARN: INSERT fixture load failed; continuing" >&2
+        }
+    fi
 fi
 
 # [3] Launch TPC-H rotation
