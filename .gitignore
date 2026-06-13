@@ -27,3 +27,6 @@ tests/data/tpch-sf01/*.wal
 
 # Stability test output directories (timestamps appended) — not for tracking
 test_results/
+
+# REPL / mysql-server default data_dir (runtime side effects: .json table dumps + .wal)
+.sqlrustgo/
