@@ -95,35 +95,40 @@ def load_pg(db_url: str, tbl_dir: str, schema_sql: str) -> bool:
 def load_mysql(host: str, port: int, db_name: str, tbl_dir: str, schema_sql: str) -> bool:
     """Load TPC-H .tbl files into MySQL/MariaDB.
     
-    Workaround for macOS MariaDB client 12.3 bug: 'USE <db>' in -e context
-    triggers empty-user re-auth, losing all privileges. Solution: write
-    all SQL (DDL + LOAD) to a single .sql file and pipe via stdin.
+    On macOS, the bundled MariaDB client (12.3.x) has a bug where
+    -h 127.0.0.1 + unix_socket auth fails: TCP path re-auths as empty user.
+    Workaround: omit -h/-P to use unix socket (OS user auto-mapped).
+    For remote MySQL servers, set host/port via env or --mysql-host.
     """
-    # Build a single SQL script with DDL + LOAD statements
-    sql_lines = [f"DROP DATABASE IF EXISTS {db_name};",
-                 f"CREATE DATABASE {db_name};",
-                 f"USE {db_name};"]
+    # Detect if we're on macOS using socket auth (default local)
+    use_socket = host in ("127.0.0.1", "localhost", "")
+    mysql_cmd = ["mysql", "-u", "liying"]
+    if not use_socket:
+        mysql_cmd.extend(["-h", host, "-P", str(port)])
+
+    # Drop and recreate DB
+    r = subprocess.run(mysql_cmd,
+                       input=f"DROP DATABASE IF EXISTS {db_name};\nCREATE DATABASE {db_name};",
+                       capture_output=True, text=True, timeout=60)
+    if r.returncode != 0:
+        print(f"  [mysql] DB create failed: {r.stderr[:200]}")
+        return False
+
+    # Build LOAD script
+    sql_lines = [f"USE {db_name};"]
     sql_lines.append(schema_sql)
     for tbl in ["region","nation","supplier","customer","part","partsupp","orders","lineitem"]:
         tbl_path = f"{tbl_dir}/{tbl}.tbl"
         if not Path(tbl_path).exists():
             continue
-        # LOAD DATA LOCAL INFILE needs full path
         sql_lines.append(
             f"LOAD DATA LOCAL INFILE '{tbl_path}' INTO TABLE {tbl} "
             f"FIELDS TERMINATED BY '|' LINES TERMINATED BY '|';"
         )
 
-    script_path = "/tmp/tpch_mysql_load.sql"
-    Path(script_path).write_text("\n".join(sql_lines))
-
-    # Pipe the script via stdin
-    r = subprocess.run(
-        ["mysql", "-h", host, "-P", str(port), "-u", "liying",
-         "--local-infile=1"],
-        input=Path(script_path).read_text(),
-        capture_output=True, text=True, timeout=300
-    )
+    cmd = mysql_cmd + ["--local-infile=1"]
+    r = subprocess.run(cmd, input="\n".join(sql_lines),
+                       capture_output=True, text=True, timeout=300)
     if r.returncode != 0:
         print(f"  [mysql] load script failed: {r.stderr[:200]}")
         return False
@@ -131,11 +136,7 @@ def load_mysql(host: str, port: int, db_name: str, tbl_dir: str, schema_sql: str
 
 
 def load_sqlrustgo(host: str, port: int, db_name: str, tbl_dir: str) -> bool:
-    """Load TPC-H .tbl files into SQLRustGo via mysql CLI stdin.
-    
-    SQLRustGo needs explicit CREATE TABLE DDLs. Uses stdin to avoid the
-    macOS MariaDB client 'USE in -e' bug.
-    """
+    """Load TPC-H .tbl files into SQLRustGo via mysql CLI stdin."""
     ddls = [
         "CREATE TABLE region (r_regionkey INTEGER PRIMARY KEY, r_name TEXT NOT NULL, r_comment TEXT)",
         "CREATE TABLE nation (n_nationkey INTEGER PRIMARY KEY, n_name TEXT NOT NULL, n_regionkey INTEGER NOT NULL, n_comment TEXT)",
@@ -147,9 +148,7 @@ def load_sqlrustgo(host: str, port: int, db_name: str, tbl_dir: str) -> bool:
         "CREATE TABLE lineitem (l_orderkey INTEGER NOT NULL, l_partkey INTEGER NOT NULL, l_suppkey INTEGER NOT NULL, l_linenumber INTEGER NOT NULL, l_quantity INTEGER NOT NULL, l_extendedprice REAL NOT NULL, l_discount REAL NOT NULL, l_tax REAL NOT NULL, l_returnflag TEXT NOT NULL, l_linestatus TEXT NOT NULL, l_shipdate TEXT NOT NULL, l_commitdate TEXT NOT NULL, l_receiptdate TEXT NOT NULL, l_shipinstruct TEXT NOT NULL, l_shipmode TEXT NOT NULL, l_comment TEXT NOT NULL)",
     ]
 
-    sql_lines = [f"DROP DATABASE IF EXISTS {db_name};",
-                 f"CREATE DATABASE {db_name};",
-                 f"USE {db_name};"]
+    sql_lines = [f"USE {db_name};"]
     sql_lines.extend(ddls)
     for tbl in ["region","nation","supplier","customer","part","partsupp","orders","lineitem"]:
         tbl_path = f"{tbl_dir}/{tbl}.tbl"
@@ -160,14 +159,11 @@ def load_sqlrustgo(host: str, port: int, db_name: str, tbl_dir: str) -> bool:
             f"FIELDS TERMINATED BY '|' LINES TERMINATED BY '|';"
         )
 
-    script_path = "/tmp/tpch_sqlrustgo_load.sql"
-    Path(script_path).write_text("\n".join(sql_lines))
-
     r = subprocess.run(
-        ["mysql", "-h", host, "-P", str(port), "-u", "liying",
+        ["mysql", "-h", host, "-P", str(port), "-u", "tester",
          "--local-infile=1"],
-        input=Path(script_path).read_text(),
-        capture_output=True, text=True, timeout=300
+        input="\n".join(sql_lines), text=True,
+        capture_output=True, timeout=300
     )
     if r.returncode != 0:
         print(f"  [sqlrustgo] load script failed: {r.stderr[:200]}")
@@ -212,13 +208,15 @@ def run_query_pg(db_url: str, sql: str) -> tuple[int, float, list[list]]:
 
 
 def run_query_mysql(host: str, port: int, db: str, sql: str) -> tuple[int, float, list[list]]:
-    """Run SQL on MySQL/MariaDB via stdin (avoids 'USE in -e' client bug)."""
-    start = time.perf_counter()
+    """Run SQL on MySQL/MariaDB via stdin (uses socket auth for local macOS)."""
+    use_socket = host in ("127.0.0.1", "localhost", "")
+    mysql_cmd = ["mysql", "-u", "liying", "-N"]
+    if not use_socket:
+        mysql_cmd.extend(["-h", host, "-P", str(port)])
     wrapped_sql = f"USE {db};\n{sql.rstrip(';')}"
-    r = subprocess.run(
-        ["mysql", "-h", host, "-P", str(port), "-u", "liying", "-N"],
-        input=wrapped_sql, text=True, capture_output=True, timeout=300
-    )
+    start = time.perf_counter()
+    r = subprocess.run(mysql_cmd, input=wrapped_sql,
+                       text=True, capture_output=True, timeout=300)
     elapsed_ms = (time.perf_counter() - start) * 1000
     if r.returncode != 0:
         return -1, elapsed_ms, []
