@@ -78,6 +78,16 @@ mysql_q() {
     fi
 }
 
+# Run a SQL file via mysql < file (avoids argv length limits for large INSERTs).
+mysql_run_file() {
+    local file="$1"
+    if [ -n "$PASSWORD" ]; then
+        mysql -h "$HOST" -P "$PORT" -u "$USER" -p"$PASSWORD" < "$file" 2>&1
+    else
+        mysql -h "$HOST" -P "$PORT" -u "$USER" < "$file" 2>&1
+    fi
+}
+
 # Build INSERT batch from a .tbl file. Args: tbl name, file path, n_cols
 # We use multi-row INSERT VALUES (a,b),(c,d),... for speed.
 # Each line in .tbl is pipe-delimited with trailing pipe (TPC-H format).
@@ -165,9 +175,17 @@ for i in "${!TABLES[@]}"; do
     echo "  Built $row_count row tuples"
 
     echo "[$(date +%H:%M:%S)] INSERT INTO $tbl ..."
-    if ! mysql_q "INSERT INTO $tbl VALUES $rows;" 2>&1 | tail -5; then
+    # Write the full INSERT statement to a temp file to avoid command-line
+    # length limits (60K-line lineitem VALUES list exceeds 1MB arg length).
+    # Use mysql < file rather than mysql -e to handle large payloads.
+    SQL_FILE=$(mktemp /tmp/load_tpch.XXXXXX.sql)
+    {
+        echo "INSERT INTO $tbl VALUES $rows;"
+    } > "$SQL_FILE"
+    if ! mysql_run_file "$SQL_FILE" 2>&1 | tail -5; then
         echo "WARN: INSERT INTO $tbl had issues (continuing)" >&2
     fi
+    rm -f "$SQL_FILE"
 
     # Row count sanity
     count=$(mysql_q "SELECT COUNT(*) FROM $tbl;" 2>/dev/null | tail -1 | tr -d ' ' || echo 0)
