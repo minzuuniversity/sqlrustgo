@@ -226,6 +226,48 @@ impl ExchangeOperator for RepartitionExchange {
 - 外部参考: Apache Spark Exchange, Apache Flink DataExchange, DuckDB exchange operator
 - 30min TPC-H 实测 (2026-06-14 Z440, test_results/tpch_30min_20260614_002900/)
 
+## 十、Future Work & Followup Specs
+
+### v3.10.1 followups (each is its own spec, NOT this PR)
+
+| Followup | 工作量 | Spec 编号 | 触发原因 |
+|----------|--------|-----------|----------|
+| Spill-to-disk 配合 exchange | 6h | 待开 (建议 #3186) | exchange 跨 partition 大结果集时内存压力大 |
+| Backpressure (queue depth 限制) | 4h | 待开 (建议 #3187) | 慢 consumer 致 producer OOM |
+| Exchange SIMD gather (vector merge) | 3h | 跟 #3184 协调 | 跨 partition vector gather 矢量化 |
+| `partition_strategy` 显式参数化 | 3h | (本文档 CF2) | CBO 选 Hash/Range/Key/List |
+| CBO exchange cost (CBO 决策) | 5h | 跟 #3182 协调, v3.11 | `unified_cost.rs` 加 exchange cost |
+
+### v3.10 之后 (v3.11+)
+
+- Multi-tier exchange 嵌套 (e.g., 2-stage repartition)
+- Exchange 错误恢复 (partial partition 失败时回滚)
+- Distributed exchange (跨 node 跨 partition, 跟 `crates/distributed` 协同)
+
+## 十一、跟 #3184 SIMD 协同表 (Exchange × SIMD)
+
+| 阶段 | #3183 (Parallel) | #3185 (Exchange) | #3184 (SIMD) |
+|------|------------------|------------------|--------------|
+| 1. Scan | 4 partitions 各自 SIMD scan ✅ (vectorization.rs) | n/a | n/a |
+| 2. Filter (WHERE) | 4 partitions 各自 SIMD filter ✅ | n/a | (沿用 #3184 §2.2) |
+| 3. Aggregate | 4 partitions 各产 partials ✅ (parallel_scan_agg) | n/a | (沿用 #3184 §2.3) |
+| 4. **Exchange** | n/a | **3 modes** (本 spec) | n/a |
+| 5. **Post-merge** | n/a | (sequential merge) | (gap: SIMD gather 未实现) |
+| 6. Final output | single thread | single thread | (gap: 不在 SIMD 范围) |
+
+**关键 gap (本 spec 留作 v3.10.1)**: row 5 跨 partition vector gather SIMD 化。
+**建议实现顺序**:
+- v3.10.1: Gather SIMD (concat 阶段, 简单, 4h)
+- v3.10.1: Repartition SIMD (hash 阶段, 中等, 6h)
+- v3.10.1: Broadcast SIMD (replicate 阶段, 简单, 2h)
+
+### 协同 spec 引用
+
+- #3183 (P3-4 ParallelExecutor, v3.9.0-rc6 合并)
+- #3184 (P3-5 SIMD, v3.10 启动)
+- #3182 (P3-3 Cost Optimizer, CBO 接 exchange cost)
+- #3171 (P0-3 INT-2 主路径集成, 已完成)
+
 ## 九、Changelog & 评审记录
 
 ### 2026-06-14 — kickoff (T0 commit 0df6f450 + spec c9280566)
