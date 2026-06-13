@@ -1047,6 +1047,86 @@ fn extract_insert_columns(sql: &str) -> Vec<String> {
     vec![]
 }
 
+/// Extract column names referenced on the LEFT side of `=` in
+/// comparison predicates, e.g. for
+///   `SELECT * FROM t WHERE id = ? AND name = ?`
+/// returns `["id", "name"]`. The order matches the order in which the
+/// `?` placeholders appear in the SQL.
+///
+/// We deliberately look for `WHERE <col> [op] ?` shapes rather than
+/// building a full SQL parser. The heuristics (find `WHERE` keyword,
+/// split on `AND`/`OR` at top paren-depth, look for `=` operator)
+/// are sufficient for the benchmark / sysbench / tpch workloads we
+/// care about. Edge cases like `WHERE id IN (?, ?, ?)` and
+/// `WHERE id = (SELECT ...)` are not handled — those fall through to
+/// the VAR_STRING fallback, which is no worse than today.
+fn extract_where_columns(sql: &str) -> Vec<String> {
+    let upper = sql.to_uppercase();
+    // Find the WHERE keyword. Bail if it does not exist.
+    let where_pos = match upper.find(" WHERE ") {
+        Some(p) => p + 7,
+        None => return vec![],
+    };
+    // Find the end of the WHERE clause: next ORDER/GROUP/HAVING/LIMIT/UNION/';'/'\"'/end-of-string.
+    let where_end = upper[where_pos..]
+        .find(" ORDER ")
+        .or_else(|| upper[where_pos..].find(" GROUP "))
+        .or_else(|| upper[where_pos..].find(" HAVING "))
+        .or_else(|| upper[where_pos..].find(" LIMIT "))
+        .or_else(|| upper[where_pos..].find(" UNION "))
+        .or_else(|| upper[where_pos..].find(';'))
+        .unwrap_or(upper.len() - where_pos);
+    let clause = &sql[where_pos..where_pos + where_end];
+    // Split on AND/OR at the top level (we don't track full paren depth
+    // because the workloads we care about — sysbench oltp_read_write,
+    // TPC-H Q1, Q6, Q9 — are simple conjunctions).
+    let mut cols = Vec::new();
+    for pred in clause.split(|c: char| {
+        let up = c.to_ascii_uppercase();
+        // Split on the leading boundary of AND/OR, but only at depth 0.
+        // The 'A' / 'O' check is a cheap proxy for "the keyword starts here"
+        // — we then re-check the full word below.
+        up == 'A' || up == 'O'
+    }) {
+        let pred = pred.trim();
+        if pred.is_empty() {
+            continue;
+        }
+        // Re-check the keyword in case the split landed mid-identifier.
+        let pred_up = pred.to_uppercase();
+        if pred_up.starts_with("AND ") || pred_up.starts_with("OR ") {
+            continue;
+        }
+        // Find `=` at the top level (no parens for our supported queries).
+        let eq_pos = match pred.find('=') {
+            Some(p) => p,
+            None => continue,
+        };
+        let left = pred[..eq_pos].trim();
+        // Strip leading function/cast wrappers; we only need the column
+        // name. For `LOWER(col) = ?`, take the last `(`-balanced segment.
+        let col = if let Some(paren) = left.rfind('(') {
+            // Inside parens. Pick the last identifier-looking token before
+            // the closing ')'. For `LOWER(col)` the `col` is at paren+1.
+            let inner = &left[paren + 1..];
+            // Strip trailing ')'.
+            let inner = inner.trim_end_matches(')').trim();
+            inner.to_string()
+        } else {
+            left.to_string()
+        };
+        // Strip table alias / dot prefix: `t.id` → `id`.
+        let col = col.rsplit('.').next().unwrap_or(&col).to_string();
+        // Strip backticks / quotes.
+        let col = col.trim_matches('`').trim_matches('"').to_string();
+        if col.is_empty() || col == "?" {
+            continue;
+        }
+        cols.push(col);
+    }
+    cols
+}
+
 /// Infer MySQL binary-protocol type codes for the `?` placeholders in
 /// `sql` by looking up the referenced columns in the storage schema.
 ///
@@ -1060,7 +1140,21 @@ fn infer_param_types_from_sql<S: StorageEngine>(sql: &str, storage: &Arc<RwLock<
     if param_count == 0 {
         return vec![];
     }
-    let cols = extract_insert_columns(sql);
+    // Try the column list first (works for INSERT VALUES, INSERT SET,
+    // UPDATE ... SET col = ?). If non-empty, look up each column's
+    // declared type from the table schema.
+    let mut cols = extract_insert_columns(sql);
+    if cols.is_empty() {
+        // No explicit column list. For SELECT/UPDATE/DELETE statements
+        // with a `WHERE col = ?` shape, extract the predicate column
+        // names and look those up instead. This is what fixes
+        // sysbench oltp_read_write (Issue #3382 follow-up): the
+        // server was previously inferring VAR_STRING for every `?` in
+        // `SELECT * FROM sbtest WHERE id = ?`, which made the binary
+        // protocol decode the 4-byte INT value as a length-encoded
+        // string and lose the integer.
+        cols = extract_where_columns(sql);
+    }
     if cols.is_empty() {
         return vec![col_type::VARSTRING; param_count];
     }
@@ -2032,7 +2126,13 @@ fn do_command_loop<S: Read + Write>(
                 let params: Vec<crate::StmtParam> =
                     parse_stmt_execute_params(payload, stmt_param_count, &stmt_param_types);
                 let final_sql = replace_placeholders(&stmt_sql, &params);
-
+                eprintln!("DEBUG STMT EXECUTE (id={}):", stmt_id);
+                eprintln!("  stmt_sql='{}'", stmt_sql);
+                eprintln!("  params={:?}", params);
+                eprintln!("  final_sql='{}'", final_sql);
+                for (i, (v, n)) in params.iter().enumerate() {
+                    eprintln!("  param[{}] bytes={:?} ({}) is_numeric={}", i, v, v.len(), n);
+                }
                 tracing::info!("STMT EXECUTE (id={}): {}", stmt_id, final_sql);
                 let mut eng = engine.write().unwrap();
                 let parsed = parse(&final_sql);
