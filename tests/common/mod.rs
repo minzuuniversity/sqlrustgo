@@ -602,7 +602,11 @@ impl MySqlTestClient {
     /// `params_payload` is the binary-protocol payload AFTER
     /// stmt_id+flags+iteration_count (i.e. null_bitmap + type codes
     /// + values).
-    pub fn stmt_execute_raw(&mut self, stmt_id: u32, params_payload: &[u8]) -> wire_err::Result<Vec<u8>> {
+    pub fn stmt_execute_raw(
+        &mut self,
+        stmt_id: u32,
+        params_payload: &[u8],
+    ) -> wire_err::Result<Vec<u8>> {
         let p = build_com_stmt_execute(stmt_id, params_payload);
         write_packet(&mut self.stream, 0, &p)?;
         read_packet(&mut self.stream)
@@ -693,3 +697,5 @@ impl MySqlTestClient {
         parse_ok_packet_affected(&resp)
     }
 }
+
+pub mod tpch_wire_harness;
