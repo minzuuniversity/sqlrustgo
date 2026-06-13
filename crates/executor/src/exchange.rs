@@ -41,7 +41,8 @@ use sqlrustgo_types::{SqlError, SqlResult};
 
 /// Exchange mode — which redistribution pattern to use.
 ///
-/// See `docs/openspec/3185-exchange-operator.md` §1.2 for the 3 modes.
+/// See `docs/openspec/3185-exchange-operator.md` §1.2 for the 3 modes
+/// and §2.2 for how Repartition delegates to `PartitionStrategy`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ExchangeMode {
     /// 1→1: sum/merge partial results into one output.
@@ -52,6 +53,9 @@ pub enum ExchangeMode {
     Broadcast,
     /// N→N: re-hash on a key so matching keys end up in same partition.
     /// Trigger: hash-join with both sides large.
+    /// **Inner strategy**: delegated to `crates/distributed/src/partition.rs`
+    /// `PartitionStrategy` (Hash/Range/Key/List). v3.10 default: Hash.
+    /// v3.10.1: expose `partition_strategy` field for CBO choice.
     Repartition,
 }
 
