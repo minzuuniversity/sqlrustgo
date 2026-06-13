@@ -67,38 +67,49 @@ pub mod wire_err {
 // =========================================================================
 // MySQL packet framing helpers.
 // =========================================================================
-fn read_packet(stream: &mut TcpStream) -> wire_err::Result<Vec<u8>> {
-    let mut header = [0u8; 4];
-    stream
-        .read_exact(&mut header)
-        .map_err(|e| wire_err::msg(format!("read packet header: {e}")))?;
-    let len = u32::from_le_bytes(header) & 0x00FF_FFFF;
-    let mut payload = vec![0u8; len as usize];
-    stream
-        .read_exact(&mut payload)
-        .map_err(|e| wire_err::msg(format!("read packet payload (len={len}): {e}")))?;
-    Ok(payload)
+pub mod wire_proto {
+    use super::wire_err;
+    use std::io::Read;
+    use std::net::TcpStream;
+
+    pub fn read_packet(stream: &mut TcpStream) -> wire_err::Result<Vec<u8>> {
+        let mut header = [0u8; 4];
+        stream
+            .read_exact(&mut header)
+            .map_err(|e| wire_err::msg(format!("read packet header: {e}")))?;
+        let len = u32::from_le_bytes(header) & 0x00FF_FFFF;
+        let mut payload = vec![0u8; len as usize];
+        stream
+            .read_exact(&mut payload)
+            .map_err(|e| wire_err::msg(format!("read packet payload (len={len}): {e}")))?;
+        Ok(payload)
+    }
+
+    pub fn write_packet(stream: &mut TcpStream, seq: u8, payload: &[u8]) -> wire_err::Result<()> {
+        let len = payload.len() as u32;
+        let header = [len as u8, (len >> 8) as u8, (len >> 16) as u8, seq];
+        use std::io::Write;
+        stream
+            .write_all(&header)
+            .map_err(|e| wire_err::msg(format!("write header: {e}")))?;
+        stream
+            .write_all(payload)
+            .map_err(|e| wire_err::msg(format!("write payload: {e}")))?;
+        stream
+            .flush()
+            .map_err(|e| wire_err::msg(format!("flush: {e}")))?;
+        Ok(())
+    }
+
+    /// Public alias for tests that need to drain raw packets.
+    pub fn read_packet_public(stream: &mut TcpStream) -> Vec<u8> {
+        read_packet(stream).expect("read_packet")
+    }
 }
 
-fn write_packet(stream: &mut TcpStream, seq: u8, payload: &[u8]) -> wire_err::Result<()> {
-    if payload.len() > 0xFF_FFFF {
-        return Err(wire_err::msg(format!(
-            "packet payload too large: {}",
-            payload.len()
-        )));
-    }
-    let header = (payload.len() as u32) | ((seq as u32) << 24);
-    stream
-        .write_all(&header.to_le_bytes())
-        .map_err(|e| wire_err::msg(format!("write packet header: {e}")))?;
-    stream
-        .write_all(payload)
-        .map_err(|e| wire_err::msg(format!("write packet payload: {e}")))?;
-    stream
-        .flush()
-        .map_err(|e| wire_err::msg(format!("flush: {e}")))?;
-    Ok(())
-}
+// Re-export at the module root so existing callers like
+// `read_packet(&mut self.stream)?` keep working unchanged.
+pub use wire_proto::{read_packet, write_packet};
 
 /// Parse the server's HandshakeV10 packet and return the 20-byte
 /// scramble (auth_plugin_data) used in the mysql_native_password
@@ -209,6 +220,24 @@ fn build_com_query(sql: &str) -> Vec<u8> {
 
 fn build_com_quit() -> Vec<u8> {
     vec![0x01] // COM_QUIT
+}
+
+fn build_com_stmt_prepare(sql: &str) -> Vec<u8> {
+    let mut p = Vec::with_capacity(1 + sql.len() + 1);
+    p.push(0x16); // COM_STMT_PREPARE
+    p.extend_from_slice(sql.as_bytes());
+    p.push(0); // NUL terminator (some clients include it)
+    p
+}
+
+fn build_com_stmt_execute(stmt_id: u32, params: &[u8]) -> Vec<u8> {
+    let mut p = Vec::new();
+    p.push(0x17); // COM_STMT_EXECUTE
+    p.extend_from_slice(&stmt_id.to_le_bytes());
+    p.push(0x00); // flags: CURSOR_TYPE_NONE
+    p.extend_from_slice(&1u32.to_le_bytes()); // iteration_count
+    p.extend_from_slice(params);
+    p
 }
 
 /// Inspect a server response packet: returns `Ok(())` for an OK packet
@@ -560,6 +589,33 @@ impl MySqlTestClient {
         Ok(())
     }
 
+    /// Send COM_STMT_PREPARE. Returns the raw response bytes.
+    /// The caller is responsible for draining any param/column def
+    /// packets the server sends after the OK status.
+    pub fn stmt_prepare_raw(&mut self, sql: &str) -> wire_err::Result<Vec<u8>> {
+        let p = build_com_stmt_prepare(sql);
+        write_packet(&mut self.stream, 0, &p)?;
+        read_packet(&mut self.stream)
+    }
+
+    /// Send COM_STMT_EXECUTE. Returns the raw response bytes.
+    /// `params_payload` is the binary-protocol payload AFTER
+    /// stmt_id+flags+iteration_count (i.e. null_bitmap + type codes
+    /// + values).
+    pub fn stmt_execute_raw(
+        &mut self,
+        stmt_id: u32,
+        params_payload: &[u8],
+    ) -> wire_err::Result<Vec<u8>> {
+        let p = build_com_stmt_execute(stmt_id, params_payload);
+        write_packet(&mut self.stream, 0, &p)?;
+        read_packet(&mut self.stream)
+    }
+
+    /// Expose the raw TCP stream for tests that need direct access.
+    pub fn raw_stream(&mut self) -> &mut TcpStream {
+        &mut self.stream
+    }
     /// Override the read/write timeouts on the underlying TCP stream.
     /// SF=0.1 wire test needs >30s for Q17; default 5s is too short.
     pub fn set_timeouts(
