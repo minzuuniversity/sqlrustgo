@@ -25,17 +25,33 @@ pub const TABLES: &[&str] = &[
     "region", "nation", "supplier", "customer", "part", "partsupp", "orders", "lineitem",
 ];
 
-/// Start ephemeral server + load SF=0.001 fixture
+/// Start ephemeral server + load SF=0.001 fixture (data_dir = fixture dir so
+/// LOAD DATA LOCAL INFILE can whitelist the .tbl files).
 pub fn start_sf001() -> MySqlTestClient {
-    let handle = start_ephemeral(EphemeralConfig::default()).expect("start_ephemeral for sf001");
+    let data_dir = PathBuf::from(SF001_DIR);
+    let config = EphemeralConfig {
+        data_dir: Some(data_dir),
+        bootstrap_tables: false,
+        bootstrap_users: true,
+        ..Default::default()
+    };
+    let handle = start_ephemeral(config).expect("start_ephemeral for sf001");
     let mut client = MySqlTestClient::connect_handle(handle).expect("connect_handle for sf001");
     load_fixture(&mut client, SF001_DIR);
     client
 }
 
-/// Start ephemeral server + load SF=0.1 fixture (with 60s timeouts for larger data)
+/// Start ephemeral server + load SF=0.1 fixture with 60s timeouts (data_dir
+/// = fixture dir so LOAD DATA LOCAL INFILE can whitelist the .tbl files).
 pub fn start_sf01() -> MySqlTestClient {
-    let handle = start_ephemeral(EphemeralConfig::default()).expect("start_ephemeral for sf01");
+    let data_dir = PathBuf::from(SF01_DIR);
+    let config = EphemeralConfig {
+        data_dir: Some(data_dir),
+        bootstrap_tables: false,
+        bootstrap_users: true,
+        ..Default::default()
+    };
+    let handle = start_ephemeral(config).expect("start_ephemeral for sf01");
     let mut client = MySqlTestClient::connect_handle(handle).expect("connect_handle for sf01");
     client
         .set_timeouts(Duration::from_secs(60), Duration::from_secs(60))
