@@ -105,16 +105,22 @@ pub fn read_baseline(path: &Path) -> JsonValue {
     serde_json::from_str(&body).unwrap_or_else(|e| panic!("parse JSON {}: {}", path.display(), e))
 }
 
-/// Cell-level comparison with float tolerance
+/// Cell-level comparison with float tolerance.
 pub fn compare_cells(
     actual: &[Vec<String>],
     baseline: &JsonValue,
-    _float_tol: f64,
+    float_tol: f64,
 ) -> Result<(), String> {
-    let expected_rows = baseline
+    let engine = baseline
+        .get("engines")
+        .and_then(|e| e.get("sqlite"))
+        .ok_or_else(|| "baseline missing engines.sqlite".to_string())?;
+
+    let expected_rows = engine
         .get("row_count")
         .and_then(|v| v.as_u64())
-        .ok_or_else(|| "baseline missing row_count".to_string())?;
+        .ok_or_else(|| "baseline missing engines.sqlite.row_count".to_string())?;
+
     if actual.len() as u64 != expected_rows {
         return Err(format!(
             "row_count mismatch: actual={} expected={}",
@@ -122,5 +128,162 @@ pub fn compare_cells(
             expected_rows
         ));
     }
+
+    let first_3_raw = engine
+        .get("first_3_rows")
+        .and_then(|v| v.as_array())
+        .ok_or_else(|| "baseline missing engines.sqlite.first_3_rows".to_string())?;
+
+    if first_3_raw.is_empty() {
+        return Ok(());
+    }
+
+    let mut expected: Vec<Vec<String>> = first_3_raw
+        .iter()
+        .map(|row| {
+            row.as_str()
+                .map(|s| s.split('|').map(|c| c.to_string()).collect())
+                .unwrap_or_default()
+        })
+        .collect();
+
+    let compare_n = expected.len().min(3).min(actual.len());
+    let mut actual_first: Vec<Vec<String>> = actual.iter().take(compare_n).cloned().collect();
+    actual_first.sort();
+    expected.sort();
+    expected.truncate(compare_n);
+
+    let cell_eq = |a: &str, b: &str| -> bool {
+        if a == b {
+            return true;
+        }
+        match (a.parse::<f64>(), b.parse::<f64>()) {
+            (Ok(av), Ok(bv)) => {
+                let diff = (av - bv).abs();
+                let scale = av.abs().max(bv.abs()).max(1.0);
+                diff <= float_tol * scale
+            }
+            _ => false,
+        }
+    };
+
+    for (row_idx, (a_row, e_row)) in actual_first.iter().zip(expected.iter()).enumerate() {
+        if a_row.len() != e_row.len() {
+            return Err(format!(
+                "row {}: column count mismatch: actual={} expected={} (actual={:?}, expected={:?})",
+                row_idx,
+                a_row.len(),
+                e_row.len(),
+                a_row,
+                e_row
+            ));
+        }
+        for (col_idx, (a, e)) in a_row.iter().zip(e_row.iter()).enumerate() {
+            if !cell_eq(a, e) {
+                return Err(format!(
+                    "cell mismatch at row={} col={}: actual={:?} expected={:?}",
+                    row_idx, col_idx, a, e
+                ));
+            }
+        }
+    }
+
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{compare_cells, JsonValue};
+    use serde_json::json;
+
+    fn baseline(row_count: u64, first_3_rows: &[&str]) -> JsonValue {
+        json!({
+            "engines": {
+                "sqlite": {
+                    "row_count": row_count,
+                    "first_3_rows": first_3_rows,
+                }
+            }
+        })
+    }
+
+    #[test]
+    fn all_cells_match_returns_ok() {
+        let actual = vec![
+            vec!["A".into(), "1".into(), "1.5".into()],
+            vec!["B".into(), "2".into(), "2.5".into()],
+        ];
+        let b = baseline(2, &["A|1|1.5", "B|2|2.5"]);
+        assert!(compare_cells(&actual, &b, 1e-3).is_ok());
+    }
+
+    #[test]
+    fn row_count_mismatch_returns_err_with_count_message() {
+        let actual = vec![vec!["A".into()]];
+        let b = baseline(2, &["A|x"]);
+        let err = compare_cells(&actual, &b, 1e-3).unwrap_err();
+        assert!(
+            err.contains("row_count mismatch"),
+            "expected row_count message, got: {err}"
+        );
+        assert!(err.contains("actual=1"), "got: {err}");
+        assert!(err.contains("expected=2"), "got: {err}");
+    }
+
+    #[test]
+    fn single_cell_mismatch_returns_err_with_position() {
+        let actual = vec![
+            vec!["A".into(), "1".into(), "1.5".into()],
+            vec!["B".into(), "WRONG".into(), "2.5".into()],
+        ];
+        let b = baseline(2, &["A|1|1.5", "B|2|2.5"]);
+        let err = compare_cells(&actual, &b, 1e-3).unwrap_err();
+        assert!(
+            err.contains("row=1") && err.contains("col=1"),
+            "expected cell position row=1 col=1, got: {err}"
+        );
+        assert!(err.contains("WRONG"), "actual value missing in: {err}");
+        assert!(err.contains("\"2\""), "expected value missing in: {err}");
+    }
+
+    #[test]
+    fn float_tolerance_accepts_close_values() {
+        let actual = vec![vec!["1.0001".into()]];
+        let b = baseline(1, &["1.0"]);
+        assert!(compare_cells(&actual, &b, 1e-3).is_ok());
+    }
+
+    #[test]
+    fn float_tolerance_rejects_far_values() {
+        let actual = vec![vec!["1.5".into()]];
+        let b = baseline(1, &["1.0"]);
+        let err = compare_cells(&actual, &b, 1e-3).unwrap_err();
+        assert!(
+            err.contains("cell mismatch"),
+            "expected cell mismatch, got: {err}"
+        );
+    }
+
+    #[test]
+    fn empty_first_3_rows_skips_cell_check() {
+        let actual: Vec<Vec<String>> = vec![];
+        let b = baseline(0, &[]);
+        assert!(compare_cells(&actual, &b, 1e-3).is_ok());
+    }
+
+    #[test]
+    fn missing_engines_sqlite_returns_err() {
+        let bad: JsonValue = json!({});
+        let actual: Vec<Vec<String>> = vec![];
+        let err = compare_cells(&actual, &bad, 1e-3).unwrap_err();
+        assert!(err.contains("engines.sqlite"), "got: {err}");
+    }
+
+    #[test]
+    fn column_count_mismatch_returns_err() {
+        let actual = vec![vec!["A".into(), "1".into()]];
+        let b = baseline(1, &["A|1|extra"]);
+        let err = compare_cells(&actual, &b, 1e-3).unwrap_err();
+        assert!(err.contains("column count mismatch"), "got: {err}");
+    }
 }
