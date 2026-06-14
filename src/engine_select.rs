@@ -1746,10 +1746,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
 
     /// Find the column index for a join key in a table
     /// Handles both simple column names and qualified names (e.g., "t1.id")
-<<<<<<< HEAD
     #[allow(clippy::only_used_in_recursion)] // recursive helper, &self only forwarded to recursive calls
-=======
->>>>>>> origin/sync/v390-tpch-3way-20260614
     fn find_join_key_index(
         &self,
         expr: &Expression,
