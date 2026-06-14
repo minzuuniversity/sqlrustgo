@@ -111,6 +111,26 @@ TPCH_ROTATE="${TPCH_ROTATE:-1}"
 TPCH_ROTATE_MAX_ROUNDS="${TPCH_ROTATE_MAX_ROUNDS:-0}"
 SQLRUSTGO_BIN="${SQLRUSTGO_BIN:-./target/release/sqlrustgo-mysql-server}"
 
+# ─────────────────────────────────────────────────────────────────────
+# Server memory hard cap (P0 enhancement 2026-06-14, mirrors run_tpch_30min.sh).
+#
+# Without this, sqlrustgo's buffer pool can grow to 70+ GB RSS during a
+# TPC-H rotation, starving the rest of the host (macmini 2026-06-14 saw
+# 75 GB RSS / 80% phys mem / 2 GB swap full from a 30min TPC-H soak).
+#
+# `ulimit -v` (KB) caps virtual memory → kernel OOM-kills server if it
+# exceeds the cap. We pair it with an absolute RSS watchdog (RSS_ALERT_MB,
+# default 80% of cap) that auto-kills + cleanup if RSS creeps up.
+#
+# Set SERVER_MEM_MB=0 to disable (dedicated test hosts only).
+# ─────────────────────────────────────────────────────────────────────
+SERVER_MEM_MB=${SERVER_MEM_MB:-8192}     # 8 GB hard limit
+SERVER_FD_LIMIT=${SERVER_FD_LIMIT:-1024}   # per-server FD cap
+RSS_ALERT_MB=${RSS_ALERT_MB:-0}          # 0 = auto-derive from SERVER_MEM_MB (80%)
+[ "$RSS_ALERT_MB" -eq 0 ] && [ "$SERVER_MEM_MB" -gt 0 ] && \
+    RSS_ALERT_MB=$((SERVER_MEM_MB * 4 / 5))
+RSS_KILL_ACTION=${RSS_KILL_ACTION:-auto_kill}  # auto_kill|warn_only
+
 RESULTS_DIR="${RESULTS_DIR:-test_results/wired_soak_${HOURS_DISPLAY}h_$(date +%Y%m%d_%H%M%S)}"
 PID_FILE="$RESULTS_DIR/sqlrustgo.pid"
 LOG_FILE="$RESULTS_DIR/sqlrustgo.log"
@@ -153,11 +173,25 @@ echo "=========================================="
 echo ""
 
 # [1] Launch server
-echo "[1/5] Starting sqlrustgo-mysql-server..."
-nohup "$SQLRUSTGO_BIN" serve \
-    --host "$HOST" --port "$PORT" \
-    --data-dir "$DATA_DIR" \
-    --log-level info \
+# `ulimit -v` caps RSS so a runaway buffer pool cannot starve the host
+# (macmini 2026-06-14: saw 75 GB RSS at the end of a 30min TPC-H rotation).
+echo ""
+echo "[1/5] Starting sqlrustgo-mysql-server (memcap=${SERVER_MEM_MB}MB fdcap=$SERVER_FD_LIMIT)..."
+
+# Build the ulimit-prefix for the child (must be inline so it applies to
+# the server process, not the parent shell).
+LIMIT_PREFIX=""
+if [ "${SERVER_MEM_MB}" -gt 0 ] 2>/dev/null; then
+    LIMIT_PREFIX="$LIMIT_PREFIX ulimit -v $((SERVER_MEM_MB * 1024)) 2>/dev/null;"
+fi
+if [ "${SERVER_FD_LIMIT}" -gt 0 ] 2>/dev/null; then
+    LIMIT_PREFIX="$LIMIT_PREFIX ulimit -n $SERVER_FD_LIMIT 2>/dev/null;"
+fi
+
+nohup bash -c "$LIMIT_PREFIX exec '$SQLRUSTGO_BIN' serve \
+    --host '$HOST' --port '$PORT' \
+    --data-dir '$DATA_DIR' \
+    --log-level info" \
     > "$LOG_FILE" 2>&1 &
 SERVER_PID=$!
 echo "$SERVER_PID" > "$PID_FILE"
@@ -321,6 +355,25 @@ while [ "$(date +%s)" -lt "$END_TS" ]; do
         fi
     fi
 
+    # RSS absolute watchdog (P0 enhancement 2026-06-14).
+    # ulimit -v enforces the hard cap via kernel OOM-killer, but the
+    # alert threshold fires earlier so we can mark the run as WARN
+    # before the OOM-killer triggers. This is a backstop for the
+    # edge case where ulimit isn't honored (e.g. user-set
+    # SERVER_MEM_MB=0 to disable, or kernel enforces cgroup instead).
+    if [ "$RSS_ALERT_MB" -gt 0 ] 2>/dev/null && [ "$RSS_MB" -gt "$RSS_ALERT_MB" ] 2>/dev/null; then
+        echo "  ALERT[${ELAPSED}s]: server RSS ${RSS_MB}MB > ${RSS_ALERT_MB}MB threshold" >&2
+        if [ "$RSS_KILL_ACTION" = "auto_kill" ]; then
+            echo "  ALERT[${ELAPSED}s]: auto-killing server (RSS_KILL_ACTION=auto_kill)" >&2
+            kill -TERM "$SERVER_PID" 2>/dev/null
+            sleep 2
+            kill -KILL "$SERVER_PID" 2>/dev/null
+            RSS_ALARM=1
+            echo "$TS,$ELAPSED,$RSS_MB,$RSS_DELTA,$FD_COUNT,$FD_DELTA,$CPU_PCT,$WAL_MB,$WAL_FILES,$LOCK_COUNT,0,$SYSBENCH_QPS,OOM_KILL" >> "$METRICS_FILE"
+            break
+        fi
+    fi
+
     if [ $((SAMPLE_COUNT % 10)) -eq 0 ]; then
         REMAIN_S=$((END_TS - $(date +%s)))
         REMAIN_M=$((REMAIN_S / 60))
@@ -369,6 +422,7 @@ FD_OK=$([ "$FD_GROWTH" -lt 50 ] && echo "PASS" || echo "WARN")
 RSS_FINAL_OK=$([ "$FINAL_RSS" -lt 4096 ] && echo "PASS" || echo "WARN")
 WAL_OK=$([ "$FINAL_WAL" -lt 10240 ] && echo "PASS" || echo "WARN")
 SB_OK=$([ "$SYSBENCH_ERRORS" -eq 0 ] && echo "PASS" || echo "WARN")
+RSS_ABS_OK=$([ "${RSS_ALARM:-0}" -eq 0 ] && echo "PASS" || echo "WARN (server auto-killed by RSS absolute watchdog)")
 
 # For short runs, the growth thresholds are time-scaled (see loop above)
 case "$HOURS_DISPLAY" in
@@ -410,6 +464,7 @@ cat > "$RESULTS_DIR/STABILITY_REPORT.md" <<EOF
 | Final RSS | < 4096 MB | $FINAL_RSS MB | $RSS_FINAL_OK |
 | Final WAL | < 10240 MB | $FINAL_WAL MB | $WAL_OK |
 | sysbench errors | 0 | $SYSBENCH_ERRORS | $SB_OK |
+| RSS absolute watchdog | $RSS_ALERT_MB MB | RSS_ALARM=$RSS_ALARM | $RSS_ABS_OK |
 | TPC-H rounds run | ≥1 if enabled | $TPCH_ROUNDS | $([ "$TPCH_ROUNDS" -gt 0 ] && echo "PASS" || echo "WARN") |
 | TPC-H per-query errors | 0 | $TPCH_ERRORS | $([ "$TPCH_ERRORS" -eq 0 ] && echo "PASS" || echo "WARN (engine-known issues per PR-3262/3265)") |
 
