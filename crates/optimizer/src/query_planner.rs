@@ -322,6 +322,7 @@ impl QueryPlanResult {
         output
     }
 
+    #[allow(clippy::only_used_in_recursion)] // recursive helper, plan only used in recursive calls
     fn visualize_plan(&self, plan: &UnifiedPlan, indent: usize) -> String {
         let prefix = "  ".repeat(indent);
         let mut output = String::new();
