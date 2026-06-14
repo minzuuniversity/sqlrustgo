@@ -112,11 +112,21 @@ fi
 echo ""
 echo "[preflight] Cleaning up any stale sqlrustgo-mysql-server on port $PORT..."
 
-# Kill any orphan tpch_22_rotate.sh (parent died, rotate is detached)
+# Kill any orphan tpch_22_rotate.sh (parent died, rotate is detached).
+# IMPORTANT: use SIGKILL (-9) not SIGTERM. Bash rotate is in `sleep` between
+# query rounds, and on SIGTERM it ignores the signal until the next sleep
+# wakes, which may be 30s+ later — meanwhile it re-spawns children that
+# grab the new server (caused v3 to fail on 2026-06-14 with v1 orphan
+# rotate stealing v3's lineitem LOAD queue).
 ORPHAN_ROTATES=$(pgrep -f "tpch_22_rotate.sh" 2>/dev/null || true)
 if [ -n "$ORPHAN_ROTATES" ]; then
     echo "  Found orphan rotate PIDs: $ORPHAN_ROTATES"
-    kill $ORPHAN_ROTATES 2>/dev/null || true
+    kill -9 $ORPHAN_ROTATES 2>/dev/null || true
+    # Also kill any nested children (the rotate may have spawned mysql clients
+    # or sub-rotates that will keep grabbing the new server).
+    for p in $ORPHAN_ROTATES; do
+        pkill -9 -P "$p" 2>/dev/null || true
+    done
 fi
 
 STALE_PIDS=$(pgrep -f "sqlrustgo-mysql-server.*--port[[:space:]]+$PORT" 2>/dev/null || true)
@@ -425,9 +435,13 @@ while [ "$(date +%s)" -lt "$END_TS" ]; do
                 RSS_ALARM=1
             fi
         fi
+        # Coerce floats to ints for bash -gt comparison (bash -gt fails on "0.1").
+        # Use awk to round-half-to-int; values 0.4 → 0, 0.5 → 1, 8.5 → 9.
+        HOST_IO_MBS_INT=$(awk "BEGIN { printf \"%d\", ($HOST_IO_MBS+0.5) }")
+        CPU_PCT_INT=$(awk "BEGIN { printf \"%d\", ($CPU_PCT+0.5) }")
         if [ "$ELAPSED" -gt 60 ]; then
-            if [ "$HOST_IO_MBS" -gt "$IO_ALERT_MBS" ] \
-                || [ "$CPU_PCT" -gt "$CPU_ALERT_PCT" ] \
+            if [ "$HOST_IO_MBS_INT" -gt "$IO_ALERT_MBS" ] \
+                || [ "$CPU_PCT_INT" -gt "$CPU_ALERT_PCT" ] \
                 || [ "$RSS_ALARM" -eq 1 ]; then
                 WD_STATE="PAUSE"
                 WATCHDOG_TRIPS=$((WATCHDOG_TRIPS + 1))
