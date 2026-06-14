@@ -214,3 +214,38 @@
 ---
 
 Last updated: 2026-06-13 04:20 CST
+
+---
+
+## 10. 完成状态 (2026-06-14)
+
+### 已合并/在审 PR 序列
+
+| PR # | 标题 | 状态 |
+|------|------|------|
+| #3392 | refactor(test/tpch): PR#1 P0 E2E (4 tpch + 2 stability + harness + bench/tpch-benchmark) | created |
+| #3394 | refactor(test/tpch): PR#2 P1 (7 in-process tests) | created |
+| #3395 | refactor(test/tpch): PR#3 P1 perf + refresh (4 files) | created |
+| #3396 | refactor(test): PR#4 P2 stability/upgrade (3 files) | created |
+| #3397 | chore(bench): PR#5 delete 23 in-process benches + Python e2e | this PR |
+
+### 实际影响 (vs 计划)
+
+- 47 个候选文件中，**23 个 benches 已删除**（PR#5）
+- **18 个 in-process tests 改 wire**（PR#1-#4 合计）
+- **2 个新 stability tests 新写**（PR#1 long_run + g2_substance）
+- **bench/tpch-benchmark/ Python harness 重新加入**（PR#1 + PR#5）
+
+### 剩余未迁移
+
+- `tests/diag_*.rs` × 7（按计划保留 in-process — 单 component 诊断）
+- `tests/operators/*.rs` × 8（按计划保留 in-process — operator 单元）
+- `tests/aggregate_smoke_test.rs`（单元测试，按计划保留）
+- `benches/tpch_streaming_config.rs`（streaming 内部 API，按计划保留）
+- `benches/tpch_wire_bench.rs`（已 e2e，按计划保留）
+
+### 已知遗留（pre-existing on 252 HEAD）
+
+- `crates/mysql-server/src/lib.rs` 中 19 个 clippy errors（PI=3.14159 等），与本迁移无关
+- `benches/tpch_wire_bench.rs` 1 个 fmt diff（pre-existing）
+
