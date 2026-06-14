@@ -102,4 +102,23 @@ echo "============================================================"
 # Export SCRIPT_DIR so dispatched scripts (which use ${SCRIPT_DIR}/../../target/...)
 # resolve the binary path correctly when invoked from run_soak.sh.
 export SCRIPT_DIR
+# P2-2: after the target script finishes, send a notification (if env
+# enabled). Wraps the exec in a function so we can hook the cleanup.
+NOTIFY_BIN="${SCRIPT_DIR}/../monitor/notify_report.sh"
+if [ "${NOTIFY_REPORT:-1}" = "1" ] && [ -x "$NOTIFY_BIN" ]; then
+    # Override cleanup trap: defer notification until STABILITY_REPORT.md exists
+    __run_soak_notify() {
+        # Wait briefly for the report to be written
+        local report_dir="${RESULTS_DIR:-}"
+        [ -z "$report_dir" ] && return
+        for _ in 1 2 3 4 5 6 7 8 9 10; do
+            [ -f "$report_dir/STABILITY_REPORT.md" ] && break
+            sleep 3
+        done
+        if [ -f "$report_dir/STABILITY_REPORT.md" ]; then
+            bash "$NOTIFY_BIN" "$report_dir/STABILITY_REPORT.md" >> "$LOG_DIR/notifications.log" 2>&1 || true
+        fi
+    }
+    trap __run_soak_notify EXIT
+fi
 exec bash "$SCRIPT_DIR/$TARGET" "$@"
