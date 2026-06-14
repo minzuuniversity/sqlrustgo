@@ -80,9 +80,23 @@ export SERVER_FD_LIMIT=${SERVER_FD_LIMIT:-1024}
 # RSS_ALERT_MB=0 means "auto-derive from SERVER_MEM_MB (80%)" inside the script.
 export RSS_ALERT_MB=${RSS_ALERT_MB:-0}
 
+# P1 — port + data_dir auto-allocation via run_registry.sh.
+# Default: suggest from pool; user can override via PORT / DATA_DIR env.
+REGISTRY="$SCRIPT_DIR/run_registry.sh"
+if [ -x "$REGISTRY" ] && [ "${USE_REGISTRY:-1}" = "1" ]; then
+    if [ -z "${PORT:-}" ] && [ "$TYPE" != "monitor" ] && [ "$TYPE" != "help" ] && [ "$TYPE" != "list" ]; then
+        SUGGESTED_PORT=$(bash "$REGISTRY" suggest-port 2>/dev/null || true)
+        if [ -n "$SUGGESTED_PORT" ]; then
+            export PORT="$SUGGESTED_PORT"
+            echo "  [P1] Auto-allocated port $PORT from registry pool"
+        fi
+    fi
+fi
+
 echo "============================================================"
 echo "run_soak.sh unified entrypoint — type=$TYPE target=$TARGET"
 echo "SERVER_MEM_MB=$SERVER_MEM_MB SERVER_FD_LIMIT=$SERVER_FD_LIMIT"
+echo "PORT=$PORT"
 echo "Other args: $*"
 echo "============================================================"
 exec bash "$SCRIPT_DIR/$TARGET" "$@"
