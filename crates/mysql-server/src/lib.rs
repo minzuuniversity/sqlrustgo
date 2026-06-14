@@ -1047,6 +1047,7 @@ fn extract_insert_columns(sql: &str) -> Vec<String> {
     vec![]
 }
 
+<<<<<<< HEAD
 /// Extract column names referenced on the LEFT side of `=` in
 /// comparison predicates, e.g. for
 ///   `SELECT * FROM t WHERE id = ? AND name = ?`
@@ -1127,6 +1128,8 @@ fn extract_where_columns(sql: &str) -> Vec<String> {
     cols
 }
 
+=======
+>>>>>>> origin/sync/v390-tpch-3way-20260614
 /// Infer MySQL binary-protocol type codes for the `?` placeholders in
 /// `sql` by looking up the referenced columns in the storage schema.
 ///
@@ -1140,6 +1143,7 @@ fn infer_param_types_from_sql<S: StorageEngine>(sql: &str, storage: &Arc<RwLock<
     if param_count == 0 {
         return vec![];
     }
+<<<<<<< HEAD
     // Try the column list first (works for INSERT VALUES, INSERT SET,
     // UPDATE ... SET col = ?). If non-empty, look up each column's
     // declared type from the table schema.
@@ -1155,6 +1159,9 @@ fn infer_param_types_from_sql<S: StorageEngine>(sql: &str, storage: &Arc<RwLock<
         // string and lose the integer.
         cols = extract_where_columns(sql);
     }
+=======
+    let cols = extract_insert_columns(sql);
+>>>>>>> origin/sync/v390-tpch-3way-20260614
     if cols.is_empty() {
         return vec![col_type::VARSTRING; param_count];
     }
@@ -2126,6 +2133,7 @@ fn do_command_loop<S: Read + Write>(
                 let params: Vec<crate::StmtParam> =
                     parse_stmt_execute_params(payload, stmt_param_count, &stmt_param_types);
                 let final_sql = replace_placeholders(&stmt_sql, &params);
+<<<<<<< HEAD
                 eprintln!("DEBUG STMT EXECUTE (id={}):", stmt_id);
                 eprintln!("  stmt_sql='{}'", stmt_sql);
                 eprintln!("  params={:?}", params);
@@ -2139,6 +2147,9 @@ fn do_command_loop<S: Read + Write>(
                         n
                     );
                 }
+=======
+
+>>>>>>> origin/sync/v390-tpch-3way-20260614
                 tracing::info!("STMT EXECUTE (id={}): {}", stmt_id, final_sql);
                 let mut eng = engine.write().unwrap();
                 let parsed = parse(&final_sql);

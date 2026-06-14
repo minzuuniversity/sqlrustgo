@@ -24,8 +24,11 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+<<<<<<< HEAD
   CARGO_HOME: ${{ runner.temp }}/.cargo
   RUSTUP_HOME: ${{ runner.temp }}/.rustup
+=======
+>>>>>>> origin/sync/v390-tpch-3way-20260614
 
 # Combined lint + build: share one clone, build once
 jobs:
