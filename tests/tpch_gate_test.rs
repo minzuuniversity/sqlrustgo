@@ -1,96 +1,20 @@
-//! TPC-H Gate Test — Alpha/Beta/RC/GA gate verification
+//! TPC-H G1 Gate Test — wire protocol (LOAD DATA LOCAL INFILE + MySqlTestClient)
 //!
-//! Reads .tbl files from `~/sqlrustgo-tpch/data/`, imports into SQLRustGo,
-//! runs all TPC-H queries, and reports timing.
+//! Migrated from in-process ExecutionEngine to wire protocol per
+//! docs/plans/2026-06-13-tpch-e2e-migration-design.md §3.2.
 //!
-//! If TPC-H data is not found, the test skips gracefully with a setup hint.
+//! **Gate contract (v3.9.0 G1)**: 22/22 TPC-H queries on SF=0.1 must run
+//! without panicking. Performance and value correctness are tracked by
+//! separate tests (tpch_value_test_v2, tpch_sf01_perf_baseline_test).
 //!
-//! # Usage
-//!
-//! ```bash
-//! # SF=0.1 (default, requires ~70MB .tbl files)
-//! TPCH_DATA_DIR=/opt/tpch/tpch-dbgen cargo test --test tpch_gate_test -- --nocapture
-//!
-//! # SF=1 (requires ~1GB .tbl files)
-//! TPCH_SF=1 TPCH_DATA_DIR=/opt/tpch/tpch-dbgen cargo test --test tpch_gate_test -- --nocapture
-//! ```
-//!
-//! # Environment
-//!
-//! - `TPCH_DATA_DIR`: path to .tbl files (default: `~/sqlrustgo-tpch/data`)
-//! - `TPCH_SF`: scale factor (default: `0.1`, supports `0.1`, `1`, `10`)
-//! - `TPCH_TIMEOUT_S`: max seconds per query (default: `120` for SF=0.1, `300` for SF=1, `600` for SF=10)
-//! - `TPCH_FORCE`: set to `1` to fail the test if data is missing (CI mode)
+//! Run: cargo test --test tpch_gate_test -- --nocapture
 
-use sqlrustgo::{ExecutionEngine, MemoryStorage, StorageEngine};
-use sqlrustgo_types::Value as SqlValue;
-use std::env;
-use std::fs;
-use std::path::PathBuf;
-use std::sync::{Arc, RwLock};
-use std::time::{Duration, Instant};
-
-/// Default TPC-H data directory
-fn data_dir() -> PathBuf {
-    env::var("TPCH_DATA_DIR")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| {
-            let home = env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
-            PathBuf::from(home).join("sqlrustgo-tpch").join("data")
-        })
-}
-
-/// Get scale factor from env
-fn scale_factor() -> f64 {
-    env::var("TPCH_SF")
-        .ok()
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(0.1)
-}
-
-/// Query timeout in seconds
-fn query_timeout_s() -> u64 {
-    let default = match scale_factor() {
-        sf if sf >= 10.0 => 600,
-        sf if sf >= 1.0 => 300,
-        _ => 120,
-    };
-    env::var("TPCH_TIMEOUT_S")
-        .ok()
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(default)
-}
-
-/// Check if TPC-H data exists in the given directory
-fn has_tpch_data(dir: &PathBuf) -> bool {
-    if !dir.exists() {
-        return false;
-    }
-    let tbl_count = std::fs::read_dir(dir)
-        .map(|e| {
-            e.filter_map(|x| x.ok())
-                .filter(|e| e.path().extension().map(|x| x == "tbl").unwrap_or(false))
-                .count()
-        })
-        .unwrap_or(0);
-    tbl_count >= 3 // at minimum need region, nation, lineitem
-}
-
-// ============================================================
-// TPC-H Schema DDL
-// ============================================================
-const SCHEMA_SQL: &[&str] = &[
-    "CREATE TABLE region (r_regionkey INTEGER PRIMARY KEY, r_name TEXT NOT NULL, r_comment TEXT)",
-    "CREATE TABLE nation (n_nationkey INTEGER PRIMARY KEY, n_name TEXT NOT NULL, n_regionkey INTEGER NOT NULL, n_comment TEXT)",
-    "CREATE TABLE supplier (s_suppkey INTEGER PRIMARY KEY, s_name TEXT NOT NULL, s_address TEXT NOT NULL, s_nationkey INTEGER NOT NULL, s_phone TEXT NOT NULL, s_acctbal REAL NOT NULL, s_comment TEXT)",
-    "CREATE TABLE customer (c_custkey INTEGER PRIMARY KEY, c_name TEXT NOT NULL, c_address TEXT NOT NULL, c_nationkey INTEGER NOT NULL, c_phone TEXT NOT NULL, c_acctbal REAL NOT NULL, c_mktsegment TEXT, c_comment TEXT)",
-    "CREATE TABLE part (p_partkey INTEGER PRIMARY KEY, p_name TEXT NOT NULL, p_mfgr TEXT NOT NULL, p_brand TEXT NOT NULL, p_type TEXT NOT NULL, p_size INTEGER NOT NULL, p_container TEXT NOT NULL, p_retailprice REAL NOT NULL, p_comment TEXT)",
-    "CREATE TABLE partsupp (ps_partkey INTEGER NOT NULL, ps_suppkey INTEGER NOT NULL, ps_availqty INTEGER NOT NULL, ps_supplycost REAL NOT NULL, ps_comment TEXT, PRIMARY KEY (ps_partkey, ps_suppkey))",
-    "CREATE TABLE orders (o_orderkey INTEGER PRIMARY KEY, o_custkey INTEGER NOT NULL, o_orderstatus TEXT NOT NULL, o_totalprice REAL NOT NULL, o_orderdate TEXT NOT NULL, o_orderpriority TEXT, o_clerk TEXT, o_shippriority INTEGER, o_comment TEXT)",
-    "CREATE TABLE lineitem (l_orderkey INTEGER NOT NULL, l_partkey INTEGER NOT NULL, l_suppkey INTEGER NOT NULL, l_linenumber INTEGER NOT NULL, l_quantity REAL NOT NULL, l_extendedprice REAL NOT NULL, l_discount REAL NOT NULL, l_tax REAL NOT NULL, l_returnflag TEXT, l_linestatus TEXT, l_shipdate TEXT, l_commitdate TEXT, l_receiptdate TEXT, l_shipinstruct TEXT, l_shipmode TEXT, l_comment TEXT, PRIMARY KEY (l_orderkey, l_linenumber))",
-];
+mod common;
+use common::tpch_wire_harness::*;
+use common::MySqlTestClient;
 
 /// TPC-H 22 queries (simplified SQLRustGo-compatible versions)
+/// Kept in sync with `tpch_sf01_inprocess_test::tpch_queries` — same SQL strings.
 fn tpch_queries() -> Vec<(&'static str, &'static str)> {
     // v3.8.0 parser doesn't support arithmetic expressions inside aggregate functions.
     // Simplified versions use pre-computed columns or simpler aggregates.
@@ -167,266 +91,41 @@ fn tpch_queries() -> Vec<(&'static str, &'static str)> {
     ]
 }
 
-// ============================================================
-// Data import
-// ============================================================
-
-/// Parse a pipe-delimited TPC-H .tbl line into values suitable for INSERT
-fn parse_tbl_line(line: &str) -> Vec<String> {
-    line.split('|')
-        .filter(|s| !s.is_empty())
-        .map(|s| s.trim().to_string())
-        .collect()
-}
-
-/// Escape a value for SQL INSERT: wrap in quotes, escape single quotes
-fn sql_escape(val: &str) -> String {
-    if val.is_empty() {
-        "NULL".to_string()
-    } else {
-        // Try to detect if it's a number
-        if val.parse::<f64>().is_ok() || val.parse::<i64>().is_ok() {
-            val.to_string()
-        } else {
-            format!("'{}'", val.replace('\'', "''"))
-        }
-    }
-}
-
-/// Load one .tbl file into a SQL table using batch insert
-fn load_tbl_file(
-    storage: &Arc<RwLock<MemoryStorage>>,
-    tbl_name: &str,
-    tbl_path: &PathBuf,
-    columns: usize,
-) -> Result<usize, String> {
-    let content = fs::read_to_string(tbl_path)
-        .map_err(|e| format!("Cannot read {}: {}", tbl_path.display(), e))?;
-
-    const BATCH_SIZE: usize = 10000;
-    let mut batch: Vec<Vec<SqlValue>> = Vec::with_capacity(BATCH_SIZE);
-    let mut count = 0;
-
-    for line in content.lines() {
-        let line = line.trim();
-        if line.is_empty() {
-            continue;
-        }
-        let values: Vec<&str> = line.split('|').collect();
-        if values.len() < columns {
-            continue;
-        }
-
-        let record: Vec<SqlValue> = values[..columns]
-            .iter()
-            .map(|v| {
-                let s = v.trim();
-                if s.is_empty() {
-                    SqlValue::Null
-                } else if let Ok(i) = s.parse::<i64>() {
-                    SqlValue::Integer(i)
-                } else if let Ok(f) = s.parse::<f64>() {
-                    SqlValue::Float(f)
-                } else {
-                    SqlValue::Text(s.to_string())
-                }
-            })
-            .collect();
-
-        batch.push(record);
-
-        if batch.len() >= BATCH_SIZE {
-            let mut storage = storage.write().map_err(|e| format!("Lock error: {}", e))?;
-            storage
-                .insert(tbl_name, batch.clone())
-                .map_err(|e| format!("Insert error: {}", e))?;
-            count += batch.len();
-            batch.clear();
-            eprintln!("  Imported {} rows into {}...", count, tbl_name);
-        }
-    }
-
-    if !batch.is_empty() {
-        let mut storage = storage.write().map_err(|e| format!("Lock error: {}", e))?;
-        storage
-            .insert(tbl_name, batch.clone())
-            .map_err(|e| format!("Insert error: {}", e))?;
-        count += batch.len();
-    }
-
-    Ok(count)
-}
-
-// ============================================================
-// Test: TPC-H Gate
-// ============================================================
-
 #[test]
-fn test_tpch_sf01_gate() {
-    let sf = scale_factor();
-    let dir = data_dir();
-    let timeout = Duration::from_secs(query_timeout_s());
-
-    // Gracefully skip if data not available (CI can set TPCH_FORCE=1 to fail)
-    if !has_tpch_data(&dir) {
-        eprintln!("\n=== TPC-H Gate [SKIPPED] ===");
-        eprintln!("Data not found at: {}", dir.display());
-        eprintln!("Generate with:");
-        eprintln!("  bash scripts/gate/setup_tpch_env.sh --sf1");
-        eprintln!("  or set TPCH_DATA_DIR to point to your .tbl files");
-        if env::var("TPCH_FORCE").as_deref() == Ok("1") {
-            panic!("TPC-H data required but not found (TPCH_FORCE=1)");
-        }
-        return;
-    }
-
-    eprintln!("\n=== TPC-H Gate Test ===");
-    eprintln!("Scale factor: {}", sf);
-    eprintln!("Data dir: {}", dir.display());
-    eprintln!("Query timeout: {:?}", timeout);
-    eprintln!("");
-
-    // Verify data exists
-    assert!(
-        dir.exists(),
-        "TPC-H data directory not found: {}",
-        dir.display()
-    );
-    let tbl_files: Vec<_> = fs::read_dir(&dir)
-        .unwrap()
-        .filter_map(|e| e.ok())
-        .filter(|e| e.path().extension().map(|x| x == "tbl").unwrap_or(false))
-        .collect();
-    assert!(
-        !tbl_files.is_empty(),
-        "No .tbl files found in {}",
-        dir.display()
-    );
-
-    // Create engine
-    let storage = Arc::new(RwLock::new(MemoryStorage::new()));
-    #[allow(deprecated)]
-    let mut engine = ExecutionEngine::new(storage.clone());
-
-    // Create schema
-    eprintln!("[1/3] Creating schema...");
-    for ddl in SCHEMA_SQL {
-        engine
-            .execute(ddl)
-            .unwrap_or_else(|e| panic!("DDL failed: {} - {}", ddl, e));
-    }
-    eprintln!("  Schema created ({} tables)", SCHEMA_SQL.len());
-
-    // Import data
-    eprintln!("[2/3] Importing data...");
-    let import_start = Instant::now();
-
-    let tables = vec![
-        ("region", 3),
-        ("nation", 4),
-        ("supplier", 7),
-        ("customer", 8),
-        ("part", 9),
-        ("partsupp", 5),
-        ("orders", 9),
-        ("lineitem", 16),
-    ];
-
-    let mut total_rows = 0;
-    for (tbl_name, cols) in &tables {
-        let tbl_path = dir.join(format!("{}.tbl", tbl_name));
-        if !tbl_path.exists() {
-            eprintln!("  [SKIP] {}: file not found", tbl_path.display());
-            continue;
-        }
-        eprint!("  Loading {}... ", tbl_name);
-        let rows = load_tbl_file(&storage, tbl_name, &tbl_path, *cols)
-            .unwrap_or_else(|e| panic!("Failed to load {}: {}", tbl_name, e));
-        eprintln!("{} rows", rows);
-        total_rows += rows;
-    }
-
-    let import_elapsed = import_start.elapsed();
-    eprintln!(
-        "  Import completed: {} rows in {:?}",
-        total_rows, import_elapsed
-    );
-
-    // Run TPC-H queries
-    eprintln!("\n[3/3] Running TPC-H queries...");
+fn tpch_gate_completes() {
+    eprintln!("=== TPC-H G1 Gate (wire protocol, SF=0.1) ===");
+    let mut client: MySqlTestClient = start_sf01();
     let queries = tpch_queries();
-    let mut results: Vec<(&str, Duration, bool)> = Vec::new();
+    let total = queries.len();
+    let mut passed = 0;
+    let mut failed: Vec<(&str, String, std::time::Duration)> = Vec::new();
+    let mut total_elapsed = std::time::Duration::ZERO;
 
+    eprintln!("[Run] {total} queries at SF=0.1 (60K lineitem)...");
     for (q_name, q_sql) in &queries {
-        eprint!("  {} ... ", q_name);
-        let start = Instant::now();
-        let result = engine.execute(q_sql);
-        let elapsed = start.elapsed();
-
+        let (result, elapsed) = run_query_timed(&mut client, q_sql, 120);
+        total_elapsed += elapsed;
         match result {
-            Ok(_exec_result) => {
-                let passed = elapsed <= timeout;
-                results.push((q_name, elapsed, passed));
-                if passed {
-                    eprintln!("✅ {:?}", elapsed);
-                } else {
-                    eprintln!("⏰ {:?} > {:?} (TIMEOUT)", elapsed, timeout);
-                }
+            Ok(rows) => {
+                eprintln!("  ✅ {q_name}: {} rows in {:.2?}", rows.len(), elapsed);
+                passed += 1;
             }
             Err(e) => {
-                results.push((q_name, elapsed, false));
-                let err_msg = format!("{}", e);
-                // Truncate long error messages
-                let truncated = if err_msg.len() > 120 {
-                    format!("{}...", &err_msg[..120])
-                } else {
-                    err_msg
-                };
-                eprintln!("❌ ERROR: {}", truncated);
+                eprintln!("  ❌ {q_name}: {e} ({}ms)", elapsed.as_millis());
+                failed.push((q_name, e, elapsed));
             }
         }
-
-        // Run ANALYZE after data import
-        if *q_name == "Q1" || *q_name == "Q6" {
-            let _ = engine.execute("ANALYZE lineitem");
-        }
     }
+    eprintln!("\n=== TPC-H G1 Gate: {passed}/{total} passed in {total_elapsed:.2?} ===");
 
-    // Report
-    eprintln!("\n=== TPC-H Gate Results (SF={}) ===", sf);
-    let total = results.len();
-    let passed = results.iter().filter(|r| r.2).count();
-    let failed = total - passed;
-
-    for (q_name, elapsed, ok) in &results {
-        let icon = if *ok { "✅" } else { "❌" };
-        eprintln!("{} {}: {:?}", icon, q_name, elapsed);
-    }
-
-    eprintln!("\nTotal: {}/{} passed, {} failed", passed, total, failed);
-    eprintln!("Import time: {:?}", import_elapsed);
-    eprintln!();
-
-    // For gate purposes: Q1 and Q6 MUST pass (key queries)
-    let q1_result = results.iter().find(|r| r.0 == "Q1");
-    let q6_result = results.iter().find(|r| r.0 == "Q6");
-
-    if let Some((_, elapsed, ok)) = q1_result {
-        eprintln!("Q1: {} ({:?})", if *ok { "PASS" } else { "FAIL" }, elapsed);
-        assert!(
-            *ok,
-            "Q1 exceeded timeout of {:?} (actual: {:?})",
-            timeout, elapsed
+    // G1 gate contract: 22/22 跑通 (与之前 in-process 一样严格)
+    if !failed.is_empty() {
+        panic!(
+            "G1 gate FAILED: {}/{} queries failed: {:#?}",
+            failed.len(),
+            total,
+            failed
         );
     }
-    if let Some((_, elapsed, ok)) = q6_result {
-        eprintln!("Q6: {} ({:?})", if *ok { "PASS" } else { "FAIL" }, elapsed);
-        assert!(
-            *ok,
-            "Q6 exceeded timeout of {:?} (actual: {:?})",
-            timeout, elapsed
-        );
-    }
-
-    eprintln!("\n✅ TPC-H Gate PASSED ({}/{} queries)", passed, total);
+    assert_eq!(passed, total, "G1 gate must be 22/22");
 }
