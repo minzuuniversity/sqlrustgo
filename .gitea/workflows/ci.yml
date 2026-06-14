@@ -24,6 +24,8 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  CARGO_HOME: ${{ runner.temp }}/.cargo
+  RUSTUP_HOME: ${{ runner.temp }}/.rustup
 
 # Combined lint + build: share one clone, build once
 jobs:
