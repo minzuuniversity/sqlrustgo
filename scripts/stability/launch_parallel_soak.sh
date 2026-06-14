@@ -154,6 +154,17 @@ for h in $PHASE_RESOLVED; do
     mkdir -p "$results_dir"
     echo ""
     echo "[$h h @ port $port] launching..."
+    # P0 enhancement 2026-06-14: enforce server memory cap per parallel run
+    # to prevent N parallel soaks from collectively OOM-ing the host
+    # (macmini 06/14: 1 single run took 75 GB RSS, 4 parallel would 300+ GB).
+    # Default: 8 GB per run (overridable via env). run_wired_soak.sh
+    # honors this and applies ulimit -v inline to the server.
+    PER_RUN_MEM_MB=${PER_RUN_MEM_MB:-8192}
+    PARALLEL_COUNT=$(echo "$PHASE_RESOLVED" | wc -w)
+    TOTAL_MEM_MB=$((PER_RUN_MEM_MB * PARALLEL_COUNT))
+    if [ "$TOTAL_MEM_MB" -gt 75000 ]; then
+        echo "  WARN[$h]: $PARALLEL_COUNT parallel runs × ${PER_RUN_MEM_MB}MB = ${TOTAL_MEM_MB}MB total > 75 GB host phys mem"
+    fi
     env \
         HOURS="$h" \
         PORT="$port" \
@@ -161,6 +172,7 @@ for h in $PHASE_RESOLVED; do
         TPCH_ROTATE="$TPCH_ROTATE" \
         THREADS="$THREADS" \
         SQLRUSTGO_BIN="$SQLRUSTGO_BIN" \
+        SERVER_MEM_MB="$PER_RUN_MEM_MB" \
         RESULTS_DIR="$results_dir" \
         nohup bash "$SCRIPT_DIR/run_wired_soak.sh" > "$log_file" 2>&1 &
     LAUNCHER_PID=$!
