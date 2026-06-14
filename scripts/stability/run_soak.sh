@@ -99,4 +99,7 @@ echo "SERVER_MEM_MB=$SERVER_MEM_MB SERVER_FD_LIMIT=$SERVER_FD_LIMIT"
 echo "PORT=$PORT"
 echo "Other args: $*"
 echo "============================================================"
+# Export SCRIPT_DIR so dispatched scripts (which use ${SCRIPT_DIR}/../../target/...)
+# resolve the binary path correctly when invoked from run_soak.sh.
+export SCRIPT_DIR
 exec bash "$SCRIPT_DIR/$TARGET" "$@"
