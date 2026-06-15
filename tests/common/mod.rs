@@ -19,7 +19,6 @@
 
 use sha1::{Digest, Sha1};
 use sqlrustgo_mysql_server::testing::{start_ephemeral, EphemeralConfig, EphemeralHandle};
-use std::io::{Read, Write};
 use std::net::TcpStream;
 use std::time::Duration;
 
@@ -70,6 +69,7 @@ pub mod wire_err {
 pub mod wire_proto {
     use super::wire_err;
     use std::io::Read;
+
     use std::net::TcpStream;
 
     pub fn read_packet(stream: &mut TcpStream) -> wire_err::Result<Vec<u8>> {
@@ -191,7 +191,7 @@ fn native_password_auth(password: &[u8], scramble: &[u8; SCRAMBLE_LEN]) -> [u8; 
 fn build_handshake_response41(user: &str, auth_response: &[u8]) -> wire_err::Result<Vec<u8>> {
     let mut p = Vec::with_capacity(64 + user.len() + auth_response.len());
 
-    p.extend_from_slice(&(CLIENT_CAPABILITIES as u32).to_le_bytes());
+    p.extend_from_slice(&CLIENT_CAPABILITIES.to_le_bytes());
     p.extend_from_slice(&MAX_PACKET_SIZE.to_le_bytes());
     p.push(CHARSET_UTF8);
     p.extend_from_slice(&[0u8; 23]); // 23 reserved bytes
@@ -602,7 +602,11 @@ impl MySqlTestClient {
     /// `params_payload` is the binary-protocol payload AFTER
     /// stmt_id+flags+iteration_count (i.e. null_bitmap + type codes
     /// + values).
-    pub fn stmt_execute_raw(&mut self, stmt_id: u32, params_payload: &[u8]) -> wire_err::Result<Vec<u8>> {
+    pub fn stmt_execute_raw(
+        &mut self,
+        stmt_id: u32,
+        params_payload: &[u8],
+    ) -> wire_err::Result<Vec<u8>> {
         let p = build_com_stmt_execute(stmt_id, params_payload);
         write_packet(&mut self.stream, 0, &p)?;
         read_packet(&mut self.stream)
@@ -693,3 +697,5 @@ impl MySqlTestClient {
         parse_ok_packet_affected(&resp)
     }
 }
+
+pub mod tpch_wire_harness;
