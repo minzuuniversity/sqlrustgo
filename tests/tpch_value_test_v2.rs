@@ -55,8 +55,6 @@ fn tpch_queries() -> Vec<(u32, &'static str)> {
     ]
 }
 
-#[ignore = "SF=0.1 LOAD DATA + queries — run with: cargo test --test <name> -- --ignored"]
-
 #[test]
 fn tpch_22_value_assertion() {
     eprintln!("=== TPC-H 22/22 Value Assertion (wire protocol, SF=0.001) ===");
