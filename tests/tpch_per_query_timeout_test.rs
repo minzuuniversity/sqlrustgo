@@ -2,8 +2,6 @@ mod common;
 use common::tpch_wire_harness::{start_sf001, run_query_timed};
 use std::time::Duration;
 
-#[ignore = "SF=0.1 LOAD DATA + queries — run with: cargo test --test <name> -- --ignored"]
-
 #[test]
 fn tpch_per_query_timeout_q1() {
     let mut client = start_sf001();
@@ -16,8 +14,6 @@ fn tpch_per_query_timeout_q1() {
     assert!(result.is_ok(), "Q1 must complete: {result:?}");
     assert!(elapsed < Duration::from_secs(30), "Q1 too slow: {elapsed:?}");
 }
-
-#[ignore = "SF=0.1 LOAD DATA + queries — run with: cargo test --test <name> -- --ignored"]
 
 #[test]
 fn tpch_per_query_timeout_q6() {
