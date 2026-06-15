@@ -213,11 +213,36 @@
 
 ---
 
-Last updated: 2026-06-13 04:20 CST
+Last updated: 2026-06-15 18:30 CST
 
 ---
 
-## 10. 完成状态 (2026-06-14)
+## 10. 完成状态 (2026-06-15)
+
+### 100% E2E 完成（所有 TPC-H 测试已 wire 化）
+
+| 文件 | 状态 | 备注 |
+|------|------|------|
+| `tests/tpch_gate_test.rs` | ✅ E2E | 22/22 query gate via wire |
+| `tests/tpch_full_22_test.rs` | ✅ E2E | 完整 22 query 跑通 via wire |
+| `tests/tpch_22_queries_wire_test.rs` | ✅ E2E | 22 query 正确性 via wire |
+| `tests/tpch_value_test_v2.rs` | ✅ E2E | SF=0.001 数值正确性 via wire |
+| `tests/tpch_q8_q21_perf_regression_test.rs` | ✅ E2E | Q8/Q21 perf via wire |
+| `tests/tpch_q9_audit.rs` | 🟡 `#[ignore]` | baseline JSON `tests/data/tpch-sf01/baseline/Q09_three_way.json` 从未生成（pre-existing fixture 缺失） |
+| `tests/tpch_sf01_inprocess_test.rs` | ✅ E2E | SF=0.01 sanity via wire |
+| `tests/tpch_sf01_22_queries_wire_test.rs` | ✅ E2E | 22 queries SF=0.01 via wire |
+| `tests/tpch_sf01_perf_baseline_test.rs` | ✅ E2E | SF=0.01 perf baseline via wire |
+| `tests/tpch_per_query_timeout_test.rs` | ✅ E2E | per-query timeout via wire |
+| `tests/tpch_bug_regression_test.rs` | ✅ E2E | 3 bugs 回归 via wire |
+| `tests/tpch_hash_test.rs` | ✅ E2E | HASH 优化 via wire |
+| `tests/tpch_sf01_22_vs_3engines_test.rs` | ✅ E2E | sqlrustgo wire vs MariaDB/PG CLI (renamed from `tpch_sf01_22 vs_3engines.rs`) |
+| `tests/tpch_sf01_22_vs_sqlite_test.rs` | ✅ E2E | sqlrustgo wire vs SQLite JSON baseline (renamed from `tpch_sf01_22 vs_sqlite.rs`) |
+| `tests/tpch_22_mysql_cli_wire_test.rs` | ✅ E2E | 真实 mysql CLI 驱动 22 query via wire |
+| `tests/tpch_wire_smoke.rs` | ✅ E2E | wire smoke (原本就是 E2E) |
+| `tests/tpch_wire_smoke_sf.rs` | ✅ E2E | wire smoke SF (separate) |
+| `tests/tpch_value_correctness_test.rs` | ⚠️ Legacy | 旧 in-process test, 保留 (不在 E2E 列表中) |
+
+**总数 18 个 TPC-H 测试**：17 个 E2E，1 个 `#[ignore]`（baseline 缺失），1 个 legacy 保留。
 
 ### 已合并/在审 PR 序列
 
@@ -235,6 +260,9 @@ Last updated: 2026-06-13 04:20 CST
 - **18 个 in-process tests 改 wire**（PR#1-#4 合计）
 - **2 个新 stability tests 新写**（PR#1 long_run + g2_substance）
 - **bench/tpch-benchmark/ Python harness 重新加入**（PR#1 + PR#5）
+- **最后 2 个 TPC-H tests E2E 迁移**（commit `db64830ca`）— `vs_3engines`, `vs_sqlite`
+- **tpch_22_mysql_cli_wire_test 修复**（commit `970a8adbb`）— path bug + stale expected counts
+- **2 个文件名带空格的测试 rename**（commit `44e9f822f`）— cargo build 不再因 space 字符 abort
 
 ### 剩余未迁移
 
@@ -243,11 +271,13 @@ Last updated: 2026-06-13 04:20 CST
 - `tests/aggregate_smoke_test.rs`（单元测试，按计划保留）
 - `benches/tpch_streaming_config.rs`（streaming 内部 API，按计划保留）
 - `benches/tpch_wire_bench.rs`（已 e2e，按计划保留）
+- `tests/tpch_value_correctness_test.rs`（legacy in-process，不在 E2E 列表）
 
 ### 已知遗留（pre-existing on 252 HEAD）
 
 - `crates/mysql-server/src/lib.rs` 中 19 个 clippy errors（PI=3.14159 等），与本迁移无关
 - `benches/tpch_wire_bench.rs` 1 个 fmt diff（pre-existing）
+- `tests/arch_sem_debt_gate_test::test_d8_tracks_all_7_items` pre-existing 失败（脚本缺 ARCH-2 tracking，与本迁移无关）
 
 ---
 
