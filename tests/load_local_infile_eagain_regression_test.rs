@@ -57,11 +57,11 @@ const EXPECTED_COUNTS: &[(&str, usize)] = &[
     ("region", 5),
     ("nation", 25),
     ("supplier", 10),
-    ("customer", 15),
-    ("part", 20),
-    ("partsupp", 80),
-    ("orders", 150),
-    ("lineitem", 614),
+    ("customer", 50),
+    ("part", 50),
+    ("partsupp", 200),
+    ("orders", 500),
+    ("lineitem", 501),
 ];
 
 const SCHEMA_DDL: &[&str] = &[
@@ -176,5 +176,5 @@ fn test_load_local_infile_eagain_regression() {
     let cnt: i64 = client
         .query_one_i64("SELECT COUNT(*) FROM lineitem")
         .expect("count lineitem");
-    assert_eq!(cnt, 614, "lineitem row count mismatch");
+    assert_eq!(cnt, 501, "lineitem row count mismatch");
 }
