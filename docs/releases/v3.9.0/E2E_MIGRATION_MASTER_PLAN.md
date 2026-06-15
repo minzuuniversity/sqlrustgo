@@ -21,8 +21,8 @@
 | 5 | `tests/tpch_value_test_v2.rs` | ExecutionEngine + .tbl | Value assertion | ✅ E2E |
 | 6 | `tests/tpch_q9_audit.rs` | ExecutionEngine + SF=0.01 | Q9 audit | ✅ E2E |
 | 7 | `tests/tpch_sf01_inprocess_test.rs` | ExecutionEngine + SF=0.1 | SF=0.1 sanity | ✅ E2E |
-| 8 | `tests/tpch_sf01_22 vs_3engines.rs` | ExecutionEngine + 对比 MariaDB/PG | 跨引擎对比 | ✅ E2E + 对比 MariaDB/PG (都是 wire) |
-| 9 | `tests/tpch_sf01_22 vs_sqlite.rs` | ExecutionEngine + 对比 SQLite | 对比 SQLite | ✅ E2E + 对比 SQLite wire |
+| 8 | `tests/tpch_sf01_22_vs_3engines_test.rs` | ExecutionEngine + 对比 MariaDB/PG | 跨引擎对比 | ✅ E2E + 对比 MariaDB/PG (都是 wire) |
+| 9 | `tests/tpch_sf01_22_vs_sqlite_test.rs` | ExecutionEngine + 对比 SQLite | 对比 SQLite | ✅ E2E + 对比 SQLite wire |
 | 10 | `tests/tpch_sf01_perf baseline_test.rs` | ExecutionEngine + timing | SF=0.1 perf baseline | ✅ E2E + 通过 wire protocol 跑 sysbench-style 负载 |
 | 11 | `tests/tpch_per_query_timeout_test.rs` | ExecutionEngine + timeout | per-query timeout | ✅ E2E |
 | 12 | `tests/tpch_q8_q21_perf_regression_test.rs` | ExecutionEngine + timing | Q8/Q21 perf regression | ✅ E2E |
