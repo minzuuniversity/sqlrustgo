@@ -91,6 +91,8 @@ fn tpch_queries() -> Vec<(&'static str, &'static str)> {
     ]
 }
 
+#[ignore = "SF=0.1 LOAD DATA + queries — run with: cargo test --test <name> -- --ignored"]
+
 #[test]
 fn tpch_sf01_sanity() {
     eprintln!("=== TPC-H SF=0.1 Sanity (wire protocol) ===");

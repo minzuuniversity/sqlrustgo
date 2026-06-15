@@ -2,6 +2,8 @@ mod common;
 use common::tpch_wire_harness::{start_sf01, run_query_timed};
 use std::time::Duration;
 
+#[ignore = "SF=0.1 LOAD DATA + queries — run with: cargo test --test <name> -- --ignored"]
+
 #[test]
 fn tpch_sf01_perf_smoke_q1_q6() {
     let mut client = start_sf01();
