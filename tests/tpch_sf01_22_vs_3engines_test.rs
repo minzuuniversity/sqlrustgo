@@ -7,6 +7,9 @@ use std::collections::HashSet;
 use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
+use std::sync::Mutex;
+
+static SERVER_LOCK: Mutex<()> = Mutex::new(());
 
 const QUERIES_DIR: &str = "queries";
 
@@ -58,6 +61,7 @@ fn normalize_md_output(s: &str) -> Vec<String> {
 
 #[test]
 fn tpch_sf01_22_vs_mariadb_cell() {
+    let _guard = SERVER_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     if Command::new("mysql")
         .arg("-e")
         .arg("SELECT 1")
@@ -236,6 +240,7 @@ fn cell_match_with_fp_tol(a: &[String], b: &[String]) -> bool {
 
 #[test]
 fn tpch_sf01_22_vs_postgresql_pgdate_cell() {
+    let _guard = SERVER_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     if Command::new("env")
         .args(&[
             "PGPASSWORD=",
