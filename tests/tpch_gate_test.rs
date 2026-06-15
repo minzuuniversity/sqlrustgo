@@ -91,6 +91,8 @@ fn tpch_queries() -> Vec<(&'static str, &'static str)> {
     ]
 }
 
+#[ignore = "SF=0.1 LOAD DATA + queries — run with: cargo test --test <name> -- --ignored"]
+
 #[test]
 fn tpch_gate_completes() {
     eprintln!("=== TPC-H G1 Gate (wire protocol, SF=0.1) ===");
