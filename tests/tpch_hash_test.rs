@@ -1,6 +1,8 @@
 mod common;
 use common::tpch_wire_harness::start_sf01;
 
+#[ignore = "SF=0.1 LOAD DATA + queries — run with: cargo test --test <name> -- --ignored"]
+
 #[test]
 fn tpch_22_hash_smoke() {
     let mut client = start_sf01();
