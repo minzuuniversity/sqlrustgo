@@ -824,18 +824,18 @@ fn r3_d06_single_entry_rollback_only() {
 fn r3_d07_single_entry_insert_only() {
     let entries = vec![insert_entry(1, 1, 100)];
     let r = recover_run(entries);
-    // Insert without Begin/Commit. Classified as incomplete (group has
-    // no Commit/Rollback).
-    assert_eq!(r.incomplete_txns, 1);
-    assert_eq!(r.rows_inserted, 0, "no Commit → no replay");
+    // Autocommit: insert without Begin/Commit is durably committed via
+    // WAL fsync and is replayed.
+    assert_eq!(r.committed_txns, 1);
+    assert_eq!(r.rows_inserted, 1);
 }
 
 #[test]
 fn r3_d08_single_entry_delete_only() {
     let entries = vec![delete_entry(1, 1, 100)];
     let r = recover_run(entries);
-    assert_eq!(r.incomplete_txns, 1);
-    assert_eq!(r.rows_deleted, 0);
+    assert_eq!(r.committed_txns, 1);
+    assert_eq!(r.rows_deleted, 1);
 }
 
 #[test]
