@@ -13,8 +13,6 @@ const Q6: &str = "SELECT SUM(l_extendedprice * l_discount) AS revenue \
                     AND l_discount BETWEEN 0.06 - 0.01 AND 0.06 + 0.01 \
                     AND l_quantity < 25";
 
-#[ignore = "SF=0.1 LOAD DATA + queries — run with: cargo test --test <name> -- --ignored"]
-
 #[test]
 fn tpch_22_queries_wire_harness_q1_q6() {
     let mut client = start_sf001();
