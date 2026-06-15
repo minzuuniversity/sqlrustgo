@@ -111,7 +111,7 @@ Key crates in `crates/`:
 | Slow builds | Use `cargo check` for fast compilation checks |
 | Missing features | Use `--all-features` to enable all feature flags |
 | **LOAD DATA 性能误解** | TPC-H SF=0.01 (60K 行) LOAD DATA 慢的根因**不是 LOAD DATA 本身**，是 `start_ephemeral` 启动时跑 WAL recovery，对 60K entry 调 `storage.scan()` + `force_insert()` 每个都触发 O(N) `data.clone()` + JSON 序列化。修复看 **TPC-H LOAD DATA 性能** 章节。 |
-| **测试名空格 bug** | `tests/tpch_sf01_22 vs_3engines.rs` 这类文件有空格，cargo build 会失败 (`invalid character ' ' in crate name`)。`cargo test --tests` 会因 build 失败而整体 abort。逐个 `cargo test --test <name>` 绕过。 |
+| **测试名空格 bug** | `tests/tpch_sf01_22_vs_3engines_test.rs` (renamed from `tpch_sf01_22 vs_3engines.rs`, see commit 02f7a9a8c→rename)，cargo build 会失败 (`invalid character ' ' in crate name`)。`cargo test --tests` 会因 build 失败而整体 abort。逐个 `cargo test --test <name>` 绕过。 |
 | **recovery_scenarios_test 有 2 个 pre-existing 失败** | `r3_d07_single_entry_insert_only` 和 `r3_d08_single_entry_delete_only` 在 develop/v3.9.0 改 WAL 逻辑前就失败，与 LOAD DATA 性能修复无关。改 recovery 代码后必须 `git stash` 验证非回归。 |
 | **tpch_q9_audit baseline 缺失** | `tests/data/tpch-sf01/baseline/Q09_three_way.json` 从未生成。un-`#[ignore]` 此测试会导致 panic / OOM。修复：要么生成 baseline，要么保持 `#[ignore]`。 |
 
