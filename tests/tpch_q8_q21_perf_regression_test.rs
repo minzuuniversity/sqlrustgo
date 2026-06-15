@@ -2,8 +2,6 @@ mod common;
 use common::tpch_wire_harness::start_sf01;
 use std::time::Duration;
 
-#[ignore = "SF=0.1 LOAD DATA + queries — run with: cargo test --test <name> -- --ignored"]
-
 #[test]
 fn tpch_q8_q21_perf_regression_budget() {
     let mut client = start_sf01();
