@@ -1,8 +1,6 @@
 mod common;
 use common::tpch_wire_harness::start_sf001;
 
-#[ignore = "SF=0.1 LOAD DATA + queries — run with: cargo test --test <name> -- --ignored"]
-
 #[test]
 fn tpch_bug_regression_q1_count_4_rows() {
     let mut client = start_sf001();
@@ -18,8 +16,6 @@ fn tpch_bug_regression_q1_count_4_rows() {
     assert!(!rows.is_empty(), "Q1 must return at least 1 group");
 }
 
-#[ignore = "SF=0.1 LOAD DATA + queries — run with: cargo test --test <name> -- --ignored"]
-
 #[test]
 fn tpch_bug_regression_q6_count() {
     let mut client = start_sf001();
@@ -33,8 +29,6 @@ fn tpch_bug_regression_q6_count() {
         .expect("Q6 should run");
     assert!(!rows.is_empty());
 }
-
-#[ignore = "SF=0.1 LOAD DATA + queries — run with: cargo test --test <name> -- --ignored"]
 
 #[test]
 fn tpch_bug_regression_q1_sum_aggregate() {
