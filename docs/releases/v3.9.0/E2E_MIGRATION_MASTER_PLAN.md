@@ -249,3 +249,64 @@ Last updated: 2026-06-13 04:20 CST
 - `crates/mysql-server/src/lib.rs` 中 19 个 clippy errors（PI=3.14159 等），与本迁移无关
 - `benches/tpch_wire_bench.rs` 1 个 fmt diff（pre-existing）
 
+---
+
+## 11. LOAD DATA 性能修复 (C3 方案)
+
+### 11.1 问题
+
+SF=0.01 (60K 行 lineitem) 的 LOAD DATA 在 `cargo test` 中**永久挂起** (>11 分钟)，
+导致 13 个 TPC-H wire 测试**全部 `#[ignore]` 掉**才能让默认 `cargo test` 在合理时间内完成。
+G1 gate 22/22 query 验证**实际无法在回归测试中跑**，必须在外部脚本中跑。
+
+### 11.2 根本原因 (不是 LOAD DATA，是 WAL recovery)
+
+`start_ephemeral(data_dir)` 启动时跑 WAL recovery。SF=0.01 fixture 的
+`sqlrustgo.wal` 是 17 MB，包含 60K 个 INSERT entry (autocommit LOAD DATA 路径)。
+
+原 `RecoveryEngineImpl::recover` 对每条 entry 调一次 `apply_entry`：
+```
+apply_entry → storage.scan() (O(N) dedup 线性扫描)
+            → recovery_force_insert()
+            → FileStorage::insert_direct
+            → data.clone() (O(N) Vec<Record> 拷贝)
+            → save_table (O(N) JSON 序列化 + 全表写盘)
+```
+
+**总成本 O(N²)**: 60K² = 1.8B ops = 11 分钟。客户端 60s 超时 → EAGAIN。
+
+### 11.3 修复 (commit `d5c8fe384`)
+
+| 改动 | 文件 | 效果 |
+|------|------|------|
+| 新增 `StorageEngine::bulk_force_insert(table, Vec<Record>)` trait 方法 (默认 iterate) | `crates/storage/src/engine.rs` | 批量插入 API |
+| `FileStorage` override: `data.rows.extend(records) + 1× save_table` | `crates/storage/src/file_storage.rs` | O(1) save 调用 |
+| `WalStorage` override: 跳过 WAL，转发 inner (recovery 路径调用) | `crates/storage/src/wal_storage.rs` | recovery 不写 WAL |
+| `RecoveryEngineImpl::recover` 改为按 table 分组 + HashSet dedup + `bulk_force_insert` 一次/表 | `crates/storage/src/recovery_engine.rs` | O(N²) → O(N) |
+
+恢复 Update/Delete 仍按 LSN 顺序 apply (语义保持不变)。
+
+### 11.4 实测效果
+
+| 指标 | Before | After | 提升 |
+|------|--------|-------|------|
+| SF=0.01 (60K lineitem) LOAD DATA | > 11 min (HANG + EAGAIN) | **3.04s** | 220× |
+| TPC-H G1 Gate (22 queries) | 不可用 | **1.01s** queries / 4.7s 总 | — |
+| 13 个 SF=0.01 tpch 测试总耗时 | infeasible | **61s** | — |
+| 默认 `cargo test` (TPCH 13 个) | 0/13 跑 (全部 `#[ignore]`) | **13/13 PASS** | — |
+
+### 11.5 默认回归测试恢复 (13 个 un-`#[ignore]`)
+
+`tpch_gate_test` + 12 个其他 SF=0.01 wire 测试现在都跑在默认 `cargo test` 中。
+`tpch_q9_audit` 仍 `#[ignore]`（其 baseline JSON `tests/data/tpch-sf01/baseline/Q09_three_way.json`
+从未生成 — pre-existing fixture 缺失，与 C3 无关）。
+
+### 11.6 Recovery 语义回归验证
+
+- `tests/recovery_scenarios_test.rs`: 48/50 PASS，2 个 pre-existing 失败
+  (r3_d07, r3_d08) — `git stash` 验证在 C3 改动前也失败（非回归）
+- `tests/recovery_fuzzer_test`: 14/14 PASS
+- `tests/crash_monkey_test`: 4/4 PASS
+- `tests/cross_path_consistency_test`: 13/13 PASS
+- `cargo clippy -p sqlrustgo-storage`: 0 errors
+
