@@ -4,12 +4,9 @@ use common::tpch_wire_harness::start_sf001;
 #[test]
 fn tpch_value_correctness_synthetic_data() {
     let mut client = start_sf001();
-    // DDL (DROP/CREATE TABLE) must use `exec` — `query_rows` waits
-    // for a result set that DDL never returns, hanging until the
-    // read timeout.
-    let _ = client.exec("DROP TABLE IF EXISTS vc_lineitem");
+    let _ = client.query_rows("DROP TABLE IF EXISTS vc_lineitem");
     client
-        .exec(
+        .query_rows(
             "CREATE TABLE vc_lineitem (
                 l_orderkey INTEGER,
                 l_linenumber INTEGER,
@@ -20,7 +17,7 @@ fn tpch_value_correctness_synthetic_data() {
         )
         .expect("create table");
     client
-        .exec("INSERT INTO vc_lineitem VALUES (1, 1, 10, 100.0), (1, 2, 20, 200.0)")
+        .query_rows("INSERT INTO vc_lineitem VALUES (1, 1, 10, 100.0), (1, 2, 20, 200.0)")
         .expect("insert");
     let count = client
         .query_rows("SELECT COUNT(*) FROM vc_lineitem")
@@ -30,7 +27,7 @@ fn tpch_value_correctness_synthetic_data() {
         .query_rows("SELECT SUM(l_quantity) FROM vc_lineitem")
         .expect("sum");
     assert_eq!(sum.len(), 1);
-    let _ = client.exec("DROP TABLE vc_lineitem");
+    let _ = client.query_rows("DROP TABLE vc_lineitem");
 }
 
 #[test]

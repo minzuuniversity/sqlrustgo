@@ -4,7 +4,6 @@
 //! **Source**: COMPREHENSIVE_FEATURE_TRACKING.md (DAG Node N8)
 //! **Change**: openspec/changes/p1-3-test-plan
 
-#[ignore = "pre-existing: hardcoded /home/openclaw/... path; see AGENTS.md"]
 #[test]
 fn test_test_plan_integrated_exists() {
     let plan = std::env::current_dir()
@@ -13,7 +12,6 @@ fn test_test_plan_integrated_exists() {
     assert!(plan.exists(), "TEST_PLAN_INTEGRATED.md must exist");
 }
 
-#[ignore = "pre-existing: hardcoded /home/openclaw/... path; see AGENTS.md"]
 #[test]
 fn test_test_review_integrated_exists() {
     let review = std::env::current_dir()
@@ -22,7 +20,6 @@ fn test_test_review_integrated_exists() {
     assert!(review.exists(), "TEST_REVIEW_INTEGRATED.md must exist");
 }
 
-#[ignore = "pre-existing: hardcoded /home/openclaw/... path; see AGENTS.md"]
 #[test]
 fn test_test_acceptance_integrated_exists() {
     let acceptance = std::env::current_dir()
@@ -34,7 +31,6 @@ fn test_test_acceptance_integrated_exists() {
     );
 }
 
-#[ignore = "pre-existing: hardcoded /home/openclaw/... path; see AGENTS.md"]
 #[test]
 fn test_test_plan_53_tests() {
     let plan = std::env::current_dir()
@@ -69,7 +65,6 @@ fn test_test_plan_53_tests() {
     );
 }
 
-#[ignore = "pre-existing: hardcoded /home/openclaw/... path; see AGENTS.md"]
 #[test]
 fn test_test_plan_8_gate_dimensions() {
     let plan = std::env::current_dir()
@@ -81,7 +76,6 @@ fn test_test_plan_8_gate_dimensions() {
     }
 }
 
-#[ignore = "pre-existing: hardcoded /home/openclaw/... path; see AGENTS.md"]
 #[test]
 fn test_test_plan_4_stages() {
     let plan = std::env::current_dir()
@@ -93,7 +87,6 @@ fn test_test_plan_4_stages() {
     }
 }
 
-#[ignore = "pre-existing: hardcoded /home/openclaw/... path; see AGENTS.md"]
 #[test]
 fn test_test_review_audit_complete() {
     let review = std::env::current_dir()
@@ -109,7 +102,6 @@ fn test_test_review_audit_complete() {
     );
 }
 
-#[ignore = "pre-existing: hardcoded /home/openclaw/... path; see AGENTS.md"]
 #[test]
 fn test_test_acceptance_all_pass() {
     let acceptance = std::env::current_dir()
@@ -125,7 +117,6 @@ fn test_test_acceptance_all_pass() {
     );
 }
 
-#[ignore = "pre-existing: hardcoded /home/openclaw/... path; see AGENTS.md"]
 #[test]
 fn test_cargo_toml_test_entries() {
     // Verify Cargo.toml has at least 53 [[test]] entries (consistency check)
@@ -140,7 +131,6 @@ fn test_cargo_toml_test_entries() {
     );
 }
 
-#[ignore = "pre-existing: hardcoded /home/openclaw/... path; see AGENTS.md"]
 #[test]
 fn test_no_orphan_tests() {
     // Walk tests/ directory

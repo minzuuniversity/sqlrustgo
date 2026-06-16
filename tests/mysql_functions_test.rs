@@ -8,7 +8,6 @@ fn fresh() -> ExecutionEngine<MemoryStorage> {
     ExecutionEngine::new(storage)
 }
 
-#[ignore = "pre-existing COALESCE engine bug (returns 3 rows instead of 5)"]
 #[test]
 fn test_select_coalesce() {
     let mut e = fresh();

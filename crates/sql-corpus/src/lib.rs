@@ -259,7 +259,6 @@ impl SimpleExecutor {
                     data_type: "TEXT".to_string(),
                     nullable: true,
                     primary_key: false,
-                    char_max_length: None,
                 })
                 .collect();
             let table_info = TableInfo {
@@ -384,7 +383,6 @@ impl SimpleExecutor {
                     data_type: "TEXT".to_string(),
                     nullable: true,
                     primary_key: false,
-                    char_max_length: None,
                 })
                 .collect();
             let table_info = TableInfo {
@@ -423,7 +421,6 @@ impl SimpleExecutor {
                     data_type: "TEXT".to_string(),
                     nullable: true,
                     primary_key: false,
-                    char_max_length: None,
                 })
                 .collect();
             let table_info = TableInfo {
@@ -465,7 +462,6 @@ impl SimpleExecutor {
     /// join is evaluated against the running combined row using the
     /// synthesized TableInfo (left + all already-joined right columns).
     /// Outer joins are not supported.
-    #[allow(dead_code)]
     fn execute_select_with_join(
         &self,
         select: &SelectStatement,
@@ -761,7 +757,6 @@ impl SimpleExecutor {
                             data_type: "TEXT".to_string(),
                             nullable: true,
                             primary_key: false,
-                            char_max_length: None,
                         })
                         .collect();
                     let table_info = TableInfo {
@@ -827,7 +822,6 @@ impl SimpleExecutor {
                 data_type: "TEXT".to_string(),
                 nullable: true,
                 primary_key: false,
-                char_max_length: None,
             })
             .collect();
         let table_info = TableInfo {

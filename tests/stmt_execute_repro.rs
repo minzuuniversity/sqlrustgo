@@ -18,18 +18,13 @@ fn read_packet_with_seq(stream: &mut TcpStream) -> (u8, Vec<u8>) {
     (seq, payload)
 }
 
-#[ignore = "pre-existing PREPARE/EXECUTE statement engine bug (returns 0 rows)"]
 #[test]
 fn repro_stmt_execute_returns_malformed_packet() {
     let mut client = MySqlTestClient::connect_default().expect("server should come up");
 
     // 1. Create + populate
-    client
-        .exec("CREATE TABLE repro_t (id INT PRIMARY KEY, v TEXT)")
-        .expect("CREATE");
-    client
-        .exec("INSERT INTO repro_t VALUES (3, 'row_3')")
-        .expect("INSERT");
+    client.exec("CREATE TABLE repro_t (id INT PRIMARY KEY, v TEXT)").expect("CREATE");
+    client.exec("INSERT INTO repro_t VALUES (3, 'row_3')").expect("INSERT");
 
     // 2. PREPARE
     let p = vec![
@@ -40,9 +35,7 @@ fn repro_stmt_execute_returns_malformed_packet() {
     use std::io::Write;
     let stream = client.raw_stream();
     let len = p.len() as u32;
-    stream
-        .write_all(&[len as u8, (len >> 8) as u8, (len >> 16) as u8, 0u8])
-        .unwrap();
+    stream.write_all(&[len as u8, (len >> 8) as u8, (len >> 16) as u8, 0u8]).unwrap();
     stream.write_all(&p).unwrap();
     stream.flush().unwrap();
     let (seq, prep) = read_packet_with_seq(stream);
@@ -82,9 +75,7 @@ fn repro_stmt_execute_returns_malformed_packet() {
     exec.extend_from_slice(&3i32.to_le_bytes());
     let stream = client.raw_stream();
     let len = exec.len() as u32;
-    stream
-        .write_all(&[len as u8, (len >> 8) as u8, (len >> 16) as u8, 0u8])
-        .unwrap();
+    stream.write_all(&[len as u8, (len >> 8) as u8, (len >> 16) as u8, 0u8]).unwrap();
     stream.write_all(&exec).unwrap();
     stream.flush().unwrap();
 
@@ -122,11 +113,7 @@ fn repro_stmt_execute_returns_malformed_packet() {
         } else if pkt_idx == 1 {
             eprintln!("EXECUTE: col def (skipped)");
         } else {
-            eprintln!(
-                "EXECUTE: ROW ({} bytes): {:02x?}",
-                p.len(),
-                &p[..p.len().min(20)]
-            );
+            eprintln!("EXECUTE: ROW ({} bytes): {:02x?}", p.len(), &p[..p.len().min(20)]);
             row_count += 1;
         }
         pkt_idx += 1;

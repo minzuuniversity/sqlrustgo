@@ -1,5 +1,5 @@
 mod common;
-use common::tpch_wire_harness::{run_query_timed, start_sf01};
+use common::tpch_wire_harness::{start_sf01, run_query_timed};
 use std::time::Duration;
 
 #[test]
