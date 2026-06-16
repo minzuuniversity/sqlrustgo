@@ -471,19 +471,6 @@ pub trait StorageEngine: Send + Sync {
         self.insert(table, vec![record])
     }
 
-    /// Bulk force-insert N rows in one call. Equivalent to calling
-    /// `force_insert` N times, but storage engines that pay a per-call cost
-    /// (e.g. FileStorage's `save_table` JSON-serializes the full table on
-    /// every call) can override this to amortize the cost over the batch.
-    /// Used by WAL recovery to apply a table's full replay set in O(1)
-    /// save calls instead of O(N).
-    fn bulk_force_insert(&mut self, table: &str, records: Vec<Record>) -> SqlResult<()> {
-        for record in records {
-            self.force_insert(table, record)?;
-        }
-        Ok(())
-    }
-
     /// Delete rows matching a filter
     fn delete(&mut self, table: &str, _filters: &[Value]) -> SqlResult<usize>;
     fn delete_if(&mut self, table: &str, filter: &RowFilter) -> SqlResult<usize>;

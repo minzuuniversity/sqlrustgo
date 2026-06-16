@@ -51,7 +51,6 @@ use std::fs;
 use std::net::TcpStream;
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
-use std::sync::OnceLock;
 use std::time::Duration;
 
 // =========================================================================
@@ -180,34 +179,6 @@ fn canonical_binary() -> std::path::PathBuf {
     p
 }
 
-fn ensure_canonical_binary_built() {
-    static BUILT: OnceLock<()> = OnceLock::new();
-    BUILT.get_or_init(|| {
-        let bin = canonical_binary();
-        if !bin.exists() {
-            eprintln!("[smoke] building sqlrustgo-mysql-server binary (one-time)...");
-            let mut args: Vec<&str> = vec![
-                "build",
-                "-p",
-                "sqlrustgo-mysql-server",
-                "--bin",
-                "sqlrustgo-mysql-server",
-            ];
-            if cfg!(not(debug_assertions)) {
-                args.push("--release");
-            }
-            let status = Command::new("cargo")
-                .args(&args)
-                .status()
-                .expect("spawn cargo build");
-            assert!(
-                status.success(),
-                "cargo build -p sqlrustgo-mysql-server failed"
-            );
-        }
-    });
-}
-
 struct SubprocessHandle {
     child: Child,
     #[allow(dead_code)]
@@ -222,7 +193,6 @@ impl Drop for SubprocessHandle {
 }
 
 fn spawn_canonical_with_client() -> (SubprocessHandle, MySqlTestClient) {
-    ensure_canonical_binary_built();
     let bin = canonical_binary();
     assert!(
         bin.exists(),

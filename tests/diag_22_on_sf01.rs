@@ -11,7 +11,7 @@ use std::fs;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 
-const FIXTURE: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/tpch-sf01");
+const FIXTURE: &str = "/home/openclaw/sqlrustgo-tpch/data";
 
 fn load_tbl_file(
     storage: &Arc<RwLock<MemoryStorage>>,
@@ -117,7 +117,6 @@ fn run_q(engine: &mut ExecutionEngine<MemoryStorage>, qnum: u8) -> Result<i64, S
     Ok(r.rows.len() as i64)
 }
 
-#[ignore = "pre-existing: hardcoded /home/openclaw/... path; see AGENTS.md"]
 #[test]
 fn diag_22_on_sf01() {
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));
