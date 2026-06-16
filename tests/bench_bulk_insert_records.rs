@@ -34,6 +34,7 @@ fn parse_tbl_line(line: &str, n: usize) -> Option<Record> {
     Some(row)
 }
 
+#[ignore = "pre-existing: hardcoded path /home/openclaw/sqlrustgo-tpch/data/lineitem.tbl; migrate to wire harness (start_sf01) for a portable version"]
 #[test]
 fn bench_bulk_insert_lineitem() {
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));
