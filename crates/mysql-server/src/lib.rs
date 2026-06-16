@@ -53,12 +53,26 @@ mod packet_type {
 //     flags and reads them from a different static). `start_ephemeral`
 //     is the entry point used by every wire-protocol integration test.
 //
-// `OnceLock` enforces a single set per process. If multiple
-// `start_ephemeral` calls happen, only the first wins. Tests that
-// need a fresh config use `EphemeralConfig::default()` for the rest.
+// `Mutex<Option<>>` (vs. previous `OnceLock<Mutex<>>`) so each new
+// ephemeral server's config OVERWRITES the previous one. This matters
+// when a single test binary runs multiple wire-protocol tests in
+// series (e.g. tpch_wire_smoke_sf001 then tpch_sf01_22_queries_wire),
+// each with a different data_dir: with OnceLock, only the FIRST
+// test's data_dir was visible to LOAD DATA, and subsequent tests
+// would either fail (different data_dir) or hang (server blocks
+// waiting for periodic flush on an empty buf because no rows parse
+// due to wrong column count for the actual data being loaded).
 // ============================================================================
-use std::sync::OnceLock;
-static ACTIVE_CONFIG: OnceLock<std::sync::Mutex<testing::EphemeralConfig>> = OnceLock::new();
+use std::sync::Mutex;
+static ACTIVE_CONFIG: Mutex<Option<testing::EphemeralConfig>> = Mutex::new(None);
+
+/// Overwrite ACTIVE_CONFIG with a fresh config (called by start_ephemeral
+/// and run_server_v2 so the latest server's data_dir wins for LOAD DATA
+/// whitelist checks).
+pub fn set_active_config(cfg: testing::EphemeralConfig) {
+    let mut g = ACTIVE_CONFIG.lock().unwrap_or_else(|e| e.into_inner());
+    *g = Some(cfg);
+}
 
 mod capability {
     pub const LONG_PASSWORD: u32 = 0x00000001;
@@ -1896,8 +1910,9 @@ fn do_command_loop<S: Read + Write>(
                 // values the test used to configure the server.
                 if let Some((path, table, delim)) = parse_load_local_infile_sql(&q) {
                     let cfg = ACTIVE_CONFIG
-                        .get()
-                        .map(|m| m.lock().unwrap().clone())
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .clone()
                         .unwrap_or_default();
                     let data_dir = cfg
                         .data_dir
@@ -2167,9 +2182,37 @@ fn do_command_loop<S: Read + Write>(
                                         row.into_iter().take(stmt_col_count as usize).collect()
                                     })
                                     .collect();
-                                seq = send_result_set(
-                                    stream, &c_trimmed, &t_trimmed, &r_trimmed, seq, cap,
-                                )?;
+                                // Binary protocol: column-defs → rows → EOF (no column-count, no inter-record EOF)
+                                for (i, n) in c_trimmed.iter().enumerate() {
+                                    write_column_def(
+                                        stream,
+                                        n,
+                                        t_trimmed
+                                            .get(i)
+                                            .map(|s| s.as_str())
+                                            .unwrap_or("VARCHAR(255)"),
+                                        seq,
+                                    )?;
+                                    seq = seq.wrapping_add(1);
+                                }
+                                for r in r_trimmed.iter() {
+                                    let mut p = Vec::new();
+                                    write_text_row(&mut p, r)?;
+                                    Packet {
+                                        length: p.len() as u32,
+                                        sequence: seq,
+                                        payload: p,
+                                    }
+                                    .write_to(stream)?;
+                                    seq = seq.wrapping_add(1);
+                                }
+                                if cap & capability::DEPRECATE_EOF == 0 {
+                                    make_eof_packet(seq, 0x0002).write_to(stream)?;
+                                    seq = seq.wrapping_add(1);
+                                } else {
+                                    make_ok_packet(seq, 0, 0, 0x0002, 0).write_to(stream)?;
+                                    seq = seq.wrapping_add(1);
+                                }
                             }
                             Ok(r) => {
                                 make_ok_packet(seq, r.affected_rows as u64, 0, 0x0002, 0)
@@ -2423,7 +2466,7 @@ pub fn run_server_v2(
         data_dir: Some(std::path::PathBuf::from(data_dir)),
         ..Default::default()
     };
-    let _ = crate::ACTIVE_CONFIG.set(std::sync::Mutex::new(cfg));
+    crate::set_active_config(cfg);
     run_server_with_listener(listener)
 }
 
@@ -3484,7 +3527,6 @@ mod load_local_infile_tests {
 pub use testing::EphemeralConfig;
 
 pub mod testing {
-    use crate::ACTIVE_CONFIG;
     use std::net::TcpListener;
     use std::path::PathBuf;
     use std::sync::{Arc, Mutex};
@@ -3626,9 +3668,10 @@ pub mod testing {
     pub fn start_ephemeral(config: EphemeralConfig) -> Result<EphemeralHandle, std::io::Error> {
         // Publish the config so the server thread's `do_command_loop`
         // can find the data_dir and bulk buffer size for LOAD DATA
-        // LOCAL INFILE. Only the first call wins; later calls are a
-        // no-op (OnceLock semantics).
-        let _ = ACTIVE_CONFIG.set(std::sync::Mutex::new(config.clone()));
+        // LOCAL INFILE. Each call overwrites the prior config so
+        // sequential `start_ephemeral` calls (different tests in the
+        // same binary) each see their own data_dir.
+        crate::set_active_config(config.clone());
 
         let listener = TcpListener::bind(format!("{}:0", config.host))?;
         let port = listener.local_addr()?.port();
