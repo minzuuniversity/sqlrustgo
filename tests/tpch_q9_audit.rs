@@ -1,5 +1,5 @@
 mod common;
-use common::tpch_wire_harness::{start_sf01, read_baseline, compare_cells};
+use common::tpch_wire_harness::{compare_cells, read_baseline, start_sf01};
 use std::path::Path;
 
 #[ignore = "needs tests/data/tpch-sf01/baseline/Q09_three_way.json (not generated)"]
@@ -20,7 +20,9 @@ fn tpch_q9_audit_wire() {
               ORDER BY n_name, o_year DESC";
     let rows = client.query_rows(q9).expect("Q9 must run");
     assert!(!rows.is_empty(), "Q9 must return rows");
-    let baseline = read_baseline(Path::new("tests/data/tpch-sf01/baseline/Q09_three_way.json"));
+    let baseline = read_baseline(Path::new(
+        "tests/data/tpch-sf01/baseline/Q09_three_way.json",
+    ));
     let res = compare_cells(&rows, &baseline, 9.0);
     assert!(res.is_ok(), "Q9 cell compare: {res:?}");
 }
