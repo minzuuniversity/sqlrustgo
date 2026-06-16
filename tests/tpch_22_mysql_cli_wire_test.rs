@@ -102,6 +102,8 @@ impl Server {
     }
 }
 
+
+
 fn ensure_canonical_binary_built() {
     static BUILT: OnceLock<()> = OnceLock::new();
     BUILT.get_or_init(|| {
@@ -114,8 +116,12 @@ fn ensure_canonical_binary_built() {
         let bin = target_dir.join(profile).join("sqlrustgo-mysql-server");
         if !bin.exists() {
             eprintln!("[mysql-cli-test] building sqlrustgo-mysql-server binary (one-time)...");
+            let mut args: Vec<&str> = vec!["build", "-p", "sqlrustgo-mysql-server", "--bin", "sqlrustgo-mysql-server"];
+            if profile == "release" {
+                args.push("--release");
+            }
             let status = Command::new("cargo")
-                .args(["build", "-p", "sqlrustgo-mysql-server", "--bin", "sqlrustgo-mysql-server"])
+                .args(&args)
                 .status()
                 .expect("spawn cargo build");
             assert!(status.success(), "cargo build -p sqlrustgo-mysql-server failed");
@@ -123,6 +129,7 @@ fn ensure_canonical_binary_built() {
     });
 }
 
+impl Server {
     fn wait_ready(&self) -> Result<(), String> {
         let addr = format!("127.0.0.1:{}", self.port);
         let start = std::time::Instant::now();
