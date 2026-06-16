@@ -77,11 +77,13 @@ if ! cargo check --test soak_test 2>&1 | tail -3 | grep -q "Finished\|Compiling"
 fi
 echo "  [4/7] ✅ PASS: soak_test compiles"
 
-# 5. Tests pass
-PASSED=$(cargo test --test soak_test 2>&1 | grep -E "test result.*ok" | grep -oE "[0-9]+ passed" | head -1)
-if [ -z "$PASSED" ]; then
-    echo "  ❌ FAIL: soak_test tests did not pass"
-    cargo test --test soak_test 2>&1 | tail -5
+# 5. Tests pass (P14 V8 fix: capture exit code explicitly)
+SOAK_OUTPUT=$(cargo test --test soak_test 2>&1)
+SOAK_EXIT=$?
+PASSED=$(echo "$SOAK_OUTPUT" | grep -E "test result.*ok" | grep -oE "[0-9]+ passed" | head -1)
+if [ $SOAK_EXIT -ne 0 ] || [ -z "$PASSED" ]; then
+    echo "  ❌ FAIL: soak_test tests did not pass (cargo exit=$SOAK_EXIT)"
+    echo "$SOAK_OUTPUT" | tail -5
     exit 1
 fi
 # Expect at least 10 tests (3 soak + 7 supporting)
