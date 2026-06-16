@@ -73,7 +73,11 @@ impl Server {
             .ok()
             .map(PathBuf::from)
             .unwrap_or_else(|| manifest_dir.join("target"));
-        let profile = if cfg!(debug_assertions) { "debug" } else { "release" };
+        let profile = if cfg!(debug_assertions) {
+            "debug"
+        } else {
+            "release"
+        };
         let bin = target_dir.join(profile).join("sqlrustgo-mysql-server");
         if !bin.exists() {
             return Err(format!("binary not found at {:?}", bin));
@@ -102,8 +106,6 @@ impl Server {
     }
 }
 
-
-
 fn ensure_canonical_binary_built() {
     static BUILT: OnceLock<()> = OnceLock::new();
     BUILT.get_or_init(|| {
@@ -112,11 +114,21 @@ fn ensure_canonical_binary_built() {
             .ok()
             .map(PathBuf::from)
             .unwrap_or_else(|| manifest_dir.join("target"));
-        let profile = if cfg!(debug_assertions) { "debug" } else { "release" };
+        let profile = if cfg!(debug_assertions) {
+            "debug"
+        } else {
+            "release"
+        };
         let bin = target_dir.join(profile).join("sqlrustgo-mysql-server");
         if !bin.exists() {
             eprintln!("[mysql-cli-test] building sqlrustgo-mysql-server binary (one-time)...");
-            let mut args: Vec<&str> = vec!["build", "-p", "sqlrustgo-mysql-server", "--bin", "sqlrustgo-mysql-server"];
+            let mut args: Vec<&str> = vec![
+                "build",
+                "-p",
+                "sqlrustgo-mysql-server",
+                "--bin",
+                "sqlrustgo-mysql-server",
+            ];
             if profile == "release" {
                 args.push("--release");
             }
@@ -124,7 +136,10 @@ fn ensure_canonical_binary_built() {
                 .args(&args)
                 .status()
                 .expect("spawn cargo build");
-            assert!(status.success(), "cargo build -p sqlrustgo-mysql-server failed");
+            assert!(
+                status.success(),
+                "cargo build -p sqlrustgo-mysql-server failed"
+            );
         }
     });
 }

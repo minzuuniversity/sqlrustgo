@@ -81,10 +81,7 @@ fn tpch_sf01_22_vs_mariadb_cell() {
         let t0 = std::time::Instant::now();
         let sr_rows = client.query_rows(&sql).expect("query");
         let elapsed = t0.elapsed();
-        let sr_strings: Vec<String> = sr_rows
-            .iter()
-            .map(|row| row.join("|"))
-            .collect();
+        let sr_strings: Vec<String> = sr_rows.iter().map(|row| row.join("|")).collect();
         let sr_set: HashSet<String> = sr_strings.iter().cloned().collect();
         let md_count = run_md_count(&sql);
         let md_result = run_md(&sql);
@@ -103,7 +100,10 @@ fn tpch_sf01_22_vs_mariadb_cell() {
             "FAIL"
         };
         let diff_info = if !cell_match && sr_rc == md_count {
-            format!(" [{} rows differ]", sr_set.symmetric_difference(&md_set).count())
+            format!(
+                " [{} rows differ]",
+                sr_set.symmetric_difference(&md_set).count()
+            )
         } else if sr_rc != md_count {
             format!(" [rc sr={} md={}]", sr_rc, md_count)
         } else {
@@ -173,10 +173,7 @@ fn run_pg_count(sql: &str) -> usize {
 fn normalize_pg_output(s: &str) -> Vec<String> {
     s.lines()
         .filter(|l| {
-            !l.is_empty()
-                && !l.starts_with("---")
-                && !l.starts_with("(")
-                && !l.contains("?column?")
+            !l.is_empty() && !l.starts_with("---") && !l.starts_with("(") && !l.contains("?column?")
         })
         .map(|l| {
             l.split('|')
@@ -217,10 +214,7 @@ fn cell_match_with_fp_tol(a: &[String], b: &[String]) -> bool {
             let (xf, yf) = match (x.parse::<f64>(), y.parse::<f64>()) {
                 (Ok(a), Ok(b)) => (a, b),
                 _ => {
-                    eprintln!(
-                        "        row {} col {} not numeric: {} vs {}",
-                        ri, ci, x, y
-                    );
+                    eprintln!("        row {} col {} not numeric: {} vs {}", ri, ci, x, y);
                     return false;
                 }
             };

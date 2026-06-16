@@ -186,7 +186,13 @@ fn ensure_canonical_binary_built() {
         let bin = canonical_binary();
         if !bin.exists() {
             eprintln!("[smoke] building sqlrustgo-mysql-server binary (one-time)...");
-            let mut args: Vec<&str> = vec!["build", "-p", "sqlrustgo-mysql-server", "--bin", "sqlrustgo-mysql-server"];
+            let mut args: Vec<&str> = vec![
+                "build",
+                "-p",
+                "sqlrustgo-mysql-server",
+                "--bin",
+                "sqlrustgo-mysql-server",
+            ];
             if cfg!(not(debug_assertions)) {
                 args.push("--release");
             }
@@ -194,7 +200,10 @@ fn ensure_canonical_binary_built() {
                 .args(&args)
                 .status()
                 .expect("spawn cargo build");
-            assert!(status.success(), "cargo build -p sqlrustgo-mysql-server failed");
+            assert!(
+                status.success(),
+                "cargo build -p sqlrustgo-mysql-server failed"
+            );
         }
     });
 }
