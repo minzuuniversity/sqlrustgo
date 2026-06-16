@@ -402,19 +402,15 @@ impl StatsCollector for DefaultStatsCollector {
                         // For non-numeric types, just track min/max lexicographically
                         match &min_value {
                             None => min_value = Some(value.clone()),
-                            Some(Value::Text(_)) | Some(Value::Blob(_)) => {
-                                if value.to_string() < min_value.as_ref().unwrap().to_string() {
-                                    min_value = Some(value.clone());
-                                }
+                            Some(Value::Text(_)) | Some(Value::Blob(_)) if value.to_string() < min_value.as_ref().unwrap().to_string() => {
+                                min_value = Some(value.clone());
                             }
                             _ => {}
                         }
                         match &max_value {
                             None => max_value = Some(value.clone()),
-                            Some(Value::Text(_)) | Some(Value::Blob(_)) => {
-                                if value.to_string() > max_value.as_ref().unwrap().to_string() {
-                                    max_value = Some(value.clone());
-                                }
+                            Some(Value::Text(_)) | Some(Value::Blob(_)) if value.to_string() > max_value.as_ref().unwrap().to_string() => {
+                                max_value = Some(value.clone());
                             }
                             _ => {}
                         }

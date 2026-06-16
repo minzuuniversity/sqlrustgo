@@ -147,10 +147,8 @@ fn find_top_level_op(expr: &str, op: &str) -> Option<usize> {
             '\'' => {
                 in_string = !in_string;
             }
-            _ if !in_string && depth == 0 => {
-                if upper[i..].starts_with(&op_upper) {
-                    return Some(i);
-                }
+            _ if !in_string && depth == 0 && upper[i..].starts_with(&op_upper) => {
+                return Some(i);
             }
             _ => {}
         }
