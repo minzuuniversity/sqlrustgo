@@ -1,19 +1,30 @@
 # SQLRustGo
 
-> **Last updated**: 2026-06-13
-> **Current dev branch**: [`8a83e2553`](http://192.168.0.252:3000/openclaw/sqlrustgo/commit/8a83e2553) @ develop/v3.9.0
+> **Last updated**: 2026-06-17
+> **Current dev branch**: [`6e1f4339a`](http://192.168.0.252:3000/openclaw/sqlrustgo/commit/6e1f4339a) @ develop/v3.9.0
 > **Latest stable**: v3.8.0 (GA, 2026-06-08) | v3.9.0-rc7 (in soak, GA target 2026-12-15)
-> **Latest RC**: v3.9.0-rc7 (RC, 2026-06-12, G1-G16 PASS, awaiting 24h real soak)
+> **Latest RC**: v3.9.0-rc7 (RC, 2026-06-12, G1-G16 **partial** PASS, awaiting 24h real soak + #3424 fix)
+>
+> ⚠️ **Truthfulness notice (2026-06-17)**: The "G1-G16 PASS" claim refers only to **in-process** tests.
+> Wire-protocol TPC-H 22/22 cross-engine times out at Q9 (#3424, ga-p0-tpch). Long stability (14 tests),
+> QPS benchmark (10 tests), and E2E subprocess (15 tests) are all `#[ignore]`d. Real 24h/72h/168h
+> wall-clock soak is not run (#3225, #3264-#3266). The 2026-06-06 authenticity audit
+> ([`docs/audit/status/2026-06-06-test-authenticity-analysis-v390.md`](docs/audit/status/2026-06-06-test-authenticity-analysis-v390.md))
+> estimated **真 production-equivalent 测试覆盖率 ≈ 35%**. The new 2026-06-17 truthfulness report
+> ([`docs/audit/status/2026-06-17-truthfulness-current-state.md`](docs/audit/status/2026-06-17-truthfulness-current-state.md))
+> cross-references documented PASS claims against actual evidence. **Do not claim v3.9.0-rc is GA-ready
+> on the basis of the README badges alone.**
 
 <p align="center">
   <img src="https://img.shields.io/badge/Rust-1.85+-dea584?style=flat-square&logo=rust" alt="Rust">
   <img src="https://img.shields.io/badge/v3.8.0-GA-green?style=flat-square" alt="GA">
   <img src="https://img.shields.io/badge/v3.9.0-rc7-yellow?style=flat-square" alt="RC7">
   <img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="License">
-  <img src="https://img.shields.io/badge/TPC--H-22%2F22-brightgreen?style=flat-square" alt="TPC-H">
-  <img src="https://img.shields.io/badge/Corpus-100.0%25-brightgreen?style=flat-square" alt="Corpus">
-  <img src="https://img.shields.io/badge/9--Dim%20Gate-8%2F8%20PASS-brightgreen?style=flat-square" alt="D9">
+  <img src="https://img.shields.io/badge/TPC--H-22%2F22%20(in--process)-brightgreen?style=flat-square" alt="TPC-H in-process">
+  <img src="https://img.shields.io/badge/Corpus-100.0%25%20(claimed)-yellow?style=flat-square" alt="Corpus claimed">
+  <img src="https://img.shields.io/badge/9--Dim%20Gate-8%2F8%20(D9%20only)-yellow?style=flat-square" alt="D9 only">
   <img src="https://img.shields.io/badge/INT--1%20(P0)-CLOSED-brightgreen?style=flat-square" alt="INT-1">
+  <img src="https://img.shields.io/badge/Production%20Coverage-~35%25-orange?style=flat-square" alt="~35% production coverage">
 </p>
 
 SQLRustGo 是一个纯 Rust 实现的 SQL 执行引擎，支持完整 SQL-92 语法、窗口函数、CTE、CBO 成本优化器、WAL + MVCC 事务、向量存储与图存储，以及 AI Native GMP 工作流。
