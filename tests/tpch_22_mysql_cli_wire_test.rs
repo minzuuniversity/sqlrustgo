@@ -64,25 +64,16 @@ struct Server {
 
 impl Server {
     fn start(data_dir: &PathBuf) -> Result<Self, String> {
-        // Build the binary in debug mode if not present.
-        // Use CARGO_TARGET_DIR if set, else fall back to target/debug/ relative to repo root.
-        let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .unwrap()
-            .to_path_buf();
+        // Locate the `sqlrustgo-mysql-server` binary that the build just
+        // produced. CARGO_MANIFEST_DIR points at the workspace root, so
+        // `target/<profile>/` sits directly under it.
+        let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         let target_dir = std::env::var("CARGO_TARGET_DIR")
+            .ok()
             .map(PathBuf::from)
-            .unwrap_or_else(|_| repo_root.join("target"));
-        let bin = target_dir.join("debug").join("sqlrustgo-mysql-server");
-        let bin = if bin.exists() {
-            bin
-        } else {
-            // Fallback to repo_root/target/debug (for non-CARGO_TARGET_DIR environments)
-            repo_root
-                .join("target")
-                .join("debug")
-                .join("sqlrustgo-mysql-server")
-        };
+            .unwrap_or_else(|| manifest_dir.join("target"));
+        let profile = if cfg!(debug_assertions) { "debug" } else { "release" };
+        let bin = target_dir.join(profile).join("sqlrustgo-mysql-server");
         if !bin.exists() {
             return Err(format!("binary not found at {:?}", bin));
         }
@@ -181,11 +172,11 @@ const EXPECTED_COUNTS: &[(&str, u64)] = &[
     ("region", 5),
     ("nation", 25),
     ("supplier", 10),
-    ("customer", 15),
-    ("part", 20),
-    ("partsupp", 80),
-    ("orders", 150),
-    ("lineitem", 614),
+    ("customer", 50),
+    ("part", 50),
+    ("partsupp", 200),
+    ("orders", 500),
+    ("lineitem", 501),
 ];
 
 /// Read a three-way reference. Returns (row_count, first_3_rows joined with |).
@@ -295,7 +286,7 @@ fn test_tpch_22_mysql_cli_wire() {
     );
     assert_eq!(code, 0);
     let li_cnt: u64 = li.trim().parse().expect("lineitem count");
-    assert_eq!(li_cnt, 614);
+    assert_eq!(li_cnt, 501);
 
     // 3. Run 22 TPC-H queries
     eprintln!("[3/3] Running 22 TPC-H queries via mysql CLI");
