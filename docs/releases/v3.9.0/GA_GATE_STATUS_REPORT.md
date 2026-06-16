@@ -1,10 +1,40 @@
 # v3.9.0 GA Gate Status Report (Governance Compliance)
 
-> **Date**: 2026-06-13
+> **Date**: 2026-06-13 (original) | **Truthfulness update**: 2026-06-17
 > **Tag**: v3.9.0-rc7 (`642ff9cf9`) — current tip `8a83e2553` (post-#3378 REMOTE_LIMITS + #3377 .gitattributes)
 > **Status**: 🟡 **READY for GA cut** (pending 24h real soak completion on 250)
 > **GA Target**: 2026-12-15 (per Hermes audit #3252)
 > **依据**: `docs/governance/RC_TO_GA_GATE_CHECKLIST.md` + `RELEASE_LIFECYCLE.md`
+
+---
+
+## ⚠️ Truthfulness Update (2026-06-17)
+
+A 2026-06-17 cross-reference audit ([`docs/audit/status/2026-06-17-truthfulness-current-state.md`](../../audit/status/2026-06-17-truthfulness-current-state.md)) was performed against the "13/13 PASS" claim in §1.1 below. Key findings:
+
+1. **Only 6 of 16 gates have actual scripts**: G1 (`check_g1_tpch_baseline.sh`), G11, G12, G13, G14, G16. G2-G10 and G15 have **no individual script** — they are recorded in a "G1-G10 orchestrator result" block that is **identical between RC1 (`29e2475f`) and RC2 (`82b82204`)** reports (see §2.2 of the truthfulness report).
+
+2. **G1 TPC-H 22/22 is 3/5 sub-gates PASS, not 5/5**: The TPC-H hashes baseline test `tests/tpch_hashes_v380.json` is **non-functional** in CI per `.gitea/workflows/ci.yml` (commented "currently fails by design"). The file does not exist in the repo.
+
+3. **G16 is 5/7 PASS, not 7/7**: "TPC-H step + REPORT step pending".
+
+4. **TPC-H cross-engine test times out at Q9**: Issue #3424 (created 2026-06-16, just before this audit), labeled `ga-p0-tpch` (P0 GA blocker). The `tpch_q9_audit` test exists but its baseline `tests/data/tpch-sf01/baseline/Q09_three_way.json` is **missing**.
+
+5. **24h/72h/168h wall-clock soak is SIMULATED, not real**: Issue #3225 explicitly documents "10/10 PASS" is 1,440× compressed time. Issues #3264, #3265, #3266 (24h/72h/168h real wall-clock soaks) are all **OPEN as of 2026-06-17**.
+
+6. **14 long stability + 10 QPS + 18 perf benchmark tests are all `#[ignore]`d** — never run in current state.
+
+7. **CI does NOT upload artifacts** — gate output is captured to local `*.log` files but never persisted. After CI finishes, the evidence is GONE.
+
+**The 2026-06-06 authenticity audit** ([`docs/audit/status/2026-06-06-test-authenticity-analysis-v390.md`](../../audit/status/2026-06-06-test-authenticity-analysis-v390.md)) ALREADY documented these gaps. Its findings were not propagated to this GA report or to the public README until 2026-06-17.
+
+**Updated verdict**: This report's "13/13 PASS" framing is **structurally overstated** for the GA cut decision. v3.9.0-rc has **trustworthy in-process unit test coverage (~35% production-equivalent)** but the "G1-G16" framing should be qualified to "G1 in-process 22/22 + G11-G14 infrastructure + G16 5/7, with major gaps in cross-engine validation, real wall-clock soak, and perf benchmarks".
+
+**Recommended action before GA cut**:
+- Address #3424 (TPC-H Q9 cross-engine timeout) — current P0 blocker
+- Add TPC-H hashes baseline file (`tests/tpch_hashes_v380.json`) — make G1 5/5
+- Run at minimum 24h real wall-clock soak (close #3264)
+- Add `upload-artifact` step to `.gitea/workflows/ci.yml` so gate output is preserved
 
 ---
 
