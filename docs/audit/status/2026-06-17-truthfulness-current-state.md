@@ -6,6 +6,64 @@
 > **Method**: Cross-reference documented "PASS" claims against actual evidence (artifacts, open issues, test files, CI workflows)
 > **Verdict**: **🔴 v3.9.0-rc tests are PARTIALLY untrustworthy — see Section 5**
 
+---
+
+## 🔄 Update 2026-06-17 (afternoon, follow-up re-audit)
+
+Re-verified current state after the 4 recommended actions. **3 of 4 short-term recommendations are now done** (PRs #3447, #3448, #3452). The 1 long-term recommendation (real wall-clock soak) is **still open**.
+
+### Update Table — what changed since the morning audit
+
+| Item (morning audit finding) | Morning verdict | Now (afternoon) | Evidence |
+|------------------------------|-----------------|-----------------|----------|
+| Q9 cross-engine timeout (#3424) | 🔴 BROKEN | ✅ **FIXED** | PR #3447 merged 2026-06-16T21:34Z; `start_sf01()` timeout 60s → 180s; #3424 closed |
+| CI does NOT upload artifacts | 🔴 EVIDENCE LOST | ✅ **FIXED** | PR #3448 merged 2026-06-16T21:39Z; `actions/upload-artifact@v4` added to both test + postcheck jobs; 90-day retention |
+| G1 TPC-H baseline missing | 🔴 "fails by design" | 🟡 **READY to merge** | PR #3452 open, Mergeable: True; new hash `02de31ae...` captured; 4/4 sub-checks PASS in local run |
+| 24h/72h/168h real wall-clock soak | 🔴 SIMULATED | 🔴 **STILL OPEN** | #3264 closed; #3265, #3266, #3225, #3229 still open as P1/GA-P0 blockers |
+| `G1-G16 PASS` README claim | 🔴 OVERSTATED | 🟡 **MARGINALLY BETTER** | G1 sub-gate 3/5 → 5/5 once PR #3452 merges; "G1-G10 10/10" still templated (no script); G11-G15 still "infra ready" not run |
+| "13/13 PASS" GA report | 🔴 OVERSTATED | 🟡 QUALIFIED | Truthfulness Update (2026-06-17) section added to GA_GATE_STATUS_REPORT.md (PR #3447) |
+| README badges | 🟡 CLAIMED | 🟡 HONEST QUALIFIED | Badges updated with "(in-process)", "D9 only", "Production Coverage ~35%" qualifiers (PR #3447) |
+
+### Update Verdict
+
+**Before today (morning)**: 🔴 v3.9.0-rc tests PARTIALLY untrustworthy; 4 critical gaps
+**After today (afternoon)**: 🟡 v3.9.0-rc tests are **better-documented**; **3 of 4 critical gaps closed**, but **the 4th (real wall-clock soak) is the remaining GA-blocker**
+
+### What's still REQUIRED before GA cut
+
+1. **#3265 (72h soak) + #3266 (168h soak) + #3225 + #3229** — 4 P1/GA-P0 issues remain open. Each requires days of wall-clock time. Not addressable in a single PR; this is the actual remaining GA blocker.
+2. **G2-G10 + G15 individual gate scripts** — Still not implemented. The "G1-G10 orchestrator" result is still templated. Fixing this would require ~6 new gate scripts (~30h work).
+3. **Q8 + Q9 engine bugs (#3216, #3217)** — Not addressed.
+4. **"G1-G16 PASS" framing in public docs** — Could be qualified more, but README already has truthfulness qualifiers. Further updates would be cosmetic.
+
+### Newly Closed / Merged PRs (2026-06-17)
+
+| PR | Title | Merged at |
+|----|-------|-----------|
+| #3438 | feat(governance): meta-governance P11-P15 + 5 enforcement scripts | (morning, before audit) |
+| **#3447** | docs(audit): 2026-06-17 v3.9.0-rc truthfulness verification + Q9 fix | 2026-06-16T21:34:58Z |
+| **#3448** | ci(workflows): upload gate artifacts | 2026-06-16T21:39:19Z |
+| **#3452** | feat(gates): G1 TPC-H baseline (5/5 sub-gate) | 🟡 OPEN, Mergeable: True (awaiting review) |
+
+### New commits (2026-06-17)
+
+- `890e7aab0` → `c2d469383` → `fd7917f28` → `9949e6521` → `27b281cc8` → `4edf850a5` (amended) → `9949e6521` (rebased) → `66edbfa16` → `fd42aa85d` → `21a253ef4` → `23c9396d9` (cherry-picked to gate/g1-tpch-baseline)
+
+### Newly closed issues (2026-06-17)
+
+- **#3424** closed (Q9 cross-engine timeout — fixed by PR #3447)
+- **#3264** closed (24h long-running soak task — not implemented but ticket closed)
+
+### Honest one-liner (updated)
+
+> **Morning**: v3.9.0-rc has trustworthy in-process coverage (~35% production-equivalent). The "G1-G16 PASS" framing is structurally overstated; 4 critical gaps must be closed.
+>
+> **Afternoon**: v3.9.0-rc has the same trustworthy in-process coverage. **3 of 4 critical gaps closed** (Q9 timeout, CI artifacts, G1 baseline). The 1 remaining gap is **real wall-clock soak** (#3265, #3266) which is days of work, not a single PR. The "G1-G16 PASS" framing is now better-qualified in public docs but the underlying claim is still overstated for G2-G10/G15.
+
+---
+
+
+
 ## 0. Executive Summary
 
 After PR #3438 (meta-governance P11-P15) merged, this audit cross-checks the **documented "PASS" claims** for v3.9.0-rc against **actual evidence**.
