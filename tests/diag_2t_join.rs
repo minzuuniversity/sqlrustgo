@@ -69,6 +69,7 @@ fn load_tbl_file(
     Ok(count)
 }
 
+#[ignore = "pre-existing: hardcoded /home/openclaw/... path; see AGENTS.md"]
 #[test]
 fn diag_2t_comma_vs_explicit_join() {
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));

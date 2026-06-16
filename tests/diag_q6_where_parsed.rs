@@ -60,6 +60,7 @@ fn load_lineitem(storage: &Arc<RwLock<MemoryStorage>>) -> usize {
     count
 }
 
+#[ignore = "pre-existing: hardcoded /home/openclaw/... path; see AGENTS.md"]
 #[test]
 fn diag_q6_where_parsed() {
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));
