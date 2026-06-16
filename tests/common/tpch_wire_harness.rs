@@ -31,6 +31,21 @@ pub const TABLES: &[&str] = &[
 /// the `MySqlTestClient` default (5s for read, 5s for write).
 fn start_with_fixture(fixture_dir: &str, timeout_s: Option<u64>) -> MySqlTestClient {
     let data_dir = PathBuf::from(fixture_dir);
+    // Truncate any pre-existing WAL so recovery on startup stays fast.
+    // The data_dir fixture's *JSON files* are the materialized state
+    // (loaded back into FileStorage by `new_with_wal`); the WAL is
+    // only the autocommit replay log and is regenerated on every
+    // test run. Without this, repeated test runs grow the WAL
+    // unboundedly (observed 1.1 GB after a session) and the
+    // recovery pass on the next start takes longer than the
+    // client connect timeout (EAGAIN on the handshake).
+    let wal = data_dir.join("sqlrustgo.wal");
+    if wal.exists() {
+        let _ = std::fs::OpenOptions::new()
+            .write(true)
+            .truncate(true)
+            .open(&wal);
+    }
     let config = EphemeralConfig {
         data_dir: Some(data_dir),
         bootstrap_tables: false,
