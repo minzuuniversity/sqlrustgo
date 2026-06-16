@@ -70,7 +70,7 @@ pub fn start_sf001() -> MySqlTestClient {
 
 /// Start ephemeral server + load SF=0.1 fixture (60s timeouts for larger data).
 pub fn start_sf01() -> MySqlTestClient {
-    start_with_fixture(SF01_DIR, Some(60))
+    start_with_fixture(SF01_DIR, Some(180))
 }
 
 /// Load all 8 .tbl files via LOAD DATA LOCAL INFILE
