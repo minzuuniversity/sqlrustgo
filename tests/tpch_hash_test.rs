@@ -7,7 +7,10 @@ fn tpch_22_hash_smoke() {
     let queries = [
         ("Q1", "SELECT COUNT(*) FROM lineitem"),
         ("Q6", "SELECT SUM(l_quantity) FROM lineitem"),
-        ("Q14", "SELECT SUM(l_extendedprice * (1 - l_discount)) FROM lineitem"),
+        (
+            "Q14",
+            "SELECT SUM(l_extendedprice * (1 - l_discount)) FROM lineitem",
+        ),
     ];
     for (name, q) in queries {
         let rows = client.query_rows(q).expect(&format!("{name} must run"));

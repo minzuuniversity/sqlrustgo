@@ -565,10 +565,7 @@ impl<S: StorageEngine> RecoveryEngine<S> for RecoveryEngineImpl {
                     report.rows_inserted += 1;
                     continue;
                 }
-                pending_inserts
-                    .entry(table_name)
-                    .or_default()
-                    .push(record);
+                pending_inserts.entry(table_name).or_default().push(record);
             } else {
                 non_insert_entries.push(entry.clone());
             }
