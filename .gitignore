@@ -27,9 +27,12 @@ tests/data/tpch-sf01/*.wal
 
 # Stability test output directories (timestamps appended) — not for tracking
 test_results/
-<<<<<<< HEAD
 
 # REPL / mysql-server default data_dir (runtime side effects: .json table dumps + .wal)
 .sqlrustgo/
-=======
->>>>>>> origin/sync/v390-tpch-3way-20260614
+
+# TPC-H coverage / binary profile output (auto-generated, not source)
+build_rs_cov.profraw
+crates/**/default_*.profraw
+docs/formal/PROOF_*.bin
+
