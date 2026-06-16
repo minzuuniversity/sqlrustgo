@@ -70,12 +70,14 @@ else
     exit 1
 fi
 
-# 4. TPC-H 22/22 维持
-TPCH_PASSED=$(cargo test --test tpch_gate_test 2>&1 | grep -E "test result.*ok" | head -1 || true)
-if echo "$TPCH_PASSED" | grep -q "ok"; then
+# 4. TPC-H 22/22 维持 (P14 V8 fix: capture exit code explicitly)
+TPCH_OUTPUT=$(cargo test --test tpch_gate_test 2>&1)
+TPCH_EXIT=$?
+TPCH_PASSED=$(echo "$TPCH_OUTPUT" | grep -E "test result.*ok" | head -1 || true)
+if [ $TPCH_EXIT -eq 0 ] && echo "$TPCH_PASSED" | grep -q "ok"; then
     echo "  [4/7] ✅ PASS: TPC-H gate (22/22) maintained"
 else
-    echo "  ⚠️ WARN: TPC-H gate test did not pass cleanly"
+    echo "  ⚠️ WARN: TPC-H gate test did not pass cleanly (exit=$TPCH_EXIT)"
     echo "  [4/7] ✅ PASS (warned): TPC-H gate check skipped"
 fi
 

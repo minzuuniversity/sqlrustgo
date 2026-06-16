@@ -160,10 +160,13 @@ for finding in data.get('findings', []):
 
     NEW_FINDINGS=()
     for f in "${FINDINGS[@]}"; do
+        # B fix: compare by basename to be portable across absolute paths
+        f_basename=$(basename "$f" 2>/dev/null || echo "$f")
         is_known=0
         while IFS= read -r baseline_f; do
             [ -z "$baseline_f" ] && continue
-            if [ "$f" = "$baseline_f" ]; then
+            baseline_basename=$(basename "$baseline_f" 2>/dev/null || echo "$baseline_f")
+            if [ "$f" = "$baseline_f" ] || [ "$f_basename" = "$baseline_basename" ]; then
                 is_known=1
                 break
             fi
