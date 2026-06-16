@@ -41,10 +41,9 @@ FINDINGS=()
 # ---------------------------------------------------------------------------
 echo "[1/4] Scanning for DRIFT-accepting patterns..."
 
-# Pattern: [ "$code" -eq 2 ] followed by non-error handling (no exit 1 / FAIL)
-# This is a heuristic — grep for the suspicious pattern.
+# B fix: grep for DRIFT-handling in gate scripts, excluding P14 self (self-reference is by design)
 drift_pattern=$(grep -rnE '\[\s*"\$?(code|exit_code|status)"?\s*-eq\s*2\s*\]' \
-    scripts/gate/ 2>/dev/null | head -20)
+    scripts/gate/ --exclude='check_drift_not_pass.sh' 2>/dev/null | head -20)
 
 if [ -n "$drift_pattern" ]; then
     echo "  Found $(echo "$drift_pattern" | wc -l | tr -d ' ') potential DRIFT-handling sites"
