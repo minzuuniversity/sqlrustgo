@@ -1,19 +1,23 @@
 # SQLRustGo
 
-> **Last updated**: 2026-06-13
-> **Current dev branch**: [`8a83e2553`](http://192.168.0.252:3000/openclaw/sqlrustgo/commit/8a83e2553) @ develop/v3.9.0
+> **Last updated**: 2026-06-17
+> **Current dev branch**: [`6e1f4339a`](http://192.168.0.252:3000/openclaw/sqlrustgo/commit/6e1f4339a) @ develop/v3.9.0
 > **Latest stable**: v3.8.0 (GA, 2026-06-08) | v3.9.0-rc7 (in soak, GA target 2026-12-15)
-> **Latest RC**: v3.9.0-rc7 (RC, 2026-06-12, G1-G16 PASS, awaiting 24h real soak)
+> **Latest RC**: v3.9.0-rc7 (RC, 2026-06-17, **G1 5/5 sub-gate PASS verified**, 0 `#[ignore]` on gate tests)
+>
+> ⚠️ **Truthfulness notice (2026-06-17, per ADR-008)**: Badge claims are now qualified. See [Test Claim Transparency section](#-test-claim-transparency-adr-008) below. The "G1-G16 PASS" framing in older reports was overstated; current state has G1 5/5 verified, G2-G10 templated, G11-G15 infrastructure-only, G16 5/7. Real wall-clock soak still pending (4 open issues).
 
 <p align="center">
   <img src="https://img.shields.io/badge/Rust-1.85+-dea584?style=flat-square&logo=rust" alt="Rust">
   <img src="https://img.shields.io/badge/v3.8.0-GA-green?style=flat-square" alt="GA">
   <img src="https://img.shields.io/badge/v3.9.0-rc7-yellow?style=flat-square" alt="RC7">
   <img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="License">
-  <img src="https://img.shields.io/badge/TPC--H-22%2F22-brightgreen?style=flat-square" alt="TPC-H">
-  <img src="https://img.shields.io/badge/Corpus-100.0%25-brightgreen?style=flat-square" alt="Corpus">
-  <img src="https://img.shields.io/badge/9--Dim%20Gate-8%2F8%20PASS-brightgreen?style=flat-square" alt="D9">
+  <img src="https://img.shields.io/badge/TPC--H-22%2F22%20(in--process)-brightgreen?style=flat-square" alt="TPC-H in-process">
+  <img src="https://img.shields.io/badge/Corpus-100.0%25%20(claimed)-yellow?style=flat-square" alt="Corpus claimed">
+  <img src="https://img.shields.io/badge/9--Dim%20Gate-8%2F8%20(D9%20only)-yellow?style=flat-square" alt="D9 only">
   <img src="https://img.shields.io/badge/INT--1%20(P0)-CLOSED-brightgreen?style=flat-square" alt="INT-1">
+  <img src="https://img.shields.io/badge/gate%20tests%20in%20%23%5Bignore%5D-0%2F27-brightgreen?style=flat-square" alt="P16 gate test integrity">
+  <img src="https://img.shields.io/badge/non--gate%20%23%5Bignore%5D-42%2F6151-orange?style=flat-square" alt="42 non-gate #[ignore]">
 </p>
 
 SQLRustGo 是一个纯 Rust 实现的 SQL 执行引擎，支持完整 SQL-92 语法、窗口函数、CTE、CBO 成本优化器、WAL + MVCC 事务、向量存储与图存储，以及 AI Native GMP 工作流。
@@ -24,6 +28,7 @@ SQLRustGo 是一个纯 Rust 实现的 SQL 执行引擎，支持完整 SQL-92 语
 
 ## Table of Contents
 
+- [Test Claim Transparency (ADR-008)](#-test-claim-transparency-adr-008)
 - [Core Features](#core-features)
 - [Architecture](#architecture)
 - [Quick Start](#quick-start)
@@ -32,6 +37,59 @@ SQLRustGo 是一个纯 Rust 实现的 SQL 执行引擎，支持完整 SQL-92 语
 - [Feature Matrix](#feature-matrix)
 - [Performance Benchmarks](#performance-benchmarks)
 - [Documentation](#documentation)
+
+---
+
+## 🛡 Test Claim Transparency (ADR-008)
+
+This project follows the [ADR-008 Test Claim Transparency](../docs/governance/adr/ADR-008-test-claim-transparency.md) policy: **every "PASS" claim is qualified** with the number of tests actually run vs the number that are `#[ignore]`-marked.
+
+### What "PASS" means (current state)
+
+| Claim | What it actually means | Verification |
+|-------|------------------------|---------------|
+| **TPC-H 22/22 in-process** | 22/22 queries PASS via `tpch_full_22_test` (0 `#[ignore]`) | PR #3213 + G1 gate verified |
+| **9-Dim Gate 8/8** | D9 alone runs; G1-G15 have infrastructure-only scripts | G1 5/5 sub-gate, G2-G10 templated |
+| **36/36 Substance tests** | 36/36 tests in 4 files, all run by default | `tests/g2_substance_*`, `tests/int2_substance_*`, etc. |
+| **P16 gate tests in `#[ignore]`: 0/27** | All 27 gate-referenced tests run by default | `scripts/gate/check_gate_test_integrity.sh` (NEW) |
+| **42 non-gate `#[ignore]`** | 10 QPS + 6 v3.8.0 perf + 6 tx_wal + 1 long-stability-72h + 2 batched + 2 boundary + 3 stored_proc + 1 crash_monkey + 1 recovery_fuzzer + 4 vector hnsw + 2 vector kNN + 1 parser + 1 storage mmap + 1 hash_join + 1 tpch_q9_audit = **42** | `tests/baseline/ignore_registry.json` |
+
+### The "13/13 PASS" caveat (E2E_MIGRATION_MASTER_PLAN.md)
+
+The historical table at `docs/releases/v3.9.0/E2E_MIGRATION_MASTER_PLAN.md:326` reads:
+> | 默认 `cargo test` (TPCH 13 个) | 0/13 跑 (全部 `#[ignore]`) | **13/13 PASS** |
+
+The "13/13 PASS" is technically correct (0 failed = pass) but visually misleading. The full context is:
+- **Before** (pre-PR-3125): All 13 TPC-H wire tests were `#[ignore]`'d because the EAGAIN bug made them hang 11+ minutes. So 0/13 actually ran, "13/13 PASS" because ignored tests trivially pass.
+- **After** (post-PR-3125): The EAGAIN bug was fixed; 13 tests now actually run, and all 13 pass in 61s total.
+
+Per ADR-008 §Policy 1, future reports should distinguish "PASS = ran + passed" from "PASS = trivial because `#[ignore]`".
+
+### Run the meta-gates yourself
+
+```bash
+# P11: Gate Self-Verification
+bash scripts/gate/check_gate_self_verification.sh
+
+# P12: No Implicit Tolerance
+bash scripts/gate/check_ignore_count.sh
+
+# P13: Test Count Monotonicity
+bash scripts/gate/check_test_count_monotonic.sh
+
+# P14: DRIFT != PASS
+bash scripts/gate/check_drift_not_pass.sh
+
+# P15: Oracle Required
+bash scripts/gate/check_oracle_present.sh
+
+# P16: Gate Test Integrity (NEW, ADR-008)
+bash scripts/gate/check_gate_test_integrity.sh
+```
+
+See [`docs/governance/META_GATE_AUDIT_2026-06.md`](../docs/governance/META_GATE_AUDIT_2026-06.md) for the V1-V8 vulnerabilities each meta-gate addresses.
+
+---
 - [Contributing](#contributing)
 - [Changelog](#changelog)
 - [License](#license)
