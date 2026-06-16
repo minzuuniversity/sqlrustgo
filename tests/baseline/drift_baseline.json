@@ -1,0 +1,33 @@
+{
+  "created_at": "2026-06-16T20:23:15Z",
+  "total_findings": 12,
+  "findings": [
+    "scripts/gate/check_drift_not_pass.sh:44: accepts exit 2 without explicit FAIL",
+    "scripts/gate/verify_beta_entry.sh:63: uses '|| true' to swallow exit codes",
+    "scripts/gate/check_g_correctness_v390.sh:39: uses '|| true' to swallow exit codes",
+    "scripts/gate/check_g_correctness_v390.sh:44: uses '|| true' to swallow exit codes",
+    "scripts/gate/check_beta_gate.sh:67: uses '|| true' to swallow exit codes",
+    "scripts/gate/check_sql_compat.sh:23: uses '|| true' to swallow exit codes",
+    "scripts/gate/check_test_inventory.sh:91: uses '|| true' to swallow exit codes",
+    "scripts/gate/check_10_principles.sh:89: uses '|| true' to swallow exit codes",
+    "scripts/gate/check_10_principles.sh:179: uses '|| true' to swallow exit codes",
+    "scripts/gate/check_gate_self_verification.sh:35: uses '|| true' to swallow exit codes",
+    "scripts/gate/check_gate_self_verification.sh:171: uses '|| true' to swallow exit codes",
+    "scripts/gate/check_r1_r10_content.sh:84: uses '|| true' to swallow exit codes",
+    "scripts/gate/check_r1_r10_content.sh:177: uses '|| true' to swallow exit codes",
+    "scripts/gate/check_rc_ga_gate.sh:262: uses '|| true' to swallow exit codes",
+    "scripts/gate/check_rc_ga_gate.sh:367: uses '|| true' to swallow exit codes",
+    "scripts/gate/check_rc_ga_gate.sh:480: uses '|| true' to swallow exit codes",
+    "scripts/gate/check_p22_time_travel.sh:73: grep on cargo test stdout without PIPESTATUS check",
+    "scripts/gate/check_p22_time_travel.sh:100: grep on cargo test stdout without PIPESTATUS check",
+    "scripts/gate/check_g12_sysbench.sh:55: grep on cargo test stdout without PIPESTATUS check",
+    "scripts/gate/check_g12_sysbench.sh:88: grep on cargo test stdout without PIPESTATUS check",
+    "scripts/gate/check_g_correctness_v390.sh:65: grep on cargo test stdout without PIPESTATUS check",
+    "scripts/gate/check_g_correctness_v390.sh:66: grep on cargo test stdout without PIPESTATUS check",
+    "scripts/gate/check_p14_upgrade_test.sh:70: grep on cargo test stdout without PIPESTATUS check",
+    "scripts/gate/check_p34_parallel_executor.sh:73: grep on cargo test stdout without PIPESTATUS check",
+    "scripts/gate/check_p34_parallel_executor.sh:101: grep on cargo test stdout without PIPESTATUS check",
+    "scripts/gate/check_p23_hash_chain.sh:73: grep on cargo test stdout without PIPESTATUS check",
+    "/Users/liying/workspace/dev/openheart/sqlrustgo/scripts/gate/check_full_gate_verification.sh: run_gate() accepts DRIFT as PASS"
+  ]
+}
