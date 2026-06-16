@@ -51,6 +51,7 @@ use serde_json::Value as JsonValue;
 use std::io::Write;
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
+use std::sync::OnceLock;
 use std::time::Duration;
 
 /// Default TCP probe timeout.
@@ -99,6 +100,28 @@ impl Server {
             .map_err(|e| format!("spawn {:?}: {}", bin, e))?;
         Ok(Self { child, port })
     }
+}
+
+fn ensure_canonical_binary_built() {
+    static BUILT: OnceLock<()> = OnceLock::new();
+    BUILT.get_or_init(|| {
+        let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let target_dir = std::env::var("CARGO_TARGET_DIR")
+            .ok()
+            .map(PathBuf::from)
+            .unwrap_or_else(|| manifest_dir.join("target"));
+        let profile = if cfg!(debug_assertions) { "debug" } else { "release" };
+        let bin = target_dir.join(profile).join("sqlrustgo-mysql-server");
+        if !bin.exists() {
+            eprintln!("[mysql-cli-test] building sqlrustgo-mysql-server binary (one-time)...");
+            let status = Command::new("cargo")
+                .args(["build", "-p", "sqlrustgo-mysql-server", "--bin", "sqlrustgo-mysql-server"])
+                .status()
+                .expect("spawn cargo build");
+            assert!(status.success(), "cargo build -p sqlrustgo-mysql-server failed");
+        }
+    });
+}
 
     fn wait_ready(&self) -> Result<(), String> {
         let addr = format!("127.0.0.1:{}", self.port);
@@ -223,6 +246,7 @@ fn test_tpch_22_mysql_cli_wire() {
     }
 
     // Start the server
+    ensure_canonical_binary_built();
     let mut server = Server::start(&data_dir).expect("start server");
     eprintln!(
         "[server] spawned on port {} (pid {:?})",
