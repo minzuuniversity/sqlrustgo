@@ -117,6 +117,7 @@ fn run_q(engine: &mut ExecutionEngine<MemoryStorage>, qnum: u8) -> Result<i64, S
     Ok(r.rows.len() as i64)
 }
 
+#[ignore = "pre-existing: hardcoded /home/openclaw/... path; see AGENTS.md"]
 #[test]
 fn diag_22_on_sf01() {
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));

@@ -224,6 +224,7 @@ fn sqlite_count(sql: &str, db_path: &str) -> Option<usize> {
     stdout.trim().parse::<usize>().ok()
 }
 
+#[ignore = "pre-existing: hardcoded /home/openclaw/... path; see AGENTS.md"]
 #[test]
 fn eval_22_vs_sqlite_sf01_canonical() {
     println!(
