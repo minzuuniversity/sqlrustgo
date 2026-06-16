@@ -69,11 +69,13 @@ else
     fi
 fi
 
-# 5. ≥20 tests pass
-PASSED=$(cargo test --test statistics_test 2>&1 | grep -E "test result.*ok" | grep -oE "[0-9]+ passed" | head -1 || true)
-if [ -z "$PASSED" ]; then
-    echo "  ❌ FAIL: statistics_test tests did not pass"
-    cargo test --test statistics_test 2>&1 | tail -5
+# 5. ≥20 tests pass (P14 V8 fix: capture exit code explicitly)
+STAT_OUTPUT=$(cargo test --test statistics_test 2>&1)
+STAT_EXIT=$?
+PASSED=$(echo "$STAT_OUTPUT" | grep -E "test result.*ok" | grep -oE "[0-9]+ passed" | head -1 || true)
+if [ $STAT_EXIT -ne 0 ] || [ -z "$PASSED" ]; then
+    echo "  ❌ FAIL: statistics_test tests did not pass (cargo exit=$STAT_EXIT)"
+    echo "$STAT_OUTPUT" | tail -5
     exit 1
 fi
 N_PASSED=$(echo "$PASSED" | grep -oE "[0-9]+")
