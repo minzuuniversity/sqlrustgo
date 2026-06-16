@@ -53,6 +53,7 @@ fn load_lineitem(storage: &Arc<RwLock<MemoryStorage>>) -> usize {
     count
 }
 
+#[ignore = "pre-existing: hardcoded /home/openclaw/... path; see AGENTS.md"]
 #[test]
 fn test_shipdate_actual_value() {
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));
