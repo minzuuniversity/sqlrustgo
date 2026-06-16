@@ -41,10 +41,9 @@ FINDINGS=()
 # ---------------------------------------------------------------------------
 echo "[1/4] Scanning for DRIFT-accepting patterns..."
 
-# Pattern: [ "$code" -eq 2 ] followed by non-error handling (no exit 1 / FAIL)
-# This is a heuristic — grep for the suspicious pattern.
+# B fix: grep for DRIFT-handling in gate scripts, excluding P14 self (self-reference is by design)
 drift_pattern=$(grep -rnE '\[\s*"\$?(code|exit_code|status)"?\s*-eq\s*2\s*\]' \
-    scripts/gate/ 2>/dev/null | head -20)
+    scripts/gate/ --exclude='check_drift_not_pass.sh' 2>/dev/null | head -20)
 
 if [ -n "$drift_pattern" ]; then
     echo "  Found $(echo "$drift_pattern" | wc -l | tr -d ' ') potential DRIFT-handling sites"
@@ -160,10 +159,13 @@ for finding in data.get('findings', []):
 
     NEW_FINDINGS=()
     for f in "${FINDINGS[@]}"; do
+        # B fix: compare by basename to be portable across absolute paths
+        f_basename=$(basename "$f" 2>/dev/null || echo "$f")
         is_known=0
         while IFS= read -r baseline_f; do
             [ -z "$baseline_f" ] && continue
-            if [ "$f" = "$baseline_f" ]; then
+            baseline_basename=$(basename "$baseline_f" 2>/dev/null || echo "$baseline_f")
+            if [ "$f" = "$baseline_f" ] || [ "$f_basename" = "$baseline_basename" ]; then
                 is_known=1
                 break
             fi
