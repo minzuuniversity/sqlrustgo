@@ -30,6 +30,7 @@ fn make_table_info(name: &str, cols: &[&str]) -> TableInfo {
                 data_type: "INTEGER".into(),
                 nullable: false,
                 primary_key: c == "id",
+                char_max_length: None,
             })
             .collect(),
         ..Default::default()
