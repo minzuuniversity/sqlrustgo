@@ -1422,14 +1422,6 @@ impl StorageEngine for FileStorage {
         self.insert_direct(table, vec![record])
     }
 
-    /// Batched variant for WAL recovery: extend `data.rows` once and call
-    /// `save_table` once. Same determinism as `force_insert` (rows visible
-    /// in `data.rows` immediately for subsequent scan/delete), but avoids
-    /// the per-row JSON-serialize + full-table write of the N× default impl.
-    fn bulk_force_insert(&mut self, table: &str, records: Vec<Record>) -> SqlResult<()> {
-        self.insert_direct(table, records)
-    }
-
     fn delete(&mut self, table: &str, filters: &[Value]) -> SqlResult<usize> {
         if let Some(ref mut data) = self.tables.get_mut(table) {
             let original_len = data.rows.len();

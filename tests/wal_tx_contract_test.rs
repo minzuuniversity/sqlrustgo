@@ -533,7 +533,6 @@ fn test_partial_insert_write_recovery() {
 }
 
 /// RECOVERY-006: Partial UPDATE write recovery
-#[ignore = "pre-existing: partial UPDATE WAL write recovery engine bug"]
 #[test]
 fn test_partial_update_write_recovery() {
     let _dir = TempDir::new().unwrap();
@@ -558,7 +557,6 @@ fn test_partial_update_write_recovery() {
 }
 
 /// RECOVERY-006b: UPDATE value recovery validation (L2 runtime evidence)
-#[ignore = "pre-existing: partial UPDATE WAL value recovery engine bug"]
 #[test]
 fn test_partial_update_value_recovery() {
     let _dir = TempDir::new().unwrap();
@@ -586,7 +584,6 @@ fn test_partial_update_value_recovery() {
     );
 }
 
-#[ignore = "pre-existing: mixed DELETE/UPDATE recovery engine bug"]
 #[test]
 fn test_delete_and_update_mixed_recovery() {
     let _dir = TempDir::new().unwrap();

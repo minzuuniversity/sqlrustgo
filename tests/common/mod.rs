@@ -697,5 +697,4 @@ impl MySqlTestClient {
         parse_ok_packet_affected(&resp)
     }
 }
-
 pub mod tpch_wire_harness;
