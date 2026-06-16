@@ -29,8 +29,7 @@ fn test_d8_tracks_all_7_items() {
     let registry = std::env::current_dir()
         .unwrap()
         .join("docs/governance/debt/debt-registry.yaml");
-    let registry_content =
-        std::fs::read_to_string(&registry).expect("registry yaml not found");
+    let registry_content = std::fs::read_to_string(&registry).expect("registry yaml not found");
     for item in &[
         "ARCH-1", "ARCH-2", "ARCH-3", "SEM-1", "SEM-2", "SEM-3", "SEM-4",
     ] {
