@@ -1,0 +1,33 @@
+B2_TEST: 20260530_214512
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/wal_integration_test.rs (target/debug/deps/wal_integration_test-c4ff5f500dc41776)
+
+running 16 tests
+test test_wal_entry_with_null_data ... ok
+test test_wal_entry_serialization_roundtrip ... ok
+test test_wal_entry_large_payload ... ok
+test test_wal_archive_metadata_empty_file ... ok
+test test_wal_reader_empty_file ... ok
+test test_wal_checkpoint_recovery ... ok
+test test_wal_archive_metadata_roundtrip ... ok
+test test_wal_writer_lsn_tracking ... ok
+test test_wal_multiple_transactions ... ok
+test test_wal_recovery_after_crash ... ok
+test test_wal_single_transaction ... ok
+test test_wal_recovery_with_pending_transaction ... ok
+test test_wal_mixed_operations ... ok
+test test_wal_concurrent_transactions_isolation ... ok
+test test_wal_rollback_recovery ... ok
+test test_wal_writer_reader_sequential ... ok
+
+test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests sqlrustgo
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+B2_TEST_END: 20260530_214606
+EXIT:0

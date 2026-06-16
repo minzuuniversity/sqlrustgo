@@ -425,10 +425,6 @@ impl<S: StorageEngine, T: WalManager> StorageEngine for WalStorage<S, T> {
         self.inner.insert(table, records)
     }
 
-    fn bulk_force_insert(&mut self, table: &str, records: Vec<Record>) -> SqlResult<()> {
-        self.inner.bulk_force_insert(table, records)
-    }
-
     fn delete(&mut self, table: &str, filters: &[Value]) -> SqlResult<usize> {
         let table_id = Self::table_name_to_id(table);
 

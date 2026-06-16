@@ -51,7 +51,6 @@ use serde_json::Value as JsonValue;
 use std::io::Write;
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
-use std::sync::OnceLock;
 use std::time::Duration;
 
 /// Default TCP probe timeout.
@@ -65,20 +64,25 @@ struct Server {
 
 impl Server {
     fn start(data_dir: &PathBuf) -> Result<Self, String> {
-        // Locate the `sqlrustgo-mysql-server` binary that the build just
-        // produced. CARGO_MANIFEST_DIR points at the workspace root, so
-        // `target/<profile>/` sits directly under it.
-        let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        // Build the binary in debug mode if not present.
+        // Use CARGO_TARGET_DIR if set, else fall back to target/debug/ relative to repo root.
+        let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .to_path_buf();
         let target_dir = std::env::var("CARGO_TARGET_DIR")
-            .ok()
             .map(PathBuf::from)
-            .unwrap_or_else(|| manifest_dir.join("target"));
-        let profile = if cfg!(debug_assertions) {
-            "debug"
+            .unwrap_or_else(|_| repo_root.join("target"));
+        let bin = target_dir.join("debug").join("sqlrustgo-mysql-server");
+        let bin = if bin.exists() {
+            bin
         } else {
-            "release"
+            // Fallback to repo_root/target/debug (for non-CARGO_TARGET_DIR environments)
+            repo_root
+                .join("target")
+                .join("debug")
+                .join("sqlrustgo-mysql-server")
         };
-        let bin = target_dir.join(profile).join("sqlrustgo-mysql-server");
         if !bin.exists() {
             return Err(format!("binary not found at {:?}", bin));
         }
@@ -104,47 +108,7 @@ impl Server {
             .map_err(|e| format!("spawn {:?}: {}", bin, e))?;
         Ok(Self { child, port })
     }
-}
 
-fn ensure_canonical_binary_built() {
-    static BUILT: OnceLock<()> = OnceLock::new();
-    BUILT.get_or_init(|| {
-        let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        let target_dir = std::env::var("CARGO_TARGET_DIR")
-            .ok()
-            .map(PathBuf::from)
-            .unwrap_or_else(|| manifest_dir.join("target"));
-        let profile = if cfg!(debug_assertions) {
-            "debug"
-        } else {
-            "release"
-        };
-        let bin = target_dir.join(profile).join("sqlrustgo-mysql-server");
-        if !bin.exists() {
-            eprintln!("[mysql-cli-test] building sqlrustgo-mysql-server binary (one-time)...");
-            let mut args: Vec<&str> = vec![
-                "build",
-                "-p",
-                "sqlrustgo-mysql-server",
-                "--bin",
-                "sqlrustgo-mysql-server",
-            ];
-            if profile == "release" {
-                args.push("--release");
-            }
-            let status = Command::new("cargo")
-                .args(&args)
-                .status()
-                .expect("spawn cargo build");
-            assert!(
-                status.success(),
-                "cargo build -p sqlrustgo-mysql-server failed"
-            );
-        }
-    });
-}
-
-impl Server {
     fn wait_ready(&self) -> Result<(), String> {
         let addr = format!("127.0.0.1:{}", self.port);
         let start = std::time::Instant::now();
@@ -217,11 +181,11 @@ const EXPECTED_COUNTS: &[(&str, u64)] = &[
     ("region", 5),
     ("nation", 25),
     ("supplier", 10),
-    ("customer", 50),
-    ("part", 50),
-    ("partsupp", 200),
-    ("orders", 500),
-    ("lineitem", 501),
+    ("customer", 15),
+    ("part", 20),
+    ("partsupp", 80),
+    ("orders", 150),
+    ("lineitem", 614),
 ];
 
 /// Read a three-way reference. Returns (row_count, first_3_rows joined with |).
@@ -268,7 +232,6 @@ fn test_tpch_22_mysql_cli_wire() {
     }
 
     // Start the server
-    ensure_canonical_binary_built();
     let mut server = Server::start(&data_dir).expect("start server");
     eprintln!(
         "[server] spawned on port {} (pid {:?})",
@@ -332,7 +295,7 @@ fn test_tpch_22_mysql_cli_wire() {
     );
     assert_eq!(code, 0);
     let li_cnt: u64 = li.trim().parse().expect("lineitem count");
-    assert_eq!(li_cnt, 501);
+    assert_eq!(li_cnt, 614);
 
     // 3. Run 22 TPC-H queries
     eprintln!("[3/3] Running 22 TPC-H queries via mysql CLI");

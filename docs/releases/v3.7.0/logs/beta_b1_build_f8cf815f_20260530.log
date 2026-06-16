@@ -1,0 +1,311 @@
+B1_BUILD: 20260530_214504
+warning: profiles for the non root package will be ignored, specify profiles at the workspace root:
+package:   /Users/liying/workspace/dev/openheart/sqlrustgo/tools/sqlrustgo-gate/Cargo.toml
+workspace: /Users/liying/workspace/dev/openheart/sqlrustgo/Cargo.toml
+warning: profiles for the non root package will be ignored, specify profiles at the workspace root:
+package:   /Users/liying/workspace/dev/openheart/sqlrustgo/tools/graph-cli/Cargo.toml
+workspace: /Users/liying/workspace/dev/openheart/sqlrustgo/Cargo.toml
+warning: /Users/liying/workspace/dev/openheart/sqlrustgo/crates/wal-verification/Cargo.toml: unused manifest key: tlaplus
+   Compiling aws-lc-rs v1.16.3
+warning: unused import: `Result as SqlResult`
+  --> crates/evidence-graph/src/lib.rs:11:36
+   |
+11 | use rusqlite::{params, Connection, Result as SqlResult};
+   |                                    ^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+   Compiling aws-lc-sys v0.40.0
+warning: `evidence-graph` (lib) generated 1 warning (run `cargo fix --lib -p evidence-graph` to apply 1 suggestion)
+   Compiling sqlrustgo-bench-cli v1.6.0 (/Users/liying/workspace/dev/openheart/sqlrustgo/crates/bench-cli)
+   Compiling sqlrustgo-unified-storage v2.5.0 (/Users/liying/workspace/dev/openheart/sqlrustgo/crates/unified-storage)
+   Compiling graph-cli v0.1.0 (/Users/liying/workspace/dev/openheart/sqlrustgo/tools/graph-cli)
+   Compiling sqlrustgo-gate v0.1.0 (/Users/liying/workspace/dev/openheart/sqlrustgo/tools/sqlrustgo-gate)
+   Compiling sqlrustgo-qmd-bridge v0.1.0 (/Users/liying/workspace/dev/openheart/sqlrustgo/crates/qmd-bridge)
+   Compiling sqlrustgo-unified-query v2.5.0 (/Users/liying/workspace/dev/openheart/sqlrustgo/crates/unified-query)
+error[E0432]: unresolved import `thiserror`
+ --> tools/sqlrustgo-gate/src/error.rs:1:5
+  |
+1 | use thiserror::Error;
+  |     ^^^^^^^^^ use of unresolved module or unlinked crate `thiserror`
+  |
+  = help: if you wanted to use a crate named `thiserror`, use `cargo add thiserror` to add it to your `Cargo.toml`
+
+error[E0425]: cannot find type `Commit` in this scope
+   --> tools/sqlrustgo-gate/src/bin/graph-ingest.rs:119:21
+    |
+119 | fn cmd_commit(args: Commit) -> Result<()> {
+    |                     ^^^^^^ not found in this scope
+    |
+help: there is an enum variant `crate::Commands::Commit` and 4 others; try using the variant's enum
+    |
+119 - fn cmd_commit(args: Commit) -> Result<()> {
+119 + fn cmd_commit(args: crate::Commands) -> Result<()> {
+    |
+119 - fn cmd_commit(args: Commit) -> Result<()> {
+119 + fn cmd_commit(args: crate::NodeType) -> Result<()> {
+    |
+119 - fn cmd_commit(args: Commit) -> Result<()> {
+119 + fn cmd_commit(args: evidence_graph::NodeType) -> Result<()> {
+    |
+119 - fn cmd_commit(args: Commit) -> Result<()> {
+119 + fn cmd_commit(args: rusqlite::DropBehavior) -> Result<()> {
+    |
+
+error[E0425]: cannot find type `Ci` in this scope
+   --> tools/sqlrustgo-gate/src/bin/graph-ingest.rs:130:17
+    |
+130 | fn cmd_ci(args: Ci) -> Result<()> {
+    |                 ^^ not found in this scope
+    |
+help: there is an enum variant `crate::Commands::Ci`; try using the variant's enum
+    |
+130 - fn cmd_ci(args: Ci) -> Result<()> {
+130 + fn cmd_ci(args: crate::Commands) -> Result<()> {
+    |
+
+error[E0425]: cannot find type `Artifact` in this scope
+   --> tools/sqlrustgo-gate/src/bin/graph-ingest.rs:145:23
+    |
+145 | fn cmd_artifact(args: Artifact) -> Result<()> {
+    |                       ^^^^^^^^ not found in this scope
+    |
+help: there is an enum variant `crate::Commands::Artifact` and 3 others; try using the variant's enum
+    |
+145 - fn cmd_artifact(args: Artifact) -> Result<()> {
+145 + fn cmd_artifact(args: crate::Commands) -> Result<()> {
+    |
+145 - fn cmd_artifact(args: Artifact) -> Result<()> {
+145 + fn cmd_artifact(args: crate::NodeType) -> Result<()> {
+    |
+145 - fn cmd_artifact(args: Artifact) -> Result<()> {
+145 + fn cmd_artifact(args: evidence_graph::NodeType) -> Result<()> {
+    |
+
+error[E0425]: cannot find type `Task` in this scope
+   --> tools/sqlrustgo-gate/src/bin/graph-ingest.rs:155:19
+    |
+155 | fn cmd_task(args: Task) -> Result<()> {
+    |                   ^^^^ not found in this scope
+    |
+help: there is an enum variant `crate::Commands::Task` and 3 others; try using the variant's enum
+    |
+155 - fn cmd_task(args: Task) -> Result<()> {
+155 + fn cmd_task(args: crate::Commands) -> Result<()> {
+    |
+155 - fn cmd_task(args: Task) -> Result<()> {
+155 + fn cmd_task(args: crate::NodeType) -> Result<()> {
+    |
+155 - fn cmd_task(args: Task) -> Result<()> {
+155 + fn cmd_task(args: evidence_graph::NodeType) -> Result<()> {
+    |
+
+error[E0425]: cannot find type `Link` in this scope
+   --> tools/sqlrustgo-gate/src/bin/graph-ingest.rs:171:19
+    |
+171 | fn cmd_link(args: Link) -> Result<()> {
+    |                   ^^^^ not found in this scope
+    |
+help: there is an enum variant `crate::Commands::Link`; try using the variant's enum
+    |
+171 - fn cmd_link(args: Link) -> Result<()> {
+171 + fn cmd_link(args: crate::Commands) -> Result<()> {
+    |
+
+error[E0425]: cannot find type `Status` in this scope
+   --> tools/sqlrustgo-gate/src/bin/graph-ingest.rs:188:21
+    |
+188 | fn cmd_status(args: Status) -> Result<()> {
+    |                     ^^^^^^ not found in this scope
+    |
+help: there is an enum variant `crate::Commands::Status`; try using the variant's enum
+    |
+188 - fn cmd_status(args: Status) -> Result<()> {
+188 + fn cmd_status(args: crate::Commands) -> Result<()> {
+    |
+
+error: cannot find attribute `error` in this scope
+ --> tools/sqlrustgo-gate/src/error.rs:6:7
+  |
+6 |     #[error("check failed: {0}")]
+  |       ^^^^^
+  |
+help: `error` is an attribute that can be used by the derive macro `Error`, you might be missing a `derive` attribute
+  |
+5 + #[derive(Error)]
+6 | pub enum GateError {
+  |
+
+error: cannot find attribute `error` in this scope
+ --> tools/sqlrustgo-gate/src/error.rs:9:7
+  |
+9 |     #[error("subprocess error: exit code {0}")]
+  |       ^^^^^
+  |
+help: `error` is an attribute that can be used by the derive macro `Error`, you might be missing a `derive` attribute
+  |
+5 + #[derive(Error)]
+6 | pub enum GateError {
+  |
+
+error: cannot find attribute `error` in this scope
+  --> tools/sqlrustgo-gate/src/error.rs:12:7
+   |
+12 |     #[error("io error: {0}")]
+   |       ^^^^^
+   |
+help: `error` is an attribute that can be used by the derive macro `Error`, you might be missing a `derive` attribute
+   |
+ 5 + #[derive(Error)]
+ 6 | pub enum GateError {
+   |
+
+error: cannot find attribute `from` in this scope
+  --> tools/sqlrustgo-gate/src/error.rs:13:10
+   |
+13 |     Io(#[from] std::io::Error),
+   |          ^^^^
+   |
+help: `from` is an attribute that can be used by the derive macro `Error`, you might be missing a `derive` attribute
+   |
+ 5 + #[derive(Error)]
+ 6 | pub enum GateError {
+   |
+
+error: cannot find attribute `error` in this scope
+  --> tools/sqlrustgo-gate/src/error.rs:15:7
+   |
+15 |     #[error("evidence error: {0}")]
+   |       ^^^^^
+   |
+help: `error` is an attribute that can be used by the derive macro `Error`, you might be missing a `derive` attribute
+   |
+ 5 + #[derive(Error)]
+ 6 | pub enum GateError {
+   |
+
+error[E0599]: no variant or associated item named `Affects` found for enum `EdgeType` in the current scope
+   --> tools/sqlrustgo-gate/src/bin/graph-ingest.rs:114:37
+    |
+114 |         "AFFECTS" => Some(EdgeType::Affects),
+    |                                     ^^^^^^^ variant or associated item not found in `EdgeType`
+
+error[E0277]: `()` doesn't implement `std::fmt::Display`
+   --> tools/sqlrustgo-gate/src/bin/graph-ingest.rs:141:64
+    |
+141 |     println!("{{\"ingested\": \"{}\", \"type\": \"ci_run\"}}", node_id);
+    |                                 --                             ^^^^^^^ `()` cannot be formatted with the default formatter
+    |                                 |
+    |                                 required by this formatting parameter
+    |
+    = help: the trait `std::fmt::Display` is not implemented for `()`
+    = note: in format strings you may be able to use `{:?}` (or {:#?} for pretty-print) instead
+    = note: this error originates in the macro `$crate::format_args_nl` which comes from the expansion of the macro `println` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0061]: this method takes 4 arguments but 3 arguments were supplied
+   --> tools/sqlrustgo-gate/src/bin/graph-ingest.rs:149:28
+    |
+149 |     let node_id = ingestor.ingest_artifact(&args.id, &args.ci_run_id, &args.name)?;
+    |                            ^^^^^^^^^^^^^^^--------------------------------------- argument #4 of type `&str` is missing
+    |
+note: method defined here
+   --> /Users/liying/workspace/dev/openheart/sqlrustgo/crates/evidence-graph/src/lib.rs:682:12
+    |
+682 |     pub fn ingest_artifact(
+    |            ^^^^^^^^^^^^^^^
+help: provide the argument
+    |
+149 |     let node_id = ingestor.ingest_artifact(&args.id, &args.ci_run_id, &args.name, /* &str */)?;
+    |                                                                                 ++++++++++++
+
+error[E0277]: `()` doesn't implement `std::fmt::Display`
+   --> tools/sqlrustgo-gate/src/bin/graph-ingest.rs:151:66
+    |
+151 |     println!("{{\"ingested\": \"{}\", \"type\": \"artifact\"}}", node_id);
+    |                                 --                               ^^^^^^^ `()` cannot be formatted with the default formatter
+    |                                 |
+    |                                 required by this formatting parameter
+    |
+    = help: the trait `std::fmt::Display` is not implemented for `()`
+    = note: in format strings you may be able to use `{:?}` (or {:#?} for pretty-print) instead
+    = note: this error originates in the macro `$crate::format_args_nl` which comes from the expansion of the macro `println` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0164]: expected tuple struct or tuple variant, found struct variant `Commands::Commit`
+   --> tools/sqlrustgo-gate/src/bin/graph-ingest.rs:209:9
+    |
+209 |         Commands::Commit(args) => cmd_commit(args),
+    |         ^^^^^^^^^^^^^^^^^^^^^^ not a tuple struct or tuple variant
+    |
+help: the struct variant's fields are being ignored
+    |
+209 -         Commands::Commit(args) => cmd_commit(args),
+209 +         Commands::Commit { hash: _, author: _, message: _, db: _ } => cmd_commit(args),
+    |
+
+error[E0164]: expected tuple struct or tuple variant, found struct variant `Commands::Ci`
+   --> tools/sqlrustgo-gate/src/bin/graph-ingest.rs:210:9
+    |
+210 |         Commands::Ci(args) => cmd_ci(args),
+    |         ^^^^^^^^^^^^^^^^^^ not a tuple struct or tuple variant
+    |
+help: the struct variant's fields are being ignored
+    |
+210 -         Commands::Ci(args) => cmd_ci(args),
+210 +         Commands::Ci { run_id: _, commit_hash: _, status: _, log_url: _, db: _ } => cmd_ci(args),
+    |
+
+error[E0164]: expected tuple struct or tuple variant, found struct variant `Commands::Artifact`
+   --> tools/sqlrustgo-gate/src/bin/graph-ingest.rs:211:9
+    |
+211 |         Commands::Artifact(args) => cmd_artifact(args),
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^ not a tuple struct or tuple variant
+    |
+help: the struct variant's fields are being ignored
+    |
+211 -         Commands::Artifact(args) => cmd_artifact(args),
+211 +         Commands::Artifact { id: _, ci_run_id: _, name: _, db: _ } => cmd_artifact(args),
+    |
+
+error[E0164]: expected tuple struct or tuple variant, found struct variant `Commands::Task`
+   --> tools/sqlrustgo-gate/src/bin/graph-ingest.rs:212:9
+    |
+212 |         Commands::Task(args) => cmd_task(args),
+    |         ^^^^^^^^^^^^^^^^^^^^ not a tuple struct or tuple variant
+    |
+help: the struct variant's fields are being ignored
+    |
+212 -         Commands::Task(args) => cmd_task(args),
+212 +         Commands::Task { task_id: _, description: _, db: _ } => cmd_task(args),
+    |
+
+error[E0164]: expected tuple struct or tuple variant, found struct variant `Commands::Link`
+   --> tools/sqlrustgo-gate/src/bin/graph-ingest.rs:213:9
+    |
+213 |         Commands::Link(args) => cmd_link(args),
+    |         ^^^^^^^^^^^^^^^^^^^^ not a tuple struct or tuple variant
+    |
+help: the struct variant's fields are being ignored
+    |
+213 -         Commands::Link(args) => cmd_link(args),
+213 +         Commands::Link { from_id: _, edge_type: _, to_id: _, db: _ } => cmd_link(args),
+    |
+
+error[E0164]: expected tuple struct or tuple variant, found struct variant `Commands::Status`
+   --> tools/sqlrustgo-gate/src/bin/graph-ingest.rs:214:9
+    |
+214 |         Commands::Status(args) => cmd_status(args),
+    |         ^^^^^^^^^^^^^^^^^^^^^^ not a tuple struct or tuple variant
+    |
+help: the struct variant's field is being ignored
+    |
+214 -         Commands::Status(args) => cmd_status(args),
+214 +         Commands::Status { db: _ } => cmd_status(args),
+    |
+
+Some errors have detailed explanations: E0061, E0164, E0277, E0425, E0599.
+For more information about an error, try `rustc --explain E0061`.
+error: could not compile `sqlrustgo-gate` (bin "graph-ingest") due to 16 previous errors
+warning: build failed, waiting for other jobs to finish...
+For more information about this error, try `rustc --explain E0432`.
+error: could not compile `sqlrustgo-gate` (bin "sqlrustgo-gate") due to 6 previous errors
+EXIT:1

@@ -10,7 +10,7 @@ use std::fs;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 
-const FIXTURE: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/tpch-sf01");
+const FIXTURE: &str = "/home/openclaw/sqlrustgo-tpch/data";
 
 fn load_tbl_file(
     storage: &Arc<RwLock<MemoryStorage>>,
@@ -69,7 +69,6 @@ fn load_tbl_file(
     Ok(count)
 }
 
-#[ignore = "pre-existing: hardcoded /home/openclaw/... path; see AGENTS.md"]
 #[test]
 fn diag_2t_comma_vs_explicit_join() {
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));
