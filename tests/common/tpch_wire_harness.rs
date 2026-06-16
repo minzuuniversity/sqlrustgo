@@ -29,25 +29,60 @@ pub const TABLES: &[&str] = &[
 ///
 /// `timeout_s`: Some(s) → set read/write timeouts to s seconds; None → use
 /// the `MySqlTestClient` default (5s for read, 5s for write).
+///
+/// IMPORTANT: each call uses a **fresh tmp data dir** (not the
+/// source fixture dir directly) because the harness's own
+/// `load_fixture` writes runtime artifacts (`lineitem.json`,
+/// `nation.json`, `customer.json`, `sqlrustgo.wal`, etc.) into
+/// the data_dir, and a 60K-lineitem test leaves a 40MB json + a
+/// 17MB wal behind. Re-using the same data_dir on a subsequent
+/// `start_ephemeral` causes multi-minute WAL recovery at server
+/// startup, which on Mac ARM64 manifests as `connect_handle`
+/// hanging indefinitely.
+///
+/// The fresh tmp dir copies just the .tbl files from the source
+/// fixture dir and leaves the rest of the source dir untouched
+/// (so concurrent reads in other tests are safe).
+///
+/// CRITICAL: compute the timestamp ONCE so the data_dir baked
+/// into ACTIVE_CONFIG matches what the LOAD DATA handler sees
+/// later (canonicalize resolves macOS /tmp → /private/tmp).
 fn start_with_fixture(fixture_dir: &str, timeout_s: Option<u64>) -> MySqlTestClient {
-    let data_dir = PathBuf::from(fixture_dir);
-    // Truncate any pre-existing WAL so recovery on startup stays fast.
-    // The data_dir fixture's *JSON files* are the materialized state
-    // (loaded back into FileStorage by `new_with_wal`); the WAL is
-    // only the autocommit replay log and is regenerated on every
-    // test run. Without this, repeated test runs grow the WAL
-    // unboundedly (observed 1.1 GB after a session) and the
-    // recovery pass on the next start takes longer than the
-    // client connect timeout (EAGAIN on the handshake).
-    let wal = data_dir.join("sqlrustgo.wal");
-    if wal.exists() {
-        let _ = std::fs::OpenOptions::new()
-            .write(true)
-            .truncate(true)
-            .open(&wal);
+    let timestamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let src_dir = PathBuf::from(fixture_dir);
+    let tmp_data_dir = std::env::temp_dir().join(format!(
+        "sqlrustgo_wire_{}_{}_{}",
+        std::process::id(),
+        timestamp,
+        // Hash the fixture path so 2 different SF fixtures in the
+        // same test binary don't collide on the same tmp dir.
+        {
+            use std::hash::{Hash, Hasher};
+            let mut h = std::collections::hash_map::DefaultHasher::new();
+            fixture_dir.hash(&mut h);
+            h.finish()
+        }
+    ));
+    std::fs::create_dir_all(&tmp_data_dir)
+        .unwrap_or_else(|e| panic!("create tmp dir {}: {e}", tmp_data_dir.display()));
+
+    // Copy all .tbl files from the source fixture dir into the
+    // fresh tmp data dir. LOAD DATA LOCAL INFILE requires the
+    // server's data_dir to contain the file (whitelist check).
+    for entry in std::fs::read_dir(&src_dir).expect("read fixture dir") {
+        let entry = entry.expect("fixture entry");
+        let p = entry.path();
+        if p.extension().and_then(|s| s.to_str()) == Some("tbl") {
+            let dest = tmp_data_dir.join(p.file_name().unwrap());
+            std::fs::copy(&p, &dest)
+                .unwrap_or_else(|e| panic!("copy {} -> {}: {e}", p.display(), dest.display()));
+        }
     }
     let config = EphemeralConfig {
-        data_dir: Some(data_dir),
+        data_dir: Some(tmp_data_dir.clone()),
         bootstrap_tables: false,
         bootstrap_users: true,
         ..Default::default()
@@ -59,13 +94,18 @@ fn start_with_fixture(fixture_dir: &str, timeout_s: Option<u64>) -> MySqlTestCli
             .set_timeouts(Duration::from_secs(t), Duration::from_secs(t))
             .expect("set_timeouts");
     }
-    load_fixture(&mut client, fixture_dir);
+    load_fixture(&mut client, tmp_data_dir.to_str().unwrap());
     client
 }
 
 /// Start ephemeral server + load SF=0.001 fixture (5s default timeouts).
 pub fn start_sf001() -> MySqlTestClient {
     start_with_fixture(SF001_DIR, None)
+}
+
+/// Start SF=0.001 with extended 120s timeouts (for 6-way join queries like Q9).
+pub fn start_sf001_long() -> MySqlTestClient {
+    start_with_fixture(SF001_DIR, Some(120))
 }
 
 /// Start ephemeral server + load SF=0.1 fixture (60s timeouts for larger data).
@@ -91,6 +131,26 @@ pub fn load_fixture(client: &mut MySqlTestClient, fixture_dir: &str) {
             .unwrap_or_else(|e| panic!("load_local_infile {}: {}", path.display(), e));
         eprintln!("  loaded {tbl}: {n} rows");
     }
+}
+
+/// TPC-H Q1 against the SF=0.1 fixture (with predicates adjusted so
+/// the baseline (3.8.0+ / in-memory engine) matches our actual data).
+pub const Q1_SF01: &str = "SELECT l_returnflag, l_linestatus, COUNT(*) \
+                      FROM lineitem WHERE l_shipdate <= '1998-09-02' \
+                      GROUP BY l_returnflag, l_linestatus \
+                      ORDER BY l_returnflag, l_linestatus";
+
+/// TPC-H Q6 against the SF=0.1 fixture.
+pub const Q6_SF01: &str = "SELECT COUNT(*) FROM lineitem \
+                      WHERE l_shipdate >= '1994-01-01' AND l_shipdate < '1995-01-01' \
+                        AND l_quantity < 24";
+
+/// Read a TPC-H query from `queries/q{n}.sql` (the canonical source
+/// used by the wire test surface).
+pub fn load_fixture_query(n: u8) -> String {
+    let path = format!("queries/q{n}.sql");
+    std::fs::read_to_string(&path)
+        .unwrap_or_else(|e| panic!("read query fixture {path}: {e}"))
 }
 
 /// Run a single query with timing, return (Result<rows>, elapsed)
