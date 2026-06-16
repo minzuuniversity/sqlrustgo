@@ -2,6 +2,7 @@ mod common;
 use common::tpch_wire_harness::{start_sf01, read_baseline, compare_cells};
 use std::path::Path;
 
+#[ignore = "needs tests/data/tpch-sf01/baseline/Q09_three_way.json (not generated)"]
 #[test]
 fn tpch_q9_audit_wire() {
     let mut client = start_sf01();
