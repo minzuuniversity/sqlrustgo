@@ -72,6 +72,16 @@ jobs:
         # tests/tpch_hashes_v380.json is filled in (see the OpenSpec change
         # g1-tpch-baseline). Once filled, this step is the single source of
         # truth for "did anything change in TPC-H output?".
+      - name: Upload test artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-output-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            test_report.log
+            g1_report.log
+          if-no-files-found: warn
+          retention-days: 90
 
   postcheck:
     runs-on: [hp-z6g4]
@@ -153,3 +163,17 @@ jobs:
             exit 1
           fi
           echo "All postcheck gates passed"
+      # P15 truthfulness audit (2026-06-17): preserve gate output for postmortem
+      # and meta-governance (P11 Gate Self-Verification). Without this step,
+      # every gate result is lost after the CI run, making "PASS" claims
+      # structurally un-verifiable (see docs/audit/status/2026-06-17-...).
+      - name: Upload gate artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gate-output-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            *.log
+            artifacts/
+          if-no-files-found: warn
+          retention-days: 90
