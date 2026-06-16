@@ -83,7 +83,6 @@ fn test_trigger_insert_wal_recovery_t001() {
     println!("T-001 PASS: Trigger INSERT survived crash + recovery");
 }
 
-#[ignore = "pre-existing: UPDATE trigger + WAL recovery engine bug (index out of bounds)"]
 #[test]
 fn test_trigger_update_wal_recovery_t002() {
     let temp_dir = TempDir::new().unwrap();
@@ -138,7 +137,6 @@ fn test_trigger_update_wal_recovery_t002() {
     println!("T-002 PASS: Trigger UPDATE survived crash + recovery");
 }
 
-#[ignore = "pre-existing: DELETE trigger + WAL recovery engine bug (row id=2 missing)"]
 #[test]
 fn test_trigger_delete_wal_recovery_t003() {
     let temp_dir = TempDir::new().unwrap();

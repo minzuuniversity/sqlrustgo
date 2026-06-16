@@ -24,7 +24,6 @@ fn clean_client() -> MySqlTestClient {
     .expect("ephemeral server (clean catalog) + raw client should come up")
 }
 
-#[ignore = "pre-existing: SHOW TABLES engine bug (returns internal tables on empty DB)"]
 #[test]
 fn show_tables_on_empty_db_returns_empty_result() {
     let mut client = clean_client();
@@ -39,7 +38,6 @@ fn show_tables_on_empty_db_returns_empty_result() {
     );
 }
 
-#[ignore = "pre-existing: SHOW TABLES engine bug (returns internal tables)"]
 #[test]
 fn show_tables_lists_all_created_tables() {
     let mut client = clean_client();

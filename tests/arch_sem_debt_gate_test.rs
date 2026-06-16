@@ -16,28 +16,14 @@ fn test_d8_gate_exists() {
 
 #[test]
 fn test_d8_tracks_all_7_items() {
-    // v3.8.0+ refactor: the script reads items from the SSOT yaml
-    // (per ADR-011), so check both the script and the registry.
     let script = std::env::current_dir()
         .unwrap()
         .join("scripts/gate/check_arch_sem_debt.sh");
-    let script_content = std::fs::read_to_string(&script).expect("script not found");
-    assert!(
-        script_content.contains("debt-registry.yaml"),
-        "script must load SSOT yaml"
-    );
-    let registry = std::env::current_dir()
-        .unwrap()
-        .join("docs/governance/debt/debt-registry.yaml");
-    let registry_content = std::fs::read_to_string(&registry).expect("registry yaml not found");
+    let content = std::fs::read_to_string(&script).expect("script not found");
     for item in &[
         "ARCH-1", "ARCH-2", "ARCH-3", "SEM-1", "SEM-2", "SEM-3", "SEM-4",
     ] {
-        assert!(
-            registry_content.contains(item),
-            "registry must track {}",
-            item
-        );
+        assert!(content.contains(item), "must track {}", item);
     }
 }
 

@@ -31,7 +31,6 @@ impl std::fmt::Display for VerifyError {
 
 #[derive(Debug, Clone)]
 pub struct VerifyResult {
-    #[allow(dead_code)]
     pub manifest: Manifest,
     pub errors: Vec<VerifyError>,
     pub verified_files: usize,
