@@ -234,8 +234,31 @@ The meta-gate suite provides:
 2. **Visible findings**: All current anti-patterns are documented in baseline files (not silently accepted)
 3. **Enforcement**: CI can run the meta-gate suite before allowing merges
 
+## Impact on v3.9.0-rc Trustworthiness Claims (2026-06-17 Update)
+
+**The V1-V8 vulnerabilities identified here are NOT abstract risks — they directly affect the "PASS" claims currently in v3.9.0-rc documentation.**
+
+After this audit was merged (PR #3438), a follow-up truthfulness audit (2026-06-17) cross-referenced documented PASS claims against actual evidence. Key findings:
+
+| Documented Claim | Source | Truth |
+|------------------|--------|-------|
+| "G1-G16 PASS" | README, GA_GATE_STATUS_REPORT | 🔴 Only 6 of 16 gates have actual scripts (G1, G11, G12, G13, G14, G16). G11-G14 are "infrastructure ready" but not run. |
+| "TPC-H 22/22 wire" | RC1, RC2 reports | 🔴 Wire 22/22 uses **corrupt fixture** (`tests/data/tpch-sf001`) — "PASS" is meaningless |
+| "TPC-H 22/22 vs 3 engines" | Implied by tpch_sf01_22_vs_3engines test | 🔴 Currently **times out at Q9** (issue #3424, created 2026-06-16) |
+| "Soak 10/10 PASS" | RC2, GA report | 🔴 **SIMULATED** (1,440× time compression, per #3225; real wall-clock not run) |
+| "G1-G10 10/10 PASS" (RC1 vs RC2) | RC1, RC2 reports | 🔴 **Identical templated block** — output not re-generated between commits |
+| "L1 87.36% coverage" | README | 🟡 Coverage script has known version mismatch (per GA report §1.3) |
+
+**The 2026-06-06 authenticity audit** (`docs/audit/status/2026-06-06-test-authenticity-analysis-v390.md`) ALREADY documented these gaps, but the findings were **not propagated** to public-facing docs (README, GA_GATE_STATUS_REPORT) until 2026-06-17.
+
+**Conclusion**: v3.9.0-rc has **trustworthy in-process test coverage (~35% production-equivalent)** but the "G1-G16 PASS" framing is **structurally overstated**. The meta-governance framework (P11-P15) added in PR #3438 is necessary but not sufficient — Phase 3 of ADR-006 (fix V1-V8 in existing gates) is required before v3.9.0 GA can be truthfully claimed.
+
+**See also**: `docs/audit/status/2026-06-17-truthfulness-current-state.md` for the complete cross-reference matrix.
+
 ## References
 
+- `docs/audit/status/2026-06-06-test-authenticity-analysis-v390.md` — Pre-existing 2026-06-06 authenticity audit (findings)
+- `docs/audit/status/2026-06-17-truthfulness-current-state.md` — 2026-06-17 cross-reference of PASS claims vs evidence
 - `docs/governance/adr/ADR-006-meta-governance.md` — Formal ADR for P11-P15
 - `scripts/gate/check_gate_self_verification.sh` — P11 enforcement
 - `scripts/gate/check_ignore_count.sh` — P12 enforcement
@@ -244,6 +267,7 @@ The meta-gate suite provides:
 - `scripts/gate/check_oracle_present.sh` — P15 enforcement
 - `tests/baseline/*.json` — Baseline files
 - [GOVERNANCE_EXECUTION_SKILL](http://192.168.0.252:3000/openclaw/hermes-ops-wiki/wiki/GOVERNANCE_EXECUTION_SKILL) — Source 10 principles
+- Gitea issues referenced: #3216, #3217, #3225, #3229, #3264, #3265, #3266, #3424
 
 ---
 
