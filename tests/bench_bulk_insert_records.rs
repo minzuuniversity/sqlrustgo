@@ -41,8 +41,12 @@ fn bench_bulk_insert_lineitem() {
     let mut engine = ExecutionEngine::new(storage.clone());
     engine.execute("CREATE TABLE lineitem (l_orderkey INTEGER, l_partkey INTEGER, l_suppkey INTEGER, l_linenumber INTEGER, l_quantity REAL, l_extendedprice REAL, l_discount REAL, l_tax REAL, l_returnflag TEXT, l_linestatus TEXT, l_shipdate TEXT, l_commitdate TEXT, l_receiptdate TEXT, l_shipinstruct TEXT, l_shipmode TEXT, l_comment TEXT)").unwrap();
 
-    let path = "/home/openclaw/sqlrustgo-tpch/data/lineitem.tbl";
-    let content = std::fs::read_to_string(path).expect("read");
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/data/tpch-sf01/lineitem.tbl");
+    let content = std::fs::read_to_string(&path).expect(&format!(
+        "read: {} (run from workspace root)",
+        path.display()
+    ));
     let n = 16; // lineitem columns
     let mut records: Vec<Record> = Vec::with_capacity(60000);
     for line in content.lines() {
