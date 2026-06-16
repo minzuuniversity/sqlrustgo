@@ -1,5 +1,5 @@
 {
-  "created_at": "2026-06-16T22:13:13Z",
+  "created_at": "2026-06-16T22:28:54Z",
   "version": "v3.9.0-rc7",
   "generator": "scripts/gate/check_gate_test_integrity.sh",
   "policy": "ADR-008 §Policy 2: No-Ignore Gate Tests",
