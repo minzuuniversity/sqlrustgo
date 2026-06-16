@@ -62,9 +62,11 @@ grep -q 'name = "compatibility_harness"' Cargo.toml || {
 }
 echo "  [3/7] ✅ PASS: tests registered in Cargo.toml"
 
-# 4. Main test passes
-MAIN_RESULT=$(cargo test --test v380_to_v390_full_upgrade_test 2>&1 | grep -E "test result.*ok" | head -1 || true)
-if echo "$MAIN_RESULT" | grep -q "ok"; then
+# 4. Main test passes (P14 V8 fix: capture exit code explicitly)
+MAIN_OUTPUT=$(cargo test --test v380_to_v390_full_upgrade_test 2>&1)
+MAIN_EXIT=$?
+MAIN_RESULT=$(echo "$MAIN_OUTPUT" | grep -E "test result.*ok" | head -1 || true)
+if [ $MAIN_EXIT -eq 0 ] && echo "$MAIN_RESULT" | grep -q "ok"; then
     N_PASSED=$(echo "$MAIN_RESULT" | grep -oE "[0-9]+ passed" | grep -oE "[0-9]+")
     if [ "$N_PASSED" -lt 18 ]; then
         echo "  ❌ FAIL: expected ≥18 tests in v380_to_v390_full_upgrade_test, got $N_PASSED"
@@ -72,19 +74,21 @@ if echo "$MAIN_RESULT" | grep -q "ok"; then
     fi
     echo "  [4/7] ✅ PASS: $N_PASSED tests pass (≥18)"
 else
-    echo "  ❌ FAIL: v380_to_v390_full_upgrade_test did not pass"
-    cargo test --test v380_to_v390_full_upgrade_test 2>&1 | tail -5
+    echo "  ❌ FAIL: v380_to_v390_full_upgrade_test did not pass (cargo exit=$MAIN_EXIT)"
+    echo "$MAIN_OUTPUT" | tail -5
     exit 1
 fi
 
-# 5. Harness tests pass
-HARNESS_RESULT=$(cargo test --test compatibility_harness 2>&1 | grep -E "test result.*ok" | head -1 || true)
-if echo "$HARNESS_RESULT" | grep -q "ok"; then
+# 5. Harness tests pass (P14 V8 fix: capture exit code explicitly)
+HARNESS_OUTPUT=$(cargo test --test compatibility_harness 2>&1)
+HARNESS_EXIT=$?
+HARNESS_RESULT=$(echo "$HARNESS_OUTPUT" | grep -E "test result.*ok" | head -1 || true)
+if [ $HARNESS_EXIT -eq 0 ] && echo "$HARNESS_RESULT" | grep -q "ok"; then
     N_HARNESS=$(echo "$HARNESS_RESULT" | grep -oE "[0-9]+ passed" | grep -oE "[0-9]+")
     echo "  [5/7] ✅ PASS: $N_HARNESS harness tests pass"
 else
-    echo "  ❌ FAIL: compatibility_harness did not pass"
-    cargo test --test compatibility_harness 2>&1 | tail -5
+    echo "  ❌ FAIL: compatibility_harness did not pass (cargo exit=$HARNESS_EXIT)"
+    echo "$HARNESS_OUTPUT" | tail -5
     exit 1
 fi
 

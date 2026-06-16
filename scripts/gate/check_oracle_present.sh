@@ -215,7 +215,7 @@ if [ ${#GATES_WITHOUT_ORACLE[@]} -gt 0 ]; then
 fi
 
 # Determine pass/fail based on regression only
-if [ -f "$ORACLE_BASELINE" ] && [ ${#REGRESSION[@]:-0} -gt 0 ]; then
+if [ -f "$ORACLE_BASELINE" ] && [ "${REGRESSION:-}" != "" ] && [ "${#REGRESSION[@]}" -gt 0 ] 2>/dev/null; then
     echo
     echo "❌ FAIL — P15 regression. Gates that previously had oracle lost it."
     exit 1
