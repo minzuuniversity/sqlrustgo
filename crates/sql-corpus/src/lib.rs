@@ -259,7 +259,7 @@ impl SimpleExecutor {
                     data_type: "TEXT".to_string(),
                     nullable: true,
                     primary_key: false,
-                            char_max_length: None,
+                    char_max_length: None,
                 })
                 .collect();
             let table_info = TableInfo {
@@ -384,7 +384,7 @@ impl SimpleExecutor {
                     data_type: "TEXT".to_string(),
                     nullable: true,
                     primary_key: false,
-                            char_max_length: None,
+                    char_max_length: None,
                 })
                 .collect();
             let table_info = TableInfo {
@@ -423,7 +423,7 @@ impl SimpleExecutor {
                     data_type: "TEXT".to_string(),
                     nullable: true,
                     primary_key: false,
-                            char_max_length: None,
+                    char_max_length: None,
                 })
                 .collect();
             let table_info = TableInfo {
@@ -827,7 +827,7 @@ impl SimpleExecutor {
                 data_type: "TEXT".to_string(),
                 nullable: true,
                 primary_key: false,
-                            char_max_length: None,
+                char_max_length: None,
             })
             .collect();
         let table_info = TableInfo {
