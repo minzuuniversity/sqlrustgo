@@ -2,6 +2,7 @@
 //!
 //! Provides periodic checkpoint generation and management for WAL.
 
+use std::cmp::Reverse;
 use std::fs::{self, File};
 use std::io::{BufReader, BufWriter, Read, Write};
 use std::path::PathBuf;
@@ -182,7 +183,7 @@ impl CheckpointManager {
             }
         }
 
-        checkpoints.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
+        checkpoints.sort_by_key(|a| Reverse(a.timestamp));
         Ok(checkpoints)
     }
 
