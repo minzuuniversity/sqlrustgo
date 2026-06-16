@@ -10,7 +10,7 @@ use std::fs;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 
-const FIXTURE: &str = "/home/openclaw/sqlrustgo-tpch/data";
+const FIXTURE: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/tpch-sf01");
 
 fn load_tbl_file(
     storage: &Arc<RwLock<MemoryStorage>>,

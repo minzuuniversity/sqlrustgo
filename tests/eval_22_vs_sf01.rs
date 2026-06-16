@@ -34,7 +34,7 @@ use std::path::PathBuf;
 use std::process::Command;
 use std::sync::{Arc, RwLock};
 
-const FIXTURE_DIR: &str = "/home/openclaw/sqlrustgo-tpch/data";
+const FIXTURE_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/tpch-sf01");
 const QUERIES_DIR: &str = "queries";
 const TMP_DIR: &str = "/tmp/tpch_22_sf01_audit";
 
