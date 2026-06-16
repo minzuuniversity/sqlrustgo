@@ -28,6 +28,6 @@
     "scripts/gate/check_p34_parallel_executor.sh:73: grep on cargo test stdout without PIPESTATUS check",
     "scripts/gate/check_p34_parallel_executor.sh:101: grep on cargo test stdout without PIPESTATUS check",
     "scripts/gate/check_p23_hash_chain.sh:73: grep on cargo test stdout without PIPESTATUS check",
-    "/Users/liying/workspace/dev/openheart/sqlrustgo/scripts/gate/check_full_gate_verification.sh: run_gate() accepts DRIFT as PASS"
+    "/home/openclaw/dev/yinglichina163/sqlrustgo/scripts/gate/check_full_gate_verification.sh: run_gate() accepts DRIFT as PASS"
   ]
 }
