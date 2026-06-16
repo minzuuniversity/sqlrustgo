@@ -20,6 +20,7 @@ mod common;
 use common::MySqlTestClient;
 use std::net::TcpStream;
 use std::process::{Child, Command, Stdio};
+use std::sync::OnceLock;
 use std::time::Duration;
 
 /// Locate the workspace root from `CARGO_MANIFEST_DIR`.
@@ -33,6 +34,25 @@ fn canonical_binary() -> std::path::PathBuf {
     p.push("debug");
     p.push("sqlrustgo-mysql-server");
     p
+}
+
+/// Build the canonical `sqlrustgo-mysql-server` binary if it is
+/// missing. Runs at most once per test process (the OnceLock).
+/// This lets `cargo test` work without a separate `cargo build`
+/// step in CI or local dev.
+fn ensure_canonical_binary_built() {
+    static BUILT: OnceLock<()> = OnceLock::new();
+    BUILT.get_or_init(|| {
+        let bin = canonical_binary();
+        if !bin.exists() {
+            eprintln!("[smoke] building sqlrustgo-mysql-server binary (one-time)...");
+            let status = Command::new("cargo")
+                .args(["build", "-p", "sqlrustgo-mysql-server", "--bin", "sqlrustgo-mysql-server"])
+                .status()
+                .expect("spawn cargo build");
+            assert!(status.success(), "cargo build -p sqlrustgo-mysql-server failed");
+        }
+    });
 }
 
 struct SubprocessHandle {
@@ -49,6 +69,7 @@ impl Drop for SubprocessHandle {
 }
 
 fn spawn_canonical_with_client() -> (SubprocessHandle, MySqlTestClient) {
+    ensure_canonical_binary_built();
     let bin = canonical_binary();
     assert!(
         bin.exists(),
