@@ -5,7 +5,7 @@ use sqlrustgo_types::Value as SqlValue;
 use std::fs;
 use std::sync::{Arc, RwLock};
 
-const FIXTURE: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/tpch-sf01");
+const FIXTURE: &str = "/home/openclaw/sqlrustgo-tpch/data";
 
 fn load(storage: &Arc<RwLock<MemoryStorage>>, tbl: &str, ncols: usize) -> usize {
     let path = format!("{}/{}.tbl", FIXTURE, tbl);
@@ -53,7 +53,6 @@ fn load(storage: &Arc<RwLock<MemoryStorage>>, tbl: &str, ncols: usize) -> usize 
     count
 }
 
-#[ignore = "pre-existing: hardcoded /home/openclaw/... path; see AGENTS.md"]
 #[test]
 fn diag_q11_3way() {
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));

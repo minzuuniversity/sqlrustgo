@@ -5,7 +5,6 @@ use std::io::Write;
 use std::path::Path;
 
 pub struct RestoreResult {
-    #[allow(dead_code)]
     pub manifest: Manifest,
     pub restored_data_files: usize,
     pub restored_wal: bool,

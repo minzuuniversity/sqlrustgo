@@ -14,9 +14,6 @@ fn long_run_stability_72h_smoke() {
         queries += 1;
     }
     let qps = queries as f64 / start.elapsed().as_secs_f64();
-    println!(
-        "72h stability smoke: {queries} queries in {:?} = {qps:.1} QPS",
-        start.elapsed()
-    );
+    println!("72h stability smoke: {queries} queries in {:?} = {qps:.1} QPS", start.elapsed());
     assert!(qps > 0.1, "QPS too low: {qps:.1}");
 }
