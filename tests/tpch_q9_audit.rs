@@ -1,16 +1,11 @@
 mod common;
-use common::tpch_wire_harness::{compare_cells, read_baseline, start_sf001_long};
+use common::tpch_wire_harness::{start_sf01, read_baseline, compare_cells};
 use std::path::Path;
 
-// Baseline: tests/data/tpch-sf01/baseline/Q09_three_way.json
-// Generated from SQLite with the test's actual SF=0.001 fixture (5 nations, no EXTRACT
-// since dbgen orderdate format is "N.NN" not YYYY-MM-DD, so EXTRACT(YEAR FROM...) returns NULL).
-// Note: SF=0.1 fixture has broken partsupp (only 5 suppkey) so we use SF=0.001.
 #[test]
 fn tpch_q9_audit_wire() {
-    let mut client = start_sf001_long();
-    // Simplified Q9: drop EXTRACT since dbgen dates aren't real YYYY-MM-DD
-    let q9 = "SELECT n_name, \
+    let mut client = start_sf01();
+    let q9 = "SELECT n_name, EXTRACT(YEAR FROM o_orderdate) AS o_year, \
               SUM(l_extendedprice * (1 - l_discount) - l_quantity * ps_supplycost) AS sum_profit \
               FROM part, supplier, lineitem, partsupp, orders, nation \
               WHERE s_suppkey = l_suppkey \
@@ -20,8 +15,8 @@ fn tpch_q9_audit_wire() {
                 AND o_orderkey = l_orderkey \
                 AND s_nationkey = n_nationkey \
                 AND p_name LIKE '%green%' \
-              GROUP BY n_name \
-              ORDER BY n_name ASC";
+              GROUP BY n_name, o_year \
+              ORDER BY n_name, o_year DESC";
     let rows = client.query_rows(q9).expect("Q9 must run");
     assert!(!rows.is_empty(), "Q9 must return rows");
     let baseline = read_baseline(Path::new("tests/data/tpch-sf01/baseline/Q09_three_way.json"));

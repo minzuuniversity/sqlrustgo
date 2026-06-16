@@ -12,7 +12,7 @@ use std::fs;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 
-const FIXTURE: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/tpch-sf01");
+const FIXTURE: &str = "/home/openclaw/sqlrustgo-tpch/data";
 
 fn load_lineitem(storage: &Arc<RwLock<MemoryStorage>>) -> usize {
     let path = format!("{}/lineitem.tbl", FIXTURE);
@@ -60,7 +60,6 @@ fn load_lineitem(storage: &Arc<RwLock<MemoryStorage>>) -> usize {
     count
 }
 
-#[ignore = "pre-existing: hardcoded /home/openclaw/... path; see AGENTS.md"]
 #[test]
 fn diag_q6_where_parsed() {
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));

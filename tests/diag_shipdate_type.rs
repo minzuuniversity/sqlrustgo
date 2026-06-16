@@ -5,7 +5,7 @@ use sqlrustgo_types::Value as SqlValue;
 use std::fs;
 use std::sync::{Arc, RwLock};
 
-const FIXTURE: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/tpch-sf01");
+const FIXTURE: &str = "/home/openclaw/sqlrustgo-tpch/data";
 
 fn load_lineitem(storage: &Arc<RwLock<MemoryStorage>>) -> usize {
     let path = format!("{}/lineitem.tbl", FIXTURE);
@@ -53,7 +53,6 @@ fn load_lineitem(storage: &Arc<RwLock<MemoryStorage>>) -> usize {
     count
 }
 
-#[ignore = "pre-existing: hardcoded /home/openclaw/... path; see AGENTS.md"]
 #[test]
 fn test_shipdate_actual_value() {
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));

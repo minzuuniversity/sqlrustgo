@@ -6,7 +6,6 @@ use std::path::Path;
 
 #[derive(Debug, Clone)]
 pub struct PitrResult {
-    #[allow(dead_code)]
     pub target_time: u64,
     pub entries_scanned: usize,
     pub entries_applied: usize,
