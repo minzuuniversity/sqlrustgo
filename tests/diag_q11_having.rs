@@ -53,6 +53,7 @@ fn load(storage: &Arc<RwLock<MemoryStorage>>, tbl: &str, ncols: usize) -> usize 
     count
 }
 
+#[ignore = "pre-existing: hardcoded /home/openclaw/... path; see AGENTS.md"]
 #[test]
 fn diag_q11_having() {
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));
