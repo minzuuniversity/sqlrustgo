@@ -1,7 +1,7 @@
 {
   "version": "v3.9.0-rc7",
-  "timestamp": "2026-06-16T20:23:15Z",
-  "total_allowed": 93,
+  "timestamp": "2026-06-16T22:05:44Z",
+  "total_allowed": 51,
   "ignored_tests": [
     {
       "file": "crates/parser/src/parser.rs",
@@ -380,7 +380,7 @@
     },
     {
       "file": "tests/perf_eng_batched_insert_test.rs",
-      "line": "18://! **Mode**: `#[ignore]` — run with `cargo test --release --test perf_eng_batched_insert_test -- --ignored --nocapture`",
+      "line": "18://! **Mode**: `#[ignore]` \u2014 run with `cargo test --release --test perf_eng_batched_insert_test -- --ignored --nocapture`",
       "reason": "TODO: needs ADR + issue link"
     },
     {
@@ -467,7 +467,12 @@
       "file": "tests/diag_2t_join.rs",
       "line": "72:#[ignore = \"pre-existing: hardcoded /home/openclaw/... path; see AGENTS.md\"]",
       "reason": "TODO: needs ADR + issue link"
+    },
+    {
+      "file": "tests/tpch_q9_audit.rs",
+      "line": "5:#[ignore = \"needs tests/data/tpch-sf01/baseline/Q09_three_way.json (not generated)\"]",
+      "reason": "TODO: needs ADR + issue link"
     }
   ],
-  "note": "Auto-generated registry. Each #[ignore] needs explicit ADR + issue link."
+  "note": "Manually updated: total_allowed 93->51, added tests/tpch_q9_audit.rs (commit 9b35799b2 'un-ignore tpch_q9_audit' added this #[ignore] after initial capture)."
 }
