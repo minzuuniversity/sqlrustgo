@@ -4305,6 +4305,7 @@ dependencies = [
  "rand 0.8.6",
  "rcgen",
  "rustls",
+ "scopeguard",
  "serde",
  "serde_json",
  "sha1 0.10.6",
