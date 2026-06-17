@@ -48,17 +48,15 @@ if [ "$N_WORKLOADS" -lt 5 ]; then
 fi
 echo "  [2/5] PASS: $N_WORKLOADS test_qps_* workloads defined"
 
-# 3. QPS test compiles (using --no-run to skip execution; perf tests are #[ignore]'d)
-if cargo test --test qps_benchmark_test --no-run 2>&1 | tail -3 | grep -q "Finished\|Compiling"; then
-    echo "  [3/5] PASS: qps_benchmark_test compiles"
+# 3. QPS test actually runs (perf tests are #[ignore]'d, use --ignored to execute)
+QPS_OUTPUT=$(cargo test --test qps_benchmark_test --all-features -- --ignored 2>&1)
+QPS_EXIT=$?
+echo "$QPS_OUTPUT" | grep -E "test result|ok|FAILED" | head -10
+if [ $QPS_EXIT -eq 0 ]; then
+    echo "  [3/5] PASS: qps_benchmark_test executed successfully"
 else
-    if cargo test --test qps_benchmark_test --no-run 2>&1 | grep -q "error\["; then
-        echo "  [3/5] FAIL: qps_benchmark_test has compile errors"
-        cargo test --test qps_benchmark_test --no-run 2>&1 | grep "error\[" | head -3
-        exit 1
-    else
-        echo "  [3/5] PASS: qps_benchmark_test compiles"
-    fi
+    echo "  [3/5] FAIL: qps_benchmark_test failed (exit=$QPS_EXIT)"
+    exit 1
 fi
 
 # 4. PERFORMANCE_BASELINE.md exists (G15 prerequisite)
