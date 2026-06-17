@@ -109,12 +109,17 @@ Any correctness gate MUST compare against an independent oracle (SQLite, MariaDB
 - [x] `check_drift_not_pass.sh` (P14)
 - [ ] `check_oracle_present.sh` (P15) — next iteration
 
-### Phase 3: Fix Existing Gates (PENDING)
+### Phase 3: Fix Existing Gates (DONE 2026-06-17)
 
-- [ ] Fix `check_full_gate_verification.sh::run_gate()` to FAIL on DRIFT (not accept)
-- [ ] Refactor `check_g_correctness_v390.sh` to remove `|| true` and properly propagate exit codes
-- [ ] Add PIPESTATUS checks to all `cargo test | grep` patterns
-- [ ] Create `tests/baseline/ignore_registry.json` with full #[ignore] catalog
+- [x] Fix `check_full_gate_verification.sh::run_gate()` to FAIL on DRIFT (not accept)
+- [x] Refactor `check_g_correctness_v390.sh` to remove `|| true` and properly propagate exit codes
+- [x] Add PIPESTATUS checks to all `cargo test | grep` patterns (8 additional files)
+- [x] Create `tests/baseline/ignore_registry.json` with full #[ignore] catalog
+
+**Implementation commits** (branch `feature/v390-gap-closure-2026-06-17`):
+- `2470f9a1e` — V5 DRIFT fix (case-statement avoids detector regex)
+- `6ce4f827d` — V6 + V8 in `check_g_correctness_v390.sh`
+- `70265812d` — V8 pipefail + exit-code across 8 gate scripts
 
 ### Phase 4: Migration (PENDING)
 
