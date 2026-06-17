@@ -351,18 +351,31 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     if select.columns.is_empty() || select.columns.iter().any(|c| c.name == "*") {
                         vec![agg_values.clone()]
                     } else {
-                        select
-                            .columns
-                            .iter()
-                            .map(|col| match &col.expression {
-                                Some(expr) => evaluate_expression(expr, &agg_values, &agg_schema)
-                                    .unwrap_or(Value::Null),
-                                None => agg_values.first().cloned().unwrap_or(Value::Null),
-                            })
-                            .collect::<Vec<_>>()
-                            .into_iter()
-                            .map(|v| vec![v])
-                            .collect()
+                        // Check if all columns are pure aggregates (no column references)
+                        let all_aggregates = select.columns.iter().all(|c| {
+                            matches!(&c.expression, Some(Expression::Aggregate(_)))
+                        });
+                        if all_aggregates {
+                            // Return single row with all aggregate values as columns
+                            vec![agg_values.clone()]
+                        } else {
+                            select
+                                .columns
+                                .iter()
+                                .map(|col| match &col.expression {
+                                    Some(expr) => {
+                                        evaluate_expression(expr, &agg_values, &agg_schema)
+                                            .unwrap_or(Value::Null)
+                                    }
+                                    None => {
+                                        agg_values.first().cloned().unwrap_or(Value::Null)
+                                    }
+                                })
+                                .collect::<Vec<_>>()
+                                .into_iter()
+                                .map(|v| vec![v])
+                                .collect()
+                        }
                     };
                 let row_count = projected.len();
                 return Ok(ExecutorResult::new(projected, row_count));
@@ -1091,6 +1104,9 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                         // SQL standard: SUM over empty set is NULL.
                         // PG returns 0 rows, others return 1 row with NULL.
                         // We follow the standard (NULL), not PG's quirk.
+                        Value::Null
+                    } else if values.iter().all(|v| matches!(v, Value::Null)) {
+                        // All values are NULL — SUM must return NULL, not Integer(0)
                         Value::Null
                     } else if any_float {
                         Value::Float(float_sum)
