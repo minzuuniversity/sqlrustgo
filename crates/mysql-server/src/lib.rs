@@ -1242,13 +1242,16 @@ fn send_result_set<W: Write>(
         )?;
         seq = seq.wrapping_add(1);
     }
-    // Always send inter-record EOF (classic protocol). The conditional
-    // (cap & DEPRECATE_EOF) was omitting the EOF when the client advertised
-    // the new protocol, but mysql CLI 8.0.46 + libmysqlclient 8.0.46
-    // still expect the EOF packet. Forcing classic EOF here is the minimal
-    // correct behavior; the new protocol path can be re-introduced once
-    // the client has caught up. See .hermes/SET_NAMES_DIAGNOSIS.md.
-    {
+    // Inter-record separator between column defs and the row stream.
+    // Honor the client's DEPRECATE_EOF capability:
+    //   - DEPRECATE_EOF = 0 (classic protocol): send inter-record EOF
+    //   - DEPRECATE_EOF = 1 (mysql 8.0+ default): skip the EOF; the
+    //     trailing terminator (OK/EOF below) marks the end of the
+    //     result set.
+    // Fix for #NEW: without this, mysql 8.0 CLI silently drops the
+    // result set — it interprets the stray inter-record EOF as the
+    // final terminator and never reads the row packets.
+    if cap & capability::DEPRECATE_EOF == 0 {
         make_eof_packet(seq, 0x0002).write_to(w)?;
         seq = seq.wrapping_add(1);
     }
@@ -1264,6 +1267,32 @@ fn send_result_set<W: Write>(
         .write_to(w)?;
         seq = seq.wrapping_add(1);
     }
+    // Trailing terminator for the row stream.
+    //   - DEPRECATE_EOF = 0 (classic protocol): send EOF packet
+    //     (0xFE + warnings + status_flags, 5 bytes).
+    //   - DEPRECATE_EOF = 1 (mysql 8.0+ default): send OK packet
+    //     (0x00 + affected_rows + last_insert_id + status + warnings,
+    //     7 bytes) — OK packet replaces the EOF when the client
+    //     advertises DEPRECATE_EOF.
+    //
+    // Fix for #NEW: previously this branch always sent EOF. mysql
+    // 8.0 CLI reads the trailing terminator's marker byte to decide
+    // whether the result set is complete (0x00 OK) or the connection
+    // has been closed (0xFE EOF + extra packet would be expected).
+    // Without OK marker, mysql 8.0 hangs or returns ER_MALFORMED_PACKET.
+    // Trailing terminator for the row stream (capability-controlled).
+    //   - DEPRECATE_EOF = 0 (classic protocol): classic EOF packet
+    //     (0xFE + u16 warnings + u16 status_flags, 5 bytes).
+    //   - DEPRECATE_EOF = 1 (deprecated-EOF protocol): OK packet
+    //     (0x00 + lenenc affected_rows + lenenc last_insert_id + u16
+    //     status_flags + u16 warnings, 7 bytes). The OK packet replaces
+    //     the EOF when the client advertises DEPRECATE_EOF; this is
+    //     the spec-mandated byte layout per
+    //     openspec/changes/2026-06-18-wire-deprecate-eof.
+    //
+    // Both branches carry status_flags = 0x0002 (SERVER_STATUS_AUTOCOMMIT)
+    // so the client observes the same autocommit state regardless of
+    // which protocol variant is in use.
     if cap & capability::DEPRECATE_EOF == 0 {
         make_eof_packet(seq, 0x0002).write_to(w)?;
         seq = seq.wrapping_add(1);
