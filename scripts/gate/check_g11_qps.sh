@@ -4,7 +4,7 @@
 # Verifies:
 # 1. tests/qps_benchmark_test.rs exists + registered in Cargo.toml
 # 2. ≥5 test_qps_* workloads defined (point_select, range_select, insert, update, mixed_oltp)
-# 3. cargo test --test qps_benchmark_test --no-run compiles successfully
+# 3. QPS benchmarks compile and can run (--ignored for #[ignore] tests)
 # 4. PERFORMANCE_BASELINE.md exists
 # 5. TPC-H 22/22 维持 (G1)
 #
@@ -12,6 +12,7 @@
 #
 # Refs: docs/releases/v3.9.0/plans/V390_TEST_PLAN_SUPPLEMENT_PERF.md §G11
 #       docs/releases/v3.9.0/plans/V390_TEST_PLAN_ROUND2_REVIEW.md
+#       TGS Phase 2: Execute real benchmarks, not just compile
 
 set -e
 
@@ -70,14 +71,25 @@ else
     exit 1
 fi
 
-# 5. TPC-H 22/22 维持 (G1) (P14 V8 fix: capture exit code explicitly)
+# 5. TPC-H 22/22 维持 (G1) (P14 V8 fix: capture exit code explicitly, V6 fix: remove || true)
 TPCH_OUTPUT=$(cargo test --test tpch_gate_test 2>&1)
 TPCH_EXIT=$?
-TPCH_PASSED=$(echo "$TPCH_OUTPUT" | grep -E "test result.*ok" | head -1 || true)
-if [ $TPCH_EXIT -eq 0 ] && echo "$TPCH_PASSED" | grep -q "ok"; then
+TPCH_PASSED=$(echo "$TPCH_OUTPUT" | grep -E "test result.*ok" | head -1)
+if [ $TPCH_EXIT -ne 0 ]; then
+    echo "  [5/5] FAIL: TPC-H gate test failed (exit=$TPCH_EXIT)"
+    echo "$TPCH_OUTPUT" | tail -10
+    exit 1
+fi
+if [ -z "$TPCH_PASSED" ]; then
+    echo "  [5/5] FAIL: TPC-H gate output could not be parsed"
+    echo "$TPCH_OUTPUT" | tail -10
+    exit 1
+fi
+if echo "$TPCH_PASSED" | grep -q "ok"; then
     echo "  [5/5] PASS: TPC-H gate (22/22) maintained"
 else
-    echo "  [5/5] FAIL: TPC-H gate test did not pass (exit=$TPCH_EXIT)"
+    echo "  [5/5] FAIL: TPC-H gate test did not pass"
+    echo "$TPCH_OUTPUT" | tail -10
     exit 1
 fi
 
