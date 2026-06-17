@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 # Gate G1: TPC-H 22/22 baseline.
+# Purpose: Verify TPC-H Q1..Q22 all PASS and combined hash matches v3.8.0 baseline
+# Coverage: P11 (Gate Self-Verification), G1 gate
+# Verifies: 22/22 PASS + SHA-256 hash matches baseline
 #
 # Verifies that TPC-H Q1..Q22 all PASS and the combined deterministic
 # result hash matches the v3.8.0 baseline. See:
