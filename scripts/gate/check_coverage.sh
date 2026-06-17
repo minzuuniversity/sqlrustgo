@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# Purpose: Check code coverage meets minimum thresholds
+# Coverage: P5 (Coverage Baseline)
+# Verifies: line/branch coverage >= 85% (L1 baseline)
 
 set -euo pipefail
 
