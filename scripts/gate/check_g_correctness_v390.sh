@@ -47,8 +47,8 @@ else
 fi
 echo
 
-PASS=$(grep -cE "Q[[:space:]]*[0-9]+: ok" /tmp/gate_c_run.log || true)
-ERR=$(grep -cE "Q[[:space:]]*[0-9]+: ERR" /tmp/gate_c_run.log || true)
+PASS=$(grep -cE "✅ Q[[:space:]]*[0-9]+:" /tmp/gate_c_run.log || true)
+ERR=$(grep -cE "❌ Q[[:space:]]*[0-9]+:" /tmp/gate_c_run.log || true)
 TOTAL=$((PASS + ERR))
 echo "[2/3] Results: $PASS PASS, $ERR ERR (out of $TOTAL)"
 
