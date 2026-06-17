@@ -581,7 +581,6 @@ fn r2_random_fuzz_smoke_500_iterations() {
 }
 
 #[test]
-#[ignore = "Long-running; enable with --ignored for full 50k iteration sweep"]
 fn r2_random_fuzz_full_50k_iterations() {
     // Full sweep: 50,000 random adversarial patterns. Run with:
     //   cargo test --release --test recovery_fuzzer_test r2_random_fuzz_full -- --ignored
