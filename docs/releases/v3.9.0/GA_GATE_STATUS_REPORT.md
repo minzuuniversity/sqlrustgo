@@ -1,10 +1,11 @@
 # v3.9.0 GA Gate Status Report (Governance Compliance)
 
 > **Date**: 2026-06-17
-> **Tag**: v3.9.0-rc7 (`642ff9cf9`) — current tip
-> **Status**: 🟡 **IN PROGRESS** (gate scripts executed, real soak pending)
+> **Tag**: v3.9.0-rc7 (`1e83612c6`) — current tip (post PR #3467 Sprint 8 docs follow-up)
+> **Sprint 8 PR #3465**: Q8 hash join (33s→0.18ms, 165,000×) + ADR-006 V5/V6/V8/V2 + soak_runner
+> **Status**: 🟡 **IN PROGRESS** (G1-G16 + 5 meta-gates PASS, real soak pending Z6G4)
 > **GA Target**: 2026-12-15
-> **Truthfulness Notice**: 详见 `TEST_TRUTHFULNESS_REPORT.md`
+> **Truthfulness Notice**: 详见 `TEST_TRUTHFULNESS_REPORT.md` (Sprint 8 更新: V5/V6/V8/V2 全部修复)
 
 ---
 
@@ -101,12 +102,12 @@ A 2026-06-17 cross-reference audit ([`docs/audit/status/2026-06-17-truthfulness-
 
 | # | 条件 | 验证 |
 |---|------|------|
-| 1 | PR 已合并 | ✅ All closed issues have linked PRs (#3370→#3371 closed as dup) |
+| 1 | PR 已合并 | ✅ All closed issues have linked PRs (#3370→#3371 closed as dup + Sprint 8 #3465/#3466/#3467/#3468) |
 | 2 | 代码已集成 | ✅ All PRs merged to `develop/v3.9.0` |
-| 3 | 测试已通过 | ✅ Substance tests + G1-G16 all green |
-| 4 | 文档已更新 | ✅ README, CHANGELOG, RELEASE_NOTES, GA_GATE_REPORT all updated |
+| 3 | 测试已通过 | ✅ Substance tests + G1-G16 + 5 meta-gates all green (Sprint 8) |
+| 4 | 文档已更新 | ✅ README, CHANGELOG, RELEASE_NOTES, GA_GATE_REPORT all updated (Sprint 8 follow-up) |
 
-**30 closed issues all have PR linkage** ✅
+**Sprint 8 closed: 30+ RC7 issues + Sprint 8 PRs (#3465/#3466/#3467/#3468) all have PR linkage** ✅
 
 ### 2.2 DOC_CHECK_CORRECTION_RULES.md — 文档修改
 
@@ -178,47 +179,66 @@ All 4 remotes in sync.
 
 ---
 
-## 6. 风险评估
+## 6. 风险评估 (Sprint 8 更新)
 
-| 风险 | 等级 | 缓解 |
-|------|------|------|
-| Z6G4 不稳定 (历史 5+ 次宕机) | 高 | 250 backup 验证, 252 已设 self-healing |
-| 24h soak 中途崩溃 | 中 | 250 auto-restart, 24h sample 累积会保留 |
-| C-ARCH-05 债务积累 | 低 | 已在 RELEASE_NOTES 标记为 v3.9.1 |
-| Security vulnerabilities in bench | 低 | 仅 bench crate, 不影响生产 binary |
+| 风险 | 等级 | 缓解 | Sprint 8 状态 |
+|------|------|------|--------------|
+| Z6G4 不稳定 (历史 5+ 次宕机) | 高 | 250 backup 验证, 252 已设 self-healing | — |
+| 24h soak 中途崩溃 | 中 | 250 auto-restart, 24h sample 累积会保留 | ✅ infra ready (PR #3465) |
+| C-ARCH-05 债务积累 | 低 | 已在 RELEASE_NOTES 标记为 v3.9.1 | — |
+| Security vulnerabilities in bench | 低 | 仅 bench crate, 不影响生产 binary | — |
+| V5/V6/V8 gate 漏洞 | 🟢 已缓解 | P14 V5/V6/V8 修复 (Sprint 8) | ✅ **修复** (PR #3465 Track B) |
+| V2 stale `#[ignore]` | 🟢 已缓解 | P12 ignore_registry 重生成 (Sprint 8) | ✅ **修复** (PR #3465 Track B) |
 
 ---
 
-## 7. 结论 — 诚实声明
+## 7. 结论 — 诚实声明 (Sprint 8 更新)
 
-🟡 **v3.9.0 GA 尚未就绪**
+🟡 **v3.9.0 GA 尚未就绪**, 但 Sprint 8 大幅减少 GA 阻塞条件
 
-- 16/16 gate 脚本已执行
+### Sprint 8 前 (2026-06-13)
+- 16/16 gate 脚本已执行 (form-only)
 - 11/16 gate 缺乏独立 oracle 对比验证
 - G7 "24h Stability PASS" 实际为 **SIMULATED**（非真实 24h）
-- 真实 24h/72h/168h soak **尚未完成**（GA 阻塞条件）
-- 部分 gate 存在 V6/V8 漏洞（错误吞掉、grep 失败静默）
+- V5/V6/V8 漏洞: 未修复
+
+### Sprint 8 后 (2026-06-17, PR #3465)
+- ✅ 16/16 G1-G16 gate 脚本已执行 (form-only)
+- ✅ **5/5 meta-gates (P11-P15) PASS** (Sprint 8 Track B)
+- ✅ **V5/V6/V8/V2 漏洞全部修复** (commits `2470f9a1e` `6ce4f827d` `70265812d` `07d7ec857`)
+- ✅ **Q8 hash join: 33s→0.18ms (165,000×)** (Sprint 8 Track A)
+- ✅ **soak infra ready** (`sqlrustgo-mysql-server soak`, PR #3465 Track C)
+- 🟡 G7/G13 real 24h soak: **INFRA DONE, RUN PENDING** (needs Z6G4)
+- 🟡 11/16 gate 仍缺乏独立 oracle 对比验证 (Sprint 8 之外)
 
 **诚实评估**:
 - Gate 脚本执行状态：可信
-- 测试正确性验证：**不可信**（11/16 无 oracle）
-- 长期稳定性验证：**不可信**（仅 SIMULATED）
+- Meta-gate 验证状态：✅ 可信 (5/5 PASS)
+- 测试正确性验证：🟡 部分不可信 (11/16 仍无 oracle)
+- 长期稳定性验证：🟡 infra ready, run pending
 
-**GA 阻塞条件**:
-1. 真实 24h soak 完成且 0 errors
-2. Oracle 对比添加（8 gate）
-3. V6/V8 漏洞修复
+**GA 阻塞条件 (Sprint 8 后)**:
+1. 🟡 真实 24h soak 完成且 0 errors (infra ready, run pending)
+2. 🟡 真实 72h/168h soak (Post-GA 加固, 取决于 Z6G4)
+3. 🟡 Oracle 对比添加 (8 gate) — Sprint 8 未完全解决
 
-详见 `TEST_TRUTHFULNESS_REPORT.md`
+详见 `TEST_TRUTHFULNESS_REPORT.md` (待同步 V5/V6/V8/V2 修复状态)
 
 ---
 
-## 8. 待提交文件状态
+## 8. Sprint 8 提交状态 (2026-06-17)
 
-- 7 文件已 modified (CHANGELOG, README, ROADMAP, GA_GATE_REPORT, etc.)
-- 2 文件 new (V390_GA_DOC_CORRECTION_PLAN.md + WORK_REPORT.md)
-- 1 commit: `7f4ad55ae docs(v3.9.0): GA doc correction per DOC_CHECK_CORRECTION_RULES v1.0.0`
-- 1 PR: #3369 (merged)
-- 1 Issue closed: #3371 (dup of #3370)
+### Sprint 8 PR 链 (all merged)
+- **PR #3465** (commit `edcc8e20d`): Sprint 8 GA Gap Closure
+  - Track A: Q8 hash join (3 commits: `1b200d33f` `7e806c8b3` `da204103f`)
+  - Track B: ADR-006 V5/V6/V8/V2 (4 commits: `2470f9a1e` `6ce4f827d` `70265812d` `07d7ec857`)
+  - Track C: soak_runner (1 commit: `de8b6b2fd`) + long-stability analysis (1 commit: `b9795fed5`)
+- **PR #3466** (commit `fb0e77758`): G1/G13 gate scripts update
+- **PR #3467** (commit `1e83612c6`): CHANGELOG, CONVERGENCE_TRACKER, CURRENT_VERSION
+- **PR #3468** (commit `e1bb3789c`): V390_COMPREHENSIVE_ASSESSMENT v2.0, ROADMAP v2.0, INDEX v3.0.1
 
-Last updated: 2026-06-13 01:50 CST
+### Issues 部分关闭 (Sprint 8)
+- **Issue comments** posted to #3225/#3265/#3266/#3229 (PR #3465 reference)
+- Real wall-clock runs PENDING (depends on Z6G4 hardware)
+
+Last updated: 2026-06-17 (post PR #3468 merge)
