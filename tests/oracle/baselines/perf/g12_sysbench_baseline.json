@@ -1,0 +1,27 @@
+{
+  "_comment": "G12 Sysbench baseline (v3.9.0 RC7). Same as G11 but for sysbench OLTP workloads.",
+  "generated_at": "2026-06-18T00:00:00Z",
+  "engine": "SQLRustGo v3.9.0-rc7 (Sprint 8)",
+  "scale_factor": "0.01",
+  "tolerance_pct": 20.0,
+  "workloads": [
+    {
+      "workload": "oltp_point_select",
+      "min_qps": 600.0,
+      "max_latency_p99_ms": 30.0,
+      "description": "sysbench oltp_point_select.lua"
+    },
+    {
+      "workload": "oltp_read_only",
+      "min_qps": 300.0,
+      "max_latency_p99_ms": 100.0,
+      "description": "sysbench oltp_read_only.lua"
+    },
+    {
+      "workload": "oltp_write_only",
+      "min_qps": 200.0,
+      "max_latency_p99_ms": 200.0,
+      "description": "sysbench oltp_write_only.lua"
+    }
+  ]
+}
