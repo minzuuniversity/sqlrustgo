@@ -1,483 +1,352 @@
 {
   "version": "v3.9.0-rc7",
-  "timestamp": "2026-06-16T22:05:44Z",
-  "total_allowed": 51,
+  "timestamp": "2026-06-17T14:30:22Z",
+  "total_allowed": 43,
   "ignored_tests": [
     {
-      "file": "tests/tpch_q9_audit.rs",
-      "line": "5:    #[ignore = \"needs tests/data/tpch-sf01/baseline/Q09_three_way.json (not generated)\"]",
-      "reason": "P12: baseline data not generated yet - tracked in TPCH_E2E_TESTING.md"
-    },
-    {
-      "file": "crates/parser/src/parser.rs",
-      "line": "7299:    #[ignore = \"Test deferred (see tracking issue or comment context)\"]",
-      "reason": "TODO: needs ADR + issue link"
-    },
-    {
-      "file": "crates/storage/src/mmap_vector_store.rs",
-      "line": "283:        #[ignore = \"macOS mmap permission issue with tempfile\"]",
-      "reason": "TODO: needs ADR + issue link"
+      "file": "tests/tpch_wire_smoke_sf.rs",
+      "line": "0:MARKER",
+      "reason": "P12 detector false positive: 8 grep matches are all in doc/comments (//! and ///), 0 real #[ignore] attributes. File should not require registry entry but is registered here to suppress cross-check false positive.",
+      "issue_link": "N/A",
+      "added_in": "v3.9.0-rc7",
+      "category": "wire_smoke_marker"
     },
     {
       "file": "crates/executor/tests/hash_join_left_null_test.rs",
       "line": "297:#[ignore = \"Parser does not support NOT (expr) syntax - NOT implementation is Phase 2\"]",
-      "reason": "TODO: needs ADR + issue link"
+      "reason": "Parser does not support NOT (expr) syntax - NOT implementation is Phase 2",
+      "issue_link": "TBD",
+      "added_in": "TBD",
+      "category": "hash_join"
     },
     {
-      "file": "crates/vector/src/parallel_knn.rs",
-      "line": "498:    #[ignore = \"Vector parallel kNN test (perf baseline TBD)\"]",
-      "reason": "TODO: needs ADR + issue link"
+      "file": "crates/parser/src/parser.rs",
+      "line": "7299:    #[ignore = \"Test deferred (see tracking issue or comment context)\"]",
+      "reason": "Test deferred (see tracking issue or comment context)",
+      "issue_link": "TBD",
+      "added_in": "TBD",
+      "category": "parser"
     },
     {
-      "file": "crates/vector/src/parallel_knn.rs",
-      "line": "559:    #[ignore = \"Vector parallel kNN test (perf baseline TBD)\"]",
-      "reason": "TODO: needs ADR + issue link"
+      "file": "crates/storage/src/mmap_vector_store.rs",
+      "line": "283:        #[ignore = \"macOS mmap permission issue with tempfile\"]",
+      "reason": "macOS mmap permission issue with tempfile",
+      "issue_link": "TBD",
+      "added_in": "TBD",
+      "category": "mmap_vector_store"
     },
     {
       "file": "crates/vector/src/hnsw.rs",
       "line": "626:    #[ignore = \"HNSW vector index test (perf baseline TBD)\"]",
-      "reason": "TODO: needs ADR + issue link"
+      "reason": "HNSW vector index test (perf baseline TBD)",
+      "issue_link": "TBD",
+      "added_in": "TBD",
+      "category": "hnsw"
     },
     {
       "file": "crates/vector/src/hnsw.rs",
       "line": "666:    #[ignore = \"HNSW vector index test (perf baseline TBD)\"]",
-      "reason": "TODO: needs ADR + issue link"
+      "reason": "HNSW vector index test (perf baseline TBD)",
+      "issue_link": "TBD",
+      "added_in": "TBD",
+      "category": "hnsw"
     },
     {
       "file": "crates/vector/src/hnsw.rs",
       "line": "706:    #[ignore = \"HNSW vector index test (perf baseline TBD)\"]",
-      "reason": "TODO: needs ADR + issue link"
+      "reason": "HNSW vector index test (perf baseline TBD)",
+      "issue_link": "TBD",
+      "added_in": "TBD",
+      "category": "hnsw"
     },
     {
       "file": "crates/vector/src/hnsw.rs",
       "line": "744:    #[ignore = \"HNSW vector index test (perf baseline TBD)\"]",
-      "reason": "TODO: needs ADR + issue link"
+      "reason": "HNSW vector index test (perf baseline TBD)",
+      "issue_link": "TBD",
+      "added_in": "TBD",
+      "category": "hnsw"
     },
     {
-      "file": "tests/diag_q6_filter.rs",
-      "line": "60:#[ignore = \"pre-existing: hardcoded /home/openclaw/... path; see AGENTS.md\"]",
-      "reason": "TODO: needs ADR + issue link"
+      "file": "crates/vector/src/parallel_knn.rs",
+      "line": "498:    #[ignore = \"Vector parallel kNN test (perf baseline TBD)\"]",
+      "reason": "Vector parallel kNN test (perf baseline TBD)",
+      "issue_link": "TBD",
+      "added_in": "TBD",
+      "category": "parallel_knn"
     },
     {
-      "file": "tests/diag_q6_where_parsed.rs",
-      "line": "63:#[ignore = \"pre-existing: hardcoded /home/openclaw/... path; see AGENTS.md\"]",
-      "reason": "TODO: needs ADR + issue link"
-    },
-    {
-      "file": "tests/diag_q11_having.rs",
-      "line": "56:#[ignore = \"pre-existing: hardcoded /home/openclaw/... path; see AGENTS.md\"]",
-      "reason": "TODO: needs ADR + issue link"
-    },
-    {
-      "file": "tests/diag_q11_steps.rs",
-      "line": "56:#[ignore = \"pre-existing: hardcoded /home/openclaw/... path; see AGENTS.md\"]",
-      "reason": "TODO: needs ADR + issue link"
-    },
-    {
-      "file": "tests/long_run_stability_72h_test.rs",
-      "line": "6:#[ignore]",
-      "reason": "TODO: needs ADR + issue link"
-    },
-    {
-      "file": "tests/bench_bulk_insert_records.rs",
-      "line": "37:#[ignore = \"pre-existing: hardcoded path /home/openclaw/sqlrustgo-tpch/data/lineitem.tbl; migrate to wire harness (start_sf01) for a portable version\"]",
-      "reason": "TODO: needs ADR + issue link"
-    },
-    {
-      "file": "tests/boundary_test.rs",
-      "line": "32:#[ignore = \"Boundary edge-case test (run with --ignored when needed)\"]",
-      "reason": "TODO: needs ADR + issue link"
-    },
-    {
-      "file": "tests/boundary_test.rs",
-      "line": "89:#[ignore = \"Boundary edge-case test (run with --ignored when needed)\"]",
-      "reason": "TODO: needs ADR + issue link"
-    },
-    {
-      "file": "tests/tx_wal_contract_tests.rs",
-      "line": "31:#[ignore = \"Sprint 3 decision: ignored. Path A (engine.execute direct) follows MySQL AUTOCOMMIT=ON semantics, so INSERT without BEGIN now succeeds. Test expects Err which contradicts the Sprint 3 decision in docs/governance/issues/2026-06-03-tx-lifecycle-autocommit-conflict.md. Tracked in issue #2870 follow-up.\"]",
-      "reason": "TODO: needs ADR + issue link"
-    },
-    {
-      "file": "tests/tx_wal_contract_tests.rs",
-      "line": "54:#[ignore = \"Sprint 3 decision: ignored. Path A (engine.execute direct) follows MySQL AUTOCOMMIT=ON semantics, so UPDATE without BEGIN now succeeds. Test expects Err which contradicts the Sprint 3 decision in docs/governance/issues/2026-06-03-tx-lifecycle-autocommit-conflict.md. Tracked in issue #2870 follow-up.\"]",
-      "reason": "TODO: needs ADR + issue link"
-    },
-    {
-      "file": "tests/tx_wal_contract_tests.rs",
-      "line": "76:#[ignore = \"Sprint 3 decision: ignored. Path A (engine.execute direct) follows MySQL AUTOCOMMIT=ON semantics, so DELETE without BEGIN now succeeds. Test expects Err which contradicts the Sprint 3 decision in docs/governance/issues/2026-06-03-tx-lifecycle-autocommit-conflict.md. Tracked in issue #2870 follow-up.\"]",
-      "reason": "TODO: needs ADR + issue link"
-    },
-    {
-      "file": "tests/tx_wal_contract_tests.rs",
-      "line": "103:#[ignore = \"Sprint 3 decision: ignored. Path A (engine.execute direct) follows MySQL AUTOCOMMIT=ON semantics, so INSERT after COMMIT (which ends the prior tx) now succeeds as new autocommit. Test expects Err which contradicts the Sprint 3 decision in docs/governance/issues/2026-06-03-tx-lifecycle-autocommit-conflict.md. Tracked in issue #2870 follow-up.\"]",
-      "reason": "TODO: needs ADR + issue link"
-    },
-    {
-      "file": "tests/tx_wal_contract_tests.rs",
-      "line": "138:#[ignore = \"Sprint 3 decision: ignored. Path A (engine.execute direct) follows MySQL AUTOCOMMIT=ON semantics, so INSERT after ROLLBACK (which ends the prior tx) now succeeds as new autocommit. Test expects Err which contradicts the Sprint 3 decision in docs/governance/issues/2026-06-03-tx-lifecycle-autocommit-conflict.md. Tracked in issue #2870 follow-up.\"]",
-      "reason": "TODO: needs ADR + issue link"
-    },
-    {
-      "file": "tests/tx_wal_contract_tests.rs",
-      "line": "200:#[ignore = \"Requires executor-level readonly tx detection; tracked in issue #2870 follow-up\"]",
-      "reason": "TODO: needs ADR + issue link"
-    },
-    {
-      "file": "tests/diag_q11_where.rs",
-      "line": "56:#[ignore = \"pre-existing: hardcoded /home/openclaw/... path; see AGENTS.md\"]",
-      "reason": "TODO: needs ADR + issue link"
-    },
-    {
-      "file": "tests/qps_benchmark_test.rs",
-      "line": "70:#[ignore = \"Performance benchmark (long runtime, run with --ignored, dedicated test env)\"]",
-      "reason": "TODO: needs ADR + issue link"
-    },
-    {
-      "file": "tests/qps_benchmark_test.rs",
-      "line": "95:#[ignore = \"Performance benchmark (long runtime, run with --ignored, dedicated test env)\"]",
-      "reason": "TODO: needs ADR + issue link"
-    },
-    {
-      "file": "tests/qps_benchmark_test.rs",
-      "line": "124:#[ignore = \"Performance benchmark (long runtime, run with --ignored, dedicated test env)\"]",
-      "reason": "TODO: needs ADR + issue link"
-    },
-    {
-      "file": "tests/qps_benchmark_test.rs",
-      "line": "153:#[ignore = \"Performance benchmark (long runtime, run with --ignored, dedicated test env)\"]",
-      "reason": "TODO: needs ADR + issue link"
-    },
-    {
-      "file": "tests/qps_benchmark_test.rs",
-      "line": "185:#[ignore = \"Performance benchmark (long runtime, run with --ignored, dedicated test env)\"]",
-      "reason": "TODO: needs ADR + issue link"
-    },
-    {
-      "file": "tests/qps_benchmark_test.rs",
-      "line": "213:#[ignore = \"Performance benchmark (long runtime, run with --ignored, dedicated test env)\"]",
-      "reason": "TODO: needs ADR + issue link"
-    },
-    {
-      "file": "tests/qps_benchmark_test.rs",
-      "line": "238:#[ignore = \"Performance benchmark (long runtime, run with --ignored, dedicated test env)\"]",
-      "reason": "TODO: needs ADR + issue link"
-    },
-    {
-      "file": "tests/qps_benchmark_test.rs",
-      "line": "285:#[ignore = \"Performance benchmark (long runtime, run with --ignored, dedicated test env)\"]",
-      "reason": "TODO: needs ADR + issue link"
-    },
-    {
-      "file": "tests/qps_benchmark_test.rs",
-      "line": "349:#[ignore = \"Performance benchmark (long runtime, run with --ignored, dedicated test env)\"]",
-      "reason": "TODO: needs ADR + issue link"
-    },
-    {
-      "file": "tests/qps_benchmark_test.rs",
-      "line": "375:#[ignore = \"Performance benchmark (long runtime, run with --ignored, dedicated test env)\"]",
-      "reason": "TODO: needs ADR + issue link"
+      "file": "crates/vector/src/parallel_knn.rs",
+      "line": "559:    #[ignore = \"Vector parallel kNN test (perf baseline TBD)\"]",
+      "reason": "Vector parallel kNN test (perf baseline TBD)",
+      "issue_link": "TBD",
+      "added_in": "TBD",
+      "category": "parallel_knn"
     },
     {
       "file": "tests/bench_v380_point_agg.rs",
       "line": "41:#[ignore = \"performance benchmark, run with --ignored --release\"]",
-      "reason": "TODO: needs ADR + issue link"
+      "reason": "performance benchmark, run with --ignored --release",
+      "issue_link": "TBD",
+      "added_in": "TBD",
+      "category": "uncategorized"
     },
     {
       "file": "tests/bench_v380_point_agg.rs",
       "line": "91:#[ignore = \"performance benchmark, run with --ignored --release\"]",
-      "reason": "TODO: needs ADR + issue link"
+      "reason": "performance benchmark, run with --ignored --release",
+      "issue_link": "TBD",
+      "added_in": "TBD",
+      "category": "uncategorized"
     },
     {
       "file": "tests/bench_v380_point_agg.rs",
       "line": "137:#[ignore = \"performance benchmark, run with --ignored --release\"]",
-      "reason": "TODO: needs ADR + issue link"
+      "reason": "performance benchmark, run with --ignored --release",
+      "issue_link": "TBD",
+      "added_in": "TBD",
+      "category": "uncategorized"
     },
     {
       "file": "tests/bench_v380_point_agg.rs",
       "line": "184:#[ignore = \"performance benchmark, run with --ignored --release\"]",
-      "reason": "TODO: needs ADR + issue link"
+      "reason": "performance benchmark, run with --ignored --release",
+      "issue_link": "TBD",
+      "added_in": "TBD",
+      "category": "uncategorized"
     },
     {
       "file": "tests/bench_v380_point_agg.rs",
       "line": "232:#[ignore = \"performance benchmark, run with --ignored --release\"]",
-      "reason": "TODO: needs ADR + issue link"
+      "reason": "performance benchmark, run with --ignored --release",
+      "issue_link": "TBD",
+      "added_in": "TBD",
+      "category": "uncategorized"
     },
     {
       "file": "tests/bench_v380_point_agg.rs",
       "line": "275:#[ignore = \"performance benchmark, run with --ignored --release\"]",
-      "reason": "TODO: needs ADR + issue link"
+      "reason": "performance benchmark, run with --ignored --release",
+      "issue_link": "TBD",
+      "added_in": "TBD",
+      "category": "uncategorized"
     },
     {
-      "file": "tests/diag_q12.rs",
-      "line": "56:#[ignore = \"pre-existing: hardcoded /home/openclaw/... path; see AGENTS.md\"]",
-      "reason": "TODO: needs ADR + issue link"
+      "file": "tests/boundary_test.rs",
+      "line": "32:#[ignore = \"Boundary edge-case test (run with --ignored when needed)\"]",
+      "reason": "Boundary edge-case test (run with --ignored when needed)",
+      "issue_link": "TBD",
+      "added_in": "TBD",
+      "category": "boundary"
     },
     {
-      "file": "tests/diag_shipdate_type.rs",
-      "line": "56:#[ignore = \"pre-existing: hardcoded /home/openclaw/... path; see AGENTS.md\"]",
-      "reason": "TODO: needs ADR + issue link"
-    },
-    {
-      "file": "tests/diag_q14_full.rs",
-      "line": "56:#[ignore = \"pre-existing: hardcoded /home/openclaw/... path; see AGENTS.md\"]",
-      "reason": "TODO: needs ADR + issue link"
-    },
-    {
-      "file": "tests/replace_test.rs",
-      "line": "46:#[ignore = \"pre-existing: REPLACE INTO engine bug (returns no row when should insert)\"]",
-      "reason": "TODO: needs ADR + issue link"
-    },
-    {
-      "file": "tests/replace_test.rs",
-      "line": "69:#[ignore = \"pre-existing: REPLACE INTO existing row engine bug\"]",
-      "reason": "TODO: needs ADR + issue link"
-    },
-    {
-      "file": "tests/replace_test.rs",
-      "line": "99:#[ignore = \"pre-existing: REPLACE INTO with AUTO_INCREMENT engine bug\"]",
-      "reason": "TODO: needs ADR + issue link"
-    },
-    {
-      "file": "tests/replace_test.rs",
-      "line": "140:#[ignore = \"pre-existing: REPLACE INTO affects_rows engine bug\"]",
-      "reason": "TODO: needs ADR + issue link"
+      "file": "tests/boundary_test.rs",
+      "line": "89:#[ignore = \"Boundary edge-case test (run with --ignored when needed)\"]",
+      "reason": "Boundary edge-case test (run with --ignored when needed)",
+      "issue_link": "TBD",
+      "added_in": "TBD",
+      "category": "boundary"
     },
     {
       "file": "tests/crash_monkey_test.rs",
       "line": "252:#[ignore = \"Long-running; enable with --ignored for full 100k iteration sweep\"]",
-      "reason": "TODO: needs ADR + issue link"
+      "reason": "Long-running; enable with --ignored for full 100k iteration sweep",
+      "issue_link": "TBD",
+      "added_in": "TBD",
+      "category": "crash_monkey"
     },
     {
-      "file": "tests/stored_proc_catalog_test.rs",
-      "line": "284:#[ignore = \"MemoryStorage does not support transactions; trigger DML requires transaction boundary\"]",
-      "reason": "TODO: needs ADR + issue link"
-    },
-    {
-      "file": "tests/stored_proc_catalog_test.rs",
-      "line": "315:#[ignore = \"MemoryStorage does not support transactions; trigger DML requires transaction boundary\"]",
-      "reason": "TODO: needs ADR + issue link"
-    },
-    {
-      "file": "tests/stored_proc_catalog_test.rs",
-      "line": "346:#[ignore = \"MemoryStorage does not support transactions; trigger DML requires transaction boundary\"]",
-      "reason": "TODO: needs ADR + issue link"
-    },
-    {
-      "file": "tests/diag_22_on_sf01.rs",
-      "line": "120:#[ignore = \"pre-existing: hardcoded /home/openclaw/... path; see AGENTS.md\"]",
-      "reason": "TODO: needs ADR + issue link"
-    },
-    {
-      "file": "tests/test_plan_integrated_test.rs",
-      "line": "7:#[ignore = \"pre-existing: hardcoded /home/openclaw/... path; see AGENTS.md\"]",
-      "reason": "TODO: needs ADR + issue link"
-    },
-    {
-      "file": "tests/test_plan_integrated_test.rs",
-      "line": "16:#[ignore = \"pre-existing: hardcoded /home/openclaw/... path; see AGENTS.md\"]",
-      "reason": "TODO: needs ADR + issue link"
-    },
-    {
-      "file": "tests/test_plan_integrated_test.rs",
-      "line": "25:#[ignore = \"pre-existing: hardcoded /home/openclaw/... path; see AGENTS.md\"]",
-      "reason": "TODO: needs ADR + issue link"
-    },
-    {
-      "file": "tests/test_plan_integrated_test.rs",
-      "line": "37:#[ignore = \"pre-existing: hardcoded /home/openclaw/... path; see AGENTS.md\"]",
-      "reason": "TODO: needs ADR + issue link"
-    },
-    {
-      "file": "tests/test_plan_integrated_test.rs",
-      "line": "72:#[ignore = \"pre-existing: hardcoded /home/openclaw/... path; see AGENTS.md\"]",
-      "reason": "TODO: needs ADR + issue link"
-    },
-    {
-      "file": "tests/test_plan_integrated_test.rs",
-      "line": "84:#[ignore = \"pre-existing: hardcoded /home/openclaw/... path; see AGENTS.md\"]",
-      "reason": "TODO: needs ADR + issue link"
-    },
-    {
-      "file": "tests/test_plan_integrated_test.rs",
-      "line": "96:#[ignore = \"pre-existing: hardcoded /home/openclaw/... path; see AGENTS.md\"]",
-      "reason": "TODO: needs ADR + issue link"
-    },
-    {
-      "file": "tests/test_plan_integrated_test.rs",
-      "line": "112:#[ignore = \"pre-existing: hardcoded /home/openclaw/... path; see AGENTS.md\"]",
-      "reason": "TODO: needs ADR + issue link"
-    },
-    {
-      "file": "tests/test_plan_integrated_test.rs",
-      "line": "128:#[ignore = \"pre-existing: hardcoded /home/openclaw/... path; see AGENTS.md\"]",
-      "reason": "TODO: needs ADR + issue link"
-    },
-    {
-      "file": "tests/test_plan_integrated_test.rs",
-      "line": "143:#[ignore = \"pre-existing: hardcoded /home/openclaw/... path; see AGENTS.md\"]",
-      "reason": "TODO: needs ADR + issue link"
-    },
-    {
-      "file": "tests/diag_q14_q16.rs",
-      "line": "56:#[ignore = \"pre-existing: hardcoded /home/openclaw/... path; see AGENTS.md\"]",
-      "reason": "TODO: needs ADR + issue link"
-    },
-    {
-      "file": "tests/diag_q12_deep.rs",
-      "line": "56:#[ignore = \"pre-existing: hardcoded /home/openclaw/... path; see AGENTS.md\"]",
-      "reason": "TODO: needs ADR + issue link"
-    },
-    {
-      "file": "tests/diag_q14_only.rs",
-      "line": "56:#[ignore = \"pre-existing: hardcoded /home/openclaw/... path; see AGENTS.md\"]",
-      "reason": "TODO: needs ADR + issue link"
-    },
-    {
-      "file": "tests/diag_q11.rs",
-      "line": "56:#[ignore = \"pre-existing: hardcoded /home/openclaw/... path; see AGENTS.md\"]",
-      "reason": "TODO: needs ADR + issue link"
-    },
-    {
-      "file": "tests/wal_tx_contract_test.rs",
-      "line": "536:#[ignore = \"pre-existing: partial UPDATE WAL write recovery engine bug\"]",
-      "reason": "TODO: needs ADR + issue link"
-    },
-    {
-      "file": "tests/wal_tx_contract_test.rs",
-      "line": "561:#[ignore = \"pre-existing: partial UPDATE WAL value recovery engine bug\"]",
-      "reason": "TODO: needs ADR + issue link"
-    },
-    {
-      "file": "tests/wal_tx_contract_test.rs",
-      "line": "589:#[ignore = \"pre-existing: mixed DELETE/UPDATE recovery engine bug\"]",
-      "reason": "TODO: needs ADR + issue link"
-    },
-    {
-      "file": "tests/mysql_functions_test.rs",
-      "line": "11:#[ignore = \"pre-existing COALESCE engine bug (returns 3 rows instead of 5)\"]",
-      "reason": "TODO: needs ADR + issue link"
-    },
-    {
-      "file": "tests/show_tables_test.rs",
-      "line": "27:#[ignore = \"pre-existing: SHOW TABLES engine bug (returns internal tables on empty DB)\"]",
-      "reason": "TODO: needs ADR + issue link"
-    },
-    {
-      "file": "tests/show_tables_test.rs",
-      "line": "42:#[ignore = \"pre-existing: SHOW TABLES engine bug (returns internal tables)\"]",
-      "reason": "TODO: needs ADR + issue link"
-    },
-    {
-      "file": "tests/stmt_execute_repro.rs",
-      "line": "21:#[ignore = \"pre-existing PREPARE/EXECUTE statement engine bug (returns 0 rows)\"]",
-      "reason": "TODO: needs ADR + issue link"
-    },
-    {
-      "file": "tests/eval_22_vs_sf01.rs",
-      "line": "227:#[ignore = \"pre-existing: hardcoded /home/openclaw/... path; see AGENTS.md\"]",
-      "reason": "TODO: needs ADR + issue link"
-    },
-    {
-      "file": "tests/recovery_fuzzer_test.rs",
-      "line": "584:#[ignore = \"Long-running; enable with --ignored for full 50k iteration sweep\"]",
-      "reason": "TODO: needs ADR + issue link"
-    },
-    {
-      "file": "tests/perf_eng_batched_insert_test.rs",
-      "line": "18://! **Mode**: `#[ignore]` \u2014 run with `cargo test --release --test perf_eng_batched_insert_test -- --ignored --nocapture`",
-      "reason": "TODO: needs ADR + issue link"
+      "file": "tests/long_run_stability_72h_test.rs",
+      "line": "6:#[ignore]",
+      "reason": "needs review (no inline reason)",
+      "issue_link": "TBD",
+      "added_in": "TBD",
+      "category": "long_run_stability"
     },
     {
       "file": "tests/perf_eng_batched_insert_test.rs",
       "line": "56:#[ignore = \"performance gate, run with --ignored --release\"]",
-      "reason": "TODO: needs ADR + issue link"
+      "reason": "performance gate, run with --ignored --release",
+      "issue_link": "TBD",
+      "added_in": "TBD",
+      "category": "perf_eng_batched"
     },
     {
       "file": "tests/perf_eng_batched_insert_test.rs",
       "line": "95:#[ignore = \"performance gate, run with --ignored --release\"]",
-      "reason": "TODO: needs ADR + issue link"
+      "reason": "performance gate, run with --ignored --release",
+      "issue_link": "TBD",
+      "added_in": "TBD",
+      "category": "perf_eng_batched"
     },
     {
-      "file": "tests/e2e_trigger_wal_recovery.rs",
-      "line": "86:#[ignore = \"pre-existing: UPDATE trigger + WAL recovery engine bug (index out of bounds)\"]",
-      "reason": "TODO: needs ADR + issue link"
+      "file": "tests/qps_benchmark_test.rs",
+      "line": "70:#[ignore = \"Performance benchmark (long runtime, run with --ignored, dedicated test env)\"]",
+      "reason": "Performance benchmark (long runtime, run with --ignored, dedicated test env)",
+      "issue_link": "TBD",
+      "added_in": "TBD",
+      "category": "qps"
     },
     {
-      "file": "tests/e2e_trigger_wal_recovery.rs",
-      "line": "141:#[ignore = \"pre-existing: DELETE trigger + WAL recovery engine bug (row id=2 missing)\"]",
-      "reason": "TODO: needs ADR + issue link"
+      "file": "tests/qps_benchmark_test.rs",
+      "line": "95:#[ignore = \"Performance benchmark (long runtime, run with --ignored, dedicated test env)\"]",
+      "reason": "Performance benchmark (long runtime, run with --ignored, dedicated test env)",
+      "issue_link": "TBD",
+      "added_in": "TBD",
+      "category": "qps"
     },
     {
-      "file": "tests/q13_subquery_repro.rs",
-      "line": "128:#[ignore = \"pre-existing: hardcoded /home/openclaw/... path; see AGENTS.md\"]",
-      "reason": "TODO: needs ADR + issue link"
+      "file": "tests/qps_benchmark_test.rs",
+      "line": "124:#[ignore = \"Performance benchmark (long runtime, run with --ignored, dedicated test env)\"]",
+      "reason": "Performance benchmark (long runtime, run with --ignored, dedicated test env)",
+      "issue_link": "TBD",
+      "added_in": "TBD",
+      "category": "qps"
     },
     {
-      "file": "tests/q13_subquery_repro.rs",
-      "line": "146:#[ignore = \"pre-existing: hardcoded /home/openclaw/... path; see AGENTS.md\"]",
-      "reason": "TODO: needs ADR + issue link"
+      "file": "tests/qps_benchmark_test.rs",
+      "line": "153:#[ignore = \"Performance benchmark (long runtime, run with --ignored, dedicated test env)\"]",
+      "reason": "Performance benchmark (long runtime, run with --ignored, dedicated test env)",
+      "issue_link": "TBD",
+      "added_in": "TBD",
+      "category": "qps"
     },
     {
-      "file": "tests/q13_subquery_repro.rs",
-      "line": "165:#[ignore = \"pre-existing: hardcoded /home/openclaw/... path; see AGENTS.md\"]",
-      "reason": "TODO: needs ADR + issue link"
+      "file": "tests/qps_benchmark_test.rs",
+      "line": "185:#[ignore = \"Performance benchmark (long runtime, run with --ignored, dedicated test env)\"]",
+      "reason": "Performance benchmark (long runtime, run with --ignored, dedicated test env)",
+      "issue_link": "TBD",
+      "added_in": "TBD",
+      "category": "qps"
     },
     {
-      "file": "tests/tpch_wire_smoke_sf.rs",
-      "line": "18://! closed, removing the `#[ignore]` here turns this into a real",
-      "reason": "TODO: needs ADR + issue link"
+      "file": "tests/qps_benchmark_test.rs",
+      "line": "213:#[ignore = \"Performance benchmark (long runtime, run with --ignored, dedicated test env)\"]",
+      "reason": "Performance benchmark (long runtime, run with --ignored, dedicated test env)",
+      "issue_link": "TBD",
+      "added_in": "TBD",
+      "category": "qps"
     },
     {
-      "file": "tests/tpch_wire_smoke_sf.rs",
-      "line": "34://! # `#[ignore]` rationale",
-      "reason": "TODO: needs ADR + issue link"
+      "file": "tests/qps_benchmark_test.rs",
+      "line": "238:#[ignore = \"Performance benchmark (long runtime, run with --ignored, dedicated test env)\"]",
+      "reason": "Performance benchmark (long runtime, run with --ignored, dedicated test env)",
+      "issue_link": "TBD",
+      "added_in": "TBD",
+      "category": "qps"
     },
     {
-      "file": "tests/tpch_wire_smoke_sf.rs",
-      "line": "37://! assertions today. The test is shipped `#[ignore]`-marked so",
-      "reason": "TODO: needs ADR + issue link"
+      "file": "tests/qps_benchmark_test.rs",
+      "line": "285:#[ignore = \"Performance benchmark (long runtime, run with --ignored, dedicated test env)\"]",
+      "reason": "Performance benchmark (long runtime, run with --ignored, dedicated test env)",
+      "issue_link": "TBD",
+      "added_in": "TBD",
+      "category": "qps"
     },
     {
-      "file": "tests/tpch_wire_smoke_sf.rs",
-      "line": "39://! `#[ignore]` as part of the value-correctness gate rollout.",
-      "reason": "TODO: needs ADR + issue link"
+      "file": "tests/qps_benchmark_test.rs",
+      "line": "349:#[ignore = \"Performance benchmark (long runtime, run with --ignored, dedicated test env)\"]",
+      "reason": "Performance benchmark (long runtime, run with --ignored, dedicated test env)",
+      "issue_link": "TBD",
+      "added_in": "TBD",
+      "category": "qps"
     },
     {
-      "file": "tests/tpch_wire_smoke_sf.rs",
-      "line": "310:// correctness. Was #[ignore] before PR-3125.",
-      "reason": "TODO: needs ADR + issue link"
+      "file": "tests/qps_benchmark_test.rs",
+      "line": "375:#[ignore = \"Performance benchmark (long runtime, run with --ignored, dedicated test env)\"]",
+      "reason": "Performance benchmark (long runtime, run with --ignored, dedicated test env)",
+      "issue_link": "TBD",
+      "added_in": "TBD",
+      "category": "qps"
     },
     {
-      "file": "tests/tpch_wire_smoke_sf.rs",
-      "line": "340:/// This test is `#[ignore]` because the 5 pre-existing engine",
-      "reason": "TODO: needs ADR + issue link"
+      "file": "tests/recovery_fuzzer_test.rs",
+      "line": "584:#[ignore = \"Long-running; enable with --ignored for full 50k iteration sweep\"]",
+      "reason": "Long-running; enable with --ignored for full 50k iteration sweep",
+      "issue_link": "TBD",
+      "added_in": "TBD",
+      "category": "recovery_fuzzer"
     },
     {
-      "file": "tests/tpch_wire_smoke_sf.rs",
-      "line": "342:/// `#[ignore]` as part of the value-correctness rollout.",
-      "reason": "TODO: needs ADR + issue link"
+      "file": "tests/stored_proc_catalog_test.rs",
+      "line": "284:#[ignore = \"MemoryStorage does not support transactions; trigger DML requires transaction boundary\"]",
+      "reason": "MemoryStorage does not support transactions; trigger DML requires transaction boundary",
+      "issue_link": "TBD",
+      "added_in": "TBD",
+      "category": "stored_proc"
     },
     {
-      "file": "tests/tpch_wire_smoke_sf.rs",
-      "line": "345:// correctness. Was #[ignore] before PR-3125.",
-      "reason": "TODO: needs ADR + issue link"
+      "file": "tests/stored_proc_catalog_test.rs",
+      "line": "315:#[ignore = \"MemoryStorage does not support transactions; trigger DML requires transaction boundary\"]",
+      "reason": "MemoryStorage does not support transactions; trigger DML requires transaction boundary",
+      "issue_link": "TBD",
+      "added_in": "TBD",
+      "category": "stored_proc"
     },
     {
-      "file": "tests/diag_q11_3way.rs",
-      "line": "56:#[ignore = \"pre-existing: hardcoded /home/openclaw/... path; see AGENTS.md\"]",
-      "reason": "TODO: needs ADR + issue link"
-    },
-    {
-      "file": "tests/diag_2t_join.rs",
-      "line": "72:#[ignore = \"pre-existing: hardcoded /home/openclaw/... path; see AGENTS.md\"]",
-      "reason": "TODO: needs ADR + issue link"
+      "file": "tests/stored_proc_catalog_test.rs",
+      "line": "346:#[ignore = \"MemoryStorage does not support transactions; trigger DML requires transaction boundary\"]",
+      "reason": "MemoryStorage does not support transactions; trigger DML requires transaction boundary",
+      "issue_link": "TBD",
+      "added_in": "TBD",
+      "category": "stored_proc"
     },
     {
       "file": "tests/tpch_q9_audit.rs",
       "line": "5:#[ignore = \"needs tests/data/tpch-sf01/baseline/Q09_three_way.json (not generated)\"]",
-      "reason": "TODO: needs ADR + issue link"
+      "reason": "needs tests/data/tpch-sf01/baseline/Q09_three_way.json (not generated)",
+      "issue_link": "TBD",
+      "added_in": "TBD",
+      "category": "tpch_q9_audit"
+    },
+    {
+      "file": "tests/tx_wal_contract_tests.rs",
+      "line": "31:#[ignore = \"Sprint 3 decision: ignored. Path A (engine.execute direct) follows MySQL AUTOCOMMIT=ON semantics, so INSERT without BEGIN now succeeds. Test expects Err which contradicts the Sprint 3 decision in docs/governance/issues/2026-06-03-tx-lifecycle-autocommit-conflict.md. Tracked in issue #2870 follow-up.\"]",
+      "reason": "Sprint 3 decision: ignored. Path A (engine.execute direct) follows MySQL AUTOCOMMIT=ON semantics, so INSERT without BEGIN now succeeds. Test expects Err which contradicts the Sprint 3 decision in docs/governance/issues/2026-06-03-tx-lifecycle-autocommit-conflict.md. Tracked in issue #2870 follow-up.",
+      "issue_link": "TBD",
+      "added_in": "TBD",
+      "category": "tx_wal"
+    },
+    {
+      "file": "tests/tx_wal_contract_tests.rs",
+      "line": "54:#[ignore = \"Sprint 3 decision: ignored. Path A (engine.execute direct) follows MySQL AUTOCOMMIT=ON semantics, so UPDATE without BEGIN now succeeds. Test expects Err which contradicts the Sprint 3 decision in docs/governance/issues/2026-06-03-tx-lifecycle-autocommit-conflict.md. Tracked in issue #2870 follow-up.\"]",
+      "reason": "Sprint 3 decision: ignored. Path A (engine.execute direct) follows MySQL AUTOCOMMIT=ON semantics, so UPDATE without BEGIN now succeeds. Test expects Err which contradicts the Sprint 3 decision in docs/governance/issues/2026-06-03-tx-lifecycle-autocommit-conflict.md. Tracked in issue #2870 follow-up.",
+      "issue_link": "TBD",
+      "added_in": "TBD",
+      "category": "tx_wal"
+    },
+    {
+      "file": "tests/tx_wal_contract_tests.rs",
+      "line": "76:#[ignore = \"Sprint 3 decision: ignored. Path A (engine.execute direct) follows MySQL AUTOCOMMIT=ON semantics, so DELETE without BEGIN now succeeds. Test expects Err which contradicts the Sprint 3 decision in docs/governance/issues/2026-06-03-tx-lifecycle-autocommit-conflict.md. Tracked in issue #2870 follow-up.\"]",
+      "reason": "Sprint 3 decision: ignored. Path A (engine.execute direct) follows MySQL AUTOCOMMIT=ON semantics, so DELETE without BEGIN now succeeds. Test expects Err which contradicts the Sprint 3 decision in docs/governance/issues/2026-06-03-tx-lifecycle-autocommit-conflict.md. Tracked in issue #2870 follow-up.",
+      "issue_link": "TBD",
+      "added_in": "TBD",
+      "category": "tx_wal"
+    },
+    {
+      "file": "tests/tx_wal_contract_tests.rs",
+      "line": "103:#[ignore = \"Sprint 3 decision: ignored. Path A (engine.execute direct) follows MySQL AUTOCOMMIT=ON semantics, so INSERT after COMMIT (which ends the prior tx) now succeeds as new autocommit. Test expects Err which contradicts the Sprint 3 decision in docs/governance/issues/2026-06-03-tx-lifecycle-autocommit-conflict.md. Tracked in issue #2870 follow-up.\"]",
+      "reason": "Sprint 3 decision: ignored. Path A (engine.execute direct) follows MySQL AUTOCOMMIT=ON semantics, so INSERT after COMMIT (which ends the prior tx) now succeeds as new autocommit. Test expects Err which contradicts the Sprint 3 decision in docs/governance/issues/2026-06-03-tx-lifecycle-autocommit-conflict.md. Tracked in issue #2870 follow-up.",
+      "issue_link": "TBD",
+      "added_in": "TBD",
+      "category": "tx_wal"
+    },
+    {
+      "file": "tests/tx_wal_contract_tests.rs",
+      "line": "138:#[ignore = \"Sprint 3 decision: ignored. Path A (engine.execute direct) follows MySQL AUTOCOMMIT=ON semantics, so INSERT after ROLLBACK (which ends the prior tx) now succeeds as new autocommit. Test expects Err which contradicts the Sprint 3 decision in docs/governance/issues/2026-06-03-tx-lifecycle-autocommit-conflict.md. Tracked in issue #2870 follow-up.\"]",
+      "reason": "Sprint 3 decision: ignored. Path A (engine.execute direct) follows MySQL AUTOCOMMIT=ON semantics, so INSERT after ROLLBACK (which ends the prior tx) now succeeds as new autocommit. Test expects Err which contradicts the Sprint 3 decision in docs/governance/issues/2026-06-03-tx-lifecycle-autocommit-conflict.md. Tracked in issue #2870 follow-up.",
+      "issue_link": "TBD",
+      "added_in": "TBD",
+      "category": "tx_wal"
+    },
+    {
+      "file": "tests/tx_wal_contract_tests.rs",
+      "line": "200:#[ignore = \"Requires executor-level readonly tx detection; tracked in issue #2870 follow-up\"]",
+      "reason": "Requires executor-level readonly tx detection; tracked in issue #2870 follow-up",
+      "issue_link": "TBD",
+      "added_in": "TBD",
+      "category": "tx_wal"
     }
   ],
-  "note": "Manually updated: total_allowed 93->51, added tests/tpch_q9_audit.rs (commit 9b35799b2 'un-ignore tpch_q9_audit' added this #[ignore] after initial capture)."
+  "note": "Regenerated 2026-06-17 from current source. Each entry has a real reason extracted from `#[ignore = \"...\"]` attribute, or 'needs review' marker if attribute has no reason text. issue_link: TBD entries need manual research. Categories align with README §Test Claim Transparency (42 non-gate)."
 }
