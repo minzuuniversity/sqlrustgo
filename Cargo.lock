@@ -3962,6 +3962,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0fda2ff0d084019ba4d7c6f371c95d8fd75ce3524c3cb8fb653a3023f6323e64"
 
 [[package]]
+name = "signal-hook"
+version = "0.3.18"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d881a16cf4426aa584979d30bd82cb33429027e42122b169753d6ef1085ed6e2"
+dependencies = [
+ "libc",
+ "signal-hook-registry",
+]
+
+[[package]]
 name = "signal-hook-registry"
 version = "1.4.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4069,6 +4079,7 @@ dependencies = [
  "serde_json",
  "serde_yaml",
  "sha1 0.10.6",
+ "sha2 0.10.9",
  "sqlrustgo-admin",
  "sqlrustgo-cache",
  "sqlrustgo-catalog",
@@ -4290,12 +4301,14 @@ version = "0.1.0"
 dependencies = [
  "byteorder",
  "clap 4.6.1",
+ "libc",
  "rand 0.8.6",
  "rcgen",
  "rustls",
  "serde",
  "serde_json",
  "sha1 0.10.6",
+ "signal-hook",
  "sqlrustgo",
  "sqlrustgo-common",
  "sqlrustgo-executor",
