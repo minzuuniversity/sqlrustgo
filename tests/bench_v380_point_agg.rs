@@ -38,7 +38,6 @@ fn setup_users_table(engine: &mut MemoryExecutionEngine) {
 }
 
 #[test]
-#[ignore = "performance benchmark, run with --ignored --release"]
 fn bench_pkey_lookup() {
     let mut engine = create_engine();
     setup_users_table(&mut engine);
@@ -88,7 +87,6 @@ fn bench_pkey_lookup() {
 }
 
 #[test]
-#[ignore = "performance benchmark, run with --ignored --release"]
 fn bench_pkey_batch() {
     let mut engine = create_engine();
     setup_users_table(&mut engine);
@@ -134,7 +132,6 @@ fn bench_pkey_batch() {
 }
 
 #[test]
-#[ignore = "performance benchmark, run with --ignored --release"]
 fn bench_pkey_range() {
     let mut engine = create_engine();
     setup_users_table(&mut engine);
@@ -181,7 +178,6 @@ fn bench_pkey_range() {
 }
 
 #[test]
-#[ignore = "performance benchmark, run with --ignored --release"]
 fn bench_aggregation_count() {
     let mut engine = create_engine();
     setup_users_table(&mut engine);
@@ -229,7 +225,6 @@ fn bench_aggregation_count() {
 }
 
 #[test]
-#[ignore = "performance benchmark, run with --ignored --release"]
 fn bench_aggregation_sum_avg() {
     let mut engine = create_engine();
     setup_users_table(&mut engine);
@@ -272,7 +267,6 @@ fn bench_aggregation_sum_avg() {
 }
 
 #[test]
-#[ignore = "performance benchmark, run with --ignored --release"]
 fn bench_aggregation_with_filter() {
     let mut engine = create_engine();
     setup_users_table(&mut engine);
