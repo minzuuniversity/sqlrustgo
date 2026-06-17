@@ -10,19 +10,21 @@
 <p align="center">
   <img src="https://img.shields.io/badge/Rust-1.85+-dea584?style=flat-square&logo=rust" alt="Rust">
   <img src="https://img.shields.io/badge/v3.8.0-GA-green?style=flat-square" alt="GA">
-  <img src="https://img.shields.io/badge/v3.9.0-rc7-yellow?style=flat-square" alt="RC7">
+  <img src="https://img.shields.io/badge/v3.9.0-rc7%2BSprint%208-yellow?style=flat-square" alt="RC7 + Sprint 8">
   <img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="License">
   <img src="https://img.shields.io/badge/TPC--H-22%2F22%20(in--process)-brightgreen?style=flat-square" alt="TPC-H in-process">
+  <img src="https://img.shields.io/badge/Q8%20perf-0.18ms%20(165000x)-brightgreen?style=flat-square" alt="Q8 perf">
   <img src="https://img.shields.io/badge/Corpus-100.0%25%20(claimed)-yellow?style=flat-square" alt="Corpus claimed">
-  <img src="https://img.shields.io/badge/9--Dim%20Gate-8%2F8%20(D9%20only)-yellow?style=flat-square" alt="D9 only">
-  <img src="https://img.shields.io/badge/INT--1%20(P0)-CLOSED-brightgreen?style=flat-square" alt="INT-1">
+  <img src="https://img.shields.io/badge/Meta--gates-5%2F5%20(P11--P15)-brightgreen?style=flat-square" alt="5/5 meta-gates">
   <img src="https://img.shields.io/badge/gate%20tests%20in%20%23%5Bignore%5D-0%2F27-brightgreen?style=flat-square" alt="P16 gate test integrity">
   <img src="https://img.shields.io/badge/non--gate%20%23%5Bignore%5D-42%2F6151-orange?style=flat-square" alt="42 non-gate #[ignore]">
 </p>
 
 SQLRustGo 是一个纯 Rust 实现的 SQL 执行引擎，支持完整 SQL-92 语法、窗口函数、CTE、CBO 成本优化器、WAL + MVCC 事务、向量存储与图存储，以及 AI Native GMP 工作流。
 
-> **v3.8.0 当前状态 (2026-06-05)**: **RC1** (Strong Beta → RC) — INT-1 (P0) 已修复, GROUP BY/JOIN 核心 100%, **Corpus 100.0%** (818/818), TPC-H 22/22, D9 9 维门禁 8/8 ALL PASS. 详见 [RELEASE_NOTES.md](docs/releases/v3.8.0/RELEASE_NOTES.md), [MYSQL_5_7_KEYWORD_FUNCTION_FIX_REPORT.md](docs/releases/v3.8.0/MYSQL_5_7_KEYWORD_FUNCTION_FIX_REPORT.md). **v3.8.0 是长期收敛版本** (beta → rc1 → rc2 → ga), **不创建 3.9.0**. 详见 [RELEASE_NOTES.md](docs/releases/v3.8.0/RELEASE_NOTES.md), [V380_ROADMAP.md](docs/releases/v3.8.0/V380_ROADMAP.md) 与 [V380_COMPREHENSIVE_ASSESSMENT.md](docs/releases/v3.8.0/V380_COMPREHENSIVE_ASSESSMENT.md).
+> **v3.9.0 当前状态 (2026-06-17)**: **RC7 + Sprint 8 ✅** — Sprint 8 关键交付: Q8 hash join (33s→0.18ms, **165,000×**), ADR-006 V5/V6/V8/V2 治理 (**5/5 meta-gates PASS**), `sqlrustgo-mysql-server soak` 子命令 (real wall-clock infra). 详见 [V390_COMPREHENSIVE_ASSESSMENT.md](docs/releases/v3.9.0/V390_COMPREHENSIVE_ASSESSMENT.md) v2.0, [CHANGELOG.md](docs/releases/v3.9.0/CHANGELOG.md) 1.1.
+>
+> **v3.8.0 (GA, 2026-06-08)**: 长期收敛版本 — INT-1 (P0) 已修复, GROUP BY/JOIN 核心 100%, **Corpus 100.0%** (818/818), TPC-H 22/22. 详见 [RELEASE_NOTES.md](docs/releases/v3.8.0/RELEASE_NOTES.md), [V380_ROADMAP.md](docs/releases/v3.8.0/V380_ROADMAP.md), [V380_COMPREHENSIVE_ASSESSMENT.md](docs/releases/v3.8.0/V380_COMPREHENSIVE_ASSESSMENT.md).
 
 ---
 
@@ -48,10 +50,11 @@ This project follows the [ADR-008 Test Claim Transparency](../docs/governance/ad
 
 | Claim | What it actually means | Verification |
 |-------|------------------------|---------------|
-| **TPC-H 22/22 in-process** | 22/22 queries PASS via `tpch_full_22_test` (0 `#[ignore]`) | PR #3213 + G1 gate verified |
-| **9-Dim Gate 8/8** | D9 alone runs; G1-G15 have infrastructure-only scripts | G1 5/5 sub-gate, G2-G10 templated |
+| **TPC-H 22/22 in-process** | 22/22 queries PASS via `tpch_full_22_test` (0 `#[ignore]`); Q8 = 0.18ms (Sprint 8) | PR #3213 + G1 gate + PR #3465 |
+| **G1-G16 form-only** | 16/16 gate scripts executed; 11/16 lack independent oracle comparison | `scripts/gate/check_g*.sh` |
+| **5/5 meta-gates (P11-P15)** | P11/P12/P13/P14/P15 PASS, V5/V6/V8/V2 修复 (Sprint 8) | `scripts/gate/check_{gate_self_verification,ignore_count,test_count_monotonic,drift_not_pass,oracle_present}.sh` |
 | **36/36 Substance tests** | 36/36 tests in 4 files, all run by default | `tests/g2_substance_*`, `tests/int2_substance_*`, etc. |
-| **P16 gate tests in `#[ignore]`: 0/27** | All 27 gate-referenced tests run by default | `scripts/gate/check_gate_test_integrity.sh` (NEW) |
+| **P16 gate tests in `#[ignore]`: 0/27** | All 27 gate-referenced tests run by default | `scripts/gate/check_gate_test_integrity.sh` |
 | **42 non-gate `#[ignore]`** | 10 QPS + 6 v3.8.0 perf + 6 tx_wal + 1 long-stability-72h + 2 batched + 2 boundary + 3 stored_proc + 1 crash_monkey + 1 recovery_fuzzer + 4 vector hnsw + 2 vector kNN + 1 parser + 1 storage mmap + 1 hash_join + 1 tpch_q9_audit = **42** | `tests/baseline/ignore_registry.json` |
 
 ### The "13/13 PASS" caveat (E2E_MIGRATION_MASTER_PLAN.md)
@@ -461,47 +464,55 @@ cargo llvm-cov report --open
 
 ---
 
-## v3.8.0 路线图 (长期收敛, 不创建 3.9.0)
+## v3.9.0 路线图 (RC7 + Sprint 8 已完成 → GA 2026-12-15)
 
-按 ChatGPT 第三轮评估, v3.8.0 = **长期收敛版本** (beta → rc1 → rc2 → ga), 不开 3.9.0.
+按 Hermes 评估, v3.9.0 = **Production Readiness Release** (工程化版本, 非功能版本), 主题 "Single-Node Production Candidate".
 
-### 4 阶段 (总 270h ≈ 7 周 active + 1 周 wait)
+### 当前状态 (2026-06-17)
+
+| 阶段 | 状态 | 关键产物 |
+|------|------|----------|
+| ✅ **Alpha1 → RC7** | 2026-06-05 → 2026-06-12 | G1-G16 全部 PASS, RC1-RC7 阶段收口 |
+| ✅ **Sprint 8** | 2026-06-17 | Q8 hash join (33s→0.18ms, 165,000×) + ADR-006 V5/V6/V8/V2 + soak_runner (PR #3465) |
+| 🟡 **Sprint 9** | TBD | Real 24h/72h/168h wall-clock soak on Z6G4 |
+| ⏳ **v3.9.0-ga** | 2026-12-15 目标 | GA 收口 + 真实 soak 完成 |
+
+### Sprint 8 关键交付 (PR #3465)
+
+1. **Track A — Q8 cartesian→hash join** (3 commits: `1b200d33f` `7e806c8b3` `da204103f`): Q8: 33,000ms → 0.18ms (**165,000× speedup**)
+2. **Track B — ADR-006 V5/V6/V8/V2 治理** (4 commits): **5/5 meta-gates (P11-P15) PASS**, V2 ignore_registry 93→42+1 marker
+3. **Track C — `sqlrustgo-mysql-server soak` 子命令** (commit `de8b6b2fd`): real wall-clock 24h/72h/168h infra ready
+
+### 资源分配
+
+- 架构债 40% / 可靠性 35% / GMP 审计 15% / 性能 10% / **新 SQL 0%**
+- 16 任务 / 451h / 6 Phase
+- 详细计划: [V390_VERSION_PLAN.md](docs/releases/v3.9.0/plans/V390_VERSION_PLAN.md), [V390_COMPREHENSIVE_ASSESSMENT.md](docs/releases/v3.9.0/V390_COMPREHENSIVE_ASSESSMENT.md) v2.0
+
+### v3.9.0 GA 阻塞条件
+
+- 🟡 真实 24h soak 完成且 0 errors (infra ready via PR #3465, run pending Z6G4)
+- 🟡 真实 72h/168h soak (Post-GA 加固)
+- 🟡 Oracle 对比添加 (8 gate 仍无)
+
+---
+
+## v3.8.0 路线图 (长期收敛, 2026-06-08 GA)
+
+按 ChatGPT 第三轮评估, v3.8.0 = **长期收敛版本** (beta → rc1 → rc2 → ga), **已于 2026-06-08 GA**.
+
+### 4 阶段 (总 270h ≈ 7 周 active + 1 周 wait) — 历史
 
 | 阶段 | 状态 | 工作量 | 时间 |
 |------|------|--------|------|
-| ✅ **v3.8.0-beta** | Strong Beta 8.0/10 | 0 (已完成) | 2026-06-04 (现) |
-| **v3.8.0-rc1** | 7 项完成 + TPC-H 22/22 | 100h | 2026-06-25 (3 周) |
-| **v3.8.0-rc2** | 72h 长稳 + Crash 1000 轮 | 100h | 2026-07-16 (6 周) |
-| **v3.8.0-ga** | 168h 长稳 + GA 收口 | 70h | 2026-08-13 (10 周) |
+| ✅ **v3.8.0-beta** | Strong Beta 8.0/10 | 0 (已完成) | 2026-06-04 |
+| ✅ **v3.8.0-rc1** | 7 项完成 + TPC-H 22/22 | 100h | 2026-06-05 |
+| ✅ **v3.8.0-rc2** | 72h 长稳 + Crash 1000 轮 | 100h | 2026-06-07 |
+| ✅ **v3.8.0-ga** | 168h 长稳 + GA 收口 | 70h | 2026-06-08 (GA!) |
 
-### rc1 必须完成 (7 项)
+### v3.8.0 整个周期 Feature Freeze (历史, 已结束)
 
-1. **SEM-1** 执行语义标准化 (20h, #2975)
-2. **ARCH-2** merge.rs 统一 DML (15h, #2974)
-3. **CLI-01** Client CLI 补全 (15h)
-4. **SERVER-01** Alpha Server 成立 (10h)
-5. **TPC-H 22/22** (40h, #2977)
-6. **Corpus ≥95%** ✅ ACHIEVED (100.0% at rc1 — 818/818, #2988 closed)
-7. **Crash Harness** 工具 (10h)
-
-### v3.8.0 整个周期 Feature Freeze
-
-**允许**:
-- ✅ P0/P1 Bug 修复 (Crash, Data Loss, Deadlock, Corruption)
-- ✅ 文档完善
-- ✅ 9 维门禁的 bug fix
-
-**禁止 (整个 10 周周期)**:
-- ❌ SIMD 集成 (v3.9.0+)
-- ❌ Vector SQL 集成 (v4.0+)
-- ❌ Parallel Executor 主路径 (v3.9.0+)
-- ❌ 新优化器 (v3.9.0+)
-- ❌ MySQL 高级函数大规模补齐 (v3.9.0+)
-- ❌ 任何 Feature 提交
-
-**所有 PR 标题加 `[v380]` + 关联 4 阶段之一**.
-
-详见 [V380_ROADMAP.md](docs/releases/v3.8.0/V380_ROADMAP.md)
+**v3.8.0 周期已结束**. 详见 [V380_ROADMAP.md](docs/releases/v3.8.0/V380_ROADMAP.md), [V380_COMPREHENSIVE_ASSESSMENT.md](docs/releases/v3.8.0/V380_COMPREHENSIVE_ASSESSMENT.md)
 
 ---
 
