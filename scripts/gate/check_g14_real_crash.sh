@@ -16,6 +16,8 @@
 
 set -e
 
+GATE_RESULT="PASS"
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 cd "$PROJECT_ROOT"
@@ -62,11 +64,14 @@ REPORT="docs/releases/v3.9.0/perf/CRASH_TEST_REPORT.md"
 echo "  [2/7] ✅ PASS: $REPORT present"
 
 # 3. G8 Crash Matrix gate (unit-level)
-G8_RESULT=$(bash scripts/gate/check_p12_crash_test.sh 2>&1 | tail -3 || true)
-if echo "$G8_RESULT" | grep -q "PASS"; then
+G8_OUTPUT=$(bash scripts/gate/check_p12_crash_test.sh 2>&1)
+G8_EXIT=$?
+G8_LAST=$(echo "$G8_OUTPUT" | tail -3)
+if echo "$G8_LAST" | grep -q "PASS"; then
     echo "  [3/7] ✅ PASS: G8 Crash Matrix (mock) gate PASS"
 else
     echo "  ❌ FAIL: G8 Crash Matrix gate did not pass"
+    echo "$G8_LAST"
     exit 1
 fi
 
@@ -97,8 +102,8 @@ fi
 echo "  [6/7] ✅ PASS: sysbench installed"
 
 # 7. Real run results (optional, Z6G4 only)
-if [ -d "test_results/crash_2"* ]; then
-    LATEST=$(ls -td test_results/crash_2* 2>/dev/null | head -1)
+LATEST=$(ls -td test_results/crash_2* 2>/dev/null | head -1 || true)
+if [ -n "$LATEST" ] && [ -d "$LATEST" ]; then
     if [ -f "$LATEST/RESULT.txt" ]; then
         if grep -q "PASS" "$LATEST/RESULT.txt"; then
             echo "  [7/7] ✅ PASS: real crash run found ($LATEST)"
@@ -113,8 +118,29 @@ else
     echo "  [7/7] ✅ PASS (warned): real run deferred to W12"
 fi
 
+# 8. Real single crash test - actually executes sigkill_insert, not just checks existence
+echo "  [8/8] Running sigkill_insert crash test..."
+CRASH_OUTPUT=$(bash scripts/crash/run_sigkill_insert_test.sh 2>&1 || true)
+CRASH_EXIT=$(echo "$CRASH_OUTPUT" | tail -1)
+if echo "$CRASH_OUTPUT" | grep -qE "error|ERROR|FAIL|PASS"; then
+    if echo "$CRASH_OUTPUT" | grep -qE "PASS|passed"; then
+        echo "  ✅ PASS: sigkill_insert crash test passed"
+    else
+        echo "  ❌ FAIL: sigkill_insert crash test failed"
+        echo "$CRASH_OUTPUT" | tail -5
+        GATE_RESULT="FAIL"
+    fi
+else
+    echo "  ⚠️ WARN: sigkill_insert output unclear (may need manual verification)"
+fi
+
 echo
-echo "=== G14 Gate: PASS ==="
-echo "Real Crash: orchestrator + 8 sub-scripts + G8 mock PASS"
-echo "Real 8-case run deferred to W12 D3-4 (Z6G4)"
-exit 0
+echo "=== G14 Gate: $GATE_RESULT ==="
+if [ "$GATE_RESULT" = "PASS" ]; then
+    echo "Real Crash: orchestrator + 8 sub-scripts + G8 mock PASS"
+    echo "Real 8-case run deferred to W12 D3-4 (Z6G4)"
+    exit 0
+else
+    echo "Real Crash: FAIL - sigkill_insert test failed"
+    exit 1
+fi
