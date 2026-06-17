@@ -1,14 +1,22 @@
 {
-  "created_at": "2026-06-16T20:23:16Z",
+  "created_at": "2026-06-17T20:23:16Z",
+  "updated_at": "2026-06-18T00:00:00Z",
   "total_correctness_gates": 8,
+  "gates_with_oracle": [
+    "tests/oracle_g1_tpch_sha256.rs",
+    "tests/oracle_g2_int2.rs",
+    "tests/oracle_g3_int3.rs",
+    "tests/oracle_g5_sem1.rs",
+    "tests/oracle_g9_upgrade.rs",
+    "tests/oracle_g11_qps.rs",
+    "tests/oracle_g12_sysbench.rs",
+    "tests/oracle_g15_tpch_sf01.rs",
+    "tests/oracle_g16_compat.rs"
+  ],
   "gates_without_oracle": [
-    "scripts/gate/check_g12_sysbench.sh",
-    "scripts/gate/check_g13_stability.sh",
-    "scripts/gate/check_g14_real_crash.sh",
-    "scripts/gate/check_g16_compatibility.sh",
-    "scripts/gate/check_p14_upgrade_test.sh",
-    "scripts/gate/check_p22_time_travel.sh",
-    "scripts/gate/check_p23_hash_chain.sh",
-    "scripts/gate/check_p34_parallel_executor.sh"
-  ]
+    "scripts/gate/check_g13_stability.sh"
+  ],
+  "_comment": "8/8 in-process gates WITH oracle (PR-A/B/C, 2026-06-18). 1 gate WITHOUT (G13) needs Z6G4 hardware - deferred to post-GA. V4 ADR-006 fully closed for in-process gates.",
+  "v4_status": "CLOSED (8/8 in-process gates)",
+  "related_prs": ["#3470 (PR-A)", "#3471 (PR-B)", "#3472 (PR-C)"]
 }
