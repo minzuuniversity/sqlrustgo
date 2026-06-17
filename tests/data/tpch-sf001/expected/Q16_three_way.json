@@ -1,0 +1,21 @@
+{
+  "engines": {
+    "sqlite": {
+      "row_count": 2,
+      "first_3_rows": [
+        {
+          "p_brand": "Brand#21",
+          "p_type": "PROMO POLISHED BRASS",
+          "p_size": 36,
+          "supplier_cnt": 6
+        },
+        {
+          "p_brand": "Brand#43",
+          "p_type": "PROMO POLISHED BRASS",
+          "p_size": 19,
+          "supplier_cnt": 2
+        }
+      ]
+    }
+  }
+}
