@@ -233,6 +233,55 @@ impl TransactionManager {
             })
     }
 
+    /// SEM-1 G5-A fix: ROLLBACK TO SAVEPOINT with physical data undo.
+    /// Returns the undo records that were added after the savepoint,
+    /// in reverse order, so the caller can replay them against the
+    /// storage engine. Removes the savepoint and any nested savepoints.
+    pub fn take_undo_after(
+        &mut self,
+        tx_id: TxId,
+        name: &str,
+    ) -> Result<Vec<crate::savepoint::UndoRecord>, SsiError> {
+        let active = self
+            .active_transactions
+            .get_mut(&tx_id)
+            .ok_or(SsiError::TransactionNotFound { tx_id })?;
+        active
+            .savepoint_manager
+            .take_undo_after(name)
+            .map_err(|e| match e {
+                crate::savepoint::SavepointError::NotFound => SsiError::LockTimeout,
+                crate::savepoint::SavepointError::InvalidOperation => SsiError::LockTimeout,
+            })
+    }
+
+    /// SEM-1 G5-A fix: RELEASE SAVEPOINT discards undo records added
+    /// after the named savepoint (they're no longer needed since the
+    /// savepoint is gone).
+    pub fn discard_undo_after(&mut self, tx_id: TxId, name: &str) -> Result<(), SsiError> {
+        let active = self
+            .active_transactions
+            .get_mut(&tx_id)
+            .ok_or(SsiError::TransactionNotFound { tx_id })?;
+        active
+            .savepoint_manager
+            .discard_undo_after(name)
+            .map_err(|e| match e {
+                crate::savepoint::SavepointError::NotFound => SsiError::LockTimeout,
+                crate::savepoint::SavepointError::InvalidOperation => SsiError::LockTimeout,
+            })
+    }
+
+    /// SEM-1 G5-A fix: Record a DML undo entry into the current
+    /// transaction's savepoint undo log. Called by the executor after
+    /// each INSERT/DELETE/UPDATE so ROLLBACK TO SAVEPOINT can physically
+    /// revert the data.
+    pub fn record_undo(&mut self, tx_id: TxId, record: crate::savepoint::UndoRecord) {
+        if let Some(active) = self.active_transactions.get_mut(&tx_id) {
+            active.savepoint_manager.add_undo(record);
+        }
+    }
+
     /// SEM-1 (#3172): RELEASE SAVEPOINT.
     ///
     /// Removes the savepoint from the stack. The undo-log entries are
