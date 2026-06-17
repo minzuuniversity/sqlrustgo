@@ -679,6 +679,80 @@ fn flatten_and(expr: &Expression) -> Vec<Expression> {
     }
 }
 
+/// Convert a keyword Token to its lowercase name string for use as
+/// an identifier context (e.g. savepoint names). Returns None for
+/// non-keyword tokens (NumberLiteral, StringLiteral, etc.) or tokens
+/// whose name is not a valid identifier (operators, parens).
+fn token_to_identifier_string(tok: &Token) -> Option<String> {
+    match tok {
+        Token::Identifier(s) => Some(s.clone()),
+        Token::Outer => Some("outer".to_string()),
+        Token::Inner => Some("inner".to_string()),
+        Token::Left => Some("left".to_string()),
+        Token::Right => Some("right".to_string()),
+        Token::Full => Some("full".to_string()),
+        Token::Cross => Some("cross".to_string()),
+        Token::Natural => Some("natural".to_string()),
+        Token::Union => Some("union".to_string()),
+        Token::Intersect => Some("intersect".to_string()),
+        Token::Except => Some("except".to_string()),
+        Token::All => Some("all".to_string()),
+        Token::Any => Some("any".to_string()),
+        Token::Some => Some("some".to_string()),
+        Token::Exists => Some("exists".to_string()),
+        Token::In => Some("in".to_string()),
+        Token::Is => Some("is".to_string()),
+        Token::As => Some("as".to_string()),
+        Token::With => Some("with".to_string()),
+        Token::Recursive => Some("recursive".to_string()),
+        Token::Transaction => Some("transaction".to_string()),
+        Token::Work => Some("work".to_string()),
+        Token::Savepoint => Some("savepoint".to_string()),
+        Token::Start => Some("start".to_string()),
+        Token::Prepare => Some("prepare".to_string()),
+        Token::Execute => Some("execute".to_string()),
+        Token::Deallocate => Some("deallocate".to_string()),
+        Token::Release => Some("release".to_string()),
+        Token::Isolation => Some("isolation".to_string()),
+        Token::Level => Some("level".to_string()),
+        Token::Serializable => Some("serializable".to_string()),
+        Token::Repeatable => Some("repeatable".to_string()),
+        Token::Read => Some("read".to_string()),
+        Token::Write => Some("write".to_string()),
+        Token::Only => Some("only".to_string()),
+        Token::Commit => Some("commit".to_string()),
+        Token::Rollback => Some("rollback".to_string()),
+        Token::To => Some("to".to_string()),
+        Token::Begin => Some("begin".to_string()),
+        Token::Analyze => Some("analyze".to_string()),
+        Token::Set => Some("set".to_string()),
+        Token::Duplicate => Some("duplicate".to_string()),
+        Token::Index => Some("index".to_string()),
+        Token::On => Some("on".to_string()),
+        Token::Primary => Some("primary".to_string()),
+        Token::Key => Some("key".to_string()),
+        Token::Add => Some("add".to_string()),
+        Token::Column => Some("column".to_string()),
+        Token::Rename => Some("rename".to_string()),
+        Token::Default => Some("default".to_string()),
+        Token::AutoIncrement => Some("auto_increment".to_string()),
+        Token::Cascade => Some("cascade".to_string()),
+        Token::Restrict => Some("restrict".to_string()),
+        Token::No => Some("no".to_string()),
+        Token::Action => Some("action".to_string()),
+        Token::Check => Some("check".to_string()),
+        Token::Constraint => Some("constraint".to_string()),
+        Token::Foreign => Some("foreign".to_string()),
+        Token::References => Some("references".to_string()),
+        Token::Unique => Some("unique".to_string()),
+        Token::Distinct => Some("distinct".to_string()),
+        Token::Order => Some("order".to_string()),
+        Token::Limit => Some("limit".to_string()),
+        Token::Offset => Some("offset".to_string()),
+        _ => None,
+    }
+}
+
 /// Check whether all tables referenced by a predicate's left and
 /// right sides are "known" to the current join context, i.e. either
 /// the new table, its TPC-H prefix, its inline alias, or already
@@ -1186,9 +1260,17 @@ impl Parser {
             SavepointOp::RollbackTo
         };
         // Parse the savepoint name.
-        let name = match self.next() {
+        // Accept either an explicit Token::Identifier OR any keyword
+        // token (Token::Outer, Token::Inner, etc.) whose name is a
+        // valid SQL identifier — otherwise a savepoint named `outer`
+        // (lowercase) would fail with "Expected savepoint name
+        // (identifier), got Outer" because the lexer classifies it
+        // as a JOIN keyword.
+        let name_tok = self.next();
+        let name = match name_tok {
             Some(Token::Identifier(n)) => n,
-            Some(t) => return Err(format!("Expected savepoint name (identifier), got {:?}", t)),
+            Some(t) => token_to_identifier_string(&t)
+                .ok_or_else(|| format!("Expected savepoint name (identifier), got {:?}", t))?,
             None => return Err("Expected savepoint name, got EOF".to_string()),
         };
         Ok(Statement::SavepointStatement { name, op })
