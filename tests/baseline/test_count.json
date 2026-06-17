@@ -1,8 +1,8 @@
 {
-  "version": "v3.9.0-sprint8",
-  "timestamp": "2026-06-17T22:55:00Z",
+  "version": "v3.9.0-rc7",
+  "timestamp": "2026-06-17T23:55:43Z",
   "cargo_tests": 115,
-  "active_tests": 6169,
+  "active_tests": 6171,
   "ignored_tests": 29,
-  "note": "Updated by check_test_count_monotonic.sh after PR-A/B/C (oracle framework) + PR-3475/76/77/78/79/80/83/85/86/87/88/90 (oracle real-run fixes, P11 V7, G1 real baseline, wire DEPRECATE_EOF, i64 MIN parser, G5-B savepoint keyword, 19 perf tests unignore, P12 registry sync, P15 baseline regen). 22 tests unignored, 31 more active."
+  "note": "Updated by check_test_count_monotonic.sh"
 }
