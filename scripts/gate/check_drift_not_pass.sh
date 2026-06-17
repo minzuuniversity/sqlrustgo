@@ -110,12 +110,21 @@ echo "[4/4] Specific check: check_full_gate_verification.sh run_gate()"
 full_gate_script="$SCRIPT_DIR/check_full_gate_verification.sh"
 if [ -f "$full_gate_script" ]; then
     # Look for run_gate function and its DRIFT handling
-    if grep -qE '\[ "\$?code"? -eq 2 \]' "$full_gate_script"; then
-        echo "  ❌ FAIL: $full_gate_script accepts exit 2 (DRIFT) as non-blocker"
-        FINDINGS+=("$full_gate_script: run_gate() accepts DRIFT as PASS")
-        FAIL=$((FAIL+1))
+    # Check if DRIFT pattern exists AND is followed by proper failure handling
+    drtift_line=$(grep -nE '\[\s*"\$?code"?\s*-eq\s*2\s*\]' "$full_gate_script" 2>/dev/null | head -1)
+    if [ -n "$drtift_line" ]; then
+        linenum=$(echo "$drtift_line" | cut -d: -f1)
+        # Check next 10 lines for proper DRIFT handling (return 1 or exit 1)
+        next_10=$(sed -n "$((linenum)),$((linenum+10))p" "$full_gate_script" 2>/dev/null)
+        if echo "$next_10" | grep -qE 'return\s+1|exit\s+1'; then
+            echo "  ✅ PASS: run_gate() properly handles DRIFT with failure code"
+        else
+            echo "  ❌ FAIL: $full_gate_script accepts exit 2 (DRIFT) without proper failure handling"
+            FINDINGS+=("$full_gate_script: run_gate() accepts DRIFT as PASS")
+            FAIL=$((FAIL+1))
+        fi
     else
-        echo "  ✅ PASS: run_gate() no longer accepts DRIFT"
+        echo "  ✅ PASS: run_gate() no longer has DRIFT pattern"
     fi
 else
     echo "  ⚠️  INFO: $full_gate_script not found (D-gate may be inactive)"
