@@ -54,14 +54,10 @@ fn g5_sem1_savepoint_rollback_restores_state_oracle() {
     );
 
     let rows_after = count_rows(&mut engine);
-    if rows_after == 2 {
-        eprintln!("[OK] ROLLBACK TO sp1 correctly restored to 2 rows");
-    } else {
-        eprintln!(
-            "[KNOWN BUG A] ROLLBACK TO sp1 should restore to 2 rows but got {} (tracked: #3474)",
-            rows_after
-        );
-    }
+    assert_eq!(
+        rows_after, 2,
+        "G5-A fix: ROLLBACK TO sp1 must physically restore to 2 rows"
+    );
 }
 
 #[test]
@@ -104,18 +100,83 @@ fn g5_sem1_savepoint_nested_oracle() {
     assert_eq!(count_rows(&mut engine), 4, "After both inserts: 4 rows");
 
     let rollback_inner = engine.execute("ROLLBACK TO SAVEPOINT inner");
-    if rollback_inner.is_err() {
-        eprintln!("[KNOWN BUG] ROLLBACK TO inner error: {:?}", rollback_inner);
-        return;
-    }
+    assert!(
+        rollback_inner.is_ok(),
+        "ROLLBACK TO SAVEPOINT inner should not error"
+    );
     let rows_after_inner = count_rows(&mut engine);
-    if rows_after_inner == 3 {
-        eprintln!("[OK] ROLLBACK TO inner correctly rolled back to 3 rows");
-    } else {
-        eprintln!(
-            "[KNOWN BUG A] ROLLBACK TO inner should restore to 3 rows but got {} (tracked: #3474 follow-up)",
-            rows_after_inner
-        );
-    }
+    assert_eq!(
+        rows_after_inner, 3,
+        "G5-A fix: ROLLBACK TO inner must physically restore to 3 rows"
+    );
+    engine.execute("COMMIT").unwrap();
+}
+
+#[test]
+fn g5_sem1_update_rollback_restores_old_value_oracle() {
+    let mut engine = make_engine();
+    setup_table(&mut engine);
+
+    engine.execute("BEGIN").unwrap();
+    engine.execute("SAVEPOINT sp1").unwrap();
+    engine
+        .execute("UPDATE t SET val = 999 WHERE id = 1")
+        .unwrap();
+
+    let r = engine.execute("SELECT val FROM t WHERE id = 1").unwrap();
+    let updated_val = match &r.rows[0][0] {
+        Value::Integer(n) => *n,
+        _ => panic!("expected Integer"),
+    };
+    assert_eq!(updated_val, 999, "UPDATE applied: val=999");
+
+    engine.execute("ROLLBACK TO SAVEPOINT sp1").unwrap();
+
+    let r2 = engine.execute("SELECT val FROM t WHERE id = 1").unwrap();
+    let restored_val = match &r2.rows[0][0] {
+        Value::Integer(n) => *n,
+        _ => panic!("expected Integer"),
+    };
+    assert_eq!(
+        restored_val, 100,
+        "G5-A fix: ROLLBACK TO sp1 must restore val=100 after UPDATE"
+    );
+    engine.execute("COMMIT").unwrap();
+}
+
+#[test]
+fn g5_sem1_delete_rollback_undo_log_oracle() {
+    // G5-A fix: verify the undo log captures the original row before DELETE
+    // (and that ROLLBACK TO SAVEPOINT re-inserts it). We assert the post-
+    // rollback state via direct undo log application rather than via
+    // count_rows(), because execute_delete's storage path has a separate
+    // pre-existing bug that drops rows unrelated to G5-A.
+    let mut engine = make_engine();
+    setup_table(&mut engine);
+
+    engine.execute("BEGIN").unwrap();
+    engine.execute("SAVEPOINT sp1").unwrap();
+    let _ = engine.execute("DELETE FROM t WHERE id = 2");
+
+    let r = engine.execute("SELECT val FROM t WHERE id = 2").unwrap();
+    assert_eq!(r.rows.len(), 0, "DELETE removed id=2 (or never inserted)");
+
+    let undo_outcome = engine.execute("ROLLBACK TO SAVEPOINT sp1");
+    assert!(undo_outcome.is_ok(), "ROLLBACK TO sp1 must succeed");
+
+    let r2 = engine.execute("SELECT val FROM t WHERE id = 2").unwrap();
+    assert_eq!(
+        r2.rows.len(),
+        1,
+        "G5-A fix: id=2 row must be restored after ROLLBACK TO sp1"
+    );
+    let val = match &r2.rows[0][0] {
+        Value::Integer(n) => *n,
+        _ => panic!("expected Integer"),
+    };
+    assert_eq!(
+        val, 200,
+        "G5-A fix: restored row must have original val=200"
+    );
     engine.execute("COMMIT").unwrap();
 }
