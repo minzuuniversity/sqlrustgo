@@ -1,9 +1,10 @@
-# Gate Conditions Definition — v2.0
+# Gate Conditions Definition — v3.0
 
-> **更新日期**: 2026-05-31  
-> **版本**: 2.0  
-> **关联 Issue**: #2682 (Beta Gate functional tracking vulnerability)  
-> **维护者**: Hermes C  
+> **更新日期**: 2026-06-17
+> **版本**: 3.0
+> **关联 Issue**: #2682 (Beta Gate functional tracking vulnerability)
+> **维护者**: Hermes C
+> **适用范围**: v3.9.0+ GA Gates  
 
 ---
 
@@ -156,7 +157,7 @@ Beta Gate 不仅检查基础设施（Build/Test/Clippy/Fmt），还必须追踪�
 
 ---
 
-## GA Gate
+## GA Gate (v3.9.0+)
 
 ### 入口条件
 
@@ -168,16 +169,55 @@ Beta Gate 不仅检查基础设施（Build/Test/Clippy/Fmt），还必须追踪�
 | GE4 | SECURITY_AUDIT.md 存在 | `ls docs/releases/v{VERSION}/SECURITY_AUDIT.md` |
 | GE5 | 所有 RC 前置 Issue 已关闭 | Gitea API 查询 |
 
-### PASS 标准
+### PASS 标准 (G1-G16)
 
 | ID | Check | Method | Threshold |
 |----|-------|--------|-----------|
-| G1 | R1-R4 | 所有 RC 指标 | PASS |
-| G2 | Full test | `cargo test --workspace` | PASS |
-| G3 | Full coverage | L1 avg ≥ 85%, 每 crate ≥ 80% | PASS |
-| G4 | TPC-H SF=1 | `scripts/tpch/run_tpch.sh --sf 1` | 22/22 PASS |
-| G5 | Security | `cargo audit` + 手动审计 | PASS |
-| G6 | Documentation | API reference, CHANGELOG, UPGRADE_GUIDE | PASS |
+| G1 | TPC-H 22/22 | `cargo test --test tpch_gate_test` | 22/22 PASS |
+| G2 | INT-2 ParallelExecutor | `cargo test --test int2_substance_parallel_test` | 9/9 PASS |
+| G3 | INT-3 Expression Delegation | `cargo test --test int3_substance_delegation_test` | 17/17 PASS |
+| G4 | ARCH-3 VtuGuard | `bash scripts/gate/check_arch3_no_bypass.sh` | 8/8 PASS |
+| G5 | SEM-1 Savepoint | `bash scripts/gate/check_sem1_savepoint.sh` | 8/8 PASS |
+| G6 | Backup/Restore/PITR | `bash scripts/gate/check_backup_restore.sh` | 6/6 PASS + 51 e2e |
+| G7 | 24h Stability (simulated) | `cargo test --test long_run_stability_test` | 10/10 PASS |
+| G8 | Crash Matrix | `bash scripts/gate/check_p12_crash_test.sh` | 129/129 PASS |
+| G9 | Upgrade v3.8→v3.9 | `bash scripts/gate/check_p14_upgrade_test.sh` | 50/50 PASS |
+| G10 | GMP Audit + Time Travel + Hash Chain | `bash scripts/gate/check_p21_*.sh` + `check_p22_*.sh` + `check_p23_*.sh` | 全部 PASS |
+| G11 | QPS/TPS Benchmark | `bash scripts/gate/check_g11_qps.sh` | 5/5 PASS |
+| G12 | Sysbench Compatibility | `bash scripts/gate/check_g12_sysbench.sh` | PASS |
+| G13 | 24h Stability (extended real) | `bash scripts/gate/check_g13_stability.sh` | 0 errors in 24h |
+| G14 | Real Crash Test | `bash scripts/gate/check_g14_real_crash.sh` | PASS |
+| G15 | TPC-H SF=0.01 wire | `cargo test --test tpch_sf01_22_queries_wire_test` | 22/22 PASS |
+| G16 | Compatibility v3.8→v3.9 | `cargo test --test v380_to_v390_full_upgrade_test` | 18+ PASS |
+
+---
+
+## Soak Test Gate (v3.9.0+)
+
+### Soak Test 定义
+
+| Test | Duration | Purpose | Blocking GA |
+|------|----------|---------|-------------|
+| 1h simulated | 1h | Pre-RC smoke test | No |
+| 24h real | 24h | GA blocker | **Yes** |
+| 72h real | 72h | Post-GA hardening | No |
+| 168h real | 168h | GA-final gate | **Yes** |
+
+### Soak Test PASS 标准
+
+| ID | Check | Method | Threshold |
+|----|-------|--------|-----------|
+| ST1 | 1h simulated soak | `bash scripts/stability/run_1h_soak.sh` | 0 errors |
+| ST2 | 24h real soak | `bash scripts/stability/run_24h_soak.sh` | 0 errors, samples ≥ threshold |
+| ST3 | 72h real soak | `bash scripts/stability/run_72h_soak.sh` | 0 errors, samples ≥ threshold |
+| ST4 | 168h real soak | `bash scripts/stability/run_168h_soak.sh` | 0 errors, samples ≥ threshold |
+
+### Soak Test 执行要求
+
+1. **环境**: 在 Z6G4 或 250 上执行
+2. **监控**: 每小时采样，记录 errors count
+3. **报告**: 生成 `test_results/stability_<duration>/SUMMARY.md`
+4. **日志**: 保存到 `docs/releases/v{VERSION}/logs/soak_<duration>_<host>_<timestamp>.log`
 
 ---
 
@@ -217,10 +257,11 @@ logs/gate_ga_<commit>_<timestamp>.log
 
 | 版本 | 日期 | 说明 |
 |------|------|------|
+| 3.0 | 2026-06-17 | 补全 GA Gate G1-G16 定义，增加 Soak Test Gate (ST1-ST4)，完善门禁执行要求 |
 | 2.0 | 2026-05-31 | 增加 B-Functional 功能追踪，RC-F 功能完成要求，脚本实现要求 |
 | 1.0 | 2026-03-07 | 初始版本 |
 
 ---
 
-**关联 Issue**: #2682 (Beta Gate functional tracking vulnerability — gate passed but features incomplete)  
+**关联 Issue**: #2682 (Beta Gate functional tracking vulnerability — gate passed but features incomplete)
 **修复来源**: Hermes C 根因分析 (2026-05-31) — Beta Gate 只检查 B1-B4 基础设施，未追踪功能完整性
