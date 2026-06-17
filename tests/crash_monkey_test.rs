@@ -249,7 +249,6 @@ fn crash_monkey_smoke_100_iterations() {
 }
 
 #[test]
-#[ignore = "Long-running; enable with --ignored for full 100k iteration sweep"]
 fn crash_monkey_full_100k_iterations() {
     // The full monkey: 100,000 random episodes. Validates RecoveryEngine
     // robustness under truly adversarial workloads. Run with:
