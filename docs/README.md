@@ -1,7 +1,7 @@
 # SQLRustGo 文档索引
 
 > **最后更新**: 2026-06-17
-> **当前版本**: v3.9.0 (RC7, GA 目标 2026-12-15)
+> **当前版本**: v3.9.0 (RC7 ✅ + Sprint 8 ✅, GA 目标 2026-12-15)
 > **最新稳定**: v3.8.0 (GA, 2026-06-08)
 
 ---
@@ -59,19 +59,23 @@ docs/
 
 ## 二、版本发布文档 (最新版本)
 
-### v3.9.0 (当前开发版本: RC7)
+### v3.9.0 (当前开发版本: RC7 + Sprint 8)
 
 | 文档 | 说明 |
 |------|------|
-| [文档索引](releases/v3.9.0/README.md) | v3.9.0 文档总入口 |
-| [变更日志](releases/v3.9.0/CHANGELOG.md) | v3.9.0 变更记录 |
-| [路线图](releases/v3.9.0/ROADMAP.md) | 6 Phase / 12 周路线图 |
-| [GA 门禁报告](releases/v3.9.0/GA_GATE_REPORT.md) | GA 质量门禁结果 |
-| [全面评估](releases/v3.9.0/V390_COMPREHENSIVE_ASSESSMENT.md) | v3.9.0 综合评估 |
-| [发布说明](releases/v3.9.0/RELEASE_NOTES.md) | 发布说明 |
+| [文档索引](releases/v3.9.0/README.md) | v3.9.0 文档总入口 (v2.0) |
+| [变更日志](releases/v3.9.0/CHANGELOG.md) | v3.9.0 变更记录 (v1.1, +Sprint 8) |
+| [路线图](releases/v3.9.0/ROADMAP.md) | 6 Phase 路线图 (v2.0, +Sprint 8) |
+| [综合索引](releases/v3.9.0/INDEX.md) | 综合索引 (v3.0.1, +Sprint 8) |
+| [全面评估](releases/v3.9.0/V390_COMPREHENSIVE_ASSESSMENT.md) | v3.9.0 综合评估 v2.0 (RC7 + Sprint 8) |
+| [GA 门禁报告](releases/v3.9.0/GA_GATE_REPORT.md) | GA 质量门禁 (16/16 + 5 meta-gates) |
+| [GA 门禁状态](releases/v3.9.0/GA_GATE_STATUS_REPORT.md) | GA 治理合规状态 |
+| [Long-stability 分析](releases/v3.9.0/LONG_STABILITY_TESTS_ANALYSIS.md) | 26 long-running tests (Sprint 8) |
+| [测试真实性报告](releases/v3.9.0/TEST_TRUTHFULNESS_REPORT.md) | V1-V8 漏洞状态 (Sprint 8 更新) |
+| [发布说明](releases/v3.9.0/RELEASE_NOTES.md) | 发布说明 (含 Sprint 8 增量) |
 
-**状态**: RC7 (2026-06-12), GA 目标 2026-12-15
-**门禁**: G1-G16 全部 PASS | TPC-H 22/22 | Corpus 818/818 | D9 8/8
+**状态**: RC7 ✅ (2026-06-12) + Sprint 8 ✅ (2026-06-17, PR #3465) → GA 待 Z6G4 真实 24h+ soak
+**门禁**: 16/16 G1-G16 + 5/5 P11-P15 + 1/1 P16 = **22/22** | TPC-H 22/22 (Q8 = 0.18ms) | Corpus 818/818
 
 ### v3.8.0 (当前稳定版本: GA)
 
@@ -116,7 +120,7 @@ docs/
 
 | 版本 | 发布日期 | 状态 | 核心特性 |
 |------|----------|------|----------|
-| v3.9.0 | 2026-12-15 (目标) | RC7 | Production Readiness |
+| v3.9.0 | 2026-12-15 (目标) | RC7 + Sprint 8 | Production Readiness (Q8 0.18ms, 5/5 meta-gates, soak infra) |
 | v3.8.0 | 2026-06-08 | GA | Architecture Unification |
 | v3.7.0 | 2026-05-31 | GA | GMP Integration |
 | v3.6.0 | 2026-05-29 | GA | Protocol Stack |
@@ -190,6 +194,7 @@ docs/
 
 | 版本 | 日期 | 说明 |
 |------|------|------|
+| 3.1 | 2026-06-17 | 更新 v3.9.0 RC7 + Sprint 8 状态 (Q8 0.18ms, 5/5 meta-gates, soak infra, PR #3465) |
 | 3.0 | 2026-06-17 | 更新为 v3.9.0 RC7，整理目录结构 |
 | 2.1 | 2026-04-22 | 更新为 v2.7.0 GA，添加 v2.7.0 文档入口 |
 | 2.0 | 2026-04-17 | 更新为 v2.6.0，清理过时版本链接 |
