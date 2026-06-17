@@ -69,11 +69,13 @@ else
     fi
 fi
 
-# 5. ≥20 tests pass
-PASSED=$(cargo test --test cost_optimizer_test 2>&1 | grep -E "test result.*ok" | grep -oE "[0-9]+ passed" | head -1 || true)
-if [ -z "$PASSED" ]; then
-    echo "  ❌ FAIL: cost_optimizer_test tests did not pass"
-    cargo test --test cost_optimizer_test 2>&1 | tail -5
+# 5. ≥20 tests pass (V6 fix: capture exit code explicitly)
+COST_OUTPUT=$(cargo test --test cost_optimizer_test 2>&1)
+COST_EXIT=$?
+PASSED=$(echo "$COST_OUTPUT" | grep -E "test result.*ok" | grep -oE "[0-9]+ passed" | head -1)
+if [ $COST_EXIT -ne 0 ] || [ -z "$PASSED" ]; then
+    echo "  ❌ FAIL: cost_optimizer_test tests did not pass (cargo exit=$COST_EXIT)"
+    echo "$COST_OUTPUT" | tail -5
     exit 1
 fi
 N_PASSED=$(echo "$PASSED" | grep -oE "[0-9]+")
@@ -96,13 +98,26 @@ else
     fi
 fi
 
-# 7. TPC-H 22/22 (smoke)
-TPCH_PASSED=$(cargo test --test tpch_gate_test 2>&1 | grep -E "test result.*ok" | head -1 || true)
+# 7. TPC-H 22/22 (smoke) (V6 fix: capture exit code explicitly)
+TPCH_OUTPUT=$(cargo test --test tpch_gate_test 2>&1)
+TPCH_EXIT=$?
+TPCH_PASSED=$(echo "$TPCH_OUTPUT" | grep -E "test result.*ok" | head -1)
+if [ $TPCH_EXIT -ne 0 ]; then
+    echo "  ❌ FAIL: TPC-H gate test failed (exit=$TPCH_EXIT)"
+    echo "$TPCH_OUTPUT" | tail -10
+    exit 1
+fi
+if [ -z "$TPCH_PASSED" ]; then
+    echo "  ❌ FAIL: TPC-H gate output could not be parsed"
+    echo "$TPCH_OUTPUT" | tail -10
+    exit 1
+fi
 if echo "$TPCH_PASSED" | grep -q "ok"; then
     echo "  [7/7] ✅ PASS: TPC-H gate (22/22) maintained"
 else
-    echo "  ⚠️ WARN: TPC-H gate test did not pass cleanly (may need re-check)"
-    echo "  [7/7] ✅ PASS (warned): TPC-H gate check skipped"
+    echo "  ❌ FAIL: TPC-H gate test did not pass"
+    echo "$TPCH_OUTPUT" | tail -10
+    exit 1
 fi
 
 echo

@@ -66,11 +66,13 @@ else
     fi
 fi
 
-# 5. ≥50 tests pass
-PASSED=$(cargo test --test upgrade_test 2>&1 | grep -E "test result.*ok" | grep -oE "[0-9]+ passed" | head -1 || true)
-if [ -z "$PASSED" ]; then
-    echo "  ❌ FAIL: upgrade_test tests did not pass"
-    cargo test --test upgrade_test 2>&1 | tail -5
+# 5. ≥50 tests pass (V6 fix: capture exit code explicitly)
+UPGRADE_OUTPUT=$(cargo test --test upgrade_test 2>&1)
+UPGRADE_EXIT=$?
+PASSED=$(echo "$UPGRADE_OUTPUT" | grep -E "test result.*ok" | grep -oE "[0-9]+ passed" | head -1)
+if [ $UPGRADE_EXIT -ne 0 ] || [ -z "$PASSED" ]; then
+    echo "  ❌ FAIL: upgrade_test tests did not pass (cargo exit=$UPGRADE_EXIT)"
+    echo "$UPGRADE_OUTPUT" | tail -5
     exit 1
 fi
 N_PASSED=$(echo "$PASSED" | grep -oE "[0-9]+")
@@ -80,12 +82,13 @@ if [ "$N_PASSED" -lt 50 ]; then
 fi
 echo "  [5/7] ✅ PASS: upgrade_test $PASSED (≥50)"
 
-# 6. upgrade.rs unit tests still pass
-UPGRADE_PASSED=$(cargo test -p sqlrustgo-tools --lib upgrade 2>&1 \
-    | grep -E "test result.*ok" | grep -oE "[0-9]+ passed" | head -1 || true)
-if [ -z "$UPGRADE_PASSED" ]; then
-    echo "  ❌ FAIL: crates/tools/src/upgrade.rs unit tests not all passing"
-    cargo test -p sqlrustgo-tools --lib upgrade 2>&1 | tail -5
+# 6. upgrade.rs unit tests still pass (V6 fix: capture exit code explicitly)
+UPGRADE_UNIT_OUTPUT=$(cargo test -p sqlrustgo-tools --lib upgrade 2>&1)
+UPGRADE_UNIT_EXIT=$?
+UPGRADE_PASSED=$(echo "$UPGRADE_UNIT_OUTPUT" | grep -E "test result.*ok" | grep -oE "[0-9]+ passed" | head -1)
+if [ $UPGRADE_UNIT_EXIT -ne 0 ] || [ -z "$UPGRADE_PASSED" ]; then
+    echo "  ❌ FAIL: crates/tools/src/upgrade.rs unit tests not all passing (exit=$UPGRADE_UNIT_EXIT)"
+    echo "$UPGRADE_UNIT_OUTPUT" | tail -5
     exit 1
 fi
 echo "  [6/7] ✅ PASS: crates/tools/src/upgrade.rs $UPGRADE_PASSED (no regression)"

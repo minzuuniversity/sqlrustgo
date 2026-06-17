@@ -69,11 +69,13 @@ else
     fi
 fi
 
-# 5. ≥20 tests pass
-PASSED=$(cargo test --test hash_chain_test 2>&1 | grep -E "test result.*ok" | grep -oE "[0-9]+ passed" | head -1 || true)
-if [ -z "$PASSED" ]; then
-    echo "  ❌ FAIL: hash_chain_test tests did not pass"
-    cargo test --test hash_chain_test 2>&1 | tail -5
+# 5. ≥20 tests pass (V6 fix: capture exit code explicitly)
+HC_OUTPUT=$(cargo test --test hash_chain_test 2>&1)
+HC_EXIT=$?
+PASSED=$(echo "$HC_OUTPUT" | grep -E "test result.*ok" | grep -oE "[0-9]+ passed" | head -1)
+if [ $HC_EXIT -ne 0 ] || [ -z "$PASSED" ]; then
+    echo "  ❌ FAIL: hash_chain_test tests did not pass (cargo exit=$HC_EXIT)"
+    echo "$HC_OUTPUT" | tail -5
     exit 1
 fi
 N_PASSED=$(echo "$PASSED" | grep -oE "[0-9]+")

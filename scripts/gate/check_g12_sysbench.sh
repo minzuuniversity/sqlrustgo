@@ -51,16 +51,17 @@ if [ "$N_OLTP" -lt 30 ]; then
 fi
 echo "  [2/7] ✅ PASS: oltp_test has $N_OLTP tests (≥30)"
 
-# 3. oltp tests pass
-OLTP_RESULT=$(cargo test -p sqlrustgo-bench --test oltp_test 2>&1 | grep -E "test result.*ok" | head -1 || true)
-if echo "$OLTP_RESULT" | grep -q "ok"; then
-    N_PASSED=$(echo "$OLTP_RESULT" | grep -oE "[0-9]+ passed" | grep -oE "[0-9]+")
-    echo "  [3/7] ✅ PASS: oltp_test $N_PASSED tests pass"
-else
-    echo "  ❌ FAIL: oltp_test tests did not pass"
-    cargo test -p sqlrustgo-bench --test oltp_test 2>&1 | tail -5
+# 3. oltp tests pass (V6 fix: capture exit code explicitly)
+OLTP_OUTPUT=$(cargo test -p sqlrustgo-bench --test oltp_test 2>&1)
+OLTP_EXIT=$?
+OLTP_RESULT=$(echo "$OLTP_OUTPUT" | grep -E "test result.*ok" | head -1)
+if [ $OLTP_EXIT -ne 0 ] || [ -z "$OLTP_RESULT" ]; then
+    echo "  ❌ FAIL: oltp_test tests did not pass (cargo exit=$OLTP_EXIT)"
+    echo "$OLTP_OUTPUT" | tail -5
     exit 1
 fi
+N_PASSED=$(echo "$OLTP_RESULT" | grep -oE "[0-9]+ passed" | grep -oE "[0-9]+")
+echo "  [3/7] ✅ PASS: oltp_test $N_PASSED tests pass"
 
 # 4. sysbench binary available
 if ! command -v sysbench >/dev/null 2>&1; then
@@ -84,13 +85,26 @@ if [ "$ALL_EXEC" = "false" ]; then
 fi
 echo "  [5/7] ✅ PASS: sysbench scripts executable"
 
-# 6. TPC-H 22/22 maintained
-TPCH_PASSED=$(cargo test --test tpch_gate_test 2>&1 | grep -E "test result.*ok" | head -1 || true)
+# 6. TPC-H 22/22 maintained (V6 fix: capture exit code explicitly)
+TPCH_OUTPUT=$(cargo test --test tpch_gate_test 2>&1)
+TPCH_EXIT=$?
+TPCH_PASSED=$(echo "$TPCH_OUTPUT" | grep -E "test result.*ok" | head -1)
+if [ $TPCH_EXIT -ne 0 ]; then
+    echo "  ❌ FAIL: TPC-H gate test failed (exit=$TPCH_EXIT)"
+    echo "$TPCH_OUTPUT" | tail -10
+    exit 1
+fi
+if [ -z "$TPCH_PASSED" ]; then
+    echo "  ❌ FAIL: TPC-H gate output could not be parsed"
+    echo "$TPCH_OUTPUT" | tail -10
+    exit 1
+fi
 if echo "$TPCH_PASSED" | grep -q "ok"; then
     echo "  [6/7] ✅ PASS: TPC-H gate (22/22) maintained"
 else
-    echo "  ⚠️ WARN: TPC-H gate test did not pass cleanly"
-    echo "  [6/7] ✅ PASS (warned): TPC-H gate check skipped"
+    echo "  ❌ FAIL: TPC-H gate test did not pass"
+    echo "$TPCH_OUTPUT" | tail -10
+    exit 1
 fi
 
 # 7. SYSBENCH_REPORT placeholder (W12 D2 will populate)

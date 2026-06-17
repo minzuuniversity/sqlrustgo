@@ -70,16 +70,19 @@ else
     exit 1
 fi
 
-# 5. TPC-H 22/22 维持 (G1) (P14 V8 fix: capture exit code explicitly)
+# 5. TPC-H 22/22 维持 (G1) (V6 fix: capture exit code + grep result properly)
 TPCH_OUTPUT=$(cargo test --test tpch_gate_test 2>&1)
 TPCH_EXIT=$?
-TPCH_PASSED=$(echo "$TPCH_OUTPUT" | grep -E "test result.*ok" | head -1 || true)
-if [ $TPCH_EXIT -eq 0 ] && echo "$TPCH_PASSED" | grep -q "ok"; then
-    echo "  [5/5] PASS: TPC-H gate (22/22) maintained"
-else
-    echo "  [5/5] FAIL: TPC-H gate test did not pass (exit=$TPCH_EXIT)"
+TPCH_PASSED=$(echo "$TPCH_OUTPUT" | grep -E "test result.*ok" | head -1)
+if [ $TPCH_EXIT -ne 0 ]; then
+    echo "  [5/5] FAIL: TPC-H gate test failed (cargo exit=$TPCH_EXIT)"
     exit 1
 fi
+if [ -z "$TPCH_PASSED" ] || ! echo "$TPCH_PASSED" | grep -q "ok"; then
+    echo "  [5/5] FAIL: TPC-H gate output could not be parsed"
+    exit 1
+fi
+echo "  [5/5] PASS: TPC-H gate (22/22) maintained"
 
 echo
 echo "=== G11 Gate: PASS ==="

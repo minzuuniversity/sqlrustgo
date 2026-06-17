@@ -71,11 +71,13 @@ else
     fi
 fi
 
-# 5. ≥20 audit tests pass
-PASSED=$(cargo test --test audit_log_test 2>&1 | grep -E "test result.*ok" | grep -oE "[0-9]+ passed" | head -1 || true)
-if [ -z "$PASSED" ]; then
-    echo "  ❌ FAIL: audit_log_test tests did not pass"
-    cargo test --test audit_log_test 2>&1 | tail -5
+# 5. ≥20 audit tests pass (V6 fix: capture exit code explicitly)
+AUDIT_OUTPUT=$(cargo test --test audit_log_test 2>&1)
+AUDIT_EXIT=$?
+PASSED=$(echo "$AUDIT_OUTPUT" | grep -E "test result.*ok" | grep -oE "[0-9]+ passed" | head -1)
+if [ $AUDIT_EXIT -ne 0 ] || [ -z "$PASSED" ]; then
+    echo "  ❌ FAIL: audit_log_test tests did not pass (cargo exit=$AUDIT_EXIT)"
+    echo "$AUDIT_OUTPUT" | tail -5
     exit 1
 fi
 N_PASSED=$(echo "$PASSED" | grep -oE "[0-9]+")
