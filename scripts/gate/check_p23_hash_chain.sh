@@ -15,7 +15,7 @@
 # Refs: docs/openspec/3179-hash-chain.md
 #       V390_TEST_PLAN.md §G10
 
-set -e
+set -eo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
@@ -70,10 +70,17 @@ else
 fi
 
 # 5. ≥20 tests pass
-PASSED=$(cargo test --test hash_chain_test 2>&1 | grep -E "test result.*ok" | grep -oE "[0-9]+ passed" | head -1 || true)
+RAW=$(cargo test --test hash_chain_test 2>&1)
+TEST_EXIT=$?
+PASSED=$(echo "$RAW" | grep -E "test result.*ok" | grep -oE "[0-9]+ passed" | head -1)
+if [ -z "$PASSED" ] && [ "$TEST_EXIT" -ne 0 ]; then
+    echo "  ❌ FAIL: hash_chain_test exited with $TEST_EXIT"
+    echo "$RAW" | tail -5
+    exit 1
+fi
 if [ -z "$PASSED" ]; then
     echo "  ❌ FAIL: hash_chain_test tests did not pass"
-    cargo test --test hash_chain_test 2>&1 | tail -5
+    echo "$RAW" | tail -5
     exit 1
 fi
 N_PASSED=$(echo "$PASSED" | grep -oE "[0-9]+")
