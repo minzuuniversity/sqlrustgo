@@ -1,10 +1,10 @@
 # v3.9.0 GA Gate Report
 
 > **Status: 🟡 IN PROGRESS (gates G1-G16 executed, 24h/72h/168h soak running on 250/Z6G4)**
-> **Date**: 2026-06-17
+> **Date**: 2026-06-18
 > **Latest tag**: `v3.9.0-rc7` at `642ff9cf9` (2026-06-12 16:52)
 > **GA pending**: 24h/72h/168h soak completion (250 24h running)
-> **Truthfulness Notice**: 本报告经过 P11-P15 meta-gate 审计，发现部分 gate 存在验证漏洞 (V1-V8)。详见 TEST_TRUTHFULNESS_REPORT.md。
+> **Truthfulness Notice**: 本报告经过 P11-P15 meta-gate 审计，发现部分 gate 存在验证漏洞 (V1-V8)。V6 漏洞 (17 脚本 `|| true` 修复) 已于 2026-06-18 修复。详见 TEST_TRUTHFULNESS_REPORT.md。
 
 ## 1. Gate Summary (G1-G16) — 诚实声明
 
@@ -131,7 +131,7 @@
 | 真实 soak 未完成 | 🔴 HIGH | 250 running | **GA 未就绪** |
 | Z6G4 instability (5+ outages) | 🔴 HIGH | 250 backup | 历史宕机记录不可忽视 |
 | 部分 gate 无 oracle 对比 | 🟠 MEDIUM | P15 检测 | **测试正确性未验证** |
-| V6: `\|\| true` 吞错误 | 🟠 MEDIUM | P14 检测 | **部分失败被静默忽略** |
+| V6: `\|\| true` 吞错误 | 🟡 MEDIUM | ✅ 2026-06-18 修复 (17 脚本) | **部分失败被静默忽略 → 已修复** |
 | gitcode sync blocked | 🟡 LOW | 3/4 remotes | 可接受 |
 
 **诚实总结**: v3.9.0 当前状态为"gate 脚本已执行完成"，但"真实质量验证"尚未完成（缺少 oracle 对比 + 真实 soak 测试）。

@@ -1,9 +1,9 @@
 # v3.9.0 Test Truthfulness Report
 
-> **日期**: 2026-06-17
-> **版本**: v1.0
+> **日期**: 2026-06-18
+> **版本**: v1.1
 > **目的**: 真实反映 v3.9.0 测试状态，不夸大，不隐瞒
-> **依据**: P11-P15 Meta-Gate 审计结果 + V1-V8 漏洞分析
+> **依据**: P11-P15 Meta-Gate 审计结果 + V1-V8 漏洞分析 + V6 修复
 
 ---
 
@@ -52,7 +52,7 @@
 | V3 | 测试数量可减少 | 🟠 MEDIUM | ✅ P13 baseline 建立 |
 | V4 | 无 oracle 对比 | 🔴 HIGH | ❌ 未修复 (8 gate 无 oracle) |
 | V5 | DRIFT 被当作 PASS | 🔴 HIGH | ✅ 已修复 |
-| V6 | `\|\| true` 吞错误 | 🟡 MEDIUM | ❌ 未修复 (15 脚本) |
+| V6 | `\|\| true` 吞错误 | 🟡 MEDIUM | ✅ 已修复 (17 脚本 V6 漏洞修复) |
 | V7 | 82 个 gate 无自测 | 🟡 MEDIUM | ⚠️ P11 检测到 |
 | V8 | grep 失败静默 | 🟡 MEDIUM | ❌ 未修复 (10 脚本) |
 
