@@ -1,11 +1,12 @@
 # v3.9.0 GA Gate Report
 
-> **Status: 🟡 IN PROGRESS (gates G1-G16 + 5 meta-gates PASS, 24h/72h/168h real soak pending Z6G4)**
-> **Date**: 2026-06-17
-> **Latest tag**: `v3.9.0-rc7` at `1e83612c6` (post PR #3467 Sprint 8 docs follow-up)
+> **Status: 🟡 IN PROGRESS (gates G1-G16 PASS + 6/6 meta-gates P11-P16 PASS, 24h/72h/168h real soak pending Z6G4)**
+> **Date**: 2026-06-18
+> **Latest tag**: `v3.9.0-rc7` at develop/v3.9.0 (post PR #3490, 16 PRs merged in this sprint)
 > **Sprint 8 PR #3465**: Q8 hash join (33s→0.18ms, 165,000×) + ADR-006 V5/V6/V8/V2 + soak_runner
+> **本会话 16 PRs**: Oracle framework (#3470-#3473) + real-run fixes (#3475) + V7 headers (#3476) + G1 baseline (#3477) + P15 final (#3478) + wire DEPRECATE_EOF (#3479) + boundary unignore (#3480) + i64 MIN parser (#3483) + P15 auto-regen (#3485) + G5-B savepoint keyword (#3486) + 19 perf tests unignore (#3487) + crash monkey + recovery fuzzer (#3488) + P12 registry sync (#3490)
 > **GA pending**: 24h/72h/168h real wall-clock soak on Z6G4 (infra ready via PR #3465)
-> **Truthfulness Notice**: 本报告经过 P11-P15 meta-gate 审计 (Sprint 8 5/5 PASS)。详见 TEST_TRUTHFULNESS_REPORT.md。
+> **Truthfulness Notice**: 本报告经过 P11-P16 meta-gate 审计 (6/6 PASS, 2026-06-18)。详见 TEST_TRUTHFULNESS_REPORT.md。
 
 ## 1. Gate Summary (G1-G16) — 诚实声明
 
@@ -31,18 +32,18 @@
 **Total: 16/16 PASS (gate scripts executed)**
 **诚实评估**: 所有 gate 脚本执行完成，但部分 gate 缺乏独立 oracle 对比，结果为自验证。
 
-### 1.1 Meta-gates (P11-P15, ADR-006, Sprint 8)
+### 1.1 Meta-gates (P11-P16, ADR-006, Sprint 8 + 本会话)
 
-| Meta-gate | 主题 | 状态 | Sprint 8 增量 |
+| Meta-gate | 主题 | 状态 | 本会话增量 |
 |-----------|------|------|--------------|
-| **P11** | Gate Self-Verification | ✅ PASS | — |
-| **P12** | No Implicit Tolerance | ✅ PASS | ignore_registry 93→42 + 1 marker |
-| **P13** | Test Count Monotonicity | ✅ PASS | — |
-| **P14** | DRIFT != PASS | ✅ PASS | V5/V6/V8 全部修复 |
-| **P15** | Oracle Required | ✅ PASS | — |
-| **P16** | Gate Test Integrity | ✅ PASS | (pre-Sprint 8) 0/27 gate tests `#[ignore]` |
+| **P11** | Gate Self-Verification | ✅ PASS | V7 detector: 8 gate scripts got P11-comments (PR #3476) |
+| **P12** | No Implicit Tolerance | ✅ PASS | ignore_registry 42→29 (PR #3490, 22 tests unignored) |
+| **P13** | Test Count Monotonicity | ✅ PASS | "Active tests increased by 31, #[ignore] decreased by -22" |
+| **P14** | DRIFT != PASS | ✅ PASS | V5/V6/V8 全部修复 (Sprint 8) |
+| **P15** | Oracle Required | ✅ PASS | 8/8 in-process gates WITH oracle (PR #3470-#3473, #3477) |
+| **P16** | Gate Test Integrity | ✅ PASS | 28 gate tests, 0 new #[ignore] |
 
-**5/5 meta-gates (P11-P15) PASS (Sprint 8) + 1/1 P16 PASS = 6/6**
+**6/6 meta-gates (P11-P16) ALL PASS (2026-06-18, after PR #3470-#3490)**
 
 ## 2. Substance Tests (Issue #3108, #3146, #3270, #3224)
 
