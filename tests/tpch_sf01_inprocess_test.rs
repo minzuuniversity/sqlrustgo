@@ -127,6 +127,16 @@ fn tpch_sf01_sanity() {
         match result {
             Ok(rows) => {
                 eprintln!("  ✅ {q_name}: {} rows in {:.2?}", rows.len(), elapsed);
+                // Sprint 8 perf gate: Q8 (5-table comma-join + CASE WHEN)
+                // currently takes ~33s on SF=0.1 due to JoinKey::All cartesian
+                // product in execute_single_join. Must complete < 30s.
+                if *q_name == "Q8" {
+                    assert!(
+                        elapsed.as_secs() < 30,
+                        "Q8 took {:.2?}, expected < 30s (cartesian product perf issue, Sprint 8 fix)",
+                        elapsed
+                    );
+                }
                 passed += 1;
             }
             Err(e) => {
