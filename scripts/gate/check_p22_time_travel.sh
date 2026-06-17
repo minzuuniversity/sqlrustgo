@@ -70,10 +70,17 @@ else
 fi
 
 # 5. ≥20 tests pass
-PASSED=$(cargo test --test time_travel_test 2>&1 | grep -E "test result.*ok" | grep -oE "[0-9]+ passed" | head -1 || true)
+RAW=$(cargo test --test time_travel_test 2>&1)
+TEST_EXIT=$?
+PASSED=$(echo "$RAW" | grep -E "test result.*ok" | grep -oE "[0-9]+ passed" | head -1)
+if [ -z "$PASSED" ] && [ "$TEST_EXIT" -ne 0 ]; then
+    echo "  ❌ FAIL: time_travel_test exited with $TEST_EXIT"
+    echo "$RAW" | tail -5
+    exit 1
+fi
 if [ -z "$PASSED" ]; then
     echo "  ❌ FAIL: time_travel_test tests did not pass"
-    cargo test --test time_travel_test 2>&1 | tail -5
+    echo "$RAW" | tail -5
     exit 1
 fi
 N_PASSED=$(echo "$PASSED" | grep -oE "[0-9]+")
@@ -97,7 +104,13 @@ else
 fi
 
 # 7. TPC-H 22/22 (smoke)
-TPCH_PASSED=$(cargo test --test tpch_gate_test 2>&1 | grep -E "test result.*ok" | head -1 || true)
+RAW=$(cargo test --test tpch_gate_test 2>&1)
+TEST_EXIT=$?
+TPCH_PASSED=$(echo "$RAW" | grep -E "test result.*ok" | head -1)
+if [ -z "$TPCH_PASSED" ] && [ "$TEST_EXIT" -ne 0 ]; then
+    echo "  ❌ FAIL: tpch_gate_test exited with $TEST_EXIT"
+    exit 1
+fi
 if echo "$TPCH_PASSED" | grep -q "ok"; then
     echo "  [7/7] ✅ PASS: TPC-H gate (22/22) maintained"
 else
