@@ -866,6 +866,65 @@ fn write_text_row<W: Write>(w: &mut W, row: &[Value]) -> MySqlResult<()> {
     Ok(())
 }
 
+/// Write a single row in MySQL binary protocol format.
+/// Each value is prefixed with a 1-byte type marker, then the value.
+fn write_binary_row<W: Write>(w: &mut W, row: &[Value], col_types: &[u8]) -> MySqlResult<()> {
+    w.write_u8(0x00)?; // row packet header: null bitmap starts with 0x00
+    let null_bytes = (row.len() + 9) / 8;
+    let mut null_map = vec![0u8; null_bytes + 1];
+    for (i, v) in row.iter().enumerate() {
+        if matches!(v, Value::Null) {
+            null_map[1 + i / 8] |= 1 << (i % 8);
+        }
+    }
+    w.write_all(&null_map)?;
+
+    let mut buf = Vec::new();
+    for (i, v) in row.iter().enumerate() {
+        let col_type = col_types.get(i).copied().unwrap_or(col_type::STRING);
+        match v {
+            Value::Null => {
+                // null handled by null_map above — no per-column data written
+            }
+            Value::Integer(n) => match col_type {
+                col_type::TINY => {
+                    buf.write_u8(*n as u8)?;
+                }
+                col_type::SHORT => {
+                    buf.write_i16::<LittleEndian>(*n as i16)?;
+                }
+                col_type::LONG => {
+                    buf.write_i32::<LittleEndian>((*n).try_into().unwrap_or(i32::MAX))?;
+                }
+                col_type::LONGLONG => {
+                    buf.write_i64::<LittleEndian>(*n)?;
+                }
+                _ => {
+                    buf.write_i64::<LittleEndian>(*n)?;
+                }
+            },
+            Value::Float(f) => {
+                if col_type == col_type::DOUBLE {
+                    buf.write_f64::<LittleEndian>(*f)?;
+                } else {
+                    buf.write_f32::<LittleEndian>(*f as f32)?;
+                }
+            }
+            Value::Text(s) => {
+                write_lenenc_string(&mut buf, s.as_bytes())?;
+            }
+            Value::Blob(b) => {
+                write_lenenc_string(&mut buf, b)?;
+            }
+            Value::Boolean(b) => {
+                buf.write_u8(if *b { 1 } else { 0 })?;
+            }
+        }
+    }
+    w.write_all(&buf)?;
+    Ok(())
+}
+
 fn write_column_def<W: Write>(w: &mut W, name: &str, sql_type: &str, seq: u8) -> MySqlResult<()> {
     let mut p = Vec::new();
     write_lenenc_string(&mut p, b"def").unwrap();
@@ -955,6 +1014,69 @@ fn send_result_set<W: Write>(
         seq = seq.wrapping_add(1);
     }
     tracing::info!("send_result_set done: final_seq={}", seq);
+    Ok(seq)
+}
+
+/// Send a result set using MySQL binary protocol encoding (G1 fix for sysbench).
+/// Used for COM_STMT_EXECUTE responses where the client expects binary rows.
+fn send_binary_result_set<W: Write>(
+    w: &mut W,
+    cols: &[String],
+    ctypes: &[String],
+    rows: &[Vec<Value>],
+    mut seq: u8,
+    _cap: u32,
+) -> MySqlResult<u8> {
+    // Column count
+    {
+        let mut p = Vec::new();
+        write_lenenc_int(&mut p, cols.len() as u64).unwrap();
+        Packet {
+            length: p.len() as u32,
+            sequence: seq,
+            payload: p,
+        }
+        .write_to(w)?;
+        seq = seq.wrapping_add(1);
+    }
+    // Column definitions (same packet format as text protocol)
+    for (i, n) in cols.iter().enumerate() {
+        write_column_def(
+            w,
+            n,
+            ctypes.get(i).map(|s| s.as_str()).unwrap_or("VARCHAR(255)"),
+            seq,
+        )?;
+        seq = seq.wrapping_add(1);
+    }
+    // EOF packet (classic protocol)
+    {
+        make_eof_packet(seq, 0x0002).write_to(w)?;
+        seq = seq.wrapping_add(1);
+    }
+    // Rows in binary protocol
+    let col_type_codes: Vec<u8> = cols
+        .iter()
+        .enumerate()
+        .map(|(i, _)| {
+            let t = ctypes.get(i).map(|s| s.as_str()).unwrap_or("VARCHAR(255)");
+            col_type_from_string(t)
+        })
+        .collect();
+    for r in rows {
+        let mut p = Vec::new();
+        write_binary_row(&mut p, r, &col_type_codes)?;
+        Packet {
+            length: p.len() as u32,
+            sequence: seq,
+            payload: p,
+        }
+        .write_to(w)?;
+        seq = seq.wrapping_add(1);
+    }
+    // Final EOF
+    make_eof_packet(seq, 0x0002).write_to(w)?;
+    seq = seq.wrapping_add(1);
     Ok(seq)
 }
 
@@ -1933,6 +2055,28 @@ fn do_command_loop<S: Read + Write>(
                     seq = seq.wrapping_add(1);
                     continue;
                 }
+
+                // G2 fix: Intercept `SET NAMES` / `SET autocommit` / etc.
+                // These session variables are not part of the DDL/DML parser.
+                // We accept them as no-ops and return OK so Python clients
+                // (pymysql, mysql-connector-python) can complete handshake.
+                let lower_q = q.to_lowercase().replace(" ", "");
+                if lower_q.starts_with("setnames")
+                    || lower_q.starts_with("setautocommit")
+                    || lower_q.starts_with("set@@autocommit")
+                    || lower_q.starts_with("setcharacter_set")
+                    || lower_q.starts_with("set@@character_set")
+                    || lower_q.starts_with("setsession")
+                    || lower_q.starts_with("set@@session")
+                    || lower_q.starts_with("set@@")
+                    || lower_q.starts_with("setglobal")
+                    || lower_q.starts_with("settransaction")
+                {
+                    tracing::info!("SET NOP: {}", q);
+                    make_ok_packet(seq, 0, 0, 0x0002, 0).write_to(stream)?;
+                    seq = seq.wrapping_add(1);
+                    continue;
+                }
                 let mut eng = engine.write().unwrap();
                 match parse(&q) {
                     Ok(stmt) => {
@@ -2167,7 +2311,7 @@ fn do_command_loop<S: Read + Write>(
                                         row.into_iter().take(stmt_col_count as usize).collect()
                                     })
                                     .collect();
-                                seq = send_result_set(
+                                seq = send_binary_result_set(
                                     stream, &c_trimmed, &t_trimmed, &r_trimmed, seq, cap,
                                 )?;
                             }
