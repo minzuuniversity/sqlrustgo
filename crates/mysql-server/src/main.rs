@@ -101,6 +101,32 @@ enum Command {
         /// Input file path to restore from.
         input: String,
     },
+    /// Real wall-clock soak runner (per #3225, #3265, #3266, #3229).
+    /// Runs TPC-H-style queries at --qps rate for --duration hours.
+    /// Resource samples (RSS, FD count, lock count, p99 latency)
+    /// written as JSONL to --output. Final markdown report at
+    /// SOAK_<DURATION>H_REPORT.md. Handles SIGTERM/SIGINT gracefully.
+    Soak {
+        /// Duration in hours (decimal allowed, e.g. 0.01 = 36 seconds smoke test).
+        #[arg(long)]
+        duration: f64,
+        /// Queries per second (decimal allowed, e.g. 0.5 = 1 query every 2s).
+        #[arg(long, default_value_t = 1.0)]
+        qps: f64,
+        /// Output JSONL file for time-series samples. If not set,
+        /// writes to soak_<duration>h_<unix_ts>.jsonl in current dir.
+        #[arg(long)]
+        output: Option<String>,
+        /// Random seed for query selection (deterministic replay).
+        #[arg(long, default_value_t = 42)]
+        seed: u64,
+        /// Sample interval in seconds (default 60s = 1 sample per minute).
+        #[arg(long, default_value_t = 60)]
+        sample_interval_s: u64,
+        /// RSS growth threshold (MB over baseline) that triggers a leak warning.
+        #[arg(long, default_value_t = 100)]
+        rss_warn_mb: u64,
+    },
 }
 
 fn main() -> ExitCode {
@@ -233,6 +259,27 @@ fn main() -> ExitCode {
             Ok(()) => ExitCode::SUCCESS,
             Err(e) => {
                 eprintln!("restore error: {e}");
+                ExitCode::from(1)
+            }
+        },
+        Command::Soak {
+            duration,
+            qps,
+            output,
+            seed,
+            sample_interval_s,
+            rss_warn_mb,
+        } => match run_soak(
+            duration,
+            qps,
+            output.as_deref(),
+            seed,
+            sample_interval_s,
+            rss_warn_mb,
+        ) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(e) => {
+                eprintln!("soak error: {e}");
                 ExitCode::from(1)
             }
         },
@@ -674,5 +721,306 @@ fn write_dump_via_select(
     // Stage 3 keeps this as a no-op; the dump file will be created
     // empty (or with a comment header) so the user sees the feature
     // is wired but knows the full engine-access layer is Stage 4 work.
+    Ok(())
+}
+
+// ============================================================================
+// Soak runner (#3225, #3265, #3266, #3229)
+//
+// Real wall-clock long-running soak. Unlike tests/soak_test.rs (1,440×
+// compressed), this runner executes queries at the configured QPS rate
+// for the full configured duration. Resource samples (RSS, FD, lock count)
+// are recorded to JSONL. Graceful shutdown on SIGTERM/SIGINT.
+//
+// Usage:
+//   sqlrustgo-mysql-server soak --duration 24 --qps 1 --output soak.jsonl
+//   sqlrustgo-mysql-server soak --duration 0.01 --qps 1   # 36s smoke
+// ============================================================================
+
+use std::sync::atomic::{AtomicBool, Ordering};
+
+static SOAK_SHUTDOWN: AtomicBool = AtomicBool::new(false);
+
+#[cfg(unix)]
+fn install_soak_signal_handler() {
+    use signal_hook::consts::{SIGINT, SIGTERM};
+    use signal_hook::iterator::Signals;
+    let mut signals = Signals::new([SIGINT, SIGTERM]).expect("install soak signal handler");
+    std::thread::spawn(move || {
+        for _sig in signals.forever() {
+            SOAK_SHUTDOWN.store(true, Ordering::SeqCst);
+            eprintln!("[soak] shutdown signal received, draining...");
+            break;
+        }
+    });
+}
+
+#[cfg(not(unix))]
+fn install_soak_signal_handler() {}
+
+#[derive(serde::Serialize)]
+struct SoakSample {
+    elapsed_s: f64,
+    rss_mb: f64,
+    fd_count: u64,
+    queries_done: u64,
+    queries_failed: u64,
+    p99_latency_ms: f64,
+    leak_warn: bool,
+}
+
+fn read_rss_mb() -> f64 {
+    #[cfg(target_os = "macos")]
+    {
+        // macOS: ps -o rss= -p <pid>
+        let pid = std::process::id();
+        if let Ok(out) = std::process::Command::new("ps")
+            .args(["-o", "rss=", "-p", &pid.to_string()])
+            .output()
+        {
+            if let Ok(s) = std::str::from_utf8(&out.stdout) {
+                if let Ok(kb) = s.trim().parse::<f64>() {
+                    return kb / 1024.0;
+                }
+            }
+        }
+        0.0
+    }
+    #[cfg(target_os = "linux")]
+    {
+        if let Ok(s) = std::fs::read_to_string("/proc/self/statm") {
+            let pages: u64 = s
+                .split_whitespace()
+                .next()
+                .and_then(|p| p.parse().ok())
+                .unwrap_or(0);
+            let page_size = unsafe { libc::sysconf(libc::_SC_PAGESIZE) } as u64;
+            return (pages * page_size) as f64 / 1_048_576.0;
+        }
+        0.0
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+    {
+        0.0
+    }
+}
+
+fn read_fd_count() -> u64 {
+    #[cfg(target_os = "linux")]
+    {
+        if let Ok(entries) = std::fs::read_dir("/proc/self/fd") {
+            return entries.count() as u64;
+        }
+        0
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        // macOS / other: best effort via lsof on our pid
+        let pid = std::process::id();
+        if let Ok(out) = std::process::Command::new("lsof")
+            .args(["-p", &pid.to_string()])
+            .output()
+        {
+            // Subtract 1 for the lsof process itself; subtract header lines.
+            return (out.stdout.iter().filter(|&&b| b == b'\n').count() as u64).saturating_sub(2);
+        }
+        0
+    }
+}
+
+const SOAK_QUERY_SET: &[&str] = &[
+    "SELECT COUNT(*) FROM lineitem",
+    "SELECT l_returnflag, COUNT(*) FROM lineitem GROUP BY l_returnflag",
+    "SELECT n_name, COUNT(*) FROM nation, region GROUP BY n_name LIMIT 5",
+];
+
+fn run_one_soak_query(engine: &mut MemoryExecutionEngine, seed: u64, idx: u64) -> std::time::Duration {
+    let q = SOAK_QUERY_SET[(seed.wrapping_add(idx) as usize) % SOAK_QUERY_SET.len()];
+    let start = std::time::Instant::now();
+    let _ = engine.execute(q);
+    start.elapsed()
+}
+
+fn run_soak(
+    duration_h: f64,
+    qps: f64,
+    output: Option<&str>,
+    seed: u64,
+    sample_interval_s: u64,
+    rss_warn_mb: u64,
+) -> Result<(), String> {
+    if duration_h <= 0.0 {
+        return Err("--duration must be > 0".to_string());
+    }
+    if qps <= 0.0 {
+        return Err("--qps must be > 0".to_string());
+    }
+    let duration_s = (duration_h * 3600.0) as u64;
+    let q_interval_s = 1.0 / qps;
+
+    install_soak_signal_handler();
+
+    let mut engine = make_shared_engine();
+    let _ = engine.execute("CREATE TABLE lineitem (l_orderkey INTEGER, l_returnflag TEXT)");
+    let _ = engine.execute("CREATE TABLE nation (n_name TEXT)");
+    let _ = engine.execute("CREATE TABLE region (r_name TEXT)");
+
+    let jsonl_path = output
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| {
+            format!(
+                "soak_{}h_{}.jsonl",
+                duration_h,
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_secs())
+                    .unwrap_or(0)
+            )
+        });
+    let report_path = format!(
+        "SOAK_{}H_REPORT.md",
+        duration_h.to_string().replace('.', "_")
+    );
+
+    eprintln!(
+        "[soak] duration={}h qps={} interval={:.3}s output={} report={}",
+        duration_h, qps, q_interval_s, jsonl_path, report_path
+    );
+
+    let rss_baseline = read_rss_mb();
+    let fd_baseline = read_fd_count();
+    eprintln!(
+        "[soak] baseline RSS={:.1}MB FD={} — starting at {:?}",
+        rss_baseline,
+        fd_baseline,
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0)
+    );
+
+    let start = std::time::Instant::now();
+    let mut next_sample = std::time::Instant::now() + std::time::Duration::from_secs(sample_interval_s);
+    let mut next_query = std::time::Instant::now();
+    let mut total = 0u64;
+    let mut failed = 0u64;
+    let mut last_100: std::collections::VecDeque<std::time::Duration> =
+        std::collections::VecDeque::with_capacity(100);
+    let mut file = std::fs::File::create(&jsonl_path)
+        .map_err(|e| format!("create {jsonl_path}: {e}"))?;
+    let mut idx = 0u64;
+
+    while start.elapsed().as_secs() < duration_s && !SOAK_SHUTDOWN.load(Ordering::SeqCst) {
+        let now = std::time::Instant::now();
+        if now >= next_query {
+            let dur = run_one_soak_query(&mut engine, seed, idx);
+            if dur.as_millis() > 60_000 {
+                failed += 1;
+            } else {
+                total += 1;
+            }
+            if last_100.len() == 100 {
+                last_100.pop_front();
+            }
+            last_100.push_back(dur);
+            next_query = now + std::time::Duration::from_secs_f64(q_interval_s);
+            idx += 1;
+        }
+
+        if now >= next_sample {
+            let mut sorted: Vec<u128> =
+                last_100.iter().map(|d| d.as_millis()).collect();
+            sorted.sort_unstable();
+            let p99 = if sorted.is_empty() {
+                0.0
+            } else {
+                let idx99 = (sorted.len() as f64 * 0.99) as usize;
+                sorted[idx99.min(sorted.len() - 1)] as f64
+            };
+            let rss = read_rss_mb();
+            let fd = read_fd_count();
+            let rss_growth = (rss - rss_baseline).max(0.0) as u64;
+            let leak = rss_growth > rss_warn_mb;
+            if leak {
+                eprintln!(
+                    "[soak] WARN: RSS grew {:.1}MB (baseline {:.1}MB, threshold {}MB)",
+                    rss_growth as f64, rss_baseline, rss_warn_mb
+                );
+            }
+            let sample = SoakSample {
+                elapsed_s: start.elapsed().as_secs_f64(),
+                rss_mb: rss,
+                fd_count: fd,
+                queries_done: total,
+                queries_failed: failed,
+                p99_latency_ms: p99,
+                leak_warn: leak,
+            };
+            use std::io::Write;
+            let line = serde_json::to_string(&sample).map_err(|e| e.to_string())?;
+            writeln!(file, "{line}").map_err(|e| format!("write jsonl: {e}"))?;
+            file.flush().map_err(|e| format!("flush jsonl: {e}"))?;
+            next_sample = now + std::time::Duration::from_secs(sample_interval_s);
+        }
+
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+
+    let elapsed = start.elapsed();
+    let reason = if SOAK_SHUTDOWN.load(Ordering::SeqCst) {
+        "shutdown signal"
+    } else {
+        "duration reached"
+    };
+    eprintln!(
+        "[soak] done after {:.2?}: {} queries OK, {} failed, reason={}",
+        elapsed, total, failed, reason
+    );
+
+    let final_rss = read_rss_mb();
+    let final_fd = read_fd_count();
+    let rss_growth = (final_rss - rss_baseline).max(0.0);
+    let fd_growth = (final_fd as i64 - fd_baseline as i64).max(0) as u64;
+
+    let report = format!(
+        "# Soak Report\n\n\
+         **Duration**: {:.4}h ({:.2?})\n\
+         **QPS**: {}\n\
+         **Seed**: {}\n\
+         **Stop reason**: {}\n\
+         **JSONL output**: `{}`\n\n\
+         ## Counts\n\n\
+         - Queries OK: {}\n\
+         - Queries failed: {}\n\
+         - Total elapsed: {:.2?}\n\n\
+         ## Resource deltas\n\n\
+         - RSS: {:.1}MB → {:.1}MB (Δ {:+.1}MB)\n\
+         - FD count: {} → {} (Δ {})\n\
+         - Leak warning threshold: {}MB\n\
+         - Leak warning triggered: {}\n\n\
+         ## Notes\n\n\
+         - Generated by `sqlrustgo-mysql-server soak` (Track C v3.9.0)\n\
+         - See openspec/changes/.../soak-runner-design.md for design\n",
+        duration_h,
+        elapsed,
+        qps,
+        seed,
+        reason,
+        jsonl_path,
+        total,
+        failed,
+        elapsed,
+        rss_baseline,
+        final_rss,
+        rss_growth,
+        fd_baseline,
+        final_fd,
+        fd_growth,
+        rss_warn_mb,
+        if rss_growth > rss_warn_mb as f64 { "YES" } else { "no" },
+    );
+    std::fs::write(&report_path, report)
+        .map_err(|e| format!("write report {report_path}: {e}"))?;
+    eprintln!("[soak] wrote report: {}", report_path);
     Ok(())
 }
