@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# Purpose: DEPRECATED — execution boundary check (replaced by g_correctness_v390)
+# Coverage: P11 (Gate Self-Verification)
+# Verifies: STATUS marker for archival
 # STATUS: DEPRECATED — see scripts/gate/README.md
 # Reason: not invoked by any active gate (audit 2026-06-04)
 # Action:  do not add new callers; restore via git history if needed
