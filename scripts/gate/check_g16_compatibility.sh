@@ -62,43 +62,74 @@ grep -q 'name = "compatibility_harness"' Cargo.toml || {
 }
 echo "  [3/7] ✅ PASS: tests registered in Cargo.toml"
 
-# 4. Main test passes (P14 V8 fix: capture exit code explicitly)
+# 4. Main test passes (V6 fix: capture exit code + grep result properly)
 MAIN_OUTPUT=$(cargo test --test v380_to_v390_full_upgrade_test 2>&1)
 MAIN_EXIT=$?
-MAIN_RESULT=$(echo "$MAIN_OUTPUT" | grep -E "test result.*ok" | head -1 || true)
-if [ $MAIN_EXIT -eq 0 ] && echo "$MAIN_RESULT" | grep -q "ok"; then
-    N_PASSED=$(echo "$MAIN_RESULT" | grep -oE "[0-9]+ passed" | grep -oE "[0-9]+")
-    if [ "$N_PASSED" -lt 18 ]; then
-        echo "  ❌ FAIL: expected ≥18 tests in v380_to_v390_full_upgrade_test, got $N_PASSED"
-        exit 1
-    fi
-    echo "  [4/7] ✅ PASS: $N_PASSED tests pass (≥18)"
-else
-    echo "  ❌ FAIL: v380_to_v390_full_upgrade_test did not pass (cargo exit=$MAIN_EXIT)"
+MAIN_RESULT=$(echo "$MAIN_OUTPUT" | grep -E "test result.*ok" | head -1)
+if [ $MAIN_EXIT -ne 0 ]; then
+    echo "  ❌ FAIL: v380_to_v390_full_upgrade_test failed (cargo exit=$MAIN_EXIT)"
     echo "$MAIN_OUTPUT" | tail -5
     exit 1
 fi
+if [ -z "$MAIN_RESULT" ]; then
+    echo "  ❌ FAIL: v380_to_v390_full_upgrade_test output could not be parsed"
+    echo "$MAIN_OUTPUT" | tail -5
+    exit 1
+fi
+if ! echo "$MAIN_RESULT" | grep -q "ok"; then
+    echo "  ❌ FAIL: v380_to_v390_full_upgrade_test did not pass"
+    echo "$MAIN_OUTPUT" | tail -5
+    exit 1
+fi
+N_PASSED=$(echo "$MAIN_RESULT" | grep -oE "[0-9]+ passed" | grep -oE "[0-9]+")
+if [ "$N_PASSED" -lt 18 ]; then
+    echo "  ❌ FAIL: expected ≥18 tests in v380_to_v390_full_upgrade_test, got $N_PASSED"
+    exit 1
+fi
+echo "  [4/7] ✅ PASS: $N_PASSED tests pass (≥18)"
 
-# 5. Harness tests pass (P14 V8 fix: capture exit code explicitly)
+# 5. Harness tests pass (V6 fix: capture exit code + grep result properly)
 HARNESS_OUTPUT=$(cargo test --test compatibility_harness 2>&1)
 HARNESS_EXIT=$?
-HARNESS_RESULT=$(echo "$HARNESS_OUTPUT" | grep -E "test result.*ok" | head -1 || true)
-if [ $HARNESS_EXIT -eq 0 ] && echo "$HARNESS_RESULT" | grep -q "ok"; then
-    N_HARNESS=$(echo "$HARNESS_RESULT" | grep -oE "[0-9]+ passed" | grep -oE "[0-9]+")
-    echo "  [5/7] ✅ PASS: $N_HARNESS harness tests pass"
-else
-    echo "  ❌ FAIL: compatibility_harness did not pass (cargo exit=$HARNESS_EXIT)"
+HARNESS_RESULT=$(echo "$HARNESS_OUTPUT" | grep -E "test result.*ok" | head -1)
+if [ $HARNESS_EXIT -ne 0 ]; then
+    echo "  ❌ FAIL: compatibility_harness failed (cargo exit=$HARNESS_EXIT)"
     echo "$HARNESS_OUTPUT" | tail -5
     exit 1
 fi
+if [ -z "$HARNESS_RESULT" ]; then
+    echo "  ❌ FAIL: compatibility_harness output could not be parsed"
+    echo "$HARNESS_OUTPUT" | tail -5
+    exit 1
+fi
+if ! echo "$HARNESS_RESULT" | grep -q "ok"; then
+    echo "  ❌ FAIL: compatibility_harness did not pass"
+    echo "$HARNESS_OUTPUT" | tail -5
+    exit 1
+fi
+N_HARNESS=$(echo "$HARNESS_RESULT" | grep -oE "[0-9]+ passed" | grep -oE "[0-9]+")
+echo "  [5/7] ✅ PASS: $N_HARNESS harness tests pass"
 
-# 6. TPC-H 22/22 maintained
-TPCH_PASSED=$(cargo test --test tpch_gate_test 2>&1 | grep -E "test result.*ok" | head -1 || true)
+# 6. TPC-H 22/22 maintained (V6 fix: capture exit code explicitly)
+TPCH_OUTPUT=$(cargo test --test tpch_gate_test 2>&1)
+TPCH_EXIT=$?
+TPCH_PASSED=$(echo "$TPCH_OUTPUT" | grep -E "test result.*ok" | head -1)
+if [ $TPCH_EXIT -ne 0 ]; then
+    echo "  ❌ FAIL: TPC-H gate test failed (exit=$TPCH_EXIT)"
+    echo "$TPCH_OUTPUT" | tail -10
+    exit 1
+fi
+if [ -z "$TPCH_PASSED" ]; then
+    echo "  ❌ FAIL: TPC-H gate output could not be parsed"
+    echo "$TPCH_OUTPUT" | tail -10
+    exit 1
+fi
 if echo "$TPCH_PASSED" | grep -q "ok"; then
     echo "  [6/7] ✅ PASS: TPC-H gate (22/22) maintained"
 else
-    echo "  ⚠️ WARN: TPC-H gate test did not pass cleanly"
-    echo "  [6/7] ✅ PASS (warned): TPC-H gate check skipped"
+    echo "  ❌ FAIL: TPC-H gate test did not pass"
+    echo "$TPCH_OUTPUT" | tail -10
+    exit 1
 fi
 
 # 7. COMPATIBILITY_REPORT.md exists (W12 D3 will populate)

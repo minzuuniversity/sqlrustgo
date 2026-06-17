@@ -76,15 +76,22 @@ check_r1_build() {
   fi
 }
 
-# R2: Test
+# R2: Test (V6 fix: capture cargo exit code properly)
 check_r2_test() {
   echo -n "R2 Test: "
   local start=$(date +%s)
   local output
-  output=$(cargo test --lib -p sqlrustgo-parser -p sqlrustgo-planner -p sqlrustgo-executor -p sqlrustgo-storage -p sqlrustgo-transaction -p sqlrustgo-catalog -- --test-threads=4 2>&1 || true)
+  local exit_code
+  output=$(cargo test --lib -p sqlrustgo-parser -p sqlrustgo-planner -p sqlrustgo-executor -p sqlrustgo-storage -p sqlrustgo-transaction -p sqlrustgo-catalog -- --test-threads=4 2>&1)
+  exit_code=$?
   echo "$output" > "$OUT_DIR/r2_test.log"
   local passed=$(echo "$output" | grep -oE '[0-9]+ passed' | awk '{sum+=$1} END {print sum}')
   local failed=$(echo "$output" | grep -oE '[0-9]+ failed' | awk '{sum+=$1} END {print sum}')
+  if [ "$exit_code" -ne 0 ]; then
+    echo "FAIL (cargo test failed with exit=$exit_code)"
+    R_FAIL_COUNT=$((R_FAIL_COUNT + 1))
+    return 1
+  fi
   if [ "${failed:-0}" -eq 0 ]; then
     echo "PASS (${passed:-0} passed)"
     return 0
@@ -169,13 +176,20 @@ check_r5_coverage() {
   fi
 }
 
-# R6: SQL兼容性 (检查 sql-corpus 通过率)
+# R6: SQL兼容性 (检查 sql-corpus 通过率) (V6 fix: capture cargo exit code properly)
 check_r6_sql_compat() {
   echo -n "R6 SQL Compat: "
   if [ -d "$REPO_ROOT/crates/sql-corpus" ]; then
     local output
-    output=$(cargo test -p sql-corpus 2>&1 || true)
+    local exit_code
+    output=$(cargo test -p sql-corpus 2>&1)
+    exit_code=$?
     echo "$output" > "$OUT_DIR/r6_sql_compat.log"
+    if [ "$exit_code" -ne 0 ]; then
+      echo "FAIL (cargo test failed with exit=$exit_code)"
+      R_FAIL_COUNT=$((R_FAIL_COUNT + 1))
+      return 1
+    fi
     local passed=$(echo "$output" | grep -oE '[0-9]+ passed' | awk '{sum+=$1} END {print sum}')
     local total=$(echo "$output" | grep -oE '[0-9]+ passed|[0-9]+ failed' | awk '{sum+=$1} END {print sum}')
     if [ -n "$passed" ]; then
@@ -270,16 +284,17 @@ echo "============================================"
 echo ""
 
 echo "--- R1-R10 Execution ---"
-check_r1_build || true
-check_r2_test || true
-check_r3_clippy || true
-check_r4_format || true
-check_r5_coverage || true
-check_r6_sql_compat || true
-check_r7_docs || true
-check_r8_corpus_gate || true
-check_r9_perf_gate || true
-check_r10_proof || true
+# V6 fix: removed || true to properly track failures
+check_r1_build; R_FAIL_COUNT=$((R_FAIL_COUNT + $?))
+check_r2_test; R_FAIL_COUNT=$((R_FAIL_COUNT + $?))
+check_r3_clippy; R_FAIL_COUNT=$((R_FAIL_COUNT + $?))
+check_r4_format; R_FAIL_COUNT=$((R_FAIL_COUNT + $?))
+check_r5_coverage; R_FAIL_COUNT=$((R_FAIL_COUNT + $?))
+check_r6_sql_compat; R_FAIL_COUNT=$((R_FAIL_COUNT + $?))
+check_r7_docs; R_FAIL_COUNT=$((R_FAIL_COUNT + $?))
+check_r8_corpus_gate; R_FAIL_COUNT=$((R_FAIL_COUNT + $?))
+check_r9_perf_gate; R_FAIL_COUNT=$((R_FAIL_COUNT + $?))
+check_r10_proof; R_FAIL_COUNT=$((R_FAIL_COUNT + $?))
 
 echo ""
 

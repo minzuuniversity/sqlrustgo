@@ -87,12 +87,14 @@ for i in "${!TEST_NAMES[@]}"; do
     name="${TEST_NAMES[$i]}"
     printf "[%2d/%2d] %-50s " "$((i+1))" "$TOTAL_FILES" "$name"
 
-    # Run the test, capture output
-    OUTPUT=$(timeout 180 cargo test --test "$name" -- --test-threads=1 2>&1 || true)
+    # Run the test, capture output (V6 fix: handle timeout exit 124 separately)
+    OUTPUT=$(timeout 180 cargo test --test "$name" -- --test-threads=1 2>&1)
+    TEST_EXIT=$?
 
     # Parse results
     RESULT_LINE=$(echo "$OUTPUT" | grep "^test result:" | tail -1)
-    if [ -z "$RESULT_LINE" ]; then
+    # Handle timeout (exit 124) - same as no result
+    if [ -z "$RESULT_LINE" ] || [ "$TEST_EXIT" -eq 124 ]; then
         # Check if test is known to be long-running
         if [[ "$name" == *tpch* ]] || [[ "$name" == *long_run* ]]; then
             echo "TIMEOUT (long-running, expected)"

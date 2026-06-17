@@ -20,18 +20,19 @@ fi
 CORPUS_THRESHOLD=80
 
 echo "[1/2] Running SQL Corpus tests..."
-CORPUS_OUTPUT=$(cargo test -p sqlrustgo-sql-corpus -- --nocapture 2>&1 || true)
+CORPUS_OUTPUT=$(cargo test -p sqlrustgo-sql-corpus -- --nocapture 2>&1)
+CORPUS_EXIT=$?
 
 echo "[2/2] Analyzing results..."
 
-if echo "$CORPUS_OUTPUT" | grep -q "test result: ok"; then
+if [ $CORPUS_EXIT -eq 0 ] && echo "$CORPUS_OUTPUT" | grep -q "test result: ok"; then
     echo "SQL Corpus tests: PASS"
     echo ""
     echo "✅ R8: SQL Compatibility Check PASSED"
     echo "   Corpus pass rate >= $CORPUS_THRESHOLD%"
     exit 0
 else
-    echo "SQL Corpus tests: FAIL"
+    echo "SQL Corpus tests: FAIL (exit=$CORPUS_EXIT)"
     echo ""
     echo "❌ R8: SQL Compatibility Check FAILED"
     echo "   SQL Corpus pass rate < $CORPUS_THRESHOLD%"
