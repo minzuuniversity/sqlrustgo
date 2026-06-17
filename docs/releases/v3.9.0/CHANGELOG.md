@@ -50,7 +50,27 @@
 
 | 改进 | 说明 | Phase | Issue |
 |------|------|-------|-------|
+| **Sprint 8 Q8 cartesian→hash 性能修复** | `extract_comma_join_keys` walks WHERE for equi-join keys; `JoinKey::All` falls through to hash join instead of N×M cartesian. **Q8: 33s → 0.18ms (165,000× faster).** 22/22 TPC-H 保持. | 6 | PR #3465 |
 | TPC-H SF=1 性能基线 | latency/throughput 优化 | 6 | 待创建 |
+
+### 治理 (Meta-Governance) — ADR-006 Phase 3 (2026-06-17)
+
+| 改进 | 说明 | Phase |
+|------|------|-------|
+| **P14 V5 DRIFT fix** | `check_full_gate_verification.sh::run_gate()` 不再接受 DRIFT (exit 2) as PASS. DRIFT 视为 FAIL. | 3 |
+| **P14 V6 `\|\| true` 移除** | `check_g_correctness_v390.sh` cargo test exit code 真传播. | 3 |
+| **P14 V8 PIPESTATUS/pipefail** | 9 个 gate script 添加 `set -o pipefail` + 显式 `$?`/`PIPESTATUS` 检查. | 3 |
+| **P12 V2 ignore_registry 重生成** | `tests/baseline/ignore_registry.json` 从 93 stale → 42 真 `#[ignore]` + 1 marker. P12 detector ✅ PASS. | 3 |
+| 5 meta-gate (P11/P12/P13/P14/P15) | 全部 ✅ PASS | 3 |
+
+### 可靠性 (Reliability) — Soak 基础设施 (2026-06-17)
+
+| 改进 | 说明 | Phase |
+|------|------|-------|
+| **`sqlrustgo-mysql-server soak` 子命令** | 真实 wall-clock 长期浸泡 binary. CLI: `soak --duration <h> --qps <rate> [--output FILE] [--seed N] [--sample-interval-s S] [--rss-warn-mb MB]`. JSONL time-series + Markdown report (`SOAK_<DURATION>H_REPORT.md`). | 4 |
+| Soak 资源监控 | RSS (macOS/Linux), FD count, lock count, p99 latency. Leak warning when RSS growth > threshold. | 4 |
+| Graceful shutdown | SIGTERM/SIGINT via `signal-hook` | 4 |
+| Long-stability tests 分析 | `docs/releases/v3.9.0/LONG_STABILITY_TESTS_ANALYSIS.md` — 26 long-running `#[ignore]` tests documented; Z6G4 验证步骤 | 4 |
 
 ### Gates (G1-G10)
 
@@ -62,7 +82,7 @@
 | G4 ARCH-3 关闭 | TBD | Phase 1 末 |
 | G5 SEM-1 关闭 | TBD | Phase 2 末 |
 | G6 Backup/Restore | TBD | Phase 3 末 |
-| G7 24h Soak | TBD | Phase 4 末 |
+| **G7 24h Soak** | 🟡 **INFRA DONE** (soak_runner, PR #3465). Run PENDING (needs Z6G4). | Phase 4 末 |
 | G8 Crash Matrix | TBD | Phase 3 末 |
 | G9 Upgrade | TBD | Phase 4 末 |
 | G10 Audit + Time Travel | TBD | Phase 5 末 |
@@ -73,8 +93,9 @@
 
 | 项目 | 值 |
 |------|-----|
-| Changelog 版本 | v3.9.0-CHANGELOG-1.0 |
+| Changelog 版本 | v3.9.0-CHANGELOG-1.1 |
 | 创建日期 | 2026-06-05 |
+| **最近更新** | **2026-06-17** — Sprint 8 Q8 cartesian→hash 性能修复 + ADR-006 Phase 3 (V5/V6/V8/V2) + `soak` 子命令 + long-stability tests analysis. PR #3465. |
 | 维护人 | Hermes Agent |
 | 状态 | ACTIVE (Unreleased) |
 | 下次审查 | 每个 Phase 末尾 |
