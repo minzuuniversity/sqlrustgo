@@ -14,10 +14,137 @@ use sqlrustgo_types::{SqlError, Value};
 use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::net::{SocketAddr, TcpListener, TcpStream};
+use std::sync::atomic::{AtomicI64, AtomicU64, Ordering};
 use std::sync::{Arc, RwLock};
 use std::thread;
+use std::time::Duration;
 
 const SERVER_VERSION: &str = "8.0.33-SQLRustGo";
+
+/// Global connection counter for diagnostics. Incremented when a
+/// connection is accepted, decremented when it closes.
+pub static ACTIVE_CONNECTIONS: AtomicI64 = AtomicI64::new(0);
+pub static TOTAL_CONNECTIONS_ACCEPTED: AtomicU64 = AtomicU64::new(0);
+pub static TOTAL_QUERIES_SERVED: AtomicU64 = AtomicU64::new(0);
+pub static TOTAL_QUERY_ERRORS: AtomicU64 = AtomicU64::new(0);
+
+/// Spawn a background thread that periodically logs resource usage
+/// (RSS, FD count, thread count) to the tracing log. This is critical
+/// for diagnosing server crashes where the process disappears silently.
+pub fn spawn_resource_monitor(interval_s: u64) {
+    // Capture the main process PID at spawn time. Subsequent reads
+    // happen in a child thread, but we want the main process metrics.
+    let main_pid = std::process::id();
+    thread::Builder::new()
+        .name("sqlrustgo-resource-monitor".to_string())
+        .spawn(move || {
+            loop {
+                std::thread::sleep(Duration::from_secs(interval_s));
+                let active = ACTIVE_CONNECTIONS.load(Ordering::Relaxed);
+                let total_acc = TOTAL_CONNECTIONS_ACCEPTED.load(Ordering::Relaxed);
+                let total_q = TOTAL_QUERIES_SERVED.load(Ordering::Relaxed);
+                let total_err = TOTAL_QUERY_ERRORS.load(Ordering::Relaxed);
+
+                // Read /proc/<pid>/status for RSS
+                let (rss_kb, fd_count) = read_proc_status(main_pid);
+
+                // Check FD threshold
+                let (soft_limit, _hard_limit) = read_fd_limit();
+                let fd_pct = if soft_limit > 0 {
+                    (fd_count as f64 / soft_limit as f64) * 100.0
+                } else {
+                    0.0
+                };
+                if fd_pct > 80.0 {
+                    tracing::warn!(
+                        "FD usage high: {}/{} ({:.1}%) — approaching limit",
+                        fd_count, soft_limit, fd_pct
+                    );
+                }
+
+                tracing::info!(
+                    "RESOURCE_MONITOR pid={} rss_mb={:.1} fd={}/{} ({:.1}%) threads={} active_conn={} total_acc={} total_q={} total_err={}",
+                    main_pid,
+                    rss_kb as f64 / 1024.0,
+                    fd_count,
+                    soft_limit,
+                    fd_pct,
+                    list_threads(),
+                    active,
+                    total_acc,
+                    total_q,
+                    total_err,
+                );
+            }
+        })
+        .ok();
+}
+
+fn read_proc_status(pid: u32) -> (u64, usize) {
+    let mut rss_kb = 0u64;
+    let mut fd_count = 0usize;
+
+    // Linux: read /proc/<pid>/status
+    if let Ok(content) = std::fs::read_to_string(format!("/proc/{}/status", pid)) {
+        for line in content.lines() {
+            if line.starts_with("VmRSS:") {
+                if let Some(v) = line.split_whitespace().nth(1) {
+                    rss_kb = v.parse().unwrap_or(0);
+                }
+            }
+        }
+    }
+    if let Ok(entries) = std::fs::read_dir(format!("/proc/{}/fd", pid)) {
+        fd_count = entries.count();
+        return (rss_kb, fd_count);
+    }
+
+    // macOS / BSD fallback: use ps to get RSS
+    if let Ok(out) = std::process::Command::new("ps")
+        .args(["-o", "rss=", "-p", &pid.to_string()])
+        .output()
+    {
+        if out.status.success() {
+            if let Ok(s) = String::from_utf8(out.stdout) {
+                // RSS in KB on macOS ps
+                rss_kb = s.trim().parse().unwrap_or(0);
+            }
+        }
+    }
+    // macOS: count file descriptors via /dev/fd
+    if let Ok(entries) = std::fs::read_dir("/dev/fd") {
+        fd_count = entries.count().saturating_sub(1); // subtract fd for read_dir itself
+    }
+    (rss_kb, fd_count)
+}
+
+fn read_fd_limit() -> (usize, usize) {
+    let mut soft = 0usize;
+    let mut hard = 0usize;
+    if let Ok(out) = std::process::Command::new("sh")
+        .arg("-c")
+        .arg(format!("ulimit -Sn && ulimit -Hn"))
+        .output()
+    {
+        let s = String::from_utf8_lossy(&out.stdout);
+        let mut it = s.lines();
+        if let Some(line) = it.next() {
+            soft = line.trim().parse().unwrap_or(0);
+        }
+        if let Some(line) = it.next() {
+            hard = line.trim().parse().unwrap_or(0);
+        }
+    }
+    (soft, hard)
+}
+
+fn list_threads() -> usize {
+    let mut count = 0;
+    if let Ok(entries) = std::fs::read_dir("/proc/self/task") {
+        count = entries.count();
+    }
+    count
+}
 #[allow(dead_code)]
 const AUTH_PLUGIN: &str = "mysql_native_password";
 const SCRAMBLE_LENGTH: usize = 20;
@@ -2356,6 +2483,12 @@ fn handle_connection(
     tls_config: Arc<rustls::ServerConfig>,
     user_store: UserStore,
 ) {
+    ACTIVE_CONNECTIONS.fetch_add(1, Ordering::Relaxed);
+    TOTAL_CONNECTIONS_ACCEPTED.fetch_add(1, Ordering::Relaxed);
+    let _guard = scopeguard::guard((), |_| {
+        // Always decrement on exit, even on panic
+        ACTIVE_CONNECTIONS.fetch_sub(1, Ordering::Relaxed);
+    });
     stream
         .set_read_timeout(Some(std::time::Duration::from_secs(600)))
         .ok();
@@ -2576,6 +2709,11 @@ pub fn run_server_v2(
 /// accept loop starts.
 pub fn run_server_with_listener(listener: TcpListener) -> MySqlResult<()> {
     let shutdown = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    // Spawn the resource monitor (1 sample per 30s by default).
+    // The monitor writes periodic "RESOURCE_MONITOR" log lines that
+    // capture RSS, FD, thread count, and connection counters. This is
+    // the primary diagnostic tool for crash analysis.
+    spawn_resource_monitor(30);
     run_server_with_listener_and_shutdown(listener, shutdown)
 }
 
