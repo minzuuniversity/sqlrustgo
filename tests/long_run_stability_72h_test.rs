@@ -3,7 +3,6 @@ use common::tpch_wire_harness::start_sf01;
 use std::time::Instant;
 
 #[test]
-#[ignore]
 fn long_run_stability_72h_smoke() {
     let duration_secs = 5u64;
     let mut client = start_sf01();
