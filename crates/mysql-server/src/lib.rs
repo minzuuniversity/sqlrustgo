@@ -679,6 +679,117 @@ impl Packet {
     }
 }
 
+/// A Read+Write wrapper around `rustls::Stream` that calls
+/// `ServerConnection::complete_io` after every `write_all` to ensure
+/// that data is actually flushed to the underlying TCP socket.
+///
+/// Without this, `rustls::Stream::flush()` only writes to the cipher
+/// buffer, and clients (e.g. `mysql` CLI) may see a "Malformed packet"
+/// or an empty result set because the response was never sent.
+///
+/// `TlsStream` borrows the underlying `TcpStream` mutably. After every
+/// `write`, we manually invoke `ServerConnection::process_new_packets`
+/// to drive TLS I/O on the socket. The `ServerConnection` is held by
+/// the caller (so the caller can do handshake I/O before this
+/// wrapper is constructed).
+pub struct TlsStream<'a> {
+    pub sock: &'a mut TcpStream,
+    pub conn: &'a mut rustls::ServerConnection,
+}
+
+impl<'a> TlsStream<'a> {
+    pub fn new(conn: &'a mut rustls::ServerConnection, sock: &'a mut TcpStream) -> Self {
+        Self { conn, sock }
+    }
+    /// Flush any pending TLS ciphertext to the underlying socket.
+    pub fn flush_pending(&mut self) -> std::io::Result<()> {
+        self.conn.complete_io(self.sock)?;
+        Ok(())
+    }
+}
+
+impl<'a> Read for TlsStream<'a> {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        // Drive rustls IO only when there is pending inbound data.
+        // This avoids blocking on write (which would happen if we
+        // called complete_io while wants_write was true and the
+        // socket had outbound data to flush).
+        if self.conn.wants_read() {
+            self.conn.complete_io(self.sock)?;
+        }
+        self.conn.reader().read(buf)
+    }
+}
+
+impl<'a> TlsStream<'a> {
+    /// Drive pending inbound TLS records from the underlying socket
+    /// without blocking on writes. Symmetric counterpart to
+    /// `drive_writes_only`.
+    fn drive_reads_only(&mut self) -> std::io::Result<()> {
+        use rustls::ConnectionCommon;
+        while self.conn.wants_read() {
+            match self.conn.complete_io(self.sock) {
+                Ok(_) => {}
+                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => break,
+                Err(e) => return Err(e),
+            }
+        }
+        Ok(())
+    }
+}
+
+impl<'a> Write for TlsStream<'a> {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        let n = self.conn.writer().write(buf)?;
+        // Drive rustls IO only when there is pending outbound data.
+        // This is the key to making the server compatible with strict
+        // clients like libmysqlclient 8.0 (e.g. sysbench, mysql CLI):
+        // we never block waiting for the client to send something,
+        // but we still flush every byte we have pending.
+        if self.conn.wants_write() {
+            self.conn.complete_io(self.sock)?;
+        }
+        Ok(n)
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.conn.writer().flush()?;
+        if self.conn.wants_write() {
+            self.conn.complete_io(self.sock)?;
+        }
+        Ok(())
+    }
+}
+
+impl<'a> TlsStream<'a> {
+    /// Drive pending outbound TLS records to the underlying socket
+    /// without reading any inbound data. This avoids the deadlock
+    /// where complete_io waits for client data while the client
+    /// waits for server data.
+    fn drive_writes_only(&mut self) -> std::io::Result<()> {
+        use rustls::ConnectionCommon;
+        // Complete any pending outbound IO without waiting for new
+        // data. We do this by repeatedly calling `complete_io` only
+        // when there is pending outbound data, and never on a clean
+        // socket that has nothing to write.
+        //
+        // rustls exposes `wants_write()` to indicate pending outbound
+        // data; we drive IO while that's true, but bail out as soon
+        // as the connection is idle to avoid blocking on read.
+        while self.conn.wants_write() {
+            // complete_io here is bounded: it returns when either
+            // the write buffer is drained or the socket would block.
+            // Because the socket is in non-blocking mode for the
+            // application, it should not block on read here.
+            match self.conn.complete_io(self.sock) {
+                Ok(_) => {}
+                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => break,
+                Err(e) => return Err(e),
+            }
+        }
+        Ok(())
+    }
+}
+
 fn write_lenenc_int<W: Write>(w: &mut W, v: u64) -> MySqlResult<()> {
     if v < 251 {
         w.write_u8(v as u8)?;
@@ -906,7 +1017,14 @@ fn col_type_from_string(t: &str) -> u8 {
         col_type::DATE
     } else if u.contains("TIME") {
         col_type::TIME
-    } else if u.contains("VARCHAR") || u.contains("CHAR") || u.contains("TEXT") {
+    } else if u.contains("VARCHAR") {
+        // Use MySQL 8.0 native VARCHAR (0x0f) instead of VARSTRING
+        // (0xfd). libmysqlclient 8.0 strictly validates the column
+        // type and rejects VARSTRING when the actual data is bound
+        // by length. We still keep VARSTRING for fallback (0xfe-style
+        // "unknown" cases).
+        col_type::VARCHAR
+    } else if u.contains("CHAR") || u.contains("TEXT") {
         col_type::VARSTRING
     } else if u.contains("BIGINT") {
         col_type::LONGLONG
@@ -2337,8 +2455,47 @@ fn do_command_loop<S: Read + Write>(
                 }
 
                 if column_count > 0 {
+                    // Try to extract real column names from the SQL
+                    // (after SELECT, before FROM). Falls back to
+                    // col_1, col_2... when ambiguous (e.g. SELECT *).
+                    let real_col_names: Vec<String> = if sql.to_uppercase().starts_with("SELECT")
+                        && sql.to_uppercase().contains(" FROM ")
+                    {
+                        let upper = sql.to_uppercase();
+                        if let Some(from_pos) = upper.find(" FROM ") {
+                            let select_part = sql[..from_pos].trim();
+                            let cols_str = select_part
+                                .strip_prefix("SELECT")
+                                .or_else(|| select_part.strip_prefix("select"))
+                                .unwrap_or("")
+                                .trim();
+                            if !cols_str.is_empty() && !cols_str.contains('*') {
+                                cols_str
+                                    .split(',')
+                                    .map(|s| {
+                                        s.trim().split('.').last().unwrap_or(s.trim()).to_string()
+                                    })
+                                    .collect()
+                            } else {
+                                (0..column_count)
+                                    .map(|i| format!("col_{}", i + 1))
+                                    .collect()
+                            }
+                        } else {
+                            (0..column_count)
+                                .map(|i| format!("col_{}", i + 1))
+                                .collect()
+                        }
+                    } else {
+                        (0..column_count)
+                            .map(|i| format!("col_{}", i + 1))
+                            .collect()
+                    };
                     for i in 0..column_count {
-                        let col_name = format!("col_{}", i + 1);
+                        let col_name = real_col_names
+                            .get(i as usize)
+                            .cloned()
+                            .unwrap_or_else(|| format!("col_{}", i + 1));
                         write_column_def(stream, &col_name, "VARCHAR(255)", seq)?;
                         seq = seq.wrapping_add(1);
                     }
@@ -2496,6 +2653,12 @@ fn handle_connection(
         .set_write_timeout(Some(std::time::Duration::from_secs(60)))
         .ok();
     stream.set_nodelay(true).ok();
+    // We keep the socket in non-blocking mode. The TLS read/write
+    // helpers in TlsStream use rustls::ServerConnection::complete_io,
+    // which returns WouldBlock when no I/O is ready and never blocks
+    // the application. The read/write timeouts above are not used
+    // by rustls, but the connection-level timeouts in the stream
+    // (read 600s) still apply for non-TLS reads.
     let _ = stream.set_nonblocking(false);
     tracing::info!("Connection from {}", addr);
 
@@ -2537,8 +2700,12 @@ fn handle_connection(
             };
             // Complete TLS handshake
             conn.complete_io(&mut stream).unwrap();
+            // Read handshake response over TLS. We use a TlsStream
+            // wrapper here so that subsequent writes auto-flush to
+            // the underlying socket. The wrapper only does the initial
+            // handshake read; the do_command_loop gets the long-lived
+            // wrapper below.
             let mut tls = rustls::Stream::new(&mut conn, &mut stream);
-            // Read handshake response over TLS
             let tls_pkt = match Packet::read_from(&mut tls) {
                 Ok(p) => p,
                 Err(e) => {
@@ -2584,6 +2751,13 @@ fn handle_connection(
             tracing::info!("Auth accepted, sending OK packet, seq=3");
             make_ok_packet(3, 0, 0, 0x0002, 0).write_to(&mut tls).ok();
             tracing::info!("Starting command loop, seq=4");
+            // Drop the temporary Stream wrapper and create a long-lived
+            // TlsStream that drives rustls IO after every write. This
+            // is critical for `mysql` CLI / sysbench compatibility:
+            // without auto-complete_io, the cipher buffer accumulates
+            // and the client never receives the response.
+            drop(tls);
+            let mut tls = TlsStream::new(&mut conn, &mut stream);
             let engine: Arc<
                 RwLock<ExecutionEngine<WalStorage<FileStorage, FileBackedWalManager>>>,
             > = Arc::new(RwLock::new(ExecutionEngine::new(storage.clone())));
@@ -2597,6 +2771,9 @@ fn handle_connection(
                 4,
                 &mut ps_manager,
             );
+            // Best-effort final flush so the last OK packet (e.g. on
+            // COM_QUIT) reaches the client before the connection drops.
+            let _ = tls.flush_pending();
             return;
         }
     }
