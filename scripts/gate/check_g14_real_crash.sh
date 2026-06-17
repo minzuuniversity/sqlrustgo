@@ -63,28 +63,37 @@ REPORT="docs/releases/v3.9.0/perf/CRASH_TEST_REPORT.md"
 }
 echo "  [2/7] ✅ PASS: $REPORT present"
 
-# 3. G8 Crash Matrix gate (unit-level)
+# 3. G8 Crash Matrix gate (unit-level) (V6 fix: capture exit code properly)
 G8_OUTPUT=$(bash scripts/gate/check_p12_crash_test.sh 2>&1)
 G8_EXIT=$?
 G8_LAST=$(echo "$G8_OUTPUT" | tail -3)
-if echo "$G8_LAST" | grep -q "PASS"; then
-    echo "  [3/7] ✅ PASS: G8 Crash Matrix (mock) gate PASS"
-else
-    echo "  ❌ FAIL: G8 Crash Matrix gate did not pass"
+if [ $G8_EXIT -ne 0 ]; then
+    echo "  ❌ FAIL: G8 Crash Matrix gate script failed (exit=$G8_EXIT)"
     echo "$G8_LAST"
     exit 1
 fi
+if ! echo "$G8_LAST" | grep -q "PASS"; then
+    echo "  ❌ FAIL: G8 Crash Matrix gate did not produce PASS"
+    echo "$G8_LAST"
+    exit 1
+fi
+echo "  [3/7] ✅ PASS: G8 Crash Matrix (mock) gate PASS"
 
-# 4. TPC-H 22/22 维持 (P14 V8 fix: capture exit code explicitly)
+# 4. TPC-H 22/22 维持 (V6 fix: capture exit code properly)
 TPCH_OUTPUT=$(cargo test --test tpch_gate_test 2>&1)
 TPCH_EXIT=$?
-TPCH_PASSED=$(echo "$TPCH_OUTPUT" | grep -E "test result.*ok" | head -1 || true)
-if [ $TPCH_EXIT -eq 0 ] && echo "$TPCH_PASSED" | grep -q "ok"; then
-    echo "  [4/7] ✅ PASS: TPC-H gate (22/22) maintained"
-else
-    echo "  ⚠️ WARN: TPC-H gate test did not pass cleanly (exit=$TPCH_EXIT)"
-    echo "  [4/7] ✅ PASS (warned): TPC-H gate check skipped"
+TPCH_PASSED=$(echo "$TPCH_OUTPUT" | grep -E "test result.*ok" | head -1)
+if [ $TPCH_EXIT -ne 0 ]; then
+    echo "  ❌ FAIL: TPC-H gate test failed (cargo exit=$TPCH_EXIT)"
+    echo "$TPCH_OUTPUT" | tail -5
+    exit 1
 fi
+if [ -z "$TPCH_PASSED" ] || ! echo "$TPCH_PASSED" | grep -q "ok"; then
+    echo "  ❌ FAIL: TPC-H gate output could not be parsed"
+    echo "$TPCH_OUTPUT" | tail -5
+    exit 1
+fi
+echo "  [4/7] ✅ PASS: TPC-H gate (22/22) maintained"
 
 # 5. Orchestrator has all 8 kinds
 KINDS_IN_ORCH=$(grep -E "^\s+[a-z_]+\)" scripts/crash/run_real_crash_test.sh | grep -oE "[a-z_]+\)" | grep -v "case" | wc -l)
