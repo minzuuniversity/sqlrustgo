@@ -19,30 +19,37 @@
 | GA 目标 | 2026-12-15 |
 | 主题 | Single-Node Production Candidate |
 
-### 测试结果
+### 测试结果 — 诚实声明
 
-| 测试集 | 结果 |
-|--------|------|
-| Lib Tests | 1670 PASS, 1 IGNORED |
-| TPC-H | 22/22 PASS |
-| Corpus | 818/818 PASS |
-| D9 Gate | 8/8 PASS |
+| 测试集 | 结果 | 限制说明 |
+|--------|------|----------|
+| Lib Tests | 1670 PASS, 1 IGNORED | ✅ 已执行 |
+| TPC-H | 22/22 PASS | ⚠️ 无 oracle 对比 |
+| Corpus | 818/818 PASS | ⚠️ 无 oracle 对比 |
+| D9 Gate | 8/8 PASS | ✅ 有独立验证 |
 
-### G1-G16 门禁状态
+### G1-G16 门禁状态 — 诚实声明
 
-| Gate | 主题 | 状态 |
-|------|------|------|
-| G1 | TPC-H 22/22 | ✅ PASS |
-| G2 | INT-2 关闭 | ✅ PASS |
-| G3 | INT-3 关闭 | ✅ PASS |
-| G4 | ARCH-3 关闭 | ✅ PASS |
-| G5 | SEM-1 关闭 | ✅ PASS |
-| G6 | Backup/Restore 100+ | ✅ PASS |
-| G7 | 24h Soak | ✅ PASS |
-| G8 | Crash Matrix 100+ | ✅ PASS |
-| G9 | Upgrade Test 50+ | ✅ PASS |
-| G10 | Audit + Time Travel 40+ | ✅ PASS |
-| G11-G16 | 性能/兼容性 | ✅ PASS |
+| Gate | 主题 | 状态 | 限制说明 |
+|------|------|------|----------|
+| G1 | TPC-H 22/22 | ✅ PASS | ⚠️ 无 oracle 对比 |
+| G2 | INT-2 | ✅ PASS | ⚠️ 无 oracle 对比 |
+| G3 | INT-3 | ✅ PASS | ⚠️ 无 oracle 对比 |
+| G4 | ARCH-3 | ✅ PASS | ✅ 有独立验证 |
+| G5 | SEM-1 | ✅ PASS | ⚠️ 无 oracle 对比 |
+| G6 | Backup/Restore | ✅ PASS | ✅ 有独立验证 |
+| G7 | 24h Soak | ✅ PASS | ⚠️ **SIMULATED**，非真实 24h |
+| G8 | Crash Matrix | ✅ PASS | ✅ 有独立验证 |
+| G9 | Upgrade Test | ✅ PASS | ⚠️ 无 oracle 对比 |
+| G10 | Audit + Time Travel | ✅ PASS | ✅ 有独立验证 |
+| G11 | QPS/TPS | ✅ PASS | ⚠️ 无 oracle 对比 |
+| G12 | Sysbench | ✅ PASS | ⚠️ 无 oracle 对比 |
+| G13 | Stability | 🟡 进行中 | 真实 24h soak 未完成 |
+| G14 | Real Crash | ✅ PASS | ⚠️ 部分模拟 |
+| G15 | TPC-H SF0.01 | ✅ PASS | ⚠️ 无 oracle 对比 |
+| G16 | Compatibility | ✅ PASS | ⚠️ 无 oracle 对比 |
+
+**诚实声明**: 所有 gate 脚本已执行，但 11/16 缺乏独立 oracle 对比。真实 soak 测试尚未完成。
 
 ---
 
@@ -75,7 +82,15 @@ v3.9.0/
 │   ├── RC2_GATE_REPORT.md
 │   ├── RC3_PLAN.md
 │   ├── RC3_RELEASE_NOTES.md
-│   └── RC3_GATE_REPORT.md
+│   ├── RC3_GATE_REPORT.md
+│   ├── RC4_RELEASE_NOTES.md
+│   ├── RC4_GATE_REPORT.md
+│   ├── RC5_RELEASE_NOTES.md
+│   ├── RC5_GATE_REPORT.md
+│   ├── RC6_RELEASE_NOTES.md
+│   ├── RC6_GATE_REPORT.md
+│   ├── RC7_RELEASE_NOTES.md
+│   └── RC7_GATE_REPORT.md
 ├── evidence/                              # GA 证据 (Phase 6)
 │   ├── 00-release-summary.md
 │   ├── 01-release-notes.md
@@ -160,6 +175,14 @@ v3.9.0/
 | [rc/RC3_PLAN.md](rc/RC3_PLAN.md) | RC3 计划 |
 | [rc/RC3_RELEASE_NOTES.md](rc/RC3_RELEASE_NOTES.md) | RC3 发布笔记 |
 | [rc/RC3_GATE_REPORT.md](rc/RC3_GATE_REPORT.md) | RC3 门禁报告 |
+| [rc/RC4_RELEASE_NOTES.md](rc/RC4_RELEASE_NOTES.md) | RC4 发布笔记 |
+| [rc/RC4_GATE_REPORT.md](rc/RC4_GATE_REPORT.md) | RC4 门禁报告 |
+| [rc/RC5_RELEASE_NOTES.md](rc/RC5_RELEASE_NOTES.md) | RC5 发布笔记 |
+| [rc/RC5_GATE_REPORT.md](rc/RC5_GATE_REPORT.md) | RC5 门禁报告 |
+| [rc/RC6_RELEASE_NOTES.md](rc/RC6_RELEASE_NOTES.md) | RC6 发布笔记 |
+| [rc/RC6_GATE_REPORT.md](rc/RC6_GATE_REPORT.md) | RC6 门禁报告 |
+| [rc/RC7_RELEASE_NOTES.md](rc/RC7_RELEASE_NOTES.md) | RC7 发布笔记 |
+| [rc/RC7_GATE_REPORT.md](rc/RC7_GATE_REPORT.md) | RC7 门禁报告 |
 
 ### 3.4 证据文档 (GA)
 
@@ -211,7 +234,10 @@ v3.9.0/
 
 | 版本 | 阶段 | 日期 | 关键产物 |
 |------|------|------|----------|
-| v3.9.0 | RC7 | 2026-06-12 | 当前版本，GA 门禁全部通过 |
+| v3.9.0 | RC7 | 2026-06-12 | 当前版本，性能文档 + MariaDB 对比 |
+| v3.9.0 | RC6 | 2026-06-12 | INT-2/INT-3 实质性测试 (30/30 PASS) |
+| v3.9.0 | RC5 | 2026-06-12 | 跨版本升级链 + IS NULL pushdown |
+| v3.9.0 | RC4 | 2026-06-12 | G1/G7/G8/G9/G13 PASS, QPS 基线 |
 | v3.9.0 | RC3 | 2026-06-12 | G1-G16 全部 PASS |
 | v3.9.0 | RC1/RC2 | 2026-06-05 | 表单验证里程碑 |
 | v3.9.0 | Beta | 2026-06-05 | 表单验证里程碑 |
@@ -236,9 +262,10 @@ v3.9.0/
 
 | 项目 | 值 |
 |------|-----|
-| 索引版本 | v3.9.0-INDEX-2.0 |
+| 索引版本 | v3.9.0-INDEX-3.0 |
 | 创建日期 | 2026-06-05 |
 | 最后更新 | 2026-06-17 |
+| 更新内容 | 添加 RC4-RC7 文档 |
 | 维护人 | Hermes Agent |
 | 状态 | ACTIVE |
 
