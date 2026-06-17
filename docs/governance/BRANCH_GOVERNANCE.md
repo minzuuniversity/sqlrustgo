@@ -17,25 +17,26 @@
 - ✅ 禁止强制 push
 - ✅ 禁止删除分支
 
-### 2.2 GitHub 设置方法
+### 2.2 Gitea 分支保护设置方法
 
 1. **进入仓库设置**：
-   - 打开 GitHub 仓库
-   - 点击 Settings
-   - 左侧选择 Branches
-   - 点击 Add branch protection rule
+   - 打开 Gitea 仓库 (例: http://192.168.0.252:3000/openclaw/sqlrustgo)
+   - 点击 Settings (设置)
+   - 左侧选择 Branch Settings (分支设置)
+   - 点击 Add Branch Protection (添加分支保护)
 
 2. **创建保护规则**：
 
    | 分支模式 | 保护选项 |
    |---------|----------|
    | `main` | ✅ Require PR<br>✅ Require review (1)<br>✅ Require status check<br>✅ Disable force push<br>✅ Disable delete |
-   | `alpha` | ✅ Require PR<br>✅ Require review (1)<br>✅ Require status check<br>✅ Disable force push<br>✅ Disable delete |
-   | `beta` | ✅ Require PR<br>✅ Require review (1)<br>✅ Require status check<br>✅ Disable force push<br>✅ Disable delete |
-   | `rc` | ✅ Require PR<br>✅ Require review (1)<br>✅ Require status check<br>✅ Disable force push<br>✅ Disable delete |
+   | `develop/*` | ✅ Require PR<br>✅ Require review (1)<br>✅ Require status check<br>✅ Disable force push<br>✅ Disable delete |
+   | `rc/*` | ✅ Require PR<br>✅ Require review (1)<br>✅ Require status check<br>✅ Disable force push<br>✅ Disable delete |
    | `release/*` | ✅ Require PR<br>✅ Require review (1)<br>✅ Require status check<br>✅ Disable force push<br>✅ Disable delete |
+   | `ga/*` | ✅ Require PR<br>✅ Require review (1)<br>✅ Require status check<br>✅ Disable force push<br>✅ Disable delete |
    | `feature/*` | ❌ 不强制 review |
    | `docs/*` | ❌ 不强制 review |
+   | `bugfix/*` | ❌ 不强制 review |
    | `hotfix/*` | ❌ 不强制 review |
 
 3. **推荐开启的选项**：
@@ -144,13 +145,15 @@ git push origin --delete old-name
 | 分支 | 稳定级别 | 作用 |
 |------|----------|------|
 | `main` | ⭐⭐⭐⭐⭐ | 最终发布版本 |
-| `rc` | ⭐⭐⭐⭐ | Release Candidate |
-| `beta` | ⭐⭐⭐ | 集成测试 |
-| `alpha` | ⭐⭐ | 内部开发集成 |
+| `release/vX.Y.Z` | ⭐⭐⭐⭐ | 发布准备 |
+| `rc/vX.Y.Z` | ⭐⭐⭐⭐ | Release Candidate |
+| `develop/vX.Y.Z` | ⭐⭐⭐ | 开发主线 |
+| `alpha/vX.Y.Z` | ⭐⭐ | Alpha 阶段 |
+| `beta/vX.Y.Z` | ⭐⭐⭐ | Beta 阶段 |
 
 ### 5.3 功能开发分支
 
-所有功能必须从 `beta` 创建分支，格式：
+所有功能必须从 `develop/vX.Y.Z` 创建分支，格式：
 
 ```
 feature/<module>
@@ -170,38 +173,37 @@ docs/<topic>
 #### 5.4.1 日常开发阶段
 
 ```
-beta
+develop/vX.Y.Z
    ↓
 feature/*
    ↓ PR + Review
-beta
+develop/vX.Y.Z
 ```
 
 **规则**：
-- 禁止直接 push beta
+- 禁止直接 push develop/vX.Y.Z
 - 必须通过 PR
 - 至少 1 个 review
 - CI 必须通过
 
 #### 5.4.2 冻结版本（进入 RC）
 
-当 beta 达到稳定程度：
+当 develop/vX.Y.Z 达到稳定程度：
 
 ```
-beta → rc/v1.0.0-1 → rc
+develop/vX.Y.Z → rc/vX.Y.Z
 ```
 
 **操作**：
 ```bash
-git checkout beta
-git checkout -b rc/v1.0.0-1
-git push origin rc/v1.0.0-1
-# 然后合并到 rc 分支
+git checkout develop/vX.Y.Z
+git checkout -b rc/vX.Y.Z
+git push origin rc/vX.Y.Z
 ```
 
 **此时**：
-- beta 继续开发 v1.1
-- rc 只允许 bugfix
+- develop/vX.Y.Z 继续开发 vX.Y.Z+1
+- rc/vX.Y.Z 只允许 bugfix
 
 #### 5.4.3 RC 修复阶段
 
@@ -209,22 +211,22 @@ git push origin rc/v1.0.0-1
 
 #### 5.4.4 正式发布
 
-当 rc 稳定：
+当 rc/vX.Y.Z 稳定：
 
 ```
-rc → release/v1.0.0 → main
+rc/vX.Y.Z → release/vX.Y.Z → main
 ```
 
 **操作流程**：
 ```bash
 # 从 rc 创建 release 分支
-git checkout rc
-git checkout -b release/v1.0.0
-git push origin release/v1.0.0
+git checkout rc/vX.Y.Z
+git checkout -b release/vX.Y.Z
+git push origin release/vX.Y.Z
 # PR 到 main
 # 打 tag
-git tag v1.0.0
-git push origin v1.0.0
+git tag vX.Y.Z
+git push origin vX.Y.Z
 ```
 
 ### 5.5 Hotfix 流程
@@ -238,30 +240,30 @@ hotfix/*
    ↓ PR
 main
    ↓ 回流
-rc
+rc/vX.Y.Z
    ↓ 回流
-beta
+develop/vX.Y.Z
 ```
 
 **规则**：
 - 必须从 main 创建 hotfix 分支
 - 修复后 PR 到 main
-- 必须回流到 rc 和 beta，否则会产生分叉灾难
+- 必须回流到 rc 和 develop，否则会产生分叉灾难
 
 ### 5.6 完整流程图
 
 ```
 feature/* ─┐
-bugfix/*  ─┼──→ beta ───→ rc ───→ release/v1.0.0 ───→ main
+bugfix/*  ─┼──→ develop/vX.Y.Z ───→ rc/vX.Y.Z ───→ release/vX.Y.Z ───→ main
 experiment ┘
 
 main hotfix
    ↓
 hotfix/* → main
              ↓
-            rc
+            rc/vX.Y.Z
              ↓
-            beta
+            develop/vX.Y.Z
 ```
 
 ## 6. 版本推进模型
@@ -271,7 +273,7 @@ hotfix/* → main
 基于分层稳定性推进模型的版本生命周期：
 
 ```
-feature/* → beta → rc → release/* → main
+feature/* → develop/vX.Y.Z → rc/vX.Y.Z → release/vX.Y.Z → main
 ```
 
 ### 6.2 版本号策略
@@ -300,13 +302,13 @@ feature/* → beta → rc → release/* → main
 
 ### 6.4 版本并行策略
 
-- **v1.0 系列**：在 `rc` 分支维护
-- **v1.1 系列**：在 `beta` 分支开发
-- **v2.0 系列**：在 `alpha` 分支探索
+- **v3.9.0 系列**：在 `rc/v3.9.0` 分支维护
+- **v3.10.0 系列**：在 `develop/v3.10.0` 分支开发
+- **v4.0 系列**：在 `alpha/v4.0.0` 分支探索
 
 ### 6.5 版本回溯策略
 
-- **Hotfix**：从 `main` 创建，修复后回流到所有相关分支
+- **Hotfix**：从 `main` 创建，修复后回流到 `rc/vX.Y.Z` 和 `develop/vX.Y.Z`
 - **Bugfix**：从对应版本分支创建，修复后同步到后续版本分支
 
 ## 7. 适配 AI / 多 Agent 协作
@@ -328,7 +330,7 @@ feature/* → beta → rc → release/* → main
    - 确保关键模块有专人审查
 
 3. **自动化工具**：
-   - GitHub Actions 自动检查 PR 合规性
+   - Gitea Actions 自动检查 PR 合规性
    - 禁止 PR 作者给自己 approve 的 bot
    - 自动标记需要审查的 PR
 
@@ -382,7 +384,7 @@ feature/* → beta → rc → release/* → main
 ### 7.2 自动化工具
 
 - **PR 检查**：自动检查 PR 标题、描述、提交信息
-- **分支保护**：通过 GitHub API 自动配置分支保护规则
+- **分支保护**：通过 Gitea API 自动配置分支保护规则
 - **版本管理**：自动生成版本号和发布说明
 - **代码质量**：自动运行代码风格检查和静态分析
 
@@ -541,7 +543,8 @@ git push origin --delete <path1> <path2> ...
 
 ### 10.2 参考资源
 
-- [GitHub Branch Protection Rules](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/defining-the-mergeability-of-pull-requests/about-protected-branches)
+- [Gitea Branch Protection Rules](https://docs.gitea.com/en-US/next/usage/branch-protection)
+- [Gitea Actions](https://docs.gitea.com/en-US/next/usage/actions/)
 - [Git Flow](https://nvie.com/posts/a-successful-git-branching-model/)
 - [Conventional Commits](https://www.conventionalcommits.org/)
 
