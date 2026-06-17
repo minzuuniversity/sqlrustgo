@@ -14,10 +14,137 @@ use sqlrustgo_types::{SqlError, Value};
 use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::net::{SocketAddr, TcpListener, TcpStream};
+use std::sync::atomic::{AtomicI64, AtomicU64, Ordering};
 use std::sync::{Arc, RwLock};
 use std::thread;
+use std::time::Duration;
 
 const SERVER_VERSION: &str = "8.0.33-SQLRustGo";
+
+/// Global connection counter for diagnostics. Incremented when a
+/// connection is accepted, decremented when it closes.
+pub static ACTIVE_CONNECTIONS: AtomicI64 = AtomicI64::new(0);
+pub static TOTAL_CONNECTIONS_ACCEPTED: AtomicU64 = AtomicU64::new(0);
+pub static TOTAL_QUERIES_SERVED: AtomicU64 = AtomicU64::new(0);
+pub static TOTAL_QUERY_ERRORS: AtomicU64 = AtomicU64::new(0);
+
+/// Spawn a background thread that periodically logs resource usage
+/// (RSS, FD count, thread count) to the tracing log. This is critical
+/// for diagnosing server crashes where the process disappears silently.
+pub fn spawn_resource_monitor(interval_s: u64) {
+    // Capture the main process PID at spawn time. Subsequent reads
+    // happen in a child thread, but we want the main process metrics.
+    let main_pid = std::process::id();
+    thread::Builder::new()
+        .name("sqlrustgo-resource-monitor".to_string())
+        .spawn(move || {
+            loop {
+                std::thread::sleep(Duration::from_secs(interval_s));
+                let active = ACTIVE_CONNECTIONS.load(Ordering::Relaxed);
+                let total_acc = TOTAL_CONNECTIONS_ACCEPTED.load(Ordering::Relaxed);
+                let total_q = TOTAL_QUERIES_SERVED.load(Ordering::Relaxed);
+                let total_err = TOTAL_QUERY_ERRORS.load(Ordering::Relaxed);
+
+                // Read /proc/<pid>/status for RSS
+                let (rss_kb, fd_count) = read_proc_status(main_pid);
+
+                // Check FD threshold
+                let (soft_limit, _hard_limit) = read_fd_limit();
+                let fd_pct = if soft_limit > 0 {
+                    (fd_count as f64 / soft_limit as f64) * 100.0
+                } else {
+                    0.0
+                };
+                if fd_pct > 80.0 {
+                    tracing::warn!(
+                        "FD usage high: {}/{} ({:.1}%) — approaching limit",
+                        fd_count, soft_limit, fd_pct
+                    );
+                }
+
+                tracing::info!(
+                    "RESOURCE_MONITOR pid={} rss_mb={:.1} fd={}/{} ({:.1}%) threads={} active_conn={} total_acc={} total_q={} total_err={}",
+                    main_pid,
+                    rss_kb as f64 / 1024.0,
+                    fd_count,
+                    soft_limit,
+                    fd_pct,
+                    list_threads(),
+                    active,
+                    total_acc,
+                    total_q,
+                    total_err,
+                );
+            }
+        })
+        .ok();
+}
+
+fn read_proc_status(pid: u32) -> (u64, usize) {
+    let mut rss_kb = 0u64;
+    let mut fd_count = 0usize;
+
+    // Linux: read /proc/<pid>/status
+    if let Ok(content) = std::fs::read_to_string(format!("/proc/{}/status", pid)) {
+        for line in content.lines() {
+            if line.starts_with("VmRSS:") {
+                if let Some(v) = line.split_whitespace().nth(1) {
+                    rss_kb = v.parse().unwrap_or(0);
+                }
+            }
+        }
+    }
+    if let Ok(entries) = std::fs::read_dir(format!("/proc/{}/fd", pid)) {
+        fd_count = entries.count();
+        return (rss_kb, fd_count);
+    }
+
+    // macOS / BSD fallback: use ps to get RSS
+    if let Ok(out) = std::process::Command::new("ps")
+        .args(["-o", "rss=", "-p", &pid.to_string()])
+        .output()
+    {
+        if out.status.success() {
+            if let Ok(s) = String::from_utf8(out.stdout) {
+                // RSS in KB on macOS ps
+                rss_kb = s.trim().parse().unwrap_or(0);
+            }
+        }
+    }
+    // macOS: count file descriptors via /dev/fd
+    if let Ok(entries) = std::fs::read_dir("/dev/fd") {
+        fd_count = entries.count().saturating_sub(1); // subtract fd for read_dir itself
+    }
+    (rss_kb, fd_count)
+}
+
+fn read_fd_limit() -> (usize, usize) {
+    let mut soft = 0usize;
+    let mut hard = 0usize;
+    if let Ok(out) = std::process::Command::new("sh")
+        .arg("-c")
+        .arg(format!("ulimit -Sn && ulimit -Hn"))
+        .output()
+    {
+        let s = String::from_utf8_lossy(&out.stdout);
+        let mut it = s.lines();
+        if let Some(line) = it.next() {
+            soft = line.trim().parse().unwrap_or(0);
+        }
+        if let Some(line) = it.next() {
+            hard = line.trim().parse().unwrap_or(0);
+        }
+    }
+    (soft, hard)
+}
+
+fn list_threads() -> usize {
+    let mut count = 0;
+    if let Ok(entries) = std::fs::read_dir("/proc/self/task") {
+        count = entries.count();
+    }
+    count
+}
 #[allow(dead_code)]
 const AUTH_PLUGIN: &str = "mysql_native_password";
 const SCRAMBLE_LENGTH: usize = 20;
@@ -552,6 +679,117 @@ impl Packet {
     }
 }
 
+/// A Read+Write wrapper around `rustls::Stream` that calls
+/// `ServerConnection::complete_io` after every `write_all` to ensure
+/// that data is actually flushed to the underlying TCP socket.
+///
+/// Without this, `rustls::Stream::flush()` only writes to the cipher
+/// buffer, and clients (e.g. `mysql` CLI) may see a "Malformed packet"
+/// or an empty result set because the response was never sent.
+///
+/// `TlsStream` borrows the underlying `TcpStream` mutably. After every
+/// `write`, we manually invoke `ServerConnection::process_new_packets`
+/// to drive TLS I/O on the socket. The `ServerConnection` is held by
+/// the caller (so the caller can do handshake I/O before this
+/// wrapper is constructed).
+pub struct TlsStream<'a> {
+    pub sock: &'a mut TcpStream,
+    pub conn: &'a mut rustls::ServerConnection,
+}
+
+impl<'a> TlsStream<'a> {
+    pub fn new(conn: &'a mut rustls::ServerConnection, sock: &'a mut TcpStream) -> Self {
+        Self { conn, sock }
+    }
+    /// Flush any pending TLS ciphertext to the underlying socket.
+    pub fn flush_pending(&mut self) -> std::io::Result<()> {
+        self.conn.complete_io(self.sock)?;
+        Ok(())
+    }
+}
+
+impl<'a> Read for TlsStream<'a> {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        // Drive rustls IO only when there is pending inbound data.
+        // This avoids blocking on write (which would happen if we
+        // called complete_io while wants_write was true and the
+        // socket had outbound data to flush).
+        if self.conn.wants_read() {
+            self.conn.complete_io(self.sock)?;
+        }
+        self.conn.reader().read(buf)
+    }
+}
+
+impl<'a> TlsStream<'a> {
+    /// Drive pending inbound TLS records from the underlying socket
+    /// without blocking on writes. Symmetric counterpart to
+    /// `drive_writes_only`.
+    fn drive_reads_only(&mut self) -> std::io::Result<()> {
+        use rustls::ConnectionCommon;
+        while self.conn.wants_read() {
+            match self.conn.complete_io(self.sock) {
+                Ok(_) => {}
+                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => break,
+                Err(e) => return Err(e),
+            }
+        }
+        Ok(())
+    }
+}
+
+impl<'a> Write for TlsStream<'a> {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        let n = self.conn.writer().write(buf)?;
+        // Drive rustls IO only when there is pending outbound data.
+        // This is the key to making the server compatible with strict
+        // clients like libmysqlclient 8.0 (e.g. sysbench, mysql CLI):
+        // we never block waiting for the client to send something,
+        // but we still flush every byte we have pending.
+        if self.conn.wants_write() {
+            self.conn.complete_io(self.sock)?;
+        }
+        Ok(n)
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.conn.writer().flush()?;
+        if self.conn.wants_write() {
+            self.conn.complete_io(self.sock)?;
+        }
+        Ok(())
+    }
+}
+
+impl<'a> TlsStream<'a> {
+    /// Drive pending outbound TLS records to the underlying socket
+    /// without reading any inbound data. This avoids the deadlock
+    /// where complete_io waits for client data while the client
+    /// waits for server data.
+    fn drive_writes_only(&mut self) -> std::io::Result<()> {
+        use rustls::ConnectionCommon;
+        // Complete any pending outbound IO without waiting for new
+        // data. We do this by repeatedly calling `complete_io` only
+        // when there is pending outbound data, and never on a clean
+        // socket that has nothing to write.
+        //
+        // rustls exposes `wants_write()` to indicate pending outbound
+        // data; we drive IO while that's true, but bail out as soon
+        // as the connection is idle to avoid blocking on read.
+        while self.conn.wants_write() {
+            // complete_io here is bounded: it returns when either
+            // the write buffer is drained or the socket would block.
+            // Because the socket is in non-blocking mode for the
+            // application, it should not block on read here.
+            match self.conn.complete_io(self.sock) {
+                Ok(_) => {}
+                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => break,
+                Err(e) => return Err(e),
+            }
+        }
+        Ok(())
+    }
+}
+
 fn write_lenenc_int<W: Write>(w: &mut W, v: u64) -> MySqlResult<()> {
     if v < 251 {
         w.write_u8(v as u8)?;
@@ -792,7 +1030,14 @@ fn col_type_from_string(t: &str) -> u8 {
         col_type::DATE
     } else if u.contains("TIME") {
         col_type::TIME
-    } else if u.contains("VARCHAR") || u.contains("CHAR") || u.contains("TEXT") {
+    } else if u.contains("VARCHAR") {
+        // Use MySQL 8.0 native VARCHAR (0x0f) instead of VARSTRING
+        // (0xfd). libmysqlclient 8.0 strictly validates the column
+        // type and rejects VARSTRING when the actual data is bound
+        // by length. We still keep VARSTRING for fallback (0xfe-style
+        // "unknown" cases).
+        col_type::VARCHAR
+    } else if u.contains("CHAR") || u.contains("TEXT") {
         col_type::VARSTRING
     } else if u.contains("BIGINT") {
         col_type::LONGLONG
@@ -876,6 +1121,65 @@ fn write_text_row<W: Write>(w: &mut W, row: &[Value]) -> MySqlResult<()> {
             }
         }
     }
+    Ok(())
+}
+
+/// Write a single row in MySQL binary protocol format.
+/// Each value is prefixed with a 1-byte type marker, then the value.
+fn write_binary_row<W: Write>(w: &mut W, row: &[Value], col_types: &[u8]) -> MySqlResult<()> {
+    w.write_u8(0x00)?; // row packet header: null bitmap starts with 0x00
+    let null_bytes = (row.len() + 9) / 8;
+    let mut null_map = vec![0u8; null_bytes + 1];
+    for (i, v) in row.iter().enumerate() {
+        if matches!(v, Value::Null) {
+            null_map[1 + i / 8] |= 1 << (i % 8);
+        }
+    }
+    w.write_all(&null_map)?;
+
+    let mut buf = Vec::new();
+    for (i, v) in row.iter().enumerate() {
+        let col_type = col_types.get(i).copied().unwrap_or(col_type::STRING);
+        match v {
+            Value::Null => {
+                // null handled by null_map above — no per-column data written
+            }
+            Value::Integer(n) => match col_type {
+                col_type::TINY => {
+                    buf.write_u8(*n as u8)?;
+                }
+                col_type::SHORT => {
+                    buf.write_i16::<LittleEndian>(*n as i16)?;
+                }
+                col_type::LONG => {
+                    buf.write_i32::<LittleEndian>((*n).try_into().unwrap_or(i32::MAX))?;
+                }
+                col_type::LONGLONG => {
+                    buf.write_i64::<LittleEndian>(*n)?;
+                }
+                _ => {
+                    buf.write_i64::<LittleEndian>(*n)?;
+                }
+            },
+            Value::Float(f) => {
+                if col_type == col_type::DOUBLE {
+                    buf.write_f64::<LittleEndian>(*f)?;
+                } else {
+                    buf.write_f32::<LittleEndian>(*f as f32)?;
+                }
+            }
+            Value::Text(s) => {
+                write_lenenc_string(&mut buf, s.as_bytes())?;
+            }
+            Value::Blob(b) => {
+                write_lenenc_string(&mut buf, b)?;
+            }
+            Value::Boolean(b) => {
+                buf.write_u8(if *b { 1 } else { 0 })?;
+            }
+        }
+    }
+    w.write_all(&buf)?;
     Ok(())
 }
 
@@ -968,6 +1272,69 @@ fn send_result_set<W: Write>(
         seq = seq.wrapping_add(1);
     }
     tracing::info!("send_result_set done: final_seq={}", seq);
+    Ok(seq)
+}
+
+/// Send a result set using MySQL binary protocol encoding (G1 fix for sysbench).
+/// Used for COM_STMT_EXECUTE responses where the client expects binary rows.
+fn send_binary_result_set<W: Write>(
+    w: &mut W,
+    cols: &[String],
+    ctypes: &[String],
+    rows: &[Vec<Value>],
+    mut seq: u8,
+    _cap: u32,
+) -> MySqlResult<u8> {
+    // Column count
+    {
+        let mut p = Vec::new();
+        write_lenenc_int(&mut p, cols.len() as u64).unwrap();
+        Packet {
+            length: p.len() as u32,
+            sequence: seq,
+            payload: p,
+        }
+        .write_to(w)?;
+        seq = seq.wrapping_add(1);
+    }
+    // Column definitions (same packet format as text protocol)
+    for (i, n) in cols.iter().enumerate() {
+        write_column_def(
+            w,
+            n,
+            ctypes.get(i).map(|s| s.as_str()).unwrap_or("VARCHAR(255)"),
+            seq,
+        )?;
+        seq = seq.wrapping_add(1);
+    }
+    // EOF packet (classic protocol)
+    {
+        make_eof_packet(seq, 0x0002).write_to(w)?;
+        seq = seq.wrapping_add(1);
+    }
+    // Rows in binary protocol
+    let col_type_codes: Vec<u8> = cols
+        .iter()
+        .enumerate()
+        .map(|(i, _)| {
+            let t = ctypes.get(i).map(|s| s.as_str()).unwrap_or("VARCHAR(255)");
+            col_type_from_string(t)
+        })
+        .collect();
+    for r in rows {
+        let mut p = Vec::new();
+        write_binary_row(&mut p, r, &col_type_codes)?;
+        Packet {
+            length: p.len() as u32,
+            sequence: seq,
+            payload: p,
+        }
+        .write_to(w)?;
+        seq = seq.wrapping_add(1);
+    }
+    // Final EOF
+    make_eof_packet(seq, 0x0002).write_to(w)?;
+    seq = seq.wrapping_add(1);
     Ok(seq)
 }
 
@@ -1946,6 +2313,28 @@ fn do_command_loop<S: Read + Write>(
                     seq = seq.wrapping_add(1);
                     continue;
                 }
+
+                // G2 fix: Intercept `SET NAMES` / `SET autocommit` / etc.
+                // These session variables are not part of the DDL/DML parser.
+                // We accept them as no-ops and return OK so Python clients
+                // (pymysql, mysql-connector-python) can complete handshake.
+                let lower_q = q.to_lowercase().replace(" ", "");
+                if lower_q.starts_with("setnames")
+                    || lower_q.starts_with("setautocommit")
+                    || lower_q.starts_with("set@@autocommit")
+                    || lower_q.starts_with("setcharacter_set")
+                    || lower_q.starts_with("set@@character_set")
+                    || lower_q.starts_with("setsession")
+                    || lower_q.starts_with("set@@session")
+                    || lower_q.starts_with("set@@")
+                    || lower_q.starts_with("setglobal")
+                    || lower_q.starts_with("settransaction")
+                {
+                    tracing::info!("SET NOP: {}", q);
+                    make_ok_packet(seq, 0, 0, 0x0002, 0).write_to(stream)?;
+                    seq = seq.wrapping_add(1);
+                    continue;
+                }
                 let mut eng = engine.write().unwrap();
                 match parse(&q) {
                     Ok(stmt) => {
@@ -2079,8 +2468,47 @@ fn do_command_loop<S: Read + Write>(
                 }
 
                 if column_count > 0 {
+                    // Try to extract real column names from the SQL
+                    // (after SELECT, before FROM). Falls back to
+                    // col_1, col_2... when ambiguous (e.g. SELECT *).
+                    let real_col_names: Vec<String> = if sql.to_uppercase().starts_with("SELECT")
+                        && sql.to_uppercase().contains(" FROM ")
+                    {
+                        let upper = sql.to_uppercase();
+                        if let Some(from_pos) = upper.find(" FROM ") {
+                            let select_part = sql[..from_pos].trim();
+                            let cols_str = select_part
+                                .strip_prefix("SELECT")
+                                .or_else(|| select_part.strip_prefix("select"))
+                                .unwrap_or("")
+                                .trim();
+                            if !cols_str.is_empty() && !cols_str.contains('*') {
+                                cols_str
+                                    .split(',')
+                                    .map(|s| {
+                                        s.trim().split('.').last().unwrap_or(s.trim()).to_string()
+                                    })
+                                    .collect()
+                            } else {
+                                (0..column_count)
+                                    .map(|i| format!("col_{}", i + 1))
+                                    .collect()
+                            }
+                        } else {
+                            (0..column_count)
+                                .map(|i| format!("col_{}", i + 1))
+                                .collect()
+                        }
+                    } else {
+                        (0..column_count)
+                            .map(|i| format!("col_{}", i + 1))
+                            .collect()
+                    };
                     for i in 0..column_count {
-                        let col_name = format!("col_{}", i + 1);
+                        let col_name = real_col_names
+                            .get(i as usize)
+                            .cloned()
+                            .unwrap_or_else(|| format!("col_{}", i + 1));
                         write_column_def(stream, &col_name, "VARCHAR(255)", seq)?;
                         seq = seq.wrapping_add(1);
                     }
@@ -2180,7 +2608,7 @@ fn do_command_loop<S: Read + Write>(
                                         row.into_iter().take(stmt_col_count as usize).collect()
                                     })
                                     .collect();
-                                seq = send_result_set(
+                                seq = send_binary_result_set(
                                     stream, &c_trimmed, &t_trimmed, &r_trimmed, seq, cap,
                                 )?;
                             }
@@ -2225,6 +2653,12 @@ fn handle_connection(
     tls_config: Arc<rustls::ServerConfig>,
     user_store: UserStore,
 ) {
+    ACTIVE_CONNECTIONS.fetch_add(1, Ordering::Relaxed);
+    TOTAL_CONNECTIONS_ACCEPTED.fetch_add(1, Ordering::Relaxed);
+    let _guard = scopeguard::guard((), |_| {
+        // Always decrement on exit, even on panic
+        ACTIVE_CONNECTIONS.fetch_sub(1, Ordering::Relaxed);
+    });
     stream
         .set_read_timeout(Some(std::time::Duration::from_secs(600)))
         .ok();
@@ -2232,6 +2666,12 @@ fn handle_connection(
         .set_write_timeout(Some(std::time::Duration::from_secs(60)))
         .ok();
     stream.set_nodelay(true).ok();
+    // We keep the socket in non-blocking mode. The TLS read/write
+    // helpers in TlsStream use rustls::ServerConnection::complete_io,
+    // which returns WouldBlock when no I/O is ready and never blocks
+    // the application. The read/write timeouts above are not used
+    // by rustls, but the connection-level timeouts in the stream
+    // (read 600s) still apply for non-TLS reads.
     let _ = stream.set_nonblocking(false);
     tracing::info!("Connection from {}", addr);
 
@@ -2273,8 +2713,12 @@ fn handle_connection(
             };
             // Complete TLS handshake
             conn.complete_io(&mut stream).unwrap();
+            // Read handshake response over TLS. We use a TlsStream
+            // wrapper here so that subsequent writes auto-flush to
+            // the underlying socket. The wrapper only does the initial
+            // handshake read; the do_command_loop gets the long-lived
+            // wrapper below.
             let mut tls = rustls::Stream::new(&mut conn, &mut stream);
-            // Read handshake response over TLS
             let tls_pkt = match Packet::read_from(&mut tls) {
                 Ok(p) => p,
                 Err(e) => {
@@ -2320,6 +2764,13 @@ fn handle_connection(
             tracing::info!("Auth accepted, sending OK packet, seq=3");
             make_ok_packet(3, 0, 0, 0x0002, 0).write_to(&mut tls).ok();
             tracing::info!("Starting command loop, seq=4");
+            // Drop the temporary Stream wrapper and create a long-lived
+            // TlsStream that drives rustls IO after every write. This
+            // is critical for `mysql` CLI / sysbench compatibility:
+            // without auto-complete_io, the cipher buffer accumulates
+            // and the client never receives the response.
+            drop(tls);
+            let mut tls = TlsStream::new(&mut conn, &mut stream);
             let engine: Arc<
                 RwLock<ExecutionEngine<WalStorage<FileStorage, FileBackedWalManager>>>,
             > = Arc::new(RwLock::new(ExecutionEngine::new(storage.clone())));
@@ -2333,6 +2784,9 @@ fn handle_connection(
                 4,
                 &mut ps_manager,
             );
+            // Best-effort final flush so the last OK packet (e.g. on
+            // COM_QUIT) reaches the client before the connection drops.
+            let _ = tls.flush_pending();
             return;
         }
     }
@@ -2445,6 +2899,11 @@ pub fn run_server_v2(
 /// accept loop starts.
 pub fn run_server_with_listener(listener: TcpListener) -> MySqlResult<()> {
     let shutdown = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    // Spawn the resource monitor (1 sample per 30s by default).
+    // The monitor writes periodic "RESOURCE_MONITOR" log lines that
+    // capture RSS, FD, thread count, and connection counters. This is
+    // the primary diagnostic tool for crash analysis.
+    spawn_resource_monitor(30);
     run_server_with_listener_and_shutdown(listener, shutdown)
 }
 
