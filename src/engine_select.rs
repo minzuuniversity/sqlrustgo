@@ -1348,7 +1348,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     ///
     /// Returns `None` if the join should proceed normally (no filter applies).
     fn pre_filter_cartesian_right_table(
-        right_rows: Vec<Vec<Value>>,
+        right_rows: &[Vec<Value>],
         right_info: &TableInfo,
         right_alias: &str,
         _join_clause: &ParserJoinClause,
@@ -1358,7 +1358,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
 
         // Only apply when we have a cartesian join with a WHERE clause.
         let Some(where_expr) = where_clause else {
-            return right_rows;
+            return right_rows.to_vec();
         };
 
         let table_prefix = format!("{}.", right_alias);
@@ -1440,14 +1440,14 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
 
         let preds = collect_right_table_preds(where_expr, &table_prefix, &col_names);
         if preds.is_empty() {
-            return right_rows;
+            return right_rows.to_vec();
         }
 
         // Evaluate predicates: for simple equality `alias.col = literal`,
         // do a direct index lookup.  Complex predicates are skipped (keep row).
         let mut filtered: Vec<Vec<Value>> = Vec::with_capacity(right_rows.len());
 
-        for row in right_rows {
+        for row in right_rows.iter() {
             let mut pass = true;
             for pred in &preds {
                 if let E::BinaryOp(l, op, r) = pred {
@@ -1509,7 +1509,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 }
             }
             if pass {
-                filtered.push(row);
+                filtered.push(row.clone());
             }
         }
         filtered
@@ -1602,34 +1602,56 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 // cartesian product.  This avoids 60K × 25 = 1.5M row
                 // intermediate results when joining a filtered nation table.
                 let right_rows = Self::pre_filter_cartesian_right_table(
-                    right_rows,
+                    &right_rows,
                     &right_table_info,
                     right_alias,
                     join_clause,
                     where_clause,
                 );
 
-                // Phase 5 (TPCH-01 Q2): cartesian product join — used
-                // when the parser cannot find a fully-resolvable JOIN
-                // ON predicate (e.g. when the only candidate references
-                // a not-yet-joined table). All left rows match all
-                // right rows; the outer WHERE filter then narrows
-                // results.
-                let mut cross = Vec::with_capacity(left_rows.len() * right_rows.len());
-                for left_row in left_rows {
-                    for right_row in &right_rows {
-                        let mut combined = left_row.clone();
-                        combined.extend(right_row.clone());
-                        cross.push(combined);
+                // Sprint 8 (TPCH-01 Q8 perf): try to extract equi-join
+                // keys from the outer WHERE clause. If found, use them
+                // as a hash join key instead of N×M cartesian product.
+                // Fallback: original cartesian product if no usable key
+                // is found (preserves safety for queries whose equi-join
+                // predicates reference not-yet-joined tables).
+                let pairs_from_where = where_clause
+                    .as_ref()
+                    .map(|wc| {
+                        extract_comma_join_keys(
+                            wc,
+                            left_table_info,
+                            &left_alias,
+                            &right_table_info,
+                            right_alias,
+                        )
+                    })
+                    .unwrap_or_default();
+
+                if pairs_from_where.is_empty() {
+                    // Phase 5 (TPCH-01 Q2): cartesian product join — used
+                    // when the parser cannot find a fully-resolvable JOIN
+                    // ON predicate (e.g. when the only candidate references
+                    // a not-yet-joined table). All left rows match all
+                    // right rows; the outer WHERE filter then narrows
+                    // results.
+                    let mut cross = Vec::with_capacity(left_rows.len() * right_rows.len());
+                    for left_row in left_rows {
+                        for right_row in &right_rows {
+                            let mut combined = left_row.clone();
+                            combined.extend(right_row.clone());
+                            cross.push(combined);
+                        }
                     }
+                    let combined_schema = build_combined_schema(
+                        &left_table_info,
+                        &left_alias,
+                        &right_table_info,
+                        right_alias,
+                    )?;
+                    return Ok((cross, combined_schema));
                 }
-                let combined_schema = build_combined_schema(
-                    &left_table_info,
-                    &left_alias,
-                    &right_table_info,
-                    right_alias,
-                )?;
-                return Ok((cross, combined_schema));
+                pairs_from_where
             }
             JoinKey::Left(_) | JoinKey::Right(_) => {
                 return Err(SqlError::ExecutionError(
@@ -1970,6 +1992,95 @@ fn lookup_qualified_column(info: &TableInfo, qualifier: &str, col_name: &str) ->
     info.columns
         .iter()
         .position(|c| c.name == needle || c.name.ends_with(&suffix))
+}
+
+/// Sprint 8 (TPCH-01 Q8 perf): walk a WHERE expression and extract
+/// equi-join key pairs between `left_info` and `right_info`.
+///
+/// TPC-H Q8/Q9 use comma-separated FROM lists where the parser emits
+/// `Literal("true")` for the ON clause (the equi-join columns reference
+/// a table not yet joined). The equi-join predicates live in the WHERE
+/// clause and can be extracted here to convert the N×M cartesian
+/// product into a hash join.
+///
+/// Returns `Vec<(left_col_idx, right_col_idx)>` for every
+/// `Identifier(left.col) = Identifier(right.col)` predicate found at
+/// the top level (or under AND). Empty Vec means no usable join key;
+/// caller should fall back to cartesian product.
+///
+/// Strategy: recursive descent through AND nodes. For each non-AND
+/// predicate, try to match `Identifier(qual.col) = Identifier(qual.col)`
+/// where one side resolves to left_info and the other to right_info
+/// via `lookup_qualified_column`.
+fn extract_comma_join_keys(
+    where_expr: &Expression,
+    left_info: &TableInfo,
+    left_alias: &str,
+    right_info: &TableInfo,
+    right_alias: &str,
+) -> Vec<(usize, usize)> {
+    use sqlrustgo_parser::Expression as E;
+    let mut pairs: Vec<(usize, usize)> = Vec::new();
+
+    fn try_equality(
+        e: &E,
+        li: &TableInfo,
+        ln: &str,
+        ri: &TableInfo,
+        rn: &str,
+    ) -> Option<(usize, usize)> {
+        let E::BinaryOp(l, op, r) = e else {
+            return None;
+        };
+        if op.as_str() != "=" {
+            return None;
+        }
+        if let (E::Identifier(lc), E::Identifier(rc)) = (l.as_ref(), r.as_ref()) {
+            if let (Some(li_idx), Some(ri_idx)) = (
+                lookup_qualified_column(li, ln, lc),
+                lookup_qualified_column(ri, rn, rc),
+            ) {
+                return Some((li_idx, ri_idx));
+            }
+            if let (Some(li_idx), Some(ri_idx)) = (
+                lookup_qualified_column(li, ln, rc),
+                lookup_qualified_column(ri, rn, lc),
+            ) {
+                return Some((li_idx, ri_idx));
+            }
+        }
+        None
+    }
+
+    fn walk(
+        e: &E,
+        li: &TableInfo,
+        ln: &str,
+        ri: &TableInfo,
+        rn: &str,
+        out: &mut Vec<(usize, usize)>,
+    ) {
+        if let E::BinaryOp(l, op, r) = e {
+            if op.as_str() == "AND" {
+                walk(l, li, ln, ri, rn, out);
+                walk(r, li, ln, ri, rn, out);
+                return;
+            }
+        }
+        if let Some(pair) = try_equality(e, li, ln, ri, rn) {
+            out.push(pair);
+        }
+    }
+
+    walk(
+        where_expr,
+        left_info,
+        left_alias,
+        right_info,
+        right_alias,
+        &mut pairs,
+    );
+    pairs
 }
 
 /// Decode a value key string (encoded by the inline match above in
