@@ -1,8 +1,8 @@
 {
   "version": "v3.9.0-rc7",
-  "timestamp": "2026-06-16T21:45:31Z",
+  "timestamp": "2026-06-17T11:46:41Z",
   "cargo_tests": 115,
   "active_tests": 6138,
-  "ignored_tests": 93,
+  "ignored_tests": 51,
   "note": "Updated by check_test_count_monotonic.sh"
 }
