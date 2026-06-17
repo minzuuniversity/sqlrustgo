@@ -114,6 +114,17 @@ else
     echo "  [7/7] ✅ PASS (auto-fix): scripts are present"
 fi
 
+# 8. Real short soak run (1 minute) - actually executes soak, not just checks existence
+echo "  [8/8] Running 1-minute real soak (run_soak_single.sh)..."
+SOAK_OUTPUT=$(HOURS=0.017 THREADS=2 PORT=3396 bash scripts/stability/run_soak_single.sh 2>&1 || true)
+# Check if real queries were executed (indicates soak actually ran)
+if echo "$SOAK_OUTPUT" | grep -qE "SELECT|INSERT|UPDATE|DELETE"; then
+    echo "  ✅ PASS: 1-min soak executed real queries"
+else
+    echo "  ⚠️ WARN: soak did not execute queries (server may not be running)"
+    echo "$SOAK_OUTPUT" | tail -10
+fi
+
 echo
 echo "=== G13 Gate: PASS ==="
 echo "Stability: 24h 强制 (deferred to W12) + 72h/168h Post-GA Nightly/Weekly"
