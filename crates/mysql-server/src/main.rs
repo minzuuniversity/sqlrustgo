@@ -27,6 +27,89 @@ use std::io::{self, BufRead, Write};
 use std::process::ExitCode;
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
+/// Install a panic hook that writes the panic info to
+/// `/tmp/sqlrustgo_panic_<pid>.log` before the process aborts.
+/// This is critical for diagnosing mysterious process disappearances
+/// during long-running soak tests.
+fn install_panic_hook() {
+    let pid = std::process::id();
+    let panic_log_path = format!("/tmp/sqlrustgo_panic_{}.log", pid);
+    eprintln!("[sqlrustgo] panic log: {}", panic_log_path);
+    let path_for_log = panic_log_path.clone();
+    std::panic::set_hook(Box::new(move |info| {
+        let bt = std::backtrace::Backtrace::force_capture();
+        let msg = format!("PID: {}\nPanic: {}\nBacktrace:\n{}\n---\n", pid, info, bt);
+        // Write to file
+        if let Ok(mut f) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&path_for_log)
+        {
+            let _ = f.write_all(msg.as_bytes());
+        }
+        // Also write to stderr
+        eprint!("{}", msg);
+    }));
+}
+
+/// Install a SIGTERM/SIGINT/SIGABRT/SIGSEGV handler that logs
+/// the signal and writes a marker to /tmp/sqlrustgo_signal_<pid>.log.
+fn install_signal_logging() {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    static SHUTDOWN: AtomicBool = AtomicBool::new(false);
+    let pid = std::process::id();
+    let signal_log_path = format!("/tmp/sqlrustgo_signal_{}.log", pid);
+    let log_path = std::sync::Arc::new(signal_log_path);
+    eprintln!("[sqlrustgo] signal log: {}", log_path);
+
+    let signals = [
+        signal_hook::consts::SIGTERM,
+        signal_hook::consts::SIGINT,
+        signal_hook::consts::SIGABRT,
+        // SIGSEGV cannot be registered via signal-hook (forbidden);
+        // it would trigger a panic on the spot. We rely on the OS to
+        // generate a core dump and the panic hook for panic-style crashes.
+    ];
+    for sig in signals.iter() {
+        let log_path_clone = log_path.clone();
+        let pid_copy = pid;
+        let sig_value = *sig;
+        let result = unsafe {
+            signal_hook::low_level::register(*sig, move || {
+                SHUTDOWN.store(true, Ordering::SeqCst);
+                let sig_name = match sig_value {
+                    x if x == signal_hook::consts::SIGTERM => "SIGTERM",
+                    x if x == signal_hook::consts::SIGINT => "SIGINT",
+                    x if x == signal_hook::consts::SIGABRT => "SIGABRT",
+                    x if x == signal_hook::consts::SIGSEGV => "SIGSEGV",
+                    _ => "UNKNOWN",
+                };
+                let msg = format!(
+                    "PID: {} received {} (raw={}) at {:?}\n",
+                    pid_copy,
+                    sig_name,
+                    sig_value,
+                    std::time::SystemTime::now()
+                );
+                if let Ok(mut f) = std::fs::OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(&*log_path_clone)
+                {
+                    let _ = f.write_all(msg.as_bytes());
+                }
+                eprint!("{}", msg);
+            })
+        };
+        if let Err(e) = result {
+            eprintln!(
+                "[sqlrustgo] signal hook registration failed for {}: {}",
+                sig, e
+            );
+        }
+    }
+}
+
 #[derive(Parser, Debug)]
 #[command(
     name = "sqlrustgo-mysql-server",
@@ -130,6 +213,12 @@ enum Command {
 }
 
 fn main() -> ExitCode {
+    // Install diagnostics: panic hook + signal logging.
+    // These are installed FIRST so that any failure during CLI parsing
+    // or server startup is captured.
+    install_panic_hook();
+    install_signal_logging();
+
     // Use try_parse_from so we can translate clap's default exit code 2
     // (clap error) to EX_USAGE (64) per
     // openspec/specs/mysql-server-canonical-entry/spec.md (unknown
