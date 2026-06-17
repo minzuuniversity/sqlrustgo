@@ -1,8 +1,16 @@
 {
-  "version": "v3.9.0-rc7",
-  "timestamp": "2026-06-17T14:30:22Z",
-  "total_allowed": 43,
+  "version": "v3.9.0-sprint8",
+  "timestamp": "2026-06-18T01:40:00Z",
+  "total_allowed": 29,
   "ignored_tests": [
+    {
+      "file": "tests/oracle_g1_tpch_sha256.rs",
+      "line": "83:#[ignore = \"Run with: cargo test --test oracle_g1_tpch_sha256 -- --ignored --generate-baseline\"]",
+      "reason": "Baseline generation only - generates SHA-256 baseline, run with --generate-baseline flag",
+      "issue_link": "#3231",
+      "added_in": "v3.9.0-sprint8",
+      "category": "baseline_generation"
+    },
     {
       "file": "tests/tpch_wire_smoke_sf.rs",
       "line": "0:MARKER",
