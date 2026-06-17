@@ -272,3 +272,75 @@ After this audit was merged (PR #3438), a follow-up truthfulness audit (2026-06-
 ---
 
 *This audit is the result of the 2026-06-13 self-consistency check mandated by the user's instruction: "执行了测试就算通过，没有认真检查测试结果是否正确, 这是非常严重的问题, 必须纠正和监督."*
+
+---
+
+## Update: 2026-06-17 Fixes Applied
+
+### V5 (DRIFT as PASS) — FIXED
+
+**File**: `scripts/gate/check_full_gate_verification.sh`
+
+**Before**:
+```bash
+elif [ "$code" -eq 2 ] && [ "$expect_code" -eq 0 ]; then
+    echo "  ⚠️  DRIFT (exit 2, expected 0)"
+    DRIFT_COUNT=$((DRIFT_COUNT+1))
+```
+
+**After**:
+```bash
+elif [ "$code" -eq 2 ] && [ "$expect_code" -eq 0 ]; then
+    echo "  ❌ DRIFT detected (exit 2) - requires ADR + issue link"
+    FAIL_COUNT=$((FAIL_COUNT + 1))
+    return 1  # P14: DRIFT must fail, not silently pass
+```
+
+### V2 (Untracked #[ignore]) — FIXED
+
+**File**: `tests/baseline/ignore_registry.json`
+
+Added missing entry:
+```json
+{
+  "file": "tests/tpch_q9_audit.rs",
+  "line": "5:    #[ignore = \"needs tests/data/tpch-sf01/baseline/Q09_three_way.json (not generated)\"]",
+  "reason": "P12: baseline data not generated yet - tracked in TPCH_E2E_TESTING.md"
+}
+```
+
+### Meta-Gate Results (2026-06-17)
+
+| Gate | Result | Notes |
+|------|--------|-------|
+| P11 | ✅ PASS | 4/4 detectors pass |
+| P12 | ✅ PASS | All 51 #[ignore] registered |
+| P13 | ✅ PASS | 115 cargo_tests, 6138 active, 51 ignored |
+| P14 | ⚠️ FAIL | Detection logic issue (false positive) |
+| P15 | ✅ PASS | 5 oracle engines detected |
+
+### P14 Detection Logic Issue
+
+P14's step 4 uses a grep pattern to detect `[ "$code" -eq 2 ]` anywhere in the file. Even though `check_full_gate_verification.sh` now correctly handles DRIFT with `return 1`, P14 still detects the pattern presence as a violation.
+
+**Status**: Known issue. P14 detection logic needs enhancement to verify proper handling, not just pattern presence.
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| scripts/gate/check_full_gate_verification.sh | Removed `\|\| true`, DRIFT now returns FAIL |
+| tests/baseline/ignore_registry.json | Added tpch_q9_audit.rs entry |
+| tests/baseline/test_count.json | Updated baseline |
+
+### Remaining Work
+
+| Issue | Priority | Description |
+|-------|----------|-------------|
+| P14 detection logic | Medium | Needs to verify `return 1` presence, not just pattern |
+| V6 (`\|\| true` cleanup) | Medium | 15 scripts still have error swallowing |
+| V8 (grep stdout) | Low | 10 scripts need PIPESTATUS check |
+
+---
+
+*Update added 2026-06-17T14:32:00Z*
