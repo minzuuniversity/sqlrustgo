@@ -1,10 +1,10 @@
 # v3.9.0 GA Gate Status Report (Governance Compliance)
 
-> **Date**: 2026-06-13 (original) | **Truthfulness update**: 2026-06-17
-> **Tag**: v3.9.0-rc7 (`642ff9cf9`) — current tip `8a83e2553` (post-#3378 REMOTE_LIMITS + #3377 .gitattributes)
-> **Status**: 🟡 **READY for GA cut** (pending 24h real soak completion on 250)
-> **GA Target**: 2026-12-15 (per Hermes audit #3252)
-> **依据**: `docs/governance/RC_TO_GA_GATE_CHECKLIST.md` + `RELEASE_LIFECYCLE.md`
+> **Date**: 2026-06-17
+> **Tag**: v3.9.0-rc7 (`642ff9cf9`) — current tip
+> **Status**: 🟡 **IN PROGRESS** (gate scripts executed, real soak pending)
+> **GA Target**: 2026-12-15
+> **Truthfulness Notice**: 详见 `TEST_TRUTHFULNESS_REPORT.md`
 
 ---
 
@@ -40,25 +40,28 @@ A 2026-06-17 cross-reference audit ([`docs/audit/status/2026-06-17-truthfulness-
 
 ## 1. 综合门禁状态总览
 
-### 1.1 核心 Gate (G1-G16)
+### 1.1 核心 Gate (G1-G16) — 诚实声明
 
-| Gate | Topic | Status | Evidence |
+| Gate | Topic | Status | 限制说明 |
 |------|-------|--------|----------|
-| G1 | TPC-H 22/22 | ✅ PASS | tpch_gate_test 22/22 (sub-gate `[3/5]`) |
-| G2 | INT-2 | ✅ PASS | int2_substance_parallel_test (9 tests) |
-| G3 | INT-3 | ✅ PASS | int3_substance_delegation_test (17 tests) |
-| G4 | ARCH-3 VtuGuard | ✅ PASS | check_arch3_no_bypass.sh (8/8) |
-| G5 | SEM-1 Savepoint | ✅ PASS | check_sem1_savepoint.sh (8/8) |
-| G6 | Backup/Restore | ✅ PASS | check_backup_restore.sh (6/6) |
-| G7 | 24h Soak (simulated) | ✅ PASS | long_run_stability_test (10 tests) |
-| G8 | Crash Matrix | ✅ PASS | check_p12_crash_test.sh |
-| G9 | Upgrade v3.8→v3.9 | ✅ PASS | check_p14_upgrade_test.sh |
-| G10 | GMP Audit + Time Travel + Hash Chain | ✅ PASS | check_p21/22/23 (3 sub-gates) |
-| G11 | QPS/TPS Benchmark | ✅ PASS | check_g11_qps.sh (5/5) |
-| G13 | 24h Stability | ✅ PASS (warned) | 250 24h running, 1607 samples, 0 errors |
-| G16 | Compatibility v3.8→v3.9 | ✅ PASS | check_g16_compatibility.sh (7/7) |
+| G1 | TPC-H 22/22 | ✅ PASS | ⚠️ 无 oracle 对比 |
+| G2 | INT-2 | ✅ PASS | ⚠️ 无 oracle 对比 |
+| G3 | INT-3 | ✅ PASS | ⚠️ 无 oracle 对比 |
+| G4 | ARCH-3 VtuGuard | ✅ PASS | ✅ 有独立验证 |
+| G5 | SEM-1 Savepoint | ✅ PASS | ⚠️ 无 oracle 对比 |
+| G6 | Backup/Restore | ✅ PASS | ✅ 有独立验证 |
+| G7 | 24h Soak (simulated) | ✅ PASS | ⚠️ SIMULATED，非真实 24h |
+| G8 | Crash Matrix | ✅ PASS | ✅ 有独立验证 |
+| G9 | Upgrade v3.8→v3.9 | ✅ PASS | ⚠️ 无 oracle 对比 |
+| G10 | GMP Audit + Time Travel + Hash Chain | ✅ PASS | ✅ 有独立验证 |
+| G11 | QPS/TPS Benchmark | ✅ PASS | ⚠️ 无 oracle 对比 |
+| G12 | Sysbench | ✅ PASS | ⚠️ 无 oracle 对比 |
+| G13 | 24h Stability | 🟡 running | 真实 24h soak 进行中 |
+| G14 | Real Crash | ✅ PASS | ⚠️ 部分模拟 |
+| G15 | SF=0.01 TPC-H | ✅ PASS | ⚠️ 无 oracle 对比 |
+| G16 | Compatibility v3.8→v3.9 | ✅ PASS | ⚠️ 无 oracle 对比 |
 
-**Total: 13/13 PASS** + 1 PASS-with-warning (G13 24h real running) + 1 deferred to post-GA (72h/168h)
+**诚实声明**: 16/16 gate 脚本已执行，但 11/16 缺乏独立 oracle 对比验证正确性。
 
 ### 1.2 Substance Tests (36/36 PASS)
 
@@ -77,15 +80,16 @@ A 2026-06-17 cross-reference audit ([`docs/audit/status/2026-06-17-truthfulness-
 | Security: 3 vulnerabilities in `crates/bench` | 🟡 DRIFT | Only affects benchmark crate, not production binary |
 | Coverage script `--skip` invalid option | 🟡 Tooling | cargo-llvm-cov version mismatch, not blocking |
 
-### 1.4 Open Issues (5 — all soak-related)
+### 1.4 Soak 状态 — 诚实声明
 
-| # | Issue | 252 | 250 | Status |
-|---|-------|-----|-----|--------|
-| #3264 | GA-P0/S2: Execute 24h long-running soak | ✅ open | — | 250 running 1607 samples |
-| #3265 | GA-P0/S3: Execute 72h long-running soak | ✅ open | — | pending 24h |
-| #3266 | GA-P0/S4: Execute 168h long-running soak (GA gate) | ✅ open | — | pending 72h |
-| #3225 | Real 24h/72h wall-clock soak | ✅ open | ✅ open | dup of #3264/#3265 |
-| #3229 | Real 168h wall-clock soak | ✅ open | ✅ open | dup of #3266 |
+| Soak | 状态 | 说明 |
+|------|------|------|
+| 1h simulated | ✅ PASS | ⚠️ SIMULATED (时间压缩) |
+| 24h real | 🟡 进行中 | 必须在 GA 前完成 |
+| 72h real | ⏳ 等待 | Post-GA 加固 |
+| 168h real | ⏳ 等待 | GA-final gate |
+
+**⚠️ 诚实声明**: 真实 24h/72h/168h soak **尚未完成**，是 GA 阻塞条件。G7 "24h Stability PASS" 是 SIMULATED。
 
 **#3371 (ODUK bugfix duplicate) closed as dup of #3370**
 
@@ -185,20 +189,27 @@ All 4 remotes in sync.
 
 ---
 
-## 7. 结论
+## 7. 结论 — 诚实声明
 
-✅ **v3.9.0 GA 准备就绪**
+🟡 **v3.9.0 GA 尚未就绪**
 
-- 13/13 核心 gates PASS
-- 36/36 substance tests PASS
-- 30 closed issues all PR-linked
-- 4-remote 全同步
-- 文档完整 (8 项修改 + 5-step workflow 验证)
-- C-ARCH-05 DRIFT 已明确文档化 (v3.9.1 修复)
-- Security 漏洞仅影响 bench crate
+- 16/16 gate 脚本已执行
+- 11/16 gate 缺乏独立 oracle 对比验证
+- G7 "24h Stability PASS" 实际为 **SIMULATED**（非真实 24h）
+- 真实 24h/72h/168h soak **尚未完成**（GA 阻塞条件）
+- 部分 gate 存在 V6/V8 漏洞（错误吞掉、grep 失败静默）
 
-**唯一阻塞**: 250 24h real soak 完成 (剩 20h)
-**GA cut 建议时间**: 2026-06-13 22:47 (250 soak 24h mark)
+**诚实评估**:
+- Gate 脚本执行状态：可信
+- 测试正确性验证：**不可信**（11/16 无 oracle）
+- 长期稳定性验证：**不可信**（仅 SIMULATED）
+
+**GA 阻塞条件**:
+1. 真实 24h soak 完成且 0 errors
+2. Oracle 对比添加（8 gate）
+3. V6/V8 漏洞修复
+
+详见 `TEST_TRUTHFULNESS_REPORT.md`
 
 ---
 
