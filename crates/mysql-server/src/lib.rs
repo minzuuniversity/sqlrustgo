@@ -653,6 +653,19 @@ fn make_eof_packet(seq: u8, status: u16) -> Packet {
     }
 }
 
+fn make_deprecate_eof_ok_packet(seq: u8, affected: u64, last_id: u64, status: u16) -> Packet {
+    let mut p = Vec::new();
+    p.push(0xfe);
+    write_lenenc_int(&mut p, affected).unwrap();
+    write_lenenc_int(&mut p, last_id).unwrap();
+    p.write_u16::<LittleEndian>(status).unwrap();
+    Packet {
+        length: p.len() as u32,
+        sequence: seq,
+        payload: p,
+    }
+}
+
 struct HandshakeResponse {
     capability_flags: u32,
     username: String,
@@ -951,7 +964,7 @@ fn send_result_set<W: Write>(
         make_eof_packet(seq, 0x0002).write_to(w)?;
         seq = seq.wrapping_add(1);
     } else {
-        make_ok_packet(seq, 0, 0, 0x0002, 0).write_to(w)?;
+        make_deprecate_eof_ok_packet(seq, 0, 0, 0x0002).write_to(w)?;
         seq = seq.wrapping_add(1);
     }
     tracing::info!("send_result_set done: final_seq={}", seq);
@@ -2057,7 +2070,7 @@ fn do_command_loop<S: Read + Write>(
                         seq = seq.wrapping_add(1);
                     }
                     if cap & capability::DEPRECATE_EOF != 0 {
-                        make_ok_packet(seq, 0, 0, 0x0002, 0).write_to(stream)?;
+                        make_deprecate_eof_ok_packet(seq, 0, 0, 0x0002).write_to(stream)?;
                         seq = seq.wrapping_add(1);
                     } else {
                         make_eof_packet(seq, 0x0002).write_to(stream)?;
@@ -2072,7 +2085,7 @@ fn do_command_loop<S: Read + Write>(
                         seq = seq.wrapping_add(1);
                     }
                     if cap & capability::DEPRECATE_EOF != 0 {
-                        make_ok_packet(seq, 0, 0, 0x0002, 0).write_to(stream)?;
+                        make_deprecate_eof_ok_packet(seq, 0, 0, 0x0002).write_to(stream)?;
                         seq = seq.wrapping_add(1);
                     } else {
                         make_eof_packet(seq, 0x0002).write_to(stream)?;
