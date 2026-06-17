@@ -2749,6 +2749,30 @@ impl Parser {
                         expression: Some(Expression::Identifier("level".to_string())),
                     });
                 }
+                // SELECT bare numeric expression (e.g. `SELECT 1`, `SELECT -1`,
+                // `SELECT -9223372036854775808` for i64::MIN). Previously
+                // `SELECT -1` failed with "Expected FROM or column name".
+                Some(Token::NumberLiteral(_)) | Some(Token::Minus) => {
+                    let expr = self.parse_expression()?;
+                    let name = format!("{:?}", expr);
+                    let alias = if matches!(self.current(), Some(Token::As)) {
+                        self.next();
+                        if let Some(Token::Identifier(n)) = self.current() {
+                            let a = n.clone();
+                            self.next();
+                            Some(a)
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    };
+                    columns.push(SelectColumn {
+                        name,
+                        alias,
+                        expression: Some(expr),
+                    });
+                }
                 _ => {
                     return Err("Expected FROM or column name".to_string());
                 }
