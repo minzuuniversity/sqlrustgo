@@ -1,10 +1,11 @@
 # v3.9.0 GA Gate Report
 
-> **Status: 🟡 IN PROGRESS (gates G1-G16 executed, 24h/72h/168h soak running on 250/Z6G4)**
+> **Status: 🟡 IN PROGRESS (gates G1-G16 + 5 meta-gates PASS, 24h/72h/168h real soak pending Z6G4)**
 > **Date**: 2026-06-17
-> **Latest tag**: `v3.9.0-rc7` at `642ff9cf9` (2026-06-12 16:52)
-> **GA pending**: 24h/72h/168h soak completion (250 24h running)
-> **Truthfulness Notice**: 本报告经过 P11-P15 meta-gate 审计，发现部分 gate 存在验证漏洞 (V1-V8)。详见 TEST_TRUTHFULNESS_REPORT.md。
+> **Latest tag**: `v3.9.0-rc7` at `1e83612c6` (post PR #3467 Sprint 8 docs follow-up)
+> **Sprint 8 PR #3465**: Q8 hash join (33s→0.18ms, 165,000×) + ADR-006 V5/V6/V8/V2 + soak_runner
+> **GA pending**: 24h/72h/168h real wall-clock soak on Z6G4 (infra ready via PR #3465)
+> **Truthfulness Notice**: 本报告经过 P11-P15 meta-gate 审计 (Sprint 8 5/5 PASS)。详见 TEST_TRUTHFULNESS_REPORT.md。
 
 ## 1. Gate Summary (G1-G16) — 诚实声明
 
@@ -29,6 +30,19 @@
 
 **Total: 16/16 PASS (gate scripts executed)**
 **诚实评估**: 所有 gate 脚本执行完成，但部分 gate 缺乏独立 oracle 对比，结果为自验证。
+
+### 1.1 Meta-gates (P11-P15, ADR-006, Sprint 8)
+
+| Meta-gate | 主题 | 状态 | Sprint 8 增量 |
+|-----------|------|------|--------------|
+| **P11** | Gate Self-Verification | ✅ PASS | — |
+| **P12** | No Implicit Tolerance | ✅ PASS | ignore_registry 93→42 + 1 marker |
+| **P13** | Test Count Monotonicity | ✅ PASS | — |
+| **P14** | DRIFT != PASS | ✅ PASS | V5/V6/V8 全部修复 |
+| **P15** | Oracle Required | ✅ PASS | — |
+| **P16** | Gate Test Integrity | ✅ PASS | (pre-Sprint 8) 0/27 gate tests `#[ignore]` |
+
+**5/5 meta-gates (P11-P15) PASS (Sprint 8) + 1/1 P16 PASS = 6/6**
 
 ## 2. Substance Tests (Issue #3108, #3146, #3270, #3224)
 
@@ -78,7 +92,9 @@
 - 真实 24h/72h/168h 浸泡测试**尚未完成**，是 GA 阻塞条件
 - Z6G4 历史上有 5+ 次宕机记录
 
-## 5. Issues Closed (June 12, 2026)
+## 5. Issues Closed (June 12-17, 2026)
+
+### RC7 周期 (June 12, 2026)
 
 | # | Title | PR |
 |---|-------|----|
@@ -87,6 +103,17 @@
 | #3146 | INT-3 expr follow-up | #3362 |
 | #3270 | [GA-P1/INT-2] Cross-version upgrade chain | #3361 |
 | #3224 | [P1] Z6G4 real perf measurement | #3359 |
+
+### Sprint 8 周期 (June 17, 2026, PR #3465)
+
+| # | Title | PR |
+|---|-------|----|
+| Q8 perf | Q8 cartesian→hash join (33s→0.18ms) | #3465 (Track A) |
+| ADR-006 Phase 3 | V5/V6/V8/V2 治理 (5/5 meta-gates PASS) | #3465 (Track B) |
+| soak infra | `sqlrustgo-mysql-server soak` 子命令 | #3465 (Track C) |
+| 26 long tests | long-stability tests 分析 | #3465 (Track C) |
+| doc follow-up | CHANGELOG, CONVERGENCE, CURRENT_VERSION | #3467 |
+| doc refresh v2.0 | V390_COMPREHENSIVE_ASSESSMENT, ROADMAP, INDEX | #3468 |
 
 ## 6. Issues Pending
 
@@ -126,12 +153,15 @@
 
 ## 9. Risk Assessment — 诚实声明
 
-| Risk | Level | Mitigation | 诚实评估 |
-|------|-------|------------|----------|
-| 真实 soak 未完成 | 🔴 HIGH | 250 running | **GA 未就绪** |
+| Risk | Level | Mitigation | Sprint 8 状态 |
+|------|-------|------------|--------------|
+| 真实 soak 未完成 | 🔴 HIGH | infra ready (PR #3465), run on Z6G4 | **🟡 INFRA DONE, RUN PENDING** |
 | Z6G4 instability (5+ outages) | 🔴 HIGH | 250 backup | 历史宕机记录不可忽视 |
-| 部分 gate 无 oracle 对比 | 🟠 MEDIUM | P15 检测 | **测试正确性未验证** |
-| V6: `\|\| true` 吞错误 | 🟠 MEDIUM | P14 检测 | **部分失败被静默忽略** |
+| 部分 gate 无 oracle 对比 | 🟠 MEDIUM | P15 ✅ PASS | **测试正确性未完全验证** |
+| V6: `\|\| true` 吞错误 | 🟢 LOW | P14 V6 fix (Sprint 8) | ✅ **修复** (commit `6ce4f827d`) |
+| V5: DRIFT 被当作 PASS | 🟢 LOW | P14 V5 fix (Sprint 8) | ✅ **修复** (commit `2470f9a1e`) |
+| V8: grep 失败静默 | 🟢 LOW | P14 V8 fix (Sprint 8) | ✅ **修复** (commit `70265812d`) |
+| V2: 93 stale `#[ignore]` | 🟢 LOW | P12 V2 fix (Sprint 8) | ✅ **修复** (commit `07d7ec857`) |
 | gitcode sync blocked | 🟡 LOW | 3/4 remotes | 可接受 |
 
-**诚实总结**: v3.9.0 当前状态为"gate 脚本已执行完成"，但"真实质量验证"尚未完成（缺少 oracle 对比 + 真实 soak 测试）。
+**诚实总结**: v3.9.0 当前状态为"gate 脚本已执行完成 (G1-G16) + meta-gates PASS (P11-P15, Sprint 8) + soak infra ready (PR #3465)"，但"真实质量验证"尚未完成（缺少 oracle 对比 + 真实 24h/72h/168h soak 测试）。
