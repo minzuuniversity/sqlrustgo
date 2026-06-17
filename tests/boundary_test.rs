@@ -29,11 +29,13 @@ fn test_large_integer_positive() {
 }
 
 #[test]
-#[ignore = "Parser fails on i64 MIN (-9223372036854775808) - sign+abs overflow, real parser bug"]
 fn test_large_integer_negative() {
     let sql = "SELECT -9223372036854775808";
     let result = parse(sql);
-    assert!(result.is_ok());
+    if let Err(ref e) = result {
+        eprintln!("parse error: {}", e);
+    }
+    assert!(result.is_ok(), "parse error: {:?}", result);
 }
 
 #[test]
