@@ -1,0 +1,28 @@
+{
+  "_comment": "G16 v3.8 → v3.9 file format compatibility baseline. Stores expected key counts and row sums for cross-version upgrade verification.",
+  "generated_at": "2026-06-18T00:00:00Z",
+  "engine": "SQLRustGo v3.8.0 → v3.9.0",
+  "upgrade_path": "v3.8.0 → v3.9.0 (in-process synthetic format)",
+  "checks": [
+    {
+      "test": "users_table_row_count",
+      "expected": 100,
+      "description": "users table should retain 100 rows after upgrade"
+    },
+    {
+      "test": "orders_table_row_count",
+      "expected": 1000,
+      "description": "orders table should retain 1000 rows"
+    },
+    {
+      "test": "sum_ages",
+      "expected": 4500,
+      "description": "Sum of ages column should be preserved (100 users avg 45)"
+    },
+    {
+      "test": "primary_key_uniqueness",
+      "expected": true,
+      "description": "Primary key constraints must remain enforced after upgrade"
+    }
+  ]
+}
