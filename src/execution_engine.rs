@@ -4,8 +4,9 @@
 #![allow(unused_variables, unused_imports)]
 
 use crate::engine_utils::{
-    build_aggregate_schema, build_combined_schema, eval_predicate, evaluate_where_clause,
-    find_column_index, sql_compare, validate_foreign_keys,
+    build_aggregate_schema, build_combined_schema, decode_undo_key, decode_undo_value,
+    encode_undo_key, encode_undo_value, eval_predicate, evaluate_where_clause, find_column_index,
+    sql_compare, validate_foreign_keys,
 };
 use crate::expr_utils::{
     compare_values, evaluate_binary_op, evaluate_expr_to_string, evaluate_expression,
@@ -66,7 +67,9 @@ use sqlrustgo_storage::{
     ColumnDefinition, FileBackedWalManager, FileStorage, MemoryStorage, StorageEngine, TableInfo,
     WalStorage,
 };
-use sqlrustgo_transaction::{IsolationLevel as TmIsolationLevel, TransactionManager, TxId};
+use sqlrustgo_transaction::{
+    savepoint::UndoRecord, IsolationLevel as TmIsolationLevel, TransactionManager, TxId,
+};
 use sqlrustgo_types::Value as SqlValue;
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -578,7 +581,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                         }
                     }
                 }
-                storage.insert(&table_name, processed_records)?;
+                storage.insert(&table_name, processed_records.clone())?;
             }
         }
 
@@ -592,6 +595,20 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         if !after_triggers.is_empty() {
             for record in &all_records {
                 trigger_executor.execute_after_insert(&table_name, record)?;
+            }
+        }
+
+        // SEM-1 G5-A fix: record undo entries for each newly inserted row
+        // so ROLLBACK TO SAVEPOINT can physically delete them.
+        if let Some(tx_id) = self.current_tx_id {
+            if let Some(pk_idx) = table_info.columns.iter().position(|c| c.primary_key) {
+                for record in &processed_records {
+                    if let Some(pk_value) = record.get(pk_idx) {
+                        let key = encode_undo_key(&table_name, pk_value);
+                        self.transaction_manager
+                            .record_undo(tx_id, UndoRecord::Insert { key });
+                    }
+                }
             }
         }
 
@@ -777,6 +794,21 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             }
         }
 
+        // SEM-1 G5-A fix: record Update undo entries so ROLLBACK TO
+        // SAVEPOINT can physically restore the old row values.
+        if let Some(tx_id) = self.current_tx_id {
+            if let Some(pk_idx) = table_info.columns.iter().position(|c| c.primary_key) {
+                for old_row in &rows_to_update {
+                    if let Some(pk_value) = old_row.get(pk_idx) {
+                        let key = encode_undo_key(&table_name, pk_value);
+                        let old_value = encode_undo_value(old_row);
+                        self.transaction_manager
+                            .record_undo(tx_id, UndoRecord::Update { key, old_value });
+                    }
+                }
+            }
+        }
+
         // INT-1: autocommit — leave the commit decision to the helper.
         self.commit_implicit_dml_tx(started_implicit);
 
@@ -905,6 +937,21 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         if !after_triggers.is_empty() {
             for row in &rows_to_delete {
                 trigger_executor.execute_after_delete(&table_name, row)?;
+            }
+        }
+
+        // SEM-1 G5-A fix: record Delete undo entries for each removed
+        // row so ROLLBACK TO SAVEPOINT can physically restore them.
+        if let Some(tx_id) = self.current_tx_id {
+            if let Some(pk_idx) = table_info.columns.iter().position(|c| c.primary_key) {
+                for old_row in &rows_to_delete {
+                    if let Some(pk_value) = old_row.get(pk_idx) {
+                        let key = encode_undo_key(&table_name, pk_value);
+                        let old_value = encode_undo_value(old_row);
+                        self.transaction_manager
+                            .record_undo(tx_id, UndoRecord::Delete { key, old_value });
+                    }
+                }
             }
         }
 
@@ -1201,12 +1248,10 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
 
     /// SEM-1 (#3172): Execute SAVEPOINT/ROLLBACK TO SAVEPOINT/RELEASE SAVEPOINT.
     ///
-    /// Routes the parsed statement to the per-tx SavepointManager. The
-    /// physical undo of tuple changes is deferred to a future iteration;
-    /// this method only manages the savepoint namespace and the undo-log
-    /// cursor.
+    /// Routes the parsed statement to the per-tx SavepointManager and
+    /// (G5-A fix) physically reverts data changes for ROLLBACK TO SAVEPOINT
+    /// by replaying the per-DML undo records against the storage engine.
     fn execute_savepoint(&mut self, name: &str, op: SavepointOp) -> SqlResult<ExecutorResult> {
-        // An active transaction is required for any savepoint operation.
         let tx_id = self.current_tx_id.ok_or_else(|| {
             SqlError::ExecutionError(
                 "SAVEPOINT / ROLLBACK TO SAVEPOINT / RELEASE SAVEPOINT \
@@ -1221,23 +1266,91 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 .map_err(|e| {
                     SqlError::ExecutionError(format!("SAVEPOINT {} failed: {}", name, e))
                 })?,
-            SavepointOp::RollbackTo => self
-                .transaction_manager
-                .rollback_to_savepoint(tx_id, name)
-                .map_err(|e| {
-                    SqlError::ExecutionError(format!(
-                        "ROLLBACK TO SAVEPOINT {} failed: {}",
-                        name, e
-                    ))
-                })?,
-            SavepointOp::Release => self
-                .transaction_manager
-                .release_savepoint(tx_id, name)
-                .map_err(|e| {
-                    SqlError::ExecutionError(format!("RELEASE SAVEPOINT {} failed: {}", name, e))
-                })?,
+            SavepointOp::RollbackTo => {
+                let undo_records = self
+                    .transaction_manager
+                    .take_undo_after(tx_id, name)
+                    .map_err(|e| {
+                        SqlError::ExecutionError(format!(
+                            "ROLLBACK TO SAVEPOINT {} failed: {}",
+                            name, e
+                        ))
+                    })?;
+                self.apply_undo_records(undo_records)?;
+            }
+            SavepointOp::Release => {
+                self.transaction_manager
+                    .discard_undo_after(tx_id, name)
+                    .map_err(|e| {
+                        SqlError::ExecutionError(format!("RELEASE SAVEPOINT {} failed: {}", name, e))
+                    })?;
+            }
         }
         Ok(ExecutorResult::empty())
+    }
+
+    /// SEM-1 G5-A fix: physically revert a sequence of undo records
+    /// against the storage engine. The records are in reverse order
+    /// (LIFO) so the most recent DML is undone first.
+    fn apply_undo_records(&mut self, records: Vec<UndoRecord>) -> SqlResult<()> {
+        for record in records {
+            match record {
+                UndoRecord::Insert { key } => {
+                    self.apply_undo_insert(&key)?;
+                }
+                UndoRecord::Delete { key, old_value } => {
+                    self.apply_undo_delete(&key, &old_value)?;
+                }
+                UndoRecord::Update { key, old_value } => {
+                    self.apply_undo_update(&key, &old_value)?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn apply_undo_insert(&mut self, key_bytes: &[u8]) -> SqlResult<()> {
+        let (table, pk_value) = decode_undo_key(key_bytes)?;
+        let mut storage = self.storage.write().unwrap();
+        let pk_clone = pk_value.clone();
+        let filter: sqlrustgo_storage::engine::RowFilter = Box::new(move |row: &Vec<Value>| {
+            row.first().map(|v| v == &pk_clone).unwrap_or(false)
+        });
+        let deleted = storage.delete_if(&table, &filter)?;
+        if deleted == 0 {
+            return Err(SqlError::ExecutionError(format!(
+                "SAVEPOINT undo: INSERT reverse failed — no row with PK {:?} in {}",
+                pk_value, table
+            )));
+        }
+        Ok(())
+    }
+
+    fn apply_undo_delete(&mut self, key_bytes: &[u8], old_value_bytes: &[u8]) -> SqlResult<()> {
+        let (table, _pk) = decode_undo_key(key_bytes)?;
+        let record = decode_undo_value(old_value_bytes)?;
+        let mut storage = self.storage.write().unwrap();
+        storage.insert(&table, vec![record])?;
+        Ok(())
+    }
+
+    fn apply_undo_update(&mut self, key_bytes: &[u8], old_value_bytes: &[u8]) -> SqlResult<()> {
+        let (table, pk_value) = decode_undo_key(key_bytes)?;
+        let record = decode_undo_value(old_value_bytes)?;
+        let pk_clone = pk_value.clone();
+        let mut storage = self.storage.write().unwrap();
+        let filter: sqlrustgo_storage::engine::RowFilter = Box::new(move |row: &Vec<Value>| {
+            row.first().map(|v| v == &pk_clone).unwrap_or(false)
+        });
+        let deleted = storage.delete_if(&table, &filter)?;
+        if deleted == 0 {
+            return Err(SqlError::ExecutionError(format!(
+                "SAVEPOINT undo: UPDATE reverse failed — no row with PK {:?} in {}",
+                pk_value, table
+            )));
+        }
+        storage.insert(&table, vec![record])?;
+        Ok(())
     }
 
     fn rollback_transaction(&mut self) -> SqlResult<ExecutorResult> {
