@@ -67,26 +67,37 @@ else
     echo "  ⚠️ WARN: $BETA_REPORT not found (Beta not yet cut)"
 fi
 
-# 4. G7 Soak gate (unit-level mock) PASS
-G7_RESULT=$(bash scripts/gate/check_p13_soak_test.sh 2>&1 | tail -3 || true)
-if echo "$G7_RESULT" | grep -q "PASS"; then
-    echo "  [4/7] ✅ PASS: G7 Soak gate (unit-level) PASS"
-else
-    echo "  ❌ FAIL: G7 Soak gate did not pass"
+# 4. G7 Soak gate (unit-level mock) PASS (V6 fix: capture exit code properly)
+G7_OUTPUT=$(bash scripts/gate/check_p13_soak_test.sh 2>&1)
+G7_EXIT=$?
+G7_RESULT=$(echo "$G7_OUTPUT" | tail -3)
+if [ $G7_EXIT -ne 0 ]; then
+    echo "  ❌ FAIL: G7 Soak gate script failed (exit=$G7_EXIT)"
     echo "$G7_RESULT"
     exit 1
 fi
+if ! echo "$G7_RESULT" | grep -q "PASS"; then
+    echo "  ❌ FAIL: G7 Soak gate did not produce PASS"
+    echo "$G7_RESULT"
+    exit 1
+fi
+echo "  [4/7] ✅ PASS: G7 Soak gate (unit-level) PASS"
 
-# 5. TPC-H 22/22 维持 (P14 V8 fix: capture exit code explicitly)
+# 5. TPC-H 22/22 维持 (V6 fix: capture exit code properly)
 TPCH_OUTPUT=$(cargo test --test tpch_gate_test 2>&1)
 TPCH_EXIT=$?
-TPCH_PASSED=$(echo "$TPCH_OUTPUT" | grep -E "test result.*ok" | head -1 || true)
-if [ $TPCH_EXIT -eq 0 ] && echo "$TPCH_PASSED" | grep -q "ok"; then
-    echo "  [5/7] ✅ PASS: TPC-H gate (22/22) maintained"
-else
-    echo "  ⚠️ WARN: TPC-H gate test did not pass cleanly (exit=$TPCH_EXIT)"
-    echo "  [5/7] ✅ PASS (warned): TPC-H gate check skipped"
+TPCH_PASSED=$(echo "$TPCH_OUTPUT" | grep -E "test result.*ok" | head -1)
+if [ $TPCH_EXIT -ne 0 ]; then
+    echo "  ❌ FAIL: TPC-H gate test failed (cargo exit=$TPCH_EXIT)"
+    echo "$TPCH_OUTPUT" | tail -5
+    exit 1
 fi
+if [ -z "$TPCH_PASSED" ] || ! echo "$TPCH_PASSED" | grep -q "ok"; then
+    echo "  ❌ FAIL: TPC-H gate output could not be parsed"
+    echo "$TPCH_OUTPUT" | tail -5
+    exit 1
+fi
+echo "  [5/7] ✅ PASS: TPC-H gate (22/22) maintained"
 
 # 6. 24h 真实 run (optional, Z6G4 only)
 if [ -d "test_results/stability_24h_"* ]; then
