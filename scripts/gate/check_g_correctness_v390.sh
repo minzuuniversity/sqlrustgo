@@ -16,7 +16,7 @@
 # Refs: docs/audit/status/2026-06-07-tpch-root-cause-board-v390.md
 #       docs/releases/v3.9.0/ROADMAP.md Phase 4 (GA)
 
-set -e
+set -eo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
@@ -36,12 +36,12 @@ echo
 # TPCH_SF01_ALL=1 (may take 10+ min due to Q21 4-table EXISTS).
 if [ "${TPCH_SF01_ALL:-0}" = "1" ]; then
     echo "[1/3] Running tpch_sf01_inprocess_test (TPCH_SF01_ALL=1, full 22)..."
-    cargo test --test tpch_sf01_inprocess_test --all-features -- --nocapture > /tmp/gate_c_run.log 2>&1 || true
+    cargo test --test tpch_sf01_inprocess_test --all-features -- --nocapture > /tmp/gate_c_run.log 2>&1
     grep -E "Q[[:space:]]*[0-9]+: ok|Q[[:space:]]*[0-9]+: ERR|=== TPC-H|test result" /tmp/gate_c_run.log
     THRESHOLD=21
 else
     echo "[1/3] Running tpch_sf01_inprocess_test (smoke 6, fast)..."
-    cargo test --test tpch_sf01_inprocess_test --all-features -- --nocapture > /tmp/gate_c_run.log 2>&1 || true
+    cargo test --test tpch_sf01_inprocess_test --all-features -- --nocapture > /tmp/gate_c_run.log 2>&1
     grep -E "Q[[:space:]]*[0-9]+: ok|Q[[:space:]]*[0-9]+: ERR|=== TPC-H|test result" /tmp/gate_c_run.log
     THRESHOLD=6
 fi
@@ -62,9 +62,17 @@ fi
 echo
 
 echo "[3/3] Running Operator Regression Suite (aggregate/exists/join)..."
-cargo test --test operators_aggregate --test operators_join --all-features 2>&1 | grep -E "test result" | head -5
-JOIN_RESULT=$(cargo test --test operators_aggregate --test operators_join --all-features 2>&1 | grep "test result" | tail -1)
+# V8 fix: run cargo test once, capture output, check exit code via $?
+# (was: ran twice via pipe+grep+head, exit code lost to pipe)
+OPERATOR_OUTPUT=$(cargo test --test operators_aggregate --test operators_join --all-features 2>&1)
+OPERATOR_EXIT=$?
+echo "$OPERATOR_OUTPUT" | grep -E "test result" | head -5
+JOIN_RESULT=$(echo "$OPERATOR_OUTPUT" | grep "test result" | tail -1)
 echo "  Operator: $JOIN_RESULT"
+if [ "$OPERATOR_EXIT" -ne 0 ]; then
+    echo "  ❌ FAIL: operator tests exited with $OPERATOR_EXIT"
+    GATE_RESULT="FAIL"
+fi
 
 echo
 echo "=== Gate-C: $GATE_RESULT ==="
