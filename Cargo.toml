@@ -167,6 +167,10 @@ rayon.workspace = true
 name = "tpch_wire_bench"
 harness = false
 
+[[bench]]
+name = "qps_bench"
+harness = false
+
 [[example]]
 name = "tpch_data_gen"
 path = "crates/bench/examples/tpch_data_gen.rs"
