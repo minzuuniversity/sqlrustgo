@@ -4,6 +4,11 @@
   "total_allowed": 51,
   "ignored_tests": [
     {
+      "file": "tests/tpch_q9_audit.rs",
+      "line": "5:    #[ignore = \"needs tests/data/tpch-sf01/baseline/Q09_three_way.json (not generated)\"]",
+      "reason": "P12: baseline data not generated yet - tracked in TPCH_E2E_TESTING.md"
+    },
+    {
       "file": "crates/parser/src/parser.rs",
       "line": "7299:    #[ignore = \"Test deferred (see tracking issue or comment context)\"]",
       "reason": "TODO: needs ADR + issue link"
