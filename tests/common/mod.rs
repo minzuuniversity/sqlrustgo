@@ -188,10 +188,14 @@ fn native_password_auth(password: &[u8], scramble: &[u8; SCRAMBLE_LEN]) -> [u8; 
 /// database name and the auth_plugin_name fields. The server's
 /// `parse_handshake_response` only consults those fields when the
 /// corresponding capability flag is set in the response.
-fn build_handshake_response41(user: &str, auth_response: &[u8]) -> wire_err::Result<Vec<u8>> {
+fn build_handshake_response41_with_caps(
+    user: &str,
+    auth_response: &[u8],
+    caps: u32,
+) -> wire_err::Result<Vec<u8>> {
     let mut p = Vec::with_capacity(64 + user.len() + auth_response.len());
 
-    p.extend_from_slice(&CLIENT_CAPABILITIES.to_le_bytes());
+    p.extend_from_slice(&caps.to_le_bytes());
     p.extend_from_slice(&MAX_PACKET_SIZE.to_le_bytes());
     p.push(CHARSET_UTF8);
     p.extend_from_slice(&[0u8; 23]); // 23 reserved bytes
@@ -209,6 +213,10 @@ fn build_handshake_response41(user: &str, auth_response: &[u8]) -> wire_err::Res
     p.extend_from_slice(auth_response);
 
     Ok(p)
+}
+
+fn build_handshake_response41(user: &str, auth_response: &[u8]) -> wire_err::Result<Vec<u8>> {
+    build_handshake_response41_with_caps(user, auth_response, CLIENT_CAPABILITIES)
 }
 
 fn build_com_query(sql: &str) -> Vec<u8> {
@@ -390,8 +398,12 @@ pub struct MySqlTestClient {
     pub handle: EphemeralHandle,
     stream: TcpStream,
     next_seq: u8,
+    /// The capabilities the client advertised in HandshakeResponse41.
+    /// `query_rows` consults `DEPRECATE_EOF` from this value to decide
+    /// whether to read the inter-record separator between column defs
+    /// and the row stream. See openspec/changes/2026-06-18-wire-deprecate-eof.
+    caps: u32,
 }
-
 impl MySqlTestClient {
     /// Start an ephemeral server on `127.0.0.1` and connect to it as
     /// the `tester` user (password = `tester`). The test harness
@@ -442,7 +454,55 @@ impl MySqlTestClient {
             handle,
             stream,
             next_seq: 0,
+            caps: CLIENT_CAPABILITIES,
         })
+    }
+
+    /// Connect to an arbitrary `(host, port)` with caller-supplied
+    /// additional capabilities. The supplied `extra_caps` is OR'd
+    /// with `CLIENT_CAPABILITIES` (the legacy default set) so callers
+    /// can opt into specific bits such as `DEPRECATE_EOF` without
+    /// having to re-declare the base protocol/auth bits — those
+    /// bits are required for the server's auth state machine to
+    /// take the right path. See
+    /// openspec/changes/2026-06-18-wire-deprecate-eof.
+    pub fn connect_with_caps(
+        addr: (&str, u16),
+        user: &str,
+        password: &str,
+        extra_caps: u32,
+    ) -> wire_err::Result<Self> {
+        let caps = CLIENT_CAPABILITIES | extra_caps;
+        let (host, port) = addr;
+        let mut stream = TcpStream::connect((host, port))
+            .map_err(|e| wire_err::msg(format!("tcp connect {host}:{port}: {e}")))?;
+        stream
+            .set_read_timeout(Some(READ_TIMEOUT))
+            .map_err(|e| wire_err::msg(format!("set_read_timeout: {e}")))?;
+        stream
+            .set_write_timeout(Some(WRITE_TIMEOUT))
+            .map_err(|e| wire_err::msg(format!("set_write_timeout: {e}")))?;
+
+        let handshake = read_packet(&mut stream)?;
+        let scramble = parse_handshake(&handshake)?;
+        let auth = native_password_auth(password.as_bytes(), &scramble);
+        let resp = build_handshake_response41_with_caps(user, &auth, caps)?;
+        write_packet(&mut stream, 1, &resp)?;
+        let auth_resp = read_packet(&mut stream)?;
+        check_ok_or_err(2, &auth_resp)?;
+
+        let handle = EphemeralHandle::detached_for_external_server(port);
+        Ok(Self {
+            handle,
+            stream,
+            next_seq: 0,
+            caps,
+        })
+    }
+
+    /// The capabilities the client advertised in HandshakeResponse41.
+    pub fn client_capabilities(&self) -> u32 {
+        self.caps
     }
 
     /// Connect to an already-running ephemeral server.
@@ -475,6 +535,7 @@ impl MySqlTestClient {
             handle,
             stream,
             next_seq: 0,
+            caps: CLIENT_CAPABILITIES,
         })
     }
 
@@ -512,14 +573,26 @@ impl MySqlTestClient {
             let _ = read_packet(&mut self.stream)?;
         }
 
-        // 3) EOF separator (when DEPRECATE_EOF=0, the server sends
-        //    one EOF after all columns, before the row data).
-        let sep = read_packet(&mut self.stream)?;
-        if !sep.is_empty() && sep[0] == 0xFF {
-            return Err(wire_err::msg(format!(
-                "ERR after column defs: {}",
-                String::from_utf8_lossy(&sep[3..])
-            )));
+        // 3) Inter-record separator (classic protocol only).
+        //
+        //    When the client advertised DEPRECATE_EOF, the server
+        //    omits this packet (see send_result_set in the server
+        //    and openspec/changes/2026-06-18-wire-deprecate-eof).
+        //    When DEPRECATE_EOF is unset, the server emits a classic
+        //    EOF (0xFE + u16 warnings + u16 status_flags, 5 bytes).
+        //
+        //    DEPRECATE_EOF = 0x01000000 per the MySQL capability
+        //    flags spec; we hard-code the bit here rather than
+        //    reaching into the server's capability module from a
+        //    tests-side helper.
+        if self.caps & 0x01000000 == 0 {
+            let sep = read_packet(&mut self.stream)?;
+            if !sep.is_empty() && sep[0] == 0xFF {
+                return Err(wire_err::msg(format!(
+                    "ERR after column defs: {}",
+                    String::from_utf8_lossy(&sep[3..])
+                )));
+            }
         }
 
         // 4) Row packets until EOF/OK terminator.
