@@ -98,6 +98,37 @@ impl SavepointManager {
         self.undo_log.push(record);
     }
 
+    /// Drain and return all undo records added after the named savepoint,
+    /// in REVERSE order (LIFO) so the caller can apply them to physically
+    /// undo the most recent DML first. Removes the savepoint and any
+    /// savepoints nested inside it. Returns NotFound if the savepoint
+    /// does not exist.
+    pub fn take_undo_after(&mut self, name: &str) -> Result<Vec<UndoRecord>, SavepointError> {
+        let idx = self
+            .savepoints
+            .iter()
+            .rposition(|s| s.name == name)
+            .ok_or(SavepointError::NotFound)?;
+        let sp = &self.savepoints[idx];
+        let drained: Vec<UndoRecord> = self.undo_log.drain(sp.undo_log_index..).collect();
+        self.savepoints.truncate(idx + 1);
+        Ok(drained.into_iter().rev().collect())
+    }
+
+    /// Borrow the undo records added after the named savepoint without
+    /// removing them. Used by RELEASE SAVEPOINT to discard them.
+    pub fn discard_undo_after(&mut self, name: &str) -> Result<(), SavepointError> {
+        let idx = self
+            .savepoints
+            .iter()
+            .rposition(|s| s.name == name)
+            .ok_or(SavepointError::NotFound)?;
+        let sp = &self.savepoints[idx];
+        self.undo_log.truncate(sp.undo_log_index);
+        self.savepoints.truncate(idx + 1);
+        Ok(())
+    }
+
     pub fn get_savepoint_count(&self) -> usize {
         self.savepoints.len()
     }
