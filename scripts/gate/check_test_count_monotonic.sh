@@ -130,7 +130,6 @@ if [ "$ignored_tests" -gt "$baseline_ignored" ]; then
     echo "          ACTION REQUIRED: P12 violation - new ignored tests must be in ADR"
     FAIL=$((FAIL+1))
 elif [ "$ignored_tests" -lt "$baseline_ignored" ]; then
-    delta=$((ignored_ignored - baseline_ignored))
     delta=$((ignored_tests - baseline_ignored))
     echo "  ✅ PASS: #[ignore] count decreased by $delta (good — tests un-ignored)"
 else
