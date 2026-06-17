@@ -1,9 +1,9 @@
 # SQLRustGo v3.9.0 综合索引
 
 > **版本**: v3.9.0
-> **状态**: RC7 (2026-06-12)
+> **状态**: RC7 ✅ + Sprint 8 ✅ (PR #3465, 2026-06-17) → GA 启动待 Z6G4 真实 24h+ soak
 > **GA 目标**: 2026-12-15
-> **分支**: `develop/v3.9.0`
+> **分支**: `develop/v3.9.0` @ `1e83612c6`
 > **最后更新**: 2026-06-17
 
 ---
@@ -13,11 +13,13 @@
 | 属性 | 值 |
 |------|-----|
 | 当前版本 | v3.9.0 |
-| 阶段 | RC7 |
+| 阶段 | RC7 ✅ + Sprint 8 ✅ |
 | 分支 | develop/v3.9.0 |
 | 前置版本 | v3.8.0 GA (2026-06-08) |
-| GA 目标 | 2026-12-15 |
+| GA 目标 | 2026-12-15 (deferred from 2026-09-23 per Hermes audit #3252) |
 | 主题 | Single-Node Production Candidate |
+| **Sprint 8 PR** | **#3465 merged (Q8 hash join + ADR-006 + soak_runner)** |
+| **Sprint 8 commit** | **`edcc3e20d` (PR #3465 merge)**, latest tip `1e83612c6` (PR #3467 docs) |
 
 ### 测试结果 — 诚实声明
 
@@ -25,31 +27,43 @@
 |--------|------|----------|
 | Lib Tests | 1670 PASS, 1 IGNORED | ✅ 已执行 |
 | TPC-H | 22/22 PASS | ⚠️ 无 oracle 对比 |
+| TPC-H Q8 perf | **0.18ms (Sprint 8, 165,000× speedup)** | ✅ real (Sprint 8) |
 | Corpus | 818/818 PASS | ⚠️ 无 oracle 对比 |
 | D9 Gate | 8/8 PASS | ✅ 有独立验证 |
 
-### G1-G16 门禁状态 — 诚实声明
+### G1-G16 门禁状态 — 诚实声明 (Sprint 8 后)
 
-| Gate | 主题 | 状态 | 限制说明 |
-|------|------|------|----------|
-| G1 | TPC-H 22/22 | ✅ PASS | ⚠️ 无 oracle 对比 |
-| G2 | INT-2 | ✅ PASS | ⚠️ 无 oracle 对比 |
-| G3 | INT-3 | ✅ PASS | ⚠️ 无 oracle 对比 |
-| G4 | ARCH-3 | ✅ PASS | ✅ 有独立验证 |
-| G5 | SEM-1 | ✅ PASS | ⚠️ 无 oracle 对比 |
-| G6 | Backup/Restore | ✅ PASS | ✅ 有独立验证 |
-| G7 | 24h Soak | ✅ PASS | ⚠️ **SIMULATED**，非真实 24h |
-| G8 | Crash Matrix | ✅ PASS | ✅ 有独立验证 |
-| G9 | Upgrade Test | ✅ PASS | ⚠️ 无 oracle 对比 |
-| G10 | Audit + Time Travel | ✅ PASS | ✅ 有独立验证 |
-| G11 | QPS/TPS | ✅ PASS | ⚠️ 无 oracle 对比 |
-| G12 | Sysbench | ✅ PASS | ⚠️ 无 oracle 对比 |
-| G13 | Stability | 🟡 进行中 | 真实 24h soak 未完成 |
-| G14 | Real Crash | ✅ PASS | ⚠️ 部分模拟 |
-| G15 | TPC-H SF0.01 | ✅ PASS | ⚠️ 无 oracle 对比 |
-| G16 | Compatibility | ✅ PASS | ⚠️ 无 oracle 对比 |
+| Gate | 主题 | 状态 | 限制说明 | Sprint 8 增量 |
+|------|------|------|----------|--------------|
+| G1 | TPC-H 22/22 | ✅ PASS | ⚠️ 无 oracle 对比 | **Q8 0.18ms** |
+| G2 | INT-2 | ✅ PASS | ⚠️ 无 oracle 对比 | — |
+| G3 | INT-3 | ✅ PASS | ⚠️ 无 oracle 对比 | — |
+| G4 | ARCH-3 | ✅ PASS | ✅ 有独立验证 | — |
+| G5 | SEM-1 | ✅ PASS | ⚠️ 无 oracle 对比 | — |
+| G6 | Backup/Restore | ✅ PASS | ✅ 有独立验证 | — |
+| G7 | 24h Soak | 🟡 **INFRA DONE** | ⚠️ **SIMULATED**, real 24h pending | **`soak_runner` ready (Sprint 8)** |
+| G8 | Crash Matrix | ✅ PASS | ✅ 有独立验证 | — |
+| G9 | Upgrade Test | ✅ PASS | ⚠️ 无 oracle 对比 | — |
+| G10 | Audit + Time Travel | ✅ PASS | ✅ 有独立验证 | — |
+| G11 | QPS/TPS | ✅ PASS | ⚠️ 无 oracle 对比 | — |
+| G12 | Sysbench | ✅ PASS | ⚠️ 无 oracle 对比 | — |
+| G13 | Stability | 🟡 进行中 | 真实 24h soak 未完成 | PR #3466 修 G13 scripts |
+| G14 | Real Crash | ✅ PASS | ⚠️ 部分模拟 | — |
+| G15 | TPC-H SF0.01 | ✅ PASS | ⚠️ 无 oracle 对比 | — |
+| G16 | Compatibility | ✅ PASS | ⚠️ 无 oracle 对比 | — |
+| **P11-P15** | **meta-gate** (Sprint 8) | ✅ **5/5 PASS** | **V5/V6/V8/V2 全部修复** | **Sprint 8 Track B** |
 
-**诚实声明**: 所有 gate 脚本已执行，但 11/16 缺乏独立 oracle 对比。真实 soak 测试尚未完成。
+**诚实声明**: 16/16 G1-G16 gate 脚本已执行 + 5 meta-gates (P11-P15) PASS (Sprint 8), 但 11/16 缺乏独立 oracle 对比。真实 soak 测试 infra ready (Sprint 8), run 仍 pending Z6G4。
+
+### Sprint 8 关键交付 (PR #3465, 2026-06-17)
+
+| Track | 主题 | 关键 commit | 影响 |
+|-------|------|------------|------|
+| **A** | Q8 cartesian→hash join | `1b200d33f` | Q8 33s → 0.18ms (165,000×) |
+| **B** | ADR-006 V5/V6/V8/V2 治理 | `2470f9a1e` `6ce4f827d` `70265812d` `07d7ec857` | 5/5 meta-gates PASS |
+| **C** | `sqlrustgo-mysql-server soak` 子命令 | `de8b6b2fd` | real wall-clock infra |
+
+详见: `V390_COMPREHENSIVE_ASSESSMENT.md` v2.0, `CHANGELOG.md` 1.1, `LONG_STABILITY_TESTS_ANALYSIS.md`, `docs/governance/adr/ADR-006-meta-governance.md`
 
 ---
 
@@ -57,13 +71,33 @@
 
 ```
 v3.9.0/
-├── INDEX.md                              # 本文件 - 综合索引
+├── INDEX.md                              # 本文件 - 综合索引 (v3.0.1, 2026-06-17)
 ├── README.md                             # 文档入口
-├── CHANGELOG.md                          # 变更日志
-├── ROADMAP.md                            # 6 Phase 路线图
+├── CHANGELOG.md                          # 变更日志 (v3.9.0-CHANGELOG-1.1)
+├── ROADMAP.md                            # 6 Phase 路线图 (v2.0, 2026-06-17)
 ├── RELEASE_NOTES.md                       # 发布说明
 ├── GA_GATE_REPORT.md                      # GA 门禁报告 (最新)
 ├── GA_GATE_STATUS_REPORT.md              # GA 门禁状态
+├── V390_COMPREHENSIVE_ASSESSMENT.md      # 综合评估 v2.0 (RC7 + Sprint 8)
+├── LONG_STABILITY_TESTS_ANALYSIS.md     # 26 long-running tests 分析 (Sprint 8)
+├── TEST_TRUTHFULNESS_REPORT.md          # 测试真实性报告
+├── INTEGRATION_TEST_HONEST_ASSESSMENT.md # 集成测试诚实评估
+├── E2E_MIGRATION_MASTER_PLAN.md          # E2E 改造总计划
+├── EVALUATION_REPORT.md                  # 评估报告
+├── EVIDENCE_STATUS.md                    # 证据状态
+├── G11_QPS_BENCH_250.md                  # G11 QPS 基准
+├── Q9-FIX-GATE-REPORT.md                 # Q9 修复 gate 报告
+├── WIRED-22-VERIFICATION-REPORT.md       # 22 wire 验证
+├── RUST_1.96_UPGRADE.md                 # Rust 1.96 升级
+├── TPCH_E2E_TESTING.md                   # TPC-H E2E 测试
+├── V380_TO_V390_LEGACY_ISSUES_REMEDIATION_REPORT.md # v380→v390 遗留问题修复
+├── V390_COMPREHENSIVE_DOC_AUDIT_PLAN.md  # 文档审计计划
+├── V390_COMPREHENSIVE_DOC_AUDIT_WORK_REPORT.md # 文档审计工作报告
+├── V390_DOC_CORRECTION_PLAN.md           # 文档修正计划
+├── V390_DOC_CORRECTION_WORK_REPORT.md    # 文档修正工作报告
+├── V390_DOCUMENT_INCONSISTENCY_ANALYSIS.md # 文档不一致分析
+├── V390_GA_DOC_CORRECTION_PLAN.md        # GA 文档修正计划
+├── V390_GA_DOC_CORRECTION_WORK_REPORT.md # GA 文档修正工作报告
 ├── FEATURE_MATRIX.md                     # 功能矩阵
 ├── QUICK_START.md                        # 快速开始
 ├── INSTALL.md                            # 安装指南
@@ -80,7 +114,7 @@ v3.9.0/
 │   ├── RC1_GATE_REPORT.md
 │   ├── RC2_RELEASE_NOTES.md
 │   ├── RC2_GATE_REPORT.md
-│   ├── RC3_PLAN.md
+│   ├── RC3_PLAN.md                       # RC3 计划 (含 35% 真实校准)
 │   ├── RC3_RELEASE_NOTES.md
 │   ├── RC3_GATE_REPORT.md
 │   ├── RC4_RELEASE_NOTES.md
@@ -125,6 +159,8 @@ v3.9.0/
 │   ├── V390_TEST_PLAN_ROUND2_REVIEW.md
 │   ├── TPCH_ORACLE_PLAN.md
 │   └── SPRINT4_MASTER_PLAN.md
+├── logs/                                 # 运行日志
+│   └── README.md
 └── incidents/                            # 事故报告
     └── GITEA_252_OUTAGE_20260607.md
 ```
@@ -133,15 +169,17 @@ v3.9.0/
 
 ## 三、快速导航
 
-### 3.1 核心文档
+### 3.1 核心文档 (含 Sprint 8 新增/更新)
 
-| 文档 | 说明 |
-|------|------|
-| [README.md](README.md) | 文档入口 + 6 Phase 路线图 |
-| [CHANGELOG.md](CHANGELOG.md) | 完整变更日志 |
-| [ROADMAP.md](ROADMAP.md) | 详细路线图 (W0-W12) |
-| [GA_GATE_REPORT.md](GA_GATE_REPORT.md) | **GA 门禁报告** (最新状态) |
-| [RELEASE_NOTES.md](RELEASE_NOTES.md) | 发布说明 |
+| 文档 | 说明 | Sprint 8 状态 |
+|------|------|--------------|
+| [README.md](README.md) | 文档入口 + 6 Phase 路线图 | — |
+| [CHANGELOG.md](CHANGELOG.md) | 完整变更日志 (v1.1, +Sprint 8) | ✅ Sprint 8 增量 |
+| [ROADMAP.md](ROADMAP.md) | 详细路线图 (v2.0, +RC3-RC7 + Sprint 8) | ✅ Sprint 8 增量 |
+| [V390_COMPREHENSIVE_ASSESSMENT.md](V390_COMPREHENSIVE_ASSESSMENT.md) | **综合评估 v2.0 (RC7 + Sprint 8 视角)** | ✅ **NEW v2.0** |
+| [GA_GATE_REPORT.md](GA_GATE_REPORT.md) | GA 门禁报告 (最新 16/16 状态) | — |
+| [RELEASE_NOTES.md](RELEASE_NOTES.md) | 发布说明 | — |
+| [LONG_STABILITY_TESTS_ANALYSIS.md](LONG_STABILITY_TESTS_ANALYSIS.md) | 26 long-running tests 分析 | ✅ **NEW (Sprint 8)** |
 
 ### 3.2 用户文档
 
@@ -163,26 +201,26 @@ v3.9.0/
 | 文档 | 说明 |
 |------|------|
 | [beta/BETA_RELEASE_NOTES.md](beta/BETA_RELEASE_NOTES.md) | Beta 发布笔记 |
-| [beta/SOAK_72H_REPORT.md](beta/SOAK_72H_REPORT.md) | 72h 浸泡报告 |
+| [beta/SOAK_72H_REPORT.md](beta/SOAK_72H_REPORT.md) | 72h 浸泡报告 (compressed) |
 
-#### RC 阶段
+#### RC 阶段 (RC1-RC7)
 | 文档 | 说明 |
 |------|------|
 | [rc/RC1_RELEASE_NOTES.md](rc/RC1_RELEASE_NOTES.md) | RC1 发布笔记 |
 | [rc/RC1_GATE_REPORT.md](rc/RC1_GATE_REPORT.md) | RC1 门禁报告 |
 | [rc/RC2_RELEASE_NOTES.md](rc/RC2_RELEASE_NOTES.md) | RC2 发布笔记 |
 | [rc/RC2_GATE_REPORT.md](rc/RC2_GATE_REPORT.md) | RC2 门禁报告 |
-| [rc/RC3_PLAN.md](rc/RC3_PLAN.md) | RC3 计划 |
+| [rc/RC3_PLAN.md](rc/RC3_PLAN.md) | **RC3 计划 (含 35% 真实校准)** |
 | [rc/RC3_RELEASE_NOTES.md](rc/RC3_RELEASE_NOTES.md) | RC3 发布笔记 |
 | [rc/RC3_GATE_REPORT.md](rc/RC3_GATE_REPORT.md) | RC3 门禁报告 |
-| [rc/RC4_RELEASE_NOTES.md](rc/RC4_RELEASE_NOTES.md) | RC4 发布笔记 |
+| [rc/RC4_RELEASE_NOTES.md](rc/RC4_RELEASE_NOTES.md) | RC4 发布笔记 (Sprint 6 Q9 fix) |
 | [rc/RC4_GATE_REPORT.md](rc/RC4_GATE_REPORT.md) | RC4 门禁报告 |
-| [rc/RC5_RELEASE_NOTES.md](rc/RC5_RELEASE_NOTES.md) | RC5 发布笔记 |
+| [rc/RC5_RELEASE_NOTES.md](rc/RC5_RELEASE_NOTES.md) | RC5 发布笔记 (G8/G9/G10) |
 | [rc/RC5_GATE_REPORT.md](rc/RC5_GATE_REPORT.md) | RC5 门禁报告 |
-| [rc/RC6_RELEASE_NOTES.md](rc/RC6_RELEASE_NOTES.md) | RC6 发布笔记 |
+| [rc/RC6_RELEASE_NOTES.md](rc/RC6_RELEASE_NOTES.md) | RC6 发布笔记 (Meta-governance) |
 | [rc/RC6_GATE_REPORT.md](rc/RC6_GATE_REPORT.md) | RC6 门禁报告 |
-| [rc/RC7_RELEASE_NOTES.md](rc/RC7_RELEASE_NOTES.md) | RC7 发布笔记 |
-| [rc/RC7_GATE_REPORT.md](rc/RC7_GATE_REPORT.md) | RC7 门禁报告 |
+| [rc/RC7_RELEASE_NOTES.md](rc/RC7_RELEASE_NOTES.md) | **RC7 发布笔记 (Perf reports)** |
+| [rc/RC7_GATE_REPORT.md](rc/RC7_GATE_REPORT.md) | **RC7 门禁报告 (330+ tests)** |
 
 ### 3.4 证据文档 (GA)
 
@@ -200,7 +238,7 @@ v3.9.0/
 | [evidence/09-ci-build-log.md](evidence/09-ci-build-log.md) | CI 构建日志 |
 | [evidence/10-approval-record.md](evidence/10-approval-record.md) | 审批记录 |
 
-### 3.5 性能文档
+### 3.5 性能文档 (13 files)
 
 | 文档 | 说明 |
 |------|------|
@@ -212,8 +250,10 @@ v3.9.0/
 | [perf/SYSBENCH_MARIADB_COMPARISON_20260612.md](perf/SYSBENCH_MARIADB_COMPARISON_20260612.md) | 与 MariaDB 对比 |
 | [perf/COMPATIBILITY_REPORT.md](perf/COMPATIBILITY_REPORT.md) | 兼容性报告 |
 | [perf/CRASH_TEST_REPORT.md](perf/CRASH_TEST_REPORT.md) | 崩溃测试报告 |
+| [perf/PERFORMANCE_REPORT.md](perf/PERFORMANCE_REPORT.md) | 性能主报告 |
 | [perf/QPS_REPORT.md](perf/QPS_REPORT.md) | QPS 报告 |
 | [perf/STABILITY_REPORT.md](perf/STABILITY_REPORT.md) | 稳定性报告 |
+| [perf/SYSBENCH_REPORT.md](perf/SYSBENCH_REPORT.md) | Sysbench 报告 |
 | [perf/FOUR_WAY_TPCH_REPORT.md](perf/FOUR_WAY_TPCH_REPORT.md) | 四路 TPC-H 报告 |
 
 ### 3.6 计划文档
@@ -228,21 +268,47 @@ v3.9.0/
 | [plans/TPCH_ORACLE_PLAN.md](plans/TPCH_ORACLE_PLAN.md) | TPC-H Oracle 计划 |
 | [plans/SPRINT4_MASTER_PLAN.md](plans/SPRINT4_MASTER_PLAN.md) | Sprint 4 主计划 |
 
+### 3.7 治理 + 审计文档 (Sprint 8 强化)
+
+| 文档 | 说明 | Sprint 8 |
+|------|------|----------|
+| `docs/governance/adr/ADR-006-meta-governance.md` | P11-P15 meta-gate framework | ✅ Sprint 8 ✅ (V5/V6/V8/V2 修复) |
+| `docs/governance/adr/ADR-007-truthfulness-recovery.md` | 5-PR truthfulness recovery | — |
+| `docs/governance/adr/ADR-008-test-claim-transparency.md` | Test claim transparency | — |
+| [INTEGRATION_TEST_HONEST_ASSESSMENT.md](INTEGRATION_TEST_HONEST_ASSESSMENT.md) | 集成测试诚实评估 | — |
+| [TEST_TRUTHFULNESS_REPORT.md](TEST_TRUTHFULNESS_REPORT.md) | 测试真实性报告 | — |
+| [V390_DOCUMENT_INCONSISTENCY_ANALYSIS.md](V390_DOCUMENT_INCONSISTENCY_ANALYSIS.md) | 文档不一致分析 | — |
+| [V390_COMPREHENSIVE_DOC_AUDIT_PLAN.md](V390_COMPREHENSIVE_DOC_AUDIT_PLAN.md) | 文档审计计划 | — |
+| [V390_COMPREHENSIVE_DOC_AUDIT_WORK_REPORT.md](V390_COMPREHENSIVE_DOC_AUDIT_WORK_REPORT.md) | 文档审计工作报告 | — |
+| [V390_DOC_CORRECTION_PLAN.md](V390_DOC_CORRECTION_PLAN.md) | 文档修正计划 | — |
+| [V390_DOC_CORRECTION_WORK_REPORT.md](V390_DOC_CORRECTION_WORK_REPORT.md) | 文档修正工作报告 | — |
+| [V390_GA_DOC_CORRECTION_PLAN.md](V390_GA_DOC_CORRECTION_PLAN.md) | GA 文档修正计划 | — |
+| [V390_GA_DOC_CORRECTION_WORK_REPORT.md](V390_GA_DOC_CORRECTION_WORK_REPORT.md) | GA 文档修正工作报告 | — |
+| [V380_TO_V390_LEGACY_ISSUES_REMEDIATION_REPORT.md](V380_TO_V390_LEGACY_ISSUES_REMEDIATION_REPORT.md) | v380→v390 遗留问题修复 | — |
+| [E2E_MIGRATION_MASTER_PLAN.md](E2E_MIGRATION_MASTER_PLAN.md) | E2E 改造总计划 | — |
+| [WIRED-22-VERIFICATION-REPORT.md](WIRED-22-VERIFICATION-REPORT.md) | 22 wire 验证 | — |
+| [Q9-FIX-GATE-REPORT.md](Q9-FIX-GATE-REPORT.md) | Q9 修复 gate 报告 | — |
+| [G11_QPS_BENCH_250.md](G11_QPS_BENCH_250.md) | G11 QPS 基准 (250) | — |
+| [EVALUATION_REPORT.md](EVALUATION_REPORT.md) | 评估报告 | — |
+| [EVIDENCE_STATUS.md](EVIDENCE_STATUS.md) | 证据状态 | — |
+
 ---
 
-## 四、版本历史追溯
+## 四、版本历史追溯 (含 Sprint 8)
 
-| 版本 | 阶段 | 日期 | 关键产物 |
-|------|------|------|----------|
-| v3.9.0 | RC7 | 2026-06-12 | 当前版本，性能文档 + MariaDB 对比 |
-| v3.9.0 | RC6 | 2026-06-12 | INT-2/INT-3 实质性测试 (30/30 PASS) |
-| v3.9.0 | RC5 | 2026-06-12 | 跨版本升级链 + IS NULL pushdown |
-| v3.9.0 | RC4 | 2026-06-12 | G1/G7/G8/G9/G13 PASS, QPS 基线 |
-| v3.9.0 | RC3 | 2026-06-12 | G1-G16 全部 PASS |
-| v3.9.0 | RC1/RC2 | 2026-06-05 | 表单验证里程碑 |
-| v3.9.0 | Beta | 2026-06-05 | 表单验证里程碑 |
-| v3.9.0 | Alpha1 | 2026-06-05 | 入口基线 |
-| v3.8.0 | GA | 2026-06-08 | 架构统一 |
+| 版本 | 阶段 | 日期 | 关键产物 | Sprint 8 |
+|------|------|------|----------|---------|
+| v3.9.0 | RC7 | 2026-06-12 | 性能文档 + MariaDB 对比 (330+ tests PASS) | — |
+| v3.9.0 | RC6 | 2026-06-12 | INT-2/INT-3 实质性测试 (30/30 PASS) | — |
+| v3.9.0 | RC5 | 2026-06-12 | 跨版本升级链 + IS NULL pushdown | — |
+| v3.9.0 | RC4 | 2026-06-12 | G1/G7/G8/G9/G13 PASS, QPS 基线 | — |
+| v3.9.0 | RC3 | 2026-06-12 | G1-G16 全部 PASS | — |
+| v3.9.0 | RC1/RC2 | 2026-06-05 | 表单验证里程碑 | — |
+| v3.9.0 | Beta | 2026-06-05 | 表单验证里程碑 | — |
+| v3.9.0 | Alpha1 | 2026-06-05 | 入口基线 | — |
+| **v3.9.0** | **Sprint 8 (PR #3465)** | **2026-06-17** | **Q8 hash join + ADR-006 + soak_runner** | ✅ **DONE** |
+| v3.9.0 | GA | 2026-12-15 估计 | 168h real soak + final docs | ⏳ pending |
+| v3.8.0 | GA | 2026-06-08 | 架构统一 | — |
 
 ---
 
@@ -252,9 +318,13 @@ v3.9.0/
 |------|------|
 | Gitea 仓库 | http://192.168.0.252:3000/openclaw/sqlrustgo |
 | Milestone v3.9.0 | http://192.168.0.252:3000/openclaw/sqlrustgo/milestones/32 |
-| 分支 | `develop/v3.9.0` |
+| 分支 | `develop/v3.9.0` @ `1e83612c6` |
+| Sprint 8 PR | **#3465** (Q8 + ADR-006 + soak_runner) — **merged** |
+| Sprint 8 docs PR | **#3467** (CHANGELOG + CONVERGENCE + CURRENT_VERSION) — **merged** |
 | 前置版本 | [v3.8.0](../v3.8.0/README.md) |
 | 顶层文档 | [docs/README.md](../../README.md) |
+| ADR-006 | [docs/governance/adr/ADR-006-meta-governance.md](../../governance/adr/ADR-006-meta-governance.md) |
+| Sprint 8 spec | [openspec/changes/2026-06-08-v390-sprint8-q8-exists/](../../../../openspec/changes/2026-06-08-v390-sprint8-q8-exists/) |
 
 ---
 
@@ -262,14 +332,16 @@ v3.9.0/
 
 | 项目 | 值 |
 |------|-----|
-| 索引版本 | v3.9.0-INDEX-3.0 |
+| 索引版本 | v3.9.0-INDEX-3.0.1 |
 | 创建日期 | 2026-06-05 |
-| 最后更新 | 2026-06-17 |
-| 更新内容 | 添加 RC4-RC7 文档 |
-| 维护人 | Hermes Agent |
+| 上次更新 | 2026-06-12 (v3.0, RC4-RC7 文档添加) |
+| **本次更新** | **2026-06-17** (Sprint 8 增量: V390_COMPREHENSIVE_ASSESSMENT v2.0 + ROADMAP v2.0 + LONG_STABILITY_TESTS_ANALYSIS + 治理 + 审计 文档清单) |
+| 维护人 | Hermes Agent + claude-macmini (Sprint 8 实施) |
 | 状态 | ACTIVE |
+| 下次更新 | GA 收口后 |
 
 ---
 
-*本索引由 Hermes Agent 维护*
-*更新频率: 每个 RC 版本发布后更新*
+*本索引由 Hermes Agent + claude-macmini 维护*
+*更新频率: 每个 RC 版本发布后 + Sprint 8/GA 关键节点*
+*最近更新: 2026-06-17 (Sprint 8 GA Gap Closure, PR #3465 merged)*
