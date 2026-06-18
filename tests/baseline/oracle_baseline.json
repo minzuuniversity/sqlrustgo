@@ -17,7 +17,7 @@
   "g1_baseline_status": "REAL (22/22 PASS, drift detection active, PR #3477)",
   "p11_v7_status": "PASS (8 gate scripts got P11-comments, PR #3476)",
   "l3_acceptance": "PASS (15/15 e2e_canonical_subprocess tests work after cargo build -p sqlrustgo-mysql-server)",
-  "g15_coverage": "16/22 queries match SF=0.01 baseline (Q1/Q2/Q3/Q4/Q5/Q6/Q10/Q11/Q12/Q13/Q14/Q16/Q17/Q18/Q21/Q22). 6/22 deferred: Q7 (4 vs 3, n1/n2 nation aliases), Q8 (0 vs 1, 8-way region filter), Q9 (>60s 6-way), Q15 (0 vs 91, derived table), Q19 (0 vs 1, OR factorisation), Q20 (3 vs 0, nested subquery correlation).",
+  "g15_coverage": "19/22 queries match SF=0.01 baseline (Q1/Q2/Q3/Q4/Q5/Q6/Q7/Q10/Q11/Q12/Q13/Q14/Q16/Q17/Q18/Q19/Q20/Q21/Q22). 3/22 deferred: Q8 (60s wire timeout, 8-way join), Q9 (60s wire timeout, 6-way join), Q15 (0 vs 91, derived-table revenue_view JOIN auto-rewrite not yet implemented).",
   "known_bugs": [
     {
       "id": "G5-A",
@@ -35,6 +35,21 @@
       "status": "CLOSED (PR #3496)"
     },
     {
+      "id": "G15-Q7-baseline",
+      "desc": "Q7 baseline regenerated from real fixture (was: 3 rows missing FRANCE→GERMANY pair, from pre-data run)",
+      "status": "CLOSED (PR #3502)"
+    },
+    {
+      "id": "G15-Q19-parser",
+      "desc": "Q19 OR-with-IN-in-parens failed parser. parse_comparison_expression_until_close_with_depth now handles IN/BETWEEN",
+      "status": "CLOSED (PR #3502)"
+    },
+    {
+      "id": "G15-Q20-baseline",
+      "desc": "Q20 baseline regenerated from real fixture (was: 0 rows from pre-data run, now 3 suppliers qualify)",
+      "status": "CLOSED (PR #3502)"
+    },
+    {
       "id": "wire-Deprecate-EOF",
       "desc": "DEPRECATE_EOF terminator 0x00->0xFE",
       "status": "CLOSED (PR #3479)"
@@ -48,6 +63,21 @@
       "id": "P22-delete-isolation",
       "desc": "execute_delete storage path drops all rows (pre-existing, not G5-A related). P22 p22_time_travel_delete_isolation_oracle fails. Unblocks once execute_delete uses row-level delete",
       "tracked": "to be filed"
+    },
+    {
+      "id": "G15-Q8-timeout",
+      "desc": "Q8 8-way join exceeds 60s wire timeout (Sprint 8 hash-join fix on Q8 was correctness, not perf)",
+      "tracked": "Sprint 9 perf follow-up"
+    },
+    {
+      "id": "G15-Q9-timeout",
+      "desc": "Q9 6-way join exceeds 60s wire timeout. Allocated to TPCH-01 Q9 audit (#3178) which requires Z6G4 hardware for full benchmark",
+      "tracked": "#3178 (Z6G4 hardware)"
+    },
+    {
+      "id": "G15-Q15-derived",
+      "desc": "Q15 derived-table `revenue_view` JOIN auto-rewrite not yet implemented. Sprint 8 only handled Q8's specific 8-way shape (Q15's derived alias needs different code path)",
+      "tracked": "to be filed"
     }
   ],
   "in_process_oracle_tests": {
@@ -58,11 +88,11 @@
     "G9": "tests/oracle_g9_upgrade.rs (3 tests)",
     "G11": "tests/oracle_g11_qps.rs (1 test)",
     "G12": "tests/oracle_g12_sysbench.rs (1 test)",
-    "G15": "tests/oracle_g15_tpch_sf01.rs (16/22 queries match baseline, Q3 fixed, PR #3496 + #3500)",
+    "G15": "tests/oracle_g15_tpch_sf01.rs (19/22 queries match baseline, Q3/Q7/Q19/Q20 fixed, PR #3496 + #3500 + #3502)",
     "G16": "tests/oracle_g16_compat.rs (4 tests)",
     "P22": "tests/oracle_p22_time_travel.rs (4/5 PASS, 1 known pre-existing delete-isolation bug)",
     "P23": "tests/oracle_p23_hash_chain.rs (5/5 PASS, SHA-256 ground-truth oracle)",
     "P34": "tests/oracle_p34_parallel_executor.rs (8+ tests, partition algorithm ground-truth oracle)"
   },
-  "related_prs": ["#3470 (PR-A)", "#3471 (PR-B)", "#3472 (PR-C)", "#3473 (P15 update)", "#3475 (real-run fixes)", "#3476 (P11 V7 headers)", "#3477 (G1 real baseline)", "#3478 (P15 final)", "#3479 (wire DEPRECATE_EOF)", "#3480 (boundary unignore)", "#3483 (parser i64 MIN)", "#3485 (P15 auto-regen)", "#3486 (G5-B savepoint parser)", "#3487 (19 perf unignore)", "#3488 (crash monkey + recovery fuzzer)", "#3490 (P12 ignore registry)", "#3491 (Sprint 8 final status docs)", "#3495 (G5-A ROLLBACK undo log)", "#3496 (G15-Q3 orders schema fix)", "#3497 (RC8 V9 + V4 closure)", "#3500 (G15 16/22 oracle coverage)"]
+  "related_prs": ["#3470 (PR-A)", "#3471 (PR-B)", "#3472 (PR-C)", "#3473 (P15 update)", "#3475 (real-run fixes)", "#3476 (P11 V7 headers)", "#3477 (G1 real baseline)", "#3478 (P15 final)", "#3479 (wire DEPRECATE_EOF)", "#3480 (boundary unignore)", "#3483 (parser i64 MIN)", "#3485 (P15 auto-regen)", "#3486 (G5-B savepoint parser)", "#3487 (19 perf unignore)", "#3488 (crash monkey + recovery fuzzer)", "#3490 (P12 ignore registry)", "#3491 (Sprint 8 final status docs)", "#3495 (G5-A ROLLBACK undo log)", "#3496 (G15-Q3 orders schema fix)", "#3497 (RC8 V9 + V4 closure)", "#3500 (G15 16/22 oracle coverage)", "#3501 (P15 status update)", "#3502 (G15 19/22 oracle + Q19 parser fix)"]
 }
