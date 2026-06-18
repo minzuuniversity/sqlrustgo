@@ -294,7 +294,6 @@ fn test_filter_is_not_null() {
 }
 
 #[test]
-#[ignore = "Parser does not support NOT (expr) syntax - NOT implementation is Phase 2"]
 fn test_filter_not_null_comparison() {
     let mut engine = create_engine();
     engine
