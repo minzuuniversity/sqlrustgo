@@ -67,6 +67,17 @@
 
 ---
 
+## v3.9.0 Issues
+
+| 文档 | 说明 |
+|------|------|
+| [3516-mysql-cli-hang-deprecate-eof.md](3516-mysql-cli-hang-deprecate-eof.md) | MySQL CLI 挂起 (DEPRECATE_EOF) |
+| [3517-stmt-prepare-malformed-packet.md](3517-stmt-prepare-malformed-packet.md) | STMT_PREPARE Malformed packet |
+| [3518-tpch-fixture-data-generation.md](3518-tpch-fixture-data-generation.md) | TPC-H SF01/SF1 fixture 数据生成 |
+| [3519-fix-clippy-warnings.md](3519-fix-clippy-warnings.md) | clippy -D warnings 修复 |
+
+---
+
 ## 其他规范
 
 | 文档 | 说明 |
