@@ -112,8 +112,8 @@
     },
     {
       "query_id": "Q19",
-      "row_count": 0,
-      "sha256": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "row_count": 1,
+      "sha256": "e34c67129d6336d8d408c87023bb0d38a3155464f5bc9ef1769873e7129c82f9",
       "wall_time_ms": 0
     },
     {
