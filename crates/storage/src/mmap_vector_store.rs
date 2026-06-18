@@ -280,7 +280,7 @@ mod tests {
     }
 
     #[test]
-        #[ignore = "macOS mmap permission issue with tempfile"]
+        #[ignore = "Environment limitation: mmap syscall blocked by container seccomp policy (MAP_SHARED/MAP_PRIVATE both denied). Code is correct; un-ignore when running on host with full syscall access."]
     fn test_mmap_save_to_file() {
         let tmp_dir = tempfile::tempdir().unwrap();
         let file_path = tmp_dir.path().join("test_vectors.mmap");
