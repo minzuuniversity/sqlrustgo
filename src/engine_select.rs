@@ -1214,6 +1214,25 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         let base_prefix = base_alias.as_ref().unwrap_or(&base_table);
 
         let mut rows = storage.scan(&base_table)?;
+        // Sprint 9: apply base-table single-table WHERE predicates
+        // immediately after scan, before any join. The existing
+        // Sprint 5 v4 pushdown only filters RIGHT tables; the base
+        // table is joined first and would otherwise contribute its full
+        // row count to the first cartesian (e.g. part × supplier in Q8).
+        if let Some(wc) = &select.where_clause {
+            let base_info = storage.get_table_info(&base_table)?;
+            let mut joined: Vec<String> = vec![base_table.clone(), base_prefix.to_string()];
+            joined.push(Self::tpch_table_prefix(&base_table).to_string());
+            let base_preds = self.extract_single_table_predicates(wc, &joined);
+            let base_filters = base_preds.get(&base_table).cloned().unwrap_or_default();
+            if !base_filters.is_empty() {
+                rows.retain(|r| {
+                    base_filters
+                        .iter()
+                        .all(|p| eval_predicate(p, r, &base_info))
+                });
+            }
+        }
         let raw_info = storage.get_table_info(&base_table)?;
         let mut table_info = if base_alias.is_some() {
             // Wrap the base columns in alias-prefixed names.
