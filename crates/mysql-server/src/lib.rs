@@ -1374,7 +1374,7 @@ fn send_binary_result_set<W: Write>(
         make_eof_packet(seq, 0x0002).write_to(w)?;
         seq = seq.wrapping_add(1);
     } else {
-        make_deprecate_eof_ok_packet(seq, 0, 0, 0x0002).write_to(w)?;
+        make_deprecate_eof_ok_packet(seq, 0, 0, 0x0002, 0).write_to(w)?;
         seq = seq.wrapping_add(1);
     }
     Ok(seq)
