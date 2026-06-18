@@ -1333,7 +1333,18 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             })
             .unwrap_or_default();
 
-        for join_clause in &select.join_clause {
+        let reordered_clauses = {
+            #[cfg(feature = "v390_join_reorder")]
+            {
+                sqlrustgo_optimizer::reorder_joins(select, &*storage)
+            }
+            #[cfg(not(feature = "v390_join_reorder"))]
+            {
+                select.join_clause.clone()
+            }
+        };
+
+        for join_clause in &reordered_clauses {
             // Strip the optional `|alias` suffix from
             // join_clause.table to look up pushdown filters
             // (the auto-rewrite stores `lineitem|l1` but
