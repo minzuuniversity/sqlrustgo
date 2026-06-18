@@ -2,6 +2,7 @@
 # check_g16_compatibility.sh - G16 Compatibility Gate
 #
 # Verifies:
+# 0. Inline oracle (V4 fix): cargo test --test oracle_g16_compat
 # 1. 4 case scripts exist (data_dir, wal, snapshot, metadata)
 # 2. 1 rollback script exists
 # 3. v380_to_v390_full_upgrade_test registered in Cargo.toml
@@ -29,6 +30,18 @@ fi
 
 echo "=== G16 Gate: Compatibility v3.8.0 → v3.9.0 ==="
 
+# 0. Inline oracle (V4 fix: independent ground-truth validation)
+ORACLE_OUTPUT=$(cargo test --test oracle_g16_compat --all-features 2>&1)
+ORACLE_EXIT=$?
+if [ $ORACLE_EXIT -eq 0 ]; then
+    ORACLE_PASSED=$(echo "$ORACLE_OUTPUT" | grep -E "test result.*ok" | head -1)
+    echo "  [0/8] PASS: oracle_g16_compat $ORACLE_PASSED"
+else
+    echo "  [0/8] FAIL: oracle_g16_compat (exit=$ORACLE_EXIT)"
+    echo "$ORACLE_OUTPUT" | tail -5
+    exit 1
+fi
+
 # 1. 4 case scripts
 SCRIPTS=(
     "tests/compatibility/v380_data_dir_v390_test.sh"
@@ -42,14 +55,14 @@ for s in "${SCRIPTS[@]}"; do
         exit 1
     }
 done
-echo "  [1/7] ✅ PASS: 4 case scripts present"
+echo "  [1/8] ✅ PASS: 4 case scripts present"
 
 # 2. Rollback script
 [ -f "tests/compatibility/v390_to_v380_rollback_test.sh" ] || {
     echo "  ❌ FAIL: tests/compatibility/v390_to_v380_rollback_test.sh not found"
     exit 1
 }
-echo "  [2/7] ✅ PASS: rollback script present"
+echo "  [2/8] ✅ PASS: rollback script present"
 
 # 3. Main test registered in Cargo.toml
 grep -q 'name = "v380_to_v390_full_upgrade_test"' Cargo.toml || {
@@ -60,7 +73,7 @@ grep -q 'name = "compatibility_harness"' Cargo.toml || {
     echo "  ❌ FAIL: compatibility_harness not in Cargo.toml"
     exit 1
 }
-echo "  [3/7] ✅ PASS: tests registered in Cargo.toml"
+echo "  [3/8] ✅ PASS: tests registered in Cargo.toml"
 
 # 4. Main test passes (V6 fix: capture exit code + grep result properly)
 MAIN_OUTPUT=$(cargo test --test v380_to_v390_full_upgrade_test 2>&1)
@@ -86,7 +99,7 @@ if [ "$N_PASSED" -lt 18 ]; then
     echo "  ❌ FAIL: expected ≥18 tests in v380_to_v390_full_upgrade_test, got $N_PASSED"
     exit 1
 fi
-echo "  [4/7] ✅ PASS: $N_PASSED tests pass (≥18)"
+echo "  [4/8] ✅ PASS: $N_PASSED tests pass (≥18)"
 
 # 5. Harness tests pass (V6 fix: capture exit code + grep result properly)
 HARNESS_OUTPUT=$(cargo test --test compatibility_harness 2>&1)
@@ -108,7 +121,7 @@ if ! echo "$HARNESS_RESULT" | grep -q "ok"; then
     exit 1
 fi
 N_HARNESS=$(echo "$HARNESS_RESULT" | grep -oE "[0-9]+ passed" | grep -oE "[0-9]+")
-echo "  [5/7] ✅ PASS: $N_HARNESS harness tests pass"
+echo "  [5/8] ✅ PASS: $N_HARNESS harness tests pass"
 
 # 6. TPC-H 22/22 maintained (V6 fix: capture exit code explicitly)
 TPCH_OUTPUT=$(cargo test --test tpch_gate_test 2>&1)
@@ -125,7 +138,7 @@ if [ -z "$TPCH_PASSED" ]; then
     exit 1
 fi
 if echo "$TPCH_PASSED" | grep -q "ok"; then
-    echo "  [6/7] ✅ PASS: TPC-H gate (22/22) maintained"
+    echo "  [6/8] ✅ PASS: TPC-H gate (22/22) maintained"
 else
     echo "  ❌ FAIL: TPC-H gate test did not pass"
     echo "$TPCH_OUTPUT" | tail -10
@@ -135,10 +148,10 @@ fi
 # 7. COMPATIBILITY_REPORT.md exists (W12 D3 will populate)
 REPORT="docs/releases/v3.9.0/perf/COMPATIBILITY_REPORT.md"
 if [ -f "$REPORT" ]; then
-    echo "  [7/7] ✅ PASS: COMPATIBILITY_REPORT.md present"
+    echo "  [7/8] ✅ PASS: COMPATIBILITY_REPORT.md present"
 else
     echo "  ⚠️ WARN: $REPORT not yet created (will be created in W12 D3 with real data)"
-    echo "  [7/7] ✅ PASS (warned): report check deferred to W12"
+    echo "  [7/8] ✅ PASS (warned): report check deferred to W12"
 fi
 
 echo

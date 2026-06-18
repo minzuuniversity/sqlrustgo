@@ -2,6 +2,7 @@
 # check_g11_qps.sh - G11 QPS/TPS 门禁
 #
 # Verifies:
+# 0. Inline oracle (V4 fix): cargo test --test oracle_g11_qps
 # 1. tests/qps_benchmark_test.rs exists + registered in Cargo.toml
 # 2. ≥5 test_qps_* workloads defined (point_select, range_select, insert, update, mixed_oltp)
 # 3. QPS benchmarks compile and can run (--ignored for #[ignore] tests)
@@ -29,43 +30,55 @@ fi
 
 echo "=== G11 Gate: QPS/TPS 基准 ==="
 
+# 0. Inline oracle (V4 fix: independent ground-truth validation)
+ORACLE_OUTPUT=$(cargo test --test oracle_g11_qps --all-features 2>&1)
+ORACLE_EXIT=$?
+if [ $ORACLE_EXIT -eq 0 ]; then
+    ORACLE_PASSED=$(echo "$ORACLE_OUTPUT" | grep -E "test result.*ok" | head -1)
+    echo "  [0/6] PASS: oracle_g11_qps $ORACLE_PASSED"
+else
+    echo "  [0/6] FAIL: oracle_g11_qps (exit=$ORACLE_EXIT)"
+    echo "$ORACLE_OUTPUT" | tail -5
+    exit 1
+fi
+
 # 1. qps_benchmark_test.rs exists + registered in Cargo.toml
 QPS_TEST=tests/qps_benchmark_test.rs
 if [ ! -f "$QPS_TEST" ]; then
-    echo "  [1/5] FAIL: $QPS_TEST not found"
+    echo "  [1/6] FAIL: $QPS_TEST not found"
     exit 1
 fi
 if ! grep -q 'name = "qps_benchmark_test"' Cargo.toml; then
-    echo "  [1/5] FAIL: qps_benchmark_test not registered in Cargo.toml"
+    echo "  [1/6] FAIL: qps_benchmark_test not registered in Cargo.toml"
     exit 1
 fi
-echo "  [1/5] PASS: qps_benchmark_test present + registered"
+echo "  [1/6] PASS: qps_benchmark_test present + registered"
 
 # 2. ≥5 test_qps_* workloads defined (point_select, range_select, insert, update, mixed, etc.)
 N_WORKLOADS=$(grep -cE "^fn test_qps_(simple_select|insert|update|delete|join|aggregation|concurrent_select|concurrent_mixed|complex_where|order_by)" "$QPS_TEST")
 if [ "$N_WORKLOADS" -lt 5 ]; then
-    echo "  [2/5] FAIL: expected ≥5 workloads in $QPS_TEST, found $N_WORKLOADS"
+    echo "  [2/6] FAIL: expected ≥5 workloads in $QPS_TEST, found $N_WORKLOADS"
     exit 1
 fi
-echo "  [2/5] PASS: $N_WORKLOADS test_qps_* workloads defined"
+echo "  [2/6] PASS: $N_WORKLOADS test_qps_* workloads defined"
 
 # 3. QPS test actually runs (perf tests are #[ignore]'d, use --ignored to execute)
 QPS_OUTPUT=$(cargo test --test qps_benchmark_test --all-features -- --ignored 2>&1)
 QPS_EXIT=$?
 echo "$QPS_OUTPUT" | grep -E "test result|ok|FAILED" | head -10
 if [ $QPS_EXIT -eq 0 ]; then
-    echo "  [3/5] PASS: qps_benchmark_test executed successfully"
+    echo "  [3/6] PASS: qps_benchmark_test executed successfully"
 else
-    echo "  [3/5] FAIL: qps_benchmark_test failed (exit=$QPS_EXIT)"
+    echo "  [3/6] FAIL: qps_benchmark_test failed (exit=$QPS_EXIT)"
     exit 1
 fi
 
 # 4. PERFORMANCE_BASELINE.md exists (G15 prerequisite)
 BASELINE_FILE="docs/releases/v3.9.0/perf/PERFORMANCE_BASELINE.md"
 if [ -f "$BASELINE_FILE" ]; then
-    echo "  [4/5] PASS: PERFORMANCE_BASELINE.md present"
+    echo "  [4/6] PASS: PERFORMANCE_BASELINE.md present"
 else
-    echo "  [4/5] FAIL: $BASELINE_FILE not found (G15 prerequisite)"
+    echo "  [4/6] FAIL: $BASELINE_FILE not found (G15 prerequisite)"
     exit 1
 fi
 
@@ -74,19 +87,19 @@ TPCH_OUTPUT=$(cargo test --test tpch_gate_test 2>&1)
 TPCH_EXIT=$?
 TPCH_PASSED=$(echo "$TPCH_OUTPUT" | grep -E "test result.*ok" | head -1)
 if [ $TPCH_EXIT -ne 0 ]; then
-    echo "  [5/5] FAIL: TPC-H gate test failed (exit=$TPCH_EXIT)"
+    echo "  [5/6] FAIL: TPC-H gate test failed (exit=$TPCH_EXIT)"
     echo "$TPCH_OUTPUT" | tail -10
     exit 1
 fi
 if [ -z "$TPCH_PASSED" ]; then
-    echo "  [5/5] FAIL: TPC-H gate output could not be parsed"
+    echo "  [5/6] FAIL: TPC-H gate output could not be parsed"
     echo "$TPCH_OUTPUT" | tail -10
     exit 1
 fi
 if echo "$TPCH_PASSED" | grep -q "ok"; then
-    echo "  [5/5] PASS: TPC-H gate (22/22) maintained"
+    echo "  [5/6] PASS: TPC-H gate (22/22) maintained"
 else
-    echo "  [5/5] FAIL: TPC-H gate test did not pass"
+    echo "  [5/6] FAIL: TPC-H gate test did not pass"
     echo "$TPCH_OUTPUT" | tail -10
     exit 1
 fi
