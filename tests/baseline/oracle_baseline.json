@@ -17,7 +17,7 @@
   "g1_baseline_status": "REAL (22/22 PASS, drift detection active, PR #3477)",
   "p11_v7_status": "PASS (8 gate scripts got P11-comments, PR #3476)",
   "l3_acceptance": "PASS (15/15 e2e_canonical_subprocess tests work after cargo build -p sqlrustgo-mysql-server)",
-  "g15_coverage": "19/22 queries match SF=0.01 baseline (Q1/Q2/Q3/Q4/Q5/Q6/Q7/Q10/Q11/Q12/Q13/Q14/Q16/Q17/Q18/Q19/Q20/Q21/Q22). 3/22 deferred: Q8 (60s wire timeout, 8-way join), Q9 (60s wire timeout, 6-way join), Q15 (0 vs 91, derived-table revenue_view JOIN auto-rewrite not yet implemented).",
+  "g15_coverage": "20/22 queries match SF=0.01 baseline (Q1/Q2/Q3/Q4/Q5/Q6/Q7/Q10/Q11/Q12/Q13/Q14/Q15/Q16/Q17/Q18/Q19/Q20/Q21/Q22). 2/22 deferred: Q8 (300s wire timeout, 8-way join with REGION filter, needs hash-join pushdown), Q9 (300s wire timeout, 6-way join, needs materialised subquery planning).",
   "known_bugs": [
     {
       "id": "G5-A",
@@ -76,8 +76,13 @@
     },
     {
       "id": "G15-Q15-derived",
-      "desc": "Q15 derived-table `revenue_view` JOIN auto-rewrite not yet implemented. Sprint 8 only handled Q8's specific 8-way shape (Q15's derived alias needs different code path)",
-      "tracked": "to be filed"
+      "desc": "Q15 derived-table MAX was returning NULL due to MAX/MIN Float bug. Now fixed (PR #3504)",
+      "status": "CLOSED (PR #3504)"
+    },
+    {
+      "id": "MAX-MIN-Float",
+      "desc": "engine_select::compute_aggregates only handled Value::Integer, returning NULL for Float columns. Q15 MAX gave empty string. Fixed by tracking min_int/min_flt and min_max/min_flt separately",
+      "status": "CLOSED (PR #3504)"
     }
   ],
   "in_process_oracle_tests": {
@@ -94,5 +99,5 @@
     "P23": "tests/oracle_p23_hash_chain.rs (5/5 PASS, SHA-256 ground-truth oracle)",
     "P34": "tests/oracle_p34_parallel_executor.rs (8+ tests, partition algorithm ground-truth oracle)"
   },
-  "related_prs": ["#3470 (PR-A)", "#3471 (PR-B)", "#3472 (PR-C)", "#3473 (P15 update)", "#3475 (real-run fixes)", "#3476 (P11 V7 headers)", "#3477 (G1 real baseline)", "#3478 (P15 final)", "#3479 (wire DEPRECATE_EOF)", "#3480 (boundary unignore)", "#3483 (parser i64 MIN)", "#3485 (P15 auto-regen)", "#3486 (G5-B savepoint parser)", "#3487 (19 perf unignore)", "#3488 (crash monkey + recovery fuzzer)", "#3490 (P12 ignore registry)", "#3491 (Sprint 8 final status docs)", "#3495 (G5-A ROLLBACK undo log)", "#3496 (G15-Q3 orders schema fix)", "#3497 (RC8 V9 + V4 closure)", "#3500 (G15 16/22 oracle coverage)", "#3501 (P15 status update)", "#3502 (G15 19/22 oracle + Q19 parser fix)"]
+  "related_prs": ["#3470 (PR-A)", "#3471 (PR-B)", "#3472 (PR-C)", "#3473 (P15 update)", "#3475 (real-run fixes)", "#3476 (P11 V7 headers)", "#3477 (G1 real baseline)", "#3478 (P15 final)", "#3479 (wire DEPRECATE_EOF)", "#3480 (boundary unignore)", "#3483 (parser i64 MIN)", "#3485 (P15 auto-regen)", "#3486 (G5-B savepoint parser)", "#3487 (19 perf unignore)", "#3488 (crash monkey + recovery fuzzer)", "#3490 (P12 ignore registry)", "#3491 (Sprint 8 final status docs)", "#3495 (G5-A ROLLBACK undo log)", "#3496 (G15-Q3 orders schema fix)", "#3497 (RC8 V9 + V4 closure)", "#3500 (G15 16/22 oracle coverage)", "#3501 (P15 status update)", "#3502 (G15 19/22 oracle + Q19 parser fix)", "#3504 (MAX/MIN Float fix + G15 20/22)", "#3505 (per-query timeout + Q8/Q9 perf deferral)"]
 }
