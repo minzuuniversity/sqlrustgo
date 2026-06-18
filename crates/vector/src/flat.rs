@@ -73,12 +73,15 @@ impl VectorIndex for FlatIndex {
         }
 
         let vector_refs: Vec<_> = self.vectors.iter().map(|e| &e.vector[..]).collect();
-        let scores = match self.metric {
+        let scores: Vec<f32> = match self.metric {
             DistanceMetric::Euclidean => batch_l2_distance_simd(query, &vector_refs)
                 .into_iter()
                 .map(|d| -d)
                 .collect(),
-            DistanceMetric::Cosine => batch_cosine_distance_simd(query, &vector_refs),
+            DistanceMetric::Cosine => batch_cosine_distance_simd(query, &vector_refs)
+                .into_iter()
+                .map(|d| -d)
+                .collect(),
             DistanceMetric::DotProduct => batch_dot_product_simd(query, &vector_refs),
             DistanceMetric::Manhattan => self
                 .vectors
@@ -164,7 +167,13 @@ mod tests {
 
         let results = index.search(&[1.0, 0.0, 0.0], 2).unwrap();
         assert_eq!(results[0].id, 1);
-        assert!((results[0].score - 1.0).abs() < 0.001);
+        assert!(results[0].score.abs() < 0.001, "score={}", results[0].score);
+        assert!(
+            results[0].score >= results[1].score,
+            "results should be sorted descending by score, got [{}, {}]",
+            results[0].score,
+            results[1].score
+        );
     }
 
     #[test]
