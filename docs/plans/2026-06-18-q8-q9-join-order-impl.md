@@ -4,7 +4,7 @@
 
 **Goal:** 实现别名感知 Hybrid DP-lite join-order 优化器，将 Q8/Q9 wire 测试从 300s+ 超时降至 < 60s，并使 G15 oracle 22/22 PASS。
 
-**Architecture:** 新增 `crates/optimizer` crate，包含 JoinGraph 构建 + Hybrid DP（bitset 记忆化 + connected-subset 约束 + future-penalty 成本函数）+ cost model + row estimator + predicate classifier。通过 `cfg!(feature = "v390_join_reorder")` 在 `engine_select.rs::execute_joins` 入口集成，默认 feature off 保证零回归。
+**Architecture:** 在现有 `crates/optimizer` crate 中添加 3 个新模块（`join_order_graph`、`join_cost_model`、`join_reorder`），由 feature `v390_join_reorder` 控制（默认 off）。通过 `cfg!(feature = "v390_join_reorder")` 在 `engine_select.rs::execute_joins` 入口集成，默认 feature off 保证零回归。
 
 **Tech Stack:** Rust 2021, 现有 parser/executor/storage/parser crates，无新外部依赖。
 
@@ -44,93 +44,70 @@ Expected: `Finished` line, no errors
 
 ---
 
-## Phase 2: 创建 crates/optimizer 骨架
+## Phase 2: 扩展现有 crates/optimizer
 
-### Task 2: 新建 crates/optimizer 工作区成员
+> **修订** (2026-06-18)：原计划是新建 `crates/optimizer` crate，但发现现有 workspace 已有此 crate（包含 cost/index_selector/network_cost/path_selector/query_planner/rules/stats/unified_cost/unified_plan/vector_cost 等模块，~150KB）。本次实施改为**添加 3 个新模块**到现有 crate：`join_order_graph.rs`、`join_cost_model.rs`、`join_reorder.rs`，由 feature `v390_join_reorder` 控制。
+
+### Task 2: 在 crates/optimizer 添加新模块
 
 **Files:**
-- Create: `crates/optimizer/Cargo.toml`
-- Modify: `Cargo.toml` (workspace members)
+- Modify: `crates/optimizer/src/lib.rs`
+- Create: `crates/optimizer/src/join_order_graph.rs`
+- Create: `crates/optimizer/src/join_cost_model.rs`
+- Create: `crates/optimizer/src/join_reorder.rs`
+- Modify: `crates/optimizer/Cargo.toml` (add feature + deps)
 
-**Step 1: 写失败的 workspace 注册测试（暂时跳过 — crates 还不存在）**
+**Step 1: 添加 feature 标记到 Cargo.toml**
 
-跳到 Step 2。
-
-**Step 2: 创建 crates/optimizer/Cargo.toml**
-
+Append to `crates/optimizer/Cargo.toml`:
 ```toml
-[package]
-name = "sqlrustgo-optimizer"
-version = "0.1.0"
-edition = "2021"
-
 [features]
-default = []
 v390_join_reorder = []
-
-[dependencies]
-sqlrustgo-parser = { path = "../parser" }
-sqlrustgo-types = { path = "../types" }
-sqlrustgo-storage = { path = "../storage" }
-
-[dev-dependencies]
 ```
 
-**Step 3: 注册到 workspace**
+**Step 2: 在 lib.rs 注册新模块**
 
-Modify `Cargo.toml` workspace members section:
-```toml
-[workspace]
-members = [
-    "crates/parser",
-    "crates/types",
-    "crates/storage",
-    "crates/optimizer",   # 新增
-    # ... 其他现有 members
-]
-```
-
-**Step 4: 创建最小 lib.rs**
-
-Create `crates/optimizer/src/lib.rs`:
+Append to `crates/optimizer/src/lib.rs` (before line 28 `pub use cost::SimpleCostModel;`):
 ```rust
-//! v3.9.0 optimizer crate.
-//! Currently hosts the alias-aware hybrid DP join-order optimizer.
-
-pub mod join_graph;
-pub mod cost_model;
-pub mod reorder;
+#[cfg(feature = "v390_join_reorder")]
+pub mod join_order_graph;
+#[cfg(feature = "v390_join_reorder")]
+pub mod join_cost_model;
+#[cfg(feature = "v390_join_reorder")]
+pub mod join_reorder;
 
 #[cfg(feature = "v390_join_reorder")]
-pub use reorder::reorder_joins;
+pub use join_reorder::reorder_joins;
 ```
 
-Create empty stubs:
-```bash
-mkdir -p crates/optimizer/src
-touch crates/optimizer/src/join_graph.rs
-touch crates/optimizer/src/cost_model.rs
-touch crates/optimizer/src/reorder.rs
-```
-
-Each stub should have at least:
-```rust
-// crates/optimizer/src/join_graph.rs
-// TODO: implement in Task 3
-```
-
-**Step 5: 验证 crate 编译**
+**Step 3: 创建 3 个空 stub 文件**
 
 ```bash
-cargo check -p sqlrustgo-optimizer 2>&1 | tail -10
+cd /Users/liying/workspace/dev/openheart/sqlrustgo/.worktrees/q8-q9-reorder
+cat > crates/optimizer/src/join_order_graph.rs <<'EOF'
+//! v3.9.0 alias-aware JoinGraph for hybrid DP join-order optimizer.
+EOF
+cat > crates/optimizer/src/join_cost_model.rs <<'EOF'
+//! v3.9.0 join cost model with future-penalty heuristic.
+EOF
+cat > crates/optimizer/src/join_reorder.rs <<'EOF
+//! v3.9.0 Hybrid DP-Lite join-order optimizer with bitset memoization.
+EOF
 ```
-Expected: `Finished` line, no errors
 
-**Step 6: Commit**
+**Step 4: 验证默认 + feature 编译**
 
 ```bash
-git add crates/optimizer/ Cargo.toml
-git commit -m "feat(optimizer): create crates/optimizer workspace member stub"
+cargo check -p sqlrustgo-optimizer 2>&1 | tail -5
+cargo check -p sqlrustgo-optimizer --features v390_join_reorder 2>&1 | tail -5
+```
+Expected: both `Finished` lines, no errors
+
+**Step 5: Commit**
+
+```bash
+git add crates/optimizer/src/lib.rs crates/optimizer/Cargo.toml crates/optimizer/src/join_order_graph.rs crates/optimizer/src/join_cost_model.rs crates/optimizer/src/join_reorder.rs
+git commit -m "feat(optimizer): add join-order modules (v390_join_reorder feature)"
 ```
 
 ---
@@ -140,13 +117,14 @@ git commit -m "feat(optimizer): create crates/optimizer workspace member stub"
 ### Task 3: VirtualTableNode + JoinEdge + JoinGraph
 
 **Files:**
-- Modify: `crates/optimizer/src/join_graph.rs`
+- Modify: `crates/optimizer/src/join_order_graph.rs`
 
 **Step 1: 写失败的单元测试**
 
-Create `crates/optimizer/tests/join_graph_test.rs`:
+Create `crates/optimizer/tests/join_order_graph_test.rs`:
 ```rust
-use sqlrustgo_optimizer::join_graph::*;
+#![cfg(feature = "v390_join_reorder")]
+use sqlrustgo_optimizer::join_order_graph::*;
 use sqlrustgo_parser::Expression;
 
 #[test]
@@ -175,14 +153,14 @@ fn build_test_select(_extra: Vec<()>, _where: &str) -> sqlrustgo_parser::SelectS
 **Step 2: 运行测试确认失败**
 
 ```bash
-cargo test -p sqlrustgo-optimizer --test join_graph_test 2>&1 | tail -10
+cargo test -p sqlrustgo-optimizer --test join_order_graph_test 2>&1 | tail -10
 ```
 Expected: `error[E0433]: failed to resolve: ... build_join_graph`
 
-**Step 3: 实现 join_graph.rs**
+**Step 3: 实现 join_order_graph.rs**
 
 ```rust
-//! JoinGraph data structures for alias-aware join-order optimization.
+//! Alias-aware JoinGraph for hybrid DP join-order optimization.
 
 use sqlrustgo_parser::{Expression, SelectStatement, JoinClause};
 use sqlrustgo_storage::{Storage, StorageError};
@@ -307,14 +285,14 @@ fn find_equi_predicate(expr: &Expression, alias1: &str, alias2: &str) -> Option<
 **Step 4: 运行测试**
 
 ```bash
-cargo test -p sqlrustgo-optimizer --test join_graph_test 2>&1 | tail -10
+cargo test -p sqlrustgo-optimizer --test join_order_graph_test 2>&1 | tail -10
 ```
 Expected: tests compile (some may fail on test helpers, but core logic compiles)
 
 **Step 5: Commit**
 
 ```bash
-git add crates/optimizer/src/join_graph.rs
+git add crates/optimizer/src/join_order_graph.rs
 git commit -m "feat(optimizer): JoinGraph with alias-distinct nodes + equi-edge extraction"
 ```
 
@@ -322,17 +300,18 @@ git commit -m "feat(optimizer): JoinGraph with alias-distinct nodes + equi-edge 
 
 ## Phase 4: Cost Model
 
-### Task 4: cost_model.rs with future_min_estimate
+### Task 4: join_cost_model.rs with future_min_estimate
 
 **Files:**
-- Modify: `crates/optimizer/src/cost_model.rs`
+- Modify: `crates/optimizer/src/join_cost_model.rs`
 
 **Step 1: 写单元测试**
 
-Create `crates/optimizer/tests/cost_model_test.rs`:
+Create `crates/optimizer/tests/join_cost_model_test.rs`:
 ```rust
-use sqlrustgo_optimizer::cost_model::*;
-use sqlrustgo_optimizer::join_graph::*;
+#![cfg(feature = "v390_join_reorder")]
+use sqlrustgo_optimizer::join_cost_model::*;
+use sqlrustgo_optimizer::join_order_graph::*;
 
 fn make_node(id: u8, alias: &str, filtered_rows: f64) -> VirtualTableNode {
     VirtualTableNode {
@@ -366,16 +345,16 @@ fn test_cost_join_with_future_penalty() {
 **Step 2: 运行测试**
 
 ```bash
-cargo test -p sqlrustgo-optimizer --test cost_model_test 2>&1 | tail -5
+cargo test -p sqlrustgo-optimizer --features v390_join_reorder --test join_cost_model_test 2>&1 | tail -5
 ```
-Expected: FAIL — `cost_model` and `JoinState` not defined
+Expected: FAIL — module not found
 
-**Step 3: 实现 cost_model.rs**
+**Step 3: 实现 join_cost_model.rs**
 
 ```rust
 //! Cost model for join-order optimization.
 
-use crate::join_graph::{VirtualTableNode, BitSet};
+use crate::join_order_graph::{VirtualTableNode, BitSet};
 
 pub const FUTURE_PENALTY_WEIGHT: f64 = 0.5;
 pub const DEFAULT_EDGE_SELECTIVITY: f64 = 0.1;
@@ -412,14 +391,14 @@ pub fn future_min_estimate(
 **Step 4: 运行测试**
 
 ```bash
-cargo test -p sqlrustgo-optimizer --test cost_model_test 2>&1 | tail -5
+cargo test -p sqlrustgo-optimizer --features v390_join_reorder --test join_cost_model_test 2>&1 | tail -5
 ```
 Expected: PASS
 
 **Step 5: Commit**
 
 ```bash
-git add crates/optimizer/src/cost_model.rs crates/optimizer/tests/cost_model_test.rs
+git add crates/optimizer/src/join_cost_model.rs crates/optimizer/tests/join_cost_model_test.rs
 git commit -m "feat(optimizer): cost model with future_min_estimate penalty"
 ```
 
@@ -427,17 +406,18 @@ git commit -m "feat(optimizer): cost model with future_min_estimate penalty"
 
 ## Phase 5: Hybrid DP Reorder Algorithm
 
-### Task 5: reorder.rs with bitset DP
+### Task 5: join_reorder.rs with bitset DP
 
 **Files:**
-- Modify: `crates/optimizer/src/reorder.rs`
+- Modify: `crates/optimizer/src/join_reorder.rs`
 
 **Step 1: 写失败的 DP 测试**
 
-Create `crates/optimizer/tests/reorder_test.rs`:
+Create `crates/optimizer/tests/join_reorder_test.rs`:
 ```rust
-use sqlrustgo_optimizer::join_graph::*;
-use sqlrustgo_optimizer::reorder::*;
+#![cfg(feature = "v390_join_reorder")]
+use sqlrustgo_optimizer::join_order_graph::*;
+use sqlrustgo_optimizer::join_reorder::*;
 
 #[test]
 fn test_reorder_skips_left_join() {
@@ -471,7 +451,7 @@ cargo test -p sqlrustgo-optimizer --test reorder_test 2>&1 | tail -5
 ```
 Expected: FAIL — module `reorder` not found
 
-**Step 3: 实现 reorder.rs**
+**Step 3: 实现 join_reorder.rs**
 
 ```rust
 //! Hybrid DP-Lite join-order optimizer.
@@ -479,7 +459,7 @@ Expected: FAIL — module `reorder` not found
 //! Uses connected-subset DP with bitset memoization.
 
 use crate::cost_model::*;
-use crate::join_graph::*;
+use crate::join_order_graph::*;
 use sqlrustgo_parser::{Expression, JoinClause, JoinType, SelectStatement};
 use std::collections::HashMap;
 
@@ -500,11 +480,14 @@ pub fn reorder_joins<S: sqlrustgo_storage::Storage>(
     }
     let mut memo: HashMap<BitSet, JoinState> = HashMap::new();
     for node in &graph.nodes {
-        memo.insert(1u64 << node.id] = JoinState {
-            estimated_rows: node.filtered_rows.max(1.0),
-            best_last_node: node.id,
-            best_prev_state: 0,
-        };
+        memo.insert(
+            1u64 << node.id,
+            JoinState {
+                estimated_rows: node.filtered_rows.max(1.0),
+                best_last_node: node.id,
+                best_prev_state: 0,
+            },
+        );
     }
 
     let n = graph.nodes.len();
@@ -691,7 +674,7 @@ fn backtrace_to_clauses(
 }
 ```
 
-**注意**: 代码中存在一处语法错误（行 17：`1u64 << node.id] = ...` 多了一个 `]`）。在实现时必须修正为 `memo.insert(1u64 << node.id, JoinState { ... });`
+**注意**: 代码已修正为正确的 Rust 语法（原文档草稿有语法错误已修复）。
 
 **Step 4: 运行测试**
 
@@ -703,7 +686,7 @@ Expected: tests compile, may have semantic failures (test helpers not yet implem
 **Step 5: Commit**
 
 ```bash
-git add crates/optimizer/src/reorder.rs crates/optimizer/tests/reorder_test.rs
+git add crates/optimizer/src/join_reorder.rs crates/optimizer/tests/join_reorder_test.rs
 git commit -m "feat(optimizer): hybrid DP-lite join-order with bitset memo + connected subsets"
 ```
 
@@ -723,11 +706,16 @@ Modify root `Cargo.toml`:
 ```toml
 [dependencies]
 # ... existing ...
-sqlrustgo-optimizer = { path = "crates/optimizer", optional = true }
+# (no change — sqlrustgo-optimizer is already a workspace dep)
+```
 
+Note: The main `Cargo.toml` already references `sqlrustgo-optimizer` (existing crate). We just need to add the feature gate in the main crate.
+
+Add to root `Cargo.toml` `[features]`:
+```toml
 [features]
 # ... existing ...
-v390_join_reorder = ["dep:sqlrustgo-optimizer"]
+v390_join_reorder = ["sqlrustgo-optimizer/v390_join_reorder"]
 ```
 
 **Step 2: 修改 execute_joins**
