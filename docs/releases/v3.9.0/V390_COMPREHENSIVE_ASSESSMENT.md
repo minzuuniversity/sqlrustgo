@@ -1,10 +1,10 @@
-# SQLRustGo v3.9.0 综合评估报告 (Comprehensive Assessment v2.0 — RC7 + Sprint 8 Post-Audit)
+# SQLRustGo v3.9.0 综合评估报告 (Comprehensive Assessment v3.0 — RC7 + Sprint 8 + 本会话 V9 审计)
 
-> **Date**: 2026-06-17 (RC7 + Sprint 8 GA Gap Closure 视角)
-> **Version**: v3.9.0 (develop/v3.9.0, RC7, Sprint 8 已实施)
-> **Author**: Hermes Agent + claude-macmini (Sprint 8 实施)
+> **Date**: 2026-06-18 (本会话重新审查, 添加 V9 = Coverage Gate 缺失审计)
+> **Version**: v3.9.0 (develop/v3.9.0, RC7, Sprint 8 + 本会话 V9 审计)
+> **Author**: Hermes Agent + claude-macmini (Sprint 8 实施) + 本会话 V9 审计
 > **Baseline HEAD**: `1e83612c6` (PR #3467 merged, Sprint 8 docs follow-up)
-> **Status**: **RC7 ✅ (form-only + 关键 perf 已 real) → GA ⏳ (real 24h/72h/168h soak pending)**
+> **Status**: **RC7 ✅ (form-only + 关键 perf 已 real + 6/6 meta-gates PASS) → GA ⏳ (real 24h/72h/168h soak + V9 Coverage Gate 缺失待修复)**
 > **Type**: **Production Readiness Release** (工程化版本, 非功能版本)
 > **Theme**: Single-Node Production Candidate
 > **GA Target**: 2026-12-15 (per Hermes audit #3252, deferred from 2026-09-23)
@@ -18,17 +18,19 @@
 > **互补文档**:
 >   - `docs/audit/status/2026-06-06-test-authenticity-analysis-v390.md` (35% → 70% test authenticity 提升)
 >   - `docs/audit/status/2026-06-07-v390-comprehensive-assessment.md` (claude-macmini, PR #3255)
-> **本 v2.0 评估原则**:
+> **本 v3.0 评估原则**:
 >   - **(a)** v3.9.0 战略反转延续 (Production Readiness vs Feature Release)
 >   - **(b)** RC1 → RC2 → RC3 → RC4 → RC5 → RC6 → RC7 + Sprint 8 完整阶段历程
 >   - **(c)** 16/16 G1-G16 gate scripts executed (form-mostly) — 真实生产级从 35% (RC2) 提升至 ~70% (RC7+Sprint8)
 >   - **(d)** Sprint 8 GA Gap Closure: Q8 165,000× 加速, ADR-006 Phase 3 全部 4 项, `soak_runner` binary 实施
 >   - **(e)** v3.8.0 → v3.9.0 baseline 完整继承 + Sprint 8 关闭 3 critical-path items
-> **取最大集方式**: 保留 V380 §0-§20 结构, 重大重写为 v3.9.0 RC7+Sprint8 视角
+>   - **(f)** 🆕 **本会话 (2026-06-18) 新发现 V9 = Coverage Gate 缺失**: Beta/RC1-RC7/GA 全阶段门禁均未将覆盖率作为强制条件, `check_coverage.sh` 存在但未在 G1-G16 中 (详见 §21)
+> **取最大集方式**: 保留 V380 §0-§20 结构, 重大重写为 v3.9.0 RC7+Sprint8+本会话 V9 视角
 > **双视角说明**:
->   - **本文件** (v2.0): 阶段历程 + 资源分配 + 综合评分 + Sprint 8 实施总结 (本文件)
->   - **GA_GATE_REPORT.md**: 16 门禁具体 PASS 状态 + 限制说明
->   - **GA_GATE_STATUS_REPORT.md**: 治理合规 (P11-P15 + ADR-006)
+>   - **本文件** (v3.0): 阶段历程 + 资源分配 + 综合评分 + Sprint 8 实施总结 + **V9 Coverage Gate 缺失审计 (新增)**
+>   - `GA_GATE_REPORT.md` (v2.0): 16 门禁具体 PASS 状态 + 限制说明 + **V9 详细章节 (§10)**
+>   - `GA_GATE_STATUS_REPORT.md`: 治理合规 (P11-P15 + ADR-006)
+>   - `TEST_TRUTHFULNESS_REPORT.md` (v2.0): 测试真实性 + **V9 详细章节 (§5)**
 
 ---
 
@@ -48,6 +50,7 @@
 - **⚠️ 仍 OPEN (GA 阻塞)**:
   - Real 24h/72h/168h wall-clock soak (需 Z6G4 硬件 + PR #3465 binary 即可跑)
   - 真实生产级覆盖率 ~70% (vs 100% GA target) — 主要是 long-stability tests 待真跑
+  - **🆕 V9 = Coverage Gate 缺失** (本会话 2026-06-18 新发现): G17 未在 G1-G16 框架中, `check_coverage.sh` 存在但未作为强制门禁, 详见 §21
 - **调整后计划**: RC7 ✅ → GA (2-3 周 real soak + final doc)
 - **GA 风险**: 2026-12-15 目标 at risk, 依赖 Z6G4 硬件 W14 之前可用
 
@@ -76,6 +79,7 @@
 | **生产可靠性 (Soak)** | 6.5/10 | ≥ 8.5 (G7 168h real) | 7.5/10 (binary ready, real 24h+ pending) |
 | **GMP 审计能力** | 5.0/10 | ≥ 8.0 (G10) | 7.5/10 (G10 form PASS) |
 | **真实生产级覆盖率** | 60-70% | ≥ 90% | **~70%** (Sprint 8 提升, 待 real soak) |
+| **🆕 G17 Coverage Gate** | ❌ 未定义 | ≥ 80% | **❌ MISSING (V9 漏洞, 本会话审计发现)** |
 | **Meta-governance** | ADR-007 | ADR-007+008 | **ADR-007+008 + ADR-006 Phase 3** (P11-P15) |
 | **综合评分** | 8.4~8.7/10 | ≥ 8.7/10 | **8.0~8.3/10** (form-only 校准后, 真实运行后 ≥ 8.7) |
 
@@ -242,7 +246,8 @@
 | **G14** | 真实崩溃 8 类 | 长周期 | 🟡 infra ready | — | ⚠️ 部分测试模拟 |
 | **G15** | SF=0.01 TPC-H wire | 报告 | ✅ PASS (22/22) | — | ⚠️ 无 oracle |
 | **G16** | Compatibility v3.8 → v3.9 | 集成 | ✅ PASS (upgrade chain v3.6→v3.9) | — | ⚠️ 无 oracle |
-| **合计** | — | — | **16/16 PASS** | **Sprint 8 加 1 项 (#3465)** | **真实生产级 ~70%** |
+| **G17** | **Coverage ≥ 80%** | **质量** | **❌ MISSING (V9 漏洞)** | **🆕 本会话审计发现** | **🔴 无强制 Coverage 门禁** |
+| **合计** | — | — | **16/16 PASS + 1 G17 MISSING** | **Sprint 8 加 1 项 (#3465) + 本会话发现 V9** | **真实生产级 ~70% + 覆盖率门禁缺失** |
 
 ### 4.2 G1 — 22/22 TPC-H 保持 (RC7 末)
 
@@ -977,7 +982,7 @@ v3.9.0 严格遵守:
 | **ignore_registry** | 93 stale + TODOs | **42 真 + 1 marker** (V2 fix) |
 | **5 meta-gates** | 未明确 | **5/5 PASS (P11/P12/P13/P14/P15)** |
 | **综合评分** | 8.5/10 (form), 7.0/10 (真实) | **8.5~8.7/10 (form), 7.5~8.0/10 (真实)** |
-| **GA 风险** | 2026-09-23 at risk | **2026-12-15 at risk** (deferred 3 月) |
+| **GA 风险** | 2026-09-23 at risk | **2026-12-15 at risk** (deferred 3 月) + **V9 Coverage Gate 缺失待修复 (本会话 2026-06-18 新发现)** |
 
 ---
 
@@ -985,12 +990,86 @@ v3.9.0 严格遵守:
 
 | 项目 | 值 |
 |------|-----|
-| 文档版本 | v3.9.0-COMPREHENSIVE-ASSESSMENT-2.0 |
+| **文档版本** | **v3.9.0-COMPREHENSIVE-ASSESSMENT-3.0** (本会话 2026-06-18) |
 | 创建日期 | 2026-06-07 (v1.0, RC2 后期) |
-| **最近更新** | **2026-06-17** (v2.0, RC7 + Sprint 8 后期) |
-| 主要变化 | RC2 → RC7 + Sprint 8 (Q8 hash join + ADR-006 V5/V6/V8/V2 + soak_runner) |
-| 维护人 | Hermes Agent + claude-macmini (Sprint 8 实施) |
-| 状态 | ACTIVE (v2.0) |
-| 下次审查 | GA 收口后 v3.0 |
-| 关联文档 | `docs/releases/v3.9.0/CHANGELOG.md` (1.1) + `GA_GATE_REPORT.md` + `GA_GATE_STATUS_REPORT.md` + `TEST_TRUTHFULNESS_REPORT.md` + `CONVERGENCE_TRACKER.md` (root) + `docs/governance/adr/ADR-006-meta-governance.md` |
+| v2.0 更新 | 2026-06-17 (RC7 + Sprint 8 后期) |
+| **v3.0 最近更新** | **2026-06-18** (本会话 V9 = Coverage Gate 缺失审计) |
+| 主要变化 (v2.0 → v3.0) | 添加 §21 V9 Coverage Gate 缺失详细分析 + §0 关键指标对照表加 G17 行 + §0 TL;DR 加 V9 说明 + §4 G1-G16 表加 G17 MISSING + 同步更新 GA_GATE_REPORT.md v2.0 + TEST_TRUTHFULNESS_REPORT.md v2.0 |
+| 维护人 | Hermes Agent + claude-macmini (Sprint 8 实施) + 本会话 V9 审计 |
+| 状态 | ACTIVE (v3.0) |
+| 下次审查 | GA 收口后 v3.1 (V9 修复后) |
+| 关联文档 | `docs/releases/v3.9.0/CHANGELOG.md` (1.1) + `GA_GATE_REPORT.md` (v2.0) + `GA_GATE_STATUS_REPORT.md` + `TEST_TRUTHFULNESS_REPORT.md` (v2.0) + `CONVERGENCE_TRACKER.md` (root) + `docs/governance/adr/ADR-006-meta-governance.md` |
 | 关联 PR | #3465 (Sprint 8 GA Gap Closure), #3466 (G1/G13 update), #3467 (docs follow-up) |
+
+---
+
+## 21. V9 = Coverage Gate 缺失详细分析 (本会话 2026-06-18 新发现)
+
+> **本章节为 v3.0 新增内容**. 之前 v2.0 综合评估未识别此漏洞.
+> **完整证据链与修复路径详见**: `TEST_TRUTHFULNESS_REPORT.md` §5 与 `GA_GATE_REPORT.md` §10.
+
+### 21.1 漏洞定义
+
+**V9 = Coverage Gate 缺失**: v3.9.0 的 **Beta、RC1-RC7、GA 所有阶段门禁 (G1-G16) 均未将代码覆盖率作为强制门禁条件**.
+
+**关键事实**:
+- `scripts/gate/check_coverage.sh` **存在** 且被 `ci.yml` 调用 (scripts/gate/README.md 标注 Active)
+- 但 `check_coverage.sh` **未在 G1-G16 框架中** (无 G17 = Coverage Gate 定义)
+- Alpha Gate A5 (≥75%) 是**唯一**的 Coverage 检查, 进入 Beta/RC/GA 后未延续
+- Beta/RC1-RC7 所有报告 grep "coverage" 均无匹配 (除本会话审计章节)
+
+### 21.2 为什么 Beta/RC1-RC7/GA 全阶段未纳入 Coverage (历史原因 7 项)
+
+| # | 原因 | 证据 |
+|---|------|------|
+| 1 | **v3.7.0 政策锚定** | `check_coverage.sh:20` 输出目录硬编码 `docs/releases/v3.7.0` |
+| 2 | **Alpha Gate 已检查** | A5 Coverage (≥75%) 仅在 Alpha 阶段强制 (GATE_CONDITIONS.md) |
+| 3 | **v3.9.0 战略反转** | 0% 新 SQL + 40% 架构债 + 35% 可靠性 + 15% GMP + 10% 性能 (本文件 §3.1) |
+| 4 | **工具兼容性问题** | `cargo-llvm-cov --skip` 不兼容 (evidence/04-coverage-report.md "Coverage Tooling Note") |
+| 5 | **覆盖率数据存在但未强制** | evidence/04 显示 80%+, v3.8.0 baseline 81.62%, 但无 GA blocker |
+| 6 | **G1-G16 框架先于 Coverage 设计** | G1-G16 在 RC1 时期定义 (2026-06-05), Coverage Gate (G17) 未同期设计 |
+| 7 | **Production Readiness 主题** | v3.9.0 主题是 Single-Node Production Candidate, 重点在可靠性, 覆盖率被忽略 |
+
+### 21.3 覆盖率实际数据 (无门禁约束下的快照)
+
+| 阶段 | 覆盖率 | 数据来源 | 门禁约束 |
+|------|--------|---------|---------|
+| v3.8.0 (GA baseline) | **81.62%** | 本文件 line 128 (继承数据) | 无 |
+| v3.9.0 evidence/04 (估算) | **80%+** | evidence/04-coverage-report.md | 无 |
+| v3.9.0 RC7 真实生产级 | **~70%** | 本文件 line 78 "真实生产级覆盖率" | 无 |
+| v3.9.0 Sprint 8 提升后 | **70% → 80%** | 本文件 line 961 (in-process oracle tests) | 无 |
+| **Alpha Gate A5 阈值** | **≥ 75%** | GATE_CONDITIONS.md §Alpha | (但仅 Alpha 阶段强制) |
+| **建议 v3.9.0 GA G17 阈值** | **≥ 80%** (本会话建议) | 本会话审计建议 | **❌ V9 缺失** |
+
+### 21.4 V9 修复路径 (建议, GA 前)
+
+| 步骤 | 操作 | 工作量 | 优先级 |
+|------|------|--------|--------|
+| **1** | 新增 `G17 Coverage Gate` 到 GATE_CONDITIONS.md v3.1 | 1h | P0 (GA 前) |
+| **2** | 修复 `check_coverage.sh` 的 `--skip` 不兼容问题 | 2h | P0 (GA 前) |
+| **3** | 将 `COVERAGE_DIR` 参数化 (`docs/releases/v${VERSION}`) | 1h | P0 (GA 前) |
+| **4** | 在 `check_g_all.sh` orchestrator 中加入 `check_coverage.sh` 调用 | 0.5h | P0 (GA 前) |
+| **5** | 在所有 RC/GA 报告模板中加入 G17 Coverage 行 | 1h | P1 |
+| **6** | 实际运行 `cargo llvm-cov --workspace --all-features --tests` 生成 baseline | 4-8h | P0 (GA 前) |
+| **7** | 真实覆盖率基线与 80% 阈值比对, 不足时创建 issue 跟踪 | 2h | P0 (GA 前) |
+
+### 21.5 当前评估对综合评分的影响
+
+| 维度 | v2.0 评分 (Sprint 8) | v3.0 评分 (本会话 V9 加入) | 变化原因 |
+|------|----------------------|--------------------------|---------|
+| **Testing** | 7.0/10 (form-mostly, 42 `#[ignore]` 真) | **6.5/10** (Coverage Gate 缺失扣 0.5) | V9 漏洞 |
+| **Meta-governance** | 10/10 (P11-P15 ✅) | 10/10 (V9 未在 P11-P15 范围, 不扣分) | 无变化 |
+| **GA 准备度** | 🟡 校准后 70% | 🟡 校准后 **65%** (V9 加入) | V9 漏洞 |
+| **综合** | **7.5~8.0/10** (真实校准, Sprint 8 提升) | **7.0~7.5/10** (V9 加入, 更保守校准) | V9 漏洞 |
+
+### 21.6 诚实结论
+
+- **覆盖率工具可用**: `check_coverage.sh` 存在, `cargo-llvm-cov` 可自动安装
+- **覆盖率数据可获得**: v3.8.0 baseline 81.62%, 但 v3.9.0 阶段**没有强制重新测量**
+- **覆盖率未作为门禁**: **V9 = Coverage Gate 缺失**, 本会话新发现, 不在 Sprint 8 修复范围
+- **诚实评估**: **v3.9.0 GA 当前不能在覆盖率维度声称 PASS**, 只能说"覆盖率数据存在但未在 Beta/RC/GA 门禁中验证"
+- **GA 阻塞新增**: V9 加入 GA 阻塞条件列表 (原 3 项 + V9 = 4 项): 真实 24h soak + Oracle 对比 11 gates + V9 Coverage Gate 缺失
+
+---
+
+**🆕 本会话 (2026-06-18) 新发现 V9 = Coverage Gate 缺失, 已在 §21 详细记录. 同步更新**: `GA_GATE_REPORT.md` v2.0 (§10) + `TEST_TRUTHFULNESS_REPORT.md` v2.0 (§5) + `V390_COMPREHENSIVE_ASSESSMENT.md` v3.0 (本文件 §21).
