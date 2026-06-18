@@ -1161,30 +1161,34 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     }
                 }
                 AggregateFunction::Min => {
-                    let min = values
+                    let min_int = values
                         .iter()
-                        .filter_map(|v| {
-                            if let Value::Integer(n) = v {
-                                Some(*n)
-                            } else {
-                                None
-                            }
-                        })
+                        .filter_map(|v| if let Value::Integer(n) = v { Some(*n) } else { None })
                         .min();
-                    min.map(Value::Integer).unwrap_or(Value::Null)
+                    let min_flt = values
+                        .iter()
+                        .filter_map(|v| if let Value::Float(f) = v { Some(*f) } else { None })
+                        .min_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+                    if min_flt.is_some() {
+                        min_flt.map(Value::Float).unwrap_or(Value::Null)
+                    } else {
+                        min_int.map(Value::Integer).unwrap_or(Value::Null)
+                    }
                 }
                 AggregateFunction::Max => {
-                    let max = values
+                    let max_int = values
                         .iter()
-                        .filter_map(|v| {
-                            if let Value::Integer(n) = v {
-                                Some(*n)
-                            } else {
-                                None
-                            }
-                        })
+                        .filter_map(|v| if let Value::Integer(n) = v { Some(*n) } else { None })
                         .max();
-                    max.map(Value::Integer).unwrap_or(Value::Null)
+                    let max_flt = values
+                        .iter()
+                        .filter_map(|v| if let Value::Float(f) = v { Some(*f) } else { None })
+                        .max_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+                    if max_flt.is_some() {
+                        max_flt.map(Value::Float).unwrap_or(Value::Null)
+                    } else {
+                        max_int.map(Value::Integer).unwrap_or(Value::Null)
+                    }
                 }
             };
             results.push(result);
