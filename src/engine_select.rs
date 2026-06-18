@@ -3853,3 +3853,88 @@ fn build_scalar_agg_index(
     }
     result
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::Value;
+    use sqlrustgo_storage::MemoryStorage;
+    use std::sync::{Arc, RwLock};
+
+    fn fresh() -> ExecutionEngine<MemoryStorage> {
+        let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+        ExecutionEngine::new(storage)
+    }
+
+    #[test]
+    fn test_engine_select_simple_star() {
+        let mut e = fresh();
+        e.execute("CREATE TABLE t (id INTEGER, name TEXT)").unwrap();
+        e.execute("INSERT INTO t VALUES (1, 'a')").unwrap();
+        e.execute("INSERT INTO t VALUES (2, 'b')").unwrap();
+        let r = e.execute("SELECT * FROM t").unwrap();
+        assert_eq!(r.rows.len(), 2);
+    }
+
+    #[test]
+    fn test_engine_select_with_where_clause() {
+        let mut e = fresh();
+        e.execute("CREATE TABLE t (id INTEGER, name TEXT)").unwrap();
+        e.execute("INSERT INTO t VALUES (1, 'a')").unwrap();
+        e.execute("INSERT INTO t VALUES (2, 'b')").unwrap();
+        e.execute("INSERT INTO t VALUES (3, 'c')").unwrap();
+        let r = e.execute("SELECT name FROM t WHERE id > 1").unwrap();
+        assert_eq!(r.rows.len(), 2);
+        assert_eq!(r.rows[0][0], Value::Text("b".to_string()));
+        assert_eq!(r.rows[1][0], Value::Text("c".to_string()));
+    }
+
+    #[test]
+    fn test_engine_select_with_group_by_having() {
+        let mut e = fresh();
+        e.execute("CREATE TABLE orders (region TEXT, amount INTEGER)")
+            .unwrap();
+        e.execute("INSERT INTO orders VALUES ('east', 10)").unwrap();
+        e.execute("INSERT INTO orders VALUES ('east', 20)").unwrap();
+        e.execute("INSERT INTO orders VALUES ('west', 50)").unwrap();
+        let r = e
+            .execute("SELECT region, SUM(amount) FROM orders GROUP BY region HAVING SUM(amount) > 35")
+            .unwrap();
+        assert_eq!(r.rows.len(), 1, "only west (sum=50) should match HAVING > 35");
+        assert_eq!(r.rows[0][0], Value::Text("west".to_string()));
+        assert_eq!(r.rows[0][1], Value::Integer(50));
+    }
+
+    #[test]
+    fn test_engine_select_inner_join_two_tables() {
+        let mut e = fresh();
+        e.execute("CREATE TABLE customers (id INTEGER, name TEXT)")
+            .unwrap();
+        e.execute("CREATE TABLE orders (cid INTEGER, amount INTEGER)")
+            .unwrap();
+        e.execute("INSERT INTO customers VALUES (1, 'alice')")
+            .unwrap();
+        e.execute("INSERT INTO customers VALUES (2, 'bob')").unwrap();
+        e.execute("INSERT INTO orders VALUES (1, 100)").unwrap();
+        e.execute("INSERT INTO orders VALUES (2, 200)").unwrap();
+        let r = e
+            .execute("SELECT c.name, o.amount FROM customers c JOIN orders o ON c.id = o.cid")
+            .unwrap();
+        assert_eq!(r.rows.len(), 2);
+    }
+
+    #[test]
+    fn test_engine_select_with_order_by_limit() {
+        let mut e = fresh();
+        e.execute("CREATE TABLE t (id INTEGER)").unwrap();
+        for i in 1..=5 {
+            e.execute(&format!("INSERT INTO t VALUES ({})", i)).unwrap();
+        }
+        let r = e
+            .execute("SELECT id FROM t ORDER BY id DESC LIMIT 2")
+            .unwrap();
+        assert_eq!(r.rows.len(), 2);
+        assert_eq!(r.rows[0][0], Value::Integer(5));
+        assert_eq!(r.rows[1][0], Value::Integer(4));
+    }
+}
