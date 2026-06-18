@@ -6147,6 +6147,7 @@ impl Parser {
     fn parse_foreign_key_constraint(&mut self) -> Result<TableConstraint, String> {
         self.expect(Token::Foreign)?;
         self.expect(Token::Key)?;
+        self.expect(Token::LParen)?;
         let columns = self.parse_column_list()?;
         self.expect(Token::References)?;
         let referenced_table = match self.next() {
@@ -7434,7 +7435,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "Test deferred (see tracking issue or comment context)"]
     fn test_parse_create_with_table_constraint_fk() {
         let result = parse("CREATE TABLE orders (id INTEGER, user_id INTEGER, FOREIGN KEY (user_id) REFERENCES users(id))");
         assert!(result.is_ok());
