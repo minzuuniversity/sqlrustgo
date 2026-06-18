@@ -2,6 +2,7 @@
 # check_g14_real_crash.sh - G14 真实崩溃测试门禁
 #
 # Verifies:
+# 0. Inline oracle (V4 fix): cargo test --test oracle_g14_real_crash
 # 1. orchestrator + 8 sub-scripts exist
 # 2. CRASH_TEST_REPORT.md exists
 # 3. G8 Crash Matrix 100+ scenarios PASS (mock, CI)
@@ -31,6 +32,18 @@ fi
 
 echo "=== G14 Gate: Real Crash Test (8 类) ==="
 
+# 0. Inline oracle (V4 fix: independent ground-truth validation)
+ORACLE_OUTPUT=$(cargo test --test oracle_g14_real_crash --all-features 2>&1)
+ORACLE_EXIT=$?
+if [ $ORACLE_EXIT -eq 0 ]; then
+    ORACLE_PASSED=$(echo "$ORACLE_OUTPUT" | grep -E "test result.*ok" | head -1)
+    echo "  [0/8] PASS: oracle_g14_real_crash $ORACLE_PASSED"
+else
+    echo "  [0/8] FAIL: oracle_g14_real_crash (exit=$ORACLE_EXIT)"
+    echo "$ORACLE_OUTPUT" | tail -5
+    exit 1
+fi
+
 # 1. orchestrator + 8 sub-scripts
 [ -f "scripts/crash/run_real_crash_test.sh" ] || {
     echo "  ❌ FAIL: orchestrator not found"
@@ -53,7 +66,7 @@ for kind in "${SUB_SCRIPTS[@]}"; do
     }
     [ -x "scripts/crash/run_${kind}_test.sh" ] || chmod +x "scripts/crash/run_${kind}_test.sh"
 done
-echo "  [1/7] ✅ PASS: orchestrator + 8 sub-scripts present"
+echo "  [1/8] ✅ PASS: orchestrator + 8 sub-scripts present"
 
 # 2. CRASH_TEST_REPORT.md
 REPORT="docs/releases/v3.9.0/perf/CRASH_TEST_REPORT.md"
@@ -61,7 +74,7 @@ REPORT="docs/releases/v3.9.0/perf/CRASH_TEST_REPORT.md"
     echo "  ❌ FAIL: $REPORT not found"
     exit 1
 }
-echo "  [2/7] ✅ PASS: $REPORT present"
+echo "  [2/8] ✅ PASS: $REPORT present"
 
 # 3. G8 Crash Matrix gate (unit-level) (V6 fix: capture exit code properly)
 G8_OUTPUT=$(bash scripts/gate/check_p12_crash_test.sh 2>&1)
@@ -77,7 +90,7 @@ if ! echo "$G8_LAST" | grep -q "PASS"; then
     echo "$G8_LAST"
     exit 1
 fi
-echo "  [3/7] ✅ PASS: G8 Crash Matrix (mock) gate PASS"
+echo "  [3/8] ✅ PASS: G8 Crash Matrix (mock) gate PASS"
 
 # 4. TPC-H 22/22 维持 (V6 fix: capture exit code properly)
 TPCH_OUTPUT=$(cargo test --test tpch_gate_test 2>&1)
@@ -93,7 +106,7 @@ if [ -z "$TPCH_PASSED" ] || ! echo "$TPCH_PASSED" | grep -q "ok"; then
     echo "$TPCH_OUTPUT" | tail -5
     exit 1
 fi
-echo "  [4/7] ✅ PASS: TPC-H gate (22/22) maintained"
+echo "  [4/8] ✅ PASS: TPC-H gate (22/22) maintained"
 
 # 5. Orchestrator has all 8 kinds
 KINDS_IN_ORCH=$(grep -E "^\s+[a-z_]+\)" scripts/crash/run_real_crash_test.sh | grep -oE "[a-z_]+\)" | grep -v "case" | wc -l)
@@ -101,21 +114,21 @@ if [ "$KINDS_IN_ORCH" -lt 8 ]; then
     echo "  ❌ FAIL: orchestrator has $KINDS_IN_ORCH kinds (expected ≥8)"
     exit 1
 fi
-echo "  [5/7] ✅ PASS: orchestrator handles $KINDS_IN_ORCH crash kinds (≥8)"
+echo "  [5/8] ✅ PASS: orchestrator handles $KINDS_IN_ORCH crash kinds (≥8)"
 
 # 6. sysbench installed
 if ! command -v sysbench >/dev/null 2>&1; then
     echo "  ❌ FAIL: sysbench not installed"
     exit 1
 fi
-echo "  [6/7] ✅ PASS: sysbench installed"
+echo "  [6/8] ✅ PASS: sysbench installed"
 
 # 7. Real run results (optional, Z6G4 only)
 LATEST=$(ls -td test_results/crash_2* 2>/dev/null | head -1 || true)
 if [ -n "$LATEST" ] && [ -d "$LATEST" ]; then
     if [ -f "$LATEST/RESULT.txt" ]; then
         if grep -q "PASS" "$LATEST/RESULT.txt"; then
-            echo "  [7/7] ✅ PASS: real crash run found ($LATEST)"
+            echo "  [7/8] ✅ PASS: real crash run found ($LATEST)"
         else
             echo "  ⚠️ WARN: real crash run exists but FAIL ($LATEST)"
         fi
@@ -124,7 +137,7 @@ if [ -n "$LATEST" ] && [ -d "$LATEST" ]; then
     fi
 else
     echo "  ⚠️ WARN: 真实 crash run not yet executed (W12 D3-4, Z6G4 only)"
-    echo "  [7/7] ✅ PASS (warned): real run deferred to W12"
+    echo "  [7/8] ✅ PASS (warned): real run deferred to W12"
 fi
 
 # 8. Real single crash test - actually executes sigkill_insert, not just checks existence
