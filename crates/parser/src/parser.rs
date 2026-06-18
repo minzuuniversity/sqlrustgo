@@ -8413,28 +8413,165 @@ fn test_debug_idx() {
 fn test_debug_json_extract() {
     use crate::{lexer::Lexer, parse};
 
-    let sql = "SELECT JSON_EXTRACT('{\"name\":\"John\"}', '$.name')";
-    println!("SQL: [{}]", sql);
-    let tokens = Lexer::new(sql).tokenize();
-    println!("Tokens: {:?}", tokens);
-
-    match parse(sql) {
-        Ok(stmt) => println!("OK: {:#?}", stmt),
-        Err(e) => println!("ERROR: {}", e),
+    // === DROP statement tests ===
+    #[test]
+    fn test_parse_drop_table() {
+        for sql in ["DROP TABLE t1", "DROP TABLE IF EXISTS t1", "DROP TABLE schema.t1"] {
+            let result = parse(sql);
+            assert!(result.is_ok(), "Failed for {}: {:?}", sql, result);
+            if let Statement::DropTable(s) = result.unwrap() {
+                assert_eq!(s.name, "t1");
+            }
+        }
     }
-}
 
-#[test]
-fn test_debug_json_simple() {
-    use crate::{lexer::Lexer, parse};
+    #[test]
+    fn test_parse_drop_table_cascade() {
+        let result = parse("DROP TABLE t1 CASCADE");
+        assert!(result.is_ok());
+        if let Statement::DropTable(s) = result.unwrap() {
+            assert_eq!(s.name, "t1");
+        }
+    }
 
-    let sql = "SELECT JSON('{\"key\": \"value\"}') as json_val";
-    println!("SQL: [{}]", sql);
-    let tokens = Lexer::new(sql).tokenize();
-    println!("Tokens: {:?}", tokens);
+    #[test]
+    fn test_parse_drop_index() {
+        let result = parse("DROP INDEX idx1");
+        assert!(result.is_ok());
+        if let Statement::DropIndex(s) = result.unwrap() {
+            assert_eq!(s.name, "idx1");
+        }
+    }
 
-    match parse(sql) {
-        Ok(stmt) => println!("OK: {:#?}", stmt),
-        Err(e) => println!("ERROR: {}", e),
+    #[test]
+    fn test_parse_drop_role() {
+        assert!(parse("DROP ROLE analyst").is_ok());
+    }
+
+    // === INSERT statement tests ===
+    #[test]
+    fn test_parse_insert_values() {
+        let sql = "INSERT INTO t1 VALUES (1, 'a')";
+        let result = parse(sql);
+        assert!(result.is_ok(), "Failed: {:?}", result);
+        if let Statement::Insert(s) = result.unwrap() {
+            assert_eq!(s.table, "t1");
+            assert_eq!(s.values.len(), 1);
+        }
+    }
+
+    #[test]
+    fn test_parse_insert_select() {
+        let sql = "INSERT INTO t1 SELECT * FROM t2";
+        let result = parse(sql);
+        assert!(result.is_ok(), "Failed: {:?}", result);
+        if let Statement::Insert(s) = result.unwrap() {
+            assert_eq!(s.table, "t1");
+            assert!(s.select.is_some());
+        }
+    }
+
+    // === UPDATE statement tests ===
+    #[test]
+    fn test_parse_update_basic() {
+        let sql = "UPDATE t1 SET col1 = 1";
+        let result = parse(sql);
+        assert!(result.is_ok(), "Failed: {:?}", result);
+        if let Statement::Update(s) = result.unwrap() {
+            assert_eq!(s.table, "t1");
+        }
+    }
+
+    #[test]
+    fn test_parse_update_with_where() {
+        let sql = "UPDATE t1 SET col1 = 1 WHERE col2 > 5";
+        let result = parse(sql);
+        assert!(result.is_ok());
+        if let Statement::Update(s) = result.unwrap() {
+            assert_eq!(s.table, "t1");
+            assert!(s.where_clause.is_some());
+        }
+    }
+
+    // === Transaction tests ===
+    #[test]
+    fn test_parse_transaction() {
+        // BEGIN, COMMIT, ROLLBACK parse as Transaction statements
+        assert!(parse("BEGIN").is_ok());
+        assert!(parse("COMMIT").is_ok());
+        assert!(parse("ROLLBACK").is_ok());
+        assert!(parse("SAVEPOINT sp1").is_ok());
+    }
+
+    // === CREATE tests ===
+    #[test]
+    fn test_parse_create_trigger() {
+        let sql = "CREATE TRIGGER tr1 AFTER INSERT ON t1 FOR EACH ROW BEGIN END";
+        assert!(parse(sql).is_ok(), "Failed: {:?}", parse(sql));
+    }
+
+    // === SET tests ===
+    #[test]
+    fn test_parse_set_variable() {
+        assert!(parse("SET x = 1").is_ok());
+    }
+
+    // === ALTER tests ===
+    #[test]
+    fn test_parse_alter_table_rename() {
+        assert!(parse("ALTER TABLE t1 RENAME TO t2").is_ok());
+    }
+
+    // === Expression parse coverage ===
+    #[test]
+    fn test_parse_expression_in_parens() {
+        assert!(parse("SELECT ((1 + 2) * 3)").is_ok());
+    }
+
+    #[test]
+    fn test_parse_json_extract() {
+        assert!(parse("SELECT JSON_EXTRACT(col, '$.field') FROM t1").is_ok());
+    }
+
+    #[test]
+    fn test_parse_between() {
+        assert!(parse("SELECT * FROM t1 WHERE col BETWEEN 1 AND 10").is_ok());
+    }
+
+    #[test]
+    fn test_parse_like() {
+        assert!(parse("SELECT * FROM t1 WHERE col LIKE '%foo%'").is_ok());
+    }
+
+    #[test]
+    fn test_parse_in_values() {
+        assert!(parse("SELECT * FROM t1 WHERE col IN (1, 2, 3)").is_ok());
+    }
+
+    #[test]
+    fn test_parse_is_null() {
+        assert!(parse("SELECT * FROM t1 WHERE col IS NULL").is_ok());
+    }
+
+    #[test]
+    fn test_parse_case_expression() {
+        assert!(parse("SELECT CASE WHEN col > 0 THEN 1 ELSE 0 END FROM t1").is_ok());
+    }
+
+    // === Prepare/Execute tests ===
+    #[test]
+    fn test_parse_prepare_execute() {
+        assert!(parse("PREPARE stmt FROM 'SELECT 1'").is_ok());
+        assert!(parse("EXECUTE stmt").is_ok());
+    }
+
+    #[test]
+    fn test_parse_deallocate() {
+        assert!(parse("DEALLOCATE PREPARE stmt").is_ok());
+    }
+
+    #[test]
+    fn test_parse_explain() {
+        assert!(parse("EXPLAIN SELECT * FROM t1").is_ok());
     }
 }
