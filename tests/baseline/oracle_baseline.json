@@ -66,13 +66,13 @@
     },
     {
       "id": "G15-Q8-timeout",
-      "desc": "Q8 8-way join exceeds 300s wire timeout (Sprint 8 hash-join fix on Q8 was correctness, not perf)",
-      "tracked": "Sprint 9 perf follow-up"
+      "desc": "Q8 8-way join exceeds 300s wire timeout. Root cause: auto-rewrite preserves FROM order, causing part(2000) × supplier(100) cartesian = 200K → ×lineitem=6M → ×customer=6M → ×nation=150M+ intermediate. Need join-order optimization (CBO) to start from smallest table. See docs/releases/v3.9.0/Q8_PERF_ANALYSIS.md",
+      "tracked": "Sprint 9+ (join-order optimizer, 2-3 days effort)"
     },
     {
       "id": "G15-Q9-timeout",
-      "desc": "Q9 6-way join exceeds 300s wire timeout. Allocated to TPCH-01 Q9 audit (#3178) which requires Z6G4 hardware for full benchmark",
-      "tracked": "#3178 (Z6G4 hardware)"
+      "desc": "Q9 6-way join exceeds 300s wire timeout. Same root cause as Q8: 6-way chain with cartesian products in 150M+ intermediate. Allocated to TPCH-01 Q9 audit (#3178) which requires Z6G4 hardware for full benchmark",
+      "tracked": "#3178 + Sprint 9+ join-order"
     },
     {
       "id": "G15-Q15-derived",
