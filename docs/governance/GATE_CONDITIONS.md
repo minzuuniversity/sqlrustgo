@@ -1,10 +1,11 @@
-# Gate Conditions Definition — v3.0
+# Gate Conditions Definition — v3.1
 
-> **更新日期**: 2026-06-17
-> **版本**: 3.0
+> **更新日期**: 2026-06-18
+> **版本**: 3.1
 > **关联 Issue**: #2682 (Beta Gate functional tracking vulnerability)
+> **V9 漏洞**: Coverage Gate 硬编码 v3.7.0 路径 + 阈值 50% (过低) + `--skip` 参数不兼容
 > **维护者**: Hermes C
-> **适用范围**: v3.9.0+ GA Gates  
+> **适用范围**: v3.9.0+ GA Gates
 
 ---
 
@@ -169,7 +170,7 @@ Beta Gate 不仅检查基础设施（Build/Test/Clippy/Fmt），还必须追踪�
 | GE4 | SECURITY_AUDIT.md 存在 | `ls docs/releases/v{VERSION}/SECURITY_AUDIT.md` |
 | GE5 | 所有 RC 前置 Issue 已关闭 | Gitea API 查询 |
 
-### PASS 标准 (G1-G16)
+### PASS 标准 (G1-G17)
 
 | ID | Check | Method | Threshold |
 |----|-------|--------|-----------|
@@ -189,6 +190,65 @@ Beta Gate 不仅检查基础设施（Build/Test/Clippy/Fmt），还必须追踪�
 | G14 | Real Crash Test | `bash scripts/gate/check_g14_real_crash.sh` | PASS |
 | G15 | TPC-H SF=0.01 wire | `cargo test --test tpch_sf01_22_queries_wire_test` | 22/22 PASS |
 | G16 | Compatibility v3.8→v3.9 | `cargo test --test v380_to_v390_full_upgrade_test` | 18+ PASS |
+| G17 | **Coverage Gate (NEW)** | `bash scripts/gate/check_coverage.sh` | **≥ 80% line coverage** |
+
+---
+
+## G17: Coverage Gate (v3.9.0+)
+
+### 目的
+
+强制代码覆盖率作为 GA 门禁, 防止"低覆盖率"通过 GA 验证 (V9 漏洞)。
+
+### 阈值
+
+| 指标 | 阈值 | 说明 |
+|------|------|------|
+| **Line Coverage** | **≥ 80%** | workspace 级别 (含所有 crates) |
+| **Branch Coverage** | 报告但不阻塞 | 用于趋势分析 |
+
+### 实施
+
+#### 脚本
+
+`scripts/gate/check_coverage.sh` — 唯一允许的覆盖率测量命令:
+```bash
+cargo llvm-cov \
+  --workspace \
+  --all-features \
+  --tests \
+  --exclude bench-cli \
+  --output-dir docs/releases/v3.9.0
+```
+
+#### 参数化
+
+- **环境变量**: `VERSION_DIR` 可覆盖默认输出目录 (默认 `docs/releases/v3.9.0`)
+- **模式**: `full` (默认) / `incremental` (仅变更 crates)
+- **跳过**: `SKIP_COVERAGE=1 bash check_g_all.sh` (本地开发用)
+
+#### 禁止模式
+
+| 模式 | 原因 |
+|------|------|
+| `cargo test --lib` | 仅库, 不含集成测试 |
+| `cargo llvm-cov --lib` | 局部覆盖率, 不完整 |
+| `cargo llvm-cov --skip <test>` | cargo-llvm-cov 0.8.4 不支持, 实际未生效 |
+| 硬编码 `docs/releases/v3.7.0` 路径 | 路径错误会导致结果写入旧版本目录 |
+
+### V9 漏洞历史
+
+- **报告日期**: 2026-06-18
+- **漏洞位置**: `scripts/gate/check_coverage.sh:20` (硬编码 v3.7.0)
+- **漏洞影响**:
+  1. v3.9.0 运行覆盖率时, 输出写入 `docs/releases/v3.7.0/`, 实际未生成 v3.9.0 baseline
+  2. 阈值仅 50%, 与项目"≥80%"目标不一致
+  3. `--skip` 参数对 cargo-llvm-cov 0.8.4 无效, 实际未排除 4 个问题测试
+- **修复 commit**: 待提交 (本计划)
+- **修复后行为**:
+  1. `COVERAGE_DIR="${VERSION_DIR:-docs/releases/v3.9.0}"` 参数化
+  2. `REQUIRED_LINE_COVERAGE=80` 阈值提升
+  3. 移除 `--skip` 循环, 改为 `#[ignore]` 标注或 `--exclude-from-test`
 
 ---
 
@@ -257,6 +317,7 @@ logs/gate_ga_<commit>_<timestamp>.log
 
 | 版本 | 日期 | 说明 |
 |------|------|------|
+| 3.1 | 2026-06-18 | **新增 G17 Coverage Gate** (≥80% line coverage), 修复 V9 漏洞 (硬编码路径 + 阈值过低 + --skip 不兼容) |
 | 3.0 | 2026-06-17 | 补全 GA Gate G1-G16 定义，增加 Soak Test Gate (ST1-ST4)，完善门禁执行要求 |
 | 2.0 | 2026-05-31 | 增加 B-Functional 功能追踪，RC-F 功能完成要求，脚本实现要求 |
 | 1.0 | 2026-03-07 | 初始版本 |
