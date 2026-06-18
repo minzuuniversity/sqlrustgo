@@ -17,31 +17,23 @@ fi
 
 echo "=== Running Coverage Gate Check ==="
 
-COVERAGE_DIR="docs/releases/v3.7.0"
+# 参数化 COVERAGE_DIR (G17 Coverage Gate, v3.9.0)
+# 优先使用 VERSION_DIR 环境变量, 默认 v3.9.0
+COVERAGE_DIR="${VERSION_DIR:-docs/releases/v3.9.0}"
 mkdir -p "$COVERAGE_DIR"
 
 MODE="${1:-full}"
 
-# v3.7.0: 唯一允许的命令（禁止局部覆盖率）
+# v3.9.0 G17 Coverage Gate: ≥80% line coverage
 # 注意：需要先安装 llvm-cov: cargo install cargo-llvm-cov
-REQUIRED_COVERAGE=50
-REQUIRED_LINE_COVERAGE=50
+REQUIRED_COVERAGE=80
+REQUIRED_LINE_COVERAGE=80
 
 echo "Mode: $MODE"
 echo "Required coverage: ${REQUIRED_COVERAGE}%"
 
-# 问题测试（在 MemoryStorage 环境下可能有问题）
-PROBLEMATIC_TESTS=(
-    "test_trigger_executes_insert"
-    "test_trigger_executes_delete"
-    "test_trigger_executes_update"
-    "test_sql_corpus_all"
-)
-
-SKIP_ARGS=""
-for test in "${PROBLEMATIC_TESTS[@]}"; do
-    SKIP_ARGS="$SKIP_ARGS --skip $test"
-done
+# 移除 --skip (cargo-llvm-cov 0.8.4 不支持 --skip 参数)
+# 如需排除特定测试, 请使用 --exclude-from-test 或修改测试本身的 #[ignore]
 
 # 检查 llvm-cov 是否可用
 if ! command -v cargo-llvm-cov &> /dev/null && ! cargo llvm-cov --version &> /dev/null; then
@@ -62,8 +54,7 @@ if [ "$MODE" = "incremental" ]; then
             --all-features \
             --tests \
             --exclude bench-cli \
-            --output-dir "$COVERAGE_DIR" \
-            $SKIP_ARGS
+            --output-dir "$COVERAGE_DIR"
     fi
 fi
 
@@ -78,8 +69,7 @@ if [ "$MODE" = "full" ]; then
         --tests \
         --exclude bench-cli \
         --output-dir "$COVERAGE_DIR" \
-        --html \
-        $SKIP_ARGS
+        --html
 fi
 
 # 检查覆盖率报告是否生成
@@ -118,7 +108,7 @@ echo "✅ Coverage check passed!"
 
 # 生成覆盖率摘要
 cat > "$COVERAGE_DIR/coverage-summary.md" << EOF
-# Coverage Report Summary (v3.7.0)
+# Coverage Report Summary (v3.9.0 — G17 Coverage Gate)
 
 ## Coverage Statistics
 
@@ -127,7 +117,7 @@ cat > "$COVERAGE_DIR/coverage-summary.md" << EOF
 | Line Coverage | ${LINE_COVERAGE}% | ${REQUIRED_LINE_COVERAGE}% | $([ "$LINE_COVERAGE" -ge "$REQUIRED_LINE_COVERAGE" ] && echo "✅ PASS" || echo "❌ FAIL") |
 | Branch Coverage | ${BRANCH_COVERAGE}% | - | - |
 
-## v3.7.0 Coverage Policy
+## v3.9.0 Coverage Policy (G17 Gate)
 
 **唯一允许的命令**:
 \`\`\`bash

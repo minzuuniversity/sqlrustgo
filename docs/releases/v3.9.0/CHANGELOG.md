@@ -5,8 +5,8 @@
 > **分支**: `develop/v3.9.0` (从 `main@v3.8.0` fork)
 > **创建日期**: 2026-06-05
 > **GA 目标**: 2026-12-15 (per Hermes audit #3252, deferred from 2026-09-23)
-> **当前阶段**: **RC7 ✅ + Sprint 8 ✅** (2026-06-17, PR #3465 merged, awaiting 24h/72h/168h real soak on Z6G4 for GA cut, see GA_GATE_REPORT.md)
-> **当前 HEAD**: `1e83612c6` (post PR #3467 docs follow-up)
+> **当前阶段**: **RC8 ✅ + Sprint 8 ✅** (2026-06-18, V9 Coverage Gate fix + 8 Oracle Gaps inline oracle, awaiting 24h/72h/168h real soak on Z6G4 for GA cut, see GA_GATE_REPORT.md)
+> **当前 HEAD**: `e39e22441e` (docs/v6-status-update branch, post V9 fix + 8 oracle gaps)
 > **前版本**: v3.8.0
 
 ---
@@ -64,6 +64,15 @@
 | **P12 V2 ignore_registry 重生成** | `tests/baseline/ignore_registry.json` 从 93 stale → 42 真 `#[ignore]` + 1 marker. P12 detector ✅ PASS. | 3 |
 | 5 meta-gate (P11/P12/P13/P14/P15) | 全部 ✅ PASS | 3 |
 
+### Meta-Governance RC8 (ADR-006 Phase 4, 2026-06-18)
+
+| 改进 | 说明 | Phase |
+|------|------|-------|
+| **P15 V4 8 Oracle Gaps closed** | 8 gate scripts 添加 Section 0 inline oracle (G11/G12/G14/G16/P14/P22/P23/P34). 独立 ground-truth validation, 不再只查文件存在. | 4 |
+| **P15 V4 4 new oracle tests** | `tests/oracle_g14_real_crash.rs`, `tests/oracle_p22_time_travel.rs`, `tests/oracle_p23_hash_chain.rs`, `tests/oracle_p34_parallel_executor.rs` — 13/13 oracle tests PASS. | 4 |
+| **V9 Coverage Gate 漏洞修复** | `check_coverage.sh` 参数化 `COVERAGE_DIR` (移除硬编码 v3.7.0) + 移除不兼容的 `--skip` 标志. | 4 |
+| **G17 Coverage Gate (NEW)** | `docs/governance/GATE_CONDITIONS.md` 添加 G17 定义: ≥80% line coverage. 整合到 `check_g_all.sh` orchestrator. | 4 |
+
 ### 可靠性 (Reliability) — Soak 基础设施 (2026-06-17)
 
 | 改进 | 说明 | Phase |
@@ -115,9 +124,9 @@
 
 | 项目 | 值 |
 |------|-----|
-| Changelog 版本 | v3.9.0-CHANGELOG-1.2 |
+| Changelog 版本 | v3.9.0-CHANGELOG-1.3 |
 | 创建日期 | 2026-06-05 |
-| **最近更新** | **2026-06-17** — Sprint 8 Q8 cartesian→hash 性能修复 + ADR-006 Phase 3 (V5/V6/V8/V2) + `soak` 子命令 + long-stability tests analysis. PR #3465. Gates 表格 G1-G10 → G1-G16 + 5 meta-gates (P11-P15) 同步. |
+| **最近更新** | **2026-06-18** — V9 Coverage Gate 漏洞修复 (`check_coverage.sh` 参数化 + 移除 `--skip` + G17 ≥80% 定义) + 8 Oracle Gaps inline oracle 关闭 (8/8 gate scripts) + 4 new oracle test files (G14/P22/P23/P34) + Z6G4_HANDOFF.md. RC8 docs added. |
 | 维护人 | Hermes Agent |
 | 状态 | ACTIVE (Unreleased) |
 | 下次审查 | 每个 Phase 末尾 |
@@ -138,6 +147,7 @@
 | v3.9.0-rc5 | 2026-06-12 | G2 substance + Z6G4 QPS baseline + cross-version upgrade chain |
 | v3.9.0-rc6 | 2026-06-12 | INT-2/INT-3 full substance tests (Issues #3146, #3108) |
 | v3.9.0-rc7 | 2026-06-12 | Performance docs + MariaDB comparison (PR #3363) |
+| v3.9.0-rc8 | 2026-06-18 | V9 Coverage Gate 修复 + 8 Oracle Gaps inline oracle (RC8 切标) |
 | **v3.9.0 + Sprint 8** | **2026-06-17** | **Q8 hash join (33s→0.18ms, 165,000×) + ADR-006 V5/V6/V8/V2 + soak_runner (PR #3465)** |
 | v3.9.0-ga | (planned, 2026-12-15) | after 24h/72h/168h real soak on Z6G4 + all GA blocker issues closed |
 | v3.8.0 | 2026-06-04 | Strong Beta |
