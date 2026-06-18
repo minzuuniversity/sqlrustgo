@@ -134,6 +134,10 @@ edition.workspace = true
 authors.workspace = true
 license.workspace = true
 
+[features]
+default = []
+v390_join_reorder = ["sqlrustgo-optimizer/v390_join_reorder"]
+
 [dependencies]
 sqlrustgo-common.workspace = true
 sqlrustgo-types.workspace = true
