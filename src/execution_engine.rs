@@ -898,10 +898,10 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             // Then delete the matching rows from the freshly re-inserted set
             // so WAL records one Delete entry per affected row.
             //
-            // FIX-2737: Extract ONLY primary key column values for delete,
-            // not all columns. storage.delete() does full row comparison when
-            // key_values is non-empty, so passing all columns causes delete to
-            // fail if any non-PK column differs (e.g., due to serialization).
+            // P22 fix: use storage.delete_if with a primary-key filter instead
+            // of storage.delete(table, &key_values). The latter ignores the
+            // key_values and clears the entire table (P22-delete-isolation bug
+            // observed in oracle_p22_time_travel_delete_isolation_oracle).
             let pk_indices: Vec<usize> = table_info
                 .columns
                 .iter()
@@ -910,20 +910,30 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 .map(|(i, _)| i)
                 .collect();
 
-            // If table has primary keys, use only PK columns for delete.
-            // Otherwise, fall back to all columns (backward compatible).
-            let use_indices: Vec<usize> = if pk_indices.is_empty() {
-                (0..rows_to_delete[0].len()).collect()
-            } else {
-                pk_indices
-            };
-
             for row in &rows_to_delete {
-                let key_values: Vec<Value> = use_indices
-                    .iter()
-                    .map(|&i| row.get(i).cloned().unwrap_or(sqlrustgo_types::Value::Null))
-                    .collect();
-                storage.delete(&table_name, &key_values)?;
+                if pk_indices.is_empty() {
+                    // No PK: fall back to full row match (delete_if on all cols)
+                    let target: Vec<Value> = row.clone();
+                    let filter: sqlrustgo_storage::engine::RowFilter =
+                        Box::new(move |r: &Vec<Value>| r == &target);
+                    let _ = storage.delete_if(&table_name, &filter)?;
+                } else {
+                    // PK available: build a filter that matches any row whose
+                    // primary-key columns equal the target row's PK values.
+                    let pk_indices_local = pk_indices.clone();
+                    let pk_values: Vec<Value> = pk_indices_local
+                        .iter()
+                        .map(|&i| row.get(i).cloned().unwrap_or(sqlrustgo_types::Value::Null))
+                        .collect();
+                    let filter: sqlrustgo_storage::engine::RowFilter =
+                        Box::new(move |r: &Vec<Value>| {
+                            pk_indices_local
+                                .iter()
+                                .zip(pk_values.iter())
+                                .all(|(&i, want)| r.get(i).map(|v| v == want).unwrap_or(false))
+                        });
+                    let _ = storage.delete_if(&table_name, &filter)?;
+                }
             }
         }
 
