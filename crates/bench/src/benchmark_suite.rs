@@ -906,6 +906,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "perf benchmark: 60s+ runtime, run via benches/ or `cargo bench` not lib tests"]
     fn test_benchmark_run_short() {
         let bench = OltpPointSelect::new();
         // Run with minimal concurrency for quick test
