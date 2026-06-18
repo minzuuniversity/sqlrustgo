@@ -904,14 +904,4 @@ mod tests {
         assert!(md.contains("oltp_point_select"));
         assert!(md.contains("✅ PASS"));
     }
-
-    #[test]
-    #[ignore = "perf benchmark: 60s+ runtime, run via benches/ or `cargo bench` not lib tests"]
-    fn test_benchmark_run_short() {
-        let bench = OltpPointSelect::new();
-        // Run with minimal concurrency for quick test
-        let result = bench.run(2);
-        // Should complete without panic
-        assert!(result.total_ops > 0 || result.qps >= 0.0);
-    }
 }
