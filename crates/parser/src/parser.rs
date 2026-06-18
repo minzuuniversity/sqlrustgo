@@ -4357,6 +4357,38 @@ impl Parser {
             let right = self.parse_additive_expression_until_close_with_depth(depth)?;
             left = Expression::BinaryOp(Box::new(left), op.to_string(), Box::new(right));
         }
+        // IN list (e.g. p_container IN ('SM CASE', 'SM BOX'))
+        if matches!(self.current(), Some(Token::In)) {
+            self.next();
+            self.expect(Token::LParen)?;
+            *depth += 1;
+            let mut values = Vec::new();
+            loop {
+                values.push(self.parse_expression()?);
+                if matches!(self.current(), Some(Token::Comma)) {
+                    self.next();
+                } else {
+                    break;
+                }
+            }
+            if matches!(self.current(), Some(Token::RParen)) {
+                *depth -= 1;
+                self.next();
+            }
+            return Ok(Expression::InList(Box::new(left), values));
+        }
+        // BETWEEN
+        if matches!(self.current(), Some(Token::Between)) {
+            self.next();
+            let low = self.parse_additive_expression_until_close_with_depth(depth)?;
+            self.expect(Token::And)?;
+            let high = self.parse_additive_expression_until_close_with_depth(depth)?;
+            return Ok(Expression::Between(
+                Box::new(left),
+                Box::new(low),
+                Box::new(high),
+            ));
+        }
         Ok(left)
     }
 
