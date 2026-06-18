@@ -3209,9 +3209,8 @@ mod integration_tests {
 
     #[test]
     fn test_col_type_from_string_varchar() {
-        // MySQL 8.0 native VARCHAR (0x0f) - libmysqlclient 8.0 strictly validates column type
-        assert_eq!(col_type_from_string("VARCHAR(255)"), 0x0f); // VARCHAR
-        assert_eq!(col_type_from_string("CHAR(10)"), 0xfd); // CHAR still uses VARSTRING
+        assert_eq!(col_type_from_string("VARCHAR(255)"), 0x0f);
+        assert_eq!(col_type_from_string("CHAR(10)"), 0xfd);
     }
 
     #[test]
