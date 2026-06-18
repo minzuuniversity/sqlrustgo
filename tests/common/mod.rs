@@ -507,36 +507,113 @@ impl MySqlTestClient {
 
     /// Connect to an already-running ephemeral server.
     pub fn connect_handle(handle: EphemeralHandle) -> wire_err::Result<Self> {
-        let mut stream = TcpStream::connect(("127.0.0.1", handle.port))
-            .map_err(|e| wire_err::msg(format!("tcp connect: {e}")))?;
-        stream
-            .set_read_timeout(Some(READ_TIMEOUT))
-            .map_err(|e| wire_err::msg(format!("set_read_timeout: {e}")))?;
-        stream
-            .set_write_timeout(Some(WRITE_TIMEOUT))
-            .map_err(|e| wire_err::msg(format!("set_write_timeout: {e}")))?;
+        let addr = ("127.0.0.1", handle.port);
 
-        // 1) Read server's HandshakeV10
-        let handshake = read_packet(&mut stream)?;
-        let scramble = parse_handshake(&handshake)?;
+        // Retry loop to handle the race where the server accept loop isn't
+        // ready immediately after start_ephemeral returns.
+        let mut backoff_ms = 10;
+        let max_attempts = 100;
 
-        // 2) Compute mysql_native_password auth response
-        let auth = native_password_auth(b"tester", &scramble);
+        for attempt in 1..=max_attempts {
+            match TcpStream::connect(addr) {
+                Ok(mut stream) => {
+                    stream
+                        .set_read_timeout(Some(READ_TIMEOUT))
+                        .map_err(|e| wire_err::msg(format!("set_read_timeout: {e}")))?;
+                    stream
+                        .set_write_timeout(Some(WRITE_TIMEOUT))
+                        .map_err(|e| wire_err::msg(format!("set_write_timeout: {e}")))?;
 
-        // 3) Send HandshakeResponse41 (sequence id = 1)
-        let resp = build_handshake_response41("tester", &auth)?;
-        write_packet(&mut stream, 1, &resp)?;
+                    // 1) Read server's HandshakeV10
+                    match read_packet(&mut stream) {
+                        Ok(handshake) => {
+                            let scramble = match parse_handshake(&handshake) {
+                                Ok(s) => s,
+                                Err(e) => {
+                                    // If we got a partial handshake, retry
+                                    if attempt < max_attempts {
+                                        backoff_ms = (backoff_ms * 2).min(1000);
+                                        std::thread::sleep(Duration::from_millis(backoff_ms));
+                                        continue;
+                                    }
+                                    return Err(e);
+                                }
+                            };
 
-        // 4) Read OK or ERR (sequence id = 2)
-        let auth_resp = read_packet(&mut stream)?;
-        check_ok_or_err(2, &auth_resp)?;
+                            // 2) Compute mysql_native_password auth response
+                            let auth = native_password_auth(b"tester", &scramble);
 
-        Ok(Self {
-            handle,
-            stream,
-            next_seq: 0,
-            caps: CLIENT_CAPABILITIES,
-        })
+                            // 3) Send HandshakeResponse41 (sequence id = 1)
+                            let resp = match build_handshake_response41("tester", &auth) {
+                                Ok(r) => r,
+                                Err(e) => return Err(e),
+                            };
+                            if let Err(e) = write_packet(&mut stream, 1, &resp) {
+                                if attempt < max_attempts {
+                                    backoff_ms = (backoff_ms * 2).min(1000);
+                                    std::thread::sleep(Duration::from_millis(backoff_ms));
+                                    continue;
+                                }
+                                return Err(e);
+                            }
+
+                            // 4) Read OK or ERR (sequence id = 2)
+                            match read_packet(&mut stream) {
+                                Ok(auth_resp) => {
+                                    if let Err(e) = check_ok_or_err(2, &auth_resp) {
+                                        return Err(e);
+                                    }
+                                    return Ok(Self {
+                                        handle,
+                                        stream,
+                                        next_seq: 0,
+                                        caps: CLIENT_CAPABILITIES,
+                                    });
+                                }
+                                Err(e) => {
+                                    // Server may not be ready for auth response yet
+                                    if attempt < max_attempts {
+                                        backoff_ms = (backoff_ms * 2).min(1000);
+                                        std::thread::sleep(Duration::from_millis(backoff_ms));
+                                        continue;
+                                    }
+                                    return Err(e);
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            // EAGAIN means server isn't ready yet — retry
+                            let err_str = e.to_string();
+                            if err_str.contains("Resource temporarily unavailable")
+                                || err_str.contains("would block")
+                                || err_str.contains("timed out")
+                            {
+                                if attempt < max_attempts {
+                                    backoff_ms = (backoff_ms * 2).min(1000);
+                                    std::thread::sleep(Duration::from_millis(backoff_ms));
+                                    continue;
+                                }
+                            }
+                            return Err(e);
+                        }
+                    }
+                }
+                Err(e) => {
+                    // Connection refused — server not ready yet, retry
+                    if attempt < max_attempts {
+                        backoff_ms = (backoff_ms * 2).min(1000);
+                        std::thread::sleep(Duration::from_millis(backoff_ms));
+                        continue;
+                    }
+                    return Err(wire_err::msg(format!("tcp connect: {e}")));
+                }
+            }
+        }
+
+        Err(wire_err::msg(format!(
+            "connect_handle: failed after {} attempts",
+            max_attempts
+        )))
     }
 
     /// Run a SQL statement that has no result set (DDL, DML, COMMIT).
