@@ -85,13 +85,10 @@ fn g5_sem1_savepoint_nested_oracle() {
 
     engine.execute("BEGIN").unwrap();
     let outer_result = engine.execute("SAVEPOINT outer");
-    if outer_result.is_err() {
-        eprintln!(
-            "[KNOWN BUG B] SAVEPOINT 'outer' (lowercase) parse error: {:?}",
-            outer_result
-        );
-        return;
-    }
+    assert!(
+        outer_result.is_ok(),
+        "G5-B fix: SAVEPOINT 'outer' (lowercase) must parse without error (was: known bug)"
+    );
     engine.execute("INSERT INTO t VALUES (3, 300)").unwrap();
     engine.execute("SAVEPOINT inner").unwrap();
     engine
