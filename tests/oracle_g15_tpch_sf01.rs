@@ -17,8 +17,8 @@
 
 mod common;
 
-use common::oracle_framework::{Row, RowSet, Value, compare_to_baseline};
-use common::tpch_wire_harness::{start_sf01, run_query_timed};
+use common::oracle_framework::{compare_to_baseline, Row, RowSet, Value};
+use common::tpch_wire_harness::{run_query_timed, start_sf01};
 use std::path::Path;
 
 const TPC_H_SF01_QUERIES: &[(&str, &str, &str, u64)] = &[
@@ -76,25 +76,35 @@ fn g15_tpch_sf01_wire_matches_baseline() {
     for (qid, sql, baseline_file, timeout_s) in TPC_H_SF01_QUERIES {
         let baseline_path = Path::new("tests/data/tpch-sf01/expected").join(baseline_file);
         if !baseline_path.exists() {
-            eprintln!("[SKIP] {}: baseline not found: {}", qid, baseline_path.display());
+            eprintln!(
+                "[SKIP] {}: baseline not found: {}",
+                qid,
+                baseline_path.display()
+            );
             continue;
         }
 
         let actual = run_query_to_rowset(sql, *timeout_s);
-    match compare_to_baseline(&actual, &baseline_path) {
-        Ok(report) => {
-            if report.is_clean() {
-                eprintln!("[OK] {}: row_count={}", qid, actual.row_count);
-            } else {
-                all_pass = false;
-                eprintln!("[FAIL] {}: row_count={} diffs={:?}", qid, actual.row_count, report.diffs);
+        match compare_to_baseline(&actual, &baseline_path) {
+            Ok(report) => {
+                if report.is_clean() {
+                    eprintln!("[OK] {}: row_count={}", qid, actual.row_count);
+                } else {
+                    all_pass = false;
+                    eprintln!(
+                        "[FAIL] {}: row_count={} diffs={:?}",
+                        qid, actual.row_count, report.diffs
+                    );
+                }
+            }
+            Err(e) => {
+                eprintln!("[WARN] {}: baseline compare error: {}", qid, e);
             }
         }
-        Err(e) => {
-            eprintln!("[WARN] {}: baseline compare error: {}", qid, e);
-        }
-    }
     }
 
-    assert!(all_pass, "G15 SF=0.01 TPC-H wire results diverged from baseline");
+    assert!(
+        all_pass,
+        "G15 SF=0.01 TPC-H wire results diverged from baseline"
+    );
 }
