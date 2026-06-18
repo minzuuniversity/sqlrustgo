@@ -18,6 +18,8 @@ pub mod wal;
 pub mod wal_legacy;
 pub mod wal_storage;
 
+pub mod mmap_vector_store;
+
 pub use binary_format::BinaryFormat;
 pub use binary_storage::BinaryTableStorage;
 pub use bplus_tree::BPlusTree;
