@@ -298,3 +298,179 @@ impl Clone for TelemetryCollector {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::execution::events::DmlOperation;
+
+    #[test]
+    fn test_event_buffer_new_and_default() {
+        let buf = EventBuffer::new(8);
+        assert_eq!(buf.len(), 0);
+        assert!(buf.is_empty());
+        assert_eq!(buf.seq(), 0);
+        assert_eq!(buf.capacity, 8);
+
+        let default_buf = EventBuffer::default();
+        assert_eq!(default_buf.capacity, 256);
+    }
+
+    #[test]
+    fn test_event_buffer_push_no_drain() {
+        let mut buf = EventBuffer::new(4);
+        for i in 0..3 {
+            let drained = buf.push(ExecutionEvent::TxnBegin { txn_id: i as u64 });
+            assert!(drained.is_none(), "no drain before capacity reached");
+        }
+        assert_eq!(buf.len(), 3);
+        assert_eq!(buf.seq(), 3);
+    }
+
+    #[test]
+    fn test_event_buffer_push_drains_at_capacity() {
+        let mut buf = EventBuffer::new(2);
+        buf.push(ExecutionEvent::TxnBegin { txn_id: 1 });
+        let drained = buf.push(ExecutionEvent::TxnBegin { txn_id: 2 });
+        assert!(drained.is_some());
+        let drained = drained.unwrap();
+        assert_eq!(drained.len(), 2);
+        assert_eq!(buf.len(), 0);
+        assert_eq!(buf.seq(), 2);
+    }
+
+    #[test]
+    fn test_event_buffer_reset_seq() {
+        let mut buf = EventBuffer::new(8);
+        buf.push(ExecutionEvent::TxnBegin { txn_id: 1 });
+        buf.push(ExecutionEvent::TxnBegin { txn_id: 2 });
+        assert_eq!(buf.seq(), 2);
+        buf.reset_seq();
+        assert_eq!(buf.seq(), 0);
+    }
+
+    #[test]
+    fn test_event_buffer_debug() {
+        let buf = EventBuffer::new(4);
+        let debug = format!("{:?}", buf);
+        assert!(debug.contains("EventBuffer"));
+        assert!(debug.contains("capacity: 4"));
+    }
+
+    #[test]
+    fn test_telemetry_collector_new_and_with_capacity() {
+        let c = TelemetryCollector::new("trace-1".to_string());
+        assert_eq!(c.trace_id(), "trace-1");
+        assert!(c.enabled);
+        assert!(!c.has_violations());
+
+        let c2 = TelemetryCollector::with_capacity("trace-2".to_string(), 32);
+        assert_eq!(c2.trace_id(), "trace-2");
+        assert_eq!(c2.buffer.lock().unwrap().capacity, 32);
+    }
+
+    #[test]
+    fn test_telemetry_collector_set_enabled() {
+        let mut c = TelemetryCollector::new("trace-1".to_string());
+        assert!(c.enabled);
+        c.set_enabled(false);
+        assert!(!c.enabled);
+
+        let event = ExecutionEvent::TxnBegin { txn_id: 42 };
+        c.emit(event);
+        assert_eq!(c.buffer.lock().unwrap().len(), 0, "disabled collector drops events");
+    }
+
+    #[test]
+    fn test_telemetry_collector_emit_accumulates() {
+        let c = TelemetryCollector::with_capacity("trace-1".to_string(), 16);
+        c.emit(ExecutionEvent::TxnBegin { txn_id: 1 });
+        c.emit(ExecutionEvent::SqlReceived { sql: "SELECT 1".to_string() });
+        c.emit(ExecutionEvent::StorageRead { table: "t".to_string(), rows: 5 });
+        assert_eq!(c.buffer.lock().unwrap().len(), 3);
+    }
+
+    #[test]
+    fn test_telemetry_collector_violations_aggregation() {
+        let c = TelemetryCollector::new("trace-1".to_string());
+        assert!(c.violations().is_empty());
+        assert!(!c.has_violations());
+    }
+
+    #[test]
+    fn test_telemetry_collector_clone_preserves_trace_and_disables_policy() {
+        let c = TelemetryCollector::new("trace-1".to_string());
+        let clone = c.clone();
+        assert_eq!(clone.trace_id(), "trace-1");
+        assert_eq!(clone.enabled, c.enabled);
+    }
+
+    #[test]
+    fn test_telemetry_collector_debug() {
+        let c = TelemetryCollector::new("trace-debug".to_string());
+        let debug = format!("{:?}", c);
+        assert!(debug.contains("TelemetryCollector"));
+        assert!(debug.contains("trace-debug"));
+    }
+
+    #[test]
+    fn test_telemetry_collector_flush_empty_is_noop() {
+        let c = TelemetryCollector::new("trace-1".to_string());
+        c.flush(vec![]);
+        assert_eq!(c.buffer.lock().unwrap().len(), 0);
+    }
+
+    #[test]
+    fn test_telemetry_collector_build_trace_node() {
+        let c = TelemetryCollector::new("trace-xyz".to_string());
+        let nodes = c.build_trace_node();
+        assert_eq!(nodes.len(), 1);
+        let node = &nodes[0];
+        assert!(node["statement"].as_str().unwrap().contains("MERGE"));
+        assert_eq!(node["parameters"]["trace_id"], "trace-xyz");
+    }
+
+    #[test]
+    fn test_telemetry_collector_build_linked_events() {
+        let c = TelemetryCollector::new("trace-1".to_string());
+        let events = vec![
+            ExecutionEvent::TxnBegin { txn_id: 1 },
+            ExecutionEvent::SqlReceived { sql: "INSERT".to_string() },
+            ExecutionEvent::StorageMutation {
+                table: "users".to_string(),
+                op: DmlOperation::Insert,
+            },
+            ExecutionEvent::TxnCommit { txn_id: 1 },
+        ];
+        let stmts = c.build_linked_events(&events);
+        assert!(!stmts.is_empty());
+        assert!(stmts.iter().any(|s| s["statement"]
+            .as_str()
+            .unwrap()
+            .contains("HAS_EVENT")));
+        assert!(stmts.iter().any(|s| s["statement"]
+            .as_str()
+            .unwrap()
+            .contains("NEXT")));
+        assert!(stmts.iter().any(|s| s["statement"]
+            .as_str()
+            .unwrap()
+            .contains("CAUSES")));
+    }
+
+    #[test]
+    fn test_is_causal_link() {
+        assert!(TelemetryCollector::is_causal_link("StorageMutation"));
+        assert!(TelemetryCollector::is_causal_link("WalCommit"));
+        assert!(TelemetryCollector::is_causal_link("TxnCommit"));
+        assert!(!TelemetryCollector::is_causal_link("SqlReceived"));
+        assert!(!TelemetryCollector::is_causal_link("StorageRead"));
+    }
+
+    #[test]
+    fn test_send_to_neo4j_unreachable_does_not_panic() {
+        let c = TelemetryCollector::new("trace-1".to_string());
+        let payload = vec![serde_json::json!({"statement": "MATCH (n) RETURN n"})];
+        c.send_to_neo4j(&payload);
+    }
+}
