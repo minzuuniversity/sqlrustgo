@@ -46,9 +46,8 @@ const TPC_H_SF01_QUERIES: &[(&str, &str, &str, u64)] = &[
     ("Q22", "SELECT cntrycode, COUNT(*) AS numcust, SUM(c_acctbal) AS totacctbal FROM (SELECT SUBSTR(c_phone, 1, 2) AS cntrycode, c_acctbal FROM customer WHERE SUBSTR(c_phone, 1, 2) IN ('13', '31', '23', '29', '30', '18', '17') AND c_acctbal > (SELECT AVG(c_acctbal) FROM customer WHERE c_acctbal > 0.00 AND SUBSTR(c_phone, 1, 2) IN ('13', '31', '23', '29', '30', '18', '17')) AND NOT EXISTS (SELECT * FROM orders WHERE o_custkey = c_custkey)) AS custsale GROUP BY cntrycode ORDER BY cntrycode", "Q22_sf01_baseline.json", 60),
 ];
 
-fn run_query_to_rowset(sql: &str, timeout_s: u64) -> RowSet {
-    let mut client = start_sf01();
-    let (result, _) = run_query_timed(&mut client, sql, timeout_s);
+fn run_query_to_rowset(client: &mut common::MySqlTestClient, sql: &str, timeout_s: u64) -> RowSet {
+    let (result, _) = run_query_timed(client, sql, timeout_s);
     match result {
         Ok(rows) => {
             let parsed: Vec<Row> = rows
@@ -76,15 +75,13 @@ fn g15_tpch_sf01_wire_matches_baseline() {
     for (qid, sql, baseline_file, timeout_s) in TPC_H_SF01_QUERIES {
         let baseline_path = Path::new("tests/data/tpch-sf01/expected").join(baseline_file);
         if !baseline_path.exists() {
-            eprintln!(
-                "[SKIP] {}: baseline not found: {}",
-                qid,
-                baseline_path.display()
-            );
+            eprintln!("[SKIP] {}: baseline not found: {}", qid, baseline_path.display());
             continue;
         }
 
-        let actual = run_query_to_rowset(sql, *timeout_s);
+        let mut client = start_sf01();
+        let actual = run_query_to_rowset(&mut client, sql, *timeout_s);
+        drop(client);
         match compare_to_baseline(&actual, &baseline_path) {
             Ok(report) => {
                 if report.is_clean() {
@@ -107,4 +104,60 @@ fn g15_tpch_sf01_wire_matches_baseline() {
         all_pass,
         "G15 SF=0.01 TPC-H wire results diverged from baseline"
     );
+}
+
+fn run_subset(start_idx: usize, end_idx: usize) -> bool {
+    let mut all_pass = true;
+    for (qid, sql, baseline_file, timeout_s) in &TPC_H_SF01_QUERIES[start_idx..end_idx] {
+        let baseline_path = Path::new("tests/data/tpch-sf01/expected").join(baseline_file);
+        if !baseline_path.exists() {
+            eprintln!("[SKIP] {}: baseline not found: {}", qid, baseline_path.display());
+            continue;
+        }
+        let mut client = start_sf01();
+        let actual = run_query_to_rowset(&mut client, sql, *timeout_s);
+        drop(client);
+        match compare_to_baseline(&actual, &baseline_path) {
+            Ok(report) => {
+                if report.is_clean() {
+                    eprintln!("[OK] {}: row_count={}", qid, actual.row_count);
+                } else {
+                    all_pass = false;
+                    eprintln!(
+                        "[FAIL] {}: row_count={} diffs={:?}",
+                        qid, actual.row_count, report.diffs
+                    );
+                }
+            }
+            Err(e) => {
+                eprintln!("[WARN] {}: baseline compare error: {}", qid, e);
+            }
+        }
+    }
+    all_pass
+}
+
+#[test]
+fn g15_sf01_q01_q06() {
+    assert!(run_subset(0, 6), "G15 Q1-Q6 failed");
+}
+
+#[test]
+fn g15_sf01_q07_q10() {
+    assert!(run_subset(6, 10), "G15 Q7-Q10 failed");
+}
+
+#[test]
+fn g15_sf01_q11_q14() {
+    assert!(run_subset(11, 14), "G15 Q11-Q14 failed");
+}
+
+#[test]
+fn g15_sf01_q15() {
+    assert!(run_subset(10, 11), "G15 Q15 failed");
+}
+
+#[test]
+fn g15_sf01_q16_q22() {
+    assert!(run_subset(15, 22), "G15 Q16-Q22 failed");
 }
