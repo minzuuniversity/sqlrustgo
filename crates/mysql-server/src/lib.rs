@@ -6,7 +6,7 @@ use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use rcgen::{CertificateParams, KeyPair};
 use sha1::{Digest, Sha1};
 use sqlrustgo::ExecutionEngine;
-use sqlrustgo_parser::{parse, Statement};
+use sqlrustgo_parser::{parse, parse_statements, Statement};
 use sqlrustgo_storage::{
     FileBackedWalManager, FileStorage, MemoryStorage, StorageEngine, WalStorage,
 };
@@ -2372,35 +2372,38 @@ fn do_command_loop<S: Read + Write>(
                     continue;
                 }
                 let mut eng = engine.write().unwrap();
-                match parse(&q) {
-                    Ok(stmt) => {
-                        let result = eng.execute(&q);
-                        match result {
-                            Ok(r) if is_select_stmt(&stmt) => {
-                                let cols: Vec<String> = r
-                                    .rows
-                                    .first()
-                                    .map(|row| {
-                                        (0..row.len()).map(|i| format!("col_{}", i + 1)).collect()
-                                    })
-                                    .unwrap_or_else(|| vec!["result".to_string()]);
-                                let ctypes: Vec<String> =
-                                    cols.iter().map(|_| "VARCHAR(255)".to_string()).collect();
-                                seq = send_result_set(stream, &cols, &ctypes, &r.rows, seq, cap)?;
-                            }
-                            Ok(r) => {
-                                make_ok_packet(seq, r.affected_rows as u64, 0, 0x0002, 0)
-                                    .write_to(stream)?;
-                                seq = seq.wrapping_add(1);
-                            }
-                            Err(e) => {
-                                let code = match e.to_string().contains("not found") {
-                                    true => 1146u16,
-                                    false => 1064u16,
-                                };
-                                make_err_packet(seq, code, "42000", &e.to_string())
-                                    .write_to(stream)?;
-                                seq = seq.wrapping_add(1);
+                // 3521: Support multi-statement queries (semicolon-separated)
+                match parse_statements(&q) {
+                    Ok(stmts) => {
+                        for stmt in stmts {
+                            let result = eng.execute(&q);
+                            match result {
+                                Ok(r) if is_select_stmt(&stmt) => {
+                                    let cols: Vec<String> = r
+                                        .rows
+                                        .first()
+                                        .map(|row| {
+                                            (0..row.len()).map(|i| format!("col_{}", i + 1)).collect()
+                                        })
+                                        .unwrap_or_else(|| vec!["result".to_string()]);
+                                    let ctypes: Vec<String> =
+                                        cols.iter().map(|_| "VARCHAR(255)".to_string()).collect();
+                                    seq = send_result_set(stream, &cols, &ctypes, &r.rows, seq, cap)?;
+                                }
+                                Ok(r) => {
+                                    make_ok_packet(seq, r.affected_rows as u64, 0, 0x0002, 0)
+                                        .write_to(stream)?;
+                                    seq = seq.wrapping_add(1);
+                                }
+                                Err(e) => {
+                                    let code = match e.to_string().contains("not found") {
+                                        true => 1146u16,
+                                        false => 1064u16,
+                                    };
+                                    make_err_packet(seq, code, "42000", &e.to_string())
+                                        .write_to(stream)?;
+                                    seq = seq.wrapping_add(1);
+                                }
                             }
                         }
                     }
