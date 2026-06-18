@@ -123,7 +123,7 @@ fn read_fd_limit() -> (usize, usize) {
     let mut hard = 0usize;
     if let Ok(out) = std::process::Command::new("sh")
         .arg("-c")
-        .arg(format!("ulimit -Sn && ulimit -Hn"))
+        .arg("ulimit -Sn && ulimit -Hn")
         .output()
     {
         let s = String::from_utf8_lossy(&out.stdout);
@@ -725,8 +725,8 @@ impl<'a> TlsStream<'a> {
     /// Drive pending inbound TLS records from the underlying socket
     /// without blocking on writes. Symmetric counterpart to
     /// `drive_writes_only`.
+    #[allow(dead_code)]
     fn drive_reads_only(&mut self) -> std::io::Result<()> {
-        use rustls::ConnectionCommon;
         while self.conn.wants_read() {
             match self.conn.complete_io(self.sock) {
                 Ok(_) => {}
@@ -765,8 +765,8 @@ impl<'a> TlsStream<'a> {
     /// without reading any inbound data. This avoids the deadlock
     /// where complete_io waits for client data while the client
     /// waits for server data.
+    #[allow(dead_code)]
     fn drive_writes_only(&mut self) -> std::io::Result<()> {
-        use rustls::ConnectionCommon;
         // Complete any pending outbound IO without waiting for new
         // data. We do this by repeatedly calling `complete_io` only
         // when there is pending outbound data, and never on a clean
@@ -2516,7 +2516,7 @@ fn do_command_loop<S: Read + Write>(
                                 cols_str
                                     .split(',')
                                     .map(|s| {
-                                        s.trim().split('.').last().unwrap_or(s.trim()).to_string()
+                                        s.trim().split('.').next_back().unwrap_or(s.trim()).to_string()
                                     })
                                     .collect()
                             } else {
@@ -2799,7 +2799,6 @@ fn handle_connection(
             // is critical for `mysql` CLI / sysbench compatibility:
             // without auto-complete_io, the cipher buffer accumulates
             // and the client never receives the response.
-            drop(tls);
             let mut tls = TlsStream::new(&mut conn, &mut stream);
             let engine: Arc<
                 RwLock<ExecutionEngine<WalStorage<FileStorage, FileBackedWalManager>>>,
