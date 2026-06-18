@@ -2123,6 +2123,7 @@ fn handle_load_local_infile<S: Read + Write>(
         payload: fb_payload,
     }
     .write_to(stream)?;
+    stream.flush()?;
     *seq = seq.wrapping_add(1);
 
     // 4. Loop on file content packets until the client signals EOF
