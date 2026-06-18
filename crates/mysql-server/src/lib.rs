@@ -893,7 +893,7 @@ fn make_eof_packet(seq: u8, status: u16) -> Packet {
 
 fn make_deprecate_eof_ok_packet(seq: u8, affected: u64, last_id: u64, status: u16) -> Packet {
     let mut p = Vec::new();
-    p.push(0xfe);
+    p.push(0x00); // OK packet type, not 0xfe (EOF) - DEPRECATE_EOF mode
     write_lenenc_int(&mut p, affected).unwrap();
     write_lenenc_int(&mut p, last_id).unwrap();
     p.write_u16::<LittleEndian>(status).unwrap();
@@ -1248,7 +1248,7 @@ fn send_result_set<W: Write>(
     //   - DEPRECATE_EOF = 1 (mysql 8.0+ default): skip the EOF; the
     //     trailing terminator (OK/EOF below) marks the end of the
     //     result set.
-    // Fix for #NEW: without this, mysql 8.0 CLI silently drops the
+    // Fix for #3516: without this, mysql 8.0 CLI silently drops the
     // result set — it interprets the stray inter-record EOF as the
     // final terminator and never reads the row packets.
     if cap & capability::DEPRECATE_EOF == 0 {
@@ -1275,7 +1275,7 @@ fn send_result_set<W: Write>(
     //     7 bytes) — OK packet replaces the EOF when the client
     //     advertises DEPRECATE_EOF.
     //
-    // Fix for #NEW: previously this branch always sent EOF. mysql
+    // Fix for #3516: previously this branch always sent EOF. mysql
     // 8.0 CLI reads the trailing terminator's marker byte to decide
     // whether the result set is complete (0x00 OK) or the connection
     // has been closed (0xFE EOF + extra packet would be expected).
@@ -1312,7 +1312,7 @@ fn send_binary_result_set<W: Write>(
     ctypes: &[String],
     rows: &[Vec<Value>],
     mut seq: u8,
-    _cap: u32,
+    cap: u32,
 ) -> MySqlResult<u8> {
     // Column count
     {
@@ -1336,8 +1336,9 @@ fn send_binary_result_set<W: Write>(
         )?;
         seq = seq.wrapping_add(1);
     }
-    // EOF packet (classic protocol)
-    {
+    // Inter-record separator between column defs and row stream.
+    // Honor the client's DEPRECATE_EOF capability.
+    if cap & capability::DEPRECATE_EOF == 0 {
         make_eof_packet(seq, 0x0002).write_to(w)?;
         seq = seq.wrapping_add(1);
     }
@@ -1361,9 +1362,14 @@ fn send_binary_result_set<W: Write>(
         .write_to(w)?;
         seq = seq.wrapping_add(1);
     }
-    // Final EOF
-    make_eof_packet(seq, 0x0002).write_to(w)?;
-    seq = seq.wrapping_add(1);
+    // Trailing terminator for the row stream (capability-controlled).
+    if cap & capability::DEPRECATE_EOF == 0 {
+        make_eof_packet(seq, 0x0002).write_to(w)?;
+        seq = seq.wrapping_add(1);
+    } else {
+        make_deprecate_eof_ok_packet(seq, 0, 0, 0x0002).write_to(w)?;
+        seq = seq.wrapping_add(1);
+    }
     Ok(seq)
 }
 
