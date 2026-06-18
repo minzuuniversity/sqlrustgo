@@ -32,10 +32,7 @@ pub struct JoinGraph {
     pub adjacency: HashMap<NodeId, Vec<(NodeId, usize)>>,
 }
 
-pub fn build_join_graph<S: StorageEngine>(
-    select: &SelectStatement,
-    storage: &S,
-) -> JoinGraph {
+pub fn build_join_graph<S: StorageEngine>(select: &SelectStatement, storage: &S) -> JoinGraph {
     let mut nodes = Vec::new();
     let mut next_id: NodeId = 0;
 
@@ -48,7 +45,10 @@ pub fn build_join_graph<S: StorageEngine>(
         id: next_id,
         alias: base_alias,
         base_table: base_table.clone(),
-        estimated_rows: storage.scan(&base_table).map(|r| r.len() as u64).unwrap_or(0),
+        estimated_rows: storage
+            .scan(&base_table)
+            .map(|r| r.len() as u64)
+            .unwrap_or(0),
         filtered_rows: 0.0,
         single_table_preds: Vec::new(),
     });
@@ -98,8 +98,14 @@ pub fn build_join_graph<S: StorageEngine>(
 
     let mut adjacency: HashMap<NodeId, Vec<(NodeId, usize)>> = HashMap::new();
     for (idx, edge) in edges.iter().enumerate() {
-        adjacency.entry(edge.left).or_default().push((edge.right, idx));
-        adjacency.entry(edge.right).or_default().push((edge.left, idx));
+        adjacency
+            .entry(edge.left)
+            .or_default()
+            .push((edge.right, idx));
+        adjacency
+            .entry(edge.right)
+            .or_default()
+            .push((edge.left, idx));
     }
 
     JoinGraph {
@@ -131,8 +137,9 @@ fn walk_equi(expr: &Expression, alias1: &str, alias2: &str) -> Option<Expression
     let prefix1 = format!("{}.", alias1);
     let prefix2 = format!("{}.", alias2);
     match expr {
-        E::BinaryOp(l, op, r) if op.as_str() == "AND" => walk_equi(l, alias1, alias2)
-            .or_else(|| walk_equi(r, alias1, alias2)),
+        E::BinaryOp(l, op, r) if op.as_str() == "AND" => {
+            walk_equi(l, alias1, alias2).or_else(|| walk_equi(r, alias1, alias2))
+        }
         E::BinaryOp(l, op, r) if op.as_str() == "=" => {
             if let (E::Identifier(lc), E::Identifier(rc)) = (l.as_ref(), r.as_ref()) {
                 let l1 = lc.starts_with(&prefix1);
@@ -257,8 +264,14 @@ fn simple_pred_selectivity(pred: &Expression) -> f64 {
     use sqlrustgo_parser::Expression as E;
     match pred {
         E::BinaryOp(_, op, _) if op.as_str() == "=" => 0.01,
-        E::BinaryOp(_, op, _) if op.as_str() == ">" || op.as_str() == "<"
-            || op.as_str() == ">=" || op.as_str() == "<=" => 0.3,
+        E::BinaryOp(_, op, _)
+            if op.as_str() == ">"
+                || op.as_str() == "<"
+                || op.as_str() == ">="
+                || op.as_str() == "<=" =>
+        {
+            0.3
+        }
         E::Like(..) | E::NotLike(..) => 0.2,
         E::InList(_, vals) | E::NotInList(_, vals) => (vals.len() as f64 * 0.05).min(0.9),
         E::Between(..) => 0.1,

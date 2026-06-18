@@ -347,36 +347,34 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 // step, Q14 would return 2 raw SUM values instead of
                 // the `100.00 * SUM(...) / SUM(...)` result.
                 let agg_schema = build_aggregate_schema(&[], &select.aggregates)?;
-                let projected: Vec<Vec<Value>> =
-                    if select.columns.is_empty() || select.columns.iter().any(|c| c.name == "*") {
+                let projected: Vec<Vec<Value>> = if select.columns.is_empty()
+                    || select.columns.iter().any(|c| c.name == "*")
+                {
+                    vec![agg_values.clone()]
+                } else {
+                    // Check if all columns are pure aggregates (no column references)
+                    let all_aggregates = select
+                        .columns
+                        .iter()
+                        .all(|c| matches!(&c.expression, Some(Expression::Aggregate(_))));
+                    if all_aggregates {
+                        // Return single row with all aggregate values as columns
                         vec![agg_values.clone()]
                     } else {
-                        // Check if all columns are pure aggregates (no column references)
-                        let all_aggregates = select.columns.iter().all(|c| {
-                            matches!(&c.expression, Some(Expression::Aggregate(_)))
-                        });
-                        if all_aggregates {
-                            // Return single row with all aggregate values as columns
-                            vec![agg_values.clone()]
-                        } else {
-                            select
-                                .columns
-                                .iter()
-                                .map(|col| match &col.expression {
-                                    Some(expr) => {
-                                        evaluate_expression(expr, &agg_values, &agg_schema)
-                                            .unwrap_or(Value::Null)
-                                    }
-                                    None => {
-                                        agg_values.first().cloned().unwrap_or(Value::Null)
-                                    }
-                                })
-                                .collect::<Vec<_>>()
-                                .into_iter()
-                                .map(|v| vec![v])
-                                .collect()
-                        }
-                    };
+                        select
+                            .columns
+                            .iter()
+                            .map(|col| match &col.expression {
+                                Some(expr) => evaluate_expression(expr, &agg_values, &agg_schema)
+                                    .unwrap_or(Value::Null),
+                                None => agg_values.first().cloned().unwrap_or(Value::Null),
+                            })
+                            .collect::<Vec<_>>()
+                            .into_iter()
+                            .map(|v| vec![v])
+                            .collect()
+                    }
+                };
                 let row_count = projected.len();
                 return Ok(ExecutorResult::new(projected, row_count));
             } else {
@@ -1163,11 +1161,23 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 AggregateFunction::Min => {
                     let min_int = values
                         .iter()
-                        .filter_map(|v| if let Value::Integer(n) = v { Some(*n) } else { None })
+                        .filter_map(|v| {
+                            if let Value::Integer(n) = v {
+                                Some(*n)
+                            } else {
+                                None
+                            }
+                        })
                         .min();
                     let min_flt = values
                         .iter()
-                        .filter_map(|v| if let Value::Float(f) = v { Some(*f) } else { None })
+                        .filter_map(|v| {
+                            if let Value::Float(f) = v {
+                                Some(*f)
+                            } else {
+                                None
+                            }
+                        })
                         .min_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
                     if min_flt.is_some() {
                         min_flt.map(Value::Float).unwrap_or(Value::Null)
@@ -1178,11 +1188,23 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 AggregateFunction::Max => {
                     let max_int = values
                         .iter()
-                        .filter_map(|v| if let Value::Integer(n) = v { Some(*n) } else { None })
+                        .filter_map(|v| {
+                            if let Value::Integer(n) = v {
+                                Some(*n)
+                            } else {
+                                None
+                            }
+                        })
                         .max();
                     let max_flt = values
                         .iter()
-                        .filter_map(|v| if let Value::Float(f) = v { Some(*f) } else { None })
+                        .filter_map(|v| {
+                            if let Value::Float(f) = v {
+                                Some(*f)
+                            } else {
+                                None
+                            }
+                        })
                         .max_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
                     if max_flt.is_some() {
                         max_flt.map(Value::Float).unwrap_or(Value::Null)
