@@ -899,7 +899,11 @@ fn make_deprecate_eof_ok_packet(
     warnings: u16,
 ) -> Packet {
     let mut p = Vec::new();
-    p.push(0x00); // OK packet type, not 0xfe (EOF) - DEPRECATE_EOF mode
+    // DEPRECATE_EOF result-set terminator uses 0xFE marker (per MySQL 8.0
+    // protocol). The 0x00 marker is for the standard command-response OK
+    // packet (INSERT/UPDATE/DELETE), NOT for the result-set terminator.
+    // mysql-client 8.0.46 + libmysqlclient 8.0.46 strictly validates this.
+    p.push(0xfe);
     write_lenenc_int(&mut p, affected).unwrap();
     write_lenenc_int(&mut p, last_id).unwrap();
     p.write_u16::<LittleEndian>(status).unwrap();
