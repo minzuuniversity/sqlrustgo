@@ -7015,6 +7015,63 @@ pub fn parse(sql: &str) -> Result<Statement, String> {
     parser.parse_statement()
 }
 
+/// Parse a SQL string into multiple statements (semicolon-separated)
+pub fn parse_statements(sql: &str) -> Result<Vec<Statement>, String> {
+    use crate::token::Token;
+    let tokens = Lexer::new(sql).tokenize();
+
+    let mut statements = Vec::new();
+    let mut current_batch = Vec::new();
+    let mut paren_depth: usize = 0;
+    let mut in_string = false;
+
+    for token in &tokens {
+        match token {
+            Token::Semicolon if !in_string && paren_depth == 0 => {
+                // End of statement
+                if !current_batch.is_empty() {
+                    let mut parser = Parser::new(current_batch.clone());
+                    match parser.parse_statement() {
+                        Ok(stmt) => statements.push(stmt),
+                        Err(e) => return Err(e),
+                    }
+                    current_batch.clear();
+                }
+            }
+            Token::LParen => {
+                paren_depth += 1;
+                current_batch.push(token.clone());
+            }
+            Token::RParen => {
+                paren_depth = paren_depth.saturating_sub(1);
+                current_batch.push(token.clone());
+            }
+            Token::StringLiteral(_) => {
+                in_string = !in_string;
+                current_batch.push(token.clone());
+            }
+            _ => {
+                current_batch.push(token.clone());
+            }
+        }
+    }
+
+    // Handle last statement without trailing semicolon
+    if !current_batch.iter().all(|t| matches!(t, Token::Eof)) {
+        let mut parser = Parser::new(current_batch);
+        match parser.parse_statement() {
+            Ok(stmt) => statements.push(stmt),
+            Err(e) => return Err(e),
+        }
+    }
+
+    if statements.is_empty() {
+        Err("Empty input".to_string())
+    } else {
+        Ok(statements)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
