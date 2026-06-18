@@ -1,8 +1,8 @@
 #!/bin/bash
-# check_g_all.sh - v3.9.0 G1-G10 orchestrator
+# check_g_all.sh - v3.9.0 G1-G10 + G17 orchestrator
 #
-# Runs all 10 v3.9.0 alpha-stage gates (G1-G10) in sequence, maps each
-# result to its tracking issue (#3186-#3195), and produces a
+# Runs all 10 v3.9.0 alpha-stage gates (G1-G10) + G17 Coverage Gate in sequence,
+# maps each result to its tracking issue (#3186-#3195), and produces a
 # consolidated PASS/FAIL report.
 #
 # Mapping (per docs/releases/v3.9.0/alpha/ALPHA_GATE_CONTRACT.md):
@@ -18,11 +18,13 @@
 #   G10 Audit + Time Travel 40+ tests   -> check_p21_audit_log.sh     -> #3195
 #                                       -> check_p22_time_travel.sh
 #                                       -> check_p23_hash_chain.sh
+#   G17 Coverage Gate (≥80%)            -> check_coverage.sh          -> V9 fix
 #
 # Exit code: 0 = ALL PASS, 1 = ANY FAIL
 #
 # Refs: docs/releases/v3.9.0/alpha/ALPHA_GATE_CONTRACT.md
 #       docs/releases/v3.9.0/alpha/ALPHA_GATE_REPORT.md
+#       docs/governance/GATE_CONDITIONS.md (G17 Coverage Gate definition)
 #       Issue #3167 (v3.9.0 alpha 启动公告)
 
 set -u
@@ -39,6 +41,8 @@ if ! command -v cargo >/dev/null 2>&1; then
 fi
 
 # Per-gate: name|script|tracking_issue|blocking
+# G17 Coverage Gate is run separately after the main loop (see below) to
+# allow optional skipping via SKIP_COVERAGE=1.
 GATES=(
     "G1|22/22 TPC-H 保持|check_g1_tpch_22_22.sh|#3186|yes"
     "G2|INT-2 关闭|check_int2_no_orphan.sh|#3187|yes"
@@ -131,8 +135,37 @@ for sub in "${G10_SUBSCRIPTS[@]:1}"; do
 done
 echo
 
+# G17 Coverage Gate: coverage is slow, so make it skippable via env var
+# Usage: SKIP_COVERAGE=1 bash check_g_all.sh   (skip coverage)
+#        bash check_g_all.sh                   (run coverage)
+echo "--- G17: Coverage Gate (≥80% line coverage) ---"
+if [ "${SKIP_COVERAGE:-0}" = "1" ]; then
+    echo "  [SKIP] SKIP_COVERAGE=1, coverage not run"
+    RESULTS+=("G17|WARN|skipped")
+    WARN_COUNT=$((WARN_COUNT + 1))
+elif [ -f "scripts/gate/check_coverage.sh" ]; then
+    set +e
+    timeout 1800 bash "scripts/gate/check_coverage.sh" > /dev/null 2>&1
+    EXIT=$?
+    set -e
+    if [ $EXIT -eq 0 ]; then
+        echo "  G17: PASS (coverage ≥80%)"
+        PASS_COUNT=$((PASS_COUNT + 1))
+        RESULTS+=("G17|PASS|ok")
+    else
+        echo "  G17: FAIL (coverage <80%, exit $EXIT, non-blocking warning)"
+        WARN_COUNT=$((WARN_COUNT + 1))
+        RESULTS+=("G17|WARN|exit=$EXIT")
+    fi
+else
+    echo "  [SKIP] check_coverage.sh not found"
+    WARN_COUNT=$((WARN_COUNT + 1))
+    RESULTS+=("G17|WARN|script-missing")
+fi
+echo
+
 echo "================================================================"
-echo "  v3.9.0 G1-G10 SUMMARY"
+echo "  v3.9.0 G1-G10 + G17 SUMMARY"
 echo "================================================================"
 printf "  %-6s %-30s %-12s %s\n" "GATE" "TOPIC" "STATUS" "TRACKING"
 printf "  %-6s %-30s %-12s %s\n" "----" "-----" "------" "--------"
@@ -148,6 +181,16 @@ for entry in "${GATES[@]}"; do
     done
     printf "  %-6s %-30s %-12s %s\n" "$gid" "$gname" "$FOUND" "$gissue"
 done
+# G17 line in summary
+G17_FOUND="?"
+for r in "${RESULTS[@]}"; do
+    IFS='|' read -r rgid rstatus rdetail <<< "$r"
+    if [ "$rgid" = "G17" ]; then
+        G17_FOUND="$rstatus"
+        break
+    fi
+done
+printf "  %-6s %-30s %-12s %s\n" "G17" "Coverage Gate (≥80%)" "$G17_FOUND" "V9-fix"
 echo
 echo "  PASS: $PASS_COUNT | FAIL: $FAIL_COUNT | WARN: $WARN_COUNT"
 echo
@@ -158,9 +201,9 @@ if [ $FAIL_COUNT -gt 0 ]; then
 fi
 
 if [ $WARN_COUNT -gt 0 ]; then
-    echo "  GATE STATUS: 🟡 PASS with warnings (G10 non-blocking)"
+    echo "  GATE STATUS: 🟡 PASS with warnings (G10/G17 non-blocking)"
     exit 0
 fi
 
-echo "  GATE STATUS: ✅ ALL PASS (G1-G10 fully green)"
+echo "  GATE STATUS: ✅ ALL PASS (G1-G10 + G17 fully green)"
 exit 0
