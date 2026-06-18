@@ -8,10 +8,7 @@ use sqlrustgo_parser::{Expression, JoinClause, JoinType, SelectStatement};
 use sqlrustgo_storage::StorageEngine;
 use std::collections::HashMap;
 
-pub fn reorder_joins<S: StorageEngine>(
-    select: &SelectStatement,
-    storage: &S,
-) -> Vec<JoinClause> {
+pub fn reorder_joins<S: StorageEngine>(select: &SelectStatement, storage: &S) -> Vec<JoinClause> {
     if !is_eligible_for_reorder(select) {
         return select.join_clause.clone();
     }
@@ -79,7 +76,14 @@ fn enumerate_helper(
     if n - pos > remaining {
         enumerate_helper(pos + 1, current, remaining, n, graph, memo);
     }
-    enumerate_helper(pos + 1, current | (1u64 << pos), remaining - 1, n, graph, memo);
+    enumerate_helper(
+        pos + 1,
+        current | (1u64 << pos),
+        remaining - 1,
+        n,
+        graph,
+        memo,
+    );
 }
 
 fn is_connected(subset: BitSet, graph: &crate::join_order_graph::JoinGraph) -> bool {
@@ -140,7 +144,11 @@ fn try_extend(
     }
 }
 
-fn find_edge_selectivity(v_id: NodeId, prev: BitSet, graph: &crate::join_order_graph::JoinGraph) -> f64 {
+fn find_edge_selectivity(
+    v_id: NodeId,
+    prev: BitSet,
+    graph: &crate::join_order_graph::JoinGraph,
+) -> f64 {
     if let Some(neighbors) = graph.adjacency.get(&v_id) {
         for &(n, edge_idx) in neighbors {
             if prev & (1u64 << n) != 0 {
