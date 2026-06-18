@@ -267,3 +267,272 @@ pub enum ExecutionResult {
         steps: Vec<String>,
     },
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::execution::drift_gate::{DriftSeverity, DriftViolation, DriftViolationType};
+    use crate::execution::events::{RecoveryConfidence, RecoveryType};
+
+    fn make_violation(vt: DriftViolationType, sev: DriftSeverity) -> DriftViolation {
+        DriftViolation {
+            violation_id: format!("v_{:?}_{:?}", vt, sev),
+            trace_id: "trace-test".to_string(),
+            violation_type: vt,
+            severity: sev,
+            description: "test violation".to_string(),
+            detected_at: 0,
+        }
+    }
+
+    #[test]
+    fn test_recovery_planner_new() {
+        let planner = RecoveryPlanner::new("trace-1".to_string());
+        assert_eq!(planner.trace_id, "trace-1");
+    }
+
+    #[test]
+    fn test_create_plan_wal_drift_severities() {
+        let planner = RecoveryPlanner::new("trace-1".to_string());
+        for sev in [
+            DriftSeverity::Critical,
+            DriftSeverity::Medium,
+            DriftSeverity::Low,
+        ] {
+            let v = make_violation(DriftViolationType::WalDrift, sev);
+            let plan = planner.create_plan(&v).expect("plan");
+            assert_eq!(plan.recovery_type, match sev {
+                DriftSeverity::Critical => RecoveryType::Rollback,
+                DriftSeverity::Medium => RecoveryType::Patch,
+                DriftSeverity::Low => RecoveryType::Ignore,
+            });
+            assert!(!plan.steps.is_empty());
+        }
+    }
+
+    #[test]
+    fn test_create_plan_txn_drift_severities() {
+        let planner = RecoveryPlanner::new("trace-1".to_string());
+        for sev in [
+            DriftSeverity::Critical,
+            DriftSeverity::Medium,
+            DriftSeverity::Low,
+        ] {
+            let v = make_violation(DriftViolationType::TxnDrift, sev);
+            let plan = planner.create_plan(&v).expect("plan");
+            assert_eq!(plan.recovery_type, match sev {
+                DriftSeverity::Critical => RecoveryType::Rollback,
+                DriftSeverity::Medium => RecoveryType::Patch,
+                DriftSeverity::Low => RecoveryType::Ignore,
+            });
+        }
+    }
+
+    #[test]
+    fn test_create_plan_graph_drift_severities() {
+        let planner = RecoveryPlanner::new("trace-1".to_string());
+        for sev in [
+            DriftSeverity::Critical,
+            DriftSeverity::Medium,
+            DriftSeverity::Low,
+        ] {
+            let v = make_violation(DriftViolationType::GraphDrift, sev);
+            let plan = planner.create_plan(&v).expect("plan");
+            assert_eq!(plan.recovery_type, match sev {
+                DriftSeverity::Critical => RecoveryType::Rewire,
+                DriftSeverity::Medium => RecoveryType::Rewire,
+                DriftSeverity::Low => RecoveryType::Ignore,
+            });
+        }
+    }
+
+    #[test]
+    fn test_replay_engine_empty_events_valid() {
+        let engine = ExecutionReplayEngine::new("trace-1".to_string());
+        let result = engine.replay();
+        assert!(result.valid);
+        assert!(result.divergences.is_empty());
+    }
+
+    #[test]
+    fn test_replay_engine_valid_wal_sequence() {
+        let mut engine = ExecutionReplayEngine::new("trace-1".to_string());
+        engine.add_event("WalBegin".to_string());
+        engine.add_event("StorageMutation".to_string());
+        engine.add_event("WalCommit".to_string());
+        let result = engine.replay();
+        assert!(result.valid, "valid WAL sequence: {:?}", result.divergences);
+    }
+
+    #[test]
+    fn test_replay_engine_mutation_without_open_wal() {
+        let mut engine = ExecutionReplayEngine::new("trace-1".to_string());
+        engine.add_event("StorageMutation".to_string());
+        let result = engine.replay();
+        assert!(!result.valid);
+        assert_eq!(result.divergences.len(), 1);
+        assert!(result.divergences[0].contains("without open WAL"));
+    }
+
+    #[test]
+    fn test_replay_engine_mutation_after_commit() {
+        let mut engine = ExecutionReplayEngine::new("trace-1".to_string());
+        engine.add_event("WalBegin".to_string());
+        engine.add_event("WalCommit".to_string());
+        engine.add_event("StorageMutation".to_string());
+        let result = engine.replay();
+        assert!(!result.valid);
+        assert_eq!(result.divergences.len(), 1);
+    }
+
+    #[test]
+    fn test_replay_engine_non_wal_events_ignored() {
+        let mut engine = ExecutionReplayEngine::new("trace-1".to_string());
+        engine.add_event("SqlReceived".to_string());
+        engine.add_event("StorageRead".to_string());
+        let result = engine.replay();
+        assert!(result.valid);
+    }
+
+    #[test]
+    fn test_safe_controller_new_and_default() {
+        let c = SafeExecutionController::new();
+        assert!(c.block_on_critical);
+        assert!(c.suggest_on_medium);
+        assert_eq!(
+            c.auto_repair_confidence_threshold,
+            RecoveryConfidence::High
+        );
+
+        let default = SafeExecutionController::default();
+        assert_eq!(
+            default.auto_repair_confidence_threshold,
+            RecoveryConfidence::High
+        );
+    }
+
+    #[test]
+    fn test_safe_controller_should_block_rollback() {
+        let c = SafeExecutionController::new();
+        let plan = RecoveryPlan::new(
+            "trace-1".to_string(),
+            "v-1".to_string(),
+            RecoveryType::Rollback,
+            RecoveryConfidence::High,
+            vec!["step".to_string()],
+        );
+        assert!(c.should_block(&plan));
+    }
+
+    #[test]
+    fn test_safe_controller_should_suggest_patch() {
+        let c = SafeExecutionController::new();
+        let plan = RecoveryPlan::new(
+            "trace-1".to_string(),
+            "v-1".to_string(),
+            RecoveryType::Patch,
+            RecoveryConfidence::Medium,
+            vec!["step".to_string()],
+        );
+        assert!(c.should_suggest(&plan));
+    }
+
+    #[test]
+    fn test_safe_controller_should_auto_repair_high_confidence_patch() {
+        let c = SafeExecutionController::new();
+        let plan = RecoveryPlan::new(
+            "trace-1".to_string(),
+            "v-1".to_string(),
+            RecoveryType::Patch,
+            RecoveryConfidence::High,
+            vec!["step1".to_string(), "step2".to_string()],
+        );
+        assert!(c.should_auto_repair(&plan));
+    }
+
+    #[test]
+    fn test_safe_controller_should_auto_repair_high_confidence_rewire() {
+        let c = SafeExecutionController::new();
+        let plan = RecoveryPlan::new(
+            "trace-1".to_string(),
+            "v-1".to_string(),
+            RecoveryType::Rewire,
+            RecoveryConfidence::High,
+            vec!["rewire".to_string()],
+        );
+        assert!(c.should_auto_repair(&plan));
+    }
+
+    #[test]
+    fn test_safe_controller_execute_plan_blocked() {
+        let c = SafeExecutionController::new();
+        let plan = RecoveryPlan::new(
+            "trace-1".to_string(),
+            "v-blocked".to_string(),
+            RecoveryType::Rollback,
+            RecoveryConfidence::High,
+            vec!["abort".to_string()],
+        );
+        match c.execute_plan(&plan) {
+            ExecutionResult::Blocked { plan_id, reason } => {
+                assert_eq!(plan_id, "RP-v-blocked-trace-1");
+                assert!(reason.contains("Critical"));
+            }
+            _ => panic!("expected Blocked"),
+        }
+    }
+
+    #[test]
+    fn test_safe_controller_execute_plan_auto_repaired() {
+        let c = SafeExecutionController::new();
+        let plan = RecoveryPlan::new(
+            "trace-1".to_string(),
+            "v-auto".to_string(),
+            RecoveryType::Patch,
+            RecoveryConfidence::High,
+            vec!["s1".to_string(), "s2".to_string()],
+        );
+        match c.execute_plan(&plan) {
+            ExecutionResult::AutoRepaired {
+                plan_id,
+                steps_executed,
+            } => {
+                assert_eq!(plan_id, "RP-v-auto-trace-1");
+                assert_eq!(steps_executed, 2);
+            }
+            _ => panic!("expected AutoRepaired"),
+        }
+    }
+
+    #[test]
+    fn test_safe_controller_execute_plan_suggested() {
+        let c = SafeExecutionController::new();
+        let plan = RecoveryPlan::new(
+            "trace-1".to_string(),
+            "v-sug".to_string(),
+            RecoveryType::Ignore,
+            RecoveryConfidence::Low,
+            vec!["hint".to_string()],
+        );
+        match c.execute_plan(&plan) {
+            ExecutionResult::Suggested { plan_id, steps } => {
+                assert_eq!(plan_id, "RP-v-sug-trace-1");
+                assert_eq!(steps, vec!["hint".to_string()]);
+            }
+            _ => panic!("expected Suggested"),
+        }
+    }
+
+    #[test]
+    fn test_replay_result_clone() {
+        let r = ReplayResult {
+            trace_id: "t".to_string(),
+            divergences: vec!["d1".to_string()],
+            valid: false,
+        };
+        let clone = r.clone();
+        assert_eq!(clone.trace_id, "t");
+        assert_eq!(clone.divergences.len(), 1);
+        assert!(!clone.valid);
+    }
+}
