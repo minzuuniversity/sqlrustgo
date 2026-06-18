@@ -1,7 +1,7 @@
 # Z6G4 Hand-off Manual (v3.9.0 GA-blocking Tasks)
 
-> **Date**: 2026-06-18
-> **Branch**: `docs/v6-status-update` @ `e39e22441e`
+> **Date**: 2026-06-18 (post PR #3507, #3508 merge)
+> **Branch**: `develop/v3.9.0` @ `784fe34447` (PR #3507 merged 03:36:15Z, PR #3508 merged 03:37:37Z)
 > **Audience**: Z6G4 agent (or operator with 250 access)
 > **Goal**: Complete all GA-blocking real-world tests; capture results; enable GA decision
 
@@ -18,6 +18,14 @@ Before Z6G4 hand-off, the following must be confirmed locally:
 - [x] **TPC-H 22/22 maintained**
 - [x] **Bash syntax verified** on all 8 modified gate scripts
 - [x] **RC8 docs created** — `RC8_GATE_REPORT.md`, `RC8_RELEASE_NOTES.md`, `CHANGELOG.md v1.3`
+- [x] **PR #3507 merged** — RC8 docs + V9 fix + 8 oracle (closed 03:36:15Z)
+- [x] **PR #3508 merged** — G5-B savepoint name case + P22 delete-isolation fix (closed 03:37:37Z)
+- [x] **#3498 closed as duplicate of #3499** — `aggregate_smoke_test` 3/3 PASS verified
+
+**Open P0 / hand-off items** (NOT pre-requisites, deferred to Z6G4):
+- 🟡 **#3474 (P0)** — libmysqlclient 8.0.46 trailing terminator 60s hang (no fix yet)
+- 🟡 **#3484** — sysbench 1h soak
+- 🟡 **#3225 / #3229 / #3265 / #3266** — 24h/72h/168h wall-clock soaks
 
 **If any pre-requisite fails**, do NOT proceed to Z6G4 — fix locally first.
 
@@ -290,9 +298,9 @@ The RC8 tag can be cut based on local P0 completion (✅ done). GA tag requires 
 
 - **Operator**: Z6G4 agent (or 250 admin)
 - **Slack/IM**: (project-defined)
-- **Issues to reference**: #3484, #3474, #3225
-- **Branch**: `docs/v6-status-update` @ `e39e22441e`
-- **Target branch for merge**: `develop/v3.9.0`
+- **Issues to reference**: #3484, #3474, #3225, #3229, #3265, #3266
+- **Branch**: `develop/v3.9.0` @ `784fe34447`
+- **Target branch for merge**: `develop/v3.9.0` (already merged)
 
 If you encounter issues not covered here, check:
 - `docs/releases/v3.9.0/GA_GATE_REPORT.md` — overall GA status
