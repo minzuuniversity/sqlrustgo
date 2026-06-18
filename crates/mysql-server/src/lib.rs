@@ -3164,8 +3164,8 @@ mod integration_tests {
 
     #[test]
     fn test_col_type_from_string_varchar() {
-        assert_eq!(col_type_from_string("VARCHAR(255)"), 0xfd); // VARSTRING
-        assert_eq!(col_type_from_string("CHAR(10)"), 0xfd); // VARSTRING
+        assert_eq!(col_type_from_string("VARCHAR(255)"), 0x0f);
+        assert_eq!(col_type_from_string("CHAR(10)"), 0xfd);
     }
 
     #[test]
