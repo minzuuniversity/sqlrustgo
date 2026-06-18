@@ -6,14 +6,13 @@
 //! Sprint 9 fix: Q3 (3-way comma-join) now passes after the orders
 //! schema was corrected to include the missing o_totalprice column
 //! (LOAD DATA was shifting all subsequent columns by 1). Coverage
-//! expanded 5/22 → 19/22 queries (Q1/Q2/Q3/Q4/Q5/Q6/Q7/Q10/Q11/Q12/
-//! Q13/Q14/Q16/Q17/Q18/Q19/Q20/Q21/Q22). Q8 (8-way join) and Q9
-//! (6-way join) exceed the 60s wire timeout; Q15 (derived-table
-//! revenue_view JOIN) needs planner auto-rewrite for non-base
-//! derived FROM. Q7/Q20 baselines were regenerated from real
-//! execution (the original 3-row Q7 baseline was missing the
-//! FRANCE→GERMANY pair; Q20 0-row baseline was from a pre-data
-//! fixture run).
+//! expanded 5/22 → 20/22 queries (Q1/Q2/Q3/Q4/Q5/Q6/Q7/Q10/Q11/Q12/
+//! Q13/Q14/Q15/Q16/Q17/Q18/Q19/Q20/Q21/Q22). Q8 (8-way join) and
+//! Q9 (6-way join) exceed the 60s wire timeout (deferred to Sprint 9
+//! perf follow-up). Q7/Q15/Q20 baselines were regenerated from real
+//! execution (Q7 was missing FRANCE→GERMANY pair; Q15 was listing
+//! all 91 suppliers instead of just the max; Q20 was 0 rows from
+//! pre-data fixture).
 
 mod common;
 
@@ -30,6 +29,7 @@ const TPC_H_SF01_QUERIES: &[(&str, &str, &str)] = &[
     ("Q6", "SELECT SUM(l_extendedprice * l_discount) AS revenue FROM lineitem WHERE l_shipdate >= '1994-01-01' AND l_shipdate < '1995-01-01' AND l_discount BETWEEN 0.05 AND 0.07 AND l_quantity < 24", "Q6_sf01_baseline.json"),
     ("Q7", "SELECT supp_nation, cust_nation, l_year, SUM(volume) AS revenue FROM (SELECT n1.n_name AS supp_nation, n2.n_name AS cust_nation, SUBSTR(l_shipdate, 1, 4) AS l_year, l_extendedprice * (1 - l_discount) AS volume FROM supplier, lineitem, orders, customer, nation n1, nation n2 WHERE s_suppkey = l_suppkey AND o_orderkey = l_orderkey AND c_custkey = o_custkey AND s_nationkey = n1.n_nationkey AND c_nationkey = n2.n_nationkey AND ((n1.n_name = 'FRANCE' AND n2.n_name = 'GERMANY') OR (n1.n_name = 'GERMANY' AND n2.n_name = 'FRANCE')) AND l_shipdate BETWEEN '1995-01-01' AND '1996-12-31') AS shipping GROUP BY supp_nation, cust_nation, l_year ORDER BY supp_nation, cust_nation, l_year", "Q7_sf01_baseline.json"),
     ("Q10", "SELECT c_custkey, c_name, SUM(l_extendedprice * (1 - l_discount)) AS revenue, c_acctbal, n_name, c_address, c_phone, c_comment FROM customer, orders, lineitem, nation WHERE c_custkey = o_custkey AND l_orderkey = o_orderkey AND o_orderdate >= '1993-10-01' AND o_orderdate < '1994-01-01' AND l_returnflag = 'R' AND c_nationkey = n_nationkey GROUP BY c_custkey, c_name, c_acctbal, c_address, c_phone, c_comment, n_name ORDER BY revenue DESC LIMIT 20", "Q10_sf01_baseline.json"),
+    ("Q15", "SELECT s_suppkey, s_name, s_address, s_phone, total_revenue FROM supplier, (SELECT l_suppkey AS supplier_no, SUM(l_extendedprice * (1 - l_discount)) AS total_revenue FROM lineitem WHERE l_shipdate >= '1996-01-01' AND l_shipdate < '1996-04-01' GROUP BY l_suppkey) AS revenue_view WHERE s_suppkey = supplier_no AND total_revenue = (SELECT MAX(total_revenue) FROM (SELECT l_suppkey AS supplier_no, SUM(l_extendedprice * (1 - l_discount)) AS total_revenue FROM lineitem WHERE l_shipdate >= '1996-01-01' AND l_shipdate < '1996-04-01' GROUP BY l_suppkey) AS revenue_view) ORDER BY s_suppkey", "Q15_sf01_baseline.json"),
     ("Q11", "SELECT ps_partkey, SUM(ps_supplycost * ps_availqty) AS value FROM partsupp, supplier, nation WHERE ps_suppkey = s_suppkey AND s_nationkey = n_nationkey AND n_name = 'GERMANY' GROUP BY ps_partkey HAVING SUM(ps_supplycost * ps_availqty) > (SELECT SUM(ps_supplycost * ps_availqty) * 0.0001 FROM partsupp, supplier, nation WHERE ps_suppkey = s_suppkey AND s_nationkey = n_nationkey AND n_name = 'GERMANY') ORDER BY value DESC", "Q11_sf01_baseline.json"),
     ("Q12", "SELECT l_shipmode, SUM(CASE WHEN o_orderpriority = '1-URGENT' OR o_orderpriority = '2-HIGH' THEN 1 ELSE 0 END) AS high_line_count, SUM(CASE WHEN o_orderpriority <> '1-URGENT' AND o_orderpriority <> '2-HIGH' THEN 1 ELSE 0 END) AS low_line_count FROM orders, lineitem WHERE o_orderkey = l_orderkey AND l_shipmode IN ('MAIL', 'SHIP') AND l_commitdate < l_receiptdate AND l_shipdate < l_commitdate AND l_receiptdate >= '1994-01-01' AND l_receiptdate < '1995-01-01' GROUP BY l_shipmode ORDER BY l_shipmode", "Q12_sf01_baseline.json"),
     ("Q13", "SELECT c_count, COUNT(*) AS custdist FROM (SELECT c_custkey, COUNT(o_orderkey) AS c_count FROM customer LEFT OUTER JOIN orders ON c_custkey = o_custkey AND o_comment NOT LIKE '%special%requests%' GROUP BY c_custkey) AS c_orders GROUP BY c_count ORDER BY custdist DESC, c_count DESC", "Q13_sf01_baseline.json"),
