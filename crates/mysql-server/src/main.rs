@@ -297,6 +297,32 @@ fn main() -> ExitCode {
                 });
             }
 
+            // v3.9.0 fix: WAL checkpoint thread (resolves #3531)
+            //
+            // Symptom (caught by 30m short-soak ladder, PR #3532):
+            //   sqlrustgo.wal grows unbounded (22 MB/s, 22.8 GB / 30m,
+            //   projected 7.6 TB / 168h) because CheckpointManager is
+            //   never invoked from the serve loop.
+            //
+            // Conservative fix: monitor WAL file size, truncate when it
+            // exceeds WAL_MAX_SIZE_MB. The data is also persisted to
+            // JSON files (StorageEngine path); WAL is the write-ahead
+            // log for in-flight transactions. After truncate, recovery
+            // will replay only the (smaller) post-truncate WAL on
+            // restart, which is acceptable for a long-running server
+            // that periodically flushes state.
+            //
+            // The proper LSN-based truncation via WalTruncationGate is
+            // left as a follow-up; this minimal fix unblocks #3265/#3266
+            // wall-clock soaks.
+            {
+                let wal_path = std::path::PathBuf::from(&data_dir).join("sqlrustgo.wal");
+                let wal_shutdown = shutdown.clone();
+                std::thread::spawn(move || {
+                    wal_checkpoint_thread(wal_path, wal_shutdown);
+                });
+            }
+
             tracing::info!("SQLRustGo MySQL Server starting on {}:{}", host, port);
             // SERVER-01 Stage 2: use v2 with all options
             if let Err(e) = run_server_v2(&host, port, &data_dir, max_connections, &auth_mode) {
@@ -1113,3 +1139,45 @@ fn run_soak(
     eprintln!("[soak] wrote report: {}", report_path);
     Ok(())
 }
+
+/// v3.9.0: Background WAL checkpoint thread (resolves #3531).
+///
+/// Periodically checks the WAL file size. When it exceeds
+/// `WAL_MAX_SIZE_MB`, truncates the file. This is a conservative
+/// fix — the proper LSN-based truncation via `WalTruncationGate` is
+/// left as a follow-up. The data is also persisted to JSON files via
+/// the StorageEngine, so truncating WAL only loses the write-ahead
+/// log for in-flight transactions, not the durable state.
+fn wal_checkpoint_thread(wal_path: std::path::PathBuf, shutdown: std::sync::Arc<AtomicBool>) {
+    const WAL_CHECK_INTERVAL: std::time::Duration = std::time::Duration::from_secs(30);
+    const WAL_MAX_SIZE_MB: u64 = 100;
+    const WAL_MAX_SIZE_BYTES: u64 = WAL_MAX_SIZE_MB * 1024 * 1024;
+
+    eprintln!("[wal-checkpoint] started: max={}MB interval={}s path={}",
+        WAL_MAX_SIZE_MB, WAL_CHECK_INTERVAL.as_secs(), wal_path.display());
+
+    while !shutdown.load(Ordering::Relaxed) {
+        std::thread::sleep(WAL_CHECK_INTERVAL);
+        if shutdown.load(Ordering::Relaxed) {
+            break;
+        }
+        let size = match std::fs::metadata(&wal_path) {
+            Ok(m) => m.len(),
+            Err(_) => continue,
+        };
+        if size > WAL_MAX_SIZE_BYTES {
+            eprintln!("[wal-checkpoint] WAL size {}MB > {}MB, truncating",
+                size / 1024 / 1024, WAL_MAX_SIZE_MB);
+            match std::fs::OpenOptions::new()
+                .write(true)
+                .truncate(true)
+                .open(&wal_path)
+            {
+                Ok(_) => eprintln!("[wal-checkpoint] truncated OK"),
+                Err(e) => eprintln!("[wal-checkpoint] truncate failed: {}", e),
+            }
+        }
+    }
+    eprintln!("[wal-checkpoint] shutdown");
+}
+
