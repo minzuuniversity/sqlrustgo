@@ -11,10 +11,10 @@
 
 mod common;
 use common::oracle_framework::{
-    Row, RowSet, Sha256Baseline, Sha256QueryEntry, TPC_H_SHA256_BASELINE_FILE, Value,
-    sha256_capture,
+    sha256_capture, Row, RowSet, Sha256Baseline, Sha256QueryEntry, Value,
+    TPC_H_SHA256_BASELINE_FILE,
 };
-use common::tpch_wire_harness::{start_sf001, run_query_timed};
+use common::tpch_wire_harness::{run_query_timed, start_sf001};
 use std::time::Instant;
 
 const TPC_H_QUERIES: &[(&str, &str)] = &[
@@ -84,8 +84,7 @@ fn g1_tpch_sha256_baseline() {
         return;
     }
 
-    let baseline = Sha256Baseline::load_or_warn(baseline_path)
-        .expect("baseline load failed");
+    let baseline = Sha256Baseline::load_or_warn(baseline_path).expect("baseline load failed");
 
     let mut pass = 0;
     let mut fail = 0;
@@ -123,9 +122,15 @@ fn g1_tpch_sha256_baseline() {
         pass, fail, pending
     );
 
-    assert_eq!(fail, 0, "{} TPC-H query result hashes drifted from baseline", fail);
+    assert_eq!(
+        fail, 0,
+        "{} TPC-H query result hashes drifted from baseline",
+        fail
+    );
     if pass == 0 {
-        eprintln!("[INFO] No baseline entries validated (all PENDING). Run --generate-baseline to seed.");
+        eprintln!(
+            "[INFO] No baseline entries validated (all PENDING). Run --generate-baseline to seed."
+        );
     }
 }
 

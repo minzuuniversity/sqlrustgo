@@ -104,15 +104,27 @@ fn json_data_ready() -> bool {
             let mut in_array = false;
             for ch in after_rows.chars() {
                 match ch {
-                    '[' if depth == 0 => { in_array = true; depth += 1; }
-                    ']' if in_array => { depth -= 1; if depth == 0 { row_count += 1; in_array = false; } }
+                    '[' if depth == 0 => {
+                        in_array = true;
+                        depth += 1;
+                    }
+                    ']' if in_array => {
+                        depth -= 1;
+                        if depth == 0 {
+                            row_count += 1;
+                            in_array = false;
+                        }
+                    }
                     '[' if in_array => depth += 1,
                     ']' if in_array => depth -= 1,
                     _ => {}
                 }
             }
             if row_count != *expected_rows {
-                eprintln!("  json_data_ready: {} expected {} rows, got {}", name, expected_rows, row_count);
+                eprintln!(
+                    "  json_data_ready: {} expected {} rows, got {}",
+                    name, expected_rows, row_count
+                );
                 return false;
             }
         } else {
@@ -143,44 +155,44 @@ fn tpch_sf1_22_in_process_regression() {
     }
 
     // 1) Boot ephemeral server with persistent data dir.
-     let data_dir = Path::new(SQLRUSTGO_DATA_DIR);
-     std::fs::create_dir_all(data_dir).expect("create sqlrustgo data dir");
+    let data_dir = Path::new(SQLRUSTGO_DATA_DIR);
+    std::fs::create_dir_all(data_dir).expect("create sqlrustgo data dir");
 
-     // Check if .json files already exist with correct data (from a
-     // previous run or external generation).  If so, skip the
-     // expensive LOAD DATA phase.  `FileStorage::new_with_wal` loads
-     // all .json files on startup; having them pre-generated means
-     // the server is ready in <1s instead of 30+ minutes.
-     let skip_load_data = json_data_ready();
-     if skip_load_data {
-         eprintln!("SF=1.0 .json files present with valid row counts — skipping LOAD DATA.");
-     } else {
-         // If the data dir already has a WAL, truncate it before
-         // `start_ephemeral` so recovery on startup stays fast (this
-         // matches what `start_sf01` / `start_sf001` do internally).
-         let wal = data_dir.join("sqlrustgo.wal");
-         if wal.exists() {
-             let _ = std::fs::OpenOptions::new()
-                 .write(true)
-                 .truncate(true)
-                 .open(&wal);
-         }
+    // Check if .json files already exist with correct data (from a
+    // previous run or external generation).  If so, skip the
+    // expensive LOAD DATA phase.  `FileStorage::new_with_wal` loads
+    // all .json files on startup; having them pre-generated means
+    // the server is ready in <1s instead of 30+ minutes.
+    let skip_load_data = json_data_ready();
+    if skip_load_data {
+        eprintln!("SF=1.0 .json files present with valid row counts — skipping LOAD DATA.");
+    } else {
+        // If the data dir already has a WAL, truncate it before
+        // `start_ephemeral` so recovery on startup stays fast (this
+        // matches what `start_sf01` / `start_sf001` do internally).
+        let wal = data_dir.join("sqlrustgo.wal");
+        if wal.exists() {
+            let _ = std::fs::OpenOptions::new()
+                .write(true)
+                .truncate(true)
+                .open(&wal);
+        }
 
-         // Also remove any stale .json files from a previous partial
-         // LOAD DATA run.  `FileStorage::new_with_wal` reads ALL .json
-         // files in the data dir on startup (430 MB for 6 tables at
-         // SF=1.0), which blocks the accept loop.  Deleting them makes
-         // the server ready to accept connections in <1 s.
-         let data_entries: Vec<_> = data_dir
-             .read_dir()
-             .expect("read sqlrustgo data dir")
-             .filter_map(|e| e.ok())
-             .filter(|e| e.path().extension().and_then(|s| s.to_str()) == Some("json"))
-             .collect();
-         for entry in data_entries {
-             std::fs::remove_file(&entry.path()).expect("remove stale .json file");
-         }
-     }
+        // Also remove any stale .json files from a previous partial
+        // LOAD DATA run.  `FileStorage::new_with_wal` reads ALL .json
+        // files in the data dir on startup (430 MB for 6 tables at
+        // SF=1.0), which blocks the accept loop.  Deleting them makes
+        // the server ready to accept connections in <1 s.
+        let data_entries: Vec<_> = data_dir
+            .read_dir()
+            .expect("read sqlrustgo data dir")
+            .filter_map(|e| e.ok())
+            .filter(|e| e.path().extension().and_then(|s| s.to_str()) == Some("json"))
+            .collect();
+        for entry in data_entries {
+            std::fs::remove_file(&entry.path()).expect("remove stale .json file");
+        }
+    }
 
     let config = EphemeralConfig {
         data_dir: Some(data_dir.to_path_buf()),

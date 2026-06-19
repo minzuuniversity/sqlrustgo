@@ -15,9 +15,7 @@ fn make_engine() -> ExecutionEngine<MemoryStorage> {
 
 fn setup_table(engine: &mut ExecutionEngine<MemoryStorage>) {
     engine
-        .execute(
-            "CREATE TABLE t (id INTEGER PRIMARY KEY, name TEXT, val INTEGER, score REAL)",
-        )
+        .execute("CREATE TABLE t (id INTEGER PRIMARY KEY, name TEXT, val INTEGER, score REAL)")
         .unwrap();
     engine
         .execute("INSERT INTO t VALUES (1, 'alice', 100, 1.5)")
