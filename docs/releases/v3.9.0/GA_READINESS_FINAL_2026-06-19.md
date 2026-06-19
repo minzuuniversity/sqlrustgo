@@ -1,7 +1,7 @@
 # v3.9.0 GA Readiness - Comprehensive Status (2026-06-19)
 
-> **Last update**: 2026-06-19 14:10 UTC
-> **Branch**: `develop/v3.9.0` HEAD = `9fb892702dea` (after PR #3559 merge)
+> **Last update**: 2026-06-19 14:30 UTC
+> **Branch**: `develop/v3.9.0` HEAD = `bbf078979695` (after PR #3561 merge)
 > **GA target**: After real 168h wall-clock soak completes
 
 ## Pre-soak gates (ALL PASS)
@@ -16,6 +16,7 @@
 | TPC-H 22/22 in-process | ✅ | `tpch_full_22_test` |
 | TPC-H 22/22 wire | ✅ | Q8/Q9 fix via PR #3522 (Hybrid DP-Lite) |
 | Q8 hash join 165,000x speedup | ✅ | Sprint 8 (PR #3465) |
+| **recovery_scenarios 50/50** | ✅ | **RESOLVED post-#3533 (was 2 pre-existing fails)** |
 
 ## Sprint 8/9 critical fixes
 
@@ -27,6 +28,7 @@
 | #3532 | Short-soak ladder (30m→1h→2h→4h) |
 | #3533 | **WAL P0 bug fix** (background checkpoint thread) |
 | #3556 | P12/P13 meta-gate regressions (MARKER entry) |
+| #3561 | AGENTS.md: recovery_scenarios pre-existing fails RESOLVED |
 
 ## Real wall-clock soak (v2 on Z6G4)
 
