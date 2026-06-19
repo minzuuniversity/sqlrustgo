@@ -8473,7 +8473,11 @@ fn test_debug_json_extract() {
     // === DROP statement tests ===
     #[test]
     fn test_parse_drop_table() {
-        for sql in ["DROP TABLE t1", "DROP TABLE IF EXISTS t1", "DROP TABLE schema.t1"] {
+        for sql in [
+            "DROP TABLE t1",
+            "DROP TABLE IF EXISTS t1",
+            "DROP TABLE schema.t1",
+        ] {
             let result = parse(sql);
             assert!(result.is_ok(), "Failed for {}: {:?}", sql, result);
             if let Statement::DropTable(s) = result.unwrap() {

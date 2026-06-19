@@ -158,10 +158,7 @@ mod tests {
     fn test_to_update_plan_no_where_clause() {
         let stmt = ParserUpdateStatement {
             table: "users".to_string(),
-            set_clauses: vec![(
-                "name".to_string(),
-                Expression::Literal("alice".to_string()),
-            )],
+            set_clauses: vec![("name".to_string(), Expression::Literal("alice".to_string()))],
             where_clause: None,
         };
         let info = make_table_info();
@@ -204,10 +201,7 @@ mod tests {
         let stmt = ParserUpdateStatement {
             table: "users".to_string(),
             set_clauses: vec![
-                (
-                    "name".to_string(),
-                    Expression::Literal("bob".to_string()),
-                ),
+                ("name".to_string(), Expression::Literal("bob".to_string())),
                 (
                     "active".to_string(),
                     Expression::Literal("TRUE".to_string()),
@@ -239,14 +233,8 @@ mod tests {
     fn test_to_update_plan_unsupported_expression() {
         let stmt = ParserUpdateStatement {
             table: "users".to_string(),
-            set_clauses: vec![(
-                "name".to_string(),
-                Expression::Literal("x".to_string()),
-            )],
-            where_clause: Some(Expression::FunctionCall(
-                "NOW".to_string(),
-                vec![],
-            )),
+            set_clauses: vec![("name".to_string(), Expression::Literal("x".to_string()))],
+            where_clause: Some(Expression::FunctionCall("NOW".to_string(), vec![])),
         };
         let info = make_table_info();
         let err = AstAdapter::to_update_plan(&stmt, &info).expect_err("should fail");
@@ -295,10 +283,7 @@ mod tests {
     fn test_to_update_plan_unary_not() {
         let stmt = ParserUpdateStatement {
             table: "users".to_string(),
-            set_clauses: vec![(
-                "name".to_string(),
-                Expression::Literal("x".to_string()),
-            )],
+            set_clauses: vec![("name".to_string(), Expression::Literal("x".to_string()))],
             where_clause: Some(Expression::UnaryOp(
                 "NOT".to_string(),
                 Box::new(Expression::Identifier("active".to_string())),
@@ -323,10 +308,7 @@ mod tests {
         }
         let stmt = ParserUpdateStatement {
             table: "users".to_string(),
-            set_clauses: vec![(
-                "name".to_string(),
-                Expression::Literal("x".to_string()),
-            )],
+            set_clauses: vec![("name".to_string(), Expression::Literal("x".to_string()))],
             where_clause: Some(inner),
         };
         let info = make_table_info();
