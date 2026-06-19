@@ -37,8 +37,10 @@ fn check_sf1_data_present() {
             }
 
             // Check row counts for all 8 TPC-H tables
-            let tables: &[&str] =
-                &["region", "nation", "supplier", "customer", "part", "partsupp", "orders", "lineitem"];
+            let tables: &[&str] = &[
+                "region", "nation", "supplier", "customer", "part", "partsupp", "orders",
+                "lineitem",
+            ];
             for tbl in tables {
                 let sql = format!("SELECT COUNT(*) AS cnt FROM {}", tbl);
                 match client.query_rows(&sql) {
