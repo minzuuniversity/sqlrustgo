@@ -1,0 +1,400 @@
+{
+  "date": "2026-06-07",
+  "data": "SF=1 simplified (60K lineitem)",
+  "truth_source": "PostgreSQL",
+  "query_count": 22,
+  "summary": {
+    "sqlrustgo": {"row_count_mismatch": 13, "cell_diff": 4, "clean_match": 5},
+    "sqlite": {"row_count_mismatch": 13, "cell_diff": 4, "clean_match": 5},
+    "mariadb": {"row_count_mismatch": 13, "cell_diff": 4, "clean_match": 5}
+  },
+  "details": {
+    "sqlrustgo": [
+      {
+        "query": "Q01",
+        "status": "row_count_mismatch",
+        "pg_row_count": 6,
+        "other_row_count": 0,
+        "first_mismatches": []
+      }
+      ,{
+        "query": "Q02",
+        "status": "row_count_mismatch",
+        "pg_row_count": 5,
+        "other_row_count": 0,
+        "first_mismatches": []
+      }
+      ,{
+        "query": "Q03",
+        "status": "row_count_mismatch",
+        "pg_row_count": 10,
+        "other_row_count": 0,
+        "first_mismatches": []
+      }
+      ,{
+        "query": "Q04",
+        "status": "row_count_mismatch",
+        "pg_row_count": 5,
+        "other_row_count": 0,
+        "first_mismatches": []
+      }
+      ,{
+        "query": "Q05",
+        "status": "row_count_mismatch",
+        "pg_row_count": 2,
+        "other_row_count": 0,
+        "first_mismatches": []
+      }
+      ,{
+        "query": "Q06",
+        "status": "cell_diff",
+        "pg_row_count": 1,
+        "other_row_count": 1,
+        "first_mismatches": [
+          {"row": 0, "column": 0, "expected": "6076.9327", "actual": ""}
+        ]
+      }
+      ,{
+        "query": "Q07",
+        "status": "row_count_mismatch",
+        "pg_row_count": 2,
+        "other_row_count": 0,
+        "first_mismatches": []
+      }
+      ,{
+        "query": "Q08",
+        "status": "row_count_mismatch",
+        "pg_row_count": 2,
+        "other_row_count": 0,
+        "first_mismatches": []
+      }
+      ,{
+        "query": "Q10",
+        "status": "row_count_mismatch",
+        "pg_row_count": 20,
+        "other_row_count": 0,
+        "first_mismatches": []
+      }
+      ,{
+        "query": "Q12",
+        "status": "row_count_mismatch",
+        "pg_row_count": 2,
+        "other_row_count": 0,
+        "first_mismatches": []
+      }
+      ,{
+        "query": "Q13",
+        "status": "row_count_mismatch",
+        "pg_row_count": 21,
+        "other_row_count": 0,
+        "first_mismatches": []
+      }
+      ,{
+        "query": "Q14",
+        "status": "cell_diff",
+        "pg_row_count": 1,
+        "other_row_count": 1,
+        "first_mismatches": [
+          {"row": 0, "column": 0, "expected": "9.0062823646087177", "actual": ""}
+        ]
+      }
+      ,{
+        "query": "Q15",
+        "status": "row_count_mismatch",
+        "pg_row_count": 93,
+        "other_row_count": 0,
+        "first_mismatches": []
+      }
+      ,{
+        "query": "Q16",
+        "status": "row_count_mismatch",
+        "pg_row_count": 286,
+        "other_row_count": 0,
+        "first_mismatches": []
+      }
+      ,{
+        "query": "Q17",
+        "status": "cell_diff",
+        "pg_row_count": 1,
+        "other_row_count": 1,
+        "first_mismatches": [
+          {"row": 0, "column": 0, "expected": "40.0757142857142857", "actual": ""}
+        ]
+      }
+      ,{
+        "query": "Q18",
+        "status": "row_count_mismatch",
+        "pg_row_count": 100,
+        "other_row_count": 0,
+        "first_mismatches": []
+      }
+      ,{
+        "query": "Q19",
+        "status": "cell_diff",
+        "pg_row_count": 1,
+        "other_row_count": 1,
+        "first_mismatches": [
+          {"row": 0, "column": 0, "expected": "182.1899", "actual": ""}
+        ]
+      }
+    ],
+    "sqlite": [
+      {
+        "query": "Q01",
+        "status": "row_count_mismatch",
+        "pg_row_count": 6,
+        "other_row_count": 0,
+        "first_mismatches": []
+      }
+      ,{
+        "query": "Q02",
+        "status": "row_count_mismatch",
+        "pg_row_count": 5,
+        "other_row_count": 0,
+        "first_mismatches": []
+      }
+      ,{
+        "query": "Q03",
+        "status": "row_count_mismatch",
+        "pg_row_count": 10,
+        "other_row_count": 0,
+        "first_mismatches": []
+      }
+      ,{
+        "query": "Q04",
+        "status": "row_count_mismatch",
+        "pg_row_count": 5,
+        "other_row_count": 0,
+        "first_mismatches": []
+      }
+      ,{
+        "query": "Q05",
+        "status": "row_count_mismatch",
+        "pg_row_count": 2,
+        "other_row_count": 0,
+        "first_mismatches": []
+      }
+      ,{
+        "query": "Q06",
+        "status": "cell_diff",
+        "pg_row_count": 1,
+        "other_row_count": 1,
+        "first_mismatches": [
+          {"row": 0, "column": 0, "expected": "6076.9327", "actual": ""}
+        ]
+      }
+      ,{
+        "query": "Q07",
+        "status": "row_count_mismatch",
+        "pg_row_count": 2,
+        "other_row_count": 0,
+        "first_mismatches": []
+      }
+      ,{
+        "query": "Q08",
+        "status": "row_count_mismatch",
+        "pg_row_count": 2,
+        "other_row_count": 0,
+        "first_mismatches": []
+      }
+      ,{
+        "query": "Q10",
+        "status": "row_count_mismatch",
+        "pg_row_count": 20,
+        "other_row_count": 0,
+        "first_mismatches": []
+      }
+      ,{
+        "query": "Q12",
+        "status": "row_count_mismatch",
+        "pg_row_count": 2,
+        "other_row_count": 0,
+        "first_mismatches": []
+      }
+      ,{
+        "query": "Q13",
+        "status": "row_count_mismatch",
+        "pg_row_count": 21,
+        "other_row_count": 0,
+        "first_mismatches": []
+      }
+      ,{
+        "query": "Q14",
+        "status": "cell_diff",
+        "pg_row_count": 1,
+        "other_row_count": 1,
+        "first_mismatches": [
+          {"row": 0, "column": 0, "expected": "9.0062823646087177", "actual": ""}
+        ]
+      }
+      ,{
+        "query": "Q15",
+        "status": "row_count_mismatch",
+        "pg_row_count": 93,
+        "other_row_count": 0,
+        "first_mismatches": []
+      }
+      ,{
+        "query": "Q16",
+        "status": "row_count_mismatch",
+        "pg_row_count": 286,
+        "other_row_count": 0,
+        "first_mismatches": []
+      }
+      ,{
+        "query": "Q17",
+        "status": "cell_diff",
+        "pg_row_count": 1,
+        "other_row_count": 1,
+        "first_mismatches": [
+          {"row": 0, "column": 0, "expected": "40.0757142857142857", "actual": ""}
+        ]
+      }
+      ,{
+        "query": "Q18",
+        "status": "row_count_mismatch",
+        "pg_row_count": 100,
+        "other_row_count": 0,
+        "first_mismatches": []
+      }
+      ,{
+        "query": "Q19",
+        "status": "cell_diff",
+        "pg_row_count": 1,
+        "other_row_count": 1,
+        "first_mismatches": [
+          {"row": 0, "column": 0, "expected": "182.1899", "actual": ""}
+        ]
+      }
+    ],
+    "mariadb": [
+      {
+        "query": "Q01",
+        "status": "row_count_mismatch",
+        "pg_row_count": 6,
+        "other_row_count": 0,
+        "first_mismatches": []
+      }
+      ,{
+        "query": "Q02",
+        "status": "row_count_mismatch",
+        "pg_row_count": 5,
+        "other_row_count": 0,
+        "first_mismatches": []
+      }
+      ,{
+        "query": "Q03",
+        "status": "row_count_mismatch",
+        "pg_row_count": 10,
+        "other_row_count": 0,
+        "first_mismatches": []
+      }
+      ,{
+        "query": "Q04",
+        "status": "row_count_mismatch",
+        "pg_row_count": 5,
+        "other_row_count": 0,
+        "first_mismatches": []
+      }
+      ,{
+        "query": "Q05",
+        "status": "row_count_mismatch",
+        "pg_row_count": 2,
+        "other_row_count": 0,
+        "first_mismatches": []
+      }
+      ,{
+        "query": "Q06",
+        "status": "cell_diff",
+        "pg_row_count": 1,
+        "other_row_count": 1,
+        "first_mismatches": [
+          {"row": 0, "column": 0, "expected": "6076.9327", "actual": "NULL"}
+        ]
+      }
+      ,{
+        "query": "Q07",
+        "status": "row_count_mismatch",
+        "pg_row_count": 2,
+        "other_row_count": 0,
+        "first_mismatches": []
+      }
+      ,{
+        "query": "Q08",
+        "status": "row_count_mismatch",
+        "pg_row_count": 2,
+        "other_row_count": 0,
+        "first_mismatches": []
+      }
+      ,{
+        "query": "Q10",
+        "status": "row_count_mismatch",
+        "pg_row_count": 20,
+        "other_row_count": 0,
+        "first_mismatches": []
+      }
+      ,{
+        "query": "Q12",
+        "status": "row_count_mismatch",
+        "pg_row_count": 2,
+        "other_row_count": 0,
+        "first_mismatches": []
+      }
+      ,{
+        "query": "Q13",
+        "status": "row_count_mismatch",
+        "pg_row_count": 21,
+        "other_row_count": 0,
+        "first_mismatches": []
+      }
+      ,{
+        "query": "Q14",
+        "status": "cell_diff",
+        "pg_row_count": 1,
+        "other_row_count": 1,
+        "first_mismatches": [
+          {"row": 0, "column": 0, "expected": "9.0062823646087177", "actual": "NULL"}
+        ]
+      }
+      ,{
+        "query": "Q15",
+        "status": "row_count_mismatch",
+        "pg_row_count": 93,
+        "other_row_count": 0,
+        "first_mismatches": []
+      }
+      ,{
+        "query": "Q16",
+        "status": "row_count_mismatch",
+        "pg_row_count": 286,
+        "other_row_count": 0,
+        "first_mismatches": []
+      }
+      ,{
+        "query": "Q17",
+        "status": "cell_diff",
+        "pg_row_count": 1,
+        "other_row_count": 1,
+        "first_mismatches": [
+          {"row": 0, "column": 0, "expected": "40.0757142857142857", "actual": "NULL"}
+        ]
+      }
+      ,{
+        "query": "Q18",
+        "status": "row_count_mismatch",
+        "pg_row_count": 100,
+        "other_row_count": 0,
+        "first_mismatches": []
+      }
+      ,{
+        "query": "Q19",
+        "status": "cell_diff",
+        "pg_row_count": 1,
+        "other_row_count": 1,
+        "first_mismatches": [
+          {"row": 0, "column": 0, "expected": "182.1899", "actual": "NULL"}
+        ]
+      }
+    ]
+  }
+}
