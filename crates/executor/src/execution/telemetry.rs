@@ -378,15 +378,24 @@ mod tests {
 
         let event = ExecutionEvent::TxnBegin { txn_id: 42 };
         c.emit(event);
-        assert_eq!(c.buffer.lock().unwrap().len(), 0, "disabled collector drops events");
+        assert_eq!(
+            c.buffer.lock().unwrap().len(),
+            0,
+            "disabled collector drops events"
+        );
     }
 
     #[test]
     fn test_telemetry_collector_emit_accumulates() {
         let c = TelemetryCollector::with_capacity("trace-1".to_string(), 16);
         c.emit(ExecutionEvent::TxnBegin { txn_id: 1 });
-        c.emit(ExecutionEvent::SqlReceived { sql: "SELECT 1".to_string() });
-        c.emit(ExecutionEvent::StorageRead { table: "t".to_string(), rows: 5 });
+        c.emit(ExecutionEvent::SqlReceived {
+            sql: "SELECT 1".to_string(),
+        });
+        c.emit(ExecutionEvent::StorageRead {
+            table: "t".to_string(),
+            rows: 5,
+        });
         assert_eq!(c.buffer.lock().unwrap().len(), 3);
     }
 
@@ -435,7 +444,9 @@ mod tests {
         let c = TelemetryCollector::new("trace-1".to_string());
         let events = vec![
             ExecutionEvent::TxnBegin { txn_id: 1 },
-            ExecutionEvent::SqlReceived { sql: "INSERT".to_string() },
+            ExecutionEvent::SqlReceived {
+                sql: "INSERT".to_string(),
+            },
             ExecutionEvent::StorageMutation {
                 table: "users".to_string(),
                 op: DmlOperation::Insert,
@@ -444,18 +455,15 @@ mod tests {
         ];
         let stmts = c.build_linked_events(&events);
         assert!(!stmts.is_empty());
-        assert!(stmts.iter().any(|s| s["statement"]
-            .as_str()
-            .unwrap()
-            .contains("HAS_EVENT")));
-        assert!(stmts.iter().any(|s| s["statement"]
-            .as_str()
-            .unwrap()
-            .contains("NEXT")));
-        assert!(stmts.iter().any(|s| s["statement"]
-            .as_str()
-            .unwrap()
-            .contains("CAUSES")));
+        assert!(stmts
+            .iter()
+            .any(|s| s["statement"].as_str().unwrap().contains("HAS_EVENT")));
+        assert!(stmts
+            .iter()
+            .any(|s| s["statement"].as_str().unwrap().contains("NEXT")));
+        assert!(stmts
+            .iter()
+            .any(|s| s["statement"].as_str().unwrap().contains("CAUSES")));
     }
 
     #[test]
