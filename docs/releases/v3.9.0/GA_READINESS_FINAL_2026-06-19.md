@@ -12,7 +12,7 @@
 | `cargo clippy --all-features -- -D warnings` | ✅ | optimizer PR #3555 fix |
 | `cargo fmt --check --all` | ✅ | PR #3557 (35 files, rustfmt 1.93.0) |
 | `cargo build --release` | ✅ | fresh build clean |
-| G15 oracle 22/22 | ✅ | 5 sub-tests, all pass (PR #3526) |
+| G15 oracle 22/22 | ✅ | 5 sub-tests PASS sequentially in 188s total (Q1:6 Q2:0 Q3:10 Q4:5 Q5:1 Q6:1 Q7:4 Q8:1 Q9:0 Q10:20 Q11:0 Q12:2 Q13:22 Q15:1 Q16:282 Q17:1 Q18:100 Q19:1 Q20:3 Q21:0 Q22:0) |
 | TPC-H 22/22 in-process | ✅ | `tpch_full_22_test` |
 | TPC-H 22/22 wire | ✅ | Q8/Q9 fix via PR #3522 (Hybrid DP-Lite) |
 | Q8 hash join 165,000x speedup | ✅ | Sprint 8 (PR #3465) |
