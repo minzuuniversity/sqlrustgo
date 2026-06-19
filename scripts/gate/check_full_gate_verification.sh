@@ -54,7 +54,7 @@ run_gate() {
     fi
 
     local output
-    output=$(bash "$script" 2>&1 || true)
+    output=$(bash "$script" 2>&1)
     local code=$?
     echo "$output" | tail -3
 
@@ -63,9 +63,11 @@ run_gate() {
         PASS_COUNT=$((PASS_COUNT + 1))
         RESULTS+=("$name: PASS")
     elif [ "$code" -eq 2 ] && [ "$expect_code" -eq 0 ]; then
-        echo "  ⚠️  DRIFT (exit 2, expected 0)"
-        DRIFT_COUNT=$((DRIFT_COUNT + 1))
-        RESULTS+=("$name: DRIFT")
+        # DRIFT is NOT acceptable - P14 requires explicit ADR + issue tracking
+        echo "  ❌ DRIFT detected (exit 2) - requires ADR + issue link"
+        FAIL_COUNT=$((FAIL_COUNT + 1))
+        return 1  # P14: DRIFT must fail, not silently pass
+        RESULTS+=("$name: DRIFT (needs ADR)")
     else
         echo "  ❌ FAIL (exit $code, expected $expect_code)"
         FAIL_COUNT=$((FAIL_COUNT + 1))
@@ -172,9 +174,10 @@ if [ $D6_EVIDENCE_OK -eq 1 ]; then
     PASS_COUNT=$((PASS_COUNT + 1))
     RESULTS+=("Evidence Generation: PASS")
 else
-    echo "  ⚠️  PARTIAL (some evidence not generated yet)"
-    DRIFT_COUNT=$((DRIFT_COUNT + 1))
-    RESULTS+=("Evidence Generation: PARTIAL")
+    # PARTIAL evidence is treated as FAIL per P14 (no silent passing)
+    echo "  ❌ PARTIAL (some evidence not generated yet)"
+    FAIL_COUNT=$((FAIL_COUNT + 1))
+    RESULTS+=("Evidence Generation: PARTIAL (needs ADR)")
 fi
 echo
 
@@ -211,9 +214,11 @@ if [ $FAIL_COUNT -gt 0 ]; then
     exit 1
 fi
 
+# Note: DRIFT (exit 2 from sub-gates) is now treated as FAIL per P14
+# DRIFT requires explicit ADR + issue tracking before acceptance
 if [ $DRIFT_COUNT -gt 0 ]; then
-    echo "⚠️  D9 Full Gate Verification: PASS-WITH-DRIFT ($DRIFT_COUNT drift)"
-    exit 2
+    echo "❌ D9 Full Gate Verification: DRIFT detected ($DRIFT_COUNT drift) - treated as FAIL per P14"
+    exit 1
 fi
 
 echo "✅ D9 Full Gate Verification: ALL PASS"

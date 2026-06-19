@@ -1,0 +1,27 @@
+{
+  "engines": {
+    "sqlite": {
+      "row_count": 10,
+      "first_3_rows": [
+        {
+          "s_suppkey": 1,
+          "s_name": "Supplier#000000001",
+          "s_address": " Address 83810",
+          "s_phone": "24-125-5506"
+        },
+        {
+          "s_suppkey": 2,
+          "s_name": "Supplier#000000002",
+          "s_address": " Address 18289",
+          "s_phone": "23-792-9935"
+        },
+        {
+          "s_suppkey": 3,
+          "s_name": "Supplier#000000003",
+          "s_address": " Address 55302",
+          "s_phone": "14-130-2535"
+        }
+      ]
+    }
+  }
+}

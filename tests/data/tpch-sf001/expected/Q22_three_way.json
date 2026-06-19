@@ -1,0 +1,24 @@
+{
+  "engines": {
+    "sqlite": {
+      "row_count": 14,
+      "first_3_rows": [
+        {
+          "cntrycode": "18",
+          "numcust": 1,
+          "totacctbal": 7503.75
+        },
+        {
+          "cntrycode": "30",
+          "numcust": 1,
+          "totacctbal": 1969.43
+        },
+        {
+          "cntrycode": "36",
+          "numcust": 1,
+          "totacctbal": 6720.02
+        }
+      ]
+    }
+  }
+}

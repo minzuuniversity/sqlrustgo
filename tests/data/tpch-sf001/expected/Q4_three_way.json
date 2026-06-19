@@ -1,0 +1,21 @@
+{
+  "engines": {
+    "sqlite": {
+      "row_count": 4,
+      "first_3_rows": [
+        {
+          "o_orderpriority": "1-URGENT",
+          "order_count": 1
+        },
+        {
+          "o_orderpriority": "2-HIGH",
+          "order_count": 3
+        },
+        {
+          "o_orderpriority": "3-MEDIUM",
+          "order_count": 1
+        }
+      ]
+    }
+  }
+}

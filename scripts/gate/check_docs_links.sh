@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# Purpose: Check markdown links in docs/ resolve to existing files
+# Coverage: P6 (Evidence Binding), P5 (Governance)
+# Verifies: no broken local links in markdown
 
 set -euo pipefail
 

@@ -1,0 +1,18 @@
+{
+  "query": 20,
+  "row_count": 3,
+  "first_3_rows": [
+    [
+      "Supplier#000000073",
+      "47 eVfyJRFRiv lRQP 184836755 183735"
+    ],
+    [
+      "Supplier#000000078",
+      "88 frMuRNSSEo OLIj 910251139 055717"
+    ],
+    [
+      "Supplier#000000087",
+      "32 sALqQAXpkP eAes 964400515 867132"
+    ]
+  ]
+}

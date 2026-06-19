@@ -1,0 +1,29 @@
+{
+  "engines": {
+    "sqlite": {
+      "row_count": 2,
+      "first_3_rows": [
+        {
+          "c_custkey": 14,
+          "c_name": "Customer#000000014",
+          "revenue": 41139.11,
+          "c_acctbal": 1412.53,
+          "n_name": "CHINA",
+          "c_address": " Address 56155",
+          "c_phone": "84-508-6930",
+          "c_comment": "final accounts wake carefully"
+        },
+        {
+          "c_custkey": 6,
+          "c_name": "Customer#000000006",
+          "revenue": 28216.670000000002,
+          "c_acctbal": 4875.54,
+          "n_name": "ARGENTINA",
+          "c_address": " Address 89593",
+          "c_phone": "92-173-3803",
+          "c_comment": "final accounts wake carefully"
+        }
+      ]
+    }
+  }
+}
