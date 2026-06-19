@@ -38,7 +38,8 @@ fn quick_query_sfid1() {
 
             // Check row counts
             let tables = [
-                "region", "nation", "supplier", "customer", "part", "partsupp", "orders", "lineitem",
+                "region", "nation", "supplier", "customer", "part", "partsupp", "orders",
+                "lineitem",
             ];
             for tbl in &tables {
                 let sql = format!("SELECT COUNT(*) AS cnt FROM {}", tbl);

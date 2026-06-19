@@ -75,7 +75,11 @@ fn g15_tpch_sf01_wire_matches_baseline() {
     for (qid, sql, baseline_file, timeout_s) in TPC_H_SF01_QUERIES {
         let baseline_path = Path::new("tests/data/tpch-sf01/expected").join(baseline_file);
         if !baseline_path.exists() {
-            eprintln!("[SKIP] {}: baseline not found: {}", qid, baseline_path.display());
+            eprintln!(
+                "[SKIP] {}: baseline not found: {}",
+                qid,
+                baseline_path.display()
+            );
             continue;
         }
 
@@ -111,7 +115,11 @@ fn run_subset(start_idx: usize, end_idx: usize) -> bool {
     for (qid, sql, baseline_file, timeout_s) in &TPC_H_SF01_QUERIES[start_idx..end_idx] {
         let baseline_path = Path::new("tests/data/tpch-sf01/expected").join(baseline_file);
         if !baseline_path.exists() {
-            eprintln!("[SKIP] {}: baseline not found: {}", qid, baseline_path.display());
+            eprintln!(
+                "[SKIP] {}: baseline not found: {}",
+                qid,
+                baseline_path.display()
+            );
             continue;
         }
         let mut client = start_sf01();

@@ -30,7 +30,9 @@ fn g9_upgrade_schema_migration_preserves_data_oracle() {
         .execute("INSERT INTO users VALUES (3, 'charlie', 35)")
         .unwrap();
 
-    let r = engine.execute("SELECT COUNT(*), SUM(age) FROM users").unwrap();
+    let r = engine
+        .execute("SELECT COUNT(*), SUM(age) FROM users")
+        .unwrap();
     let count = match &r.rows[0][0] {
         Value::Integer(n) => *n,
         _ => panic!("expected Int count"),
@@ -86,9 +88,7 @@ fn g9_upgrade_v390_new_columns_default_oracle() {
     engine
         .execute("CREATE TABLE t (id INTEGER PRIMARY KEY, val INTEGER)")
         .unwrap();
-    engine
-        .execute("INSERT INTO t VALUES (1, 100)")
-        .unwrap();
+    engine.execute("INSERT INTO t VALUES (1, 100)").unwrap();
 
     let r = engine.execute("SELECT val FROM t WHERE id = 1").unwrap();
     assert_eq!(r.rows.len(), 1);

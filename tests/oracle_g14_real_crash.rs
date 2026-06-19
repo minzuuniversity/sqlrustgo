@@ -187,5 +187,8 @@ fn g14_crash_data_consistency_overall_oracle() {
         _ => panic!("expected Int"),
     };
     // 100 + 200 + ... + 2000 = 21000
-    assert_eq!(sum, 21000, "Oracle: crash recovery preserves data integrity");
+    assert_eq!(
+        sum, 21000,
+        "Oracle: crash recovery preserves data integrity"
+    );
 }
