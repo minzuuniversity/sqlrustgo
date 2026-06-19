@@ -26,28 +26,38 @@ fn create_engine() -> MemoryExecutionEngine {
 }
 
 fn setup_tables(engine: &mut MemoryExecutionEngine) {
-    let _ = engine.execute("CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, name TEXT, age INTEGER)");
+    let _ = engine.execute(
+        "CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, name TEXT, age INTEGER)",
+    );
     let _ = engine.execute("CREATE TABLE IF NOT EXISTS orders (id INTEGER PRIMARY KEY, user_id INTEGER, amount INTEGER)");
-    let _ = engine.execute("CREATE TABLE IF NOT EXISTS products (id INTEGER PRIMARY KEY, name TEXT, price INTEGER)");
+    let _ = engine.execute(
+        "CREATE TABLE IF NOT EXISTS products (id INTEGER PRIMARY KEY, name TEXT, price INTEGER)",
+    );
 }
 
 fn insert_test_data(engine: &mut MemoryExecutionEngine) {
     for i in 0..100 {
         let _ = engine.execute(&format!(
             "INSERT INTO users VALUES ({}, 'user_{}', {})",
-            i, i, 20 + (i % 50)
+            i,
+            i,
+            20 + (i % 50)
         ));
     }
     for i in 0..500 {
         let _ = engine.execute(&format!(
             "INSERT INTO orders VALUES ({}, {}, {})",
-            i, i % 100, 100 + (i % 1000)
+            i,
+            i % 100,
+            100 + (i % 1000)
         ));
     }
     for i in 0..100 {
         let _ = engine.execute(&format!(
             "INSERT INTO products VALUES ({}, 'product_{}', {})",
-            i, i, 1000 + (i % 500)
+            i,
+            i,
+            1000 + (i % 500)
         ));
     }
 }
@@ -134,7 +144,9 @@ fn qps_mixed_oltp(c: &mut Criterion) {
     for i in 0..10 {
         g.bench_with_input(BenchmarkId::new("mixed", i), &i, |b, _i| {
             b.iter(|| {
-                let _ = engine.execute("SELECT * FROM orders WHERE user_id IN (SELECT id FROM users WHERE age > 30)");
+                let _ = engine.execute(
+                    "SELECT * FROM orders WHERE user_id IN (SELECT id FROM users WHERE age > 30)",
+                );
             });
         });
     }
