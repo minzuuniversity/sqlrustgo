@@ -29,11 +29,13 @@ fn test_large_integer_positive() {
 }
 
 #[test]
-#[ignore = "Boundary edge-case test (run with --ignored when needed)"]
 fn test_large_integer_negative() {
     let sql = "SELECT -9223372036854775808";
     let result = parse(sql);
-    assert!(result.is_ok());
+    if let Err(ref e) = result {
+        eprintln!("parse error: {}", e);
+    }
+    assert!(result.is_ok(), "parse error: {:?}", result);
 }
 
 #[test]
@@ -86,7 +88,6 @@ fn test_tab_and_newline_in_string() {
 }
 
 #[test]
-#[ignore = "Boundary edge-case test (run with --ignored when needed)"]
 fn test_zero_division_parsing() {
     let sql = "SELECT 1 / 0";
     let result = parse(sql);
