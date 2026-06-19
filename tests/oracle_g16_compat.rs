@@ -47,7 +47,10 @@ fn g16_compat_users_table_row_count() {
     let expected = baseline
         .get("checks")
         .and_then(|c| c.as_array())
-        .and_then(|arr| arr.iter().find(|c| c.get("test").and_then(|t| t.as_str()) == Some("users_table_row_count")))
+        .and_then(|arr| {
+            arr.iter()
+                .find(|c| c.get("test").and_then(|t| t.as_str()) == Some("users_table_row_count"))
+        })
         .and_then(|c| c.get("expected"))
         .and_then(|e| e.as_u64())
         .expect("baseline users_table_row_count") as i64;
@@ -81,7 +84,10 @@ fn g16_compat_orders_table_row_count() {
     let expected = baseline
         .get("checks")
         .and_then(|c| c.as_array())
-        .and_then(|arr| arr.iter().find(|c| c.get("test").and_then(|t| t.as_str()) == Some("orders_table_row_count")))
+        .and_then(|arr| {
+            arr.iter()
+                .find(|c| c.get("test").and_then(|t| t.as_str()) == Some("orders_table_row_count"))
+        })
         .and_then(|c| c.get("expected"))
         .and_then(|e| e.as_u64())
         .expect("baseline orders_table_row_count") as i64;
@@ -126,9 +132,7 @@ fn g16_compat_primary_key_uniqueness() {
     engine
         .execute("CREATE TABLE t (id INTEGER PRIMARY KEY, val TEXT)")
         .unwrap();
-    engine
-        .execute("INSERT INTO t VALUES (1, 'a')")
-        .unwrap();
+    engine.execute("INSERT INTO t VALUES (1, 'a')").unwrap();
 
     let dup_result = engine.execute("INSERT INTO t VALUES (1, 'b')");
     assert!(

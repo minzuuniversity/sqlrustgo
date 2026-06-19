@@ -21,12 +21,8 @@ fn setup_table(engine: &mut ExecutionEngine<MemoryStorage>) {
     engine
         .execute("CREATE TABLE t (id INTEGER PRIMARY KEY, val INTEGER)")
         .unwrap();
-    engine
-        .execute("INSERT INTO t VALUES (1, 100)")
-        .unwrap();
-    engine
-        .execute("INSERT INTO t VALUES (2, 200)")
-        .unwrap();
+    engine.execute("INSERT INTO t VALUES (1, 100)").unwrap();
+    engine.execute("INSERT INTO t VALUES (2, 200)").unwrap();
 }
 
 fn count_rows(engine: &mut ExecutionEngine<MemoryStorage>) -> i64 {
@@ -45,7 +41,11 @@ fn g5_sem1_savepoint_rollback_restores_state_oracle() {
     engine.execute("BEGIN").unwrap();
     engine.execute("SAVEPOINT sp1").unwrap();
     engine.execute("INSERT INTO t VALUES (3, 300)").unwrap();
-    assert_eq!(count_rows(&mut engine), 3, "After INSERT in savepoint: 3 rows");
+    assert_eq!(
+        count_rows(&mut engine),
+        3,
+        "After INSERT in savepoint: 3 rows"
+    );
 
     let rollback_result = engine.execute("ROLLBACK TO SAVEPOINT sp1");
     assert!(
@@ -91,9 +91,7 @@ fn g5_sem1_savepoint_nested_oracle() {
     );
     engine.execute("INSERT INTO t VALUES (3, 300)").unwrap();
     engine.execute("SAVEPOINT inner").unwrap();
-    engine
-        .execute("INSERT INTO t VALUES (4, 400)")
-        .unwrap();
+    engine.execute("INSERT INTO t VALUES (4, 400)").unwrap();
     assert_eq!(count_rows(&mut engine), 4, "After both inserts: 4 rows");
 
     let rollback_inner = engine.execute("ROLLBACK TO SAVEPOINT inner");
