@@ -196,8 +196,6 @@ impl GraphPattern {
 /// GMP query builder for scenarios
 #[derive(Debug, Clone)]
 pub struct GmpQueryBuilder {
-    #[allow(dead_code)]
-    scenario: GmpScenario,
     pattern: GraphPattern,
     filters: Vec<String>,
     limit: Option<usize>,
@@ -208,7 +206,6 @@ impl GmpQueryBuilder {
     pub fn new(scenario: GmpScenario) -> Self {
         let pattern = Self::default_pattern_for(scenario);
         Self {
-            scenario,
             pattern,
             filters: Vec::new(),
             limit: None,
