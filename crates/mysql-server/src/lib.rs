@@ -899,11 +899,12 @@ fn make_deprecate_eof_ok_packet(
     warnings: u16,
 ) -> Packet {
     let mut p = Vec::new();
-    // DEPRECATE_EOF result-set terminator uses 0xFE marker (per MySQL 8.0
-    // protocol). The 0x00 marker is for the standard command-response OK
-    // packet (INSERT/UPDATE/DELETE), NOT for the result-set terminator.
-    // mysql-client 8.0.46 + libmysqlclient 8.0.46 strictly validates this.
-    p.push(0xfe);
+    // DEPRECATE_EOF protocol (MySQL 8.0+): trailing result-set terminator
+    // is an OK packet (0x00 marker), NOT an EOF packet (0xFE).
+    // This replaces the classic EOF when the client advertises
+    // CLIENT_DEPRECATE_EOF capability. The 0x00 marker is the standard
+    // OK packet format per the MySQL client/server protocol.
+    p.push(0x00);
     write_lenenc_int(&mut p, affected).unwrap();
     write_lenenc_int(&mut p, last_id).unwrap();
     p.write_u16::<LittleEndian>(status).unwrap();
@@ -1351,6 +1352,9 @@ fn send_binary_result_set<W: Write>(
     // Honor the client's DEPRECATE_EOF capability.
     if cap & capability::DEPRECATE_EOF == 0 {
         make_eof_packet(seq, 0x0002).write_to(w)?;
+        seq = seq.wrapping_add(1);
+    } else {
+        make_deprecate_eof_ok_packet(seq, 0, 0, 0x0002, 0).write_to(w)?;
         seq = seq.wrapping_add(1);
     }
     // Rows in binary protocol
@@ -2624,19 +2628,6 @@ fn do_command_loop<S: Read + Write>(
                 let params: Vec<crate::StmtParam> =
                     parse_stmt_execute_params(payload, stmt_param_count, &stmt_param_types);
                 let final_sql = replace_placeholders(&stmt_sql, &params);
-                eprintln!("DEBUG STMT EXECUTE (id={}):", stmt_id);
-                eprintln!("  stmt_sql='{}'", stmt_sql);
-                eprintln!("  params={:?}", params);
-                eprintln!("  final_sql='{}'", final_sql);
-                for (i, (v, n)) in params.iter().enumerate() {
-                    eprintln!(
-                        "  param[{}] bytes={:?} ({}) is_numeric={}",
-                        i,
-                        v,
-                        v.len(),
-                        n
-                    );
-                }
                 tracing::info!("STMT EXECUTE (id={}): {}", stmt_id, final_sql);
                 let mut eng = engine.write().unwrap();
                 let parsed = parse(&final_sql);

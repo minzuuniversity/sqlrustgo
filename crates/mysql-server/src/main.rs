@@ -862,10 +862,9 @@ fn install_soak_signal_handler() {
     use signal_hook::iterator::Signals;
     let mut signals = Signals::new([SIGINT, SIGTERM]).expect("install soak signal handler");
     std::thread::spawn(move || {
-        for _sig in signals.forever() {
+        if let Some(_sig) = signals.forever().next() {
             SOAK_SHUTDOWN.store(true, Ordering::SeqCst);
             eprintln!("[soak] shutdown signal received, draining...");
-            break;
         }
     });
 }
