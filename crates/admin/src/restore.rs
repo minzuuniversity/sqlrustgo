@@ -4,10 +4,73 @@ use std::fs;
 use std::io::Write;
 use std::path::Path;
 
+#[allow(dead_code)]
+#[derive(Debug, Clone)]
 pub struct RestoreResult {
     pub manifest: Manifest,
     pub restored_data_files: usize,
     pub restored_wal: bool,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_restore_result_basic() {
+        let result = RestoreResult {
+            manifest: Manifest::new(),
+            restored_data_files: 3,
+            restored_wal: false,
+        };
+        assert_eq!(result.restored_data_files, 3);
+        assert!(!result.restored_wal);
+    }
+
+    #[test]
+    fn test_restore_result_with_wal() {
+        let result = RestoreResult {
+            manifest: Manifest::new(),
+            restored_data_files: 5,
+            restored_wal: true,
+        };
+        assert!(result.restored_wal);
+        assert_eq!(result.restored_data_files, 5);
+    }
+
+    #[test]
+    fn test_restore_result_empty() {
+        let result = RestoreResult {
+            manifest: Manifest::new(),
+            restored_data_files: 0,
+            restored_wal: false,
+        };
+        assert_eq!(result.restored_data_files, 0);
+        assert!(!result.restored_wal);
+    }
+
+    #[test]
+    fn test_restore_result_clone() {
+        let result = RestoreResult {
+            manifest: Manifest::new(),
+            restored_data_files: 7,
+            restored_wal: true,
+        };
+        let cloned = result.clone();
+        assert_eq!(result.restored_data_files, cloned.restored_data_files);
+        assert_eq!(result.restored_wal, cloned.restored_wal);
+    }
+
+    #[test]
+    fn test_restore_result_debug() {
+        let result = RestoreResult {
+            manifest: Manifest::new(),
+            restored_data_files: 1,
+            restored_wal: false,
+        };
+        let debug_str = format!("{:?}", result);
+        assert!(debug_str.contains("RestoreResult"));
+    }
 }
 
 pub fn physical_restore(input: &Path, target_dir: &Path) -> Result<RestoreResult, BackupError> {

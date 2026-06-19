@@ -295,20 +295,15 @@ mod tests {
     #[test]
     fn test_with_wal_file_creates_persistent_engine() {
         let dir = TempDir::new().expect("tempdir");
-        let mut engine =
-            ExecutionEngine::<MemoryStorage>::with_wal_file(dir.path().to_path_buf())
-                .expect("with_wal_file should succeed");
+        let mut engine = ExecutionEngine::<MemoryStorage>::with_wal_file(dir.path().to_path_buf())
+            .expect("with_wal_file should succeed");
         engine.execute("CREATE TABLE t (id INTEGER)").unwrap();
         engine.execute("INSERT INTO t VALUES (100)").unwrap();
         let r = engine.execute("SELECT id FROM t").unwrap();
         assert_eq!(r.rows, vec![vec![Value::Integer(100)]]);
 
         let wal_path = dir.path().join("sqlrustgo.wal");
-        assert!(
-            wal_path.exists(),
-            "WAL file should exist at {:?}",
-            wal_path
-        );
+        assert!(wal_path.exists(), "WAL file should exist at {:?}", wal_path);
     }
 
     #[test]

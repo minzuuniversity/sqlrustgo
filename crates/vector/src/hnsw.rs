@@ -621,5 +621,4 @@ mod tests {
         assert_eq!(index.search(&query, 10).unwrap().len(), 10);
         println!("1K HNSW search: {:.3}ms avg", avg_elapsed);
     }
-
 }

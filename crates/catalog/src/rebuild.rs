@@ -5,12 +5,36 @@
 use crate::data_type::DataType;
 
 /// Convert a storage data type string to catalog DataType
-#[allow(dead_code)]
 pub fn convert_data_type(data_type: &str) -> Option<DataType> {
     DataType::parse_sql_name(data_type)
 }
 
-// TEMPORARILY DISABLED: The test module has extensive API mismatches with the current
-// Catalog and Storage implementations. The tests expect APIs that no longer exist.
-// #[cfg(test)]
-// mod tests { ... }
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_convert_data_type_text() {
+        let dt = convert_data_type("TEXT");
+        assert_eq!(dt, Some(DataType::Text));
+    }
+
+    #[test]
+    fn test_convert_data_type_various() {
+        assert_eq!(convert_data_type("INT"), Some(DataType::Integer));
+        assert_eq!(convert_data_type("VARCHAR"), Some(DataType::Text));
+        assert_eq!(convert_data_type("BOOL"), Some(DataType::Boolean));
+    }
+
+    #[test]
+    fn test_convert_data_type_lowercase() {
+        let dt = convert_data_type("text");
+        assert_eq!(dt, Some(DataType::Text));
+    }
+
+    #[test]
+    fn test_convert_data_type_mixed_case() {
+        let dt = convert_data_type("Text");
+        assert_eq!(dt, Some(DataType::Text));
+    }
+}

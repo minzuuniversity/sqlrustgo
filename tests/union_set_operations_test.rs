@@ -205,10 +205,7 @@ fn union_with_mixed_numeric_types() {
     // confirm row count and that each row has one numeric column.
     assert_eq!(r.rows.len(), 4);
     for row in &r.rows {
-        assert!(matches!(
-            &row[0],
-            Value::Integer(_) | Value::Float(_)
-        ));
+        assert!(matches!(&row[0], Value::Integer(_) | Value::Float(_)));
     }
 }
 
@@ -308,9 +305,7 @@ fn order_by_after_top_level_union() {
     e.execute("INSERT INTO lo2 VALUES (6),(4),(5)").unwrap();
 
     let r = e
-        .execute(
-            "SELECT v FROM lo1 UNION SELECT v FROM lo2 ORDER BY v LIMIT 3",
-        )
+        .execute("SELECT v FROM lo1 UNION SELECT v FROM lo2 ORDER BY v LIMIT 3")
         .unwrap();
     assert_eq!(r.rows.len(), 3);
 }

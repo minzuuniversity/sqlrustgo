@@ -26,3 +26,42 @@ impl From<String> for AgentSqlError {
         AgentSqlError::InternalError(s)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_error_variants() {
+        let e = AgentSqlError::ParseError("bad syntax".to_string());
+        assert_eq!(e.to_string(), "Parse error: bad syntax");
+
+        let e = AgentSqlError::PlanError("plan failed".to_string());
+        assert_eq!(e.to_string(), "Plan error: plan failed");
+
+        let e = AgentSqlError::ExecutionError("exec failed".to_string());
+        assert_eq!(e.to_string(), "Execution error: exec failed");
+
+        let e = AgentSqlError::SchemaError("schema invalid".to_string());
+        assert_eq!(e.to_string(), "Schema error: schema invalid");
+
+        let e = AgentSqlError::HttpError("http error".to_string());
+        assert_eq!(e.to_string(), "HTTP error: http error");
+
+        let e = AgentSqlError::InternalError("internal".to_string());
+        assert_eq!(e.to_string(), "Internal error: internal");
+    }
+
+    #[test]
+    fn test_from_string() {
+        let e: AgentSqlError = "message".to_string().into();
+        assert!(matches!(e, AgentSqlError::InternalError(msg) if msg == "message"));
+    }
+
+    #[test]
+    fn test_error_debug() {
+        let e = AgentSqlError::ParseError("test".to_string());
+        let debug_str = format!("{:?}", e);
+        assert!(debug_str.contains("ParseError"));
+    }
+}

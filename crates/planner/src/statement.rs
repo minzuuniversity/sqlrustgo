@@ -56,3 +56,74 @@ impl MergeClause {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::Column;
+
+    #[test]
+    fn test_merge_statement_new() {
+        let stmt = MergeStatement::new(
+            "target".to_string(),
+            "source".to_string(),
+            Expr::Column(Column::new("id".to_string())),
+            None,
+            None,
+        );
+        assert_eq!(stmt.target_table, "target");
+        assert_eq!(stmt.source_table, "source");
+        assert!(stmt.matched_clause.is_none());
+        assert!(stmt.not_matched_clause.is_none());
+    }
+
+    #[test]
+    fn test_merge_clause_new() {
+        let clause = MergeClause::new(
+            vec!["col1".to_string()],
+            vec![Expr::Literal(sqlrustgo_types::Value::Integer(42))],
+            vec!["col2".to_string()],
+            vec![Expr::Literal(sqlrustgo_types::Value::Text("x".to_string()))],
+        );
+        assert_eq!(clause.update_columns, vec!["col1".to_string()]);
+        assert_eq!(clause.insert_columns, vec!["col2".to_string()]);
+        assert_eq!(clause.update_values.len(), 1);
+        assert_eq!(clause.insert_values.len(), 1);
+    }
+
+    #[test]
+    fn test_merge_statement_with_clauses() {
+        let matched = Some(MergeClause::new(
+            vec!["name".to_string()],
+            vec![Expr::Literal(sqlrustgo_types::Value::Text(
+                "updated".to_string(),
+            ))],
+            vec![],
+            vec![],
+        ));
+        let stmt = MergeStatement::new(
+            "users".to_string(),
+            "staging".to_string(),
+            Expr::Column(Column::new("id".to_string())),
+            matched,
+            None,
+        );
+        assert!(stmt.matched_clause.is_some());
+        assert!(stmt.not_matched_clause.is_none());
+    }
+
+    #[test]
+    fn test_clone_and_debug() {
+        let stmt = MergeStatement::new(
+            "t".to_string(),
+            "s".to_string(),
+            Expr::Column(Column::new("a".to_string())),
+            None,
+            None,
+        );
+        let cloned = stmt.clone();
+        assert_eq!(stmt.target_table, cloned.target_table);
+        let debug_str = format!("{:?}", stmt);
+        assert!(debug_str.contains("MergeStatement"));
+    }
+}

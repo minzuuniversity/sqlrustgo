@@ -1158,8 +1158,12 @@ fn wal_checkpoint_thread(wal_path: std::path::PathBuf, shutdown: std::sync::Arc<
     const WAL_MAX_SIZE_MB: u64 = 100;
     const WAL_MAX_SIZE_BYTES: u64 = WAL_MAX_SIZE_MB * 1024 * 1024;
 
-    eprintln!("[wal-checkpoint] started: max={}MB interval={}s path={}",
-        WAL_MAX_SIZE_MB, WAL_CHECK_INTERVAL.as_secs(), wal_path.display());
+    eprintln!(
+        "[wal-checkpoint] started: max={}MB interval={}s path={}",
+        WAL_MAX_SIZE_MB,
+        WAL_CHECK_INTERVAL.as_secs(),
+        wal_path.display()
+    );
 
     while !shutdown.load(Ordering::Relaxed) {
         std::thread::sleep(WAL_CHECK_INTERVAL);
@@ -1171,8 +1175,11 @@ fn wal_checkpoint_thread(wal_path: std::path::PathBuf, shutdown: std::sync::Arc<
             Err(_) => continue,
         };
         if size > WAL_MAX_SIZE_BYTES {
-            eprintln!("[wal-checkpoint] WAL size {}MB > {}MB, truncating",
-                size / 1024 / 1024, WAL_MAX_SIZE_MB);
+            eprintln!(
+                "[wal-checkpoint] WAL size {}MB > {}MB, truncating",
+                size / 1024 / 1024,
+                WAL_MAX_SIZE_MB
+            );
             match std::fs::OpenOptions::new()
                 .write(true)
                 .truncate(true)
@@ -1185,4 +1192,3 @@ fn wal_checkpoint_thread(wal_path: std::path::PathBuf, shutdown: std::sync::Arc<
     }
     eprintln!("[wal-checkpoint] shutdown");
 }
-

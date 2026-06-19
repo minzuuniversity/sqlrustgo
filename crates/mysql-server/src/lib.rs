@@ -2394,12 +2394,15 @@ fn do_command_loop<S: Read + Write>(
                                         .rows
                                         .first()
                                         .map(|row| {
-                                            (0..row.len()).map(|i| format!("col_{}", i + 1)).collect()
+                                            (0..row.len())
+                                                .map(|i| format!("col_{}", i + 1))
+                                                .collect()
                                         })
                                         .unwrap_or_else(|| vec!["result".to_string()]);
                                     let ctypes: Vec<String> =
                                         cols.iter().map(|_| "VARCHAR(255)".to_string()).collect();
-                                    seq = send_result_set(stream, &cols, &ctypes, &r.rows, seq, cap)?;
+                                    seq =
+                                        send_result_set(stream, &cols, &ctypes, &r.rows, seq, cap)?;
                                 }
                                 Ok(r) => {
                                     make_ok_packet(seq, r.affected_rows as u64, 0, 0x0002, 0)
