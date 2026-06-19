@@ -1,7 +1,7 @@
 {
   "version": "v3.9.0-sprint8",
-  "timestamp": "2026-06-18T01:40:00Z",
-  "total_allowed": 29,
+  "timestamp": "2026-06-19T00:00:00Z",
+  "total_allowed": 28,
   "ignored_tests": [
     {
       "file": "tests/oracle_g1_tpch_sha256.rs",
@@ -162,14 +162,6 @@
       "issue_link": "TBD",
       "added_in": "TBD",
       "category": "crash_monkey"
-    },
-    {
-      "file": "tests/long_run_stability_72h_test.rs",
-      "line": "6:#[ignore]",
-      "reason": "needs review (no inline reason)",
-      "issue_link": "TBD",
-      "added_in": "TBD",
-      "category": "long_run_stability"
     },
     {
       "file": "tests/perf_eng_batched_insert_test.rs",
