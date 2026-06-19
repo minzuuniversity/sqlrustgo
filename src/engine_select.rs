@@ -1985,6 +1985,59 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             )),
         }
     }
+
+    /// Execute a `Statement::Union`, supporting arbitrary left-associative
+    /// nesting (e.g. `a UNION b UNION c` parses as
+    /// `Union { left: Union { left: a, right: b }, right: c }`).
+    ///
+    /// Each leg must be a SELECT or another UNION — anything else is a
+    /// parser error reported to the caller.
+    pub(crate) fn execute_union(
+        &self,
+        stmt: &sqlrustgo_parser::Statement,
+    ) -> SqlResult<ExecutorResult> {
+        let union_stmt = match stmt {
+            sqlrustgo_parser::Statement::Union(u) => u,
+            _ => {
+                return Err(SqlError::ExecutionError(
+                    "execute_union called on non-UNION statement".to_string(),
+                ))
+            }
+        };
+
+        let mut left_result = match union_stmt.left.as_ref() {
+            sqlrustgo_parser::Statement::Select(s) => self.execute_select(s)?,
+            sqlrustgo_parser::Statement::Union(_) => {
+                self.execute_union(union_stmt.left.as_ref())?
+            }
+            _ => {
+                return Err(SqlError::ExecutionError(
+                    "UNION left side must be a SELECT or UNION".to_string(),
+                ))
+            }
+        };
+        let right_result = match union_stmt.right.as_ref() {
+            sqlrustgo_parser::Statement::Select(s) => self.execute_select(s)?,
+            sqlrustgo_parser::Statement::Union(_) => {
+                self.execute_union(union_stmt.right.as_ref())?
+            }
+            _ => {
+                return Err(SqlError::ExecutionError(
+                    "UNION right side must be a SELECT or UNION".to_string(),
+                ))
+            }
+        };
+
+        left_result.rows.extend(right_result.rows);
+
+        if !union_stmt.union_all {
+            left_result.rows.sort();
+            left_result.rows.dedup();
+        }
+
+        left_result.affected_rows = left_result.rows.len();
+        Ok(left_result)
+    }
 }
 
 /// Which side of a single join a resolved column index belongs to, or a
