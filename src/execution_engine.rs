@@ -1292,7 +1292,10 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 self.transaction_manager
                     .discard_undo_after(tx_id, name)
                     .map_err(|e| {
-                        SqlError::ExecutionError(format!("RELEASE SAVEPOINT {} failed: {}", name, e))
+                        SqlError::ExecutionError(format!(
+                            "RELEASE SAVEPOINT {} failed: {}",
+                            name, e
+                        ))
                     })?;
             }
         }
@@ -1323,9 +1326,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         let (table, pk_value) = decode_undo_key(key_bytes)?;
         let mut storage = self.storage.write().unwrap();
         let pk_clone = pk_value.clone();
-        let filter: sqlrustgo_storage::engine::RowFilter = Box::new(move |row: &Vec<Value>| {
-            row.first().map(|v| v == &pk_clone).unwrap_or(false)
-        });
+        let filter: sqlrustgo_storage::engine::RowFilter =
+            Box::new(move |row: &Vec<Value>| row.first().map(|v| v == &pk_clone).unwrap_or(false));
         let deleted = storage.delete_if(&table, &filter)?;
         if deleted == 0 {
             return Err(SqlError::ExecutionError(format!(
@@ -1349,9 +1351,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         let record = decode_undo_value(old_value_bytes)?;
         let pk_clone = pk_value.clone();
         let mut storage = self.storage.write().unwrap();
-        let filter: sqlrustgo_storage::engine::RowFilter = Box::new(move |row: &Vec<Value>| {
-            row.first().map(|v| v == &pk_clone).unwrap_or(false)
-        });
+        let filter: sqlrustgo_storage::engine::RowFilter =
+            Box::new(move |row: &Vec<Value>| row.first().map(|v| v == &pk_clone).unwrap_or(false));
         let deleted = storage.delete_if(&table, &filter)?;
         if deleted == 0 {
             return Err(SqlError::ExecutionError(format!(
