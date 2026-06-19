@@ -42,8 +42,8 @@ fn bench_bulk_insert_lineitem() {
     engine.execute("CREATE TABLE lineitem (l_orderkey INTEGER, l_partkey INTEGER, l_suppkey INTEGER, l_linenumber INTEGER, l_quantity REAL, l_extendedprice REAL, l_discount REAL, l_tax REAL, l_returnflag TEXT, l_linestatus TEXT, l_shipdate TEXT, l_commitdate TEXT, l_receiptdate TEXT, l_shipinstruct TEXT, l_shipmode TEXT, l_comment TEXT)").unwrap();
 
     let path = resolve_lineitem_path();
-    let content = std::fs::read_to_string(&path)
-        .unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+    let content =
+        std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
     let n = 16;
     let mut records: Vec<Record> = Vec::with_capacity(content.lines().count());
     for line in content.lines() {
@@ -58,21 +58,23 @@ fn bench_bulk_insert_lineitem() {
     let inserted = engine.bulk_insert_records("lineitem", records).unwrap();
     let dur = start.elapsed();
     println!("bulk_insert_records: inserted={} in {:?}", inserted, dur);
-    assert_eq!(inserted, expected, "bulk_insert_records must insert all parsed records");
+    assert_eq!(
+        inserted, expected,
+        "bulk_insert_records must insert all parsed records"
+    );
 }
 
 fn resolve_lineitem_path() -> PathBuf {
     if let Ok(p) = std::env::var("LINEITEM_TBL_PATH") {
         return PathBuf::from(p);
     }
-    for candidate in [
-        "tests/data/lineitem.tbl",
-        "data/lineitem.tbl",
-    ] {
+    for candidate in ["tests/data/lineitem.tbl", "data/lineitem.tbl"] {
         let p = PathBuf::from(candidate);
         if p.exists() {
             return p;
         }
     }
-    panic!("lineitem.tbl not found: set LINEITEM_TBL_PATH or place file under tests/data/ or data/");
+    panic!(
+        "lineitem.tbl not found: set LINEITEM_TBL_PATH or place file under tests/data/ or data/"
+    );
 }
