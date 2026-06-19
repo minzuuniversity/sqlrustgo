@@ -116,6 +116,55 @@ Key crates in `crates/`:
 | **recovery_scenarios_test 有 2 个 pre-existing 失败** | `r3_d07_single_entry_insert_only` 和 `r3_d08_single_entry_delete_only` 在 develop/v3.9.0 改 WAL 逻辑前就失败，与 LOAD DATA 性能修复无关。改 recovery 代码后必须 `git stash` 验证非回归。 |
 | **tpch_q9_audit baseline 缺失** | `tests/data/tpch-sf01/baseline/Q09_three_way.json` 从未生成。un-`#[ignore]` 此测试会导致 panic / OOM。修复：要么生成 baseline，要么保持 `#[ignore]`。 |
 
+## Test Policy (ADR-008)
+
+### Policy 1: Test Claim Transparency (P-Claim)
+
+Every "PASS" claim in public-facing docs MUST be qualified:
+- Number of tests **actually run** (vs trivial-PASS due to `#[ignore]`)
+- Or an explicit "0 `#[ignore]`" badge if all tests ran
+- Reference to the meta-gate that verified the claim
+
+**Required phrasing**:
+- `TPC-H 22/22 in-process ✅` (NOT just `TPC-H 22/22 ✅`)
+- `9-Dim Gate 8/8 PASS (D9 only; G2-G10 templated)` (NOT just `9-Dim Gate 8/8 PASS`)
+- `Soak 10/10 PASS (10/10 are #[ignore])` (explicitly disclose ignore)
+
+### Policy 2: No-Ignore Gate Tests (P-Gate)
+
+**A test file referenced by any script in `scripts/gate/*.sh` is a GATE TEST. Gate tests MUST NOT be `#[ignore]`-marked.**
+
+- **Definition**: A test file is a gate test iff its filename appears in a `cargo test ... --test X` invocation in any `scripts/gate/*.sh` script.
+- **Enforcement**: P16 meta-gate (`scripts/gate/check_gate_test_integrity.sh`) — runs in CI, fails the build if any gate test is `#[ignore]`.
+- **Exception process**: A gate test may be temporarily ignored only via an ADR amendment with explicit deadline + owner + success criteria, recorded as a header comment in the gate script.
+- **Why**: A `#[ignore]`'d test produces `cargo test exit 0` (= "PASS") even though the test didn't run. The P16 meta-gate catches this V8-style anti-pattern.
+
+**Current state (2026-06-17)**: 27 gate-referenced tests, 0 `#[ignore]`. 42 total `#[ignore]`'d tests are all non-gate (perf benchmarks, long-run stability, known-broken tracked in issues). See `tests/baseline/gate_test_baseline.json`.
+
+### Running the meta-gates
+
+```bash
+# P11: Gate Self-Verification
+bash scripts/gate/check_gate_self_verification.sh
+
+# P12: No Implicit Tolerance (counts #[ignore])
+bash scripts/gate/check_ignore_count.sh
+
+# P13: Test Count Monotonicity
+bash scripts/gate/check_test_count_monotonic.sh
+
+# P14: DRIFT != PASS
+bash scripts/gate/check_drift_not_pass.sh
+
+# P15: Oracle Required
+bash scripts/gate/check_oracle_present.sh
+
+# P16: Gate Test Integrity (NEW, ADR-008 Policy 2)
+bash scripts/gate/check_gate_test_integrity.sh
+```
+
+See `docs/governance/adr/ADR-008-test-claim-transparency.md` for the full policy.
+
 ## TPC-H LOAD DATA 性能 (重要！)
 
 **症状**: SF=0.01 (60K 行) LOAD DATA 在 `cargo test` 中**永久挂起** (>11 分钟)，导致所有 13 个 TPC-H wire 测试必须 `#[ignore]` 掉。
@@ -201,3 +250,47 @@ git ls-remote origin refs/heads/develop/v3.9.0
 - E2E tests in `tests/e2e/`
 - Crate-specific tests in each crate's `tests/` or `src/`
 - Use `--test <test_name>` to run specific test files
+
+<!-- gitnexus:start -->
+# GitNexus — Code Intelligence
+
+This project is indexed by GitNexus as **sqlrustgo** (72572 symbols, 106276 relationships, 300 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+
+> If any GitNexus tool warns the index is stale, run `npx gitnexus analyze` in terminal first.
+
+## Always Do
+
+- **MUST run impact analysis before editing any symbol.** Before modifying a function, class, or method, run `gitnexus_impact({target: "symbolName", direction: "upstream"})` and report the blast radius (direct callers, affected processes, risk level) to the user.
+- **MUST run `gitnexus_detect_changes()` before committing** to verify your changes only affect expected symbols and execution flows.
+- **MUST warn the user** if impact analysis returns HIGH or CRITICAL risk before proceeding with edits.
+- When exploring unfamiliar code, use `gitnexus_query({query: "concept"})` to find execution flows instead of grepping. It returns process-grouped results ranked by relevance.
+- When you need full context on a specific symbol — callers, callees, which execution flows it participates in — use `gitnexus_context({name: "symbolName"})`.
+
+## Never Do
+
+- NEVER edit a function, class, or method without first running `gitnexus_impact` on it.
+- NEVER ignore HIGH or CRITICAL risk warnings from impact analysis.
+- NEVER rename symbols with find-and-replace — use `gitnexus_rename` which understands the call graph.
+- NEVER commit changes without running `gitnexus_detect_changes()` to check affected scope.
+
+## Resources
+
+| Resource | Use for |
+|----------|---------|
+| `gitnexus://repo/sqlrustgo/context` | Codebase overview, check index freshness |
+| `gitnexus://repo/sqlrustgo/clusters` | All functional areas |
+| `gitnexus://repo/sqlrustgo/processes` | All execution flows |
+| `gitnexus://repo/sqlrustgo/process/{name}` | Step-by-step execution trace |
+
+## CLI
+
+| Task | Read this skill file |
+|------|---------------------|
+| Understand architecture / "How does X work?" | `.claude/skills/gitnexus/gitnexus-exploring/SKILL.md` |
+| Blast radius / "What breaks if I change X?" | `.claude/skills/gitnexus/gitnexus-impact-analysis/SKILL.md` |
+| Trace bugs / "Why is X failing?" | `.claude/skills/gitnexus/gitnexus-debugging/SKILL.md` |
+| Rename / extract / split / refactor | `.claude/skills/gitnexus/gitnexus-refactoring/SKILL.md` |
+| Tools, resources, schema reference | `.claude/skills/gitnexus/gitnexus-guide/SKILL.md` |
+| Index, status, clean, wiki CLI commands | `.claude/skills/gitnexus/gitnexus-cli/SKILL.md` |
+
+<!-- gitnexus:end -->

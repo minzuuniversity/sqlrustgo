@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+# Purpose: Scan SQLRustGo for security attack surface (env vars, network, FS, IPC)
+# Coverage: P11 (Gate Self-Verification) — security gate verification
+# Verifies: no hardcoded secrets, safe network/FS access patterns
+
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

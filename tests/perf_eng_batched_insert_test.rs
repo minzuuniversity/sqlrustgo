@@ -53,7 +53,6 @@ fn open_client(data_dir: &std::path::Path) -> MySqlTestClient {
 }
 
 #[test]
-#[ignore = "performance gate, run with --ignored --release"]
 fn perf_1000_row_batched_insert_under_1s() {
     let temp_dir = TempDir::new().unwrap();
     let data_dir = temp_dir.path().to_path_buf();
@@ -92,7 +91,6 @@ fn perf_1000_row_batched_insert_under_1s() {
 }
 
 #[test]
-#[ignore = "performance gate, run with --ignored --release"]
 fn perf_10000_row_batched_insert_under_10s() {
     let temp_dir = TempDir::new().unwrap();
     let data_dir = temp_dir.path().to_path_buf();
