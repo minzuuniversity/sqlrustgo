@@ -72,7 +72,11 @@ impl Server {
             .ok()
             .map(PathBuf::from)
             .unwrap_or_else(|| manifest_dir.join("target"));
-        let profile = if cfg!(debug_assertions) { "debug" } else { "release" };
+        let profile = if cfg!(debug_assertions) {
+            "debug"
+        } else {
+            "release"
+        };
         let bin = target_dir.join(profile).join("sqlrustgo-mysql-server");
         if !bin.exists() {
             return Err(format!("binary not found at {:?}", bin));

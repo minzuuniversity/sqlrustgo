@@ -5,9 +5,7 @@
 
 mod common;
 
-use common::oracle_framework::{
-    DEFAULT_PERF_TOLERANCE_PCT, PerfBaseline,
-};
+use common::oracle_framework::{PerfBaseline, DEFAULT_PERF_TOLERANCE_PCT};
 use std::time::Instant;
 
 fn load_g11_baselines() -> Vec<PerfBaseline> {
@@ -19,7 +17,10 @@ fn load_g11_baselines() -> Vec<PerfBaseline> {
         .and_then(|x| x.as_str())
         .unwrap_or("unknown")
         .to_string();
-    let arr = v.get("workloads").and_then(|x| x.as_array()).expect("workloads array");
+    let arr = v
+        .get("workloads")
+        .and_then(|x| x.as_array())
+        .expect("workloads array");
     arr.iter()
         .map(|w| PerfBaseline {
             workload: w
@@ -27,10 +28,7 @@ fn load_g11_baselines() -> Vec<PerfBaseline> {
                 .and_then(|x| x.as_str())
                 .unwrap_or("unknown")
                 .to_string(),
-            min_qps: w
-                .get("min_qps")
-                .and_then(|x| x.as_f64())
-                .expect("min_qps"),
+            min_qps: w.get("min_qps").and_then(|x| x.as_f64()).expect("min_qps"),
             max_latency_p99_ms: w
                 .get("max_latency_p99_ms")
                 .and_then(|x| x.as_f64())
