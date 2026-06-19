@@ -31,8 +31,15 @@ use std::time::Duration;
 const CAP_LONG_PASSWORD: u32 = 0x00000001;
 const CAP_PROTOCOL_41: u32 = 0x00000200;
 const CAP_SECURE_CONNECTION: u32 = 0x00008000;
+// DEPRECATE_EOF (mysql 8.0+ default): when set, the server skips the
+// inter-record EOF between column definitions and rows, and sends an
+// OK packet (0x00) instead of EOF (0xFE) at the end of the result set.
+// This eliminates the ambiguity where a bare EOF (0xFE, len < 9) between
+// column defs and rows was mistaken for the final terminator.
+const CAP_DEPRECATE_EOF: u32 = 0x01000000;
 
-const CLIENT_CAPABILITIES: u32 = CAP_LONG_PASSWORD | CAP_PROTOCOL_41 | CAP_SECURE_CONNECTION;
+const CLIENT_CAPABILITIES: u32 =
+    CAP_LONG_PASSWORD | CAP_PROTOCOL_41 | CAP_SECURE_CONNECTION;
 const MAX_PACKET_SIZE: u32 = 16 * 1024 * 1024;
 const CHARSET_UTF8: u8 = 33;
 
