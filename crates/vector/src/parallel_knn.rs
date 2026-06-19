@@ -493,5 +493,4 @@ mod tests {
         let result = index.search(&[500.0f32; 64], 10).unwrap();
         assert_eq!(result.entries.len(), 10);
     }
-
 }

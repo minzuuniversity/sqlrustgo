@@ -3951,9 +3951,15 @@ mod tests {
         e.execute("INSERT INTO orders VALUES ('east', 20)").unwrap();
         e.execute("INSERT INTO orders VALUES ('west', 50)").unwrap();
         let r = e
-            .execute("SELECT region, SUM(amount) FROM orders GROUP BY region HAVING SUM(amount) > 35")
+            .execute(
+                "SELECT region, SUM(amount) FROM orders GROUP BY region HAVING SUM(amount) > 35",
+            )
             .unwrap();
-        assert_eq!(r.rows.len(), 1, "only west (sum=50) should match HAVING > 35");
+        assert_eq!(
+            r.rows.len(),
+            1,
+            "only west (sum=50) should match HAVING > 35"
+        );
         assert_eq!(r.rows[0][0], Value::Text("west".to_string()));
         assert_eq!(r.rows[0][1], Value::Integer(50));
     }
@@ -3967,7 +3973,8 @@ mod tests {
             .unwrap();
         e.execute("INSERT INTO customers VALUES (1, 'alice')")
             .unwrap();
-        e.execute("INSERT INTO customers VALUES (2, 'bob')").unwrap();
+        e.execute("INSERT INTO customers VALUES (2, 'bob')")
+            .unwrap();
         e.execute("INSERT INTO orders VALUES (1, 100)").unwrap();
         e.execute("INSERT INTO orders VALUES (2, 200)").unwrap();
         let r = e
