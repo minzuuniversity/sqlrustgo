@@ -599,6 +599,11 @@ path = "tests/insert_odku_test.rs"
 name = "replace_test"
 path = "tests/replace_test.rs"
 
+# Round 3 coverage (#3537) — task-3.2 vtu_ir 0% files
+[[test]]
+name = "vtu_ir_modules_test"
+path = "tests/vtu_ir_modules_test.rs"
+
 [[test]]
 name = "int4_explicit_tx_test"
 path = "tests/int4_explicit_tx_test.rs"
