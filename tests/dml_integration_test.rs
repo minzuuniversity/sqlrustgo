@@ -40,11 +40,7 @@ fn count_rows(e: &mut ExecutionEngine<MemoryStorage>, table: &str) -> usize {
     }
 }
 
-fn select_int_col(
-    e: &mut ExecutionEngine<MemoryStorage>,
-    sql: &str,
-    col_idx: usize,
-) -> Vec<i64> {
+fn select_int_col(e: &mut ExecutionEngine<MemoryStorage>, sql: &str, col_idx: usize) -> Vec<i64> {
     let r = e.execute(sql).unwrap();
     r.rows
         .iter()
@@ -63,9 +59,7 @@ fn select_int_col(
 fn insert_single_row_values() {
     let mut e = fresh();
     e.execute("CREATE TABLE t (id INTEGER, name TEXT)").unwrap();
-    let r = e
-        .execute("INSERT INTO t VALUES (1, 'alice')")
-        .unwrap();
+    let r = e.execute("INSERT INTO t VALUES (1, 'alice')").unwrap();
     assert_eq!(r.affected_rows, 1);
     assert_eq!(count_rows(&mut e, "t"), 1);
 }
@@ -94,9 +88,7 @@ fn insert_with_explicit_columns() {
     let mut e = fresh();
     e.execute("CREATE TABLE t (id INTEGER, name TEXT, age INTEGER)")
         .unwrap();
-    let r = e
-        .execute("INSERT INTO t VALUES (7, 'bob', 25)")
-        .unwrap();
+    let r = e.execute("INSERT INTO t VALUES (7, 'bob', 25)").unwrap();
     assert_eq!(r.affected_rows, 1);
 
     let row_r = e.execute("SELECT id, name, age FROM t").unwrap();
@@ -150,14 +142,10 @@ fn update_single_column_with_where() {
     e.execute("INSERT INTO t VALUES (1,10),(2,20),(3,30)")
         .unwrap();
 
-    let r = e
-        .execute("UPDATE t SET v = 999 WHERE id = 2")
-        .unwrap();
+    let r = e.execute("UPDATE t SET v = 999 WHERE id = 2").unwrap();
     assert_eq!(r.affected_rows, 1, "only id=2 should match");
 
-    let r = e
-        .execute("SELECT id, v FROM t ORDER BY id")
-        .unwrap();
+    let r = e.execute("SELECT id, v FROM t ORDER BY id").unwrap();
     assert_eq!(r.rows[0][1], Value::Integer(10));
     assert_eq!(r.rows[1][1], Value::Integer(999));
     assert_eq!(r.rows[2][1], Value::Integer(30));
@@ -176,9 +164,7 @@ fn update_multiple_columns() {
         .unwrap();
     assert_eq!(r.affected_rows, 1);
 
-    let r = e
-        .execute("SELECT a, b, c FROM t WHERE id = 1")
-        .unwrap();
+    let r = e.execute("SELECT a, b, c FROM t WHERE id = 1").unwrap();
     assert_eq!(r.rows[0][0], Value::Integer(100));
     assert_eq!(r.rows[0][1], Value::Integer(200));
     assert_eq!(r.rows[0][2], Value::Integer(300));
@@ -205,14 +191,10 @@ fn update_with_expression_in_set() {
     e.execute("INSERT INTO t VALUES (1,10),(2,20),(3,30)")
         .unwrap();
 
-    let r = e
-        .execute("UPDATE t SET v = v * 2 WHERE id <= 2")
-        .unwrap();
+    let r = e.execute("UPDATE t SET v = v * 2 WHERE id <= 2").unwrap();
     assert_eq!(r.affected_rows, 2);
 
-    let r = e
-        .execute("SELECT id, v FROM t ORDER BY id")
-        .unwrap();
+    let r = e.execute("SELECT id, v FROM t ORDER BY id").unwrap();
     assert_eq!(r.rows[0][1], Value::Integer(20));
     assert_eq!(r.rows[1][1], Value::Integer(40));
     assert_eq!(r.rows[2][1], Value::Integer(30));
@@ -224,9 +206,7 @@ fn update_with_no_matches_is_noop() {
     e.execute("CREATE TABLE t (id INTEGER, v INTEGER)").unwrap();
     e.execute("INSERT INTO t VALUES (1,10)").unwrap();
 
-    let r = e
-        .execute("UPDATE t SET v = 999 WHERE id = 999")
-        .unwrap();
+    let r = e.execute("UPDATE t SET v = 999 WHERE id = 999").unwrap();
     assert_eq!(r.affected_rows, 0, "no matching row → 0 affected");
 
     let r = e.execute("SELECT v FROM t").unwrap();
@@ -241,7 +221,8 @@ fn update_with_no_matches_is_noop() {
 fn update_with_subquery_in_set() {
     let mut e = fresh();
     e.execute("CREATE TABLE src (v INTEGER)").unwrap();
-    e.execute("CREATE TABLE dst (id INTEGER, v INTEGER)").unwrap();
+    e.execute("CREATE TABLE dst (id INTEGER, v INTEGER)")
+        .unwrap();
     e.execute("INSERT INTO src VALUES (42)").unwrap();
     e.execute("INSERT INTO dst VALUES (1, 0)").unwrap();
 
@@ -274,9 +255,7 @@ fn delete_with_where() {
     e.execute("INSERT INTO t VALUES (1,10),(2,20),(3,30),(4,40)")
         .unwrap();
 
-    let r = e
-        .execute("DELETE FROM t WHERE id > 2")
-        .unwrap();
+    let r = e.execute("DELETE FROM t WHERE id > 2").unwrap();
     assert_eq!(r.affected_rows, 2);
     assert_eq!(count_rows(&mut e, "t"), 2);
 
@@ -302,9 +281,7 @@ fn delete_with_no_matches_is_noop() {
     e.execute("CREATE TABLE t (v INTEGER)").unwrap();
     e.execute("INSERT INTO t VALUES (1),(2)").unwrap();
 
-    let r = e
-        .execute("DELETE FROM t WHERE v = 999")
-        .unwrap();
+    let r = e.execute("DELETE FROM t WHERE v = 999").unwrap();
     assert_eq!(r.affected_rows, 0);
     assert_eq!(count_rows(&mut e, "t"), 2);
 }
@@ -316,9 +293,7 @@ fn delete_with_compound_where() {
     e.execute("INSERT INTO t VALUES (1,10),(2,20),(3,30),(4,40)")
         .unwrap();
 
-    let r = e
-        .execute("DELETE FROM t WHERE id > 1 AND v < 40")
-        .unwrap();
+    let r = e.execute("DELETE FROM t WHERE id > 1 AND v < 40").unwrap();
     assert_eq!(r.affected_rows, 2, "rows 2,3 match (id>1 AND v<40)");
 
     let ids = select_int_col(&mut e, "SELECT id FROM t ORDER BY id", 0);
@@ -406,9 +381,7 @@ fn transaction_update_then_rollback() {
     e.execute("ROLLBACK").unwrap();
 
     // State should be unchanged after rollback.
-    let r = e
-        .execute("SELECT id, v FROM t ORDER BY id")
-        .unwrap();
+    let r = e.execute("SELECT id, v FROM t ORDER BY id").unwrap();
     assert_eq!(r.rows[0][1], Value::Integer(10));
     assert_eq!(r.rows[1][1], Value::Integer(20));
 }
@@ -458,9 +431,7 @@ fn update_zero_affected_does_not_error() {
     let mut e = fresh();
     e.execute("CREATE TABLE t (v INTEGER)").unwrap();
     // No rows yet — UPDATE should report 0 affected, not error.
-    let r = e
-        .execute("UPDATE t SET v = 1 WHERE v = 999")
-        .unwrap();
+    let r = e.execute("UPDATE t SET v = 1 WHERE v = 999").unwrap();
     assert_eq!(r.affected_rows, 0);
     assert_eq!(count_rows(&mut e, "t"), 0);
 }

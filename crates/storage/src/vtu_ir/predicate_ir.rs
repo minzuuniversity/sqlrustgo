@@ -259,8 +259,22 @@ mod tests {
     fn test_eval_column_boolean_value() {
         let info = table();
         let p = PredicateIR::Expr(ExprIR::Column("active".to_string()));
-        assert!(p.evaluate(&[Value::Integer(1), Value::Boolean(true), Value::Text("a".into())], &info));
-        assert!(!p.evaluate(&[Value::Integer(1), Value::Boolean(false), Value::Text("a".into())], &info));
+        assert!(p.evaluate(
+            &[
+                Value::Integer(1),
+                Value::Boolean(true),
+                Value::Text("a".into())
+            ],
+            &info
+        ));
+        assert!(!p.evaluate(
+            &[
+                Value::Integer(1),
+                Value::Boolean(false),
+                Value::Text("a".into())
+            ],
+            &info
+        ));
     }
 
     #[test]
@@ -288,12 +302,34 @@ mod tests {
     fn test_eval_isnull_and_isnotnull() {
         let info = table();
         let p = PredicateIR::Expr(ExprIR::IsNull(Box::new(ExprIR::Column("name".to_string()))));
-        assert!(p.evaluate(&[Value::Integer(1), Value::Boolean(false), Value::Null], &info));
-        assert!(!p.evaluate(&[Value::Integer(1), Value::Boolean(false), Value::Text("a".into())], &info));
+        assert!(p.evaluate(
+            &[Value::Integer(1), Value::Boolean(false), Value::Null],
+            &info
+        ));
+        assert!(!p.evaluate(
+            &[
+                Value::Integer(1),
+                Value::Boolean(false),
+                Value::Text("a".into())
+            ],
+            &info
+        ));
 
-        let p2 = PredicateIR::Expr(ExprIR::IsNotNull(Box::new(ExprIR::Column("name".to_string()))));
-        assert!(p2.evaluate(&[Value::Integer(1), Value::Boolean(false), Value::Text("a".into())], &info));
-        assert!(!p2.evaluate(&[Value::Integer(1), Value::Boolean(false), Value::Null], &info));
+        let p2 = PredicateIR::Expr(ExprIR::IsNotNull(Box::new(ExprIR::Column(
+            "name".to_string(),
+        ))));
+        assert!(p2.evaluate(
+            &[
+                Value::Integer(1),
+                Value::Boolean(false),
+                Value::Text("a".into())
+            ],
+            &info
+        ));
+        assert!(!p2.evaluate(
+            &[Value::Integer(1), Value::Boolean(false), Value::Null],
+            &info
+        ));
     }
 
     #[test]
@@ -310,8 +346,14 @@ mod tests {
             op: "NOT".to_string(),
             expr: Box::new(ExprIR::Column("active".to_string())),
         });
-        assert!(!p.evaluate(&[Value::Integer(1), Value::Boolean(true), Value::Null], &info));
-        assert!(p.evaluate(&[Value::Integer(1), Value::Boolean(false), Value::Null], &info));
+        assert!(!p.evaluate(
+            &[Value::Integer(1), Value::Boolean(true), Value::Null],
+            &info
+        ));
+        assert!(p.evaluate(
+            &[Value::Integer(1), Value::Boolean(false), Value::Null],
+            &info
+        ));
     }
 
     #[test]
@@ -321,7 +363,10 @@ mod tests {
             op: "ABS".to_string(),
             expr: Box::new(ExprIR::Column("active".to_string())),
         });
-        assert!(!p.evaluate(&[Value::Integer(1), Value::Boolean(true), Value::Null], &info));
+        assert!(!p.evaluate(
+            &[Value::Integer(1), Value::Boolean(true), Value::Null],
+            &info
+        ));
     }
 
     #[test]
@@ -344,7 +389,11 @@ mod tests {
     #[test]
     fn test_eval_binary_comparisons() {
         let info = table();
-        let row = &[Value::Integer(5), Value::Boolean(true), Value::Text("hello".into())];
+        let row = &[
+            Value::Integer(5),
+            Value::Boolean(true),
+            Value::Text("hello".into()),
+        ];
 
         let p = PredicateIR::Expr(ExprIR::Binary {
             op: "=".to_string(),
@@ -384,7 +433,10 @@ mod tests {
             left: Box::new(ExprIR::Column("name".to_string())),
             right: Box::new(ExprIR::Literal(Value::Text("x".into()))),
         });
-        assert!(!p.evaluate(&[Value::Integer(1), Value::Boolean(true), Value::Null], &info));
+        assert!(!p.evaluate(
+            &[Value::Integer(1), Value::Boolean(true), Value::Null],
+            &info
+        ));
     }
 
     #[test]
@@ -401,7 +453,11 @@ mod tests {
     #[test]
     fn test_eval_to_value_column() {
         let info = table();
-        let row = &[Value::Integer(1), Value::Boolean(true), Value::Text("a".into())];
+        let row = &[
+            Value::Integer(1),
+            Value::Boolean(true),
+            Value::Text("a".into()),
+        ];
         assert_eq!(
             PredicateIR::eval_to_value(&ExprIR::Column("id".to_string()), row, &info),
             Value::Integer(1)
@@ -425,7 +481,11 @@ mod tests {
     fn test_eval_to_value_isnull() {
         let info = table();
         let row_null = &[Value::Integer(1), Value::Boolean(true), Value::Null];
-        let row_text = &[Value::Integer(1), Value::Boolean(true), Value::Text("a".into())];
+        let row_text = &[
+            Value::Integer(1),
+            Value::Boolean(true),
+            Value::Text("a".into()),
+        ];
         assert_eq!(
             PredicateIR::eval_to_value(
                 &ExprIR::IsNull(Box::new(ExprIR::Column("name".to_string()))),
@@ -564,13 +624,31 @@ mod tests {
 
     #[test]
     fn test_cmp_values() {
-        assert_eq!(PredicateIR::cmp_values(&Value::Integer(1), &Value::Integer(2)), -1);
-        assert_eq!(PredicateIR::cmp_values(&Value::Integer(2), &Value::Integer(2)), 0);
-        assert_eq!(PredicateIR::cmp_values(&Value::Integer(2), &Value::Integer(1)), 1);
-        assert_eq!(PredicateIR::cmp_values(&Value::Float(1.0), &Value::Float(2.0)), -1);
-        assert_eq!(PredicateIR::cmp_values(&Value::Text("a".into()), &Value::Text("b".into())), -1);
+        assert_eq!(
+            PredicateIR::cmp_values(&Value::Integer(1), &Value::Integer(2)),
+            -1
+        );
+        assert_eq!(
+            PredicateIR::cmp_values(&Value::Integer(2), &Value::Integer(2)),
+            0
+        );
+        assert_eq!(
+            PredicateIR::cmp_values(&Value::Integer(2), &Value::Integer(1)),
+            1
+        );
+        assert_eq!(
+            PredicateIR::cmp_values(&Value::Float(1.0), &Value::Float(2.0)),
+            -1
+        );
+        assert_eq!(
+            PredicateIR::cmp_values(&Value::Text("a".into()), &Value::Text("b".into())),
+            -1
+        );
         assert_eq!(PredicateIR::cmp_values(&Value::Null, &Value::Null), 0);
-        assert_eq!(PredicateIR::cmp_values(&Value::Null, &Value::Integer(1)), -1);
+        assert_eq!(
+            PredicateIR::cmp_values(&Value::Null, &Value::Integer(1)),
+            -1
+        );
         assert_eq!(PredicateIR::cmp_values(&Value::Integer(1), &Value::Null), 1);
     }
 

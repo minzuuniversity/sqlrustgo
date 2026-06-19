@@ -301,11 +301,14 @@ mod tests {
         ] {
             let v = make_violation(DriftViolationType::WalDrift, sev);
             let plan = planner.create_plan(&v).expect("plan");
-            assert_eq!(plan.recovery_type, match sev {
-                DriftSeverity::Critical => RecoveryType::Rollback,
-                DriftSeverity::Medium => RecoveryType::Patch,
-                DriftSeverity::Low => RecoveryType::Ignore,
-            });
+            assert_eq!(
+                plan.recovery_type,
+                match sev {
+                    DriftSeverity::Critical => RecoveryType::Rollback,
+                    DriftSeverity::Medium => RecoveryType::Patch,
+                    DriftSeverity::Low => RecoveryType::Ignore,
+                }
+            );
             assert!(!plan.steps.is_empty());
         }
     }
@@ -320,11 +323,14 @@ mod tests {
         ] {
             let v = make_violation(DriftViolationType::TxnDrift, sev);
             let plan = planner.create_plan(&v).expect("plan");
-            assert_eq!(plan.recovery_type, match sev {
-                DriftSeverity::Critical => RecoveryType::Rollback,
-                DriftSeverity::Medium => RecoveryType::Patch,
-                DriftSeverity::Low => RecoveryType::Ignore,
-            });
+            assert_eq!(
+                plan.recovery_type,
+                match sev {
+                    DriftSeverity::Critical => RecoveryType::Rollback,
+                    DriftSeverity::Medium => RecoveryType::Patch,
+                    DriftSeverity::Low => RecoveryType::Ignore,
+                }
+            );
         }
     }
 
@@ -338,11 +344,14 @@ mod tests {
         ] {
             let v = make_violation(DriftViolationType::GraphDrift, sev);
             let plan = planner.create_plan(&v).expect("plan");
-            assert_eq!(plan.recovery_type, match sev {
-                DriftSeverity::Critical => RecoveryType::Rewire,
-                DriftSeverity::Medium => RecoveryType::Rewire,
-                DriftSeverity::Low => RecoveryType::Ignore,
-            });
+            assert_eq!(
+                plan.recovery_type,
+                match sev {
+                    DriftSeverity::Critical => RecoveryType::Rewire,
+                    DriftSeverity::Medium => RecoveryType::Rewire,
+                    DriftSeverity::Low => RecoveryType::Ignore,
+                }
+            );
         }
     }
 
@@ -399,10 +408,7 @@ mod tests {
         let c = SafeExecutionController::new();
         assert!(c.block_on_critical);
         assert!(c.suggest_on_medium);
-        assert_eq!(
-            c.auto_repair_confidence_threshold,
-            RecoveryConfidence::High
-        );
+        assert_eq!(c.auto_repair_confidence_threshold, RecoveryConfidence::High);
 
         let default = SafeExecutionController::default();
         assert_eq!(
