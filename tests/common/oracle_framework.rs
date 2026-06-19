@@ -103,17 +103,14 @@ impl Sha256Baseline {
                 path.display()
             ));
         }
-        let content = std::fs::read_to_string(path)
-            .map_err(|e| format!("Read failed: {}", e))?;
-        serde_json::from_str(&content)
-            .map_err(|e| format!("Parse failed: {}", e))
+        let content = std::fs::read_to_string(path).map_err(|e| format!("Read failed: {}", e))?;
+        serde_json::from_str(&content).map_err(|e| format!("Parse failed: {}", e))
     }
 
     pub fn save(&self, path: &Path) -> Result<(), String> {
-        let content = serde_json::to_string_pretty(self)
-            .map_err(|e| format!("Serialize failed: {}", e))?;
-        std::fs::write(path, content)
-            .map_err(|e| format!("Write failed: {}", e))?;
+        let content =
+            serde_json::to_string_pretty(self).map_err(|e| format!("Serialize failed: {}", e))?;
+        std::fs::write(path, content).map_err(|e| format!("Write failed: {}", e))?;
         Ok(())
     }
 }
@@ -129,23 +126,23 @@ pub struct DiffReport {
 
 impl DiffReport {
     pub fn is_clean(&self) -> bool {
-        self.differed == 0 && self.missing_in_baseline.is_empty() && self.missing_in_actual.is_empty()
+        self.differed == 0
+            && self.missing_in_baseline.is_empty()
+            && self.missing_in_actual.is_empty()
     }
 }
 
-pub fn compare_to_baseline(
-    actual: &RowSet,
-    baseline_path: &Path,
-) -> Result<DiffReport, String> {
+pub fn compare_to_baseline(actual: &RowSet, baseline_path: &Path) -> Result<DiffReport, String> {
     let content = std::fs::read_to_string(baseline_path)
         .map_err(|e| format!("Read baseline failed: {}", e))?;
-    let baseline: serde_json::Value = serde_json::from_str(&content)
-        .map_err(|e| format!("Parse baseline failed: {}", e))?;
+    let baseline: serde_json::Value =
+        serde_json::from_str(&content).map_err(|e| format!("Parse baseline failed: {}", e))?;
 
     let expected_count = baseline
         .get("row_count")
         .and_then(|v| v.as_u64())
-        .ok_or_else(|| "baseline missing 'row_count'".to_string())? as usize;
+        .ok_or_else(|| "baseline missing 'row_count'".to_string())?
+        as usize;
 
     let mut report = DiffReport {
         matched: 0,
@@ -250,19 +247,13 @@ mod tests {
         let rs1 = RowSet {
             query: "Q1".into(),
             row_count: 2,
-            rows: vec![
-                Row(vec![Value("A".into())]),
-                Row(vec![Value("B".into())]),
-            ],
+            rows: vec![Row(vec![Value("A".into())]), Row(vec![Value("B".into())])],
             wall_time_ms: 0,
         };
         let rs2 = RowSet {
             query: "Q1".into(),
             row_count: 2,
-            rows: vec![
-                Row(vec![Value("A".into())]),
-                Row(vec![Value("C".into())]),
-            ],
+            rows: vec![Row(vec![Value("A".into())]), Row(vec![Value("C".into())])],
             wall_time_ms: 0,
         };
         assert_ne!(sha256_capture(&rs1), sha256_capture(&rs2));
@@ -273,19 +264,13 @@ mod tests {
         let a = RowSet {
             query: "Q".into(),
             row_count: 2,
-            rows: vec![
-                Row(vec![Value("1".into())]),
-                Row(vec![Value("2".into())]),
-            ],
+            rows: vec![Row(vec![Value("1".into())]), Row(vec![Value("2".into())])],
             wall_time_ms: 0,
         };
         let b = RowSet {
             query: "Q".into(),
             row_count: 2,
-            rows: vec![
-                Row(vec![Value("2".into())]),
-                Row(vec![Value("1".into())]),
-            ],
+            rows: vec![Row(vec![Value("2".into())]), Row(vec![Value("1".into())])],
             wall_time_ms: 0,
         };
         assert!(a.assert_set_eq(&b).is_ok());
@@ -296,10 +281,7 @@ mod tests {
         let a = RowSet {
             query: "Q".into(),
             row_count: 2,
-            rows: vec![
-                Row(vec![Value("1".into())]),
-                Row(vec![Value("2".into())]),
-            ],
+            rows: vec![Row(vec![Value("1".into())]), Row(vec![Value("2".into())])],
             wall_time_ms: 0,
         };
         let b = RowSet {

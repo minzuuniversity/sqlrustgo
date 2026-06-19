@@ -2516,7 +2516,11 @@ fn do_command_loop<S: Read + Write>(
                                 cols_str
                                     .split(',')
                                     .map(|s| {
-                                        s.trim().split('.').next_back().unwrap_or(s.trim()).to_string()
+                                        s.trim()
+                                            .split('.')
+                                            .next_back()
+                                            .unwrap_or(s.trim())
+                                            .to_string()
                                     })
                                     .collect()
                             } else {
