@@ -609,6 +609,11 @@ path = "tests/vtu_ir_modules_test.rs"
 name = "small_executor_modules_test"
 path = "tests/small_executor_modules_test.rs"
 
+# Round 3 coverage (#3537) — task-3.3 graph/cypher integration
+[[test]]
+name = "graph_cypher_integration_test"
+path = "tests/graph_cypher_integration_test.rs"
+
 [[test]]
 name = "int4_explicit_tx_test"
 path = "tests/int4_explicit_tx_test.rs"
