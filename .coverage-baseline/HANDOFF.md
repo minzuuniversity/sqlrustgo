@@ -123,4 +123,36 @@
 
 ---
 
+---
+
+## 📊 Round 4 Results (#3538) — 2026-06-19
+
+### Dead Code Cleanup (Task 4.1)
+
+| Item | File | Action |
+|------|------|--------|
+| `has_storage()` | `crates/planner/src/planner.rs` | **Removed** (0 callers, dead code) |
+| `write_tar_end_marker()` | `crates/admin/src/backup.rs` | **Removed** (0 callers, dead code) |
+| `BackupResult` | `crates/admin/src/backup.rs` | Kept (used by `tests/backup_restore_test.rs`) |
+| `PitrResult` | `crates/admin/src/pitr.rs` | Kept (used by PITR tests) |
+
+- PR #3569 merged to `develop/v3.9.0`
+- 13 lines removed, 0 added
+- Clippy clean, 189 tests pass
+
+### Coverage Verification (Task 4.2)
+
+| Crate | Regions | Lines | Target |
+|-------|---------|-------|--------|
+| **admin + planner** (affected) | **85.38%** | **84.14%** | ≥ 75% ✅ |
+
+3 pre-existing test failures in `sqlrustgo-storage` (insert_buffer tests) block full workspace coverage run. These are unrelated to Round 4 changes.
+
+### Tasks.md Update (Task 4.3)
+
+- `openspec/changes/ga-coverage-80/tasks.md` updated with Round 4 section (§0)
+- All 3 Round 4 tasks marked complete
+
+---
+
 **HANDOFF 完成。请基于本报告继续实施。**
