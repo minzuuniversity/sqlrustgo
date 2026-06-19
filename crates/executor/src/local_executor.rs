@@ -698,30 +698,52 @@ impl<'a> LocalExecutor<'a> {
                 }
             }
             AggregateFunction::Min => {
-                let mut min_val: Option<i64> = None;
+                let mut min_int: Option<i64> = None;
+                let mut min_flt: Option<f64> = None;
                 for v in values {
-                    if let Value::Integer(n) = v {
-                        match min_val {
-                            Some(m) if *n < m => min_val = Some(*n),
-                            None => min_val = Some(*n),
+                    match v {
+                        Value::Integer(n) => match min_int {
+                            Some(m) if *n < m => min_int = Some(*n),
+                            None => min_int = Some(*n),
                             _ => {}
-                        }
+                        },
+                        Value::Float(f) => match min_flt {
+                            Some(m) if *f < m => min_flt = Some(*f),
+                            None => min_flt = Some(*f),
+                            _ => {}
+                        },
+                        _ => {}
                     }
                 }
-                min_val.map(Value::Integer).unwrap_or(Value::Null)
+                if min_flt.is_some() {
+                    min_flt.map(Value::Float).unwrap_or(Value::Null)
+                } else {
+                    min_int.map(Value::Integer).unwrap_or(Value::Null)
+                }
             }
             AggregateFunction::Max => {
-                let mut max_val: Option<i64> = None;
+                let mut max_int: Option<i64> = None;
+                let mut max_flt: Option<f64> = None;
                 for v in values {
-                    if let Value::Integer(n) = v {
-                        match max_val {
-                            Some(m) if *n > m => max_val = Some(*n),
-                            None => max_val = Some(*n),
+                    match v {
+                        Value::Integer(n) => match max_int {
+                            Some(m) if *n > m => max_int = Some(*n),
+                            None => max_int = Some(*n),
                             _ => {}
-                        }
+                        },
+                        Value::Float(f) => match max_flt {
+                            Some(m) if *f > m => max_flt = Some(*f),
+                            None => max_flt = Some(*f),
+                            _ => {}
+                        },
+                        _ => {}
                     }
                 }
-                max_val.map(Value::Integer).unwrap_or(Value::Null)
+                if max_flt.is_some() {
+                    max_flt.map(Value::Float).unwrap_or(Value::Null)
+                } else {
+                    max_int.map(Value::Integer).unwrap_or(Value::Null)
+                }
             }
         }
     }

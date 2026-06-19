@@ -1,4 +1,8 @@
 #!/bin/bash
+# Purpose: Verify v3.9.0 docs are consistent (no stale RC2/RC3 status)
+# Coverage: P5 (Governance > Features), P6 (Evidence Binding)
+# Verifies: docs status claims match current sprint 8 reality
+
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"

@@ -9,6 +9,7 @@ license.workspace = true
 sqlrustgo-common.workspace = true
 sqlrustgo-types.workspace = true
 sqlrustgo-storage.workspace = true
+sqlrustgo-parser.workspace = true
 serde.workspace = true
 thiserror.workspace = true
 log.workspace = true
@@ -16,3 +17,6 @@ async-trait.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
+
+[features]
+v390_join_reorder = []
