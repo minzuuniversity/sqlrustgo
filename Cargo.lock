@@ -4291,7 +4291,7 @@ dependencies = [
  "rustls",
  "serde",
  "serde_json",
- "sha1 0.10.6",
+ "sha1 0.11.0",
  "sqlrustgo",
  "sqlrustgo-common",
  "sqlrustgo-executor",
