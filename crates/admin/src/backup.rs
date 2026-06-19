@@ -101,13 +101,6 @@ fn write_tar_header<W: Write>(w: &mut W, name: &str, size: u64) -> Result<(), Ba
     Ok(())
 }
 
-#[allow(dead_code)] // reserved for tar archive finalization
-fn write_tar_end_marker<W: Write>(w: &mut W) -> Result<(), BackupError> {
-    let z = [0u8; 512];
-    w.write_all(&z).map_err(BackupError::Io)?;
-    Ok(())
-}
-
 fn write_padding<W: Write>(w: &mut W, size: usize) -> Result<(), BackupError> {
     let pad = (512 - (size % 512)) % 512;
     if pad > 0 {
