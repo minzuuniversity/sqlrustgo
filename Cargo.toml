@@ -604,6 +604,11 @@ path = "tests/replace_test.rs"
 name = "vtu_ir_modules_test"
 path = "tests/vtu_ir_modules_test.rs"
 
+# Round 3 coverage (#3537) — task-3.1 small executor 0% files
+[[test]]
+name = "small_executor_modules_test"
+path = "tests/small_executor_modules_test.rs"
+
 [[test]]
 name = "int4_explicit_tx_test"
 path = "tests/int4_explicit_tx_test.rs"
