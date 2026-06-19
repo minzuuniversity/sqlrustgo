@@ -75,9 +75,8 @@ mod harness {
         let mut engine = MemoryExecutionEngine::new(storage.clone());
 
         // Set up test table with some data
-        let _ = engine.execute(
-            "CREATE TABLE IF NOT EXISTS soak_test (id INTEGER, value INTEGER, text TEXT)",
-        );
+        let _ = engine
+            .execute("CREATE TABLE IF NOT EXISTS soak_test (id INTEGER, value INTEGER, text TEXT)");
 
         // Insert initial test data (100 rows)
         for i in 0..100 {
