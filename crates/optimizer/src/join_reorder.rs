@@ -52,7 +52,7 @@ fn enumerate_connected_subsets(
     memo: &mut HashMap<BitSet, JoinState>,
 ) {
     let n = graph.nodes.len();
-    let mut current: BitSet = 0;
+    let current: BitSet = 0;
     enumerate_helper(0, current, target_size, n, graph, memo);
 }
 
@@ -130,7 +130,7 @@ fn try_extend(
         let remaining = compute_remaining_penalty(subset, prev, graph);
         let cost = cost_join(&prev_state, v, edge_sel, remaining);
 
-        if best.map_or(true, |b| cost < b.estimated_rows) {
+        if best.is_none_or(|b| cost < b.estimated_rows) {
             best = Some(JoinState {
                 estimated_rows: cost,
                 best_last_node: v.id,
