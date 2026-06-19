@@ -74,10 +74,16 @@ fn p23_hash_chain_immutability_oracle() {
 
     // 重算后续链
     let recomputed_h2 = ground_truth_link(&tampered_h1, "record_2");
-    assert_ne!(h2, recomputed_h2, "Oracle: cascading tamper detection at h2");
+    assert_ne!(
+        h2, recomputed_h2,
+        "Oracle: cascading tamper detection at h2"
+    );
 
     let recomputed_h3 = ground_truth_link(&recomputed_h2, "record_3");
-    assert_ne!(h3, recomputed_h3, "Oracle: cascading tamper detection at h3");
+    assert_ne!(
+        h3, recomputed_h3,
+        "Oracle: cascading tamper detection at h3"
+    );
 }
 
 /// Oracle: 16 hex 字符 (harness 简化为 64-bit)
