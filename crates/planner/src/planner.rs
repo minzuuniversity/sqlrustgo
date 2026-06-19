@@ -64,12 +64,6 @@ impl DefaultPlanner {
         }
     }
 
-    /// Returns true if storage is available for CBO index selection
-    #[allow(dead_code)]
-    fn has_storage(&self) -> bool {
-        self.storage.is_some()
-    }
-
     /// Select best scan method using cost model
     fn select_scan(&self, table_name: &str, schema: &Schema) -> Box<dyn PhysicalPlan> {
         if let Some(ref storage) = self.storage {
