@@ -923,7 +923,11 @@ const SOAK_QUERY_SET: &[&str] = &[
     "SELECT n_name, COUNT(*) FROM nation, region GROUP BY n_name LIMIT 5",
 ];
 
-fn run_one_soak_query(engine: &mut MemoryExecutionEngine, seed: u64, idx: u64) -> std::time::Duration {
+fn run_one_soak_query(
+    engine: &mut MemoryExecutionEngine,
+    seed: u64,
+    idx: u64,
+) -> std::time::Duration {
     let q = SOAK_QUERY_SET[(seed.wrapping_add(idx) as usize) % SOAK_QUERY_SET.len()];
     let start = std::time::Instant::now();
     let _ = engine.execute(q);
@@ -954,18 +958,16 @@ fn run_soak(
     let _ = engine.execute("CREATE TABLE nation (n_name TEXT)");
     let _ = engine.execute("CREATE TABLE region (r_name TEXT)");
 
-    let jsonl_path = output
-        .map(|s| s.to_string())
-        .unwrap_or_else(|| {
-            format!(
-                "soak_{}h_{}.jsonl",
-                duration_h,
-                std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .map(|d| d.as_secs())
-                    .unwrap_or(0)
-            )
-        });
+    let jsonl_path = output.map(|s| s.to_string()).unwrap_or_else(|| {
+        format!(
+            "soak_{}h_{}.jsonl",
+            duration_h,
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs())
+                .unwrap_or(0)
+        )
+    });
     let report_path = format!(
         "SOAK_{}H_REPORT.md",
         duration_h.to_string().replace('.', "_")
@@ -989,14 +991,15 @@ fn run_soak(
     );
 
     let start = std::time::Instant::now();
-    let mut next_sample = std::time::Instant::now() + std::time::Duration::from_secs(sample_interval_s);
+    let mut next_sample =
+        std::time::Instant::now() + std::time::Duration::from_secs(sample_interval_s);
     let mut next_query = std::time::Instant::now();
     let mut total = 0u64;
     let mut failed = 0u64;
     let mut last_100: std::collections::VecDeque<std::time::Duration> =
         std::collections::VecDeque::with_capacity(100);
-    let mut file = std::fs::File::create(&jsonl_path)
-        .map_err(|e| format!("create {jsonl_path}: {e}"))?;
+    let mut file =
+        std::fs::File::create(&jsonl_path).map_err(|e| format!("create {jsonl_path}: {e}"))?;
     let mut idx = 0u64;
 
     while start.elapsed().as_secs() < duration_s && !SOAK_SHUTDOWN.load(Ordering::SeqCst) {
@@ -1017,8 +1020,7 @@ fn run_soak(
         }
 
         if now >= next_sample {
-            let mut sorted: Vec<u128> =
-                last_100.iter().map(|d| d.as_millis()).collect();
+            let mut sorted: Vec<u128> = last_100.iter().map(|d| d.as_millis()).collect();
             sorted.sort_unstable();
             let p99 = if sorted.is_empty() {
                 0.0
@@ -1106,10 +1108,13 @@ fn run_soak(
         final_fd,
         fd_growth,
         rss_warn_mb,
-        if rss_growth > rss_warn_mb as f64 { "YES" } else { "no" },
+        if rss_growth > rss_warn_mb as f64 {
+            "YES"
+        } else {
+            "no"
+        },
     );
-    std::fs::write(&report_path, report)
-        .map_err(|e| format!("write report {report_path}: {e}"))?;
+    std::fs::write(&report_path, report).map_err(|e| format!("write report {report_path}: {e}"))?;
     eprintln!("[soak] wrote report: {}", report_path);
     Ok(())
 }

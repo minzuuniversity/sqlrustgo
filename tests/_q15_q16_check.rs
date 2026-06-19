@@ -46,7 +46,11 @@ fn test_q15_subquery_from() {
     let dur = t.elapsed();
     match res {
         Ok(r) => {
-            println!("\n=== sqlrustgo Q15: {} rows in {:?} ===", r.rows.len(), dur);
+            println!(
+                "\n=== sqlrustgo Q15: {} rows in {:?} ===",
+                r.rows.len(),
+                dur
+            );
             for (i, row) in r.rows.iter().take(5).enumerate() {
                 println!("  row {}: {:?}", i, row);
             }
@@ -74,7 +78,11 @@ fn test_q16_not_in_subquery() {
     let dur = t.elapsed();
     match res {
         Ok(r) => {
-            println!("\n=== sqlrustgo Q16: {} rows in {:?} ===", r.rows.len(), dur);
+            println!(
+                "\n=== sqlrustgo Q16: {} rows in {:?} ===",
+                r.rows.len(),
+                dur
+            );
             for (i, row) in r.rows.iter().take(5).enumerate() {
                 println!("  row {}: {:?}", i, row);
             }

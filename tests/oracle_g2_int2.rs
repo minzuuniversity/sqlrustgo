@@ -62,12 +62,7 @@ fn g2_int2_parallel_matches_sequential() {
                 par_r.rows.len()
             );
         } else {
-            eprintln!(
-                "[OK] query {}: {} row_count={}",
-                i,
-                sql,
-                seq_r.rows.len()
-            );
+            eprintln!("[OK] query {}: {} row_count={}", i, sql, seq_r.rows.len());
         }
     }
 
