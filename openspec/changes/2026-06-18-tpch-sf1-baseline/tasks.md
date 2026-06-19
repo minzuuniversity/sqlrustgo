@@ -1,5 +1,12 @@
 # Tasks — tpch-sf1-cross-engine-baseline-via-in-process
 
+> **⏸️ DEFERRED** (2026-06-19)
+>
+> 任务标记为 deferred，原因：Mac mini 硬盘满（仅 1GB 可用），无法本地生成 SF=1.0 数据集。
+> 重启用条件：硬件就绪 + 指定目标 Hermes 节点 + 确认 dbgen 可用。
+> 重启用入口：`tests/tpch_sf1_22_vs_3engines_test.rs`（已就绪）+ `scripts/tpch_sf1_baseline.sh`（待创建）。
+> 详见 Gitea issue #3423 评论区。
+
 ## 1. SF=1.0 fixture
 
 - [ ] Verify `/home/openclaw/tpch-dbgen-master/dbgen -s 1 -f`
