@@ -761,9 +761,16 @@ fn parse_lit(s: &str) -> Value {
 /// instead of the expected real value. The new path promotes to `Float`
 /// whenever either operand is `Float`, matching PostgreSQL/SQLite.
 pub fn eval_binary_op(left: &Value, right: &Value, op: &str) -> Value {
+    if matches!(left, Value::Null) || matches!(right, Value::Null) {
+        match op.to_uppercase().as_str() {
+            "AND" | "&&" => return Value::Boolean(to_bool(left) && to_bool(right)),
+            "OR" | "||" => return Value::Boolean(to_bool(left) || to_bool(right)),
+            _ => return Value::Null,
+        }
+    }
     match op.to_uppercase().as_str() {
-        "=" | "==" => Value::Boolean(left == right && !matches!(left, Value::Null)),
-        "!=" | "<>" => Value::Boolean(left != right && !matches!(left, Value::Null)),
+        "=" | "==" => Value::Boolean(left == right),
+        "!=" | "<>" => Value::Boolean(left != right),
         ">" | "<" | ">=" | "<=" => compare_cmp(left, right, op),
         "AND" | "&&" => Value::Boolean(to_bool(left) && to_bool(right)),
         "OR" | "||" => Value::Boolean(to_bool(left) || to_bool(right)),
@@ -858,7 +865,13 @@ fn to_i64(v: &Value) -> i64 {
 /// - `eval_unary_op(_, "UNKNOWN")` → `Value::Null`
 pub fn eval_unary_op(val: &Value, op: &str) -> Value {
     match op.to_uppercase().as_str() {
-        "NOT" | "!" => Value::Boolean(!to_bool(val)),
+        "NOT" | "!" => {
+            if matches!(val, Value::Null) {
+                Value::Null
+            } else {
+                Value::Boolean(!to_bool(val))
+            }
+        }
         _ => Value::Null,
     }
 }
@@ -1509,7 +1522,7 @@ fn to_bool(v: &Value) -> bool {
 
 fn compare_cmp(left: &Value, right: &Value, op: &str) -> Value {
     if matches!(left, Value::Null) || matches!(right, Value::Null) {
-        return Value::Boolean(false);
+        return Value::Null;
     }
     let cmp = match (left, right) {
         (Value::Integer(a), Value::Integer(b)) => a.cmp(b) as i64,
