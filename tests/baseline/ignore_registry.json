@@ -20,6 +20,14 @@
       "category": "wire_smoke_marker"
     },
     {
+      "file": "tests/tpch_sf1_22_vs_3engines_test.rs",
+      "line": "0:MARKER",
+      "reason": "P12 detector false positive: 2 grep matches are 1 in doc comment (//!) + 1 in eprintln string literal (\"...marked #[ignore]...\"). 0 real #[ignore] attributes. The test uses runtime `if !fixture_present() { return; }` instead of compile-time ignore. File registered to suppress cross-check false positive.",
+      "issue_link": "N/A",
+      "added_in": "v3.9.0-sprint8",
+      "category": "tpch_sf1_marker"
+    },
+    {
       "file": "crates/executor/tests/hash_join_left_null_test.rs",
       "line": "297:#[ignore = \"Parser does not support NOT (expr) syntax - NOT implementation is Phase 2\"]",
       "reason": "Parser does not support NOT (expr) syntax - NOT implementation is Phase 2",
