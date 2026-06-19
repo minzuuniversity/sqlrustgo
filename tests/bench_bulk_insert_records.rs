@@ -68,13 +68,18 @@ fn resolve_lineitem_path() -> PathBuf {
     if let Ok(p) = std::env::var("LINEITEM_TBL_PATH") {
         return PathBuf::from(p);
     }
-    for candidate in ["tests/data/lineitem.tbl", "data/lineitem.tbl"] {
+    for candidate in [
+        "tests/data/lineitem.tbl",
+        "data/lineitem.tbl",
+        "tests/data/tpch-sf01/lineitem.tbl",
+        "tests/data/tpch-sf001/lineitem.tbl",
+    ] {
         let p = PathBuf::from(candidate);
         if p.exists() {
             return p;
         }
     }
     panic!(
-        "lineitem.tbl not found: set LINEITEM_TBL_PATH or place file under tests/data/ or data/"
+        "lineitem.tbl not found: set LINEITEM_TBL_PATH or place file under tests/data/, data/, tests/data/tpch-sf01/, or tests/data/tpch-sf001/"
     );
 }
