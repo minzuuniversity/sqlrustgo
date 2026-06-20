@@ -9,6 +9,13 @@
 
 set -uo pipefail
 
+# Platform detection (stat / df portability for macOS BSD vs Linux GNU)
+case "$(uname -s)" in
+    Darwin) STAT_MTIME_FLAG="-f %m"; STAT_SIZE_FLAG="-f %z"; DF_FLAG="-g" ;;
+    Linux)  STAT_MTIME_FLAG="-c %Y"; STAT_SIZE_FLAG="-c %s"; DF_FLAG="-BG" ;;
+    *)      STAT_MTIME_FLAG="-c %Y"; STAT_SIZE_FLAG="-c %s"; DF_FLAG="-BG" ;;
+esac
+
 HOURS=${HOURS:-72}
 QPS=${QPS:-1.0}
 INTERVAL=${INTERVAL:-60}
@@ -64,43 +71,57 @@ RSS_HARD_LIMIT_MB=${RSS_HARD_LIMIT_MB:-4096}
 WAL_HARD_LIMIT_MB=${WAL_HARD_LIMIT_MB:-1024}
 DISK_MIN_GB=${DISK_MIN_GB:-10}
 
-END_TS=$(awk -v h="$HOURS" 'BEGIN{print systime() + h*3600}')
+DURATION_S=$(awk -v h="$HOURS" 'BEGIN{print int(h*3600)}')
+END_TS=$(( $(date +%s) + DURATION_S ))
+EXIT_REASON="duration_reached"
 while [ "$(date +%s)" -lt "$END_TS" ]; do
     sleep "$INTERVAL"
     if ! kill -0 "$SERVER_PID" 2>/dev/null; then
         alert "Server PID $SERVER_PID died"
         cat "$SERVER_LOG" | tail -20
-        exit 1
+        EXIT_REASON="server_died"
+        break
     fi
     if ! kill -0 "$SOAK_PID" 2>/dev/null; then
-        alert "Soak PID $SOAK_PID died (early!)"
-        cat "$SOAK_LOG" | tail -20
-        exit 1
+        # If END_TS not yet reached, soak dying early is a real failure.
+        # Otherwise the soak process completed on schedule — expected.
+        if [ "$(date +%s)" -lt "$END_TS" ]; then
+            alert "Soak PID $SOAK_PID died (early!)"
+            cat "$SOAK_LOG" | tail -20
+            EXIT_REASON="soak_died_early"
+            break
+        fi
+        log "  Soak PID $SOAK_PID completed naturally (duration reached)"
+        break
     fi
     TS=$(date '+%Y-%m-%d %H:%M:%S')
-    ELAPSED=$(($(date +%s) - $(stat -c %Y "$RESULTS_DIR")))
+    NOW_S=$(date +%s)
+    ELAPSED=$((NOW_S - $(stat $STAT_MTIME_FLAG "$RESULTS_DIR")))
     RSS_MB=$(($(ps -o rss= -p $SERVER_PID 2>/dev/null | tr -d ' ') / 1024))
     FD_COUNT=$(($(lsof -p $SERVER_PID 2>/dev/null | wc -l) - 1))
     CPU_PCT=$(ps -o %cpu= -p $SERVER_PID 2>/dev/null | tr -d ' ')
-    WAL_MB=$(($(stat -c %s "$RESULTS_DIR/data/sqlrustgo.wal" 2>/dev/null || echo 0) / 1024 / 1024))
-    DISK_GB=$(df -BG "$RESULTS_DIR" | tail -1 | awk '{print $4}')
+    WAL_MB=$(($(stat $STAT_SIZE_FLAG "$RESULTS_DIR/data/sqlrustgo.wal" 2>/dev/null || echo 0) / 1024 / 1024))
+    DISK_GB=$(df $DF_FLAG "$RESULTS_DIR" | tail -1 | awk '{print $4}')
     echo "$TS,$ELAPSED,$RSS_MB,$FD_COUNT,$CPU_PCT,$WAL_MB,$DISK_GB" >> "$SERVER_METRICS"
     log "  $TS: server RSS=${RSS_MB}MB FD=${FD_COUNT} CPU=${CPU_PCT}% WAL=${WAL_MB}MB Disk=${DISK_GB}GB"
 done
 
 # Cleanup + Report
 log "=========================================="
-log "Soak complete - generating report"
+log "Soak complete (reason: $EXIT_REASON) - generating report"
 log "=========================================="
-kill -TERM $SERVER_PID 2>/dev/null || true
-kill -TERM $SOAK_PID 2>/dev/null || true
+[ -n "$SERVER_PID" ] && kill -TERM $SERVER_PID 2>/dev/null || true
+[ -n "$SOAK_PID" ] && kill -TERM $SOAK_PID 2>/dev/null || true
 sleep 5
-kill -KILL $SERVER_PID 2>/dev/null || true
-kill -KILL $SOAK_PID 2>/dev/null || true
+[ -n "$SERVER_PID" ] && kill -KILL $SERVER_PID 2>/dev/null || true
+[ -n "$SOAK_PID" ] && kill -KILL $SOAK_PID 2>/dev/null || true
 
 RSS_START=$(head -2 "$SERVER_METRICS" | tail -1 | cut -d, -f3)
 RSS_END=$(tail -1 "$SERVER_METRICS" | cut -d, -f3)
-WAL_MAX=$(awk -F, 'NR>1{print $6}' "$SERVER_METRICS" | sort -n | tail -1)
+WAL_MAX=$(awk -F, 'NR>1 && $6!="" {print $6}' "$SERVER_METRICS" | sort -n | tail -1)
+[ -z "$WAL_MAX" ] && WAL_MAX=0
+[ -z "$RSS_START" ] && RSS_START="n/a"
+[ -z "$RSS_END" ] && RSS_END="n/a"
 
 cat > "$REPORT" << EOF
 # Z6G4 72h Soak Report (#3265) v2
@@ -111,17 +132,24 @@ cat > "$REPORT" << EOF
 - Result dir: $RESULTS_DIR
 - Mode: in-process soak subcommand + parallel MySQL server
 - WAL fix: PR #3533
+- Exit reason: $EXIT_REASON
 
 ## Server metrics
 - RSS start/end: ${RSS_START}/${RSS_END} MB
 - WAL max: ${WAL_MAX} MB (threshold 1024)
 
 ## Acceptance
-- Server alive: $([ -n "$SERVER_PID" ] && echo "tracked" || echo "n/a")
-- Soak completed: $([ -f "$RESULTS_DIR/soak.jsonl" ] && echo "YES" || echo "NO")
+- Server alive: $([ "$EXIT_REASON" = "server_died" ] && echo "NO" || echo "tracked")
+- Soak completed: $([ "$EXIT_REASON" = "duration_reached" ] && echo "YES" || echo "NO")
 - WAL bounded: $([ "$WAL_MAX" -lt "$WAL_HARD_LIMIT_MB" ] && echo "YES" || echo "NO")
 EOF
 
 cat "$SERVER_METRICS" >> "$REPORT"
 [ -f "$RESULTS_DIR/soak.jsonl" ] && cat "$RESULTS_DIR/soak.jsonl" >> "$REPORT"
 log "Report: $REPORT"
+
+# Exit 0 on natural completion; non-zero on early death.
+case "$EXIT_REASON" in
+    duration_reached) exit 0 ;;
+    *) exit 1 ;;
+esac
