@@ -1203,14 +1203,15 @@ fn write_column_def<W: Write>(w: &mut W, name: &str, sql_type: &str, seq: u8) ->
     write_lenenc_string(&mut p, b"").unwrap();
     write_lenenc_string(&mut p, name.as_bytes()).unwrap();
     write_lenenc_string(&mut p, name.as_bytes()).unwrap();
-    p.push(0x0c);
-    p.write_u16::<LittleEndian>(0x21).unwrap();
-    p.write_u32::<LittleEndian>(col_len_from_type(sql_type))
-        .unwrap();
-    p.push(col_type_from_string(sql_type));
-    p.write_u16::<LittleEndian>(0x01).unwrap();
-    p.push(0x00);
-    p.write_u16::<LittleEndian>(0).unwrap();
+    // MySQL column definition fixed-size fields:
+    // charset_collation (2 bytes) → length (4 bytes) → field_type (1 byte)
+    // → flags (2 bytes) → decimals (1 byte) → filler (2 bytes)
+    p.write_u16::<LittleEndian>(0).unwrap();  // charset_collation: 0x0000 (binary protocol)
+    p.write_u32::<LittleEndian>(col_len_from_type(sql_type)).unwrap();  // length
+    p.push(col_type_from_string(sql_type));  // field_type
+    p.write_u16::<LittleEndian>(0x01).unwrap();  // flags
+    p.push(0x00);  // decimals
+    p.write_u16::<LittleEndian>(0).unwrap();     // filler
     Packet {
         length: p.len() as u32,
         sequence: seq,
@@ -2500,13 +2501,15 @@ fn do_command_loop<S: Read + Write>(
                         write_lenenc_string(&mut param_def, b"").unwrap();
                         write_lenenc_string(&mut param_def, b"?").unwrap();
                         write_lenenc_string(&mut param_def, b"?").unwrap();
-                        param_def.push(0x0c);
-                        param_def.write_u16::<LittleEndian>(0x21).unwrap();
-                        param_def.write_u32::<LittleEndian>(255).unwrap();
-                        param_def.push(ptype);
-                        param_def.write_u16::<LittleEndian>(0x80).unwrap();
-                        param_def.push(0x00);
-                        param_def.write_u16::<LittleEndian>(0).unwrap();
+                        // MySQL column/param fixed-size fields: charset_collation (2 bytes)
+                        // → length (4 bytes) → field_type (1 byte) → flags (2 bytes)
+                        // → decimals (1 byte) → filler (2 bytes)
+                        param_def.write_u16::<LittleEndian>(0).unwrap();  // charset_collation: 0x0000 (binary protocol)
+                        param_def.write_u32::<LittleEndian>(255).unwrap();  // length
+                        param_def.push(ptype);  // field_type
+                        param_def.write_u16::<LittleEndian>(0x80).unwrap();  // flags
+                        param_def.push(0x00);  // decimals
+                        param_def.write_u16::<LittleEndian>(0).unwrap();     // filler
                         Packet {
                             length: param_def.len() as u32,
                             sequence: seq,
