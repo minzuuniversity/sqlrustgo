@@ -237,3 +237,206 @@ pub mod helpers {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sqlrustgo_planner::{
+        DataType, Expr, Field, FilterExec, PhysicalPlan, ProjectionExec, Schema,
+    };
+    use sqlrustgo_storage::MemoryStorage;
+
+    #[test]
+    fn test_harness_creation() {
+        let harness = TestHarness::new(MemoryStorage::new());
+        assert_eq!(harness.storage().name(), "memory");
+    }
+
+    #[test]
+    fn test_harness_execute_simple_plan() {
+        let harness = TestHarness::new(MemoryStorage::new());
+        let schema = Schema::new(vec![
+            Field::new("id".to_string(), DataType::Integer),
+        ]);
+        let plan = Box::new(sqlrustgo_planner::SeqScanExec::new("t".to_string(), schema));
+        let result = harness.execute(plan.as_ref());
+        assert!(result.is_ok(), "execute should succeed");
+    }
+
+    #[test]
+    fn test_test_case_builder() {
+        let schema = Schema::new(vec![Field::new("id".to_string(), DataType::Integer)]);
+        let plan = Box::new(sqlrustgo_planner::SeqScanExec::new("t".to_string(), schema));
+        let mut tc = ExecutorTestCase::new("test_case", plan);
+        tc.expect_rows(10);
+        tc.expect_first_row(vec![Value::Integer(1)]);
+        assert_eq!(tc.expected_rows, 10);
+        assert!(tc.expected_first_row.is_some());
+    }
+
+    #[test]
+    fn test_assertions_row_count() {
+        let result = ExecutorResult::new(vec![
+            vec![Value::Integer(1)],
+            vec![Value::Integer(2)],
+        ], 0);
+        assertions::assert_row_count(&result, 2);
+    }
+
+    #[test]
+    #[should_panic(expected = "Expected 3 rows, got 2")]
+    fn test_assertions_row_count_fails() {
+        let result = ExecutorResult::new(vec![
+            vec![Value::Integer(1)],
+            vec![Value::Integer(2)],
+        ], 0);
+        assertions::assert_row_count(&result, 3);
+    }
+
+    #[test]
+    fn test_assertions_has_rows() {
+        let result = ExecutorResult::new(vec![vec![Value::Integer(1)]], 0);
+        assertions::assert_has_rows(&result);
+    }
+
+    #[test]
+    fn test_assertions_no_rows() {
+        let result = ExecutorResult::new(vec![], 0);
+        assertions::assert_no_rows(&result);
+    }
+
+    #[test]
+    fn test_assertions_first_row_equals() {
+        let result = ExecutorResult::new(vec![
+            vec![Value::Integer(1), Value::Text("Alice".to_string())],
+        ], 0);
+        assertions::assert_first_row_equals(
+            &result,
+            &[Value::Integer(1), Value::Text("Alice".to_string())],
+        );
+    }
+
+    #[test]
+    fn test_assertions_row_equals() {
+        let result = ExecutorResult::new(vec![
+            vec![Value::Integer(1)],
+            vec![Value::Integer(2)],
+        ], 0);
+        assertions::assert_row_equals(&result, 1, &[Value::Integer(2)]);
+    }
+
+    #[test]
+    fn test_assertions_affected_rows() {
+        let result = ExecutorResult::new(vec![], 5);
+        assertions::assert_affected_rows(&result, 5);
+    }
+
+    #[test]
+    fn test_assertions_contains_value() {
+        let result = ExecutorResult::new(vec![
+            vec![Value::Integer(1)],
+            vec![Value::Integer(2)],
+        ], 0);
+        assertions::assert_contains_value(&result, &Value::Integer(2));
+    }
+
+    #[test]
+    fn test_helpers_users_schema() {
+        let schema = helpers::users_schema();
+        assert_eq!(schema.fields.len(), 2);
+    }
+
+    #[test]
+    fn test_helpers_orders_schema() {
+        let schema = helpers::orders_schema();
+        assert_eq!(schema.fields.len(), 3);
+    }
+
+    #[test]
+    fn test_helpers_products_schema() {
+        let schema = helpers::products_schema();
+        assert_eq!(schema.fields.len(), 3);
+    }
+
+    #[test]
+    fn test_helpers_create_seq_scan_plan() {
+        let schema = Schema::new(vec![Field::new("id".to_string(), DataType::Integer)]);
+        let plan = helpers::create_seq_scan_plan("users", schema);
+        assert!(plan.as_any().is::<sqlrustgo_planner::SeqScanExec>());
+    }
+
+    #[test]
+    fn test_helpers_create_filter_plan() {
+        let child = Box::new(sqlrustgo_planner::SeqScanExec::new(
+            "users".to_string(),
+            Schema::new(vec![Field::new("id".to_string(), DataType::Integer)]),
+        ));
+        let filter = Expr::BinaryExpr {
+            left: Box::new(Expr::Column(sqlrustgo_planner::Column::new("id".to_string()))),
+            op: sqlrustgo_planner::Operator::Gt,
+            right: Box::new(Expr::Literal(Value::Integer(0))),
+        };
+        let plan = helpers::create_filter_plan(child, filter);
+        assert!(plan.as_any().is::<FilterExec>());
+    }
+
+    #[test]
+    fn test_helpers_create_projection_plan() {
+        let child = Box::new(sqlrustgo_planner::SeqScanExec::new(
+            "users".to_string(),
+            Schema::new(vec![
+                Field::new("id".to_string(), DataType::Integer),
+                Field::new("name".to_string(), DataType::Text),
+            ]),
+        ));
+        let exprs = vec![Expr::Column(sqlrustgo_planner::Column::new("id".to_string()))];
+        let output_schema = Schema::new(vec![Field::new("id".to_string(), DataType::Integer)]);
+        let plan = helpers::create_projection_plan(child, exprs, output_schema);
+        assert!(plan.as_any().is::<ProjectionExec>());
+    }
+
+    #[test]
+    fn test_helpers_create_aggregate_plan() {
+        let child = Box::new(sqlrustgo_planner::SeqScanExec::new(
+            "orders".to_string(),
+            Schema::new(vec![
+                Field::new("customer_id".to_string(), DataType::Integer),
+                Field::new("amount".to_string(), DataType::Integer),
+            ]),
+        ));
+        let group_expr = vec![Expr::Column(sqlrustgo_planner::Column::new("customer_id".to_string()))];
+        let agg_expr = vec![Expr::AggregateFunction {
+            func: sqlrustgo_planner::AggregateFunction::Sum,
+            args: vec![Expr::Column(sqlrustgo_planner::Column::new("amount".to_string()))],
+            distinct: false,
+            order_by: None,
+        }];
+        let output_schema = Schema::new(vec![
+            Field::new("customer_id".to_string(), DataType::Integer),
+            Field::new("SUM(amount)".to_string(), DataType::Integer),
+        ]);
+        let plan = helpers::create_aggregate_plan(child, group_expr, agg_expr, output_schema);
+        assert!(plan.as_any().is::<sqlrustgo_planner::AggregateExec>());
+    }
+
+    #[test]
+    fn test_test_case_run() {
+        let schema = Schema::new(vec![Field::new("id".to_string(), DataType::Integer)]);
+        let plan = Box::new(sqlrustgo_planner::SeqScanExec::new("t".to_string(), schema));
+        let tc = ExecutorTestCase::new("test_run", plan).expect_rows(0);
+        let harness = TestHarness::new(MemoryStorage::new());
+        assert!(tc.run(&harness).is_ok(), "test case should run successfully");
+    }
+
+    #[test]
+    fn test_test_case_run_with_expected_rows() {
+        let schema = Schema::new(vec![
+            Field::new("id".to_string(), DataType::Integer),
+            Field::new("name".to_string(), DataType::Text),
+        ]);
+        let plan = Box::new(sqlrustgo_planner::SeqScanExec::new("users".to_string(), schema));
+        let tc = ExecutorTestCase::new("test_run_with_rows", plan).expect_rows(0);
+        let harness = TestHarness::new(MemoryStorage::new());
+        assert!(tc.run(&harness).is_ok(), "test case should run successfully");
+    }
+}
+
