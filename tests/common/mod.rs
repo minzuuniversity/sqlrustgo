@@ -255,6 +255,24 @@ fn build_com_stmt_execute(stmt_id: u32, params: &[u8]) -> Vec<u8> {
     p
 }
 
+fn build_com_stmt_close(stmt_id: u32) -> Vec<u8> {
+    let mut p = Vec::new();
+    p.push(0x19); // COM_STMT_CLOSE
+    p.extend_from_slice(&stmt_id.to_le_bytes());
+    p
+}
+
+fn build_com_ping() -> Vec<u8> {
+    vec![0x0e] // COM_PING
+}
+
+fn build_com_init_db(db_name: &str) -> Vec<u8> {
+    let mut p = Vec::with_capacity(1 + db_name.len());
+    p.push(0x02); // COM_INIT_DB
+    p.extend_from_slice(db_name.as_bytes());
+    p
+}
+
 /// Inspect a server response packet: returns `Ok(())` for an OK packet
 /// (first byte = 0x00) and `Err` for an ERR packet (first byte = 0xff)
 /// or any other unexpected payload.
@@ -772,6 +790,33 @@ impl MySqlTestClient {
     /// Expose the raw TCP stream for tests that need direct access.
     pub fn raw_stream(&mut self) -> &mut TcpStream {
         &mut self.stream
+    }
+
+    /// Send COM_PING and read the OK response.
+    pub fn ping(&mut self) -> wire_err::Result<()> {
+        let p = build_com_ping();
+        write_packet(&mut self.stream, 0, &p)?;
+        let resp = read_packet(&mut self.stream)?;
+        check_ok_or_err(1, &resp)?;
+        Ok(())
+    }
+
+    /// Send COM_INIT_DB and read the OK response.
+    pub fn init_db(&mut self, db_name: &str) -> wire_err::Result<()> {
+        let p = build_com_init_db(db_name);
+        write_packet(&mut self.stream, 0, &p)?;
+        let resp = read_packet(&mut self.stream)?;
+        check_ok_or_err(1, &resp)?;
+        Ok(())
+    }
+
+    /// Send COM_STMT_CLOSE and read the OK response.
+    pub fn stmt_close(&mut self, stmt_id: u32) -> wire_err::Result<()> {
+        let p = build_com_stmt_close(stmt_id);
+        write_packet(&mut self.stream, 0, &p)?;
+        let resp = read_packet(&mut self.stream)?;
+        check_ok_or_err(1, &resp)?;
+        Ok(())
     }
     /// Override the read/write timeouts on the underlying TCP stream.
     /// SF=0.1 wire test needs >30s for Q17; default 5s is too short.
