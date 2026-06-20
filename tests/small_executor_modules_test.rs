@@ -18,9 +18,7 @@
 use sqlrustgo_executor::execution::drift_gate::{
     DriftSeverity, DriftViolation, DriftViolationType,
 };
-use sqlrustgo_executor::execution::events::{
-    RecoveryConfidence, RecoveryPlan, RecoveryType,
-};
+use sqlrustgo_executor::execution::events::{RecoveryConfidence, RecoveryPlan, RecoveryType};
 use sqlrustgo_executor::execution::facade::ExecutionFacade;
 use sqlrustgo_executor::execution::recovery::{
     ExecutionReplayEngine, RecoveryPlanner, SafeExecutionController,
@@ -520,8 +518,8 @@ fn test_ast_adapter_to_update_plan_uses_all_when_no_where() {
         partition_info: None,
     };
 
-    let plan = sqlrustgo_executor::ast_adapter::AstAdapter::to_update_plan(&stmt, &info)
-        .expect("plan");
+    let plan =
+        sqlrustgo_executor::ast_adapter::AstAdapter::to_update_plan(&stmt, &info).expect("plan");
     assert_eq!(plan.table, "users");
     assert!(matches!(
         plan.predicate(),
@@ -537,10 +535,7 @@ fn test_ast_adapter_to_update_plan_errors_on_unknown_column() {
 
     let stmt = ParserUpdateStatement {
         table: "users".to_string(),
-        set_clauses: vec![(
-            "missing".to_string(),
-            Expression::Literal("x".to_string()),
-        )],
+        set_clauses: vec![("missing".to_string(), Expression::Literal("x".to_string()))],
         where_clause: None,
     };
     let info = sqlrustgo_storage::TableInfo {
