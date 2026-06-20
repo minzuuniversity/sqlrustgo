@@ -12,9 +12,7 @@
 //! inside each `mod tests` already exercise in-crate paths; this file adds
 //! end-to-end scenarios that compose multiple IR nodes together.
 
-use sqlrustgo_storage::vtu_ir::{
-    AssignmentIR, ExprIR, MutationIR, PredicateIR, UpdatePlan,
-};
+use sqlrustgo_storage::vtu_ir::{AssignmentIR, ExprIR, MutationIR, PredicateIR, UpdatePlan};
 use sqlrustgo_storage::{ColumnDefinition, TableInfo, Value};
 
 fn users_table() -> TableInfo {
@@ -88,12 +86,7 @@ fn test_update_plan_no_predicate() {
         column_index: 1,
         expr: ExprIR::Literal(Value::Boolean(false)),
     }]);
-    let plan = UpdatePlan::new(
-        "users".to_string(),
-        PredicateIR::All,
-        mutation,
-        0,
-    );
+    let plan = UpdatePlan::new("users".to_string(), PredicateIR::All, mutation, 0);
 
     assert_eq!(plan.table, "users");
     assert!(matches!(plan.predicate(), PredicateIR::All));
@@ -263,7 +256,10 @@ fn test_predicate_column_with_non_boolean_value_is_false() {
     let p = PredicateIR::Expr(ExprIR::Column("id".to_string()));
     // id is INTEGER, not BOOLEAN — predicate returns false even though the
     // column exists. This is intentional in PredicateIR::eval_expr.
-    assert!(!p.evaluate(&[Value::Integer(1), Value::Boolean(true), Value::Null], &info));
+    assert!(!p.evaluate(
+        &[Value::Integer(1), Value::Boolean(true), Value::Null],
+        &info
+    ));
 }
 
 #[test]
@@ -274,8 +270,14 @@ fn test_predicate_binary_eq_integer() {
         left: Box::new(ExprIR::Column("id".to_string())),
         right: Box::new(ExprIR::Literal(Value::Integer(7))),
     });
-    assert!(p.evaluate(&[Value::Integer(7), Value::Boolean(true), Value::Null], &info));
-    assert!(!p.evaluate(&[Value::Integer(8), Value::Boolean(true), Value::Null], &info));
+    assert!(p.evaluate(
+        &[Value::Integer(7), Value::Boolean(true), Value::Null],
+        &info
+    ));
+    assert!(!p.evaluate(
+        &[Value::Integer(8), Value::Boolean(true), Value::Null],
+        &info
+    ));
 }
 
 #[test]
@@ -287,11 +289,19 @@ fn test_predicate_binary_eq_text() {
         right: Box::new(ExprIR::Literal(Value::Text("alice".to_string()))),
     });
     assert!(p.evaluate(
-        &[Value::Integer(1), Value::Boolean(true), Value::Text("alice".to_string())],
+        &[
+            Value::Integer(1),
+            Value::Boolean(true),
+            Value::Text("alice".to_string())
+        ],
         &info
     ));
     assert!(!p.evaluate(
-        &[Value::Integer(1), Value::Boolean(true), Value::Text("bob".to_string())],
+        &[
+            Value::Integer(1),
+            Value::Boolean(true),
+            Value::Text("bob".to_string())
+        ],
         &info
     ));
 }
@@ -340,15 +350,17 @@ fn test_predicate_compound_and_or() {
 #[test]
 fn test_predicate_isnull_isnotnull() {
     let info = users_table();
-    let is_null = PredicateIR::Expr(ExprIR::IsNull(Box::new(ExprIR::Column(
-        "name".to_string(),
-    ))));
+    let is_null = PredicateIR::Expr(ExprIR::IsNull(Box::new(ExprIR::Column("name".to_string()))));
     assert!(is_null.evaluate(
         &[Value::Integer(1), Value::Boolean(true), Value::Null],
         &info
     ));
     assert!(!is_null.evaluate(
-        &[Value::Integer(1), Value::Boolean(true), Value::Text("x".to_string())],
+        &[
+            Value::Integer(1),
+            Value::Boolean(true),
+            Value::Text("x".to_string())
+        ],
         &info
     ));
 
@@ -360,7 +372,11 @@ fn test_predicate_isnull_isnotnull() {
         &info
     ));
     assert!(is_not_null.evaluate(
-        &[Value::Integer(1), Value::Boolean(true), Value::Text("x".to_string())],
+        &[
+            Value::Integer(1),
+            Value::Boolean(true),
+            Value::Text("x".to_string())
+        ],
         &info
     ));
 }
@@ -407,9 +423,21 @@ fn test_full_update_plan_filters_then_mutates_in_evaluation() {
 
     // Three rows — only ABC should be matched.
     let rows = [
-        vec![Value::Text("ABC".to_string()), Value::Integer(10), Value::Integer(100)],
-        vec![Value::Text("XYZ".to_string()), Value::Integer(20), Value::Integer(200)],
-        vec![Value::Text("DEF".to_string()), Value::Integer(30), Value::Integer(300)],
+        vec![
+            Value::Text("ABC".to_string()),
+            Value::Integer(10),
+            Value::Integer(100),
+        ],
+        vec![
+            Value::Text("XYZ".to_string()),
+            Value::Integer(20),
+            Value::Integer(200),
+        ],
+        vec![
+            Value::Text("DEF".to_string()),
+            Value::Integer(30),
+            Value::Integer(300),
+        ],
     ];
     let mut matched = 0;
     for row in &rows {
