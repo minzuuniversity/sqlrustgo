@@ -22,8 +22,8 @@
 use sqlrustgo_graph::cypher::parser::tokenize_and_parse;
 use sqlrustgo_graph::cypher::CypherPattern;
 use sqlrustgo_graph::{
-    execute_cypher, CypherResult, EdgeId, GraphStore, InMemoryGraphStore, NodeId,
-    PropertyMap, PropertyValue,
+    execute_cypher, CypherResult, EdgeId, GraphStore, InMemoryGraphStore, NodeId, PropertyMap,
+    PropertyValue,
 };
 
 // ===========================================================================
@@ -48,7 +48,10 @@ fn test_create_nodes_with_labels_and_properties() {
 
     assert_eq!(store.node_count(), 2);
     let alice_node = store.get_node(alice_id).expect("alice");
-    assert_eq!(alice_node.properties.get("name").unwrap().as_string(), Some(&"Alice".to_string()));
+    assert_eq!(
+        alice_node.properties.get("name").unwrap().as_string(),
+        Some(&"Alice".to_string())
+    );
 }
 
 #[test]
@@ -161,11 +164,7 @@ fn test_cypher_match_with_where_gt_int() {
 #[test]
 fn test_cypher_match_with_where_eq_string() {
     let store = people_store();
-    let r = execute_cypher(
-        "MATCH (n) WHERE n.city = 'Beijing' RETURN n",
-        &store,
-    )
-    .unwrap();
+    let r = execute_cypher("MATCH (n) WHERE n.city = 'Beijing' RETURN n", &store).unwrap();
     assert_eq!(r.rows.len(), 2);
 }
 
@@ -245,8 +244,12 @@ fn test_bfs_traversal_visits_all_reachable_nodes() {
     let alice = store.create_node("P", PropertyMap::new());
     let bob = store.create_node("P", PropertyMap::new());
     let carol = store.create_node("P", PropertyMap::new());
-    store.create_edge(alice, bob, "K", PropertyMap::new()).unwrap();
-    store.create_edge(bob, carol, "K", PropertyMap::new()).unwrap();
+    store
+        .create_edge(alice, bob, "K", PropertyMap::new())
+        .unwrap();
+    store
+        .create_edge(bob, carol, "K", PropertyMap::new())
+        .unwrap();
 
     let mut visited = Vec::new();
     store.bfs(alice, |id| {
@@ -266,8 +269,12 @@ fn test_dfs_traversal_visits_all_reachable_nodes() {
     let alice = store.create_node("P", PropertyMap::new());
     let bob = store.create_node("P", PropertyMap::new());
     let carol = store.create_node("P", PropertyMap::new());
-    store.create_edge(alice, bob, "K", PropertyMap::new()).unwrap();
-    store.create_edge(bob, carol, "K", PropertyMap::new()).unwrap();
+    store
+        .create_edge(alice, bob, "K", PropertyMap::new())
+        .unwrap();
+    store
+        .create_edge(bob, carol, "K", PropertyMap::new())
+        .unwrap();
 
     let mut visited = Vec::new();
     store.dfs(alice, |id| {
@@ -284,8 +291,12 @@ fn test_neighbors_by_edge_label_filters_traversal() {
     let alice = store.create_node("P", PropertyMap::new());
     let bob = store.create_node("P", PropertyMap::new());
     let carol = store.create_node("P", PropertyMap::new());
-    store.create_edge(alice, bob, "KNOWS", PropertyMap::new()).unwrap();
-    store.create_edge(alice, carol, "LIVES_NEAR", PropertyMap::new()).unwrap();
+    store
+        .create_edge(alice, bob, "KNOWS", PropertyMap::new())
+        .unwrap();
+    store
+        .create_edge(alice, carol, "LIVES_NEAR", PropertyMap::new())
+        .unwrap();
 
     let knows_neighbors = store.neighbors_by_edge_label(alice, "KNOWS");
     assert_eq!(knows_neighbors, vec![bob]);
@@ -306,9 +317,15 @@ fn test_shortest_path_two_hops_via_bfs() {
     let bob = store.create_node("P", PropertyMap::new());
     let carol = store.create_node("P", PropertyMap::new());
     let dan = store.create_node("P", PropertyMap::new());
-    store.create_edge(alice, bob, "K", PropertyMap::new()).unwrap();
-    store.create_edge(bob, carol, "K", PropertyMap::new()).unwrap();
-    store.create_edge(alice, dan, "K", PropertyMap::new()).unwrap();
+    store
+        .create_edge(alice, bob, "K", PropertyMap::new())
+        .unwrap();
+    store
+        .create_edge(bob, carol, "K", PropertyMap::new())
+        .unwrap();
+    store
+        .create_edge(alice, dan, "K", PropertyMap::new())
+        .unwrap();
 
     // Manual BFS-based shortest hop count.
     let mut depth = std::collections::HashMap::new();
@@ -429,10 +446,7 @@ fn test_cypher_parser_simple_node() {
 
 #[test]
 fn test_cypher_parser_with_label_and_where() {
-    let q = tokenize_and_parse(
-        "MATCH (n:Person) WHERE n.age > 30 RETURN n.name",
-    )
-    .unwrap();
+    let q = tokenize_and_parse("MATCH (n:Person) WHERE n.age > 30 RETURN n.name").unwrap();
     match q.pattern {
         CypherPattern::Node(node) => {
             assert_eq!(node.label.as_deref(), Some("Person"));
@@ -481,10 +495,7 @@ fn test_cypher_undirected_relationship_pattern() {
             Tracked as a parser-level gap."]
 fn test_cypher_optional_match_returns_null_for_missing() {
     let store = people_store();
-    let r = execute_cypher(
-        "OPTIONAL MATCH (n:Ghost) RETURN n",
-        &store,
-    );
+    let r = execute_cypher("OPTIONAL MATCH (n:Ghost) RETURN n", &store);
     assert!(r.is_ok(), "OPTIONAL MATCH should be supported");
 }
 
@@ -497,8 +508,7 @@ fn test_relationship_pattern_via_cypher_executes() {
         .create_edge(alice, bob, "KNOWS", PropertyMap::new())
         .unwrap();
 
-    let r: CypherResult =
-        execute_cypher("MATCH (n)-[:KNOWS]->(m) RETURN n, m", &store).unwrap();
+    let r: CypherResult = execute_cypher("MATCH (n)-[:KNOWS]->(m) RETURN n, m", &store).unwrap();
     assert_eq!(r.rows.len(), 1, "one KNOWS edge in the store");
     assert_eq!(r.columns, vec!["n".to_string(), "m".to_string()]);
 }
