@@ -2,6 +2,10 @@
 # run_72h_soak_v2_guardian.sh - Watchdog that restarts crashed soak processes
 # Runs every 60s, restarts server or soak if either dies, logs to guardian.log
 # Used in conjunction with run_72h_soak_v2.sh
+#
+# Important: only restarts a soak process that died BEFORE its scheduled
+# duration. If the soak completed naturally (SOAK_72H_REPORT.md present),
+# the guardian exits 0 cleanly.
 
 set -uo pipefail
 
@@ -22,6 +26,13 @@ RESTART_COUNT=$(cat "$RESTART_COUNT_FILE")
 log "Watchdog started, max_restarts=$MAX_RESTARTS, results=$RESULTS_DIR"
 
 while [ "$RESTART_COUNT" -lt "$MAX_RESTARTS" ]; do
+    # If the soak runner already produced a final report, soak completed
+    # naturally — exit cleanly without restarting.
+    if [ -f "$RESULTS_DIR/SOAK_72H_REPORT.md" ]; then
+        log "Natural completion detected (SOAK_72H_REPORT.md present), exiting cleanly"
+        echo "GUARDIAN_OK" > "$RESULTS_DIR/guardian_status"
+        exit 0
+    fi
     sleep "$CHECK_INTERVAL_S"
     SERVER_PID=$(cat "$RESULTS_DIR/server.pid" 2>/dev/null)
     SOAK_PID=$(cat "$RESULTS_DIR/soak.pid" 2>/dev/null)
