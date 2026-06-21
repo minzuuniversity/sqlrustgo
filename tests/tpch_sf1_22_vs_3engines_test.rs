@@ -67,7 +67,6 @@ fn fixture_present() -> bool {
 /// True iff all 8 .json table files exist with valid row counts
 /// (i.e., already generated, avoiding expensive LOAD DATA).
 fn json_data_ready() -> bool {
-    use std::io::Read;
     const EXPECTED: &[(&str, usize)] = &[
         ("region", 5),
         ("nation", 25),
@@ -84,39 +83,34 @@ fn json_data_ready() -> bool {
         if !json_path.exists() {
             return false;
         }
-        // Fast check: read the file and count row entries.
-        // We look for the `"rows":[` marker and count top-level
-        // array elements by counting commas at the start of each
-        // row (rows are compact JSON arrays like `[123,"abc",...`).
-        // A simpler approach: use serde to count rows but this is
-        // a first-pass check so we use a lightweight heuristic.
-        let mut file = std::fs::File::open(&json_path).expect("open json");
-        let mut content = String::new();
-        file.read_to_string(&mut content).expect("read json");
-        // Find "rows":[ and parse the array length via a quick scan
+        let content = std::fs::read_to_string(&json_path).expect("read json");
+        // Count occurrences of "rows": at the top level to find the rows array.
+        // Each row in the server's JSON format is a JSON object like
+        // `{"Integer":123}` or `{"Text":"hello"}`. We count these by looking
+        // for the pattern `"rows":[` and then counting objects `{` that appear
+        // at the top level inside that array.
         if let Some(rows_start) = content.find(r#""rows":["#) {
             let after_rows = &content[rows_start + 8..];
-            // Count top-level entries: each row is a JSON array [...]
-            // We count commas that appear at the same nesting level
-            // (after closing a row's ] and before the next row's [).
             let mut depth = 0i32;
             let mut row_count = 0usize;
-            let mut in_array = false;
+            let mut in_object = false;
+            let mut started = false;
             for ch in after_rows.chars() {
+                if !started {
+                    if ch == '[' { started = true; depth = 1; }
+                    continue;
+                }
                 match ch {
-                    '[' if depth == 0 => {
-                        in_array = true;
-                        depth += 1;
-                    }
-                    ']' if in_array => {
+                    '[' => depth += 1,
+                    ']' => {
                         depth -= 1;
-                        if depth == 0 {
-                            row_count += 1;
-                            in_array = false;
-                        }
+                        if depth == 0 { break; }
                     }
-                    '[' if in_array => depth += 1,
-                    ']' if in_array => depth -= 1,
+                    '{' if depth == 1 => { in_object = true; }
+                    '}' if in_object && depth == 1 => {
+                        row_count += 1;
+                        in_object = false;
+                    }
                     _ => {}
                 }
             }
