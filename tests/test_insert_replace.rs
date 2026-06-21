@@ -1,4 +1,4 @@
-use sqlrustgo::{ExecutionEngine, MemoryStorage, StorageEngine};
+use sqlrustgo::{ExecutionEngine, MemoryStorage};
 use std::sync::{Arc, RwLock};
 fn e() -> ExecutionEngine<MemoryStorage> {
     let s = Arc::new(RwLock::new(MemoryStorage::new()));

@@ -15,9 +15,6 @@ mod common;
 use common::MySqlTestClient;
 use sqlrustgo::{ExecutionEngine, MemoryExecutionEngine};
 use sqlrustgo_mysql_server::testing::{start_ephemeral, EphemeralConfig};
-use sqlrustgo_storage::{FileBackedWalManager, FileStorage, WalStorage};
-use std::path::PathBuf;
-use std::sync::{Arc, RwLock};
 use tempfile::TempDir;
 
 fn create_engine() -> MemoryExecutionEngine {
