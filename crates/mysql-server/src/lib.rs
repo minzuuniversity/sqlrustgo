@@ -2289,6 +2289,19 @@ fn handle_load_local_infile<S: Read + Write>(
         total_rows += n;
     }
 
+    // Materialize the .json file for this table so that subsequent
+    // test runs (which check `json_data_ready()` before starting the
+    // server) can skip the expensive LOAD DATA phase.  Without this,
+    // large tables (orders, lineitem) are only in-memory + WAL and
+    // every restart re-runs LOAD DATA from scratch.
+    //
+    // `WalStorage::flush()` delegates to `FileStorage::flush()` which
+    // writes all table .json files.
+    {
+        let mut s = engine.storage_write();
+        s.flush().map_err(|e| MySqlError::Other(format!("flush storage: {}", e)))?;
+    }
+
     Ok(total_rows)
 }
 
