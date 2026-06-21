@@ -88,6 +88,8 @@ pub enum Statement {
     Describe(DescribeStatement),
     CreateRole(CreateRoleStatement),
     DropRole(DropRoleStatement),
+    CreateDatabase(CreateDatabaseStatement),
+    DropDatabase(DropDatabaseStatement),
     GrantRole(GrantRoleStatement),
     RevokeRole(RevokeRoleStatement),
     SetRole(SetRoleStatement),
@@ -524,6 +526,19 @@ pub struct CreateTableStatement {
 /// DROP TABLE statement
 #[derive(Debug, Clone, PartialEq)]
 pub struct DropTableStatement {
+    pub name: String,
+    pub if_exists: bool,
+}
+/// CREATE DATABASE statement
+#[derive(Debug, Clone, PartialEq)]
+pub struct CreateDatabaseStatement {
+    pub name: String,
+    pub if_not_exists: bool,
+}
+
+/// DROP DATABASE statement
+#[derive(Debug, Clone, PartialEq)]
+pub struct DropDatabaseStatement {
     pub name: String,
     pub if_exists: bool,
 }
@@ -1422,12 +1437,11 @@ impl Parser {
             Some(Token::Trigger) => self.parse_create_trigger(),
             Some(Token::Role) => self.parse_create_role(),
             Some(Token::View) => self.parse_create_view(),
+            Some(Token::Database) => self.parse_create_database(),
             Some(t) => Err(format!(
-                "Expected TABLE, INDEX, PROCEDURE, TRIGGER, ROLE, or VIEW after CREATE, got {:?}",
-                t
-            )),
+                "Expected TABLE, INDEX, PROCEDURE, TRIGGER, ROLE, VIEW, or DATABASE after CREATE, got {:?}",
             None => Err(
-                "Expected TABLE, INDEX, PROCEDURE, TRIGGER, ROLE, or VIEW after CREATE".to_string(),
+                "Expected TABLE, INDEX, PROCEDURE, TRIGGER, ROLE, VIEW, or DATABASE after CREATE".to_string(),
             ),
         }
     }
@@ -1461,6 +1475,27 @@ impl Parser {
         Ok(Statement::CreateRole(CreateRoleStatement {
             name,
             parent_role,
+        }))
+    }
+    fn parse_create_database(&mut self) -> Result<Statement, String> {
+        self.expect(Token::Database)?;
+        let if_not_exists = if matches!(self.current(), Some(Token::If)) {
+            self.next();
+            self.expect(Token::Not)?;
+            self.expect(Token::Exists)?;
+            true
+        } else {
+            false
+        };
+        let name = match self.next() {
+            Some(Token::Identifier(name)) => name,
+            Some(Token::StringLiteral(s)) => s,
+            Some(t) => return Err(format!("Expected database name, got {:?}", t)),
+            None => return Err("Expected database name".to_string()),
+        };
+        Ok(Statement::CreateDatabase(CreateDatabaseStatement {
+            name,
+            if_not_exists,
         }))
     }
 
@@ -6300,11 +6335,12 @@ impl Parser {
             Some(Token::Index) => self.parse_drop_index(),
             Some(Token::View) => self.parse_drop_view(),
             Some(Token::Role) => self.parse_drop_role(),
+            Some(Token::Database) => self.parse_drop_database(),
             Some(t) => Err(format!(
-                "Expected TABLE, INDEX, VIEW or ROLE after DROP, got {:?}",
+                "Expected TABLE, INDEX, VIEW, ROLE, or DATABASE after DROP, got {:?}",
                 t
             )),
-            None => Err("Expected TABLE, INDEX, VIEW or ROLE after DROP".to_string()),
+            None => Err("Expected TABLE, INDEX, VIEW, ROLE, or DATABASE after DROP".to_string()),
         }
     }
 
@@ -6317,6 +6353,28 @@ impl Parser {
             None => return Err("Expected role name".to_string()),
         };
         Ok(Statement::DropRole(DropRoleStatement { name }))
+    }
+    fn parse_drop_database(&mut self) -> Result<Statement, String> {
+        self.expect(Token::Database)?;
+        let if_exists = if matches!(self.current(), Some(Token::If)) {
+            self.next();
+            match self.current() {
+                Some(Token::Exists) => {
+                    self.next();
+                    true
+                }
+                _ => return Err("Expected 'EXISTS' after 'IF'".to_string()),
+            }
+        } else {
+            false
+        };
+        let name = match self.next() {
+            Some(Token::Identifier(name)) => name,
+            Some(Token::StringLiteral(s)) => s,
+            Some(t) => return Err(format!("Expected database name, got {:?}", t)),
+            None => return Err("Expected database name".to_string()),
+        };
+        Ok(Statement::DropDatabase(DropDatabaseStatement { name, if_exists }))
     }
 
     fn parse_drop_index(&mut self) -> Result<Statement, String> {
