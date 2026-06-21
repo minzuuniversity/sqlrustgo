@@ -893,6 +893,7 @@ fn make_err_packet(seq: u8, code: u16, state: &str, msg: &str) -> Packet {
     p.write_u16::<LittleEndian>(code).unwrap();
     p.push(0x23);
     p.extend_from_slice(state.as_bytes());
+    p.push(0x00); // null-byte separator per MySQL wire protocol (SQL state must be null-terminated)
     p.extend_from_slice(msg.as_bytes());
     Packet {
         length: p.len() as u32,
@@ -3528,6 +3529,23 @@ mod integration_tests {
     fn test_make_err_packet_empty_message() {
         let pkt = make_err_packet(0, 2000, "42000", "");
         assert_eq!(pkt.payload[0], 0xff);
+    }
+    #[test]
+    fn test_make_err_packet_null_byte_separator() {
+        // MySQL wire protocol: error packet format is
+        // 0xFF + error_code(u16 LE) + 0x23 + SQL_STATE(5 bytes) + 0x00 + ERROR_MSG
+        // The null-byte between SQL state and error message is required.
+        let pkt = make_err_packet(1, 1146, "42S02", "Table not found");
+        assert_eq!(pkt.payload[0], 0xff); // ERR packet type
+        // Bytes 1-2: error code (1146 = 0x047A little-endian)
+        assert_eq!(u16::from_le_bytes([pkt.payload[1], pkt.payload[2]]), 1146);
+        assert_eq!(pkt.payload[3], 0x23); // '#' marker
+        // Bytes 4-8: SQL state "42S02"
+        assert_eq!(&pkt.payload[4..9], b"42S02");
+        // Byte 9: null-byte separator
+        assert_eq!(pkt.payload[9], 0x00);
+        // Bytes 10+: error message
+        assert_eq!(&pkt.payload[10..], b"Table not found");
     }
 
     // ============ make_eof_packet Tests ============
