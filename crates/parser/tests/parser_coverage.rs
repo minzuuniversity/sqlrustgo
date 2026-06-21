@@ -168,12 +168,18 @@ fn t_merge_missing_using_rejected() {
 #[test]
 fn t_merge_missing_on_rejected() {
     let result = parse("MERGE INTO t USING s WHEN MATCHED THEN UPDATE SET t.x = 1");
-    assert!(result.is_err(), "MERGE without ON clause should be rejected");
+    assert!(
+        result.is_err(),
+        "MERGE without ON clause should be rejected"
+    );
 }
 #[test]
 fn t_merge_missing_when_rejected() {
     let result = parse("MERGE INTO t USING s ON t.id = s.id");
-    assert!(result.is_err(), "MERGE without WHEN clause should be rejected");
+    assert!(
+        result.is_err(),
+        "MERGE without WHEN clause should be rejected"
+    );
 }
 
 // --- ALTER TABLE variants ---
@@ -185,17 +191,26 @@ fn t_alt_drop_column() {
 #[test]
 fn t_alt_set_default_rejected() {
     let result = parse("ALTER TABLE t ALTER COLUMN b SET DEFAULT 42");
-    assert!(result.is_err(), "ALTER TABLE ALTER COLUMN SET DEFAULT not yet supported");
+    assert!(
+        result.is_err(),
+        "ALTER TABLE ALTER COLUMN SET DEFAULT not yet supported"
+    );
 }
 #[test]
 fn t_alt_rename_constraint_rejected() {
     let result = parse("ALTER TABLE t RENAME CONSTRAINT old_name TO new_name");
-    assert!(result.is_err(), "ALTER TABLE RENAME CONSTRAINT not yet supported");
+    assert!(
+        result.is_err(),
+        "ALTER TABLE RENAME CONSTRAINT not yet supported"
+    );
 }
 #[test]
 fn t_alt_add_constraint_rejected() {
     let result = parse("ALTER TABLE t ADD CONSTRAINT fk FOREIGN KEY (id) REFERENCES other (id)");
-    assert!(result.is_err(), "ALTER TABLE ADD CONSTRAINT not yet supported");
+    assert!(
+        result.is_err(),
+        "ALTER TABLE ADD CONSTRAINT not yet supported"
+    );
 }
 
 // --- GRANT/REVOKE for TABLE/FUNCTION/COLUMN privileges (not supported by parser yet — reject) ---
@@ -213,12 +228,18 @@ fn t_revoke_table_privilege_rejected() {
 #[test]
 fn t_grant_function_privilege_rejected() {
     let result = parse("GRANT EXECUTE ON FUNCTION myproc TO admin");
-    assert!(result.is_err(), "GRANT EXECUTE ON FUNCTION not yet supported");
+    assert!(
+        result.is_err(),
+        "GRANT EXECUTE ON FUNCTION not yet supported"
+    );
 }
 #[test]
 fn t_revoke_function_privilege_rejected() {
     let result = parse("REVOKE EXECUTE ON FUNCTION myproc FROM admin");
-    assert!(result.is_err(), "REVOKE EXECUTE ON FUNCTION not yet supported");
+    assert!(
+        result.is_err(),
+        "REVOKE EXECUTE ON FUNCTION not yet supported"
+    );
 }
 #[test]
 fn t_grant_column_privilege() {
@@ -253,7 +274,10 @@ fn t_window_range_clause_rejected() {
 #[test]
 fn t_window_rows_following_rejected() {
     let result = parse("SELECT a, SUM(b) OVER (PARTITION BY c ORDER BY d ROWS BETWEEN CURRENT ROW AND 1 FOLLOWING) FROM t");
-    assert!(result.is_err(), "Window ROWS with FOLLOWING not yet supported");
+    assert!(
+        result.is_err(),
+        "Window ROWS with FOLLOWING not yet supported"
+    );
 }
 
 // --- NULLS FIRST / NULLS LAST in ORDER BY ---

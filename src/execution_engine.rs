@@ -2096,9 +2096,7 @@ mod tests {
         engine
             .execute("INSERT INTO users VALUES (2, 'Bob')")
             .unwrap();
-        let r = engine
-            .execute("SELECT * FROM users WHERE id = 1")
-            .unwrap();
+        let r = engine.execute("SELECT * FROM users WHERE id = 1").unwrap();
         assert_eq!(r.rows.len(), 1, "expected 1 row from index scan");
         assert_eq!(r.rows[0][1], Value::Text("Alice".to_string()));
     }
@@ -2166,7 +2164,9 @@ mod tests {
             .execute("INSERT INTO users (id, name) VALUES (1, 'Alice')")
             .unwrap();
         assert_eq!(r.affected_rows, 1, "INSERT should affect 1 row");
-        let sel = engine.execute("SELECT name FROM users WHERE id = 1").unwrap();
+        let sel = engine
+            .execute("SELECT name FROM users WHERE id = 1")
+            .unwrap();
         assert_eq!(sel.rows[0][0], Value::Text("Alice".to_string()));
     }
 
@@ -2238,9 +2238,7 @@ mod tests {
         engine
             .execute("CREATE TABLE t (id INTEGER, val TEXT)")
             .unwrap();
-        engine
-            .execute("INSERT INTO t VALUES (1, 'hello')")
-            .unwrap();
+        engine.execute("INSERT INTO t VALUES (1, 'hello')").unwrap();
         let r = engine.execute("SELECT val FROM t WHERE id = 1").unwrap();
         assert_eq!(r.rows[0][0], Value::Text("hello".to_string()));
     }
@@ -2253,9 +2251,7 @@ mod tests {
         engine
             .execute("CREATE TABLE t (id INTEGER, val TEXT)")
             .unwrap();
-        engine
-            .execute("INSERT INTO t VALUES (1, 'world')")
-            .unwrap();
+        engine.execute("INSERT INTO t VALUES (1, 'world')").unwrap();
         let r = engine.execute("SELECT val FROM t WHERE id = 1").unwrap();
         assert_eq!(r.rows[0][0], Value::Text("world".to_string()));
     }
@@ -2264,12 +2260,8 @@ mod tests {
     fn test_engine_builder_cbo_enabled() {
         let mut engine = ExecutionEngine::<MemoryStorage>::with_memory_and_cbo(true);
         assert!(engine.is_cbo_enabled(), "CBO should be enabled by default");
-        engine
-            .execute("CREATE TABLE t (id INTEGER)")
-            .unwrap();
-        engine
-            .execute("INSERT INTO t VALUES (1)")
-            .unwrap();
+        engine.execute("CREATE TABLE t (id INTEGER)").unwrap();
+        engine.execute("INSERT INTO t VALUES (1)").unwrap();
         let r = engine.execute("SELECT id FROM t").unwrap();
         assert_eq!(r.rows, vec![vec![Value::Integer(1)]]);
     }
@@ -2278,12 +2270,8 @@ mod tests {
     fn test_engine_builder_cbo_disabled() {
         let mut engine = ExecutionEngine::<MemoryStorage>::with_memory_and_cbo(false);
         assert!(!engine.is_cbo_enabled(), "CBO should be disabled");
-        engine
-            .execute("CREATE TABLE t (id INTEGER)")
-            .unwrap();
-        engine
-            .execute("INSERT INTO t VALUES (42)")
-            .unwrap();
+        engine.execute("CREATE TABLE t (id INTEGER)").unwrap();
+        engine.execute("INSERT INTO t VALUES (42)").unwrap();
         let r = engine.execute("SELECT id FROM t").unwrap();
         assert_eq!(r.rows, vec![vec![Value::Integer(42)]]);
     }
@@ -2296,9 +2284,7 @@ mod tests {
         engine
             .execute("CREATE TABLE t (id INTEGER, val TEXT)")
             .unwrap();
-        engine
-            .execute("INSERT INTO t VALUES (1, 'a')")
-            .unwrap();
+        engine.execute("INSERT INTO t VALUES (1, 'a')").unwrap();
         let r = engine.execute("SELECT * FROM t").unwrap();
         assert_eq!(r.rows.len(), 1);
         assert_eq!(r.rows[0][0], Value::Integer(1));
@@ -2311,12 +2297,8 @@ mod tests {
         engine
             .execute("CREATE TABLE t (a INTEGER, b INTEGER)")
             .unwrap();
-        engine
-            .execute("INSERT INTO t VALUES (1, 2)")
-            .unwrap();
-        engine
-            .execute("INSERT INTO t VALUES (3, 4)")
-            .unwrap();
+        engine.execute("INSERT INTO t VALUES (1, 2)").unwrap();
+        engine.execute("INSERT INTO t VALUES (3, 4)").unwrap();
         let r = engine
             .execute("SELECT * FROM t WHERE a > 1 AND b = 4")
             .unwrap();
@@ -2333,12 +2315,8 @@ mod tests {
         engine
             .execute("CREATE TABLE b (id INTEGER, a_id INTEGER)")
             .unwrap();
-        engine
-            .execute("INSERT INTO a VALUES (1, 'x')")
-            .unwrap();
-        engine
-            .execute("INSERT INTO b VALUES (1, 1)")
-            .unwrap();
+        engine.execute("INSERT INTO a VALUES (1, 'x')").unwrap();
+        engine.execute("INSERT INTO b VALUES (1, 1)").unwrap();
         let r = engine
             .execute("SELECT a.val, b.a_id FROM a JOIN b ON a.id = b.a_id")
             .unwrap();
@@ -2349,18 +2327,10 @@ mod tests {
     #[test]
     fn test_engine_select_order_by_limit() {
         let mut engine = ExecutionEngine::<MemoryStorage>::with_memory();
-        engine
-            .execute("CREATE TABLE t (id INTEGER)")
-            .unwrap();
-        engine
-            .execute("INSERT INTO t VALUES (3)")
-            .unwrap();
-        engine
-            .execute("INSERT INTO t VALUES (1)")
-            .unwrap();
-        engine
-            .execute("INSERT INTO t VALUES (2)")
-            .unwrap();
+        engine.execute("CREATE TABLE t (id INTEGER)").unwrap();
+        engine.execute("INSERT INTO t VALUES (3)").unwrap();
+        engine.execute("INSERT INTO t VALUES (1)").unwrap();
+        engine.execute("INSERT INTO t VALUES (2)").unwrap();
         let r = engine
             .execute("SELECT * FROM t ORDER BY id LIMIT 2")
             .unwrap();
@@ -2377,9 +2347,7 @@ mod tests {
         engine
             .execute("CREATE TABLE t (a INTEGER, b INTEGER)")
             .unwrap();
-        engine
-            .execute("INSERT INTO t VALUES (5, 10)")
-            .unwrap();
+        engine.execute("INSERT INTO t VALUES (5, 10)").unwrap();
         let r = engine
             .execute("SELECT * FROM t WHERE a < 10 AND b > 5")
             .unwrap();

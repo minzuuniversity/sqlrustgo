@@ -194,10 +194,13 @@ mod tests {
 
     #[test]
     fn test_execution_result_null_values() {
-        let result = ExecutionResult::new(vec![
-            vec![Value::Null, Value::Integer(1)],
-            vec![Value::Text("test".to_string()), Value::Null],
-        ], 0);
+        let result = ExecutionResult::new(
+            vec![
+                vec![Value::Null, Value::Integer(1)],
+                vec![Value::Text("test".to_string()), Value::Null],
+            ],
+            0,
+        );
         assert_eq!(result.rows.len(), 2);
         assert!(matches!(result.rows[0][0], Value::Null));
         assert!(matches!(result.rows[1][1], Value::Null));
@@ -211,19 +214,19 @@ mod tests {
 
     #[test]
     fn test_execution_result_with_blob() {
-        let result = ExecutionResult::new(
-            vec![vec![Value::Blob(vec![0xDE, 0xAD, 0xBE, 0xEF])]],
-            0,
-        );
+        let result = ExecutionResult::new(vec![vec![Value::Blob(vec![0xDE, 0xAD, 0xBE, 0xEF])]], 0);
         assert_eq!(result.rows.len(), 1);
     }
 
     #[test]
     fn test_execution_result_with_float() {
-        let result = ExecutionResult::new(vec![
-            vec![Value::Float(3.14), Value::Integer(1)],
-            vec![Value::Float(-2.5), Value::Integer(2)],
-        ], 0);
+        let result = ExecutionResult::new(
+            vec![
+                vec![Value::Float(3.14), Value::Integer(1)],
+                vec![Value::Float(-2.5), Value::Integer(2)],
+            ],
+            0,
+        );
         assert_eq!(result.rows.len(), 2);
     }
 
