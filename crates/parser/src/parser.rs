@@ -12,7 +12,10 @@
 //! - 每个 Statement 类型有对应的 parse_xxx 方法
 //! - 支持：SELECT, INSERT, UPDATE, DELETE, CREATE TABLE, DROP TABLE
 //! - 表达式解析支持基本二元运算
-
+// Suppress `unnameable_test_items` for legacy inner-`#[test]` helpers
+// inside `fn test_debug_*` and similar debug-style functions. They exist
+// for ad-hoc parser tracing and aren't part of the canonical test list.
+#![allow(unnameable_test_items)]
 use crate::lexer::Lexer;
 use crate::token::Token;
 use crate::transaction::{IsolationLevel, TransactionStatement};
@@ -7861,6 +7864,7 @@ mod tests {
 }
 
 #[test]
+#[allow(dead_code)]
 fn test_debug_having() {
     let sql =
         "SELECT region, SUM(amount) FROM sales_summary GROUP BY region HAVING SUM(amount) > 150";
@@ -8403,6 +8407,7 @@ fn test_parse_join_without_on_clause_implicit_inner() {
 }
 
 #[test]
+#[allow(dead_code)]
 fn test_debug_fk() {
     let sql = "CREATE TABLE orders (id INTEGER PRIMARY KEY, user_id INTEGER, amount INTEGER)";
     match parse(sql) {
@@ -8412,6 +8417,7 @@ fn test_debug_fk() {
 }
 
 #[test]
+#[allow(dead_code)]
 fn test_debug_refs() {
     let sql = "CREATE TABLE orders (id INTEGER PRIMARY KEY, user_id INTEGER REFERENCES users(id), amount INTEGER)";
     match parse(sql) {
@@ -8421,6 +8427,7 @@ fn test_debug_refs() {
 }
 
 #[test]
+#[allow(dead_code)]
 fn test_debug_refs2() {
     let sql = "CREATE TABLE orders (user_id INTEGER REFERENCES users(id))";
     match parse(sql) {
@@ -8430,6 +8437,7 @@ fn test_debug_refs2() {
 }
 
 #[test]
+#[allow(dead_code)]
 fn test_debug_exact() {
     let sql = "CREATE TABLE orders (id INTEGER PRIMARY KEY, user_id INTEGER REFERENCES users(id), amount INTEGER)";
     match parse(sql) {
@@ -8439,6 +8447,7 @@ fn test_debug_exact() {
 }
 
 #[test]
+#[allow(dead_code)]
 fn test_debug_cascade() {
     // This is EXACTLY what's in cascade.sql
     let sql1 = "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)";
@@ -8452,6 +8461,7 @@ fn test_debug_cascade() {
 }
 
 #[test]
+#[allow(dead_code)]
 fn test_debug_idx() {
     use crate::{lexer::Lexer, parse};
 
@@ -8467,6 +8477,7 @@ fn test_debug_idx() {
 }
 
 #[test]
+#[allow(dead_code)]
 fn test_debug_json_extract() {
     use crate::{lexer::Lexer, parse};
 

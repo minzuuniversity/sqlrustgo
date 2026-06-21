@@ -19,7 +19,7 @@
 
 use crate::engine::{SqlResult, StorageEngine, Value};
 use crate::wal::{WalEntry, WalEntryType, WalManager};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::marker::PhantomData;
 
 /// Recovery statistics
@@ -532,53 +532,28 @@ impl<S: StorageEngine> RecoveryEngine<S> for RecoveryEngineImpl {
             incomplete_txns: incomplete,
             ..Default::default()
         };
-
-        // Replay committed DML entries in order. Batched for O(N) instead
-        // of the previous O(N²): group INSERT entries by table, build a
-        // HashSet of the pre-recovery rows once per table for dedup, then
-        // hand the per-table pending set to `bulk_force_insert` so the
-        // storage engine pays a single save_table cost per table instead
-        // of one per row.
-        let mut pending_inserts: HashMap<String, Vec<Vec<Value>>> = HashMap::new();
-        let mut existing_rows_cache: HashMap<String, HashSet<Vec<Value>>> = HashMap::new();
-        let mut non_insert_entries: Vec<WalEntry> = Vec::new();
-
+        // PR-3580: Replay committed DML entries in LSN order. The previous
+        // implementation grouped all Inserts, applied them in bulk, then
+        // applied Deletes/Updates. That ordering is wrong for any WAL that
+        // contains an Insert that was later overwritten by a Delete/Update
+        // in the same transaction (e.g. the engine's `delete + insert` UPDATE
+        // pattern): the bulk Insert added the row, the subsequent Delete
+        // wiped it, and the original Insert was never re-applied. By
+        // replaying in LSN order, the original state is recreated and
+        // each subsequent DML is applied to the current view.
+        //
+        // Note: the F-09 "dual-write dedup" optimization is intentionally
+        // removed. It was correct for autocommit-only DML (where the row
+        // was durably committed to disk before crash and the WAL entry
+        // would create a duplicate on replay), but it incorrectly skipped
+        // Inserts that were later invalidated by a Delete/Update in the
+        // same WAL run — leaving the storage in an inconsistent state.
+        // The cost is one extra `bulk_force_insert` per replayed Insert;
+        // correctness wins.
         for entry in &dml_entries {
-            if matches!(entry.entry_type, WalEntryType::Insert) {
-                let table_name = resolve_table_name(storage, entry.table_id)?;
-                let data = entry.data.as_deref().unwrap_or(&[]);
-                if data.is_empty() {
-                    return Err(crate::engine::SqlError::ExecutionError(
-                        "RecoveryEngine: Insert entry with empty data".to_string(),
-                    ));
-                }
-                let record = bytes_to_record(data)?;
-                let seen = existing_rows_cache
-                    .entry(table_name.clone())
-                    .or_insert_with(|| {
-                        storage
-                            .scan(&table_name)
-                            .map(|rows| rows.into_iter().collect::<HashSet<_>>())
-                            .unwrap_or_default()
-                    });
-                if !seen.insert(record.clone()) {
-                    report.rows_inserted += 1;
-                    continue;
-                }
-                pending_inserts.entry(table_name).or_default().push(record);
-            } else {
-                non_insert_entries.push(entry.clone());
-            }
-        }
-
-        for (table_name, records) in pending_inserts {
-            storage.bulk_force_insert(&table_name, records.clone())?;
-            report.rows_inserted += records.len();
-        }
-
-        for entry in &non_insert_entries {
             self.apply_entry(storage, entry)?;
             match entry.entry_type {
+                WalEntryType::Insert => report.rows_inserted += 1,
                 WalEntryType::Update => report.rows_updated += 1,
                 WalEntryType::Delete => report.rows_deleted += 1,
                 _ => {}
