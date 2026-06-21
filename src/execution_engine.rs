@@ -224,6 +224,16 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         &self.storage
     }
 
+    /// Get a write lock on the underlying storage handle.
+    ///
+    /// Returns a `std::sync::WriteGuard<S>` so callers can mutate
+    /// storage (e.g., call `flush()` to persist .json files).
+    /// Used by the LOAD DATA LOCAL INFILE handler to materialize
+    /// table data to disk after loading all rows.
+    pub fn storage_write(&self) -> std::sync::RwLockWriteGuard<'_, S> {
+        self.storage.write().unwrap()
+    }
+
     /// Bulk-insert pre-parsed records directly into storage, bypassing
     /// the SQL parser. This is the LOAD DATA LOCAL INFILE hot path: a
     /// 60 000-row lineitem.tbl used to take >5 min because the previous
