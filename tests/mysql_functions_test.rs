@@ -1,6 +1,6 @@
 //! Integration tests for MySQL 5.7 function compatibility (Issue #2988 / MySQL-01)
 
-use sqlrustgo::{ExecutionEngine, MemoryStorage, StorageEngine};
+use sqlrustgo::{ExecutionEngine, MemoryStorage};
 use std::sync::{Arc, RwLock};
 
 fn fresh() -> ExecutionEngine<MemoryStorage> {
