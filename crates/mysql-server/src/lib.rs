@@ -1197,20 +1197,21 @@ fn write_binary_row<W: Write>(w: &mut W, row: &[Value], col_types: &[u8]) -> MyS
 
 fn write_column_def<W: Write>(w: &mut W, name: &str, sql_type: &str, seq: u8) -> MySqlResult<()> {
     let mut p = Vec::new();
-    write_lenenc_string(&mut p, b"def").unwrap();       // catalog
-    write_lenenc_string(&mut p, b"").unwrap();           // schema
-    write_lenenc_string(&mut p, b"").unwrap();           // table
-    write_lenenc_string(&mut p, b"").unwrap();           // org_table
+    write_lenenc_string(&mut p, b"def").unwrap(); // catalog
+    write_lenenc_string(&mut p, b"").unwrap(); // schema
+    write_lenenc_string(&mut p, b"").unwrap(); // table
+    write_lenenc_string(&mut p, b"").unwrap(); // org_table
     write_lenenc_string(&mut p, name.as_bytes()).unwrap(); // name
-    // MySQL column definition fixed-size fields:
-    // charset_collation (2 bytes) → length (4 bytes) → field_type (1 byte)
-    // → flags (2 bytes) → decimals (1 byte) → filler (2 bytes)
-    p.write_u16::<LittleEndian>(0x0030).unwrap();  // charset_collation: 0x30 = utf8_general_ci
-    p.write_u32::<LittleEndian>(col_len_from_type(sql_type)).unwrap();  // length
-    p.push(col_type_from_string(sql_type));  // field_type
-    p.write_u16::<LittleEndian>(0x0000).unwrap();  // flags
-    p.push(0x00);  // decimals
-    p.write_u16::<LittleEndian>(0).unwrap();     // filler
+                                                           // MySQL column definition fixed-size fields:
+                                                           // charset_collation (2 bytes) → length (4 bytes) → field_type (1 byte)
+                                                           // → flags (2 bytes) → decimals (1 byte) → filler (2 bytes)
+    p.write_u16::<LittleEndian>(0x0030).unwrap(); // charset_collation: 0x30 = utf8_general_ci
+    p.write_u32::<LittleEndian>(col_len_from_type(sql_type))
+        .unwrap(); // length
+    p.push(col_type_from_string(sql_type)); // field_type
+    p.write_u16::<LittleEndian>(0x0000).unwrap(); // flags
+    p.push(0x00); // decimals
+    p.write_u16::<LittleEndian>(0).unwrap(); // filler
     Packet {
         length: p.len() as u32,
         sequence: seq,
@@ -2313,79 +2314,9 @@ fn do_command_loop<S: Read + Write>(
                     .trim_end_matches('\0')
                     .trim()
                     .to_string();
-                eprintln!("SERVER: Received COM_QUERY [{}]: {}", addr, q);
                 tracing::info!("Query [{}]: {}", addr, q);
 
-                // Check if the first statement is a SELECT (for result-set vs OK packet)
-                let is_select = parse_statements(&q).map(|stmts| !stmts.is_empty() &&
-                    matches!(&stmts[0], Statement::Select(_))).unwrap_or(false);
-                tracing::info!("is_select={}, addr={}", is_select, addr);
-                eprintln!("SERVER: is_select={}, addr={}", is_select, addr);
-
-                if is_select {
-                    eprintln!("SERVER: sending result-set for SELECT");
-                    let mut eng = engine.write().unwrap();
-                    let result = eng.execute(&q);
-                    match result {
-                        Ok((col_count, columns, rows)) => {
-                            let mut seq = seq;
-                            // Send column count
-                            make_lenenc_int_packet(seq, col_count as u64).write_to(stream)?;
-                            seq = seq.wrapping_add(1);
-                            // Send column definitions
-                            for col in &columns {
-                                make_column_def_packet(seq, col).write_to(stream)?;
-                                seq = seq.wrapping_add(1);
-                            }
-                            // Send EOF/OK (classic protocol)
-                            make_ok_packet(seq, 0, 0, 0x0002, 0).write_to(stream)?;
-                            seq = seq.wrapping_add(1);
-                            // Send rows
-                            for row in &rows {
-                                let mut buf = Vec::new();
-                                for cell in row {
-                                    let bytes = cell.as_bytes();
-                                    if bytes.is_empty() {
-                                        buf.push(0xFB);
-                                    } else {
-                                        lenenc_str_encode(bytes, &mut buf);
-                                    }
-                                }
-                                make_lenenc_int_packet(seq, buf.len() as u64).write_to(stream)?;
-                                stream.write_all(&buf)?;
-                                stream.flush()?;
-                                seq = seq.wrapping_add(1);
-                            }
-                            // Send final EOF/OK
-                            make_ok_packet(seq, 0, 0, 0x0002, 0).write_to(stream)?;
-                            eprintln!("SERVER: sent result-set OK, addr={}", addr);
-                        }
-                        Err(e) => {
-                            make_err_packet(seq, 1146u16, "42S02", &e.to_string())
-                                .write_to(stream)?;
-                            eprintln!("SERVER: sent result-set ERR, addr={}", addr);
-                        }
-                    }
-                } else {
-                    eprintln!("SERVER: sending OK for DDL/DML");
-                    let mut eng = engine.write().unwrap();
-                    let result = eng.execute(&q);
-                    match result {
-                        Ok(r) => {
-                            make_ok_packet(seq, r.affected_rows as u64, 0, 0x0002, 0)
-                                .write_to(stream)?;
-                            stream.flush()?;
-                            eprintln!("SERVER: sent OK for DDL/DML, addr={}", addr);
-                        }
-                        Err(e) => {
-                            make_err_packet(seq, 1146u16, "42S02", &e.to_string())
-                                .write_to(stream)?;
-                            eprintln!("SERVER: sent ERR for DDL/DML, addr={}", addr);
-                        }
-                    }
-                }
-            }
-            // ROUTE: LOAD DATA LOCAL INFILE
+                // ROUTE: LOAD DATA LOCAL INFILE
                 //
                 // The MySQL wire protocol for LOAD DATA LOCAL INFILE is
                 // a two-phase dance: the client first sends the SQL
@@ -2456,6 +2387,50 @@ fn do_command_loop<S: Read + Write>(
                     seq = seq.wrapping_add(1);
                     continue;
                 }
+                let mut eng = engine.write().unwrap();
+                // 3521: Support multi-statement queries (semicolon-separated)
+                match parse_statements(&q) {
+                    Ok(stmts) => {
+                        for stmt in stmts {
+                            let result = eng.execute(&q);
+                            match result {
+                                Ok(r) if is_select_stmt(&stmt) => {
+                                    let cols: Vec<String> = r
+                                        .rows
+                                        .first()
+                                        .map(|row| {
+                                            (0..row.len())
+                                                .map(|i| format!("col_{}", i + 1))
+                                                .collect()
+                                        })
+                                        .unwrap_or_else(|| vec!["result".to_string()]);
+                                    let ctypes: Vec<String> =
+                                        cols.iter().map(|_| "VARCHAR(255)".to_string()).collect();
+                                    seq =
+                                        send_result_set(stream, &cols, &ctypes, &r.rows, seq, cap)?;
+                                }
+                                Ok(r) => {
+                                    make_ok_packet(seq, r.affected_rows as u64, 0, 0x0002, 0)
+                                        .write_to(stream)?;
+                                    seq = seq.wrapping_add(1);
+                                }
+                                Err(e) => {
+                                    let code = match e.to_string().contains("not found") {
+                                        true => 1146u16,
+                                        false => 1064u16,
+                                    };
+                                    make_err_packet(seq, code, "42000", &e.to_string())
+                                        .write_to(stream)?;
+                                    seq = seq.wrapping_add(1);
+                                }
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        make_err_packet(seq, 1064, "42000", &e).write_to(stream)?;
+                        seq = seq.wrapping_add(1);
+                    }
+                }
             }
             packet_type::COM_STMT_PREPARE => {
                 let sql = String::from_utf8_lossy(payload)
@@ -2525,15 +2500,16 @@ fn do_command_loop<S: Read + Write>(
                         write_lenenc_string(&mut param_def, b"").unwrap();
                         write_lenenc_string(&mut param_def, b"").unwrap();
                         write_lenenc_string(&mut param_def, b"?").unwrap();
+                        write_lenenc_string(&mut param_def, b"?").unwrap();
                         // MySQL column/param fixed-size fields: charset_collation (2 bytes)
                         // → length (4 bytes) → field_type (1 byte) → flags (2 bytes)
                         // → decimals (1 byte) → filler (2 bytes)
-                        param_def.write_u16::<LittleEndian>(0x0030).unwrap();  // charset_collation: 0x30 = utf8_general_ci
-                        param_def.write_u32::<LittleEndian>(255).unwrap();  // length
-                        param_def.push(ptype);  // field_type
-                        param_def.write_u16::<LittleEndian>(0x80).unwrap();  // flags
-                        param_def.push(0x00);  // decimals
-                        param_def.write_u16::<LittleEndian>(0).unwrap();     // filler
+                        param_def.write_u16::<LittleEndian>(0).unwrap(); // charset_collation: 0x0000 (binary protocol)
+                        param_def.write_u32::<LittleEndian>(255).unwrap(); // length
+                        param_def.push(ptype); // field_type
+                        param_def.write_u16::<LittleEndian>(0x80).unwrap(); // flags
+                        param_def.push(0x00); // decimals
+                        param_def.write_u16::<LittleEndian>(0).unwrap(); // filler
                         Packet {
                             length: param_def.len() as u32,
                             sequence: seq,
