@@ -1,6 +1,6 @@
 //! End-to-End Query Integration Tests
 
-use sqlrustgo::{DataType, Expr, Field, PhysicalPlan, Schema, SeqScanExec};
+use sqlrustgo::{DataType, Field, PhysicalPlan, Schema, SeqScanExec};
 
 #[test]
 fn test_simple_seqscan() {

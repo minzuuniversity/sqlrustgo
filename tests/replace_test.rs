@@ -143,7 +143,7 @@ fn test_replace_into_affects_rows() {
     run_sql("INSERT INTO rep4 VALUES (1, 100)").ok();
 
     // Replace existing row - should affect 2 rows (1 delete + 1 insert)
-    let out = run_sql("REPLACE INTO rep4 VALUES (1, 999)").unwrap_or_default();
+    let _out = run_sql("REPLACE INTO rep4 VALUES (1, 999)").unwrap_or_default();
     // Just verify it succeeds; row count interpretation may vary
 
     // Verify the new value
