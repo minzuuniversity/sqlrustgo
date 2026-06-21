@@ -1236,6 +1236,7 @@ mod tests {
             partition_info: None,
         };
         storage.create_table(&table_info).unwrap();
+        storage.set_current_tx_id(1); // route inserts through buffer
 
         for i in 0..5 {
             let record = vec![Value::Integer(i as i64)];
@@ -1270,6 +1271,7 @@ mod tests {
             partition_info: None,
         };
         storage.create_table(&table_info).unwrap();
+        storage.set_current_tx_id(1); // route inserts through buffer
 
         for i in 0..5 {
             let record = vec![Value::Integer(i as i64)];
@@ -1304,6 +1306,7 @@ mod tests {
             partition_info: None,
         };
         storage.create_table(&table_info).unwrap();
+        storage.set_current_tx_id(1); // route inserts through buffer
 
         for i in 0..5 {
             let record = vec![Value::Integer(i as i64)];
