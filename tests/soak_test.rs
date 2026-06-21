@@ -48,6 +48,7 @@ mod harness {
         }
     }
 
+    #[allow(dead_code)]
     #[derive(Debug, Clone)]
     pub struct SoakReport {
         pub duration_seconds: u64,
