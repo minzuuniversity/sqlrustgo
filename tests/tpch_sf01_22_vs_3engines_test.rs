@@ -5,7 +5,6 @@ mod common;
 use common::tpch_wire_harness::start_sf01;
 use std::collections::HashSet;
 use std::fs;
-use std::path::PathBuf;
 use std::process::Command;
 use std::sync::Mutex;
 

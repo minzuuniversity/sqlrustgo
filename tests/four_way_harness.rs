@@ -15,15 +15,13 @@
 //!
 //! Output: docs/releases/v3.9.0/perf/FOUR_WAY_TPCH_REPORT.md
 
-use std::collections::BTreeMap;
 use std::fmt;
 use std::fs;
-use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::time::Instant;
 
 /// 4 DB engines compared.
+#[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Engine {
     SqlRustGo,
@@ -32,6 +30,7 @@ pub enum Engine {
     PostgreSql,
 }
 
+#[allow(dead_code)]
 impl Engine {
     pub fn name(self) -> &'static str {
         match self {
@@ -114,7 +113,7 @@ pub const TABLE_COLS: &[(&str, usize)] = &[
 
 /// Load a single TBL file as INSERT statements (one INSERT per row) for
 /// the given engine. Returns the SQL statements.
-pub fn load_tbl_inserts(table: &str, cols: usize, tbl_path: &Path, engine: Engine) -> Vec<String> {
+pub fn load_tbl_inserts(table: &str, cols: usize, tbl_path: &Path, _engine: Engine) -> Vec<String> {
     let content = match fs::read_to_string(tbl_path) {
         Ok(c) => c,
         Err(_) => return vec![],
@@ -152,6 +151,7 @@ pub fn load_tbl_inserts(table: &str, cols: usize, tbl_path: &Path, engine: Engin
 }
 
 /// One TPC-H query result from one engine.
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct QueryResult {
     pub engine: Engine,
@@ -163,6 +163,7 @@ pub struct QueryResult {
     pub sample_rows: Vec<String>,
 }
 
+#[allow(dead_code)]
 impl QueryResult {
     pub fn passed(&self) -> bool {
         self.error.is_none()
@@ -170,6 +171,7 @@ impl QueryResult {
 }
 
 /// Compare row_counts across engines for a single query.
+#[allow(dead_code)]
 pub fn compare_row_counts(results: &[QueryResult]) -> bool {
     let pass: Vec<usize> = results
         .iter()
@@ -184,6 +186,7 @@ pub fn compare_row_counts(results: &[QueryResult]) -> bool {
 }
 
 /// Run a single SQL statement via the mysql CLI (for MariaDB).
+#[allow(dead_code)]
 pub fn run_mysql_sql(sql: &str) -> Result<String, String> {
     let output = Command::new("/opt/homebrew/bin/mysql")
         .args([
@@ -208,6 +211,7 @@ pub fn run_mysql_sql(sql: &str) -> Result<String, String> {
 }
 
 /// Run a single SQL statement via psql (for PostgreSQL).
+#[allow(dead_code)]
 pub fn run_psql_sql(sql: &str) -> Result<String, String> {
     let output = Command::new("/opt/homebrew/opt/postgresql@16/bin/psql")
         .args(["-U", "liying", "-d", "tpch_test", "-t", "-A"])
@@ -226,6 +230,7 @@ pub fn run_psql_sql(sql: &str) -> Result<String, String> {
 /// Set up a database for an external engine (create DB, schema, load data).
 /// Idempotent: detects if data is already loaded and skips the bulk
 /// INSERT phase.
+#[allow(dead_code)]
 pub fn setup_external_db(engine: Engine, data_dir: &Path) -> Result<(), String> {
     // First, ensure the database exists
     match engine {

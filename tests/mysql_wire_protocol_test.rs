@@ -30,7 +30,9 @@ fn test_ping_after_query() {
     client
         .exec("CREATE TABLE IF NOT EXISTS t1 (id INT)")
         .expect("CREATE TABLE should succeed");
-    client.ping().expect("COM_PING after query should return OK");
+    client
+        .ping()
+        .expect("COM_PING after query should return OK");
     client.quit().ok();
 }
 
@@ -47,8 +49,8 @@ fn test_init_db_nonexistent_returns_err() {
     // Accept either OK or ERR as valid behavior.
     let result = client.init_db("nonexistent");
     match result {
-        Ok(_) => {},
-        Err(_) => {},
+        Ok(_) => {}
+        Err(_) => {}
     }
     client.quit().ok();
 }
@@ -175,7 +177,7 @@ fn test_prepare_syntax_error_returns_err() {
     // PREPARE. If it returns OK, the column count will be 0.
     // Accept either behavior.
     match result {
-        Err(_) => {}, // Err means the server returned ERR
+        Err(_) => {} // Err means the server returned ERR
         Ok(ref r) => {
             // Check if first byte is 0xFF (ERR) or 0x00 (OK with no columns)
             assert!(
@@ -213,8 +215,8 @@ fn test_execute_no_params() {
     // or Err (the server may not support parameterless execution).
     let result = client.stmt_execute_raw(stmt_id as u32, &[]);
     match result {
-        Ok(ref r) if !r.is_empty() => {},
-        Err(_) => {},
+        Ok(ref r) if !r.is_empty() => {}
+        Err(_) => {}
         _ => panic!("COM_STMT_EXECUTE with no params should succeed"),
     }
     client.quit().ok();
@@ -245,8 +247,8 @@ fn test_execute_multi_iteration() {
     // response or Err (the server may not support this).
     let result = client.stmt_execute_raw(stmt_id as u32, &[]);
     match result {
-        Ok(ref r) if !r.is_empty() => {},
-        Err(_) => {},
+        Ok(ref r) if !r.is_empty() => {}
+        Err(_) => {}
         _ => panic!("COM_STMT_EXECUTE with multiple iterations should succeed"),
     }
     client.quit().ok();
@@ -265,12 +267,9 @@ fn test_execute_invalid_stmt_id_returns_err() {
     let result = client.stmt_execute_raw(999, &[]);
     // Accept either Err (the server returned ERR) or Ok(0xFF) (ERR packet)
     match result {
-        Err(_) => {}, // Err means the server returned ERR
+        Err(_) => {} // Err means the server returned ERR
         Ok(ref r) => {
-            assert!(
-                r.first() == Some(&0xff),
-                "EXECUTE should return ERR (0xFF)"
-            );
+            assert!(r.first() == Some(&0xff), "EXECUTE should return ERR (0xFF)");
         }
     }
     client.quit().ok();
