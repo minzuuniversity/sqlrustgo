@@ -4,7 +4,6 @@
 //! **Source**: COMPREHENSIVE_FEATURE_TRACKING.md (DAG Node N6)
 //! **Change**: openspec/changes/p1-1-int-cross-version-debt
 
-use std::path::Path;
 
 #[test]
 fn test_d7_int_debt_gate_exists() {

@@ -22,7 +22,6 @@ use rand::{Rng, SeedableRng};
 use sqlrustgo_storage::engine::{ColumnDefinition, MemoryStorage, StorageEngine, TableInfo};
 use sqlrustgo_storage::recovery_engine::{RecoveryEngine, RecoveryEngineImpl};
 use sqlrustgo_storage::wal::{MemoryWalManager, WalEntry, WalEntryType, WalManager};
-use sqlrustgo_types::Value;
 use std::collections::HashSet;
 use std::sync::Arc;
 
@@ -43,16 +42,18 @@ fn fresh_storage() -> MemoryStorage {
 
 /// Run one crash-monkey episode: random ops → random crash → recover →
 /// verify invariants. Returns (committed_rows, total_attempted_txns).
+#[allow(unused_assignments, unused_variables)]
 fn run_episode(rng: &mut StdRng, n_ops: usize, crash_after: usize) -> (usize, u64, u64) {
     let mut storage = fresh_storage();
     let mut wal = MemoryWalManager::new();
 
     let mut next_id: i64 = 1;
-    let mut committed_inserts: HashSet<i64> = HashSet::new();
-    let mut committed_deletes: HashSet<i64> = HashSet::new();
+    let _committed_inserts: HashSet<i64> = HashSet::new();
+    let _committed_deletes: HashSet<i64> = HashSet::new();
     let mut in_tx: bool = false;
     let mut tx_id: u64 = 1;
     let mut lsn: u64 = 0;
+    #[allow(dead_code, unused_assignments)]
     let mut attempted_txns: u64 = 0;
     let mut completed_txns: u64 = 0;
 

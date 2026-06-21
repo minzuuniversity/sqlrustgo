@@ -168,7 +168,7 @@ fn diag_22_on_sf01() {
                 fail_details.push(format!("Q{}: actual={} canonical={}", q, actual, erc));
                 eprintln!("Q{}: FAIL (actual={} canonical={})", q, actual, erc);
             }
-            Err(e) if erc < 0 => {
+            Err(_e) if erc < 0 => {
                 pass += 1; // both ERR
                 eprintln!("Q{}: ERR (both sides, ok)", q);
             }

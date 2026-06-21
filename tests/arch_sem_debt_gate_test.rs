@@ -128,8 +128,8 @@ fn test_d8_no_p0_missing_in_plan() {
     // P0 items must have detailed steps
     for p0 in &["ARCH-1", "SEM-1"] {
         // Find the section for this item (e.g., "## 1. ARCH-1: ...")
-        let pattern = format!("## ");
-        let item_pattern = format!(
+        let _pattern = format!("## ");
+        let _item_pattern = format!(
             "## {}. {}",
             p0,
             if *p0 == "ARCH-1" { "ARCH-1" } else { "SEM-1" }
