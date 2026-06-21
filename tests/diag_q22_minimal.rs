@@ -1,6 +1,6 @@
 //! Q22 even simpler
 
-use sqlrustgo::{ExecutionEngine, MemoryStorage, StorageEngine};
+use sqlrustgo::{ExecutionEngine, MemoryStorage};
 
 #[test]
 fn diag_q22_minimal() {

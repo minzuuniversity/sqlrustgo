@@ -1,5 +1,5 @@
 //! Perf benchmark: 60000-row lineitem.tbl LOAD DATA via bulk_insert_records
-use sqlrustgo::{ExecutionEngine, MemoryStorage, StorageEngine};
+use sqlrustgo::{ExecutionEngine, MemoryStorage};
 use sqlrustgo_storage::Record;
 use sqlrustgo_types::Value as SqlValue;
 use std::path::PathBuf;
