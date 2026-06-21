@@ -1908,10 +1908,26 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
 
     /// Commit the implicit DML TX started by `begin_implicit_dml_tx`.
     /// Idempotent when `started_implicit` is `false` (user controls commit/rollback).
+    ///
+    /// PR-3580 fix: also commit the storage layer so the WAL entry
+    /// sequence is `[Begin, DML..., Commit]` for autocommit, and the
+    /// insert buffer (in `FileStorage`) is flushed to `data.rows` + disk
+    /// before the engine returns. Without this flush, an autocommit
+    /// INSERT (or the delete-then-insert pattern in `execute_update`)
+    /// leaves the new row in the buffer only; the next BEGIN/DML in
+    /// a different explicit TX would then observe a stale state because
+    /// `current_tx_id` on the storage was still set to the previous
+    /// implicit-tx id.
     fn commit_implicit_dml_tx(&mut self, started_implicit: bool) {
         if started_implicit {
             let tx_id = self.current_tx_id.unwrap();
             let _ = self.transaction_manager.commit(tx_id);
+            // Flush the storage's insert buffer and reset its tx id so the
+            // next statement starts in a clean autocommit state.
+            if let Ok(mut storage) = self.storage.write() {
+                let _ = storage.commit_transaction();
+                storage.set_current_tx_id(0);
+            }
             self.current_tx_id = None;
             self.tx_status = TxStatus::Idle;
         }

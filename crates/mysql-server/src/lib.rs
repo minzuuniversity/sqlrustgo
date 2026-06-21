@@ -2522,6 +2522,7 @@ fn do_command_loop<S: Read + Write>(
                         write_lenenc_string(&mut param_def, b"").unwrap();
                         write_lenenc_string(&mut param_def, b"").unwrap();
                         write_lenenc_string(&mut param_def, b"?").unwrap();
+                        write_lenenc_string(&mut param_def, b"?").unwrap();
                         // MySQL column/param fixed-size fields: charset_collation (2 bytes)
                         // → length (4 bytes) → field_type (1 byte) → flags (2 bytes)
                         // → decimals (1 byte) → filler (2 bytes)
