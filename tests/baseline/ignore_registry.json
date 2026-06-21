@@ -1,7 +1,7 @@
 {
   "version": "v3.9.0-sprint8",
-  "timestamp": "2026-06-21T16:35:34Z",
-  "total_allowed": 63,
+  "timestamp": "2026-06-19T00:00:00Z",
+  "total_allowed": 73,
   "ignored_tests": [
     {
       "file": "tests/oracle_g1_tpch_sha256.rs",
@@ -357,156 +357,236 @@
     },
     {
       "file": "tests/dml_integration_test.rs",
-      "line": "101:#[ignore = \"=\"]",
-      "reason": "=",
-      "issue_link": "#3579",
-      "added_in": "v3.9.0-sprint8-p12",
-      "category": "dml_integration"
+      "line": "101:IGNORE_MULTI",
+      "reason": "INSERT ",
+      "issue_link": "TBD",
+      "added_in": "v3.9.0-sprint9",
+      "category": "feature_gap"
     },
     {
       "file": "tests/dml_integration_test.rs",
-      "line": "120:#[ignore = \"=\"]",
-      "reason": "=",
-      "issue_link": "#3579",
-      "added_in": "v3.9.0-sprint8-p12",
-      "category": "dml_integration"
+      "line": "20:IGNORE_MULTI",
+      "reason": "INSERT ",
+      "issue_link": "TBD",
+      "added_in": "v3.9.0-sprint9",
+      "category": "feature_gap"
     },
     {
       "file": "tests/dml_integration_test.rs",
-      "line": "220:#[ignore = \"=\"]",
-      "reason": "=",
-      "issue_link": "#3579",
-      "added_in": "v3.9.0-sprint8-p12",
-      "category": "dml_integration"
+      "line": "101:IGNORE_MULTI",
+      "reason": "UPDATE ",
+      "issue_link": "TBD",
+      "added_in": "v3.9.0-sprint9",
+      "category": "feature_gap"
     },
     {
       "file": "tests/dml_integration_test.rs",
-      "line": "236:#[ignore = \"=\"]",
-      "reason": "=",
-      "issue_link": "#3579",
-      "added_in": "v3.9.0-sprint8-p12",
-      "category": "dml_integration"
+      "line": "17:IGNORE_MULTI",
+      "reason": "Multi-table UPDATE not supported",
+      "issue_link": "TBD",
+      "added_in": "v3.9.0-sprint9",
+      "category": "feature_gap"
     },
     {
       "file": "tests/dml_integration_test.rs",
-      "line": "306:#[ignore = \"=\"]",
-      "reason": "=",
-      "issue_link": "#3579",
-      "added_in": "v3.9.0-sprint8-p12",
-      "category": "dml_integration"
+      "line": "71:IGNORE_MULTI",
+      "reason": "DELETE ",
+      "issue_link": "TBD",
+      "added_in": "v3.9.0-sprint9",
+      "category": "feature_gap"
     },
     {
       "file": "tests/dml_integration_test.rs",
-      "line": "322:#[ignore = \"=\"]",
-      "reason": "=",
-      "issue_link": "#3579",
-      "added_in": "v3.9.0-sprint8-p12",
-      "category": "dml_integration"
+      "line": "17:IGNORE_MULTI",
+      "reason": "Multi-table DELETE not supported",
+      "issue_link": "TBD",
+      "added_in": "v3.9.0-sprint9",
+      "category": "feature_gap"
     },
     {
       "file": "tests/dml_integration_test.rs",
-      "line": "352:#[ignore = \"=\"]",
-      "reason": "=",
-      "issue_link": "#3579",
-      "added_in": "v3.9.0-sprint8-p12",
-      "category": "dml_integration"
+      "line": "31:IGNORE_MULTI",
+      "reason": "ROLLBACK does not currently revert DML rows in MemoryStorage",
+      "issue_link": "TBD",
+      "added_in": "v3.9.0-sprint9",
+      "category": "feature_gap"
     },
     {
       "file": "tests/dml_integration_test.rs",
-      "line": "372:#[ignore = \"=\"]",
-      "reason": "=",
-      "issue_link": "#3579",
-      "added_in": "v3.9.0-sprint8-p12",
-      "category": "dml_integration"
+      "line": "21:IGNORE_MULTI",
+      "reason": "ROLLBACK does not currently revert DML rows in MemoryStorage",
+      "issue_link": "TBD",
+      "added_in": "v3.9.0-sprint9",
+      "category": "feature_gap"
     },
     {
       "file": "tests/graph_cypher_integration_test.rs",
-      "line": "466:#[ignore = \"=\"]",
-      "reason": "=",
-      "issue_link": "#3579",
-      "added_in": "v3.9.0-sprint8-p12",
-      "category": "graph_cypher_integration"
+      "line": "466:IGNORE_MULTI",
+      "reason": "Cypher executor does not support CREATE — only MATCH/WHERE/RETURN",
+      "issue_link": "TBD",
+      "added_in": "v3.9.0-sprint9",
+      "category": "feature_gap"
     },
     {
       "file": "tests/graph_cypher_integration_test.rs",
-      "line": "476:#[ignore = \"=\"]",
-      "reason": "=",
-      "issue_link": "#3579",
-      "added_in": "v3.9.0-sprint8-p12",
-      "category": "graph_cypher_integration"
+      "line": "10:IGNORE_MULTI",
+      "reason": "Cypher executor does not support MERGE keyword",
+      "issue_link": "TBD",
+      "added_in": "v3.9.0-sprint9",
+      "category": "feature_gap"
     },
     {
       "file": "tests/graph_cypher_integration_test.rs",
-      "line": "485:#[ignore = \"=\"]",
-      "reason": "=",
-      "issue_link": "#3579",
-      "added_in": "v3.9.0-sprint8-p12",
-      "category": "graph_cypher_integration"
+      "line": "9:IGNORE_MULTI",
+      "reason": "Cypher parser requires explicit direction (`->`); undirected `-` not supported",
+      "issue_link": "TBD",
+      "added_in": "v3.9.0-sprint9",
+      "category": "feature_gap"
     },
     {
       "file": "tests/graph_cypher_integration_test.rs",
-      "line": "494:#[ignore = \"=\"]",
-      "reason": "=",
-      "issue_link": "#3579",
-      "added_in": "v3.9.0-sprint8-p12",
-      "category": "graph_cypher_integration"
+      "line": "9:IGNORE_MULTI",
+      "reason": "Cypher executor does not support OPTIONAL MATCH (NULL semantics for missing matc",
+      "issue_link": "TBD",
+      "added_in": "v3.9.0-sprint9",
+      "category": "feature_gap"
     },
     {
       "file": "tests/small_executor_modules_test.rs",
-      "line": "398:#[ignore = \"=\"]",
-      "reason": "=",
-      "issue_link": "#3579",
-      "added_in": "v3.9.0-sprint8-p12",
-      "category": "small_executor_modules"
+      "line": "398:IGNORE_MULTI",
+      "reason": "BUG: PredicateCompiler::compile(Expr::Column) always returns false              ",
+      "issue_link": "TBD",
+      "added_in": "v3.9.0-sprint9",
+      "category": "feature_gap"
     },
     {
       "file": "tests/small_executor_modules_test.rs",
-      "line": "409:#[ignore = \"=\"]",
-      "reason": "=",
-      "issue_link": "#3579",
-      "added_in": "v3.9.0-sprint8-p12",
-      "category": "small_executor_modules"
+      "line": "9:IGNORE_MULTI",
+      "reason": "BUG: same root cause as test_predicate_compiler_column_true",
+      "issue_link": "TBD",
+      "added_in": "v3.9.0-sprint9",
+      "category": "feature_gap"
     },
     {
       "file": "tests/small_executor_modules_test.rs",
-      "line": "425:#[ignore = \"=\"]",
-      "reason": "=",
-      "issue_link": "#3579",
-      "added_in": "v3.9.0-sprint8-p12",
-      "category": "small_executor_modules"
+      "line": "17:IGNORE_MULTI",
+      "reason": "BUG: depends on the buggy Column path in PredicateCompiler",
+      "issue_link": "TBD",
+      "added_in": "v3.9.0-sprint9",
+      "category": "feature_gap"
     },
     {
       "file": "tests/small_executor_modules_test.rs",
-      "line": "437:#[ignore = \"=\"]",
-      "reason": "=",
-      "issue_link": "#3579",
-      "added_in": "v3.9.0-sprint8-p12",
-      "category": "small_executor_modules"
+      "line": "12:IGNORE_MULTI",
+      "reason": "BUG: depends on the buggy Column path in PredicateCompiler",
+      "issue_link": "TBD",
+      "added_in": "v3.9.0-sprint9",
+      "category": "feature_gap"
     },
     {
       "file": "tests/union_set_operations_test.rs",
-      "line": "257:#[ignore = \"=\"]",
-      "reason": "=",
-      "issue_link": "#3579",
-      "added_in": "v3.9.0-sprint8-p12",
-      "category": "union_set_operations"
+      "line": "257:IGNORE_MULTI",
+      "reason": "INTERSECT not yet implemented in parser (no Statement::Intersect variant)",
+      "issue_link": "TBD",
+      "added_in": "v3.9.0-sprint9",
+      "category": "feature_gap"
     },
     {
       "file": "tests/union_set_operations_test.rs",
-      "line": "276:#[ignore = \"=\"]",
-      "reason": "=",
-      "issue_link": "#3579",
-      "added_in": "v3.9.0-sprint8-p12",
-      "category": "union_set_operations"
+      "line": "20:IGNORE_MULTI",
+      "reason": "EXCEPT not yet implemented in parser (no Statement::Except variant)",
+      "issue_link": "TBD",
+      "added_in": "v3.9.0-sprint9",
+      "category": "feature_gap"
     },
     {
       "file": "tests/union_set_operations_test.rs",
-      "line": "299:#[ignore = \"=\"]",
-      "reason": "=",
-      "issue_link": "#3579",
-      "added_in": "v3.9.0-sprint8-p12",
-      "category": "union_set_operations"
+      "line": "24:IGNORE_MULTI",
+      "reason": "ORDER BY/LIMIT after top-level UNION not supported",
+      "issue_link": "TBD",
+      "added_in": "v3.9.0-sprint9",
+      "category": "feature_gap"
     },
+    {
+      "file": "tests/soak_test.rs",
+      "line": "190:IGNORE",
+      "reason": "in-process simulation; G7 gate uses wired E2E (sqlrustgo-mysql-server + sysbench",
+      "issue_link": "#3175",
+      "added_in": "v3.9.0-sprint9",
+      "category": "decommissioned"
+    },
+    {
+      "file": "tests/soak_test.rs",
+      "line": "204:IGNORE",
+      "reason": "in-process simulation; G7 gate uses wired E2E",
+      "issue_link": "#3175",
+      "added_in": "v3.9.0-sprint9",
+      "category": "decommissioned"
+    },
+    {
+      "file": "tests/soak_test.rs",
+      "line": "216:IGNORE",
+      "reason": "in-process simulation; G7 gate uses wired E2E",
+      "issue_link": "#3175",
+      "added_in": "v3.9.0-sprint9",
+      "category": "decommissioned"
+    },
+    {
+      "file": "tests/soak_test.rs",
+      "line": "234:IGNORE",
+      "reason": "in-process simulation; G7 gate uses wired E2E",
+      "issue_link": "#3175",
+      "added_in": "v3.9.0-sprint9",
+      "category": "decommissioned"
+    },
+    {
+      "file": "tests/soak_test.rs",
+      "line": "248:IGNORE",
+      "reason": "in-process simulation; G7 gate uses wired E2E",
+      "issue_link": "#3175",
+      "added_in": "v3.9.0-sprint9",
+      "category": "decommissioned"
+    },
+    {
+      "file": "tests/soak_test.rs",
+      "line": "260:IGNORE",
+      "reason": "in-process simulation; G7 gate uses wired E2E",
+      "issue_link": "#3175",
+      "added_in": "v3.9.0-sprint9",
+      "category": "decommissioned"
+    },
+    {
+      "file": "tests/soak_test.rs",
+      "line": "274:IGNORE",
+      "reason": "in-process simulation; G7 gate uses wired E2E",
+      "issue_link": "#3175",
+      "added_in": "v3.9.0-sprint9",
+      "category": "decommissioned"
+    },
+    {
+      "file": "tests/soak_test.rs",
+      "line": "293:IGNORE",
+      "reason": "in-process simulation; G7 gate uses wired E2E",
+      "issue_link": "#3175",
+      "added_in": "v3.9.0-sprint9",
+      "category": "decommissioned"
+    },
+    {
+      "file": "tests/soak_test.rs",
+      "line": "308:IGNORE",
+      "reason": "in-process simulation; G7 gate uses wired E2E",
+      "issue_link": "#3175",
+      "added_in": "v3.9.0-sprint9",
+      "category": "decommissioned"
+    },
+    {
+      "file": "tests/soak_test.rs",
+      "line": "317:IGNORE",
+      "reason": "in-process simulation; G7 gate uses wired E2E",
+      "issue_link": "#3175",
+      "added_in": "v3.9.0-sprint9",
+      "category": "decommissioned"
+    }
   ],
-  "note": "Regenerated 2026-06-17 from current source. Each entry has a real reason extracted from `#[ignore = \"...\"]` attribute, or 'needs review' marker if attribute has no reason text. issue_link: TBD entries need manual research. Categories align with README \u00a7Test Claim Transparency (42 non-gate)."
+  "note": "Regenerated 2026-06-17 from current source. Each entry has a real reason extracted from `#[ignore = \"...\"]` attribute, or 'needs review' marker if attribute has no reason text. issue_link: TBD entries need manual research. Categories align with README §Test Claim Transparency (42 non-gate)."
 }
