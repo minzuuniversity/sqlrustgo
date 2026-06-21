@@ -6,6 +6,11 @@
 > **创建日期**: 2026-06-05
 > **GA 目标**: 2026-12-15 (per Hermes audit #3252, deferred from 2026-09-23)
 > **当前阶段**: **RC8 ✅ + Sprint 8 ✅** (2026-06-18, V9 Coverage Gate fix + 8 Oracle Gaps inline oracle, awaiting 24h/72h/168h real soak on Z6G4 for GA cut, see GA_GATE_REPORT.md)
+> **2026-06-21**: G7 Soak gate rewritten to WIRED E2E (`scripts/gate/check_p13_soak_test.sh`
+> now launches `sqlrustgo-mysql-server serve` + `sysbench oltp_read_write`).
+> In-process compressed-time simulation (1,440x) in `tests/soak_test.rs`
+> is decommissioned (all 10 tests `#[ignore]`). See
+> `docs/openspec/3175-soak-test.md` for rationale.
 > **当前 HEAD**: `e39e22441e` (docs/v6-status-update branch, post V9 fix + 8 oracle gaps)
 > **前版本**: v3.8.0
 
@@ -94,7 +99,7 @@
 | G4 ARCH-3 关闭 | ✅ PASS (有独立验证) | Phase 1 末 |
 | G5 SEM-1 关闭 | ✅ PASS | Phase 2 末 |
 | G6 Backup/Restore | ✅ PASS (有独立验证) | Phase 3 末 |
-| **G7 24h Soak** | 🟡 **INFRA DONE** (soak_runner, PR #3465). Run PENDING (needs Z6G4) | Phase 4 末 |
+| **G7 Soak Test (WIRED E2E)** | ✅ GATE DONE (5-min sqlrustgo-mysql-server + sysbench, PR #3225 spec update). 24h/72h/168h runs need Z6G4 | Phase 4 末 |
 | G8 Crash Matrix | ✅ PASS (有独立验证) | Phase 3 末 |
 | G9 Upgrade | ✅ PASS | Phase 4 末 |
 | G10 Audit + Time Travel | ✅ PASS (有独立验证) | Phase 5 末 |

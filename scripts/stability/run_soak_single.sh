@@ -95,14 +95,14 @@ MONITOR_PID=$!
 echo "  Monitor PID: $MONITOR_PID"
 
 # ---- [3/4] sysbench prepare + run ----
-if ! sysbench oltp_read_write     --db-driver=mysql     --mysql-host="$HOST" --mysql-port="$PORT"     --mysql-user=root --mysql-password=""     --mysql-db=sbtest --table-size=10000 --tables=1     prepare 2>&1 | tail -3; then
+if ! sysbench oltp_read_write     --db-driver=mysql     --mysql-host="$HOST" --mysql-port="$PORT"     --mysql-user=root --mysql-password=""     --mysql-db=sbtest --table-size=${TABLE_SIZE:-1000} --tables=1     prepare 2>&1 | tail -3; then
     echo "FAIL: sysbench prepare failed"
     tail -20 "$LOG_FILE"
     exit 1
 fi
 echo "  sysbench prepare done"
 
-nohup sysbench oltp_read_write --db-driver=mysql --db-ps-mode=disable --mysql-host="$HOST" --mysql-port="$PORT" --mysql-user=root --mysql-password="" --mysql-db=sbtest --table-size=10000 --tables=1 --threads="$THREADS" --time=$((HOURS*3600)) --report-interval=60 run > "$SYSBENCH_LOG" 2>&1 &
+nohup sysbench oltp_read_write --db-driver=mysql --db-ps-mode=disable --mysql-host="$HOST" --mysql-port="$PORT" --mysql-user=root --mysql-password="" --mysql-db=sbtest --table-size=${TABLE_SIZE:-1000} --tables=1 --threads="$THREADS" --time=$((HOURS*3600)) --report-interval=60 run > "$SYSBENCH_LOG" 2>&1 &
 SYSBENCH_PID=$!
 echo "  sysbench PID: $SYSBENCH_PID"
 

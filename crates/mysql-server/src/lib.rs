@@ -698,12 +698,18 @@ pub struct TlsStream<'a> {
 }
 
 impl<'a> TlsStream<'a> {
-    pub fn new(conn: &'a mut rustls::ServerConnection, sock: &'a mut TcpStream) -> Self {
-        Self { conn, sock }
-    }
     /// Flush any pending TLS ciphertext to the underlying socket.
+    /// Subsumed by `Write::flush` (which now drains the full cipher
+    /// buffer in a loop). Kept for compatibility with existing callers
+    /// (e.g. the post-COM_QUIT final flush at lib.rs:2845).
     pub fn flush_pending(&mut self) -> std::io::Result<()> {
-        self.conn.complete_io(self.sock)?;
+        while self.conn.wants_write() {
+            match self.conn.complete_io(self.sock) {
+                Ok(_) => {}
+                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => break,
+                Err(e) => return Err(e),
+            }
+        }
         Ok(())
     }
 }
@@ -722,6 +728,9 @@ impl<'a> Read for TlsStream<'a> {
 }
 
 impl<'a> TlsStream<'a> {
+    pub fn new(conn: &'a mut rustls::ServerConnection, sock: &'a mut TcpStream) -> Self {
+        Self { conn, sock }
+    }
     /// Drive pending inbound TLS records from the underlying socket
     /// without blocking on writes. Symmetric counterpart to
     /// `drive_writes_only`.
@@ -741,20 +750,33 @@ impl<'a> TlsStream<'a> {
 impl<'a> Write for TlsStream<'a> {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
         let n = self.conn.writer().write(buf)?;
-        // Drive rustls IO only when there is pending outbound data.
-        // This is the key to making the server compatible with strict
-        // clients like libmysqlclient 8.0 (e.g. sysbench, mysql CLI):
-        // we never block waiting for the client to send something,
-        // but we still flush every byte we have pending.
-        if self.conn.wants_write() {
-            self.conn.complete_io(self.sock)?;
+        // Drain ALL pending TLS records to the underlying socket, not
+        // just one. Without the loop, a single `complete_io` may only
+        // flush a partial cipher record when the socket send buffer
+        // can't accept the full ciphertext in one syscall; the rest
+        // would sit in rustls' writer buffer until the next write,
+        // and large multi-batch INSERTs (e.g. sysbench prepare with
+        // >~20 rows) would deadlock: the client waits for the OK
+        // packet while the server waits for the next request.
+        while self.conn.wants_write() {
+            match self.conn.complete_io(self.sock) {
+                Ok(_) => {}
+                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => break,
+                Err(e) => return Err(e),
+            }
         }
         Ok(n)
     }
     fn flush(&mut self) -> std::io::Result<()> {
         self.conn.writer().flush()?;
-        if self.conn.wants_write() {
-            self.conn.complete_io(self.sock)?;
+        // Same drain loop as write(): flush must guarantee the
+        // cipher buffer is fully driven to the socket.
+        while self.conn.wants_write() {
+            match self.conn.complete_io(self.sock) {
+                Ok(_) => {}
+                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => break,
+                Err(e) => return Err(e),
+            }
         }
         Ok(())
     }

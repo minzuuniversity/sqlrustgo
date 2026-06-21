@@ -84,7 +84,7 @@ gate validation framework.
 | G4 | ARCH-3 关闭 | ✅ PASS | #3189 |
 | G5 | SEM-1 关闭 | ✅ PASS | #3190 |
 | G6 | Backup/Restore | ✅ PASS | #3191 |
-| G7 | 24h Soak (72h compressed) | ✅ PASS | #3192 |
+| G7 | Soak (WIRED E2E: server+sysbench) | 🟡 INFRA DONE (5-min gate PASS, 24h/72h/168h need Z6G4) | #3192 |
 | G8 | Crash Matrix | ✅ PASS | #3193 |
 | G9 | Upgrade | ✅ PASS | #3194 |
 | G10 | GMP Audit | 🟡 PASS (warn) | #3195 |
