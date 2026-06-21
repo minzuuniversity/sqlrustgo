@@ -39,7 +39,10 @@ fn test_multi_statement_two_selects() {
     // Connect via the test harness
     use common::MySqlTestClient;
     let mut client = MySqlTestClient::connect_handle(handle).expect("connect");
-    eprintln!("Connected! client_capabilities=0x{:08x}", client.client_capabilities());
+    eprintln!(
+        "Connected! client_capabilities=0x{:08x}",
+        client.client_capabilities()
+    );
 
     // Create a test table
     eprintln!("About to send CREATE TABLE...");
@@ -58,7 +61,9 @@ fn test_multi_statement_two_selects() {
     }
 
     // Insert a row
-    client.query_rows("INSERT INTO t1 (id, val) VALUES (1, 'hello')").unwrap();
+    client
+        .query_rows("INSERT INTO t1 (id, val) VALUES (1, 'hello')")
+        .unwrap();
     eprintln!("INSERT OK");
 
     // The server's COM_QUERY handler calls parse_statements() only to
@@ -86,7 +91,10 @@ fn test_multi_statement_two_selects() {
     let p2 = build_com_query("INSERT INTO t1 (id, val) VALUES (2, 'world')");
     write_packet(&mut client.raw_stream(), 0, &p2).unwrap();
     let pkt = common::read_packet(&mut client.raw_stream()).unwrap();
-    assert!(pkt[0] == 0x00 || pkt[0] == 0x78, "Expected OK or column def for INSERT");
+    assert!(
+        pkt[0] == 0x00 || pkt[0] == 0x78,
+        "Expected OK or column def for INSERT"
+    );
 
     // Send third query: SELECT again
     let p3 = build_com_query("SELECT COUNT(*) FROM t1");
@@ -109,11 +117,12 @@ fn build_com_query(sql: &str) -> Vec<u8> {
 /// Read one result set (column count + column defs + rows + EOF/OK).
 /// Returns the rows (each row is a Vec<String>).
 fn read_result_set(client: &mut MySqlTestClient) -> std::result::Result<Vec<Vec<String>>, String> {
-    use common::read_packet;
     use common::read_lenenc_int;
+    use common::read_packet;
 
     // 1) Column count packet
-    let col_count_pkt = read_packet(&mut client.raw_stream()).map_err(|e| format!("read column count: {}", e))?;
+    let col_count_pkt =
+        read_packet(&mut client.raw_stream()).map_err(|e| format!("read column count: {}", e))?;
     if !col_count_pkt.is_empty() && col_count_pkt[0] == 0xFF {
         return Err(format!(
             "query returned ERR: {}",
@@ -121,11 +130,13 @@ fn read_result_set(client: &mut MySqlTestClient) -> std::result::Result<Vec<Vec<
         ));
     }
     let mut pos = 0;
-    let col_count = read_lenenc_int(&col_count_pkt, &mut pos).map_err(|e| format!("read_lenenc_int: {}", e))? as usize;
+    let col_count = read_lenenc_int(&col_count_pkt, &mut pos)
+        .map_err(|e| format!("read_lenenc_int: {}", e))? as usize;
 
     // 2) Column definition packets
     for _ in 0..col_count {
-        let _ = read_packet(&mut client.raw_stream()).map_err(|e| format!("read column def: {}", e))?;
+        let _ =
+            read_packet(&mut client.raw_stream()).map_err(|e| format!("read column def: {}", e))?;
     }
 
     // 3) Inter-record separator (only if DEPRECATE_EOF is not set)
@@ -163,7 +174,8 @@ fn read_result_set(client: &mut MySqlTestClient) -> std::result::Result<Vec<Vec<
                 row.push(String::new());
             } else {
                 use common::read_lenenc_str;
-                let s = read_lenenc_str(&pkt, &mut p).map_err(|e| format!("read_lenenc_str: {}", e))?;
+                let s =
+                    read_lenenc_str(&pkt, &mut p).map_err(|e| format!("read_lenenc_str: {}", e))?;
                 row.push(s.to_string());
             }
         }
