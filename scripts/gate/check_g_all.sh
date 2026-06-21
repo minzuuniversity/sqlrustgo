@@ -50,7 +50,7 @@ GATES=(
     "G4|ARCH-3 关闭|check_arch3_no_bypass.sh|#3189|yes"
     "G5|SEM-1 关闭|check_sem1_savepoint.sh|#3190|yes"
     "G6|Backup/Restore|check_backup_restore.sh|#3191|yes"
-    "G7|24h Soak|check_p13_soak_test.sh|#3192|yes"
+    "G7|Soak (WIRED E2E: server+sysbench)|check_p13_soak_test.sh|#3192|yes"
     "G8|Crash Matrix|check_p12_crash_test.sh|#3193|yes"
     "G9|Upgrade|check_p14_upgrade_test.sh|#3194|yes"
     "G10|GMP Audit (Time Travel + Hash Chain)|check_p21_audit_log.sh|#3195|warn"
