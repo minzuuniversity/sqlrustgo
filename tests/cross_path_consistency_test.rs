@@ -20,9 +20,7 @@ mod common;
 use common::MySqlTestClient;
 use sqlrustgo::{ExecutionEngine, MemoryExecutionEngine};
 use sqlrustgo_mysql_server::testing::{start_ephemeral, EphemeralConfig};
-use sqlrustgo_storage::{
-    MemoryStorage, MemoryWalManager, WalStorage,
-};
+use sqlrustgo_storage::{MemoryStorage, MemoryWalManager, WalStorage};
 use std::sync::{Arc, RwLock};
 use tempfile::TempDir;
 
