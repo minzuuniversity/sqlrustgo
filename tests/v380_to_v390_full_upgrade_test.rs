@@ -36,6 +36,7 @@ mod harness {
         }
     }
 
+    #[allow(dead_code)]
     #[derive(Debug, Clone)]
     pub struct CompatScenario {
         pub case: CompatCase,
@@ -59,6 +60,7 @@ mod harness {
         }
     }
 
+    #[allow(dead_code)]
     #[derive(Debug, Clone)]
     pub struct CompatReport {
         pub case: CompatCase,

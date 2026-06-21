@@ -1,4 +1,4 @@
-use sqlrustgo::{ExecutionEngine, MemoryStorage, StorageEngine};
+use sqlrustgo::{ExecutionEngine, MemoryStorage};
 use std::sync::{Arc, RwLock};
 
 fn make_engine() -> ExecutionEngine<MemoryStorage> {

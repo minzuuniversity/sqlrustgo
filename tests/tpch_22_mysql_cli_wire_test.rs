@@ -48,7 +48,7 @@
 //! - [x] No new public APIs
 
 use serde_json::Value as JsonValue;
-use std::io::Write;
+
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::time::Duration;
@@ -227,7 +227,7 @@ fn test_tpch_22_mysql_cli_wire() {
     }
 
     // Start the server
-    let mut server = Server::start(&data_dir).expect("start server");
+    let server = Server::start(&data_dir).expect("start server");
     eprintln!(
         "[server] spawned on port {} (pid {:?})",
         server.port,
@@ -271,7 +271,7 @@ fn test_tpch_22_mysql_cli_wire() {
         }
         // Count
         let count_sql = format!("SELECT COUNT(*) FROM {}", tbl);
-        let (cnt_out, cnt_err, cnt_code) =
+        let (cnt_out, cnt_err, _cnt_code) =
             mysql_exec("127.0.0.1", server.port, "tester", Some(tbl), &count_sql);
         let cnt: u64 = cnt_out
             .trim()

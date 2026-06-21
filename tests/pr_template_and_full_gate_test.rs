@@ -102,7 +102,7 @@ fn test_d9_gate_executable() {
 }
 
 #[test]
-#[test]
+
 fn test_d9_gate_runs() {
     // D9 runs all sub-gates. Some (tpch) are TIMEOUT (long-running).
     // We just verify the script structure here, not full execution.
