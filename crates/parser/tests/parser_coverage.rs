@@ -251,12 +251,12 @@ fn t_grant_column_privilege() {
 #[test]
 fn t_create_database_rejected() {
     let result = parse("CREATE DATABASE mydb");
-    assert!(result.is_err(), "CREATE DATABASE not yet supported");
+    assert!(result.is_ok(), "CREATE DATABASE should be supported");
 }
 #[test]
 fn t_drop_database_rejected() {
     let result = parse("DROP DATABASE mydb");
-    assert!(result.is_err(), "DROP DATABASE not yet supported");
+    assert!(result.is_ok(), "DROP DATABASE should be supported");
 }
 
 // --- Window function ROWS/RANGE clauses (not supported by parser yet — reject) ---
