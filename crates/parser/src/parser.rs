@@ -1440,6 +1440,8 @@ impl Parser {
             Some(Token::Database) => self.parse_create_database(),
             Some(t) => Err(format!(
                 "Expected TABLE, INDEX, PROCEDURE, TRIGGER, ROLE, VIEW, or DATABASE after CREATE, got {:?}",
+                t
+            )),
             None => Err(
                 "Expected TABLE, INDEX, PROCEDURE, TRIGGER, ROLE, VIEW, or DATABASE after CREATE".to_string(),
             ),

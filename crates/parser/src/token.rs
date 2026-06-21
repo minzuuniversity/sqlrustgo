@@ -143,8 +143,8 @@ pub enum Token {
     // MySQL-specific keywords
     Duplicate,
     Modify,
+    Database,
     View,
-
     // Transaction keywords
     Transaction,
     Work,
@@ -280,6 +280,7 @@ impl fmt::Display for Token {
             Token::Truncate => write!(f, "TRUNCATE"),
             Token::Replace => write!(f, "REPLACE"),
             Token::Duplicate => write!(f, "DUPLICATE"),
+            Token::Database => write!(f, "DATABASE"),
             Token::Modify => write!(f, "MODIFY"),
             Token::View => write!(f, "VIEW"),
             Token::HighPriority => write!(f, "HIGH_PRIORITY"),
@@ -288,7 +289,6 @@ impl fmt::Display for Token {
             Token::SqlCalcFoundRows => write!(f, "SQL_CALC_FOUND_ROWS"),
             Token::Convert => write!(f, "CONVERT"),
             Token::Date => write!(f, "DATE"),
-            Token::DateAdd => write!(f, "DATE_ADD"),
             Token::DateSub => write!(f, "DATE_SUB"),
             Token::Substring => write!(f, "SUBSTRING"),
             Token::Position => write!(f, "POSITION"),
@@ -435,6 +435,7 @@ impl fmt::Display for Token {
             Token::SingleQuote => write!(f, "'"),
             Token::Star => write!(f, "*"),
             Token::Eof => write!(f, "EOF"),
+            _ => write!(f, "UNKNOWN"),
         }
     }
 }
@@ -529,6 +530,7 @@ pub fn from_keyword(s: &str) -> Option<Token> {
         "REPLACE" => Some(Token::Replace),
         "DUPLICATE" => Some(Token::Duplicate),
         "MODIFY" => Some(Token::Modify),
+        "DATABASE" => Some(Token::Database),
         "VIEW" => Some(Token::View),
         "SHOW" => Some(Token::Show),
         "DESCRIBE" => Some(Token::Describe),
