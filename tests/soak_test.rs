@@ -1,20 +1,29 @@
-//! P1-3 (#3175) Soak Test — 3-level smoke equivalent
+//! P1-3 (#3175) Soak Test - 3-level smoke equivalent (DECOMMISSIONED for gate).
 //!
-//! Per the V390 plan, the 3 soak levels (24h/72h/168h) are too long
-//! for CI; we use **compressed-time equivalence**:
+//! The 3 soak levels (24h/72h/168h) used a 1,440x compressed-time equivalence:
 //!
 //! | Level | Real duration | Smoke duration (5 q/s) | Equivalence |
 //! |-------|---------------|--------------------------|-------------|
-//! | 24h   | 86,400 s      | 60 s                    | 1,440×       |
-//! | 72h   | 259,200 s     | 180 s                   | 1,440×       |
-//! | 168h  | 604,800 s     | 420 s                   | 1,440×       |
+//! | 24h   | 86,400 s      | 60 s                    | 1,440x       |
+//! | 72h   | 259,200 s     | 180 s                   | 1,440x       |
+//! | 168h  | 604,800 s     | 420 s                   | 1,440x       |
 //!
-//! **TGS Fix (v3.9.0)**: Now runs REAL SQL queries via MemoryExecutionEngine,
-//! not simulated CPU loops. This validates actual database resource behavior.
+//! **DECOMMISSIONED (2026-06-21)**: All tests in this file are `#[ignore]`.
+//! The G7 Soak Test gate (`scripts/gate/check_p13_soak_test.sh`) no
+//! longer runs these in-process simulations. The gate now launches the
+//! real `sqlrustgo-mysql-server` binary, hits it with `sysbench
+//! oltp_read_write` over the MySQL wire protocol, and parses a real
+//! STABILITY_REPORT. An in-process MemoryExecutionEngine cannot
+//! reproduce production conditions: wire protocol, buffer pool,
+//! connection manager, WAL, catalog, and lock manager are not exercised.
+//!
+//! Run explicitly with `cargo test --test soak_test -- --ignored` to
+//! verify harness invariants (alert thresholds, percentile ordering,
+//! baseline stability) without a real server.
 //!
 //! Refs: docs/openspec/3175-soak-test.md
-//!       V390_TEST_PLAN.md §G7
-//!       TGS Phase 2: Replace simulated smoke with real SQL
+//!       docs/releases/v3.9.0/plans/V390_TEST_PLAN.md section G7
+//!       scripts/gate/check_p13_soak_test.sh (wired E2E gate, current)
 
 // The harness provides the run-soak-smoke loop. We re-declare a
 // minimal local copy (kept in sync via the G7 gate) so this test
@@ -75,11 +84,9 @@ mod harness {
         let storage = Arc::new(RwLock::new(MemoryStorage::new()));
         let mut engine = MemoryExecutionEngine::new(storage.clone());
 
-        // Set up test table with some data
         let _ = engine
             .execute("CREATE TABLE IF NOT EXISTS soak_test (id INTEGER, value INTEGER, text TEXT)");
 
-        // Insert initial test data (100 rows)
         for i in 0..100 {
             let _ = engine.execute(&format!(
                 "INSERT INTO soak_test VALUES ({}, {}, 'text_{}')",
@@ -95,14 +102,9 @@ mod harness {
         let mut memory_current = config.memory_baseline_bytes;
         let fd_current = config.fd_baseline;
 
-        // TGS Fix: Execute REAL SQL queries via MemoryExecutionEngine
-        // Track actual query execution time for latency metrics
-        // Note: No sleep to maintain CI speed; we run the correct number of
-        // queries (duration * qps) but without rate limiting.
         while queries_executed < target_queries {
             let query_start = Instant::now();
 
-            // Alternate between different query types for realism
             let sql = match queries_executed % 5 {
                 0 => "SELECT * FROM soak_test WHERE id = 50",
                 1 => "SELECT COUNT(*) FROM soak_test WHERE value > 500",
@@ -117,14 +119,11 @@ mod harness {
 
             queries_executed += 1;
 
-            // Track memory growth based on storage size changes
             if queries_executed % 100 == 0 {
-                // Memory grows with data modifications (inserts/updates)
                 memory_current += 2048;
             }
         }
 
-        // Clean up
         let _ = engine.execute("DROP TABLE IF EXISTS soak_test");
 
         latencies.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
@@ -188,6 +187,7 @@ fn default_config(duration_seconds: u64) -> SoakConfig {
 // 24h Soak smoke (60s, 300 queries)
 // --------------------------------------------------------------------
 
+#[ignore = "in-process simulation; G7 gate uses wired E2E (sqlrustgo-mysql-server + sysbench)"]
 #[test]
 fn test_soak_24h_smoke_p1_3() {
     let config = default_config(60);
@@ -201,6 +201,7 @@ fn test_soak_24h_smoke_p1_3() {
     );
 }
 
+#[ignore = "in-process simulation; G7 gate uses wired E2E"]
 #[test]
 fn test_soak_24h_smoke_memory_growth_within_threshold_p1_3() {
     let config = default_config(60);
@@ -212,6 +213,7 @@ fn test_soak_24h_smoke_memory_growth_within_threshold_p1_3() {
     );
 }
 
+#[ignore = "in-process simulation; G7 gate uses wired E2E"]
 #[test]
 fn test_soak_24h_smoke_p99_latency_bounded_p1_3() {
     let config = default_config(60);
@@ -229,6 +231,7 @@ fn test_soak_24h_smoke_p99_latency_bounded_p1_3() {
 // 72h Soak smoke (180s, 900 queries)
 // --------------------------------------------------------------------
 
+#[ignore = "in-process simulation; G7 gate uses wired E2E"]
 #[test]
 fn test_soak_72h_smoke_p1_3() {
     let config = default_config(180);
@@ -242,6 +245,7 @@ fn test_soak_72h_smoke_p1_3() {
     );
 }
 
+#[ignore = "in-process simulation; G7 gate uses wired E2E"]
 #[test]
 fn test_soak_72h_smoke_no_fd_leak_p1_3() {
     let config = default_config(180);
@@ -253,6 +257,7 @@ fn test_soak_72h_smoke_no_fd_leak_p1_3() {
 // 168h Soak smoke (420s, 2100 queries)
 // --------------------------------------------------------------------
 
+#[ignore = "in-process simulation; G7 gate uses wired E2E"]
 #[test]
 fn test_soak_168h_smoke_p1_3() {
     let config = default_config(420);
@@ -266,6 +271,7 @@ fn test_soak_168h_smoke_p1_3() {
     );
 }
 
+#[ignore = "in-process simulation; G7 gate uses wired E2E"]
 #[test]
 fn test_soak_168h_smoke_no_lock_leak_proxy_p1_3() {
     // Lock leak proxy: in the smoke harness we don't run real queries,
@@ -284,6 +290,7 @@ fn test_soak_168h_smoke_no_lock_leak_proxy_p1_3() {
 // Memory leak regression (the existing memory leak test pinned)
 // --------------------------------------------------------------------
 
+#[ignore = "in-process simulation; G7 gate uses wired E2E"]
 #[test]
 fn test_soak_memory_baseline_invariant_p1_3() {
     // Pin: when no query runs, memory_current must equal baseline
@@ -298,14 +305,16 @@ fn test_soak_memory_baseline_invariant_p1_3() {
     assert_eq!(report.memory_growth_pct, 0.0);
 }
 
+#[ignore = "in-process simulation; G7 gate uses wired E2E"]
 #[test]
 fn test_soak_p50_p99_ordering_p1_3() {
-    // Sanity: p99 must be ≥ p50 in any non-empty report.
+    // Sanity: p99 must be >= p50 in any non-empty report.
     let config = default_config(60);
     let report = run_soak_smoke(&config);
     assert!(report.p50_latency_ms <= report.p99_latency_ms + f64::EPSILON);
 }
 
+#[ignore = "in-process simulation; G7 gate uses wired E2E"]
 #[test]
 fn test_soak_alert_message_when_exceeds_threshold_p1_3() {
     // Force an alert by setting a very tight memory threshold.
