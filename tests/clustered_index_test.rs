@@ -68,6 +68,7 @@ impl LeafPage {
     }
 }
 
+#[allow(dead_code)]
 pub struct ClusteredIndex {
     pages: Vec<LeafPage>,
     pk_to_page: BTreeMap<i64, usize>,
@@ -82,7 +83,7 @@ impl ClusteredIndex {
     }
 
     pub fn with_page_size(page_size: usize) -> Self {
-        let mut idx = Self {
+    let idx = Self {
             pages: vec![LeafPage::new(page_size)],
             pk_to_page: BTreeMap::new(),
             page_size,
@@ -114,6 +115,7 @@ impl ClusteredIndex {
         Ok(())
     }
 
+    #[allow(dead_code)]
     fn find_page_for_pk(&self, pk: i64) -> usize {
         for (i, page) in self.pages.iter().enumerate() {
             if let Some(last) = page.rows.last() {
