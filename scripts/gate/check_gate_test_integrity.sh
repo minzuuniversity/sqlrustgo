@@ -105,7 +105,7 @@ import os
 import re
 import sys
 
-GATE_DIR = "/Users/liying/workspace/dev/openheart/sqlrustgo/scripts/gate"
+GATE_DIR = os.environ.get("GATE_DIR", "/home/ai/sqlrustgo/scripts/gate")
 if not os.path.isdir(GATE_DIR):
     sys.exit(0)
 
