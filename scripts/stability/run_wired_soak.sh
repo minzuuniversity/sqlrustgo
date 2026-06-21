@@ -87,6 +87,8 @@ if [ "${INTERVAL:-60}" = "60" ]; then
         INTERVAL=10
     elif [ "$HOURS_INT" = "2" ]; then
         INTERVAL=15
+    else
+        INTERVAL=60
     fi
 fi
 
@@ -98,6 +100,8 @@ if [ "${TPCH_ROTATE_INTERVAL:-600}" = "600" ]; then
         TPCH_ROTATE_INTERVAL=120
     elif [ "$HOURS_INT" = "2" ]; then
         TPCH_ROTATE_INTERVAL=180
+    else
+        TPCH_ROTATE_INTERVAL=600
     fi
 fi
 
