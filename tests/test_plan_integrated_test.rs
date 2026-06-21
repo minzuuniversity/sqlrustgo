@@ -160,7 +160,7 @@ fn test_no_orphan_tests() {
         "common/mod.rs",  // shared test utilities
         "data_loader.rs", // has its own Cargo entry
     ];
-    let skip_substrings = [
+    let _skip_substrings = [
         "_test.rs", // actual test files - should be in Cargo.toml
     ];
 

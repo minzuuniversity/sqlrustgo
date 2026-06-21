@@ -349,7 +349,7 @@ fn tpch_sf01_22_vs_postgresql_pgdate_cell() {
             .iter()
             .map(|row| row.iter().map(to_md_value).collect::<Vec<_>>().join("|"))
             .collect();
-        let sr_set: std::collections::HashSet<String> = sr_strings.iter().cloned().collect();
+        let _sr_set: std::collections::HashSet<String> = sr_strings.iter().cloned().collect();
         let pg_result = run_pg(&sql);
         let pg_count = if pg_result.is_ok() {
             run_pg_count(&sql)
