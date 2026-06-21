@@ -83,7 +83,7 @@ impl ClusteredIndex {
     }
 
     pub fn with_page_size(page_size: usize) -> Self {
-    let idx = Self {
+        let idx = Self {
             pages: vec![LeafPage::new(page_size)],
             pk_to_page: BTreeMap::new(),
             page_size,
