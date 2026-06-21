@@ -16,7 +16,7 @@ use std::time::Instant;
 
 mod four_way_harness;
 use four_way_harness::{
-    compare_row_counts, default_data_dir, setup_external_db, Engine, QueryResult, TABLE_COLS,
+    default_data_dir, setup_external_db, Engine, QueryResult, TABLE_COLS,
 };
 
 /// One entry per (engine, query) produced by the harness.

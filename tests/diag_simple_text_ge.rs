@@ -1,6 +1,6 @@
 //! Compare simple text filter to see if engine works for tiny dataset
 
-use sqlrustgo::{ExecutionEngine, MemoryStorage, StorageEngine};
+use sqlrustgo::ExecutionEngine;
 
 #[test]
 fn test_simple_text_ge() {

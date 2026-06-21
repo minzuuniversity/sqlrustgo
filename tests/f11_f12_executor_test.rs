@@ -32,6 +32,7 @@ fn setup_table(engine: &mut MemoryExecutionEngine) {
     let _ = engine.execute("INSERT INTO sales VALUES (8, 'west', 175, 'banana')");
 }
 
+#[allow(dead_code)]
 fn parse_count(s: &str) -> String {
     // extract first number from result string
     for word in s.split(|c: char| !c.is_ascii_digit()) {

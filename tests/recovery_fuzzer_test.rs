@@ -42,6 +42,7 @@ fn fresh_storage() -> MemoryStorage {
 }
 
 /// Append a single WAL entry with the given LSN, type, tx_id.
+#[allow(dead_code)]
 fn append(wal: &mut MemoryWalManager, lsn: u64, tx_id: u64, entry_type: WalEntryType) {
     wal.append(WalEntry {
         tx_id,
@@ -510,7 +511,7 @@ fn r2_random_fuzz_smoke_500_iterations() {
     // RecoveryEngine never panics. Statistical invariants are checked
     // loosely.
     let mut rng = StdRng::seed_from_u64(0xBAD_BEEF);
-    let mut panics: u32 = 0;
+    let panics: u32 = 0;
     let mut last_err: Option<String> = None;
 
     for ep in 0..500 {
@@ -586,7 +587,7 @@ fn r2_random_fuzz_full_50k_iterations() {
     //   cargo test --release --test recovery_fuzzer_test r2_random_fuzz_full -- --ignored
     let mut rng = StdRng::seed_from_u64(0xCAFE_BABE);
     let mut err_count: u32 = 0;
-    let mut panic_count: u32 = 0;
+    let panic_count: u32 = 0;
     for ep in 0..50_000 {
         let n_entries: usize = rng.gen_range(1..100);
         let mut entries: Vec<WalEntry> = Vec::new();
