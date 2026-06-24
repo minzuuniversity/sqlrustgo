@@ -1,0 +1,210 @@
+{
+  "data_source": "/tmp/tpch_sf01_v2 (regenerated with discount fix)",
+  "generated_at": "2026-06-06T23:49:21.985148+00:00",
+  "snapshot": "tpch_sf01_snapshot_v2",
+  "summary": {
+    "FAIL": 5,
+    "PASS": 14,
+    "TIMEOUT": 3
+  },
+  "verdicts": [
+    {
+      "classification": "group_by",
+      "duration_ms": 45,
+      "engine_rows": 6,
+      "notes": "",
+      "pg_rows": 6,
+      "query": "Q1",
+      "status": "PASS"
+    },
+    {
+      "classification": "performance_issue",
+      "duration_ms": 7796,
+      "engine_rows": -1,
+      "notes": "engine did not complete (N\u00b2 EXISTS or similar)",
+      "pg_rows": 5,
+      "query": "Q2",
+      "status": "TIMEOUT"
+    },
+    {
+      "classification": "cell_diff",
+      "duration_ms": 4395,
+      "engine_rows": 10,
+      "notes": "",
+      "pg_rows": 10,
+      "query": "Q3",
+      "status": "FAIL"
+    },
+    {
+      "classification": "performance_issue",
+      "duration_ms": 13000,
+      "engine_rows": -1,
+      "notes": "engine did not complete (N\u00b2 EXISTS or similar)",
+      "pg_rows": 5,
+      "query": "Q4",
+      "status": "TIMEOUT"
+    },
+    {
+      "classification": "group_by",
+      "duration_ms": 4461,
+      "engine_rows": 2,
+      "notes": "",
+      "pg_rows": 2,
+      "query": "Q5",
+      "status": "PASS"
+    },
+    {
+      "classification": "scalar_aggregate_numeric_tolerance",
+      "duration_ms": 28,
+      "engine_rows": 1,
+      "notes": "values match within numeric tolerance (f64 precision)",
+      "pg_rows": 1,
+      "query": "Q6",
+      "status": "PASS"
+    },
+    {
+      "classification": "group_by",
+      "duration_ms": 581,
+      "engine_rows": 2,
+      "notes": "",
+      "pg_rows": 2,
+      "query": "Q7",
+      "status": "PASS"
+    },
+    {
+      "classification": "cell_diff",
+      "duration_ms": 6422,
+      "engine_rows": 2,
+      "notes": "",
+      "pg_rows": 2,
+      "query": "Q8",
+      "status": "FAIL"
+    },
+    {
+      "classification": "group_by",
+      "duration_ms": 4633,
+      "engine_rows": 0,
+      "notes": "",
+      "pg_rows": 0,
+      "query": "Q9",
+      "status": "PASS"
+    },
+    {
+      "classification": "cell_diff",
+      "duration_ms": 4606,
+      "engine_rows": 20,
+      "notes": "",
+      "pg_rows": 20,
+      "query": "Q10",
+      "status": "FAIL"
+    },
+    {
+      "classification": "group_by",
+      "duration_ms": 11,
+      "engine_rows": 0,
+      "notes": "",
+      "pg_rows": 0,
+      "query": "Q11",
+      "status": "PASS"
+    },
+    {
+      "classification": "group_by",
+      "duration_ms": 4519,
+      "engine_rows": 2,
+      "notes": "",
+      "pg_rows": 2,
+      "query": "Q12",
+      "status": "PASS"
+    },
+    {
+      "classification": "group_by",
+      "duration_ms": 181,
+      "engine_rows": 21,
+      "notes": "",
+      "pg_rows": 21,
+      "query": "Q13",
+      "status": "PASS"
+    },
+    {
+      "classification": "scalar_aggregate_numeric_tolerance",
+      "duration_ms": 166,
+      "engine_rows": 1,
+      "notes": "values match within numeric tolerance (f64 precision)",
+      "pg_rows": 1,
+      "query": "Q14",
+      "status": "PASS"
+    },
+    {
+      "classification": "group_by",
+      "duration_ms": 78,
+      "engine_rows": 93,
+      "notes": "",
+      "pg_rows": 93,
+      "query": "Q15",
+      "status": "PASS"
+    },
+    {
+      "classification": "group_by",
+      "duration_ms": 22,
+      "engine_rows": 286,
+      "notes": "",
+      "pg_rows": 286,
+      "query": "Q16",
+      "status": "PASS"
+    },
+    {
+      "classification": "value_mismatch",
+      "duration_ms": 164,
+      "engine_rows": 1,
+      "notes": "",
+      "pg_rows": 1,
+      "query": "Q17",
+      "status": "FAIL"
+    },
+    {
+      "classification": "cell_diff",
+      "duration_ms": 4557,
+      "engine_rows": 100,
+      "notes": "",
+      "pg_rows": 100,
+      "query": "Q18",
+      "status": "FAIL"
+    },
+    {
+      "classification": "scalar_aggregate",
+      "duration_ms": 176,
+      "engine_rows": 1,
+      "notes": "",
+      "pg_rows": 1,
+      "query": "Q19",
+      "status": "PASS"
+    },
+    {
+      "classification": "exists_subquery",
+      "duration_ms": 115,
+      "engine_rows": 0,
+      "notes": "",
+      "pg_rows": 0,
+      "query": "Q20",
+      "status": "PASS"
+    },
+    {
+      "classification": "performance_issue",
+      "duration_ms": 13000,
+      "engine_rows": -1,
+      "notes": "engine did not complete (N\u00b2 EXISTS or similar)",
+      "pg_rows": 0,
+      "query": "Q21",
+      "status": "TIMEOUT"
+    },
+    {
+      "classification": "group_by",
+      "duration_ms": 2861,
+      "engine_rows": 0,
+      "notes": "",
+      "pg_rows": 0,
+      "query": "Q22",
+      "status": "PASS"
+    }
+  ]
+}

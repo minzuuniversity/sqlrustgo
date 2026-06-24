@@ -15,7 +15,7 @@
 # Refs: docs/openspec/3182-cost-optimizer.md
 #       V390_TEST_PLAN.md §G10
 
-set -eo pipefail
+set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
@@ -70,17 +70,10 @@ else
 fi
 
 # 5. ≥20 tests pass
-RAW=$(cargo test --test cost_optimizer_test 2>&1)
-TEST_EXIT=$?
-PASSED=$(echo "$RAW" | grep -E "test result.*ok" | grep -oE "[0-9]+ passed" | head -1)
-if [ -z "$PASSED" ] && [ "$TEST_EXIT" -ne 0 ]; then
-    echo "  ❌ FAIL: cost_optimizer_test exited with $TEST_EXIT"
-    echo "$RAW" | tail -5
-    exit 1
-fi
+PASSED=$(cargo test --test cost_optimizer_test 2>&1 | grep -E "test result.*ok" | grep -oE "[0-9]+ passed" | head -1 || true)
 if [ -z "$PASSED" ]; then
     echo "  ❌ FAIL: cost_optimizer_test tests did not pass"
-    echo "$RAW" | tail -5
+    cargo test --test cost_optimizer_test 2>&1 | tail -5
     exit 1
 fi
 N_PASSED=$(echo "$PASSED" | grep -oE "[0-9]+")
@@ -104,13 +97,7 @@ else
 fi
 
 # 7. TPC-H 22/22 (smoke)
-RAW=$(cargo test --test tpch_gate_test 2>&1)
-TEST_EXIT=$?
-TPCH_PASSED=$(echo "$RAW" | grep -E "test result.*ok" | head -1)
-if [ -z "$TPCH_PASSED" ] && [ "$TEST_EXIT" -ne 0 ]; then
-    echo "  ❌ FAIL: tpch_gate_test exited with $TEST_EXIT"
-    exit 1
-fi
+TPCH_PASSED=$(cargo test --test tpch_gate_test 2>&1 | grep -E "test result.*ok" | head -1 || true)
 if echo "$TPCH_PASSED" | grep -q "ok"; then
     echo "  [7/7] ✅ PASS: TPC-H gate (22/22) maintained"
 else

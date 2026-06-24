@@ -910,7 +910,7 @@ impl WalArchiveManager {
             }
         }
 
-        archives.sort_by_key(|a| a.archive_id);
+        archives.sort_by(|a, b| a.archive_id.cmp(&b.archive_id));
         Ok(archives)
     }
 

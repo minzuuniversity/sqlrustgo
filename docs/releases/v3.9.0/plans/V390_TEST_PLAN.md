@@ -24,7 +24,7 @@
 | G4 | ARCH-3 Complete | 单元 + gate 自动化 | 40h | Phase 1 |
 | G5 | SEM-1 Savepoint | 单元 + e2e | 28h | Phase 2 |
 | G6 | Backup / Restore | 单元 + e2e + 100+ scenarios | 40h | Phase 3 |
-| G7 | Soak Test (WIRED E2E) | real server + sysbench oltp_read_write | 48h | Phase 4 |
+| G7 | 24h Soak (压缩时间) | 长周期 + 监控 | 48h | Phase 4 |
 | G8 | Crash Matrix (100+ scenarios) | 单元 + mock | 40h | Phase 4 |
 | G9 | Upgrade Test | 自动化 + 50+ scenarios | 40h | Phase 4 |
 | G10 | Audit Log + 时间旅行 | 单元 + e2e | 44h | Phase 5 |
@@ -240,69 +240,45 @@ tests/backup_restore_test.rs
 
 ---
 
-## G7: Soak Test (WIRED E2E) [48h]
-
-> **2026-06-21 rewrite**: Previous in-process compressed-time
-> equivalence (24h -> 60s, etc.) is decommissioned. The G7 gate now
-> requires the real `sqlrustgo-mysql-server` binary driven by
-> `sysbench oltp_read_write` over the MySQL wire protocol. See
-> `docs/openspec/3175-soak-test.md` for rationale.
+## G7: 24h Soak Test [48h]
 
 ### 测试范围
+- 24h 连续运行 (CI 必跑)
+- 72h + 168h 文档化 (手动跑, 季度)
+- 监控: memory / fd / lock / WAL size / cache hit rate
 
-| Level | Duration | Mode | Trigger | Script |
-|-------|----------|------|---------|--------|
-| Gate (CI) | 5 min | real wire | every CI / pre-release | `bash scripts/gate/check_p13_soak_test.sh` |
-| 24h | 24h | real wire | RC pre-release | `HOURS=24 bash scripts/stability/run_wired_soak.sh` |
-| 72h | 72h | real wire | GA candidate | `HOURS=72 bash scripts/stability/run_wired_soak.sh` |
-| 168h | 168h (1 week) | real wire | GA-final | `HOURS=168 bash scripts/stability/run_wired_soak.sh` |
-
-All 4 levels launch the real `sqlrustgo-mysql-server serve` and run
-`sysbench oltp_read_write` (mixed read/write OLTP) over the real MySQL
-wire protocol. The 24h/72h/168h levels also run a TPC-H 22-query
-rotation in parallel.
-
-### 监控指标 (CI gate, 5-min default)
-
+### 监控指标
 ```
 监控项                              阈值
 ─────────────────────────────────────
-Server crashes                      0
-sysbench FATAL/ERROR                0
-Max RSS                             <= 6144 MB (SOAK_RSS_HARD_MB)
-Max FD count                        <= 512 (SOAK_FD_LIMIT)
-sysbench transactions               >= 10 (proof E2E ran)
-STABILITY_REPORT.md                 required
+Memory RSS 增长                     < 5% over 24h
+File descriptor 句柄数              < 1000
+Active locks 数量                    < 100 (峰值)
+WAL file size                        < 1GB (24h)
+Cache hit rate                       > 95%
+Query latency P99                    < 100ms (avg)
+Crash 次数                            0
+WAL 写入异常                          0
 ```
-
-For 24h/72h/168h the thresholds scale from the same 24h-budget
-reference: 50 MB RSS growth, 50 FD growth, 10240 MB WAL final.
 
 ### 测试脚本
-
 ```
-scripts/gate/check_p13_soak_test.sh       (G7 gate, 5-min CI form)
-├── 1) preflight: sysbench in PATH, binary built
-├── 2) auto-pick port 3396-3496
-├── 3) launch sqlrustgo-mysql-server with ulimit -v / -n guards
-├── 4) wire sanity: mysql --ssl=0 -e 'SELECT 1'
-├── 5) sysbench oltp_read_write prepare (table_size=20)
-├── 6) sysbench oltp_read_write run (SOAK_MINUTES * 60s)
-├── 7) monitor loop: RSS, FD, CPU, WAL every SOAK_INTERVAL s
-├── 8) kill server, write STABILITY_REPORT.md
-└── 9) enforce 7 hard criteria; exit 0/1/2
+scripts/soak/soak_24h.sh
+├── 启动 8 worker 并发, 混合 OLTP/OLAP 流量
+├── 每 5 分钟采样 memory/fd/lock/wal
+├── 24 小时后自动停止
+├── 生成报告 (HTML + JSON)
+└── 失败: 任一指标超阈值
 
-scripts/stability/run_wired_soak.sh        (24h+ form, same shape)
-scripts/stability/run_soak_single.sh       (ladder step, 1-step form)
-scripts/stability/run_wired_soak_with_monitor.sh (with Z6G4 guard)
+scripts/soak/soak_72h.sh  (季度, Z6G4)
+scripts/soak/soak_168h.sh (季度, Z6G4)
 ```
 
 ### 验证
-- [x] `bash scripts/gate/check_p13_soak_test.sh` (5 min) PASS
-- [ ] `HOURS=24 bash scripts/stability/run_wired_soak.sh` (Z6G4)
-- [ ] `HOURS=72 bash scripts/stability/run_wired_soak.sh` (Z6G4)
-- [ ] `HOURS=168 bash scripts/stability/run_wired_soak.sh` (Z6G4)
-- [ ] `STABILITY_REPORT.md` documented for each run
+- [ ] 24h Soak Test PASS (在 Z6G4 跑 1 次)
+- [ ] 72h Soak Test PASS (季度)
+- [ ] 168h Soak Test PASS (季度)
+- [ ] 报告文档化
 
 ---
 

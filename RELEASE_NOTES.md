@@ -1,139 +1,175 @@
-# SQLRustGo 发行说明 (Release Notes)
+# 发行说明 - v1.0.0
 
-> **当前活跃版本**: **v3.9.0** (RC7, 2026-06-17, GA 目标 2026-12-15)
-> **Latest GA**: **v3.8.0** (2026-06-04)
-> **维护人**: yinglichina8848
-> **更新日期**: 2026-06-17
-
-本文件是 **所有发行版本的索引页**。每个版本的详细 release notes 见
-`docs/releases/<version>/RELEASE_NOTES.md`。
+**发布日期**：2026-02-16
+**版本**：1.0.0
+**项目**：SQLRustGo
 
 ---
 
-## 最新版本
+## 版本概述
 
-| 版本 | 状态 | 发布日期 | 一句话总结 | 详细 |
-|------|------|---------|-----------|------|
-| **v3.9.0** | RC7 | 2026-12-15 (GA 目标) | Production-readiness：TPC-H 22/22 + Q8 165,000× + Q13 subquery fix | [`docs/releases/v3.9.0/RELEASE_NOTES.md`](docs/releases/v3.9.0/RELEASE_NOTES.md) |
-| v3.8.0 | GA | 2026-06-04 | Long Convergence Release (WAL + MVCC 强约束) | [`docs/releases/v3.8.0/RELEASE_NOTES.md`](docs/releases/v3.8.0/RELEASE_NOTES.md) |
-| v3.7.0 | GA | 2026-05-30 | Stability enhancement (87.36% 覆盖率) | [`docs/releases/v3.7.0/RELEASE_NOTES.md`](docs/releases/v3.7.0/RELEASE_NOTES.md) |
-| v3.6.0 | GA | 2026-05-30 | CBO + TPC-H 22/22 | [`docs/releases/v3.6.0/RELEASE_NOTES.md`](docs/releases/v3.6.0/RELEASE_NOTES.md) |
-| v3.5.0 | GA | 2026-05-28 | AI Native GMP Platform | [`docs/releases/v3.5.0/RELEASE_NOTES.md`](docs/releases/v3.5.0/RELEASE_NOTES.md) |
-| v3.4.0 | GA | 2026-05-24 | GMP Management Suite | [`docs/releases/v3.4.0/RELEASE_NOTES.md`](docs/releases/v3.4.0/RELEASE_NOTES.md) |
-| v3.3.0 | GA | 2026-05-20 | Industrial Trust Platform | [`docs/releases/v3.3.0/RELEASE_NOTES.md`](docs/releases/v3.3.0/RELEASE_NOTES.md) |
-| v3.2.0 | GA | 2026-05-18 | Trust Convergence | [`docs/releases/v3.2.0/RELEASE_NOTES.md`](docs/releases/v3.2.0/RELEASE_NOTES.md) |
+SQLRustGo 1.0.0 是项目的首个正式版本，实现了从零构建的关系型数据库系统的核心功能。该版本支持 SQL-92 子集，包含完整的存储引擎、索引、事务管理和网络协议层。
 
 ---
 
-## v3.9.0 速览 (RC7)
+## 主要功能
 
-### 三大主题
-1. **TPC-H 22/22** — in-process + wire-protocol 双通过，21/22 cell-level match SQLite (Q22 有 SQL 标准差异)
-2. **Q13 subquery fix** — `NOT IN (subquery_with_LIKE)` 三值逻辑正确 (was 60/60 → now 11/11 excluded)
-3. **Q9 6x faster** — 600ms → 90ms via hash-join pre-filter pushdown
+### 1. SQL 支持
 
-### Sprint 8 增量 (2026-06-17)
-- **Q8 165,000× faster** — Track A: 33,000ms → 0.18ms via `extract_comma_join_keys` + `JoinKey::All` hash-join fallback
-- **ADR-006 V5/V6/V8/V2 治理** — 5/5 meta-gates (P11/P12/P13/P14/P15) 全部 PASS
-- **`sqlrustgo-mysql-server soak` 子命令** — 真实 wall-clock 长期浸泡 binary, 24h/72h/168h infra READY
-- **26 long-stability 测试分析** — 全部需 Z6G4 验证
+| 功能 | 状态 | 说明 |
+|------|------|------|
+|选择| ✅ | 查询数据 |
+|插入| ✅ | 插入数据 |
+|更新| ✅ | 更新数据 |
+|删除| ✅ | 删除数据 |
+|创建表| ✅ | 创建表 |
+|掉落表| ✅ | 删除表 |
 
-### On-disk Format
-**v3.8.0 → v3.9.0 零数据迁移** (binary-swap upgrade)。
+### 2. 存储引擎
 
-### Known Gaps (Open)
-- 4 EAGAIN-failing integration tests on macOS debug build ([Issue #3307](http://192.168.0.250:3000/openclaw/sqlrustgo/issues/3307))
-- 24h/72h/168h real wall-clock soak pending Z6G4 hardware
-- v3.10 wired-soak DDL + wire protocol repair ([Issue #3302](http://192.168.0.250:3000/openclaw/sqlrustgo/issues/3302))
+- **Buffer Pool**: LRU 缓存策略的内存缓冲池
+- **FileStorage**: 基于文件的持久化存储
+- **Page Management**: 页面管理机制
 
-### 迁移指南
-详见 [`docs/releases/v3.9.0/MIGRATION_GUIDE.md`](docs/releases/v3.9.0/MIGRATION_GUIDE.md)。
+### 3. B+ Tree 索引
 
-### 关键文档
-- [Comprehensive Assessment v2.0](docs/releases/v3.9.0/V390_COMPREHENSIVE_ASSESSMENT.md)
-- [Evidence Status](docs/releases/v3.9.0/EVIDENCE_STATUS.md)
-- [GA Gate Report](docs/releases/v3.9.0/GA_GATE_REPORT.md)
-- [GA Readiness Final (2026-06-19)](docs/releases/v3.9.0/GA_READINESS_FINAL_2026-06-19.md)
-- [Changelog](docs/releases/v3.9.0/CHANGELOG.md)
-- [Roadmap](docs/releases/v3.9.0/ROADMAP.md)
-- [Evaluation Report](docs/releases/v3.9.0/EVALUATION_REPORT.md)
-- [Feature Matrix](docs/releases/v3.9.0/FEATURE_MATRIX.md)
-- [Q8 Performance Analysis](docs/releases/v3.9.0/Q8_PERF_ANALYSIS.md)
-- [TPC-H E2E Testing](docs/releases/v3.9.0/TPCH_E2E_TESTING.md)
+- 索引持久化存储
+- 查询优化支持
+- 键值索引结构
 
----
+### 4. 事务管理
 
-## v3.8.0 速览 (GA)
+- 预写日志 (WAL)
+- 交易管理器
+- 事务状态管理
 
-**Long Convergence Release** — 长期收敛版本。WAL + MVCC Mandatory 路径统一。
+### 5. 网络协议
 
-### 关键变更
-- **Retired legacy binaries**: `sqlrustgo` / `sqlrustgo-sql-cli` / `sqlrustgo-bench` 等退役
-- **Canonical entry**: `sqlrustgo-mysql-server` (subcommands: serve / exec / repl / bench / gmp / diag / backup / restore)
-- **Embedded test harness keystone**: `start_ephemeral` + `MySqlTestClient` 启用 raw wire-protocol 测试
-- **Gate scripts updated**: `check_alpha_v380.sh` 增 `A1_BIN_COUNT` + `A2_EPHEMERAL_SMOKE`
-
-详见 [`docs/releases/v3.8.0/RELEASE_NOTES.md`](docs/releases/v3.8.0/RELEASE_NOTES.md)。
+- MySQL 风格协议实现
+- TCP 服务器/客户端
+- 数据包序列化/反序列化
 
 ---
 
-## v3.7.0 速览 (GA)
+## 项目结构
 
-**Stability Enhancement** — 87.36% 覆盖率 + 39 项单元测试新增。
-
-详见 [`docs/releases/v3.7.0/RELEASE_NOTES.md`](docs/releases/v3.7.0/RELEASE_NOTES.md)。
-
----
-
-## v3.6.0 速览 (GA)
-
-**Performance Optimization** — CBO 成本优化器 + TPC-H 22/22 PASS。
-
-详见 [`docs/releases/v3.6.0/RELEASE_NOTES.md`](docs/releases/v3.6.0/RELEASE_NOTES.md)。
-
----
-
-## v3.5.0 速览 (GA)
-
-**AI Native GMP Platform** — Deviation Investigator / Compliance Judge / Device Predictor / Report Generator。
-
-详见 [`docs/releases/v3.5.0/RELEASE_NOTES.md`](docs/releases/v3.5.0/RELEASE_NOTES.md)。
-
----
-
-## 历史版本
-
-| 版本 | 状态 | 一句话总结 | 详细 |
-|------|------|-----------|------|
-| v3.4.0 | GA | GMP Management Suite (EBR + Electronic Signature + Audit) | [`docs/releases/v3.4.0/RELEASE_NOTES.md`](docs/releases/v3.4.0/RELEASE_NOTES.md) |
-| v3.3.0 | GA | Industrial Trust Platform | [`docs/releases/v3.3.0/RELEASE_NOTES.md`](docs/releases/v3.3.0/RELEASE_NOTES.md) |
-| v3.2.0 | GA | Trust Convergence | [`docs/releases/v3.2.0/RELEASE_NOTES.md`](docs/releases/v3.2.0/RELEASE_NOTES.md) |
-| v3.0.0 | GA | SQL-92 完整支持 (基础) | [`docs/releases/v3.0.0/RELEASE_NOTES.md`](docs/releases/v3.0.0/RELEASE_NOTES.md) |
-| v2.9.0 | GA | 性能 + 分布式基础 | [`docs/releases/v2.9.0/RELEASE_NOTES.md`](docs/releases/v2.9.0/RELEASE_NOTES.md) |
-| v2.8.0 | GA | 生产化 + 分布式 + 安全 | [`docs/releases/v2.8.0/RELEASE_NOTES.md`](docs/releases/v2.8.0/RELEASE_NOTES.md) |
-| v2.7.0 | GA | 企业级韧性 (WAL 崩溃恢复) | [`docs/releases/v2.7.0/RELEASE_NOTES.md`](docs/releases/v2.7.0/RELEASE_NOTES.md) |
-| v2.6.0 | GA | SQL-92 完整支持 | [`docs/releases/v2.6.0/RELEASE_NOTES.md`](docs/releases/v2.6.0/RELEASE_NOTES.md) |
-| v1.0.0 | GA | 首个正式版本 | (早期版本) |
-
-> **v1.0.0**: 首个正式版本 (`RELEASE_NOTES.md` 旧版位于 git 历史)。支持 SQL-92 子集 + 基础存储引擎 + 索引 + 事务 + 网络协议。
+```
+sqlrustgo/
+├── src/
+│   ├── executor/          # 查询执行器
+│   ├── lexer/             # 词法分析器
+│   ├── parser/            # 语法分析器
+│   ├── storage/           # 存储引擎
+│   │   ├── bplus_tree/   # B+ Tree 实现
+│   │   ├── buffer_pool.rs
+│   │   ├── file_storage.rs
+│   │   └── page.rs
+│   ├── transaction/       # 事务管理
+│   ├── network/           # 网络协议
+│   ├── types/             # 类型系统
+│   ├── lib.rs
+│   └── main.rs
+├── tests/                 # 测试文件
+├── Cargo.toml
+└── README.md
+```
 
 ---
 
-## 发行流程 (Release Pipeline)
+## 测试情况
 
-每个 GA 版本经历：
-1. **Alpha**: 功能冻结, 单元测试 + 集成测试 PASS, 文档一致性
-2. **Beta**: 边界测试, 回归测试, 性能基线
-3. **RC**: 生产就绪检查, GA gate (D1-D9 for v3.8, G1-G16 for v3.9)
-4. **GA**: 所有 gate PASS, release notes + changelog + roadmap 完整
+### 测试统计
 
-详细 SOP: [`docs/RELEASE_NORMALIZATION.md`](docs/RELEASE_NORMALIZATION.md), [`RELEASE_GOVERNANCE.md`](RELEASE_GOVERNANCE.md)
+| 测试类型 | 数量 | 状态 |
+|----------|------|------|
+| 集成测试 | 8 | ✅ 通过 |
+| 项目测试 | 4 | ✅ 通过 |
+| CI 验证 | 5 | ✅ 通过 |
+| **总计** | **17** | **✅ 全部通过** |
+
+### 测试用例
+
+**集成测试** (`tests/integration_test.rs`)
+- `test_full_select_flow` - SELECT 流程测试
+- `test_full_insert_flow` - INSERT 流程测试
+- `test_full_transaction_flow` - 事务流程测试
+- `test_create_and_select` - 建表查询测试
+- `test_multiple_statements` - 多语句测试
+- `test_lexer_parser_integration` - 词法语法集成测试
+- `test_error_handling` - 错误处理测试
+- `test_value_type_conversion` - 类型转换测试
+
+**项目测试** (`tests/project_test.rs`)
+- `test_project_structure` - 项目结构验证
+- `test_cargo_toml_exists` - Cargo.toml 存在性检查
+- `test_src_main_exists` - main.rs 存在性检查
+- `test_src_lib_exists` - lib.rs 存在性检查
 
 ---
 
-## 维护说明
+## 技术栈
 
-- 本索引页与 [CHANGELOG.md](CHANGELOG.md) 互补：CHANGELOG 强调技术变更按时间线, RELEASE_NOTES 强调功能分类
-- 版本路线图见 [ROADMAP.md](ROADMAP.md)
-- 治理规范见 [BRANCH_GOVERNANCE.md](BRANCH_GOVERNANCE.md), [RELEASE_GOVERNANCE.md](RELEASE_GOVERNANCE.md)
-- 任何版本发布前需更新对应版本的 CHANGELOG + ROADMAP + 本索引页
+- **语言**: Rust (Edition 2024)
+- **异步运行时**: Tokio
+- **依赖**:
+- tokio（异步运行时）
+- 异步特征
+- 无论如何/这个错误
+  - serde
+- 日志/env_logger
+  - bytes
+- lru 缓存
+- serde_json
+
+---
+
+## 构建与运行
+
+```bash
+# 构建
+cargo build --all-features
+
+# 测试
+cargo test --all-features
+
+# 运行 REPL
+cargo run --bin sqlrustgo
+
+# 代码检查
+cargo clippy --all-features -- -D warnings
+
+# 格式化检查
+cargo fmt --check --all
+```
+
+---
+
+## 贡献者
+
+- AI 工具链深度集成开发
+
+---
+
+## 后续版本计划
+
+- [ ] 完整的 WHERE 子句支持
+- [ ] JOIN 查询支持
+- [ ] 索引优化器
+- [ ] 性能基准测试
+- [ ] 更多的 SQL 语法支持
+
+---
+
+## 已知限制
+
+- SQL-92 子集支持，部分语法尚未实现
+- 事务隔离级别尚未完整实现
+- 网络协议仍在完善中
+
+---
+
+## 相关链接
+
+- [GitHub 仓库](https://github.com/yinglichina8848/sqlrustgo)
+- [设计文档](docs/2026-02-13-sqlcc-rust-redesign-design.md)
+- [实施计划](docs/2026-02-13-sqlcc-rust-impl-plan.md)

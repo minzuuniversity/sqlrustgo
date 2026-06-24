@@ -532,24 +532,8 @@ impl<S: StorageEngine> RecoveryEngine<S> for RecoveryEngineImpl {
             incomplete_txns: incomplete,
             ..Default::default()
         };
-        // PR-3580: Replay committed DML entries in LSN order. The previous
-        // implementation grouped all Inserts, applied them in bulk, then
-        // applied Deletes/Updates. That ordering is wrong for any WAL that
-        // contains an Insert that was later overwritten by a Delete/Update
-        // in the same transaction (e.g. the engine's `delete + insert` UPDATE
-        // pattern): the bulk Insert added the row, the subsequent Delete
-        // wiped it, and the original Insert was never re-applied. By
-        // replaying in LSN order, the original state is recreated and
-        // each subsequent DML is applied to the current view.
-        //
-        // Note: the F-09 "dual-write dedup" optimization is intentionally
-        // removed. It was correct for autocommit-only DML (where the row
-        // was durably committed to disk before crash and the WAL entry
-        // would create a duplicate on replay), but it incorrectly skipped
-        // Inserts that were later invalidated by a Delete/Update in the
-        // same WAL run — leaving the storage in an inconsistent state.
-        // The cost is one extra `bulk_force_insert` per replayed Insert;
-        // correctness wins.
+
+        // Replay committed DML entries in order
         for entry in &dml_entries {
             self.apply_entry(storage, entry)?;
             match entry.entry_type {

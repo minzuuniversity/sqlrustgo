@@ -1,0 +1,68 @@
+=== C-ARCH Invariant Check ===
+
+[C-ARCH-01] Checking LocalExecutor has NO txn_manager field...
+FAIL: C-ARCH-01 violated - txn_manager field found in LocalExecutor
+Evidence: 33:    txn_manager: Option<&'a TransactionManager>,
+111:            txn_manager: None,
+120:    pub fn with_txn_manager(mut self, txn_manager: &'a TransactionManager) -> Self {
+128:            txn_manager: None,
+
+[C-ARCH-02] Checking LocalExecutor has NO write_buffer field...
+PASS: C-ARCH-02
+
+[C-ARCH-03] Checking storage.insert/update/delete only in crates/storage or crates/executor/...
+FAIL: C-ARCH-03 violated - storage operations outside crates/storage or crates/executor
+Evidence:
+crates/gmp/src/audit.rs:358:    storage.insert(TABLE_AUDIT_LOG, vec![row])?;
+crates/gmp/src/document.rs:384:    storage.insert(TABLE_DOCUMENTS, vec![row])?;
+crates/gmp/src/document.rs:400:    storage.insert(TABLE_DOCUMENT_CONTENTS, vec![row])?;
+crates/gmp/src/document.rs:411:    storage.insert(TABLE_DOCUMENT_KEYWORDS, vec![row])?;
+crates/gmp/src/vector_search.rs:79:        let _ = storage.delete(TABLE_EMBEDDINGS, &[Value::Integer(doc_id)]);
+crates/gmp/src/vector_search.rs:87:    storage.insert(TABLE_EMBEDDINGS, vec![row])?;
+crates/unified-query/src/adapters/storage.rs:130:            let _ = self.storage.insert(name, vec![record]);
+crates/distributed/src/grpc_server.rs:90:        let result = storage.insert(
+crates/distributed/src/grpc_server.rs:136:        let result = storage.delete(req.shard_id, req.vector_id);
+crates/distributed/src/grpc_server.rs:464:        let result = storage.insert(0, 1, vec![0.1, 0.2, 0.3]);
+crates/distributed/src/grpc_server.rs:472:        storage.insert(0, 1, vec![1.0, 0.0, 0.0]).unwrap();
+crates/distributed/src/grpc_server.rs:473:        storage.insert(0, 2, vec![0.0, 1.0, 0.0]).unwrap();
+crates/distributed/src/grpc_server.rs:485:        storage.insert(0, 1, vec![0.1, 0.2, 0.3]).unwrap();
+crates/distributed/src/grpc_server.rs:488:        let result = storage.delete(0, 1);
+crates/distributed/src/grpc_server.rs:570:        storage.insert(0, 1, vec![1.0, 2.0]).unwrap();
+crates/distributed/src/grpc_server.rs:572:        storage.delete(0, 1).unwrap();
+crates/distributed/src/grpc_server.rs:595:        storage.insert(0, 1, vec![1.0, 0.0]).unwrap();
+crates/distributed/src/grpc_server.rs:596:        storage.insert(1, 2, vec![0.0, 1.0]).unwrap();
+crates/distributed/src/grpc_server.rs:597:        storage.insert(0, 3, vec![0.5, 0.5]).unwrap();
+crates/distributed/src/grpc_server.rs:604:        storage.insert(0, 1, vec![1.0, 0.0, 0.0]).unwrap();
+
+[C-ARCH-04] Checking no eng.execute(raw_sql) outside parser...
+FAIL: C-ARCH-04 violated - execute() calls outside parser
+Evidence:
+crates/bench/tests/oltp_test.rs:231:    let result = engine.execute("SELECT COUNT(*) FROM bulk_test");
+crates/bench/tests/oltp_test.rs:241:        engine.execute("SELECT k, COUNT(*) as cnt FROM sbtest1 GROUP BY k ORDER BY k LIMIT 10");
+crates/bench/tests/tpch_test.rs:421:    let result = engine.execute("SELECT COUNT(*) FROM lineitem");
+crates/bench/tests/tpch_test.rs:428:    let result = engine.execute("SELECT COUNT(*) FROM orders");
+crates/bench/tests/tpch_test.rs:435:    let result = engine.execute("SELECT COUNT(*) FROM customer");
+crates/bench/tests/tpch_test.rs:505:    let result = engine.execute("SELECT * FROM part WHERE p_name LIKE 'Part%'");
+crates/bench/tests/tpch_test.rs:512:    let result = engine.execute("SELECT * FROM lineitem WHERE l_quantity BETWEEN 10 AND 50");
+crates/bench/tests/tpch_test.rs:519:    let result = engine.execute("SELECT * FROM orders LIMIT 10");
+crates/bench/tests/tpch_test.rs:526:    let result = engine.execute("SELECT * FROM orders LIMIT 5 OFFSET 10");
+crates/bench/examples/tpch_sf10_importer.rs:203:    conn.execute("INSERT INTO region VALUES (2, 'ASIA', 'ent deposits')", [])
+crates/bench/examples/tpch_sf10_importer.rs:205:    conn.execute("INSERT INTO region VALUES (3, 'EUROPE', 'ically cold')", [])
+crates/mysql-server/src/lib.rs:395:        let r = engine.execute("CREATE TABLE dispatch_test (id INT, name TEXT)");
+crates/mysql-server/src/lib.rs:397:        let r = engine.execute("INSERT INTO dispatch_test VALUES (1, 'alice')");
+crates/mysql-server/src/lib.rs:401:        let r = engine.execute("SELECT * FROM dispatch_test");
+crates/mysql-server/src/lib.rs:2195:            .execute("CREATE TABLE dispatch_test (id INT, name TEXT)")
+crates/mysql-server/src/lib.rs:2198:            .execute("INSERT INTO dispatch_test VALUES (1, 'hello')")
+crates/mysql-server/src/lib.rs:2201:        let result = engine.execute("SELECT * FROM dispatch_test");
+crates/mysql-server/src/lib.rs:2218:            .execute("CREATE TABLE dispatch_insert_test (id INT)")
+crates/mysql-server/src/lib.rs:2220:        let result = engine.execute("INSERT INTO dispatch_insert_test VALUES (1)");
+crates/executor/tests/full_outer_join_test.rs:34:        .execute("CREATE TABLE t1 (id INTEGER, name TEXT)")
+
+[C-ARCH-05] Checking execution_engine.rs < 1500 lines...
+FAIL: C-ARCH-05 violated - execution_engine.rs has     1562 lines (limit: 1500)
+
+=== Summary ===
+PASSED: 1
+FAILED: 4
+
+Result: FAIL
