@@ -298,12 +298,12 @@ fn t_limit_all() {
     ok!("SELECT * FROM t LIMIT ALL");
 }
 
-// --- CREATE TABLE with CHECK constraint (named variant not supported) ---
+// --- CREATE TABLE with named CHECK constraint ---
 
 #[test]
-fn t_create_table_check_constraint_named_rejected() {
+fn t_create_table_check_constraint_named() {
     let result = parse("CREATE TABLE t (id INT, val INT, CONSTRAINT chk_val CHECK (val > 0))");
-    assert!(result.is_err(), "Named CHECK constraint not yet supported");
+    assert!(result.is_ok(), "Named CHECK constraint should parse: {:?}", result);
 }
 
 // --- GROUP BY ROLLUP/CUBE ---
