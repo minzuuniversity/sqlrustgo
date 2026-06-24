@@ -97,16 +97,23 @@ fn json_data_ready() -> bool {
             let mut started = false;
             for ch in after_rows.chars() {
                 if !started {
-                    if ch == '[' { started = true; depth = 1; }
+                    if ch == '[' {
+                        started = true;
+                        depth = 1;
+                    }
                     continue;
                 }
                 match ch {
                     '[' => depth += 1,
                     ']' => {
                         depth -= 1;
-                        if depth == 0 { break; }
+                        if depth == 0 {
+                            break;
+                        }
                     }
-                    '{' if depth == 1 => { in_object = true; }
+                    '{' if depth == 1 => {
+                        in_object = true;
+                    }
                     '}' if in_object && depth == 1 => {
                         row_count += 1;
                         in_object = false;
