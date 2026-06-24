@@ -1,0 +1,11 @@
+{
+  "query": 8,
+  "row_count": 1,
+  "first_3_rows": [
+    [
+      "1995",
+      "1.0"
+    ]
+  ],
+  "sha256": "16dd747f25aec09741e6a8e86ca91396d8a0f3e30e484f22a47ce590ee0fcd87"
+}

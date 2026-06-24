@@ -50,7 +50,7 @@ if [ ! -f "$TPC_TEST" ]; then
     echo "  [2/6] FAIL: $TPC_TEST not found"
     exit 1
 fi
-if ! grep -q "fn tpc_h_full_22_works\|fn test_tpch_full_22_queries\|1\.\.=22\|1..=22" "$TPC_TEST"; then
+if ! grep -q "fn test_tpch_full_22_queries\|1\.\.=22\|1..=22" "$TPC_TEST"; then
     echo "  [2/6] FAIL: $TPC_TEST missing Q1..Q22 runner"
     exit 1
 fi

@@ -16,7 +16,6 @@
 //!       V390_TEST_PLAN.md §G9
 
 mod harness {
-    #[allow(dead_code)]
     #[derive(Debug, Clone)]
     pub struct UpgradeScenario {
         pub name: String,
@@ -54,7 +53,6 @@ mod harness {
         }
     }
 
-    #[allow(dead_code)]
     #[derive(Debug, Clone)]
     pub struct UpgradeResult {
         pub scenario: String,

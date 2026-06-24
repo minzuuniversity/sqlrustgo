@@ -66,7 +66,6 @@ impl SimpleExecutor {
                             data_type: c.data_type,
                             nullable: c.nullable,
                             primary_key: c.primary_key,
-                            char_max_length: None,
                         })
                         .collect(),
                     foreign_keys: vec![],
@@ -204,7 +203,6 @@ impl SimpleExecutor {
                             data_type: data_type.clone(),
                             nullable: *nullable,
                             primary_key: false,
-                            char_max_length: None,
                         };
                         self.storage
                             .add_column(&alter.table_name, col)
@@ -259,7 +257,6 @@ impl SimpleExecutor {
                     data_type: "TEXT".to_string(),
                     nullable: true,
                     primary_key: false,
-                    char_max_length: None,
                 })
                 .collect();
             let table_info = TableInfo {
@@ -384,7 +381,6 @@ impl SimpleExecutor {
                     data_type: "TEXT".to_string(),
                     nullable: true,
                     primary_key: false,
-                    char_max_length: None,
                 })
                 .collect();
             let table_info = TableInfo {
@@ -423,7 +419,6 @@ impl SimpleExecutor {
                     data_type: "TEXT".to_string(),
                     nullable: true,
                     primary_key: false,
-                    char_max_length: None,
                 })
                 .collect();
             let table_info = TableInfo {
@@ -760,7 +755,6 @@ impl SimpleExecutor {
                             data_type: "TEXT".to_string(),
                             nullable: true,
                             primary_key: false,
-                            char_max_length: None,
                         })
                         .collect();
                     let table_info = TableInfo {
@@ -826,7 +820,6 @@ impl SimpleExecutor {
                 data_type: "TEXT".to_string(),
                 nullable: true,
                 primary_key: false,
-                char_max_length: None,
             })
             .collect();
         let table_info = TableInfo {

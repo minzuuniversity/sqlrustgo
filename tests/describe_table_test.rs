@@ -1,5 +1,5 @@
 //! Tests for DESCRIBE / DESC statements (CLI-02)
-use sqlrustgo::{ExecutionEngine, MemoryStorage};
+use sqlrustgo::{ExecutionEngine, MemoryStorage, StorageEngine};
 use std::sync::{Arc, RwLock};
 
 fn engine() -> ExecutionEngine<MemoryStorage> {
