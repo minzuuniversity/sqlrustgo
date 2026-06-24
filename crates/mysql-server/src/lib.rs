@@ -2299,7 +2299,8 @@ fn handle_load_local_infile<S: Read + Write>(
     // writes all table .json files.
     {
         let mut s = engine.storage_write();
-        s.flush().map_err(|e| MySqlError::Other(format!("flush storage: {}", e)))?;
+        s.flush()
+            .map_err(|e| MySqlError::Other(format!("flush storage: {}", e)))?;
     }
 
     Ok(total_rows)
