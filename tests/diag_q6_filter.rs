@@ -6,6 +6,7 @@
 use sqlrustgo::{ExecutionEngine, MemoryStorage, StorageEngine};
 use sqlrustgo_types::Value as SqlValue;
 use std::fs;
+use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 
 const FIXTURE: &str = "/home/openclaw/sqlrustgo-tpch/data";

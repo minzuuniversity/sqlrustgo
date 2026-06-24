@@ -59,6 +59,13 @@ impl VersionChainMap {
         chains.entry(key).or_default().push(version);
     }
 
+    /// Gets a clone of the version chain for a key.
+    #[allow(dead_code)]
+    pub fn get_chain(&self, key: &[u8]) -> Option<Vec<RowVersion>> {
+        let chains = self.chains.read().unwrap();
+        chains.get(key).cloned()
+    }
+
     /// Commits all uncommitted versions created by the given transaction.
     /// Updates created_commit_ts for all versions matching tx_id.
     /// For delete markers (empty value), also sets deleted_commit_ts.
@@ -87,8 +94,19 @@ impl VersionChainMap {
     }
 
     /// Returns the number of keys in the map.
-    /// Garbage-collects version chains, removing versions that are no longer
-    /// visible to any active snapshot. Returns the number of versions removed.
+    #[allow(dead_code)]
+    pub fn len(&self) -> usize {
+        let chains = self.chains.read().unwrap();
+        chains.len()
+    }
+
+    /// Returns true if the map is empty.
+    #[allow(dead_code)]
+    pub fn is_empty(&self) -> bool {
+        let chains = self.chains.read().unwrap();
+        chains.is_empty()
+    }
+
     pub fn gc(&mut self, active_transactions: &[TxId], oldest_snapshot_ts: u64) -> usize {
         let mut removed = 0;
         let keys = {

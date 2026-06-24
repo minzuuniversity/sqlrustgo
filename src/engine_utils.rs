@@ -1141,36 +1141,3 @@ pub fn where_expr_has_uncorrelated_subquery(expr: &sqlrustgo_parser::Expression)
         | Expression::FunctionCall(_, _) => false,
     }
 }
-
-const UNDO_KEY_SEP: u8 = 0x1F;
-
-pub fn encode_undo_key(table: &str, pk: &Value) -> Vec<u8> {
-    let mut out = Vec::with_capacity(table.len() + 16);
-    out.extend_from_slice(table.as_bytes());
-    out.push(UNDO_KEY_SEP);
-    let pk_json = serde_json::to_vec(pk).unwrap_or_default();
-    out.extend_from_slice(&pk_json);
-    out
-}
-
-pub fn decode_undo_key(bytes: &[u8]) -> SqlResult<(String, Value)> {
-    let pos = bytes
-        .iter()
-        .position(|&b| b == UNDO_KEY_SEP)
-        .ok_or_else(|| SqlError::ExecutionError("SAVEPOINT undo: malformed key".to_string()))?;
-    let table = std::str::from_utf8(&bytes[..pos])
-        .map_err(|e| SqlError::ExecutionError(format!("SAVEPOINT undo: bad table utf8: {}", e)))?
-        .to_string();
-    let pk: Value = serde_json::from_slice(&bytes[pos + 1..])
-        .map_err(|e| SqlError::ExecutionError(format!("SAVEPOINT undo: bad pk json: {}", e)))?;
-    Ok((table, pk))
-}
-
-pub fn encode_undo_value(record: &[Value]) -> Vec<u8> {
-    serde_json::to_vec(record).unwrap_or_default()
-}
-
-pub fn decode_undo_value(bytes: &[u8]) -> SqlResult<Vec<Value>> {
-    serde_json::from_slice(bytes)
-        .map_err(|e| SqlError::ExecutionError(format!("SAVEPOINT undo: bad value json: {}", e)))
-}
