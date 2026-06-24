@@ -1872,11 +1872,12 @@ fn handle_load_local_infile<S: Read + Write>(
     //
     // `WalStorage::flush()` delegates to `FileStorage::flush()` which
     // writes all table .json files.
-    {
-        let mut s = engine.storage_write();
-        s.flush()
-            .map_err(|e| MySqlError::Other(format!("flush storage: {}", e)))?;
-    }
+        {
+            let storage = engine.storage_ref();
+            let mut s = storage.write().unwrap();
+            s.flush()
+                .map_err(|e| MySqlError::Other(format!("flush storage: {}", e)))?;
+        }
 
     Ok((total_rows, skipped_rows))
 }
@@ -2000,11 +2001,25 @@ fn do_command_loop<S: Read + Write>(
                     continue;
                 }
                 let mut eng = engine.write().unwrap();
-                match parse(&q) {
-                    Ok(stmt) => {
-                        let result = eng.execute(&q);
-                        match result {
-                            Ok(r) if is_select_stmt(&stmt) => {
+                // 3521: Support multi-statement queries (semicolon-separated)
+                let fragments = sqlrustgo_parser::split_sql_statements(&q);
+                if fragments.is_empty() {
+                    make_ok_packet(seq, 0, 0, 0x0002, 0).write_to(stream)?;
+                    seq = seq.wrapping_add(1);
+                } else {
+                    for frag in fragments {
+                        let is_select = {
+                            let up = frag.trim_start().to_ascii_uppercase();
+                            up.starts_with("SELECT")
+                                || up.starts_with("WITH")
+                                || up.starts_with("VALUES")
+                                || up.starts_with("SHOW")
+                                || up.starts_with("DESCRIBE")
+                                || up.starts_with("DESC")
+                                || up.starts_with("EXPLAIN")
+                        };
+                        match eng.execute(&frag) {
+                            Ok(r) if is_select => {
                                 let cols: Vec<String> = r
                                     .rows
                                     .first()
@@ -2022,19 +2037,17 @@ fn do_command_loop<S: Read + Write>(
                                 seq = seq.wrapping_add(1);
                             }
                             Err(e) => {
-                                let code = match e.to_string().contains("not found") {
-                                    true => 1146u16,
-                                    false => 1064u16,
+                                let code = if e.to_string().contains("not found") {
+                                    1146u16
+                                } else {
+                                    1064u16
                                 };
                                 make_err_packet(seq, code, "42000", &e.to_string())
                                     .write_to(stream)?;
                                 seq = seq.wrapping_add(1);
+                                break;
                             }
                         }
-                    }
-                    Err(e) => {
-                        make_err_packet(seq, 1064, "42000", &e).write_to(stream)?;
-                        seq = seq.wrapping_add(1);
                     }
                 }
             }
