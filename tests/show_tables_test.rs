@@ -10,23 +10,35 @@
 //! **Phase 2a migration**: driven through the wire protocol via the
 //! embedded `start_ephemeral` harness (see
 //! `openspec/changes/mysql-server-canonical-entry/specs/wire-protocol-execution/spec.md`).
-
+//!
+//! **Test isolation**: every test passes its own `tempfile::TempDir` as
+//! `EphemeralConfig::data_dir`. Without an explicit path, `start_ephemeral`
+//! falls through to the shared `${cwd}/.sqlrustgo/data/` default, which
+//! leaks the catalog of the previous test (the first run of
+//! `show_tables_on_empty_db_returns_empty_result` would observe
+//! `t1/t2/t3/keep_me/repro_t` left behind by earlier tests). The TempDir
+//! pattern keeps every ephemeral server in its own directory; Drop on
+//! the TempDir removes it.
 mod common;
 
 use common::MySqlTestClient;
 use sqlrustgo_mysql_server::testing::EphemeralConfig;
+use tempfile::TempDir;
 
-fn clean_client() -> MySqlTestClient {
-    MySqlTestClient::connect_with_config(EphemeralConfig {
+fn clean_client() -> (TempDir, MySqlTestClient) {
+    let dir = TempDir::new().expect("create tempdir for ephemeral server");
+    let client = MySqlTestClient::connect_with_config(EphemeralConfig {
         bootstrap_tables: false,
+        data_dir: Some(dir.path().to_path_buf()),
         ..EphemeralConfig::default()
     })
-    .expect("ephemeral server (clean catalog) + raw client should come up")
+    .expect("ephemeral server (clean catalog) + raw client should come up");
+    (dir, client)
 }
 
 #[test]
 fn show_tables_on_empty_db_returns_empty_result() {
-    let mut client = clean_client();
+    let (_dir, mut client) = clean_client();
     let rows = client
         .query_rows("SHOW TABLES")
         .expect("SHOW TABLES should succeed");
@@ -40,7 +52,7 @@ fn show_tables_on_empty_db_returns_empty_result() {
 
 #[test]
 fn show_tables_lists_all_created_tables() {
-    let mut client = clean_client();
+    let (_dir, mut client) = clean_client();
     client
         .exec("CREATE TABLE t1 (id INTEGER)")
         .expect("CREATE t1");
@@ -63,7 +75,7 @@ fn show_tables_lists_all_created_tables() {
 
 #[test]
 fn show_databases_returns_one_row() {
-    let mut client = clean_client();
+    let (_dir, mut client) = clean_client();
     let rows = client
         .query_rows("SHOW DATABASES")
         .expect("SHOW DATABASES should succeed");
@@ -75,7 +87,7 @@ fn show_databases_returns_one_row() {
 
 #[test]
 fn show_tables_after_drop_reflects_drop() {
-    let mut client = clean_client();
+    let (_dir, mut client) = clean_client();
     client
         .exec("CREATE TABLE keep_me (id INTEGER)")
         .expect("CREATE keep_me");
