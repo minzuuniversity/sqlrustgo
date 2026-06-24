@@ -5961,35 +5961,37 @@ impl Parser {
                         self.next();
                         let _name = match self.next() {
                             Some(Token::Identifier(name)) => name,
-                            _ => return Err("Expected constraint name after CONSTRAINT".to_string()),
+                            _ => {
+                                return Err("Expected constraint name after CONSTRAINT".to_string())
+                            }
                         };
                         match self.current() {
-                                Some(Token::Primary) => {
-                                    self.next();
-                                    self.expect(Token::Key)?;
-                                    let cols = self.parse_column_list()?;
-                                    constraints.push(TableConstraint::PrimaryKey { columns: cols });
-                                }
-                                Some(Token::Foreign) => {
-                                    let fk = self.parse_foreign_key_constraint()?;
-                                    constraints.push(fk);
-                                }
-                                Some(Token::Unique) => {
-                                    self.next();
-                                    let cols = self.parse_column_list()?;
-                                    constraints.push(TableConstraint::Unique { columns: cols });
-                                }
-                                Some(Token::Check) => {
-                                    self.next();
-                                    self.expect(Token::LParen)?;
-                                    let expr = self.parse_expression()?;
-                                    self.expect(Token::RParen)?;
-                                    constraints.push(TableConstraint::Check {
-                                        expression: format!("{:?}", expr),
-                                    });
-                                }
-                                _ => return Err("Expected constraint type".to_string()),
+                            Some(Token::Primary) => {
+                                self.next();
+                                self.expect(Token::Key)?;
+                                let cols = self.parse_column_list()?;
+                                constraints.push(TableConstraint::PrimaryKey { columns: cols });
                             }
+                            Some(Token::Foreign) => {
+                                let fk = self.parse_foreign_key_constraint()?;
+                                constraints.push(fk);
+                            }
+                            Some(Token::Unique) => {
+                                self.next();
+                                let cols = self.parse_column_list()?;
+                                constraints.push(TableConstraint::Unique { columns: cols });
+                            }
+                            Some(Token::Check) => {
+                                self.next();
+                                self.expect(Token::LParen)?;
+                                let expr = self.parse_expression()?;
+                                self.expect(Token::RParen)?;
+                                constraints.push(TableConstraint::Check {
+                                    expression: format!("{:?}", expr),
+                                });
+                            }
+                            _ => return Err("Expected constraint type".to_string()),
+                        }
                     }
                     Some(Token::RParen) => {
                         self.next();
