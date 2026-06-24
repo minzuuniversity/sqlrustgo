@@ -13,17 +13,34 @@
 use std::process::{Command, Stdio};
 
 fn get_binary_path() -> String {
-    std::env::var("CARGO_BIN_EXE_sqlrustgo-mysql-server")
-        .ok()
-        .or_else(|| std::env::var("SQLRUSTGO_BIN").ok())
-        .unwrap_or_else(|| {
-            let p = std::path::Path::new("target/release/sqlrustgo-mysql-server");
-            if p.exists() {
-                p.to_string_lossy().to_string()
-            } else {
-                "../srv1/target/release/sqlrustgo-mysql-server".to_string()
-            }
-        })
+    // 1. cargo-provided binary path (canonical, set by `cargo test`).
+    // 2. explicit override via env.
+    // 3. workspace-local debug build (developer machine).
+    // 4. workspace-local release build (CI / benchmark).
+    // 5. legacy sibling-worktree path (kept for backward compatibility
+    //    with v3.8.0-rc1 docs and CI scripts that referenced it).
+    if let Ok(p) = std::env::var("CARGO_BIN_EXE_sqlrustgo-mysql-server") {
+        return p;
+    }
+    if let Ok(p) = std::env::var("SQLRUSTGO_BIN") {
+        return p;
+    }
+    // For integration tests in the `sqlrustgo` package,
+    // CARGO_MANIFEST_DIR is the workspace root that contains the
+    // `target/` directory. The mysql-server binary is built by the
+    // `sqlrustgo-mysql-server` package but lives in the same
+    // `target/{debug,release}/` tree (shared workspace target dir).
+    let workspace_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    for candidate in [
+        "target/debug/sqlrustgo-mysql-server",
+        "target/release/sqlrustgo-mysql-server",
+    ] {
+        let p = workspace_root.join(candidate);
+        if p.exists() {
+            return p.to_string_lossy().to_string();
+        }
+    }
+    "../srv1/target/release/sqlrustgo-mysql-server".to_string()
 }
 
 #[test]
