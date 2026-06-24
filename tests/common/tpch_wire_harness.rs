@@ -17,7 +17,7 @@ pub const SCHEMA_DDL: &[&str] = &[
     "CREATE TABLE customer (c_custkey INTEGER PRIMARY KEY, c_name TEXT NOT NULL, c_address TEXT NOT NULL, c_nationkey INTEGER NOT NULL, c_phone TEXT NOT NULL, c_acctbal REAL NOT NULL, c_mktsegment TEXT, c_comment TEXT)",
     "CREATE TABLE part (p_partkey INTEGER PRIMARY KEY, p_name TEXT NOT NULL, p_mfgr TEXT NOT NULL, p_brand TEXT NOT NULL, p_type TEXT NOT NULL, p_size INTEGER NOT NULL, p_container TEXT NOT NULL, p_retailprice REAL NOT NULL, p_comment TEXT)",
     "CREATE TABLE partsupp (ps_partkey INTEGER NOT NULL, ps_suppkey INTEGER NOT NULL, ps_availqty INTEGER NOT NULL, ps_supplycost REAL NOT NULL, ps_comment TEXT, PRIMARY KEY (ps_partkey, ps_suppkey))",
-    "CREATE TABLE orders (o_orderkey INTEGER PRIMARY KEY, o_custkey INTEGER NOT NULL, o_orderstatus TEXT NOT NULL, o_totalprice REAL NOT NULL, o_orderdate TEXT NOT NULL, o_orderpriority TEXT NOT NULL, o_clerk TEXT NOT NULL, o_shippriority INTEGER NOT NULL, o_comment TEXT NOT NULL)",
+    "CREATE TABLE orders (o_orderkey INTEGER PRIMARY KEY, o_custkey INTEGER NOT NULL, o_orderstatus TEXT NOT NULL, o_orderdate TEXT NOT NULL, o_orderpriority TEXT NOT NULL, o_clerk TEXT NOT NULL, o_shippriority INTEGER NOT NULL, o_comment TEXT NOT NULL)",
     "CREATE TABLE lineitem (l_orderkey INTEGER NOT NULL, l_partkey INTEGER NOT NULL, l_suppkey INTEGER NOT NULL, l_linenumber INTEGER NOT NULL, l_quantity REAL NOT NULL, l_extendedprice REAL NOT NULL, l_discount REAL NOT NULL, l_tax REAL NOT NULL, l_returnflag TEXT NOT NULL, l_linestatus TEXT NOT NULL, l_shipdate TEXT NOT NULL, l_commitdate TEXT NOT NULL, l_receiptdate TEXT NOT NULL, l_shipinstruct TEXT NOT NULL, l_shipmode TEXT NOT NULL, l_comment TEXT NOT NULL)",
 ];
 
@@ -31,21 +31,6 @@ pub const TABLES: &[&str] = &[
 /// the `MySqlTestClient` default (5s for read, 5s for write).
 fn start_with_fixture(fixture_dir: &str, timeout_s: Option<u64>) -> MySqlTestClient {
     let data_dir = PathBuf::from(fixture_dir);
-    // Truncate any pre-existing WAL so recovery on startup stays fast.
-    // The data_dir fixture's *JSON files* are the materialized state
-    // (loaded back into FileStorage by `new_with_wal`); the WAL is
-    // only the autocommit replay log and is regenerated on every
-    // test run. Without this, repeated test runs grow the WAL
-    // unboundedly (observed 1.1 GB after a session) and the
-    // recovery pass on the next start takes longer than the
-    // client connect timeout (EAGAIN on the handshake).
-    let wal = data_dir.join("sqlrustgo.wal");
-    if wal.exists() {
-        let _ = std::fs::OpenOptions::new()
-            .write(true)
-            .truncate(true)
-            .open(&wal);
-    }
     let config = EphemeralConfig {
         data_dir: Some(data_dir),
         bootstrap_tables: false,
@@ -70,7 +55,7 @@ pub fn start_sf001() -> MySqlTestClient {
 
 /// Start ephemeral server + load SF=0.1 fixture (60s timeouts for larger data).
 pub fn start_sf01() -> MySqlTestClient {
-    start_with_fixture(SF01_DIR, Some(180))
+    start_with_fixture(SF01_DIR, Some(60))
 }
 
 /// Load all 8 .tbl files via LOAD DATA LOCAL INFILE

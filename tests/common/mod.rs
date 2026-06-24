@@ -31,12 +31,6 @@ use std::time::Duration;
 const CAP_LONG_PASSWORD: u32 = 0x00000001;
 const CAP_PROTOCOL_41: u32 = 0x00000200;
 const CAP_SECURE_CONNECTION: u32 = 0x00008000;
-// DEPRECATE_EOF (mysql 8.0+ default): when set, the server skips the
-// inter-record EOF between column definitions and rows, and sends an
-// OK packet (0x00) instead of EOF (0xFE) at the end of the result set.
-// This eliminates the ambiguity where a bare EOF (0xFE, len < 9) between
-// column defs and rows was mistaken for the final terminator.
-const CAP_DEPRECATE_EOF: u32 = 0x01000000;
 
 const CLIENT_CAPABILITIES: u32 = CAP_LONG_PASSWORD | CAP_PROTOCOL_41 | CAP_SECURE_CONNECTION;
 const MAX_PACKET_SIZE: u32 = 16 * 1024 * 1024;
@@ -194,14 +188,10 @@ fn native_password_auth(password: &[u8], scramble: &[u8; SCRAMBLE_LEN]) -> [u8; 
 /// database name and the auth_plugin_name fields. The server's
 /// `parse_handshake_response` only consults those fields when the
 /// corresponding capability flag is set in the response.
-fn build_handshake_response41_with_caps(
-    user: &str,
-    auth_response: &[u8],
-    caps: u32,
-) -> wire_err::Result<Vec<u8>> {
+fn build_handshake_response41(user: &str, auth_response: &[u8]) -> wire_err::Result<Vec<u8>> {
     let mut p = Vec::with_capacity(64 + user.len() + auth_response.len());
 
-    p.extend_from_slice(&caps.to_le_bytes());
+    p.extend_from_slice(&CLIENT_CAPABILITIES.to_le_bytes());
     p.extend_from_slice(&MAX_PACKET_SIZE.to_le_bytes());
     p.push(CHARSET_UTF8);
     p.extend_from_slice(&[0u8; 23]); // 23 reserved bytes
@@ -219,10 +209,6 @@ fn build_handshake_response41_with_caps(
     p.extend_from_slice(auth_response);
 
     Ok(p)
-}
-
-fn build_handshake_response41(user: &str, auth_response: &[u8]) -> wire_err::Result<Vec<u8>> {
-    build_handshake_response41_with_caps(user, auth_response, CLIENT_CAPABILITIES)
 }
 
 fn build_com_query(sql: &str) -> Vec<u8> {
@@ -251,24 +237,6 @@ fn build_com_stmt_execute(stmt_id: u32, params: &[u8]) -> Vec<u8> {
     p.push(0x00); // flags: CURSOR_TYPE_NONE
     p.extend_from_slice(&1u32.to_le_bytes()); // iteration_count
     p.extend_from_slice(params);
-    p
-}
-
-fn build_com_stmt_close(stmt_id: u32) -> Vec<u8> {
-    let mut p = Vec::new();
-    p.push(0x19); // COM_STMT_CLOSE
-    p.extend_from_slice(&stmt_id.to_le_bytes());
-    p
-}
-
-fn build_com_ping() -> Vec<u8> {
-    vec![0x0e] // COM_PING
-}
-
-fn build_com_init_db(db_name: &str) -> Vec<u8> {
-    let mut p = Vec::with_capacity(1 + db_name.len());
-    p.push(0x02); // COM_INIT_DB
-    p.extend_from_slice(db_name.as_bytes());
     p
 }
 
@@ -342,7 +310,7 @@ fn parse_ok_packet_affected(pkt: &[u8]) -> wire_err::Result<u64> {
 
 /// Parse a length-encoded integer per the MySQL protocol (used for
 /// column counts in the COM_QUERY result-set header).
-pub fn read_lenenc_int(payload: &[u8], pos: &mut usize) -> wire_err::Result<u64> {
+fn read_lenenc_int(payload: &[u8], pos: &mut usize) -> wire_err::Result<u64> {
     if *pos >= payload.len() {
         return Err(wire_err::msg("lenenc int: out of bounds"));
     }
@@ -385,7 +353,7 @@ pub fn read_lenenc_int(payload: &[u8], pos: &mut usize) -> wire_err::Result<u64>
 }
 
 /// Read a length-encoded string (1/3/4-byte length prefix + payload).
-pub fn read_lenenc_str<'a>(payload: &'a [u8], pos: &mut usize) -> wire_err::Result<&'a str> {
+fn read_lenenc_str<'a>(payload: &'a [u8], pos: &mut usize) -> wire_err::Result<&'a str> {
     let len = read_lenenc_int(payload, pos)? as usize;
     if *pos + len > payload.len() {
         return Err(wire_err::msg("lenenc str: oob"));
@@ -422,12 +390,8 @@ pub struct MySqlTestClient {
     pub handle: EphemeralHandle,
     stream: TcpStream,
     next_seq: u8,
-    /// The capabilities the client advertised in HandshakeResponse41.
-    /// `query_rows` consults `DEPRECATE_EOF` from this value to decide
-    /// whether to read the inter-record separator between column defs
-    /// and the row stream. See openspec/changes/2026-06-18-wire-deprecate-eof.
-    caps: u32,
 }
+
 impl MySqlTestClient {
     /// Start an ephemeral server on `127.0.0.1` and connect to it as
     /// the `tester` user (password = `tester`). The test harness
@@ -478,28 +442,13 @@ impl MySqlTestClient {
             handle,
             stream,
             next_seq: 0,
-            caps: CLIENT_CAPABILITIES,
         })
     }
 
-    /// Connect to an arbitrary `(host, port)` with caller-supplied
-    /// additional capabilities. The supplied `extra_caps` is OR'd
-    /// with `CLIENT_CAPABILITIES` (the legacy default set) so callers
-    /// can opt into specific bits such as `DEPRECATE_EOF` without
-    /// having to re-declare the base protocol/auth bits — those
-    /// bits are required for the server's auth state machine to
-    /// take the right path. See
-    /// openspec/changes/2026-06-18-wire-deprecate-eof.
-    pub fn connect_with_caps(
-        addr: (&str, u16),
-        user: &str,
-        password: &str,
-        extra_caps: u32,
-    ) -> wire_err::Result<Self> {
-        let caps = CLIENT_CAPABILITIES | extra_caps;
-        let (host, port) = addr;
-        let mut stream = TcpStream::connect((host, port))
-            .map_err(|e| wire_err::msg(format!("tcp connect {host}:{port}: {e}")))?;
+    /// Connect to an already-running ephemeral server.
+    pub fn connect_handle(handle: EphemeralHandle) -> wire_err::Result<Self> {
+        let mut stream = TcpStream::connect(("127.0.0.1", handle.port))
+            .map_err(|e| wire_err::msg(format!("tcp connect: {e}")))?;
         stream
             .set_read_timeout(Some(READ_TIMEOUT))
             .map_err(|e| wire_err::msg(format!("set_read_timeout: {e}")))?;
@@ -507,137 +456,26 @@ impl MySqlTestClient {
             .set_write_timeout(Some(WRITE_TIMEOUT))
             .map_err(|e| wire_err::msg(format!("set_write_timeout: {e}")))?;
 
+        // 1) Read server's HandshakeV10
         let handshake = read_packet(&mut stream)?;
         let scramble = parse_handshake(&handshake)?;
-        let auth = native_password_auth(password.as_bytes(), &scramble);
-        let resp = build_handshake_response41_with_caps(user, &auth, caps)?;
+
+        // 2) Compute mysql_native_password auth response
+        let auth = native_password_auth(b"tester", &scramble);
+
+        // 3) Send HandshakeResponse41 (sequence id = 1)
+        let resp = build_handshake_response41("tester", &auth)?;
         write_packet(&mut stream, 1, &resp)?;
+
+        // 4) Read OK or ERR (sequence id = 2)
         let auth_resp = read_packet(&mut stream)?;
         check_ok_or_err(2, &auth_resp)?;
 
-        let handle = EphemeralHandle::detached_for_external_server(port);
         Ok(Self {
             handle,
             stream,
             next_seq: 0,
-            caps,
         })
-    }
-
-    /// The capabilities the client advertised in HandshakeResponse41.
-    pub fn client_capabilities(&self) -> u32 {
-        self.caps
-    }
-
-    /// Connect to an already-running ephemeral server.
-    pub fn connect_handle(handle: EphemeralHandle) -> wire_err::Result<Self> {
-        let addr = ("127.0.0.1", handle.port);
-
-        // Retry loop to handle the race where the server accept loop isn't
-        // ready immediately after start_ephemeral returns.
-        let mut backoff_ms = 10;
-        let max_attempts = 100;
-
-        for attempt in 1..=max_attempts {
-            match TcpStream::connect(addr) {
-                Ok(mut stream) => {
-                    stream
-                        .set_read_timeout(Some(READ_TIMEOUT))
-                        .map_err(|e| wire_err::msg(format!("set_read_timeout: {e}")))?;
-                    stream
-                        .set_write_timeout(Some(WRITE_TIMEOUT))
-                        .map_err(|e| wire_err::msg(format!("set_write_timeout: {e}")))?;
-
-                    // 1) Read server's HandshakeV10
-                    match read_packet(&mut stream) {
-                        Ok(handshake) => {
-                            let scramble = match parse_handshake(&handshake) {
-                                Ok(s) => s,
-                                Err(e) => {
-                                    // If we got a partial handshake, retry
-                                    if attempt < max_attempts {
-                                        backoff_ms = (backoff_ms * 2).min(1000);
-                                        std::thread::sleep(Duration::from_millis(backoff_ms));
-                                        continue;
-                                    }
-                                    return Err(e);
-                                }
-                            };
-
-                            // 2) Compute mysql_native_password auth response
-                            let auth = native_password_auth(b"tester", &scramble);
-
-                            // 3) Send HandshakeResponse41 (sequence id = 1)
-                            let resp = match build_handshake_response41("tester", &auth) {
-                                Ok(r) => r,
-                                Err(e) => return Err(e),
-                            };
-                            if let Err(e) = write_packet(&mut stream, 1, &resp) {
-                                if attempt < max_attempts {
-                                    backoff_ms = (backoff_ms * 2).min(1000);
-                                    std::thread::sleep(Duration::from_millis(backoff_ms));
-                                    continue;
-                                }
-                                return Err(e);
-                            }
-
-                            // 4) Read OK or ERR (sequence id = 2)
-                            match read_packet(&mut stream) {
-                                Ok(auth_resp) => {
-                                    if let Err(e) = check_ok_or_err(2, &auth_resp) {
-                                        return Err(e);
-                                    }
-                                    return Ok(Self {
-                                        handle,
-                                        stream,
-                                        next_seq: 0,
-                                        caps: CLIENT_CAPABILITIES,
-                                    });
-                                }
-                                Err(e) => {
-                                    // Server may not be ready for auth response yet
-                                    if attempt < max_attempts {
-                                        backoff_ms = (backoff_ms * 2).min(1000);
-                                        std::thread::sleep(Duration::from_millis(backoff_ms));
-                                        continue;
-                                    }
-                                    return Err(e);
-                                }
-                            }
-                        }
-                        Err(e) => {
-                            // EAGAIN means server isn't ready yet — retry
-                            let err_str = e.to_string();
-                            if err_str.contains("Resource temporarily unavailable")
-                                || err_str.contains("would block")
-                                || err_str.contains("timed out")
-                            {
-                                if attempt < max_attempts {
-                                    backoff_ms = (backoff_ms * 2).min(1000);
-                                    std::thread::sleep(Duration::from_millis(backoff_ms));
-                                    continue;
-                                }
-                            }
-                            return Err(e);
-                        }
-                    }
-                }
-                Err(e) => {
-                    // Connection refused — server not ready yet, retry
-                    if attempt < max_attempts {
-                        backoff_ms = (backoff_ms * 2).min(1000);
-                        std::thread::sleep(Duration::from_millis(backoff_ms));
-                        continue;
-                    }
-                    return Err(wire_err::msg(format!("tcp connect: {e}")));
-                }
-            }
-        }
-
-        Err(wire_err::msg(format!(
-            "connect_handle: failed after {} attempts",
-            max_attempts
-        )))
     }
 
     /// Run a SQL statement that has no result set (DDL, DML, COMMIT).
@@ -674,26 +512,14 @@ impl MySqlTestClient {
             let _ = read_packet(&mut self.stream)?;
         }
 
-        // 3) Inter-record separator (classic protocol only).
-        //
-        //    When the client advertised DEPRECATE_EOF, the server
-        //    omits this packet (see send_result_set in the server
-        //    and openspec/changes/2026-06-18-wire-deprecate-eof).
-        //    When DEPRECATE_EOF is unset, the server emits a classic
-        //    EOF (0xFE + u16 warnings + u16 status_flags, 5 bytes).
-        //
-        //    DEPRECATE_EOF = 0x01000000 per the MySQL capability
-        //    flags spec; we hard-code the bit here rather than
-        //    reaching into the server's capability module from a
-        //    tests-side helper.
-        if self.caps & 0x01000000 == 0 {
-            let sep = read_packet(&mut self.stream)?;
-            if !sep.is_empty() && sep[0] == 0xFF {
-                return Err(wire_err::msg(format!(
-                    "ERR after column defs: {}",
-                    String::from_utf8_lossy(&sep[3..])
-                )));
-            }
+        // 3) EOF separator (when DEPRECATE_EOF=0, the server sends
+        //    one EOF after all columns, before the row data).
+        let sep = read_packet(&mut self.stream)?;
+        if !sep.is_empty() && sep[0] == 0xFF {
+            return Err(wire_err::msg(format!(
+                "ERR after column defs: {}",
+                String::from_utf8_lossy(&sep[3..])
+            )));
         }
 
         // 4) Row packets until EOF/OK terminator.
@@ -790,33 +616,6 @@ impl MySqlTestClient {
     pub fn raw_stream(&mut self) -> &mut TcpStream {
         &mut self.stream
     }
-
-    /// Send COM_PING and read the OK response.
-    pub fn ping(&mut self) -> wire_err::Result<()> {
-        let p = build_com_ping();
-        write_packet(&mut self.stream, 0, &p)?;
-        let resp = read_packet(&mut self.stream)?;
-        check_ok_or_err(1, &resp)?;
-        Ok(())
-    }
-
-    /// Send COM_INIT_DB and read the OK response.
-    pub fn init_db(&mut self, db_name: &str) -> wire_err::Result<()> {
-        let p = build_com_init_db(db_name);
-        write_packet(&mut self.stream, 0, &p)?;
-        let resp = read_packet(&mut self.stream)?;
-        check_ok_or_err(1, &resp)?;
-        Ok(())
-    }
-
-    /// Send COM_STMT_CLOSE and read the OK response.
-    pub fn stmt_close(&mut self, stmt_id: u32) -> wire_err::Result<()> {
-        let p = build_com_stmt_close(stmt_id);
-        write_packet(&mut self.stream, 0, &p)?;
-        let resp = read_packet(&mut self.stream)?;
-        check_ok_or_err(1, &resp)?;
-        Ok(())
-    }
     /// Override the read/write timeouts on the underlying TCP stream.
     /// SF=0.1 wire test needs >30s for Q17; default 5s is too short.
     pub fn set_timeouts(
@@ -898,6 +697,4 @@ impl MySqlTestClient {
         parse_ok_packet_affected(&resp)
     }
 }
-
-pub mod oracle_framework;
 pub mod tpch_wire_harness;

@@ -147,8 +147,10 @@ fn find_top_level_op(expr: &str, op: &str) -> Option<usize> {
             '\'' => {
                 in_string = !in_string;
             }
-            _ if !in_string && depth == 0 && upper[i..].starts_with(&op_upper) => {
-                return Some(i);
+            _ if !in_string && depth == 0 => {
+                if upper[i..].starts_with(&op_upper) {
+                    return Some(i);
+                }
             }
             _ => {}
         }
@@ -467,19 +469,6 @@ pub trait StorageEngine: Send + Sync {
     /// row. Used by WAL recovery to apply replayed entries deterministically.
     fn force_insert(&mut self, table: &str, record: Vec<Value>) -> SqlResult<()> {
         self.insert(table, vec![record])
-    }
-
-    /// Bulk force-insert N rows in one call. Equivalent to calling
-    /// `force_insert` N times, but storage engines that pay a per-call cost
-    /// (e.g. FileStorage's `save_table` JSON-serializes the full table on
-    /// every call) can override this to amortize the cost over the batch.
-    /// Used by WAL recovery to apply a table's full replay set in O(1)
-    /// save calls instead of O(N).
-    fn bulk_force_insert(&mut self, table: &str, records: Vec<Record>) -> SqlResult<()> {
-        for record in records {
-            self.force_insert(table, record)?;
-        }
-        Ok(())
     }
 
     /// Delete rows matching a filter
@@ -991,7 +980,6 @@ mod tests {
                 data_type: "INTEGER".to_string(),
                 nullable: false,
                 primary_key: true,
-                char_max_length: None,
             }],
             foreign_keys: vec![],
             unique_constraints: vec![],
@@ -1189,7 +1177,6 @@ mod tests {
                 data_type: "INTEGER".to_string(),
                 nullable: false,
                 primary_key: true,
-                char_max_length: None,
             }],
             foreign_keys: vec![],
             unique_constraints: vec![],
