@@ -1,11 +1,11 @@
 # v3.9.0 Soak Master Index (Single-Page Reference)
 
-> **Last update**: 2026-06-24
+> **Last update**: 2026-06-24 (PR #3311 merged into develop/v3.9.0 at 5e5931257)
 > **Purpose**: Single-page reference for all v3.9.0 wall-clock soak testing.
 > Closes the doc gap flagged by [Issue #3225](../../..//issues/3225) and the
 > 14-long-stability-tests analysis in
 > [`LONG_STABILITY_TESTS_ANALYSIS.md`](LONG_STABILITY_TESTS_ANALYSIS.md).
-
+> **Index status**: merged (was in PR #3311, now closed)
 ## Status snapshot (as of 2026-06-24)
 
 | Soak | Duration | Status | Evidence | Next ETA |
