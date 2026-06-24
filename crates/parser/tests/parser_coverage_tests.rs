@@ -814,8 +814,8 @@ fn test_parse_create_table_primary_key() {
 fn test_parse_create_table_foreign_key() {
     let sql = "CREATE TABLE orders (id INT, user_id INT, FOREIGN KEY (user_id) REFERENCES users)";
     let result = parse(sql);
-    // Parser doesn't support FOREIGN KEY constraint
-    assert!(result.is_err(), "FOREIGN KEY not supported: {:?}", result);
+    // FOREIGN KEY constraints are supported by the parser.
+    assert!(result.is_ok(), "FOREIGN KEY should parse: {:?}", result);
 }
 
 // ============ CREATE TABLE with UNIQUE constraint ============
