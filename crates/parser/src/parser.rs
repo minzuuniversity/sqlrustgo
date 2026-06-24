@@ -5959,9 +5959,11 @@ impl Parser {
                     }
                     Some(Token::Constraint) => {
                         self.next();
-                        if let Some(Token::Identifier(_name)) = self.next() {
-                            self.next();
-                            match self.current() {
+                        let _name = match self.next() {
+                            Some(Token::Identifier(name)) => name,
+                            _ => return Err("Expected constraint name after CONSTRAINT".to_string()),
+                        };
+                        match self.current() {
                                 Some(Token::Primary) => {
                                     self.next();
                                     self.expect(Token::Key)?;
@@ -5988,7 +5990,6 @@ impl Parser {
                                 }
                                 _ => return Err("Expected constraint type".to_string()),
                             }
-                        }
                     }
                     Some(Token::RParen) => {
                         self.next();
