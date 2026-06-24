@@ -347,18 +347,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 // step, Q14 would return 2 raw SUM values instead of
                 // the `100.00 * SUM(...) / SUM(...)` result.
                 let agg_schema = build_aggregate_schema(&[], &select.aggregates)?;
-                let projected: Vec<Vec<Value>> = if select.columns.is_empty()
-                    || select.columns.iter().any(|c| c.name == "*")
-                {
-                    vec![agg_values.clone()]
-                } else {
-                    // Check if all columns are pure aggregates (no column references)
-                    let all_aggregates = select
-                        .columns
-                        .iter()
-                        .all(|c| matches!(&c.expression, Some(Expression::Aggregate(_))));
-                    if all_aggregates {
-                        // Return single row with all aggregate values as columns
+                let projected: Vec<Vec<Value>> =
+                    if select.columns.is_empty() || select.columns.iter().any(|c| c.name == "*") {
                         vec![agg_values.clone()]
                     } else {
                         select
@@ -373,8 +363,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                             .into_iter()
                             .map(|v| vec![v])
                             .collect()
-                    }
-                };
+                    };
                 let row_count = projected.len();
                 return Ok(ExecutorResult::new(projected, row_count));
             } else {
@@ -1103,9 +1092,6 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                         // PG returns 0 rows, others return 1 row with NULL.
                         // We follow the standard (NULL), not PG's quirk.
                         Value::Null
-                    } else if values.iter().all(|v| matches!(v, Value::Null)) {
-                        // All values are NULL — SUM must return NULL, not Integer(0)
-                        Value::Null
                     } else if any_float {
                         Value::Float(float_sum)
                     } else {
@@ -1159,7 +1145,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     }
                 }
                 AggregateFunction::Min => {
-                    let min_int = values
+                    let min = values
                         .iter()
                         .filter_map(|v| {
                             if let Value::Integer(n) = v {
@@ -1169,24 +1155,10 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                             }
                         })
                         .min();
-                    let min_flt = values
-                        .iter()
-                        .filter_map(|v| {
-                            if let Value::Float(f) = v {
-                                Some(*f)
-                            } else {
-                                None
-                            }
-                        })
-                        .min_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-                    if min_flt.is_some() {
-                        min_flt.map(Value::Float).unwrap_or(Value::Null)
-                    } else {
-                        min_int.map(Value::Integer).unwrap_or(Value::Null)
-                    }
+                    min.map(Value::Integer).unwrap_or(Value::Null)
                 }
                 AggregateFunction::Max => {
-                    let max_int = values
+                    let max = values
                         .iter()
                         .filter_map(|v| {
                             if let Value::Integer(n) = v {
@@ -1196,21 +1168,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                             }
                         })
                         .max();
-                    let max_flt = values
-                        .iter()
-                        .filter_map(|v| {
-                            if let Value::Float(f) = v {
-                                Some(*f)
-                            } else {
-                                None
-                            }
-                        })
-                        .max_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-                    if max_flt.is_some() {
-                        max_flt.map(Value::Float).unwrap_or(Value::Null)
-                    } else {
-                        max_int.map(Value::Integer).unwrap_or(Value::Null)
-                    }
+                    max.map(Value::Integer).unwrap_or(Value::Null)
                 }
             };
             results.push(result);
@@ -1236,25 +1194,6 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         let base_prefix = base_alias.as_ref().unwrap_or(&base_table);
 
         let mut rows = storage.scan(&base_table)?;
-        // Sprint 9: apply base-table single-table WHERE predicates
-        // immediately after scan, before any join. The existing
-        // Sprint 5 v4 pushdown only filters RIGHT tables; the base
-        // table is joined first and would otherwise contribute its full
-        // row count to the first cartesian (e.g. part × supplier in Q8).
-        if let Some(wc) = &select.where_clause {
-            let base_info = storage.get_table_info(&base_table)?;
-            let mut joined: Vec<String> = vec![base_table.clone(), base_prefix.to_string()];
-            joined.push(Self::tpch_table_prefix(&base_table).to_string());
-            let base_preds = self.extract_single_table_predicates(wc, &joined);
-            let base_filters = base_preds.get(&base_table).cloned().unwrap_or_default();
-            if !base_filters.is_empty() {
-                rows.retain(|r| {
-                    base_filters
-                        .iter()
-                        .all(|p| eval_predicate(p, r, &base_info))
-                });
-            }
-        }
         let raw_info = storage.get_table_info(&base_table)?;
         let mut table_info = if base_alias.is_some() {
             // Wrap the base columns in alias-prefixed names.
@@ -1355,18 +1294,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             })
             .unwrap_or_default();
 
-        let reordered_clauses = {
-            #[cfg(feature = "v390_join_reorder")]
-            {
-                sqlrustgo_optimizer::reorder_joins(select, &*storage)
-            }
-            #[cfg(not(feature = "v390_join_reorder"))]
-            {
-                select.join_clause.clone()
-            }
-        };
-
-        for join_clause in &reordered_clauses {
+        for join_clause in &select.join_clause {
             // Strip the optional `|alias` suffix from
             // join_clause.table to look up pushdown filters
             // (the auto-rewrite stores `lineitem|l1` but
@@ -1404,7 +1332,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     ///
     /// Returns `None` if the join should proceed normally (no filter applies).
     fn pre_filter_cartesian_right_table(
-        right_rows: &[Vec<Value>],
+        right_rows: Vec<Vec<Value>>,
         right_info: &TableInfo,
         right_alias: &str,
         _join_clause: &ParserJoinClause,
@@ -1414,7 +1342,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
 
         // Only apply when we have a cartesian join with a WHERE clause.
         let Some(where_expr) = where_clause else {
-            return right_rows.to_vec();
+            return right_rows;
         };
 
         let table_prefix = format!("{}.", right_alias);
@@ -1496,14 +1424,14 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
 
         let preds = collect_right_table_preds(where_expr, &table_prefix, &col_names);
         if preds.is_empty() {
-            return right_rows.to_vec();
+            return right_rows;
         }
 
         // Evaluate predicates: for simple equality `alias.col = literal`,
         // do a direct index lookup.  Complex predicates are skipped (keep row).
         let mut filtered: Vec<Vec<Value>> = Vec::with_capacity(right_rows.len());
 
-        for row in right_rows.iter() {
+        for row in right_rows {
             let mut pass = true;
             for pred in &preds {
                 if let E::BinaryOp(l, op, r) = pred {
@@ -1565,7 +1493,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 }
             }
             if pass {
-                filtered.push(row.clone());
+                filtered.push(row);
             }
         }
         filtered
@@ -1658,56 +1586,34 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 // cartesian product.  This avoids 60K × 25 = 1.5M row
                 // intermediate results when joining a filtered nation table.
                 let right_rows = Self::pre_filter_cartesian_right_table(
-                    &right_rows,
+                    right_rows,
                     &right_table_info,
                     right_alias,
                     join_clause,
                     where_clause,
                 );
 
-                // Sprint 8 (TPCH-01 Q8 perf): try to extract equi-join
-                // keys from the outer WHERE clause. If found, use them
-                // as a hash join key instead of N×M cartesian product.
-                // Fallback: original cartesian product if no usable key
-                // is found (preserves safety for queries whose equi-join
-                // predicates reference not-yet-joined tables).
-                let pairs_from_where = where_clause
-                    .as_ref()
-                    .map(|wc| {
-                        extract_comma_join_keys(
-                            wc,
-                            left_table_info,
-                            &left_alias,
-                            &right_table_info,
-                            right_alias,
-                        )
-                    })
-                    .unwrap_or_default();
-
-                if pairs_from_where.is_empty() {
-                    // Phase 5 (TPCH-01 Q2): cartesian product join — used
-                    // when the parser cannot find a fully-resolvable JOIN
-                    // ON predicate (e.g. when the only candidate references
-                    // a not-yet-joined table). All left rows match all
-                    // right rows; the outer WHERE filter then narrows
-                    // results.
-                    let mut cross = Vec::with_capacity(left_rows.len() * right_rows.len());
-                    for left_row in left_rows {
-                        for right_row in &right_rows {
-                            let mut combined = left_row.clone();
-                            combined.extend(right_row.clone());
-                            cross.push(combined);
-                        }
+                // Phase 5 (TPCH-01 Q2): cartesian product join — used
+                // when the parser cannot find a fully-resolvable JOIN
+                // ON predicate (e.g. when the only candidate references
+                // a not-yet-joined table). All left rows match all
+                // right rows; the outer WHERE filter then narrows
+                // results.
+                let mut cross = Vec::with_capacity(left_rows.len() * right_rows.len());
+                for left_row in left_rows {
+                    for right_row in &right_rows {
+                        let mut combined = left_row.clone();
+                        combined.extend(right_row.clone());
+                        cross.push(combined);
                     }
-                    let combined_schema = build_combined_schema(
-                        &left_table_info,
-                        &left_alias,
-                        &right_table_info,
-                        right_alias,
-                    )?;
-                    return Ok((cross, combined_schema));
                 }
-                pairs_from_where
+                let combined_schema = build_combined_schema(
+                    &left_table_info,
+                    &left_alias,
+                    &right_table_info,
+                    right_alias,
+                )?;
+                return Ok((cross, combined_schema));
             }
             JoinKey::Left(_) | JoinKey::Right(_) => {
                 return Err(SqlError::ExecutionError(
@@ -1985,59 +1891,6 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             )),
         }
     }
-
-    /// Execute a `Statement::Union`, supporting arbitrary left-associative
-    /// nesting (e.g. `a UNION b UNION c` parses as
-    /// `Union { left: Union { left: a, right: b }, right: c }`).
-    ///
-    /// Each leg must be a SELECT or another UNION — anything else is a
-    /// parser error reported to the caller.
-    pub(crate) fn execute_union(
-        &self,
-        stmt: &sqlrustgo_parser::Statement,
-    ) -> SqlResult<ExecutorResult> {
-        let union_stmt = match stmt {
-            sqlrustgo_parser::Statement::Union(u) => u,
-            _ => {
-                return Err(SqlError::ExecutionError(
-                    "execute_union called on non-UNION statement".to_string(),
-                ))
-            }
-        };
-
-        let mut left_result = match union_stmt.left.as_ref() {
-            sqlrustgo_parser::Statement::Select(s) => self.execute_select(s)?,
-            sqlrustgo_parser::Statement::Union(_) => {
-                self.execute_union(union_stmt.left.as_ref())?
-            }
-            _ => {
-                return Err(SqlError::ExecutionError(
-                    "UNION left side must be a SELECT or UNION".to_string(),
-                ))
-            }
-        };
-        let right_result = match union_stmt.right.as_ref() {
-            sqlrustgo_parser::Statement::Select(s) => self.execute_select(s)?,
-            sqlrustgo_parser::Statement::Union(_) => {
-                self.execute_union(union_stmt.right.as_ref())?
-            }
-            _ => {
-                return Err(SqlError::ExecutionError(
-                    "UNION right side must be a SELECT or UNION".to_string(),
-                ))
-            }
-        };
-
-        left_result.rows.extend(right_result.rows);
-
-        if !union_stmt.union_all {
-            left_result.rows.sort();
-            left_result.rows.dedup();
-        }
-
-        left_result.affected_rows = left_result.rows.len();
-        Ok(left_result)
-    }
 }
 
 /// Which side of a single join a resolved column index belongs to, or a
@@ -2101,95 +1954,6 @@ fn lookup_qualified_column(info: &TableInfo, qualifier: &str, col_name: &str) ->
     info.columns
         .iter()
         .position(|c| c.name == needle || c.name.ends_with(&suffix))
-}
-
-/// Sprint 8 (TPCH-01 Q8 perf): walk a WHERE expression and extract
-/// equi-join key pairs between `left_info` and `right_info`.
-///
-/// TPC-H Q8/Q9 use comma-separated FROM lists where the parser emits
-/// `Literal("true")` for the ON clause (the equi-join columns reference
-/// a table not yet joined). The equi-join predicates live in the WHERE
-/// clause and can be extracted here to convert the N×M cartesian
-/// product into a hash join.
-///
-/// Returns `Vec<(left_col_idx, right_col_idx)>` for every
-/// `Identifier(left.col) = Identifier(right.col)` predicate found at
-/// the top level (or under AND). Empty Vec means no usable join key;
-/// caller should fall back to cartesian product.
-///
-/// Strategy: recursive descent through AND nodes. For each non-AND
-/// predicate, try to match `Identifier(qual.col) = Identifier(qual.col)`
-/// where one side resolves to left_info and the other to right_info
-/// via `lookup_qualified_column`.
-fn extract_comma_join_keys(
-    where_expr: &Expression,
-    left_info: &TableInfo,
-    left_alias: &str,
-    right_info: &TableInfo,
-    right_alias: &str,
-) -> Vec<(usize, usize)> {
-    use sqlrustgo_parser::Expression as E;
-    let mut pairs: Vec<(usize, usize)> = Vec::new();
-
-    fn try_equality(
-        e: &E,
-        li: &TableInfo,
-        ln: &str,
-        ri: &TableInfo,
-        rn: &str,
-    ) -> Option<(usize, usize)> {
-        let E::BinaryOp(l, op, r) = e else {
-            return None;
-        };
-        if op.as_str() != "=" {
-            return None;
-        }
-        if let (E::Identifier(lc), E::Identifier(rc)) = (l.as_ref(), r.as_ref()) {
-            if let (Some(li_idx), Some(ri_idx)) = (
-                lookup_qualified_column(li, ln, lc),
-                lookup_qualified_column(ri, rn, rc),
-            ) {
-                return Some((li_idx, ri_idx));
-            }
-            if let (Some(li_idx), Some(ri_idx)) = (
-                lookup_qualified_column(li, ln, rc),
-                lookup_qualified_column(ri, rn, lc),
-            ) {
-                return Some((li_idx, ri_idx));
-            }
-        }
-        None
-    }
-
-    fn walk(
-        e: &E,
-        li: &TableInfo,
-        ln: &str,
-        ri: &TableInfo,
-        rn: &str,
-        out: &mut Vec<(usize, usize)>,
-    ) {
-        if let E::BinaryOp(l, op, r) = e {
-            if op.as_str() == "AND" {
-                walk(l, li, ln, ri, rn, out);
-                walk(r, li, ln, ri, rn, out);
-                return;
-            }
-        }
-        if let Some(pair) = try_equality(e, li, ln, ri, rn) {
-            out.push(pair);
-        }
-    }
-
-    walk(
-        where_expr,
-        left_info,
-        left_alias,
-        right_info,
-        right_alias,
-        &mut pairs,
-    );
-    pairs
 }
 
 /// Decode a value key string (encoded by the inline match above in
@@ -3905,96 +3669,4 @@ fn build_scalar_agg_index(
         result.insert(k, v);
     }
     result
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::Value;
-    use sqlrustgo_storage::MemoryStorage;
-    use std::sync::{Arc, RwLock};
-
-    fn fresh() -> ExecutionEngine<MemoryStorage> {
-        let storage = Arc::new(RwLock::new(MemoryStorage::new()));
-        ExecutionEngine::new(storage)
-    }
-
-    #[test]
-    fn test_engine_select_simple_star() {
-        let mut e = fresh();
-        e.execute("CREATE TABLE t (id INTEGER, name TEXT)").unwrap();
-        e.execute("INSERT INTO t VALUES (1, 'a')").unwrap();
-        e.execute("INSERT INTO t VALUES (2, 'b')").unwrap();
-        let r = e.execute("SELECT * FROM t").unwrap();
-        assert_eq!(r.rows.len(), 2);
-    }
-
-    #[test]
-    fn test_engine_select_with_where_clause() {
-        let mut e = fresh();
-        e.execute("CREATE TABLE t (id INTEGER, name TEXT)").unwrap();
-        e.execute("INSERT INTO t VALUES (1, 'a')").unwrap();
-        e.execute("INSERT INTO t VALUES (2, 'b')").unwrap();
-        e.execute("INSERT INTO t VALUES (3, 'c')").unwrap();
-        let r = e.execute("SELECT name FROM t WHERE id > 1").unwrap();
-        assert_eq!(r.rows.len(), 2);
-        assert_eq!(r.rows[0][0], Value::Text("b".to_string()));
-        assert_eq!(r.rows[1][0], Value::Text("c".to_string()));
-    }
-
-    #[test]
-    fn test_engine_select_with_group_by_having() {
-        let mut e = fresh();
-        e.execute("CREATE TABLE orders (region TEXT, amount INTEGER)")
-            .unwrap();
-        e.execute("INSERT INTO orders VALUES ('east', 10)").unwrap();
-        e.execute("INSERT INTO orders VALUES ('east', 20)").unwrap();
-        e.execute("INSERT INTO orders VALUES ('west', 50)").unwrap();
-        let r = e
-            .execute(
-                "SELECT region, SUM(amount) FROM orders GROUP BY region HAVING SUM(amount) > 35",
-            )
-            .unwrap();
-        assert_eq!(
-            r.rows.len(),
-            1,
-            "only west (sum=50) should match HAVING > 35"
-        );
-        assert_eq!(r.rows[0][0], Value::Text("west".to_string()));
-        assert_eq!(r.rows[0][1], Value::Integer(50));
-    }
-
-    #[test]
-    fn test_engine_select_inner_join_two_tables() {
-        let mut e = fresh();
-        e.execute("CREATE TABLE customers (id INTEGER, name TEXT)")
-            .unwrap();
-        e.execute("CREATE TABLE orders (cid INTEGER, amount INTEGER)")
-            .unwrap();
-        e.execute("INSERT INTO customers VALUES (1, 'alice')")
-            .unwrap();
-        e.execute("INSERT INTO customers VALUES (2, 'bob')")
-            .unwrap();
-        e.execute("INSERT INTO orders VALUES (1, 100)").unwrap();
-        e.execute("INSERT INTO orders VALUES (2, 200)").unwrap();
-        let r = e
-            .execute("SELECT c.name, o.amount FROM customers c JOIN orders o ON c.id = o.cid")
-            .unwrap();
-        assert_eq!(r.rows.len(), 2);
-    }
-
-    #[test]
-    fn test_engine_select_with_order_by_limit() {
-        let mut e = fresh();
-        e.execute("CREATE TABLE t (id INTEGER)").unwrap();
-        for i in 1..=5 {
-            e.execute(&format!("INSERT INTO t VALUES ({})", i)).unwrap();
-        }
-        let r = e
-            .execute("SELECT id FROM t ORDER BY id DESC LIMIT 2")
-            .unwrap();
-        assert_eq!(r.rows.len(), 2);
-        assert_eq!(r.rows[0][0], Value::Integer(5));
-        assert_eq!(r.rows[1][0], Value::Integer(4));
-    }
 }

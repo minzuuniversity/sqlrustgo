@@ -1,164 +1,301 @@
-//! QPS/TPS Benchmark — Issue #847
+//! G11 QPS/TPS Benchmark — 5 workloads × 4 thread counts
 //!
-//! Measures queries per second for various workload types:
-//! - qps_point_select: Simple point selects
-//! - qps_range_select: Range scan queries
-//! - qps_insert: Insert operations
-//! - qps_update: Update operations
-//! - qps_mixed_oltp: Mixed OLTP workload
+//! Refs: docs/openspec/3182-cost-optimizer.md (借力 SQLRustGo StorageEngine)
+//!       V390_TEST_PLAN_SUPPLEMENT_PERF.md §G11
 //!
-//! This benchmark is used by G11 gate (scripts/gate/check_g11_qps.sh)
+//! Uses the actual MemoryStorage / StorageEngine API:
+//!   - scan(table) -> Vec<Record>
+//!   - insert(table, records) -> SqlResult<()>
+//!   - update(table, filters, updates) -> SqlResult<usize>
+//!   - delete_if(table, filter) -> SqlResult<usize>
 
-use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
-use sqlrustgo::MemoryExecutionEngine;
-use sqlrustgo_storage::MemoryStorage;
+use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
+use sqlrustgo_storage::{
+    ColumnDefinition, MemoryStorage, Record, RowFilter, RowMutation, StorageEngine, TableInfo,
+};
+use sqlrustgo_types::Value;
+use std::hint::black_box;
 use std::sync::{Arc, RwLock};
-use std::time::Instant;
+use std::thread;
 
-#[allow(dead_code)]
-const ITERATIONS: usize = 1000;
-#[allow(dead_code)]
-const CONCURRENT_THREADS: usize = 4;
+/// Generate test rows
+fn generate_rows(count: usize) -> Vec<Record> {
+    (0..count)
+        .map(|i| {
+            vec![
+                Value::Integer(i as i64),
+                Value::Integer((i % 1000) as i64),
+                Value::Text(format!("pad-{}", i)),
+            ]
+        })
+        .collect()
+}
 
-fn create_engine() -> MemoryExecutionEngine {
+/// Create test table info
+fn create_table_info() -> TableInfo {
+    TableInfo {
+        name: "qps_bench".to_string(),
+        columns: vec![
+            ColumnDefinition {
+                name: "id".to_string(),
+                data_type: "INTEGER".to_string(),
+                nullable: false,
+                primary_key: true,
+            },
+            ColumnDefinition {
+                name: "k".to_string(),
+                data_type: "INTEGER".to_string(),
+                nullable: false,
+                primary_key: false,
+            },
+            ColumnDefinition {
+                name: "c".to_string(),
+                data_type: "TEXT".to_string(),
+                nullable: true,
+                primary_key: false,
+            },
+        ],
+        foreign_keys: vec![],
+        unique_constraints: vec![],
+        check_constraints: vec![],
+        partition_info: None,
+    }
+}
+
+/// Setup: shared storage with pre-populated data
+fn setup_storage(rows: usize) -> Arc<RwLock<MemoryStorage>> {
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));
-    MemoryExecutionEngine::new(storage)
-}
-
-fn setup_tables(engine: &mut MemoryExecutionEngine) {
-    let _ = engine.execute(
-        "CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, name TEXT, age INTEGER)",
-    );
-    let _ = engine.execute("CREATE TABLE IF NOT EXISTS orders (id INTEGER PRIMARY KEY, user_id INTEGER, amount INTEGER)");
-    let _ = engine.execute(
-        "CREATE TABLE IF NOT EXISTS products (id INTEGER PRIMARY KEY, name TEXT, price INTEGER)",
-    );
-}
-
-fn insert_test_data(engine: &mut MemoryExecutionEngine) {
-    for i in 0..100 {
-        let _ = engine.execute(&format!(
-            "INSERT INTO users VALUES ({}, 'user_{}', {})",
-            i,
-            i,
-            20 + (i % 50)
-        ));
+    {
+        let mut s = storage.write().unwrap();
+        s.create_table(&create_table_info()).unwrap();
+        s.insert("qps_bench", generate_rows(rows)).unwrap();
     }
-    for i in 0..500 {
-        let _ = engine.execute(&format!(
-            "INSERT INTO orders VALUES ({}, {}, {})",
-            i,
-            i % 100,
-            100 + (i % 1000)
-        ));
-    }
-    for i in 0..100 {
-        let _ = engine.execute(&format!(
-            "INSERT INTO products VALUES ({}, 'product_{}', {})",
-            i,
-            i,
-            1000 + (i % 500)
-        ));
-    }
+    storage
 }
 
-fn cleanup(engine: &mut MemoryExecutionEngine) {
-    let _ = engine.execute("DROP TABLE IF EXISTS users");
-    let _ = engine.execute("DROP TABLE IF EXISTS orders");
-    let _ = engine.execute("DROP TABLE IF EXISTS products");
+/// Filter that matches id == target (uses a thread-local)
+thread_local! {
+    static TARGET_ID: std::cell::Cell<i64> = const { std::cell::Cell::new(0) };
 }
 
-fn qps_point_select(c: &mut Criterion) {
-    let mut engine = create_engine();
-    setup_tables(&mut engine);
-    insert_test_data(&mut engine);
+fn make_id_filter(target: i64) -> RowFilter {
+    Box::new(move |row: &Record| -> bool {
+        matches!(row.first(), Some(Value::Integer(v)) if *v == target)
+    })
+}
 
-    let mut g = c.benchmark_group("qps_point_select");
-    for i in 0..10 {
-        g.bench_with_input(BenchmarkId::new("users", i), &i, |b, _i| {
+fn make_k_filter(target: i64) -> RowFilter {
+    Box::new(move |row: &Record| -> bool {
+        matches!(row.get(1), Some(Value::Integer(v)) if *v == target)
+    })
+}
+
+/// 1. Point SELECT (主键查询) - via scan + filter
+fn bench_point_select(c: &mut Criterion) {
+    let storage = setup_storage(10_000);
+    let mut group = c.benchmark_group("qps_point_select");
+    for &threads in &[1usize, 4, 8, 16] {
+        group.throughput(Throughput::Elements(threads as u64 * 1000));
+        group.bench_with_input(BenchmarkId::from_parameter(threads), &threads, |b, &t| {
             b.iter(|| {
-                let _ = engine.execute("SELECT * FROM users WHERE id = 50");
+                let handles: Vec<_> = (0..t)
+                    .map(|tid| {
+                        let s = Arc::clone(&storage);
+                        thread::spawn(move || {
+                            for i in 0..1000 {
+                                let id = ((tid * 1000 + i) % 10_000) as i64;
+                                let filter = make_id_filter(id);
+                                let guard = s.read().unwrap();
+                                let rows: Vec<Record> = guard
+                                    .scan("qps_bench")
+                                    .unwrap_or_default()
+                                    .into_iter()
+                                    .filter(|r| filter(r))
+                                    .collect();
+                                black_box(rows);
+                            }
+                        })
+                    })
+                    .collect();
+                for h in handles {
+                    h.join().unwrap();
+                }
             });
         });
     }
-    cleanup(&mut engine);
+    group.finish();
 }
 
-fn qps_range_select(c: &mut Criterion) {
-    let mut engine = create_engine();
-    setup_tables(&mut engine);
-    insert_test_data(&mut engine);
-
-    let mut g = c.benchmark_group("qps_range_select");
-    for i in 0..10 {
-        g.bench_with_input(BenchmarkId::new("orders", i), &i, |b, _i| {
+/// 2. Range SELECT (k 列 1% 选择率)
+fn bench_range_select(c: &mut Criterion) {
+    let storage = setup_storage(10_000);
+    let mut group = c.benchmark_group("qps_range_select");
+    for &threads in &[1usize, 4, 8] {
+        group.throughput(Throughput::Elements(threads as u64 * 1000));
+        group.bench_with_input(BenchmarkId::from_parameter(threads), &threads, |b, &t| {
             b.iter(|| {
-                let _ = engine.execute("SELECT * FROM orders WHERE amount > 500");
+                let handles: Vec<_> = (0..t)
+                    .map(|tid| {
+                        let s = Arc::clone(&storage);
+                        thread::spawn(move || {
+                            for i in 0..1000 {
+                                let target = ((tid * 1000 + i) % 1000) as i64;
+                                let filter = make_k_filter(target);
+                                let guard = s.read().unwrap();
+                                let rows: Vec<Record> = guard
+                                    .scan("qps_bench")
+                                    .unwrap_or_default()
+                                    .into_iter()
+                                    .filter(|r| filter(r))
+                                    .collect();
+                                black_box(rows);
+                            }
+                        })
+                    })
+                    .collect();
+                for h in handles {
+                    h.join().unwrap();
+                }
             });
         });
     }
-    cleanup(&mut engine);
+    group.finish();
 }
 
-fn qps_insert(c: &mut Criterion) {
-    let mut engine = create_engine();
-    setup_tables(&mut engine);
-
-    let mut g = c.benchmark_group("qps_insert");
-    for i in 0..10 {
-        let idx = i * 1000;
-        g.bench_with_input(BenchmarkId::new("products", i), &i, |b, _i| {
+/// 3. INSERT (写)
+fn bench_insert(c: &mut Criterion) {
+    let mut group = c.benchmark_group("qps_insert");
+    for &threads in &[1usize, 4, 8] {
+        group.throughput(Throughput::Elements(threads as u64 * 1000));
+        group.bench_with_input(BenchmarkId::from_parameter(threads), &threads, |b, &t| {
             b.iter(|| {
-                let _ = engine.execute(&format!(
-                    "INSERT INTO products VALUES ({}, 'new_product', 999)",
-                    idx
-                ));
+                let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+                storage
+                    .write()
+                    .unwrap()
+                    .create_table(&create_table_info())
+                    .unwrap();
+                let handles: Vec<_> = (0..t)
+                    .map(|tid| {
+                        let s = Arc::clone(&storage);
+                        thread::spawn(move || {
+                            for i in 0..1000 {
+                                let rows = vec![vec![
+                                    Value::Integer((tid * 1000 + i) as i64),
+                                    Value::Integer(i as i64),
+                                    Value::Text(format!("row-{}", i)),
+                                ]];
+                                let _ = s.write().unwrap().insert("qps_bench", rows);
+                            }
+                        })
+                    })
+                    .collect();
+                for h in handles {
+                    h.join().unwrap();
+                }
             });
         });
     }
-    cleanup(&mut engine);
+    group.finish();
 }
 
-fn qps_update(c: &mut Criterion) {
-    let mut engine = create_engine();
-    setup_tables(&mut engine);
-    insert_test_data(&mut engine);
-
-    let mut g = c.benchmark_group("qps_update");
-    for i in 0..10 {
-        g.bench_with_input(BenchmarkId::new("users", i), &i, |b, _i| {
+/// 4. UPDATE (索引列 id) - via update(table, filters, updates)
+fn bench_update(c: &mut Criterion) {
+    let storage = setup_storage(10_000);
+    let mut group = c.benchmark_group("qps_update");
+    for &threads in &[1usize, 4, 8] {
+        group.throughput(Throughput::Elements(threads as u64 * 500));
+        group.bench_with_input(BenchmarkId::from_parameter(threads), &threads, |b, &t| {
             b.iter(|| {
-                let _ = engine.execute("UPDATE users SET age = age + 1 WHERE id % 10 = 0");
+                let handles: Vec<_> = (0..t)
+                    .map(|tid| {
+                        let s = Arc::clone(&storage);
+                        thread::spawn(move || {
+                            for i in 0..500 {
+                                let id = ((tid * 500 + i) % 10_000) as i64;
+                                // update col 2 to "updated-i"
+                                let updates = vec![(2usize, Value::Text(format!("upd-{}", i)))];
+                                let _ = s.write().unwrap().update(
+                                    "qps_bench",
+                                    &[Value::Integer(id)],
+                                    &updates,
+                                );
+                            }
+                        })
+                    })
+                    .collect();
+                for h in handles {
+                    h.join().unwrap();
+                }
             });
         });
     }
-    cleanup(&mut engine);
+    group.finish();
 }
 
-fn qps_mixed_oltp(c: &mut Criterion) {
-    let mut engine = create_engine();
-    setup_tables(&mut engine);
-    insert_test_data(&mut engine);
-
-    let mut g = c.benchmark_group("qps_mixed_oltp");
-    for i in 0..10 {
-        g.bench_with_input(BenchmarkId::new("mixed", i), &i, |b, _i| {
+/// 5. Mixed OLTP (point_select + insert + update, sysbench-like)
+fn bench_mixed_oltp(c: &mut Criterion) {
+    let storage = setup_storage(10_000);
+    let mut group = c.benchmark_group("qps_mixed_oltp");
+    for &threads in &[4usize, 8] {
+        group.throughput(Throughput::Elements(threads as u64 * 1000));
+        group.bench_with_input(BenchmarkId::from_parameter(threads), &threads, |b, &t| {
             b.iter(|| {
-                let _ = engine.execute(
-                    "SELECT * FROM orders WHERE user_id IN (SELECT id FROM users WHERE age > 30)",
-                );
+                let handles: Vec<_> = (0..t)
+                    .map(|tid| {
+                        let s = Arc::clone(&storage);
+                        thread::spawn(move || {
+                            for i in 0..1000 {
+                                let op = i % 10;
+                                if op < 7 {
+                                    // SELECT 70%
+                                    let id = ((tid * 1000 + i) % 10_000) as i64;
+                                    let filter = make_id_filter(id);
+                                    let guard = s.read().unwrap();
+                                    let rows: Vec<Record> = guard
+                                        .scan("qps_bench")
+                                        .unwrap_or_default()
+                                        .into_iter()
+                                        .filter(|r| filter(r))
+                                        .collect();
+                                    black_box(rows);
+                                } else if op < 9 {
+                                    // UPDATE 20%
+                                    let id = ((tid * 1000 + i) % 10_000) as i64;
+                                    let updates = vec![(2usize, Value::Text(format!("mix-{}", i)))];
+                                    let _ = s.write().unwrap().update(
+                                        "qps_bench",
+                                        &[Value::Integer(id)],
+                                        &updates,
+                                    );
+                                } else {
+                                    // INSERT 10% (rare)
+                                    let rows = vec![vec![
+                                        Value::Integer((100_000 + tid * 1000 + i) as i64),
+                                        Value::Integer(i as i64),
+                                        Value::Text(format!("new-{}", i)),
+                                    ]];
+                                    let _ = s.write().unwrap().insert("qps_bench", rows);
+                                }
+                            }
+                        })
+                    })
+                    .collect();
+                for h in handles {
+                    h.join().unwrap();
+                }
             });
         });
     }
-    cleanup(&mut engine);
+    group.finish();
 }
 
 criterion_group!(
-    benches,
-    qps_point_select,
-    qps_range_select,
-    qps_insert,
-    qps_update,
-    qps_mixed_oltp
+    qps_benches,
+    bench_point_select,
+    bench_range_select,
+    bench_insert,
+    bench_update,
+    bench_mixed_oltp
 );
-criterion_main!(benches);
+criterion_main!(qps_benches);

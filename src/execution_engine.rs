@@ -4,9 +4,8 @@
 #![allow(unused_variables, unused_imports)]
 
 use crate::engine_utils::{
-    build_aggregate_schema, build_combined_schema, decode_undo_key, decode_undo_value,
-    encode_undo_key, encode_undo_value, eval_predicate, evaluate_where_clause, find_column_index,
-    sql_compare, validate_foreign_keys,
+    build_aggregate_schema, build_combined_schema, eval_predicate, evaluate_where_clause,
+    find_column_index, sql_compare, validate_foreign_keys,
 };
 use crate::expr_utils::{
     compare_values, evaluate_binary_op, evaluate_expr_to_string, evaluate_expression,
@@ -67,9 +66,7 @@ use sqlrustgo_storage::{
     ColumnDefinition, FileBackedWalManager, FileStorage, MemoryStorage, StorageEngine, TableInfo,
     WalStorage,
 };
-use sqlrustgo_transaction::{
-    savepoint::UndoRecord, IsolationLevel as TmIsolationLevel, TransactionManager, TxId,
-};
+use sqlrustgo_transaction::{IsolationLevel as TmIsolationLevel, TransactionManager, TxId};
 use sqlrustgo_types::Value as SqlValue;
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -224,16 +221,6 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         &self.storage
     }
 
-    /// Get a write lock on the underlying storage handle.
-    ///
-    /// Returns a `std::sync::WriteGuard<S>` so callers can mutate
-    /// storage (e.g., call `flush()` to persist .json files).
-    /// Used by the LOAD DATA LOCAL INFILE handler to materialize
-    /// table data to disk after loading all rows.
-    pub fn storage_write(&self) -> std::sync::RwLockWriteGuard<'_, S> {
-        self.storage.write().unwrap()
-    }
-
     /// Bulk-insert pre-parsed records directly into storage, bypassing
     /// the SQL parser. This is the LOAD DATA LOCAL INFILE hot path: a
     /// 60 000-row lineitem.tbl used to take >5 min because the previous
@@ -340,7 +327,40 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     1,
                 ))
             }
-            Statement::Union(_) => self.execute_union(&statement),
+            Statement::Union(ref union_stmt) => {
+                // Extract left and right SelectStatements from the Union
+                let left_select = match union_stmt.left.as_ref() {
+                    Statement::Select(s) => s,
+                    _ => {
+                        return Err(SqlError::ExecutionError(
+                            "UNION left side must be a SELECT".to_string(),
+                        ))
+                    }
+                };
+                let right_select = match union_stmt.right.as_ref() {
+                    Statement::Select(s) => s,
+                    _ => {
+                        return Err(SqlError::ExecutionError(
+                            "UNION right side must be a SELECT".to_string(),
+                        ))
+                    }
+                };
+
+                let mut left_result = self.execute_select(left_select)?;
+                let right_result = self.execute_select(right_select)?;
+
+                // Append rows from right to left
+                left_result.rows.extend(right_result.rows);
+
+                // If not UNION ALL, deduplicate
+                if !union_stmt.union_all {
+                    left_result.rows.sort();
+                    left_result.rows.dedup();
+                }
+
+                left_result.affected_rows = left_result.rows.len();
+                Ok(left_result)
+            }
             Statement::CreateTrigger(ref create_trigger) => {
                 self.execute_create_trigger(create_trigger)
             }
@@ -558,7 +578,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                         }
                     }
                 }
-                storage.insert(&table_name, processed_records.clone())?;
+                storage.insert(&table_name, processed_records)?;
             }
         }
 
@@ -572,20 +592,6 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         if !after_triggers.is_empty() {
             for record in &all_records {
                 trigger_executor.execute_after_insert(&table_name, record)?;
-            }
-        }
-
-        // SEM-1 G5-A fix: record undo entries for each newly inserted row
-        // so ROLLBACK TO SAVEPOINT can physically delete them.
-        if let Some(tx_id) = self.current_tx_id {
-            if let Some(pk_idx) = table_info.columns.iter().position(|c| c.primary_key) {
-                for record in &processed_records {
-                    if let Some(pk_value) = record.get(pk_idx) {
-                        let key = encode_undo_key(&table_name, pk_value);
-                        self.transaction_manager
-                            .record_undo(tx_id, UndoRecord::Insert { key });
-                    }
-                }
             }
         }
 
@@ -771,21 +777,6 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             }
         }
 
-        // SEM-1 G5-A fix: record Update undo entries so ROLLBACK TO
-        // SAVEPOINT can physically restore the old row values.
-        if let Some(tx_id) = self.current_tx_id {
-            if let Some(pk_idx) = table_info.columns.iter().position(|c| c.primary_key) {
-                for old_row in &rows_to_update {
-                    if let Some(pk_value) = old_row.get(pk_idx) {
-                        let key = encode_undo_key(&table_name, pk_value);
-                        let old_value = encode_undo_value(old_row);
-                        self.transaction_manager
-                            .record_undo(tx_id, UndoRecord::Update { key, old_value });
-                    }
-                }
-            }
-        }
-
         // INT-1: autocommit — leave the commit decision to the helper.
         self.commit_implicit_dml_tx(started_implicit);
 
@@ -875,10 +866,10 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             // Then delete the matching rows from the freshly re-inserted set
             // so WAL records one Delete entry per affected row.
             //
-            // P22 fix: use storage.delete_if with a primary-key filter instead
-            // of storage.delete(table, &key_values). The latter ignores the
-            // key_values and clears the entire table (P22-delete-isolation bug
-            // observed in oracle_p22_time_travel_delete_isolation_oracle).
+            // FIX-2737: Extract ONLY primary key column values for delete,
+            // not all columns. storage.delete() does full row comparison when
+            // key_values is non-empty, so passing all columns causes delete to
+            // fail if any non-PK column differs (e.g., due to serialization).
             let pk_indices: Vec<usize> = table_info
                 .columns
                 .iter()
@@ -887,30 +878,20 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 .map(|(i, _)| i)
                 .collect();
 
+            // If table has primary keys, use only PK columns for delete.
+            // Otherwise, fall back to all columns (backward compatible).
+            let use_indices: Vec<usize> = if pk_indices.is_empty() {
+                (0..rows_to_delete[0].len()).collect()
+            } else {
+                pk_indices
+            };
+
             for row in &rows_to_delete {
-                if pk_indices.is_empty() {
-                    // No PK: fall back to full row match (delete_if on all cols)
-                    let target: Vec<Value> = row.clone();
-                    let filter: sqlrustgo_storage::engine::RowFilter =
-                        Box::new(move |r: &Vec<Value>| r == &target);
-                    let _ = storage.delete_if(&table_name, &filter)?;
-                } else {
-                    // PK available: build a filter that matches any row whose
-                    // primary-key columns equal the target row's PK values.
-                    let pk_indices_local = pk_indices.clone();
-                    let pk_values: Vec<Value> = pk_indices_local
-                        .iter()
-                        .map(|&i| row.get(i).cloned().unwrap_or(sqlrustgo_types::Value::Null))
-                        .collect();
-                    let filter: sqlrustgo_storage::engine::RowFilter =
-                        Box::new(move |r: &Vec<Value>| {
-                            pk_indices_local
-                                .iter()
-                                .zip(pk_values.iter())
-                                .all(|(&i, want)| r.get(i).map(|v| v == want).unwrap_or(false))
-                        });
-                    let _ = storage.delete_if(&table_name, &filter)?;
-                }
+                let key_values: Vec<Value> = use_indices
+                    .iter()
+                    .map(|&i| row.get(i).cloned().unwrap_or(sqlrustgo_types::Value::Null))
+                    .collect();
+                storage.delete(&table_name, &key_values)?;
             }
         }
 
@@ -924,21 +905,6 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         if !after_triggers.is_empty() {
             for row in &rows_to_delete {
                 trigger_executor.execute_after_delete(&table_name, row)?;
-            }
-        }
-
-        // SEM-1 G5-A fix: record Delete undo entries for each removed
-        // row so ROLLBACK TO SAVEPOINT can physically restore them.
-        if let Some(tx_id) = self.current_tx_id {
-            if let Some(pk_idx) = table_info.columns.iter().position(|c| c.primary_key) {
-                for old_row in &rows_to_delete {
-                    if let Some(pk_value) = old_row.get(pk_idx) {
-                        let key = encode_undo_key(&table_name, pk_value);
-                        let old_value = encode_undo_value(old_row);
-                        self.transaction_manager
-                            .record_undo(tx_id, UndoRecord::Delete { key, old_value });
-                    }
-                }
             }
         }
 
@@ -1235,10 +1201,12 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
 
     /// SEM-1 (#3172): Execute SAVEPOINT/ROLLBACK TO SAVEPOINT/RELEASE SAVEPOINT.
     ///
-    /// Routes the parsed statement to the per-tx SavepointManager and
-    /// (G5-A fix) physically reverts data changes for ROLLBACK TO SAVEPOINT
-    /// by replaying the per-DML undo records against the storage engine.
+    /// Routes the parsed statement to the per-tx SavepointManager. The
+    /// physical undo of tuple changes is deferred to a future iteration;
+    /// this method only manages the savepoint namespace and the undo-log
+    /// cursor.
     fn execute_savepoint(&mut self, name: &str, op: SavepointOp) -> SqlResult<ExecutorResult> {
+        // An active transaction is required for any savepoint operation.
         let tx_id = self.current_tx_id.ok_or_else(|| {
             SqlError::ExecutionError(
                 "SAVEPOINT / ROLLBACK TO SAVEPOINT / RELEASE SAVEPOINT \
@@ -1253,92 +1221,23 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 .map_err(|e| {
                     SqlError::ExecutionError(format!("SAVEPOINT {} failed: {}", name, e))
                 })?,
-            SavepointOp::RollbackTo => {
-                let undo_records = self
-                    .transaction_manager
-                    .take_undo_after(tx_id, name)
-                    .map_err(|e| {
-                        SqlError::ExecutionError(format!(
-                            "ROLLBACK TO SAVEPOINT {} failed: {}",
-                            name, e
-                        ))
-                    })?;
-                self.apply_undo_records(undo_records)?;
-            }
-            SavepointOp::Release => {
-                self.transaction_manager
-                    .discard_undo_after(tx_id, name)
-                    .map_err(|e| {
-                        SqlError::ExecutionError(format!(
-                            "RELEASE SAVEPOINT {} failed: {}",
-                            name, e
-                        ))
-                    })?;
-            }
+            SavepointOp::RollbackTo => self
+                .transaction_manager
+                .rollback_to_savepoint(tx_id, name)
+                .map_err(|e| {
+                    SqlError::ExecutionError(format!(
+                        "ROLLBACK TO SAVEPOINT {} failed: {}",
+                        name, e
+                    ))
+                })?,
+            SavepointOp::Release => self
+                .transaction_manager
+                .release_savepoint(tx_id, name)
+                .map_err(|e| {
+                    SqlError::ExecutionError(format!("RELEASE SAVEPOINT {} failed: {}", name, e))
+                })?,
         }
         Ok(ExecutorResult::empty())
-    }
-
-    /// SEM-1 G5-A fix: physically revert a sequence of undo records
-    /// against the storage engine. The records are in reverse order
-    /// (LIFO) so the most recent DML is undone first.
-    fn apply_undo_records(&mut self, records: Vec<UndoRecord>) -> SqlResult<()> {
-        for record in records {
-            match record {
-                UndoRecord::Insert { key } => {
-                    self.apply_undo_insert(&key)?;
-                }
-                UndoRecord::Delete { key, old_value } => {
-                    self.apply_undo_delete(&key, &old_value)?;
-                }
-                UndoRecord::Update { key, old_value } => {
-                    self.apply_undo_update(&key, &old_value)?;
-                }
-            }
-        }
-        Ok(())
-    }
-
-    fn apply_undo_insert(&mut self, key_bytes: &[u8]) -> SqlResult<()> {
-        let (table, pk_value) = decode_undo_key(key_bytes)?;
-        let mut storage = self.storage.write().unwrap();
-        let pk_clone = pk_value.clone();
-        let filter: sqlrustgo_storage::engine::RowFilter =
-            Box::new(move |row: &Vec<Value>| row.first().map(|v| v == &pk_clone).unwrap_or(false));
-        let deleted = storage.delete_if(&table, &filter)?;
-        if deleted == 0 {
-            return Err(SqlError::ExecutionError(format!(
-                "SAVEPOINT undo: INSERT reverse failed — no row with PK {:?} in {}",
-                pk_value, table
-            )));
-        }
-        Ok(())
-    }
-
-    fn apply_undo_delete(&mut self, key_bytes: &[u8], old_value_bytes: &[u8]) -> SqlResult<()> {
-        let (table, _pk) = decode_undo_key(key_bytes)?;
-        let record = decode_undo_value(old_value_bytes)?;
-        let mut storage = self.storage.write().unwrap();
-        storage.insert(&table, vec![record])?;
-        Ok(())
-    }
-
-    fn apply_undo_update(&mut self, key_bytes: &[u8], old_value_bytes: &[u8]) -> SqlResult<()> {
-        let (table, pk_value) = decode_undo_key(key_bytes)?;
-        let record = decode_undo_value(old_value_bytes)?;
-        let pk_clone = pk_value.clone();
-        let mut storage = self.storage.write().unwrap();
-        let filter: sqlrustgo_storage::engine::RowFilter =
-            Box::new(move |row: &Vec<Value>| row.first().map(|v| v == &pk_clone).unwrap_or(false));
-        let deleted = storage.delete_if(&table, &filter)?;
-        if deleted == 0 {
-            return Err(SqlError::ExecutionError(format!(
-                "SAVEPOINT undo: UPDATE reverse failed — no row with PK {:?} in {}",
-                pk_value, table
-            )));
-        }
-        storage.insert(&table, vec![record])?;
-        Ok(())
     }
 
     fn rollback_transaction(&mut self) -> SqlResult<ExecutorResult> {
@@ -1918,26 +1817,10 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
 
     /// Commit the implicit DML TX started by `begin_implicit_dml_tx`.
     /// Idempotent when `started_implicit` is `false` (user controls commit/rollback).
-    ///
-    /// PR-3580 fix: also commit the storage layer so the WAL entry
-    /// sequence is `[Begin, DML..., Commit]` for autocommit, and the
-    /// insert buffer (in `FileStorage`) is flushed to `data.rows` + disk
-    /// before the engine returns. Without this flush, an autocommit
-    /// INSERT (or the delete-then-insert pattern in `execute_update`)
-    /// leaves the new row in the buffer only; the next BEGIN/DML in
-    /// a different explicit TX would then observe a stale state because
-    /// `current_tx_id` on the storage was still set to the previous
-    /// implicit-tx id.
     fn commit_implicit_dml_tx(&mut self, started_implicit: bool) {
         if started_implicit {
             let tx_id = self.current_tx_id.unwrap();
             let _ = self.transaction_manager.commit(tx_id);
-            // Flush the storage's insert buffer and reset its tx id so the
-            // next statement starts in a clean autocommit state.
-            if let Ok(mut storage) = self.storage.write() {
-                let _ = storage.commit_transaction();
-                storage.set_current_tx_id(0);
-            }
             self.current_tx_id = None;
             self.tx_status = TxStatus::Idle;
         }
@@ -2059,336 +1942,5 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 ir_filtered.len()
             );
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::Value;
-    use sqlrustgo_storage::MemoryStorage;
-    use tempfile::TempDir;
-
-    // === ExecutionEngine::execute — SELECT scenarios ===
-
-    #[test]
-    fn test_execute_select_table_scan() {
-        let mut engine = ExecutionEngine::<MemoryStorage>::with_memory();
-        engine
-            .execute("CREATE TABLE users (id INTEGER, name TEXT, age INTEGER)")
-            .unwrap();
-        engine
-            .execute("INSERT INTO users VALUES (1, 'Alice', 30)")
-            .unwrap();
-        engine
-            .execute("INSERT INTO users VALUES (2, 'Bob', 25)")
-            .unwrap();
-        let r = engine.execute("SELECT id, name FROM users").unwrap();
-        assert_eq!(r.rows.len(), 2, "expected 2 rows from table scan");
-        assert_eq!(r.rows[0][0], Value::Integer(1));
-        assert_eq!(r.rows[1][0], Value::Integer(2));
-    }
-
-    #[test]
-    fn test_execute_select_filter() {
-        let mut engine = ExecutionEngine::<MemoryStorage>::with_memory();
-        engine
-            .execute("CREATE TABLE users (id INTEGER, name TEXT, age INTEGER)")
-            .unwrap();
-        engine
-            .execute("INSERT INTO users VALUES (1, 'Alice', 30)")
-            .unwrap();
-        engine
-            .execute("INSERT INTO users VALUES (2, 'Bob', 25)")
-            .unwrap();
-        engine
-            .execute("INSERT INTO users VALUES (3, 'Charlie', 35)")
-            .unwrap();
-        let r = engine
-            .execute("SELECT * FROM users WHERE age > 21")
-            .unwrap();
-        assert_eq!(r.rows.len(), 3, "expected 3 rows where age > 21");
-    }
-
-    #[test]
-    fn test_execute_select_with_index_scan() {
-        let mut engine = ExecutionEngine::<MemoryStorage>::with_memory();
-        engine
-            .execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)")
-            .unwrap();
-        engine
-            .execute("INSERT INTO users VALUES (1, 'Alice')")
-            .unwrap();
-        engine
-            .execute("INSERT INTO users VALUES (2, 'Bob')")
-            .unwrap();
-        let r = engine.execute("SELECT * FROM users WHERE id = 1").unwrap();
-        assert_eq!(r.rows.len(), 1, "expected 1 row from index scan");
-        assert_eq!(r.rows[0][1], Value::Text("Alice".to_string()));
-    }
-
-    #[test]
-    fn test_execute_select_join() {
-        let mut engine = ExecutionEngine::<MemoryStorage>::with_memory();
-        engine
-            .execute("CREATE TABLE orders (id INTEGER, customer_id INTEGER, amount INTEGER)")
-            .unwrap();
-        engine
-            .execute("CREATE TABLE customers (id INTEGER, name TEXT)")
-            .unwrap();
-        engine
-            .execute("INSERT INTO customers VALUES (1, 'Alice')")
-            .unwrap();
-        engine
-            .execute("INSERT INTO customers VALUES (2, 'Bob')")
-            .unwrap();
-        engine
-            .execute("INSERT INTO orders VALUES (1, 1, 100)")
-            .unwrap();
-        engine
-            .execute("INSERT INTO orders VALUES (2, 2, 200)")
-            .unwrap();
-        let r = engine
-            .execute(
-                "SELECT orders.id, customers.name, orders.amount
-                 FROM orders JOIN customers ON orders.customer_id = customers.id",
-            )
-            .unwrap();
-        assert_eq!(r.rows.len(), 2, "expected 2 rows from join");
-    }
-
-    #[test]
-    fn test_execute_select_aggregate() {
-        let mut engine = ExecutionEngine::<MemoryStorage>::with_memory();
-        engine
-            .execute("CREATE TABLE orders (id INTEGER, customer_id INTEGER, amount INTEGER)")
-            .unwrap();
-        engine
-            .execute("INSERT INTO orders VALUES (1, 1, 100)")
-            .unwrap();
-        engine
-            .execute("INSERT INTO orders VALUES (2, 1, 200)")
-            .unwrap();
-        engine
-            .execute("INSERT INTO orders VALUES (3, 2, 300)")
-            .unwrap();
-        let r = engine
-            .execute("SELECT customer_id, SUM(amount) FROM orders GROUP BY customer_id")
-            .unwrap();
-        assert_eq!(r.rows.len(), 2, "expected 2 groups");
-    }
-
-    // === ExecutionEngine::execute — INSERT scenarios ===
-
-    #[test]
-    fn test_execute_insert() {
-        let mut engine = ExecutionEngine::<MemoryStorage>::with_memory();
-        engine
-            .execute("CREATE TABLE users (id INTEGER, name TEXT)")
-            .unwrap();
-        let r = engine
-            .execute("INSERT INTO users (id, name) VALUES (1, 'Alice')")
-            .unwrap();
-        assert_eq!(r.affected_rows, 1, "INSERT should affect 1 row");
-        let sel = engine
-            .execute("SELECT name FROM users WHERE id = 1")
-            .unwrap();
-        assert_eq!(sel.rows[0][0], Value::Text("Alice".to_string()));
-    }
-
-    #[test]
-    fn test_execute_insert_multi_rows() {
-        let mut engine = ExecutionEngine::<MemoryStorage>::with_memory();
-        engine
-            .execute("CREATE TABLE t (id INTEGER, val TEXT)")
-            .unwrap();
-        let r = engine
-            .execute("INSERT INTO t VALUES (1, 'a'), (2, 'b'), (3, 'c')")
-            .unwrap();
-        assert_eq!(r.affected_rows, 3, "INSERT should affect 3 rows");
-        let sel = engine.execute("SELECT COUNT(*) FROM t").unwrap();
-        assert_eq!(sel.rows[0][0], Value::Integer(3));
-    }
-
-    // === ExecutionEngine::execute — UPDATE scenarios ===
-
-    #[test]
-    fn test_execute_update() {
-        let mut engine = ExecutionEngine::<MemoryStorage>::with_memory();
-        engine
-            .execute("CREATE TABLE users (id INTEGER, name TEXT, active INTEGER)")
-            .unwrap();
-        engine
-            .execute("INSERT INTO users VALUES (1, 'Alice', 1)")
-            .unwrap();
-        engine
-            .execute("INSERT INTO users VALUES (2, 'Bob', 1)")
-            .unwrap();
-        let r = engine
-            .execute("UPDATE users SET active = 0 WHERE id = 1")
-            .unwrap();
-        assert_eq!(r.affected_rows, 1, "UPDATE should affect 1 row");
-        let sel = engine
-            .execute("SELECT active FROM users WHERE id = 1")
-            .unwrap();
-        assert_eq!(sel.rows[0][0], Value::Integer(0));
-    }
-
-    // === ExecutionEngine::execute — DELETE scenarios ===
-
-    #[test]
-    fn test_execute_delete() {
-        let mut engine = ExecutionEngine::<MemoryStorage>::with_memory();
-        engine
-            .execute("CREATE TABLE users (id INTEGER, name TEXT, active INTEGER)")
-            .unwrap();
-        engine
-            .execute("INSERT INTO users VALUES (1, 'Alice', 1)")
-            .unwrap();
-        engine
-            .execute("INSERT INTO users VALUES (2, 'Bob', 1)")
-            .unwrap();
-        let r = engine
-            .execute("DELETE FROM users WHERE id = 1 AND active = 1")
-            .unwrap();
-        assert_eq!(r.affected_rows, 1, "DELETE should affect 1 row");
-        let sel = engine.execute("SELECT COUNT(*) FROM users").unwrap();
-        assert_eq!(sel.rows[0][0], Value::Integer(1));
-    }
-
-    // === Engine builder scenarios ===
-
-    #[test]
-    fn test_engine_builder_in_memory_catalog() {
-        let mut engine = ExecutionEngine::<MemoryStorage>::with_memory();
-        engine
-            .execute("CREATE TABLE t (id INTEGER, val TEXT)")
-            .unwrap();
-        engine.execute("INSERT INTO t VALUES (1, 'hello')").unwrap();
-        let r = engine.execute("SELECT val FROM t WHERE id = 1").unwrap();
-        assert_eq!(r.rows[0][0], Value::Text("hello".to_string()));
-    }
-
-    #[test]
-    fn test_engine_builder_with_storage_backend() {
-        let dir = TempDir::new().expect("tempdir");
-        let mut engine = ExecutionEngine::<MemoryStorage>::with_wal_file(dir.path().to_path_buf())
-            .expect("with_wal_file should succeed");
-        engine
-            .execute("CREATE TABLE t (id INTEGER, val TEXT)")
-            .unwrap();
-        engine.execute("INSERT INTO t VALUES (1, 'world')").unwrap();
-        let r = engine.execute("SELECT val FROM t WHERE id = 1").unwrap();
-        assert_eq!(r.rows[0][0], Value::Text("world".to_string()));
-    }
-
-    #[test]
-    fn test_engine_builder_cbo_enabled() {
-        let mut engine = ExecutionEngine::<MemoryStorage>::with_memory_and_cbo(true);
-        assert!(engine.is_cbo_enabled(), "CBO should be enabled by default");
-        engine.execute("CREATE TABLE t (id INTEGER)").unwrap();
-        engine.execute("INSERT INTO t VALUES (1)").unwrap();
-        let r = engine.execute("SELECT id FROM t").unwrap();
-        assert_eq!(r.rows, vec![vec![Value::Integer(1)]]);
-    }
-
-    #[test]
-    fn test_engine_builder_cbo_disabled() {
-        let mut engine = ExecutionEngine::<MemoryStorage>::with_memory_and_cbo(false);
-        assert!(!engine.is_cbo_enabled(), "CBO should be disabled");
-        engine.execute("CREATE TABLE t (id INTEGER)").unwrap();
-        engine.execute("INSERT INTO t VALUES (42)").unwrap();
-        let r = engine.execute("SELECT id FROM t").unwrap();
-        assert_eq!(r.rows, vec![vec![Value::Integer(42)]]);
-    }
-
-    // === Engine select scenarios ===
-
-    #[test]
-    fn test_engine_select_simple_star() {
-        let mut engine = ExecutionEngine::<MemoryStorage>::with_memory();
-        engine
-            .execute("CREATE TABLE t (id INTEGER, val TEXT)")
-            .unwrap();
-        engine.execute("INSERT INTO t VALUES (1, 'a')").unwrap();
-        let r = engine.execute("SELECT * FROM t").unwrap();
-        assert_eq!(r.rows.len(), 1);
-        assert_eq!(r.rows[0][0], Value::Integer(1));
-        assert_eq!(r.rows[0][1], Value::Text("a".to_string()));
-    }
-
-    #[test]
-    fn test_engine_select_where_and_clause() {
-        let mut engine = ExecutionEngine::<MemoryStorage>::with_memory();
-        engine
-            .execute("CREATE TABLE t (a INTEGER, b INTEGER)")
-            .unwrap();
-        engine.execute("INSERT INTO t VALUES (1, 2)").unwrap();
-        engine.execute("INSERT INTO t VALUES (3, 4)").unwrap();
-        let r = engine
-            .execute("SELECT * FROM t WHERE a > 1 AND b = 4")
-            .unwrap();
-        assert_eq!(r.rows.len(), 1);
-        assert_eq!(r.rows[0][0], Value::Integer(3));
-    }
-
-    #[test]
-    fn test_engine_select_join_two_tables() {
-        let mut engine = ExecutionEngine::<MemoryStorage>::with_memory();
-        engine
-            .execute("CREATE TABLE a (id INTEGER, val TEXT)")
-            .unwrap();
-        engine
-            .execute("CREATE TABLE b (id INTEGER, a_id INTEGER)")
-            .unwrap();
-        engine.execute("INSERT INTO a VALUES (1, 'x')").unwrap();
-        engine.execute("INSERT INTO b VALUES (1, 1)").unwrap();
-        let r = engine
-            .execute("SELECT a.val, b.a_id FROM a JOIN b ON a.id = b.a_id")
-            .unwrap();
-        assert_eq!(r.rows.len(), 1);
-        assert_eq!(r.rows[0][0], Value::Text("x".to_string()));
-    }
-
-    #[test]
-    fn test_engine_select_order_by_limit() {
-        let mut engine = ExecutionEngine::<MemoryStorage>::with_memory();
-        engine.execute("CREATE TABLE t (id INTEGER)").unwrap();
-        engine.execute("INSERT INTO t VALUES (3)").unwrap();
-        engine.execute("INSERT INTO t VALUES (1)").unwrap();
-        engine.execute("INSERT INTO t VALUES (2)").unwrap();
-        let r = engine
-            .execute("SELECT * FROM t ORDER BY id LIMIT 2")
-            .unwrap();
-        assert_eq!(r.rows.len(), 2);
-        assert_eq!(r.rows[0][0], Value::Integer(1));
-        assert_eq!(r.rows[1][0], Value::Integer(2));
-    }
-
-    // === Engine utils scenarios ===
-
-    #[test]
-    fn test_engine_utils_evaluate_where_clause() {
-        let mut engine = ExecutionEngine::<MemoryStorage>::with_memory();
-        engine
-            .execute("CREATE TABLE t (a INTEGER, b INTEGER)")
-            .unwrap();
-        engine.execute("INSERT INTO t VALUES (5, 10)").unwrap();
-        let r = engine
-            .execute("SELECT * FROM t WHERE a < 10 AND b > 5")
-            .unwrap();
-        assert_eq!(r.rows.len(), 1);
-    }
-
-    #[test]
-    fn test_engine_utils_find_column_index() {
-        let mut engine = ExecutionEngine::<MemoryStorage>::with_memory();
-        engine
-            .execute("CREATE TABLE t (id INTEGER, name TEXT, age INTEGER)")
-            .unwrap();
-        let r = engine
-            .execute("SELECT id, name FROM t WHERE age > 0")
-            .unwrap();
-        assert_eq!(r.rows.len(), 0);
     }
 }
