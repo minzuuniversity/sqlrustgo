@@ -155,20 +155,13 @@ fn test_no_orphan_tests() {
         }
     }
 
-    // Skip rules.
-    //
-    // skip_prefixes: helpers pulled in via `mod common;` (or similar)
-    // from individual test files. They are not standalone test binaries
-    // and must not be registered as [[test]] entries.
-    //
-    // skip_files:    files that have their own [[test]] entry but whose
-    // name does not match their filename 1:1 (cargo.toml's name
-    // diverges from the test file path).
-    let skip_prefixes = [
-        "tests/common/", // shared `mod common;` helpers
-    ];
+    // Skip common module and known helper files
     let skip_files = [
-        "data_loader.rs", // has its own Cargo entry under that exact name
+        "common/mod.rs",  // shared test utilities
+        "data_loader.rs", // has its own Cargo entry
+    ];
+    let skip_substrings = [
+        "_test.rs", // actual test files - should be in Cargo.toml
     ];
 
     let cargo = std::env::current_dir().unwrap().join("Cargo.toml");
@@ -187,9 +180,7 @@ fn test_no_orphan_tests() {
 
     let mut orphans = Vec::new();
     for f in &test_files {
-        if skip_prefixes.iter().any(|p| f.starts_with(p)) {
-            continue;
-        }
+        // Skip common module
         if skip_files.iter().any(|s| f.ends_with(s)) {
             continue;
         }
@@ -208,27 +199,15 @@ fn test_no_orphan_tests() {
         }
     }
 
-    // v3.9.0 orphan budget. The threshold was raised from 10 to 110
-    // to match the v3.9.0 reality: alongside the long-running
-    // diagnostic / oracle / regression tests, the v3.9.0 work
-    // added a large fleet of one-off investigation tests
-    // (diag_*, oracle_*, oracle_g*, oracle_p*, int1_*_evidence_*,
-    // int1_*_verification_*, f11_*, f12_*, l3_*, g2_*, g15_*,
-    // tpch_22_*, tpch_q*, eval_22_*, recovery_*, perf_eng_*) that
-    // are not registered in Cargo.toml. Each of these runs as a
-    // standalone test only when invoked explicitly; they are
-    // tracked in LEGACY_ISSUES.md and OO_ROADMAP.md as
-    // known-intentional v3.9.0 status.
-    //
-    // Future v3.10+ work should fold each of these into a
-    // [[test]] entry; raising the soft ceiling here keeps CI green
-    // while the cleanup backlog is processed.
-    const ORPHAN_BUDGET_V390: usize = 110;
-    if orphans.len() > ORPHAN_BUDGET_V390 {
+    // Allow up to 10 orphans in v3.8.0. These are test files written but
+    // not yet registered in Cargo.toml — they are tracked in D6b
+    // (F-32 mysqladmin, multi_join, tpch_wire, null_semantics, int1_*) as
+    // known functional gaps. Future releases must add [[test]] entries for
+    // them; this gate only enforces a soft ceiling.
+    if orphans.len() > 10 {
         panic!(
-            "too many orphan test files ({}), expected ≤{}: {:?}",
+            "too many orphan test files ({}), expected ≤10: {:?}",
             orphans.len(),
-            ORPHAN_BUDGET_V390,
             orphans
         );
     }

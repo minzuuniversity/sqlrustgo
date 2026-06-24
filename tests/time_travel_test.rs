@@ -50,7 +50,6 @@ mod harness {
         }
     }
 
-    #[allow(dead_code)]
     #[derive(Debug, Clone)]
     pub struct TimeTravelResult {
         pub query: TimeTravelQuery,

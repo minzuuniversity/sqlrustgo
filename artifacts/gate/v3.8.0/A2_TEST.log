@@ -1,0 +1,634 @@
+warning: profiles for the non root package will be ignored, specify profiles at the workspace root:
+package:   /Users/liying/workspace/dev/yinglichina163/sqlrustgo/tools/sqlrustgo-gate/Cargo.toml
+workspace: /Users/liying/workspace/dev/yinglichina163/sqlrustgo/Cargo.toml
+warning: profiles for the non root package will be ignored, specify profiles at the workspace root:
+package:   /Users/liying/workspace/dev/yinglichina163/sqlrustgo/tools/graph-cli/Cargo.toml
+workspace: /Users/liying/workspace/dev/yinglichina163/sqlrustgo/Cargo.toml
+warning: /Users/liying/workspace/dev/yinglichina163/sqlrustgo/crates/wal-verification/Cargo.toml: unused manifest key: tlaplus
+   Compiling sqlrustgo-storage v2.5.0 (/Users/liying/workspace/dev/yinglichina163/sqlrustgo/crates/storage)
+warning: cannot test inner items
+    --> crates/parser/src/parser.rs:4463:5
+     |
+4463 |     #[test]
+     |     ^^^^^^^
+     |
+     = note: `#[warn(unnameable_test_items)]` on by default
+
+warning: cannot test inner items
+    --> crates/parser/src/parser.rs:4476:5
+     |
+4476 |     #[test]
+     |     ^^^^^^^
+
+warning: cannot test inner items
+    --> crates/parser/src/parser.rs:4489:5
+     |
+4489 |     #[test]
+     |     ^^^^^^^
+
+warning: cannot test inner items
+    --> crates/parser/src/parser.rs:4502:5
+     |
+4502 |     #[test]
+     |     ^^^^^^^
+
+warning: cannot test inner items
+    --> crates/parser/src/parser.rs:4515:5
+     |
+4515 |     #[test]
+     |     ^^^^^^^
+
+warning: cannot test inner items
+    --> crates/parser/src/parser.rs:4528:5
+     |
+4528 |     #[test]
+     |     ^^^^^^^
+
+warning: cannot test inner items
+    --> crates/parser/src/parser.rs:4541:5
+     |
+4541 |     #[test]
+     |     ^^^^^^^
+
+warning: cannot test inner items
+    --> crates/parser/src/parser.rs:4554:5
+     |
+4554 |     #[test]
+     |     ^^^^^^^
+
+warning: cannot test inner items
+    --> crates/parser/src/parser.rs:4567:5
+     |
+4567 |     #[test]
+     |     ^^^^^^^
+
+warning: cannot test inner items
+    --> crates/parser/src/parser.rs:4580:5
+     |
+4580 |     #[test]
+     |     ^^^^^^^
+
+warning: cannot test inner items
+    --> crates/parser/src/parser.rs:4595:5
+     |
+4595 |     #[test]
+     |     ^^^^^^^
+
+warning: cannot test inner items
+    --> crates/parser/src/parser.rs:4610:5
+     |
+4610 |     #[test]
+     |     ^^^^^^^
+
+warning: cannot test inner items
+    --> crates/parser/src/parser.rs:4623:5
+     |
+4623 |     #[test]
+     |     ^^^^^^^
+
+warning: cannot test inner items
+    --> crates/parser/src/parser.rs:4641:5
+     |
+4641 |     #[test]
+     |     ^^^^^^^
+
+warning: cannot test inner items
+    --> crates/parser/src/parser.rs:4658:5
+     |
+4658 |     #[test]
+     |     ^^^^^^^
+
+warning: cannot test inner items
+    --> crates/parser/src/parser.rs:4674:5
+     |
+4674 |     #[test]
+     |     ^^^^^^^
+
+warning: cannot test inner items
+    --> crates/parser/src/parser.rs:4690:5
+     |
+4690 |     #[test]
+     |     ^^^^^^^
+
+warning: cannot test inner items
+    --> crates/parser/src/parser.rs:4706:5
+     |
+4706 |     #[test]
+     |     ^^^^^^^
+
+warning: cannot test inner items
+    --> crates/parser/src/parser.rs:4722:5
+     |
+4722 |     #[test]
+     |     ^^^^^^^
+
+warning: cannot test inner items
+    --> crates/parser/src/parser.rs:4734:5
+     |
+4734 |     #[test]
+     |     ^^^^^^^
+
+warning: cannot test inner items
+    --> crates/parser/src/parser.rs:4746:5
+     |
+4746 |     #[test]
+     |     ^^^^^^^
+
+warning: cannot test inner items
+    --> crates/parser/src/parser.rs:4758:5
+     |
+4758 |     #[test]
+     |     ^^^^^^^
+
+warning: cannot test inner items
+    --> crates/parser/src/parser.rs:4770:5
+     |
+4770 |     #[test]
+     |     ^^^^^^^
+
+warning: cannot test inner items
+    --> crates/parser/src/parser.rs:4782:5
+     |
+4782 |     #[test]
+     |     ^^^^^^^
+
+warning: cannot test inner items
+    --> crates/parser/src/parser.rs:4794:5
+     |
+4794 |     #[test]
+     |     ^^^^^^^
+
+warning: cannot test inner items
+    --> crates/parser/src/parser.rs:4806:5
+     |
+4806 |     #[test]
+     |     ^^^^^^^
+
+warning: cannot test inner items
+    --> crates/parser/src/parser.rs:4818:5
+     |
+4818 |     #[test]
+     |     ^^^^^^^
+
+warning: cannot test inner items
+    --> crates/parser/src/parser.rs:4830:5
+     |
+4830 |     #[test]
+     |     ^^^^^^^
+
+warning: cannot test inner items
+    --> crates/parser/src/parser.rs:4846:5
+     |
+4846 |     #[test]
+     |     ^^^^^^^
+
+warning: function `test_parse_binary_expression_subtraction` is never used
+    --> crates/parser/src/parser.rs:4464:8
+     |
+4464 |     fn test_parse_binary_expression_subtraction() {
+     |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `test_parse_binary_expression_multiplication` is never used
+    --> crates/parser/src/parser.rs:4477:8
+     |
+4477 |     fn test_parse_binary_expression_multiplication() {
+     |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `test_parse_binary_expression_division` is never used
+    --> crates/parser/src/parser.rs:4490:8
+     |
+4490 |     fn test_parse_binary_expression_division() {
+     |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `test_parse_binary_expression_modulo` is never used
+    --> crates/parser/src/parser.rs:4503:8
+     |
+4503 |     fn test_parse_binary_expression_modulo() {
+     |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `test_parse_binary_expression_not_equal` is never used
+    --> crates/parser/src/parser.rs:4516:8
+     |
+4516 |     fn test_parse_binary_expression_not_equal() {
+     |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `test_parse_binary_expression_less_equal` is never used
+    --> crates/parser/src/parser.rs:4529:8
+     |
+4529 |     fn test_parse_binary_expression_less_equal() {
+     |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `test_parse_binary_expression_greater_equal` is never used
+    --> crates/parser/src/parser.rs:4542:8
+     |
+4542 |     fn test_parse_binary_expression_greater_equal() {
+     |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `test_parse_binary_expression_complex` is never used
+    --> crates/parser/src/parser.rs:4555:8
+     |
+4555 |     fn test_parse_binary_expression_complex() {
+     |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `test_parse_binary_expression_with_literal` is never used
+    --> crates/parser/src/parser.rs:4568:8
+     |
+4568 |     fn test_parse_binary_expression_with_literal() {
+     |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `test_parse_binary_expression_multiple_columns` is never used
+    --> crates/parser/src/parser.rs:4581:8
+     |
+4581 |     fn test_parse_binary_expression_multiple_columns() {
+     |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `test_parse_binary_expression_mixed_with_identifier` is never used
+    --> crates/parser/src/parser.rs:4596:8
+     |
+4596 |     fn test_parse_binary_expression_mixed_with_identifier() {
+     |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `test_parse_binary_expression_with_table_prefix` is never used
+    --> crates/parser/src/parser.rs:4611:8
+     |
+4611 |     fn test_parse_binary_expression_with_table_prefix() {
+     |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `test_parse_create_trigger` is never used
+    --> crates/parser/src/parser.rs:4624:8
+     |
+4624 |     fn test_parse_create_trigger() {
+     |        ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `test_parse_create_trigger_after_update` is never used
+    --> crates/parser/src/parser.rs:4642:8
+     |
+4642 |     fn test_parse_create_trigger_after_update() {
+     |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `test_parse_begin` is never used
+    --> crates/parser/src/parser.rs:4659:8
+     |
+4659 |     fn test_parse_begin() {
+     |        ^^^^^^^^^^^^^^^^
+
+warning: function `test_parse_begin_work` is never used
+    --> crates/parser/src/parser.rs:4675:8
+     |
+4675 |     fn test_parse_begin_work() {
+     |        ^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `test_parse_begin_serializable` is never used
+    --> crates/parser/src/parser.rs:4691:8
+     |
+4691 |     fn test_parse_begin_serializable() {
+     |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `test_parse_begin_isolation_level` is never used
+    --> crates/parser/src/parser.rs:4707:8
+     |
+4707 |     fn test_parse_begin_isolation_level() {
+     |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `test_parse_commit` is never used
+    --> crates/parser/src/parser.rs:4723:8
+     |
+4723 |     fn test_parse_commit() {
+     |        ^^^^^^^^^^^^^^^^^
+
+warning: function `test_parse_commit_work` is never used
+    --> crates/parser/src/parser.rs:4735:8
+     |
+4735 |     fn test_parse_commit_work() {
+     |        ^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `test_parse_rollback` is never used
+    --> crates/parser/src/parser.rs:4747:8
+     |
+4747 |     fn test_parse_rollback() {
+     |        ^^^^^^^^^^^^^^^^^^^
+
+warning: function `test_parse_rollback_work` is never used
+    --> crates/parser/src/parser.rs:4759:8
+     |
+4759 |     fn test_parse_rollback_work() {
+     |        ^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `test_parse_start_transaction` is never used
+    --> crates/parser/src/parser.rs:4771:8
+     |
+4771 |     fn test_parse_start_transaction() {
+     |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `test_parse_start_transaction_serializable` is never used
+    --> crates/parser/src/parser.rs:4783:8
+     |
+4783 |     fn test_parse_start_transaction_serializable() {
+     |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `test_parse_set_transaction` is never used
+    --> crates/parser/src/parser.rs:4795:8
+     |
+4795 |     fn test_parse_set_transaction() {
+     |        ^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `test_parse_set_transaction_read_committed` is never used
+    --> crates/parser/src/parser.rs:4807:8
+     |
+4807 |     fn test_parse_set_transaction_read_committed() {
+     |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `test_parse_set_transaction_read_uncommitted` is never used
+    --> crates/parser/src/parser.rs:4819:8
+     |
+4819 |     fn test_parse_set_transaction_read_uncommitted() {
+     |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `test_parse_begin_read_committed` is never used
+    --> crates/parser/src/parser.rs:4831:8
+     |
+4831 |     fn test_parse_begin_read_committed() {
+     |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `test_parse_begin_repeatable_read` is never used
+    --> crates/parser/src/parser.rs:4847:8
+     |
+4847 |     fn test_parse_begin_repeatable_read() {
+     |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: `sqlrustgo-parser` (lib test) generated 58 warnings
+error[E0425]: cannot find type `CheckpointManager` in this scope
+  --> crates/storage/src/wal_storage.rs:11:43
+   |
+11 |     checkpoint_manager: Option<Arc<RwLock<CheckpointManager>>>,
+   |                                           ^^^^^^^^^^^^^^^^^ not found in this scope
+   |
+help: consider importing this struct through its public re-export
+   |
+ 1 + use crate::CheckpointManager;
+   |
+
+error[E0425]: cannot find type `CheckpointManager` in this scope
+  --> crates/storage/src/wal_storage.rs:27:40
+   |
+27 |         checkpoint_manager: Arc<RwLock<CheckpointManager>>,
+   |                                        ^^^^^^^^^^^^^^^^^ not found in this scope
+   |
+help: consider importing this struct through its public re-export
+   |
+ 1 + use crate::CheckpointManager;
+   |
+
+error[E0422]: cannot find struct, variant or union type `CheckpointMetadata` in this scope
+   --> crates/storage/src/wal_storage.rs:230:45
+    |
+230 |                     guard.record_checkpoint(CheckpointMetadata {
+    |                                             ^^^^^^^^^^^^^^^^^^ not found in this scope
+    |
+help: consider importing this struct through its public re-export
+    |
+  1 + use crate::CheckpointMetadata;
+    |
+
+error[E0425]: cannot find type `TriggerInfo` in this scope
+   --> crates/storage/src/wal_storage.rs:400:40
+    |
+400 |     fn create_trigger(&mut self, info: TriggerInfo) -> SqlResult<()> {
+    |                                        ^^^^^^^^^^^ not found in this scope
+    |
+help: consider importing this struct through its public re-export
+    |
+  1 + use crate::TriggerInfo;
+    |
+
+error[E0425]: cannot find type `TriggerInfo` in this scope
+   --> crates/storage/src/wal_storage.rs:408:49
+    |
+408 |     fn get_trigger(&self, name: &str) -> Option<TriggerInfo> {
+    |                                                 ^^^^^^^^^^^ not found in this scope
+    |
+help: consider importing this struct through its public re-export
+    |
+  1 + use crate::TriggerInfo;
+    |
+
+error[E0425]: cannot find type `TriggerInfo` in this scope
+   --> crates/storage/src/wal_storage.rs:412:49
+    |
+412 |     fn list_triggers(&self, table: &str) -> Vec<TriggerInfo> {
+    |                                                 ^^^^^^^^^^^ not found in this scope
+    |
+help: consider importing this struct through its public re-export
+    |
+  1 + use crate::TriggerInfo;
+    |
+
+warning: unused import: `crate::bplus_tree::index::CompositeKey`
+ --> crates/storage/src/wal_storage.rs:1:5
+  |
+1 | use crate::bplus_tree::index::CompositeKey;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+error[E0053]: method `update_if` has an incompatible type for trait
+   --> crates/storage/src/wal_storage.rs:355:18
+    |
+355 |         updates: &[(usize, Value)],
+    |                  ^^^^^^^^^^^^^^^^^ expected `RowMutation`, found `[(usize, sqlrustgo_types::Value)]`
+    |
+note: type in trait
+   --> crates/storage/src/engine.rs:471:19
+    |
+471 |         mutation: &RowMutation,
+    |                   ^^^^^^^^^^^^
+    = note: expected signature `fn(&mut WalStorage<_, _>, &_, &Box<_>, &RowMutation) -> Result<_, _>`
+               found signature `fn(&mut WalStorage<_, _>, &_, &Box<_>, &[(usize, sqlrustgo_types::Value)]) -> Result<_, _>`
+help: change the parameter type to match the trait
+    |
+355 -         updates: &[(usize, Value)],
+355 +         updates: &RowMutation,
+    |
+
+error[E0282]: type annotations needed
+   --> crates/storage/src/wal_storage.rs:229:36
+    |
+229 |                 if let Ok(guard) = cp.write() {
+    |                                    ^^ cannot infer type
+
+error[E0282]: type annotations needed
+   --> crates/storage/src/wal_storage.rs:230:21
+    |
+230 |                     guard.record_checkpoint(CheckpointMetadata {
+    |                     ^^^^^ cannot infer type
+
+error[E0282]: type annotations needed
+   --> crates/storage/src/wal_storage.rs:249:36
+    |
+249 |                 if let Ok(guard) = cp.read() {
+    |                                    ^^ cannot infer type
+
+error[E0282]: type annotations needed
+   --> crates/storage/src/wal_storage.rs:250:43
+    |
+250 |                     if let Some(cp_lsn) = guard.last_checkpoint_lsn() {
+    |                                           ^^^^^ cannot infer type
+
+error[E0308]: mismatched types
+   --> crates/storage/src/wal_storage.rs:361:45
+    |
+361 |         self.inner.update_if(table, filter, updates)
+    |                    ---------                ^^^^^^^ expected `&RowMutation`, found `&[(usize, Value)]`
+    |                    |
+    |                    arguments to this method are incorrect
+    |
+    = note: expected reference `&RowMutation`
+               found reference `&[(usize, sqlrustgo_types::Value)]`
+note: method defined here
+   --> crates/storage/src/engine.rs:467:8
+    |
+467 |     fn update_if(
+    |        ^^^^^^^^^
+...
+471 |         mutation: &RowMutation,
+    |         --------
+
+warning: unused import: `super::*`
+    --> crates/storage/src/bplus_tree/index.rs:1917:9
+     |
+1917 |     use super::*;
+     |         ^^^^^^^^
+     |
+     = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused imports: `WALVerificationResult` and `WALVerifier`
+    --> crates/storage/src/wal_legacy.rs:1886:56
+     |
+1886 |         use sqlrustgo_wal_verification::verification::{WALVerificationResult, WALVerifier};
+     |                                                        ^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^
+
+warning: unused import: `std::fs::File`
+    --> crates/storage/src/wal_legacy.rs:1887:13
+     |
+1887 |         use std::fs::File;
+     |             ^^^^^^^^^^^^^
+
+warning: unused import: `crate::bplus_tree::index::CompositeKey`
+ --> crates/storage/src/wal_storage.rs:1:5
+  |
+1 | use crate::bplus_tree::index::CompositeKey;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0053]: method `update_if` has an incompatible type for trait
+   --> crates/storage/src/wal_storage.rs:355:18
+    |
+355 |         updates: &[(usize, Value)],
+    |                  ^^^^^^^^^^^^^^^^^ expected `engine::RowMutation`, found `[(usize, sqlrustgo_types::Value)]`
+    |
+note: type in trait
+   --> crates/storage/src/engine.rs:471:19
+    |
+471 |         mutation: &RowMutation,
+    |                   ^^^^^^^^^^^^
+    = note: expected signature `fn(&mut wal_storage::WalStorage<_, _>, &_, &Box<_>, &engine::RowMutation) -> Result<_, _>`
+               found signature `fn(&mut wal_storage::WalStorage<_, _>, &_, &Box<_>, &[(usize, sqlrustgo_types::Value)]) -> Result<_, _>`
+help: change the parameter type to match the trait
+    |
+355 -         updates: &[(usize, Value)],
+355 +         updates: &engine::RowMutation,
+    |
+
+Some errors have detailed explanations: E0053, E0282, E0308, E0422, E0425.
+For more information about an error, try `rustc --explain E0053`.
+warning: `sqlrustgo-storage` (lib) generated 1 warning
+error: could not compile `sqlrustgo-storage` (lib) due to 12 previous errors; 1 warning emitted
+warning: build failed, waiting for other jobs to finish...
+error[E0308]: mismatched types
+   --> crates/storage/src/wal_storage.rs:361:45
+    |
+361 |         self.inner.update_if(table, filter, updates)
+    |                    ---------                ^^^^^^^ expected `&RowMutation`, found `&[(usize, Value)]`
+    |                    |
+    |                    arguments to this method are incorrect
+    |
+    = note: expected reference `&engine::RowMutation`
+               found reference `&[(usize, sqlrustgo_types::Value)]`
+note: method defined here
+   --> crates/storage/src/engine.rs:467:8
+    |
+467 |     fn update_if(
+    |        ^^^^^^^^^
+...
+471 |         mutation: &RowMutation,
+    |         --------
+
+warning: variable does not need to be mutable
+    --> crates/storage/src/bplus_tree/index.rs:1517:13
+     |
+1517 |         let mut index = CompositeBTreeIndex::new(2);
+     |             ----^^^^^
+     |             |
+     |             help: remove this `mut`
+     |
+     = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `index`
+    --> crates/storage/src/bplus_tree/index.rs:1517:13
+     |
+1517 |         let mut index = CompositeBTreeIndex::new(2);
+     |             ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_index`
+     |
+     = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+   --> crates/storage/src/buffer_pool.rs:396:13
+    |
+396 |         let mut buf = vec![0u8; 2048];
+    |             ----^^^
+    |             |
+    |             help: remove this `mut`
+
+warning: variable does not need to be mutable
+    --> crates/storage/src/wal_legacy.rs:1277:17
+     |
+1277 |             let mut manager = WalManager::new(wal_path.clone());
+     |                 ----^^^^^^^
+     |                 |
+     |                 help: remove this `mut`
+
+warning: variable does not need to be mutable
+    --> crates/storage/src/wal_legacy.rs:1335:13
+     |
+1335 |         let mut manager = WalManager::new(wal_path);
+     |             ----^^^^^^^
+     |             |
+     |             help: remove this `mut`
+
+warning: variable does not need to be mutable
+    --> crates/storage/src/wal_legacy.rs:1369:13
+     |
+1369 |         let mut manager = WalManager::new(wal_path);
+     |             ----^^^^^^^
+     |             |
+     |             help: remove this `mut`
+
+warning: variable does not need to be mutable
+    --> crates/storage/src/wal_legacy.rs:1405:17
+     |
+1405 |             let mut manager = WalManager::new(wal_path.clone());
+     |                 ----^^^^^^^
+     |                 |
+     |                 help: remove this `mut`
+
+warning: variable does not need to be mutable
+    --> crates/storage/src/wal_legacy.rs:1446:13
+     |
+1446 |         let mut manager = WalManager::new(wal_path);
+     |             ----^^^^^^^
+     |             |
+     |             help: remove this `mut`
+
+warning: `sqlrustgo-storage` (lib test) generated 12 warnings
+error: could not compile `sqlrustgo-storage` (lib test) due to 12 previous errors; 12 warnings emitted
