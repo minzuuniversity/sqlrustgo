@@ -6937,6 +6937,252 @@ pub fn parse(sql: &str) -> Result<Statement, String> {
     parser.parse_statement()
 }
 
+/// Parse a SQL string into multiple statements (semicolon-separated)
+pub fn parse_statements(sql: &str) -> Result<Vec<Statement>, String> {
+    use crate::token::Token;
+    let tokens = Lexer::new(sql).tokenize();
+
+    let mut statements = Vec::new();
+    let mut current_batch = Vec::new();
+    let mut paren_depth: usize = 0;
+    let mut in_string = false;
+
+    for token in &tokens {
+        match token {
+            Token::Semicolon if !in_string && paren_depth == 0 => {
+                // End of statement
+                if !current_batch.is_empty() {
+                    let mut parser = Parser::new(current_batch.clone());
+                    match parser.parse_statement() {
+                        Ok(stmt) => statements.push(stmt),
+                        Err(e) => return Err(e),
+                    }
+                    current_batch.clear();
+                }
+            }
+            Token::LParen => {
+                paren_depth += 1;
+                current_batch.push(token.clone());
+            }
+            Token::RParen => {
+                paren_depth = paren_depth.saturating_sub(1);
+                current_batch.push(token.clone());
+            }
+            Token::StringLiteral(_) => {
+                in_string = !in_string;
+                current_batch.push(token.clone());
+            }
+            _ => {
+                current_batch.push(token.clone());
+            }
+        }
+    }
+
+    // Handle last statement without trailing semicolon
+    if !current_batch.iter().all(|t| matches!(t, Token::Eof)) {
+        let mut parser = Parser::new(current_batch);
+        match parser.parse_statement() {
+            Ok(stmt) => statements.push(stmt),
+            Err(e) => return Err(e),
+        }
+    }
+
+    if statements.is_empty() {
+        Err("Empty input".to_string())
+    } else {
+        Ok(statements)
+    }
+}
+
+/// Split a multi-statement SQL string into individual statement
+/// strings, returning the raw SQL text fragments separated by
+/// semicolons that are not nested inside parentheses, brackets,
+/// string literals, or comments. Each fragment is non-empty and
+/// trimmed.
+///
+/// This is the string-level companion to [`parse_statements`].
+/// MySQL's wire-protocol COM_QUERY accepts multiple semicolon-
+/// separated statements in one packet; the server must execute
+/// them in order and return one response per statement. The
+/// executor's `eng.execute()` only handles a single statement, so
+/// the COM_QUERY handler loops over the fragments returned by this
+/// function.
+///
+/// Trailing semicolons and empty trailing fragments are dropped.
+/// Input that is entirely whitespace / comments yields an empty
+/// `Vec`.
+pub fn split_sql_statements(sql: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    let mut start: usize = 0;
+    let bytes = sql.as_bytes();
+    let mut i: usize = 0;
+    let mut paren_depth: usize = 0;
+    let mut bracket_depth: usize = 0;
+    let mut in_single_quote: bool = false;
+    let mut in_double_quote: bool = false;
+    let mut in_line_comment: bool = false;
+    let mut in_block_comment: bool = false;
+
+    while i < bytes.len() {
+        let c = bytes[i];
+        if in_line_comment {
+            if c == b'\n' {
+                in_line_comment = false;
+            }
+            i += 1;
+            continue;
+        }
+        if in_block_comment {
+            if c == b'*' && i + 1 < bytes.len() && bytes[i + 1] == b'/' {
+                in_block_comment = false;
+                i += 2;
+                continue;
+            }
+            i += 1;
+            continue;
+        }
+        if in_single_quote {
+            if c == b'\\' && i + 1 < bytes.len() {
+                i += 2;
+                continue;
+            }
+            if c == b'\'' {
+                if i + 1 < bytes.len() && bytes[i + 1] == b'\'' {
+                    i += 2;
+                    continue;
+                }
+                in_single_quote = false;
+            }
+            i += 1;
+            continue;
+        }
+        if in_double_quote {
+            if c == b'\\' && i + 1 < bytes.len() {
+                i += 2;
+                continue;
+            }
+            if c == b'"' {
+                in_double_quote = false;
+            }
+            i += 1;
+            continue;
+        }
+
+        match c {
+            b'\'' => {
+                in_single_quote = true;
+                i += 1;
+            }
+            b'"' => {
+                in_double_quote = true;
+                i += 1;
+            }
+            b'-' if i + 1 < bytes.len() && bytes[i + 1] == b'-' => {
+                in_line_comment = true;
+                i += 2;
+            }
+            b'/' if i + 1 < bytes.len() && bytes[i + 1] == b'*' => {
+                in_block_comment = true;
+                i += 2;
+            }
+            b'(' => {
+                paren_depth += 1;
+                i += 1;
+            }
+            b')' => {
+                paren_depth = paren_depth.saturating_sub(1);
+                i += 1;
+            }
+            b'[' => {
+                bracket_depth += 1;
+                i += 1;
+            }
+            b']' => {
+                bracket_depth = bracket_depth.saturating_sub(1);
+                i += 1;
+            }
+            b';' if paren_depth == 0 && bracket_depth == 0 => {
+                let frag = sql[start..i].trim();
+                if !frag.is_empty() {
+                    out.push(frag.to_string());
+                }
+                i += 1;
+                start = i;
+            }
+            _ => {
+                i += 1;
+            }
+        }
+    }
+
+    let tail = sql[start..].trim();
+    if !tail.is_empty() && !in_line_comment && !in_block_comment {
+        out.push(tail.to_string());
+    }
+    out
+}
+
+#[cfg(test)]
+mod split_sql_statements_tests {
+    use super::*;
+
+    #[test]
+    fn single_statement_no_semi() {
+        assert_eq!(split_sql_statements("SELECT 1"), vec!["SELECT 1"]);
+    }
+
+    #[test]
+    fn two_statements_separated_by_semi() {
+        assert_eq!(
+            split_sql_statements("SELECT 1; SELECT 2"),
+            vec!["SELECT 1", "SELECT 2"]
+        );
+    }
+
+    #[test]
+    fn trailing_semicolon_drops_empty() {
+        assert_eq!(
+            split_sql_statements("SELECT 1; SELECT 2;"),
+            vec!["SELECT 1", "SELECT 2"]
+        );
+    }
+
+    #[test]
+    fn semicolon_inside_parens_is_preserved() {
+        let frags = split_sql_statements("INSERT INTO t VALUES (1, ';x'); SELECT 1");
+        assert_eq!(frags.len(), 2);
+        assert!(frags[0].starts_with("INSERT INTO t"));
+        assert_eq!(frags[1], "SELECT 1");
+    }
+
+    #[test]
+    fn semicolon_inside_string_literal_is_preserved() {
+        let frags = split_sql_statements("SELECT 'a;b'; SELECT 1");
+        assert_eq!(frags.len(), 2);
+        assert_eq!(frags[0], "SELECT 'a;b'");
+        assert_eq!(frags[1], "SELECT 1");
+    }
+
+    #[test]
+    fn escaped_quote_does_not_close_string() {
+        let frags = split_sql_statements("SELECT 'it''s ok'; SELECT 1");
+        assert_eq!(frags.len(), 2);
+    }
+
+    #[test]
+    fn line_comment_around_semi() {
+        let frags = split_sql_statements("SELECT 1; -- comment ;\nSELECT 2");
+        assert_eq!(frags.len(), 2);
+    }
+
+    #[test]
+    fn empty_input_yields_empty_vec() {
+        assert!(split_sql_statements("").is_empty());
+        assert!(split_sql_statements("   \n\t  ").is_empty());
+        assert!(split_sql_statements("-- only a comment").is_empty());
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
