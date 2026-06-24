@@ -29,11 +29,18 @@
 //! - 1000-row INSERT:  ~46 ms   (threshold 1 s  → ~22× headroom)
 //! - 10000-row INSERT: ~3.87 s  (threshold 10 s → ~2.6× headroom)
 //!
-//! The 1 s / 10 s thresholds are intentionally tighter than the original
-//! 5 s / 30 s to surface regressions earlier (see PR review).
+//! **Why `#[ignore]` (issue #3307 fix #3)**: these timing assertions are
+//! release-only. On debug builds the test takes 10-100× longer (e.g.
+//! 9.36s for the 1000-row case vs the 1s threshold, and 1152s for the
+//! 10000-row case). The test client has a 5s read timeout, so debug
+//! builds trip the timeout and panic with
+//! `read packet header: Resource temporarily unavailable (os error 11)`
+//! (Linux) / `... (os error 35)` (macOS). Marking the tests `#[ignore]`
+//! makes `cargo test` (default debug build) skip them; the release
+//! invocation above picks them up via `--ignored` and runs the actual
+//! timing assertions.
 
 mod common;
-
 use common::MySqlTestClient;
 use sqlrustgo_mysql_server::testing::{start_ephemeral, EphemeralConfig};
 use std::time::Instant;
@@ -41,17 +48,16 @@ use tempfile::TempDir;
 
 fn open_client(data_dir: &std::path::Path) -> MySqlTestClient {
     let cfg = EphemeralConfig {
-        host: "127.0.0.1".to_string(),
+        data_dir: Some(data_dir.to_path_buf()),
         bootstrap_tables: false,
         bootstrap_users: true,
-        data_dir: Some(data_dir.to_path_buf()),
-        bootstrap_sql: Vec::new(),
-        bulk_insert_buffer_size: 1_048_576,
+        ..Default::default()
     };
     let handle = start_ephemeral(cfg).expect("start_ephemeral");
     MySqlTestClient::connect_handle(handle).expect("MySqlTestClient::connect_handle")
 }
 
+#[ignore]
 #[test]
 #[ignore = "performance gate, run with --ignored --release"]
 fn perf_1000_row_batched_insert_under_1s() {
@@ -91,6 +97,7 @@ fn perf_1000_row_batched_insert_under_1s() {
     );
 }
 
+#[ignore]
 #[test]
 #[ignore = "performance gate, run with --ignored --release"]
 fn perf_10000_row_batched_insert_under_10s() {

@@ -684,8 +684,37 @@ impl Packet {
         w.write_u24::<LittleEndian>(self.length)?;
         w.write_u8(self.sequence)?;
         w.write_all(&self.payload)?;
-        w.flush()?;
-        Ok(())
+        // Retry the flush on WouldBlock / TimedOut up to a deadline.
+        // Background: on macOS, `TcpStream::flush()` does not honor
+        // `SO_SNDTIMEO` (set via `set_write_timeout` in
+        // `handle_connection`). The 60s timeout covers the user-buffer
+        // write syscall but not the kernel-side flush of pending TCP
+        // segments, so flush() can block forever. Linux's flush() honors
+        // `SO_SNDTIMEO` and returns `EAGAIN` (`os error 11`) immediately
+        // — and on debug builds the kernel send buffer fills up faster
+        // than the test client can drain, so the flush never completes.
+        //
+        // The retry loop on `WouldBlock`/`TimedOut` matches the
+        // `TlsStream::flush` pattern at `crates/mysql-server/src/lib.rs:770`
+        // which loops on `complete_io` for the same reason.
+        const FLUSH_DEADLINE: std::time::Duration = std::time::Duration::from_secs(30);
+        let deadline = std::time::Instant::now() + FLUSH_DEADLINE;
+        loop {
+            match w.flush() {
+                Ok(()) => return Ok(()),
+                Err(e)
+                    if e.kind() == std::io::ErrorKind::WouldBlock
+                        || e.kind() == std::io::ErrorKind::TimedOut =>
+                {
+                    if std::time::Instant::now() >= deadline {
+                        return Err(MySqlError::Io(e));
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(5));
+                    continue;
+                }
+                Err(e) => return Err(MySqlError::Io(e)),
+            }
+        }
     }
 }
 
@@ -1809,9 +1838,7 @@ fn handle_load_local_infile<S: Read + Write>(
     bulk_buf_size: usize,
     seq: &mut u8,
     _cap: u32,
-) -> MySqlResult<u64> {
-    use crate::load_data::{bulk_insert, parse_tbl_line};
-
+) -> MySqlResult<(u64, u64)> {
     // 1. Whitelist check — canonicalize both sides and confirm the
     //    file is inside data_dir. This is the only line of defense
     //    against a malicious client pointing us at e.g. /etc/passwd.
@@ -1827,8 +1854,7 @@ fn handle_load_local_infile<S: Read + Write>(
         )));
     }
 
-    // 2. Look up the target table's column count so parse_tbl_line
-    //    can validate each line has the right shape.
+    use crate::load_data::{bulk_insert, parse_tbl_line};
     let col_count = {
         let storage_arc = engine.storage_ref();
         let storage = storage_arc
@@ -1841,7 +1867,6 @@ fn handle_load_local_infile<S: Read + Write>(
     };
 
     // 3. Send 0xFB packet to the client — the client interprets this
-    //    as "open this file and start streaming its bytes back".
     let mut fb_payload = Vec::with_capacity(path.len() + 1);
     fb_payload.push(packet_type::LOCAL_INFILE_REQUEST);
     fb_payload.extend_from_slice(path.as_bytes());
@@ -1857,6 +1882,7 @@ fn handle_load_local_infile<S: Read + Write>(
     //    with an empty-payload packet.
     let mut buf: Vec<u8> = Vec::with_capacity(bulk_buf_size * 2);
     let mut total_rows: u64 = 0;
+    let mut skipped_rows: u64 = 0;
     let mut pending_rows: Vec<Vec<sqlrustgo_types::Value>> = Vec::new();
 
     // ---- EAGAIN bug fix (RC2 Week 1 Day 6) ----
@@ -1892,6 +1918,7 @@ fn handle_load_local_infile<S: Read + Write>(
                 Ok(s) => s,
                 Err(e) => {
                     tracing::warn!("non-utf8 line skipped: {}", e);
+                    skipped_rows = skipped_rows.saturating_add(1);
                     continue;
                 }
             };
@@ -1905,6 +1932,7 @@ fn handle_load_local_infile<S: Read + Write>(
                 }
                 Err(e) => {
                     tracing::warn!("parse line error: {}", e);
+                    skipped_rows = skipped_rows.saturating_add(1);
                 }
             }
         }
@@ -1972,7 +2000,21 @@ fn handle_load_local_infile<S: Read + Write>(
         total_rows += n;
     }
 
-    Ok(total_rows)
+    // Materialize the .json file for this table so that subsequent
+    // test runs (which check `json_data_ready()` before starting the
+    // server) can skip the expensive LOAD DATA phase.  Without this,
+    // large tables (orders, lineitem) are only in-memory + WAL and
+    // every restart re-runs LOAD DATA from scratch.
+    //
+    // `WalStorage::flush()` delegates to `FileStorage::flush()` which
+    // writes all table .json files.
+    {
+        let mut s = engine.storage_write();
+        s.flush()
+            .map_err(|e| MySqlError::Other(format!("flush storage: {}", e)))?;
+    }
+
+    Ok((total_rows, skipped_rows))
 }
 
 #[allow(unused_assignments)]
@@ -2041,7 +2083,7 @@ fn do_command_loop<S: Read + Write>(
                         .clone()
                         .unwrap_or_else(|| std::path::PathBuf::from("/tmp"));
                     let bulk_buf = cfg.bulk_insert_buffer_size;
-                    let n = match handle_load_local_infile(
+                    let (n, skipped) = match handle_load_local_infile(
                         stream,
                         &mut engine.write().unwrap(),
                         &path,
@@ -2052,15 +2094,38 @@ fn do_command_loop<S: Read + Write>(
                         &mut seq,
                         cap,
                     ) {
-                        Ok(n) => n,
+                        Ok((loaded, skipped)) => (loaded, skipped),
                         Err(e) => {
                             make_err_packet(seq, 1146u16, "42S02", &e.to_string())
                                 .write_to(stream)?;
                             seq = seq.wrapping_add(1);
-                            0
+                            (0, 0)
                         }
                     };
-                    make_ok_packet(seq, n, 0, 0x0002, 0).write_to(stream)?;
+                    // If parse errors caused silent row loss, report
+                    // it in the OK packet's `warnings` field (u16).
+                    // If the count overflows u16, emit ERR — silent
+                    // truncation of the warning count would mislead
+                    // the client. Issue #3307 fix #4.
+                    let warnings: u16 = match u16::try_from(skipped) {
+                        Ok(w) => w,
+                        Err(_) => {
+                            make_err_packet(
+                                seq,
+                                1210u16,
+                                "HY000",
+                                &format!(
+                                    "LOAD DATA skipped {} rows (>{} u16::MAX)",
+                                    skipped,
+                                    u16::MAX
+                                ),
+                            )
+                            .write_to(stream)?;
+                            seq = seq.wrapping_add(1);
+                            continue;
+                        }
+                    };
+                    make_ok_packet(seq, n, 0, 0x0002, warnings).write_to(stream)?;
                     seq = seq.wrapping_add(1);
                     continue;
                 }
