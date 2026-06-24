@@ -99,7 +99,6 @@ mod harness {
             self.columns.insert(col.column_name.clone(), col);
             self
         }
-        #[allow(dead_code)]
         pub fn with_last_updated(mut self, ts: u64) -> Self {
             self.last_updated = ts;
             self

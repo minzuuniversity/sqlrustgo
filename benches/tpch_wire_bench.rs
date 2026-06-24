@@ -54,7 +54,9 @@ const TABLES: &[&str] = &[
 // `cargo run --example tpch_data_gen -- --scale 1 --output /tmp/tpch_sf1`
 // produces.
 fn fixture_dir() -> PathBuf {
-    PathBuf::from(std::env::var("TPCH_SF1_DIR").unwrap_or_else(|_| "/tmp/tpch_sf1".to_string()))
+    PathBuf::from(
+        std::env::var("TPCH_SF1_DIR").unwrap_or_else(|_| "/tmp/tpch_sf1".to_string()),
+    )
 }
 
 struct SharedServer {
@@ -164,7 +166,9 @@ fn bench_tpch_wire(c: &mut Criterion) {
         }
         group.bench_with_input(BenchmarkId::from_parameter(name), sql, |b, sql| {
             b.iter(|| {
-                let rows = client.query_rows(sql).expect("query");
+                let rows = client
+                    .query_rows(sql)
+                    .expect("query");
                 let rc = rows.len();
                 criterion::black_box(rc);
             });
@@ -200,15 +204,10 @@ fn bench_tpch_wire(c: &mut Criterion) {
         }
         lats_us.sort();
         let p = |q: f64| -> u64 {
-            let idx =
-                ((lats_us.len() as f64 * q / 100.0) as usize).min(lats_us.len().saturating_sub(1));
+            let idx = ((lats_us.len() as f64 * q / 100.0) as usize).min(lats_us.len().saturating_sub(1));
             lats_us.get(idx).copied().unwrap_or(0)
         };
-        let avg = if lats_us.is_empty() {
-            0
-        } else {
-            lats_us.iter().sum::<u64>() / lats_us.len() as u64
-        };
+        let avg = if lats_us.is_empty() { 0 } else { lats_us.iter().sum::<u64>() / lats_us.len() as u64 };
         let mut qobj = serde_json::Map::new();
         qobj.insert("name".into(), json!(name));
         qobj.insert("iterations".into(), json!(n));

@@ -5,6 +5,7 @@
 
 use serde_json::Value as JsonValue;
 use sqlrustgo::{ExecutionEngine, MemoryStorage};
+use sqlrustgo_types::Value as SqlValue;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
