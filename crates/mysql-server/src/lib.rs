@@ -150,8 +150,12 @@ fn read_fd_limit() -> (usize, usize) {
 
 fn list_threads() -> String {
     std::fs::read_dir("/proc/self/task")
-        .map(|entries| entries.map(|e| e.map(|e| e.file_name())).collect::<Result<Vec<_>, _>>())
-        .map(|names| format!("{} threads", names.len()))
+        .map(|entries| {
+            entries
+                .map(|e| e.map(|e| e.file_name()))
+                .collect::<Result<Vec<_>, _>>()
+        })
+        .map(|names: Result<Vec<_>, _>| format!("{} threads", names.len()))
         .unwrap_or_else(|_| "unknown".to_string())
 }
 
