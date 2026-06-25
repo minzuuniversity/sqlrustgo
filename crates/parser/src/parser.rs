@@ -6877,8 +6877,6 @@ pub fn parse(sql: &str) -> Result<Statement, String> {
     parser.parse_statement()
 }
 
-
-
 /// Parse a SQL string into multiple statements (semicolon-separated)
 pub fn parse_statements(sql: &str) -> Result<Vec<Statement>, String> {
     use crate::token::Token;
