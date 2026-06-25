@@ -706,5 +706,31 @@ pub fn connect_default() -> wire_err::Result<Self> {
     }
 }
 
-pub mod tpch_wire_harness;
-pub mod oracle_framework;
+impl MySqlTestClient {
+    /// Send COM_PING — used by mysql_wire_protocol_test.
+    pub fn ping(&mut self) -> wire_err::Result<()> {
+        write_packet(self.raw_stream(), 0, &[0x0e])?;
+        let resp = read_packet(self.raw_stream())?;
+        check_ok_or_err(1, &resp)
+    }
+
+    /// Send COM_INIT_DB — used by mysql_wire_protocol_test.
+    pub fn init_db(&mut self, db: &str) -> wire_err::Result<()> {
+        let mut p = vec![0x02]; // COM_INIT_DB
+        p.extend_from_slice(db.as_bytes());
+        write_packet(self.raw_stream(), 0, &p)?;
+        let resp = read_packet(self.raw_stream())?;
+        check_ok_or_err(1, &resp)
+    }
+
+    /// Send COM_STMT_CLOSE — used by mysql_wire_protocol_test.
+    pub fn stmt_close(&mut self, stmt_id: u32) -> wire_err::Result<()> {
+        let mut p = vec![0x19]; // COM_STMT_CLOSE
+        p.extend_from_slice(&stmt_id.to_le_bytes());
+        write_packet(self.raw_stream(), 0, &p)?;
+        // COM_STMT_CLOSE has no server response
+        Ok(())
+    }
+}
+
+
