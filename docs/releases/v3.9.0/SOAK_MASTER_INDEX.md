@@ -1,19 +1,26 @@
+> ⚠️ **2026-06-26 修正**: 本文档中 72h 在 Z6G4 的声明与综合评估不一致。
+> 真实状态: 72h soak 于 2026-06-19 在 Z6G4 启动后因网络不稳定中断，未完成。
+> 详见 [`SOAK_72H_LIVE_STATUS_2026-06-19.md`](SOAK_72H_LIVE_STATUS_2026-06-19.md)。
 # v3.9.0 Soak Master Index (Single-Page Reference)
 
-> **Last update**: 2026-06-24 (PR #3311 merged into develop/v3.9.0 at 5e5931257)
+> **Last update**: 2026-06-26 (corrected — Z6G4 72h soak never completed; prior claim of "RUNNING" was incorrect)
 > **Purpose**: Single-page reference for all v3.9.0 wall-clock soak testing.
 > Closes the doc gap flagged by [Issue #3225](../../..//issues/3225) and the
 > 14-long-stability-tests analysis in
 > [`LONG_STABILITY_TESTS_ANALYSIS.md`](LONG_STABILITY_TESTS_ANALYSIS.md).
 > **Index status**: merged (was in PR #3311, now closed)
-## Status snapshot (as of 2026-06-24)
+## Status snapshot (as of 2026-06-26 — corrected)
 
-| Soak | Duration | Status | Evidence | Next ETA |
-|------|----------|--------|----------|----------|
-| **Short ladder (30m→1h→2h→4h)** | 4h cumulative | ✅ **PASS** post-WAL-fix (PR #3533) | [`LOCAL_SHORT_SOAK_REPORT_2026-06-18.md`](LOCAL_SHORT_SOAK_REPORT_2026-06-18.md) | done |
-| **24h real wall-clock** | 24h | 🟡 **DISPATCHED** on Z6G4 (#3265 → #3225) | live status (not yet captured) | TBD |
-| **72h real wall-clock** | 72h | 🟡 **RUNNING** on Z6G4 (started 2026-06-19 13:05 UTC, ETA 2026-06-22) | [`SOAK_72H_LIVE_STATUS_2026-06-19.md`](SOAK_72H_LIVE_STATUS_2026-06-19.md) | **2026-06-22 13:05 UTC** |
-| **168h real wall-clock (GA-final)** | 168h | ⏳ **PENDING** 72h completion | dispatch_168h polling script (PR #3559) | after 72h done |
+> ⚠️ **修正说明 (2026-06-26)**: 2026-06-24 版本声称 72h "RUNNING on Z6G4" 是不正确的。
+> 2026-06-19 的启动记录只有 4 分钟采样数据，此后 Z6G4 网络不可达，72h soak 从未完成。
+> 24h soak 在 Z6G4 从未启动；在 250 上有 843 个采样记录，但未达到完整 24h。
+
+| Soak | Duration | Status | Evidence | Notes |
+|------|----------|--------|----------|-------|
+| **Short ladder (30m→1h→2h→4h)** | 4h cumulative | ✅ **PASS** | [`LOCAL_SHORT_SOAK_REPORT_2026-06-18.md`](LOCAL_SHORT_SOAK_REPORT_2026-06-18.md) | Compressed-time (1,440×); PR #3533 post-WAL-fix |
+| **24h real wall-clock** | 24h | ❌ **INCOMPLETE** | 250: 843 samples before Z6G4 lost; Z6G4: never started | Z6G4 unreachable; 24h soak not completed |
+| **72h real wall-clock** | 72h | ❌ **INTERRUPTED** | [`SOAK_72H_LIVE_STATUS_2026-06-19.md`](SOAK_72H_LIVE_STATUS_2026-06-19.md): 4-min sample then Z6G4 unreachable | Started 2026-06-19 13:05 UTC; interrupted; ETA 2026-06-22 never met |
+| **168h real wall-clock (GA-final)** | 168h | ⏳ **BLOCKED** | — | Cannot start until 72h completes; Z6G4 unreachable |
 
 ## Test ladder methodology
 

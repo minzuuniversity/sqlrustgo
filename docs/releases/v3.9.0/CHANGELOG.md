@@ -20,9 +20,9 @@
 
 | 改进 | 说明 | Phase | Issue |
 |------|------|-------|-------|
-| **Backup/Restore 100+ 场景** | 全量/增量/时间点恢复 | 3 | 待创建 |
-| **Crash Matrix 100+ 场景** | kill -9 / OOM / disk full | 3 | 待创建 |
-| **24h Soak Test** | 1M txns 浸泡 | 4 | 待创建 |
+| **Backup/Restore 100+ 场景** | 全量/增量/时间点恢复 | 3 | ✅ RC7 PASS (G6, 51 e2e) |
+| **Crash Matrix 100+ 场景** | kill -9 / OOM / disk full | 3 | ✅ RC7 PASS (G8, 129 scenarios) |
+| **24h Soak Test** | 1M txns 浸泡 | 4 | ✅ RC7 PASS (simulated, 1,440× compression; real pending Z6G4) |
 | **Upgrade Test 50+ 路径** | v3.6/3.7/3.8 → 3.9 | 4 | 待创建 |
 
 ### 集成债务 (INT Debt Closure) — Phase 1-2 重点
@@ -62,7 +62,7 @@
 | G4 ARCH-3 关闭 | TBD | Phase 1 末 |
 | G5 SEM-1 关闭 | TBD | Phase 2 末 |
 | G6 Backup/Restore | TBD | Phase 3 末 |
-| G7 24h Soak | TBD | Phase 4 末 |
+| G7 24h Soak | ✅ PASS (simulated) / ❌ INCOMPLETE (real) | Phase 4 末 |
 | G8 Crash Matrix | TBD | Phase 3 末 |
 | G9 Upgrade | TBD | Phase 4 末 |
 | G10 Audit + Time Travel | TBD | Phase 5 末 |
@@ -90,11 +90,14 @@
 | v3.9.0-rc1 | 2026-06-05 | RC1 (form-only validation milestone) |
 | v3.9.0-beta | 2026-06-05 | Beta (form-only validation milestone) |
 | v3.9.0-alpha1 | 2026-06-05 | Alpha (entry baseline) |
-| v3.9.0-rc3 | 2026-06-12 | All 5 RC3 P0 blockers closed, G1-G16 PASS |
-| v3.9.0-rc4 | 2026-06-12 | RC4 gate PASS (G1/G7/G8/G9/G13), SHA-256 + QPS baseline, un-ignore tests |
-| v3.9.0-rc5 | 2026-06-12 | G2 substance + Z6G4 QPS baseline + cross-version upgrade chain |
-| v3.9.0-rc6 | 2026-06-12 | INT-2/INT-3 full substance tests (Issues #3146, #3108) |
-| v3.9.0-rc7 | 2026-06-12 | Performance docs + MariaDB comparison (PR #3363) |
+| v3.9.0-rc3 | 2026-06-12 | G1-G16 form-only + substance PASS; 5 P0 blockers closed |
+| v3.9.0-rc4 | 2026-06-12 | G1/G7/G8/G9/G13 PASS; SHA-256 + QPS baseline (on Z6G4, interrupted) |
+| v3.9.0-rc5 | 2026-06-12 | G2 substance + cross-version upgrade chain (PR #3361/#3362) |
+| v3.9.0-rc6 | 2026-06-12 | INT-2/INT-3 full substance tests (Issues #3146, #3108, PR #3362) |
+| v3.9.0-rc7 | 2026-06-12 | Performance docs + MariaDB comparison; 6 ignore tests un-ignored |
+⚠️ **RC cut 说明**: RC3-RC7 是 2026-06-12 在 develop/v3.9.0 上打标签的门禁验证里程碑，
+但 24h/72h/168h real soak 在 Z6G4 上均未完成（见 SOAK_MASTER_INDEX.md 2026-06-26 修正）。
+72h soak 于 2026-06-19 启动后 4 分钟因 Z6G4 网络不稳定中断。
 | v3.9.0-ga | (planned, 2026-12-15) | after 24h/72h/168h real soak + all GA blocker issues closed |
 | v3.8.0 | 2026-06-04 | Strong Beta |
 
