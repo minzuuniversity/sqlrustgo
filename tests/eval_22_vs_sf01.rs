@@ -1,5 +1,5 @@
 //! TPC-H 22 audit on canonical SF=0.01 fixture
-//! (`/home/openclaw/sqlrustgo-tpch/data/`).
+//! (default: `tests/data/tpch-sf01/`, override with `TPCH_DATA_DIR`).
 //!
 //! **Replaces** the previous `tests/eval_22_vs_sqlite.rs` audit which used
 //! the corrupt `tests/data/tpch-sf001/*.tbl` (15/614/150 rows). See
@@ -34,7 +34,10 @@ use std::path::PathBuf;
 use std::process::Command;
 use std::sync::{Arc, RwLock};
 
-const FIXTURE_DIR: &str = "/home/openclaw/sqlrustgo-tpch/data";
+const FIXTURE_DIR: &str = match option_env!("TPCH_DATA_DIR") {
+    Some(p) => p,
+    None => "tests/data/tpch-sf01",
+};
 const QUERIES_DIR: &str = "queries";
 const TMP_DIR: &str = "/tmp/tpch_22_sf01_audit";
 
@@ -324,7 +327,7 @@ fn eval_22_vs_sqlite_sf01_canonical() {
     println!("MISMATCHED: {mismatched}/22");
     println!("ERR(engine): {err_count}/22");
     println!("SQLiteERR : {sqlite_err}/22");
-    let total = matched + mismatched + err_count;
+    let total = matched + mismatched + err_count + sqlite_err;
     assert!(
         total >= 22,
         "category counts do not add up to 22: {}",
