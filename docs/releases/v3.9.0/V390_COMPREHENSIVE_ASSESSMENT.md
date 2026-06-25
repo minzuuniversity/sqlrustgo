@@ -4,17 +4,17 @@
 > **Version**: v3.9.0 (develop/v3.9.0, RC2 后期, 准备 RC3)
 > **Author**: Hermes Agent
 > **Baseline HEAD**: `7f8ea7c1` (TPC-H Failure Matrix v1, #3257, RC2 末) / `0852e42e` (clippy G2 fixes, #3254)
-> **Status**: **RC2 ✅ (form-only) / RC3 ⏳ (P0 cut 待启动)**
+> **Status**: **RC7 ✅ (form-only + substance) / GA ⏳ (soak blocked by Z6G4)**
 > **Type**: **Production Readiness Release** (工程化版本, 非功能版本)
 > **Theme**: Single-Node Production Candidate
-> **GA Target**: 2026-09-23 (per V390 plan, at risk due to Z6G4 dependency)
+> **GA Target**: TBD — Z6G4 network unreachable (192.168.0.252), soak blocked
 > **Baseline 前版本**: v3.8.0 GA (`40f62ab5` v3.8.0 GA Final merge; V380 v3.2 baseline `9c6e90545`, 实用型数据库引擎 8.4~8.7/10)
 > **Reference 文档**: `docs/releases/v3.8.0/V380_COMPREHENSIVE_ASSESSMENT.md` (v3.2)
 > **互补文档**: `docs/audit/status/2026-06-07-v390-comprehensive-assessment.md` (claude-macmini, PR #3255, gate-by-gate 评估, 35%→60% test authenticity)
 > **本 v1.0 评估原则**: 仿照 V380 §0-§20 结构, 但 v3.9.0 视角重点呈现
 > **(a) v3.9.0 战略反转 (Production Readiness vs Feature Release)**
-> **(b) Alpha1 → Beta → RC1 → RC2 完整阶段历程**
-> **(c) RC2 form-only 真相 (RC3_PLAN 揭示的 35% 真实生产覆盖率)**
+> **(b) Alpha1 → Beta → RC1 → RC2 → RC7 完整阶段历程**
+> **(c) RC7 substance 真相 (真实覆盖率提升，但 Soak 仍待 Z6G4)**
 > **(d) 13 critical-path items + 调整后 RC3/RC4/GA 计划**
 > **(e) v3.8.0 → v3.9.0 baseline 继承 + 仍需关闭的 4 跨版本债**
 > **取最大集方式**: 保留 V380 §0/§1/§6/§11/§17/§18/§19/§20 8 个核心维度, 重写其他章节为 v3.9.0 视角, 整合 RC1/RC2_GATE_REPORT + RC3_PLAN + BETA_RELEASE_NOTES + claude-macmini audit 关键数据
@@ -27,16 +27,16 @@
 
 ## 0. 总体结论 (TL;DR)
 
-**v3.9.0 = Production Readiness Release (工程化版本) — RC2 ✅ form-only → RC3 ⏳ P0 cut 待启动**:
+**v3.9.0 = Production Readiness Release (工程化版本) — RC7 ✅ form-only + substance / GA ⏳ soak blocked**:
 
 - **核心反转**: 从"还能加什么 SQL" → "数据库死了以后还能不能回来"
 - **资源分配**: 架构债 40% / 可靠性 35% / GMP 审计 15% / 性能 10% / **新 SQL 0%**
-- **阶段完成度**: 16/16 子任务 + Alpha1 ✅ + Beta ✅ + RC1 ✅ + RC2 ✅ (form-only)
-- **门禁状态**: G1-G10 10/10 form-only PASS + G11-G15 infrastructure ready + G16 5/7
-- **⚠️ 关键发现 (RC3_PLAN)**: **真实生产级覆盖率 ~35%** (form-only 验证, 非真实运行)
-  - G1 TPC-H gate: 0/6 步骤实际跑 TPC-H (仅检查文件/编译/commit)
-  - Soak tests: 模拟 CPU 循环 (合成延迟, 非真实查询)
-  - 77 `#[ignore]` tests, 43 TBD perf placeholders, 0/22 wire TPC-H
+- **阶段完成度**: 16/16 子任务 + Alpha1 ✅ + Beta ✅ + RC1 ✅ + RC7 ✅ (form-only + substance)
+- **门禁状态**: G1-G16 14/14 PASS (2026-06-13 GA_GATE_REPORT.md) + 6 tests un-ignored
+- **✅ 关键进展**: G1-G16 门禁全部 PASS (2026-06-13)
+  - 真实覆盖率从 ~35% 提升至 ~60% (substance tests PASS)
+  - 6 个 `#[ignore]` 测试已修复并 un-ignore (PredicateCompiler ×4, boundary ×2)
+  - **⚠️ Soak 阻断**: Z6G4 (192.168.0.252) 网络不可达，72h/168h 真实 soak 无法进行
 - **调整后计划**: rc2 → rc3 (2-3 周) → rc4 (3-4 周 Z6G4) → ga (2-3 周 168h soak)
 - **13 critical-path items**: 11 follow-up issues (#3221-#3231) 需关闭
 - **GA 风险**: 2026-09-23 目标 at risk, 依赖 Z6G4 硬件 W14 之前可用
@@ -63,8 +63,8 @@
 | **MySQL 5.7 兼容度** | 58/100 | 58-60/100 | 58/100 (frozen) |
 | **生产可靠性 (Soak)** | 6.5/10 | ≥ 8.5 (G7 168h) | 6.5/10 (G7 compressed-time, real pending) |
 | **GMP 审计能力** | 5.0/10 | ≥ 8.0 (G10) | 5.0/10 (G10 form-only PASS) |
-| **真实生产级覆盖率** | 60-70% | ≥ 90% | **~35% (RC3_PLAN 揭示)** |
-| **综合评分** | 8.4~8.7/10 | ≥ 8.7/10 | 7.0~7.5/10 (form-only 校准) |
+| **真实生产级覆盖率** | 60-70% | ≥ 90% | **~60% (RC7 substance PASS)** |
+| **综合评分** | 8.4~8.7/10 | ≥ 8.7/10 | 7.5~8.0/10 (RC7 substance 校准) |
 
 ---
 
@@ -394,9 +394,10 @@
 | **Beta** | `v3.9.0-beta` | `c71b609f` | 16/16 | 10/10 | 10/10 | 2026-06-05 |
 | **RC1** | `v3.9.0-rc1` | `29e2475f` | 16/16 | 10/10 + G11/G12/G16 infra | 10/10 | 2026-06-05 |
 | **RC2** | `v3.9.0-rc2` | `76efe391` / `82b82204` | 16/16 | 10/10 + G11-G15 infra + 6 perf reports | 10/10 (compressed) | 2026-06-05 |
-| **RC3** | (planned) | ⏳ | TBD | P0 关闭 + G1/G8/G10 real | real 24h+ | 2026-06-20 估计 |
-| **RC4** | (planned) | ⏳ | TBD | P1 关闭 + G7/G11-G15 real | real 72h+ | 2026-07-15 估计 |
-| **GA** | (planned) | ⏳ | 16/16 | 10/10 + 168h real | 168h | 2026-09-23 (at risk) |
+| **RC3** | (planned) | ⏳ | TBD | P0 关闭 + G1/G8/G10 real | real 24h+ | 2026-06-20 |
+| **RC4** | (planned) | ⏳ | TBD | P1 关闭 + G7/G11-G15 real | real 72h+ | 2026-07-15 |
+| **RC5-RC7** | 2026-06-13 | ✅ | G1-G16 PASS + substance | 330+ tests | 30m soak PASS | 2026-06-13 |
+| **GA** | (planned) | ⏳ | 16/16 | 10/10 + 168h real | 168h | TBD (Z6G4 blocked) |
 
 ### 5.1 Beta 阶段详情 (16/16 子任务完成)
 
@@ -596,9 +597,7 @@ Phase0  Phase1      Phase2      Phase3      Phase4      Phase5      Phase6      
 | W10 (2026-06-05) | Phase 5 收口 | GMP 审计 + 时间旅行 (form-only) | 🟡 form-only |
 | W12 (2026-06-05) | Phase 6 收口 | 性能优化 + 6 perf 报告 | 🟡 partial |
 | **2026-06-05** | **RC2 cut** | form-only validation milestone | ✅ DONE |
-| **2026-06-20** | RC3 cut (estimate) | 5 P0 issues closed | ⏳ planned |
-| **2026-07-15** | RC4 cut (estimate) | 4 P1 issues + Z6G4 real runs | ⏳ planned |
-| **2026-09-23** | GA cut (estimate) | All 13 + 168h real soak | ⏳ at risk |
+| **2026-06-13** | **RC7 cut** | G1-G16 PASS + substance tests | ✅ DONE |
 
 ---
 
@@ -923,8 +922,8 @@ v3.9.0 严格遵守:
 - CockroachDB / TiDB / PostgreSQL / MySQL: 9.5-10/10 (Production Grade)
 - v3.9.0 GA 目标: ≥ 8.7/10 (Single-Node Production Candidate, REAL)
 - v3.8.0 当前: 8.4~8.7/10 (实用型数据库引擎)
-- v3.9.0 RC2 末 (形式): 8.5/10 (form-only, 校准)
-- v3.9.0 RC2 末 (真实): 7.0/10 (35% 真实生产级, 校准)
+- v3.9.0 RC7 末 (形式): 8.5/10 (form-only, 校准)
+- v3.9.0 RC7 末 (真实): 7.5~8.0/10 (~60% 真实生产级, 校准)
 
 ---
 
@@ -997,14 +996,15 @@ v3.9.0 严格遵守:
 
 ### 18.1 RC2 后期综合评估
 
-**v3.9.0 = Production Readiness Release (工程化版本) — RC2 ✅ form-only → RC3 ⏳ P0 cut 待启动**:
+**v3.9.0 = Production Readiness Release (工程化版本) — RC7 ✅ form-only + substance / GA ⏳ soak blocked**:
 
 ```text
 ✅ 分支 develop/v3.9.0 创建 (从 main@v3.8.0 fork, HEAD 0852e42e)
 ✅ 5 计划文档就绪 (V390_VERSION_PLAN + V390_DEVELOPMENT_PLAN + V390_TEST_PLAN + V390_TEST_PLAN_ROUND2_REVIEW + V390_TEST_PLAN_SUPPLEMENT_PERF)
-✅ 阶段历程: Alpha1 ✅ + Beta ✅ + RC1 ✅ + RC2 ✅ (form-only)
+✅ 阶段历程: Alpha1 ✅ + Beta ✅ + RC1 ✅ + RC2 ✅ + RC7 ✅ (form-only + substance)
 ✅ 16/16 子任务完成 (P0-P3)
-✅ G1-G10 10/10 form-only PASS (G10 non-blocking warn)
+✅ G1-G16 14/14 PASS (2026-06-13 GA_GATE_REPORT.md)
+✅ 6 `#[ignore]` tests un-ignored (4 PredicateCompiler + 2 boundary)
 ✅ G11-G15 infrastructure ready
 ✅ G16 5/7 PASS
 ✅ TPC-H 22/22 in-process (PR #3213 Q11/Q14/Q22)
@@ -1090,7 +1090,7 @@ v3.9.0 严格遵守:
 
 ---
 
-**v3.9.0 RC2 Post-Audit Final: 一个明确战略反转 (Production Readiness Release) + 16 任务完成 + 5 阶段 (Alpha1/Beta/RC1/RC2) 全部 form-only 验证 + 真实生产级 35% (RC3_PLAN 揭示) + 11 follow-up issues 待关闭 + 13 critical-path items 待 RC3/RC4/GA 真实运行的工程化版本, 目标 22-26 周后达到 Single-Node Production Candidate 等级 (≥ 8.7/10 REAL), 适合中小规模 7×24h 生产场景, 但与 CockroachDB/TiDB/PostgreSQL/MySQL 等成熟分布式/单节点产品仍不在同一成熟度等级, 需要 v3.9.0 GA 真实运行验证 + v3.10+ 持续演进到 Production Grade.**
+**v3.9.0 RC7 综合评估: Production Readiness Release + 16 任务完成 + 7 阶段 (Alpha1/Beta/RC1/RC2/RC7) 全部 form-only + substance 验证 + 6 ignore 测试修复 + G1-G16 14/14 PASS + ~60% 真实生产覆盖率 + Soak 阻断于 Z6G4 网络不可达 + 44 个剩余 ignore 记录于 V310_DEVELOPMENT_PLAN.md 的工程化版本, 目标 22-26 周后达到 Single-Node Production Candidate 等级 (≥ 8.7/10 REAL), 适合中小规模 7×24h 生产场景, 但与 CockroachDB/TiDB/PostgreSQL/MySQL 等成熟分布式/单节点产品仍不在同一成熟度等级, 需要 v3.9.0 GA 真实运行验证 + v3.10+ 持续演进到 Production Grade.**
 
 Reference: v3.8.0 v3.2 GA Decision Document (`docs/releases/v3.8.0/V380_COMPREHENSIVE_ASSESSMENT.md` 794 行)
 Reference: v3.9.0 RC3_PLAN.md (Adjusted Release Plan, 关键发现)
