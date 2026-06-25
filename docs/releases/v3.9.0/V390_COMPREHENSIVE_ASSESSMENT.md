@@ -7,14 +7,14 @@
 > **Status**: **RC7 ✅ (form-only + substance) / GA ⏳ (soak blocked by Z6G4)**
 > **Type**: **Production Readiness Release** (工程化版本, 非功能版本)
 > **Theme**: Single-Node Production Candidate
-> **GA Target**: TBD — Z6G4 network unreachable (192.168.0.252), soak blocked
+> **GA Target**: TBD — Z6G4 (192.168.0.252) unreachable since ~2026-06-19; 72h soak interrupted; GA blocked
 > **Baseline 前版本**: v3.8.0 GA (`40f62ab5` v3.8.0 GA Final merge; V380 v3.2 baseline `9c6e90545`, 实用型数据库引擎 8.4~8.7/10)
 > **Reference 文档**: `docs/releases/v3.8.0/V380_COMPREHENSIVE_ASSESSMENT.md` (v3.2)
 > **互补文档**: `docs/audit/status/2026-06-07-v390-comprehensive-assessment.md` (claude-macmini, PR #3255, gate-by-gate 评估, 35%→60% test authenticity)
 > **本 v1.0 评估原则**: 仿照 V380 §0-§20 结构, 但 v3.9.0 视角重点呈现
 > **(a) v3.9.0 战略反转 (Production Readiness vs Feature Release)**
 > **(b) Alpha1 → Beta → RC1 → RC2 → RC7 完整阶段历程**
-> **(c) RC7 substance 真相 (真实覆盖率提升，但 Soak 仍待 Z6G4)**
+> **(c) RC7 substance 真相 (真实覆盖率提升，但 72h/168h soak 被 Z6G4 阻断)**
 > **(d) 13 critical-path items + 调整后 RC3/RC4/GA 计划**
 > **(e) v3.8.0 → v3.9.0 baseline 继承 + 仍需关闭的 4 跨版本债**
 > **取最大集方式**: 保留 V380 §0/§1/§6/§11/§17/§18/§19/§20 8 个核心维度, 重写其他章节为 v3.9.0 视角, 整合 RC1/RC2_GATE_REPORT + RC3_PLAN + BETA_RELEASE_NOTES + claude-macmini audit 关键数据
@@ -34,6 +34,11 @@
 - **阶段完成度**: 16/16 子任务 + Alpha1 ✅ + Beta ✅ + RC1 ✅ + RC7 ✅ (form-only + substance)
 - **门禁状态**: G1-G16 14/14 PASS (2026-06-13 GA_GATE_REPORT.md) + 6 tests un-ignored
 - **✅ 关键进展**: G1-G16 门禁全部 PASS (2026-06-13)
+  - 注意: GA_GATE_REPORT / GA_GATE_STATUS_REPORT 中的 72h/168h soak 声称
+    "DISPATCHED/RUNNING on Z6G4" 已被修正为 2026-06-26 更正 — 72h soak 在
+    Z6G4 上于 2026-06-19 启动后 4 分钟即因网络不稳定中断，从未实际完成
+  - G11: QPS benchmark 在 Z6G4 上构建但因网络不可达未能完成；GATE_STATUS 标注 PASS 是基于 infra ready
+  - 真实覆盖率 ~60% 基于 substance tests，不是 real soak
   - 真实覆盖率从 ~35% 提升至 ~60% (substance tests PASS)
   - 6 个 `#[ignore]` 测试已修复并 un-ignore (PredicateCompiler ×4, boundary ×2)
   - **⚠️ Soak 阻断**: Z6G4 (192.168.0.252) 网络不可达，72h/168h 真实 soak 无法进行
