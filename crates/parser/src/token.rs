@@ -142,8 +142,9 @@ pub enum Token {
 
     // MySQL-specific keywords
     Duplicate,
-    Modify,
     Database,
+    Modify,
+    Use,
     View,
     // Transaction keywords
     Transaction,
@@ -281,7 +282,7 @@ impl fmt::Display for Token {
             Token::Replace => write!(f, "REPLACE"),
             Token::Duplicate => write!(f, "DUPLICATE"),
             Token::Database => write!(f, "DATABASE"),
-            Token::Modify => write!(f, "MODIFY"),
+            Token::Use => write!(f, "USE"),
             Token::View => write!(f, "VIEW"),
             Token::HighPriority => write!(f, "HIGH_PRIORITY"),
             Token::SqlCache => write!(f, "SQL_CACHE"),
@@ -465,6 +466,7 @@ pub fn is_keyword(s: &str) -> bool {
             | "COLUMN"
             | "RENAME"
             | "TO"
+            | "USE"
             | "BEGIN"
             | "COMMIT"
             | "ROLLBACK"
@@ -530,8 +532,8 @@ pub fn from_keyword(s: &str) -> Option<Token> {
         "REPLACE" => Some(Token::Replace),
         "DUPLICATE" => Some(Token::Duplicate),
         "MODIFY" => Some(Token::Modify),
-        "DATABASE" => Some(Token::Database),
-        "VIEW" => Some(Token::View),
+            "DATABASE" => Some(Token::Database),
+            "USE" => Some(Token::Use),
         "SHOW" => Some(Token::Show),
         "DESCRIBE" => Some(Token::Describe),
         "ROLE" => Some(Token::Role),
