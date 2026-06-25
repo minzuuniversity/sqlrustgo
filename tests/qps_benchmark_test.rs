@@ -67,6 +67,7 @@ fn insert_test_data(engine: &mut MemoryExecutionEngine) {
 
 /// Benchmark: Simple SELECT QPS
 #[test]
+#[ignore = "Performance benchmark (long runtime, run with --ignored, dedicated test env)"]
 fn test_qps_simple_select() {
     let mut engine = create_engine();
     setup_tables(&mut engine);
@@ -91,6 +92,7 @@ fn test_qps_simple_select() {
 
 /// Benchmark: INSERT QPS
 #[test]
+#[ignore = "Performance benchmark (long runtime, run with --ignored, dedicated test env)"]
 fn test_qps_insert() {
     let mut engine = create_engine();
     setup_tables(&mut engine);
@@ -119,6 +121,7 @@ fn test_qps_insert() {
 
 /// Benchmark: UPDATE QPS
 #[test]
+#[ignore = "Performance benchmark (long runtime, run with --ignored, dedicated test env)"]
 fn test_qps_update() {
     let mut engine = create_engine();
     setup_tables(&mut engine);
@@ -147,6 +150,7 @@ fn test_qps_update() {
 
 /// Benchmark: DELETE QPS
 #[test]
+#[ignore = "Performance benchmark (long runtime, run with --ignored, dedicated test env)"]
 fn test_qps_delete() {
     let mut engine = create_engine();
     setup_tables(&mut engine);
@@ -178,6 +182,7 @@ fn test_qps_delete() {
 
 /// Benchmark: JOIN QPS
 #[test]
+#[ignore = "Performance benchmark (long runtime, run with --ignored, dedicated test env)"]
 fn test_qps_join() {
     let mut engine = create_engine();
     setup_tables(&mut engine);
@@ -205,6 +210,7 @@ fn test_qps_join() {
 
 /// Benchmark: Aggregation QPS
 #[test]
+#[ignore = "Performance benchmark (long runtime, run with --ignored, dedicated test env)"]
 fn test_qps_aggregation() {
     let mut engine = create_engine();
     setup_tables(&mut engine);
@@ -229,6 +235,7 @@ fn test_qps_aggregation() {
 
 /// Benchmark: Concurrent SELECT QPS
 #[test]
+#[ignore = "Performance benchmark (long runtime, run with --ignored, dedicated test env)"]
 fn test_qps_concurrent_select() {
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));
 
@@ -275,6 +282,7 @@ fn test_qps_concurrent_select() {
 
 /// Benchmark: Concurrent mixed workload QPS
 #[test]
+#[ignore = "Performance benchmark (long runtime, run with --ignored, dedicated test env)"]
 fn test_qps_concurrent_mixed() {
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));
 
@@ -338,6 +346,7 @@ fn test_qps_concurrent_mixed() {
 
 /// Benchmark: Complex WHERE clause QPS
 #[test]
+#[ignore = "Performance benchmark (long runtime, run with --ignored, dedicated test env)"]
 fn test_qps_complex_where() {
     let mut engine = create_engine();
     setup_tables(&mut engine);
@@ -363,6 +372,7 @@ fn test_qps_complex_where() {
 
 /// Benchmark: Order BY QPS
 #[test]
+#[ignore = "Performance benchmark (long runtime, run with --ignored, dedicated test env)"]
 fn test_qps_order_by() {
     let mut engine = create_engine();
     setup_tables(&mut engine);

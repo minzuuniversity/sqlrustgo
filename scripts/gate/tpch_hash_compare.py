@@ -78,18 +78,14 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 HASH_FILE = REPO_ROOT / "tests" / "tpch_hashes_v380.json"
 QUERIES_DIR = REPO_ROOT / "queries"
-# 2026-06-17: Switched default baseline data dir to SF=0.001 (tests/data/tpch-sf001/).
-# Rationale (per the 2026-06-17 truthfulness audit + G1 sub-gate baseline generation):
-#   1. The default test tpch_full_22_test uses start_sf001() (SF=0.001), so the
-#      default baseline data dir should match the test's actual data path.
-#   2. SF=0.001 has 501 lineitem / 150 orders / 15 customer, fast (101ms total
-#      for all 22 queries) and gives non-trivial coverage (Q1=4 rows, Q13=9,
-#      Q22=14, etc.) for catching regressions.
-#   3. Override with TPCH_DATA_DIR env var for SF=0.1 or other scales.
-BASELINE_DATA_DIR = Path(os.environ.get("TPCH_DATA_DIR", str(Path(__file__).resolve().parents[2] / "tests" / "data" / "tpch-sf001")))
+# Sprint 5 v15: Use tests/data/tpch-sf01 (SF=0.1, 60K lineitem) as the default
+# baseline data dir. This matches the Sprint 5 v13 cross-engine cell-level
+# tests (MariaDB, PostgreSQL, SQLite, SQLite wire) and gives a non-trivial
+# 21/22 query coverage (Q21 still times out at 300s per Issue #3316).
+# Override with TPCH_DATA_DIR env var for SF=0.01 or other scales.
+BASELINE_DATA_DIR = Path(os.environ.get("TPCH_DATA_DIR", str(Path(__file__).resolve().parents[2] / "tests" / "data" / "tpch-sf01")))
 
 QUERY_RE = re.compile(r"^Q(\d+):\s*(.*)$", re.MULTILINE)
-SUMMARY_RE = re.compile(r"^\s*(?:✅|⏱|❌)\s*Q(\d+):\s+(\d+)\s+rows", re.MULTILINE)
 HASH_LEN = 64
 
 
@@ -171,50 +167,97 @@ def run_tpch_full_22(timeout_per_query_s: int = 600, overall_timeout_s: int = 18
     return (proc.stdout or "") + "\n" + (proc.stderr or "")
 
 
-def parse_per_query_results(stdout: str) -> dict[int, int]:
-    """Parse the printed output of tpch_full_22_test into {Q_num: row_count}.
+def parse_per_query_results(stdout: str) -> dict[int, list[tuple]]:
+    """Parse the printed output of tpch_full_22_test into {Q_num: [row_tuples]}.
 
-    The test prints one summary line per query:
-        ✅ Q1: 4 rows in 3.06ms   (success)
-        ⏱ Q17: timeout >60s        (timeout)
-        ❌ Q<n>: error...          (error)
+    The Sprint 5 v15 test format prints results in two phases:
 
-    The previous design also tried to parse `---rows---` blocks for
-    full row contents, but the test no longer emits them (see
-    tests/tpch_full_22_test.rs::tpc_h_full_22_works). This row-count
-    hash is simpler and still catches regressions: if any query's
-    output count changes, the SHA-256 of the canonicalized summary
-    changes too.
+    Phase 1 (per-query): during execution, each query prints
+        ---rows---
+        <row1>
+        <row2>
+        ---end---
+    Slow queries may timeout (no row block, or partial).
 
-    Returns a dict {1: N1, 2: N2, ...}. Missing Qs default to 0.
+    Phase 2 (summary): after all 22 queries, a summary line is printed:
+        ✅ Q1: 6 rows (168ms)
+        ⏱ Q17: timeout >60s (60.01s)
+        ❌ Q<n>: error...
+    The summary is in Q-order 1..22.
+
+    Strategy: collect row blocks in execution order, then match them to
+    Q numbers using the summary line row counts. This handles the case
+    where Q17/Q21 timeout and their row blocks don't appear (or appear
+    shifted due to earlier timeouts).
+
+    Returns a dict {1: [(col,col,...), ...], 2: [...], ...}.
     """
+    # Pass 1: collect row blocks (in execution order)
+    blocks: list[list[tuple]] = []
+    current: list[tuple] = []
+    in_block = False
+    for line in stdout.splitlines():
+        if line.strip() == "---rows---":
+            in_block = True
+            current = []
+            continue
+        if line.strip() == "---end---":
+            if in_block:
+                blocks.append(current)
+            in_block = False
+            continue
+        if in_block and line.strip():
+            row = tuple(cell.strip() for cell in line.split("|") if cell.strip() != "")
+            if row:
+                current.append(row)
+    
+    # Pass 2: collect Q-summary (in Q order 1..22)
     summary: dict[int, int] = {}
-    for m in SUMMARY_RE.finditer(stdout):
-        q = int(m.group(1))
-        n = int(m.group(2))
-        if 1 <= q <= 22 and q not in summary:
-            summary[q] = n
-    return summary
+    for line in stdout.splitlines():
+        m = re.match(r"^\s*(?:✅|⏱|❌)\s*Q(\d+):\s+(\d+)\s+rows", line)
+        if m:
+            summary[int(m.group(1))] = int(m.group(2))
+    
+    # Match blocks to Qs by row count
+    blocks_by_count: dict[int, list[list[tuple]]] = {}
+    for b in blocks:
+        blocks_by_count.setdefault(len(b), []).append(b)
+    
+    results: dict[int, list[tuple]] = {}
+    used: set[int] = set()
+    for q in range(1, 23):
+        n = summary.get(q, 0)
+        if n == 0:
+            results[q] = []
+        else:
+            candidates = blocks_by_count.get(n, [])
+            for i, b in enumerate(candidates):
+                if id(b) not in used:
+                    used.add(id(b))
+                    results[q] = b
+                    break
+            else:
+                results[q] = []  # fallback
+    return results
 
 
-def hash_from_results(results: dict[int, int]) -> str:
-    """Compute the SHA-256 of the TPC-H 22/22 row counts (canonical Q1..Q22).
+def hash_from_results(results: dict[int, list[tuple]]) -> str:
+    """Compute the SHA-256 hash of the TPC-H 22/22 sorted output.
 
-    Format: `Q1=N1\\nQ2=N2\\n...Q22=N22\\n` (sorted by Q number, not by
-    test execution order). Missing Q defaults to 0.
-
-    This is a "row-count baseline" — coarser than a row-by-row hash,
-    but still catches regressions in the number of rows returned per
-    query, and it's robust to:
-      - Test refactors that change row formatting
-      - Hash algorithm changes (just re-run the capture step)
-      - Floating-point rounding differences in the engine
+    Format: for each Q in 1..22, write `---Q<n>---\n<sorted rows>\n`, then
+    SHA-256 the concatenation. Missing Q -> `[MISSING Q<n>]`.
     """
     buf: list[str] = []
     for q in range(1, 23):
-        n = results.get(q, 0)
-        buf.append(f"Q{q}={n}")
-    body = ("\n".join(buf) + "\n").encode("utf-8")
+        rows = results.get(q, [])
+        buf.append(f"---Q{q}---")
+        if not rows:
+            buf.append("[empty]")
+        else:
+            for row in sorted(rows):
+                buf.append("|".join(row))
+        buf.append("")  # trailing newline between blocks
+    body = "\n".join(buf).encode("utf-8")
     return hashlib.sha256(body).hexdigest()
 
 
@@ -256,11 +299,13 @@ def cmd_check(expected: str) -> int:
     if actual == expected:
         print(f"G1 PASS: TPC-H 22/22 baseline hash matches ({actual[:8]}...)")
         return 0
-    # Per-query diff for diagnostics
+    # Per-query diff
     print(f"G1 FAIL: hash mismatch (expected {expected[:8]}..., got {actual[:8]}...)", file=sys.stderr)
     for q in range(1, 23):
-        n = results.get(q, 0)
-        if n == 0:
+        exp_rows = results.get(q, [])
+        # Without a stored per-query snapshot, we can only signal "drift detected";
+        # the operator should re-run --capture and inspect the diff.
+        if not exp_rows:
             print(f"  Q{q}: no rows captured (or missing)", file=sys.stderr)
     return 1
 

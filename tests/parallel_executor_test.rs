@@ -233,7 +233,7 @@ fn test_parallel_partition_key_p3_4() {
 fn test_parallel_partition_round_robin_p3_4() {
     let s = MockPartitionStrategy::new(PartitionKind::RoundRobin, 4);
     // Round-robin cycles through shards deterministically
-    let _last = u64::MAX;
+    let mut last = u64::MAX;
     for i in 0..16 {
         let p = s.round_robin_partition(i);
         if i > 0 && i % 4 == 0 {

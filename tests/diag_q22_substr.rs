@@ -1,6 +1,7 @@
 //! Q22 parse error - isolate which part fails
 
-use sqlrustgo::{ExecutionEngine, MemoryStorage};
+use sqlrustgo::{ExecutionEngine, MemoryStorage, StorageEngine};
+use sqlrustgo_types::Value as SqlValue;
 
 #[test]
 fn diag_q22_substr() {

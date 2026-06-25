@@ -345,3 +345,5 @@ fn t_use_database_rejected() {
     let result = parse("USE mydb");
     assert!(result.is_err(), "USE DATABASE not yet supported");
 }
+=======
+>>>>>>> gitea250/develop/v3.9.0
