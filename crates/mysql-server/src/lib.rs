@@ -671,6 +671,7 @@ impl Packet {
         })
     }
     pub fn write_to<W: Write>(&self, w: &mut W) -> MySqlResult<()> {
+        // Debug trace removed
         w.write_u24::<LittleEndian>(self.length)?;
         w.write_u8(self.sequence)?;
         w.write_all(&self.payload)?;
@@ -1217,7 +1218,7 @@ fn write_binary_row<W: Write>(w: &mut W, row: &[Value], col_types: &[u8]) -> MyS
     Ok(())
 }
 
-fn write_column_def<W: Write>(w: &mut W, name: &str, sql_type: &str, seq: u8) -> MySqlResult<()> {
+fn write_column_def<W: Write>(w: &mut W, name: &str, sql_type: &str, seq: u8) -> MySqlResult<u8> {
     let mut p = Vec::new();
     write_lenenc_string(&mut p, b"def").unwrap(); // catalog
     write_lenenc_string(&mut p, b"").unwrap(); // schema
@@ -1240,7 +1241,7 @@ fn write_column_def<W: Write>(w: &mut W, name: &str, sql_type: &str, seq: u8) ->
         payload: p,
     }
     .write_to(w)?;
-    Ok(())
+    Ok(seq.wrapping_add(1))
 }
 
 fn send_result_set<W: Write>(
@@ -1269,13 +1270,12 @@ fn send_result_set<W: Write>(
         seq = seq.wrapping_add(1);
     }
     for (i, n) in cols.iter().enumerate() {
-        write_column_def(
+        seq = write_column_def(
             w,
             n,
             ctypes.get(i).map(|s| s.as_str()).unwrap_or("VARCHAR(255)"),
             seq,
         )?;
-        seq = seq.wrapping_add(1);
     }
     // Inter-record separator between column defs and the row stream.
     // Honor the client's DEPRECATE_EOF capability:
@@ -1286,14 +1286,10 @@ fn send_result_set<W: Write>(
     // Fix for #3516: without this, mysql 8.0 CLI silently drops the
     // result set — it interprets the stray inter-record EOF as the
     // final terminator and never reads the row packets.
-    if cap & capability::DEPRECATE_EOF == 0 {
-        make_eof_packet(seq, 0x0002).write_to(w)?;
-        seq = seq.wrapping_add(1);
-    }
-    for (ri, r) in rows.iter().enumerate() {
+    for r in rows.iter() {
         let mut p = Vec::new();
         write_text_row(&mut p, r)?;
-        tracing::debug!("Row {}: {} bytes, seq={}", ri, p.len(), seq);
+        
         Packet {
             length: p.len() as u32,
             sequence: seq,
@@ -2312,9 +2308,10 @@ fn do_command_loop<S: Read + Write>(
     storage: Arc<RwLock<WalStorage<FileStorage, FileBackedWalManager>>>,
     engine: Arc<RwLock<ExecutionEngine<WalStorage<FileStorage, FileBackedWalManager>>>>,
     cap: u32,
-    mut seq: u8,
+    server_last_sent_seq: &mut u8,
     ps_manager: &mut PreparedStatementManager,
 ) -> MySqlResult<()> {
+    let mut seen_first_command = false;
     loop {
         let pkt = match Packet::read_from(stream) {
             Ok(p) => p,
@@ -2325,7 +2322,15 @@ fn do_command_loop<S: Read + Write>(
         };
         let cmd = pkt.payload.first().copied().unwrap_or(0);
         let payload = &pkt.payload[1..];
-        seq = pkt.sequence.wrapping_add(1);
+        let mut seq = server_last_sent_seq.wrapping_add(1);
+        // MariaDB resets sequence to 0 for each new logical request.
+        // The first command after auth has pkt_seq=0 and MUST trigger reset (server_last_sent_seq=2 → 0).
+        // Subsequent commands in a multi-statement query also have pkt_seq=0 but should NOT reset.
+        if !seen_first_command && pkt.sequence == 0 {
+            seen_first_command = true;
+            *server_last_sent_seq = 0;
+            seq = 1;
+        }
         match cmd {
             packet_type::COM_QUIT => {
                 // MySQL wire protocol: server MUST send OK packet on COM_QUIT
@@ -2333,15 +2338,18 @@ fn do_command_loop<S: Read + Write>(
                 // its read() and exit cleanly. Without this, mysql CLI and
                 // pymysql hang in recv() after sending COM_QUIT (Issue #SET-NAMES-HANG).
                 make_ok_packet(seq, 0, 0, 0x0002, 0).write_to(stream)?;
+                *server_last_sent_seq = seq;
                 seq = seq.wrapping_add(1);
                 break;
             }
             packet_type::COM_PING => {
                 make_ok_packet(seq, 0, 0, 0x0002, 0).write_to(stream)?;
+                *server_last_sent_seq = seq;
                 seq = seq.wrapping_add(1);
             }
             packet_type::COM_INIT_DB => {
                 make_ok_packet(seq, 0, 0, 0x0002, 0).write_to(stream)?;
+                *server_last_sent_seq = seq;
                 seq = seq.wrapping_add(1);
             }
             packet_type::COM_QUERY => {
@@ -2386,17 +2394,20 @@ fn do_command_loop<S: Read + Write>(
                         Err(e) => {
                             make_err_packet(seq, 1146u16, "42S02", &e.to_string())
                                 .write_to(stream)?;
+                            *server_last_sent_seq = seq;
                             seq = seq.wrapping_add(1);
                             0
                         }
                     };
                     make_ok_packet(seq, n, 0, 0x0002, 0).write_to(stream)?;
+                    *server_last_sent_seq = seq;
                     seq = seq.wrapping_add(1);
                     continue;
                 }
 
                 if q.is_empty() {
                     make_ok_packet(seq, 0, 0, 0x0002, 0).write_to(stream)?;
+                    *server_last_sent_seq = seq;
                     seq = seq.wrapping_add(1);
                     continue;
                 }
@@ -2419,6 +2430,7 @@ fn do_command_loop<S: Read + Write>(
                 {
                     tracing::info!("SET NOP: {}", q);
                     make_ok_packet(seq, 0, 0, 0x0002, 0).write_to(stream)?;
+                    *server_last_sent_seq = seq;
                     seq = seq.wrapping_add(1);
                     continue;
                 }
@@ -2443,10 +2455,12 @@ fn do_command_loop<S: Read + Write>(
                                         cols.iter().map(|_| "VARCHAR(255)".to_string()).collect();
                                     seq =
                                         send_result_set(stream, &cols, &ctypes, &r.rows, seq, cap)?;
+                                    *server_last_sent_seq = seq;
                                 }
                                 Ok(r) => {
                                     make_ok_packet(seq, r.affected_rows as u64, 0, 0x0002, 0)
                                         .write_to(stream)?;
+                                    *server_last_sent_seq = seq;
                                     seq = seq.wrapping_add(1);
                                 }
                                 Err(e) => {
@@ -2456,6 +2470,7 @@ fn do_command_loop<S: Read + Write>(
                                     };
                                     make_err_packet(seq, code, "42000", &e.to_string())
                                         .write_to(stream)?;
+                                    *server_last_sent_seq = seq;
                                     seq = seq.wrapping_add(1);
                                 }
                             }
@@ -2463,6 +2478,7 @@ fn do_command_loop<S: Read + Write>(
                     }
                     Err(e) => {
                         make_err_packet(seq, 1064, "42000", &e).write_to(stream)?;
+                        *server_last_sent_seq = seq;
                         seq = seq.wrapping_add(1);
                     }
                 }
@@ -2524,6 +2540,7 @@ fn do_command_loop<S: Read + Write>(
                     payload: p,
                 }
                 .write_to(stream)?;
+                *server_last_sent_seq = seq;
                 seq = seq.wrapping_add(1);
 
                 if param_count > 0 {
@@ -2551,13 +2568,16 @@ fn do_command_loop<S: Read + Write>(
                             payload: param_def,
                         }
                         .write_to(stream)?;
+                        *server_last_sent_seq = seq;
                         seq = seq.wrapping_add(1);
                     }
                     if cap & capability::DEPRECATE_EOF != 0 {
                         make_deprecate_eof_ok_packet(seq, 0, 0, 0x0002, 0).write_to(stream)?;
+                        *server_last_sent_seq = seq;
                         seq = seq.wrapping_add(1);
                     } else {
                         make_eof_packet(seq, 0x0002).write_to(stream)?;
+                        *server_last_sent_seq = seq;
                         seq = seq.wrapping_add(1);
                     }
                 }
@@ -2608,14 +2628,15 @@ fn do_command_loop<S: Read + Write>(
                             .get(i as usize)
                             .cloned()
                             .unwrap_or_else(|| format!("col_{}", i + 1));
-                        write_column_def(stream, &col_name, "VARCHAR(255)", seq)?;
-                        seq = seq.wrapping_add(1);
+                        seq = write_column_def(stream, &col_name, "VARCHAR(255)", seq)?;
                     }
                     if cap & capability::DEPRECATE_EOF != 0 {
                         make_deprecate_eof_ok_packet(seq, 0, 0, 0x0002, 0).write_to(stream)?;
+                        *server_last_sent_seq = seq;
                         seq = seq.wrapping_add(1);
                     } else {
                         make_eof_packet(seq, 0x0002).write_to(stream)?;
+                        *server_last_sent_seq = seq;
                         seq = seq.wrapping_add(1);
                     }
                 }
@@ -2631,6 +2652,7 @@ fn do_command_loop<S: Read + Write>(
                 if payload.len() < 4 {
                     make_err_packet(seq, 1047, "HY000", "Malformed COM_STMT_EXECUTE")
                         .write_to(stream)?;
+                    *server_last_sent_seq = seq;
                     seq = seq.wrapping_add(1);
                     continue;
                 }
@@ -2647,6 +2669,7 @@ fn do_command_loop<S: Read + Write>(
                     None => {
                         make_err_packet(seq, 1243, "HY000", "Unknown statement handler")
                             .write_to(stream)?;
+                        *server_last_sent_seq = seq;
                         seq = seq.wrapping_add(1);
                         continue;
                     }
@@ -2701,17 +2724,20 @@ fn do_command_loop<S: Read + Write>(
                             Ok(r) => {
                                 make_ok_packet(seq, r.affected_rows as u64, 0, 0x0002, 0)
                                     .write_to(stream)?;
+                                *server_last_sent_seq = seq;
                                 seq = seq.wrapping_add(1);
                             }
                             Err(e) => {
                                 make_err_packet(seq, 1064, "42000", &e.to_string())
                                     .write_to(stream)?;
+                                *server_last_sent_seq = seq;
                                 seq = seq.wrapping_add(1);
                             }
                         }
                     }
                     Err(e) => {
                         make_err_packet(seq, 1064, "42000", &e).write_to(stream)?;
+                        *server_last_sent_seq = seq;
                         seq = seq.wrapping_add(1);
                     }
                 }
@@ -2725,6 +2751,7 @@ fn do_command_loop<S: Read + Write>(
             }
             _ => {
                 make_err_packet(seq, 1047, "HY000", "Unknown command").write_to(stream)?;
+                *server_last_sent_seq = seq;
                 seq = seq.wrapping_add(1);
             }
         }
@@ -2860,13 +2887,14 @@ fn handle_connection(
                 RwLock<ExecutionEngine<WalStorage<FileStorage, FileBackedWalManager>>>,
             > = Arc::new(RwLock::new(ExecutionEngine::new(storage.clone())));
             let mut ps_manager = PreparedStatementManager::new();
+            let mut server_last_sent_seq = 3u8;
             let _ = do_command_loop(
                 &mut tls,
                 addr,
                 storage,
                 engine,
                 resp.capability_flags,
-                4,
+                &mut server_last_sent_seq,
                 &mut ps_manager,
             );
             // Best-effort final flush so the last OK packet (e.g. on
@@ -2911,7 +2939,8 @@ fn handle_connection(
     make_ok_packet(2, 0, 0, 0x0002, 0)
         .write_to(&mut &stream)
         .ok();
-    tracing::info!("Starting command loop, seq=3");
+    let mut server_last_sent_seq = 2u8;
+    tracing::info!("Starting command loop with server_last_sent_seq=2");
     let engine: Arc<RwLock<ExecutionEngine<WalStorage<FileStorage, FileBackedWalManager>>>> =
         Arc::new(RwLock::new(ExecutionEngine::new(storage.clone())));
     let mut ps_manager = PreparedStatementManager::new();
@@ -2921,7 +2950,7 @@ fn handle_connection(
         storage,
         engine,
         resp.capability_flags,
-        3,
+        &mut server_last_sent_seq,
         &mut ps_manager,
     );
 }
@@ -3770,7 +3799,7 @@ mod integration_tests {
     #[test]
     fn test_write_column_def_basic() {
         let mut buf = Vec::new();
-        write_column_def(&mut buf, "id", "INT", 0).unwrap();
+        let _ = write_column_def(&mut buf, "id", "INT", 0).unwrap();
         assert!(buf.len() > 0);
         // Verify it can be read back as a packet
         let mut cursor = std::io::Cursor::new(buf);
@@ -3781,7 +3810,7 @@ mod integration_tests {
     #[test]
     fn test_write_column_def_varchar() {
         let mut buf = Vec::new();
-        write_column_def(&mut buf, "name", "VARCHAR(100)", 5).unwrap();
+        let _ = write_column_def(&mut buf, "name", "VARCHAR(100)", 5).unwrap();
         let mut cursor = std::io::Cursor::new(buf);
         let pkt = Packet::read_from(&mut cursor).unwrap();
         assert_eq!(pkt.sequence, 5);
@@ -3790,7 +3819,7 @@ mod integration_tests {
     #[test]
     fn test_write_column_def_float() {
         let mut buf = Vec::new();
-        write_column_def(&mut buf, "price", "FLOAT", 10).unwrap();
+        let _ = write_column_def(&mut buf, "price", "FLOAT", 10).unwrap();
         let mut cursor = std::io::Cursor::new(buf);
         let pkt = Packet::read_from(&mut cursor).unwrap();
         assert_eq!(pkt.sequence, 10);
