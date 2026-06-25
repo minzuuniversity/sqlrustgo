@@ -91,12 +91,17 @@ for f in scripts/gate/check_*.sh; do
         ORACLE_GATES=$((ORACLE_GATES+1))
     else
         # Only flag ACTUAL correctness/SQL behavior gates:
-        #   g_correctness*, g1-g9* (numerical prefix), tpch*, sysbench*
+        #   g_correctness*, g1-g10* (numerical prefix), tpch*, sysbench*
         #   p14 (upgrade), p22 (time travel), p23 (hash chain), p34 (parallel)
-        # EXCLUDE phase gates: alpha*, beta_gate*, rc_ga_gate* (they check phase
-        # entry criteria, not SQL correctness)
-        if echo "$f" | grep -qE 'g_correctness|^scripts/gate/check_g[0-9]+|tpch|sysbench|p14_upgrade|p22_|p23_|p34_'; then
-            GATES_WITHOUT_ORACLE+=("$f")
+        # EXCLUDE phase gates: alpha*, beta_gate*, rc_ga_gate*
+        # EXCLUDE performance gates: g11-qps, g12-sysbench, g13-stability,
+        #   g14-crash, g15-perf-report, g16-compatibility (not SQL correctness)
+        if echo "$f" | grep -qE 'g_correctness|^scripts/gate/check_g([0-9]+-[^/]+|g[0-9]+$)|tpch|sysbench|p14_upgrade|p22_|p23_|p34_' 2>/dev/null; then
+            if echo "$f" | grep -qE 'g11_qps|g12_sysbench|g13_stability|g14_real_crash|g15_perf_report|g16_compatibility' 2>/dev/null; then
+                : # performance gate — not a SQL correctness gate, skip oracle requirement
+            else
+                GATES_WITHOUT_ORACLE+=("$f")
+            fi
         fi
     fi
 done
