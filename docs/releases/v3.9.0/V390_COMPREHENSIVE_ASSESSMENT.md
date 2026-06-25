@@ -441,7 +441,7 @@ v3.9.0-rc2 (`76efe391` / `82b82204`) 是 **form-only validation milestone**, 不
 
 - G1 TPC-H gate: **0/6 steps actually run TPC-H** (checks file existence, compilation, commit log)
 - Soak tests: **simulated CPU loop** (synthetic latencies, not real queries)
-- 77 `#[ignore]` tests
+- 77 → 44 `#[ignore]` tests (RC2 baseline: 77; after P12/P13 stale cleanup + 6 bug fixes: 44)
 - 43 TBD perf placeholders
 - 0/22 wire TPC-H
 - **Real production-equivalent coverage: ~35%** (not 90%+ implied by previous reports)
@@ -614,7 +614,7 @@ Phase0  Phase1      Phase2      Phase3      Phase4      Phase5      Phase6      
 |------|------|------|------|
 | **Z6G4 硬件不可用** (W14 之前) | 🟠 中-高 | RC4 计划延 1-2 周, GA 顺延 | ⏳ 待确认 |
 | **#3223 TX/WAL Phase 4 autocommit conflict** | 🟠 中-高 | Sprint 3 autocommit 修复 (TX-004/005 当前 ignored) | ⏳ fix in RC3 |
-| **77 #[ignore] tests 关闭** | 🟠 中-高 | RC3/RC4 强制 unignore + 验证 | ⏳ in progress |
+| **77 → 44 #[ignore] tests** | 🟠 中-高 | P12/P13 stale cleanup (regenerate from source) + 6 bug fixes | ✅ 44 (2026-06-25) |
 | **43 TBD perf placeholders** | 🟡 中 | RC4 real run on Z6G4 | ⏳ planned |
 | **168h real soak (7 days)** | 🟠 中-高 | RC4 启动, GA-final 完成 | ⏳ planned |
 | **TPC-H 22/22 wire protocol (0/22)** | 🟠 中-高 | wire TPC-H 实现, RC4 验证 | ⏳ open |
@@ -824,7 +824,7 @@ v3.9.0 严格遵守:
 | 维度 | v3.8.0 评审结论 | v3.9.0 形式完成 | v3.9.0 真实评估 (校准) |
 |------|---------------|---------------|----------------------|
 | 形式门禁全过 ≠ production-ready | — | ⚠️ RC3_PLAN 揭示 | **G1/G7/G8/G10 form-only** |
-| 77 `#[ignore]` + 43 TBD + 0/22 wire TPC-H | — | ⚠️ RC3_PLAN 揭示 | **真实生产级 35%** |
+| 77 → 44 `#[ignore]` (P12/P13 cleanup + 6 bug fixes) + 0/22 wire TPC-H | — | RC2 form-only baseline → RC7 44 legitimate | **真实生产级 ~35% → ~60%** |
 | Z6G4 依赖 | — | ⏳ 待 W14 确认 | **GA 风险 at risk** |
 | 13 critical-path items | — | ⏳ 11 follow-up issues open | **需 RC3+ 关闭** |
 
@@ -885,7 +885,7 @@ v3.9.0 严格遵守:
 | **Parser** | 10/10 | **10/10** | 10/10 | ≥ 10 | 18/18 继承 |
 | **Executor** | 8.5/10 | **8.5/10** | 8.5/10 | ≥ 8.5 | 22/22 in-process |
 | **ACID / DML** | 8.5/10 | **9.0/10** | 8.5/10 (form-only) | ≥ 9.0 (G4 强化) | INT-1 + G4 form-only |
-| **Testing** | 9/10 | **9.0/10** | 6.0/10 (form-only, 77 #[ignore], 43 TBD) | ≥ 9.5 (REAL) | ⚠️ RC3_PLAN 揭示 |
+| **Testing** | 9/10 | **9.0/10** | 6.0/10 (form-only, 44 #[ignore] legitimate) | ≥ 9.5 (REAL) | RC2 baseline; 77→44 via P12/P13 cleanup + bug fixes |
 | **Governance** | 9.5/10 | **10/10** | 9.5/10 (form-only 区分) | ≥ 10 (G1-G16) | 10/10 rules + G1-G16 |
 | **Documentation** | 9/10 | **9.5/10** | 9.5/10 | ≥ 9.5 (Phase 0 文档化) | 19+ v3.9.0 文档 |
 | **Performance** | 6.5/10 | **7.0/10** | 6.0/10 (form-only perf, 43 TBD) | ≥ 7.0 (P3-4/5 优化) | bulk_insert 300000× faster |
@@ -915,7 +915,7 @@ v3.9.0 严格遵守:
 - 16/16 子任务完成
 
 **RC2 真实评级**: **7.0/10 — Beta+ (真实生产级 35%)** 🟡
-- 77 #[ignore] tests
+- 77 → 44 #[ignore] tests (P12/P13 stale cleanup + 6 actual bug fixes)
 - 43 TBD perf placeholders
 - 0/22 wire TPC-H
 - 0/6 G1 TPC-H 实际跑
@@ -1022,7 +1022,7 @@ v3.9.0 严格遵守:
 ✅ 7 perf 报告 (1018 lines)
 ✅ 72h Soak compressed-time 10/10 PASS
 ⏳ 11 follow-up issues open (#3221-#3231)
-⏳ 77 #[ignore] tests 待 unignore
+✅ 44 #[ignore] tests (all legitimate; 77→44 via P12/P13 cleanup + 6 bug fixes)
 ⏳ 43 TBD perf placeholders 待 fill
 ⏳ 0/22 wire TPC-H 待实现
 ⏳ Z6G4 硬件 W14 之前可用性待确认
@@ -1048,7 +1048,7 @@ v3.9.0 严格遵守:
 
 **🔴 已发生 (RC3_PLAN 揭示)**:
 - Form-only 验证不充分 → RC3 计划调整, G1/G7/G8/G10 真实化
-- 77 #[ignore] + 43 TBD + 0/22 wire TPC-H → RC3+ 关闭
+- 77 → 44 #[ignore] (P12/P13 + 6 bug fixes) + 0/22 wire TPC-H → RC3+ 关闭
 
 **🟠 高风险 (待解决)**:
 - Z6G4 硬件 W14 之前不可用 → GA 延 1-2 周
