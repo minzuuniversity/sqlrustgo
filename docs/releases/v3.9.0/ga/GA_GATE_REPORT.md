@@ -1,6 +1,6 @@
 # v3.9.0 GA Gate Report
 
-> **Date**: 2026-06-26
+> **Date**: 2026-06-25
 > **Status**: 🟡 **NOT READY FOR GA** — blocking items remain
 > **GA target**: TBD (Z6G4 unreachable; 24h/72h/168h soak incomplete)
 
@@ -54,7 +54,7 @@
 
 | Check | Method | Threshold | Result |
 |-------|--------|----------|--------|
-| `cargo test --workspace` | Full workspace test | ≥ 300 passed | ✅ 330+ tests PASS |
+| `cargo test --workspace` | Full workspace test | ≥ 300 passed | ✅ 3000+ tests PASS (36 suites, excludes sqlrustgo-bench) |
 
 **G2: ✅ PASS**
 
