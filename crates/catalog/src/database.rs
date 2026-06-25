@@ -151,7 +151,11 @@ mod tests {
 
         db.add_schema(schema).unwrap();
         assert!(db.has_schema("users"));
-        assert_eq!(db.schema_names(), vec!["public", "users"]);
+        // HashMap iteration order is non-deterministic; check membership + count
+        let names = db.schema_names();
+        assert!(names.contains(&"public"), "should have public schema");
+        assert!(names.contains(&"users"), "should have users schema");
+        assert_eq!(names.len(), 2);
     }
 
     #[test]
