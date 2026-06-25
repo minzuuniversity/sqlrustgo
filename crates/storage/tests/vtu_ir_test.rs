@@ -127,6 +127,7 @@ fn make_table_info(columns: Vec<(&str, &str)>) -> TableInfo {
                 data_type: t.to_string(),
                 nullable: false,
                 primary_key: false,
+                char_max_length: None,
             })
             .collect(),
         foreign_keys: vec![],
