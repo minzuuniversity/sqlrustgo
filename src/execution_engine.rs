@@ -392,6 +392,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             } => self.execute_execute(name, params),
             Statement::CreateDatabase(ref db) => self.execute_create_database(db),
             Statement::DropDatabase(ref db) => self.execute_drop_database(db),
+            Statement::UseDatabase(ref name) => self.execute_use_database(name),
              _ => Err(SqlError::ExecutionError(
                  "Unsupported statement type".to_string(),
              )),
@@ -962,6 +963,14 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             "DROP DATABASE `{}` is not supported in single-database mode",
             db.name
         )))
+    }
+
+    fn execute_use_database(&self, _db: &str) -> SqlResult<ExecutorResult> {
+        // v3.9.0: single-database architecture — USE <database> is accepted
+        // (for MySQL wire compatibility) but is a no-op since all tables
+        // live in the single catalog. Future v3.10 multi-database mode will
+        // switch the active database context.
+        Ok(ExecutorResult::empty())
     }
 
     fn execute_truncate(&self, truncate: &TruncateStatement) -> SqlResult<ExecutorResult> {

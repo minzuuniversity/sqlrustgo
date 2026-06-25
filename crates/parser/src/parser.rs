@@ -87,6 +87,7 @@ pub enum Statement {
     DropRole(DropRoleStatement),
     CreateDatabase(CreateDatabaseStatement),
     DropDatabase(DropDatabaseStatement),
+    UseDatabase(String),
     GrantRole(GrantRoleStatement),
     RevokeRole(RevokeRoleStatement),
     SetRole(SetRoleStatement),
@@ -1048,7 +1049,7 @@ impl Parser {
             Some(Token::Merge) => self.parse_merge(),
             Some(Token::Create) => self.parse_create(),
             Some(Token::Drop) => self.parse_drop(),
-            Some(Token::Truncate) => self.parse_truncate(),
+            Some(Token::Use) => self.parse_use_database(),
             Some(Token::Analyze) => self.parse_analyze(),
             Some(Token::With) => self.parse_with_select(),
             Some(Token::Alter) => self.parse_alter_table(),
@@ -1418,6 +1419,18 @@ impl Parser {
             name,
             if_not_exists,
         }))
+    }
+
+    /// Parse USE <database> statement
+    fn parse_use_database(&mut self) -> Result<Statement, String> {
+        self.expect(Token::Use)?;
+        let name = match self.next() {
+            Some(Token::Identifier(name)) => name,
+            Some(Token::StringLiteral(s)) => s,
+            Some(t) => return Err(format!("Expected database name, got {:?}", t)),
+            None => return Err("Expected database name".to_string()),
+        };
+        Ok(Statement::UseDatabase(name))
     }
 
     fn parse_create_index(&mut self, unique: bool) -> Result<Statement, String> {
