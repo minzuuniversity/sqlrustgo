@@ -16,9 +16,7 @@ fn test_parse_create_trigger_after_insert() {
         result
     );
 }
-// Real parser bug: BEFORE keyword not tokenized as Token::Before, parsed as Identifier("BEFORE").
-// Tracked separately.
-#[ignore = "BEFORE keyword not in lexer, parsed as Identifier. Known parser bug."]
+// BEFORE keyword now fixed: Token::Before added to lexer.
 #[test]
 fn test_parse_create_trigger_before_update() {
     let sql = "CREATE TRIGGER update_check BEFORE UPDATE ON users FOR EACH ROW BEGIN SELECT 1; END";
