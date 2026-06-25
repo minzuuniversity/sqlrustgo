@@ -252,8 +252,13 @@ git commit -m "feat(mysql-server): add server_threads field to EphemeralConfig"
     pub struct ServerJob {
         pub stream: TcpStream,
         pub addr: SocketAddr,
-        pub storage: Arc<crate::storage::MemoryStorage>,
-        pub tls_config: Option<Arc<crate::tls::TlsConfig>>,
+        pub storage: Arc<std::sync::RwLock<
+            sqlrustgo_storage::WalStorage<
+                sqlrustgo_storage::FileStorage,
+                sqlrustgo_storage::FileBackedWalManager,
+            >,
+        >>,
+        pub tls_config: Arc<rustls::ServerConfig>,
         pub user_store: UserStore,
     }
 
@@ -272,8 +277,13 @@ git commit -m "feat(mysql-server): add server_threads field to EphemeralConfig"
         /// Start N worker threads + bounded sync_channel.
         pub fn start(
             n: usize,
-            storage: Arc<crate::storage::MemoryStorage>,
-            tls_config: Option<Arc<crate::tls::TlsConfig>>,
+            storage: Arc<std::sync::RwLock<
+                sqlrustgo_storage::WalStorage<
+                    sqlrustgo_storage::FileStorage,
+                    sqlrustgo_storage::FileBackedWalManager,
+                >,
+            >>,
+            tls_config: Arc<rustls::ServerConfig>,
             user_store: UserStore,
         ) -> Self {
             assert!(n > 0, "ServerThreadPool::start requires n > 0");
@@ -315,9 +325,14 @@ git commit -m "feat(mysql-server): add server_threads field to EphemeralConfig"
     fn worker_loop(
         rx: Arc<std::sync::Mutex<Receiver<ServerJob>>>,
         worker_id: usize,
-        _storage: Arc<crate::storage::MemoryStorage>,
-        _tls_config: Option<Arc<crate::tls::TlsConfig>>,
-        _user_store: UserStore,
+        storage: Arc<std::sync::RwLock<
+            sqlrustgo_storage::WalStorage<
+                sqlrustgo_storage::FileStorage,
+                sqlrustgo_storage::FileBackedWalManager,
+            >,
+        >>,
+        tls_config: Arc<rustls::ServerConfig>,
+        user_store: UserStore,
     ) {
         loop {
             let job = {
@@ -332,13 +347,35 @@ git commit -m "feat(mysql-server): add server_threads field to EphemeralConfig"
                     }
                 }
             };
-            // Placeholder: actual handle_connection call wired in Task 5
-            let _ = job;
+            // Panic isolation
+            let result = std::panic::catch_unwind(
+                std::panic::AssertUnwindSafe(|| {
+                    crate::handle_connection(
+                        job.stream,
+                        job.addr,
+                        job.storage,
+                        job.tls_config,
+                        job.user_store,
+                    )
+                }),
+            );
+            if let Err(e) = result {
+                tracing::error!(
+                    "worker {worker_id}: connection handler panicked: {:?}",
+                    e.downcast_ref::<&str>().unwrap_or(&"unknown")
+                );
+            }
+            // Suppress unused warnings for storage/tls passed to start() but not
+            // accessed here directly (handle_connection gets them via job).
+            let _ = (&storage, &tls_config, &user_store);
         }
     }
 ```
 
-> **注意**: 上面的 `Arc<crate::storage::MemoryStorage>` 和 `Arc<crate::tls::TlsConfig>` 是**占位**类型签名。Task 5 替换为真实的 storage / tls 类型。如果编译失败（路径不对），用 `cargo doc -p sqlrustgo-mysql-server` 查看实际类型并修正。
+> **类型来源**: `Arc<RwLock<WalStorage<FileStorage, FileBackedWalManager>>>` 是
+> `crates/mysql-server/src/lib.rs:2656` 中 `run_server_with_listener_and_shutdown_with_bootstrap_tables_and_sql`
+> 的真实 `storage` 变量类型。`Arc<rustls::ServerConfig>` 是 `lib.rs:2545`
+> 的 `tls_config` 真实类型。`UserStore` 是 `lib.rs:2674` 的真实类型。
 
 - [ ] **Step 2: 编译验证类型正确性**
 
@@ -928,172 +965,73 @@ git commit -m "test(mysql-server): add CLI validation tests for --server-threads
 //! ServerThreadPool 端到端行为测试
 //!
 //! 验证:
-//! 1. server_threads=N>0 时, 多并发连接能被处理
-//! 2. server_threads=0 时, 旧行为不退化
-//! 3. server_threads=1 时, 多连接不丢失（背压正常）
-
-use sqlrustgo_mysql_server::testing::{start_ephemeral, EphemeralConfig};
-use std::sync::Arc;
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::time::{Duration, Instant};
-
-mod common;
-use common::MySqlTestClient;
-
-#[test]
-fn e2e_server_threads_16_handles_burst() {
-    let port = 13400u16;
-    let _guard = port;
-    let tmp = tempfile::TempDir::new().expect("TempDir");
-    let cfg = EphemeralConfig {
-        data_dir: Some(tmp.path().to_path_buf()),
-        bootstrap_tables: false,
-        bootstrap_users: true,
-        server_threads: 16,
-        ..Default::default()
-    };
-    let handle = start_ephemeral(cfg).expect("start_ephemeral");
-    let port = handle.port;
-
-    let queries_per_client = 10;
-    let client_count = 32;
-    let counter = Arc::new(AtomicUsize::new(0));
-    let start = Instant::now();
-
-    let mut handles = vec![];
-    for client_id in 0..client_count {
-        let counter = counter.clone();
-        let handle = std::thread::spawn(move || {
-            let mut c = MySqlTestClient::connect_handle(handle_for(port, client_id))
-                .expect("connect");
-            let _ = c.set_timeouts(Duration::from_secs(30), Duration::from_secs(30));
-            for _ in 0..queries_per_client {
-                if c.query_rows("SELECT 1").is_ok() {
-                    counter.fetch_add(1, Ordering::SeqCst);
-                }
-            }
-        });
-        handles.push(handle);
-    }
-
-    for h in handles {
-        h.join().expect("client thread");
-    }
-    let total = client_count * queries_per_client;
-    let actual = counter.load(Ordering::SeqCst);
-    let elapsed = start.elapsed();
-    assert_eq!(actual, total, "all {total} queries should succeed; got {actual} in {elapsed:?}");
-}
-
-// Helper: connect to a specific port (avoids `handle` ownership move)
-fn handle_for(_port: u16, _id: usize) -> sqlrustgo_mysql_server::testing::EphemeralHandle {
-    // Note: this is awkward because EphemeralHandle doesn't impl Clone.
-    // The pattern below uses a single shared handle (multiple clients can connect
-    // to the same port via fresh TcpStream). For now, the test above is a
-    // simplified version using MySqlTestClient::connect with explicit addr.
-    unimplemented!("placeholder; see below")
-}
-```
-
-**注意**: 上面的 helper 函数不完整。**改用更简单的模式** —— 用 `std::net::TcpStream` 直连端口（绕过 EphemeralHandle 所有权），因为 EphemeralHandle 不可 Clone：
-
-```rust
-use std::io::{Read, Write};
-use std::net::TcpStream;
-
-fn raw_query(port: u16, sql: &str) -> Result<(), String> {
-    let mut stream = TcpStream::connect(("127.0.0.1", port)).map_err(|e| e.to_string())?;
-    stream.set_read_timeout(Some(Duration::from_secs(10))).ok();
-    stream.set_write_timeout(Some(Duration::from_secs(10))).ok();
-    // Simplified: just connect + close (validates accept loop works)
-    Ok(())
-}
-
-#[test]
-fn e2e_server_threads_16_accepts_concurrent() {
-    let tmp = tempfile::TempDir::new().expect("TempDir");
-    let cfg = EphemeralConfig {
-        data_dir: Some(tmp.path().to_path_buf()),
-        bootstrap_tables: false,
-        bootstrap_users: true,
-        server_threads: 16,
-        ..Default::default()
-    };
-    let handle = start_ephemeral(cfg).expect("start_ephemeral");
-    let port = handle.port;
-    drop(handle);  // keep server running via Arc-like state (actually drops ephemeral)
-
-    // ... (注意: EphemeralHandle::drop 会关闭 server, 此模式无法用于多客户端测试)
-    // 改用真实 MySQLTestClient 模式 (与 start_sf01 一致):
-}
-```
-
-**修订**: e2e 测试较复杂（需要 MySQL 协议握手）。**采用更简单的策略**: 复用 `tests/common/tpch_wire_harness::start_sf01` 验证现有功能不退化（即使 server_threads 走新路径也不挂）。
-
-最终策略（**采用**）：**只创建 1 个 e2e 测试**，验证 server 在 server_threads=16 下能完成 MySQL 握手：
-
-```rust
-//! ServerThreadPool 端到端行为测试
+//! 1. server_threads=16 (default) 下, MySQL 握手 + 简单 SELECT 成功
+//! 2. server_threads=0 (legacy unbounded) 下不退化
+//! 3. server_threads=1 (single worker) 下不退化
 //!
-//! 验证 server 在 server_threads=N>0 下能正常接受 MySQL 协议连接。
+//! 注: 多并发 client 测试受限于 EphemeralHandle 不可 Clone；单连接
+//! 握手测试已足以验证 accept loop + worker pool 的代码路径正确性。
+//! 真实并发压力测试在 scripts/stability/run_wired_soak.sh (Task 11/12)。
 
 mod common;
 use common::MySqlTestClient;
 use sqlrustgo_mysql_server::testing::{start_ephemeral, EphemeralConfig};
+
+fn make_cfg(server_threads: usize) -> EphemeralConfig {
+    let tmp = tempfile::TempDir::new().expect("TempDir");
+    EphemeralConfig {
+        data_dir: Some(tmp.path().to_path_buf()),
+        bootstrap_tables: false,
+        bootstrap_users: true,
+        server_threads,
+        ..Default::default()
+    }
+}
 
 #[test]
 fn e2e_server_threads_16_handshake_succeeds() {
-    let tmp = tempfile::TempDir::new().expect("TempDir");
-    let cfg = EphemeralConfig {
-        data_dir: Some(tmp.path().to_path_buf()),
-        bootstrap_tables: false,
-        bootstrap_users: true,
-        server_threads: 16,
-        ..Default::default()
-    };
-    let handle = start_ephemeral(cfg).expect("start_ephemeral");
+    let handle = start_ephemeral(make_cfg(16)).expect("start_ephemeral");
     let mut client = MySqlTestClient::connect_handle(handle).expect("connect");
     let result = client.query_rows("SELECT 1");
-    assert!(result.is_ok(), "SELECT 1 should succeed; got {:?}", result);
+    assert!(
+        result.is_ok(),
+        "SELECT 1 with server_threads=16 should succeed; got {:?}",
+        result
+    );
 }
 
 #[test]
 fn e2e_server_threads_0_legacy_handshake_succeeds() {
-    let tmp = tempfile::TempDir::new().expect("TempDir");
-    let cfg = EphemeralConfig {
-        data_dir: Some(tmp.path().to_path_buf()),
-        bootstrap_tables: false,
-        bootstrap_users: true,
-        server_threads: 0,  // legacy unbounded mode
-        ..Default::default()
-    };
-    let handle = start_ephemeral(cfg).expect("start_ephemeral");
+    let handle = start_ephemeral(make_cfg(0)).expect("start_ephemeral");
     let mut client = MySqlTestClient::connect_handle(handle).expect("connect");
     let result = client.query_rows("SELECT 1");
-    assert!(result.is_ok(), "SELECT 1 with server_threads=0 should succeed");
+    assert!(
+        result.is_ok(),
+        "SELECT 1 with server_threads=0 should succeed; got {:?}",
+        result
+    );
 }
 
 #[test]
 fn e2e_server_threads_1_single_worker_handshake_succeeds() {
-    let tmp = tempfile::TempDir::new().expect("TempDir");
-    let cfg = EphemeralConfig {
-        data_dir: Some(tmp.path().to_path_buf()),
-        bootstrap_tables: false,
-        bootstrap_users: true,
-        server_threads: 1,
-        ..Default::default()
-    };
-    let handle = start_ephemeral(cfg).expect("start_ephemeral");
+    let handle = start_ephemeral(make_cfg(1)).expect("start_ephemeral");
     let mut client = MySqlTestClient::connect_handle(handle).expect("connect");
     let result = client.query_rows("SELECT 1");
-    assert!(result.is_ok(), "SELECT 1 with server_threads=1 should succeed");
+    assert!(
+        result.is_ok(),
+        "SELECT 1 with server_threads=1 should succeed; got {:?}",
+        result
+    );
 }
 ```
 
-> **关于 `tempfile` 依赖**: 检查 `crates/mysql-server/Cargo.toml` 是否有 `tempfile` dev-dependency。如果没有，需添加：
+> **关于 `tempfile` 依赖**: `tempfile = "3.25.0"` 已在工作区根 `Cargo.toml` 定义,
+> 集成测试可通过 `tempfile` crate 直接使用（无需在 `crates/mysql-server/Cargo.toml`
+> 单独声明）。如果集成测试 cargo test 报 "can't find crate `tempfile`",
+> 在 `crates/mysql-server/Cargo.toml` 添加：
 > ```toml
 > [dev-dependencies]
-> tempfile = "3"
+> tempfile.workspace = true
 > ```
 
 - [ ] **Step 2: 编译并运行测试**
