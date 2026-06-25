@@ -2,7 +2,7 @@
 name: gitea-pr-creation
 description: Create PRs on self-hosted Gitea servers via REST API when gh CLI (GitHub-only) is unavailable
 source: auto-skill
-extracted_at: '2026-06-20T00:00:00.000Z'
+extracted_at: '2026-06-20T18:18:24.471Z'
 ---
 
 ## Create PR on Self-Hosted Gitea via REST API
