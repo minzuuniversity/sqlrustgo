@@ -88,7 +88,10 @@ fn make_engine() -> ExecutionEngine<MemoryStorage> {
         )
         .unwrap();
 
-    let data = PathBuf::from("/home/ai/sqlrustgo/.worktrees/v39-wired-audit/tests/data/tpch-sf001");
+    let data = PathBuf::from(match option_env!("TPCH_DATA_DIR") {
+        Some(p) => p,
+        None => "tests/data/tpch-sf001",
+    });
     let schemas: Vec<(&str, usize)> = vec![
         ("region", 3),
         ("nation", 4),
