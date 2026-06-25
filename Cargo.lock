@@ -4069,7 +4069,6 @@ dependencies = [
  "serde_json",
  "serde_yaml",
  "sha1 0.10.6",
- "sha2 0.10.9",
  "sqlrustgo-admin",
  "sqlrustgo-cache",
  "sqlrustgo-catalog",
