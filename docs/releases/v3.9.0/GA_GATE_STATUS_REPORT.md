@@ -2,7 +2,7 @@
 
 > **Date**: 2026-06-13
 > **Tag**: v3.9.0-rc7 (`642ff9cf9`) — current tip `8a83e2553` (post-#3378 REMOTE_LIMITS + #3377 .gitattributes)
-> **Status**: 🟡 **READY for GA cut** (pending 24h real soak completion on 250)
+> **Status**: 🟡 **NOT READY for GA cut** (24h real soak incomplete; Z6G4 unreachable since ~2026-06-19)
 > **GA Target**: 2026-12-15 (per Hermes audit #3252)
 > **依据**: `docs/governance/RC_TO_GA_GATE_CHECKLIST.md` + `RELEASE_LIFECYCLE.md`
 
@@ -25,10 +25,10 @@
 | G9 | Upgrade v3.8→v3.9 | ✅ PASS | check_p14_upgrade_test.sh |
 | G10 | GMP Audit + Time Travel + Hash Chain | ✅ PASS | check_p21/22/23 (3 sub-gates) |
 | G11 | QPS/TPS Benchmark | ✅ PASS | check_g11_qps.sh (5/5) |
-| G13 | 24h Stability | ✅ PASS (warned) | 250 24h running, 1607 samples, 0 errors |
+| G13 | 24h Stability | 🟡 partial | 250: partial (843 samples before contact lost); Z6G4: never completed |
 | G16 | Compatibility v3.8→v3.9 | ✅ PASS | check_g16_compatibility.sh (7/7) |
 
-**Total: 13/13 PASS** + 1 PASS-with-warning (G13 24h real running) + 1 deferred to post-GA (72h/168h)
+**Total: 13/13 PASS** + 1 🟡 partial (G13 24h real incomplete) + 1 deferred to post-GA (72h/168h)
 
 ### 1.2 Substance Tests (36/36 PASS)
 
@@ -51,7 +51,7 @@
 
 | # | Issue | 252 | 250 | Status |
 |---|-------|-----|-----|--------|
-| #3264 | GA-P0/S2: Execute 24h long-running soak | ✅ open | — | 250 running 1607 samples |
+| #3264 | GA-P0/S2: Execute 24h long-running soak | ✅ open | — | 250: 843 samples before contact lost |
 | #3265 | GA-P0/S3: Execute 72h long-running soak | ✅ open | — | pending 24h |
 | #3266 | GA-P0/S4: Execute 168h long-running soak (GA gate) | ✅ open | — | pending 72h |
 | #3225 | Real 24h/72h wall-clock soak | ✅ open | ✅ open | dup of #3264/#3265 |
