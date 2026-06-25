@@ -73,21 +73,21 @@ fn stmt_payload(stmt_id: u32, params: &[(u8, &[u8])], new_params_bound: bool) ->
 #[test]
 fn parses_no_params_correctly() {
     let p = vec![0x01, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00];
-    let out = parse_stmt_execute_params(&p, 0);
+    let out = parse_stmt_execute_params(&p, 0, &[]);
     assert_eq!(out, Vec::<StmtParam>::new());
 }
 
 #[test]
 fn parses_single_long_param() {
     let p = stmt_payload(1, &[(0x03, &12345i32.to_le_bytes())], true);
-    let out = parse_stmt_execute_params(&p, 1);
+    let out = parse_stmt_execute_params(&p, 1, &[]);
     assert_eq!(out, vec![(b"12345".to_vec(), true)]);
 }
 
 #[test]
 fn parses_single_string_param() {
     let p = stmt_payload(1, &[(0xfd, b"hello")], true);
-    let out = parse_stmt_execute_params(&p, 1);
+    let out = parse_stmt_execute_params(&p, 1, &[]);
     assert_eq!(out, vec![(b"hello".to_vec(), false)]);
 }
 
@@ -102,7 +102,7 @@ fn parses_three_mixed_params() {
         ],
         true,
     );
-    let out = parse_stmt_execute_params(&p, 3);
+    let out = parse_stmt_execute_params(&p, 3, &[]);
     assert_eq!(out.len(), 3);
     assert_eq!(out[0], (b"42".to_vec(), true));
     assert_eq!(out[1], (b"hi".to_vec(), false));
@@ -120,7 +120,7 @@ fn parses_null_via_bitmap() {
         ],
         true,
     );
-    let out = parse_stmt_execute_params(&p, 3);
+    let out = parse_stmt_execute_params(&p, 3, &[]);
     assert_eq!(out.len(), 3);
     assert_eq!(out[0], (b"1".to_vec(), true));
     assert_eq!(out[1], (b"".to_vec(), false)); // empty = NULL
@@ -131,7 +131,7 @@ fn parses_null_via_bitmap() {
 fn replace_placeholders_with_parsed_params_round_trips() {
     let sql = "SELECT * FROM users WHERE id = ? AND name = ?";
     let p = stmt_payload(1, &[(0x08, &42i64.to_le_bytes()), (0xfd, b"alice")], true);
-    let params = parse_stmt_execute_params(&p, 2);
+    let params = parse_stmt_execute_params(&p, 2, &[]);
     let final_sql = replace_placeholders(sql, &params);
     assert_eq!(
         final_sql,
@@ -151,7 +151,7 @@ fn replace_placeholders_with_null_inserts_null_keyword() {
         ],
         true,
     );
-    let params = parse_stmt_execute_params(&p, 3);
+    let params = parse_stmt_execute_params(&p, 3, &[]);
     let final_sql = replace_placeholders(sql, &params);
     assert_eq!(final_sql, "INSERT INTO t VALUES (1, NULL, 3)");
 }
@@ -160,7 +160,7 @@ fn replace_placeholders_with_null_inserts_null_keyword() {
 fn string_with_quote_is_escaped() {
     let sql = "SELECT 'x' WHERE name = ?";
     let p = stmt_payload(1, &[(0xfd, b"O'Brien")], true);
-    let params = parse_stmt_execute_params(&p, 1);
+    let params = parse_stmt_execute_params(&p, 1, &[]);
     let final_sql = replace_placeholders(sql, &params);
     assert_eq!(final_sql, "SELECT 'x' WHERE name = 'O''Brien'");
 }

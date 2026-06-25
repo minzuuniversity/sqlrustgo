@@ -21,16 +21,6 @@ PID_FILE="$RESULTS_DIR/sqlrustgo.pid"
 LOG_FILE="$RESULTS_DIR/sqlrustgo.log"
 METRICS_FILE="$RESULTS_DIR/metrics.csv"
 
-# ─────────────────────────────────────────────────────────────────────
-# Server memory hard cap (P0 enhancement 2026-06-14, mirrors run_tpch_30min.sh).
-# Without this, sqlrustgo's buffer pool can grow to 70+ GB RSS.
-# ─────────────────────────────────────────────────────────────────────
-SERVER_MEM_MB=${SERVER_MEM_MB:-8192}     # 8 GB hard limit
-SERVER_FD_LIMIT=${SERVER_FD_LIMIT:-1024}   # per-server FD cap
-RSS_ALERT_MB=${RSS_ALERT_MB:-0}          # 0 = auto-derive (80% of cap)
-[ "$RSS_ALERT_MB" -eq 0 ] && [ "$SERVER_MEM_MB" -gt 0 ] && \
-    RSS_ALERT_MB=$((SERVER_MEM_MB * 4 / 5))
-
 mkdir -p "$RESULTS_DIR"
 
 echo "=========================================="
@@ -51,19 +41,8 @@ fi
 # v3.9.0: `sqlrustgo-mysql-server` 改为 subcommand-CLI (see `serve --help`).
 # Old (v3.8.0-rc2): `--port 3306 --data-dir ...`
 # New (v3.9.0+): `serve --port 3306 --data-dir ...`
-echo "[1/3] Starting sqlrustgo server (subcommand: serve, memcap=${SERVER_MEM_MB}MB)..."
-
-# Build the ulimit-prefix for the child (must be inline so it applies to
-# the server process, not the parent shell).
-LIMIT_PREFIX=""
-if [ "${SERVER_MEM_MB}" -gt 0 ] 2>/dev/null; then
-    LIMIT_PREFIX="$LIMIT_PREFIX ulimit -v $((SERVER_MEM_MB * 1024)) 2>/dev/null;"
-fi
-if [ "${SERVER_FD_LIMIT}" -gt 0 ] 2>/dev/null; then
-    LIMIT_PREFIX="$LIMIT_PREFIX ulimit -n $SERVER_FD_LIMIT 2>/dev/null;"
-fi
-
-nohup bash -c "$LIMIT_PREFIX exec '$SQLRUSTGO_BIN' serve --port 3306 --data-dir '$RESULTS_DIR/data'" > "$LOG_FILE" 2>&1 &
+echo "[1/3] Starting sqlrustgo server (subcommand: serve)..."
+nohup "$SQLRUSTGO_BIN" serve --port 3306 --data-dir "$RESULTS_DIR/data" > "$LOG_FILE" 2>&1 &
 SERVER_PID=$!
 echo $SERVER_PID > "$PID_FILE"
 echo "  Server PID: $SERVER_PID"

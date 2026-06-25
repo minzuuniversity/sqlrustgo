@@ -120,6 +120,7 @@ echo "TPC-H 22-query rotation (wired, MySQL CLI)"
 echo "=========================================="
 echo "  HOST=$HOST PORT=$PORT INTERVAL=${INTERVAL}s MAX_ROUNDS=${MAX_ROUNDS}"
 echo "  LOG_FILE=$LOG_FILE"
+echo "  WATCHDOG_FILE=${WATCHDOG_FILE:-(disabled)}"
 echo "=========================================="
 echo "ts,query,elapsed_ms,status" >> "$LOG_FILE"
 
@@ -136,6 +137,20 @@ while true; do
     round=$(( round + 1 ))
     echo ""
     echo "=== Round $round @ $(date '+%Y-%m-%d %H:%M:%S') ==="
+
+    # Watchdog check: if parent's watchdog.state == PAUSE, sleep extra
+    # (defaults to 30s) before starting this round's queries. This caps
+    # aggregate IO when multiple servers are stacked or the host is busy.
+    # (NEW 2026-06-14 — wired-stability-testing Pitfall 9)
+    if [ -n "${WATCHDOG_FILE:-}" ] && [ -f "$WATCHDOG_FILE" ]; then
+        WD=$(cat "$WATCHDOG_FILE" 2>/dev/null || echo "RUN")
+        if [ "$WD" = "PAUSE" ]; then
+            BACKOFF=${ROTATE_BACKOFF_S:-30}
+            echo "  [watchdog] PAUSE → sleeping ${BACKOFF}s before round $round"
+            sleep "$BACKOFF"
+        fi
+    fi
+
     run_one "Q1"  "$Q1"
     run_one "Q2"  "$Q2"
     run_one "Q3"  "$Q3"
