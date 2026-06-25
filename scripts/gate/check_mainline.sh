@@ -1,8 +1,4 @@
 #!/usr/bin/env bash
-# Purpose: Check mainline branch hygiene (protected, no force-push, no secrets)
-# Coverage: P11 (Gate Self-Verification), P5 (Governance)
-# Verifies: branch protection + audit log presence
-
 set -euo pipefail
 
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"

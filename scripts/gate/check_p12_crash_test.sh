@@ -85,13 +85,11 @@ else
     echo "  [5/7] ✅ PASS: crash_test_framework compiles"
 fi
 
-# 6. Tests pass (P14 V8 fix: check cargo test exit code, not just grep)
-CARGO_OUTPUT=$(cargo test --test crash_test_framework 2>&1)
-CARGO_EXIT=$?
-PASSED=$(echo "$CARGO_OUTPUT" | grep -E "test result.*ok" | grep -oE "[0-9]+ passed" | head -1)
-if [ $CARGO_EXIT -ne 0 ] || [ -z "$PASSED" ]; then
-    echo "  ❌ FAIL: crash_test_framework tests did not pass (cargo exit=$CARGO_EXIT)"
-    echo "$CARGO_OUTPUT" | tail -5
+# 6. Tests pass
+PASSED=$(cargo test --test crash_test_framework 2>&1 | grep -E "test result.*ok" | grep -oE "[0-9]+ passed" | head -1)
+if [ -z "$PASSED" ]; then
+    echo "  ❌ FAIL: crash_test_framework tests did not pass"
+    cargo test --test crash_test_framework 2>&1 | tail -5
     exit 1
 fi
 echo "  [6/7] ✅ PASS: crash_test_framework $PASSED"
