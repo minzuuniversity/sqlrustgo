@@ -22,8 +22,13 @@ fn bench_bulk_insert_records_wire() {
         let _ = client.exec(&format!("INSERT INTO bulk VALUES ({i}, 'row_{i}')"));
     }
     let elapsed = start.elapsed();
-    let rows = client.query_rows("SELECT COUNT(*) FROM bulk").expect("count");
+    let rows = client
+        .query_rows("SELECT COUNT(*) FROM bulk")
+        .expect("count");
     assert!(!rows.is_empty());
     let _ = client.exec("DROP TABLE bulk");
-    println!("Bulk insert {n} rows in {elapsed:?} ({:.0} rows/s)", n as f64 / elapsed.as_secs_f64());
+    println!(
+        "Bulk insert {n} rows in {elapsed:?} ({:.0} rows/s)",
+        n as f64 / elapsed.as_secs_f64()
+    );
 }
