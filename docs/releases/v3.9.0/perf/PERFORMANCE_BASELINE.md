@@ -1,11 +1,11 @@
-# SQLRustGo v3.9.0 Performance Baseline
-
+> **⚠️ STATUS: ALL VALUES TBD** — This baseline requires real hardware measurements on Z6G4 (8-core, 64GB RAM, NVMe SSD).
+> Values must be filled by running: (1) `bash scripts/bench/run_qps_benchmarks.sh` → QPS section,
+> (2) `bash scripts/sysbench/*.sh` (8 threads, 60s) → sysbench section, (3) `bash scripts/stability/run_24h_soak.sh` → resource section.
+> See §8 for the measurement workflow. Do NOT merge a release with TBD cells — fill them first.
+>
 > **Generated**: 2026-06-05
 > **Ref**: V390_TEST_PLAN_ROUND2_REVIEW §Perf Baseline (用户评审新增)
 > **Goal**: 量化性能回退。任何指标 < 阈值 → FAIL (GA 卡死)
-
----
-
 ## 1. 测量环境
 
 | 项目 | 规格 |
@@ -160,11 +160,11 @@ for row in baseline:
 | 项目 | 当前 | 目标 |
 |------|------|------|
 | Baseline 表存在 | ✅ | ✅ |
-| v3.8.0 数据 | TBD (待 Z6G4 测量) | ✅ |
-| v3.9.0 数据 | TBD (待 Z6G4 测量) | ✅ |
+| v3.8.0 数据 | ⚠️ TBD (待 Z6G4 测量) | ✅ |
+| v3.9.0 数据 | ⚠️ TBD (待 Z6G4 测量) | ✅ |
 | Gate 规则实现 | ✅ scripts/gate/check_perf_baseline.sh | ✅ |
-| 5/5 cases pass | TBD (W12 D3 真实跑) | ✅ |
-
+| G11-G16 门禁已集成 | ✅ check_g_all.sh (G1-G16 编排) | ✅ |
+| ⚠️ 注意: G11/G12/G14 需要 Z6G4 硬件，G7/G13 是压缩烟测 | G15 汇总所有门禁 | 真实性能数据待填入 |
 ---
 
 **Refs**:
