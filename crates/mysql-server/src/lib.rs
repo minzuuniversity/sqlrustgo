@@ -3006,6 +3006,7 @@ pub fn run_server_v2(
     use crate::testing::EphemeralConfig;
     let cfg = EphemeralConfig {
         data_dir: Some(std::path::PathBuf::from(data_dir)),
+        server_threads: 16,  // TODO(Task 6): 从 run_server_v2 参数传入
         ..Default::default()
     };
     let _ = crate::ACTIVE_CONFIG.set(std::sync::Mutex::new(cfg));
@@ -4113,6 +4114,12 @@ pub mod testing {
         /// LOAD DATA LOCAL INFILE. Default 1 MB. Tests / perf benches
         /// can set higher (e.g. 16 MB) for fewer INSERT round-trips.
         pub bulk_insert_buffer_size: usize,
+        /// Maximum concurrent connection-handler worker threads.
+        /// 0 = legacy unbounded `thread::spawn` (backwards compatible).
+        /// 1..=80 = bounded `ServerThreadPool` with N workers +
+        /// `sync_channel(N*2)` for backpressure. Default 16 (matches
+        /// CLI default in `main.rs`).
+        pub server_threads: usize,
     }
 
     impl Default for EphemeralConfig {
@@ -4124,6 +4131,7 @@ pub mod testing {
                 data_dir: None,
                 bootstrap_sql: Vec::new(),
                 bulk_insert_buffer_size: 1_048_576,
+                server_threads: 16,
             }
         }
     }
