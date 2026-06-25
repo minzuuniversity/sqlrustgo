@@ -52,7 +52,7 @@ fn test_page_throughput_sequential_write() {
     );
 
     // Measure sync overhead separately (batched flush, not per-page)
-    let file_for_sync = std::fs::OpenOptions::new()
+    let mut file_for_sync = std::fs::OpenOptions::new()
         .write(true)
         .open(&file_path)
         .unwrap();

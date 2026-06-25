@@ -1,1 +1,57 @@
-{"_comment": "stub file for TestDataLoader::load_json smoke test", "test": true}
+{
+  "name": "t",
+  "columns": [
+    {
+      "name": "id",
+      "data_type": "INTEGER",
+      "nullable": true
+    }
+  ],
+  "rows": [
+    [
+      {
+        "Integer": 1
+      }
+    ],
+    [
+      {
+        "Integer": 1
+      }
+    ],
+    [
+      {
+        "Integer": 1
+      }
+    ],
+    [
+      {
+        "Integer": 1
+      }
+    ],
+    [
+      {
+        "Integer": 1
+      }
+    ],
+    [
+      {
+        "Integer": 1
+      }
+    ],
+    [
+      {
+        "Integer": 1
+      }
+    ],
+    [
+      {
+        "Integer": 1
+      }
+    ],
+    [
+      {
+        "Integer": 1
+      }
+    ]
+  ]
+}

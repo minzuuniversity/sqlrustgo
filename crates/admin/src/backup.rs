@@ -6,7 +6,6 @@ use std::fs::{self, File};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 
-#[allow(dead_code)]
 pub struct BackupResult {
     pub manifest: Manifest,
     pub output_path: PathBuf,
@@ -101,6 +100,13 @@ fn write_tar_header<W: Write>(w: &mut W, name: &str, size: u64) -> Result<(), Ba
     Ok(())
 }
 
+#[allow(dead_code)] // reserved for tar archive finalization
+fn write_tar_end_marker<W: Write>(w: &mut W) -> Result<(), BackupError> {
+    let z = [0u8; 512];
+    w.write_all(&z).map_err(BackupError::Io)?;
+    Ok(())
+}
+
 fn write_padding<W: Write>(w: &mut W, size: usize) -> Result<(), BackupError> {
     let pad = (512 - (size % 512)) % 512;
     if pad > 0 {
@@ -154,7 +160,6 @@ pub fn tar_extract_all(input: &Path, out_dir: &Path) -> Result<Vec<String>, Back
     Ok(entries)
 }
 
-#[allow(dead_code)]
 pub fn tar_extract_one(input: &Path, name: &str) -> Result<Vec<u8>, BackupError> {
     let compressed = fs::read(input).map_err(BackupError::Io)?;
     let bytes = decode_gzip_or_raw(&compressed)?;
@@ -221,6 +226,7 @@ pub enum BackupError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::Write;
     use tempfile::TempDir;
 
     #[test]

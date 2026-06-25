@@ -94,7 +94,7 @@ pub fn run_soak_smoke(config: &SoakConfig) -> SoakReport {
     // Simulated query loop. Each iteration is ~1ms of work.
     let target_queries = config.duration_seconds * config.queries_per_second as u64;
     let mut memory_current = config.memory_baseline_bytes;
-    let fd_current = config.fd_baseline;
+    let mut fd_current = config.fd_baseline;
 
     while queries_executed < target_queries {
         // Simulate a query: ~0.5-2ms latency (deterministic).
