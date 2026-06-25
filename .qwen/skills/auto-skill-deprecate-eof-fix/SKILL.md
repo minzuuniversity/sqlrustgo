@@ -2,7 +2,7 @@
 name: deprecate-eof-fix
 description: Fix MySQL error 2027 "Malformed packet" caused by incorrect DEPRECATE_EOF OK packet marker (0xFE vs 0x00)
 source: auto-skill
-extracted_at: '2026-06-20T05:30:00.000Z'
+extracted_at: '2026-06-20T18:18:24.471Z'
 ---
 
 ## MySQL Wire Protocol: DEPRECATE_EOF OK Packet Marker Fix

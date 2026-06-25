@@ -2,7 +2,7 @@
 //! Verifies that 3-way joins execute through ExecutionEngine and produce
 //! correct row counts. Note: 4-way joins and CROSS JOIN are pending
 //! parser support (tracked in #2987 / #2991).
-use sqlrustgo::{ExecutionEngine, MemoryStorage};
+use sqlrustgo::{ExecutionEngine, MemoryStorage, StorageEngine};
 use std::sync::{Arc, RwLock};
 
 fn fresh_engine() -> ExecutionEngine<MemoryStorage> {

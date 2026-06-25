@@ -2,7 +2,7 @@
 name: verify-ignore-tests
 description: Verify long stability tests marked #[ignore] — run with --include-ignored, update ignore_registry.json, create spec
 source: auto-skill
-extracted_at: '2026-06-19T04:35:39.608Z'
+extracted_at: '2026-06-20T18:18:24.471Z'
 ---
 
 ## Procedure: Verify #[ignore] Tests

@@ -206,7 +206,6 @@ fn run_sqlrustgo_queries(
     out
 }
 
-#[allow(dead_code)]
 #[derive(Debug, Default)]
 struct CellDiff {
     query: u8,
@@ -225,7 +224,6 @@ struct SingleCellDiff {
     actual: String,
 }
 
-#[allow(dead_code)]
 fn diff_rows(pg: &[Vec<String>], other: &[Vec<String>]) -> (usize, Vec<SingleCellDiff>) {
     let mut sorted_pg = pg.to_vec();
     sorted_pg.sort();

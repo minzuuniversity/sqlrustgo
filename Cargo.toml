@@ -125,7 +125,6 @@ sqlrustgo-unified-query = { path = "crates/unified-query" }
 sqlrustgo-mysql-server = { path = "crates/mysql-server" }
 sqlrustgo-distributed = { path = "crates/distributed" }
 sha1 = "0.10"
-sha2 = "0.10"
 
 [package]
 name = "sqlrustgo"
@@ -133,10 +132,6 @@ version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
-
-[features]
-default = []
-v390_join_reorder = ["sqlrustgo-optimizer/v390_join_reorder"]
 
 [dependencies]
 sqlrustgo-common.workspace = true
@@ -169,11 +164,47 @@ rayon.workspace = true
 # subdir test with identical content.
 
 [[bench]]
-name = "tpch_wire_bench"
+name = "sql_operations"
+harness = false
+
+[[bench]]
+name = "lexer_bench"
+harness = false
+
+[[bench]]
+name = "parser_bench"
+harness = false
+
+[[bench]]
+name = "bench_insert"
+harness = false
+
+[[bench]]
+name = "bench_v130"
+harness = false
+
+[[bench]]
+name = "bench_v140"
+harness = false
+
+[[bench]]
+name = "bench_cbo"
+harness = false
+
+[[bench]]
+name = "tpch_bench"
 harness = false
 
 [[bench]]
 name = "qps_bench"
+harness = false
+
+[[bench]]
+name = "tpch_wire_bench"
+harness = false
+
+[[bench]]
+name = "bench_columnar"
 harness = false
 
 [[example]]
@@ -598,21 +629,6 @@ path = "tests/insert_odku_test.rs"
 [[test]]
 name = "replace_test"
 path = "tests/replace_test.rs"
-
-# Round 3 coverage (#3537) — task-3.2 vtu_ir 0% files
-[[test]]
-name = "vtu_ir_modules_test"
-path = "tests/vtu_ir_modules_test.rs"
-
-# Round 3 coverage (#3537) — task-3.1 small executor 0% files
-[[test]]
-name = "small_executor_modules_test"
-path = "tests/small_executor_modules_test.rs"
-
-# Round 3 coverage (#3537) — task-3.3 graph/cypher integration
-[[test]]
-name = "graph_cypher_integration_test"
-path = "tests/graph_cypher_integration_test.rs"
 
 [[test]]
 name = "int4_explicit_tx_test"
