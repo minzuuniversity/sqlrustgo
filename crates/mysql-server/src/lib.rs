@@ -2376,16 +2376,17 @@ fn handle_connection(
             } else {
                 user_store.verify_password(&resp.username, &scramble, &resp.auth_response)
             };
+            let auth_seq = tls_pkt.sequence.wrapping_add(1);
             if !auth_ok {
                 tracing::warn!("Auth failed for user {}", resp.username);
-                make_err_packet(3, 1045, "28000", "Access denied")
+                make_err_packet(auth_seq, 1045, "28000", "Access denied")
                     .write_to(&mut tls)
                     .ok();
                 return;
             }
-            tracing::info!("Auth accepted, sending OK packet, seq=3");
-            make_ok_packet(3, 0, 0, 0x0002, 0).write_to(&mut tls).ok();
-            tracing::info!("Starting command loop, seq=4");
+            tracing::info!("Auth accepted, sending OK packet, seq={}", auth_seq);
+            make_ok_packet(auth_seq, 0, 0, 0x0002, 0).write_to(&mut tls).ok();
+            tracing::info!("Starting command loop, seq={}", auth_seq.wrapping_add(1));
             let engine: Arc<
                 RwLock<ExecutionEngine<WalStorage<FileStorage, FileBackedWalManager>>>,
             > = Arc::new(RwLock::new(ExecutionEngine::new(storage.clone())));
@@ -2396,7 +2397,7 @@ fn handle_connection(
                 storage,
                 engine,
                 resp.capability_flags,
-                4,
+                auth_seq.wrapping_add(1),
                 &mut ps_manager,
             );
             return;
@@ -2427,19 +2428,20 @@ fn handle_connection(
     } else {
         user_store.verify_password(&resp.username, &scramble, &resp.auth_response)
     };
+        let auth_seq = pkt.sequence.wrapping_add(1);
     if !auth_ok {
         tracing::warn!("Auth failed for user {}", resp.username);
-        make_err_packet(2, 1045, "28000", "Access denied")
+        make_err_packet(auth_seq, 1045, "28000", "Access denied")
             .write_to(&mut &stream)
             .ok();
         return;
     }
-    tracing::info!("Auth accepted, sending OK packet, seq=2");
-    make_ok_packet(2, 0, 0, 0x0002, 0)
+    tracing::info!("Auth accepted, sending OK packet, seq={}", auth_seq);
+    make_ok_packet(auth_seq, 0, 0, 0x0002, 0)
         .write_to(&mut &stream)
         .ok();
-    tracing::info!("Starting command loop, seq=3");
-    let engine: Arc<RwLock<ExecutionEngine<WalStorage<FileStorage, FileBackedWalManager>>>> =
+    tracing::info!("Starting command loop, seq={}", auth_seq.wrapping_add(1));
+let engine: Arc<RwLock<ExecutionEngine<WalStorage<FileStorage, FileBackedWalManager>>>> =
         Arc::new(RwLock::new(ExecutionEngine::new(storage.clone())));
     let mut ps_manager = PreparedStatementManager::new();
     let _ = do_command_loop(
