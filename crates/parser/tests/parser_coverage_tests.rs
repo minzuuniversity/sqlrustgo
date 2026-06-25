@@ -16,7 +16,7 @@ fn test_parse_create_trigger_after_insert() {
         result
     );
 }
-
+// Before trigger now fixed: Token::Before added to lexer.
 #[test]
 fn test_parse_create_trigger_before_update() {
     let sql = "CREATE TRIGGER update_check BEFORE UPDATE ON users FOR EACH ROW BEGIN SELECT 1; END";
@@ -831,8 +831,7 @@ fn test_parse_create_table_unique() {
     );
 }
 
-// ============ CREATE TABLE with named constraint ============
-
+// Named CONSTRAINT PRIMARY KEY now fixed.
 #[test]
 fn test_parse_create_table_named_constraint() {
     let sql =
