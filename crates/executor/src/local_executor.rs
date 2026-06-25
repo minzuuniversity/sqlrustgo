@@ -1581,16 +1581,6 @@ impl<'a> LocalExecutor<'a> {
         Err(sqlrustgo_types::SqlError::ExecutionError("Unsupported DML".to_string()))
     }
 
-        if sql_upper.starts_with("INSERT") {
-            return self.execute_insert_sql(ctx);
-        }
-
-        if sql_upper.starts_with("UPDATE") {
-            return self.execute_update_sql(ctx);
-        }
-
-        Err(sqlrustgo_types::SqlError::ExecutionError("Unsupported DML".to_string()))
-    }
 
     /// Execute DELETE through execute_internal (the ONLY place allowed to touch storage directly)
     fn execute_delete_sql(&self, _ctx: &crate::execution::QueryContext) -> Result<crate::execution::ExecutionResult, sqlrustgo_types::SqlError> {
