@@ -45,10 +45,11 @@ pub struct UpdateCompiler;
 
 impl UpdateCompiler {
     pub fn compile(stmt: &UpdateStatement, _schema: &Schema) -> Result<UpdatePlan, SqlError> {
+        let compiler = PredicateCompiler::new(_schema.clone());
         let predicate = stmt
             .where_clause
             .as_ref()
-            .map(|e| PredicateCompiler::compile(e))
+            .map(|e| compiler.compile(e))
             .unwrap_or_else(|| Box::new(|_| true));
 
         let mutation = MutationCompiler::compile(stmt.assignments.clone());

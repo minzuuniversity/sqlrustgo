@@ -66,22 +66,47 @@ pub mod wire_err {
 // =========================================================================
 // MySQL packet framing helpers.
 // =========================================================================
+pub mod oracle_framework;
+pub mod tpch_wire_harness;
 pub mod wire_proto {
     use super::wire_err;
     use std::io::Read;
 
     use std::net::TcpStream;
+    const MAX_RETRIES: usize = 100;
 
     pub fn read_packet(stream: &mut TcpStream) -> wire_err::Result<Vec<u8>> {
         let mut header = [0u8; 4];
-        stream
-            .read_exact(&mut header)
-            .map_err(|e| wire_err::msg(format!("read packet header: {e}")))?;
+        let mut retries = 0;
+        loop {
+            match stream.read_exact(&mut header) {
+                Ok(()) => break,
+                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock && retries < MAX_RETRIES => {
+                    retries += 1;
+                    std::thread::sleep(std::time::Duration::from_millis(10));
+                    continue;
+                }
+                Err(e) => return Err(wire_err::msg(format!("read packet header: {e}"))),
+            }
+        }
         let len = u32::from_le_bytes(header) & 0x00FF_FFFF;
         let mut payload = vec![0u8; len as usize];
-        stream
-            .read_exact(&mut payload)
-            .map_err(|e| wire_err::msg(format!("read packet payload (len={len}): {e}")))?;
+        let mut retries = 0;
+        loop {
+            match stream.read_exact(&mut payload) {
+                Ok(()) => break,
+                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock && retries < MAX_RETRIES => {
+                    retries += 1;
+                    std::thread::sleep(std::time::Duration::from_millis(10));
+                    continue;
+                }
+                Err(e) => {
+                    return Err(wire_err::msg(format!(
+                        "read packet payload (len={len}): {e}"
+                    )))
+                }
+            }
+        }
         Ok(payload)
     }
 
@@ -189,9 +214,16 @@ fn native_password_auth(password: &[u8], scramble: &[u8; SCRAMBLE_LEN]) -> [u8; 
 /// `parse_handshake_response` only consults those fields when the
 /// corresponding capability flag is set in the response.
 fn build_handshake_response41(user: &str, auth_response: &[u8]) -> wire_err::Result<Vec<u8>> {
-    let mut p = Vec::with_capacity(64 + user.len() + auth_response.len());
+    build_handshake_response41_with_caps(user, auth_response, CLIENT_CAPABILITIES)
+}
 
-    p.extend_from_slice(&CLIENT_CAPABILITIES.to_le_bytes());
+fn build_handshake_response41_with_caps(
+    user: &str,
+    auth_response: &[u8],
+    caps: u32,
+) -> wire_err::Result<Vec<u8>> {
+    let mut p = Vec::with_capacity(64 + user.len() + auth_response.len());
+    p.extend_from_slice(&caps.to_le_bytes());
     p.extend_from_slice(&MAX_PACKET_SIZE.to_le_bytes());
     p.push(CHARSET_UTF8);
     p.extend_from_slice(&[0u8; 23]); // 23 reserved bytes
@@ -390,12 +422,21 @@ pub struct MySqlTestClient {
     pub handle: EphemeralHandle,
     stream: TcpStream,
     next_seq: u8,
+    /// MySQL capability flags this client sent in HandshakeResponse41.
+    /// Used by tests to verify DEPRECATE_EOF and other protocol features.
+    client_caps: u32,
 }
 
 impl MySqlTestClient {
     /// Start an ephemeral server on `127.0.0.1` and connect to it as
     /// the `tester` user (password = `tester`). The test harness
     /// pre-creates this user via its bootstrap callback.
+
+    /// Return the MySQL capability flags this client sent in HandshakeResponse41.
+    pub fn client_capabilities(&self) -> u32 {
+        self.client_caps
+    }
+
     pub fn connect_default() -> wire_err::Result<Self> {
         let handle = start_ephemeral(EphemeralConfig::default())
             .map_err(|e| wire_err::msg(format!("start_ephemeral: {e}")))?;
@@ -409,6 +450,46 @@ impl MySqlTestClient {
         let handle =
             start_ephemeral(config).map_err(|e| wire_err::msg(format!("start_ephemeral: {e}")))?;
         Self::connect_handle(handle)
+    }
+
+    /// Like [`connect_at`] but ORs `extra_caps` into the MySQL capability
+    /// flags sent in the HandshakeResponse41. Used to opt into protocol
+    /// extensions such as DEPRECATE_EOF (0x01000000).
+    pub fn connect_with_caps(
+        addr: (&str, u16),
+        user: &str,
+        password: &str,
+        extra_caps: u32,
+    ) -> wire_err::Result<Self> {
+        let (host, port) = addr;
+        let mut stream = TcpStream::connect((host, port))
+            .map_err(|e| wire_err::msg(format!("tcp connect {host}:{port}: {e}")))?;
+        stream
+            .set_read_timeout(Some(READ_TIMEOUT))
+            .map_err(|e| wire_err::msg(format!("set_read_timeout: {e}")))?;
+        stream
+            .set_write_timeout(Some(WRITE_TIMEOUT))
+            .map_err(|e| wire_err::msg(format!("set_write_timeout: {e}")))?;
+
+        let handshake = read_packet(&mut stream)?;
+        let scramble = parse_handshake(&handshake)?;
+        let auth = native_password_auth(password.as_bytes(), &scramble);
+
+        // Build HandshakeResponse41 with merged capability flags.
+        let caps = CLIENT_CAPABILITIES | extra_caps;
+        let resp = build_handshake_response41_with_caps(user, &auth, caps)?;
+        write_packet(&mut stream, 1, &resp)?;
+        let auth_resp = read_packet(&mut stream)?;
+        check_ok_or_err(2, &auth_resp)?;
+
+        // Synthesise a minimal detached handle so Drop is inert.
+        let handle = EphemeralHandle::detached_for_external_server(port);
+        Ok(Self {
+            handle,
+            stream,
+            next_seq: 0,
+            client_caps: CLIENT_CAPABILITIES | extra_caps,
+        })
     }
 
     /// Connect to an arbitrary `(host, port)` (e.g. a server spawned
@@ -442,6 +523,7 @@ impl MySqlTestClient {
             handle,
             stream,
             next_seq: 0,
+            client_caps: CLIENT_CAPABILITIES,
         })
     }
 
@@ -471,10 +553,12 @@ impl MySqlTestClient {
         let auth_resp = read_packet(&mut stream)?;
         check_ok_or_err(2, &auth_resp)?;
 
+        let caps = CLIENT_CAPABILITIES;
         Ok(Self {
             handle,
             stream,
             next_seq: 0,
+            client_caps: caps,
         })
     }
 
@@ -616,9 +700,6 @@ impl MySqlTestClient {
     pub fn raw_stream(&mut self) -> &mut TcpStream {
         &mut self.stream
     }
-    pub fn client_capabilities(&self) -> u32 {
-        self.handle.capability_flags
-    }
     /// Override the read/write timeouts on the underlying TCP stream.
     /// SF=0.1 wire test needs >30s for Q17; default 5s is too short.
     pub fn set_timeouts(
@@ -700,4 +781,30 @@ impl MySqlTestClient {
         parse_ok_packet_affected(&resp)
     }
 }
-pub mod tpch_wire_harness;
+
+impl MySqlTestClient {
+    /// Send COM_PING — used by mysql_wire_protocol_test.
+    pub fn ping(&mut self) -> wire_err::Result<()> {
+        write_packet(self.raw_stream(), 0, &[0x0e])?;
+        let resp = read_packet(self.raw_stream())?;
+        check_ok_or_err(1, &resp)
+    }
+
+    /// Send COM_INIT_DB — used by mysql_wire_protocol_test.
+    pub fn init_db(&mut self, db: &str) -> wire_err::Result<()> {
+        let mut p = vec![0x02]; // COM_INIT_DB
+        p.extend_from_slice(db.as_bytes());
+        write_packet(self.raw_stream(), 0, &p)?;
+        let resp = read_packet(self.raw_stream())?;
+        check_ok_or_err(1, &resp)
+    }
+
+    /// Send COM_STMT_CLOSE — used by mysql_wire_protocol_test.
+    pub fn stmt_close(&mut self, stmt_id: u32) -> wire_err::Result<()> {
+        let mut p = vec![0x19]; // COM_STMT_CLOSE
+        p.extend_from_slice(&stmt_id.to_le_bytes());
+        write_packet(self.raw_stream(), 0, &p)?;
+        // COM_STMT_CLOSE has no server response
+        Ok(())
+    }
+}

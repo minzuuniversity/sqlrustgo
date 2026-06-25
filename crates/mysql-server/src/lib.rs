@@ -547,37 +547,8 @@ impl Packet {
         w.write_u24::<LittleEndian>(self.length)?;
         w.write_u8(self.sequence)?;
         w.write_all(&self.payload)?;
-        // Retry the flush on WouldBlock / TimedOut up to a deadline.
-        // Background: on macOS, `TcpStream::flush()` does not honor
-        // `SO_SNDTIMEO` (set via `set_write_timeout` in
-        // `handle_connection`). The 60s timeout covers the user-buffer
-        // write syscall but not the kernel-side flush of pending TCP
-        // segments, so flush() can block forever. Linux's flush() honors
-        // `SO_SNDTIMEO` and returns `EAGAIN` (`os error 11`) immediately
-        // — and on debug builds the kernel send buffer fills up faster
-        // than the test client can drain, so the flush never completes.
-        //
-        // The retry loop on `WouldBlock`/`TimedOut` matches the
-        // `TlsStream::flush` pattern at `crates/mysql-server/src/lib.rs:770`
-        // which loops on `complete_io` for the same reason.
-        const FLUSH_DEADLINE: std::time::Duration = std::time::Duration::from_secs(30);
-        let deadline = std::time::Instant::now() + FLUSH_DEADLINE;
-        loop {
-            match w.flush() {
-                Ok(()) => return Ok(()),
-                Err(e)
-                    if e.kind() == std::io::ErrorKind::WouldBlock
-                        || e.kind() == std::io::ErrorKind::TimedOut =>
-                {
-                    if std::time::Instant::now() >= deadline {
-                        return Err(MySqlError::Io(e));
-                    }
-                    std::thread::sleep(std::time::Duration::from_millis(5));
-                    continue;
-                }
-                Err(e) => return Err(MySqlError::Io(e)),
-            }
-        }
+        w.flush()?;
+        Ok(())
     }
 }
 
@@ -662,7 +633,6 @@ fn make_err_packet(seq: u8, code: u16, state: &str, msg: &str) -> Packet {
     p.write_u16::<LittleEndian>(code).unwrap();
     p.push(0x23);
     p.extend_from_slice(state.as_bytes());
-    p.push(0x00); // null-byte separator per MySQL wire protocol (SQL state must be null-terminated)
     p.extend_from_slice(msg.as_bytes());
     Packet {
         length: p.len() as u32,
@@ -1077,86 +1047,6 @@ fn extract_insert_columns(sql: &str) -> Vec<String> {
     vec![]
 }
 
-/// Extract column names referenced on the LEFT side of `=` in
-/// comparison predicates, e.g. for
-///   `SELECT * FROM t WHERE id = ? AND name = ?`
-/// returns `["id", "name"]`. The order matches the order in which the
-/// `?` placeholders appear in the SQL.
-///
-/// We deliberately look for `WHERE <col> [op] ?` shapes rather than
-/// building a full SQL parser. The heuristics (find `WHERE` keyword,
-/// split on `AND`/`OR` at top paren-depth, look for `=` operator)
-/// are sufficient for the benchmark / sysbench / tpch workloads we
-/// care about. Edge cases like `WHERE id IN (?, ?, ?)` and
-/// `WHERE id = (SELECT ...)` are not handled — those fall through to
-/// the VAR_STRING fallback, which is no worse than today.
-fn extract_where_columns(sql: &str) -> Vec<String> {
-    let upper = sql.to_uppercase();
-    // Find the WHERE keyword. Bail if it does not exist.
-    let where_pos = match upper.find(" WHERE ") {
-        Some(p) => p + 7,
-        None => return vec![],
-    };
-    // Find the end of the WHERE clause: next ORDER/GROUP/HAVING/LIMIT/UNION/';'/'\"'/end-of-string.
-    let where_end = upper[where_pos..]
-        .find(" ORDER ")
-        .or_else(|| upper[where_pos..].find(" GROUP "))
-        .or_else(|| upper[where_pos..].find(" HAVING "))
-        .or_else(|| upper[where_pos..].find(" LIMIT "))
-        .or_else(|| upper[where_pos..].find(" UNION "))
-        .or_else(|| upper[where_pos..].find(';'))
-        .unwrap_or(upper.len() - where_pos);
-    let clause = &sql[where_pos..where_pos + where_end];
-    // Split on AND/OR at the top level (we don't track full paren depth
-    // because the workloads we care about — sysbench oltp_read_write,
-    // TPC-H Q1, Q6, Q9 — are simple conjunctions).
-    let mut cols = Vec::new();
-    for pred in clause.split(|c: char| {
-        let up = c.to_ascii_uppercase();
-        // Split on the leading boundary of AND/OR, but only at depth 0.
-        // The 'A' / 'O' check is a cheap proxy for "the keyword starts here"
-        // — we then re-check the full word below.
-        up == 'A' || up == 'O'
-    }) {
-        let pred = pred.trim();
-        if pred.is_empty() {
-            continue;
-        }
-        // Re-check the keyword in case the split landed mid-identifier.
-        let pred_up = pred.to_uppercase();
-        if pred_up.starts_with("AND ") || pred_up.starts_with("OR ") {
-            continue;
-        }
-        // Find `=` at the top level (no parens for our supported queries).
-        let eq_pos = match pred.find('=') {
-            Some(p) => p,
-            None => continue,
-        };
-        let left = pred[..eq_pos].trim();
-        // Strip leading function/cast wrappers; we only need the column
-        // name. For `LOWER(col) = ?`, take the last `(`-balanced segment.
-        let col = if let Some(paren) = left.rfind('(') {
-            // Inside parens. Pick the last identifier-looking token before
-            // the closing ')'. For `LOWER(col)` the `col` is at paren+1.
-            let inner = &left[paren + 1..];
-            // Strip trailing ')'.
-            let inner = inner.trim_end_matches(')').trim();
-            inner.to_string()
-        } else {
-            left.to_string()
-        };
-        // Strip table alias / dot prefix: `t.id` → `id`.
-        let col = col.rsplit('.').next().unwrap_or(&col).to_string();
-        // Strip backticks / quotes.
-        let col = col.trim_matches('`').trim_matches('"').to_string();
-        if col.is_empty() || col == "?" {
-            continue;
-        }
-        cols.push(col);
-    }
-    cols
-}
-
 /// Infer MySQL binary-protocol type codes for the `?` placeholders in
 /// `sql` by looking up the referenced columns in the storage schema.
 ///
@@ -1170,21 +1060,7 @@ fn infer_param_types_from_sql<S: StorageEngine>(sql: &str, storage: &Arc<RwLock<
     if param_count == 0 {
         return vec![];
     }
-    // Try the column list first (works for INSERT VALUES, INSERT SET,
-    // UPDATE ... SET col = ?). If non-empty, look up each column's
-    // declared type from the table schema.
-    let mut cols = extract_insert_columns(sql);
-    if cols.is_empty() {
-        // No explicit column list. For SELECT/UPDATE/DELETE statements
-        // with a `WHERE col = ?` shape, extract the predicate column
-        // names and look those up instead. This is what fixes
-        // sysbench oltp_read_write (Issue #3382 follow-up): the
-        // server was previously inferring VAR_STRING for every `?` in
-        // `SELECT * FROM sbtest WHERE id = ?`, which made the binary
-        // protocol decode the 4-byte INT value as a length-encoded
-        // string and lose the integer.
-        cols = extract_where_columns(sql);
-    }
+    let cols = extract_insert_columns(sql);
     if cols.is_empty() {
         return vec![col_type::VARSTRING; param_count];
     }
@@ -1702,7 +1578,9 @@ fn handle_load_local_infile<S: Read + Write>(
     bulk_buf_size: usize,
     seq: &mut u8,
     _cap: u32,
-) -> MySqlResult<(u64, u64)> {
+) -> MySqlResult<u64> {
+    use crate::load_data::{bulk_insert, parse_tbl_line};
+
     // 1. Whitelist check — canonicalize both sides and confirm the
     //    file is inside data_dir. This is the only line of defense
     //    against a malicious client pointing us at e.g. /etc/passwd.
@@ -1718,7 +1596,8 @@ fn handle_load_local_infile<S: Read + Write>(
         )));
     }
 
-    use crate::load_data::{bulk_insert, parse_tbl_line};
+    // 2. Look up the target table's column count so parse_tbl_line
+    //    can validate each line has the right shape.
     let col_count = {
         let storage_arc = engine.storage_ref();
         let storage = storage_arc
@@ -1731,6 +1610,7 @@ fn handle_load_local_infile<S: Read + Write>(
     };
 
     // 3. Send 0xFB packet to the client — the client interprets this
+    //    as "open this file and start streaming its bytes back".
     let mut fb_payload = Vec::with_capacity(path.len() + 1);
     fb_payload.push(packet_type::LOCAL_INFILE_REQUEST);
     fb_payload.extend_from_slice(path.as_bytes());
@@ -1746,7 +1626,6 @@ fn handle_load_local_infile<S: Read + Write>(
     //    with an empty-payload packet.
     let mut buf: Vec<u8> = Vec::with_capacity(bulk_buf_size * 2);
     let mut total_rows: u64 = 0;
-    let mut skipped_rows: u64 = 0;
     let mut pending_rows: Vec<Vec<sqlrustgo_types::Value>> = Vec::new();
 
     // ---- EAGAIN bug fix (RC2 Week 1 Day 6) ----
@@ -1782,7 +1661,6 @@ fn handle_load_local_infile<S: Read + Write>(
                 Ok(s) => s,
                 Err(e) => {
                     tracing::warn!("non-utf8 line skipped: {}", e);
-                    skipped_rows = skipped_rows.saturating_add(1);
                     continue;
                 }
             };
@@ -1796,7 +1674,6 @@ fn handle_load_local_infile<S: Read + Write>(
                 }
                 Err(e) => {
                     tracing::warn!("parse line error: {}", e);
-                    skipped_rows = skipped_rows.saturating_add(1);
                 }
             }
         }
@@ -1864,22 +1741,7 @@ fn handle_load_local_infile<S: Read + Write>(
         total_rows += n;
     }
 
-    // Materialize the .json file for this table so that subsequent
-    // test runs (which check `json_data_ready()` before starting the
-    // server) can skip the expensive LOAD DATA phase.  Without this,
-    // large tables (orders, lineitem) are only in-memory + WAL and
-    // every restart re-runs LOAD DATA from scratch.
-    //
-    // `WalStorage::flush()` delegates to `FileStorage::flush()` which
-    // writes all table .json files.
-        {
-            let storage = engine.storage_ref();
-            let mut s = storage.write().unwrap();
-            s.flush()
-                .map_err(|e| MySqlError::Other(format!("flush storage: {}", e)))?;
-        }
-
-    Ok((total_rows, skipped_rows))
+    Ok(total_rows)
 }
 
 #[allow(unused_assignments)]
@@ -1948,7 +1810,7 @@ fn do_command_loop<S: Read + Write>(
                         .clone()
                         .unwrap_or_else(|| std::path::PathBuf::from("/tmp"));
                     let bulk_buf = cfg.bulk_insert_buffer_size;
-                    let (n, skipped) = match handle_load_local_infile(
+                    let n = match handle_load_local_infile(
                         stream,
                         &mut engine.write().unwrap(),
                         &path,
@@ -1959,38 +1821,15 @@ fn do_command_loop<S: Read + Write>(
                         &mut seq,
                         cap,
                     ) {
-                        Ok((loaded, skipped)) => (loaded, skipped),
+                        Ok(n) => n,
                         Err(e) => {
                             make_err_packet(seq, 1146u16, "42S02", &e.to_string())
                                 .write_to(stream)?;
                             seq = seq.wrapping_add(1);
-                            (0, 0)
+                            0
                         }
                     };
-                    // If parse errors caused silent row loss, report
-                    // it in the OK packet's `warnings` field (u16).
-                    // If the count overflows u16, emit ERR — silent
-                    // truncation of the warning count would mislead
-                    // the client. Issue #3307 fix #4.
-                    let warnings: u16 = match u16::try_from(skipped) {
-                        Ok(w) => w,
-                        Err(_) => {
-                            make_err_packet(
-                                seq,
-                                1210u16,
-                                "HY000",
-                                &format!(
-                                    "LOAD DATA skipped {} rows (>{} u16::MAX)",
-                                    skipped,
-                                    u16::MAX
-                                ),
-                            )
-                            .write_to(stream)?;
-                            seq = seq.wrapping_add(1);
-                            continue;
-                        }
-                    };
-                    make_ok_packet(seq, n, 0, 0x0002, warnings).write_to(stream)?;
+                    make_ok_packet(seq, n, 0, 0x0002, 0).write_to(stream)?;
                     seq = seq.wrapping_add(1);
                     continue;
                 }
@@ -2001,25 +1840,11 @@ fn do_command_loop<S: Read + Write>(
                     continue;
                 }
                 let mut eng = engine.write().unwrap();
-                // 3521: Support multi-statement queries (semicolon-separated)
-                let fragments = sqlrustgo_parser::split_sql_statements(&q);
-                if fragments.is_empty() {
-                    make_ok_packet(seq, 0, 0, 0x0002, 0).write_to(stream)?;
-                    seq = seq.wrapping_add(1);
-                } else {
-                    for frag in fragments {
-                        let is_select = {
-                            let up = frag.trim_start().to_ascii_uppercase();
-                            up.starts_with("SELECT")
-                                || up.starts_with("WITH")
-                                || up.starts_with("VALUES")
-                                || up.starts_with("SHOW")
-                                || up.starts_with("DESCRIBE")
-                                || up.starts_with("DESC")
-                                || up.starts_with("EXPLAIN")
-                        };
-                        match eng.execute(&frag) {
-                            Ok(r) if is_select => {
+                match parse(&q) {
+                    Ok(stmt) => {
+                        let result = eng.execute(&q);
+                        match result {
+                            Ok(r) if is_select_stmt(&stmt) => {
                                 let cols: Vec<String> = r
                                     .rows
                                     .first()
@@ -2037,17 +1862,19 @@ fn do_command_loop<S: Read + Write>(
                                 seq = seq.wrapping_add(1);
                             }
                             Err(e) => {
-                                let code = if e.to_string().contains("not found") {
-                                    1146u16
-                                } else {
-                                    1064u16
+                                let code = match e.to_string().contains("not found") {
+                                    true => 1146u16,
+                                    false => 1064u16,
                                 };
                                 make_err_packet(seq, code, "42000", &e.to_string())
                                     .write_to(stream)?;
                                 seq = seq.wrapping_add(1);
-                                break;
                             }
                         }
+                    }
+                    Err(e) => {
+                        make_err_packet(seq, 1064, "42000", &e).write_to(stream)?;
+                        seq = seq.wrapping_add(1);
                     }
                 }
             }
@@ -2205,19 +2032,7 @@ fn do_command_loop<S: Read + Write>(
                 let params: Vec<crate::StmtParam> =
                     parse_stmt_execute_params(payload, stmt_param_count, &stmt_param_types);
                 let final_sql = replace_placeholders(&stmt_sql, &params);
-                eprintln!("DEBUG STMT EXECUTE (id={}):", stmt_id);
-                eprintln!("  stmt_sql='{}'", stmt_sql);
-                eprintln!("  params={:?}", params);
-                eprintln!("  final_sql='{}'", final_sql);
-                for (i, (v, n)) in params.iter().enumerate() {
-                    eprintln!(
-                        "  param[{}] bytes={:?} ({}) is_numeric={}",
-                        i,
-                        v,
-                        v.len(),
-                        n
-                    );
-                }
+
                 tracing::info!("STMT EXECUTE (id={}): {}", stmt_id, final_sql);
                 let mut eng = engine.write().unwrap();
                 let parsed = parse(&final_sql);
@@ -3051,23 +2866,6 @@ mod integration_tests {
         let pkt = make_err_packet(0, 2000, "42000", "");
         assert_eq!(pkt.payload[0], 0xff);
     }
-    #[test]
-    fn test_make_err_packet_null_byte_separator() {
-        // MySQL wire protocol: error packet format is
-        // 0xFF + error_code(u16 LE) + 0x23 + SQL_STATE(5 bytes) + 0x00 + ERROR_MSG
-        // The null-byte between SQL state and error message is required.
-        let pkt = make_err_packet(1, 1146, "42S02", "Table not found");
-        assert_eq!(pkt.payload[0], 0xff); // ERR packet type
-        // Bytes 1-2: error code (1146 = 0x047A little-endian)
-        assert_eq!(u16::from_le_bytes([pkt.payload[1], pkt.payload[2]]), 1146);
-        assert_eq!(pkt.payload[3], 0x23); // '#' marker
-        // Bytes 4-8: SQL state "42S02"
-        assert_eq!(&pkt.payload[4..9], b"42S02");
-        // Byte 9: null-byte separator
-        assert_eq!(pkt.payload[9], 0x00);
-        // Bytes 10+: error message
-        assert_eq!(&pkt.payload[10..], b"Table not found");
-    }
 
     // ============ make_eof_packet Tests ============
 
@@ -3639,13 +3437,10 @@ pub mod testing {
     /// temporary data directory.
     pub struct EphemeralHandle {
         pub port: u16,
-        // Server capability flags from the MySQL handshake. Used by tests
-        // to check protocol features (e.g. DEPRECATE_EOF = 0x01000000).
-        pub capability_flags: u32,
         // Shared shutdown signal: Drop sets it to true, the
         // server thread's accept loop polls it and exits within 50ms.
         shutdown: Option<Arc<std::sync::atomic::AtomicBool>>,
-        // Mutex so Drop can late the JoinHandle by value.
+        // Mutex so Drop can take the JoinHandle by value.
         join: Mutex<Option<JoinHandle<()>>>,
         // Temporary data directory; removed on Drop ONLY when the
         // server auto-created it. When the test supplied a path via
@@ -3663,6 +3458,18 @@ pub mod testing {
         // the auto-generated `sqlrustgo_ephemeral_<port>_<pid>` and
         // the test's `tmpdir/.tmpXXXX` both match the prefix.
         externally_owned: bool,
+        // Server capability flags advertised during MySQL handshake.
+        pub capability_flags: u32,
+    }
+
+    impl std::fmt::Debug for EphemeralHandle {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.debug_struct("EphemeralHandle")
+                .field("port", &self.port)
+                .field("capability_flags", &self.capability_flags)
+                .field("data_dir", &self.data_dir)
+                .finish()
+        }
     }
 
     impl EphemeralHandle {
@@ -3675,22 +3482,12 @@ pub mod testing {
         pub fn detached_for_external_server(port: u16) -> Self {
             Self {
                 port,
-                capability_flags: 0,
                 shutdown: None,
                 join: Mutex::new(None),
                 data_dir: PathBuf::new(),
                 externally_owned: true,
+                capability_flags: 0, // External server — not tracked in detached handle
             }
-        }
-    }
-
-    impl std::fmt::Debug for EphemeralHandle {
-        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            f.debug_struct("EphemeralHandle")
-                .field("port", &self.port)
-                .field("capability_flags", &self.capability_flags)
-                .field("data_dir", &self.data_dir)
-                .finish()
         }
     }
 
@@ -3788,11 +3585,11 @@ pub mod testing {
 
         Ok(EphemeralHandle {
             port,
-            capability_flags: 0, // Negotiated per connection; 0 = use EOF packets
             shutdown: Some(shutdown),
             join: Mutex::new(Some(join)),
             data_dir,
             externally_owned,
+            capability_flags: crate::capability::SERVER_DEFAULT,
         })
     }
 }

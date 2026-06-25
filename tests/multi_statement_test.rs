@@ -131,7 +131,6 @@ fn expect_err(client: &mut MySqlTestClient) -> Result<Vec<u8>, String> {
 fn test_multi_statement_executes_all() {
     use sqlrustgo_mysql_server::testing::{start_ephemeral, EphemeralConfig};
 
-
     // Use a fresh tempdir for the ephemeral server's data dir. A
     // hardcoded path would let a stale WAL from a prior failed run
     // leak into this test's startup and trip the recovery engine,
