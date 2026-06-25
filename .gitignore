@@ -27,6 +27,35 @@ tests/data/tpch-sf01/*.wal
 
 # Stability test output directories (timestamps appended) — not for tracking
 test_results/
+gate_report.json
+verification_report.json
+audit_report.json
+test_report.json
+test_report.log
+__pycache__/
+*.pyc
+*.profraw
+target/
+data/tpch-sf01-generated/
+data/tpch-sf01/
+artifacts/coverage/
+.DS_Store
+Cargo.lock
+.worktrees/
+v1.0.0/api-doc/*
+# GitNexus tool artifacts (auto-injected, not for tracking)
+.gitnexus/
+CLAUDE.md
+.claude/skills/
+
+# Server LOAD DATA side effects: .json (table metadata dumps) and .wal (WAL files) emitted into data_dir at runtime
+tests/data/tpch-sf001/*.json
+tests/data/tpch-sf001/*.wal
+tests/data/tpch-sf01/*.json
+tests/data/tpch-sf01/*.wal
+
+# Stability test output directories (timestamps appended) — not for tracking
+test_results/
 
 # REPL / mysql-server default data_dir (runtime side effects: .json table dumps + .wal)
 .sqlrustgo/

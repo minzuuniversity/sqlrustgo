@@ -1,5 +1,10 @@
 # v3.9.0 GA Readiness - Comprehensive Status (2026-06-19)
 
+> ⚠️ **2026-06-26 修正**: 本文档是 2026-06-19 的历史快照。
+> 72h soak 声称在 Z6G4 上运行，ETA 2026-06-22，但实际上在 4 分钟采样后
+> 因 Z6G4 网络不稳定而中断，从未完成。本文档中的声明不代表当前状态。
+> 当前真实状态见 SOAK_MASTER_INDEX.md（2026-06-26 修正版）。
+
 > **Last update**: 2026-06-19 14:30 UTC
 > **Branch**: `develop/v3.9.0` HEAD = `bbf078979695` (after PR #3561 merge)
 > **GA target**: After real 168h wall-clock soak completes

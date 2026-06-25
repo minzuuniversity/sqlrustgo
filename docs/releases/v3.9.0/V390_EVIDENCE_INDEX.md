@@ -38,7 +38,7 @@ Legend: ✅ verified, ⏳ pending real-data, ⚠️ partial, ❌ failing
 |------|-------|--------|----------|--------------|
 | G11 | QPS/TPS Benchmark | ✅ | `qps_bench` (5 workloads) | ⚠️ No independent oracle compare |
 | G12 | Sysbench Compatibility | ✅ | `sysbench` scripts (30 tests) | ⚠️ No independent oracle compare |
-| G13 | 24h Stability (extended) | ⏳ | `check_g13_stability.sh` (template) | ⚠️ SIMULATED, NOT real 24h. Real-data: 72h soak running on Z6G4 PID 104564 (started 2026-06-19 13:05 UTC) |
+| G13 | 24h Stability (extended) | ⏳ | `check_g13_stability.sh` (template) | ⚠️ SIMULATED. Real-data: 72h soak INTERRUPTED — 4-min sample then Z6G4 unreachable (2026-06-19); never completed |
 | G14 | Real Crash Test | ✅ | `check_g14_real_crash.sh` | ⚠️ Partial tests still simulated |
 | G15 | SF=0.01 TPC-H wire | ✅ | `tpch_sf01_22_queries_wire_test` (5 sub-tests) | ⚠️ No independent oracle compare |
 | G16 | Compatibility v3.8→v3.9 | ✅ | `v380_to_v390_full_upgrade_test` (18 tests) | ⚠️ No independent oracle compare |
@@ -80,9 +80,9 @@ Legend: ✅ verified, ⏳ pending real-data, ⚠️ partial, ❌ failing
 - [x] Cross-version upgrade chain tested
 - [x] 6/6 meta-gates PASS
 - [x] V-漏洞 V1-V9 全 closed
-- [ ] 24h real soak 0-error (running, ETA 2026-06-22 13:05 UTC)
-- [ ] 72h real soak (pending, ETA 2026-06-22)
-- [ ] 168h real soak (pending, ETA 2026-06-29)
+- [ ] 24h real soak 0-error — ❌ INCOMPLETE (Z6G4 unreachable; 250 got 843 samples)
+- [ ] 72h real soak — ❌ INTERRUPTED (4-min sample; Z6G4 unreachable since ~2026-06-19)
+- [ ] 168h real soak — ⏳ BLOCKED (72h must complete first)
 
 **GA 阻塞条件**: 真实 24h/72h/168h soak 必须完成且 0 errors. 在完成前不能声称 GA Ready.
 

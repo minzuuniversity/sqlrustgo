@@ -87,6 +87,7 @@ pub enum Statement {
     DropRole(DropRoleStatement),
     CreateDatabase(CreateDatabaseStatement),
     DropDatabase(DropDatabaseStatement),
+    UseDatabase(String),
     GrantRole(GrantRoleStatement),
     RevokeRole(RevokeRoleStatement),
     SetRole(SetRoleStatement),
@@ -1048,7 +1049,7 @@ impl Parser {
             Some(Token::Merge) => self.parse_merge(),
             Some(Token::Create) => self.parse_create(),
             Some(Token::Drop) => self.parse_drop(),
-            Some(Token::Truncate) => self.parse_truncate(),
+            Some(Token::Use) => self.parse_use_database(),
             Some(Token::Analyze) => self.parse_analyze(),
             Some(Token::With) => self.parse_with_select(),
             Some(Token::Alter) => self.parse_alter_table(),
@@ -1123,30 +1124,55 @@ impl Parser {
             self.next();
             Some(IsolationLevel::SnapshotIsolation)
         } else if self.current() == Some(&Token::Read) {
-            self.next();
-            match self.current() {
-                Some(Token::Committed) => {
-                    self.next();
-                    Some(IsolationLevel::ReadCommitted)
+            // Only consume Token::Read as isolation level if NOT followed by Token::Only.
+            if let Some(&Token::Only) = self.peek() {
+                None
+            } else {
+                self.next();
+                match self.current() {
+                    Some(Token::Committed) => {
+                        self.next();
+                        Some(IsolationLevel::ReadCommitted)
+                    }
+                    Some(Token::Uncommitted) => {
+                        self.next();
+                        Some(IsolationLevel::ReadUncommitted)
+                    }
+                    Some(t) => {
+                        return Err(format!(
+                            "Expected COMMITTED or UNCOMMITTED after READ, got {:?}",
+                            t
+                        ))
+                    }
+                    None => return Err("Unexpected end of input after READ".to_string()),
                 }
-                Some(Token::Uncommitted) => {
-                    self.next();
-                    Some(IsolationLevel::ReadUncommitted)
-                }
-                Some(t) => {
-                    return Err(format!(
-                        "Expected COMMITTED or UNCOMMITTED after READ, got {:?}",
-                        t
-                    ))
-                }
-                None => return Err("Unexpected end of input after READ".to_string()),
             }
         } else {
             None
         };
+        // READ ONLY / READONLY — may follow isolation level or appear alone.
+        let readonly = if self.current() == Some(&Token::Read) {
+            self.next();
+            if self.current() == Some(&Token::Only) {
+                self.next();
+                true
+            } else {
+                false
+            }
+        } else if let Some(&Token::Identifier(ref s)) = self.current() {
+            if s.eq_ignore_ascii_case("READONLY") {
+                self.next();
+                true
+            } else {
+                false
+            }
+        } else {
+            false
+        };
         Ok(Statement::Transaction(TransactionStatement::Begin {
             work,
             isolation_level,
+            readonly,
         }))
     }
 
@@ -1418,6 +1444,18 @@ impl Parser {
             name,
             if_not_exists,
         }))
+    }
+
+    /// Parse USE <database> statement
+    fn parse_use_database(&mut self) -> Result<Statement, String> {
+        self.expect(Token::Use)?;
+        let name = match self.next() {
+            Some(Token::Identifier(name)) => name,
+            Some(Token::StringLiteral(s)) => s,
+            Some(t) => return Err(format!("Expected database name, got {:?}", t)),
+            None => return Err("Expected database name".to_string()),
+        };
+        Ok(Statement::UseDatabase(name))
     }
 
     fn parse_create_index(&mut self, unique: bool) -> Result<Statement, String> {
@@ -2789,6 +2827,18 @@ impl Parser {
                         alias: None,
                         expression: Some(Expression::Identifier("level".to_string())),
                     });
+                }
+                Some(Token::Minus) | Some(Token::Plus) => {
+                    match self.parse_expression() {
+                        Ok(expr) => {
+                            columns.push(SelectColumn {
+                                name: "_expr".to_string(),
+                                alias: None,
+                                expression: Some(expr),
+                            });
+                        }
+                        Err(e) => return Err(e),
+                    }
                 }
                 _ => {
                     return Err("Expected FROM or column name".to_string());
@@ -5837,7 +5887,10 @@ impl Parser {
                         self.next();
                         self.expect(Token::Key)?;
                         let columns = self.parse_column_list()?;
-                        constraints.push(TableConstraint::PrimaryKey { columns, name: None });
+                        constraints.push(TableConstraint::PrimaryKey {
+                            columns,
+                            name: None,
+                        });
                     }
                     Some(Token::Foreign) => {
                         let fk = self.parse_foreign_key_constraint(None)?;
@@ -5846,7 +5899,10 @@ impl Parser {
                     Some(Token::Unique) => {
                         self.next();
                         let columns = self.parse_column_list()?;
-                        constraints.push(TableConstraint::Unique { columns, name: None });
+                        constraints.push(TableConstraint::Unique {
+                            columns,
+                            name: None,
+                        });
                     }
                     Some(Token::Check) => {
                         self.next();
@@ -5866,7 +5922,10 @@ impl Parser {
                                     self.next();
                                     self.expect(Token::Key)?;
                                     let cols = self.parse_column_list()?;
-                                    constraints.push(TableConstraint::PrimaryKey { columns: cols, name: Some(name) });
+                                    constraints.push(TableConstraint::PrimaryKey {
+                                        columns: cols,
+                                        name: Some(name),
+                                    });
                                 }
                                 Some(Token::Foreign) => {
                                     self.next();
@@ -5876,7 +5935,10 @@ impl Parser {
                                 Some(Token::Unique) => {
                                     self.next();
                                     let cols = self.parse_column_list()?;
-                                    constraints.push(TableConstraint::Unique { columns: cols, name: Some(name) });
+                                    constraints.push(TableConstraint::Unique {
+                                        columns: cols,
+                                        name: Some(name),
+                                    });
                                 }
                                 Some(Token::Check) => {
                                     self.next();
@@ -5888,7 +5950,12 @@ impl Parser {
                                         name: Some(name),
                                     });
                                 }
-                                _ => return Err(format!("Expected constraint type, got {:?}", self.current())),
+                                _ => {
+                                    return Err(format!(
+                                        "Expected constraint type, got {:?}",
+                                        self.current()
+                                    ))
+                                }
                             }
                         }
                     }
@@ -6049,7 +6116,10 @@ impl Parser {
         })
     }
 
-    fn parse_foreign_key_constraint(&mut self, name: Option<String>) -> Result<TableConstraint, String> {
+    fn parse_foreign_key_constraint(
+        &mut self,
+        name: Option<String>,
+    ) -> Result<TableConstraint, String> {
         self.expect(Token::Foreign)?;
         self.expect(Token::Key)?;
         let columns = self.parse_column_list()?;
@@ -6241,7 +6311,10 @@ impl Parser {
             Some(t) => return Err(format!("Expected database name, got {:?}", t)),
             None => return Err("Expected database name".to_string()),
         };
-        Ok(Statement::DropDatabase(DropDatabaseStatement { name, if_exists }))
+        Ok(Statement::DropDatabase(DropDatabaseStatement {
+            name,
+            if_exists,
+        }))
     }
 
     fn parse_drop_index(&mut self) -> Result<Statement, String> {
@@ -8197,6 +8270,7 @@ fn test_debug_having() {
             Statement::Transaction(TransactionStatement::Begin {
                 work,
                 isolation_level,
+                ..
             }) => {
                 assert!(!work);
                 assert!(isolation_level.is_none());
@@ -8213,6 +8287,7 @@ fn test_debug_having() {
             Statement::Transaction(TransactionStatement::Begin {
                 work,
                 isolation_level,
+                ..
             }) => {
                 assert!(work);
                 assert!(isolation_level.is_none());
@@ -8229,6 +8304,7 @@ fn test_debug_having() {
             Statement::Transaction(TransactionStatement::Begin {
                 work,
                 isolation_level,
+                ..
             }) => {
                 assert!(!work);
                 assert_eq!(isolation_level, Some(IsolationLevel::Serializable));
@@ -8245,11 +8321,68 @@ fn test_debug_having() {
             Statement::Transaction(TransactionStatement::Begin {
                 work,
                 isolation_level,
+                ..
             }) => {
                 assert!(!work);
                 assert_eq!(isolation_level, Some(IsolationLevel::Serializable));
             }
             _ => panic!("Expected BEGIN ISOLATION LEVEL SERIALIZABLE statement"),
+        }
+    }
+
+    #[test]
+    fn test_parse_begin_readonly() {
+        let result = parse("BEGIN READONLY");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        match result.unwrap() {
+            Statement::Transaction(TransactionStatement::Begin {
+                work,
+                isolation_level,
+                readonly,
+            }) => {
+                assert!(!work);
+                assert!(isolation_level.is_none());
+                assert!(readonly, "BEGIN READONLY should set readonly=true");
+            }
+            _ => panic!("Expected BEGIN READONLY statement"),
+        }
+    }
+
+    #[test]
+    fn test_parse_begin_read_only() {
+        // Token::Read + Token::Only form
+        let result = parse("BEGIN READ ONLY");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        match result.unwrap() {
+            Statement::Transaction(TransactionStatement::Begin {
+                work,
+                isolation_level,
+                readonly,
+            }) => {
+                assert!(!work);
+                assert!(isolation_level.is_none());
+                assert!(readonly, "BEGIN READ ONLY should set readonly=true");
+            }
+            _ => panic!("Expected BEGIN READ ONLY statement"),
+        }
+    }
+
+    #[test]
+    fn test_parse_begin_repeatable_read_still_works() {
+        // Ensure REPEATABLE READ is NOT consumed as READ ONLY
+        let result = parse("BEGIN REPEATABLE READ");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        match result.unwrap() {
+            Statement::Transaction(TransactionStatement::Begin {
+                work,
+                isolation_level,
+                readonly,
+            }) => {
+                assert!(!work);
+                assert_eq!(isolation_level, Some(IsolationLevel::SnapshotIsolation));
+                assert!(!readonly);
+            }
+            _ => panic!("Expected BEGIN REPEATABLE READ statement"),
         }
     }
 
@@ -8369,6 +8502,7 @@ fn test_debug_having() {
             Statement::Transaction(TransactionStatement::Begin {
                 work,
                 isolation_level,
+                ..
             }) => {
                 assert!(!work);
                 assert_eq!(isolation_level, Some(IsolationLevel::ReadCommitted));
@@ -8385,6 +8519,7 @@ fn test_debug_having() {
             Statement::Transaction(TransactionStatement::Begin {
                 work,
                 isolation_level,
+                ..
             }) => {
                 assert!(!work);
                 assert_eq!(isolation_level, Some(IsolationLevel::SnapshotIsolation));

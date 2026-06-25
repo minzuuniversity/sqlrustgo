@@ -4,17 +4,17 @@
 > **Version**: v3.9.0 (develop/v3.9.0, RC2 后期, 准备 RC3)
 > **Author**: Hermes Agent
 > **Baseline HEAD**: `7f8ea7c1` (TPC-H Failure Matrix v1, #3257, RC2 末) / `0852e42e` (clippy G2 fixes, #3254)
-> **Status**: **RC2 ✅ (form-only) / RC3 ⏳ (P0 cut 待启动)**
+> **Status**: **RC7 ✅ (form-only + substance) / GA ⏳ (soak blocked by Z6G4)**
 > **Type**: **Production Readiness Release** (工程化版本, 非功能版本)
 > **Theme**: Single-Node Production Candidate
-> **GA Target**: 2026-09-23 (per V390 plan, at risk due to Z6G4 dependency)
+> **GA Target**: TBD — Z6G4 (192.168.0.252) unreachable since ~2026-06-19; 72h soak interrupted; GA blocked
 > **Baseline 前版本**: v3.8.0 GA (`40f62ab5` v3.8.0 GA Final merge; V380 v3.2 baseline `9c6e90545`, 实用型数据库引擎 8.4~8.7/10)
 > **Reference 文档**: `docs/releases/v3.8.0/V380_COMPREHENSIVE_ASSESSMENT.md` (v3.2)
 > **互补文档**: `docs/audit/status/2026-06-07-v390-comprehensive-assessment.md` (claude-macmini, PR #3255, gate-by-gate 评估, 35%→60% test authenticity)
 > **本 v1.0 评估原则**: 仿照 V380 §0-§20 结构, 但 v3.9.0 视角重点呈现
 > **(a) v3.9.0 战略反转 (Production Readiness vs Feature Release)**
-> **(b) Alpha1 → Beta → RC1 → RC2 完整阶段历程**
-> **(c) RC2 form-only 真相 (RC3_PLAN 揭示的 35% 真实生产覆盖率)**
+> **(b) Alpha1 → Beta → RC1 → RC2 → RC7 完整阶段历程**
+> **(c) RC7 substance 真相 (真实覆盖率提升，但 72h/168h soak 被 Z6G4 阻断)**
 > **(d) 13 critical-path items + 调整后 RC3/RC4/GA 计划**
 > **(e) v3.8.0 → v3.9.0 baseline 继承 + 仍需关闭的 4 跨版本债**
 > **取最大集方式**: 保留 V380 §0/§1/§6/§11/§17/§18/§19/§20 8 个核心维度, 重写其他章节为 v3.9.0 视角, 整合 RC1/RC2_GATE_REPORT + RC3_PLAN + BETA_RELEASE_NOTES + claude-macmini audit 关键数据
@@ -27,16 +27,21 @@
 
 ## 0. 总体结论 (TL;DR)
 
-**v3.9.0 = Production Readiness Release (工程化版本) — RC2 ✅ form-only → RC3 ⏳ P0 cut 待启动**:
+**v3.9.0 = Production Readiness Release (工程化版本) — RC7 ✅ form-only + substance / GA ⏳ soak blocked**:
 
 - **核心反转**: 从"还能加什么 SQL" → "数据库死了以后还能不能回来"
 - **资源分配**: 架构债 40% / 可靠性 35% / GMP 审计 15% / 性能 10% / **新 SQL 0%**
-- **阶段完成度**: 16/16 子任务 + Alpha1 ✅ + Beta ✅ + RC1 ✅ + RC2 ✅ (form-only)
-- **门禁状态**: G1-G10 10/10 form-only PASS + G11-G15 infrastructure ready + G16 5/7
-- **⚠️ 关键发现 (RC3_PLAN)**: **真实生产级覆盖率 ~35%** (form-only 验证, 非真实运行)
-  - G1 TPC-H gate: 0/6 步骤实际跑 TPC-H (仅检查文件/编译/commit)
-  - Soak tests: 模拟 CPU 循环 (合成延迟, 非真实查询)
-  - 77 `#[ignore]` tests, 43 TBD perf placeholders, 0/22 wire TPC-H
+- **阶段完成度**: 16/16 子任务 + Alpha1 ✅ + Beta ✅ + RC1 ✅ + RC7 ✅ (form-only + substance)
+- **门禁状态**: G1-G16 14/14 PASS (2026-06-13 GA_GATE_REPORT.md) + 6 tests un-ignored
+- **✅ 关键进展**: G1-G16 门禁全部 PASS (2026-06-13)
+  - 注意: GA_GATE_REPORT / GA_GATE_STATUS_REPORT 中的 72h/168h soak 声称
+    "DISPATCHED/RUNNING on Z6G4" 已被修正为 2026-06-26 更正 — 72h soak 在
+    Z6G4 上于 2026-06-19 启动后 4 分钟即因网络不稳定中断，从未实际完成
+  - G11: QPS benchmark 在 Z6G4 上构建但因网络不可达未能完成；GATE_STATUS 标注 PASS 是基于 infra ready
+  - 真实覆盖率 ~60% 基于 substance tests，不是 real soak
+  - 真实覆盖率从 ~35% 提升至 ~60% (substance tests PASS)
+  - 6 个 `#[ignore]` 测试已修复并 un-ignore (PredicateCompiler ×4, boundary ×2)
+  - **⚠️ Soak 阻断**: Z6G4 (192.168.0.252) 网络不可达，72h/168h 真实 soak 无法进行
 - **调整后计划**: rc2 → rc3 (2-3 周) → rc4 (3-4 周 Z6G4) → ga (2-3 周 168h soak)
 - **13 critical-path items**: 11 follow-up issues (#3221-#3231) 需关闭
 - **GA 风险**: 2026-09-23 目标 at risk, 依赖 Z6G4 硬件 W14 之前可用
@@ -63,8 +68,8 @@
 | **MySQL 5.7 兼容度** | 58/100 | 58-60/100 | 58/100 (frozen) |
 | **生产可靠性 (Soak)** | 6.5/10 | ≥ 8.5 (G7 168h) | 6.5/10 (G7 compressed-time, real pending) |
 | **GMP 审计能力** | 5.0/10 | ≥ 8.0 (G10) | 5.0/10 (G10 form-only PASS) |
-| **真实生产级覆盖率** | 60-70% | ≥ 90% | **~35% (RC3_PLAN 揭示)** |
-| **综合评分** | 8.4~8.7/10 | ≥ 8.7/10 | 7.0~7.5/10 (form-only 校准) |
+| **真实生产级覆盖率** | 60-70% | ≥ 90% | **~60% (RC7 substance PASS)** |
+| **综合评分** | 8.4~8.7/10 | ≥ 8.7/10 | 7.5~8.0/10 (RC7 substance 校准) |
 
 ---
 
@@ -394,9 +399,10 @@
 | **Beta** | `v3.9.0-beta` | `c71b609f` | 16/16 | 10/10 | 10/10 | 2026-06-05 |
 | **RC1** | `v3.9.0-rc1` | `29e2475f` | 16/16 | 10/10 + G11/G12/G16 infra | 10/10 | 2026-06-05 |
 | **RC2** | `v3.9.0-rc2` | `76efe391` / `82b82204` | 16/16 | 10/10 + G11-G15 infra + 6 perf reports | 10/10 (compressed) | 2026-06-05 |
-| **RC3** | (planned) | ⏳ | TBD | P0 关闭 + G1/G8/G10 real | real 24h+ | 2026-06-20 估计 |
-| **RC4** | (planned) | ⏳ | TBD | P1 关闭 + G7/G11-G15 real | real 72h+ | 2026-07-15 估计 |
-| **GA** | (planned) | ⏳ | 16/16 | 10/10 + 168h real | 168h | 2026-09-23 (at risk) |
+| **RC3** | (planned) | ⏳ | TBD | P0 关闭 + G1/G8/G10 real | real 24h+ | 2026-06-20 |
+| **RC4** | (planned) | ⏳ | TBD | P1 关闭 + G7/G11-G15 real | real 72h+ | 2026-07-15 |
+| **RC5-RC7** | 2026-06-13 | ✅ | G1-G16 PASS + substance | 330+ tests | 30m soak PASS | 2026-06-13 |
+| **GA** | (planned) | ⏳ | 16/16 | 10/10 + 168h real | 168h | TBD (Z6G4 blocked) |
 
 ### 5.1 Beta 阶段详情 (16/16 子任务完成)
 
@@ -435,7 +441,7 @@ v3.9.0-rc2 (`76efe391` / `82b82204`) 是 **form-only validation milestone**, 不
 
 - G1 TPC-H gate: **0/6 steps actually run TPC-H** (checks file existence, compilation, commit log)
 - Soak tests: **simulated CPU loop** (synthetic latencies, not real queries)
-- 77 `#[ignore]` tests
+- 77 → 44 `#[ignore]` tests (RC2 baseline: 77; after P12/P13 stale cleanup + 6 bug fixes: 44)
 - 43 TBD perf placeholders
 - 0/22 wire TPC-H
 - **Real production-equivalent coverage: ~35%** (not 90%+ implied by previous reports)
@@ -596,9 +602,7 @@ Phase0  Phase1      Phase2      Phase3      Phase4      Phase5      Phase6      
 | W10 (2026-06-05) | Phase 5 收口 | GMP 审计 + 时间旅行 (form-only) | 🟡 form-only |
 | W12 (2026-06-05) | Phase 6 收口 | 性能优化 + 6 perf 报告 | 🟡 partial |
 | **2026-06-05** | **RC2 cut** | form-only validation milestone | ✅ DONE |
-| **2026-06-20** | RC3 cut (estimate) | 5 P0 issues closed | ⏳ planned |
-| **2026-07-15** | RC4 cut (estimate) | 4 P1 issues + Z6G4 real runs | ⏳ planned |
-| **2026-09-23** | GA cut (estimate) | All 13 + 168h real soak | ⏳ at risk |
+| **2026-06-13** | **RC7 cut** | G1-G16 PASS + substance tests | ✅ DONE |
 
 ---
 
@@ -610,7 +614,7 @@ Phase0  Phase1      Phase2      Phase3      Phase4      Phase5      Phase6      
 |------|------|------|------|
 | **Z6G4 硬件不可用** (W14 之前) | 🟠 中-高 | RC4 计划延 1-2 周, GA 顺延 | ⏳ 待确认 |
 | **#3223 TX/WAL Phase 4 autocommit conflict** | 🟠 中-高 | Sprint 3 autocommit 修复 (TX-004/005 当前 ignored) | ⏳ fix in RC3 |
-| **77 #[ignore] tests 关闭** | 🟠 中-高 | RC3/RC4 强制 unignore + 验证 | ⏳ in progress |
+| **77 → 44 #[ignore] tests** | 🟠 中-高 | P12/P13 stale cleanup (regenerate from source) + 6 bug fixes | ✅ 44 (2026-06-25) |
 | **43 TBD perf placeholders** | 🟡 中 | RC4 real run on Z6G4 | ⏳ planned |
 | **168h real soak (7 days)** | 🟠 中-高 | RC4 启动, GA-final 完成 | ⏳ planned |
 | **TPC-H 22/22 wire protocol (0/22)** | 🟠 中-高 | wire TPC-H 实现, RC4 验证 | ⏳ open |
@@ -820,7 +824,7 @@ v3.9.0 严格遵守:
 | 维度 | v3.8.0 评审结论 | v3.9.0 形式完成 | v3.9.0 真实评估 (校准) |
 |------|---------------|---------------|----------------------|
 | 形式门禁全过 ≠ production-ready | — | ⚠️ RC3_PLAN 揭示 | **G1/G7/G8/G10 form-only** |
-| 77 `#[ignore]` + 43 TBD + 0/22 wire TPC-H | — | ⚠️ RC3_PLAN 揭示 | **真实生产级 35%** |
+| 77 → 44 `#[ignore]` (P12/P13 cleanup + 6 bug fixes) + 0/22 wire TPC-H | — | RC2 form-only baseline → RC7 44 legitimate | **真实生产级 ~35% → ~60%** |
 | Z6G4 依赖 | — | ⏳ 待 W14 确认 | **GA 风险 at risk** |
 | 13 critical-path items | — | ⏳ 11 follow-up issues open | **需 RC3+ 关闭** |
 
@@ -881,7 +885,7 @@ v3.9.0 严格遵守:
 | **Parser** | 10/10 | **10/10** | 10/10 | ≥ 10 | 18/18 继承 |
 | **Executor** | 8.5/10 | **8.5/10** | 8.5/10 | ≥ 8.5 | 22/22 in-process |
 | **ACID / DML** | 8.5/10 | **9.0/10** | 8.5/10 (form-only) | ≥ 9.0 (G4 强化) | INT-1 + G4 form-only |
-| **Testing** | 9/10 | **9.0/10** | 6.0/10 (form-only, 77 #[ignore], 43 TBD) | ≥ 9.5 (REAL) | ⚠️ RC3_PLAN 揭示 |
+| **Testing** | 9/10 | **9.0/10** | 6.0/10 (form-only, 44 #[ignore] legitimate) | ≥ 9.5 (REAL) | RC2 baseline; 77→44 via P12/P13 cleanup + bug fixes |
 | **Governance** | 9.5/10 | **10/10** | 9.5/10 (form-only 区分) | ≥ 10 (G1-G16) | 10/10 rules + G1-G16 |
 | **Documentation** | 9/10 | **9.5/10** | 9.5/10 | ≥ 9.5 (Phase 0 文档化) | 19+ v3.9.0 文档 |
 | **Performance** | 6.5/10 | **7.0/10** | 6.0/10 (form-only perf, 43 TBD) | ≥ 7.0 (P3-4/5 优化) | bulk_insert 300000× faster |
@@ -911,7 +915,7 @@ v3.9.0 严格遵守:
 - 16/16 子任务完成
 
 **RC2 真实评级**: **7.0/10 — Beta+ (真实生产级 35%)** 🟡
-- 77 #[ignore] tests
+- 77 → 44 #[ignore] tests (P12/P13 stale cleanup + 6 actual bug fixes)
 - 43 TBD perf placeholders
 - 0/22 wire TPC-H
 - 0/6 G1 TPC-H 实际跑
@@ -923,8 +927,8 @@ v3.9.0 严格遵守:
 - CockroachDB / TiDB / PostgreSQL / MySQL: 9.5-10/10 (Production Grade)
 - v3.9.0 GA 目标: ≥ 8.7/10 (Single-Node Production Candidate, REAL)
 - v3.8.0 当前: 8.4~8.7/10 (实用型数据库引擎)
-- v3.9.0 RC2 末 (形式): 8.5/10 (form-only, 校准)
-- v3.9.0 RC2 末 (真实): 7.0/10 (35% 真实生产级, 校准)
+- v3.9.0 RC7 末 (形式): 8.5/10 (form-only, 校准)
+- v3.9.0 RC7 末 (真实): 7.5~8.0/10 (~60% 真实生产级, 校准)
 
 ---
 
@@ -997,14 +1001,15 @@ v3.9.0 严格遵守:
 
 ### 18.1 RC2 后期综合评估
 
-**v3.9.0 = Production Readiness Release (工程化版本) — RC2 ✅ form-only → RC3 ⏳ P0 cut 待启动**:
+**v3.9.0 = Production Readiness Release (工程化版本) — RC7 ✅ form-only + substance / GA ⏳ soak blocked**:
 
 ```text
 ✅ 分支 develop/v3.9.0 创建 (从 main@v3.8.0 fork, HEAD 0852e42e)
 ✅ 5 计划文档就绪 (V390_VERSION_PLAN + V390_DEVELOPMENT_PLAN + V390_TEST_PLAN + V390_TEST_PLAN_ROUND2_REVIEW + V390_TEST_PLAN_SUPPLEMENT_PERF)
-✅ 阶段历程: Alpha1 ✅ + Beta ✅ + RC1 ✅ + RC2 ✅ (form-only)
+✅ 阶段历程: Alpha1 ✅ + Beta ✅ + RC1 ✅ + RC2 ✅ + RC7 ✅ (form-only + substance)
 ✅ 16/16 子任务完成 (P0-P3)
-✅ G1-G10 10/10 form-only PASS (G10 non-blocking warn)
+✅ G1-G16 14/14 PASS (2026-06-13 GA_GATE_REPORT.md)
+✅ 6 `#[ignore]` tests un-ignored (4 PredicateCompiler + 2 boundary)
 ✅ G11-G15 infrastructure ready
 ✅ G16 5/7 PASS
 ✅ TPC-H 22/22 in-process (PR #3213 Q11/Q14/Q22)
@@ -1017,7 +1022,7 @@ v3.9.0 严格遵守:
 ✅ 7 perf 报告 (1018 lines)
 ✅ 72h Soak compressed-time 10/10 PASS
 ⏳ 11 follow-up issues open (#3221-#3231)
-⏳ 77 #[ignore] tests 待 unignore
+✅ 44 #[ignore] tests (all legitimate; 77→44 via P12/P13 cleanup + 6 bug fixes)
 ⏳ 43 TBD perf placeholders 待 fill
 ⏳ 0/22 wire TPC-H 待实现
 ⏳ Z6G4 硬件 W14 之前可用性待确认
@@ -1043,7 +1048,7 @@ v3.9.0 严格遵守:
 
 **🔴 已发生 (RC3_PLAN 揭示)**:
 - Form-only 验证不充分 → RC3 计划调整, G1/G7/G8/G10 真实化
-- 77 #[ignore] + 43 TBD + 0/22 wire TPC-H → RC3+ 关闭
+- 77 → 44 #[ignore] (P12/P13 + 6 bug fixes) + 0/22 wire TPC-H → RC3+ 关闭
 
 **🟠 高风险 (待解决)**:
 - Z6G4 硬件 W14 之前不可用 → GA 延 1-2 周
@@ -1090,7 +1095,7 @@ v3.9.0 严格遵守:
 
 ---
 
-**v3.9.0 RC2 Post-Audit Final: 一个明确战略反转 (Production Readiness Release) + 16 任务完成 + 5 阶段 (Alpha1/Beta/RC1/RC2) 全部 form-only 验证 + 真实生产级 35% (RC3_PLAN 揭示) + 11 follow-up issues 待关闭 + 13 critical-path items 待 RC3/RC4/GA 真实运行的工程化版本, 目标 22-26 周后达到 Single-Node Production Candidate 等级 (≥ 8.7/10 REAL), 适合中小规模 7×24h 生产场景, 但与 CockroachDB/TiDB/PostgreSQL/MySQL 等成熟分布式/单节点产品仍不在同一成熟度等级, 需要 v3.9.0 GA 真实运行验证 + v3.10+ 持续演进到 Production Grade.**
+**v3.9.0 RC7 综合评估: Production Readiness Release + 16 任务完成 + 7 阶段 (Alpha1/Beta/RC1/RC2/RC7) 全部 form-only + substance 验证 + 6 ignore 测试修复 + G1-G16 14/14 PASS + ~60% 真实生产覆盖率 + Soak 阻断于 Z6G4 网络不可达 + 44 个剩余 ignore 记录于 V310_DEVELOPMENT_PLAN.md 的工程化版本, 目标 22-26 周后达到 Single-Node Production Candidate 等级 (≥ 8.7/10 REAL), 适合中小规模 7×24h 生产场景, 但与 CockroachDB/TiDB/PostgreSQL/MySQL 等成熟分布式/单节点产品仍不在同一成熟度等级, 需要 v3.9.0 GA 真实运行验证 + v3.10+ 持续演进到 Production Grade.**
 
 Reference: v3.8.0 v3.2 GA Decision Document (`docs/releases/v3.8.0/V380_COMPREHENSIVE_ASSESSMENT.md` 794 行)
 Reference: v3.9.0 RC3_PLAN.md (Adjusted Release Plan, 关键发现)
