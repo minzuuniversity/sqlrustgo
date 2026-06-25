@@ -23,41 +23,6 @@
 On-disk format is **unchanged** from v3.8.0; this is a binary-swap
 upgrade with zero data migration.
 
-### 0.1 Sprint 8 Addendum (2026-06-17, PR #3465)
-
-> **Sprint 8 增量**: RC7 发布后增加 3 个关键轨道. 当前 HEAD: `1e83612c6` (post PR #3467).
-> 详见 [`V390_COMPREHENSIVE_ASSESSMENT.md`](V390_COMPREHENSIVE_ASSESSMENT.md) v2.0.
-
-- **Q8 165,000× faster** — Sprint 8 Track A (commits `1b200d33f` `7e806c8b3` `da204103f`).
-  The 8-way join in TPC-H Q8 was spending 99.99% of its time on cartesian
-  product after failing to find equi-join keys. Sprint 8 added
-  `extract_comma_join_keys` to walk WHERE for equi-join keys, and
-  `JoinKey::All` now falls through to **hash join** instead of N×M
-  cartesian. **Q8: 33,000ms → 0.18ms (165,000× speedup)**. 22/22
-  TPC-H 保持.
-- **ADR-006 V5/V6/V8/V2 治理 (Sprint 8 Track B)** — 5/5 meta-gates
-  (P11/P12/P13/P14/P15) 全部 PASS:
-  - **P14 V5 DRIFT fix** (commit `2470f9a1e`): `check_full_gate_verification.sh::run_gate()`
-    不再接受 DRIFT (exit 2) as PASS. DRIFT 视为 FAIL.
-  - **P14 V6 `|| true` 移除** (commit `6ce4f827d`): `check_g_correctness_v390.sh`
-    cargo test exit code 真传播. 修复 9 个 gate 脚本.
-  - **P14 V8 PIPESTATUS/pipefail** (commit `70265812d`): 9 个 gate script 添加
-    `set -o pipefail` + 显式 `$?`/`PIPESTATUS` 检查.
-  - **P12 V2 ignore_registry 重生成** (commit `07d7ec857`): `tests/baseline/ignore_registry.json`
-    从 93 stale → **42 真 `#[ignore]` + 1 marker**. P12 detector ✅ PASS.
-- **`sqlrustgo-mysql-server soak` 子命令 (Sprint 8 Track C)** — 真实 wall-clock 长期
-  浸泡 binary (commit `de8b6b2fd`). CLI: `soak --duration <h> --qps <rate>
-  [--output FILE] [--seed N] [--sample-interval-s S] [--rss-warn-mb MB]`.
-  资源监控: RSS (macOS/Linux), FD count, lock count, p99 latency. Leak
-  warning when RSS growth > threshold. Graceful shutdown via
-  `signal-hook` (SIGTERM/SIGINT). JSONL time-series + Markdown report
-  (`SOAK_<DURATION>H_REPORT.md`). **24h/72h/168h real soak infra: READY
-  (binary available)**. Run pending Z6G4 hardware.
-- **26 long-stability tests 分析** (commit `b9795fed5`):
-  [`LONG_STABILITY_TESTS_ANALYSIS.md`](LONG_STABILITY_TESTS_ANALYSIS.md)
-  详细记录 26 个长跑 `#[ignore]` 测试 (1 long stability + 10 QPS + 3
-  batched + 6 v3.8.0 perf + 6 tx_wal), 全部需 Z6G4 验证.
-
 ## 1. Major milestones
 
 - **22/22 TPC-H queries pass** in-process + wire protocol

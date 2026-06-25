@@ -2557,15 +2557,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f8ca58f447f06ed17d5fc4043ce1b10dd205e060fb3ce5b979b8ed8e59ff3f79"
 
 [[package]]
-name = "memmap2"
-version = "0.9.10"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "714098028fe011992e1c3962653c96b2d578c4b4bce9036e15ff220319b1e0e3"
-dependencies = [
- "libc",
-]
-
-[[package]]
 name = "mime"
 version = "0.3.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3971,16 +3962,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0fda2ff0d084019ba4d7c6f371c95d8fd75ce3524c3cb8fb653a3023f6323e64"
 
 [[package]]
-name = "signal-hook"
-version = "0.3.18"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d881a16cf4426aa584979d30bd82cb33429027e42122b169753d6ef1085ed6e2"
-dependencies = [
- "libc",
- "signal-hook-registry",
-]
-
-[[package]]
 name = "signal-hook-registry"
 version = "1.4.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4088,7 +4069,6 @@ dependencies = [
  "serde_json",
  "serde_yaml",
  "sha1 0.10.6",
- "sha2 0.10.9",
  "sqlrustgo-admin",
  "sqlrustgo-cache",
  "sqlrustgo-catalog",
@@ -4310,15 +4290,12 @@ version = "0.1.0"
 dependencies = [
  "byteorder",
  "clap 4.6.1",
- "libc",
  "rand 0.8.6",
  "rcgen",
  "rustls",
- "scopeguard",
  "serde",
  "serde_json",
  "sha1 0.10.6",
- "signal-hook",
  "sqlrustgo",
  "sqlrustgo-common",
  "sqlrustgo-executor",
@@ -4354,7 +4331,6 @@ dependencies = [
  "log",
  "serde",
  "sqlrustgo-common",
- "sqlrustgo-parser",
  "sqlrustgo-storage",
  "sqlrustgo-types",
  "tempfile",
@@ -4495,7 +4471,6 @@ dependencies = [
  "async-trait",
  "criterion 0.8.2",
  "log",
- "memmap2",
  "miniz_oxide 0.7.4",
  "serde",
  "serde_json",
