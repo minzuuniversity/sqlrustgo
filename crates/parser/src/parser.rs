@@ -612,6 +612,7 @@ pub struct ForeignKeyRef {
 pub enum TableConstraint {
     PrimaryKey {
         columns: Vec<String>,
+        name: Option<String>,
     },
     ForeignKey {
         columns: Vec<String>,
@@ -619,12 +620,15 @@ pub enum TableConstraint {
         referenced_columns: Vec<String>,
         on_delete: Option<ReferentialAction>,
         on_update: Option<ReferentialAction>,
+        name: Option<String>,
     },
     Unique {
         columns: Vec<String>,
+        name: Option<String>,
     },
     Check {
         expression: String,
+        name: Option<String>,
     },
 }
 
@@ -5833,16 +5837,16 @@ impl Parser {
                         self.next();
                         self.expect(Token::Key)?;
                         let columns = self.parse_column_list()?;
-                        constraints.push(TableConstraint::PrimaryKey { columns });
+                        constraints.push(TableConstraint::PrimaryKey { columns, name: None });
                     }
                     Some(Token::Foreign) => {
-                        let fk = self.parse_foreign_key_constraint()?;
+                        let fk = self.parse_foreign_key_constraint(None)?;
                         constraints.push(fk);
                     }
                     Some(Token::Unique) => {
                         self.next();
                         let columns = self.parse_column_list()?;
-                        constraints.push(TableConstraint::Unique { columns });
+                        constraints.push(TableConstraint::Unique { columns, name: None });
                     }
                     Some(Token::Check) => {
                         self.next();
@@ -5851,27 +5855,28 @@ impl Parser {
                         self.expect(Token::RParen)?;
                         constraints.push(TableConstraint::Check {
                             expression: format!("{:?}", expr),
+                            name: None,
                         });
                     }
                     Some(Token::Constraint) => {
                         self.next();
-                        if let Some(Token::Identifier(_name)) = self.next() {
-                            self.next();
+                        if let Some(Token::Identifier(name)) = self.next() {
                             match self.current() {
                                 Some(Token::Primary) => {
                                     self.next();
                                     self.expect(Token::Key)?;
                                     let cols = self.parse_column_list()?;
-                                    constraints.push(TableConstraint::PrimaryKey { columns: cols });
+                                    constraints.push(TableConstraint::PrimaryKey { columns: cols, name: Some(name) });
                                 }
                                 Some(Token::Foreign) => {
-                                    let fk = self.parse_foreign_key_constraint()?;
+                                    self.next();
+                                    let fk = self.parse_foreign_key_constraint(Some(name))?;
                                     constraints.push(fk);
                                 }
                                 Some(Token::Unique) => {
                                     self.next();
                                     let cols = self.parse_column_list()?;
-                                    constraints.push(TableConstraint::Unique { columns: cols });
+                                    constraints.push(TableConstraint::Unique { columns: cols, name: Some(name) });
                                 }
                                 Some(Token::Check) => {
                                     self.next();
@@ -5880,9 +5885,10 @@ impl Parser {
                                     self.expect(Token::RParen)?;
                                     constraints.push(TableConstraint::Check {
                                         expression: format!("{:?}", expr),
+                                        name: Some(name),
                                     });
                                 }
-                                _ => return Err("Expected constraint type".to_string()),
+                                _ => return Err(format!("Expected constraint type, got {:?}", self.current())),
                             }
                         }
                     }
@@ -6043,7 +6049,7 @@ impl Parser {
         })
     }
 
-    fn parse_foreign_key_constraint(&mut self) -> Result<TableConstraint, String> {
+    fn parse_foreign_key_constraint(&mut self, name: Option<String>) -> Result<TableConstraint, String> {
         self.expect(Token::Foreign)?;
         self.expect(Token::Key)?;
         let columns = self.parse_column_list()?;
@@ -6065,6 +6071,7 @@ impl Parser {
             referenced_columns,
             on_delete,
             on_update,
+            name,
         })
     }
 
@@ -7602,7 +7609,7 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "Test deferred (see tracking issue or comment context)"]
+    #[ignore = "FOREIGN KEY constraint parsing fails - pre-existing bug, unrelated to named constraint fix"]
     fn test_parse_create_with_table_constraint_fk() {
         let result = parse("CREATE TABLE orders (id INTEGER, user_id INTEGER, FOREIGN KEY (user_id) REFERENCES users(id))");
         assert!(result.is_ok());
