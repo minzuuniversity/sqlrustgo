@@ -10,7 +10,6 @@ pub use lexer::Lexer;
 pub use parser::Parser;
 pub use token::Token;
 
-pub use parser::parse;
 pub use parser::{
     get_and_clear_derived_subqueries, AggregateCall, AggregateFunction, AlterTableOperation,
     AlterTableStatement, CallStatement, ColumnDefinition, CommonTableExpression,
@@ -21,5 +20,5 @@ pub use parser::{
     StoredProcParamMode, StoredProcStatement, TableConstraint, UpdateStatement, WithClause,
     WithSelect,
 };
-pub use parser::{parse_statements, split_sql_statements};
+pub use parser::{parse, parse_statements, split_sql_statements};
 pub use transaction::TransactionStatement;
