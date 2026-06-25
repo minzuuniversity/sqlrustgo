@@ -1,8 +1,7 @@
 # SQLRustGo 版本演进完整历史
 
-> **当前版本**: v3.9.0 (RC7)
-> **最新稳定**: v3.8.0 (GA, 2026-06-08)
-> **更新日期**: 2026-06-17
+> **当前版本**: v3.7.0 (GA)
+> **更新日期**: 2026-05-30
 
 ---
 
@@ -12,128 +11,156 @@
 
 | 版本 | 发布日期 | 状态 | 核心特性 | 成熟度 |
 |------|----------|------|----------|--------|
-| v3.9.0 | 2026-12-15 (目标) | RC7 | Production Readiness | L4 |
-| v3.8.0 | 2026-06-08 | GA | Architecture Unification | L4 |
-| v3.7.0 | 2026-05-31 | GA | GMP Integration | L4 |
-| v3.6.0 | 2026-05-29 | GA | Protocol Stack | L4 |
-| v3.5.0 | 2026-05-28 | GA | AI Native GMP | L4 |
-| v3.4.0 | 2026-05-24 | GA | TPC-H 22/22 | L4 |
-| v3.3.0 | 2026-05-20 | GA | Corpus 818/818 | L4 |
-| v3.2.0 | 2026-05-17 | GA | WAL + MVCC | L4 |
-| v3.1.0 | 2026-05-14 | Beta | - | L3 |
-| v3.0.0 | 2026-05-10 | GA | Parallel Executor | L3 |
-| v2.9.0 | 2026-05-10 | Alpha | - | L3 |
-| v2.8.0 | 2026-04-30 | GA | - | L3 |
-| v2.7.0 | 2026-04-25 | GA | - | L3 |
-| v2.6.0 | 2026-04-22 | GA | SQL-92 Complete | L3 |
-| v2.5.0 | 2026-04-03 | GA | MVCC/Vector/Graph | L3 |
-| v2.4.0 | 2026-xx-xx | GA | 列式存储 | L3 |
-| v2.3.0 | 2026-xx-xx | GA | - | L3 |
-| v2.2.0 | 2026-xx-xx | GA | Vector Index | L3 |
-| v2.1.0 | 2026-xx-xx | GA | CBO 优化 | L3 |
-| v2.0.0 | 2026-xx-xx | GA | 向量化执行 | L3 |
-| v1.x | 2025-xx-xx | GA | 基础 SQL | L2-L3 |
+| v1.0.0 | 2025-xx-xx | GA | 基础 SQL 支持 | L2 |
+| v1.1.0 | 2025-xx-xx | GA | 基础性能优化 | L2 |
+| v1.2.0 | 2025-xx-xx | GA | 架构接口化 | L3 |
+| v1.3.0 | 2025-xx-xx | GA | 向量化基础 | L3 |
+| v1.4.0 | 2025-xx-xx | GA | 可观测性 | L3 |
+| v1.5.0 | 2025-xx-xx | GA | 并行执行 | L3 |
+| v1.6.0 | 2025-xx-xx | GA | 性能优化 | L3 |
+| v1.6.1 | 2025-xx-xx | GA | Bugfix | L3 |
+| v1.7.0 | 2025-xx-xx | GA | MySQL 兼容性增强 | L3 |
+| v1.8.0 | 2025-xx-xx | GA | SQL-92 增强 | L3 |
+| v1.9.0 | 2025-xx-xx | GA | 完整性增强 | L3 |
+| v2.0.0 | 2025-xx-xx | GA | 向量化执行 | L4 |
+| v2.1.0 | 2026-xx-xx | GA | CBO 优化 | L4 |
+| v2.2.0 | 2026-xx-xx | GA | Vector Index | L4 |
+| v2.3.0 | 2026-xx-xx | GA | 分布式基础 | L4 |
+| v2.4.0 | 2026-xx-xx | GA | 列式存储 | L4 |
+| v2.5.0 | 2026-04-03 | GA | MVCC/Vector/Graph | L4 |
+| v2.6.0 | 2026-xx-xx | Alpha | SQL-92 完整 + 生产就绪 | L4 |
+| v2.7.0 | TBD | 规划 | 分布式架构 | - |
+| v3.0.0 | TBD | 愿景 | 完整分布式数据库 | - |
 
 ---
 
-## 二、v3.9.0 详细变更 (RC7)
+## 二、各版本详细变更日志
 
-> **状态**: RC7 (2026-06-12)
-> **GA 目标**: 2026-12-15
+### v2.5.0 (2026-04-03) - MVCC/Vector/Graph
 
-### 核心战略
+#### 功能矩阵
 
-- **核心问题**: 不是"支持多少 SQL"，而是"数据库死了以后还能不能回来"
-- **资源分配**: 架构债 40% / 可靠性 35% / GMP 审计 15% / 性能 10% / 新 SQL 0%
-- **主题**: Single-Node Production Candidate
+| 模块 | 功能 | 状态 |
+|------|------|------|
+| **执行器** | ParallelExecutor | ✅ |
+| **执行器** | 向量化执行基础 | ✅ |
+| **存储** | MVCC 快照隔离 | ✅ |
+| **图存储** | Graph Storage 基础 | ✅ |
+| **优化器** | CBO 框架 | ✅ |
+| **网络** | MySQL 协议增强 | ✅ |
+| **可观测性** | Metrics 端点 | ✅ |
 
-### G1-G16 门禁
+#### 测试情况
 
-| # | 门禁 | 状态 |
-|---|------|------|
-| G1 | 22/22 TPC-H 保持 | ✅ PASS |
-| G2 | INT-2 关闭 | ✅ PASS |
-| G3 | INT-3 关闭 | ✅ PASS |
-| G4 | ARCH-3 关闭 | ✅ PASS |
-| G5 | SEM-1 关闭 | ✅ PASS |
-| G6 | Backup/Restore 100+ 场景 | ✅ PASS |
-| G7 | 24h Soak Test | ✅ PASS |
-| G8 | Crash Matrix 100+ 场景 | ✅ PASS |
-| G9 | Upgrade Test 50+ 场景 | ✅ PASS |
-| G10 | Audit + Time Travel 40+ tests | ✅ PASS |
-
-### 测试结果
-
-| 测试集 | 结果 |
-|--------|------|
-| Lib Tests | 1670 PASS, 1 IGNORED |
-| TPC-H | 22/22 PASS |
-| Corpus | 818/818 PASS |
-| D9 Gate | 8/8 PASS |
-
-### 关键 PR
-
-- PR #3131: MySQL 5.7 keyword + scalar function
-- PR #3132: TPC-H Q2 5-table comma-join fix
-- PR #3142: ORDER BY execution in SELECT
-- PR #3426: cargo fmt --all
-- PR #3427: un-ignore tpch_q9_audit + char_max_length
-- PR #3428: sync gitcode/develop/v3.9.0
+- 单元测试: 213+
+- 覆盖率: 49%
+- TPC-H SF1: 通过
 
 ---
 
-## 三、v3.8.0 详细变更 (GA)
+### v2.4.0 - 列式存储
 
-> **状态**: GA (2026-06-08)
-> **分支**: main@v3.8.0
+#### 功能矩阵
 
-### 核心特性
-
-- **Architecture Unification**: 消灭双执行路径，统一 SQL → AST → Plan → Execution
-- **WAL Mandatory**: 所有 write 必须经过 WAL
-- **MVCC Enabled**: Snapshot Isolation 默认开启
-- **Canonical Binary**: `sqlrustgo-mysql-server` 唯一执行入口
-
-### Breaking Changes
-
-- **Retired**: `sqlrustgo` / `sqlrustgo-sql-cli` / `sqlrustgo-bench` 等旧 binary
-- **New Entry**: `sqlrustgo-mysql-server` (subcommands: `serve` / `exec` / `repl` / `bench` / `gmp` / `diag` / `backup` / `restore`)
-
-### 测试结果
-
-| 测试集 | 结果 |
-|--------|------|
-| TPC-H | 22/22 PASS |
-| Corpus | 100% (818/818) |
-| D9 Gate | 8/8 PASS |
-| PR 合并 | 3430+ |
+| 模块 | 功能 | 状态 |
+|------|------|------|
+| **存储** | 列式存储基础 | ✅ |
+| **执行器** | 列式扫描 | ✅ |
+| **压缩** | 列压缩 | ✅ |
 
 ---
 
-## 四、v3.7.0 详细变更 (GA)
+### v2.2.0 - Vector Index
 
-> **状态**: GA (2026-05-31)
+#### 功能矩阵
 
-### 核心特性
-
-- **GMP Integration**: AI Agent Layer + Ollama 本地推理 + GMP Retrieval v3
-- **窗口函数**: 完整支持
-- **CTE**: 完整支持
-
----
-
-## 五、版本阶段说明
-
-| 阶段 | 说明 |
-|------|------|
-| Alpha | 开发中，功能不稳定 |
-| Beta | 功能冻结，开始测试 |
-| RC (Release Candidate) | 候选发布 |
-| GA (General Available) | 正式发布 |
+| 模块 | 功能 | 状态 |
+|------|------|------|
+| **索引** | IVF-PQ 索引 | ✅ |
+| **索引** | HNSW 索引 | ✅ |
+| **执行器** | 近似最近邻搜索 | ✅ |
 
 ---
 
-## 六、成熟度等级
+### v2.1.0 - CBO 优化
+
+#### 功能矩阵
+
+| 模块 | 功能 | 状态 |
+|------|------|------|
+| **优化器** | 成本模型 | ✅ |
+| **优化器** | 索引选择 | ✅ |
+| **优化器** | Join 重排序 | ✅ |
+| **统计信息** | Statistics Manager | ✅ |
+
+---
+
+### v2.0.0 - 向量化执行
+
+#### 功能矩阵
+
+| 模块 | 功能 | 状态 |
+|------|------|------|
+| **执行器** | 向量化执行引擎 | ✅ |
+| **类型系统** | 增强类型系统 | ✅ |
+| **存储** | Buffer Pool 优化 | ✅ |
+
+---
+
+### v1.x 系列
+
+| 版本 | 核心特性 |
+|------|----------|
+| v1.9.0 | 完整性增强 |
+| v1.8.0 | SQL-92 增强 |
+| v1.7.0 | MySQL 兼容性 |
+| v1.6.0/1.6.1 | 性能优化 |
+| v1.5.0 | 并行执行 |
+| v1.4.0 | 可观测性 |
+| v1.3.0 | 向量化基础 |
+| v1.2.0 | 架构接口化 |
+| v1.1.0 | 基础优化 |
+| v1.0.0 | 基础 SQL |
+
+---
+
+## 三、功能矩阵总览
+
+### 核心能力
+
+| 功能 | v1.x | v2.x | 状态 |
+|------|------|------|------|
+| **SQL 支持** | | | |
+| SELECT | ✅ | ✅ | 完整 |
+| INSERT | ✅ | ✅ | 完整 |
+| UPDATE | ✅ | ✅ | 完整 |
+| DELETE | ✅ | ✅ | 完整 |
+| JOIN (INNER/LEFT/RIGHT) | ✅ | ✅ | 完整 |
+| JOIN (FULL OUTER) | ⚠️ | ✅ | 部分 |
+| GROUP BY | ⚠️ | ✅ | 完整 |
+| HAVING | ⚠️ | ✅ | 完整 |
+| UNION | ✅ | ✅ | 完整 |
+| 子查询 | ⚠️ | ✅ | 完整 |
+| 窗口函数 | ⚠️ | ✅ | 部分 |
+| **存储引擎** | | | |
+| Buffer Pool | ✅ | ✅ | 完整 |
+| B+ Tree 索引 | ✅ | ✅ | 完整 |
+| 列式存储 | - | ✅ | 完整 |
+| WAL | ⚠️ | ✅ | 部分 |
+| MVCC | - | ✅ | 完整 |
+| **执行引擎** | | | |
+| 火山模型 | ✅ | ✅ | 完整 |
+| 向量化执行 | - | ✅ | 完整 |
+| 并行执行 | ⚠️ | ✅ | 完整 |
+| **优化器** | | | |
+| 规则优化 | ✅ | ✅ | 完整 |
+| CBO | - | ✅ | 部分 |
+| 成本模型 | - | ✅ | 部分 |
+| **网络协议** | | | |
+| MySQL 协议 | ✅ | ✅ | 完整 |
+| PostgreSQL 协议 | ⚠️ | ⚠️ | 部分 |
+
+### 成熟度等级
 
 | 等级 | 说明 | 特征 |
 |------|------|------|
@@ -145,26 +172,145 @@
 
 ---
 
-## 七、远景路线图
+## 四、版本号语义
 
-### v3.10+ (规划中)
+```
+主版本.次版本.修订版本
 
-| 功能 | 目标版本 |
-|------|----------|
-| 窗口函数完整 | v3.10+ |
-| CTE 完整 | v3.10+ |
-| 图数据库 Cypher 完整 | v3.10+ |
-| XA 两阶段提交 | v3.10+ |
+v2.5.0
+│ │ │
+│ │ └─ 修订: Bugfix 或小功能
+│ │       
+│ └──── 次版本: 新功能（向后兼容）
+│
+└────── 主版本: 架构重大变更（不兼容）
+```
 
-### v4.0.0 (愿景)
+### 版本阶段
 
-- 完整分布式数据库
+| 阶段 | 说明 |
+|------|------|
+| Alpha | 开发中，功能不稳定 |
+| Beta | 功能冻结，开始测试 |
+| RC (Release Candidate) | 候选发布 |
+| GA (General Available) | 正式发布 |
+
+---
+
+## 五、路线图
+
+### 当前开发: v2.6.0 (alpha)
+### v2.5.0 (2026-04-03) - MVCC/Vector/Graph
+
+#### 功能矩阵
+
+| 模块 | 功能 | 状态 |
+|------|------|------|
+| **执行器** | ParallelExecutor | ✅ |
+| **执行器** | 向量化执行基础 | ✅ |
+| **存储** | MVCC 快照隔离 | ✅ |
+| **图存储** | Graph Storage 基础 | ✅ |
+| **优化器** | CBO 框架 | ✅ |
+| **网络** | MySQL 协议增强 | ✅ |
+| **可观测性** | Metrics 端点 | ✅ |
+
+#### 测试情况
+
+- 单元测试: 213+
+- 覆盖率: 49%
+- TPC-H SF1: 通过
+
+---
+
+### v3.0.0 - 向量化执行 + 并行框架
+
+| 模块 | 功能 | 状态 |
+|------|------|------|
+| **执行器** | ParallelVolcanoExecutor | ✅（孤岛） |
+| **expr** | 表达式求值模块 | ✅（未被使用） |
+| **transaction** | SSI 检测 | ✅（无存储集成） |
+| **storage** | WAL 模块 | ✅（分离） |
+
+---
+
+### v3.5.0 (2026-05-28) - GA 门禁完成
+
+| 模块 | 功能 | 状态 |
+|------|------|------|
+| **整体** | GA 4/4 PASS | ✅ |
+| **覆盖率** | L1 87.36% | ✅ |
+| **TPC-H** | 22/22 PASS | ✅ |
+| **文档** | 9 篇核心文档 | ✅ |
+
+---
+
+### v3.6.0 (2026-05-29) - 协议栈整合
+
+| 模块 | 功能 | 状态 |
+|------|------|------|
+| **MySQL 协议** | COM_QUERY 完整处理 | ✅ |
+| **TPC-H 基线** | SF=1 真实数据 6M lineitem | ✅ |
+| **SIMD** | sum_i64 阈值调度 | ✅ |
+| **WAL 验证** | TI-3 工作区 | ✅ |
+| **覆盖率** | Alpha Gate FAIL (32.59% Z440) | ❌ |
+
+**状态**: Alpha FAIL — 双链路执行缺陷（Path A/B/C 未统一）
+
+**已知缺陷**:
+- 双链路执行：Path A (ExecutionEngine) 与 Path B/C (MySQL Protocol/StoredProc) 行为不一致
+- WAL 未集成：WalStorage 未接入 mysql-server 生产路径 (IMPL-002)
+- INT-3：expr crate 孤岛
+
+---
+
+### v3.7.0 (2026-05-30) - GA 集成债务清算
+
+**状态**: Refactoring — 重构里程碑（非生产 GA）
+
+**目标**: 集成债务清算 + 协议栈统一
+
+| Issue | 缺陷 | 优先级 | 状态 |
+|-------|------|--------|------|
+| INT-1 | DML 不经过 WAL/TransactionManager | P0 | 持续修复中 |
+| INT-2 | ParallelVolcanoExecutor 功能孤岛 | P0 | 持续修复中 |
+| INT-3 | expr crate 孤岛 | P1 | 持续修复中 |
+| INT-4 | mysql-server 双路径（Path A/B/C 未统一） | P1 | 持续修复中 |
+
+**门禁状态**:
+- Alpha/Beta/RC: ✅ PASS
+- GA Gate: ⚠️ CONDITIONAL PASS（R4/R5 SKIP；覆盖率 84.99% 差 0.01pp）
+- **注意**: v3.7.0 为重构里程碑，非生产 GA 认证
+
+**时间线**：
+- 2026-06-06: Alpha Gate（覆盖率 75%+）
+- 2026-06-13: Beta Gate
+
+---
+
+### v3.8.0 (2026-05-31) - Architecture Unification（开发中）
+
+**目标**: Execution Architecture Consolidation — 消灭双执行路径，统一 SQL → AST → Plan → Execution，接入 WAL 核心。
+
+| 阶段 | 目标 | 状态 |
+|------|------|------|
+| Alpha | Execution Freeze (AUTOCOMMIT + WAL Mandatory) | 🔄 IN_PROGRESS |
+| Beta | WAL Persistence + Recovery 7/7 PASS | ⬜ |
+| RC | MVCC 完整化 | ⬜ |
+| GA | 全量验证 | ⬜ |
+
+**核心 Issue**: INT-1~INT-4（见 v3.7.0 节）
+
+---
+
+### 远景: v3.8.0+
+
+**目标**: 完整分布式数据库
+
 - 对标 CockroachDB/TiDB
 - 分布式事务
 - 分片复制
 
 ---
 
-*本文档由 Hermes Agent 维护*
-*更新频率: 每个版本发布后更新*
-*最后更新: 2026-06-17*
+*本文档由 yinglichina8848 维护*
+*更新频率: 每版本发布后更新*
