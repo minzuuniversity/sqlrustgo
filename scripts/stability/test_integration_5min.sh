@@ -28,8 +28,7 @@
 
 set -e
 
-PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
-BINARY="${BINARY:-$PROJECT_ROOT/target/release/sqlrustgo-mysql-server}"
+BINARY="/home/openclaw/workspace/dev/sqlrustgo/target/release/sqlrustgo-mysql-server"
 PORT=${PORT:-4498}
 HOST="127.0.0.1"
 DURATION=${DURATION:-60}            # 测试秒数
@@ -41,7 +40,7 @@ SERVER_RSS_LIMIT_MB=${SERVER_RSS_LIMIT_MB:-2048}   # 服务器 RSS 硬限制
 SERVER_FD_LIMIT=${SERVER_FD_LIMIT:-512}             # FD 限制
 DB_SIZE_LIMIT_MB=${DB_SIZE_LIMIT_MB:-500}            # 数据库大小限制
 
-RESULTS_DIR="${RESULTS_DIR:-$HOME/sqlrustgo-integration-test-$(date +%Y%m%d_%H%M%S)}"
+RESULTS_DIR="/home/openclaw/sqlrustgo-integration-test-$(date +%Y%m%d_%H%M%S)"
 PID_FILE="$RESULTS_DIR/sqlrustgo.pid"
 LOG_FILE="$RESULTS_DIR/sqlrustgo.log"
 METRICS_FILE="$RESULTS_DIR/metrics.csv"
