@@ -14,10 +14,10 @@ use std::time::{Duration, Instant};
 
 const QUERIES: &[&str] = &[
     // Warm queries covering different code paths
-    "SELECT COUNT(*) FROM lineitem",                       // Q1 — aggregation
-    "SELECT COUNT(*) FROM orders",                         // Q2 — range scan
-    "SELECT COUNT(*) FROM customer",                        // Q3 — join prep
-    "SELECT SUM(l_extendedprice) FROM lineitem",          // Q1 — numeric agg
+    "SELECT COUNT(*) FROM lineitem",             // Q1 — aggregation
+    "SELECT COUNT(*) FROM orders",               // Q2 — range scan
+    "SELECT COUNT(*) FROM customer",             // Q3 — join prep
+    "SELECT SUM(l_extendedprice) FROM lineitem", // Q1 — numeric agg
     "SELECT l_orderkey, SUM(l_quantity) FROM lineitem GROUP BY l_orderkey LIMIT 10", // Q1 group
     "SELECT o_custkey, COUNT(*) FROM orders GROUP BY o_custkey LIMIT 10", // Q3 group
 ];
@@ -57,10 +57,7 @@ fn run_soak(duration_secs: u64) -> (u64, f64) {
 
 fn run_soak_ladder(minutes: u64) -> (u64, f64) {
     let secs = minutes * 60;
-    println!(
-        "  Starting {}m soak ({} seconds)...",
-        minutes, secs
-    );
+    println!("  Starting {}m soak ({} seconds)...", minutes, secs);
     let (queries, qps) = run_soak(secs);
     println!(
         "  {}m soak result: {} queries, QPS={:.1}",

@@ -30,10 +30,7 @@ fn sqlite_count(sql: &str) -> Option<i64> {
         .args([SQLITE_BASELINE_DB, &sql])
         .output()
         .ok()?;
-    String::from_utf8_lossy(&output.stdout)
-        .trim()
-        .parse()
-        .ok()
+    String::from_utf8_lossy(&output.stdout).trim().parse().ok()
 }
 
 /// Strip ORDER BY clause so the query can be used as a subquery
@@ -52,7 +49,11 @@ fn rewrite_for_sqlite(sql: &str) -> String {
         let col = caps.get(1).unwrap().as_str();
         match caps.get(2) {
             Some(alias) => {
-                format!("CAST(strftime('%Y', {}) AS INTEGER) AS {}", col, alias.as_str())
+                format!(
+                    "CAST(strftime('%Y', {}) AS INTEGER) AS {}",
+                    col,
+                    alias.as_str()
+                )
             }
             None => format!("CAST(strftime('%Y', {}) AS INTEGER)", col),
         }
@@ -81,16 +82,29 @@ fn test_tpch_22_wire_sf01_audit() {
         // Engine result via wire: wrap in COUNT(*)
         let wrap = format!("SELECT COUNT(*) AS c FROM ({}) sub", sql_trimmed);
         let engine_count: Option<i64> = match client.query_rows(&wrap) {
-            Ok(rows) => rows.first().and_then(|row| row.first()).and_then(|v| v.parse().ok()),
+            Ok(rows) => rows
+                .first()
+                .and_then(|row| row.first())
+                .and_then(|v| v.parse().ok()),
             Err(e) => {
                 let e_str = e.to_string();
-                if e_str.contains("parse") || e_str.contains("Parse") || e_str.contains("syntax") || e_str.contains("#42000") {
-                    eprintln!("Q{:>2}: PARSE_ERR  ({})", q,
-                        e_str.lines().next().unwrap_or(&e_str));
+                if e_str.contains("parse")
+                    || e_str.contains("Parse")
+                    || e_str.contains("syntax")
+                    || e_str.contains("#42000")
+                {
+                    eprintln!(
+                        "Q{:>2}: PARSE_ERR  ({})",
+                        q,
+                        e_str.lines().next().unwrap_or(&e_str)
+                    );
                     parse_err += 1;
                 } else {
-                    eprintln!("Q{:>2}: ERR  ({})", q,
-                        e_str.lines().next().unwrap_or(&e_str));
+                    eprintln!(
+                        "Q{:>2}: ERR  ({})",
+                        q,
+                        e_str.lines().next().unwrap_or(&e_str)
+                    );
                     err += 1;
                 }
                 None
