@@ -10,13 +10,16 @@ use common::MySqlTestClient;
 #[test]
 fn test_multi_statement_two_selects() {
     use sqlrustgo_mysql_server::testing::{start_ephemeral, EphemeralConfig};
-    use std::path::Path;
 
-    let data_dir = Path::new("/tmp/multi_stmt_test");
-    std::fs::create_dir_all(&data_dir).unwrap();
-
+    // Use a fresh tempdir for the ephemeral server's data dir. A
+    // hardcoded path would let a stale WAL from a prior failed run
+    // leak into this test's startup and trip the recovery engine,
+    // which is what made the test panic with
+    // `read packet header: Resource temporarily unavailable (os error 35)`
+    // on macOS / `read packet: unexpected EOF at offset 0` on Linux.
+    let dir = tempfile::TempDir::new().expect("create tempdir for ephemeral server");
     let config = EphemeralConfig {
-        data_dir: Some(data_dir.to_path_buf()),
+        data_dir: Some(dir.path().to_path_buf()),
         bootstrap_tables: true,
         bootstrap_users: false,
         ..Default::default()

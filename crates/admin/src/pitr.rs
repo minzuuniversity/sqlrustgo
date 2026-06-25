@@ -4,7 +4,6 @@ use sqlrustgo_storage::wal_legacy::{WalEntryType, WalReader};
 use std::collections::HashSet;
 use std::path::Path;
 
-#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct PitrResult {
     pub target_time: u64,
@@ -123,6 +122,7 @@ mod tests {
         make_begin_entry, make_commit_entry, make_delete_entry, make_insert_entry,
         make_rollback_entry, make_update_entry,
     };
+    use std::io::Write;
     use tempfile::TempDir;
 
     fn entry(tx: u64, ty: WalEntryType, ts: u64, lsn: u64) -> WalEntry {
