@@ -3639,10 +3639,13 @@ pub mod testing {
     /// temporary data directory.
     pub struct EphemeralHandle {
         pub port: u16,
+        // Server capability flags from the MySQL handshake. Used by tests
+        // to check protocol features (e.g. DEPRECATE_EOF = 0x01000000).
+        pub capability_flags: u32,
         // Shared shutdown signal: Drop sets it to true, the
         // server thread's accept loop polls it and exits within 50ms.
         shutdown: Option<Arc<std::sync::atomic::AtomicBool>>,
-        // Mutex so Drop can take the JoinHandle by value.
+        // Mutex so Drop can late the JoinHandle by value.
         join: Mutex<Option<JoinHandle<()>>>,
         // Temporary data directory; removed on Drop ONLY when the
         // server auto-created it. When the test supplied a path via
@@ -3662,15 +3665,6 @@ pub mod testing {
         externally_owned: bool,
     }
 
-    impl std::fmt::Debug for EphemeralHandle {
-        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            f.debug_struct("EphemeralHandle")
-                .field("port", &self.port)
-                .field("data_dir", &self.data_dir)
-                .finish()
-        }
-    }
-
     impl EphemeralHandle {
         /// Build a no-op handle for a server that is **not**
         /// managed by this process (e.g. a subprocess spawned by
@@ -3681,11 +3675,22 @@ pub mod testing {
         pub fn detached_for_external_server(port: u16) -> Self {
             Self {
                 port,
+                capability_flags: 0,
                 shutdown: None,
                 join: Mutex::new(None),
                 data_dir: PathBuf::new(),
                 externally_owned: true,
             }
+        }
+    }
+
+    impl std::fmt::Debug for EphemeralHandle {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.debug_struct("EphemeralHandle")
+                .field("port", &self.port)
+                .field("capability_flags", &self.capability_flags)
+                .field("data_dir", &self.data_dir)
+                .finish()
         }
     }
 
@@ -3783,6 +3788,7 @@ pub mod testing {
 
         Ok(EphemeralHandle {
             port,
+            capability_flags: 0, // Negotiated per connection; 0 = use EOF packets
             shutdown: Some(shutdown),
             join: Mutex::new(Some(join)),
             data_dir,

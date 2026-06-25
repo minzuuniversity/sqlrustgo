@@ -310,7 +310,7 @@ fn parse_ok_packet_affected(pkt: &[u8]) -> wire_err::Result<u64> {
 
 /// Parse a length-encoded integer per the MySQL protocol (used for
 /// column counts in the COM_QUERY result-set header).
-fn read_lenenc_int(payload: &[u8], pos: &mut usize) -> wire_err::Result<u64> {
+pub fn read_lenenc_int(payload: &[u8], pos: &mut usize) -> wire_err::Result<u64> {
     if *pos >= payload.len() {
         return Err(wire_err::msg("lenenc int: out of bounds"));
     }
@@ -353,7 +353,7 @@ fn read_lenenc_int(payload: &[u8], pos: &mut usize) -> wire_err::Result<u64> {
 }
 
 /// Read a length-encoded string (1/3/4-byte length prefix + payload).
-fn read_lenenc_str<'a>(payload: &'a [u8], pos: &mut usize) -> wire_err::Result<&'a str> {
+pub fn read_lenenc_str<'a>(payload: &'a [u8], pos: &mut usize) -> wire_err::Result<&'a str> {
     let len = read_lenenc_int(payload, pos)? as usize;
     if *pos + len > payload.len() {
         return Err(wire_err::msg("lenenc str: oob"));
@@ -615,6 +615,9 @@ impl MySqlTestClient {
     /// Expose the raw TCP stream for tests that need direct access.
     pub fn raw_stream(&mut self) -> &mut TcpStream {
         &mut self.stream
+    }
+    pub fn client_capabilities(&self) -> u32 {
+        self.handle.capability_flags
     }
     /// Override the read/write timeouts on the underlying TCP stream.
     /// SF=0.1 wire test needs >30s for Q17; default 5s is too short.
