@@ -163,6 +163,10 @@ impl ReadWriteSplitter {
             sqlrustgo_parser::Statement::Prepare { .. } => QueryClass::Write,
             sqlrustgo_parser::Statement::Execute { .. } => QueryClass::Read,
             sqlrustgo_parser::Statement::Deallocate { .. } => QueryClass::Write,
+            // DDL: database-level operations
+            sqlrustgo_parser::Statement::CreateDatabase(_) => QueryClass::Write,
+            sqlrustgo_parser::Statement::DropDatabase(_) => QueryClass::Write,
+            sqlrustgo_parser::Statement::UseDatabase(_) => QueryClass::Write,
         }
     }
 

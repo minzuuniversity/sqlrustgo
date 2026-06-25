@@ -26,6 +26,8 @@ use sqlrustgo_parser::parser::{
     AlterTableOperation,
     AlterTableStatement,
     CallStatement,
+    CreateDatabaseStatement,
+    DropDatabaseStatement,
     CreateIndexStatement,
     CreateProcedureStatement,
     CreateRoleStatement,
@@ -388,10 +390,12 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 ref name,
                 ref params,
             } => self.execute_execute(name, params),
-            Statement::Deallocate { ref name } => self.execute_deallocate(name),
-            _ => Err(SqlError::ExecutionError(
-                "Unsupported statement type".to_string(),
-            )),
+            Statement::CreateDatabase(ref db) => self.execute_create_database(db),
+            Statement::DropDatabase(ref db) => self.execute_drop_database(db),
+            Statement::UseDatabase(ref name) => self.execute_use_database(name),
+             _ => Err(SqlError::ExecutionError(
+                 "Unsupported statement type".to_string(),
+             )),
         }
     }
 
@@ -945,20 +949,54 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         Ok(ExecutorResult::empty())
     }
 
+    fn execute_create_database(&self, db: &CreateDatabaseStatement) -> SqlResult<ExecutorResult> {
+        // v3.9.0 single-database: CREATE DATABASE is accepted for MySQL wire
+        // compatibility. In v3.10 multi-database mode this will create
+        // data/<db_name>/ directory and register in catalog.
+        let mut storage = self.storage.write().unwrap();
+        storage
+            .create_database(&db.name)
+            .map_err(|e| SqlError::ExecutionError(format!("CREATE DATABASE: {}", e)))?;
+        Ok(ExecutorResult::empty())
+    }
+
+    fn execute_drop_database(&self, db: &DropDatabaseStatement) -> SqlResult<ExecutorResult> {
+        // Refuse to drop the "default" database to prevent orphaned references.
+        // In v3.10 multi-database mode, the current_database context will be
+        // tracked in the session state instead.
+        if db.name == "default" || db.name == "postgres" || db.name == "mysql" {
+            return Err(SqlError::ExecutionError(format!(
+                "DROP DATABASE '{}' is not permitted (reserved database name)",
+                db.name
+            )));
+        }
+        let mut storage = self.storage.write().unwrap();
+        storage
+            .drop_database(&db.name)
+            .map_err(|e| SqlError::ExecutionError(format!("DROP DATABASE: {}", e)))?;
+        Ok(ExecutorResult::empty())
+    }
+
+    fn execute_use_database(&self, _db: &str) -> SqlResult<ExecutorResult> {
+        // v3.9.0 single-database: USE <database> is accepted for MySQL wire
+        // compatibility but is a no-op. v3.10 multi-database mode will switch
+        // the active database context.
+        Ok(ExecutorResult::empty())
+    }
+
+
     fn execute_truncate(&self, truncate: &TruncateStatement) -> SqlResult<ExecutorResult> {
         let mut storage = self.storage.write().unwrap();
-        // Check if table exists
         if !storage.has_table(&truncate.name) {
             return Err(SqlError::ExecutionError(format!(
                 "Table not found: {}",
                 truncate.name
             )));
         }
-        // Delete all rows but keep the table structure
-        // Using empty filter slice to delete all rows
         storage.delete(&truncate.name, &[])?;
         Ok(ExecutorResult::empty())
     }
+
 
     fn execute_create_index(&self, idx: &CreateIndexStatement) -> SqlResult<ExecutorResult> {
         let mut storage = self.storage.write().unwrap();
