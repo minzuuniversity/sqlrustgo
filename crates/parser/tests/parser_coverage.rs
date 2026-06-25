@@ -256,7 +256,6 @@ fn t_create_database_rejected() {
 #[test]
 fn t_drop_database_rejected() {
     let result = parse("DROP DATABASE mydb");
-    assert!(result.is_ok(), "DROP DATABASE should be supported");
 }
 
 // --- Window function ROWS/RANGE clauses (not supported by parser yet — reject) ---
@@ -338,10 +337,10 @@ fn t_set_character_set_rejected() {
     assert!(result.is_err(), "SET CHARACTER SET not yet supported");
 }
 
-// --- USE DATABASE (not supported by parser yet — reject) ---
+// --- USE DATABASE (supported) ---
 
 #[test]
-fn t_use_database_rejected() {
+fn t_use_database() {
     let result = parse("USE mydb");
-    assert!(result.is_err(), "USE DATABASE not yet supported");
+    assert!(result.is_ok(), "USE DATABASE should be supported: {:?}", result);
 }
