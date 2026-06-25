@@ -843,25 +843,25 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         // top 100. LIMIT/OFFSET are now applied in Step 8 (after
         // ORDER BY) below.
         let limited_rows_for_order_by: Vec<Vec<Value>> = rows.clone(); // Step 5: SELECT projection — apply each `select.columns` expression
-                                 // to the accumulated row and emit a row of projected values. This
-                                 // is what makes `SELECT EXTRACT(YEAR FROM col) AS o_year` actually
-                                 // return `o_year` instead of the full table schema.
-                                 //
-                                 // Sprint 2: SELECT * (no columns or a `*` entry) skips projection
-                                 // and returns the accumulated rows as-is — that's the existing
-                                 // behavior, just made explicit here.
-                                 //
-                                 // v3.8.0-rc2 Day 7: also collect the projected column NAMES so
-                                 // that the subsequent ORDER BY step can resolve column references
-                                 // by name (`ORDER BY l_orderkey`).
-                                 //
-                                 // v3.9.0 Sprint 5 v16+ fix (COALESCE+ORDER BY): keep a clone of
-                                 // the underlying rows so the ORDER BY step can resolve column
-                                 // references against the original table schema (the projected row
-                                 // has fewer columns when SELECT is a function call that emits one
-                                 // column, so `row[idx]` against `table_info.columns` index is
-                                 // wrong — `idx` would read from the projected row's slot 0,
-                                 // which is the function output, not the underlying column value).
+                                                                       // to the accumulated row and emit a row of projected values. This
+                                                                       // is what makes `SELECT EXTRACT(YEAR FROM col) AS o_year` actually
+                                                                       // return `o_year` instead of the full table schema.
+                                                                       //
+                                                                       // Sprint 2: SELECT * (no columns or a `*` entry) skips projection
+                                                                       // and returns the accumulated rows as-is — that's the existing
+                                                                       // behavior, just made explicit here.
+                                                                       //
+                                                                       // v3.8.0-rc2 Day 7: also collect the projected column NAMES so
+                                                                       // that the subsequent ORDER BY step can resolve column references
+                                                                       // by name (`ORDER BY l_orderkey`).
+                                                                       //
+                                                                       // v3.9.0 Sprint 5 v16+ fix (COALESCE+ORDER BY): keep a clone of
+                                                                       // the underlying rows so the ORDER BY step can resolve column
+                                                                       // references against the original table schema (the projected row
+                                                                       // has fewer columns when SELECT is a function call that emits one
+                                                                       // column, so `row[idx]` against `table_info.columns` index is
+                                                                       // wrong — `idx` would read from the projected row's slot 0,
+                                                                       // which is the function output, not the underlying column value).
         let is_star = select.columns.is_empty() || select.columns.iter().any(|c| c.name == "*");
         let projected_with_names: (Vec<String>, Vec<Vec<Value>>) = if is_star {
             let names: Vec<String> = if !table_info.columns.is_empty()
@@ -880,21 +880,20 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 .iter()
                 .map(|c| c.alias.clone().unwrap_or_else(|| c.name.clone()))
                 .collect();
-            let rows: Vec<Vec<Value>> = rows
-                .into_iter()
-                .map(|row| {
-                    select
-                        .columns
-                        .iter()
-                        .map(|col| match &col.expression {
-                            Some(expr) => {
-                                evaluate_expression(expr, &row, &table_info).unwrap_or(Value::Null)
-                            }
-                            None => row.first().cloned().unwrap_or(Value::Null),
-                        })
-                        .collect()
-                })
-                .collect();
+            let rows: Vec<Vec<Value>> =
+                rows.into_iter()
+                    .map(|row| {
+                        select
+                            .columns
+                            .iter()
+                            .map(|col| match &col.expression {
+                                Some(expr) => evaluate_expression(expr, &row, &table_info)
+                                    .unwrap_or(Value::Null),
+                                None => row.first().cloned().unwrap_or(Value::Null),
+                            })
+                            .collect()
+                    })
+                    .collect();
             (names, rows)
         };
         let (projected_column_names, projected_rows) = projected_with_names;
@@ -964,10 +963,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                                     // projected row), since the projection
                                     // can have a different number of columns
                                     // than the underlying table.
-                                    if let Some(idx) = table_info
-                                        .columns
-                                        .iter()
-                                        .position(|c| c.name == *col_name)
+                                    if let Some(idx) =
+                                        table_info.columns.iter().position(|c| c.name == *col_name)
                                     {
                                         if idx < original_row.len() {
                                             return original_row[idx].clone();
