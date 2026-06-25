@@ -55,10 +55,7 @@ impl Catalog {
     /// Add a schema to the catalog
     pub fn add_schema(&mut self, schema: Schema) -> CatalogResult<()> {
         if self.schemas.contains_key(&schema.name) {
-            return Err(CatalogError::DuplicateTable {
-                schema: self.name.clone(),
-                table: schema.name.clone(),
-            });
+            return Err(CatalogError::DuplicateSchema(schema.name.clone()));
         }
         self.schemas.insert(schema.name.clone(), schema);
         Ok(())
@@ -277,10 +274,9 @@ mod tests {
 
     #[test]
     fn test_add_and_get_schema() {
-        let mut catalog = create_test_catalog();
+        let catalog = create_test_catalog();
         assert!(catalog.has_schema("public"));
         let schema = catalog.get_schema("public").unwrap();
-        assert_eq!(schema.name, "public");
         assert!(schema.has_table("users"));
     }
 
@@ -288,7 +284,7 @@ mod tests {
     fn test_duplicate_schema() {
         let mut catalog = create_test_catalog();
         let result = catalog.add_schema(Schema::new("public"));
-        assert!(matches!(result, Err(CatalogError::DuplicateTable { .. })));
+        assert!(matches!(result, Err(CatalogError::DuplicateSchema(_))));
     }
 
     #[test]
