@@ -386,6 +386,7 @@ impl<'a> Lexer<'a> {
                     "TRIGGER" => Token::Trigger,
                     "DATABASE" => Token::Database,
                     "VIEW" => Token::View,
+                    "BEFORE" => Token::Before,
                     "AFTER" => Token::After,
                     "FOR" => Token::For,
                     "EACH" => Token::Each,
