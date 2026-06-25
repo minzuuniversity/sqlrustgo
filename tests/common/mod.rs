@@ -73,17 +73,36 @@ pub mod wire_proto {
     use std::io::Read;
 
     use std::net::TcpStream;
+    const MAX_RETRIES: usize = 100;
 
     pub fn read_packet(stream: &mut TcpStream) -> wire_err::Result<Vec<u8>> {
         let mut header = [0u8; 4];
-        stream
-            .read_exact(&mut header)
-            .map_err(|e| wire_err::msg(format!("read packet header: {e}")))?;
+        let mut retries = 0;
+        loop {
+            match stream.read_exact(&mut header) {
+                Ok(()) => break,
+                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock && retries < MAX_RETRIES => {
+                    retries += 1;
+                    std::thread::sleep(std::time::Duration::from_millis(10));
+                    continue;
+                }
+                Err(e) => return Err(wire_err::msg(format!("read packet header: {e}"))),
+            }
+        }
         let len = u32::from_le_bytes(header) & 0x00FF_FFFF;
         let mut payload = vec![0u8; len as usize];
-        stream
-            .read_exact(&mut payload)
-            .map_err(|e| wire_err::msg(format!("read packet payload (len={len}): {e}")))?;
+        let mut retries = 0;
+        loop {
+            match stream.read_exact(&mut payload) {
+                Ok(()) => break,
+                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock && retries < MAX_RETRIES => {
+                    retries += 1;
+                    std::thread::sleep(std::time::Duration::from_millis(10));
+                    continue;
+                }
+                Err(e) => return Err(wire_err::msg(format!("read packet payload (len={len}): {e}"))),
+            }
+        }
         Ok(payload)
     }
 
@@ -787,3 +806,5 @@ impl MySqlTestClient {
 }
 
 
+pub mod tpch_wire_harness;
+pub mod oracle_framework;
