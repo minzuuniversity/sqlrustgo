@@ -14,151 +14,10 @@ use sqlrustgo_types::{SqlError, Value};
 use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::net::{SocketAddr, TcpListener, TcpStream};
-use std::sync::atomic::{AtomicI64, AtomicU64, Ordering};
 use std::sync::{Arc, RwLock};
 use std::thread;
-use std::time::Duration;
 
 const SERVER_VERSION: &str = "8.0.33-SQLRustGo";
-
-/// Global connection counter for diagnostics. Incremented when a
-/// connection is accepted, decremented when it closes.
-pub static ACTIVE_CONNECTIONS: AtomicI64 = AtomicI64::new(0);
-pub static TOTAL_CONNECTIONS_ACCEPTED: AtomicU64 = AtomicU64::new(0);
-pub static TOTAL_QUERIES_SERVED: AtomicU64 = AtomicU64::new(0);
-pub static TOTAL_QUERY_ERRORS: AtomicU64 = AtomicU64::new(0);
-
-/// Spawn a background thread that periodically logs resource usage
-/// (RSS, FD count, thread count) to the tracing log. This is critical
-/// for diagnosing server crashes where the process disappears silently.
-pub fn spawn_resource_monitor(interval_s: u64) {
-    // Capture the main process PID at spawn time. Subsequent reads
-    // happen in a child thread, but we want the main process metrics.
-    let main_pid = std::process::id();
-    thread::Builder::new()
-        .name("sqlrustgo-resource-monitor".to_string())
-        .spawn(move || {
-            loop {
-                std::thread::sleep(Duration::from_secs(interval_s));
-                let active = ACTIVE_CONNECTIONS.load(Ordering::Relaxed);
-                let total_acc = TOTAL_CONNECTIONS_ACCEPTED.load(Ordering::Relaxed);
-                let total_q = TOTAL_QUERIES_SERVED.load(Ordering::Relaxed);
-                let total_err = TOTAL_QUERY_ERRORS.load(Ordering::Relaxed);
-
-                // Read /proc/<pid>/status for RSS
-                let (rss_kb, fd_count) = read_proc_status(main_pid);
-
-                // Check FD threshold
-                let (soft_limit, _hard_limit) = read_fd_limit();
-                let fd_pct = if soft_limit > 0 {
-                    (fd_count as f64 / soft_limit as f64) * 100.0
-                } else {
-                    0.0
-                };
-                if fd_pct > 80.0 {
-                    tracing::warn!(
-                        "FD usage high: {}/{} ({:.1}%) — approaching limit",
-                        fd_count, soft_limit, fd_pct
-                    );
-                }
-
-                tracing::info!(
-                    "RESOURCE_MONITOR pid={} rss_mb={:.1} fd={}/{} ({:.1}%) threads={} active_conn={} total_acc={} total_q={} total_err={}",
-                    main_pid,
-                    rss_kb as f64 / 1024.0,
-                    fd_count,
-                    soft_limit,
-                    fd_pct,
-                    list_threads(),
-                    active,
-                    total_acc,
-                    total_q,
-                    total_err,
-                );
-            }
-        })
-        .ok();
-}
-
-fn read_proc_status(pid: u32) -> (u64, usize) {
-    let mut rss_kb = 0u64;
-    let mut fd_count = 0usize;
-
-    // Linux: read /proc/<pid>/status
-    if let Ok(content) = std::fs::read_to_string(format!("/proc/{}/status", pid)) {
-        for line in content.lines() {
-            if line.starts_with("VmRSS:") {
-                if let Some(v) = line.split_whitespace().nth(1) {
-                    rss_kb = v.parse().unwrap_or(0);
-                }
-            }
-        }
-    }
-    if let Ok(entries) = std::fs::read_dir(format!("/proc/{}/fd", pid)) {
-        fd_count = entries.count();
-        return (rss_kb, fd_count);
-    }
-
-    // macOS / BSD fallback: use ps to get RSS
-    if let Ok(out) = std::process::Command::new("ps")
-        .args(["-o", "rss=", "-p", &pid.to_string()])
-        .output()
-    {
-        if out.status.success() {
-            if let Ok(s) = String::from_utf8(out.stdout) {
-                // RSS in KB on macOS ps
-                rss_kb = s.trim().parse().unwrap_or(0);
-            }
-        }
-    }
-    // macOS: count file descriptors via /dev/fd
-    if let Ok(entries) = std::fs::read_dir("/dev/fd") {
-        fd_count = entries.count().saturating_sub(1); // subtract fd for read_dir itself
-    }
-    (rss_kb, fd_count)
-}
-
-fn read_fd_limit() -> (usize, usize) {
-    let mut soft = 0usize;
-    let mut hard = 0usize;
-    if let Ok(out) = std::process::Command::new("sh")
-        .args(["-c", "ulimit -n"])
-        .output()
-    {
-        if out.status.success() {
-            if let Ok(s) = String::from_utf8(out.stdout) {
-                if let Ok(v) = s.trim().parse() {
-                    soft = v;
-                }
-            }
-        }
-    }
-    if let Ok(out) = std::process::Command::new("sh")
-        .args(["-c", "ulimit -Hn"])
-        .output()
-    {
-        if out.status.success() {
-            if let Ok(s) = String::from_utf8(out.stdout) {
-                if let Ok(v) = s.trim().parse() {
-                    hard = v;
-                }
-            }
-        }
-    }
-    (soft, hard)
-}
-
-fn list_threads() -> String {
-    std::fs::read_dir("/proc/self/task")
-        .map(|entries| {
-            entries
-                .map(|e| e.map(|e| e.file_name()))
-                .collect::<Result<Vec<_>, _>>()
-        })
-        .map(|names: Result<Vec<_>, _>| format!("{} threads", names.len()))
-        .unwrap_or_else(|_| "unknown".to_string())
-}
-
 #[allow(dead_code)]
 const AUTH_PLUGIN: &str = "mysql_native_password";
 const SCRAMBLE_LENGTH: usize = 20;
@@ -803,6 +662,7 @@ fn make_err_packet(seq: u8, code: u16, state: &str, msg: &str) -> Packet {
     p.write_u16::<LittleEndian>(code).unwrap();
     p.push(0x23);
     p.extend_from_slice(state.as_bytes());
+    p.push(0x00); // null-byte separator per MySQL wire protocol (SQL state must be null-terminated)
     p.extend_from_slice(msg.as_bytes());
     Packet {
         length: p.len() as u32,
@@ -2012,11 +1872,12 @@ fn handle_load_local_infile<S: Read + Write>(
     //
     // `WalStorage::flush()` delegates to `FileStorage::flush()` which
     // writes all table .json files.
-    {
-        let mut s = engine.storage_write();
-        s.flush()
-            .map_err(|e| MySqlError::Other(format!("flush storage: {}", e)))?;
-    }
+        {
+            let storage = engine.storage_ref();
+            let mut s = storage.write().unwrap();
+            s.flush()
+                .map_err(|e| MySqlError::Other(format!("flush storage: {}", e)))?;
+        }
 
     Ok((total_rows, skipped_rows))
 }
@@ -2515,16 +2376,17 @@ fn handle_connection(
             } else {
                 user_store.verify_password(&resp.username, &scramble, &resp.auth_response)
             };
+            let auth_seq = tls_pkt.sequence.wrapping_add(1);
             if !auth_ok {
                 tracing::warn!("Auth failed for user {}", resp.username);
-                make_err_packet(3, 1045, "28000", "Access denied")
+                make_err_packet(auth_seq, 1045, "28000", "Access denied")
                     .write_to(&mut tls)
                     .ok();
                 return;
             }
-            tracing::info!("Auth accepted, sending OK packet, seq=3");
-            make_ok_packet(3, 0, 0, 0x0002, 0).write_to(&mut tls).ok();
-            tracing::info!("Starting command loop, seq=4");
+            tracing::info!("Auth accepted, sending OK packet, seq={}", auth_seq);
+            make_ok_packet(auth_seq, 0, 0, 0x0002, 0).write_to(&mut tls).ok();
+            tracing::info!("Starting command loop, seq={}", auth_seq.wrapping_add(1));
             let engine: Arc<
                 RwLock<ExecutionEngine<WalStorage<FileStorage, FileBackedWalManager>>>,
             > = Arc::new(RwLock::new(ExecutionEngine::new(storage.clone())));
@@ -2535,7 +2397,7 @@ fn handle_connection(
                 storage,
                 engine,
                 resp.capability_flags,
-                4,
+                auth_seq.wrapping_add(1),
                 &mut ps_manager,
             );
             return;
@@ -2566,19 +2428,20 @@ fn handle_connection(
     } else {
         user_store.verify_password(&resp.username, &scramble, &resp.auth_response)
     };
+        let auth_seq = pkt.sequence.wrapping_add(1);
     if !auth_ok {
         tracing::warn!("Auth failed for user {}", resp.username);
-        make_err_packet(2, 1045, "28000", "Access denied")
+        make_err_packet(auth_seq, 1045, "28000", "Access denied")
             .write_to(&mut &stream)
             .ok();
         return;
     }
-    tracing::info!("Auth accepted, sending OK packet, seq=2");
-    make_ok_packet(2, 0, 0, 0x0002, 0)
+    tracing::info!("Auth accepted, sending OK packet, seq={}", auth_seq);
+    make_ok_packet(auth_seq, 0, 0, 0x0002, 0)
         .write_to(&mut &stream)
         .ok();
-    tracing::info!("Starting command loop, seq=3");
-    let engine: Arc<RwLock<ExecutionEngine<WalStorage<FileStorage, FileBackedWalManager>>>> =
+    tracing::info!("Starting command loop, seq={}", auth_seq.wrapping_add(1));
+let engine: Arc<RwLock<ExecutionEngine<WalStorage<FileStorage, FileBackedWalManager>>>> =
         Arc::new(RwLock::new(ExecutionEngine::new(storage.clone())));
     let mut ps_manager = PreparedStatementManager::new();
     let _ = do_command_loop(
@@ -3190,6 +3053,23 @@ mod integration_tests {
         let pkt = make_err_packet(0, 2000, "42000", "");
         assert_eq!(pkt.payload[0], 0xff);
     }
+    #[test]
+    fn test_make_err_packet_null_byte_separator() {
+        // MySQL wire protocol: error packet format is
+        // 0xFF + error_code(u16 LE) + 0x23 + SQL_STATE(5 bytes) + 0x00 + ERROR_MSG
+        // The null-byte between SQL state and error message is required.
+        let pkt = make_err_packet(1, 1146, "42S02", "Table not found");
+        assert_eq!(pkt.payload[0], 0xff); // ERR packet type
+        // Bytes 1-2: error code (1146 = 0x047A little-endian)
+        assert_eq!(u16::from_le_bytes([pkt.payload[1], pkt.payload[2]]), 1146);
+        assert_eq!(pkt.payload[3], 0x23); // '#' marker
+        // Bytes 4-8: SQL state "42S02"
+        assert_eq!(&pkt.payload[4..9], b"42S02");
+        // Byte 9: null-byte separator
+        assert_eq!(pkt.payload[9], 0x00);
+        // Bytes 10+: error message
+        assert_eq!(&pkt.payload[10..], b"Table not found");
+    }
 
     // ============ make_eof_packet Tests ============
 
@@ -3761,10 +3641,13 @@ pub mod testing {
     /// temporary data directory.
     pub struct EphemeralHandle {
         pub port: u16,
+        // Server capability flags from the MySQL handshake. Used by tests
+        // to check protocol features (e.g. DEPRECATE_EOF = 0x01000000).
+        pub capability_flags: u32,
         // Shared shutdown signal: Drop sets it to true, the
         // server thread's accept loop polls it and exits within 50ms.
         shutdown: Option<Arc<std::sync::atomic::AtomicBool>>,
-        // Mutex so Drop can take the JoinHandle by value.
+        // Mutex so Drop can late the JoinHandle by value.
         join: Mutex<Option<JoinHandle<()>>>,
         // Temporary data directory; removed on Drop ONLY when the
         // server auto-created it. When the test supplied a path via
@@ -3784,15 +3667,6 @@ pub mod testing {
         externally_owned: bool,
     }
 
-    impl std::fmt::Debug for EphemeralHandle {
-        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            f.debug_struct("EphemeralHandle")
-                .field("port", &self.port)
-                .field("data_dir", &self.data_dir)
-                .finish()
-        }
-    }
-
     impl EphemeralHandle {
         /// Build a no-op handle for a server that is **not**
         /// managed by this process (e.g. a subprocess spawned by
@@ -3803,11 +3677,22 @@ pub mod testing {
         pub fn detached_for_external_server(port: u16) -> Self {
             Self {
                 port,
+                capability_flags: 0,
                 shutdown: None,
                 join: Mutex::new(None),
                 data_dir: PathBuf::new(),
                 externally_owned: true,
             }
+        }
+    }
+
+    impl std::fmt::Debug for EphemeralHandle {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.debug_struct("EphemeralHandle")
+                .field("port", &self.port)
+                .field("capability_flags", &self.capability_flags)
+                .field("data_dir", &self.data_dir)
+                .finish()
         }
     }
 
@@ -3905,6 +3790,7 @@ pub mod testing {
 
         Ok(EphemeralHandle {
             port,
+            capability_flags: 0, // Negotiated per connection; 0 = use EOF packets
             shutdown: Some(shutdown),
             join: Mutex::new(Some(join)),
             data_dir,
