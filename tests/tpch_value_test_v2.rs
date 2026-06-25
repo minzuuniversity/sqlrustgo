@@ -48,8 +48,7 @@
 
 mod common;
 use common::tpch_wire_harness::{
-    read_baseline, run_query_timed, start_sf001, compare_cells,
-    SF001_DIR,
+    compare_cells, read_baseline, run_query_timed, start_sf001, SF001_DIR,
 };
 use std::path::PathBuf;
 
@@ -66,8 +65,7 @@ fn load_three_way(q_num: u32) -> (u32, Vec<Vec<String>>) {
     let rc = engine
         .get("row_count")
         .and_then(|v| v.as_u64())
-        .expect("baseline missing engines.sqlite.row_count")
-        as u32;
+        .expect("baseline missing engines.sqlite.row_count") as u32;
     let first_3_raw = engine
         .get("first_3_rows")
         .and_then(|v| v.as_array())
@@ -179,6 +177,9 @@ fn test_tpch_22_value_assertions() {
     // (column count, row count, float value) in 14 queries — these are
     // engine-level issues tracked separately. Gate: no crashes.
     if fail > 0 {
-        eprintln!("  ({} failures are pre-existing engine bugs, not migration bugs)", fail);
+        eprintln!(
+            "  ({} failures are pre-existing engine bugs, not migration bugs)",
+            fail
+        );
     }
 }

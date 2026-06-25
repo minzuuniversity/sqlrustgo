@@ -36,9 +36,7 @@ fn data_dir() -> PathBuf {
         .map(PathBuf::from)
         .unwrap_or_else(|_| {
             let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
-            PathBuf::from(home)
-                .join("sqlrustgo-tpch")
-                .join("data")
+            PathBuf::from(home).join("sqlrustgo-tpch").join("data")
         })
 }
 
@@ -84,10 +82,7 @@ fn setup_engine() -> Result<ExecutionEngine<sqlrustgo::MemoryStorage>, String> {
             .map_err(|e| format!("DDL failed: {} - {}", ddl, e))?;
     }
     // Load .tbl files
-    let tables = [
-        ("lineitem", 16usize),
-        ("part", 7usize),
-    ];
+    let tables = [("lineitem", 16usize), ("part", 7usize)];
     for (tbl, ncols) in tables {
         let path = dir.join(format!("{}.tbl", tbl));
         if !path.exists() {
@@ -168,9 +163,7 @@ fn test_tpch_q6_cell_value_against_sqlite_ground_truth() {
     // to the SUM(REAL)=0 engine bug. We accept BOTH outcomes and just
     // assert the row count and the field is parseable as a number.
     // Once #3285 is fixed, this should become a strict assertion.
-    let parsed: Result<f64, _> = s.trim_start_matches("Float(")
-        .trim_end_matches(')')
-        .parse();
+    let parsed: Result<f64, _> = s.trim_start_matches("Float(").trim_end_matches(')').parse();
     assert!(
         parsed.is_ok(),
         "Q6 first cell should be parseable as f64, got: {}",
@@ -179,7 +172,10 @@ fn test_tpch_q6_cell_value_against_sqlite_ground_truth() {
     let val = parsed.unwrap();
     // For now we just confirm it's a real number (not NaN, not Inf).
     assert!(val.is_finite(), "Q6 revenue should be finite, got {}", val);
-    eprintln!("Q6 cell value = {} (expected 34352.7263 if #3285 fixed)", val);
+    eprintln!(
+        "Q6 cell value = {} (expected 34352.7263 if #3285 fixed)",
+        val
+    );
 }
 
 #[test]
