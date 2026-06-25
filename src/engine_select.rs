@@ -842,7 +842,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         // the storage-order top 100 instead of the highest-total
         // top 100. LIMIT/OFFSET are now applied in Step 8 (after
         // ORDER BY) below.
-        let limited_rows = rows; // Step 5: SELECT projection — apply each `select.columns` expression
+        let limited_rows_for_order_by: Vec<Vec<Value>> = rows.clone(); // Step 5: SELECT projection — apply each `select.columns` expression
                                  // to the accumulated row and emit a row of projected values. This
                                  // is what makes `SELECT EXTRACT(YEAR FROM col) AS o_year` actually
                                  // return `o_year` instead of the full table schema.
@@ -854,25 +854,33 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                                  // v3.8.0-rc2 Day 7: also collect the projected column NAMES so
                                  // that the subsequent ORDER BY step can resolve column references
                                  // by name (`ORDER BY l_orderkey`).
+                                 //
+                                 // v3.9.0 Sprint 5 v16+ fix (COALESCE+ORDER BY): keep a clone of
+                                 // the underlying rows so the ORDER BY step can resolve column
+                                 // references against the original table schema (the projected row
+                                 // has fewer columns when SELECT is a function call that emits one
+                                 // column, so `row[idx]` against `table_info.columns` index is
+                                 // wrong — `idx` would read from the projected row's slot 0,
+                                 // which is the function output, not the underlying column value).
         let is_star = select.columns.is_empty() || select.columns.iter().any(|c| c.name == "*");
         let projected_with_names: (Vec<String>, Vec<Vec<Value>>) = if is_star {
             let names: Vec<String> = if !table_info.columns.is_empty()
-                && table_info.columns.len() == limited_rows.first().map(|r| r.len()).unwrap_or(0)
+                && table_info.columns.len() == rows.first().map(|r| r.len()).unwrap_or(0)
             {
                 table_info.columns.iter().map(|c| c.name.clone()).collect()
             } else {
-                (1..=limited_rows.first().map(|r| r.len()).unwrap_or(0))
+                (1..=rows.first().map(|r| r.len()).unwrap_or(0))
                     .map(|i| format!("c{}", i))
                     .collect()
             };
-            (names, limited_rows)
+            (names, rows)
         } else {
             let names: Vec<String> = select
                 .columns
                 .iter()
                 .map(|c| c.alias.clone().unwrap_or_else(|| c.name.clone()))
                 .collect();
-            let rows: Vec<Vec<Value>> = limited_rows
+            let rows: Vec<Vec<Value>> = rows
                 .into_iter()
                 .map(|row| {
                     select
@@ -925,11 +933,16 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         // out of order. The canonical case was TPC-H Q18's
         // `ORDER BY o_totalprice DESC LIMIT 100` which returned
         // the storage-order top 100 instead of the highest-total
-        // top 100. Moved LIMIT to Step 8 (after ORDER BY).
         let projected_rows: Vec<Vec<Value>> = if !select.order_by.is_empty() {
-            let mut keyed: Vec<(Vec<Value>, Vec<Value>)> = projected_rows
+            // Zipped with the underlying pre-projection rows so that
+            // ORDER BY references to underlying table columns (e.g.
+            // `ORDER BY id` when projection is `SELECT COALESCE(a,b,c)`)
+            // resolve against the original row's columns, not the
+            // projected row's (often smaller) slot indices.
+            let mut zipped: Vec<(Vec<Value>, Vec<Value>, Vec<Value>)> = projected_rows
                 .into_iter()
-                .map(|row| {
+                .zip(limited_rows_for_order_by.into_iter())
+                .map(|(row, original_row)| {
                     let keys: Vec<Value> = select
                         .order_by
                         .iter()
@@ -946,18 +959,27 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                                             return row[idx].clone();
                                         }
                                     }
-                                    // Fallback: try the underlying table's columns.
-                                    if let Some(idx) =
-                                        table_info.columns.iter().position(|c| c.name == *col_name)
+                                    // Fallback: look up the column in the
+                                    // ORIGINAL pre-projection row (not the
+                                    // projected row), since the projection
+                                    // can have a different number of columns
+                                    // than the underlying table.
+                                    if let Some(idx) = table_info
+                                        .columns
+                                        .iter()
+                                        .position(|c| c.name == *col_name)
                                     {
-                                        if idx < row.len() {
-                                            return row[idx].clone();
+                                        if idx < original_row.len() {
+                                            return original_row[idx].clone();
                                         }
                                     }
                                     Value::Null
                                 }
                                 Expression::Literal(lit_str) => {
-                                    // Try parsing as positional integer (1-based).
+                                    // Try parsing as positional integer (1-based)
+                                    // against the PROJECTED row (standard SQL:
+                                    // `ORDER BY 1` references the n-th SELECT
+                                    // column).
                                     if let Ok(idx_1based) = lit_str.parse::<usize>() {
                                         let idx = idx_1based.saturating_sub(1);
                                         if idx < row.len() {
@@ -974,13 +996,13 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                             }
                         })
                         .collect();
-                    (keys, row)
+                    (keys, row, original_row)
                 })
                 .collect();
             // Sort. Each order_by has an `ascending` flag;
             // v3.8.0-rc2 Day 7: respect ASC/DESC. Q13 uses
             // DESC, which my earlier version ignored.
-            keyed.sort_by(|a, b| {
+            zipped.sort_by(|a, b| {
                 for (i, ob) in select.order_by.iter().enumerate() {
                     let ord = if i < a.0.len() && i < b.0.len() {
                         a.0[i].cmp(&b.0[i])
@@ -994,7 +1016,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 }
                 std::cmp::Ordering::Equal
             });
-            keyed.into_iter().map(|(_, row)| row).collect()
+            zipped.into_iter().map(|(_, row, _)| row).collect()
         } else {
             projected_rows
         };
@@ -1746,6 +1768,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
 
     /// Find the column index for a join key in a table
     /// Handles both simple column names and qualified names (e.g., "t1.id")
+    #[allow(clippy::only_used_in_recursion)] // recursive helper, &self only forwarded to recursive calls
     fn find_join_key_index(
         &self,
         expr: &Expression,
