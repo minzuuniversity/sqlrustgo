@@ -33,6 +33,8 @@ fn test_select_coalesce() {
     assert_eq!(v1, 3);
 }
 
+
+
 #[test]
 fn test_select_nullif() {
     let mut e = fresh();
