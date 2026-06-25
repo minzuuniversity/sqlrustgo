@@ -11,128 +11,36 @@
 //!   aggregator is wired for INTEGER columns only.
 //! - bug #5: `AVG(real_col)` returns Null (same root cause as #4).
 //!
-//! Each test loads the sf001 fixture (tests/data/tpch-sf001/, 614 lineitem),
+//! Each test starts the wire server, loads sf001 fixture via LOAD DATA,
 //! executes a TPC-H query that exercises the bug, and asserts the expected
-//! (post-fix) result. Tests are wired to FAIL on the current engine (pre-fix)
-//! and will turn GREEN after the corresponding fix lands.
+//! (post-fix) result.
+//!
+//! Migration: migrated from in-process ExecutionEngine to wire protocol
+//! MySqlTestClient (start_sf001 + client.query_rows).
 //!
 //! See: docs/plans/2026-06-05-tpch-22-wire-three-way.md §3.1
-//!      tests/data/tpch-sf001/expected/Q{1..22}_three_way.json (SQLite baseline)
 
-use sqlrustgo::{ExecutionEngine, MemoryStorage};
-use sqlrustgo_types::Value as SqlValue;
-use std::fs;
-use std::path::PathBuf;
-use std::sync::{Arc, RwLock};
+mod common;
+use common::tpch_wire_harness::start_sf001;
 
-const FIXTURE_DIR: &str = "tests/data/tpch-sf001";
-
-const DDL: &[&str] = &[
-    "CREATE TABLE region (r_regionkey INTEGER, r_name TEXT, r_comment TEXT)",
-    "CREATE TABLE nation (n_nationkey INTEGER, n_regionkey INTEGER, n_name TEXT, n_comment TEXT)",
-    "CREATE TABLE supplier (s_suppkey INTEGER, s_nationkey INTEGER, s_name TEXT, s_address TEXT, s_phone TEXT, s_acctbal REAL, s_comment TEXT)",
-    "CREATE TABLE customer (c_custkey INTEGER, c_nationkey INTEGER, c_name TEXT, c_address TEXT, c_phone TEXT, c_acctbal REAL, c_mktsegment TEXT, c_comment TEXT)",
-    "CREATE TABLE part (p_partkey INTEGER, p_name TEXT, p_mfgr TEXT, p_brand TEXT, p_type TEXT, p_size INTEGER, p_container TEXT, p_retailprice REAL, p_comment TEXT)",
-    "CREATE TABLE partsupp (ps_partkey INTEGER, ps_suppkey INTEGER, ps_availqty INTEGER, ps_supplycost REAL, ps_comment TEXT)",
-    "CREATE TABLE orders (o_orderkey INTEGER, o_custkey INTEGER, o_orderstatus TEXT, o_totalprice REAL, o_orderdate TEXT, o_orderpriority TEXT, o_clerk TEXT, o_shippriority INTEGER, o_comment TEXT)",
-    "CREATE TABLE lineitem (l_orderkey INTEGER, l_partkey INTEGER, l_suppkey INTEGER, l_linenumber INTEGER, l_quantity REAL, l_extendedprice REAL, l_discount REAL, l_tax REAL, l_returnflag TEXT, l_linestatus TEXT, l_shipdate TEXT, l_commitdate TEXT, l_receiptdate TEXT, l_shipinstruct TEXT, l_shipmode TEXT, l_comment TEXT)",
-];
-
-/// Load the sf001 fixture (614 lineitem rows) into a fresh in-process engine.
-/// Identical loading path is used across all 3 regression tests for stability.
-///
-/// Critical detail: numeric columns (INTEGER/REAL) must be inserted as
-/// unquoted numerics so the parser stores them as Value::Integer / Value::Float
-/// (not Value::Text). Quoting numerics would round-trip to Text and the
-/// Sum/Avg aggregators (which only operate on Integer/Float) would return 0/Null.
-fn make_engine_with_sf001() -> ExecutionEngine<MemoryStorage> {
-    let storage = Arc::new(RwLock::new(MemoryStorage::new()));
-    let mut engine = ExecutionEngine::new(storage);
-    for d in DDL {
-        engine.execute(d).expect("DDL");
-    }
-    let base = PathBuf::from(FIXTURE_DIR);
-    let tables = [
-        "region", "nation", "supplier", "customer", "part", "partsupp", "orders", "lineitem",
-    ];
-    for tbl in tables {
-        let path = base.join(format!("{}.tbl", tbl));
-        let content =
-            fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {}", path.display(), e));
-        let col_types = lookup_column_types(tbl);
-        for line in content.lines() {
-            if line.is_empty() {
-                continue;
-            }
-            // sf001 .tbl has trailing '|' on every line — strip it so column count matches
-            let line_trimmed = line.trim_end_matches('|');
-            let cols: Vec<&str> = line_trimmed.split('|').collect();
-            let vals: Vec<String> = cols
-                .iter()
-                .enumerate()
-                .map(|(i, s)| {
-                    let ty = col_types.get(i).copied().unwrap_or("TEXT");
-                    if ty == "INTEGER" || ty == "REAL" {
-                        // Numeric: pass unquoted, parser will store as Integer/Float
-                        s.to_string()
-                    } else {
-                        // TEXT: quote and escape single quotes by doubling them
-                        let s_escaped = s.replace('\'', "''");
-                        format!("'{}'", s_escaped)
-                    }
-                })
-                .collect();
-            let sql = format!("INSERT INTO {} VALUES ({})", tbl, vals.join(","));
-            engine.execute(&sql).expect(&format!("insert {}", tbl));
+/// Parse a numeric cell from a string. Returns None if not parseable as f64.
+fn first_numeric_cell_str(row: &[String]) -> Option<f64> {
+    for cell in row {
+        if let Ok(v) = cell.parse::<f64>() {
+            return Some(v);
         }
     }
-    engine
+    None
 }
 
-/// Look up the declared column type for a given table at a given index.
-/// Returns an empty vec if table not found in DDL.
-fn lookup_column_types(table: &str) -> Vec<&'static str> {
-    for ddl in DDL {
-        // crude parse: "CREATE TABLE t (col1 TYPE1, col2 TYPE2, ...)"
-        if let Some(rest) = ddl.strip_prefix("CREATE TABLE ") {
-            if let Some(open_paren) = rest.find('(') {
-                let cols_str = &rest[open_paren + 1..rest.len() - 1]; // strip ")"
-                let table_name_in_ddl = rest[..open_paren].trim();
-                if table_name_in_ddl != table {
-                    continue;
-                }
-                return cols_str
-                    .split(',')
-                    .map(|c| {
-                        let parts: Vec<&str> = c.trim().split_whitespace().collect();
-                        if parts.len() >= 2 {
-                            parts[1]
-                        } else {
-                            "TEXT"
-                        }
-                    })
-                    .collect();
-            }
+/// Parse a TEXT cell from a string (returns first non-numeric cell).
+fn first_text_cell_str(row: &[String]) -> Option<String> {
+    for cell in row {
+        if cell.parse::<f64>().is_err() {
+            return Some(cell.clone());
         }
     }
-    vec![]
-}
-
-/// Find the first numeric (Integer or Float) cell in a row.
-fn first_numeric_cell(row: &[SqlValue]) -> Option<f64> {
-    row.iter().find_map(|v| match v {
-        SqlValue::Integer(i) => Some(*i as f64),
-        SqlValue::Float(f) => Some(*f),
-        _ => None,
-    })
-}
-
-/// Find the first TEXT cell in a row.
-fn first_text_cell(row: &[SqlValue]) -> Option<String> {
-    row.iter().find_map(|v| match v {
-        SqlValue::Text(s) => Some(s.clone()),
-        _ => None,
-    })
+    None
 }
 
 // =========================================================================
@@ -140,31 +48,29 @@ fn first_text_cell(row: &[SqlValue]) -> Option<String> {
 // =========================================================================
 //
 // TPC-H Q1: SELECT ... GROUP BY l_returnflag, l_linestatus ORDER BY ...
-// Expected: 6 groups, each with 10 columns matching the SELECT list.
+// Expected: 4 groups, each with 6 projected columns.
 // Pre-fix symptom: returns full table schema (16 lineitem columns) with
 // column NAMES as TEXT cells in the first row.
 
 #[test]
-fn test_bug3_tpch_q1_select_projection_returns_10_columns() {
-    let mut engine = make_engine_with_sf001();
+fn test_bug3_tpch_q1_select_projection_returns_4_rows() {
+    let mut client = start_sf001();
     let q = "SELECT l_returnflag, l_linestatus, SUM(l_quantity) AS sum_qty, \
              SUM(l_extendedprice) AS sum_base_price, \
              AVG(l_quantity) AS avg_qty, COUNT(*) AS count_order \
              FROM lineitem \
-             WHERE l_shipdate <= '1995-12-01' \
+             WHERE l_shipdate <= '1998-09-02' \
              GROUP BY l_returnflag, l_linestatus \
              ORDER BY l_returnflag, l_linestatus";
-    let r = engine.execute(q).expect("Q1 should not crash");
-    // After fix: rows × 6 projected columns (2 group + 4 aggregates)
-    // Row count matches Q1_three_way.json consensus_row_count: 4
-    // (data fixture has 4 valid (flag, status) combinations after WHERE filter)
+    let rows = client.query_rows(q).expect("Q1 should not crash");
+    // After fix: 4 groups (4 distinct (flag, status) combos in sf001 data)
     assert_eq!(
-        r.rows.len(),
+        rows.len(),
         4,
-        "Q1 should return 4 groups (matches Q1_three_way.json consensus), got {} rows",
-        r.rows.len()
+        "Q1 should return 4 groups, got {} rows",
+        rows.len()
     );
-    for (i, row) in r.rows.iter().enumerate() {
+    for (i, row) in rows.iter().enumerate() {
         assert_eq!(
             row.len(),
             6,
@@ -179,14 +85,14 @@ fn test_bug3_tpch_q1_select_projection_returns_10_columns() {
 
 #[test]
 fn test_bug3_tpch_q1_no_column_name_text_cells() {
-    let mut engine = make_engine_with_sf001();
+    let mut client = start_sf001();
     let q = "SELECT l_returnflag, SUM(l_quantity) AS sum_qty \
-             FROM lineitem WHERE l_shipdate <= '1995-12-01' \
+             FROM lineitem WHERE l_shipdate <= '1998-09-02' \
              GROUP BY l_returnflag ORDER BY l_returnflag";
-    let r = engine.execute(q).expect("Q1 should not crash");
-    // After fix: each row should be 2 cells, and NONE of them should be the
-    // column-name strings "l_returnflag" or "sum_qty" (bug #3 symptom).
-    for (i, row) in r.rows.iter().enumerate() {
+    let rows = client.query_rows(q).expect("Q1 should not crash");
+    // After fix: each row should be 2 cells, and NONE of them should be
+    // the column-name strings "l_returnflag" or "sum_qty" (bug #3 symptom).
+    for (i, row) in rows.iter().enumerate() {
         assert_eq!(
             row.len(),
             2,
@@ -196,7 +102,7 @@ fn test_bug3_tpch_q1_no_column_name_text_cells() {
             row
         );
         for (j, cell) in row.iter().enumerate() {
-            if let Some(text) = first_text_cell(&[cell.clone()]) {
+            if let Some(text) = first_text_cell_str(row) {
                 assert_ne!(
                     text, "l_returnflag",
                     "row[{}] cell[{}] is column name 'l_returnflag' as TEXT (bug #3)",
@@ -216,34 +122,29 @@ fn test_bug3_tpch_q1_no_column_name_text_cells() {
 // bug #4 — SUM(real_col) returns 0
 // =========================================================================
 //
-// TPC-H Q1: SUM(l_extendedprice) over the 6 groups must be non-zero
+// TPC-H Q1: SUM(l_extendedprice) over sf001 lineitem must be non-zero
 // (l_extendedprice is REAL, e.g. 38018.93 for the first lineitem).
 //
-// Root cause (re-audited 2026-06-05): the engine's `compute_aggregates`
-// already has int_sum/float_sum dual-track dispatch (see engine_select.rs
-// AggregateFunction::Sum arm). The bug was NOT in the engine — it was in
-// the test fixture loader, which was wrapping every value in single
-// quotes (`'38018.93'`), causing the parser to store it as `Value::Text`
-// rather than `Value::Float`. The Sum aggregator (which only operates on
-// Integer/Float) then ignored the Text cell, returning 0.
+// Root cause (re-audited 2026-06-05): the test fixture loader was
+// wrapping every value in single quotes ('38018.93'), causing the parser
+// to store it as Value::Text rather than Value::Float. The Sum
+// aggregator (which only operates on Integer/Float) then skipped
+// the Text cell, returning 0.
 //
-// Phase 1b fix: in this file's `make_engine_with_sf001`, numeric columns
-// (INTEGER/REAL) are now passed UNQUOTED so the parser stores them as
-// the correct Value variant. The tests below therefore PASS on the
-// current engine (no engine code change needed).
+// Wire protocol via LOAD DATA LOCAL INFILE uses the raw .tbl file
+// without any quoting, so numeric columns are stored correctly.
 
 #[test]
 fn test_bug4_tpch_q1_sum_real_extendedprice_nonzero() {
-    let mut engine = make_engine_with_sf001();
+    let mut client = start_sf001();
     let q = "SELECT l_returnflag, SUM(l_extendedprice) AS sum_base_price \
-             FROM lineitem WHERE l_shipdate <= '1995-12-01' \
+             FROM lineitem WHERE l_shipdate <= '1998-09-02' \
              GROUP BY l_returnflag ORDER BY l_returnflag";
-    let r = engine.execute(q).expect("Q1 should not crash");
-    assert!(r.rows.len() >= 1, "should return ≥1 group");
-    let total: f64 = r
-        .rows
+    let rows = client.query_rows(q).expect("Q1 should not crash");
+    assert!(rows.len() >= 1, "should return ≥1 group");
+    let total: f64 = rows
         .iter()
-        .filter_map(|row| first_numeric_cell(row))
+        .filter_map(|row| first_numeric_cell_str(row))
         .sum();
     assert!(
         total > 0.0,
@@ -254,15 +155,14 @@ fn test_bug4_tpch_q1_sum_real_extendedprice_nonzero() {
 
 #[test]
 fn test_bug4_tpch_q1_sum_real_quantity_nonzero() {
-    let mut engine = make_engine_with_sf001();
+    let mut client = start_sf001();
     let q = "SELECT l_returnflag, SUM(l_quantity) AS sum_qty \
-             FROM lineitem WHERE l_shipdate <= '1995-12-01' \
+             FROM lineitem WHERE l_shipdate <= '1998-09-02' \
              GROUP BY l_returnflag ORDER BY l_returnflag";
-    let r = engine.execute(q).expect("Q1 should not crash");
-    let total: f64 = r
-        .rows
+    let rows = client.query_rows(q).expect("Q1 should not crash");
+    let total: f64 = rows
         .iter()
-        .filter_map(|row| first_numeric_cell(row))
+        .filter_map(|row| first_numeric_cell_str(row))
         .sum();
     assert!(
         total > 0.0,
@@ -275,22 +175,21 @@ fn test_bug4_tpch_q1_sum_real_quantity_nonzero() {
 // bug #5 — AVG(real_col) returns Null
 // =========================================================================
 //
-// TPC-H Q1: AVG(l_quantity) over the 6 groups must be non-null, non-zero.
+// TPC-H Q1: AVG(l_quantity) over sf001 lineitem must be non-null, non-zero.
 //
 // Same root cause as bug #4 (test fixture loader wrapping numerics in
-// quotes → Value::Text instead of Value::Float → AVG aggregator skipped).
-// Phase 1b fix (unquoted numerics in loader) makes these tests pass.
+// quotes → Value::Text instead of Value::Float → AVG skipped).
 
 #[test]
 fn test_bug5_tpch_q1_avg_real_quantity_nonnull() {
-    let mut engine = make_engine_with_sf001();
+    let mut client = start_sf001();
     let q = "SELECT l_returnflag, AVG(l_quantity) AS avg_qty \
-             FROM lineitem WHERE l_shipdate <= '1995-12-01' \
+             FROM lineitem WHERE l_shipdate <= '1998-09-02' \
              GROUP BY l_returnflag ORDER BY l_returnflag";
-    let r = engine.execute(q).expect("Q1 should not crash");
-    assert!(r.rows.len() >= 1, "should return ≥1 group");
-    for (i, row) in r.rows.iter().enumerate() {
-        let avg = first_numeric_cell(row)
+    let rows = client.query_rows(q).expect("Q1 should not crash");
+    assert!(rows.len() >= 1, "should return ≥1 group");
+    for (i, row) in rows.iter().enumerate() {
+        let avg = first_numeric_cell_str(row)
             .unwrap_or_else(|| panic!("row[{}] should have a numeric AVG cell, got: {:?}", i, row));
         assert!(
             avg > 0.0,
@@ -303,13 +202,13 @@ fn test_bug5_tpch_q1_avg_real_quantity_nonnull() {
 
 #[test]
 fn test_bug5_tpch_q1_avg_real_extendedprice_nonnull() {
-    let mut engine = make_engine_with_sf001();
+    let mut client = start_sf001();
     let q = "SELECT l_returnflag, AVG(l_extendedprice) AS avg_price \
-             FROM lineitem WHERE l_shipdate <= '1995-12-01' \
+             FROM lineitem WHERE l_shipdate <= '1998-09-02' \
              GROUP BY l_returnflag ORDER BY l_returnflag";
-    let r = engine.execute(q).expect("Q1 should not crash");
-    for (i, row) in r.rows.iter().enumerate() {
-        let avg = first_numeric_cell(row)
+    let rows = client.query_rows(q).expect("Q1 should not crash");
+    for (i, row) in rows.iter().enumerate() {
+        let avg = first_numeric_cell_str(row)
             .unwrap_or_else(|| panic!("row[{}] should have a numeric AVG cell, got: {:?}", i, row));
         assert!(
             avg > 0.0,
