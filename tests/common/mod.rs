@@ -191,9 +191,16 @@ fn native_password_auth(password: &[u8], scramble: &[u8; SCRAMBLE_LEN]) -> [u8; 
 /// `parse_handshake_response` only consults those fields when the
 /// corresponding capability flag is set in the response.
 fn build_handshake_response41(user: &str, auth_response: &[u8]) -> wire_err::Result<Vec<u8>> {
-    let mut p = Vec::with_capacity(64 + user.len() + auth_response.len());
+    build_handshake_response41_with_caps(user, auth_response, CLIENT_CAPABILITIES)
+}
 
-    p.extend_from_slice(&CLIENT_CAPABILITIES.to_le_bytes());
+fn build_handshake_response41_with_caps(
+    user: &str,
+    auth_response: &[u8],
+    caps: u32,
+) -> wire_err::Result<Vec<u8>> {
+    let mut p = Vec::with_capacity(64 + user.len() + auth_response.len());
+    p.extend_from_slice(&caps.to_le_bytes());
     p.extend_from_slice(&MAX_PACKET_SIZE.to_le_bytes());
     p.push(CHARSET_UTF8);
     p.extend_from_slice(&[0u8; 23]); // 23 reserved bytes
@@ -392,6 +399,9 @@ pub struct MySqlTestClient {
     pub handle: EphemeralHandle,
     stream: TcpStream,
     next_seq: u8,
+    /// MySQL capability flags this client sent in HandshakeResponse41.
+    /// Used by tests to verify DEPRECATE_EOF and other protocol features.
+    client_caps: u32,
 }
 
 impl MySqlTestClient {
@@ -399,9 +409,9 @@ impl MySqlTestClient {
     /// the `tester` user (password = `tester`). The test harness
     /// pre-creates this user via its bootstrap callback.
     
-    /// Return the server's capability flags as negotiated in the MySQL handshake.
+    /// Return the MySQL capability flags this client sent in HandshakeResponse41.
     pub fn client_capabilities(&self) -> u32 {
-        self.handle.capability_flags
+        self.client_caps
     }
 
 pub fn connect_default() -> wire_err::Result<Self> {
@@ -417,6 +427,46 @@ pub fn connect_default() -> wire_err::Result<Self> {
         let handle =
             start_ephemeral(config).map_err(|e| wire_err::msg(format!("start_ephemeral: {e}")))?;
         Self::connect_handle(handle)
+    }
+
+    /// Like [`connect_at`] but ORs `extra_caps` into the MySQL capability
+    /// flags sent in the HandshakeResponse41. Used to opt into protocol
+    /// extensions such as DEPRECATE_EOF (0x01000000).
+    pub fn connect_with_caps(
+        addr: (&str, u16),
+        user: &str,
+        password: &str,
+        extra_caps: u32,
+    ) -> wire_err::Result<Self> {
+        let (host, port) = addr;
+        let mut stream = TcpStream::connect((host, port))
+            .map_err(|e| wire_err::msg(format!("tcp connect {host}:{port}: {e}")))?;
+        stream
+            .set_read_timeout(Some(READ_TIMEOUT))
+            .map_err(|e| wire_err::msg(format!("set_read_timeout: {e}")))?;
+        stream
+            .set_write_timeout(Some(WRITE_TIMEOUT))
+            .map_err(|e| wire_err::msg(format!("set_write_timeout: {e}")))?;
+
+        let handshake = read_packet(&mut stream)?;
+        let scramble = parse_handshake(&handshake)?;
+        let auth = native_password_auth(password.as_bytes(), &scramble);
+
+        // Build HandshakeResponse41 with merged capability flags.
+        let caps = CLIENT_CAPABILITIES | extra_caps;
+        let resp = build_handshake_response41_with_caps(user, &auth, caps)?;
+        write_packet(&mut stream, 1, &resp)?;
+        let auth_resp = read_packet(&mut stream)?;
+        check_ok_or_err(2, &auth_resp)?;
+
+        // Synthesise a minimal detached handle so Drop is inert.
+        let handle = EphemeralHandle::detached_for_external_server(port);
+        Ok(Self {
+            handle,
+            stream,
+            next_seq: 0,
+            client_caps: CLIENT_CAPABILITIES | extra_caps,
+        })
     }
 
     /// Connect to an arbitrary `(host, port)` (e.g. a server spawned
@@ -450,6 +500,7 @@ pub fn connect_default() -> wire_err::Result<Self> {
             handle,
             stream,
             next_seq: 0,
+            client_caps: CLIENT_CAPABILITIES,
         })
     }
 
@@ -479,10 +530,12 @@ pub fn connect_default() -> wire_err::Result<Self> {
         let auth_resp = read_packet(&mut stream)?;
         check_ok_or_err(2, &auth_resp)?;
 
+        let caps = CLIENT_CAPABILITIES;
         Ok(Self {
             handle,
             stream,
             next_seq: 0,
+            client_caps: caps,
         })
     }
 
