@@ -2,7 +2,6 @@ gate_report.json
 verification_report.json
 audit_report.json
 test_report.json
-SOAK_*_REPORT.md
 test_report.log
 __pycache__/
 *.pyc
@@ -11,8 +10,6 @@ target/
 data/tpch-sf01-generated/
 data/tpch-sf01/
 artifacts/coverage/
-artifacts/bench/
-artifacts/gate/
 .DS_Store
 Cargo.lock
 .worktrees/

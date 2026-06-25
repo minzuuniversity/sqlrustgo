@@ -11,10 +11,7 @@ use std::fs;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 
-const FIXTURE: &str = match option_env!("DIAG_22_FIXTURE_DIR") {
-    Some(p) => p,
-    None => "tests/data/tpch-sf01",
-};
+const FIXTURE: &str = "/home/openclaw/sqlrustgo-tpch/data";
 
 fn load_tbl_file(
     storage: &Arc<RwLock<MemoryStorage>>,
@@ -168,7 +165,7 @@ fn diag_22_on_sf01() {
                 fail_details.push(format!("Q{}: actual={} canonical={}", q, actual, erc));
                 eprintln!("Q{}: FAIL (actual={} canonical={})", q, actual, erc);
             }
-            Err(_e) if erc < 0 => {
+            Err(e) if erc < 0 => {
                 pass += 1; // both ERR
                 eprintln!("Q{}: ERR (both sides, ok)", q);
             }

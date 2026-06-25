@@ -17,16 +17,6 @@ pub mod unified_cost;
 pub mod unified_plan;
 pub mod vector_cost;
 
-#[cfg(feature = "v390_join_reorder")]
-pub mod join_cost_model;
-#[cfg(feature = "v390_join_reorder")]
-pub mod join_order_graph;
-#[cfg(feature = "v390_join_reorder")]
-pub mod join_reorder;
-
-#[cfg(feature = "v390_join_reorder")]
-pub use join_reorder::reorder_joins;
-
 pub use cost::SimpleCostModel;
 pub use network_cost::{NetworkCost, NetworkCostEstimator, SimpleNetworkCostEstimator};
 pub use plan::{OptimizerError, OptimizerResult};

@@ -1,6 +1,6 @@
 //! Q22 isolated - step by step
 
-use sqlrustgo::{ExecutionEngine, MemoryStorage};
+use sqlrustgo::{ExecutionEngine, MemoryStorage, StorageEngine};
 
 #[test]
 fn diag_q22_steps() {
