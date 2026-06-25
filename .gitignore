@@ -33,3 +33,7 @@ test_results/
 .sqlrustgo/
 =======
 >>>>>>> origin/sync/v390-tpch-3way-20260614
+
+# Agent and artifact artifacts (local only)
+.qwen/
+artifacts/gate/
