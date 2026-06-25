@@ -2828,7 +2828,7 @@ impl Parser {
                         expression: Some(Expression::Identifier("level".to_string())),
                     });
                 }
-                Some(Token::Minus) | Some(Token::Plus) | Some(Token::Star) => {
+                Some(Token::Minus) | Some(Token::Plus) => {
                     match self.parse_expression() {
                         Ok(expr) => {
                             columns.push(SelectColumn {
