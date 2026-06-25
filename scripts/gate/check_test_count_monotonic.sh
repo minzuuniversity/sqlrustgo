@@ -74,10 +74,10 @@ EOF
     exit 0
 fi
 
-# Parse baseline
-baseline_cargo=$(grep -oE '"cargo_tests": [0-9]+' "$BASELINE" | grep -oE '[0-9]+' || echo 0)
-baseline_active=$(grep -oE '"active_tests": [0-9]+' "$BASELINE" | grep -oE '[0-9]+' || echo 0)
-baseline_ignored=$(grep -oE '"ignored_tests": [0-9]+' "$BASELINE" | grep -oE '[0-9]+' || echo 0)
+# Parse baseline (use | head -1 because baseline may contain previous_counts with same field names)
+baseline_cargo=$(grep -oE '"cargo_tests": [0-9]+' "$BASELINE" | grep -oE '[0-9]+' | head -1 || echo 0)
+baseline_active=$(grep -oE '"active_tests": [0-9]+' "$BASELINE" | grep -oE '[0-9]+' | head -1 || echo 0)
+baseline_ignored=$(grep -oE '"ignored_tests": [0-9]+' "$BASELINE" | grep -oE '[0-9]+' | head -1 || echo 0)
 baseline_version=$(grep -oE '"version": "[^"]*"' "$BASELINE" | cut -d'"' -f4 || echo "unknown")
 
 echo "  Baseline ($baseline_version):"
@@ -107,10 +107,8 @@ else
     echo "  ✅ PASS: Cargo.toml [[test]] entries unchanged ($cargo_tests)"
 fi
 
-# Check active tests
 if [ "$active_tests" -lt "$baseline_active" ]; then
-    delta=$((active_active - baseline_active))
-    delta=$((active_tests - baseline_active))
+    delta=$((baseline_active - active_tests))
     echo "  ❌ FAIL: Active tests DECREASED by $delta"
     echo "          Was: $baseline_active, Now: $active_tests"
     echo "          ACTION REQUIRED: deletion of #[test] fns needs ADR"

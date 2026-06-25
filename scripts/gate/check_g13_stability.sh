@@ -1,14 +1,17 @@
 #!/bin/bash
-# check_g13_stability.sh - G13 24h 真实稳定性门禁
+# check_g13_stability.sh - G13 Stability gate (real soaks DEFERRED to W12 hardware)
 #
 # Verifies:
 # 1. 3 stability scripts exist (24h, 72h, 168h)
 # 2. STABILITY_REPORT.md exists
 # 3. Beta 72h 报告存在 (opencode 完成)
-# 4. G7 Soak gate PASS (单元级)
+# 4. G7 Soak gate PASS (单元级 — COMPRESSED smoke, NOT real duration)
 # 5. TPC-H 22/22 维持
-# 6. real 24h run optional (W12 D1-2 Z6G4)
+# 6. real 24h run: DEFERRED (requires W12 hardware)
 # 7. Run script 模板可执行
+#
+# ⚠️  NOTE: This gate does NOT run real 24h/72h/168h soaks. Real soaks
+#    require W12 hardware and have not completed since 2026-06-13.
 #
 # Exit code: 0 = PASS, 1 = FAIL
 #
@@ -108,7 +111,6 @@ else
 fi
 
 echo
-echo "=== G13 Gate: PASS ==="
-echo "Stability: 24h 强制 (deferred to W12) + 72h/168h Post-GA Nightly/Weekly"
-echo "Beta 72h 压缩 PASS (opencode) covers G7 unit-level requirement"
-exit 0
+echo "=== G13 Gate: PASS (24h/72h/168h deferred — real hardware required) ==="
+echo "Stability: 24h/72h/168h deferred to W12 hardware; G7 unit-level PASS"
+echo "⚠️  Real soak results do NOT exist yet (not run since 2026-06-13)"
