@@ -1,325 +1,286 @@
-# SQLRustGo v3.10.0 开发计划 — 功能 backlog + 测试要求
+# SQLRustGo v3.10.0 开发计划
 
-> **基于**: v3.9.0 `#[ignore]` 审计（2026-06-25）
-> **分支**: `develop/v3.9.0` @ `ff77472bf`
-> **目的**: 将 v3.9.0 中未解决的 44 个 `#[ignore]` 测试整理为 v3.10.0 功能需求
+> **版本定位**: MySQL 5.7 替代 — 功能稳定 + 基本性能优先
+> **分支**: `develop/v3.9.0` @ `766f3202c`
+> **创建日期**: 2026-06-25
+> **目标**: v3.9.0 中 44 个 ignore 测试 + 跨版本历史遗留债务整合
 
 ---
 
-## 0. 总览
+## 0. 版本定位与核心原则
 
-| 类别 | 数量 | 说明 |
+### 0.1 MySQL 5.7 替代版本要求
+
+v3.10.0 作为 MySQL 5.7 的替代版本，核心要求：
+
+| 维度 | 要求 |
+|------|------|
+| **功能完整性** | 常用 DML/DDL/DQL 完整，不含破坏性 bug |
+| **事务正确性** | ACID 四项完整，MVCC/ROLLBACK 正确 |
+| **基本性能** | TPC-H SF=0.01 完整正确；QPS 不显著退化 |
+| **稳定性** | 24h+ soak 无错误；Crash recovery 正确 |
+| **兼容性** | 常用 SQL 语法、MySQL wire protocol、错误格式兼容 |
+
+### 0.2 v3.10.0 不做
+
+- 新语法（Cypher CREATE/MERGE 等图查询扩展）
+- SIMD / Vector SQL / 新优化器
+- 高级 MySQL 函数（GIS、FEOLE、窗口函数扩展）
+- 新索引类型（自适应哈希、聚簇索引的磁盘集成）
+
+### 0.3 总工作量估算
+
+| 类别 | 来源 | 任务数 | 工作量 |
+|------|------|--------|--------|
+| 核心 MySQL 兼容性 | 跨版本历史债务 | 11 项 | ~180h |
+| ignore 测试修复 | v3.9.0 审计 | 13 项 | ~200h |
+| 性能基线 | v3.9.0 未完成 | 1 项 | ~40h |
+| 稳定性验证 | soak/crash | 1 项 | ~80h |
+| **合计** | | **~26 项** | **~500h** |
+
+---
+
+## 1. MySQL 兼容性核心要求（v3.10.0 必做）
+
+> **来源**: v3.6-v3.9 跨版本债务 + INT5_PLUS_DEBT_INVENTORY.md
+
+### 1.1 C-1: DML 完整性（来自 F-1 ignore 审计）
+
+**来源**: `tests/dml_integration_test.rs` (7 个 ignore)
+
+| ID | 功能 | 测试 | 根因 | 修复要求 |
+|----|------|------|------|----------|
+| C-1a | INSERT ... SELECT | `insert_select_copies_rows` (L101), `insert_select_with_type_coercion` (L120) | MemoryStorage INSERT SELECT 路径 0 rows | 从源表读取行，插入目标表 |
+| C-1b | UPDATE ... SET col = (SELECT ...) | `update_with_subquery_in_set` (L220) | UpdateStatement SET 子句不支持子查询 | 扩展 SET 解析支持 `(SELECT ...)` |
+| C-1c | Multi-table UPDATE | `update_multiple_tables` (L236) | parser/executor 只处理单表 | 支持 `UPDATE t1, t2 SET ... WHERE ...` |
+| C-1d | DELETE ... WHERE col IN (SELECT ...) | `delete_with_subquery_in_where` (L306) | DeleteStatement 无子查询支持 | 支持 IN (SELECT ...) 和相关子查询 |
+| C-1e | Multi-table DELETE | `delete_multiple_tables` (L322) | parser/executor 单表限制 | 支持 `DELETE t1, t2 FROM t1 JOIN t2 ...` |
+
+**验证**: `cargo test insert_select_copies_rows insert_select_with_type_coercion update_with_subquery_in_set update_multiple_tables delete_with_subquery_in_where delete_multiple_tables` → 全部 PASS
+
+---
+
+### 1.2 C-2: UNION 集合操作（来自 F-2 ignore 审计）
+
+**来源**: `tests/union_set_operations_test.rs` (3 个 ignore)
+
+| ID | 功能 | 测试 | 根因 | 修复要求 |
+|----|------|------|------|----------|
+| C-2a | INTERSECT | `intersect_returns_common_rows` (L257) | `Statement` 无 Intersect 变体 | 添加枚举变体 + parser + executor |
+| C-2b | EXCEPT | `except_returns_left_minus_right` (L276) | `Statement` 无 Except 变体 | 同上 |
+| C-2c | UNION ORDER BY/LIMIT | `order_by_after_top_level_union` (L299) | `UnionStatement` 缺 order_by/limit | 扩展结构体 + parser + executor |
+
+**验证**: `cargo test intersect_returns_common_rows except_returns_left_minus_right order_by_after_top_level_union` → 全部 PASS
+
+---
+
+### 1.3 C-3: 事务 ACID 正确性（SEM-1 + F-4 核心）
+
+> **最高优先级** — ACID 不完整不能作为生产替代
+
+**来源**: `tests/dml_integration_test.rs` (2 个) + `tests/stored_proc_catalog_test.rs` (3 个) + ARCH_SEM_DEBT_REMEDIATION_PLAN.md SEM-1
+
+| ID | 功能 | 测试 | 根因 | 修复要求 |
+|----|------|------|------|----------|
+| C-3a | ROLLBACK 真正撤销 DML | `transaction_rollback_undoes_dml` (L352), `transaction_update_then_rollback` (L372) | MemoryStorage ROLLBACK 只回滚 WAL，不撤销 DML 行 | MVCC snapshot restore 或等效机制 |
+| C-3b | MemoryStorage 事务边界 | `test_trigger_executes_update` (L284), `test_trigger_executes_delete` (L315), `test_trigger_executes_insert` (L346) | MemoryStorage 无 begin/commit/rollback 实现 | 实现基本事务支持或修改 trigger 路径 |
+
+**验证**: `cargo test transaction_rollback_undoes_dml transaction_update_then_rollback test_trigger_executes_update test_trigger_executes_delete test_trigger_executes_insert` → 全部 PASS
+
+---
+
+### 1.4 C-4: ALTER TABLE 完整性（SEM-3 历史债务）
+
+> **来源**: ARCH_SEM_DEBT_REMEDIATION_PLAN.md §6
+
+**Status**: OPEN since v3.0.0
+
+| ID | 功能 | 现状 | 修复要求 |
+|----|------|------|----------|
+| C-4a | ALTER TABLE ADD/DROP COLUMN | ✅ 已实现 | — |
+| C-4b | ALTER TABLE RENAME TABLE | ❌ stub | 实现跨 schema 重命名 |
+| C-4c | ALTER TABLE RENAME COLUMN | ❌ stub | 实现列重命名 |
+| C-4d | ALTER TABLE MODIFY COLUMN | ❌ stub | 实现列类型修改 |
+
+**验证**: 4 类 ALTER TABLE 操作均有实际效果（非 stub）
+
+---
+
+### 1.5 C-5: 崩溃恢复验证（SEM-1 + T-20 历史债务）
+
+> **来源**: ARCH_SEM_DEBT_REMEDIATION_PLAN.md SEM-1 + INT5_PLUS_DEBT_INVENTORY T-20
+
+| ID | 功能 | 现状 | 修复要求 |
+|----|------|------|----------|
+| C-5a | Crash recovery matrix | 129 场景 in-memory mock | 真实 kill -9 进程级崩溃注入 |
+| C-5b | 24h soak | 模拟延迟 | 真实查询 + 真实负载 |
+| C-5c | Disk I/O delay fault | ❌ 未实现 (T-19) | 注入 I/O 延迟，验证超时行为 |
+
+**验证**: `tests/crash_monkey_test.rs` + `tests/long_run_stability_72h_test.rs` 真实运行
+
+---
+
+## 2. 跨版本历史债务（v3.6-v3.9 遗留，非 P0 但需规划）
+
+> **来源**: INT5_PLUS_DEBT_INVENTORY.md + ARCH_SEM_DEBT_REMEDIATION_PLAN.md
+
+### 2.1 高优先级（影响生产正确性）
+
+| ID | 功能 | 引入版本 | 现状 | 修复要求 |
+|----|------|---------|------|----------|
+| H-1 | ARCH-2 双路径（mysql-server vs bench-cli） | v2.6.0 | OPEN | 统一入口，两 binary 行为一致 |
+| H-2 | ARCH-3 VTU 主路径剩余 5% | v3.5.0 | PARTIAL | `execute_truncate` 接入 VTU + 移除白名单 |
+| H-3 | F-03 GIS 空间数据（Point/LineString/Polygon） | v2.0.0 | ❌ NOT IMPLEMENTED | 需全量实现（可选，v3.11） |
+| H-4 | F-30 CREATE SEQUENCE / nextval | v2.0.0 | ❌ NOT IMPLEMENTED | 需全量实现（可选，v3.11） |
+| H-5 | F-36 列级权限 | v2.0.0 | ❌ NOT IMPLEMENTED | 需全量实现（可选，v3.11） |
+
+### 2.2 中优先级（影响 MySQL 兼容性）
+
+| ID | 功能 | 引入版本 | 现状 | 修复要求 |
+|----|------|---------|------|----------|
+| M-1 | SEM-4 覆盖率测量标准化 | v3.0.0 | OPEN | 统一 `cargo llvm-cov` 方法，机器间 <5% 方差 |
+| M-2 | I-11 CBO 代价模型完善 | v2.0.0 | PARTIAL | 3 rules → 完整 CBO |
+| M-3 | F-01 CREATE EVENT 事件调度器 | v2.0.0 | PARTIAL | 部分实现，cron 式调度未完成 |
+| M-4 | F-07 查询缓存 DML 失效 | v2.0.0 | PARTIAL | LRU OK，DML invalidation 测试缺失 |
+
+### 2.3 低优先级（可选功能）
+
+| ID | 功能 | 引入版本 | 现状 |
+|----|------|---------|------|
+| L-1 | F-02 FULLTEXT 全文索引 | v2.0.0 | PARTIAL |
+| L-2 | F-34 AES-256 存储加密 | v2.0.0 | PARTIAL |
+| L-3 | F-18 INFORMATION_SCHEMA 完整 | v2.0.0 | PARTIAL |
+
+---
+
+## 3. ignore 测试完整清单（v3.9.0 审计）
+
+> **来源**: `IGNORE_REGISTRY_2026-06-25.md`
+
+### 3.1 功能类 ignore（应修复 → C-1 ~ C-4）
+
+| 文件 | 行 | 测试 | 类别 | 状态 |
+|------|----|------|------|------|
+| `dml_integration_test.rs` | 101, 120 | INSERT SELECT | C-1a | 待修复 |
+| `dml_integration_test.rs` | 220 | UPDATE subquery | C-1b | 待修复 |
+| `dml_integration_test.rs` | 236 | Multi-table UPDATE | C-1c | 待修复 |
+| `dml_integration_test.rs` | 306 | DELETE subquery | C-1d | 待修复 |
+| `dml_integration_test.rs` | 322 | Multi-table DELETE | C-1e | 待修复 |
+| `dml_integration_test.rs` | 352, 372 | ROLLBACK DML | C-3a | 待修复 |
+| `union_set_operations_test.rs` | 257 | INTERSECT | C-2a | 待修复 |
+| `union_set_operations_test.rs` | 276 | EXCEPT | C-2b | 待修复 |
+| `union_set_operations_test.rs` | 299 | UNION ORDER BY | C-2c | 待修复 |
+| `stored_proc_catalog_test.rs` | 284, 315, 346 | MemoryStorage tx | C-3b | 待修复 |
+| `boundary_test.rs` | 32 | INT64_MIN 解析 | ✅ 已修复 | PASS |
+| `boundary_test.rs` | 89 | Zero division | ✅ 已修复 | PASS |
+
+### 3.2 Cypher 扩展类 ignore（v3.11+）
+
+| 文件 | 行 | 测试 | 状态 |
+|------|----|------|------|
+| `graph_cypher_integration_test.rs` | 16 | label predicate bool | 待评估 |
+| `graph_cypher_integration_test.rs` | 466 | CREATE keyword | v3.11+ |
+| `graph_cypher_integration_test.rs` | 476 | MERGE keyword | v3.11+ |
+| `graph_cypher_integration_test.rs` | 485 | 无向边 `-` | v3.11+ |
+| `graph_cypher_integration_test.rs` | 494 | OPTIONAL MATCH | v3.11+ |
+
+### 3.3 性能基准类 ignore（手动运行）
+
+| 文件 | 数量 | 说明 |
 |------|------|------|
-| F-1: DML 增强 | 7 | INSERT SELECT / 子查询 UPDATE/DELETE / 多表 DML |
-| F-2: UNION 扩展 | 3 | INTERSECT / EXCEPT / UNION ORDER BY+LIMIT |
-| F-3: Cypher 图查询 | 5 | CREATE / MERGE / OPTIONAL MATCH / 无向边 |
-| F-4: 事务增强 | 2 | MemoryStorage ROLLBACK / 事务边界 |
-| F-5: 性能基准 | 17 | QPS/Sysbench/TPC-H 基准（保留手动运行） |
-| F-6: 长时稳定性 | 5 | Soak 5m-30m / 72h smoke（Z6G4 阻塞） |
-| F-7: Manual Oracle | 1 | SHA256 oracle 生成 |
-| **合计** | **40** | 另有 2 个辅助 ignore + 2 个 TPCH 引擎测试 |
+| `qps_benchmark_test.rs` | 10 | QPS/TPS 基准，专用环境 |
+| `bench_v380_point_agg.rs` | 6 | v3.8.0 性能基线 |
+| `perf_eng_batched_insert_test.rs` | 3 | 批量插入性能 |
+
+### 3.4 长时稳定性类 ignore（Z6G4 阻塞）
+
+| 文件 | 数量 | 说明 |
+|------|------|------|
+| `tpch_soak_test.rs` | 4 | 5m-30m soak，72h/168h 需 Z6G4 |
+| `long_run_stability_72h_test.rs` | 1 | 72h 稳定性，Z6G4 阻塞 |
+
+### 3.5 Manual Oracle 类 ignore
+
+| 文件 | 行 | 说明 |
+|------|----|------|
+| `oracle_g1_tpch_sha256.rs` | 138 | SHA256 oracle 生成，手动 |
 
 ---
 
-## F-1: DML 增强（7 个 ignore）
+## 4. 阶段计划
 
-**来源**: `tests/dml_integration_test.rs`
+### Phase 0: 基础修复（2 周，~80h）
 
-### F-1a: INSERT ... SELECT（2 个 ignore → 修复）
+**目标**: 关闭所有 ACID 正确性 bug
 
-| 行 | 测试 | 问题 |
-|----|------|------|
-| 101 | `insert_select_copies_rows` | INSERT ... SELECT → 0 rows in MemoryStorage |
-| 120 | `insert_select_with_type_coercion` | 同上 |
+| 任务 | 来源 | 工作量 | 验证 |
+|------|------|--------|------|
+| PredicateCompiler Column 修复 | ignore 审计 | ✅ 已完成 | 8/8 PASS |
+| Boundary test INT64_MIN 修复 | ignore 审计 | ✅ 已完成 | 2/2 PASS |
+| C-3: ROLLBACK 真正撤销 DML | SEM-1 | ~40h | 2 tests PASS |
+| C-3b: MemoryStorage 事务边界 | F-4b | ~20h | 3 tests PASS |
+| C-4: ALTER TABLE 完整性 | SEM-3 | ~20h | 4 类操作 PASS |
 
-**根因**: MemoryStorage 的 INSERT SELECT 路径没有正确执行数据复制。
-**修复要求**: executor 实现正确的 INSERT SELECT — 从源表读取行，插入目标表。
-**验证**: `cargo test insert_select_copies_rows insert_select_with_type_coercion` → PASS
+### Phase 1: DML 增强（2 周，~80h）
 
-### F-1b: UPDATE ... SET col = (SELECT ...)（1 个 ignore → 修复）
+**目标**: 常用 DML 完整，支持子查询
 
-| 行 | 测试 | 问题 |
-|----|------|------|
-| 220 | `update_with_subquery_in_set` | UpdateStatement has no sub-select support |
+| 任务 | 来源 | 工作量 | 验证 |
+|------|------|--------|------|
+| C-1a: INSERT SELECT | F-1a | ~20h | 2 tests PASS |
+| C-1b: UPDATE subquery | F-1b | ~15h | 1 test PASS |
+| C-1c: Multi-table UPDATE | F-1c | ~15h | 1 test PASS |
+| C-1d: DELETE subquery | F-1d | ~15h | 1 test PASS |
+| C-1e: Multi-table DELETE | F-1e | ~15h | 1 test PASS |
 
-**根因**: `UpdateStatement` 的 SET 子句只支持直接值，不支持子查询表达式。
-**修复要求**: 扩展 SET 子句解析，支持 `UPDATE t SET col = (SELECT ...)`。
-**验证**: `cargo test update_with_subquery_in_set` → PASS
+### Phase 2: UNION + 稳定性（2 周，~80h）
 
-### F-1c: Multi-table UPDATE（1 个 ignore → 修复）
+**目标**: SQL 集合操作 + 真实崩溃恢复
 
-| 行 | 测试 | 问题 |
-|----|------|------|
-| 236 | `update_multiple_tables` | UpdateStatement is single-table only |
+| 任务 | 来源 | 工作量 | 验证 |
+|------|------|--------|------|
+| C-2a: INTERSECT | F-2a | ~15h | 1 test PASS |
+| C-2b: EXCEPT | F-2b | ~15h | 1 test PASS |
+| C-2c: UNION ORDER BY/LIMIT | F-2c | ~15h | 1 test PASS |
+| C-5a: 真实 Crash Matrix | T-20 | ~20h | 真实 kill -9 PASS |
+| C-5b: 24h 真实 Soak | T-19 | ~15h | 真实负载 PASS |
 
-**根因**: parser/executor 只处理单表 UPDATE。
-**修复要求**: 支持 `UPDATE t1, t2 SET t1.col = ... WHERE ...` 语法和执行路径。
-**验证**: `cargo test update_multiple_tables` → PASS
+### Phase 3: 性能基线 + GA 准备（2 周，~80h）
 
-### F-1d: DELETE ... WHERE col IN (SELECT ...)（1 个 ignore → 修复）
+**目标**: 性能不退化 + 文档完整
 
-| 行 | 测试 | 问题 |
-|----|------|------|
-| 306 | `delete_with_subquery_in_where` | DeleteStatement has no sub-select support |
-
-**根因**: DELETE WHERE 子句不支持 IN (SELECT ...) 形式。
-**修复要求**: 扩展 WHERE 解析，支持相关子查询和 IN (SELECT ...) 形式。
-**验证**: `cargo test delete_with_subquery_in_where` → PASS
-
-### F-1e: Multi-table DELETE（1 个 ignore → 修复）
-
-| 行 | 测试 | 问题 |
-|----|------|------|
-| 322 | `delete_multiple_tables` | DeleteStatement is single-table only |
-
-**根因**: parser/executor 只处理单表 DELETE。
-**修复要求**: 支持 `DELETE t1, t2 FROM t1 JOIN t2 ON ... WHERE ...` 语法。
-**验证**: `cargo test delete_multiple_tables` → PASS
-
-### F-1: DML 增强 — 测试矩阵
-
-| 测试 | 现状 | 修复后验证 |
-|------|------|-----------|
-| `insert_select_copies_rows` | FAIL: 0 rows | 3 rows inserted |
-| `insert_select_with_type_coercion` | FAIL: 0 rows | rows with correct types |
-| `update_with_subquery_in_set` | FAIL: Null | Integer(42) |
-| `update_multiple_tables` | FAIL: ParseError | rows updated |
-| `delete_with_subquery_in_where` | FAIL: 0 rows | 1 row deleted |
-| `delete_multiple_tables` | FAIL: ParseError | rows deleted |
+| 任务 | 来源 | 工作量 | 验证 |
+|------|------|--------|------|
+| H-2: ARCH-3 VTU 剩余 5% | ARCH-3 | ~20h | 白名单移除 |
+| M-2: CBO 代价模型完善 | I-11 | ~15h | cost-based 选择生效 |
+| H-1: ARCH-2 双路径统一 | ARCH-2 | ~20h | 两 binary 行为一致 |
+| TPC-H SF=0.01 22/22 | G1 | ✅ PASS | 22/22 PASS |
+| 文档收口 | — | ~25h | GA 文档完整 |
 
 ---
 
-## F-2: UNION 扩展（3 个 ignore）
+## 5. v3.10.0 GA 门禁
 
-**来源**: `tests/union_set_operations_test.rs`
-
-### F-2a: INTERSECT（1 个 ignore → 修复）
-
-| 行 | 测试 | 问题 |
-|----|------|------|
-| 257 | `intersect_returns_common_rows` | no Statement::Intersect variant |
-
-**根因**: `Statement` 枚举缺少 `Intersect` 变体，parser 遇到 `INTERSECT` 报解析错误。
-**修复要求**:
-1. 添加 `Statement::Intersect` 枚举变体
-2. Parser 支持 `SELECT ... INTERSECT SELECT ...` 语法
-3. Executor 实现集合交语义（去重）
-**验证**: `cargo test intersect_returns_common_rows` → rows.len() == 2
-
-### F-2b: EXCEPT（1 个 ignore → 修复）
-
-| 行 | 测试 | 问题 |
-|----|------|------|
-| 276 | `except_returns_left_minus_right` | no Statement::Except variant |
-
-**根因**: `Statement` 枚举缺少 `Except` 变体。
-**修复要求**:
-1. 添加 `Statement::Except` 枚举变体
-2. Parser 支持 `SELECT ... EXCEPT SELECT ...` 语法
-3. Executor 实现集合差语义（去重）
-**验证**: `cargo test except_returns_left_minus_right` → rows.len() == 1
-
-### F-2c: UNION ORDER BY/LIMIT（1 个 ignore → 修复）
-
-| 行 | 测试 | 问题 |
-|----|------|------|
-| 299 | `order_by_after_top_level_union` | UnionStatement lacks order_by/limit fields |
-
-**根因**: `UnionStatement` 没有 `order_by` 和 `limit` 字段。
-**修复要求**:
-1. 扩展 `UnionStatement` 结构体添加 `order_by: Vec<OrderByExpr>` 和 `limit: Option<u64>`
-2. Parser 支持 `SELECT ... UNION ... ORDER BY col LIMIT n` 语法
-3. Executor 在 UNION 结果上应用排序和 LIMIT
-**验证**: `cargo test order_by_after_top_level_union` → rows.len() == 3
-
-### F-2: UNION 扩展 — 测试矩阵
-
-| 测试 | 现状 | 修复后验证 |
-|------|------|-----------|
-| `intersect_returns_common_rows` | FAIL: 3 rows (全部返回) | 2 rows (交集) |
-| `except_returns_left_minus_right` | FAIL: 3 rows (全部返回) | 1 row (差集) |
-| `order_by_after_top_level_union` | FAIL: 6 rows (无排序) | 3 rows (排序+limit) |
+| Gate | 主题 | 验证 |
+|------|------|------|
+| G1 | TPC-H 22/22 | `cargo test --test tpch_gate_test` → 22/22 |
+| G2 | ACID 正确性 | `cargo test transaction_rollback_undoes_dml transaction_update_then_rollback test_trigger_executes_*` → PASS |
+| G3 | DML 完整性 | C-1a ~ C-1e 全部 PASS |
+| G4 | UNION 集合操作 | C-2a ~ C-2c 全部 PASS |
+| G5 | ALTER TABLE 完整 | C-4a ~ C-4d 全部 PASS |
+| G6 | Crash Recovery | C-5a 真实 kill -9 PASS |
+| G7 | 24h Soak | C-5b 真实负载 0 errors |
+| G8 | 72h Soak | Z6G4 或等效环境 |
 
 ---
 
-## F-3: Cypher 图查询（5 个 ignore）
+## 6. 配套文档
 
-**来源**: `tests/graph_cypher_integration_test.rs`
-
-### F-3a: Cypher CREATE 关键字
-
-| 行 | 测试 | 问题 |
-|----|------|------|
-| 466 | `test_cypher_create_node_keyword` | CREATE keyword not supported in Cypher |
-
-**修复要求**: Parser 支持 `CREATE` 子句（`CREATE (n:Label {prop: val})`），Executor 实现节点创建。
-
-### F-3b: Cypher MERGE 关键字
-
-| 行 | 测试 | 问题 |
-|----|------|------|
-| 476 | `test_cypher_merge_keyword` | MERGE keyword not supported |
-
-**修复要求**: Parser 支持 `MERGE` 子句，Executor 实现"匹配或创建"语义。
-
-### F-3c: Cypher 无向边模式
-
-| 行 | 测试 | 问题 |
-|----|------|------|
-| 485 | `test_cypher_undirected_relationship_pattern` | undirected `-` pattern not supported |
-
-**修复要求**: Parser 支持无向边 `-`（当前只支持有向边 `->`）。
-
-### F-3d: Cypher OPTIONAL MATCH
-
-| 行 | 测试 | 问题 |
-|----|------|------|
-| 494 | `test_cypher_optional_match_returns_null_for_missing` | OPTIONAL MATCH not supported |
-
-**修复要求**: Parser 支持 `OPTIONAL MATCH`，Executor 对不匹配部分返回 NULL 值。
-
-### F-3e: Cypher 其他 gap
-
-| 行 | 测试 | 问题 |
-|----|------|------|
-| 16 | `test_cypher_executor_label_predicate_with_boolean_true` | edge case label predicate |
-
-**说明**: 此测试行 16 是另一种 Cypher 边缘情况，需单独评估。
-
-### F-3: Cypher — 测试矩阵
-
-| 测试 | 现状 | 修复后验证 |
-|------|------|-----------|
-| `test_cypher_create_node_keyword` | FAIL: CREATE not supported | node created |
-| `test_cypher_merge_keyword` | FAIL: MERGE not supported | node matched/created |
-| `test_cypher_undirected_relationship_pattern` | FAIL: undirected - | edge created both dirs |
-| `test_cypher_optional_match_returns_null_for_missing` | FAIL: OPTIONAL MATCH | NULL for missing |
-| `test_cypher_executor_label_predicate_with_boolean_true` | 需评估 | 需评估 |
-
----
-
-## F-4: 事务增强（5 个 ignore）
-
-**来源**: `tests/dml_integration_test.rs` + `tests/stored_proc_catalog_test.rs`
-
-### F-4a: ROLLBACK 不回滚 DML（2 个 ignore → 修复）
-
-| 行 | 测试 | 问题 |
-|----|------|------|
-| 352 | `transaction_rollback_undoes_dml` | ROLLBACK does not revert DML rows in MemoryStorage |
-| 372 | `transaction_update_then_rollback` | 同上 |
-
-**根因**: MemoryStorage 的 ROLLBACK 路径只回滚 WAL 状态，不回滚实际插入的 DML 行。
-**修复要求**: MemoryStorage 需要 MVCC 或类似机制，在 ROLLBACK 时撤销 DML 变更。
-**验证**: `cargo test transaction_rollback_undoes_dml transaction_update_then_rollback` → rows count unchanged after rollback
-
-### F-4b: MemoryStorage 事务边界（3 个 ignore → 修复）
-
-| 行 | 测试 | 问题 |
-|----|------|------|
-| 284 | `test_trigger_executes_update` | MemoryStorage does not support transactions |
-| 315 | `test_trigger_executes_delete` | 同上 |
-| 346 | `test_trigger_executes_insert` | 同上 |
-
-**根因**: MemoryStorage 没有实现事务边界（begin/commit/rollback），trigger DML 需要事务支持。
-**修复要求**: MemoryStorage 实现基本事务支持（begin/commit/rollback），或修改 trigger 评估路径以处理无事务情况。
-**验证**: `cargo test test_trigger_executes_update test_trigger_executes_delete test_trigger_executes_insert` → PASS
-
-### F-4: 事务增强 — 测试矩阵
-
-| 测试 | 现状 | 修复后验证 |
-|------|------|-----------|
-| `transaction_rollback_undoes_dml` | FAIL: 3 rows (未回滚) | 1 row (回滚后) |
-| `transaction_update_then_rollback` | FAIL: index out of bounds | correct rows |
-| `test_trigger_executes_update` | FAIL | PASS |
-| `test_trigger_executes_delete` | FAIL | PASS |
-| `test_trigger_executes_insert` | FAIL | PASS |
-
----
-
-## F-5: 性能基准（17 个 ignore — 保留手动运行）
-
-**说明**: 这些测试有严格的时间阈值断言，适合在专用性能环境中手动运行，不适合默认 CI。
-
-### F-5a: QPS 基准（10 个 ignore）
-
-**来源**: `tests/qps_benchmark_test.rs:70,95,124,153,185,213,238,285,349,375`
-**要求**: 在 release 模式 + 专用机器上运行 `cargo test --release --test qps_benchmark_test -- --ignored`
-**验证**: 每秒查询数 > 基准值（按硬件环境设定）
-
-### F-5b: v3.8.0 性能基线（6 个 ignore）
-
-**来源**: `tests/bench_v380_point_agg.rs:41,91,137,184,232,275`
-**要求**: 与 v3.8.0 对比，性能不退化
-**验证**: `cargo test --release --test bench_v380_point_agg -- --ignored --release`
-
-### F-5c: 批量插入性能（3 个 ignore）
-
-**来源**: `tests/perf_eng_batched_insert_test.rs:52,92` + 1 个未列出
-**要求**: 1000 行 < 1s，10000 行 < 10s（release 模式）
-**验证**: `cargo test --release --test perf_eng_batched_insert_test -- --ignored`
-
----
-
-## F-6: 长时稳定性测试（5 个 ignore — Z6G4 阻塞）
-
-### F-6a: TPC-H Soak（4 个 ignore）
-
-**来源**: `tests/tpch_soak_test.rs:70,78,86,94`
-**要求**: `test_soak_5m/10m/20m/30m` — 已验证 5m-30m 全部 PASS
-**状态**: 代码正常，需 Z6G4 环境运行 72h/168h
-
-### F-6b: 72h 稳定性（1 个 ignore）
-
-**来源**: `tests/long_run_stability_72h_test.rs:6`
-**要求**: `long_run_stability_72h_smoke` — 5 秒 smoke 已 PASS
-**阻塞**: Z6G4（192.168.0.252）网络不可达（2026-06-25 仍无解）
-
----
-
-## F-7: Manual Oracle（1 个 ignore）
-
-**来源**: `tests/oracle_g1_tpch_sha256.rs:138`
-**要求**: `cargo test --test oracle_g1_tpch_sha256 -- --ignored --generate-baseline`
-**说明**: SHA256 oracle 生成，手动运行
-
----
-
-## 其他（4 个 ignore）
-
-### tpch_wire_smoke_sf（8 个 ignore）
-
-**来源**: `tests/tpch_wire_smoke_sf.rs:18,34,37,39,280,310,312,315`
-**说明**: 这些是辅助函数定义（`// !` 注释行），不是独立测试，数量不计入功能 backlog。
-
-### tpch_sf1_22_vs_3engines_test（2 个 ignore）
-
-**来源**: `tests/tpch_sf1_22_vs_3engines_test.rs:8,146`
-**说明**: 需单独评估引擎一致性测试。
-
-### recovery_fuzzer / crash_monkey（各 1 个）
-
-**来源**: `tests/recovery_fuzzer_test.rs:584`，`tests/crash_monkey_test.rs:252`
-**说明**: 50k/100k 迭代测试，手动 `--ignored` 运行，无 bug。
-
----
-
-## 开发优先级建议
-
-| 优先级 | 任务 | 工作量估计 | 风险 |
-|--------|------|-----------|------|
-| P1 | F-4a: ROLLBACK 回滚 | 中 | 中（需 MVCC） |
-| P1 | F-4b: MemoryStorage 事务 | 中 | 中 |
-| P1 | F-1a: INSERT SELECT | 中 | 低 |
-| P2 | F-1b-e: 其他 DML 增强 | 中-高 | 中 |
-| P2 | F-2: UNION 扩展 | 中 | 中（parser + executor） |
-| P3 | F-3: Cypher 增强 | 高 | 高（parser + executor） |
-| — | F-5/F-6/F-7 | 手动运行 | — |
-
----
-
-## v3.10.0 配套文档
-
-- `IGNORE_REGISTRY_2026-06-25.md` — 完整 ignore 清单（含历史）
-- `V390_DEVELOPMENT_PLAN.md` — v3.9.0 架构债/可靠性任务
-- `LONG_STABILITY_TESTS_ANALYSIS.md` — 长时测试详细分析
+| 文档 | 内容 |
+|------|------|
+| `IGNORE_REGISTRY_2026-06-25.md` | 完整 ignore 清单（已更新至 44 个） |
+| `V390_DEVELOPMENT_PLAN.md` | v3.9.0 架构债/可靠性任务 |
+| `ARCH_SEM_DEBT_REMEDIATION_PLAN.md` | ARCH-1~3 + SEM-1~4 债务详情 |
+| `INT5_PLUS_DEBT_INVENTORY.md` | v3.0.0~v3.8.0 跨版本债务全量清单 |
+| `LONG_STABILITY_TESTS_ANALYSIS.md` | 长时测试详细分析 |
+| `V390_COMPREHENSIVE_ASSESSMENT.md` | v3.9.0 综合评估 |
