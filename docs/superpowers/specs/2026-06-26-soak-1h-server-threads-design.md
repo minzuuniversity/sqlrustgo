@@ -145,10 +145,10 @@ pub struct EphemeralConfig {
     pub data_dir: Option<std::path::PathBuf>,
     pub bootstrap_sql: Vec<String>,
     pub bulk_insert_buffer_size: usize,
-    pub server_threads: Option<usize>,     // ← NEW
-                                            // None  = use CLI default 16
-                                            // Some(0) = unbounded (legacy)
-                                            // Some(N>0) = worker pool size
+    pub server_threads: usize,            // ← NEW (concrete, 与 CLI 默认对齐)
+                                            // 0 = 不限流 (legacy, 仅显式传入)
+                                            // 1..=80 = worker pool size
+                                            // 默认 16 (与 main.rs CLI 默认一致)
 }
 
 impl Default for EphemeralConfig {
@@ -160,11 +160,16 @@ impl Default for EphemeralConfig {
             data_dir: None,
             bootstrap_sql: Vec::new(),
             bulk_insert_buffer_size: 1_048_576,
-            server_threads: None,            // ← NEW
+            server_threads: 16,              // ← NEW (与 CLI 默认一致)
         }
     }
 }
 ```
+
+> **注意:** 与 `data_dir: Option<PathBuf>` (None = auto-create temp dir) 不同,
+> `server_threads` 是**单一数字**而非 Option — 因为没有"未指定"的语义需求,
+> 测试 harness 与 CLI 共享同一默认值 16。`run_server_v2` 接到 CLI 解析的
+> `usize` 后, 直接 `EphemeralConfig { server_threads: cli_value, .. }` 覆盖。
 
 ## 3. 并发模型 (mpsc + worker pool)
 
@@ -197,12 +202,12 @@ pub struct ServerJob {
     pub addr: SocketAddr,
     pub storage: Arc<Storage>,         // 已是 Arc, clone cheap
     pub tls_config: Option<Arc<TlsConfig>>,
-    pub user_store: UserStore,         // 当前是 UserStore (待确认是否需 Arc)
+    pub user_store: UserStore,         // Clone cheap (derive Clone)
 }
 ```
 
-> **待确认:** `UserStore` 是否可廉价 clone (位于 `crates/mysql-server/src/lib.rs:2674`);
-> 若是 `Clone` cheap 即可直接 move; 否则包 `Arc`。
+> `UserStore` 已 derive `Clone, Default` (`crates/mysql-server/src/lib.rs:144`),
+> 内部 `HashMap<String, UserPassword>` clone 廉价, **直接 move 进 ServerJob 即可**, 不需 Arc 包装。
 
 ### 3.3 Worker 主循环 (含 panic 隔离)
 
@@ -251,9 +256,11 @@ while !shutdown.load(Ordering::SeqCst) {
 }
 
 // after — 有 pool 分支
-let pool = match server_threads {
-    Some(0) | None => None,    // 0 = 不限流 (legacy)
-    Some(n) => Some(ServerThreadPool::start(n, st.clone(), tc.clone(), us.clone())),
+// 注: server_threads 是 concrete usize (来自 CLI 默认 16 或用户指定 0..=80)
+let pool = if server_threads == 0 {
+    None    // 0 = 不限流 (legacy)
+} else {
+    Some(ServerThreadPool::start(server_threads, st.clone(), tc.clone(), us.clone()))
 };
 while !shutdown.load(Ordering::SeqCst) {
     match listener.accept() {
@@ -404,7 +411,7 @@ echo "ServerThreads=$SERVER_THREADS  Port=$PORT  Host=$HOST  Data=$DATA_DIR"
 | 2 | `crates/mysql-server/src/lib.rs` | `EphemeralConfig` 新增 `server_threads: Option<usize>` |
 | 3 | `crates/mysql-server/src/lib.rs` | 新增 `ServerJob` struct + `ServerThreadPool::start/join` + `worker_loop` |
 | 4 | `crates/mysql-server/src/lib.rs` | accept loop (lib.rs:2689-2708) 改为 match pool 模式 |
-| 5 | `crates/mysql-server/src/lib.rs` | `run_server_v2` / `run_server_with_listener_and_shutdown_with_bootstrap_tables_and_sql` 新增 `server_threads: usize` 参数 |
+| 5 | `crates/mysql-server/src/lib.rs` | `run_server_v2` / `run_server_with_listener_and_shutdown_with_bootstrap_tables_and_sql` 新增 `server_threads: usize` 参数 (concrete, 不为 Option) |
 | 6 | `crates/mysql-server/src/lib.rs` `#[cfg(test)] mod` | 新增 4 个 ServerThreadPool 单元测试 + 4 个 CLI 校验测试 |
 | 7 | `tests/server_thread_pool_e2e_test.rs` (新文件) | 3 个 e2e 集成测试 |
 | 8 | `scripts/stability/run_wired_soak.sh` | 默认值改 HOURS=1 / THREADS=16 / SERVER_THREADS=16 + 校验 + 启动命令 + 报告 |
