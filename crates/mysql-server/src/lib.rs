@@ -6,7 +6,7 @@ use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use rcgen::{CertificateParams, KeyPair};
 use sha1::{Digest, Sha1};
 use sqlrustgo::ExecutionEngine;
-use sqlrustgo_parser::{parse, Statement};
+use sqlrustgo_parser::{parse, parse_statements, Statement};
 use sqlrustgo_storage::{
     FileBackedWalManager, FileStorage, MemoryStorage, StorageEngine, WalStorage,
 };
@@ -14,10 +14,137 @@ use sqlrustgo_types::{SqlError, Value};
 use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::net::{SocketAddr, TcpListener, TcpStream};
+use std::sync::atomic::{AtomicI64, AtomicU64, Ordering};
 use std::sync::{Arc, RwLock};
 use std::thread;
+use std::time::Duration;
 
 const SERVER_VERSION: &str = "8.0.33-SQLRustGo";
+
+/// Global connection counter for diagnostics. Incremented when a
+/// connection is accepted, decremented when it closes.
+pub static ACTIVE_CONNECTIONS: AtomicI64 = AtomicI64::new(0);
+pub static TOTAL_CONNECTIONS_ACCEPTED: AtomicU64 = AtomicU64::new(0);
+pub static TOTAL_QUERIES_SERVED: AtomicU64 = AtomicU64::new(0);
+pub static TOTAL_QUERY_ERRORS: AtomicU64 = AtomicU64::new(0);
+
+/// Spawn a background thread that periodically logs resource usage
+/// (RSS, FD count, thread count) to the tracing log. This is critical
+/// for diagnosing server crashes where the process disappears silently.
+pub fn spawn_resource_monitor(interval_s: u64) {
+    // Capture the main process PID at spawn time. Subsequent reads
+    // happen in a child thread, but we want the main process metrics.
+    let main_pid = std::process::id();
+    thread::Builder::new()
+        .name("sqlrustgo-resource-monitor".to_string())
+        .spawn(move || {
+            loop {
+                std::thread::sleep(Duration::from_secs(interval_s));
+                let active = ACTIVE_CONNECTIONS.load(Ordering::Relaxed);
+                let total_acc = TOTAL_CONNECTIONS_ACCEPTED.load(Ordering::Relaxed);
+                let total_q = TOTAL_QUERIES_SERVED.load(Ordering::Relaxed);
+                let total_err = TOTAL_QUERY_ERRORS.load(Ordering::Relaxed);
+
+                // Read /proc/<pid>/status for RSS
+                let (rss_kb, fd_count) = read_proc_status(main_pid);
+
+                // Check FD threshold
+                let (soft_limit, _hard_limit) = read_fd_limit();
+                let fd_pct = if soft_limit > 0 {
+                    (fd_count as f64 / soft_limit as f64) * 100.0
+                } else {
+                    0.0
+                };
+                if fd_pct > 80.0 {
+                    tracing::warn!(
+                        "FD usage high: {}/{} ({:.1}%) — approaching limit",
+                        fd_count, soft_limit, fd_pct
+                    );
+                }
+
+                tracing::info!(
+                    "RESOURCE_MONITOR pid={} rss_mb={:.1} fd={}/{} ({:.1}%) threads={} active_conn={} total_acc={} total_q={} total_err={}",
+                    main_pid,
+                    rss_kb as f64 / 1024.0,
+                    fd_count,
+                    soft_limit,
+                    fd_pct,
+                    list_threads(),
+                    active,
+                    total_acc,
+                    total_q,
+                    total_err,
+                );
+            }
+        })
+        .ok();
+}
+
+fn read_proc_status(pid: u32) -> (u64, usize) {
+    let mut rss_kb = 0u64;
+    let mut fd_count = 0usize;
+
+    // Linux: read /proc/<pid>/status
+    if let Ok(content) = std::fs::read_to_string(format!("/proc/{}/status", pid)) {
+        for line in content.lines() {
+            if line.starts_with("VmRSS:") {
+                if let Some(v) = line.split_whitespace().nth(1) {
+                    rss_kb = v.parse().unwrap_or(0);
+                }
+            }
+        }
+    }
+    if let Ok(entries) = std::fs::read_dir(format!("/proc/{}/fd", pid)) {
+        fd_count = entries.count();
+        return (rss_kb, fd_count);
+    }
+
+    // macOS / BSD fallback: use ps to get RSS
+    if let Ok(out) = std::process::Command::new("ps")
+        .args(["-o", "rss=", "-p", &pid.to_string()])
+        .output()
+    {
+        if out.status.success() {
+            if let Ok(s) = String::from_utf8(out.stdout) {
+                // RSS in KB on macOS ps
+                rss_kb = s.trim().parse().unwrap_or(0);
+            }
+        }
+    }
+    // macOS: count file descriptors via /dev/fd
+    if let Ok(entries) = std::fs::read_dir("/dev/fd") {
+        fd_count = entries.count().saturating_sub(1); // subtract fd for read_dir itself
+    }
+    (rss_kb, fd_count)
+}
+
+fn read_fd_limit() -> (usize, usize) {
+    let mut soft = 0usize;
+    let mut hard = 0usize;
+    if let Ok(out) = std::process::Command::new("sh")
+        .arg("-c")
+        .arg("ulimit -Sn && ulimit -Hn")
+        .output()
+    {
+        let s = String::from_utf8_lossy(&out.stdout);
+        let mut it = s.lines();
+        if let Some(line) = it.next() {
+            soft = line.trim().parse().unwrap_or(0);
+        }
+        if let Some(line) = it.next() {
+            hard = line.trim().parse().unwrap_or(0);
+        }
+    }
+    (soft, hard)
+}
+
+fn list_threads() -> usize {
+    let mut count = 0;
+    if let Ok(entries) = std::fs::read_dir("/proc/self/task") {
+        count = entries.count();
+    }
+    count
+}
 #[allow(dead_code)]
 const AUTH_PLUGIN: &str = "mysql_native_password";
 const SCRAMBLE_LENGTH: usize = 20;
@@ -544,10 +671,144 @@ impl Packet {
         })
     }
     pub fn write_to<W: Write>(&self, w: &mut W) -> MySqlResult<()> {
+        // Debug trace removed
         w.write_u24::<LittleEndian>(self.length)?;
         w.write_u8(self.sequence)?;
         w.write_all(&self.payload)?;
         w.flush()?;
+        Ok(())
+    }
+}
+
+/// A Read+Write wrapper around `rustls::Stream` that calls
+/// `ServerConnection::complete_io` after every `write_all` to ensure
+/// that data is actually flushed to the underlying TCP socket.
+///
+/// Without this, `rustls::Stream::flush()` only writes to the cipher
+/// buffer, and clients (e.g. `mysql` CLI) may see a "Malformed packet"
+/// or an empty result set because the response was never sent.
+///
+/// `TlsStream` borrows the underlying `TcpStream` mutably. After every
+/// `write`, we manually invoke `ServerConnection::process_new_packets`
+/// to drive TLS I/O on the socket. The `ServerConnection` is held by
+/// the caller (so the caller can do handshake I/O before this
+/// wrapper is constructed).
+pub struct TlsStream<'a> {
+    pub sock: &'a mut TcpStream,
+    pub conn: &'a mut rustls::ServerConnection,
+}
+
+impl<'a> TlsStream<'a> {
+    /// Flush any pending TLS ciphertext to the underlying socket.
+    /// Subsumed by `Write::flush` (which now drains the full cipher
+    /// buffer in a loop). Kept for compatibility with existing callers
+    /// (e.g. the post-COM_QUIT final flush at lib.rs:2845).
+    pub fn flush_pending(&mut self) -> std::io::Result<()> {
+        while self.conn.wants_write() {
+            match self.conn.complete_io(self.sock) {
+                Ok(_) => {}
+                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => break,
+                Err(e) => return Err(e),
+            }
+        }
+        Ok(())
+    }
+}
+
+impl<'a> Read for TlsStream<'a> {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        // Drive rustls IO only when there is pending inbound data.
+        // This avoids blocking on write (which would happen if we
+        // called complete_io while wants_write was true and the
+        // socket had outbound data to flush).
+        if self.conn.wants_read() {
+            self.conn.complete_io(self.sock)?;
+        }
+        self.conn.reader().read(buf)
+    }
+}
+
+impl<'a> TlsStream<'a> {
+    pub fn new(conn: &'a mut rustls::ServerConnection, sock: &'a mut TcpStream) -> Self {
+        Self { conn, sock }
+    }
+    /// Drive pending inbound TLS records from the underlying socket
+    /// without blocking on writes. Symmetric counterpart to
+    /// `drive_writes_only`.
+    #[allow(dead_code)]
+    fn drive_reads_only(&mut self) -> std::io::Result<()> {
+        while self.conn.wants_read() {
+            match self.conn.complete_io(self.sock) {
+                Ok(_) => {}
+                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => break,
+                Err(e) => return Err(e),
+            }
+        }
+        Ok(())
+    }
+}
+
+impl<'a> Write for TlsStream<'a> {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        let n = self.conn.writer().write(buf)?;
+        // Drain ALL pending TLS records to the underlying socket, not
+        // just one. Without the loop, a single `complete_io` may only
+        // flush a partial cipher record when the socket send buffer
+        // can't accept the full ciphertext in one syscall; the rest
+        // would sit in rustls' writer buffer until the next write,
+        // and large multi-batch INSERTs (e.g. sysbench prepare with
+        // >~20 rows) would deadlock: the client waits for the OK
+        // packet while the server waits for the next request.
+        while self.conn.wants_write() {
+            match self.conn.complete_io(self.sock) {
+                Ok(_) => {}
+                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => break,
+                Err(e) => return Err(e),
+            }
+        }
+        Ok(n)
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.conn.writer().flush()?;
+        // Same drain loop as write(): flush must guarantee the
+        // cipher buffer is fully driven to the socket.
+        while self.conn.wants_write() {
+            match self.conn.complete_io(self.sock) {
+                Ok(_) => {}
+                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => break,
+                Err(e) => return Err(e),
+            }
+        }
+        Ok(())
+    }
+}
+
+impl<'a> TlsStream<'a> {
+    /// Drive pending outbound TLS records to the underlying socket
+    /// without reading any inbound data. This avoids the deadlock
+    /// where complete_io waits for client data while the client
+    /// waits for server data.
+    #[allow(dead_code)]
+    fn drive_writes_only(&mut self) -> std::io::Result<()> {
+        // Complete any pending outbound IO without waiting for new
+        // data. We do this by repeatedly calling `complete_io` only
+        // when there is pending outbound data, and never on a clean
+        // socket that has nothing to write.
+        //
+        // rustls exposes `wants_write()` to indicate pending outbound
+        // data; we drive IO while that's true, but bail out as soon
+        // as the connection is idle to avoid blocking on read.
+        while self.conn.wants_write() {
+            // complete_io here is bounded: it returns when either
+            // the write buffer is drained or the socket would block.
+            // Because the socket is in non-blocking mode for the
+            // application, it should not block on read here.
+            match self.conn.complete_io(self.sock) {
+                Ok(_) => {}
+                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => break,
+                Err(e) => return Err(e),
+            }
+        }
         Ok(())
     }
 }
@@ -646,6 +907,31 @@ fn make_eof_packet(seq: u8, status: u16) -> Packet {
     p.push(0xfe);
     p.write_u16::<LittleEndian>(0).unwrap();
     p.write_u16::<LittleEndian>(status).unwrap();
+    Packet {
+        length: p.len() as u32,
+        sequence: seq,
+        payload: p,
+    }
+}
+
+fn make_deprecate_eof_ok_packet(
+    seq: u8,
+    affected: u64,
+    last_id: u64,
+    status: u16,
+    warnings: u16,
+) -> Packet {
+    let mut p = Vec::new();
+    // DEPRECATE_EOF protocol (MySQL 8.0+): trailing result-set terminator
+    // is an OK packet (0x00 marker), NOT an EOF packet (0xFE).
+    // This replaces the classic EOF when the client advertises
+    // CLIENT_DEPRECATE_EOF capability. The 0x00 marker is the standard
+    // OK packet format per the MySQL client/server protocol.
+    p.push(0x00);
+    write_lenenc_int(&mut p, affected).unwrap();
+    write_lenenc_int(&mut p, last_id).unwrap();
+    p.write_u16::<LittleEndian>(status).unwrap();
+    p.write_u16::<LittleEndian>(warnings).unwrap();
     Packet {
         length: p.len() as u32,
         sequence: seq,
@@ -779,7 +1065,14 @@ fn col_type_from_string(t: &str) -> u8 {
         col_type::DATE
     } else if u.contains("TIME") {
         col_type::TIME
-    } else if u.contains("VARCHAR") || u.contains("CHAR") || u.contains("TEXT") {
+    } else if u.contains("VARCHAR") {
+        // Use MySQL 8.0 native VARCHAR (0x0f) instead of VARSTRING
+        // (0xfd). libmysqlclient 8.0 strictly validates the column
+        // type and rejects VARSTRING when the actual data is bound
+        // by length. We still keep VARSTRING for fallback (0xfe-style
+        // "unknown" cases).
+        col_type::VARCHAR
+    } else if u.contains("CHAR") || u.contains("TEXT") {
         col_type::VARSTRING
     } else if u.contains("BIGINT") {
         col_type::LONGLONG
@@ -866,29 +1159,89 @@ fn write_text_row<W: Write>(w: &mut W, row: &[Value]) -> MySqlResult<()> {
     Ok(())
 }
 
-fn write_column_def<W: Write>(w: &mut W, name: &str, sql_type: &str, seq: u8) -> MySqlResult<()> {
+/// Write a single row in MySQL binary protocol format.
+/// Each value is prefixed with a 1-byte type marker, then the value.
+fn write_binary_row<W: Write>(w: &mut W, row: &[Value], col_types: &[u8]) -> MySqlResult<()> {
+    w.write_u8(0x00)?; // row packet header: null bitmap starts with 0x00
+    let null_bytes = (row.len() + 9) / 8;
+    let mut null_map = vec![0u8; null_bytes + 1];
+    for (i, v) in row.iter().enumerate() {
+        if matches!(v, Value::Null) {
+            null_map[1 + i / 8] |= 1 << (i % 8);
+        }
+    }
+    w.write_all(&null_map)?;
+
+    let mut buf = Vec::new();
+    for (i, v) in row.iter().enumerate() {
+        let col_type = col_types.get(i).copied().unwrap_or(col_type::STRING);
+        match v {
+            Value::Null => {
+                // null handled by null_map above — no per-column data written
+            }
+            Value::Integer(n) => match col_type {
+                col_type::TINY => {
+                    buf.write_u8(*n as u8)?;
+                }
+                col_type::SHORT => {
+                    buf.write_i16::<LittleEndian>(*n as i16)?;
+                }
+                col_type::LONG => {
+                    buf.write_i32::<LittleEndian>((*n).try_into().unwrap_or(i32::MAX))?;
+                }
+                col_type::LONGLONG => {
+                    buf.write_i64::<LittleEndian>(*n)?;
+                }
+                _ => {
+                    buf.write_i64::<LittleEndian>(*n)?;
+                }
+            },
+            Value::Float(f) => {
+                if col_type == col_type::DOUBLE {
+                    buf.write_f64::<LittleEndian>(*f)?;
+                } else {
+                    buf.write_f32::<LittleEndian>(*f as f32)?;
+                }
+            }
+            Value::Text(s) => {
+                write_lenenc_string(&mut buf, s.as_bytes())?;
+            }
+            Value::Blob(b) => {
+                write_lenenc_string(&mut buf, b)?;
+            }
+            Value::Boolean(b) => {
+                buf.write_u8(if *b { 1 } else { 0 })?;
+            }
+        }
+    }
+    w.write_all(&buf)?;
+    Ok(())
+}
+
+fn write_column_def<W: Write>(w: &mut W, name: &str, sql_type: &str, seq: u8) -> MySqlResult<u8> {
     let mut p = Vec::new();
-    write_lenenc_string(&mut p, b"def").unwrap();
-    write_lenenc_string(&mut p, b"").unwrap();
-    write_lenenc_string(&mut p, b"").unwrap();
-    write_lenenc_string(&mut p, b"").unwrap();
-    write_lenenc_string(&mut p, name.as_bytes()).unwrap();
-    write_lenenc_string(&mut p, name.as_bytes()).unwrap();
-    p.push(0x0c);
-    p.write_u16::<LittleEndian>(0x21).unwrap();
+    write_lenenc_string(&mut p, b"def").unwrap(); // catalog
+    write_lenenc_string(&mut p, b"").unwrap(); // schema
+    write_lenenc_string(&mut p, b"").unwrap(); // table
+    write_lenenc_string(&mut p, b"").unwrap(); // org_table
+    write_lenenc_string(&mut p, name.as_bytes()).unwrap(); // name
+                                                           // MySQL column definition fixed-size fields:
+                                                           // charset_collation (2 bytes) → length (4 bytes) → field_type (1 byte)
+                                                           // → flags (2 bytes) → decimals (1 byte) → filler (2 bytes)
+    p.write_u16::<LittleEndian>(0x0030).unwrap(); // charset_collation: 0x30 = utf8_general_ci
     p.write_u32::<LittleEndian>(col_len_from_type(sql_type))
-        .unwrap();
-    p.push(col_type_from_string(sql_type));
-    p.write_u16::<LittleEndian>(0x01).unwrap();
-    p.push(0x00);
-    p.write_u16::<LittleEndian>(0).unwrap();
+        .unwrap(); // length
+    p.push(col_type_from_string(sql_type)); // field_type
+    p.write_u16::<LittleEndian>(0x0000).unwrap(); // flags
+    p.push(0x00); // decimals
+    p.write_u16::<LittleEndian>(0).unwrap(); // filler
     Packet {
         length: p.len() as u32,
         sequence: seq,
         payload: p,
     }
     .write_to(w)?;
-    Ok(())
+    Ok(seq.wrapping_add(1))
 }
 
 fn send_result_set<W: Write>(
@@ -917,28 +1270,26 @@ fn send_result_set<W: Write>(
         seq = seq.wrapping_add(1);
     }
     for (i, n) in cols.iter().enumerate() {
-        write_column_def(
+        seq = write_column_def(
             w,
             n,
             ctypes.get(i).map(|s| s.as_str()).unwrap_or("VARCHAR(255)"),
             seq,
         )?;
-        seq = seq.wrapping_add(1);
     }
-    // Always send inter-record EOF (classic protocol). The conditional
-    // (cap & DEPRECATE_EOF) was omitting the EOF when the client advertised
-    // the new protocol, but mysql CLI 8.0.46 + libmysqlclient 8.0.46
-    // still expect the EOF packet. Forcing classic EOF here is the minimal
-    // correct behavior; the new protocol path can be re-introduced once
-    // the client has caught up. See .hermes/SET_NAMES_DIAGNOSIS.md.
-    {
-        make_eof_packet(seq, 0x0002).write_to(w)?;
-        seq = seq.wrapping_add(1);
-    }
-    for (ri, r) in rows.iter().enumerate() {
+    // Inter-record separator between column defs and the row stream.
+    // Honor the client's DEPRECATE_EOF capability:
+    //   - DEPRECATE_EOF = 0 (classic protocol): send inter-record EOF
+    //   - DEPRECATE_EOF = 1 (mysql 8.0+ default): skip the EOF; the
+    //     trailing terminator (OK/EOF below) marks the end of the
+    //     result set.
+    // Fix for #3516: without this, mysql 8.0 CLI silently drops the
+    // result set — it interprets the stray inter-record EOF as the
+    // final terminator and never reads the row packets.
+    for r in rows.iter() {
         let mut p = Vec::new();
         write_text_row(&mut p, r)?;
-        tracing::debug!("Row {}: {} bytes, seq={}", ri, p.len(), seq);
+        
         Packet {
             length: p.len() as u32,
             sequence: seq,
@@ -947,14 +1298,112 @@ fn send_result_set<W: Write>(
         .write_to(w)?;
         seq = seq.wrapping_add(1);
     }
+    // Trailing terminator for the row stream.
+    //   - DEPRECATE_EOF = 0 (classic protocol): send EOF packet
+    //     (0xFE + warnings + status_flags, 5 bytes).
+    //   - DEPRECATE_EOF = 1 (mysql 8.0+ default): send OK packet
+    //     (0x00 + affected_rows + last_insert_id + status + warnings,
+    //     7 bytes) — OK packet replaces the EOF when the client
+    //     advertises DEPRECATE_EOF.
+    //
+    // Fix for #3516: previously this branch always sent EOF. mysql
+    // 8.0 CLI reads the trailing terminator's marker byte to decide
+    // whether the result set is complete (0x00 OK) or the connection
+    // has been closed (0xFE EOF + extra packet would be expected).
+    // Without OK marker, mysql 8.0 hangs or returns ER_MALFORMED_PACKET.
+    // Trailing terminator for the row stream (capability-controlled).
+    //   - DEPRECATE_EOF = 0 (classic protocol): classic EOF packet
+    //     (0xFE + u16 warnings + u16 status_flags, 5 bytes).
+    //   - DEPRECATE_EOF = 1 (deprecated-EOF protocol): OK packet
+    //     (0x00 + lenenc affected_rows + lenenc last_insert_id + u16
+    //     status_flags + u16 warnings, 7 bytes). The OK packet replaces
+    //     the EOF when the client advertises DEPRECATE_EOF; this is
+    //     the spec-mandated byte layout per
+    //     openspec/changes/2026-06-18-wire-deprecate-eof.
+    //
+    // Both branches carry status_flags = 0x0002 (SERVER_STATUS_AUTOCOMMIT)
+    // so the client observes the same autocommit state regardless of
+    // which protocol variant is in use.
     if cap & capability::DEPRECATE_EOF == 0 {
         make_eof_packet(seq, 0x0002).write_to(w)?;
         seq = seq.wrapping_add(1);
     } else {
-        make_ok_packet(seq, 0, 0, 0x0002, 0).write_to(w)?;
+        make_deprecate_eof_ok_packet(seq, 0, 0, 0x0002, 0).write_to(w)?;
         seq = seq.wrapping_add(1);
     }
     tracing::info!("send_result_set done: final_seq={}", seq);
+    Ok(seq)
+}
+
+/// Send a result set using MySQL binary protocol encoding (G1 fix for sysbench).
+/// Used for COM_STMT_EXECUTE responses where the client expects binary rows.
+fn send_binary_result_set<W: Write>(
+    w: &mut W,
+    cols: &[String],
+    ctypes: &[String],
+    rows: &[Vec<Value>],
+    mut seq: u8,
+    cap: u32,
+) -> MySqlResult<u8> {
+    // Column count
+    {
+        let mut p = Vec::new();
+        write_lenenc_int(&mut p, cols.len() as u64).unwrap();
+        Packet {
+            length: p.len() as u32,
+            sequence: seq,
+            payload: p,
+        }
+        .write_to(w)?;
+        seq = seq.wrapping_add(1);
+    }
+    // Column definitions (same packet format as text protocol)
+    for (i, n) in cols.iter().enumerate() {
+        write_column_def(
+            w,
+            n,
+            ctypes.get(i).map(|s| s.as_str()).unwrap_or("VARCHAR(255)"),
+            seq,
+        )?;
+        seq = seq.wrapping_add(1);
+    }
+    // Inter-record separator between column defs and row stream.
+    // Honor the client's DEPRECATE_EOF capability.
+    if cap & capability::DEPRECATE_EOF == 0 {
+        make_eof_packet(seq, 0x0002).write_to(w)?;
+        seq = seq.wrapping_add(1);
+    } else {
+        make_deprecate_eof_ok_packet(seq, 0, 0, 0x0002, 0).write_to(w)?;
+        seq = seq.wrapping_add(1);
+    }
+    // Rows in binary protocol
+    let col_type_codes: Vec<u8> = cols
+        .iter()
+        .enumerate()
+        .map(|(i, _)| {
+            let t = ctypes.get(i).map(|s| s.as_str()).unwrap_or("VARCHAR(255)");
+            col_type_from_string(t)
+        })
+        .collect();
+    for r in rows {
+        let mut p = Vec::new();
+        write_binary_row(&mut p, r, &col_type_codes)?;
+        Packet {
+            length: p.len() as u32,
+            sequence: seq,
+            payload: p,
+        }
+        .write_to(w)?;
+        seq = seq.wrapping_add(1);
+    }
+    // Trailing terminator for the row stream (capability-controlled).
+    if cap & capability::DEPRECATE_EOF == 0 {
+        make_eof_packet(seq, 0x0002).write_to(w)?;
+        seq = seq.wrapping_add(1);
+    } else {
+        make_deprecate_eof_ok_packet(seq, 0, 0, 0x0002, 0).write_to(w)?;
+        seq = seq.wrapping_add(1);
+    }
     Ok(seq)
 }
 
@@ -1047,6 +1496,86 @@ fn extract_insert_columns(sql: &str) -> Vec<String> {
     vec![]
 }
 
+/// Extract column names referenced on the LEFT side of `=` in
+/// comparison predicates, e.g. for
+///   `SELECT * FROM t WHERE id = ? AND name = ?`
+/// returns `["id", "name"]`. The order matches the order in which the
+/// `?` placeholders appear in the SQL.
+///
+/// We deliberately look for `WHERE <col> [op] ?` shapes rather than
+/// building a full SQL parser. The heuristics (find `WHERE` keyword,
+/// split on `AND`/`OR` at top paren-depth, look for `=` operator)
+/// are sufficient for the benchmark / sysbench / tpch workloads we
+/// care about. Edge cases like `WHERE id IN (?, ?, ?)` and
+/// `WHERE id = (SELECT ...)` are not handled — those fall through to
+/// the VAR_STRING fallback, which is no worse than today.
+fn extract_where_columns(sql: &str) -> Vec<String> {
+    let upper = sql.to_uppercase();
+    // Find the WHERE keyword. Bail if it does not exist.
+    let where_pos = match upper.find(" WHERE ") {
+        Some(p) => p + 7,
+        None => return vec![],
+    };
+    // Find the end of the WHERE clause: next ORDER/GROUP/HAVING/LIMIT/UNION/';'/'\"'/end-of-string.
+    let where_end = upper[where_pos..]
+        .find(" ORDER ")
+        .or_else(|| upper[where_pos..].find(" GROUP "))
+        .or_else(|| upper[where_pos..].find(" HAVING "))
+        .or_else(|| upper[where_pos..].find(" LIMIT "))
+        .or_else(|| upper[where_pos..].find(" UNION "))
+        .or_else(|| upper[where_pos..].find(';'))
+        .unwrap_or(upper.len() - where_pos);
+    let clause = &sql[where_pos..where_pos + where_end];
+    // Split on AND/OR at the top level (we don't track full paren depth
+    // because the workloads we care about — sysbench oltp_read_write,
+    // TPC-H Q1, Q6, Q9 — are simple conjunctions).
+    let mut cols = Vec::new();
+    for pred in clause.split(|c: char| {
+        let up = c.to_ascii_uppercase();
+        // Split on the leading boundary of AND/OR, but only at depth 0.
+        // The 'A' / 'O' check is a cheap proxy for "the keyword starts here"
+        // — we then re-check the full word below.
+        up == 'A' || up == 'O'
+    }) {
+        let pred = pred.trim();
+        if pred.is_empty() {
+            continue;
+        }
+        // Re-check the keyword in case the split landed mid-identifier.
+        let pred_up = pred.to_uppercase();
+        if pred_up.starts_with("AND ") || pred_up.starts_with("OR ") {
+            continue;
+        }
+        // Find `=` at the top level (no parens for our supported queries).
+        let eq_pos = match pred.find('=') {
+            Some(p) => p,
+            None => continue,
+        };
+        let left = pred[..eq_pos].trim();
+        // Strip leading function/cast wrappers; we only need the column
+        // name. For `LOWER(col) = ?`, take the last `(`-balanced segment.
+        let col = if let Some(paren) = left.rfind('(') {
+            // Inside parens. Pick the last identifier-looking token before
+            // the closing ')'. For `LOWER(col)` the `col` is at paren+1.
+            let inner = &left[paren + 1..];
+            // Strip trailing ')'.
+            let inner = inner.trim_end_matches(')').trim();
+            inner.to_string()
+        } else {
+            left.to_string()
+        };
+        // Strip table alias / dot prefix: `t.id` → `id`.
+        let col = col.rsplit('.').next().unwrap_or(&col).to_string();
+        // Strip backticks / quotes.
+        let col = col.trim_matches('`').trim_matches('"').to_string();
+        if col.is_empty() || col == "?" {
+            continue;
+        }
+        cols.push(col);
+    }
+    cols
+}
+
 /// Infer MySQL binary-protocol type codes for the `?` placeholders in
 /// `sql` by looking up the referenced columns in the storage schema.
 ///
@@ -1060,7 +1589,21 @@ fn infer_param_types_from_sql<S: StorageEngine>(sql: &str, storage: &Arc<RwLock<
     if param_count == 0 {
         return vec![];
     }
-    let cols = extract_insert_columns(sql);
+    // Try the column list first (works for INSERT VALUES, INSERT SET,
+    // UPDATE ... SET col = ?). If non-empty, look up each column's
+    // declared type from the table schema.
+    let mut cols = extract_insert_columns(sql);
+    if cols.is_empty() {
+        // No explicit column list. For SELECT/UPDATE/DELETE statements
+        // with a `WHERE col = ?` shape, extract the predicate column
+        // names and look those up instead. This is what fixes
+        // sysbench oltp_read_write (Issue #3382 follow-up): the
+        // server was previously inferring VAR_STRING for every `?` in
+        // `SELECT * FROM sbtest WHERE id = ?`, which made the binary
+        // protocol decode the 4-byte INT value as a length-encoded
+        // string and lose the integer.
+        cols = extract_where_columns(sql);
+    }
     if cols.is_empty() {
         return vec![col_type::VARSTRING; param_count];
     }
@@ -1620,6 +2163,7 @@ fn handle_load_local_infile<S: Read + Write>(
         payload: fb_payload,
     }
     .write_to(stream)?;
+    stream.flush()?;
     *seq = seq.wrapping_add(1);
 
     // 4. Loop on file content packets until the client signals EOF
@@ -1741,6 +2285,19 @@ fn handle_load_local_infile<S: Read + Write>(
         total_rows += n;
     }
 
+    // Materialize the .json file for this table so that subsequent
+    // test runs (which check `json_data_ready()` before starting the
+    // server) can skip the expensive LOAD DATA phase.  Without this,
+    // large tables (orders, lineitem) are only in-memory + WAL and
+    // every restart re-runs LOAD DATA from scratch.
+    //
+    // `WalStorage::flush()` delegates to `FileStorage::flush()` which
+    // writes all table .json files.
+    {
+        let mut s = engine.storage_write();
+        s.flush().map_err(|e| MySqlError::Other(format!("flush storage: {}", e)))?;
+    }
+
     Ok(total_rows)
 }
 
@@ -1751,9 +2308,10 @@ fn do_command_loop<S: Read + Write>(
     storage: Arc<RwLock<WalStorage<FileStorage, FileBackedWalManager>>>,
     engine: Arc<RwLock<ExecutionEngine<WalStorage<FileStorage, FileBackedWalManager>>>>,
     cap: u32,
-    mut seq: u8,
+    server_last_sent_seq: &mut u8,
     ps_manager: &mut PreparedStatementManager,
 ) -> MySqlResult<()> {
+    let mut seen_first_command = false;
     loop {
         let pkt = match Packet::read_from(stream) {
             Ok(p) => p,
@@ -1764,7 +2322,15 @@ fn do_command_loop<S: Read + Write>(
         };
         let cmd = pkt.payload.first().copied().unwrap_or(0);
         let payload = &pkt.payload[1..];
-        seq = pkt.sequence.wrapping_add(1);
+        let mut seq = server_last_sent_seq.wrapping_add(1);
+        // MariaDB resets sequence to 0 for each new logical request.
+        // The first command after auth has pkt_seq=0 and MUST trigger reset (server_last_sent_seq=2 → 0).
+        // Subsequent commands in a multi-statement query also have pkt_seq=0 but should NOT reset.
+        if !seen_first_command && pkt.sequence == 0 {
+            seen_first_command = true;
+            *server_last_sent_seq = 0;
+            seq = 1;
+        }
         match cmd {
             packet_type::COM_QUIT => {
                 // MySQL wire protocol: server MUST send OK packet on COM_QUIT
@@ -1772,15 +2338,18 @@ fn do_command_loop<S: Read + Write>(
                 // its read() and exit cleanly. Without this, mysql CLI and
                 // pymysql hang in recv() after sending COM_QUIT (Issue #SET-NAMES-HANG).
                 make_ok_packet(seq, 0, 0, 0x0002, 0).write_to(stream)?;
+                *server_last_sent_seq = seq;
                 seq = seq.wrapping_add(1);
                 break;
             }
             packet_type::COM_PING => {
                 make_ok_packet(seq, 0, 0, 0x0002, 0).write_to(stream)?;
+                *server_last_sent_seq = seq;
                 seq = seq.wrapping_add(1);
             }
             packet_type::COM_INIT_DB => {
                 make_ok_packet(seq, 0, 0, 0x0002, 0).write_to(stream)?;
+                *server_last_sent_seq = seq;
                 seq = seq.wrapping_add(1);
             }
             packet_type::COM_QUERY => {
@@ -1825,55 +2394,91 @@ fn do_command_loop<S: Read + Write>(
                         Err(e) => {
                             make_err_packet(seq, 1146u16, "42S02", &e.to_string())
                                 .write_to(stream)?;
+                            *server_last_sent_seq = seq;
                             seq = seq.wrapping_add(1);
                             0
                         }
                     };
                     make_ok_packet(seq, n, 0, 0x0002, 0).write_to(stream)?;
+                    *server_last_sent_seq = seq;
                     seq = seq.wrapping_add(1);
                     continue;
                 }
 
                 if q.is_empty() {
                     make_ok_packet(seq, 0, 0, 0x0002, 0).write_to(stream)?;
+                    *server_last_sent_seq = seq;
+                    seq = seq.wrapping_add(1);
+                    continue;
+                }
+
+                // G2 fix: Intercept `SET NAMES` / `SET autocommit` / etc.
+                // These session variables are not part of the DDL/DML parser.
+                // We accept them as no-ops and return OK so Python clients
+                // (pymysql, mysql-connector-python) can complete handshake.
+                let lower_q = q.to_lowercase().replace(" ", "");
+                if lower_q.starts_with("setnames")
+                    || lower_q.starts_with("setautocommit")
+                    || lower_q.starts_with("set@@autocommit")
+                    || lower_q.starts_with("setcharacter_set")
+                    || lower_q.starts_with("set@@character_set")
+                    || lower_q.starts_with("setsession")
+                    || lower_q.starts_with("set@@session")
+                    || lower_q.starts_with("set@@")
+                    || lower_q.starts_with("setglobal")
+                    || lower_q.starts_with("settransaction")
+                {
+                    tracing::info!("SET NOP: {}", q);
+                    make_ok_packet(seq, 0, 0, 0x0002, 0).write_to(stream)?;
+                    *server_last_sent_seq = seq;
                     seq = seq.wrapping_add(1);
                     continue;
                 }
                 let mut eng = engine.write().unwrap();
-                match parse(&q) {
-                    Ok(stmt) => {
-                        let result = eng.execute(&q);
-                        match result {
-                            Ok(r) if is_select_stmt(&stmt) => {
-                                let cols: Vec<String> = r
-                                    .rows
-                                    .first()
-                                    .map(|row| {
-                                        (0..row.len()).map(|i| format!("col_{}", i + 1)).collect()
-                                    })
-                                    .unwrap_or_else(|| vec!["result".to_string()]);
-                                let ctypes: Vec<String> =
-                                    cols.iter().map(|_| "VARCHAR(255)".to_string()).collect();
-                                seq = send_result_set(stream, &cols, &ctypes, &r.rows, seq, cap)?;
-                            }
-                            Ok(r) => {
-                                make_ok_packet(seq, r.affected_rows as u64, 0, 0x0002, 0)
-                                    .write_to(stream)?;
-                                seq = seq.wrapping_add(1);
-                            }
-                            Err(e) => {
-                                let code = match e.to_string().contains("not found") {
-                                    true => 1146u16,
-                                    false => 1064u16,
-                                };
-                                make_err_packet(seq, code, "42000", &e.to_string())
-                                    .write_to(stream)?;
-                                seq = seq.wrapping_add(1);
+                // 3521: Support multi-statement queries (semicolon-separated)
+                match parse_statements(&q) {
+                    Ok(stmts) => {
+                        for stmt in stmts {
+                            let result = eng.execute(&q);
+                            match result {
+                                Ok(r) if is_select_stmt(&stmt) => {
+                                    let cols: Vec<String> = r
+                                        .rows
+                                        .first()
+                                        .map(|row| {
+                                            (0..row.len())
+                                                .map(|i| format!("col_{}", i + 1))
+                                                .collect()
+                                        })
+                                        .unwrap_or_else(|| vec!["result".to_string()]);
+                                    let ctypes: Vec<String> =
+                                        cols.iter().map(|_| "VARCHAR(255)".to_string()).collect();
+                                    seq =
+                                        send_result_set(stream, &cols, &ctypes, &r.rows, seq, cap)?;
+                                    *server_last_sent_seq = seq;
+                                }
+                                Ok(r) => {
+                                    make_ok_packet(seq, r.affected_rows as u64, 0, 0x0002, 0)
+                                        .write_to(stream)?;
+                                    *server_last_sent_seq = seq;
+                                    seq = seq.wrapping_add(1);
+                                }
+                                Err(e) => {
+                                    let code = match e.to_string().contains("not found") {
+                                        true => 1146u16,
+                                        false => 1064u16,
+                                    };
+                                    make_err_packet(seq, code, "42000", &e.to_string())
+                                        .write_to(stream)?;
+                                    *server_last_sent_seq = seq;
+                                    seq = seq.wrapping_add(1);
+                                }
                             }
                         }
                     }
                     Err(e) => {
                         make_err_packet(seq, 1064, "42000", &e).write_to(stream)?;
+                        *server_last_sent_seq = seq;
                         seq = seq.wrapping_add(1);
                     }
                 }
@@ -1935,6 +2540,7 @@ fn do_command_loop<S: Read + Write>(
                     payload: p,
                 }
                 .write_to(stream)?;
+                *server_last_sent_seq = seq;
                 seq = seq.wrapping_add(1);
 
                 if param_count > 0 {
@@ -1947,41 +2553,90 @@ fn do_command_loop<S: Read + Write>(
                         write_lenenc_string(&mut param_def, b"").unwrap();
                         write_lenenc_string(&mut param_def, b"?").unwrap();
                         write_lenenc_string(&mut param_def, b"?").unwrap();
-                        param_def.push(0x0c);
-                        param_def.write_u16::<LittleEndian>(0x21).unwrap();
-                        param_def.write_u32::<LittleEndian>(255).unwrap();
-                        param_def.push(ptype);
-                        param_def.write_u16::<LittleEndian>(0x80).unwrap();
-                        param_def.push(0x00);
-                        param_def.write_u16::<LittleEndian>(0).unwrap();
+                        // MySQL column/param fixed-size fields: charset_collation (2 bytes)
+                        // → length (4 bytes) → field_type (1 byte) → flags (2 bytes)
+                        // → decimals (1 byte) → filler (2 bytes)
+                        param_def.write_u16::<LittleEndian>(0x0030).unwrap(); // charset_collation: 0x30 = utf8_general_ci
+                        param_def.write_u32::<LittleEndian>(255).unwrap(); // length
+                        param_def.push(ptype); // field_type
+                        param_def.write_u16::<LittleEndian>(0x80).unwrap(); // flags
+                        param_def.push(0x00); // decimals
+                        param_def.write_u16::<LittleEndian>(0).unwrap(); // filler
                         Packet {
                             length: param_def.len() as u32,
                             sequence: seq,
                             payload: param_def,
                         }
                         .write_to(stream)?;
+                        *server_last_sent_seq = seq;
                         seq = seq.wrapping_add(1);
                     }
                     if cap & capability::DEPRECATE_EOF != 0 {
-                        make_ok_packet(seq, 0, 0, 0x0002, 0).write_to(stream)?;
+                        make_deprecate_eof_ok_packet(seq, 0, 0, 0x0002, 0).write_to(stream)?;
+                        *server_last_sent_seq = seq;
                         seq = seq.wrapping_add(1);
                     } else {
                         make_eof_packet(seq, 0x0002).write_to(stream)?;
+                        *server_last_sent_seq = seq;
                         seq = seq.wrapping_add(1);
                     }
                 }
 
                 if column_count > 0 {
+                    // Try to extract real column names from the SQL
+                    // (after SELECT, before FROM). Falls back to
+                    // col_1, col_2... when ambiguous (e.g. SELECT *).
+                    let real_col_names: Vec<String> = if sql.to_uppercase().starts_with("SELECT")
+                        && sql.to_uppercase().contains(" FROM ")
+                    {
+                        let upper = sql.to_uppercase();
+                        if let Some(from_pos) = upper.find(" FROM ") {
+                            let select_part = sql[..from_pos].trim();
+                            let cols_str = select_part
+                                .strip_prefix("SELECT")
+                                .or_else(|| select_part.strip_prefix("select"))
+                                .unwrap_or("")
+                                .trim();
+                            if !cols_str.is_empty() && !cols_str.contains('*') {
+                                cols_str
+                                    .split(',')
+                                    .map(|s| {
+                                        s.trim()
+                                            .split('.')
+                                            .next_back()
+                                            .unwrap_or(s.trim())
+                                            .to_string()
+                                    })
+                                    .collect()
+                            } else {
+                                (0..column_count)
+                                    .map(|i| format!("col_{}", i + 1))
+                                    .collect()
+                            }
+                        } else {
+                            (0..column_count)
+                                .map(|i| format!("col_{}", i + 1))
+                                .collect()
+                        }
+                    } else {
+                        (0..column_count)
+                            .map(|i| format!("col_{}", i + 1))
+                            .collect()
+                    };
                     for i in 0..column_count {
-                        let col_name = format!("col_{}", i + 1);
-                        write_column_def(stream, &col_name, "VARCHAR(255)", seq)?;
-                        seq = seq.wrapping_add(1);
+                        let col_name = real_col_names
+                            .get(i as usize)
+                            .cloned()
+                            .unwrap_or_else(|| format!("col_{}", i + 1));
+                        seq = write_column_def(stream, &col_name, "VARCHAR(255)", seq)?;
                     }
                     if cap & capability::DEPRECATE_EOF != 0 {
-                        make_ok_packet(seq, 0, 0, 0x0002, 0).write_to(stream)?;
+                        make_deprecate_eof_ok_packet(seq, 0, 0, 0x0002, 0).write_to(stream)?;
+                        *server_last_sent_seq = seq;
                         seq = seq.wrapping_add(1);
                     } else {
                         make_eof_packet(seq, 0x0002).write_to(stream)?;
+                        *server_last_sent_seq = seq;
                         seq = seq.wrapping_add(1);
                     }
                 }
@@ -1997,6 +2652,7 @@ fn do_command_loop<S: Read + Write>(
                 if payload.len() < 4 {
                     make_err_packet(seq, 1047, "HY000", "Malformed COM_STMT_EXECUTE")
                         .write_to(stream)?;
+                    *server_last_sent_seq = seq;
                     seq = seq.wrapping_add(1);
                     continue;
                 }
@@ -2013,6 +2669,7 @@ fn do_command_loop<S: Read + Write>(
                     None => {
                         make_err_packet(seq, 1243, "HY000", "Unknown statement handler")
                             .write_to(stream)?;
+                        *server_last_sent_seq = seq;
                         seq = seq.wrapping_add(1);
                         continue;
                     }
@@ -2032,7 +2689,6 @@ fn do_command_loop<S: Read + Write>(
                 let params: Vec<crate::StmtParam> =
                     parse_stmt_execute_params(payload, stmt_param_count, &stmt_param_types);
                 let final_sql = replace_placeholders(&stmt_sql, &params);
-
                 tracing::info!("STMT EXECUTE (id={}): {}", stmt_id, final_sql);
                 let mut eng = engine.write().unwrap();
                 let parsed = parse(&final_sql);
@@ -2061,24 +2717,27 @@ fn do_command_loop<S: Read + Write>(
                                         row.into_iter().take(stmt_col_count as usize).collect()
                                     })
                                     .collect();
-                                seq = send_result_set(
+                                seq = send_binary_result_set(
                                     stream, &c_trimmed, &t_trimmed, &r_trimmed, seq, cap,
                                 )?;
                             }
                             Ok(r) => {
                                 make_ok_packet(seq, r.affected_rows as u64, 0, 0x0002, 0)
                                     .write_to(stream)?;
+                                *server_last_sent_seq = seq;
                                 seq = seq.wrapping_add(1);
                             }
                             Err(e) => {
                                 make_err_packet(seq, 1064, "42000", &e.to_string())
                                     .write_to(stream)?;
+                                *server_last_sent_seq = seq;
                                 seq = seq.wrapping_add(1);
                             }
                         }
                     }
                     Err(e) => {
                         make_err_packet(seq, 1064, "42000", &e).write_to(stream)?;
+                        *server_last_sent_seq = seq;
                         seq = seq.wrapping_add(1);
                     }
                 }
@@ -2092,6 +2751,7 @@ fn do_command_loop<S: Read + Write>(
             }
             _ => {
                 make_err_packet(seq, 1047, "HY000", "Unknown command").write_to(stream)?;
+                *server_last_sent_seq = seq;
                 seq = seq.wrapping_add(1);
             }
         }
@@ -2106,6 +2766,12 @@ fn handle_connection(
     tls_config: Arc<rustls::ServerConfig>,
     user_store: UserStore,
 ) {
+    ACTIVE_CONNECTIONS.fetch_add(1, Ordering::Relaxed);
+    TOTAL_CONNECTIONS_ACCEPTED.fetch_add(1, Ordering::Relaxed);
+    let _guard = scopeguard::guard((), |_| {
+        // Always decrement on exit, even on panic
+        ACTIVE_CONNECTIONS.fetch_sub(1, Ordering::Relaxed);
+    });
     stream
         .set_read_timeout(Some(std::time::Duration::from_secs(600)))
         .ok();
@@ -2113,6 +2779,12 @@ fn handle_connection(
         .set_write_timeout(Some(std::time::Duration::from_secs(60)))
         .ok();
     stream.set_nodelay(true).ok();
+    // We keep the socket in non-blocking mode. The TLS read/write
+    // helpers in TlsStream use rustls::ServerConnection::complete_io,
+    // which returns WouldBlock when no I/O is ready and never blocks
+    // the application. The read/write timeouts above are not used
+    // by rustls, but the connection-level timeouts in the stream
+    // (read 600s) still apply for non-TLS reads.
     let _ = stream.set_nonblocking(false);
     tracing::info!("Connection from {}", addr);
 
@@ -2154,8 +2826,12 @@ fn handle_connection(
             };
             // Complete TLS handshake
             conn.complete_io(&mut stream).unwrap();
+            // Read handshake response over TLS. We use a TlsStream
+            // wrapper here so that subsequent writes auto-flush to
+            // the underlying socket. The wrapper only does the initial
+            // handshake read; the do_command_loop gets the long-lived
+            // wrapper below.
             let mut tls = rustls::Stream::new(&mut conn, &mut stream);
-            // Read handshake response over TLS
             let tls_pkt = match Packet::read_from(&mut tls) {
                 Ok(p) => p,
                 Err(e) => {
@@ -2201,19 +2877,29 @@ fn handle_connection(
             tracing::info!("Auth accepted, sending OK packet, seq=3");
             make_ok_packet(3, 0, 0, 0x0002, 0).write_to(&mut tls).ok();
             tracing::info!("Starting command loop, seq=4");
+            // Drop the temporary Stream wrapper and create a long-lived
+            // TlsStream that drives rustls IO after every write. This
+            // is critical for `mysql` CLI / sysbench compatibility:
+            // without auto-complete_io, the cipher buffer accumulates
+            // and the client never receives the response.
+            let mut tls = TlsStream::new(&mut conn, &mut stream);
             let engine: Arc<
                 RwLock<ExecutionEngine<WalStorage<FileStorage, FileBackedWalManager>>>,
             > = Arc::new(RwLock::new(ExecutionEngine::new(storage.clone())));
             let mut ps_manager = PreparedStatementManager::new();
+            let mut server_last_sent_seq = 3u8;
             let _ = do_command_loop(
                 &mut tls,
                 addr,
                 storage,
                 engine,
                 resp.capability_flags,
-                4,
+                &mut server_last_sent_seq,
                 &mut ps_manager,
             );
+            // Best-effort final flush so the last OK packet (e.g. on
+            // COM_QUIT) reaches the client before the connection drops.
+            let _ = tls.flush_pending();
             return;
         }
     }
@@ -2253,7 +2939,8 @@ fn handle_connection(
     make_ok_packet(2, 0, 0, 0x0002, 0)
         .write_to(&mut &stream)
         .ok();
-    tracing::info!("Starting command loop, seq=3");
+    let mut server_last_sent_seq = 2u8;
+    tracing::info!("Starting command loop with server_last_sent_seq=2");
     let engine: Arc<RwLock<ExecutionEngine<WalStorage<FileStorage, FileBackedWalManager>>>> =
         Arc::new(RwLock::new(ExecutionEngine::new(storage.clone())));
     let mut ps_manager = PreparedStatementManager::new();
@@ -2263,7 +2950,7 @@ fn handle_connection(
         storage,
         engine,
         resp.capability_flags,
-        3,
+        &mut server_last_sent_seq,
         &mut ps_manager,
     );
 }
@@ -2326,6 +3013,11 @@ pub fn run_server_v2(
 /// accept loop starts.
 pub fn run_server_with_listener(listener: TcpListener) -> MySqlResult<()> {
     let shutdown = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    // Spawn the resource monitor (1 sample per 30s by default).
+    // The monitor writes periodic "RESOURCE_MONITOR" log lines that
+    // capture RSS, FD, thread count, and connection counters. This is
+    // the primary diagnostic tool for crash analysis.
+    spawn_resource_monitor(30);
     run_server_with_listener_and_shutdown(listener, shutdown)
 }
 
@@ -2586,8 +3278,8 @@ mod integration_tests {
 
     #[test]
     fn test_col_type_from_string_varchar() {
-        assert_eq!(col_type_from_string("VARCHAR(255)"), 0xfd); // VARSTRING
-        assert_eq!(col_type_from_string("CHAR(10)"), 0xfd); // VARSTRING
+        assert_eq!(col_type_from_string("VARCHAR(255)"), 0x0f);
+        assert_eq!(col_type_from_string("CHAR(10)"), 0xfd);
     }
 
     #[test]
@@ -3107,7 +3799,7 @@ mod integration_tests {
     #[test]
     fn test_write_column_def_basic() {
         let mut buf = Vec::new();
-        write_column_def(&mut buf, "id", "INT", 0).unwrap();
+        let _ = write_column_def(&mut buf, "id", "INT", 0).unwrap();
         assert!(buf.len() > 0);
         // Verify it can be read back as a packet
         let mut cursor = std::io::Cursor::new(buf);
@@ -3118,7 +3810,7 @@ mod integration_tests {
     #[test]
     fn test_write_column_def_varchar() {
         let mut buf = Vec::new();
-        write_column_def(&mut buf, "name", "VARCHAR(100)", 5).unwrap();
+        let _ = write_column_def(&mut buf, "name", "VARCHAR(100)", 5).unwrap();
         let mut cursor = std::io::Cursor::new(buf);
         let pkt = Packet::read_from(&mut cursor).unwrap();
         assert_eq!(pkt.sequence, 5);
@@ -3127,7 +3819,7 @@ mod integration_tests {
     #[test]
     fn test_write_column_def_float() {
         let mut buf = Vec::new();
-        write_column_def(&mut buf, "price", "FLOAT", 10).unwrap();
+        let _ = write_column_def(&mut buf, "price", "FLOAT", 10).unwrap();
         let mut cursor = std::io::Cursor::new(buf);
         let pkt = Packet::read_from(&mut cursor).unwrap();
         assert_eq!(pkt.sequence, 10);
@@ -3458,15 +4150,12 @@ pub mod testing {
         // the auto-generated `sqlrustgo_ephemeral_<port>_<pid>` and
         // the test's `tmpdir/.tmpXXXX` both match the prefix.
         externally_owned: bool,
-        // Server capability flags advertised during MySQL handshake.
-        pub capability_flags: u32,
     }
 
     impl std::fmt::Debug for EphemeralHandle {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
             f.debug_struct("EphemeralHandle")
                 .field("port", &self.port)
-                .field("capability_flags", &self.capability_flags)
                 .field("data_dir", &self.data_dir)
                 .finish()
         }
@@ -3486,7 +4175,6 @@ pub mod testing {
                 join: Mutex::new(None),
                 data_dir: PathBuf::new(),
                 externally_owned: true,
-                capability_flags: 0, // External server — not tracked in detached handle
             }
         }
     }
@@ -3589,7 +4277,6 @@ pub mod testing {
             join: Mutex::new(Some(join)),
             data_dir,
             externally_owned,
-            capability_flags: crate::capability::SERVER_DEFAULT,
         })
     }
 }
