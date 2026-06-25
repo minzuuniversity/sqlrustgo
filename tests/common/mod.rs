@@ -312,7 +312,7 @@ fn parse_ok_packet_affected(pkt: &[u8]) -> wire_err::Result<u64> {
 
 /// Parse a length-encoded integer per the MySQL protocol (used for
 /// column counts in the COM_QUERY result-set header).
-fn read_lenenc_int(payload: &[u8], pos: &mut usize) -> wire_err::Result<u64> {
+pub fn read_lenenc_int(payload: &[u8], pos: &mut usize) -> wire_err::Result<u64> {
     if *pos >= payload.len() {
         return Err(wire_err::msg("lenenc int: out of bounds"));
     }
@@ -355,7 +355,7 @@ fn read_lenenc_int(payload: &[u8], pos: &mut usize) -> wire_err::Result<u64> {
 }
 
 /// Read a length-encoded string (1/3/4-byte length prefix + payload).
-fn read_lenenc_str<'a>(payload: &'a [u8], pos: &mut usize) -> wire_err::Result<&'a str> {
+pub fn read_lenenc_str<'a>(payload: &'a [u8], pos: &mut usize) -> wire_err::Result<&'a str> {
     let len = read_lenenc_int(payload, pos)? as usize;
     if *pos + len > payload.len() {
         return Err(wire_err::msg("lenenc str: oob"));
@@ -398,7 +398,13 @@ impl MySqlTestClient {
     /// Start an ephemeral server on `127.0.0.1` and connect to it as
     /// the `tester` user (password = `tester`). The test harness
     /// pre-creates this user via its bootstrap callback.
-    pub fn connect_default() -> wire_err::Result<Self> {
+    
+    /// Return the server's capability flags as negotiated in the MySQL handshake.
+    pub fn client_capabilities(&self) -> u32 {
+        self.handle.capability_flags
+    }
+
+pub fn connect_default() -> wire_err::Result<Self> {
         let handle = start_ephemeral(EphemeralConfig::default())
             .map_err(|e| wire_err::msg(format!("start_ephemeral: {e}")))?;
         Self::connect_handle(handle)
