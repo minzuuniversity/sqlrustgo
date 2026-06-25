@@ -83,6 +83,7 @@ pub struct ExecutionEngine<S: StorageEngine> {
     pub(crate) transaction_manager: TransactionManager,
     pub(crate) current_tx_id: Option<TxId>,
     pub(crate) tx_status: TxStatus,
+    pub(crate) tx_readonly: bool,
     pub(crate) default_isolation: TmIsolationLevel,
     pub(crate) current_role: Option<String>,
     /// CheckpointManager field — reserved for future PR-830F WAL lifecycle
@@ -140,6 +141,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             transaction_manager: TransactionManager::new(),
             current_tx_id: None,
             tx_status: TxStatus::Idle,
+            tx_readonly: false,
             default_isolation: TmIsolationLevel::default(),
             current_role: None,
             checkpoint_manager: None,
@@ -158,6 +160,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             transaction_manager: TransactionManager::new(),
             current_tx_id: None,
             tx_status: TxStatus::Idle,
+            tx_readonly: false,
             default_isolation: TmIsolationLevel::default(),
             current_role: None,
             checkpoint_manager: None,
@@ -176,6 +179,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             transaction_manager: TransactionManager::new(),
             current_tx_id: None,
             tx_status: TxStatus::Idle,
+            tx_readonly: false,
             default_isolation: TmIsolationLevel::default(),
             current_role: None,
             checkpoint_manager: None,
@@ -1136,6 +1140,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             TransactionStatement::Begin {
                 work: _,
                 isolation_level,
+                readonly,
             } => {
                 let iso = isolation_level
                     .as_ref()
@@ -1150,7 +1155,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                         ParserIsolationLevel::Serializable => TmIsolationLevel::Serializable,
                     })
                     .unwrap_or(self.default_isolation);
-                self.begin_transaction(iso)
+                self.begin_transaction(iso, *readonly)
             }
             TransactionStatement::Commit { work: _ } => self.commit_transaction(),
             TransactionStatement::Rollback { work: _ } => self.rollback_transaction(),
@@ -1177,12 +1182,12 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                         ParserIsolationLevel::Serializable => TmIsolationLevel::Serializable,
                     })
                     .unwrap_or(self.default_isolation);
-                self.begin_transaction(iso)
+self.begin_transaction(iso, false)
             }
         }
     }
 
-    fn begin_transaction(&mut self, isolation: TmIsolationLevel) -> SqlResult<ExecutorResult> {
+    fn begin_transaction(&mut self, isolation: TmIsolationLevel, readonly: bool) -> SqlResult<ExecutorResult> {
         if self.current_tx_id.is_some() {
             return Err(SqlError::ExecutionError(
                 "Transaction already in progress".to_string(),
@@ -1204,6 +1209,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             let _ = storage.begin_transaction();
         }
         self.tx_status = TxStatus::Active;
+        self.tx_readonly = readonly;
         Ok(ExecutorResult::new(
             vec![vec![Value::Integer(tx_id.as_u64() as i64)]],
             1,
@@ -1234,6 +1240,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         // this reset, subsequent DML would reject with
         // "transaction already committed".
         self.tx_status = TxStatus::Idle;
+        self.tx_readonly = false;
         Ok(ExecutorResult::empty())
     }
 
@@ -1300,6 +1307,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         // INT-1: Reset to Idle so the next DML can begin a new TX or run
         // in autocommit mode. (Same reasoning as commit_transaction above.)
         self.tx_status = TxStatus::Idle;
+        self.tx_readonly = false;
         Ok(ExecutorResult::empty())
     }
 
@@ -1823,6 +1831,11 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         op: &'static str,
         _table: &str,
     ) -> SqlResult<(Option<TxId>, bool)> {
+        if self.tx_readonly {
+            return Err(SqlError::ExecutionError(
+                "Cannot execute DML in READONLY transaction".to_string(),
+            ));
+        }
         match self.tx_status {
             TxStatus::Committed => {
                 return Err(SqlError::ExecutionError(
