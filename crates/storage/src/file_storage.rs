@@ -370,6 +370,35 @@ impl FileStorage {
         self.tables.contains_key(name)
     }
 
+    /// Create a new database directory under data_dir.
+    pub fn create_database(&mut self, db_name: &str) -> std::io::Result<()> {
+        let db_path = self.data_dir.join(db_name);
+        fs::create_dir_all(&db_path)?;
+        Ok(())
+    }
+
+    /// Drop a database directory. Refuses to drop if the directory is not empty.
+    pub fn drop_database(&mut self, db_name: &str) -> std::io::Result<()> {
+        let db_path = self.data_dir.join(db_name);
+        if db_path.exists() {
+            for entry in fs::read_dir(&db_path)? {
+                let entry = entry?;
+                let file_name = entry.file_name();
+                let name = file_name.to_string_lossy();
+                // Skip WAL files; reject everything else
+                if !name.ends_with(".wal") {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::DirectoryNotEmpty,
+                        format!("database '{}' is not empty", db_name),
+                    ));
+                }
+            }
+            fs::remove_dir(&db_path)?;
+        }
+        Ok(())
+    }
+
+
     /// Save a table to disk (call after modifications)
     pub fn persist_table(&self, name: &str) -> std::io::Result<()> {
         if let Some(table_data) = self.tables.get(name) {
