@@ -61,7 +61,11 @@ mod tests {
             readonly: false,
         };
         match stmt {
-            TransactionStatement::Begin { work, isolation_level, .. } => {
+            TransactionStatement::Begin {
+                work,
+                isolation_level,
+                ..
+            } => {
                 assert!(!work);
                 assert_eq!(isolation_level, Some(IsolationLevel::ReadCommitted));
             }
@@ -128,7 +132,11 @@ mod tests {
                 readonly: false,
             };
             match stmt {
-                TransactionStatement::Begin { work, isolation_level: Some(l), .. } => {
+                TransactionStatement::Begin {
+                    work,
+                    isolation_level: Some(l),
+                    ..
+                } => {
                     assert!(!work);
                     assert_eq!(&l, level);
                 }

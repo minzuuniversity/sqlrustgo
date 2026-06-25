@@ -42,6 +42,9 @@ fn test_tpch_qps_30s() {
 
     let elapsed = start.elapsed().as_secs_f64();
     let qps = queries as f64 / elapsed;
-    println!("30s QPS benchmark: {} queries, QPS={:.1}, elapsed={:.1}s", queries, qps, elapsed);
+    println!(
+        "30s QPS benchmark: {} queries, QPS={:.1}, elapsed={:.1}s",
+        queries, qps, elapsed
+    );
     assert!(qps > 0.1, "QPS too low: {:.1}", qps);
 }
