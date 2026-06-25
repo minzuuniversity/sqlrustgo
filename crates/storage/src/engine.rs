@@ -487,6 +487,21 @@ pub trait StorageEngine: Send + Sync {
         mutation: &RowMutation,
     ) -> SqlResult<usize>;
 
+    /// Create a new database (directory). No-op for in-memory engines.
+    fn create_database(&mut self, _db_name: &str) -> SqlResult<()> {
+        Err(SqlError::ExecutionError(
+            "create_database not supported by this storage engine".to_string(),
+        ))
+    }
+
+    /// Drop a database (directory). No-op for in-memory engines.
+    fn drop_database(&mut self, _db_name: &str) -> SqlResult<()> {
+        Err(SqlError::ExecutionError(
+            "drop_database not supported by this storage engine".to_string(),
+        ))
+    }
+
+    /// Create a table
     fn create_table(&mut self, info: &TableInfo) -> SqlResult<()>;
 
     /// Drop a table
