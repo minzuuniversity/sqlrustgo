@@ -25,10 +25,7 @@ use std::sync::{Arc, RwLock};
 // ========================================================================
 
 /// TX-001: INSERT without BEGIN → Ok (AUTOCOMMIT)
-/// Sprint 3 decision per docs/governance/issues/2026-06-03-tx-lifecycle-autocommit-conflict.md:
-/// Path A (engine.execute direct) follows MySQL AUTOCOMMIT=ON semantics.
 #[test]
-#[ignore = "Sprint 3 decision: ignored. Path A (engine.execute direct) follows MySQL AUTOCOMMIT=ON semantics, so INSERT without BEGIN now succeeds. Test expects Err which contradicts the Sprint 3 decision in docs/governance/issues/2026-06-03-tx-lifecycle-autocommit-conflict.md. Tracked in issue #2870 follow-up."]
 fn test_tx_lifecycle_insert_without_tx_err() {
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));
     let mut engine = ExecutionEngine::new(storage.clone());
@@ -49,9 +46,7 @@ fn test_tx_lifecycle_insert_without_tx_err() {
 }
 
 /// TX-002: UPDATE without BEGIN → Ok (AUTOCOMMIT)
-/// Sprint 3 decision per docs/governance/issues/2026-06-03-tx-lifecycle-autocommit-conflict.md.
 #[test]
-#[ignore = "Sprint 3 decision: ignored. Path A (engine.execute direct) follows MySQL AUTOCOMMIT=ON semantics, so UPDATE without BEGIN now succeeds. Test expects Err which contradicts the Sprint 3 decision in docs/governance/issues/2026-06-03-tx-lifecycle-autocommit-conflict.md. Tracked in issue #2870 follow-up."]
 fn test_tx_lifecycle_update_without_tx_err() {
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));
     let mut engine = ExecutionEngine::new(storage.clone());
@@ -71,9 +66,7 @@ fn test_tx_lifecycle_update_without_tx_err() {
 }
 
 /// TX-003: DELETE without BEGIN → Ok (AUTOCOMMIT)
-/// Sprint 3 decision per docs/governance/issues/2026-06-03-tx-lifecycle-autocommit-conflict.md.
 #[test]
-#[ignore = "Sprint 3 decision: ignored. Path A (engine.execute direct) follows MySQL AUTOCOMMIT=ON semantics, so DELETE without BEGIN now succeeds. Test expects Err which contradicts the Sprint 3 decision in docs/governance/issues/2026-06-03-tx-lifecycle-autocommit-conflict.md. Tracked in issue #2870 follow-up."]
 fn test_tx_lifecycle_delete_without_tx_err() {
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));
     let mut engine = ExecutionEngine::new(storage.clone());
@@ -92,15 +85,10 @@ fn test_tx_lifecycle_delete_without_tx_err() {
     );
 }
 
-/// TX-004: INSERT after COMMIT → Err("transaction already committed")
-/// #3223 Phase 4: ignored. Same Sprint 3 autocommit conflict as TX-001/002/003.
-/// After COMMIT the engine resets to "no tx" state and the next INSERT
-/// begins a new autocommit tx (Path A MySQL-compatible semantics). Test
-/// expects Err, contradicting Sprint 3 decision in
-/// `docs/governance/issues/2026-06-03-tx-lifecycle-autocommit-conflict.md`.
-/// Tracked in issue #2870 follow-up.
+/// TX-004: INSERT after COMMIT → Ok (autocommit)
+/// Per TX_LIFECYCLE_SPEC.md §2.2 (updated #3082):
+/// COMMITTED | DML → autocommit (Path A MySQL-compatible).
 #[test]
-#[ignore = "Sprint 3 decision: ignored. Path A (engine.execute direct) follows MySQL AUTOCOMMIT=ON semantics, so INSERT after COMMIT (which ends the prior tx) now succeeds as new autocommit. Test expects Err which contradicts the Sprint 3 decision in docs/governance/issues/2026-06-03-tx-lifecycle-autocommit-conflict.md. Tracked in issue #2870 follow-up."]
 fn test_tx_lifecycle_insert_after_commit_err() {
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));
     let mut engine = ExecutionEngine::new(storage.clone());
@@ -114,28 +102,16 @@ fn test_tx_lifecycle_insert_after_commit_err() {
 
     let result = engine.execute("INSERT INTO t1 VALUES (2, 'after_commit')");
     assert!(
-        result.is_err(),
-        "INSERT after COMMIT must return Err, got {:?}",
+        result.is_ok(),
+        "INSERT after COMMIT auto-commits per TX_LIFECYCLE_SPEC.md §2.2, got {:?}",
         result
-    );
-
-    let err = result.unwrap_err();
-    assert!(
-        err.to_string().contains("commit") || err.to_string().contains("committed"),
-        "Error message must mention committed: {:?}",
-        err
     );
 }
 
-/// TX-005: INSERT after ROLLBACK → Err("transaction already aborted")
-/// #3223 Phase 4: ignored. Same Sprint 3 autocommit conflict as TX-001/002/003.
-/// After ROLLBACK the engine resets to "no tx" state and the next INSERT
-/// begins a new autocommit tx (Path A MySQL-compatible semantics). Test
-/// expects Err, contradicting Sprint 3 decision in
-/// `docs/governance/issues/2026-06-03-tx-lifecycle-autocommit-conflict.md`.
-/// Tracked in issue #2870 follow-up.
+/// TX-005: INSERT after ROLLBACK → Ok (autocommit)
+/// Per TX_LIFECYCLE_SPEC.md §2.2 (updated #3082):
+/// ABORTED | DML → autocommit (Path A MySQL-compatible).
 #[test]
-#[ignore = "Sprint 3 decision: ignored. Path A (engine.execute direct) follows MySQL AUTOCOMMIT=ON semantics, so INSERT after ROLLBACK (which ends the prior tx) now succeeds as new autocommit. Test expects Err which contradicts the Sprint 3 decision in docs/governance/issues/2026-06-03-tx-lifecycle-autocommit-conflict.md. Tracked in issue #2870 follow-up."]
 fn test_tx_lifecycle_insert_after_rollback_err() {
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));
     let mut engine = ExecutionEngine::new(storage.clone());
@@ -149,19 +125,11 @@ fn test_tx_lifecycle_insert_after_rollback_err() {
 
     let result = engine.execute("INSERT INTO t1 VALUES (2, 'after_rollback')");
     assert!(
-        result.is_err(),
-        "INSERT after ROLLBACK must return Err, got {:?}",
+        result.is_ok(),
+        "INSERT after ROLLBACK auto-commits per TX_LIFECYCLE_SPEC.md §2.2, got {:?}",
         result
     );
-
-    let err = result.unwrap_err();
-    assert!(
-        err.to_string().contains("rollback") || err.to_string().contains("abort"),
-        "Error message must mention rollback/abort: {:?}",
-        err
-    );
 }
-
 /// TX-006: Double COMMIT → Err("transaction already committed")
 #[test]
 fn test_tx_lifecycle_double_commit_err() {
@@ -191,13 +159,8 @@ fn test_tx_lifecycle_double_commit_err() {
 }
 
 /// TX-007: DML in READONLY transaction → Err
-/// Sprint 3: ignored. The parser accepts `BEGIN READONLY` but the
-/// executor does not currently distinguish read-only from read-write
-/// transactions. Implementing this requires a `tx_mode` field on
-/// the transaction manager and a check at the DML dispatch. Tracked
-/// alongside the storage-layer recovery gap in the issue follow-up.
+/// Executor tracks `tx_readonly` and checks it at DML dispatch (#2870 follow-up).
 #[test]
-#[ignore = "Requires executor-level readonly tx detection; tracked in issue #2870 follow-up"]
 fn test_tx_lifecycle_dml_in_readonly_tx_err() {
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));
     let mut engine = ExecutionEngine::new(storage.clone());
