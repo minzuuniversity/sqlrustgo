@@ -651,6 +651,14 @@ impl<S: StorageEngine, T: WalManager> StorageEngine for WalStorage<S, T> {
     fn is_wal_enabled(&self) -> bool {
         true
     }
+
+    fn create_database(&mut self, db_name: &str) -> SqlResult<()> {
+        self.inner.create_database(db_name)
+    }
+
+    fn drop_database(&mut self, db_name: &str) -> SqlResult<()> {
+        self.inner.drop_database(db_name)
+    }
 }
 
 #[cfg(test)]
