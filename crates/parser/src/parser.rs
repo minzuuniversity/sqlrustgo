@@ -85,6 +85,9 @@ pub enum Statement {
     Describe(DescribeStatement),
     CreateRole(CreateRoleStatement),
     DropRole(DropRoleStatement),
+    CreateDatabase(CreateDatabaseStatement),
+    DropDatabase(DropDatabaseStatement),
+    UseDatabase(String),
     GrantRole(GrantRoleStatement),
     RevokeRole(RevokeRoleStatement),
     SetRole(SetRoleStatement),
@@ -524,6 +527,19 @@ pub struct DropTableStatement {
     pub name: String,
     pub if_exists: bool,
 }
+/// CREATE DATABASE statement
+#[derive(Debug, Clone, PartialEq)]
+pub struct CreateDatabaseStatement {
+    pub name: String,
+    pub if_not_exists: bool,
+}
+
+/// DROP DATABASE statement
+#[derive(Debug, Clone, PartialEq)]
+pub struct DropDatabaseStatement {
+    pub name: String,
+    pub if_exists: bool,
+}
 
 /// TRUNCATE TABLE statement
 #[derive(Debug, Clone, PartialEq)]
@@ -597,6 +613,7 @@ pub struct ForeignKeyRef {
 pub enum TableConstraint {
     PrimaryKey {
         columns: Vec<String>,
+        name: Option<String>,
     },
     ForeignKey {
         columns: Vec<String>,
@@ -604,12 +621,15 @@ pub enum TableConstraint {
         referenced_columns: Vec<String>,
         on_delete: Option<ReferentialAction>,
         on_update: Option<ReferentialAction>,
+        name: Option<String>,
     },
     Unique {
         columns: Vec<String>,
+        name: Option<String>,
     },
     Check {
         expression: String,
+        name: Option<String>,
     },
 }
 
@@ -1029,7 +1049,7 @@ impl Parser {
             Some(Token::Merge) => self.parse_merge(),
             Some(Token::Create) => self.parse_create(),
             Some(Token::Drop) => self.parse_drop(),
-            Some(Token::Truncate) => self.parse_truncate(),
+            Some(Token::Use) => self.parse_use_database(),
             Some(Token::Analyze) => self.parse_analyze(),
             Some(Token::With) => self.parse_with_select(),
             Some(Token::Alter) => self.parse_alter_table(),
@@ -1337,12 +1357,13 @@ impl Parser {
             Some(Token::Trigger) => self.parse_create_trigger(),
             Some(Token::Role) => self.parse_create_role(),
             Some(Token::View) => self.parse_create_view(),
+            Some(Token::Database) => self.parse_create_database(),
             Some(t) => Err(format!(
-                "Expected TABLE, INDEX, PROCEDURE, TRIGGER, ROLE, or VIEW after CREATE, got {:?}",
+                "Expected TABLE, INDEX, PROCEDURE, TRIGGER, ROLE, VIEW, or DATABASE after CREATE, got {:?}",
                 t
             )),
             None => Err(
-                "Expected TABLE, INDEX, PROCEDURE, TRIGGER, ROLE, or VIEW after CREATE".to_string(),
+                "Expected TABLE, INDEX, PROCEDURE, TRIGGER, ROLE, VIEW, or DATABASE after CREATE".to_string(),
             ),
         }
     }
@@ -1377,6 +1398,39 @@ impl Parser {
             name,
             parent_role,
         }))
+    }
+    fn parse_create_database(&mut self) -> Result<Statement, String> {
+        self.expect(Token::Database)?;
+        let if_not_exists = if matches!(self.current(), Some(Token::If)) {
+            self.next();
+            self.expect(Token::Not)?;
+            self.expect(Token::Exists)?;
+            true
+        } else {
+            false
+        };
+        let name = match self.next() {
+            Some(Token::Identifier(name)) => name,
+            Some(Token::StringLiteral(s)) => s,
+            Some(t) => return Err(format!("Expected database name, got {:?}", t)),
+            None => return Err("Expected database name".to_string()),
+        };
+        Ok(Statement::CreateDatabase(CreateDatabaseStatement {
+            name,
+            if_not_exists,
+        }))
+    }
+
+    /// Parse USE <database> statement
+    fn parse_use_database(&mut self) -> Result<Statement, String> {
+        self.expect(Token::Use)?;
+        let name = match self.next() {
+            Some(Token::Identifier(name)) => name,
+            Some(Token::StringLiteral(s)) => s,
+            Some(t) => return Err(format!("Expected database name, got {:?}", t)),
+            None => return Err("Expected database name".to_string()),
+        };
+        Ok(Statement::UseDatabase(name))
     }
 
     fn parse_create_index(&mut self, unique: bool) -> Result<Statement, String> {
@@ -5796,16 +5850,16 @@ impl Parser {
                         self.next();
                         self.expect(Token::Key)?;
                         let columns = self.parse_column_list()?;
-                        constraints.push(TableConstraint::PrimaryKey { columns });
+                        constraints.push(TableConstraint::PrimaryKey { columns, name: None });
                     }
                     Some(Token::Foreign) => {
-                        let fk = self.parse_foreign_key_constraint()?;
+                        let fk = self.parse_foreign_key_constraint(None)?;
                         constraints.push(fk);
                     }
                     Some(Token::Unique) => {
                         self.next();
                         let columns = self.parse_column_list()?;
-                        constraints.push(TableConstraint::Unique { columns });
+                        constraints.push(TableConstraint::Unique { columns, name: None });
                     }
                     Some(Token::Check) => {
                         self.next();
@@ -5814,27 +5868,28 @@ impl Parser {
                         self.expect(Token::RParen)?;
                         constraints.push(TableConstraint::Check {
                             expression: format!("{:?}", expr),
+                            name: None,
                         });
                     }
                     Some(Token::Constraint) => {
                         self.next();
-                        if let Some(Token::Identifier(_name)) = self.next() {
-                            self.next();
+                        if let Some(Token::Identifier(name)) = self.next() {
                             match self.current() {
                                 Some(Token::Primary) => {
                                     self.next();
                                     self.expect(Token::Key)?;
                                     let cols = self.parse_column_list()?;
-                                    constraints.push(TableConstraint::PrimaryKey { columns: cols });
+                                    constraints.push(TableConstraint::PrimaryKey { columns: cols, name: Some(name) });
                                 }
                                 Some(Token::Foreign) => {
-                                    let fk = self.parse_foreign_key_constraint()?;
+                                    self.next();
+                                    let fk = self.parse_foreign_key_constraint(Some(name))?;
                                     constraints.push(fk);
                                 }
                                 Some(Token::Unique) => {
                                     self.next();
                                     let cols = self.parse_column_list()?;
-                                    constraints.push(TableConstraint::Unique { columns: cols });
+                                    constraints.push(TableConstraint::Unique { columns: cols, name: Some(name) });
                                 }
                                 Some(Token::Check) => {
                                     self.next();
@@ -5843,9 +5898,10 @@ impl Parser {
                                     self.expect(Token::RParen)?;
                                     constraints.push(TableConstraint::Check {
                                         expression: format!("{:?}", expr),
+                                        name: Some(name),
                                     });
                                 }
-                                _ => return Err("Expected constraint type".to_string()),
+                                _ => return Err(format!("Expected constraint type, got {:?}", self.current())),
                             }
                         }
                     }
@@ -6006,7 +6062,7 @@ impl Parser {
         })
     }
 
-    fn parse_foreign_key_constraint(&mut self) -> Result<TableConstraint, String> {
+    fn parse_foreign_key_constraint(&mut self, name: Option<String>) -> Result<TableConstraint, String> {
         self.expect(Token::Foreign)?;
         self.expect(Token::Key)?;
         let columns = self.parse_column_list()?;
@@ -6028,6 +6084,7 @@ impl Parser {
             referenced_columns,
             on_delete,
             on_update,
+            name,
         })
     }
 
@@ -6158,11 +6215,12 @@ impl Parser {
             Some(Token::Index) => self.parse_drop_index(),
             Some(Token::View) => self.parse_drop_view(),
             Some(Token::Role) => self.parse_drop_role(),
+            Some(Token::Database) => self.parse_drop_database(),
             Some(t) => Err(format!(
-                "Expected TABLE, INDEX, VIEW or ROLE after DROP, got {:?}",
+                "Expected TABLE, INDEX, VIEW, ROLE, or DATABASE after DROP, got {:?}",
                 t
             )),
-            None => Err("Expected TABLE, INDEX, VIEW or ROLE after DROP".to_string()),
+            None => Err("Expected TABLE, INDEX, VIEW, ROLE, or DATABASE after DROP".to_string()),
         }
     }
 
@@ -6175,6 +6233,28 @@ impl Parser {
             None => return Err("Expected role name".to_string()),
         };
         Ok(Statement::DropRole(DropRoleStatement { name }))
+    }
+    fn parse_drop_database(&mut self) -> Result<Statement, String> {
+        self.expect(Token::Database)?;
+        let if_exists = if matches!(self.current(), Some(Token::If)) {
+            self.next();
+            match self.current() {
+                Some(Token::Exists) => {
+                    self.next();
+                    true
+                }
+                _ => return Err("Expected 'EXISTS' after 'IF'".to_string()),
+            }
+        } else {
+            false
+        };
+        let name = match self.next() {
+            Some(Token::Identifier(name)) => name,
+            Some(Token::StringLiteral(s)) => s,
+            Some(t) => return Err(format!("Expected database name, got {:?}", t)),
+            None => return Err("Expected database name".to_string()),
+        };
+        Ok(Statement::DropDatabase(DropDatabaseStatement { name, if_exists }))
     }
 
     fn parse_drop_index(&mut self) -> Result<Statement, String> {
@@ -7542,7 +7622,7 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "Test deferred (see tracking issue or comment context)"]
+    #[ignore = "FOREIGN KEY constraint parsing fails - pre-existing bug, unrelated to named constraint fix"]
     fn test_parse_create_with_table_constraint_fk() {
         let result = parse("CREATE TABLE orders (id INTEGER, user_id INTEGER, FOREIGN KEY (user_id) REFERENCES users(id))");
         assert!(result.is_ok());
