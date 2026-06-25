@@ -955,12 +955,9 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
 
     fn execute_create_database(&self, db: &CreateDatabaseStatement) -> SqlResult<ExecutorResult> {
         // v3.9.0 single-database: CREATE DATABASE is accepted for MySQL wire
-        // compatibility. In v3.10 multi-database mode this will create
-        // data/<db_name>/ directory and register in catalog.
-        let mut storage = self.storage.write().unwrap();
-        storage
-            .create_database(&db.name)
-            .map_err(|e| SqlError::ExecutionError(format!("CREATE DATABASE: {}", e)))?;
+        // compatibility but is a no-op. In v3.10 multi-database mode this will
+        // create a data/<db_name>/ directory and register in catalog.
+        let _ = db;
         Ok(ExecutorResult::empty())
     }
 
