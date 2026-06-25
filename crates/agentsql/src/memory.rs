@@ -202,7 +202,7 @@ impl MemoryService {
             candidates.retain(|m| m.timestamp >= since);
         }
 
-        candidates.sort_by_key(|b| std::cmp::Reverse(b.timestamp));
+        candidates.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
 
         let limit = request.limit.unwrap_or(100);
         candidates.truncate(limit);

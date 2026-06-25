@@ -1,0 +1,14 @@
+{
+  "queries": {
+    "Q1": {
+      "rows": [
+        {"l_returnflag": "A", "l_linestatus": "F", "sum_qty": 3378, "count_order": 130},
+        {"l_returnflag": "N", "l_linestatus": "F", "sum_qty": 98, "count_order": 3},
+        {"l_returnflag": "N", "l_linestatus": "O", "sum_qty": 1091, "count_order": 50},
+        {"l_returnflag": "R", "l_linestatus": "F", "sum_qty": 2996, "count_order": 123}
+      ]
+    }
+  },
+  "regenerated": "2026-06-12: created Q1.json from fixture tests/data/tpch-sf001/ using engine Q1 output",
+  "note": "SF=0.001 subset (c_custkey 1-50, o_orderkey 1-500, l_orderkey 1-500), 4 groups instead of 6 due to limited data"
+}

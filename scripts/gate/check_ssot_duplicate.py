@@ -1,8 +1,5 @@
 #!/usr/bin/env python3
 """
-Purpose: Detect SSOT (Single Source of Truth) duplicate content across docs
-Coverage: P5 (Governance), P6 (Evidence Binding)
-Verifies: no large blocks of duplicated text between v3.9.0 docs
 SSOT (Single Source of Truth) 重复内容检查脚本
 检查多个文档中是否存在重复内容
 

@@ -14,11 +14,10 @@ thiserror.workspace = true
 log.workspace = true
 async-trait.workspace = true
 miniz_oxide.workspace = true
-memmap2.workspace = true
-tempfile.workspace = true
 
 [dev-dependencies]
 sqlrustgo-wal-verification = { path = "../wal-verification" }
+tempfile.workspace = true
 criterion = "0.8"
 
 [[bench]]

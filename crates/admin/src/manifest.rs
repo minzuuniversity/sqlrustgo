@@ -74,7 +74,6 @@ impl Manifest {
         Ok(manifest)
     }
 
-    #[allow(dead_code)]
     pub fn to_json(&self) -> serde_json::Result<String> {
         serde_json::to_string_pretty(self)
     }
@@ -83,7 +82,6 @@ impl Manifest {
         serde_json::from_str(s)
     }
 
-    #[allow(dead_code)]
     pub fn write_to(&self, path: &Path) -> std::io::Result<()> {
         let json = self
             .to_json()
