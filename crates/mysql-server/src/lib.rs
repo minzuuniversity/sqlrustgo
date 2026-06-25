@@ -2295,8 +2295,11 @@ fn handle_load_local_infile<S: Read + Write>(
     // writes all table .json files.
     {
         let storage = engine.storage_ref();
-        let mut s = storage.write().map_err(|e| MySqlError::Other(format!("flush storage lock: {}", e)))?;
-        s.flush().map_err(|e| MySqlError::Other(format!("flush storage: {}", e)))?;
+        let mut s = storage
+            .write()
+            .map_err(|e| MySqlError::Other(format!("flush storage lock: {}", e)))?;
+        s.flush()
+            .map_err(|e| MySqlError::Other(format!("flush storage: {}", e)))?;
     }
 
     Ok(total_rows)
@@ -3006,7 +3009,7 @@ pub fn run_server_v2(
     use crate::testing::EphemeralConfig;
     let cfg = EphemeralConfig {
         data_dir: Some(std::path::PathBuf::from(data_dir)),
-        server_threads: 16,  // TODO(Task 6): 从 run_server_v2 参数传入
+        server_threads: 16, // TODO(Task 6): 从 run_server_v2 参数传入
         ..Default::default()
     };
     let _ = crate::ACTIVE_CONFIG.set(std::sync::Mutex::new(cfg));
@@ -3563,7 +3566,23 @@ mod integration_tests {
         let pkt = make_err_packet(0, 2000, "42000", "");
         assert_eq!(pkt.payload[0], 0xff);
     }
-
+#[test]
+    fn test_make_err_packet_null_byte_separator() {
+        // MySQL wire protocol: error packet format is
+        // 0xFF + error_code(u16 LE) + 0x23 + SQL_STATE(5 bytes) + 0x00 + ERROR_MSG
+        // The null-byte between SQL state and error message is required.
+        let pkt = make_err_packet(1, 1146, "42S02", "Table not found");
+        assert_eq!(pkt.payload[0], 0xff); // ERR packet type
+                                          // Bytes 1-2: error code (1146 = 0x047A little-endian)
+        assert_eq!(u16::from_le_bytes([pkt.payload[1], pkt.payload[2]]), 1146);
+        assert_eq!(pkt.payload[3], 0x23); // '#' marker
+                                          // Bytes 4-8: SQL state "42S02"
+        assert_eq!(&pkt.payload[4..9], b"42S02");
+        // Byte 9: null-byte separator
+        assert_eq!(pkt.payload[9], 0x00);
+        // Bytes 10+: error message
+        assert_eq!(&pkt.payload[10..], b"Table not found");
+    }
     // ============ make_eof_packet Tests ============
 
     #[test]
