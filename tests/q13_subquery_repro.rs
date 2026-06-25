@@ -10,7 +10,7 @@
 //! `eval_22_v_auth_sqlite` / 22-22-AUDIT) so the LIKE behavior matches
 //! authoritative SQLite exactly.
 
-use sqlrustgo::{ExecutionEngine, MemoryStorage};
+use sqlrustgo::{ExecutionEngine, MemoryStorage, StorageEngine};
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 

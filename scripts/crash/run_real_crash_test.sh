@@ -37,11 +37,11 @@ echo "=========================================="
 
 # 1. 启动 server
 echo "[1/5] Starting sqlrustgo server..."
-SQLRUSTGO_BIN="${SQLRUSTGO_BIN:-./target/release/sqlrustgo-mysql-server}"
+SQLRUSTGO_BIN="${SQLRUSTGO_BIN:-./target/release/sqlrustgo}"
 if [ ! -x "$SQLRUSTGO_BIN" ]; then
-    cargo build --release --bin sqlrustgo-mysql-server
+    cargo build --release --bin sqlrustgo
 fi
-nohup "$SQLRUSTGO_BIN" serve --port 3306 --data-dir "$RESULTS_DIR/data" > "$RESULTS_DIR/server.log" 2>&1 &
+nohup "$SQLRUSTGO_BIN" --port 3306 --data-dir "$RESULTS_DIR/data" > "$RESULTS_DIR/server.log" 2>&1 &
 SERVER_PID=$!
 echo "  Server PID: $SERVER_PID"
 sleep 5
@@ -108,7 +108,7 @@ esac
 
 # 4. 重启 server
 echo "[4/5] Restarting sqlrustgo server..."
-nohup "$SQLRUSTGO_BIN" serve --port 3306 --data-dir "$RESULTS_DIR/data" > "$RESULTS_DIR/server2.log" 2>&1 &
+nohup "$SQLRUSTGO_BIN" --port 3306 --data-dir "$RESULTS_DIR/data" > "$RESULTS_DIR/server2.log" 2>&1 &
 SERVER_PID2=$!
 sleep 5
 
