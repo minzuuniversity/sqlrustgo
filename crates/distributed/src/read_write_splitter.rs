@@ -166,6 +166,7 @@ impl ReadWriteSplitter {
             // DDL: database-level operations
             sqlrustgo_parser::Statement::CreateDatabase(_) => QueryClass::Write,
             sqlrustgo_parser::Statement::DropDatabase(_) => QueryClass::Write,
+            sqlrustgo_parser::Statement::UseDatabase(_) => QueryClass::Write,
         }
     }
 
