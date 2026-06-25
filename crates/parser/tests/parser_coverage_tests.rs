@@ -16,7 +16,7 @@ fn test_parse_create_trigger_after_insert() {
         result
     );
 }
-// BEFORE keyword now fixed: Token::Before added to lexer.
+// Before trigger now fixed: Token::Before added to lexer.
 #[test]
 fn test_parse_create_trigger_before_update() {
     let sql = "CREATE TRIGGER update_check BEFORE UPDATE ON users FOR EACH ROW BEGIN SELECT 1; END";
@@ -831,10 +831,8 @@ fn test_parse_create_table_unique() {
     );
 }
 
-// Real parser bug: `CONSTRAINT <name> PRIMARY KEY (...)` parses with
-// "Expected constraint type" — the parser handles FOREIGN KEY but not
-// the named PRIMARY KEY variant. Tracked separately.
-#[ignore = "Named constraint 'CONSTRAINT <name> PRIMARY KEY (...)' fails to parse with 'Expected constraint type'. Parser supports FOREIGN KEY but not named PRIMARY KEY variant."]
+// Named CONSTRAINT PRIMARY KEY now fixed.
+#[test]
 fn test_parse_create_table_named_constraint() {
     let sql =
         "CREATE TABLE users (id INT, name VARCHAR(100), CONSTRAINT pk_users PRIMARY KEY (id))";

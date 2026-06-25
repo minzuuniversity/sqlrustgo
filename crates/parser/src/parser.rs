@@ -7609,7 +7609,7 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "Test deferred (see tracking issue or comment context)"]
+    #[ignore = "FOREIGN KEY constraint parsing fails - pre-existing bug, unrelated to named constraint fix"]
     fn test_parse_create_with_table_constraint_fk() {
         let result = parse("CREATE TABLE orders (id INTEGER, user_id INTEGER, FOREIGN KEY (user_id) REFERENCES users(id))");
         assert!(result.is_ok());
