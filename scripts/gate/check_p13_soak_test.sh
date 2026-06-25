@@ -5,14 +5,17 @@
 # 1. soak_test_harness.rs exists
 # 2. soak_test.rs exists and is registered in Cargo.toml
 # 3. 3-level smoke equivalence constants are stable (24h/72h/168h
-#    map to 60s/180s/420s)
+#    map to 60s/180s/420s) — COMPRESSED, not real durations
 # 4. cargo check pass
-# 5. 3 soak tests pass (24h, 72h, 168h)
+# 5. smoke tests pass (10 unit-level tests, NOT real 24h/72h/168h)
 # 6. Alert-threshold mechanism works (tight threshold triggers alert)
 # 7. Memory baseline invariant (no-query run == baseline)
 #
-# Exit code: 0 = PASS, 1 = FAIL
+# ⚠️  NOTE: Step 5 runs COMPRESSED smoke tests (60s/180s/420s), NOT real
+#    wall-clock soaks. Real 24h/72h/168h runs require W12 hardware and are
+#    verified separately by check_g13_stability.sh.
 #
+# Exit code: 0 = PASS, 1 = FAIL
 # Refs: docs/openspec/3175-soak-test.md
 #       V390_TEST_PLAN.md §G7
 
@@ -89,8 +92,9 @@ N_PASSED=$(echo "$PASSED" | grep -oE "[0-9]+")
 if [ "$N_PASSED" -lt 10 ]; then
     echo "  ❌ FAIL: expected ≥10 soak tests, got $N_PASSED"
     exit 1
+else
+    echo "  [5/7] ✅ PASS: soak_test $PASSED (≥10 smoke tests, COMPRESSED duration)"
 fi
-echo "  [5/7] ✅ PASS: soak_test $PASSED (≥10)"
 
 # 6. Alert mechanism works
 ALERT_TEST=$(cargo test --test soak_test test_soak_alert_message_when_exceeds_threshold 2>&1 \
@@ -115,6 +119,5 @@ else
 fi
 
 echo
-echo "=== G7 Gate: PASS ==="
-echo "P1-3 (#3175) Soak Test: 3-level smoke + alert + baseline invariants verified"
-exit 0
+echo "=== G7 Gate: PASS (COMPRESSED smoke — not real 24h/72h/168h) ==="
+echo "P1-3 (#3175) Soak Test: 3-level smoke (60s/180s/420s) + alert + baseline invariants"
