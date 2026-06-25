@@ -1,7 +1,7 @@
 {
   "version": "v3.9.0-sprint8",
   "timestamp": "2026-06-19T00:00:00Z",
-  "total_allowed": 73,
+  "total_allowed": 74,
   "ignored_tests": [
     {
       "file": "tests/oracle_g1_tpch_sha256.rs",
@@ -586,6 +586,14 @@
       "issue_link": "#3175",
       "added_in": "v3.9.0-sprint9",
       "category": "decommissioned"
+    },
+    {
+      "file": "tests/long_run_stability_72h_test.rs",
+      "line": "6:#[ignore]",
+      "reason": "72h stability smoke test (5-second version for dev); full 72h test requires dedicated soak environment",
+      "issue_link": "TBD",
+      "added_in": "v3.9.0-rc7",
+      "category": "soak"
     }
   ],
   "note": "Regenerated 2026-06-17 from current source. Each entry has a real reason extracted from `#[ignore = \"...\"]` attribute, or 'needs review' marker if attribute has no reason text. issue_link: TBD entries need manual research. Categories align with README §Test Claim Transparency (42 non-gate)."
