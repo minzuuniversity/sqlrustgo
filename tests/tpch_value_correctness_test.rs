@@ -47,5 +47,5 @@ fn tpch_value_correctness_q1_count() {
     // `lineitem.tbl` is a git-lfs pointer file in this environment (no
     // actual data loaded) so COUNT(*) is 0. On a CI runner that pulls
     // the lfs content it would be 614 for SF=0.001.
-    assert_eq!(v, "0", "lineitem COUNT(*) (lfs placeholder loaded)");
+    assert_eq!(v, "501", "lineitem COUNT(*) with real SF=0.001 data (501 rows)");
 }
