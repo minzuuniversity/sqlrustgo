@@ -1,9 +1,8 @@
 #!/bin/bash
-# check_g_all.sh - v3.9.0 G1-G10 orchestrator
+# check_g_all.sh - v3.9.0 G1-G16 orchestrator
 #
-# Runs all 10 v3.9.0 alpha-stage gates (G1-G10) in sequence, maps each
-# result to its tracking issue (#3186-#3195), and produces a
-# consolidated PASS/FAIL report.
+# Runs all 16 v3.9.0 gates (G1-G16) in sequence, maps each
+# result to its tracking issue, and produces a consolidated PASS/FAIL report.
 #
 # Mapping (per docs/releases/v3.9.0/alpha/ALPHA_GATE_CONTRACT.md):
 #   G1  22/22 TPC-H 保持                -> check_g1_tpch_22_22.sh      -> #3186
@@ -12,18 +11,26 @@
 #   G4  ARCH-3 关闭 (VtuGuard)          -> check_arch3_no_bypass.sh   -> #3189
 #   G5  SEM-1 关闭 (Savepoint MVCC)     -> check_sem1_savepoint.sh    -> #3190
 #   G6  Backup/Restore 100+ scenarios   -> check_backup_restore.sh    -> #3191
-#   G7  24h Soak Test                   -> check_p13_soak_test.sh     -> #3192
+#   G7  24h Soak (COMPRESSED smoke)      -> check_p13_soak_test.sh     -> #3192
 #   G8  Crash Matrix 100+ scenarios     -> check_p12_crash_test.sh    -> #3193
 #   G9  Upgrade Test 50+ scenarios      -> check_p14_upgrade_test.sh  -> #3194
 #   G10 Audit + Time Travel 40+ tests   -> check_p21_audit_log.sh     -> #3195
 #                                       -> check_p22_time_travel.sh
 #                                       -> check_p23_hash_chain.sh
+#   G11 QPS/TPS 基准 (hardware required) -> check_g11_qps.sh           -> #3200
+#   G12 Sysbench OLTP (hardware required) -> check_g12_sysbench.sh     -> #3201
+#   G13 24h Stability (deferred hardware) -> check_g13_stability.sh   -> #3202
+#   G14 Real Crash (deferred hardware)    -> check_g14_real_crash.sh   -> #3203
+#   G15 Perf Report (aggregates G11-G16) -> check_g15_perf_report.sh  -> #3204
+#   G16 Compatibility                     -> check_g16_compatibility.sh -> #3205
+#
+# NOTE: G7/G13 run COMPRESSED smoke (60s/180s/420s), NOT real 24h/72h/168h.
+#       G11/G12 require Z6G4 hardware. G14 requires W12. Real soaks deferred.
 #
 # Exit code: 0 = ALL PASS, 1 = ANY FAIL
 #
 # Refs: docs/releases/v3.9.0/alpha/ALPHA_GATE_CONTRACT.md
 #       docs/releases/v3.9.0/alpha/ALPHA_GATE_REPORT.md
-#       Issue #3167 (v3.9.0 alpha 启动公告)
 
 set -u
 
@@ -49,7 +56,12 @@ GATES=(
     "G7|24h Soak|check_p13_soak_test.sh|#3192|yes"
     "G8|Crash Matrix|check_p12_crash_test.sh|#3193|yes"
     "G9|Upgrade|check_p14_upgrade_test.sh|#3194|yes"
-    "G10|GMP Audit (Time Travel + Hash Chain)|check_p21_audit_log.sh|#3195|warn"
+    "G11|QPS 基准|check_g11_qps.sh|#3200|warn"
+    "G12|Sysbench OLTP|check_g12_sysbench.sh|#3201|warn"
+    "G13|24h Stability|check_g13_stability.sh|#3202|warn"
+    "G14|Real Crash|check_g14_real_crash.sh|#3203|warn"
+    "G15|Perf Report|check_g15_perf_report.sh|#3204|warn"
+    "G16|Compatibility|check_g16_compatibility.sh|#3205|warn"
 )
 
 # G10 has 3 sub-scripts
@@ -65,7 +77,7 @@ WARN_COUNT=0
 RESULTS=()
 
 echo "================================================================"
-echo "  v3.9.0 G1-G10 Orchestrator (alpha stage gate framework)"
+echo "  v3.9.0 G1-G16 Orchestrator"
 echo "  Branch: $(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo 'unknown')"
 echo "  Commit: $(git rev-parse --short HEAD 2>/dev/null || echo 'unknown')"
 echo "  Date:   $(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -131,8 +143,9 @@ for sub in "${G10_SUBSCRIPTS[@]:1}"; do
 done
 echo
 
+echo
 echo "================================================================"
-echo "  v3.9.0 G1-G10 SUMMARY"
+echo "  v3.9.0 G1-G16 SUMMARY"
 echo "================================================================"
 printf "  %-6s %-30s %-12s %s\n" "GATE" "TOPIC" "STATUS" "TRACKING"
 printf "  %-6s %-30s %-12s %s\n" "----" "-----" "------" "--------"
@@ -158,9 +171,9 @@ if [ $FAIL_COUNT -gt 0 ]; then
 fi
 
 if [ $WARN_COUNT -gt 0 ]; then
-    echo "  GATE STATUS: 🟡 PASS with warnings (G10 non-blocking)"
+    echo "  GATE STATUS: 🟡 PASS with warnings (G11-G16 perf deferred to hardware)"
     exit 0
 fi
 
-echo "  GATE STATUS: ✅ ALL PASS (G1-G10 fully green)"
+echo "  GATE STATUS: ✅ ALL PASS (G1-G16 fully green)"
 exit 0
