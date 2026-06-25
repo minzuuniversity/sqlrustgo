@@ -65,7 +65,11 @@ impl ExecutorMetrics {
 
     pub fn avg_query_duration_ms(&self) -> u64 {
         let total = self.queries_total.load(Ordering::Relaxed);
-        self.query_duration_ms().checked_div(total).unwrap_or(0)
+        if total == 0 {
+            0
+        } else {
+            self.query_duration_ms() / total
+        }
     }
 
     pub fn success_rate(&self) -> f64 {
