@@ -499,6 +499,14 @@ impl<S: StorageEngine, T: WalManager> StorageEngine for WalStorage<S, T> {
         self.inner.update_if(table, filter, mutation)
     }
 
+    fn create_database(&mut self, db_name: &str) -> SqlResult<()> {
+        self.inner.create_database(db_name)
+    }
+
+    fn drop_database(&mut self, db_name: &str) -> SqlResult<()> {
+        self.inner.drop_database(db_name)
+    }
+
     fn create_table(&mut self, info: &TableInfo) -> SqlResult<()> {
         self.inner.create_table(info)
     }
@@ -652,13 +660,6 @@ impl<S: StorageEngine, T: WalManager> StorageEngine for WalStorage<S, T> {
         true
     }
 
-    fn create_database(&mut self, db_name: &str) -> SqlResult<()> {
-        self.inner.create_database(db_name)
-    }
-
-    fn drop_database(&mut self, db_name: &str) -> SqlResult<()> {
-        self.inner.drop_database(db_name)
-    }
 }
 
 #[cfg(test)]
