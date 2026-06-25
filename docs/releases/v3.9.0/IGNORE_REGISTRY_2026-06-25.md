@@ -1,9 +1,9 @@
 # v3.9.0 `#[ignore]` Registry — 2026-06-25 (updated)
 
 > Audit date: 2026-06-25
-> Branch: `develop/v3.9.0` @ `d87801e43`
-> Total: **46** `#[ignore]` attributes across **19** files (was 50)
-> Verdict: **All 46 are legitimate** — documented bugs, perf benchmarks, unimplemented features, or soak tests.
+> Branch: `develop/v3.9.0` @ `9e2806278`
+> Total: **44** `#[ignore]` attributes across **19** files (was 50)
+> Verdict: **All 44 are legitimate** — documented bugs, perf benchmarks, unimplemented features, or soak tests.
 
 ## Summary by Category
 
@@ -11,10 +11,10 @@
 |----------|-------|-------------|
 | PERF_BENCHMARK | 17 | Performance benchmarks (run manually with `--ignored`) |
 | KNOWN_GAP | 18 | Unimplemented SQL features (DML subqueries, Cypher, UNION/EXCEPT/INTERSECT) |
-| KNOWN_BUG | 5 | Documented bugs (ROLLBACK, MemoryStorage tx, INT64_MIN, div-by-zero) — **4 fixed by commit d87801e43** |
+| KNOWN_BUG | 3 | Documented bugs (ROLLBACK, MemoryStorage tx) — **6 fixed by commits d87801e43 + 9e2806278** |
 | SOAK | 5 | Long-running soak tests (5m/10m/20m/30m + 72h smoke) |
 | MANUAL_ORACLE | 1 | G1 SHA256 oracle generation (run manually with `--ignored --gen`) |
-| **TOTAL** | **46** | — |
+| **TOTAL** | **44** | — |
 
 ## Detailed Registry
 
@@ -44,14 +44,13 @@
 | `union_set_operations_test.rs` | 276 | EXCEPT (no Statement::Except) | #3312 |
 | `union_set_operations_test.rs` | 299 | ORDER BY/LIMIT after UNION (UnionStatement lacks fields) | #3312 |
 
-### KNOWN_BUG (5 — was 9, 4 fixed by commit d87801e43)
+### KNOWN_BUG (3 — was 9, 6 fixed by commits d87801e43 + 9e2806278)
 
 | File | Line | Bug | Tracking |
 |------|------|-----|----------|
 | `dml_integration_test.rs` | 352,372 | ROLLBACK does not revert DML rows in MemoryStorage | #3312 |
 | `stored_proc_catalog_test.rs` | 284,315,346 | MemoryStorage does not support transactions; trigger DML fails | #3312 |
-| `boundary_test.rs` | 32 | INT64_MIN parsing edge case | Untracked |
-| `boundary_test.rs` | 89 | Division by zero returns OK instead of error | Untracked |
+
 
 ### SOAK (5)
 
@@ -65,7 +64,7 @@
 P12 requires all `#[ignore]` entries to be registered with rationale.
 P13 requires monotonic `#[ignore]` count (no new unregistered ignores).
 
-**Status**: ✅ All 46 entries are registered.
+**Status**: ✅ All 44 entries are registered.
 - **4 PredicateCompiler tests un-ignored** (commit `d87801e43`): `test_predicate_compiler_column_true`, `test_predicate_compiler_column_false`, `test_predicate_compiler_binary_and`, `test_predicate_compiler_unary_not`
 - KNOWN_GAP and KNOWN_BUG entries tracked under #3312
 - PERF_BENCHMARK and SOAK entries are intentionally manual-run
@@ -73,6 +72,7 @@ P13 requires monotonic `#[ignore]` count (no new unregistered ignores).
 
 ## Changes Since 2026-06-21
 
-- From 44 → 50 → 46 `#[ignore]` attributes (net -4 from fixes)
-- **4 PredicateCompiler bugs fixed and un-ignored** (commit `d87801e43`)
+- From 44 → 50 → 44 `#[ignore]` attributes (net -6 from fixes)
+- **4 PredicateCompiler bugs fixed** (commit `d87801e43`)
+- **2 boundary test bugs fixed** (commit `9e2806278`): INT64_MIN parsing, zero-division parsing
 - All remaining entries are legitimate with documented rationale
