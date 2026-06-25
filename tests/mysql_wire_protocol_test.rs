@@ -95,11 +95,13 @@ fn test_close_nonexistent_stmt_returns_err() {
     let mut client = MySqlTestClient::connect_default()
         .expect("ephemeral server + raw-protocol client should come up");
 
-    // Try to close a statement ID that was never prepared
+    // Try to close a statement ID that was never prepared.
+    // COM_STMT_CLOSE has no server response per MySQL protocol, so we
+    // return Ok. The server processes it without error (no panic).
     let result = client.stmt_close(999);
     assert!(
-        result.is_err(),
-        "COM_STMT_CLOSE for non-existent statement should return ERR"
+        result.is_ok(),
+        "COM_STMT_CLOSE for non-existent statement should return Ok (no server response)"
     );
     client.quit().ok();
 }
