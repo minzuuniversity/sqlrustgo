@@ -370,6 +370,35 @@ impl FileStorage {
         self.tables.contains_key(name)
     }
 
+    /// Create a new database directory under data_dir.
+    pub fn create_database(&mut self, db_name: &str) -> std::io::Result<()> {
+        let db_path = self.data_dir.join(db_name);
+        fs::create_dir_all(&db_path)?;
+        Ok(())
+    }
+
+    /// Drop a database directory. Refuses to drop if the directory is not empty.
+    pub fn drop_database(&mut self, db_name: &str) -> std::io::Result<()> {
+        let db_path = self.data_dir.join(db_name);
+        if db_path.exists() {
+            for entry in fs::read_dir(&db_path)? {
+                let entry = entry?;
+                let file_name = entry.file_name();
+                let name = file_name.to_string_lossy();
+                // Skip WAL files; reject everything else
+                if !name.ends_with(".wal") {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::DirectoryNotEmpty,
+                        format!("database '{}' is not empty", db_name),
+                    ));
+                }
+            }
+            fs::remove_dir(&db_path)?;
+        }
+        Ok(())
+    }
+
+
     /// Save a table to disk (call after modifications)
     pub fn persist_table(&self, name: &str) -> std::io::Result<()> {
         if let Some(table_data) = self.tables.get(name) {
@@ -1072,6 +1101,7 @@ mod tests {
                     data_type: "INTEGER".to_string(),
                     nullable: false,
                     primary_key: true,
+        char_max_length: None,
                 }],
                 foreign_keys: vec![],
                 unique_constraints: vec![],
@@ -1090,6 +1120,7 @@ mod tests {
             data_type: "TEXT".to_string(),
             nullable: true,
             primary_key: false,
+        char_max_length: None,
         };
         let result = storage.add_column("add_col_test", new_col);
         assert!(result.is_ok());
@@ -1215,6 +1246,7 @@ mod tests {
                 data_type: "INTEGER".to_string(),
                 nullable: false,
                 primary_key: true,
+        char_max_length: None,
             }],
             foreign_keys: vec![],
             unique_constraints: vec![],
@@ -1248,6 +1280,7 @@ mod tests {
                 data_type: "INTEGER".to_string(),
                 nullable: false,
                 primary_key: true,
+        char_max_length: None,
             }],
             foreign_keys: vec![],
             unique_constraints: vec![],
@@ -1281,6 +1314,7 @@ mod tests {
                 data_type: "INTEGER".to_string(),
                 nullable: false,
                 primary_key: true,
+        char_max_length: None,
             }],
             foreign_keys: vec![],
             unique_constraints: vec![],
@@ -1699,5 +1733,28 @@ impl StorageEngine for FileStorage {
             .filter(|((t, _c), _idx)| t == table)
             .map(|((t, c), _idx)| (c.clone(), format!("{}_idx_{}", t, c)))
             .collect()
+    }
+
+    fn create_database(&mut self, db_name: &str) -> SqlResult<()> {
+        let db_path = self.data_dir.join(db_name);
+        std::fs::create_dir_all(&db_path)
+            .map_err(|e| SqlError::ExecutionError(format!("create_database: {}", e)))
+    }
+
+    fn drop_database(&mut self, db_name: &str) -> SqlResult<()> {
+        let db_path = self.data_dir.join(db_name);
+        if db_path.exists() {
+            let is_empty = std::fs::read_dir(&db_path)
+                .map(|mut d| d.next().is_none())
+                .unwrap_or(true);
+            if !is_empty {
+                return Err(SqlError::ExecutionError(
+                    "database is not empty".to_string(),
+                ));
+            }
+            std::fs::remove_dir(&db_path)
+                .map_err(|e| SqlError::ExecutionError(format!("drop_database: {}", e)))?;
+        }
+        Ok(())
     }
 }

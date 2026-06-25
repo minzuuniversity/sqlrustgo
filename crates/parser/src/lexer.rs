@@ -281,6 +281,7 @@ impl<'a> Lexer<'a> {
                     "DELETE" => Token::Delete,
                     "MERGE" => Token::Merge,
                     "USING" => Token::Using,
+                    "USE" => Token::Use,
                     "MATCHED" => Token::Matched,
                     "CREATE" => Token::Create,
                     "TABLE" => Token::Table,

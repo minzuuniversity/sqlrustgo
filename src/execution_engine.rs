@@ -27,13 +27,13 @@ use sqlrustgo_parser::parser::{
     AlterTableStatement,
     CallStatement,
     CreateDatabaseStatement,
-    DropDatabaseStatement,
     CreateIndexStatement,
     CreateProcedureStatement,
     CreateRoleStatement,
     CreateTableStatement,
     CreateTriggerStatement,
     DescribeStatement,
+    DropDatabaseStatement,
     DropRoleStatement,
     DropTableStatement,
     GrantRoleStatement,
@@ -83,6 +83,7 @@ pub struct ExecutionEngine<S: StorageEngine> {
     pub(crate) transaction_manager: TransactionManager,
     pub(crate) current_tx_id: Option<TxId>,
     pub(crate) tx_status: TxStatus,
+    pub(crate) tx_readonly: bool,
     pub(crate) default_isolation: TmIsolationLevel,
     pub(crate) current_role: Option<String>,
     /// CheckpointManager field — reserved for future PR-830F WAL lifecycle
@@ -140,6 +141,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             transaction_manager: TransactionManager::new(),
             current_tx_id: None,
             tx_status: TxStatus::Idle,
+            tx_readonly: false,
             default_isolation: TmIsolationLevel::default(),
             current_role: None,
             checkpoint_manager: None,
@@ -158,6 +160,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             transaction_manager: TransactionManager::new(),
             current_tx_id: None,
             tx_status: TxStatus::Idle,
+            tx_readonly: false,
             default_isolation: TmIsolationLevel::default(),
             current_role: None,
             checkpoint_manager: None,
@@ -176,6 +179,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             transaction_manager: TransactionManager::new(),
             current_tx_id: None,
             tx_status: TxStatus::Idle,
+            tx_readonly: false,
             default_isolation: TmIsolationLevel::default(),
             current_role: None,
             checkpoint_manager: None,
@@ -392,9 +396,10 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             } => self.execute_execute(name, params),
             Statement::CreateDatabase(ref db) => self.execute_create_database(db),
             Statement::DropDatabase(ref db) => self.execute_drop_database(db),
-             _ => Err(SqlError::ExecutionError(
-                 "Unsupported statement type".to_string(),
-             )),
+            Statement::UseDatabase(ref name) => self.execute_use_database(name),
+            _ => Err(SqlError::ExecutionError(
+                "Unsupported statement type".to_string(),
+            )),
         }
     }
 
@@ -948,33 +953,46 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         Ok(ExecutorResult::empty())
     }
 
-    fn execute_create_database(&self, _db: &CreateDatabaseStatement) -> SqlResult<ExecutorResult> {
-        // v3.9.0: single-database architecture — CREATE DATABASE is accepted
-        // (for MySQL wire compatibility) but maps to no-op since all tables
-        // live in the single catalog. Future v3.10 multi-database mode will
-        // create a new schema directory under data/.
+    fn execute_create_database(&self, db: &CreateDatabaseStatement) -> SqlResult<ExecutorResult> {
+        // v3.9.0 single-database: CREATE DATABASE is accepted for MySQL wire
+        // compatibility but is a no-op. In v3.10 multi-database mode this will
+        // create a data/<db_name>/ directory and register in catalog.
+        let _ = db;
         Ok(ExecutorResult::empty())
     }
 
     fn execute_drop_database(&self, db: &DropDatabaseStatement) -> SqlResult<ExecutorResult> {
-        // Refuse to drop the active database to prevent orphaned table references.
-        Err(SqlError::ExecutionError(format!(
-            "DROP DATABASE `{}` is not supported in single-database mode",
-            db.name
-        )))
+        // Refuse to drop the "default" database to prevent orphaned references.
+        // In v3.10 multi-database mode, the current_database context will be
+        // tracked in the session state instead.
+        if db.name == "default" || db.name == "postgres" || db.name == "mysql" {
+            return Err(SqlError::ExecutionError(format!(
+                "DROP DATABASE '{}' is not permitted (reserved database name)",
+                db.name
+            )));
+        }
+        let mut storage = self.storage.write().unwrap();
+        storage
+            .drop_database(&db.name)
+            .map_err(|e| SqlError::ExecutionError(format!("DROP DATABASE: {}", e)))?;
+        Ok(ExecutorResult::empty())
+    }
+
+    fn execute_use_database(&self, _db: &str) -> SqlResult<ExecutorResult> {
+        // v3.9.0 single-database: USE <database> is accepted for MySQL wire
+        // compatibility but is a no-op. v3.10 multi-database mode will switch
+        // the active database context.
+        Ok(ExecutorResult::empty())
     }
 
     fn execute_truncate(&self, truncate: &TruncateStatement) -> SqlResult<ExecutorResult> {
         let mut storage = self.storage.write().unwrap();
-        // Check if table exists
         if !storage.has_table(&truncate.name) {
             return Err(SqlError::ExecutionError(format!(
                 "Table not found: {}",
                 truncate.name
             )));
         }
-        // Delete all rows but keep the table structure
-        // Using empty filter slice to delete all rows
         storage.delete(&truncate.name, &[])?;
         Ok(ExecutorResult::empty())
     }
@@ -1117,6 +1135,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             TransactionStatement::Begin {
                 work: _,
                 isolation_level,
+                readonly,
             } => {
                 let iso = isolation_level
                     .as_ref()
@@ -1131,7 +1150,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                         ParserIsolationLevel::Serializable => TmIsolationLevel::Serializable,
                     })
                     .unwrap_or(self.default_isolation);
-                self.begin_transaction(iso)
+                self.begin_transaction(iso, *readonly)
             }
             TransactionStatement::Commit { work: _ } => self.commit_transaction(),
             TransactionStatement::Rollback { work: _ } => self.rollback_transaction(),
@@ -1158,12 +1177,16 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                         ParserIsolationLevel::Serializable => TmIsolationLevel::Serializable,
                     })
                     .unwrap_or(self.default_isolation);
-                self.begin_transaction(iso)
+                self.begin_transaction(iso, false)
             }
         }
     }
 
-    fn begin_transaction(&mut self, isolation: TmIsolationLevel) -> SqlResult<ExecutorResult> {
+    fn begin_transaction(
+        &mut self,
+        isolation: TmIsolationLevel,
+        readonly: bool,
+    ) -> SqlResult<ExecutorResult> {
         if self.current_tx_id.is_some() {
             return Err(SqlError::ExecutionError(
                 "Transaction already in progress".to_string(),
@@ -1185,6 +1208,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             let _ = storage.begin_transaction();
         }
         self.tx_status = TxStatus::Active;
+        self.tx_readonly = readonly;
         Ok(ExecutorResult::new(
             vec![vec![Value::Integer(tx_id.as_u64() as i64)]],
             1,
@@ -1215,6 +1239,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         // this reset, subsequent DML would reject with
         // "transaction already committed".
         self.tx_status = TxStatus::Idle;
+        self.tx_readonly = false;
         Ok(ExecutorResult::empty())
     }
 
@@ -1281,6 +1306,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         // INT-1: Reset to Idle so the next DML can begin a new TX or run
         // in autocommit mode. (Same reasoning as commit_transaction above.)
         self.tx_status = TxStatus::Idle;
+        self.tx_readonly = false;
         Ok(ExecutorResult::empty())
     }
 
@@ -1804,6 +1830,11 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         op: &'static str,
         _table: &str,
     ) -> SqlResult<(Option<TxId>, bool)> {
+        if self.tx_readonly {
+            return Err(SqlError::ExecutionError(
+                "Cannot execute DML in READONLY transaction".to_string(),
+            ));
+        }
         match self.tx_status {
             TxStatus::Committed => {
                 return Err(SqlError::ExecutionError(

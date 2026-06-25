@@ -1,9 +1,11 @@
 # v3.9.0 GA Gate Report
 
-> **Status: 🟡 READY (gates G1-G16 PASS, 24h/72h/168h soak running on 250/Z6G4)**
+> **Status: 🟡 READY (gates G1-G16 PASS, 24h/72h/168h soak incomplete/interrupted)**
 > **Date**: 2026-06-13
 > **Latest tag**: `v3.9.0-rc7` at `642ff9cf9` (2026-06-12 16:52)
-> **GA pending**: 24h/72h/168h soak completion (250 24h running, 671+ samples, 0 errors)
+> **GA pending**: 24h/72h/168h real soak (Z6G4 unreachable since ~2026-06-19, 72h interrupted)
+> ⚠️ **2026-06-26 修正**: 250 上 24h real soak 仅获 843 samples 后中断；Z6G4 上 72h soak
+> 启动后 4 分钟因网络不稳定中断，从未完成。
 
 ## 1. Gate Summary (G1-G15)
 
@@ -19,12 +21,12 @@
 | G8 | Crash Matrix | ✅ PASS | check_p12_crash_test.sh |
 | G9 | Upgrade v3.8→v3.9 | ✅ PASS | check_p14_upgrade_test.sh (50 tests) |
 | G10 | GMP Audit + Time Travel + Hash Chain | ✅ PASS | check_p21/22/23_*.sh |
-| G11 | QPS/TPS Benchmark | 🟡 running | qps_bench on Z6G4 (built) + 250 (running) |
-| G13 | 24h Stability (extended) | ✅ PASS | check_g13_stability.sh (deferred 168h to Z6G4) |
+| G11 | QPS/TPS Benchmark | 🟡 incomplete | qps_bench on Z6G4 (built but Z6G4 unreachable); 250: partial run |
+| G13 | 24h Stability (extended) | 🟡 partial | check_g13_stability.sh (simulated PASS; real pending Z6G4 — blocked) |
 | G15 | SF=0.01 TPC-H wire | ✅ PASS | tpch_sf01_22_queries_wire_test |
 | G16 | Compatibility v3.8→v3.9 | ✅ PASS | v380_to_v390_full_upgrade_test (5 cases) |
 
-**Total: 13/15 PASS, 1/15 running (G11), 1/15 in progress (24h real soak)**
+**Total: 13/15 PASS, 1/15 incomplete (G11), 1/15 incomplete (24h real soak)**
 
 ## 2. Substance Tests (Issue #3108, #3146, #3270, #3224)
 
@@ -63,7 +65,7 @@
 | Soak | Target | Host | Status |
 |------|--------|------|--------|
 | 1h simulated | rc4 readiness | Z6G4 (rc4 binary) | ✅ PASS |
-| 24h real | GA blocker | Z6G4 (rc3 binary) + 250 (rc4 binary) | 🟡 Z6G4: 1 outage, 250: 843 samples, 0 errors |
+| 24h real | GA blocker | Z6G4 (rc3 binary) + 250 (rc4 binary) | 🟡 Z6G4: 1 outage (partially recovered); 250: 843 samples before contact lost |
 | 72h real | Post-GA | TBD | ⏳ pending 24h completion |
 | 168h real | GA-final | TBD | ⏳ pending 72h completion |
 
@@ -111,7 +113,9 @@
 - [ ] Z6G4 5th outage recovery
 - [ ] GA tag cut after soak completion
 
-**Recommendation**: When 250 24h soak reaches 24h mark with 0 errors, cut `v3.9.0-ga` tag. Z6G4 72h/168h soak is non-blocking for GA (post-GA hardening).
+**Recommendation**: ⚠️ **OUTDATED** — 250 never reached 24h mark (843 samples over ~1h18m before Z6G4 lost contact).
+> The original recommendation assumed 250 would complete 24h, but that was never confirmed.
+> As of 2026-06-26: Z6G4 unreachable since ~2026-06-19; 72h/168h soak blocked; GA cut is NOT recommended.
 
 ## 9. Risk Assessment
 

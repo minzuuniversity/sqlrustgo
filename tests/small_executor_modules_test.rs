@@ -31,7 +31,9 @@ use sqlrustgo_executor::execution::{ExecutionEngine, QueryContext};
 use sqlrustgo_executor::mutation_compiler::{
     canonicalize_expr, Assignment, CanonicalExpr, MutationCompiler, RowMutation,
 };
-use sqlrustgo_executor::predicate_compiler::PredicateCompiler;
+use sqlrustgo_executor::predicate_compiler::{
+    compile, compile_optional, PredicateCompiler,
+};
 use sqlrustgo_executor::trigger_eval::resolver::resolve_column;
 use sqlrustgo_executor::trigger_eval::{EvalContext, TriggerContext};
 use sqlrustgo_planner::{Column, Expr, Operator};
@@ -392,80 +394,68 @@ fn test_row_mutation_accessor_returns_passthrough() {
 
 // ===========================================================================
 // predicate_compiler.rs
-// ===========================================================================
-
 #[test]
-#[ignore = "BUG: PredicateCompiler::compile(Expr::Column) always returns false \
-            because find_column_index locates the Text(name) cell, then the \
-            code immediately checks whether that same cell is a Boolean. \
-            See crates/executor/src/predicate_compiler.rs:14-26."]
 fn test_predicate_compiler_column_true() {
-    let f = PredicateCompiler::compile(&col("active"));
-    let row: Record = vec![Value::Text("active".to_string()), Value::Boolean(true)];
+    let f = compile(&col("active"));
+    let row: Record = vec![Value::Boolean(true), Value::Integer(0)];
     assert!(f(&row));
 }
 
 #[test]
-#[ignore = "BUG: same root cause as test_predicate_compiler_column_true."]
 fn test_predicate_compiler_column_false() {
-    let f = PredicateCompiler::compile(&col("active"));
-    let row: Record = vec![Value::Text("active".to_string()), Value::Boolean(false)];
+    let f = compile(&col("active"));
+    let row: Record = vec![Value::Boolean(false), Value::Integer(0)];
     assert!(!f(&row));
 }
 
 #[test]
 fn test_predicate_compiler_literal_matches_any_row() {
-    let f = PredicateCompiler::compile(&lit(Value::Integer(42)));
-    let row: Record = vec![Value::Boolean(false)];
-    // Literal predicate always returns true.
+    let f = compile(&lit(Value::Integer(42)));
+    let row: Record = vec![Value::Boolean(false), Value::Integer(0)];
     assert!(f(&row));
 }
 
 #[test]
-#[ignore = "BUG: depends on the buggy Column path in PredicateCompiler. \
-            Once column_true/column_false are fixed, this should pass."]
 fn test_predicate_compiler_binary_and() {
     let e = binop(col("active"), Operator::And, col("active"));
-    let f = PredicateCompiler::compile(&e);
-    let row_a: Record = vec![Value::Text("active".to_string()), Value::Boolean(true)];
-    let row_b: Record = vec![Value::Text("active".to_string()), Value::Boolean(false)];
+    let f = compile(&e);
+    let row_a: Record = vec![Value::Boolean(true), Value::Integer(0)];
+    let row_b: Record = vec![Value::Boolean(false), Value::Integer(0)];
     assert!(f(&row_a));
     assert!(!f(&row_b));
 }
 
 #[test]
-#[ignore = "BUG: depends on the buggy Column path in PredicateCompiler. \
-            Once the column path is fixed, this should pass."]
 fn test_predicate_compiler_unary_not() {
     let e = Expr::UnaryExpr {
         op: Operator::Not,
         expr: Box::new(col("active")),
     };
-    let f = PredicateCompiler::compile(&e);
-    let row_a: Record = vec![Value::Text("active".to_string()), Value::Boolean(true)];
-    let row_b: Record = vec![Value::Text("active".to_string()), Value::Boolean(false)];
+    let f = compile(&e);
+    let row_a: Record = vec![Value::Boolean(true), Value::Integer(0)];
+    let row_b: Record = vec![Value::Boolean(false), Value::Integer(0)];
     assert!(!f(&row_a));
     assert!(f(&row_b));
 }
 
 #[test]
 fn test_predicate_compiler_wildcard_always_true() {
-    let f = PredicateCompiler::compile(&Expr::Wildcard);
-    let row: Record = vec![Value::Boolean(false)];
+    let f = compile(&Expr::Wildcard);
+    let row: Record = vec![Value::Boolean(false), Value::Integer(0)];
     assert!(f(&row));
 }
 
 #[test]
 fn test_predicate_compiler_optional_none() {
     let opt: Option<&Expr> = None;
-    assert!(PredicateCompiler::compile_optional(opt).is_none());
+    assert!(compile_optional(opt).is_none());
 }
 
 #[test]
 fn test_predicate_compiler_optional_some() {
     let opt: Option<&Expr> = Some(&lit(Value::Integer(1)));
-    let f = PredicateCompiler::compile_optional(opt).expect("filter");
-    let row: Record = vec![Value::Boolean(false)];
+    let f = compile_optional(opt).expect("filter");
+    let row: Record = vec![Value::Boolean(false), Value::Integer(0)];
     assert!(f(&row));
 }
 
