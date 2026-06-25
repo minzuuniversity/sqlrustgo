@@ -9,7 +9,10 @@ use std::fs;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 
-const FIXTURE: &str = "/home/openclaw/sqlrustgo-tpch/data";
+const FIXTURE: &str = match option_env!("TPCH_DATA_DIR") {
+    Some(p) => p,
+    None => "tests/data/tpch-sf01",
+};
 
 fn load_lineitem(storage: &Arc<RwLock<MemoryStorage>>) -> usize {
     let path = format!("{}/lineitem.tbl", FIXTURE);
