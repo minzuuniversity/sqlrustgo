@@ -34,12 +34,15 @@
 
 ### Soak 状态（GA 最终阻断项）
 
-| Soak | 目标 | 主机 | 状态 |
-|------|------|------|------|
-| 24h simulated | GA blocker | — | ✅ PASS (RC7) |
-| 24h real | GA blocker | Z6G4 (250 backup) | 🟡 运行中（843 samples, 0 errors） |
-| 72h real | GA-final | Z6G4 | ⏳ 阻塞（Z6G4 网络不可达） |
-| 168h real | GA-final | Z6G4 | ⏳ 阻塞（Z6G4 网络不可达） |
+> ⚠️ **2026-06-26 修正**: Z6G4 (192.168.0.252) 自 2026-06-19 起网络不可达。
+> 24h/72h/168h real soak 均未完成。
+
+| Soak | 目标 | 主机 | 状态 | 备注 |
+|------|------|------|------|------|
+| 24h simulated | GA blocker | — | ✅ PASS (RC7, compressed-time) | 1,440× 压缩 |
+| 24h real | GA blocker | 250 | ❌ INCOMPLETE | 843 samples 后 Z6G4 失联；Z6G4 从未启动 |
+| 72h real | GA-final | Z6G4 | ❌ INTERRUPTED | 4 min 采样后中断；从未完成 |
+| 168h real | GA-final | Z6G4 | ⏳ BLOCKED | 72h 未完成前无法启动 |
 
 ### 本次会话完成的修复（2026-06-25）
 
