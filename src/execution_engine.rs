@@ -27,13 +27,13 @@ use sqlrustgo_parser::parser::{
     AlterTableStatement,
     CallStatement,
     CreateDatabaseStatement,
-    DropDatabaseStatement,
     CreateIndexStatement,
     CreateProcedureStatement,
     CreateRoleStatement,
     CreateTableStatement,
     CreateTriggerStatement,
     DescribeStatement,
+    DropDatabaseStatement,
     DropRoleStatement,
     DropTableStatement,
     GrantRoleStatement,
@@ -397,9 +397,9 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             Statement::CreateDatabase(ref db) => self.execute_create_database(db),
             Statement::DropDatabase(ref db) => self.execute_drop_database(db),
             Statement::UseDatabase(ref name) => self.execute_use_database(name),
-             _ => Err(SqlError::ExecutionError(
-                 "Unsupported statement type".to_string(),
-             )),
+            _ => Err(SqlError::ExecutionError(
+                "Unsupported statement type".to_string(),
+            )),
         }
     }
 
@@ -988,7 +988,6 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         Ok(ExecutorResult::empty())
     }
 
-
     fn execute_truncate(&self, truncate: &TruncateStatement) -> SqlResult<ExecutorResult> {
         let mut storage = self.storage.write().unwrap();
         if !storage.has_table(&truncate.name) {
@@ -1000,7 +999,6 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         storage.delete(&truncate.name, &[])?;
         Ok(ExecutorResult::empty())
     }
-
 
     fn execute_create_index(&self, idx: &CreateIndexStatement) -> SqlResult<ExecutorResult> {
         let mut storage = self.storage.write().unwrap();
@@ -1182,12 +1180,16 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                         ParserIsolationLevel::Serializable => TmIsolationLevel::Serializable,
                     })
                     .unwrap_or(self.default_isolation);
-self.begin_transaction(iso, false)
+                self.begin_transaction(iso, false)
             }
         }
     }
 
-    fn begin_transaction(&mut self, isolation: TmIsolationLevel, readonly: bool) -> SqlResult<ExecutorResult> {
+    fn begin_transaction(
+        &mut self,
+        isolation: TmIsolationLevel,
+        readonly: bool,
+    ) -> SqlResult<ExecutorResult> {
         if self.current_tx_id.is_some() {
             return Err(SqlError::ExecutionError(
                 "Transaction already in progress".to_string(),

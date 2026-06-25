@@ -5875,7 +5875,10 @@ impl Parser {
                         self.next();
                         self.expect(Token::Key)?;
                         let columns = self.parse_column_list()?;
-                        constraints.push(TableConstraint::PrimaryKey { columns, name: None });
+                        constraints.push(TableConstraint::PrimaryKey {
+                            columns,
+                            name: None,
+                        });
                     }
                     Some(Token::Foreign) => {
                         let fk = self.parse_foreign_key_constraint(None)?;
@@ -5884,7 +5887,10 @@ impl Parser {
                     Some(Token::Unique) => {
                         self.next();
                         let columns = self.parse_column_list()?;
-                        constraints.push(TableConstraint::Unique { columns, name: None });
+                        constraints.push(TableConstraint::Unique {
+                            columns,
+                            name: None,
+                        });
                     }
                     Some(Token::Check) => {
                         self.next();
@@ -5904,7 +5910,10 @@ impl Parser {
                                     self.next();
                                     self.expect(Token::Key)?;
                                     let cols = self.parse_column_list()?;
-                                    constraints.push(TableConstraint::PrimaryKey { columns: cols, name: Some(name) });
+                                    constraints.push(TableConstraint::PrimaryKey {
+                                        columns: cols,
+                                        name: Some(name),
+                                    });
                                 }
                                 Some(Token::Foreign) => {
                                     self.next();
@@ -5914,7 +5923,10 @@ impl Parser {
                                 Some(Token::Unique) => {
                                     self.next();
                                     let cols = self.parse_column_list()?;
-                                    constraints.push(TableConstraint::Unique { columns: cols, name: Some(name) });
+                                    constraints.push(TableConstraint::Unique {
+                                        columns: cols,
+                                        name: Some(name),
+                                    });
                                 }
                                 Some(Token::Check) => {
                                     self.next();
@@ -5926,7 +5938,12 @@ impl Parser {
                                         name: Some(name),
                                     });
                                 }
-                                _ => return Err(format!("Expected constraint type, got {:?}", self.current())),
+                                _ => {
+                                    return Err(format!(
+                                        "Expected constraint type, got {:?}",
+                                        self.current()
+                                    ))
+                                }
                             }
                         }
                     }
@@ -6087,7 +6104,10 @@ impl Parser {
         })
     }
 
-    fn parse_foreign_key_constraint(&mut self, name: Option<String>) -> Result<TableConstraint, String> {
+    fn parse_foreign_key_constraint(
+        &mut self,
+        name: Option<String>,
+    ) -> Result<TableConstraint, String> {
         self.expect(Token::Foreign)?;
         self.expect(Token::Key)?;
         let columns = self.parse_column_list()?;
@@ -6279,7 +6299,10 @@ impl Parser {
             Some(t) => return Err(format!("Expected database name, got {:?}", t)),
             None => return Err("Expected database name".to_string()),
         };
-        Ok(Statement::DropDatabase(DropDatabaseStatement { name, if_exists }))
+        Ok(Statement::DropDatabase(DropDatabaseStatement {
+            name,
+            if_exists,
+        }))
     }
 
     fn parse_drop_index(&mut self) -> Result<Statement, String> {
