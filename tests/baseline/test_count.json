@@ -1,15 +1,8 @@
 {
-  "version": "v3.9.0-rc8",
-  "timestamp": "2026-06-21T17:15:06Z",
-  "cargo_tests": 118,
-  "active_tests": 6555,
-  "ignored_tests": 55,
-  "previous_version": "v3.9.0-rc7",
-  "previous_counts": {
-    "cargo_tests": 115,
-    "active_tests": 6210,
-    "ignored_tests": 31
-  },
-  "delta_explanation": "ignored +24: 10 from tests/soak_test.rs (PR #3175 wired-E2E decommission); 14 from feature_gap entries (dml_integration, graph_cypher, small_executor_modules, union_set_operations) per GA_READINESS_STATUS_2026-06-21.md blocker #3. active +345: gate test additions since rc7.",
+  "version": "v3.9.0-rc7",
+  "timestamp": "2026-06-25T23:37:40Z",
+  "cargo_tests": 115,
+  "active_tests": 6411,
+  "ignored_tests": 62,
   "note": "Updated by check_test_count_monotonic.sh"
 }

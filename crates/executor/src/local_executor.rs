@@ -1582,12 +1582,43 @@ impl<'a> LocalExecutor<'a> {
     }
 
 
-    /// Execute DELETE through execute_internal (the ONLY place allowed to touch storage directly)
-    fn execute_delete_sql(&self, _ctx: &crate::execution::QueryContext) -> Result<crate::execution::ExecutionResult, sqlrustgo_types::SqlError> {
-        // This is the ONLY place where direct storage.delete is allowed
-        // ALL other storage access in LocalExecutor is a violation
-        // TODO: Route through proper txn/wal when ExecutionEngine fully implemented
-        Ok(crate::execution::ExecutionResult::ok(0))
+    /// Execute DELETE via SQL text through unified facade
+    fn execute_delete_sql(&self, ctx: &mut crate::execution::QueryContext) -> Result<crate::execution::ExecutionResult, sqlrustgo_types::SqlError> {
+        use sqlrustgo_parser::parse;
+        use sqlrustgo_parser::Statement;
+
+        let stmt = parse(ctx.sql).map_err(|e| sqlrustgo_types::SqlError::ExecutionError(e))?;
+
+        if let Statement::Delete(delete_stmt) = stmt {
+            let table = delete_stmt.table_name;
+
+            // INT-4: in explicit TX (BEGIN) reuse open tx_id; outside, autocommit.
+            let in_explicit = self.is_in_explicit_tx();
+            let affected = match self.unified_facade {
+                Some(ref facade) => {
+                    let tx_id_before = facade.current_tx_id();
+                    let r = facade.execute_dml(|storage| {
+                        storage.delete(&table, &[])
+                    })?;
+                    if !in_explicit {
+                        let _ = facade.commit();
+                    } else if let Some(id) = tx_id_before {
+                        facade.set_tx_id(id);
+                    }
+                    r
+                }
+                None => {
+                    return Err(sqlrustgo_types::SqlError::ExecutionError(
+                        "DELETE without WAL facade — remove direct storage access".to_string(),
+                    ))
+                }
+            };
+            Ok(crate::execution::ExecutionResult::new(vec![], affected))
+        } else {
+            Err(sqlrustgo_types::SqlError::ExecutionError(
+                "Not a DELETE statement".to_string(),
+            ))
+        }
     }
 
     /// Execute INSERT via SQL text through unified facade

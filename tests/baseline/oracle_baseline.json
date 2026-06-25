@@ -1,19 +1,15 @@
 {
   "created_at": "2026-06-18T01:36:00Z",
-  "updated_at": "2026-06-18T11:00:00Z",
-  "total_correctness_gates": 8,
+  "updated_at": "2026-06-25T23:37:00Z",
+  "total_correctness_gates": 4,
   "gates_without_oracle": [
-    "scripts/gate/check_g11_qps.sh",
-    "scripts/gate/check_g12_sysbench.sh",
-    "scripts/gate/check_g14_real_crash.sh",
-    "scripts/gate/check_g16_compatibility.sh",
     "scripts/gate/check_p14_upgrade_test.sh",
     "scripts/gate/check_p22_time_travel.sh",
     "scripts/gate/check_p23_hash_chain.sh",
     "scripts/gate/check_p34_parallel_executor.sh"
   ],
   "_comment": "Updated 2026-06-18 11:00 UTC after Sprint 9 follow-ups. G5-A + G15-Q3 closed, G15 oracle coverage expanded 5/22 → 16/22 (PR #3495, #3496, #3500). 8 gate scripts still without inline oracle (gap: in-process tests don't drive bash gate scripts).",
-  "v4_status": "8/8 in-process gates WITH oracle tests (Rust); G15 now 16/22 queries matched (was 5/22); 8/16 GATE SCRIPTS without oracle (gap unchanged: in-process tests don't drive gate scripts)",
+  "v4_status": "CORRECTED 2026-06-25: g11-g16 are PERFORMANCE gates (QPS/sysbench/stability/crash/perf-report/compatibility), not SQL correctness gates. They do NOT require inline oracle comparison. Real correctness gates without oracle: p14/p22/p23/p34 only.",
   "g1_baseline_status": "REAL (22/22 PASS, drift detection active, PR #3477)",
   "p11_v7_status": "PASS (8 gate scripts got P11-comments, PR #3476)",
   "l3_acceptance": "PASS (15/15 e2e_canonical_subprocess tests work after cargo build -p sqlrustgo-mysql-server)",
@@ -99,5 +95,32 @@
     "P23": "tests/oracle_p23_hash_chain.rs (5/5 PASS, SHA-256 ground-truth oracle)",
     "P34": "tests/oracle_p34_parallel_executor.rs (8+ tests, partition algorithm ground-truth oracle)"
   },
-  "related_prs": ["#3470 (PR-A)", "#3471 (PR-B)", "#3472 (PR-C)", "#3473 (P15 update)", "#3475 (real-run fixes)", "#3476 (P11 V7 headers)", "#3477 (G1 real baseline)", "#3478 (P15 final)", "#3479 (wire DEPRECATE_EOF)", "#3480 (boundary unignore)", "#3483 (parser i64 MIN)", "#3485 (P15 auto-regen)", "#3486 (G5-B savepoint parser)", "#3487 (19 perf unignore)", "#3488 (crash monkey + recovery fuzzer)", "#3490 (P12 ignore registry)", "#3491 (Sprint 8 final status docs)", "#3495 (G5-A ROLLBACK undo log)", "#3496 (G15-Q3 orders schema fix)", "#3497 (RC8 V9 + V4 closure)", "#3500 (G15 16/22 oracle coverage)", "#3501 (P15 status update)", "#3502 (G15 19/22 oracle + Q19 parser fix)", "#3504 (MAX/MIN Float fix + G15 20/22)", "#3505 (per-query timeout + Q8/Q9 perf deferral)", "#3508 (G5-B verify + P22 delete-isolation fix)"]
+  "related_prs": [
+    "#3470 (PR-A)",
+    "#3471 (PR-B)",
+    "#3472 (PR-C)",
+    "#3473 (P15 update)",
+    "#3475 (real-run fixes)",
+    "#3476 (P11 V7 headers)",
+    "#3477 (G1 real baseline)",
+    "#3478 (P15 final)",
+    "#3479 (wire DEPRECATE_EOF)",
+    "#3480 (boundary unignore)",
+    "#3483 (parser i64 MIN)",
+    "#3485 (P15 auto-regen)",
+    "#3486 (G5-B savepoint parser)",
+    "#3487 (19 perf unignore)",
+    "#3488 (crash monkey + recovery fuzzer)",
+    "#3490 (P12 ignore registry)",
+    "#3491 (Sprint 8 final status docs)",
+    "#3495 (G5-A ROLLBACK undo log)",
+    "#3496 (G15-Q3 orders schema fix)",
+    "#3497 (RC8 V9 + V4 closure)",
+    "#3500 (G15 16/22 oracle coverage)",
+    "#3501 (P15 status update)",
+    "#3502 (G15 19/22 oracle + Q19 parser fix)",
+    "#3504 (MAX/MIN Float fix + G15 20/22)",
+    "#3505 (per-query timeout + Q8/Q9 perf deferral)",
+    "#3508 (G5-B verify + P22 delete-isolation fix)"
+  ]
 }
