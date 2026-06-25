@@ -3458,12 +3458,15 @@ pub mod testing {
         // the auto-generated `sqlrustgo_ephemeral_<port>_<pid>` and
         // the test's `tmpdir/.tmpXXXX` both match the prefix.
         externally_owned: bool,
+        // Server capability flags advertised during MySQL handshake.
+        pub capability_flags: u32,
     }
 
     impl std::fmt::Debug for EphemeralHandle {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
             f.debug_struct("EphemeralHandle")
                 .field("port", &self.port)
+                .field("capability_flags", &self.capability_flags)
                 .field("data_dir", &self.data_dir)
                 .finish()
         }
@@ -3483,6 +3486,7 @@ pub mod testing {
                 join: Mutex::new(None),
                 data_dir: PathBuf::new(),
                 externally_owned: true,
+                capability_flags: 0, // External server — not tracked in detached handle
             }
         }
     }
@@ -3585,6 +3589,7 @@ pub mod testing {
             join: Mutex::new(Some(join)),
             data_dir,
             externally_owned,
+            capability_flags: crate::capability::SERVER_DEFAULT,
         })
     }
 }
