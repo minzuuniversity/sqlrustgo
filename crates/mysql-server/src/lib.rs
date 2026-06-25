@@ -3966,6 +3966,17 @@ mod integration_tests {
         // Protocol errors don't have a source
         assert!(err.source().is_none());
     }
+
+    #[test]
+    fn server_thread_pool_type_compiles() {
+        use crate::testing::ServerThreadPool;
+        // Real construction requires WalStorage + rustls::ServerConfig
+        // setup that isn't practical in a unit test. The e2e test in
+        // tests/server_thread_pool_e2e_test.rs (Task 8) validates the
+        // full pool lifecycle. This test only asserts the type is
+        // nameable from the test module.
+        let _ = std::marker::PhantomData::<ServerThreadPool>;
+    }
 }
 
 /// Parse a LOAD DATA LOCAL INFILE SQL statement.
@@ -4094,11 +4105,143 @@ mod load_local_infile_tests {
 pub use testing::EphemeralConfig;
 
 pub mod testing {
+    use crate::UserStore;
     use crate::ACTIVE_CONFIG;
-    use std::net::TcpListener;
+    use std::net::{SocketAddr, TcpListener, TcpStream};
     use std::path::PathBuf;
+    use std::sync::mpsc::{sync_channel, Receiver, SyncSender};
     use std::sync::{Arc, Mutex};
     use std::thread::JoinHandle;
+
+    /// One connection-handling job dispatched to a worker via the
+    /// `ServerThreadPool` channel. Workers call
+    /// `handle_connection` with these args.
+    #[allow(private_interfaces)]
+    pub struct ServerJob {
+        pub stream: TcpStream,
+        pub addr: SocketAddr,
+        pub storage: Arc<
+            std::sync::RwLock<
+                sqlrustgo_storage::WalStorage<
+                    sqlrustgo_storage::FileStorage,
+                    sqlrustgo_storage::FileBackedWalManager,
+                >,
+            >,
+        >,
+        pub tls_config: Arc<rustls::ServerConfig>,
+        pub user_store: UserStore,
+    }
+
+    /// Bounded worker pool: N worker threads + `sync_channel(N*2)` for
+    /// backpressure. `server_threads=0` mode skips constructing this
+    /// and falls back to legacy per-connection `thread::spawn`.
+    pub struct ServerThreadPool {
+        tx: SyncSender<ServerJob>,
+        workers: Vec<std::thread::JoinHandle<()>>,
+        #[allow(dead_code)]
+        rx: Arc<std::sync::Mutex<Receiver<ServerJob>>>,
+    }
+
+    const CHANNEL_BUFFER_MULTIPLIER: usize = 2;
+
+    impl ServerThreadPool {
+        /// Start N worker threads + bounded sync_channel.
+        #[allow(private_interfaces)]
+        pub fn start(
+            n: usize,
+            storage: Arc<
+                std::sync::RwLock<
+                    sqlrustgo_storage::WalStorage<
+                        sqlrustgo_storage::FileStorage,
+                        sqlrustgo_storage::FileBackedWalManager,
+                    >,
+                >,
+            >,
+            tls_config: Arc<rustls::ServerConfig>,
+            user_store: UserStore,
+        ) -> Self {
+            assert!(n > 0, "ServerThreadPool::start requires n > 0");
+            let (tx, rx) = sync_channel(n * CHANNEL_BUFFER_MULTIPLIER);
+            let rx = Arc::new(std::sync::Mutex::new(rx));
+            let mut workers = Vec::with_capacity(n);
+            for worker_id in 0..n {
+                let rx = rx.clone();
+                let storage = storage.clone();
+                let tls_config = tls_config.clone();
+                let user_store = user_store.clone();
+                workers.push(std::thread::spawn(move || {
+                    worker_loop(rx, worker_id, storage, tls_config, user_store);
+                }));
+            }
+            Self { tx, workers, rx }
+        }
+
+        /// Send a job; blocks if the channel is full (backpressure).
+        /// Returns Err if all workers have shut down.
+        pub fn send(&self, job: ServerJob) -> Result<(), ServerJob> {
+            self.tx.send(job).map_err(|e| e.0)
+        }
+
+        /// Drop the sender so workers exit their recv loop, then join.
+        pub fn join(self) {
+            drop(self.tx);
+            for h in self.workers {
+                let _ = h.join();
+            }
+        }
+
+        /// Number of worker threads.
+        pub fn worker_count(&self) -> usize {
+            self.workers.len()
+        }
+    }
+
+    fn worker_loop(
+        rx: Arc<std::sync::Mutex<Receiver<ServerJob>>>,
+        worker_id: usize,
+        storage: Arc<
+            std::sync::RwLock<
+                sqlrustgo_storage::WalStorage<
+                    sqlrustgo_storage::FileStorage,
+                    sqlrustgo_storage::FileBackedWalManager,
+                >,
+            >,
+        >,
+        tls_config: Arc<rustls::ServerConfig>,
+        user_store: UserStore,
+    ) {
+        loop {
+            let job = {
+                let rx = rx.lock().expect("worker mutex poisoned");
+                match rx.recv() {
+                    Ok(job) => job,
+                    Err(_) => {
+                        tracing::debug!("worker {worker_id}: channel closed, exiting");
+                        return;
+                    }
+                }
+            };
+            // Panic isolation: one connection's panic doesn't kill the worker.
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                crate::handle_connection(
+                    job.stream,
+                    job.addr,
+                    job.storage,
+                    job.tls_config,
+                    job.user_store,
+                )
+            }));
+            if let Err(e) = result {
+                tracing::error!(
+                    "worker {worker_id}: connection handler panicked: {:?}",
+                    e.downcast_ref::<&str>().unwrap_or(&"unknown")
+                );
+            }
+            // These are passed to start() so we hold them alive for the
+            // lifetime of the worker, but they're accessed via the job.
+            let _ = (&storage, &tls_config, &user_store);
+        }
+    }
 
     /// Configuration for an ephemeral MySQL server.
     #[derive(Debug, Clone)]
