@@ -66,6 +66,8 @@ pub mod wire_err {
 // =========================================================================
 // MySQL packet framing helpers.
 // =========================================================================
+pub mod oracle_framework;
+pub mod tpch_wire_harness;
 pub mod wire_proto {
     use super::wire_err;
     use std::io::Read;
