@@ -62,7 +62,6 @@ fn open_client(data_dir: &std::path::Path) -> MySqlTestClient {
 #[ignore = "Perf test asserts wire timing thresholds (<1s for 1000 rows, <10s for 10000 rows). In debug builds the underlying socket returns EAGAIN (os error 35) on packet read; the test docstring requires 'cargo test --release ... -- --ignored' to gate perf tests. Run explicitly with `cargo test --release --test perf_eng_batched_insert_test -- --ignored --nocapture`."]
 #[test]
 fn perf_1000_row_batched_insert_under_1s() {
-fn perf_1000_row_batched_insert_under_1s() {
     let temp_dir = TempDir::new().unwrap();
     let data_dir = temp_dir.path().to_path_buf();
     let mut client = open_client(&data_dir);
@@ -98,13 +97,10 @@ fn perf_1000_row_batched_insert_under_1s() {
         elapsed
     );
 }
-#[allow(dead_code)] // ignored by default — only runs with --ignored
-#[ignore = "Same as perf_1000_row_batched_insert_under_1s — wire timing test, must run on release builds via `cargo test --release ... -- --ignored`."]
 
 #[allow(dead_code)] // ignored by default — only runs with --ignored
 #[ignore = "Same as perf_1000_row_batched_insert_under_1s — wire timing test, must run on release builds via `cargo test --release ... -- --ignored`."]
 #[test]
-fn perf_10000_row_batched_insert_under_10s() {
 fn perf_10000_row_batched_insert_under_10s() {
     let temp_dir = TempDir::new().unwrap();
     let data_dir = temp_dir.path().to_path_buf();
