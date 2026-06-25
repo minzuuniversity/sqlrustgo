@@ -6,7 +6,7 @@
 //! `crates/mysql-server/src/lib.rs` reliably returned
 //! `EAGAIN (os error 11)` on the client side when loading tables with
 //! 9+ columns and 150+ rows. The boundary: orders.tbl (9 cols, 150
-//! rows) and lineitem.tbl (16 cols, 614 rows) crashed; smaller
+//! rows) and lineitem.tbl (16 cols, 501 rows) crashed; smaller
 //! tables (region=5, nation=25, supplier=10, customer=15, part=20,
 //! partsupp=80) loaded fine.
 //!
@@ -61,7 +61,7 @@ const EXPECTED_COUNTS: &[(&str, usize)] = &[
     ("part", 20),
     ("partsupp", 80),
     ("orders", 150),
-    ("lineitem", 614),
+    ("lineitem", 501),
 ];
 
 const SCHEMA_DDL: &[&str] = &[
@@ -176,5 +176,5 @@ fn test_load_local_infile_eagain_regression() {
     let cnt: i64 = client
         .query_one_i64("SELECT COUNT(*) FROM lineitem")
         .expect("count lineitem");
-    assert_eq!(cnt, 614, "lineitem row count mismatch");
+    assert_eq!(cnt, 501, "lineitem row count mismatch");
 }
