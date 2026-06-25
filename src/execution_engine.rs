@@ -26,6 +26,8 @@ use sqlrustgo_parser::parser::{
     AlterTableOperation,
     AlterTableStatement,
     CallStatement,
+    CreateDatabaseStatement,
+    DropDatabaseStatement,
     CreateIndexStatement,
     CreateProcedureStatement,
     CreateRoleStatement,
@@ -388,10 +390,11 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 ref name,
                 ref params,
             } => self.execute_execute(name, params),
-            Statement::Deallocate { ref name } => self.execute_deallocate(name),
-            _ => Err(SqlError::ExecutionError(
-                "Unsupported statement type".to_string(),
-            )),
+            Statement::CreateDatabase(ref db) => self.execute_create_database(db),
+            Statement::DropDatabase(ref db) => self.execute_drop_database(db),
+             _ => Err(SqlError::ExecutionError(
+                 "Unsupported statement type".to_string(),
+             )),
         }
     }
 
@@ -943,6 +946,22 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         let mut storage = self.storage.write().unwrap();
         storage.drop_table(&drop.name)?;
         Ok(ExecutorResult::empty())
+    }
+
+    fn execute_create_database(&self, _db: &CreateDatabaseStatement) -> SqlResult<ExecutorResult> {
+        // v3.9.0: single-database architecture — CREATE DATABASE is accepted
+        // (for MySQL wire compatibility) but maps to no-op since all tables
+        // live in the single catalog. Future v3.10 multi-database mode will
+        // create a new schema directory under data/.
+        Ok(ExecutorResult::empty())
+    }
+
+    fn execute_drop_database(&self, db: &DropDatabaseStatement) -> SqlResult<ExecutorResult> {
+        // Refuse to drop the active database to prevent orphaned table references.
+        Err(SqlError::ExecutionError(format!(
+            "DROP DATABASE `{}` is not supported in single-database mode",
+            db.name
+        )))
     }
 
     fn execute_truncate(&self, truncate: &TruncateStatement) -> SqlResult<ExecutorResult> {
