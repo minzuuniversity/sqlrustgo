@@ -1124,30 +1124,55 @@ impl Parser {
             self.next();
             Some(IsolationLevel::SnapshotIsolation)
         } else if self.current() == Some(&Token::Read) {
-            self.next();
-            match self.current() {
-                Some(Token::Committed) => {
-                    self.next();
-                    Some(IsolationLevel::ReadCommitted)
+            // Only consume Token::Read as isolation level if NOT followed by Token::Only.
+            if let Some(&Token::Only) = self.peek() {
+                None
+            } else {
+                self.next();
+                match self.current() {
+                    Some(Token::Committed) => {
+                        self.next();
+                        Some(IsolationLevel::ReadCommitted)
+                    }
+                    Some(Token::Uncommitted) => {
+                        self.next();
+                        Some(IsolationLevel::ReadUncommitted)
+                    }
+                    Some(t) => {
+                        return Err(format!(
+                            "Expected COMMITTED or UNCOMMITTED after READ, got {:?}",
+                            t
+                        ))
+                    }
+                    None => return Err("Unexpected end of input after READ".to_string()),
                 }
-                Some(Token::Uncommitted) => {
-                    self.next();
-                    Some(IsolationLevel::ReadUncommitted)
-                }
-                Some(t) => {
-                    return Err(format!(
-                        "Expected COMMITTED or UNCOMMITTED after READ, got {:?}",
-                        t
-                    ))
-                }
-                None => return Err("Unexpected end of input after READ".to_string()),
             }
         } else {
             None
         };
+        // READ ONLY / READONLY — may follow isolation level or appear alone.
+        let readonly = if self.current() == Some(&Token::Read) {
+            self.next();
+            if self.current() == Some(&Token::Only) {
+                self.next();
+                true
+            } else {
+                false
+            }
+        } else if let Some(&Token::Identifier(ref s)) = self.current() {
+            if s.eq_ignore_ascii_case("READONLY") {
+                self.next();
+                true
+            } else {
+                false
+            }
+        } else {
+            false
+        };
         Ok(Statement::Transaction(TransactionStatement::Begin {
             work,
             isolation_level,
+            readonly,
         }))
     }
 
@@ -8210,6 +8235,7 @@ fn test_debug_having() {
             Statement::Transaction(TransactionStatement::Begin {
                 work,
                 isolation_level,
+                ..
             }) => {
                 assert!(!work);
                 assert!(isolation_level.is_none());
@@ -8226,6 +8252,7 @@ fn test_debug_having() {
             Statement::Transaction(TransactionStatement::Begin {
                 work,
                 isolation_level,
+                ..
             }) => {
                 assert!(work);
                 assert!(isolation_level.is_none());
@@ -8242,6 +8269,7 @@ fn test_debug_having() {
             Statement::Transaction(TransactionStatement::Begin {
                 work,
                 isolation_level,
+                ..
             }) => {
                 assert!(!work);
                 assert_eq!(isolation_level, Some(IsolationLevel::Serializable));
@@ -8258,11 +8286,68 @@ fn test_debug_having() {
             Statement::Transaction(TransactionStatement::Begin {
                 work,
                 isolation_level,
+                ..
             }) => {
                 assert!(!work);
                 assert_eq!(isolation_level, Some(IsolationLevel::Serializable));
             }
             _ => panic!("Expected BEGIN ISOLATION LEVEL SERIALIZABLE statement"),
+        }
+    }
+
+    #[test]
+    fn test_parse_begin_readonly() {
+        let result = parse("BEGIN READONLY");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        match result.unwrap() {
+            Statement::Transaction(TransactionStatement::Begin {
+                work,
+                isolation_level,
+                readonly,
+            }) => {
+                assert!(!work);
+                assert!(isolation_level.is_none());
+                assert!(readonly, "BEGIN READONLY should set readonly=true");
+            }
+            _ => panic!("Expected BEGIN READONLY statement"),
+        }
+    }
+
+    #[test]
+    fn test_parse_begin_read_only() {
+        // Token::Read + Token::Only form
+        let result = parse("BEGIN READ ONLY");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        match result.unwrap() {
+            Statement::Transaction(TransactionStatement::Begin {
+                work,
+                isolation_level,
+                readonly,
+            }) => {
+                assert!(!work);
+                assert!(isolation_level.is_none());
+                assert!(readonly, "BEGIN READ ONLY should set readonly=true");
+            }
+            _ => panic!("Expected BEGIN READ ONLY statement"),
+        }
+    }
+
+    #[test]
+    fn test_parse_begin_repeatable_read_still_works() {
+        // Ensure REPEATABLE READ is NOT consumed as READ ONLY
+        let result = parse("BEGIN REPEATABLE READ");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        match result.unwrap() {
+            Statement::Transaction(TransactionStatement::Begin {
+                work,
+                isolation_level,
+                readonly,
+            }) => {
+                assert!(!work);
+                assert_eq!(isolation_level, Some(IsolationLevel::SnapshotIsolation));
+                assert!(!readonly);
+            }
+            _ => panic!("Expected BEGIN REPEATABLE READ statement"),
         }
     }
 
@@ -8382,6 +8467,7 @@ fn test_debug_having() {
             Statement::Transaction(TransactionStatement::Begin {
                 work,
                 isolation_level,
+                ..
             }) => {
                 assert!(!work);
                 assert_eq!(isolation_level, Some(IsolationLevel::ReadCommitted));
@@ -8398,6 +8484,7 @@ fn test_debug_having() {
             Statement::Transaction(TransactionStatement::Begin {
                 work,
                 isolation_level,
+                ..
             }) => {
                 assert!(!work);
                 assert_eq!(isolation_level, Some(IsolationLevel::SnapshotIsolation));
