@@ -1729,4 +1729,27 @@ impl StorageEngine for FileStorage {
             .map(|((t, c), _idx)| (c.clone(), format!("{}_idx_{}", t, c)))
             .collect()
     }
+
+    fn create_database(&mut self, db_name: &str) -> SqlResult<()> {
+        let db_path = self.data_dir.join(db_name);
+        std::fs::create_dir_all(&db_path)
+            .map_err(|e| SqlError::ExecutionError(format!("create_database: {}", e)))
+    }
+
+    fn drop_database(&mut self, db_name: &str) -> SqlResult<()> {
+        let db_path = self.data_dir.join(db_name);
+        if db_path.exists() {
+            let is_empty = std::fs::read_dir(&db_path)
+                .map(|mut d| d.next().is_none())
+                .unwrap_or(true);
+            if !is_empty {
+                return Err(SqlError::ExecutionError(
+                    "database is not empty".to_string(),
+                ));
+            }
+            std::fs::remove_dir(&db_path)
+                .map_err(|e| SqlError::ExecutionError(format!("drop_database: {}", e)))?;
+        }
+        Ok(())
+    }
 }
