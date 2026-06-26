@@ -1289,7 +1289,7 @@ fn send_result_set<W: Write>(
     for r in rows.iter() {
         let mut p = Vec::new();
         write_text_row(&mut p, r)?;
-        
+
         Packet {
             length: p.len() as u32,
             sequence: seq,
@@ -3613,7 +3613,7 @@ mod integration_tests {
         let pkt = make_err_packet(0, 2000, "42000", "");
         assert_eq!(pkt.payload[0], 0xff);
     }
-#[test]
+    #[test]
     fn test_make_err_packet_null_byte_separator() {
         // MySQL wire protocol: error packet format is
         // 0xFF + error_code(u16 LE) + 0x23 + SQL_STATE(5 bytes) + 0x00 + ERROR_MSG
