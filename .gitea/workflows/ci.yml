@@ -101,39 +101,72 @@ jobs:
           bash scripts/gate/check_coverage.sh 2>&1 | tee coverage_report.log
       - name: Auto env:blocked (SPEC-021)
         run: |
+          set -euo pipefail
           chmod +x scripts/gate/auto_env_blocker.sh
-          bash scripts/gate/auto_env_blocker.sh v3.8.0 2>&1 | tee auto_env_block.log || true
+          bash scripts/gate/auto_env_blocker.sh v3.8.0 2>&1 | tee auto_env_block.log
       - name: Evidence Binding Check
         run: |
+          set -euo pipefail
           mkdir -p gate/evidence_binding_out
           bash scripts/gate/check_evidence_binding.sh "${version}" "gate/evidence_binding_out/" 2>&1 | tee evidence_binding.log
-      - name: Anti-Fabrication Check (AFP v3.8.0+)
+      - name: Anti-Fabrication Check (AFP v3.8.0+) — FIX 2026-06-26 Hermes / pipefail
         run: |
+          set -euo pipefail
           chmod +x scripts/gate/check_anti_fabrication.sh
           bash scripts/gate/check_anti_fabrication.sh 2>&1 | tee anti_fabrication.log
-      - name: Doc Completeness Check (v3.8.0 mandatory docs)
+      - name: Doc Completeness Check (v3.8.0 mandatory docs) — FIX 2026-06-26 Hermes / pipefail
         run: |
+          set -euo pipefail
           chmod +x scripts/gate/check_docs_consistency.sh
           bash scripts/gate/check_docs_consistency.sh 2>&1 | tee docs_consistency.log
-      - name: Doc Completeness Check (dedicated, v3.8.0+) [Issue #2941 supplement]
+      - name: Doc Completeness Check (dedicated, v3.8.0+) [Issue #2941 supplement] — FIX 2026-06-26 Hermes / pipefail
         run: |
+          set -euo pipefail
           chmod +x scripts/gate/check_document_completeness.sh
           mkdir -p artifacts/gate/v3.8.0/document_completeness
           bash scripts/gate/check_document_completeness.sh v3.8.0 artifacts/gate/v3.8.0/document_completeness/ 2>&1 | tee document_completeness.log
       - name: Alpha Gate (SPEC-021)
         run: |
+          set -euo pipefail
           mkdir -p artifacts/gate/v3.8.0
           bash scripts/gate/check_alpha_v380.sh 2>&1 | tee alpha_gate.log
       - name: RC/GA Gate — Unified 6-Dim (Issue #2882)
         run: |
+          set -euo pipefail
           bash scripts/gate/check_rc_ga_gate.sh ga 2>&1 | tee rc_ga_gate.log
       - name: Test Plan Audit (Issue #2881 → mandatory via #2882)
         run: |
+          set -euo pipefail
           mkdir -p artifacts/audit/v3.8.0
           bash scripts/gate/audit_testing.sh v3.8.0 ga artifacts/audit/v3.8.0 2>&1 | tee audit_testing.log
       - name: "D9 Full Gate Verification (8 dim: D1-D8 + cross-version + test plan + PR template)"
         run: |
+          set -euo pipefail
           bash scripts/gate/check_full_gate_verification.sh 2>&1 | tee full_gate_verification.log
+      - name: 6 Meta-Gate Hard Block (P11-P16, FIX 2026-06-26 Hermes) — blocks PR merge
+        if: always()
+        run: |
+          set -euo pipefail
+          FAILED=0
+          for g in check_gate_self_verification check_ignore_count \
+                   check_test_count_monotonic check_drift_not_pass \
+                   check_oracle_present check_gate_test_integrity; do
+              echo "=== $g ==="
+              chmod +x scripts/gate/$g.sh
+              if bash scripts/gate/$g.sh 2>&1 | tail -10; then
+                  echo "  ✅ PASS: $g"
+              else
+                  echo "  ❌ FAIL: $g (meta-gate hard block, P0 2026-06-26)"
+                  FAILED=$((FAILED+1))
+              fi
+          done
+          if [ $FAILED -gt 0 ]; then
+              echo ""
+              echo "=== META-GATE HARD BLOCK: $FAILED/6 meta-gate(s) FAILED ==="
+              echo "=== PR cannot merge until meta-gate fix ==="
+              exit 1
+          fi
+          echo "=== 6/6 META-GATES PASS ==="
       - name: Gate summary
         if: always()
         run: |
