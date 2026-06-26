@@ -62,7 +62,9 @@ echo "  [3/6] PASS: $TESTS e2e tests"
 
 # 4. cargo test -p sqlrustgo-cache PASS
 echo "  [4/6] Running cargo test -p sqlrustgo-cache (2min budget)..."
-if ! timeout 120 cargo test -p sqlrustgo-cache 2>&1 | tail -3; then
+timeout 120 cargo test -p sqlrustgo-cache 2>&1 | tail -3
+TEST_RC=${PIPESTATUS[0]}
+if [ "$TEST_RC" -ne 0 ]; then
     echo "  [4/6] FAIL: cache tests failed"
     exit 1
 fi
@@ -70,7 +72,9 @@ echo "  [4/6] PASS: cache unit tests"
 
 # 5. cargo test --test prepared_stmt_test PASS
 echo "  [5/6] Running cargo test --test prepared_stmt_test (2min budget)..."
-if ! timeout 120 cargo test --test prepared_stmt_test 2>&1 | tail -3; then
+timeout 120 cargo test --test prepared_stmt_test 2>&1 | tail -3
+TEST_RC=${PIPESTATUS[0]}
+if [ "$TEST_RC" -ne 0 ]; then
     echo "  [5/6] FAIL: e2e tests failed"
     exit 1
 fi
