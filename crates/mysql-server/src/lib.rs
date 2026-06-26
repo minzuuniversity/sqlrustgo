@@ -2984,15 +2984,17 @@ pub fn run_server_v2(
     data_dir: &str,
     max_connections: usize,
     auth_mode: &str,
+    server_threads: usize,
 ) -> MySqlResult<()> {
     let addr = format!("{}:{}", host, port);
     let listener = TcpListener::bind(&addr)?;
     tracing::info!(
-        "MySQL server listening on {} (data_dir={}, max_conn={}, auth={})",
+        "MySQL server listening on {} (data_dir={}, max_conn={}, auth={}, server_threads={})",
         addr,
         data_dir,
         max_connections,
-        auth_mode
+        auth_mode,
+        server_threads
     );
     // Store options in env so the run_server_with_listener path can read them
     std::env::set_var("SQLRUSTGO_DATA_DIR", data_dir);
@@ -3009,11 +3011,20 @@ pub fn run_server_v2(
     use crate::testing::EphemeralConfig;
     let cfg = EphemeralConfig {
         data_dir: Some(std::path::PathBuf::from(data_dir)),
-        server_threads: 16, // TODO(Task 6): 从 run_server_v2 参数传入
+        server_threads,
         ..Default::default()
     };
     let _ = crate::ACTIVE_CONFIG.set(std::sync::Mutex::new(cfg));
-    run_server_with_listener(listener)
+    let shutdown = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    run_server_with_listener_and_shutdown_with_bootstrap_tables_and_sql(
+        listener,
+        shutdown,
+        None,
+        true,
+        Vec::new(),
+        Some(std::path::PathBuf::from(data_dir)),
+        server_threads,
+    )
 }
 
 /// Server core extracted so the test harness can hand in a pre-bound
