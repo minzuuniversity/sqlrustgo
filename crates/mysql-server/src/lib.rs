@@ -3056,6 +3056,7 @@ pub(crate) fn run_server_with_listener_and_shutdown_with_bootstrap_tables_and_sq
     bootstrap_tables: bool,
     bootstrap_sql: Vec<String>,
     data_dir: Option<std::path::PathBuf>,
+    server_threads: usize,
 ) -> MySqlResult<()> {
     let tls_config = Arc::new(make_tls_config());
     tracing::info!("TLS ready (self-signed cert)");
@@ -3201,13 +3202,42 @@ pub(crate) fn run_server_with_listener_and_shutdown_with_bootstrap_tables_and_sq
     }
     use std::sync::atomic::Ordering;
     use std::time::Duration;
+    // Construct worker pool only when server_threads > 0. When server_threads
+    // is 0, fall back to the legacy unbounded per-connection thread::spawn
+    // path (used by tests that exercise many concurrent short-lived
+    // connections and want full thread-per-connection isolation).
+    let pool = if server_threads == 0 {
+        None
+    } else {
+        Some(crate::testing::ServerThreadPool::start(server_threads))
+    };
+
     while !shutdown.load(Ordering::SeqCst) {
         match listener.accept() {
             Ok((stream, addr)) => {
                 let st = storage.clone();
                 let tc = tls_config.clone();
                 let us = user_store.clone();
-                thread::spawn(move || handle_connection(stream, addr, st, tc, us));
+                match &pool {
+                    None => {
+                        thread::spawn(move || handle_connection(stream, addr, st, tc, us));
+                    }
+                    Some(p) => {
+                        let job = crate::testing::ServerJob {
+                            stream,
+                            addr,
+                            storage: st,
+                            tls_config: tc,
+                            user_store: us,
+                        };
+                        if let Err(returned_job) = p.send(job) {
+                            tracing::warn!(
+                                "worker pool shut down; dropping connection from {}",
+                                returned_job.addr
+                            );
+                        }
+                    }
+                }
             }
             Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
                 std::thread::sleep(Duration::from_millis(50));
@@ -3221,6 +3251,10 @@ pub(crate) fn run_server_with_listener_and_shutdown_with_bootstrap_tables_and_sq
             }
         }
     }
+    // Drop the pool so workers exit their recv loop and join. Any
+    // in-flight jobs keep running until they complete (sync_channel
+    // receivers hold the jobs until consumed).
+    drop(pool);
     Ok(())
 }
 
@@ -3241,6 +3275,7 @@ pub fn run_server_with_listener_and_shutdown(
         true,
         Vec::new(),
         None,
+        16,
     )
 }
 
@@ -3263,6 +3298,7 @@ pub(crate) fn run_server_with_listener_and_shutdown_with_bootstrap(
         true,
         Vec::new(),
         None,
+        16,
     )
 }
 
@@ -4405,6 +4441,7 @@ pub mod testing {
         let bootstrap_users = config.bootstrap_users;
         let bootstrap_tables_flag = config.bootstrap_tables;
         let bootstrap_sql = config.bootstrap_sql;
+        let server_threads = config.server_threads;
         let join = std::thread::spawn(move || {
             let bootstrap: crate::UserStoreBootstrap = if bootstrap_users {
                 Some(Box::new(|user_store: &mut crate::UserStore| {
@@ -4420,6 +4457,7 @@ pub mod testing {
                 bootstrap_tables_flag,
                 bootstrap_sql,
                 data_dir_for_thread,
+                server_threads,
             );
         });
 
