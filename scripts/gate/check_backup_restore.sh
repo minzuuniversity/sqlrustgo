@@ -67,7 +67,9 @@ echo "  [3/6] PASS: $TESTS e2e tests in tests/backup_restore_test.rs"
 
 # 4. cargo test -p sqlrustgo-admin PASS
 echo "  [4/6] Running cargo test -p sqlrustgo-admin (5min budget)..."
-if ! timeout 300 cargo test -p sqlrustgo-admin --lib 2>&1 | tail -3; then
+timeout 300 cargo test -p sqlrustgo-admin --lib 2>&1 | tail -3
+TEST_RC=${PIPESTATUS[0]}
+if [ "$TEST_RC" -ne 0 ]; then
     echo "  [4/6] FAIL: cargo test -p sqlrustgo-admin failed"
     exit 1
 fi
@@ -75,7 +77,9 @@ echo "  [4/6] PASS: sqlrustgo-admin unit tests"
 
 # 5. e2e tests PASS
 echo "  [5/6] Running cargo test --test backup_restore_test (5min budget)..."
-if ! timeout 300 cargo test --test backup_restore_test 2>&1 | tail -3; then
+timeout 300 cargo test --test backup_restore_test 2>&1 | tail -3
+TEST_RC=${PIPESTATUS[0]}
+if [ "$TEST_RC" -ne 0 ]; then
     echo "  [5/6] FAIL: backup_restore_test failed"
     exit 1
 fi

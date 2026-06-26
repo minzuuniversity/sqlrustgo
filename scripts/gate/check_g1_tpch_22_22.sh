@@ -70,7 +70,9 @@ echo "  [3/6] PASS: v3.8.0 GA_GATE_REPORT.md documents 22/22 baseline"
 
 # 4. Lightweight smoke test compiles (data-independent)
 echo "  [4/6] Checking TPC-H test compilation..."
-if ! timeout 60 cargo check --tests --test tpch_full_22_test --test tpch_22_queries_wire_test 2>&1 | tail -3; then
+timeout 60 cargo check --tests --test tpch_full_22_test --test tpch_22_queries_wire_test 2>&1 | tail -3
+CHECK_RC=${PIPESTATUS[0]}
+if [ "$CHECK_RC" -ne 0 ]; then
     echo "  [4/6] FAIL: TPC-H test compilation failed"
     exit 1
 fi

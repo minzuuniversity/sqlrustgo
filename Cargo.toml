@@ -48,8 +48,8 @@ version = "3.9.0"
 edition = "2021"
 authors = ["SQLRustGo Team"]
 license = "MIT"
-
 [workspace.dependencies]
+scopeguard = "1"
 sqlrustgo-common = { path = "crates/common" }
 rayon = "1.10"
 flate2 = "1.0"
@@ -107,8 +107,8 @@ parking_lot = "0.12"
 criterion = "0.5"
 tempfile = "3.25.0"
 serde_yaml = "0.9"
+sha2 = "0.10"
 rand = "0.8"
-clap = { version = "4.0", features = ["derive"] }
 proptest = "1.1"
 regex = "1"
 sqlrustgo-server = { path = "crates/server" }

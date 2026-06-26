@@ -88,9 +88,10 @@ fn tpch_queries() -> Vec<(&'static str, &'static str)> {
         ("Q15", "SELECT s_suppkey, s_name, s_address, s_phone FROM supplier ORDER BY s_suppkey LIMIT 100"),
     ]
 }
+// 1..=22
 
-#[test]
-fn tpc_h_full_22_works() {
+ #[test]
+ fn tpch_full_22_queries() {
     eprintln!("=== TPC-H Full 22 Test (wire protocol, SF=0.001) ===");
     let mut client: MySqlTestClient = start_sf001();
     let queries = tpch_queries();
