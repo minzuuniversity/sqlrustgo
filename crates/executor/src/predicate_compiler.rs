@@ -12,7 +12,6 @@ use std::sync::LazyLock;
 /// `Value::Text(col_name)` entry. This only works if the row stores name→value pairs
 /// (it does not). The fix uses the schema (column name → index) to resolve the
 /// position, then reads `row[idx]` directly.
-
 #[allow(dead_code)]
 pub struct PredicateCompiler {
     schema: Schema,
