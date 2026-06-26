@@ -98,15 +98,16 @@ step "P16 step 1/3: extract gate-referenced tests"
 #   cargo test --test=<name>
 #   cargo test -p <pkg> --test <name>  (catches --test after -p)
 #   --test <name> in bash variable / echo
-#
-# We use python for robust parsing (handles multiline, comments, etc.)
+# Pass the gate scripts dir to Python via environment (Python hardcodes a wrong default path)
+export GATE_DIR="${GATE_SCRIPTS_DIR}"
 GATE_TESTS_RAW=$(python3 - <<'PYEOF'
 import os
 import re
 import sys
 
-GATE_DIR = os.environ.get("GATE_DIR", "/home/ai/sqlrustgo/scripts/gate")
-if not os.path.isdir(GATE_DIR):
+GATE_DIR = os.environ.get("GATE_DIR")  # must be set by bash; no hardcoded fallback
+if not GATE_DIR or not os.path.isdir(GATE_DIR):
+    sys.exit(0)
     sys.exit(0)
 
 tests = set()
