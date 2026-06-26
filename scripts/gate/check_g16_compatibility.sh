@@ -62,8 +62,20 @@ grep -q 'name = "compatibility_harness"' Cargo.toml || {
 }
 echo "  [3/7] ✅ PASS: tests registered in Cargo.toml"
 
-# 4. Main test passes
-MAIN_RESULT=$(cargo test --test v380_to_v390_full_upgrade_test 2>&1 | grep -E "test result.*ok" | head -1 || true)
+# 4. Main test passes (FIX 2026-06-26 Hermes / P14 DRIFT: PIPESTATUS check)
+MAIN_OUTPUT=$(cargo test --test v380_to_v390_full_upgrade_test 2>&1)
+MAIN_EXIT=$?
+if [ $MAIN_EXIT -ne 0 ]; then
+    echo "  ❌ FAIL: v380_to_v390_full_upgrade_test cargo test exit $MAIN_EXIT (drift check, P14)"
+    echo "$MAIN_OUTPUT" | tail -5
+    exit 1
+fi
+MAIN_RESULT=$(echo "$MAIN_OUTPUT" | grep -E "test result.*ok" | head -1)
+if [ -z "$MAIN_RESULT" ]; then
+    echo "  ❌ FAIL: v380_to_v390_full_upgrade_test exit 0 but no 'test result: ok'"
+    echo "$MAIN_OUTPUT" | tail -5
+    exit 1
+fi
 if echo "$MAIN_RESULT" | grep -q "ok"; then
     N_PASSED=$(echo "$MAIN_RESULT" | grep -oE "[0-9]+ passed" | grep -oE "[0-9]+")
     if [ "$N_PASSED" -lt 18 ]; then
@@ -73,18 +85,30 @@ if echo "$MAIN_RESULT" | grep -q "ok"; then
     echo "  [4/7] ✅ PASS: $N_PASSED tests pass (≥18)"
 else
     echo "  ❌ FAIL: v380_to_v390_full_upgrade_test did not pass"
-    cargo test --test v380_to_v390_full_upgrade_test 2>&1 | tail -5
+    echo "$MAIN_OUTPUT" | tail -5
     exit 1
 fi
 
-# 5. Harness tests pass
-HARNESS_RESULT=$(cargo test --test compatibility_harness 2>&1 | grep -E "test result.*ok" | head -1 || true)
+# 5. Harness tests pass (FIX 2026-06-26 Hermes / P14 DRIFT: PIPESTATUS check)
+HARNESS_OUTPUT=$(cargo test --test compatibility_harness 2>&1)
+HARNESS_EXIT=$?
+if [ $HARNESS_EXIT -ne 0 ]; then
+    echo "  ❌ FAIL: compatibility_harness cargo test exit $HARNESS_EXIT (drift check, P14)"
+    echo "$HARNESS_OUTPUT" | tail -5
+    exit 1
+fi
+HARNESS_RESULT=$(echo "$HARNESS_OUTPUT" | grep -E "test result.*ok" | head -1)
+if [ -z "$HARNESS_RESULT" ]; then
+    echo "  ❌ FAIL: compatibility_harness exit 0 but no 'test result: ok'"
+    echo "$HARNESS_OUTPUT" | tail -5
+    exit 1
+fi
 if echo "$HARNESS_RESULT" | grep -q "ok"; then
     N_HARNESS=$(echo "$HARNESS_RESULT" | grep -oE "[0-9]+ passed" | grep -oE "[0-9]+")
     echo "  [5/7] ✅ PASS: $N_HARNESS harness tests pass"
 else
     echo "  ❌ FAIL: compatibility_harness did not pass"
-    cargo test --test compatibility_harness 2>&1 | tail -5
+    echo "$HARNESS_OUTPUT" | tail -5
     exit 1
 fi
 
