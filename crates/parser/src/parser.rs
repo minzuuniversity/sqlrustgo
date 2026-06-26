@@ -1159,7 +1159,7 @@ impl Parser {
             } else {
                 false
             }
-        } else if let Some(&Token::Identifier(ref s)) = self.current() {
+        } else if let Some(Token::Identifier(s)) = self.current() {
             if s.eq_ignore_ascii_case("READONLY") {
                 self.next();
                 true
@@ -1286,6 +1286,12 @@ impl Parser {
 
     fn parse_deallocate(&mut self) -> Result<Statement, String> {
         self.expect(Token::Deallocate)?;
+        // MySQL supports both: DEALLOCATE s1 and DEALLOCATE PREPARE s1
+        if let Some(Token::Identifier(ref p)) = self.current() {
+            if p.to_uppercase() == "PREPARE" {
+                self.next(); // consume PREPARE
+            }
+        }
         let name = match self.next() {
             Some(Token::Identifier(n)) => n,
             Some(t) => return Err(format!("Expected prepared statement name, got {:?}", t)),
@@ -6338,6 +6344,7 @@ impl Parser {
         Ok(Statement::DropIndex(DropIndexStatement { name, if_exists }))
     }
 
+    #[allow(dead_code)]
     fn parse_truncate(&mut self) -> Result<Statement, String> {
         self.expect(Token::Truncate)?;
         self.expect(Token::Table)?;
