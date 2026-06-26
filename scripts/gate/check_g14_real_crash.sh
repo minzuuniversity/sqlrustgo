@@ -70,9 +70,16 @@ else
     exit 1
 fi
 
-# 4. TPC-H 22/22 维持
-TPCH_PASSED=$(cargo test --test tpch_gate_test 2>&1 | grep -E "test result.*ok" | head -1 || true)
-if echo "$TPCH_PASSED" | grep -q "ok"; then
+# 4. TPC-H 22/22 维持 (FIX 2026-06-26 Hermes / P14 DRIFT: PIPESTATUS check, WARN 路径)
+TPCH_OUTPUT=$(cargo test --test tpch_gate_test 2>&1)
+TPCH_EXIT=$?
+if [ $TPCH_EXIT -ne 0 ]; then
+    echo "  ⚠️ WARN: TPC-H cargo test exit $TPCH_EXIT (drift check, P14)"
+    TPCH_PASSED=""
+else
+    TPCH_PASSED=$(echo "$TPCH_OUTPUT" | grep -E "test result.*ok" | head -1)
+fi
+if [ -n "$TPCH_PASSED" ] && echo "$TPCH_PASSED" | grep -q "ok"; then
     echo "  [4/7] ✅ PASS: TPC-H gate (22/22) maintained"
 else
     echo "  ⚠️ WARN: TPC-H gate test did not pass cleanly"
