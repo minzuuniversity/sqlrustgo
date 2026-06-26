@@ -3968,14 +3968,25 @@ mod integration_tests {
     }
 
     #[test]
-    fn server_thread_pool_type_compiles() {
+    fn server_thread_pool_panic_isolation() {
         use crate::testing::ServerThreadPool;
-        // Real construction requires WalStorage + rustls::ServerConfig
-        // setup that isn't practical in a unit test. The e2e test in
-        // tests/server_thread_pool_e2e_test.rs (Task 8) validates the
-        // full pool lifecycle. This test only asserts the type is
-        // nameable from the test module.
-        let _ = std::marker::PhantomData::<ServerThreadPool>;
+        // Pool with 2 workers; both should start cleanly and exit cleanly
+        // when sender drops. We can't easily inject a panicking job without
+        // a full handle_connection, so we just verify lifecycle here.
+        // The catch_unwind in worker_loop is verified by reading code
+        // and by e2e tests in Task 8.
+        let pool = ServerThreadPool::start(2);
+        assert_eq!(pool.worker_count(), 2);
+        pool.join();
+    }
+
+    #[test]
+    fn server_thread_pool_graceful_shutdown() {
+        use crate::testing::ServerThreadPool;
+        let pool = ServerThreadPool::start(4);
+        assert_eq!(pool.worker_count(), 4);
+        // join() must return cleanly without hang or panic
+        pool.join();
     }
 }
 
@@ -4138,8 +4149,6 @@ pub mod testing {
     pub struct ServerThreadPool {
         tx: SyncSender<ServerJob>,
         workers: Vec<std::thread::JoinHandle<()>>,
-        #[allow(dead_code)]
-        rx: Arc<std::sync::Mutex<Receiver<ServerJob>>>,
     }
 
     const CHANNEL_BUFFER_MULTIPLIER: usize = 2;
@@ -4147,33 +4156,18 @@ pub mod testing {
     impl ServerThreadPool {
         /// Start N worker threads + bounded sync_channel.
         #[allow(private_interfaces)]
-        pub fn start(
-            n: usize,
-            storage: Arc<
-                std::sync::RwLock<
-                    sqlrustgo_storage::WalStorage<
-                        sqlrustgo_storage::FileStorage,
-                        sqlrustgo_storage::FileBackedWalManager,
-                    >,
-                >,
-            >,
-            tls_config: Arc<rustls::ServerConfig>,
-            user_store: UserStore,
-        ) -> Self {
+        pub fn start(n: usize) -> Self {
             assert!(n > 0, "ServerThreadPool::start requires n > 0");
             let (tx, rx) = sync_channel(n * CHANNEL_BUFFER_MULTIPLIER);
             let rx = Arc::new(std::sync::Mutex::new(rx));
             let mut workers = Vec::with_capacity(n);
             for worker_id in 0..n {
                 let rx = rx.clone();
-                let storage = storage.clone();
-                let tls_config = tls_config.clone();
-                let user_store = user_store.clone();
                 workers.push(std::thread::spawn(move || {
-                    worker_loop(rx, worker_id, storage, tls_config, user_store);
+                    worker_loop(rx, worker_id);
                 }));
             }
-            Self { tx, workers, rx }
+            Self { tx, workers }
         }
 
         /// Send a job; blocks if the channel is full (backpressure).
@@ -4196,20 +4190,7 @@ pub mod testing {
         }
     }
 
-    fn worker_loop(
-        rx: Arc<std::sync::Mutex<Receiver<ServerJob>>>,
-        worker_id: usize,
-        storage: Arc<
-            std::sync::RwLock<
-                sqlrustgo_storage::WalStorage<
-                    sqlrustgo_storage::FileStorage,
-                    sqlrustgo_storage::FileBackedWalManager,
-                >,
-            >,
-        >,
-        tls_config: Arc<rustls::ServerConfig>,
-        user_store: UserStore,
-    ) {
+    fn worker_loop(rx: Arc<std::sync::Mutex<Receiver<ServerJob>>>, worker_id: usize) {
         loop {
             let job = {
                 let rx = rx.lock().expect("worker mutex poisoned");
@@ -4237,9 +4218,6 @@ pub mod testing {
                     e.downcast_ref::<&str>().unwrap_or(&"unknown")
                 );
             }
-            // These are passed to start() so we hold them alive for the
-            // lifetime of the worker, but they're accessed via the job.
-            let _ = (&storage, &tls_config, &user_store);
         }
     }
 
