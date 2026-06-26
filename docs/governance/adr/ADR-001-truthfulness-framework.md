@@ -88,6 +88,27 @@ Current status: Unknown (未重新测量)
 - **No Evidence = FAIL**: 没有证据支撑的 Claim 直接判定为 FAIL
 - **实测优先**: 先实测再下结论
 - **质疑文档**: 文档数据需要重新验证
+### G-08: AI Agent 不得引用文档 Claim 当作 PASS 证据
+AI Agent 在验证 Gate 状态时：
+- ❌ 禁止引用"文档声称 X/Y PASS"作为 X/Y 通过的证据
+- ✅ 必须实际运行 gate 脚本并附上 stdout 输出
+- ✅ 文档状态（README badge、报告声明）与实测状态必须一致
+例外：CI 系统自动生成的 gate 输出（如 GitHub Actions artifact）视为实测证据。
+
+### G-09: Gate FAIL 时必须降级文档 Badge
+当任意 Hard Gate（P11-P16）处于 FAIL 状态时：
+- README badge 必须立即降级为对应 FAIL 状态
+- 禁止保持 "X/Y PASS" 而实际有 FAIL
+- 恢复 badge 需要：所有 FAIL 项修复 + 重新实跑验证
+示例：
+- P12 FAIL → README badge 从 "6/6 PASS" → "5/6 PASS (P12 FAIL)"
+- P15 FAIL → 在 badge 旁添加 ⚠️ 标记
+
+### G-10: Cross-Remote 不一致时必须声明
+当同一 commit 在不同 remote（252 Gitea / GitCode / Gitee）状态不一致时：
+- 必须声明： "⚠️ 此 commit 在 [remote] 处于 [state]，在 [remote] 处于 [state]"
+- 禁止隐式假设所有 remote 状态相同
+- Gitea 252 为 canonical 状态，其他 mirror 可能滞后
 
 ## Consequences
 
