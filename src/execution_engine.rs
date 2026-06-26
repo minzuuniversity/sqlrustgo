@@ -394,6 +394,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 ref name,
                 ref params,
             } => self.execute_execute(name, params),
+            Statement::Deallocate { ref name } => self.execute_deallocate(name),
             Statement::CreateDatabase(ref db) => self.execute_create_database(db),
             Statement::DropDatabase(ref db) => self.execute_drop_database(db),
             Statement::UseDatabase(ref name) => self.execute_use_database(name),
@@ -1992,5 +1993,10 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 ir_filtered.len()
             );
         }
+    }
+
+    pub fn flush(&mut self) -> Result<(), SqlError> {
+        let mut storage = self.storage.write().unwrap();
+        storage.flush()
     }
 }
