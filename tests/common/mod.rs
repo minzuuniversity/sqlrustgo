@@ -67,6 +67,7 @@ pub mod wire_err {
 // MySQL packet framing helpers.
 // =========================================================================
 pub mod oracle_framework;
+pub mod tpch_cli_harness;
 pub mod tpch_wire_harness;
 pub mod tpch_cli_harness;
 pub mod wire_proto {
