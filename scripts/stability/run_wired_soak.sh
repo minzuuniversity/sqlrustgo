@@ -25,10 +25,12 @@
 #       bash scripts/stability/run_wired_soak.sh
 #
 # Environment variables (with defaults):
-#   HOURS                positive number, e.g. 0.5/1/2/4/8/12/16/24/48/72  (default 24)
+#   HOURS                positive number, e.g. 0.5/1/2/4/8/12/16/24/48/72  (default 1)
 #   INTERVAL             metric sample interval (seconds)                   (default 60)
 #                        (auto-scaled to 5s for HOURS<1, 10s for HOURS<2)
-#   THREADS              sysbench threads                                    (default 8)
+#   THREADS              sysbench threads                                    (default 16)
+#   SERVER_THREADS       sqlrustgo-mysql-server worker threads               (default 16)
+#                        range 0..=80, validated by --server-threads CLI
 #   TABLE_SIZE           sysbench table size                                 (default 10000)
 #   TABLES               sysbench table count                                (default 1)
 #   PORT                 MySQL port                                          (default 3396)
@@ -54,7 +56,7 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 cd "$PROJECT_ROOT"
 
 # --- HOURS parsing (accept integer or fractional) ---
-HOURS_RAW="${HOURS:-24}"
+HOURS_RAW="${HOURS:-1}"           # was 24
 HOURS=$(printf "%.4f" "$HOURS_RAW" 2>/dev/null || echo "$HOURS_RAW")
 # Validate: positive number
 case "$HOURS" in
@@ -105,8 +107,16 @@ if [ "${TPCH_ROTATE_INTERVAL:-600}" = "600" ]; then
     fi
 fi
 
-THREADS="${THREADS:-8}"
+THREADS="${THREADS:-16}"           # was 8
 TABLE_SIZE="${TABLE_SIZE:-10000}"
+SERVER_THREADS="${SERVER_THREADS:-16}"
+SERVER_THREADS_MAX=80
+if ! [[ "$SERVER_THREADS" =~ ^[0-9]+$ ]]; then
+    echo "FAIL: SERVER_THREADS='$SERVER_THREADS' is not an integer" >&2; exit 1
+fi
+if [ "$SERVER_THREADS" -gt "$SERVER_THREADS_MAX" ]; then
+    echo "FAIL: SERVER_THREADS=$SERVER_THREADS > $SERVER_THREADS_MAX (binary rejects)" >&2; exit 1
+fi
 TABLES="${TABLES:-1}"
 PORT="${PORT:-3396}"
 HOST="${HOST:-127.0.0.1}"
@@ -169,7 +179,7 @@ echo "=========================================="
 echo "SQLRustGo Wired Soak — ${HOURS_DISPLAY}h (${HOURS_SECS}s)"
 echo "=========================================="
 echo "Hours=$HOURS_DISPLAY  Interval=${INTERVAL}s  Threads=$THREADS"
-echo "Port=$PORT  Host=$HOST  Data=$DATA_DIR"
+echo "ServerThreads=$SERVER_THREADS  Port=$PORT  Host=$HOST  Data=$DATA_DIR"
 echo "FIXTURE=$FIXTURE  TPCH_ROTATE=$TPCH_ROTATE (interval=${TPCH_ROTATE_INTERVAL}s)"
 echo "Results=$RESULTS_DIR"
 echo "Binary=$SQLRUSTGO_BIN"
@@ -195,7 +205,8 @@ fi
 nohup bash -c "$LIMIT_PREFIX exec '$SQLRUSTGO_BIN' serve \
     --host '$HOST' --port '$PORT' \
     --data-dir '$DATA_DIR' \
-    --log-level info" \
+    --log-level info \
+    --server-threads '$SERVER_THREADS'" \
     > "$LOG_FILE" 2>&1 &
 SERVER_PID=$!
 echo "$SERVER_PID" > "$PID_FILE"
@@ -452,6 +463,7 @@ cat > "$RESULTS_DIR/STABILITY_REPORT.md" <<EOF
 | Host:Port | $HOST:$PORT |
 | Data dir | $DATA_DIR |
 | sysbench threads | $THREADS |
+| server worker threads | $SERVER_THREADS (max $SERVER_THREADS_MAX) |
 | sysbench table_size | $TABLE_SIZE |
 | sysbench tables | $TABLES |
 | TPC-H fixture | $FIXTURE |
