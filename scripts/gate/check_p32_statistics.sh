@@ -69,11 +69,18 @@ else
     fi
 fi
 
-# 5. ≥20 tests pass
-PASSED=$(cargo test --test statistics_test 2>&1 | grep -E "test result.*ok" | grep -oE "[0-9]+ passed" | head -1 || true)
+# 5. ≥20 tests pass (FIX 2026-06-26 Hermes / P14 DRIFT: PIPESTATUS check)
+CARGO_OUTPUT=$(cargo test --test statistics_test 2>&1)
+CARGO_EXIT=$?
+if [ $CARGO_EXIT -ne 0 ]; then
+    echo "  ❌ FAIL: statistics_test cargo test exit $CARGO_EXIT (drift check, P14)"
+    echo "$CARGO_OUTPUT" | tail -10
+    exit 1
+fi
+PASSED=$(echo "$CARGO_OUTPUT" | grep -E "test result.*ok" | grep -oE "[0-9]+ passed" | head -1)
 if [ -z "$PASSED" ]; then
-    echo "  ❌ FAIL: statistics_test tests did not pass"
-    cargo test --test statistics_test 2>&1 | tail -5
+    echo "  ❌ FAIL: statistics_test cargo test exit 0 but no 'test result: ok'"
+    echo "$CARGO_OUTPUT" | tail -5
     exit 1
 fi
 N_PASSED=$(echo "$PASSED" | grep -oE "[0-9]+")
