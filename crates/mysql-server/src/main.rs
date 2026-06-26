@@ -27,6 +27,17 @@ use std::io::{self, BufRead, Write};
 use std::process::ExitCode;
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
+/// Validate `--server-threads` value: must be integer in 0..=80.
+fn validate_server_threads(s: &str) -> Result<usize, String> {
+    let n: usize = s
+        .parse()
+        .map_err(|e| format!("not an integer: {e}"))?;
+    if n > 80 {
+        return Err(format!("must be ≤ 80 (got {n})"));
+    }
+    Ok(n)
+}
+
 #[derive(Parser, Debug)]
 #[command(
     name = "sqlrustgo-mysql-server",
@@ -56,6 +67,11 @@ enum Command {
         /// SERVER-01: max concurrent connections (semaphore limit)
         #[arg(long, default_value_t = 100)]
         max_connections: usize,
+        /// SERVER-02: max concurrent connection-handler worker threads
+        /// (0 = legacy unbounded thread::spawn; 1..=80 = bounded pool)
+        #[arg(long, default_value_t = 16,
+              value_parser = validate_server_threads)]
+        server_threads: usize,
         /// SERVER-01: auth mode (none = allow all, password = require password)
         #[arg(long, default_value = "none")]
         auth_mode: String,
@@ -142,6 +158,7 @@ fn main() -> ExitCode {
         port: 3306,
         data_dir: "/tmp/sqlrustgo-data".to_string(),
         max_connections: 100,
+        server_threads: 16,
         auth_mode: "none".to_string(),
         verbose: false,
     });
@@ -152,6 +169,7 @@ fn main() -> ExitCode {
             port,
             data_dir,
             max_connections,
+            server_threads,
             auth_mode,
             verbose,
         } => {
@@ -183,6 +201,9 @@ fn main() -> ExitCode {
             }
 
             tracing::info!("SQLRustGo MySQL Server starting on {}:{}", host, port);
+            // SERVER-02 placeholder: suppress unused warning until Task 6 wires
+            // server_threads into EphemeralConfig / run_server_v2.
+            let _ = server_threads;
             // SERVER-01 Stage 2: use v2 with all options
             if let Err(e) = run_server_v2(&host, port, &data_dir, max_connections, &auth_mode) {
                 tracing::error!("server error: {e}");
