@@ -103,7 +103,9 @@ pass "hash file parsed: ${HASH_SHORT}..."
 # 1. tpch_gate_test (22/22 inline)
 # ---------------------------------------------------------------------------
 step "G1 step 1/4: cargo test --test tpch_gate_test"
-if timeout 1800 cargo test --test tpch_gate_test 2>&1 | tail -5; then
+timeout 1800 cargo test --test tpch_gate_test 2>&1 | tail -5
+TEST_RC=${PIPESTATUS[0]}
+if [ "$TEST_RC" -eq 0 ]; then
     pass "tpch_gate_test executed (see output above for the 22/22 line)"
 else
     fail "tpch_gate_test exited non-zero (see output above)"
@@ -111,10 +113,10 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# 2. tpch_full_22_test (22/22 sf=0.1)
-# ---------------------------------------------------------------------------
 step "G1 step 2/4: cargo test --test tpch_full_22_test"
-if timeout 1800 env TPCH_FORCE=1 cargo test --test tpch_full_22_test 2>&1 | tail -10; then
+timeout 1800 env TPCH_FORCE=1 cargo test --test tpch_full_22_test 2>&1 | tail -10
+TEST_RC=${PIPESTATUS[0]}
+if [ "$TEST_RC" -eq 0 ]; then
     pass "tpch_full_22_test executed"
 else
     fail "tpch_full_22_test exited non-zero (see output above)"
@@ -123,9 +125,10 @@ fi
 
 # ---------------------------------------------------------------------------
 # 3. tpch_hash_test (Rust regression test)
-# ---------------------------------------------------------------------------
 step "G1 step 3/4: cargo test --test tpch_hash_test"
-if timeout 1800 cargo test --test tpch_hash_test 2>&1 | tail -10; then
+timeout 1800 cargo test --test tpch_hash_test 2>&1 | tail -10
+TEST_RC=${PIPESTATUS[0]}
+if [ "$TEST_RC" -eq 0 ]; then
     pass "tpch_hash_test executed"
 else
     fail "tpch_hash_test exited non-zero"
