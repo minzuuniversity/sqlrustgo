@@ -49,7 +49,11 @@ impl LatencyStats {
     fn add(&mut self, ms: f64) {
         self.count += 1;
         self.sum_ms += ms;
-        self.min_ms = if self.count == 1 { ms } else { self.min_ms.min(ms) };
+        self.min_ms = if self.count == 1 {
+            ms
+        } else {
+            self.min_ms.min(ms)
+        };
         self.max_ms = self.max_ms.max(ms);
         self.samples.push(ms);
     }
@@ -106,7 +110,10 @@ fn tpch_soak_sf001_q1_q6() {
         .filter(|(name, _)| allowed_set.iter().any(|&a| a == *name))
         .collect();
 
-    eprintln!("Queries: {:?}", queries.iter().map(|(n, _)| n).collect::<Vec<_>>());
+    eprintln!(
+        "Queries: {:?}",
+        queries.iter().map(|(n, _)| n).collect::<Vec<_>>()
+    );
     eprintln!();
 
     let overall_start = Instant::now();
@@ -131,7 +138,10 @@ fn tpch_soak_sf001_q1_q6() {
                 }
                 Err(e) => {
                     total_errors += 1;
-                    eprintln!("  ❌ {q_name}: {e} ({:.2?}ms)", q_elapsed.as_secs_f64() * 1000.0);
+                    eprintln!(
+                        "  ❌ {q_name}: {e} ({:.2?}ms)",
+                        q_elapsed.as_secs_f64() * 1000.0
+                    );
                 }
             }
         }
@@ -148,20 +158,31 @@ fn tpch_soak_sf001_q1_q6() {
     let overall_qps = total_queries as f64 / total_elapsed.as_secs_f64();
     eprintln!(
         "Total: {} iterations × {} queries = {} executions in {:.2?}",
-        iterations, queries.len(), total_queries, total_elapsed
+        iterations,
+        queries.len(),
+        total_queries,
+        total_elapsed
     );
     eprintln!("Errors: {}", total_errors);
     eprintln!();
 
-    eprintln!("{:<6} {:>8} {:>8} {:>8} {:>8} {:>8} {:>8} {:>10}",
-        "Query", "count", "avg_ms", "min_ms", "max_ms", "p50ms", "p95ms", "qps");
+    eprintln!(
+        "{:<6} {:>8} {:>8} {:>8} {:>8} {:>8} {:>8} {:>10}",
+        "Query", "count", "avg_ms", "min_ms", "max_ms", "p50ms", "p95ms", "qps"
+    );
     eprintln!("{}", "-".repeat(70));
 
     for (q_name, stats) in &query_stats {
         eprintln!(
             "{:<6} {:>8} {:>8.2} {:>8.2} {:>8.2} {:>8.2} {:>8.2} {:>10.2}",
-            q_name, stats.count, stats.avg_ms(), stats.min_ms, stats.max_ms,
-            stats.percentile(50.0), stats.percentile(95.0), stats.qps(total_time_ms),
+            q_name,
+            stats.count,
+            stats.avg_ms(),
+            stats.min_ms,
+            stats.max_ms,
+            stats.percentile(50.0),
+            stats.percentile(95.0),
+            stats.qps(total_time_ms),
         );
     }
 
@@ -175,22 +196,34 @@ fn tpch_soak_sf001_q1_q6() {
     };
 
     if total_errors > 0 {
-        eprintln!("\n⚠️  {} errors detected (error rate: {:.2}%)", total_errors, error_rate * 100.0);
+        eprintln!(
+            "\n⚠️  {} errors detected (error rate: {:.2}%)",
+            total_errors,
+            error_rate * 100.0
+        );
     }
 
     if error_rate > 0.01 {
         panic!(
             "Soak FAILED: error rate {:.2}% exceeds 1% threshold ({} errors / {} queries)",
-            error_rate * 100.0, total_errors, total_queries
+            error_rate * 100.0,
+            total_errors,
+            total_queries
         );
     }
 
     for (q_name, stats) in &query_stats {
         let p99 = stats.percentile(99.0);
         if p99 > 5000.0 {
-            eprintln!("\n⚠️  WARNING: {q_name} p99 latency {:.0}ms exceeds 5000ms threshold", p99);
+            eprintln!(
+                "\n⚠️  WARNING: {q_name} p99 latency {:.0}ms exceeds 5000ms threshold",
+                p99
+            );
         }
     }
 
-    eprintln!("\n✅ Soak test PASSED — {} errors, {:.2} qps overall", total_errors, overall_qps);
+    eprintln!(
+        "\n✅ Soak test PASSED — {} errors, {:.2} qps overall",
+        total_errors, overall_qps
+    );
 }
