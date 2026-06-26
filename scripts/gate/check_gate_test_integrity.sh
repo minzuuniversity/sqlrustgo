@@ -108,6 +108,7 @@ import sys
 GATE_DIR = os.environ.get("GATE_DIR")  # must be set by bash; no hardcoded fallback
 if not GATE_DIR or not os.path.isdir(GATE_DIR):
     sys.exit(0)
+    sys.exit(0)
 
 tests = set()
 # Match `cargo test ... --test <name>` (avoid --target, --test-threads, etc.)
