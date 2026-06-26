@@ -86,10 +86,7 @@ fn server_threads_rejects_non_integer() {
         .arg("abc")
         .output()
         .expect("Failed to invoke binary");
-    assert!(
-        !output.status.success(),
-        "--server-threads abc should fail"
-    );
+    assert!(!output.status.success(), "--server-threads abc should fail");
 }
 
 #[test]
