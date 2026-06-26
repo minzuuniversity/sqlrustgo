@@ -7,12 +7,13 @@ fn main() {
         .nth(1)
         .unwrap_or_else(|| "tests/data/tpch-sf01".to_string());
 
-    // Use the public EngineBuilder API (similar to other perf examples)
-    use sqlrustgo::{executor::Value, EngineBuilder};
-    let mut engine = EngineBuilder::new()
-        .data_dir(format!("{path}_q17"))
-        .build()
-        .expect("build engine");
+    // FIX 2026-06-26 Hermes: use ExecutionEngine directly (EngineBuilder doesn't exist)
+    use sqlrustgo::{ExecutionEngine, MemoryStorage};
+    use sqlrustgo_storage::Record;
+    use sqlrustgo_types::Value as SqlValue;
+    use std::sync::{Arc, RwLock};
+    let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+    let mut engine = ExecutionEngine::new(storage);
 
     // Load all tables
     for table in &[
@@ -39,7 +40,7 @@ fn main() {
     let result = engine.execute(q17);
     let elapsed = start.elapsed();
     match result {
-        Ok(rows) => println!("Q17 OK in {:?}, rows={}", elapsed, rows.len()),
+        Ok(rows) => println!("Q17 OK in {:?}, rows={}", elapsed, rows.rows.len()),
         Err(e) => println!("Q17 ERR in {:?}: {}", elapsed, e),
     }
 }
