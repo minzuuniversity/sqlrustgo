@@ -80,13 +80,22 @@ if ! cargo check --test soak_test 2>&1 | tail -3 | grep -q "Finished\|Compiling"
 fi
 echo "  [4/7] ✅ PASS: soak_test compiles"
 
-# 5. Tests pass
-PASSED=$(cargo test --test soak_test 2>&1 | grep -E "test result.*ok" | grep -oE "[0-9]+ passed" | head -1)
-if [ -z "$PASSED" ]; then
-    echo "  ❌ FAIL: soak_test tests did not pass"
-    cargo test --test soak_test 2>&1 | tail -5
+# 5. Tests pass (FIX 2026-06-26 Hermes / P14 DRIFT: PIPESTATUS check)
+CARGO_OUTPUT=$(cargo test --test soak_test 2>&1)
+CARGO_EXIT=$?
+if [ $CARGO_EXIT -ne 0 ]; then
+    echo "  ❌ FAIL: soak_test cargo test exit $CARGO_EXIT (drift check, P14)"
+    echo "$CARGO_OUTPUT" | tail -10
     exit 1
 fi
+PASSED=$(echo "$CARGO_OUTPUT" | grep -E "test result.*ok" | grep -oE "[0-9]+ passed" | head -1)
+if [ -z "$PASSED" ]; then
+    echo "  ❌ FAIL: soak_test cargo test exit 0 but no 'test result: ok'"
+    echo "$CARGO_OUTPUT" | tail -5
+    exit 1
+fi
+echo "  [5/7] ✅ PASS: soak_test $PASSED"
+
 # Expect at least 10 tests (3 soak + 7 supporting)
 N_PASSED=$(echo "$PASSED" | grep -oE "[0-9]+")
 if [ "$N_PASSED" -lt 10 ]; then

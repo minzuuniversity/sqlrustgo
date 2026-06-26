@@ -13,6 +13,36 @@
 - Create feature branches from `develop/v3.9.0`
 - Use git worktrees for isolated feature work: `git worktree add .worktrees/<name> -b feature/<name>`
 
+## 强制 governance 阅读清单 (P0 2026-06-26 新增, Hermes audit)
+
+**任何 AI agent / 开发者必须在开始 task 前读完以下 7 份, 缺一不可**:
+
+1. `docs/governance/adr/ADR-001-truthfulness-framework.md` — G-01 ~ G-10 (claim ≠ evidence, 不引 doc claim 当 PASS)
+2. `docs/governance/ANTI_FABRICATION_POLICY.md` — Type A/B/C/D 4 类违规 + Hard Gate vs Soft Gate 区分
+3. `docs/governance/ISSUE_CLOSING_VERIFICATION.md` — 关闭 Issue 前 5 步 (含 HTTP 405 workaround)
+4. `docs/governance/DOC_CHECK_CORRECTION_RULES.md` — 改文档 7 步流程 (含实跑 gate 验证)
+5. `docs/governance/AI_COLLABORATION.md` — §1.1 角色 + §5.5 多 AI 协调 (待 ADR-014 落地)
+6. `docs/governance/GATE_CONDITIONS.md` — G1-G16 门禁定义 + Hard/Soft 分类
+7. `docs/governance/adr/ADR-008-test-claim-transparency.md` — P16 gate test integrity 政策
+
+**违反 P0 红线 (governance 落实不了 7 根因, 见 reports/STAGE3_DIFF_PLAN_2026-06-26.md)**:
+
+- ❌ 写 "5/5 PASS" 不引 P11-P16 实跑输出 (AFP Type B)
+- ❌ 写"完成"不引 git SHA + commit (AFP Type D)
+- ❌ gate 失败不阻断 (CI 必须 `set -euo pipefail` + `exit 1`, 2026-06-26 已修)
+- ❌ AI 协作 0 协调 (必须走 ADR-014 multi-ai-coordination)
+
+**铁律**:
+- 7 份读完才能写代码
+- 改任何 1 份 governance 文档必须实跑 P11-P16 验证
+- 任何 claim 必须带: source agent + source_run + timestamp + evidence_hash (AFP §5.4)
+
+**关联**:
+- Issue #3600: Multi-AI 验证请求
+- reports/doc-audit-2026-06-26.md (本次审计报告)
+- reports/STAGE2_DIFF_PLAN_2026-06-26.md (5 governance 整改方案)
+- reports/STAGE3_DIFF_PLAN_2026-06-26.md (本批 gate+CI+AGENTS 整改方案)
+
 ## Essential Commands
 
 ```bash
