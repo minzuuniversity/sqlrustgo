@@ -73,7 +73,9 @@ echo "  [5/6] PASS: $TESTS tests in tests/parallel_executor_integration_test.rs"
 
 # 6. clippy clean on sqlrustgo-executor (5min budget)
 echo "  [6/6] Running cargo clippy on sqlrustgo-executor (5min budget)..."
-if ! timeout 300 cargo clippy -p sqlrustgo-executor --all-features -- -D warnings 2>&1 | tail -3; then
+timeout 300 cargo clippy -p sqlrustgo-executor --all-features -- -D warnings 2>&1 | tail -3
+CLIPPY_RC=${PIPESTATUS[0]}
+if [ "$CLIPPY_RC" -ne 0 ]; then
     echo "  [6/6] FAIL: clippy errors in sqlrustgo-executor"
     exit 1
 fi
