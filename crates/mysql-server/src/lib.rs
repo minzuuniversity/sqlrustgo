@@ -2294,8 +2294,7 @@ fn handle_load_local_infile<S: Read + Write>(
     // `WalStorage::flush()` delegates to `FileStorage::flush()` which
     // writes all table .json files.
     {
-        let mut s = engine.storage_write();
-        s.flush().map_err(|e| MySqlError::Other(format!("flush storage: {}", e)))?;
+        engine.flush().map_err(|e| MySqlError::Other(format!("flush storage: {}", e)))?;
     }
 
     Ok(total_rows)
