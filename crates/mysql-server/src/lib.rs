@@ -2294,7 +2294,8 @@ fn handle_load_local_infile<S: Read + Write>(
     // `WalStorage::flush()` delegates to `FileStorage::flush()` which
     // writes all table .json files.
     {
-        let mut s = engine.storage_write();
+        let storage = engine.storage_ref();
+        let mut s = storage.write().map_err(|e| MySqlError::Other(format!("flush storage lock: {}", e)))?;
         s.flush().map_err(|e| MySqlError::Other(format!("flush storage: {}", e)))?;
     }
 
@@ -2768,10 +2769,13 @@ fn handle_connection(
 ) {
     ACTIVE_CONNECTIONS.fetch_add(1, Ordering::Relaxed);
     TOTAL_CONNECTIONS_ACCEPTED.fetch_add(1, Ordering::Relaxed);
-    let _guard = scopeguard::guard((), |_| {
-        // Always decrement on exit, even on panic
-        ACTIVE_CONNECTIONS.fetch_sub(1, Ordering::Relaxed);
-    });
+    struct ConnGuard;
+    impl Drop for ConnGuard {
+        fn drop(&mut self) {
+            ACTIVE_CONNECTIONS.fetch_sub(1, Ordering::Relaxed);
+        }
+    }
+    let _guard = ConnGuard;
     stream
         .set_read_timeout(Some(std::time::Duration::from_secs(600)))
         .ok();
