@@ -54,7 +54,7 @@
 
 ---
 
-## 三、工作流程（5 步标准流程）
+## 三、工作流程（7 步标准流程）
 
 ### 步骤 1：发现问题
 
@@ -175,6 +175,45 @@
 
 ## 七、结论
 ```
+### 步骤 6：实跑 Gate 验证（如适用）
+当文档改正涉及 Gate 状态变化时（如修改 README badge）：
+**操作**：
+1. 实际运行对应的 gate 脚本
+2. 记录 stdout/stderr 输出
+3. 将输出作为 evidence 附在 PR/Commit 中
+**输出**：
+```bash
+# 示例
+$ bash scripts/gate/check_gate_test_integrity.sh
+EXIT: 0 # P16 PASS
+```
+---
+### 步骤 7：git push + CI 验证
+**操作**：
+1. 创建 PR 到目标分支（如 `develop/v3.9.0`）
+2. CI 自动验证编译和测试
+3. 确认 CI green 后请求合并
+**注意**：
+- Gate FAIL 时禁止 push 到 252 Gitea（受 ADR-001 G-09 约束）
+- 先修 FAIL 再 push
+- 验证 badge 更新与 gate 实跑结果一致
+**输出**：
+```bash
+git push origin HEAD:refs/heads/fix/doc-fix # PR created → CI green → Merge
+```
+INS.POST 227:
+### 5.3 Don't Claim 5/5 PASS Without Re-Running Gates
+禁止在未实际运行 gate 脚本的情况下声称"X/Y PASS"：
+❌ 错误：
+```README badge: 5/5 PASS (based on last week's report)```
+✅ 正确：
+```README badge: 6/6 PASS
+Evidence: bash scripts/gate/check_gate_self_verification.sh (exit 0, 2026-06-26)```
+每次更新 README badge 前：
+1. 运行 `scripts/gate/*.sh` 所有 gate 脚本
+2. 确认实际 exit code = 0
+3. 将输出附在 PR description 中
+4. 更新 badge 状态必须与实跑结果一致
 
 ---
 
