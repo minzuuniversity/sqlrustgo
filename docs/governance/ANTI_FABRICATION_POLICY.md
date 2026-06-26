@@ -175,6 +175,21 @@ AI 生成的 Soft Gate 解释必须明确标注：
 供决策参考，不作为门禁依据
 ```
 
+### 5.4 Cross-Agent Claim 链约束
+当 AI Agent A 引用 AI Agent B 的 Claim 时：
+- AI Agent B 的 Claim 必须有独立 Evidence（非从第三方文档推断）
+- AI Agent A 引用时必须注明：source agent + source_run timestamp + evidence_hash
+- 引用链每多一跳，置信度降一级
+示例（违规）：
+```
+Agent B claim: "P12 PASS" (无 evidence)
+Agent A claim: "根据 Agent B 的 P12 PASS 声明，Gate 状态正常" → Type C 违规：Agent A 在传播无 Evidence 的 Claim
+```
+示例（合规）：
+```
+Agent B claim: "P12 PASS (gate_output: b56f06328b, run: 2026-06-26T07:50Z)"
+Agent A claim: "P12 PASS (source: Agent B, ref: b56f06328b, 2026-06-26T07:50Z)" → 合规：Claim 可追溯到原始 Evidence
+```
 ---
 
 ## 6. 强制证据嵌入规则
@@ -226,6 +241,16 @@ if no_evidence:
 | Type D（伪任务完成） | **P1 — 高** | 标记为 UNVERIFIED CLAIM + 要求验证 |
 
 ### 7.2 回退流程
+### 7.4 P16 FAIL 处理规则
+当 P16（Gate Test Integrity）FAIL 时：
+- **立即降级**：README badge 降为 "X/6 PASS (P16 FAIL)"
+- **禁止推送**：252 Gitea push 被 G-09 约束禁止直到 P16 PASS
+- **根因**：P16 FAIL 通常表示 gate 脚本指向不存在的测试文件或路径硬编码错误
+- **修复优先级**：P16 高于其他 Soft Gate
+P16 FAIL 场景：
+- gate_referenced_test 在 `scripts/gate/` 列出但 `tests/` 下不存在
+- Python heredoc 硬编码绝对路径导致不同机器 exit(0)
+- 测试文件被 rename/move 但 gate 脚本未更新
 
 当发现违规时：
 
@@ -239,6 +264,26 @@ if no_evidence:
 
 同一 AI 连续 2 次犯 Type A/B 违规：
 - 暂停 AI 生成权限
+### 8.4 AFP Violation 自我发现流程
+当 AI Agent 自行发现 AFP 违规时：
+1. **立即停止** 当前传播的 Claim
+2. **标记** 该 Claim 为 `[AFP-VIOLATION: Type-X]`
+3. **上报** 到 ANTI_FABRICATION_POLICY 违规日志
+4. **修正** 带有正确 Evidence 的新 Claim
+违规日志格式：
+```yaml
+violation:
+  timestamp: ISO8601
+  agent: agent_id
+  type: Type-A|B|C|D
+  claim: "原始 Claim 文本"
+  reason: "违规原因"
+  remediation:
+  - action: "停止 Claim"
+  - action: "发布修正 Claim"
+  - evidence_ref: "新 Evidence 的 commit/PR"
+```
+自我发现违规（vs 被外部发现）的处罚减半：连续 3 次自我发现才暂停权限。
 - 需要人工审核每一步输出
 
 ---
