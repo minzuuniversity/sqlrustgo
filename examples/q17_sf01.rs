@@ -1,4 +1,4 @@
-// Q17 SF=0.1 in-process performance test
+//! Q17 SF=0.1 in-process performance test
 use std::time::Instant;
 
 fn main() {
@@ -7,12 +7,9 @@ fn main() {
         .nth(1)
         .unwrap_or_else(|| "tests/data/tpch-sf01".to_string());
 
-    // Use the public EngineBuilder API (similar to other perf examples)
-    use sqlrustgo::{executor::Value, EngineBuilder};
-    let mut engine = EngineBuilder::new()
-        .data_dir(format!("{path}_q17"))
-        .build()
-        .expect("build engine");
+    // Use the ExecutionEngine with MemoryStorage
+    use sqlrustgo::{ExecutionEngine, MemoryStorage};
+    let mut engine: ExecutionEngine<MemoryStorage> = ExecutionEngine::with_memory();
 
     // Load all tables
     for table in &[
@@ -39,7 +36,7 @@ fn main() {
     let result = engine.execute(q17);
     let elapsed = start.elapsed();
     match result {
-        Ok(rows) => println!("Q17 OK in {:?}, rows={}", elapsed, rows.len()),
+        Ok(rows) => println!("Q17 OK in {:?}, rows={}", elapsed, rows.rows.len()),
         Err(e) => println!("Q17 ERR in {:?}: {}", elapsed, e),
     }
 }
