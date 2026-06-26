@@ -38,6 +38,51 @@ gh issue view <id> --json closedByPullRequestsReferences
 
 # 如果为空，说明没有 PR 关闭该 Issue，不能手动关闭！
 ```
+### 2.3 HTTP 405 Gitea API Rate Limit Workaround
+当 Gitea API 返回 HTTP 405 Method Not Allowed 时：
+- 原因：使用了错误的 HTTP 方法（如 POST 而非 GET）
+- 正确方法：`GET /api/v1/repos/{owner}/{repo}/issues/{number}` 获取 issue 信息
+- 获取 PR 引用：`GET /api/v1/repos/{owner}/{repo}/issues/{number}/timeline`（需认证）
+避免 405 的方法：
+- issue view → GET（不是 POST）
+- 评论列表 → GET /issues/{n}/comments
+- 创建评论 → POST /issues/{n}/comments
+当 rate limit 时：
+- 使用 `curl -H "Authorization: Bearer {token}"` 而非明文密码
+- 间隔 1 秒再试
+- 记录到工作日志
+
+### 2.4 多 AI 协作 Issue 归属规则
+当多个 AI Agent（Hermes-Z6G4 / Claude-Code / 其他）在同一 Issue 下协作时：
+**Issue 认领**：
+- 第一个在该 Issue 下评论"认领"的 Agent 获得归属
+- 认领格式：`[agent: {agent_id}] 认领 issue #{number}`
+- 认领后其他 Agent 应避免未经协调的修改
+**Claim 署名**：
+- 每个评论必须包含 `[agent: {agent_id}]` 前缀
+- claim 格式：`[agent: claude-code] 验证结果 — 2026-06-26 HH:MM`
+- 无前缀的评论视为 User（人类）发言
+**冲突解决**：
+- 同一 Issue 下不同 Agent 的验证结果冲突时
+- 要求各 Agent 提供独立实跑证据
+- User（李哥）拥有最终裁决权
+
+### 2.5 AI Claim 的 PR 必须是同 AI 提交
+当 AI Agent 声称完成了某个修复/改进时：
+- 该修复的 PR 必须由同一 AI Agent 的账号提交
+- 禁止：Agent A 声称完成，Agent B 提交 PR
+- 禁止：Agent A 声称完成，但 PR 作者是人类（除非 User 明确要求）
+**正确示例**：
+```
+[agent: hermes-z6g4] 修复 P12 FAIL → PR #3601 (author: hermes-z6g4)
+```
+**违规示例**：
+```
+[agent: claude-code] 验证 P12 PASS → 但 PR 作者是 hermes-z6g4 → 违规：CLAIM 与 AUTHOR 不匹配
+```
+**例外**：当 AI Agent 因技术限制（如 PAT 过期）无法自行提交时：
+- 需在评论中说明：`[agent: X] 因 {原因} 无法自行提交，请 User 代为提交`
+- User 提交后在 Issue 下确认
 
 ---
 
