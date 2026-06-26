@@ -85,11 +85,18 @@ else
     echo "  [5/7] ✅ PASS: crash_test_framework compiles"
 fi
 
-# 6. Tests pass
-PASSED=$(cargo test --test crash_test_framework 2>&1 | grep -E "test result.*ok" | grep -oE "[0-9]+ passed" | head -1)
+# 6. Tests pass (FIX 2026-06-26 Hermes / P14 DRIFT: PIPESTATUS check)
+CARGO_OUTPUT=$(cargo test --test crash_test_framework 2>&1)
+CARGO_EXIT=$?
+if [ $CARGO_EXIT -ne 0 ]; then
+    echo "  ❌ FAIL: crash_test_framework cargo test exit $CARGO_EXIT (drift check, P14)"
+    echo "$CARGO_OUTPUT" | tail -10
+    exit 1
+fi
+PASSED=$(echo "$CARGO_OUTPUT" | grep -E "test result.*ok" | grep -oE "[0-9]+ passed" | head -1)
 if [ -z "$PASSED" ]; then
-    echo "  ❌ FAIL: crash_test_framework tests did not pass"
-    cargo test --test crash_test_framework 2>&1 | tail -5
+    echo "  ❌ FAIL: crash_test_framework cargo test exit 0 but no 'test result: ok'"
+    echo "$CARGO_OUTPUT" | tail -5
     exit 1
 fi
 echo "  [6/7] ✅ PASS: crash_test_framework $PASSED"
