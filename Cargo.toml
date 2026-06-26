@@ -126,6 +126,7 @@ sqlrustgo-unified-query = { path = "crates/unified-query" }
 sqlrustgo-mysql-server = { path = "crates/mysql-server" }
 sqlrustgo-distributed = { path = "crates/distributed" }
 sha1 = "0.10"
+clap = { version = "4", features = ["derive"] }
 
 [package]
 name = "sqlrustgo"
