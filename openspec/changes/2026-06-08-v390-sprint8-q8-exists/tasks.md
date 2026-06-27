@@ -29,16 +29,23 @@
 ## 6. Sprint 8 (out of scope for this PR)
 
 - [x] 6.1 Hash-join for 8-way JOINs. **Foundation landed in
-      `crates/executor/src/join/hash_join.rs` (commit pending)**:
-      `pub fn hash_join_inner_outer` (2-way) and `pub fn
-      multi_way_hash_chain` (chained left-deep). 8 unit tests PASS.
-      Wiring for the 8-way chain (and the CASE WHEN short-circuit
-      below) is the remaining Sprint 8 work.
+      `crates/executor/src/join/hash_join.rs` (PR #3346, SHA
+      `e1fb0eba6c`)** + **Wired in `engine_select.rs` (PR
+      `11ea816d5b`, this branch)** via `try_comma_join_hash_chain`.
+      8 unit tests PASS for the hash-join helper. The wiring covers
+      the Q3 (3-table) and Q21 (4-table) chains end-to-end.
 - [ ] 6.2 CASE WHEN short-circuit. Pre-compute `n2.n_name =
       'GERMANY'` per row of the nation n2 subquery (or the
       materialized `__subq_N` if the parser encoded it), avoiding
-      per-joined-row CASE re-evaluation. Best implemented alongside
-      the hash-join wiring (§6.1).
+      per-joined-row CASE re-evaluation. **Plus: 8-way cartesian
+      path bug** — Q8's 8-way join (7 cross-table join keys + 1
+      single-table filter on nation n2) currently returns 0 rows
+      from the per-clause cartesian fallback even when the wiring
+      returns None. Verified pre-existing on commit `11ea816d5b^`.
+      Fix requires either (a) extending the chain build to include
+      "single-table-filter" tables via the existing
+      `pre_filter_cartesian_right_table` push-down, or (b) a
+      separate "cartesian-of-filtered-sources" helper.
 - [ ] 6.3 EXTRACT YEAR function support. Some Q8 paths use
       `EXTRACT(YEAR FROM o_orderdate)`; confirm the parser +
       `executor::expr::eval_fn` path returns the same year as PG for
