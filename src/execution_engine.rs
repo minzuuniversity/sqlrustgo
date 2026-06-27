@@ -9,7 +9,8 @@ use crate::engine_utils::{
 };
 use crate::expr_utils::{
     compare_values, evaluate_binary_op, evaluate_expr_to_string, evaluate_expression,
-    expression_to_string, expression_to_value, expression_to_value_from_string,
+    evaluate_expression_with_subq, expression_to_string, expression_to_value,
+    expression_to_value_from_string, resolve_subqueries_in_expr,
 };
 use crate::{parse, SqlError, SqlResult, Value};
 use sqlrustgo_catalog::stored_proc::{ParamMode, StoredProcParam, StoredProcStatement};
@@ -647,13 +648,42 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             self.begin_implicit_dml_tx("execute_update", &update.table)?;
         let table_name = update.table.clone();
 
+        let scalar_eval = |subq: &sqlrustgo_parser::SelectStatement| -> Result<Value, String> {
+            let result = self.execute_select(subq).map_err(|e| e.to_string())?;
+            Ok(result.rows.first().and_then(|r| r.first().cloned()).unwrap_or(Value::Null))
+        };
+        let list_eval = |subq: &sqlrustgo_parser::SelectStatement| -> Result<Vec<Value>, String> {
+            let result = self.execute_select(subq).map_err(|e| e.to_string())?;
+            Ok(result.rows.into_iter().map(|r| r.first().cloned().unwrap_or(Value::Null)).collect())
+        };
+        let resolved_set: Vec<(String, Expression)> = update
+            .set_clauses
+            .iter()
+            .map(|(col, expr)| {
+                Ok((col.clone(), resolve_subqueries_in_expr(expr, &scalar_eval, &list_eval)?))
+            })
+            .collect::<Result<Vec<_>, String>>()
+            .map_err(|e| SqlError::ExecutionError(format!("UPDATE SET subquery: {}", e)))?;
+        let resolved_where: Option<Expression> = match &update.where_clause {
+            Some(w) => Some(
+                resolve_subqueries_in_expr(w, &scalar_eval, &list_eval)
+                    .map_err(|e| SqlError::ExecutionError(format!("UPDATE WHERE subquery: {}", e)))?,
+            ),
+            None => None,
+        };
+        let resolved_update = UpdateStatement {
+            table: update.table.clone(),
+            set_clauses: resolved_set,
+            where_clause: resolved_where,
+        };
+
         // If no WHERE clause, use the simple storage.update() path
         // PR-842 Option A: compute updates from SET clauses (per-row evaluation
         // collapses to a single value for literal / constant expressions, which
         // is the common no-WHERE case). For column references, the first row
         // is used as the evaluation context — for literal values this yields
         // the correct after-image for every row.
-        if update.where_clause.is_none() {
+        if resolved_update.where_clause.is_none() {
             let table_info = {
                 let storage = self.storage.read().unwrap();
                 storage.get_table_info(&table_name)?.clone()
@@ -672,7 +702,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                             .collect()
                     })
             };
-            let updates: Vec<(usize, sqlrustgo_types::Value)> = update
+            let updates: Vec<(usize, sqlrustgo_types::Value)> = resolved_update
                 .set_clauses
                 .iter()
                 .filter_map(|(col_name, expr)| {
@@ -698,7 +728,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             storage.scan(&table_name)?
         };
 
-        let where_clause = update.where_clause.as_ref().unwrap();
+        let where_clause = resolved_update.where_clause.as_ref().unwrap();
 
         // Filter rows that match the WHERE clause
         let rows_to_update: Vec<Vec<Value>> = all_rows
@@ -707,7 +737,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             .filter(|row| evaluate_where_clause(where_clause, row, &table_info))
             .collect();
 
-        Self::ir_validate_update_filter(&all_rows, &table_info, &rows_to_update, update);
+        Self::ir_validate_update_filter(&all_rows, &table_info, &rows_to_update, &resolved_update);
 
         let count = rows_to_update.len();
 
@@ -716,7 +746,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         }
 
         // Build column index map for SET clauses
-        let set_col_indices: Vec<(usize, &Expression)> = update
+        let set_col_indices: Vec<(usize, &Expression)> = resolved_update
             .set_clauses
             .iter()
             .filter_map(|(col_name, expr)| {
@@ -806,8 +836,28 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             self.begin_implicit_dml_tx("execute_delete", &delete.table)?;
         let table_name = delete.table.clone();
 
+        let scalar_eval = |subq: &sqlrustgo_parser::SelectStatement| -> Result<Value, String> {
+            let result = self.execute_select(subq).map_err(|e| e.to_string())?;
+            Ok(result.rows.first().and_then(|r| r.first().cloned()).unwrap_or(Value::Null))
+        };
+        let list_eval = |subq: &sqlrustgo_parser::SelectStatement| -> Result<Vec<Value>, String> {
+            let result = self.execute_select(subq).map_err(|e| e.to_string())?;
+            Ok(result.rows.into_iter().map(|r| r.first().cloned().unwrap_or(Value::Null)).collect())
+        };
+        let resolved_where: Option<Expression> = match &delete.where_clause {
+            Some(w) => Some(
+                resolve_subqueries_in_expr(w, &scalar_eval, &list_eval)
+                    .map_err(|e| SqlError::ExecutionError(format!("DELETE WHERE subquery: {}", e)))?,
+            ),
+            None => None,
+        };
+        let resolved_delete = DeleteStatement {
+            table: delete.table.clone(),
+            where_clause: resolved_where,
+        };
+
         // If no WHERE clause, delete all rows (current behavior is correct)
-        if delete.where_clause.is_none() {
+        if resolved_delete.where_clause.is_none() {
             let mut storage = self.storage.write().unwrap();
             let count = storage.delete(&table_name, &[])?;
             drop(storage);
@@ -829,7 +879,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         };
 
         // Filter rows based on WHERE clause
-        let where_clause = delete.where_clause.as_ref().unwrap();
+        let where_clause = resolved_delete.where_clause.as_ref().unwrap();
         let rows_to_delete: Vec<Vec<Value>> = all_rows
             .into_iter()
             .filter(|row| evaluate_where_clause(where_clause, row, &table_info))
