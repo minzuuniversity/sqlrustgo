@@ -345,7 +345,6 @@ fn transaction_commit_persists_dml() {
 }
 
 #[test]
-#[ignore = "ROLLBACK does not currently revert DML rows in MemoryStorage. Tracked for follow-up fix; transaction rollback uses WalStorage in production but in-memory engine path is incomplete."]
 fn transaction_rollback_undoes_dml() {
     let mut e = fresh();
     e.execute("CREATE TABLE t (v INTEGER)").unwrap();
@@ -365,7 +364,6 @@ fn transaction_rollback_undoes_dml() {
 }
 
 #[test]
-#[ignore = "ROLLBACK does not currently revert DML rows in MemoryStorage. Tracked for follow-up fix."]
 fn transaction_update_then_rollback() {
     let mut e = fresh();
     e.execute("CREATE TABLE t (id INTEGER, v INTEGER)").unwrap();
