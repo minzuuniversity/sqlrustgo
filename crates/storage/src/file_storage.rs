@@ -1758,12 +1758,16 @@ impl StorageEngine for FileStorage {
     }
 
     fn drop_column(&mut self, table: &str, column: &str) -> SqlResult<()> {
-        let table_data = self.tables.get_mut(table).ok_or_else(|| {
-            SqlError::ExecutionError(format!("Table not found: {}", table))
-        })?;
-        let col_idx = table_data.info.columns.iter().position(|c| c.name == column).ok_or_else(|| {
-            SqlError::ExecutionError(format!("Column not found: {}", column))
-        })?;
+        let table_data = self
+            .tables
+            .get_mut(table)
+            .ok_or_else(|| SqlError::ExecutionError(format!("Table not found: {}", table)))?;
+        let col_idx = table_data
+            .info
+            .columns
+            .iter()
+            .position(|c| c.name == column)
+            .ok_or_else(|| SqlError::ExecutionError(format!("Column not found: {}", column)))?;
         table_data.info.columns.remove(col_idx);
         for record in table_data.rows.iter_mut() {
             if col_idx < record.len() {
@@ -1773,13 +1777,22 @@ impl StorageEngine for FileStorage {
         Ok(())
     }
 
-    fn modify_column(&mut self, table: &str, column: &str, new_def: ColumnDefinition) -> SqlResult<()> {
-        let table_data = self.tables.get_mut(table).ok_or_else(|| {
-            SqlError::ExecutionError(format!("Table not found: {}", table))
-        })?;
-        let col_idx = table_data.info.columns.iter().position(|c| c.name == column).ok_or_else(|| {
-            SqlError::ExecutionError(format!("Column not found: {}", column))
-        })?;
+    fn modify_column(
+        &mut self,
+        table: &str,
+        column: &str,
+        new_def: ColumnDefinition,
+    ) -> SqlResult<()> {
+        let table_data = self
+            .tables
+            .get_mut(table)
+            .ok_or_else(|| SqlError::ExecutionError(format!("Table not found: {}", table)))?;
+        let col_idx = table_data
+            .info
+            .columns
+            .iter()
+            .position(|c| c.name == column)
+            .ok_or_else(|| SqlError::ExecutionError(format!("Column not found: {}", column)))?;
         table_data.info.columns[col_idx] = new_def;
         Ok(())
     }
