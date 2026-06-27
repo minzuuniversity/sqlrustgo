@@ -5,6 +5,7 @@
 use crate::engine_utils::*;
 use crate::expr_utils::*;
 use crate::{ExecutionEngine, ExecutorResult, SqlError, SqlResult, Value};
+use sqlrustgo_executor::join::hash_join::multi_way_hash_chain;
 use sqlrustgo_executor::parallel_executor::{
     ParallelExecutor, ParallelVolcanoExecutor, PARALLEL_MIN_ROWS,
 };
@@ -1308,22 +1309,56 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                         joined.push(a.clone());
                     }
                 }
+                for extra in &select.extra_tables {
+                    let (bare, alias) = match extra.split_once('|') {
+                        Some((t, a)) => (t.to_string(), a.to_string()),
+                        None => (extra.clone(), String::new()),
+                    };
+                    joined.push(bare.clone());
+                    joined.push(Self::tpch_table_prefix(&bare).to_string());
+                    if !alias.is_empty() {
+                        joined.push(alias);
+                    }
+                }
                 joined.push(Self::tpch_table_prefix(&base_table).to_string());
                 self.extract_single_table_predicates(wc, &joined)
             })
             .unwrap_or_default();
 
+        // Sprint 8 (PR 1): comma-join with WHERE-extracted hash chain
+        // optimisation. Tries to convert the WHERE-clause equality
+        // predicates into a chain of 2-way hash joins and run them
+        // in `multi_way_hash_chain`. This is the fast path for TPC-H
+        // Q3 / Q8 / Q21 which all use `FROM t1, t2, t3` (comma-join
+        // with no JOIN ON). Returns `Some` on success, `None` when
+        // the WHERE can't supply a complete chain (caller falls back
+        // to the per-clause cartesian path).
+        if !select.extra_tables.is_empty() {
+            if let Some((new_rows, new_info)) = self.try_comma_join_hash_chain(
+                select,
+                &base_table,
+                &base_prefix,
+                rows.clone(),
+                &table_info,
+            ) {
+                return Ok((new_rows, new_info));
+            }
+        }
+
         for join_clause in &select.join_clause {
             // Strip the optional `|alias` suffix from
-            // join_clause.table to look up pushdown filters
-            // (the auto-rewrite stores `lineitem|l1` but
-            // extract_single_table_predicates keyed by the
-            // bare name `lineitem`).
-            let (bare_right_table, _) = match join_clause.table.split_once('|') {
+            // join_clause.table to look up pushdown filters.
+            // `extract_single_table_predicates` keys by the table
+            // qualifier (alias if present, else bare name), so try
+            // the alias first, then fall back to the bare name.
+            let (bare_right_table, right_alias) = match join_clause.table.split_once('|') {
                 Some((t, a)) => (t.to_string(), Some(a.to_string())),
-                None => (join_clause.table.clone(), join_clause.alias.clone()),
+                None => (join_clause.table.clone(), None),
             };
-            let right_filter = pushdown_filters.get(&bare_right_table).cloned();
+            let right_filter = pushdown_filters
+                .get(right_alias.as_deref().unwrap_or(&bare_right_table))
+                .or_else(|| pushdown_filters.get(&bare_right_table))
+                .cloned();
             let (new_rows, new_info) = self.execute_single_join(
                 &rows,
                 &table_info,
@@ -1337,6 +1372,238 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         }
 
         Ok((rows, table_info))
+    }
+
+    /// Sprint 8 (PR 1): comma-join with WHERE-extracted hash chain.
+    ///
+    /// TPC-H Q3, Q8, Q21 use `FROM t1, t2, t3` (comma-join) with the
+    /// actual join keys in the WHERE clause:
+    ///
+    /// - Q3: `WHERE c_custkey = o_custkey AND l_orderkey = o_orderkey ...`
+    /// - Q8: `WHERE c_custkey = o_custkey AND l_orderkey = o_orderkey ...`
+    /// - Q21: `WHERE s_suppkey = l1.l_suppkey AND o_orderkey = l1.l_orderkey ...`
+    ///
+    /// The parser stores these as a `JoinClause` with `JoinKey::All`
+    /// (no ON clause), so the legacy cartesian-product path fires and
+    /// the join blows up to O(N²) (or worse for chained comma-joins).
+    ///
+    /// This helper extracts the equality predicates from the WHERE
+    /// clause, builds a join chain (base → next → ...), and runs
+    /// `multi_way_hash_chain` to produce the joined rows. Returns
+    /// `Some((rows, table_info))` on success, `None` when the WHERE
+    /// does not provide a complete chain (caller falls back to the
+    /// cartesian path).
+    ///
+    /// Scope: only `=` equality predicates between two distinct
+    /// joined tables are considered. `!=`, `<`, `LIKE`, etc. are
+    /// ignored. Tables must be reachable from the comma-join list
+    /// (`select.table` + `select.extra_tables`); if any table in
+    /// the WHERE isn't in that list, the chain can't be built
+    /// here and we return None.
+    fn try_comma_join_hash_chain(
+        &self,
+        select: &SelectStatement,
+        base_table: &str,
+        base_alias: &str,
+        base_rows: Vec<Vec<Value>>,
+        base_info: &TableInfo,
+    ) -> Option<(Vec<Vec<Value>>, TableInfo)> {
+        use std::collections::HashMap;
+        let storage = self.storage.read().ok()?;
+
+        let where_expr = select.where_clause.as_ref()?;
+
+        let (base_bare, base_alias_unwrapped) = match base_table.split_once('|') {
+            Some((t, a)) => (t.to_string(), Some(a.to_string())),
+            None => (base_table.to_string(), None),
+        };
+        let base_alias = base_alias_unwrapped.as_deref().unwrap_or(&base_bare);
+
+        let mut join_tables: Vec<(String, String)> = Vec::new();
+        join_tables.push((base_bare.clone(), base_alias.to_string()));
+        for extra in &select.extra_tables {
+            let (bare, alias) = match extra.split_once('|') {
+                Some((t, a)) => (t.to_string(), Some(a.to_string())),
+                None => (extra.clone(), None),
+            };
+            let alias = alias.unwrap_or_else(|| bare.clone());
+            join_tables.push((bare, alias));
+        }
+
+        if join_tables.len() < 2 {
+            return None;
+        }
+
+        // Collect bare-equal columns from each `=` conjunct.
+        let mut pair_key: HashMap<(String, String), (String, String)> = HashMap::new();
+        for conjunct in Self::flatten_and_local(where_expr) {
+            let Expression::BinaryOp(left, op, right) = conjunct else {
+                continue;
+            };
+            if op != "=" {
+                continue;
+            }
+            let (lq, lc) = match left.as_ref() {
+                Expression::Identifier(name) => match name.split_once('.') {
+                    Some((q, c)) => (q.to_string(), c.to_string()),
+                    None => continue,
+                },
+                _ => continue,
+            };
+            let (rq, rc) = match right.as_ref() {
+                Expression::Identifier(name) => match name.split_once('.') {
+                    Some((q, c)) => (q.to_string(), c.to_string()),
+                    None => continue,
+                },
+                _ => continue,
+            };
+            if lq == rq {
+                continue;
+            }
+            let pair = if lq < rq {
+                (lq.clone(), rq.clone())
+            } else {
+                (rq.clone(), lq.clone())
+            };
+            let entry = if lq < rq {
+                (lc.clone(), rc.clone())
+            } else {
+                (rc.clone(), lc.clone())
+            };
+            pair_key.entry(pair).or_insert(entry);
+        }
+
+        // Greedy chain build: pick the smallest table as the build
+        // side and grow outward. For each step, find the next table
+        // that has a recorded equality with the current tail.
+        let alias_to_bare: HashMap<String, String> = join_tables
+            .iter()
+            .map(|(b, a)| (a.clone(), b.clone()))
+            .collect();
+        let mut visited: std::collections::HashSet<String> =
+            [base_alias.to_string()].into_iter().collect();
+        let mut chain_order: Vec<(String, String)> =
+            vec![(base_bare.clone(), base_alias.to_string())];
+        while visited.len() < join_tables.len() {
+            let tail_alias = chain_order
+                .last()
+                .map(|(_, a)| a.clone())
+                .unwrap_or_default();
+            let next = join_tables
+                .iter()
+                .find(|(bare, alias)| {
+                    !visited.contains(alias)
+                        && pair_key.keys().any(|(a1, a2)| {
+                            (a1 == &tail_alias && a2 == alias) || (a2 == &tail_alias && a1 == alias)
+                        })
+                })
+                .cloned();
+            match next {
+                Some((bare, alias)) => {
+                    chain_order.push((bare, alias.clone()));
+                    visited.insert(alias);
+                }
+                None => break,
+            }
+        }
+
+        if chain_order.len() != join_tables.len() {
+            return None;
+        }
+
+        // Resolve key columns from pair_key into (acc_idx, right_idx)
+        // tuples per step. Each step's `acc_idx` is the column index
+        // in the accumulated rows that holds the join key; the right
+        // side's key column is read directly from the right table's
+        // info.
+        let mut steps_acc: Vec<(Vec<Vec<Value>>, Vec<sqlrustgo_storage::ColumnDefinition>)> =
+            Vec::new();
+        let mut step_inputs: Vec<(Vec<Vec<Value>>, usize, usize)> = Vec::new();
+        let mut acc_rows = base_rows.clone();
+        let mut acc_columns = base_info.columns.clone();
+        let mut alias_to_columns: HashMap<String, Vec<String>> = HashMap::new();
+        alias_to_columns.insert(
+            base_alias.to_string(),
+            base_info
+                .columns
+                .iter()
+                .map(|c| {
+                    c.name
+                        .strip_prefix(&format!("{}.", base_alias))
+                        .unwrap_or(&c.name)
+                        .to_string()
+                })
+                .collect(),
+        );
+
+        for i in 1..chain_order.len() {
+            let prev_alias = &chain_order[i - 1].1;
+            let cur = &chain_order[i];
+            let cur_alias = &cur.1;
+            let (a1, a2) = if prev_alias < cur_alias {
+                (prev_alias.clone(), cur_alias.clone())
+            } else {
+                (cur_alias.clone(), prev_alias.clone())
+            };
+            let (left_col, right_col) = match pair_key.get(&(a1.clone(), a2.clone())) {
+                Some(pair) => pair.clone(),
+                None => return None,
+            };
+            let prev_cols = match alias_to_columns.get(prev_alias) {
+                Some(c) => c.clone(),
+                None => return None,
+            };
+            let prev_idx = match prev_cols.iter().position(|c| c == &left_col) {
+                Some(i) => i,
+                None => return None,
+            };
+            let cur_bare = &cur.0;
+            let cur_info = storage.get_table_info(cur_bare).ok()?.clone();
+            let cur_idx = match cur_info.columns.iter().position(|c| c.name == right_col) {
+                Some(i) => i,
+                None => return None,
+            };
+            let cur_rows = storage.scan(cur_bare).ok()?;
+            alias_to_columns.insert(
+                cur_alias.clone(),
+                cur_info.columns.iter().map(|c| c.name.clone()).collect(),
+            );
+            steps_acc.push((acc_rows.clone(), acc_columns.clone()));
+            step_inputs.push((cur_rows, cur_idx, prev_idx));
+            let mut new_columns = acc_columns.clone();
+            for col in &cur_info.columns {
+                new_columns.push(sqlrustgo_storage::ColumnDefinition {
+                    name: format!("{}.{}", cur_alias, col.name),
+                    data_type: col.data_type.clone(),
+                    nullable: col.nullable,
+                    primary_key: col.primary_key,
+                    char_max_length: col.char_max_length,
+                });
+            }
+            acc_columns = new_columns;
+            let placeholder: Vec<Vec<Value>> = Vec::new();
+            acc_rows = placeholder;
+        }
+
+        // Run the chain step-by-step using multi_way_hash_chain.
+        let base_rows_owned = base_rows.clone();
+        let mut accumulated = base_rows_owned;
+        for ((cur_rows, cur_idx, prev_idx), (_, _)) in step_inputs.iter().zip(steps_acc.iter()) {
+            accumulated = multi_way_hash_chain(
+                std::mem::take(&mut accumulated),
+                &[(cur_rows.clone(), *cur_idx, *prev_idx)],
+            );
+            if accumulated.is_empty() {
+                return None;
+            }
+        }
+
+        let mut joined_info = base_info.clone();
+        for col in &acc_columns[base_info.columns.len()..] {
+            joined_info.columns.push(col.clone());
+        }
+        let _ = alias_to_bare;
+        Some((accumulated, joined_info))
     }
 
     /// Pre-filter the right-side table of a cartesian (JoinKey::All) JOIN
@@ -1537,7 +1804,13 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         use sqlrustgo_parser::JoinType as ParserJoinType;
         use std::collections::HashMap;
 
-        let right_table_name = join_clause.table.clone();
+        // Strip the auto-rewrite `|alias` suffix (e.g. `lineitem|l1`)
+        // before the storage scan; storage only knows the bare name.
+        let (right_bare, _) = match join_clause.table.split_once('|') {
+            Some((t, a)) => (t.to_string(), Some(a.to_string())),
+            None => (join_clause.table.clone(), None),
+        };
+        let right_table_name = right_bare;
         let right_alias = join_clause.alias.as_ref().unwrap_or(&right_table_name);
 
         // Phase 3 (TPCH-01 Q15): if the right table is a synthetic __subq_N
@@ -1553,6 +1826,21 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 storage.get_table_info(&right_table_name)?,
             )
         };
+
+        // Pre-existing bug fix: alias-prefix the column names BEFORE
+        // the pushdown filter, so `n2.n_name = 'GERMANY'` (the
+        // typical single-table filter) can match by qualified name
+        // against `right_table_info` (otherwise the bare `n_name`
+        // column never matches the qualified predicate and the
+        // pre-filter rejects every row, breaking TPC-H Q8 8-way).
+        let mut right_table_info = right_raw_info.clone();
+        if join_clause.alias.is_some() {
+            right_table_info.name = right_alias.clone();
+            for col in &mut right_table_info.columns {
+                col.name = format!("{}.{}", right_alias, col.name);
+            }
+        }
+
         // Sprint 5 v15+ predicate pushdown: apply any
         // single-table WHERE predicates for this right table to
         // the scanned rows before the hash-join build.  This
@@ -1565,19 +1853,12 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 .filter(|r| {
                     right_pushdown
                         .iter()
-                        .all(|p| eval_predicate(p, r, &right_raw_info))
+                        .all(|p| eval_predicate(p, r, &right_table_info))
                 })
                 .collect()
         } else {
             right_raw_rows
         };
-        let mut right_table_info = right_raw_info.clone();
-        if join_clause.alias.is_some() {
-            right_table_info.name = right_alias.clone();
-            for col in &mut right_table_info.columns {
-                col.name = format!("{}.{}", right_alias, col.name);
-            }
-        }
 
         // The accumulated left_table_info.name encodes previous joins
         // (e.g. "a_join_n1_join_customer") and is the qualifier scope
@@ -1626,12 +1907,38 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                         cross.push(combined);
                     }
                 }
-                let combined_schema = build_combined_schema(
-                    &left_table_info,
-                    &left_alias,
-                    &right_table_info,
-                    right_alias,
-                )?;
+                // build_combined_schema: instead of re-prefixing
+                // both sides (which would triple-prefix the left
+                // columns in a 3+ way chain), concatenate the left
+                // info as-is with the right info prefixed by
+                // `right_alias`. The left info's columns are already
+                // qualified from prior cartesian steps.
+                let mut combined_columns = left_table_info.columns.clone();
+                for col in &right_table_info.columns {
+                    let bare_col = if join_clause.alias.is_some() {
+                        col.name
+                            .strip_prefix(&format!("{}.", right_alias))
+                            .unwrap_or(&col.name)
+                            .to_string()
+                    } else {
+                        col.name.clone()
+                    };
+                    combined_columns.push(sqlrustgo_storage::ColumnDefinition {
+                        name: format!("{}.{}", right_alias, bare_col),
+                        data_type: col.data_type.clone(),
+                        nullable: col.nullable,
+                        primary_key: col.primary_key,
+                        char_max_length: col.char_max_length,
+                    });
+                }
+                let combined_schema = TableInfo {
+                    name: format!("{}_join_{}", left_alias, right_alias),
+                    columns: combined_columns,
+                    foreign_keys: vec![],
+                    unique_constraints: vec![],
+                    check_constraints: vec![],
+                    partition_info: None,
+                };
                 return Ok((cross, combined_schema));
             }
             JoinKey::Left(_) | JoinKey::Right(_) => {
