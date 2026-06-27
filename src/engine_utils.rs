@@ -1006,7 +1006,11 @@ fn substitute_qualified_outer_refs_in_place(
         Expression::Identifier(name) => {
             if let Some((qualifier, _col)) = name.split_once('.') {
                 let qual_lower = qualifier.to_lowercase();
-                if !own_qualifiers.iter().any(|q| q == &qual_lower) {
+                let matches_own = own_qualifiers.iter().any(|q| {
+                    q == &qual_lower
+                        || q.rsplit_once('|').map(|(_, a)| a) == Some(qual_lower.as_str())
+                });
+                if !matches_own {
                     if let Some(idx) = find_column_index(name, outer_table_info) {
                         if let Some(v) = outer_row.get(idx) {
                             *expr = Expression::Literal(value_to_literal_string(v));
