@@ -31,8 +31,12 @@ fn test_create_view_parse() {
 #[test]
 fn test_create_view_execute() {
     let mut engine = make_engine();
-    let _ = engine.execute("CREATE TABLE users (id INTEGER, name TEXT)").unwrap();
-    let _ = engine.execute("INSERT INTO users VALUES (1, 'alice')").unwrap();
+    let _ = engine
+        .execute("CREATE TABLE users (id INTEGER, name TEXT)")
+        .unwrap();
+    let _ = engine
+        .execute("INSERT INTO users VALUES (1, 'alice')")
+        .unwrap();
 
     let r = engine.execute("CREATE VIEW v AS SELECT id, name FROM users");
     assert!(r.is_ok(), "CREATE VIEW failed: {:?}", r.err());
@@ -42,7 +46,9 @@ fn test_create_view_execute() {
 fn test_drop_view_execute() {
     let mut engine = make_engine();
     let _ = engine.execute("CREATE TABLE users (id INTEGER)").unwrap();
-    let _ = engine.execute("CREATE VIEW v AS SELECT id FROM users").unwrap();
+    let _ = engine
+        .execute("CREATE VIEW v AS SELECT id FROM users")
+        .unwrap();
 
     let r = engine.execute("DROP VIEW v");
     assert!(r.is_ok(), "DROP VIEW failed: {:?}", r.err());
@@ -95,7 +101,9 @@ fn test_create_trigger_parse() {
 #[test]
 fn test_create_trigger_execute() {
     let mut engine = make_engine();
-    let _ = engine.execute("CREATE TABLE t (id INTEGER, name TEXT)").unwrap();
+    let _ = engine
+        .execute("CREATE TABLE t (id INTEGER, name TEXT)")
+        .unwrap();
     let r = engine.execute("CREATE TRIGGER before_insert_t BEFORE INSERT ON t FOR EACH ROW BEGIN SET NEW.name = 'triggered'; END");
     assert!(r.is_ok(), "CREATE TRIGGER failed: {:?}", r.err());
 }
@@ -103,7 +111,13 @@ fn test_create_trigger_execute() {
 #[test]
 fn test_trigger_after_insert_create() {
     let mut engine = make_engine();
-    let _ = engine.execute("CREATE TABLE t (id INTEGER, val TEXT)").unwrap();
+    let _ = engine
+        .execute("CREATE TABLE t (id INTEGER, val TEXT)")
+        .unwrap();
     let r = engine.execute("CREATE TRIGGER after_insert_t AFTER INSERT ON t FOR EACH ROW BEGIN UPDATE t SET val = 'triggered'; END");
-    assert!(r.is_ok(), "CREATE AFTER INSERT TRIGGER failed: {:?}", r.err());
+    assert!(
+        r.is_ok(),
+        "CREATE AFTER INSERT TRIGGER failed: {:?}",
+        r.err()
+    );
 }
