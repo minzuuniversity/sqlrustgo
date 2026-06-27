@@ -944,6 +944,35 @@ impl StorageEngine for MemoryStorage {
     fn set_current_tx_id(&mut self, id: u64) {
         self.current_tx_id = id;
     }
+
+    fn drop_column(&mut self, table: &str, column: &str) -> SqlResult<()> {
+        let info = self.table_infos.get_mut(table).ok_or_else(|| {
+            SqlError::ExecutionError(format!("Table not found: {}", table))
+        })?;
+        let col_idx = info.columns.iter().position(|c| c.name == column).ok_or_else(|| {
+            SqlError::ExecutionError(format!("Column not found: {}", column))
+        })?;
+        info.columns.remove(col_idx);
+        if let Some(records) = self.tables.get_mut(table) {
+            for record in records.iter_mut() {
+                if col_idx < record.len() {
+                    record.remove(col_idx);
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn modify_column(&mut self, table: &str, column: &str, new_def: ColumnDefinition) -> SqlResult<()> {
+        let info = self.table_infos.get_mut(table).ok_or_else(|| {
+            SqlError::ExecutionError(format!("Table not found: {}", table))
+        })?;
+        let col_idx = info.columns.iter().position(|c| c.name == column).ok_or_else(|| {
+            SqlError::ExecutionError(format!("Column not found: {}", column))
+        })?;
+        info.columns[col_idx] = new_def;
+        Ok(())
+    }
 }
 
 #[cfg(test)]
