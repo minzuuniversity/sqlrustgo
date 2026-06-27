@@ -176,7 +176,11 @@ pub fn mysql_query(
     if code != 0 {
         return Err(format!("mysql exit {}: {}", code, err));
     }
-    Ok(out.lines().filter(|l| !l.is_empty()).map(|s| s.to_string()).collect())
+    Ok(out
+        .lines()
+        .filter(|l| !l.is_empty())
+        .map(|s| s.to_string())
+        .collect())
 }
 
 /// Execute a query and return the row count.
@@ -221,14 +225,7 @@ pub const SCHEMA_DDL_SF01: &[&str] = &[
 
 /// All 8 TPC-H table names in load order.
 pub const TABLES: &[&str] = &[
-    "region",
-    "nation",
-    "supplier",
-    "customer",
-    "part",
-    "partsupp",
-    "orders",
-    "lineitem",
+    "region", "nation", "supplier", "customer", "part", "partsupp", "orders", "lineitem",
 ];
 
 /// Expected row counts for SF=0.001 fixture.
@@ -299,7 +296,13 @@ pub fn cli_load_fixture(
         }
 
         // Verify row count
-        let count = mysql_query_count(host, port, user, Some(tbl), &format!("SELECT COUNT(*) FROM {}", tbl))?;
+        let count = mysql_query_count(
+            host,
+            port,
+            user,
+            Some(tbl),
+            &format!("SELECT COUNT(*) FROM {}", tbl),
+        )?;
         if count != *expected as usize {
             return Err(format!(
                 "{}: expected {} rows, got {}",
@@ -537,9 +540,7 @@ mod tests {
     #[test]
     fn test_mysql_binary_resolves() {
         let bin = mysql_binary();
-        let output = Command::new(&bin)
-            .args(["--version"])
-            .output();
+        let output = Command::new(&bin).args(["--version"]).output();
         assert!(
             output.is_ok(),
             "mysql CLI at '{}' should be executable",

@@ -302,7 +302,11 @@ fn t_limit_all() {
 #[test]
 fn t_create_table_check_constraint_named_rejected() {
     let result = parse("CREATE TABLE t (id INT, val INT, CONSTRAINT chk_val CHECK (val > 0))");
-    assert!(result.is_ok(), "Named CHECK constraint now supported: {:?}", result);
+    assert!(
+        result.is_ok(),
+        "Named CHECK constraint now supported: {:?}",
+        result
+    );
 }
 
 // --- GROUP BY ROLLUP/CUBE ---
@@ -342,5 +346,9 @@ fn t_set_character_set_rejected() {
 #[test]
 fn t_use_database() {
     let result = parse("USE mydb");
-    assert!(result.is_ok(), "USE DATABASE should be supported: {:?}", result);
+    assert!(
+        result.is_ok(),
+        "USE DATABASE should be supported: {:?}",
+        result
+    );
 }
