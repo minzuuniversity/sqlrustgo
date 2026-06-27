@@ -12,7 +12,12 @@ impl AstAdapter {
         stmt: &ParserUpdateStatement,
         table_info: &TableInfo,
     ) -> Result<UpdatePlan, SqlError> {
-        let table = stmt.table.clone();
+        if stmt.tables.len() != 1 {
+            return Err(SqlError::ExecutionError(
+                "AstAdapter::to_update_plan only supports single-table UPDATE".to_string(),
+            ));
+        }
+        let table = stmt.tables[0].name.clone();
 
         let predicate = match &stmt.where_clause {
             None => PredicateIR::All,
