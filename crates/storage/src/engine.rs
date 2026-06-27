@@ -959,15 +959,12 @@ impl StorageEngine for MemoryStorage {
     }
 
     fn drop_column(&mut self, table: &str, column: &str) -> SqlResult<()> {
-        let info = self
-            .table_infos
-            .get_mut(table)
-            .ok_or_else(|| SqlError::ExecutionError(format!("Table not found: {}", table)))?;
-        let col_idx = info
-            .columns
-            .iter()
-            .position(|c| c.name == column)
-            .ok_or_else(|| SqlError::ExecutionError(format!("Column not found: {}", column)))?;
+        let info = self.table_infos.get_mut(table).ok_or_else(|| {
+            SqlError::ExecutionError(format!("Table not found: {}", table))
+        })?;
+        let col_idx = info.columns.iter().position(|c| c.name == column).ok_or_else(|| {
+            SqlError::ExecutionError(format!("Column not found: {}", column))
+        })?;
         info.columns.remove(col_idx);
         if let Some(records) = self.tables.get_mut(table) {
             for record in records.iter_mut() {
@@ -979,21 +976,13 @@ impl StorageEngine for MemoryStorage {
         Ok(())
     }
 
-    fn modify_column(
-        &mut self,
-        table: &str,
-        column: &str,
-        new_def: ColumnDefinition,
-    ) -> SqlResult<()> {
-        let info = self
-            .table_infos
-            .get_mut(table)
-            .ok_or_else(|| SqlError::ExecutionError(format!("Table not found: {}", table)))?;
-        let col_idx = info
-            .columns
-            .iter()
-            .position(|c| c.name == column)
-            .ok_or_else(|| SqlError::ExecutionError(format!("Column not found: {}", column)))?;
+    fn modify_column(&mut self, table: &str, column: &str, new_def: ColumnDefinition) -> SqlResult<()> {
+        let info = self.table_infos.get_mut(table).ok_or_else(|| {
+            SqlError::ExecutionError(format!("Table not found: {}", table))
+        })?;
+        let col_idx = info.columns.iter().position(|c| c.name == column).ok_or_else(|| {
+            SqlError::ExecutionError(format!("Column not found: {}", column))
+        })?;
         info.columns[col_idx] = new_def;
         Ok(())
     }
