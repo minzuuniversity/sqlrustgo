@@ -223,6 +223,56 @@ PR 必须包含:
 - [可选的改进建议]
 ```
 
+### 5.5 多 AI 协调规则
+> **版本**: 1.1
+> **更新日期**: 2026-06-26
+> **关联**: ADR-014 (Multi-AI Coordination)
+当多个 AI Agent（Hermes-Z6G4 / Claude-Code / 其他）在同一仓库协作时：
+#### 5.5.1 物理隔离与共享资源协调
+**Worktree 隔离**：
+- 每个 AI Agent 在独立 worktree 中工作
+- Worktree 命名规范：`.worktrees/{agent-id}-{date}`
+- 避免多个 Agent 同时修改同一分支
+**分支协调**：
+- Agent 创建分支命名：`{agent-id}/feature-{name}`
+- 避免多个 Agent 同时修改 `develop/v3.9.0` 直接提交
+- 合并通过 PR 而非直接 push
+**共享资源**：
+- PAT (Personal Access Token) 不可跨 Agent 共享
+- 每个 Agent 使用自己的认证凭据
+- 配置在 `.claude/` 或环境变量中
+#### 5.5.2 Issue 归属与 Claim 署名
+**Issue 认领**：
+```
+[agent: hermes-z6g4] 认领 issue #3600
+```
+- 第一个认领的 Agent 获得归属
+- 其他 Agent 在认领的 Issue 下工作前应 DM 协调
+**Claim 格式**：
+```
+[agent: {agent_id}] {动作}结果 — YYYY-MM-DD HH:MM
+```
+- 所有评论必须带 `[agent: {agent_id}]` 前缀
+- 无前缀视为 User（人类）发言
+#### 5.5.3 标签系统
+|标签|用途|适用 Agent|
+|---|---|---|
+|`agent:hermes`|Hermes Agent 创建/认领|hermes-z6g4|
+|`agent:claude`|Claude Code 创建/认领|claude-code|
+|`multi-ai-verify`|多 AI 协作验证 Issue|任意|
+|`governance-audit`|治理审计 Issue|任意|
+#### 5.5.4 调度规则
+**Gate FAIL 时的调度**：
+- 发现 Gate FAIL 的 Agent 负责主导修复
+- 其他 Agent 等待修复完成后再并发
+- 避免多个 Agent 同时修复同一 Gate
+**冲突解决**：
+- 同一文件被多个 Agent 并发修改 → 以先 merge 到目标分支的为准
+- Issue 下的验证结果冲突 → 要求各 Agent 提供独立实跑证据
+- User（李哥）拥有最终裁决权
+**Gate 推送约束**（ADR-001 G-09）：
+- Gate FAIL 状态下禁止 push 到 252 Gitea
+- 违反者标记为 `[AFP-VIOLATION: Type-B]`
 ---
 
 ## 六、不可绕过的 Release Gate

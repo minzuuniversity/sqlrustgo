@@ -1,0 +1,4 @@
+# TPC-H .tbl data files are large; sync via scripts/sync_data.sh
+data/*_data/
+data/sf1/
+!data/.gitkeep

@@ -1,0 +1,126 @@
+{
+  "created_at": "2026-06-18T01:36:00Z",
+  "updated_at": "2026-06-25T23:37:00Z",
+  "total_correctness_gates": 4,
+  "gates_without_oracle": [
+    "scripts/gate/check_p14_upgrade_test.sh",
+    "scripts/gate/check_p22_time_travel.sh",
+    "scripts/gate/check_p23_hash_chain.sh",
+    "scripts/gate/check_p34_parallel_executor.sh"
+  ],
+  "_comment": "Updated 2026-06-18 11:00 UTC after Sprint 9 follow-ups. G5-A + G15-Q3 closed, G15 oracle coverage expanded 5/22 → 16/22 (PR #3495, #3496, #3500). 8 gate scripts still without inline oracle (gap: in-process tests don't drive bash gate scripts).",
+  "v4_status": "CORRECTED 2026-06-25: g11-g16 are PERFORMANCE gates (QPS/sysbench/stability/crash/perf-report/compatibility), not SQL correctness gates. They do NOT require inline oracle comparison. Real correctness gates without oracle: p14/p22/p23/p34 only.",
+  "g1_baseline_status": "REAL (22/22 PASS, drift detection active, PR #3477)",
+  "p11_v7_status": "PASS (8 gate scripts got P11-comments, PR #3476)",
+  "l3_acceptance": "PASS (15/15 e2e_canonical_subprocess tests work after cargo build -p sqlrustgo-mysql-server)",
+  "g15_coverage": "20/22 queries match SF=0.01 baseline (Q1/Q2/Q3/Q4/Q5/Q6/Q7/Q10/Q11/Q12/Q13/Q14/Q15/Q16/Q17/Q18/Q19/Q20/Q21/Q22). 2/22 deferred: Q8 (300s wire timeout, 8-way join with REGION filter, needs hash-join pushdown), Q9 (300s wire timeout, 6-way join, needs materialised subquery planning).",
+  "known_bugs": [
+    {
+      "id": "G5-A",
+      "desc": "ROLLBACK TO SAVEPOINT now physically reverts data via per-tx undo log (was: no actual rollback)",
+      "status": "CLOSED (PR #3495)"
+    },
+    {
+      "id": "G5-B",
+      "desc": "SAVEPOINT name parser case sensitivity ('outer' lowercase fails). Fixed by PR #3486 token_to_identifier_string helper",
+      "status": "CLOSED (PR #3486, verified by PR #3508)"
+    },
+    {
+      "id": "G15-Q3",
+      "desc": "Q3 3-way comma-join now passes after orders schema added missing o_totalprice column",
+      "status": "CLOSED (PR #3496)"
+    },
+    {
+      "id": "G15-Q7-baseline",
+      "desc": "Q7 baseline regenerated from real fixture (was: 3 rows missing FRANCE→GERMANY pair, from pre-data run)",
+      "status": "CLOSED (PR #3502)"
+    },
+    {
+      "id": "G15-Q19-parser",
+      "desc": "Q19 OR-with-IN-in-parens failed parser. parse_comparison_expression_until_close_with_depth now handles IN/BETWEEN",
+      "status": "CLOSED (PR #3502)"
+    },
+    {
+      "id": "G15-Q20-baseline",
+      "desc": "Q20 baseline regenerated from real fixture (was: 0 rows from pre-data run, now 3 suppliers qualify)",
+      "status": "CLOSED (PR #3502)"
+    },
+    {
+      "id": "wire-Deprecate-EOF",
+      "desc": "DEPRECATE_EOF terminator 0x00->0xFE",
+      "status": "CLOSED (PR #3479)"
+    },
+    {
+      "id": "parser-i64-MIN",
+      "desc": "SELECT i64::MIN failed 'Expected FROM or column name'",
+      "status": "CLOSED (PR #3483)"
+    },
+    {
+      "id": "P22-delete-isolation",
+      "desc": "execute_delete storage path drops all rows. Fixed: storage.delete(table, &key_values) replaced with storage.delete_if(table, pk_filter) using primary-key RowFilter",
+      "status": "CLOSED (PR #3508)"
+    },
+    {
+      "id": "G15-Q8-timeout",
+      "desc": "Q8 8-way join exceeds 300s wire timeout. Root cause: auto-rewrite preserves FROM order, causing part(2000) × supplier(100) cartesian = 200K → ×lineitem=6M → ×customer=6M → ×nation=150M+ intermediate. Need join-order optimization (CBO) to start from smallest table. See docs/releases/v3.9.0/Q8_PERF_ANALYSIS.md",
+      "tracked": "Sprint 9+ (join-order optimizer, 2-3 days effort)"
+    },
+    {
+      "id": "G15-Q9-timeout",
+      "desc": "Q9 6-way join exceeds 300s wire timeout. Same root cause as Q8: 6-way chain with cartesian products in 150M+ intermediate. Allocated to TPCH-01 Q9 audit (#3178) which requires Z6G4 hardware for full benchmark",
+      "tracked": "#3178 + Sprint 9+ join-order"
+    },
+    {
+      "id": "G15-Q15-derived",
+      "desc": "Q15 derived-table MAX was returning NULL due to MAX/MIN Float bug. Now fixed (PR #3504)",
+      "status": "CLOSED (PR #3504)"
+    },
+    {
+      "id": "MAX-MIN-Float",
+      "desc": "engine_select::compute_aggregates only handled Value::Integer, returning NULL for Float columns. Q15 MAX gave empty string. Fixed by tracking min_int/min_flt and min_max/min_flt separately",
+      "status": "CLOSED (PR #3504)"
+    }
+  ],
+  "in_process_oracle_tests": {
+    "G1": "tests/oracle_g1_tpch_sha256.rs (22/22 PASS, real baseline)",
+    "G2": "tests/oracle_g2_int2.rs (3 tests)",
+    "G3": "tests/oracle_g3_int3.rs (7 tests)",
+    "G5": "tests/oracle_g5_sem1.rs (19/19 PASS, G5-A undo log + G5-B savepoint case both fixed, PR #3495/#3486/#3508)",
+    "G9": "tests/oracle_g9_upgrade.rs (3 tests)",
+    "G11": "tests/oracle_g11_qps.rs (1 test)",
+    "G12": "tests/oracle_g12_sysbench.rs (1 test)",
+    "G15": "tests/oracle_g15_tpch_sf01.rs (19/22 queries match baseline, Q3/Q7/Q19/Q20 fixed, PR #3496 + #3500 + #3502)",
+    "G16": "tests/oracle_g16_compat.rs (4 tests)",
+    "P22": "tests/oracle_p22_time_travel.rs (5/5 PASS, delete-isolation bug fixed in PR #3508)",
+    "P23": "tests/oracle_p23_hash_chain.rs (5/5 PASS, SHA-256 ground-truth oracle)",
+    "P34": "tests/oracle_p34_parallel_executor.rs (8+ tests, partition algorithm ground-truth oracle)"
+  },
+  "related_prs": [
+    "#3470 (PR-A)",
+    "#3471 (PR-B)",
+    "#3472 (PR-C)",
+    "#3473 (P15 update)",
+    "#3475 (real-run fixes)",
+    "#3476 (P11 V7 headers)",
+    "#3477 (G1 real baseline)",
+    "#3478 (P15 final)",
+    "#3479 (wire DEPRECATE_EOF)",
+    "#3480 (boundary unignore)",
+    "#3483 (parser i64 MIN)",
+    "#3485 (P15 auto-regen)",
+    "#3486 (G5-B savepoint parser)",
+    "#3487 (19 perf unignore)",
+    "#3488 (crash monkey + recovery fuzzer)",
+    "#3490 (P12 ignore registry)",
+    "#3491 (Sprint 8 final status docs)",
+    "#3495 (G5-A ROLLBACK undo log)",
+    "#3496 (G15-Q3 orders schema fix)",
+    "#3497 (RC8 V9 + V4 closure)",
+    "#3500 (G15 16/22 oracle coverage)",
+    "#3501 (P15 status update)",
+    "#3502 (G15 19/22 oracle + Q19 parser fix)",
+    "#3504 (MAX/MIN Float fix + G15 20/22)",
+    "#3505 (per-query timeout + Q8/Q9 perf deferral)",
+    "#3508 (G5-B verify + P22 delete-isolation fix)"
+  ]
+}

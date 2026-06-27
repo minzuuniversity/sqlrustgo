@@ -225,7 +225,6 @@ mod opencl_impl {
                 results[idx] = (norm_product > 0.0f) ? (dot / norm_product) : 0.0f;
             }
         }
-<<<<<<< Updated upstream
         
         // Euclidean distance kernel
         __kernel void euclidean_distance_kernel(

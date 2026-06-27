@@ -1,7 +1,7 @@
 # SQLRustGo 版本演进完整历史
 
-> **最后更新**: 2026-04-17
-> **当前版本**: alpha/v2.6.0
+> **当前版本**: v3.7.0 (GA)
+> **更新日期**: 2026-05-30
 
 ---
 
@@ -200,30 +200,115 @@ v2.5.0
 ## 五、路线图
 
 ### 当前开发: v2.6.0 (alpha)
+### v2.5.0 (2026-04-03) - MVCC/Vector/Graph
 
-**目标**: 生产就绪
+#### 功能矩阵
 
-| 类别 | 功能 | 状态 |
+| 模块 | 功能 | 状态 |
 |------|------|------|
-| P0 | 功能集成 | 进行中 |
-| P0 | SQL 扩展 | 进行中 |
-| P0 | MVCC SSI | 进行中 |
-| P1 | DELETE/FULL JOIN | 规划 |
-| P2 | 覆盖率提升 | 进行中 |
+| **执行器** | ParallelExecutor | ✅ |
+| **执行器** | 向量化执行基础 | ✅ |
+| **存储** | MVCC 快照隔离 | ✅ |
+| **图存储** | Graph Storage 基础 | ✅ |
+| **优化器** | CBO 框架 | ✅ |
+| **网络** | MySQL 协议增强 | ✅ |
+| **可观测性** | Metrics 端点 | ✅ |
 
-### 下一步: v2.7.0
+#### 测试情况
 
-**目标**: 分布式架构
+- 单元测试: 213+
+- 覆盖率: 49%
+- TPC-H SF1: 通过
 
-- 分片
-- 复制
-- 分布式事务
+---
 
-### 远景: v3.0
+### v3.0.0 - 向量化执行 + 并行框架
+
+| 模块 | 功能 | 状态 |
+|------|------|------|
+| **执行器** | ParallelVolcanoExecutor | ✅（孤岛） |
+| **expr** | 表达式求值模块 | ✅（未被使用） |
+| **transaction** | SSI 检测 | ✅（无存储集成） |
+| **storage** | WAL 模块 | ✅（分离） |
+
+---
+
+### v3.5.0 (2026-05-28) - GA 门禁完成
+
+| 模块 | 功能 | 状态 |
+|------|------|------|
+| **整体** | GA 4/4 PASS | ✅ |
+| **覆盖率** | L1 87.36% | ✅ |
+| **TPC-H** | 22/22 PASS | ✅ |
+| **文档** | 9 篇核心文档 | ✅ |
+
+---
+
+### v3.6.0 (2026-05-29) - 协议栈整合
+
+| 模块 | 功能 | 状态 |
+|------|------|------|
+| **MySQL 协议** | COM_QUERY 完整处理 | ✅ |
+| **TPC-H 基线** | SF=1 真实数据 6M lineitem | ✅ |
+| **SIMD** | sum_i64 阈值调度 | ✅ |
+| **WAL 验证** | TI-3 工作区 | ✅ |
+| **覆盖率** | Alpha Gate FAIL (32.59% Z440) | ❌ |
+
+**状态**: Alpha FAIL — 双链路执行缺陷（Path A/B/C 未统一）
+
+**已知缺陷**:
+- 双链路执行：Path A (ExecutionEngine) 与 Path B/C (MySQL Protocol/StoredProc) 行为不一致
+- WAL 未集成：WalStorage 未接入 mysql-server 生产路径 (IMPL-002)
+- INT-3：expr crate 孤岛
+
+---
+
+### v3.7.0 (2026-05-30) - GA 集成债务清算
+
+**状态**: Refactoring — 重构里程碑（非生产 GA）
+
+**目标**: 集成债务清算 + 协议栈统一
+
+| Issue | 缺陷 | 优先级 | 状态 |
+|-------|------|--------|------|
+| INT-1 | DML 不经过 WAL/TransactionManager | P0 | 持续修复中 |
+| INT-2 | ParallelVolcanoExecutor 功能孤岛 | P0 | 持续修复中 |
+| INT-3 | expr crate 孤岛 | P1 | 持续修复中 |
+| INT-4 | mysql-server 双路径（Path A/B/C 未统一） | P1 | 持续修复中 |
+
+**门禁状态**:
+- Alpha/Beta/RC: ✅ PASS
+- GA Gate: ⚠️ CONDITIONAL PASS（R4/R5 SKIP；覆盖率 84.99% 差 0.01pp）
+- **注意**: v3.7.0 为重构里程碑，非生产 GA 认证
+
+**时间线**：
+- 2026-06-06: Alpha Gate（覆盖率 75%+）
+- 2026-06-13: Beta Gate
+
+---
+
+### v3.8.0 (2026-05-31) - Architecture Unification（开发中）
+
+**目标**: Execution Architecture Consolidation — 消灭双执行路径，统一 SQL → AST → Plan → Execution，接入 WAL 核心。
+
+| 阶段 | 目标 | 状态 |
+|------|------|------|
+| Alpha | Execution Freeze (AUTOCOMMIT + WAL Mandatory) | 🔄 IN_PROGRESS |
+| Beta | WAL Persistence + Recovery 7/7 PASS | ⬜ |
+| RC | MVCC 完整化 | ⬜ |
+| GA | 全量验证 | ⬜ |
+
+**核心 Issue**: INT-1~INT-4（见 v3.7.0 节）
+
+---
+
+### 远景: v3.8.0+
 
 **目标**: 完整分布式数据库
 
 - 对标 CockroachDB/TiDB
+- 分布式事务
+- 分片复制
 
 ---
 

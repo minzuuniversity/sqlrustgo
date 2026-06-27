@@ -2,16 +2,46 @@
 
 > Compact instructions for AI agents working in this repository. Based on lessons learned from past sessions.
 
-## Communication Principle (沟通原则)
+## Communication Principle
 
 **IMPORTANT: 必须使用中文沟通。始终使用中文回应用户，除非用户明确要求使用其他语言。**
 
 ## Branch Strategy
 
-- **Main development branch**: `develop/v2.8.0`
+- **Main development branch**: `develop/v3.9.0`
 - **DO NOT modify `main` branch directly**
-- Create feature branches from `develop/v2.8.0`
+- Create feature branches from `develop/v3.9.0`
 - Use git worktrees for isolated feature work: `git worktree add .worktrees/<name> -b feature/<name>`
+
+## 强制 governance 阅读清单 (P0 2026-06-26 新增, Hermes audit)
+
+**任何 AI agent / 开发者必须在开始 task 前读完以下 7 份, 缺一不可**:
+
+1. `docs/governance/adr/ADR-001-truthfulness-framework.md` — G-01 ~ G-10 (claim ≠ evidence, 不引 doc claim 当 PASS)
+2. `docs/governance/ANTI_FABRICATION_POLICY.md` — Type A/B/C/D 4 类违规 + Hard Gate vs Soft Gate 区分
+3. `docs/governance/ISSUE_CLOSING_VERIFICATION.md` — 关闭 Issue 前 5 步 (含 HTTP 405 workaround)
+4. `docs/governance/DOC_CHECK_CORRECTION_RULES.md` — 改文档 7 步流程 (含实跑 gate 验证)
+5. `docs/governance/AI_COLLABORATION.md` — §1.1 角色 + §5.5 多 AI 协调 (待 ADR-014 落地)
+6. `docs/governance/GATE_CONDITIONS.md` — G1-G16 门禁定义 + Hard/Soft 分类
+7. `docs/governance/adr/ADR-008-test-claim-transparency.md` — P16 gate test integrity 政策
+
+**违反 P0 红线 (governance 落实不了 7 根因, 见 reports/STAGE3_DIFF_PLAN_2026-06-26.md)**:
+
+- ❌ 写 "5/5 PASS" 不引 P11-P16 实跑输出 (AFP Type B)
+- ❌ 写"完成"不引 git SHA + commit (AFP Type D)
+- ❌ gate 失败不阻断 (CI 必须 `set -euo pipefail` + `exit 1`, 2026-06-26 已修)
+- ❌ AI 协作 0 协调 (必须走 ADR-014 multi-ai-coordination)
+
+**铁律**:
+- 7 份读完才能写代码
+- 改任何 1 份 governance 文档必须实跑 P11-P16 验证
+- 任何 claim 必须带: source agent + source_run + timestamp + evidence_hash (AFP §5.4)
+
+**关联**:
+- Issue #3600: Multi-AI 验证请求
+- reports/doc-audit-2026-06-26.md (本次审计报告)
+- reports/STAGE2_DIFF_PLAN_2026-06-26.md (5 governance 整改方案)
+- reports/STAGE3_DIFF_PLAN_2026-06-26.md (本批 gate+CI+AGENTS 整改方案)
 
 ## Essential Commands
 
@@ -35,7 +65,7 @@ cargo fmt --check --all
 cargo fmt --all
 
 # Run REPL
-cargo run --bin sqlrustgo
+cargo run --bin sqlrustgo-mysql-server -- repl
 
 # Run doc tests
 cargo test --doc
@@ -57,9 +87,12 @@ bash scripts/gate/check_coverage.sh
 
 # Security check
 bash scripts/gate/check_security.sh
+
+# Doc consistency check (version status, links, version history)
+bash scripts/gate/check_docs_consistency.sh
 ```
 
-## Architecture
+##Architecture
 
 ```
 ┌─────────────────────────────────────┐
@@ -89,6 +122,7 @@ Key crates in `crates/`:
 - `network` - TCP server with MySQL-style protocol
 - `vector`, `graph` - Advanced storage (vector index, graph store)
 - `catalog`, `types` - Schema and type system
+- 40+ total workspace crates - use `-p <package>` for single crate operations
 
 ## Important Constraints
 
@@ -111,60 +145,51 @@ Key crates in `crates/`:
 
 - `.claude/CLAUDE.md` - Claude Code specific guidance
 - `AGENT.md` - Issue-specific guide (DiskGraphStore implementation)
-- `ARCHITECTURE_RULES.md` - Architecture decisions
-- `BRANCH_GOVERNANCE.md` - Branch and release workflow
+- `docs/governance/AI_COLLABORATION.md` - AI 协作规范
+- `docs/governance/RELEASE_LIFECYCLE.md` - Release生命周期
 - `docs/governance/ISSUE_CLOSING_VERIFICATION.md` - **Issue 关闭验证流程 (强制执行)**
 
 ## Issue 关闭规则 (强制)
 
 **禁止手动关闭没有 PR 合并的 Issue。**
 
-关闭 Issue 前必须验证：
-```bash
-# 1. 检查是否有 PR 关闭该 Issue
-gh issue view <id> --json closedByPullRequestsReferences
+关闭 Issue 前必须验证有 PR 关联。详见：`docs/governance/ISSUE_CLOSING_VERIFICATION.md`
 
-# 结果非空 → 可以关闭
-# 结果为空 → 禁止手动关闭，除非任务取消
-```
+## 文档修改规则 (强制)
 
-详见: `docs/governance/ISSUE_CLOSING_VERIFICATION.md`
+**修改 `docs/` 下任何文档前，必须遵循 `docs/governance/DOC_CHECK_CORRECTION_RULES.md` 规定的 5 步流程。**
 
-## Gitea DevStack Remote
+详见：`docs/governance/DOC_CHECK_CORRECTION_RULES.md`
+
+## Gitea Remote
 
 本项目使用自托管 Gitea，CI/CD 和代码托管均在此。
 
 ### Git Remote (SSH)
 
 ```bash
-git remote set-url origin git@gitea-devstack:openclaw/sqlrustgo.git
+git remote set-url origin git@gitea-macmini:openclaw/sqlrustgo.git
 ```
 
-SSH 别名 `gitea-devstack` 已配置在 `~/.ssh/config`（指向 `192.168.0.252:222`）。
+SSH 别名 `gitea-macmini` 已配置在 `~/.ssh/config`（指向 `192.168.0.252:222`）。
 
 ### Git 身份
 
 ```bash
-git config user.name "openclaw"
-git config user.email "openclaw@gaoyuanyiyao.com"
-git config commit.gpgsign true   # 用 ~/.ssh/id_ed25519_openheart 签名
+git config user.name "claude-macmini"
+git config user.email "claude@macmini.dev"
 ```
 
-### 本机 SSH Key
-
-- 私钥: `~/.ssh/id_ed25519_openheart`
-- 公钥已绑定到 openclaw 用户（key ID: `opencode-agent (openheart key)`）
-- Gitea SSH 端口: **222**（不是 22）
-- 测试: `ssh -T gitea-devstack`
+> pre-commit hook 强制邮箱为 `openheart@gaoyuanyiyao.com`，在本地 git config 中设置好。
 
 ### 测试连通性
 
 ```bash
 # SSH 认证测试
-ssh -T gitea-devstack
+ssh -T gitea-macmini
 
-# Git push 测试
-git push origin develop/v2.8.0
+# Git ls-remote 测试
+git ls-remote origin refs/heads/develop/v3.9.0
 ```
 
 ### Gitea Web UI
@@ -178,76 +203,3 @@ git push origin develop/v2.8.0
 - E2E tests in `tests/e2e/`
 - Crate-specific tests in each crate's `tests/` or `src/`
 - Use `--test <test_name>` to run specific test files
-
-<<<<<<< Updated upstream
-## Gitea Identity (Z6G4/250)
-
-本机使用独立的 Gitea 账户：
-- 用户: hermes-z6g4
-- SSH 密钥: ~/.ssh/id_ed25519_z6g4
-- SSH 别名: gitea-z6g4 (port 222)
-- Git email: hermes-z6g4@gaoyuanyiyao.com
-=======
----
-
-## Gitea DevStack Remote
-
-本项目使用自托管 Gitea，CI/CD 和代码托管均在此。
-
-### Git Remote (SSH)
-
-```bash
-# 方式 A：SSH 别名（推荐）
-git remote set-url origin git@gitea-macmini:openclaw/sqlrustgo.git
-
-# 方式 B：完整 SSH URL
-git remote set-url origin ssh://git@192.168.0.252:222/openclaw/sqlrustgo.git
-```
-
-### Git 身份
-
-```bash
-git config user.name "yinglichina8848"
-git config user.email "openheart@gaoyuanyiyao.com"  # pre-commit 强制
-git config commit.gpgsign false
-```
-
-### Gitea SSH Key
-
-- 私钥: `~/.ssh/id_ed25519_macmini`
-- 公钥已绑定到 hermes-macmini 用户（Key ID 4: "Mac Mini Hermes Agent"）
-- Gitea SSH 端口: **222**（不是 22）
-
-### Gitea PAT
-
-```bash
-# API 操作 Token（read/write）
-cat ~/.ssh/openclaw-gitea-write.PAT
-
-# Hermes CLI 只读 Token
-cat ~/.ssh/hermes-cli-gitea.PAT
-```
-
-### 测试连通性
-
-```bash
-# 1. SSH 认证测试
-ssh -p 222 -i ~/.ssh/id_ed25519_macmini git@192.168.0.252
-
-# 2. Git ls-remote 测试
-git ls-remote origin refs/heads/develop/v2.8.0
-
-# 3. Gitea Web UI
-open http://192.168.0.252:3000/openclaw/sqlrustgo
-```
-
-### 相关 Wiki 页面
-
-- [Git Remote Configuration](http://192.168.0.252:3000/openclaw/sqlrustgo/wiki/Git-Remote-Configuration)
-- [Multi Agent Orchestration](http://192.168.0.252:3000/openclaw/sqlrustgo/wiki/Multi-Agent-Orchestration-2026-04)
-- [Gitea Infrastructure](http://192.168.0.252:3000/openclaw/sqlrustgo/wiki/Gitea-Infrastructure)
-
----
-
-提醒：pre-commit hook 强制邮箱为 openheart@gaoyuanyiyao.com，在本地 git config 中设置好。
->>>>>>> Stashed changes

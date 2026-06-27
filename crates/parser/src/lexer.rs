@@ -50,14 +50,24 @@ impl<'a> Lexer<'a> {
         ch
     }
 
-    /// Skip whitespace characters
+    /// Skip whitespace characters and SQL line comments (`-- ...`).
+    /// MySQL 5.7 standard line comments start with `--` and run to the
+    /// end of the line. The previous lexer didn't handle these, so
+    /// `-- === CASE: j_032 ===` inside a subquery was tokenised as
+    /// `Minus, Minus, Equal, Equal, ...` and broke the parser.
     fn skip_whitespace(&mut self) {
         while !self.is_eof() {
             let ch = self.peek_char();
-            if !ch.is_whitespace() {
+            if ch == '-' && self.input[self.position..].starts_with("--") {
+                // Line comment: skip to end of line
+                while !self.is_eof() && self.peek_char() != '\n' {
+                    self.position += 1;
+                }
+            } else if !ch.is_whitespace() {
                 break;
+            } else {
+                self.position += 1;
             }
-            self.position += 1;
         }
     }
 
@@ -94,9 +104,12 @@ impl<'a> Lexer<'a> {
     }
 
     /// Read a string literal (single-quoted) - handles Unicode correctly
+    /// and MySQL-style backslash escapes (\\n, \\t, \\, etc.).
+    /// Without backslash handling, `ESCAPE '\\\\'` would produce a
+    /// 2-char string instead of MySQL's 1-char backslash.
     fn read_string(&mut self) -> String {
         self.position += 1; // Skip opening quote
-        let start = self.position;
+        let mut result = String::new();
 
         while !self.is_eof() {
             let ch = self.peek_char();
@@ -105,15 +118,36 @@ impl<'a> Lexer<'a> {
                 let remaining = &self.input[self.position..];
                 if remaining.starts_with("''") {
                     self.position += 2;
+                    result.push('\'');
                     continue;
                 }
                 break;
             }
+            if ch == '\\' {
+                // MySQL backslash escape
+                self.position += 1; // consume backslash
+                let next = self.peek_char();
+                let resolved = match next {
+                    'n' => '\n',
+                    't' => '\t',
+                    'r' => '\r',
+                    '\\' => '\\',
+                    '\'' => '\'',
+                    '"' => '"',
+                    '0' => '\0',
+                    _ => next, // unknown escape, keep as-is
+                };
+                result.push(resolved);
+                if !self.is_eof() {
+                    self.position += 1;
+                }
+                continue;
+            }
             // Move by character, not by byte, to handle Unicode
+            result.push(ch);
             self.position += ch.len_utf8();
         }
 
-        let result = self.input[start..self.position].to_string();
         if !self.is_eof() {
             self.position += 1; // Skip closing quote
         }
@@ -156,8 +190,16 @@ impl<'a> Lexer<'a> {
                 Token::Plus
             }
             '-' => {
-                self.position += 1;
-                Token::Minus
+                if self.input[self.position..].starts_with("->>") {
+                    self.position += 3;
+                    Token::JsonArrowText
+                } else if self.input[self.position..].starts_with("->") {
+                    self.position += 2;
+                    Token::JsonArrow
+                } else {
+                    self.position += 1;
+                    Token::Minus
+                }
             }
             '/' => {
                 self.position += 1;
@@ -210,6 +252,21 @@ impl<'a> Lexer<'a> {
                     Token::Less
                 }
             }
+            '|' => {
+                // `||` is string concatenation in MySQL/PostgreSQL/Oracle SQL.
+                // Token is `Or` (also used for boolean OR) — the parser and
+                // evaluator distinguish based on operand type at runtime.
+                if self.input[self.position..].starts_with("||") {
+                    self.position += 2;
+                    Token::Or
+                } else {
+                    // Single `|` is not a valid SQL token in our grammar;
+                    // fall through to identifier path which will treat it
+                    // as a stray identifier (and the parser will reject it).
+                    self.position += 1;
+                    Token::Identifier("|".to_string())
+                }
+            }
             _ if ch.is_alphabetic() || ch == '_' => {
                 let ident = self.read_identifier();
                 match ident.to_uppercase().as_str() {
@@ -222,10 +279,16 @@ impl<'a> Lexer<'a> {
                     "UPDATE" => Token::Update,
                     "SET" => Token::Set,
                     "DELETE" => Token::Delete,
+                    "MERGE" => Token::Merge,
+                    "USING" => Token::Using,
+                    "USE" => Token::Use,
+                    "MATCHED" => Token::Matched,
                     "CREATE" => Token::Create,
                     "TABLE" => Token::Table,
                     "DROP" => Token::Drop,
                     "ALTER" => Token::Alter,
+                    "TRUNCATE" => Token::Truncate,
+                    "DUPLICATE" => Token::Duplicate,
                     "INDEX" => Token::Index,
                     "ON" => Token::On,
                     "PRIMARY" => Token::Primary,
@@ -252,7 +315,8 @@ impl<'a> Lexer<'a> {
                     "DEFAULT" => Token::Default,
                     "AUTO_INCREMENT" => Token::AutoIncrement,
                     "INTEGER" | "INT" => Token::Integer,
-                    "TEXT" | "VARCHAR" | "CHAR" => Token::Text,
+                    "TEXT" => Token::Text,
+                    "VARCHAR" | "CHAR" => Token::Identifier(ident.to_string()),
                     "FLOAT" | "DOUBLE" | "REAL" => Token::Float,
                     "BOOLEAN" | "BOOL" => Token::Boolean,
                     "BLOB" => Token::Blob,
@@ -273,6 +337,7 @@ impl<'a> Lexer<'a> {
                     "ALL" => Token::All,
                     "ANY" => Token::Any,
                     "SOME" => Token::Some,
+                    "AS" => Token::As,
                     "WITH" => Token::With,
                     "RECURSIVE" => Token::Recursive,
                     "COUNT" => Token::Count,
@@ -302,6 +367,9 @@ impl<'a> Lexer<'a> {
                     "WORK" => Token::Work,
                     "SAVEPOINT" => Token::Savepoint,
                     "START" => Token::Start,
+                    "PREPARE" => Token::Prepare,
+                    "EXECUTE" => Token::Execute,
+                    "DEALLOCATE" => Token::Deallocate,
                     "RELEASE" => Token::Release,
                     "ISOLATION" => Token::Isolation,
                     "LEVEL" => Token::Level,
@@ -317,9 +385,11 @@ impl<'a> Lexer<'a> {
                     "DESCRIBE" => Token::Describe,
                     "DESC" => Token::Desc,
                     "TRIGGER" => Token::Trigger,
+                    "DATABASE" => Token::Database,
+                    "VIEW" => Token::View,
                     "BEFORE" => Token::Before,
                     "AFTER" => Token::After,
-                    "FOR" => Token::ForEach,
+                    "FOR" => Token::For,
                     "EACH" => Token::Each,
                     "UNBOUNDED" => Token::Unbounded,
                     "PRECEDING" => Token::Preceding,
@@ -328,6 +398,18 @@ impl<'a> Lexer<'a> {
                     "ROW" => Token::Row,
                     "ROWS" => Token::Rows,
                     "GROUPING" => Token::Grouping,
+                    "POSITION" => Token::Position,
+                    "INTERVAL" => Token::Interval,
+                    "HIGH_PRIORITY" => Token::HighPriority,
+                    "SQL_CACHE" => Token::SqlCache,
+                    "SQL_NO_CACHE" => Token::SqlNoCache,
+                    "SQL_CALC_FOUND_ROWS" => Token::SqlCalcFoundRows,
+                    "CONVERT" => Token::Convert,
+                    "DATE" => Token::Date,
+                    "DATE_ADD" => Token::DateAdd,
+                    "DATE_SUB" => Token::DateSub,
+                    "SUBSTRING" => Token::Substring,
+                    "SUBSTR" => Token::Substring,
                     "ROLLUP" => Token::Rollup,
                     "CUBE" => Token::Cube,
                     "ASOF" => Token::AsOf,
@@ -339,6 +421,7 @@ impl<'a> Lexer<'a> {
                     "FULLTEXT" => Token::Fulltext,
                     "OVER" => Token::Over,
                     "BETWEEN" => Token::Between,
+                    "ESCAPE" => Token::Escape,
                     _ => Token::Identifier(ident),
                 }
             }
@@ -415,6 +498,44 @@ mod tests {
         assert_eq!(tokens[4], Token::Create);
         assert_eq!(tokens[5], Token::Drop);
         assert_eq!(tokens[6], Token::Table);
+    }
+
+    #[test]
+    fn test_merge_keyword_uppercase() {
+        let tokens = Lexer::new("MERGE").tokenize();
+        assert_eq!(tokens[0], Token::Merge);
+    }
+
+    #[test]
+    fn test_merge_keyword_lowercase() {
+        let tokens = Lexer::new("merge").tokenize();
+        assert_eq!(tokens[0], Token::Merge);
+    }
+
+    #[test]
+    fn test_merge_keyword_mixedcase() {
+        let tokens = Lexer::new("Merge").tokenize();
+        assert_eq!(tokens[0], Token::Merge);
+    }
+
+    #[test]
+    fn test_merge_using_when_matched_keywords() {
+        let tokens =
+            Lexer::new("MERGE INTO t USING s ON t.id = s.id WHEN MATCHED THEN UPDATE").tokenize();
+        assert_eq!(tokens[0], Token::Merge);
+        assert_eq!(tokens[1], Token::Into);
+        // tokens[2] = Identifier("t"), tokens[3] = Using, ...
+        assert_eq!(tokens[3], Token::Using);
+        assert_eq!(tokens[5], Token::On);
+        // After "t.id = s.id" comes WHEN
+        let when_pos = tokens
+            .iter()
+            .position(|t| matches!(t, Token::When))
+            .expect("expected WHEN token");
+        assert_eq!(tokens[when_pos], Token::When);
+        assert_eq!(tokens[when_pos + 1], Token::Matched);
+        assert_eq!(tokens[when_pos + 2], Token::Then);
+        assert_eq!(tokens[when_pos + 3], Token::Update);
     }
 
     #[test]
