@@ -215,7 +215,6 @@ fn update_with_no_matches_is_noop() {
 // (parser only produces single-table UpdateStatement.)
 
 #[test]
-#[ignore = "UPDATE ... SET col = (SELECT ...) not supported. UpdateStatement has no sub-select."]
 fn update_with_subquery_in_set() {
     let mut e = fresh();
     e.execute("CREATE TABLE src (v INTEGER)").unwrap();
@@ -301,7 +300,6 @@ fn delete_with_compound_where() {
 // DELETE with subquery / multi-table — not supported in DeleteStatement.
 
 #[test]
-#[ignore = "DELETE ... WHERE col IN (SELECT ...) not supported. DeleteStatement has no sub-select."]
 fn delete_with_subquery_in_where() {
     let mut e = fresh();
     e.execute("CREATE TABLE keepers (id INTEGER)").unwrap();
