@@ -69,9 +69,10 @@
 
 ## 5. Commit and push
 
-- [ ] 5.1 `cargo check --all-features --workspace` passes (no new
-      warnings beyond the existing `dead_code` notes).
-- [ ] 5.2 `cargo fmt --all` clean.
+- [x] 5.1 `cargo check --all-features --workspace` passes (no new
+      warnings beyond the existing `dead_code` notes in admin +
+      engine_select useless_conversion).
+- [x] 5.2 `cargo fmt --all` clean.
 - [ ] 5.3 Commit with message referencing this change and issue
       #3621 (the original pre-existing-failures tracking issue).
 - [ ] 5.4 Fast-forward push to `250/develop/v3.9.0` (admin override,
