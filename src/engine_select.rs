@@ -1309,6 +1309,17 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                         joined.push(a.clone());
                     }
                 }
+                for extra in &select.extra_tables {
+                    let (bare, alias) = match extra.split_once('|') {
+                        Some((t, a)) => (t.to_string(), a.to_string()),
+                        None => (extra.clone(), String::new()),
+                    };
+                    joined.push(bare.clone());
+                    joined.push(Self::tpch_table_prefix(&bare).to_string());
+                    if !alias.is_empty() {
+                        joined.push(alias);
+                    }
+                }
                 joined.push(Self::tpch_table_prefix(&base_table).to_string());
                 self.extract_single_table_predicates(wc, &joined)
             })
@@ -1336,15 +1347,18 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
 
         for join_clause in &select.join_clause {
             // Strip the optional `|alias` suffix from
-            // join_clause.table to look up pushdown filters
-            // (the auto-rewrite stores `lineitem|l1` but
-            // extract_single_table_predicates keyed by the
-            // bare name `lineitem`).
-            let (bare_right_table, _) = match join_clause.table.split_once('|') {
+            // join_clause.table to look up pushdown filters.
+            // `extract_single_table_predicates` keys by the table
+            // qualifier (alias if present, else bare name), so try
+            // the alias first, then fall back to the bare name.
+            let (bare_right_table, right_alias) = match join_clause.table.split_once('|') {
                 Some((t, a)) => (t.to_string(), Some(a.to_string())),
-                None => (join_clause.table.clone(), join_clause.alias.clone()),
+                None => (join_clause.table.clone(), None),
             };
-            let right_filter = pushdown_filters.get(&bare_right_table).cloned();
+            let right_filter = pushdown_filters
+                .get(right_alias.as_deref().unwrap_or(&bare_right_table))
+                .or_else(|| pushdown_filters.get(&bare_right_table))
+                .cloned();
             let (new_rows, new_info) = self.execute_single_join(
                 &rows,
                 &table_info,
@@ -1790,7 +1804,13 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         use sqlrustgo_parser::JoinType as ParserJoinType;
         use std::collections::HashMap;
 
-        let right_table_name = join_clause.table.clone();
+        // Strip the auto-rewrite `|alias` suffix (e.g. `lineitem|l1`)
+        // before the storage scan; storage only knows the bare name.
+        let (right_bare, _) = match join_clause.table.split_once('|') {
+            Some((t, a)) => (t.to_string(), Some(a.to_string())),
+            None => (join_clause.table.clone(), None),
+        };
+        let right_table_name = right_bare;
         let right_alias = join_clause.alias.as_ref().unwrap_or(&right_table_name);
 
         // Phase 3 (TPCH-01 Q15): if the right table is a synthetic __subq_N
@@ -1806,6 +1826,21 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 storage.get_table_info(&right_table_name)?,
             )
         };
+
+        // Pre-existing bug fix: alias-prefix the column names BEFORE
+        // the pushdown filter, so `n2.n_name = 'GERMANY'` (the
+        // typical single-table filter) can match by qualified name
+        // against `right_table_info` (otherwise the bare `n_name`
+        // column never matches the qualified predicate and the
+        // pre-filter rejects every row, breaking TPC-H Q8 8-way).
+        let mut right_table_info = right_raw_info.clone();
+        if join_clause.alias.is_some() {
+            right_table_info.name = right_alias.clone();
+            for col in &mut right_table_info.columns {
+                col.name = format!("{}.{}", right_alias, col.name);
+            }
+        }
+
         // Sprint 5 v15+ predicate pushdown: apply any
         // single-table WHERE predicates for this right table to
         // the scanned rows before the hash-join build.  This
@@ -1818,19 +1853,12 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 .filter(|r| {
                     right_pushdown
                         .iter()
-                        .all(|p| eval_predicate(p, r, &right_raw_info))
+                        .all(|p| eval_predicate(p, r, &right_table_info))
                 })
                 .collect()
         } else {
             right_raw_rows
         };
-        let mut right_table_info = right_raw_info.clone();
-        if join_clause.alias.is_some() {
-            right_table_info.name = right_alias.clone();
-            for col in &mut right_table_info.columns {
-                col.name = format!("{}.{}", right_alias, col.name);
-            }
-        }
 
         // The accumulated left_table_info.name encodes previous joins
         // (e.g. "a_join_n1_join_customer") and is the qualifier scope
@@ -1879,12 +1907,38 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                         cross.push(combined);
                     }
                 }
-                let combined_schema = build_combined_schema(
-                    &left_table_info,
-                    &left_alias,
-                    &right_table_info,
-                    right_alias,
-                )?;
+                // build_combined_schema: instead of re-prefixing
+                // both sides (which would triple-prefix the left
+                // columns in a 3+ way chain), concatenate the left
+                // info as-is with the right info prefixed by
+                // `right_alias`. The left info's columns are already
+                // qualified from prior cartesian steps.
+                let mut combined_columns = left_table_info.columns.clone();
+                for col in &right_table_info.columns {
+                    let bare_col = if join_clause.alias.is_some() {
+                        col.name
+                            .strip_prefix(&format!("{}.", right_alias))
+                            .unwrap_or(&col.name)
+                            .to_string()
+                    } else {
+                        col.name.clone()
+                    };
+                    combined_columns.push(sqlrustgo_storage::ColumnDefinition {
+                        name: format!("{}.{}", right_alias, bare_col),
+                        data_type: col.data_type.clone(),
+                        nullable: col.nullable,
+                        primary_key: col.primary_key,
+                        char_max_length: col.char_max_length,
+                    });
+                }
+                let combined_schema = TableInfo {
+                    name: format!("{}_join_{}", left_alias, right_alias),
+                    columns: combined_columns,
+                    foreign_keys: vec![],
+                    unique_constraints: vec![],
+                    check_constraints: vec![],
+                    partition_info: None,
+                };
                 return Ok((cross, combined_schema));
             }
             JoinKey::Left(_) | JoinKey::Right(_) => {
