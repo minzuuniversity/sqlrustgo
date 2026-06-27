@@ -15,6 +15,7 @@ use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::sync::{Arc, RwLock};
+use std::sync::mpsc;
 use std::thread;
 
 const SERVER_VERSION: &str = "8.0.33-SQLRustGo";
@@ -26,6 +27,109 @@ fn skip_auth() -> bool {
     std::env::var("SQLRUSTGO_AUTH_MODE")
         .map(|v| v.eq_ignore_ascii_case("none"))
         .unwrap_or(false)
+}
+
+
+
+// =============================================================================
+// P2-1: Configurable multi-thread worker pool
+// =============================================================================
+
+/// Task submitted to the worker pool for processing a client connection.
+struct ClientTask {
+    stream: TcpStream,
+    addr: SocketAddr,
+    storage: Arc<RwLock<WalStorage<FileStorage, FileBackedWalManager>>>,
+    tls_config: Arc<rustls::ServerConfig>,
+    user_store: UserStore,
+}
+
+/// A fixed-size pool of OS threads that process client connections in parallel.
+///
+/// When `size == 1`, the server falls back to the legacy per-connection
+/// `thread::spawn` behavior for maximum backward compatibility.
+struct WorkerPool {
+    /// Sender end of the task channel. Cloned into each acceptor.
+    sender: mpsc::Sender<ClientTask>,
+    /// Worker thread handles, kept to join on shutdown.
+    handles: Vec<thread::JoinHandle<()>>,
+    /// Flag to signal workers to stop.
+    shutdown: std::sync::Arc<std::sync::atomic::AtomicBool>,
+}
+
+impl WorkerPool {
+    /// Create a new pool with `size` worker threads.
+    fn new(
+        size: usize,
+        storage: Arc<RwLock<WalStorage<FileStorage, FileBackedWalManager>>>,
+        tls_config: Arc<rustls::ServerConfig>,
+        user_store: UserStore,
+    ) -> Self {
+        let (tx, rx): (mpsc::Sender<ClientTask>, mpsc::Receiver<ClientTask>) = mpsc::channel();
+        // std mpsc::Receiver is not Clone, so wrap in Arc<Mutex> for shared access.
+        let rx = Arc::new(std::sync::Mutex::new(rx));
+        let shutdown = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let mut handles = Vec::with_capacity(size);
+
+        for _ in 0..size {
+            let rx = Arc::clone(&rx);
+            let _st = storage.clone();
+            let _tc = tls_config.clone();
+            let _us = user_store.clone();
+            let shutdown = Arc::clone(&shutdown);
+            let handle = thread::spawn(move || {
+                // Worker thread: continuously receive tasks until shutdown.
+                while !shutdown.load(std::sync::atomic::Ordering::SeqCst) {
+                    let task = {
+                        let guard = match rx.lock() {
+                            Ok(g) => g,
+                            Err(_) => continue,
+                        };
+                        guard.recv_timeout(std::time::Duration::from_millis(100))
+                    };
+                    match task {
+                        Ok(task) => {
+                            handle_connection(
+                                task.stream,
+                                task.addr,
+                                task.storage,
+                                task.tls_config,
+                                task.user_store,
+                            );
+                        }
+                        Err(mpsc::RecvTimeoutError::Timeout) => continue,
+                        Err(mpsc::RecvTimeoutError::Disconnected) => break,
+                    }
+                }
+            });
+            handles.push(handle);
+        }
+
+        tracing::info!("WorkerPool started with {} threads", size);
+        Self { sender: tx, handles, shutdown }
+    }
+
+    /// Submit a client connection to the pool for processing.
+    fn submit(&self, task: ClientTask) {
+        // If the channel is disconnected (pool dropped), silently ignore.
+        let _ = self.sender.send(task);
+    }
+
+    /// Signal all workers to stop and wait for them to finish.
+    fn shutdown(&mut self) {
+        tracing::info!("Shutting down {} worker threads", self.handles.len());
+        self.shutdown.store(true, std::sync::atomic::Ordering::SeqCst);
+        for handle in self.handles.drain(..) {
+            let _ = handle.join();
+        }
+        tracing::info!("All worker threads stopped");
+    }
+}
+
+impl Drop for WorkerPool {
+    fn drop(&mut self) {
+        self.shutdown();
+    }
 }
 
 mod packet_type {
@@ -2290,20 +2394,23 @@ pub fn run_server_v2(
     data_dir: &str,
     max_connections: usize,
     auth_mode: &str,
+    worker_threads: usize,
 ) -> MySqlResult<()> {
     let addr = format!("{}:{}", host, port);
     let listener = TcpListener::bind(&addr)?;
     tracing::info!(
-        "MySQL server listening on {} (data_dir={}, max_conn={}, auth={})",
+        "MySQL server listening on {} (data_dir={}, max_conn={}, auth={}, workers={})",
         addr,
         data_dir,
         max_connections,
-        auth_mode
+        auth_mode,
+        worker_threads
     );
     // Store options in env so the run_server_with_listener path can read them
     std::env::set_var("SQLRUSTGO_DATA_DIR", data_dir);
     std::env::set_var("SQLRUSTGO_MAX_CONN", max_connections.to_string());
     std::env::set_var("SQLRUSTGO_AUTH_MODE", auth_mode);
+    std::env::set_var("SQLRUSTGO_WORKER_THREADS", worker_threads.to_string());
     // v3.8.0-rc2 Week 1 Day 7: also publish the data_dir to
     // ACTIVE_CONFIG so that the LOAD DATA LOCAL INFILE handler
     // recognizes files inside the data dir as in-whitelist.
@@ -2501,23 +2608,64 @@ pub(crate) fn run_server_with_listener_and_shutdown_with_bootstrap_tables_and_sq
     }
     use std::sync::atomic::Ordering;
     use std::time::Duration;
-    while !shutdown.load(Ordering::SeqCst) {
-        match listener.accept() {
-            Ok((stream, addr)) => {
-                let st = storage.clone();
-                let tc = tls_config.clone();
-                let us = user_store.clone();
-                thread::spawn(move || handle_connection(stream, addr, st, tc, us));
-            }
-            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                std::thread::sleep(Duration::from_millis(50));
-            }
-            Err(e) => {
-                if shutdown.load(Ordering::SeqCst) {
-                    break;
+    // P2-1: configurable multi-thread worker pool
+    let worker_threads = std::env::var("SQLRUSTGO_WORKER_THREADS")
+        .ok()
+        .and_then(|v| v.parse::<usize>().ok())
+        .unwrap_or(1);
+
+    if worker_threads > 1 {
+        tracing::info!("Multi-thread mode: {} workers", worker_threads);
+        let pool = WorkerPool::new(
+            worker_threads,
+            storage.clone(),
+            Arc::clone(&tls_config),
+            user_store.clone(),
+        );
+        while !shutdown.load(Ordering::SeqCst) {
+            match listener.accept() {
+                Ok((stream, addr)) => {
+                    pool.submit(ClientTask {
+                        stream,
+                        addr,
+                        storage: storage.clone(),
+                        tls_config: tls_config.clone(),
+                        user_store: user_store.clone(),
+                    });
                 }
-                tracing::error!("Accept: {}", e);
-                std::thread::sleep(Duration::from_millis(50));
+                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                    std::thread::sleep(Duration::from_millis(50));
+                }
+                Err(e) => {
+                    if shutdown.load(Ordering::SeqCst) {
+                        break;
+                    }
+                    tracing::error!("Accept: {}", e);
+                    std::thread::sleep(Duration::from_millis(50));
+                }
+            }
+        }
+        // pool.shutdown() is called automatically via Drop when pool goes out of scope
+    } else {
+        tracing::info!("Single-thread mode (worker_threads=1)");
+        while !shutdown.load(Ordering::SeqCst) {
+            match listener.accept() {
+                Ok((stream, addr)) => {
+                    let st = storage.clone();
+                    let tc = tls_config.clone();
+                    let us = user_store.clone();
+                    thread::spawn(move || handle_connection(stream, addr, st, tc, us));
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                    std::thread::sleep(Duration::from_millis(50));
+                }
+                Err(e) => {
+                    if shutdown.load(Ordering::SeqCst) {
+                        break;
+                    }
+                    tracing::error!("Accept: {}", e);
+                    std::thread::sleep(Duration::from_millis(50));
+                }
             }
         }
     }
