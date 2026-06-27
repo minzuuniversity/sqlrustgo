@@ -47,7 +47,9 @@ fn test_cte_parse_with_dml() {
 #[test]
 fn test_cte_parse_with_update() {
     use sqlrustgo_parser::parse;
-    let r = parse("WITH cte AS (SELECT * FROM t) UPDATE t SET name='x' WHERE id IN (SELECT id FROM cte)");
+    let r = parse(
+        "WITH cte AS (SELECT * FROM t) UPDATE t SET name='x' WHERE id IN (SELECT id FROM cte)",
+    );
     assert!(r.is_ok(), "CTE+UPDATE parse failed: {:?}", r.err());
 }
 
@@ -72,7 +74,9 @@ fn test_cte_execute_select_literal() {
 #[test]
 fn test_cte_execute_select_from_real_table() {
     let mut engine = make_engine();
-    let _ = engine.execute("CREATE TABLE t (id INTEGER, name TEXT)").unwrap();
+    let _ = engine
+        .execute("CREATE TABLE t (id INTEGER, name TEXT)")
+        .unwrap();
     let _ = engine.execute("INSERT INTO t VALUES (1, 'alpha')").unwrap();
     let _ = engine.execute("INSERT INTO t VALUES (2, 'beta')").unwrap();
 
@@ -84,7 +88,9 @@ fn test_cte_execute_select_from_real_table() {
 #[test]
 fn test_cte_execute_dml_update() {
     let mut engine = make_engine();
-    let _ = engine.execute("CREATE TABLE t (id INTEGER, val TEXT)").unwrap();
+    let _ = engine
+        .execute("CREATE TABLE t (id INTEGER, val TEXT)")
+        .unwrap();
     let _ = engine.execute("INSERT INTO t VALUES (1, 'old')").unwrap();
 
     let r = engine.execute("WITH cte AS (SELECT 1) UPDATE t SET val = 'new' WHERE id = 1");
@@ -124,5 +130,8 @@ fn test_cte_name_reference_not_yet_supported() {
     let _ = engine.execute("INSERT INTO src VALUES (1)").unwrap();
 
     let r = engine.execute("WITH cte AS (SELECT id FROM src) SELECT * FROM cte");
-    assert!(r.is_err(), "CTE name ref should fail without materialization");
+    assert!(
+        r.is_err(),
+        "CTE name ref should fail without materialization"
+    );
 }
