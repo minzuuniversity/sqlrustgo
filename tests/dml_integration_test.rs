@@ -98,7 +98,6 @@ fn insert_with_explicit_columns() {
 }
 
 #[test]
-#[ignore = "INSERT ... SELECT currently inserts 0 rows in the in-memory engine. Tracked for follow-up fix."]
 fn insert_select_copies_rows() {
     let mut e = fresh();
     e.execute("CREATE TABLE src (v INTEGER)").unwrap();
@@ -117,7 +116,6 @@ fn insert_select_copies_rows() {
 }
 
 #[test]
-#[ignore = "INSERT ... SELECT currently inserts 0 rows in the in-memory engine. Tracked for follow-up fix."]
 fn insert_select_with_type_coercion() {
     let mut e = fresh();
     e.execute("CREATE TABLE nums (v INTEGER)").unwrap();
