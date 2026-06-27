@@ -230,7 +230,6 @@ fn update_with_subquery_in_set() {
 }
 
 #[test]
-#[ignore = "Multi-table UPDATE not supported. UpdateStatement is single-table only."]
 fn update_multiple_tables() {
     let mut e = fresh();
     e.execute("CREATE TABLE a (v INTEGER)").unwrap();
@@ -315,7 +314,6 @@ fn delete_with_subquery_in_where() {
 }
 
 #[test]
-#[ignore = "Multi-table DELETE not supported. DeleteStatement is single-table only."]
 fn delete_multiple_tables() {
     let mut e = fresh();
     e.execute("CREATE TABLE a (v INTEGER)").unwrap();
