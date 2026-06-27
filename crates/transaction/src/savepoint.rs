@@ -72,14 +72,22 @@ impl SavepointManager {
     }
 
     /// 物理回滚 (Phase 3): 从最新到保存点反向应用 UndoRecord
-    /// 对于每个 UndoRecord:
-    ///   - Insert(key) → DELETE the row at key
-    ///   - Delete(key, old_value) → INSERT the old_value at key
-    ///   - Update(key, old_value) → RESTORE old_value at key
-    /// 当前实现: 仅清除 undo_log 条目，不还原物理数据
-    /// TODO(Phase 3): 接入 storage 实现真实 MVCC 状态还原
-    /// 跟踪: #3172
-    pub fn rollback_to(&mut self, name: &str) -> Result<(), SavepointError> {
+    ///
+    /// 对 undo_log[sp.undo_log_index..] 中的记录反向遍历：
+    /// - `Insert` → 回调 `on_delete(key)` 删除该行
+    /// - `Delete` → 回调 `on_insert(key, old_value)` 恢复旧行
+    /// - `Update` → 回调 `on_update(key, old_value)` 恢复旧值
+    ///
+    /// 清理 undo_log 和 savepoint 栈。
+    ///
+    /// # 参数
+    /// - `name`: 目标 savepoint 名称
+    /// - `on_undo`: 回调函数，接收 (UndoRecord) → Result<(), String>
+    ///   由调用者（通常是 ExecutionEngine）提供实际的存储操作
+    pub fn rollback_to<F>(&mut self, name: &str, on_undo: F) -> Result<(), SavepointError>
+    where
+        F: FnMut(&UndoRecord) -> Result<(), String>,
+    {
         let idx = self
             .savepoints
             .iter()
@@ -87,15 +95,36 @@ impl SavepointManager {
             .ok_or(SavepointError::NotFound)?;
 
         let sp = &self.savepoints[idx];
+        let mut undo = on_undo;
 
-        // Phase 3 待实现: 反向遍历 undo_log[sp.undo_log_index..] 并应用
-        // for record in self.undo_log[sp.undo_log_index..].iter().rev() {
-        //     match record {
-        //         UndoRecord::Insert { key } => storage.delete(key),
-        //         UndoRecord::Delete { key, old_value } => storage.insert(key, old_value),
-        //         UndoRecord::Update { key, old_value } => storage.update(key, old_value),
-        //     }
-        // }
+        // 反向遍历 undo_log 并应用
+        for record in self.undo_log[sp.undo_log_index..].iter().rev() {
+            if let Err(e) = undo(record) {
+                // 回滚过程中出错，记录但继续（尽力而为）
+                eprintln!("Savepoint undo failed (continuing): {}", e);
+            }
+        }
+
+        while self.undo_log.len() > sp.undo_log_index {
+            self.undo_log.pop();
+        }
+
+        self.savepoints.truncate(idx + 1);
+
+        Ok(())
+    }
+
+    /// 旧 API 兼容: 仅清除 undo_log 不还原物理数据
+    /// 新代码应使用 rollback_to(name, on_undo)
+    #[deprecated(since = "v3.9.0", note = "Use rollback_to(name, on_undo) for physical rollback")]
+    pub fn rollback_to_noop(&mut self, name: &str) -> Result<(), SavepointError> {
+        let idx = self
+            .savepoints
+            .iter()
+            .rposition(|s| s.name == name)
+            .ok_or(SavepointError::NotFound)?;
+
+        let sp = &self.savepoints[idx];
 
         while self.undo_log.len() > sp.undo_log_index {
             self.undo_log.pop();
@@ -164,14 +193,14 @@ mod tests {
         manager.savepoint("sp2".to_string()).unwrap();
         assert_eq!(manager.savepoints.len(), 2);
 
-        manager.rollback_to("sp1").unwrap();
+        manager.rollback_to("sp1", |_| Ok(())).unwrap();
         assert_eq!(manager.savepoints.len(), 1);
     }
 
     #[test]
     fn test_savepoint_not_found() {
         let mut manager = SavepointManager::new();
-        let result = manager.rollback_to("nonexistent");
+        let result = manager.rollback_to("nonexistent", |_| Ok(()));
         assert!(matches!(result, Err(SavepointError::NotFound)));
     }
 
@@ -242,7 +271,7 @@ mod tests {
         manager.savepoint("sp1".to_string()).unwrap();
         manager.savepoint("sp2".to_string()).unwrap();
 
-        manager.rollback_to("sp1").unwrap();
+        manager.rollback_to("sp1", |_| Ok(())).unwrap();
 
         assert!(manager.savepoints.iter().any(|s| s.name == "sp1"));
     }
