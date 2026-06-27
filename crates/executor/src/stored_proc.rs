@@ -1092,7 +1092,10 @@ impl StoredProcExecutor {
                 Ok(())
             }
             sqlrustgo_parser::Statement::Update(update) => {
-                let table_name = &update.table;
+                if update.tables.len() != 1 {
+                    return Err("Stored-proc UPDATE only supports single-table form".to_string());
+                }
+                let table_name = &update.tables[0].name;
                 let mut storage = self.storage.write().unwrap();
 
                 if !storage.has_table(table_name) {
@@ -1122,7 +1125,10 @@ impl StoredProcExecutor {
                 Ok(())
             }
             sqlrustgo_parser::Statement::Delete(delete) => {
-                let table_name = &delete.table;
+                if delete.tables.len() != 1 {
+                    return Err("Stored-proc DELETE only supports single-table form".to_string());
+                }
+                let table_name = &delete.tables[0].name;
                 let mut storage = self.storage.write().unwrap();
 
                 if !storage.has_table(table_name) {

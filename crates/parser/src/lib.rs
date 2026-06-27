@@ -17,8 +17,8 @@ pub use parser::{
     DeleteStatement, DropIndexStatement, DropTableStatement, DropViewStatement, Expression,
     ForeignKeyRef, InsertStatement, JoinClause, JoinType, MergeAction, MergeSource, MergeStatement,
     MergeWhenClause, SavepointOp, SelectColumn, SelectStatement, Statement, StoredProcParam,
-    StoredProcParamMode, StoredProcStatement, TableConstraint, UpdateStatement, WithClause,
-    WithSelect,
+    StoredProcParamMode, StoredProcStatement, TableConstraint, TableRef, UpdateStatement,
+    WithClause, WithSelect,
 };
 pub use parser::{parse, parse_statements, split_sql_statements};
 pub use transaction::TransactionStatement;
