@@ -286,3 +286,21 @@ v3.10.0 作为 MySQL 5.7 的替代版本，核心要求：
 | `INT5_PLUS_DEBT_INVENTORY.md` | v3.0.0~v3.8.0 跨版本债务全量清单 |
 | `LONG_STABILITY_TESTS_ANALYSIS.md` | 长时测试详细分析 |
 | `V390_COMPREHENSIVE_ASSESSMENT.md` | v3.9.0 综合评估 |
+
+### 5.1 C-6: 缺失的 `sqlrustgo` CLI 程序（严重文档漏洞）
+见 `plans/V310_CLI_BINARY_PLAN.md`（Phase 1-4）。
+
+### 5.2 C-7: ARCH-2 MergeExecutor 字符串重解析（正交，非阻塞）
+见 `plans/V310_CLI_BINARY_PLAN.md`（Stage 2-3）。
+
+## 6. 配套文档
+
+| 文档 | 内容 |
+|------|------|
+| `plans/V310_CLI_BINARY_PLAN.md` | CLI binary 实现计划（C-6）+ ARCH-2（C-7） |
+| `IGNORE_REGISTRY_2026-06-25.md` | 完整 ignore 清单（已更新至 44 个） |
+| `V390_DEVELOPMENT_PLAN.md` | v3.9.0 架构债/可靠性任务 |
+| `ARCH_SEM_DEBT_REMEDIATION_PLAN.md` | ARCH-1~3 + SEM-1~4 债务详情 |
+| `INT5_PLUS_DEBT_INVENTORY.md` | v3.0.0~v3.8.0 跨版本债务全量清单 |
+| `LONG_STABILITY_TESTS_ANALYSIS.md` | 长时测试详细分析 |
+| `V390_COMPREHENSIVE_ASSESSMENT.md` | v3.9.0 综合评估 |
