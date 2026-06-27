@@ -48,7 +48,11 @@ fn test_merge_parse_subquery_source() {
     let sql = "MERGE INTO target USING (SELECT * FROM source) AS s ON target.id = s.id \
                WHEN MATCHED THEN UPDATE SET target.val = s.val";
     let r = parse(sql);
-    assert!(r.is_ok(), "MERGE subquery source parse failed: {:?}", r.err());
+    assert!(
+        r.is_ok(),
+        "MERGE subquery source parse failed: {:?}",
+        r.err()
+    );
 }
 
 #[test]
@@ -57,7 +61,11 @@ fn test_merge_parse_additional_condition() {
     let sql = "MERGE INTO target USING source ON target.id = source.id \
                WHEN MATCHED AND target.val > 100 THEN UPDATE SET target.val = source.val";
     let r = parse(sql);
-    assert!(r.is_ok(), "MERGE WITH condition parse failed: {:?}", r.err());
+    assert!(
+        r.is_ok(),
+        "MERGE WITH condition parse failed: {:?}",
+        r.err()
+    );
 }
 
 // =============================================================================
@@ -89,10 +97,18 @@ fn test_merge_subquery_source_parsed_correctly() {
 #[test]
 fn test_merge_execute_via_execution_engine() {
     let mut engine = make_engine();
-    let _ = engine.execute("CREATE TABLE target (id INTEGER PRIMARY KEY, val TEXT)").unwrap();
-    let _ = engine.execute("INSERT INTO target VALUES (1, 'old')").unwrap();
-    let _ = engine.execute("CREATE TABLE source (id INTEGER, val TEXT)").unwrap();
-    let _ = engine.execute("INSERT INTO source VALUES (1, 'new')").unwrap();
+    let _ = engine
+        .execute("CREATE TABLE target (id INTEGER PRIMARY KEY, val TEXT)")
+        .unwrap();
+    let _ = engine
+        .execute("INSERT INTO target VALUES (1, 'old')")
+        .unwrap();
+    let _ = engine
+        .execute("CREATE TABLE source (id INTEGER, val TEXT)")
+        .unwrap();
+    let _ = engine
+        .execute("INSERT INTO source VALUES (1, 'new')")
+        .unwrap();
 
     // MERGE 当前不走 execute() 路径（待 Phase 2 修复）
     let sql = "MERGE INTO target USING source ON target.id = source.id \
