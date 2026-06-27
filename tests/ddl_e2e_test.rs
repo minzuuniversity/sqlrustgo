@@ -44,43 +44,71 @@ fn test_create_table_simple() {
 fn test_create_table_with_primary_key() {
     let mut engine = make_engine();
     let result = engine.execute("CREATE TABLE orders (id INTEGER PRIMARY KEY, amount INTEGER)");
-    assert!(result.is_ok(), "CREATE TABLE with PK failed: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "CREATE TABLE with PK failed: {:?}",
+        result.err()
+    );
 }
 
 #[test]
 fn test_create_table_with_not_null() {
     let mut engine = make_engine();
-    let result = engine.execute("CREATE TABLE products (id INTEGER NOT NULL, name TEXT, price REAL)");
-    assert!(result.is_ok(), "CREATE TABLE with NOT NULL failed: {:?}", result.err());
+    let result =
+        engine.execute("CREATE TABLE products (id INTEGER NOT NULL, name TEXT, price REAL)");
+    assert!(
+        result.is_ok(),
+        "CREATE TABLE with NOT NULL failed: {:?}",
+        result.err()
+    );
 }
 
 #[test]
 fn test_create_table_with_foreign_key() {
     let mut engine = make_engine();
-    let _ = engine.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)").unwrap();
-    let result = engine.execute("CREATE TABLE orders (id INTEGER, user_id INTEGER REFERENCES users(id))");
-    assert!(result.is_ok(), "CREATE TABLE with FK failed: {:?}", result.err());
+    let _ = engine
+        .execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)")
+        .unwrap();
+    let result =
+        engine.execute("CREATE TABLE orders (id INTEGER, user_id INTEGER REFERENCES users(id))");
+    assert!(
+        result.is_ok(),
+        "CREATE TABLE with FK failed: {:?}",
+        result.err()
+    );
 }
 
 #[test]
 fn test_create_table_with_default() {
     let mut engine = make_engine();
     let result = engine.execute("CREATE TABLE items (id INTEGER, active INTEGER DEFAULT 1)");
-    assert!(result.is_ok(), "CREATE TABLE with DEFAULT failed: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "CREATE TABLE with DEFAULT failed: {:?}",
+        result.err()
+    );
 }
 
 #[test]
 fn test_create_table_varchar_type() {
     let mut engine = make_engine();
     let result = engine.execute("CREATE TABLE books (id INTEGER, title VARCHAR(255), author TEXT)");
-    assert!(result.is_ok(), "CREATE TABLE with VARCHAR failed: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "CREATE TABLE with VARCHAR failed: {:?}",
+        result.err()
+    );
 }
 
 #[test]
 fn test_create_table_with_unique() {
     let mut engine = make_engine();
     let result = engine.execute("CREATE TABLE accounts (id INTEGER UNIQUE, name TEXT)");
-    assert!(result.is_ok(), "CREATE TABLE with UNIQUE failed: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "CREATE TABLE with UNIQUE failed: {:?}",
+        result.err()
+    );
 }
 
 /// CREATE → INSERT → SELECT → DROP 完整生命周期
@@ -124,7 +152,11 @@ fn test_drop_table_basic() {
 fn test_drop_table_if_exists() {
     let mut engine = make_engine();
     let result = engine.execute("DROP TABLE IF EXISTS nonexistent");
-    assert!(result.is_ok(), "DROP TABLE IF EXISTS should not error: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "DROP TABLE IF EXISTS should not error: {:?}",
+        result.err()
+    );
 }
 
 // MemoryStorage.drop_table 总是返回 Ok
@@ -132,7 +164,11 @@ fn test_drop_table_if_exists() {
 fn test_drop_nonexistent_in_memory() {
     let mut engine = make_engine();
     let result = engine.execute("DROP TABLE nonexistent");
-    assert!(result.is_ok(), "DROP nonexistent in MemoryStorage: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "DROP nonexistent in MemoryStorage: {:?}",
+        result.err()
+    );
 }
 
 // MemoryStorage.drop_table 总是返回 Ok
@@ -142,7 +178,11 @@ fn test_drop_twice_in_memory() {
     let _ = engine.execute("CREATE TABLE t (id INTEGER)").unwrap();
     let _ = engine.execute("DROP TABLE t").unwrap();
     let result = engine.execute("DROP TABLE t");
-    assert!(result.is_ok(), "DROP TABLE twice in MemoryStorage ok: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "DROP TABLE twice in MemoryStorage ok: {:?}",
+        result.err()
+    );
 }
 
 // =============================================================================
@@ -152,7 +192,9 @@ fn test_drop_twice_in_memory() {
 #[test]
 fn test_create_index_basic() {
     let mut engine = make_engine();
-    let _ = engine.execute("CREATE TABLE t (id INTEGER, name TEXT)").unwrap();
+    let _ = engine
+        .execute("CREATE TABLE t (id INTEGER, name TEXT)")
+        .unwrap();
     let result = engine.execute("CREATE INDEX idx_name ON t(name)");
     assert!(result.is_ok(), "CREATE INDEX failed: {:?}", result.err());
 }
@@ -160,15 +202,23 @@ fn test_create_index_basic() {
 #[test]
 fn test_create_unique_index() {
     let mut engine = make_engine();
-    let _ = engine.execute("CREATE TABLE t (id INTEGER, email TEXT)").unwrap();
+    let _ = engine
+        .execute("CREATE TABLE t (id INTEGER, email TEXT)")
+        .unwrap();
     let result = engine.execute("CREATE UNIQUE INDEX idx_email ON t(email)");
-    assert!(result.is_ok(), "CREATE UNIQUE INDEX failed: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "CREATE UNIQUE INDEX failed: {:?}",
+        result.err()
+    );
 }
 
 #[test]
 fn test_create_index_then_insert_and_query() {
     let mut engine = make_engine();
-    let _ = engine.execute("CREATE TABLE t (id INTEGER, value INTEGER)").unwrap();
+    let _ = engine
+        .execute("CREATE TABLE t (id INTEGER, value INTEGER)")
+        .unwrap();
     let _ = engine.execute("CREATE INDEX idx_val ON t(value)").unwrap();
 
     let _ = engine.execute("INSERT INTO t VALUES (1, 10)").unwrap();
@@ -184,7 +234,10 @@ fn test_create_index_then_insert_and_query() {
 fn test_create_index_on_nonexistent_table() {
     let mut engine = make_engine();
     let result = engine.execute("CREATE INDEX idx ON nonexistent(col)");
-    assert!(result.is_err(), "CREATE INDEX on nonexistent table should fail");
+    assert!(
+        result.is_err(),
+        "CREATE INDEX on nonexistent table should fail"
+    );
 }
 
 // =============================================================================
@@ -202,7 +255,12 @@ fn test_truncate_table() {
     assert!(result.is_ok(), "TRUNCATE failed: {:?}", result.err());
 
     let r = engine.execute("SELECT * FROM t").unwrap();
-    assert_eq!(r.rows.len(), 0, "Expected 0 rows after TRUNCATE, got {}", r.rows.len());
+    assert_eq!(
+        r.rows.len(),
+        0,
+        "Expected 0 rows after TRUNCATE, got {}",
+        r.rows.len()
+    );
 }
 
 #[test]
@@ -210,14 +268,22 @@ fn test_truncate_empty_table() {
     let mut engine = make_engine();
     let _ = engine.execute("CREATE TABLE t (id INTEGER)").unwrap();
     let result = engine.execute("TRUNCATE TABLE t");
-    assert!(result.is_ok(), "TRUNCATE empty table failed: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "TRUNCATE empty table failed: {:?}",
+        result.err()
+    );
 }
 
 #[test]
 fn test_truncate_nonexistent_table() {
     let mut engine = make_engine();
     let result = engine.execute("TRUNCATE TABLE nonexistent");
-    assert!(result.is_err(), "TRUNCATE nonexistent table should fail: {:?}", result);
+    assert!(
+        result.is_err(),
+        "TRUNCATE nonexistent table should fail: {:?}",
+        result
+    );
 }
 
 // =============================================================================
@@ -230,7 +296,11 @@ fn test_alter_table_add_column() {
     let _ = engine.execute("CREATE TABLE t (id INTEGER)").unwrap();
 
     let result = engine.execute("ALTER TABLE t ADD COLUMN name TEXT");
-    assert!(result.is_ok(), "ALTER TABLE ADD COLUMN failed: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "ALTER TABLE ADD COLUMN failed: {:?}",
+        result.err()
+    );
 
     let _ = engine.execute("INSERT INTO t VALUES (1, 'hello')").unwrap();
     let r = engine.execute("SELECT name FROM t").unwrap();
@@ -240,11 +310,17 @@ fn test_alter_table_add_column() {
 #[test]
 fn test_alter_table_rename_to() {
     let mut engine = make_engine();
-    let _ = engine.execute("CREATE TABLE old_name (id INTEGER)").unwrap();
+    let _ = engine
+        .execute("CREATE TABLE old_name (id INTEGER)")
+        .unwrap();
     let _ = engine.execute("INSERT INTO old_name VALUES (42)").unwrap();
 
     let result = engine.execute("ALTER TABLE old_name RENAME TO new_name");
-    assert!(result.is_ok(), "ALTER TABLE RENAME failed: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "ALTER TABLE RENAME failed: {:?}",
+        result.err()
+    );
 
     let r = engine.execute("SELECT id FROM new_name").unwrap();
     assert_eq!(r.rows.len(), 1, "Expected 1 row");
@@ -261,10 +337,18 @@ fn test_ddl_sequential_create_drop_create() {
     let _ = engine.execute("CREATE TABLE cycle (id INTEGER)").unwrap();
     let _ = engine.execute("DROP TABLE cycle").unwrap();
     let result = engine.execute("CREATE TABLE cycle (id INTEGER, name TEXT)");
-    assert!(result.is_ok(), "Re-create after drop failed: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "Re-create after drop failed: {:?}",
+        result.err()
+    );
 
-    let _ = engine.execute("INSERT INTO cycle VALUES (1, 'reborn')").unwrap();
-    let r = engine.execute("SELECT name FROM cycle WHERE id = 1").unwrap();
+    let _ = engine
+        .execute("INSERT INTO cycle VALUES (1, 'reborn')")
+        .unwrap();
+    let r = engine
+        .execute("SELECT name FROM cycle WHERE id = 1")
+        .unwrap();
     assert_eq!(r.rows.len(), 1);
 }
 
@@ -277,12 +361,28 @@ fn test_ddl_multiple_tables() {
     let _ = engine.execute("CREATE TABLE c (id INTEGER)").unwrap();
 
     let r = engine.execute("SHOW TABLES").unwrap();
-    let table_names: Vec<String> = r.rows.iter()
-        .map(|row| row.iter().map(|v| v.to_string()).collect::<Vec<_>>().join(","))
+    let table_names: Vec<String> = r
+        .rows
+        .iter()
+        .map(|row| {
+            row.iter()
+                .map(|v| v.to_string())
+                .collect::<Vec<_>>()
+                .join(",")
+        })
         .collect();
-    assert!(table_names.iter().any(|n| n.contains("a")), "Missing table a");
-    assert!(table_names.iter().any(|n| n.contains("b")), "Missing table b");
-    assert!(table_names.iter().any(|n| n.contains("c")), "Missing table c");
+    assert!(
+        table_names.iter().any(|n| n.contains("a")),
+        "Missing table a"
+    );
+    assert!(
+        table_names.iter().any(|n| n.contains("b")),
+        "Missing table b"
+    );
+    assert!(
+        table_names.iter().any(|n| n.contains("c")),
+        "Missing table c"
+    );
 }
 
 // =============================================================================
@@ -304,7 +404,9 @@ fn test_sql92_ddl_dml_full_lifecycle() {
     assert!(r.is_ok(), "Step 2 INSERT 2 failed");
 
     // Step 3: SELECT
-    let r = engine.execute("SELECT * FROM orders ORDER BY order_id").unwrap();
+    let r = engine
+        .execute("SELECT * FROM orders ORDER BY order_id")
+        .unwrap();
     assert_eq!(r.rows.len(), 2, "Expected 2 rows");
 
     // Step 4: UPDATE
@@ -312,7 +414,9 @@ fn test_sql92_ddl_dml_full_lifecycle() {
     assert!(r.is_ok(), "Step 4 UPDATE failed");
 
     // Step 5: SELECT verify UPDATE
-    let r = engine.execute("SELECT status FROM orders WHERE order_id = 1").unwrap();
+    let r = engine
+        .execute("SELECT status FROM orders WHERE order_id = 1")
+        .unwrap();
     assert_eq!(r.rows.len(), 1);
 
     // Step 6: DELETE
