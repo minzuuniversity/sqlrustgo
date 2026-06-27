@@ -57,7 +57,12 @@ fn tpch_sf01_22_vs_mariadb_cell() {
     if !data_dir.exists() {
         panic!("fixture missing");
     }
-    if Command::new("mysql").arg("-e").arg("SELECT 1").output().is_err() {
+    if Command::new("mysql")
+        .arg("-e")
+        .arg("SELECT 1")
+        .output()
+        .is_err()
+    {
         eprintln!("MariaDB not available, skipping");
         return;
     }
@@ -301,19 +306,12 @@ fn tpch_sf01_22_vs_postgresql_pgdate_cell() {
                         (Ok(a), Ok(b)) => (a, b),
                         _ => {
                             cell_ok = false;
-                            eprintln!(
-                                "        row {} col {} not numeric: {} vs {}",
-                                ri, ci, x, y
-                            );
+                            eprintln!("        row {} col {} not numeric: {} vs {}", ri, ci, x, y);
                             break;
                         }
                     };
                     let abs = (xf - yf).abs();
-                    let rel = if yf != 0.0 {
-                        abs / yf.abs()
-                    } else {
-                        abs
-                    };
+                    let rel = if yf != 0.0 { abs / yf.abs() } else { abs };
                     if abs > 1e-3 && rel > 1e-5 {
                         cell_ok = false;
                         eprintln!(
@@ -361,6 +359,9 @@ fn tpch_sf01_22_vs_postgresql_pgdate_cell() {
     if fail == 0 {
         eprintln!("SUCCESS: engine matches PostgreSQL on all 22 TPC-H queries at SF=0.1");
     } else {
-        eprintln!("FAILURES: engine differs from PostgreSQL on {} queries", fail);
+        eprintln!(
+            "FAILURES: engine differs from PostgreSQL on {} queries",
+            fail
+        );
     }
 }
