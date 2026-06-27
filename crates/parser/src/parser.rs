@@ -1093,6 +1093,7 @@ impl Parser {
             Some(Token::Release) => self.parse_release_savepoint(),
             Some(Token::Prepare) => self.parse_prepare(),
             Some(Token::Execute) => self.parse_execute(),
+            Some(Token::Truncate) => self.parse_truncate(),
             Some(Token::Deallocate) => self.parse_deallocate(),
             // SEM-1 (#3172): ROLLBACK — peek for `TO` to route to
             // savepoint handling; otherwise plain ROLLBACK [WORK].
