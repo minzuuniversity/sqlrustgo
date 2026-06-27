@@ -90,8 +90,8 @@ fn tpch_queries() -> Vec<(&'static str, &'static str)> {
 }
 // 1..=22
 
- #[test]
- fn tpch_full_22_queries() {
+#[test]
+fn tpch_full_22_queries() {
     eprintln!("=== TPC-H Full 22 Test (wire protocol, SF=0.001) ===");
     let mut client: MySqlTestClient = start_sf001();
     let queries = tpch_queries();
