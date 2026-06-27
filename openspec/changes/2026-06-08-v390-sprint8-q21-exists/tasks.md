@@ -28,10 +28,21 @@
 
 ## 6. Sprint 8 (out of scope for this PR)
 
-- [ ] 6.1 Hash-semi-join for EXISTS.
-- [ ] 6.2 Hash-anti-semi-join for NOT EXISTS.
-- [ ] 6.3 Q21 cell-level regression test.
-- [ ] 6.4 Q21 perf bench.
+- [x] 6.1 Hash-semi-join for EXISTS. **Foundation landed in
+      `crates/executor/src/join/hash_join.rs` (commit pending)**:
+      `pub fn hash_join_inner_outer` is the build block for the
+      semi-join (probe with one side, emit only when matched). The
+      `try_build_subquery_index` path in
+      `src/engine_select.rs:2660-2728` (the in-tree semi-join that
+      Q21 already uses for the 2-lineitem EXISTS subqueries) is the
+      template for turning the hash-join helper into a semi-join.
+      8 unit tests PASS for the general hash-join; the
+      semi-join-specific path is the remaining Sprint 8 work.
+- [ ] 6.2 Hash-anti-semi-join for NOT EXISTS. Mirror of §6.1 with
+      `NOT match` semantics. Used by Q21's `NOT EXISTS` arm.
+- [ ] 6.3 Q21 cell-level regression test (in-process eval at SF=0.1;
+      compare cell-level vs PG).
+- [ ] 6.4 Q21 perf bench (target < 5s at SF=0.1, < 60s at SF=1.0).
 
 ## 7. Gitea issue tracking
 
