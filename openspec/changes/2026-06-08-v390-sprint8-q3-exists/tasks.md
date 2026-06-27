@@ -32,11 +32,25 @@
 
 ## 6. Sprint 8 (out of scope for this PR)
 
-- [ ] 6.1 Implement `crates/executor/src/join/hash_join.rs`.
+- [x] 6.1 Implement `crates/executor/src/join/hash_join.rs`.
+      **DONE in PR (commit pending)**: `pub fn hash_join_inner_outer`
+      (2-way hash join, smaller-side-on-build, O(R+S) time) and
+      `pub fn multi_way_hash_chain` (chained 2-way hash joins for
+      left-deep trees). 8 unit tests cover basic inner, empty
+      inputs, null keys, no-match, larger-left-builds-right, and a
+      3-table chain (customer × orders × lineitem). Library
+      functions only; wiring deferred to §6.2.
 - [ ] 6.2 Wire hash-join into `src/engine_select.rs` for 3+ way JOINs.
-- [ ] 6.3 Add Q3 hash-join regression test.
-- [ ] 6.4 Add Q3 perf bench.
-- [ ] 6.5 Verify Q3 < 1s at SF=0.1, < 30s at SF=1.0.
+      Sprint 8 follow-up: replace the per-join-clause nested-loop in
+      `execute_joins` (src/engine_select.rs:1316-1337) with a
+      multi_way_hash_chain call when each clause carries a
+      resolvable join key. Predicate pushdown (already present at
+      src/engine_select.rs:1562-1573) stays as the inner filter
+      step before the chain runs.
+- [ ] 6.3 Add Q3 hash-join regression test (in-process eval at
+      SF=0.1; compare cell-level vs PG).
+- [ ] 6.4 Add Q3 perf bench (target < 1s at SF=0.1, < 30s at SF=1.0).
+- [ ] 6.5 Verify Q3 < 1s at SF=0.1, < 30s at SF=1.0 (acceptance criterion).
 
 ## 7. Close Q3 Gitea issue (deferred to Sprint 8)
 
