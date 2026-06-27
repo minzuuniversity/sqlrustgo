@@ -2834,18 +2834,16 @@ impl Parser {
                         expression: Some(Expression::Identifier("level".to_string())),
                     });
                 }
-                Some(Token::Minus) | Some(Token::Plus) => {
-                    match self.parse_expression() {
-                        Ok(expr) => {
-                            columns.push(SelectColumn {
-                                name: "_expr".to_string(),
-                                alias: None,
-                                expression: Some(expr),
-                            });
-                        }
-                        Err(e) => return Err(e),
+                Some(Token::Minus) | Some(Token::Plus) => match self.parse_expression() {
+                    Ok(expr) => {
+                        columns.push(SelectColumn {
+                            name: "_expr".to_string(),
+                            alias: None,
+                            expression: Some(expr),
+                        });
                     }
-                }
+                    Err(e) => return Err(e),
+                },
                 _ => {
                     return Err("Expected FROM or column name".to_string());
                 }

@@ -29,9 +29,7 @@ use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
 /// Validate `--server-threads` value: must be integer in 0..=80.
 fn validate_server_threads(s: &str) -> Result<usize, String> {
-    let n: usize = s
-        .parse()
-        .map_err(|e| format!("not an integer: {e}"))?;
+    let n: usize = s.parse().map_err(|e| format!("not an integer: {e}"))?;
     if n > 80 {
         return Err(format!("must be ≤ 80 (got {n})"));
     }
@@ -201,11 +199,15 @@ fn main() -> ExitCode {
             }
 
             tracing::info!("SQLRustGo MySQL Server starting on {}:{}", host, port);
-            // SERVER-02 placeholder: suppress unused warning until Task 6 wires
-            // server_threads into EphemeralConfig / run_server_v2.
-            let _ = server_threads;
             // SERVER-01 Stage 2: use v2 with all options
-            if let Err(e) = run_server_v2(&host, port, &data_dir, max_connections, &auth_mode) {
+            if let Err(e) = run_server_v2(
+                &host,
+                port,
+                &data_dir,
+                max_connections,
+                &auth_mode,
+                server_threads,
+            ) {
                 tracing::error!("server error: {e}");
                 return ExitCode::from(1);
             }

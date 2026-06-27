@@ -140,8 +140,10 @@ v3.10.0 作为 MySQL 5.7 的替代版本，核心要求：
 |----|------|---------|------|----------|
 | M-1 | SEM-4 覆盖率测量标准化 | v3.0.0 | OPEN | 统一 `cargo llvm-cov` 方法，机器间 <5% 方差 |
 | M-2 | I-11 CBO 代价模型完善 | v2.0.0 | PARTIAL | 3 rules → 完整 CBO |
-| M-3 | F-01 CREATE EVENT 事件调度器 | v2.0.0 | PARTIAL | 部分实现，cron 式调度未完成 |
-| M-4 | F-07 查询缓存 DML 失效 | v2.0.0 | PARTIAL | LRU OK，DML invalidation 测试缺失 |
+|: M-3 | F-01 CREATE EVENT 事件调度器 | v2.0.0 | PARTIAL | 部分实现，cron 式调度未完成 |
+|: M-4 | F-07 查询缓存 DML 失效 | v2.0.0 | PARTIAL | LRU OK，DML invalidation 测试缺失 |
+|: M-5 | **INT-2 ParallelExecutor 生产路径** | v3.9.0 | **未解决** | `parallel_degree` 硬编码为 1，生产路径零调用者；需添加 `--parallel-degree` CLI + 修改 `ExecutionEngine::new()` / `execute_select()` |
+|: M-6 | **INT-3 stored_proc expression_to_value 重复** | v3.9.0 | **未解决** | `stored_proc.rs` 169 行独立重实现，应 delegate 到 `executor::expr::eval_*` free functions；需重构 ~120 行 |
 
 ### 2.3 低优先级（可选功能）
 
@@ -278,6 +280,24 @@ v3.10.0 作为 MySQL 5.7 的替代版本，核心要求：
 
 | 文档 | 内容 |
 |------|------|
+| `IGNORE_REGISTRY_2026-06-25.md` | 完整 ignore 清单（已更新至 44 个） |
+| `V390_DEVELOPMENT_PLAN.md` | v3.9.0 架构债/可靠性任务 |
+| `ARCH_SEM_DEBT_REMEDIATION_PLAN.md` | ARCH-1~3 + SEM-1~4 债务详情 |
+| `INT5_PLUS_DEBT_INVENTORY.md` | v3.0.0~v3.8.0 跨版本债务全量清单 |
+| `LONG_STABILITY_TESTS_ANALYSIS.md` | 长时测试详细分析 |
+| `V390_COMPREHENSIVE_ASSESSMENT.md` | v3.9.0 综合评估 |
+
+### 5.1 C-6: 缺失的 `sqlrustgo` CLI 程序（严重文档漏洞）
+见 `plans/V310_CLI_BINARY_PLAN.md`（Phase 1-4）。
+
+### 5.2 C-7: ARCH-2 MergeExecutor 字符串重解析（正交，非阻塞）
+见 `plans/V310_CLI_BINARY_PLAN.md`（Stage 2-3）。
+
+## 6. 配套文档
+
+| 文档 | 内容 |
+|------|------|
+| `plans/V310_CLI_BINARY_PLAN.md` | CLI binary 实现计划（C-6）+ ARCH-2（C-7） |
 | `IGNORE_REGISTRY_2026-06-25.md` | 完整 ignore 清单（已更新至 44 个） |
 | `V390_DEVELOPMENT_PLAN.md` | v3.9.0 架构债/可靠性任务 |
 | `ARCH_SEM_DEBT_REMEDIATION_PLAN.md` | ARCH-1~3 + SEM-1~4 债务详情 |
