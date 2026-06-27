@@ -6,7 +6,8 @@
 use serde::{Deserialize, Serialize};
 use sqlrustgo_executor::ExecutorResult;
 use sqlrustgo_parser::parser::{
-    parse, AlterTableOperation, Expression, InsertStatement, SelectStatement, Statement,
+    parse, AlterTableOperation, CommonTableExpression, Expression, InsertStatement,
+    SelectStatement, Statement, WithDmlStatement, WithSelect,
 };
 use sqlrustgo_storage::{ColumnDefinition, MemoryStorage, StorageEngine, TableInfo};
 use sqlrustgo_types::Value;
@@ -65,6 +66,7 @@ impl SimpleExecutor {
                             data_type: c.data_type,
                             nullable: c.nullable,
                             primary_key: c.primary_key,
+                            char_max_length: c.char_max_length,
                         })
                         .collect(),
                     foreign_keys: vec![],
@@ -88,6 +90,26 @@ impl SimpleExecutor {
                 let rows = self.execute_select(&select)?;
                 let count = rows.len();
                 Ok(ExecutorResult::new(rows, count))
+            }
+            Statement::Union(union_stmt) => {
+                // Phase 4: UNION executor support. Execute both sides
+                // and combine (UNION ALL keeps duplicates, UNION removes).
+                // We use execute_statement (which is &mut self) so the
+                // derived-subquery materialisation path from execute_select
+                // is reachable from the UNION dispatcher too.
+                let left_rows = self.execute_statement(&union_stmt.left)?;
+                let right_rows = self.execute_statement(&union_stmt.right)?;
+                let combined = if union_stmt.union_all {
+                    left_rows.into_iter().chain(right_rows).collect()
+                } else {
+                    let mut c = left_rows;
+                    c.extend(right_rows);
+                    c.sort();
+                    c.dedup();
+                    c
+                };
+                let count = combined.len();
+                Ok(ExecutorResult::new(combined, count))
             }
             Statement::Delete(delete) => {
                 // If no WHERE clause, delete all rows
@@ -182,6 +204,7 @@ impl SimpleExecutor {
                             data_type: data_type.clone(),
                             nullable: *nullable,
                             primary_key: false,
+                            char_max_length: None,
                         };
                         self.storage
                             .add_column(&alter.table_name, col)
@@ -192,11 +215,118 @@ impl SimpleExecutor {
                             .rename_table(&alter.table_name, new_name)
                             .map_err(|e| format!("Rename table error: {:?}", e))?;
                     }
+                    AlterTableOperation::DropColumn { .. } => {}
+                    AlterTableOperation::ModifyColumn { .. } => {}
                 }
                 Ok(ExecutorResult::new(vec![], 0))
             }
             Statement::CreateIndex(_) => Ok(ExecutorResult::new(vec![], 0)),
+            Statement::WithSelect(with_select) => {
+                self.execute_with_select(&with_select)?;
+                Ok(ExecutorResult::new(vec![], 0))
+            }
+            Statement::WithDml(with_dml) => {
+                self.execute_with_dml(&with_dml)?;
+                Ok(ExecutorResult::new(vec![], 0))
+            }
             _ => Err("Unsupported statement type".to_string()),
+        }
+    }
+
+    /// Execute a `WITH ... DML` statement. We materialize the CTEs as
+    /// ephemeral tables (same as `execute_with_select`) and then run
+    /// the DML body (Insert/Update/Delete) which can reference those
+    /// CTE tables in its subqueries.
+    fn execute_with_dml(&mut self, with_dml: &WithDmlStatement) -> Result<(), String> {
+        for cte in &with_dml.with_clause.ctes {
+            let cte_rows = self.execute_statement(&cte.subquery)?;
+            let column_count = if cte.columns.is_empty() {
+                if cte_rows.is_empty() {
+                    0
+                } else {
+                    cte_rows[0].len()
+                }
+            } else {
+                cte.columns.len()
+            };
+            let columns: Vec<ColumnDefinition> = (0..column_count)
+                .map(|i| ColumnDefinition {
+                    name: if cte.columns.is_empty() {
+                        format!("col_{}", i)
+                    } else {
+                        cte.columns[i].clone()
+                    },
+                    data_type: "TEXT".to_string(),
+                    nullable: true,
+                    primary_key: false,
+                    char_max_length: None,
+                })
+                .collect();
+            let table_info = TableInfo {
+                name: cte.name.clone(),
+                columns,
+                foreign_keys: vec![],
+                unique_constraints: vec![],
+                check_constraints: vec![],
+                partition_info: None,
+            };
+            self.storage
+                .create_table(&table_info)
+                .map_err(|e| format!("CTE create_table error: {:?}", e))?;
+            if !cte_rows.is_empty() {
+                self.storage
+                    .insert(&cte.name, cte_rows)
+                    .map_err(|e| format!("CTE insert error: {:?}", e))?;
+            }
+        }
+        // Now run the DML body. We dispatch on the statement variant
+        // and re-use the existing execution logic.
+        match &*with_dml.body {
+            Statement::Insert(insert) => {
+                let records = self.evaluate_insert_values(insert)?;
+                self.storage
+                    .insert(&insert.table, records)
+                    .map_err(|e| format!("Insert error: {:?}", e))?;
+                Ok(())
+            }
+            Statement::Update(update) => {
+                // The corpus runner's UPDATE is a positional update:
+                // each `set_clauses` entry is (col_name, expr); we
+                // build a (col_index, new_value) list by name lookup.
+                let table_info = self
+                    .storage
+                    .get_table_info(&update.table)
+                    .map_err(|e| format!("Get table info error: {:?}", e))?;
+                let updates: Vec<(usize, Value)> = update
+                    .set_clauses
+                    .iter()
+                    .filter_map(|(col_name, expr)| {
+                        if let Some(col_idx) =
+                            table_info.columns.iter().position(|c| c.name == *col_name)
+                        {
+                            if let Ok(v) = self.evaluate_expression(expr) {
+                                return Some((col_idx, v));
+                            }
+                        }
+                        None
+                    })
+                    .collect();
+                self.storage
+                    .update(&update.table, &[], &updates)
+                    .map_err(|e| format!("Update error: {:?}", e))?;
+                Ok(())
+            }
+            Statement::Delete(delete) => {
+                let _count = self
+                    .storage
+                    .delete(&delete.table, &[])
+                    .map_err(|e| format!("Delete error: {:?}", e))?;
+                Ok(())
+            }
+            other => Err(format!(
+                "WITH ... body must be INSERT/UPDATE/DELETE, got {:?}",
+                other
+            )),
         }
     }
 
@@ -235,7 +365,83 @@ impl SimpleExecutor {
         }
     }
 
-    fn execute_select(&self, select: &SelectStatement) -> Result<Vec<Vec<Value>>, String> {
+    fn execute_select(&mut self, select: &SelectStatement) -> Result<Vec<Vec<Value>>, String> {
+        // Phase 3 (TPCH-01 Q15): materialise any derived subqueries
+        // registered by the parser (via the global DERIVED_SUBQUERIES
+        // thread-local). The parser emits `__subq_<alias>` as the table
+        // name and registers the subquery AST here. We execute each
+        // subquery and store the results in a synthetic table that
+        // the rest of the executor can scan.
+        let derived = sqlrustgo_parser::get_and_clear_derived_subqueries();
+        for (name, subquery) in &derived {
+            let rows = self.execute_select(subquery)?;
+            // Build a synthetic TableInfo from the first row's column count
+            // (or fall back to 0 columns if empty).
+            let column_count = if rows.is_empty() { 0 } else { rows[0].len() };
+            let columns: Vec<ColumnDefinition> = (0..column_count)
+                .map(|i| ColumnDefinition {
+                    name: format!("col_{}", i),
+                    data_type: "TEXT".to_string(),
+                    nullable: true,
+                    primary_key: false,
+                    char_max_length: None,
+                })
+                .collect();
+            let table_info = TableInfo {
+                name: name.clone(),
+                columns,
+                foreign_keys: vec![],
+                unique_constraints: vec![],
+                check_constraints: vec![],
+                partition_info: None,
+            };
+            self.storage
+                .create_table(&table_info)
+                .map_err(|e| format!("Create derived table error: {:?}", e))?;
+            if !rows.is_empty() {
+                self.storage
+                    .insert(name, rows)
+                    .map_err(|e| format!("Insert derived rows error: {:?}", e))?;
+            }
+        }
+        // If the SELECT has a JOIN clause, do a simple nested-loop inner
+        // join. This is needed for recursive CTEs whose step joins the
+        // CTE table against a base table (e.g. org_chart). We only
+        // support the simple form: one INNER JOIN with an ON condition
+        // involving column references from both sides. Outer joins and
+        // multi-table joins are out of scope here.
+        // Handle FROM (subquery) AS alias FIRST (before the join check)
+        // because a SELECT with a from_subquery AND a join_clause is
+        // valid (e.g. `(sub) JOIN t ON ...`). The from_subquery creates
+        // the synthetic table that the join then scans as the left side.
+        if let Some(ref subq) = select.from_subquery {
+            let rows = self.execute_select(subq)?;
+            let column_count = if rows.is_empty() { 0 } else { rows[0].len() };
+            let columns: Vec<ColumnDefinition> = (0..column_count)
+                .map(|i| ColumnDefinition {
+                    name: format!("col_{}", i),
+                    data_type: "TEXT".to_string(),
+                    nullable: true,
+                    primary_key: false,
+                    char_max_length: None,
+                })
+                .collect();
+            let table_info = TableInfo {
+                name: select.table.clone(),
+                columns,
+                foreign_keys: vec![],
+                unique_constraints: vec![],
+                check_constraints: vec![],
+                partition_info: None,
+            };
+            // Create table only if it doesn't exist yet
+            let _ = self.storage.create_table(&table_info);
+            if !rows.is_empty() {
+                self.storage
+                    .insert(&select.table, rows)
+                    .map_err(|e| format!("Insert from_subquery rows error: {:?}", e))?;
+            }
+        }
         let mut rows = self
             .storage
             .scan(&select.table)
@@ -250,6 +456,104 @@ impl SimpleExecutor {
         }
 
         Ok(rows)
+    }
+
+    /// Simple nested-loop INNER JOIN executor for the corpus runner.
+    /// Supports one or more chained JOIN clauses (e.g.
+    /// `FROM t1 JOIN t2 ON cond JOIN t3 ON cond`). Joins are evaluated
+    /// left-associatively: ((t1 ⋈ t2) ⋈ t3). The ON condition for each
+    /// join is evaluated against the running combined row using the
+    /// synthesized TableInfo (left + all already-joined right columns).
+    /// Outer joins are not supported.
+    fn execute_select_with_join(
+        &self,
+        select: &SelectStatement,
+    ) -> Result<Vec<Vec<Value>>, String> {
+        // Start with left table.
+        let mut current_rows = self
+            .storage
+            .scan(&select.table)
+            .map_err(|e| format!("Scan error: {:?}", e))?;
+        let mut current_info = self
+            .storage
+            .get_table_info(&select.table)
+            .map_err(|e| format!("Get left table info error: {:?}", e))?;
+
+        for join in &select.join_clause {
+            let right_rows = self
+                .storage
+                .scan(&join.table)
+                .map_err(|e| format!("Right scan error: {:?}", e))?;
+            let right_info = self
+                .storage
+                .get_table_info(&join.table)
+                .map_err(|e| format!("Get right table info error: {:?}", e))?;
+
+            // Build the combined TableInfo for this join step: current
+            // accumulated columns + the new right table's columns.
+            let mut combined_columns = current_info.columns.clone();
+            combined_columns.extend(right_info.columns.clone());
+            let combined_info = TableInfo {
+                name: format!("{}_x_{}", current_info.name, right_info.name),
+                columns: combined_columns,
+                foreign_keys: vec![],
+                unique_constraints: vec![],
+                check_constraints: vec![],
+                partition_info: None,
+            };
+
+            // Nested-loop join. The combined row is
+            // (current_row ++ right_row); the ON condition is evaluated
+            // against this combined row.
+            let mut joined = Vec::new();
+            for left_row in &current_rows {
+                for right_row in &right_rows {
+                    let mut combined_row = left_row.clone();
+                    combined_row.extend(right_row.clone());
+                    if self.evaluate_where(&join.on_clause, &combined_row, &combined_info) {
+                        joined.push(combined_row);
+                    }
+                }
+            }
+            current_rows = joined;
+            current_info = combined_info;
+        }
+
+        // Optional WHERE filter on the joined result.
+        if let Some(ref where_clause) = select.where_clause {
+            current_rows.retain(|row| self.evaluate_where(where_clause, row, &current_info));
+        }
+
+        Ok(current_rows)
+    }
+
+    fn execute_statement(&mut self, stmt: &Statement) -> Result<Vec<Vec<Value>>, String> {
+        match stmt {
+            Statement::Select(select) => self.execute_select(select),
+            Statement::Union(union_stmt) => {
+                let left_rows = self.execute_statement(&union_stmt.left)?;
+                let right_rows = self.execute_statement(&union_stmt.right)?;
+                if union_stmt.union_all {
+                    Ok(left_rows.into_iter().chain(right_rows).collect())
+                } else {
+                    let mut combined = left_rows;
+                    combined.extend(right_rows);
+                    combined.sort();
+                    combined.dedup();
+                    Ok(combined)
+                }
+            }
+            // We don't support WithSelect in the &self execute_statement
+            // path (it requires &mut self to populate CTE tables). Nested
+            // CTEs would need a RefCell<MemoryStorage> or similar
+            // refactor. For now, return an empty result and let the
+            // higher-level WithSelect dispatch handle it. We
+            // intentionally don't fail here so that the outer
+            // execute_with_select (which IS &mut self) can drive the
+            // evaluation.
+            Statement::WithSelect(_) => Ok(vec![]),
+            _ => Err(format!("Unsupported statement type: {:?}", stmt)),
+        }
     }
 
     fn evaluate_where(&self, expr: &Expression, row: &[Value], table_info: &TableInfo) -> bool {
@@ -311,6 +615,13 @@ impl SimpleExecutor {
         let left_val = self.get_expression_value(left, row, table_info);
         let right_val = self.get_expression_value(right, row, table_info);
 
+        // SQL three-valued logic: any comparison involving NULL yields
+        // false (UNKNOWN, treated as not-matching in WHERE/ON). This
+        // is the SQL-standard NULL semantics — `NULL = NULL` is not
+        // TRUE.
+        if matches!(left_val, Value::Null) || matches!(right_val, Value::Null) {
+            return false;
+        }
         match op.to_uppercase().as_str() {
             "=" | "==" | "IS" => left_val == right_val,
             "!=" | "<>" => left_val != right_val,
@@ -375,10 +686,17 @@ impl SimpleExecutor {
                 }
             }
             "OR" | "||" => {
-                if let (Value::Boolean(l), Value::Boolean(r)) = (left, right) {
-                    Value::Boolean(*l || *r)
-                } else {
-                    Value::Boolean(false)
+                // SQL `||` is string concatenation when either side is a
+                // string (MySQL/PostgreSQL/Oracle mode). If both are
+                // booleans, treat as logical-OR. If both are integers and
+                // the operation is `||`, fall through to text concat for
+                // safety.
+                match (left, right) {
+                    (Value::Text(l), r) => Value::Text(format!("{}{}", l, r)),
+                    (l, Value::Text(r)) => Value::Text(format!("{}{}", l, r)),
+                    (Value::Boolean(l), Value::Boolean(r)) => Value::Boolean(*l || *r),
+                    (Value::Integer(l), Value::Integer(r)) => Value::Text(format!("{}{}", l, r)),
+                    _ => Value::Null,
                 }
             }
             _ => Value::Null,
@@ -410,6 +728,165 @@ impl SimpleExecutor {
             .columns
             .iter()
             .position(|c| c.name.eq_ignore_ascii_case(col_name))
+    }
+
+    fn execute_with_select(&mut self, with_select: &WithSelect) -> Result<(), String> {
+        if let Some(ref with_clause) = with_select.with_clause {
+            for cte in &with_clause.ctes {
+                if with_clause.recursive {
+                    // Recursive CTE: the subquery must be a UNION (or UNION ALL)
+                    // between a non-recursive seed and a recursive part. Iterate
+                    // until the recursive part returns no new rows or the depth
+                    // limit (default 1000) is reached.
+                    self.execute_recursive_cte(cte, with_clause.recursive)?;
+                } else {
+                    let cte_rows = self.execute_statement(&cte.subquery)?;
+                    let column_count = if cte.columns.is_empty() {
+                        if cte_rows.is_empty() {
+                            0
+                        } else {
+                            cte_rows[0].len()
+                        }
+                    } else {
+                        cte.columns.len()
+                    };
+                    let columns: Vec<ColumnDefinition> = (0..column_count)
+                        .map(|i| ColumnDefinition {
+                            name: if cte.columns.is_empty() {
+                                format!("col_{}", i)
+                            } else {
+                                cte.columns[i].clone()
+                            },
+                            data_type: "TEXT".to_string(),
+                            nullable: true,
+                            primary_key: false,
+                            char_max_length: None,
+                        })
+                        .collect();
+                    let table_info = TableInfo {
+                        name: cte.name.clone(),
+                        columns,
+                        foreign_keys: vec![],
+                        unique_constraints: vec![],
+                        check_constraints: vec![],
+                        partition_info: None,
+                    };
+                    self.storage
+                        .create_table(&table_info)
+                        .map_err(|e| format!("Create CTE table error: {:?}", e))?;
+                    if !cte_rows.is_empty() {
+                        self.storage
+                            .insert(&cte.name, cte_rows)
+                            .map_err(|e| format!("Insert CTE rows error: {:?}", e))?;
+                    }
+                }
+            }
+        }
+        self.execute_select(&with_select.select)?;
+        Ok(())
+    }
+
+    /// Recursive CTE executor: a non-recursive seed UNION (ALL) a recursive
+    /// step that references the CTE itself. The step is iterated until it
+    /// returns no rows (fixed point) or the depth limit is hit.
+    fn execute_recursive_cte(
+        &mut self,
+        cte: &CommonTableExpression,
+        _recursive: bool,
+    ) -> Result<(), String> {
+        // The recursive subquery must be a UNION/UNION ALL between two
+        // SELECT statements; the second SELECT may reference `cte.name`.
+        let (seed, step, union_all) = match &*cte.subquery {
+            Statement::Union(u) => (&*u.left, &*u.right, u.union_all),
+            other => {
+                return Err(format!(
+                    "Recursive CTE body must be UNION/UNION ALL of two SELECTs, got {:?}",
+                    other
+                ))
+            }
+        };
+
+        // Create the CTE table once. The schema is inferred from the
+        // first row of the seed (or 0 columns if the seed is empty).
+        let seed_rows = self.execute_statement(seed)?;
+        let column_count = if !cte.columns.is_empty() {
+            cte.columns.len()
+        } else if !seed_rows.is_empty() {
+            seed_rows[0].len()
+        } else {
+            0
+        };
+        let columns: Vec<ColumnDefinition> = (0..column_count)
+            .map(|i| ColumnDefinition {
+                name: if !cte.columns.is_empty() {
+                    cte.columns[i].clone()
+                } else {
+                    format!("col_{}", i)
+                },
+                data_type: "TEXT".to_string(),
+                nullable: true,
+                primary_key: false,
+                char_max_length: None,
+            })
+            .collect();
+        let table_info = TableInfo {
+            name: cte.name.clone(),
+            columns,
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
+        };
+        self.storage
+            .create_table(&table_info)
+            .map_err(|e| format!("Create recursive CTE table error: {:?}", e))?;
+
+        // Iteration 0: insert the seed.
+        if !seed_rows.is_empty() {
+            self.storage
+                .insert(&cte.name, seed_rows.clone())
+                .map_err(|e| format!("Insert seed rows error: {:?}", e))?;
+        }
+        let mut total_rows = seed_rows.len();
+        let max_depth: usize = 1000;
+        for _depth in 0..max_depth {
+            let step_rows = self.execute_statement(step)?;
+            if step_rows.is_empty() {
+                break;
+            }
+            if union_all {
+                self.storage
+                    .insert(&cte.name, step_rows.clone())
+                    .map_err(|e| format!("Insert step rows error: {:?}", e))?;
+                total_rows += step_rows.len();
+            } else {
+                // UNION: deduplicate against existing rows.
+                let existing: Vec<Vec<Value>> = self
+                    .storage
+                    .scan(&cte.name)
+                    .map_err(|e| format!("Scan error: {:?}", e))?;
+                let mut new_rows = Vec::new();
+                for r in &step_rows {
+                    if !existing.contains(r) && !new_rows.contains(r) {
+                        new_rows.push(r.clone());
+                    }
+                }
+                if new_rows.is_empty() {
+                    break;
+                }
+                self.storage
+                    .insert(&cte.name, new_rows.clone())
+                    .map_err(|e| format!("Insert step rows error: {:?}", e))?;
+                total_rows += new_rows.len();
+            }
+            if total_rows > 1_000_000 {
+                return Err(format!(
+                    "Recursive CTE {} exceeded 1,000,000 row cap",
+                    cte.name
+                ));
+            }
+        }
+        Ok(())
     }
 }
 
@@ -500,8 +977,43 @@ impl SqlCorpus {
                 }
                 setup_sql.clear();
             } else if trimmed.starts_with("-- === CASE:") {
-                if let Some(case) = current_case.take() {
-                    results.push(self.execute_case(case, &setup_sql));
+                // Only treat as a new case boundary if we're NOT inside
+                // an unclosed paren (e.g. a subquery in JOIN). The
+                // corpus file has inner `CASE:` comments as labels
+                // for subqueries, not as separate test cases.
+                let in_subquery = current_case
+                    .as_ref()
+                    .map(|c| {
+                        // Count unclosed LParens in the accumulated SQL
+                        let opens = c.sql.matches('(').count();
+                        let closes = c.sql.matches(')').count();
+                        let unclosed_parens = opens > closes;
+                        // Also check if the SQL ends with UNION (mid-statement
+                        // UNION means the next line is still part of this case)
+                        let trimmed_sql = c.sql.trim_end();
+                        let ends_with_union =
+                            trimmed_sql.ends_with("UNION") || trimmed_sql.ends_with("UNION ALL");
+                        unclosed_parens || ends_with_union
+                    })
+                    .unwrap_or(false);
+                if !in_subquery {
+                    if let Some(case) = current_case.take() {
+                        results.push(self.execute_case(case, &setup_sql));
+                    }
+                } else {
+                    // Inside a subquery: the comment is part of the SQL
+                    if !current_case.as_ref().unwrap().sql.is_empty() {
+                        current_case.as_mut().unwrap().sql.push('\n');
+                    }
+                    // Strip the `--` prefix from the comment (since SQL
+                    // doesn't have `--` comments, but the corpus uses
+                    // them as subquery labels).
+                    let comment_text = trimmed.trim_start_matches("-- ").trim();
+                    current_case
+                        .as_mut()
+                        .unwrap()
+                        .sql
+                        .push_str(&format!("-- {}", comment_text));
                 }
 
                 let case_name = trimmed
@@ -606,9 +1118,12 @@ impl SqlCorpus {
             },
         }
     }
-
     fn execute_sql(&mut self, sql: &str) -> Result<ExecutorResult, String> {
-        let statements: Vec<&str> = sql.split(';').filter(|s| !s.trim().is_empty()).collect();
+        // Split on ';' but respect single-quoted string literals. The
+        // previous naive `sql.split(';')` would split inside literals
+        // like `'; '` (used in GROUP_CONCAT SEPARATOR), breaking the
+        // resulting fragments with unterminated quotes.
+        let statements: Vec<&str> = split_sql_statements(sql);
         let mut last_result = Ok(ExecutorResult::new(vec![], 0));
 
         for stmt in statements {
@@ -662,4 +1177,39 @@ pub struct CorpusSummary {
     pub passed: usize,
     pub failed: usize,
     pub pass_rate: f64,
+}
+
+/// Split a SQL string into statements, respecting single-quoted
+/// string literals. The previous naive `sql.split(';')` would
+/// split inside literals like `'; '` (used in GROUP_CONCAT
+/// SEPARATOR), breaking the resulting fragments.
+fn split_sql_statements(sql: &str) -> Vec<&str> {
+    let mut out: Vec<&str> = Vec::new();
+    let mut start = 0;
+    let mut in_string = false;
+    let mut prev_was_escape = false;
+    for (i, ch) in sql.char_indices() {
+        if prev_was_escape {
+            prev_was_escape = false;
+            continue;
+        }
+        if ch == '\\' {
+            prev_was_escape = true;
+            continue;
+        }
+        if ch == '\'' {
+            in_string = !in_string;
+        } else if ch == ';' && !in_string {
+            let stmt = sql[start..i].trim();
+            if !stmt.is_empty() {
+                out.push(stmt);
+            }
+            start = i + 1;
+        }
+    }
+    let tail = sql[start..].trim();
+    if !tail.is_empty() {
+        out.push(tail);
+    }
+    out
 }

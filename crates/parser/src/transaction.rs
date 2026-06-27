@@ -14,6 +14,7 @@ pub enum TransactionStatement {
     Begin {
         work: bool,
         isolation_level: Option<IsolationLevel>,
+        readonly: bool,
     },
     Commit {
         work: bool,
@@ -57,11 +58,13 @@ mod tests {
         let stmt = TransactionStatement::Begin {
             work: false,
             isolation_level: Some(IsolationLevel::ReadCommitted),
+            readonly: false,
         };
         match stmt {
             TransactionStatement::Begin {
                 work,
                 isolation_level,
+                ..
             } => {
                 assert!(!work);
                 assert_eq!(isolation_level, Some(IsolationLevel::ReadCommitted));
@@ -126,11 +129,13 @@ mod tests {
             let stmt = TransactionStatement::Begin {
                 work: false,
                 isolation_level: Some(level.clone()),
+                readonly: false,
             };
             match stmt {
                 TransactionStatement::Begin {
                     work,
                     isolation_level: Some(l),
+                    ..
                 } => {
                     assert!(!work);
                     assert_eq!(&l, level);
@@ -146,10 +151,12 @@ mod tests {
             TransactionStatement::Begin {
                 work: false,
                 isolation_level: None,
+                readonly: false,
             },
             TransactionStatement::Begin {
                 work: false,
                 isolation_level: Some(IsolationLevel::ReadCommitted),
+                readonly: false,
             },
             TransactionStatement::Commit { work: false },
             TransactionStatement::Commit { work: true },

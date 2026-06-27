@@ -40,3 +40,7 @@
                                                                │  └───────────────┘  │
                                                                │  │ Hash 校验    │  │
                                                                │  └───────────────┘  │
+
+## v3.8.0 唯一构建产物
+
+自 v3.8.0 起，"构建产物" 仅指 **`sqlrustgo-mysql-server`**（单 binary，多子命令）。旧的 `sqlrustgo` / `sqlrustgo-sql-cli` / `sqlrustgo-bench(-cli)` / `sqlrustgo-gmp-cli` / `sqlrustgo-tools` 不再生成。详见 [SPEC-v3.8.0-001](../releases/v3.8.0/SPEC-v3.8.0-001-mysql-server-canonical-entry.md)。

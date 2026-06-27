@@ -1,0 +1,31 @@
+[package]
+name = "sqlrustgo-admin"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+sqlrustgo-storage.workspace = true
+sqlrustgo-types.workspace = true
+clap = { version = "4.0", features = ["derive"] }
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+flate2.workspace = true
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+thiserror.workspace = true
+anyhow.workspace = true
+log.workspace = true
+env_logger.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lib]
+name = "sqlrustgo_admin"
+path = "src/lib.rs"
+
+[[bin]]
+name = "sqlrustgo-admin"
+path = "src/main.rs"

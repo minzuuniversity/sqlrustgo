@@ -398,6 +398,11 @@ pub struct ColumnDefinition {
     pub nullable: bool,
     #[serde(default)]
     pub primary_key: bool,
+    /// SQL CHAR(N) / VARCHAR(N) declared max length. See
+    /// `sqlrustgo-catalog::column::ColumnDefinition::char_max_length` for
+    /// semantics. `None` (default) means no length cap.
+    #[serde(default)]
+    pub char_max_length: Option<usize>,
 }
 
 impl ColumnDefinition {
@@ -407,6 +412,7 @@ impl ColumnDefinition {
             data_type: data_type.to_string(),
             nullable: false,
             primary_key: false,
+            char_max_length: None,
         }
     }
 }
@@ -421,6 +427,31 @@ pub struct TableData {
 /// Record type - a single row of values
 pub type Record = Vec<Value>;
 
+/// Row mutation with assignments and metadata
+#[derive(Debug, Clone)]
+pub struct RowMutation {
+    assignments: Vec<(usize, Value)>,
+    mutation_hash: u64,
+}
+
+impl RowMutation {
+    pub fn new(assignments: Vec<(usize, Value)>, mutation_hash: u64) -> Self {
+        Self {
+            assignments,
+            mutation_hash,
+        }
+    }
+    pub fn assignments(&self) -> &[(usize, Value)] {
+        &self.assignments
+    }
+    pub fn mutation_hash(&self) -> u64 {
+        self.mutation_hash
+    }
+}
+
+/// Filter function type for row-level filtering
+pub type RowFilter = Box<dyn Fn(&Record) -> bool + Send + Sync>;
+
 /// StorageEngine trait - abstraction for table storage
 /// Enables multiple storage backends (FileStorage, MemoryStorage, etc.)
 pub trait StorageEngine: Send + Sync {
@@ -430,18 +461,47 @@ pub trait StorageEngine: Send + Sync {
     /// Insert rows into a table
     fn insert(&mut self, table: &str, records: Vec<Record>) -> SqlResult<()>;
 
+    /// Force-insert a row bypassing any deferred-write buffer.
+    ///
+    /// Default implementation just calls `insert`. Storage engines that buffer
+    /// inserts (e.g. FileStorage) MUST override this to write directly to
+    /// `data.rows` so subsequent scan/delete in the same call stack see the
+    /// row. Used by WAL recovery to apply replayed entries deterministically.
+    fn force_insert(&mut self, table: &str, record: Vec<Value>) -> SqlResult<()> {
+        self.insert(table, vec![record])
+    }
+
     /// Delete rows matching a filter
     fn delete(&mut self, table: &str, _filters: &[Value]) -> SqlResult<usize>;
-
-    /// Update rows matching a filter
+    fn delete_if(&mut self, table: &str, filter: &RowFilter) -> SqlResult<usize>;
     fn update(
         &mut self,
         table: &str,
         _filters: &[Value],
         _updates: &[(usize, Value)],
     ) -> SqlResult<usize>;
+    fn update_if(
+        &mut self,
+        table: &str,
+        filter: &RowFilter,
+        mutation: &RowMutation,
+    ) -> SqlResult<usize>;
 
-    /// Create a new table
+    /// Create a new database (directory). No-op for in-memory engines.
+    fn create_database(&mut self, _db_name: &str) -> SqlResult<()> {
+        Err(SqlError::ExecutionError(
+            "create_database not supported by this storage engine".to_string(),
+        ))
+    }
+
+    /// Drop a database (directory). No-op for in-memory engines.
+    fn drop_database(&mut self, _db_name: &str) -> SqlResult<()> {
+        Err(SqlError::ExecutionError(
+            "drop_database not supported by this storage engine".to_string(),
+        ))
+    }
+
+    /// Create a table
     fn create_table(&mut self, info: &TableInfo) -> SqlResult<()>;
 
     /// Drop a table
@@ -468,6 +528,25 @@ pub trait StorageEngine: Send + Sync {
     /// Rename a table
     fn rename_table(&mut self, table: &str, new_name: &str) -> SqlResult<()>;
 
+    /// Drop a column from a table
+    fn drop_column(&mut self, _table: &str, _column: &str) -> SqlResult<()> {
+        Err(SqlError::ExecutionError(
+            "drop_column not supported by this storage engine".to_string(),
+        ))
+    }
+
+    /// Modify a column definition
+    fn modify_column(
+        &mut self,
+        _table: &str,
+        _column: &str,
+        _new_def: ColumnDefinition,
+    ) -> SqlResult<()> {
+        Err(SqlError::ExecutionError(
+            "modify_column not supported by this storage engine".to_string(),
+        ))
+    }
+
     /// Create a trigger on a table
     fn create_trigger(&mut self, info: TriggerInfo) -> SqlResult<()>;
 
@@ -485,6 +564,49 @@ pub trait StorageEngine: Send + Sync {
 
     /// Check if a view exists
     fn has_view(&self, name: &str) -> bool;
+
+    /// Begin a transaction, returns a transaction ID
+    fn begin_transaction(&mut self) -> SqlResult<u64> {
+        Err(SqlError::ExecutionError(
+            "Transactions not supported by this storage engine".to_string(),
+        ))
+    }
+
+    /// Commit the current transaction
+    fn commit_transaction(&mut self) -> SqlResult<()> {
+        Err(SqlError::ExecutionError(
+            "Transactions not supported by this storage engine".to_string(),
+        ))
+    }
+
+    /// Rollback the current transaction
+    fn rollback_transaction(&mut self) -> SqlResult<()> {
+        Err(SqlError::ExecutionError(
+            "Transactions not supported by this storage engine".to_string(),
+        ))
+    }
+
+    /// Check if a transaction is in progress
+    fn in_transaction(&self) -> bool {
+        false
+    }
+
+    /// Get the current transaction ID
+    fn current_tx_id(&self) -> u64 {
+        0
+    }
+
+    /// Set the current transaction ID (used by WAL integration)
+    fn set_current_tx_id(&mut self, _id: u64) {}
+
+    /// Flush any buffered data to durable storage
+    fn flush(&mut self) -> SqlResult<()> {
+        Ok(())
+    }
+
+    fn is_wal_enabled(&self) -> bool {
+        false
+    }
 }
 
 /// In-memory storage implementation for testing and caching
@@ -493,6 +615,9 @@ pub struct MemoryStorage {
     table_infos: HashMap<String, TableInfo>,
     triggers: HashMap<String, TriggerInfo>,
     views: HashSet<String>,
+    /// Tracks the current transaction ID for VtuGuard::assert_dml_safe.
+    /// VtuGuard checks S::in_transaction() which returns `current_tx_id != 0`.
+    current_tx_id: u64,
 }
 
 impl MemoryStorage {
@@ -502,6 +627,7 @@ impl MemoryStorage {
             table_infos: HashMap::new(),
             triggers: HashMap::new(),
             views: HashSet::new(),
+            current_tx_id: 0,
         }
     }
 }
@@ -532,6 +658,15 @@ impl StorageEngine for MemoryStorage {
             records.clear();
         }
         Ok(count)
+    }
+
+    fn delete_if(&mut self, table: &str, filter: &RowFilter) -> SqlResult<usize> {
+        let Some(records) = self.tables.get_mut(table) else {
+            return Ok(0);
+        };
+        let original_len = records.len();
+        records.retain(|r| !filter(r));
+        Ok(original_len - records.len())
     }
 
     fn update(
@@ -569,6 +704,33 @@ impl StorageEngine for MemoryStorage {
                     }
                     count += 1;
                 }
+            }
+        }
+
+        Ok(count)
+    }
+
+    fn update_if(
+        &mut self,
+        table: &str,
+        filter: &RowFilter,
+        mutation: &RowMutation,
+    ) -> SqlResult<usize> {
+        let Some(records) = self.tables.get_mut(table) else {
+            return Ok(0);
+        };
+
+        let mut count = 0;
+        let assignments = mutation.assignments();
+
+        for record in records.iter_mut() {
+            if filter(record) {
+                for &(col_idx, ref new_val) in assignments {
+                    if col_idx < record.len() {
+                        record[col_idx] = new_val.clone();
+                    }
+                }
+                count += 1;
             }
         }
 
@@ -670,6 +832,22 @@ impl StorageEngine for MemoryStorage {
     fn list_indexes(&self, _table: &str) -> Vec<(String, String)> {
         Vec::new()
     }
+
+    fn is_wal_enabled(&self) -> bool {
+        true
+    }
+
+    fn in_transaction(&self) -> bool {
+        self.current_tx_id != 0
+    }
+
+    fn current_tx_id(&self) -> u64 {
+        self.current_tx_id
+    }
+
+    fn set_current_tx_id(&mut self, id: u64) {
+        self.current_tx_id = id;
+    }
 }
 
 #[cfg(test)]
@@ -732,10 +910,59 @@ mod tests {
         assert_eq!(result.len(), 2);
     }
 
+    /// Regression test for Issue #3276 (Sprint 1.5 cell-level diff).
+    /// Ensures the public `insert()` API preserves the Value type
+    /// (Integer vs Float vs Text) for round-trip retrieval. This is the
+    /// storage-layer contract that the SUM(REAL)=0 fix depends on:
+    /// a `Value::Float(100.5)` written via insert() MUST come back as
+    /// `Value::Float(100.5)` (not coerced to Integer or Null).
+    #[test]
+    fn test_memory_storage_insert_scan_preserves_real_type() {
+        let mut storage = MemoryStorage::new();
+        storage.tables.insert(
+            "lineitem".to_string(),
+            vec![
+                vec![Value::Integer(10), Value::Float(100.5), Value::Float(0.05)],
+                vec![Value::Integer(20), Value::Float(200.5), Value::Float(0.10)],
+                vec![Value::Integer(30), Value::Float(300.5), Value::Float(0.05)],
+            ],
+        );
+        let result = storage.scan("lineitem").unwrap();
+        assert_eq!(result.len(), 3);
+        for (i, row) in result.iter().enumerate() {
+            assert!(
+                matches!(row[0], Value::Integer(_)),
+                "row[{}] col 0 (q INTEGER) must remain Integer, got {:?}",
+                i,
+                row[0]
+            );
+            assert!(
+                matches!(row[1], Value::Float(_)),
+                "row[{}] col 1 (p REAL) must remain Float, got {:?}",
+                i,
+                row[1]
+            );
+            assert!(
+                matches!(row[2], Value::Float(_)),
+                "row[{}] col 2 (d REAL) must remain Float, got {:?}",
+                i,
+                row[2]
+            );
+        }
+        assert_eq!(result[0][1], Value::Float(100.5));
+        assert_eq!(result[2][1], Value::Float(300.5));
+    }
+
     #[test]
     fn test_storage_engine_send_sync() {
         fn _check<T: Send + Sync>() {}
         _check::<MemoryStorage>();
+    }
+
+    #[test]
+    fn test_memory_storage_is_wal_enabled() {
+        let storage = MemoryStorage::new();
+        assert!(storage.is_wal_enabled());
     }
 
     #[test]
@@ -768,6 +995,7 @@ mod tests {
                 data_type: "INTEGER".to_string(),
                 nullable: false,
                 primary_key: true,
+                char_max_length: None,
             }],
             foreign_keys: vec![],
             unique_constraints: vec![],
@@ -953,5 +1181,37 @@ mod tests {
         let result = evaluate_sql_expression("name <> 'Bob'", &columns, &record);
         assert!(result.is_ok());
         assert!(result.unwrap());
+    }
+
+    #[test]
+    fn test_storage_update_if_signature() {
+        let mut storage = MemoryStorage::new();
+        let info = TableInfo {
+            name: "users".to_string(),
+            columns: vec![ColumnDefinition {
+                name: "id".to_string(),
+                data_type: "INTEGER".to_string(),
+                nullable: false,
+                primary_key: true,
+                char_max_length: None,
+            }],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
+        };
+        storage.create_table(&info).unwrap();
+        storage
+            .insert("users", vec![vec![Value::Integer(1)]])
+            .unwrap();
+
+        let filter: RowFilter = Box::new(|row| row[0] == Value::Integer(1));
+        let mutation = RowMutation::new(vec![(0, Value::Integer(99))], 0x1234);
+
+        let affected = storage.update_if("users", &filter, &mutation).unwrap();
+        assert_eq!(affected, 1);
+
+        let records = storage.scan("users").unwrap();
+        assert_eq!(records[0][0], Value::Integer(99));
     }
 }

@@ -401,6 +401,10 @@ impl StoredProcExecutor {
         catalog: Arc<sqlrustgo_catalog::Catalog>,
         storage: Arc<RwLock<dyn StorageEngine>>,
     ) -> Self {
+        assert!(
+            storage.read().unwrap().is_wal_enabled(),
+            "Storage MUST be WalStorage in production - WAL is mandatory"
+        );
         Self { catalog, storage }
     }
 
@@ -1148,6 +1152,7 @@ impl StoredProcExecutor {
                             data_type: data_type.clone(),
                             nullable: *nullable,
                             primary_key: false,
+                            char_max_length: None,
                         };
                         storage
                             .add_column(table_name, column)
@@ -1157,6 +1162,25 @@ impl StoredProcExecutor {
                         storage
                             .rename_table(table_name, new_name)
                             .map_err(|e| format!("Failed to rename table: {}", e))?;
+                    }
+                    sqlrustgo_parser::AlterTableOperation::DropColumn { name } => {
+                        // Storage interface doesn't support drop_column yet
+                        // For now, return an error indicating feature not implemented
+                        return Err(format!(
+                            "DROP COLUMN '{}' not yet implemented in storage layer",
+                            name
+                        ));
+                    }
+                    sqlrustgo_parser::AlterTableOperation::ModifyColumn {
+                        name,
+                        data_type,
+                        nullable: _,
+                    } => {
+                        // Storage interface doesn't support modify_column yet
+                        return Err(format!(
+                            "MODIFY COLUMN '{} {}' not yet implemented in storage layer",
+                            name, data_type
+                        ));
                     }
                 }
                 Ok(())
@@ -1330,6 +1354,9 @@ impl StoredProcExecutor {
                 }
             }
             sqlrustgo_parser::Expression::Aggregate(_) => Value::Null,
+            sqlrustgo_parser::Expression::FunctionCall(_, _) => Value::Null,
+            sqlrustgo_parser::Expression::WindowCall(_) => Value::Null,
+            sqlrustgo_parser::Expression::SubqueryField(_, _) => Value::Null,
         }
     }
 
@@ -1363,30 +1390,51 @@ impl StoredProcExecutor {
     /// Execute CTE subquery and return rows
     fn execute_cte_subquery(
         &self,
-        select: &sqlrustgo_parser::SelectStatement,
+        statement: &sqlrustgo_parser::Statement,
         ctx: &mut ProcedureContext,
     ) -> Result<Vec<Vec<Value>>, String> {
-        let table_name = &select.table;
-        let storage = self.storage.read().unwrap();
-        let records = storage
-            .scan(table_name)
-            .map_err(|e| format!("Failed to scan CTE table: {}", e))?;
+        match statement {
+            sqlrustgo_parser::Statement::Select(select) => {
+                let table_name = &select.table;
+                let storage = self.storage.read().unwrap();
+                let records = storage
+                    .scan(table_name)
+                    .map_err(|e| format!("Failed to scan CTE table: {}", e))?;
 
-        if let Some(ref where_expr) = select.where_clause {
-            let filtered: Vec<Vec<Value>> = records
-                .into_iter()
-                .filter(|_row| {
-                    let where_val = self.expression_to_value(where_expr, ctx);
-                    if let Value::Boolean(b) = where_val {
-                        b
-                    } else {
-                        where_val != Value::Null
-                    }
-                })
-                .collect();
-            Ok(filtered)
-        } else {
-            Ok(records)
+                if let Some(ref where_expr) = select.where_clause {
+                    let filtered: Vec<Vec<Value>> = records
+                        .into_iter()
+                        .filter(|_row| {
+                            let where_val = self.expression_to_value(where_expr, ctx);
+                            if let Value::Boolean(b) = where_val {
+                                b
+                            } else {
+                                where_val != Value::Null
+                            }
+                        })
+                        .collect();
+                    Ok(filtered)
+                } else {
+                    Ok(records)
+                }
+            }
+            sqlrustgo_parser::Statement::Union(union_stmt) => {
+                let left_records = self.execute_cte_subquery(&union_stmt.left, ctx)?;
+                let right_records = self.execute_cte_subquery(&union_stmt.right, ctx)?;
+                if union_stmt.union_all {
+                    Ok(left_records.into_iter().chain(right_records).collect())
+                } else {
+                    let mut combined = left_records;
+                    combined.extend(right_records);
+                    combined.sort();
+                    combined.dedup();
+                    Ok(combined)
+                }
+            }
+            _ => Err(format!(
+                "Unsupported statement type in CTE: {:?}",
+                statement
+            )),
         }
     }
 

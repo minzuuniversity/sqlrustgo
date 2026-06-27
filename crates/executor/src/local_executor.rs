@@ -5,42 +5,117 @@
 #[allow(unused_imports)]
 use sqlrustgo_planner::{
     AggregateExec, AggregateFunction, Expr, FilterExec, HashJoinExec, IndexScanExec, JoinType,
-    Operator, PhysicalPlan, PreparedStatementManager, ProjectionExec, SortMergeJoinExec,
+    LimitExec, Operator, PhysicalPlan, PreparedStatementManager, ProjectionExec, SortMergeJoinExec,
 };
 use sqlrustgo_storage::StorageEngine;
-use sqlrustgo_types::{SqlResult, Value};
+use sqlrustgo_types::{SqlError, SqlResult, Value};
 
 use crate::operator_profile::GLOBAL_PROFILER;
 use crate::query_cache::should_cache;
 use crate::query_cache::QueryCache;
 use crate::query_cache_config::{CacheEntry, CacheKey, QueryCacheConfig};
 use crate::sql_normalizer::SqlNormalizer;
+use crate::merge::MergeExecutor;
 use crate::{Executor, ExecutorResult};
+use crate::execution::ExecutionEngine;
 use parking_lot::RwLock;
 use query_stats::SlowQueryConfig;
+use sqlrustgo_spill::{GraceHashJoin, SpillResult};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::RwLock as StdRwLock;
 use std::time::Instant;
 
 /// LocalExecutor - executes physical plans using StorageEngine
+/// with unified WAL + Transaction facade for VTU contract enforcement
 pub struct LocalExecutor<'a> {
     storage: &'a dyn StorageEngine,
+    unified_facade: Option<UnifiedFacade<'a>>,
     cache: Arc<RwLock<QueryCache>>,
     cache_config: QueryCacheConfig,
-    /// Slow query logger (optional)
     slow_query_log: StdRwLock<Option<query_stats::SlowQueryLog>>,
-    /// SQL text for slow query logging (set when executing with cache)
     current_sql: StdRwLock<String>,
-    /// Prepared statement cache
     prepared_statements: StdRwLock<PreparedStatementManager>,
 }
 
+/// Unified facade - wraps storage with WAL + Transaction enforcement
+struct UnifiedFacade {
+    storage: Arc<RwLock<WalStorage<'a>>>,
+    tx_manager: Arc<RwLock<TransactionManager>>,
+}
+
+impl UnifiedFacade {
+    /// Execute DML through WAL-aware storage
+    fn execute_dml<F, R>(&self, op: F) -> Result<R, SqlError>
+    where
+        F: FnOnce(&mut WalStorage<'a>) -> Result<R, SqlError>,
+    {
+        let mut storage = self.storage.write();
+        op(&mut *storage)
+    }
+
+    fn new(storage: &'a dyn StorageEngine, wal_path: Option<PathBuf>) -> Result<Self, SqlError> {
+        let wal_storage = match wal_path {
+            Some(path) => WalStorage::new(storage, path)
+                .map_err(|e| SqlError::ExecutionError(e.to_string()))?,
+            None => WalStorage::new_without_wal(storage),
+        };
+        Ok(Self {
+            storage: Arc::new(RwLock::new(wal_storage)),
+            tx_manager: Arc::new(RwLock::new(TransactionManager::new())),
+        })
+    }
+
+    fn begin(&self) -> Result<u64, SqlError> {
+        let mut storage = self.storage.write();
+        storage.begin_transaction()
+            .map_err(|e| SqlError::ExecutionError(e.to_string()))?;
+        let tx_id = self.tx_manager.write().begin()
+            .map_err(|e| SqlError::ExecutionError(e.to_string()))?;
+        storage.log_begin(tx_id)
+            .map_err(|e| SqlError::ExecutionError(e.to_string()))?;
+        Ok(tx_id)
+    }
+
+    fn commit(&self) -> Result<Option<u64>, SqlError> {
+        let mut storage = self.storage.write();
+        storage.commit_transaction()
+            .map_err(|e| SqlError::ExecutionError(e.to_string()))?;
+        storage.log_commit(self.tx_manager.read().get_current_tx_id().map(|t| t.raw()).unwrap_or(0))
+            .map_err(|e| SqlError::ExecutionError(e.to_string()))?;
+        self.tx_manager.write().commit()
+            .map_err(|e| SqlError::ExecutionError(e.to_string()))
+    }
+
+    fn rollback(&self) -> Result<(), SqlError> {
+        let mut storage = self.storage.write();
+        storage.rollback_transaction()
+            .map_err(|e| SqlError::ExecutionError(e.to_string()))?;
+        self.tx_manager.write().rollback()
+            .map_err(|e| SqlError::ExecutionError(e.to_string()))
+    }
+
+    fn is_in_transaction(&self) -> bool {
+        self.tx_manager.read().is_in_transaction()
+    }
+
+    fn current_tx_id(&self) -> Option<u64> {
+        self.tx_manager.read().get_current_tx_id().map(|t| t.raw())
+    }
+
+    /// Set the current transaction ID in WAL storage for WAL entry tracking
+    fn set_tx_id(&mut self, tx_id: u64) {
+        if let Ok(mut storage) = self.storage.try_write() {
+            storage.set_current_tx_id(tx_id);
+        }
+    }
+}
+
 impl<'a> LocalExecutor<'a> {
-    /// Create a new LocalExecutor with the given storage engine
     pub fn new(storage: &'a dyn StorageEngine) -> Self {
         Self {
             storage,
+            unified_facade: None,
             cache: Arc::new(RwLock::new(QueryCache::new(QueryCacheConfig::default()))),
             cache_config: QueryCacheConfig::default(),
             slow_query_log: StdRwLock::new(None),
@@ -49,16 +124,28 @@ impl<'a> LocalExecutor<'a> {
         }
     }
 
-    /// Create a LocalExecutor with custom cache config
     pub fn with_cache_config(storage: &'a dyn StorageEngine, config: QueryCacheConfig) -> Self {
         Self {
             storage,
+            unified_facade: None,
             cache: Arc::new(RwLock::new(QueryCache::new(config.clone()))),
             cache_config: config,
             slow_query_log: StdRwLock::new(None),
             current_sql: StdRwLock::new(String::new()),
             prepared_statements: StdRwLock::new(PreparedStatementManager::new(100)),
         }
+    }
+
+    pub fn with_unified_facade(mut self) -> Self {
+        match UnifiedFacade::new(self.storage, None) {
+            Ok(facade) => {
+                self.unified_facade = Some(facade);
+            }
+            Err(e) => {
+                eprintln!("Warning: failed to create unified facade: {}", e);
+            }
+        }
+        self
     }
 
     /// Enable slow query logging with the given configuration
@@ -143,6 +230,8 @@ impl<'a> LocalExecutor<'a> {
                 "Sort" => self.execute_sort(plan),
                 "Limit" => self.execute_limit(plan),
                 "Delete" => self.execute_delete(plan),
+                "Insert" => self.execute_insert(plan),
+                "Update" => self.execute_update(plan),
                 _ => Ok(ExecutorResult::empty()),
             }?;
             let duration_ms = start.elapsed().as_millis() as u64;
@@ -175,9 +264,10 @@ impl<'a> LocalExecutor<'a> {
             "Aggregate" => self.execute_aggregate(plan),
             "HashJoin" => self.execute_hash_join(plan),
             "SortMergeJoin" => self.execute_sort_merge_join(plan),
-            "Sort" => self.execute_sort(plan),
-            "Limit" => self.execute_limit(plan),
-            _ => Ok(ExecutorResult::empty()),
+"Sort" => self.execute_sort(plan),
+                "Limit" => self.execute_limit(plan),
+                "Update" => self.execute_update(plan),
+                _ => Ok(ExecutorResult::empty()),
         }?;
         let duration_ms = start.elapsed().as_millis() as u64;
         let row_count = result.rows.len() as u64;
@@ -551,25 +641,58 @@ impl<'a> LocalExecutor<'a> {
         match func {
             AggregateFunction::Count => Value::Integer(values.len() as i64),
             AggregateFunction::Sum => {
-                let mut sum: i64 = 0;
-                for v in values {
-                    if let Value::Integer(n) = v {
-                        sum += n;
+                // Use SIMD-accelerated sum for large inputs
+                if values.len() > 100 && values.iter().all(|v| matches!(v, Value::Integer(_))) {
+                    let i64_vals: Vec<i64> = values.iter().map(|v| if let Value::Integer(n) = v { *n } else { 0 }).collect();
+                    let sum = crate::vec_simd::sum_i64_simd_like(&i64_vals);
+                    Value::Integer(sum)
+                } else {
+                    let mut sum: i64 = 0;
+                    for v in values {
+                        if let Value::Integer(n) = v {
+                            sum += n;
+                        }
                     }
+                    Value::Integer(sum)
                 }
-                Value::Integer(sum)
             }
             AggregateFunction::Avg => {
-                let mut sum: i64 = 0;
-                let mut count = 0;
+                // v3.8.0-rc2 Day 7: AVG MUST return Float even when
+                // all input values are Integer — otherwise
+                // `Value::Integer(int_sum / count)` is integer-
+                // truncated (e.g. 1323/50 = 26 instead of 26.46).
+                // SQLite/MySQL always return REAL for AVG.
+                let mut int_sum: i64 = 0;
+                let mut float_sum: f64 = 0.0;
+                let mut any_float = false;
+                let mut count: i64 = 0;
                 for v in values {
-                    if let Value::Integer(n) = v {
-                        sum += n;
-                        count += 1;
+                    match v {
+                        Value::Integer(n) => {
+                            if any_float {
+                                float_sum += *n as f64;
+                            } else {
+                                int_sum += n;
+                            }
+                            count += 1;
+                        }
+                        Value::Float(f) => {
+                            if !any_float {
+                                float_sum = int_sum as f64;
+                                any_float = true;
+                            }
+                            float_sum += f;
+                            count += 1;
+                        }
+                        _ => {}
                     }
                 }
                 if count > 0 {
-                    Value::Integer(sum / count as i64)
+                    if any_float {
+                        Value::Float(float_sum / count as f64)
+                    } else {
+                        Value::Float(int_sum as f64 / count as f64)
+                    }
                 } else {
                     Value::Null
                 }
@@ -647,13 +770,66 @@ impl<'a> LocalExecutor<'a> {
 
         match join_type {
             JoinType::Inner => {
-                let matched = hash_inner_join(
-                    &left_result.rows,
-                    &right_result.rows,
-                    condition,
-                    left_schema,
-                    right_schema,
-                );
+                // Read memory budget from env (MB), default 64MB
+                let memory_budget_mb = std::env::var("SQLRUSTGO_MAX_MEMORY_MB")
+                    .ok()
+                    .and_then(|v| v.parse::<usize>().ok())
+                    .unwrap_or(64);
+                let memory_budget = memory_budget_mb * 1024 * 1024;
+                let total_rows = left_result.rows.len().max(right_result.rows.len());
+
+                let matched = if total_rows > 0
+                    && (left_result.rows.len() * 128 > memory_budget
+                        || right_result.rows.len() * 128 > memory_budget)
+                {
+                    // Grace Hash Join with potential spill
+                    let build_is_left = left_result.rows.len() <= right_result.rows.len();
+                    let (build_rows, probe_rows, build_schema, probe_schema) = if build_is_left {
+                        (&left_result.rows, &right_result.rows, left_schema, right_schema)
+                    } else {
+                        (&right_result.rows, &left_result.rows, right_schema, left_schema)
+                    };
+
+                    let matched_pairs = execute_grace_hash_join(
+                        build_rows,
+                        probe_rows,
+                        condition,
+                        build_schema,
+                        probe_schema,
+                        memory_budget,
+                    )?;
+
+                    // Combine build + probe rows based on original order
+                    if build_is_left {
+                        matched_pairs
+                            .into_iter()
+                            .map(|(b, p)| {
+                                let mut row = b.clone();
+                                row.extend(p.clone());
+                                row
+                            })
+                            .collect()
+                    } else {
+                        matched_pairs
+                            .into_iter()
+                            .map(|(p, b)| {
+                                let mut row = b.clone();
+                                row.extend(p.clone());
+                                row
+                            })
+                            .collect()
+                    }
+                } else {
+                    // Small data: use existing hash_inner_join
+                    hash_inner_join(
+                        &left_result.rows,
+                        &right_result.rows,
+                        condition,
+                        left_schema,
+                        right_schema,
+                    )
+                };
+
                 let row_count = matched.len();
                 let duration = start.elapsed();
 
@@ -890,6 +1066,132 @@ fn cartesian_product(left: &[Vec<Value>], right: &[Vec<Value>]) -> Vec<Vec<Value
     result
 }
 
+/// Execute Grace Hash Join with spill-to-disk support
+///
+/// Used when the build side exceeds the memory budget.
+/// Falls back to regular hash_inner_join for small datasets.
+fn execute_grace_hash_join(
+    build_rows: &[Vec<Value>],
+    probe_rows: &[Vec<Value>],
+    condition: &sqlrustgo_planner::Expr,
+    build_schema: &sqlrustgo_planner::Schema,
+    probe_schema: &sqlrustgo_planner::Schema,
+    memory_budget: usize,
+) -> SqlResult<Vec<(Vec<Value>, Vec<Value>)>> {
+    // Serialize rows to bytes for GraceHashJoin
+    let serialize_rows = |rows: &[Vec<Value>]| -> Vec<Vec<u8>> {
+        rows.iter()
+            .map(|r| bincode::serialize(r).unwrap_or_default())
+            .collect()
+    };
+
+    // Key extraction: evaluate the condition's left and right sides
+    // to extract join keys. For simple equi-joins (col = col), the
+    // key is the comparison column value serialized.
+    let extract_key = |row: &[Value], schema: &sqlrustgo_planner::Schema| -> Vec<u8> {
+        if let Some((left_idx, right_idx)) = extract_comparison_indices(condition, build_schema, probe_schema) {
+            // Simple equi-join: use the join column value as key
+            let idx = if std::ptr::eq(schema, build_schema) { left_idx } else { right_idx };
+            if idx < row.len() {
+                bincode::serialize(&row[idx]).unwrap_or_default()
+            } else {
+                Vec::new()
+            }
+        } else {
+            // Complex condition: use full row hash as key
+            bincode::serialize(row).unwrap_or_default()
+        }
+    };
+
+    let mut ghj = GraceHashJoin::new(memory_budget).map_err(|e| {
+        SqlError::Internal(format!("Failed to create GraceHashJoin: {}", e))
+    })?;
+
+    let build_bytes = serialize_rows(build_rows);
+    let probe_bytes = serialize_rows(probe_rows);
+
+    let matched = ghj.join(
+        &build_bytes,
+        &probe_bytes,
+        |row_bytes| {
+            let row: Vec<Value> = bincode::deserialize(row_bytes).unwrap_or_default();
+            let key = extract_key(&row, build_schema);
+            (key, row_bytes.clone())
+        },
+        |row_bytes| {
+            let row: Vec<Value> = bincode::deserialize(row_bytes).unwrap_or_default();
+            let key = extract_key(&row, probe_schema);
+            (key, row_bytes.clone())
+        },
+        |build_bytes, probe_bytes| {
+            let build_row: Vec<Value> = bincode::deserialize(build_bytes).unwrap_or_default();
+            let probe_row: Vec<Value> = bincode::deserialize(probe_bytes).unwrap_or_default();
+            let full_schema = sqlrustgo_planner::Schema::new(
+                build_schema.fields.iter()
+                    .chain(probe_schema.fields.iter())
+                    .cloned()
+                    .collect(),
+            );
+            let mut combined = build_row.clone();
+            combined.extend(probe_row.clone());
+            let eval = condition.evaluate(&combined, &full_schema);
+            matches!(eval, Some(Value::Boolean(true)))
+        },
+    ).map_err(|e| SqlError::Internal(format!("GraceHashJoin failed: {}", e)))?;
+
+    // Deserialize matched pairs back to Vec<Vec<Value>>
+    let results: Vec<(Vec<Value>, Vec<Value>)> = matched
+        .into_iter()
+        .map(|(build_bytes, probe_bytes)| {
+            let build_row: Vec<Value> = bincode::deserialize(&build_bytes)
+                .unwrap_or_default();
+            let probe_row: Vec<Value> = bincode::deserialize(&probe_bytes)
+                .unwrap_or_default();
+            (build_row, probe_row)
+        })
+        .collect();
+
+    Ok(results)
+}
+
+/// Extract column indices from a simple equi-join condition (col = col)
+fn extract_comparison_indices(
+    condition: &sqlrustgo_planner::Expr,
+    left_schema: &sqlrustgo_planner::Schema,
+    right_schema: &sqlrustgo_planner::Schema,
+) -> Option<(usize, usize)> {
+    match condition {
+        Expr::BinaryOp { op, left, right } if op.as_str() == "=" => {
+            let left_idx = extract_column_index(left, left_schema);
+            let right_idx = extract_column_index(right, right_schema);
+            match (left_idx, right_idx) {
+                (Some(l), Some(r)) => Some((l, r)),
+                // Try reversed: left condition might reference right schema
+                _ => {
+                    let left_idx2 = extract_column_index(left, right_schema);
+                    let right_idx2 = extract_column_index(right, left_schema);
+                    match (left_idx2, right_idx2) {
+                        (Some(l), Some(r)) => Some((r, l)),
+                        _ => None,
+                    }
+                }
+            }
+        }
+        _ => None,
+    }
+}
+
+/// Extract the column index from an expression (ColumnRef)
+fn extract_column_index(expr: &sqlrustgo_planner::Expr, schema: &sqlrustgo_planner::Schema) -> Option<usize> {
+    match expr {
+        Expr::ColumnRef { index, .. } => Some(*index),
+        Expr::Field { name, .. } => {
+            schema.fields.iter().position(|f| f.name.as_deref() == Some(name.as_str()))
+        }
+        _ => None,
+    }
+}
+
 fn hash_inner_join(
     left: &[Vec<Value>],
     right: &[Vec<Value>],
@@ -1028,13 +1330,13 @@ impl<'a> LocalExecutor<'a> {
     /// Execute delete
     fn execute_delete(&self, plan: &dyn PhysicalPlan) -> SqlResult<ExecutorResult> {
         use sqlrustgo_planner::DeleteExec;
-        
+
         let delete_exec = plan.as_any().downcast_ref::<DeleteExec>();
-        
+
         match delete_exec {
             Some(delete_plan) => {
                 let table_name = delete_plan.table_name();
-                
+
                 // For now, delete all rows if no predicate
                 // Full predicate evaluation would require expression evaluation
                 if delete_plan.predicate().is_some() {
@@ -1042,10 +1344,81 @@ impl<'a> LocalExecutor<'a> {
                     // For now, return empty result
                     return Ok(ExecutorResult::empty());
                 }
-                
-                // Delete all rows from table
-                let deleted = self.storage.delete(table_name, &[])?;
+
+                // WAL-aware delete via unified facade (fail fast if no WAL)
+                let deleted = match self.unified_facade {
+                    Some(ref facade) => {
+                        let tx_id_before = facade.current_tx_id();
+                        let r = facade.execute_dml(|storage| storage.delete(table_name, &[]))?;
+                        if !self.is_in_explicit_tx() {
+                            let _ = facade.commit();
+                        } else if let Some(id) = tx_id_before {
+                            facade.set_tx_id(id);
+                        }
+                        r
+                    },
+                    None => return Err(SqlError::ExecutionError(
+                        "DELETE without WAL facade — remove direct storage access".to_string()
+                    )),
+                };
                 Ok(ExecutorResult::new(vec![], deleted))
+            }
+            None => Ok(ExecutorResult::empty()),
+        }
+    }
+
+    /// Execute update using VTU-compliant path
+    fn execute_update(&self, plan: &dyn PhysicalPlan) -> SqlResult<ExecutorResult> {
+        use sqlrustgo_planner::UpdateExec;
+        use crate::predicate_compiler::PredicateCompiler;
+        use crate::mutation_compiler::MutationCompiler;
+        use crate::mutation_compiler::Assignment as MutAssignment;
+        use sqlrustgo_storage::engine::RowMutation;
+
+        let update_exec = plan.as_any().downcast_ref::<UpdateExec>();
+
+        match update_exec {
+            Some(update_plan) => {
+                let table_name = update_plan.table_name();
+
+                if table_name.is_empty() {
+                    return Ok(ExecutorResult::empty());
+                }
+
+                let column_indices = update_plan.column_indices();
+                let values = update_plan.values();
+
+                if column_indices.is_empty() || values.is_empty() {
+                    return Ok(ExecutorResult::empty());
+                }
+
+                let assignments: Vec<MutAssignment> = column_indices
+                    .iter()
+                    .zip(values.iter())
+                    .map(|(idx, val)| {
+                        let col_idx = *idx;
+                        let expr = Expr::Literal(val.clone());
+                        MutAssignment {
+                            column: col_idx.to_string(),
+                            expr,
+                        }
+                    })
+                    .collect();
+
+                let row_mutation = MutationCompiler::compile(assignments);
+
+                let predicate: sqlrustgo_storage::engine::RowFilter = update_plan.predicate()
+                    .map(|e| PredicateCompiler::compile(e))
+                    .unwrap_or_else(|| Box::new(|_| true));
+
+                // WAL-aware update via unified facade (fail fast if no WAL)
+                let affected = match self.unified_facade {
+                    Some(ref facade) => facade.execute_dml(|storage| storage.update_if(table_name, &predicate, &row_mutation))?,
+                    None => return Err(SqlError::ExecutionError(
+                        "UPDATE without WAL facade — remove direct storage access".to_string()
+                    )),
+                };
+                Ok(ExecutorResult::new(vec![], affected))
             }
             None => Ok(ExecutorResult::empty()),
         }
@@ -1061,8 +1434,20 @@ impl<'a> LocalExecutor<'a> {
         // Execute child first
         let child_result = self.execute(children[0])?;
 
-        // Limit would go here
-        Ok(child_result)
+        // v3.8.0-rc2 Day 7: actually apply LIMIT/OFFSET (was stub
+        // that returned the full child_result, causing Q3 / Q15
+        // to return all rows instead of LIMIT 10).
+        let limit_exec = plan
+            .as_any()
+            .downcast_ref::<sqlrustgo_planner::LimitExec>();
+        let (limit, offset) = match limit_exec {
+            Some(p) => (p.limit(), p.offset().unwrap_or(0)),
+            None => (child_result.rows.len(), 0),
+        };
+        let start = offset.min(child_result.rows.len());
+        let end = start.saturating_add(limit).min(child_result.rows.len());
+        let new_rows: Vec<Vec<Value>> = child_result.rows[start..end].to_vec();
+        Ok(ExecutorResult::new(new_rows, child_result.affected_rows))
     }
 }
 
@@ -1077,6 +1462,297 @@ impl<'a> Executor for LocalExecutor<'a> {
 
     fn is_ready(&self) -> bool {
         true
+    }
+}
+
+impl<'a> ExecutionEngine for LocalExecutor<'a> {
+    fn execute(&mut self, ctx: &mut crate::execution::QueryContext) -> Result<crate::execution::ExecutionResult, sqlrustgo_types::SqlError> {
+        self.execute_dml(ctx)
+    }
+
+    fn begin(&mut self) -> Result<u64, sqlrustgo_types::SqlError> {
+        let facade = self.unified_facade.as_ref()
+            .ok_or_else(|| sqlrustgo_types::SqlError::ExecutionError("WAL facade required".into()))?;
+        let tx_id = facade.begin()?;
+        // Wire tx_id into WalStorage so every WAL entry carries real tx_id
+        if let Some(ref mut f) = self.unified_facade {
+            f.set_tx_id(tx_id);
+        }
+        Ok(tx_id)
+    }
+
+    fn commit(&mut self, _txn: u64) -> Result<(), sqlrustgo_types::SqlError> {
+        let facade = self.unified_facade.as_ref()
+            .ok_or_else(|| sqlrustgo_types::SqlError::ExecutionError("WAL facade required".into()))?;
+        facade.commit()?;
+        Ok(())
+    }
+
+    fn rollback(&mut self, _txn: u64) -> Result<(), sqlrustgo_types::SqlError> {
+        let facade = self.unified_facade.as_ref()
+            .ok_or_else(|| sqlrustgo_types::SqlError::ExecutionError("WAL facade required".into()))?;
+        facade.rollback()
+    }
+}
+
+impl<'a> LocalExecutor<'a> {
+    /// INT-4: detect SQL-level explicit transaction control (BEGIN/COMMIT/ROLLBACK).
+    /// Returns Some(result) if the SQL is a TX control statement, None otherwise.
+    fn execute_tx_control(&mut self, sql_upper: &str) -> Result<Option<crate::execution::ExecutionResult>, sqlrustgo_types::SqlError> {
+        let trimmed = sql_upper.trim();
+        let begin_kw = trimmed == "BEGIN" || trimmed.starts_with("BEGIN ") || trimmed.starts_with("BEGIN\t")
+            || trimmed == "START TRANSACTION"
+            || (trimmed.starts_with("START TRANSACTION ") || trimmed.starts_with("START TRANSACTION\t"));
+        let commit_kw = trimmed == "COMMIT" || trimmed.starts_with("COMMIT ") || trimmed.starts_with("COMMIT\t")
+            || trimmed == "END";
+        let rollback_kw = trimmed == "ROLLBACK" || trimmed.starts_with("ROLLBACK ") || trimmed.starts_with("ROLLBACK\t")
+            || trimmed == "ABORT";
+
+        if begin_kw {
+            let facade = self.unified_facade.as_ref().ok_or_else(|| {
+                sqlrustgo_types::SqlError::ExecutionError("BEGIN without WAL facade".into())
+            })?;
+            if facade.is_in_transaction() {
+                return Err(sqlrustgo_types::SqlError::ExecutionError(
+                    "BEGIN inside active transaction — COMMIT or ROLLBACK first".into(),
+                ));
+            }
+            let tx_id = facade.begin()?;
+            facade.set_tx_id(tx_id);
+            return Ok(Some(crate::execution::ExecutionResult::ok(0)));
+        }
+        if commit_kw {
+            let facade = self.unified_facade.as_ref().ok_or_else(|| {
+                sqlrustgo_types::SqlError::ExecutionError("COMMIT without WAL facade".into())
+            })?;
+            if !facade.is_in_transaction() {
+                return Err(sqlrustgo_types::SqlError::ExecutionError(
+                    "COMMIT without BEGIN".into(),
+                ));
+            }
+            facade.commit()?;
+            return Ok(Some(crate::execution::ExecutionResult::ok(0)));
+        }
+        if rollback_kw {
+            let facade = self.unified_facade.as_ref().ok_or_else(|| {
+                sqlrustgo_types::SqlError::ExecutionError("ROLLBACK without WAL facade".into())
+            })?;
+            if !facade.is_in_transaction() {
+                return Err(sqlrustgo_types::SqlError::ExecutionError(
+                    "ROLLBACK without BEGIN".into(),
+                ));
+            }
+            facade.rollback()?;
+            return Ok(Some(crate::execution::ExecutionResult::ok(0)));
+        }
+        Ok(None)
+    }
+
+    /// INT-4: true when an explicit BEGIN has been issued and neither COMMIT nor
+    /// ROLLBACK has closed the transaction. DML inside an explicit TX must
+    /// reuse the open tx_id and must not autocommit.
+    fn is_in_explicit_tx(&self) -> bool {
+        self.unified_facade
+            .as_ref()
+            .map(|f| f.is_in_transaction())
+            .unwrap_or(false)
+    }
+
+    /// Execute DML (INSERT/UPDATE/DELETE) through proper transaction 边界
+    fn execute_dml(&mut self, ctx: &mut crate::execution::QueryContext) -> Result<crate::execution::ExecutionResult, sqlrustgo_types::SqlError> {
+        let sql_upper = ctx.sql.to_uppercase();
+
+        if let Some(rx) = self.execute_tx_control(&sql_upper)? {
+            return Ok(rx);
+        }
+
+        if sql_upper.starts_with("DELETE") {
+            return self.execute_delete_sql(ctx);
+        }
+
+        if sql_upper.starts_with("INSERT") {
+            return self.execute_insert_sql(ctx);
+        }
+
+        if sql_upper.starts_with("UPDATE") {
+            return self.execute_update_sql(ctx);
+        }
+
+        Err(sqlrustgo_types::SqlError::ExecutionError("Unsupported DML".to_string()))
+    }
+
+
+    /// Execute DELETE via SQL text through unified facade
+    fn execute_delete_sql(&self, ctx: &mut crate::execution::QueryContext) -> Result<crate::execution::ExecutionResult, sqlrustgo_types::SqlError> {
+        use sqlrustgo_parser::parse;
+        use sqlrustgo_parser::Statement;
+
+        let stmt = parse(ctx.sql).map_err(|e| sqlrustgo_types::SqlError::ExecutionError(e))?;
+
+        if let Statement::Delete(delete_stmt) = stmt {
+            let table = delete_stmt.table_name;
+
+            // INT-4: in explicit TX (BEGIN) reuse open tx_id; outside, autocommit.
+            let in_explicit = self.is_in_explicit_tx();
+            let affected = match self.unified_facade {
+                Some(ref facade) => {
+                    let tx_id_before = facade.current_tx_id();
+                    let r = facade.execute_dml(|storage| {
+                        storage.delete(&table, &[])
+                    })?;
+                    if !in_explicit {
+                        let _ = facade.commit();
+                    } else if let Some(id) = tx_id_before {
+                        facade.set_tx_id(id);
+                    }
+                    r
+                }
+                None => {
+                    return Err(sqlrustgo_types::SqlError::ExecutionError(
+                        "DELETE without WAL facade — remove direct storage access".to_string(),
+                    ))
+                }
+            };
+            Ok(crate::execution::ExecutionResult::new(vec![], affected))
+        } else {
+            Err(sqlrustgo_types::SqlError::ExecutionError(
+                "Not a DELETE statement".to_string(),
+            ))
+        }
+    }
+
+    /// Execute INSERT via SQL text through unified facade
+    fn execute_insert_sql(&self, ctx: &mut crate::execution::QueryContext) -> Result<crate::execution::ExecutionResult, sqlrustgo_types::SqlError> {
+        use sqlrustgo_parser::parse;
+        use sqlrustgo_parser::Statement;
+
+        let stmt = parse(ctx.sql).map_err(|e| sqlrustgo_types::SqlError::ExecutionError(e))?;
+
+        if let Statement::Insert(insert_stmt) = stmt {
+            let table = insert_stmt.table;
+            // Convert parser expressions to Values
+            let records: Result<Vec<sqlrustgo_storage::Record>, _> = insert_stmt
+                .values
+                .iter()
+                .map(|row| {
+                    row.iter()
+                        .map(|expr| Self::expression_to_value(expr))
+                        .collect()
+                })
+                .collect();
+            let records = records.map_err(|e| sqlrustgo_types::SqlError::ExecutionError(format!("{:?}", e)))?;
+
+            // INT-4: in explicit TX (BEGIN) reuse open tx_id; outside, autocommit.
+            let in_explicit = self.is_in_explicit_tx();
+            let affected = match self.unified_facade {
+                Some(ref facade) => {
+                    let tx_id_before = facade.current_tx_id();
+                    let r = facade.execute_dml(|storage| {
+                        storage.insert(&table, records.clone())
+                    })?;
+                    if !in_explicit {
+                        let _ = facade.commit();
+                    } else if let Some(_id) = tx_id_before {
+                        // Re-affirm tx_id on the facade so subsequent DML
+                        // statements share the same open transaction.
+                        facade.set_tx_id(_id);
+                    }
+                    r
+                }
+                None => {
+                    return Err(sqlrustgo_types::SqlError::ExecutionError(
+                        "INSERT without WAL facade — remove direct storage access".to_string(),
+                    ))
+                }
+            };
+            Ok(crate::execution::ExecutionResult::new(vec![], affected))
+        } else {
+            Err(sqlrustgo_types::SqlError::ExecutionError(
+                "Not an INSERT statement".to_string(),
+            ))
+        }
+    }
+
+    /// Execute UPDATE via SQL text through unified facade
+    fn execute_update_sql(&self, ctx: &crate::execution::QueryContext) -> Result<crate::execution::ExecutionResult, sqlrustgo_types::SqlError> {
+        use sqlrustgo_parser::parse;
+        use sqlrustgo_parser::Statement;
+        use crate::predicate_compiler::PredicateCompiler;
+        use crate::mutation_compiler::MutationCompiler;
+        use crate::mutation_compiler::Assignment;
+
+        let stmt = parse(ctx.sql).map_err(|e| sqlrustgo_types::SqlError::ExecutionError(e))?;
+
+        if let Statement::Update(update_stmt) = stmt {
+            let table = update_stmt.table;
+
+            // Compile SET assignments to MutationIR
+            let assignments: Vec<Assignment> = update_stmt
+                .sets
+                .iter()
+                .map(|(col, expr)| Assignment {
+                    column: col.clone(),
+                    expr: sqlrustgo_planner::Expr::Literal(Self::expression_to_value(expr)),
+                })
+                .collect();
+
+            let row_mutation = MutationCompiler::compile(assignments);
+
+            // Compile WHERE clause to RowFilter
+            let predicate: sqlrustgo_storage::engine::RowFilter = update_stmt
+                .where_clause
+                .as_ref()
+                .map(|e| PredicateCompiler::compile_from_parser_expr(e))
+                .unwrap_or_else(|| Box::new(|_| true));
+
+            let affected = match self.unified_facade {
+                Some(ref facade) => {
+                    let tx_id_before = facade.current_tx_id();
+                    let r = facade.execute_dml(|storage| {
+                        storage.update_if(&table, &predicate, &row_mutation)
+                    })?;
+                    if !self.is_in_explicit_tx() {
+                        let _ = facade.commit();
+                    } else if let Some(id) = tx_id_before {
+                        facade.set_tx_id(id);
+                    }
+                    r
+                }
+                None => {
+                    return Err(sqlrustgo_types::SqlError::ExecutionError(
+                        "UPDATE without WAL facade — remove direct storage access".to_string(),
+                    ))
+                }
+            };
+            Ok(crate::execution::ExecutionResult::new(vec![], affected))
+        } else {
+            Err(sqlrustgo_types::SqlError::ExecutionError(
+                "Not an UPDATE statement".to_string(),
+            ))
+        }
+    }
+
+    /// Convert a parser Expression to a Value
+    fn expression_to_value(expr: &sqlrustgo_parser::Expression) -> sqlrustgo_types::Value {
+        use sqlrustgo_parser::Expression;
+        match expr {
+            Expression::Literal(s) => {
+                let s = s.trim();
+                if s.eq_ignore_ascii_case("NULL") {
+                    sqlrustgo_types::Value::Null
+                } else if let Ok(n) = s.parse::<i64>() {
+                    sqlrustgo_types::Value::Integer(n)
+                } else if let Ok(f) = s.parse::<f64>() {
+                    sqlrustgo_types::Value::Float(f)
+                } else if s.starts_with('\'') && s.ends_with('\'') {
+                    sqlrustgo_types::Value::Text(s[1..s.len() - 1].to_string())
+                } else {
+                    sqlrustgo_types::Value::Text(s.to_string())
+                }
+            }
+            Expression::Identifier(name) => sqlrustgo_types::Value::Text(name.clone()),
+            _ => sqlrustgo_types::Value::Null,
+        }
     }
 }
 
@@ -2043,12 +2719,14 @@ mod tests {
                         data_type: "INTEGER".to_string(),
                         nullable: false,
                         primary_key: true,
+                        char_max_length: None,
                     },
                     sqlrustgo_storage::ColumnDefinition {
                         name: "name".to_string(),
                         data_type: "TEXT".to_string(),
                         nullable: true,
                         primary_key: false,
+                        char_max_length: None,
                     },
                 ],
                 ..Default::default()
@@ -2065,12 +2743,14 @@ mod tests {
                         data_type: "INTEGER".to_string(),
                         nullable: false,
                         primary_key: true,
+                        char_max_length: None,
                     },
                     sqlrustgo_storage::ColumnDefinition {
                         name: "value".to_string(),
                         data_type: "INTEGER".to_string(),
                         nullable: true,
                         primary_key: false,
+                        char_max_length: None,
                     },
                 ],
                 ..Default::default()
@@ -2141,5 +2821,65 @@ mod tests {
 
         // Should have 4 rows: (1,a,1,100), (2,b,2,200), (3,c,NULL,NULL), (NULL,NULL,4,400)
         assert_eq!(result.rows.len(), 4);
+    }
+
+    #[test]
+    fn test_update_execution_vtu_path() {
+        use sqlrustgo_planner::{UpdateExec, Expr, DataType, Field};
+
+        let mut storage = MemoryStorage::new();
+        storage
+            .create_table(&sqlrustgo_storage::TableInfo {
+                name: "users".to_string(),
+                columns: vec![
+                    sqlrustgo_storage::ColumnDefinition {
+                        name: "id".to_string(),
+                        data_type: DataType::Integer,
+                        nullable: false,
+                        primary_key: true,
+                        char_max_length: None,
+                    },
+                    sqlrustgo_storage::ColumnDefinition {
+                        name: "age".to_string(),
+                        data_type: DataType::Integer,
+                        nullable: true,
+                        primary_key: false,
+                        char_max_length: None,
+                    },
+                ],
+                ..Default::default()
+            })
+            .unwrap();
+
+        storage
+            .insert(
+                "users",
+                vec![
+                    vec![Value::Integer(1), Value::Integer(30)],
+                    vec![Value::Integer(2), Value::Integer(25)],
+                ],
+            )
+            .unwrap();
+
+        let executor = LocalExecutor::new(&storage);
+
+        let update_plan = UpdateExec::new(
+            "users".to_string(),
+            vec![1],
+            vec![Value::Integer(25)],
+            Some(Expr::BinaryExpr {
+                left: Box::new(Expr::Column(Column {
+                    name: "id".to_string(),
+                    relation: None,
+                })),
+                op: Operator::Eq,
+                right: Box::new(Expr::Literal(Value::Integer(1))),
+            }),
+        );
+
+        let result = executor.execute(&update_plan);
+        assert!(result.is_ok(), "UPDATE should execute without error");
+        let result = result.unwrap();
+        assert_eq!(result.affected_rows, 1, "Should update exactly 1 row");
     }
 }

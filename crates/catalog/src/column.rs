@@ -21,6 +21,11 @@ pub struct ColumnDefinition {
     pub default_value: Option<Value>,
     /// Primary key position (Some(index) if part of primary key)
     pub primary_key_position: Option<usize>,
+    /// SQL CHAR(N) / VARCHAR(N) declared max length.
+    /// When `Some(n)` and `data_type == DataType::Text`, INSERT paths must pad
+    /// trailing space to width N per SQL standard. `None` means no length cap.
+    #[serde(default)]
+    pub char_max_length: Option<usize>,
 }
 
 impl ColumnDefinition {
@@ -33,6 +38,7 @@ impl ColumnDefinition {
             is_unique: false,
             default_value: None,
             primary_key_position: None,
+            char_max_length: None,
         }
     }
 
