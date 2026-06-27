@@ -1,0 +1,425 @@
+{
+  "date": "2026-06-07",
+  "data": "SF=1 simplified (60K lineitem)",
+  "truth_source": "PostgreSQL",
+  "query_count": 22,
+  "summary": {
+    "sqlrustgo": {"row_count_mismatch": 13, "cell_diff": 4, "clean_match": 5},
+    "sqlite": {"row_count_mismatch": 13, "cell_diff": 4, "clean_match": 5},
+    "mariadb": {"row_count_mismatch": 0, "cell_diff": 11, "clean_match": 11}
+  },
+  "details": {
+    "sqlrustgo": [
+      {
+        "query": "Q01",
+        "status": "row_count_mismatch",
+        "pg_row_count": 6,
+        "other_row_count": 0,
+        "first_mismatches": []
+      }
+      ,{
+        "query": "Q02",
+        "status": "row_count_mismatch",
+        "pg_row_count": 5,
+        "other_row_count": 0,
+        "first_mismatches": []
+      }
+      ,{
+        "query": "Q03",
+        "status": "row_count_mismatch",
+        "pg_row_count": 10,
+        "other_row_count": 0,
+        "first_mismatches": []
+      }
+      ,{
+        "query": "Q04",
+        "status": "row_count_mismatch",
+        "pg_row_count": 5,
+        "other_row_count": 0,
+        "first_mismatches": []
+      }
+      ,{
+        "query": "Q05",
+        "status": "row_count_mismatch",
+        "pg_row_count": 1,
+        "other_row_count": 0,
+        "first_mismatches": []
+      }
+      ,{
+        "query": "Q06",
+        "status": "cell_diff",
+        "pg_row_count": 1,
+        "other_row_count": 1,
+        "first_mismatches": [
+          {"row": 0, "column": 0, "expected": "6264.4867", "actual": ""}
+        ]
+      }
+      ,{
+        "query": "Q07",
+        "status": "row_count_mismatch",
+        "pg_row_count": 1,
+        "other_row_count": 0,
+        "first_mismatches": []
+      }
+      ,{
+        "query": "Q08",
+        "status": "row_count_mismatch",
+        "pg_row_count": 1,
+        "other_row_count": 0,
+        "first_mismatches": []
+      }
+      ,{
+        "query": "Q10",
+        "status": "row_count_mismatch",
+        "pg_row_count": 20,
+        "other_row_count": 0,
+        "first_mismatches": []
+      }
+      ,{
+        "query": "Q12",
+        "status": "row_count_mismatch",
+        "pg_row_count": 2,
+        "other_row_count": 0,
+        "first_mismatches": []
+      }
+      ,{
+        "query": "Q13",
+        "status": "row_count_mismatch",
+        "pg_row_count": 20,
+        "other_row_count": 0,
+        "first_mismatches": []
+      }
+      ,{
+        "query": "Q14",
+        "status": "cell_diff",
+        "pg_row_count": 1,
+        "other_row_count": 1,
+        "first_mismatches": [
+          {"row": 0, "column": 0, "expected": "10.8426209328240427", "actual": ""}
+        ]
+      }
+      ,{
+        "query": "Q15",
+        "status": "row_count_mismatch",
+        "pg_row_count": 91,
+        "other_row_count": 0,
+        "first_mismatches": []
+      }
+      ,{
+        "query": "Q16",
+        "status": "row_count_mismatch",
+        "pg_row_count": 284,
+        "other_row_count": 0,
+        "first_mismatches": []
+      }
+      ,{
+        "query": "Q17",
+        "status": "cell_diff",
+        "pg_row_count": 1,
+        "other_row_count": 1,
+        "first_mismatches": [
+          {"row": 0, "column": 0, "expected": "56.8571428571428571", "actual": ""}
+        ]
+      }
+      ,{
+        "query": "Q18",
+        "status": "row_count_mismatch",
+        "pg_row_count": 5,
+        "other_row_count": 0,
+        "first_mismatches": []
+      }
+      ,{
+        "query": "Q19",
+        "status": "cell_diff",
+        "pg_row_count": 1,
+        "other_row_count": 1,
+        "first_mismatches": [
+          {"row": 0, "column": 0, "expected": "6.5048", "actual": ""}
+        ]
+      }
+    ],
+    "sqlite": [
+      {
+        "query": "Q01",
+        "status": "row_count_mismatch",
+        "pg_row_count": 6,
+        "other_row_count": 0,
+        "first_mismatches": []
+      }
+      ,{
+        "query": "Q02",
+        "status": "row_count_mismatch",
+        "pg_row_count": 5,
+        "other_row_count": 0,
+        "first_mismatches": []
+      }
+      ,{
+        "query": "Q03",
+        "status": "row_count_mismatch",
+        "pg_row_count": 10,
+        "other_row_count": 0,
+        "first_mismatches": []
+      }
+      ,{
+        "query": "Q04",
+        "status": "row_count_mismatch",
+        "pg_row_count": 5,
+        "other_row_count": 0,
+        "first_mismatches": []
+      }
+      ,{
+        "query": "Q05",
+        "status": "row_count_mismatch",
+        "pg_row_count": 1,
+        "other_row_count": 0,
+        "first_mismatches": []
+      }
+      ,{
+        "query": "Q06",
+        "status": "cell_diff",
+        "pg_row_count": 1,
+        "other_row_count": 1,
+        "first_mismatches": [
+          {"row": 0, "column": 0, "expected": "6264.4867", "actual": ""}
+        ]
+      }
+      ,{
+        "query": "Q07",
+        "status": "row_count_mismatch",
+        "pg_row_count": 1,
+        "other_row_count": 0,
+        "first_mismatches": []
+      }
+      ,{
+        "query": "Q08",
+        "status": "row_count_mismatch",
+        "pg_row_count": 1,
+        "other_row_count": 0,
+        "first_mismatches": []
+      }
+      ,{
+        "query": "Q10",
+        "status": "row_count_mismatch",
+        "pg_row_count": 20,
+        "other_row_count": 0,
+        "first_mismatches": []
+      }
+      ,{
+        "query": "Q12",
+        "status": "row_count_mismatch",
+        "pg_row_count": 2,
+        "other_row_count": 0,
+        "first_mismatches": []
+      }
+      ,{
+        "query": "Q13",
+        "status": "row_count_mismatch",
+        "pg_row_count": 20,
+        "other_row_count": 0,
+        "first_mismatches": []
+      }
+      ,{
+        "query": "Q14",
+        "status": "cell_diff",
+        "pg_row_count": 1,
+        "other_row_count": 1,
+        "first_mismatches": [
+          {"row": 0, "column": 0, "expected": "10.8426209328240427", "actual": ""}
+        ]
+      }
+      ,{
+        "query": "Q15",
+        "status": "row_count_mismatch",
+        "pg_row_count": 91,
+        "other_row_count": 0,
+        "first_mismatches": []
+      }
+      ,{
+        "query": "Q16",
+        "status": "row_count_mismatch",
+        "pg_row_count": 284,
+        "other_row_count": 0,
+        "first_mismatches": []
+      }
+      ,{
+        "query": "Q17",
+        "status": "cell_diff",
+        "pg_row_count": 1,
+        "other_row_count": 1,
+        "first_mismatches": [
+          {"row": 0, "column": 0, "expected": "56.8571428571428571", "actual": ""}
+        ]
+      }
+      ,{
+        "query": "Q18",
+        "status": "row_count_mismatch",
+        "pg_row_count": 5,
+        "other_row_count": 0,
+        "first_mismatches": []
+      }
+      ,{
+        "query": "Q19",
+        "status": "cell_diff",
+        "pg_row_count": 1,
+        "other_row_count": 1,
+        "first_mismatches": [
+          {"row": 0, "column": 0, "expected": "6.5048", "actual": ""}
+        ]
+      }
+    ],
+    "mariadb": [
+      {
+        "query": "Q01",
+        "status": "cell_diff",
+        "pg_row_count": 6,
+        "other_row_count": 6,
+        "first_mismatches": [
+          {"row": 0, "column": 2, "expected": "141475.00", "actual": "141475"},
+          {"row": 0, "column": 6, "expected": "25.3994614003590664", "actual": "25.3995"},
+          {"row": 0, "column": 7, "expected": "154.8269730700179533", "actual": "154.826973"},
+          {"row": 0, "column": 8, "expected": "0.05063195691202872531", "actual": "0.050632"},
+          {"row": 1, "column": 2, "expected": "140557.00", "actual": "140557"},
+          {"row": 1, "column": 6, "expected": "25.3073460568959309", "actual": "25.3073"},
+          {"row": 1, "column": 7, "expected": "151.8547047173208498", "actual": "151.854705"},
+          {"row": 1, "column": 8, "expected": "0.05001620453727043572", "actual": "0.050016"},
+          {"row": 2, "column": 2, "expected": "141009.00", "actual": "141009"},
+          {"row": 2, "column": 6, "expected": "25.4207679826933478", "actual": "25.4208"}
+        ]
+      }
+      ,{
+        "query": "Q02",
+        "status": "cell_diff",
+        "pg_row_count": 5,
+        "other_row_count": 5,
+        "first_mismatches": [
+          {"row": 0, "column": 1, "expected": "Supplier#000000002       ", "actual": "Supplier#000000002"},
+          {"row": 0, "column": 4, "expected": "Manufacturer#3           ", "actual": "Manufacturer#3"},
+          {"row": 0, "column": 6, "expected": "330-8029-8992  ", "actual": "330-8029-8992"},
+          {"row": 1, "column": 1, "expected": "Supplier#000000002       ", "actual": "Supplier#000000002"},
+          {"row": 1, "column": 4, "expected": "Manufacturer#4           ", "actual": "Manufacturer#4"},
+          {"row": 1, "column": 6, "expected": "330-8029-8992  ", "actual": "330-8029-8992"},
+          {"row": 2, "column": 1, "expected": "Supplier#000000002       ", "actual": "Supplier#000000002"},
+          {"row": 2, "column": 4, "expected": "Manufacturer#4           ", "actual": "Manufacturer#4"},
+          {"row": 2, "column": 6, "expected": "330-8029-8992  ", "actual": "330-8029-8992"},
+          {"row": 3, "column": 1, "expected": "Supplier#000000002       ", "actual": "Supplier#000000002"}
+        ]
+      }
+      ,{
+        "query": "Q04",
+        "status": "cell_diff",
+        "pg_row_count": 5,
+        "other_row_count": 5,
+        "first_mismatches": [
+          {"row": 0, "column": 0, "expected": "1-URGENT       ", "actual": "1-URGENT"},
+          {"row": 1, "column": 0, "expected": "2-HIGH         ", "actual": "2-HIGH"},
+          {"row": 2, "column": 0, "expected": "3-MEDIUM       ", "actual": "3-MEDIUM"},
+          {"row": 4, "column": 0, "expected": "5-LOW          ", "actual": "5-LOW"}
+        ]
+      }
+      ,{
+        "query": "Q08",
+        "status": "cell_diff",
+        "pg_row_count": 1,
+        "other_row_count": 1,
+        "first_mismatches": [
+          {"row": 0, "column": 1, "expected": "1.00000000000000000000", "actual": "1.00000000"}
+        ]
+      }
+      ,{
+        "query": "Q10",
+        "status": "cell_diff",
+        "pg_row_count": 20,
+        "other_row_count": 20,
+        "first_mismatches": [
+          {"row": 0, "column": 6, "expected": "598-9830-9970  ", "actual": "598-9830-9970"},
+          {"row": 1, "column": 6, "expected": "374-9421-7430  ", "actual": "374-9421-7430"},
+          {"row": 2, "column": 6, "expected": "270-7799-2294  ", "actual": "270-7799-2294"},
+          {"row": 3, "column": 6, "expected": "853-8320-3646  ", "actual": "853-8320-3646"},
+          {"row": 4, "column": 6, "expected": "517-1814-8198  ", "actual": "517-1814-8198"},
+          {"row": 5, "column": 6, "expected": "095-7824-7697  ", "actual": "095-7824-7697"},
+          {"row": 6, "column": 6, "expected": "653-3176-3624  ", "actual": "653-3176-3624"},
+          {"row": 7, "column": 6, "expected": "150-0328-1715  ", "actual": "150-0328-1715"},
+          {"row": 8, "column": 6, "expected": "436-5213-7153  ", "actual": "436-5213-7153"},
+          {"row": 9, "column": 6, "expected": "664-9333-8633  ", "actual": "664-9333-8633"}
+        ]
+      }
+      ,{
+        "query": "Q12",
+        "status": "cell_diff",
+        "pg_row_count": 2,
+        "other_row_count": 2,
+        "first_mismatches": [
+          {"row": 0, "column": 0, "expected": "MAIL      ", "actual": "MAIL"},
+          {"row": 1, "column": 0, "expected": "SHIP      ", "actual": "SHIP"}
+        ]
+      }
+      ,{
+        "query": "Q14",
+        "status": "cell_diff",
+        "pg_row_count": 1,
+        "other_row_count": 1,
+        "first_mismatches": [
+          {"row": 0, "column": 0, "expected": "10.8426209328240427", "actual": "10.8426209328"}
+        ]
+      }
+      ,{
+        "query": "Q15",
+        "status": "cell_diff",
+        "pg_row_count": 91,
+        "other_row_count": 91,
+        "first_mismatches": [
+          {"row": 0, "column": 1, "expected": "Supplier#000000001       ", "actual": "Supplier#000000001"},
+          {"row": 0, "column": 3, "expected": "731-7867-9220  ", "actual": "731-7867-9220"},
+          {"row": 1, "column": 1, "expected": "Supplier#000000100       ", "actual": "Supplier#000000100"},
+          {"row": 1, "column": 3, "expected": "560-7787-7801  ", "actual": "560-7787-7801"},
+          {"row": 2, "column": 1, "expected": "Supplier#000000011       ", "actual": "Supplier#000000011"},
+          {"row": 2, "column": 3, "expected": "802-5994-0702  ", "actual": "802-5994-0702"},
+          {"row": 3, "column": 1, "expected": "Supplier#000000012       ", "actual": "Supplier#000000012"},
+          {"row": 3, "column": 3, "expected": "862-8029-7307  ", "actual": "862-8029-7307"},
+          {"row": 4, "column": 1, "expected": "Supplier#000000013       ", "actual": "Supplier#000000013"},
+          {"row": 4, "column": 3, "expected": "718-4135-0832  ", "actual": "718-4135-0832"}
+        ]
+      }
+      ,{
+        "query": "Q16",
+        "status": "cell_diff",
+        "pg_row_count": 284,
+        "other_row_count": 284,
+        "first_mismatches": [
+          {"row": 0, "column": 0, "expected": "Brand#11  ", "actual": "Brand#11"},
+          {"row": 1, "column": 0, "expected": "Brand#11  ", "actual": "Brand#11"},
+          {"row": 2, "column": 0, "expected": "Brand#11  ", "actual": "Brand#11"},
+          {"row": 3, "column": 0, "expected": "Brand#11  ", "actual": "Brand#11"},
+          {"row": 4, "column": 0, "expected": "Brand#11  ", "actual": "Brand#11"},
+          {"row": 5, "column": 0, "expected": "Brand#11  ", "actual": "Brand#11"},
+          {"row": 6, "column": 0, "expected": "Brand#11  ", "actual": "Brand#11"},
+          {"row": 7, "column": 0, "expected": "Brand#11  ", "actual": "Brand#11"},
+          {"row": 8, "column": 0, "expected": "Brand#11  ", "actual": "Brand#11"},
+          {"row": 9, "column": 0, "expected": "Brand#11  ", "actual": "Brand#11"}
+        ]
+      }
+      ,{
+        "query": "Q17",
+        "status": "cell_diff",
+        "pg_row_count": 1,
+        "other_row_count": 1,
+        "first_mismatches": [
+          {"row": 0, "column": 0, "expected": "56.8571428571428571", "actual": "56.857143"}
+        ]
+      }
+      ,{
+        "query": "Q18",
+        "status": "cell_diff",
+        "pg_row_count": 5,
+        "other_row_count": 5,
+        "first_mismatches": [
+          {"row": 0, "column": 5, "expected": "307.00", "actual": "307"},
+          {"row": 1, "column": 5, "expected": "305.00", "actual": "305"},
+          {"row": 2, "column": 5, "expected": "303.00", "actual": "303"},
+          {"row": 3, "column": 5, "expected": "306.00", "actual": "306"},
+          {"row": 4, "column": 5, "expected": "312.00", "actual": "312"}
+        ]
+      }
+    ]
+  }
+}

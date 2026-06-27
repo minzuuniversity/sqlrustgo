@@ -1,4 +1,4 @@
-# SQLRustGo v2.5.0
+# SQLRustGo v3.9.0
 
 [workspace]
 members = [
@@ -15,8 +15,6 @@ members = [
     "crates/network",
     "crates/agentsql",
     "crates/bench",
-    "crates/bench-cli",
-    "crates/sql-cli",
     "crates/tools",
     "crates/sqlancer",
     "crates/transaction-stress",
@@ -32,21 +30,30 @@ members = [
     "crates/graph",
     "crates/distributed",
     "crates/unified-storage",
-    "crates/unified-query",
-    "crates/sql-corpus",
-    "crates/types",
+    "crates/admin",
+    "crates/cache",
+    "crates/evidence-graph",
     "crates/mysql-server",
     "crates/qmd-bridge",
+    "crates/security",
+    "crates/spill",
+    "crates/sql-corpus",
+    "crates/types",
+    "crates/unified-query",
+    "crates/wal-verification",
 ]
 
 [workspace.package]
-version = "2.5.0"
+version = "3.9.0"
 edition = "2021"
 authors = ["SQLRustGo Team"]
 license = "MIT"
-
 [workspace.dependencies]
+scopeguard = "1"
 sqlrustgo-common = { path = "crates/common" }
+rayon = "1.10"
+flate2 = "1.0"
+chrono = "0.4"
 sqlrustgo-types = { path = "crates/types" }
 sqlrustgo-parser = { path = "crates/parser" }
 sqlrustgo-planner = { path = "crates/planner" }
@@ -64,6 +71,7 @@ sqlrustgo-vector = { path = "crates/vector" }
 sqlrustgo-graph = { path = "crates/graph" }
 sqlrustgo-sql-corpus = { path = "crates/sql-corpus" }
 sqlrustgo-qmd-bridge = { path = "crates/qmd-bridge" }
+sqlrustgo-cache = { path = "crates/cache" }
 
 tokio = { version = "1.0", features = ["full"] }
 tonic = "0.14"
@@ -95,12 +103,14 @@ rust_decimal = "1.0"
 parking_lot = "0.12"
 
 [dev-dependencies]
+
 criterion = "0.5"
 tempfile = "3.25.0"
 serde_yaml = "0.9"
+sha2 = "0.10"
 rand = "0.8"
-clap = { version = "4.0", features = ["derive"] }
 proptest = "1.1"
+regex = "1"
 sqlrustgo-server = { path = "crates/server" }
 sqlrustgo-transaction = { path = "crates/transaction" }
 sqlrustgo-security = { path = "crates/security" }
@@ -108,10 +118,15 @@ sqlrustgo-telemetry = { path = "crates/telemetry" }
 sqlrustgo-gmp = { path = "crates/gmp" }
 query-stats = { path = "crates/query-stats" }
 sqlrustgo-tools = { path = "crates/tools" }
+sqlrustgo-admin = { path = "crates/admin" }
+sqlrustgo-storage = { path = "crates/storage" }
 sqlrustgo-vector = { path = "crates/vector" }
 sqlrustgo-graph = { path = "crates/graph" }
 sqlrustgo-unified-query = { path = "crates/unified-query" }
+sqlrustgo-mysql-server = { path = "crates/mysql-server" }
 sqlrustgo-distributed = { path = "crates/distributed" }
+sha1 = "0.10"
+clap = { version = "4", features = ["derive"] }
 
 [package]
 name = "sqlrustgo"
@@ -128,6 +143,7 @@ sqlrustgo-planner.workspace = true
 sqlrustgo-optimizer.workspace = true
 sqlrustgo-executor.workspace = true
 sqlrustgo-storage.workspace = true
+sqlrustgo-cache.workspace = true
 sqlrustgo-catalog.workspace = true
 sqlrustgo-transaction.workspace = true
 sqlrustgo-server.workspace = true
@@ -143,10 +159,11 @@ bytes.workspace = true
 lru-cache.workspace = true
 ctrlc.workspace = true
 serde_json.workspace = true
+rayon.workspace = true
 
-[[test]]
-name = "ci_test"
-path = "tests/ci_test.rs"
+# Canonical name `ci_test` is owned by the subdir file (tests/ci/ci_test.rs).
+# The legacy top-level tests/ci_test.rs was removed because it shadowed the
+# subdir test with identical content.
 
 [[bench]]
 name = "sql_operations"
@@ -181,6 +198,14 @@ name = "tpch_bench"
 harness = false
 
 [[bench]]
+name = "qps_bench"
+harness = false
+
+[[bench]]
+name = "tpch_wire_bench"
+harness = false
+
+[[bench]]
 name = "bench_columnar"
 harness = false
 
@@ -191,9 +216,6 @@ path = "crates/bench/examples/tpch_data_gen.rs"
 [dependencies.rusqlite]
 version = "0.39"
 features = ["bundled"]
-
-[dev-dependencies.mysql]
-version = "25"
 
 [[test]]
 name = "buffer_pool_test"
@@ -254,6 +276,420 @@ path = "tests/stored_procedure_parser_test.rs"
 [[test]]
 name = "scheduler_integration_test"
 path = "crates/server/tests/scheduler_integration_test.rs"
+
+# === Added by P0-2 (#2875) — explicit [[test]] entries for 36 default-discovered tests ===
+# Each test file gets a registered entry for visibility in CI/IDE and gate integration.
+# All paths verified to exist via git cat-file -e on origin/develop/v3.8.0.
+
+[[test]]
+name = "adaptive_hash_index_test"
+path = "tests/adaptive_hash_index_test.rs"
+
+[[test]]
+name = "aggregate_functions_test"
+path = "tests/aggregate_functions_test.rs"
+
+[[test]]
+name = "boundary_test"
+path = "tests/boundary_test.rs"
+
+[[test]]
+name = "change_buffer_test"
+path = "tests/change_buffer_test.rs"
+
+[[test]]
+name = "clustered_index_test"
+path = "tests/clustered_index_test.rs"
+
+[[test]]
+name = "concurrency_stress_test"
+path = "tests/concurrency_stress_test.rs"
+
+[[test]]
+name = "distinct_test"
+path = "tests/distinct_test.rs"
+
+[[test]]
+name = "double_write_buffer_test"
+path = "tests/double_write_buffer_test.rs"
+
+[[test]]
+name = "e2e_trigger_wal_recovery"
+path = "tests/e2e_trigger_wal_recovery.rs"
+
+[[test]]
+name = "ee_module_boundary_test"
+path = "tests/ee_module_boundary_test.rs"
+
+[[test]]
+name = "embedded_harness_isolation"
+path = "tests/embedded_harness_isolation.rs"
+
+[[test]]
+name = "embedded_harness_smoke"
+path = "tests/embedded_harness_smoke.rs"
+
+[[test]]
+name = "exp_g_wal_contracts_verified"
+path = "tests/exp_g_wal_contracts_verified.rs"
+
+[[test]]
+name = "expression_operators_test"
+path = "tests/expression_operators_test.rs"
+
+[[test]]
+name = "gap_locking_test"
+path = "tests/gap_locking_test.rs"
+
+[[test]]
+name = "in_value_list_test"
+path = "tests/in_value_list_test.rs"
+
+[[test]]
+name = "limit_clause_test"
+path = "tests/limit_clause_test.rs"
+
+[[test]]
+name = "long_run_stability_72h_test"
+path = "tests/long_run_stability_72h_test.rs"
+
+[[test]]
+name = "long_run_stability_test"
+path = "tests/long_run_stability_test.rs"
+
+[[test]]
+name = "memory_fault_injection_test"
+path = "tests/memory_fault_injection_test.rs"
+
+[[test]]
+name = "mvcc_transaction_test"
+path = "tests/mvcc_transaction_test.rs"
+
+[[test]]
+name = "mysqladmin_test"
+path = "tests/mysqladmin_test.rs"
+
+[[test]]
+name = "network_fault_injection_test"
+path = "tests/network_fault_injection_test.rs"
+
+[[test]]
+name = "parallel_executor_test"
+path = "tests/parallel_executor_test.rs"
+
+[[test]]
+name = "password_rotation_test"
+path = "tests/password_rotation_test.rs"
+
+[[test]]
+name = "performance_schema_test"
+path = "tests/performance_schema_test.rs"
+
+[[test]]
+name = "qps_benchmark_test"
+path = "tests/qps_benchmark_test.rs"
+
+[[test]]
+name = "r_gate_yaml_test"
+path = "tests/r_gate_yaml_test.rs"
+
+[[test]]
+name = "row_level_security_test"
+path = "tests/row_level_security_test.rs"
+
+[[test]]
+name = "savepoint_test"
+path = "tests/savepoint_test.rs"
+
+[[test]]
+name = "show_tables_test"
+path = "tests/show_tables_test.rs"
+
+[[test]]
+name = "table_compression_test"
+path = "tests/table_compression_test.rs"
+
+[[test]]
+name = "test_inventory_gate_test"
+path = "tests/test_inventory_gate_test.rs"
+
+[[test]]
+name = "tpch_full_22_test"
+path = "tests/tpch_full_22_test.rs"
+
+[[test]]
+name = "tpch_gate_test"
+path = "tests/tpch_gate_test.rs"
+
+[[test]]
+name = "tx_wal_contract_tests"
+path = "tests/tx_wal_contract_tests.rs"
+
+[[test]]
+name = "wal_tx_contract_test"
+path = "tests/wal_tx_contract_test.rs"
+
+# === End of P0-2 additions (36 new [[test]] entries) ===
+
+# P0-2 also registers e2e subdir tests with their actual Cargo names
+# (e2e_observability_test, e2e_monitoring_test) to ensure path/name alignment.
+
+[[test]]
+name = "cargo_toml_test_paths_test"
+path = "tests/cargo_toml_test_paths_test.rs"
+
+# P1-1 / P1-2 / P1-3 self-tests (added by P1-3 to fix orphan test files)
+# These test the gate scripts themselves and need explicit [[test]] entries
+# to avoid being silently skipped by `cargo test`.
+
+[[test]]
+name = "int_debt_gate_test"
+path = "tests/int_debt_gate_test.rs"
+
+[[test]]
+name = "arch_sem_debt_gate_test"
+path = "tests/arch_sem_debt_gate_test.rs"
+
+[[test]]
+name = "test_plan_integrated_test"
+path = "tests/test_plan_integrated_test.rs"
+
+# Other P1.x self-tests that need explicit registration:
+# - l3_canonical_binary (P-X), wire_protocol_smoke (P-X), cross_path_consistency_test (P-X)
+# These are owned by other PRs; P1-3 just registers them for visibility.
+
+[[test]]
+name = "l3_canonical_binary"
+path = "tests/l3_canonical_binary.rs"
+
+[[test]]
+name = "wire_protocol_smoke"
+path = "tests/wire_protocol_smoke.rs"
+
+[[test]]
+name = "cross_path_consistency_test"
+path = "tests/cross_path_consistency_test.rs"
+
+# L3 acceptance + D9 self-tests: registered so D9 (check_full_gate_verification.sh)
+# can run them via `cargo test --test <name>`. Without these entries D9 fails
+# with "ERROR (no test result)" because cargo's test discovery cannot find them.
+[[test]]
+name = "e2e_canonical_subprocess"
+path = "tests/e2e_canonical_subprocess.rs"
+
+[[test]]
+name = "pr_template_and_full_gate_test"
+path = "tests/pr_template_and_full_gate_test.rs"
+
+[[test]]
+name = "tpch_value_correctness_test"
+path = "tests/tpch_value_correctness_test.rs"
+
+[[test]]
+name = "tpch_per_query_timeout_test"
+path = "tests/tpch_per_query_timeout_test.rs"
+
+[[test]]
+name = "harness_validation_test"
+path = "tests/harness_validation_test.rs"
+
+# Aliases for ci/ subdir tests (basename != cargo name)
+[[test]]
+name = "ci_test"
+path = "tests/ci/ci_test.rs"
+
+# v3.8.0 feature integration tests
+[[test]]
+name = "alter_table_test"
+path = "tests/alter_table_test.rs"
+# ARCH-3 (#3169) — VtuGuard main-path enforcement
+[[test]]
+name = "arch3_vtu_main_path_test"
+path = "tests/arch3_vtu_main_path_test.rs"
+# INT-3 (#3170) — Single Expression Engine
+[[test]]
+name = "int3_single_expression_test"
+path = "tests/int3_single_expression_test.rs"
+
+# INT-3 (#3271) — Mixed-scenario integration (WAL + DDL + TPC-H)
+[[test]]
+name = "int3_mixed_scenario_test"
+path = "tests/integration/int3_mixed_scenario_test.rs"
+# INT-3 (#3271) — Spec-complete acceptance (WAL append stress + crash-recover + SHA-256 stability)
+[[test]]
+name = "int3_spec_complete_test"
+path = "tests/integration/int3_spec_complete_test.rs"
+# INT-2 (#3270) — MySQL server restart persistence (DDL/DML survive drop+restart)
+[[test]]
+name = "int2_mysql_server_persistence_test"
+path = "tests/integration/int2_mysql_server_persistence_test.rs"
+# INT-2 (#3270) — Cross-version upgrade (synthetic v3.8.0 file format readable by v3.9.0)
+[[test]]
+name = "int2_cross_version_upgrade_test"
+path = "tests/integration/int2_cross_version_upgrade_test.rs"
+# Issue #3257 — WAL data dir fallback must not use port-keyed /tmp
+[[test]]
+name = "issue_3257_wal_fallback_test"
+path = "tests/integration/issue_3257_wal_fallback_test.rs"
+# SEM-1 (#3172) — Savepoint
+[[test]]
+name = "sem1_savepoint_test"
+path = "tests/sem1_savepoint_test.rs"
+# P1-2 (#3174) — Crash Test Framework
+[[test]]
+name = "crash_test_framework"
+path = "tests/crash_test_framework.rs"
+# P1-2 (#3174) — Crash Test Harness (shared helper, not a test target)
+[[test]]
+name = "crash_test_harness"
+path = "tests/crash_test_harness.rs"
+# P1-3 (#3175) — Soak Test (3-level smoke equivalent)
+[[test]]
+name = "soak_test"
+path = "tests/soak_test.rs"
+# P1-3 (#3175) — Soak Test Harness (shared helper)
+[[test]]
+name = "soak_test_harness"
+path = "tests/soak_test_harness.rs"
+# P1-4 (#3176) — Upgrade Test (v3.8 → v3.9, 50+ scenarios)
+[[test]]
+name = "upgrade_test"
+path = "tests/upgrade_test.rs"
+# P1-4 (#3176) — Upgrade Test Harness (shared helper)
+[[test]]
+name = "upgrade_test_harness"
+path = "tests/upgrade_test_harness.rs"
+# P2-1 (#3177) — Audit Log (20+ tests, 7 categories)
+[[test]]
+name = "audit_log_test"
+path = "tests/audit_log_test.rs"
+# P2-1 (#3177) — Audit Log Harness (shared helper)
+[[test]]
+name = "audit_log_harness"
+path = "tests/audit_log_harness.rs"
+# P2-2 (#3178) — Time Travel Query (20+ tests, 5 categories)
+[[test]]
+name = "time_travel_test"
+path = "tests/time_travel_test.rs"
+# P2-2 (#3178) — Time Travel Harness (shared helper)
+[[test]]
+name = "time_travel_harness"
+path = "tests/time_travel_harness.rs"
+# P2-3 (#3179) — Hash Chain (20+ tests, 4 categories)
+[[test]]
+name = "hash_chain_test"
+path = "tests/hash_chain_test.rs"
+# P2-3 (#3179) — Hash Chain Harness (shared helper)
+[[test]]
+name = "hash_chain_harness"
+path = "tests/hash_chain_harness.rs"
+# P3-2 (#3181) — Statistics (ANALYZE TABLE, 20+ tests, 5 categories)
+[[test]]
+name = "statistics_test"
+path = "tests/statistics_test.rs"
+# P3-2 (#3181) — Statistics Harness (shared helper)
+[[test]]
+name = "statistics_harness"
+path = "tests/statistics_harness.rs"
+# P3-3 (#3182) — Cost Optimizer (CBO, 20+ tests, 5 categories)
+[[test]]
+name = "cost_optimizer_test"
+path = "tests/cost_optimizer_test.rs"
+# P3-3 (#3182) — Cost Optimizer Harness (shared helper)
+[[test]]
+name = "cost_optimizer_harness"
+path = "tests/cost_optimizer_harness.rs"
+# P3-4 (#3183) — ParallelExecutor Harness (shared helper, NOTE: parallel_executor_test already exists at line ~357 from P0-3)
+[[test]]
+name = "parallel_executor_harness"
+path = "tests/parallel_executor_harness.rs"
+# P3-5 (#3184) — SIMD 集成 SQL Executor (20+ tests, 5 categories)
+[[test]]
+name = "simd_test"
+path = "tests/simd_test.rs"
+# P3-5 (#3184) — SIMD Harness (shared helper)
+[[test]]
+name = "simd_harness"
+path = "tests/simd_harness.rs"
+# G16 Compatibility — v3.8.0 → v3.9.0 升级兼容 (5 cases: 4 + 回滚)
+[[test]]
+name = "v380_to_v390_full_upgrade_test"
+path = "tests/v380_to_v390_full_upgrade_test.rs"
+# G16 Compatibility Harness (shared helper)
+[[test]]
+name = "compatibility_harness"
+path = "tests/compatibility_harness.rs"
+
+[[test]]
+name = "truncate_table_test"
+path = "tests/truncate_table_test.rs"
+
+[[test]]
+name = "insert_odku_test"
+path = "tests/insert_odku_test.rs"
+
+[[test]]
+name = "replace_test"
+path = "tests/replace_test.rs"
+
+[[test]]
+name = "int4_explicit_tx_test"
+path = "tests/int4_explicit_tx_test.rs"
+
+[[test]]
+name = "operators_aggregate"
+path = "tests/operators/aggregate.rs"
+
+[[test]]
+name = "operators_join"
+path = "tests/operators/join.rs"
+
+[[test]]
+name = "operators_exists"
+path = "tests/operators/exists.rs"
+
+# Issue #3283 Sprint 3 Operator Regression Suite
+[[test]]
+name = "operators_aggregate_sum_real"
+path = "tests/operators/aggregate_sum_real.rs"
+
+[[test]]
+name = "operators_multi_join_3_table"
+path = "tests/operators/multi_join_3_table.rs"
+
+[[test]]
+name = "operators_aggregate_case_when"
+path = "tests/operators/aggregate_case_when.rs"
+
+[[test]]
+name = "operators_aggregate_like_filter"
+path = "tests/operators/aggregate_like_filter.rs"
+
+[[test]]
+name = "operators_date_string_compare"
+path = "tests/operators/date_string_compare.rs"
+
+[[test]]
+name = "operators_exists_correlated"
+path = "tests/operators/exists_correlated.rs"
+
+[[test]]
+name = "operators_order_by_desc"
+path = "tests/operators/order_by_desc.rs"
+
+[[test]]
+name = "operators_char_padding"
+path = "tests/operators/char_padding.rs"
+
+# Issue #3285 reproduction (Sprint 4)
+[[test]]
+name = "repro_3285_real_preservation"
+path = "tests/repro_3285_real_preservation_test.rs"
+
+# Issue #3282 reproduction (Sprint 5)
+[[test]]
+name = "repro_3282_orderby_desc"
+path = "tests/repro_3282_orderby_desc_test.rs"
 
 # Memory limit for tests: 8GB (8 * 1024 * 1024 * 1024 bytes)
 # This prevents any single test from consuming excessive memory

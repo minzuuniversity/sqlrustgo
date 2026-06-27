@@ -94,15 +94,41 @@ pub struct TriggerExecutor {
     storage: Arc<RwLock<dyn StorageEngine>>,
 }
 
+// P1 FIX (SGL-005): TriggerExecutor storage bypasses wrapped in transaction
+// boundary. When TriggerExecutor executes trigger body DML (INSERT/UPDATE/DELETE),
+// it must go through the storage transaction API to satisfy TX-002.
+// Production callers exist in src/execution_engine.rs (root workspace).
 impl TriggerExecutor {
-    /// Create a new TriggerExecutor
     pub fn new(storage: Arc<RwLock<dyn StorageEngine>>) -> Self {
+        if !cfg!(test) {
+            assert!(
+                storage.read().unwrap().is_wal_enabled(),
+                "Storage MUST be WalStorage in production - WAL is mandatory"
+            );
+        }
         Self { storage }
     }
 
-    /// Get the storage engine reference
     pub fn storage(&self) -> Arc<RwLock<dyn StorageEngine>> {
         self.storage.clone()
+    }
+
+    /// INT-4: single chokepoint for trigger-body DML. Opens a transaction, runs
+    /// the closure, commits on success and rolls back on error.
+    fn execute_dml_in_tx<F, R>(&self, op: F) -> SqlResult<R>
+    where
+        F: FnOnce(&mut dyn StorageEngine) -> SqlResult<R>,
+    {
+        let mut storage = self.storage.write().unwrap();
+        storage.begin_transaction()?;
+        let result = op(&mut *storage);
+        match &result {
+            Ok(_) => storage.commit_transaction()?,
+            Err(_) => {
+                let _ = storage.rollback_transaction();
+            }
+        }
+        result
     }
 
     /// Get all triggers for a specific table
@@ -146,7 +172,6 @@ impl TriggerExecutor {
     }
 
     /// Execute BEFORE triggers for an UPDATE operation
-    /// Returns modified new_row if any trigger modified it
     pub fn execute_before_update(
         &self,
         table: &str,
@@ -178,7 +203,6 @@ impl TriggerExecutor {
     }
 
     /// Execute BEFORE triggers for a DELETE operation
-    /// Note: For DELETE, NEW row is not available, only OLD row
     pub fn execute_before_delete(&self, table: &str, old_row: &Record) -> SqlResult<()> {
         let triggers =
             self.get_triggers_for_operation(table, TriggerTiming::Before, TriggerEvent::Delete);
@@ -395,39 +419,46 @@ impl TriggerExecutor {
 
     /// Execute INSERT within a trigger
     fn execute_trigger_insert(&self, sql: &str, new_row: Option<&Record>) -> SqlResult<()> {
-        let mut storage = self.storage.write().unwrap();
+        // P1 FIX (SGL-005): Wrap in transaction boundary for TX-002 compliance
+        // Acquire storage, begin tx, execute DML, commit, then release lock
         let expanded = self.expand_insert_values(sql, new_row);
         let statement = parse(&expanded)
             .map_err(|e| SqlError::ExecutionError(format!("Parse error: {}", e)))?;
 
         if let sqlrustgo_parser::Statement::Insert(insert) = statement {
-            let table_name = &insert.table;
-            let table_info = storage.get_table_info(table_name)?;
-            let target_col_names: Vec<String> =
-                table_info.columns.iter().map(|c| c.name.clone()).collect();
+            let table_name = insert.table.clone();
+            let table_info = {
+                let storage = self.storage.read().unwrap();
+                storage.get_table_info(&table_name)?
+            };
             let num_cols = table_info.columns.len();
-
-            let trigger_ctx = crate::trigger_eval::TriggerContext::new(new_row, None);
-
-            for values in &insert.values {
-                let mut record = Vec::new();
-                let eval_ctx = crate::trigger_eval::EvalContext::new(&trigger_ctx, None)
-                    .with_target_col_names(target_col_names.clone());
-                for expr in values {
-                    let val = crate::trigger_eval::expression_to_value(
-                        expr,
-                        &eval_ctx,
-                        Some(&target_col_names),
-                    );
-                    record.push(val);
+            let col_names: Vec<String> =
+                table_info.columns.iter().map(|c| c.name.clone()).collect();
+            self.execute_dml_in_tx(|storage| {
+                let trigger_ctx = crate::trigger_eval::TriggerContext::new(new_row, None);
+                for values in &insert.values {
+                    let mut record = Vec::new();
+                    let eval_ctx = crate::trigger_eval::EvalContext::new(&trigger_ctx, None)
+                        .with_target_col_names(col_names.clone());
+                    for expr in values {
+                        let val = crate::trigger_eval::expression_to_value(
+                            expr,
+                            &eval_ctx,
+                            Some(&col_names),
+                        );
+                        record.push(val);
+                    }
+                    while record.len() < num_cols {
+                        record.push(Value::Null);
+                    }
+                    storage.insert(&table_name, vec![record])?;
                 }
-                while record.len() < num_cols {
-                    record.push(Value::Null);
-                }
-                storage.insert(table_name, vec![record])?;
-            }
+                Ok(())
+            })?;
+            Ok(())
+        } else {
+            Ok(())
         }
-        Ok(())
     }
 
     /// Execute UPDATE within a trigger
@@ -441,9 +472,8 @@ impl TriggerExecutor {
         let statement = parse(&normalized)
             .map_err(|e| SqlError::ExecutionError(format!("Parse error: {}", e)))?;
 
-        let mut storage = self.storage.write().unwrap();
-
         if let sqlrustgo_parser::Statement::Update(update) = statement {
+            let storage = self.storage.read().unwrap();
             let table_name = &update.table;
             let table_info = storage.get_table_info(table_name)?;
             let target_col_names: Vec<String> =
@@ -502,10 +532,15 @@ impl TriggerExecutor {
             }
 
             if has_match {
-                storage.delete(table_name, &[])?;
-                if !modified_rows.is_empty() {
-                    storage.insert(table_name, modified_rows)?;
-                }
+                // INT-4: routed through execute_dml_in_tx for VTU enforcement
+                let modified = modified_rows.clone();
+                self.execute_dml_in_tx(|storage| {
+                    storage.delete(table_name, &[])?;
+                    if !modified.is_empty() {
+                        storage.insert(table_name, modified)?;
+                    }
+                    Ok(())
+                })?;
             }
         }
         Ok(())
@@ -523,10 +558,8 @@ impl TriggerExecutor {
         let statement = parse(&expanded)
             .map_err(|e| SqlError::ExecutionError(format!("Parse error: {}", e)))?;
 
-        let mut storage = self.storage.write().unwrap();
-
         if let sqlrustgo_parser::Statement::Delete(delete) = statement {
-            storage.delete(&delete.table, &[])?;
+            self.execute_dml_in_tx(|storage| storage.delete(&delete.table, &[]))?;
         }
         Ok(())
     }

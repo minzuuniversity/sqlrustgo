@@ -1,6 +1,19 @@
--- === SKIP ===
+-- === SETUP ===
+CREATE TABLE users (id INT PRIMARY KEY, name TEXT);
+INSERT INTO users VALUES (1, 'Alice'), (2, 'Bob'), (3, 'Carol'), (4, 'Dave'), (5, 'Eve');
+CREATE TABLE orders (order_id INT PRIMARY KEY, user_id INT, total REAL);
+INSERT INTO orders VALUES (101, 1, 50.0), (102, 2, 75.0), (103, 1, 30.0);
 
--- === Outer Join Test Suite ===
+CREATE TABLE products (id INT PRIMARY KEY, name TEXT, price INT);
+INSERT INTO products VALUES (1, 'Apple', 100), (2, 'Banana', 50), (3, 'Cherry', 200), (4, 'Date', 80), (5, 'Elderberry', 150);
+
+CREATE TABLE order_items (id INT PRIMARY KEY, order_id INT, product_id INT, quantity INT);
+INSERT INTO order_items VALUES (1, 101, 1, 2), (2, 101, 2, 1), (3, 102, 3, 1), (4, 103, 1, 3), (5, 102, 4, 1);
+
+CREATE TABLE employees (id INT PRIMARY KEY, name TEXT, manager_id INT);
+INSERT INTO employees VALUES (1, 'CEO', NULL), (2, 'VP_Eng', 1), (3, 'VP_Sales', 1), (4, 'Eng1', 2), (5, 'Eng2', 2), (6, 'Sales1', 3);
+
+-- === CASE: Outer Join Test Suite ===
 
 -- === CASE: Left Join Basic ===
 -- EXPECT: 10 rows

@@ -1,6 +1,8 @@
 //! MySQL server integration tests - test Packet I/O and MySqlError.
 
+use sqlrustgo::ExecutionEngine;
 use sqlrustgo_mysql_server::{MySqlError, Packet};
+use std::sync::{Arc, RwLock};
 
 // ============ MySqlError Tests ============
 
@@ -9,14 +11,14 @@ fn test_mysql_error_io() {
     let io_err = std::io::Error::new(std::io::ErrorKind::NotFound, "file not found");
     let err = MySqlError::Io(io_err);
     let display = format!("{}", err);
-    assert!(display.contains("IO error"));
+    assert!(display.contains("IO:") && display.contains("file not found"));
 }
 
 #[test]
 fn test_mysql_error_protocol() {
     let err = MySqlError::Protocol("bad handshake".to_string());
     let display = format!("{}", err);
-    assert!(display.contains("Protocol error"));
+    assert!(display.contains("Protocol:") && display.contains("bad handshake"));
     assert!(display.contains("bad handshake"));
 }
 
@@ -24,7 +26,7 @@ fn test_mysql_error_protocol() {
 fn test_mysql_error_sql() {
     let err = MySqlError::Sql("syntax error".to_string());
     let display = format!("{}", err);
-    assert!(display.contains("SQL error"));
+    assert!(display.contains("SQL:") && display.contains("syntax error"));
     assert!(display.contains("syntax error"));
 }
 
@@ -33,7 +35,7 @@ fn test_mysql_error_from_io_error() {
     let io_err = std::io::Error::new(std::io::ErrorKind::ConnectionRefused, "refused");
     let err: MySqlError = MySqlError::from(io_err);
     let display = format!("{}", err);
-    assert!(display.contains("IO error"));
+    assert!(display.contains("IO:") && display.contains("refused"));
 }
 
 #[test]
@@ -160,4 +162,37 @@ fn test_packet_payload_various_bytes() {
     let mut cursor = std::io::Cursor::new(buf);
     let read = Packet::read_from(&mut cursor).unwrap();
     assert_eq!(read.payload, payload);
+}
+
+// ============ ExecutionEngine State Tests ============
+
+#[test]
+fn test_execution_engine_state_persistence() {
+    let storage = Arc::new(RwLock::new(sqlrustgo_storage::MemoryStorage::new()));
+    let mut engine = ExecutionEngine::new(storage);
+
+    engine
+        .execute("CREATE TABLE t (id INTEGER, value TEXT)")
+        .unwrap();
+
+    engine.execute("INSERT INTO t VALUES (1, 'test')").unwrap();
+
+    let result = engine.execute("SELECT * FROM t").unwrap();
+    assert!(!result.rows.is_empty(), "Inserted row not found");
+    assert_eq!(result.rows[0][0], sqlrustgo_types::Value::Integer(1));
+    assert_eq!(
+        result.rows[0][1],
+        sqlrustgo_types::Value::Text("test".to_string())
+    );
+
+    engine
+        .execute("UPDATE t SET value = 'updated' WHERE id = 1")
+        .unwrap();
+
+    let result = engine.execute("SELECT * FROM t").unwrap();
+    assert_eq!(result.rows[0][0], sqlrustgo_types::Value::Integer(1));
+    assert_eq!(
+        result.rows[0][1],
+        sqlrustgo_types::Value::Text("updated".to_string())
+    );
 }

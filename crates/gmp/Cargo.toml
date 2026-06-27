@@ -26,10 +26,5 @@ async-trait = "0.1"
 reqwest = { version = "0.12", features = ["json"] }
 tokio = { version = "1.0", features = ["rt-multi-thread", "macros"] }
 
-[[bin]]
-name = "sqlrustgo-gmp-cli"
-path = "src/cli.rs"
-doc = false
-
 [dev-dependencies]
 tempfile.workspace = true

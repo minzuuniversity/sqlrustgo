@@ -623,7 +623,7 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
+    #[ignore = "HNSW vector index test (perf baseline TBD)"]
     fn test_hnsw_10k_build_and_search() {
         let size = 10_000;
         let dim = 128;
@@ -663,7 +663,7 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
+    #[ignore = "HNSW vector index test (perf baseline TBD)"]
     fn test_hnsw_100k_search_performance() {
         let size = 100_000;
         let dim = 128;
@@ -703,7 +703,7 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
+    #[ignore = "HNSW vector index test (perf baseline TBD)"]
     fn test_hnsw_100k_batch_build() {
         let size = 100_000;
         let dim = 128;
@@ -741,7 +741,7 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
+    #[ignore = "HNSW vector index test (perf baseline TBD)"]
     fn test_hnsw_1m_search_performance() {
         let size = 1_000_000;
         let dim = 128;

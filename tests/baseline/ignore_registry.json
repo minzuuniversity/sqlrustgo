@@ -1,0 +1,600 @@
+{
+  "version": "v3.9.0-sprint8",
+  "timestamp": "2026-06-19T00:00:00Z",
+  "total_allowed": 73,
+  "ignored_tests": [
+    {
+      "file": "tests/oracle_g1_tpch_sha256.rs",
+      "line": "83:#[ignore = \"Run with: cargo test --test oracle_g1_tpch_sha256 -- --ignored --generate-baseline\"]",
+      "reason": "Baseline generation only - generates SHA-256 baseline, run with --generate-baseline flag",
+      "issue_link": "#3231",
+      "added_in": "v3.9.0-sprint8",
+      "category": "baseline_generation"
+    },
+    {
+      "file": "tests/tpch_wire_smoke_sf.rs",
+      "line": "0:MARKER",
+      "reason": "P12 detector false positive: 8 grep matches are all in doc/comments (//! and ///), 0 real #[ignore] attributes. File should not require registry entry but is registered here to suppress cross-check false positive.",
+      "issue_link": "N/A",
+      "added_in": "v3.9.0-rc7",
+      "category": "wire_smoke_marker"
+    },
+    {
+      "file": "tests/tpch_sf1_22_vs_3engines_test.rs",
+      "line": "0:MARKER",
+      "reason": "P12 detector false positive: 2 grep matches are 1 in doc comment (//!) + 1 in eprintln string literal (\"...marked #[ignore]...\"). 0 real #[ignore] attributes. The test uses runtime `if !fixture_present() { return; }` instead of compile-time ignore. File registered to suppress cross-check false positive.",
+      "issue_link": "N/A",
+      "added_in": "v3.9.0-sprint8",
+      "category": "tpch_sf1_marker"
+    },
+    {
+      "file": "crates/executor/tests/hash_join_left_null_test.rs",
+      "line": "297:#[ignore = \"Parser does not support NOT (expr) syntax - NOT implementation is Phase 2\"]",
+      "reason": "Parser does not support NOT (expr) syntax - NOT implementation is Phase 2",
+      "issue_link": "TBD",
+      "added_in": "TBD",
+      "category": "hash_join"
+    },
+    {
+      "file": "crates/parser/src/parser.rs",
+      "line": "7299:    #[ignore = \"Test deferred (see tracking issue or comment context)\"]",
+      "reason": "Test deferred (see tracking issue or comment context)",
+      "issue_link": "TBD",
+      "added_in": "TBD",
+      "category": "parser"
+    },
+    {
+      "file": "crates/storage/src/mmap_vector_store.rs",
+      "line": "283:        #[ignore = \"macOS mmap permission issue with tempfile\"]",
+      "reason": "macOS mmap permission issue with tempfile",
+      "issue_link": "TBD",
+      "added_in": "TBD",
+      "category": "mmap_vector_store"
+    },
+    {
+      "file": "crates/vector/src/hnsw.rs",
+      "line": "626:    #[ignore = \"HNSW vector index test (perf baseline TBD)\"]",
+      "reason": "HNSW vector index test (perf baseline TBD)",
+      "issue_link": "TBD",
+      "added_in": "TBD",
+      "category": "hnsw"
+    },
+    {
+      "file": "crates/vector/src/hnsw.rs",
+      "line": "666:    #[ignore = \"HNSW vector index test (perf baseline TBD)\"]",
+      "reason": "HNSW vector index test (perf baseline TBD)",
+      "issue_link": "TBD",
+      "added_in": "TBD",
+      "category": "hnsw"
+    },
+    {
+      "file": "crates/vector/src/hnsw.rs",
+      "line": "706:    #[ignore = \"HNSW vector index test (perf baseline TBD)\"]",
+      "reason": "HNSW vector index test (perf baseline TBD)",
+      "issue_link": "TBD",
+      "added_in": "TBD",
+      "category": "hnsw"
+    },
+    {
+      "file": "crates/vector/src/hnsw.rs",
+      "line": "744:    #[ignore = \"HNSW vector index test (perf baseline TBD)\"]",
+      "reason": "HNSW vector index test (perf baseline TBD)",
+      "issue_link": "TBD",
+      "added_in": "TBD",
+      "category": "hnsw"
+    },
+    {
+      "file": "crates/vector/src/parallel_knn.rs",
+      "line": "498:    #[ignore = \"Vector parallel kNN test (perf baseline TBD)\"]",
+      "reason": "Vector parallel kNN test (perf baseline TBD)",
+      "issue_link": "TBD",
+      "added_in": "TBD",
+      "category": "parallel_knn"
+    },
+    {
+      "file": "crates/vector/src/parallel_knn.rs",
+      "line": "559:    #[ignore = \"Vector parallel kNN test (perf baseline TBD)\"]",
+      "reason": "Vector parallel kNN test (perf baseline TBD)",
+      "issue_link": "TBD",
+      "added_in": "TBD",
+      "category": "parallel_knn"
+    },
+    {
+      "file": "tests/bench_v380_point_agg.rs",
+      "line": "41:#[ignore = \"performance benchmark, run with --ignored --release\"]",
+      "reason": "performance benchmark, run with --ignored --release",
+      "issue_link": "TBD",
+      "added_in": "TBD",
+      "category": "uncategorized"
+    },
+    {
+      "file": "tests/bench_v380_point_agg.rs",
+      "line": "91:#[ignore = \"performance benchmark, run with --ignored --release\"]",
+      "reason": "performance benchmark, run with --ignored --release",
+      "issue_link": "TBD",
+      "added_in": "TBD",
+      "category": "uncategorized"
+    },
+    {
+      "file": "tests/bench_v380_point_agg.rs",
+      "line": "137:#[ignore = \"performance benchmark, run with --ignored --release\"]",
+      "reason": "performance benchmark, run with --ignored --release",
+      "issue_link": "TBD",
+      "added_in": "TBD",
+      "category": "uncategorized"
+    },
+    {
+      "file": "tests/bench_v380_point_agg.rs",
+      "line": "184:#[ignore = \"performance benchmark, run with --ignored --release\"]",
+      "reason": "performance benchmark, run with --ignored --release",
+      "issue_link": "TBD",
+      "added_in": "TBD",
+      "category": "uncategorized"
+    },
+    {
+      "file": "tests/bench_v380_point_agg.rs",
+      "line": "232:#[ignore = \"performance benchmark, run with --ignored --release\"]",
+      "reason": "performance benchmark, run with --ignored --release",
+      "issue_link": "TBD",
+      "added_in": "TBD",
+      "category": "uncategorized"
+    },
+    {
+      "file": "tests/bench_v380_point_agg.rs",
+      "line": "275:#[ignore = \"performance benchmark, run with --ignored --release\"]",
+      "reason": "performance benchmark, run with --ignored --release",
+      "issue_link": "TBD",
+      "added_in": "TBD",
+      "category": "uncategorized"
+    },
+    {
+      "file": "tests/boundary_test.rs",
+      "line": "32:#[ignore = \"Boundary edge-case test (run with --ignored when needed)\"]",
+      "reason": "Boundary edge-case test (run with --ignored when needed)",
+      "issue_link": "TBD",
+      "added_in": "TBD",
+      "category": "boundary"
+    },
+    {
+      "file": "tests/boundary_test.rs",
+      "line": "89:#[ignore = \"Boundary edge-case test (run with --ignored when needed)\"]",
+      "reason": "Boundary edge-case test (run with --ignored when needed)",
+      "issue_link": "TBD",
+      "added_in": "TBD",
+      "category": "boundary"
+    },
+    {
+      "file": "tests/crash_monkey_test.rs",
+      "line": "252:#[ignore = \"Long-running; enable with --ignored for full 100k iteration sweep\"]",
+      "reason": "Long-running; enable with --ignored for full 100k iteration sweep",
+      "issue_link": "TBD",
+      "added_in": "TBD",
+      "category": "crash_monkey"
+    },
+    {
+      "file": "tests/perf_eng_batched_insert_test.rs",
+      "line": "56:#[ignore = \"performance gate, run with --ignored --release\"]",
+      "reason": "performance gate, run with --ignored --release",
+      "issue_link": "TBD",
+      "added_in": "TBD",
+      "category": "perf_eng_batched"
+    },
+    {
+      "file": "tests/perf_eng_batched_insert_test.rs",
+      "line": "95:#[ignore = \"performance gate, run with --ignored --release\"]",
+      "reason": "performance gate, run with --ignored --release",
+      "issue_link": "TBD",
+      "added_in": "TBD",
+      "category": "perf_eng_batched"
+    },
+    {
+      "file": "tests/qps_benchmark_test.rs",
+      "line": "70:#[ignore = \"Performance benchmark (long runtime, run with --ignored, dedicated test env)\"]",
+      "reason": "Performance benchmark (long runtime, run with --ignored, dedicated test env)",
+      "issue_link": "TBD",
+      "added_in": "TBD",
+      "category": "qps"
+    },
+    {
+      "file": "tests/qps_benchmark_test.rs",
+      "line": "95:#[ignore = \"Performance benchmark (long runtime, run with --ignored, dedicated test env)\"]",
+      "reason": "Performance benchmark (long runtime, run with --ignored, dedicated test env)",
+      "issue_link": "TBD",
+      "added_in": "TBD",
+      "category": "qps"
+    },
+    {
+      "file": "tests/qps_benchmark_test.rs",
+      "line": "124:#[ignore = \"Performance benchmark (long runtime, run with --ignored, dedicated test env)\"]",
+      "reason": "Performance benchmark (long runtime, run with --ignored, dedicated test env)",
+      "issue_link": "TBD",
+      "added_in": "TBD",
+      "category": "qps"
+    },
+    {
+      "file": "tests/qps_benchmark_test.rs",
+      "line": "153:#[ignore = \"Performance benchmark (long runtime, run with --ignored, dedicated test env)\"]",
+      "reason": "Performance benchmark (long runtime, run with --ignored, dedicated test env)",
+      "issue_link": "TBD",
+      "added_in": "TBD",
+      "category": "qps"
+    },
+    {
+      "file": "tests/qps_benchmark_test.rs",
+      "line": "185:#[ignore = \"Performance benchmark (long runtime, run with --ignored, dedicated test env)\"]",
+      "reason": "Performance benchmark (long runtime, run with --ignored, dedicated test env)",
+      "issue_link": "TBD",
+      "added_in": "TBD",
+      "category": "qps"
+    },
+    {
+      "file": "tests/qps_benchmark_test.rs",
+      "line": "213:#[ignore = \"Performance benchmark (long runtime, run with --ignored, dedicated test env)\"]",
+      "reason": "Performance benchmark (long runtime, run with --ignored, dedicated test env)",
+      "issue_link": "TBD",
+      "added_in": "TBD",
+      "category": "qps"
+    },
+    {
+      "file": "tests/qps_benchmark_test.rs",
+      "line": "238:#[ignore = \"Performance benchmark (long runtime, run with --ignored, dedicated test env)\"]",
+      "reason": "Performance benchmark (long runtime, run with --ignored, dedicated test env)",
+      "issue_link": "TBD",
+      "added_in": "TBD",
+      "category": "qps"
+    },
+    {
+      "file": "tests/qps_benchmark_test.rs",
+      "line": "285:#[ignore = \"Performance benchmark (long runtime, run with --ignored, dedicated test env)\"]",
+      "reason": "Performance benchmark (long runtime, run with --ignored, dedicated test env)",
+      "issue_link": "TBD",
+      "added_in": "TBD",
+      "category": "qps"
+    },
+    {
+      "file": "tests/qps_benchmark_test.rs",
+      "line": "349:#[ignore = \"Performance benchmark (long runtime, run with --ignored, dedicated test env)\"]",
+      "reason": "Performance benchmark (long runtime, run with --ignored, dedicated test env)",
+      "issue_link": "TBD",
+      "added_in": "TBD",
+      "category": "qps"
+    },
+    {
+      "file": "tests/qps_benchmark_test.rs",
+      "line": "375:#[ignore = \"Performance benchmark (long runtime, run with --ignored, dedicated test env)\"]",
+      "reason": "Performance benchmark (long runtime, run with --ignored, dedicated test env)",
+      "issue_link": "TBD",
+      "added_in": "TBD",
+      "category": "qps"
+    },
+    {
+      "file": "tests/recovery_fuzzer_test.rs",
+      "line": "584:#[ignore = \"Long-running; enable with --ignored for full 50k iteration sweep\"]",
+      "reason": "Long-running; enable with --ignored for full 50k iteration sweep",
+      "issue_link": "TBD",
+      "added_in": "TBD",
+      "category": "recovery_fuzzer"
+    },
+    {
+      "file": "tests/stored_proc_catalog_test.rs",
+      "line": "284:#[ignore = \"MemoryStorage does not support transactions; trigger DML requires transaction boundary\"]",
+      "reason": "MemoryStorage does not support transactions; trigger DML requires transaction boundary",
+      "issue_link": "TBD",
+      "added_in": "TBD",
+      "category": "stored_proc"
+    },
+    {
+      "file": "tests/stored_proc_catalog_test.rs",
+      "line": "315:#[ignore = \"MemoryStorage does not support transactions; trigger DML requires transaction boundary\"]",
+      "reason": "MemoryStorage does not support transactions; trigger DML requires transaction boundary",
+      "issue_link": "TBD",
+      "added_in": "TBD",
+      "category": "stored_proc"
+    },
+    {
+      "file": "tests/stored_proc_catalog_test.rs",
+      "line": "346:#[ignore = \"MemoryStorage does not support transactions; trigger DML requires transaction boundary\"]",
+      "reason": "MemoryStorage does not support transactions; trigger DML requires transaction boundary",
+      "issue_link": "TBD",
+      "added_in": "TBD",
+      "category": "stored_proc"
+    },
+    {
+      "file": "tests/tpch_q9_audit.rs",
+      "line": "5:#[ignore = \"needs tests/data/tpch-sf01/baseline/Q09_three_way.json (not generated)\"]",
+      "reason": "needs tests/data/tpch-sf01/baseline/Q09_three_way.json (not generated)",
+      "issue_link": "TBD",
+      "added_in": "TBD",
+      "category": "tpch_q9_audit"
+    },
+    {
+      "file": "tests/tx_wal_contract_tests.rs",
+      "line": "31:#[ignore = \"Sprint 3 decision: ignored. Path A (engine.execute direct) follows MySQL AUTOCOMMIT=ON semantics, so INSERT without BEGIN now succeeds. Test expects Err which contradicts the Sprint 3 decision in docs/governance/issues/2026-06-03-tx-lifecycle-autocommit-conflict.md. Tracked in issue #2870 follow-up.\"]",
+      "reason": "Sprint 3 decision: ignored. Path A (engine.execute direct) follows MySQL AUTOCOMMIT=ON semantics, so INSERT without BEGIN now succeeds. Test expects Err which contradicts the Sprint 3 decision in docs/governance/issues/2026-06-03-tx-lifecycle-autocommit-conflict.md. Tracked in issue #2870 follow-up.",
+      "issue_link": "TBD",
+      "added_in": "TBD",
+      "category": "tx_wal"
+    },
+    {
+      "file": "tests/tx_wal_contract_tests.rs",
+      "line": "54:#[ignore = \"Sprint 3 decision: ignored. Path A (engine.execute direct) follows MySQL AUTOCOMMIT=ON semantics, so UPDATE without BEGIN now succeeds. Test expects Err which contradicts the Sprint 3 decision in docs/governance/issues/2026-06-03-tx-lifecycle-autocommit-conflict.md. Tracked in issue #2870 follow-up.\"]",
+      "reason": "Sprint 3 decision: ignored. Path A (engine.execute direct) follows MySQL AUTOCOMMIT=ON semantics, so UPDATE without BEGIN now succeeds. Test expects Err which contradicts the Sprint 3 decision in docs/governance/issues/2026-06-03-tx-lifecycle-autocommit-conflict.md. Tracked in issue #2870 follow-up.",
+      "issue_link": "TBD",
+      "added_in": "TBD",
+      "category": "tx_wal"
+    },
+    {
+      "file": "tests/tx_wal_contract_tests.rs",
+      "line": "76:#[ignore = \"Sprint 3 decision: ignored. Path A (engine.execute direct) follows MySQL AUTOCOMMIT=ON semantics, so DELETE without BEGIN now succeeds. Test expects Err which contradicts the Sprint 3 decision in docs/governance/issues/2026-06-03-tx-lifecycle-autocommit-conflict.md. Tracked in issue #2870 follow-up.\"]",
+      "reason": "Sprint 3 decision: ignored. Path A (engine.execute direct) follows MySQL AUTOCOMMIT=ON semantics, so DELETE without BEGIN now succeeds. Test expects Err which contradicts the Sprint 3 decision in docs/governance/issues/2026-06-03-tx-lifecycle-autocommit-conflict.md. Tracked in issue #2870 follow-up.",
+      "issue_link": "TBD",
+      "added_in": "TBD",
+      "category": "tx_wal"
+    },
+    {
+      "file": "tests/tx_wal_contract_tests.rs",
+      "line": "103:#[ignore = \"Sprint 3 decision: ignored. Path A (engine.execute direct) follows MySQL AUTOCOMMIT=ON semantics, so INSERT after COMMIT (which ends the prior tx) now succeeds as new autocommit. Test expects Err which contradicts the Sprint 3 decision in docs/governance/issues/2026-06-03-tx-lifecycle-autocommit-conflict.md. Tracked in issue #2870 follow-up.\"]",
+      "reason": "Sprint 3 decision: ignored. Path A (engine.execute direct) follows MySQL AUTOCOMMIT=ON semantics, so INSERT after COMMIT (which ends the prior tx) now succeeds as new autocommit. Test expects Err which contradicts the Sprint 3 decision in docs/governance/issues/2026-06-03-tx-lifecycle-autocommit-conflict.md. Tracked in issue #2870 follow-up.",
+      "issue_link": "TBD",
+      "added_in": "TBD",
+      "category": "tx_wal"
+    },
+    {
+      "file": "tests/tx_wal_contract_tests.rs",
+      "line": "138:#[ignore = \"Sprint 3 decision: ignored. Path A (engine.execute direct) follows MySQL AUTOCOMMIT=ON semantics, so INSERT after ROLLBACK (which ends the prior tx) now succeeds as new autocommit. Test expects Err which contradicts the Sprint 3 decision in docs/governance/issues/2026-06-03-tx-lifecycle-autocommit-conflict.md. Tracked in issue #2870 follow-up.\"]",
+      "reason": "Sprint 3 decision: ignored. Path A (engine.execute direct) follows MySQL AUTOCOMMIT=ON semantics, so INSERT after ROLLBACK (which ends the prior tx) now succeeds as new autocommit. Test expects Err which contradicts the Sprint 3 decision in docs/governance/issues/2026-06-03-tx-lifecycle-autocommit-conflict.md. Tracked in issue #2870 follow-up.",
+      "issue_link": "TBD",
+      "added_in": "TBD",
+      "category": "tx_wal"
+    },
+    {
+      "file": "tests/tx_wal_contract_tests.rs",
+      "line": "200:#[ignore = \"Requires executor-level readonly tx detection; tracked in issue #2870 follow-up\"]",
+      "reason": "Requires executor-level readonly tx detection; tracked in issue #2870 follow-up",
+      "issue_link": "TBD",
+      "added_in": "TBD",
+      "category": "tx_wal"
+    },
+    {
+      "file": "tests/dml_integration_test.rs",
+      "line": "101:IGNORE_MULTI",
+      "reason": "INSERT ",
+      "issue_link": "TBD",
+      "added_in": "v3.9.0-sprint9",
+      "category": "feature_gap"
+    },
+    {
+      "file": "tests/dml_integration_test.rs",
+      "line": "20:IGNORE_MULTI",
+      "reason": "INSERT ",
+      "issue_link": "TBD",
+      "added_in": "v3.9.0-sprint9",
+      "category": "feature_gap"
+    },
+    {
+      "file": "tests/dml_integration_test.rs",
+      "line": "101:IGNORE_MULTI",
+      "reason": "UPDATE ",
+      "issue_link": "TBD",
+      "added_in": "v3.9.0-sprint9",
+      "category": "feature_gap"
+    },
+    {
+      "file": "tests/dml_integration_test.rs",
+      "line": "17:IGNORE_MULTI",
+      "reason": "Multi-table UPDATE not supported",
+      "issue_link": "TBD",
+      "added_in": "v3.9.0-sprint9",
+      "category": "feature_gap"
+    },
+    {
+      "file": "tests/dml_integration_test.rs",
+      "line": "71:IGNORE_MULTI",
+      "reason": "DELETE ",
+      "issue_link": "TBD",
+      "added_in": "v3.9.0-sprint9",
+      "category": "feature_gap"
+    },
+    {
+      "file": "tests/dml_integration_test.rs",
+      "line": "17:IGNORE_MULTI",
+      "reason": "Multi-table DELETE not supported",
+      "issue_link": "TBD",
+      "added_in": "v3.9.0-sprint9",
+      "category": "feature_gap"
+    },
+    {
+      "file": "tests/dml_integration_test.rs",
+      "line": "31:IGNORE_MULTI",
+      "reason": "ROLLBACK does not currently revert DML rows in MemoryStorage",
+      "issue_link": "TBD",
+      "added_in": "v3.9.0-sprint9",
+      "category": "feature_gap"
+    },
+    {
+      "file": "tests/dml_integration_test.rs",
+      "line": "21:IGNORE_MULTI",
+      "reason": "ROLLBACK does not currently revert DML rows in MemoryStorage",
+      "issue_link": "TBD",
+      "added_in": "v3.9.0-sprint9",
+      "category": "feature_gap"
+    },
+    {
+      "file": "tests/graph_cypher_integration_test.rs",
+      "line": "466:IGNORE_MULTI",
+      "reason": "Cypher executor does not support CREATE — only MATCH/WHERE/RETURN",
+      "issue_link": "TBD",
+      "added_in": "v3.9.0-sprint9",
+      "category": "feature_gap"
+    },
+    {
+      "file": "tests/graph_cypher_integration_test.rs",
+      "line": "10:IGNORE_MULTI",
+      "reason": "Cypher executor does not support MERGE keyword",
+      "issue_link": "TBD",
+      "added_in": "v3.9.0-sprint9",
+      "category": "feature_gap"
+    },
+    {
+      "file": "tests/graph_cypher_integration_test.rs",
+      "line": "9:IGNORE_MULTI",
+      "reason": "Cypher parser requires explicit direction (`->`); undirected `-` not supported",
+      "issue_link": "TBD",
+      "added_in": "v3.9.0-sprint9",
+      "category": "feature_gap"
+    },
+    {
+      "file": "tests/graph_cypher_integration_test.rs",
+      "line": "9:IGNORE_MULTI",
+      "reason": "Cypher executor does not support OPTIONAL MATCH (NULL semantics for missing matc",
+      "issue_link": "TBD",
+      "added_in": "v3.9.0-sprint9",
+      "category": "feature_gap"
+    },
+    {
+      "file": "tests/small_executor_modules_test.rs",
+      "line": "398:IGNORE_MULTI",
+      "reason": "BUG: PredicateCompiler::compile(Expr::Column) always returns false              ",
+      "issue_link": "TBD",
+      "added_in": "v3.9.0-sprint9",
+      "category": "feature_gap"
+    },
+    {
+      "file": "tests/small_executor_modules_test.rs",
+      "line": "9:IGNORE_MULTI",
+      "reason": "BUG: same root cause as test_predicate_compiler_column_true",
+      "issue_link": "TBD",
+      "added_in": "v3.9.0-sprint9",
+      "category": "feature_gap"
+    },
+    {
+      "file": "tests/small_executor_modules_test.rs",
+      "line": "17:IGNORE_MULTI",
+      "reason": "BUG: depends on the buggy Column path in PredicateCompiler",
+      "issue_link": "TBD",
+      "added_in": "v3.9.0-sprint9",
+      "category": "feature_gap"
+    },
+    {
+      "file": "tests/small_executor_modules_test.rs",
+      "line": "12:IGNORE_MULTI",
+      "reason": "BUG: depends on the buggy Column path in PredicateCompiler",
+      "issue_link": "TBD",
+      "added_in": "v3.9.0-sprint9",
+      "category": "feature_gap"
+    },
+    {
+      "file": "tests/union_set_operations_test.rs",
+      "line": "257:IGNORE_MULTI",
+      "reason": "INTERSECT not yet implemented in parser (no Statement::Intersect variant)",
+      "issue_link": "TBD",
+      "added_in": "v3.9.0-sprint9",
+      "category": "feature_gap"
+    },
+    {
+      "file": "tests/union_set_operations_test.rs",
+      "line": "20:IGNORE_MULTI",
+      "reason": "EXCEPT not yet implemented in parser (no Statement::Except variant)",
+      "issue_link": "TBD",
+      "added_in": "v3.9.0-sprint9",
+      "category": "feature_gap"
+    },
+    {
+      "file": "tests/union_set_operations_test.rs",
+      "line": "24:IGNORE_MULTI",
+      "reason": "ORDER BY/LIMIT after top-level UNION not supported",
+      "issue_link": "TBD",
+      "added_in": "v3.9.0-sprint9",
+      "category": "feature_gap"
+    },
+    {
+      "file": "tests/soak_test.rs",
+      "line": "190:IGNORE",
+      "reason": "in-process simulation; G7 gate uses wired E2E (sqlrustgo-mysql-server + sysbench",
+      "issue_link": "#3175",
+      "added_in": "v3.9.0-sprint9",
+      "category": "decommissioned"
+    },
+    {
+      "file": "tests/soak_test.rs",
+      "line": "204:IGNORE",
+      "reason": "in-process simulation; G7 gate uses wired E2E",
+      "issue_link": "#3175",
+      "added_in": "v3.9.0-sprint9",
+      "category": "decommissioned"
+    },
+    {
+      "file": "tests/soak_test.rs",
+      "line": "216:IGNORE",
+      "reason": "in-process simulation; G7 gate uses wired E2E",
+      "issue_link": "#3175",
+      "added_in": "v3.9.0-sprint9",
+      "category": "decommissioned"
+    },
+    {
+      "file": "tests/soak_test.rs",
+      "line": "234:IGNORE",
+      "reason": "in-process simulation; G7 gate uses wired E2E",
+      "issue_link": "#3175",
+      "added_in": "v3.9.0-sprint9",
+      "category": "decommissioned"
+    },
+    {
+      "file": "tests/soak_test.rs",
+      "line": "248:IGNORE",
+      "reason": "in-process simulation; G7 gate uses wired E2E",
+      "issue_link": "#3175",
+      "added_in": "v3.9.0-sprint9",
+      "category": "decommissioned"
+    },
+    {
+      "file": "tests/soak_test.rs",
+      "line": "260:IGNORE",
+      "reason": "in-process simulation; G7 gate uses wired E2E",
+      "issue_link": "#3175",
+      "added_in": "v3.9.0-sprint9",
+      "category": "decommissioned"
+    },
+    {
+      "file": "tests/soak_test.rs",
+      "line": "274:IGNORE",
+      "reason": "in-process simulation; G7 gate uses wired E2E",
+      "issue_link": "#3175",
+      "added_in": "v3.9.0-sprint9",
+      "category": "decommissioned"
+    },
+    {
+      "file": "tests/soak_test.rs",
+      "line": "293:IGNORE",
+      "reason": "in-process simulation; G7 gate uses wired E2E",
+      "issue_link": "#3175",
+      "added_in": "v3.9.0-sprint9",
+      "category": "decommissioned"
+    },
+    {
+      "file": "tests/soak_test.rs",
+      "line": "308:IGNORE",
+      "reason": "in-process simulation; G7 gate uses wired E2E",
+      "issue_link": "#3175",
+      "added_in": "v3.9.0-sprint9",
+      "category": "decommissioned"
+    },
+    {
+      "file": "tests/soak_test.rs",
+      "line": "317:IGNORE",
+      "reason": "in-process simulation; G7 gate uses wired E2E",
+      "issue_link": "#3175",
+      "added_in": "v3.9.0-sprint9",
+      "category": "decommissioned"
+    },
+    {
+      "file": "tests/long_run_stability_72h_test.rs",
+      "line": "6:#[ignore]",
+      "reason": "72h stability smoke: 5-second in-process sanity check; real 72h soak runs on Z6G4 hardware via G7 gate",
+      "issue_link": "#3175",
+      "added_in": "v3.9.0",
+      "category": "stability"
+    }
+  ],
+  "note": "Regenerated 2026-06-17 from current source. Each entry has a real reason extracted from `#[ignore = \"...\"]` attribute, or 'needs review' marker if attribute has no reason text. issue_link: TBD entries need manual research. Categories align with README §Test Claim Transparency (42 non-gate)."
+}
