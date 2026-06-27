@@ -42,9 +42,11 @@
 #                        (auto-scaled to 60s for HOURS<1, 120s for HOURS<2)
 #   TPCH_ROTATE_MAX_ROUNDS  0=forever, N>0=stop after N rounds               (default 0)
 #   RESULTS_DIR          output dir                                          (default test_results/wired_soak_<HOURS>h_<ts>)
+#   SKIP_SYSBENCH        1 = skip sysbench prepare + run (Issue #3575 workaround) (default 0)
 #
 # Issues: #3225 (real 24h/72h wall-clock soak), #3229 (168h), and the
 #         user-requested extra 0.5/1/2/4/8/12/16/48h gaps not covered by v2.
+#         Issue #3575: sysbench bulk_insert fails on sqlrustgo (deferred to v3.10).
 #
 # Maintainer: Hermes Agent
 # Last touched: 2026-06-14
@@ -249,32 +251,37 @@ else
     echo "[2/5] FIXTURE=none, skipping"
 fi
 
-# [3] sysbench prepare (create sbtest table)
-echo "[3/5] sysbench prepare (TABLES=$TABLES TABLE_SIZE=$TABLE_SIZE)..."
-sysbench oltp_read_write \
-    --db-driver=mysql \
-    --mysql-host="$HOST" --mysql-port="$PORT" \
-    --mysql-user=root --mysql-password="" \
-    --mysql-db=sbtest --table-size="$TABLE_SIZE" --tables="$TABLES" \
-    prepare 2>&1 | tail -3 || {
-    echo "FAIL: sysbench prepare failed" >&2
-    tail -20 "$LOG_FILE" >&2
-    kill "$SERVER_PID" 2>/dev/null || true
-    exit 1
-}
+# [3] sysbench prepare (create sbtest table) - SKIP_SYSBENCH=1 to bypass Issue #3575
+if [ "${SKIP_SYSBENCH:-0}" = "1" ]; then
+    echo "[3/5] SKIP_SYSBENCH=1, skipping sysbench prepare (Issue #3575 workaround)"
+    SYSBENCH_PID=""
+else
+    echo "[3/5] sysbench prepare (TABLES=$TABLES TABLE_SIZE=$TABLE_SIZE)..."
+    sysbench oltp_read_write \
+        --db-driver=mysql \
+        --mysql-host="$HOST" --mysql-port="$PORT" \
+        --mysql-user=root --mysql-password="" \
+        --mysql-db=sbtest --table-size="$TABLE_SIZE" --tables="$TABLES" \
+        prepare 2>&1 | tail -3 || {
+        echo "FAIL: sysbench prepare failed" >&2
+        tail -20 "$LOG_FILE" >&2
+        kill "$SERVER_PID" 2>/dev/null || true
+        exit 1
+    }
 
-# [4] Launch sysbench run + TPC-H rotation in parallel
-echo "[4/5] Launching sysbench oltp_read_write (${HOURS_DISPLAY}h = ${HOURS_SECS}s)..."
-nohup sysbench oltp_read_write \
-    --db-driver=mysql \
-    --mysql-host="$HOST" --mysql-port="$PORT" \
-    --mysql-user=root --mysql-password="" \
-    --mysql-db=sbtest --table-size="$TABLE_SIZE" --tables="$TABLES" \
-    --threads="$THREADS" --time="$HOURS_SECS" \
-    --report-interval=10 \
-    run > "$SYSBENCH_LOG" 2>&1 &
-SYSBENCH_PID=$!
-echo "  sysbench PID=$SYSBENCH_PID"
+    # [4] Launch sysbench run + TPC-H rotation in parallel
+    echo "[4/5] Launching sysbench oltp_read_write (${HOURS_DISPLAY}h = ${HOURS_SECS}s)..."
+    nohup sysbench oltp_read_write \
+        --db-driver=mysql \
+        --mysql-host="$HOST" --mysql-port="$PORT" \
+        --mysql-user=root --mysql-password="" \
+        --mysql-db=sbtest --table-size="$TABLE_SIZE" --tables="$TABLES" \
+        --threads="$THREADS" --time="$HOURS_SECS" \
+        --report-interval=10 \
+        run > "$SYSBENCH_LOG" 2>&1 &
+    SYSBENCH_PID=$!
+    echo "  sysbench PID=$SYSBENCH_PID"
+fi
 
 if [ "$TPCH_ROTATE" = "1" ]; then
     echo "       Launching TPC-H 22-query rotation (interval=${TPCH_ROTATE_INTERVAL}s)..."
@@ -309,8 +316,8 @@ cleanup() {
     [ -n "$TPCH_ROTATE_PID" ] && kill "$TPCH_ROTATE_PID" 2>/dev/null || true
     [ -n "$TPCH_ROTATE_PID" ] && wait "$TPCH_ROTATE_PID" 2>/dev/null || true
     echo "[cleanup] Stopping sysbench (PID $SYSBENCH_PID)..."
-    kill "$SYSBENCH_PID" 2>/dev/null || true
-    wait "$SYSBENCH_PID" 2>/dev/null || true
+    [ -n "$SYSBENCH_PID" ] && kill "$SYSBENCH_PID" 2>/dev/null || true
+    [ -n "$SYSBENCH_PID" ] && wait "$SYSBENCH_PID" 2>/dev/null || true
     echo "[cleanup] Stopping server (PID $SERVER_PID)..."
     kill "$SERVER_PID" 2>/dev/null || true
     wait "$SERVER_PID" 2>/dev/null || true
