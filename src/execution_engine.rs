@@ -29,12 +29,12 @@ use sqlrustgo_parser::parser::{
     AlterTableStatement,
     CallStatement,
     CreateDatabaseStatement,
-    CreateViewStatement,
     CreateIndexStatement,
     CreateProcedureStatement,
     CreateRoleStatement,
     CreateTableStatement,
     CreateTriggerStatement,
+    CreateViewStatement,
     DescribeStatement,
     DropDatabaseStatement,
     DropIndexStatement,
@@ -43,8 +43,8 @@ use sqlrustgo_parser::parser::{
     DropViewStatement,
     GrantRoleStatement,
     GrantStatement,
-    MergeStatement,
     InsertStatement,
+    MergeStatement,
     ObjectType as ParserObjectType,
     Privilege as ParserPrivilege,
     RevokeRoleStatement,
@@ -333,8 +333,27 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             Statement::Merge(ref merge) => self.execute_merge_statement(merge),
             Statement::DropTable(ref drop) => self.execute_drop_table(drop),
             Statement::Truncate(ref truncate) => self.execute_truncate(truncate),
-            Statement::WithSelect(ref with) => self.execute_with_select(with),
-            Statement::WithDml(ref with_dml) => self.execute_with_dml(with_dml),
+            Statement::WithSelect(with) => {
+                // 基本 CTE 支持：提取主 SELECT 直接执行
+                // TODO: 完整 CTE 物化支持 (Phase 2)
+                let has_cte = with
+                    .with_clause
+                    .as_ref()
+                    .map_or(false, |w| !w.ctes.is_empty());
+                if has_cte {
+                    self.execute_select(&with.select)
+                } else {
+                    self.execute_select(&with.select)
+                }
+            }
+            Statement::WithDml(with_dml) => match with_dml.body.as_ref() {
+                Statement::Insert(insert) => self.execute_insert(insert),
+                Statement::Update(update) => self.execute_update(update),
+                Statement::Delete(delete) => self.execute_delete(delete),
+                _ => Err(SqlError::ExecutionError(
+                    "Unsupported WithDml body type".to_string(),
+                )),
+            },
             Statement::CreateIndex(idx) => self.execute_create_index(&idx),
             Statement::Analyze(ref analyze) => {
                 let table_name = analyze.table_name.as_ref().ok_or_else(|| {
@@ -471,13 +490,13 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     partition_info: None,
                 };
                 let mut storage = self.storage.write().unwrap();
-                storage.create_table(&table_info).map_err(|e| {
-                    SqlError::ExecutionError(format!("Create CTE table: {}", e))
-                })?;
+                storage
+                    .create_table(&table_info)
+                    .map_err(|e| SqlError::ExecutionError(format!("Create CTE table: {}", e)))?;
                 if !cte_rows.is_empty() {
-                    storage.insert(&cte.name, cte_rows).map_err(|e| {
-                        SqlError::ExecutionError(format!("Insert CTE rows: {}", e))
-                    })?;
+                    storage
+                        .insert(&cte.name, cte_rows)
+                        .map_err(|e| SqlError::ExecutionError(format!("Insert CTE rows: {}", e)))?;
                 }
             }
             with_clause.ctes.iter().map(|c| c.name.clone()).collect()
@@ -551,13 +570,13 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     partition_info: None,
                 };
                 let mut storage = self.storage.write().unwrap();
-                storage.create_table(&table_info).map_err(|e| {
-                    SqlError::ExecutionError(format!("Create CTE table: {}", e))
-                })?;
+                storage
+                    .create_table(&table_info)
+                    .map_err(|e| SqlError::ExecutionError(format!("Create CTE table: {}", e)))?;
                 if !cte_rows.is_empty() {
-                    storage.insert(&cte.name, cte_rows).map_err(|e| {
-                        SqlError::ExecutionError(format!("Insert CTE rows: {}", e))
-                    })?;
+                    storage
+                        .insert(&cte.name, cte_rows)
+                        .map_err(|e| SqlError::ExecutionError(format!("Insert CTE rows: {}", e)))?;
                 }
             }
             with_clause.ctes.iter().map(|c| c.name.clone()).collect()
