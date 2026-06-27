@@ -659,7 +659,6 @@ impl<S: StorageEngine, T: WalManager> StorageEngine for WalStorage<S, T> {
     fn is_wal_enabled(&self) -> bool {
         true
     }
-
 }
 
 #[cfg(test)]
