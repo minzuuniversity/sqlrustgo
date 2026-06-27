@@ -59,6 +59,9 @@ enum Command {
         /// SERVER-01: auth mode (none = allow all, password = require password)
         #[arg(long, default_value = "none")]
         auth_mode: String,
+        /// P2-1: number of worker threads for parallel query processing (default 1)
+        #[arg(long, default_value_t = 1)]
+        worker_threads: usize,
         /// SERVER-01: show detailed startup banner
         #[arg(long, default_value_t = false)]
         verbose: bool,
@@ -143,6 +146,7 @@ fn main() -> ExitCode {
         data_dir: "/tmp/sqlrustgo-data".to_string(),
         max_connections: 100,
         auth_mode: "none".to_string(),
+        worker_threads: 1,
         verbose: false,
     });
 
@@ -153,6 +157,7 @@ fn main() -> ExitCode {
             data_dir,
             max_connections,
             auth_mode,
+            worker_threads,
             verbose,
         } => {
             // SERVER-01: print startup banner
@@ -162,6 +167,7 @@ fn main() -> ExitCode {
             println!("  Data dir:   {}", data_dir);
             println!("  Max conn:   {}", max_connections);
             println!("  Auth mode:  {}", auth_mode);
+            println!("  Workers:    {}", worker_threads);
             if verbose {
                 println!("  TLS:        self-signed (default)");
                 println!("  WAL:        enabled");
@@ -184,7 +190,7 @@ fn main() -> ExitCode {
 
             tracing::info!("SQLRustGo MySQL Server starting on {}:{}", host, port);
             // SERVER-01 Stage 2: use v2 with all options
-            if let Err(e) = run_server_v2(&host, port, &data_dir, max_connections, &auth_mode) {
+            if let Err(e) = run_server_v2(&host, port, &data_dir, max_connections, &auth_mode, worker_threads) {
                 tracing::error!("server error: {e}");
                 return ExitCode::from(1);
             }
