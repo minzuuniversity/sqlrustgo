@@ -7,11 +7,7 @@ use clap::{Parser, Subcommand};
 use std::process::{Command as Proc, ExitCode};
 
 #[derive(Parser, Debug)]
-#[command(
-    name = "sqlrustgo",
-    about = "SQLRustGo canonical CLI",
-    version
-)]
+#[command(name = "sqlrustgo", about = "SQLRustGo canonical CLI", version)]
 struct Cli {
     #[command(subcommand)]
     command: Option<SubCmd>,
@@ -35,7 +31,9 @@ enum SubCmd {
         auth_mode: String,
     },
     /// Execute a single SQL statement and print the result.
-    Exec { sql: String },
+    Exec {
+        sql: String,
+    },
     /// Interactive REPL.
     Repl {
         #[arg(long)]
@@ -46,8 +44,13 @@ enum SubCmd {
     Bench,
     Gmp,
     Diag,
-    Backup { output_dir: String },
-    Restore { backup_id: String, database: String },
+    Backup {
+        output_dir: String,
+    },
+    Restore {
+        backup_id: String,
+        database: String,
+    },
     /// Connect to a running server and execute a query (NEW).
     Cli {
         query: String,
@@ -75,21 +78,32 @@ fn main() -> ExitCode {
     });
 
     match cmd {
-        SubCmd::Serve { host, port, data_dir, max_connections, server_threads, auth_mode } => {
-            run_bin("serve", &[
+        SubCmd::Serve {
+            host,
+            port,
+            data_dir,
+            max_connections,
+            server_threads,
+            auth_mode,
+        } => run_bin(
+            "serve",
+            &[
                 ("--host", host),
                 ("--port", port.to_string()),
                 ("--data-dir", data_dir),
                 ("--max-connections", max_connections.to_string()),
                 ("--server-threads", server_threads.to_string()),
                 ("--auth-mode", auth_mode),
-            ])
-        }
+            ],
+        ),
         SubCmd::Exec { sql } => {
             // mysql-server exec takes positional <SQL>
             run_bin_arg_positional("exec", &sql)
         }
-        SubCmd::Repl { init_sql, save_on_exit } => {
+        SubCmd::Repl {
+            init_sql,
+            save_on_exit,
+        } => {
             let mut args = vec![];
             if let Some(f) = init_sql {
                 args.push("--init-sql".to_string());
@@ -104,18 +118,21 @@ fn main() -> ExitCode {
         SubCmd::Bench => run_bin("bench", &[]),
         SubCmd::Gmp => run_bin("gmp", &[]),
         SubCmd::Diag => run_bin("diag", &[]),
-        SubCmd::Backup { output_dir } => {
-            run_bin("backup", &[("--output-dir", output_dir)])
-        }
-        SubCmd::Restore { backup_id, database } => {
-            run_bin("restore", &[
-                ("--backup-id", backup_id),
-                ("--database", database),
-            ])
-        }
-        SubCmd::Cli { query, host, port, user, password } => {
-            run_cli(&query, &host, port, &user, &password)
-        }
+        SubCmd::Backup { output_dir } => run_bin("backup", &[("--output-dir", output_dir)]),
+        SubCmd::Restore {
+            backup_id,
+            database,
+        } => run_bin(
+            "restore",
+            &[("--backup-id", backup_id), ("--database", database)],
+        ),
+        SubCmd::Cli {
+            query,
+            host,
+            port,
+            user,
+            password,
+        } => run_cli(&query, &host, port, &user, &password),
     }
 }
 
@@ -178,13 +195,14 @@ fn run_cli(query: &str, host: &str, port: u16, _user: &str, _password: &str) -> 
     tracing::info!("Connecting to {}:{}", host, port);
 
     let addr = format!("{}:{}", host, port);
-    let mut stream = match TcpStream::connect_timeout(&addr.parse().unwrap(), Duration::from_secs(5)) {
-        Ok(s) => s,
-        Err(e) => {
-            eprintln!("Connection failed: {}", e);
-            return ExitCode::from(1);
-        }
-    };
+    let mut stream =
+        match TcpStream::connect_timeout(&addr.parse().unwrap(), Duration::from_secs(5)) {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("Connection failed: {}", e);
+                return ExitCode::from(1);
+            }
+        };
 
     stream.set_read_timeout(Some(Duration::from_secs(30))).ok();
     stream.set_write_timeout(Some(Duration::from_secs(30))).ok();
