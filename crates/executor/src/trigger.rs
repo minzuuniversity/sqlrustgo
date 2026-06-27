@@ -473,8 +473,13 @@ impl TriggerExecutor {
             .map_err(|e| SqlError::ExecutionError(format!("Parse error: {}", e)))?;
 
         if let sqlrustgo_parser::Statement::Update(update) = statement {
+            if update.tables.len() != 1 {
+                return Err(SqlError::ExecutionError(
+                    "Trigger UPDATE only supports single-table form".to_string(),
+                ));
+            }
             let storage = self.storage.read().unwrap();
-            let table_name = &update.table;
+            let table_name = &update.tables[0].name;
             let table_info = storage.get_table_info(table_name)?;
             let target_col_names: Vec<String> =
                 table_info.columns.iter().map(|c| c.name.clone()).collect();
@@ -559,7 +564,12 @@ impl TriggerExecutor {
             .map_err(|e| SqlError::ExecutionError(format!("Parse error: {}", e)))?;
 
         if let sqlrustgo_parser::Statement::Delete(delete) = statement {
-            self.execute_dml_in_tx(|storage| storage.delete(&delete.table, &[]))?;
+            if delete.tables.len() != 1 {
+                return Err(SqlError::ExecutionError(
+                    "Trigger DELETE only supports single-table form".to_string(),
+                ));
+            }
+            self.execute_dml_in_tx(|storage| storage.delete(&delete.tables[0].name, &[]))?;
         }
         Ok(())
     }

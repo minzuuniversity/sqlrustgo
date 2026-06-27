@@ -4,8 +4,9 @@
 #![allow(unused_variables, unused_imports)]
 
 use crate::engine_utils::{
-    build_aggregate_schema, build_combined_schema, eval_predicate, evaluate_where_clause,
-    find_column_index, sql_compare, validate_foreign_keys,
+    build_aggregate_schema, build_combined_schema, build_multi_table_combined_schema,
+    cartesian_product, eval_predicate, evaluate_where_clause, find_column_index, sql_compare,
+    validate_foreign_keys,
 };
 use crate::expr_utils::{
     compare_values, evaluate_binary_op, evaluate_expr_to_string, evaluate_expression,
@@ -639,14 +640,23 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     }
 
     pub fn execute_update(&mut self, update: &UpdateStatement) -> SqlResult<ExecutorResult> {
+        if update.tables.is_empty() {
+            return Err(SqlError::ExecutionError(
+                "UPDATE requires at least one table".to_string(),
+            ));
+        }
+        if update.tables.len() > 1 {
+            return self.execute_update_multi_table(update);
+        }
+        let table_name = update.tables[0].name.clone();
+
         // ARCH-3 (#3169): VtuGuard main-path enforcement (P0-1, Blocker-3)
         sqlrustgo_storage::vtu_guard::VtuGuard::<()>::assert_path_for_dml(
             "execute_update",
-            &update.table,
+            &table_name,
         );
         let (tm_tx_id, started_implicit) =
-            self.begin_implicit_dml_tx("execute_update", &update.table)?;
-        let table_name = update.table.clone();
+            self.begin_implicit_dml_tx("execute_update", &table_name)?;
 
         let scalar_eval = |subq: &sqlrustgo_parser::SelectStatement| -> Result<Value, String> {
             let result = self.execute_select(subq).map_err(|e| e.to_string())?;
@@ -684,7 +694,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             None => None,
         };
         let resolved_update = UpdateStatement {
-            table: update.table.clone(),
+            tables: update.tables.clone(),
             set_clauses: resolved_set,
             where_clause: resolved_where,
         };
@@ -848,14 +858,23 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     }
 
     pub fn execute_delete(&mut self, delete: &DeleteStatement) -> SqlResult<ExecutorResult> {
+        if delete.tables.is_empty() {
+            return Err(SqlError::ExecutionError(
+                "DELETE requires at least one table".to_string(),
+            ));
+        }
+        if delete.tables.len() > 1 || delete.using.is_some() {
+            return self.execute_delete_multi_table(delete);
+        }
+        let table_name = delete.tables[0].name.clone();
+
         // ARCH-3 (#3169): VtuGuard main-path enforcement (P0-1, Blocker-3)
         sqlrustgo_storage::vtu_guard::VtuGuard::<()>::assert_path_for_dml(
             "execute_delete",
-            &delete.table,
+            &table_name,
         );
         let (tm_tx_id, started_implicit) =
-            self.begin_implicit_dml_tx("execute_delete", &delete.table)?;
-        let table_name = delete.table.clone();
+            self.begin_implicit_dml_tx("execute_delete", &table_name)?;
 
         let scalar_eval = |subq: &sqlrustgo_parser::SelectStatement| -> Result<Value, String> {
             let result = self.execute_select(subq).map_err(|e| e.to_string())?;
@@ -882,7 +901,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             None => None,
         };
         let resolved_delete = DeleteStatement {
-            table: delete.table.clone(),
+            tables: delete.tables.clone(),
+            using: delete.using.clone(),
             where_clause: resolved_where,
         };
 
@@ -1005,6 +1025,245 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         self.commit_implicit_dml_tx(started_implicit);
 
         Ok(ExecutorResult::new(vec![], count))
+    }
+
+    /// Execute `UPDATE t1, t2, ... SET ... WHERE ...` against the
+    /// cartesian product of the listed tables. Single-table UPDATE is
+    /// handled inline by `execute_update`.
+    fn execute_update_multi_table(
+        &mut self,
+        update: &UpdateStatement,
+    ) -> SqlResult<ExecutorResult> {
+        let scalar_eval = |subq: &sqlrustgo_parser::SelectStatement| -> Result<Value, String> {
+            let result = self.execute_select(subq).map_err(|e| e.to_string())?;
+            Ok(result
+                .rows
+                .first()
+                .and_then(|r| r.first().cloned())
+                .unwrap_or(Value::Null))
+        };
+        let list_eval = |subq: &sqlrustgo_parser::SelectStatement| -> Result<Vec<Value>, String> {
+            let result = self.execute_select(subq).map_err(|e| e.to_string())?;
+            Ok(result
+                .rows
+                .into_iter()
+                .map(|r| r.first().cloned().unwrap_or(Value::Null))
+                .collect())
+        };
+        let resolved_set: Vec<(String, Expression)> = update
+            .set_clauses
+            .iter()
+            .map(|(col, expr)| {
+                Ok((
+                    col.clone(),
+                    resolve_subqueries_in_expr(expr, &scalar_eval, &list_eval)?,
+                ))
+            })
+            .collect::<Result<Vec<_>, String>>()
+            .map_err(|e| SqlError::ExecutionError(format!("UPDATE SET subquery: {}", e)))?;
+        let resolved_where: Option<Expression> = match &update.where_clause {
+            Some(w) => Some(
+                resolve_subqueries_in_expr(w, &scalar_eval, &list_eval).map_err(|e| {
+                    SqlError::ExecutionError(format!("UPDATE WHERE subquery: {}", e))
+                })?,
+            ),
+            None => None,
+        };
+
+        let table_refs = &update.tables;
+        let mut per_table_rows: Vec<Vec<Vec<Value>>> = Vec::with_capacity(table_refs.len());
+        let mut per_table_info: Vec<sqlrustgo_storage::TableInfo> =
+            Vec::with_capacity(table_refs.len());
+        let mut per_table_prefix: Vec<String> = Vec::with_capacity(table_refs.len());
+        {
+            let storage = self.storage.read().unwrap();
+            for tref in table_refs {
+                let info = storage.get_table_info(&tref.name)?.clone();
+                let rows = storage.scan(&tref.name)?;
+                per_table_rows.push(rows);
+                per_table_info.push(info);
+                let prefix = tref.alias.clone().unwrap_or_else(|| tref.name.clone());
+                per_table_prefix.push(prefix);
+            }
+        }
+
+        let combined_info = build_multi_table_combined_schema(&per_table_info, &per_table_prefix);
+        let combined_cols: Vec<(String, usize)> = combined_info
+            .columns
+            .iter()
+            .enumerate()
+            .map(|(i, c)| (c.name.clone(), i))
+            .collect();
+        let col_offsets: Vec<usize> = {
+            let mut offs = Vec::with_capacity(table_refs.len());
+            let mut acc = 0usize;
+            for info in &per_table_info {
+                offs.push(acc);
+                acc += info.columns.len();
+            }
+            offs
+        };
+
+        let combined_rows = cartesian_product(&per_table_rows);
+
+        let mut per_table_updates: Vec<Vec<(Vec<Value>, Vec<Value>)>> =
+            (0..table_refs.len()).map(|_| Vec::new()).collect();
+        let mut total_count = 0usize;
+
+        for combined_row in &combined_rows {
+            let matches = match &resolved_where {
+                None => true,
+                Some(w) => evaluate_where_clause(w, combined_row, &combined_info),
+            };
+            if !matches {
+                continue;
+            }
+            let mut after_row = combined_row.clone();
+            for (col, expr) in &resolved_set {
+                let target_col = col.split_once('.').map(|(_, c)| c).unwrap_or(col.as_str());
+                let new_val =
+                    evaluate_expression(expr, combined_row, &combined_info).unwrap_or(Value::Null);
+                if let Some((_, idx)) = combined_cols
+                    .iter()
+                    .find(|(name, _)| name.ends_with(&format!(".{}", target_col)))
+                {
+                    if let Some(slot) = after_row.get_mut(*idx) {
+                        *slot = new_val;
+                    }
+                }
+            }
+            for (t, _) in table_refs.iter().enumerate() {
+                let cols_start = col_offsets[t];
+                let cols_end = cols_start + per_table_info[t].columns.len();
+                let before = combined_row[cols_start..cols_end].to_vec();
+                let after = after_row[cols_start..cols_end].to_vec();
+                per_table_updates[t].push((before, after));
+            }
+            total_count += 1;
+        }
+
+        self.apply_multi_table_updates(table_refs, per_table_updates, total_count)
+    }
+
+    fn apply_multi_table_updates(
+        &mut self,
+        table_refs: &[sqlrustgo_parser::TableRef],
+        per_table_updates: Vec<Vec<(Vec<Value>, Vec<Value>)>>,
+        total_count: usize,
+    ) -> SqlResult<ExecutorResult> {
+        let mut storage = self.storage.write().unwrap();
+        for (t, tref) in table_refs.iter().enumerate() {
+            let pairs = &per_table_updates[t];
+            if pairs.is_empty() {
+                continue;
+            }
+            let info = storage.get_table_info(&tref.name)?.clone();
+            let pk_idx = info.columns.iter().position(|c| c.primary_key).unwrap_or(0);
+            for (before, after) in pairs {
+                let pk_val = before.get(pk_idx).cloned().unwrap_or(Value::Null);
+                storage.delete(&tref.name, std::slice::from_ref(&pk_val))?;
+                storage.insert(&tref.name, vec![after.clone()])?;
+            }
+        }
+        Ok(ExecutorResult::new(vec![], total_count))
+    }
+
+    /// Execute `DELETE t1, t2 FROM t1, t2 WHERE ...` against the
+    /// cartesian product. Single-table DELETE is inline in
+    /// `execute_delete`.
+    fn execute_delete_multi_table(
+        &mut self,
+        delete: &DeleteStatement,
+    ) -> SqlResult<ExecutorResult> {
+        let source_refs: Vec<sqlrustgo_parser::TableRef> = match &delete.using {
+            Some(s) => s.clone(),
+            None => delete.tables.clone(),
+        };
+        let target_refs = &delete.tables;
+
+        let resolved_where: Option<Expression> = match &delete.where_clause {
+            Some(w) => {
+                let scalar_eval =
+                    |subq: &sqlrustgo_parser::SelectStatement| -> Result<Value, String> {
+                        let result = self.execute_select(subq).map_err(|e| e.to_string())?;
+                        Ok(result
+                            .rows
+                            .first()
+                            .and_then(|r| r.first().cloned())
+                            .unwrap_or(Value::Null))
+                    };
+                let list_eval =
+                    |subq: &sqlrustgo_parser::SelectStatement| -> Result<Vec<Value>, String> {
+                        let result = self.execute_select(subq).map_err(|e| e.to_string())?;
+                        Ok(result
+                            .rows
+                            .into_iter()
+                            .map(|r| r.first().cloned().unwrap_or(Value::Null))
+                            .collect())
+                    };
+                Some(
+                    resolve_subqueries_in_expr(w, &scalar_eval, &list_eval).map_err(|e| {
+                        SqlError::ExecutionError(format!("DELETE WHERE subquery: {}", e))
+                    })?,
+                )
+            }
+            None => None,
+        };
+
+        let mut per_table_rows: Vec<Vec<Vec<Value>>> = Vec::with_capacity(source_refs.len());
+        let mut per_table_info: Vec<sqlrustgo_storage::TableInfo> =
+            Vec::with_capacity(source_refs.len());
+        let mut per_table_prefix: Vec<String> = Vec::with_capacity(source_refs.len());
+        {
+            let storage = self.storage.read().unwrap();
+            for tref in &source_refs {
+                let info = storage.get_table_info(&tref.name)?.clone();
+                let rows = storage.scan(&tref.name)?;
+                per_table_rows.push(rows);
+                per_table_info.push(info);
+                let prefix = tref.alias.clone().unwrap_or_else(|| tref.name.clone());
+                per_table_prefix.push(prefix);
+            }
+        }
+        let combined_info = build_multi_table_combined_schema(&per_table_info, &per_table_prefix);
+        let combined_rows = cartesian_product(&per_table_rows);
+
+        let mut per_table_drop: Vec<Vec<Vec<Value>>> =
+            (0..source_refs.len()).map(|_| Vec::new()).collect();
+
+        for combined_row in &combined_rows {
+            let matches = match &resolved_where {
+                None => true,
+                Some(w) => evaluate_where_clause(w, combined_row, &combined_info),
+            };
+            if !matches {
+                continue;
+            }
+            for (t, tref) in source_refs.iter().enumerate() {
+                if target_refs.iter().any(|x| x.name == tref.name) {
+                    let cols_start: usize = (0..t).map(|k| per_table_info[k].columns.len()).sum();
+                    let cols_end = cols_start + per_table_info[t].columns.len();
+                    per_table_drop[t].push(combined_row[cols_start..cols_end].to_vec());
+                }
+            }
+        }
+
+        let mut total = 0usize;
+        let mut storage = self.storage.write().unwrap();
+        for (t, tref) in source_refs.iter().enumerate() {
+            if !target_refs.iter().any(|x| x.name == tref.name) {
+                continue;
+            }
+            let info = storage.get_table_info(&tref.name)?.clone();
+            let pk_idx = info.columns.iter().position(|c| c.primary_key).unwrap_or(0);
+            for row in &per_table_drop[t] {
+                let pk_val = row.get(pk_idx).cloned().unwrap_or(Value::Null);
+                if storage.delete(&tref.name, std::slice::from_ref(&pk_val))? > 0 {
+                    total += 1;
+                }
+            }
+        }
+        Ok(ExecutorResult::new(vec![], total))
     }
 
     fn execute_create_table(&self, create: &CreateTableStatement) -> SqlResult<ExecutorResult> {
