@@ -1,0 +1,166 @@
+//! SQLRustGo Canonical CLI Library
+//!
+//! Provides the `run()` entry point used by `sqlrustgo` binary.
+//! Thin wrapper around `sqlrustgo-mysql-server` for most subcommands.
+
+use clap::{Parser, Subcommand};
+use std::process::Command as Proc;
+
+#[derive(Parser, Debug)]
+#[command(
+    name = "sqlrustgo",
+    about = "SQLRustGo canonical CLI",
+    version
+)]
+struct Cli {
+    #[command(subcommand)]
+    command: Option<SubCmd>,
+}
+
+#[derive(Subcommand, Debug)]
+enum SubCmd {
+    /// Start the MySQL wire-protocol server.
+    Serve {
+        #[arg(long, default_value = "3307")]
+        port: u16,
+        #[arg(long)]
+        data_dir: Option<String>,
+    },
+    /// Execute a single SQL statement and print the result.
+    Exec { sql: String },
+    /// Interactive REPL.
+    Repl {
+        #[arg(long, default_value = "3307")]
+        port: u16,
+    },
+    Bench,
+    Gmp,
+    Diag,
+    Backup { output_dir: String },
+    Restore { backup_id: String, database: String },
+    /// Connect to a running server and execute a query (NEW).
+    Cli {
+        #[arg(short, long, default_value = "3307")]
+        port: u16,
+        #[arg(short, long, default_value = "127.0.0.1")]
+        host: String,
+        #[arg(short, long)]
+        user: Option<String>,
+        #[arg(short, long)]
+        password: Option<String>,
+        query: String,
+    },
+}
+
+pub fn run() -> i32 {
+    let cli = Cli::parse();
+
+    match cli.command {
+        None => {
+            let bin = mysql_server_bin();
+            let status = Proc::new(&bin).arg("--help").status();
+            match status {
+                Ok(s) => s.code().unwrap_or(1),
+                Err(_) => {
+                    eprintln!("sqlrustgo-mysql-server not found. Run with --help to see available subcommands.");
+                    1
+                }
+            }
+        }
+        Some(SubCmd::Serve { port, data_dir }) => {
+            let mut args = vec![("--port", port.to_string())];
+            if let Some(dir) = data_dir {
+                args.push(("--data-dir", dir));
+            }
+            run_bin("serve", &args)
+        }
+        Some(SubCmd::Exec { sql }) => run_bin_arg_positional("exec", &sql),
+        Some(SubCmd::Repl { port }) => run_bin("repl", &[("--port", port.to_string())]),
+        Some(SubCmd::Bench) => run_bin("bench", &[]),
+        Some(SubCmd::Gmp) => run_bin("gmp", &[]),
+        Some(SubCmd::Diag) => run_bin("diag", &[]),
+        Some(SubCmd::Backup { output_dir }) => {
+            run_bin("backup", &[("--output", output_dir)])
+        }
+        Some(SubCmd::Restore { backup_id, database }) => {
+            run_bin("restore", &[("--input", backup_id), ("--database", database)])
+        }
+        Some(SubCmd::Cli { port, host, user, password, query }) => {
+            run_cli(&query, &host, port, user.as_deref().unwrap_or("root"), password.as_deref().unwrap_or(""))
+        }
+    }
+}
+
+fn run_bin(subcmd: &str, args: &[(&str, String)]) -> i32 {
+    let bin = mysql_server_bin();
+    let mut cmd = Proc::new(&bin);
+    cmd.arg(subcmd);
+    for (k, v) in args {
+        cmd.arg(k).arg(v);
+    }
+    exec_status(&bin, cmd)
+}
+
+fn run_bin_arg_positional(subcmd: &str, positional: &str) -> i32 {
+    let bin = mysql_server_bin();
+    let mut cmd = Proc::new(&bin);
+    cmd.arg(subcmd).arg(positional);
+    exec_status(&bin, cmd)
+}
+
+fn mysql_server_bin() -> String {
+    let candidates = [
+        "sqlrustgo-mysql-server",
+        "./target/debug/sqlrustgo-mysql-server",
+        "./target/release/sqlrustgo-mysql-server",
+    ];
+    for c in candidates {
+        if std::path::Path::new(c).exists() || which(c).is_some() {
+            return c.to_string();
+        }
+    }
+    "sqlrustgo-mysql-server".to_string()
+}
+
+fn which(name: &str) -> Option<String> {
+    let path = std::env::var_os("PATH")?;
+    for dir in std::env::split_paths(&path) {
+        let full = dir.join(name);
+        if full.exists() {
+            return Some(full.to_string_lossy().to_string());
+        }
+    }
+    None
+}
+
+fn exec_status(bin: &str, mut cmd: Proc) -> i32 {
+    match cmd.status() {
+        Ok(s) => s.code().unwrap_or(1),
+        Err(e) => {
+            eprintln!("Failed to execute {bin}: {e}");
+            1
+        }
+    }
+}
+
+#[allow(unused_variables)]
+fn run_cli(query: &str, host: &str, port: u16, user: &str, password: &str) -> i32 {
+    use std::io::{Read, Write};
+    use std::net::TcpStream;
+
+    let addr = format!("{host}:{port}");
+    match TcpStream::connect(&addr) {
+        Ok(mut stream) => {
+            let _ = stream.write_all(query.as_bytes());
+            let mut buf = String::new();
+            let _ = stream.read_to_string(&mut buf);
+            println!("{buf}");
+            0
+        }
+        Err(e) => {
+            eprintln!("Failed to connect to {addr}: {e}");
+            eprintln!("Make sure sqlrustgo-mysql-server is running: sqlrustgo serve");
+            1
+        }
+    }
+}
