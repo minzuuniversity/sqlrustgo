@@ -420,8 +420,12 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             storage.get_table_info(&table_name)?.clone()
         };
 
-        // Convert expressions to records
-        let all_records = Self::build_insert_records(&insert.values);
+        let all_records: Vec<Vec<Value>> = if let Some(ref select) = insert.select {
+            let select_result = self.execute_select(select)?;
+            Self::map_select_result_to_records(select_result, &insert.columns, &table_info)?
+        } else {
+            Self::build_insert_records(&insert.values)
+        };
 
         // For REPLACE INTO: if insert.values has a unique/key conflict, delete old row first
         if insert.is_replace {
@@ -607,7 +611,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         // INT-1: autocommit — leave the commit decision to the helper.
         self.commit_implicit_dml_tx(started_implicit);
 
-        Ok(ExecutorResult::new(vec![], insert.values.len()))
+        Ok(ExecutorResult::new(vec![], all_records.len()))
     }
 
     /// Check if a new record matches an existing row based on primary key or unique constraints
@@ -1883,6 +1887,77 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             .iter()
             .map(|row_exprs| row_exprs.iter().map(expression_to_value).collect())
             .collect()
+    }
+
+    fn map_select_result_to_records(
+        result: ExecutorResult,
+        target_columns: &[String],
+        target_table_info: &TableInfo,
+    ) -> SqlResult<Vec<Vec<Value>>> {
+        let target_col_indices: Vec<usize> = if target_columns.is_empty() {
+            if !result.rows.is_empty()
+                && result.rows[0].len() != target_table_info.columns.len()
+            {
+                return Err(SqlError::ExecutionError(format!(
+                    "INSERT SELECT column count mismatch: SELECT has {} columns, target table has {}",
+                    result.rows[0].len(),
+                    target_table_info.columns.len()
+                )));
+            }
+            (0..target_table_info.columns.len()).collect()
+        } else {
+            target_columns
+                .iter()
+                .map(|name| {
+                    target_table_info
+                        .columns
+                        .iter()
+                        .position(|c| c.name == *name)
+                        .ok_or_else(|| {
+                            SqlError::ExecutionError(format!(
+                                "Unknown column '{}' in INSERT column list",
+                                name
+                            ))
+                        })
+                })
+                .collect::<SqlResult<Vec<_>>>()?
+        };
+
+        result
+            .rows
+            .into_iter()
+            .map(|row| {
+                let mut record = Vec::with_capacity(target_col_indices.len());
+                for (source_idx, &target_idx) in target_col_indices.iter().enumerate() {
+                    let value = row.get(source_idx).cloned().unwrap_or(Value::Null);
+                    let target_col = &target_table_info.columns[target_idx];
+                    record.push(Self::coerce_value_to_column(value, target_col));
+                }
+                Ok(record)
+            })
+            .collect()
+    }
+
+    fn coerce_value_to_column(value: Value, target_col: &ColumnDefinition) -> Value {
+        let upper = target_col.data_type.to_uppercase();
+        match (&value, upper.as_str()) {
+            (Value::Integer(i), "TEXT" | "VARCHAR" | "CHAR") => {
+                Value::Text(i.to_string())
+            }
+            (Value::Float(f), "TEXT" | "VARCHAR" | "CHAR") => {
+                Value::Text(f.to_string())
+            }
+            (Value::Boolean(b), "TEXT" | "VARCHAR" | "CHAR") => {
+                Value::Text(if *b { "TRUE" } else { "FALSE" }.to_string())
+            }
+            (Value::Text(s), "INTEGER" | "INT" | "BIGINT" | "SMALLINT") => {
+                s.parse::<i64>().map(Value::Integer).unwrap_or(Value::Null)
+            }
+            (Value::Text(s), "REAL" | "FLOAT" | "DOUBLE") => {
+                s.parse::<f64>().map(Value::Float).unwrap_or(Value::Null)
+            }
+            (v, _) => v.clone(),
+        }
     }
 
     /// Apply `ON DUPLICATE KEY UPDATE`: delete existing row + re-insert with updates.
