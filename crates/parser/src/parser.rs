@@ -3498,13 +3498,27 @@ impl Parser {
                 join_clause.extend(chain);
             } else {
                 // No WHERE — pure cartesian joins (ON=true).
+                // Recover the inline alias from the `bare|alias`
+                // encoding that the extra_tables loop produced, so
+                // the executor can match qualifiers like `n2.n_name`
+                // in the WHERE clause. Without this, the alias is
+                // silently lost on the cartesian path (TPC-H Q8 7-way
+                // bug: `nation n2` becomes `join_clause.table="nation"`
+                // `join_clause.alias=None`, so the pre-filter lookup
+                // misses the `n2.n_name = 'GERMANY'` push-down).
                 let cart: Vec<JoinClause> = extra_tables
                     .iter()
-                    .map(|t| JoinClause {
-                        join_type: JoinType::Inner,
-                        table: t.clone(),
-                        alias: None,
-                        on_clause: Expression::Literal("true".to_string()),
+                    .map(|t| {
+                        let (bare, alias) = match t.split_once('|') {
+                            Some((b, a)) => (b.to_string(), Some(a.to_string())),
+                            None => (t.clone(), None),
+                        };
+                        JoinClause {
+                            join_type: JoinType::Inner,
+                            table: bare,
+                            alias,
+                            on_clause: Expression::Literal("true".to_string()),
+                        }
                     })
                     .collect();
                 join_clause.extend(cart);
