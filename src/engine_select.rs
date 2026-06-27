@@ -1404,7 +1404,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         &self,
         select: &SelectStatement,
         base_table: &str,
-        base_alias: &str,
+        _base_alias: &str,
         base_rows: Vec<Vec<Value>>,
         base_info: &TableInfo,
     ) -> Option<(Vec<Vec<Value>>, TableInfo)> {
@@ -1476,10 +1476,6 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         // Greedy chain build: pick the smallest table as the build
         // side and grow outward. For each step, find the next table
         // that has a recorded equality with the current tail.
-        let alias_to_bare: HashMap<String, String> = join_tables
-            .iter()
-            .map(|(b, a)| (a.clone(), b.clone()))
-            .collect();
         let mut visited: std::collections::HashSet<String> =
             [base_alias.to_string()].into_iter().collect();
         let mut chain_order: Vec<(String, String)> =
@@ -1491,7 +1487,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 .unwrap_or_default();
             let next = join_tables
                 .iter()
-                .find(|(bare, alias)| {
+                .find(|(_, alias)| {
                     !visited.contains(alias)
                         && pair_key.keys().any(|(a1, a2)| {
                             (a1 == &tail_alias && a2 == alias) || (a2 == &tail_alias && a1 == alias)
@@ -1499,8 +1495,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 })
                 .cloned();
             match next {
-                Some((bare, alias)) => {
-                    chain_order.push((bare, alias.clone()));
+                Some((next_bare, alias)) => {
+                    chain_order.push((next_bare, alias.clone()));
                     visited.insert(alias);
                 }
                 None => break,
@@ -1602,7 +1598,6 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         for col in &acc_columns[base_info.columns.len()..] {
             joined_info.columns.push(col.clone());
         }
-        let _ = alias_to_bare;
         Some((accumulated, joined_info))
     }
 
