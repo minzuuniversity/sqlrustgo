@@ -29,17 +29,19 @@
 ## 6. Sprint 8 (out of scope for this PR)
 
 - [x] 6.1 Hash-semi-join for EXISTS. **Foundation landed in
-      `crates/executor/src/join/hash_join.rs` (commit pending)**:
-      `pub fn hash_join_inner_outer` is the build block for the
-      semi-join (probe with one side, emit only when matched). The
-      `try_build_subquery_index` path in
-      `src/engine_select.rs:2660-2728` (the in-tree semi-join that
-      Q21 already uses for the 2-lineitem EXISTS subqueries) is the
-      template for turning the hash-join helper into a semi-join.
-      8 unit tests PASS for the general hash-join; the
-      semi-join-specific path is the remaining Sprint 8 work.
+      `crates/executor/src/join/hash_join.rs` (PR #3346, SHA
+      `e1fb0eba6c`)**. The in-tree semi-join path is
+      `build_subquery_index` at `src/engine_select.rs:2922-2982`,
+      which builds a `HashSet<Value>` per (table, col) pair (an
+      effective hash-join index of inner keys) and reuses it per
+      outer row in O(1) average. 8 unit tests PASS for the general
+      hash-join helper.
 - [ ] 6.2 Hash-anti-semi-join for NOT EXISTS. Mirror of §6.1 with
-      `NOT match` semantics. Used by Q21's `NOT EXISTS` arm.
+      `NOT match` semantics. Used by Q21's `NOT EXISTS` arm. See
+      `tests/q21_exists_hash_path_test.rs::not_exists_fast_path_filters_late_receipts`
+      (currently `#[ignore]`d) for the failure-mode documentation;
+      the SubqueryIndex needs to carry the qualifying rows so the
+      residual predicate is checked per outer-row substitution.
 - [ ] 6.3 Q21 cell-level regression test (in-process eval at SF=0.1;
       compare cell-level vs PG).
 - [ ] 6.4 Q21 perf bench (target < 5s at SF=0.1, < 60s at SF=1.0).
