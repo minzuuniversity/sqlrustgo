@@ -1,0 +1,26 @@
+{
+  "_comment": [
+    "BUMP WORKFLOW (read before editing):",
+    "1. Run `python3 scripts/gate/tpch_hash_compare.py --capture` against the target tree.",
+    "2. Copy the printed 64-char hex into `tpc_h_hash_sha256` below.",
+    "3. Update `captured_from` to the new commit SHA (or tag).",
+    "4. Update `captured_at` to today's date.",
+    "5. Commit the change; the PR diff must show the hash field as the only material change.",
+    "",
+    "A legitimate bump is required for any change that alters the row count, column values, or row order (after sort) of any of TPC-H Q1..Q22. The PR description must explain WHY the hash changed (e.g., 'Q5 now returns correct rows after fix for subquery flattening').",
+    "",
+    "An accidental bump (no legitimate output change) is detectable: the diff is small and the new hash has no provenance. The G1 shell gate does not auto-bump; it always requires this file to be updated by a human-reviewed PR."
+  ],
+  "version": "v3.9.0",
+  "captured_at": "2026-06-11",
+  "captured_from": "cee3964eff312a0b9e8977cfdcef37444eef1f1a",
+  "tpc_h_hash_sha256": "7bc939e7744f4c99cbfee073007b8b49d6116030e5b6e52054b481547caa5fa4",
+  "tpc_h_queries": 22,
+  "tpc_h_test_files": [
+    "tests/tpch_gate_test.rs",
+    "tests/tpch_full_22_test.rs"
+  ],
+  "scale_factor": 0.1,
+  "runner": "Mac-mini-6 (Apple Silicon M2)",
+  "status": "CAPTURED \u2014 TPC-H 22/22 cell-level baseline hash. Sprint 5 v15: 21/22 queries executed within 300s timeout. Q21 (4-table correlated EXISTS) times out at 300s; this is tracked as Issue #3316 (11min\u219290ms Sprint 5 v6 fix; further optimization for 300s target). All other 21 queries complete with cell-level exact match to MariaDB/PostgreSQL/SQLite (Sprint 5 v13)."
+}

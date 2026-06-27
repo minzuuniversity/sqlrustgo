@@ -264,3 +264,10 @@ AI 参与开发必须遵守：
 2. 每阶段只盯 5 个核心指标，不追求一次到位全指标平台化。
 3. 先把“命令可执行 + 门禁可复现 + 证据可追溯”做好，再做高级治理自动化。
 4. 每次版本复盘只做 3 个改进动作，确保能执行完。
+
+---
+
+## 14. 相关规范（v3.8.0+）
+
+- **单入口原则（Single Entry Point）**：v3.8.0 起，SQLRustGo 唯一生产入口为 `sqlrustgo-mysql-server`，子命令（`serve` / `exec` / `repl` / `bench` / `gmp` / `diag` / `backup` / `restore`）统一原 `sqlrustgo` / `sqlrustgo-sql-cli` / `sqlrustgo-bench(-cli)` / `sqlrustgo-gmp-cli` / `sqlrustgo-tools` 的能力。详见 [SPEC-v3.8.0-001](../releases/v3.8.0/SPEC-v3.8.0-001-mysql-server-canonical-entry.md) 与 [CHANGELOG `## [Unreleased]`](../../CHANGELOG.md)。
+- **一源真相（SSOT）**：执行入口规范的唯一权威源是上述 SPEC 文件；本标准与 IMMUTABLE_RELEASE_ARCHITECTURE.md / GATE_CI_CD.md 中关于入口的描述必须与之保持一致。

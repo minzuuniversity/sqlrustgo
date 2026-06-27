@@ -1,0 +1,214 @@
+{
+  "sf": "sf0.01",
+  "data_source": "data/sf0.01_data/ (60K lineitem, 86K total rows). TPC-H spec with trailing | in .tbl files.",
+  "generated": "2026-06-14",
+  "note": "Row counts captured by running each query via mysql/psql CLI. Two engines verified (MySQL ground truth + PG oracle).",
+  "engines": {
+    "mysql": {
+      "version": "12.3.2-MariaDB",
+      "queries": {
+        "Q01": {
+          "rows": 6
+        },
+        "Q02": {
+          "rows": 0
+        },
+        "Q03": {
+          "rows": 10
+        },
+        "Q04": {
+          "rows": 5
+        },
+        "Q05": {
+          "rows": 1
+        },
+        "Q06": {
+          "rows": 1
+        },
+        "Q07": {
+          "rows": 3
+        },
+        "Q08": {
+          "rows": 1
+        },
+        "Q09": {
+          "rows": 0
+        },
+        "Q10": {
+          "rows": 20
+        },
+        "Q11": {
+          "rows": 0
+        },
+        "Q12": {
+          "rows": 2
+        },
+        "Q13": {
+          "rows": 22
+        },
+        "Q14": {
+          "rows": 1
+        },
+        "Q15": {
+          "rows": 91
+        },
+        "Q16": {
+          "rows": 282
+        },
+        "Q17": {
+          "rows": 1
+        },
+        "Q18": {
+          "rows": 100
+        },
+        "Q19": {
+          "rows": 1
+        },
+        "Q20": {
+          "rows": 0
+        },
+        "Q21": {
+          "rows": 0
+        },
+        "Q22": {
+          "rows": 0
+        }
+      },
+      "total_rows": 547,
+      "total_ms": 43748.21,
+      "note": "Ground truth. 22/22 return rows (Q6 returns 1 NULL row for empty set)."
+    },
+    "postgresql": {
+      "version": "16.13",
+      "queries": {
+        "Q01": {
+          "rows": 6
+        },
+        "Q02": {
+          "rows": 0
+        },
+        "Q03": {
+          "rows": 10
+        },
+        "Q04": {
+          "rows": 5
+        },
+        "Q05": {
+          "rows": 1
+        },
+        "Q06": {
+          "rows": 0
+        },
+        "Q07": {
+          "rows": -1
+        },
+        "Q08": {
+          "rows": -1
+        },
+        "Q09": {
+          "rows": -1
+        },
+        "Q10": {
+          "rows": 20
+        },
+        "Q11": {
+          "rows": 0
+        },
+        "Q12": {
+          "rows": 2
+        },
+        "Q13": {
+          "rows": 22
+        },
+        "Q14": {
+          "rows": 1
+        },
+        "Q15": {
+          "rows": 91
+        },
+        "Q16": {
+          "rows": 282
+        },
+        "Q17": {
+          "rows": 1
+        },
+        "Q18": {
+          "rows": 100
+        },
+        "Q19": {
+          "rows": 0
+        },
+        "Q20": {
+          "rows": 0
+        },
+        "Q21": {
+          "rows": 0
+        },
+        "Q22": {
+          "rows": 0
+        }
+      },
+      "ok_count": 19,
+      "err_count": 3,
+      "note": "19/22 OK. Q7-Q9 fail on EXTRACT(YEAR FROM date) \u2014 PG requires different syntax. Q6/Q19 return 0 rows instead of 1 NULL (standard SQL SUM behavior)."
+    }
+  },
+  "match_summary": {
+    "mysql_vs_pg": "17/22 (excluding 3 PG errors and 2 SUM empty-set differences)",
+    "mismatches": {
+      "Q06": {
+        "mysql": 1,
+        "pg": 0,
+        "reason": "SUM(0 rows): MySQL=1 NULL row, PG=0 rows"
+      },
+      "Q19": {
+        "mysql": 1,
+        "pg": 0,
+        "reason": "Same SUM(0 rows) behavior difference"
+      }
+    },
+    "pg_unsupported": [
+      "Q07",
+      "Q08",
+      "Q09",
+      "reason: EXTRACT(YEAR FROM date) syntax not supported"
+    ]
+  },
+  "cell_value_samples": {
+    "Q01": {
+      "mysql": [
+        [
+          "A",
+          "F",
+          9679
+        ],
+        [
+          "A",
+          "O",
+          9481
+        ],
+        [
+          "N",
+          "F",
+          9382
+        ],
+        [
+          "N",
+          "O",
+          9677
+        ],
+        [
+          "R",
+          "F",
+          9434
+        ],
+        [
+          "R",
+          "O",
+          9472
+        ]
+      ],
+      "pg": "identical"
+    }
+  }
+}

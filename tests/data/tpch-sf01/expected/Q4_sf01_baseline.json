@@ -1,0 +1,18 @@
+{
+  "query": 4,
+  "row_count": 5,
+  "first_3_rows": [
+    [
+      "1-URGENT",
+      "27"
+    ],
+    [
+      "2-HIGH",
+      "23"
+    ],
+    [
+      "3-MEDIUM",
+      "29"
+    ]
+  ]
+}

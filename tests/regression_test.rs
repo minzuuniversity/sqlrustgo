@@ -277,12 +277,6 @@ fn get_test_categories() -> Vec<TestCategory> {
             test_files: vec!["mysql_tpch_test"],
             description: "MySQL vs SQLRustGo TPC-H 查询对比",
         },
-        // SQL CLI 测试
-        TestCategory {
-            name: "SQL CLI 测试 (SQL CLI)",
-            test_files: vec!["sql_cli_test"],
-            description: "SQL 命令行工具测试",
-        },
         // TPC-H Q-Query 测试
         TestCategory {
             name: "TPC-H Q-Query 测试 (TPC-H Q-Query)",

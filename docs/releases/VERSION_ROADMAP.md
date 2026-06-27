@@ -1,9 +1,9 @@
 # SQLRustGo 版本演化计划
 
-> **版本**: v8.0
-> **更新日期**: 2026-04-17
-> **战略定位**: 教学数据库产品（Teaching DBMS）
-> **核心原则**: 替代 MySQL 教学，差异化超越
+> **版本**: v3.7.0
+> **更新日期**: 2026-05-30
+> **战略定位**: 集成债务清算 + 协议栈统一
+> **核心原则**: 修复跨版本（v1.2.0~v3.6.0）集成缺陷，统一执行路径
 
 ---
 
@@ -387,10 +387,134 @@ L1 (Toy)   →   L2 (Query Engine)   →   L3 (Mini DBMS)   →   L4 (Analytical
 
 ---
 
+## v3.7.0 - 集成债务清算（2026年5月）
+
+**目标**: 修复跨版本（v1.2.0~v3.6.0）集成缺陷，统一执行路径
+
+### 背景
+
+v3.6.0 Alpha Gate 发现覆盖率 32.59%（Z440），深入分析发现核心问题是**跨版本集成债务**：
+
+| 缺陷 | 跨度 | 对应 Issue |
+|------|------|-----------|
+| DML 不经过 WAL/TransactionManager | v1.2.0~v3.6.0（6版本） | #2576 |
+| ParallelVolcanoExecutor 孤岛 | v2.6.0~v3.6.0（4版本） | #2570, #2577 |
+| expr crate 孤岛 | v3.0.0~v3.6.0（2版本） | 新发现 |
+| mysql-server 未集成 | v2.6.0~v3.6.0（4版本） | #2583 |
+
+**根因**：执行路径分裂（双路径并存）+ 存储层与事务层从未连接。
+
+### 交付物
+
+#### P0（Alpha 前必须完成）
+
+| Issue | 功能 | 验收标准 |
+|-------|------|----------|
+| INT-1 | WAL 集成：DML 经过 TransactionManager/WAL | INSERT/UPDATE/DELETE 经 WAL；COMMIT/ROLLBACK 正确持久化 |
+| INT-2 | ParallelVolcanoExecutor 集成到主执行链路 | `--parallel` 参数启用；TPC-H 并行模式正确执行；覆盖率 +10pp |
+
+#### P1（Beta 前计划完成）
+
+| Issue | 功能 | 验收标准 |
+|-------|------|----------|
+| INT-3 | expr crate 整合到 executor | executor 使用 expr crate；移除内联重复代码 |
+| INT-4 | mysql-server 协议栈统一 | COM_QUERY 统一入口；移除 server/lib.rs 重复实现 |
+
+### 技术方案
+
+#### INT-1：WAL 集成方案
+
+```
+StorageEngine trait 新增方法:
+  - begin_transaction() -> TransactionId
+  - commit(txn_id: TransactionId) -> SqlResult<()>
+  - rollback(txn_id: TransactionId) -> SqlResult<()>
+
+DML 执行路径:
+  LocalExecutor → TransactionManager → WAL-backed StorageEngine
+```
+
+#### INT-2：ParallelVolcanoExecutor 集成方案
+
+```
+LocalExecutor 增加并行模式开关:
+  - --parallel 启用 ParallelVolcanoExecutor
+  - TaskScheduler 与 Rayon 集成
+  - QueryRouter 执行器选择逻辑
+```
+
+#### INT-3：expr crate 整合方案
+
+```
+1. executor 内联表达式求值 → 替换为调用 expr crate
+2. 移除 executor 重复代码
+3. expr crate API 标准化
+```
+
+#### INT-4：mysql-server 协议统一方案
+
+```
+1. mysql-server COM_QUERY 处理作为主协议栈入口
+2. 统一 PhysicalPlan pipeline
+3. 移除 server/src/lib.rs 中独立实现
+```
+
+### Alpha Gate 检查项
+
+| ID | 检查 | 阈值 |
+|----|------|------|
+| G1 | Build (release) | ✅ PASS |
+| G2 | Test (lib) | 1200+ tests PASS |
+| G3 | Clippy | ✅ PASS (zero warnings) |
+| G4 | Format | ✅ PASS |
+| G5 | Coverage L1 | ≥ 75%（Z440 测量） |
+
+### Issue 列表
+
+| Issue | 说明 | 优先级 |
+|-------|------|--------|
+| #2576 | DML 不经过 TransactionManager/WAL | P0 |
+| #2570 | ParallelVolcanoExecutor 未集成到主执行链路 | P0 |
+| #2577 | ParallelVolcanoExecutor 孤岛（44 tests isolated） | P0 |
+| INT-3 | expr crate 孤岛（v3.0.0~v3.6.0） | P1 |
+| #2583 | DML 执行路径统一到 PhysicalPlan pipeline | P1 |
+
+### v3.7.0 Alpha 时间线
+
+| 日期 | 里程碑 |
+|------|--------|
+| 2026-05-30 | v3.7.0 开发分支创建 |
+| 2026-06-06 | Alpha Gate（覆盖率 75%+） |
+| 2026-06-13 | Beta Gate（所有 P0 修复完成） |
+
+---
+
+## v3.6.0 - 协议栈整合（2026年5月）
+
+**目标**: MySQL 协议栈完整 + TPC-H SF=1 基线
+
+### 交付物
+
+- ✅ MySQL COM_QUERY 协议处理
+- ✅ TPC-H SF=1 22/22 查询基线
+- ✅ SIMD 加速（sum_i64 阈值调度）
+- ✅ WAL 验证工作区（TI-3）
+- ❌ Alpha Gate FAIL（覆盖率 32.59% Z440）
+
+### 详细记录
+
+| 文档 | 说明 |
+|------|------|
+| `ALPHA_GATE_REPORT_v3.6.0.md` | Alpha 门禁结果 |
+| `INTEGRATION_DEBT_REPORT.md` | 跨版本集成债务分析 |
+| `BENCHMARK.md` | TPC-H SF=1 基线数据 |
+
+---
+
 ## 完整版本历史
 
 详细版本变更日志、功能矩阵、测试报告请查阅: [VERSION_HISTORY.md](./VERSION_HISTORY.md)
 
 ---
 
-*文档更新: 2026-04-17*
+*文档更新: 2026-05-30*
