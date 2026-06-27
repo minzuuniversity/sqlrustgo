@@ -348,6 +348,7 @@ pub struct ColumnDefinition {
     pub decimals: u8,
 }
 
+#[derive(Debug)]
 pub enum ResultSet {
     /// Query returned rows (column definitions + rows)
     Select {
@@ -368,6 +369,15 @@ pub enum ResultSet {
         sql_state: String,
         error_message: String,
     },
+}
+
+/// A prepared statement handle returned by `prepare()`.
+/// Use `id` to call `execute_prepared()` or `close_statement()`.
+#[derive(Debug, Clone)]
+pub struct PreparedStatement {
+    pub id: u32,
+    pub param_count: u16,
+    pub column_count: u16,
 }
 
 /// Parse length-encoded integer (MySQL wire protocol).
@@ -484,7 +494,7 @@ fn parse_text_row(data: &[u8], offset: &mut usize, num_columns: usize) -> MySqlR
 }
 
 /// Parse a result set from the stream after sending COM_QUERY.
-pub fn parse_result_set(stream: &mut dyn Read) -> MySqlResult<ResultSet> {
+pub fn parse_result_set(stream: &mut dyn Read, deprecate_eof: bool) -> MySqlResult<ResultSet> {
     let pkt = Packet::read_from(stream)?;
 
     // Check for error packet (first byte 0xff)
@@ -556,19 +566,29 @@ pub fn parse_result_set(stream: &mut dyn Read) -> MySqlResult<ResultSet> {
         columns.push(col);
     }
 
-    // EOF marker (if not DEPRECATE_EOF) — skip it
-    let _eof_pkt = Packet::read_from(stream)?;
+    // Inter-record separator (EOF or OK packet). Discard.
+    let _separator = Packet::read_from(stream)?;
 
-    // Parse rows
+    // Parse rows. Termination is:
+
+    //   - Classic (DEPRECATE_EOF=0): EOF packet (0xFE, 5 bytes)
+    //   - DEPRECATE_EOF=1: OK packet (0x00, 7 bytes)
     let mut rows = Vec::new();
     loop {
         let row_pkt = Packet::read_from(stream)?;
-        // EOF: empty payload or first byte 0xfe with length < 9 (EOF packet)
-        if row_pkt.payload.is_empty()
-            || (row_pkt.payload.len() < 9
-                && (row_pkt.payload.first() == Some(&0xfe)
-                    || row_pkt.payload.first() == Some(&0xff)))
-        {
+        let first = row_pkt.payload.first().copied();
+        // Empty packet always terminates
+        if row_pkt.payload.is_empty() {
+            break;
+        }
+        // Terminated by EOF packet (classic) or OK packet (DEPRECATE_EOF)
+        let is_eof = !deprecate_eof
+            && first == Some(0xfe)
+            && row_pkt.payload.len() < 9;
+        let is_deprecate_eof = deprecate_eof
+            && first == Some(0x00)
+            && row_pkt.payload.len() <= 8;
+        if is_eof || is_deprecate_eof {
             break;
         }
         let mut row_off = 0;
@@ -664,7 +684,7 @@ impl MySqlConnection {
         self.seq = query_pkt.sequence.wrapping_add(1);
         query_pkt.write_to(&mut self.stream)?;
 
-        let result = parse_result_set(&mut self.stream)?;
+        let result = parse_result_set(&mut self.stream, true)?;
 
         // Update seq from the last packet read (handled inside parse_result_set)
         // but we don't track it precisely there. For simplicity, reset seq.
@@ -673,7 +693,25 @@ impl MySqlConnection {
         Ok(result)
     }
 
-    /// Ping the server.
+    /// Execute a multi-statement query via COM_QUERY.
+    /// Each statement separated by `;` is executed independently.
+    /// Returns the first parsed result set (limited multi-result support).
+    pub fn execute_multi(&mut self, sql: &str) -> MySqlResult<Vec<ResultSet>> {
+        // Multi-statement queries are sent as a single COM_QUERY packet.
+        // For simplicity, we parse the first result set only.
+        let mut payload = Vec::with_capacity(sql.len() + 1);
+        payload.push(packet_type::COM_QUERY);
+        payload.extend_from_slice(sql.as_bytes());
+
+        let pkt = Packet::new(self.seq, payload);
+        self.seq = pkt.sequence.wrapping_add(1);
+        pkt.write_to(&mut self.stream)?;
+
+        let first = parse_result_set(&mut self.stream, true)?;
+        Ok(vec![first])
+    }
+
+     /// Ping the server.
     pub fn ping(&mut self) -> MySqlResult<()> {
         let pkt = Packet::new(self.seq, vec![packet_type::COM_PING]);
         self.seq = pkt.sequence.wrapping_add(1);
@@ -681,8 +719,122 @@ impl MySqlConnection {
         let _resp = Packet::read_from(&mut self.stream)?;
         Ok(())
     }
+    /// COM_STMT_PREPARE — prepare a statement
+    /// Returns: (statement_id, param_count, column_count)
+    pub fn prepare(&mut self, sql: &str) -> MySqlResult<PreparedStatement> {
+        let mut payload = Vec::with_capacity(sql.len() + 1);
+        payload.push(0x16); // COM_STMT_PREPARE
+        payload.extend_from_slice(sql.as_bytes());
 
-    /// Close the connection.
+        let pkt = Packet::new(self.seq, payload);
+        self.seq = pkt.sequence.wrapping_add(1);
+        pkt.write_to(&mut self.stream)?;
+
+        // Response: 1-byte status (0x00=OK, 0xFF=ERR)
+        //           4-byte statement_id
+        //           2-byte column_count
+        //           2-byte param_count
+        //           1-byte filler (0x00)
+        //           2-byte warning_count
+        let resp = Packet::read_from(&mut self.stream)?;
+        self.seq = resp.sequence.wrapping_add(1);
+
+        if resp.payload.is_empty() || resp.payload[0] == 0xff {
+            let error_code = if resp.payload.len() > 2 {
+                u16::from_le_bytes([resp.payload[1], resp.payload[2]])
+            } else {
+                0
+            };
+            let msg_start = 3.min(resp.payload.len());
+            let msg = if msg_start < resp.payload.len() {
+                String::from_utf8_lossy(&resp.payload[msg_start..]).to_string()
+            } else {
+                String::new()
+            };
+            return Err(MySqlClientError::Protocol(format!(
+                "PREPARE failed ({}): {}",
+                error_code, msg
+            )));
+        }
+
+        if resp.payload.len() < 12 {
+            return Err(MySqlClientError::Protocol(
+                "PREPARE response too short".to_string(),
+            ));
+        }
+
+        let stmt_id = u32::from_le_bytes([
+            resp.payload[1],
+            resp.payload[2],
+            resp.payload[3],
+            resp.payload[4],
+        ]);
+        let column_count = u16::from_le_bytes([resp.payload[5], resp.payload[6]]);
+        let param_count = u16::from_le_bytes([resp.payload[7], resp.payload[8]]);
+
+        // If there are parameters, the server sends parameter defs.
+        // If there are columns, the server sends column defs.
+        // For now, we just drain those packets.
+        for _ in 0..(param_count + column_count) {
+            let _ = Packet::read_from(&mut self.stream)?;
+        }
+        // The final packet is an EOF or DEPR_EOF terminator.
+        let _ = Packet::read_from(&mut self.stream)?;
+
+        Ok(PreparedStatement {
+            id: stmt_id,
+            param_count,
+            column_count,
+        })
+    }
+
+    /// COM_STMT_EXECUTE — execute a prepared statement
+    /// Uses binary protocol parameters (typed as VARCHAR/text).
+    pub fn execute_prepared(
+        &mut self,
+        stmt_id: u32,
+        params: &[&str],
+    ) -> MySqlResult<ResultSet> {
+        let mut payload = Vec::new();
+        payload.push(0x17); // COM_STMT_EXECUTE
+        payload.extend_from_slice(&stmt_id.to_le_bytes());
+        payload.push(0x00); // flags: CURSOR_TYPE_NONE
+        payload.extend_from_slice(&1u32.to_le_bytes()); // iteration_count
+
+        // NULL bitmap: ceil((param_count + 7) / 8) bytes, all zero
+        let null_bitmap_len = (params.len() + 7) / 8;
+        payload.extend_from_slice(&vec![0u8; null_bitmap_len]);
+
+        // new_params_bound_flag = 1
+        payload.push(0x01);
+
+        // Parameter types (VARCHAR for all)
+        for _ in 0..params.len() {
+            payload.push(0xfd); // MYSQL_TYPE_VAR_STRING
+        }
+
+        // Parameter values (length-encoded strings)
+        for p in params {
+            let len = p.len();
+            if len < 251 {
+                payload.push(len as u8);
+            } else {
+                payload.push(0xfc);
+                payload.extend_from_slice(&(len as u16).to_le_bytes());
+            }
+            payload.extend_from_slice(p.as_bytes());
+        }
+
+        let pkt = Packet::new(self.seq, payload);
+        self.seq = pkt.sequence.wrapping_add(1);
+        pkt.write_to(&mut self.stream)?;
+
+        // Response: text or binary result set depending on server
+        // We use parse_result_set for text protocol
+        parse_result_set(&mut self.stream, true)
+    }
+
+    /// Ping the server.
     pub fn close(mut self) -> MySqlResult<()> {
         let pkt = Packet::new(self.seq, vec![packet_type::COM_QUIT]);
         pkt.write_to(&mut self.stream)?;
