@@ -145,21 +145,58 @@ fn exec_status(bin: &str, mut cmd: Proc) -> i32 {
 
 #[allow(unused_variables)]
 fn run_cli(query: &str, host: &str, port: u16, user: &str, password: &str) -> i32 {
-    use std::io::{Read, Write};
-    use std::net::TcpStream;
+    use std::net::SocketAddr;
+    use sqlrustgo_mysql_client::MySqlConnection;
 
-    let addr = format!("{host}:{port}");
-    match TcpStream::connect(&addr) {
-        Ok(mut stream) => {
-            let _ = stream.write_all(query.as_bytes());
-            let mut buf = String::new();
-            let _ = stream.read_to_string(&mut buf);
-            println!("{buf}");
+    let addr: SocketAddr = match format!("{host}:{port}").parse() {
+        Ok(a) => a,
+        Err(e) => {
+            eprintln!("Invalid address {host}:{port}: {e}");
+            return 1;
+        }
+    };
+
+    let mut conn = match MySqlConnection::connect(&addr, user, password, "") {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("Connection failed: {e}");
+            return 1;
+        }
+    };
+
+    println!("Connected to {}:{} (server: {})", host, port, conn.server_version);
+
+    match conn.execute(query) {
+        Ok(result) => {
+            use sqlrustgo_mysql_client::ResultSet;
+            match result {
+                ResultSet::Select { columns, rows } => {
+                    // Print column headers
+                    let header: Vec<&str> = columns.iter().map(|c| c.name.as_str()).collect();
+                    println!("{}", header.join(" | "));
+                    println!("{}", vec!["-"; header.len()].join("---"));
+
+                    // Print rows
+                    for row in &rows {
+                        println!("{}", row.join(" | "));
+                    }
+                    println!("\n{} row(s) in set", rows.len());
+                }
+                ResultSet::Ok { affected_rows, info, .. } => {
+                    println!("Query OK, {} row(s) affected", affected_rows);
+                    if !info.is_empty() {
+                        println!("{}", info);
+                    }
+                }
+                ResultSet::Error { error_code, error_message, .. } => {
+                    eprintln!("Error {}: {}", error_code, error_message);
+                    return 1;
+                }
+            }
             0
         }
         Err(e) => {
-            eprintln!("Failed to connect to {addr}: {e}");
-            eprintln!("Make sure sqlrustgo-mysql-server is running: sqlrustgo serve");
+            eprintln!("Query execution failed: {e}");
             1
         }
     }
