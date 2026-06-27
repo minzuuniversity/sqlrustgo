@@ -249,32 +249,37 @@ else
     echo "[2/5] FIXTURE=none, skipping"
 fi
 
-# [3] sysbench prepare (create sbtest table)
-echo "[3/5] sysbench prepare (TABLES=$TABLES TABLE_SIZE=$TABLE_SIZE)..."
-sysbench oltp_read_write \
-    --db-driver=mysql \
-    --mysql-host="$HOST" --mysql-port="$PORT" \
-    --mysql-user=root --mysql-password="" \
-    --mysql-db=sbtest --table-size="$TABLE_SIZE" --tables="$TABLES" \
-    prepare 2>&1 | tail -3 || {
-    echo "FAIL: sysbench prepare failed" >&2
-    tail -20 "$LOG_FILE" >&2
-    kill "$SERVER_PID" 2>/dev/null || true
-    exit 1
-}
+# [3] sysbench prepare (create sbtest table) - SKIP_SYSBENCH=1 to bypass Issue #3575
+if [ "${SKIP_SYSBENCH:-0}" = "1" ]; then
+    echo "[3/5] SKIP_SYSBENCH=1, skipping sysbench prepare (Issue #3575 workaround)"
+    SYSBENCH_PID=""
+else
+    echo "[3/5] sysbench prepare (TABLES=$TABLES TABLE_SIZE=$TABLE_SIZE)..."
+    sysbench oltp_read_write \
+        --db-driver=mysql \
+        --mysql-host="$HOST" --mysql-port="$PORT" \
+        --mysql-user=root --mysql-password="" \
+        --mysql-db=sbtest --table-size="$TABLE_SIZE" --tables="$TABLES" \
+        prepare 2>&1 | tail -3 || {
+        echo "FAIL: sysbench prepare failed" >&2
+        tail -20 "$LOG_FILE" >&2
+        kill "$SERVER_PID" 2>/dev/null || true
+        exit 1
+    }
 
-# [4] Launch sysbench run + TPC-H rotation in parallel
-echo "[4/5] Launching sysbench oltp_read_write (${HOURS_DISPLAY}h = ${HOURS_SECS}s)..."
-nohup sysbench oltp_read_write \
-    --db-driver=mysql \
-    --mysql-host="$HOST" --mysql-port="$PORT" \
-    --mysql-user=root --mysql-password="" \
-    --mysql-db=sbtest --table-size="$TABLE_SIZE" --tables="$TABLES" \
-    --threads="$THREADS" --time="$HOURS_SECS" \
-    --report-interval=10 \
-    run > "$SYSBENCH_LOG" 2>&1 &
-SYSBENCH_PID=$!
-echo "  sysbench PID=$SYSBENCH_PID"
+    # [4] Launch sysbench run + TPC-H rotation in parallel
+    echo "[4/5] Launching sysbench oltp_read_write (${HOURS_DISPLAY}h = ${HOURS_SECS}s)..."
+    nohup sysbench oltp_read_write \
+        --db-driver=mysql \
+        --mysql-host="$HOST" --mysql-port="$PORT" \
+        --mysql-user=root --mysql-password="" \
+        --mysql-db=sbtest --table-size="$TABLE_SIZE" --tables="$TABLES" \
+        --threads="$THREADS" --time="$HOURS_SECS" \
+        --report-interval=10 \
+        run > "$SYSBENCH_LOG" 2>&1 &
+    SYSBENCH_PID=$!
+    echo "  sysbench PID=$SYSBENCH_PID"
+fi
 
 if [ "$TPCH_ROTATE" = "1" ]; then
     echo "       Launching TPC-H 22-query rotation (interval=${TPCH_ROTATE_INTERVAL}s)..."
