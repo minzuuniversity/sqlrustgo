@@ -1394,16 +1394,10 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         ))
     }
 
-    fn execute_create_view(&self, view: &CreateViewStatement) -> SqlResult<ExecutorResult> {
-        // 使用内部可变性 — views 字段通过 UnsafeCell 或类似机制
-        // 当前通过 self.views 的 RefCell 替代方案：在 execute_show 中处理
-        // 对于 Phase 2，仅记录视图名到引擎内部状态
-        // 注意: &self 方法中不能修改 self.views
-        // 因此 CREATE VIEW 通过 execute() 的 &mut self 直接访问
-        // 这里抛出错误，引导用户使用 execute() 路径
-        Err(SqlError::ExecutionError(
-            "CREATE VIEW requires mutable access — use execute() path".to_string(),
-        ))
+    fn execute_create_view(&mut self, view: &CreateViewStatement) -> SqlResult<ExecutorResult> {
+        // 存储视图定义 (view name → SQL text)
+        self.views.insert(view.name.clone(), format!("{:?}", view));
+        Ok(ExecutorResult::empty())
     }
     fn execute_drop_view(&mut self, drop_view: &DropViewStatement) -> SqlResult<ExecutorResult> {
         if self.views.remove(&drop_view.name).is_some() || drop_view.if_exists {
