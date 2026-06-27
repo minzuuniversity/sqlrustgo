@@ -458,10 +458,24 @@ pub struct InsertStatement {
     pub on_duplicate_key_update: Option<Vec<(String, Expression)>>, // For ON DUPLICATE KEY UPDATE
 }
 
+/// A reference to a table (name plus optional alias) used in DML
+/// statements to support `UPDATE t1, t2 SET ...` and
+/// `DELETE t1, t2 FROM t1, t2 WHERE ...` syntax.
+#[derive(Debug, Clone, PartialEq)]
+pub struct TableRef {
+    pub name: String,
+    pub alias: Option<String>,
+}
+
 /// UPDATE statement
 #[derive(Debug, Clone, PartialEq)]
 pub struct UpdateStatement {
-    pub table: String,
+    /// One or more tables that participate in the UPDATE. A single
+    /// `UPDATE t SET ...` parses as `vec![TableRef { name: "t", alias: None }]`
+    /// so consumers can iterate uniformly. Multi-table
+    /// `UPDATE t1, t2 SET t1.col = t2.col WHERE ...` populates the
+    /// list with both tables.
+    pub tables: Vec<TableRef>,
     pub set_clauses: Vec<(String, Expression)>,
     pub where_clause: Option<Expression>,
 }
@@ -469,7 +483,16 @@ pub struct UpdateStatement {
 /// DELETE statement
 #[derive(Debug, Clone, PartialEq)]
 pub struct DeleteStatement {
-    pub table: String,
+    /// Tables whose rows are removed by the DELETE.
+    /// `DELETE FROM t WHERE ...` parses as
+    /// `vec![TableRef { name: "t", alias: None }]`.
+    /// `DELETE t1, t2 FROM t1, t2 WHERE ...` populates `tables`
+    /// with the targets and `using` with the sources.
+    pub tables: Vec<TableRef>,
+    /// Optional additional source tables (the second list in
+    /// `DELETE <targets> FROM <sources> WHERE ...`). When `None`,
+    /// the executor uses `tables` as the source set.
+    pub using: Option<Vec<TableRef>>,
     pub where_clause: Option<Expression>,
 }
 
@@ -4101,58 +4124,44 @@ impl Parser {
 
     fn parse_update(&mut self) -> Result<Statement, String> {
         self.expect(Token::Update)?;
-        let table = match self.next() {
-            Some(Token::Identifier(name)) => name,
-            _ => return Err("Expected table name".to_string()),
-        };
+        let tables = self.parse_table_ref_list_until_set()?;
 
-        // Expect SET keyword
         if !matches!(self.current(), Some(Token::Set)) {
             return Err("Expected SET".to_string());
         }
-        self.next(); // consume SET
+        self.next();
 
-        // Parse SET clause: column = value [, column = value ...]
         let mut set_clauses = Vec::new();
         loop {
-            let column = match self.current() {
-                Some(Token::Identifier(name)) => name.clone(),
-                _ => return Err("Expected column name in SET".to_string()),
-            };
-            self.next();
-
-            // Expect =
+            let column = self.parse_set_column_name()?;
             match self.current() {
                 Some(Token::Equal) => {}
                 _ => return Err("Expected = in SET clause".to_string()),
             }
-            self.next(); // consume =
+            self.next();
 
-            // Parse value - use parse_expression to support binary operations
             let value = self.parse_expression()?;
 
             set_clauses.push((column, value));
 
-            // Check for more SET clauses or WHERE
             match self.current() {
                 Some(Token::Comma) => {
-                    self.next(); // consume comma, continue to parse next column
+                    self.next();
                 }
                 Some(Token::Where) | None | Some(Token::Eof) => break,
                 _ => return Err("Expected , or WHERE".to_string()),
             }
         }
 
-        // Parse WHERE clause (optional)
         let where_clause = if matches!(self.current(), Some(Token::Where)) {
-            self.next(); // consume WHERE
+            self.next();
             Some(self.parse_expression()?)
         } else {
             None
         };
 
         Ok(Statement::Update(UpdateStatement {
-            table,
+            tables,
             set_clauses,
             where_clause,
         }))
@@ -5645,24 +5654,100 @@ impl Parser {
 
     fn parse_delete(&mut self) -> Result<Statement, String> {
         self.expect(Token::Delete)?;
-        self.expect(Token::From)?;
-        let table = match self.next() {
-            Some(Token::Identifier(name)) => name,
-            _ => return Err("Expected table name".to_string()),
+        // `DELETE FROM t ...` is single-table; `DELETE t1, t2 FROM ...`
+        // is multi-table. The token after DELETE disambiguates.
+        let (tables, using) = if matches!(self.current(), Some(Token::From)) {
+            self.next();
+            let tref = self.parse_table_ref()?;
+            (vec![tref], None)
+        } else {
+            let targets = self.parse_table_ref_list(Token::From)?;
+            self.expect(Token::From)?;
+            let sources = self.parse_table_ref_list_end()?;
+            (targets, Some(sources))
         };
 
-        // Parse WHERE clause (optional)
         let where_clause = if matches!(self.current(), Some(Token::Where)) {
-            self.next(); // consume WHERE
+            self.next();
             Some(self.parse_expression()?)
         } else {
             None
         };
 
         Ok(Statement::Delete(DeleteStatement {
-            table,
+            tables,
+            using,
             where_clause,
         }))
+    }
+
+    fn parse_table_ref(&mut self) -> Result<TableRef, String> {
+        let name = match self.next() {
+            Some(Token::Identifier(name)) => name,
+            _ => return Err("Expected table name".to_string()),
+        };
+        let alias = self.parse_optional_alias()?;
+        Ok(TableRef { name, alias })
+    }
+
+    fn parse_table_ref_list(&mut self, terminator: Token) -> Result<Vec<TableRef>, String> {
+        let mut out = Vec::new();
+        out.push(self.parse_table_ref()?);
+        while matches!(self.current(), Some(Token::Comma)) {
+            self.next();
+            out.push(self.parse_table_ref()?);
+        }
+        if !matches!(self.current(), Some(t) if std::mem::discriminant(t) == std::mem::discriminant(&terminator))
+        {
+            return Err(format!("Expected {:?} after table list", terminator));
+        }
+        Ok(out)
+    }
+
+    fn parse_table_ref_list_end(&mut self) -> Result<Vec<TableRef>, String> {
+        let mut out = Vec::new();
+        out.push(self.parse_table_ref()?);
+        while matches!(self.current(), Some(Token::Comma)) {
+            self.next();
+            out.push(self.parse_table_ref()?);
+        }
+        match self.current() {
+            Some(Token::Where) | None | Some(Token::Eof) | Some(Token::Semicolon) => {}
+            _ => return Err("Expected , or WHERE after table list".to_string()),
+        }
+        Ok(out)
+    }
+
+    fn parse_table_ref_list_until_set(&mut self) -> Result<Vec<TableRef>, String> {
+        let mut out = Vec::new();
+        out.push(self.parse_table_ref()?);
+        while matches!(self.current(), Some(Token::Comma)) {
+            self.next();
+            out.push(self.parse_table_ref()?);
+        }
+        if !matches!(self.current(), Some(Token::Set)) {
+            return Err("Expected SET after table list".to_string());
+        }
+        Ok(out)
+    }
+
+    fn parse_set_column_name(&mut self) -> Result<String, String> {
+        let first = match self.current() {
+            Some(Token::Identifier(name)) => name.clone(),
+            _ => return Err("Expected column name in SET".to_string()),
+        };
+        self.next();
+        if matches!(self.current(), Some(Token::Dot)) {
+            self.next();
+            let second = match self.current() {
+                Some(Token::Identifier(name)) => name.clone(),
+                _ => return Err("Expected column name after '.' in SET".to_string()),
+            };
+            self.next();
+            Ok(format!("{}.{}", first, second))
+        } else {
+            Ok(first)
+        }
     }
 
     /// Parse MERGE statement (SQL:2003)
@@ -7376,7 +7461,7 @@ mod tests {
         assert!(result.is_ok());
         match result.unwrap() {
             Statement::Update(u) => {
-                assert_eq!(u.table, "users");
+                assert_eq!(u.tables[0].name, "users");
                 assert_eq!(u.set_clauses.len(), 1);
                 assert_eq!(u.set_clauses[0].0, "name");
             }
@@ -7390,7 +7475,7 @@ mod tests {
         assert!(result.is_ok());
         match result.unwrap() {
             Statement::Update(u) => {
-                assert_eq!(u.table, "users");
+                assert_eq!(u.tables[0].name, "users");
                 assert_eq!(u.set_clauses.len(), 1);
                 assert!(u.where_clause.is_some());
             }
@@ -7794,7 +7879,7 @@ mod tests {
         assert!(result.is_ok(), "Parse failed: {:?}", result);
         match result.unwrap() {
             Statement::Delete(d) => {
-                assert_eq!(d.table, "users");
+                assert_eq!(d.tables[0].name, "users");
                 assert!(d.where_clause.is_none());
             }
             _ => panic!("Expected DELETE statement"),
@@ -7807,7 +7892,7 @@ mod tests {
         assert!(result.is_ok(), "Parse failed: {:?}", result);
         match result.unwrap() {
             Statement::Delete(d) => {
-                assert_eq!(d.table, "users");
+                assert_eq!(d.tables[0].name, "users");
                 assert!(d.where_clause.is_some());
             }
             _ => panic!("Expected DELETE statement"),
