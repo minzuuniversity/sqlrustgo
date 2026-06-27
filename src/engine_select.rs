@@ -2380,9 +2380,9 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 // the existing pre_eval_exists_subquery_fast on
                 // miss.
                 let indexed = if let Some(wc) = substituted.where_clause.as_ref() {
-                    subquery_indexes
-                        .get(*cursor)
-                        .and_then(|idx| self.pre_eval_exists_indexed(wc, idx))
+                    subquery_indexes.get(*cursor).and_then(|idx| {
+                        self.pre_eval_exists_indexed(wc, outer_row, outer_table_info, idx)
+                    })
                 } else {
                     None
                 };
@@ -2414,7 +2414,9 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 let indexed = if let Some(wc) = substituted.where_clause.as_ref() {
                     subquery_indexes
                         .get(*cursor)
-                        .and_then(|idx| self.pre_eval_exists_indexed(wc, idx))
+                        .and_then(|idx| {
+                            self.pre_eval_exists_indexed(wc, outer_row, outer_table_info, idx)
+                        })
                         .map(|any| !any)
                 } else {
                     None
@@ -2922,7 +2924,11 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             let idx_cache = lineitem_index_cache();
             // Get or build the rows. Cache under the real table
             // name (without `|alias`) so aliases share the index.
-            let table_name = real_subq_table.clone();
+            // Include the storage engine address in the key so
+            // separate MemoryStorage instances don't pollute each
+            // other (q21_exists_hash_path_test regression).
+            let engine_tag = std::sync::Arc::as_ptr(&self.storage) as *const () as usize;
+            let table_name = format!("{}{:x}", real_subq_table, engine_tag);
             let rows_arc: std::sync::Arc<Vec<Vec<Value>>> = {
                 let mut rc = rows_cache.lock().unwrap();
                 if let Some(c) = rc.get(&table_name) {
@@ -3017,21 +3023,30 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         };
         let col_idx = table_info.columns.iter().position(|c| c.name == bare_col)?;
         let rows = storage.scan(real_table).ok()?;
-        // Evaluate the STATIC predicate (not the full WHERE) per
-        // inner row.  The outer-equality leaf references the outer
-        // table's column, which is not a lineitem column, so the
-        // full-WHERE evaluation would always return false on
-        // lineitem rows and the index would always be empty.
-        let mut qualifying: std::collections::HashSet<Value> =
+        // Store the full inner row alongside the key set so the
+        // residual (which may reference outer columns) can be
+        // re-evaluated per outer row. The prior key-only design
+        // discarded the residual and broke TPC-H Q21.
+        let mut qualifying_keys: std::collections::HashSet<Value> =
             std::collections::HashSet::with_capacity(rows.len());
-        for row in &rows {
-            if eval_predicate(&static_predicate, row, &table_info) {
-                qualifying.insert(row[col_idx].clone());
+        let mut qualifying_rows: Vec<Vec<Value>> = Vec::with_capacity(rows.len());
+        for row in rows {
+            if eval_predicate(&static_predicate, &row, &table_info) {
+                qualifying_keys.insert(row[col_idx].clone());
+                qualifying_rows.push(row);
             }
         }
+        // The "residual" is what split_outer_equality_with_table
+        // returned in static_predicate. A future improvement could
+        // decompose it into pure-static (filter at build) and
+        // outer-ref (re-evaluate per row) parts; for the current
+        // TPC-H Q21 workload the static_predicate IS the residual
+        // and is re-evaluated per outer row below.
         Some(SubqueryIndex {
             col_idx,
-            qualifying_keys: qualifying,
+            qualifying_keys,
+            qualifying_rows,
+            residual: *static_predicate,
         })
     }
 
@@ -3205,17 +3220,39 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     }
 
     /// Indexed fast-path EXISTS check: looks up the substituted
-    /// equality key in the pre-built `SubqueryIndex.qualifying_keys`
-    /// and returns whether the membership holds.  Returns `None` if
-    /// the WHERE has no simple equality leaf (caller falls back to
-    /// the per-row full-scan).
+    /// equality key in `qualifying_keys`, then iterates the matching
+    /// `qualifying_rows` re-evaluating `residual` per outer row
+    /// (after `substitute_outer_refs_in_expr`).
     fn pre_eval_exists_indexed(
         &self,
         where_expr: &Expression,
+        outer_row: &[Value],
+        outer_table_info: &TableInfo,
         index: &SubqueryIndex,
     ) -> Option<bool> {
         let lit = find_top_level_equality_literal(where_expr, index.col_idx)?;
-        Some(index.qualifying_keys.contains(&lit))
+        if !index.qualifying_keys.contains(&lit) {
+            return Some(false);
+        }
+        // Re-evaluate the residual predicate against each
+        // qualifying inner row whose key column matches. If any
+        // match, the EXISTS subquery would return ≥1 row, so
+        // EXISTS is true. (The caller handles the NOT EXISTS
+        // inversion.)
+        for inner in &index.qualifying_rows {
+            if inner.len() <= index.col_idx {
+                continue;
+            }
+            if &inner[index.col_idx] != &lit {
+                continue;
+            }
+            let substituted =
+                substitute_outer_refs_in_expr(&index.residual, outer_row, outer_table_info);
+            if eval_predicate(&substituted, inner, /* table_info */ outer_table_info) {
+                return Some(true);
+            }
+        }
+        Some(false)
     }
 
     /// TPC-H Q13 fix: pre-evaluate non-correlated `IN (subquery)` /
@@ -3578,12 +3615,36 @@ fn execute_subq_for_first_col<S: sqlrustgo_storage::StorageEngine + 'static>(
 /// l_commitdate < l_receiptdate)` becomes `o_orderkey ∈
 /// qualifying_keys`, i.e. O(1) instead of a 60k-row scan.
 ///
-/// Complexity: O(N_inner) one-time, O(1) per outer row. Total
-/// O(N_inner + N_outer) vs the prior O(N_inner × N_outer) full scan.
+/// O(N_inner) one-time build, O(M) per outer row where M is the
+/// number of qualifying inner rows for the outer row's key
+/// (usually small for the TPC-H l_orderkey distribution). Total
+/// O(N_inner + sum(M_i)) vs the prior O(N_inner × N_outer) full
+/// scan.
 #[derive(Debug, Clone)]
 pub struct SubqueryIndex {
     pub col_idx: usize,
+    /// O(1) per-outer-row key membership check. Populated during
+    /// the build by inserting the key column value of every
+    /// qualifying inner row.
     pub qualifying_keys: std::collections::HashSet<Value>,
+    /// Full inner rows for rows that pass the static (non-outer-ref)
+    /// part of the WHERE clause. Per-outer-row, we look up the
+    /// outer row's key in `qualifying_keys`, then iterate the
+    /// subset of `qualifying_rows` whose key matches and
+    /// re-evaluate the per-outer-row-substituted `residual`
+    /// against each entry. (Sprint 8 PR 2 fix: the prior
+    /// `qualifying_keys`-only design silently dropped the residual
+    /// for TPC-H Q21's `l3.l_receiptdate > l3.l_commitdate AND
+    /// l3.l_suppkey <> l1.l_suppkey`.)
+    pub qualifying_rows: Vec<Vec<Value>>,
+    /// The portion of the WHERE clause that references outer
+    /// columns (e.g. `l3.l_suppkey <> l1.l_suppkey AND
+    /// l3.l_receiptdate > l3.l_commitdate` for Q21's NOT EXISTS).
+    /// `substitute_outer_refs_in_expr` runs per outer row before
+    /// this predicate is evaluated against each `qualifying_rows`
+    /// entry. May be `Literal("true")` when the index was built
+    /// from a pure-equality pattern (no residual to re-check).
+    pub residual: sqlrustgo_parser::Expression,
 }
 
 /// Walk a WHERE expression tree, find every correlated EXISTS /
