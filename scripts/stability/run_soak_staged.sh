@@ -45,6 +45,7 @@ run_phase() {
     SERVER_THREADS=16 \
     TABLE_SIZE=10000 \
     FIXTURE=tpch-sf001 \
+    SKIP_SYSBENCH="${SKIP_SYSBENCH:-0}" \
     bash scripts/stability/run_wired_soak.sh > "$phase_dir/soak.log" 2>&1 &
     local soak_pid=$!
 
