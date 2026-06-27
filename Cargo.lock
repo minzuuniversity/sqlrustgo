@@ -4073,11 +4073,13 @@ dependencies = [
  "sqlrustgo-admin",
  "sqlrustgo-cache",
  "sqlrustgo-catalog",
+ "sqlrustgo-cli",
  "sqlrustgo-common",
  "sqlrustgo-distributed",
  "sqlrustgo-executor",
  "sqlrustgo-gmp",
  "sqlrustgo-graph",
+ "sqlrustgo-mysql-client",
  "sqlrustgo-mysql-server",
  "sqlrustgo-optimizer",
  "sqlrustgo-parser",
@@ -4195,8 +4197,7 @@ name = "sqlrustgo-cli"
 version = "3.9.0"
 dependencies = [
  "clap 4.6.1",
- "tokio",
- "tracing",
+ "sqlrustgo-mysql-client",
 ]
 
 [[package]]
@@ -4292,6 +4293,13 @@ dependencies = [
  "serde_json",
  "tempfile",
  "thiserror 1.0.69",
+]
+
+[[package]]
+name = "sqlrustgo-mysql-client"
+version = "3.9.0"
+dependencies = [
+ "sha1 0.10.6",
 ]
 
 [[package]]
