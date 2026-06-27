@@ -16,6 +16,7 @@ async-trait.workspace = true
 miniz_oxide.workspace = true
 
 [dev-dependencies]
+sqlrustgo-wal-verification = { path = "../wal-verification" }
 tempfile.workspace = true
 criterion = "0.8"
 

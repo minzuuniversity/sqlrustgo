@@ -31,6 +31,13 @@ add_capa() { CAPA_ITEMS+=("$1"); }
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 cd "$REPO_ROOT"
 
+# Ensure cargo is on PATH (CI runners may not have it in default PATH).
+if ! command -v cargo >/dev/null 2>&1; then
+    if [ -x "$HOME/.cargo/bin/cargo" ]; then
+        export PATH="$HOME/.cargo/bin:$PATH"
+    fi
+fi
+
 if [ -z "$VERSION" ]; then
   if [ -f "CURRENT_VERSION.md" ]; then
     VERSION="$(head -n 1 CURRENT_VERSION.md | sed 's#.*/##' | tr -d '[:space:]')"

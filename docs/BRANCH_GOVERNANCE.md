@@ -437,6 +437,94 @@ feature/* → beta → rc → release/* → main
 
 ## 12. 附录
 
+### 12.0 2bdeleted 命名空间 (归档命名规范)
+
+> **生效日期**: 2026-06-12 (Sprint 5 v18+)
+> **迁移报告**: `docs/audit/status/2026-06-12-2bdeleted-namespace-migration.md`
+
+**目的**: 将已合并 / 已关闭的旧开发分支集中归档到 `2bdeleted/` 命名空间, 根目录只保留受保护的活跃分支, 提升 Gitea 浏览体验.
+
+#### 12.0.1 命名映射
+
+原分支路径直接加上 `2bdeleted/` 前缀, 历史 SHA 100% 保留:
+
+| 原路径 | 归档后路径 |
+|--------|------------|
+| `fix/issue-2625-exec` | `2bdeleted/fix/issue-2625-exec` |
+| `docs/v380-ga-closure-debt-roadmap` | `2bdeleted/docs/v380-ga-closure-debt-roadmap` |
+| `feature/arch-4-audit-chain` | `2bdeleted/feature/arch-4-audit-chain` |
+| `gate-audit-v3.7.0` (root) | `2bdeleted/gate-audit-v3.7.0` |
+| `merge/v380-into-main` | `2bdeleted/merge/v380-into-main` |
+
+#### 12.0.2 受保护分支 (根目录保留)
+
+| 前缀 | 数量 | 说明 |
+|------|------|------|
+| `develop/` | 10 | 主开发线, 例: `develop/v3.9.0` |
+| `rc/` | 12 | 候选版本, 例: `rc/v3.5.0` |
+| `rc1/` | 9 | RC1 系列 (rc 前缀) |
+| `alpha/` + `alpha-*` | 10 | Alpha 阶段, 例: `alpha/v2.0.0`, `alpha-gate-update` |
+| `beta/` | 8 | Beta 阶段, 例: `beta/v3.8.0` |
+| `ga/` | 11 | GA 阶段, 例: `ga/v3.8.0` |
+| `release/` | 16 | 发布版本, 例: `release/v3.8.0` |
+| `main` | 1 | 主分支 |
+| `gate/*`, `gate-*` | 2 | 门禁相关, 例: `gate-audit-v3.7.0` |
+
+**总计**: 78 个受保护分支 (Gitea 252), 34 个 (Gitea 250, 历史较短)
+
+#### 12.0.3 触发归档的场景
+
+满足以下任一条件, 分支应移入 `2bdeleted/`:
+
+- ✅ PR 已合并到 develop/release/rc/ga/beta/alpha 等 protected 分支
+- ✅ PR 已关闭且不再需要
+- ✅ 分支无对应 PR, 是临时开发残留
+- ✅ Issue 关联分支已解决, 修复已集成
+- ✅ 分支是 `tmp/`, `temp-*`, `test-push-*` 等一次性临时分支
+
+#### 12.0.4 归档操作流程
+
+通过 git push + atomic batched refspecs:
+
+```bash
+# 1. 列出待归档分支
+git for-each-ref --format='%(refname:short)' refs/remotes/origin 2>/dev/null | \
+  grep -v 2bdeleted | grep -v HEAD | \
+  grep -v -E "^(develop|rc|rc1|alpha|beta|ga|release)/" | \
+  grep -v -E "^(main|alpha-gate-update|alpha-version-bump|gate-audit-v3\.7\.0|gate/set-operations-test)$"
+
+# 2. 获取 SHA 并创建 2bdeleted 引用 (保留历史)
+git push --atomic origin \
+  "<sha1>:refs/heads/2bdeleted/<path1>" \
+  "<sha2>:refs/heads/2bdeleted/<path2>" \
+  ...
+
+# 3. 删除原分支
+git push origin --delete <path1> <path2> ...
+```
+
+**约束**:
+- 每次 push 控制在 20-25 个 refspecs, 避免 Gitea OOM
+- 1 个 `bad object` 情况用 `git fetch <sha>` 单独拉取后再 push
+- 大量归档操作分多次执行, 避免单次超时
+
+#### 12.0.5 风险评估
+
+| 风险 | 影响 | 缓解 |
+|------|------|------|
+| PR 链接失效 | 无 (Gitea PR 引用 commit SHA) | ✅ 已验证 |
+| Issue 引用失效 | 低 (commit 引用仍可点击) | 可接受 |
+| 252 Gitea crash | 中 (大量 push 期间可能 OOM) | 分批 + 监控 |
+| 本地 stale refs | 低 | 用户 `git fetch --prune` 即可 |
+
+#### 12.0.6 历史归档统计
+
+| 日期 | 操作 | 移入 2bdeleted | 根目录保留 |
+|------|------|----------------|------------|
+| 2026-06-12 (250) | Sprint 5 v18 清理 | 179 | 34 |
+| 2026-06-12 (252) | Sprint 5 v18 清理 | 177 | 33 (含历史 crash 损失) |
+| **总计** | - | **356** | - |
+
 ### 12.1 术语表
 
 - **Alpha**：内部开发集成阶段
@@ -462,6 +550,7 @@ feature/* → beta → rc → release/* → main
 | 日期 | 版本 | 变更内容 | 作者 |
 |------|------|----------|------|
 | 2026-02-20 | v1.0 | 初始版本 | SQLRustGo 团队 |
+| 2026-06-12 | v1.1 | 新增 §12.0 2bdeleted 命名空间规范 (Sprint 5 v18 实施) | AI + Claude |
 
 ## 13. 结语
 

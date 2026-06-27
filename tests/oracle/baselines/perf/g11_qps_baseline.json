@@ -1,0 +1,39 @@
+{
+  "_comment": "G11 QPS baseline (v3.9.0 RC7). Generated from perf/QPS_REPORT.md. min_qps 是 floor threshold, 真实 perf 通常更高. oracle_g11_qps.rs 用 ±20% tolerance 校验.",
+  "generated_at": "2026-06-18T00:00:00Z",
+  "engine": "SQLRustGo v3.9.0-rc7 (Sprint 8)",
+  "scale_factor": "0.01",
+  "tolerance_pct": 20.0,
+  "workloads": [
+    {
+      "workload": "point_select_1conn",
+      "min_qps": 500.0,
+      "max_latency_p99_ms": 50.0,
+      "description": "Single connection point SELECT benchmark"
+    },
+    {
+      "workload": "point_select_8conn",
+      "min_qps": 800.0,
+      "max_latency_p99_ms": 100.0,
+      "description": "8-connection point SELECT benchmark"
+    },
+    {
+      "workload": "read_write_4conn",
+      "min_qps": 200.0,
+      "max_latency_p99_ms": 200.0,
+      "description": "4-connection read+write mixed workload"
+    },
+    {
+      "workload": "insert_bulk_1000",
+      "min_qps": 100.0,
+      "max_latency_p99_ms": 500.0,
+      "description": "1000-row batch INSERT"
+    },
+    {
+      "workload": "scan_aggregation",
+      "min_qps": 50.0,
+      "max_latency_p99_ms": 1000.0,
+      "description": "TPC-H Q1-style scan + 4-aggregate"
+    }
+  ]
+}

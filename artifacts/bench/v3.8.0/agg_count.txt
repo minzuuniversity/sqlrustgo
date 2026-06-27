@@ -1,0 +1,6 @@
+Aggregation COUNT(*) (v3.8.0)
+Date: 2026-06-03
+Iter: 10000
+Total: 1636 ms
+Avg: 163 us
+QPS: 6111

@@ -125,6 +125,11 @@ impl ReadWriteSplitter {
             sqlrustgo_parser::Statement::Call(_) => QueryClass::Read,
             sqlrustgo_parser::Statement::Union(_) => QueryClass::Read,
             sqlrustgo_parser::Statement::WithSelect(_) => QueryClass::Read,
+            // WITH ... DML: classify based on the body. If the body is a
+            // read-only statement, classify as Read; otherwise Write.
+            sqlrustgo_parser::Statement::WithDml(with_dml) => {
+                Self::classify_statement(&with_dml.body)
+            }
             // Write queries
             sqlrustgo_parser::Statement::Insert(_) => QueryClass::Write,
             sqlrustgo_parser::Statement::Update(_) => QueryClass::Write,
@@ -133,13 +138,35 @@ impl ReadWriteSplitter {
             sqlrustgo_parser::Statement::CreateIndex(_) => QueryClass::Write,
             sqlrustgo_parser::Statement::CreateTrigger(_) => QueryClass::Write,
             sqlrustgo_parser::Statement::CreateProcedure(_) => QueryClass::Write,
+            sqlrustgo_parser::Statement::CreateView(_) => QueryClass::Write,
             sqlrustgo_parser::Statement::DropTable(_) => QueryClass::Write,
+            sqlrustgo_parser::Statement::DropIndex(_) => QueryClass::Write,
+            sqlrustgo_parser::Statement::DropView(_) => QueryClass::Write,
             sqlrustgo_parser::Statement::Truncate(_) => QueryClass::Write,
+            // SEM-1 (#3172): SAVEPOINT/ROLLBACK TO SAVEPOINT/RELEASE
+            // SAVEPOINT modify per-tx undo log; treat as Write so the
+            // distributed router sends them to the primary.
+            sqlrustgo_parser::Statement::SavepointStatement { .. } => QueryClass::Write,
             sqlrustgo_parser::Statement::AlterTable(_) => QueryClass::Write,
             sqlrustgo_parser::Statement::Grant(_) => QueryClass::Write,
             sqlrustgo_parser::Statement::Revoke(_) => QueryClass::Write,
             sqlrustgo_parser::Statement::Transaction(_) => QueryClass::Write,
+            sqlrustgo_parser::Statement::Merge(_) => QueryClass::Write,
             sqlrustgo_parser::Statement::Analyze(_) => QueryClass::Write,
+            sqlrustgo_parser::Statement::CreateRole(_) => QueryClass::Write,
+            sqlrustgo_parser::Statement::DropRole(_) => QueryClass::Write,
+            sqlrustgo_parser::Statement::GrantRole(_) => QueryClass::Write,
+            sqlrustgo_parser::Statement::RevokeRole(_) => QueryClass::Write,
+            sqlrustgo_parser::Statement::SetRole(_) => QueryClass::Write,
+            sqlrustgo_parser::Statement::ShowRoles => QueryClass::Read,
+            sqlrustgo_parser::Statement::ShowGrantsFor(_) => QueryClass::Read,
+            sqlrustgo_parser::Statement::Prepare { .. } => QueryClass::Write,
+            sqlrustgo_parser::Statement::Execute { .. } => QueryClass::Read,
+            sqlrustgo_parser::Statement::Deallocate { .. } => QueryClass::Write,
+            // DDL: database-level operations
+            sqlrustgo_parser::Statement::CreateDatabase(_) => QueryClass::Write,
+            sqlrustgo_parser::Statement::DropDatabase(_) => QueryClass::Write,
+            sqlrustgo_parser::Statement::UseDatabase(_) => QueryClass::Write,
         }
     }
 

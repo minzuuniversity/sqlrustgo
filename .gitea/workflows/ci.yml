@@ -1,35 +1,31 @@
 name: Hermes Pipeline
 run-name: ${{ gitea.ref_name }} - ${{ gitea.sha }}
 
-'on':
+on:
   push:
     branches:
       - develop/v2.8.0
+      - develop/v3.7.0
+      - develop/v3.8.0
       - beta/v2.8.0
       - ci/gitea-compat
       - ci/v2.8.0-*
-    paths-ignore:
-      - 'docs/**'
-      - '*.md'
-      - ARCHITECTURE_RULES.md
-      - CHANGELOG.md
-      - RELEASE_NOTES.md
+      - ci/v3.8.0-*
   pull_request:
     branches:
       - develop/v2.8.0
+      - develop/v3.7.0
+      - develop/v3.8.0
+      - develop/v3.9.0
       - beta/v2.8.0
       - ci/gitea-compat
       - ci/v2.8.0-*
-    paths-ignore:
-      - 'docs/**'
-      - '*.md'
-      - VERSION
-      - ARCHITECTURE_RULES.md
-      - CHANGELOG.md
-      - RELEASE_NOTES.md
+      - ci/v3.8.0-*
 
 env:
   CARGO_TERM_COLOR: always
+  CARGO_HOME: ${{ runner.temp }}/.cargo
+  RUSTUP_HOME: ${{ runner.temp }}/.rustup
 
 # Combined lint + build: share one clone, build once
 jobs:
@@ -37,76 +33,156 @@ jobs:
     runs-on: [hp-z6g4]
     steps:
       - name: Checkout
-        run: |
-          REPO="openclaw/sqlrustgo"
-          git clone --depth=1 "http://192.168.0.252:3000/$REPO" repo
-          cd repo
-          git fetch --depth=1 origin "$GITEA_SHA"
-          git checkout "$GITEA_SHA"
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
       - name: Clippy
-        run: |
-          cd repo
-          cargo clippy --all-features -- -D warnings
+        run: cargo clippy --all-features -- -D warnings
       - name: Format check
-        run: |
-          cd repo
-          cargo fmt --check --all
+        run: cargo fmt --check --all
       - name: Build
-        run: |
-          cd repo
-          cargo build --all-features
+        run: cargo build --all-features
 
-  # Test: no rebuild needed, lint-build already has the binary
   test:
     runs-on: [hp-z6g4]
     needs: [lint-build]
     steps:
       - name: Checkout
-        run: |
-          REPO="openclaw/sqlrustgo"
-          git clone --depth=1 "http://192.168.0.252:3000/$REPO" repo
-          cd repo
-          git fetch --depth=1 origin "$GITEA_SHA"
-          git checkout "$GITEA_SHA"
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
       - name: Build
-        run: |
-          cd repo
-          cargo build --all-features
+        run: cargo build --all-features
       - name: Run tests
         run: |
-          cd repo
           cargo test --all-features 2>&1 | tee test_report.log
       - name: Test summary
         if: always()
         run: |
-          cd repo
           PASS=$(grep -c 'test result: ok' test_report.log 2>/dev/null || echo "0")
           FAIL=$(grep -c 'test result: FAILED' test_report.log 2>/dev/null || echo "0")
           echo "Tests: passed=$PASS failed=$FAIL"
           if [ "$FAIL" -gt 0 ]; then exit 1; fi
+      - name: Gate G1 — TPC-H 22/22 baseline (issue #3186)
+        if: github.event_name == 'pull_request' || contains(github.ref, 'develop/v3.9.0')
+        run: |
+          chmod +x scripts/gate/check_g1_tpch_baseline.sh
+          bash scripts/gate/check_g1_tpch_baseline.sh 2>&1 | tee g1_report.log
+        # NOTE: this step currently fails by design until the baseline hash in
+        # tests/tpch_hashes_v380.json is filled in (see the OpenSpec change
+        # g1-tpch-baseline). Once filled, this step is the single source of
+        # truth for "did anything change in TPC-H output?".
 
-  # Post-test checks: gate + verify + audit in one job to share clone + build
   postcheck:
     runs-on: [hp-z6g4]
     needs: [test]
     steps:
       - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - name: Version detection
+        id: version
         run: |
-          REPO="openclaw/sqlrustgo"
-          git clone --depth=1 "http://192.168.0.252:3000/$REPO" repo
-          cd repo
-          git fetch --depth=1 origin "$GITEA_SHA"
-          git checkout "$GITEA_SHA"
-      - name: Run Gate
+          # Detect version from branch or VERSION file
+          VERSION="v3.7.0"
+          if git rev-parse --verify origin/develop/v3.8.0 &>/dev/null; then
+            VERSION="v3.8.0"
+          elif git rev-parse --verify origin/develop/v3.7.0 &>/dev/null; then
+            VERSION="v3.7.0"
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+      - name: Gate L1 — Code Quality
         run: |
-          cd repo
-          chmod +x gate/hermes_gate.sh
-          bash gate/hermes_gate.sh
-      - name: Run verification
+          chmod +x gate/gate.sh
+          bash gate/gate.sh "${version}" 2>&1 | tee gate_report.log
+      - name: Gate L1 — Coverage
         run: |
-          cd repo
-          python3 verify/verification_engine.py
-      - name: Run audit
+          bash scripts/gate/check_coverage.sh 2>&1 | tee coverage_report.log
+      - name: Auto env:blocked (SPEC-021)
         run: |
-          cd repo
-          python3 audit/self_audit.py
+          set -euo pipefail
+          chmod +x scripts/gate/auto_env_blocker.sh
+          bash scripts/gate/auto_env_blocker.sh v3.8.0 2>&1 | tee auto_env_block.log
+      - name: Evidence Binding Check
+        run: |
+          set -euo pipefail
+          mkdir -p gate/evidence_binding_out
+          bash scripts/gate/check_evidence_binding.sh "${version}" "gate/evidence_binding_out/" 2>&1 | tee evidence_binding.log
+      - name: Anti-Fabrication Check (AFP v3.8.0+) — FIX 2026-06-26 Hermes / pipefail
+        run: |
+          set -euo pipefail
+          chmod +x scripts/gate/check_anti_fabrication.sh
+          bash scripts/gate/check_anti_fabrication.sh 2>&1 | tee anti_fabrication.log
+      - name: Doc Completeness Check (v3.8.0 mandatory docs) — FIX 2026-06-26 Hermes / pipefail
+        run: |
+          set -euo pipefail
+          chmod +x scripts/gate/check_docs_consistency.sh
+          bash scripts/gate/check_docs_consistency.sh 2>&1 | tee docs_consistency.log
+      - name: Doc Completeness Check (dedicated, v3.8.0+) [Issue #2941 supplement] — FIX 2026-06-26 Hermes / pipefail
+        run: |
+          set -euo pipefail
+          chmod +x scripts/gate/check_document_completeness.sh
+          mkdir -p artifacts/gate/v3.8.0/document_completeness
+          bash scripts/gate/check_document_completeness.sh v3.8.0 artifacts/gate/v3.8.0/document_completeness/ 2>&1 | tee document_completeness.log
+      - name: Alpha Gate (SPEC-021)
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/gate/v3.8.0
+          bash scripts/gate/check_alpha_v380.sh 2>&1 | tee alpha_gate.log
+      - name: RC/GA Gate — Unified 6-Dim (Issue #2882)
+        run: |
+          set -euo pipefail
+          bash scripts/gate/check_rc_ga_gate.sh ga 2>&1 | tee rc_ga_gate.log
+      - name: Test Plan Audit (Issue #2881 → mandatory via #2882)
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/audit/v3.8.0
+          bash scripts/gate/audit_testing.sh v3.8.0 ga artifacts/audit/v3.8.0 2>&1 | tee audit_testing.log
+      - name: "D9 Full Gate Verification (8 dim: D1-D8 + cross-version + test plan + PR template)"
+        run: |
+          set -euo pipefail
+          bash scripts/gate/check_full_gate_verification.sh 2>&1 | tee full_gate_verification.log
+      - name: 6 Meta-Gate Hard Block (P11-P16, FIX 2026-06-26 Hermes) — blocks PR merge
+        if: always()
+        run: |
+          set -euo pipefail
+          FAILED=0
+          for g in check_gate_self_verification check_ignore_count \
+                   check_test_count_monotonic check_drift_not_pass \
+                   check_oracle_present check_gate_test_integrity; do
+              echo "=== $g ==="
+              chmod +x scripts/gate/$g.sh
+              if bash scripts/gate/$g.sh 2>&1 | tail -10; then
+                  echo "  ✅ PASS: $g"
+              else
+                  echo "  ❌ FAIL: $g (meta-gate hard block, P0 2026-06-26)"
+                  FAILED=$((FAILED+1))
+              fi
+          done
+          if [ $FAILED -gt 0 ]; then
+              echo ""
+              echo "=== META-GATE HARD BLOCK: $FAILED/6 meta-gate(s) FAILED ==="
+              echo "=== PR cannot merge until meta-gate fix ==="
+              exit 1
+          fi
+          echo "=== 6/6 META-GATES PASS ==="
+      - name: Gate summary
+        if: always()
+        run: |
+          GATE_FAIL=$(grep -c '\[FAIL\]' gate_report.log 2>/dev/null || echo "0")
+          COVERAGE_FAIL=$(grep -c 'FAIL\|failed' coverage_report.log 2>/dev/null || echo "0")
+          EVIDENCE_FAIL=$(grep -c 'FAIL\|failed\|error' evidence_binding.log 2>/dev/null || echo "0")
+          AFP_FAIL=$(grep -c 'FAIL\|failed\|error' anti_fabrication.log 2>/dev/null || echo "0")
+          DOCS_FAIL=$(grep -c 'FAIL\|failed\|error' docs_consistency.log 2>/dev/null || echo "0")
+          ALPHA_FAIL=$(grep -c '❌ FAIL' alpha_gate.log 2>/dev/null || echo "0")
+          RC_GA_FAIL=$(grep -c '❌ FAIL\|blocker' rc_ga_gate.log 2>/dev/null || echo "0")
+          AUDIT_FAIL=$(grep -c 'RESULT: FAIL' audit_testing.log 2>/dev/null || echo "0")
+          D9_FAIL=$(grep -c '❌ FAIL\|exit 1' full_gate_verification.log 2>/dev/null || echo "0")
+          echo "Gate: failed=$GATE_FAIL coverage=$COVERAGE_FAIL evidence=$EVIDENCE_FAIL alpha_gate=$ALPHA_FAIL rc_ga=$RC_GA_FAIL audit=$AUDIT_FAIL d9=$D9_FAIL"
+          # SPEC-021: Evidence binding FAIL must block merge (Anti-Fabrication)
+          if [ "$GATE_FAIL" -gt 0 ] || [ "$COVERAGE_FAIL" -gt 0 ] || [ "$EVIDENCE_FAIL" -gt 0 ] || [ "$AFP_FAIL" -gt 0 ] || [ "$DOCS_FAIL" -gt 0 ] || [ "$ALPHA_FAIL" -gt 0 ] || [ "$RC_GA_FAIL" -gt 0 ] || [ "$AUDIT_FAIL" -gt 0 ] || [ "$D9_FAIL" -gt 0 ]; then
+            echo "L1 gate failed (incl. AFP / doc completeness / evidence binding / alpha gate / rc-ga gate / audit_testing / D9 full gate)"
+            exit 1
+          fi
+          echo "All postcheck gates passed"
