@@ -28,11 +28,24 @@
 
 ## 6. Sprint 8 (out of scope for this PR)
 
-- [ ] 6.1 Hash-join for 8-way JOINs.
-- [ ] 6.2 CASE WHEN short-circuit.
-- [ ] 6.3 EXTRACT YEAR function support.
-- [ ] 6.4 Q8 cell-level test.
-- [ ] 6.5 Q8 perf bench.
+- [x] 6.1 Hash-join for 8-way JOINs. **Foundation landed in
+      `crates/executor/src/join/hash_join.rs` (commit pending)**:
+      `pub fn hash_join_inner_outer` (2-way) and `pub fn
+      multi_way_hash_chain` (chained left-deep). 8 unit tests PASS.
+      Wiring for the 8-way chain (and the CASE WHEN short-circuit
+      below) is the remaining Sprint 8 work.
+- [ ] 6.2 CASE WHEN short-circuit. Pre-compute `n2.n_name =
+      'GERMANY'` per row of the nation n2 subquery (or the
+      materialized `__subq_N` if the parser encoded it), avoiding
+      per-joined-row CASE re-evaluation. Best implemented alongside
+      the hash-join wiring (§6.1).
+- [ ] 6.3 EXTRACT YEAR function support. Some Q8 paths use
+      `EXTRACT(YEAR FROM o_orderdate)`; confirm the parser +
+      `executor::expr::eval_fn` path returns the same year as PG for
+      the test fixture's date range.
+- [ ] 6.4 Q8 cell-level test (in-process eval at SF=0.1; compare
+      cell-level vs PG).
+- [ ] 6.5 Q8 perf bench (target < 5s at SF=0.1, < 60s at SF=1.0).
 
 ## 7. Gitea issue tracking
 
