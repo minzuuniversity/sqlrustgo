@@ -211,9 +211,6 @@ harness = false
 name = "bench_columnar"
 harness = false
 
-[[example]]
-name = "tpch_data_gen"
-path = "crates/bench/examples/tpch_data_gen.rs"
 
 [dependencies.rusqlite]
 version = "0.39"
