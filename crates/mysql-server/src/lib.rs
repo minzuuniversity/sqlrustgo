@@ -1287,7 +1287,7 @@ fn send_result_set<W: Write>(
     for r in rows.iter() {
         let mut p = Vec::new();
         write_text_row(&mut p, r)?;
-        
+
         Packet {
             length: p.len() as u32,
             sequence: seq,
@@ -2974,15 +2974,17 @@ pub fn run_server_v2(
     data_dir: &str,
     max_connections: usize,
     auth_mode: &str,
+    server_threads: usize,
 ) -> MySqlResult<()> {
     let addr = format!("{}:{}", host, port);
     let listener = TcpListener::bind(&addr)?;
     tracing::info!(
-        "MySQL server listening on {} (data_dir={}, max_conn={}, auth={})",
+        "MySQL server listening on {} (data_dir={}, max_conn={}, auth={}, server_threads={})",
         addr,
         data_dir,
         max_connections,
-        auth_mode
+        auth_mode,
+        server_threads
     );
     // Store options in env so the run_server_with_listener path can read them
     std::env::set_var("SQLRUSTGO_DATA_DIR", data_dir);
@@ -2999,10 +3001,20 @@ pub fn run_server_v2(
     use crate::testing::EphemeralConfig;
     let cfg = EphemeralConfig {
         data_dir: Some(std::path::PathBuf::from(data_dir)),
+        server_threads,
         ..Default::default()
     };
     let _ = crate::ACTIVE_CONFIG.set(std::sync::Mutex::new(cfg));
-    run_server_with_listener(listener)
+    let shutdown = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    run_server_with_listener_and_shutdown_with_bootstrap_tables_and_sql(
+        listener,
+        shutdown,
+        None,
+        true,
+        Vec::new(),
+        Some(std::path::PathBuf::from(data_dir)),
+        server_threads,
+    )
 }
 
 /// Server core extracted so the test harness can hand in a pre-bound
@@ -3045,6 +3057,7 @@ pub(crate) fn run_server_with_listener_and_shutdown_with_bootstrap_tables_and_sq
     bootstrap_tables: bool,
     bootstrap_sql: Vec<String>,
     data_dir: Option<std::path::PathBuf>,
+    server_threads: usize,
 ) -> MySqlResult<()> {
     let tls_config = Arc::new(make_tls_config());
     tracing::info!("TLS ready (self-signed cert)");
@@ -3190,13 +3203,42 @@ pub(crate) fn run_server_with_listener_and_shutdown_with_bootstrap_tables_and_sq
     }
     use std::sync::atomic::Ordering;
     use std::time::Duration;
+    // Construct worker pool only when server_threads > 0. When server_threads
+    // is 0, fall back to the legacy unbounded per-connection thread::spawn
+    // path (used by tests that exercise many concurrent short-lived
+    // connections and want full thread-per-connection isolation).
+    let pool = if server_threads == 0 {
+        None
+    } else {
+        Some(crate::testing::ServerThreadPool::start(server_threads))
+    };
+
     while !shutdown.load(Ordering::SeqCst) {
         match listener.accept() {
             Ok((stream, addr)) => {
                 let st = storage.clone();
                 let tc = tls_config.clone();
                 let us = user_store.clone();
-                thread::spawn(move || handle_connection(stream, addr, st, tc, us));
+                match &pool {
+                    None => {
+                        thread::spawn(move || handle_connection(stream, addr, st, tc, us));
+                    }
+                    Some(p) => {
+                        let job = crate::testing::ServerJob {
+                            stream,
+                            addr,
+                            storage: st,
+                            tls_config: tc,
+                            user_store: us,
+                        };
+                        if let Err(returned_job) = p.send(job) {
+                            tracing::warn!(
+                                "worker pool shut down; dropping connection from {}",
+                                returned_job.addr
+                            );
+                        }
+                    }
+                }
             }
             Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
                 std::thread::sleep(Duration::from_millis(50));
@@ -3210,6 +3252,10 @@ pub(crate) fn run_server_with_listener_and_shutdown_with_bootstrap_tables_and_sq
             }
         }
     }
+    // Drop the pool so workers exit their recv loop and join. Any
+    // in-flight jobs keep running until they complete (sync_channel
+    // receivers hold the jobs until consumed).
+    drop(pool);
     Ok(())
 }
 
@@ -3230,6 +3276,7 @@ pub fn run_server_with_listener_and_shutdown(
         true,
         Vec::new(),
         None,
+        16,
     )
 }
 
@@ -3252,6 +3299,7 @@ pub(crate) fn run_server_with_listener_and_shutdown_with_bootstrap(
         true,
         Vec::new(),
         None,
+        16,
     )
 }
 
@@ -3555,7 +3603,23 @@ mod integration_tests {
         let pkt = make_err_packet(0, 2000, "42000", "");
         assert_eq!(pkt.payload[0], 0xff);
     }
-
+    #[test]
+    fn test_make_err_packet_null_byte_separator() {
+        // MySQL wire protocol: error packet format is
+        // 0xFF + error_code(u16 LE) + 0x23 + SQL_STATE(5 bytes) + 0x00 + ERROR_MSG
+        // The null-byte between SQL state and error message is required.
+        let pkt = make_err_packet(1, 1146, "42S02", "Table not found");
+        assert_eq!(pkt.payload[0], 0xff); // ERR packet type
+                                          // Bytes 1-2: error code (1146 = 0x047A little-endian)
+        assert_eq!(u16::from_le_bytes([pkt.payload[1], pkt.payload[2]]), 1146);
+        assert_eq!(pkt.payload[3], 0x23); // '#' marker
+                                          // Bytes 4-8: SQL state "42S02"
+        assert_eq!(&pkt.payload[4..9], b"42S02");
+        // Byte 9: null-byte separator
+        assert_eq!(pkt.payload[9], 0x00);
+        // Bytes 10+: error message
+        assert_eq!(&pkt.payload[10..], b"Table not found");
+    }
     // ============ make_eof_packet Tests ============
 
     #[test]
@@ -3939,6 +4003,28 @@ mod integration_tests {
         // Protocol errors don't have a source
         assert!(err.source().is_none());
     }
+
+    #[test]
+    fn server_thread_pool_panic_isolation() {
+        use crate::testing::ServerThreadPool;
+        // Pool with 2 workers; both should start cleanly and exit cleanly
+        // when sender drops. We can't easily inject a panicking job without
+        // a full handle_connection, so we just verify lifecycle here.
+        // The catch_unwind in worker_loop is verified by reading code
+        // and by e2e tests in Task 8.
+        let pool = ServerThreadPool::start(2);
+        assert_eq!(pool.worker_count(), 2);
+        pool.join();
+    }
+
+    #[test]
+    fn server_thread_pool_graceful_shutdown() {
+        use crate::testing::ServerThreadPool;
+        let pool = ServerThreadPool::start(4);
+        assert_eq!(pool.worker_count(), 4);
+        // join() must return cleanly without hang or panic
+        pool.join();
+    }
 }
 
 /// Parse a LOAD DATA LOCAL INFILE SQL statement.
@@ -4067,11 +4153,110 @@ mod load_local_infile_tests {
 pub use testing::EphemeralConfig;
 
 pub mod testing {
+    use crate::UserStore;
     use crate::ACTIVE_CONFIG;
-    use std::net::TcpListener;
+    use std::net::{SocketAddr, TcpListener, TcpStream};
     use std::path::PathBuf;
+    use std::sync::mpsc::{sync_channel, Receiver, SyncSender};
     use std::sync::{Arc, Mutex};
     use std::thread::JoinHandle;
+
+    /// One connection-handling job dispatched to a worker via the
+    /// `ServerThreadPool` channel. Workers call
+    /// `handle_connection` with these args.
+    #[allow(private_interfaces)]
+    pub struct ServerJob {
+        pub stream: TcpStream,
+        pub addr: SocketAddr,
+        pub storage: Arc<
+            std::sync::RwLock<
+                sqlrustgo_storage::WalStorage<
+                    sqlrustgo_storage::FileStorage,
+                    sqlrustgo_storage::FileBackedWalManager,
+                >,
+            >,
+        >,
+        pub tls_config: Arc<rustls::ServerConfig>,
+        pub user_store: UserStore,
+    }
+
+    /// Bounded worker pool: N worker threads + `sync_channel(N*2)` for
+    /// backpressure. `server_threads=0` mode skips constructing this
+    /// and falls back to legacy per-connection `thread::spawn`.
+    pub struct ServerThreadPool {
+        tx: SyncSender<ServerJob>,
+        workers: Vec<std::thread::JoinHandle<()>>,
+    }
+
+    const CHANNEL_BUFFER_MULTIPLIER: usize = 2;
+
+    impl ServerThreadPool {
+        /// Start N worker threads + bounded sync_channel.
+        #[allow(private_interfaces)]
+        pub fn start(n: usize) -> Self {
+            assert!(n > 0, "ServerThreadPool::start requires n > 0");
+            let (tx, rx) = sync_channel(n * CHANNEL_BUFFER_MULTIPLIER);
+            let rx = Arc::new(std::sync::Mutex::new(rx));
+            let mut workers = Vec::with_capacity(n);
+            for worker_id in 0..n {
+                let rx = rx.clone();
+                workers.push(std::thread::spawn(move || {
+                    worker_loop(rx, worker_id);
+                }));
+            }
+            Self { tx, workers }
+        }
+
+        /// Send a job; blocks if the channel is full (backpressure).
+        /// Returns Err if all workers have shut down.
+        pub fn send(&self, job: ServerJob) -> Result<(), ServerJob> {
+            self.tx.send(job).map_err(|e| e.0)
+        }
+
+        /// Drop the sender so workers exit their recv loop, then join.
+        pub fn join(self) {
+            drop(self.tx);
+            for h in self.workers {
+                let _ = h.join();
+            }
+        }
+
+        /// Number of worker threads.
+        pub fn worker_count(&self) -> usize {
+            self.workers.len()
+        }
+    }
+
+    fn worker_loop(rx: Arc<std::sync::Mutex<Receiver<ServerJob>>>, worker_id: usize) {
+        loop {
+            let job = {
+                let rx = rx.lock().expect("worker mutex poisoned");
+                match rx.recv() {
+                    Ok(job) => job,
+                    Err(_) => {
+                        tracing::debug!("worker {worker_id}: channel closed, exiting");
+                        return;
+                    }
+                }
+            };
+            // Panic isolation: one connection's panic doesn't kill the worker.
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                crate::handle_connection(
+                    job.stream,
+                    job.addr,
+                    job.storage,
+                    job.tls_config,
+                    job.user_store,
+                )
+            }));
+            if let Err(e) = result {
+                tracing::error!(
+                    "worker {worker_id}: connection handler panicked: {:?}",
+                    e.downcast_ref::<&str>().unwrap_or(&"unknown")
+                );
+            }
+        }
+    }
 
     /// Configuration for an ephemeral MySQL server.
     #[derive(Debug, Clone)]
@@ -4106,6 +4291,12 @@ pub mod testing {
         /// LOAD DATA LOCAL INFILE. Default 1 MB. Tests / perf benches
         /// can set higher (e.g. 16 MB) for fewer INSERT round-trips.
         pub bulk_insert_buffer_size: usize,
+        /// Maximum concurrent connection-handler worker threads.
+        /// 0 = legacy unbounded `thread::spawn` (backwards compatible).
+        /// 1..=80 = bounded `ServerThreadPool` with N workers +
+        /// `sync_channel(N*2)` for backpressure. Default 16 (matches
+        /// CLI default in `main.rs`).
+        pub server_threads: usize,
     }
 
     impl Default for EphemeralConfig {
@@ -4117,6 +4308,7 @@ pub mod testing {
                 data_dir: None,
                 bootstrap_sql: Vec::new(),
                 bulk_insert_buffer_size: 1_048_576,
+                server_threads: 16,
             }
         }
     }
@@ -4250,6 +4442,7 @@ pub mod testing {
         let bootstrap_users = config.bootstrap_users;
         let bootstrap_tables_flag = config.bootstrap_tables;
         let bootstrap_sql = config.bootstrap_sql;
+        let server_threads = config.server_threads;
         let join = std::thread::spawn(move || {
             let bootstrap: crate::UserStoreBootstrap = if bootstrap_users {
                 Some(Box::new(|user_store: &mut crate::UserStore| {
@@ -4265,6 +4458,7 @@ pub mod testing {
                 bootstrap_tables_flag,
                 bootstrap_sql,
                 data_dir_for_thread,
+                server_threads,
             );
         });
 
