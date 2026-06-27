@@ -650,24 +650,36 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
 
         let scalar_eval = |subq: &sqlrustgo_parser::SelectStatement| -> Result<Value, String> {
             let result = self.execute_select(subq).map_err(|e| e.to_string())?;
-            Ok(result.rows.first().and_then(|r| r.first().cloned()).unwrap_or(Value::Null))
+            Ok(result
+                .rows
+                .first()
+                .and_then(|r| r.first().cloned())
+                .unwrap_or(Value::Null))
         };
         let list_eval = |subq: &sqlrustgo_parser::SelectStatement| -> Result<Vec<Value>, String> {
             let result = self.execute_select(subq).map_err(|e| e.to_string())?;
-            Ok(result.rows.into_iter().map(|r| r.first().cloned().unwrap_or(Value::Null)).collect())
+            Ok(result
+                .rows
+                .into_iter()
+                .map(|r| r.first().cloned().unwrap_or(Value::Null))
+                .collect())
         };
         let resolved_set: Vec<(String, Expression)> = update
             .set_clauses
             .iter()
             .map(|(col, expr)| {
-                Ok((col.clone(), resolve_subqueries_in_expr(expr, &scalar_eval, &list_eval)?))
+                Ok((
+                    col.clone(),
+                    resolve_subqueries_in_expr(expr, &scalar_eval, &list_eval)?,
+                ))
             })
             .collect::<Result<Vec<_>, String>>()
             .map_err(|e| SqlError::ExecutionError(format!("UPDATE SET subquery: {}", e)))?;
         let resolved_where: Option<Expression> = match &update.where_clause {
             Some(w) => Some(
-                resolve_subqueries_in_expr(w, &scalar_eval, &list_eval)
-                    .map_err(|e| SqlError::ExecutionError(format!("UPDATE WHERE subquery: {}", e)))?,
+                resolve_subqueries_in_expr(w, &scalar_eval, &list_eval).map_err(|e| {
+                    SqlError::ExecutionError(format!("UPDATE WHERE subquery: {}", e))
+                })?,
             ),
             None => None,
         };
@@ -783,7 +795,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             if !table_info.check_constraints.is_empty() {
                 let col_names: Vec<String> =
                     table_info.columns.iter().map(|c| c.name.clone()).collect();
-                for record in &new_rows {
+                for record in &trigger_modified_rows {
                     for constraint in &table_info.check_constraints {
                         let valid = sqlrustgo_storage::evaluate_check_constraint(
                             constraint, &col_names, record,
@@ -800,9 +812,18 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 }
             }
 
-            storage.delete(&table_name, &[])?;
-            if !new_rows.is_empty() {
-                storage.insert(&table_name, new_rows)?;
+            let pk_idx = table_info
+                .columns
+                .iter()
+                .position(|c| c.primary_key)
+                .unwrap_or(0);
+            for (prior_row, new_row) in rows_to_update.iter().zip(trigger_modified_rows.iter()) {
+                let pk_val = prior_row
+                    .get(pk_idx)
+                    .cloned()
+                    .unwrap_or(sqlrustgo_types::Value::Null);
+                storage.delete(&table_name, std::slice::from_ref(&pk_val))?;
+                storage.insert(&table_name, vec![new_row.clone()])?;
             }
         }
 
@@ -838,16 +859,25 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
 
         let scalar_eval = |subq: &sqlrustgo_parser::SelectStatement| -> Result<Value, String> {
             let result = self.execute_select(subq).map_err(|e| e.to_string())?;
-            Ok(result.rows.first().and_then(|r| r.first().cloned()).unwrap_or(Value::Null))
+            Ok(result
+                .rows
+                .first()
+                .and_then(|r| r.first().cloned())
+                .unwrap_or(Value::Null))
         };
         let list_eval = |subq: &sqlrustgo_parser::SelectStatement| -> Result<Vec<Value>, String> {
             let result = self.execute_select(subq).map_err(|e| e.to_string())?;
-            Ok(result.rows.into_iter().map(|r| r.first().cloned().unwrap_or(Value::Null)).collect())
+            Ok(result
+                .rows
+                .into_iter()
+                .map(|r| r.first().cloned().unwrap_or(Value::Null))
+                .collect())
         };
         let resolved_where: Option<Expression> = match &delete.where_clause {
             Some(w) => Some(
-                resolve_subqueries_in_expr(w, &scalar_eval, &list_eval)
-                    .map_err(|e| SqlError::ExecutionError(format!("DELETE WHERE subquery: {}", e)))?,
+                resolve_subqueries_in_expr(w, &scalar_eval, &list_eval).map_err(|e| {
+                    SqlError::ExecutionError(format!("DELETE WHERE subquery: {}", e))
+                })?,
             ),
             None => None,
         };
@@ -1945,9 +1975,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         target_table_info: &TableInfo,
     ) -> SqlResult<Vec<Vec<Value>>> {
         let target_col_indices: Vec<usize> = if target_columns.is_empty() {
-            if !result.rows.is_empty()
-                && result.rows[0].len() != target_table_info.columns.len()
-            {
+            if !result.rows.is_empty() && result.rows[0].len() != target_table_info.columns.len() {
                 return Err(SqlError::ExecutionError(format!(
                     "INSERT SELECT column count mismatch: SELECT has {} columns, target table has {}",
                     result.rows[0].len(),
@@ -1991,12 +2019,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     fn coerce_value_to_column(value: Value, target_col: &ColumnDefinition) -> Value {
         let upper = target_col.data_type.to_uppercase();
         match (&value, upper.as_str()) {
-            (Value::Integer(i), "TEXT" | "VARCHAR" | "CHAR") => {
-                Value::Text(i.to_string())
-            }
-            (Value::Float(f), "TEXT" | "VARCHAR" | "CHAR") => {
-                Value::Text(f.to_string())
-            }
+            (Value::Integer(i), "TEXT" | "VARCHAR" | "CHAR") => Value::Text(i.to_string()),
+            (Value::Float(f), "TEXT" | "VARCHAR" | "CHAR") => Value::Text(f.to_string()),
             (Value::Boolean(b), "TEXT" | "VARCHAR" | "CHAR") => {
                 Value::Text(if *b { "TRUE" } else { "FALSE" }.to_string())
             }
