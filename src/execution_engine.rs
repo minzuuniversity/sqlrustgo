@@ -333,26 +333,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             Statement::Merge(ref merge) => self.execute_merge_statement(merge),
             Statement::DropTable(ref drop) => self.execute_drop_table(drop),
             Statement::Truncate(ref truncate) => self.execute_truncate(truncate),
-            Statement::WithSelect(with) => {
-                // 基本 CTE 支持：提取主 SELECT 直接执行
-                // TODO: 完整 CTE 物化支持 (Phase 2)
-                let has_cte = with.with_clause.as_ref().map_or(false, |w| !w.ctes.is_empty());
-                if has_cte {
-                    self.execute_select(&with.select)
-                } else {
-                    self.execute_select(&with.select)
-                }
-            }
-            Statement::WithDml(with_dml) => {
-                match with_dml.body.as_ref() {
-                    Statement::Insert(insert) => self.execute_insert(insert),
-                    Statement::Update(update) => self.execute_update(update),
-                    Statement::Delete(delete) => self.execute_delete(delete),
-                    _ => Err(SqlError::ExecutionError(
-                        "Unsupported WithDml body type".to_string(),
-                    )),
-                }
-            }
+            Statement::WithSelect(ref with) => self.execute_with_select(with),
+            Statement::WithDml(ref with_dml) => self.execute_with_dml(with_dml),
             Statement::CreateIndex(idx) => self.execute_create_index(&idx),
             Statement::Analyze(ref analyze) => {
                 let table_name = analyze.table_name.as_ref().ok_or_else(|| {
@@ -436,6 +418,171 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             Statement::UseDatabase(ref name) => self.execute_use_database(name),
         }
     }
+
+    /// CTE 物化: 将每个 CTE 子查询结果存入临时表，然后执行主查询
+    pub fn execute_with_select(
+        &mut self,
+        with: &sqlrustgo_parser::parser::WithSelect,
+    ) -> SqlResult<ExecutorResult> {
+        use sqlrustgo_parser::Statement;
+        use sqlrustgo_storage::engine::{ColumnDefinition, TableInfo};
+
+        let materialized_tables: Vec<String> = if let Some(ref with_clause) = with.with_clause {
+            for cte in &with_clause.ctes {
+                if with_clause.recursive {
+                    return Err(SqlError::ExecutionError(
+                        "Recursive CTE not yet supported".to_string(),
+                    ));
+                }
+                let cte_rows = match cte.subquery.as_ref() {
+                    Statement::Select(s) => self.execute_select(&s)?.rows,
+                    _ => {
+                        return Err(SqlError::ExecutionError(
+                            "CTE subquery must be SELECT".to_string(),
+                        ));
+                    }
+                };
+                let column_count = if !cte.columns.is_empty() {
+                    cte.columns.len()
+                } else if !cte_rows.is_empty() {
+                    cte_rows[0].len()
+                } else {
+                    0
+                };
+                let columns: Vec<ColumnDefinition> = (0..column_count)
+                    .map(|i| ColumnDefinition {
+                        name: if !cte.columns.is_empty() {
+                            cte.columns[i].clone()
+                        } else {
+                            format!("col_{}", i)
+                        },
+                        data_type: "TEXT".to_string(),
+                        nullable: true,
+                        primary_key: false,
+                        char_max_length: None,
+                    })
+                    .collect();
+                let table_info = TableInfo {
+                    name: cte.name.clone(),
+                    columns,
+                    foreign_keys: vec![],
+                    unique_constraints: vec![],
+                    check_constraints: vec![],
+                    partition_info: None,
+                };
+                let mut storage = self.storage.write().unwrap();
+                storage.create_table(&table_info).map_err(|e| {
+                    SqlError::ExecutionError(format!("Create CTE table: {}", e))
+                })?;
+                if !cte_rows.is_empty() {
+                    storage.insert(&cte.name, cte_rows).map_err(|e| {
+                        SqlError::ExecutionError(format!("Insert CTE rows: {}", e))
+                    })?;
+                }
+            }
+            with_clause.ctes.iter().map(|c| c.name.clone()).collect()
+        } else {
+            Vec::new()
+        };
+
+        let result = self.execute_select(&with.select);
+
+        // 清理临时 CTE 表
+        if !materialized_tables.is_empty() {
+            let mut storage = self.storage.write().unwrap();
+            for name in &materialized_tables {
+                let _ = storage.drop_table(name);
+            }
+        }
+
+        result
+    }
+
+    /// CTE + DML: 物化 CTE 后执行 DML body
+    pub fn execute_with_dml(
+        &mut self,
+        with: &sqlrustgo_parser::parser::WithDmlStatement,
+    ) -> SqlResult<ExecutorResult> {
+        use sqlrustgo_parser::Statement;
+        use sqlrustgo_storage::engine::{ColumnDefinition, TableInfo};
+
+        let with_clause = &with.with_clause;
+        let materialized_tables: Vec<String> = {
+            for cte in &with_clause.ctes {
+                if with_clause.recursive {
+                    return Err(SqlError::ExecutionError(
+                        "Recursive CTE not yet supported".to_string(),
+                    ));
+                }
+                let cte_rows = match cte.subquery.as_ref() {
+                    Statement::Select(s) => self.execute_select(&s)?.rows,
+                    _ => {
+                        return Err(SqlError::ExecutionError(
+                            "CTE subquery must be SELECT".to_string(),
+                        ));
+                    }
+                };
+                let column_count = if !cte.columns.is_empty() {
+                    cte.columns.len()
+                } else if !cte_rows.is_empty() {
+                    cte_rows[0].len()
+                } else {
+                    0
+                };
+                let columns: Vec<ColumnDefinition> = (0..column_count)
+                    .map(|i| ColumnDefinition {
+                        name: if !cte.columns.is_empty() {
+                            cte.columns[i].clone()
+                        } else {
+                            format!("col_{}", i)
+                        },
+                        data_type: "TEXT".to_string(),
+                        nullable: true,
+                        primary_key: false,
+                        char_max_length: None,
+                    })
+                    .collect();
+                let table_info = TableInfo {
+                    name: cte.name.clone(),
+                    columns,
+                    foreign_keys: vec![],
+                    unique_constraints: vec![],
+                    check_constraints: vec![],
+                    partition_info: None,
+                };
+                let mut storage = self.storage.write().unwrap();
+                storage.create_table(&table_info).map_err(|e| {
+                    SqlError::ExecutionError(format!("Create CTE table: {}", e))
+                })?;
+                if !cte_rows.is_empty() {
+                    storage.insert(&cte.name, cte_rows).map_err(|e| {
+                        SqlError::ExecutionError(format!("Insert CTE rows: {}", e))
+                    })?;
+                }
+            }
+            with_clause.ctes.iter().map(|c| c.name.clone()).collect()
+        };
+
+        let result = match with.body.as_ref() {
+            Statement::Insert(insert) => self.execute_insert(&insert),
+            Statement::Update(update) => self.execute_update(&update),
+            Statement::Delete(delete) => self.execute_delete(&delete),
+            _ => Err(SqlError::ExecutionError(
+                "Unsupported WithDml body type".to_string(),
+            )),
+        };
+
+        // 清理临时 CTE 表
+        if !materialized_tables.is_empty() {
+            let mut storage = self.storage.write().unwrap();
+            for name in &materialized_tables {
+                let _ = storage.drop_table(name);
+            }
+        }
+
+        result
+    }
+
     pub fn execute_insert(&mut self, insert: &InsertStatement) -> SqlResult<ExecutorResult> {
         // ARCH-3 (#3169): VtuGuard main-path enforcement (P0-1, Blocker-3)
         sqlrustgo_storage::vtu_guard::VtuGuard::<()>::assert_path_for_dml(
@@ -1328,10 +1475,18 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     }
 
     fn execute_create_database(&self, db: &CreateDatabaseStatement) -> SqlResult<ExecutorResult> {
-        // v3.9.0 single-database: CREATE DATABASE is accepted for MySQL wire
-        // compatibility but is a no-op. In v3.10 multi-database mode this will
-        // create a data/<db_name>/ directory and register in catalog.
-        let _ = db;
+        // v3.10.0: 多数据库支持
+        // 委托给 storage 创建数据库子目录
+        if db.name == "default" || db.name == "postgres" || db.name == "mysql" {
+            return Err(SqlError::ExecutionError(format!(
+                "CREATE DATABASE '{}' is not permitted (reserved database name)",
+                db.name
+            )));
+        }
+        let mut storage = self.storage.write().unwrap();
+        storage
+            .create_database(&db.name)
+            .map_err(|e| SqlError::ExecutionError(format!("CREATE DATABASE: {}", e)))?;
         Ok(ExecutorResult::empty())
     }
 
