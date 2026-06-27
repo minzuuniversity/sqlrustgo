@@ -4,7 +4,9 @@
 //! These functions do not depend on the `ExecutionEngine` struct and can be
 //! used independently by any module needing expression evaluation.
 
+use sqlrustgo_parser::parser::WhenClause;
 use sqlrustgo_parser::Expression;
+use sqlrustgo_parser::SelectStatement;
 use sqlrustgo_storage::TableInfo;
 use sqlrustgo_types::Value;
 
@@ -161,6 +163,18 @@ pub fn evaluate_expression(
     expr: &Expression,
     row: &[Value],
     table_info: &TableInfo,
+) -> Result<Value, String> {
+    evaluate_expression_with_subq(expr, row, table_info, &|_| Ok(Value::Null))
+}
+
+/// Like `evaluate_expression` but can resolve `(SELECT ...)` scalar
+/// subqueries via `subq_eval` (called with the inner select, expected
+/// to return its scalar value or Null for an empty result).
+pub fn evaluate_expression_with_subq(
+    expr: &Expression,
+    row: &[Value],
+    table_info: &TableInfo,
+    subq_eval: &dyn Fn(&SelectStatement) -> Result<Value, String>,
 ) -> Result<Value, String> {
     match expr {
         Expression::Literal(_) => {
@@ -335,6 +349,10 @@ pub fn evaluate_expression(
             // appearing directly is unusual; return Null defensively.
             Ok(Value::Null)
         }
+        Expression::Subquery(subq) => subq_eval(subq),
+        Expression::SubqueryField(inner, _field) => {
+            evaluate_expression_with_subq(inner, row, table_info, subq_eval)
+        }
         _ => Ok(Value::Null),
     }
 }
@@ -468,4 +486,80 @@ pub(crate) fn find_column_index(col_name: &str, table_info: &TableInfo) -> Optio
     // P0-2 §4.10: delegated to `executor::expr::find_column_index`
     // (single source of truth for column-name resolution).
     sqlrustgo_executor::expr::find_column_index(col_name, &table_info.columns)
+}
+
+/// Walk an expression and rewrite `(SELECT ...)` subqueries into
+/// `Literal` / `InList` / `NotInList` so `evaluate_expression` and
+/// `evaluate_where_clause` (which don't know about subqueries) can
+/// consume the result. `scalar_eval` / `list_eval` are called once
+/// per encountered subquery and must produce the resolved scalar /
+/// list value.
+pub fn resolve_subqueries_in_expr<F, G>(
+    expr: &Expression,
+    scalar_eval: &F,
+    list_eval: &G,
+) -> Result<Expression, String>
+where
+    F: Fn(&SelectStatement) -> Result<Value, String>,
+    G: Fn(&SelectStatement) -> Result<Vec<Value>, String>,
+{
+    use Expression::*;
+    Ok(match expr {
+        Subquery(subq) => Literal(scalar_eval(subq)?.to_sql_string()),
+        In(left, subq) => InList(
+            Box::new(resolve_subqueries_in_expr(left, scalar_eval, list_eval)?),
+            list_eval_to_expressions(subq, list_eval)?,
+        ),
+        NotIn(left, subq) => NotInList(
+            Box::new(resolve_subqueries_in_expr(left, scalar_eval, list_eval)?),
+            list_eval_to_expressions(subq, list_eval)?,
+        ),
+        BinaryOp(l, op, r) => BinaryOp(
+            Box::new(resolve_subqueries_in_expr(l, scalar_eval, list_eval)?),
+            op.clone(),
+            Box::new(resolve_subqueries_in_expr(r, scalar_eval, list_eval)?),
+        ),
+        UnaryOp(op, inner) => UnaryOp(
+            op.clone(),
+            Box::new(resolve_subqueries_in_expr(inner, scalar_eval, list_eval)?),
+        ),
+        CaseWhen(whens, else_val) => {
+            let mut new_whens = Vec::with_capacity(whens.len());
+            for w in whens {
+                let cond = resolve_subqueries_in_expr(&w.condition, scalar_eval, list_eval)?;
+                let res = resolve_subqueries_in_expr(&w.result, scalar_eval, list_eval)?;
+                new_whens.push(WhenClause {
+                    condition: cond,
+                    result: res,
+                });
+            }
+            let new_else = else_val
+                .as_ref()
+                .map(|e| resolve_subqueries_in_expr(e, scalar_eval, list_eval).map(Box::new))
+                .transpose()?;
+            CaseWhen(new_whens, new_else)
+        }
+        FunctionCall(name, args) => {
+            let mut new_args = Vec::with_capacity(args.len());
+            for a in args {
+                new_args.push(resolve_subqueries_in_expr(a, scalar_eval, list_eval)?);
+            }
+            FunctionCall(name.clone(), new_args)
+        }
+        _ => expr.clone(),
+    })
+}
+
+fn list_eval_to_expressions<G>(
+    subq: &SelectStatement,
+    list_eval: &G,
+) -> Result<Vec<Expression>, String>
+where
+    G: Fn(&SelectStatement) -> Result<Vec<Value>, String>,
+{
+    let values = list_eval(subq)?;
+    Ok(values
+        .into_iter()
+        .map(|v| Expression::Literal(v.to_sql_string()))
+        .collect())
 }
