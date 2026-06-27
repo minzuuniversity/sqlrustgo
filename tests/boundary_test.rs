@@ -294,4 +294,3 @@ fn test_bit_value() {
     let result = parse(sql);
     assert!(result.is_ok());
 }
-

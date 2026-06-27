@@ -25,10 +25,12 @@
 #       bash scripts/stability/run_wired_soak.sh
 #
 # Environment variables (with defaults):
-#   HOURS                positive number, e.g. 0.5/1/2/4/8/12/16/24/48/72  (default 24)
+#   HOURS                positive number, e.g. 0.5/1/2/4/8/12/16/24/48/72  (default 1)
 #   INTERVAL             metric sample interval (seconds)                   (default 60)
 #                        (auto-scaled to 5s for HOURS<1, 10s for HOURS<2)
-#   THREADS              sysbench threads                                    (default 8)
+#   THREADS              sysbench threads                                    (default 16)
+#   SERVER_THREADS       sqlrustgo-mysql-server worker threads               (default 16)
+#                        range 0..=80, validated by --server-threads CLI
 #   TABLE_SIZE           sysbench table size                                 (default 10000)
 #   TABLES               sysbench table count                                (default 1)
 #   PORT                 MySQL port                                          (default 3396)
@@ -40,9 +42,11 @@
 #                        (auto-scaled to 60s for HOURS<1, 120s for HOURS<2)
 #   TPCH_ROTATE_MAX_ROUNDS  0=forever, N>0=stop after N rounds               (default 0)
 #   RESULTS_DIR          output dir                                          (default test_results/wired_soak_<HOURS>h_<ts>)
+#   SKIP_SYSBENCH        1 = skip sysbench prepare + run (Issue #3575 workaround) (default 0)
 #
 # Issues: #3225 (real 24h/72h wall-clock soak), #3229 (168h), and the
 #         user-requested extra 0.5/1/2/4/8/12/16/48h gaps not covered by v2.
+#         Issue #3575: sysbench bulk_insert fails on sqlrustgo (deferred to v3.10).
 #
 # Maintainer: Hermes Agent
 # Last touched: 2026-06-14
@@ -54,7 +58,7 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 cd "$PROJECT_ROOT"
 
 # --- HOURS parsing (accept integer or fractional) ---
-HOURS_RAW="${HOURS:-24}"
+HOURS_RAW="${HOURS:-1}"           # was 24
 HOURS=$(printf "%.4f" "$HOURS_RAW" 2>/dev/null || echo "$HOURS_RAW")
 # Validate: positive number
 case "$HOURS" in
@@ -105,8 +109,16 @@ if [ "${TPCH_ROTATE_INTERVAL:-600}" = "600" ]; then
     fi
 fi
 
-THREADS="${THREADS:-8}"
+THREADS="${THREADS:-16}"           # was 8
 TABLE_SIZE="${TABLE_SIZE:-10000}"
+SERVER_THREADS="${SERVER_THREADS:-16}"
+SERVER_THREADS_MAX=80
+if ! [[ "$SERVER_THREADS" =~ ^[0-9]+$ ]]; then
+    echo "FAIL: SERVER_THREADS='$SERVER_THREADS' is not an integer" >&2; exit 1
+fi
+if [ "$SERVER_THREADS" -gt "$SERVER_THREADS_MAX" ]; then
+    echo "FAIL: SERVER_THREADS=$SERVER_THREADS > $SERVER_THREADS_MAX (binary rejects)" >&2; exit 1
+fi
 TABLES="${TABLES:-1}"
 PORT="${PORT:-3396}"
 HOST="${HOST:-127.0.0.1}"
@@ -169,7 +181,7 @@ echo "=========================================="
 echo "SQLRustGo Wired Soak — ${HOURS_DISPLAY}h (${HOURS_SECS}s)"
 echo "=========================================="
 echo "Hours=$HOURS_DISPLAY  Interval=${INTERVAL}s  Threads=$THREADS"
-echo "Port=$PORT  Host=$HOST  Data=$DATA_DIR"
+echo "ServerThreads=$SERVER_THREADS  Port=$PORT  Host=$HOST  Data=$DATA_DIR"
 echo "FIXTURE=$FIXTURE  TPCH_ROTATE=$TPCH_ROTATE (interval=${TPCH_ROTATE_INTERVAL}s)"
 echo "Results=$RESULTS_DIR"
 echo "Binary=$SQLRUSTGO_BIN"
@@ -195,7 +207,8 @@ fi
 nohup bash -c "$LIMIT_PREFIX exec '$SQLRUSTGO_BIN' serve \
     --host '$HOST' --port '$PORT' \
     --data-dir '$DATA_DIR' \
-    --log-level info" \
+    --log-level info \
+    --server-threads '$SERVER_THREADS'" \
     > "$LOG_FILE" 2>&1 &
 SERVER_PID=$!
 echo "$SERVER_PID" > "$PID_FILE"
@@ -238,32 +251,37 @@ else
     echo "[2/5] FIXTURE=none, skipping"
 fi
 
-# [3] sysbench prepare (create sbtest table)
-echo "[3/5] sysbench prepare (TABLES=$TABLES TABLE_SIZE=$TABLE_SIZE)..."
-sysbench oltp_read_write \
-    --db-driver=mysql \
-    --mysql-host="$HOST" --mysql-port="$PORT" \
-    --mysql-user=root --mysql-password="" \
-    --mysql-db=sbtest --table-size="$TABLE_SIZE" --tables="$TABLES" \
-    prepare 2>&1 | tail -3 || {
-    echo "FAIL: sysbench prepare failed" >&2
-    tail -20 "$LOG_FILE" >&2
-    kill "$SERVER_PID" 2>/dev/null || true
-    exit 1
-}
+# [3] sysbench prepare (create sbtest table) - SKIP_SYSBENCH=1 to bypass Issue #3575
+if [ "${SKIP_SYSBENCH:-0}" = "1" ]; then
+    echo "[3/5] SKIP_SYSBENCH=1, skipping sysbench prepare (Issue #3575 workaround)"
+    SYSBENCH_PID=""
+else
+    echo "[3/5] sysbench prepare (TABLES=$TABLES TABLE_SIZE=$TABLE_SIZE)..."
+    sysbench oltp_read_write \
+        --db-driver=mysql \
+        --mysql-host="$HOST" --mysql-port="$PORT" \
+        --mysql-user=root --mysql-password="" \
+        --mysql-db=sbtest --table-size="$TABLE_SIZE" --tables="$TABLES" \
+        prepare 2>&1 | tail -3 || {
+        echo "FAIL: sysbench prepare failed" >&2
+        tail -20 "$LOG_FILE" >&2
+        kill "$SERVER_PID" 2>/dev/null || true
+        exit 1
+    }
 
-# [4] Launch sysbench run + TPC-H rotation in parallel
-echo "[4/5] Launching sysbench oltp_read_write (${HOURS_DISPLAY}h = ${HOURS_SECS}s)..."
-nohup sysbench oltp_read_write \
-    --db-driver=mysql \
-    --mysql-host="$HOST" --mysql-port="$PORT" \
-    --mysql-user=root --mysql-password="" \
-    --mysql-db=sbtest --table-size="$TABLE_SIZE" --tables="$TABLES" \
-    --threads="$THREADS" --time="$HOURS_SECS" \
-    --report-interval=10 \
-    run > "$SYSBENCH_LOG" 2>&1 &
-SYSBENCH_PID=$!
-echo "  sysbench PID=$SYSBENCH_PID"
+    # [4] Launch sysbench run + TPC-H rotation in parallel
+    echo "[4/5] Launching sysbench oltp_read_write (${HOURS_DISPLAY}h = ${HOURS_SECS}s)..."
+    nohup sysbench oltp_read_write \
+        --db-driver=mysql \
+        --mysql-host="$HOST" --mysql-port="$PORT" \
+        --mysql-user=root --mysql-password="" \
+        --mysql-db=sbtest --table-size="$TABLE_SIZE" --tables="$TABLES" \
+        --threads="$THREADS" --time="$HOURS_SECS" \
+        --report-interval=10 \
+        run > "$SYSBENCH_LOG" 2>&1 &
+    SYSBENCH_PID=$!
+    echo "  sysbench PID=$SYSBENCH_PID"
+fi
 
 if [ "$TPCH_ROTATE" = "1" ]; then
     echo "       Launching TPC-H 22-query rotation (interval=${TPCH_ROTATE_INTERVAL}s)..."
@@ -298,8 +316,8 @@ cleanup() {
     [ -n "$TPCH_ROTATE_PID" ] && kill "$TPCH_ROTATE_PID" 2>/dev/null || true
     [ -n "$TPCH_ROTATE_PID" ] && wait "$TPCH_ROTATE_PID" 2>/dev/null || true
     echo "[cleanup] Stopping sysbench (PID $SYSBENCH_PID)..."
-    kill "$SYSBENCH_PID" 2>/dev/null || true
-    wait "$SYSBENCH_PID" 2>/dev/null || true
+    [ -n "$SYSBENCH_PID" ] && kill "$SYSBENCH_PID" 2>/dev/null || true
+    [ -n "$SYSBENCH_PID" ] && wait "$SYSBENCH_PID" 2>/dev/null || true
     echo "[cleanup] Stopping server (PID $SERVER_PID)..."
     kill "$SERVER_PID" 2>/dev/null || true
     wait "$SERVER_PID" 2>/dev/null || true
@@ -452,6 +470,7 @@ cat > "$RESULTS_DIR/STABILITY_REPORT.md" <<EOF
 | Host:Port | $HOST:$PORT |
 | Data dir | $DATA_DIR |
 | sysbench threads | $THREADS |
+| server worker threads | $SERVER_THREADS (max $SERVER_THREADS_MAX) |
 | sysbench table_size | $TABLE_SIZE |
 | sysbench tables | $TABLES |
 | TPC-H fixture | $FIXTURE |

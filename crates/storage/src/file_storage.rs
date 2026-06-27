@@ -398,7 +398,6 @@ impl FileStorage {
         Ok(())
     }
 
-
     /// Save a table to disk (call after modifications)
     pub fn persist_table(&self, name: &str) -> std::io::Result<()> {
         if let Some(table_data) = self.tables.get(name) {
@@ -1101,7 +1100,7 @@ mod tests {
                     data_type: "INTEGER".to_string(),
                     nullable: false,
                     primary_key: true,
-        char_max_length: None,
+                    char_max_length: None,
                 }],
                 foreign_keys: vec![],
                 unique_constraints: vec![],
@@ -1120,7 +1119,7 @@ mod tests {
             data_type: "TEXT".to_string(),
             nullable: true,
             primary_key: false,
-        char_max_length: None,
+            char_max_length: None,
         };
         let result = storage.add_column("add_col_test", new_col);
         assert!(result.is_ok());
@@ -1246,7 +1245,7 @@ mod tests {
                 data_type: "INTEGER".to_string(),
                 nullable: false,
                 primary_key: true,
-        char_max_length: None,
+                char_max_length: None,
             }],
             foreign_keys: vec![],
             unique_constraints: vec![],
@@ -1280,7 +1279,7 @@ mod tests {
                 data_type: "INTEGER".to_string(),
                 nullable: false,
                 primary_key: true,
-        char_max_length: None,
+                char_max_length: None,
             }],
             foreign_keys: vec![],
             unique_constraints: vec![],
@@ -1314,7 +1313,7 @@ mod tests {
                 data_type: "INTEGER".to_string(),
                 nullable: false,
                 primary_key: true,
-        char_max_length: None,
+                char_max_length: None,
             }],
             foreign_keys: vec![],
             unique_constraints: vec![],
