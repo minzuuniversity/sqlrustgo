@@ -4052,6 +4052,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "bytes",
+ "clap 4.6.1",
  "criterion 0.5.1",
  "ctrlc",
  "env_logger",
@@ -4187,6 +4188,15 @@ dependencies = [
  "sqlrustgo-types",
  "tempfile",
  "thiserror 2.0.18",
+]
+
+[[package]]
+name = "sqlrustgo-cli"
+version = "3.9.0"
+dependencies = [
+ "clap 4.6.1",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]
