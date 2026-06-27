@@ -615,6 +615,8 @@ pub struct MemoryStorage {
     table_infos: HashMap<String, TableInfo>,
     triggers: HashMap<String, TriggerInfo>,
     views: HashSet<String>,
+    /// 内存中的数据库集合 (CREATE DATABASE 注册的, in-memory 模式)
+    databases: HashSet<String>,
     /// Tracks the current transaction ID for VtuGuard::assert_dml_safe.
     /// VtuGuard checks S::in_transaction() which returns `current_tx_id != 0`.
     current_tx_id: u64,
@@ -638,6 +640,7 @@ impl MemoryStorage {
             table_infos: HashMap::new(),
             triggers: HashMap::new(),
             views: HashSet::new(),
+            databases: HashSet::new(),
             current_tx_id: 0,
             next_tx_id: 1,
             tx_log: None,
@@ -832,10 +835,20 @@ impl StorageEngine for MemoryStorage {
 
         Ok(count)
     }
-
     fn create_table(&mut self, info: &TableInfo) -> SqlResult<()> {
         self.table_infos.insert(info.name.clone(), info.clone());
         self.tables.entry(info.name.clone()).or_default();
+        Ok(())
+    }
+
+    fn create_database(&mut self, db_name: &str) -> SqlResult<()> {
+        // 内存模式: 仅记录数据库名
+        self.databases.insert(db_name.to_string());
+        Ok(())
+    }
+
+    fn drop_database(&mut self, db_name: &str) -> SqlResult<()> {
+        self.databases.remove(db_name);
         Ok(())
     }
 
