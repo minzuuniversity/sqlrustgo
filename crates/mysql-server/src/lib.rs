@@ -1277,15 +1277,13 @@ fn send_result_set<W: Write>(
             seq,
         )?;
     }
-    // Inter-record separator between column defs and the row stream.
-    // Honor the client's DEPRECATE_EOF capability:
-    //   - DEPRECATE_EOF = 0 (classic protocol): send inter-record EOF
-    //   - DEPRECATE_EOF = 1 (mysql 8.0+ default): skip the EOF; the
-    //     trailing terminator (OK/EOF below) marks the end of the
-    //     result set.
-    // Fix for #3516: without this, mysql 8.0 CLI silently drops the
-    // result set — it interprets the stray inter-record EOF as the
-    // final terminator and never reads the row packets.
+    if cap & capability::DEPRECATE_EOF == 0 {
+        make_eof_packet(seq, 0x0002).write_to(w)?;
+        seq = seq.wrapping_add(1);
+    } else {
+        make_deprecate_eof_ok_packet(seq, 0, 0, 0x0002, 0).write_to(w)?;
+        seq = seq.wrapping_add(1);
+    }
     for r in rows.iter() {
         let mut p = Vec::new();
         write_text_row(&mut p, r)?;
@@ -2294,12 +2292,7 @@ fn handle_load_local_infile<S: Read + Write>(
     // `WalStorage::flush()` delegates to `FileStorage::flush()` which
     // writes all table .json files.
     {
-        let storage = engine.storage_ref();
-        let mut s = storage
-            .write()
-            .map_err(|e| MySqlError::Other(format!("flush storage lock: {}", e)))?;
-        s.flush()
-            .map_err(|e| MySqlError::Other(format!("flush storage: {}", e)))?;
+        engine.flush().map_err(|e| MySqlError::Other(format!("flush storage: {}", e)))?;
     }
 
     Ok(total_rows)
@@ -2772,13 +2765,10 @@ fn handle_connection(
 ) {
     ACTIVE_CONNECTIONS.fetch_add(1, Ordering::Relaxed);
     TOTAL_CONNECTIONS_ACCEPTED.fetch_add(1, Ordering::Relaxed);
-    struct ConnGuard;
-    impl Drop for ConnGuard {
-        fn drop(&mut self) {
-            ACTIVE_CONNECTIONS.fetch_sub(1, Ordering::Relaxed);
-        }
-    }
-    let _guard = ConnGuard;
+    let _guard = scopeguard::guard((), |_| {
+        // Always decrement on exit, even on panic
+        ACTIVE_CONNECTIONS.fetch_sub(1, Ordering::Relaxed);
+    });
     stream
         .set_read_timeout(Some(std::time::Duration::from_secs(600)))
         .ok();
