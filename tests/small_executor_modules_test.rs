@@ -485,7 +485,10 @@ fn test_ast_adapter_to_update_plan_uses_all_when_no_where() {
     use sqlrustgo_parser::Expression;
 
     let stmt = ParserUpdateStatement {
-        table: "users".to_string(),
+        tables: vec![sqlrustgo_parser::TableRef {
+            name: "users".to_string(),
+            alias: None,
+        }],
         set_clauses: vec![(
             "active".to_string(),
             Expression::Literal("TRUE".to_string()),
@@ -522,7 +525,10 @@ fn test_ast_adapter_to_update_plan_errors_on_unknown_column() {
     use sqlrustgo_parser::Expression;
 
     let stmt = ParserUpdateStatement {
-        table: "users".to_string(),
+        tables: vec![sqlrustgo_parser::TableRef {
+            name: "users".to_string(),
+            alias: None,
+        }],
         set_clauses: vec![("missing".to_string(), Expression::Literal("x".to_string()))],
         where_clause: None,
     };

@@ -98,7 +98,6 @@ fn insert_with_explicit_columns() {
 }
 
 #[test]
-#[ignore = "INSERT ... SELECT currently inserts 0 rows in the in-memory engine. Tracked for follow-up fix."]
 fn insert_select_copies_rows() {
     let mut e = fresh();
     e.execute("CREATE TABLE src (v INTEGER)").unwrap();
@@ -117,7 +116,6 @@ fn insert_select_copies_rows() {
 }
 
 #[test]
-#[ignore = "INSERT ... SELECT currently inserts 0 rows in the in-memory engine. Tracked for follow-up fix."]
 fn insert_select_with_type_coercion() {
     let mut e = fresh();
     e.execute("CREATE TABLE nums (v INTEGER)").unwrap();
@@ -217,7 +215,6 @@ fn update_with_no_matches_is_noop() {
 // (parser only produces single-table UpdateStatement.)
 
 #[test]
-#[ignore = "UPDATE ... SET col = (SELECT ...) not supported. UpdateStatement has no sub-select."]
 fn update_with_subquery_in_set() {
     let mut e = fresh();
     e.execute("CREATE TABLE src (v INTEGER)").unwrap();
@@ -233,7 +230,6 @@ fn update_with_subquery_in_set() {
 }
 
 #[test]
-#[ignore = "Multi-table UPDATE not supported. UpdateStatement is single-table only."]
 fn update_multiple_tables() {
     let mut e = fresh();
     e.execute("CREATE TABLE a (v INTEGER)").unwrap();
@@ -303,7 +299,6 @@ fn delete_with_compound_where() {
 // DELETE with subquery / multi-table — not supported in DeleteStatement.
 
 #[test]
-#[ignore = "DELETE ... WHERE col IN (SELECT ...) not supported. DeleteStatement has no sub-select."]
 fn delete_with_subquery_in_where() {
     let mut e = fresh();
     e.execute("CREATE TABLE keepers (id INTEGER)").unwrap();
@@ -319,7 +314,6 @@ fn delete_with_subquery_in_where() {
 }
 
 #[test]
-#[ignore = "Multi-table DELETE not supported. DeleteStatement is single-table only."]
 fn delete_multiple_tables() {
     let mut e = fresh();
     e.execute("CREATE TABLE a (v INTEGER)").unwrap();
@@ -349,7 +343,6 @@ fn transaction_commit_persists_dml() {
 }
 
 #[test]
-#[ignore = "ROLLBACK does not currently revert DML rows in MemoryStorage. Tracked for follow-up fix; transaction rollback uses WalStorage in production but in-memory engine path is incomplete."]
 fn transaction_rollback_undoes_dml() {
     let mut e = fresh();
     e.execute("CREATE TABLE t (v INTEGER)").unwrap();
@@ -369,7 +362,6 @@ fn transaction_rollback_undoes_dml() {
 }
 
 #[test]
-#[ignore = "ROLLBACK does not currently revert DML rows in MemoryStorage. Tracked for follow-up fix."]
 fn transaction_update_then_rollback() {
     let mut e = fresh();
     e.execute("CREATE TABLE t (id INTEGER, v INTEGER)").unwrap();
