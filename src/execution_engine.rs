@@ -1994,9 +1994,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             );
         }
     }
-
     pub fn flush(&mut self) -> Result<(), SqlError> {
-        let mut storage = self.storage.write().unwrap();
-        storage.flush()
+        self.storage.write().unwrap().flush()
     }
 }
