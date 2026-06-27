@@ -239,6 +239,7 @@ impl DataRestorer {
                     data_type: "TEXT".to_string(),
                     nullable: true,
                     primary_key: false,
+                    char_max_length: None,
                 })
                 .collect(),
             foreign_keys: vec![],
@@ -307,6 +308,7 @@ impl DataRestorer {
                     data_type: "TEXT".to_string(),
                     nullable: true,
                     primary_key: false,
+                    char_max_length: None,
                 })
                 .collect(),
             foreign_keys: vec![],
@@ -451,12 +453,14 @@ mod tests {
                     data_type: "INTEGER".to_string(),
                     nullable: false,
                     primary_key: false,
+                    char_max_length: None,
                 },
                 crate::ColumnDefinition {
                     name: "name".to_string(),
                     data_type: "TEXT".to_string(),
                     nullable: true,
                     primary_key: false,
+                    char_max_length: None,
                 },
             ],
             ..Default::default()
@@ -496,12 +500,14 @@ mod tests {
                     data_type: "INTEGER".to_string(),
                     nullable: false,
                     primary_key: false,
+                    char_max_length: None,
                 },
                 crate::ColumnDefinition {
                     name: "name".to_string(),
                     data_type: "TEXT".to_string(),
                     nullable: true,
                     primary_key: false,
+                    char_max_length: None,
                 },
             ],
             ..Default::default()
@@ -588,6 +594,7 @@ mod tests {
                 data_type: "INTEGER".to_string(),
                 nullable: false,
                 primary_key: false,
+                char_max_length: None,
             }],
             ..Default::default()
         };
@@ -685,6 +692,7 @@ mod tests {
                 data_type: "INTEGER".to_string(),
                 nullable: false,
                 primary_key: false,
+                char_max_length: None,
             }],
             ..Default::default()
         };
@@ -708,6 +716,7 @@ mod tests {
                 data_type: "TEXT".to_string(),
                 nullable: false,
                 primary_key: false,
+                char_max_length: None,
             }],
             ..Default::default()
         };
@@ -737,6 +746,7 @@ mod tests {
                 data_type: "TEXT".to_string(),
                 nullable: false,
                 primary_key: false,
+                char_max_length: None,
             }],
             ..Default::default()
         };

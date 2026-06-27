@@ -44,6 +44,33 @@ pub trait Executor: Send + Sync {
     fn is_ready(&self) -> bool;
 }
 
+/// Volcano-style iterator executor trait for streaming query execution
+/// Provides a pull-based streaming model where each call to next()
+/// returns the next batch of rows
+pub trait VolcanoExecutor: Send + Sync {
+    /// Initialize the executor and prepare for iteration
+    fn init(&mut self) -> SqlResult<()>;
+
+    /// Get the next batch of rows
+    /// Returns None when iteration is complete
+    fn next(&mut self) -> SqlResult<Option<ExecutorResult>>;
+
+    /// Clean up resources after iteration is complete
+    fn close(&mut self) -> SqlResult<()>;
+
+    /// Get the schema of the output
+    fn schema(&self) -> &sqlrustgo_planner::Schema;
+
+    /// Get the name of this executor
+    fn name(&self) -> &str;
+
+    /// Check if the executor has been initialized
+    fn is_initialized(&self) -> bool;
+
+    /// Downcast to concrete type for type-specific operations
+    fn as_any(&self) -> &dyn std::any::Any;
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

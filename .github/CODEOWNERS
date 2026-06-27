@@ -1,43 +1,79 @@
 # CODEOWNERS - SQLRustGo
 #
-# This file defines the code owners for each part of the codebase.
-# Code owners are automatically requested for review when someone opens
-# a pull request that modifies code that they own.
+# Defines code owners for each domain. Multiple reviewers per domain
+# reduce single-point risk and enable parallel reviews.
 #
-# For more information, see:
-# https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+# Format: <pattern> <owner1> <owner2> ...
+# Last reviewed for Rust 2021 workspace layout (crates/).
+# Issue: #2886 (P2-2) - Add multiple reviewers + fix /src/ -> /crates/ paths
 
-# Default owners for everything in the repo
-* @yinglichina8848
+# Default owners for everything in the repo (fallback)
+* @yinglichina8848 @claude-macmini
 
-# Core modules
-/src/executor/ @yinglichina8848
-/src/planner/ @yinglichina8848
-/src/parser/ @yinglichina8848
-/src/lexer/ @yinglichina8848
-/src/storage/ @yinglichina8848
-/src/network/ @yinglichina8848
-/src/transaction/ @yinglichina8848
-/src/auth/ @yinglichina8848
-/src/types/ @yinglichina8848
+# Workspace root
+/Cargo.toml @yinglichina8848 @claude-macmini
+/Cargo.lock @yinglichina8848 @claude-macmini
+/openspec/ @yinglichina8848 @claude-macmini
+/docs/ @yinglichina8848 @claude-macmini
+/README.md @yinglichina8848 @claude-macmini
+/CHANGELOG.md @yinglichina8848 @claude-macmini
+/ROADMAP.md @yinglichina8848 @claude-macmini
 
-# Benchmarks
-/benches/ @yinglichina8848
+# Core crates (Rust workspace)
+# Parser domain: SQL surface area, grammar, AST
+/crates/parser/ @yinglichina8848 @claude-macmini
+# Executor domain: query plan execution, vectors
+/crates/executor/ @yinglichina8848 @claude-macmini
+# Planner/Optimizer domain: CBO, rule-based rewrite
+/crates/planner/ @yinglichina8848 @claude-macmini
+/crates/optimizer/ @yinglichina8848 @claude-macmini
+# Storage domain: buffer pool, B+tree, MVCC, WAL
+/crates/storage/ @yinglichina8848 @claude-macmini
+/crates/transaction/ @yinglichina8848 @claude-macmini
+# Network domain: MySQL protocol, TCP server
+/crates/network/ @yinglichina8848 @claude-macmini
+/crates/mysql-server/ @yinglichina8848 @claude-macmini
+# Catalog/Types: shared schema and value types
+/crates/catalog/ @yinglichina8848 @claude-macmini
+/crates/types/ @yinglichina8848 @claude-macmini
+# Advanced storage
+/crates/vector/ @yinglichina8848 @claude-macmini
+/crates/graph/ @yinglichina8848 @claude-macmini
+# Binaries
+/crates/server/ @yinglichina8848 @claude-macmini
+/crates/bench-cli/ @yinglichina8848 @claude-macmini
 
-# Documentation
-/docs/ @yinglichina8848
-/README.md @yinglichina8848
-/CHANGELOG.md @yinglichina8848
-
-# Configuration
-/Cargo.toml @yinglichina8848
-/Cargo.lock @yinglichina8848
-/.github/ @yinglichina8848
+# Gates & CI
+/scripts/gate/ @yinglichina8848 @claude-macmini
+/.gitea/ @yinglichina8848 @claude-macmini
+/.gitea/workflows/ @yinglichina8848 @claude-macmini
+/.gitea/PULL_REQUEST_TEMPLATE.md @yinglichina8848 @claude-macmini
+/.github/ @yinglichina8848 @claude-macmini
 
 # Tests
-/tests/ @yinglichina8848
-/src/**/tests.rs @yinglichina8848
-/src/**/tests/ @yinglichina8848
+/tests/ @yinglichina8848 @claude-macmini
+/tests/e2e/ @yinglichina8848 @claude-macmini
+/tests/ci/ @yinglichina8848 @claude-macmini
 
-# CI/CD
-/.github/workflows/ @yinglichina8848
+# Benchmarks
+/benches/ @yinglichina8848 @claude-macmini
+/crates/*/benches/ @yinglichina8848 @claude-macmini
+
+# Distributed / security / advanced
+/crates/distributed/ @yinglichina8848 @claude-macmini
+/crates/security/ @yinglichina8848 @claude-macmini
+/crates/information-schema/ @yinglichina8848 @claude-macmini
+/crates/query-stats/ @yinglichina8848 @claude-macmini
+/crates/rag/ @yinglichina8848 @claude-macmini
+/crates/spill/ @yinglichina8848 @claude-macmini
+/crates/sqlancer/ @yinglichina8848 @claude-macmini
+/crates/test-registry/ @yinglichina8848 @claude-macmini
+/crates/test-reporter/ @yinglichina8848 @claude-macmini
+/crates/transaction-stress/ @yinglichina8848 @claude-macmini
+
+# Tools
+/tools/ @yinglichina8848 @claude-macmini
+
+# Release docs (v3.x)
+/docs/releases/ @yinglichina8848 @claude-macmini
+/docs/releases/v3.8.0/ @yinglichina8848 @claude-macmini
