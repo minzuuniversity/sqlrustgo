@@ -26,6 +26,7 @@ fn open(data_dir: &std::path::Path) -> MySqlTestClient {
         data_dir: Some(data_dir.to_path_buf()),
         bootstrap_sql: Vec::new(),
         bulk_insert_buffer_size: 1_048_576,
+        server_threads: 16,
     };
     let handle = start_ephemeral(cfg).expect("start_ephemeral");
     MySqlTestClient::connect_handle(handle).expect("MySqlTestClient::connect_handle")
