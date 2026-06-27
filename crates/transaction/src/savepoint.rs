@@ -71,6 +71,14 @@ impl SavepointManager {
         Ok(())
     }
 
+    /// 物理回滚 (Phase 3): 从最新到保存点反向应用 UndoRecord
+    /// 对于每个 UndoRecord:
+    ///   - Insert(key) → DELETE the row at key
+    ///   - Delete(key, old_value) → INSERT the old_value at key
+    ///   - Update(key, old_value) → RESTORE old_value at key
+    /// 当前实现: 仅清除 undo_log 条目，不还原物理数据
+    /// TODO(Phase 3): 接入 storage 实现真实 MVCC 状态还原
+    /// 跟踪: #3172
     pub fn rollback_to(&mut self, name: &str) -> Result<(), SavepointError> {
         let idx = self
             .savepoints
@@ -79,6 +87,15 @@ impl SavepointManager {
             .ok_or(SavepointError::NotFound)?;
 
         let sp = &self.savepoints[idx];
+
+        // Phase 3 待实现: 反向遍历 undo_log[sp.undo_log_index..] 并应用
+        // for record in self.undo_log[sp.undo_log_index..].iter().rev() {
+        //     match record {
+        //         UndoRecord::Insert { key } => storage.delete(key),
+        //         UndoRecord::Delete { key, old_value } => storage.insert(key, old_value),
+        //         UndoRecord::Update { key, old_value } => storage.update(key, old_value),
+        //     }
+        // }
 
         while self.undo_log.len() > sp.undo_log_index {
             self.undo_log.pop();
