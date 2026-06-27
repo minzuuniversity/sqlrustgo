@@ -34,6 +34,7 @@ members = [
     "crates/cache",
     "crates/evidence-graph",
     "crates/sqlrustgo-cli",
+    "crates/mysql-client",
      "crates/qmd-bridge",
     "crates/security",
     "crates/spill",
@@ -72,6 +73,8 @@ sqlrustgo-graph = { path = "crates/graph" }
 sqlrustgo-sql-corpus = { path = "crates/sql-corpus" }
 sqlrustgo-cache = { path = "crates/cache" }
 sqlrustgo-mysql-server = { path = "crates/mysql-server" }
+sqlrustgo-mysql-client = { path = "crates/mysql-client" }
+sqlrustgo-cli = { path = "crates/sqlrustgo-cli" }
 sqlrustgo-tools = { path = "crates/tools" }
 tracing-subscriber = { version = "0.1", features = ["env-filter"] }
 
@@ -162,6 +165,13 @@ lru-cache.workspace = true
 ctrlc.workspace = true
 serde_json.workspace = true
 rayon.workspace = true
+sqlrustgo-mysql-client.workspace = true
+
+sqlrustgo-cli.workspace = true
+
+[[bin]]
+name = "sqlrustgo"
+path = "src/bin/sqlrustgo/main.rs"
 
 # Canonical name `ci_test` is owned by the subdir file (tests/ci/ci_test.rs).
 # The legacy top-level tests/ci_test.rs was removed because it shadowed the
