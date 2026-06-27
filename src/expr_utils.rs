@@ -177,15 +177,10 @@ pub fn evaluate_expression_with_subq(
     subq_eval: &dyn Fn(&SelectStatement) -> Result<Value, String>,
 ) -> Result<Value, String> {
     match expr {
-        Expression::Literal(_) => {
+        Expression::Literal(s) => {
             // P0-2 §4.15: delegated to `executor::expr::eval_literal_from_str`
             // (single source of truth for the Literal branch).
-            Ok(sqlrustgo_executor::expr::eval_literal_from_str(
-                match expr {
-                    Expression::Literal(s) => s,
-                    _ => unreachable!(),
-                },
-            ))
+            Ok(sqlrustgo_executor::expr::eval_literal_from_str(s))
         }
         Expression::Identifier(name) => {
             // P0-2 §4.10: delegated to `executor::expr::eval_identifier`.
