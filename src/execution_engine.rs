@@ -29,12 +29,12 @@ use sqlrustgo_parser::parser::{
     AlterTableStatement,
     CallStatement,
     CreateDatabaseStatement,
-    CreateViewStatement,
     CreateIndexStatement,
     CreateProcedureStatement,
     CreateRoleStatement,
     CreateTableStatement,
     CreateTriggerStatement,
+    CreateViewStatement,
     DescribeStatement,
     DropDatabaseStatement,
     DropIndexStatement,
@@ -43,8 +43,8 @@ use sqlrustgo_parser::parser::{
     DropViewStatement,
     GrantRoleStatement,
     GrantStatement,
-    MergeStatement,
     InsertStatement,
+    MergeStatement,
     ObjectType as ParserObjectType,
     Privilege as ParserPrivilege,
     RevokeRoleStatement,
@@ -336,23 +336,24 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             Statement::WithSelect(with) => {
                 // 基本 CTE 支持：提取主 SELECT 直接执行
                 // TODO: 完整 CTE 物化支持 (Phase 2)
-                let has_cte = with.with_clause.as_ref().map_or(false, |w| !w.ctes.is_empty());
+                let has_cte = with
+                    .with_clause
+                    .as_ref()
+                    .map_or(false, |w| !w.ctes.is_empty());
                 if has_cte {
                     self.execute_select(&with.select)
                 } else {
                     self.execute_select(&with.select)
                 }
             }
-            Statement::WithDml(with_dml) => {
-                match with_dml.body.as_ref() {
-                    Statement::Insert(insert) => self.execute_insert(insert),
-                    Statement::Update(update) => self.execute_update(update),
-                    Statement::Delete(delete) => self.execute_delete(delete),
-                    _ => Err(SqlError::ExecutionError(
-                        "Unsupported WithDml body type".to_string(),
-                    )),
-                }
-            }
+            Statement::WithDml(with_dml) => match with_dml.body.as_ref() {
+                Statement::Insert(insert) => self.execute_insert(insert),
+                Statement::Update(update) => self.execute_update(update),
+                Statement::Delete(delete) => self.execute_delete(delete),
+                _ => Err(SqlError::ExecutionError(
+                    "Unsupported WithDml body type".to_string(),
+                )),
+            },
             Statement::CreateIndex(idx) => self.execute_create_index(&idx),
             Statement::Analyze(ref analyze) => {
                 let table_name = analyze.table_name.as_ref().ok_or_else(|| {
