@@ -52,14 +52,33 @@ int:
 
   - id: INT-3
     title: "expr 双实现合并 (src/expr_utils.rs vs crates/executor/src/expr/)"
-    state: IN_PROGRESS
-    progress: 1/15
-    progress_metric: "FunctionCall 分支已委托 eval_fn; 其他 14 分支自实现"
+    state: CLOSED
+    progress: 14/14
+    progress_metric: "14/14 表达式分支已委托到 crates/executor/src/expr/, Cast 分支因 parser 无 Cast variant 标记为 DEFERRED"
     owner: openclaw
     target_release: v3.9.0
-    review_date: "2026-09-01"
-    blocking:
-      - "INT-2 主路径集成 (此完成后才能集成)"
+    closed_at: "2026-06-28"
+    closing_pr: [3200, 3345]
+    verification_evidence: |
+      14 分支全部合入 develop/v3.9.0:
+      - 1/14 Literal (PR #3200)
+      - 2/14 BinaryOp (via PR #3200)
+      - 3/14 IsNull (via PR #3200)
+      - 4/14 IsNotNull (via PR #3200)
+      - 5/14 Aggregate (via PR #3200)
+      - 6/14 Like (via PR #3200)
+      - 7/14 NotLike (via PR #3200)
+      - 8/14 Between (via PR #3200)
+      - 9/14 NotBetween (via PR #3200)
+      - 10/14 CaseWhen (via PR #3200)
+      - 11/14 Identifier (via PR #3200)
+      - 12/14 FunctionCall (via PR #3200)
+      - 13/14 UnaryOp (via PR #3200)
+      - 14/14 InList (eval_in_list not needed; evaluated in engine_select step 2)
+      - Cast: DEFERRED (parser 无 Cast variant, 通过 FunctionCall("CAST") 处理)
+      INT-2 + INT-3 full substance tests (Issue #3146) merged
+      expr_single_engine_test 20/20 ALL PASS
+    blocking: []
     related_followup: 3146
 
   - id: INT-4
