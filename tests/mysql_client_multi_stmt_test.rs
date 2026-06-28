@@ -20,11 +20,15 @@ fn wait_for_server(port: u16) -> SocketAddr {
     }
 }
 
-fn make_client() -> (sqlrustgo_mysql_server::testing::EphemeralHandle, sqlrustgo_mysql_client::MySqlConnection) {
+fn make_client() -> (
+    sqlrustgo_mysql_server::testing::EphemeralHandle,
+    sqlrustgo_mysql_client::MySqlConnection,
+) {
     let handle = start_ephemeral(EphemeralConfig::default()).expect("start_ephemeral");
     let port = handle.port;
     let addr = wait_for_server(port);
-    let conn = sqlrustgo_mysql_client::MySqlConnection::connect(&addr, "tester", "tester", "").expect("connect");
+    let conn = sqlrustgo_mysql_client::MySqlConnection::connect(&addr, "tester", "tester", "")
+        .expect("connect");
     (handle, conn)
 }
 
@@ -40,7 +44,9 @@ fn test_multi_statement_insert_then_select() {
 #[test]
 fn test_multi_statement_returns_first_result() {
     let (_handle, mut conn) = make_client();
-    let _ = conn.execute("CREATE TABLE mt2 (n INTEGER)").expect("CREATE");
+    let _ = conn
+        .execute("CREATE TABLE mt2 (n INTEGER)")
+        .expect("CREATE");
     let _ = conn.execute("INSERT INTO mt2 VALUES (1)").expect("INSERT");
 
     // 多语句 (server 仅处理第 1 个, 我们仅解析第 1 个 result)
