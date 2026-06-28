@@ -1,0 +1,8 @@
+[package]
+name = "sqlrustgo-mysql-client"
+version = "3.9.0"
+edition = "2021"
+description = "MySQL wire protocol client library"
+
+[dependencies]
+sha1 = "0.10"

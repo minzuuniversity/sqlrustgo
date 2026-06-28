@@ -1,0 +1,9 @@
+[package]
+name = "sqlrustgo-cli"
+version = "3.9.0"
+edition = "2021"
+description = "SQLRustGo canonical CLI entry point"
+
+[dependencies]
+clap = { version = "4", features = ["derive", "env"] }
+sqlrustgo-mysql-client = { path = "../mysql-client" }
