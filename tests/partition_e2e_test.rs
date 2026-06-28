@@ -76,7 +76,10 @@ fn test_storage_partition_type_variants() {
             boundaries: vec![],
         }),
     };
-    assert_eq!(info_range.partition_info.unwrap().partition_type, PartitionType::Range);
+    assert_eq!(
+        info_range.partition_info.unwrap().partition_type,
+        PartitionType::Range
+    );
 
     // List
     let info_list = TableInfo {
@@ -91,7 +94,10 @@ fn test_storage_partition_type_variants() {
             boundaries: vec![],
         }),
     };
-    assert_eq!(info_list.partition_info.unwrap().partition_type, PartitionType::List);
+    assert_eq!(
+        info_list.partition_info.unwrap().partition_type,
+        PartitionType::List
+    );
 
     // Hash
     let info_hash = TableInfo {
@@ -106,5 +112,8 @@ fn test_storage_partition_type_variants() {
             boundaries: vec![],
         }),
     };
-    assert_eq!(info_hash.partition_info.unwrap().partition_type, PartitionType::Hash);
+    assert_eq!(
+        info_hash.partition_info.unwrap().partition_type,
+        PartitionType::Hash
+    );
 }
