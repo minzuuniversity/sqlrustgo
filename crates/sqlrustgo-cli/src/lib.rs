@@ -7,11 +7,7 @@ use clap::{Parser, Subcommand};
 use std::process::Command as Proc;
 
 #[derive(Parser, Debug)]
-#[command(
-    name = "sqlrustgo",
-    about = "SQLRustGo canonical CLI",
-    version
-)]
+#[command(name = "sqlrustgo", about = "SQLRustGo canonical CLI", version)]
 struct Cli {
     #[command(subcommand)]
     command: Option<SubCmd>,
@@ -27,7 +23,9 @@ enum SubCmd {
         data_dir: Option<String>,
     },
     /// Execute a single SQL statement and print the result.
-    Exec { sql: String },
+    Exec {
+        sql: String,
+    },
     /// Interactive REPL.
     Repl {
         #[arg(long, default_value = "3307")]
@@ -36,8 +34,13 @@ enum SubCmd {
     Bench,
     Gmp,
     Diag,
-    Backup { output_dir: String },
-    Restore { backup_id: String, database: String },
+    Backup {
+        output_dir: String,
+    },
+    Restore {
+        backup_id: String,
+        database: String,
+    },
     /// Connect to a running server and execute a query (NEW).
     Cli {
         #[arg(short, long, default_value = "3307")]
@@ -101,18 +104,38 @@ pub fn run() -> i32 {
         Some(SubCmd::Bench) => run_bin("bench", &[]),
         Some(SubCmd::Gmp) => run_bin("gmp", &[]),
         Some(SubCmd::Diag) => run_bin("diag", &[]),
-        Some(SubCmd::Backup { output_dir }) => {
-            run_bin("backup", &[("--output", output_dir)])
-        }
-        Some(SubCmd::Restore { backup_id, database }) => {
-            run_bin("restore", &[("--input", backup_id), ("--database", database)])
-        }
-        Some(SubCmd::Cli { port, host, user, password, query }) => {
-            run_cli(&query, &host, port, user.as_deref().unwrap_or("root"), password.as_deref().unwrap_or(""))
-        }
-        Some(SubCmd::Soak { host, port, user, password }) => {
-            run_soak_repl(&host, port, user.as_deref().unwrap_or("root"), password.as_deref().unwrap_or(""))
-        }
+        Some(SubCmd::Backup { output_dir }) => run_bin("backup", &[("--output", output_dir)]),
+        Some(SubCmd::Restore {
+            backup_id,
+            database,
+        }) => run_bin(
+            "restore",
+            &[("--input", backup_id), ("--database", database)],
+        ),
+        Some(SubCmd::Cli {
+            port,
+            host,
+            user,
+            password,
+            query,
+        }) => run_cli(
+            &query,
+            &host,
+            port,
+            user.as_deref().unwrap_or("root"),
+            password.as_deref().unwrap_or(""),
+        ),
+        Some(SubCmd::Soak {
+            host,
+            port,
+            user,
+            password,
+        }) => run_soak_repl(
+            &host,
+            port,
+            user.as_deref().unwrap_or("root"),
+            password.as_deref().unwrap_or(""),
+        ),
     }
 }
 
@@ -170,8 +193,8 @@ fn exec_status(bin: &str, mut cmd: Proc) -> i32 {
 
 #[allow(unused_variables)]
 fn run_cli(query: &str, host: &str, port: u16, user: &str, password: &str) -> i32 {
-    use std::net::SocketAddr;
     use sqlrustgo_mysql_client::MySqlConnection;
+    use std::net::SocketAddr;
 
     let addr: SocketAddr = match format!("{host}:{port}").parse() {
         Ok(a) => a,
@@ -189,7 +212,10 @@ fn run_cli(query: &str, host: &str, port: u16, user: &str, password: &str) -> i3
         }
     };
 
-    println!("Connected to {}:{} (server: {})", host, port, conn.server_version);
+    println!(
+        "Connected to {}:{} (server: {})",
+        host, port, conn.server_version
+    );
 
     match conn.execute(query) {
         Ok(result) => {
@@ -207,13 +233,21 @@ fn run_cli(query: &str, host: &str, port: u16, user: &str, password: &str) -> i3
                     }
                     println!("\n{} row(s) in set", rows.len());
                 }
-                ResultSet::Ok { affected_rows, info, .. } => {
+                ResultSet::Ok {
+                    affected_rows,
+                    info,
+                    ..
+                } => {
                     println!("Query OK, {} row(s) affected", affected_rows);
                     if !info.is_empty() {
                         println!("{}", info);
                     }
                 }
-                ResultSet::Error { error_code, error_message, .. } => {
+                ResultSet::Error {
+                    error_code,
+                    error_message,
+                    ..
+                } => {
                     eprintln!("Error {}: {}", error_code, error_message);
                     return 1;
                 }
@@ -241,8 +275,8 @@ fn run_cli(query: &str, host: &str, port: u16, user: &str, password: &str) -> i3
 ///     ERR\t<code>\t<message>  -- 错误
 ///   特殊命令:  QUIT (退出), 行首 # (注释)
 fn run_soak_repl(host: &str, port: u16, user: &str, password: &str) -> i32 {
-    use std::io::{self, BufRead, Write};
     use sqlrustgo_mysql_client::MySqlConnection;
+    use std::io::{self, BufRead, Write};
 
     let addr: std::net::SocketAddr = match format!("{host}:{port}").parse() {
         Ok(a) => a,
