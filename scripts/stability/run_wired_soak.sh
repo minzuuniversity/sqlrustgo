@@ -42,9 +42,11 @@
 #                        (auto-scaled to 60s for HOURS<1, 120s for HOURS<2)
 #   TPCH_ROTATE_MAX_ROUNDS  0=forever, N>0=stop after N rounds               (default 0)
 #   RESULTS_DIR          output dir                                          (default test_results/wired_soak_<HOURS>h_<ts>)
+#   SKIP_SYSBENCH        1 = skip sysbench prepare + run (Issue #3575 workaround) (default 0)
 #
 # Issues: #3225 (real 24h/72h wall-clock soak), #3229 (168h), and the
 #         user-requested extra 0.5/1/2/4/8/12/16/48h gaps not covered by v2.
+#         Issue #3575: sysbench bulk_insert fails on sqlrustgo (deferred to v3.10).
 #
 # Maintainer: Hermes Agent
 # Last touched: 2026-06-14
@@ -314,8 +316,8 @@ cleanup() {
     [ -n "$TPCH_ROTATE_PID" ] && kill "$TPCH_ROTATE_PID" 2>/dev/null || true
     [ -n "$TPCH_ROTATE_PID" ] && wait "$TPCH_ROTATE_PID" 2>/dev/null || true
     echo "[cleanup] Stopping sysbench (PID $SYSBENCH_PID)..."
-    kill "$SYSBENCH_PID" 2>/dev/null || true
-    wait "$SYSBENCH_PID" 2>/dev/null || true
+    [ -n "$SYSBENCH_PID" ] && kill "$SYSBENCH_PID" 2>/dev/null || true
+    [ -n "$SYSBENCH_PID" ] && wait "$SYSBENCH_PID" 2>/dev/null || true
     echo "[cleanup] Stopping server (PID $SERVER_PID)..."
     kill "$SERVER_PID" 2>/dev/null || true
     wait "$SERVER_PID" 2>/dev/null || true

@@ -2,7 +2,7 @@
 # =============================================================================
 # check_arch_sem_debt.sh — v3.8.0 D8-Architecture-Semantic-Debt Gate
 # =============================================================================
-# Implements 5-Principle P5 enforcement for ARCH-1~3 + SEM-1~4:
+# Implements 5-Principle P5 enforcement for ARCH-1, ARCH-2, ARCH-3 + SEM-1, SEM-2, SEM-3, SEM-4:
 #   "未通过的必须有记录和后续改进"
 #
 # v3.8.0+ UPGRADE: Reads status from `debt-registry.yaml` SSOT
