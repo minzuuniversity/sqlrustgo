@@ -12,6 +12,7 @@
 #   scripts/generate_tpch_data.sh --sf 0.001
 #   scripts/generate_tpch_data.sh --sf 0.01 --output tests/data/tpch-sf01
 #   scripts/generate_tpch_data.sh --sf 0.1 --output /tmp/tpch-sf1 --backend dbgen
+#   scripts/generate_tpch_data.sh --sf 1 --backend dbgen
 #   scripts/generate_tpch_data.sh --sf 0.001 --check
 #
 # --check mode: verify existing data matches expected row counts; exit non-zero
@@ -37,27 +38,35 @@ expected_rows_for() {
         region:0.001)    echo "5" ;;
         region:0.01)     echo "5" ;;
         region:0.1)      echo "5" ;;
+        region:1)        echo "5" ;;
         nation:0.001)    echo "25" ;;
         nation:0.01)     echo "25" ;;
         nation:0.1)      echo "25" ;;
+        nation:1)        echo "25" ;;
         supplier:0.001)  echo "10" ;;
         supplier:0.01)   echo "100" ;;
         supplier:0.1)    echo "1000" ;;
+        supplier:1)      echo "10000" ;;
         customer:0.001)  echo "15" ;;
         customer:0.01)   echo "150" ;;
         customer:0.1)    echo "15000" ;;
+        customer:1)      echo "150000" ;;
         part:0.001)      echo "20" ;;
         part:0.01)       echo "200" ;;
         part:0.1)        echo "20000" ;;
+        part:1)          echo "200000" ;;
         partsupp:0.001)  echo "80" ;;
         partsupp:0.01)   echo "800" ;;
         partsupp:0.1)    echo "8000" ;;
+        partsupp:1)      echo "800000" ;;
         orders:0.001)    echo "150" ;;
         orders:0.01)     echo "1500" ;;
         orders:0.1)      echo "150000" ;;
+        orders:1)        echo "1500000" ;;
         lineitem:0.001)  echo "501" ;;
         lineitem:0.01)   echo "5995" ;;
         lineitem:0.1)    echo "59986" ;;
+        lineitem:1)      echo "6001215" ;;
         *)               echo ""; return 1 ;;
     esac
 }
@@ -79,7 +88,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [[ -z "$SF" ]]; then
-    echo "[ERROR] --sf is required (0.001, 0.01, 0.1)" >&2
+    echo "[ERROR] --sf is required (0.001, 0.01, 0.1, 1)" >&2
     usage
 fi
 
@@ -87,7 +96,8 @@ case "$SF" in
     .001|0.001) SF="0.001" ;;
     .01|0.01)   SF="0.01"  ;;
     .1|0.1)     SF="0.1"   ;;
-    *)          echo "[ERROR] unsupported SF: $SF (use 0.001, 0.01, 0.1)" >&2; exit 1 ;;
+    1|1.0|1.00) SF="1"     ;;
+    *)          echo "[ERROR] unsupported SF: $SF (use 0.001, 0.01, 0.1, 1)" >&2; exit 1 ;;
 esac
 
 if [[ -z "$OUTPUT_DIR" ]]; then
@@ -95,6 +105,7 @@ if [[ -z "$OUTPUT_DIR" ]]; then
         0.001) OUTPUT_DIR="$PROJECT_ROOT/tests/data/tpch-sf001" ;;
         0.01)  OUTPUT_DIR="$PROJECT_ROOT/tests/data/tpch-sf01"  ;;
         0.1)   OUTPUT_DIR="/tmp/tpch-sf1"  ;;
+        1)     OUTPUT_DIR="/home/openclaw/tpch_baseline/sf1"  ;;
     esac
 fi
 
@@ -200,3 +211,4 @@ echo "[DONE] TPC-H SF=$SF data ready at $OUTPUT_DIR"
 echo "       To use in tests, ensure the path matches tests/common/tpch_wire_harness.rs constants:"
 echo "         SF001_DIR = \"tests/data/tpch-sf001\""
 echo "         SF01_DIR  = \"tests/data/tpch-sf01\""
+echo "         SF1_DIR   = \"/home/openclaw/tpch_baseline/sf1\""

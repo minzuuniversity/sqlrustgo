@@ -615,9 +615,22 @@ pub struct MemoryStorage {
     table_infos: HashMap<String, TableInfo>,
     triggers: HashMap<String, TriggerInfo>,
     views: HashSet<String>,
+    /// 内存中的数据库集合 (CREATE DATABASE 注册的, in-memory 模式)
+    databases: HashSet<String>,
     /// Tracks the current transaction ID for VtuGuard::assert_dml_safe.
     /// VtuGuard checks S::in_transaction() which returns `current_tx_id != 0`.
     current_tx_id: u64,
+    next_tx_id: u64,
+    /// `Some(log)` between matching `begin`/`commit` (or `begin`/`rollback`);
+    /// `None` outside a transaction.
+    tx_log: Option<TxLog>,
+}
+
+#[derive(Default)]
+struct TxLog {
+    inserted: Vec<(String, Record)>,
+    deleted: Vec<(String, Record)>,
+    updated: Vec<(String, Record, Record)>,
 }
 
 impl MemoryStorage {
@@ -627,7 +640,10 @@ impl MemoryStorage {
             table_infos: HashMap::new(),
             triggers: HashMap::new(),
             views: HashSet::new(),
+            databases: HashSet::new(),
             current_tx_id: 0,
+            next_tx_id: 1,
+            tx_log: None,
         }
     }
 }
@@ -643,7 +659,55 @@ impl StorageEngine for MemoryStorage {
         Ok(self.tables.get(table).cloned().unwrap_or_default())
     }
 
+    fn begin_transaction(&mut self) -> SqlResult<u64> {
+        if self.tx_log.is_some() {
+            return Err(SqlError::ExecutionError(
+                "Nested transactions are not supported on MemoryStorage".to_string(),
+            ));
+        }
+        let tx_id = self.next_tx_id;
+        self.next_tx_id += 1;
+        self.current_tx_id = tx_id;
+        self.tx_log = Some(TxLog::default());
+        Ok(tx_id)
+    }
+
+    fn commit_transaction(&mut self) -> SqlResult<()> {
+        self.tx_log = None;
+        self.current_tx_id = 0;
+        Ok(())
+    }
+
+    fn rollback_transaction(&mut self) -> SqlResult<()> {
+        if let Some(log) = self.tx_log.take() {
+            for (table, row) in log.deleted.into_iter().rev() {
+                self.tables.entry(table).or_default().push(row);
+            }
+            for (table, row) in log.inserted.into_iter().rev() {
+                if let Some(records) = self.tables.get_mut(&table) {
+                    records.retain(|r| r != &row);
+                }
+            }
+            for (table, prior, _new) in log.updated.into_iter().rev() {
+                if let Some(records) = self.tables.get_mut(&table) {
+                    for record in records.iter_mut() {
+                        if *record == _new {
+                            *record = prior.clone();
+                        }
+                    }
+                }
+            }
+        }
+        self.current_tx_id = 0;
+        Ok(())
+    }
+
     fn insert(&mut self, table: &str, records: Vec<Record>) -> SqlResult<()> {
+        if let Some(log) = self.tx_log.as_mut() {
+            for row in &records {
+                log.inserted.push((table.to_string(), row.clone()));
+            }
+        }
         self.tables
             .entry(table.to_string())
             .or_default()
@@ -651,13 +715,31 @@ impl StorageEngine for MemoryStorage {
         Ok(())
     }
 
-    fn delete(&mut self, table: &str, _filters: &[Value]) -> SqlResult<usize> {
-        let mut count = 0;
-        if let Some(records) = self.tables.get_mut(table) {
-            count = records.len();
+    fn delete(&mut self, table: &str, filters: &[Value]) -> SqlResult<usize> {
+        let Some(records) = self.tables.get_mut(table) else {
+            return Ok(0);
+        };
+        if filters.is_empty() {
+            if let Some(log) = self.tx_log.as_mut() {
+                for row in records.iter() {
+                    log.deleted.push((table.to_string(), row.clone()));
+                }
+            }
+            let count = records.len();
             records.clear();
+            return Ok(count);
         }
-        Ok(count)
+        let original_len = records.len();
+        records.retain(|r| {
+            let keep = !filters.iter().enumerate().all(|(i, v)| r.get(i) == Some(v));
+            if !keep {
+                if let Some(log) = self.tx_log.as_mut() {
+                    log.deleted.push((table.to_string(), r.clone()));
+                }
+            }
+            keep
+        });
+        Ok(original_len - records.len())
     }
 
     fn delete_if(&mut self, table: &str, filter: &RowFilter) -> SqlResult<usize> {
@@ -665,7 +747,15 @@ impl StorageEngine for MemoryStorage {
             return Ok(0);
         };
         let original_len = records.len();
-        records.retain(|r| !filter(r));
+        records.retain(|r| {
+            let keep = !filter(r);
+            if !keep {
+                if let Some(log) = self.tx_log.as_mut() {
+                    log.deleted.push((table.to_string(), r.clone()));
+                }
+            }
+            keep
+        });
         Ok(original_len - records.len())
     }
 
@@ -681,26 +771,31 @@ impl StorageEngine for MemoryStorage {
 
         let mut count = 0;
 
-        // If filters is empty, update all rows
-        // If filters has values, match first column against first filter value
         if filters.is_empty() {
             for record in records.iter_mut() {
+                let prior = record.clone();
                 for &(col_idx, ref new_val) in updates {
                     if col_idx < record.len() {
                         record[col_idx] = new_val.clone();
                     }
                 }
+                if let Some(log) = self.tx_log.as_mut() {
+                    log.updated.push((table.to_string(), prior, record.clone()));
+                }
                 count += 1;
             }
         } else if let Some(filter_val) = filters.first() {
             for record in records.iter_mut() {
-                // Check if first column matches filter value
                 let matches = record.first().map(|v| v == filter_val).unwrap_or(false);
                 if matches {
+                    let prior = record.clone();
                     for &(col_idx, ref new_val) in updates {
                         if col_idx < record.len() {
                             record[col_idx] = new_val.clone();
                         }
+                    }
+                    if let Some(log) = self.tx_log.as_mut() {
+                        log.updated.push((table.to_string(), prior, record.clone()));
                     }
                     count += 1;
                 }
@@ -725,10 +820,14 @@ impl StorageEngine for MemoryStorage {
 
         for record in records.iter_mut() {
             if filter(record) {
+                let prior = record.clone();
                 for &(col_idx, ref new_val) in assignments {
                     if col_idx < record.len() {
                         record[col_idx] = new_val.clone();
                     }
+                }
+                if let Some(log) = self.tx_log.as_mut() {
+                    log.updated.push((table.to_string(), prior, record.clone()));
                 }
                 count += 1;
             }
@@ -736,10 +835,20 @@ impl StorageEngine for MemoryStorage {
 
         Ok(count)
     }
-
     fn create_table(&mut self, info: &TableInfo) -> SqlResult<()> {
         self.table_infos.insert(info.name.clone(), info.clone());
         self.tables.entry(info.name.clone()).or_default();
+        Ok(())
+    }
+
+    fn create_database(&mut self, db_name: &str) -> SqlResult<()> {
+        // 内存模式: 仅记录数据库名
+        self.databases.insert(db_name.to_string());
+        Ok(())
+    }
+
+    fn drop_database(&mut self, db_name: &str) -> SqlResult<()> {
+        self.databases.remove(db_name);
         Ok(())
     }
 
@@ -847,6 +956,46 @@ impl StorageEngine for MemoryStorage {
 
     fn set_current_tx_id(&mut self, id: u64) {
         self.current_tx_id = id;
+    }
+
+    fn drop_column(&mut self, table: &str, column: &str) -> SqlResult<()> {
+        let info = self
+            .table_infos
+            .get_mut(table)
+            .ok_or_else(|| SqlError::ExecutionError(format!("Table not found: {}", table)))?;
+        let col_idx = info
+            .columns
+            .iter()
+            .position(|c| c.name == column)
+            .ok_or_else(|| SqlError::ExecutionError(format!("Column not found: {}", column)))?;
+        info.columns.remove(col_idx);
+        if let Some(records) = self.tables.get_mut(table) {
+            for record in records.iter_mut() {
+                if col_idx < record.len() {
+                    record.remove(col_idx);
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn modify_column(
+        &mut self,
+        table: &str,
+        column: &str,
+        new_def: ColumnDefinition,
+    ) -> SqlResult<()> {
+        let info = self
+            .table_infos
+            .get_mut(table)
+            .ok_or_else(|| SqlError::ExecutionError(format!("Table not found: {}", table)))?;
+        let col_idx = info
+            .columns
+            .iter()
+            .position(|c| c.name == column)
+            .ok_or_else(|| SqlError::ExecutionError(format!("Column not found: {}", column)))?;
+        info.columns[col_idx] = new_def;
+        Ok(())
     }
 }
 
