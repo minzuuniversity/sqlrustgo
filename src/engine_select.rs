@@ -1434,6 +1434,31 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             return None;
         }
 
+        // Helper: resolve a bare column name to (table_alias, column_name)
+        // by searching each table's schema. Returns None if not found or
+        // if the column name is ambiguous (appears in multiple tables).
+        let resolve_bare = |col_name: &str| -> Option<(String, String)> {
+            let mut found: Option<&str> = None;
+            for (bare, alias) in &join_tables {
+                if let Ok(info) = storage.get_table_info(bare) {
+                    let has_col = info.columns.iter().any(|c| {
+                        let bare_c = c
+                            .name
+                            .strip_prefix(&format!("{}.", alias))
+                            .unwrap_or(&c.name);
+                        bare_c == col_name || c.name == col_name
+                    });
+                    if has_col {
+                        if found.is_some() {
+                            return None;
+                        }
+                        found = Some(alias.as_str());
+                    }
+                }
+            }
+            found.map(|alias| (alias.to_string(), col_name.to_string()))
+        };
+
         // Collect bare-equal columns from each `=` conjunct.
         let mut pair_key: HashMap<(String, String), (String, String)> = HashMap::new();
         for conjunct in Self::flatten_and_local(where_expr) {
@@ -1446,14 +1471,20 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             let (lq, lc) = match left.as_ref() {
                 Expression::Identifier(name) => match name.split_once('.') {
                     Some((q, c)) => (q.to_string(), c.to_string()),
-                    None => continue,
+                    None => match resolve_bare(name) {
+                        Some((q, c)) => (q, c),
+                        None => continue,
+                    },
                 },
                 _ => continue,
             };
             let (rq, rc) = match right.as_ref() {
                 Expression::Identifier(name) => match name.split_once('.') {
                     Some((q, c)) => (q.to_string(), c.to_string()),
-                    None => continue,
+                    None => match resolve_bare(name) {
+                        Some((q, c)) => (q, c),
+                        None => continue,
+                    },
                 },
                 _ => continue,
             };
