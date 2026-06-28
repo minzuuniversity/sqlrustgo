@@ -29,12 +29,12 @@ use sqlrustgo_parser::parser::{
     AlterTableStatement,
     CallStatement,
     CreateDatabaseStatement,
-    CreateViewStatement,
     CreateIndexStatement,
     CreateProcedureStatement,
     CreateRoleStatement,
     CreateTableStatement,
     CreateTriggerStatement,
+    CreateViewStatement,
     DescribeStatement,
     DropDatabaseStatement,
     DropIndexStatement,
@@ -43,8 +43,8 @@ use sqlrustgo_parser::parser::{
     DropViewStatement,
     GrantRoleStatement,
     GrantStatement,
-    MergeStatement,
     InsertStatement,
+    MergeStatement,
     ObjectType as ParserObjectType,
     Privilege as ParserPrivilege,
     RevokeRoleStatement,
@@ -471,13 +471,13 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     partition_info: None,
                 };
                 let mut storage = self.storage.write().unwrap();
-                storage.create_table(&table_info).map_err(|e| {
-                    SqlError::ExecutionError(format!("Create CTE table: {}", e))
-                })?;
+                storage
+                    .create_table(&table_info)
+                    .map_err(|e| SqlError::ExecutionError(format!("Create CTE table: {}", e)))?;
                 if !cte_rows.is_empty() {
-                    storage.insert(&cte.name, cte_rows).map_err(|e| {
-                        SqlError::ExecutionError(format!("Insert CTE rows: {}", e))
-                    })?;
+                    storage
+                        .insert(&cte.name, cte_rows)
+                        .map_err(|e| SqlError::ExecutionError(format!("Insert CTE rows: {}", e)))?;
                 }
             }
             with_clause.ctes.iter().map(|c| c.name.clone()).collect()
@@ -551,13 +551,13 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     partition_info: None,
                 };
                 let mut storage = self.storage.write().unwrap();
-                storage.create_table(&table_info).map_err(|e| {
-                    SqlError::ExecutionError(format!("Create CTE table: {}", e))
-                })?;
+                storage
+                    .create_table(&table_info)
+                    .map_err(|e| SqlError::ExecutionError(format!("Create CTE table: {}", e)))?;
                 if !cte_rows.is_empty() {
-                    storage.insert(&cte.name, cte_rows).map_err(|e| {
-                        SqlError::ExecutionError(format!("Insert CTE rows: {}", e))
-                    })?;
+                    storage
+                        .insert(&cte.name, cte_rows)
+                        .map_err(|e| SqlError::ExecutionError(format!("Insert CTE rows: {}", e)))?;
                 }
             }
             with_clause.ctes.iter().map(|c| c.name.clone()).collect()

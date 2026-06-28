@@ -7,7 +7,6 @@ use sqlrustgo::MemoryExecutionEngine;
 use sqlrustgo_storage::MemoryStorage;
 use std::sync::{Arc, RwLock};
 
-
 fn make_engine() -> MemoryExecutionEngine {
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));
     MemoryExecutionEngine::new(storage)
@@ -25,7 +24,11 @@ fn test_create_database_if_not_exists() {
     let mut engine = make_engine();
     let _ = engine.execute("CREATE DATABASE mydb");
     let r = engine.execute("CREATE DATABASE IF NOT EXISTS mydb");
-    assert!(r.is_ok(), "CREATE DATABASE IF NOT EXISTS should not error: {:?}", r.err());
+    assert!(
+        r.is_ok(),
+        "CREATE DATABASE IF NOT EXISTS should not error: {:?}",
+        r.err()
+    );
 }
 
 #[test]

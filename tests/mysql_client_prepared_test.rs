@@ -20,7 +20,10 @@ fn wait_for_server(port: u16) -> SocketAddr {
     }
 }
 
-fn make_client() -> (sqlrustgo_mysql_server::testing::EphemeralHandle, MySqlConnection) {
+fn make_client() -> (
+    sqlrustgo_mysql_server::testing::EphemeralHandle,
+    MySqlConnection,
+) {
     let handle = start_ephemeral(EphemeralConfig::default()).expect("start_ephemeral");
     let port = handle.port;
     let addr = wait_for_server(port);
@@ -38,8 +41,11 @@ fn test_prepare_simple_select() {
 #[test]
 fn test_prepare_with_params() {
     let (_handle, mut conn) = make_client();
-    let _ = conn.execute("CREATE TABLE param_t (id INTEGER, name TEXT)").expect("CREATE");
-    let stmt = conn.prepare("INSERT INTO param_t VALUES (?, ?)")
+    let _ = conn
+        .execute("CREATE TABLE param_t (id INTEGER, name TEXT)")
+        .expect("CREATE");
+    let stmt = conn
+        .prepare("INSERT INTO param_t VALUES (?, ?)")
         .expect("prepare should succeed");
     assert_eq!(stmt.param_count, 2, "expected 2 params");
 }
