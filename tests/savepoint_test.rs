@@ -71,7 +71,7 @@ fn test_rollback_to_existing_savepoint_pops_undo() {
     m.add_undo(insert_key(3));
     assert_eq!(m.undo_log_len(), 3);
 
-    m.rollback_to("sp1").unwrap();
+    m.rollback_to("sp1", |_| Ok(())).unwrap();
     // Only the first record should remain (recorded before sp1)
     assert_eq!(m.undo_log_len(), 1);
 }
@@ -79,7 +79,7 @@ fn test_rollback_to_existing_savepoint_pops_undo() {
 #[test]
 fn test_rollback_to_nonexistent_savepoint_errors() {
     let mut m = make_manager();
-    let result = m.rollback_to("does_not_exist");
+    let result = m.rollback_to("does_not_exist", |_| Ok(()));
     assert!(matches!(result, Err(SavepointError::NotFound)));
 }
 
@@ -105,7 +105,7 @@ fn test_release_nonexistent_savepoint_is_noop() {
     // sp1 should still be present
     assert_eq!(m.get_savepoint_count(), 1);
     // sp1 can still be rolled back to
-    m.rollback_to("sp1").unwrap();
+    m.rollback_to("sp1", |_| Ok(())).unwrap();
 }
 
 #[test]
@@ -118,11 +118,11 @@ fn test_lifo_rollback() {
     m.add_undo(delete_key(3));
 
     // Rollback to sp2 — only the last record pops
-    m.rollback_to("sp2").unwrap();
+    m.rollback_to("sp2", |_| Ok(())).unwrap();
     assert_eq!(m.undo_log_len(), 2);
 
     // Rollback to sp1 — pops the sp2 record too
-    m.rollback_to("sp1").unwrap();
+    m.rollback_to("sp1", |_| Ok(())).unwrap();
     assert_eq!(m.undo_log_len(), 1);
 }
 
@@ -136,8 +136,11 @@ fn test_rollback_truncates_savepoints_after_target() {
     m.savepoint("c".to_string()).unwrap();
     assert_eq!(m.get_savepoint_count(), 3);
 
-    m.rollback_to("a").unwrap();
+    m.rollback_to("a", |_| Ok(())).unwrap();
     assert_eq!(m.get_savepoint_count(), 1);
     // Rolling back to "b" should now fail because b was destroyed
-    assert!(matches!(m.rollback_to("b"), Err(SavepointError::NotFound)));
+    assert!(matches!(
+        m.rollback_to("b", |_| Ok(())),
+        Err(SavepointError::NotFound)
+    ));
 }
