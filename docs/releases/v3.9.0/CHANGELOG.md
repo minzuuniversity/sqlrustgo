@@ -30,7 +30,7 @@
 | 改进 | 说明 | Phase | Issue |
 |------|------|-------|-------|
 | **INT-2 TransactionManager 主路径** | 跨越 5+ 版本的集成债 | 2 | #3108 (P0) |
-| **INT-3 expr 完整合并** | 1 周工作量 | 1 | #3146 follow-up |
+| **INT-3 expr 完整合并** | ✅ CLOSED (#3200, #3345) — 14/14 分支委托到 executor::expr, expr_single_engine_test 20/20 PASS | 1 | #3146 follow-up |
 | **SEM-1 Savepoint MVCC snapshot restore** | ROLLBACK stub 修复 | 2 | #3146 |
 
 ### 架构债 (ARCH/SEM Debt Closure) — Phase 1 重点
@@ -58,7 +58,7 @@
 |------|------|------|
 | G1 22/22 TPC-H 保持 | TBD | Phase 6 末 |
 | G2 INT-2 关闭 | TBD | Phase 2 末 |
-| G3 INT-3 关闭 | TBD | Phase 1 末 |
+| G3 INT-3 关闭 | ✅ CLOSED (14/14 branches, PRs #3200/#3345) | Phase 1 末 ✅ |
 | G4 ARCH-3 关闭 | TBD | Phase 1 末 |
 | G5 SEM-1 关闭 | TBD | Phase 2 末 |
 | G6 Backup/Restore | TBD | Phase 3 末 |
