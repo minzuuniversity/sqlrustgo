@@ -205,9 +205,7 @@ pub fn parse_handshake(payload: &[u8]) -> MySqlResult<Handshake> {
 
     // auth-plugin-data-part-1: 8 bytes
     let mut auth_plugin_data = [0u8; SCRAMBLE_LENGTH];
-    for i in 0..8 {
-        auth_plugin_data[i] = payload[off + i];
-    }
+    auth_plugin_data[..8].copy_from_slice(&payload[off..off + 8]);
     off += 8;
 
     // filler (1 byte, 0x00)
@@ -272,11 +270,11 @@ pub fn parse_handshake(payload: &[u8]) -> MySqlResult<Handshake> {
 /// SHA1(password) XOR SHA1(scramble + SHA1(SHA1(password)))
 fn native_password_hash(password: &str, scramble: &[u8; SCRAMBLE_LENGTH]) -> [u8; 20] {
     let hash_stage1 = Sha1::digest(password.as_bytes());
-    let hash_stage2 = Sha1::digest(&hash_stage1);
+    let hash_stage2 = Sha1::digest(hash_stage1);
 
     let mut sha = Sha1::new();
     sha.update(scramble);
-    sha.update(&hash_stage2);
+    sha.update(hash_stage2);
     let hash_result = sha.finalize();
 
     let mut result = [0u8; 20];
@@ -798,16 +796,14 @@ impl MySqlConnection {
         payload.extend_from_slice(&1u32.to_le_bytes()); // iteration_count
 
         // NULL bitmap: ceil((param_count + 7) / 8) bytes, all zero
-        let null_bitmap_len = (params.len() + 7) / 8;
+        let null_bitmap_len = params.len().div_ceil(8);
         payload.extend_from_slice(&vec![0u8; null_bitmap_len]);
 
         // new_params_bound_flag = 1
         payload.push(0x01);
 
         // Parameter types (VARCHAR for all)
-        for _ in 0..params.len() {
-            payload.push(0xfd); // MYSQL_TYPE_VAR_STRING
-        }
+        payload.extend(std::iter::repeat_n(0xfd, params.len())); // MYSQL_TYPE_VAR_STRING
 
         // Parameter values (length-encoded strings)
         for p in params {
