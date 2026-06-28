@@ -6,7 +6,7 @@ use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use rcgen::{CertificateParams, KeyPair};
 use sha1::{Digest, Sha1};
 use sqlrustgo::ExecutionEngine;
-use sqlrustgo_parser::{parse, parse_statements, Statement};
+use sqlrustgo_parser::{parse, Statement};
 use sqlrustgo_storage::{
     FileBackedWalManager, FileStorage, MemoryStorage, StorageEngine, WalStorage,
 };
@@ -717,12 +717,16 @@ impl<'a> TlsStream<'a> {
 
 impl<'a> Read for TlsStream<'a> {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
-        // Drive rustls IO only when there is pending inbound data.
-        // This avoids blocking on write (which would happen if we
-        // called complete_io while wants_write was true and the
-        // socket had outbound data to flush).
-        if self.conn.wants_read() {
-            self.conn.complete_io(self.sock)?;
+        // Engine Bug B fix (refs #3635): loop drains ALL pending TLS
+        // records before returning. A single `complete_io` only
+        // decrypts ciphertext currently buffered in the socket, which
+        // deadlocks large multi-record plaintexts (>= ~16 KB).
+        while self.conn.wants_read() {
+            match self.conn.complete_io(self.sock) {
+                Ok(_) => {}
+                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => break,
+                Err(e) => return Err(e),
+            }
         }
         self.conn.reader().read(buf)
     }
@@ -857,7 +861,7 @@ fn make_handshake_packet(seq: u8, scramble: &[u8; SCRAMBLE_LENGTH]) -> Packet {
     p.push(0x00); // scramble part1 + filler
     p.write_u16::<LittleEndian>((capability::SERVER_DEFAULT & 0xFFFF) as u16)
         .unwrap();
-    p.push(0xff); // charset utf8mb4
+    p.push(0x21); // charset utf8 (collation_id 33 = utf8_general_ci) — MySQL 8.0 client rejects 0xff as invalid
     p.write_u16::<LittleEndian>(0x0002).unwrap(); // status AUTOCOMMIT
     p.write_u16::<LittleEndian>(((capability::SERVER_DEFAULT >> 16) & 0xFFFF) as u16)
         .unwrap();
@@ -894,6 +898,7 @@ fn make_err_packet(seq: u8, code: u16, state: &str, msg: &str) -> Packet {
     p.write_u16::<LittleEndian>(code).unwrap();
     p.push(0x23);
     p.extend_from_slice(state.as_bytes());
+    p.push(0x00);
     p.extend_from_slice(msg.as_bytes());
     Packet {
         length: p.len() as u32,
@@ -1222,13 +1227,14 @@ fn write_column_def<W: Write>(w: &mut W, name: &str, sql_type: &str, seq: u8) ->
     let mut p = Vec::new();
     write_lenenc_string(&mut p, b"def").unwrap(); // catalog
     write_lenenc_string(&mut p, b"").unwrap(); // schema
-    write_lenenc_string(&mut p, b"").unwrap(); // table
-    write_lenenc_string(&mut p, b"").unwrap(); // org_table
-    write_lenenc_string(&mut p, name.as_bytes()).unwrap(); // name
-                                                           // MySQL column definition fixed-size fields:
-                                                           // charset_collation (2 bytes) → length (4 bytes) → field_type (1 byte)
-                                                           // → flags (2 bytes) → decimals (1 byte) → filler (2 bytes)
-    p.write_u16::<LittleEndian>(0x0030).unwrap(); // charset_collation: 0x30 = utf8_general_ci
+    write_lenenc_string(&mut p, b"").unwrap(); // virtual_table
+    write_lenenc_string(&mut p, b"").unwrap(); // physical_table
+    write_lenenc_string(&mut p, name.as_bytes()).unwrap(); // virtual_name
+    write_lenenc_string(&mut p, name.as_bytes()).unwrap(); // physical_name (org_name) — required by MySQL protocol; pymysql/libmysqlclient expect it
+    p.push(0x0c); // 1-byte filler required by MySQL column definition protocol (often called "next_length" = 12 fixed bytes that follow)
+                  // MySQL column definition fixed-size fields:
+                  // charsetnr (2 bytes) → length (4 bytes) → type (1 byte) → flags (2 bytes) → decimals (1 byte) → filler (2 bytes)
+    p.write_u16::<LittleEndian>(0x0030).unwrap(); // charsetnr: 0x30 = utf8_general_ci
     p.write_u32::<LittleEndian>(col_len_from_type(sql_type))
         .unwrap(); // length
     p.push(col_type_from_string(sql_type)); // field_type
@@ -1277,15 +1283,13 @@ fn send_result_set<W: Write>(
             seq,
         )?;
     }
-    // Inter-record separator between column defs and the row stream.
-    // Honor the client's DEPRECATE_EOF capability:
-    //   - DEPRECATE_EOF = 0 (classic protocol): send inter-record EOF
-    //   - DEPRECATE_EOF = 1 (mysql 8.0+ default): skip the EOF; the
-    //     trailing terminator (OK/EOF below) marks the end of the
-    //     result set.
-    // Fix for #3516: without this, mysql 8.0 CLI silently drops the
-    // result set — it interprets the stray inter-record EOF as the
-    // final terminator and never reads the row packets.
+    if cap & capability::DEPRECATE_EOF == 0 {
+        make_eof_packet(seq, 0x0002).write_to(w)?;
+        seq = seq.wrapping_add(1);
+    } else {
+        make_deprecate_eof_ok_packet(seq, 0, 0, 0x0002, 0).write_to(w)?;
+        seq = seq.wrapping_add(1);
+    }
     for r in rows.iter() {
         let mut p = Vec::new();
         write_text_row(&mut p, r)?;
@@ -2066,6 +2070,106 @@ fn is_select_stmt(stmt: &Statement) -> bool {
     )
 }
 
+/// Split a multi-statement query string into top-level statement text
+/// slices. Respects parentheses nesting, single/double-quoted string
+/// literals (with `\` escapes), and `--` / `/* */` comments so that
+/// semicolons inside any of those contexts do not terminate a statement.
+///
+/// Engine Bug A supplementary fix (refs #3635): the COM_QUERY
+/// dispatch path previously called `eng.execute(&q)` once per parsed
+/// statement, re-running the whole multi-statement query N times for
+/// an N-statement batch. Splitting first and executing each slice
+/// independently restores the per-statement-once contract that
+/// `mysql --execute="s1; s2"` and the multi-statement path of PR #3521
+/// intended.
+fn split_top_level_statements(q: &str) -> Vec<&str> {
+    let bytes = q.as_bytes();
+    let mut out: Vec<&str> = Vec::new();
+    let mut start = 0usize;
+    let mut paren_depth: i32 = 0;
+    let mut in_single = false;
+    let mut in_double = false;
+    let mut in_line_comment = false;
+    let mut in_block_comment = false;
+    let mut i = 0usize;
+    while i < bytes.len() {
+        let c = bytes[i] as char;
+        let next = bytes.get(i + 1).copied().unwrap_or(0) as char;
+        if in_line_comment {
+            if c == '\n' {
+                in_line_comment = false;
+            }
+            i += 1;
+            continue;
+        }
+        if in_block_comment {
+            if c == '*' && next == '/' {
+                in_block_comment = false;
+                i += 2;
+                continue;
+            }
+            i += 1;
+            continue;
+        }
+        if in_single {
+            if c == '\\' {
+                i += 2;
+                continue;
+            }
+            if c == '\'' {
+                in_single = false;
+            }
+            i += 1;
+            continue;
+        }
+        if in_double {
+            if c == '\\' {
+                i += 2;
+                continue;
+            }
+            if c == '"' {
+                in_double = false;
+            }
+            i += 1;
+            continue;
+        }
+        match c {
+            '\'' => in_single = true,
+            '"' => in_double = true,
+            '(' => paren_depth += 1,
+            ')' => {
+                if paren_depth > 0 {
+                    paren_depth -= 1;
+                }
+            }
+            '-' if next == '-' => {
+                in_line_comment = true;
+                i += 2;
+                continue;
+            }
+            '/' if next == '*' => {
+                in_block_comment = true;
+                i += 2;
+                continue;
+            }
+            ';' if paren_depth == 0 => {
+                let stmt_text = q[start..i].trim();
+                if !stmt_text.is_empty() {
+                    out.push(stmt_text);
+                }
+                start = i + 1;
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+    let tail = q[start..].trim();
+    if !tail.is_empty() {
+        out.push(tail);
+    }
+    out
+}
+
 fn generate_self_signed_cert() -> (Vec<u8>, Vec<u8>) {
     let key_pair = KeyPair::generate().unwrap();
     let key_der = key_pair.serialize_der();
@@ -2294,11 +2398,8 @@ fn handle_load_local_infile<S: Read + Write>(
     // `WalStorage::flush()` delegates to `FileStorage::flush()` which
     // writes all table .json files.
     {
-        let storage = engine.storage_ref();
-        let mut s = storage
-            .write()
-            .map_err(|e| MySqlError::Other(format!("flush storage lock: {}", e)))?;
-        s.flush()
+        engine
+            .flush()
             .map_err(|e| MySqlError::Other(format!("flush storage: {}", e)))?;
     }
 
@@ -2315,7 +2416,6 @@ fn do_command_loop<S: Read + Write>(
     server_last_sent_seq: &mut u8,
     ps_manager: &mut PreparedStatementManager,
 ) -> MySqlResult<()> {
-    let mut seen_first_command = false;
     loop {
         let pkt = match Packet::read_from(stream) {
             Ok(p) => p,
@@ -2326,12 +2426,15 @@ fn do_command_loop<S: Read + Write>(
         };
         let cmd = pkt.payload.first().copied().unwrap_or(0);
         let payload = &pkt.payload[1..];
+        // MySQL/MariaDB protocol: every new client command starts with
+        // pkt_seq=0, and the server resets its response seq to 0
+        // (so the first response packet uses seq=1). pymysql and
+        // libmysqlclient both rely on this — they set next_seq_id=1
+        // after sending each command and validate the server response
+        // sequence number accordingly. We reset on EVERY pkt_seq=0,
+        // not just the first one (which would break the second query).
         let mut seq = server_last_sent_seq.wrapping_add(1);
-        // MariaDB resets sequence to 0 for each new logical request.
-        // The first command after auth has pkt_seq=0 and MUST trigger reset (server_last_sent_seq=2 → 0).
-        // Subsequent commands in a multi-statement query also have pkt_seq=0 but should NOT reset.
-        if !seen_first_command && pkt.sequence == 0 {
-            seen_first_command = true;
+        if pkt.sequence == 0 {
             *server_last_sent_seq = 0;
             seq = 1;
         }
@@ -2438,53 +2541,58 @@ fn do_command_loop<S: Read + Write>(
                     seq = seq.wrapping_add(1);
                     continue;
                 }
-                let mut eng = engine.write().unwrap();
-                // 3521: Support multi-statement queries (semicolon-separated)
-                match parse_statements(&q) {
-                    Ok(stmts) => {
-                        for stmt in stmts {
-                            let result = eng.execute(&q);
-                            match result {
-                                Ok(r) if is_select_stmt(&stmt) => {
-                                    let cols: Vec<String> = r
-                                        .rows
-                                        .first()
-                                        .map(|row| {
-                                            (0..row.len())
-                                                .map(|i| format!("col_{}", i + 1))
-                                                .collect()
-                                        })
-                                        .unwrap_or_else(|| vec!["result".to_string()]);
-                                    let ctypes: Vec<String> =
-                                        cols.iter().map(|_| "VARCHAR(255)".to_string()).collect();
-                                    seq =
-                                        send_result_set(stream, &cols, &ctypes, &r.rows, seq, cap)?;
-                                    *server_last_sent_seq = seq;
-                                }
-                                Ok(r) => {
-                                    make_ok_packet(seq, r.affected_rows as u64, 0, 0x0002, 0)
-                                        .write_to(stream)?;
-                                    *server_last_sent_seq = seq;
-                                    seq = seq.wrapping_add(1);
-                                }
-                                Err(e) => {
-                                    let code = match e.to_string().contains("not found") {
-                                        true => 1146u16,
-                                        false => 1064u16,
-                                    };
-                                    make_err_packet(seq, code, "42000", &e.to_string())
-                                        .write_to(stream)?;
-                                    *server_last_sent_seq = seq;
-                                    seq = seq.wrapping_add(1);
-                                }
-                            }
+                // G13-OLTP-1 lock contention fix: DDL/DML use exclusive write lock with
+                // poisoning recovery. If a previous thread panicked while holding the lock,
+                // the RwLock poisons all subsequent .read()/.write() calls. Using .into_inner()
+                // recovery allows the server to continue serving queries rather than hard-fail.
+                let stmt_texts = split_top_level_statements(&q);
+                let mut had_error = false;
+                for stmt_sql in &stmt_texts {
+                    let parsed = parse(stmt_sql);
+                    let is_select = parsed.as_ref().map(is_select_stmt).unwrap_or(false);
+                    // G13-OLTP-1: poisoning recovery - if lock is poisoned, recover and continue
+                    let result = match engine.write() {
+                        Ok(mut eng) => eng.execute(stmt_sql),
+                        Err(poisoned) => {
+                            let mut eng = poisoned.into_inner();
+                            tracing::warn!("recovered engine from poisoned write lock");
+                            eng.execute(stmt_sql)
+                        }
+                    };
+                    match result {
+                        Ok(r) if is_select => {
+                            let cols: Vec<String> = r
+                                .rows
+                                .first()
+                                .map(|row| {
+                                    (0..row.len()).map(|i| format!("col_{}", i + 1)).collect()
+                                })
+                                .unwrap_or_else(|| vec!["result".to_string()]);
+                            let ctypes: Vec<String> =
+                                cols.iter().map(|_| "VARCHAR(255)".to_string()).collect();
+                            seq = send_result_set(stream, &cols, &ctypes, &r.rows, seq, cap)?;
+                            *server_last_sent_seq = seq;
+                        }
+                        Ok(r) => {
+                            make_ok_packet(seq, r.affected_rows as u64, 0, 0x0002, 0)
+                                .write_to(stream)?;
+                            *server_last_sent_seq = seq;
+                            seq = seq.wrapping_add(1);
+                        }
+                        Err(e) => {
+                            let code = match e.to_string().contains("not found") {
+                                true => 1146u16,
+                                false => 1064u16,
+                            };
+                            make_err_packet(seq, code, "42000", &e.to_string()).write_to(stream)?;
+                            *server_last_sent_seq = seq;
+                            seq = seq.wrapping_add(1);
+                            had_error = true;
                         }
                     }
-                    Err(e) => {
-                        make_err_packet(seq, 1064, "42000", &e).write_to(stream)?;
-                        *server_last_sent_seq = seq;
-                        seq = seq.wrapping_add(1);
-                    }
+                }
+                if had_error && stmt_texts.len() > 1 {
+                    tracing::debug!("multi-statement batch had at least one error");
                 }
             }
             packet_type::COM_STMT_PREPARE => {
@@ -2694,53 +2802,52 @@ fn do_command_loop<S: Read + Write>(
                     parse_stmt_execute_params(payload, stmt_param_count, &stmt_param_types);
                 let final_sql = replace_placeholders(&stmt_sql, &params);
                 tracing::info!("STMT EXECUTE (id={}): {}", stmt_id, final_sql);
-                let mut eng = engine.write().unwrap();
+                // G13-OLTP-1: parse first to determine SELECT vs DDL/DML,
+                // then acquire the appropriate lock (read for SELECT, write for DDL/DML).
                 let parsed = parse(&final_sql);
-                match parsed {
-                    Ok(stmt) => {
-                        let result = eng.execute(&final_sql);
-                        match result {
-                            Ok(r) if is_select_stmt(&stmt) => {
-                                let c: Vec<String> = r
-                                    .rows
-                                    .first()
-                                    .map(|row| {
-                                        (0..row.len()).map(|i| format!("col_{}", i + 1)).collect()
-                                    })
-                                    .unwrap_or_else(|| vec!["result".to_string()]);
-                                let t: Vec<String> =
-                                    c.iter().map(|_| "VARCHAR(255)".to_string()).collect();
-                                let c_trimmed: Vec<String> =
-                                    c.into_iter().take(stmt_col_count as usize).collect();
-                                let t_trimmed: Vec<String> =
-                                    t.into_iter().take(stmt_col_count as usize).collect();
-                                let r_trimmed: Vec<Vec<Value>> = r
-                                    .rows
-                                    .into_iter()
-                                    .map(|row| {
-                                        row.into_iter().take(stmt_col_count as usize).collect()
-                                    })
-                                    .collect();
-                                seq = send_binary_result_set(
-                                    stream, &c_trimmed, &t_trimmed, &r_trimmed, seq, cap,
-                                )?;
-                            }
-                            Ok(r) => {
-                                make_ok_packet(seq, r.affected_rows as u64, 0, 0x0002, 0)
-                                    .write_to(stream)?;
-                                *server_last_sent_seq = seq;
-                                seq = seq.wrapping_add(1);
-                            }
-                            Err(e) => {
-                                make_err_packet(seq, 1064, "42000", &e.to_string())
-                                    .write_to(stream)?;
-                                *server_last_sent_seq = seq;
-                                seq = seq.wrapping_add(1);
-                            }
-                        }
+                let is_select = parsed.as_ref().map(is_select_stmt).unwrap_or(false);
+                // G13-OLTP-1: DDL/DML use exclusive write lock with poisoning recovery.
+                // If a previous thread panicked while holding the lock, the RwLock poisons
+                // all subsequent .read()/.write() calls. Using .into_inner() recovery
+                // allows the server to continue serving queries rather than hard-fail.
+                // G13-OLTP-1: poisoning recovery - recover from poisoned state and continue
+                let result = match engine.write() {
+                    Ok(mut eng) => eng.execute(&final_sql),
+                    Err(poisoned) => {
+                        let mut eng = poisoned.into_inner();
+                        tracing::warn!("recovered engine from poisoned write lock (stmt execute)");
+                        eng.execute(&final_sql)
+                    }
+                };
+                match result {
+                    Ok(r) if is_select => {
+                        let c: Vec<String> = r
+                            .rows
+                            .first()
+                            .map(|row| (0..row.len()).map(|i| format!("col_{}", i + 1)).collect())
+                            .unwrap_or_else(|| vec!["result".to_string()]);
+                        let t: Vec<String> = c.iter().map(|_| "VARCHAR(255)".to_string()).collect();
+                        let c_trimmed: Vec<String> =
+                            c.into_iter().take(stmt_col_count as usize).collect();
+                        let t_trimmed: Vec<String> =
+                            t.into_iter().take(stmt_col_count as usize).collect();
+                        let r_trimmed: Vec<Vec<Value>> = r
+                            .rows
+                            .into_iter()
+                            .map(|row| row.into_iter().take(stmt_col_count as usize).collect())
+                            .collect();
+                        seq = send_binary_result_set(
+                            stream, &c_trimmed, &t_trimmed, &r_trimmed, seq, cap,
+                        )?;
+                    }
+                    Ok(r) => {
+                        make_ok_packet(seq, r.affected_rows as u64, 0, 0x0002, 0)
+                            .write_to(stream)?;
+                        *server_last_sent_seq = seq;
+                        seq = seq.wrapping_add(1);
                     }
                     Err(e) => {
-                        make_err_packet(seq, 1064, "42000", &e).write_to(stream)?;
+                        make_err_packet(seq, 1064, "42000", &e.to_string()).write_to(stream)?;
                         *server_last_sent_seq = seq;
                         seq = seq.wrapping_add(1);
                     }
@@ -2772,13 +2879,10 @@ fn handle_connection(
 ) {
     ACTIVE_CONNECTIONS.fetch_add(1, Ordering::Relaxed);
     TOTAL_CONNECTIONS_ACCEPTED.fetch_add(1, Ordering::Relaxed);
-    struct ConnGuard;
-    impl Drop for ConnGuard {
-        fn drop(&mut self) {
-            ACTIVE_CONNECTIONS.fetch_sub(1, Ordering::Relaxed);
-        }
-    }
-    let _guard = ConnGuard;
+    let _guard = scopeguard::guard((), |_| {
+        // Always decrement on exit, even on panic
+        ACTIVE_CONNECTIONS.fetch_sub(1, Ordering::Relaxed);
+    });
     stream
         .set_read_timeout(Some(std::time::Duration::from_secs(600)))
         .ok();
@@ -4479,6 +4583,96 @@ pub mod testing {
             data_dir,
             externally_owned,
         })
+    }
+
+    #[test]
+    fn split_top_level_single_statement() {
+        assert_eq!(
+            crate::split_top_level_statements("INSERT INTO t VALUES (1)"),
+            vec!["INSERT INTO t VALUES (1)"]
+        );
+    }
+
+    #[test]
+    fn split_top_level_no_trailing_semicolon() {
+        assert_eq!(
+            crate::split_top_level_statements("SELECT 1"),
+            vec!["SELECT 1"]
+        );
+    }
+
+    #[test]
+    fn split_top_level_trailing_semicolon() {
+        assert_eq!(
+            crate::split_top_level_statements("INSERT INTO t VALUES (1);"),
+            vec!["INSERT INTO t VALUES (1)"]
+        );
+    }
+
+    #[test]
+    fn split_top_level_two_statements() {
+        assert_eq!(
+            crate::split_top_level_statements(
+                "INSERT INTO t VALUES (1); INSERT INTO t VALUES (2);"
+            ),
+            vec!["INSERT INTO t VALUES (1)", "INSERT INTO t VALUES (2)"]
+        );
+    }
+
+    #[test]
+    fn split_top_level_skips_empty_statements() {
+        assert_eq!(
+            crate::split_top_level_statements(";;INSERT INTO t VALUES (1);;"),
+            vec!["INSERT INTO t VALUES (1)"]
+        );
+    }
+
+    #[test]
+    fn split_top_level_respects_paren_depth() {
+        assert_eq!(
+            crate::split_top_level_statements("SELECT (1;2); SELECT 3;"),
+            vec!["SELECT (1;2)", "SELECT 3"]
+        );
+    }
+
+    #[test]
+    fn split_top_level_respects_string_literals() {
+        assert_eq!(
+            crate::split_top_level_statements("INSERT INTO t VALUES ('a;b;c'); SELECT 1;"),
+            vec!["INSERT INTO t VALUES ('a;b;c')", "SELECT 1"]
+        );
+    }
+
+    #[test]
+    fn split_top_level_handles_double_quoted_strings() {
+        assert_eq!(
+            crate::split_top_level_statements(r#"INSERT INTO t VALUES ("a;b"); SELECT 1;"#),
+            vec![r#"INSERT INTO t VALUES ("a;b")"#, "SELECT 1"]
+        );
+    }
+
+    #[test]
+    fn split_top_level_handles_line_comment() {
+        assert_eq!(
+            crate::split_top_level_statements("-- a;b\nINSERT INTO t VALUES (1); SELECT 2;"),
+            vec!["-- a;b\nINSERT INTO t VALUES (1)", "SELECT 2"]
+        );
+    }
+
+    #[test]
+    fn split_top_level_handles_block_comment() {
+        assert_eq!(
+            crate::split_top_level_statements("SELECT 1 /* ; */ ;SELECT 2;"),
+            vec!["SELECT 1 /* ; */", "SELECT 2"]
+        );
+    }
+
+    #[test]
+    fn split_top_level_escaped_quote_in_string() {
+        assert_eq!(
+            crate::split_top_level_statements(r"INSERT INTO t VALUES ('a\';b'); SELECT 1;"),
+            vec![r"INSERT INTO t VALUES ('a\';b')", "SELECT 1"]
+        );
     }
 }
 
