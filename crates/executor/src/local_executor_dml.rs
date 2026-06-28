@@ -1,20 +1,16 @@
 //! Local Executor DML Module
 //!
-//! Placeholder for local executor DML operations.
+//! ## ⚠️ 弃用 (Deprecated since v3.9.0 Phase 2)
+//!
+//! `LocalExecutorDml` 是过渡性占位符。自 v3.9.0 Phase 2 起，
+//! 所有 DML/DDL 已通过 `ExecutionEngine::execute()` 完整分发。
+//! 此模块将在 v3.10.0 中移除。使用 `ExecutionEngine::execute(sql)` 替代。
 //!
 //! ## G4 Fix (Issue #2811)
-//!
-//! Added `engine: Arc<Mutex<dyn ExecutionEngine>>` field to enable
-//! `MergeExecutor::new()` instantiation from G3 (#2810). Previously
-//! LocalExecutor held only borrowed `&dyn StorageEngine`, making it
-//! impossible to construct MergeExecutor's required Arc-wrapped form.
+//! Added `engine: Arc<Mutex<dyn ExecutionEngine>>` field
 //!
 //! ## G3 Fix (Issue #2810)
-//!
-//! Added `storage: Arc<RwLock<dyn StorageEngine>>` field and `execute_dml`
-//! method that dispatches MERGE statements to `MergeExecutor::execute_merge()`.
-//! Previously `execute_merge()` was defined but never called (dead code).
-//! G3 is the final P0 piece, completing the MERGE feature (PR-870).
+//! Added `storage: Arc<RwLock<dyn StorageEngine>>` field + `execute_dml` for MERGE
 
 use crate::execution::ExecutionEngine;
 use crate::merge::MergeExecutor;
@@ -25,6 +21,10 @@ use std::sync::{Arc, Mutex, RwLock};
 
 /// LocalExecutorDml with engine field for VTU path (G4 #2811) and
 /// storage for MergeExecutor construction (G3 #2810).
+#[deprecated(
+    since = "3.9.0",
+    note = "Use ExecutionEngine::execute(sql) instead. Will be removed in 3.10.0."
+)]
 pub struct LocalExecutorDml {
     engine: Arc<Mutex<dyn ExecutionEngine>>,
     storage: Arc<RwLock<dyn StorageEngine>>,
@@ -33,6 +33,7 @@ pub struct LocalExecutorDml {
 /// Placeholder LocalExecutorDmlArc
 pub struct LocalExecutorDmlArc;
 
+#[allow(deprecated)]
 impl LocalExecutorDml {
     /// Default constructor: NoopExecutionEngine + MemoryStorage
     pub fn new() -> Self {
@@ -209,6 +210,7 @@ impl ExecutionEngine for NoopExecutionEngine {
     }
 }
 
+#[allow(deprecated)]
 impl Default for LocalExecutorDml {
     fn default() -> Self {
         Self::new()

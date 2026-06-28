@@ -1,4 +1,4 @@
-// Q17 SF=0.1 in-process performance test
+//! Q17 SF=0.1 in-process performance test
 use std::time::Instant;
 
 fn main() {
@@ -7,13 +7,9 @@ fn main() {
         .nth(1)
         .unwrap_or_else(|| "tests/data/tpch-sf01".to_string());
 
-    // FIX 2026-06-26 Hermes: use ExecutionEngine directly (EngineBuilder doesn't exist)
+    // Use the ExecutionEngine with MemoryStorage
     use sqlrustgo::{ExecutionEngine, MemoryStorage};
-    use sqlrustgo_storage::Record;
-    use sqlrustgo_types::Value as SqlValue;
-    use std::sync::{Arc, RwLock};
-    let storage = Arc::new(RwLock::new(MemoryStorage::new()));
-    let mut engine = ExecutionEngine::new(storage);
+    let mut engine: ExecutionEngine<MemoryStorage> = ExecutionEngine::with_memory();
 
     // Load all tables
     for table in &[
