@@ -36,20 +36,23 @@ benchmark PASS** milestone.
 ### Pre-built binary (recommended for evaluation)
 
 ```bash
+# Download from Gitea releases (not GitHub)
 curl -L https://github.com/openclaw/sqlrustgo/releases/download/v3.9.0/sqlrustgo-v3.9.0-linux-x86_64.tar.gz | tar xz
-sudo mv sqlrustgo /usr/local/bin/
-sqlrustgo --version
-# → sqlrustgo v3.9.0
+# If using the MySQL-server binary directly:
+./sqlrustgo-mysql-server --version
+# → sqlrustgo-mysql-server v3.9.0
 ```
 
 ### From source
 
 ```bash
-git clone https://github.com/openclaw/sqlrustgo.git
+git clone http://192.168.0.252:3000/openclaw/sqlrustgo.git
 cd sqlrustgo
 git checkout v3.9.0
-cargo build --release
-./target/release/sqlrustgo --version
+cargo build --release -p sqlrustgo-cli
+# Binary at: ./target/release/sqlrustgo-cli
+cargo build --release -p sqlrustgo-mysql-server
+# Binary at: ./target/release/sqlrustgo-mysql-server
 ```
 
 Requirements: Rust 1.75+, a C linker (gcc/cc/clang).
@@ -57,29 +60,53 @@ Requirements: Rust 1.75+, a C linker (gcc/cc/clang).
 ## First server
 
 ```bash
-# In-memory mode (no persistence)
-sqlrustgo server --port 5432
+# Using sqlrustgo-cli (canonical entry point, delegates to sqlrustgo-mysql-server):
+./target/release/sqlrustgo-cli serve
+# Server starts on 127.0.0.1:3306 speaking MySQL wire protocol
 
-# With persistence
-mkdir -p /var/lib/sqlrustgo/{data,wal,snapshots}
-sqlrustgo server --port 5432 --data-dir /var/lib/sqlrustgo
+# With persistence:
+mkdir -p /tmp/sqlrustgo/{data,wal}
+./target/release/sqlrustgo-cli serve --data-dir /tmp/sqlrustgo/data
 ```
 
-The server speaks PostgreSQL v3 wire protocol.
+> **Note**: The server speaks **MySQL wire protocol** (mysql_native_password auth),
+> not PostgreSQL. Use a MySQL client to connect.
 
 ## First query
 
 ```bash
-sqlrustgo cli -c "SELECT 1 + 1 AS two;"
-psql -h localhost -p 5432 -c "SELECT 1 + 1 AS two;"
+# Execute a single query via the exec subcommand (no server needed):
+./target/release/sqlrustgo-cli exec "SELECT 1 + 1 AS two"
+# → col_0 | Integer(2) (1 rows)
+
+# Or connect with the mysql CLI client to a running server:
+mysql -h 127.0.0.1 -P 3306 -u tester -ptester -e "SELECT 1 + 1 AS two"
 ```
+
+## Interactive REPL
+
+```bash
+# Start an interactive REPL session:
+./target/release/sqlrustgo-cli repl
+# SQLRustGo REPL v3.8.0 — type `.help` for commands, `.exit` to quit
+# sqlrustgo> CREATE TABLE t (id INT, name TEXT);
+# sqlrustgo> INSERT INTO t VALUES (1, 'Alice'), (2, 'Bob');
+# sqlrustgo> SELECT * FROM t;
+```
+
+> **Note**: The `sqlrustgo cli` subcommand (auto-spawn + query) is planned for v3.10.0 (Phase 3 of CLI plan).
 
 ## Run TPC-H 22-query suite
 
 ```bash
-sqlrustgo tpch generate --sf 0.001 --output tests/data/tpch-sf001
+# Generate TPC-H data using the bench example:
+cargo run --example tpch_data_gen -- --sf 0.001 --output tests/data/tpch-sf001
+
+# Run in-process TPC-H tests:
 cargo test --test tpch_full_22_test -- --nocapture
 # Expected: test result: ok. 22 passed; 0 failed
+
+# Run wire-protocol TPC-H tests:
 cargo test --test tpch_22_queries_wire_test -- --nocapture
 # Expected: 22/22 wire PASS
 ```
@@ -88,13 +115,14 @@ cargo test --test tpch_22_queries_wire_test -- --nocapture
 
 ### Server won't start
 ```bash
-ss -tlnp | grep :5432
-sqlrustgo server --port 5433
+ss -tlnp | grep :3306
+# If port 3306 is in use:
+./target/release/sqlrustgo-cli serve --port 3307
 ```
 
 ### Tests fail with "fixture not found"
 ```bash
-sqlrustgo tpch generate --sf 0.001 --output tests/data/tpch-sf001
+cargo run --example tpch_data_gen -- --sf 0.001 --output tests/data/tpch-sf001
 ```
 
 ### Build is slow
@@ -104,18 +132,7 @@ export RUSTFLAGS="-C link-arg=-fuse-ld=mold"
 ```
 
 ### Tests OOM
-Reduce fixture scale: `sqlrustgo tpch generate --sf 0.0001`.
-
-## Next steps
-
-- [FEATURE_MATRIX.md](FEATURE_MATRIX.md) — full feature list
-- [RELEASE_NOTES.md](RELEASE_NOTES.md) — what changed since v3.8.0
-- [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md) — production deployment
-- [MIGRATION_GUIDE.md](MIGRATION_GUIDE.md) — upgrade from v3.8.0
-- [INSTALL.md](INSTALL.md) — full build options
-- [CHANGELOG.md](CHANGELOG.md) — per-commit history
-- [EVALUATION_REPORT.md](EVALUATION_REPORT.md) — TPC-H results
-
+Reduce fixture scale: `cargo run --example tpch_data_gen -- --sf 0.0001`.
 
 ## Architecture at a glance
 
