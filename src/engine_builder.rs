@@ -3,6 +3,7 @@
 
 #![allow(unused_variables, unused_imports)]
 
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 
@@ -37,6 +38,7 @@ impl ExecutionEngine<MemoryStorage> {
             checkpoint_manager: None,
             parallel_degree: 1,
             stmt_cache: sqlrustgo_cache::PreparedStatementCache::new(100),
+            views: HashMap::new(),
         }
     }
 
@@ -56,6 +58,7 @@ impl ExecutionEngine<MemoryStorage> {
             checkpoint_manager: None,
             parallel_degree: 1,
             stmt_cache: sqlrustgo_cache::PreparedStatementCache::new(100),
+            views: HashMap::new(),
         }
     }
 
@@ -75,6 +78,7 @@ impl ExecutionEngine<MemoryStorage> {
             checkpoint_manager: None,
             parallel_degree: 1,
             stmt_cache: sqlrustgo_cache::PreparedStatementCache::new(100),
+            views: HashMap::new(),
         }
     }
 }
@@ -105,6 +109,7 @@ impl ExecutionEngine<MemoryStorage> {
             checkpoint_manager: None,
             parallel_degree: 1,
             stmt_cache: sqlrustgo_cache::PreparedStatementCache::new(100),
+            views: HashMap::new(),
         }
     }
 }
@@ -140,6 +145,7 @@ impl ExecutionEngine<MemoryStorage> {
             checkpoint_manager: None,
             parallel_degree: 1,
             stmt_cache: sqlrustgo_cache::PreparedStatementCache::new(100),
+            views: HashMap::new(),
         })
     }
 
@@ -170,6 +176,7 @@ impl ExecutionEngine<MemoryStorage> {
             checkpoint_manager: None,
             parallel_degree: 1,
             stmt_cache: sqlrustgo_cache::PreparedStatementCache::new(100),
+            views: HashMap::new(),
         })
     }
 
@@ -201,6 +208,7 @@ impl ExecutionEngine<MemoryStorage> {
             checkpoint_manager: checkpoint_manager.map(|cp| Arc::new(RwLock::new(cp))),
             parallel_degree: 1,
             stmt_cache: sqlrustgo_cache::PreparedStatementCache::new(100),
+            views: HashMap::new(),
         })
     }
 
