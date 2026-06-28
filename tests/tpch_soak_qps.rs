@@ -1,9 +1,6 @@
-//! Quick QPS benchmark — runs 6 TPC-H queries in a loop for 30s to measure throughput.
-//! Run: cargo test --release --test tpch_soak_qps -- --nocapture
-
 mod common;
-use common::tpch_wire_harness::start_sf001;
 use std::time::{Duration, Instant};
+use std::thread;
 
 const QUERIES: &[&str] = &[
     "SELECT COUNT(*) FROM lineitem",
@@ -14,37 +11,93 @@ const QUERIES: &[&str] = &[
     "SELECT o_custkey, COUNT(*) FROM orders GROUP BY o_custkey LIMIT 10",
 ];
 
-#[test]
-fn test_tpch_qps_30s() {
-    let mut client = start_sf001();
-    let duration_secs = 30u64;
-    let start = Instant::now();
-    let mut queries = 0u64;
+fn run_thread_benchmark(tid: usize, duration: Duration) -> (u64, u64, u64) {
+    let mut client = common::tpch_wire_harness::start_sf01();
+    let mut local_q = 0u64;
+    let mut local_err = 0u64;
+    let mut local_rows = 0u64;
+    let thread_start = Instant::now();
     let mut qidx = 0usize;
 
-    println!("Starting 30s QPS benchmark...");
-
-    while start.elapsed().as_secs() < duration_secs {
+    while thread_start.elapsed() < duration {
         let sql = QUERIES[qidx % QUERIES.len()];
+
         match client.query_rows(sql) {
             Ok(rows) => {
-                queries += rows.len() as u64;
+                local_q += 1;
+                local_rows += rows.len() as u64;
             }
             Err(e) => {
-                eprintln!("Query error (will retry): {}", e);
+                local_err += 1;
+                eprintln!("Thread {} error: {}", tid, e);
             }
         }
         qidx += 1;
-        if qidx % 100 == 0 {
-            std::thread::sleep(Duration::from_millis(10));
+
+        if qidx % 50 == 0 {
+            thread::sleep(Duration::from_micros(100));
         }
     }
 
+    (local_q, local_err, local_rows)
+}
+
+#[test]
+fn test_tpch_qps_30s_multi_threaded() {
+    let threads: usize = std::env::var("MT_SOAK_THREADS")
+        .unwrap_or_else(|_| "4".to_string())
+        .parse()
+        .unwrap_or(4);
+    let duration_secs: u64 = std::env::var("MT_SOAK_DURATION")
+        .unwrap_or_else(|_| "30".to_string())
+        .parse()
+        .unwrap_or(30);
+
+    println!("=== Multi-threaded QPS Benchmark (SF=0.1) ===");
+    println!("Threads: {}", threads);
+    println!("Duration: {}s", duration_secs);
+    println!();
+
+    let duration = Duration::from_secs(duration_secs);
+    let start = Instant::now();
+
+    let handles: Vec<_> = (0..threads)
+        .map(|tid| {
+            thread::spawn(move || run_thread_benchmark(tid, duration))
+        })
+        .collect();
+
+    let mut total_q = 0u64;
+    let mut total_err = 0u64;
+    let mut total_rows = 0u64;
+
+    for (i, h) in handles.into_iter().enumerate() {
+        let (q, e, r) = h.join().unwrap();
+        total_q += q;
+        total_err += e;
+        total_rows += r;
+        println!("Thread {} done: {} queries, {} errors, {} rows", i, q, e, r);
+    }
+
     let elapsed = start.elapsed().as_secs_f64();
-    let qps = queries as f64 / elapsed;
-    println!(
-        "30s QPS benchmark: {} queries, QPS={:.1}, elapsed={:.1}s",
-        queries, qps, elapsed
-    );
+    let qps = total_q as f64 / elapsed;
+    let error_rate = if total_q + total_err > 0 {
+        total_err as f64 / (total_q + total_err) as f64
+    } else {
+        0.0
+    };
+
+    println!();
+    println!("====================== QPS SUMMARY ======================");
+    println!("Threads:           {}", threads);
+    println!("Duration:          {:.2}s", elapsed);
+    println!("Total queries:     {}", total_q);
+    println!("Total errors:      {}", total_err);
+    println!("Total rows:        {}", total_rows);
+    println!("QPS:               {:.1} queries/sec", qps);
+    println!("Error rate:        {:.2}%", error_rate * 100.0);
+    println!("========================================================");
+
     assert!(qps > 0.1, "QPS too low: {:.1}", qps);
+    assert!(error_rate < 0.01, "Error rate too high: {:.2}%", error_rate * 100.0);
 }
