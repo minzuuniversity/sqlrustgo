@@ -117,7 +117,7 @@ impl SavepointManager {
     /// 旧 API 兼容: 仅清除 undo_log 不还原物理数据
     /// 新代码应使用 rollback_to(name, on_undo)
     #[deprecated(
-        since = "v3.9.0",
+        since = "3.9.0",
         note = "Use rollback_to(name, on_undo) for physical rollback"
     )]
     pub fn rollback_to_noop(&mut self, name: &str) -> Result<(), SavepointError> {
