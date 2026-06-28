@@ -427,7 +427,9 @@ fn parse_length_encoded_string(data: &[u8], offset: &mut usize) -> MySqlResult<S
     }
     let len = len as usize;
     if *offset + len > data.len() {
-        return Err(MySqlClientError::Protocol("String exceeds packet".to_string()));
+        return Err(MySqlClientError::Protocol(
+            "String exceeds packet".to_string(),
+        ));
     }
     let s = String::from_utf8_lossy(&data[*offset..*offset + len]).to_string();
     *offset += len;
@@ -447,8 +449,12 @@ fn parse_column_definition(data: &[u8], offset: &mut usize) -> MySqlResult<Colum
 
     let character_set = u16::from_le_bytes([data[*offset], data[*offset + 1]]);
     *offset += 2;
-    let column_length =
-        u32::from_le_bytes([data[*offset], data[*offset + 1], data[*offset + 2], data[*offset + 3]]);
+    let column_length = u32::from_le_bytes([
+        data[*offset],
+        data[*offset + 1],
+        data[*offset + 2],
+        data[*offset + 3],
+    ]);
     *offset += 4;
     let column_type = data[*offset];
     *offset += 1;
@@ -582,12 +588,8 @@ pub fn parse_result_set(stream: &mut dyn Read, deprecate_eof: bool) -> MySqlResu
             break;
         }
         // Terminated by EOF packet (classic) or OK packet (DEPRECATE_EOF)
-        let is_eof = !deprecate_eof
-            && first == Some(0xfe)
-            && row_pkt.payload.len() < 9;
-        let is_deprecate_eof = deprecate_eof
-            && first == Some(0x00)
-            && row_pkt.payload.len() <= 8;
+        let is_eof = !deprecate_eof && first == Some(0xfe) && row_pkt.payload.len() < 9;
+        let is_deprecate_eof = deprecate_eof && first == Some(0x00) && row_pkt.payload.len() <= 8;
         if is_eof || is_deprecate_eof {
             break;
         }
@@ -655,9 +657,7 @@ impl MySqlConnection {
         conn.seq = auth_result_pkt.sequence.wrapping_add(1);
 
         // Check for auth error
-        if !auth_result_pkt.payload.is_empty()
-            && auth_result_pkt.payload[0] == 0xff
-        {
+        if !auth_result_pkt.payload.is_empty() && auth_result_pkt.payload[0] == 0xff {
             let error_code =
                 u16::from_le_bytes([auth_result_pkt.payload[1], auth_result_pkt.payload[2]]);
             let msg = if auth_result_pkt.payload.len() > 3 {
@@ -711,7 +711,7 @@ impl MySqlConnection {
         Ok(vec![first])
     }
 
-     /// Ping the server.
+    /// Ping the server.
     pub fn ping(&mut self) -> MySqlResult<()> {
         let pkt = Packet::new(self.seq, vec![packet_type::COM_PING]);
         self.seq = pkt.sequence.wrapping_add(1);
@@ -790,11 +790,7 @@ impl MySqlConnection {
 
     /// COM_STMT_EXECUTE — execute a prepared statement
     /// Uses binary protocol parameters (typed as VARCHAR/text).
-    pub fn execute_prepared(
-        &mut self,
-        stmt_id: u32,
-        params: &[&str],
-    ) -> MySqlResult<ResultSet> {
+    pub fn execute_prepared(&mut self, stmt_id: u32, params: &[&str]) -> MySqlResult<ResultSet> {
         let mut payload = Vec::new();
         payload.push(0x17); // COM_STMT_EXECUTE
         payload.extend_from_slice(&stmt_id.to_le_bytes());
@@ -900,7 +896,8 @@ mod tests {
 
     #[test]
     fn test_build_handshake_response() {
-        let pkt = build_handshake_response(0, "testuser", &[1, 2, 3], "testdb", "mysql_native_password");
+        let pkt =
+            build_handshake_response(0, "testuser", &[1, 2, 3], "testdb", "mysql_native_password");
         assert_eq!(pkt.sequence, 0);
         assert!(pkt.payload.len() > 32);
     }
