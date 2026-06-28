@@ -64,8 +64,7 @@ impl Client {
 
         // 4) Read auth result (OK or ERR)
         let auth_resp = read_packet(&mut stream)?;
-        check_ok_or_err(&auth_resp)
-            .map_err(|e| anyhow::anyhow!("auth failed: {e}"))?;
+        check_ok_or_err(&auth_resp).map_err(|e| anyhow::anyhow!("auth failed: {e}"))?;
 
         Ok(Self { stream })
     }
@@ -96,8 +95,12 @@ impl Client {
             if pkt.is_empty() {
                 return Err(anyhow::anyhow!("unexpected empty packet"));
             }
-            if pkt[0] == 0xFE && pkt.len() < 9 { break; }
-            if pkt[0] == 0x00 { break; }
+            if pkt[0] == 0xFE && pkt.len() < 9 {
+                break;
+            }
+            if pkt[0] == 0x00 {
+                break;
+            }
             if pkt[0] == 0xFF {
                 return Err(anyhow::anyhow!("server error: {}", err_msg(&pkt)));
             }
@@ -118,15 +121,28 @@ impl Client {
         }
         // OK: DDL/DML with no result set
         if first[0] == 0x00 {
-            return Ok(QueryResult { columns: vec![], rows: vec![], row_count: 0, duration: start.elapsed() });
+            return Ok(QueryResult {
+                columns: vec![],
+                rows: vec![],
+                row_count: 0,
+                duration: start.elapsed(),
+            });
         }
         // ERR
         if first[0] == 0xFF {
-            return Err(anyhow::anyhow!("query `{sql}` returned ERR: {}", err_msg(&first)));
+            return Err(anyhow::anyhow!(
+                "query `{sql}` returned ERR: {}",
+                err_msg(&first)
+            ));
         }
         // EOF (empty result set, no columns)
         if first[0] == 0xFE && first.len() < 9 {
-            return Ok(QueryResult { columns: vec![], rows: vec![], row_count: 0, duration: start.elapsed() });
+            return Ok(QueryResult {
+                columns: vec![],
+                rows: vec![],
+                row_count: 0,
+                duration: start.elapsed(),
+            });
         }
 
         // Result set: first packet is column count (lenenc int)
@@ -148,9 +164,13 @@ impl Client {
                 return Err(anyhow::anyhow!("unexpected empty packet after columns"));
             }
             // EOF terminator (DEPRECATE_EOF=0, short packet < 9 bytes)
-            if pkt[0] == 0xFE && pkt.len() < 9 { break; }
+            if pkt[0] == 0xFE && pkt.len() < 9 {
+                break;
+            }
             // OK terminator (DEPRECATE_EOF=1)
-            if pkt[0] == 0x00 { break; }
+            if pkt[0] == 0x00 {
+                break;
+            }
             if pkt[0] == 0xFF {
                 return Err(anyhow::anyhow!("ERR during result set: {}", err_msg(&pkt)));
             }
@@ -211,9 +231,7 @@ fn write_packet(stream: &mut TcpStream, seq: u8, payload: &[u8]) -> anyhow::Resu
     stream
         .write_all(payload)
         .map_err(|e| anyhow::anyhow!("write payload: {e}"))?;
-    stream
-        .flush()
-        .map_err(|e| anyhow::anyhow!("flush: {e}"))?;
+    stream.flush().map_err(|e| anyhow::anyhow!("flush: {e}"))?;
     Ok(())
 }
 
@@ -306,10 +324,7 @@ fn check_ok_or_err(payload: &[u8]) -> Result<(), String> {
     } else if payload[0] == 0xFF {
         Err(format!("server ERR: {}", err_msg(payload)))
     } else {
-        Err(format!(
-            "unexpected response (first=0x{:02x})",
-            payload[0]
-        ))
+        Err(format!("unexpected response (first=0x{:02x})", payload[0]))
     }
 }
 
