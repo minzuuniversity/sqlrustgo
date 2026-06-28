@@ -8,7 +8,8 @@ use sha1::{Digest, Sha1};
 use sqlrustgo::ExecutionEngine;
 use sqlrustgo_parser::{parse, Statement};
 use sqlrustgo_storage::{
-    FileBackedWalManager, FileStorage, MemoryStorage, StorageEngine, WalStorage,
+    BinaryTableStorage, BoxStorageEngine, FileBackedWalManager, FileStorage, MemoryStorage,
+    StorageEngine, WalStorage,
 };
 use sqlrustgo_types::{SqlError, Value};
 use std::collections::HashMap;
@@ -372,6 +373,37 @@ mod tests {
         assert_eq!(read_pkt.length, pkt.length);
         assert_eq!(read_pkt.sequence, pkt.sequence);
         assert_eq!(read_pkt.payload, pkt.payload);
+    }
+
+    // Test BinaryTableStorage loads TPC-H SF=1.0 .bin files correctly
+    #[test]
+    fn test_binary_storage_tpch_sf1_load() {
+        use sqlrustgo_storage::BinaryTableStorage;
+
+        let bin_dir = std::path::PathBuf::from("/tmp/tpch-sf1-bin");
+        if !bin_dir.exists() {
+            println!("SKIP: /tmp/tpch-sf1-bin not found (run tbl2bin first)");
+            return;
+        }
+
+        let storage = BinaryTableStorage::new_with_data(bin_dir).expect("load .bin files");
+        let counts: Vec<(&str, usize)> = vec![
+            ("region", 5),
+            ("nation", 25),
+            ("customer", 150_000),
+            ("supplier", 10_000),
+            ("part", 200_000),
+            ("partsupp", 800_000),
+            ("orders", 1_500_000),
+            ("lineitem", 6_001_215),
+        ];
+
+        for (table, expected) in counts {
+            let rows = storage.scan(table).expect(table);
+            assert_eq!(rows.len(), expected, "table {} row count mismatch", table);
+            println!("  {}: {} rows OK", table, rows.len());
+        }
+        println!("BinaryTableStorage loaded all 8 TPC-H tables correctly");
     }
 
     // Test Packet with empty payload
@@ -2212,12 +2244,7 @@ fn make_tls_config() -> rustls::ServerConfig {
 )]
 fn handle_load_local_infile<S: Read + Write>(
     stream: &mut S,
-    engine: &mut sqlrustgo::ExecutionEngine<
-        sqlrustgo_storage::WalStorage<
-            sqlrustgo_storage::FileStorage,
-            sqlrustgo_storage::FileBackedWalManager,
-        >,
-    >,
+    engine: &mut sqlrustgo::ExecutionEngine<BoxStorageEngine>,
     path: &str,
     table: &str,
     _delim: char,
@@ -2410,8 +2437,8 @@ fn handle_load_local_infile<S: Read + Write>(
 fn do_command_loop<S: Read + Write>(
     stream: &mut S,
     addr: SocketAddr,
-    storage: Arc<RwLock<WalStorage<FileStorage, FileBackedWalManager>>>,
-    engine: Arc<RwLock<ExecutionEngine<WalStorage<FileStorage, FileBackedWalManager>>>>,
+    storage: Arc<RwLock<BoxStorageEngine>>,
+    engine: Arc<RwLock<ExecutionEngine<BoxStorageEngine>>>,
     cap: u32,
     server_last_sent_seq: &mut u8,
     ps_manager: &mut PreparedStatementManager,
@@ -2873,7 +2900,7 @@ fn do_command_loop<S: Read + Write>(
 fn handle_connection(
     mut stream: TcpStream,
     addr: SocketAddr,
-    storage: Arc<RwLock<WalStorage<FileStorage, FileBackedWalManager>>>,
+    storage: Arc<RwLock<BoxStorageEngine>>,
     tls_config: Arc<rustls::ServerConfig>,
     user_store: UserStore,
 ) {
@@ -2994,9 +3021,8 @@ fn handle_connection(
             // without auto-complete_io, the cipher buffer accumulates
             // and the client never receives the response.
             let mut tls = TlsStream::new(&mut conn, &mut stream);
-            let engine: Arc<
-                RwLock<ExecutionEngine<WalStorage<FileStorage, FileBackedWalManager>>>,
-            > = Arc::new(RwLock::new(ExecutionEngine::new(storage.clone())));
+            let engine: Arc<RwLock<ExecutionEngine<BoxStorageEngine>>> =
+                Arc::new(RwLock::new(ExecutionEngine::new(storage.clone())));
             let mut ps_manager = PreparedStatementManager::new();
             let mut server_last_sent_seq = 3u8;
             let _ = do_command_loop(
@@ -3052,7 +3078,7 @@ fn handle_connection(
         .ok();
     let mut server_last_sent_seq = 2u8;
     tracing::info!("Starting command loop with server_last_sent_seq=2");
-    let engine: Arc<RwLock<ExecutionEngine<WalStorage<FileStorage, FileBackedWalManager>>>> =
+    let engine: Arc<RwLock<ExecutionEngine<BoxStorageEngine>>> =
         Arc::new(RwLock::new(ExecutionEngine::new(storage.clone())));
     let mut ps_manager = PreparedStatementManager::new();
     let _ = do_command_loop(
@@ -3089,6 +3115,7 @@ pub fn run_server_v2(
     max_connections: usize,
     auth_mode: &str,
     server_threads: usize,
+    storage: &str,
 ) -> MySqlResult<()> {
     let addr = format!("{}:{}", host, port);
     let listener = TcpListener::bind(&addr)?;
@@ -3104,6 +3131,7 @@ pub fn run_server_v2(
     std::env::set_var("SQLRUSTGO_DATA_DIR", data_dir);
     std::env::set_var("SQLRUSTGO_MAX_CONN", max_connections.to_string());
     std::env::set_var("SQLRUSTGO_AUTH_MODE", auth_mode);
+    std::env::set_var("SQLRUSTGO_STORAGE", storage);
     // v3.8.0-rc2 Week 1 Day 7: also publish the data_dir to
     // ACTIVE_CONFIG so that the LOAD DATA LOCAL INFILE handler
     // recognizes files inside the data dir as in-whitelist.
@@ -3128,6 +3156,7 @@ pub fn run_server_v2(
         Vec::new(),
         Some(std::path::PathBuf::from(data_dir)),
         server_threads,
+        Some(storage.to_string()),
     )
 }
 
@@ -3172,23 +3201,12 @@ pub(crate) fn run_server_with_listener_and_shutdown_with_bootstrap_tables_and_sq
     bootstrap_sql: Vec<String>,
     data_dir: Option<std::path::PathBuf>,
     server_threads: usize,
+    storage: Option<String>,
 ) -> MySqlResult<()> {
     let tls_config = Arc::new(make_tls_config());
     tracing::info!("TLS ready (self-signed cert)");
 
-    // WalStorage<FileStorage, FileBackedWalManager> for production runtime
-    // (Issue #2808: G1 — DML must persist via WAL, not bypass to raw FileStorage)
-    //
-    // Issue #3257 fix: when no `data_dir` is provided, use a *stable* directory
-    // under the current working directory (`.sqlrustgo/data/`) rather than a
-    // port-keyed /tmp path. The old port-keyed /tmp path caused stale WAL
-    // files to persist across restarts and trigger 20+ minute recovery on a
-    // 9.9 GB WAL (see Issue #3257). The new default is:
-    //   1. Predictable: developers can find the WAL on disk
-    //   2. Persistent: data survives server restarts on the same port
-    //   3. Clean: an empty default is a fresh, empty data dir
-    // For ephemeral/test usage, callers should still pass an explicit
-    // `data_dir` (e.g. the test harness's `start_ephemeral` does this).
+    // Resolve data directory (shared by both binary and WAL storage modes).
     let wal_data_dir = match data_dir {
         Some(p) => p,
         None => {
@@ -3197,24 +3215,13 @@ pub(crate) fn run_server_with_listener_and_shutdown_with_bootstrap_tables_and_sq
                 .unwrap_or_else(|_| std::path::PathBuf::from("."))
                 .join(".sqlrustgo")
                 .join("data");
-            // Issue #3257: prefer SQLRUSTGO_DATA_DIR env var, then cwd default.
-            // The env var lets operators point at a stable location for
-            // long-running deployments without code changes.
             match std::env::var("SQLRUSTGO_DATA_DIR") {
                 Ok(s) if !s.is_empty() => {
-                    tracing::info!(
-                        "WAL data_dir from SQLRUSTGO_DATA_DIR env: {} (port {})",
-                        s,
-                        port
-                    );
+                    tracing::info!("data_dir from SQLRUSTGO_DATA_DIR env: {} (port {})", s, port);
                     std::path::PathBuf::from(s)
                 }
                 _ => {
-                    tracing::info!(
-                        "WAL data_dir default (cwd/.sqlrustgo/data/): {} (port {})",
-                        cwd_default.display(),
-                        port
-                    );
+                    tracing::info!("data_dir default (cwd/.sqlrustgo/data/): {} (port {})", cwd_default.display(), port);
                     cwd_default
                 }
             }
@@ -3224,74 +3231,73 @@ pub(crate) fn run_server_with_listener_and_shutdown_with_bootstrap_tables_and_sq
         let _ = std::fs::create_dir_all(parent);
     }
     let _ = std::fs::create_dir_all(&wal_data_dir);
-    let mut file_storage =
-        FileStorage::new_with_wal(wal_data_dir.clone()).map_err(std::io::Error::other)?;
-    let wal_path = wal_data_dir.join("sqlrustgo.wal");
-    // Issue #3257: emit a warning if the WAL file is suspiciously large at
-    // startup. This catches stale WAL files left over from previous
-    // configurations (the port-keyed /tmp regression) or from long-running
-    // servers that never had WAL rotation enabled.
-    if let Ok(meta) = std::fs::metadata(&wal_path) {
-        let size_mb = meta.len() / (1024 * 1024);
-        if size_mb >= 100 {
-            tracing::warn!(
-                "WAL file is large: {} ({} MB) at {}. \
-                 This may indicate a stale WAL from a previous process. \
-                 Recovery time will scale with file size; \
-                 consider passing --data-dir to isolate runs, or pruning the WAL manually.",
-                wal_path.display(),
-                size_mb,
-                wal_path.display()
-            );
-        } else {
-            tracing::info!(
-                "WAL file size at startup: {} ({} MB)",
-                wal_path.display(),
-                size_mb
-            );
+
+    let storage: Arc<RwLock<BoxStorageEngine>> = match storage.as_deref() {
+        Some("binary") => {
+            tracing::info!("Storage: binary (BinaryTableStorage, no WAL)");
+            let bin_storage = BinaryTableStorage::new_with_data(wal_data_dir.clone())?;
+            tracing::info!("Loaded .bin tables from data_dir");
+            Arc::new(RwLock::new(BoxStorageEngine::new(bin_storage)))
         }
-    }
-    // INT-2 (#3270 partial): replay any uncommitted WAL entries from
-    // the previous process lifetime so DML/DDL that was journaled but
-    // not yet flushed to FileStorage's persisted table files is
-    // restored on restart. The recovery engine walks the WAL from the
-    // last checkpoint, applies each committed entry to the inner
-    // FileStorage, then we flush so a subsequent restart does not
-    // re-apply the same entries.
-    {
-        use sqlrustgo_storage::recovery_engine::{RecoveryEngine, StatefulRecoveryEngine};
-        let mut recovery: StatefulRecoveryEngine<FileStorage> = StatefulRecoveryEngine::new();
-        let mut wal_manager_for_recovery = FileBackedWalManager::new(wal_path.clone())
-            .map_err(|e| MySqlError::Sql(format!("WAL manager (recovery) init failed: {}", e)))?;
-        match recovery.recover(&mut file_storage, &mut wal_manager_for_recovery) {
-            Ok(report) => {
-                tracing::info!(
-                    "WAL recovery: total={} committed_txns={} rows_inserted={} rows_updated={} rows_deleted={}",
-                    report.entries_total,
-                    report.committed_txns,
-                    report.rows_inserted,
-                    report.rows_updated,
-                    report.rows_deleted
-                );
-                let _ = file_storage.flush();
+        _ => {
+            // WalStorage<FileStorage, FileBackedWalManager>
+            // Issue #3257: emit a warning if the WAL file is suspiciously large at startup.
+            let mut file_storage =
+                FileStorage::new_with_wal(wal_data_dir.clone()).map_err(std::io::Error::other)?;
+            let wal_path = wal_data_dir.join("sqlrustgo.wal");
+            if let Ok(meta) = std::fs::metadata(&wal_path) {
+                let size_mb = meta.len() / (1024 * 1024);
+                if size_mb >= 100 {
+                    tracing::warn!(
+                        "WAL file is large: {} ({} MB). Consider --data-dir to isolate runs.",
+                        wal_path.display(),
+                        size_mb
+                    );
+                } else {
+                    tracing::info!(
+                        "WAL file size at startup: {} ({} MB)",
+                        wal_path.display(),
+                        size_mb
+                    );
+                }
             }
-            Err(e) => {
-                tracing::warn!("WAL recovery skipped: {}", e);
+            // WAL recovery
+            {
+                use sqlrustgo_storage::recovery_engine::{RecoveryEngine, StatefulRecoveryEngine};
+                let mut recovery: StatefulRecoveryEngine<FileStorage> =
+                    StatefulRecoveryEngine::new();
+                let mut wal_manager_for_recovery = FileBackedWalManager::new(wal_path.clone())
+                    .map_err(|e| {
+                        MySqlError::Sql(format!("WAL manager (recovery) init failed: {}", e))
+                    })?;
+                match recovery.recover(&mut file_storage, &mut wal_manager_for_recovery) {
+                    Ok(report) => {
+                        tracing::info!(
+                            "WAL recovery: total={} committed_txns={} rows_inserted={}",
+                            report.entries_total,
+                            report.committed_txns,
+                            report.rows_inserted
+                        );
+                        let _ = file_storage.flush();
+                    }
+                    Err(e) => {
+                        tracing::warn!("WAL recovery skipped: {}", e);
+                    }
+                }
             }
+            let wal_manager = FileBackedWalManager::new(wal_path)
+                .map_err(|e| MySqlError::Sql(format!("WAL manager init failed: {}", e)))?;
+            let wal_storage = WalStorage::new(file_storage, wal_manager)
+                .map_err(|e| MySqlError::Sql(format!("WalStorage init failed: {}", e)))?;
+            Arc::new(RwLock::new(BoxStorageEngine::new(wal_storage)))
         }
-    }
-    let wal_manager = FileBackedWalManager::new(wal_path)
-        .map_err(|e| MySqlError::Sql(format!("WAL manager init failed: {}", e)))?;
-    let wal_storage = WalStorage::new(file_storage, wal_manager)
-        .map_err(|e| MySqlError::Sql(format!("WalStorage init failed: {}", e)))?;
-    let storage: Arc<RwLock<WalStorage<FileStorage, FileBackedWalManager>>> =
-        Arc::new(RwLock::new(wal_storage));
+    };
     if bootstrap_tables {
         let mut eng = ExecutionEngine::new(storage.clone());
         for sql in ["CREATE TABLE content (hash TEXT PRIMARY KEY, doc TEXT NOT NULL, created_at TEXT NOT NULL)",
                 "CREATE TABLE vectors (hash_seq TEXT PRIMARY KEY, hash TEXT NOT NULL, embedding TEXT NOT NULL, created_at TEXT NOT NULL)",
                 "CREATE TABLE documents (id TEXT PRIMARY KEY, title TEXT, content TEXT, created_at TEXT)"] {
-                if let Err(e) = eng.execute(sql) { tracing::warn!("Init: {}", e); }
+            if let Err(e) = eng.execute(sql) { tracing::warn!("Init: {}", e); }
         }
     }
     if !bootstrap_sql.is_empty() {
@@ -3391,6 +3397,7 @@ pub fn run_server_with_listener_and_shutdown(
         Vec::new(),
         None,
         16,
+        None,
     )
 }
 
@@ -3414,6 +3421,7 @@ pub(crate) fn run_server_with_listener_and_shutdown_with_bootstrap(
         Vec::new(),
         None,
         16,
+        None,
     )
 }
 
@@ -4267,6 +4275,7 @@ mod load_local_infile_tests {
 pub use testing::EphemeralConfig;
 
 pub mod testing {
+    use crate::BoxStorageEngine;
     use crate::UserStore;
     use crate::ACTIVE_CONFIG;
     use std::net::{SocketAddr, TcpListener, TcpStream};
@@ -4282,14 +4291,7 @@ pub mod testing {
     pub struct ServerJob {
         pub stream: TcpStream,
         pub addr: SocketAddr,
-        pub storage: Arc<
-            std::sync::RwLock<
-                sqlrustgo_storage::WalStorage<
-                    sqlrustgo_storage::FileStorage,
-                    sqlrustgo_storage::FileBackedWalManager,
-                >,
-            >,
-        >,
+        pub storage: Arc<std::sync::RwLock<BoxStorageEngine>>,
         pub tls_config: Arc<rustls::ServerConfig>,
         pub user_store: UserStore,
     }
@@ -4573,6 +4575,7 @@ pub mod testing {
                 bootstrap_sql,
                 data_dir_for_thread,
                 server_threads,
+                None,
             );
         });
 
