@@ -4,12 +4,14 @@
 #![allow(unused_variables, unused_imports)]
 
 use crate::engine_utils::{
-    build_aggregate_schema, build_combined_schema, eval_predicate, evaluate_where_clause,
-    find_column_index, sql_compare, validate_foreign_keys,
+    build_aggregate_schema, build_combined_schema, build_multi_table_combined_schema,
+    cartesian_product, eval_predicate, evaluate_where_clause, find_column_index, sql_compare,
+    validate_foreign_keys,
 };
 use crate::expr_utils::{
     compare_values, evaluate_binary_op, evaluate_expr_to_string, evaluate_expression,
-    expression_to_string, expression_to_value, expression_to_value_from_string,
+    evaluate_expression_with_subq, expression_to_string, expression_to_value,
+    expression_to_value_from_string, resolve_subqueries_in_expr,
 };
 use crate::{parse, SqlError, SqlResult, Value};
 use sqlrustgo_catalog::stored_proc::{ParamMode, StoredProcParam, StoredProcStatement};
@@ -32,13 +34,17 @@ use sqlrustgo_parser::parser::{
     CreateRoleStatement,
     CreateTableStatement,
     CreateTriggerStatement,
+    CreateViewStatement,
     DescribeStatement,
     DropDatabaseStatement,
+    DropIndexStatement,
     DropRoleStatement,
     DropTableStatement,
+    DropViewStatement,
     GrantRoleStatement,
     GrantStatement,
     InsertStatement,
+    MergeStatement,
     ObjectType as ParserObjectType,
     Privilege as ParserPrivilege,
     RevokeRoleStatement,
@@ -94,6 +100,9 @@ pub struct ExecutionEngine<S: StorageEngine> {
     pub(crate) checkpoint_manager: Option<Arc<RwLock<CheckpointManager>>>,
     pub(crate) parallel_degree: usize,
     pub(crate) stmt_cache: sqlrustgo_cache::PreparedStatementCache,
+    /// View definitions: view_name → CREATE VIEW SQL text.
+    /// Used for SHOW CREATE VIEW and view resolution.
+    pub(crate) views: HashMap<String, String>,
 }
 
 /// Transaction status for lifecycle enforcement
@@ -147,6 +156,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             checkpoint_manager: None,
             parallel_degree: 1,
             stmt_cache: sqlrustgo_cache::PreparedStatementCache::new(100),
+            views: HashMap::new(),
         }
     }
 
@@ -166,6 +176,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             checkpoint_manager: None,
             parallel_degree: 1,
             stmt_cache: sqlrustgo_cache::PreparedStatementCache::new(100),
+            views: HashMap::new(),
         }
     }
 
@@ -185,6 +196,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             checkpoint_manager: None,
             parallel_degree: 1,
             stmt_cache: sqlrustgo_cache::PreparedStatementCache::new(100),
+            views: HashMap::new(),
         }
     }
 
@@ -315,9 +327,15 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             Statement::Update(ref update) => self.execute_update(update),
             Statement::Delete(ref delete) => self.execute_delete(delete),
             Statement::CreateTable(ref create) => self.execute_create_table(create),
+            Statement::DropIndex(ref drop_idx) => self.execute_drop_index(drop_idx),
+            Statement::CreateView(ref view) => self.execute_create_view(view),
+            Statement::DropView(ref drop_view) => self.execute_drop_view(drop_view),
+            Statement::Merge(ref merge) => self.execute_merge_statement(merge),
             Statement::DropTable(ref drop) => self.execute_drop_table(drop),
             Statement::Truncate(ref truncate) => self.execute_truncate(truncate),
-            Statement::CreateIndex(ref idx) => self.execute_create_index(idx),
+            Statement::WithSelect(ref with) => self.execute_with_select(with),
+            Statement::WithDml(ref with_dml) => self.execute_with_dml(with_dml),
+            Statement::CreateIndex(idx) => self.execute_create_index(&idx),
             Statement::Analyze(ref analyze) => {
                 let table_name = analyze.table_name.as_ref().ok_or_else(|| {
                     SqlError::ExecutionError("ANALYZE: table name is required".to_string())
@@ -398,10 +416,171 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             Statement::CreateDatabase(ref db) => self.execute_create_database(db),
             Statement::DropDatabase(ref db) => self.execute_drop_database(db),
             Statement::UseDatabase(ref name) => self.execute_use_database(name),
-            _ => Err(SqlError::ExecutionError(
-                "Unsupported statement type".to_string(),
-            )),
         }
+    }
+
+    /// CTE 物化: 将每个 CTE 子查询结果存入临时表，然后执行主查询
+    pub fn execute_with_select(
+        &mut self,
+        with: &sqlrustgo_parser::parser::WithSelect,
+    ) -> SqlResult<ExecutorResult> {
+        use sqlrustgo_parser::Statement;
+        use sqlrustgo_storage::engine::{ColumnDefinition, TableInfo};
+
+        let materialized_tables: Vec<String> = if let Some(ref with_clause) = with.with_clause {
+            for cte in &with_clause.ctes {
+                if with_clause.recursive {
+                    return Err(SqlError::ExecutionError(
+                        "Recursive CTE not yet supported".to_string(),
+                    ));
+                }
+                let cte_rows = match cte.subquery.as_ref() {
+                    Statement::Select(s) => self.execute_select(&s)?.rows,
+                    _ => {
+                        return Err(SqlError::ExecutionError(
+                            "CTE subquery must be SELECT".to_string(),
+                        ));
+                    }
+                };
+                let column_count = if !cte.columns.is_empty() {
+                    cte.columns.len()
+                } else if !cte_rows.is_empty() {
+                    cte_rows[0].len()
+                } else {
+                    0
+                };
+                let columns: Vec<ColumnDefinition> = (0..column_count)
+                    .map(|i| ColumnDefinition {
+                        name: if !cte.columns.is_empty() {
+                            cte.columns[i].clone()
+                        } else {
+                            format!("col_{}", i)
+                        },
+                        data_type: "TEXT".to_string(),
+                        nullable: true,
+                        primary_key: false,
+                        char_max_length: None,
+                    })
+                    .collect();
+                let table_info = TableInfo {
+                    name: cte.name.clone(),
+                    columns,
+                    foreign_keys: vec![],
+                    unique_constraints: vec![],
+                    check_constraints: vec![],
+                    partition_info: None,
+                };
+                let mut storage = self.storage.write().unwrap();
+                storage
+                    .create_table(&table_info)
+                    .map_err(|e| SqlError::ExecutionError(format!("Create CTE table: {}", e)))?;
+                if !cte_rows.is_empty() {
+                    storage
+                        .insert(&cte.name, cte_rows)
+                        .map_err(|e| SqlError::ExecutionError(format!("Insert CTE rows: {}", e)))?;
+                }
+            }
+            with_clause.ctes.iter().map(|c| c.name.clone()).collect()
+        } else {
+            Vec::new()
+        };
+
+        let result = self.execute_select(&with.select);
+
+        // 清理临时 CTE 表
+        if !materialized_tables.is_empty() {
+            let mut storage = self.storage.write().unwrap();
+            for name in &materialized_tables {
+                let _ = storage.drop_table(name);
+            }
+        }
+
+        result
+    }
+
+    /// CTE + DML: 物化 CTE 后执行 DML body
+    pub fn execute_with_dml(
+        &mut self,
+        with: &sqlrustgo_parser::parser::WithDmlStatement,
+    ) -> SqlResult<ExecutorResult> {
+        use sqlrustgo_parser::Statement;
+        use sqlrustgo_storage::engine::{ColumnDefinition, TableInfo};
+
+        let with_clause = &with.with_clause;
+        let materialized_tables: Vec<String> = {
+            for cte in &with_clause.ctes {
+                if with_clause.recursive {
+                    return Err(SqlError::ExecutionError(
+                        "Recursive CTE not yet supported".to_string(),
+                    ));
+                }
+                let cte_rows = match cte.subquery.as_ref() {
+                    Statement::Select(s) => self.execute_select(&s)?.rows,
+                    _ => {
+                        return Err(SqlError::ExecutionError(
+                            "CTE subquery must be SELECT".to_string(),
+                        ));
+                    }
+                };
+                let column_count = if !cte.columns.is_empty() {
+                    cte.columns.len()
+                } else if !cte_rows.is_empty() {
+                    cte_rows[0].len()
+                } else {
+                    0
+                };
+                let columns: Vec<ColumnDefinition> = (0..column_count)
+                    .map(|i| ColumnDefinition {
+                        name: if !cte.columns.is_empty() {
+                            cte.columns[i].clone()
+                        } else {
+                            format!("col_{}", i)
+                        },
+                        data_type: "TEXT".to_string(),
+                        nullable: true,
+                        primary_key: false,
+                        char_max_length: None,
+                    })
+                    .collect();
+                let table_info = TableInfo {
+                    name: cte.name.clone(),
+                    columns,
+                    foreign_keys: vec![],
+                    unique_constraints: vec![],
+                    check_constraints: vec![],
+                    partition_info: None,
+                };
+                let mut storage = self.storage.write().unwrap();
+                storage
+                    .create_table(&table_info)
+                    .map_err(|e| SqlError::ExecutionError(format!("Create CTE table: {}", e)))?;
+                if !cte_rows.is_empty() {
+                    storage
+                        .insert(&cte.name, cte_rows)
+                        .map_err(|e| SqlError::ExecutionError(format!("Insert CTE rows: {}", e)))?;
+                }
+            }
+            with_clause.ctes.iter().map(|c| c.name.clone()).collect()
+        };
+
+        let result = match with.body.as_ref() {
+            Statement::Insert(insert) => self.execute_insert(&insert),
+            Statement::Update(update) => self.execute_update(&update),
+            Statement::Delete(delete) => self.execute_delete(&delete),
+            _ => Err(SqlError::ExecutionError(
+                "Unsupported WithDml body type".to_string(),
+            )),
+        };
+
+        // 清理临时 CTE 表
+        if !materialized_tables.is_empty() {
+            let mut storage = self.storage.write().unwrap();
+            for name in &materialized_tables {
+                let _ = storage.drop_table(name);
+            }
+        }
+
+        result
     }
 
     pub fn execute_insert(&mut self, insert: &InsertStatement) -> SqlResult<ExecutorResult> {
@@ -420,8 +599,12 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             storage.get_table_info(&table_name)?.clone()
         };
 
-        // Convert expressions to records
-        let all_records = Self::build_insert_records(&insert.values);
+        let all_records: Vec<Vec<Value>> = if let Some(ref select) = insert.select {
+            let select_result = self.execute_select(select)?;
+            Self::map_select_result_to_records(select_result, &insert.columns, &table_info)?
+        } else {
+            Self::build_insert_records(&insert.values)
+        };
 
         // For REPLACE INTO: if insert.values has a unique/key conflict, delete old row first
         if insert.is_replace {
@@ -607,7 +790,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         // INT-1: autocommit — leave the commit decision to the helper.
         self.commit_implicit_dml_tx(started_implicit);
 
-        Ok(ExecutorResult::new(vec![], insert.values.len()))
+        Ok(ExecutorResult::new(vec![], all_records.len()))
     }
 
     /// Check if a new record matches an existing row based on primary key or unique constraints
@@ -634,14 +817,64 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     }
 
     pub fn execute_update(&mut self, update: &UpdateStatement) -> SqlResult<ExecutorResult> {
+        if update.tables.is_empty() {
+            return Err(SqlError::ExecutionError(
+                "UPDATE requires at least one table".to_string(),
+            ));
+        }
+        if update.tables.len() > 1 {
+            return self.execute_update_multi_table(update);
+        }
+        let table_name = update.tables[0].name.clone();
+
         // ARCH-3 (#3169): VtuGuard main-path enforcement (P0-1, Blocker-3)
         sqlrustgo_storage::vtu_guard::VtuGuard::<()>::assert_path_for_dml(
             "execute_update",
-            &update.table,
+            &table_name,
         );
         let (tm_tx_id, started_implicit) =
-            self.begin_implicit_dml_tx("execute_update", &update.table)?;
-        let table_name = update.table.clone();
+            self.begin_implicit_dml_tx("execute_update", &table_name)?;
+
+        let scalar_eval = |subq: &sqlrustgo_parser::SelectStatement| -> Result<Value, String> {
+            let result = self.execute_select(subq).map_err(|e| e.to_string())?;
+            Ok(result
+                .rows
+                .first()
+                .and_then(|r| r.first().cloned())
+                .unwrap_or(Value::Null))
+        };
+        let list_eval = |subq: &sqlrustgo_parser::SelectStatement| -> Result<Vec<Value>, String> {
+            let result = self.execute_select(subq).map_err(|e| e.to_string())?;
+            Ok(result
+                .rows
+                .into_iter()
+                .map(|r| r.first().cloned().unwrap_or(Value::Null))
+                .collect())
+        };
+        let resolved_set: Vec<(String, Expression)> = update
+            .set_clauses
+            .iter()
+            .map(|(col, expr)| {
+                Ok((
+                    col.clone(),
+                    resolve_subqueries_in_expr(expr, &scalar_eval, &list_eval)?,
+                ))
+            })
+            .collect::<Result<Vec<_>, String>>()
+            .map_err(|e| SqlError::ExecutionError(format!("UPDATE SET subquery: {}", e)))?;
+        let resolved_where: Option<Expression> = match &update.where_clause {
+            Some(w) => Some(
+                resolve_subqueries_in_expr(w, &scalar_eval, &list_eval).map_err(|e| {
+                    SqlError::ExecutionError(format!("UPDATE WHERE subquery: {}", e))
+                })?,
+            ),
+            None => None,
+        };
+        let resolved_update = UpdateStatement {
+            tables: update.tables.clone(),
+            set_clauses: resolved_set,
+            where_clause: resolved_where,
+        };
 
         // If no WHERE clause, use the simple storage.update() path
         // PR-842 Option A: compute updates from SET clauses (per-row evaluation
@@ -649,7 +882,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         // is the common no-WHERE case). For column references, the first row
         // is used as the evaluation context — for literal values this yields
         // the correct after-image for every row.
-        if update.where_clause.is_none() {
+        if resolved_update.where_clause.is_none() {
             let table_info = {
                 let storage = self.storage.read().unwrap();
                 storage.get_table_info(&table_name)?.clone()
@@ -668,7 +901,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                             .collect()
                     })
             };
-            let updates: Vec<(usize, sqlrustgo_types::Value)> = update
+            let updates: Vec<(usize, sqlrustgo_types::Value)> = resolved_update
                 .set_clauses
                 .iter()
                 .filter_map(|(col_name, expr)| {
@@ -694,7 +927,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             storage.scan(&table_name)?
         };
 
-        let where_clause = update.where_clause.as_ref().unwrap();
+        let where_clause = resolved_update.where_clause.as_ref().unwrap();
 
         // Filter rows that match the WHERE clause
         let rows_to_update: Vec<Vec<Value>> = all_rows
@@ -703,7 +936,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             .filter(|row| evaluate_where_clause(where_clause, row, &table_info))
             .collect();
 
-        Self::ir_validate_update_filter(&all_rows, &table_info, &rows_to_update, update);
+        Self::ir_validate_update_filter(&all_rows, &table_info, &rows_to_update, &resolved_update);
 
         let count = rows_to_update.len();
 
@@ -712,7 +945,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         }
 
         // Build column index map for SET clauses
-        let set_col_indices: Vec<(usize, &Expression)> = update
+        let set_col_indices: Vec<(usize, &Expression)> = resolved_update
             .set_clauses
             .iter()
             .filter_map(|(col_name, expr)| {
@@ -749,7 +982,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             if !table_info.check_constraints.is_empty() {
                 let col_names: Vec<String> =
                     table_info.columns.iter().map(|c| c.name.clone()).collect();
-                for record in &new_rows {
+                for record in &trigger_modified_rows {
                     for constraint in &table_info.check_constraints {
                         let valid = sqlrustgo_storage::evaluate_check_constraint(
                             constraint, &col_names, record,
@@ -766,9 +999,18 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 }
             }
 
-            storage.delete(&table_name, &[])?;
-            if !new_rows.is_empty() {
-                storage.insert(&table_name, new_rows)?;
+            let pk_idx = table_info
+                .columns
+                .iter()
+                .position(|c| c.primary_key)
+                .unwrap_or(0);
+            for (prior_row, new_row) in rows_to_update.iter().zip(trigger_modified_rows.iter()) {
+                let pk_val = prior_row
+                    .get(pk_idx)
+                    .cloned()
+                    .unwrap_or(sqlrustgo_types::Value::Null);
+                storage.delete(&table_name, std::slice::from_ref(&pk_val))?;
+                storage.insert(&table_name, vec![new_row.clone()])?;
             }
         }
 
@@ -793,17 +1035,56 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     }
 
     pub fn execute_delete(&mut self, delete: &DeleteStatement) -> SqlResult<ExecutorResult> {
+        if delete.tables.is_empty() {
+            return Err(SqlError::ExecutionError(
+                "DELETE requires at least one table".to_string(),
+            ));
+        }
+        if delete.tables.len() > 1 || delete.using.is_some() {
+            return self.execute_delete_multi_table(delete);
+        }
+        let table_name = delete.tables[0].name.clone();
+
         // ARCH-3 (#3169): VtuGuard main-path enforcement (P0-1, Blocker-3)
         sqlrustgo_storage::vtu_guard::VtuGuard::<()>::assert_path_for_dml(
             "execute_delete",
-            &delete.table,
+            &table_name,
         );
         let (tm_tx_id, started_implicit) =
-            self.begin_implicit_dml_tx("execute_delete", &delete.table)?;
-        let table_name = delete.table.clone();
+            self.begin_implicit_dml_tx("execute_delete", &table_name)?;
+
+        let scalar_eval = |subq: &sqlrustgo_parser::SelectStatement| -> Result<Value, String> {
+            let result = self.execute_select(subq).map_err(|e| e.to_string())?;
+            Ok(result
+                .rows
+                .first()
+                .and_then(|r| r.first().cloned())
+                .unwrap_or(Value::Null))
+        };
+        let list_eval = |subq: &sqlrustgo_parser::SelectStatement| -> Result<Vec<Value>, String> {
+            let result = self.execute_select(subq).map_err(|e| e.to_string())?;
+            Ok(result
+                .rows
+                .into_iter()
+                .map(|r| r.first().cloned().unwrap_or(Value::Null))
+                .collect())
+        };
+        let resolved_where: Option<Expression> = match &delete.where_clause {
+            Some(w) => Some(
+                resolve_subqueries_in_expr(w, &scalar_eval, &list_eval).map_err(|e| {
+                    SqlError::ExecutionError(format!("DELETE WHERE subquery: {}", e))
+                })?,
+            ),
+            None => None,
+        };
+        let resolved_delete = DeleteStatement {
+            tables: delete.tables.clone(),
+            using: delete.using.clone(),
+            where_clause: resolved_where,
+        };
 
         // If no WHERE clause, delete all rows (current behavior is correct)
-        if delete.where_clause.is_none() {
+        if resolved_delete.where_clause.is_none() {
             let mut storage = self.storage.write().unwrap();
             let count = storage.delete(&table_name, &[])?;
             drop(storage);
@@ -825,7 +1106,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         };
 
         // Filter rows based on WHERE clause
-        let where_clause = delete.where_clause.as_ref().unwrap();
+        let where_clause = resolved_delete.where_clause.as_ref().unwrap();
         let rows_to_delete: Vec<Vec<Value>> = all_rows
             .into_iter()
             .filter(|row| evaluate_where_clause(where_clause, row, &table_info))
@@ -923,6 +1204,245 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         Ok(ExecutorResult::new(vec![], count))
     }
 
+    /// Execute `UPDATE t1, t2, ... SET ... WHERE ...` against the
+    /// cartesian product of the listed tables. Single-table UPDATE is
+    /// handled inline by `execute_update`.
+    fn execute_update_multi_table(
+        &mut self,
+        update: &UpdateStatement,
+    ) -> SqlResult<ExecutorResult> {
+        let scalar_eval = |subq: &sqlrustgo_parser::SelectStatement| -> Result<Value, String> {
+            let result = self.execute_select(subq).map_err(|e| e.to_string())?;
+            Ok(result
+                .rows
+                .first()
+                .and_then(|r| r.first().cloned())
+                .unwrap_or(Value::Null))
+        };
+        let list_eval = |subq: &sqlrustgo_parser::SelectStatement| -> Result<Vec<Value>, String> {
+            let result = self.execute_select(subq).map_err(|e| e.to_string())?;
+            Ok(result
+                .rows
+                .into_iter()
+                .map(|r| r.first().cloned().unwrap_or(Value::Null))
+                .collect())
+        };
+        let resolved_set: Vec<(String, Expression)> = update
+            .set_clauses
+            .iter()
+            .map(|(col, expr)| {
+                Ok((
+                    col.clone(),
+                    resolve_subqueries_in_expr(expr, &scalar_eval, &list_eval)?,
+                ))
+            })
+            .collect::<Result<Vec<_>, String>>()
+            .map_err(|e| SqlError::ExecutionError(format!("UPDATE SET subquery: {}", e)))?;
+        let resolved_where: Option<Expression> = match &update.where_clause {
+            Some(w) => Some(
+                resolve_subqueries_in_expr(w, &scalar_eval, &list_eval).map_err(|e| {
+                    SqlError::ExecutionError(format!("UPDATE WHERE subquery: {}", e))
+                })?,
+            ),
+            None => None,
+        };
+
+        let table_refs = &update.tables;
+        let mut per_table_rows: Vec<Vec<Vec<Value>>> = Vec::with_capacity(table_refs.len());
+        let mut per_table_info: Vec<sqlrustgo_storage::TableInfo> =
+            Vec::with_capacity(table_refs.len());
+        let mut per_table_prefix: Vec<String> = Vec::with_capacity(table_refs.len());
+        {
+            let storage = self.storage.read().unwrap();
+            for tref in table_refs {
+                let info = storage.get_table_info(&tref.name)?.clone();
+                let rows = storage.scan(&tref.name)?;
+                per_table_rows.push(rows);
+                per_table_info.push(info);
+                let prefix = tref.alias.clone().unwrap_or_else(|| tref.name.clone());
+                per_table_prefix.push(prefix);
+            }
+        }
+
+        let combined_info = build_multi_table_combined_schema(&per_table_info, &per_table_prefix);
+        let combined_cols: Vec<(String, usize)> = combined_info
+            .columns
+            .iter()
+            .enumerate()
+            .map(|(i, c)| (c.name.clone(), i))
+            .collect();
+        let col_offsets: Vec<usize> = {
+            let mut offs = Vec::with_capacity(table_refs.len());
+            let mut acc = 0usize;
+            for info in &per_table_info {
+                offs.push(acc);
+                acc += info.columns.len();
+            }
+            offs
+        };
+
+        let combined_rows = cartesian_product(&per_table_rows);
+
+        let mut per_table_updates: Vec<Vec<(Vec<Value>, Vec<Value>)>> =
+            (0..table_refs.len()).map(|_| Vec::new()).collect();
+        let mut total_count = 0usize;
+
+        for combined_row in &combined_rows {
+            let matches = match &resolved_where {
+                None => true,
+                Some(w) => evaluate_where_clause(w, combined_row, &combined_info),
+            };
+            if !matches {
+                continue;
+            }
+            let mut after_row = combined_row.clone();
+            for (col, expr) in &resolved_set {
+                let target_col = col.split_once('.').map(|(_, c)| c).unwrap_or(col.as_str());
+                let new_val =
+                    evaluate_expression(expr, combined_row, &combined_info).unwrap_or(Value::Null);
+                if let Some((_, idx)) = combined_cols
+                    .iter()
+                    .find(|(name, _)| name.ends_with(&format!(".{}", target_col)))
+                {
+                    if let Some(slot) = after_row.get_mut(*idx) {
+                        *slot = new_val;
+                    }
+                }
+            }
+            for (t, _) in table_refs.iter().enumerate() {
+                let cols_start = col_offsets[t];
+                let cols_end = cols_start + per_table_info[t].columns.len();
+                let before = combined_row[cols_start..cols_end].to_vec();
+                let after = after_row[cols_start..cols_end].to_vec();
+                per_table_updates[t].push((before, after));
+            }
+            total_count += 1;
+        }
+
+        self.apply_multi_table_updates(table_refs, per_table_updates, total_count)
+    }
+
+    fn apply_multi_table_updates(
+        &mut self,
+        table_refs: &[sqlrustgo_parser::TableRef],
+        per_table_updates: Vec<Vec<(Vec<Value>, Vec<Value>)>>,
+        total_count: usize,
+    ) -> SqlResult<ExecutorResult> {
+        let mut storage = self.storage.write().unwrap();
+        for (t, tref) in table_refs.iter().enumerate() {
+            let pairs = &per_table_updates[t];
+            if pairs.is_empty() {
+                continue;
+            }
+            let info = storage.get_table_info(&tref.name)?.clone();
+            let pk_idx = info.columns.iter().position(|c| c.primary_key).unwrap_or(0);
+            for (before, after) in pairs {
+                let pk_val = before.get(pk_idx).cloned().unwrap_or(Value::Null);
+                storage.delete(&tref.name, std::slice::from_ref(&pk_val))?;
+                storage.insert(&tref.name, vec![after.clone()])?;
+            }
+        }
+        Ok(ExecutorResult::new(vec![], total_count))
+    }
+
+    /// Execute `DELETE t1, t2 FROM t1, t2 WHERE ...` against the
+    /// cartesian product. Single-table DELETE is inline in
+    /// `execute_delete`.
+    fn execute_delete_multi_table(
+        &mut self,
+        delete: &DeleteStatement,
+    ) -> SqlResult<ExecutorResult> {
+        let source_refs: Vec<sqlrustgo_parser::TableRef> = match &delete.using {
+            Some(s) => s.clone(),
+            None => delete.tables.clone(),
+        };
+        let target_refs = &delete.tables;
+
+        let resolved_where: Option<Expression> = match &delete.where_clause {
+            Some(w) => {
+                let scalar_eval =
+                    |subq: &sqlrustgo_parser::SelectStatement| -> Result<Value, String> {
+                        let result = self.execute_select(subq).map_err(|e| e.to_string())?;
+                        Ok(result
+                            .rows
+                            .first()
+                            .and_then(|r| r.first().cloned())
+                            .unwrap_or(Value::Null))
+                    };
+                let list_eval =
+                    |subq: &sqlrustgo_parser::SelectStatement| -> Result<Vec<Value>, String> {
+                        let result = self.execute_select(subq).map_err(|e| e.to_string())?;
+                        Ok(result
+                            .rows
+                            .into_iter()
+                            .map(|r| r.first().cloned().unwrap_or(Value::Null))
+                            .collect())
+                    };
+                Some(
+                    resolve_subqueries_in_expr(w, &scalar_eval, &list_eval).map_err(|e| {
+                        SqlError::ExecutionError(format!("DELETE WHERE subquery: {}", e))
+                    })?,
+                )
+            }
+            None => None,
+        };
+
+        let mut per_table_rows: Vec<Vec<Vec<Value>>> = Vec::with_capacity(source_refs.len());
+        let mut per_table_info: Vec<sqlrustgo_storage::TableInfo> =
+            Vec::with_capacity(source_refs.len());
+        let mut per_table_prefix: Vec<String> = Vec::with_capacity(source_refs.len());
+        {
+            let storage = self.storage.read().unwrap();
+            for tref in &source_refs {
+                let info = storage.get_table_info(&tref.name)?.clone();
+                let rows = storage.scan(&tref.name)?;
+                per_table_rows.push(rows);
+                per_table_info.push(info);
+                let prefix = tref.alias.clone().unwrap_or_else(|| tref.name.clone());
+                per_table_prefix.push(prefix);
+            }
+        }
+        let combined_info = build_multi_table_combined_schema(&per_table_info, &per_table_prefix);
+        let combined_rows = cartesian_product(&per_table_rows);
+
+        let mut per_table_drop: Vec<Vec<Vec<Value>>> =
+            (0..source_refs.len()).map(|_| Vec::new()).collect();
+
+        for combined_row in &combined_rows {
+            let matches = match &resolved_where {
+                None => true,
+                Some(w) => evaluate_where_clause(w, combined_row, &combined_info),
+            };
+            if !matches {
+                continue;
+            }
+            for (t, tref) in source_refs.iter().enumerate() {
+                if target_refs.iter().any(|x| x.name == tref.name) {
+                    let cols_start: usize = (0..t).map(|k| per_table_info[k].columns.len()).sum();
+                    let cols_end = cols_start + per_table_info[t].columns.len();
+                    per_table_drop[t].push(combined_row[cols_start..cols_end].to_vec());
+                }
+            }
+        }
+
+        let mut total = 0usize;
+        let mut storage = self.storage.write().unwrap();
+        for (t, tref) in source_refs.iter().enumerate() {
+            if !target_refs.iter().any(|x| x.name == tref.name) {
+                continue;
+            }
+            let info = storage.get_table_info(&tref.name)?.clone();
+            let pk_idx = info.columns.iter().position(|c| c.primary_key).unwrap_or(0);
+            for row in &per_table_drop[t] {
+                let pk_val = row.get(pk_idx).cloned().unwrap_or(Value::Null);
+                if storage.delete(&tref.name, std::slice::from_ref(&pk_val))? > 0 {
+                    total += 1;
+                }
+            }
+        }
+        Ok(ExecutorResult::new(vec![], total))
+    }
+
     fn execute_create_table(&self, create: &CreateTableStatement) -> SqlResult<ExecutorResult> {
         let mut storage = self.storage.write().unwrap();
         let columns: Vec<ColumnDefinition> = create
@@ -955,10 +1475,18 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     }
 
     fn execute_create_database(&self, db: &CreateDatabaseStatement) -> SqlResult<ExecutorResult> {
-        // v3.9.0 single-database: CREATE DATABASE is accepted for MySQL wire
-        // compatibility but is a no-op. In v3.10 multi-database mode this will
-        // create a data/<db_name>/ directory and register in catalog.
-        let _ = db;
+        // v3.10.0: 多数据库支持
+        // 委托给 storage 创建数据库子目录
+        if db.name == "default" || db.name == "postgres" || db.name == "mysql" {
+            return Err(SqlError::ExecutionError(format!(
+                "CREATE DATABASE '{}' is not permitted (reserved database name)",
+                db.name
+            )));
+        }
+        let mut storage = self.storage.write().unwrap();
+        storage
+            .create_database(&db.name)
+            .map_err(|e| SqlError::ExecutionError(format!("CREATE DATABASE: {}", e)))?;
         Ok(ExecutorResult::empty())
     }
 
@@ -1013,6 +1541,34 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             .ok_or_else(|| SqlError::ExecutionError("Column not found".to_string()))?;
         storage.create_index(table_name, col_name, col_idx)?;
         Ok(ExecutorResult::empty())
+    }
+
+    fn execute_drop_index(&self, idx: &DropIndexStatement) -> SqlResult<ExecutorResult> {
+        Err(SqlError::ExecutionError(
+            "DROP INDEX not fully supported yet".to_string(),
+        ))
+    }
+
+    fn execute_create_view(&mut self, view: &CreateViewStatement) -> SqlResult<ExecutorResult> {
+        // 存储视图定义 (view name → SQL text)
+        self.views.insert(view.name.clone(), format!("{:?}", view));
+        Ok(ExecutorResult::empty())
+    }
+    fn execute_drop_view(&mut self, drop_view: &DropViewStatement) -> SqlResult<ExecutorResult> {
+        if self.views.remove(&drop_view.name).is_some() || drop_view.if_exists {
+            Ok(ExecutorResult::empty())
+        } else {
+            Err(SqlError::ExecutionError(format!(
+                "View not found: {}",
+                drop_view.name
+            )))
+        }
+    }
+
+    fn execute_merge_statement(&self, _merge: &MergeStatement) -> SqlResult<ExecutorResult> {
+        Err(SqlError::ExecutionError(
+            "MERGE not yet supported via execute() — use LocalExecutorDml path".to_string(),
+        ))
     }
 
     fn execute_create_trigger(&self, stmt: &CreateTriggerStatement) -> SqlResult<ExecutorResult> {
@@ -1885,6 +2441,71 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             .collect()
     }
 
+    fn map_select_result_to_records(
+        result: ExecutorResult,
+        target_columns: &[String],
+        target_table_info: &TableInfo,
+    ) -> SqlResult<Vec<Vec<Value>>> {
+        let target_col_indices: Vec<usize> = if target_columns.is_empty() {
+            if !result.rows.is_empty() && result.rows[0].len() != target_table_info.columns.len() {
+                return Err(SqlError::ExecutionError(format!(
+                    "INSERT SELECT column count mismatch: SELECT has {} columns, target table has {}",
+                    result.rows[0].len(),
+                    target_table_info.columns.len()
+                )));
+            }
+            (0..target_table_info.columns.len()).collect()
+        } else {
+            target_columns
+                .iter()
+                .map(|name| {
+                    target_table_info
+                        .columns
+                        .iter()
+                        .position(|c| c.name == *name)
+                        .ok_or_else(|| {
+                            SqlError::ExecutionError(format!(
+                                "Unknown column '{}' in INSERT column list",
+                                name
+                            ))
+                        })
+                })
+                .collect::<SqlResult<Vec<_>>>()?
+        };
+
+        result
+            .rows
+            .into_iter()
+            .map(|row| {
+                let mut record = Vec::with_capacity(target_col_indices.len());
+                for (source_idx, &target_idx) in target_col_indices.iter().enumerate() {
+                    let value = row.get(source_idx).cloned().unwrap_or(Value::Null);
+                    let target_col = &target_table_info.columns[target_idx];
+                    record.push(Self::coerce_value_to_column(value, target_col));
+                }
+                Ok(record)
+            })
+            .collect()
+    }
+
+    fn coerce_value_to_column(value: Value, target_col: &ColumnDefinition) -> Value {
+        let upper = target_col.data_type.to_uppercase();
+        match (&value, upper.as_str()) {
+            (Value::Integer(i), "TEXT" | "VARCHAR" | "CHAR") => Value::Text(i.to_string()),
+            (Value::Float(f), "TEXT" | "VARCHAR" | "CHAR") => Value::Text(f.to_string()),
+            (Value::Boolean(b), "TEXT" | "VARCHAR" | "CHAR") => {
+                Value::Text(if *b { "TRUE" } else { "FALSE" }.to_string())
+            }
+            (Value::Text(s), "INTEGER" | "INT" | "BIGINT" | "SMALLINT") => {
+                s.parse::<i64>().map(Value::Integer).unwrap_or(Value::Null)
+            }
+            (Value::Text(s), "REAL" | "FLOAT" | "DOUBLE") => {
+                s.parse::<f64>().map(Value::Float).unwrap_or(Value::Null)
+            }
+            (v, _) => v.clone(),
+        }
+    }
+
     /// Apply `ON DUPLICATE KEY UPDATE`: delete existing row + re-insert with updates.
     /// Storage has no per-PK update API, so we go via delete+insert.
     fn apply_odku(
@@ -1994,9 +2615,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             );
         }
     }
-
     pub fn flush(&mut self) -> Result<(), SqlError> {
-        let mut storage = self.storage.write().unwrap();
-        storage.flush()
+        self.storage.write().unwrap().flush()
     }
 }

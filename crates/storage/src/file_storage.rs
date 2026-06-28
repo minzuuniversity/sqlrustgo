@@ -1470,6 +1470,16 @@ impl StorageEngine for FileStorage {
             // represent old state that should be replaced, not preserved.
             if filters.is_empty() {
                 self.insert_buffer.remove(table);
+            } else if let Some(buffered) = self.insert_buffer.get_mut(table) {
+                // For non-empty filters, also remove matching rows from the
+                // insert_buffer so that UPDATE with WHERE clause does not
+                // leave stale buffered rows that shadow the updated value.
+                buffered.retain(|row| {
+                    !filters
+                        .iter()
+                        .enumerate()
+                        .all(|(i, f)| row.get(i).map(|v| v == f).unwrap_or(false))
+                });
             }
             Ok(removed)
         } else {
@@ -1754,6 +1764,46 @@ impl StorageEngine for FileStorage {
             std::fs::remove_dir(&db_path)
                 .map_err(|e| SqlError::ExecutionError(format!("drop_database: {}", e)))?;
         }
+        Ok(())
+    }
+
+    fn drop_column(&mut self, table: &str, column: &str) -> SqlResult<()> {
+        let table_data = self
+            .tables
+            .get_mut(table)
+            .ok_or_else(|| SqlError::ExecutionError(format!("Table not found: {}", table)))?;
+        let col_idx = table_data
+            .info
+            .columns
+            .iter()
+            .position(|c| c.name == column)
+            .ok_or_else(|| SqlError::ExecutionError(format!("Column not found: {}", column)))?;
+        table_data.info.columns.remove(col_idx);
+        for record in table_data.rows.iter_mut() {
+            if col_idx < record.len() {
+                record.remove(col_idx);
+            }
+        }
+        Ok(())
+    }
+
+    fn modify_column(
+        &mut self,
+        table: &str,
+        column: &str,
+        new_def: ColumnDefinition,
+    ) -> SqlResult<()> {
+        let table_data = self
+            .tables
+            .get_mut(table)
+            .ok_or_else(|| SqlError::ExecutionError(format!("Table not found: {}", table)))?;
+        let col_idx = table_data
+            .info
+            .columns
+            .iter()
+            .position(|c| c.name == column)
+            .ok_or_else(|| SqlError::ExecutionError(format!("Column not found: {}", column)))?;
+        table_data.info.columns[col_idx] = new_def;
         Ok(())
     }
 }

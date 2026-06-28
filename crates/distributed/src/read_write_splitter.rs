@@ -248,8 +248,8 @@ impl ReadWriteSplitter {
         match statement {
             sqlrustgo_parser::Statement::Select(s) => Some(s.table.clone()),
             sqlrustgo_parser::Statement::Insert(s) => Some(s.table.clone()),
-            sqlrustgo_parser::Statement::Update(s) => Some(s.table.clone()),
-            sqlrustgo_parser::Statement::Delete(s) => Some(s.table.clone()),
+            sqlrustgo_parser::Statement::Update(s) => s.tables.first().map(|t| t.name.clone()),
+            sqlrustgo_parser::Statement::Delete(s) => s.tables.first().map(|t| t.name.clone()),
             _ => None,
         }
     }
