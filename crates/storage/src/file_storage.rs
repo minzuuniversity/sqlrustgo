@@ -1470,6 +1470,16 @@ impl StorageEngine for FileStorage {
             // represent old state that should be replaced, not preserved.
             if filters.is_empty() {
                 self.insert_buffer.remove(table);
+            } else if let Some(buffered) = self.insert_buffer.get_mut(table) {
+                // For non-empty filters, also remove matching rows from the
+                // insert_buffer so that UPDATE with WHERE clause does not
+                // leave stale buffered rows that shadow the updated value.
+                buffered.retain(|row| {
+                    !filters
+                        .iter()
+                        .enumerate()
+                        .all(|(i, f)| row.get(i).map(|v| v == f).unwrap_or(false))
+                });
             }
             Ok(removed)
         } else {
