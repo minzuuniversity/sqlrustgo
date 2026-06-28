@@ -2541,17 +2541,24 @@ fn do_command_loop<S: Read + Write>(
                     seq = seq.wrapping_add(1);
                     continue;
                 }
-                let mut eng = engine.write().unwrap();
-                // Engine Bug A supplementary fix (refs #3635): split the
-                // query into per-statement slices and execute each slice
-                // once. The previous loop re-ran the whole multi-statement
-                // query N times for an N-statement batch (N² executions).
+                // G13-OLTP-1 lock contention fix: DDL/DML use exclusive write lock with
+                // poisoning recovery. If a previous thread panicked while holding the lock,
+                // the RwLock poisons all subsequent .read()/.write() calls. Using .into_inner()
+                // recovery allows the server to continue serving queries rather than hard-fail.
                 let stmt_texts = split_top_level_statements(&q);
                 let mut had_error = false;
                 for stmt_sql in &stmt_texts {
                     let parsed = parse(stmt_sql);
                     let is_select = parsed.as_ref().map(is_select_stmt).unwrap_or(false);
-                    let result = eng.execute(stmt_sql);
+                    // G13-OLTP-1: poisoning recovery - if lock is poisoned, recover and continue
+                    let result = match engine.write() {
+                        Ok(mut eng) => eng.execute(stmt_sql),
+                        Err(poisoned) => {
+                            let mut eng = poisoned.into_inner();
+                            tracing::warn!("recovered engine from poisoned write lock");
+                            eng.execute(stmt_sql)
+                        }
+                    };
                     match result {
                         Ok(r) if is_select => {
                             let cols: Vec<String> = r
@@ -2795,53 +2802,58 @@ fn do_command_loop<S: Read + Write>(
                     parse_stmt_execute_params(payload, stmt_param_count, &stmt_param_types);
                 let final_sql = replace_placeholders(&stmt_sql, &params);
                 tracing::info!("STMT EXECUTE (id={}): {}", stmt_id, final_sql);
-                let mut eng = engine.write().unwrap();
+                // G13-OLTP-1: parse first to determine SELECT vs DDL/DML,
+                // then acquire the appropriate lock (read for SELECT, write for DDL/DML).
                 let parsed = parse(&final_sql);
-                match parsed {
-                    Ok(stmt) => {
-                        let result = eng.execute(&final_sql);
-                        match result {
-                            Ok(r) if is_select_stmt(&stmt) => {
-                                let c: Vec<String> = r
-                                    .rows
-                                    .first()
-                                    .map(|row| {
-                                        (0..row.len()).map(|i| format!("col_{}", i + 1)).collect()
-                                    })
-                                    .unwrap_or_else(|| vec!["result".to_string()]);
-                                let t: Vec<String> =
-                                    c.iter().map(|_| "VARCHAR(255)".to_string()).collect();
-                                let c_trimmed: Vec<String> =
-                                    c.into_iter().take(stmt_col_count as usize).collect();
-                                let t_trimmed: Vec<String> =
-                                    t.into_iter().take(stmt_col_count as usize).collect();
-                                let r_trimmed: Vec<Vec<Value>> = r
-                                    .rows
-                                    .into_iter()
-                                    .map(|row| {
-                                        row.into_iter().take(stmt_col_count as usize).collect()
-                                    })
-                                    .collect();
-                                seq = send_binary_result_set(
-                                    stream, &c_trimmed, &t_trimmed, &r_trimmed, seq, cap,
-                                )?;
-                            }
-                            Ok(r) => {
-                                make_ok_packet(seq, r.affected_rows as u64, 0, 0x0002, 0)
-                                    .write_to(stream)?;
-                                *server_last_sent_seq = seq;
-                                seq = seq.wrapping_add(1);
-                            }
-                            Err(e) => {
-                                make_err_packet(seq, 1064, "42000", &e.to_string())
-                                    .write_to(stream)?;
-                                *server_last_sent_seq = seq;
-                                seq = seq.wrapping_add(1);
-                            }
-                        }
+                let is_select = parsed.as_ref().map(is_select_stmt).unwrap_or(false);
+                // G13-OLTP-1: DDL/DML use exclusive write lock with poisoning recovery.
+                // If a previous thread panicked while holding the lock, the RwLock poisons
+                // all subsequent .read()/.write() calls. Using .into_inner() recovery
+                // allows the server to continue serving queries rather than hard-fail.
+                // G13-OLTP-1: poisoning recovery - recover from poisoned state and continue
+                let result = match engine.write() {
+                    Ok(mut eng) => eng.execute(&final_sql),
+                    Err(poisoned) => {
+                        let mut eng = poisoned.into_inner();
+                        tracing::warn!("recovered engine from poisoned write lock (stmt execute)");
+                        eng.execute(&final_sql)
+                    }
+                };
+                match result {
+                    Ok(r) if is_select => {
+                        let c: Vec<String> = r
+                            .rows
+                            .first()
+                            .map(|row| {
+                                (0..row.len()).map(|i| format!("col_{}", i + 1)).collect()
+                            })
+                            .unwrap_or_else(|| vec!["result".to_string()]);
+                        let t: Vec<String> =
+                            c.iter().map(|_| "VARCHAR(255)".to_string()).collect();
+                        let c_trimmed: Vec<String> =
+                            c.into_iter().take(stmt_col_count as usize).collect();
+                        let t_trimmed: Vec<String> =
+                            t.into_iter().take(stmt_col_count as usize).collect();
+                        let r_trimmed: Vec<Vec<Value>> = r
+                            .rows
+                            .into_iter()
+                            .map(|row| {
+                                row.into_iter().take(stmt_col_count as usize).collect()
+                            })
+                            .collect();
+                        seq = send_binary_result_set(
+                            stream, &c_trimmed, &t_trimmed, &r_trimmed, seq, cap,
+                        )?;
+                    }
+                    Ok(r) => {
+                        make_ok_packet(seq, r.affected_rows as u64, 0, 0x0002, 0)
+                            .write_to(stream)?;
+                        *server_last_sent_seq = seq;
+                        seq = seq.wrapping_add(1);
                     }
                     Err(e) => {
-                        make_err_packet(seq, 1064, "42000", &e).write_to(stream)?;
+                        make_err_packet(seq, 1064, "42000", &e.to_string())
+                            .write_to(stream)?;
                         *server_last_sent_seq = seq;
                         seq = seq.wrapping_add(1);
                     }
