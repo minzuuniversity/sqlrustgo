@@ -898,6 +898,7 @@ fn make_err_packet(seq: u8, code: u16, state: &str, msg: &str) -> Packet {
     p.write_u16::<LittleEndian>(code).unwrap();
     p.push(0x23);
     p.extend_from_slice(state.as_bytes());
+    p.push(0x00);
     p.extend_from_slice(msg.as_bytes());
     Packet {
         length: p.len() as u32,
