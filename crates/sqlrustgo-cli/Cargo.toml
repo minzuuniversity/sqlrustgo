@@ -1,0 +1,10 @@
+[package]
+name = "sqlrustgo-cli"
+version = "3.9.0"
+edition = "2021"
+description = "SQLRustGo canonical CLI entry point"
+
+[dependencies]
+clap = { version = "4", features = ["derive", "env"] }
+tracing = "0.1"
+tokio = { version = "1.0", features = ["rt-multi-thread", "process", "time", "net"] }
