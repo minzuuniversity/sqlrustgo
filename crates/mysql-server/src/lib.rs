@@ -717,12 +717,16 @@ impl<'a> TlsStream<'a> {
 
 impl<'a> Read for TlsStream<'a> {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
-        // Drive rustls IO only when there is pending inbound data.
-        // This avoids blocking on write (which would happen if we
-        // called complete_io while wants_write was true and the
-        // socket had outbound data to flush).
-        if self.conn.wants_read() {
-            self.conn.complete_io(self.sock)?;
+        // Engine Bug B fix (refs #3635): loop drains ALL pending TLS
+        // records before returning. A single `complete_io` only
+        // decrypts ciphertext currently buffered in the socket, which
+        // deadlocks large multi-record plaintexts (>= ~16 KB).
+        while self.conn.wants_read() {
+            match self.conn.complete_io(self.sock) {
+                Ok(_) => {}
+                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => break,
+                Err(e) => return Err(e),
+            }
         }
         self.conn.reader().read(buf)
     }
