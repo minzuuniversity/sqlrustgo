@@ -28,7 +28,10 @@ fn wait_for_server(port: u16) -> SocketAddr {
 }
 
 /// Start an ephemeral server and return a connected client.
-fn make_client() -> (sqlrustgo_mysql_server::testing::EphemeralHandle, MySqlConnection) {
+fn make_client() -> (
+    sqlrustgo_mysql_server::testing::EphemeralHandle,
+    MySqlConnection,
+) {
     let handle = start_ephemeral(EphemeralConfig::default()).expect("start_ephemeral");
     let port = handle.port;
     let addr = wait_for_server(port);
@@ -86,10 +89,13 @@ fn test_insert_returns_ok() {
 #[test]
 fn test_update_returns_ok() {
     let (_handle, mut conn) = make_client();
-    conn.execute("CREATE TABLE t (id INTEGER, val TEXT)").expect("CREATE");
+    conn.execute("CREATE TABLE t (id INTEGER, val TEXT)")
+        .expect("CREATE");
     conn.execute("INSERT INTO t VALUES (1, 'old'), (2, 'old')")
         .expect("INSERT");
-    let r = conn.execute("UPDATE t SET val = 'new' WHERE id = 1").expect("UPDATE");
+    let r = conn
+        .execute("UPDATE t SET val = 'new' WHERE id = 1")
+        .expect("UPDATE");
     match r {
         ResultSet::Ok { affected_rows, .. } => {
             assert!(affected_rows >= 1, "affected_rows = {}", affected_rows);
@@ -101,7 +107,8 @@ fn test_update_returns_ok() {
 #[test]
 fn test_delete_returns_ok() {
     let (_handle, mut conn) = make_client();
-    conn.execute("CREATE TABLE t (id INTEGER, name TEXT)").expect("CREATE");
+    conn.execute("CREATE TABLE t (id INTEGER, name TEXT)")
+        .expect("CREATE");
     conn.execute("INSERT INTO t VALUES (1, 'a'), (2, 'b'), (3, 'c')")
         .expect("INSERT");
     let r = conn.execute("DELETE FROM t WHERE id = 2").expect("DELETE");
@@ -122,11 +129,14 @@ fn test_delete_returns_ok() {
 #[ignore = "server column_def packet missing org_name and length_of_fixed_fields fields"]
 fn test_select_returns_rows() {
     let (_handle, mut conn) = make_client();
-    conn.execute("CREATE TABLE t (id INTEGER, name TEXT)").expect("CREATE");
+    conn.execute("CREATE TABLE t (id INTEGER, name TEXT)")
+        .expect("CREATE");
     conn.execute("INSERT INTO t VALUES (1, 'alice'), (2, 'bob')")
         .expect("INSERT");
 
-    let r = conn.execute("SELECT id, name FROM t ORDER BY id").expect("SELECT");
+    let r = conn
+        .execute("SELECT id, name FROM t ORDER BY id")
+        .expect("SELECT");
     match r {
         ResultSet::Select { columns, rows } => {
             assert_eq!(columns.len(), 2, "expected 2 columns");
@@ -144,10 +154,13 @@ fn test_select_returns_rows() {
 #[ignore = "server column_def packet bug — see test_select_returns_rows"]
 fn test_select_with_where() {
     let (_handle, mut conn) = make_client();
-    conn.execute("CREATE TABLE t (id INTEGER, name TEXT)").expect("CREATE");
+    conn.execute("CREATE TABLE t (id INTEGER, name TEXT)")
+        .expect("CREATE");
     conn.execute("INSERT INTO t VALUES (1, 'a'), (2, 'b'), (3, 'c')")
         .expect("INSERT");
-    let r = conn.execute("SELECT name FROM t WHERE id = 2").expect("SELECT");
+    let r = conn
+        .execute("SELECT name FROM t WHERE id = 2")
+        .expect("SELECT");
     match r {
         ResultSet::Select { columns, rows } => {
             assert_eq!(columns.len(), 1);
@@ -162,7 +175,8 @@ fn test_select_with_where() {
 #[ignore = "server column_def packet bug — see test_select_returns_rows"]
 fn test_multiple_sequential_queries() {
     let (_handle, mut conn) = make_client();
-    conn.execute("CREATE TABLE seq_test (n INTEGER)").expect("CREATE");
+    conn.execute("CREATE TABLE seq_test (n INTEGER)")
+        .expect("CREATE");
     for i in 1..=10 {
         let sql = format!("INSERT INTO seq_test VALUES ({})", i);
         conn.execute(&sql).expect("INSERT");
@@ -185,7 +199,11 @@ fn test_invalid_sql_returns_error() {
     let (_handle, mut conn) = make_client();
     let r = conn.execute("SELECT FROM nonexistent_table");
     match r {
-        Ok(ResultSet::Error { error_code, error_message, .. }) => {
+        Ok(ResultSet::Error {
+            error_code,
+            error_message,
+            ..
+        }) => {
             assert!(error_code > 0, "error_code should be non-zero");
             assert!(!error_message.is_empty(), "error_message is empty");
         }
@@ -202,9 +220,13 @@ fn test_close_after_queries() {
     let (_handle, conn) = make_client();
     let mut conn = conn;
     // Use INSERT/DELETE to avoid the SELECT column_def parser issue
-    conn.execute("CREATE TABLE close_test (n INTEGER)").expect("CREATE");
-    conn.execute("INSERT INTO close_test VALUES (1)").expect("INSERT 1");
-    conn.execute("INSERT INTO close_test VALUES (2)").expect("INSERT 2");
-    conn.execute("DELETE FROM close_test WHERE n = 2").expect("DELETE");
+    conn.execute("CREATE TABLE close_test (n INTEGER)")
+        .expect("CREATE");
+    conn.execute("INSERT INTO close_test VALUES (1)")
+        .expect("INSERT 1");
+    conn.execute("INSERT INTO close_test VALUES (2)")
+        .expect("INSERT 2");
+    conn.execute("DELETE FROM close_test WHERE n = 2")
+        .expect("DELETE");
     conn.close().expect("close");
 }
