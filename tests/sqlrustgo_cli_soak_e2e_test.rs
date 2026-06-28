@@ -32,8 +32,7 @@ fn wait_for_server(port: u16) -> SocketAddr {
 }
 
 fn binary_path() -> String {
-    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR")
-        .unwrap_or_else(|_| ".".to_string());
+    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap_or_else(|_| ".".to_string());
     let path = std::path::Path::new(&manifest_dir).join("target/debug/sqlrustgo-cli");
     if path.exists() {
         return path.to_string_lossy().to_string();
@@ -58,7 +57,15 @@ fn test_soak_repl_dml_persistent_connection() {
     let _addr = wait_for_server(port);
 
     let mut child = Command::new(binary_path())
-        .args(["soak", "-p", &port.to_string(), "-u", "tester", "--pass", "tester"])
+        .args([
+            "soak",
+            "-p",
+            &port.to_string(),
+            "-u",
+            "tester",
+            "--pass",
+            "tester",
+        ])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
@@ -98,7 +105,15 @@ fn test_soak_repl_select_returns_rows() {
     let _addr = wait_for_server(port);
 
     let mut child = Command::new(binary_path())
-        .args(["soak", "-p", &port.to_string(), "-u", "tester", "--pass", "tester"])
+        .args([
+            "soak",
+            "-p",
+            &port.to_string(),
+            "-u",
+            "tester",
+            "--pass",
+            "tester",
+        ])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
@@ -117,12 +132,24 @@ fn test_soak_repl_select_returns_rows() {
     let mut output = String::new();
     stdout.read_to_string(&mut output).unwrap();
 
-    assert!(output.contains("ROWS\t2"), "Expected ROWS\\t2, got: {output}");
+    assert!(
+        output.contains("ROWS\t2"),
+        "Expected ROWS\\t2, got: {output}"
+    );
     let col_count = output.matches("\nCOL\t").count();
-    assert_eq!(col_count, 2, "Expected 2 COL lines, got {col_count}. Output: {output}");
-    assert!(output.contains("DATA\t2"), "Expected DATA\\t2, got: {output}");
+    assert_eq!(
+        col_count, 2,
+        "Expected 2 COL lines, got {col_count}. Output: {output}"
+    );
+    assert!(
+        output.contains("DATA\t2"),
+        "Expected DATA\\t2, got: {output}"
+    );
     let row_count = output.matches("\nROW\t").count();
-    assert_eq!(row_count, 2, "Expected 2 ROW lines, got {row_count}. Output: {output}");
+    assert_eq!(
+        row_count, 2,
+        "Expected 2 ROW lines, got {row_count}. Output: {output}"
+    );
 
     let _ = child.wait();
 }
@@ -135,7 +162,15 @@ fn test_soak_repl_error_returns_err() {
     let _addr = wait_for_server(port);
 
     let mut child = Command::new(binary_path())
-        .args(["soak", "-p", &port.to_string(), "-u", "tester", "--pass", "tester"])
+        .args([
+            "soak",
+            "-p",
+            &port.to_string(),
+            "-u",
+            "tester",
+            "--pass",
+            "tester",
+        ])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
@@ -165,7 +200,15 @@ fn test_soak_repl_50_dml_queries() {
     let _addr = wait_for_server(port);
 
     let mut child = Command::new(binary_path())
-        .args(["soak", "-p", &port.to_string(), "-u", "tester", "--pass", "tester"])
+        .args([
+            "soak",
+            "-p",
+            &port.to_string(),
+            "-u",
+            "tester",
+            "--pass",
+            "tester",
+        ])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
@@ -211,7 +254,15 @@ fn test_soak_repl_skips_comments_and_blank_lines() {
     let _addr = wait_for_server(port);
 
     let mut child = Command::new(binary_path())
-        .args(["soak", "-p", &port.to_string(), "-u", "tester", "--pass", "tester"])
+        .args([
+            "soak",
+            "-p",
+            &port.to_string(),
+            "-u",
+            "tester",
+            "--pass",
+            "tester",
+        ])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
@@ -231,7 +282,10 @@ fn test_soak_repl_skips_comments_and_blank_lines() {
     let mut output = String::new();
     stdout.read_to_string(&mut output).unwrap();
 
-    assert!(output.contains("ROWS\t1"), "Expected ROWS\\t1, got: {output}");
+    assert!(
+        output.contains("ROWS\t1"),
+        "Expected ROWS\\t1, got: {output}"
+    );
 
     let _ = child.wait();
 }
@@ -244,7 +298,15 @@ fn test_soak_repl_exit_command() {
     let _addr = wait_for_server(port);
 
     let mut child = Command::new(binary_path())
-        .args(["soak", "-p", &port.to_string(), "-u", "tester", "--pass", "tester"])
+        .args([
+            "soak",
+            "-p",
+            &port.to_string(),
+            "-u",
+            "tester",
+            "--pass",
+            "tester",
+        ])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::null())

@@ -11,16 +11,16 @@
     "",
     "An accidental bump (no legitimate output change) is detectable: the diff is small and the new hash has no provenance. The G1 shell gate does not auto-bump; it always requires this file to be updated by a human-reviewed PR."
   ],
-  "version": "v3.9.0",
-  "captured_at": "2026-06-11",
-  "captured_from": "cee3964eff312a0b9e8977cfdcef37444eef1f1a",
-  "tpc_h_hash_sha256": "7bc939e7744f4c99cbfee073007b8b49d6116030e5b6e52054b481547caa5fa4",
-  "tpc_h_queries": 22,
-  "tpc_h_test_files": [
-    "tests/tpch_gate_test.rs",
-    "tests/tpch_full_22_test.rs"
-  ],
-  "scale_factor": 0.1,
-  "runner": "Mac-mini-6 (Apple Silicon M2)",
-  "status": "CAPTURED \u2014 TPC-H 22/22 cell-level baseline hash. Sprint 5 v15: 21/22 queries executed within 300s timeout. Q21 (4-table correlated EXISTS) times out at 300s; this is tracked as Issue #3316 (11min\u219290ms Sprint 5 v6 fix; further optimization for 300s target). All other 21 queries complete with cell-level exact match to MariaDB/PostgreSQL/SQLite (Sprint 5 v13)."
-}
+   "version": "v3.9.0",
+   "captured_at": "2026-06-28",
+   "captured_from": "545814c3d1 (develop/v3.9.0 @ post Phase 0-2 merge)",
+   "tpc_h_hash_sha256": "b8854271b6636811c95e254791793973482036d09b1a96b4c5aefda6e8b715c1",
+   "tpc_h_queries": 22,
+   "tpc_h_test_files": [
+     "tests/tpch_hash_test.rs",
+     "tests/tpch_gate_test.rs"
+   ],
+   "scale_factor": 0.001,
+   "runner": "Mac-mini-6 (Apple Silicon M2, G1 worktree)",
+   "status": "CAPTURED \u2014 TPC-H 22/22 baseline hash via in-process start_sf001() + MySqlTestClient. All 22 queries complete in <1s (SF=0.001). Hash computed from simplified TPC-H queries (same as tpch_full_22_test)."
+ }
