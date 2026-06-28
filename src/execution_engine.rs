@@ -317,6 +317,54 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         crate::cbo_estimator::collect_table_stats(&*storage, table)
     }
 
+    /// Execute a read-only SQL statement. Takes `&self` so multiple
+    /// readers can run concurrent queries. Errors if the statement
+    /// is not read-only (SELECT/SHOW/DESCRIBE/EXPLAIN-with-SELECT).
+    ///
+    /// This is the fix for the server-side lock contention bug: the
+    /// server can now hold a SHARED read lock on the engine and run
+    /// concurrent SELECTs from multiple clients. The previous `execute`
+    /// requires `&mut self` which forces the server to take an
+    /// EXCLUSIVE write lock for every query (even pure reads), causing
+    /// severe contention.
+    ///
+    /// (Issue #G13-OLTP-1)
+    pub fn execute_read(&self, sql: &str) -> SqlResult<ExecutorResult> {
+        let statement = parse(sql).map_err(|e| SqlError::ParseError(e.to_string()))?;
+        match &statement {
+            Statement::Select(select) => self.execute_select(select),
+            Statement::Union(union_stmt) => {
+                let left_select = match &*union_stmt.left {
+                    Statement::Select(sel) => sel,
+                    _ => {
+                        return Err(SqlError::ExecutionError(
+                            "UNION left side must be a SELECT".to_string(),
+                        ))
+                    }
+                };
+                let right_select = match &*union_stmt.right {
+                    Statement::Select(sel) => sel,
+                    _ => {
+                        return Err(SqlError::ExecutionError(
+                            "UNION right side must be a SELECT".to_string(),
+                        ))
+                    }
+                };
+                let mut left_result = self.execute_select(left_select)?;
+                let right_result = self.execute_select(right_select)?;
+                left_result.rows.extend(right_result.rows);
+                left_result.affected_rows += right_result.affected_rows;
+                Ok(left_result)
+            }
+            Statement::Show(show) => self.execute_show(show),
+            Statement::Describe(desc) => self.execute_describe(desc),
+            _ => Err(SqlError::ExecutionError(
+                "execute_read only accepts SELECT/SHOW/DESCRIBE;                  use execute() for DDL/DML"
+                    .to_string(),
+            )),
+        }
+    }
+
     /// Execute a SQL statement and return results
     pub fn execute(&mut self, sql: &str) -> SqlResult<ExecutorResult> {
         let statement = parse(sql).map_err(|e| SqlError::ParseError(e.to_string()))?;

@@ -2433,55 +2433,73 @@ fn do_command_loop<S: Read + Write>(
                     seq = seq.wrapping_add(1);
                     continue;
                 }
-                let mut eng = engine.write().unwrap();
-                // 3521: Support multi-statement queries (semicolon-separated)
-                match parse_statements(&q) {
-                    Ok(stmts) => {
-                        for stmt in stmts {
-                            let result = eng.execute(&q);
-                            match result {
-                                Ok(r) if is_select_stmt(&stmt) => {
-                                    let cols: Vec<String> = r
-                                        .rows
-                                        .first()
-                                        .map(|row| {
-                                            (0..row.len())
-                                                .map(|i| format!("col_{}", i + 1))
-                                                .collect()
-                                        })
-                                        .unwrap_or_else(|| vec!["result".to_string()]);
-                                    let ctypes: Vec<String> =
-                                        cols.iter().map(|_| "VARCHAR(255)".to_string()).collect();
-                                    seq =
-                                        send_result_set(stream, &cols, &ctypes, &r.rows, seq, cap)?;
-                                    *server_last_sent_seq = seq;
-                                }
-                                Ok(r) => {
-                                    make_ok_packet(seq, r.affected_rows as u64, 0, 0x0002, 0)
-                                        .write_to(stream)?;
-                                    *server_last_sent_seq = seq;
-                                    seq = seq.wrapping_add(1);
-                                }
-                                Err(e) => {
-                                    let code = match e.to_string().contains("not found") {
-                                        true => 1146u16,
-                                        false => 1064u16,
-                                    };
-                                    make_err_packet(seq, code, "42000", &e.to_string())
-                                        .write_to(stream)?;
-                                    *server_last_sent_seq = seq;
-                                    seq = seq.wrapping_add(1);
-                                }
-                            }
-                        }
-                    }
+                // Issue #G13-OLTP-1 lock contention fix:
+                // 1. Parse first to determine SELECT vs DDL/DML
+                // 2. SELECT uses shared read lock (many concurrent reads)
+                // 3. DDL/DML uses exclusive write lock with poisoning recovery
+                // 4. parse_statements enables multi-statement support (3521)
+                let stmts = match parse_statements(&q) {
+                    Ok(s) => s,
                     Err(e) => {
                         make_err_packet(seq, 1064, "42000", &e).write_to(stream)?;
                         *server_last_sent_seq = seq;
                         seq = seq.wrapping_add(1);
+                        continue;
+                    }
+                };
+                for stmt in stmts {
+                    if is_select_stmt(&stmt) {
+                        // SELECT / SHOW / DESCRIBE — read-only, shared lock.
+                        // Poisoning recovery: if previous holder panicked, recover the
+                        // guard so the server keeps running rather than hard-failing.
+                        let result = match engine.read() {
+                            Ok(eng) => eng.execute_read(&q),
+                            Err(poisoned) => {
+                                let eng = poisoned.into_inner();
+                                tracing::warn!("recovered engine from poisoned read lock");
+                                eng.execute_read(&q)
+                            }
+                        };
+                        match result {
+                            Ok(r) => {
+                                let cols: Vec<String> = r
+                                    .rows
+                                    .first()
+                                    .map(|row| (0..row.len()).map(|i| format!("col_{}", i + 1)).collect())
+                                    .unwrap_or_else(|| vec!["result".to_string()]);
+                                let ctypes: Vec<String> =
+                                    cols.iter().map(|_| "VARCHAR(255)".to_string()).collect();
+                                seq = send_result_set(stream, &cols, &ctypes, &r.rows, seq, cap)?;
+                            }
+                            Err(e) => {
+                                let code: u16 = if e.to_string().contains("not found") { 1146u16 } else { 1064u16 };
+                                make_err_packet(seq, code, "42000", &e.to_string()).write_to(stream)?;
+                                seq = seq.wrapping_add(1);
+                            }
+                        }
+                    } else {
+                        // DDL / DML — exclusive write lock with poisoning recovery
+                        let result = match engine.write() {
+                            Ok(mut eng) => eng.execute(&q),
+                            Err(poisoned) => {
+                                let mut eng = poisoned.into_inner();
+                                tracing::warn!("recovered engine from poisoned write lock");
+                                eng.execute(&q)
+                            }
+                        };
+                        match result {
+                            Ok(r) => {
+                                make_ok_packet(seq, r.affected_rows as u64, 0, 0x0002, 0).write_to(stream)?;
+                                seq = seq.wrapping_add(1);
+                            }
+                            Err(e) => {
+                                let code: u16 = if e.to_string().contains("not found") { 1146u16 } else { 1064u16 };
+                                make_err_packet(seq, code, "42000", &e.to_string()).write_to(stream)?;
+                                seq = seq.wrapping_add(1);
+                            }
+                        }
                     }
                 }
-            }
             packet_type::COM_STMT_PREPARE => {
                 let sql = String::from_utf8_lossy(payload)
                     .trim_end_matches('\0')
@@ -2689,11 +2707,30 @@ fn do_command_loop<S: Read + Write>(
                     parse_stmt_execute_params(payload, stmt_param_count, &stmt_param_types);
                 let final_sql = replace_placeholders(&stmt_sql, &params);
                 tracing::info!("STMT EXECUTE (id={}): {}", stmt_id, final_sql);
-                let mut eng = engine.write().unwrap();
                 let parsed = parse(&final_sql);
                 match parsed {
                     Ok(stmt) => {
-                        let result = eng.execute(&final_sql);
+                        // Issue #G13-OLTP-1: SELECT via prepared statement uses shared
+                        // read lock; DDL/DML uses exclusive write lock.
+                        let result: MySqlResult<sqlrustgo::ExecutorResult> = if is_select_stmt(&stmt) {
+                            match engine.read() {
+                                Ok(eng) => eng.execute_read(&final_sql).map_err(|e| MySqlError::Sql(e.to_string())),
+                                Err(poisoned) => {
+                                    let eng = poisoned.into_inner();
+                                    tracing::warn!("recovered engine from poisoned read lock (stmt execute)");
+                                    eng.execute_read(&final_sql).map_err(|e| MySqlError::Sql(e.to_string()))
+                                }
+                            }
+                        } else {
+                            match engine.write() {
+                                Ok(mut eng) => eng.execute(&final_sql).map_err(|e| MySqlError::Sql(e.to_string())),
+                                Err(poisoned) => {
+                                    let mut eng = poisoned.into_inner();
+                                    tracing::warn!("recovered engine from poisoned write lock (stmt execute)");
+                                    eng.execute(&final_sql).map_err(|e| MySqlError::Sql(e.to_string()))
+                                }
+                            }
+                        };
                         match result {
                             Ok(r) if is_select_stmt(&stmt) => {
                                 let c: Vec<String> = r
