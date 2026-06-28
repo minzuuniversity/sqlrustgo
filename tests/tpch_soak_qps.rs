@@ -1,6 +1,6 @@
 mod common;
-use std::time::{Duration, Instant};
 use std::thread;
+use std::time::{Duration, Instant};
 
 const QUERIES: &[&str] = &[
     "SELECT COUNT(*) FROM lineitem",
@@ -62,9 +62,7 @@ fn test_tpch_qps_30s_multi_threaded() {
     let start = Instant::now();
 
     let handles: Vec<_> = (0..threads)
-        .map(|tid| {
-            thread::spawn(move || run_thread_benchmark(tid, duration))
-        })
+        .map(|tid| thread::spawn(move || run_thread_benchmark(tid, duration)))
         .collect();
 
     let mut total_q = 0u64;
@@ -99,5 +97,9 @@ fn test_tpch_qps_30s_multi_threaded() {
     println!("========================================================");
 
     assert!(qps > 0.1, "QPS too low: {:.1}", qps);
-    assert!(error_rate < 0.01, "Error rate too high: {:.2}%", error_rate * 100.0);
+    assert!(
+        error_rate < 0.01,
+        "Error rate too high: {:.2}%",
+        error_rate * 100.0
+    );
 }

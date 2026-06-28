@@ -2824,12 +2824,9 @@ fn do_command_loop<S: Read + Write>(
                         let c: Vec<String> = r
                             .rows
                             .first()
-                            .map(|row| {
-                                (0..row.len()).map(|i| format!("col_{}", i + 1)).collect()
-                            })
+                            .map(|row| (0..row.len()).map(|i| format!("col_{}", i + 1)).collect())
                             .unwrap_or_else(|| vec!["result".to_string()]);
-                        let t: Vec<String> =
-                            c.iter().map(|_| "VARCHAR(255)".to_string()).collect();
+                        let t: Vec<String> = c.iter().map(|_| "VARCHAR(255)".to_string()).collect();
                         let c_trimmed: Vec<String> =
                             c.into_iter().take(stmt_col_count as usize).collect();
                         let t_trimmed: Vec<String> =
@@ -2837,9 +2834,7 @@ fn do_command_loop<S: Read + Write>(
                         let r_trimmed: Vec<Vec<Value>> = r
                             .rows
                             .into_iter()
-                            .map(|row| {
-                                row.into_iter().take(stmt_col_count as usize).collect()
-                            })
+                            .map(|row| row.into_iter().take(stmt_col_count as usize).collect())
                             .collect();
                         seq = send_binary_result_set(
                             stream, &c_trimmed, &t_trimmed, &r_trimmed, seq, cap,
@@ -2852,8 +2847,7 @@ fn do_command_loop<S: Read + Write>(
                         seq = seq.wrapping_add(1);
                     }
                     Err(e) => {
-                        make_err_packet(seq, 1064, "42000", &e.to_string())
-                            .write_to(stream)?;
+                        make_err_packet(seq, 1064, "42000", &e.to_string()).write_to(stream)?;
                         *server_last_sent_seq = seq;
                         seq = seq.wrapping_add(1);
                     }
