@@ -857,7 +857,7 @@ fn make_handshake_packet(seq: u8, scramble: &[u8; SCRAMBLE_LENGTH]) -> Packet {
     p.push(0x00); // scramble part1 + filler
     p.write_u16::<LittleEndian>((capability::SERVER_DEFAULT & 0xFFFF) as u16)
         .unwrap();
-    p.push(0xff); // charset utf8mb4
+    p.push(0x21); // charset utf8 (collation_id 33 = utf8_general_ci) — MySQL 8.0 client rejects 0xff as invalid
     p.write_u16::<LittleEndian>(0x0002).unwrap(); // status AUTOCOMMIT
     p.write_u16::<LittleEndian>(((capability::SERVER_DEFAULT >> 16) & 0xFFFF) as u16)
         .unwrap();
@@ -1222,13 +1222,14 @@ fn write_column_def<W: Write>(w: &mut W, name: &str, sql_type: &str, seq: u8) ->
     let mut p = Vec::new();
     write_lenenc_string(&mut p, b"def").unwrap(); // catalog
     write_lenenc_string(&mut p, b"").unwrap(); // schema
-    write_lenenc_string(&mut p, b"").unwrap(); // table
-    write_lenenc_string(&mut p, b"").unwrap(); // org_table
-    write_lenenc_string(&mut p, name.as_bytes()).unwrap(); // name
-                                                           // MySQL column definition fixed-size fields:
-                                                           // charset_collation (2 bytes) → length (4 bytes) → field_type (1 byte)
-                                                           // → flags (2 bytes) → decimals (1 byte) → filler (2 bytes)
-    p.write_u16::<LittleEndian>(0x0030).unwrap(); // charset_collation: 0x30 = utf8_general_ci
+    write_lenenc_string(&mut p, b"").unwrap(); // virtual_table
+    write_lenenc_string(&mut p, b"").unwrap(); // physical_table
+    write_lenenc_string(&mut p, name.as_bytes()).unwrap(); // virtual_name
+    write_lenenc_string(&mut p, name.as_bytes()).unwrap(); // physical_name (org_name) — required by MySQL protocol; pymysql/libmysqlclient expect it
+    p.push(0x0c); // 1-byte filler required by MySQL column definition protocol (often called "next_length" = 12 fixed bytes that follow)
+    // MySQL column definition fixed-size fields:
+    // charsetnr (2 bytes) → length (4 bytes) → type (1 byte) → flags (2 bytes) → decimals (1 byte) → filler (2 bytes)
+    p.write_u16::<LittleEndian>(0x0030).unwrap(); // charsetnr: 0x30 = utf8_general_ci
     p.write_u32::<LittleEndian>(col_len_from_type(sql_type))
         .unwrap(); // length
     p.push(col_type_from_string(sql_type)); // field_type
@@ -2321,12 +2322,15 @@ fn do_command_loop<S: Read + Write>(
         };
         let cmd = pkt.payload.first().copied().unwrap_or(0);
         let payload = &pkt.payload[1..];
+        // MySQL/MariaDB protocol: every new client command starts with
+        // pkt_seq=0, and the server resets its response seq to 0
+        // (so the first response packet uses seq=1). pymysql and
+        // libmysqlclient both rely on this — they set next_seq_id=1
+        // after sending each command and validate the server response
+        // sequence number accordingly. We reset on EVERY pkt_seq=0,
+        // not just the first one (which would break the second query).
         let mut seq = server_last_sent_seq.wrapping_add(1);
-        // MariaDB resets sequence to 0 for each new logical request.
-        // The first command after auth has pkt_seq=0 and MUST trigger reset (server_last_sent_seq=2 → 0).
-        // Subsequent commands in a multi-statement query also have pkt_seq=0 but should NOT reset.
-        if !seen_first_command && pkt.sequence == 0 {
-            seen_first_command = true;
+        if pkt.sequence == 0 {
             *server_last_sent_seq = 0;
             seq = 1;
         }
