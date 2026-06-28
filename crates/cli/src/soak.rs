@@ -77,7 +77,9 @@ fn load_queries(path: &str) -> anyhow::Result<Vec<String>> {
         .map(|l| l.to_string())
         .collect();
     if queries.is_empty() {
-        return Err(anyhow::anyhow!("query file '{path}' is empty or all-comment"));
+        return Err(anyhow::anyhow!(
+            "query file '{path}' is empty or all-comment"
+        ));
     }
     Ok(queries)
 }
@@ -212,7 +214,10 @@ pub fn print_report(report: &SoakReport) {
         println!("  ⚠  WARNING: {} query errors detected", report.errors);
     }
     if report.p99_latency_ms > 5000.0 {
-        println!("  ⚠  WARNING: P99 latency > 5000ms ({:.0}ms)", report.p99_latency_ms);
+        println!(
+            "  ⚠  WARNING: P99 latency > 5000ms ({:.0}ms)",
+            report.p99_latency_ms
+        );
         passed = false;
     }
     if report.queries_executed == 0 {
