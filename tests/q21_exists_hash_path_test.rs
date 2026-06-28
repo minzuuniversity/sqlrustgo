@@ -110,9 +110,6 @@ fn exists_fast_path_matches_other_supplier_for_multi_supplier_order() {
 // Fix deferred to q21-exists/tasks.md §6.3 follow-up (need to
 // extend the SubqueryIndex to carry the qualifying rows so the
 // residual predicate is checked per outer-row substitution).
-// Ignored here so CI stays green; remove the `#[ignore]` when
-// §6.3 lands and the test starts passing.
-#[ignore = "NOT EXISTS residual predicate short-circuits; q21-exists §6.3"]
 #[test]
 fn not_exists_fast_path_filters_late_receipts() {
     let mut e = fresh_engine();
