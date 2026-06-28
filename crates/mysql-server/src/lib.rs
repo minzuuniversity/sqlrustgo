@@ -1227,8 +1227,8 @@ fn write_column_def<W: Write>(w: &mut W, name: &str, sql_type: &str, seq: u8) ->
     write_lenenc_string(&mut p, name.as_bytes()).unwrap(); // virtual_name
     write_lenenc_string(&mut p, name.as_bytes()).unwrap(); // physical_name (org_name) — required by MySQL protocol; pymysql/libmysqlclient expect it
     p.push(0x0c); // 1-byte filler required by MySQL column definition protocol (often called "next_length" = 12 fixed bytes that follow)
-    // MySQL column definition fixed-size fields:
-    // charsetnr (2 bytes) → length (4 bytes) → type (1 byte) → flags (2 bytes) → decimals (1 byte) → filler (2 bytes)
+                  // MySQL column definition fixed-size fields:
+                  // charsetnr (2 bytes) → length (4 bytes) → type (1 byte) → flags (2 bytes) → decimals (1 byte) → filler (2 bytes)
     p.write_u16::<LittleEndian>(0x0030).unwrap(); // charsetnr: 0x30 = utf8_general_ci
     p.write_u32::<LittleEndian>(col_len_from_type(sql_type))
         .unwrap(); // length
@@ -2312,7 +2312,6 @@ fn do_command_loop<S: Read + Write>(
     server_last_sent_seq: &mut u8,
     ps_manager: &mut PreparedStatementManager,
 ) -> MySqlResult<()> {
-    let mut seen_first_command = false;
     loop {
         let pkt = match Packet::read_from(stream) {
             Ok(p) => p,
