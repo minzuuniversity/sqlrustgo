@@ -2613,8 +2613,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             .cloned()
             .collect();
         if ir_filtered.len() != rows_to_update.len() {
-            eprintln!(
-                "[IR VALIDATION] Predicate mismatch: legacy={}, ir={}",
+            tracing::debug!(
+                "IR predicate mismatch: legacy={}, ir={}",
                 rows_to_update.len(),
                 ir_filtered.len()
             );
