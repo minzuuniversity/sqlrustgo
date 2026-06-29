@@ -3438,11 +3438,35 @@ pub(crate) fn run_server_with_listener_and_shutdown_with_bootstrap_tables_and_sq
                             tls_config: tc,
                             user_store: us,
                         };
-                        if let Err(returned_job) = p.send(job) {
-                            tracing::warn!(
-                                "worker pool shut down; dropping connection from {}",
-                                returned_job.addr
-                            );
+                        // Bounded send with timeout: prevents the accept loop
+                        // from parking indefinitely when the worker channel
+                        // is full (which would block shutdown). If the
+                        // channel is full after 200ms we drop the new
+                        // connection (closing the client TCP stream) and
+                        // continue the accept loop. The client sees
+                        // ECONNRESET and can retry; this protects the
+                        // server from resource exhaustion when a burst
+                        // exceeds `server_threads * CHANNEL_BUFFER_MULTIPLIER`.
+                        match p.send_timeout(job, Duration::from_millis(200)) {
+                            Ok(()) => {}
+                            Err(crate::testing::SendTimeoutError::Timeout(returned_job)) => {
+                                crate::testing::BACKPRESSURE_COUNT
+                                    .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                                tracing::debug!(
+                                    "worker pool full; rejecting connection from {} \
+                                     (BACKPRESSURE_COUNT incremented)",
+                                    returned_job.addr
+                                );
+                                // `returned_job` is dropped here, which closes
+                                // the underlying TcpStream. The client sees
+                                // ECONNRESET.
+                            }
+                            Err(crate::testing::SendTimeoutError::Disconnected(returned_job)) => {
+                                tracing::warn!(
+                                    "worker pool shut down; dropping connection from {}",
+                                    returned_job.addr
+                                );
+                            }
                         }
                     }
                 }
@@ -4365,9 +4389,9 @@ pub mod testing {
     use crate::BoxStorageEngine;
     use crate::UserStore;
     use crate::ACTIVE_CONFIG;
+    use crossbeam_channel::{bounded, Receiver, Sender};
     use std::net::{SocketAddr, TcpListener, TcpStream};
     use std::path::PathBuf;
-    use std::sync::mpsc::{sync_channel, Receiver, SyncSender};
     use std::sync::{Arc, Mutex};
     use std::thread::JoinHandle;
 
@@ -4385,21 +4409,32 @@ pub mod testing {
 
     /// Bounded worker pool: N worker threads + `sync_channel(N*2)` for
     /// backpressure. `server_threads=0` mode skips constructing this
-    /// and falls back to legacy per-connection `thread::spawn`.
     pub struct ServerThreadPool {
-        tx: SyncSender<ServerJob>,
+        tx: Sender<ServerJob>,
         workers: Vec<std::thread::JoinHandle<()>>,
     }
 
-    const CHANNEL_BUFFER_MULTIPLIER: usize = 2;
+    /// Errors returned by [`ServerThreadPool::send_timeout`].
+    pub enum SendTimeoutError {
+        /// Channel was full for the entire timeout. Caller should
+        /// back off and retry (or drop the connection).
+        Timeout(ServerJob),
+        /// All worker threads have exited; the receiver was dropped.
+        Disconnected(ServerJob),
+    }
+
+    /// Counter of `send_timeout` timeouts across all pools in this
+    /// process. Exposed via [`ServerThreadPool::backpressure_count`].
+    pub static BACKPRESSURE_COUNT: std::sync::atomic::AtomicU64 =
+        std::sync::atomic::AtomicU64::new(0);
+    const CHANNEL_BUFFER_MULTIPLIER: usize = 4;
 
     impl ServerThreadPool {
         /// Start N worker threads + bounded sync_channel.
         #[allow(private_interfaces)]
         pub fn start(n: usize) -> Self {
             assert!(n > 0, "ServerThreadPool::start requires n > 0");
-            let (tx, rx) = sync_channel(n * CHANNEL_BUFFER_MULTIPLIER);
-            let rx = Arc::new(std::sync::Mutex::new(rx));
+            let (tx, rx) = bounded(n * CHANNEL_BUFFER_MULTIPLIER);
             let mut workers = Vec::with_capacity(n);
             for worker_id in 0..n {
                 let rx = rx.clone();
@@ -4416,6 +4451,31 @@ pub mod testing {
             self.tx.send(job).map_err(|e| e.0)
         }
 
+        /// Send a job with a timeout. Used by the accept loop so it
+        /// can poll the shutdown flag even under sustained backpressure.
+        pub fn send_timeout(
+            &self,
+            job: ServerJob,
+            timeout: std::time::Duration,
+        ) -> Result<(), SendTimeoutError> {
+            match self.tx.send_timeout(job, timeout) {
+                Ok(()) => Ok(()),
+                Err(crossbeam_channel::SendTimeoutError::Timeout(j)) => {
+                    Err(SendTimeoutError::Timeout(j))
+                }
+                Err(crossbeam_channel::SendTimeoutError::Disconnected(j)) => {
+                    Err(SendTimeoutError::Disconnected(j))
+                }
+            }
+        }
+
+        /// Backpressure counter incremented every time a `send_timeout`
+        /// returned `Timeout`. Exposed for tests that want to assert the
+        /// pool actually exercised backpressure.
+        pub fn backpressure_count(&self) -> u64 {
+            BACKPRESSURE_COUNT.load(std::sync::atomic::Ordering::Relaxed)
+        }
+
         /// Drop the sender so workers exit their recv loop, then join.
         pub fn join(self) {
             drop(self.tx);
@@ -4430,34 +4490,17 @@ pub mod testing {
         }
     }
 
-    fn worker_loop(rx: Arc<std::sync::Mutex<Receiver<ServerJob>>>, worker_id: usize) {
+    fn worker_loop(rx: Receiver<ServerJob>, worker_id: usize) {
         loop {
-            let job = {
-                // G13-OLTP-1: poisoning recovery. All workers share the
-                // same `Arc<Mutex<Receiver<ServerJob>>>`. If one worker
-                // panics while holding the lock (e.g. inside an
-                // earlier `rx.recv()` or in code that races the
-                // catch_unwind boundary), every other worker's
-                // `rx.lock().expect(...)` would panic, taking down the
-                // entire pool. Recover via `into_inner()` so the
-                // surviving workers keep serving.
-                let rx = match rx.lock() {
-                    Ok(g) => g,
-                    Err(poisoned) => {
-                        tracing::error!("worker {worker_id}: recovered worker mutex from poison");
-                        poisoned.into_inner()
-                    }
-                };
-                match rx.recv() {
-                    Ok(job) => job,
-                    Err(_) => {
-                        tracing::debug!("worker {worker_id}: channel closed, exiting");
-                        return;
-                    }
+            let job = match rx.recv() {
+                Ok(job) => job,
+                Err(_) => {
+                    tracing::debug!("worker {worker_id}: channel closed, exiting");
+                    return;
                 }
             };
-            // Panic isolation: one connection's panic doesn't kill the worker.
-            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+             // Panic isolation: one connection's panic doesn't kill the worker.
+             let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 crate::handle_connection(
                     job.stream,
                     job.addr,
