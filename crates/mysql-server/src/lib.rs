@@ -2094,12 +2094,26 @@ fn infer_column_types(
     cols.iter().map(|_| "VARCHAR(255)".to_string()).collect()
 }
 
-#[allow(clippy::type_complexity)]
+/// G13-OLTP-1: classify read-only statements. SELECT / SHOW / DESCRIBE
+/// can run on a shared read lock; everything else needs the exclusive
+/// write lock. Returning the inner reference (not just bool) lets the
+/// dispatch site acquire the right lock and call the matching `&self`
+/// execute method.
+enum ReadOnlyStmt<'a> {
+    Select(&'a sqlrustgo_parser::parser::SelectStatement),
+    Show(&'a sqlrustgo_parser::parser::ShowStatement),
+    Describe(&'a sqlrustgo_parser::parser::DescribeStatement),
+}
+fn read_only_stmt(stmt: &Statement) -> Option<ReadOnlyStmt<'_>> {
+    match stmt {
+        Statement::Select(s) => Some(ReadOnlyStmt::Select(s)),
+        Statement::Show(s) => Some(ReadOnlyStmt::Show(s)),
+        Statement::Describe(s) => Some(ReadOnlyStmt::Describe(s)),
+        _ => None,
+    }
+}
 fn is_select_stmt(stmt: &Statement) -> bool {
-    matches!(
-        stmt,
-        Statement::Select(_) | Statement::Show(_) | Statement::Describe(_)
-    )
+    read_only_stmt(stmt).is_some()
 }
 
 /// Split a multi-statement query string into top-level statement text
@@ -2513,9 +2527,23 @@ fn do_command_loop<S: Read + Write>(
                         .clone()
                         .unwrap_or_else(|| std::path::PathBuf::from("/tmp"));
                     let bulk_buf = cfg.bulk_insert_buffer_size;
+                    // G13-OLTP-1: poisoning recovery on the engine
+                    // write lock. A previous LOAD DATA may have
+                    // panicked mid-insert (e.g. parse_tbl_line on
+                    // a malformed row), leaving the RwLock poisoned.
+                    // The previous `engine.write().unwrap()` would
+                    // then re-panic on every subsequent LOAD DATA.
+                    // Recover via `into_inner()` and continue.
+                    let mut eng_guard = match engine.write() {
+                        Ok(g) => g,
+                        Err(poisoned) => {
+                            tracing::warn!("recovered engine from poisoned write lock (LOAD DATA)");
+                            poisoned.into_inner()
+                        }
+                    };
                     let n = match handle_load_local_infile(
                         stream,
-                        &mut engine.write().unwrap(),
+                        &mut eng_guard,
                         &path,
                         &table,
                         delim,
@@ -2576,18 +2604,44 @@ fn do_command_loop<S: Read + Write>(
                 let mut had_error = false;
                 for stmt_sql in &stmt_texts {
                     let parsed = parse(stmt_sql);
-                    let is_select = parsed.as_ref().map(is_select_stmt).unwrap_or(false);
-                    // G13-OLTP-1: poisoning recovery - if lock is poisoned, recover and continue
-                    let result = match engine.write() {
-                        Ok(mut eng) => eng.execute(stmt_sql),
-                        Err(poisoned) => {
-                            let mut eng = poisoned.into_inner();
-                            tracing::warn!("recovered engine from poisoned write lock");
-                            eng.execute(stmt_sql)
+                    // G13-OLTP-1: pick read-vs-write lock based on AST.
+                    let is_read_only = parsed
+                        .as_ref()
+                        .ok()
+                        .and_then(|s| read_only_stmt(s).map(|_| s));
+                    // G13-OLTP-1: poisoning recovery in both branches.
+                    let result = if let Some(stmt) = is_read_only {
+                        let rstmt = read_only_stmt(stmt);
+                        match engine.read() {
+                            Ok(eng) => match rstmt {
+                                Some(ReadOnlyStmt::Select(s)) => eng.execute_select(s),
+                                Some(ReadOnlyStmt::Show(s)) => eng.execute_show(s),
+                                Some(ReadOnlyStmt::Describe(s)) => eng.execute_describe(s),
+                                None => unreachable!("is_read_only implied rstmt is Some"),
+                            },
+                            Err(poisoned) => {
+                                let eng = poisoned.into_inner();
+                                tracing::warn!("recovered engine from poisoned read lock");
+                                match rstmt {
+                                    Some(ReadOnlyStmt::Select(s)) => eng.execute_select(s),
+                                    Some(ReadOnlyStmt::Show(s)) => eng.execute_show(s),
+                                    Some(ReadOnlyStmt::Describe(s)) => eng.execute_describe(s),
+                                    None => unreachable!("is_read_only implied rstmt is Some"),
+                                }
+                            }
+                        }
+                    } else {
+                        match engine.write() {
+                            Ok(mut eng) => eng.execute(stmt_sql),
+                            Err(poisoned) => {
+                                let mut eng = poisoned.into_inner();
+                                tracing::warn!("recovered engine from poisoned write lock");
+                                eng.execute(stmt_sql)
+                            }
                         }
                     };
                     match result {
-                        Ok(r) if is_select => {
+                        Ok(r) if is_read_only.is_some() => {
                             let cols: Vec<String> = r
                                 .rows
                                 .first()
@@ -2830,24 +2884,49 @@ fn do_command_loop<S: Read + Write>(
                 let final_sql = replace_placeholders(&stmt_sql, &params);
                 tracing::info!("STMT EXECUTE (id={}): {}", stmt_id, final_sql);
                 // G13-OLTP-1: parse first to determine SELECT vs DDL/DML,
-                // then acquire the appropriate lock (read for SELECT, write for DDL/DML).
+                // then acquire the appropriate lock (read for SELECT,
+                // write for DDL/DML).
                 let parsed = parse(&final_sql);
-                let is_select = parsed.as_ref().map(is_select_stmt).unwrap_or(false);
-                // G13-OLTP-1: DDL/DML use exclusive write lock with poisoning recovery.
-                // If a previous thread panicked while holding the lock, the RwLock poisons
-                // all subsequent .read()/.write() calls. Using .into_inner() recovery
-                // allows the server to continue serving queries rather than hard-fail.
-                // G13-OLTP-1: poisoning recovery - recover from poisoned state and continue
-                let result = match engine.write() {
-                    Ok(mut eng) => eng.execute(&final_sql),
-                    Err(poisoned) => {
-                        let mut eng = poisoned.into_inner();
-                        tracing::warn!("recovered engine from poisoned write lock (stmt execute)");
-                        eng.execute(&final_sql)
+                let is_read_only = parsed
+                    .as_ref()
+                    .ok()
+                    .and_then(|s| read_only_stmt(s).map(|_| s));
+                let result = if let Some(stmt) = is_read_only {
+                    let rstmt = read_only_stmt(stmt);
+                    match engine.read() {
+                        Ok(eng) => match rstmt {
+                            Some(ReadOnlyStmt::Select(s)) => eng.execute_select(s),
+                            Some(ReadOnlyStmt::Show(s)) => eng.execute_show(s),
+                            Some(ReadOnlyStmt::Describe(s)) => eng.execute_describe(s),
+                            None => unreachable!("is_read_only implied rstmt is Some"),
+                        },
+                        Err(poisoned) => {
+                            let eng = poisoned.into_inner();
+                            tracing::warn!(
+                                "recovered engine from poisoned read lock (stmt execute)"
+                            );
+                            match rstmt {
+                                Some(ReadOnlyStmt::Select(s)) => eng.execute_select(s),
+                                Some(ReadOnlyStmt::Show(s)) => eng.execute_show(s),
+                                Some(ReadOnlyStmt::Describe(s)) => eng.execute_describe(s),
+                                None => unreachable!("is_read_only implied rstmt is Some"),
+                            }
+                        }
+                    }
+                } else {
+                    match engine.write() {
+                        Ok(mut eng) => eng.execute(&final_sql),
+                        Err(poisoned) => {
+                            let mut eng = poisoned.into_inner();
+                            tracing::warn!(
+                                "recovered engine from poisoned write lock (stmt execute)"
+                            );
+                            eng.execute(&final_sql)
+                        }
                     }
                 };
                 match result {
-                    Ok(r) if is_select => {
+                    Ok(r) if is_read_only.is_some() => {
                         let c: Vec<String> = r
                             .rows
                             .first()
@@ -3217,11 +3296,19 @@ pub(crate) fn run_server_with_listener_and_shutdown_with_bootstrap_tables_and_sq
                 .join("data");
             match std::env::var("SQLRUSTGO_DATA_DIR") {
                 Ok(s) if !s.is_empty() => {
-                    tracing::info!("data_dir from SQLRUSTGO_DATA_DIR env: {} (port {})", s, port);
+                    tracing::info!(
+                        "data_dir from SQLRUSTGO_DATA_DIR env: {} (port {})",
+                        s,
+                        port
+                    );
                     std::path::PathBuf::from(s)
                 }
                 _ => {
-                    tracing::info!("data_dir default (cwd/.sqlrustgo/data/): {} (port {})", cwd_default.display(), port);
+                    tracing::info!(
+                        "data_dir default (cwd/.sqlrustgo/data/): {} (port {})",
+                        cwd_default.display(),
+                        port
+                    );
                     cwd_default
                 }
             }
@@ -4346,7 +4433,21 @@ pub mod testing {
     fn worker_loop(rx: Arc<std::sync::Mutex<Receiver<ServerJob>>>, worker_id: usize) {
         loop {
             let job = {
-                let rx = rx.lock().expect("worker mutex poisoned");
+                // G13-OLTP-1: poisoning recovery. All workers share the
+                // same `Arc<Mutex<Receiver<ServerJob>>>`. If one worker
+                // panics while holding the lock (e.g. inside an
+                // earlier `rx.recv()` or in code that races the
+                // catch_unwind boundary), every other worker's
+                // `rx.lock().expect(...)` would panic, taking down the
+                // entire pool. Recover via `into_inner()` so the
+                // surviving workers keep serving.
+                let rx = match rx.lock() {
+                    Ok(g) => g,
+                    Err(poisoned) => {
+                        tracing::error!("worker {worker_id}: recovered worker mutex from poison");
+                        poisoned.into_inner()
+                    }
+                };
                 match rx.recv() {
                     Ok(job) => job,
                     Err(_) => {
