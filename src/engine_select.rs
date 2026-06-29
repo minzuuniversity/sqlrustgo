@@ -153,7 +153,7 @@ fn value_to_literal_string_v(v: &Value) -> String {
 }
 
 impl<S: StorageEngine + 'static> ExecutionEngine<S> {
-    pub(crate) fn execute_select(&self, select: &SelectStatement) -> SqlResult<ExecutorResult> {
+    pub fn execute_select(&self, select: &SelectStatement) -> SqlResult<ExecutorResult> {
         // Sprint 1b fix (Q7/Q8/Q9): handle FROM (subquery) AS alias by
         // first executing the subquery to materialize its result into a
         // synthetic in-memory table, then running the outer SELECT against
