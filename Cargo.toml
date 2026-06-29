@@ -565,7 +565,6 @@ path = "tests/soak_test.rs"
 name = "soak_test_harness"
 path = "tests/soak_test_harness.rs"
 [[test]]
-[[test]]
 name = "g13_oltp1_concurrent_select_test"
 path = "tests/g13_oltp1_concurrent_select_test.rs"
 [[test]]
