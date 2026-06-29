@@ -17,7 +17,11 @@
 #   0  = ALL tests pass (or 0 failures)
 #   1  = ANY test failed (blocker)
 #   2  = DRIFT (some ignored, no failures)
-# =============================================================================
+#
+# Bash compatibility: works on bash 3.2.57 (macOS default) AND bash 4+.
+# The original implementation used `declare -A` which is bash 4+ only.
+# We use a temp file (one line per `path<TAB>name`) and grep-based lookup
+# which works in all bash versions.
 
 set -uo pipefail
 
@@ -37,30 +41,43 @@ echo
 
 # Find all test files
 TEST_FILES=$(find tests -name "*.rs" -type f ! -path "*/common/*" ! -name "mod.rs" 2>/dev/null | sort)
-TOTAL_FILES=$(echo "$TEST_FILES" | wc -l)
+TOTAL_FILES=$(echo "$TEST_FILES" | wc -l | tr -d ' ')
 echo "Test files discovered: $TOTAL_FILES"
 
-# Build a map of file path -> Cargo [[test]] name.
-# We cannot just replace path separators with underscores because Cargo allows
-# custom `name =` aliases in [[test]] blocks (e.g. tests/ci/buffer_pool_test.rs
-# has name = "buffer_pool_test", not "ci_buffer_pool_test").
-declare -A PATH_TO_NAME
-while IFS=$'\t' read -r t_path t_name; do
-    [[ -n "$t_path" && -n "$t_name" ]] && PATH_TO_NAME["$t_path"]="$t_name"
-done < <(awk '
+# Build a temp file `path<TAB>name` per line for [[test]] entries.
+# bash 3.2.57 does NOT support `declare -A`; we use grep over a temp file.
+# This is O(n) per lookup but the test set is ~240 files, well under
+# any perf concern.
+PATH_TO_NAME_FILE=$(mktemp -t path_to_name.XXXXXX)
+trap 'rm -f "$PATH_TO_NAME_FILE"' EXIT
+
+awk '
     /^\[\[test\]\]/{ in_t = 1; name = ""; path = ""; next }
     in_t && /^name = /{ gsub(/name = "|"/, "", $0); name = $0 }
     in_t && /^path = /{ gsub(/path = "|"/, "", $0); path = $0; print path "\t" name; in_t = 0 }
-' Cargo.toml)
+' Cargo.toml > "$PATH_TO_NAME_FILE"
+
+# Bash 3.2 / 4 portable lookup function: PATH_TO_NAME <path>
+# Echoes the cargo test name for a given path (empty if no explicit entry).
+PATH_TO_NAME() {
+    local key="$1"
+    # Strip leading "tests/" because we lookup by that key in the temp file.
+    # Actually the temp file keys include "tests/..." since Cargo paths are
+    # relative to the workspace root and [[test]] paths look like
+    # "tests/foo.rs". So we lookup the full path.
+    grep -F -e "$(printf '%s\t' "$key")" "$PATH_TO_NAME_FILE" 2>/dev/null \
+        | head -1 | cut -f2-
+}
 
 # Convert each test file to its exact Cargo test name
 TEST_NAMES=()
 TEST_PATHS=()
 for f in $TEST_FILES; do
     rel="${f#tests/}"
-    # Lookup with full tests/ prefix (PATH_TO_NAME keys include tests/)
-    if [[ -n "${PATH_TO_NAME[$f]:-}" ]]; then
-        TEST_NAMES+=("${PATH_TO_NAME[$f]}")
+    # Lookup with full tests/ prefix
+    explicit_name=$(PATH_TO_NAME "$f")
+    if [[ -n "$explicit_name" ]]; then
+        TEST_NAMES+=("$explicit_name")
         TEST_PATHS+=("$f")
     else
         # No explicit [[test]] entry — use path-to-name heuristic
