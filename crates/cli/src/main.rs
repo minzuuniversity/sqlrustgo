@@ -98,8 +98,7 @@ fn main() {
             sql,
             json,
         } => {
-            if let Err(e) = sqlrustgo_soak::exec::run_exec(&host, port, &user, &password, &sql, json)
-            {
+            if let Err(e) = sqlrustgo_soak::exec::run_exec(&host, port, &user, &password, &sql, json) {
                 eprintln!("Error: {e}");
                 std::process::exit(1);
             }
