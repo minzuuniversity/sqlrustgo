@@ -98,7 +98,7 @@ fn main() {
             sql,
             json,
         } => {
-            if let Err(e) = sqlrustgo_cli::exec::run_exec(&host, port, &user, &password, &sql, json) {
+            if let Err(e) = sqlrustgo_soak::exec::run_exec(&host, port, &user, &password, &sql, json) {
                 eprintln!("Error: {e}");
                 std::process::exit(1);
             }
@@ -109,7 +109,7 @@ fn main() {
             user,
             password,
         } => {
-            if let Err(e) = sqlrustgo_cli::repl::run_repl(&host, port, &user, &password) {
+            if let Err(e) = sqlrustgo_soak::repl::run_repl(&host, port, &user, &password) {
                 eprintln!("REPL error: {e}");
                 std::process::exit(1);
             }
@@ -125,7 +125,7 @@ fn main() {
             report_interval,
             json,
         } => {
-            let config = sqlrustgo_cli::soak::SoakConfig {
+            let config = sqlrustgo_soak::soak::SoakConfig {
                 host,
                 port,
                 user,
@@ -135,7 +135,7 @@ fn main() {
                 query_file,
                 report_interval,
             };
-            match sqlrustgo_cli::soak::run_soak(&config) {
+            match sqlrustgo_soak::soak::run_soak(&config) {
                 Ok(report) => {
                     if json {
                         let output = serde_json::to_string_pretty(&serde_json::json!({
@@ -154,7 +154,7 @@ fn main() {
                             Err(e) => eprintln!("JSON error: {e}"),
                         }
                     } else {
-                        sqlrustgo_cli::soak::print_report(&report);
+                        sqlrustgo_soak::soak::print_report(&report);
                     }
                     if report.errors > 0 || report.queries_executed == 0 {
                         std::process::exit(1);
