@@ -2162,7 +2162,10 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
 
     /// Dispatch `Statement::Show` to a concrete sub-handler.
     /// PR-SHOW-TABLES: P1 backlog fix for v3.7.0.
-    fn execute_show(&self, show: &ShowStatement) -> SqlResult<ExecutorResult> {
+    /// G13-OLTP-1: `pub(crate)` so the mysql-server dispatch site can
+    /// call this on a read-lock guard (the COM_QUERY / COM_STMT_EXECUTE
+    /// path uses `&self` to allow concurrent SELECTs).
+    pub fn execute_show(&self, show: &ShowStatement) -> SqlResult<ExecutorResult> {
         match show {
             ShowStatement::Tables => self.execute_show_tables(),
             ShowStatement::Databases => self.execute_show_databases(),
@@ -2224,7 +2227,9 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     }
 
     /// DESCRIBE table — return one row per column with Field/Type/Null/Key/Default/Extra.
-    fn execute_describe(&self, desc: &DescribeStatement) -> SqlResult<ExecutorResult> {
+    /// G13-OLTP-1: `pub(crate)` so the mysql-server dispatch site can
+    /// call this on a read-lock guard.
+    pub fn execute_describe(&self, desc: &DescribeStatement) -> SqlResult<ExecutorResult> {
         let storage = self.storage.read().unwrap();
         if !storage.list_tables().iter().any(|n| n == &desc.table) {
             return Err(SqlError::ExecutionError(format!(
