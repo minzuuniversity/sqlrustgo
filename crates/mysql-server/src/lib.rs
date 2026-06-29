@@ -4499,8 +4499,8 @@ pub mod testing {
                     return;
                 }
             };
-             // Panic isolation: one connection's panic doesn't kill the worker.
-             let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            // Panic isolation: one connection's panic doesn't kill the worker.
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 crate::handle_connection(
                     job.stream,
                     job.addr,
