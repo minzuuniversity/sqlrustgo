@@ -2112,6 +2112,7 @@ fn read_only_stmt(stmt: &Statement) -> Option<ReadOnlyStmt<'_>> {
         _ => None,
     }
 }
+#[cfg(test)]
 fn is_select_stmt(stmt: &Statement) -> bool {
     read_only_stmt(stmt).is_some()
 }
@@ -3272,6 +3273,7 @@ pub fn run_server_with_listener(listener: TcpListener) -> MySqlResult<()> {
 /// is **not** created or removed by the server: lifecycle is owned
 /// by the caller (matching the convention already documented on
 /// `EphemeralConfig::data_dir`).
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn run_server_with_listener_and_shutdown_with_bootstrap_tables_and_sql(
     listener: TcpListener,
     shutdown: std::sync::Arc<std::sync::atomic::AtomicBool>,

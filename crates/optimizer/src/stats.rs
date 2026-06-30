@@ -400,22 +400,23 @@ impl StatsCollector for DefaultStatsCollector {
                     }
                     Value::Text(_) | Value::Blob(_) => {
                         // For non-numeric types, just track min/max lexicographically
+                        let s = value.to_string();
+                        let update_min = |current: &Option<Value>| {
+                            matches!(current, Some(Value::Text(_) | Value::Blob(_)))
+                                && s < current.as_ref().unwrap().to_string()
+                        };
+                        let update_max = |current: &Option<Value>| {
+                            matches!(current, Some(Value::Text(_) | Value::Blob(_)))
+                                && s > current.as_ref().unwrap().to_string()
+                        };
                         match &min_value {
                             None => min_value = Some(value.clone()),
-                            Some(Value::Text(_)) | Some(Value::Blob(_)) => {
-                                if value.to_string() < min_value.as_ref().unwrap().to_string() {
-                                    min_value = Some(value.clone());
-                                }
-                            }
+                            cur if update_min(cur) => min_value = Some(value.clone()),
                             _ => {}
                         }
                         match &max_value {
                             None => max_value = Some(value.clone()),
-                            Some(Value::Text(_)) | Some(Value::Blob(_)) => {
-                                if value.to_string() > max_value.as_ref().unwrap().to_string() {
-                                    max_value = Some(value.clone());
-                                }
-                            }
+                            cur if update_max(cur) => max_value = Some(value.clone()),
                             _ => {}
                         }
                     }
