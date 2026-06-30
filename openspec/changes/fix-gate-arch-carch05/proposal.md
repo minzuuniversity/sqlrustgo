@@ -54,3 +54,7 @@ _None — no public API changes._
 A new Gitea issue should be filed: **"Refactor: split `src/execution_engine.rs` per AD-001 / PR-900 plan"**. This is a multi-PR refactor; it should be its own epic, not bundled with the gate fix.
 
 When that refactor lands and the file drops below 1500 lines, the gate can be re-tightened to AD-001 target (1500) — a one-line `CARCH05_LIMIT=1500` change.
+
+## Follow-up (post-merge)
+
+Gitea issue #3661 (http://192.168.0.252:3000/openclaw/sqlrustgo/issues/3661) tracks the proper PR-900 refactor. When that lands, revert the CARCH05_LIMIT to 1500 in a follow-up commit.
