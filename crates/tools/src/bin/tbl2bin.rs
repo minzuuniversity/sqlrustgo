@@ -9,11 +9,11 @@
 //!   tbl2bin /home/openclaw/tpch-dbgen-master /tmp/tpch-bin
 //!   tbl2bin /home/openclaw/tpch-dbgen-master /tmp/tpch-bin lineitem orders
 
+use sqlrustgo_storage::engine::{ColumnDefinition, TableData, TableInfo};
+use sqlrustgo_types::Value;
 use std::fs::{self, File};
 use std::io::{BufRead, BufReader, BufWriter, Write};
 use std::path::Path;
-use sqlrustgo_storage::engine::{ColumnDefinition, TableData, TableInfo};
-use sqlrustgo_types::Value;
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
