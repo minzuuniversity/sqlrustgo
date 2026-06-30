@@ -22,7 +22,7 @@
 
 mod common;
 use common::MySqlTestClient;
-use sqlrustgo_mysql_server::testing::{start_ephemeral, BACKPRESSURE_COUNT, EphemeralConfig};
+use sqlrustgo_mysql_server::testing::{start_ephemeral, EphemeralConfig, BACKPRESSURE_COUNT};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};

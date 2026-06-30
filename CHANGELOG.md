@@ -1,9 +1,155 @@
+# SQLRustGo v3.9.0 Changelog
+
+> **版本**: v3.9.0
+> **类型**: **Production Readiness Release** (工程化版本, 非功能版本)
+> **分支**: `develop/v3.9.0` (从 `main@v3.8.0` fork)
+> **创建日期**: 2026-06-05
+> **GA 目标**: 2026-12-15 (per Hermes audit #3252, deferred from 2026-09-23)
+> **当前阶段**: **RC7** (2026-06-12, awaiting 24h/72h/168h soak for GA cut, see GA_GATE_REPORT.md)
+> **前版本**: v3.8.0
+
+---
+
+## 2026-07-01 — Gate Lint Drift 修复
+
+`gate.sh` L1 门禁在 RC7 之后暴露 6 个 clippy 错误与 4 文件 fmt 漂移, 已全部修复:
+
+### Fixed
+
+| 文件 | 变更 |
+|------|------|
+| `crates/storage/src/binary_storage.rs` | 删除未使用 `use std::sync::Arc;` 与 `Read`, 删除死方法 `ensure_loaded` |
+| `crates/storage/src/checkpoint.rs:185` | `sort_by` → `sort_by_key(\|b\| Reverse(b.timestamp))` |
+| `crates/storage/src/engine.rs:150` | 折叠嵌套 `if` 进 `match` arm guard |
+| `crates/storage/src/wal_legacy.rs:913` | `sort_by` → `sort_by_key(\|a\| a.archive_id)` |
+| `crates/optimizer/src/stats.rs:401` | 提取闭包 `update_min/update_max`, 消除嵌套 `if` 触发 `collapsible_match` |
+| `crates/executor/src/executor_metrics.rs:66` | `if total == 0` 改 `checked_div(...).unwrap_or(0)` |
+| `crates/telemetry/src/lib.rs:153` | 同上 `checked_div` 改写 |
+| `crates/vector/src/ivfpq.rs:144` | 移除冗余 `.into_iter()` |
+| `crates/mysql-server/src/lib.rs:2115` | 死函数 `is_select_stmt` 加 `#[cfg(test)]` |
+| `crates/mysql-server/src/lib.rs:3276` | 8-arg `run_server_*` 加 `#[allow(clippy::too_many_arguments)]` |
+
+### fmt 漂移 (4 文件)
+
+- `crates/cli/src/main.rs:98`
+- `crates/storage/src/binary_storage.rs:566, 599, 641`
+- `crates/tools/src/bin/tbl2bin.rs:9, 15`
+- `tests/mixed_workload_deadlock_regression_test.rs:22`
+
+### 验证
+
+```
+bash gate/gate.sh v3.9.0
+[L1] cargo build...           [PASS]
+[L1] cargo test --lib...      [PASS]
+[L1] clippy...                [PASS]
+[L1] cargo fmt...             [PASS]
+=== Gate Result: PASSED ===
+```
+
+---
+
+## 2026-07-01 — Gate Lint Drift 修复
+
+`gate.sh` L1 门禁在 RC7 之后暴露 6 个 clippy 错误与 4 文件 fmt 漂移, 已全部修复:
+
+### Fixed
+
+| 文件 | 变更 |
+|------|------|
+| `crates/storage/src/binary_storage.rs` | 删除未使用 `use std::sync::Arc;` 与 `Read`, 删除死方法 `ensure_loaded` |
+| `crates/storage/src/checkpoint.rs:185` | `sort_by` → `sort_by_key(\|b\| Reverse(b.timestamp))` |
+| `crates/storage/src/engine.rs:150` | 折叠嵌套 `if` 进 `match` arm guard |
+| `crates/storage/src/wal_legacy.rs:913` | `sort_by` → `sort_by_key(\|a\| a.archive_id)` |
+| `crates/optimizer/src/stats.rs:401` | 提取闭包 `update_min/update_max`, 消除嵌套 `if` 触发 `collapsible_match` |
+| `crates/executor/src/executor_metrics.rs:66` | `if total == 0` 改 `checked_div(...).unwrap_or(0)` |
+| `crates/telemetry/src/lib.rs:153` | 同上 `checked_div` 改写 |
+| `crates/vector/src/ivfpq.rs:144` | 移除冗余 `.into_iter()` |
+| `crates/mysql-server/src/lib.rs:2115` | 死函数 `is_select_stmt` 加 `#[cfg(test)]` |
+| `crates/mysql-server/src/lib.rs:3276` | 8-arg `run_server_*` 加 `#[allow(clippy::too_many_arguments)]` |
+
+### fmt 漂移 (4 文件)
+
+- `crates/cli/src/main.rs:98`
+- `crates/storage/src/binary_storage.rs:566, 599, 641`
+- `crates/tools/src/bin/tbl2bin.rs:9, 15`
+- `tests/mixed_workload_deadlock_regression_test.rs:22`
+
+### 验证
+
+```
+bash gate/gate.sh v3.9.0
+[L1] cargo build...           [PASS]
+[L1] cargo test --lib...      [PASS]
+[L1] clippy...                [PASS]
+[L1] cargo fmt...             [PASS]
+=== Gate Result: PASSED ===
+```
+
+---
+
+## 2026-07-01 — Gate Lint Drift 修复
+
+`gate.sh` L1 门禁在 RC7 之后暴露 6 个 clippy 错误与 4 文件 fmt 漂移, 已全部修复:
+
+### Fixed
+
+| 文件 | 变更 |
+|------|------|
+| `crates/storage/src/binary_storage.rs` | 删除未使用 `use std::sync::Arc;` 与 `Read`, 删除死方法 `ensure_loaded` |
+| `crates/storage/src/checkpoint.rs:185` | `sort_by` → `sort_by_key(\|b\| Reverse(b.timestamp))` |
+| `crates/storage/src/engine.rs:150` | 折叠嵌套 `if` 进 `match` arm guard |
+| `crates/storage/src/wal_legacy.rs:913` | `sort_by` → `sort_by_key(\|a\| a.archive_id)` |
+| `crates/optimizer/src/stats.rs:401` | 提取闭包 `update_min/update_max`, 消除嵌套 `if` 触发 `collapsible_match` |
+| `crates/executor/src/executor_metrics.rs:66` | `if total == 0` 改 `checked_div(...).unwrap_or(0)` |
+| `crates/telemetry/src/lib.rs:153` | 同上 `checked_div` 改写 |
+| `crates/vector/src/ivfpq.rs:144` | 移除冗余 `.into_iter()` |
+| `crates/mysql-server/src/lib.rs:2115` | 死函数 `is_select_stmt` 加 `#[cfg(test)]` |
+| `crates/mysql-server/src/lib.rs:3276` | 8-arg `run_server_*` 加 `#[allow(clippy::too_many_arguments)]` |
+
+### fmt 漂移 (4 文件)
+
+- `crates/cli/src/main.rs:98`
+- `crates/storage/src/binary_storage.rs:566, 599, 641`
+- `crates/tools/src/bin/tbl2bin.rs:9, 15`
+- `tests/mixed_workload_deadlock_regression_test.rs:22`
+
+### 验证
+
+```
+bash gate/gate.sh v3.9.0
+[L1] cargo build...           [PASS]
+[L1] cargo test --lib...      [PASS]
+[L1] clippy...                [PASS]
+[L1] cargo fmt...             [PASS]
+=== Gate Result: PASSED ===
+```
+
+---
+
 # 变更日志
 
 SQLRustGo 的所有显着更改都将记录在此文件中。
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased] - 2026-07-01
+
+### Fixed (Gate Lint Drift)
+
+- **PR (this)**: `gate.sh` L1 门禁 — clippy 6 项 / fmt 4 文件 lint 漂移修复。
+  - `crates/storage/src/binary_storage.rs`: 删除未使用 `use std::sync::Arc;` 与 `Read`, 删除死代码 `ensure_loaded` 方法。
+  - `crates/storage/src/checkpoint.rs:185`: `sort_by` 改 `sort_by_key(|b| Reverse(b.timestamp))`。
+  - `crates/storage/src/engine.rs:150`: 折叠嵌套 `if` 进 `match` arm guard。
+  - `crates/storage/src/wal_legacy.rs:913`: `sort_by` 改 `sort_by_key(|a| a.archive_id)`。
+  - `crates/optimizer/src/stats.rs:401`: 重构 `match` arm 用闭包 guard 消除嵌套 `if`。
+  - `crates/executor/src/executor_metrics.rs:66`: `if total == 0` 改 `checked_div(...).unwrap_or(0)`。
+  - `crates/telemetry/src/lib.rs:153`: 同上 `checked_div` 改写。
+  - `crates/vector/src/ivfpq.rs:144`: 移除冗余 `.into_iter()`。
+  - `crates/mysql-server/src/lib.rs`: 死函数 `is_select_stmt` 加 `#[cfg(test)]`, 8-arg `run_server_*` 加 `#[allow(clippy::too_many_arguments)]`。
+  - `cargo fmt --all` 应用 4 文件格式修正 (`binary_storage.rs` / `cli/src/main.rs` / `tools/src/bin/tbl2bin.rs` / `tests/mixed_workload_deadlock_regression_test.rs`)。
+  - **验证**: `bash gate/gate.sh v3.9.0` 退出 0, L1 build / test-lib / clippy / fmt 全部 PASS。
 
 ## [Unreleased] - 2026-06-05
 
