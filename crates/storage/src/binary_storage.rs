@@ -8,9 +8,8 @@ use crate::engine::{
 };
 use std::collections::HashMap;
 use std::fs::File;
-use std::io::{BufWriter, Read, Write};
+use std::io::{BufWriter, Write};
 use std::path::PathBuf;
-use std::sync::Arc;
 
 /// Binary storage for tables
 pub struct BinaryTableStorage {
@@ -65,29 +64,6 @@ impl BinaryTableStorage {
 
     fn table_path(&self, table: &str) -> PathBuf {
         self.data_dir.join(format!("{}.bin", table))
-    }
-
-    /// Ensure a table is loaded into memory (lazy loading)
-    fn ensure_loaded(&mut self, table: &str) -> SqlResult<()> {
-        if !self.loaded.get(table).copied().unwrap_or(false) {
-            match self.load(table) {
-                Ok(data) => {
-                    self.tables.insert(table.to_string(), data);
-                    self.loaded.insert(table.to_string(), true);
-                }
-                Err(e) => {
-                    // If file doesn't exist, that's OK - table will be empty
-                    if e.kind() != std::io::ErrorKind::NotFound {
-                        return Err(SqlError::ExecutionError(format!(
-                            "load table {}: {}",
-                            table, e
-                        )));
-                    }
-                    self.loaded.insert(table.to_string(), true);
-                }
-            }
-        }
-        Ok(())
     }
 
     /// Save table in binary format (BINT v2).
@@ -566,7 +542,9 @@ pub struct BoxStorageEngine {
 impl BoxStorageEngine {
     /// Wrap any `S: StorageEngine` in a `BoxStorageEngine`.
     pub fn new<S: StorageEngine + 'static>(inner: S) -> Self {
-        Self { inner: Box::new(inner) }
+        Self {
+            inner: Box::new(inner),
+        }
     }
 }
 
@@ -599,10 +577,20 @@ impl StorageEngine for BoxStorageEngine {
     fn delete_if(&mut self, table: &str, filter: &RowFilter) -> SqlResult<usize> {
         (**self).delete_if(table, filter)
     }
-    fn update(&mut self, table: &str, filters: &[Value], updates: &[(usize, Value)]) -> SqlResult<usize> {
+    fn update(
+        &mut self,
+        table: &str,
+        filters: &[Value],
+        updates: &[(usize, Value)],
+    ) -> SqlResult<usize> {
         (**self).update(table, filters, updates)
     }
-    fn update_if(&mut self, table: &str, filter: &RowFilter, mutation: &RowMutation) -> SqlResult<usize> {
+    fn update_if(
+        &mut self,
+        table: &str,
+        filter: &RowFilter,
+        mutation: &RowMutation,
+    ) -> SqlResult<usize> {
         (**self).update_if(table, filter, mutation)
     }
     fn create_database(&mut self, db_name: &str) -> SqlResult<()> {
@@ -641,7 +629,12 @@ impl StorageEngine for BoxStorageEngine {
     fn drop_column(&mut self, table: &str, column: &str) -> SqlResult<()> {
         (**self).drop_column(table, column)
     }
-    fn modify_column(&mut self, table: &str, column: &str, new_def: ColumnDefinition) -> SqlResult<()> {
+    fn modify_column(
+        &mut self,
+        table: &str,
+        column: &str,
+        new_def: ColumnDefinition,
+    ) -> SqlResult<()> {
         (**self).modify_column(table, column, new_def)
     }
     fn create_trigger(&mut self, info: TriggerInfo) -> SqlResult<()> {
