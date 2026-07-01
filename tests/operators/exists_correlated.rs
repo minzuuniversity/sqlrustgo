@@ -27,7 +27,7 @@ fn engine() -> ExecutionEngine<MemoryStorage> {
 // conditions fail; simple EXISTS works. #[ignore] until engine fix.
 #[test]
 #[ignore = "engine bug: correlated EXISTS with extra AND conditions returns no rows; see src/engine_select.rs:2812"]
- fn correlated_exists_simple_match() {
+fn correlated_exists_simple_match() {
     let mut e = engine();
     e.execute("CREATE TABLE orders (o_orderkey INTEGER)")
         .unwrap();
@@ -75,7 +75,7 @@ fn correlated_exists_no_match() {
 
 #[test]
 #[ignore = "engine bug: correlated NOT EXISTS with extra AND conditions; see src/engine_select.rs:2812"]
- fn correlated_not_exists() {
+fn correlated_not_exists() {
     let mut e = engine();
     e.execute("CREATE TABLE orders (o_orderkey INTEGER)")
         .unwrap();
