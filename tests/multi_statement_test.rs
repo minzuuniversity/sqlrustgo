@@ -133,7 +133,7 @@ fn expect_err(client: &mut MySqlTestClient) -> Result<Vec<u8>, String> {
 // #[ignore]'d until the engine fix lands.
 #[test]
 #[ignore = "engine bug: multi-statement batch with mid-batch error does not commit preceding INSERTs; see PR #3635"]
- fn test_multi_statement_executes_all() {
+fn test_multi_statement_executes_all() {
     use sqlrustgo_mysql_server::testing::{start_ephemeral, EphemeralConfig};
 
     // Use a fresh tempdir for the ephemeral server's data dir. A
