@@ -301,6 +301,116 @@ common_required_files:
   - "docs/governance/adr/INDEX.md"
 
 # =============================================================================
+# Gate definitions (G1-G16) — version-agnostic mapping
+# =============================================================================
+# Each gate is a specific concern (TPC-H baseline, ARCH-3 VtuGuard, etc).
+# The per-stage required_gates above reference these by file path; this
+# section provides the G-numbering for governance traceability and ADR
+# cross-references.
+#
+# Per-version: V390_TEST_PLAN.md (and siblings) provide version-specific
+# detail (work-effort, scenarios, perf targets). STAGE_CONFIG.yaml only
+# records the **name -> script** mapping, which is constant.
+#
+# Refs:
+#   - V390_TEST_PLAN.md (v3.9.0 G1-G16 detail, 481 lines)
+#   - V390_TEST_PLAN_SUPPLEMENT_PERF.md (G11-G15 detail)
+#   - V390_TEST_PLAN_ROUND2_REVIEW.md (G13/G16 rebalance)
+#   - GATE_CONDITIONS.md (Hard/Soft classification)
+gate_definitions:
+  G1:  # TPC-H 22/22 baseline (regression)
+    name: "TPC-H 22/22 baseline (regression)"
+    script: "scripts/gate/check_g1_tpch_baseline.sh"
+    alternative: "scripts/gate/check_g1_tpch_22_22.sh"
+    type: regression
+    stage_min: ALPHA  # must pass from ALPHA onward
+  G2:  # INT-2 ParallelExecutor integration
+    name: "INT-2 ParallelExecutor integration"
+    script: "scripts/gate/check_int_debt.sh"
+    type: e2e+perf
+    stage_min: BETA
+  G3:  # INT-3 Single Expression
+    name: "INT-3 Single Expression (expr merge)"
+    script: "scripts/gate/check_int_debt.sh"
+    type: unit+regression
+    stage_min: BETA
+  G4:  # ARCH-3 VtuGuard main path
+    name: "ARCH-3 VtuGuard main path (P0-1 Blocker-3)"
+    script: "scripts/gate/check_arch3_no_bypass.sh"
+    type: unit+gate-automated
+    stage_min: ALPHA  # per ADR-006a: VtuGuard must be enforced from ALPHA
+  G5:  # SEM-1 Savepoint MVCC
+    name: "SEM-1 Savepoint MVCC snapshot restore"
+    script: "scripts/gate/check_arch_sem_debt.sh"
+    type: unit+e2e
+    stage_min: BETA
+  G6:  # Backup/Restore 100+ scenarios
+    name: "Backup/Restore 100+ scenarios"
+    script: "scripts/gate/check_backup_restore.sh"
+    type: unit+e2e
+    stage_min: BETA
+  G7:  # 24h Soak (compressed-time)
+    name: "24h Soak (compressed-time, real 24h pending)"
+    script: "scripts/gate/check_full_gate_verification.sh"
+    type: long-running
+    stage_min: RC
+    note: "Per V390_TEST_PLAN_ROUND2_REVIEW: real 24h only at RC/GA, compressed-time for early stages"
+  G8:  # Crash Matrix 100+ scenarios
+    name: "Crash Matrix 100+ scenarios (kill -9 / OOM / disk full)"
+    script: "scripts/gate/check_drift_not_pass.sh"
+    type: unit+mock
+    stage_min: RC
+  G9:  # Upgrade Test
+    name: "Upgrade Test (v3.6/v3.7/v3.8 -> v3.9, 50+ paths)"
+    script: "scripts/gate/check_cross_version_debt.sh"
+    type: automated
+    stage_min: RC
+  G10: # Audit Log + Time Travel
+    name: "Audit Log + Time Travel (40+ tests)"
+    script: "scripts/gate/check_anti_fabrication.sh"
+    type: unit+e2e
+    stage_min: RC
+  G11: # QPS/TPS Benchmark
+    name: "QPS/TPS Benchmark"
+    script: "scripts/gate/check_g11_qps.sh"
+    type: perf
+    stage_min: RC
+  G12: # Sysbench OLTP
+    name: "Sysbench OLTP"
+    script: "scripts/gate/check_g12_sysbench.sh"
+    type: industry-benchmark
+    stage_min: RC
+  G13: # 24h+ Stability (real)
+    name: "24h+ Stability (real, hardware-blocked)"
+    script: "scripts/gate/check_g13_stability.sh"
+    type: long-running-real
+    stage_min: GA
+    note: "Per #3265/#3266: 72h/168h real SOAK blocked on hardware. GA gate only requires 24h minimum."
+  G14: # Real Crash Test
+    name: "Real Crash Test (process-level kill -9)"
+    script: "scripts/gate/check_g14_real_crash.sh"
+    type: process-level
+    stage_min: RC
+  G15: # Performance Report
+    name: "Performance Report (GA acceptance)"
+    script: "scripts/gate/check_g15_perf_report.sh"
+    type: report
+    stage_min: GA
+  G16: # Compatibility
+    name: "Compatibility (v3.8 -> v3.9 upgrade path)"
+    script: "scripts/gate/check_g16_compatibility.sh"
+    type: upgrade
+    stage_min: GA
+
+# Per-stage required_gates (above) reference these G-numbers. Cross-reference:
+#   - ALPHA requires: G4 (VtuGuard)
+#   - BETA requires: G2, G3, G4, G5, G6
+#   - RC requires: G4-G16 (all except G13 if hardware-blocked)
+#   - GA requires: G1-G16 (full)
+# (The actual required_gates in each stage block above uses script paths,
+# not G-numbers, because the framework reads the YAML, not the G-labels.)
+
+# =============================================================================
 # Cross-references
 # =============================================================================
 # When this file is updated, also update:
