@@ -153,11 +153,10 @@ impl Metrics {
     /// Get average query duration in microseconds
     pub fn avg_query_duration_us(&self) -> u64 {
         let total = self.queries_total.load(Ordering::Relaxed);
-        if total == 0 {
-            0
-        } else {
-            self.queries_duration_us.load(Ordering::Relaxed) / total
-        }
+        self.queries_duration_us
+            .load(Ordering::Relaxed)
+            .checked_div(total)
+            .unwrap_or(0)
     }
 
     /// Get active connections

@@ -19,7 +19,7 @@ pub mod wal_legacy;
 pub mod wal_storage;
 
 pub use binary_format::BinaryFormat;
-pub use binary_storage::BinaryTableStorage;
+pub use binary_storage::{BinaryTableStorage, BoxStorageEngine};
 pub use bplus_tree::BPlusTree;
 pub use buffer_pool::BufferPool;
 pub use checkpoint::{CheckpointManager, CheckpointMetadata};
