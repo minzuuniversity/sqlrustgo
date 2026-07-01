@@ -62,3 +62,15 @@ fn e2e_server_threads_1_single_worker_handshake_succeeds() {
         result
     );
 }
+
+#[test]
+fn e2e_server_threads_2_handshake_succeeds() {
+    let handle = start_ephemeral(make_cfg(2)).expect("start_ephemeral");
+    let mut client = MySqlTestClient::connect_handle(handle).expect("connect");
+    let result = client.query_rows("SELECT 1");
+    assert!(
+        result.is_ok(),
+        "SELECT 1 with server_threads=2 should succeed; got {:?}",
+        result
+    );
+}
