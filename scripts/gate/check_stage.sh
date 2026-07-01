@@ -284,8 +284,10 @@ GATE_FAIL_LIST=()
 if [[ ${#REQ_GATES[@]} -gt 0 ]]; then
     echo "--- Required gates (${#REQ_GATES[@]}) ---"
     for g in "${REQ_GATES[@]}"; do
+        # Strip trailing args (e.g. "check_rc_ga_gate.sh ga" -> "check_rc_ga_gate.sh")
+        # for the -f existence check below.
+        script_path="${g%% *}"
         g_expanded=$(expand_version "$g")
-        # If it's a cargo command, run directly
         if [[ "$g_expanded" =~ ^cargo ]]; then
             label="${g_expanded:0:70}"
             if [[ "$DRY_RUN" == true ]]; then
@@ -300,7 +302,9 @@ if [[ ${#REQ_GATES[@]} -gt 0 ]]; then
                 GATE_FAIL=$((GATE_FAIL + 1))
                 GATE_FAIL_LIST+=("$g_expanded")
             fi
-        elif [[ -f "$g_expanded" ]] || [[ -f "${REPO_ROOT}/${g_expanded}" ]]; then
+        # Strip trailing args to check if the script file exists
+        # (e.g. "scripts/gate/check_rc_ga_gate.sh ga" -> check "scripts/gate/check_rc_ga_gate.sh")
+        elif [[ -f "$script_path" ]] || [[ -f "${REPO_ROOT}/${script_path}" ]]; then
             label=$(basename "$g_expanded")
             if [[ "$DRY_RUN" == true ]]; then
                 echo "  [DRY]  $g_expanded"
@@ -328,8 +332,9 @@ if [[ ${#OPT_GATES[@]} -gt 0 ]]; then
     echo "--- Optional gates (${#OPT_GATES[@]}, informational) ---"
     for g in "${OPT_GATES[@]}"; do
         g_expanded=$(expand_version "$g")
-        if [[ -f "$g_expanded" ]] || [[ -f "${REPO_ROOT}/${g_expanded}" ]]; then
-            label=$(basename "$g_expanded")
+        script_path="${g_expanded%% *}"
+        label=$(basename "$g_expanded")
+        if [[ -f "$script_path" ]] || [[ -f "${REPO_ROOT}/${script_path}" ]]; then
             echo "  [INFO] $label (optional)"
         else
             echo "  [INFO] $label (optional, not installed)"
