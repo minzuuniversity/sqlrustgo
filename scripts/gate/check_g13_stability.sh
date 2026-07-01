@@ -68,12 +68,18 @@ else
 fi
 
 # 4. G7 Soak gate (unit-level mock) PASS
-G7_RESULT=$(bash scripts/gate/check_p13_soak_test.sh 2>&1 | tail -3 || true)
-if echo "$G7_RESULT" | grep -q "PASS"; then
+# Original implementation grepped the last 3 lines for "PASS" — but
+# G7's actual tail is "Next steps for full soak: ..." which has no
+# "PASS" string. This produced a false negative. Use exit code instead.
+set +e
+G7_OUTPUT=$(bash scripts/gate/check_p13_soak_test.sh 2>&1)
+G7_EXIT=$?
+set -e
+if [ "$G7_EXIT" -eq 0 ]; then
     echo "  [4/7] ✅ PASS: G7 Soak gate (unit-level) PASS"
 else
-    echo "  ❌ FAIL: G7 Soak gate did not pass"
-    echo "$G7_RESULT"
+    echo "  ❌ FAIL: G7 Soak gate (exit=$G7_EXIT)"
+    echo "$G7_OUTPUT"
     exit 1
 fi
 
