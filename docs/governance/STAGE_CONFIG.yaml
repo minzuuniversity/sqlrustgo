@@ -1,0 +1,322 @@
+# Stage Control Framework — Version-Agnostic SSOT
+#
+# 单一真相来源 (SSOT) for SQLRustGo's 5-stage release lifecycle:
+#   DRAFT → ALPHA → BETA → RC → GA
+#
+# This file is **version-agnostic** — it describes the framework, not a
+# specific version's state. Per-version state lives in
+# `docs/releases/vX.Y.Z/STAGE.yaml` (per-version override).
+#
+# Per the user (2026-07-01 governance audit):
+#   "目前的 governance 是非常依赖版本和人力检查的,没有一个独立于版本的
+#    draft, develop, alpha, beta, rc, ga 各阶段的控制体系和文档"
+#
+# This file is the answer: a single SSOT that every version's stage gate
+# can reference. check_stage.sh (see scripts/gate/check_stage.sh) reads
+# this file to determine which gates, artifacts, and branch rules apply
+# to a given version, regardless of its name.
+#
+# ADR: ADR-015 (proposed, see docs/governance/adr/)
+# Refs: #3667 (state snapshot), GOVERNANCE_COMPLIANCE_REPORT §7
+#
+# 2026-07-01 claude-macmini (governance audit 整改)
+# ---
+
+# =============================================================================
+# Framework metadata
+# =============================================================================
+framework:
+  version: "1.0.0"
+  name: "SQLRustGo 5-Stage Release Control"
+  stages: [DRAFT, ALPHA, BETA, RC, GA]
+  ssot: true  # All other stage-related docs must reference this file
+  schema_date: "2026-07-01"
+
+# =============================================================================
+# Stage definitions (version-agnostic)
+# =============================================================================
+# Each stage specifies:
+#   order: 1-5 in lifecycle
+#   description: what this stage means
+#   branch_pattern: glob the current branch must match (null = any)
+#   required_files: artifacts that must exist at this stage
+#   required_gates: list of gate scripts to run (must all PASS)
+#   optional_gates: list of gate scripts that are recommended but not blocking
+#   promotion_rules: criteria that must be met to advance to next stage
+#   merge_policy: who can merge / what review is required
+#   doc_artifacts: documents that must exist for this stage
+#   exit_criteria: explicit "ready to leave this stage" checklist
+stages:
+  DRAFT:
+    order: 1
+    description: "设计与架构阶段 (design + architecture + prototype)"
+    branch_pattern: ["develop/v*", "feature/*", "feat/*"]
+    required_files:
+      - "docs/releases/v{VER}/VERSION_PLAN.md"
+      - "docs/releases/v{VER}/ARCHITECTURE.md"
+    required_gates:
+      - "scripts/gate/check_docs_links.sh"
+      - "cargo build --all-features"
+    optional_gates:
+      - "scripts/gate/check_arch_invariants.sh"
+    merge_policy:
+      reviewers: 1
+      approval: any
+      ci_required: [lint, build]
+    doc_artifacts:
+      - "VERSION_PLAN.md"
+      - "ARCHITECTURE.md"
+      - "ROADMAP.md"
+    exit_criteria:
+      - "Architecture design doc approved"
+      - "All draft issues closed or promoted to ALPHA"
+      - "First alpha tag cut: v{VER}-alpha1"
+
+  ALPHA:
+    order: 2
+    description: "功能开发阶段 (active feature development, API may change)"
+    branch_pattern: ["develop/v*"]
+    required_files:
+      - "docs/releases/v{VER}/CHANGELOG.md"
+      - "docs/releases/v{VER}/RELEASE_NOTES.md"
+      - "docs/releases/v{VER}/STAGE.yaml"
+    required_gates:
+      - "scripts/gate/check_alpha.sh"
+      - "scripts/gate/check_arch_invariants.sh"
+      - "scripts/gate/check_arch3_no_bypass.sh"
+      - "cargo build --all-features"
+      - "cargo test --all-features --lib"
+      - "cargo fmt --check"
+    optional_gates:
+      - "scripts/gate/check_coverage.sh"
+    merge_policy:
+      reviewers: 1
+      approval: codeowner
+      ci_required: [lint, build, test]
+    doc_artifacts:
+      - "CHANGELOG.md"
+      - "RELEASE_NOTES.md"
+      - "STAGE.yaml"
+      - "FEATURE_MATRIX.md (draft)"
+    exit_criteria:
+      - "All alpha-targeted issues closed (tracked in STAGE.yaml)"
+      - "Coverage >= {COVERAGE_MIN_ALPHA}%"
+      - "No P0 bugs open"
+      - "First beta tag cut: v{VER}-beta1"
+
+  BETA:
+    order: 3
+    description: "功能冻结 + 完整性验证 (feature freeze, integration focus)"
+    branch_pattern: ["develop/v*", "beta/v*"]
+    required_files:
+      - "docs/releases/v{VER}/STAGE.yaml"
+      - "docs/releases/v{VER}/TEST_PLAN.md"
+      - "docs/releases/v{VER}/FEATURE_CHECKLIST.md"
+    required_gates:
+      - "scripts/gate/check_beta_gate.sh"
+      - "scripts/gate/check_arch_invariants.sh"
+      - "scripts/gate/check_arch3_no_bypass.sh"
+      - "scripts/gate/check_arch_sem_debt.sh"
+      - "scripts/gate/check_cross_version_debt.sh"
+      - "scripts/gate/check_int_debt.sh"
+      - "cargo build --all-features"
+      - "cargo test --all-features"
+      - "cargo fmt --check"
+      - "cargo clippy --all-features -- -D warnings"
+    optional_gates:
+      - "scripts/gate/check_coverage.sh"
+    merge_policy:
+      reviewers: 2
+      approval: codeowner + governance
+      ci_required: [lint, build, test, full-gate]
+    doc_artifacts:
+      - "TEST_PLAN.md"
+      - "FEATURE_CHECKLIST.md"
+      - "STAGE.yaml"
+      - "FEATURE_MATRIX.md (frozen)"
+    exit_criteria:
+      - "All feature items CLOSED or DEFERRED (in debt-registry.yaml)"
+      - "Coverage >= {COVERAGE_MIN_BETA}%"
+      - "All B1-B5 hard checks PASS"
+      - "All B-F1~B-F7 functional checks PASS"
+      - "First RC tag cut: v{VER}-rc1"
+
+  RC:
+    order: 4
+    description: "候选发布版本 (release candidate, critical-bug-fix only)"
+    branch_pattern: ["develop/v*", "release/v*", "rc/v*"]
+    required_files:
+      - "docs/releases/v{VER}/STAGE.yaml"
+      - "docs/releases/v{VER}/RELEASE_NOTES.md"
+      - "docs/releases/v{VER}/CHANGELOG.md"
+      - "docs/releases/v{VER}/GA_GATE_REPORT.md"
+    required_gates:
+      - "scripts/gate/check_rc_ga_gate.sh"
+      - "scripts/gate/check_arch_invariants.sh"
+      - "scripts/gate/check_arch3_no_bypass.sh"
+      - "scripts/gate/check_integration_gate.sh"
+      - "scripts/gate/check_anti_fabrication.sh"
+      - "scripts/gate/check_arch_sem_debt.sh"
+      - "scripts/gate/check_cross_version_debt.sh"
+      - "scripts/gate/check_int_debt.sh"
+      - "scripts/gate/check_full_gate_verification.sh"
+      - "scripts/gate/check_drift_not_pass.sh"
+      - "cargo build --all-features"
+      - "cargo test --all-features"
+      - "cargo fmt --check"
+      - "cargo clippy --all-features -- -D warnings"
+    optional_gates:
+      - "scripts/gate/check_architecture_freeze.sh"
+      - "scripts/gate/check_gate_self_verification.sh"
+    merge_policy:
+      reviewers: 2
+      approval: codeowner + governance + human-architect
+      ci_required: [lint, build, test, full-gate, anti-fab]
+    doc_artifacts:
+      - "RELEASE_NOTES.md (final)"
+      - "RELEASE_GATE_CHECKLIST.md"
+      - "PERFORMANCE_TARGETS.md"
+      - "STAGE.yaml"
+      - "EVIDENCE_STATUS.md"
+    exit_criteria:
+      - "All RC{N} release-blocking bugs closed"
+      - "All 5 dimensions (D1-D5) PASS"
+      - "Tag v{VER}-rcN cut, no P0 bugs since"
+      - "GA promotion approved by human architect"
+
+  GA:
+    order: 5
+    description: "正式发布版本 (general availability, hotfix only)"
+    branch_pattern: ["main", "release/v*", "hotfix/v*"]
+    required_files:
+      - "docs/releases/v{VER}/STAGE.yaml (state=GA)"
+      - "docs/releases/v{VER}/RELEASE_NOTES.md (GA)"
+      - "docs/releases/v{VER}/GA_GATE_REPORT.md"
+      - "docs/releases/v{VER}/GA_RELEASE_TIMELINE.md"
+      - "docs/releases/v{VER}/CHANGELOG.md (GA entry)"
+    required_gates:
+      - "scripts/gate/check_rc_ga_gate.sh ga"  # full mode
+      - "scripts/gate/check_arch_invariants.sh"
+      - "scripts/gate/check_arch3_no_bypass.sh"
+      - "scripts/gate/check_integration_gate.sh"
+      - "scripts/gate/check_anti_fabrication.sh"
+      - "scripts/gate/check_arch_sem_debt.sh"
+      - "scripts/gate/check_cross_version_debt.sh"
+      - "scripts/gate/check_int_debt.sh"
+      - "scripts/gate/check_full_gate_verification.sh"
+      - "scripts/gate/check_drift_not_pass.sh"
+      - "scripts/gate/check_architecture_freeze.sh"
+      - "scripts/gate/check_gate_self_verification.sh"
+      - "scripts/gate/check_gate_test_integrity.sh"
+      - "cargo build --all-features"
+      - "cargo test --all-features"
+      - "cargo fmt --check"
+      - "cargo clippy --all-features -- -D warnings"
+    optional_gates:
+      - "scripts/gate/check_soak_gate.sh"  # if available
+      - "scripts/gate/check_p13_soak.sh"    # if available
+    merge_policy:
+      reviewers: 3
+      approval: codeowner + governance + human-architect + release-manager
+      ci_required: [lint, build, test, full-gate, anti-fab, soak, stability]
+    doc_artifacts:
+      - "RELEASE_NOTES.md (GA)"
+      - "GA_GATE_REPORT.md"
+      - "GA_RELEASE_TIMELINE.md"
+      - "STAGE.yaml (state=GA)"
+      - "EVIDENCE_STATUS.md (GA)"
+      - "POST_GA_PLAN.md"
+    exit_criteria:
+      - "All 5 dimensions + stability gates PASS"
+      - "GA gate report signed by human architect"
+      - "GA tag cut: v{VER}"
+      - "Merge to main + release branch created"
+
+# =============================================================================
+# Stage transition rules (version-agnostic)
+# =============================================================================
+transitions:
+  DRAFT_to_ALPHA:
+    trigger: "first alpha tag cut: v{VER}-alpha1"
+    required_artifacts_added_in_ALPHA:
+      - "CHANGELOG.md"
+      - "RELEASE_NOTES.md"
+      - "STAGE.yaml"
+    requires_human_approval: true
+  ALPHA_to_BETA:
+    trigger: "all alpha-targeted issues closed + coverage >= COVERAGE_MIN_ALPHA"
+    requires_human_approval: true
+  BETA_to_RC:
+    trigger: "all B-F1~B-F7 functional checks PASS + first RC tag cut"
+    requires_human_approval: true
+  RC_to_GA:
+    trigger: "GA gate report signed by human architect"
+    requires_human_approval: true
+  GA_to_NEXT_VERSION_DRAFT:
+    trigger: "POST_GA_PLAN.md exists + next version branch created"
+    requires_human_approval: true
+
+# =============================================================================
+# Version-agnostic coverage / quality thresholds
+# =============================================================================
+# Each version can override these in their STAGE.yaml
+thresholds:
+  COVERAGE_MIN_DRAFT: null  # not enforced
+  COVERAGE_MIN_ALPHA: 50
+  COVERAGE_MIN_BETA: 75
+  COVERAGE_MIN_RC: 80
+  COVERAGE_MIN_GA: 85
+  CLIPPY_WARNINGS_MAX: 0
+  FMT_DRIFT_MAX: 0
+  DOC_LINKS_BROKEN_MAX: 0
+  IGNORE_TESTS_MAX_PER_CATEGORY:
+    KNOWN_BUG: 5
+    KNOWN_GAP: 20
+    SOAK: 10
+    PERF_BENCHMARK: 20
+    MANUAL_ORACLE: 5
+
+# =============================================================================
+# Branch role mapping
+# =============================================================================
+# Reference: docs/governance/BRANCH_GOVERNANCE.md
+branches:
+  develop_vX_Y_Z:    { stage: ALPHA_or_BETA_or_RC,  mergeable: true,  protected: true  }
+  beta_vX_Y_Z:       { stage: BETA,                 mergeable: true,  protected: true  }
+  rc_vX_Y_Z:         { stage: RC,                   mergeable: true,  protected: true  }
+  release_vX_Y_Z:   { stage: RC_or_GA,             mergeable: true,  protected: true  }
+  feature_X:         { stage: DRAFT_or_ALPHA,      mergeable: true,  protected: false }
+  fix_X:             { stage: any,                  mergeable: true,  protected: false }
+  main:              { stage: GA_only,              mergeable: false, protected: true  }
+  hotfix_vX_Y_Z:     { stage: GA,                  mergeable: true,  protected: true  }
+
+# =============================================================================
+# Common artifacts (all stages)
+# =============================================================================
+common_required_files:
+  - "AGENTS.md"
+  - "docs/governance/INDEX.md"
+  - "docs/governance/STAGE_CONFIG.yaml"
+  - "docs/governance/debt/debt-registry.yaml"
+  - "docs/governance/adr/INDEX.md"
+
+# =============================================================================
+# Cross-references
+# =============================================================================
+# When this file is updated, also update:
+#   - docs/governance/INDEX.md §"Stage Control Framework" (new section)
+#   - docs/governance/GOVERNANCE_COMPLIANCE_REPORT.md §7 (P2-1 close-out)
+#   - docs/governance/adr/INDEX.md (when ADR-015 added)
+#   - .gitea/workflows/ci.yml (CI integration)
+#   - .gitea/workflows/stage-promote.yml (new workflow for transitions)
+#
+# Related documents (NOT to be updated, but referenced):
+#   - docs/governance/RELEASE_LIFECYCLE.md (1.0 baseline, banner-added)
+#   - docs/governance/BRANCH_GOVERNANCE.md
+#   - docs/governance/VERSION_PROMOTION_SOP.md
+#   - docs/governance/release_process.md
+#   - scripts/gate/check_alpha.sh
+#   - scripts/gate/check_beta_gate.sh
+#   - scripts/gate/check_rc_ga_gate.sh
+#
+# All these legacy docs now defer to STAGE_CONFIG.yaml + check_stage.sh.

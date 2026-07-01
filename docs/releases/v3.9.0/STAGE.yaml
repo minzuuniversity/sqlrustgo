@@ -1,0 +1,142 @@
+# Per-Version Stage State — v3.9.0
+#
+# This file is the **per-version override** of docs/governance/STAGE_CONFIG.yaml.
+# SSOT chain:
+#   1. docs/governance/STAGE_CONFIG.yaml (framework, version-agnostic)
+#   2. docs/releases/vX.Y.Z/STAGE.yaml (per-version, this file)
+#   3. scripts/gate/check_stage.sh (reads both, runs gates)
+#
+# Fields:
+#   current_stage: ACTIVE stage (DRAFT/ALPHA/BETA/RC/GA)
+#   last_transition: when the version last moved between stages
+#   blocker_issues: open issues that block stage promotion
+#   thresholds_override: per-version override of framework thresholds
+#   branch_protection: per-version branch rules
+#
+# Maintainer: Hermes Agent + claude-macmini
+# Last update: 2026-07-01 (initial creation)
+
+# =============================================================================
+# Current state
+# =============================================================================
+version: "v3.9.0"
+current_stage: "RC"
+branch: "develop/v3.9.0"
+last_transition:
+  from: "BETA"
+  to: "RC"
+  date: "2026-06-18"
+  reason: "G1-G16 form-only + substance PASS; 5 P0 blockers closed"
+tags:
+  - "v3.9.0-rc1 (2026-06-12)"
+  - "v3.9.0-rc2 (2026-06-12)"
+  - "v3.9.0-rc3 (2026-06-12)"
+  - "v3.9.0-rc4 (2026-06-12)"
+  - "v3.9.0-rc5 (2026-06-12)"
+  - "v3.9.0-rc6 (2026-06-12)"
+  - "v3.9.0-rc7 (2026-06-12)"
+  - "v3.9.0-rc8 (2026-06-18)"
+
+# =============================================================================
+# Blocker issues (from openclaw Gitea)
+# =============================================================================
+# These block RC → GA promotion
+blocker_issues:
+  - id: 3648
+    title: "TPC-H 混合负载 SOAK 跨平台验证 (S3)"
+    reason: "需要 Z6G4/Z440 跨平台测试矩阵, 本机 (开发工作站) 不在测试矩阵内"
+    hardware_required: ["Z6G4 (192.168.0.252)", "Z440 (192.168.0.250)"]
+    state: OPEN
+    target: v3.9.0-ga
+  - id: 3423
+    title: "TPC-H SF=1.0 跨引擎 baseline (v3.10 milestone)"
+    reason: "需要 75GB+ 磁盘空间, Mac mini 仅 1GB 可用"
+    hardware_required: ["75GB+ free disk; Z440 or Z6G4"]
+    state: OPEN
+    target: v3.10.0
+  - id: 3265
+    title: "72h 长跑 SOAK (S3, GA-P0/Stability)"
+    reason: "blocked-on-S1; 需要 72+ 小时持续运行"
+    hardware_required: ["Z6G4 preferred, Z440 fallback"]
+    state: BLOCKED
+    target: v3.9.0-ga
+  - id: 3266
+    title: "168h 长跑 SOAK (S4, GA gate)"
+    reason: "blocked-on-S1; 需要 168 小时 (1 周) 持续运行; 168h SOAK 是 v3.9.0 GA 卡死门禁"
+    hardware_required: ["Z6G4 GA gate node (continuous 168h)"]
+    state: BLOCKED
+    target: v3.9.0-ga
+
+# =============================================================================
+# Per-version threshold overrides (optional)
+# =============================================================================
+# All keys optional. Use only to override framework defaults.
+thresholds_override: {}
+
+# =============================================================================
+# Branch protection rules (this version)
+# =============================================================================
+branch_protection:
+  develop_v3_9_0:
+    required_reviewers: 1
+    ci_required: [lint, build, test, arch-invariants, arch3-no-bypass]
+    allow_force_push: false
+    allow_deletion: false
+  release_v3_9_0:
+    required_reviewers: 2
+    ci_required: [lint, build, test, full-gate, anti-fab, integration]
+    allow_force_push: false
+    allow_deletion: false
+  main:
+    required_reviewers: 3
+    ci_required: [lint, build, test, full-gate, anti-fab, integration, soak]
+    allow_force_push: false
+    allow_deletion: false
+
+# =============================================================================
+# Stage history (this version)
+# =============================================================================
+stage_history:
+  - stage: DRAFT
+    entered: "2026-06-05"
+    exited: "2026-06-12"
+    notes: "Initial design + architecture + first alpha tag"
+  - stage: ALPHA
+    entered: "2026-06-12"
+    exited: "2026-06-12"
+    notes: "Function development + first beta tag"
+  - stage: BETA
+    entered: "2026-06-12"
+    exited: "2026-06-18"
+    notes: "Feature freeze + 7 RC tags cut"
+  - stage: RC
+    entered: "2026-06-18"
+    exited: null  # still in RC as of 2026-07-01
+    notes: "GA blocked on 4 hardware-blocked issues (#3648, #3423, #3265, #3266)"
+
+# =============================================================================
+# Stage promotion criteria (specific to v3.9.0)
+# =============================================================================
+promotion_to_GA_requires:
+  - "All 4 hardware-blocked issues CLOSED or formally DEFERRED to v3.10"
+  - "168h SOAK run completed on Z6G4 with PASS"
+  - "GA gate report signed by human architect"
+  - "Tag v3.9.0 cut, merged to main"
+
+# =============================================================================
+# Cross-references
+# =============================================================================
+# When this file is updated, also update:
+#   - docs/governance/STAGE_CONFIG.yaml (if framework defaults change)
+#   - docs/releases/v3.9.0/CHANGELOG.md (transition entry)
+#   - docs/governance/GOVERNANCE_COMPLIANCE_REPORT.md (transition evidence)
+#   - debt-registry.yaml (blocker issues state)
+#
+# Stage transition command (from RC to GA):
+#   1. Verify all 4 blocker_issues are CLOSED or DEFERRED
+#   2. Run: bash scripts/gate/check_stage.sh --version v3.9.0 --stage GA
+#   3. If PASS, human architect signs GA gate report
+#   4. Cut tag: git tag -s v3.9.0 -m "GA cut, see GA_GATE_REPORT.md"
+#   5. Update this file: current_stage: GA, last_transition: {to: GA, ...}
+#   6. Commit + push to mirror (Gitea 252 or 250)
+#   7. Create GA PR
