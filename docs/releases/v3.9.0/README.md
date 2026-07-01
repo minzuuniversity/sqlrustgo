@@ -23,7 +23,7 @@
 > **主题**: Single-Node Production Candidate
 > **分支**: `develop/v3.9.0` (从 `main@v3.8.0` fork)
 > **创建日期**: 2026-06-05
-> **当前状态**: **RC7** — 门禁全 PASS，Soak 进行中，GA 待定
+> **当前状态**: **RC8** ✅ + 本机 L1 闭环 (PR #3664/#3665/#3666, 2026-07-01) — 门禁全 PASS，Soak 进行中，GA 待 24h/72h/168h real
 
 ---
 
