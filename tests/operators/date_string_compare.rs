@@ -32,19 +32,21 @@ fn date_greater_equal_text_literal() {
         .unwrap();
     e.execute("INSERT INTO orders VALUES ('1994-08-02', 400)")
         .unwrap();
-    // Range: '1993-10-01' to '1994-01-01'
     let r = e
         .execute(
             "SELECT SUM(o_total) FROM orders \
          WHERE o_orderdate >= '1993-10-01' AND o_orderdate < '1994-01-01'",
         )
         .unwrap();
-    // Only 1993-09-15 (200) and 1994-01-15 (300) — wait that's outside range
-    // Actually: 1993-10-01 to 1993-12-31
-    // Matches: 1994-01-15? No, that's >= 1994-01-01
-    // Matches: 1993-09-15? No, that's < 1993-10-01
-    // So 0 matches
-    assert_eq!(r.rows[0][0].to_string(), "0");
+     // No rows in the [1993-10-01, 1994-01-01) range. Per SQL standard,
+    // SUM of an empty set is NULL, not 0. The engine returns Null
+    // (textual representation) for COUNT/SUM of zero rows.
+    let result = r.rows[0][0].to_string();
+    assert!(
+        result.to_lowercase() == "null",
+        "SUM of zero rows should be NULL, got: {}",
+        result
+    );
 }
 
 #[test]
