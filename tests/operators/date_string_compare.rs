@@ -38,7 +38,7 @@ fn date_greater_equal_text_literal() {
          WHERE o_orderdate >= '1993-10-01' AND o_orderdate < '1994-01-01'",
         )
         .unwrap();
-     // No rows in the [1993-10-01, 1994-01-01) range. Per SQL standard,
+    // No rows in the [1993-10-01, 1994-01-01) range. Per SQL standard,
     // SUM of an empty set is NULL, not 0. The engine returns Null
     // (textual representation) for COUNT/SUM of zero rows.
     let result = r.rows[0][0].to_string();
