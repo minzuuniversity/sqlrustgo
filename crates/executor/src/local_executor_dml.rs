@@ -22,8 +22,8 @@ use std::sync::{Arc, Mutex, RwLock};
 /// LocalExecutorDml with engine field for VTU path (G4 #2811) and
 /// storage for MergeExecutor construction (G3 #2810).
 #[deprecated(
-    since = "v3.9.0",
-    note = "Use ExecutionEngine::execute(sql) instead. Will be removed in v3.10.0."
+    since = "3.9.0",
+    note = "Use ExecutionEngine::execute(sql) instead. Will be removed in 3.10.0."
 )]
 pub struct LocalExecutorDml {
     engine: Arc<Mutex<dyn ExecutionEngine>>,
