@@ -2,8 +2,8 @@
 
 # SQLRustGo 治理文档索引 (INDEX)
 
-> **版本**: v3.8.0
-> **最后更新**: 2026-06-05
+> **版本**: v3.9.0 (主要 ADR 集合 2026-06-13 之后, 含 Sprint 8 / Sprint 9 增量)
+> **最后更新**: 2026-07-01
 > **维护者**: Hermes Agent
 > **状态**: ACTIVE — 每个 v<X.Y.Z> GA 前需刷新
 
@@ -110,21 +110,34 @@
 
 ## 5. ADR (架构决策记录)
 
-| ADR | 标题 | 状态 |
-|---|---|------|
-| **ADR-001** | Truthfulness 框架 | ACCEPTED |
-| **ADR-002** | Claim Registry | ACCEPTED |
-| **ADR-003** | Decision Registry | ACCEPTED |
-| **ADR-004** | Negative Evidence | ACCEPTED |
-| **ADR-005** | Legacy Gate Retirement | ACCEPTED |
-| **ADR-006** | TX-WAL Contract Deferral | ACCEPTED |
-| **ADR-007** | WAL Architecture Clarification | ACCEPTED |
-| **ADR-009** | G-01 Validation Chain Enforcement | ACCEPTED |
-| ADR-010 | Cross-Version Debt Governance | ACCEPTED |
-| ADR-010 | Ghost PR Resolution | ACCEPTED |
-| **ADR-011** | Debt State Machine (7 状态) | **PROPOSED** (v3.9.0+ 升级) |
-| ADR-011 | v3.8.0-1 TX-WAL Repair | PROPOSED |
-| ADR-012 | SQLRustGo vs GMP Platform Scope | ACCEPTED |
+> **完整索引**: `adr/INDEX.md` (含 4 对重复 ADR 的 a/b 消歧, 2026-07-01 重新梳理)。
+> 4 个重复编号 (006/007/010/011) 各有 2 份不同文件, adr/INDEX 用 a/b 后缀消歧。
+> 下面表格是 v3.9.0 当前所有 ADRs 的快速索引。
+
+| ADR | 标题 | 状态 | 版本 |
+|---|---|---|---|
+| **ADR-001** | Truthfulness 框架 | ACCEPTED | v3.8.0 |
+| **ADR-002** | Claim Registry | ACCEPTED | v3.8.0 |
+| **ADR-003** | Decision Registry | ACCEPTED | v3.8.0 |
+| **ADR-004** | Negative Evidence | ACCEPTED | v3.8.0 |
+| **ADR-005** | Legacy Gate Retirement | ACCEPTED | v3.8.0 |
+| **ADR-006a** | Meta-Governance Framework (P11-P15) | ACCEPTED | v3.9.0 |
+| **ADR-006b** | TX+WAL Contract Test Deferral | ACCEPTED | v3.8.0 |
+| **ADR-007a** | 5-PR Truthfulness Recovery Sequence | ACCEPTED | v3.9.0 |
+| **ADR-007b** | WAL Architecture Clarification | ACCEPTED | v3.8.0 |
+| **ADR-008** | Test Claim Transparency (P16) | ACCEPTED | v3.9.0 |
+| **ADR-009** | G-01 Validation Chain Enforcement | ACCEPTED | v3.8.0 |
+| **ADR-010a** | Cross-Version Debt Governance | ACCEPTED | v3.8.0 |
+| **ADR-010b** | Ghost PR Resolution (F-07~F-15) | ACCEPTED | v3.8.0 |
+| **ADR-011a** | Cross-Version Debt State Machine | ACCEPTED | v3.9.0 |
+| **ADR-011b** | v3.8.0+1 TX+WAL Repair Strategy | ACCEPTED | v3.8.0+1 |
+| **ADR-012** | SQLRustGo vs GMP-Platform Scope | ACCEPTED | v3.8.0 |
+| **ADR-013** | v3.10 Wired-Soak DDL + Wire Protocol 修复 RFC | **PROPOSED** | v3.10 |
+| **ADR-014** | Multi-AI Coordination | ACCEPTED | v3.9.0 |
+
+**总数**: 18 个 ADR 文件, 14 个独立编号 (006/007/010/011 各 2 份).
+**消歧规则**: 重复编号用 a/b 后缀 (仅在表格中). 文件名保持 `ADR-NNN-<topic>.md` 不变, 不破坏现有 cross-reference.
+**完整字段**: 状态/Deciders/Date/Supersedes 见各 ADR 文件 header.
 
 ---
 
@@ -189,7 +202,7 @@
 | 我要债务跟踪 | `debt/debt-registry.yaml` + `adr/ADR-011-debt-state-machine.md` + `patterns/PATTERN_FOLLOWUP_SLA.md` |
 | 我要 Issue 跟踪 | `ISSUE_CLOSING_VERIFICATION.md` + `adr/ADR-010-cross-version-debt-governance.md` + `patterns/PATTERN_FOLLOWUP_SLA.md` |
 | 我要 Gate 脚本 | `GA_SCRIPTS_SKILLS_REGISTRY.md` + `GATE_CI_CD.md` + `GATE_CONDITIONS.md` |
-| 我要 ADR | `adr/` (12 份) |
+| 我要 ADR | `adr/` (18 份, 14 个编号, 4 对 a/b 消歧) |
 | 我要 Pattern | `patterns/` (7 份) |
 | 我要 Template | `templates/` (2 份) |
 
@@ -199,8 +212,8 @@
 
 | 项目 | 值 |
 |------|-----|
-| 文档版本 | 1.0 |
-| 最后更新 | 2026-06-05 |
+| 文档版本 | 1.1 |
+| 最后更新 | 2026-07-01 (ADR 消歧, ADR-008/013/014 加入) |
 | 维护者 | Hermes Agent |
 | 状态 | ACTIVE — 每 v<X.Y.Z> GA 前刷新 |
 | 关联 | GA_GOVERNANCE_DEMO_v3.8.0.md, GA_SCRIPTS_SKILLS_REGISTRY.md |
