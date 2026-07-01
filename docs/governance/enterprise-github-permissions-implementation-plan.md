@@ -1,5 +1,13 @@
 # 企业级 GitHub 权限模型实施计划
 
+<!-- DEPRECATED 2026-07-01 -->
+> **DEPRECATED**: 本文档为 GitHub Enterprise 模型设计, 但 SQLRustGo 主仓库使用 Gitea (per `~/.claude/CLAUDE.md` 强制规则 "禁止使用 GitHub").
+> **状态**: NOT APPLICABLE. 内容保留作为 GitHub 镜像 (github.com/yinglichina8848/sqlrustgo.git) 的参考.
+> **Gitea 等价**: Gitea 用 `BRANCH_PROTECTION_v3.9.0_2026-06-24.md` + `RC_BRANCH_PROTECTION.md` + `REMOTE_LIMITS.md` 替代本文档功能.
+> **决策**: 2026-07-01 governance audit (claude-macmini) 标记 DEPRECATED. 后续 PR 可考虑移到 `docs/legacy/` 或删除.
+> **关联**: #3667 (state snapshot), AGENTS.md (Gitea-only 强制规则).
+
+
 ## 文档信息
 - **版本**: v1.0
 - **创建日期**: 2026-02-21
