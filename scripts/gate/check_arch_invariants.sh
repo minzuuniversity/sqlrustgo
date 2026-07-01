@@ -109,20 +109,13 @@ else
 fi
 echo ""
 
-# C-ARCH-05: execution_engine.rs < 3000 lines
+# C-ARCH-05: execution_engine.rs < 1500 lines
 # SSOT (Single Source of Truth): scripts/gate/check_rc_ga_gate.sh CARCH05_LIMIT
-# AD-001 original target was <1500 lines (PR-900 完整拆分目标).
+# AD-001 target: < 1500 lines.
 # Post-SPEC-012 (CBO 拆分) baseline was 1451 lines.
-# After PR-2792 (UPDATE+DELETE), PR-2814 (TPC-H), PR-2815 (SHOW TABLES),
-# 1523 lines (within 5% of target). PR-900 第二阶段 (DML executor 拆分) 计划
-# 进一步降至 1100-1300. 阈值保留 1500 反映 AD-001 目标, 当前 1523 视为
-# CONDITIONAL PASS (PR-900 拆分前过渡期).
-#
-# v3.9.0 调整：当前文件 ~2626 行，超出 1800 上限。原因：PR-900 拆分
-# 未完成（规划中），文件继续增长以支持 SOAK 测试 (PR #3657/#3658 新增
-# 锁路径) 和新 SQL 语法。临时将上限上调到 3000 行,反映文件实际大小,
-# 直至 PR-900 拆分完成。AD-001 最终目标 1500 行不变。
-CARCH05_LIMIT=3000
+# v3.9.0 状态: 文件 1471 行 (PR #3664 完成 AD-001 / PR-900 拆分).
+# 2026-07-01 锁回 1500 上限 (从 3000 过渡值降回,因 PR #3664 拆分已完成).
+CARCH05_LIMIT=1500
 CARCH05_AD001_TARGET=1500
 echo "[C-ARCH-05] Checking execution_engine.rs < ${CARCH05_LIMIT} lines (SSOT: CARCH05_LIMIT, AD-001 target: ${CARCH05_AD001_TARGET})..."
 EXEC_ENGINE_LINES=$(wc -l < src/execution_engine.rs 2>/dev/null || echo "0")
