@@ -280,6 +280,7 @@ fi
 GATE_PASS=0
 GATE_FAIL=0
 GATE_FAIL_LIST=()
+
 if [[ ${#REQ_GATES[@]} -gt 0 ]]; then
     echo "--- Required gates (${#REQ_GATES[@]}) ---"
     for g in "${REQ_GATES[@]}"; do
@@ -339,18 +340,28 @@ fi
 
 # ---- JSON output ----
 if [[ "$JSON_OUTPUT" == true ]]; then
-    python3 -c "
-import json
+    # Build failed lists as comma-separated strings for safe interpolation
+    # Disable set -u around array expansion to avoid unbound errors when empty
+    set +u
+    file_fail_csv=$(IFS=,; echo "${FILE_FAIL_LIST[*]+"${FILE_FAIL_LIST[*]}"}")
+    gate_fail_csv=$(IFS=,; echo "${GATE_FAIL_LIST[*]+"${GATE_FAIL_LIST[*]}"}")
+    set -u
+    # Use heredoc to avoid bash variable expansion conflicts in python -c
+    python3 - "${VERSION}" "${STAGE}" "${DESCRIPTION}" "${FILE_PASS}" "${FILE_FAIL}" "${file_fail_csv}" "${GATE_PASS}" "${GATE_FAIL}" "${gate_fail_csv}" <<'PYEOF'
+import json, sys
+version, stage, description, file_pass, file_fail, file_fail_csv, gate_pass, gate_fail, gate_fail_csv = sys.argv[1:10]
+file_failed = [f for f in file_fail_csv.split(",") if f] if file_fail_csv else []
+gate_failed = [f for f in gate_fail_csv.split(",") if f] if gate_fail_csv else []
 result = {
-    'version': '$VERSION',
-    'stage': '$STAGE',
-    'description': '''$DESCRIPTION''',
-    'files': {'pass': $FILE_PASS, 'fail': $FILE_FAIL, 'failed': ${FILE_FAIL_LIST[@]:+[\"$(IFS='\",\"'; echo \"${FILE_FAIL_LIST[*]}\")\"]}},
-    'gates': {'pass': $GATE_PASS, 'fail': $GATE_FAIL, 'failed': ${GATE_FAIL_LIST[@]:+[\"$(IFS='\",\"'; echo \"${GATE_FAIL_LIST[*]}\")\"]}},
-    'overall': 'PASS' if ($FILE_FAIL + $GATE_FAIL) == 0 else 'FAIL'
+    "version": version,
+    "stage": stage,
+    "description": description,
+    "files": {"pass": int(file_pass), "fail": int(file_fail), "failed": file_failed},
+    "gates": {"pass": int(gate_pass), "fail": int(gate_fail), "failed": gate_failed},
+    "overall": "PASS" if (int(file_fail) + int(gate_fail)) == 0 else "FAIL",
 }
-print(json.dumps(result, indent=2))
-"
+print(json.dumps(result, indent=2, ensure_ascii=False))
+PYEOF
 fi
 
 # ---- Summary ----
