@@ -5,7 +5,7 @@
 > **分支**: `develop/v3.9.0` (从 `main@v3.8.0` fork)
 > **创建日期**: 2026-06-05
 > **GA 目标**: 2026-12-15 (per Hermes audit #3252, deferred from 2026-09-23)
-> **当前阶段**: **RC7** (2026-06-12, awaiting 24h/72h/168h soak for GA cut, see GA_GATE_REPORT.md)
+> **当前阶段**: **RC8** (2026-06-18) + 本机 L1 闭环 (PR #3664/#3665/#3666, 2026-07-01, HEAD `d77821f6d1`); GA 待 24h/72h/168h real soak
 > **前版本**: v3.8.0
 
 ---
@@ -46,6 +46,51 @@ bash gate/gate.sh v3.9.0
 [L1] cargo fmt...             [PASS]
 === Gate Result: PASSED ===
 ```
+
+---
+
+## 2026-07-01 — execution_engine 拆分 + C-ARCH-05 锁回 + SGL-001 fmt (PR #3664/#3665/#3666)
+
+v3.9.0 本机可推进的 L1 lint + 架构整理项已全部闭环。3 个连续 PR 合并至 `develop/v3.9.0` (HEAD `d77821f6d1`)。
+
+### Changed
+
+| PR | 内容 | 验证 |
+| --- | --- | --- |
+| #3664 (issue #3661) | `refactor(execution_engine)`: 拆分 `src/execution_engine.rs` 2630 → 1471 行 (AD-001 1500 目标达标)。新文件 `engine_helpers.rs` (227), `engine_dml.rs` (840), `engine_cte.rs` (127)。 | C-ARCH-05 PASS / check_arch3_no_bypass.sh PASS / DML 11/11 + lib 25/25 |
+| #3665 | `fix(gate)`: C-ARCH-05 上限从 3000/1800 过渡值锁回 1500 (3 个 gate 脚本统一) | check_arch_invariants 5/5 + check_architecture_freeze A7-3 PASS |
+| #3666 | `style`: rustfmt drift on 3 test files (SGL-001 gate fix) | SGL-5/5 PASS + integration gate 4/4 |
+
+### State
+
+- 当前分支 `develop/v3.9.0` @ `d77821f6d1`
+- 本地 4 个快速 gate 全 PASS: `check_arch_invariants` (5/5), `check_arch3_no_bypass` (G4), `check_integration_gate` (4/4), `check_architecture_freeze` (A7-3 PASS)
+- Issue #3667 已开为状态快照 (P0-arch-debt), 立即关闭
+- Open issues (4, 全部硬件阻塞, 本机无法推进):
+  - #3648 TPC-H 混合负载 SOAK 跨平台验证 (需要 Z6G4/Z440)
+  - #3423 TPC-H SF=1.0 baseline (需要 75GB+ 磁盘, Mac mini 仅 1GB)
+  - #3265 72h 长跑 SOAK (blocked-on-S1, 需 72+ 小时持续运行)
+  - #3266 168h 长跑 SOAK (blocked-on-S1, 需 168 小时持续运行)
+
+### Verification (本机 develop/v3.9.0 @ `d77821f6d1`)
+
+```
+bash scripts/gate/check_arch_invariants.sh:    5/5 PASS
+  [C-ARCH-05] execution_engine.rs: 1471 lines, limit 1500, AD-001 target 1500
+bash scripts/gate/check_arch3_no_bypass.sh:    PASS
+bash scripts/gate/check_integration_gate.sh:   PASS (4/4)
+  SGL-001 (B4 Format): PASS
+  SGL-002..005: PASS
+  WAL lifecycle (INV-1/2/3): PASS
+bash scripts/gate/check_architecture_freeze.sh:
+  A7-3 ExecutionEngine: PASS (< 1500 lines as per AD-001)
+cargo fmt --check:                            clean
+```
+
+### Refs
+
+- #3667 — 闭环声明 issue (P0-arch-debt, closed as state snapshot)
+- AD-001 — 1500 行架构原始目标
 
 ---
 
