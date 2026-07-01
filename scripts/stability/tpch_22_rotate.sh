@@ -74,10 +74,11 @@ fi
 run_one() {
     local qname="$1" sql="$2"
     local start_ms end_ms elapsed_ms err
-    start_ms=$(date +%s%3N)
+    # macOS date doesn't support %3N; use python for ms precision
+    start_ms=$(python3 -c 'import time; print(int(time.time()*1000))')
     err=$(timeout "$PER_QUERY_TIMEOUT" mysql -h "$HOST" -P "$PORT" -u "$USER" \
               ${PASSWORD:+-p"$PASSWORD"} -B -N -e "$sql" 2>&1 >/dev/null) || err="timeout_or_err"
-    end_ms=$(date +%s%3N)
+    end_ms=$(python3 -c 'import time; print(int(time.time()*1000))')
     elapsed_ms=$(( end_ms - start_ms ))
     local ts
     ts=$(date '+%Y-%m-%d %H:%M:%S')
