@@ -1,5 +1,13 @@
 # 企业级治理最佳实践
 
+<!-- DEPRECATED 2026-07-01 -->
+> **DEPRECATED**: 本文档为 GitHub Enterprise 模型设计, 但 SQLRustGo 主仓库使用 Gitea (per `~/.claude/CLAUDE.md` 强制规则 "禁止使用 GitHub").
+> **状态**: NOT APPLICABLE. 内容保留作为 GitHub 镜像 (github.com/yinglichina8848/sqlrustgo.git) 的参考.
+> **Gitea 等价**: Gitea 用 `BRANCH_PROTECTION_v3.9.0_2026-06-24.md` + `RC_BRANCH_PROTECTION.md` + `REMOTE_LIMITS.md` 替代本文档功能.
+> **决策**: 2026-07-01 governance audit (claude-macmini) 标记 DEPRECATED. 后续 PR 可考虑移到 `docs/legacy/` 或删除.
+> **关联**: #3667 (state snapshot), AGENTS.md (Gitea-only 强制规则).
+
+
 ## 🎯 目标
 
 建立一套完整的企业级工程治理体系，确保代码质量、安全性和可维护性，同时支持高效的团队协作。
