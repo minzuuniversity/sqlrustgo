@@ -212,7 +212,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 None
             };
 
-        let storage = self.storage.read().unwrap();
+        let storage = self.storage_read();
 
         // Step 1: FROM/JOIN - get initial rows and schema
         let (mut rows, table_info) = if !select.join_clause.is_empty() {
@@ -1200,7 +1200,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     /// JoinClause in order (left-associative: t1 JOIN t2 JOIN t3 → ((t1 JOIN t2) JOIN t3)).
     /// This function only generates joined rows, does NOT apply WHERE/AGG/HAVING.
     fn execute_joins(&self, select: &SelectStatement) -> SqlResult<(Vec<Vec<Value>>, TableInfo)> {
-        let storage = self.storage.read().unwrap();
+        let storage = self.storage_read();
 
         // Sprint 5 v4: the parser encodes the inline alias into the
         // table name as `table|alias` (e.g. `emp|e`). Storage has only
