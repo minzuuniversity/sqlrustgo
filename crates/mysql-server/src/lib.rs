@@ -15,7 +15,8 @@ use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::sync::atomic::{AtomicI64, AtomicU64, Ordering};
-use std::sync::{Arc, RwLock};
+use parking_lot::RwLock;
+use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 
@@ -550,7 +551,8 @@ mod tests {
         use sqlrustgo::MemoryExecutionEngine;
         use sqlrustgo_parser::parse;
         use sqlrustgo_storage::MemoryStorage;
-        use std::sync::{Arc, RwLock};
+        use parking_lot::RwLock;
+use std::sync::Arc;
 
         let storage = Arc::new(RwLock::new(MemoryStorage::new()));
         let mut engine = MemoryExecutionEngine::new(storage);
@@ -1612,7 +1614,7 @@ fn infer_param_types_from_sql<S: StorageEngine>(sql: &str, storage: &Arc<RwLock<
         return vec![col_type::VARSTRING; param_count];
     }
     if let Some(table_name) = extract_table_name(sql) {
-        if let Ok(storage_guard) = storage.try_read() {
+        let storage_guard = storage.read(); {
             if let Ok(table_info) = storage_guard.get_table_info(&table_name) {
                 let mut types = Vec::with_capacity(param_count);
                 for col_name in &cols {
@@ -2025,7 +2027,7 @@ fn extract_column_names(sql: &str, storage: &Arc<RwLock<MemoryStorage>>) -> Vec<
         return vec![];
     }
     if let Some(table_name) = extract_table_name(sql) {
-        if let Ok(storage_guard) = storage.try_read() {
+        let storage_guard = storage.read(); {
             if let Ok(table_info) = storage_guard.get_table_info(&table_name) {
                 let col_names: Vec<String> =
                     table_info.columns.iter().map(|c| c.name.clone()).collect();
@@ -2045,7 +2047,7 @@ fn infer_column_types(
     cols: &[String],
 ) -> Vec<String> {
     if let Some(table_name) = extract_table_name(sql) {
-        if let Ok(storage_guard) = storage.try_read() {
+        let storage_guard = storage.read(); {
             if let Ok(table_info) = storage_guard.get_table_info(&table_name) {
                 let types: Vec<String> = table_info
                     .columns
@@ -2247,9 +2249,7 @@ fn handle_load_local_infile<S: Read + Write>(
     //    can validate each line has the right shape.
     let col_count = {
         let storage_arc = engine.storage_ref();
-        let storage = storage_arc
-            .read()
-            .map_err(|e| MySqlError::Other(format!("storage lock poisoned: {}", e)))?;
+        let storage = storage_arc.read();
         let table_info = storage
             .get_table_info(table)
             .map_err(|e| MySqlError::Other(format!("table {}: {}", table, e)))?;
@@ -2488,7 +2488,7 @@ fn do_command_loop<S: Read + Write>(
                     let bulk_buf = cfg.bulk_insert_buffer_size;
                     let n = match handle_load_local_infile(
                         stream,
-                        &mut engine.write().unwrap(),
+                        &mut engine.write(),
                         &path,
                         &table,
                         delim,
@@ -2551,14 +2551,7 @@ fn do_command_loop<S: Read + Write>(
                     let parsed = parse(stmt_sql);
                     let is_select = parsed.as_ref().map(is_select_stmt).unwrap_or(false);
                     // G13-OLTP-1: poisoning recovery - if lock is poisoned, recover and continue
-                    let result = match engine.write() {
-                        Ok(mut eng) => eng.execute(stmt_sql),
-                        Err(poisoned) => {
-                            let mut eng = poisoned.into_inner();
-                            tracing::warn!("recovered engine from poisoned write lock");
-                            eng.execute(stmt_sql)
-                        }
-                    };
+                    let result = engine.write().execute(stmt_sql);
                     match result {
                         Ok(r) if is_select => {
                             let cols: Vec<String> = r
@@ -2610,15 +2603,12 @@ fn do_command_loop<S: Read + Write>(
                         let select_part = &sql[..from_pos + 1].trim();
                         let cols_str = select_part.strip_prefix("SELECT").unwrap_or("").trim();
                         if cols_str.eq_ignore_ascii_case("*") {
-                            if let Ok(storage_guard) = storage.try_read() {
-                                if let Some(table_name) = extract_table_name(&sql) {
-                                    if let Ok(table_info) =
-                                        storage_guard.get_table_info(&table_name)
-                                    {
-                                        table_info.columns.len() as u16
-                                    } else {
-                                        1
-                                    }
+                            let storage_guard = storage.read();
+                            if let Some(table_name) = extract_table_name(&sql) {
+                                if let Ok(table_info) =
+                                    storage_guard.get_table_info(&table_name)
+                                {
+                                    table_info.columns.len() as u16
                                 } else {
                                     1
                                 }
@@ -2811,14 +2801,7 @@ fn do_command_loop<S: Read + Write>(
                 // all subsequent .read()/.write() calls. Using .into_inner() recovery
                 // allows the server to continue serving queries rather than hard-fail.
                 // G13-OLTP-1: poisoning recovery - recover from poisoned state and continue
-                let result = match engine.write() {
-                    Ok(mut eng) => eng.execute(&final_sql),
-                    Err(poisoned) => {
-                        let mut eng = poisoned.into_inner();
-                        tracing::warn!("recovered engine from poisoned write lock (stmt execute)");
-                        eng.execute(&final_sql)
-                    }
-                };
+                let result = engine.write().execute(&final_sql);
                 match result {
                     Ok(r) if is_select => {
                         let c: Vec<String> = r
@@ -4068,7 +4051,8 @@ mod integration_tests {
         use sqlrustgo::MemoryExecutionEngine;
         use sqlrustgo_storage::MemoryStorage;
         use sqlrustgo_types::Value;
-        use std::sync::{Arc, RwLock};
+        use parking_lot::RwLock;
+use std::sync::Arc;
 
         let storage: Arc<RwLock<MemoryStorage>> = Arc::new(RwLock::new(MemoryStorage::new()));
         let mut engine = MemoryExecutionEngine::new(storage);
@@ -4091,7 +4075,8 @@ mod integration_tests {
     fn test_statement_dispatch_insert() {
         use sqlrustgo::MemoryExecutionEngine;
         use sqlrustgo_storage::MemoryStorage;
-        use std::sync::{Arc, RwLock};
+        use parking_lot::RwLock;
+use std::sync::Arc;
 
         let storage: Arc<RwLock<MemoryStorage>> = Arc::new(RwLock::new(MemoryStorage::new()));
         let mut engine = MemoryExecutionEngine::new(storage);
@@ -4282,14 +4267,11 @@ pub mod testing {
     use std::thread::JoinHandle;
 
     /// One connection-handling job dispatched to a worker via the
-    /// `ServerThreadPool` channel. Workers call
-    /// `handle_connection` with these args.
-    #[allow(private_interfaces)]
     pub struct ServerJob {
         pub stream: TcpStream,
         pub addr: SocketAddr,
         pub storage: Arc<
-            std::sync::RwLock<
+            parking_lot::RwLock<
                 sqlrustgo_storage::WalStorage<
                     sqlrustgo_storage::FileStorage,
                     sqlrustgo_storage::FileBackedWalManager,
