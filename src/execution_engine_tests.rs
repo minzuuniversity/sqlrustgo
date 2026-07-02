@@ -4,7 +4,8 @@ use crate::execution_engine::*;
 use crate::Value;
 use sqlrustgo_storage::MemoryStorage;
 use std::collections::HashMap;
-use std::sync::{Arc, RwLock};
+use parking_lot::RwLock;
+use std::sync::Arc;
 
 #[test]
 fn test_analyze_table_stats() {

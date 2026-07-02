@@ -9,7 +9,8 @@ use sqlrustgo_storage::{
     TriggerTiming as StorageTriggerTiming,
 };
 use sqlrustgo_types::{SqlError, SqlResult, Value};
-use std::sync::{Arc, RwLock};
+use parking_lot::RwLock;
+use std::sync::Arc;
 
 /// Trigger timing: BEFORE or AFTER
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -102,7 +103,7 @@ impl TriggerExecutor {
     pub fn new(storage: Arc<RwLock<dyn StorageEngine>>) -> Self {
         if !cfg!(test) {
             assert!(
-                storage.read().unwrap().is_wal_enabled(),
+                storage.read().is_wal_enabled(),
                 "Storage MUST be WalStorage in production - WAL is mandatory"
             );
         }
@@ -119,7 +120,7 @@ impl TriggerExecutor {
     where
         F: FnOnce(&mut dyn StorageEngine) -> SqlResult<R>,
     {
-        let mut storage = self.storage.write().unwrap();
+        let mut storage = self.storage.write();
         storage.begin_transaction()?;
         let result = op(&mut *storage);
         match &result {
@@ -133,7 +134,7 @@ impl TriggerExecutor {
 
     /// Get all triggers for a specific table
     pub fn get_table_triggers(&self, table: &str) -> Vec<TriggerInfo> {
-        self.storage.read().unwrap().list_triggers(table)
+        self.storage.read().list_triggers(table)
     }
 
     /// Get triggers filtered by timing and event
@@ -304,7 +305,7 @@ impl TriggerExecutor {
         let mut result = sql.replace(". ", ".");
 
         if new_row.is_some() || old_row.is_some() {
-            if let Ok(info) = self.storage.read().unwrap().get_table_info(table_name) {
+            if let Ok(info) = self.storage.read().get_table_info(table_name) {
                 self.do_expand_row_variables(&mut result, &info, old_row, new_row);
             }
         }
@@ -428,7 +429,7 @@ impl TriggerExecutor {
         if let sqlrustgo_parser::Statement::Insert(insert) = statement {
             let table_name = insert.table.clone();
             let table_info = {
-                let storage = self.storage.read().unwrap();
+                let storage = self.storage.read();
                 storage.get_table_info(&table_name)?
             };
             let num_cols = table_info.columns.len();
@@ -478,7 +479,7 @@ impl TriggerExecutor {
                     "Trigger UPDATE only supports single-table form".to_string(),
                 ));
             }
-            let storage = self.storage.read().unwrap();
+            let storage = self.storage.read();
             let table_name = &update.tables[0].name;
             let table_info = storage.get_table_info(table_name)?;
             let target_col_names: Vec<String> =
@@ -558,7 +559,7 @@ impl TriggerExecutor {
         trigger_table: &str,
         old_row: Option<&Record>,
     ) -> SqlResult<()> {
-        let table_info = self.storage.read().unwrap().get_table_info(trigger_table)?;
+        let table_info = self.storage.read().get_table_info(trigger_table)?;
         let expanded = self.expand_delete_values_with_info(sql, &table_info, old_row);
         let statement = parse(&expanded)
             .map_err(|e| SqlError::ExecutionError(format!("Parse error: {}", e)))?;
@@ -588,7 +589,7 @@ impl TriggerExecutor {
 
         if let sqlrustgo_parser::Statement::Select(select) = statement {
             #[allow(clippy::match_result_ok)]
-            let storage = self.storage.read().unwrap();
+            let storage = self.storage.read();
             let table_info = storage.get_table_info(&select.table).ok();
 
             for col in &select.columns {
@@ -618,7 +619,7 @@ impl TriggerExecutor {
     /// Execute SET within a trigger (modify NEW row)
     fn execute_trigger_set(&self, sql: &str, table_name: &str, new_row: &Record) -> SqlResult<()> {
         if let Some(assignments) = self.parse_simple_set_assignments(sql) {
-            let table_info = self.storage.read().unwrap().get_table_info(table_name)?;
+            let table_info = self.storage.read().get_table_info(table_name)?;
             let mut updated = new_row.to_vec();
 
             for (col_name, value) in assignments {
