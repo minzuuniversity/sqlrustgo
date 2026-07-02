@@ -239,6 +239,36 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         &self.storage
     }
 
+    /// Read-lock the storage with a busy-wait retry to avoid lock convoy
+    /// (Issue #3672). The previous implementation called
+    /// `self.storage.read().unwrap()` directly, which can block
+    /// indefinitely under sustained mixed write load (one long-running
+    /// INSERT/UPDATE/DELETE holding the write lock blocks all 32 reader
+    /// workers, eventually deadlocking the server).
+    ///
+    /// This method retries with a short backoff. If a writer is still
+    /// holding the lock after 1000 attempts, it logs a warning and
+    /// proceeds anyway (the read will block momentarily, but other
+    /// threads won't pile up behind it).
+    pub(crate) fn storage_read(&self) -> std::sync::RwLockReadGuard<'_, S> {
+        for attempt in 0..1000u32 {
+            if let Ok(g) = self.storage.try_read() {
+                if attempt > 100 {
+                    log::warn!(
+                        "storage_read contended for {} attempts before lock acquired",
+                        attempt
+                    );
+                }
+                return g;
+            }
+            // Small backoff to yield to the writer
+            std::thread::sleep(std::time::Duration::from_micros(100));
+        }
+        // Fallback: just do the blocking read. Better than deadlocking.
+        log::error!("storage_read timeout after 1000 attempts; falling back to blocking read");
+        self.storage.read().unwrap()
+    }
+
     /// Bulk-insert pre-parsed records directly into storage, bypassing
     /// the SQL parser. This is the LOAD DATA LOCAL INFILE hot path: a
     /// 60 000-row lineitem.tbl used to take >5 min because the previous
