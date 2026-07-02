@@ -6,3 +6,10 @@ description = "MySQL wire protocol client library"
 
 [dependencies]
 sha1 = "0.10"
+
+[dev-dependencies]
+rand = "0.8"
+
+[[example]]
+name = "hybrid_soak"
+path = "examples/hybrid_soak.rs"
