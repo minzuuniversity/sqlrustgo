@@ -538,6 +538,12 @@ mod tests {
         assert_eq!(pkt.sequence, 1);
         assert_eq!(pkt.payload[0], 0xff); // ERR packet type
         assert_eq!(u16::from_le_bytes([pkt.payload[1], pkt.payload[2]]), 1146);
+        // MySQL wire protocol requires 0x23 (marker) + SQL_STATE(5) + 0x00 + message.
+        // Verify the null-byte terminator between SQL state and message.
+        assert_eq!(pkt.payload[3], 0x23); // SQL state marker
+        assert_eq!(&pkt.payload[4..9], b"42S02"); // SQL state
+        assert_eq!(pkt.payload[9], 0x00); // null-byte terminator
+        assert_eq!(&pkt.payload[10..], b"Table not found");
         // Verify it can be written without error
         let mut buf = Vec::new();
         pkt.write_to(&mut buf).unwrap();
@@ -4559,6 +4565,16 @@ pub mod testing {
         /// `sync_channel(N*2)` for backpressure. Default 16 (matches
         /// CLI default in `main.rs`).
         pub server_threads: usize,
+        /// Storage backend selector forwarded to
+        /// `run_server_with_listener_and_shutdown_with_bootstrap_tables_and_sql`.
+        /// `None` (default) → `FileStorage` + WAL (JSON row files);
+        /// `Some("binary")` → `BinaryTableStorage` reading pre-generated
+        /// `*.bin` (BINT v2) files in `data_dir`. The `binary` backend
+        /// is significantly faster at TPC-H load time because it does
+        /// not run LOAD DATA; the operator must produce the `.bin`
+        /// files upstream (e.g. `tools/tbl2bin`). The CLI mirrors
+        /// this knob via `--storage binary`.
+        pub storage: Option<String>,
     }
 
     impl Default for EphemeralConfig {
@@ -4571,6 +4587,7 @@ pub mod testing {
                 bootstrap_sql: Vec::new(),
                 bulk_insert_buffer_size: 1_048_576,
                 server_threads: 16,
+                storage: None,
             }
         }
     }
@@ -4705,6 +4722,7 @@ pub mod testing {
         let bootstrap_tables_flag = config.bootstrap_tables;
         let bootstrap_sql = config.bootstrap_sql;
         let server_threads = config.server_threads;
+        let storage_backend = config.storage.clone();
         let join = std::thread::spawn(move || {
             let bootstrap: crate::UserStoreBootstrap = if bootstrap_users {
                 Some(Box::new(|user_store: &mut crate::UserStore| {
@@ -4721,7 +4739,7 @@ pub mod testing {
                 bootstrap_sql,
                 data_dir_for_thread,
                 server_threads,
-                None,
+                storage_backend,
             );
         });
 

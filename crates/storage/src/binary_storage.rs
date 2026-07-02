@@ -281,6 +281,25 @@ impl StorageEngine for BinaryTableStorage {
     }
 
     fn insert(&mut self, table: &str, records: Vec<Record>) -> SqlResult<()> {
+        // BINT is a "pre-loaded snapshot" store: `new_with_data` populates
+        // `self.tables` from `.bin` files on disk before any DDL runs. A
+        // naive `insert` here would clobber that snapshot with an empty
+        // table and immediately `persist_table` would wipe the `.bin`
+        // file to 0 bytes — destroying the snapshot permanently.
+        // Guard: if the table is already present with rows (loaded
+        // from a `.bin` snapshot), just append and persist without
+        // touching the schema or replacing existing rows.
+        if let Some(existing) = self.tables.get(table) {
+            if !existing.rows.is_empty() {
+                let existing = self
+                    .tables
+                    .get_mut(table)
+                    .expect("table present (checked above)");
+                existing.rows.extend(records);
+                self.persist_table(table)?;
+                return Ok(());
+            }
+        }
         let table_data = self
             .tables
             .entry(table.to_string())
