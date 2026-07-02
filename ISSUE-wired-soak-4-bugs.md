@@ -4,6 +4,7 @@
 > **Resolution date**: 2026-07-02
 > **Severity (when open)**: P0
 > **Related**: #3225 (wired 24h soak), #3229 (wired 168h soak), TPC-H wire test `#[ignore]`
+> **Closing PR**: [Gitea #3673](http://192.168.0.252:3000/openclaw/sqlrustgo/pulls/3673) — merged into `develop/v3.9.0` as commit `d162bc4ae` on 2026-07-02
 > **Regression coverage**:
 >   - `tests/wired_insert_payload_regression_test.rs` — 5 wire-protocol regression tests (Bug 1 + Bug 2)
 >   - `crates/mysql-server/src/lib.rs::test_make_err_packet_null_byte_separator` — Bug 4 unit + integration
