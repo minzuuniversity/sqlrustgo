@@ -1409,7 +1409,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         base_info: &TableInfo,
     ) -> Option<(Vec<Vec<Value>>, TableInfo)> {
         use std::collections::HashMap;
-        let storage = self.storage.read().ok()?;
+        let storage = self.storage.read();
 
         let where_expr = select.where_clause.as_ref()?;
 
@@ -2858,7 +2858,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         if where_expr_has_uncorrelated_subquery(where_expr) {
             return None;
         }
-        let storage = self.storage.read().ok()?;
+        let storage = self.storage.read();
         // Q21 fix: the subquery table may be encoded as
         // "lineitem|l2" (table|alias). The storage layer doesn't
         // know about the alias suffix, so strip it before looking
@@ -3027,7 +3027,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             None => &subq.table,
         };
         let where_expr = subq.where_clause.as_ref()?;
-        let storage = self.storage.read().ok()?;
+        let storage = self.storage.read();
         let table_info = storage.get_table_info(real_table).ok()?;
         // Split the WHERE into the outer-equality leaf (which we
         // will use as the index key column) and the static rest
@@ -3161,7 +3161,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         };
 
         // ── Resolve columns ──────────────────────────────────────────
-        let storage = self.storage.read().ok()?;
+        let storage = self.storage.read();
         let table_info = storage.get_table_info(real_table).ok()?;
         let key_col_idx = table_info
             .columns

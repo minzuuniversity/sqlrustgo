@@ -4167,6 +4167,7 @@ dependencies = [
  "hex",
  "log",
  "lru-cache",
+ "parking_lot",
  "proptest",
  "query-stats",
  "rand 0.8.6",
@@ -4351,6 +4352,7 @@ name = "sqlrustgo-executor"
 version = "3.9.0"
 dependencies = [
  "log",
+ "parking_lot",
  "reqwest",
  "serde",
  "serde_json",
@@ -4407,6 +4409,7 @@ dependencies = [
 name = "sqlrustgo-mysql-client"
 version = "3.9.0"
 dependencies = [
+ "rand 0.8.6",
  "sha1 0.10.6",
 ]
 
@@ -4416,6 +4419,7 @@ version = "0.1.0"
 dependencies = [
  "byteorder",
  "clap 4.6.1",
+ "parking_lot",
  "rand 0.8.6",
  "rcgen",
  "rustls",
