@@ -10,13 +10,14 @@
 //! `ExecutionEngine` retains thin forwarder methods that delegate here.
 
 use sqlrustgo_types::SqlResult;
-use std::sync::{Arc, RwLock};
+use parking_lot::RwLock;
+use std::sync::Arc;
 
 use super::execution_engine::{ExecutionStats, TableStatistics};
 
 /// Estimate row count for a table based on statistics
 pub fn estimate_row_count(stats: &Arc<RwLock<ExecutionStats>>, table_name: &str) -> u64 {
-    let stats = stats.read().unwrap();
+    let stats = stats.read();
     stats
         .table_stats
         .get(table_name)
@@ -31,7 +32,7 @@ pub fn estimate_selectivity(
     table_name: &str,
     column_name: &str,
 ) -> f64 {
-    let stats = stats.read().unwrap();
+    let stats = stats.read();
     if let Some(table_stats) = stats.table_stats.get(table_name) {
         if let Some(col_stats) = table_stats.column_stats.get(column_name) {
             if col_stats.distinct_count > 0 {
