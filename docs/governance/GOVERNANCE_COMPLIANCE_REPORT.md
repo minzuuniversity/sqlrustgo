@@ -1,9 +1,10 @@
 # SQLRustGo Governance Compliance Report
 
-> **版本**: v3.8.0
-> **评估日期**: 2026-06-04
+> **版本**: v3.9.0 (v3.8.0 baseline + 2026-07-01 re-evaluation)
+> **评估日期**: 2026-06-04 (v3.8.0); 2026-07-01 (v3.9.0 re-evaluation, see §7)
 > **维护人**: Hermes Agent
-> **状态**: ACTIVE
+> **状态**: ACTIVE (v3.9.0 era, §1-§6 反映 v3.8.0 baseline; §7 是 v3.9.0 增量)
+> **2026-07-01 修订者**: claude-macmini (governance audit 整改)
 
 ---
 
@@ -76,14 +77,15 @@
 
 ## 5. 债务治理
 
-| 指标 | 值 |
-|------|---|
-| 债务总项 | 68 |
-| 已关闭 | 49 (72%) |
-| 部分关闭 | 8 (12%) |
-| 开放 | 11 (16%) |
+| 指标 | v3.8.0 (2026-06-04) | v3.9.0 (2026-07-01) | Δ |
+|------|---------------------|---------------------|---|
+| 债务总项 | 68 | 72 | +4 (GA-P0) |
+| 已关闭 | 49 (72%) | 49 (68%) | 比例下降 (分母变大) |
+| 部分关闭 | 8 (12%) | 8 (11%) | -1pp |
+| 开放 | 11 (16%) | 13 (18%) | +2 (GA-P0 OPEN) |
+| BLOCKED | (未计) | 2 (3%) | new metric |
 
-详见: `docs/releases/v3.8.0/debt/INT5_PLUS_DEBT_INVENTORY.md`
+详见: `docs/governance/debt/debt-registry.yaml` (SSOT, 机器可读)
 
 ---
 
@@ -95,7 +97,7 @@
 - [x] `check_docs_consistency.sh` 扩展 CHECK 6-8（v3.8.0 强制文档）
 - [x] 13 项强制文档全部补充完整
 
-### 待完成
+### 待完成 (v3.8.0 baseline, 2026-06-04)
 
 - [ ] `check_anti_fabrication.sh` 集成到 `.gitea/workflows/ci.yml` postcheck
 - [ ] 债务追踪增强（SpecFile/TestFile/PR 列）
@@ -103,5 +105,59 @@
 
 ---
 
+## 7. v3.9.0 增量评估 (2026-07-01)
+
+本节记录 v3.9.0 时期相对 v3.8.0 baseline 的治理规则增量/变化。
+
+### 7.1 新增 ADR (5 个)
+
+| ADR | 标题 | 状态 | 影响 |
+| --- | --- | --- | --- |
+| ADR-006a | Meta-Governance Framework (P11-P15) | ACCEPTED | gate 自验证 + DRIFT 处理 + oracle 强制 |
+| ADR-007a | 5-PR Truthfulness Recovery Sequence | ACCEPTED | Sprint 8 期间 truthfulness 修复流程 |
+| ADR-008 | Test Claim Transparency (P16) | ACCEPTED | gate test 0-`#[ignore]` 政策 |
+| ADR-011a | Cross-Version Debt State Machine | ACCEPTED | 7 状态生命周期 (取代 v3.8.0 4 状态) |
+| ADR-014 | Multi-AI Coordination | ACCEPTED | 5 evidence fields, 冲突解决协议 |
+
+### 7.2 新增治理资产
+
+| 资产 | 路径 | 用途 |
+| --- | --- | --- |
+| 5-step doc check (7 步) | `DOC_CHECK_CORRECTION_RULES.md` | 改文档前必须实跑 gate 验证 |
+| Issue 关闭 PR 关联强制 | `ISSUE_CLOSING_VERIFICATION.md` | 关闭 issue 必须有 PR 合并证据 |
+| Truthfulness 强制清单 (P0) | `AGENTS.md` §"强制 governance 阅读清单" | 7 份必读 |
+| 债务注册表 (机器可读) | `debt/debt-registry.yaml` | SSOT 取代 Markdown 散落 |
+| ADR 重复编号 a/b 消歧 | `adr/INDEX.md` §Numbering notes | 4 对重复 ADR 显式标注 |
+
+### 7.3 关键 gate 状态 (2026-07-01 本机)
+
+| Gate | 状态 | 备注 |
+| --- | --- | --- |
+| `check_arch_invariants.sh` | ✅ 5/5 PASS | 含 C-ARCH-05 (execution_engine.rs 1471/1500) |
+| `check_arch3_no_bypass.sh` | ✅ PASS | ARCH-3 VtuGuard 主路径 |
+| `check_integration_gate.sh` | ✅ 4/4 PASS | SGL-001..005 + WAL lifecycle + C-ARCH-05 |
+| `check_architecture_freeze.sh` | A7-3 PASS | ExecutionEngine 1471 < 1500 (AD-001 目标) |
+
+### 7.4 待办 (新增, v3.9.0 增量)
+
+- [ ] **P0**: ADR 重复编号正式消歧 (4 对 a/b 临时方案, v3.10 应正式重命名或合并)
+- [ ] **P0**: 4 个 hardware-blocked GA-P0 项 (#3648, #3423, #3265, #3266) 已在 debt-registry.yaml 注册, 等待硬件调度
+- [ ] **P1**: `GOVERNANCE_COMPLIANCE_REPORT.md` 此文档自身需要定期重跑 (上次完整评估 2026-06-04, §7 增量)
+- [ ] **P1**: `debt-registry.yaml` 缺 v3.9.0 增量项 (INT-2/3 closure, ARCH-3 VtuGuard 完成 等) — 已通过 §7 + main INDEX addendum 补登记
+- [ ] **P2**: 7 个 governance 文档 (CONTRIBUTING / RELEASE_LIFECYCLE / RELEASE_POLICY / DIRECTORY_POLICY) 仍是 v3.8.0 era, 应更新引用 ADR-006a/008/014
+
+### 7.5 治理审计发现 (2026-07-01 claude-macmini 审计)
+
+| 问题 | 严重度 | 状态 |
+| --- | --- | --- |
+| 4 对 ADR 编号冲突 (006/007/010/011) | P0 | ✅ a/b 消歧 (2026-07-01, 临时方案) |
+| 主 governance INDEX 缺 ADR-008/013/014 | P0 | ✅ 已补 (2026-07-01) |
+| main INDEX 自称 v3.8.0 但 ADR-007+ 是 v3.9.0 | P0 | ✅ 已更新 (2026-07-01) |
+| debt-registry.yaml 缺 v3.9.0 GA-P0 4 项 | P0 | ✅ 已加 (2026-07-01) |
+| 7 份 P0 governance 清单 AGENTS.md 与 main INDEX 引用脱节 | P1 | ⚠️ 部分 (ADR-008 等加入, 但 AGENTS.md 未重读) |
+| 7 个 v3.8.0-era 治理文档 (CONTRIBUTING 等) 未更新 | P2 | ❌ 未修 |
+
+---
+
 *报告生成: `scripts/gate/check_docs_consistency.sh && scripts/gate/check_anti_fabrication.sh`*
-*生成时间: 2026-06-04*
+*生成时间: 2026-06-04 (v3.8.0 baseline); 2026-07-01 (v3.9.0 §7 增量)*

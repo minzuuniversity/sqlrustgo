@@ -1,7 +1,23 @@
+<!-- 2026-07-01 status addendum (auto-applied) -->
+> **状态更新**: 本机 L1 lint + 架构整理已闭环。HEAD `d77821f6d1`, 3 个 PR 已合并 (PR #3664, #3665, #3666)。
+> - `src/execution_engine.rs` 1471 行 (AD-001 1500 目标达标, 2630 → 1471)
+> - C-ARCH-05 上限锁回 1500 (从 3000/1800 统一)
+> - SGL-001 rustfmt drift 修复 (integration gate 4/4 PASS)
+> - Open issues (4, 全部硬件阻塞, 本机无法推进):
+>   - #3648 TPC-H 混合负载 SOAK 跨平台验证 (需要 Z6G4/Z440)
+>   - #3423 TPC-H SF=1.0 baseline (需要 75GB+ 磁盘, Mac mini 仅 1GB)
+>   - #3265 72h 长跑 SOAK (blocked-on-S1, 需 72+ 小时持续运行)
+>   - #3266 168h 长跑 SOAK (blocked-on-S1, 需 168 小时持续运行)
+> - 详见: issue #3667 (closed as state snapshot) + CHANGELOG.md
+>
+> 本文件原始内容保持不变,仅顶部加 addendum。
+
+---
+
 # SQLRustGo v3.9.0 综合索引
 
 > **版本**: v3.9.0
-> **状态**: RC7 ✅ + Sprint 8 ✅ (PR #3465, 2026-06-17) → GA 启动待 Z6G4 真实 24h+ soak
+> **状态**: RC8 ✅ (2026-06-18) + 本机 L1 闭环 (PR #3664/#3665/#3666, 2026-07-01, HEAD `d77821f6d1`) → GA 待 24h/72h/168h real soak
 > **GA 目标**: 2026-12-15
 > **分支**: `develop/v3.9.0` @ `1e83612c6`
 > **最后更新**: 2026-06-17
@@ -13,7 +29,7 @@
 | 属性 | 值 |
 |------|-----|
 | 当前版本 | v3.9.0 |
-| 阶段 | RC7 ✅ + Sprint 8 ✅ |
+| 阶段 | RC8 ✅ + 本机 L1 闭环 (2026-07-01) |
 | 分支 | develop/v3.9.0 |
 | 前置版本 | v3.8.0 GA (2026-06-08) |
 | GA 目标 | 2026-12-15 (deferred from 2026-09-23 per Hermes audit #3252) |
@@ -78,7 +94,7 @@ v3.9.0/
 ├── RELEASE_NOTES.md                       # 发布说明
 ├── GA_GATE_REPORT.md                      # GA 门禁报告 (最新)
 ├── GA_GATE_STATUS_REPORT.md              # GA 门禁状态
-├── V390_COMPREHENSIVE_ASSESSMENT.md      # 综合评估 v2.0 (RC7 + Sprint 8)
+├── V390_COMPREHENSIVE_ASSESSMENT.md      # 综合评估 v2.0 (RC7 + Sprint 8 + 2026-07-01 L1 闭环)
 ├── LONG_STABILITY_TESTS_ANALYSIS.md     # 26 long-running tests 分析 (Sprint 8)
 ├── TEST_TRUTHFULNESS_REPORT.md          # 测试真实性报告
 ├── INTEGRATION_TEST_HONEST_ASSESSMENT.md # 集成测试诚实评估

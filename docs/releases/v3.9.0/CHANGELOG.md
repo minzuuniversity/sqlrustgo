@@ -5,8 +5,92 @@
 > **分支**: `develop/v3.9.0` (从 `main@v3.8.0` fork)
 > **创建日期**: 2026-06-05
 > **GA 目标**: 2026-12-15 (per Hermes audit #3252, deferred from 2026-09-23)
-> **当前阶段**: **RC7** (2026-06-12, awaiting 24h/72h/168h soak for GA cut, see GA_GATE_REPORT.md)
+> **当前阶段**: **RC8** (2026-06-18) + 本机 L1 闭环 (PR #3664/#3665/#3666, 2026-07-01, HEAD `d77821f6d1`); GA 待 24h/72h/168h real soak
 > **前版本**: v3.8.0
+
+---
+
+## 2026-07-01 — Gate Lint Drift 修复
+
+`gate.sh` L1 门禁在 RC7 之后暴露 6 个 clippy 错误与 4 文件 fmt 漂移, 已全部修复:
+
+### Fixed
+
+| 文件 | 变更 |
+|------|------|
+| `crates/storage/src/binary_storage.rs` | 删除未使用 `use std::sync::Arc;` 与 `Read`, 删除死方法 `ensure_loaded` |
+| `crates/storage/src/checkpoint.rs:185` | `sort_by` → `sort_by_key(\|b\| Reverse(b.timestamp))` |
+| `crates/storage/src/engine.rs:150` | 折叠嵌套 `if` 进 `match` arm guard |
+| `crates/storage/src/wal_legacy.rs:913` | `sort_by` → `sort_by_key(\|a\| a.archive_id)` |
+| `crates/optimizer/src/stats.rs:401` | 提取闭包 `update_min/update_max`, 消除嵌套 `if` 触发 `collapsible_match` |
+| `crates/executor/src/executor_metrics.rs:66` | `if total == 0` 改 `checked_div(...).unwrap_or(0)` |
+| `crates/telemetry/src/lib.rs:153` | 同上 `checked_div` 改写 |
+| `crates/vector/src/ivfpq.rs:144` | 移除冗余 `.into_iter()` |
+| `crates/mysql-server/src/lib.rs:2115` | 死函数 `is_select_stmt` 加 `#[cfg(test)]` |
+| `crates/mysql-server/src/lib.rs:3276` | 8-arg `run_server_*` 加 `#[allow(clippy::too_many_arguments)]` |
+
+### fmt 漂移 (4 文件)
+
+- `crates/cli/src/main.rs:98`
+- `crates/storage/src/binary_storage.rs:566, 599, 641`
+- `crates/tools/src/bin/tbl2bin.rs:9, 15`
+- `tests/mixed_workload_deadlock_regression_test.rs:22`
+
+### 验证
+
+```
+bash gate/gate.sh v3.9.0
+[L1] cargo build...           [PASS]
+[L1] cargo test --lib...      [PASS]
+[L1] clippy...                [PASS]
+[L1] cargo fmt...             [PASS]
+=== Gate Result: PASSED ===
+```
+
+---
+
+## 2026-07-01 — execution_engine 拆分 + C-ARCH-05 锁回 + SGL-001 fmt (PR #3664/#3665/#3666)
+
+v3.9.0 本机可推进的 L1 lint + 架构整理项已全部闭环。3 个连续 PR 合并至 `develop/v3.9.0` (HEAD `d77821f6d1`)。
+
+### Changed
+
+| PR | 内容 | 验证 |
+| --- | --- | --- |
+| #3664 (issue #3661) | `refactor(execution_engine)`: 拆分 `src/execution_engine.rs` 2630 → 1471 行 (AD-001 1500 目标达标)。新文件 `engine_helpers.rs` (227), `engine_dml.rs` (840), `engine_cte.rs` (127)。 | C-ARCH-05 PASS / check_arch3_no_bypass.sh PASS / DML 11/11 + lib 25/25 |
+| #3665 | `fix(gate)`: C-ARCH-05 上限从 3000/1800 过渡值锁回 1500 (3 个 gate 脚本统一) | check_arch_invariants 5/5 + check_architecture_freeze A7-3 PASS |
+| #3666 | `style`: rustfmt drift on 3 test files (SGL-001 gate fix) | SGL-5/5 PASS + integration gate 4/4 |
+
+### State
+
+- 当前分支 `develop/v3.9.0` @ `d77821f6d1`
+- 本地 4 个快速 gate 全 PASS: `check_arch_invariants` (5/5), `check_arch3_no_bypass` (G4), `check_integration_gate` (4/4), `check_architecture_freeze` (A7-3 PASS)
+- Issue #3667 已开为状态快照 (P0-arch-debt), 立即关闭
+- Open issues (4, 全部硬件阻塞, 本机无法推进):
+  - #3648 TPC-H 混合负载 SOAK 跨平台验证 (需要 Z6G4/Z440)
+  - #3423 TPC-H SF=1.0 baseline (需要 75GB+ 磁盘, Mac mini 仅 1GB)
+  - #3265 72h 长跑 SOAK (blocked-on-S1, 需 72+ 小时持续运行)
+  - #3266 168h 长跑 SOAK (blocked-on-S1, 需 168 小时持续运行)
+
+### Verification (本机 develop/v3.9.0 @ `d77821f6d1`)
+
+```
+bash scripts/gate/check_arch_invariants.sh:    5/5 PASS
+  [C-ARCH-05] execution_engine.rs: 1471 lines, limit 1500, AD-001 target 1500
+bash scripts/gate/check_arch3_no_bypass.sh:    PASS
+bash scripts/gate/check_integration_gate.sh:   PASS (4/4)
+  SGL-001 (B4 Format): PASS
+  SGL-002..005: PASS
+  WAL lifecycle (INV-1/2/3): PASS
+bash scripts/gate/check_architecture_freeze.sh:
+  A7-3 ExecutionEngine: PASS (< 1500 lines as per AD-001)
+cargo fmt --check:                            clean
+```
+
+### Refs
+
+- #3667 — 闭环声明 issue (P0-arch-debt, closed as state snapshot)
+- AD-001 — 1500 行架构原始目标
 
 ---
 

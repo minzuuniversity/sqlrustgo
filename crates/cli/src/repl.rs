@@ -28,9 +28,7 @@ pub fn run_repl(host: &str, port: u16, user: &str, password: &str) -> anyhow::Re
                 if trimmed.is_empty() {
                     continue;
                 }
-                if trimmed.eq_ignore_ascii_case("exit")
-                    || trimmed.eq_ignore_ascii_case("quit")
-                {
+                if trimmed.eq_ignore_ascii_case("exit") || trimmed.eq_ignore_ascii_case("quit") {
                     break;
                 }
                 let _ = rl.add_history_entry(&line);
