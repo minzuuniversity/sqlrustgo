@@ -153,7 +153,7 @@ fn value_to_literal_string_v(v: &Value) -> String {
 }
 
 impl<S: StorageEngine + 'static> ExecutionEngine<S> {
-    pub(crate) fn execute_select(&self, select: &SelectStatement) -> SqlResult<ExecutorResult> {
+    pub fn execute_select(&self, select: &SelectStatement) -> SqlResult<ExecutorResult> {
         // Sprint 1b fix (Q7/Q8/Q9): handle FROM (subquery) AS alias by
         // first executing the subquery to materialize its result into a
         // synthetic in-memory table, then running the outer SELECT against
@@ -941,7 +941,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             // projected row's (often smaller) slot indices.
             let mut zipped: Vec<(Vec<Value>, Vec<Value>, Vec<Value>)> = projected_rows
                 .into_iter()
-                .zip(limited_rows_for_order_by.into_iter())
+                .zip(limited_rows_for_order_by)
                 .map(|(row, original_row)| {
                     let keys: Vec<Value> = select
                         .order_by
@@ -1580,16 +1580,10 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 Some(c) => c.clone(),
                 None => return None,
             };
-            let prev_idx = match prev_cols.iter().position(|c| c == &left_col) {
-                Some(i) => i,
-                None => return None,
-            };
+            let prev_idx = prev_cols.iter().position(|c| c == &left_col)?;
             let cur_bare = &cur.0;
             let cur_info = storage.get_table_info(cur_bare).ok()?.clone();
-            let cur_idx = match cur_info.columns.iter().position(|c| c.name == right_col) {
-                Some(i) => i,
-                None => return None,
-            };
+            let cur_idx = cur_info.columns.iter().position(|c| c.name == right_col)?;
             let cur_rows = storage.scan(cur_bare).ok()?;
             alias_to_columns.insert(
                 cur_alias.clone(),
@@ -3269,7 +3263,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             if inner.len() <= index.col_idx {
                 continue;
             }
-            if &inner[index.col_idx] != &lit {
+            if inner[index.col_idx] != lit {
                 continue;
             }
             let substituted =
