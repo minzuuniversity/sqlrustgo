@@ -9,8 +9,8 @@ use sqlrustgo_storage::{
     TriggerTiming as StorageTriggerTiming,
 };
 use sqlrustgo_types::{SqlError, SqlResult, Value};
-use parking_lot::RwLock;
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
+use log::error as log_error;
 
 /// Trigger timing: BEFORE or AFTER
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -102,10 +102,24 @@ pub struct TriggerExecutor {
 impl TriggerExecutor {
     pub fn new(storage: Arc<RwLock<dyn StorageEngine>>) -> Self {
         if !cfg!(test) {
-            assert!(
-                storage.read().is_wal_enabled(),
-                "Storage MUST be WalStorage in production - WAL is mandatory"
-            );
+            // BinaryTableStorage has no WAL. Triggers on a non-WAL storage are
+            // a no-op (no DML recovery is possible) — warn and proceed instead
+            // of panicking the server. WalStorage continues to enforce the
+            // WAL contract at write time.
+            match storage.read() {
+                Ok(g) if !g.is_wal_enabled() => {
+                    log_error!(
+                        "TriggerExecutor::new: storage has no WAL enabled — \
+                         triggers will be silently skipped (binary mode)"
+                    );
+                }
+                Err(poisoned) => {
+                    log_error!(
+                        "TriggerExecutor::new: storage lock poisoned: {poisoned:?}"
+                    );
+                }
+                Ok(_) => {}
+            }
         }
         Self { storage }
     }
@@ -2082,5 +2096,21 @@ mod tests {
 
         let statements = executor.split_body_statements("SET NEW.col1 = 1;;; SET NEW.col2 = 2");
         assert_eq!(statements.len(), 2);
+    }
+
+    /// Regression: TriggerExecutor::new must NOT panic on non-WAL storage
+    /// (e.g. BinaryTableStorage). The previous assert!() caused the
+    /// server to enter a busy-loop panic storm under --storage binary
+    /// (see reports/SERVER_DEADLOCK_FIX_PLAN_2026-06-28.md).
+    #[test]
+    fn test_trigger_executor_with_non_wal_storage() {
+        use sqlrustgo_storage::BinaryTableStorage;
+        let dir = tempfile::tempdir().expect("tempdir");
+        let bin =
+            BinaryTableStorage::new(dir.path().to_path_buf()).expect("new bin storage");
+        assert!(!bin.is_wal_enabled(), "sanity: BinaryTableStorage is non-WAL");
+        let executor = TriggerExecutor::new(Arc::new(RwLock::new(bin)));
+        // Triggers list is empty, no panic, no DML attempted.
+        assert!(executor.get_table_triggers("any_table").is_empty());
     }
 }

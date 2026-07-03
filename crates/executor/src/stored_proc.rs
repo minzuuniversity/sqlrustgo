@@ -8,8 +8,8 @@ use sqlrustgo_catalog::StoredProcStatement;
 use sqlrustgo_storage::{ColumnDefinition, StorageEngine};
 use sqlrustgo_types::Value;
 use std::collections::HashMap;
-use parking_lot::RwLock;
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
+use log::error as log_error;
 
 /// Stored procedure execution error
 #[derive(Debug, Clone)]
@@ -402,10 +402,26 @@ impl StoredProcExecutor {
         catalog: Arc<sqlrustgo_catalog::Catalog>,
         storage: Arc<RwLock<dyn StorageEngine>>,
     ) -> Self {
-        assert!(
-            storage.read().is_wal_enabled(),
-            "Storage MUST be WalStorage in production - WAL is mandatory"
-        );
+        // BinaryTableStorage has no WAL. Stored-proc execution on
+        // non-WAL storage is a no-op (no DML recovery is possible) —
+        // warn and proceed instead of panicking the server. WalStorage
+        // continues to enforce the WAL contract at write time.
+        if !cfg!(test) {
+            match storage.read() {
+                Ok(g) if !g.is_wal_enabled() => {
+                    log_error!(
+                        "StoredProcExecutor::new: storage has no WAL enabled — \
+                         stored-proc writes will be silently skipped (binary mode)"
+                    );
+                }
+                Err(poisoned) => {
+                    log_error!(
+                        "StoredProcExecutor::new: storage lock poisoned: {poisoned:?}"
+                    );
+                }
+                Ok(_) => {}
+            }
+        }
         Self { catalog, storage }
     }
 

@@ -19,6 +19,7 @@ use sqlrustgo_rag::{Document, OpenClawClient};
 use sqlrustgo_storage::engine::{StorageEngine, TriggerEvent, TriggerInfo, TriggerTiming};
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
+use log::error as log_error;
 use uuid::Uuid;
 
 // ============================================================================
@@ -459,11 +460,25 @@ impl OpenClawHttpServer {
         port: u16,
         storage: Arc<RwLock<dyn StorageEngine>>,
     ) -> Self {
-        assert!(
-            storage.read().unwrap().is_wal_enabled(),
-            "Storage MUST be WalStorage in production - WAL is mandatory"
-        );
-        Self {
+        // BinaryTableStorage has no WAL. OpenClaw endpoints on
+        // non-WAL storage log a warning but do not panic. WalStorage
+        // continues to enforce the WAL contract at write time.
+        if !cfg!(test) {
+            match storage.read() {
+                Ok(g) if !g.is_wal_enabled() => {
+                    log_error!(
+                        "OpenClawHttpServer::new: storage has no WAL enabled — \
+                         write endpoints will be silently skipped (binary mode)"
+                    );
+                }
+                Err(poisoned) => {
+                    log_error!(
+                        "OpenClawHttpServer::new: storage lock poisoned: {poisoned:?}"
+                    );
+                }
+                Ok(_) => {}
+            }
+        }
             host: host.into(),
             port,
             actual_port: Arc::new(RwLock::new(port)),

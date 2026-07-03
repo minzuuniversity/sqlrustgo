@@ -1,7 +1,7 @@
 #!/bin/bash
 # check_p13_soak_test.sh - P1-3 (#3175) Soak Test G7 gate
 #
-# Verifies 9 conditions:
+# Verifies 11 conditions:
 #  1. soak_test_harness.rs exists
 #  2. soak_test.rs exists and is registered in Cargo.toml
 #  3. 3-level smoke equivalence constants (24h→60s, 72h→180s, 168h→420s)
@@ -11,12 +11,15 @@
 #  7. Memory baseline invariant holds
 #  8. tpch_soak_driver.py exists and is valid Python
 #  9. scripts/soak/extract_soak_report.py exists and is valid Python
+# 10. tpch_mixed_soak_driver.py exists and is valid Python
+# 11. crud_templates.py exists and imports successfully
 #
 # Exit code: 0 = PASS, 1 = FAIL
 #
 # Refs: docs/openspec/3175-soak-test.md
 #       V390_TEST_PLAN.md §G7
 #       openspec/changes/p1-3-soak-test/
+#       openspec/changes/tpch-mixed-workload-soak/
 
 set -e
 
@@ -135,6 +138,30 @@ if ! python3 -c "import sys; sys.path.insert(0, 'scripts/soak'); import extract_
     exit 1
 fi
 echo "  [9/9] ✅ PASS: scripts/soak/extract_soak_report.py valid Python"
+
+# ── Layer 4 checks (mixed workload driver) ───────────────────────────────────
+
+# 10. tpch_mixed_soak_driver.py exists and is valid Python
+if [ ! -f "scripts/soak/tpch_mixed_soak_driver.py" ]; then
+    echo "  [10/11] ❌ FAIL: scripts/soak/tpch_mixed_soak_driver.py not found"
+    exit 1
+fi
+if ! python3 -c "import ast; ast.parse(open('scripts/soak/tpch_mixed_soak_driver.py').read())" 2>/dev/null; then
+    echo "  [10/11] ❌ FAIL: scripts/soak/tpch_mixed_soak_driver.py is not valid Python"
+    exit 1
+fi
+echo "  [10/11] ✅ PASS: scripts/soak/tpch_mixed_soak_driver.py valid Python"
+
+# 11. crud_templates.py exists and imports successfully
+if [ ! -f "scripts/soak/crud_templates.py" ]; then
+    echo "  [11/11] ❌ FAIL: scripts/soak/crud_templates.py not found"
+    exit 1
+fi
+if ! python3 -c "import sys; sys.path.insert(0, 'scripts/soak'); import crud_templates; print('ok')" 2>/dev/null | grep -q ok; then
+    echo "  [11/11] ❌ FAIL: crud_templates.py failed to import"
+    exit 1
+fi
+echo "  [11/11] ✅ PASS: scripts/soak/crud_templates.py importable"
 
 echo ""
 echo "=== G7 Gate: PASS ==="

@@ -8,7 +8,8 @@ use sha1::{Digest, Sha1};
 use sqlrustgo::ExecutionEngine;
 use sqlrustgo_parser::{parse, Statement};
 use sqlrustgo_storage::{
-    FileBackedWalManager, FileStorage, MemoryStorage, StorageEngine, WalStorage,
+    BinaryTableStorage, BoxStorageEngine, FileBackedWalManager, FileStorage, MemoryStorage,
+    StorageEngine, WalStorage,
 };
 use sqlrustgo_types::{SqlError, Value};
 use std::collections::HashMap;
@@ -375,6 +376,37 @@ mod tests {
         assert_eq!(read_pkt.payload, pkt.payload);
     }
 
+    // Test BinaryTableStorage loads TPC-H SF=1.0 .bin files correctly
+    #[test]
+    fn test_binary_storage_tpch_sf1_load() {
+        use sqlrustgo_storage::BinaryTableStorage;
+
+        let bin_dir = std::path::PathBuf::from("/tmp/tpch-sf1-bin");
+        if !bin_dir.exists() {
+            println!("SKIP: /tmp/tpch-sf1-bin not found (run tbl2bin first)");
+            return;
+        }
+
+        let storage = BinaryTableStorage::new_with_data(bin_dir).expect("load .bin files");
+        let counts: Vec<(&str, usize)> = vec![
+            ("region", 5),
+            ("nation", 25),
+            ("customer", 150_000),
+            ("supplier", 10_000),
+            ("part", 200_000),
+            ("partsupp", 800_000),
+            ("orders", 1_500_000),
+            ("lineitem", 6_001_215),
+        ];
+
+        for (table, expected) in counts {
+            let rows = storage.scan(table).expect(table);
+            assert_eq!(rows.len(), expected, "table {} row count mismatch", table);
+            println!("  {}: {} rows OK", table, rows.len());
+        }
+        println!("BinaryTableStorage loaded all 8 TPC-H tables correctly");
+    }
+
     // Test Packet with empty payload
     #[test]
     fn test_packet_empty_payload() {
@@ -507,6 +539,12 @@ mod tests {
         assert_eq!(pkt.sequence, 1);
         assert_eq!(pkt.payload[0], 0xff); // ERR packet type
         assert_eq!(u16::from_le_bytes([pkt.payload[1], pkt.payload[2]]), 1146);
+        // MySQL wire protocol requires 0x23 (marker) + SQL_STATE(5) + 0x00 + message.
+        // Verify the null-byte terminator between SQL state and message.
+        assert_eq!(pkt.payload[3], 0x23); // SQL state marker
+        assert_eq!(&pkt.payload[4..9], b"42S02"); // SQL state
+        assert_eq!(pkt.payload[9], 0x00); // null-byte terminator
+        assert_eq!(&pkt.payload[10..], b"Table not found");
         // Verify it can be written without error
         let mut buf = Vec::new();
         pkt.write_to(&mut buf).unwrap();
@@ -2064,12 +2102,27 @@ fn infer_column_types(
     cols.iter().map(|_| "VARCHAR(255)".to_string()).collect()
 }
 
-#[allow(clippy::type_complexity)]
+/// G13-OLTP-1: classify read-only statements. SELECT / SHOW / DESCRIBE
+/// can run on a shared read lock; everything else needs the exclusive
+/// write lock. Returning the inner reference (not just bool) lets the
+/// dispatch site acquire the right lock and call the matching `&self`
+/// execute method.
+enum ReadOnlyStmt<'a> {
+    Select(&'a sqlrustgo_parser::parser::SelectStatement),
+    Show(&'a sqlrustgo_parser::parser::ShowStatement),
+    Describe(&'a sqlrustgo_parser::parser::DescribeStatement),
+}
+fn read_only_stmt(stmt: &Statement) -> Option<ReadOnlyStmt<'_>> {
+    match stmt {
+        Statement::Select(s) => Some(ReadOnlyStmt::Select(s)),
+        Statement::Show(s) => Some(ReadOnlyStmt::Show(s)),
+        Statement::Describe(s) => Some(ReadOnlyStmt::Describe(s)),
+        _ => None,
+    }
+}
+#[cfg(test)]
 fn is_select_stmt(stmt: &Statement) -> bool {
-    matches!(
-        stmt,
-        Statement::Select(_) | Statement::Show(_) | Statement::Describe(_)
-    )
+    read_only_stmt(stmt).is_some()
 }
 
 /// Split a multi-statement query string into top-level statement text
@@ -2214,12 +2267,7 @@ fn make_tls_config() -> rustls::ServerConfig {
 )]
 fn handle_load_local_infile<S: Read + Write>(
     stream: &mut S,
-    engine: &mut sqlrustgo::ExecutionEngine<
-        sqlrustgo_storage::WalStorage<
-            sqlrustgo_storage::FileStorage,
-            sqlrustgo_storage::FileBackedWalManager,
-        >,
-    >,
+    engine: &mut sqlrustgo::ExecutionEngine<BoxStorageEngine>,
     path: &str,
     table: &str,
     _delim: char,
@@ -2410,8 +2458,8 @@ fn handle_load_local_infile<S: Read + Write>(
 fn do_command_loop<S: Read + Write>(
     stream: &mut S,
     addr: SocketAddr,
-    storage: Arc<RwLock<WalStorage<FileStorage, FileBackedWalManager>>>,
-    engine: Arc<RwLock<ExecutionEngine<WalStorage<FileStorage, FileBackedWalManager>>>>,
+    storage: Arc<RwLock<BoxStorageEngine>>,
+    engine: Arc<RwLock<ExecutionEngine<BoxStorageEngine>>>,
     cap: u32,
     server_last_sent_seq: &mut u8,
     ps_manager: &mut PreparedStatementManager,
@@ -2486,9 +2534,23 @@ fn do_command_loop<S: Read + Write>(
                         .clone()
                         .unwrap_or_else(|| std::path::PathBuf::from("/tmp"));
                     let bulk_buf = cfg.bulk_insert_buffer_size;
+                    // G13-OLTP-1: poisoning recovery on the engine
+                    // write lock. A previous LOAD DATA may have
+                    // panicked mid-insert (e.g. parse_tbl_line on
+                    // a malformed row), leaving the RwLock poisoned.
+                    // The previous `engine.write().unwrap()` would
+                    // then re-panic on every subsequent LOAD DATA.
+                    // Recover via `into_inner()` and continue.
+                    let mut eng_guard = match engine.write() {
+                        Ok(g) => g,
+                        Err(poisoned) => {
+                            tracing::warn!("recovered engine from poisoned write lock (LOAD DATA)");
+                            poisoned.into_inner()
+                        }
+                    };
                     let n = match handle_load_local_infile(
                         stream,
-                        &mut engine.write(),
+                        &mut eng_guard,
                         &path,
                         &table,
                         delim,
@@ -2549,11 +2611,44 @@ fn do_command_loop<S: Read + Write>(
                 let mut had_error = false;
                 for stmt_sql in &stmt_texts {
                     let parsed = parse(stmt_sql);
-                    let is_select = parsed.as_ref().map(is_select_stmt).unwrap_or(false);
-                    // G13-OLTP-1: poisoning recovery - if lock is poisoned, recover and continue
-                    let result = engine.write().execute(stmt_sql);
+                    // G13-OLTP-1: pick read-vs-write lock based on AST.
+                    let is_read_only = parsed
+                        .as_ref()
+                        .ok()
+                        .and_then(|s| read_only_stmt(s).map(|_| s));
+                    // G13-OLTP-1: poisoning recovery in both branches.
+                    let result = if let Some(stmt) = is_read_only {
+                        let rstmt = read_only_stmt(stmt);
+                        match engine.read() {
+                            Ok(eng) => match rstmt {
+                                Some(ReadOnlyStmt::Select(s)) => eng.execute_select(s),
+                                Some(ReadOnlyStmt::Show(s)) => eng.execute_show(s),
+                                Some(ReadOnlyStmt::Describe(s)) => eng.execute_describe(s),
+                                None => unreachable!("is_read_only implied rstmt is Some"),
+                            },
+                            Err(poisoned) => {
+                                let eng = poisoned.into_inner();
+                                tracing::warn!("recovered engine from poisoned read lock");
+                                match rstmt {
+                                    Some(ReadOnlyStmt::Select(s)) => eng.execute_select(s),
+                                    Some(ReadOnlyStmt::Show(s)) => eng.execute_show(s),
+                                    Some(ReadOnlyStmt::Describe(s)) => eng.execute_describe(s),
+                                    None => unreachable!("is_read_only implied rstmt is Some"),
+                                }
+                            }
+                        }
+                    } else {
+                        match engine.write() {
+                            Ok(mut eng) => eng.execute(stmt_sql),
+                            Err(poisoned) => {
+                                let mut eng = poisoned.into_inner();
+                                tracing::warn!("recovered engine from poisoned write lock");
+                                eng.execute(stmt_sql)
+                            }
+                        }
+                    };
                     match result {
-                        Ok(r) if is_select => {
+                        Ok(r) if is_read_only.is_some() => {
                             let cols: Vec<String> = r
                                 .rows
                                 .first()
@@ -2793,26 +2888,55 @@ fn do_command_loop<S: Read + Write>(
                 let final_sql = replace_placeholders(&stmt_sql, &params);
                 tracing::info!("STMT EXECUTE (id={}): {}", stmt_id, final_sql);
                 // G13-OLTP-1: parse first to determine SELECT vs DDL/DML,
-                // then acquire the appropriate lock (read for SELECT, write for DDL/DML).
+                // then acquire the appropriate lock (read for SELECT,
+                // write for DDL/DML).
                 let parsed = parse(&final_sql);
-                let is_select = parsed.as_ref().map(is_select_stmt).unwrap_or(false);
-                // G13-OLTP-1: DDL/DML use exclusive write lock with poisoning recovery.
-                // If a previous thread panicked while holding the lock, the RwLock poisons
-                // all subsequent .read()/.write() calls. Using .into_inner() recovery
-                // allows the server to continue serving queries rather than hard-fail.
-                // G13-OLTP-1: poisoning recovery - recover from poisoned state and continue
-                let result = engine.write().execute(&final_sql);
+                let is_read_only = parsed
+                    .as_ref()
+                    .ok()
+                    .and_then(|s| read_only_stmt(s).map(|_| s));
+                let result = if let Some(stmt) = is_read_only {
+                    let rstmt = read_only_stmt(stmt);
+                    match engine.read() {
+                        Ok(eng) => match rstmt {
+                            Some(ReadOnlyStmt::Select(s)) => eng.execute_select(s),
+                            Some(ReadOnlyStmt::Show(s)) => eng.execute_show(s),
+                            Some(ReadOnlyStmt::Describe(s)) => eng.execute_describe(s),
+                            None => unreachable!("is_read_only implied rstmt is Some"),
+                        },
+                        Err(poisoned) => {
+                            let eng = poisoned.into_inner();
+                            tracing::warn!(
+                                "recovered engine from poisoned read lock (stmt execute)"
+                            );
+                            match rstmt {
+                                Some(ReadOnlyStmt::Select(s)) => eng.execute_select(s),
+                                Some(ReadOnlyStmt::Show(s)) => eng.execute_show(s),
+                                Some(ReadOnlyStmt::Describe(s)) => eng.execute_describe(s),
+                                None => unreachable!("is_read_only implied rstmt is Some"),
+                            }
+                        }
+                    }
+                } else {
+                    match engine.write() {
+                        Ok(mut eng) => eng.execute(&final_sql),
+                        Err(poisoned) => {
+                            let mut eng = poisoned.into_inner();
+                            tracing::warn!(
+                                "recovered engine from poisoned write lock (stmt execute)"
+                            );
+                            eng.execute(&final_sql)
+                        }
+                    }
+                };
                 match result {
-                    Ok(r) if is_select => {
+                    Ok(r) if is_read_only.is_some() => {
                         let c: Vec<String> = r
                             .rows
                             .first()
-                            .map(|row| {
-                                (0..row.len()).map(|i| format!("col_{}", i + 1)).collect()
-                            })
+                            .map(|row| (0..row.len()).map(|i| format!("col_{}", i + 1)).collect())
                             .unwrap_or_else(|| vec!["result".to_string()]);
-                        let t: Vec<String> =
-                            c.iter().map(|_| "VARCHAR(255)".to_string()).collect();
+                        let t: Vec<String> = c.iter().map(|_| "VARCHAR(255)".to_string()).collect();
                         let c_trimmed: Vec<String> =
                             c.into_iter().take(stmt_col_count as usize).collect();
                         let t_trimmed: Vec<String> =
@@ -2820,9 +2944,7 @@ fn do_command_loop<S: Read + Write>(
                         let r_trimmed: Vec<Vec<Value>> = r
                             .rows
                             .into_iter()
-                            .map(|row| {
-                                row.into_iter().take(stmt_col_count as usize).collect()
-                            })
+                            .map(|row| row.into_iter().take(stmt_col_count as usize).collect())
                             .collect();
                         seq = send_binary_result_set(
                             stream, &c_trimmed, &t_trimmed, &r_trimmed, seq, cap,
@@ -2835,8 +2957,7 @@ fn do_command_loop<S: Read + Write>(
                         seq = seq.wrapping_add(1);
                     }
                     Err(e) => {
-                        make_err_packet(seq, 1064, "42000", &e.to_string())
-                            .write_to(stream)?;
+                        make_err_packet(seq, 1064, "42000", &e.to_string()).write_to(stream)?;
                         *server_last_sent_seq = seq;
                         seq = seq.wrapping_add(1);
                     }
@@ -2862,7 +2983,7 @@ fn do_command_loop<S: Read + Write>(
 fn handle_connection(
     mut stream: TcpStream,
     addr: SocketAddr,
-    storage: Arc<RwLock<WalStorage<FileStorage, FileBackedWalManager>>>,
+    storage: Arc<RwLock<BoxStorageEngine>>,
     tls_config: Arc<rustls::ServerConfig>,
     user_store: UserStore,
 ) {
@@ -2983,9 +3104,8 @@ fn handle_connection(
             // without auto-complete_io, the cipher buffer accumulates
             // and the client never receives the response.
             let mut tls = TlsStream::new(&mut conn, &mut stream);
-            let engine: Arc<
-                RwLock<ExecutionEngine<WalStorage<FileStorage, FileBackedWalManager>>>,
-            > = Arc::new(RwLock::new(ExecutionEngine::new(storage.clone())));
+            let engine: Arc<RwLock<ExecutionEngine<BoxStorageEngine>>> =
+                Arc::new(RwLock::new(ExecutionEngine::new(storage.clone())));
             let mut ps_manager = PreparedStatementManager::new();
             let mut server_last_sent_seq = 3u8;
             let _ = do_command_loop(
@@ -3041,7 +3161,7 @@ fn handle_connection(
         .ok();
     let mut server_last_sent_seq = 2u8;
     tracing::info!("Starting command loop with server_last_sent_seq=2");
-    let engine: Arc<RwLock<ExecutionEngine<WalStorage<FileStorage, FileBackedWalManager>>>> =
+    let engine: Arc<RwLock<ExecutionEngine<BoxStorageEngine>>> =
         Arc::new(RwLock::new(ExecutionEngine::new(storage.clone())));
     let mut ps_manager = PreparedStatementManager::new();
     let _ = do_command_loop(
@@ -3078,6 +3198,7 @@ pub fn run_server_v2(
     max_connections: usize,
     auth_mode: &str,
     server_threads: usize,
+    storage: &str,
 ) -> MySqlResult<()> {
     let addr = format!("{}:{}", host, port);
     let listener = TcpListener::bind(&addr)?;
@@ -3093,6 +3214,7 @@ pub fn run_server_v2(
     std::env::set_var("SQLRUSTGO_DATA_DIR", data_dir);
     std::env::set_var("SQLRUSTGO_MAX_CONN", max_connections.to_string());
     std::env::set_var("SQLRUSTGO_AUTH_MODE", auth_mode);
+    std::env::set_var("SQLRUSTGO_STORAGE", storage);
     // v3.8.0-rc2 Week 1 Day 7: also publish the data_dir to
     // ACTIVE_CONFIG so that the LOAD DATA LOCAL INFILE handler
     // recognizes files inside the data dir as in-whitelist.
@@ -3117,6 +3239,7 @@ pub fn run_server_v2(
         Vec::new(),
         Some(std::path::PathBuf::from(data_dir)),
         server_threads,
+        Some(storage.to_string()),
     )
 }
 
@@ -3153,6 +3276,7 @@ pub fn run_server_with_listener(listener: TcpListener) -> MySqlResult<()> {
 /// is **not** created or removed by the server: lifecycle is owned
 /// by the caller (matching the convention already documented on
 /// `EphemeralConfig::data_dir`).
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn run_server_with_listener_and_shutdown_with_bootstrap_tables_and_sql(
     listener: TcpListener,
     shutdown: std::sync::Arc<std::sync::atomic::AtomicBool>,
@@ -3161,23 +3285,12 @@ pub(crate) fn run_server_with_listener_and_shutdown_with_bootstrap_tables_and_sq
     bootstrap_sql: Vec<String>,
     data_dir: Option<std::path::PathBuf>,
     server_threads: usize,
+    storage: Option<String>,
 ) -> MySqlResult<()> {
     let tls_config = Arc::new(make_tls_config());
     tracing::info!("TLS ready (self-signed cert)");
 
-    // WalStorage<FileStorage, FileBackedWalManager> for production runtime
-    // (Issue #2808: G1 — DML must persist via WAL, not bypass to raw FileStorage)
-    //
-    // Issue #3257 fix: when no `data_dir` is provided, use a *stable* directory
-    // under the current working directory (`.sqlrustgo/data/`) rather than a
-    // port-keyed /tmp path. The old port-keyed /tmp path caused stale WAL
-    // files to persist across restarts and trigger 20+ minute recovery on a
-    // 9.9 GB WAL (see Issue #3257). The new default is:
-    //   1. Predictable: developers can find the WAL on disk
-    //   2. Persistent: data survives server restarts on the same port
-    //   3. Clean: an empty default is a fresh, empty data dir
-    // For ephemeral/test usage, callers should still pass an explicit
-    // `data_dir` (e.g. the test harness's `start_ephemeral` does this).
+    // Resolve data directory (shared by both binary and WAL storage modes).
     let wal_data_dir = match data_dir {
         Some(p) => p,
         None => {
@@ -3186,13 +3299,10 @@ pub(crate) fn run_server_with_listener_and_shutdown_with_bootstrap_tables_and_sq
                 .unwrap_or_else(|_| std::path::PathBuf::from("."))
                 .join(".sqlrustgo")
                 .join("data");
-            // Issue #3257: prefer SQLRUSTGO_DATA_DIR env var, then cwd default.
-            // The env var lets operators point at a stable location for
-            // long-running deployments without code changes.
             match std::env::var("SQLRUSTGO_DATA_DIR") {
                 Ok(s) if !s.is_empty() => {
                     tracing::info!(
-                        "WAL data_dir from SQLRUSTGO_DATA_DIR env: {} (port {})",
+                        "data_dir from SQLRUSTGO_DATA_DIR env: {} (port {})",
                         s,
                         port
                     );
@@ -3200,7 +3310,7 @@ pub(crate) fn run_server_with_listener_and_shutdown_with_bootstrap_tables_and_sq
                 }
                 _ => {
                     tracing::info!(
-                        "WAL data_dir default (cwd/.sqlrustgo/data/): {} (port {})",
+                        "data_dir default (cwd/.sqlrustgo/data/): {} (port {})",
                         cwd_default.display(),
                         port
                     );
@@ -3213,74 +3323,73 @@ pub(crate) fn run_server_with_listener_and_shutdown_with_bootstrap_tables_and_sq
         let _ = std::fs::create_dir_all(parent);
     }
     let _ = std::fs::create_dir_all(&wal_data_dir);
-    let mut file_storage =
-        FileStorage::new_with_wal(wal_data_dir.clone()).map_err(std::io::Error::other)?;
-    let wal_path = wal_data_dir.join("sqlrustgo.wal");
-    // Issue #3257: emit a warning if the WAL file is suspiciously large at
-    // startup. This catches stale WAL files left over from previous
-    // configurations (the port-keyed /tmp regression) or from long-running
-    // servers that never had WAL rotation enabled.
-    if let Ok(meta) = std::fs::metadata(&wal_path) {
-        let size_mb = meta.len() / (1024 * 1024);
-        if size_mb >= 100 {
-            tracing::warn!(
-                "WAL file is large: {} ({} MB) at {}. \
-                 This may indicate a stale WAL from a previous process. \
-                 Recovery time will scale with file size; \
-                 consider passing --data-dir to isolate runs, or pruning the WAL manually.",
-                wal_path.display(),
-                size_mb,
-                wal_path.display()
-            );
-        } else {
-            tracing::info!(
-                "WAL file size at startup: {} ({} MB)",
-                wal_path.display(),
-                size_mb
-            );
+
+    let storage: Arc<RwLock<BoxStorageEngine>> = match storage.as_deref() {
+        Some("binary") => {
+            tracing::info!("Storage: binary (BinaryTableStorage, no WAL)");
+            let bin_storage = BinaryTableStorage::new_with_data(wal_data_dir.clone())?;
+            tracing::info!("Loaded .bin tables from data_dir");
+            Arc::new(RwLock::new(BoxStorageEngine::new(bin_storage)))
         }
-    }
-    // INT-2 (#3270 partial): replay any uncommitted WAL entries from
-    // the previous process lifetime so DML/DDL that was journaled but
-    // not yet flushed to FileStorage's persisted table files is
-    // restored on restart. The recovery engine walks the WAL from the
-    // last checkpoint, applies each committed entry to the inner
-    // FileStorage, then we flush so a subsequent restart does not
-    // re-apply the same entries.
-    {
-        use sqlrustgo_storage::recovery_engine::{RecoveryEngine, StatefulRecoveryEngine};
-        let mut recovery: StatefulRecoveryEngine<FileStorage> = StatefulRecoveryEngine::new();
-        let mut wal_manager_for_recovery = FileBackedWalManager::new(wal_path.clone())
-            .map_err(|e| MySqlError::Sql(format!("WAL manager (recovery) init failed: {}", e)))?;
-        match recovery.recover(&mut file_storage, &mut wal_manager_for_recovery) {
-            Ok(report) => {
-                tracing::info!(
-                    "WAL recovery: total={} committed_txns={} rows_inserted={} rows_updated={} rows_deleted={}",
-                    report.entries_total,
-                    report.committed_txns,
-                    report.rows_inserted,
-                    report.rows_updated,
-                    report.rows_deleted
-                );
-                let _ = file_storage.flush();
+        _ => {
+            // WalStorage<FileStorage, FileBackedWalManager>
+            // Issue #3257: emit a warning if the WAL file is suspiciously large at startup.
+            let mut file_storage =
+                FileStorage::new_with_wal(wal_data_dir.clone()).map_err(std::io::Error::other)?;
+            let wal_path = wal_data_dir.join("sqlrustgo.wal");
+            if let Ok(meta) = std::fs::metadata(&wal_path) {
+                let size_mb = meta.len() / (1024 * 1024);
+                if size_mb >= 100 {
+                    tracing::warn!(
+                        "WAL file is large: {} ({} MB). Consider --data-dir to isolate runs.",
+                        wal_path.display(),
+                        size_mb
+                    );
+                } else {
+                    tracing::info!(
+                        "WAL file size at startup: {} ({} MB)",
+                        wal_path.display(),
+                        size_mb
+                    );
+                }
             }
-            Err(e) => {
-                tracing::warn!("WAL recovery skipped: {}", e);
+            // WAL recovery
+            {
+                use sqlrustgo_storage::recovery_engine::{RecoveryEngine, StatefulRecoveryEngine};
+                let mut recovery: StatefulRecoveryEngine<FileStorage> =
+                    StatefulRecoveryEngine::new();
+                let mut wal_manager_for_recovery = FileBackedWalManager::new(wal_path.clone())
+                    .map_err(|e| {
+                        MySqlError::Sql(format!("WAL manager (recovery) init failed: {}", e))
+                    })?;
+                match recovery.recover(&mut file_storage, &mut wal_manager_for_recovery) {
+                    Ok(report) => {
+                        tracing::info!(
+                            "WAL recovery: total={} committed_txns={} rows_inserted={}",
+                            report.entries_total,
+                            report.committed_txns,
+                            report.rows_inserted
+                        );
+                        let _ = file_storage.flush();
+                    }
+                    Err(e) => {
+                        tracing::warn!("WAL recovery skipped: {}", e);
+                    }
+                }
             }
+            let wal_manager = FileBackedWalManager::new(wal_path)
+                .map_err(|e| MySqlError::Sql(format!("WAL manager init failed: {}", e)))?;
+            let wal_storage = WalStorage::new(file_storage, wal_manager)
+                .map_err(|e| MySqlError::Sql(format!("WalStorage init failed: {}", e)))?;
+            Arc::new(RwLock::new(BoxStorageEngine::new(wal_storage)))
         }
-    }
-    let wal_manager = FileBackedWalManager::new(wal_path)
-        .map_err(|e| MySqlError::Sql(format!("WAL manager init failed: {}", e)))?;
-    let wal_storage = WalStorage::new(file_storage, wal_manager)
-        .map_err(|e| MySqlError::Sql(format!("WalStorage init failed: {}", e)))?;
-    let storage: Arc<RwLock<WalStorage<FileStorage, FileBackedWalManager>>> =
-        Arc::new(RwLock::new(wal_storage));
+    };
     if bootstrap_tables {
         let mut eng = ExecutionEngine::new(storage.clone());
         for sql in ["CREATE TABLE content (hash TEXT PRIMARY KEY, doc TEXT NOT NULL, created_at TEXT NOT NULL)",
                 "CREATE TABLE vectors (hash_seq TEXT PRIMARY KEY, hash TEXT NOT NULL, embedding TEXT NOT NULL, created_at TEXT NOT NULL)",
                 "CREATE TABLE documents (id TEXT PRIMARY KEY, title TEXT, content TEXT, created_at TEXT)"] {
-                if let Err(e) = eng.execute(sql) { tracing::warn!("Init: {}", e); }
+            if let Err(e) = eng.execute(sql) { tracing::warn!("Init: {}", e); }
         }
     }
     if !bootstrap_sql.is_empty() {
@@ -3334,11 +3443,35 @@ pub(crate) fn run_server_with_listener_and_shutdown_with_bootstrap_tables_and_sq
                             tls_config: tc,
                             user_store: us,
                         };
-                        if let Err(returned_job) = p.send(job) {
-                            tracing::warn!(
-                                "worker pool shut down; dropping connection from {}",
-                                returned_job.addr
-                            );
+                        // Bounded send with timeout: prevents the accept loop
+                        // from parking indefinitely when the worker channel
+                        // is full (which would block shutdown). If the
+                        // channel is full after 200ms we drop the new
+                        // connection (closing the client TCP stream) and
+                        // continue the accept loop. The client sees
+                        // ECONNRESET and can retry; this protects the
+                        // server from resource exhaustion when a burst
+                        // exceeds `server_threads * CHANNEL_BUFFER_MULTIPLIER`.
+                        match p.send_timeout(job, Duration::from_millis(200)) {
+                            Ok(()) => {}
+                            Err(crate::testing::SendTimeoutError::Timeout(returned_job)) => {
+                                crate::testing::BACKPRESSURE_COUNT
+                                    .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                                tracing::debug!(
+                                    "worker pool full; rejecting connection from {} \
+                                     (BACKPRESSURE_COUNT incremented)",
+                                    returned_job.addr
+                                );
+                                // `returned_job` is dropped here, which closes
+                                // the underlying TcpStream. The client sees
+                                // ECONNRESET.
+                            }
+                            Err(crate::testing::SendTimeoutError::Disconnected(returned_job)) => {
+                                tracing::warn!(
+                                    "worker pool shut down; dropping connection from {}",
+                                    returned_job.addr
+                                );
+                            }
                         }
                     }
                 }
@@ -3380,6 +3513,7 @@ pub fn run_server_with_listener_and_shutdown(
         Vec::new(),
         None,
         16,
+        None,
     )
 }
 
@@ -3403,6 +3537,7 @@ pub(crate) fn run_server_with_listener_and_shutdown_with_bootstrap(
         Vec::new(),
         None,
         16,
+        None,
     )
 }
 
@@ -4258,11 +4393,12 @@ mod load_local_infile_tests {
 pub use testing::EphemeralConfig;
 
 pub mod testing {
+    use crate::BoxStorageEngine;
     use crate::UserStore;
     use crate::ACTIVE_CONFIG;
+    use crossbeam_channel::{bounded, Receiver, Sender};
     use std::net::{SocketAddr, TcpListener, TcpStream};
     use std::path::PathBuf;
-    use std::sync::mpsc::{sync_channel, Receiver, SyncSender};
     use std::sync::{Arc, Mutex};
     use std::thread::JoinHandle;
 
@@ -4270,35 +4406,39 @@ pub mod testing {
     pub struct ServerJob {
         pub stream: TcpStream,
         pub addr: SocketAddr,
-        pub storage: Arc<
-            parking_lot::RwLock<
-                sqlrustgo_storage::WalStorage<
-                    sqlrustgo_storage::FileStorage,
-                    sqlrustgo_storage::FileBackedWalManager,
-                >,
-            >,
-        >,
+        pub storage: Arc<std::sync::RwLock<BoxStorageEngine>>,
         pub tls_config: Arc<rustls::ServerConfig>,
         pub user_store: UserStore,
     }
 
     /// Bounded worker pool: N worker threads + `sync_channel(N*2)` for
     /// backpressure. `server_threads=0` mode skips constructing this
-    /// and falls back to legacy per-connection `thread::spawn`.
     pub struct ServerThreadPool {
-        tx: SyncSender<ServerJob>,
+        tx: Sender<ServerJob>,
         workers: Vec<std::thread::JoinHandle<()>>,
     }
 
-    const CHANNEL_BUFFER_MULTIPLIER: usize = 2;
+    /// Errors returned by [`ServerThreadPool::send_timeout`].
+    pub enum SendTimeoutError {
+        /// Channel was full for the entire timeout. Caller should
+        /// back off and retry (or drop the connection).
+        Timeout(ServerJob),
+        /// All worker threads have exited; the receiver was dropped.
+        Disconnected(ServerJob),
+    }
+
+    /// Counter of `send_timeout` timeouts across all pools in this
+    /// process. Exposed via [`ServerThreadPool::backpressure_count`].
+    pub static BACKPRESSURE_COUNT: std::sync::atomic::AtomicU64 =
+        std::sync::atomic::AtomicU64::new(0);
+    const CHANNEL_BUFFER_MULTIPLIER: usize = 4;
 
     impl ServerThreadPool {
         /// Start N worker threads + bounded sync_channel.
         #[allow(private_interfaces)]
         pub fn start(n: usize) -> Self {
             assert!(n > 0, "ServerThreadPool::start requires n > 0");
-            let (tx, rx) = sync_channel(n * CHANNEL_BUFFER_MULTIPLIER);
-            let rx = Arc::new(std::sync::Mutex::new(rx));
+            let (tx, rx) = bounded(n * CHANNEL_BUFFER_MULTIPLIER);
             let mut workers = Vec::with_capacity(n);
             for worker_id in 0..n {
                 let rx = rx.clone();
@@ -4315,6 +4455,31 @@ pub mod testing {
             self.tx.send(job).map_err(|e| e.0)
         }
 
+        /// Send a job with a timeout. Used by the accept loop so it
+        /// can poll the shutdown flag even under sustained backpressure.
+        pub fn send_timeout(
+            &self,
+            job: ServerJob,
+            timeout: std::time::Duration,
+        ) -> Result<(), SendTimeoutError> {
+            match self.tx.send_timeout(job, timeout) {
+                Ok(()) => Ok(()),
+                Err(crossbeam_channel::SendTimeoutError::Timeout(j)) => {
+                    Err(SendTimeoutError::Timeout(j))
+                }
+                Err(crossbeam_channel::SendTimeoutError::Disconnected(j)) => {
+                    Err(SendTimeoutError::Disconnected(j))
+                }
+            }
+        }
+
+        /// Backpressure counter incremented every time a `send_timeout`
+        /// returned `Timeout`. Exposed for tests that want to assert the
+        /// pool actually exercised backpressure.
+        pub fn backpressure_count(&self) -> u64 {
+            BACKPRESSURE_COUNT.load(std::sync::atomic::Ordering::Relaxed)
+        }
+
         /// Drop the sender so workers exit their recv loop, then join.
         pub fn join(self) {
             drop(self.tx);
@@ -4329,16 +4494,13 @@ pub mod testing {
         }
     }
 
-    fn worker_loop(rx: Arc<std::sync::Mutex<Receiver<ServerJob>>>, worker_id: usize) {
+    fn worker_loop(rx: Receiver<ServerJob>, worker_id: usize) {
         loop {
-            let job = {
-                let rx = rx.lock().expect("worker mutex poisoned");
-                match rx.recv() {
-                    Ok(job) => job,
-                    Err(_) => {
-                        tracing::debug!("worker {worker_id}: channel closed, exiting");
-                        return;
-                    }
+            let job = match rx.recv() {
+                Ok(job) => job,
+                Err(_) => {
+                    tracing::debug!("worker {worker_id}: channel closed, exiting");
+                    return;
                 }
             };
             // Panic isolation: one connection's panic doesn't kill the worker.
@@ -4399,6 +4561,16 @@ pub mod testing {
         /// `sync_channel(N*2)` for backpressure. Default 16 (matches
         /// CLI default in `main.rs`).
         pub server_threads: usize,
+        /// Storage backend selector forwarded to
+        /// `run_server_with_listener_and_shutdown_with_bootstrap_tables_and_sql`.
+        /// `None` (default) → `FileStorage` + WAL (JSON row files);
+        /// `Some("binary")` → `BinaryTableStorage` reading pre-generated
+        /// `*.bin` (BINT v2) files in `data_dir`. The `binary` backend
+        /// is significantly faster at TPC-H load time because it does
+        /// not run LOAD DATA; the operator must produce the `.bin`
+        /// files upstream (e.g. `tools/tbl2bin`). The CLI mirrors
+        /// this knob via `--storage binary`.
+        pub storage: Option<String>,
     }
 
     impl Default for EphemeralConfig {
@@ -4411,6 +4583,7 @@ pub mod testing {
                 bootstrap_sql: Vec::new(),
                 bulk_insert_buffer_size: 1_048_576,
                 server_threads: 16,
+                storage: None,
             }
         }
     }
@@ -4545,6 +4718,7 @@ pub mod testing {
         let bootstrap_tables_flag = config.bootstrap_tables;
         let bootstrap_sql = config.bootstrap_sql;
         let server_threads = config.server_threads;
+        let storage_backend = config.storage.clone();
         let join = std::thread::spawn(move || {
             let bootstrap: crate::UserStoreBootstrap = if bootstrap_users {
                 Some(Box::new(|user_store: &mut crate::UserStore| {
@@ -4561,6 +4735,7 @@ pub mod testing {
                 bootstrap_sql,
                 data_dir_for_thread,
                 server_threads,
+                storage_backend,
             );
         });
 

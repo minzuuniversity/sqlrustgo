@@ -1,73 +1,69 @@
-# Tasks — tpch-sf1-cross-engine-baseline-via-in-process
+## 1. Pre-flight
 
-> **▶️ RESUMED 2026-06-27** (previously DEFERRED 2026-06-19)
->
-> 延期原因（已消除）：Mac mini 磁盘满（仅 1GB 可用）。
-> 当前硬件状态：磁盘 706GB 可用（`df -h /`），dbgen 已就绪于 `/home/openclaw/tpch-dbgen-master/dbgen`。
-> 详见 Gitea issue #3423 评论区。
+- [ ] 1.1 Verify working tree is clean (`git status` returns nothing to commit)
+- [ ] 1.2 Verify branch `feature/issue-3423-tpch-sf1-baseline` is checked out
+- [ ] 1.3 Verify `/home/openclaw/tpch-dbgen-master/dbgen` is executable
+- [ ] 1.4 Verify disk free space >= 12 GB (`df -h /`)
+- [ ] 1.5 Confirm SF=1.0 fixture will be placed at `/tmp/tpch-sf1/`
 
-## 0. Pre-flight
+## 2. SF=1.0 fixture generation (Requirement: SF=1.0 fixture at /tmp/tpch-sf1)
 
-- [ ] 0.1 确认工作树干净（`git status` 输出 clean）
-- [ ] 0.2 确认分支 `feature/issue-3423-tpch-sf1-baseline` 已 checkout
-- [ ] 0.3 确认 `/home/openclaw/tpch-dbgen-master/dbgen` 可执行且版本正确
-- [ ] 0.4 确认磁盘剩余空间 ≥ 12 GB（SF=1.0 产物约 1.1 GB + 工作空间预留）
+- [ ] 2.1 Generate SF=1.0 fixture with `dbgen -s 1 -f`
+- [ ] 2.2 Move the 8 `.tbl` files to `/tmp/tpch-sf1/`
+- [ ] 2.3 Verify row counts match TPC-H spec: region=5, nation=25, supplier=10000, customer=150000, part=200000, partsupp=800000, orders=1500000, lineitem=6001215
+- [ ] 2.4 Do NOT use the `tpch_data_gen` example binary (known 100x-scale bug)
+- [ ] 2.5 Verify total disk footprint is ~1.1 GB
 
-## 1. SF=1.0 fixture 生成
+## 3. In-process test (Requirement: In-process cross-engine test executes 22/22 TPC-H queries at SF=1.0)
 
-- [ ] 1.1 跑 `bash scripts/generate_tpch_data.sh --sf 1 --backend dbgen --output /home/openclaw/tpch_baseline/sf1` 生成 SF=1 数据集
-- [ ] 1.2 用 `wc -l` 校验每个 `.tbl` 行数匹配 TPC-H spec：
-  - region: 5, nation: 25, supplier: 10,000, customer: 150,000
-  - part: 200,000, partsupp: 800,000
-  - orders: 1,500,000, lineitem: 6,000,000
-- [ ] 1.3 拒绝使用 `tpch_data_gen` 内置示例（已知 100x 缩放 bug，见 `crates/bench/examples/tpch_data_gen.rs`）
+- [ ] 3.1 Verify `tests/tpch_sf1_22_vs_3engines_test.rs` exists at the path named in the SPEC
+- [ ] 3.2 Verify the test file uses `MySqlTestClient` + `start_ephemeral` from `sqlrustgo_mysql_server::testing`
+- [ ] 3.3 Verify the test runs Q1..Q22 against `/tmp/tpch-sf1/`
+- [ ] 3.4 Verify the test is `#[ignore]`d when the fixture is absent at `/tmp/tpch-sf1/`
+- [ ] 3.5 Verify the test degrades gracefully when the fixture is present but the data dir has no `.json` files (runs LOAD DATA)
+- [ ] 3.6 Verify the test reuses materialized `.json` files when present (skips LOAD DATA)
 
-## 2. 集成测试
+## 4. Baseline report (Requirement: Baseline report at docs/releases/v3.10.0/perf/SF1_BASELINE_REPORT.md)
 
-- [ ] 2.1 确认 `tests/tpch_sf1_22_vs_3engines_test.rs` 已就位（无需新建）
-- [ ] 2.2 测试通过 `tests/common/tpch_wire_harness` + `MySqlTestClient` 复用 SF=0.01 测试模式
-- [ ] 2.3 当 SF=1.0 fixture 缺失时测试为 `#[ignore]`（graceful degrade）
+- [ ] 4.1 Verify the test writes the report to the exact path `docs/releases/v3.10.0/perf/SF1_BASELINE_REPORT.md`
+- [ ] 4.2 Verify the report contains header metadata (date, scale factor, fixture path, sqlrustgo version, branch, commit)
+- [ ] 4.3 Verify the report contains a setup section with per-table row counts
+- [ ] 4.4 Verify the report contains a 22-row per-query results table
+- [ ] 4.5 Verify the report contains a summary (total rows, total elapsed, slowest query)
+- [ ] 4.6 Verify the report contains a limitations section naming issue #3474
+- [ ] 4.7 Verify the report header explicitly labels the surface as in-process via `MySqlTestClient`
 
-## 3. Baseline 脚本
+## 5. Non-cargo wrapper (Requirement: Non-cargo wrapper scripts/tpch_sf1_baseline.sh)
 
-- [ ] 3.1 创建 `scripts/tpch_sf1_baseline.sh`（chmod +x），执行：
-  1. 断言 `/home/openclaw/tpch_baseline/sf1/*.tbl` 存在且行数匹配预期
-  2. 启动 sqlrustgo ephemeral（`target/release/sqlrustgo-mysql-server serve --port <P> --data-dir /home/openclaw/tpch_baseline/sf1`）
-  3. 对 `queries/q{1..22}.sql` 跑 22 个查询，记录行数与 wall-clock
-  4. （可选）同样 22 个查询在 MariaDB（`mysql -h 127.0.0.1 -P 3306`）上跑并记录
-  5. （可选）同样 22 个查询在 SQLite（`sqlite3` + `.import`）上跑并记录
-  6. 写报告到 `docs/releases/v3.10.0/perf/SF1_BASELINE_REPORT.md`
-  7. 关闭 ephemeral
-- [ ] 3.2 退出码：0=全成功 / 1=任何步骤失败（带 "STEP FAIL: <step> <err>" 消息）
-- [ ] 3.3 添加 `--dry-run` 标志（仅打印计划不执行）
+- [ ] 5.1 Verify `scripts/tpch_sf1_baseline.sh` exists and is executable (mode 0755)
+- [ ] 5.2 Verify the script accepts `--dry-run` and prints the plan without starting the server
+- [ ] 5.3 Verify the script drives the same SF=1.0 baseline flow as the cargo test
+- [ ] 5.4 Verify the script does NOT shell out to the external `mysql` CLI for query execution
+- [ ] 5.5 Verify the script exits 0 on success and 2 on any query failure
 
-## 4. Baseline 报告
+## 6. Per-query timeout (Requirement: Per-query timeout accommodates Q9 6-way join)
 
-- [ ] 4.1 脚本生成 `docs/releases/v3.10.0/perf/SF1_BASELINE_REPORT.md`，含 22 条目（Q1..Q22），每条记录：
-  - 行数
-  - wall-clock（per-engine：sqlrustgo / MariaDB / SQLite）
-- [ ] 4.2 报告必须明确标注对比路径为 in-process `MySqlTestClient`，并注明 external-client 后续工作跟踪于 issue #3474
-- [ ] 4.3 报告头部 metadata：测试日期、Scale Factor、数据源路径、SQLRustGo 版本
+- [ ] 6.1 Verify the test uses `LOADER_TIMEOUT_S` of at least 1800 seconds
+- [ ] 6.2 Verify Q9 completes within the 1800s budget at SF=1.0
 
-## 5. 验证
+## 7. External-client follow-up out of scope (Requirement: External-client follow-up is out of scope)
 
-- [ ] 5.1 `cargo build --test tpch_sf1_22_vs_3engines_test` exit 0
-- [ ] 5.2 `cargo test --test tpch_sf1_22_vs_3engines_test -- --include-ignored` 在 10 分钟预算内 22/22 PASS
-- [ ] 5.3 `bash scripts/tpch_sf1_baseline.sh` exit 0 且产出报告
-- [ ] 5.4 `cargo clippy --all-features -- -D warnings` exit 0
-- [ ] 5.5 `cargo fmt --check --all` exit 0
+- [ ] 7.1 Verify neither the test source nor the wrapper script contains a call to the external `mysql` CLI for query execution against sqlrustgo
+- [ ] 7.2 Verify the report does not claim a cross-engine comparison result
 
-## 6. 提交与推送
+## 8. Validation gates
 
-- [ ] 6.1 `git add` 新增的 `scripts/tpch_sf1_baseline.sh`、`docs/releases/v3.10.0/perf/SF1_BASELINE_REPORT.md`、`openspec/changes/2026-06-18-tpch-sf1-baseline/`
-- [ ] 6.2 提交信息：`test(tpch): resume SF=1.0 cross-engine baseline (#3423)`
-- [ ] 6.3 推送 `feature/issue-3423-tpch-sf1-baseline` 到 gitea250
-- [ ] 6.4 关闭 issue #3423（引用 commit SHA + 报告路径）
+- [ ] 8.1 `cargo build --test tpch_sf1_22_vs_3engines_test` exits 0
+- [ ] 8.2 `cargo test --test tpch_sf1_22_vs_3engines_test` (no `--ignored`) skips cleanly when the fixture is absent
+- [ ] 8.3 `cargo test --test tpch_sf1_22_vs_3engines_test -- --include-ignored` runs 22/22 queries PASS in the 10-minute budget
+- [ ] 8.4 `bash scripts/tpch_sf1_baseline.sh --dry-run` exits 0
+- [ ] 8.5 `bash scripts/tpch_sf1_baseline.sh` exits 0 and produces the report
+- [ ] 8.6 `cargo clippy --all-features -- -D warnings` exits 0
+- [ ] 8.7 `cargo fmt --check --all` exits 0
 
-## Done criteria (DoD)
+## 9. Commit and push
 
-- 所有 checklist 全部勾选
-- `bash scripts/tpch_sf1_baseline.sh` 在干净树 exit 0
-- `cargo test --test tpch_sf1_22_vs_3engines_test -- --include-ignored` 22/22 PASS
-- 报告已 commit 并包含完整 22 query 数据
-- Issue #3423 state_reason: completed
+- [ ] 9.1 `git add` `openspec/changes/2026-06-18-tpch-sf1-baseline/{proposal.md, design.md, tasks.md, specs/tpch-sf1-cross-engine-baseline-via-in-process/spec.md}`, `scripts/tpch_sf1_baseline.sh`, `tests/tpch_sf1_22_vs_3engines_test.rs`, `docs/releases/v3.10.0/perf/SF1_BASELINE_REPORT.md`
+- [ ] 9.2 Commit with message: `test(tpch): resume SF=1.0 cross-engine baseline (in-process surface) (#3423)`
+- [ ] 9.3 Push `feature/issue-3423-tpch-sf1-baseline` to gitea250
+- [ ] 9.4 Close issue #3423 (reference commit SHA + report path)
