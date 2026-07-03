@@ -226,7 +226,7 @@ pub fn execute_insert<S: StorageEngine + 'static>(
     }
 
     // INT-1: autocommit — leave the commit decision to the helper.
-    engine.commit_implicit_dml_tx(started_implicit);
+    engine.commit_implicit_dml_tx(started_implicit)?;
 
     Ok(ExecutorResult::new(vec![], all_records.len()))
 }
@@ -320,6 +320,8 @@ pub fn execute_update<S: StorageEngine + 'static>(
             .collect();
         let mut storage = engine.storage.write().unwrap();
         let count = storage.update(&table_name, &[], &updates)?;
+        drop(storage);
+        engine.commit_implicit_dml_tx(started_implicit)?;
         return Ok(ExecutorResult::new(vec![], count));
     }
 
@@ -434,9 +436,7 @@ pub fn execute_update<S: StorageEngine + 'static>(
             trigger_executor.execute_after_update(&table_name, old_row, updated_row)?;
         }
     }
-
-    // INT-1: autocommit — leave the commit decision to the helper.
-    engine.commit_implicit_dml_tx(started_implicit);
+    engine.commit_implicit_dml_tx(started_implicit)?;
 
     Ok(ExecutorResult::new(vec![], count))
 }
@@ -493,7 +493,7 @@ pub fn execute_delete<S: StorageEngine + 'static>(
         let count = storage.delete(&table_name, &[])?;
         drop(storage);
         // INT-1: Autocommit — commit the implicit TX so WAL/MVCC see this.
-        engine.commit_implicit_dml_tx(started_implicit);
+        engine.commit_implicit_dml_tx(started_implicit)?;
         return Ok(ExecutorResult::new(vec![], count));
     }
 
@@ -603,7 +603,7 @@ pub fn execute_delete<S: StorageEngine + 'static>(
     }
 
     // INT-1: autocommit — leave the commit decision to the helper.
-    engine.commit_implicit_dml_tx(started_implicit);
+    engine.commit_implicit_dml_tx(started_implicit)?;
 
     Ok(ExecutorResult::new(vec![], count))
 }
