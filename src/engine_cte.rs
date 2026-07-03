@@ -67,7 +67,7 @@ pub fn materialize_cte_tables<S: StorageEngine + 'static>(
             check_constraints: vec![],
             partition_info: None,
         };
-        let mut storage = engine.storage.write().unwrap();
+        let mut storage = engine.storage.write();
         storage
             .create_table(&table_info)
             .map_err(|e| SqlError::ExecutionError(format!("Create CTE table: {}", e)))?;
@@ -89,7 +89,7 @@ pub fn cleanup_cte_tables<S: StorageEngine + 'static>(
     if names.is_empty() {
         return;
     }
-    let mut storage = engine.storage.write().unwrap();
+    let mut storage = engine.storage.write();
     for name in names {
         let _ = storage.drop_table(name);
     }
