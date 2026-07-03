@@ -271,62 +271,10 @@ impl<S: StorageEngine, T: WalManager> WalStorage<S, T> {
     }
 
     pub fn commit_transaction(&mut self) -> SqlResult<()> {
-        let tx_id = self.current_tx_id;
-        let commit_lsn = if self.wal_enabled {
-            let lsn = self.wal.current_lsn();
-            let entry = WalEntry {
-                tx_id,
-                entry_type: WalEntryType::Commit,
-                table_id: 0,
-                key: None,
-                data: None,
-                lsn,
-                timestamp: std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap()
-                    .as_secs(),
-            };
-            self.append_wal_entry(entry)?;
-            self.wal.sync()?;
-            self.wal.current_lsn()
-        } else {
-            0
-        };
-
-        // Advance checkpoint so truncation can proceed
-        if commit_lsn > 0 {
-            if let Some(cp) = &self.checkpoint_manager {
-                if let Ok(guard) = cp.write() {
-                    guard.record_checkpoint(CheckpointMetadata {
-                        lsn: commit_lsn,
-                        timestamp: std::time::SystemTime::now()
-                            .duration_since(std::time::UNIX_EPOCH)
-                            .unwrap()
-                            .as_millis() as u64,
-                        tx_count: 1,
-                        dirty_pages: 0,
-                        file_path: PathBuf::new(),
-                    });
-                }
-            }
-        }
-
-        self.inner.flush()?;
-
-        // Truncate WAL up to checkpoint
-        if commit_lsn > 0 {
-            if let Some(cp) = &self.checkpoint_manager {
-                if let Ok(guard) = cp.read() {
-                    if let Some(cp_lsn) = guard.last_checkpoint_lsn() {
-                        let _ = self.wal.truncate_before(cp_lsn);
-                    }
-                }
-            }
-        }
-
-        // #3223 Phase 1: remove from active set on commit.
-        self.active_txs.remove(&tx_id);
-        Ok(())
+        // Delegate to trait impl so checkpoint + truncation logic lives in
+        // ONE place (the StorageEngine vtable path). UFCS call ensures the
+        // trait version (which has the checkpoint+truncation) is used.
+        <Self as StorageEngine>::commit_transaction(self)
     }
 
     pub fn rollback_transaction(&mut self) -> SqlResult<()> {
@@ -594,14 +542,15 @@ impl<S: StorageEngine, T: WalManager> StorageEngine for WalStorage<S, T> {
 
     fn commit_transaction(&mut self) -> SqlResult<()> {
         let tx_id = self.current_tx_id;
-        if self.wal_enabled {
+        let commit_lsn = if self.wal_enabled {
+            let lsn = self.wal.current_lsn();
             let entry = WalEntry {
                 tx_id,
                 entry_type: WalEntryType::Commit,
                 table_id: 0,
                 key: None,
                 data: None,
-                lsn: 0,
+                lsn,
                 timestamp: std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
                     .unwrap()
@@ -609,10 +558,43 @@ impl<S: StorageEngine, T: WalManager> StorageEngine for WalStorage<S, T> {
             };
             self.append_wal_entry(entry)?;
             self.wal.sync()?;
+            self.wal.current_lsn()
+        } else {
+            0
+        };
+        // Advance checkpoint so truncation can proceed
+        if commit_lsn > 0 {
+            if let Some(cp) = &self.checkpoint_manager {
+                if let Ok(guard) = cp.write() {
+                    guard.record_checkpoint(CheckpointMetadata {
+                        lsn: commit_lsn,
+                        timestamp: std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap()
+                            .as_millis() as u64,
+                        tx_count: 1,
+                        dirty_pages: 0,
+                        file_path: PathBuf::new(),
+                    });
+                }
+            }
         }
+
+        self.inner.flush()?;
+
+        // Truncate WAL up to checkpoint
+        if commit_lsn > 0 {
+            if let Some(cp) = &self.checkpoint_manager {
+                if let Ok(guard) = cp.read() {
+                    if let Some(cp_lsn) = guard.last_checkpoint_lsn() {
+                        let _ = self.wal.truncate_before(cp_lsn);
+                    }
+                }
+            }
+        }
+
         // #3223 Phase 1: remove from active set on commit.
         self.active_txs.remove(&tx_id);
-        self.inner.flush()?;
         Ok(())
     }
 

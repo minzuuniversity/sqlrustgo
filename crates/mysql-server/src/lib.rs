@@ -8,8 +8,8 @@ use sha1::{Digest, Sha1};
 use sqlrustgo::ExecutionEngine;
 use sqlrustgo_parser::{parse, Statement};
 use sqlrustgo_storage::{
-    BinaryTableStorage, BoxStorageEngine, FileBackedWalManager, FileStorage, MemoryStorage,
-    StorageEngine, WalStorage,
+    BinaryTableStorage, BoxStorageEngine, CheckpointManager, FileBackedWalManager, FileStorage,
+    MemoryStorage, StorageEngine, WalStorage,
 };
 use sqlrustgo_types::{SqlError, Value};
 use std::collections::HashMap;
@@ -2622,6 +2622,7 @@ fn do_command_loop<S: Read + Write>(
                         }
                     } else {
                         let mut eng = engine.write();
+                    eprintln!("SERVER: eng.execute(sql={})", stmt_sql);
                         eng.execute(stmt_sql)
                     };
                     match result {
@@ -3335,7 +3336,8 @@ pub(crate) fn run_server_with_listener_and_shutdown_with_bootstrap_tables_and_sq
             }
             let wal_manager = FileBackedWalManager::new(wal_path)
                 .map_err(|e| MySqlError::Sql(format!("WAL manager init failed: {}", e)))?;
-            let wal_storage = WalStorage::new(file_storage, wal_manager)
+            let checkpoint_manager = Arc::new(std::sync::RwLock::new(CheckpointManager::default()));
+            let wal_storage = WalStorage::with_checkpoint_manager(file_storage, wal_manager, checkpoint_manager)
                 .map_err(|e| MySqlError::Sql(format!("WalStorage init failed: {}", e)))?;
             Arc::new(RwLock::new(BoxStorageEngine::new(wal_storage)))
         }
