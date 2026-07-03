@@ -4052,6 +4052,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "bytes",
+ "clap 4.6.1",
  "criterion 0.5.1",
  "ctrlc",
  "env_logger",
@@ -4176,7 +4177,7 @@ dependencies = [
 name = "sqlrustgo-catalog"
 version = "3.9.0"
 dependencies = [
- "hmac 0.12.1",
+ "hmac 0.13.0",
  "log",
  "pbkdf2",
  "rand 0.8.6",

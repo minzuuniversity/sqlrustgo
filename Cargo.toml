@@ -93,7 +93,7 @@ memmap2 = "0.9"
 lz4_flex = "0.11"
 rand = "0.8"
 sha2 = "0.10"
-hmac = "0.12"
+hmac = "0.13"
 pbkdf2 = { version = "0.12", features = ["simple"] }
 fnv = "1.0"
 proptest = "1.1"
