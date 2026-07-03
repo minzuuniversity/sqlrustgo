@@ -14,6 +14,7 @@ sqlrustgo-common = { path = "../common" }
 sqlrustgo-tools = { path = "../tools" }
 byteorder = "1"
 thiserror = "1"
+parking_lot.workspace = true
 crossbeam-channel = "0.5"
 tracing = "0.1"
 serde = { version = "1", features = ["derive"] }
