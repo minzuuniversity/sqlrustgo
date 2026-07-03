@@ -2541,13 +2541,7 @@ fn do_command_loop<S: Read + Write>(
                     // The previous `engine.write().unwrap()` would
                     // then re-panic on every subsequent LOAD DATA.
                     // Recover via `into_inner()` and continue.
-                    let mut eng_guard = match engine.write() {
-                        Ok(g) => g,
-                        Err(poisoned) => {
-                            tracing::warn!("recovered engine from poisoned write lock (LOAD DATA)");
-                            poisoned.into_inner()
-                        }
-                    };
+                    let mut eng_guard = engine.write();
                     let n = match handle_load_local_infile(
                         stream,
                         &mut eng_guard,
@@ -2619,33 +2613,16 @@ fn do_command_loop<S: Read + Write>(
                     // G13-OLTP-1: poisoning recovery in both branches.
                     let result = if let Some(stmt) = is_read_only {
                         let rstmt = read_only_stmt(stmt);
-                        match engine.read() {
-                            Ok(eng) => match rstmt {
-                                Some(ReadOnlyStmt::Select(s)) => eng.execute_select(s),
-                                Some(ReadOnlyStmt::Show(s)) => eng.execute_show(s),
-                                Some(ReadOnlyStmt::Describe(s)) => eng.execute_describe(s),
-                                None => unreachable!("is_read_only implied rstmt is Some"),
-                            },
-                            Err(poisoned) => {
-                                let eng = poisoned.into_inner();
-                                tracing::warn!("recovered engine from poisoned read lock");
-                                match rstmt {
-                                    Some(ReadOnlyStmt::Select(s)) => eng.execute_select(s),
-                                    Some(ReadOnlyStmt::Show(s)) => eng.execute_show(s),
-                                    Some(ReadOnlyStmt::Describe(s)) => eng.execute_describe(s),
-                                    None => unreachable!("is_read_only implied rstmt is Some"),
-                                }
-                            }
+                        let eng = engine.read();
+                        match rstmt {
+                            Some(ReadOnlyStmt::Select(s)) => eng.execute_select(s),
+                            Some(ReadOnlyStmt::Show(s)) => eng.execute_show(s),
+                            Some(ReadOnlyStmt::Describe(s)) => eng.execute_describe(s),
+                            None => unreachable!("is_read_only implied rstmt is Some"),
                         }
                     } else {
-                        match engine.write() {
-                            Ok(mut eng) => eng.execute(stmt_sql),
-                            Err(poisoned) => {
-                                let mut eng = poisoned.into_inner();
-                                tracing::warn!("recovered engine from poisoned write lock");
-                                eng.execute(stmt_sql)
-                            }
-                        }
+                        let mut eng = engine.write();
+                        eng.execute(stmt_sql)
                     };
                     match result {
                         Ok(r) if is_read_only.is_some() => {
@@ -2897,37 +2874,16 @@ fn do_command_loop<S: Read + Write>(
                     .and_then(|s| read_only_stmt(s).map(|_| s));
                 let result = if let Some(stmt) = is_read_only {
                     let rstmt = read_only_stmt(stmt);
-                    match engine.read() {
-                        Ok(eng) => match rstmt {
-                            Some(ReadOnlyStmt::Select(s)) => eng.execute_select(s),
-                            Some(ReadOnlyStmt::Show(s)) => eng.execute_show(s),
-                            Some(ReadOnlyStmt::Describe(s)) => eng.execute_describe(s),
-                            None => unreachable!("is_read_only implied rstmt is Some"),
-                        },
-                        Err(poisoned) => {
-                            let eng = poisoned.into_inner();
-                            tracing::warn!(
-                                "recovered engine from poisoned read lock (stmt execute)"
-                            );
-                            match rstmt {
-                                Some(ReadOnlyStmt::Select(s)) => eng.execute_select(s),
-                                Some(ReadOnlyStmt::Show(s)) => eng.execute_show(s),
-                                Some(ReadOnlyStmt::Describe(s)) => eng.execute_describe(s),
-                                None => unreachable!("is_read_only implied rstmt is Some"),
-                            }
-                        }
+                    let eng = engine.read();
+                    match rstmt {
+                        Some(ReadOnlyStmt::Select(s)) => eng.execute_select(s),
+                        Some(ReadOnlyStmt::Show(s)) => eng.execute_show(s),
+                        Some(ReadOnlyStmt::Describe(s)) => eng.execute_describe(s),
+                        None => unreachable!("is_read_only implied rstmt is Some"),
                     }
                 } else {
-                    match engine.write() {
-                        Ok(mut eng) => eng.execute(&final_sql),
-                        Err(poisoned) => {
-                            let mut eng = poisoned.into_inner();
-                            tracing::warn!(
-                                "recovered engine from poisoned write lock (stmt execute)"
-                            );
-                            eng.execute(&final_sql)
-                        }
-                    }
+                    let mut eng = engine.write();
+                    eng.execute(&final_sql)
                 };
                 match result {
                     Ok(r) if is_read_only.is_some() => {
@@ -4406,7 +4362,7 @@ pub mod testing {
     pub struct ServerJob {
         pub stream: TcpStream,
         pub addr: SocketAddr,
-        pub storage: Arc<std::sync::RwLock<BoxStorageEngine>>,
+        pub storage: Arc<parking_lot::RwLock<BoxStorageEngine>>,
         pub tls_config: Arc<rustls::ServerConfig>,
         pub user_store: UserStore,
     }
