@@ -40,7 +40,7 @@ pub fn execute_insert<S: StorageEngine + 'static>(
 
     // Get table info first (need it for triggers and FK validation)
     let table_info = {
-        let storage = engine.storage.read().unwrap();
+        let storage = engine.storage.read();
         storage.get_table_info(&table_name)?.clone()
     };
 
@@ -54,7 +54,7 @@ pub fn execute_insert<S: StorageEngine + 'static>(
     // For REPLACE INTO: if insert.values has a unique/key conflict, delete old row first
     if insert.is_replace {
         {
-            let mut storage = engine.storage.write().unwrap();
+            let mut storage = engine.storage.write();
             for record in &all_records {
                 // Find existing rows with matching unique key (primary key or unique index)
                 let existing_rows = storage.scan(&table_name)?;
@@ -114,7 +114,7 @@ pub fn execute_insert<S: StorageEngine + 'static>(
 
     // Validate FK and CHECK constraints, then insert
     {
-        let mut storage = engine.storage.write().unwrap();
+        let mut storage = engine.storage.write();
         let col_names: Vec<String> = table_info.columns.iter().map(|c| c.name.clone()).collect();
 
         if !insert.is_replace && table_info.columns.iter().any(|c| c.primary_key) {
@@ -291,11 +291,11 @@ pub fn execute_update<S: StorageEngine + 'static>(
     // If no WHERE clause, use the simple storage.update() path
     if resolved_update.where_clause.is_none() {
         let table_info = {
-            let storage = engine.storage.read().unwrap();
+            let storage = engine.storage.read();
             storage.get_table_info(&table_name)?.clone()
         };
         let sample_row: Vec<sqlrustgo_types::Value> = {
-            let storage = engine.storage.read().unwrap();
+            let storage = engine.storage.read();
             storage
                 .scan(&table_name)
                 .ok()
@@ -318,19 +318,19 @@ pub fn execute_update<S: StorageEngine + 'static>(
                 Some((col_idx, new_val))
             })
             .collect();
-        let mut storage = engine.storage.write().unwrap();
+        let mut storage = engine.storage.write();
         let count = storage.update(&table_name, &[], &updates)?;
         return Ok(ExecutorResult::new(vec![], count));
     }
 
     // Get table info and scan rows
     let table_info = {
-        let storage = engine.storage.read().unwrap();
+        let storage = engine.storage.read();
         storage.get_table_info(&table_name)?.clone()
     };
 
     let all_rows = {
-        let storage = engine.storage.read().unwrap();
+        let storage = engine.storage.read();
         storage.scan(&table_name)?
     };
 
@@ -384,7 +384,7 @@ pub fn execute_update<S: StorageEngine + 'static>(
     }
 
     {
-        let mut storage = engine.storage.write().unwrap();
+        let mut storage = engine.storage.write();
 
         if !table_info.check_constraints.is_empty() {
             let col_names: Vec<String> =
@@ -489,7 +489,7 @@ pub fn execute_delete<S: StorageEngine + 'static>(
 
     // If no WHERE clause, delete all rows (current behavior is correct)
     if resolved_delete.where_clause.is_none() {
-        let mut storage = engine.storage.write().unwrap();
+        let mut storage = engine.storage.write();
         let count = storage.delete(&table_name, &[])?;
         drop(storage);
         // INT-1: Autocommit — commit the implicit TX so WAL/MVCC see this.
@@ -499,13 +499,13 @@ pub fn execute_delete<S: StorageEngine + 'static>(
 
     // Scan all rows from the table
     let all_rows = {
-        let storage = engine.storage.read().unwrap();
+        let storage = engine.storage.read();
         storage.scan(&table_name)?
     };
 
     // Get table info to find column indices
     let table_info = {
-        let storage = engine.storage.read().unwrap();
+        let storage = engine.storage.read();
         storage.get_table_info(&table_name)?.clone()
     };
 
@@ -541,7 +541,7 @@ pub fn execute_delete<S: StorageEngine + 'static>(
     // pre-delete buffer state. We still call `storage.delete(table, &[])`
     // to clear out buffered rows that did not match the WHERE clause.
     let rows_to_keep: Vec<Vec<Value>> = {
-        let storage = engine.storage.read().unwrap();
+        let storage = engine.storage.read();
         let all_rows = storage.scan(&table_name)?;
         all_rows
             .into_iter()
@@ -550,7 +550,7 @@ pub fn execute_delete<S: StorageEngine + 'static>(
     };
 
     {
-        let mut storage = engine.storage.write().unwrap();
+        let mut storage = engine.storage.write();
         // First drop the full table to flush any buffered inserts and
         // to provide a clean slate (this is what the legacy code did).
         storage.delete(&table_name, &[])?;
@@ -653,7 +653,7 @@ fn execute_update_multi_table<S: StorageEngine + 'static>(
     let mut per_table_info: Vec<TableInfo> = Vec::with_capacity(table_refs.len());
     let mut per_table_prefix: Vec<String> = Vec::with_capacity(table_refs.len());
     {
-        let storage = engine.storage.read().unwrap();
+        let storage = engine.storage.read();
         for tref in table_refs {
             let info = storage.get_table_info(&tref.name)?.clone();
             let rows = storage.scan(&tref.name)?;
@@ -728,7 +728,7 @@ fn apply_multi_table_updates<S: StorageEngine + 'static>(
     per_table_updates: Vec<Vec<(Vec<Value>, Vec<Value>)>>,
     total_count: usize,
 ) -> SqlResult<ExecutorResult> {
-    let mut storage = engine.storage.write().unwrap();
+    let mut storage = engine.storage.write();
     for (t, tref) in table_refs.iter().enumerate() {
         let pairs = &per_table_updates[t];
         if pairs.is_empty() {
@@ -788,7 +788,7 @@ fn execute_delete_multi_table<S: StorageEngine + 'static>(
     let mut per_table_info: Vec<TableInfo> = Vec::with_capacity(source_refs.len());
     let mut per_table_prefix: Vec<String> = Vec::with_capacity(source_refs.len());
     {
-        let storage = engine.storage.read().unwrap();
+        let storage = engine.storage.read();
         for tref in &source_refs {
             let info = storage.get_table_info(&tref.name)?.clone();
             let rows = storage.scan(&tref.name)?;
@@ -822,7 +822,7 @@ fn execute_delete_multi_table<S: StorageEngine + 'static>(
     }
 
     let mut total = 0usize;
-    let mut storage = engine.storage.write().unwrap();
+    let mut storage = engine.storage.write();
     for (t, tref) in source_refs.iter().enumerate() {
         if !target_refs.iter().any(|x| x.name == tref.name) {
             continue;
