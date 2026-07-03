@@ -1310,7 +1310,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     /// G13-OLTP-1: `pub(crate)` so the mysql-server dispatch site can
     /// call this on a read-lock guard.
     pub fn execute_describe(&self, desc: &DescribeStatement) -> SqlResult<ExecutorResult> {
-        let storage = self.storage.read().unwrap();
+        let storage = self.storage.read();
         if !storage.list_tables().iter().any(|n| n == &desc.table) {
             return Err(SqlError::ExecutionError(format!(
                 "Table '{}' does not exist",
