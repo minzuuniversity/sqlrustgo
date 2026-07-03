@@ -21,3 +21,7 @@ flate2 = "1.0"
 
 [dev-dependencies]
 tempfile = "3.0"
+
+[[bin]]
+name = "tbl2bin"
+path = "src/bin/tbl2bin.rs"

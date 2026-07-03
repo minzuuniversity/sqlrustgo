@@ -1,10 +1,26 @@
+<!-- 2026-07-01 status addendum (auto-applied) -->
+> **状态更新**: 本机 L1 lint + 架构整理已闭环。HEAD `d77821f6d1`, 3 个 PR 已合并 (PR #3664, #3665, #3666)。
+> - `src/execution_engine.rs` 1471 行 (AD-001 1500 目标达标, 2630 → 1471)
+> - C-ARCH-05 上限锁回 1500 (从 3000/1800 统一)
+> - SGL-001 rustfmt drift 修复 (integration gate 4/4 PASS)
+> - Open issues (4, 全部硬件阻塞, 本机无法推进):
+>   - #3648 TPC-H 混合负载 SOAK 跨平台验证 (需要 Z6G4/Z440)
+>   - #3423 TPC-H SF=1.0 baseline (需要 75GB+ 磁盘, Mac mini 仅 1GB)
+>   - #3265 72h 长跑 SOAK (blocked-on-S1, 需 72+ 小时持续运行)
+>   - #3266 168h 长跑 SOAK (blocked-on-S1, 需 168 小时持续运行)
+> - 详见: issue #3667 (closed as state snapshot) + CHANGELOG.md
+>
+> 本文件原始内容保持不变,仅顶部加 addendum。
+
+---
+
 # SQLRustGo v3.9.0 综合评估报告 (Comprehensive Assessment v1.0 — RC2 Post-Audit)
 
 > **Date**: 2026-06-07 (RC2 Post-Audit 视角)
 > **Version**: v3.9.0 (develop/v3.9.0, RC2 后期, 准备 RC3)
 > **Author**: Hermes Agent
 > **Baseline HEAD**: `7f8ea7c1` (TPC-H Failure Matrix v1, #3257, RC2 末) / `0852e42e` (clippy G2 fixes, #3254)
-> **Status**: **RC7 ✅ (form-only + substance) / GA ⏳ (soak blocked by Z6G4)**
+> **Status**: **RC8 ✅ (form-only + substance) + 本机 L1 闭环 (2026-07-01) / GA ⏳ (soak blocked by Z6G4, Z440)**
 > **Type**: **Production Readiness Release** (工程化版本, 非功能版本)
 > **Theme**: Single-Node Production Candidate
 > **GA Target**: TBD — Z6G4 (192.168.0.252) unreachable since ~2026-06-19; 72h soak interrupted; GA blocked
@@ -27,11 +43,11 @@
 
 ## 0. 总体结论 (TL;DR)
 
-**v3.9.0 = Production Readiness Release (工程化版本) — RC7 ✅ form-only + substance / GA ⏳ soak blocked**:
+**v3.9.0 = Production Readiness Release (工程化版本) — RC8 ✅ form-only + substance + L1 闭环 / GA ⏳ soak blocked**:
 
 - **核心反转**: 从"还能加什么 SQL" → "数据库死了以后还能不能回来"
 - **资源分配**: 架构债 40% / 可靠性 35% / GMP 审计 15% / 性能 10% / **新 SQL 0%**
-- **阶段完成度**: 16/16 子任务 + Alpha1 ✅ + Beta ✅ + RC1 ✅ + RC7 ✅ (form-only + substance)
+- **阶段完成度**: 16/16 子任务 + Alpha1 ✅ + Beta ✅ + RC1 ✅ + RC8 ✅ (form-only + substance + 2026-07-01 L1 闭环)
 - **门禁状态**: G1-G16 14/14 PASS (2026-06-13 GA_GATE_REPORT.md) + 6 tests un-ignored
 - **✅ 关键进展**: G1-G16 门禁全部 PASS (2026-06-13)
   - 注意: GA_GATE_REPORT / GA_GATE_STATUS_REPORT 中的 72h/168h soak 声称
