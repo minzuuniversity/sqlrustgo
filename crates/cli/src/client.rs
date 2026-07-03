@@ -156,12 +156,39 @@ impl Client {
             columns.push(parse_column_name(&def));
         }
 
-        // 3) Read rows until EOF/OK terminator.
+        // 3) Skip the intermediate EOF/OK that the server sends after
+        //    column definitions (per MySQL protocol:
+        //      col_count → col_defs… → INTERMEDIATE terminator
+        //                  → rows…  → TRAILING terminator
+        //    ). The sqlrustgo server always sends the intermediate one
+        //    (even when DEPRECATE_EOF is set, it sends a 5-byte EOF
+        //    packet). We must consume it before reading rows; otherwise
+        //    we treat it as the end of the result set and misalign the
+        //    stream — subsequent reads see the row packets as garbage
+        //    and produce "row packet truncated" / "lenenc str: content
+        //    oob" errors.
+        let intermediate = read_packet(&mut self.stream)?;
+        if intermediate.is_empty() {
+            return Err(anyhow::anyhow!("unexpected empty intermediate packet"));
+        }
+        if intermediate[0] == 0xFF {
+            return Err(anyhow::anyhow!("ERR after column defs: {}", err_msg(&intermediate)));
+        }
+        // intermediate[0] == 0xFE (EOF) or 0x00 (OK) — both are
+        // valid intermediate terminators per the spec. Anything else
+        // means the server skipped the intermediate step (not standard
+        // but tolerated: treat that packet as the first row instead).
+        let mut next_pkt = if intermediate[0] == 0xFE || intermediate[0] == 0x00 {
+            read_packet(&mut self.stream)?
+        } else {
+            intermediate.clone()
+        };
+
+        // 4) Read rows until the trailing EOF/OK terminator.
         let mut rows: Vec<Vec<String>> = Vec::new();
         loop {
-            let pkt = read_packet(&mut self.stream)?;
-            if pkt.is_empty() {
-                return Err(anyhow::anyhow!("unexpected empty packet after columns"));
+            if next_pkt.is_empty() {
+                return Err(anyhow::anyhow!("unexpected empty row packet"));
             }
             // EOF terminator (DEPRECATE_EOF=0, short packet < 9 bytes)
             if pkt[0] == 0xFE && pkt.len() < 9 {
@@ -178,18 +205,19 @@ impl Client {
             let mut p = 0;
             let mut row = Vec::with_capacity(col_count);
             for _ in 0..col_count {
-                if p >= pkt.len() {
+                if p >= next_pkt.len() {
                     return Err(anyhow::anyhow!("row packet truncated"));
                 }
-                if pkt[p] == 0xFB {
+                if next_pkt[p] == 0xFB {
                     p += 1;
                     row.push(String::new());
                 } else {
-                    let s = read_lenenc_str(&pkt, &mut p)?;
+                    let s = read_lenenc_str(&next_pkt, &mut p)?;
                     row.push(s.to_string());
                 }
             }
             rows.push(row);
+            next_pkt = read_packet(&mut self.stream)?;
         }
         let row_count = rows.len();
         Ok(QueryResult {

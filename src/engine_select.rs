@@ -212,7 +212,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 None
             };
 
-        let storage = self.storage.read().unwrap();
+        let storage = self.storage_read();
 
         // Step 1: FROM/JOIN - get initial rows and schema
         let (mut rows, table_info) = if !select.join_clause.is_empty() {
@@ -1200,7 +1200,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     /// JoinClause in order (left-associative: t1 JOIN t2 JOIN t3 → ((t1 JOIN t2) JOIN t3)).
     /// This function only generates joined rows, does NOT apply WHERE/AGG/HAVING.
     fn execute_joins(&self, select: &SelectStatement) -> SqlResult<(Vec<Vec<Value>>, TableInfo)> {
-        let storage = self.storage.read().unwrap();
+        let storage = self.storage_read();
 
         // Sprint 5 v4: the parser encodes the inline alias into the
         // table name as `table|alias` (e.g. `emp|e`). Storage has only
@@ -1409,7 +1409,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         base_info: &TableInfo,
     ) -> Option<(Vec<Vec<Value>>, TableInfo)> {
         use std::collections::HashMap;
-        let storage = self.storage.read().ok()?;
+        let storage = self.storage.read();
 
         let where_expr = select.where_clause.as_ref()?;
 
@@ -2852,7 +2852,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         if where_expr_has_uncorrelated_subquery(where_expr) {
             return None;
         }
-        let storage = self.storage.read().ok()?;
+        let storage = self.storage.read();
         // Q21 fix: the subquery table may be encoded as
         // "lineitem|l2" (table|alias). The storage layer doesn't
         // know about the alias suffix, so strip it before looking
@@ -3021,7 +3021,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             None => &subq.table,
         };
         let where_expr = subq.where_clause.as_ref()?;
-        let storage = self.storage.read().ok()?;
+        let storage = self.storage.read();
         let table_info = storage.get_table_info(real_table).ok()?;
         // Split the WHERE into the outer-equality leaf (which we
         // will use as the index key column) and the static rest
@@ -3155,7 +3155,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         };
 
         // ── Resolve columns ──────────────────────────────────────────
-        let storage = self.storage.read().ok()?;
+        let storage = self.storage.read();
         let table_info = storage.get_table_info(real_table).ok()?;
         let key_col_idx = table_info
             .columns
