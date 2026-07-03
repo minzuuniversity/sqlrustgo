@@ -2,7 +2,8 @@
 
 use sqlrustgo::ExecutionEngine;
 use sqlrustgo_mysql_server::{MySqlError, Packet};
-use std::sync::{Arc, RwLock};
+use parking_lot::RwLock;
+use std::sync::Arc;
 
 // ============ MySqlError Tests ============
 
