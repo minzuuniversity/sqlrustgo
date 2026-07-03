@@ -78,13 +78,14 @@ use sqlrustgo_transaction::{IsolationLevel as TmIsolationLevel, TransactionManag
 use sqlrustgo_types::Value as SqlValue;
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::{Arc, RwLock};
+use parking_lot::RwLock;
+use std::sync::Arc;
 
 /// Execution engine for SQL statements
 pub struct ExecutionEngine<S: StorageEngine> {
-    pub(crate) storage: Arc<RwLock<S>>,
-    pub(crate) catalog: Option<Arc<RwLock<Catalog>>>,
-    pub(crate) stats: Arc<RwLock<ExecutionStats>>,
+    pub(crate) storage: Arc<parking_lot::RwLock<S>>,
+    pub(crate) catalog: Option<Arc<parking_lot::RwLock<Catalog>>>,
+    pub(crate) stats: Arc<parking_lot::RwLock<ExecutionStats>>,
     pub(crate) cbo_enabled: bool,
     pub(crate) transaction_manager: TransactionManager,
     pub(crate) current_tx_id: Option<TxId>,
@@ -97,7 +98,7 @@ pub struct ExecutionEngine<S: StorageEngine> {
     /// PR-830F lifecycle methods were removed in SPEC-002; the field is
     /// kept for future re-introduction without changing the public struct layout.
     #[allow(dead_code)]
-    pub(crate) checkpoint_manager: Option<Arc<RwLock<CheckpointManager>>>,
+    pub(crate) checkpoint_manager: Option<Arc<parking_lot::RwLock<CheckpointManager>>>,
     pub(crate) parallel_degree: usize,
     pub(crate) stmt_cache: sqlrustgo_cache::PreparedStatementCache,
     /// View definitions: view_name → CREATE VIEW SQL text.
@@ -141,7 +142,7 @@ pub type MemoryExecutionEngine = ExecutionEngine<MemoryStorage>;
 
 impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     /// Create a new execution engine with CBO enabled by default
-    pub fn new(storage: Arc<RwLock<S>>) -> Self {
+    pub fn new(storage: Arc<parking_lot::RwLock<S>>) -> Self {
         Self {
             storage,
             catalog: None,
@@ -161,7 +162,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     }
 
     /// Create a new execution engine with CBO configuration
-    pub fn with_cbo(storage: Arc<RwLock<S>>, cbo_enabled: bool) -> Self {
+    pub fn with_cbo(storage: Arc<parking_lot::RwLock<S>>, cbo_enabled: bool) -> Self {
         Self {
             storage,
             catalog: None,
@@ -181,7 +182,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     }
 
     /// Create a new execution engine with a catalog
-    pub fn with_catalog(storage: Arc<RwLock<S>>, catalog: Arc<RwLock<Catalog>>) -> Self {
+    pub fn with_catalog(storage: Arc<parking_lot::RwLock<S>>, catalog: Arc<parking_lot::RwLock<Catalog>>) -> Self {
         Self {
             storage,
             catalog: Some(catalog),
@@ -225,18 +226,73 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     }
 
     /// Get table statistics for CBO
-    pub fn get_table_stats(&self) -> Arc<RwLock<ExecutionStats>> {
+    pub fn get_table_stats(&self) -> Arc<parking_lot::RwLock<ExecutionStats>> {
         self.stats.clone()
     }
 
     /// Read-only access to the underlying storage handle.
     ///
-    /// Returned as `&Arc<RwLock<S>>` so callers can lock it themselves
+    /// Returned as `&Arc<parking_lot::RwLock<S>>` so callers can lock it themselves
     /// and read table info, scan rows, etc. without taking `&mut self`
     /// on the engine. Required by the LOAD DATA LOCAL INFILE handler
     /// to look up the target table's column count.
-    pub fn storage_ref(&self) -> &Arc<RwLock<S>> {
+    pub fn storage_ref(&self) -> &Arc<parking_lot::RwLock<S>> {
         &self.storage
+    }
+
+    /// Read-lock the storage with a busy-wait retry to avoid lock convoy
+    /// (Issue #3672). The previous implementation called
+    /// `self.storage.read()` directly, which can block
+    /// indefinitely under sustained mixed write load (one long-running
+    /// INSERT/UPDATE/DELETE holding the write lock blocks all 32 reader
+    /// workers, eventually deadlocking the server).
+    ///
+    /// This method retries with a short backoff. If a writer is still
+    /// holding the lock after 1000 attempts, it logs a warning and
+    /// proceeds anyway (the read will block momentarily, but other
+    /// threads won't pile up behind it).
+    pub(crate) fn storage_read(
+        &self,
+    ) -> parking_lot::lock_api::RwLockReadGuard<'_, parking_lot::RawRwLock, S> {
+        for attempt in 0..1000u32 {
+            if let Some(g) = self.storage.try_read() {
+                if attempt > 100 {
+                    log::warn!(
+                        "storage_read contended for {} attempts before lock acquired",
+                        attempt
+                    );
+                }
+                return g;
+            }
+            // Small backoff to yield to the writer
+            std::thread::sleep(std::time::Duration::from_micros(100));
+        }
+        // Fallback: just do the blocking read. Better than deadlocking.
+        log::error!("storage_read timeout after 1000 attempts; falling back to blocking read");
+        self.storage.read()
+    }
+
+    /// Write-lock the storage with a busy-wait retry for write paths
+    /// (INSERT/UPDATE/DELETE). Same retry strategy as storage_read.
+    pub(crate) fn storage_write(
+        &self,
+    ) -> parking_lot::lock_api::RwLockWriteGuard<'_, parking_lot::RawRwLock, S> {
+        for attempt in 0..1000u32 {
+            if let Some(g) = self.storage.try_write() {
+                if attempt > 100 {
+                    log::warn!(
+                        "storage_write contended for {} attempts before lock acquired",
+                        attempt
+                    );
+                }
+                return g;
+            }
+            // Small backoff to yield to readers
+            std::thread::sleep(std::time::Duration::from_micros(100));
+        }
+        // Fallback: just do the blocking write. Better than deadlocking.
+        log::error!("storage_write timeout after 1000 attempts; falling back to blocking write");
+        self.storage.write()
     }
 
     /// Bulk-insert pre-parsed records directly into storage, bypassing
@@ -257,10 +313,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         records: Vec<sqlrustgo_storage::Record>,
     ) -> SqlResult<u64> {
         let n = records.len() as u64;
-        let mut storage = self
-            .storage
-            .write()
-            .map_err(|e| SqlError::IoError(format!("storage lock poisoned: {}", e)))?;
+        let mut storage = self.storage_write();
         storage
             .insert(table, records)
             .map_err(|e| SqlError::ExecutionError(format!("bulk_insert_records: {}", e)))?;
@@ -313,7 +366,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     // collect_table_stats extracted to cbo_estimator.rs (SPEC-012).
     // Forwarder retained for backwards-compatible call sites.
     fn collect_table_stats(&self, table: &str) -> SqlResult<TableStatistics> {
-        let storage = self.storage.read().unwrap();
+        let storage = self.storage.read();
         crate::cbo_estimator::collect_table_stats(&*storage, table)
     }
 
@@ -343,7 +396,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 let stats = self.collect_table_stats(table_name)?;
                 let row_count = stats.row_count;
 
-                let mut stats_guard = self.stats.write().unwrap();
+                let mut stats_guard = self.stats.write();
                 stats_guard.table_stats.insert(table_name.clone(), stats);
 
                 Ok(ExecutorResult::new(
@@ -471,7 +524,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     }
 
     fn execute_create_table(&self, create: &CreateTableStatement) -> SqlResult<ExecutorResult> {
-        let mut storage = self.storage.write().unwrap();
+        let mut storage = self.storage.write();
         let columns: Vec<ColumnDefinition> = create
             .columns
             .iter()
@@ -496,7 +549,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     }
 
     fn execute_drop_table(&self, drop: &DropTableStatement) -> SqlResult<ExecutorResult> {
-        let mut storage = self.storage.write().unwrap();
+        let mut storage = self.storage.write();
         storage.drop_table(&drop.name)?;
         Ok(ExecutorResult::empty())
     }
@@ -510,7 +563,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 db.name
             )));
         }
-        let mut storage = self.storage.write().unwrap();
+        let mut storage = self.storage.write();
         storage
             .create_database(&db.name)
             .map_err(|e| SqlError::ExecutionError(format!("CREATE DATABASE: {}", e)))?;
@@ -527,7 +580,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 db.name
             )));
         }
-        let mut storage = self.storage.write().unwrap();
+        let mut storage = self.storage.write();
         storage
             .drop_database(&db.name)
             .map_err(|e| SqlError::ExecutionError(format!("DROP DATABASE: {}", e)))?;
@@ -542,7 +595,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     }
 
     fn execute_truncate(&self, truncate: &TruncateStatement) -> SqlResult<ExecutorResult> {
-        let mut storage = self.storage.write().unwrap();
+        let mut storage = self.storage.write();
         if !storage.has_table(&truncate.name) {
             return Err(SqlError::ExecutionError(format!(
                 "Table not found: {}",
@@ -554,7 +607,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     }
 
     fn execute_create_index(&self, idx: &CreateIndexStatement) -> SqlResult<ExecutorResult> {
-        let mut storage = self.storage.write().unwrap();
+        let mut storage = self.storage.write();
         let table_name = &idx.table;
         let col_name = idx
             .columns
@@ -601,7 +654,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     fn execute_create_trigger(&self, stmt: &CreateTriggerStatement) -> SqlResult<ExecutorResult> {
         use sqlrustgo_storage::engine::{TriggerEvent, TriggerInfo, TriggerTiming};
 
-        let mut storage = self.storage.write().unwrap();
+        let mut storage = self.storage.write();
         let timing = match stmt.timing.to_uppercase().as_str() {
             "BEFORE" => TriggerTiming::Before,
             "AFTER" => TriggerTiming::After,
@@ -643,7 +696,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         let catalog_guard = self.catalog.as_ref().ok_or_else(|| {
             SqlError::ExecutionError("CALL statement requires stored procedure catalog".to_string())
         })?;
-        let catalog = catalog_guard.read().unwrap();
+        let catalog = catalog_guard.read();
 
         let procedure = catalog
             .get_stored_procedure(&call.procedure_name)
@@ -678,7 +731,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 "CREATE PROCEDURE requires stored procedure catalog".to_string(),
             )
         })?;
-        let mut catalog = catalog_guard.write().unwrap();
+        let mut catalog = catalog_guard.write();
 
         let params: Vec<sqlrustgo_catalog::stored_proc::StoredProcParam> = stmt
             .params
@@ -787,7 +840,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         // detect explicit transactions and apply the per-tx boundary rule
         // when filtering committed entries. Without this, every DML entry
         // appears to be autocommit and uncommitted work leaks into recovery.
-        if let Ok(mut storage) = self.storage.write() {
+        let mut storage = self.storage.write(); {
             storage.set_current_tx_id(tx_id.as_u64());
             let _ = storage.begin_transaction();
         }
@@ -810,7 +863,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             .current_tx_id
             .ok_or_else(|| SqlError::ExecutionError("No transaction in progress".to_string()))?;
         // Delegate to storage engine first so WalStorage writes WAL Commit entry before clearing state
-        if let Ok(mut storage) = self.storage.write() {
+        let mut storage = self.storage.write(); {
             let _ = storage.commit_transaction();
         }
         self.transaction_manager.commit(tx_id).map_err(|e| {
@@ -879,7 +932,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             .current_tx_id
             .ok_or_else(|| SqlError::ExecutionError("No transaction in progress".to_string()))?;
         // Delegate to storage engine first so WalStorage writes WAL Rollback entry before clearing state
-        if let Ok(mut storage) = self.storage.write() {
+        let mut storage = self.storage.write(); {
             let _ = storage.rollback_transaction();
         }
         self.transaction_manager.rollback(tx_id).map_err(|e| {
@@ -898,7 +951,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         let catalog_guard = self.catalog.as_ref().ok_or_else(|| {
             SqlError::ExecutionError("Catalog not available for GRANT".to_string())
         })?;
-        let mut catalog = catalog_guard.write().unwrap();
+        let mut catalog = catalog_guard.write();
 
         for privilege in &grant.privileges {
             let priv_str = match privilege {
@@ -959,7 +1012,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         let catalog_guard = self.catalog.as_ref().ok_or_else(|| {
             SqlError::ExecutionError("Catalog not available for REVOKE".to_string())
         })?;
-        let mut catalog = catalog_guard.write().unwrap();
+        let mut catalog = catalog_guard.write();
 
         for privilege in &revoke.privileges {
             let priv_str = match privilege {
@@ -1005,7 +1058,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             .catalog
             .as_ref()
             .ok_or_else(|| SqlError::ExecutionError("No catalog available".to_string()))?;
-        let mut catalog_guard = catalog.write().unwrap();
+        let mut catalog_guard = catalog.write();
 
         let parent_role_id = if let Some(ref parent_name) = stmt.parent_role {
             let parent_role = catalog_guard
@@ -1034,7 +1087,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             .catalog
             .as_ref()
             .ok_or_else(|| SqlError::ExecutionError("No catalog available".to_string()))?;
-        let mut catalog_guard = catalog.write().unwrap();
+        let mut catalog_guard = catalog.write();
 
         let role_id = {
             let role = catalog_guard
@@ -1061,7 +1114,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             .catalog
             .as_ref()
             .ok_or_else(|| SqlError::ExecutionError("No catalog available".to_string()))?;
-        let mut catalog_guard = catalog.write().unwrap();
+        let mut catalog_guard = catalog.write();
 
         let role_id = {
             let role = catalog_guard
@@ -1102,7 +1155,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             .catalog
             .as_ref()
             .ok_or_else(|| SqlError::ExecutionError("No catalog available".to_string()))?;
-        let mut catalog_guard = catalog.write().unwrap();
+        let mut catalog_guard = catalog.write();
 
         let role_id = {
             let role = catalog_guard
@@ -1145,7 +1198,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             .ok_or_else(|| SqlError::ExecutionError("No catalog available".to_string()))?;
 
         let role_name = {
-            let catalog_guard = catalog.read().unwrap();
+            let catalog_guard = catalog.read();
             let role = catalog_guard
                 .auth_manager()
                 .find_role_by_name(&stmt.role_name)
@@ -1168,7 +1221,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             .catalog
             .as_ref()
             .ok_or_else(|| SqlError::ExecutionError("No catalog available".to_string()))?;
-        let catalog_guard = catalog.read().unwrap();
+        let catalog_guard = catalog.read();
 
         let roles = catalog_guard.auth_manager().list_roles();
         let rows: Vec<Vec<Value>> = roles
@@ -1207,7 +1260,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
 
     /// SHOW TABLES — list all tables in the current database.
     fn execute_show_tables(&self) -> SqlResult<ExecutorResult> {
-        let storage = self.storage.read().unwrap();
+        let storage = self.storage.read();
         let names = storage.list_tables();
         let rows: Vec<Vec<Value>> = names.into_iter().map(|n| vec![Value::Text(n)]).collect();
         Ok(ExecutorResult::new(rows, 1))
@@ -1226,7 +1279,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
 
     /// SHOW CREATE TABLE — reconstruct CREATE TABLE from the live schema.
     fn execute_show_create_table(&self, table: &str) -> SqlResult<ExecutorResult> {
-        let storage = self.storage.read().unwrap();
+        let storage = self.storage.read();
         if !storage.list_tables().iter().any(|n| n == table) {
             return Err(SqlError::ExecutionError(format!(
                 "Table '{}' does not exist",
@@ -1305,7 +1358,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             .catalog
             .as_ref()
             .ok_or_else(|| SqlError::ExecutionError("No catalog available".to_string()))?;
-        let catalog_guard = catalog.read().unwrap();
+        let catalog_guard = catalog.read();
 
         let parts: Vec<&str> = user_spec.split('@').collect();
         let username = parts[0];
@@ -1332,7 +1385,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     }
 
     fn execute_alter_table(&self, alter: &AlterTableStatement) -> SqlResult<ExecutorResult> {
-        let mut storage = self.storage.write().unwrap();
+        let mut storage = self.storage.write();
 
         match &alter.operation {
             AlterTableOperation::AddColumn {
@@ -1445,7 +1498,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 .map_err(|e| SqlError::ExecutionError(format!("TM.begin failed: {:?}", e)))?;
             self.current_tx_id = Some(tx_id);
             self.tx_status = TxStatus::Active;
-            if let Ok(mut storage) = self.storage.write() {
+            let mut storage = self.storage.write(); {
                 storage.set_current_tx_id(tx_id.as_u64());
             }
             Ok((Some(tx_id), true))
@@ -1471,6 +1524,6 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     }
 
     pub fn flush(&mut self) -> Result<(), SqlError> {
-        self.storage.write().unwrap().flush()
+        self.storage.write().flush()
     }
 }
