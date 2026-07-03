@@ -525,6 +525,7 @@ fn main() {
                     total,
                     oi, ou, od, os,
                 );
+                last_total = total;
                 last_oltp_ok = oltp_ok;
                 last_olap_ok = olap_ok;
                 last_oltp_err = oltp_err;
