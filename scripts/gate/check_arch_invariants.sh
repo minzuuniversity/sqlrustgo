@@ -109,21 +109,21 @@ else
 fi
 echo ""
 
-# C-ARCH-05: execution_engine.rs < 1800 lines
+# C-ARCH-05: execution_engine.rs < 1500 lines
 # SSOT (Single Source of Truth): scripts/gate/check_rc_ga_gate.sh CARCH05_LIMIT
-# AD-001 original target was <1500 lines (PR-900 完整拆分目标).
+# AD-001 target: < 1500 lines.
 # Post-SPEC-012 (CBO 拆分) baseline was 1451 lines.
-# After PR-2792 (UPDATE+DELETE), PR-2814 (TPC-H), PR-2815 (SHOW TABLES),
-# 1523 lines (within 5% of target). PR-900 第二阶段 (DML executor 拆分) 计划
-# 进一步降至 1100-1300. 阈值保留 1500 反映 AD-001 目标, 当前 1523 视为
-# CONDITIONAL PASS (PR-900 拆分前过渡期).
-echo "[C-ARCH-05] Checking execution_engine.rs < 1800 lines (SSOT: check_rc_ga_gate.sh CARCH05_LIMIT, AD-001 target: 1500)..."
+# v3.9.0 状态: 文件 1471 行 (PR #3664 完成 AD-001 / PR-900 拆分).
+# 2026-07-01 锁回 1500 上限 (从 3000 过渡值降回,因 PR #3664 拆分已完成).
+CARCH05_LIMIT=1500
+CARCH05_AD001_TARGET=1500
+echo "[C-ARCH-05] Checking execution_engine.rs < ${CARCH05_LIMIT} lines (SSOT: CARCH05_LIMIT, AD-001 target: ${CARCH05_AD001_TARGET})..."
 EXEC_ENGINE_LINES=$(wc -l < src/execution_engine.rs 2>/dev/null || echo "0")
-if [ "$EXEC_ENGINE_LINES" -gt 1800 ]; then
-    echo "FAIL: C-ARCH-05 violated - execution_engine.rs has $EXEC_ENGINE_LINES lines (limit: 1800, SSOT: check_rc_ga_gate.sh)"
+if [ "$EXEC_ENGINE_LINES" -gt "$CARCH05_LIMIT" ]; then
+    echo "FAIL: C-ARCH-05 violated - execution_engine.rs has $EXEC_ENGINE_LINES lines (limit: $CARCH05_LIMIT, AD-001 target: $CARCH05_AD001_TARGET, SSOT: check_rc_ga_gate.sh)"
     FAIL=$((FAIL+1))
 else
-    echo "PASS: C-ARCH-05 (execution_engine.rs: $EXEC_ENGINE_LINES lines, limit 1800)"
+    echo "PASS: C-ARCH-05 (execution_engine.rs: $EXEC_ENGINE_LINES lines, limit $CARCH05_LIMIT, AD-001 target $CARCH05_AD001_TARGET)"
     PASS=$((PASS+1))
 fi
 echo ""

@@ -21,9 +21,10 @@
 2. `docs/governance/ANTI_FABRICATION_POLICY.md` — Type A/B/C/D 4 类违规 + Hard Gate vs Soft Gate 区分
 3. `docs/governance/ISSUE_CLOSING_VERIFICATION.md` — 关闭 Issue 前 5 步 (含 HTTP 405 workaround)
 4. `docs/governance/DOC_CHECK_CORRECTION_RULES.md` — 改文档 7 步流程 (含实跑 gate 验证)
-5. `docs/governance/AI_COLLABORATION.md` — §1.1 角色 + §5.5 多 AI 协调 (待 ADR-014 落地)
+5. `docs/governance/AI_COLLABORATION.md` — §1.1 角色 + §5.5 多 AI 协调 (按 ADR-014 multi-ai-coordination 5 evidence fields 协议)
 6. `docs/governance/GATE_CONDITIONS.md` — G1-G16 门禁定义 + Hard/Soft 分类
 7. `docs/governance/adr/ADR-008-test-claim-transparency.md` — P16 gate test integrity 政策
+8. `docs/governance/adr/ADR-014-multi-ai-coordination.md` — 多 AI 协作 5 evidence fields 协议 (source_agent + source_run + timestamp + evidence_hash + conflict_resolution) (2026-06-27 新增, AGENTS.md §"强制 governance 阅读清单" 应同步)
 
 **违反 P0 红线 (governance 落实不了 7 根因, 见 reports/STAGE3_DIFF_PLAN_2026-06-26.md)**:
 
@@ -42,6 +43,7 @@
 - reports/doc-audit-2026-06-26.md (本次审计报告)
 - reports/STAGE2_DIFF_PLAN_2026-06-26.md (5 governance 整改方案)
 - reports/STAGE3_DIFF_PLAN_2026-06-26.md (本批 gate+CI+AGENTS 整改方案)
+- **更新日期**: 2026-07-01 (新增 ADR-014 引用为 item 8; 修复 item 5 "待 ADR-014 落地" 陈旧引用; ADR-014 已于 2026-06-27 ACCEPTED, 见 docs/governance/adr/INDEX.md)
 
 ## Essential Commands
 
