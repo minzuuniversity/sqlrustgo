@@ -211,10 +211,15 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             } else {
                 None
             };
-
-        let storage = self.storage_read();
-
-        // Step 1: FROM/JOIN - get initial rows and schema
+        // Step 1: FROM/JOIN - get initial rows and schema.
+        // NOTE: For the join path, `execute_joins` manages its own storage
+        // read lock.  We deliberately do NOT hold an outer storage guard
+        // here so that `execute_joins`' inner `storage_read()` does not
+        // collide with `parking_lot`'s writer-preference policy: when a
+        // writer is waiting, `try_read()` returns `None` even for
+        // reentrant reads on the same thread, causing a deadlock
+        // (reader owns lock → writer waits → reader tries reentrant read
+        // → blocked by writer preference → deadlock).
         let (mut rows, table_info) = if !select.join_clause.is_empty() {
             self.execute_joins(select)?
         } else if let Some((rows, info)) = materialized {
@@ -230,6 +235,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             };
             (vec![Vec::new()], empty_schema)
         } else {
+            let storage = self.storage_read();
             // Sprint 5 v4: the parser may encode the inline alias
             // into `select.table` as `table|alias`. Storage has only
             // the bare table name, so strip the `|alias` suffix
@@ -241,14 +247,12 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 .unwrap_or(&select.table);
             let rows = storage.scan(lookup_table)?;
             let table_info = storage.get_table_info(lookup_table)?;
+            drop(storage);
             (rows, table_info)
         };
-        // Drop the storage read lock before running any per-row
-        // correlated-subquery evaluations, since those recursive
-        // `self.execute_select` calls would deadlock against a
-        // held read lock. We still hold `&self` for engine access.
-        drop(storage);
-
+        // The storage read lock is NOT held past this point, ensuring
+        // that any recursive execution (e.g. correlated subqueries)
+        // cannot deadlock against a held lock.
         if self.parallel_degree > 1
             && rows.len() >= PARALLEL_MIN_ROWS
             // Skip parallel filter when WHERE contains correlated subqueries

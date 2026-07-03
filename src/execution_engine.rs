@@ -497,7 +497,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             "execute_insert",
             &insert.table,
         );
-        crate::engine_dml::execute_insert(self, insert)
+        let result = crate::engine_dml::execute_insert(self, insert);
+        result
     }
 
     pub fn execute_update(&mut self, update: &UpdateStatement) -> SqlResult<ExecutorResult> {
@@ -1472,6 +1473,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         op: &'static str,
         _table: &str,
     ) -> SqlResult<(Option<TxId>, bool)> {
+        let _ = op;
         if self.tx_readonly {
             return Err(SqlError::ExecutionError(
                 "Cannot execute DML in READONLY transaction".to_string(),
@@ -1490,7 +1492,6 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             }
             TxStatus::Idle | TxStatus::Active => {}
         }
-        let _ = op;
         if self.current_tx_id.is_none() {
             let tx_id = self
                 .transaction_manager
@@ -1507,12 +1508,15 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         }
     }
 
+
     /// Commit the implicit DML TX started by `begin_implicit_dml_tx`.
     /// Idempotent when `started_implicit` is `false` (user controls commit/rollback).
     pub(crate) fn commit_implicit_dml_tx(&mut self, started_implicit: bool) {
         if started_implicit {
             let tx_id = self.current_tx_id.unwrap();
             let _ = self.transaction_manager.commit(tx_id);
+            // WAL checkpoint + truncation lives in StorageEngine::commit_transaction
+            let _ = self.storage.write().commit_transaction();
             self.current_tx_id = None;
             self.tx_status = TxStatus::Idle;
         }
