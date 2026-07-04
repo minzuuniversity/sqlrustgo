@@ -24,7 +24,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use sqlrustgo::{ExecutionEngine, MemoryStorage};
-use std::sync::RwLock;
+use parking_lot::RwLock;
 
 /// TPC-H Q1 (simplified for the integration test) — single-table aggregation
 const TPC_H_Q1: &str = "
@@ -85,10 +85,10 @@ impl MixedScenario {
         }
     }
 
-    fn run(&self, engine: Arc<RwLock<ExecutionEngine<MemoryStorage>>>) {
+    fn run(&self, engine: &Arc<parking_lot::RwLock<ExecutionEngine<MemoryStorage>>>) {
         // Pre-load TPC-H SF=0.01 schema (small, fits in memory fast)
         {
-            let mut eng = engine.write().unwrap();
+            let mut eng = engine.write();
             let ddl = [
                 "CREATE TABLE region (r_regionkey INTEGER PRIMARY KEY, r_name TEXT NOT NULL, r_comment TEXT)",
                 "CREATE TABLE nation (n_nationkey INTEGER PRIMARY KEY, n_name TEXT NOT NULL, n_regionkey INTEGER NOT NULL, n_comment TEXT)",
@@ -121,7 +121,7 @@ impl MixedScenario {
         let fails_t1 = Arc::clone(&self.tpch_failures);
         handles.push(std::thread::spawn(move || {
             while !stop_t1.load(Ordering::Relaxed) {
-                let mut eng = engine_t1.write().unwrap();
+                let mut eng = engine_t1.write();
                 match eng.execute(TPC_H_Q1) {
                     Ok(_) => {
                         runs_t1.fetch_add(1, Ordering::Relaxed);
@@ -153,7 +153,7 @@ impl MixedScenario {
                     format!("DROP TABLE t_ddl_{}", counter),
                 ];
                 {
-                    let mut eng = engine_t2.write().unwrap();
+                    let mut eng = engine_t2.write();
                     for op in &ops {
                         if eng.execute(op).is_err() {
                             fails_t2.fetch_add(1, Ordering::Relaxed);
@@ -172,7 +172,7 @@ impl MixedScenario {
         let fails_t3 = Arc::clone(&self.tpch_failures);
         handles.push(std::thread::spawn(move || {
             while !stop_t3.load(Ordering::Relaxed) {
-                let mut eng = engine_t3.write().unwrap();
+                let mut eng = engine_t3.write();
                 match eng.execute(TPC_H_Q3) {
                     Ok(_) => {
                         runs_t3.fetch_add(1, Ordering::Relaxed);
@@ -192,7 +192,7 @@ impl MixedScenario {
         let fails_t4 = Arc::clone(&self.tpch_failures);
         handles.push(std::thread::spawn(move || {
             while !stop_t4.load(Ordering::Relaxed) {
-                let mut eng = engine_t4.write().unwrap();
+                let mut eng = engine_t4.write();
                 match eng.execute(TPC_H_Q5) {
                     Ok(_) => {
                         runs_t4.fetch_add(1, Ordering::Relaxed);
@@ -251,7 +251,7 @@ impl MixedScenarioReport {
     }
 }
 
-fn build_engine() -> Arc<RwLock<ExecutionEngine<MemoryStorage>>> {
+fn build_engine() -> Arc<parking_lot::RwLock<ExecutionEngine<MemoryStorage>>> {
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));
     Arc::new(RwLock::new(ExecutionEngine::new(storage)))
 }
@@ -267,7 +267,7 @@ fn test_int3_mixed_scenario_short() {
     let engine = build_engine();
     let scenario = MixedScenario::new(duration_secs);
     let started = Instant::now();
-    scenario.run(engine);
+    scenario.run(&engine);
     let elapsed = started.elapsed();
     let report = scenario.report();
     eprintln!(
@@ -290,7 +290,7 @@ fn test_int3_ddl_does_not_block_reads() {
     let engine = build_engine();
     // Pre-load schema
     {
-        let mut eng = engine.write().unwrap();
+        let mut eng = engine.write();
         let _ = eng.execute("CREATE TABLE foo (id INTEGER)");
     }
 
@@ -310,7 +310,7 @@ fn test_int3_ddl_does_not_block_reads() {
             move || {
                 while !stop.load(Ordering::Relaxed) {
                     {
-                        let mut eng = engine_r.write().unwrap();
+                        let mut eng = engine_r.write();
                         let _ = eng.execute("SELECT * FROM foo");
                     }
                     read_count.fetch_add(1, Ordering::Relaxed);
@@ -327,7 +327,7 @@ fn test_int3_ddl_does_not_block_reads() {
                 let mut i = 0;
                 while !stop.load(Ordering::Relaxed) {
                     {
-                        let mut eng = engine_w.write().unwrap();
+                        let mut eng = engine_w.write();
                         let _ = eng.execute(&format!("INSERT INTO foo VALUES ({})", i));
                     }
                     write_count.fetch_add(1, Ordering::Relaxed);
