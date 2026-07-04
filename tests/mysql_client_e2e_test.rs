@@ -126,7 +126,6 @@ fn test_delete_returns_ok() {
 // =============================================================================
 
 #[test]
-#[ignore = "server column_def packet missing org_name and length_of_fixed_fields fields"]
 fn test_select_returns_rows() {
     let (_handle, mut conn) = make_client();
     conn.execute("CREATE TABLE t (id INTEGER, name TEXT)")
@@ -151,7 +150,6 @@ fn test_select_returns_rows() {
 }
 
 #[test]
-#[ignore = "server column_def packet bug — see test_select_returns_rows"]
 fn test_select_with_where() {
     let (_handle, mut conn) = make_client();
     conn.execute("CREATE TABLE t (id INTEGER, name TEXT)")
@@ -172,7 +170,6 @@ fn test_select_with_where() {
 }
 
 #[test]
-#[ignore = "server column_def packet bug — see test_select_returns_rows"]
 fn test_multiple_sequential_queries() {
     let (_handle, mut conn) = make_client();
     conn.execute("CREATE TABLE seq_test (n INTEGER)")
