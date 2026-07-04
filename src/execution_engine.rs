@@ -551,6 +551,10 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
 
     fn execute_drop_table(&self, drop: &DropTableStatement) -> SqlResult<ExecutorResult> {
         let mut storage = self.storage.write();
+        if drop.if_exists && !storage.has_table(&drop.name) {
+            // IF EXISTS specified and table doesn't exist → no-op, success
+            return Ok(ExecutorResult::empty());
+        }
         storage.drop_table(&drop.name)?;
         Ok(ExecutorResult::empty())
     }
