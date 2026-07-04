@@ -3,10 +3,6 @@
 //! End-to-end tests for `sqlrustgo-mysql-client` against a real
 //! `sqlrustgo-mysql-server` started via the `start_ephemeral` test
 //! harness.
-//!
-//! 已知问题: server 端的 column_def 包格式不规范 (缺少 org_name 和
-//! length_of_fixed_fields 字段), 暂时阻断 SELECT 行解析. INSERT/UPDATE/
-//! DELETE 通过 OK 包路径正常. 等 server 修复后再启用 SELECT 测试.
 
 use sqlrustgo_mysql_client::{MySqlConnection, ResultSet};
 use sqlrustgo_mysql_server::testing::{start_ephemeral, EphemeralConfig};
@@ -57,7 +53,7 @@ fn test_ping() {
 }
 
 // =============================================================================
-// CREATE TABLE / INSERT / UPDATE / DELETE (工作正常)
+// CREATE TABLE / INSERT / UPDATE / DELETE
 // =============================================================================
 
 #[test]
@@ -121,8 +117,7 @@ fn test_delete_returns_ok() {
 }
 
 // =============================================================================
-// SELECT — currently disabled (server column_def bug)
-// Run with `cargo test -- --ignored` once server is fixed.
+// SELECT tests
 // =============================================================================
 
 #[test]
@@ -188,6 +183,143 @@ fn test_multiple_sequential_queries() {
 }
 
 // =============================================================================
+// DML + Transaction tests (supplemental)
+// =============================================================================
+
+#[test]
+fn test_insert_select() {
+    // INSERT ... SELECT: insert results of a SELECT into another table
+    let (_handle, mut conn) = make_client();
+    conn.execute("CREATE TABLE src (id INTEGER, name TEXT)")
+        .expect("CREATE src");
+    conn.execute("CREATE TABLE dst (id INTEGER, name TEXT)")
+        .expect("CREATE dst");
+    conn.execute("INSERT INTO src VALUES (1, 'alice'), (2, 'bob'), (3, 'carol')")
+        .expect("INSERT src");
+
+    // Insert only rows where id > 1
+    conn.execute("INSERT INTO dst SELECT * FROM src WHERE id > 1")
+        .expect("INSERT ... SELECT");
+
+    let r = conn
+        .execute("SELECT id, name FROM dst ORDER BY id")
+        .expect("SELECT from dst");
+    match r {
+        ResultSet::Select { rows, .. } => {
+            assert_eq!(rows.len(), 2, "expected 2 rows in dst, got {:?}", rows);
+            assert_eq!(rows[0][0], "2");
+            assert_eq!(rows[0][1], "bob");
+            assert_eq!(rows[1][0], "3");
+            assert_eq!(rows[1][1], "carol");
+        }
+        other => panic!("expected Select, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_update_with_complex_where() {
+    // UPDATE with a compound WHERE expression
+    let (_handle, mut conn) = make_client();
+    conn.execute("CREATE TABLE t (id INTEGER, name TEXT, val INTEGER)")
+        .expect("CREATE");
+    conn.execute("INSERT INTO t VALUES (1, 'a', 10), (2, 'b', 20), (3, 'c', 30), (4, 'd', 40)")
+        .expect("INSERT");
+
+    // Double val for rows where id > 1 AND id < 4  (i.e., id IN {2, 3})
+    conn.execute("UPDATE t SET val = val * 2 WHERE id > 1 AND id < 4")
+        .expect("UPDATE");
+
+    let r = conn.execute("SELECT id, name, val FROM t ORDER BY id").expect("SELECT");
+    match r {
+        ResultSet::Select { rows, .. } => {
+            assert_eq!(rows.len(), 4);
+            assert_eq!(rows[0][2], "10"); // id=1 unchanged
+            assert_eq!(rows[1][2], "40"); // id=2: 20*2
+            assert_eq!(rows[2][2], "60"); // id=3: 30*2
+            assert_eq!(rows[3][2], "40"); // id=4 unchanged
+        }
+        other => panic!("expected Select, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_transaction_rollback() {
+    // NOTE: BEGIN/ROLLBACK are not yet implemented — they are accepted as
+    // no-ops. Rows inserted before or during "BEGIN" persist regardless.
+    // This test documents current behavior (no actual rollback).
+    let (_handle, mut conn) = make_client();
+    conn.execute("CREATE TABLE t (n INTEGER)").expect("CREATE");
+    conn.execute("INSERT INTO t VALUES (1)").expect("INSERT initial");
+
+    conn.execute("BEGIN").expect("BEGIN");
+    conn.execute("INSERT INTO t VALUES (2)").expect("INSERT in txn");
+    conn.execute("INSERT INTO t VALUES (3)").expect("INSERT in txn");
+    conn.execute("ROLLBACK").expect("ROLLBACK");
+
+    // All 3 rows survive because ROLLBACK is a no-op
+    let r = conn
+        .execute("SELECT COUNT(*) FROM t")
+        .expect("SELECT COUNT after rollback");
+    match r {
+        ResultSet::Select { rows, .. } => {
+            assert_eq!(rows.len(), 1);
+            assert_eq!(rows[0][0], "3", "expected 3 rows (rollback not implemented), got {:?}", rows);
+        }
+        other => panic!("expected Select, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_transaction_commit() {
+    // NOTE: BEGIN/COMMIT are no-ops. All DML statements auto-commit.
+    let (_handle, mut conn) = make_client();
+    conn.execute("CREATE TABLE t (n INTEGER)").expect("CREATE");
+
+    conn.execute("BEGIN").expect("BEGIN");
+    conn.execute("INSERT INTO t VALUES (1)").expect("INSERT in txn");
+    conn.execute("INSERT INTO t VALUES (2)").expect("INSERT in txn");
+    conn.execute("COMMIT").expect("COMMIT");
+
+    let r = conn
+        .execute("SELECT COUNT(*) FROM t")
+        .expect("SELECT COUNT after commit");
+    match r {
+        ResultSet::Select { rows, .. } => {
+            assert_eq!(rows.len(), 1);
+            assert_eq!(rows[0][0], "2", "expected 2 rows after commit, got {:?}", rows);
+        }
+        other => panic!("expected Select, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_transaction_multi_stmt() {
+    // NOTE: BEGIN/COMMIT are no-ops; each statement auto-commits.
+    // So: INSERT (1,'x') → UPDATE (1,'y') → DELETE (1) → 0 rows remain.
+    let (_handle, mut conn) = make_client();
+    conn.execute("CREATE TABLE t (id INTEGER, val TEXT)")
+        .expect("CREATE");
+
+    conn.execute("BEGIN").expect("BEGIN");
+    conn.execute("INSERT INTO t VALUES (1, 'x')").expect("INSERT");
+    conn.execute("UPDATE t SET val = 'y' WHERE id = 1")
+        .expect("UPDATE");
+    conn.execute("DELETE FROM t WHERE id = 1").expect("DELETE");
+    conn.execute("COMMIT").expect("COMMIT");
+
+    let r = conn
+        .execute("SELECT COUNT(*) FROM t")
+        .expect("SELECT COUNT after multi-stmt txn");
+    match r {
+        ResultSet::Select { rows, .. } => {
+            assert_eq!(rows.len(), 1);
+            assert_eq!(rows[0][0], "0", "expected 0 rows, got {:?}", rows);
+        }
+        other => panic!("expected Select, got {:?}", other),
+    }
+}
+
+// =============================================================================
 // Error handling
 // =============================================================================
 
@@ -216,7 +348,6 @@ fn test_invalid_sql_returns_error() {
 fn test_close_after_queries() {
     let (_handle, conn) = make_client();
     let mut conn = conn;
-    // Use INSERT/DELETE to avoid the SELECT column_def parser issue
     conn.execute("CREATE TABLE close_test (n INTEGER)")
         .expect("CREATE");
     conn.execute("INSERT INTO close_test VALUES (1)")
