@@ -2627,13 +2627,45 @@ fn do_command_loop<S: Read + Write>(
                     };
                     match result {
                         Ok(r) if is_read_only.is_some() => {
-                            let cols: Vec<String> = r
-                                .rows
-                                .first()
-                                .map(|row| {
-                                    (0..row.len()).map(|i| format!("col_{}", i + 1)).collect()
-                                })
-                                .unwrap_or_else(|| vec!["result".to_string()]);
+                            // Extract real column names from the SQL
+                            // (after SELECT, before FROM). Falls back to
+                            // col_1, col_2... when ambiguous (e.g. SELECT *).
+                            let real_col_names: Vec<String> =
+                                if stmt_sql.to_uppercase().starts_with("SELECT")
+                                    && stmt_sql.to_uppercase().contains(" FROM ")
+                                {
+                                    let upper = stmt_sql.to_uppercase();
+                                    if let Some(from_pos) = upper.find(" FROM ") {
+                                        let select_part = stmt_sql[..from_pos].trim();
+                                        let cols_str = select_part
+                                            .strip_prefix("SELECT")
+                                            .or_else(|| select_part.strip_prefix("select"))
+                                            .unwrap_or("")
+                                            .trim();
+                                        if !cols_str.is_empty() && !cols_str.contains('*') {
+                                            cols_str
+                                                .split(',')
+                                                .map(|s: &str| {
+                                                    s.trim()
+                                                        .split('.')
+                                                        .next_back()
+                                                        .unwrap_or(s.trim())
+                                                        .to_string()
+                                                })
+                                                .collect()
+                                        } else {
+                                            let n = r.rows.first().map(|row| row.len()).unwrap_or(0);
+                                            (0..n).map(|i| format!("col_{}", i + 1)).collect()
+                                        }
+                                    } else {
+                                        let n = r.rows.first().map(|row| row.len()).unwrap_or(0);
+                                        (0..n).map(|i| format!("col_{}", i + 1)).collect()
+                                    }
+                                } else {
+                                    let n = r.rows.first().map(|row| row.len()).unwrap_or(0);
+                                    (0..n).map(|i| format!("col_{}", i + 1)).collect()
+                                };
+                            let cols: Vec<String> = real_col_names;
                             let ctypes: Vec<String> =
                                 cols.iter().map(|_| "VARCHAR(255)".to_string()).collect();
                             seq = send_result_set(stream, &cols, &ctypes, &r.rows, seq, cap)?;
