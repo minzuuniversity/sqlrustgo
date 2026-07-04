@@ -719,34 +719,28 @@ impl Packet {
     }
 }
 
-/// A Read+Write wrapper around `rustls::Stream` that calls
-/// `ServerConnection::complete_io` after every `write_all` to ensure
-/// that data is actually flushed to the underlying TCP socket.
-///
-/// Without this, `rustls::Stream::flush()` only writes to the cipher
-/// buffer, and clients (e.g. `mysql` CLI) may see a "Malformed packet"
-/// or an empty result set because the response was never sent.
-///
-/// `TlsStream` borrows the underlying `TcpStream` mutably. After every
-/// `write`, we manually invoke `ServerConnection::process_new_packets`
-/// to drive TLS I/O on the socket. The `ServerConnection` is held by
-/// the caller (so the caller can do handshake I/O before this
-/// wrapper is constructed).
+/// A `Read`+`Write` wrapper around `rustls::ServerConnection` that
+/// drives TLS I/O on the underlying `TcpStream`. After each `write`
+/// into rustls, `complete_io` flushes the resulting cipher records to
+/// the socket. With blocking sockets (restored in the accept loop),
+/// `complete_io` blocks in the kernel and never returns `WouldBlock`.
+/// If `WouldBlock` occurs anyway (non-blocking socket in tests), we
+/// break and leave remaining records in rustls — they flush on the
+/// next read cycle.
 pub struct TlsStream<'a> {
     pub sock: &'a mut TcpStream,
     pub conn: &'a mut rustls::ServerConnection,
 }
 
 impl<'a> TlsStream<'a> {
-    /// Flush any pending TLS ciphertext to the underlying socket.
-    /// Subsumed by `Write::flush` (which now drains the full cipher
-    /// buffer in a loop). Kept for compatibility with existing callers
-    /// (e.g. the post-COM_QUIT final flush at lib.rs:2845).
+    /// Flush any remaining TLS ciphertext to the underlying socket.
+    /// Best-effort: remaining records stay in rustls and flush on the
+    /// next read cycle. Kept for compatibility (post-COM_QUIT flush).
     pub fn flush_pending(&mut self) -> std::io::Result<()> {
         while self.conn.wants_write() {
             match self.conn.complete_io(self.sock) {
                 Ok(_) => {}
-                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => break,
+                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => break,
                 Err(e) => return Err(e),
             }
         }
@@ -763,7 +757,7 @@ impl<'a> Read for TlsStream<'a> {
         while self.conn.wants_read() {
             match self.conn.complete_io(self.sock) {
                 Ok(_) => {}
-                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => break,
+                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => break,
                 Err(e) => return Err(e),
             }
         }
@@ -783,7 +777,7 @@ impl<'a> TlsStream<'a> {
         while self.conn.wants_read() {
             match self.conn.complete_io(self.sock) {
                 Ok(_) => {}
-                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => break,
+                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => break,
                 Err(e) => return Err(e),
             }
         }
@@ -799,105 +793,44 @@ impl<'a> Write for TlsStream<'a> {
             n,
             self.conn.wants_write()
         );
-        let mut total_written = 0usize;
-        let mut calls = 0u32;
+        // With blocking sockets (restored in accept loop), complete_io
+        // blocks in the kernel and WouldBlock should not occur. We break
+        // on WouldBlock anyway as a safety net — any remaining cipher
+        // records stay buffered in rustls and flush on the next read cycle.
         while self.conn.wants_write() {
-            calls += 1;
             match self.conn.complete_io(self.sock) {
-                Ok((r, w)) => {
-                    total_written += w;
-                    tracing::trace!(
-                        "TlsStream complete_io call {}: r={} bytes, w={} bytes, total_w={}, wants_write={}",
-                        calls, r, w, total_written, self.conn.wants_write()
-                    );
-                }
-                // Issue #3694: loop through WouldBlock until TLS is genuinely
-                // idle. The socket buffer may be full but TLS still has data
-                // buffered. Re-check wants_write() and retry; the socket will drain.
-                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                    tracing::trace!(
-                        "TlsStream complete_io call {}: WouldBlock, w={} bytes so far, wants_write={}",
-                        calls, total_written, self.conn.wants_write()
-                    );
-                }
+                Ok(_) => {}
+                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => break,
                 Err(e) => return Err(e),
             }
-        }
-        if calls > 1 || total_written > 0 {
-            tracing::debug!(
-                "TlsStream write: {} app-bytes, {} complete_io calls, {} socket-bytes",
-                n, calls, total_written
-            );
         }
         Ok(n)
     }
     fn flush(&mut self) -> std::io::Result<()> {
         self.conn.writer().flush()?;
-        let mut calls = 0u32;
         while self.conn.wants_write() {
-            calls += 1;
             match self.conn.complete_io(self.sock) {
-                Ok((r, w)) => {
-                    tracing::trace!(
-                        "TlsStream flush complete_io call {}: r={}, w={}, wants_write={}",
-                        calls, r, w, self.conn.wants_write()
-                    );
-                }
-                // Issue #3694: loop through WouldBlock instead of breaking.
-                // The TLS connection may need multiple complete_io calls
-                // to drain all cipher records when the socket is slow.
-                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {}
+                Ok(_) => {}
+                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => break,
                 Err(e) => return Err(e),
             }
-        }
-        if calls > 0 {
-            tracing::debug!("TlsStream flush: {} complete_io call(s)", calls);
         }
         Ok(())
     }
 }
-
 impl<'a> TlsStream<'a> {
-    /// Drive pending outbound TLS records to the underlying socket
-    /// without reading any inbound data. This avoids the deadlock
-    /// where complete_io waits for client data while the client
-    /// waits for server data.
-    #[allow(dead_code)]
     /// Drive ALL pending outbound TLS records to the socket.
-    /// Unlike flush() which breaks on WouldBlock, this loops through
-    /// ALL WouldBlock until the TLS connection is genuinely idle.
-    /// Critical for Issue #3694: rustls may need many complete_io
-    /// calls to flush all cipher records when the socket is slow.
-    #[allow(dead_code)]
+    /// With blocking sockets (restored in accept loop), complete_io
+    /// blocks in the kernel — this is best-effort; remaining records
+    /// are flushed on the next read cycle.
     fn drive_writes_only(&mut self) -> std::io::Result<()> {
-        let mut calls = 0u32;
         while self.conn.wants_write() {
-            calls += 1;
             match self.conn.complete_io(self.sock) {
-                Ok((r, w)) => {
-                    tracing::debug!(
-                        "drive_writes_only call {}: read_bytes={}, write_bytes={}, wants_write={}",
-                        calls, r, w, self.conn.wants_write()
-                    );
-                }
-                // Keep looping through WouldBlock — socket buffer is
-                // full but TLS still has data buffered. Re-check
-                // wants_write() and retry; the socket will drain.
-                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                    tracing::debug!(
-                        "drive_writes_only call {}: WouldBlock, wants_write={}",
-                        calls,
-                        self.conn.wants_write()
-                    );
-                }
+                Ok(_) => {}
+                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => break,
                 Err(e) => return Err(e),
             }
         }
-        tracing::debug!(
-            "drive_writes_only: {} complete_io call(s), final_wants_write={}",
-            calls,
-            self.conn.wants_write()
-        );
         Ok(())
     }
 }
@@ -907,8 +840,8 @@ impl<'a> TlsStream<'a> {
 trait NotTlsStream {}
 
 /// Helper trait to force-drain any buffered writes on a Write stream.
-/// For TlsStream this calls drive_writes_only (critical for Issue #3694);
-/// for all other streams flush() is sufficient (data is already on the wire).
+/// For TlsStream this calls drive_writes_only; for all other streams
+/// flush() is sufficient (data is already on the wire).
 trait DrainWrites {
     fn force_drain(&mut self);
 }
@@ -920,12 +853,8 @@ impl<W: std::io::Write> DrainWrites for W where W: NotTlsStream {
         let _ = std::io::Write::flush(self);
     }
 }
-
 impl<'a> DrainWrites for TlsStream<'a> {
     fn force_drain(&mut self) {
-        // TlsStream: drive_writes_only drains ALL cipher records to the
-        // socket even under repeated WouldBlock. Issue #3694: plain
-        // flush() breaks on WouldBlock and leaves data in rustls buffer.
         if let Err(e) = self.drive_writes_only() {
             tracing::warn!("TlsStream::force_drain: drive_writes_only failed: {}", e);
         }
@@ -3533,6 +3462,13 @@ pub(crate) fn run_server_with_listener_and_shutdown_with_bootstrap_tables_and_sq
     while !shutdown.load(Ordering::SeqCst) {
         match listener.accept() {
             Ok((stream, addr)) => {
+                // The listener is non-blocking (for shutdown polling). On
+                // Unix the accepted TcpStream inherits this flag, which
+                // breaks TLS I/O: TlsStream::write() would never truly
+                // block — it would busy-spin on WouldBlock. Restore
+                // blocking mode so that Read/Write/complete_io block
+                // properly in the kernel (per-connection thread).
+                let _ = stream.set_nonblocking(false);
                 let st = storage.clone();
                 let tc = tls_config.clone();
                 let us = user_store.clone();
@@ -3548,15 +3484,6 @@ pub(crate) fn run_server_with_listener_and_shutdown_with_bootstrap_tables_and_sq
                             tls_config: tc,
                             user_store: us,
                         };
-                        // Bounded send with timeout: prevents the accept loop
-                        // from parking indefinitely when the worker channel
-                        // is full (which would block shutdown). If the
-                        // channel is full after 200ms we drop the new
-                        // connection (closing the client TCP stream) and
-                        // continue the accept loop. The client sees
-                        // ECONNRESET and can retry; this protects the
-                        // server from resource exhaustion when a burst
-                        // exceeds `server_threads * CHANNEL_BUFFER_MULTIPLIER`.
                         match p.send_timeout(job, Duration::from_millis(200)) {
                             Ok(()) => {}
                             Err(crate::testing::SendTimeoutError::Timeout(returned_job)) => {
@@ -3567,9 +3494,6 @@ pub(crate) fn run_server_with_listener_and_shutdown_with_bootstrap_tables_and_sq
                                      (BACKPRESSURE_COUNT incremented)",
                                     returned_job.addr
                                 );
-                                // `returned_job` is dropped here, which closes
-                                // the underlying TcpStream. The client sees
-                                // ECONNRESET.
                             }
                             Err(crate::testing::SendTimeoutError::Disconnected(returned_job)) => {
                                 tracing::warn!(
