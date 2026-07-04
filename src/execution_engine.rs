@@ -497,8 +497,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             "execute_insert",
             &insert.table,
         );
-        let result = crate::engine_dml::execute_insert(self, insert);
-        result
+        crate::engine_dml::execute_insert(self, insert)
     }
 
     pub fn execute_update(&mut self, update: &UpdateStatement) -> SqlResult<ExecutorResult> {
