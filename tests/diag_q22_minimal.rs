@@ -1,10 +1,12 @@
 //! Q22 even simpler
 
 use sqlrustgo::{ExecutionEngine, MemoryStorage, StorageEngine};
+use parking_lot::RwLock;
+use std::sync::Arc;
 
 #[test]
 fn diag_q22_minimal() {
-    let storage = std::sync::Arc::new(std::sync::RwLock::new(MemoryStorage::new()));
+    let storage = Arc::new(RwLock::new(MemoryStorage::new()));
     let mut engine = ExecutionEngine::new(storage.clone());
     engine
         .execute("CREATE TABLE customer (c_custkey INTEGER PRIMARY KEY, c_phone TEXT)")
