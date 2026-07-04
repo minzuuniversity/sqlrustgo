@@ -1,5 +1,6 @@
 use sqlrustgo::{ExecutionEngine, MemoryStorage, StorageEngine, Value};
-use std::sync::{Arc, RwLock};
+use parking_lot::RwLock;
+use std::sync::Arc;
 use std::time::Instant;
 
 type Engine = ExecutionEngine<MemoryStorage>;
@@ -71,14 +72,14 @@ fn load_tpch_table(
         batch.push(row);
         count += 1;
         if batch.len() >= BATCH_SIZE {
-            let mut st = storage.write().unwrap();
-            st.insert(tbl, batch).unwrap();
+            let mut st = storage.write();
+            st.insert(tbl, batch);
             batch = Vec::with_capacity(BATCH_SIZE);
         }
     }
     if !batch.is_empty() {
-        let mut st = storage.write().unwrap();
-        st.insert(tbl, batch).unwrap();
+        let mut st = storage.write();
+        st.insert(tbl, batch);
     }
     count
 }
