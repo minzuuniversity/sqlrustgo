@@ -811,12 +811,14 @@ impl<'a> Write for TlsStream<'a> {
                         calls, r, w, total_written, self.conn.wants_write()
                     );
                 }
+                // Issue #3694: loop through WouldBlock until TLS is genuinely
+                // idle. The socket buffer may be full but TLS still has data
+                // buffered. Re-check wants_write() and retry; the socket will drain.
                 Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
                     tracing::trace!(
                         "TlsStream complete_io call {}: WouldBlock, w={} bytes so far, wants_write={}",
                         calls, total_written, self.conn.wants_write()
                     );
-                    break;
                 }
                 Err(e) => return Err(e),
             }
