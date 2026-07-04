@@ -9,7 +9,8 @@ use sqlrustgo_storage::{
     TriggerTiming as StorageTriggerTiming,
 };
 use sqlrustgo_types::{SqlError, SqlResult, Value};
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
+use parking_lot::RwLock;
 use log::error as log_error;
 
 /// Trigger timing: BEFORE or AFTER
@@ -106,19 +107,11 @@ impl TriggerExecutor {
             // a no-op (no DML recovery is possible) — warn and proceed instead
             // of panicking the server. WalStorage continues to enforce the
             // WAL contract at write time.
-            match storage.read() {
-                Ok(g) if !g.is_wal_enabled() => {
-                    log_error!(
-                        "TriggerExecutor::new: storage has no WAL enabled — \
-                         triggers will be silently skipped (binary mode)"
-                    );
-                }
-                Err(poisoned) => {
-                    log_error!(
-                        "TriggerExecutor::new: storage lock poisoned: {poisoned:?}"
-                    );
-                }
-                Ok(_) => {}
+            if !storage.read().is_wal_enabled() {
+                log_error!(
+                    "TriggerExecutor::new: storage has no WAL enabled — \
+                     triggers will be silently skipped (binary mode)"
+                );
             }
         }
         Self { storage }
