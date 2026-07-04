@@ -358,3 +358,175 @@ fn test_close_after_queries() {
         .expect("DELETE");
     conn.close().expect("close");
 }
+// =============================================================================
+// JOIN tests
+// =============================================================================
+
+#[test]
+fn test_join_select() {
+    let (_handle, mut conn) = make_client();
+    conn.execute("CREATE TABLE orders (id INTEGER, customer_id INTEGER, amount INTEGER)")
+        .expect("CREATE orders");
+    conn.execute("CREATE TABLE customers (id INTEGER, name TEXT)")
+        .expect("CREATE customers");
+    conn.execute("INSERT INTO customers VALUES (1, 'alice'), (2, 'bob'), (3, 'carol')")
+        .expect("INSERT customers");
+    conn.execute("INSERT INTO orders VALUES (100, 1, 250), (101, 1, 120), (102, 2, 80)")
+        .expect("INSERT orders");
+
+    let r = conn
+        .execute("SELECT c.name, o.amount FROM customers c JOIN orders o ON c.id = o.customer_id ORDER BY c.name, o.amount")
+        .expect("JOIN SELECT");
+    match r {
+        ResultSet::Select { columns, rows } => {
+            assert_eq!(columns.len(), 2, "expected 2 columns");
+            assert_eq!(rows.len(), 3, "expected 3 joined rows");
+            // alice has 2 orders (120, 250), bob has 1 (80), carol has none
+            assert_eq!(rows[0][0], "alice");
+            assert_eq!(rows[0][1], "120");
+            assert_eq!(rows[1][0], "alice");
+            assert_eq!(rows[1][1], "250");
+            assert_eq!(rows[2][0], "bob");
+            assert_eq!(rows[2][1], "80");
+        }
+        other => panic!("Expected Select, got {:?}", other),
+    }
+}
+
+// =============================================================================
+// NULL handling tests
+// =============================================================================
+
+#[test]
+fn test_null_handling() {
+    let (_handle, mut conn) = make_client();
+    conn.execute("CREATE TABLE t (id INTEGER, val INTEGER)")
+        .expect("CREATE");
+    conn.execute("INSERT INTO t VALUES (1, 10), (2, NULL), (3, 30)")
+        .expect("INSERT");
+
+    // IS NULL
+    let r = conn
+        .execute("SELECT id FROM t WHERE val IS NULL")
+        .expect("IS NULL");
+    match r {
+        ResultSet::Select { rows, .. } => {
+            assert_eq!(rows.len(), 1, "expected 1 row with NULL");
+            assert_eq!(rows[0][0], "2");
+        }
+        other => panic!("Expected Select, got {:?}", other),
+    }
+
+    // IS NOT NULL
+    let r = conn
+        .execute("SELECT id FROM t WHERE val IS NOT NULL ORDER BY id")
+        .expect("IS NOT NULL");
+    match r {
+        ResultSet::Select { rows, .. } => {
+            assert_eq!(rows.len(), 2, "expected 2 non-NULL rows");
+            assert_eq!(rows[0][0], "1");
+            assert_eq!(rows[1][0], "3");
+        }
+        other => panic!("Expected Select, got {:?}", other),
+    }
+}
+
+// =============================================================================
+// ORDER BY tests
+// =============================================================================
+
+#[test]
+fn test_order_by() {
+    let (_handle, mut conn) = make_client();
+    conn.execute("CREATE TABLE t (id INTEGER, val INTEGER)")
+        .expect("CREATE");
+    conn.execute("INSERT INTO t VALUES (1, 30), (2, 10), (3, 50), (4, 20)")
+        .expect("INSERT");
+
+    // ORDER BY DESC
+    let r = conn
+        .execute("SELECT id, val FROM t ORDER BY val DESC")
+        .expect("ORDER BY DESC");
+    match r {
+        ResultSet::Select { rows, .. } => {
+            assert_eq!(rows.len(), 4, "expected 4 rows");
+            assert_eq!(rows[0][0], "3"); // val=50
+            assert_eq!(rows[0][1], "50");
+            assert_eq!(rows[1][0], "1"); // val=30
+            assert_eq!(rows[1][1], "30");
+            assert_eq!(rows[2][0], "4"); // val=20
+            assert_eq!(rows[2][1], "20");
+            assert_eq!(rows[3][0], "2"); // val=10
+            assert_eq!(rows[3][1], "10");
+        }
+        other => panic!("Expected Select, got {:?}", other),
+    }
+
+    // ORDER BY ASC
+    let r = conn
+        .execute("SELECT id, val FROM t ORDER BY val ASC")
+        .expect("ORDER BY ASC");
+    match r {
+        ResultSet::Select { rows, .. } => {
+            assert_eq!(rows.len(), 4, "expected 4 rows");
+            assert_eq!(rows[0][1], "10");
+            assert_eq!(rows[1][1], "20");
+            assert_eq!(rows[2][1], "30");
+            assert_eq!(rows[3][1], "50");
+        }
+        other => panic!("Expected Select, got {:?}", other),
+    }
+}
+
+// =============================================================================
+// Aggregate + GROUP BY tests
+// =============================================================================
+
+#[test]
+fn test_aggregate_group_by() {
+    let (_handle, mut conn) = make_client();
+    conn.execute("CREATE TABLE orders (customer_id INTEGER, amount INTEGER)")
+        .expect("CREATE");
+    conn.execute("INSERT INTO orders VALUES (1, 100), (1, 200), (2, 50), (2, 150), (3, 300)")
+        .expect("INSERT");
+
+    // COUNT + GROUP BY
+    let r = conn
+        .execute("SELECT customer_id, COUNT(*), SUM(amount) FROM orders GROUP BY customer_id ORDER BY customer_id")
+        .expect("COUNT GROUP BY");
+    match r {
+        ResultSet::Select { columns, rows } => {
+            assert_eq!(rows.len(), 3, "expected 3 groups");
+            // customer 1: count=2, sum=300
+            assert_eq!(rows[0][0], "1");
+            assert_eq!(rows[0][1], "2");
+            assert_eq!(rows[0][2], "300");
+            // customer 2: count=2, sum=200
+            assert_eq!(rows[1][0], "2");
+            assert_eq!(rows[1][1], "2");
+            assert_eq!(rows[1][2], "200");
+            // customer 3: count=1, sum=300
+            assert_eq!(rows[2][0], "3");
+            assert_eq!(rows[2][1], "1");
+            assert_eq!(rows[2][2], "300");
+        }
+        other => panic!("Expected Select, got {:?}", other),
+    }
+
+    // AVG + GROUP BY
+    let r = conn
+        .execute("SELECT customer_id, AVG(amount) FROM orders GROUP BY customer_id ORDER BY customer_id")
+        .expect("AVG GROUP BY");
+    match r {
+        ResultSet::Select { rows, .. } => {
+            assert_eq!(rows.len(), 3);
+            assert_eq!(rows[0][0], "1"); // avg=150.0
+            assert_eq!(rows[0][1], "150");
+            assert_eq!(rows[1][0], "2"); // avg=100.0
+            assert_eq!(rows[1][1], "100");
+            assert_eq!(rows[2][0], "3"); // avg=300.0
+            assert_eq!(rows[2][1], "300");
+        }
+        other => panic!("Expected Select, got {:?}", other),
+    }
+}
