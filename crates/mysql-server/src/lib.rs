@@ -794,33 +794,62 @@ impl<'a> TlsStream<'a> {
 impl<'a> Write for TlsStream<'a> {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
         let n = self.conn.writer().write(buf)?;
-        // Drain ALL pending TLS records to the underlying socket, not
-        // just one. Without the loop, a single `complete_io` may only
-        // flush a partial cipher record when the socket send buffer
-        // can't accept the full ciphertext in one syscall; the rest
-        // would sit in rustls' writer buffer until the next write,
-        // and large multi-batch INSERTs (e.g. sysbench prepare with
-        // >~20 rows) would deadlock: the client waits for the OK
-        // packet while the server waits for the next request.
+        tracing::trace!(
+            "TlsStream write: {} app-bytes -> rustls, wants_write={}",
+            n,
+            self.conn.wants_write()
+        );
+        let mut total_written = 0usize;
+        let mut calls = 0u32;
         while self.conn.wants_write() {
+            calls += 1;
             match self.conn.complete_io(self.sock) {
-                Ok(_) => {}
-                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => break,
+                Ok((r, w)) => {
+                    total_written += w;
+                    tracing::trace!(
+                        "TlsStream complete_io call {}: r={} bytes, w={} bytes, total_w={}, wants_write={}",
+                        calls, r, w, total_written, self.conn.wants_write()
+                    );
+                }
+                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                    tracing::trace!(
+                        "TlsStream complete_io call {}: WouldBlock, w={} bytes so far, wants_write={}",
+                        calls, total_written, self.conn.wants_write()
+                    );
+                    break;
+                }
                 Err(e) => return Err(e),
             }
+        }
+        if calls > 1 || total_written > 0 {
+            tracing::debug!(
+                "TlsStream write: {} app-bytes, {} complete_io calls, {} socket-bytes",
+                n, calls, total_written
+            );
         }
         Ok(n)
     }
     fn flush(&mut self) -> std::io::Result<()> {
         self.conn.writer().flush()?;
-        // Same drain loop as write(): flush must guarantee the
-        // cipher buffer is fully driven to the socket.
+        let mut calls = 0u32;
         while self.conn.wants_write() {
+            calls += 1;
             match self.conn.complete_io(self.sock) {
-                Ok(_) => {}
-                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => break,
+                Ok((r, w)) => {
+                    tracing::trace!(
+                        "TlsStream flush complete_io call {}: r={}, w={}, wants_write={}",
+                        calls, r, w, self.conn.wants_write()
+                    );
+                }
+                // Issue #3694: loop through WouldBlock instead of breaking.
+                // The TLS connection may need multiple complete_io calls
+                // to drain all cipher records when the socket is slow.
+                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {}
                 Err(e) => return Err(e),
             }
+        }
+        if calls > 0 {
+            tracing::debug!("TlsStream flush: {} complete_io call(s)", calls);
         }
         Ok(())
     }
@@ -832,29 +861,78 @@ impl<'a> TlsStream<'a> {
     /// where complete_io waits for client data while the client
     /// waits for server data.
     #[allow(dead_code)]
+    /// Drive ALL pending outbound TLS records to the socket.
+    /// Unlike flush() which breaks on WouldBlock, this loops through
+    /// ALL WouldBlock until the TLS connection is genuinely idle.
+    /// Critical for Issue #3694: rustls may need many complete_io
+    /// calls to flush all cipher records when the socket is slow.
+    #[allow(dead_code)]
     fn drive_writes_only(&mut self) -> std::io::Result<()> {
-        // Complete any pending outbound IO without waiting for new
-        // data. We do this by repeatedly calling `complete_io` only
-        // when there is pending outbound data, and never on a clean
-        // socket that has nothing to write.
-        //
-        // rustls exposes `wants_write()` to indicate pending outbound
-        // data; we drive IO while that's true, but bail out as soon
-        // as the connection is idle to avoid blocking on read.
+        let mut calls = 0u32;
         while self.conn.wants_write() {
-            // complete_io here is bounded: it returns when either
-            // the write buffer is drained or the socket would block.
-            // Because the socket is in non-blocking mode for the
-            // application, it should not block on read here.
+            calls += 1;
             match self.conn.complete_io(self.sock) {
-                Ok(_) => {}
-                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => break,
+                Ok((r, w)) => {
+                    tracing::debug!(
+                        "drive_writes_only call {}: read_bytes={}, write_bytes={}, wants_write={}",
+                        calls, r, w, self.conn.wants_write()
+                    );
+                }
+                // Keep looping through WouldBlock — socket buffer is
+                // full but TLS still has data buffered. Re-check
+                // wants_write() and retry; the socket will drain.
+                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                    tracing::debug!(
+                        "drive_writes_only call {}: WouldBlock, wants_write={}",
+                        calls,
+                        self.conn.wants_write()
+                    );
+                }
                 Err(e) => return Err(e),
             }
         }
+        tracing::debug!(
+            "drive_writes_only: {} complete_io call(s), final_wants_write={}",
+            calls,
+            self.conn.wants_write()
+        );
         Ok(())
     }
 }
+/// Marker trait: types that implement std::io::Write but are NOT TlsStream.
+/// Used to prevent the blanket DrainWrites impl from covering TlsStream
+/// (which needs its own impl that calls drive_writes_only instead of flush).
+trait NotTlsStream {}
+
+/// Helper trait to force-drain any buffered writes on a Write stream.
+/// For TlsStream this calls drive_writes_only (critical for Issue #3694);
+/// for all other streams flush() is sufficient (data is already on the wire).
+trait DrainWrites {
+    fn force_drain(&mut self);
+}
+
+// Blanket impl for all Write types EXCEPT TlsStream
+impl<W: std::io::Write> DrainWrites for W where W: NotTlsStream {
+    fn force_drain(&mut self) {
+        // Regular stream: flush() is synchronous and sufficient
+        let _ = std::io::Write::flush(self);
+    }
+}
+
+impl<'a> DrainWrites for TlsStream<'a> {
+    fn force_drain(&mut self) {
+        // TlsStream: drive_writes_only drains ALL cipher records to the
+        // socket even under repeated WouldBlock. Issue #3694: plain
+        // flush() breaks on WouldBlock and leaves data in rustls buffer.
+        if let Err(e) = self.drive_writes_only() {
+            tracing::warn!("TlsStream::force_drain: drive_writes_only failed: {}", e);
+        }
+    }
+}
+
+// TcpStream is NOT a TlsStream (covers both TcpStream and &TcpStream)
+impl NotTlsStream for std::net::TcpStream {}
+impl<T: NotTlsStream> NotTlsStream for &T {}
 
 fn write_lenenc_int<W: Write>(w: &mut W, v: u64) -> MySqlResult<()> {
     if v < 251 {
@@ -2455,7 +2533,7 @@ fn handle_load_local_infile<S: Read + Write>(
 }
 
 #[allow(unused_assignments)]
-fn do_command_loop<S: Read + Write>(
+fn do_command_loop<S: Read + Write + DrainWrites>(
     stream: &mut S,
     addr: SocketAddr,
     storage: Arc<RwLock<BoxStorageEngine>>,
@@ -2682,7 +2760,9 @@ fn do_command_loop<S: Read + Write>(
                                 true => 1146u16,
                                 false => 1064u16,
                             };
-                            make_err_packet(seq, code, "42000", &e.to_string()).write_to(stream)?;
+                            let err_msg = e.to_string();
+                            tracing::warn!("SQL error {} (42000): {}", code, err_msg);
+                            make_err_packet(seq, code, "42000", &err_msg).write_to(stream)?;
                             *server_last_sent_seq = seq;
                             seq = seq.wrapping_add(1);
                             had_error = true;
@@ -2741,12 +2821,25 @@ fn do_command_loop<S: Read + Write>(
                 p.write_u16::<LittleEndian>(param_count).unwrap();
                 p.push(0x00);
                 p.write_u16::<LittleEndian>(0).unwrap();
-                Packet {
-                    length: p.len() as u32,
-                    sequence: seq,
-                    payload: p,
-                }
-                .write_to(stream)?;
+                let ok_pkt_bytes = {
+                    let mut pb = Vec::new();
+                    pb.write_u24::<LittleEndian>(p.len() as u32).unwrap();
+                    pb.write_u8(seq).unwrap();
+                    pb.extend_from_slice(&p);
+                    pb
+                };
+                tracing::debug!(
+                    "STMT_PREPARE OK pkt: seq={}, len={}, hex={:02x?}",
+                    seq,
+                    ok_pkt_bytes.len(),
+                    &ok_pkt_bytes[..]
+                );
+                 Packet {
+                     length: p.len() as u32,
+                     sequence: seq,
+                     payload: p,
+                 }
+                 .write_to(stream)?;
                 *server_last_sent_seq = seq;
                 seq = seq.wrapping_add(1);
 
@@ -2847,6 +2940,12 @@ fn do_command_loop<S: Read + Write>(
                         seq = seq.wrapping_add(1);
                     }
                 }
+                // Issue #3694: force-drain ALL TLS cipher records before
+                // returning. The client (MariaDB Connector/C) waits for
+                // the complete STMT_PREPARE response; if any records
+                // are still buffered in rustls the client times out.
+                stream.force_drain();
+
 
                 tracing::info!(
                     "STMT PREPARE done: id={}, params={}, cols={}",
