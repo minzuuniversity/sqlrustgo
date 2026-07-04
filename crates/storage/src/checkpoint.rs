@@ -270,6 +270,7 @@ mod tests {
             dirty_pages: 10,
             file_path: temp.path().join("checkpoint.1"),
         };
+        assert_eq!(meta.lsn, 1000);
 
         manager.record_checkpoint(meta.clone());
 
