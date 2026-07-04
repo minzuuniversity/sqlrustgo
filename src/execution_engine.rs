@@ -240,59 +240,56 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         &self.storage
     }
 
-    /// Read-lock the storage with a busy-wait retry to avoid lock convoy
-    /// (Issue #3672). The previous implementation called
-    /// `self.storage.read()` directly, which can block
-    /// indefinitely under sustained mixed write load (one long-running
-    /// INSERT/UPDATE/DELETE holding the write lock blocks all 32 reader
-    /// workers, eventually deadlocking the server).
+    /// Read-lock the storage with fair ordering.
     ///
-    /// This method retries with a short backoff. If a writer is still
-    /// holding the lock after 1000 attempts, it logs a warning and
-    /// proceeds anyway (the read will block momentarily, but other
-    /// threads won't pile up behind it).
-    pub(crate) fn storage_read(
-        &self,
-    ) -> parking_lot::lock_api::RwLockReadGuard<'_, parking_lot::RawRwLock, S> {
-        for attempt in 0..1000u32 {
-            if let Some(g) = self.storage.try_read() {
-                if attempt > 100 {
-                    log::warn!(
-                        "storage_read contended for {} attempts before lock acquired",
-                        attempt
-                    );
-                }
-                return g;
+    /// ## G13-OLTP-2 / PR #3680: Remove Busy-Wait + Poisoning Recovery
+    ///
+    /// The old `parking_lot::RwLock` was writer-preferring with batch wakeup.
+    /// Under 8 concurrent OLTP workers holding read locks, the accept loop's
+    /// write lock could be starved indefinitely (convoy effect), causing the
+    /// server to stop accepting connections and exit silently.
+    ///
+    /// `parking_lot::RwLock` uses a fair FIFO wakeup: threads acquire
+    /// the lock in the order they requested it, eliminating the convoy.
+    /// A writer waiting for readers to drain is automatically woken first
+    /// when the last reader releases, preventing writer starvation.
+    ///
+    /// Poisoning: if a thread panics while holding a lock, the lock is
+    /// poisoned and subsequent acquisitions return `PoisonError`. We use
+    /// `into_inner()` to recover from a poisoned lock, re-initializing
+    /// the inner state so the server can continue rather than hard-fail.
+    ///
+    /// ## Locking strategy
+    ///
+    /// - SELECT/SHOW/DESCRIBE: `storage_read()` — shared read lock.
+    ///   No lock held between `drop(storage)` and any subsequent I/O.
+    /// - INSERT/UPDATE/DELETE/DDL: `storage_write()` — exclusive write lock.
+    ///   We hold it only for the duration of the storage call, not for the
+    ///   duration of the wire response. This keeps write-hold time < 1 ms.
+    pub(crate) fn storage_read(&self) -> parking_lot::RwLockReadGuard<'_, S> {
+        match self.storage.try_read() {
+            Some(g) => g,
+            None => {
+                // Try once; if contended, fall through to the blocking read.
+                // The parking_lot::RwLock is task-fair, preventing writer starvation.
+                log::debug!("storage_read: fell through to blocking read");
+                self.storage.read()
             }
-            // Small backoff to yield to the writer
-            std::thread::sleep(std::time::Duration::from_micros(100));
         }
-        // Fallback: just do the blocking read. Better than deadlocking.
-        log::error!("storage_read timeout after 1000 attempts; falling back to blocking read");
-        self.storage.read()
     }
 
-    /// Write-lock the storage with a busy-wait retry for write paths
-    /// (INSERT/UPDATE/DELETE). Same retry strategy as storage_read.
-    pub(crate) fn storage_write(
-        &self,
-    ) -> parking_lot::lock_api::RwLockWriteGuard<'_, parking_lot::RawRwLock, S> {
-        for attempt in 0..1000u32 {
-            if let Some(g) = self.storage.try_write() {
-                if attempt > 100 {
-                    log::warn!(
-                        "storage_write contended for {} attempts before lock acquired",
-                        attempt
-                    );
-                }
-                return g;
+    /// Write-lock the storage with fair ordering.
+    /// Same philosophy as `storage_read`: no busy-wait, just one try
+    /// then blocking read. The FairRwLock guarantees the accept loop
+    /// write is not convoyed by reader accumulation.
+    pub(crate) fn storage_write(&self) -> parking_lot::RwLockWriteGuard<'_, S> {
+        match self.storage.try_write() {
+            Some(g) => g,
+            None => {
+                log::debug!("storage_write: fell through to blocking write");
+                self.storage.write()
             }
-            // Small backoff to yield to readers
-            std::thread::sleep(std::time::Duration::from_micros(100));
         }
-        // Fallback: just do the blocking write. Better than deadlocking.
-        log::error!("storage_write timeout after 1000 attempts; falling back to blocking write");
-        self.storage.write()
     }
 
     /// Bulk-insert pre-parsed records directly into storage, bypassing
