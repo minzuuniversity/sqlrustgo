@@ -711,7 +711,6 @@ impl Packet {
         })
     }
     pub fn write_to<W: Write>(&self, w: &mut W) -> MySqlResult<()> {
-        // Debug trace removed
         w.write_u24::<LittleEndian>(self.length)?;
         w.write_u8(self.sequence)?;
         w.write_all(&self.payload)?;
@@ -1270,8 +1269,9 @@ fn write_column_def<W: Write>(w: &mut W, name: &str, sql_type: &str, seq: u8) ->
     write_lenenc_string(&mut p, b"").unwrap(); // virtual_table
     write_lenenc_string(&mut p, b"").unwrap(); // physical_table
     write_lenenc_string(&mut p, name.as_bytes()).unwrap(); // virtual_name
-    write_lenenc_string(&mut p, name.as_bytes()).unwrap(); // physical_name (org_name) — required by MySQL protocol; pymysql/libmysqlclient expect it
-    p.push(0x0c); // 1-byte filler required by MySQL column definition protocol (often called "next_length" = 12 fixed bytes that follow)
+    write_lenenc_string(&mut p, name.as_bytes()).unwrap(); // org_name (physical column name; same as virtual_name when no alias)
+    write_lenenc_int(&mut p, 12).unwrap(); // length_of_fixed_fields: 12 bytes of fixed-size metadata follow
+                                           // (charsetnr 2 + column_length 4 + field_type 1 + flags 2 + decimals 1 + filler 2)
                   // MySQL column definition fixed-size fields:
                   // charsetnr (2 bytes) → length (4 bytes) → type (1 byte) → flags (2 bytes) → decimals (1 byte) → filler (2 bytes)
     p.write_u16::<LittleEndian>(0x0030).unwrap(); // charsetnr: 0x30 = utf8_general_ci

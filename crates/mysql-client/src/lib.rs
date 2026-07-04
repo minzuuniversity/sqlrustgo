@@ -441,10 +441,8 @@ fn parse_column_definition(data: &[u8], offset: &mut usize) -> MySqlResult<Colum
     let org_table = parse_length_encoded_string(data, offset)?;
     let name = parse_length_encoded_string(data, offset)?;
     let org_name = parse_length_encoded_string(data, offset)?;
-
     // fixed-length fields (length of following fields)
     let _length_of_fixed_fields = parse_length_encoded_int(data, offset)?;
-
     let character_set = u16::from_le_bytes([data[*offset], data[*offset + 1]]);
     *offset += 2;
     let column_length = u32::from_le_bytes([
@@ -478,6 +476,7 @@ fn parse_column_definition(data: &[u8], offset: &mut usize) -> MySqlResult<Colum
     })
 }
 
+/// Parse a text-protocol row
 /// Parse a text-protocol row (length-encoded strings for each column).
 fn parse_text_row(data: &[u8], offset: &mut usize, num_columns: usize) -> MySqlResult<Vec<String>> {
     let mut row = Vec::with_capacity(num_columns);
