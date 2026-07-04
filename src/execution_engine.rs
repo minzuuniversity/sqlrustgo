@@ -1511,7 +1511,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
 
     /// Commit the implicit DML TX started by `begin_implicit_dml_tx`.
     /// Idempotent when `started_implicit` is `false` (user controls commit/rollback).
-    pub(crate) fn commit_implicit_dml_tx(&mut self, started_implicit: bool) {
+    pub(crate) fn commit_implicit_dml_tx(&mut self, started_implicit: bool) -> SqlResult<()> {
         if started_implicit {
             let tx_id = self.current_tx_id.unwrap();
             let _ = self.transaction_manager.commit(tx_id);
@@ -1520,6 +1520,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             self.current_tx_id = None;
             self.tx_status = TxStatus::Idle;
         }
+        Ok(())
     }
 
     pub fn flush(&mut self) -> Result<(), SqlError> {
