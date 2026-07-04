@@ -1,22 +1,17 @@
-<!-- 2026-07-01 status addendum (auto-applied) -->
-> **状态更新**: 本机 L1 lint + 架构整理已闭环。HEAD `d77821f6d1`, 3 个 PR 已合并 (PR #3664, #3665, #3666)。
-> - `src/execution_engine.rs` 1471 行 (AD-001 1500 目标达标, 2630 → 1471)
-> - C-ARCH-05 上限锁回 1500 (从 3000/1800 统一)
-> - SGL-001 rustfmt drift 修复 (integration gate 4/4 PASS)
-> - Open issues (4, 全部硬件阻塞, 本机无法推进):
->   - #3648 TPC-H 混合负载 SOAK 跨平台验证 (需要 Z6G4/Z440)
->   - #3423 TPC-H SF=1.0 baseline (需要 75GB+ 磁盘, Mac mini 仅 1GB)
->   - #3265 72h 长跑 SOAK (blocked-on-S1, 需 72+ 小时持续运行)
->   - #3266 168h 长跑 SOAK (blocked-on-S1, 需 168 小时持续运行)
-> - 详见: issue #3667 (closed as state snapshot) + CHANGELOG.md
+<!-- 2026-07-03 status addendum -->
+> **状态更新 (2026-07-03)**: PR #3678 (TPC-H SF=1 baseline) 已合并至 develop/v3.9.0，`Mergeable=True`。G13 死锁根因修复 (PR #3680) 已 merge 至 develop/v3.9.0。
 >
-> 本文件原始内容保持不变,仅顶部加 addendum。
+> Issue #3265/#3266 状态更新已发布至 Gitea：
+> - 72h SOAK：70h36m 无死锁运行 + 零 panic（修复后应完全通过）
+> - WAL checkpoint / Memory plateau：独立 issue，需新 72h run 验证
+> - #3265：建议 Conditional Close（待新 run PASS）
+> - #3266：等待 #3265 新 run PASS 后接续
+>
+> 本文件 SOAK section 已更新。
 
----
 
-> **Date**: 2026-06-25
-> **Status**: 🟡 **CONDITIONAL** — G3/G4 conditional pass; Soak ✅ on Z440 (20M+ queries, 0 real errors)
-> **GA target**: Pending G3/G4 formal approval; 168h soak in progress on Z440
+> **Date**: 2026-07-03
+> **Status**: 🟡 **CONDITIONAL** — G3/G4 conditional pass; 72h SOAK (post-G13-fix) pending re-run; 168h blocked on #3265
 ---
 
 ## 0. GA Gate Verdict
@@ -168,8 +163,9 @@
 |------|----------|--------|
 | Short ladder (30m→4h) | 4h | ✅ PASS |
 | 24h real | 24h | ✅ PASS |
-| 72h real | 72h | ✅ PASS |
-| 168h real | 168h | ⏳ IN PROGRESS |
+| 72h real (pre-G13-fix) | 72h | ✅ 70h36m (G13 deadlock at 70h36m; fix merged in #3680) |
+| 72h real (post-G13-fix) | 72h | ⏳ **PENDING RE-RUN** — G13 convoy deadlocked at 70h36m; fix (#3680) applied, needs new run |
+| 168h real | 168h | 🔴 Blocked on #3265 new 72h run |
 
 > **Z440 Soak Results (commit `97d1a9d111`, 2026-06-25)**:
 >
@@ -185,7 +181,9 @@
 >
 > **Total: 20,233,619 queries, 0 real errors, RSS stable at 8,376 KB, FD stable at 12–13**
 >
-> ⚠️ **Note**: Z440 single-threaded (22K QPS saturation) ≠ Z6G4 multi-threaded. Z6G4 unreachable since 2026-06-19. Strong positive signal but multi-threaded test remains pending.
+> ⚠️ **G13 Fix Applied (#3680)**: The 70h36m deadlock was caused by G13 rwlock convoy (issue #3672). Fix: `parking_lot::RwLock` + `Fair` policy + `storage_read()` retry loop. **New 72h run needed** to confirm fix + WAL + memory stability.
+
+⚠️ **Note**: Z440 single-threaded (22K QPS saturation) ≠ Z6G4 multi-threaded. Z6G4 unreachable since 2026-06-19. Strong positive signal but multi-threaded test remains pending.
 ---
 
 ## 4. GA Gate Summary
@@ -203,7 +201,7 @@
 | G4 | TPC-H SF=1 22/22 | ⚠️ **CONDITIONAL** |
 | G5 | Security PASS | ✅ |
 | G6 | Documentation | ✅ |
-| Soak | 24h/72h PASS (Z440: 20M+ queries, 0 real errors, RSS/FD stable); 168h in progress | ✅ PASS (24h/72h) |
+| Soak | 24h ✅; 72h ⚠️ (pre-fix: 70h36m deadlock; post-fix: pending re-run); 168h 🔴 blocked on #3265 | ⚠️ 24h/72h (pending re-run) |
 
 **GA Gate: 9/11 PASS, 2 CONDITIONAL, 1 IN PROGRESS (168h soak)**
 
@@ -213,8 +211,9 @@
 |----------|--------|------|--------|
 | P0 | Hermes C approves G3/G4 conditional pass | G3/G4 | 🔴 **Required** |
 | P0 | Hermes C approves G3/G4 CONDITIONAL GA | GATE | 🔴 **Required** |
-| P1 | 168h soak PASS | Soak | ⏳ IN PROGRESS (Z440) |
-| P1 | TPC-H SF=1.0 full 22/22 measurement | G4 | ⏳ IN PROGRESS (252) |
+| P1 | New 72h SOAK run (post-G13-fix) PASS | Soak | 🔴 **Required** — run `run_72h_soak_v2.sh` |
+| P1 | 168h soak PASS (after #3265) | Soak | 🔴 Blocked on above |
+| P1 | TPC-H SF=1.0 full 22/22 measurement | G4 | ⏳ IN PROGRESS (Z6G4) |
 | P2 | Upgrade `tokio-postgres` in `sqlrustgo-bench` | G5 | Low effort |
 
 ## 6. Recommendation
