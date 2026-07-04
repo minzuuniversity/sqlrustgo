@@ -407,13 +407,11 @@ impl StoredProcExecutor {
         // non-WAL storage is a no-op (no DML recovery is possible) —
         // warn and proceed instead of panicking the server. WalStorage
         // continues to enforce the WAL contract at write time.
-        if !cfg!(test) {
-            if !storage.read().is_wal_enabled() {
-                log_error!(
-                    "StoredProcExecutor::new: storage has no WAL enabled — \
-                     stored-proc writes will be silently skipped (binary mode)"
-                );
-            }
+        if !cfg!(test) && !storage.read().is_wal_enabled() {
+            log_error!(
+                "StoredProcExecutor::new: storage has no WAL enabled — \
+                 stored-proc writes will be silently skipped (binary mode)"
+            );
         }
         Self { catalog, storage }
     }
