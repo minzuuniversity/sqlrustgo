@@ -1,0 +1,16 @@
+{
+  "version": "v3.10.0",
+  "stage": "DRAFT",
+  "description": "设计与架构阶段 (design + architecture + prototype)",
+  "files": {
+    "pass": 2,
+    "fail": 0,
+    "failed": []
+  },
+  "gates": {
+    "pass": 0,
+    "fail": 0,
+    "failed": []
+  },
+  "overall": "PASS"
+}
