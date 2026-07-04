@@ -1283,15 +1283,17 @@ fn write_text_row<W: Write>(w: &mut W, row: &[Value]) -> MySqlResult<()> {
     Ok(())
 }
 
-/// Write a single row in MySQL binary protocol format.
-/// Each value is prefixed with a 1-byte type marker, then the value.
 fn write_binary_row<W: Write>(w: &mut W, row: &[Value], col_types: &[u8]) -> MySqlResult<()> {
-    w.write_u8(0x00)?; // row packet header: null bitmap starts with 0x00
-    let null_bytes = (row.len() + 9) / 8;
-    let mut null_map = vec![0u8; null_bytes + 1];
+    // MySQL binary-protocol row layout:
+    //   1 byte  : 0x00 header
+    //   ceil(cols/8) bytes : null_bitmap (col i is null iff bit (i%8) of byte (i/8))
+    //   for each col, type-marker-byte + value-bytes
+    let null_bytes = (row.len() + 7) / 8;
+    w.write_u8(0x00)?; // header
+    let mut null_map = vec![0u8; null_bytes];
     for (i, v) in row.iter().enumerate() {
         if matches!(v, Value::Null) {
-            null_map[1 + i / 8] |= 1 << (i % 8);
+            null_map[i / 8] |= 1 << (i % 8);
         }
     }
     w.write_all(&null_map)?;
@@ -1343,6 +1345,20 @@ fn write_binary_row<W: Write>(w: &mut W, row: &[Value], col_types: &[u8]) -> MyS
 }
 
 fn write_column_def<W: Write>(w: &mut W, name: &str, sql_type: &str, seq: u8) -> MySqlResult<u8> {
+    // MySQL column definition packet layout:
+    //   catalog   : lenenc_str
+    //   schema    : lenenc_str
+    //   virtual_table: lenenc_str
+    //   physical_table: lenenc_str
+    //   virtual_name: lenenc_str
+    //   physical_name: lenenc_str
+    //   length_of_fixed_fields: lenenc_int (always 0x0c = 12)
+    //   charsetnr    : 2 bytes LE
+    //   column_length: 4 bytes LE
+    //   field_type   : 1 byte
+    //   flags        : 2 bytes LE
+    //   decimals     : 1 byte
+    //   filler       : 2 bytes
     let mut p = Vec::new();
     write_lenenc_string(&mut p, b"def").unwrap(); // catalog
     write_lenenc_string(&mut p, b"").unwrap(); // schema
@@ -2998,8 +3014,6 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                     parse_stmt_execute_params(payload, stmt_param_count, &stmt_param_types);
                 let final_sql = replace_placeholders(&stmt_sql, &params);
                 tracing::info!("STMT EXECUTE (id={}): {}", stmt_id, final_sql);
-                // G13-OLTP-1: parse first to determine SELECT vs DDL/DML,
-                // then acquire the appropriate lock (read for SELECT,
                 // write for DDL/DML).
                 let parsed = parse(&final_sql);
                 let is_read_only = parsed
