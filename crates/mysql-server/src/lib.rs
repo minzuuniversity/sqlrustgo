@@ -2536,8 +2536,8 @@ fn handle_load_local_infile<S: Read + Write>(
 fn do_command_loop<S: Read + Write + DrainWrites>(
     stream: &mut S,
     addr: SocketAddr,
-    storage: Arc<RwLock<BoxStorageEngine>>,
-    engine: Arc<RwLock<ExecutionEngine<BoxStorageEngine>>>,
+    storage: Arc<parking_lot::RwLock<BoxStorageEngine>>,
+    engine: Arc<parking_lot::RwLock<ExecutionEngine<BoxStorageEngine>>>,
     cap: u32,
     server_last_sent_seq: &mut u8,
     ps_manager: &mut PreparedStatementManager,
@@ -3071,7 +3071,7 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
 fn handle_connection(
     mut stream: TcpStream,
     addr: SocketAddr,
-    storage: Arc<RwLock<BoxStorageEngine>>,
+    storage: Arc<parking_lot::RwLock<BoxStorageEngine>>,
     tls_config: Arc<rustls::ServerConfig>,
     user_store: UserStore,
 ) {
@@ -3192,8 +3192,8 @@ fn handle_connection(
             // without auto-complete_io, the cipher buffer accumulates
             // and the client never receives the response.
             let mut tls = TlsStream::new(&mut conn, &mut stream);
-            let engine: Arc<RwLock<ExecutionEngine<BoxStorageEngine>>> =
-                Arc::new(RwLock::new(ExecutionEngine::new(storage.clone())));
+            let engine: Arc<parking_lot::RwLock<ExecutionEngine<BoxStorageEngine>>> =
+                Arc::new(parking_lot::RwLock::new(ExecutionEngine::new(storage.clone())));
             let mut ps_manager = PreparedStatementManager::new();
             let mut server_last_sent_seq = 3u8;
             let _ = do_command_loop(
@@ -3249,8 +3249,8 @@ fn handle_connection(
         .ok();
     let mut server_last_sent_seq = 2u8;
     tracing::info!("Starting command loop with server_last_sent_seq=2");
-    let engine: Arc<RwLock<ExecutionEngine<BoxStorageEngine>>> =
-        Arc::new(RwLock::new(ExecutionEngine::new(storage.clone())));
+    let engine: Arc<parking_lot::RwLock<ExecutionEngine<BoxStorageEngine>>> =
+        Arc::new(parking_lot::RwLock::new(ExecutionEngine::new(storage.clone())));
     let mut ps_manager = PreparedStatementManager::new();
     let _ = do_command_loop(
         &mut &stream,
@@ -3417,7 +3417,7 @@ pub(crate) fn run_server_with_listener_and_shutdown_with_bootstrap_tables_and_sq
             tracing::info!("Storage: binary (BinaryTableStorage, no WAL)");
             let bin_storage = BinaryTableStorage::new_with_data(wal_data_dir.clone())?;
             tracing::info!("Loaded .bin tables from data_dir");
-            Arc::new(RwLock::new(BoxStorageEngine::new(bin_storage)))
+            Arc::new(parking_lot::RwLock::new(BoxStorageEngine::new(bin_storage)))
         }
         _ => {
             // WalStorage<FileStorage, FileBackedWalManager>
@@ -3470,7 +3470,7 @@ pub(crate) fn run_server_with_listener_and_shutdown_with_bootstrap_tables_and_sq
             let checkpoint_manager = Arc::new(std::sync::RwLock::new(CheckpointManager::default()));
             let wal_storage = WalStorage::with_checkpoint_manager(file_storage, wal_manager, checkpoint_manager)
                 .map_err(|e| MySqlError::Sql(format!("WalStorage init failed: {}", e)))?;
-            Arc::new(RwLock::new(BoxStorageEngine::new(wal_storage)))
+            Arc::new(parking_lot::RwLock::new(BoxStorageEngine::new(wal_storage)))
         }
     };
     if bootstrap_tables {
