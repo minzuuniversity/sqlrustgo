@@ -88,8 +88,21 @@ fn repro_stmt_execute_returns_malformed_packet() {
     stream.flush().unwrap();
 
     // Read all EXECUTE response packets.
+    // MySQL protocol for COM_STMT_EXECUTE:
+    //   pkt 0           : column count (lenenc int)
+    //   pkts 1..=N      : column definition(s)
+    //   pkt  N+1        : inter-record separator (EOF or OK) — NOT end of result set
+    //   pkts N+2..=M    : row data
+    //   pkt  M+1        : trailing terminator (EOF or OK) — actual end of result set
     let mut pkt_idx = 0;
-    let mut row_count = 0;
+    let mut col_count: u8 = 0;
+    let mut col_defs_remaining: u8 = 0;
+    // Phase 0: read column count.
+    // Phase 1: read `col_count` column definition packets.
+    // Phase 2: read ONE inter-record separator packet (EOF or OK).
+    // Phase 3: read row packets until the trailing terminator.
+    let mut phase: u8 = 0;
+    let mut row_count: u32 = 0;
     loop {
         let (s, p) = read_packet_with_seq(stream);
         eprintln!(
@@ -102,31 +115,60 @@ fn repro_stmt_execute_returns_malformed_packet() {
         if p.is_empty() {
             break;
         }
-        if p[0] == 0x00 {
-            eprintln!("EXECUTE: OK packet, done");
-            break;
-        }
-        if p[0] == 0xFF {
-            let code = u16::from_le_bytes([p[1], p[2]]);
-            let msg = String::from_utf8_lossy(&p[6..]).to_string();
-            panic!("EXECUTE returned ERR (code={}): {}", code, msg);
-        }
-        if p[0] == 0xFE && p.len() < 9 {
-            eprintln!("EXECUTE: EOF terminator, {} rows", row_count);
-            break;
-        }
-        // First non-OK/ERR/EOF packet is the column count (1 byte).
-        if pkt_idx == 0 && p.len() == 1 {
-            eprintln!("EXECUTE: column count = {}", p[0]);
-        } else if pkt_idx == 1 {
-            eprintln!("EXECUTE: col def (skipped)");
-        } else {
-            eprintln!(
-                "EXECUTE: ROW ({} bytes): {:02x?}",
-                p.len(),
-                &p[..p.len().min(20)]
-            );
-            row_count += 1;
+        match phase {
+            0 => {
+                // column-count packet: length-encoded integer
+                col_count = p[0];
+                col_defs_remaining = col_count;
+                eprintln!("EXECUTE: column count = {}", col_count);
+                phase = 1;
+            }
+            1 => {
+                // column definition packet
+                col_defs_remaining -= 1;
+                eprintln!(
+                    "EXECUTE: col def ({} of {})",
+                    col_count - col_defs_remaining,
+                    col_count
+                );
+                if col_defs_remaining == 0 {
+                    phase = 2; // next packet: inter-record separator
+                }
+            }
+            2 => {
+                // inter-record separator (EOF 0xFE or OK 0x00)
+                if p[0] == 0xFE || p[0] == 0x00 {
+                    eprintln!("EXECUTE: post-coldef separator");
+                    phase = 3;
+                } else {
+                    panic!("unexpected packet between coldefs and rows: 0x{:02x}", p[0]);
+                }
+            }
+            _ => {
+                // phase 3 — row data
+                // Distinguish a row packet from an OK terminator:
+                //   * OK terminator starts with 0x00 and is exactly 7 bytes with
+                //     body `[0x00, lenenc(0)=0x00, lenenc(0)=0x00, status(2), warnings(2)]`.
+                //   * EOF terminator starts with 0xFE and is exactly 5 bytes.
+                //   * Row packets: anything else (incl. 0x00 row with len != 7, or
+                //     len==7 but different byte layout).
+                if p[0] == 0xFE && p.len() == 5 {
+                    eprintln!("EXECUTE: EOF row-stream terminator, {} rows", row_count);
+                    break;
+                }
+                if p[0] == 0x00 && p.len() == 7
+                    && p[1] == 0x00 && p[2] == 0x00
+                    && p[5] == 0x00 && p[6] == 0x00 {
+                    eprintln!("EXECUTE: OK row-stream terminator, {} rows", row_count);
+                    break;
+                }
+                eprintln!(
+                    "EXECUTE: ROW ({} bytes): {:02x?}",
+                    p.len(),
+                    &p[..p.len().min(20)]
+                );
+                row_count += 1;
+            }
         }
         pkt_idx += 1;
         if pkt_idx > 30 {
