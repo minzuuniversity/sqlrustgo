@@ -542,26 +542,32 @@ impl<S: StorageEngine, T: WalManager> StorageEngine for WalStorage<S, T> {
 
     fn commit_transaction(&mut self) -> SqlResult<()> {
         let tx_id = self.current_tx_id;
+        // Use WalStorage's own LSN (self.next_lsn) for checkpoint + truncation,
+        // NOT self.wal.current_lsn() which belongs to the WalWriter and can
+        // diverge after truncation (WalWriter is recreated with LSN=0).
+        // append_wal_entry overrides entry.lsn with self.next_lsn, so the
+        // returned LSN is the authoritative value.
         let commit_lsn = if self.wal_enabled {
-            let lsn = self.wal.current_lsn();
             let entry = WalEntry {
                 tx_id,
                 entry_type: WalEntryType::Commit,
                 table_id: 0,
                 key: None,
                 data: None,
-                lsn,
+                lsn: 0, // overridden by append_wal_entry
                 timestamp: std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
                     .unwrap()
                     .as_secs(),
             };
-            self.append_wal_entry(entry)?;
-            self.wal.sync()?;
-            self.wal.current_lsn()
+            self.append_wal_entry(entry)?
         } else {
             0
         };
+        // sync after commit entry is written
+        if self.wal_enabled {
+            self.wal.sync()?;
+        }
         // Advance checkpoint so truncation can proceed
         if commit_lsn > 0 {
             if let Some(cp) = &self.checkpoint_manager {
