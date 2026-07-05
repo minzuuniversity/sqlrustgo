@@ -71,7 +71,13 @@ impl WalManager for FileBackedWalManager {
     fn sync(&mut self) -> SqlResult<()> {
         if let Some(writer) = &mut self.writer {
             writer.flush().map_err(|e| {
-                crate::engine::SqlError::ExecutionError(format!("WAL sync failed: {}", e))
+                crate::engine::SqlError::ExecutionError(format!("WAL flush failed: {}", e))
+            })?;
+            // Call sync_data on the underlying file for true durability.
+            // Without this, only BufWriter's buffer is flushed to kernel
+            // page cache, not to durable storage.
+            writer.get_mut().get_ref().sync_data().map_err(|e| {
+                crate::engine::SqlError::ExecutionError(format!("WAL sync_data failed: {}", e))
             })?;
         }
         Ok(())
