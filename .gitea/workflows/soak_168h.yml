@@ -84,6 +84,50 @@ jobs:
           echo "CREATE DATABASE IF NOT EXISTS sbtest" | "$BINARY" soak --port $PORT --user root || true
           echo "CREATE TABLE IF NOT EXISTS sbtest.sbtest1 (id INT PRIMARY KEY AUTO_INCREMENT, k INT DEFAULT 0, c VARCHAR(100) DEFAULT '', pad VARCHAR(100) DEFAULT '')" | "$BINARY" soak --port $PORT --user root || true
 
+
+          # ===== SYSBENCH CONCURRENT LOAD =====
+          SYSBENCH_DIR="$RESULTS_DIR/sysbench"
+          mkdir -p "$SYSBENCH_DIR"
+          SYSBENCH_PIDS=""
+
+          # Test sysbench + MySQL driver availability
+          if command -v sysbench >/dev/null 2>&1; then
+            SYSOPTS="--db-driver=mysql --mysql-host=127.0.0.1 --mysql-port=$PORT --mysql-user=root --mysql-db=sbtest --time=$((HOURS * 3600)) --report-interval=60"
+            if sysbench $SYSOPTS /usr/share/sysbench/oltp_read_write.lua help > /dev/null 2>&1; then
+              echo "[$(date -u)] Sysbench MySQL driver OK"
+
+              # Drop manual table that may conflict with sysbench schema
+              echo "DROP TABLE IF EXISTS sbtest.sbtest1" | "$BINARY" soak --port $PORT --user root > /dev/null 2>&1 || true
+
+              # Prepare: scale table size by duration
+              TABLE_SIZE=100000
+              [ "$HOURS" -lt 24 ] && TABLE_SIZE=10000
+              sysbench $SYSOPTS --tables=4 --table-size=$TABLE_SIZE /usr/share/sysbench/oltp_read_write.lua prepare \
+                > "$SYSBENCH_DIR/prepare.log" 2>&1 \
+                && echo "[$(date -u)] Sysbench prepare OK (4 tables x ${TABLE_SIZE} rows)"
+
+              # OLTP read-write (4 threads)
+              SYSPID_OLTP=""
+              echo "[$(date -u)] Starting sysbench OLTP (4 threads)"
+              sysbench $SYSOPTS --tables=4 --threads=4 /usr/share/sysbench/oltp_read_write.lua run \
+                > "$SYSBENCH_DIR/oltp.log" 2>&1 &
+              SYSPID_OLTP=$!
+
+              # OLAP: range-scan workload (2 threads)
+              SYSPID_OLAP=""
+              echo "[$(date -u)] Starting sysbench OLAP range-scan (2 threads)"
+              sysbench $SYSOPTS --tables=4 --threads=2 /usr/share/sysbench/select_random_ranges.lua run \
+                > "$SYSBENCH_DIR/olap.log" 2>&1 &
+              SYSPID_OLAP=$!
+
+              SYSBENCH_PIDS="$SYSPID_OLTP $SYSPID_OLAP"
+              echo "[$(date -u)] Sysbench background: OLTP=$SYSPID_OLTP OLAP=$SYSPID_OLAP"
+            else
+              echo "[$(date -u)] WARNING: sysbench MySQL driver not functional"
+            fi
+          else
+            echo "[$(date -u)] WARNING: sysbench not found in PATH"
+          fi
           # SOAK loop
           END_TS=$(( $(date +%s) + HOURS * 3600 ))
           START_TS=$(date +%s)
@@ -130,6 +174,26 @@ jobs:
             sleep 60
           done
 
+          # ===== SYSBENCH CLEANUP =====
+          if [ -n "$SYSBENCH_PIDS" ]; then
+            echo "[$(date -u)] Stopping sysbench (PIDs: $SYSBENCH_PIDS)"
+            for pid in $SYSBENCH_PIDS; do
+              kill -TERM "$pid" 2>/dev/null || true
+            done
+            sleep 3
+            for pid in $SYSBENCH_PIDS; do
+              kill -KILL "$pid" 2>/dev/null || true
+            done
+            wait $SYSBENCH_PIDS 2>/dev/null || true
+            echo "[$(date -u)] Sysbench stopped"
+
+            # Cleanup sysbench tables
+            sysbench --db-driver=mysql --mysql-host=127.0.0.1 --mysql-port=$PORT --mysql-user=root --mysql-db=sbtest \
+              --tables=4 /usr/share/sysbench/oltp_read_write.lua cleanup \
+              > "$SYSBENCH_DIR/cleanup.log" 2>&1 || true
+          fi
+
+
           # Final report
           echo ""; echo "=== 168h SOAK COMPLETE ==="
           TOTAL_SEC=$(( $(date +%s) - START_TS ))
@@ -145,6 +209,18 @@ jobs:
           echo "- **FD peak**: $(awk -F, 'NR>1 && \$4>m{m=\$4} END{print m}' "$METRICS")" >> "$RESULTS_DIR/SOAK_168H_REPORT.md"
           echo "- **Threads peak**: $(awk -F, 'NR>1 && \$5>m{m=\$5} END{print m}' "$METRICS")" >> "$RESULTS_DIR/SOAK_168H_REPORT.md"
           echo "- **WAL peak**: $(awk -F, 'NR>1 && \$6>m{m=\$6} END{print m}' "$METRICS") bytes" >> "$RESULTS_DIR/SOAK_168H_REPORT.md"
+          echo "" >> "$RESULTS_DIR/SOAK_168H_REPORT.md"
+          echo "## Sysbench OLTP" >> "$RESULTS_DIR/SOAK_168H_REPORT.md"
+          if [ -s "$SYSBENCH_DIR/oltp.log" ]; then
+            grep -E "(transactions|read/s|write/s|total time|avg:" "$SYSBENCH_DIR/oltp.log" \
+              >> "$RESULTS_DIR/SOAK_168H_REPORT.md" 2>/dev/null || true
+          fi
+          echo "" >> "$RESULTS_DIR/SOAK_168H_REPORT.md"
+          echo "## Sysbench OLAP (Range Scan)" >> "$RESULTS_DIR/SOAK_168H_REPORT.md"
+          if [ -s "$SYSBENCH_DIR/olap.log" ]; then
+            grep -E "(transactions|read/s|total time|avg:" "$SYSBENCH_DIR/olap.log" \
+              >> "$RESULTS_DIR/SOAK_168H_REPORT.md" 2>/dev/null || true
+          fi
           cat "$RESULTS_DIR/SOAK_168H_REPORT.md"
 
       - name: Upload results
@@ -160,3 +236,9 @@ jobs:
           echo ""
           echo "=== Server log (tail 20) ==="
           tail -20 results/soak-168h/server.log 2>/dev/null || true
+          echo ""
+          echo "=== Sysbench OLTP (tail 15) ==="
+          tail -15 results/soak-168h/sysbench/oltp.log 2>/dev/null || echo "(sysbench not available)"
+          echo ""
+          echo "=== Sysbench OLAP Range-Scan (tail 15) ==="
+          tail -15 results/soak-168h/sysbench/olap.log 2>/dev/null || true
