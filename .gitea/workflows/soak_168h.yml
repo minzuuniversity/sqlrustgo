@@ -16,6 +16,9 @@ env:
   CARGO_HOME: ${{ runner.temp }}/.cargo
   RUSTUP_HOME: ${{ runner.temp }}/.rustup
   CARGO_TERM_COLOR: always
+  CARGO_HTTP_TIMEOUT: 120
+  CARGO_HTTP_RETRY: 5
+  CARGO_REGISTRIES_CRATES_IO_PROTOCOL: sparse
 
 jobs:
   soak-168h:
@@ -33,9 +36,19 @@ jobs:
       - name: Run 168h SOAK
         id: soak
         run: |
-          cd "$REPO"
-          cargo build --release --bin sqlrustgo 2>&1
-          cargo build --release -p sqlrustgo-mysql-server 2>&1
+          # Retry wrapper for cargo builds (network flaky)
+          cargo_build() {
+            local max=5 delay=10 i=0
+            while [ $i -lt $max ]; do
+              if cargo build --release "$@" 2>&1; then return 0; fi
+              i=$((i+1))
+              echo "[RETRY $i/$max] sleep ${delay}s..."
+              sleep $delay; delay=$((delay * 2))
+            done
+            echo "BUILD FAILED after ${max} retries"; return 1
+          }
+          cargo_build --bin sqlrustgo
+          cargo_build -p sqlrustgo-mysql-server
           ls -lh target/release/sqlrustgo target/release/sqlrustgo-mysql-server
           BINARY="$PWD/target/release/sqlrustgo"
           PORT=3397
