@@ -121,19 +121,18 @@ jobs:
           # Final report
           echo ""; echo "=== 168h SOAK COMPLETE ==="
           TOTAL_SEC=$(( $(date +%s) - START_TS ))
-          cat > "$RESULTS_DIR/SOAK_168H_REPORT.md" <<REPORT
-          # 168h SOAK Report
-          - **Started**: $(date -d @$START_TS -u)
-          - **Completed**: $(date -u)
-          - **Wall time**: ${TOTAL_SEC}s ($((TOTAL_SEC/3600))h)
-          - **Samples**: $SAMPLE
-          - **Queries OK**: $QUERIES_OK  **Fail**: $FAILS
-          ## Resource Peaks
-          - **RSS peak**: $(awk -F, 'NR>1 && $3>m{m=$3} END{print m}' "$METRICS") KB
-          - **FD peak**: $(awk -F, 'NR>1 && $4>m{m=$4} END{print m}' "$METRICS")
-          - **Threads peak**: $(awk -F, 'NR>1 && $5>m{m=$5} END{print m}' "$METRICS")
-          - **WAL peak**: $(awk -F, 'NR>1 && $6>m{m=$6} END{print m}' "$METRICS") bytes
-REPORT
+          echo "# 168h SOAK Report" > "$RESULTS_DIR/SOAK_168H_REPORT.md"
+          echo "- **Started**: $(date -d @$START_TS -u)" >> "$RESULTS_DIR/SOAK_168H_REPORT.md"
+          echo "- **Completed**: $(date -u)" >> "$RESULTS_DIR/SOAK_168H_REPORT.md"
+          echo "- **Wall time**: ${TOTAL_SEC}s ($((TOTAL_SEC/3600))h)" >> "$RESULTS_DIR/SOAK_168H_REPORT.md"
+          echo "- **Samples**: $SAMPLE" >> "$RESULTS_DIR/SOAK_168H_REPORT.md"
+          echo "- **Queries OK**: $QUERIES_OK  **Fail**: $FAILS" >> "$RESULTS_DIR/SOAK_168H_REPORT.md"
+          echo "" >> "$RESULTS_DIR/SOAK_168H_REPORT.md"
+          echo "## Resource Peaks" >> "$RESULTS_DIR/SOAK_168H_REPORT.md"
+          echo "- **RSS peak**: $(awk -F, 'NR>1 && \$3>m{m=\$3} END{print m}' "$METRICS") KB" >> "$RESULTS_DIR/SOAK_168H_REPORT.md"
+          echo "- **FD peak**: $(awk -F, 'NR>1 && \$4>m{m=\$4} END{print m}' "$METRICS")" >> "$RESULTS_DIR/SOAK_168H_REPORT.md"
+          echo "- **Threads peak**: $(awk -F, 'NR>1 && \$5>m{m=\$5} END{print m}' "$METRICS")" >> "$RESULTS_DIR/SOAK_168H_REPORT.md"
+          echo "- **WAL peak**: $(awk -F, 'NR>1 && \$6>m{m=\$6} END{print m}' "$METRICS") bytes" >> "$RESULTS_DIR/SOAK_168H_REPORT.md"
           cat "$RESULTS_DIR/SOAK_168H_REPORT.md"
 
       - name: Upload results
