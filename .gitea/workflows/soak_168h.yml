@@ -8,7 +8,10 @@ on:
         description: 'Branch to test'
         required: false
         default: 'develop/v3.9.0'
-
+      hours:
+        description: 'Soak duration in hours'
+        required: false
+        default: '168'
 env:
   CARGO_HOME: ${{ runner.temp }}/.cargo
   RUSTUP_HOME: ${{ runner.temp }}/.rustup
@@ -27,23 +30,18 @@ jobs:
           cd repo
           echo "Checked out $(git rev-parse HEAD) on $BRANCH"
           echo "REPO=$PWD" >> $GITHUB_ENV
-
-      - name: Build release binary
-        run: |
-          cd "$REPO"
-          cargo build --release --bin sqlrustgo 2>&1
-          ls -lh target/release/sqlrustgo
-
       - name: Run 168h SOAK
         id: soak
         run: |
           cd "$REPO"
-          PORT=3397
-          DATA_DIR=/tmp/sqlrustgo-168h
-          RESULTS_DIR="$PWD/results/soak-168h"
+          cargo build --release --bin sqlrustgo --bin sqlrustgo-mysql-server 2>&1
+          ls -lh target/release/sqlrustgo target/release/sqlrustgo-mysql-server
           BINARY="$PWD/target/release/sqlrustgo"
-          HOURS=168
-          mkdir -p "$DATA_DIR" "$RESULTS_DIR"
+          PORT=3397
+          HOURS=${{ github.event.inputs.hours || '168' }}
+          DATA_DIR="$PWD/data/soak-168h"
+          RESULTS_DIR="$PWD/results/soak-168h"
+          rm -rf "$DATA_DIR" "$RESULTS_DIR"
 
           echo "=== 168h SOAK Start ==="
           echo "PID: $$  Binary: $BINARY  Port: $PORT"
