@@ -12,10 +12,10 @@ on:
         description: 'Soak duration in hours'
         required: false
         default: '168'
-      sysbench:
-        description: 'Sysbench workloads: "full", "readonly", or "none"'
+      load_profile:
+        description: 'Workload profile: "standard" (3 workers), "light" (1 worker), "heavy" (5 workers)'
         required: false
-        default: 'full'
+        default: 'standard'
 
 env:
   CARGO_HOME: ${{ runner.temp }}/.cargo
@@ -67,14 +67,15 @@ jobs:
           }
           cargo_build --bin sqlrustgo-mysql-server -p sqlrustgo-mysql-server
           cargo_build --bin sqlrustgo
-          ls -lh target/release/sqlrustgo-mysql-server target/release/sqlrustgo
+          cargo_build --bin sqlrustgo-soak -p sqlrustgo-soak
+          ls -lh target/release/sqlrustgo-mysql-server target/release/sqlrustgo target/release/sqlrustgo-soak
 
           # ── Server config ──
           SERVER_BIN="$PWD/target/release/sqlrustgo-mysql-server"
           CLI_BIN="$PWD/target/release/sqlrustgo"
+          SOAK_BIN="$PWD/target/release/sqlrustgo-soak"
           PORT=3397
-          HOURS=${{ github.event.inputs.hours || '168' }}
-          SYSBENCH_MODE=${{ github.event.inputs.sysbench || 'full' }}
+          LOAD_PROFILE=${{ github.event.inputs.load_profile || 'standard' }}
           DATA_DIR="$PWD/data/soak-168h"
           RESULTS_DIR="$PWD/results/soak-168h"
           rm -rf "$DATA_DIR" "$RESULTS_DIR"
@@ -83,7 +84,7 @@ jobs:
           echo "=== 168h SOAK Start ==="
           echo "Server: $SERVER_BIN"
           echo "Port: $PORT  Data: $DATA_DIR  Results: $RESULTS_DIR"
-          echo "Duration: ${HOURS}h  Sysbench: $SYSBENCH_MODE"
+          echo "Duration: ${HOURS}h  Load: $LOAD_PROFILE"
 
           # ── Start server ──
           "$SERVER_BIN" serve \
@@ -165,93 +166,137 @@ jobs:
             ps -o %cpu= -p "$SERVER_PID" 2>/dev/null | tr -d ' ' | cut -d. -f1 || echo 0
           }
 
-          # SYSBENCH report-interval parser: reads the latest per-interval line
-          # from a sysbench log and extracts TPS / QPS / err/s
-          parse_sysbench_interval() {
-            local logfile=$1
-            local label=$2
-            if [ ! -f "$logfile" ]; then
-              echo "$label:--:--:--"
-              return
-            fi
-            # sysbench --report-interval=60 outputs:
-            # [ 60s ] thds: 4 tps: 12.34 qps: 234.56 (r/w/o: 120/80/34.56) lat (ms,95%): 45.67 err/s: 0.00 reconn/s: 0.00
-            local last=$(grep -E '^\[.*\] thds:' "$logfile" 2>/dev/null | tail -1)
-            if [ -z "$last" ]; then
-              echo "$label:--:--:--"
-              return
-            fi
-            local tps=$(echo "$last" | grep -oP 'tps:\s*\K[0-9.]+' || echo "--")
-            local qps=$(echo "$last" | grep -oP 'qps:\s*\K[0-9.]+' || echo "--")
-            local err=$(echo "$last" | grep -oP 'err/s:\s*\K[0-9.]+' || echo "--")
-            echo "$label:$tps:$qps:$err"
+          # SOAK WORKER QPS parser: reads latest progress line from a sqlrustgo soak log
+          parse_soak_qps() {
+            local logfile=$1 label=$2
+            [ -f "$logfile" ] || { echo "$label:--:--"; return; }
+            local last=$(grep 'SOAK:' "$logfile" 2>/dev/null | tail -1)
+            [ -n "$last" ] || { echo "$label:--:--"; return; }
+            # Line format: "  SOAK: <n> queries, <n> errors, <qps> qps, elapsed <n>s"
+            local queries=$(echo "$last" | sed 's/.*SOAK:[[:space:]]*\([0-9][0-9]*\).*/\1/' 2>/dev/null)
+            local qps=$(echo "$last" | sed 's/.*qps,[[:space:]]*\([0-9.]*\).*/\1/' 2>/dev/null)
+            [ -n "$queries" ] || queries="--"
+            [ -n "$qps" ] || qps="--"
+            echo "$label:$queries:$qps"
           }
 
-          # ===== SYSBENCH LOADS =====
-          SYSBENCH_DIR="$RESULTS_DIR/sysbench"
-          mkdir -p "$SYSBENCH_DIR"
-          SYSBENCH_LOG_RO="$SYSBENCH_DIR/oltp_read_only.log"
-          SYSBENCH_LOG_RW1="$SYSBENCH_DIR/oltp_read_write_4t.log"
-          SYSBENCH_LOG_RW2="$SYSBENCH_DIR/oltp_read_write_8t.log"
-          SYSBENCH_PIDS=""
+          # ===== SOAK WORKERS =====
+          # Using sqlrustgo soak CLI (COM_QUERY text protocol, NOT prepared statements)
+          # to generate realistic load against sysbench-prepared tables.
+          SOAK_DIR="$RESULTS_DIR/soak"
+          mkdir -p "$SOAK_DIR"
+          SOAK_LOG_R="$SOAK_DIR/read_worker.log"
+          SOAK_LOG_W="$SOAK_DIR/write_worker.log"
+          SOAK_LOG_O="$SOAK_DIR/olap_worker.log"
+          SOAK_PIDS=""
 
+          # Build query batch files
+          cat > "$SOAK_DIR/queries_read.sql" << 'QUERYEOF'
+SELECT COUNT(*) FROM sbtest.sbtest1
+SELECT * FROM sbtest.sbtest1 WHERE id = 1
+SELECT * FROM sbtest.sbtest1 WHERE id BETWEEN 1 AND 100
+SELECT id, k, c, pad FROM sbtest.sbtest1 WHERE k = 500
+SELECT id, k, c, pad FROM sbtest.sbtest1 WHERE k BETWEEN 1000 AND 2000
+SELECT SUM(k), AVG(k), MIN(k), MAX(k) FROM sbtest.sbtest1
+SELECT COUNT(DISTINCT k) FROM sbtest.sbtest1
+SELECT * FROM sbtest.sbtest1 ORDER BY k LIMIT 20
+SELECT * FROM sbtest.sbtest1 WHERE c LIKE '%0%' LIMIT 10
+QUERYEOF
+
+          cat > "$SOAK_DIR/queries_write.sql" << 'QUERYEOF'
+SELECT id, k FROM sbtest.sbtest1 WHERE id = 1
+INSERT INTO sbtest.sbtest1 (id, k, c, pad) VALUES (999991, 1000, 'insert_test', 'pad')
+DELETE FROM sbtest.sbtest1 WHERE id = 999991
+SELECT COUNT(*) FROM sbtest.sbtest1
+INSERT INTO sbtest.sbtest1 (id, k, c, pad) VALUES (999992, 2000, 'write_test', 'xyz')
+SELECT * FROM sbtest.sbtest1 WHERE id = 999992
+DELETE FROM sbtest.sbtest1 WHERE id = 999992
+SELECT SUM(k) FROM sbtest.sbtest1
+QUERYEOF
+
+          cat > "$SOAK_DIR/queries_olap.sql" << 'QUERYEOF'
+SELECT * FROM sbtest.sbtest1 WHERE k BETWEEN 100 AND 500 ORDER BY k
+SELECT k, COUNT(*) AS cnt FROM sbtest.sbtest1 GROUP BY k ORDER BY cnt DESC LIMIT 10
+SELECT AVG(k) AS avg_k, MIN(id), MAX(id), COUNT(*) FROM sbtest.sbtest1
+SELECT * FROM sbtest.sbtest1 t1 JOIN sbtest.sbtest2 t2 ON t1.k = t2.k WHERE t1.id < 100
+SELECT * FROM sbtest.sbtest1 WHERE MOD(id, 100) = 0
+QUERYEOF
+
+          echo "[$(date -u)] Query batch files ready"
+
+          # Prepare data (sysbench text-protocol CREATE + INSERT works fine)
           if command -v sysbench >/dev/null 2>&1; then
-            SYSOPTS="--db-driver=mysql --mysql-host=127.0.0.1 --mysql-port=$PORT --mysql-user=root --mysql-db=sbtest \
-              --time=$((HOURS * 3600)) --report-interval=60"
-
-            # Verify MySQL driver works
-            if sysbench $SYSOPTS /usr/share/sysbench/oltp_read_write.lua help > /dev/null 2>&1; then
-              echo "[$(date -u)] Sysbench MySQL driver OK"
-
-              # Drop manual table that may conflict with sysbench schema
-              echo "DROP TABLE IF EXISTS sbtest.sbtest1" | "$CLI_BIN" soak --port "$PORT" --user root > /dev/null 2>&1 || true
-
-              # Prepare: scale table size by duration
-              TABLE_SIZE=100000
-              [ "$HOURS" -lt 24 ] && TABLE_SIZE=10000
-              sysbench $SYSOPTS --tables=4 --table-size=$TABLE_SIZE \
-                /usr/share/sysbench/oltp_read_write.lua prepare \
-                > "$SYSBENCH_DIR/prepare.log" 2>&1 \
-                && echo "[$(date -u)] Sysbench prepare OK (4 tables x ${TABLE_SIZE} rows)"
-
-              # ── Workload 1: Read-Only (8 threads) — baseline read throughput ──
-              if [ "$SYSBENCH_MODE" = "full" ] || [ "$SYSBENCH_MODE" = "readonly" ]; then
-                echo "[$(date -u)] Starting sysbench oltp_read_only (8 threads)"
-                sysbench $SYSOPTS --tables=4 --threads=8 \
-                  /usr/share/sysbench/oltp_read_only.lua run \
-                  > "$SYSBENCH_LOG_RO" 2>&1 &
-                RO_PID=$!
-                SYSBENCH_PIDS="$RO_PID"
-                echo "  RO PID=$RO_PID"
-              fi
-
-              # ── Workload 2: Read-Write (4 threads) ──
-              if [ "$SYSBENCH_MODE" = "full" ]; then
-                echo "[$(date -u)] Starting sysbench oltp_read_write (4 threads)"
-                sysbench $SYSOPTS --tables=4 --threads=4 \
-                  /usr/share/sysbench/oltp_read_write.lua run \
-                  > "$SYSBENCH_LOG_RW1" 2>&1 &
-                RW4_PID=$!
-                SYSBENCH_PIDS="$SYSBENCH_PIDS $RW4_PID"
-                echo "  RW4 PID=$RW4_PID"
-
-                # ── Workload 3: Read-Write (8 threads) — heavier write load ──
-                echo "[$(date -u)] Starting sysbench oltp_read_write (8 threads)"
-                sysbench $SYSOPTS --tables=4 --threads=8 \
-                  /usr/share/sysbench/oltp_read_write.lua run \
-                  > "$SYSBENCH_LOG_RW2" 2>&1 &
-                RW8_PID=$!
-                SYSBENCH_PIDS="$SYSBENCH_PIDS $RW8_PID"
-                echo "  RW8 PID=$RW8_PID"
-              fi
-
-              echo "[$(date -u)] Sysbench PIDs: $SYSBENCH_PIDS"
+            for tbl in sbtest1 sbtest2 sbtest3 sbtest4; do
+              echo "DROP TABLE IF EXISTS sbtest.$tbl" | "$CLI_BIN" soak --port "$PORT" --user root > /dev/null 2>&1 || true
+            done
+            TABLE_SIZE=100000; [ "$HOURS" -lt 24 ] && TABLE_SIZE=10000
+            if sysbench --db-driver=mysql --mysql-host=127.0.0.1 --mysql-port=$PORT \
+              --mysql-user=root --mysql-db=sbtest --tables=4 --table-size=$TABLE_SIZE \
+              /usr/share/sysbench/oltp_read_write.lua prepare \
+              > "$SOAK_DIR/prepare.log" 2>&1; then
+              echo "[$(date -u)] Data prepared: 4 tables x ${TABLE_SIZE} rows"
             else
-              echo "[$(date -u)] WARNING: sysbench MySQL driver not functional"
+              echo "[$(date -u)] WARNING: sysbench prepare failed (continuing with empty tables)"
             fi
-          else
-            echo "[$(date -u)] WARNING: sysbench not found in PATH"
           fi
+
+          # ── Workers (profile: $LOAD_PROFILE) ──
+          SOAK_DUR=$((HOURS * 3600))
+          R_PID=""; W_PID=""; O_PID=""; X_PID=""; Y_PID=""
+
+          # Worker 1: Read-heavy (always on)
+          echo "[$(date -u)] Starting read-worker: soak --rate 0"
+          "$SOAK_BIN" soak --port "$PORT" --user root \
+            --duration "$SOAK_DUR" --rate 0 \
+            --query-file "$SOAK_DIR/queries_read.sql" \
+            --report-interval 30 \
+            > "$SOAK_LOG_R" 2>&1 &
+          R_PID=$!; SOAK_PIDS="$R_PID"
+          echo "  Read-worker PID=$R_PID"
+
+          if [ "$LOAD_PROFILE" != "light" ]; then
+            # Worker 2: Write-mixed (rate-limited 50 qps)
+            echo "[$(date -u)] Starting write-worker: soak --rate 50"
+            "$SOAK_BIN" soak --port "$PORT" --user root \
+              --duration "$SOAK_DUR" --rate 50 \
+              --query-file "$SOAK_DIR/queries_write.sql" \
+              --report-interval 30 \
+              > "$SOAK_LOG_W" 2>&1 &
+            W_PID=$!; SOAK_PIDS="$SOAK_PIDS $W_PID"
+            echo "  Write-worker PID=$W_PID"
+
+            # Worker 3: OLAP-style scan (rate-limited 5 qps)
+            echo "[$(date -u)] Starting olap-worker: soak --rate 5"
+            "$SOAK_BIN" soak --port "$PORT" --user root \
+              --duration "$SOAK_DUR" --rate 5 \
+              --query-file "$SOAK_DIR/queries_olap.sql" \
+              --report-interval 30 \
+              > "$SOAK_LOG_O" 2>&1 &
+            O_PID=$!; SOAK_PIDS="$SOAK_PIDS $O_PID"
+            echo "  OLAP-worker PID=$O_PID"
+          fi
+
+          if [ "$LOAD_PROFILE" = "heavy" ]; then
+            echo "[$(date -u)] Starting read2-worker: soak --rate 0"
+            "$SOAK_BIN" soak --port "$PORT" --user root \
+              --duration "$SOAK_DUR" --rate 0 \
+              --query-file "$SOAK_DIR/queries_read.sql" \
+              --report-interval 30 \
+              > "$SOAK_DIR/read2_worker.log" 2>&1 &
+            X_PID=$!; SOAK_PIDS="$SOAK_PIDS $X_PID"
+            echo "  Read2-worker PID=$X_PID"
+
+            echo "[$(date -u)] Starting write2-worker: soak --rate 100"
+            "$SOAK_BIN" soak --port "$PORT" --user root \
+              --duration "$SOAK_DUR" --rate 100 \
+              --query-file "$SOAK_DIR/queries_write.sql" \
+              --report-interval 30 \
+              > "$SOAK_DIR/write2_worker.log" 2>&1 &
+            Y_PID=$!; SOAK_PIDS="$SOAK_PIDS $Y_PID"
+            echo "  Write2-worker PID=$Y_PID"
+          fi
+
+          echo "[$(date -u)] SOAK workers PIDs: $SOAK_PIDS  (${HOURS}h run)"
 
           # ===== SOAK MONITORING LOOP =====
           END_TS=$(( $(date +%s) + HOURS * 3600 ))
@@ -259,7 +304,7 @@ jobs:
           SOAK_START_TS=$START_TS
 
           METRICS="$RESULTS_DIR/metrics.csv"
-          echo "ts,elapsed_s,rss_kb,fd,threads,wal_bytes,disk_avail_kb,cpu_pct,queries_ok,ro_tps,ro_qps,ro_errs,rw4_tps,rw4_qps,rw4_errs,rw8_tps,rw8_qps,rw8_errs,server_alive" > "$METRICS"
+          echo "ts,elapsed_s,rss_kb,fd,threads,wal_bytes,disk_avail_kb,cpu_pct,queries_ok,r_qps,w_qps,o_qps,x_qps,y_qps,r_queries,w_queries,o_queries,server_alive" > "$METRICS"
 
           QUERIES_OK=0; SAMPLE=0; FAILS=0
           EARLY_FAIL=0
@@ -298,18 +343,19 @@ jobs:
               FAILS=$((FAILS + 1))
             fi
 
-            # ── Sysbench interval metrics ──
-            RO_METRICS=$(parse_sysbench_interval "$SYSBENCH_LOG_RO" "ro")
-            RW4_METRICS=$(parse_sysbench_interval "$SYSBENCH_LOG_RW1" "rw4")
-            RW8_METRICS=$(parse_sysbench_interval "$SYSBENCH_LOG_RW2" "rw8")
+            # ── Soak worker QPS metrics ──
+            R_DATA=$(parse_soak_qps "$SOAK_LOG_R" "read")
+            W_DATA=$(parse_soak_qps "$SOAK_LOG_W" "write")
+            O_DATA=$(parse_soak_qps "$SOAK_LOG_O" "olap")
+            X_DATA=$(parse_soak_qps "$SOAK_DIR/read2_worker.log" "read2")
+            Y_DATA=$(parse_soak_qps "$SOAK_DIR/write2_worker.log" "write2")
 
-            # Format: label:tps:qps:errs
-            IFS=':' read -r RO_LABEL RO_TPS RO_QPS RO_ERRS <<< "$RO_METRICS"
-            IFS=':' read -r RW4_LABEL RW4_TPS RW4_QPS RW4_ERRS <<< "$RW4_METRICS"
-            IFS=':' read -r RW8_LABEL RW8_TPS RW8_QPS RW8_ERRS <<< "$RW8_METRICS"
-
-            # Write CSV row
-            echo "$TS,$ELAPSED,$RSS,$FD,$THREADS,$WAL,$DISK,$CPU,$QUERIES_OK,$RO_TPS,$RO_QPS,$RO_ERRS,$RW4_TPS,$RW4_QPS,$RW4_ERRS,$RW8_TPS,$RW8_QPS,$RW8_ERRS,$SERVER_ALIVE" >> "$METRICS"
+            IFS=':' read -r LABEL_R R_QTY R_QPS <<< "$R_DATA"
+            IFS=':' read -r LABEL_W W_QTY W_QPS <<< "$W_DATA"
+            IFS=':' read -r LABEL_O O_QTY O_QPS <<< "$O_DATA"
+            IFS=':' read -r LABEL_X X_QTY X_QPS <<< "$X_DATA"
+            IFS=':' read -r LABEL_Y Y_QTY Y_QPS <<< "$Y_DATA"
+            echo "$TS,$ELAPSED,$RSS,$FD,$THREADS,$WAL,$DISK,$CPU,$QUERIES_OK,$R_QPS,$W_QPS,$O_QPS,$X_QPS,$Y_QPS,$R_QTY,$W_QTY,$O_QTY,$SERVER_ALIVE" >> "$METRICS"
 
             # ── Watchdogs (early problem detection) ──
             # Every 10 samples (~10min), check growth rates
@@ -333,8 +379,8 @@ jobs:
                 WAL_MB=$((WAL / 1048576))
                 LAST_WAL_MB=$((WATCHDOG_LAST_WAL / 1048576))
                 WAL_GROWTH_MB=$((WAL_MB - LAST_WAL_MB))
-                WAL_RATE=$((WAL_GROWTH_MB * 3600 / DELTA_S))
 
+                WAL_RATE=$((WAL_GROWTH_MB * 3600 / DELTA_S))
                 if [ $WAL_RATE -gt 100 ]; then
                   echo "⚠️  WAL GROWTH WATCHDOG: ${WAL_RATE}MB/h (${WAL_MB}MB, delta=${WAL_GROWTH_MB}MB in ${DELTA_S}s)" \
                     | tee -a "$RESULTS_DIR/watchdog.log"
@@ -394,36 +440,23 @@ jobs:
               echo "  Storage: WAL=${WAL_MB}MB DISK=${DISK_GB}GB"
               echo "  Health: queries=${QUERIES_OK} fails=${FAILS}"
 
-              # Sysbench TPS/QPS per workload
-              if [ -n "$RO_TPS" ] && [ "$RO_TPS" != "--" ]; then
-                echo "  RO(8t): TPS=${RO_TPS} QPS=${RO_QPS} err=${RO_ERRS:-0}"
-              fi
-              if [ -n "$RW4_TPS" ] && [ "$RW4_TPS" != "--" ]; then
-                echo "  RW(4t): TPS=${RW4_TPS} QPS=${RW4_QPS} err=${RW4_ERRS:-0}"
-              fi
-              if [ -n "$RW8_TPS" ] && [ "$RW8_TPS" != "--" ]; then
-                echo "  RW(8t): TPS=${RW8_TPS} QPS=${RW8_QPS} err=${RW8_ERRS:-0}"
-              fi
-
-              # Compute total QPS
+              # Soak worker QPS
+              echo "  Workers: R=${R_QPS} W=${W_QPS} O=${O_QPS} X=${X_QPS} Y=${Y_QPS} qps"
               TOTAL_QPS=0
-              for q in "$RO_QPS" "$RW4_QPS" "$RW8_QPS"; do
-                if [ "$q" != "--" ] && [ -n "$q" ]; then
+              for q in "$R_QPS" "$W_QPS" "$O_QPS" "$X_QPS" "$Y_QPS"; do
+                if [ "$q" != "--" ] && [ -n "$q" ] && [ "$q" != "0" ]; then
                   TOTAL_QPS=$(awk "BEGIN { printf \"%.1f\", $TOTAL_QPS + $q }" 2>/dev/null || echo "$TOTAL_QPS")
                 fi
               done
               if [ "$(echo "$TOTAL_QPS > 0" | bc 2>/dev/null)" = "1" ] || [ "$TOTAL_QPS" != "0" ]; then
                 echo "  Total QPS: $TOTAL_QPS"
               fi
-
-              # Archive snapshot every 6h
               if [ $((SAMPLE % 360)) -eq 0 ]; then
-                cp "$METRICS" "$RESULTS_DIR/metrics_${ELAPSED}s.csv"
-                cp "$SYSBENCH_LOG_RO" "$SYSBENCH_DIR/ro_${ELAPSED}s.log" 2>/dev/null || true
-                cp "$SYSBENCH_LOG_RW1" "$SYSBENCH_DIR/rw4_${ELAPSED}s.log" 2>/dev/null || true
-                cp "$SYSBENCH_LOG_RW2" "$SYSBENCH_DIR/rw8_${ELAPSED}s.log" 2>/dev/null || true
+                cp "$SOAK_LOG_R" "$SOAK_DIR/read_${ELAPSED}s.log" 2>/dev/null || true
+                cp "$SOAK_LOG_W" "$SOAK_DIR/write_${ELAPSED}s.log" 2>/dev/null || true
+                cp "$SOAK_LOG_O" "$SOAK_DIR/olap_${ELAPSED}s.log" 2>/dev/null || true
                 tar czf "$RESULTS_DIR/snapshot_${ELAPSED}s.tar.gz" \
-                  -C "$RESULTS_DIR" metrics.csv server.log watchdog.log errors.log sysbench 2>/dev/null || true
+                  -C "$RESULTS_DIR" metrics.csv server.log watchdog.log errors.log soak 2>/dev/null || true
               fi
 
               echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -437,26 +470,19 @@ jobs:
             ALL_GOOD=1
           fi
 
-          # ===== SYSBENCH CLEANUP =====
-          if [ -n "$SYSBENCH_PIDS" ]; then
-            echo "[$(date -u)] Stopping sysbench (PIDs: $SYSBENCH_PIDS)"
-            for pid in $SYSBENCH_PIDS; do
+          # ===== SOAK WORKER CLEANUP =====
+          if [ -n "$SOAK_PIDS" ]; then
+            echo "[$(date -u)] Stopping soak workers (PIDs: $SOAK_PIDS)"
+            for pid in $SOAK_PIDS; do
               kill -TERM "$pid" 2>/dev/null || true
             done
             sleep 3
-            for pid in $SYSBENCH_PIDS; do
+            for pid in $SOAK_PIDS; do
               kill -KILL "$pid" 2>/dev/null || true
             done
-            wait $SYSBENCH_PIDS 2>/dev/null || true
-            echo "[$(date -u)] Sysbench stopped"
-
-            # Cleanup sysbench tables
-            sysbench --db-driver=mysql --mysql-host=127.0.0.1 --mysql-port="$PORT" \
-              --mysql-user=root --mysql-db=sbtest --tables=4 \
-              /usr/share/sysbench/oltp_read_write.lua cleanup \
-              > "$SYSBENCH_DIR/cleanup.log" 2>&1 || true
+            wait $SOAK_PIDS 2>/dev/null || true
+            echo "[$(date -u)] Soak workers stopped"
           fi
-
           # ===== FINAL REPORT =====
           echo ""; echo "=== 168h SOAK COMPLETE ==="
           TOTAL_SEC=$(( $(date +%s) - START_TS ))
@@ -484,13 +510,15 @@ jobs:
             "| WAL | $(awk -F, 'NR>1 && \$6>m{m=\$6} END{print m}' "$METRICS") bytes | $(tail -1 "$METRICS" | cut -d, -f6) bytes |" \
             "| CPU | $(awk -F, 'NR>1 && \$8>m{m=\$8} END{print m}' "$METRICS")% | $(tail -1 "$METRICS" | cut -d, -f8)% |" \
             "" \
-            "## Throughput (sysbench)" \
+            "## Throughput (soak workers)" \
             "" \
-            "| Workload | Peak TPS | Peak QPS | Errors |" \
-            "|----------|----------|----------|--------|" \
-            "| Read-Only (8t) | $(awk -F, 'NR>1 && \$10>m{m=\$10} END{print m}' "$METRICS") | $(awk -F, 'NR>1 && \$11>m{m=\$11} END{print m}' "$METRICS") | $(awk -F, 'NR>1 && \$12>m{m=\$12} END{print m}' "$METRICS") |" \
-            "| Read-Write (4t) | $(awk -F, 'NR>1 && \$13>m{m=\$13} END{print m}' "$METRICS") | $(awk -F, 'NR>1 && \$14>m{m=\$14} END{print m}' "$METRICS") | $(awk -F, 'NR>1 && \$15>m{m=\$15} END{print m}' "$METRICS") |" \
-            "| Read-Write (8t) | $(awk -F, 'NR>1 && \$16>m{m=\$16} END{print m}' "$METRICS") | $(awk -F, 'NR>1 && \$17>m{m=\$17} END{print m}' "$METRICS") | $(awk -F, 'NR>1 && \$18>m{m=\$18} END{print m}' "$METRICS") |" \
+            "| Worker | Peak QPS | Total Queries |" \
+            "|--------|----------|--------------|" \
+            "| Read-heavy | $(awk -F, 'NR>1 && \$10>m{m=\$10} END{print m}' "$METRICS") | $(tail -1 "$METRICS" | cut -d, -f15) |" \
+            "| Write-mixed | $(awk -F, 'NR>1 && \$11>m{m=\$11} END{print m}' "$METRICS") | $(tail -1 "$METRICS" | cut -d, -f16) |" \
+            "| OLAP-scan | $(awk -F, 'NR>1 && \$12>m{m=\$12} END{print m}' "$METRICS") | $(tail -1 "$METRICS" | cut -d, -f17) |" \
+            "| Read2 (heavy) | $(awk -F, 'NR>1 && \$13>m{m=\$13} END{print m}' "$METRICS") | -- |" \
+            "| Write2 (heavy) | $(awk -F, 'NR>1 && \$14>m{m=\$14} END{print m}' "$METRICS") | -- |" \
             "" \
             "## Watchdog Log" \
             "" \
