@@ -34,7 +34,8 @@ jobs:
         id: soak
         run: |
           cd "$REPO"
-          cargo build --release --bin sqlrustgo --bin sqlrustgo-mysql-server 2>&1
+          cargo build --release --bin sqlrustgo 2>&1
+          cargo build --release -p sqlrustgo-mysql-server 2>&1
           ls -lh target/release/sqlrustgo target/release/sqlrustgo-mysql-server
           BINARY="$PWD/target/release/sqlrustgo"
           PORT=3397
