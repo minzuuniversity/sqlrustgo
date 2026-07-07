@@ -43,6 +43,7 @@ jobs:
           DATA_DIR="$PWD/data/soak-168h"
           RESULTS_DIR="$PWD/results/soak-168h"
           rm -rf "$DATA_DIR" "$RESULTS_DIR"
+          mkdir -p "$DATA_DIR" "$RESULTS_DIR"
 
           echo "=== 168h SOAK Start ==="
           echo "PID: $$  Binary: $BINARY  Port: $PORT"
