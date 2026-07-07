@@ -1,0 +1,55 @@
+name: SOAK 168h — GA-P0/S4
+run-name: soak-168h-${{ gitea.sha }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: 'Branch to test'
+        required: false
+        default: 'develop/v3.9.0'
+
+jobs:
+  soak-168h:
+    runs-on: [hp-z6g4]
+    timeout-minutes: 10080  # 168h job timeout
+    steps:
+      - name: Checkout (local Gitea)
+        run: |
+          BRANCH="${{ github.event.inputs.branch || 'develop/v3.9.0' }}"
+          git clone --depth=1 --branch "$BRANCH" \
+            "http://192.168.0.252:3000/openclaw/sqlrustgo" repo
+          cd repo
+          echo "Checked out $(git rev-parse HEAD) on $BRANCH"
+          echo "REPO=$PWD" >> $GITHUB_ENV
+
+      - name: Build release binary
+        run: |
+          cd "$REPO"
+          cargo build --release --bin sqlrustgo 2>&1
+          ls -lh target/release/sqlrustgo
+
+      - name: Run 168h SOAK
+        id: soak
+        run: |
+          cd "$REPO"
+          RESULTS_DIR="$PWD/results/soak-168h"
+          mkdir -p "$RESULTS_DIR"
+          bash scripts/soak/run_168h_ci.sh 2>&1 | tee "$RESULTS_DIR/soak_runner.log"
+
+      - name: Upload results
+        if: always()
+        run: |
+          cd "$REPO"
+          tar -czf /tmp/soak-168h-results.tar.gz \
+            -C results/soak-168h .
+          echo "Results: $(ls -lh /tmp/soak-168h-results.tar.gz)"
+          echo ""
+          echo "=== Server log (tail) ==="
+          tail -30 results/soak-168h/server.log 2>/dev/null || true
+          echo ""
+          echo "=== Metrics ==="
+          tail -5 results/soak-168h/metrics.csv 2>/dev/null || true
+          echo ""
+          echo "=== Report ==="
+          cat results/soak-168h/SOAK_168H_REPORT.md 2>/dev/null || true
