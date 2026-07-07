@@ -50,8 +50,7 @@ jobs:
 
           # Start server
           "$BINARY" serve \
-            --port $PORT --data-dir "$DATA_DIR" --tls off \
-            --server-threads 16 --max-connections 200 --log-level info \
+            --port $PORT --data-dir "$DATA_DIR" \
             > "$RESULTS_DIR/server.log" 2>&1 &
           SERVER_PID=$!
           echo "$SERVER_PID" > "$RESULTS_DIR/server.pid"
