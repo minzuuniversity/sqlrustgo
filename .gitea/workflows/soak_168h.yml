@@ -29,9 +29,9 @@ jobs:
   soak-168h:
     runs-on: [hp-z6g4]
     timeout-minutes: 10080  # 168h
-    container:
-      image: sqlrustgo-runner:v1
-      options: --entrypoint /bin/sleep 605000
+    # NOTE: hermes-runner v0.5.0 ignores container.options --entrypoint,
+    # defaulting to 10800s sleep (3h). For 168h runs, the runner config
+    # must be updated to increase the container sleep timeout.
     steps:
       - name: Checkout target branch
         run: |
