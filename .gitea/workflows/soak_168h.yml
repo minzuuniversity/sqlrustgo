@@ -8,6 +8,7 @@ on:
         description: 'Branch to test'
         required: false
         default: 'develop/v3.9.0'
+
 env:
   CARGO_HOME: ${{ runner.temp }}/.cargo
   RUSTUP_HOME: ${{ runner.temp }}/.rustup
@@ -16,9 +17,9 @@ env:
 jobs:
   soak-168h:
     runs-on: [hp-z6g4]
-    timeout-minutes: 10080  # 168h job timeout
+    timeout-minutes: 10080  # 168h
     steps:
-      - name: Checkout (local Gitea)
+      - name: Checkout target branch
         run: |
           BRANCH="${{ github.event.inputs.branch || 'develop/v3.9.0' }}"
           git clone --depth=1 --branch "$BRANCH" \
@@ -37,9 +38,103 @@ jobs:
         id: soak
         run: |
           cd "$REPO"
+          PORT=3397
+          DATA_DIR=/tmp/sqlrustgo-168h
           RESULTS_DIR="$PWD/results/soak-168h"
-          mkdir -p "$RESULTS_DIR"
-          bash scripts/soak/run_168h_ci.sh 2>&1 | tee "$RESULTS_DIR/soak_runner.log"
+          BINARY="$PWD/target/release/sqlrustgo"
+          HOURS=168
+          mkdir -p "$DATA_DIR" "$RESULTS_DIR"
+
+          echo "=== 168h SOAK Start ==="
+          echo "PID: $$  Binary: $BINARY  Port: $PORT"
+
+          # Start server
+          "$BINARY" serve \
+            --port $PORT --data-dir "$DATA_DIR" --tls off \
+            --server-threads 16 --max-connections 200 --log-level info \
+            > "$RESULTS_DIR/server.log" 2>&1 &
+          SERVER_PID=$!
+          echo "$SERVER_PID" > "$RESULTS_DIR/server.pid"
+          echo "Server PID: $SERVER_PID"
+
+          # Wait for server ready
+          for i in $(seq 1 30); do
+            if echo "SELECT 1" | "$BINARY" soak --port $PORT --user root > /dev/null 2>&1; then
+              echo "Server ready after ${i}s"; break
+            fi
+            if [ "$i" -eq 30 ]; then
+              echo "Server FAILED"; tail -30 "$RESULTS_DIR/server.log"; exit 1
+            fi
+            sleep 2
+          done
+
+          # Create schema
+          echo "CREATE DATABASE IF NOT EXISTS sbtest" | "$BINARY" soak --port $PORT --user root || true
+          echo "CREATE TABLE IF NOT EXISTS sbtest.sbtest1 (id INT PRIMARY KEY AUTO_INCREMENT, k INT DEFAULT 0, c VARCHAR(100) DEFAULT '', pad VARCHAR(100) DEFAULT '')" | "$BINARY" soak --port $PORT --user root || true
+
+          # SOAK loop
+          END_TS=$(( $(date +%s) + HOURS * 3600 ))
+          START_TS=$(date +%s)
+          METRICS="$RESULTS_DIR/metrics.csv"
+          echo "ts,elapsed_s,rss_kb,fd,threads,wal_bytes,disk_avail_kb,queries_ok,server_alive" > "$METRICS"
+          QUERIES_OK=0; SAMPLE=0; FAILS=0
+
+          while [ $(date +%s) -lt $END_TS ]; do
+            SAMPLE=$((SAMPLE + 1)); TS=$(date +%s); ELAPSED=$((TS - START_TS))
+
+            # Check server alive
+            if ! kill -0 $SERVER_PID 2>/dev/null; then
+              echo "!!! SERVER DIED at ${ELAPSED}s" | tee -a "$RESULTS_DIR/errors.log"
+              wait $SERVER_PID 2>/dev/null || true
+              exit 1
+            fi
+
+            # Metrics
+            RSS=$(ps -o rss= -p $SERVER_PID 2>/dev/null | tr -d ' ' || echo 0)
+            FD=$(ls /proc/$SERVER_PID/fd 2>/dev/null | wc -l || echo 0)
+            THREADS=$(ps -o nlwp= -p $SERVER_PID 2>/dev/null | tr -d ' ' || echo 0)
+            WAL=$(du -sb "$DATA_DIR" 2>/dev/null | cut -f1 || echo 0)
+            DISK=$(df / 2>/dev/null | tail -1 | awk '{print $4}' || echo 0)
+
+            # Query check
+            if echo "SELECT $SAMPLE" | "$BINARY" soak --port $PORT --user root > /dev/null 2>&1; then
+              QUERIES_OK=$((QUERIES_OK + 1))
+            else
+              FAILS=$((FAILS + 1))
+            fi
+
+            echo "$TS,$ELAPSED,$RSS,$FD,$THREADS,$WAL,$DISK,$QUERIES_OK,1" >> "$METRICS"
+
+            # Status every 30 samples
+            if [ $((SAMPLE % 30)) -eq 0 ]; then
+              echo "[$(date -u)] h=$((ELAPSED/3600)).$(((ELAPSED%3600)/60)) rss=${RSS}KB fd=$FD thr=$THREADS wal=$WAL q=$QUERIES_OK fail=$FAILS"
+            fi
+
+            # Archive every 6h
+            if [ $((SAMPLE % 360)) -eq 0 ]; then
+              cp "$METRICS" "$RESULTS_DIR/metrics_${ELAPSED}s.csv"
+            fi
+
+            sleep 60
+          done
+
+          # Final report
+          echo ""; echo "=== 168h SOAK COMPLETE ==="
+          TOTAL_SEC=$(( $(date +%s) - START_TS ))
+          cat > "$RESULTS_DIR/SOAK_168H_REPORT.md" <<REPORT
+          # 168h SOAK Report
+          - **Started**: $(date -d @$START_TS -u)
+          - **Completed**: $(date -u)
+          - **Wall time**: ${TOTAL_SEC}s ($((TOTAL_SEC/3600))h)
+          - **Samples**: $SAMPLE
+          - **Queries OK**: $QUERIES_OK  **Fail**: $FAILS
+          ## Resource Peaks
+          - **RSS peak**: $(awk -F, 'NR>1 && $3>m{m=$3} END{print m}' "$METRICS") KB
+          - **FD peak**: $(awk -F, 'NR>1 && $4>m{m=$4} END{print m}' "$METRICS")
+          - **Threads peak**: $(awk -F, 'NR>1 && $5>m{m=$5} END{print m}' "$METRICS")
+          - **WAL peak**: $(awk -F, 'NR>1 && $6>m{m=$6} END{print m}' "$METRICS") bytes
+REPORT
+          cat "$RESULTS_DIR/SOAK_168H_REPORT.md"
 
       - name: Upload results
         if: always()
@@ -49,11 +144,8 @@ jobs:
             -C results/soak-168h .
           echo "Results: $(ls -lh /tmp/soak-168h-results.tar.gz)"
           echo ""
-          echo "=== Server log (tail) ==="
-          tail -30 results/soak-168h/server.log 2>/dev/null || true
-          echo ""
-          echo "=== Metrics ==="
+          echo "=== Metrics (tail 5) ==="
           tail -5 results/soak-168h/metrics.csv 2>/dev/null || true
           echo ""
-          echo "=== Report ==="
-          cat results/soak-168h/SOAK_168H_REPORT.md 2>/dev/null || true
+          echo "=== Server log (tail 20) ==="
+          tail -20 results/soak-168h/server.log 2>/dev/null || true
