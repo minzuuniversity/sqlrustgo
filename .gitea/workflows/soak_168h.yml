@@ -8,6 +8,10 @@ on:
         description: 'Branch to test'
         required: false
         default: 'develop/v3.9.0'
+env:
+  CARGO_HOME: ${{ runner.temp }}/.cargo
+  RUSTUP_HOME: ${{ runner.temp }}/.rustup
+  CARGO_TERM_COLOR: always
 
 jobs:
   soak-168h:
