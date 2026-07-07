@@ -36,7 +36,15 @@ jobs:
       - name: Run 168h SOAK
         id: soak
         run: |
-          # Retry wrapper for cargo builds (network flaky)
+          # cd to repo dir (GITHUB_ENV may not persist across steps)
+          if [ -d "$PWD/repo" ]; then
+            cd "$PWD/repo"
+          elif [ -d "$REPO" ]; then
+            cd "$REPO"
+          fi
+          test -f Cargo.toml || { echo "FATAL: Cargo.toml not found in $(pwd)"; ls -la; exit 1; }
+          echo "Working dir: $(pwd)"
+
           cargo_build() {
             local max=5 delay=10 i=0
             while [ $i -lt $max ]; do
@@ -226,7 +234,13 @@ jobs:
       - name: Upload results
         if: always()
         run: |
-          cd "$REPO"
+          # cd to repo dir (same fallback as build step)
+          if [ -d "$PWD/repo" ]; then
+            cd "$PWD/repo"
+          elif [ -d "$REPO" ]; then
+            cd "$REPO"
+          fi
+          echo "Upload from: $(pwd)"
           tar -czf /tmp/soak-168h-results.tar.gz \
             -C results/soak-168h .
           echo "Results: $(ls -lh /tmp/soak-168h-results.tar.gz)"
