@@ -1,0 +1,258 @@
+name: SOAK 168h — GA-P0/S4
+run-name: soak-168h-${{ gitea.sha }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: 'Branch to test'
+        required: false
+        default: 'develop/v3.9.0'
+      hours:
+        description: 'Soak duration in hours'
+        required: false
+        default: '168'
+env:
+  CARGO_HOME: ${{ runner.temp }}/.cargo
+  RUSTUP_HOME: ${{ runner.temp }}/.rustup
+  CARGO_TERM_COLOR: always
+  CARGO_HTTP_TIMEOUT: 120
+  CARGO_HTTP_RETRY: 5
+  CARGO_REGISTRIES_CRATES_IO_PROTOCOL: sparse
+
+jobs:
+  soak-168h:
+    runs-on: [hp-z6g4]
+    timeout-minutes: 10080  # 168h
+    steps:
+      - name: Checkout target branch
+        run: |
+          BRANCH="${{ github.event.inputs.branch || 'develop/v3.9.0' }}"
+          git clone --depth=1 --branch "$BRANCH" \
+            "http://192.168.0.252:3000/openclaw/sqlrustgo" repo
+          cd repo
+          echo "Checked out $(git rev-parse HEAD) on $BRANCH"
+          echo "REPO=$PWD" >> $GITHUB_ENV
+      - name: Run 168h SOAK
+        id: soak
+        run: |
+          # cd to repo dir (GITHUB_ENV may not persist across steps)
+          if [ -d "$PWD/repo" ]; then
+            cd "$PWD/repo"
+          elif [ -d "$REPO" ]; then
+            cd "$REPO"
+          fi
+          test -f Cargo.toml || { echo "FATAL: Cargo.toml not found in $(pwd)"; ls -la; exit 1; }
+          echo "Working dir: $(pwd)"
+
+          cargo_build() {
+            local max=5 delay=10 i=0
+            while [ $i -lt $max ]; do
+              if cargo build --release "$@" 2>&1; then return 0; fi
+              i=$((i+1))
+              echo "[RETRY $i/$max] sleep ${delay}s..."
+              sleep $delay; delay=$((delay * 2))
+            done
+            echo "BUILD FAILED after ${max} retries"; return 1
+          }
+          cargo_build --bin sqlrustgo
+          cargo_build -p sqlrustgo-mysql-server
+          ls -lh target/release/sqlrustgo target/release/sqlrustgo-mysql-server
+          BINARY="$PWD/target/release/sqlrustgo"
+          PORT=3397
+          HOURS=${{ github.event.inputs.hours || '168' }}
+          DATA_DIR="$PWD/data/soak-168h"
+          RESULTS_DIR="$PWD/results/soak-168h"
+          rm -rf "$DATA_DIR" "$RESULTS_DIR"
+          mkdir -p "$DATA_DIR" "$RESULTS_DIR"
+
+          echo "=== 168h SOAK Start ==="
+          echo "PID: $$  Binary: $BINARY  Port: $PORT"
+
+          # Start server
+          "$BINARY" serve \
+            --port $PORT --data-dir "$DATA_DIR" \
+            > "$RESULTS_DIR/server.log" 2>&1 &
+          SERVER_PID=$!
+          echo "$SERVER_PID" > "$RESULTS_DIR/server.pid"
+          echo "Server PID: $SERVER_PID"
+
+          # Wait for server ready
+          for i in $(seq 1 30); do
+            if echo "SELECT 1" | "$BINARY" soak --port $PORT --user root > /dev/null 2>&1; then
+              echo "Server ready after ${i}s"; break
+            fi
+            if [ "$i" -eq 30 ]; then
+              echo "Server FAILED"; tail -30 "$RESULTS_DIR/server.log"; exit 1
+            fi
+            sleep 2
+          done
+
+          # Create schema
+          echo "CREATE DATABASE IF NOT EXISTS sbtest" | "$BINARY" soak --port $PORT --user root || true
+          echo "CREATE TABLE IF NOT EXISTS sbtest.sbtest1 (id INT PRIMARY KEY AUTO_INCREMENT, k INT DEFAULT 0, c VARCHAR(100) DEFAULT '', pad VARCHAR(100) DEFAULT '')" | "$BINARY" soak --port $PORT --user root || true
+
+
+          # ===== SYSBENCH CONCURRENT LOAD =====
+          SYSBENCH_DIR="$RESULTS_DIR/sysbench"
+          mkdir -p "$SYSBENCH_DIR"
+          SYSBENCH_PIDS=""
+
+          # Test sysbench + MySQL driver availability
+          if command -v sysbench >/dev/null 2>&1; then
+            SYSOPTS="--db-driver=mysql --mysql-host=127.0.0.1 --mysql-port=$PORT --mysql-user=root --mysql-db=sbtest --time=$((HOURS * 3600)) --report-interval=60"
+            if sysbench $SYSOPTS /usr/share/sysbench/oltp_read_write.lua help > /dev/null 2>&1; then
+              echo "[$(date -u)] Sysbench MySQL driver OK"
+
+              # Drop manual table that may conflict with sysbench schema
+              echo "DROP TABLE IF EXISTS sbtest.sbtest1" | "$BINARY" soak --port $PORT --user root > /dev/null 2>&1 || true
+
+              # Prepare: scale table size by duration
+              TABLE_SIZE=100000
+              [ "$HOURS" -lt 24 ] && TABLE_SIZE=10000
+              sysbench $SYSOPTS --tables=4 --table-size=$TABLE_SIZE /usr/share/sysbench/oltp_read_write.lua prepare \
+                > "$SYSBENCH_DIR/prepare.log" 2>&1 \
+                && echo "[$(date -u)] Sysbench prepare OK (4 tables x ${TABLE_SIZE} rows)"
+
+              # OLTP read-write (4 threads)
+              SYSPID_OLTP=""
+              echo "[$(date -u)] Starting sysbench OLTP (4 threads)"
+              sysbench $SYSOPTS --tables=4 --threads=4 /usr/share/sysbench/oltp_read_write.lua run \
+                > "$SYSBENCH_DIR/oltp.log" 2>&1 &
+              SYSPID_OLTP=$!
+
+              # OLAP: range-scan workload (2 threads)
+              SYSPID_OLAP=""
+              echo "[$(date -u)] Starting sysbench OLAP range-scan (2 threads)"
+              sysbench $SYSOPTS --tables=4 --threads=2 /usr/share/sysbench/select_random_ranges.lua run \
+                > "$SYSBENCH_DIR/olap.log" 2>&1 &
+              SYSPID_OLAP=$!
+
+              SYSBENCH_PIDS="$SYSPID_OLTP $SYSPID_OLAP"
+              echo "[$(date -u)] Sysbench background: OLTP=$SYSPID_OLTP OLAP=$SYSPID_OLAP"
+            else
+              echo "[$(date -u)] WARNING: sysbench MySQL driver not functional"
+            fi
+          else
+            echo "[$(date -u)] WARNING: sysbench not found in PATH"
+          fi
+          # SOAK loop
+          END_TS=$(( $(date +%s) + HOURS * 3600 ))
+          START_TS=$(date +%s)
+          METRICS="$RESULTS_DIR/metrics.csv"
+          echo "ts,elapsed_s,rss_kb,fd,threads,wal_bytes,disk_avail_kb,queries_ok,server_alive" > "$METRICS"
+          QUERIES_OK=0; SAMPLE=0; FAILS=0
+
+          while [ $(date +%s) -lt $END_TS ]; do
+            SAMPLE=$((SAMPLE + 1)); TS=$(date +%s); ELAPSED=$((TS - START_TS))
+
+            # Check server alive
+            if ! kill -0 $SERVER_PID 2>/dev/null; then
+              echo "!!! SERVER DIED at ${ELAPSED}s" | tee -a "$RESULTS_DIR/errors.log"
+              wait $SERVER_PID 2>/dev/null || true
+              exit 1
+            fi
+
+            # Metrics
+            RSS=$(ps -o rss= -p $SERVER_PID 2>/dev/null | tr -d ' ' || echo 0)
+            FD=$(ls /proc/$SERVER_PID/fd 2>/dev/null | wc -l || echo 0)
+            THREADS=$(ps -o nlwp= -p $SERVER_PID 2>/dev/null | tr -d ' ' || echo 0)
+            WAL=$(du -sb "$DATA_DIR" 2>/dev/null | cut -f1 || echo 0)
+            DISK=$(df / 2>/dev/null | tail -1 | awk '{print $4}' || echo 0)
+
+            # Query check
+            if echo "SELECT $SAMPLE" | "$BINARY" soak --port $PORT --user root > /dev/null 2>&1; then
+              QUERIES_OK=$((QUERIES_OK + 1))
+            else
+              FAILS=$((FAILS + 1))
+            fi
+
+            echo "$TS,$ELAPSED,$RSS,$FD,$THREADS,$WAL,$DISK,$QUERIES_OK,1" >> "$METRICS"
+
+            # Status every 30 samples
+            if [ $((SAMPLE % 30)) -eq 0 ]; then
+              echo "[$(date -u)] h=$((ELAPSED/3600)).$(((ELAPSED%3600)/60)) rss=${RSS}KB fd=$FD thr=$THREADS wal=$WAL q=$QUERIES_OK fail=$FAILS"
+            fi
+
+            # Archive every 6h
+            if [ $((SAMPLE % 360)) -eq 0 ]; then
+              cp "$METRICS" "$RESULTS_DIR/metrics_${ELAPSED}s.csv"
+            fi
+
+            sleep 60
+          done
+
+          # ===== SYSBENCH CLEANUP =====
+          if [ -n "$SYSBENCH_PIDS" ]; then
+            echo "[$(date -u)] Stopping sysbench (PIDs: $SYSBENCH_PIDS)"
+            for pid in $SYSBENCH_PIDS; do
+              kill -TERM "$pid" 2>/dev/null || true
+            done
+            sleep 3
+            for pid in $SYSBENCH_PIDS; do
+              kill -KILL "$pid" 2>/dev/null || true
+            done
+            wait $SYSBENCH_PIDS 2>/dev/null || true
+            echo "[$(date -u)] Sysbench stopped"
+
+            # Cleanup sysbench tables
+            sysbench --db-driver=mysql --mysql-host=127.0.0.1 --mysql-port=$PORT --mysql-user=root --mysql-db=sbtest \
+              --tables=4 /usr/share/sysbench/oltp_read_write.lua cleanup \
+              > "$SYSBENCH_DIR/cleanup.log" 2>&1 || true
+          fi
+
+
+          # Final report
+          echo ""; echo "=== 168h SOAK COMPLETE ==="
+          TOTAL_SEC=$(( $(date +%s) - START_TS ))
+          echo "# 168h SOAK Report" > "$RESULTS_DIR/SOAK_168H_REPORT.md"
+          echo "- **Started**: $(date -d @$START_TS -u)" >> "$RESULTS_DIR/SOAK_168H_REPORT.md"
+          echo "- **Completed**: $(date -u)" >> "$RESULTS_DIR/SOAK_168H_REPORT.md"
+          echo "- **Wall time**: ${TOTAL_SEC}s ($((TOTAL_SEC/3600))h)" >> "$RESULTS_DIR/SOAK_168H_REPORT.md"
+          echo "- **Samples**: $SAMPLE" >> "$RESULTS_DIR/SOAK_168H_REPORT.md"
+          echo "- **Queries OK**: $QUERIES_OK  **Fail**: $FAILS" >> "$RESULTS_DIR/SOAK_168H_REPORT.md"
+          echo "" >> "$RESULTS_DIR/SOAK_168H_REPORT.md"
+          echo "## Resource Peaks" >> "$RESULTS_DIR/SOAK_168H_REPORT.md"
+          echo "- **RSS peak**: $(awk -F, 'NR>1 && \$3>m{m=\$3} END{print m}' "$METRICS") KB" >> "$RESULTS_DIR/SOAK_168H_REPORT.md"
+          echo "- **FD peak**: $(awk -F, 'NR>1 && \$4>m{m=\$4} END{print m}' "$METRICS")" >> "$RESULTS_DIR/SOAK_168H_REPORT.md"
+          echo "- **Threads peak**: $(awk -F, 'NR>1 && \$5>m{m=\$5} END{print m}' "$METRICS")" >> "$RESULTS_DIR/SOAK_168H_REPORT.md"
+          echo "- **WAL peak**: $(awk -F, 'NR>1 && \$6>m{m=\$6} END{print m}' "$METRICS") bytes" >> "$RESULTS_DIR/SOAK_168H_REPORT.md"
+          echo "" >> "$RESULTS_DIR/SOAK_168H_REPORT.md"
+          echo "## Sysbench OLTP" >> "$RESULTS_DIR/SOAK_168H_REPORT.md"
+          if [ -s "$SYSBENCH_DIR/oltp.log" ]; then
+            grep -E "(transactions|read/s|write/s|total time|avg:" "$SYSBENCH_DIR/oltp.log" \
+              >> "$RESULTS_DIR/SOAK_168H_REPORT.md" 2>/dev/null || true
+          fi
+          echo "" >> "$RESULTS_DIR/SOAK_168H_REPORT.md"
+          echo "## Sysbench OLAP (Range Scan)" >> "$RESULTS_DIR/SOAK_168H_REPORT.md"
+          if [ -s "$SYSBENCH_DIR/olap.log" ]; then
+            grep -E "(transactions|read/s|total time|avg:" "$SYSBENCH_DIR/olap.log" \
+              >> "$RESULTS_DIR/SOAK_168H_REPORT.md" 2>/dev/null || true
+          fi
+          cat "$RESULTS_DIR/SOAK_168H_REPORT.md"
+
+      - name: Upload results
+        if: always()
+        run: |
+          # cd to repo dir (same fallback as build step)
+          if [ -d "$PWD/repo" ]; then
+            cd "$PWD/repo"
+          elif [ -d "$REPO" ]; then
+            cd "$REPO"
+          fi
+          echo "Upload from: $(pwd)"
+          tar -czf /tmp/soak-168h-results.tar.gz \
+            -C results/soak-168h .
+          echo "Results: $(ls -lh /tmp/soak-168h-results.tar.gz)"
+          echo ""
+          echo "=== Metrics (tail 5) ==="
+          tail -5 results/soak-168h/metrics.csv 2>/dev/null || true
+          echo ""
+          echo "=== Server log (tail 20) ==="
+          tail -20 results/soak-168h/server.log 2>/dev/null || true
+          echo ""
+          echo "=== Sysbench OLTP (tail 15) ==="
+          tail -15 results/soak-168h/sysbench/oltp.log 2>/dev/null || echo "(sysbench not available)"
+          echo ""
+          echo "=== Sysbench OLAP Range-Scan (tail 15) ==="
+          tail -15 results/soak-168h/sysbench/olap.log 2>/dev/null || true
