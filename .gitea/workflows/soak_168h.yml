@@ -65,7 +65,7 @@ jobs:
             done
             echo "BUILD FAILED after ${max} retries"; return 1
           }
-          cargo_build --bin sqlrustgo-mysql-server
+          cargo_build --bin sqlrustgo-mysql-server -p sqlrustgo-mysql-server
           cargo_build --bin sqlrustgo
           ls -lh target/release/sqlrustgo-mysql-server target/release/sqlrustgo
 
