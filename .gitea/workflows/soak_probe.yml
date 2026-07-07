@@ -14,13 +14,16 @@ jobs:
     runs-on: [hp-z6g4]
     timeout-minutes: 10
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 1
+      - name: Checkout (local Gitea)
+        run: |
+          REPO="openclaw/sqlrustgo"
+          git clone --depth=1 "http://192.168.0.252:3000/$REPO" repo
+          cd repo
+          echo "Checked out $(git rev-parse HEAD)"
 
       - name: System info
         run: |
+          cd repo
           echo "=== HOSTNAME ==="
           hostname
           echo "=== UPTIME ==="
