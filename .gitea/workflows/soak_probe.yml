@@ -1,0 +1,42 @@
+name: SOAK Probe — Runner Liveness Test
+run-name: probe-${{ gitea.sha }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      message:
+        description: 'Test message'
+        required: false
+        default: 'runner-liveness-probe'
+
+jobs:
+  probe:
+    runs-on: [hp-z6g4]
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: System info
+        run: |
+          echo "=== HOSTNAME ==="
+          hostname
+          echo "=== UPTIME ==="
+          uptime
+          echo "=== CPU ==="
+          nproc
+          echo "=== MEMORY ==="
+          free -h
+          echo "=== DISK ==="
+          df -h /
+          echo "=== CARGO ==="
+          cargo --version 2>/dev/null || echo "cargo not found"
+          echo "=== RUSTC ==="
+          rustc --version 2>/dev/null || echo "rustc not found"
+
+      - name: Report status
+        run: |
+          echo "✅ Z6G4 RUNNER ALIVE at $(date -u)"
+          echo "Message: ${{ github.event.inputs.message || 'default' }}"
