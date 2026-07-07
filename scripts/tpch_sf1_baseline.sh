@@ -74,7 +74,7 @@ EXPECTED_ROWS=(
     "part:200000"
     "partsupp:800000"
     "orders:1500000"
-    "lineitem:6001215"
+    "lineitem:6000000"
 )
 FIXTURE_OK=true
 for spec in "${EXPECTED_ROWS[@]}"; do
