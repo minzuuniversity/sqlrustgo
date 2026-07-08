@@ -3,14 +3,14 @@
 //! This module provides stored procedure execution support with control flow.
 
 use crate::ExecutorResult;
+use log::error as log_error;
+use parking_lot::RwLock;
 use sqlrustgo_catalog::HandlerCondition;
 use sqlrustgo_catalog::StoredProcStatement;
 use sqlrustgo_storage::{ColumnDefinition, StorageEngine};
 use sqlrustgo_types::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
-use parking_lot::RwLock;
-use log::error as log_error;
 
 /// Stored procedure execution error
 #[derive(Debug, Clone)]

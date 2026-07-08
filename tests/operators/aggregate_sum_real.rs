@@ -13,8 +13,8 @@
 //! - Run in < 100ms
 //! - Be reproducible
 
-use sqlrustgo::{ExecutionEngine, MemoryStorage};
 use parking_lot::RwLock;
+use sqlrustgo::{ExecutionEngine, MemoryStorage};
 use std::sync::Arc;
 
 fn engine() -> ExecutionEngine<MemoryStorage> {

@@ -9,8 +9,8 @@
 //! Original methods were on `impl ExecutionEngine`. To preserve the public API,
 //! `ExecutionEngine` retains thin forwarder methods that delegate here.
 
-use sqlrustgo_types::SqlResult;
 use parking_lot::RwLock;
+use sqlrustgo_types::SqlResult;
 use std::sync::Arc;
 
 use super::execution_engine::{ExecutionStats, TableStatistics};
