@@ -14,16 +14,14 @@
 //! **Run**: cargo test --release --test bench_v380_point_agg -- --ignored --nocapture
 
 use parking_lot::RwLock;
+use sqlrustgo::MemoryExecutionEngine;
 use std::sync::Arc;
 use std::time::Instant;
-use sqlrustgo::MemoryExecutionEngine;
 
 const ITER: usize = 10_000;
 
 fn create_engine() -> MemoryExecutionEngine {
-    let storage = Arc::new(RwLock::new(
-        sqlrustgo_storage::MemoryStorage::new(),
-    ));
+    let storage = Arc::new(RwLock::new(sqlrustgo_storage::MemoryStorage::new()));
     MemoryExecutionEngine::new(storage)
 }
 
