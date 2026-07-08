@@ -75,6 +75,7 @@ jobs:
           CLI_BIN="$PWD/target/release/sqlrustgo"
           SOAK_BIN="$PWD/target/release/sqlrustgo-soak"
           PORT=3397
+          HOURS=${{ github.event.inputs.hours || '168' }}
           LOAD_PROFILE=${{ github.event.inputs.load_profile || 'standard' }}
           DATA_DIR="$PWD/data/soak-168h"
           RESULTS_DIR="$PWD/results/soak-168h"
