@@ -3,6 +3,8 @@
 //! This module provides trigger execution functionality for SQL triggers.
 //! Triggers are executed before or after INSERT, UPDATE, or DELETE operations.
 
+use log::error as log_error;
+use parking_lot::RwLock;
 use sqlrustgo_parser::parse;
 use sqlrustgo_storage::{
     Record, StorageEngine, TriggerEvent as StorageTriggerEvent, TriggerInfo,
@@ -10,8 +12,6 @@ use sqlrustgo_storage::{
 };
 use sqlrustgo_types::{SqlError, SqlResult, Value};
 use std::sync::Arc;
-use parking_lot::RwLock;
-use log::error as log_error;
 
 /// Trigger timing: BEFORE or AFTER
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -2099,9 +2099,11 @@ mod tests {
     fn test_trigger_executor_with_non_wal_storage() {
         use sqlrustgo_storage::BinaryTableStorage;
         let dir = tempfile::tempdir().expect("tempdir");
-        let bin =
-            BinaryTableStorage::new(dir.path().to_path_buf()).expect("new bin storage");
-        assert!(!bin.is_wal_enabled(), "sanity: BinaryTableStorage is non-WAL");
+        let bin = BinaryTableStorage::new(dir.path().to_path_buf()).expect("new bin storage");
+        assert!(
+            !bin.is_wal_enabled(),
+            "sanity: BinaryTableStorage is non-WAL"
+        );
         let executor = TriggerExecutor::new(Arc::new(RwLock::new(bin)));
         // Triggers list is empty, no panic, no DML attempted.
         assert!(executor.get_table_triggers("any_table").is_empty());

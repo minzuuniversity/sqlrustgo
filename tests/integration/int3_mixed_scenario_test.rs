@@ -23,8 +23,8 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use sqlrustgo::{ExecutionEngine, MemoryStorage};
 use parking_lot::RwLock;
+use sqlrustgo::{ExecutionEngine, MemoryStorage};
 
 /// TPC-H Q1 (simplified for the integration test) — single-table aggregation
 const TPC_H_Q1: &str = "

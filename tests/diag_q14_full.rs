@@ -1,9 +1,9 @@
 //! Q14 specific debug
 
+use parking_lot::RwLock;
 use sqlrustgo::{ExecutionEngine, MemoryStorage, StorageEngine};
 use sqlrustgo_types::Value as SqlValue;
 use std::fs;
-use parking_lot::RwLock;
 use std::sync::Arc;
 
 const FIXTURE: &str = match option_env!("TPCH_DATA_DIR") {
