@@ -163,10 +163,7 @@ fn regression_insert_multi_row_1000_rows_25kb() {
         if i > 0 {
             sql.push(',');
         }
-        sql.push_str(&format!(
-            "({}, 'v{}_payload_padding_text_xx')",
-            i, i
-        ));
+        sql.push_str(&format!("({}, 'v{}_payload_padding_text_xx')", i, i));
     }
     let payload_bytes = sql.len();
     assert!(
@@ -176,7 +173,12 @@ fn regression_insert_multi_row_1000_rows_25kb() {
     );
 
     let r = client.exec(&sql);
-    assert!(r.is_ok(), "1000-row INSERT ({} bytes): {:?}", payload_bytes, r.err());
+    assert!(
+        r.is_ok(),
+        "1000-row INSERT ({} bytes): {:?}",
+        payload_bytes,
+        r.err()
+    );
 
     let count = client
         .query_rows("SELECT COUNT(*) FROM big1k")
@@ -208,7 +210,12 @@ fn regression_sysbench_prepare_pattern_composite() {
             i, i, i, i
         );
         let r = client.exec(&sql);
-        assert!(r.is_ok(), "sysbench-pattern INSERT at row {}: {:?}", i, r.err());
+        assert!(
+            r.is_ok(),
+            "sysbench-pattern INSERT at row {}: {:?}",
+            i,
+            r.err()
+        );
     }
 
     let count = client

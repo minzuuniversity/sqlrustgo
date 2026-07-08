@@ -1,7 +1,7 @@
 //! Q22 isolated - step by step
 
-use sqlrustgo::{ExecutionEngine, MemoryStorage, StorageEngine};
 use parking_lot::RwLock;
+use sqlrustgo::{ExecutionEngine, MemoryStorage, StorageEngine};
 use std::sync::Arc;
 
 #[test]

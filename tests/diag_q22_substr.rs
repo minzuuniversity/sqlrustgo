@@ -1,9 +1,9 @@
 //! Q22 parse error - isolate which part fails
 
 use parking_lot::RwLock;
-use std::sync::Arc;
 use sqlrustgo::{ExecutionEngine, MemoryStorage, StorageEngine};
 use sqlrustgo_types::Value as SqlValue;
+use std::sync::Arc;
 
 fn diag_q22_substr() {
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));
