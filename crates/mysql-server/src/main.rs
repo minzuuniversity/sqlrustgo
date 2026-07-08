@@ -295,8 +295,8 @@ fn install_signal_handler() -> std::io::Result<()> {
     Ok(())
 }
 
-use sqlrustgo::MemoryExecutionEngine;
 use parking_lot::RwLock;
+use sqlrustgo::MemoryExecutionEngine;
 use std::sync::Arc;
 
 /// CLI-01 Stage 2: Shared REPL engine factory
