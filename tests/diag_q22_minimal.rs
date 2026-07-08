@@ -1,7 +1,7 @@
 //! Q22 even simpler
 
-use sqlrustgo::{ExecutionEngine, MemoryStorage, StorageEngine};
 use parking_lot::RwLock;
+use sqlrustgo::{ExecutionEngine, MemoryStorage, StorageEngine};
 use std::sync::Arc;
 
 #[test]

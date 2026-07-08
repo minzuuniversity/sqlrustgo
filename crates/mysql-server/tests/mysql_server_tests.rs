@@ -1,8 +1,8 @@
 //! MySQL server integration tests - test Packet I/O and MySqlError.
 
+use parking_lot::RwLock;
 use sqlrustgo::ExecutionEngine;
 use sqlrustgo_mysql_server::{MySqlError, Packet};
-use parking_lot::RwLock;
 use std::sync::Arc;
 
 // ============ MySqlError Tests ============
