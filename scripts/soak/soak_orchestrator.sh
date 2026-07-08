@@ -45,19 +45,21 @@ start_cycle() {
     local data_dir="/tmp/sqlrustgo-soak-${PORT}"
     local log_dir="/tmp/sqlrustgo-soak-logs-${PORT}"
 
-    # PR-xxxx: Clean old data/log dirs before starting a new cycle.
-    # Without this, the old WAL file (potentially 80+ MB from a previous
-    # crash cycle) persists, causing WAL recovery on startup and making
-    # every truncate_before() read-rewrite the giant WAL file (~10000x
-    # during sysbench prepare).
-    log "[cycle${CYCLE}] 清理旧数据目录"
-    rm -rf "${data_dir}" "${log_dir}"
-    mkdir -p "${run_dir}" "${data_dir}" "${log_dir}"
-
-    # 写入全局变量（而非 echo 到 stdout，避免创建 subshell 使 BG 进程变孤儿）
+    # 注意：数据库文件绝对不允许删除。data_dir 只在首次启动时创建，
+    # 后续 cycle（server crash 重启后）直接复用已有数据和 WAL。
+    # 日志目录可以安全清理（重建后会从头生成）。
+    mkdir -p "${run_dir}" "${log_dir}"
+    # 只在 data_dir 不存在时创建（首次启动）
+    if [[ ! -d "${data_dir}" ]]; then
+        mkdir -p "${data_dir}"
+        log "[cycle${CYCLE}] 创建数据目录 ${data_dir}"
+    else
+        log "[cycle${CYCLE}] 复用已有数据目录 ${data_dir}"
+    fi
     RUN_DIR="${run_dir}"
     echo "${run_dir}" > "${SOAK_DIR}/latest.txt"
     echo "${data_dir}" > "${SOAK_DIR}/data_dir.txt"
+    echo "${log_dir}" > "${SOAK_DIR}/log_dir.txt"
 
     # ── 启动 server ──
     log "[cycle${CYCLE}] 启动 server (port=${PORT}, nice -n 10)"
@@ -182,21 +184,32 @@ while [[ $(date +%s) -lt ${DEADLINE} ]]; do
         continue
     fi
     DATA_DIR=$(cat "${SOAK_DIR}/data_dir.txt" 2>/dev/null || echo "")
-    ldir="${RUN_DIR/cycle*//tmp/sqlrustgo-soak-logs-${PORT}}"
-    DISK_B=$(du -sk "${DATA_DIR}" "${ldir}" 2>/dev/null | cut -f1 | awk '{s+=$1}END{printf "%d",s*1024}' 2>/dev/null || echo 0)
+    LOG_DIR=$(cat "${SOAK_DIR}/log_dir.txt" 2>/dev/null || echo "/tmp/sqlrustgo-soak-logs-${PORT}")
     # 读取指标 (RSS, FD, THR, WAL)
     read -r RSS FD THR WAL _ <<< "$(read_metric "${PORT}")"
     SB_QPS=$(grep -a "qps:" "${RUN_DIR}/sysbench.log" 2>/dev/null | tail -1 | sed 's/.*qps: *//' | sed 's/ .*//' || echo "0")
-    if [[ ${DISK_B} -gt 800000000 ]]; then
-        log "[${ELAPSED}s] ⚠ 磁盘 ${DISK_B}B > 800MB, 循环重启"
-        pkill -P 0 -f "sysbench.*${PORT}" 2>/dev/null || true
-        local sv_real_pid
-        sv_real_pid=$(lsof -P -i ":${PORT}" -sTCP:LISTEN -t 2>/dev/null | head -1)
-        [[ -n "${sv_real_pid}" ]] && kill -TERM "${sv_real_pid}" 2>/dev/null || true
-        sleep 3
-        start_cycle || { log "重启失败"; continue; }
-        SAMPLE=0
-        continue
+    DISK_B=$(du -sk "${DATA_DIR}" "${LOG_DIR}" 2>/dev/null | cut -f1 | awk '{s+=$1}END{printf "%d",s*1024}' 2>/dev/null || echo 0)
+
+    # 磁盘限制：8 GB。超过则清理旧日志归档（.gz），绝不丢失数据库文件。
+    # 数据库文件丢失是最严重的事故，禁止重启服务器或删除 data_dir。
+    DISK_LIMIT=$((8 * 1024 * 1024 * 1024))  # 8 GB
+    if [[ ${DISK_B} -gt ${DISK_LIMIT} ]]; then
+        log "[${ELAPSED}s] ⚠ 磁盘 ${DISK_B}B > 8GB, 清理旧日志"
+        # 只清理旧的 gzip 日志归档，不碰当前活动日志和数据目录
+        local log_archives
+        log_archives=$(ls -1t "${LOG_DIR}"/*.log.gz 2>/dev/null | tail -n +5)
+        if [[ -n "${log_archives}" ]]; then
+            while IFS= read -r arch; do
+                rm -f "${arch}"
+                log "  删除旧日志: ${arch}"
+            done <<< "${log_archives}"
+        fi
+        # 如果清理后仍然超过，最坏情况：只警告，不重启
+        sleep 1
+        DISK_B=$(du -sk "${DATA_DIR}" "${LOG_DIR}" 2>/dev/null | cut -f1 | awk '{s+=$1}END{printf "%d",s*1024}' 2>/dev/null || echo 0)
+        log "[${ELAPSED}s] 清理后磁盘: ${DISK_B}B"
+    elif [[ ${DISK_B} -gt $((DISK_LIMIT * 8 / 10)) ]]; then
+        log "[${ELAPSED}s] ⚠ 磁盘 ${DISK_B}B > 6.4GB (80%), 接近上限"
     fi
 
 
