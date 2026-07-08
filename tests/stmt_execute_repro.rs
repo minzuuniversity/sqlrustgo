@@ -156,9 +156,13 @@ fn repro_stmt_execute_returns_malformed_packet() {
                     eprintln!("EXECUTE: EOF row-stream terminator, {} rows", row_count);
                     break;
                 }
-                if p[0] == 0x00 && p.len() == 7
-                    && p[1] == 0x00 && p[2] == 0x00
-                    && p[5] == 0x00 && p[6] == 0x00 {
+                if p[0] == 0x00
+                    && p.len() == 7
+                    && p[1] == 0x00
+                    && p[2] == 0x00
+                    && p[5] == 0x00
+                    && p[6] == 0x00
+                {
                     eprintln!("EXECUTE: OK row-stream terminator, {} rows", row_count);
                     break;
                 }

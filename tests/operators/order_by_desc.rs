@@ -12,8 +12,8 @@
 //! - Assert cell values, not just row count
 //! - Run in < 100ms
 
-use sqlrustgo::{ExecutionEngine, MemoryStorage};
 use parking_lot::RwLock;
+use sqlrustgo::{ExecutionEngine, MemoryStorage};
 use std::sync::Arc;
 
 fn engine() -> ExecutionEngine<MemoryStorage> {

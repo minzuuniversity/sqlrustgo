@@ -3,9 +3,9 @@
 
 #![allow(unused_variables, unused_imports)]
 
+use parking_lot::RwLock;
 use std::collections::HashMap;
 use std::path::PathBuf;
-use parking_lot::RwLock;
 use std::sync::Arc;
 
 use sqlrustgo_catalog::Catalog;

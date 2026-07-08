@@ -3,6 +3,7 @@
 //! Supports mysql_native_password auth + TLS (mariadb-connector-c 3.4+ compatible)
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
+use parking_lot::RwLock;
 use rcgen::{CertificateParams, KeyPair};
 use sha1::{Digest, Sha1};
 use sqlrustgo::ExecutionEngine;
@@ -16,7 +17,6 @@ use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::sync::atomic::{AtomicI64, AtomicU64, Ordering};
-use parking_lot::RwLock;
 use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
@@ -586,11 +586,11 @@ mod tests {
     // Test parse → Statement dispatch (new routing model)
     #[test]
     fn test_statement_dispatch() {
+        use parking_lot::RwLock;
         use sqlrustgo::MemoryExecutionEngine;
         use sqlrustgo_parser::parse;
         use sqlrustgo_storage::MemoryStorage;
-        use parking_lot::RwLock;
-use std::sync::Arc;
+        use std::sync::Arc;
 
         let storage = Arc::new(RwLock::new(MemoryStorage::new()));
         let mut engine = MemoryExecutionEngine::new(storage);
@@ -847,7 +847,10 @@ trait DrainWrites {
 }
 
 // Blanket impl for all Write types EXCEPT TlsStream
-impl<W: std::io::Write> DrainWrites for W where W: NotTlsStream {
+impl<W: std::io::Write> DrainWrites for W
+where
+    W: NotTlsStream,
+{
     fn force_drain(&mut self) {
         // Regular stream: flush() is synchronous and sufficient
         let _ = std::io::Write::flush(self);
@@ -1297,8 +1300,8 @@ fn write_column_def<W: Write>(w: &mut W, name: &str, sql_type: &str, seq: u8) ->
     write_lenenc_string(&mut p, name.as_bytes()).unwrap(); // org_name (physical column name; same as virtual_name when no alias)
     write_lenenc_int(&mut p, 12).unwrap(); // length_of_fixed_fields: 12 bytes of fixed-size metadata follow
                                            // (charsetnr 2 + column_length 4 + field_type 1 + flags 2 + decimals 1 + filler 2)
-                  // MySQL column definition fixed-size fields:
-                  // charsetnr (2 bytes) → length (4 bytes) → type (1 byte) → flags (2 bytes) → decimals (1 byte) → filler (2 bytes)
+                                           // MySQL column definition fixed-size fields:
+                                           // charsetnr (2 bytes) → length (4 bytes) → type (1 byte) → flags (2 bytes) → decimals (1 byte) → filler (2 bytes)
     p.write_u16::<LittleEndian>(0x0030).unwrap(); // charsetnr: 0x30 = utf8_general_ci
     p.write_u32::<LittleEndian>(col_len_from_type(sql_type))
         .unwrap(); // length
@@ -1677,7 +1680,8 @@ fn infer_param_types_from_sql<S: StorageEngine>(sql: &str, storage: &Arc<RwLock<
         return vec![col_type::VARSTRING; param_count];
     }
     if let Some(table_name) = extract_table_name(sql) {
-        let storage_guard = storage.read(); {
+        let storage_guard = storage.read();
+        {
             if let Ok(table_info) = storage_guard.get_table_info(&table_name) {
                 let mut types = Vec::with_capacity(param_count);
                 for col_name in &cols {
@@ -2090,7 +2094,8 @@ fn extract_column_names(sql: &str, storage: &Arc<RwLock<MemoryStorage>>) -> Vec<
         return vec![];
     }
     if let Some(table_name) = extract_table_name(sql) {
-        let storage_guard = storage.read(); {
+        let storage_guard = storage.read();
+        {
             if let Ok(table_info) = storage_guard.get_table_info(&table_name) {
                 let col_names: Vec<String> =
                     table_info.columns.iter().map(|c| c.name.clone()).collect();
@@ -2110,7 +2115,8 @@ fn infer_column_types(
     cols: &[String],
 ) -> Vec<String> {
     if let Some(table_name) = extract_table_name(sql) {
-        let storage_guard = storage.read(); {
+        let storage_guard = storage.read();
+        {
             if let Ok(table_info) = storage_guard.get_table_info(&table_name) {
                 let types: Vec<String> = table_info
                     .columns
@@ -2647,7 +2653,7 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                         }
                     } else {
                         let mut eng = engine.write();
-                    eprintln!("SERVER: eng.execute(sql={})", stmt_sql);
+                        eprintln!("SERVER: eng.execute(sql={})", stmt_sql);
                         eng.execute(stmt_sql)
                     };
                     match result {
@@ -2655,33 +2661,30 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                             // Extract real column names from the SQL
                             // (after SELECT, before FROM). Falls back to
                             // col_1, col_2... when ambiguous (e.g. SELECT *).
-                            let real_col_names: Vec<String> =
-                                if stmt_sql.to_uppercase().starts_with("SELECT")
-                                    && stmt_sql.to_uppercase().contains(" FROM ")
-                                {
-                                    let upper = stmt_sql.to_uppercase();
-                                    if let Some(from_pos) = upper.find(" FROM ") {
-                                        let select_part = stmt_sql[..from_pos].trim();
-                                        let cols_str = select_part
-                                            .strip_prefix("SELECT")
-                                            .or_else(|| select_part.strip_prefix("select"))
-                                            .unwrap_or("")
-                                            .trim();
-                                        if !cols_str.is_empty() && !cols_str.contains('*') {
-                                            cols_str
-                                                .split(',')
-                                                .map(|s: &str| {
-                                                    s.trim()
-                                                        .split('.')
-                                                        .next_back()
-                                                        .unwrap_or(s.trim())
-                                                        .to_string()
-                                                })
-                                                .collect()
-                                        } else {
-                                            let n = r.rows.first().map(|row| row.len()).unwrap_or(0);
-                                            (0..n).map(|i| format!("col_{}", i + 1)).collect()
-                                        }
+                            let real_col_names: Vec<String> = if stmt_sql
+                                .to_uppercase()
+                                .starts_with("SELECT")
+                                && stmt_sql.to_uppercase().contains(" FROM ")
+                            {
+                                let upper = stmt_sql.to_uppercase();
+                                if let Some(from_pos) = upper.find(" FROM ") {
+                                    let select_part = stmt_sql[..from_pos].trim();
+                                    let cols_str = select_part
+                                        .strip_prefix("SELECT")
+                                        .or_else(|| select_part.strip_prefix("select"))
+                                        .unwrap_or("")
+                                        .trim();
+                                    if !cols_str.is_empty() && !cols_str.contains('*') {
+                                        cols_str
+                                            .split(',')
+                                            .map(|s: &str| {
+                                                s.trim()
+                                                    .split('.')
+                                                    .next_back()
+                                                    .unwrap_or(s.trim())
+                                                    .to_string()
+                                            })
+                                            .collect()
                                     } else {
                                         let n = r.rows.first().map(|row| row.len()).unwrap_or(0);
                                         (0..n).map(|i| format!("col_{}", i + 1)).collect()
@@ -2689,7 +2692,11 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                                 } else {
                                     let n = r.rows.first().map(|row| row.len()).unwrap_or(0);
                                     (0..n).map(|i| format!("col_{}", i + 1)).collect()
-                                };
+                                }
+                            } else {
+                                let n = r.rows.first().map(|row| row.len()).unwrap_or(0);
+                                (0..n).map(|i| format!("col_{}", i + 1)).collect()
+                            };
                             let cols: Vec<String> = real_col_names;
                             let ctypes: Vec<String> =
                                 cols.iter().map(|_| "VARCHAR(255)".to_string()).collect();
@@ -2737,9 +2744,7 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                         if cols_str.eq_ignore_ascii_case("*") {
                             let storage_guard = storage.read();
                             if let Some(table_name) = extract_table_name(&sql) {
-                                if let Ok(table_info) =
-                                    storage_guard.get_table_info(&table_name)
-                                {
+                                if let Ok(table_info) = storage_guard.get_table_info(&table_name) {
                                     table_info.columns.len() as u16
                                 } else {
                                     1
@@ -2781,12 +2786,12 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                     ok_pkt_bytes.len(),
                     &ok_pkt_bytes[..]
                 );
-                 Packet {
-                     length: p.len() as u32,
-                     sequence: seq,
-                     payload: p,
-                 }
-                 .write_to(stream)?;
+                Packet {
+                    length: p.len() as u32,
+                    sequence: seq,
+                    payload: p,
+                }
+                .write_to(stream)?;
                 *server_last_sent_seq = seq;
                 seq = seq.wrapping_add(1);
 
@@ -2892,7 +2897,6 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                 // the complete STMT_PREPARE response; if any records
                 // are still buffered in rustls the client times out.
                 stream.force_drain();
-
 
                 tracing::info!(
                     "STMT PREPARE done: id={}, params={}, cols={}",
@@ -3137,8 +3141,9 @@ fn handle_connection(
             // without auto-complete_io, the cipher buffer accumulates
             // and the client never receives the response.
             let mut tls = TlsStream::new(&mut conn, &mut stream);
-            let engine: Arc<parking_lot::RwLock<ExecutionEngine<BoxStorageEngine>>> =
-                Arc::new(parking_lot::RwLock::new(ExecutionEngine::new(storage.clone())));
+            let engine: Arc<parking_lot::RwLock<ExecutionEngine<BoxStorageEngine>>> = Arc::new(
+                parking_lot::RwLock::new(ExecutionEngine::new(storage.clone())),
+            );
             let mut ps_manager = PreparedStatementManager::new();
             let mut server_last_sent_seq = 3u8;
             let _ = do_command_loop(
@@ -3194,8 +3199,9 @@ fn handle_connection(
         .ok();
     let mut server_last_sent_seq = 2u8;
     tracing::info!("Starting command loop with server_last_sent_seq=2");
-    let engine: Arc<parking_lot::RwLock<ExecutionEngine<BoxStorageEngine>>> =
-        Arc::new(parking_lot::RwLock::new(ExecutionEngine::new(storage.clone())));
+    let engine: Arc<parking_lot::RwLock<ExecutionEngine<BoxStorageEngine>>> = Arc::new(
+        parking_lot::RwLock::new(ExecutionEngine::new(storage.clone())),
+    );
     let mut ps_manager = PreparedStatementManager::new();
     let _ = do_command_loop(
         &mut &stream,
@@ -3413,8 +3419,9 @@ pub(crate) fn run_server_with_listener_and_shutdown_with_bootstrap_tables_and_sq
             let wal_manager = FileBackedWalManager::new(wal_path)
                 .map_err(|e| MySqlError::Sql(format!("WAL manager init failed: {}", e)))?;
             let checkpoint_manager = Arc::new(std::sync::RwLock::new(CheckpointManager::default()));
-            let wal_storage = WalStorage::with_checkpoint_manager(file_storage, wal_manager, checkpoint_manager)
-                .map_err(|e| MySqlError::Sql(format!("WalStorage init failed: {}", e)))?;
+            let wal_storage =
+                WalStorage::with_checkpoint_manager(file_storage, wal_manager, checkpoint_manager)
+                    .map_err(|e| MySqlError::Sql(format!("WalStorage init failed: {}", e)))?;
             Arc::new(parking_lot::RwLock::new(BoxStorageEngine::new(wal_storage)))
         }
     };
@@ -4212,11 +4219,11 @@ mod integration_tests {
 
     #[test]
     fn test_statement_dispatch_select() {
+        use parking_lot::RwLock;
         use sqlrustgo::MemoryExecutionEngine;
         use sqlrustgo_storage::MemoryStorage;
         use sqlrustgo_types::Value;
-        use parking_lot::RwLock;
-use std::sync::Arc;
+        use std::sync::Arc;
 
         let storage: Arc<RwLock<MemoryStorage>> = Arc::new(RwLock::new(MemoryStorage::new()));
         let mut engine = MemoryExecutionEngine::new(storage);
@@ -4237,10 +4244,10 @@ use std::sync::Arc;
 
     #[test]
     fn test_statement_dispatch_insert() {
+        use parking_lot::RwLock;
         use sqlrustgo::MemoryExecutionEngine;
         use sqlrustgo_storage::MemoryStorage;
-        use parking_lot::RwLock;
-use std::sync::Arc;
+        use std::sync::Arc;
 
         let storage: Arc<RwLock<MemoryStorage>> = Arc::new(RwLock::new(MemoryStorage::new()));
         let mut engine = MemoryExecutionEngine::new(storage);
