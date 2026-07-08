@@ -2,9 +2,9 @@
 
 use crate::execution_engine::*;
 use crate::Value;
+use parking_lot::RwLock;
 use sqlrustgo_storage::MemoryStorage;
 use std::collections::HashMap;
-use parking_lot::RwLock;
 use std::sync::Arc;
 
 #[test]
@@ -32,7 +32,7 @@ fn test_analyze_table_stats() {
     assert_eq!(result.rows[0][0], Value::Integer(3));
 
     let stats = engine.get_table_stats();
-    let stats_guard = stats.read().unwrap();
+    let stats_guard = stats.read();
     let table_stats = stats_guard.table_stats.get("users").unwrap();
     assert_eq!(table_stats.row_count, 3);
 }
