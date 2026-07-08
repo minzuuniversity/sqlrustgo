@@ -5,10 +5,47 @@
 > **分支**: `develop/v3.9.0` (从 `main@v3.8.0` fork)
 > **创建日期**: 2026-06-05
 > **GA 目标**: 2026-12-15 (per Hermes audit #3252, deferred from 2026-09-23)
-> **当前阶段**: **RC8** (2026-06-18) + 本机 L1 闭环 (PR #3664/#3665/#3666, 2026-07-01, HEAD `d77821f6d1`); GA 待 24h/72h/168h real soak
+> **当前阶段**: **RC8** (tag `v3.9.0-rc8` at `9c4ed29573`, 2026-07-08)
 > **前版本**: v3.8.0
 
 ---
+
+## 2026-07-08 — RC8 门禁达标 + 72h SOAK 完成
+
+`v3.9.0-rc8` tag 已于 2026-07-08 在 commit `9c4ed29573` 创建。
+
+### PR 合并记录 (2026-07-08)
+
+| PR | 内容 |
+|----|------|
+| #3711 | style: fmt `crates/cli/src/client.rs` |
+| #3710 | style: cargo fmt 全量清理 (26 文件) + `parking_lot::RwLock` guard `.unwrap()` 移除 |
+| #3709 | fix(soak): `soak_orchestrator.sh` data_dir 保留修复 + `SOAK_72H_REPORT.md` |
+| #3708 | ci: merge 168h SOAK workflow |
+| #3707 | docs: add 168h SOAK test report for Mac mini (Issue #3265/#3266) |
+| #3702 | fix(soak): WAL LSN counter divergence + `file_backed` fsync |
+| #3700 | fix(mysql-server): restore blocking mode on accepted TcpStream |
+
+### 72h SOAK 测试结果 (Mac mini)
+
+| 指标 | 结果 |
+|------|------|
+| 时长 | **72h57m** |
+| 数据点 | 4,234 (70.8h 连续采样) |
+| 零错误 | ✅ |
+| WAL 无界增长 | ❌ 无 — max 12.6 MB，checkpoint 后清零 |
+| 内存线性增长 | ❌ 无 — 24h 后稳定在 100-150 MB |
+| 线程泄漏 | ❌ 无 — 范围 20-60，平均 39 |
+| FD 泄漏 | ❌ 无 — 范围 13-55，平均 33 |
+
+### Issue #3265 关闭
+
+Issue #3265 (GA-P0/S3 72h SOAK) 已完成并通过 Gitea API 关闭。
+完整报告见 `SOAK_72H_REPORT.md`。
+
+### 168h SOAK 延续测试
+
+当前 server (PID 67629) 继续运行于 Mac mini，目标 168h。Issue #3266 保持 open。
 
 ## 2026-07-01 — Gate Lint Drift 修复
 
