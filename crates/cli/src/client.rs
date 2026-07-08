@@ -202,7 +202,10 @@ impl Client {
                 break;
             }
             if next_pkt[0] == 0xFF {
-                return Err(anyhow::anyhow!("ERR during result set: {}", err_msg(&next_pkt)));
+                return Err(anyhow::anyhow!(
+                    "ERR during result set: {}",
+                    err_msg(&next_pkt)
+                ));
             }
             // Row data
             let mut p = 0;
