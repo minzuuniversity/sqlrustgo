@@ -109,9 +109,9 @@ fn sql_value_literal(v: &SqlValue) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use parking_lot::RwLock;
     use sqlrustgo::{ExecutionEngine, MemoryStorage};
     use std::sync::Arc;
-    use parking_lot::RwLock;
 
     #[test]
     fn test_bulk_insert_three_rows() {

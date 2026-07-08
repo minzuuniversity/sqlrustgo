@@ -229,7 +229,9 @@ fn test_update_with_complex_where() {
     conn.execute("UPDATE t SET val = val * 2 WHERE id > 1 AND id < 4")
         .expect("UPDATE");
 
-    let r = conn.execute("SELECT id, name, val FROM t ORDER BY id").expect("SELECT");
+    let r = conn
+        .execute("SELECT id, name, val FROM t ORDER BY id")
+        .expect("SELECT");
     match r {
         ResultSet::Select { rows, .. } => {
             assert_eq!(rows.len(), 4);
@@ -249,11 +251,14 @@ fn test_transaction_rollback() {
     // This test documents current behavior (no actual rollback).
     let (_handle, mut conn) = make_client();
     conn.execute("CREATE TABLE t (n INTEGER)").expect("CREATE");
-    conn.execute("INSERT INTO t VALUES (1)").expect("INSERT initial");
+    conn.execute("INSERT INTO t VALUES (1)")
+        .expect("INSERT initial");
 
     conn.execute("BEGIN").expect("BEGIN");
-    conn.execute("INSERT INTO t VALUES (2)").expect("INSERT in txn");
-    conn.execute("INSERT INTO t VALUES (3)").expect("INSERT in txn");
+    conn.execute("INSERT INTO t VALUES (2)")
+        .expect("INSERT in txn");
+    conn.execute("INSERT INTO t VALUES (3)")
+        .expect("INSERT in txn");
     conn.execute("ROLLBACK").expect("ROLLBACK");
 
     // All 3 rows survive because ROLLBACK is a no-op
@@ -263,7 +268,11 @@ fn test_transaction_rollback() {
     match r {
         ResultSet::Select { rows, .. } => {
             assert_eq!(rows.len(), 1);
-            assert_eq!(rows[0][0], "3", "expected 3 rows (rollback not implemented), got {:?}", rows);
+            assert_eq!(
+                rows[0][0], "3",
+                "expected 3 rows (rollback not implemented), got {:?}",
+                rows
+            );
         }
         other => panic!("expected Select, got {:?}", other),
     }
@@ -276,8 +285,10 @@ fn test_transaction_commit() {
     conn.execute("CREATE TABLE t (n INTEGER)").expect("CREATE");
 
     conn.execute("BEGIN").expect("BEGIN");
-    conn.execute("INSERT INTO t VALUES (1)").expect("INSERT in txn");
-    conn.execute("INSERT INTO t VALUES (2)").expect("INSERT in txn");
+    conn.execute("INSERT INTO t VALUES (1)")
+        .expect("INSERT in txn");
+    conn.execute("INSERT INTO t VALUES (2)")
+        .expect("INSERT in txn");
     conn.execute("COMMIT").expect("COMMIT");
 
     let r = conn
@@ -286,7 +297,11 @@ fn test_transaction_commit() {
     match r {
         ResultSet::Select { rows, .. } => {
             assert_eq!(rows.len(), 1);
-            assert_eq!(rows[0][0], "2", "expected 2 rows after commit, got {:?}", rows);
+            assert_eq!(
+                rows[0][0], "2",
+                "expected 2 rows after commit, got {:?}",
+                rows
+            );
         }
         other => panic!("expected Select, got {:?}", other),
     }
@@ -301,7 +316,8 @@ fn test_transaction_multi_stmt() {
         .expect("CREATE");
 
     conn.execute("BEGIN").expect("BEGIN");
-    conn.execute("INSERT INTO t VALUES (1, 'x')").expect("INSERT");
+    conn.execute("INSERT INTO t VALUES (1, 'x')")
+        .expect("INSERT");
     conn.execute("UPDATE t SET val = 'y' WHERE id = 1")
         .expect("UPDATE");
     conn.execute("DELETE FROM t WHERE id = 1").expect("DELETE");
@@ -515,7 +531,9 @@ fn test_aggregate_group_by() {
 
     // AVG + GROUP BY
     let r = conn
-        .execute("SELECT customer_id, AVG(amount) FROM orders GROUP BY customer_id ORDER BY customer_id")
+        .execute(
+            "SELECT customer_id, AVG(amount) FROM orders GROUP BY customer_id ORDER BY customer_id",
+        )
         .expect("AVG GROUP BY");
     match r {
         ResultSet::Select { rows, .. } => {

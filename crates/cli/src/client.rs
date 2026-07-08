@@ -172,7 +172,10 @@ impl Client {
             return Err(anyhow::anyhow!("unexpected empty intermediate packet"));
         }
         if intermediate[0] == 0xFF {
-            return Err(anyhow::anyhow!("ERR after column defs: {}", err_msg(&intermediate)));
+            return Err(anyhow::anyhow!(
+                "ERR after column defs: {}",
+                err_msg(&intermediate)
+            ));
         }
         // intermediate[0] == 0xFE (EOF) or 0x00 (OK) — both are
         // valid intermediate terminators per the spec. Anything else
