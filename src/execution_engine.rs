@@ -14,6 +14,7 @@ use crate::expr_utils::{
     expression_to_value_from_string, resolve_subqueries_in_expr,
 };
 use crate::{parse, SqlError, SqlResult, Value};
+use parking_lot::RwLock;
 use sqlrustgo_catalog::stored_proc::{ParamMode, StoredProcParam, StoredProcStatement};
 use sqlrustgo_catalog::{auth::UserIdentity, Catalog, StoredProcedure};
 use sqlrustgo_executor::ast_adapter::AstAdapter;
@@ -78,7 +79,6 @@ use sqlrustgo_transaction::{IsolationLevel as TmIsolationLevel, TransactionManag
 use sqlrustgo_types::Value as SqlValue;
 use std::collections::HashMap;
 use std::path::PathBuf;
-use parking_lot::RwLock;
 use std::sync::Arc;
 
 /// Execution engine for SQL statements
@@ -182,7 +182,10 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     }
 
     /// Create a new execution engine with a catalog
-    pub fn with_catalog(storage: Arc<parking_lot::RwLock<S>>, catalog: Arc<parking_lot::RwLock<Catalog>>) -> Self {
+    pub fn with_catalog(
+        storage: Arc<parking_lot::RwLock<S>>,
+        catalog: Arc<parking_lot::RwLock<Catalog>>,
+    ) -> Self {
         Self {
             storage,
             catalog: Some(catalog),
@@ -841,7 +844,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         // detect explicit transactions and apply the per-tx boundary rule
         // when filtering committed entries. Without this, every DML entry
         // appears to be autocommit and uncommitted work leaks into recovery.
-        let mut storage = self.storage.write(); {
+        let mut storage = self.storage.write();
+        {
             storage.set_current_tx_id(tx_id.as_u64());
             let _ = storage.begin_transaction();
         }
@@ -864,7 +868,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             .current_tx_id
             .ok_or_else(|| SqlError::ExecutionError("No transaction in progress".to_string()))?;
         // Delegate to storage engine first so WalStorage writes WAL Commit entry before clearing state
-        let mut storage = self.storage.write(); {
+        let mut storage = self.storage.write();
+        {
             let _ = storage.commit_transaction();
         }
         self.transaction_manager.commit(tx_id).map_err(|e| {
@@ -933,7 +938,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             .current_tx_id
             .ok_or_else(|| SqlError::ExecutionError("No transaction in progress".to_string()))?;
         // Delegate to storage engine first so WalStorage writes WAL Rollback entry before clearing state
-        let mut storage = self.storage.write(); {
+        let mut storage = self.storage.write();
+        {
             let _ = storage.rollback_transaction();
         }
         self.transaction_manager.rollback(tx_id).map_err(|e| {
@@ -1499,7 +1505,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 .map_err(|e| SqlError::ExecutionError(format!("TM.begin failed: {:?}", e)))?;
             self.current_tx_id = Some(tx_id);
             self.tx_status = TxStatus::Active;
-            let mut storage = self.storage.write(); {
+            let mut storage = self.storage.write();
+            {
                 storage.set_current_tx_id(tx_id.as_u64());
             }
             Ok((Some(tx_id), true))
@@ -1507,7 +1514,6 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             Ok((self.current_tx_id, false))
         }
     }
-
 
     /// Commit the implicit DML TX started by `begin_implicit_dml_tx`.
     /// Idempotent when `started_implicit` is `false` (user controls commit/rollback).
