@@ -191,15 +191,15 @@ impl Client {
                 return Err(anyhow::anyhow!("unexpected empty row packet"));
             }
             // EOF terminator (DEPRECATE_EOF=0, short packet < 9 bytes)
-            if pkt[0] == 0xFE && pkt.len() < 9 {
+            if next_pkt[0] == 0xFE && next_pkt.len() < 9 {
                 break;
             }
             // OK terminator (DEPRECATE_EOF=1)
-            if pkt[0] == 0x00 {
+            if next_pkt[0] == 0x00 {
                 break;
             }
-            if pkt[0] == 0xFF {
-                return Err(anyhow::anyhow!("ERR during result set: {}", err_msg(&pkt)));
+            if next_pkt[0] == 0xFF {
+                return Err(anyhow::anyhow!("ERR during result set: {}", err_msg(&next_pkt)));
             }
             // Row data
             let mut p = 0;
