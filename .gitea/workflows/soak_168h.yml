@@ -12,6 +12,11 @@ on:
         description: 'Soak duration in hours'
         required: false
         default: '168'
+      load_profile:
+        description: 'Workload profile: "standard" (3 workers), "light" (1 worker), "heavy" (5 workers)'
+        required: false
+        default: 'standard'
+
 env:
   CARGO_HOME: ${{ runner.temp }}/.cargo
   RUSTUP_HOME: ${{ runner.temp }}/.rustup
@@ -24,6 +29,9 @@ jobs:
   soak-168h:
     runs-on: [hp-z6g4]
     timeout-minutes: 10080  # 168h
+    # NOTE: hermes-runner v0.5.0 ignores container.options --entrypoint,
+    # defaulting to 10800s sleep (3h). For 168h runs, the runner config
+    # must be updated to increase the container sleep timeout.
     steps:
       - name: Checkout target branch
         run: |
@@ -33,10 +41,11 @@ jobs:
           cd repo
           echo "Checked out $(git rev-parse HEAD) on $BRANCH"
           echo "REPO=$PWD" >> $GITHUB_ENV
+
       - name: Run 168h SOAK
         id: soak
         run: |
-          # cd to repo dir (GITHUB_ENV may not persist across steps)
+          # cd to repo dir
           if [ -d "$PWD/repo" ]; then
             cd "$PWD/repo"
           elif [ -d "$REPO" ]; then
@@ -45,6 +54,7 @@ jobs:
           test -f Cargo.toml || { echo "FATAL: Cargo.toml not found in $(pwd)"; ls -la; exit 1; }
           echo "Working dir: $(pwd)"
 
+          # ── Build ──
           cargo_build() {
             local max=5 delay=10 i=0
             while [ $i -lt $max ]; do
@@ -55,23 +65,35 @@ jobs:
             done
             echo "BUILD FAILED after ${max} retries"; return 1
           }
+          cargo_build --bin sqlrustgo-mysql-server -p sqlrustgo-mysql-server
           cargo_build --bin sqlrustgo
-          cargo_build -p sqlrustgo-mysql-server
-          ls -lh target/release/sqlrustgo target/release/sqlrustgo-mysql-server
-          BINARY="$PWD/target/release/sqlrustgo"
+          cargo_build --bin sqlrustgo-soak -p sqlrustgo-soak
+          ls -lh target/release/sqlrustgo-mysql-server target/release/sqlrustgo target/release/sqlrustgo-soak
+
+          # ── Server config ──
+          SERVER_BIN="$PWD/target/release/sqlrustgo-mysql-server"
+          CLI_BIN="$PWD/target/release/sqlrustgo"
+          SOAK_BIN="$PWD/target/release/sqlrustgo-soak"
           PORT=3397
           HOURS=${{ github.event.inputs.hours || '168' }}
+          LOAD_PROFILE=${{ github.event.inputs.load_profile || 'standard' }}
           DATA_DIR="$PWD/data/soak-168h"
           RESULTS_DIR="$PWD/results/soak-168h"
           rm -rf "$DATA_DIR" "$RESULTS_DIR"
           mkdir -p "$DATA_DIR" "$RESULTS_DIR"
 
           echo "=== 168h SOAK Start ==="
-          echo "PID: $$  Binary: $BINARY  Port: $PORT"
+          echo "Server: $SERVER_BIN"
+          echo "Port: $PORT  Data: $DATA_DIR  Results: $RESULTS_DIR"
+          echo "Duration: ${HOURS}h  Load: $LOAD_PROFILE"
 
-          # Start server
-          "$BINARY" serve \
-            --port $PORT --data-dir "$DATA_DIR" \
+          # ── Start server ──
+          "$SERVER_BIN" serve \
+            --port "$PORT" \
+            --data-dir "$DATA_DIR" \
+            --server-threads 16 \
+            --max-connections 200 \
+            --log-level warn \
             > "$RESULTS_DIR/server.log" 2>&1 &
           SERVER_PID=$!
           echo "$SERVER_PID" > "$RESULTS_DIR/server.pid"
@@ -79,7 +101,7 @@ jobs:
 
           # Wait for server ready
           for i in $(seq 1 30); do
-            if echo "SELECT 1" | "$BINARY" soak --port $PORT --user root > /dev/null 2>&1; then
+            if echo "SELECT 1" | "$CLI_BIN" soak --port "$PORT" --user root > /dev/null 2>&1; then
               echo "Server ready after ${i}s"; break
             fi
             if [ "$i" -eq 30 ]; then
@@ -88,171 +110,451 @@ jobs:
             sleep 2
           done
 
-          # Create schema
-          echo "CREATE DATABASE IF NOT EXISTS sbtest" | "$BINARY" soak --port $PORT --user root || true
-          echo "CREATE TABLE IF NOT EXISTS sbtest.sbtest1 (id INT PRIMARY KEY AUTO_INCREMENT, k INT DEFAULT 0, c VARCHAR(100) DEFAULT '', pad VARCHAR(100) DEFAULT '')" | "$BINARY" soak --port $PORT --user root || true
+          # ── Create schema ──
+          echo "CREATE DATABASE IF NOT EXISTS sbtest" | "$CLI_BIN" soak --port "$PORT" --user root || true
 
-
-          # ===== SYSBENCH CONCURRENT LOAD =====
-          SYSBENCH_DIR="$RESULTS_DIR/sysbench"
-          mkdir -p "$SYSBENCH_DIR"
-          SYSBENCH_PIDS=""
-
-          # Test sysbench + MySQL driver availability
-          if command -v sysbench >/dev/null 2>&1; then
-            SYSOPTS="--db-driver=mysql --mysql-host=127.0.0.1 --mysql-port=$PORT --mysql-user=root --mysql-db=sbtest --time=$((HOURS * 3600)) --report-interval=60"
-            if sysbench $SYSOPTS /usr/share/sysbench/oltp_read_write.lua help > /dev/null 2>&1; then
-              echo "[$(date -u)] Sysbench MySQL driver OK"
-
-              # Drop manual table that may conflict with sysbench schema
-              echo "DROP TABLE IF EXISTS sbtest.sbtest1" | "$BINARY" soak --port $PORT --user root > /dev/null 2>&1 || true
-
-              # Prepare: scale table size by duration
-              TABLE_SIZE=100000
-              [ "$HOURS" -lt 24 ] && TABLE_SIZE=10000
-              sysbench $SYSOPTS --tables=4 --table-size=$TABLE_SIZE /usr/share/sysbench/oltp_read_write.lua prepare \
-                > "$SYSBENCH_DIR/prepare.log" 2>&1 \
-                && echo "[$(date -u)] Sysbench prepare OK (4 tables x ${TABLE_SIZE} rows)"
-
-              # OLTP read-write (4 threads)
-              SYSPID_OLTP=""
-              echo "[$(date -u)] Starting sysbench OLTP (4 threads)"
-              sysbench $SYSOPTS --tables=4 --threads=4 /usr/share/sysbench/oltp_read_write.lua run \
-                > "$SYSBENCH_DIR/oltp.log" 2>&1 &
-              SYSPID_OLTP=$!
-
-              # OLAP: range-scan workload (2 threads)
-              SYSPID_OLAP=""
-              echo "[$(date -u)] Starting sysbench OLAP range-scan (2 threads)"
-              sysbench $SYSOPTS --tables=4 --threads=2 /usr/share/sysbench/select_random_ranges.lua run \
-                > "$SYSBENCH_DIR/olap.log" 2>&1 &
-              SYSPID_OLAP=$!
-
-              SYSBENCH_PIDS="$SYSPID_OLTP $SYSPID_OLAP"
-              echo "[$(date -u)] Sysbench background: OLTP=$SYSPID_OLTP OLAP=$SYSPID_OLAP"
+          # ===== METRICS HELPERS =====
+          # Docker-safe process metrics using /proc directly (not ps/lsof which may
+          # behave differently in container environments)
+          get_rss_kb() {
+            local pid=$1
+            if [ -f "/proc/$pid/status" ]; then
+              grep '^VmRSS:' "/proc/$pid/status" 2>/dev/null | awk '{print $2}' || echo 0
             else
-              echo "[$(date -u)] WARNING: sysbench MySQL driver not functional"
+              # Fallback: try ps
+              ps -o rss= -p "$pid" 2>/dev/null | tr -d ' ' || echo 0
             fi
-          else
-            echo "[$(date -u)] WARNING: sysbench not found in PATH"
+          }
+
+          get_fd_count() {
+            local pid=$1
+            if [ -d "/proc/$pid/fd" ]; then
+              ls -1 "/proc/$pid/fd" 2>/dev/null | wc -l || echo 0
+            else
+              # Fallback: try /proc/$PID/task/*/fd
+              local count=0
+              for taskdir in /proc/$pid/task/*/fd; do
+                if [ -d "$taskdir" ]; then
+                  count=$((count + $(ls -1 "$taskdir" 2>/dev/null | wc -l)))
+                fi
+              done
+              echo "${count:-0}"
+            fi
+          }
+
+          get_thread_count() {
+            local pid=$1
+            if [ -f "/proc/$pid/status" ]; then
+              grep '^Threads:' "/proc/$pid/status" 2>/dev/null | awk '{print $2}' || echo 0
+            elif [ -d "/proc/$pid/task" ]; then
+              ls -1 "/proc/$pid/task" 2>/dev/null | wc -l || echo 0
+            else
+              ps -o nlwp= -p "$pid" 2>/dev/null | tr -d ' ' || echo 0
+            fi
+          }
+
+          get_wal_bytes() {
+            du -sb "$DATA_DIR" 2>/dev/null | cut -f1 || echo 0
+          }
+
+          get_disk_avail_kb() {
+            df / 2>/dev/null | tail -1 | awk '{print $4}' || echo 0
+          }
+
+          get_cpu_pct() {
+            # Read CPU from /proc/stat and process utime+stime
+            # Simplified: use ps which works in most containers
+            ps -o %cpu= -p "$SERVER_PID" 2>/dev/null | tr -d ' ' | cut -d. -f1 || echo 0
+          }
+
+          # SOAK WORKER QPS parser: reads latest progress line from a sqlrustgo soak log
+          parse_soak_qps() {
+            local logfile=$1 label=$2
+            [ -f "$logfile" ] || { echo "$label:--:--"; return; }
+            local last=$(grep 'SOAK:' "$logfile" 2>/dev/null | tail -1)
+            [ -n "$last" ] || { echo "$label:--:--"; return; }
+            # Line format: "  SOAK: <n> queries, <n> errors, <qps> qps, elapsed <n>s"
+            local queries=$(echo "$last" | sed 's/.*SOAK:[[:space:]]*\([0-9][0-9]*\).*/\1/' 2>/dev/null)
+            local qps=$(echo "$last" | sed 's/.*qps,[[:space:]]*\([0-9.]*\).*/\1/' 2>/dev/null)
+            [ -n "$queries" ] || queries="--"
+            [ -n "$qps" ] || qps="--"
+            echo "$label:$queries:$qps"
+          }
+
+          # ===== SOAK WORKERS =====
+          # Using sqlrustgo soak CLI (COM_QUERY text protocol, NOT prepared statements)
+          # to generate realistic load against sysbench-prepared tables.
+          SOAK_DIR="$RESULTS_DIR/soak"
+          mkdir -p "$SOAK_DIR"
+          SOAK_LOG_R="$SOAK_DIR/read_worker.log"
+          SOAK_LOG_W="$SOAK_DIR/write_worker.log"
+          SOAK_LOG_O="$SOAK_DIR/olap_worker.log"
+          SOAK_PIDS=""
+
+          # Build query batch files (printf avoids YAML << merge-key collision)
+          printf '%s\n' \
+            'SELECT COUNT(*) FROM sbtest.sbtest1' \
+            'SELECT * FROM sbtest.sbtest1 WHERE id = 1' \
+            'SELECT * FROM sbtest.sbtest1 WHERE id BETWEEN 1 AND 100' \
+            'SELECT id, k, c, pad FROM sbtest.sbtest1 WHERE k = 500' \
+            'SELECT id, k, c, pad FROM sbtest.sbtest1 WHERE k BETWEEN 1000 AND 2000' \
+            'SELECT SUM(k), AVG(k), MIN(k), MAX(k) FROM sbtest.sbtest1' \
+            'SELECT COUNT(DISTINCT k) FROM sbtest.sbtest1' \
+            'SELECT * FROM sbtest.sbtest1 ORDER BY k LIMIT 20' \
+            "SELECT * FROM sbtest.sbtest1 WHERE c LIKE '%0%' LIMIT 10" \
+            > "$SOAK_DIR/queries_read.sql"
+          printf '%s\n' \
+            'SELECT id, k FROM sbtest.sbtest1 WHERE id = 1' \
+            'INSERT INTO sbtest.sbtest1 (id, k, c, pad) VALUES (999991, 1000, '"'"'insert_test'"'"', '"'"'pad'"'"')' \
+            'DELETE FROM sbtest.sbtest1 WHERE id = 999991' \
+            'SELECT COUNT(*) FROM sbtest.sbtest1' \
+            'INSERT INTO sbtest.sbtest1 (id, k, c, pad) VALUES (999992, 2000, '"'"'write_test'"'"', '"'"'xyz'"'"')' \
+            'SELECT * FROM sbtest.sbtest1 WHERE id = 999992' \
+            'DELETE FROM sbtest.sbtest1 WHERE id = 999992' \
+            'SELECT SUM(k) FROM sbtest.sbtest1' \
+            > "$SOAK_DIR/queries_write.sql"
+          printf '%s\n' \
+            'SELECT * FROM sbtest.sbtest1 WHERE k BETWEEN 100 AND 500 ORDER BY k' \
+            "SELECT k, COUNT(*) AS cnt FROM sbtest.sbtest1 GROUP BY k ORDER BY cnt DESC LIMIT 10" \
+            'SELECT AVG(k) AS avg_k, MIN(id), MAX(id), COUNT(*) FROM sbtest.sbtest1' \
+            'SELECT * FROM sbtest.sbtest1 t1 JOIN sbtest.sbtest2 t2 ON t1.k = t2.k WHERE t1.id < 100' \
+            "SELECT * FROM sbtest.sbtest1 WHERE MOD(id, 100) = 0" \
+            > "$SOAK_DIR/queries_olap.sql"
+
+          echo "[$(date -u)] Query batch files ready"
+
+          # Prepare data (sysbench text-protocol CREATE + INSERT works fine)
+          if command -v sysbench >/dev/null 2>&1; then
+            for tbl in sbtest1 sbtest2 sbtest3 sbtest4; do
+              echo "DROP TABLE IF EXISTS sbtest.$tbl" | "$CLI_BIN" soak --port "$PORT" --user root > /dev/null 2>&1 || true
+            done
+            TABLE_SIZE=100000; [ "$HOURS" -lt 24 ] && TABLE_SIZE=10000
+            if sysbench --db-driver=mysql --mysql-host=127.0.0.1 --mysql-port=$PORT \
+              --mysql-user=root --mysql-db=sbtest --tables=4 --table-size=$TABLE_SIZE \
+              /usr/share/sysbench/oltp_read_write.lua prepare \
+              > "$SOAK_DIR/prepare.log" 2>&1; then
+              echo "[$(date -u)] Data prepared: 4 tables x ${TABLE_SIZE} rows"
+            else
+              echo "[$(date -u)] WARNING: sysbench prepare failed (continuing with empty tables)"
+            fi
           fi
-          # SOAK loop
+
+          # ── Workers (profile: $LOAD_PROFILE) ──
+          SOAK_DUR=$((HOURS * 3600))
+          R_PID=""; W_PID=""; O_PID=""; X_PID=""; Y_PID=""
+
+          # Worker 1: Read-heavy (always on)
+          echo "[$(date -u)] Starting read-worker: soak --rate 0"
+          "$SOAK_BIN" soak --port "$PORT" --user root \
+            --duration "$SOAK_DUR" --rate 0 \
+            --query-file "$SOAK_DIR/queries_read.sql" \
+            --report-interval 30 \
+            > "$SOAK_LOG_R" 2>&1 &
+          R_PID=$!; SOAK_PIDS="$R_PID"
+          echo "  Read-worker PID=$R_PID"
+
+          if [ "$LOAD_PROFILE" != "light" ]; then
+            # Worker 2: Write-mixed (rate-limited 50 qps)
+            echo "[$(date -u)] Starting write-worker: soak --rate 50"
+            "$SOAK_BIN" soak --port "$PORT" --user root \
+              --duration "$SOAK_DUR" --rate 50 \
+              --query-file "$SOAK_DIR/queries_write.sql" \
+              --report-interval 30 \
+              > "$SOAK_LOG_W" 2>&1 &
+            W_PID=$!; SOAK_PIDS="$SOAK_PIDS $W_PID"
+            echo "  Write-worker PID=$W_PID"
+
+            # Worker 3: OLAP-style scan (rate-limited 5 qps)
+            echo "[$(date -u)] Starting olap-worker: soak --rate 5"
+            "$SOAK_BIN" soak --port "$PORT" --user root \
+              --duration "$SOAK_DUR" --rate 5 \
+              --query-file "$SOAK_DIR/queries_olap.sql" \
+              --report-interval 30 \
+              > "$SOAK_LOG_O" 2>&1 &
+            O_PID=$!; SOAK_PIDS="$SOAK_PIDS $O_PID"
+            echo "  OLAP-worker PID=$O_PID"
+          fi
+
+          if [ "$LOAD_PROFILE" = "heavy" ]; then
+            echo "[$(date -u)] Starting read2-worker: soak --rate 0"
+            "$SOAK_BIN" soak --port "$PORT" --user root \
+              --duration "$SOAK_DUR" --rate 0 \
+              --query-file "$SOAK_DIR/queries_read.sql" \
+              --report-interval 30 \
+              > "$SOAK_DIR/read2_worker.log" 2>&1 &
+            X_PID=$!; SOAK_PIDS="$SOAK_PIDS $X_PID"
+            echo "  Read2-worker PID=$X_PID"
+
+            echo "[$(date -u)] Starting write2-worker: soak --rate 100"
+            "$SOAK_BIN" soak --port "$PORT" --user root \
+              --duration "$SOAK_DUR" --rate 100 \
+              --query-file "$SOAK_DIR/queries_write.sql" \
+              --report-interval 30 \
+              > "$SOAK_DIR/write2_worker.log" 2>&1 &
+            Y_PID=$!; SOAK_PIDS="$SOAK_PIDS $Y_PID"
+            echo "  Write2-worker PID=$Y_PID"
+          fi
+
+          echo "[$(date -u)] SOAK workers PIDs: $SOAK_PIDS  (${HOURS}h run)"
+
+          # ===== SOAK MONITORING LOOP =====
           END_TS=$(( $(date +%s) + HOURS * 3600 ))
           START_TS=$(date +%s)
+          SOAK_START_TS=$START_TS
+
           METRICS="$RESULTS_DIR/metrics.csv"
-          echo "ts,elapsed_s,rss_kb,fd,threads,wal_bytes,disk_avail_kb,queries_ok,server_alive" > "$METRICS"
+          echo "ts,elapsed_s,rss_kb,fd,threads,wal_bytes,disk_avail_kb,cpu_pct,queries_ok,r_qps,w_qps,o_qps,x_qps,y_qps,r_queries,w_queries,o_queries,server_alive" > "$METRICS"
+
           QUERIES_OK=0; SAMPLE=0; FAILS=0
+          EARLY_FAIL=0
+
+          # Watchdog state
+          WATCHDOG_LAST_RSS=0
+          WATCHDOG_LAST_WAL=0
+          WATCHDOG_LAST_TS=0
+
+          echo "=== SOAK monitoring loop started (${HOURS}h) ==="
 
           while [ $(date +%s) -lt $END_TS ]; do
             SAMPLE=$((SAMPLE + 1)); TS=$(date +%s); ELAPSED=$((TS - START_TS))
 
             # Check server alive
+            SERVER_ALIVE=1
             if ! kill -0 $SERVER_PID 2>/dev/null; then
+              SERVER_ALIVE=0
               echo "!!! SERVER DIED at ${ELAPSED}s" | tee -a "$RESULTS_DIR/errors.log"
               wait $SERVER_PID 2>/dev/null || true
               exit 1
             fi
 
-            # Metrics
-            RSS=$(ps -o rss= -p $SERVER_PID 2>/dev/null | tr -d ' ' || echo 0)
-            FD=$(ls /proc/$SERVER_PID/fd 2>/dev/null | wc -l || echo 0)
-            THREADS=$(ps -o nlwp= -p $SERVER_PID 2>/dev/null | tr -d ' ' || echo 0)
-            WAL=$(du -sb "$DATA_DIR" 2>/dev/null | cut -f1 || echo 0)
-            DISK=$(df / 2>/dev/null | tail -1 | awk '{print $4}' || echo 0)
+            # ── Metrics collection ──
+            RSS=$(get_rss_kb $SERVER_PID)
+            FD=$(get_fd_count $SERVER_PID)
+            THREADS=$(get_thread_count $SERVER_PID)
+            WAL=$(get_wal_bytes)
+            DISK=$(get_disk_avail_kb)
+            CPU=$(get_cpu_pct)
 
-            # Query check
-            if echo "SELECT $SAMPLE" | "$BINARY" soak --port $PORT --user root > /dev/null 2>&1; then
+            # Query health check
+            if echo "SELECT $SAMPLE" | "$CLI_BIN" soak --port "$PORT" --user root > /dev/null 2>&1; then
               QUERIES_OK=$((QUERIES_OK + 1))
             else
               FAILS=$((FAILS + 1))
             fi
 
-            echo "$TS,$ELAPSED,$RSS,$FD,$THREADS,$WAL,$DISK,$QUERIES_OK,1" >> "$METRICS"
+            # ── Soak worker QPS metrics ──
+            R_DATA=$(parse_soak_qps "$SOAK_LOG_R" "read")
+            W_DATA=$(parse_soak_qps "$SOAK_LOG_W" "write")
+            O_DATA=$(parse_soak_qps "$SOAK_LOG_O" "olap")
+            X_DATA=$(parse_soak_qps "$SOAK_DIR/read2_worker.log" "read2")
+            Y_DATA=$(parse_soak_qps "$SOAK_DIR/write2_worker.log" "write2")
 
-            # Status every 30 samples
-            if [ $((SAMPLE % 30)) -eq 0 ]; then
-              echo "[$(date -u)] h=$((ELAPSED/3600)).$(((ELAPSED%3600)/60)) rss=${RSS}KB fd=$FD thr=$THREADS wal=$WAL q=$QUERIES_OK fail=$FAILS"
+            IFS=':' read -r LABEL_R R_QTY R_QPS <<< "$R_DATA"
+            IFS=':' read -r LABEL_W W_QTY W_QPS <<< "$W_DATA"
+            IFS=':' read -r LABEL_O O_QTY O_QPS <<< "$O_DATA"
+            IFS=':' read -r LABEL_X X_QTY X_QPS <<< "$X_DATA"
+            IFS=':' read -r LABEL_Y Y_QTY Y_QPS <<< "$Y_DATA"
+            echo "$TS,$ELAPSED,$RSS,$FD,$THREADS,$WAL,$DISK,$CPU,$QUERIES_OK,$R_QPS,$W_QPS,$O_QPS,$X_QPS,$Y_QPS,$R_QTY,$W_QTY,$O_QTY,$SERVER_ALIVE" >> "$METRICS"
+
+            # ── Watchdogs (early problem detection) ──
+            # Every 10 samples (~10min), check growth rates
+            if [ $((SAMPLE % 10)) -eq 0 ]; then
+              NOW=$TS
+              DELTA_S=$((NOW - WATCHDOG_LAST_TS))
+
+              if [ $WATCHDOG_LAST_TS -gt 0 ] && [ $DELTA_S -gt 0 ]; then
+                # RSS growth rate (MB/hour) — warn if > 50MB/h after first hour
+                RSS_MB=$((RSS / 1024))
+                LAST_RSS_MB=$((WATCHDOG_LAST_RSS / 1024))
+                RSS_GROWTH_MB=$((RSS_MB - LAST_RSS_MB))
+                RSS_RATE=$((RSS_GROWTH_MB * 3600 / DELTA_S))
+
+                if [ $ELAPSED -gt 3600 ] && [ $RSS_RATE -gt 50 ]; then
+                  echo "⚠️  RSS GROWTH WATCHDOG: ${RSS_RATE}MB/h (${RSS_MB}MB, delta=${RSS_GROWTH_MB}MB in ${DELTA_S}s)" \
+                    | tee -a "$RESULTS_DIR/watchdog.log"
+                fi
+
+                # WAL growth (MB/hour) — warn if > 100MB/h sustained
+                WAL_MB=$((WAL / 1048576))
+                LAST_WAL_MB=$((WATCHDOG_LAST_WAL / 1048576))
+                WAL_GROWTH_MB=$((WAL_MB - LAST_WAL_MB))
+
+                WAL_RATE=$((WAL_GROWTH_MB * 3600 / DELTA_S))
+                if [ $WAL_RATE -gt 100 ]; then
+                  echo "⚠️  WAL GROWTH WATCHDOG: ${WAL_RATE}MB/h (${WAL_MB}MB, delta=${WAL_GROWTH_MB}MB in ${DELTA_S}s)" \
+                    | tee -a "$RESULTS_DIR/watchdog.log"
+                fi
+
+                # Memory threshold: RSS > 1GB
+                if [ $RSS -gt 1048576 ]; then
+                  echo "🔴 RSS THRESHOLD: ${RSS_MB}MB > 1GB" | tee -a "$RESULTS_DIR/watchdog.log"
+                  EARLY_FAIL=1
+                fi
+
+                # Disk threshold: < 1GB available
+                if [ $DISK -lt 1048576 ]; then
+                  echo "🔴 DISK THRESHOLD: ${DISK}KB available < 1GB" | tee -a "$RESULTS_DIR/watchdog.log"
+                  EARLY_FAIL=1
+                fi
+
+                # Query failures
+                if [ $FAILS -gt 0 ] && [ $((FAILS * 100 / (QUERIES_OK + FAILS + 1))) -gt 10 ]; then
+                  echo "🔴 ERROR RATE WATCHDOG: ${FAILS} fails / ${QUERIES_OK} ok = $((FAILS * 100 / (QUERIES_OK + FAILS)))%" \
+                    | tee -a "$RESULTS_DIR/watchdog.log"
+                  EARLY_FAIL=1
+                fi
+              fi
+
+              WATCHDOG_LAST_RSS=$RSS
+              WATCHDOG_LAST_WAL=$WAL
+              WATCHDOG_LAST_TS=$NOW
             fi
 
-            # Archive every 6h
-            if [ $((SAMPLE % 360)) -eq 0 ]; then
-              cp "$METRICS" "$RESULTS_DIR/metrics_${ELAPSED}s.csv"
+            # Fast-fail on critical watchdog triggers
+            if [ $EARLY_FAIL -eq 1 ]; then
+              echo "!!! EARLY FAILURE DETECTED — aborting SOAK at ${ELAPSED}s" | tee -a "$RESULTS_DIR/errors.log"
+              break
+            fi
+
+            # ── Status output ──
+            # First 30min: report every 5min (samples 5,10,15,20,25,30)
+            # After 30min: report every 30min (samples 60,90,120,...)
+            REPORT=0
+            if [ $ELAPSED -lt 1800 ]; then
+              # First 30min: every 5 samples = ~5min
+              [ $((SAMPLE % 5)) -eq 0 ] && REPORT=1
+            else
+              # After 30min: every 30 samples = ~30min
+              [ $((SAMPLE % 30)) -eq 0 ] && REPORT=1
+            fi
+
+            if [ $REPORT -eq 1 ]; then
+              RSS_MB=$((RSS / 1024))
+              WAL_MB=$(awk "BEGIN { printf \"%.1f\", $WAL / 1048576 }" 2>/dev/null || echo "$((WAL/1048576)).$(((WAL%1048576)*10/1048576))")
+              DISK_GB=$(awk "BEGIN { printf \"%.1f\", $DISK / 1048576 }" 2>/dev/null || echo "$((DISK/1048576)).$(((DISK%1048576)*10/1048576))")
+
+              echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+              echo "[$(date -u)] h=$((ELAPSED/3600)).$(((ELAPSED%3600)/60))m sample=$SAMPLE"
+              echo "  Server: RSS=${RSS_MB}MB FD=$FD THR=$THREADS CPU=${CPU}%"
+              echo "  Storage: WAL=${WAL_MB}MB DISK=${DISK_GB}GB"
+              echo "  Health: queries=${QUERIES_OK} fails=${FAILS}"
+
+              # Soak worker QPS
+              echo "  Workers: R=${R_QPS} W=${W_QPS} O=${O_QPS} X=${X_QPS} Y=${Y_QPS} qps"
+              TOTAL_QPS=0
+              for q in "$R_QPS" "$W_QPS" "$O_QPS" "$X_QPS" "$Y_QPS"; do
+                if [ "$q" != "--" ] && [ -n "$q" ] && [ "$q" != "0" ]; then
+                  TOTAL_QPS=$(awk "BEGIN { printf \"%.1f\", $TOTAL_QPS + $q }" 2>/dev/null || echo "$TOTAL_QPS")
+                fi
+              done
+              if [ "$(echo "$TOTAL_QPS > 0" | bc 2>/dev/null)" = "1" ] || [ "$TOTAL_QPS" != "0" ]; then
+                echo "  Total QPS: $TOTAL_QPS"
+              fi
+              if [ $((SAMPLE % 360)) -eq 0 ]; then
+                cp "$SOAK_LOG_R" "$SOAK_DIR/read_${ELAPSED}s.log" 2>/dev/null || true
+                cp "$SOAK_LOG_W" "$SOAK_DIR/write_${ELAPSED}s.log" 2>/dev/null || true
+                cp "$SOAK_LOG_O" "$SOAK_DIR/olap_${ELAPSED}s.log" 2>/dev/null || true
+                tar czf "$RESULTS_DIR/snapshot_${ELAPSED}s.tar.gz" \
+                  -C "$RESULTS_DIR" metrics.csv server.log watchdog.log errors.log soak 2>/dev/null || true
+              fi
+
+              echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
             fi
 
             sleep 60
           done
 
-          # ===== SYSBENCH CLEANUP =====
-          if [ -n "$SYSBENCH_PIDS" ]; then
-            echo "[$(date -u)] Stopping sysbench (PIDs: $SYSBENCH_PIDS)"
-            for pid in $SYSBENCH_PIDS; do
+          ALL_GOOD=0
+          if [ $EARLY_FAIL -eq 0 ] && [ $FAILS -eq 0 ]; then
+            ALL_GOOD=1
+          fi
+
+          # ===== SOAK WORKER CLEANUP =====
+          if [ -n "$SOAK_PIDS" ]; then
+            echo "[$(date -u)] Stopping soak workers (PIDs: $SOAK_PIDS)"
+            for pid in $SOAK_PIDS; do
               kill -TERM "$pid" 2>/dev/null || true
             done
             sleep 3
-            for pid in $SYSBENCH_PIDS; do
+            for pid in $SOAK_PIDS; do
               kill -KILL "$pid" 2>/dev/null || true
             done
-            wait $SYSBENCH_PIDS 2>/dev/null || true
-            echo "[$(date -u)] Sysbench stopped"
-
-            # Cleanup sysbench tables
-            sysbench --db-driver=mysql --mysql-host=127.0.0.1 --mysql-port=$PORT --mysql-user=root --mysql-db=sbtest \
-              --tables=4 /usr/share/sysbench/oltp_read_write.lua cleanup \
-              > "$SYSBENCH_DIR/cleanup.log" 2>&1 || true
+            wait $SOAK_PIDS 2>/dev/null || true
+            echo "[$(date -u)] Soak workers stopped"
           fi
-
-
-          # Final report
+          # ===== FINAL REPORT =====
           echo ""; echo "=== 168h SOAK COMPLETE ==="
           TOTAL_SEC=$(( $(date +%s) - START_TS ))
-          echo "# 168h SOAK Report" > "$RESULTS_DIR/SOAK_168H_REPORT.md"
-          echo "- **Started**: $(date -d @$START_TS -u)" >> "$RESULTS_DIR/SOAK_168H_REPORT.md"
-          echo "- **Completed**: $(date -u)" >> "$RESULTS_DIR/SOAK_168H_REPORT.md"
-          echo "- **Wall time**: ${TOTAL_SEC}s ($((TOTAL_SEC/3600))h)" >> "$RESULTS_DIR/SOAK_168H_REPORT.md"
-          echo "- **Samples**: $SAMPLE" >> "$RESULTS_DIR/SOAK_168H_REPORT.md"
-          echo "- **Queries OK**: $QUERIES_OK  **Fail**: $FAILS" >> "$RESULTS_DIR/SOAK_168H_REPORT.md"
-          echo "" >> "$RESULTS_DIR/SOAK_168H_REPORT.md"
-          echo "## Resource Peaks" >> "$RESULTS_DIR/SOAK_168H_REPORT.md"
-          echo "- **RSS peak**: $(awk -F, 'NR>1 && \$3>m{m=\$3} END{print m}' "$METRICS") KB" >> "$RESULTS_DIR/SOAK_168H_REPORT.md"
-          echo "- **FD peak**: $(awk -F, 'NR>1 && \$4>m{m=\$4} END{print m}' "$METRICS")" >> "$RESULTS_DIR/SOAK_168H_REPORT.md"
-          echo "- **Threads peak**: $(awk -F, 'NR>1 && \$5>m{m=\$5} END{print m}' "$METRICS")" >> "$RESULTS_DIR/SOAK_168H_REPORT.md"
-          echo "- **WAL peak**: $(awk -F, 'NR>1 && \$6>m{m=\$6} END{print m}' "$METRICS") bytes" >> "$RESULTS_DIR/SOAK_168H_REPORT.md"
-          echo "" >> "$RESULTS_DIR/SOAK_168H_REPORT.md"
-          echo "## Sysbench OLTP" >> "$RESULTS_DIR/SOAK_168H_REPORT.md"
-          if [ -s "$SYSBENCH_DIR/oltp.log" ]; then
-            grep -E "(transactions|read/s|write/s|total time|avg:" "$SYSBENCH_DIR/oltp.log" \
-              >> "$RESULTS_DIR/SOAK_168H_REPORT.md" 2>/dev/null || true
-          fi
-          echo "" >> "$RESULTS_DIR/SOAK_168H_REPORT.md"
-          echo "## Sysbench OLAP (Range Scan)" >> "$RESULTS_DIR/SOAK_168H_REPORT.md"
-          if [ -s "$SYSBENCH_DIR/olap.log" ]; then
-            grep -E "(transactions|read/s|total time|avg:" "$SYSBENCH_DIR/olap.log" \
-              >> "$RESULTS_DIR/SOAK_168H_REPORT.md" 2>/dev/null || true
-          fi
+          printf '%s\n' \
+            "# 168h SOAK Report" \
+            "" \
+            "- **Commit**: ${{ gitea.sha }}" \
+            "- **Branch**: ${{ github.event.inputs.branch || 'develop/v3.9.0' }}" \
+            "- **Started**: $(date -d @$START_TS -u)" \
+            "- **Completed**: $(date -u)" \
+            "- **Wall time**: ${TOTAL_SEC}s ($((TOTAL_SEC/3600))h)" \
+            "- **Duration target**: ${HOURS}h" \
+            "- **Samples**: $SAMPLE" \
+            "- **Queries OK**: $QUERIES_OK  **Fail**: $FAILS" \
+            "- **Early failure**: $EARLY_FAIL" \
+            "- **All good**: $ALL_GOOD" \
+            "" \
+            "## Resource Metrics" \
+            "" \
+            "| Metric | Peak | Final |" \
+            "|--------|------|-------|" \
+            "| RSS | $(awk -F, 'NR>1 && \$3>m{m=\$3} END{print m}' "$METRICS") KB | $(tail -1 "$METRICS" | cut -d, -f3) KB |" \
+            "| FD | $(awk -F, 'NR>1 && \$4>m{m=\$4} END{print m}' "$METRICS") | $(tail -1 "$METRICS" | cut -d, -f4) |" \
+            "| Threads | $(awk -F, 'NR>1 && \$5>m{m=\$5} END{print m}' "$METRICS") | $(tail -1 "$METRICS" | cut -d, -f5) |" \
+            "| WAL | $(awk -F, 'NR>1 && \$6>m{m=\$6} END{print m}' "$METRICS") bytes | $(tail -1 "$METRICS" | cut -d, -f6) bytes |" \
+            "| CPU | $(awk -F, 'NR>1 && \$8>m{m=\$8} END{print m}' "$METRICS")% | $(tail -1 "$METRICS" | cut -d, -f8)% |" \
+            "" \
+            "## Throughput (soak workers)" \
+            "" \
+            "| Worker | Peak QPS | Total Queries |" \
+            "|--------|----------|--------------|" \
+            "| Read-heavy | $(awk -F, 'NR>1 && \$10>m{m=\$10} END{print m}' "$METRICS") | $(tail -1 "$METRICS" | cut -d, -f15) |" \
+            "| Write-mixed | $(awk -F, 'NR>1 && \$11>m{m=\$11} END{print m}' "$METRICS") | $(tail -1 "$METRICS" | cut -d, -f16) |" \
+            "| OLAP-scan | $(awk -F, 'NR>1 && \$12>m{m=\$12} END{print m}' "$METRICS") | $(tail -1 "$METRICS" | cut -d, -f17) |" \
+            "| Read2 (heavy) | $(awk -F, 'NR>1 && \$13>m{m=\$13} END{print m}' "$METRICS") | -- |" \
+            "| Write2 (heavy) | $(awk -F, 'NR>1 && \$14>m{m=\$14} END{print m}' "$METRICS") | -- |" \
+            "" \
+            "## Watchdog Log" \
+            "" \
+            "$(cat "$RESULTS_DIR/watchdog.log" 2>/dev/null || echo "(none)")" \
+            "" \
+            "## Server Log (last 30 lines)" \
+            "" \
+            "$(tail -30 "$RESULTS_DIR/server.log" 2>/dev/null)" \
+            > "$RESULTS_DIR/SOAK_168H_REPORT.md"
           cat "$RESULTS_DIR/SOAK_168H_REPORT.md"
+
+          # Exit with error if early failure was detected
+          [ $ALL_GOOD -eq 0 ] && exit 1 || exit 0
 
       - name: Upload results
         if: always()
         run: |
-          # cd to repo dir (same fallback as build step)
+          # cd to repo dir
           if [ -d "$PWD/repo" ]; then
             cd "$PWD/repo"
           elif [ -d "$REPO" ]; then
             cd "$REPO"
           fi
           echo "Upload from: $(pwd)"
-          tar -czf /tmp/soak-168h-results.tar.gz \
-            -C results/soak-168h .
-          echo "Results: $(ls -lh /tmp/soak-168h-results.tar.gz)"
-          echo ""
-          echo "=== Metrics (tail 5) ==="
-          tail -5 results/soak-168h/metrics.csv 2>/dev/null || true
-          echo ""
-          echo "=== Server log (tail 20) ==="
-          tail -20 results/soak-168h/server.log 2>/dev/null || true
-          echo ""
-          echo "=== Sysbench OLTP (tail 15) ==="
-          tail -15 results/soak-168h/sysbench/oltp.log 2>/dev/null || echo "(sysbench not available)"
-          echo ""
-          echo "=== Sysbench OLAP Range-Scan (tail 15) ==="
-          tail -15 results/soak-168h/sysbench/olap.log 2>/dev/null || true
+
+          if [ -f results/soak-168h/metrics.csv ]; then
+            tar -czf /tmp/soak-168h-results.tar.gz \
+              -C results/soak-168h .
+            echo "Results archive: $(ls -lh /tmp/soak-168h-results.tar.gz)"
+
+            echo ""
+            echo "=== Metrics (tail 10) ==="
+            tail -10 results/soak-168h/metrics.csv 2>/dev/null || true
+
+            echo ""
+            echo "=== Server log (tail 20) ==="
+            tail -20 results/soak-168h/server.log 2>/dev/null || true
+          else
+            echo "No results found — SOAK step may have failed early"
+          fi
