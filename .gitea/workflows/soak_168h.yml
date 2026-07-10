@@ -37,11 +37,11 @@ jobs:
     steps:
       - name: Checkout
         run: |
-          BRANCH="${{ github.event.inputs.branch || 'develop/v3.9.0' }}"
-          git clone --depth=1 --branch "$BRANCH" \
+          BRANCH="${{ github.event.inputs.branch }}"
+          git clone --depth=1 --branch "${BRANCH:-develop/v3.9.0}" \
             "http://192.168.0.252:3000/openclaw/sqlrustgo" repo
           cd repo
-          echo "Checked out $(git rev-parse HEAD) on $BRANCH"
+          echo "Checked out $(git rev-parse HEAD) on ${BRANCH:-develop/v3.9.0}"
           echo "REPO=$PWD" >> $GITHUB_ENV
 
       - name: Build
@@ -53,6 +53,10 @@ jobs:
           ls -lh target/release/sqlrustgo-mysql-server target/release/sqlrustgo target/release/sqlrustgo-soak
 
       - name: Run SOAK
+        env:
+          INPUT_HOURS: ${{ github.event.inputs.hours }}
+          INPUT_LOAD: ${{ github.event.inputs.load_profile }}
+          INPUT_SEG: ${{ github.event.inputs.segment }}
         run: |
           cd repo
           set -euo pipefail
@@ -61,10 +65,10 @@ jobs:
           CLI_BIN="$PWD/target/release/sqlrustgo"
           SOAK_BIN="$PWD/target/release/sqlrustgo-soak"
           PORT=3397
-          # Note: Gitea Actions env: vars do NOT expand ${{ }} — reference inputs directly
-          MINUTES="${{ github.event.inputs.hours || '60' }}"
-          LOAD_PROFILE="${{ github.event.inputs.load_profile || 'standard' }}"
-          SEG_NUM="${{ github.event.inputs.segment || '1' }}"
+          # Use env vars passed from step env: (Gitea expands ${{ }} before passing to step)
+          MINUTES="${INPUT_HOURS:-60}"
+          LOAD_PROFILE="${INPUT_LOAD:-standard}"
+          SEG_NUM="${INPUT_SEG:-1}"
           DATA_DIR="$PWD/data/soak-seg${SEG_NUM}"
           RESULTS_DIR="$PWD/results/soak-seg${SEG_NUM}"
           rm -rf "$DATA_DIR" "$RESULTS_DIR"
@@ -240,8 +244,10 @@ jobs:
 
       - name: Upload results
         if: always()
+        env:
+          INPUT_SEG: ${{ github.event.inputs.segment }}
         run: |
-          SEG_NUM="${{ github.event.inputs.segment || '1' }}"
+          SEG_NUM="${INPUT_SEG:-1}"
           tar czf "soak-results-seg${SEG_NUM}.tar.gz" \
             -C results/soak-seg${SEG_NUM} . 2>/dev/null || echo "No results"
           ls -lh "soak-results-seg${SEG_NUM}.tar.gz"
