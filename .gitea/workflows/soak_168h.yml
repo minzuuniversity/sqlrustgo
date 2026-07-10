@@ -9,9 +9,9 @@ on:
         required: false
         default: 'develop/v3.9.0'
       hours:
-        description: 'Soak duration per segment (hours, max 2.5)'
+        description: 'Soak duration per segment in minutes (max 150)'
         required: false
-        default: '1'
+        default: '60'
       load_profile:
         description: 'Workload profile: "standard" (3 workers), "light" (1 worker), "heavy" (5 workers)'
         required: false
@@ -32,7 +32,7 @@ env:
 jobs:
   soak:
     runs-on: [hp-z6g4]
-    # Segment duration must be ≤ 2.5h (150 min) to stay within hermes-runner 3h container limit.
+    # Segment duration must be ≤ 150 min to stay within hermes-runner 3h container limit.
     timeout-minutes: 155
     steps:
       - name: Checkout
@@ -54,7 +54,7 @@ jobs:
 
       - name: Run SOAK
         env:
-          SEG_HOURS: ${{ github.event.inputs.hours || '1' }}
+          SEG_MINUTES: ${{ github.event.inputs.hours || '60' }}
           LOAD_PROFILE: ${{ github.event.inputs.load_profile || 'standard' }}
           SEG_NUM: ${{ github.event.inputs.segment || '1' }}
         run: |
@@ -65,13 +65,14 @@ jobs:
           CLI_BIN="$PWD/target/release/sqlrustgo"
           SOAK_BIN="$PWD/target/release/sqlrustgo-soak"
           PORT=3397
-          HOURS=$SEG_HOURS
+          # Use minutes as integer (avoids bash float arithmetic issues)
+          MINUTES=$SEG_MINUTES
           DATA_DIR="$PWD/data/soak-seg${SEG_NUM}"
           RESULTS_DIR="$PWD/results/soak-seg${SEG_NUM}"
           rm -rf "$DATA_DIR" "$RESULTS_DIR"
           mkdir -p "$DATA_DIR" "$RESULTS_DIR"
 
-          echo "=== SOAK Segment $SEG_NUM / Duration ${HOURS}h ==="
+          echo "=== SOAK Segment $SEG_NUM / Duration ${MINUTES}min ==="
 
           # ── Start server ──
           "$SERVER_BIN" serve \
@@ -133,8 +134,9 @@ jobs:
             > "$SOAK_DIR/queries_olap.sql"
 
           # ── Workers ──
-          SEG_DUR=$((HOURS * 3600))
-          echo "[$(date -u)] Starting workers (seg $SEG_NUM, ${SEG_DUR}s)"
+          # SEG_DUR in seconds (integer arithmetic — avoid bash float issues)
+          SEG_DUR=$(($MINUTES * 60))
+          echo "[$(date -u)] Starting workers (seg $SEG_NUM, ${SEG_DUR}s = ${MINUTES}min)"
 
           "$SOAK_BIN" soak --port "$PORT" --user root \
             --duration "$SEG_DUR" --rate 0 \
@@ -176,7 +178,7 @@ jobs:
           echo "Workers started: $PIDS"
 
           # ── Monitoring ──
-          END_TS=$(( $(date +%s) + SEG_DUR ))
+          END_TS=$(($(date +%s) + SEG_DUR))
           START_TS=$(date +%s)
           SAMPLE=0
           METRICS="$RESULTS_DIR/metrics.csv"
@@ -184,7 +186,7 @@ jobs:
           QUERIES_OK=0; FAILS=0; EARLY_FAIL=0
 
           while [ $(date +%s) -lt $END_TS ]; do
-            SAMPLE=$((SAMPLE + 1)); TS=$(date +%s); ELAPSED=$((TS - START_TS))
+            SAMPLE=$(($SAMPLE + 1)); TS=$(date +%s); ELAPSED=$(($TS - START_TS))
 
             if ! kill -0 $SERVER_PID 2>/dev/null; then
               echo "!!! SERVER DIED"; EARLY_FAIL=1; break
@@ -197,9 +199,9 @@ jobs:
             DISK=$(get_disk_kb)
 
             if echo "SELECT $SAMPLE" | "$CLI_BIN" soak --port "$PORT" --user root > /dev/null 2>&1; then
-              QUERIES_OK=$((QUERIES_OK + 1))
+              QUERIES_OK=$(($QUERIES_OK + 1))
             else
-              FAILS=$((FAILS + 1))
+              FAILS=$(($FAILS + 1))
             fi
 
             R_DATA=$(parse_soak_qps "$SOAK_DIR/read_worker.log" "r")
@@ -211,20 +213,20 @@ jobs:
 
             echo "$TS,$ELAPSED,$RSS,$FD,$THREADS,$WAL,$DISK,$QUERIES_OK,$R_QPS,$W_QPS,$O_QPS" >> "$METRICS"
 
-            # Watchdog
-            if [ $((SAMPLE % 10)) -eq 0 ]; then
-              RSS_MB=$((RSS / 1024))
+            # Watchdog every 10 samples (~10min)
+            if [ $(($SAMPLE % 10)) -eq 0 ]; then
+              RSS_MB=$(($RSS / 1024))
               if [ $RSS -gt 1048576 ]; then echo "WARN: RSS ${RSS_MB}MB > 1GB"; EARLY_FAIL=1; fi
               if [ $DISK -lt 1048576 ]; then echo "WARN: DISK < 1GB"; EARLY_FAIL=1; fi
-              if [ $FAILS -gt 0 ] && [ $((FAILS * 100 / (QUERIES_OK + FAILS + 1))) -gt 10 ]; then
+              if [ $FAILS -gt 0 ] && [ $(($FAILS * 100 / ($QUERIES_OK + $FAILS + 1))) -gt 10 ]; then
                 echo "WARN: ERROR RATE > 10%"; EARLY_FAIL=1; fi
             fi
 
             [ $EARLY_FAIL -eq 1 ] && break
 
             # Report every 10 samples (~10min)
-            if [ $((SAMPLE % 10)) -eq 0 ]; then
-              echo "[$(date -u)] seg=$SEG_NUM h=$((ELAPSED/3600)).$(((ELAPSED%3600)/60))m RSS=${RSS_MB:-0}MB FD=$FD THR=$THREADS Q_ok=$QUERIES_OK fails=$FAILS"
+            if [ $(($SAMPLE % 10)) -eq 0 ]; then
+              echo "[$(date -u)] seg=$SEG_NUM h=$(($ELAPSED/3600)).$((($ELAPSED%3600)/60))m RSS=${RSS_MB:-0}MB FD=$FD THR=$THREADS Q_ok=$QUERIES_OK fails=$FAILS"
             fi
 
             sleep 60
