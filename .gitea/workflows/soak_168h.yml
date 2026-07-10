@@ -28,11 +28,13 @@ env:
   CARGO_HTTP_TIMEOUT: 120
   CARGO_HTTP_RETRY: 5
   CARGO_REGISTRIES_CRATES_IO_PROTOCOL: sparse
+  SOAK_HOURS: ${{ github.event.inputs.hours }}
+  SOAK_LOAD: ${{ github.event.inputs.load_profile }}
+  SOAK_SEG: ${{ github.event.inputs.segment }}
 
 jobs:
   soak:
     runs-on: [hp-z6g4]
-    # Segment duration must be ≤ 150 min to stay within hermes-runner 3h container limit.
     timeout-minutes: 155
     steps:
       - name: Checkout
@@ -53,10 +55,6 @@ jobs:
           ls -lh target/release/sqlrustgo-mysql-server target/release/sqlrustgo target/release/sqlrustgo-soak
 
       - name: Run SOAK
-        env:
-          INPUT_HOURS: ${{ github.event.inputs.hours }}
-          INPUT_LOAD: ${{ github.event.inputs.load_profile }}
-          INPUT_SEG: ${{ github.event.inputs.segment }}
         run: |
           cd repo
           set -euo pipefail
@@ -65,10 +63,10 @@ jobs:
           CLI_BIN="$PWD/target/release/sqlrustgo"
           SOAK_BIN="$PWD/target/release/sqlrustgo-soak"
           PORT=3397
-          # Use env vars passed from step env: (Gitea expands ${{ }} before passing to step)
-          MINUTES="${INPUT_HOURS:-60}"
-          LOAD_PROFILE="${INPUT_LOAD:-standard}"
-          SEG_NUM="${INPUT_SEG:-1}"
+          # Read from job-level env vars set above (Gitea expands ${{ }} in job env:)
+          MINUTES="${SOAK_HOURS:-60}"
+          LOAD_PROFILE="${SOAK_LOAD:-standard}"
+          SEG_NUM="${SOAK_SEG:-1}"
           DATA_DIR="$PWD/data/soak-seg${SEG_NUM}"
           RESULTS_DIR="$PWD/results/soak-seg${SEG_NUM}"
           rm -rf "$DATA_DIR" "$RESULTS_DIR"
@@ -76,7 +74,6 @@ jobs:
 
           echo "=== SOAK Segment $SEG_NUM / Duration ${MINUTES}min ==="
 
-          # ── Start server ──
           "$SERVER_BIN" serve \
             --port "$PORT" \
             --data-dir "$DATA_DIR" \
@@ -97,7 +94,6 @@ jobs:
 
           echo "CREATE DATABASE IF NOT EXISTS sbtest" | "$CLI_BIN" soak --port "$PORT" --user root || true
 
-          # ── Metrics helpers ──
           get_rss_kb() { ps -o rss= -p $1 2>/dev/null | tr -d ' ' || echo 0; }
           get_fd_count() { ls /proc/$1/fd 2>/dev/null | wc -l || echo 0; }
           get_thread_count() { ps -o nlwp= -p $1 2>/dev/null | tr -d ' ' || echo 0; }
@@ -112,7 +108,6 @@ jobs:
             echo "$2:${q:-0}:${p:-0}"
           }
 
-          # ── Query batch files ──
           SOAK_DIR="$RESULTS_DIR/soak"
           mkdir -p "$SOAK_DIR"
           printf '%s\n' \
@@ -135,8 +130,6 @@ jobs:
             'SELECT AVG(k) AS avg_k, MIN(id), MAX(id), COUNT(*) FROM sbtest.sbtest1' \
             > "$SOAK_DIR/queries_olap.sql"
 
-          # ── Workers ──
-          # SEG_DUR in seconds (integer arithmetic — avoid bash float issues)
           SEG_DUR=$(($MINUTES * 60))
           echo "[$(date -u)] Starting workers (seg $SEG_NUM, ${SEG_DUR}s = ${MINUTES}min)"
 
@@ -179,7 +172,6 @@ jobs:
 
           echo "Workers started: $PIDS"
 
-          # ── Monitoring ──
           END_TS=$(($(date +%s) + SEG_DUR))
           START_TS=$(date +%s)
           SAMPLE=0
@@ -215,7 +207,6 @@ jobs:
 
             echo "$TS,$ELAPSED,$RSS,$FD,$THREADS,$WAL,$DISK,$QUERIES_OK,$R_QPS,$W_QPS,$O_QPS" >> "$METRICS"
 
-            # Watchdog every 10 samples (~10min)
             if [ $(($SAMPLE % 10)) -eq 0 ]; then
               RSS_MB=$(($RSS / 1024))
               if [ $RSS -gt 1048576 ]; then echo "WARN: RSS ${RSS_MB}MB > 1GB"; EARLY_FAIL=1; fi
@@ -226,7 +217,6 @@ jobs:
 
             [ $EARLY_FAIL -eq 1 ] && break
 
-            # Report every 10 samples (~10min)
             if [ $(($SAMPLE % 10)) -eq 0 ]; then
               echo "[$(date -u)] seg=$SEG_NUM h=$(($ELAPSED/3600)).$((($ELAPSED%3600)/60))m RSS=${RSS_MB:-0}MB FD=$FD THR=$THREADS Q_ok=$QUERIES_OK fails=$FAILS"
             fi
@@ -234,7 +224,6 @@ jobs:
             sleep 60
           done
 
-          # ── Cleanup ──
           for pid in $PIDS; do kill -TERM $pid 2>/dev/null || true; done
           sleep 3
           for pid in $PIDS; do kill -KILL $pid 2>/dev/null || true; done
@@ -244,10 +233,8 @@ jobs:
 
       - name: Upload results
         if: always()
-        env:
-          INPUT_SEG: ${{ github.event.inputs.segment }}
         run: |
-          SEG_NUM="${INPUT_SEG:-1}"
+          SEG_NUM="${SOAK_SEG:-1}"
           tar czf "soak-results-seg${SEG_NUM}.tar.gz" \
             -C results/soak-seg${SEG_NUM} . 2>/dev/null || echo "No results"
           ls -lh "soak-results-seg${SEG_NUM}.tar.gz"
