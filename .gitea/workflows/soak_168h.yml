@@ -53,10 +53,6 @@ jobs:
           ls -lh target/release/sqlrustgo-mysql-server target/release/sqlrustgo target/release/sqlrustgo-soak
 
       - name: Run SOAK
-        env:
-          SEG_MINUTES: ${{ github.event.inputs.hours || '60' }}
-          LOAD_PROFILE: ${{ github.event.inputs.load_profile || 'standard' }}
-          SEG_NUM: ${{ github.event.inputs.segment || '1' }}
         run: |
           cd repo
           set -euo pipefail
@@ -65,8 +61,10 @@ jobs:
           CLI_BIN="$PWD/target/release/sqlrustgo"
           SOAK_BIN="$PWD/target/release/sqlrustgo-soak"
           PORT=3397
-          # Use minutes as integer (avoids bash float arithmetic issues)
-          MINUTES=$SEG_MINUTES
+          # Note: Gitea Actions env: vars do NOT expand ${{ }} — reference inputs directly
+          MINUTES="${{ github.event.inputs.hours || '60' }}"
+          LOAD_PROFILE="${{ github.event.inputs.load_profile || 'standard' }}"
+          SEG_NUM="${{ github.event.inputs.segment || '1' }}"
           DATA_DIR="$PWD/data/soak-seg${SEG_NUM}"
           RESULTS_DIR="$PWD/results/soak-seg${SEG_NUM}"
           rm -rf "$DATA_DIR" "$RESULTS_DIR"
