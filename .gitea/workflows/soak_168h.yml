@@ -28,18 +28,26 @@ env:
   CARGO_HTTP_TIMEOUT: 120
   CARGO_HTTP_RETRY: 5
   CARGO_REGISTRIES_CRATES_IO_PROTOCOL: sparse
-  SOAK_HOURS: ${{ github.event.inputs.hours }}
-  SOAK_LOAD: ${{ github.event.inputs.load_profile }}
-  SOAK_SEG: ${{ github.event.inputs.segment }}
 
 jobs:
   soak:
     runs-on: [hp-z6g4]
     timeout-minutes: 155
     steps:
+      - name: Write inputs file
+        run: |
+          # Write inputs to a file so subsequent steps can read them
+          # without needing Gitea expression interpolation
+          mkdir -p "$GITHUB_OUTPUT"
+          echo "SOAK_HOURS=${{ github.event.inputs.hours }}" >> "$GITHUB_OUTPUT"
+          echo "SOAK_LOAD=${{ github.event.inputs.load_profile }}" >> "$GITHUB_OUTPUT"
+          echo "SOAK_SEG=${{ github.event.inputs.segment }}" >> "$GITHUB_OUTPUT"
+          echo "BRANCH=${{ github.event.inputs.branch }}" >> "$GITHUB_OUTPUT"
+          echo "Wrote inputs: hours=${{ github.event.inputs.hours }}, load=${{ github.event.inputs.load_profile }}, seg=${{ github.event.inputs.segment }}"
+
       - name: Checkout
         run: |
-          BRANCH="${{ github.event.inputs.branch }}"
+          source "$GITHUB_OUTPUT"
           git clone --depth=1 --branch "${BRANCH:-develop/v3.9.0}" \
             "http://192.168.0.252:3000/openclaw/sqlrustgo" repo
           cd repo
@@ -59,11 +67,11 @@ jobs:
           cd repo
           set -euo pipefail
 
+          source "$GITHUB_OUTPUT"
           SERVER_BIN="$PWD/target/release/sqlrustgo-mysql-server"
           CLI_BIN="$PWD/target/release/sqlrustgo"
           SOAK_BIN="$PWD/target/release/sqlrustgo-soak"
           PORT=3397
-          # Read from job-level env vars set above (Gitea expands ${{ }} in job env:)
           MINUTES="${SOAK_HOURS:-60}"
           LOAD_PROFILE="${SOAK_LOAD:-standard}"
           SEG_NUM="${SOAK_SEG:-1}"
@@ -234,6 +242,7 @@ jobs:
       - name: Upload results
         if: always()
         run: |
+          source "$GITHUB_OUTPUT"
           SEG_NUM="${SOAK_SEG:-1}"
           tar czf "soak-results-seg${SEG_NUM}.tar.gz" \
             -C results/soak-seg${SEG_NUM} . 2>/dev/null || echo "No results"
