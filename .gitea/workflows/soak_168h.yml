@@ -36,18 +36,19 @@ jobs:
     steps:
       - name: Write inputs file
         run: |
-          # Write inputs to a file so subsequent steps can read them
-          # without needing Gitea expression interpolation
-          mkdir -p "$GITHUB_OUTPUT"
-          echo "SOAK_HOURS=${{ github.event.inputs.hours }}" >> "$GITHUB_OUTPUT"
-          echo "SOAK_LOAD=${{ github.event.inputs.load_profile }}" >> "$GITHUB_OUTPUT"
-          echo "SOAK_SEG=${{ github.event.inputs.segment }}" >> "$GITHUB_OUTPUT"
-          echo "BRANCH=${{ github.event.inputs.branch }}" >> "$GITHUB_OUTPUT"
+          # Write inputs to a file — GITHUB_OUTPUT is not available in hermes-runner Docker
+          # format() expansion works here since it's a simple echo (no complex syntax)
+          INPUTS_FILE="/tmp/soak_inputs.sh"
+          echo "SOAK_HOURS=${{ github.event.inputs.hours }}" > "$INPUTS_FILE"
+          echo "SOAK_LOAD=${{ github.event.inputs.load_profile }}" >> "$INPUTS_FILE"
+          echo "SOAK_SEG=${{ github.event.inputs.segment }}" >> "$INPUTS_FILE"
+          echo "BRANCH=${{ github.event.inputs.branch }}" >> "$INPUTS_FILE"
           echo "Wrote inputs: hours=${{ github.event.inputs.hours }}, load=${{ github.event.inputs.load_profile }}, seg=${{ github.event.inputs.segment }}"
 
       - name: Checkout
         run: |
-          source "$GITHUB_OUTPUT"
+          INPUTS_FILE="/tmp/soak_inputs.sh"
+          source "$INPUTS_FILE"
           git clone --depth=1 --branch "${BRANCH:-develop/v3.9.0}" \
             "http://192.168.0.252:3000/openclaw/sqlrustgo" repo
           cd repo
@@ -67,7 +68,8 @@ jobs:
           cd repo
           set -euo pipefail
 
-          source "$GITHUB_OUTPUT"
+          INPUTS_FILE="/tmp/soak_inputs.sh"
+          source "$INPUTS_FILE"
           SERVER_BIN="$PWD/target/release/sqlrustgo-mysql-server"
           CLI_BIN="$PWD/target/release/sqlrustgo"
           SOAK_BIN="$PWD/target/release/sqlrustgo-soak"
@@ -242,7 +244,8 @@ jobs:
       - name: Upload results
         if: always()
         run: |
-          source "$GITHUB_OUTPUT"
+          INPUTS_FILE="/tmp/soak_inputs.sh"
+          source "$INPUTS_FILE"
           SEG_NUM="${SOAK_SEG:-1}"
           tar czf "soak-results-seg${SEG_NUM}.tar.gz" \
             -C results/soak-seg${SEG_NUM} . 2>/dev/null || echo "No results"
