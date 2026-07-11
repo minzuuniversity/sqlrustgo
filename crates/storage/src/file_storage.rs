@@ -2488,6 +2488,50 @@ impl StorageEngine for FileStorage {
         }
         Ok(rows)
     }
+    fn parallel_scan(
+        &self,
+        table: &str,
+        num_partitions: usize,
+    ) -> SqlResult<Vec<Box<dyn Iterator<Item = Record> + Send>>> {
+        // FileStorage caches all rows in memory (self.tables), so the
+        // parallel_scan implementation mirrors MemoryStorage: partition
+        // the cached row set into N iterators.
+        //
+        // For true disk-level parallelism (each worker reading a different
+        // file offset), the file format would need to expose row offsets
+        // via get_partition_boundaries(). The current on-disk format stores
+        // rows in a length-prefixed binary format, so row-level seek is
+        // possible but requires iterating from the start to find partition
+        // boundaries. A future optimization can add that.
+        let mut rows: Vec<Record> = self
+            .get_table(table)
+            .map(|data| data.rows.clone())
+            .unwrap_or_default();
+        // F-09 fix: merge insert_buffer for same-tx visibility
+        if let Some(buffered) = self.insert_buffer.get(table) {
+            rows.extend(buffered.iter().cloned());
+        }
+
+        let total = rows.len();
+        if total == 0 || num_partitions == 0 {
+            return Ok(vec![]);
+        }
+        let num_partitions = num_partitions.min(total);
+        let base = total / num_partitions;
+        let rem = total % num_partitions;
+        let mut partitions: Vec<Box<dyn Iterator<Item = Record> + Send>> =
+            Vec::with_capacity(num_partitions);
+        let mut cur = 0;
+        for i in 0..num_partitions {
+            let size = if i < rem { base + 1 } else { base };
+            if size > 0 {
+                let partition: Vec<Record> = rows[cur..cur + size].to_vec();
+                partitions.push(Box::new(partition.into_iter()));
+            }
+            cur += size;
+        }
+        Ok(partitions)
+    }
 
     fn insert(&mut self, table: &str, records: Vec<Record>) -> SqlResult<()> {
         // PR-842: route inserts through the buffer when we are inside a
