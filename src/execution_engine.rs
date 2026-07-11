@@ -152,6 +152,18 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     fn base_with(storage: Arc<parking_lot::RwLock<S>>, cbo_enabled: bool) -> Self {
         // v3.10.0 Issue #3703: --executor-parallelism env var (default 1 = sequential)
         #[rustfmt::skip] let parallel_degree = std::env::var("SQLRUSTGO_EXECUTOR_PARALLELISM").ok().and_then(|s| s.parse::<usize>().ok()).filter(|n| *n >= 1).unwrap_or(1);
+        // DeepSeek review (2026-07-11): explicit global rayon pool init
+        // ensures the global pool's num_threads matches SQLRUSTGO_EXECUTOR_PARALLELISM,
+        // not the physical-CPU default. build_global() is idempotent — safe to call
+        // on every ExecutionEngine construction. If called before, this is a no-op.
+        // Capped at 16 to avoid overwhelming box.
+        let pool_threads = parallel_degree.clamp(1, 16);
+        if parallel_degree > 1 {
+            let _ = rayon::ThreadPoolBuilder::new()
+                .num_threads(pool_threads)
+                .thread_name(|i| format!("sqlrustgo-par-{i}"))
+                .build_global();
+        }
         Self {
             storage,
             catalog: None,
