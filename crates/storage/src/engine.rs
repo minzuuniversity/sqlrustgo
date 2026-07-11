@@ -1454,8 +1454,6 @@ mod tests {
 
     #[test]
     fn test_partition_rows_uneven_remainder() {
-        // 503_003 rows / 4 partitions: base=125_750, rem=3
-        // Expected chunks: [125751, 125751, 125751, 125750]
         let mut storage = MemoryStorage::new();
         storage.tables.insert(
             "t".to_string(),
@@ -1477,5 +1475,335 @@ mod tests {
         let parts = storage.partition_rows("does_not_exist", 4);
         assert_eq!(parts.len(), 1);
         assert!(parts[0].is_empty());
+        let info = PartitionInfo::new_range("id", vec![Value::Integer(10), Value::Integer(20)]);
+        assert_eq!(info.partition_type, PartitionType::Range);
+        assert_eq!(info.column, "id");
+    }
+
+    #[test]
+    fn test_partition_info_new_list() {
+        let info = PartitionInfo::new_list(
+            "region",
+            vec![Value::Text("US".into()), Value::Text("EU".into())],
+        );
+        assert_eq!(info.partition_type, PartitionType::List);
+    }
+
+    #[test]
+    fn test_partition_info_new_hash() {
+        let info = PartitionInfo::new_hash("id", 4);
+        assert_eq!(info.partition_type, PartitionType::Hash);
+        assert_eq!(info.boundaries, vec![Value::Integer(4)]);
+    }
+
+    #[test]
+    fn test_partition_range_index() {
+        let info = PartitionInfo::new_range("id", vec![Value::Integer(10), Value::Integer(20)]);
+        assert_eq!(info.get_partition_index(&Value::Integer(5)), Some(0));
+        assert_eq!(info.get_partition_index(&Value::Integer(15)), Some(1));
+        assert_eq!(info.get_partition_index(&Value::Integer(25)), Some(2));
+    }
+
+    #[test]
+    fn test_partition_range_invalid_value() {
+        let info = PartitionInfo::new_range("id", vec![Value::Integer(10)]);
+        assert_eq!(info.get_partition_index(&Value::Text("abc".into())), None);
+    }
+
+    #[test]
+    fn test_partition_list_match() {
+        let info = PartitionInfo::new_list(
+            "region",
+            vec![Value::Text("US".into()), Value::Text("EU".into())],
+        );
+        assert_eq!(info.get_partition_index(&Value::Text("US".into())), Some(0));
+        assert_eq!(info.get_partition_index(&Value::Text("EU".into())), Some(1));
+        assert_eq!(info.get_partition_index(&Value::Text("AS".into())), None);
+    }
+
+    #[test]
+    fn test_partition_hash_integer() {
+        let info = PartitionInfo::new_hash("id", 4);
+        let idx = info.get_partition_index(&Value::Integer(42));
+        assert!(idx.is_some());
+        assert!(idx.unwrap() < 4);
+    }
+
+    #[test]
+    fn test_partition_hash_text() {
+        let info = PartitionInfo::new_hash("name", 3);
+        let idx = info.get_partition_index(&Value::Text("test".into()));
+        assert!(idx.is_some());
+        assert!(idx.unwrap() < 3);
+    }
+
+    #[test]
+    fn test_partition_hash_invalid() {
+        let info = PartitionInfo::new_hash("id", 4);
+        assert_eq!(info.get_partition_index(&Value::Null), None);
+        assert_eq!(info.get_partition_index(&Value::Boolean(true)), None);
+    }
+
+    #[test]
+    fn test_evaluate_check_constraint_eq() {
+        let constraint = CheckConstraint {
+            name: Some("c1".into()),
+            expression: "x = 5".into(),
+        };
+        let cols = vec!["x".to_string()];
+        assert!(evaluate_check_constraint(&constraint, &cols, &vec![Value::Integer(5)]).unwrap());
+        assert!(!evaluate_check_constraint(&constraint, &cols, &vec![Value::Integer(10)]).unwrap());
+    }
+
+    #[test]
+    fn test_evaluate_check_constraint_and() {
+        let constraint = CheckConstraint {
+            name: Some("c1".into()),
+            expression: "x > 0 AND y < 100".into(),
+        };
+        let cols = vec!["x".into(), "y".into()];
+        assert!(evaluate_check_constraint(
+            &constraint,
+            &cols,
+            &vec![Value::Integer(5), Value::Integer(50)]
+        )
+        .unwrap());
+        assert!(!evaluate_check_constraint(
+            &constraint,
+            &cols,
+            &vec![Value::Integer(-1), Value::Integer(50)]
+        )
+        .unwrap());
+        assert!(!evaluate_check_constraint(
+            &constraint,
+            &cols,
+            &vec![Value::Integer(5), Value::Integer(150)]
+        )
+        .unwrap());
+    }
+
+    #[test]
+    fn test_evaluate_check_constraint_or() {
+        let constraint = CheckConstraint {
+            name: Some("c1".into()),
+            expression: "x = 0 OR y = 0".into(),
+        };
+        let cols = vec!["x".into(), "y".into()];
+        assert!(evaluate_check_constraint(
+            &constraint,
+            &cols,
+            &vec![Value::Integer(0), Value::Integer(50)]
+        )
+        .unwrap());
+        assert!(evaluate_check_constraint(
+            &constraint,
+            &cols,
+            &vec![Value::Integer(5), Value::Integer(0)]
+        )
+        .unwrap());
+        assert!(!evaluate_check_constraint(
+            &constraint,
+            &cols,
+            &vec![Value::Integer(5), Value::Integer(50)]
+        )
+        .unwrap());
+    }
+
+    #[test]
+    fn test_evaluate_check_constraint_not() {
+        let constraint = CheckConstraint {
+            name: Some("c1".into()),
+            expression: "NOT x = 5".into(),
+        };
+        let cols = vec!["x".to_string()];
+        assert!(evaluate_check_constraint(&constraint, &cols, &vec![Value::Integer(10)]).unwrap());
+        assert!(!evaluate_check_constraint(&constraint, &cols, &vec![Value::Integer(5)]).unwrap());
+    }
+
+    #[test]
+    fn test_evaluate_check_constraint_is_null() {
+        let constraint = CheckConstraint {
+            name: Some("c1".into()),
+            expression: "x IS NULL".into(),
+        };
+        let cols = vec!["x".to_string()];
+        assert!(evaluate_check_constraint(&constraint, &cols, &vec![Value::Null]).unwrap());
+        assert!(!evaluate_check_constraint(&constraint, &cols, &vec![Value::Integer(0)]).unwrap());
+    }
+
+    #[test]
+    fn test_evaluate_check_constraint_column_missing() {
+        let constraint = CheckConstraint {
+            name: Some("c1".into()),
+            expression: "x IS NULL".into(),
+        };
+        let cols = vec![];
+        let rec = vec![];
+        assert!(evaluate_check_constraint(&constraint, &cols, &rec).is_ok());
+    }
+
+    #[test]
+    fn test_calculate_hash_simple() {
+        let h = calculate_hash(b"hello");
+        let h2 = calculate_hash(b"hello");
+        assert_eq!(h, h2);
+        let h3 = calculate_hash(b"world");
+        assert_ne!(h, h3);
+    }
+
+    #[test]
+    fn test_calculate_hash_empty() {
+        assert_eq!(calculate_hash(b""), 0);
+    }
+
+    #[test]
+    fn test_partition_type_eq() {
+        assert_eq!(PartitionType::Range, PartitionType::Range);
+        assert_ne!(PartitionType::Range, PartitionType::List);
+    }
+
+    #[test]
+    fn test_foreign_key_struct() {
+        let fk = ForeignKeyConstraint {
+            name: Some("fk1".into()),
+            columns: vec!["a".into()],
+            referenced_table: "b".into(),
+            referenced_columns: vec!["id".into()],
+            on_delete: None,
+            on_update: None,
+        };
+        assert_eq!(fk.referenced_table, "b");
+    }
+
+    #[test]
+    fn test_unique_constraint_struct() {
+        let uc = UniqueConstraint {
+            name: Some("uq1".into()),
+            columns: vec!["x".into(), "y".into()],
+        };
+        assert_eq!(uc.columns.len(), 2);
+    }
+
+    #[test]
+    fn test_check_constraint_struct() {
+        let cc = CheckConstraint {
+            name: Some("ck1".into()),
+            expression: "x > 0".into(),
+        };
+        assert_eq!(cc.name, Some("ck1".into()));
+        assert_eq!(cc.expression, "x > 0");
+    }
+
+    #[test]
+    fn test_column_definition_new() {
+        let cd = ColumnDefinition::new("age", "INTEGER");
+        assert_eq!(cd.name, "age");
+        assert_eq!(cd.data_type, "INTEGER");
+        assert!(!cd.nullable);
+        assert!(!cd.primary_key);
+    }
+
+    #[test]
+    fn test_row_mutation_accessors() {
+        let m = RowMutation::new(vec![(0, Value::Integer(1))], 42);
+        assert_eq!(m.assignments().len(), 1);
+        assert_eq!(m.mutation_hash(), 42);
+    }
+
+    #[test]
+    fn test_trigger_info_struct() {
+        let ti = TriggerInfo {
+            name: "trig1".into(),
+            table_name: "users".into(),
+            timing: TriggerTiming::Before,
+            event: TriggerEvent::Insert,
+            body: "BEGIN UPDATE stats SET count = count + 1; END".into(),
+        };
+        assert_eq!(ti.name, "trig1");
+        assert_eq!(ti.table_name, "users");
+    }
+
+    #[test]
+    fn test_table_data_default() {
+        let mut s = MemoryStorage::new();
+        let info = TableInfo {
+            name: "t".into(),
+            ..Default::default()
+        };
+        s.create_table(&info).unwrap();
+        assert!(s.has_table("t"));
+    }
+
+    #[test]
+    fn test_storage_engine_force_insert() {
+        let mut s = MemoryStorage::new();
+        s.force_insert("t", vec![Value::Integer(1)]).unwrap();
+        let rows = s.scan("t").unwrap();
+        assert_eq!(rows.len(), 1);
+    }
+
+    #[test]
+    fn test_storage_engine_modify_column_unsupported() {
+        let mut s = MemoryStorage::new();
+        let col = ColumnDefinition::new("a", "INTEGER");
+        let result = s.modify_column("t", "a", col);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_storage_engine_get_trigger_none() {
+        let s = MemoryStorage::new();
+        assert!(s.get_trigger("nonexistent").is_none());
+    }
+
+    #[test]
+    fn test_storage_engine_list_triggers_empty() {
+        let s = MemoryStorage::new();
+        assert!(s.list_triggers("t").is_empty());
+    }
+
+    #[test]
+    fn test_storage_engine_list_indexes_empty() {
+        let s = MemoryStorage::new();
+        assert!(s.list_indexes("t").is_empty());
+    }
+
+    #[test]
+    fn test_storage_engine_has_view_false() {
+        let s = MemoryStorage::new();
+        assert!(!s.has_view("v"));
+    }
+
+    #[test]
+    fn test_storage_engine_transaction() {
+        let mut s = MemoryStorage::new();
+        assert!(!s.in_transaction());
+        assert_eq!(s.current_tx_id(), 0);
+        let id = s.begin_transaction().unwrap();
+        assert_eq!(id, 1);
+        assert!(s.in_transaction());
+        s.commit_transaction().unwrap();
+        assert!(!s.in_transaction());
+    }
+
+    #[test]
+    fn test_storage_engine_begin_rollback() {
+        let mut s = MemoryStorage::new();
+        let id = s.begin_transaction().unwrap();
+        s.rollback_transaction().unwrap();
+        assert_eq!(id, 1);
+        assert!(!s.in_transaction());
+    }
+
+    #[test]
+    fn test_storage_engine_set_current_tx_id() {
+        let mut s = MemoryStorage::new();
+        s.set_current_tx_id(42);
+    }
+
+    #[test]
+    fn test_storage_engine_flush() {
+        let mut s = MemoryStorage::new();
+        s.flush().unwrap();
     }
 }
