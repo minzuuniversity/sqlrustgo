@@ -100,7 +100,7 @@ Phase 1 (PR #3739) is **READY for review/merge** when:
 - ✅ All 7.1-7.2 checks PASS
 - ✅ CLI flag + env var + feature gate wired end-to-end
 - ✅ Zero regression (default build, 25 lib tests, ALPHA gate)
-- ⏳ Section 2 (plan-level wiring) deferred to follow-up PR `feat/issue-3703-parallel-scan-exec`
+- ✅ Section 2 (plan-level wiring) — PR #3752 merged to develop/v3.10.0 (commit 2dcadb9e0809)
 
 Full Phase 1 acceptance is **READY for v3.10.0 RC** when:
 - ⏳ 22/22 TPC-H cell-level match verified (deferred)
