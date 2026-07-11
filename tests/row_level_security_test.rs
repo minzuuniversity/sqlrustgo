@@ -77,7 +77,7 @@ impl PolicyCatalog {
     }
 
     pub fn drop_policy(&self, table: &str, policy_name: &str) -> bool {
-        let mut policies = self.policies.write().unwrap();
+        let mut policies = self.policies.write();
         if let Some(vec) = policies.get_mut(table) {
             let before = vec.len();
             vec.retain(|p| p.name != policy_name);
@@ -89,21 +89,18 @@ impl PolicyCatalog {
     pub fn enable_rls(&self, table: &str) {
         self.rls_enabled
             .write()
-            .unwrap()
             .insert(table.to_string(), true);
     }
 
     pub fn disable_rls(&self, table: &str) {
         self.rls_enabled
             .write()
-            .unwrap()
             .insert(table.to_string(), false);
     }
 
     pub fn is_rls_enabled(&self, table: &str) -> bool {
         self.rls_enabled
             .read()
-            .unwrap()
             .get(table)
             .copied()
             .unwrap_or(false)
@@ -112,7 +109,6 @@ impl PolicyCatalog {
     pub fn get_policies(&self, table: &str) -> Vec<Policy> {
         self.policies
             .read()
-            .unwrap()
             .get(table)
             .cloned()
             .unwrap_or_default()
