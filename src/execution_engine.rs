@@ -1367,6 +1367,9 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             AlterTableOperation::RenameTo { new_name } => {
                 storage.rename_table(&alter.table_name, new_name)?;
             }
+            AlterTableOperation::RenameColumn { name, new_name } => {
+                storage.rename_column(&alter.table_name, name, new_name)?;
+            }
         }
 
         Ok(ExecutorResult::empty())
