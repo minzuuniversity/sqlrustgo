@@ -255,7 +255,6 @@ fn order_by_inside_union_branches() {
 // ---------------------------------------------------------------------------
 
 #[test]
-#[ignore = "INTERSECT not yet implemented in parser (no Statement::Intersect variant). Tracked for follow-up."]
 fn intersect_returns_common_rows() {
     let mut e = fresh();
     e.execute("CREATE TABLE i1 (v INTEGER)").unwrap();
@@ -274,7 +273,6 @@ fn intersect_returns_common_rows() {
 // ---------------------------------------------------------------------------
 
 #[test]
-#[ignore = "EXCEPT not yet implemented in parser (no Statement::Except variant). Tracked for follow-up."]
 fn except_returns_left_minus_right() {
     let mut e = fresh();
     e.execute("CREATE TABLE x1 (v INTEGER)").unwrap();
@@ -290,14 +288,9 @@ fn except_returns_left_minus_right() {
 }
 
 // ---------------------------------------------------------------------------
-// ORDER BY / LIMIT applied AFTER a top-level UNION.
-//
-// Parser limitation: UnionStatement has no order_by/limit fields.
-// When extended, change to a real assertion and remove the ignore.
-// ---------------------------------------------------------------------------
-
+// ORDER BY / LIMIT applied AFTER a top-level UNION (V310-06 PR2 / Issue #3723 C-2c).
+// Parser now lifts trailing ORDER BY/LIMIT/OFFSET onto UnionStatement.
 #[test]
-#[ignore = "ORDER BY/LIMIT after top-level UNION not supported. UnionStatement lacks order_by/limit fields. Workaround: wrap UNION in subquery."]
 fn order_by_after_top_level_union() {
     let mut e = fresh();
     e.execute("CREATE TABLE lo1 (v INTEGER)").unwrap();
