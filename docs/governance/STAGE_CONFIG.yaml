@@ -81,7 +81,13 @@ stages:
       - "docs/releases/v{VER}/RELEASE_NOTES.md"
       - "docs/releases/v{VER}/STAGE.yaml"
     required_gates:
-      - "scripts/gate/check_alpha.sh"
+      # 2026-07-11: v3.10.0 uses check_alpha_v310.sh (per-version gate following
+      # v3.8.0's check_alpha_v380.sh pattern). v2.9.0's check_alpha.sh is
+      # hardcoded with v2.9.0 paths and references crates that no longer exist
+      # (sqlrustgo-sql-corpus, verification_report.json, 28-file integration).
+      # Each version provides its own check_alpha_v{VER_short}.sh that
+      # references the version's own worktree paths and gate set.
+      - "scripts/gate/check_alpha_v{VER}.sh"
       - "scripts/gate/check_arch_invariants.sh"
       - "scripts/gate/check_arch3_no_bypass.sh"
       - "cargo build --all-features"

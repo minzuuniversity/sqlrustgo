@@ -141,28 +141,11 @@ pub struct ColumnStatistics {
 pub type MemoryExecutionEngine = ExecutionEngine<MemoryStorage>;
 
 impl<S: StorageEngine + 'static> ExecutionEngine<S> {
-    /// Create a new execution engine with CBO enabled by default
-    pub fn new(storage: Arc<parking_lot::RwLock<S>>) -> Self {
-        Self {
-            storage,
-            catalog: None,
-            stats: Arc::new(RwLock::new(ExecutionStats::default())),
-            cbo_enabled: true,
-            transaction_manager: TransactionManager::new(),
-            current_tx_id: None,
-            tx_status: TxStatus::Idle,
-            tx_readonly: false,
-            default_isolation: TmIsolationLevel::default(),
-            current_role: None,
-            checkpoint_manager: None,
-            parallel_degree: 1,
-            stmt_cache: sqlrustgo_cache::PreparedStatementCache::new(100),
-            views: HashMap::new(),
-        }
-    }
-
-    /// Create a new execution engine with CBO configuration
-    pub fn with_cbo(storage: Arc<parking_lot::RwLock<S>>, cbo_enabled: bool) -> Self {
+    /// Base initializer shared by all constructors.
+    /// Keeping the field list in one place prevents drift between `new` /
+    /// `with_cbo` / `with_catalog` (was historically a 1535-line violation
+    /// of C-ARCH-05 because the three ctors were spelled out separately).
+    fn base_with(storage: Arc<parking_lot::RwLock<S>>, cbo_enabled: bool) -> Self {
         Self {
             storage,
             catalog: None,
@@ -181,53 +164,45 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         }
     }
 
+    /// Create a new execution engine with CBO enabled by default
+    pub fn new(storage: Arc<parking_lot::RwLock<S>>) -> Self {
+        Self::base_with(storage, true)
+    }
+
+    /// Create a new execution engine with CBO configuration
+    pub fn with_cbo(storage: Arc<parking_lot::RwLock<S>>, cbo_enabled: bool) -> Self {
+        Self::base_with(storage, cbo_enabled)
+    }
+
     /// Create a new execution engine with a catalog
     pub fn with_catalog(
         storage: Arc<parking_lot::RwLock<S>>,
         catalog: Arc<parking_lot::RwLock<Catalog>>,
     ) -> Self {
-        Self {
-            storage,
-            catalog: Some(catalog),
-            stats: Arc::new(RwLock::new(ExecutionStats::default())),
-            cbo_enabled: true,
-            transaction_manager: TransactionManager::new(),
-            current_tx_id: None,
-            tx_status: TxStatus::Idle,
-            tx_readonly: false,
-            default_isolation: TmIsolationLevel::default(),
-            current_role: None,
-            checkpoint_manager: None,
-            parallel_degree: 1,
-            stmt_cache: sqlrustgo_cache::PreparedStatementCache::new(100),
-            views: HashMap::new(),
-        }
+        let mut e = Self::base_with(storage, true);
+        e.catalog = Some(catalog);
+        e
     }
 
     /// Check if CBO is enabled
     pub fn is_cbo_enabled(&self) -> bool {
         self.cbo_enabled
     }
-
     /// Enable or disable CBO
     pub fn set_cbo_enabled(&mut self, enabled: bool) {
         self.cbo_enabled = enabled;
     }
-
     pub fn parallel_degree(&self) -> usize {
         self.parallel_degree
     }
-
     pub fn set_parallel_degree(&mut self, degree: usize) {
         self.parallel_degree = degree.max(1);
     }
-
     pub fn build_parallel_executor(
         &self,
     ) -> sqlrustgo_executor::parallel_executor::ParallelVolcanoExecutor {
         sqlrustgo_executor::parallel_executor::ParallelVolcanoExecutor::new(self.parallel_degree)
     }
-
     /// Get table statistics for CBO
     pub fn get_table_stats(&self) -> Arc<parking_lot::RwLock<ExecutionStats>> {
         self.stats.clone()
@@ -273,8 +248,6 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         match self.storage.try_read() {
             Some(g) => g,
             None => {
-                // Try once; if contended, fall through to the blocking read.
-                // The parking_lot::RwLock is task-fair, preventing writer starvation.
                 log::debug!("storage_read: fell through to blocking read");
                 self.storage.read()
             }
@@ -282,9 +255,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     }
 
     /// Write-lock the storage with fair ordering.
-    /// Same philosophy as `storage_read`: no busy-wait, just one try
-    /// then blocking read. The FairRwLock guarantees the accept loop
-    /// write is not convoyed by reader accumulation.
+    /// Same philosophy as `storage_read`: no busy-wait, fair FIFO to prevent writer starvation.
     pub(crate) fn storage_write(&self) -> parking_lot::RwLockWriteGuard<'_, S> {
         match self.storage.try_write() {
             Some(g) => g,
@@ -295,18 +266,10 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         }
     }
 
-    /// Bulk-insert pre-parsed records directly into storage, bypassing
-    /// the SQL parser. This is the LOAD DATA LOCAL INFILE hot path: a
-    /// 60 000-row lineitem.tbl used to take >5 min because the previous
-    /// implementation built a single `INSERT INTO ... VALUES (...), (...), ...`
-    /// SQL string (~2 MB for lineitem) and ran it through `execute()`,
-    /// which re-parses the SQL every batch. With this method we hand the
-    /// pre-parsed `Vec<Record>` straight to `Storage::insert`, which
-    /// writes to the buffer pool + WAL in one go. Same transactional
-    /// guarantees as a SQL INSERT (auto-commit per call), but no parser,
-    /// no AST allocation, and no 2 MB string concatenation.
-    ///
-    /// Returns the number of rows inserted (== records.len() on success).
+    /// Bulk-insert pre-parsed records bypassing the SQL parser.
+    /// Hot path for LOAD DATA LOCAL INFILE: avoids 2MB SQL string round-trip
+    /// via `execute()` by handing the pre-parsed Vec<Record> directly to
+    /// `Storage::insert`. Same transactional guarantees as SQL INSERT.
     pub fn bulk_insert_records(
         &self,
         table: &str,
