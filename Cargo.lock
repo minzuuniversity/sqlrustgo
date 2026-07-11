@@ -4354,6 +4354,7 @@ version = "3.9.0"
 dependencies = [
  "log",
  "parking_lot",
+ "rayon",
  "reqwest",
  "serde",
  "serde_json",
