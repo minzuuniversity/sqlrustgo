@@ -44,6 +44,7 @@ fn mixed_workload_accept_loop_does_not_park_under_saturation() {
         bootstrap_sql: Vec::new(),
         bulk_insert_buffer_size: 1_048_576,
         server_threads: 16,
+        storage: None,
     };
     let handle = start_ephemeral(config).expect("start_ephemeral");
     let port = handle.port;
