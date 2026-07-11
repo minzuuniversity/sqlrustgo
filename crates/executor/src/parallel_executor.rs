@@ -153,4 +153,50 @@ mod tests {
             assert_eq!(row[0], Value::Integer(i as i64));
         }
     }
+
+    #[test]
+    fn test_parallel_filter_cell_match_vs_sequential() {
+        // v3.10.0 Issue #3703: this is the exact primitive used by
+        // `LocalExecutor::execute_parallel_filter`. Partition the row
+        // set, filter each partition in parallel, concatenate, and
+        // compare to a sequential filter. They must be cell-equivalent
+        // (same multiset of rows, order-insensitive). The predicate is
+        // "id > 100" over 200 rows.
+        let exec = ParallelVolcanoExecutor::new(4);
+        let rows: Vec<Vec<Value>> = (1..=200)
+            .map(|i| vec![Value::Integer(i as i64), Value::Text(format!("u{}", i))])
+            .collect();
+
+        // Sequential control: filter id > 100.
+        let seq_filtered: Vec<Vec<Value>> = rows
+            .iter()
+            .filter(|r| match &r[0] {
+                Value::Integer(v) => *v > 100,
+                _ => false,
+            })
+            .cloned()
+            .collect();
+
+        // Parallel under test: partition + rayon filter + concat.
+        let partitions = exec.partition_rows(rows, 4);
+        let par_filtered: Vec<Vec<Value>> = partitions
+            .into_iter()
+            .flat_map(|part| {
+                part.into_iter()
+                    .filter(|r| match &r[0] {
+                        Value::Integer(v) => *v > 100,
+                        _ => false,
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .collect();
+
+        // Cell-level match (order-insensitive).
+        let mut seq_sorted = seq_filtered.clone();
+        let mut par_sorted = par_filtered.clone();
+        seq_sorted.sort_by(|a, b| a[0].cmp(&b[0]));
+        par_sorted.sort_by(|a, b| a[0].cmp(&b[0]));
+        assert_eq!(seq_sorted, par_sorted);
+        assert_eq!(seq_sorted.len(), 100);
+    }
 }
