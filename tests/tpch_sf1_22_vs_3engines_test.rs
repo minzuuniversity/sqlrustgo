@@ -28,6 +28,13 @@ use std::time::{Duration, Instant};
 /// `scripts/generate_tpch_data.sh --sf 1 --backend dbgen`.
 const SF1_DIR: &str = "/tmp/tpch-sf1";
 
+/// BINT v2 (BinaryTableStorage) directory produced by
+/// `cargo run --bin tbl2bin -- <SF1_DIR> <BINT_DIR>`. When all 8
+/// `.bin` files are present, the test boots an ephemeral with
+/// `storage: Some("binary")` and skips LOAD DATA entirely
+/// (`BinaryTableStorage::new_with_data` mmaps the files in <1 s).
+const BINT_DIR: &str = "/tmp/tpch-sf1-bin";
+
 /// The sqlrustgo data dir. We deliberately point this at the same
 /// directory as `SF1_DIR` so the server's LOAD DATA whitelist
 /// (which requires the source file to live inside the data_dir)
@@ -135,6 +142,37 @@ fn json_data_ready() -> bool {
     true
 }
 
+/// True iff all 8 `.bin` (BINT v2) files are present at `BINT_DIR`
+/// with a valid BINT v2 header. The row-count check is deferred to
+/// the test itself (it uses the live `BinaryTableStorage` once
+/// `start_ephemeral` is up). A valid header is "BINT" magic + u32
+/// version = 2.
+fn bint_data_ready() -> bool {
+    const TABLES: &[&str] = &[
+        "region", "nation", "supplier", "customer", "part", "partsupp", "orders", "lineitem",
+    ];
+    let dir = Path::new(BINT_DIR);
+    for t in TABLES {
+        let p = dir.join(format!("{}.bin", t));
+        let Ok(mut f) = std::fs::File::open(&p) else {
+            return false;
+        };
+        use std::io::Read;
+        let mut header = [0u8; 8];
+        if f.read(&mut header).unwrap_or(0) != 8 {
+            return false;
+        }
+        if &header[..4] != b"BINT" {
+            return false;
+        }
+        let version = u32::from_le_bytes([header[4], header[5], header[6], header[7]]);
+        if version != 2 {
+            return false;
+        }
+    }
+    true
+}
+
 fn emit_skip_message() {
     eprintln!(
         "tpch_sf1_22_vs_3engines_test: SF=1.0 fixture not present at {}. \
@@ -155,50 +193,73 @@ fn tpch_sf1_22_in_process_regression() {
         return;
     }
 
-    // 1) Boot ephemeral server with persistent data dir.
-    let data_dir = Path::new(SQLRUSTGO_DATA_DIR);
-    std::fs::create_dir_all(data_dir).expect("create sqlrustgo data dir");
-
-    // Check if .json files already exist with correct data (from a
-    // previous run or external generation).  If so, skip the
-    // expensive LOAD DATA phase.  `FileStorage::new_with_wal` loads
-    // all .json files on startup; having them pre-generated means
-    // the server is ready in <1s instead of 30+ minutes.
-    let skip_load_data = json_data_ready();
-    if skip_load_data {
-        eprintln!("SF=1.0 .json files present with valid row counts — skipping LOAD DATA.");
+    // 1) Pick a backend. Three tiers, fastest first:
+    //    a) BINT v2 (`BinaryTableStorage` reading pre-generated `.bin`
+    //       files) — preferred; load is <1 s regardless of row count.
+    //    b) JSON row files already materialized by a prior
+    //       `FileStorage` + LOAD DATA run.
+    //    c) Cold: run LOAD DATA LOCAL INFILE from the `.tbl` fixture.
+    //
+    //    The BINT path is the only one that meets the spec's 10-minute
+    //    budget for SF=1.0 (6M-lineitem LOAD DATA via JSON serialization
+    //    is ~45 min and tails off the runner).
+    let use_bint = bint_data_ready();
+    let (data_dir, use_load_data): (std::path::PathBuf, bool) = if use_bint {
+        eprintln!("SF=1.0 .bin (BINT v2) ready at {BINT_DIR} — using BinaryTableStorage.");
+        (Path::new(BINT_DIR).to_path_buf(), false)
     } else {
-        // If the data dir already has a WAL, truncate it before
-        // `start_ephemeral` so recovery on startup stays fast (this
-        // matches what `start_sf01` / `start_sf001` do internally).
-        let wal = data_dir.join("sqlrustgo.wal");
-        if wal.exists() {
-            let _ = std::fs::OpenOptions::new()
-                .write(true)
-                .truncate(true)
-                .open(&wal);
+        let dir = Path::new(SQLRUSTGO_DATA_DIR).to_path_buf();
+        std::fs::create_dir_all(&dir).expect("create sqlrustgo data dir");
+        let json_ready = json_data_ready();
+        if json_ready {
+            eprintln!("SF=1.0 .json files present with valid row counts — skipping LOAD DATA.");
+        } else {
+            // Truncate any pre-existing WAL so recovery on startup stays fast,
+            // and remove stale .json from a prior partial LOAD DATA run
+            // (`FileStorage::new_with_wal` reads ALL .json on startup and
+            // blocks the accept loop while it does so).
+            let wal = dir.join("sqlrustgo.wal");
+            if wal.exists() {
+                let _ = std::fs::OpenOptions::new()
+                    .write(true)
+                    .truncate(true)
+                    .open(&wal);
+            }
+            let stale: Vec<_> = dir
+                .read_dir()
+                .expect("read sqlrustgo data dir")
+                .filter_map(|e| e.ok())
+                .filter(|e| e.path().extension().and_then(|s| s.to_str()) == Some("json"))
+                .collect();
+            for entry in stale {
+                std::fs::remove_file(&entry.path()).expect("remove stale .json file");
+            }
         }
+        (dir, !json_ready)
+    };
 
-        // Also remove any stale .json files from a previous partial
-        // LOAD DATA run.  `FileStorage::new_with_wal` reads ALL .json
-        // files in the data dir on startup (430 MB for 6 tables at
-        // SF=1.0), which blocks the accept loop.  Deleting them makes
-        // the server ready to accept connections in <1 s.
-        let data_entries: Vec<_> = data_dir
-            .read_dir()
-            .expect("read sqlrustgo data dir")
-            .filter_map(|e| e.ok())
-            .filter(|e| e.path().extension().and_then(|s| s.to_str()) == Some("json"))
+    // Build the EphemeralConfig. The BINT path needs `bootstrap_sql`
+    // to register the 8 TPC-H tables in the catalog (the storage
+    // itself only carries row data, not schema). The JSON / cold
+    // path keeps `bootstrap_tables: false` and registers schemas via
+    // `load_fixture` after connect (which also does the LOAD DATA).
+    let mut bootstrap_sql: Vec<String> = Vec::new();
+    let storage_backend: Option<String> = if use_bint {
+        bootstrap_sql = tpch_wire_harness::SCHEMA_DDL
+            .iter()
+            .map(|s| s.to_string())
             .collect();
-        for entry in data_entries {
-            std::fs::remove_file(&entry.path()).expect("remove stale .json file");
-        }
-    }
+        Some("binary".to_string())
+    } else {
+        None
+    };
 
     let config = EphemeralConfig {
-        data_dir: Some(data_dir.to_path_buf()),
+        data_dir: Some(data_dir.clone()),
         bootstrap_tables: false,
         bootstrap_users: true,
+        bootstrap_sql,
+        storage: storage_backend,
         ..Default::default()
     };
     let handle = start_ephemeral(config).expect("start_ephemeral");
@@ -210,12 +271,8 @@ fn tpch_sf1_22_in_process_regression() {
         )
         .expect("set_timeouts");
 
-    // 2) Load the SF=1.0 fixture (8 tables) — only when .json files
-    //    are NOT pre-generated.  When they ARE present, the server
-    //    has already loaded the data from .json files on startup.
-    if skip_load_data {
-        eprintln!("Using pre-generated .json data (skipping LOAD DATA).");
-    } else {
+    // 2) Cold-path LOAD DATA. Skipped when .bin or .json are pre-materialized.
+    if use_load_data {
         eprintln!("Loading SF=1.0 fixture (only required on first run) ...");
         tpch_wire_harness::load_fixture(&mut client, SF1_DIR);
         eprintln!("SF=1.0 fixture loaded.");

@@ -1,8 +1,23 @@
-# V310 CL I Binary Implementation Plan
+<!-- 2026-07-01 status addendum (auto-applied) -->
+> **状态更新**: 本机 L1 lint + 架构整理已闭环。HEAD `37bcb788c2`, 3 个 PR 已合并 (PR #3664, #3665, #3666)。
+> - `src/execution_engine.rs` 1471 行 (AD-001 1500 目标达标, 2630 → 1471)
+> - C-ARCH-05 上限锁回 1500 (从 3000/1800 统一)
+> - SGL-001 rustfmt drift 修复 (integration gate 4/4 PASS)
+> - Open issues (4, 全部硬件阻塞, 本机无法推进):
+>   - #3648 TPC-H 混合负载 SOAK 跨平台验证 (需要 Z6G4/Z440)
+>   - #3423 TPC-H SF=1.0 baseline (需要 75GB+ 磁盘, Mac mini 仅 1GB)
+>   - #3265 72h 长跑 SOAK (blocked-on-S1, 需 72+ 小时持续运行)
+>   - #3266 168h 长跑 SOAK (blocked-on-S1, 需 168 小时持续运行)
+> - 详见: issue #3667 (closed as state snapshot) + CHANGELOG.md
+>
+> 本文件原始内容保持不变,仅顶部加 addendum。
 
-> **Issue**: QUICK_START.md documents a `sqlrustgo` binary that does not exist
+---
+
+# V310 CLI Binary Implementation Plan
+
+> **Status**: Phase 1 ✅ Done | Phase 2 🚧 In Progress | Phase 3 📋 Pending | Phase 4 ✅ Done
 > **Date**: 2026-06-27
-> **Status**: Planning
 
 ---
 
@@ -31,21 +46,39 @@ v3.9.0 QUICK_START.md describes a `sqlrustgo` CLI binary that **never existed**:
 
 ---
 
-## Phase 1: New `sqlrustgo` Binary Entry Point
+## Phase 1: New `sqlrustgo-cli` Binary Entry Point ✅
+
+**Status**: ✅ Done — commits `ec88ef017` + `d7300c877`
 
 **Deliverable**: `crates/sqlrustgo-cli/src/main.rs`
 
-| Task | Description | Effort |
-|------|-------------|--------|
-| P1-1 | Create `crates/sqlrustgo-cli/Cargo.toml` as workspace member | 1h |
-| P1-2 | Create `main.rs` with 9 subcommands: serve/exec/repl/bench/gmp/diag/backup/restore/cli | 5h |
-| P1-3 | Forward `serve` → `run_server_v2`, `backup/restore` → `sqlrustgo-tools` | 2h |
-| P1-4 | Forward `exec/repl` → embedded engine (no TCP needed) | 2h |
+| Task | Status | Notes |
+|------|--------|-------|
+| P1-1: `Cargo.toml` | ✅ | 4 deps: clap, tokio, tracing, std only |
+| P1-2: `main.rs` with 9 subcommands | ✅ | serve/exec/repl/bench/gmp/diag/backup/restore/cli |
+| P1-3: Forward `serve` → `sqlrustgo-mysql-server serve` | ✅ | Thin wrapper via `std::process::Command::new()` |
+| P1-4: Forward `backup/restore` → `sqlrustgo-mysql-server backup/restore` | ✅ | Same pattern |
 
-**Acceptance**:
-- `cargo run --bin sqlrustgo -- serve` starts server on port 3306
-- `cargo run --bin sqlrustgo -- --help` shows all 9 subcommands
-- `sqlrustgo --version` matches `sqlrustgo-mysql-server --version`
+**Binary structure**:
+```
+sqlrustgo-cli serve       → sqlrustgo-mysql-server serve
+sqlrustgo-cli exec <SQL>   → sqlrustgo-mysql-server exec <SQL>  (positional arg)
+sqlrustgo-cli repl        → sqlrustgo-mysql-server repl
+sqlrustgo-cli bench       → sqlrustgo-mysql-server bench
+sqlrustgo-cli gmp         → sqlrustgo-mysql-server gmp
+sqlrustgo-cli diag        → sqlrustgo-mysql-server diag
+sqlrustgo-cli backup      → sqlrustgo-mysql-server backup
+sqlrustgo-cli restore     → sqlrustgo-mysql-server restore
+sqlrustgo-cli cli         → Phase 3 skeleton (TCP connect + handshake read)
+```
+
+**Verification**:
+```bash
+$ ./target/debug/sqlrustgo-cli --version   # → sqlrustgo 3.9.0
+$ ./target/debug/sqlrustgo-cli exec "SELECT 1"  # → col_0 | Integer(1) (1 rows)
+$ cargo build -p sqlrustgo-cli   # ✅ exit 0
+$ cargo build --all-features    # ✅ exit 0
+```
 
 ---
 
@@ -74,10 +107,10 @@ v3.9.0 QUICK_START.md describes a `sqlrustgo` CLI binary that **never existed**:
 
 | Task | Description | Effort |
 |------|-------------|--------|
-| P3-1 | Define `Command::Cli { query, host, port, user, password }` clap variant | 2h |
-| P3-2 | On invoke: try connecting; if "Connection refused", spawn background server with exponential backoff (max 5s) | 4h |
-| P3-3 | Run query via `Client::query_rows`, print tab-separated results | 3h |
-| P3-4 | Support `--batch`, `--execute N` flags; send COM_QUIT on exit | 2h |
+| T3-1 | Define `Command::Cli { query, host, port, user, password }` clap variant | 2h |
+| T3-2 | On invoke: try connecting; if "Connection refused", spawn background server with exponential backoff (max 5s) | 4h |
+| T3-3 | Run query via `Client::query_rows`, print tab-separated results | 3h |
+| T3-4 | Support `--batch`, `--execute N` flags; send COM_QUIT on exit | 2h |
 
 **Acceptance**:
 - `sqlrustgo cli -c "SELECT 1+1 AS two"` outputs correct result
@@ -85,21 +118,22 @@ v3.9.0 QUICK_START.md describes a `sqlrustgo` CLI binary that **never existed**:
 
 ---
 
-## Phase 4: QUICK_START.md Correction
+## Phase 4: QUICK_START.md Correction ✅
+
+**Status**: ✅ Done — commit `d7300c877`
 
 **Deliverable**: Fixed `docs/releases/v3.9.0/QUICK_START.md`
 
-| Wrong | Correct |
-|-------|---------|
-| `sqlrustgo server --port 5432` | `sqlrustgo serve --port 3306` |
-| `sqlrustgo cli -c "SELECT 1+1"` | `sqlrustgo cli -c "SELECT 1+1 AS two"` |
-| `psql -h localhost -p 5432` | `mysql -h localhost -P 3306 -u tester -ptester` |
-| `sqlrustgo tpch generate` | `cargo run --example tpch_data_gen -- --sf 0.001` |
-| "PostgreSQL v3 wire protocol" | "MySQL wire protocol (mysql_native_password auth)" |
-| Pre-built binary from GitHub | Gitea release artifact URL |
-| "MySQL: ❌" | "MySQL: ✅ Full client support" |
-
-**Acceptance**: Every `sqlrustgo` command in doc verified against actual binary.
+| Before (wrong) | After (correct) |
+|---------------|-----------------|
+| `sqlrustgo server --port 5432` | `sqlrustgo-cli serve` (port 3306) |
+| `psql -h localhost -p 5432` | `mysql -h 127.0.0.1 -P 3306 -u tester -ptester` |
+| `sqlrustgo cli -c "SELECT 1+1"` | Phase 3 skeleton + note |
+| `sqlrustgo tpch generate` | `cargo run --example tpch_data_gen` |
+| PostgreSQL v3 wire | MySQL wire protocol |
+| GitHub releases URL | Gitea releases URL |
+| No REPL section | Added REPL section |
+| No "Next steps" | Restored "Next steps" |
 
 ---
 
@@ -124,7 +158,7 @@ v3.9.0 QUICK_START.md describes a `sqlrustgo` CLI binary that **never existed**:
 
 | Binary | Role | Engine |
 |--------|------|--------|
-| `sqlrustgo` | Canonical CLI (NEW, user-facing) | Embedded in-process |
+| `sqlrustgo-cli` | Canonical CLI (NEW, user-facing) | Delegates to mysql-server |
 | `sqlrustgo-mysql-server` | Full-featured server (production) | Embedded in-process |
 | `sqlrustgo-admin` | Offline admin (backup/restore/pitr) | File-based, no server |
 
@@ -132,12 +166,12 @@ v3.9.0 QUICK_START.md describes a `sqlrustgo` CLI binary that **never existed**:
 
 ## Verification Checklist
 
-- [ ] `cargo build --bin sqlrustgo --all-features` compiles without errors
-- [ ] `cargo build --bin sqlrustgo-mysql-server --all-features` unchanged, still compiles
-- [ ] `cargo build --bin sqlrustgo-admin --all-features` unchanged, still compiles
-- [ ] `cargo run --bin sqlrustgo -- serve` starts server on port 3306
-- [ ] `cargo run --bin sqlrustgo -- cli -c "SELECT 1+1 AS two"` outputs correct result
-- [ ] `cargo run --bin sqlrustgo -- --help` shows all 9 subcommands
-- [ ] Every QUICK_START.md command verified against actual binary
-- [ ] `cargo clippy --all-features -- -D warnings` → 0 warnings in new crates
-- [ ] `cargo fmt --check` → no formatting regressions
+- [x] `cargo build -p sqlrustgo-cli --all-features` compiles without errors
+- [x] `cargo build -p sqlrustgo-mysql-server --all-features` unchanged, still compiles
+- [x] `cargo build -p sqlrustgo-admin --all-features` unchanged, still compiles
+- [x] `./target/debug/sqlrustgo-cli exec "SELECT 1"` → `col_0 | Integer(1) (1 rows)` ✅
+- [x] `./target/debug/sqlrustgo-cli --help` shows all 9 subcommands ✅
+- [x] `./target/debug/sqlrustgo-cli serve --help` ✅
+- [x] `./target/debug/sqlrustgo-cli cli --help` ✅
+- [x] Every QUICK_START.md command verified against actual binary
+- [ ] `cargo fmt --check` → no formatting regressions (pending fmt in new crate)

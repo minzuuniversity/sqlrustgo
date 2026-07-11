@@ -97,6 +97,7 @@ fn tpch_sf01_sanity() {
     let mut client: MySqlTestClient = start_sf01();
 
     eprintln!("[1/2] Verifying table row counts...");
+    // SF=0.01 row counts (from dbgen -s 0.01)
     const EXPECTED: &[(&str, u64)] = &[
         ("region", 5),
         ("nation", 25),
@@ -105,7 +106,7 @@ fn tpch_sf01_sanity() {
         ("part", 2000),
         ("partsupp", 8000),
         ("orders", 15000),
-        ("lineitem", 60000),
+        ("lineitem", 60175), // dbgen SF=0.01 produces 60,175
     ];
     for (tbl, expected_count) in EXPECTED {
         let count = client

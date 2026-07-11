@@ -10,8 +10,10 @@
 #
 # Issue: #3264 (S2 24h), #3225 (真实性), #3228 (un-ignore 14 long tests)
 #
-# Usage: HOURS=24 INTERVAL=60 PORT=3396 ./scripts/stability/run_24h_soak_v2.sh
-
+#   USE_CLI_SOAK=1    — use `sqlrustgo-cli soak` instead of sysbench
+#   CLI_SOAK_RATE=5   — queries per second for CLI soak (default: 5)
+#   CLI_SOAK_QUERIES  — path to custom query file for CLI soak
+ # Usage: HOURS=24 INTERVAL=60 PORT=3396 ./scripts/stability/run_24h_soak_v2.sh
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -33,15 +35,21 @@ HOST=${HOST:-127.0.0.1}
 RESULTS_DIR=${RESULTS_DIR:-"test_results/stability_24h_$(date +%Y%m%d_%H%M%S)"}
 PID_FILE="$RESULTS_DIR/sqlrustgo.pid"
 LOG_FILE="$RESULTS_DIR/sqlrustgo.log"
+USE_CLI_SOAK=${USE_CLI_SOAK:-0}
+CLI_SOAK_RATE=${CLI_SOAK_RATE:-5}
+CLI_SOAK_QUERIES=${CLI_SOAK_QUERIES:-""}
+CLI_SOAK_LOG="$RESULTS_DIR/cli_soak.log"
 METRICS_FILE="$RESULTS_DIR/metrics.csv"
 SYSBENCH_LOG="$RESULTS_DIR/sysbench.log"
 
 mkdir -p "$RESULTS_DIR"
 
-SQLRUSTGO_BIN="${SQLRUSTGO_BIN:-./target/release/sqlrustgo-mysql-server}"
-if [ ! -x "$SQLRUSTGO_BIN" ]; then
-    echo "  WARN: $SQLRUSTGO_BIN not found, attempting cargo build..."
-    cargo build --release --bin sqlrustgo-mysql-server
+if [ "$USE_CLI_SOAK" != "1" ]; then
+    if ! command -v sysbench >/dev/null 2>&1; then
+        echo "  FAIL: sysbench not found in PATH. Install via brew install sysbench"
+        echo "  Or set USE_CLI_SOAK=1 to use the built-in sqlrustgo-cli soak runner."
+        exit 1
+    fi
 fi
 
 if ! command -v sysbench >/dev/null 2>&1; then
@@ -93,38 +101,29 @@ for i in 1 2 3 4 5 6 7 8 9 10; do
     fi
 done
 
-echo "[2/4] sysbench prepare (creating $TABLES table(s) x $TABLE_SIZE rows)..."
-sysbench oltp_read_write \
-    --db-driver=mysql \
-    --mysql-host="$HOST" --mysql-port="$PORT" \
-    --mysql-user=root --mysql-password="" \
-    --mysql-db=sbtest --table-size="$TABLE_SIZE" --tables="$TABLES" \
-    prepare 2>&1 | tail -8 || {
-    echo "  FAIL: sysbench prepare failed"
-    cat "$LOG_FILE" | tail -20
-    kill $SERVER_PID 2>/dev/null || true
-    exit 1
-}
-echo "  sysbench prepare done"
-
-echo "[3/4] Starting sysbench oltp_read_write (${HOURS}h, $THREADS threads)..."
-nohup sysbench oltp_read_write \
-    --db-driver=mysql \
-    --mysql-host="$HOST" --mysql-port="$PORT" \
-    --mysql-user=root --mysql-password="" \
-    --mysql-db=sbtest --table-size="$TABLE_SIZE" --tables="$TABLES" \
-    --threads="$THREADS" --time=$((HOURS*3600)) \
-    --report-interval=60 \
-    run > "$SYSBENCH_LOG" 2>&1 &
-SYSBENCH_PID=$!
-echo "  sysbench PID: $SYSBENCH_PID"
-
-echo "[4/4] Monitoring loop (${INTERVAL}s interval, ${HOURS}h)..."
-echo "ts,elapsed_s,rss_mb,rss_delta_mb,fd_count,fd_delta,cpu_pct,wal_mb,wal_files,lock_count,server_alive,sysbench_qps" > "$METRICS_FILE"
-
-START_TS=$(date +%s)
-END_TS=$((START_TS + HOURS*3600))
-INITIAL_RSS=0
+if [ "$USE_CLI_SOAK" = "1" ]; then
+    CLI_SOAK_ARGS="--host $HOST --port $PORT --user root --password '' --duration $((HOURS*3600)) --rate $CLI_SOAK_RATE --report-interval $INTERVAL"
+    if [ -n "$CLI_SOAK_QUERIES" ]; then
+        CLI_SOAK_ARGS="$CLI_SOAK_ARGS --query-file $CLI_SOAK_QUERIES"
+    fi
+    echo "[3/4] Starting sqlrustgo-cli soak (${HOURS}h, ${CLI_SOAK_RATE} qps)..."
+    nohup ./target/release/sqlrustgo-cli soak $CLI_SOAK_ARGS > "$CLI_SOAK_LOG" 2>&1 &
+    LOAD_PID=$!
+    echo "  sqlrustgo-cli PID: $LOAD_PID"
+else
+    echo "[3/4] Starting sysbench oltp_read_write (${HOURS}h, $THREADS threads)..."
+    nohup sysbench oltp_read_write \
+        --db-driver=mysql \
+        --mysql-host="$HOST" --mysql-port="$PORT" \
+        --mysql-user=root --mysql-password="" \
+        --mysql-db=sbtest --table-size="$TABLE_SIZE" --tables="$TABLES" \
+        --threads="$THREADS" --time=$((HOURS*3600)) \
+        --report-interval=60 \
+        run > "$SYSBENCH_LOG" 2>&1 &
+    LOAD_PID=$!
+    echo "  sysbench PID: $LOAD_PID"
+fi
+echo "ts,elapsed_s,rss_mb,rss_delta_mb,fd_count,fd_delta,cpu_pct,wal_mb,wal_files,lock_count,server_alive,load_qps" > "$METRICS_FILE"
 INITIAL_FD=0
 INITIAL_WAL=0
 SAMPLE_COUNT=0
@@ -132,9 +131,15 @@ CRASH_DETECTED=0
 
 cleanup() {
     echo ""
-    echo "[cleanup] Stopping sysbench (PID $SYSBENCH_PID)..."
-    kill $SYSBENCH_PID 2>/dev/null || true
-    wait $SYSBENCH_PID 2>/dev/null || true
+    if [ "$USE_CLI_SOAK" = "1" ]; then
+        echo "[cleanup] Stopping sqlrustgo-cli soak (PID ${LOAD_PID:-unknown})..."
+        kill ${LOAD_PID:-} 2>/dev/null || true
+        wait ${LOAD_PID:-} 2>/dev/null || true
+    else
+        echo "[cleanup] Stopping sysbench (PID ${SYSBENCH_PID:-unknown})..."
+        kill ${SYSBENCH_PID:-} 2>/dev/null || true
+        wait ${SYSBENCH_PID:-} 2>/dev/null || true
+    fi
     echo "[cleanup] Stopping server (PID $SERVER_PID)..."
     kill $SERVER_PID 2>/dev/null || true
     wait $SERVER_PID 2>/dev/null || true
@@ -164,15 +169,15 @@ while [ "$(date +%s)" -lt "$END_TS" ]; do
     CPU_PCT=$(ps -o %cpu= -p $SERVER_PID 2>/dev/null | tr -d ' ' || echo 0)
 
     WAL_MB=0
-    WAL_FILES=0
-    if [ -d "$DATA_DIR" ]; then
-        WAL_MB=$(du -sm "$DATA_DIR" 2>/dev/null | cut -f1 || echo 0)
-        WAL_FILES=$(find "$DATA_DIR" -type f 2>/dev/null | wc -l | tr -d ' ')
-    fi
-
-    SYSBENCH_QPS=0
-    if [ -f "$SYSBENCH_LOG" ]; then
-        SYSBENCH_QPS=$(grep -E "thds|tps|qps" "$SYSBENCH_LOG" 2>/dev/null | tail -1 | grep -oE "[0-9]+\.[0-9]+\s*per sec" | grep -oE "[0-9]+\.[0-9]+" | head -1 || echo 0)
+    LOAD_QPS=0
+    if [ "$USE_CLI_SOAK" = "1" ]; then
+        if [ -f "$CLI_SOAK_LOG" ]; then
+            LOAD_QPS=$(grep -oE '[0-9]+\.[0-9]+ qps' "$CLI_SOAK_LOG" 2>/dev/null | tail -1 | grep -oE '[0-9]+\.[0-9]+' || echo 0)
+        fi
+    else
+        if [ -f "$SYSBENCH_LOG" ]; then
+            LOAD_QPS=$(grep -E "thds|tps|qps" "$SYSBENCH_LOG" 2>/dev/null | tail -1 | grep -oE "[0-9]+\.[0-9]+\s*per sec" | grep -oE "[0-9]+\.[0-9]+" | head -1 || echo 0)
+        fi
     fi
 
     LOCK_COUNT=$(grep -c "^:" /proc/locks 2>/dev/null || echo 0)
@@ -185,7 +190,7 @@ while [ "$(date +%s)" -lt "$END_TS" ]; do
     RSS_DELTA=$((RSS_MB - INITIAL_RSS))
     FD_DELTA=$((FD_COUNT - INITIAL_FD))
 
-    echo "$TS,$ELAPSED,$RSS_MB,$RSS_DELTA,$FD_COUNT,$FD_DELTA,$CPU_PCT,$WAL_MB,$WAL_FILES,$LOCK_COUNT,1,$SYSBENCH_QPS" >> "$METRICS_FILE"
+    echo "$TS,$ELAPSED,$RSS_MB,$RSS_DELTA,$FD_COUNT,$FD_DELTA,$CPU_PCT,$WAL_MB,$WAL_FILES,$LOCK_COUNT,1,$LOAD_QPS" >> "$METRICS_FILE"
 
     if [ $SAMPLE_COUNT -gt 5 ] && [ $((RSS_MB - INITIAL_RSS)) -gt 50 ]; then
         echo "  WARN[${ELAPSED}s]: RSS growth > 50MB (delta=$((RSS_MB - INITIAL_RSS))MB)"
@@ -224,60 +229,92 @@ FD_GROWTH=$((FINAL_FD - INITIAL_FD))
 RSS_GROWTH=${RSS_GROWTH:-0}
 FD_GROWTH=${FD_GROWTH:-0}
 
-SYSBENCH_TRANSACTIONS=$(grep -E "transactions:" "$SYSBENCH_LOG" 2>/dev/null | tail -1 || echo "TBD")
-SYSBENCH_QPS_FINAL=$(grep -E "queries per second" "$SYSBENCH_LOG" 2>/dev/null | tail -1 || echo "TBD")
-SYSBENCH_ERRORS=$(grep -cE "FATAL|ERROR|deadlock" "$SYSBENCH_LOG" 2>/dev/null || echo 0)
+if [ "$USE_CLI_SOAK" = "1" ]; then
+    LOAD_TRANSACTIONS=$(grep -E "queries executed" "$CLI_SOAK_LOG" 2>/dev/null | tail -1 || echo "TBD")
+    LOAD_QPS_FINAL=$(grep -oE '[0-9]+\.[0-9]+ qps' "$CLI_SOAK_LOG" 2>/dev/null | tail -1 || echo "TBD")
+    LOAD_ERRORS=$(grep -cE "error" "$CLI_SOAK_LOG" 2>/dev/null || echo 0)
+else
+    LOAD_TRANSACTIONS=$(grep -E "transactions:" "$SYSBENCH_LOG" 2>/dev/null | tail -1 || echo "TBD")
+    LOAD_QPS_FINAL=$(grep -E "queries per second" "$SYSBENCH_LOG" 2>/dev/null | tail -1 || echo "TBD")
+    LOAD_ERRORS=$(grep -cE "FATAL|ERROR|deadlock" "$SYSBENCH_LOG" 2>/dev/null || echo 0)
+fi
 
 CRASH_STATUS=$([ $CRASH_DETECTED -eq 0 ] && echo "Zero crashes" || echo "CRASH DETECTED")
 
-cat > "$RESULTS_DIR/STABILITY_REPORT.md" <<EOF
-# 24h Soak Stability Report (Real Wall-Clock)
-
-**Run timestamp**: $(date -u +"%Y-%m-%dT%H:%M:%SZ")
-**Duration**: ${HOURS}h (real wall-clock, not simulated)
-**Issues**: Closes #3264 / #3225 / #3228
-
-## Environment
-
-| Item | Value |
-|------|-------|
-| Binary | $SQLRUSTGO_BIN |
-| Port | $PORT |
-| Data dir | $DATA_DIR |
-| Threads | $THREADS (sysbench oltp_read_write) |
-| Table size | $TABLE_SIZE |
-| Tables | $TABLES |
-
-## Acceptance Results
-
-| Criterion | Threshold | Measured | Status |
-|-----------|-----------|----------|--------|
-| Crashes | 0 | $CRASH_DETECTED | $CRASH_STATUS |
-| RSS growth | < 50 MB | $RSS_GROWTH MB | $([ $RSS_GROWTH -lt 50 ] && echo "PASS" || echo "WARN") |
-| FD growth | < 50 | $FD_GROWTH | $([ $FD_GROWTH -lt 50 ] && echo "PASS" || echo "WARN") |
-| Final RSS | < 4096 MB | ${FINAL_RSS} MB | $([ $FINAL_RSS -lt 4096 ] && echo "PASS" || echo "WARN") |
-| Final WAL | < 10240 MB | ${FINAL_WAL} MB | $([ $FINAL_WAL -lt 10240 ] && echo "PASS" || echo "WARN") |
-| sysbench errors | 0 | $SYSBENCH_ERRORS | $([ $SYSBENCH_ERRORS -eq 0 ] && echo "PASS" || echo "WARN") |
-
-## sysbench Results
-
-\`\`\`
-$SYSBENCH_TRANSACTIONS
-$SYSBENCH_QPS_FINAL
-\`\`\`
-
-## Artifacts
-
-- \`metrics.csv\` — $(($(wc -l < "$METRICS_FILE") - 1)) samples, sampled every ${INTERVAL}s
-- \`sqlrustgo.log\` — server log
-- \`sysbench.log\` — sysbench output
-- \`sqlrustgo.pid\` — server PID
-
-## Verdict
-
-$([ $CRASH_DETECTED -eq 0 ] && [ $RSS_GROWTH -lt 50 ] && [ $FD_GROWTH -lt 50 ] && echo "**PASS** - All acceptance criteria met" || echo "**NEEDS REVIEW** - See warnings above")
-
-EOF
+{
+    echo "# 24h Soak Stability Report (Real Wall-Clock)"
+    echo ""
+    echo "**Run timestamp**: $(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+    echo "**Duration**: ${HOURS}h (real wall-clock, not simulated)"
+    echo "**Issues**: Closes #3264 / #3225 / #3228"
+    echo ""
+    echo "## Environment"
+    echo ""
+    echo "| Item | Value |"
+    echo "|------|-------|"
+    echo "| Binary | $SQLRUSTGO_BIN |"
+    echo "| Port | $PORT |"
+    echo "| Data dir | $DATA_DIR |"
+    if [ "$USE_CLI_SOAK" = "1" ]; then
+        echo "| Load generator | sqlrustgo-cli soak (rate=${CLI_SOAK_RATE} qps) |"
+    else
+        echo "| Threads | $THREADS (sysbench oltp_read_write) |"
+    fi
+    echo "| Table size | $TABLE_SIZE |"
+    echo "| Tables | $TABLES |"
+    echo ""
+    echo "## Acceptance Results"
+    echo ""
+    echo "| Criterion | Threshold | Measured | Status |"
+    echo "|-----------|-----------|----------|--------|"
+    echo "| Crashes | 0 | $CRASH_DETECTED | $CRASH_STATUS |"
+    if [ "$USE_CLI_SOAK" = "1" ]; then
+        LOAD_PASS=$([ "$LOAD_ERRORS" = "0" ] || [ "$LOAD_ERRORS" = "0" ] 2>/dev/null && echo "PASS" || echo "WARN")
+        echo "| Load errors | 0 | $LOAD_ERRORS | $LOAD_PASS |"
+    else
+        SYSBENCH_PASS=$([ $SYSBENCH_ERRORS -eq 0 ] && echo "PASS" || echo "WARN")
+        echo "| sysbench errors | 0 | $SYSBENCH_ERRORS | $SYSBENCH_PASS |"
+    fi
+    echo "| RSS growth | < 50 MB | $RSS_GROWTH MB | $([ ${RSS_GROWTH:-999} -lt 50 ] && echo "PASS" || echo "WARN") |"
+    echo "| FD growth | < 50 | $FD_GROWTH | $([ ${FD_GROWTH:-999} -lt 50 ] && echo "PASS" || echo "WARN") |"
+    echo "| Final RSS | < 4096 MB | ${FINAL_RSS} MB | $([ ${FINAL_RSS:-9999} -lt 4096 ] && echo "PASS" || echo "WARN") |"
+    echo "| Final WAL | < 10240 MB | ${FINAL_WAL} MB | $([ ${FINAL_WAL:-99999} -lt 10240 ] && echo "PASS" || echo "WARN") |"
+    echo ""
+    if [ "$USE_CLI_SOAK" = "1" ]; then
+        echo "## sqlrustgo-cli soak Results"
+    else
+        echo "## sysbench Results"
+    fi
+    echo ""
+    echo '```'
+    echo "$LOAD_TRANSACTIONS"
+    echo "$LOAD_QPS_FINAL"
+    echo '```'
+    echo ""
+    echo "## Artifacts"
+    echo ""
+    echo "- \`metrics.csv\` — $(($(wc -l < "$METRICS_FILE") - 1)) samples, sampled every ${INTERVAL}s"
+    echo "- \`sqlrustgo.log\` — server log"
+    if [ "$USE_CLI_SOAK" = "1" ]; then
+        echo "- \`cli_soak.log\` — sqlrustgo-cli soak output"
+    else
+        echo "- \`sysbench.log\` — sysbench output"
+    fi
+    echo "- \`sqlrustgo.pid\` — server PID"
+    echo ""
+    echo "## Verdict"
+    echo ""
+    VERDICT_PASS=true
+    [ $CRASH_DETECTED -ne 0 ] && VERDICT_PASS=false
+    [ ${RSS_GROWTH:-999} -ge 50 ] && VERDICT_PASS=false
+    [ ${FD_GROWTH:-999} -ge 50 ] && VERDICT_PASS=false
+    if $VERDICT_PASS; then
+        echo "**PASS** - All acceptance criteria met"
+    else
+        echo "**NEEDS REVIEW** - See warnings above"
+    fi
+    echo ""
+} > "$RESULTS_DIR/STABILITY_REPORT.md"
 
 cat "$RESULTS_DIR/STABILITY_REPORT.md"
 echo ""

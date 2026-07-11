@@ -66,12 +66,23 @@ fn test_cargo_toml_no_duplicate_test_names() {
     let path = std::env::current_dir().unwrap().join("Cargo.toml");
     let content = std::fs::read_to_string(&path).expect("Cargo.toml not found");
 
-    // Extract all name = "..." after [[test]]
+    // Extract only `name = "..."` lines that belong to a `[[test]]`
+    // section. Previously the test naively matched every `name =`
+    // in the file, which false-positived on `[package] name = "..."`
+    // (the root crate name) and `[[bin]] name = "..."` (a binary
+    // entry). Two `[[test]]` entries with the same name is the
+    // actual constraint we want to enforce — duplicate test names
+    // cause `cargo test --test <name>` to be ambiguous.
     let names: Vec<String> = content
         .lines()
-        .filter_map(|l| {
-            let trimmed = l.trim();
-            if trimmed.starts_with("name") {
+        .scan(false, |in_test, l| {
+            let t = l.trim();
+            if t.starts_with("[[test]]") {
+                *in_test = true;
+            } else if t.starts_with("[[") {
+                *in_test = false;
+            }
+            if *in_test && t.starts_with("name") {
                 l.split('"').nth(1).map(|s| s.to_string())
             } else {
                 None
@@ -82,7 +93,7 @@ fn test_cargo_toml_no_duplicate_test_names() {
     let mut seen = std::collections::HashSet::new();
     for n in &names {
         if !seen.insert(n.clone()) {
-            panic!("duplicate test name: {}", n);
+            panic!("duplicate [[test]] name: {}", n);
         }
     }
 }

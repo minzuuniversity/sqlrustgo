@@ -69,6 +69,8 @@ tests/data/tpch-sf01/*.tbl
 tests/data/tpch-sf01/*.csv
 tests/data/tpch-sf1/*.tbl
 tests/data/tpch-sf1/*.csv
+tests/data/tpch-sf001-real/*.tbl
+tests/data/tpch-sf001-real/*.csv
 tests/data/tpch-tiny/
 
 # Test-registry data + integration test data (regenerated at test time)
