@@ -564,6 +564,9 @@ impl<'a> LocalExecutor<'a> {
     /// `partition_scan` already returns a single partition, so this
     /// method naturally degrades to sequential behavior with no
     /// special-casing required.
+    /// Deprecated: Use CBO-driven parallel execution (Phase 3).
+    /// This method uses hardcoded PARALLEL_MIN_ROWS threshold.
+    #[deprecated(since = "3.10.0", note = "Use CBO-driven parallel execution instead")]
     #[cfg_attr(
         not(feature = "parallel-executor"),
         allow(unused_variables, dead_code)

@@ -455,6 +455,22 @@ pub type RowFilter = Box<dyn Fn(&Record) -> bool + Send + Sync>;
 pub trait StorageEngine: Send + Sync {
     /// Scan all rows from a table
     fn scan(&self, table: &str) -> SqlResult<Vec<Record>>;
+    /// Parallel scan - returns partitions for parallel processing
+    ///
+    /// v3.10.0 Issue #3703 Phase 2: Storage-layer parallelization.
+    /// Each partition is an iterator to avoid loading all data at once.
+    ///
+    /// Default implementation returns Err (engines must opt-in).
+    fn parallel_scan(
+        &self,
+        table: &str,
+        num_partitions: usize,
+    ) -> SqlResult<Vec<Box<dyn Iterator<Item = Record> + Send>>> {
+        let _ = (table, num_partitions);
+        Err(SqlError::ExecutionError(
+            "parallel_scan not supported by this storage engine".to_string(),
+        ))
+    }
 
     /// Insert rows into a table
     fn insert(&mut self, table: &str, records: Vec<Record>) -> SqlResult<()>;
@@ -1044,6 +1060,36 @@ impl StorageEngine for MemoryStorage {
             .ok_or_else(|| SqlError::ExecutionError(format!("Column not found: {}", old_name)))?;
         col.name = new_name.to_string();
         Ok(())
+    }
+    fn parallel_scan(
+        &self,
+        table: &str,
+        num_partitions: usize,
+    ) -> SqlResult<Vec<Box<dyn Iterator<Item = Record> + Send>>> {
+        let data = self
+            .tables
+            .get(table)
+            .ok_or_else(|| SqlError::ExecutionError(format!("Table not found: {}", table)))?;
+        let total = data.len();
+        if total == 0 || num_partitions == 0 {
+            return Ok(vec![]);
+        }
+        let num_partitions = num_partitions.min(total);
+        let base = total / num_partitions;
+        let rem = total % num_partitions;
+        let mut partitions: Vec<Box<dyn Iterator<Item = Record> + Send>> =
+            Vec::with_capacity(num_partitions);
+        let mut cur = 0;
+        for i in 0..num_partitions {
+            let size = if i < rem { base + 1 } else { base };
+            if size > 0 {
+                // Clone the partition data - each partition gets its own copy
+                let partition: Vec<Record> = data[cur..cur + size].to_vec();
+                partitions.push(Box::new(partition.into_iter()));
+            }
+            cur += size;
+        }
+        Ok(partitions)
     }
 }
 
