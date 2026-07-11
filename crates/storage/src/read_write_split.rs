@@ -639,4 +639,179 @@ mod tests {
         let result = router.route(QueryType::Read);
         assert!(result.is_read);
     }
+
+    #[test]
+    fn test_replica_with_lag() {
+        let replica = ReplicaNode::new("127.0.0.1:3307".parse().unwrap()).with_lag(500);
+        assert_eq!(replica.lag_ms, 500);
+    }
+
+    #[test]
+    fn test_add_replica() {
+        let config = create_test_config();
+        let mut router = ReadWriteRouter::new(config);
+        let new_replica = ReplicaNode::new("127.0.0.1:3310".parse().unwrap());
+        router.add_replica(new_replica);
+        assert_eq!(router.get_replica_addrs().len(), 3);
+    }
+
+    #[test]
+    fn test_remove_replica() {
+        let config = create_test_config();
+        let mut router = ReadWriteRouter::new(config);
+        router.remove_replica("127.0.0.1:3307".parse().unwrap());
+        assert_eq!(router.get_replica_addrs().len(), 1);
+    }
+
+    #[test]
+    fn test_update_replica_lag() {
+        let config = create_test_config();
+        let mut router = ReadWriteRouter::new(config);
+        router.update_replica_lag("127.0.0.1:3307".parse().unwrap(), 200);
+        router.update_replica_lag("127.0.0.1:3308".parse().unwrap(), 150);
+        let result = router.route(QueryType::Read);
+        assert!(result.is_read);
+    }
+
+    #[test]
+    fn test_set_replica_health() {
+        let config = create_test_config();
+        let mut router = ReadWriteRouter::new(config);
+        router.set_replica_health("127.0.0.1:3307".parse().unwrap(), false);
+        router.set_replica_health("127.0.0.1:3308".parse().unwrap(), true);
+        let count = router.get_healthy_replica_count();
+        assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn test_get_master_addr() {
+        let config = create_test_config();
+        let router = ReadWriteRouter::new(config);
+        let addr = router.get_master_addr();
+        assert_eq!(addr, "127.0.0.1:3306".parse().unwrap());
+    }
+
+    #[test]
+    fn test_get_replica_addrs() {
+        let config = create_test_config();
+        let router = ReadWriteRouter::new(config);
+        let addrs = router.get_replica_addrs();
+        assert_eq!(addrs.len(), 2);
+    }
+
+    #[test]
+    fn test_get_healthy_replica_count_all() {
+        let config = create_test_config();
+        let router = ReadWriteRouter::new(config);
+        assert_eq!(router.get_healthy_replica_count(), 2);
+    }
+
+    #[test]
+    fn test_classify_sql_select() {
+        assert!(matches!(
+            ReadWriteRouter::classify_sql("SELECT * FROM users"),
+            QueryType::Read
+        ));
+    }
+
+    #[test]
+    fn test_classify_sql_insert() {
+        assert!(matches!(
+            ReadWriteRouter::classify_sql("INSERT INTO users"),
+            QueryType::Write
+        ));
+    }
+
+    #[test]
+    fn test_classify_sql_update() {
+        assert!(matches!(
+            ReadWriteRouter::classify_sql("UPDATE users SET x=1"),
+            QueryType::Write
+        ));
+    }
+
+    #[test]
+    fn test_classify_sql_delete() {
+        assert!(matches!(
+            ReadWriteRouter::classify_sql("DELETE FROM users"),
+            QueryType::Write
+        ));
+    }
+
+    #[test]
+    fn test_classify_sql_create() {
+        assert!(matches!(
+            ReadWriteRouter::classify_sql("CREATE TABLE x"),
+            QueryType::Write
+        ));
+    }
+
+    #[test]
+    fn test_classify_sql_drop() {
+        assert!(matches!(
+            ReadWriteRouter::classify_sql("DROP TABLE x"),
+            QueryType::Write
+        ));
+    }
+
+    #[test]
+    fn test_classify_sql_transaction() {
+        assert!(matches!(
+            ReadWriteRouter::classify_sql("BEGIN TRANSACTION"),
+            QueryType::Transaction
+        ));
+    }
+
+    #[test]
+    fn test_route_sql_select() {
+        let config = create_test_config();
+        let router = ReadWriteRouter::new(config);
+        let result = router.route_sql("SELECT * FROM users");
+        assert!(result.is_read);
+    }
+
+    #[test]
+    fn test_route_sql_write() {
+        let config = create_test_config();
+        let router = ReadWriteRouter::new(config);
+        let result = router.route_sql("INSERT INTO users VALUES (1)");
+        assert!(!result.is_read);
+    }
+
+    #[test]
+    fn test_connection_pool_get_master_empty() {
+        let config = create_test_config();
+        let pool = ConnectionPool::new(config);
+        let conn = pool.get_connection(NodeRole::Master);
+        assert!(conn.is_none());
+    }
+
+    #[test]
+    fn test_connection_pool_get_replica_empty() {
+        let config = create_test_config();
+        let pool = ConnectionPool::new(config);
+        let conn = pool.get_connection(NodeRole::Replica);
+        assert!(conn.is_none());
+    }
+
+    #[test]
+    fn test_connection_pool_return_smoke() {
+        let config = create_test_config();
+        let pool = ConnectionPool::new(config);
+        let conn = Connection {
+            addr: "127.0.0.1:3306".parse().unwrap(),
+            is_connected: true,
+        };
+        pool.return_connection(&conn);
+    }
+
+    #[test]
+    fn test_read_after_write_record_replica() {
+        let config = create_test_config();
+        let consistency = ReadAfterWriteConsistency::new(config);
+        let replica_addr: SocketAddr = "127.0.0.1:3308".parse().unwrap();
+        consistency.record_replica_position(replica_addr, 1500);
+        let result = consistency.wait_for_replication(replica_addr);
+        assert!(result);
+    }
 }

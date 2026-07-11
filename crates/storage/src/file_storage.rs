@@ -1958,6 +1958,185 @@ mod tests {
         assert_eq!(rows.len(), 1);
         storage.set_current_tx_id(0);
     }
+
+    #[test]
+    fn test_buffered_insert_flush() {
+        let dir = std::env::temp_dir().join("fs_buf_flush");
+        let _ = remove_dir_all(&dir);
+        let mut storage = FileStorage::new_with_buffer_config(dir.clone(), 2, true).unwrap();
+        let info = TableInfo {
+            name: "t".into(),
+            columns: vec![ColumnDefinition::new("x", "INTEGER")],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
+        };
+        storage.create_table(&info).unwrap();
+        storage.insert("t", vec![vec![Value::Integer(1)]]).unwrap();
+        storage.insert("t", vec![vec![Value::Integer(2)]]).unwrap();
+        let rows = storage.scan("t").unwrap();
+        assert!(rows.len() >= 1);
+        let _ = remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_buffered_insert_in_tx() {
+        let dir = std::env::temp_dir().join("fs_buf_tx");
+        let _ = remove_dir_all(&dir);
+        let mut storage = FileStorage::new_with_buffer_config(dir.clone(), 10, true).unwrap();
+        let info = TableInfo {
+            name: "t".into(),
+            columns: vec![ColumnDefinition::new("x", "INTEGER")],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
+        };
+        storage.create_table(&info).unwrap();
+        storage.set_current_tx_id(1);
+        storage.insert("t", vec![vec![Value::Integer(1)]]).unwrap();
+        storage.flush_all_buffers().unwrap();
+        storage.set_current_tx_id(0);
+        let _ = remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_trigger_roundtrip_disk() {
+        let temp_dir = std::env::temp_dir().join("fs_trigger_roundtrip");
+        let _ = remove_dir_all(&temp_dir);
+        let mut storage = FileStorage::new_with_wal(temp_dir.clone()).unwrap();
+        let trigger = TriggerInfo {
+            name: "trig_disk".to_string(),
+            table_name: "t".to_string(),
+            timing: crate::engine::TriggerTiming::Before,
+            event: crate::engine::TriggerEvent::Insert,
+            body: "BEGIN UPDATE s SET n = n + 1; END".to_string(),
+        };
+        storage.create_trigger(trigger).unwrap();
+        drop(storage);
+
+        let mut storage2 = FileStorage::new_with_wal(temp_dir.clone()).unwrap();
+        let got = storage2.get_trigger("trig_disk");
+        assert!(got.is_some());
+        let _ = remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_save_trigger_load_trigger_duplicate() {
+        let temp_dir = std::env::temp_dir().join("fs_trigger_dup");
+        let _ = remove_dir_all(&temp_dir);
+        let mut storage = FileStorage::new(temp_dir.clone()).unwrap();
+        let trigger = TriggerInfo {
+            name: "trig_dup".to_string(),
+            table_name: "t".to_string(),
+            timing: crate::engine::TriggerTiming::After,
+            event: crate::engine::TriggerEvent::Update,
+            body: "".to_string(),
+        };
+        storage.create_trigger(trigger.clone()).unwrap();
+        storage.create_trigger(trigger).unwrap();
+        let count = storage.list_triggers("t").len();
+        assert!(count >= 1);
+        let _ = remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_drop_trigger_disk_removal() {
+        let temp_dir = std::env::temp_dir().join("fs_drop_trig_disk");
+        let _ = remove_dir_all(&temp_dir);
+        let mut storage = FileStorage::new_with_wal(temp_dir.clone()).unwrap();
+        let trigger = TriggerInfo {
+            name: "trig_x".to_string(),
+            table_name: "t".to_string(),
+            timing: crate::engine::TriggerTiming::Before,
+            event: crate::engine::TriggerEvent::Delete,
+            body: "".to_string(),
+        };
+        storage.create_trigger(trigger).unwrap();
+        storage.drop_trigger("trig_x").unwrap();
+        let path = temp_dir.join("trigger_trig_x.json");
+        assert!(!path.exists());
+    }
+
+    #[test]
+    fn test_file_with_buffer_disabled_flow() {
+        let mut storage = make_storage("fs_no_buf");
+        let info = TableInfo {
+            name: "t".into(),
+            columns: vec![ColumnDefinition::new("a", "INTEGER")],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
+        };
+        storage.create_table(&info).unwrap();
+        storage.insert("t", vec![vec![Value::Integer(1)]]).unwrap();
+        storage.delete("t", &[Value::Integer(1)]).unwrap();
+        storage
+            .update("t", &[Value::Integer(1)], &[(0, Value::Integer(99))])
+            .unwrap();
+        let rows = storage.scan("t").unwrap();
+        assert!(rows.is_empty() || rows[0][0] != Value::Integer(1));
+    }
+
+    #[test]
+    fn test_flush_all_buffers_with_buffered_table() {
+        let dir = std::env::temp_dir().join("fs_flush_buf_table");
+        let _ = remove_dir_all(&dir);
+        let mut storage = FileStorage::new_with_buffer_config(dir.clone(), 1000, true).unwrap();
+        let info = TableInfo {
+            name: "t".into(),
+            columns: vec![],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
+        };
+        storage.create_table(&info).unwrap();
+        storage.insert("t", vec![vec![Value::Integer(1)]]).unwrap();
+        storage.flush_all_buffers().unwrap();
+        let _ = remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_load_table_invalid_json() {
+        let temp_dir = std::env::temp_dir().join("fs_invalid_json");
+        let _ = remove_dir_all(&temp_dir);
+        std::fs::create_dir_all(&temp_dir).unwrap();
+        std::fs::write(temp_dir.join("bad.json"), "not valid json{{{").unwrap();
+        let storage = FileStorage::new(temp_dir.clone()).unwrap();
+        let result = storage.get_table("bad");
+        assert!(result.is_none());
+        let _ = remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_insert_buffered_threshold_flushing() {
+        let dir = std::env::temp_dir().join("fs_thr_flush");
+        let _ = remove_dir_all(&dir);
+        let mut storage = FileStorage::new_with_buffer_config(dir.clone(), 2, true).unwrap();
+        let info = TableInfo {
+            name: "t".into(),
+            columns: vec![ColumnDefinition::new("a", "INTEGER")],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
+        };
+        storage.create_table(&info).unwrap();
+        storage
+            .insert(
+                "t",
+                vec![
+                    vec![Value::Integer(1)],
+                    vec![Value::Integer(2)],
+                    vec![Value::Integer(3)],
+                ],
+            )
+            .unwrap();
+        let _ = remove_dir_all(&dir);
+    }
 }
 
 impl FileStorage {
