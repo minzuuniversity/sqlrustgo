@@ -188,11 +188,7 @@ fn test_update_plan_accessors() {
 #[test]
 fn test_update_compiler_unsupported_predicate_operator_falls_back_to_const_null() {
     let schema = test_schema();
-    let plus_pred = binary(
-        column_expr("id"),
-        Operator::Plus,
-        lit(Value::Integer(1)),
-    );
+    let plus_pred = binary(column_expr("id"), Operator::Plus, lit(Value::Integer(1)));
     let stmt = UpdateStatement {
         table: "t".to_string(),
         where_clause: Some(plus_pred),
