@@ -113,6 +113,28 @@ mod tests {
     }
 
     #[test]
+    fn test_partition_scan_empty_table() {
+        // Task 3.3: 0 rows -> single empty partition, no panic.
+        let exec = ParallelVolcanoExecutor::new(4);
+        let rows: Vec<Vec<Value>> = vec![];
+        let parts = exec.partition_scan(rows, 4);
+        assert_eq!(parts.len(), 1);
+        assert_eq!(parts[0].len(), 0);
+    }
+
+    #[test]
+    fn test_partition_scan_degree_one_with_large_rows() {
+        // Task 3.4 (variant): N=1 with 200k rows still produces a single
+        // partition; verifies the degree<=1 short-circuit is the gating
+        // condition (not the row count alone).
+        let exec = ParallelVolcanoExecutor::new(1);
+        let rows = make_rows(200_000);
+        let parts = exec.partition_scan(rows, 1);
+        assert_eq!(parts.len(), 1);
+        assert_eq!(parts[0].len(), 200_000);
+    }
+
+    #[test]
     fn test_parallel_executor_trait_method() {
         let mut exec = ParallelVolcanoExecutor::new(2);
         assert_eq!(exec.parallel_degree(), 2);
