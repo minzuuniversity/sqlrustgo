@@ -9,9 +9,32 @@
 > **Maintainer**: claude-macmini (initial DRAFT setup)
 
 ---
+## 2026-07-11 — ALPHA 阶段准入 (DRAFT → ALPHA)
+
+`v3.10.0-alpha1` tag cut. DRAFT 5/5 任务全部完成, ALPHA gate 6/6 PASS:
+- `check_alpha_v3.10.0.sh` 15/15 PASS (新建 per-version gate, 取代 v2.9.0 hardcoded check_alpha.sh)
+- `check_arch_invariants.sh` 5/5 PASS (C-ARCH-05 修复: execution_engine.rs 1523 → 1488 行)
+- `check_arch3_no_bypass.sh` PASS
+- `cargo build --all-features` PASS
+- `cargo test --all-features --lib` PASS (25 passed)
+- `cargo fmt --check` PASS
+
+### Blockers Closed
+
+- B1: `docs/releases/v3.10.0/RELEASE_NOTES.md` (新增)
+- B2: C-ARCH-05 violation — execution_engine.rs 重构 3 个构造器为 base_with helper (1523→1488 行)
+
+### Governance Changes
+
+- `docs/governance/STAGE_CONFIG.yaml` ALPHA required_gates 现在使用 `check_alpha_v{VER}.sh` per-version 模式 (跟随 v3.8.0 `check_alpha_v380.sh` 模式)
+- `scripts/gate/check_stage.sh` 修复 script_path expansion bug (line 287-293)
+- 新建 `scripts/gate/check_alpha_v3.10.0.sh` (15 检查, 4 类别: A1 build/test/fmt, A2 arch invariants, A3 required files, A4 branch/state)
+
+### Phase 0/1/2/3 启动就绪
+
+下一步: Phase 0 (C-3 ROLLBACK + C-3b MemoryStorage tx + C-4 ALTER TABLE)
 
 ## 2026-07-01 — DRAFT 阶段初始化
-
 v3.10.0 开发开始。`develop/v3.10.0` 分支待创建 (从 `develop/v3.9.0` 派生)。Stage Control Framework (PR #3668) + G1-G16 framework (PR #3669) 落地后, v3.10.0 直接采用新的 governance 框架, 不需要重写门禁控制文档。
 
 ### Added

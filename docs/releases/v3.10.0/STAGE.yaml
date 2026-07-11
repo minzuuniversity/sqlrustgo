@@ -20,14 +20,13 @@ issue_plan:
   gitea_pending: true  # 等待 Gitea 恢复后批量创建
 #
 version: "v3.10.0"
-current_stage: "DRAFT"
-branch: "develop/v3.10.0"  # ✅ CREATED 2026-07-11 from main @ 23353c0c54
+current_stage: "ALPHA"
+branch: "develop/v3.10.0"  # created 2026-07-11 from main @ 23353c0c54
 last_transition:
-  from: null  # first version state
-  to: "DRAFT"
-  date: "2026-07-01"
-  reason: "Initial DRAFT stage — design + architecture + planning in progress"
-
+  from: "DRAFT"
+  to: "ALPHA"
+  date: "2026-07-11"
+  reason: "DRAFT → ALPHA promotion after 6/6 gates PASS + 15/15 check_alpha_v3.10.0.sh"
 # =============================================================================
 # Blocker issues (from openclaw Gitea)
 # =============================================================================
@@ -39,9 +38,11 @@ blocker_issues: []
 
 # =============================================================================
 # Tag history (v3.10.0)
-# =============================================================================
-tags: []
-# (No tags yet — version not cut)
+tags:
+  - tag: "v3.10.0-alpha1"
+    date: "2026-07-11"
+    commit: "$(git rev-parse --short HEAD)"
+    notes: "First Alpha cut. ALPHA gate 6/6 PASS. DRAFT 5/5 tasks complete. 17 MySQL 5.7 替代核心任务待 Phase 0/1/2/3 推进."
 
 # =============================================================================
 # Stage history (v3.10.0)
@@ -49,10 +50,12 @@ tags: []
 stage_history:
   - stage: DRAFT
     entered: "2026-07-01"
-    exited: null  # still in DRAFT
+    exited: "2026-07-11"
     notes: "Initial design + architecture + planning. Parent version v3.9.0 RC8. 3 PRs from v3.9.0 already merged into develop/v3.9.0: #3664 (execution_engine 拆分), #3665 (C-ARCH-05 锁回), #3666 (SGL-001 fmt fix)."
-
-# =============================================================================
+  - stage: ALPHA
+    entered: "2026-07-11"
+    exited: null  # still in ALPHA
+    notes: "Alpha 1 cut. 6/6 ALPHA gates PASS (C-ARCH-05 fix execution_engine.rs 1523→1488; check_alpha_v3.10.0.sh 15/15; STAGE_CONFIG ALPHA gates now use per-version check_alpha_v{VER}.sh pattern following v3.8.0). Phase 0 (C-3 ACID + C-4 ALTER) starts next."
 # Branch protection rules (this version)
 # =============================================================================
 branch_protection:
