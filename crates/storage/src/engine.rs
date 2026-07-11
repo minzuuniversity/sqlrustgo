@@ -533,12 +533,7 @@ pub trait StorageEngine: Send + Sync {
         ))
     }
     /// Rename a column in a table
-    fn rename_column(
-        &mut self,
-        _table: &str,
-        _old_name: &str,
-        _new_name: &str,
-    ) -> SqlResult<()> {
+    fn rename_column(&mut self, _table: &str, _old_name: &str, _new_name: &str) -> SqlResult<()> {
         Err(SqlError::ExecutionError(
             "rename_column not supported by this storage engine".to_string(),
         ))
@@ -1037,12 +1032,7 @@ impl StorageEngine for MemoryStorage {
         Ok(())
     }
 
-    fn rename_column(
-        &mut self,
-        table: &str,
-        old_name: &str,
-        new_name: &str,
-    ) -> SqlResult<()> {
+    fn rename_column(&mut self, table: &str, old_name: &str, new_name: &str) -> SqlResult<()> {
         let info = self
             .table_infos
             .get_mut(table)
@@ -1805,5 +1795,154 @@ mod tests {
     fn test_storage_engine_flush() {
         let mut s = MemoryStorage::new();
         s.flush().unwrap();
+    }
+
+    #[test]
+    fn test_partition_rows_num_partitions_zero() {
+        let mut storage = MemoryStorage::new();
+        storage.tables.insert(
+            "t".to_string(),
+            (0..600_000_i64).map(|i| vec![Value::Integer(i)]).collect(),
+        );
+        let parts = storage.partition_rows("t", 0);
+        assert_eq!(parts.len(), 1, "n_partitions should be clamped to 1");
+        assert_eq!(parts[0].len(), 600_000);
+    }
+
+    #[test]
+    fn test_partition_rows_num_partitions_one_large() {
+        let mut storage = MemoryStorage::new();
+        storage.tables.insert(
+            "t".to_string(),
+            (0..600_000_i64).map(|i| vec![Value::Integer(i)]).collect(),
+        );
+        let parts = storage.partition_rows("t", 1);
+        assert_eq!(parts.len(), 1);
+        assert_eq!(parts[0].len(), 600_000);
+    }
+
+    #[test]
+    fn test_partition_rows_above_threshold_2_partitions() {
+        let mut storage = MemoryStorage::new();
+        storage.tables.insert(
+            "t".to_string(),
+            (0..500_100_i64).map(|i| vec![Value::Integer(i)]).collect(),
+        );
+        let parts = storage.partition_rows("t", 2);
+        assert_eq!(parts.len(), 2);
+        let total: usize = parts.iter().map(|p| p.len()).sum();
+        assert_eq!(total, 500_100);
+    }
+
+    #[test]
+    fn test_nested_transaction_returns_error() {
+        let mut s = MemoryStorage::new();
+        s.begin_transaction().unwrap();
+        let result = s.begin_transaction();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_update_with_log_no_filter() {
+        let mut s = MemoryStorage::new();
+        s.tables.insert(
+            "t".to_string(),
+            vec![vec![Value::Integer(1)], vec![Value::Integer(2)]],
+        );
+        s.current_tx_id = 1;
+        s.tx_log = Some(TxLog::default());
+        let count = s.update("t", &[], &[(0, Value::Integer(99))]).unwrap();
+        assert_eq!(count, 2);
+        assert_eq!(s.tables["t"][0][0], Value::Integer(99));
+    }
+
+    #[test]
+    fn test_update_with_log_with_filter() {
+        let mut s = MemoryStorage::new();
+        s.tables.insert(
+            "t".to_string(),
+            vec![vec![Value::Integer(1)], vec![Value::Integer(2)]],
+        );
+        s.current_tx_id = 1;
+        s.tx_log = Some(TxLog::default());
+        let count = s
+            .update("t", &[Value::Integer(1)], &[(0, Value::Integer(99))])
+            .unwrap();
+        assert_eq!(count, 1);
+        assert_eq!(s.tables["t"][0][0], Value::Integer(99));
+        assert_eq!(s.tables["t"][1][0], Value::Integer(2));
+    }
+
+    #[test]
+    fn test_update_nonexistent_table() {
+        let mut s = MemoryStorage::new();
+        let count = s
+            .update(
+                "nonexistent",
+                &[Value::Integer(1)],
+                &[(0, Value::Integer(99))],
+            )
+            .unwrap();
+        assert_eq!(count, 0);
+    }
+
+    #[test]
+    fn test_update_if_with_log() {
+        let mut s = MemoryStorage::new();
+        s.tables.insert(
+            "t".to_string(),
+            vec![vec![Value::Integer(1)], vec![Value::Integer(2)]],
+        );
+        s.current_tx_id = 1;
+        s.tx_log = Some(TxLog::default());
+        let filter: RowFilter = Box::new(|row: &Record| row[0] == Value::Integer(2));
+        let mutation = RowMutation::new(vec![(0, Value::Integer(88))], 0);
+        let count = s.update_if("t", &filter, &mutation).unwrap();
+        assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn test_update_if_nonexistent_table() {
+        let mut s = MemoryStorage::new();
+        let filter: RowFilter = Box::new(|_: &Record| true);
+        let mutation = RowMutation::new(vec![(0, Value::Integer(0))], 0);
+        let count = s.update_if("nonexistent", &filter, &mutation).unwrap();
+        assert_eq!(count, 0);
+    }
+
+    #[test]
+    fn test_insert_dedup_logic() {
+        let mut s = MemoryStorage::new();
+        s.tables
+            .insert("t".to_string(), vec![vec![Value::Integer(1)]]);
+        s.current_tx_id = 1;
+        s.tx_log = Some(TxLog::default());
+        s.tables.get_mut("t").unwrap().push(vec![Value::Integer(2)]);
+    }
+
+    #[test]
+    fn test_rollback_removes_inserted_rows() {
+        let mut s = MemoryStorage::new();
+        s.tables
+            .insert("t".to_string(), vec![vec![Value::Integer(1)]]);
+        s.begin_transaction().unwrap();
+        s.insert("t", vec![vec![Value::Integer(2)]]).unwrap();
+        s.rollback_transaction().unwrap();
+        let rows = s.scan("t").unwrap();
+        assert_eq!(rows.len(), 1);
+    }
+
+    #[test]
+    fn test_rollback_restores_deleted_rows() {
+        let mut s = MemoryStorage::new();
+        s.tables.insert(
+            "t".to_string(),
+            vec![vec![Value::Integer(1)], vec![Value::Integer(2)]],
+        );
+        s.begin_transaction().unwrap();
+        s.delete("t", &[Value::Integer(1)]).unwrap();
+        s.rollback_transaction().unwrap();
+        let rows = s.scan("t").unwrap();
+        assert_eq!(rows.len(), 2);
     }
 }
