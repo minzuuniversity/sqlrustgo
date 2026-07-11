@@ -10,9 +10,10 @@
 //! - ⚠️ Executor: MERGE (Table source) 通过 MergeExecutor 执行
 //! - ❌ ExecutionEngine::execute(): MERGE 未分发，走 catch-all 路径
 
+use parking_lot::RwLock;
 use sqlrustgo::MemoryExecutionEngine;
 use sqlrustgo_storage::MemoryStorage;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 
 fn make_engine() -> MemoryExecutionEngine {
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));
