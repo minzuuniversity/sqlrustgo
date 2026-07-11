@@ -532,6 +532,12 @@ pub trait StorageEngine: Send + Sync {
             "drop_column not supported by this storage engine".to_string(),
         ))
     }
+    /// Rename a column in a table
+    fn rename_column(&mut self, _table: &str, _old_name: &str, _new_name: &str) -> SqlResult<()> {
+        Err(SqlError::ExecutionError(
+            "rename_column not supported by this storage engine".to_string(),
+        ))
+    }
 
     /// Modify a column definition
     fn modify_column(
@@ -643,6 +649,36 @@ impl MemoryStorage {
             next_tx_id: 1,
             tx_log: None,
         }
+    }
+
+    /// v3.10.0 Issue #3703: returns pre-partitioned chunks so the caller
+    /// (typically `engine_select::filter_partitions_parallel`) can
+    /// process each chunk on a separate rayon worker, fusing scan
+    /// + filter into one parallel pipeline.
+    ///
+    /// Returns `Vec<Vec<Record>>` of `num_partitions` chunks. Falls
+    /// back to a single-chunk vector when `num_partitions <= 1` or
+    /// `rows.len() < PARALLEL_SCAN_MIN_ROWS`.
+    pub fn partition_rows(&self, table: &str, num_partitions: usize) -> Vec<Vec<Record>> {
+        const PARALLEL_SCAN_MIN_ROWS: usize = 500_000;
+        let n_partitions = num_partitions.max(1);
+        let Some(all_rows) = self.tables.get(table) else {
+            return vec![Vec::new()];
+        };
+        if all_rows.len() < PARALLEL_SCAN_MIN_ROWS || n_partitions <= 1 {
+            return vec![all_rows.clone()];
+        }
+        let total = all_rows.len();
+        let base = total / n_partitions;
+        let rem = total % n_partitions;
+        let mut out: Vec<Vec<Record>> = Vec::with_capacity(n_partitions);
+        let mut cur = 0usize;
+        for i in 0..n_partitions {
+            let size = base + if i < rem { 1 } else { 0 };
+            out.push(all_rows[cur..cur + size].to_vec());
+            cur += size;
+        }
+        out
     }
 }
 
@@ -993,6 +1029,20 @@ impl StorageEngine for MemoryStorage {
             .position(|c| c.name == column)
             .ok_or_else(|| SqlError::ExecutionError(format!("Column not found: {}", column)))?;
         info.columns[col_idx] = new_def;
+        Ok(())
+    }
+
+    fn rename_column(&mut self, table: &str, old_name: &str, new_name: &str) -> SqlResult<()> {
+        let info = self
+            .table_infos
+            .get_mut(table)
+            .ok_or_else(|| SqlError::ExecutionError(format!("Table not found: {}", table)))?;
+        let col = info
+            .columns
+            .iter_mut()
+            .find(|c| c.name == old_name)
+            .ok_or_else(|| SqlError::ExecutionError(format!("Column not found: {}", old_name)))?;
+        col.name = new_name.to_string();
         Ok(())
     }
 }
@@ -1360,5 +1410,736 @@ mod tests {
 
         let records = storage.scan("users").unwrap();
         assert_eq!(records[0][0], Value::Integer(99));
+    }
+
+    // v3.10.0 Issue #3703: partition_rows
+
+    #[test]
+    fn test_partition_rows_below_threshold_returns_single_chunk() {
+        let mut storage = MemoryStorage::new();
+        storage.tables.insert(
+            "t".to_string(),
+            (0..100_000_i64).map(|i| vec![Value::Integer(i)]).collect(),
+        );
+        let parts = storage.partition_rows("t", 8);
+        assert_eq!(parts.len(), 1, "below threshold should return 1 chunk");
+        assert_eq!(parts[0].len(), 100_000);
+    }
+
+    #[test]
+    fn test_partition_rows_above_threshold_splits_evenly() {
+        let mut storage = MemoryStorage::new();
+        storage.tables.insert(
+            "t".to_string(),
+            (0..600_000_i64).map(|i| vec![Value::Integer(i)]).collect(),
+        );
+        let parts = storage.partition_rows("t", 4);
+        assert_eq!(parts.len(), 4);
+        let total: usize = parts.iter().map(|p| p.len()).sum();
+        assert_eq!(total, 600_000);
+        for p in &parts {
+            assert_eq!(p.len(), 150_000);
+        }
+    }
+
+    #[test]
+    fn test_partition_rows_uneven_remainder() {
+        let mut storage = MemoryStorage::new();
+        storage.tables.insert(
+            "t".to_string(),
+            (0..503_003_i64).map(|i| vec![Value::Integer(i)]).collect(),
+        );
+        let parts = storage.partition_rows("t", 4);
+        assert_eq!(parts.len(), 4);
+        let total: usize = parts.iter().map(|p| p.len()).sum();
+        assert_eq!(total, 503_003);
+        assert_eq!(parts[0].len(), 125_751);
+        assert_eq!(parts[1].len(), 125_751);
+        assert_eq!(parts[2].len(), 125_751);
+        assert_eq!(parts[3].len(), 125_750);
+    }
+
+    #[test]
+    fn test_partition_rows_missing_table() {
+        let storage = MemoryStorage::new();
+        let parts = storage.partition_rows("does_not_exist", 4);
+        assert_eq!(parts.len(), 1);
+        assert!(parts[0].is_empty());
+        let info = PartitionInfo::new_range("id", vec![Value::Integer(10), Value::Integer(20)]);
+        assert_eq!(info.partition_type, PartitionType::Range);
+        assert_eq!(info.column, "id");
+    }
+
+    #[test]
+    fn test_partition_info_new_list() {
+        let info = PartitionInfo::new_list(
+            "region",
+            vec![Value::Text("US".into()), Value::Text("EU".into())],
+        );
+        assert_eq!(info.partition_type, PartitionType::List);
+    }
+
+    #[test]
+    fn test_partition_info_new_hash() {
+        let info = PartitionInfo::new_hash("id", 4);
+        assert_eq!(info.partition_type, PartitionType::Hash);
+        assert_eq!(info.boundaries, vec![Value::Integer(4)]);
+    }
+
+    #[test]
+    fn test_partition_range_index() {
+        let info = PartitionInfo::new_range("id", vec![Value::Integer(10), Value::Integer(20)]);
+        assert_eq!(info.get_partition_index(&Value::Integer(5)), Some(0));
+        assert_eq!(info.get_partition_index(&Value::Integer(15)), Some(1));
+        assert_eq!(info.get_partition_index(&Value::Integer(25)), Some(2));
+    }
+
+    #[test]
+    fn test_partition_range_invalid_value() {
+        let info = PartitionInfo::new_range("id", vec![Value::Integer(10)]);
+        assert_eq!(info.get_partition_index(&Value::Text("abc".into())), None);
+    }
+
+    #[test]
+    fn test_partition_list_match() {
+        let info = PartitionInfo::new_list(
+            "region",
+            vec![Value::Text("US".into()), Value::Text("EU".into())],
+        );
+        assert_eq!(info.get_partition_index(&Value::Text("US".into())), Some(0));
+        assert_eq!(info.get_partition_index(&Value::Text("EU".into())), Some(1));
+        assert_eq!(info.get_partition_index(&Value::Text("AS".into())), None);
+    }
+
+    #[test]
+    fn test_partition_hash_integer() {
+        let info = PartitionInfo::new_hash("id", 4);
+        let idx = info.get_partition_index(&Value::Integer(42));
+        assert!(idx.is_some());
+        assert!(idx.unwrap() < 4);
+    }
+
+    #[test]
+    fn test_partition_hash_text() {
+        let info = PartitionInfo::new_hash("name", 3);
+        let idx = info.get_partition_index(&Value::Text("test".into()));
+        assert!(idx.is_some());
+        assert!(idx.unwrap() < 3);
+    }
+
+    #[test]
+    fn test_partition_hash_invalid() {
+        let info = PartitionInfo::new_hash("id", 4);
+        assert_eq!(info.get_partition_index(&Value::Null), None);
+        assert_eq!(info.get_partition_index(&Value::Boolean(true)), None);
+    }
+
+    #[test]
+    fn test_evaluate_check_constraint_eq() {
+        let constraint = CheckConstraint {
+            name: Some("c1".into()),
+            expression: "x = 5".into(),
+        };
+        let cols = vec!["x".to_string()];
+        assert!(evaluate_check_constraint(&constraint, &cols, &vec![Value::Integer(5)]).unwrap());
+        assert!(!evaluate_check_constraint(&constraint, &cols, &vec![Value::Integer(10)]).unwrap());
+    }
+
+    #[test]
+    fn test_evaluate_check_constraint_and() {
+        let constraint = CheckConstraint {
+            name: Some("c1".into()),
+            expression: "x > 0 AND y < 100".into(),
+        };
+        let cols = vec!["x".into(), "y".into()];
+        assert!(evaluate_check_constraint(
+            &constraint,
+            &cols,
+            &vec![Value::Integer(5), Value::Integer(50)]
+        )
+        .unwrap());
+        assert!(!evaluate_check_constraint(
+            &constraint,
+            &cols,
+            &vec![Value::Integer(-1), Value::Integer(50)]
+        )
+        .unwrap());
+        assert!(!evaluate_check_constraint(
+            &constraint,
+            &cols,
+            &vec![Value::Integer(5), Value::Integer(150)]
+        )
+        .unwrap());
+    }
+
+    #[test]
+    fn test_evaluate_check_constraint_or() {
+        let constraint = CheckConstraint {
+            name: Some("c1".into()),
+            expression: "x = 0 OR y = 0".into(),
+        };
+        let cols = vec!["x".into(), "y".into()];
+        assert!(evaluate_check_constraint(
+            &constraint,
+            &cols,
+            &vec![Value::Integer(0), Value::Integer(50)]
+        )
+        .unwrap());
+        assert!(evaluate_check_constraint(
+            &constraint,
+            &cols,
+            &vec![Value::Integer(5), Value::Integer(0)]
+        )
+        .unwrap());
+        assert!(!evaluate_check_constraint(
+            &constraint,
+            &cols,
+            &vec![Value::Integer(5), Value::Integer(50)]
+        )
+        .unwrap());
+    }
+
+    #[test]
+    fn test_evaluate_check_constraint_not() {
+        let constraint = CheckConstraint {
+            name: Some("c1".into()),
+            expression: "NOT x = 5".into(),
+        };
+        let cols = vec!["x".to_string()];
+        assert!(evaluate_check_constraint(&constraint, &cols, &vec![Value::Integer(10)]).unwrap());
+        assert!(!evaluate_check_constraint(&constraint, &cols, &vec![Value::Integer(5)]).unwrap());
+    }
+
+    #[test]
+    fn test_evaluate_check_constraint_is_null() {
+        let constraint = CheckConstraint {
+            name: Some("c1".into()),
+            expression: "x IS NULL".into(),
+        };
+        let cols = vec!["x".to_string()];
+        assert!(evaluate_check_constraint(&constraint, &cols, &vec![Value::Null]).unwrap());
+        assert!(!evaluate_check_constraint(&constraint, &cols, &vec![Value::Integer(0)]).unwrap());
+    }
+
+    #[test]
+    fn test_evaluate_check_constraint_column_missing() {
+        let constraint = CheckConstraint {
+            name: Some("c1".into()),
+            expression: "x IS NULL".into(),
+        };
+        let cols = vec![];
+        let rec = vec![];
+        assert!(evaluate_check_constraint(&constraint, &cols, &rec).is_ok());
+    }
+
+    #[test]
+    fn test_calculate_hash_simple() {
+        let h = calculate_hash(b"hello");
+        let h2 = calculate_hash(b"hello");
+        assert_eq!(h, h2);
+        let h3 = calculate_hash(b"world");
+        assert_ne!(h, h3);
+    }
+
+    #[test]
+    fn test_calculate_hash_empty() {
+        assert_eq!(calculate_hash(b""), 0);
+    }
+
+    #[test]
+    fn test_partition_type_eq() {
+        assert_eq!(PartitionType::Range, PartitionType::Range);
+        assert_ne!(PartitionType::Range, PartitionType::List);
+    }
+
+    #[test]
+    fn test_foreign_key_struct() {
+        let fk = ForeignKeyConstraint {
+            name: Some("fk1".into()),
+            columns: vec!["a".into()],
+            referenced_table: "b".into(),
+            referenced_columns: vec!["id".into()],
+            on_delete: None,
+            on_update: None,
+        };
+        assert_eq!(fk.referenced_table, "b");
+    }
+
+    #[test]
+    fn test_unique_constraint_struct() {
+        let uc = UniqueConstraint {
+            name: Some("uq1".into()),
+            columns: vec!["x".into(), "y".into()],
+        };
+        assert_eq!(uc.columns.len(), 2);
+    }
+
+    #[test]
+    fn test_check_constraint_struct() {
+        let cc = CheckConstraint {
+            name: Some("ck1".into()),
+            expression: "x > 0".into(),
+        };
+        assert_eq!(cc.name, Some("ck1".into()));
+        assert_eq!(cc.expression, "x > 0");
+    }
+
+    #[test]
+    fn test_column_definition_new() {
+        let cd = ColumnDefinition::new("age", "INTEGER");
+        assert_eq!(cd.name, "age");
+        assert_eq!(cd.data_type, "INTEGER");
+        assert!(!cd.nullable);
+        assert!(!cd.primary_key);
+    }
+
+    #[test]
+    fn test_row_mutation_accessors() {
+        let m = RowMutation::new(vec![(0, Value::Integer(1))], 42);
+        assert_eq!(m.assignments().len(), 1);
+        assert_eq!(m.mutation_hash(), 42);
+    }
+
+    #[test]
+    fn test_trigger_info_struct() {
+        let ti = TriggerInfo {
+            name: "trig1".into(),
+            table_name: "users".into(),
+            timing: TriggerTiming::Before,
+            event: TriggerEvent::Insert,
+            body: "BEGIN UPDATE stats SET count = count + 1; END".into(),
+        };
+        assert_eq!(ti.name, "trig1");
+        assert_eq!(ti.table_name, "users");
+    }
+
+    #[test]
+    fn test_table_data_default() {
+        let mut s = MemoryStorage::new();
+        let info = TableInfo {
+            name: "t".into(),
+            ..Default::default()
+        };
+        s.create_table(&info).unwrap();
+        assert!(s.has_table("t"));
+    }
+
+    #[test]
+    fn test_storage_engine_force_insert() {
+        let mut s = MemoryStorage::new();
+        s.force_insert("t", vec![Value::Integer(1)]).unwrap();
+        let rows = s.scan("t").unwrap();
+        assert_eq!(rows.len(), 1);
+    }
+
+    #[test]
+    fn test_storage_engine_modify_column_unsupported() {
+        let mut s = MemoryStorage::new();
+        let col = ColumnDefinition::new("a", "INTEGER");
+        let result = s.modify_column("t", "a", col);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_storage_engine_get_trigger_none() {
+        let s = MemoryStorage::new();
+        assert!(s.get_trigger("nonexistent").is_none());
+    }
+
+    #[test]
+    fn test_storage_engine_list_triggers_empty() {
+        let s = MemoryStorage::new();
+        assert!(s.list_triggers("t").is_empty());
+    }
+
+    #[test]
+    fn test_storage_engine_list_indexes_empty() {
+        let s = MemoryStorage::new();
+        assert!(s.list_indexes("t").is_empty());
+    }
+
+    #[test]
+    fn test_storage_engine_has_view_false() {
+        let s = MemoryStorage::new();
+        assert!(!s.has_view("v"));
+    }
+
+    #[test]
+    fn test_storage_engine_transaction() {
+        let mut s = MemoryStorage::new();
+        assert!(!s.in_transaction());
+        assert_eq!(s.current_tx_id(), 0);
+        let id = s.begin_transaction().unwrap();
+        assert_eq!(id, 1);
+        assert!(s.in_transaction());
+        s.commit_transaction().unwrap();
+        assert!(!s.in_transaction());
+    }
+
+    #[test]
+    fn test_storage_engine_begin_rollback() {
+        let mut s = MemoryStorage::new();
+        let id = s.begin_transaction().unwrap();
+        s.rollback_transaction().unwrap();
+        assert_eq!(id, 1);
+        assert!(!s.in_transaction());
+    }
+
+    #[test]
+    fn test_storage_engine_set_current_tx_id() {
+        let mut s = MemoryStorage::new();
+        s.set_current_tx_id(42);
+    }
+
+    #[test]
+    fn test_storage_engine_flush() {
+        let mut s = MemoryStorage::new();
+        s.flush().unwrap();
+    }
+
+    #[test]
+    fn test_partition_rows_num_partitions_zero() {
+        let mut storage = MemoryStorage::new();
+        storage.tables.insert(
+            "t".to_string(),
+            (0..600_000_i64).map(|i| vec![Value::Integer(i)]).collect(),
+        );
+        let parts = storage.partition_rows("t", 0);
+        assert_eq!(parts.len(), 1, "n_partitions should be clamped to 1");
+        assert_eq!(parts[0].len(), 600_000);
+    }
+
+    #[test]
+    fn test_partition_rows_num_partitions_one_large() {
+        let mut storage = MemoryStorage::new();
+        storage.tables.insert(
+            "t".to_string(),
+            (0..600_000_i64).map(|i| vec![Value::Integer(i)]).collect(),
+        );
+        let parts = storage.partition_rows("t", 1);
+        assert_eq!(parts.len(), 1);
+        assert_eq!(parts[0].len(), 600_000);
+    }
+
+    #[test]
+    fn test_partition_rows_above_threshold_2_partitions() {
+        let mut storage = MemoryStorage::new();
+        storage.tables.insert(
+            "t".to_string(),
+            (0..500_100_i64).map(|i| vec![Value::Integer(i)]).collect(),
+        );
+        let parts = storage.partition_rows("t", 2);
+        assert_eq!(parts.len(), 2);
+        let total: usize = parts.iter().map(|p| p.len()).sum();
+        assert_eq!(total, 500_100);
+    }
+
+    #[test]
+    fn test_nested_transaction_returns_error() {
+        let mut s = MemoryStorage::new();
+        s.begin_transaction().unwrap();
+        let result = s.begin_transaction();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_update_with_log_no_filter() {
+        let mut s = MemoryStorage::new();
+        s.tables.insert(
+            "t".to_string(),
+            vec![vec![Value::Integer(1)], vec![Value::Integer(2)]],
+        );
+        s.current_tx_id = 1;
+        s.tx_log = Some(TxLog::default());
+        let count = s.update("t", &[], &[(0, Value::Integer(99))]).unwrap();
+        assert_eq!(count, 2);
+        assert_eq!(s.tables["t"][0][0], Value::Integer(99));
+    }
+
+    #[test]
+    fn test_update_with_log_with_filter() {
+        let mut s = MemoryStorage::new();
+        s.tables.insert(
+            "t".to_string(),
+            vec![vec![Value::Integer(1)], vec![Value::Integer(2)]],
+        );
+        s.current_tx_id = 1;
+        s.tx_log = Some(TxLog::default());
+        let count = s
+            .update("t", &[Value::Integer(1)], &[(0, Value::Integer(99))])
+            .unwrap();
+        assert_eq!(count, 1);
+        assert_eq!(s.tables["t"][0][0], Value::Integer(99));
+        assert_eq!(s.tables["t"][1][0], Value::Integer(2));
+    }
+
+    #[test]
+    fn test_update_nonexistent_table() {
+        let mut s = MemoryStorage::new();
+        let count = s
+            .update(
+                "nonexistent",
+                &[Value::Integer(1)],
+                &[(0, Value::Integer(99))],
+            )
+            .unwrap();
+        assert_eq!(count, 0);
+    }
+
+    #[test]
+    fn test_update_if_with_log() {
+        let mut s = MemoryStorage::new();
+        s.tables.insert(
+            "t".to_string(),
+            vec![vec![Value::Integer(1)], vec![Value::Integer(2)]],
+        );
+        s.current_tx_id = 1;
+        s.tx_log = Some(TxLog::default());
+        let filter: RowFilter = Box::new(|row: &Record| row[0] == Value::Integer(2));
+        let mutation = RowMutation::new(vec![(0, Value::Integer(88))], 0);
+        let count = s.update_if("t", &filter, &mutation).unwrap();
+        assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn test_update_if_nonexistent_table() {
+        let mut s = MemoryStorage::new();
+        let filter: RowFilter = Box::new(|_: &Record| true);
+        let mutation = RowMutation::new(vec![(0, Value::Integer(0))], 0);
+        let count = s.update_if("nonexistent", &filter, &mutation).unwrap();
+        assert_eq!(count, 0);
+    }
+
+    #[test]
+    fn test_insert_dedup_logic() {
+        let mut s = MemoryStorage::new();
+        s.tables
+            .insert("t".to_string(), vec![vec![Value::Integer(1)]]);
+        s.current_tx_id = 1;
+        s.tx_log = Some(TxLog::default());
+        s.tables.get_mut("t").unwrap().push(vec![Value::Integer(2)]);
+    }
+
+    #[test]
+    fn test_rollback_removes_inserted_rows() {
+        let mut s = MemoryStorage::new();
+        s.tables
+            .insert("t".to_string(), vec![vec![Value::Integer(1)]]);
+        s.begin_transaction().unwrap();
+        s.insert("t", vec![vec![Value::Integer(2)]]).unwrap();
+        s.rollback_transaction().unwrap();
+        let rows = s.scan("t").unwrap();
+        assert_eq!(rows.len(), 1);
+    }
+
+    #[test]
+    fn test_rollback_restores_deleted_rows() {
+        let mut s = MemoryStorage::new();
+        s.tables.insert(
+            "t".to_string(),
+            vec![vec![Value::Integer(1)], vec![Value::Integer(2)]],
+        );
+        s.begin_transaction().unwrap();
+        s.delete("t", &[Value::Integer(1)]).unwrap();
+        s.rollback_transaction().unwrap();
+        let rows = s.scan("t").unwrap();
+        assert_eq!(rows.len(), 2);
+    }
+
+    #[test]
+    fn test_create_table_with_table_info() {
+        let mut s = MemoryStorage::new();
+        let info = TableInfo {
+            name: "users".to_string(),
+            columns: vec![ColumnDefinition::new("id", "INTEGER")],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
+        };
+        s.create_table(&info).unwrap();
+        assert!(s.has_table("users"));
+    }
+
+    #[test]
+    fn test_drop_table_clears_infos() {
+        let mut s = MemoryStorage::new();
+        let info = TableInfo {
+            name: "t".to_string(),
+            columns: vec![],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
+        };
+        s.create_table(&info).unwrap();
+        s.drop_table("t").unwrap();
+        assert!(!s.has_table("t"));
+    }
+
+    #[test]
+    fn test_get_table_info_returns_clone() {
+        let mut s = MemoryStorage::new();
+        let info = TableInfo {
+            name: "t".to_string(),
+            columns: vec![ColumnDefinition::new("a", "INTEGER")],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
+        };
+        s.create_table(&info).unwrap();
+        let got = s.get_table_info("t").unwrap();
+        assert_eq!(got.name, "t");
+        assert_eq!(got.columns.len(), 1);
+    }
+
+    #[test]
+    fn test_get_table_info_not_found_err() {
+        let s = MemoryStorage::new();
+        let result = s.get_table_info("nonexistent");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_list_tables_returns_names() {
+        let mut s = MemoryStorage::new();
+        for name in ["a", "b", "c"] {
+            let info = TableInfo {
+                name: name.to_string(),
+                columns: vec![],
+                foreign_keys: vec![],
+                unique_constraints: vec![],
+                check_constraints: vec![],
+                partition_info: None,
+            };
+            s.create_table(&info).unwrap();
+        }
+        let tables = s.list_tables();
+        assert_eq!(tables.len(), 3);
+    }
+
+    #[test]
+    fn test_create_drop_database_memory() {
+        let mut s = MemoryStorage::new();
+        s.create_database("db1").unwrap();
+        s.drop_database("db1").unwrap();
+    }
+
+    #[test]
+    fn test_add_column_to_existing_table() {
+        let mut s = MemoryStorage::new();
+        let info = TableInfo {
+            name: "t".to_string(),
+            columns: vec![ColumnDefinition::new("a", "INTEGER")],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
+        };
+        s.create_table(&info).unwrap();
+        s.add_column("t", ColumnDefinition::new("b", "TEXT"))
+            .unwrap();
+        let got = s.get_table_info("t").unwrap();
+        assert_eq!(got.columns.len(), 2);
+    }
+
+    #[test]
+    fn test_add_column_to_nonexistent_table_errs() {
+        let mut s = MemoryStorage::new();
+        let result = s.add_column("nonexistent", ColumnDefinition::new("a", "INTEGER"));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_rename_table_success() {
+        let mut s = MemoryStorage::new();
+        let info = TableInfo {
+            name: "old".to_string(),
+            columns: vec![],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
+        };
+        s.create_table(&info).unwrap();
+        s.insert("old", vec![vec![Value::Integer(1)]]).unwrap();
+        s.rename_table("old", "new").unwrap();
+        assert!(!s.has_table("old"));
+        assert!(s.has_table("new"));
+        let rows = s.scan("new").unwrap();
+        assert_eq!(rows.len(), 1);
+    }
+
+    #[test]
+    fn test_rename_table_not_found_errs() {
+        let mut s = MemoryStorage::new();
+        let result = s.rename_table("nonexistent", "new");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_create_drop_trigger_memory() {
+        let mut s = MemoryStorage::new();
+        let trigger = TriggerInfo {
+            name: "trig".to_string(),
+            table_name: "t".to_string(),
+            timing: crate::engine::TriggerTiming::Before,
+            event: crate::engine::TriggerEvent::Insert,
+            body: "".to_string(),
+        };
+        s.create_trigger(trigger).unwrap();
+        assert!(s.get_trigger("trig").is_some());
+        s.drop_trigger("trig").unwrap();
+        assert!(s.get_trigger("trig").is_none());
+    }
+
+    #[test]
+    fn test_drop_trigger_not_found_errs() {
+        let mut s = MemoryStorage::new();
+        let result = s.drop_trigger("nonexistent");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_has_view_default_false() {
+        let s = MemoryStorage::new();
+        assert!(!s.has_view("v"));
+    }
+
+    #[test]
+    fn test_list_triggers_filters_by_table() {
+        let mut s = MemoryStorage::new();
+        let t1 = TriggerInfo {
+            name: "a".to_string(),
+            table_name: "users".to_string(),
+            timing: crate::engine::TriggerTiming::Before,
+            event: crate::engine::TriggerEvent::Insert,
+            body: "".to_string(),
+        };
+        let t2 = TriggerInfo {
+            name: "b".to_string(),
+            table_name: "orders".to_string(),
+            timing: crate::engine::TriggerTiming::After,
+            event: crate::engine::TriggerEvent::Update,
+            body: "".to_string(),
+        };
+        s.create_trigger(t1).unwrap();
+        s.create_trigger(t2).unwrap();
+        let users_triggers = s.list_triggers("users");
+        let orders_triggers = s.list_triggers("orders");
+        assert_eq!(users_triggers.len(), 1);
+        assert_eq!(orders_triggers.len(), 1);
+    }
+
+    #[test]
+    fn test_storage_engine_default_impl_trait_methods() {
+        let mut s = MemoryStorage::new();
+        s.flush().unwrap();
+        assert!(s.is_wal_enabled());
+        s.begin_transaction().unwrap();
+        s.rollback_transaction().unwrap();
+        s.begin_transaction().unwrap();
+        s.commit_transaction().unwrap();
     }
 }

@@ -5,8 +5,8 @@
 use crate::logical_plan::LogicalPlan;
 use crate::optimizer::{DefaultOptimizer, Optimizer};
 use crate::physical_plan::{
-    AggregateExec, DeleteExec, FilterExec, HashJoinExec, IndexScanExec, LimitExec, PhysicalPlan,
-    ProjectionExec, SeqScanExec, SortExec,
+    AggregateExec, DeleteExec, FilterExec, HashJoinExec, IndexScanExec, LimitExec,
+    ParallelFilterExec, PhysicalPlan, ProjectionExec, SeqScanExec, SortExec,
 };
 use crate::Schema;
 use sqlrustgo_optimizer::SimpleCostModel;
@@ -44,6 +44,11 @@ pub struct DefaultPlanner {
     optimizer: DefaultOptimizer,
     storage: Option<Arc<RwLock<dyn StorageEngine>>>,
     cost_model: SimpleCostModel,
+    /// v3.10.0 Issue #3703: parallel degree for `ParallelFilterExec`
+    /// emission. 1 = sequential, no parallel plan nodes emitted.
+    /// Set via `with_parallel_degree`; read from
+    /// `SQLRUSTGO_EXECUTOR_PARALLELISM` env var by default.
+    parallel_degree: usize,
 }
 
 impl DefaultPlanner {
@@ -52,6 +57,7 @@ impl DefaultPlanner {
             optimizer: DefaultOptimizer::new(),
             storage: None,
             cost_model: SimpleCostModel::default_model(),
+            parallel_degree: read_planner_parallel_degree_from_env(),
         }
     }
 
@@ -61,9 +67,37 @@ impl DefaultPlanner {
             optimizer: DefaultOptimizer::new(),
             storage: Some(storage),
             cost_model: SimpleCostModel::default_model(),
+            parallel_degree: read_planner_parallel_degree_from_env(),
         }
     }
 
+    /// Set the parallel degree (1 = sequential). When > 1, the planner
+    /// will emit `ParallelFilterExec` for `Filter` nodes on top of
+    /// `SeqScan` plans, gated on no `SortExec` ancestor.
+    pub fn with_parallel_degree(mut self, degree: usize) -> Self {
+        self.parallel_degree = degree.max(1);
+        self
+    }
+
+    /// Current parallel degree. Read by `create_physical_plan_internal`
+    /// when wrapping a `Filter` with `ParallelFilterExec`.
+    pub fn parallel_degree(&self) -> usize {
+        self.parallel_degree
+    }
+}
+
+/// v3.10.0 Issue #3703: env-var reader for the planner's default
+/// parallel degree. Mirrors the executor helper; kept in this crate
+/// so the planner can be used without depending on the executor.
+fn read_planner_parallel_degree_from_env() -> usize {
+    std::env::var("SQLRUSTGO_EXECUTOR_PARALLELISM")
+        .ok()
+        .and_then(|s| s.parse::<usize>().ok())
+        .filter(|n| *n >= 1)
+        .unwrap_or(1)
+}
+
+impl DefaultPlanner {
     /// Returns true if storage is available for CBO index selection
     #[allow(dead_code)]
     fn has_storage(&self) -> bool {
@@ -95,6 +129,18 @@ impl DefaultPlanner {
         &self,
         logical_plan: &LogicalPlan,
     ) -> PlannerResult<Box<dyn PhysicalPlan>> {
+        self.create_physical_plan_internal_with_degree(logical_plan, self.parallel_degree)
+    }
+
+    /// Recursive planner that threads the active `parallel_degree` down
+    /// the tree. v3.10.0 Issue #3703: a `Sort` node forces its subtree
+    /// to plan with degree = 1, because parallel filtering does not
+    /// preserve row order and would defeat the Sort's purpose.
+    fn create_physical_plan_internal_with_degree(
+        &self,
+        logical_plan: &LogicalPlan,
+        parallel_degree: usize,
+    ) -> PlannerResult<Box<dyn PhysicalPlan>> {
         match logical_plan {
             LogicalPlan::TableScan {
                 table_name,
@@ -117,7 +163,8 @@ impl DefaultPlanner {
                 expr,
                 schema,
             } => {
-                let input_plan = self.create_physical_plan_internal(input)?;
+                let input_plan =
+                    self.create_physical_plan_internal_with_degree(input, parallel_degree)?;
                 Ok(Box::new(ProjectionExec::new(
                     input_plan,
                     expr.clone(),
@@ -125,8 +172,19 @@ impl DefaultPlanner {
                 )))
             }
             LogicalPlan::Filter { predicate, input } => {
-                let input_plan = self.create_physical_plan_internal(input)?;
-                Ok(Box::new(FilterExec::new(input_plan, predicate.clone())))
+                let input_plan =
+                    self.create_physical_plan_internal_with_degree(input, parallel_degree)?;
+                // v3.10.0 Issue #3703: when parallel_degree > 1 and no
+                // SortExec ancestor, wrap the filter in
+                if parallel_degree > 1 && !plan_has_sort(input) {
+                    Ok(Box::new(ParallelFilterExec::new(
+                        input_plan,
+                        predicate.clone(),
+                        parallel_degree,
+                    )))
+                } else {
+                    Ok(Box::new(FilterExec::new(input_plan, predicate.clone())))
+                }
             }
             LogicalPlan::Aggregate {
                 input,
@@ -134,7 +192,8 @@ impl DefaultPlanner {
                 aggregate_expr,
                 schema,
             } => {
-                let input_plan = self.create_physical_plan_internal(input)?;
+                let input_plan =
+                    self.create_physical_plan_internal_with_degree(input, parallel_degree)?;
                 Ok(Box::new(AggregateExec::new(
                     input_plan,
                     group_expr.clone(),
@@ -148,8 +207,10 @@ impl DefaultPlanner {
                 join_type,
                 condition,
             } => {
-                let left_plan = self.create_physical_plan_internal(left)?;
-                let right_plan = self.create_physical_plan_internal(right)?;
+                let left_plan =
+                    self.create_physical_plan_internal_with_degree(left, parallel_degree)?;
+                let right_plan =
+                    self.create_physical_plan_internal_with_degree(right, parallel_degree)?;
                 let schema = Schema::new(vec![]); // Would need to compute from children
                 Ok(Box::new(HashJoinExec::new(
                     left_plan,
@@ -160,7 +221,7 @@ impl DefaultPlanner {
                 )))
             }
             LogicalPlan::Sort { input, sort_expr } => {
-                let input_plan = self.create_physical_plan_internal(input)?;
+                let input_plan = self.create_physical_plan_internal_with_degree(input, 1)?;
                 Ok(Box::new(SortExec::new(input_plan, sort_expr.clone())))
             }
             LogicalPlan::Limit {
@@ -168,7 +229,8 @@ impl DefaultPlanner {
                 limit,
                 offset,
             } => {
-                let input_plan = self.create_physical_plan_internal(input)?;
+                let input_plan =
+                    self.create_physical_plan_internal_with_degree(input, parallel_degree)?;
                 Ok(Box::new(LimitExec::new(input_plan, *limit, *offset)))
             }
             LogicalPlan::EmptyRelation => {
@@ -206,12 +268,34 @@ impl DefaultPlanner {
                 table_name.clone(),
                 predicate.clone(),
             ))),
-            LogicalPlan::Subquery { subquery, .. } => self.create_physical_plan_internal(subquery),
+            LogicalPlan::Subquery { subquery, .. } => {
+                self.create_physical_plan_internal_with_degree(subquery, parallel_degree)
+            }
             LogicalPlan::Union { left, .. } => {
                 // Union - use left plan as base (simplified)
-                self.create_physical_plan_internal(left)
+                self.create_physical_plan_internal_with_degree(left, parallel_degree)
             }
         }
+    }
+}
+
+/// v3.10.0 Issue #3703: walk a logical plan tree and return true if any
+/// node is `LogicalPlan::Sort`. Used to suppress `ParallelFilterExec`
+/// emission when an ORDER BY is present (parallel filter doesn't
+/// preserve partition order; the Sort step needs a complete row set
+/// and would re-sort, but the work is wasted if the filter already
+/// shuffled the row order).
+fn plan_has_sort(plan: &LogicalPlan) -> bool {
+    match plan {
+        LogicalPlan::Sort { .. } => true,
+        LogicalPlan::Projection { input, .. } => plan_has_sort(input),
+        LogicalPlan::Filter { input, .. } => plan_has_sort(input),
+        LogicalPlan::Aggregate { input, .. } => plan_has_sort(input),
+        LogicalPlan::Limit { input, .. } => plan_has_sort(input),
+        LogicalPlan::Join { left, right, .. } => plan_has_sort(left) || plan_has_sort(right),
+        LogicalPlan::Union { left, right, .. } => plan_has_sort(left) || plan_has_sort(right),
+        LogicalPlan::Subquery { subquery, .. } => plan_has_sort(subquery),
+        _ => false,
     }
 }
 
@@ -277,11 +361,91 @@ mod tests {
     use crate::DataType;
     use crate::Expr;
     use crate::Field;
+    use crate::{Operator, SortExpr};
+    use sqlrustgo_types::Value;
 
     #[test]
     fn test_default_planner_creation() {
         let _planner = DefaultPlanner::new();
         assert!(std::any::type_name::<DefaultPlanner>().contains("DefaultPlanner"));
+    }
+    #[test]
+    fn test_planner_emits_parallel_filter_when_degree_gt_1() {
+        let schema = Schema::new(vec![
+            Field::new("id".to_string(), DataType::Integer),
+            Field::new("name".to_string(), DataType::Text),
+        ]);
+        let logical_plan = LogicalPlan::Filter {
+            predicate: Expr::binary_expr(
+                Expr::column("id"),
+                Operator::Gt,
+                Expr::literal(Value::Integer(10)),
+            ),
+            input: Box::new(LogicalPlan::TableScan {
+                table_name: "users".to_string(),
+                schema: schema.clone(),
+                projection: None,
+            }),
+        };
+        let planner = DefaultPlanner::new().with_parallel_degree(4);
+        let physical_plan = planner.create_physical_plan(&logical_plan).unwrap();
+        assert_eq!(physical_plan.name(), "ParallelFilter");
+    }
+
+    #[test]
+    fn test_planner_emits_plain_filter_when_degree_is_1() {
+        let schema = Schema::new(vec![
+            Field::new("id".to_string(), DataType::Integer),
+            Field::new("name".to_string(), DataType::Text),
+        ]);
+        let logical_plan = LogicalPlan::Filter {
+            predicate: Expr::binary_expr(
+                Expr::column("id"),
+                Operator::Gt,
+                Expr::literal(Value::Integer(10)),
+            ),
+            input: Box::new(LogicalPlan::TableScan {
+                table_name: "users".to_string(),
+                schema: schema.clone(),
+                projection: None,
+            }),
+        };
+        let planner = DefaultPlanner::new();
+        let physical_plan = planner.create_physical_plan(&logical_plan).unwrap();
+        assert_eq!(physical_plan.name(), "Filter");
+    }
+
+    #[test]
+    fn test_planner_emits_plain_filter_when_sort_ancestor_present() {
+        let schema = Schema::new(vec![
+            Field::new("id".to_string(), DataType::Integer),
+            Field::new("name".to_string(), DataType::Text),
+        ]);
+        let filter_plan = LogicalPlan::Filter {
+            predicate: Expr::binary_expr(
+                Expr::column("id"),
+                Operator::Gt,
+                Expr::literal(Value::Integer(10)),
+            ),
+            input: Box::new(LogicalPlan::TableScan {
+                table_name: "users".to_string(),
+                schema: schema.clone(),
+                projection: None,
+            }),
+        };
+        let sort_plan = LogicalPlan::Sort {
+            input: Box::new(filter_plan),
+            sort_expr: vec![SortExpr {
+                expr: Expr::column("id"),
+                asc: true,
+                nulls_first: false,
+            }],
+        };
+        let planner = DefaultPlanner::new().with_parallel_degree(4);
+        let physical_plan = planner.create_physical_plan(&sort_plan).unwrap();
+        let children = physical_plan.children();
+        let child = children.first().expect("Sort child");
+        assert_eq!(child.name(), "Filter");
     }
 
     #[test]

@@ -17,10 +17,11 @@
 //! - Unmatched rows from t1 with NULLs for t2 columns
 //! - Unmatched rows from t2 with NULLs for t1 columns
 
+use parking_lot::RwLock;
 use sqlrustgo::ExecutionEngine;
 use sqlrustgo_storage::MemoryStorage;
 use sqlrustgo_types::Value;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 
 fn create_engine() -> ExecutionEngine<MemoryStorage> {
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));
