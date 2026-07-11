@@ -1945,4 +1945,201 @@ mod tests {
         let rows = s.scan("t").unwrap();
         assert_eq!(rows.len(), 2);
     }
+
+    #[test]
+    fn test_create_table_with_table_info() {
+        let mut s = MemoryStorage::new();
+        let info = TableInfo {
+            name: "users".to_string(),
+            columns: vec![ColumnDefinition::new("id", "INTEGER")],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
+        };
+        s.create_table(&info).unwrap();
+        assert!(s.has_table("users"));
+    }
+
+    #[test]
+    fn test_drop_table_clears_infos() {
+        let mut s = MemoryStorage::new();
+        let info = TableInfo {
+            name: "t".to_string(),
+            columns: vec![],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
+        };
+        s.create_table(&info).unwrap();
+        s.drop_table("t").unwrap();
+        assert!(!s.has_table("t"));
+    }
+
+    #[test]
+    fn test_get_table_info_returns_clone() {
+        let mut s = MemoryStorage::new();
+        let info = TableInfo {
+            name: "t".to_string(),
+            columns: vec![ColumnDefinition::new("a", "INTEGER")],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
+        };
+        s.create_table(&info).unwrap();
+        let got = s.get_table_info("t").unwrap();
+        assert_eq!(got.name, "t");
+        assert_eq!(got.columns.len(), 1);
+    }
+
+    #[test]
+    fn test_get_table_info_not_found_err() {
+        let s = MemoryStorage::new();
+        let result = s.get_table_info("nonexistent");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_list_tables_returns_names() {
+        let mut s = MemoryStorage::new();
+        for name in ["a", "b", "c"] {
+            let info = TableInfo {
+                name: name.to_string(),
+                columns: vec![],
+                foreign_keys: vec![],
+                unique_constraints: vec![],
+                check_constraints: vec![],
+                partition_info: None,
+            };
+            s.create_table(&info).unwrap();
+        }
+        let tables = s.list_tables();
+        assert_eq!(tables.len(), 3);
+    }
+
+    #[test]
+    fn test_create_drop_database_memory() {
+        let mut s = MemoryStorage::new();
+        s.create_database("db1").unwrap();
+        s.drop_database("db1").unwrap();
+    }
+
+    #[test]
+    fn test_add_column_to_existing_table() {
+        let mut s = MemoryStorage::new();
+        let info = TableInfo {
+            name: "t".to_string(),
+            columns: vec![ColumnDefinition::new("a", "INTEGER")],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
+        };
+        s.create_table(&info).unwrap();
+        s.add_column("t", ColumnDefinition::new("b", "TEXT"))
+            .unwrap();
+        let got = s.get_table_info("t").unwrap();
+        assert_eq!(got.columns.len(), 2);
+    }
+
+    #[test]
+    fn test_add_column_to_nonexistent_table_errs() {
+        let mut s = MemoryStorage::new();
+        let result = s.add_column("nonexistent", ColumnDefinition::new("a", "INTEGER"));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_rename_table_success() {
+        let mut s = MemoryStorage::new();
+        let info = TableInfo {
+            name: "old".to_string(),
+            columns: vec![],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
+        };
+        s.create_table(&info).unwrap();
+        s.insert("old", vec![vec![Value::Integer(1)]]).unwrap();
+        s.rename_table("old", "new").unwrap();
+        assert!(!s.has_table("old"));
+        assert!(s.has_table("new"));
+        let rows = s.scan("new").unwrap();
+        assert_eq!(rows.len(), 1);
+    }
+
+    #[test]
+    fn test_rename_table_not_found_errs() {
+        let mut s = MemoryStorage::new();
+        let result = s.rename_table("nonexistent", "new");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_create_drop_trigger_memory() {
+        let mut s = MemoryStorage::new();
+        let trigger = TriggerInfo {
+            name: "trig".to_string(),
+            table_name: "t".to_string(),
+            timing: crate::engine::TriggerTiming::Before,
+            event: crate::engine::TriggerEvent::Insert,
+            body: "".to_string(),
+        };
+        s.create_trigger(trigger).unwrap();
+        assert!(s.get_trigger("trig").is_some());
+        s.drop_trigger("trig").unwrap();
+        assert!(s.get_trigger("trig").is_none());
+    }
+
+    #[test]
+    fn test_drop_trigger_not_found_errs() {
+        let mut s = MemoryStorage::new();
+        let result = s.drop_trigger("nonexistent");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_has_view_default_false() {
+        let s = MemoryStorage::new();
+        assert!(!s.has_view("v"));
+    }
+
+    #[test]
+    fn test_list_triggers_filters_by_table() {
+        let mut s = MemoryStorage::new();
+        let t1 = TriggerInfo {
+            name: "a".to_string(),
+            table_name: "users".to_string(),
+            timing: crate::engine::TriggerTiming::Before,
+            event: crate::engine::TriggerEvent::Insert,
+            body: "".to_string(),
+        };
+        let t2 = TriggerInfo {
+            name: "b".to_string(),
+            table_name: "orders".to_string(),
+            timing: crate::engine::TriggerTiming::After,
+            event: crate::engine::TriggerEvent::Update,
+            body: "".to_string(),
+        };
+        s.create_trigger(t1).unwrap();
+        s.create_trigger(t2).unwrap();
+        let users_triggers = s.list_triggers("users");
+        let orders_triggers = s.list_triggers("orders");
+        assert_eq!(users_triggers.len(), 1);
+        assert_eq!(orders_triggers.len(), 1);
+    }
+
+    #[test]
+    fn test_storage_engine_default_impl_trait_methods() {
+        let mut s = MemoryStorage::new();
+        s.flush().unwrap();
+        assert!(s.is_wal_enabled());
+        s.begin_transaction().unwrap();
+        s.rollback_transaction().unwrap();
+        s.begin_transaction().unwrap();
+        s.commit_transaction().unwrap();
+    }
 }
