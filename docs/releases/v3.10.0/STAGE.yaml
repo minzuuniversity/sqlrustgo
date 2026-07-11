@@ -6,19 +6,22 @@
 #   2. docs/releases/vX.Y.Z/STAGE.yaml (per-version, this file)
 #   3. scripts/gate/check_stage.sh (reads both, runs gates)
 #
-# v3.10.0 当前状态: DRAFT (设计与规划阶段)
-# 战略定位: MySQL 5.7 替代 — 功能稳定 + 基本性能优先
-# 父版本: v3.9.0 (develop/v3.9.0)
+# v3.10.0 当前状态: DRAFT (设计完成, 计划阶段, 等待 Gitea 创建 issue)
+# 战略定位: MySQL 5.7 替代 — 功能稳定 + 基本性能优先 + Wired SOAK 闭环
+# 父版本: v3.9.0 (main @ 23353c0c54, GA 2026-07-10)
 #
-# Maintainer: claude-macmini (initial creation)
-# Last update: 2026-07-01
+# Maintainer: Claude Code + yinglichina8848
+# Last update: 2026-07-11
 
-# =============================================================================
-# Current state
-# =============================================================================
+issue_plan:
+  master: "V310-MASTER"
+  sub_issues: 12
+  plan_doc: "plans/V310_ISSUES_PLAN.md"
+  gitea_pending: true  # 等待 Gitea 恢复后批量创建
+#
 version: "v3.10.0"
 current_stage: "DRAFT"
-branch: "develop/v3.10.0"  # NOT YET CREATED — to be created from develop/v3.9.0
+branch: "develop/v3.10.0"  # ✅ CREATED 2026-07-11 from main @ 23353c0c54
 last_transition:
   from: null  # first version state
   to: "DRAFT"
