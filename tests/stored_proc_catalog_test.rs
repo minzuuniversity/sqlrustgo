@@ -3,9 +3,11 @@
 // These tests verify the stored procedure and trigger catalog integration
 // that was added for Issue #1636 (存储过程与触发器 Catalog 集成)
 
+use parking_lot::RwLock;
+use sqlrustgo::Value;
 use sqlrustgo::{ExecutionEngine, MemoryStorage};
 use sqlrustgo_catalog::Catalog;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 
 #[test]
 fn test_create_and_call_procedure_with_catalog() {
@@ -281,7 +283,6 @@ fn test_multiple_triggers_on_same_table() {
 }
 
 #[test]
-#[ignore = "MemoryStorage does not support transactions; trigger DML requires transaction boundary"]
 fn test_trigger_executes_insert() {
     let catalog = Arc::new(RwLock::new(Catalog::new("test")));
     let mut engine = ExecutionEngine::with_memory_and_catalog(catalog.clone());
@@ -312,7 +313,6 @@ fn test_trigger_executes_insert() {
 }
 
 #[test]
-#[ignore = "MemoryStorage does not support transactions; trigger DML requires transaction boundary"]
 fn test_trigger_executes_update() {
     let catalog = Arc::new(RwLock::new(Catalog::new("test")));
     let mut engine = ExecutionEngine::with_memory_and_catalog(catalog.clone());
@@ -341,9 +341,7 @@ fn test_trigger_executes_update() {
     let history = engine.execute("SELECT * FROM price_history").unwrap();
     assert_eq!(history.rows.len(), 1);
 }
-
 #[test]
-#[ignore = "MemoryStorage does not support transactions; trigger DML requires transaction boundary"]
 fn test_trigger_executes_delete() {
     let catalog = Arc::new(RwLock::new(Catalog::new("test")));
     let mut engine = ExecutionEngine::with_memory_and_catalog(catalog.clone());
@@ -372,4 +370,105 @@ fn test_trigger_executes_delete() {
 
     let cancelled = engine.execute("SELECT * FROM cancelled_orders").unwrap();
     assert_eq!(cancelled.rows.len(), 1);
+}
+
+/// C-3c.4: Trigger modifications are rolled back when the outer transaction rolls back.
+#[test]
+fn test_trigger_rollback_undoes_trigger_modifications() {
+    let catalog = Arc::new(RwLock::new(Catalog::new("test")));
+    let mut engine = ExecutionEngine::with_memory_and_catalog(catalog.clone());
+
+    engine
+        .execute("CREATE TABLE orders (id INTEGER, product_id INTEGER, quantity INTEGER)")
+        .unwrap();
+    engine
+        .execute("CREATE TABLE inventory (product_id INTEGER, stock INTEGER)")
+        .unwrap();
+    engine
+        .execute("INSERT INTO inventory VALUES (1, 100)")
+        .unwrap();
+
+    engine
+        .execute(
+            "CREATE TRIGGER decrement_stock AFTER INSERT ON orders FOR EACH ROW BEGIN \
+             UPDATE inventory SET stock = stock - NEW.quantity WHERE product_id = NEW.product_id; \
+             END",
+        )
+        .unwrap();
+
+    // Outer transaction: insert an order (fires trigger that decrements stock), then ROLLBACK.
+    engine.execute("BEGIN").unwrap();
+    engine
+        .execute("INSERT INTO orders VALUES (1, 1, 10)")
+        .unwrap();
+
+    // Mid-tx: the trigger has already fired; stock is decremented to 90 in the active tx log.
+    let mid_tx_stock = engine
+        .execute("SELECT stock FROM inventory WHERE product_id = 1")
+        .unwrap();
+    assert_eq!(mid_tx_stock.rows[0][0], Value::Integer(90));
+
+    engine.execute("ROLLBACK").unwrap();
+
+    // After ROLLBACK: the trigger's UPDATE on inventory must be undone. Stock stays at 100.
+    let stock_after_rollback = engine
+        .execute("SELECT stock FROM inventory WHERE product_id = 1")
+        .unwrap();
+    assert_eq!(
+        stock_after_rollback.rows[0][0],
+        Value::Integer(100),
+        "Trigger modifications must be rolled back when outer tx rolls back"
+    );
+
+    // The orders insert itself must also be undone.
+    let orders = engine.execute("SELECT * FROM orders").unwrap();
+    assert_eq!(
+        orders.rows.len(),
+        0,
+        "Outer-tx INSERT must be rolled back alongside the trigger side-effect"
+    );
+}
+
+/// C-3c.5: Trigger modifications persist after COMMIT.
+#[test]
+fn test_trigger_commit_persists_trigger_modifications() {
+    let catalog = Arc::new(RwLock::new(Catalog::new("test")));
+    let mut engine = ExecutionEngine::with_memory_and_catalog(catalog.clone());
+
+    engine
+        .execute("CREATE TABLE orders (id INTEGER, product_id INTEGER, quantity INTEGER)")
+        .unwrap();
+    engine
+        .execute("CREATE TABLE inventory (product_id INTEGER, stock INTEGER)")
+        .unwrap();
+    engine
+        .execute("INSERT INTO inventory VALUES (1, 100)")
+        .unwrap();
+
+    engine
+        .execute(
+            "CREATE TRIGGER decrement_stock AFTER INSERT ON orders FOR EACH ROW BEGIN \
+             UPDATE inventory SET stock = stock - NEW.quantity WHERE product_id = NEW.product_id; \
+             END",
+        )
+        .unwrap();
+
+    engine.execute("BEGIN").unwrap();
+    engine
+        .execute("INSERT INTO orders VALUES (1, 1, 10)")
+        .unwrap();
+    engine.execute("COMMIT").unwrap();
+
+    // After COMMIT: trigger modification must be persisted.
+    let stock = engine
+        .execute("SELECT stock FROM inventory WHERE product_id = 1")
+        .unwrap();
+    assert_eq!(
+        stock.rows[0][0],
+        Value::Integer(90),
+        "Trigger modifications must persist after outer tx commits"
+    );
+
+    let orders = engine.execute("SELECT * FROM orders").unwrap();
+    assert_eq!(orders.rows.len(), 1, "Order row must persist after COMMIT");
 }

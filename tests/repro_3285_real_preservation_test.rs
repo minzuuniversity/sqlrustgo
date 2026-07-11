@@ -4,8 +4,9 @@
 // Expected (per sprint4-sum-real-investigation.md): Value::Float(100.5) on scan
 // Actual (suspected): Value::Integer(100) or Value::Integer(0) — type lost in storage layer
 
+use parking_lot::RwLock;
 use sqlrustgo::{ExecutionEngine, MemoryStorage, Value};
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 
 fn engine() -> ExecutionEngine<MemoryStorage> {
     ExecutionEngine::new(Arc::new(RwLock::new(MemoryStorage::new())))
