@@ -42,15 +42,15 @@ cargo fmt --check:                            clean
 - AD-001 — 1500 行架构原始目标
 
 ---
-# SQLRustGo v3.9.0 Changelog
+# SQLRustGo v3.9.0 更新日志
 
 > **版本**: v3.9.0
-> **类型**: **Production Readiness Release** (工程化版本, 非功能版本)
-> **分支**: `develop/v3.9.0` (从 `main@v3.8.0` fork)
+> **类型**: **Production Readiness Release**（工程化版本，非功能版本）
+> **分支**: `develop/v3.9.0`（从 `main@v3.8.0` fork）
 > **创建日期**: 2026-06-05
-> **GA 目标**: 2026-12-15 (per Hermes audit #3252, deferred from 2026-09-23)
-> **当前阶段**: **RC7** (2026-06-12, awaiting 24h/72h/168h soak for GA cut, see GA_GATE_REPORT.md)
+> **GA 日期**: 2026-07-10
 > **前版本**: v3.8.0
+> **当前阶段**: **GA**（2026-07-10 完成 GA cut）
 
 ---
 
