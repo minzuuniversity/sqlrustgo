@@ -5,12 +5,13 @@
 #[allow(unused_imports)]
 use sqlrustgo_planner::{
     AggregateExec, AggregateFunction, Expr, FilterExec, HashJoinExec, IndexScanExec, JoinType,
-    LimitExec, Operator, PhysicalPlan, PreparedStatementManager, ProjectionExec, SortMergeJoinExec,
+    LimitExec, Operator, ParallelFilterExec, PhysicalPlan, PreparedStatementManager,
+    ProjectionExec, SortMergeJoinExec,
 };
 use sqlrustgo_storage::StorageEngine;
 use sqlrustgo_types::{SqlError, SqlResult, Value};
-
 use crate::operator_profile::GLOBAL_PROFILER;
+use crate::parallel_executor::ParallelVolcanoExecutor;
 use crate::query_cache::should_cache;
 use crate::query_cache::QueryCache;
 use crate::query_cache_config::{CacheEntry, CacheKey, QueryCacheConfig};
@@ -36,6 +37,13 @@ pub struct LocalExecutor<'a> {
     slow_query_log: StdRwLock<Option<query_stats::SlowQueryLog>>,
     current_sql: StdRwLock<String>,
     prepared_statements: StdRwLock<PreparedStatementManager>,
+    /// v3.10.0 Issue #3703: intra-query parallelism. Read at ctor time
+    /// from `SQLRUSTGO_EXECUTOR_PARALLELISM` env var (default 1 =
+    /// sequential). Mutate via `set_parallel_degree` after construction
+    /// for explicit overrides. The planner also embeds a per-plan
+    /// `parallel_degree` on `ParallelFilterExec`; the executor honors
+    /// the plan-level value when present.
+    parallel_degree: usize,
 }
 
 /// Unified facade - wraps storage with WAL + Transaction enforcement
@@ -121,7 +129,20 @@ impl<'a> LocalExecutor<'a> {
             slow_query_log: StdRwLock::new(None),
             current_sql: StdRwLock::new(String::new()),
             prepared_statements: StdRwLock::new(PreparedStatementManager::new(100)),
+            parallel_degree: read_executor_parallelism_from_env(),
         }
+    }
+
+    /// Set the default parallel degree (1 = sequential). The planner
+    /// also embeds a per-plan degree on `ParallelFilterExec`; that
+    /// value takes precedence when the plan is a `ParallelFilterExec`.
+    pub fn set_parallel_degree(&mut self, degree: usize) {
+        self.parallel_degree = degree.max(1);
+    }
+
+    /// Current default parallel degree for non-plan-level uses.
+    pub fn parallel_degree(&self) -> usize {
+        self.parallel_degree
     }
 
     pub fn with_cache_config(storage: &'a dyn StorageEngine, config: QueryCacheConfig) -> Self {
@@ -133,9 +154,24 @@ impl<'a> LocalExecutor<'a> {
             slow_query_log: StdRwLock::new(None),
             current_sql: StdRwLock::new(String::new()),
             prepared_statements: StdRwLock::new(PreparedStatementManager::new(100)),
+            parallel_degree: read_executor_parallelism_from_env(),
         }
     }
+}
 
+/// v3.10.0 Issue #3703: shared env-var read for parallel degree.
+/// Kept in this module so the planner/executor agree on the default.
+/// Returns 1 when the env var is unset, unparseable, or zero (zero
+/// would deadlock the parallel filter's partition loop).
+fn read_executor_parallelism_from_env() -> usize {
+    std::env::var("SQLRUSTGO_EXECUTOR_PARALLELISM")
+        .ok()
+        .and_then(|s| s.parse::<usize>().ok())
+        .filter(|n| *n >= 1)
+        .unwrap_or(1)
+}
+
+impl<'a> LocalExecutor<'a> {
     pub fn with_unified_facade(mut self) -> Self {
         match UnifiedFacade::new(self.storage, None) {
             Ok(facade) => {
@@ -224,6 +260,7 @@ impl<'a> LocalExecutor<'a> {
                 "IndexScan" => self.execute_index_scan(plan),
                 "Projection" => self.execute_projection(plan),
                 "Filter" => self.execute_filter(plan),
+                "ParallelFilter" => self.execute_parallel_filter(plan),
                 "Aggregate" => self.execute_aggregate(plan),
                 "HashJoin" => self.execute_hash_join(plan),
                 "SortMergeJoin" => self.execute_sort_merge_join(plan),
@@ -261,6 +298,7 @@ impl<'a> LocalExecutor<'a> {
             "IndexScan" => self.execute_index_scan(plan),
             "Projection" => self.execute_projection(plan),
             "Filter" => self.execute_filter(plan),
+            "ParallelFilter" => self.execute_parallel_filter(plan),
             "Aggregate" => self.execute_aggregate(plan),
             "HashJoin" => self.execute_hash_join(plan),
             "SortMergeJoin" => self.execute_sort_merge_join(plan),
@@ -514,6 +552,110 @@ impl<'a> LocalExecutor<'a> {
 
         Ok(ExecutorResult::new(filtered_rows, 0))
     }
+
+    /// Execute parallel filter (v3.10.0 Issue #3703 Section 2.x).
+    /// Mirrors `execute_filter` but partitions the row set across N
+    /// workers and filters each partition in parallel via
+    /// `rayon::par_iter`. The plan-level `parallel_degree` on
+    /// `ParallelFilterExec` takes precedence; falls back to
+    /// `self.parallel_degree` if absent.
+    ///
+    /// Threshold fall-back: when `rows.len() < PARALLEL_MIN_ROWS`,
+    /// `partition_scan` already returns a single partition, so this
+    /// method naturally degrades to sequential behavior with no
+    /// special-casing required.
+    #[cfg_attr(
+        not(feature = "parallel-executor"),
+        allow(unused_variables, dead_code)
+    )]
+    fn execute_parallel_filter(
+        &self,
+        plan: &dyn PhysicalPlan,
+    ) -> SqlResult<ExecutorResult> {
+        let start = Instant::now();
+        let children = plan.children();
+        if children.is_empty() {
+            return Ok(ExecutorResult::empty());
+        }
+
+        // Execute child to get the row set (sequential — the
+        // parallel benefit is in the filter step).
+        let child_result = self.execute(children[0])?;
+        let rows = child_result.rows;
+        let input_schema = children[0].schema();
+
+        // Determine the degree: plan-level beats executor default.
+        let degree = plan
+            .as_any()
+            .downcast_ref::<ParallelFilterExec>()
+            .map(|p| p.parallel_degree())
+            .unwrap_or(self.parallel_degree)
+            .max(1);
+
+        // Get the predicate. If this isn't actually a ParallelFilter
+        // (e.g. dispatched from a different path), bail out as empty
+        // — the planner is the only legitimate emitter.
+        let predicate = match plan.as_any().downcast_ref::<ParallelFilterExec>() {
+            Some(p) => p.predicate(),
+            None => return Ok(ExecutorResult::new(rows, 0)),
+        };
+
+        // Partition the row set. Below PARALLEL_MIN_ROWS, this returns
+        // a single partition; the filter then runs sequentially. This
+        // matches the inline path in `engine_select.rs:256-272`.
+        let parallel = ParallelVolcanoExecutor::new(degree);
+        let partitions = parallel.partition_rows(rows, degree);
+
+        // Filter each partition in parallel when rayon is available;
+        // sequential otherwise (default build, feature gate off).
+        #[cfg(feature = "parallel-executor")]
+        let filtered_rows: Vec<Vec<Value>> = {
+            use rayon::prelude::*;
+            partitions
+                .into_par_iter()
+                .flat_map(|part| {
+                    part.into_iter()
+                        .filter(|row| {
+                            let predicate_val = predicate
+                                .evaluate(row, input_schema)
+                                .unwrap_or(Value::Null);
+                            matches!(predicate_val, Value::Boolean(true))
+                        })
+                        .collect::<Vec<_>>()
+                })
+                .collect()
+        };
+
+        #[cfg(not(feature = "parallel-executor"))]
+        let filtered_rows: Vec<Vec<Value>> = {
+            partitions
+                .into_iter()
+                .flat_map(|part| {
+                    part.into_iter()
+                        .filter(|row| {
+                            let predicate_val = predicate
+                                .evaluate(row, input_schema)
+                                .unwrap_or(Value::Null);
+                            matches!(predicate_val, Value::Boolean(true))
+                        })
+                        .collect::<Vec<_>>()
+                })
+                .collect()
+        };
+
+        let row_count = filtered_rows.len();
+        let duration = start.elapsed();
+        GLOBAL_PROFILER.record(
+            "ParallelFilter",
+            "parallel_filter",
+            duration.as_nanos() as u64,
+            row_count,
+            degree as u64,
+        );
+
+        Ok(ExecutorResult::new(filtered_rows, 0))
+    }
+
 
     /// Execute aggregate (COUNT, SUM, AVG, etc.)
     fn execute_aggregate(&self, plan: &dyn PhysicalPlan) -> SqlResult<ExecutorResult> {
@@ -2365,6 +2507,7 @@ mod tests {
         // All rows returned since filter doesn't actually filter in this implementation
         assert!(result.rows.len() >= 1);
     }
+
 
     // === Tests for uncovered code paths ===
 

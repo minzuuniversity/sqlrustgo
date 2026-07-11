@@ -1,7 +1,12 @@
 //! Engine SELECT execution — extracted from execution_engine.rs (PR-900)
 //!
 //! Handles SELECT statement dispatch, projection, join planning, and result assembly.
-
+//!
+//! v3.10.0 Issue #3703: parallel filter is gated by:
+//!   - rows.len() >= PARALLEL_MIN_ROWS (currently 500_000, see crates/executor/src/parallel_executor.rs)
+//!   - self.parallel_degree > 1 (env SQLRUSTGO_EXECUTOR_PARALLELISM or --executor-parallelism)
+//!   - no correlated subquery in WHERE (would break parallel eval_predicate)
+//! Tracing spans (RUST_LOG=sqlrustgo=trace) reveal whether the path engages at runtime.
 use crate::engine_utils::*;
 use crate::expr_utils::*;
 use crate::{ExecutionEngine, ExecutorResult, SqlError, SqlResult, Value};
@@ -17,6 +22,7 @@ use sqlrustgo_storage::{StorageEngine, TableInfo};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
+use std::time::Instant;
 
 type DerivedResult = (Vec<Vec<Value>>, TableInfo);
 
@@ -253,7 +259,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         // The storage read lock is NOT held past this point, ensuring
         // that any recursive execution (e.g. correlated subqueries)
         // cannot deadlock against a held lock.
-        if self.parallel_degree > 1
+        let _parallel_guard = if self.parallel_degree > 1
             && rows.len() >= PARALLEL_MIN_ROWS
             // Skip parallel filter when WHERE contains correlated subqueries
             // (Subquery, EXISTS/NOT EXISTS with outer refs). The sequential
@@ -264,12 +270,29 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 .as_ref()
                 .is_some_and(where_expr_has_correlated_subquery)
         {
-            if let Some(ref where_expr) = select.where_clause {
+            let t_start = Instant::now();
+            let n_rows_in = rows.len();
+            if let Some(where_expr) = &select.where_clause {
                 let parallel = ParallelVolcanoExecutor::new(self.parallel_degree);
                 let partitions = parallel.partition_scan(rows, self.parallel_degree);
+                let n_partitions = partitions.len();
                 rows = self.filter_partitions_parallel(partitions, where_expr, &table_info);
+                let n_rows_out = rows.len();
+                let elapsed_us = t_start.elapsed().as_micros();
+                tracing::info!(
+                    target: "sqlrustgo.parallel",
+                    degree = self.parallel_degree,
+                    rows_in = n_rows_in,
+                    rows_out = n_rows_out,
+                    partitions = n_partitions,
+                    elapsed_us = elapsed_us as u64,
+                    "parallel_filter_engaged"
+                );
             }
-        }
+            Some(())
+        } else {
+            None
+        };
 
         // Step 1.5: correlated EXISTS / NOT EXISTS pre-evaluation
         // Before applying WHERE row-by-row, substitute the outer column

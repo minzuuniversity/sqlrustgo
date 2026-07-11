@@ -1,6 +1,11 @@
 use sqlrustgo_types::Value;
 
-pub const PARALLEL_MIN_ROWS: usize = 100_000;
+/// Minimum row count to engage parallel filter path. v3.10.0 Issue #3703:
+/// raised from 100K to 500K after benchmarking showed 100K-200K rows fall
+/// below the break-even point where partition+merge overhead < parallel
+/// speedup. See report: /tmp/sqlrustgo-parallel-executor-report.md
+/// (Phase 1 quick win per DeepSeek's review).
+pub const PARALLEL_MIN_ROWS: usize = 500_000;
 
 pub trait ParallelExecutor: Send + Sync {
     fn parallel_degree(&self) -> usize;
@@ -96,20 +101,45 @@ mod tests {
     #[test]
     fn test_partition_scan_large_4_workers() {
         let exec = ParallelVolcanoExecutor::new(4);
-        let rows = make_rows(400_000);
+        // Bumped from 400_000 to 600_000 to exceed PARALLEL_MIN_ROWS (500K) threshold.
+        let rows = make_rows(600_000);
         let parts = exec.partition_scan(rows, 4);
         assert_eq!(parts.len(), 4);
         let total: usize = parts.iter().map(|p| p.len()).sum();
-        assert_eq!(total, 400_000);
+        assert_eq!(total, 600_000);
     }
 
     #[test]
     fn test_partition_scan_uneven_remainder() {
         let exec = ParallelVolcanoExecutor::new(3);
-        let rows = make_rows(200_000);
+        // Bumped from 200_000 to 600_000 to exceed PARALLEL_MIN_ROWS (500K) threshold.
+        let rows = make_rows(600_000);
         let parts = exec.partition_scan(rows, 3);
+        assert_eq!(parts.len(), 3);
         let total: usize = parts.iter().map(|p| p.len()).sum();
-        assert_eq!(total, 200_000);
+        assert_eq!(total, 600_000);
+    }
+
+    #[test]
+    fn test_partition_scan_empty_table() {
+        // Task 3.3: 0 rows -> single empty partition, no panic.
+        let exec = ParallelVolcanoExecutor::new(4);
+        let rows: Vec<Vec<Value>> = vec![];
+        let parts = exec.partition_scan(rows, 4);
+        assert_eq!(parts.len(), 1);
+        assert_eq!(parts[0].len(), 0);
+    }
+
+    #[test]
+    fn test_partition_scan_degree_one_with_large_rows() {
+        // Task 3.4 (variant): N=1 with 200k rows still produces a single
+        // partition; verifies the degree<=1 short-circuit is the gating
+        // condition (not the row count alone).
+        let exec = ParallelVolcanoExecutor::new(1);
+        let rows = make_rows(200_000);
+        let parts = exec.partition_scan(rows, 1);
+        assert_eq!(parts.len(), 1);
+        assert_eq!(parts[0].len(), 200_000);
     }
 
     #[test]
@@ -130,5 +160,51 @@ mod tests {
         for (i, row) in parts[0].iter().enumerate() {
             assert_eq!(row[0], Value::Integer(i as i64));
         }
+    }
+
+    #[test]
+    fn test_parallel_filter_cell_match_vs_sequential() {
+        // v3.10.0 Issue #3703: this is the exact primitive used by
+        // `LocalExecutor::execute_parallel_filter`. Partition the row
+        // set, filter each partition in parallel, concatenate, and
+        // compare to a sequential filter. They must be cell-equivalent
+        // (same multiset of rows, order-insensitive). The predicate is
+        // "id > 100" over 200 rows.
+        let exec = ParallelVolcanoExecutor::new(4);
+        let rows: Vec<Vec<Value>> = (1..=200)
+            .map(|i| vec![Value::Integer(i as i64), Value::Text(format!("u{}", i))])
+            .collect();
+
+        // Sequential control: filter id > 100.
+        let seq_filtered: Vec<Vec<Value>> = rows
+            .iter()
+            .filter(|r| match &r[0] {
+                Value::Integer(v) => *v > 100,
+                _ => false,
+            })
+            .cloned()
+            .collect();
+
+        // Parallel under test: partition + rayon filter + concat.
+        let partitions = exec.partition_rows(rows, 4);
+        let par_filtered: Vec<Vec<Value>> = partitions
+            .into_iter()
+            .flat_map(|part| {
+                part.into_iter()
+                    .filter(|r| match &r[0] {
+                        Value::Integer(v) => *v > 100,
+                        _ => false,
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .collect();
+
+        // Cell-level match (order-insensitive).
+        let mut seq_sorted = seq_filtered.clone();
+        let mut par_sorted = par_filtered.clone();
+        seq_sorted.sort_by(|a, b| a[0].cmp(&b[0]));
+        par_sorted.sort_by(|a, b| a[0].cmp(&b[0]));
+        assert_eq!(seq_sorted, par_sorted);
+        assert_eq!(seq_sorted.len(), 100);
     }
 }

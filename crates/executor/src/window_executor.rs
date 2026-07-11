@@ -1049,6 +1049,509 @@ mod tests {
         }
     }
 
+    #[test]
+    fn test_aggregate_window_min() {
+        let partition = create_test_partition();
+        let input_schema = Schema::new(vec![
+            sqlrustgo_planner::Field::new("id".to_string(), sqlrustgo_planner::DataType::Integer),
+            sqlrustgo_planner::Field::new(
+                "value".to_string(),
+                sqlrustgo_planner::DataType::Integer,
+            ),
+        ]);
+        let executor = WindowVolcanoExecutor::new(
+            Box::new(MockExecutor::new()),
+            vec![],
+            Schema::empty(),
+            input_schema,
+            vec![],
+            vec![],
+        );
+        let min = executor.compute_window_function(
+            &WindowFunction::Min,
+            &[Expr::Column(Column {
+                relation: None,
+                name: "value".to_string(),
+            })],
+            &partition,
+            4,
+            &None,
+        );
+        assert_eq!(min.unwrap(), Value::Integer(100));
+    }
+
+    #[test]
+    fn test_aggregate_window_max() {
+        let partition = create_test_partition();
+        let input_schema = Schema::new(vec![
+            sqlrustgo_planner::Field::new("id".to_string(), sqlrustgo_planner::DataType::Integer),
+            sqlrustgo_planner::Field::new(
+                "value".to_string(),
+                sqlrustgo_planner::DataType::Integer,
+            ),
+        ]);
+        let executor = WindowVolcanoExecutor::new(
+            Box::new(MockExecutor::new()),
+            vec![],
+            Schema::empty(),
+            input_schema,
+            vec![],
+            vec![],
+        );
+        let max = executor.compute_window_function(
+            &WindowFunction::Max,
+            &[Expr::Column(Column {
+                relation: None,
+                name: "value".to_string(),
+            })],
+            &partition,
+            4,
+            &None,
+        );
+        assert_eq!(max.unwrap(), Value::Integer(300));
+    }
+
+    #[test]
+    fn test_window_lead() {
+        let partition = create_test_partition();
+        let input_schema = Schema::new(vec![
+            sqlrustgo_planner::Field::new("id".to_string(), sqlrustgo_planner::DataType::Integer),
+            sqlrustgo_planner::Field::new(
+                "value".to_string(),
+                sqlrustgo_planner::DataType::Integer,
+            ),
+        ]);
+        let executor = WindowVolcanoExecutor::new(
+            Box::new(MockExecutor::new()),
+            vec![],
+            Schema::empty(),
+            input_schema,
+            vec![],
+            vec![],
+        );
+        let result = executor.compute_window_function(
+            &WindowFunction::Lead {
+                offset: 1,
+                default: None,
+            },
+            &[Expr::Column(Column {
+                relation: None,
+                name: "value".to_string(),
+            })],
+            &partition,
+            0,
+            &None,
+        );
+        assert_eq!(result.unwrap(), Value::Integer(200));
+    }
+
+    #[test]
+    fn test_window_lead_default() {
+        let partition = create_test_partition();
+        let input_schema = Schema::new(vec![
+            sqlrustgo_planner::Field::new("id".to_string(), sqlrustgo_planner::DataType::Integer),
+            sqlrustgo_planner::Field::new(
+                "value".to_string(),
+                sqlrustgo_planner::DataType::Integer,
+            ),
+        ]);
+        let executor = WindowVolcanoExecutor::new(
+            Box::new(MockExecutor::new()),
+            vec![],
+            Schema::empty(),
+            input_schema,
+            vec![],
+            vec![],
+        );
+        let result = executor.compute_window_function(
+            &WindowFunction::Lead {
+                offset: 10,
+                default: Some(Value::Integer(-1)),
+            },
+            &[Expr::Column(Column {
+                relation: None,
+                name: "value".to_string(),
+            })],
+            &partition,
+            4,
+            &None,
+        );
+        assert_eq!(result.unwrap(), Value::Integer(-1));
+    }
+
+    #[test]
+    fn test_window_lag() {
+        let partition = create_test_partition();
+        let input_schema = Schema::new(vec![
+            sqlrustgo_planner::Field::new("id".to_string(), sqlrustgo_planner::DataType::Integer),
+            sqlrustgo_planner::Field::new(
+                "value".to_string(),
+                sqlrustgo_planner::DataType::Integer,
+            ),
+        ]);
+        let executor = WindowVolcanoExecutor::new(
+            Box::new(MockExecutor::new()),
+            vec![],
+            Schema::empty(),
+            input_schema,
+            vec![],
+            vec![],
+        );
+        let result = executor.compute_window_function(
+            &WindowFunction::Lag {
+                offset: 1,
+                default: None,
+            },
+            &[Expr::Column(Column {
+                relation: None,
+                name: "value".to_string(),
+            })],
+            &partition,
+            2,
+            &None,
+        );
+        assert_eq!(result.unwrap(), Value::Integer(200));
+    }
+
+    #[test]
+    fn test_window_lag_beyond_start_default() {
+        let partition = create_test_partition();
+        let input_schema = Schema::new(vec![
+            sqlrustgo_planner::Field::new("id".to_string(), sqlrustgo_planner::DataType::Integer),
+            sqlrustgo_planner::Field::new(
+                "value".to_string(),
+                sqlrustgo_planner::DataType::Integer,
+            ),
+        ]);
+        let executor = WindowVolcanoExecutor::new(
+            Box::new(MockExecutor::new()),
+            vec![],
+            Schema::empty(),
+            input_schema,
+            vec![],
+            vec![],
+        );
+        let result = executor.compute_window_function(
+            &WindowFunction::Lag {
+                offset: 10,
+                default: Some(Value::Integer(-99)),
+            },
+            &[Expr::Column(Column {
+                relation: None,
+                name: "value".to_string(),
+            })],
+            &partition,
+            0,
+            &None,
+        );
+        assert_eq!(result.unwrap(), Value::Integer(-99));
+    }
+
+    #[test]
+    fn test_window_first_value() {
+        let partition = create_test_partition();
+        let input_schema = Schema::new(vec![
+            sqlrustgo_planner::Field::new("id".to_string(), sqlrustgo_planner::DataType::Integer),
+            sqlrustgo_planner::Field::new(
+                "value".to_string(),
+                sqlrustgo_planner::DataType::Integer,
+            ),
+        ]);
+        let executor = WindowVolcanoExecutor::new(
+            Box::new(MockExecutor::new()),
+            vec![],
+            Schema::empty(),
+            input_schema,
+            vec![],
+            vec![],
+        );
+        let result = executor.compute_window_function(
+            &WindowFunction::FirstValue,
+            &[Expr::Column(Column {
+                relation: None,
+                name: "value".to_string(),
+            })],
+            &partition,
+            4,
+            &None,
+        );
+        assert_eq!(result.unwrap(), Value::Integer(100));
+    }
+
+    #[test]
+    fn test_window_last_value() {
+        let partition = create_test_partition();
+        let input_schema = Schema::new(vec![
+            sqlrustgo_planner::Field::new("id".to_string(), sqlrustgo_planner::DataType::Integer),
+            sqlrustgo_planner::Field::new(
+                "value".to_string(),
+                sqlrustgo_planner::DataType::Integer,
+            ),
+        ]);
+        let executor = WindowVolcanoExecutor::new(
+            Box::new(MockExecutor::new()),
+            vec![],
+            Schema::empty(),
+            input_schema,
+            vec![],
+            vec![],
+        );
+        let result = executor.compute_window_function(
+            &WindowFunction::LastValue,
+            &[Expr::Column(Column {
+                relation: None,
+                name: "value".to_string(),
+            })],
+            &partition,
+            0,
+            &None,
+        );
+        assert_eq!(result.unwrap(), Value::Integer(100));
+    }
+
+    #[test]
+    fn test_window_nth_value() {
+        let partition = create_test_partition();
+        let input_schema = Schema::new(vec![
+            sqlrustgo_planner::Field::new("id".to_string(), sqlrustgo_planner::DataType::Integer),
+            sqlrustgo_planner::Field::new(
+                "value".to_string(),
+                sqlrustgo_planner::DataType::Integer,
+            ),
+        ]);
+        let executor = WindowVolcanoExecutor::new(
+            Box::new(MockExecutor::new()),
+            vec![],
+            Schema::empty(),
+            input_schema,
+            vec![],
+            vec![],
+        );
+        let result = executor.compute_window_function(
+            &WindowFunction::NthValue { n: 0 },
+            &[
+                Expr::Column(Column {
+                    relation: None,
+                    name: "value".to_string(),
+                }),
+                Expr::Literal(Value::Integer(2)),
+            ],
+            &partition,
+            4,
+            &None,
+        );
+        assert_eq!(result.unwrap(), Value::Integer(200));
+    }
+
+    #[test]
+    fn test_window_nth_value_out_of_range() {
+        let partition = create_test_partition();
+        let input_schema = Schema::new(vec![
+            sqlrustgo_planner::Field::new("id".to_string(), sqlrustgo_planner::DataType::Integer),
+            sqlrustgo_planner::Field::new(
+                "value".to_string(),
+                sqlrustgo_planner::DataType::Integer,
+            ),
+        ]);
+        let executor = WindowVolcanoExecutor::new(
+            Box::new(MockExecutor::new()),
+            vec![],
+            Schema::empty(),
+            input_schema,
+            vec![],
+            vec![],
+        );
+        let result = executor.compute_window_function(
+            &WindowFunction::NthValue { n: 0 },
+            &[
+                Expr::Column(Column {
+                    relation: None,
+                    name: "value".to_string(),
+                }),
+                Expr::Literal(Value::Integer(100)),
+            ],
+            &partition,
+            0,
+            &None,
+        );
+        assert_eq!(result.unwrap(), Value::Null);
+    }
+
+    #[test]
+    fn test_window_percent_rank() {
+        let partition = create_test_partition();
+        let input_schema = Schema::new(vec![
+            sqlrustgo_planner::Field::new("id".to_string(), sqlrustgo_planner::DataType::Integer),
+            sqlrustgo_planner::Field::new(
+                "value".to_string(),
+                sqlrustgo_planner::DataType::Integer,
+            ),
+        ]);
+        let order_by = vec![SortExpr {
+            expr: Expr::Column(Column {
+                relation: None,
+                name: "value".to_string(),
+            }),
+            asc: true,
+            nulls_first: false,
+        }];
+        let executor = WindowVolcanoExecutor::new(
+            Box::new(MockExecutor::new()),
+            vec![],
+            Schema::empty(),
+            input_schema,
+            vec![],
+            order_by,
+        );
+        let result = executor.compute_window_function(
+            &WindowFunction::PercentRank,
+            &[],
+            &partition,
+            0,
+            &None,
+        );
+        if let Value::Float(f) = result.unwrap() {
+            assert!(f >= 0.0);
+        } else {
+            panic!("Expected Float");
+        }
+    }
+
+    #[test]
+    fn test_window_cume_dist() {
+        let partition = create_test_partition();
+        let input_schema = Schema::new(vec![
+            sqlrustgo_planner::Field::new("id".to_string(), sqlrustgo_planner::DataType::Integer),
+            sqlrustgo_planner::Field::new(
+                "value".to_string(),
+                sqlrustgo_planner::DataType::Integer,
+            ),
+        ]);
+        let order_by = vec![SortExpr {
+            expr: Expr::Column(Column {
+                relation: None,
+                name: "value".to_string(),
+            }),
+            asc: true,
+            nulls_first: false,
+        }];
+        let executor = WindowVolcanoExecutor::new(
+            Box::new(MockExecutor::new()),
+            vec![],
+            Schema::empty(),
+            input_schema,
+            vec![],
+            order_by,
+        );
+        let result =
+            executor.compute_window_function(&WindowFunction::CumeDist, &[], &partition, 0, &None);
+        if let Value::Float(f) = result.unwrap() {
+            assert!(f > 0.0 && f <= 1.0);
+        } else {
+            panic!("Expected Float");
+        }
+    }
+
+    #[test]
+    fn test_compute_window_expression_non_function() {
+        let partition = create_test_partition();
+        let input_schema = Schema::empty();
+        let executor = WindowVolcanoExecutor::new(
+            Box::new(MockExecutor::new()),
+            vec![],
+            Schema::empty(),
+            input_schema,
+            vec![],
+            vec![],
+        );
+        let result =
+            executor.compute_window_expression(&Expr::Literal(Value::Integer(42)), &partition, 0);
+        assert_eq!(result.unwrap(), Value::Null);
+    }
+
+    #[test]
+    fn test_values_less_than_different_lengths() {
+        let partition = create_test_partition();
+        let input_schema = Schema::empty();
+        let executor = WindowVolcanoExecutor::new(
+            Box::new(MockExecutor::new()),
+            vec![],
+            Schema::empty(),
+            input_schema,
+            vec![],
+            vec![],
+        );
+        let v1 = vec![Some(Value::Integer(1))];
+        let v2 = vec![Some(Value::Integer(1)), Some(Value::Integer(2))];
+        assert!(!executor.values_less_than(&v1, &v2));
+    }
+
+    #[test]
+    fn test_get_frame_rows_preceding_following() {
+        let partition = create_test_partition();
+        let input_schema = Schema::empty();
+        let executor = WindowVolcanoExecutor::new(
+            Box::new(MockExecutor::new()),
+            vec![],
+            Schema::empty(),
+            input_schema,
+            vec![],
+            vec![],
+        );
+        let frame = Some(WindowFrame {
+            mode: FrameMode::Rows,
+            start: FrameBound::Preceding(1),
+            end: FrameBound::Following(1),
+            exclude: ExcludeMode::None,
+        });
+        let rows = executor.get_frame_rows(&partition, 2, &frame).unwrap();
+        assert_eq!(rows.len(), 3);
+    }
+
+    #[test]
+    fn test_get_frame_rows_current_row() {
+        let partition = create_test_partition();
+        let input_schema = Schema::empty();
+        let executor = WindowVolcanoExecutor::new(
+            Box::new(MockExecutor::new()),
+            vec![],
+            Schema::empty(),
+            input_schema,
+            vec![],
+            vec![],
+        );
+        let frame = Some(WindowFrame {
+            mode: FrameMode::Rows,
+            start: FrameBound::CurrentRow,
+            end: FrameBound::CurrentRow,
+            exclude: ExcludeMode::None,
+        });
+        let rows = executor.get_frame_rows(&partition, 2, &frame).unwrap();
+        assert_eq!(rows.len(), 1);
+    }
+
+    #[test]
+    fn test_get_frame_rows_unbounded_following() {
+        let partition = create_test_partition();
+        let input_schema = Schema::empty();
+        let executor = WindowVolcanoExecutor::new(
+            Box::new(MockExecutor::new()),
+            vec![],
+            Schema::empty(),
+            input_schema,
+            vec![],
+            vec![],
+        );
+        let frame = Some(WindowFrame {
+            mode: FrameMode::Rows,
+            start: FrameBound::UnboundedPreceding,
+            end: FrameBound::UnboundedFollowing,
+            exclude: ExcludeMode::None,
+        });
+        let rows = executor.get_frame_rows(&partition, 2, &frame).unwrap();
+        assert_eq!(rows.len(), 5);
+    }
+
     // Mock executor for tests
     struct MockExecutor {
         schema: Schema,

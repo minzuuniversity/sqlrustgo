@@ -9,10 +9,11 @@
 //! These tests verify the end-to-end path from the parser through
 //! aggregate computation.
 
+use parking_lot::RwLock;
 use sqlrustgo::ExecutionEngine;
 use sqlrustgo_storage::MemoryStorage;
 use sqlrustgo_types::Value;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 
 fn create_engine() -> ExecutionEngine<MemoryStorage> {
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));
