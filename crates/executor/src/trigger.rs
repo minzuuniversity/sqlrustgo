@@ -123,17 +123,28 @@ impl TriggerExecutor {
 
     /// INT-4: single chokepoint for trigger-body DML. Opens a transaction, runs
     /// the closure, commits on success and rolls back on error.
+    /// C-3c: single chokepoint for trigger-body DML. If the storage is ALREADY in a
+    /// transaction (the trigger fired from inside a user's BEGIN..COMMIT/ROLLBACK
+    /// block), the trigger participates in the outer transaction: no nested BEGIN,
+    /// no nested COMMIT. The trigger's DML is rolled back / committed together
+    /// with the user's transaction. Otherwise (autocommit), the trigger wraps its
+    /// DML in its own short transaction for atomicity.
     fn execute_dml_in_tx<F, R>(&self, op: F) -> SqlResult<R>
     where
         F: FnOnce(&mut dyn StorageEngine) -> SqlResult<R>,
     {
         let mut storage = self.storage.write();
-        storage.begin_transaction()?;
+        let in_outer_tx = storage.in_transaction();
+        if !in_outer_tx {
+            storage.begin_transaction()?;
+        }
         let result = op(&mut *storage);
-        match &result {
-            Ok(_) => storage.commit_transaction()?,
-            Err(_) => {
-                let _ = storage.rollback_transaction();
+        if !in_outer_tx {
+            match &result {
+                Ok(_) => storage.commit_transaction()?,
+                Err(_) => {
+                    let _ = storage.rollback_transaction();
+                }
             }
         }
         result
@@ -476,8 +487,8 @@ impl TriggerExecutor {
         trigger_table: &str,
         new_row: Option<&Record>,
     ) -> SqlResult<()> {
-        let normalized = sql.replace(". ", ".");
-        let statement = parse(&normalized)
+        let expanded = self.expand_update_values(sql, trigger_table, new_row);
+        let statement = parse(&expanded)
             .map_err(|e| SqlError::ExecutionError(format!("Parse error: {}", e)))?;
 
         if let sqlrustgo_parser::Statement::Update(update) = statement {
@@ -544,6 +555,9 @@ impl TriggerExecutor {
                 modified_rows.push(updated_row);
             }
 
+            // Drop the read lock before calling execute_dml_in_tx which needs a write lock.
+            // parking_lot::RwLock does not allow reader-to-writer upgrade; holding read blocks write forever.
+            drop(storage);
             if has_match {
                 // INT-4: routed through execute_dml_in_tx for VTU enforcement
                 let modified = modified_rows.clone();

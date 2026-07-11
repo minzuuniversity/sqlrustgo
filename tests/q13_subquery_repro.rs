@@ -10,9 +10,10 @@
 //! `eval_22_v_auth_sqlite` / 22-22-AUDIT) so the LIKE behavior matches
 //! authoritative SQLite exactly.
 
+use parking_lot::RwLock;
 use sqlrustgo::{ExecutionEngine, MemoryStorage, StorageEngine};
 use std::path::PathBuf;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 
 fn make_engine() -> ExecutionEngine<MemoryStorage> {
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));

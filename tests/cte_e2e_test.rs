@@ -10,9 +10,10 @@
 //! - ⚠️ CTE 名称引用: 需要完整物化支持 (Phase 2)
 //! - ⚠️ 递归 CTE: 待实现
 
+use parking_lot::RwLock;
 use sqlrustgo::MemoryExecutionEngine;
 use sqlrustgo_storage::MemoryStorage;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 
 fn make_engine() -> MemoryExecutionEngine {
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));

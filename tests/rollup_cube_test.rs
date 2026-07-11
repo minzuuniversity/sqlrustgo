@@ -1,5 +1,6 @@
+use parking_lot::RwLock;
 use sqlrustgo::{ExecutionEngine, MemoryStorage, StorageEngine};
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 fn e() -> ExecutionEngine<MemoryStorage> {
     let s = Arc::new(RwLock::new(MemoryStorage::new()));
     ExecutionEngine::new(s)
