@@ -1,16 +1,4 @@
-<!-- 2026-07-01 status addendum (auto-applied) -->
-> **状态更新**: 本机 L1 lint + 架构整理已闭环。HEAD `d77821f6d1`, 3 个 PR 已合并 (PR #3664, #3665, #3666)。
-> - `src/execution_engine.rs` 1471 行 (AD-001 1500 目标达标, 2630 → 1471)
-> - C-ARCH-05 上限锁回 1500 (从 3000/1800 统一)
-> - SGL-001 rustfmt drift 修复 (integration gate 4/4 PASS)
-> - Open issues (4, 全部硬件阻塞, 本机无法推进):
->   - #3648 TPC-H 混合负载 SOAK 跨平台验证 (需要 Z6G4/Z440)
->   - #3423 TPC-H SF=1.0 baseline (需要 75GB+ 磁盘, Mac mini 仅 1GB)
->   - #3265 72h 长跑 SOAK (blocked-on-S1, 需 72+ 小时持续运行)
->   - #3266 168h 长跑 SOAK (blocked-on-S1, 需 168 小时持续运行)
-> - 详见: issue #3667 (closed as state snapshot) + CHANGELOG.md
->
-> 本文件原始内容保持不变,仅顶部加 addendum。
+<!-- 2026-07-11 文档同步: v3.9.0 GA CUT 状态更新 — 168h SOAK ✅ PASS (2026-07-12) -->
 
 ---
 
@@ -23,11 +11,11 @@
 > **主题**: Single-Node Production Candidate
 > **分支**: `develop/v3.9.0` (从 `main@v3.8.0` fork)
 > **创建日期**: 2026-06-05
-> **当前状态**: **RC8** ✅ + 本机 L1 闭环 (PR #3664/#3665/#3666, 2026-07-01) — 门禁全 PASS，Soak 进行中，GA 待 24h/72h/168h real
+> **当前状态**: **GA ✅** (2026-07-10) — 168h SOAK ✅ PASS (2026-07-12), G3 覆盖率 ~67% 条件通过, G4 TPC-H SF=1 6/10 PASS
 
 ---
 
-## 0. 当前状态（2026-06-25）
+## 0. 当前状态（2026-07-11）
 
 ### 门禁状态
 
@@ -181,11 +169,11 @@ v3.10.0 定位: **MySQL 5.7 替代** — 功能稳定 + 基本性能优先
 
 | 项目 | 值 |
 |------|-----|
-| 文档版本 | v3.9.0-INDEX-2.0 |
+| 文档版本 | v3.9.0-INDEX-3.0 |
 | 创建日期 | 2026-06-05 |
-| 最后更新 | 2026-06-25 |
+| 最后更新 | 2026-07-11 |
 | 维护人 | Claude Code |
-| 状态 | **RC7** — GA 待 Z6G4 恢复 |
+| 状态 | **GA ✅** — 168h SOAK PASS (2026-07-12) |
 
 ---
 

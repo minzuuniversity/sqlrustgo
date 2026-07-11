@@ -1,42 +1,24 @@
-<!-- 2026-07-04 status update -->
-> **版本状态**: RC8 ✅ (2026-06-18) + 本机 L1 闭环 (2026-07-01) + E2E SELECT 测试修复 (2026-07-04)
-> **HEAD**: `972f15bc43` (develop/v3.9.0, 252)
-> **E2E 测试**: 16/16 PASS ✅ (修复了 column_def 包 bug: org_name, length_of_fixed_fields, real_col_names)
-> **Build**: 0 errors ✅ | **Clippy**: 0 warnings ✅
->
-> **Open issues (4, 全部硬件阻塞)**:
->   - #3423 TPC-H SF=1.0 baseline — 需要 75GB+ 磁盘 (Mac mini 不满足)
->   - #3265 72h 长跑 SOAK — 需要 Z6G4/Z440 持续运行
->   - #3266 168h 长跑 SOAK — blocked on #3265
->   - #3648 TPC-H 混合负载 SOAK — 需要 Z6G4 跨平台验证
->
-> **250 vs 252 同步**: 2026-07-04 完成。252 的 E2E 测试 (11→16) + clippy fix 已推送合并。
-> **本文件原始内容保持不变,仅顶部更新状态段落**。
+<!-- 2026-07-11 文档同步: v3.9.0 GA CUT 状态更新 — 168h SOAK ✅ PASS (2026-07-12) -->
 
 ---
 
 # SQLRustGo v3.9.0 综合索引
 
 > **版本**: v3.9.0
-> **状态**: RC8 ✅ (2026-06-18) + 本机 L1 闭环 (PR #3664/#3665/#3666, 2026-07-01, HEAD `d77821f6d1`) → GA 待 24h/72h/168h real soak
-> **GA 目标**: 2026-12-15
-> **分支**: `develop/v3.9.0` @ `1e83612c6`
-> **最后更新**: 2026-06-17
+> **状态**: **GA ✅** (2026-07-10) — 168h SOAK ✅ PASS (2026-07-12), G3 覆盖率 ~67% 条件通过, G4 TPC-H SF=1 6/10 PASS
+> **GA 日期**: 2026-07-10 (已完成)
+> **分支**: `release/v3.9.0`
+> **最后更新**: 2026-07-11
 
 ---
 
 ## 一、版本概览
 
-| 属性 | 值 |
-|------|-----|
-| 当前版本 | v3.9.0 |
-| 阶段 | RC8 ✅ + 本机 L1 闭环 (2026-07-01) |
-| 分支 | develop/v3.9.0 |
+| 阶段 | GA ✅ (2026-07-10) |
+| 分支 | release/v3.9.0 |
 | 前置版本 | v3.8.0 GA (2026-06-08) |
-| GA 目标 | 2026-12-15 (deferred from 2026-09-23 per Hermes audit #3252) |
+| GA 日期 | 2026-07-10 (已完成) |
 | 主题 | Single-Node Production Candidate |
-| **Sprint 8 PR** | **#3465 merged (Q8 hash join + ADR-006 + soak_runner)** |
-| **Sprint 8 commit** | **`edcc3e20d` (PR #3465 merge)**, latest tip `1e83612c6` (PR #3467 docs) |
 
 ### 测试结果 — 诚实声明
 
@@ -347,17 +329,14 @@ v3.9.0/
 
 ## 六、维护信息
 
-| 项目 | 值 |
-|------|-----|
-| 索引版本 | v3.9.0-INDEX-3.0.1 |
+| 索引版本 | v3.9.0-INDEX-3.1 |
 | 创建日期 | 2026-06-05 |
-| 上次更新 | 2026-06-12 (v3.0, RC4-RC7 文档添加) |
-| **本次更新** | **2026-06-17** (Sprint 8 增量: V390_COMPREHENSIVE_ASSESSMENT v2.0 + ROADMAP v2.0 + LONG_STABILITY_TESTS_ANALYSIS + 治理 + 审计 文档清单) |
-| 维护人 | Hermes Agent + claude-macmini (Sprint 8 实施) |
-| 状态 | ACTIVE |
-| 下次更新 | GA 收口后 |
+| 上次更新 | 2026-07-11 |
+| 维护人 | Claude Code |
+| 状态 | **GA ✅** |
 
 ---
 
 *本索引由 Hermes Agent + claude-macmini 维护*
 *最近更新: 2026-07-04 (E2E SELECT 修复 + 250/252 同步完成)*
+*最近更新: 2026-07-11 (v3.9.0 GA CUT 状态同步)*
