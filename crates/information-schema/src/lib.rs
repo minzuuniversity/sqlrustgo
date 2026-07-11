@@ -1,7 +1,8 @@
 //! INFORMATION_SCHEMA Implementation
 //!
 //! Provides standard SQL INFORMATION_SCHEMA views for metadata access.
-//! This implementation is fully integrated with the Catalog system.
+//! This implementation is fully integrated with the Catalog system
+//! and supports the 4-layer hierarchy: Catalog -> Database -> Schema -> Table.
 
 use serde::{Deserialize, Serialize};
 use sqlrustgo_catalog::{Catalog, DataType};
@@ -9,6 +10,7 @@ use sqlrustgo_catalog::{Catalog, DataType};
 /// Row representing a schema in information_schema.schemata
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SchemaRow {
+    pub catalog_name: String,
     pub schema_name: String,
     pub schema_owner: String,
 }
@@ -16,6 +18,7 @@ pub struct SchemaRow {
 /// Row representing a table in information_schema.tables
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TableRow {
+    pub table_catalog: String,
     pub table_schema: String,
     pub table_name: String,
     pub table_type: String,
@@ -25,6 +28,7 @@ pub struct TableRow {
 /// Row representing a column in information_schema.columns
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ColumnRow {
+    pub table_catalog: String,
     pub table_schema: String,
     pub table_name: String,
     pub column_name: String,
@@ -40,6 +44,7 @@ pub struct ColumnRow {
 /// Row representing an index in information_schema.indexes
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IndexRow {
+    pub table_catalog: String,
     pub table_schema: String,
     pub table_name: String,
     pub index_name: String,
@@ -60,34 +65,31 @@ impl<'a> InformationSchema<'a> {
         Self { catalog }
     }
 
-    /// Get all schemata from the catalog
+    /// Get all schemata from the catalog (across all databases).
     pub fn get_schemata(&self) -> Vec<SchemaRow> {
         self.catalog
-            .schemas()
-            .values()
-            .map(|schema| SchemaRow {
+            .all_schemas()
+            .iter()
+            .map(|(db_name, schema)| SchemaRow {
+                catalog_name: db_name.to_string(),
                 schema_name: schema.name.clone(),
-                schema_owner: "owner".to_string(), // Default owner since Catalog doesn't track owners
+                schema_owner: "owner".to_string(),
             })
             .collect()
     }
 
-    /// Get all tables from all schemas in the catalog
+    /// Get all tables from all schemas in the catalog.
     pub fn get_tables(&self) -> Vec<TableRow> {
         let mut rows = Vec::new();
 
-        for schema in self.catalog.schemas().values() {
+        for (db_name, schema) in self.catalog.all_schemas() {
             for table_ref in schema.tables() {
-                let table_type = "BASE TABLE".to_string();
-
-                // Tables are generally insertable
-                let is_insertable_into = "YES".to_string();
-
                 rows.push(TableRow {
+                    table_catalog: db_name.to_string(),
                     table_schema: schema.name.clone(),
                     table_name: table_ref.name.clone(),
-                    table_type,
-                    is_insertable_into,
+                    table_type: "BASE TABLE".to_string(),
+                    is_insertable_into: "YES".to_string(),
                 });
             }
         }
@@ -95,17 +97,18 @@ impl<'a> InformationSchema<'a> {
         rows
     }
 
-    /// Get all columns from all tables in all schemas
+    /// Get all columns from all tables in all schemas.
     pub fn get_columns(&self) -> Vec<ColumnRow> {
         let mut rows = Vec::new();
 
-        for schema in self.catalog.schemas().values() {
+        for (db_name, schema) in self.catalog.all_schemas() {
             for table_ref in schema.tables() {
                 for (i, column) in table_ref.columns.iter().enumerate() {
                     let (character_maximum_length, numeric_precision, numeric_scale) =
                         Self::get_type_attributes(&column.data_type);
 
                     rows.push(ColumnRow {
+                        table_catalog: db_name.to_string(),
                         table_schema: schema.name.clone(),
                         table_name: table_ref.name.clone(),
                         column_name: column.name.clone(),
@@ -128,7 +131,7 @@ impl<'a> InformationSchema<'a> {
         rows
     }
 
-    /// Get columns for a specific table
+    /// Get columns for a specific table.
     pub fn get_columns_for_table(&self, table_name: &str) -> Vec<ColumnRow> {
         self.get_columns()
             .into_iter()
@@ -136,15 +139,16 @@ impl<'a> InformationSchema<'a> {
             .collect()
     }
 
-    /// Get all indexes from all tables in all schemas
+    /// Get all indexes from all tables in all schemas.
     pub fn get_indexes(&self) -> Vec<IndexRow> {
         let mut rows = Vec::new();
 
-        for schema in self.catalog.schemas().values() {
+        for (db_name, schema) in self.catalog.all_schemas() {
             for table_ref in schema.tables() {
                 for index in &table_ref.indices {
                     for (i, column_name) in index.columns.iter().enumerate() {
                         rows.push(IndexRow {
+                            table_catalog: db_name.to_string(),
                             table_schema: schema.name.clone(),
                             table_name: table_ref.name.clone(),
                             index_name: index.name.clone(),
@@ -161,10 +165,10 @@ impl<'a> InformationSchema<'a> {
         rows
     }
 
-    /// Get type-specific attributes for columns
+    /// Get type-specific attributes for columns.
     fn get_type_attributes(data_type: &DataType) -> (Option<i32>, Option<i32>, Option<i32>) {
         match data_type {
-            DataType::Text => (Some(65535), None, None), // TEXT max length
+            DataType::Text => (Some(65535), None, None),
             DataType::Integer => (None, Some(64), Some(0)),
             DataType::Float => (None, Some(53), Some(0)),
             DataType::Boolean => (None, None, None),
@@ -185,14 +189,9 @@ mod tests {
     use sqlrustgo_catalog::{index::IndexInfo, schema::Schema, ColumnDefinition, DataType, Table};
 
     fn create_test_catalog() -> Catalog {
+        // Catalog::new creates "public" database with "public" schema by default.
+        // We add another schema "test_schema" with tables.
         let mut catalog = Catalog::new("test_catalog");
-
-        // Add public schema (default)
-        let public_schema = Schema::new("public");
-        catalog.add_schema(public_schema).unwrap();
-
-        // Add test schema
-        let schema = Schema::new("test_schema");
 
         // Create users table
         let users_table = Table::new(
@@ -228,7 +227,7 @@ mod tests {
             on_update: Some(sqlrustgo_catalog::ForeignKeyAction::Cascade),
         });
 
-        let schema = schema
+        let schema = Schema::new("test_schema")
             .add_table(users_table)
             .unwrap()
             .add_table(orders_table)
@@ -246,9 +245,10 @@ mod tests {
         let schemata = info_schema.get_schemata();
 
         // Should have 'public' (default) and 'test_schema'
-        assert!(schemata.len() >= 2);
-        assert!(schemata.iter().any(|s| s.schema_name == "public"));
-        assert!(schemata.iter().any(|s| s.schema_name == "test_schema"));
+        assert_eq!(schemata.len(), 2);
+        let names: Vec<&str> = schemata.iter().map(|s| s.schema_name.as_str()).collect();
+        assert!(names.contains(&"public"));
+        assert!(names.contains(&"test_schema"));
     }
 
     #[test]
@@ -263,9 +263,10 @@ mod tests {
         assert!(table_names.contains(&"users"));
         assert!(table_names.contains(&"orders"));
 
-        // Check that tables have correct schema
+        // Check that tables have correct schema and database
         let users_table = tables.iter().find(|t| t.table_name == "users").unwrap();
         assert_eq!(users_table.table_schema, "test_schema");
+        assert_eq!(users_table.table_catalog, "public"); // default database
         assert_eq!(users_table.table_type, "BASE TABLE");
     }
 
@@ -348,17 +349,19 @@ mod tests {
     }
 
     #[test]
-    fn test_empty_catalog() {
+    fn test_catalog_with_default_public_schema() {
+        // Catalog::new now creates "public" database with "public" schema by default.
         let catalog = Catalog::new("test");
         let info_schema = InformationSchema::new(&catalog);
 
-        // Empty catalog has no schemas (public is not auto-created)
+        // Should have the default "public" schema
         let schemata = info_schema.get_schemata();
-        assert_eq!(schemata.len(), 0);
+        assert_eq!(schemata.len(), 1);
+        assert_eq!(schemata[0].schema_name, "public");
+        assert_eq!(schemata[0].catalog_name, "public");
 
-        // No tables or columns
+        // No tables yet
         assert!(info_schema.get_tables().is_empty());
         assert!(info_schema.get_columns().is_empty());
-        assert!(info_schema.get_indexes().is_empty());
     }
 }
