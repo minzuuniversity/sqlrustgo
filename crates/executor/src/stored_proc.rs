@@ -6,7 +6,10 @@ use crate::ExecutorResult;
 use log::error as log_error;
 use parking_lot::RwLock;
 use sqlrustgo_catalog::HandlerCondition;
+use sqlrustgo_catalog::StoredProcedure;
+use sqlrustgo_catalog::StoredProcParam;
 use sqlrustgo_catalog::StoredProcStatement;
+use sqlrustgo_catalog::ParamMode;
 use sqlrustgo_storage::{ColumnDefinition, StorageEngine};
 use sqlrustgo_types::Value;
 use std::collections::HashMap;
@@ -2145,6 +2148,7 @@ impl StoredProcExecutor {
 mod tests {
     use super::*;
     use sqlrustgo_catalog::Catalog;
+    use sqlrustgo_storage::MemoryStorage;
 
     #[test]
     fn test_stored_proc_executor_not_found() {
@@ -3167,5 +3171,489 @@ mod tests {
         ctx.set_var("x", Value::Null);
         let sql = "@x";
         assert_eq!(executor.expand_variables_in_sql(sql, &ctx), "NULL");
+    }
+
+    #[test]
+    fn test_expand_variables_in_sql_blob_var() {
+        let catalog = Arc::new(Catalog::new("test"));
+        let executor = StoredProcExecutor::new_for_test(catalog);
+        let mut ctx = ProcedureContext::new();
+        ctx.set_var("x", Value::Blob(vec![1, 2, 3]));
+        let sql = "@x";
+        assert_eq!(executor.expand_variables_in_sql(sql, &ctx), "\x01\x02\x03");
+    }
+
+    #[test]
+    fn test_expand_variables_in_sql_float_var() {
+        let catalog = Arc::new(Catalog::new("test"));
+        let executor = StoredProcExecutor::new_for_test(catalog);
+        let mut ctx = ProcedureContext::new();
+        ctx.set_var("x", Value::Float(3.14));
+        let sql = "@x";
+        assert_eq!(executor.expand_variables_in_sql(sql, &ctx), "3.14");
+    }
+
+    #[test]
+    fn test_expand_variables_in_sql_boolean_var() {
+        let catalog = Arc::new(Catalog::new("test"));
+        let executor = StoredProcExecutor::new_for_test(catalog);
+        let mut ctx = ProcedureContext::new();
+        ctx.set_var("x", Value::Boolean(true));
+        let sql = "@x";
+        assert_eq!(executor.expand_variables_in_sql(sql, &ctx), "TRUE");
+    }
+
+    #[test]
+    fn test_evaluate_constant_blob_returns_text() {
+        let mut ctx = ProcedureContext::new();
+        ctx.set_var("x", Value::Text("hello".into()));
+        assert_eq!(ctx.get_var("x"), Some(&Value::Text("hello".into())));
+    }
+
+    #[test]
+    fn test_procedure_context_set_local_var() {
+        let mut ctx = ProcedureContext::new();
+        ctx.set_local_var("x", Value::Integer(42));
+        assert_eq!(ctx.get_local_var("x"), Some(&Value::Integer(42)));
+        assert_eq!(ctx.get_var("x"), Some(&Value::Integer(42)));
+    }
+
+    #[test]
+    fn test_procedure_context_set_session_var() {
+        let mut ctx = ProcedureContext::new();
+        ctx.set_session_var("s", Value::Text("hello".into()));
+        assert_eq!(ctx.get_session_var("s"), Some(&Value::Text("hello".into())));
+    }
+
+    #[test]
+    fn test_procedure_context_get_var_local_overrides_session() {
+        let mut ctx = ProcedureContext::new();
+        ctx.set_session_var("x", Value::Integer(1));
+        ctx.set_local_var("x", Value::Integer(2));
+        let v = ctx.get_var("x");
+        assert_eq!(v, Some(&Value::Integer(2)));
+    }
+
+    #[test]
+    fn test_procedure_context_clear_local_vars_only_clears_local() {
+        let mut ctx = ProcedureContext::new();
+        ctx.set_session_var("s", Value::Integer(1));
+        ctx.set_local_var("l", Value::Integer(2));
+        ctx.clear_local_vars();
+        assert!(ctx.get_local_var("l").is_none());
+        assert!(ctx.get_session_var("s").is_some());
+    }
+
+    #[test]
+    fn test_procedure_context_get_session_vars() {
+        let mut ctx = ProcedureContext::new();
+        ctx.set_session_var("a", Value::Integer(1));
+        ctx.set_session_var("b", Value::Integer(2));
+        let vars = ctx.get_session_vars();
+        assert_eq!(vars.len(), 2);
+    }
+
+    #[test]
+    fn test_procedure_context_set_get_return() {
+        let mut ctx = ProcedureContext::new();
+        assert_eq!(ctx.get_return(), None);
+        ctx.set_return(Value::Integer(42));
+        assert_eq!(ctx.get_return(), Some(Value::Integer(42)));
+    }
+
+    #[test]
+    fn test_procedure_context_leave_iterate() {
+        let mut ctx = ProcedureContext::new();
+        assert!(!ctx.should_leave());
+        assert!(!ctx.should_iterate());
+        ctx.set_leave();
+        ctx.set_iterate();
+        assert!(ctx.should_leave());
+        assert!(ctx.should_iterate());
+        ctx.reset_leave();
+        ctx.reset_iterate();
+        assert!(!ctx.should_leave());
+        assert!(!ctx.should_iterate());
+    }
+
+    #[test]
+    fn test_procedure_context_label_get_set() {
+        let mut ctx = ProcedureContext::new();
+        assert_eq!(ctx.get_label(), None);
+        ctx.set_label(Some("outer".into()));
+        assert_eq!(ctx.get_label(), Some(&"outer".to_string()));
+        ctx.set_label(None);
+        assert_eq!(ctx.get_label(), None);
+    }
+
+    #[test]
+    fn test_procedure_context_has_var_negative() {
+        let ctx = ProcedureContext::new();
+        assert!(!ctx.has_var("nope"));
+    }
+
+    #[test]
+    fn test_procedure_context_exception_handling() {
+        let mut ctx = ProcedureContext::new();
+        assert!(!ctx.is_handling_exception());
+        ctx.set_exception_handling(true);
+        assert!(ctx.is_handling_exception());
+        assert!(ctx.get_exception().is_none());
+        ctx.set_exception("45000".into(), "boom".into());
+        assert!(ctx.get_exception().is_some());
+        ctx.clear_exception();
+        assert!(ctx.get_exception().is_none());
+        ctx.set_exception_handling(false);
+        assert!(!ctx.is_handling_exception());
+    }
+
+    #[test]
+    fn test_procedure_context_cursor_operations() {
+        let mut ctx = ProcedureContext::new();
+        assert!(!ctx.has_cursor("c1"));
+        ctx.declare_cursor("c1".into(), "SELECT 1".into());
+        assert!(ctx.has_cursor("c1"));
+        let open = ctx.open_cursor("c1");
+        assert!(open.is_ok());
+        let fetch_empty = ctx.fetch_cursor("c1", &["x".to_string()]);
+        assert!(fetch_empty.is_ok());
+        ctx.set_cursor_records("c1", vec![vec![Value::Integer(42)]]);
+        ctx.open_cursor("c1").unwrap();
+        let fetch = ctx.fetch_cursor("c1", &["x".to_string()]);
+        assert!(fetch.is_ok());
+        ctx.close_cursor("c1").unwrap();
+        assert!(ctx.close_cursor("nonexistent").is_err());
+    }
+
+    #[test]
+    fn test_procedure_context_cursor_invalid_fetch() {
+        let mut ctx = ProcedureContext::new();
+        let r = ctx.fetch_cursor("nonexistent", &[]);
+        assert!(r.is_err());
+    }
+
+    #[test]
+    fn test_procedure_context_handler_operations() {
+        let mut ctx = ProcedureContext::new();
+        ctx.push_handler(HandlerCondition::SqlException, vec![]);
+        ctx.pop_handler();
+        let exc = StoredProcError {
+            sqlstate: "45000".to_string(),
+            message: "test".to_string(),
+        };
+        let handler = ctx.find_matching_handler(&exc);
+        assert!(handler.is_none());
+    }
+
+    #[test]
+    fn test_procedure_context_labels() {
+        let mut ctx = ProcedureContext::new();
+        ctx.enter_label("outer".into());
+        assert!(ctx.has_label("outer"));
+        ctx.enter_label("inner".into());
+        assert!(ctx.has_label("inner"));
+        assert!(ctx.has_label("outer"));
+        ctx.exit_label();
+        assert!(ctx.has_label("outer"));
+        assert!(!ctx.has_label("inner"));
+        ctx.exit_label();
+        assert!(!ctx.has_label("outer"));
+    }
+
+    #[test]
+    fn test_scope_operations_simple() {
+        let mut ctx = ProcedureContext::new();
+        ctx.enter_scope();
+        ctx.exit_scope();
+    }
+
+    #[test]
+    fn test_stored_proc_executor_new_constructor() {
+        let catalog = Arc::new(Catalog::new("test"));
+        let storage: Arc<RwLock<dyn StorageEngine>> = Arc::new(RwLock::new(MemoryStorage::new()));
+        let executor = StoredProcExecutor::new(catalog, storage);
+        let _ = executor;
+    }
+
+    #[test]
+    fn test_stored_proc_executor_has_procedure_true() {
+        let catalog = Arc::new(Catalog::new("test"));
+        let executor = StoredProcExecutor::new_for_test(catalog.clone());
+        let proc = StoredProcedure::new("myproc".to_string(), vec![], vec![]);
+        catalog.add_stored_procedure(proc).unwrap();
+        assert!(executor.has_procedure("myproc"));
+    }
+
+    #[test]
+    fn test_stored_proc_executor_list_procedures() {
+        let catalog = Arc::new(Catalog::new("test"));
+        let executor = StoredProcExecutor::new_for_test(catalog.clone());
+        let proc1 = StoredProcedure::new("p1".to_string(), vec![], vec![]);
+        let proc2 = StoredProcedure::new("p2".to_string(), vec![], vec![]);
+        catalog.add_stored_procedure(proc1).unwrap();
+        catalog.add_stored_procedure(proc2).unwrap();
+        let names = executor.list_procedures();
+        assert!(names.contains(&"p1".into()));
+        assert!(names.contains(&"p2".into()));
+    }
+
+    #[test]
+    fn test_stored_proc_executor_call_with_return() {
+        let catalog = Arc::new(Catalog::new("test"));
+        let executor = StoredProcExecutor::new_for_test(catalog.clone());
+        let proc = StoredProcedure::new(
+            "ret_proc".to_string(),
+            vec![],
+            vec![StoredProcStatement::Return {
+                value: "42".to_string(),
+            }],
+        );
+        catalog.add_stored_procedure(proc).unwrap();
+        let result = executor.execute_call("ret_proc", vec![]);
+        assert!(result.is_ok());
+        let exec_result = result.unwrap();
+        assert_eq!(exec_result.rows.len(), 1);
+    }
+
+    #[test]
+    fn test_stored_proc_executor_call_with_set_var() {
+        let catalog = Arc::new(Catalog::new("test"));
+        let executor = StoredProcExecutor::new_for_test(catalog.clone());
+        let proc = StoredProcedure::new(
+            "setvar_proc".to_string(),
+            vec![],
+            vec![StoredProcStatement::Set {
+                variable: "x".to_string(),
+                value: "1".to_string(),
+            }],
+        );
+        catalog.add_stored_procedure(proc).unwrap();
+        let result = executor.execute_call("setvar_proc", vec![]);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_stored_proc_executor_call_with_declare_var() {
+        let catalog = Arc::new(Catalog::new("test"));
+        let executor = StoredProcExecutor::new_for_test(catalog.clone());
+        let proc = StoredProcedure::new(
+            "declare_proc".to_string(),
+            vec![],
+            vec![StoredProcStatement::Declare {
+                name: "y".to_string(),
+                data_type: "INT".to_string(),
+                default_value: Some("99".to_string()),
+            }],
+        );
+        catalog.add_stored_procedure(proc).unwrap();
+        let result = executor.execute_call("declare_proc", vec![]);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_stored_proc_executor_call_with_params() {
+        let catalog = Arc::new(Catalog::new("test"));
+        let executor = StoredProcExecutor::new_for_test(catalog.clone());
+        let proc = StoredProcedure::new(
+            "param_proc".to_string(),
+            vec![StoredProcParam {
+                name: "p1".to_string(),
+                mode: ParamMode::In,
+                data_type: "INT".to_string(),
+            }],
+            vec![StoredProcStatement::Set {
+                variable: "p1".to_string(),
+                value: "1".to_string(),
+            }],
+        );
+        catalog.add_stored_procedure(proc).unwrap();
+        let result = executor.execute_call("param_proc", vec![Value::Integer(123)]);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_stored_proc_executor_call_more_args_than_params() {
+        let catalog = Arc::new(Catalog::new("test"));
+        let executor = StoredProcExecutor::new_for_test(catalog.clone());
+        let proc = StoredProcedure::new(
+            "no_param_proc".to_string(),
+            vec![],
+            vec![StoredProcStatement::Set {
+                variable: "x".to_string(),
+                value: "1".to_string(),
+            }],
+        );
+        catalog.add_stored_procedure(proc).unwrap();
+        let result = executor.execute_call("no_param_proc", vec![Value::Integer(1), Value::Integer(2)]);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_stored_proc_executor_call_with_select_into() {
+        let catalog = Arc::new(Catalog::new("test"));
+        let executor = StoredProcExecutor::new_for_test(catalog.clone());
+        let proc = StoredProcedure::new(
+            "select_proc".to_string(),
+            vec![],
+            vec![StoredProcStatement::SelectInto {
+                columns: vec!["x".to_string()],
+                into_vars: vec!["v".to_string()],
+                table: "t".to_string(),
+                where_clause: None,
+            }],
+        );
+        catalog.add_stored_procedure(proc).unwrap();
+        let result = executor.execute_call("select_proc", vec![]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_stored_proc_executor_call_with_block() {
+        let catalog = Arc::new(Catalog::new("test"));
+        let executor = StoredProcExecutor::new_for_test(catalog.clone());
+        let proc = StoredProcedure::new(
+            "block_proc".to_string(),
+            vec![],
+            vec![StoredProcStatement::Block {
+                label: Some("blk".to_string()),
+                body: vec![StoredProcStatement::Set {
+                    variable: "x".to_string(),
+                    value: "1".to_string(),
+                }],
+            }],
+        );
+        catalog.add_stored_procedure(proc).unwrap();
+        let result = executor.execute_call("block_proc", vec![]);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_stored_proc_executor_call_with_signal() {
+        let catalog = Arc::new(Catalog::new("test"));
+        let executor = StoredProcExecutor::new_for_test(catalog.clone());
+        let proc = StoredProcedure::new(
+            "signal_proc".to_string(),
+            vec![],
+            vec![StoredProcStatement::Signal {
+                sqlstate: Some("45000".to_string()),
+                message: Some("test error".to_string()),
+            }],
+        );
+        catalog.add_stored_procedure(proc).unwrap();
+        let result = executor.execute_call("signal_proc", vec![]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_stored_proc_executor_call_with_resignal() {
+        let catalog = Arc::new(Catalog::new("test"));
+        let executor = StoredProcExecutor::new_for_test(catalog.clone());
+        let proc = StoredProcedure::new(
+            "resignal_proc".to_string(),
+            vec![],
+            vec![StoredProcStatement::Resignal {
+                sqlstate: None,
+                message: None,
+            }],
+        );
+        catalog.add_stored_procedure(proc).unwrap();
+        let result = executor.execute_call("resignal_proc", vec![]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_stored_proc_executor_call_with_leave_continue() {
+        let catalog = Arc::new(Catalog::new("test"));
+        let executor = StoredProcExecutor::new_for_test(catalog.clone());
+        let proc = StoredProcedure::new(
+            "loop_proc".to_string(),
+            vec![],
+            vec![StoredProcStatement::Loop {
+                body: vec![
+                    StoredProcStatement::Set {
+                        variable: "i".to_string(),
+                        value: "1".to_string(),
+                    },
+                    StoredProcStatement::Leave {
+                        label: "loop".to_string(),
+                    },
+                ],
+            }],
+        );
+        catalog.add_stored_procedure(proc).unwrap();
+        let result = executor.execute_call("loop_proc", vec![]);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_stored_proc_executor_call_with_case() {
+        let catalog = Arc::new(Catalog::new("test"));
+        let executor = StoredProcExecutor::new_for_test(catalog.clone());
+        let proc = StoredProcedure::new(
+            "case_proc".to_string(),
+            vec![],
+            vec![StoredProcStatement::Set {
+                variable: "x".to_string(),
+                value: "1".to_string(),
+            }],
+        );
+        catalog.add_stored_procedure(proc).unwrap();
+        let result = executor.execute_call("case_proc", vec![]);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_stored_proc_executor_call_with_call_another() {
+        let catalog = Arc::new(Catalog::new("test"));
+        let executor = StoredProcExecutor::new_for_test(catalog.clone());
+        let proc_inner = StoredProcedure::new(
+            "inner_p".to_string(),
+            vec![],
+            vec![StoredProcStatement::Return {
+                value: "1".to_string(),
+            }],
+        );
+        catalog.add_stored_procedure(proc_inner).unwrap();
+        let proc_outer = StoredProcedure::new(
+            "outer_p".to_string(),
+            vec![],
+            vec![StoredProcStatement::Call {
+                procedure_name: "inner_p".to_string(),
+                args: vec![],
+                into_var: None,
+            }],
+        );
+        catalog.add_stored_procedure(proc_outer).unwrap();
+        let result = executor.execute_call("outer_p", vec![]);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_stored_proc_executor_call_with_fetch_open() {
+        let catalog = Arc::new(Catalog::new("test"));
+        let executor = StoredProcExecutor::new_for_test(catalog.clone());
+        let proc = StoredProcedure::new(
+            "cursor_proc".to_string(),
+            vec![],
+            vec![
+                StoredProcStatement::DeclareCursor {
+                    name: "c1".to_string(),
+                    query: "SELECT 1".to_string(),
+                },
+                StoredProcStatement::OpenCursor {
+                    name: "c1".to_string(),
+                },
+                StoredProcStatement::Fetch {
+                    name: "c1".to_string(),
+                    into_vars: vec!["x".to_string()],
+                },
+                StoredProcStatement::CloseCursor {
+                    name: "c1".to_string(),
+                },
+            ],
+        );
+        catalog.add_stored_procedure(proc).unwrap();
+        let result = executor.execute_call("cursor_proc", vec![]);
+        let _ = result;
     }
 }
