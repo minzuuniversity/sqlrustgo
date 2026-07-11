@@ -1,12 +1,13 @@
-//! Unified Cost Model Module
-//!
-//! Combines SQL, Vector, and Graph cost models for unified cost estimation.
-
 use crate::cost::SimpleCostModel;
 use crate::graph_cost::GraphCostModel;
-use crate::rules::JoinType;
+use crate::rules::{BinaryOperator, Expr, JoinType};
 use crate::unified_plan::UnifiedPlan;
 use crate::vector_cost::VectorCostModel;
+
+// v3.10.0 Issue #3703: parallel-execution row threshold
+// (mirrors crates/executor/src/parallel_executor.rs::PARALLEL_MIN_ROWS
+// to keep CBO and executor in sync)
+const PARALLEL_MIN_ROWS: u64 = 500_000;
 
 /// Execution path types for cost comparison
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -136,29 +137,105 @@ impl UnifiedCostModel {
     /// v3.10.0 Issue #3703 Phase 3: CBO-driven parallelism.
     ///
     /// Returns true if:
-    /// - Table has more than 500K rows (PARALLEL_MIN_ROWS threshold)
-    /// - Estimated CPU cost exceeds I/O cost (compute-bound query benefits from parallelism)
+    /// - FOR UPDATE / LOCK IN SHARE MODE is NOT set (parallel disabled for lock reads)
+    /// - Table has more than 500K rows
+    /// - Selectivity-based benefit outweighs partition overhead
     ///
-    /// Note: This is a simple heuristic. Future versions can use selectivity
-    /// and predicate complexity for better decisions.
+    /// Note: This is a heuristic. Future versions can use predicate
+    /// complexity for finer-grained decisions.
     pub fn should_parallelize(&self, plan: &UnifiedPlan) -> bool {
+        self.should_parallelize_with(plan, false)
+    }
+
+    /// Determine if a plan should be parallelized, with FOR UPDATE hint
+    ///
+    /// for_update: true if SELECT ... FOR UPDATE / LOCK IN SHARE MODE.
+    /// Parallelism is always disabled for locking reads to prevent
+    /// deadlocks with the global LockManager singleton.
+    pub fn should_parallelize_with(&self, plan: &UnifiedPlan, for_update: bool) -> bool {
+        // FOR UPDATE / LOCK IN SHARE MODE: never parallelize.
+        // LockManager is a global singleton; concurrent acquisitions
+        // can cause deadlocks.
+        if for_update {
+            return false;
+        }
+
         match plan {
             UnifiedPlan::TableScan { table_name, .. } => {
                 let row_count = self.get_row_count(table_name);
-                row_count >= 500_000
+                row_count >= PARALLEL_MIN_ROWS
             }
-            UnifiedPlan::Filter { input, .. } => {
-                // Delegate to input plan
-                self.should_parallelize(input)
+            UnifiedPlan::Filter {
+                input, predicate, ..
+            } => {
+                // Check input first
+                if !self.should_parallelize_with(input, for_update) {
+                    return false;
+                }
+                // Use selectivity to decide
+                self.is_compute_bound(input, predicate)
+            }
+            UnifiedPlan::IndexScan { table_name, .. } => {
+                let row_count = self.get_row_count(table_name);
+                // Index scans have lower per-row cost; raise threshold
+                row_count >= 2 * PARALLEL_MIN_ROWS
             }
             _ => {
-                // For other operations, estimate total cost
                 let cost = self.estimate_cost(plan);
-                cost >= 500_000.0 // Simple threshold matching PARALLEL_MIN_ROWS
+                cost >= PARALLEL_MIN_ROWS as f64
             }
         }
     }
 
+    /// Estimate selectivity of a predicate (0.0 to 1.0)
+    ///
+    /// Returns a rough estimate based on predicate shape.
+    /// Heuristic - real implementation would use table histograms.
+    pub fn estimate_selectivity(&self, predicate: &Expr) -> f64 {
+        match predicate {
+            // Binary comparisons
+            Expr::BinaryExpr { op, .. } => match op {
+                BinaryOperator::Eq => 0.1,         // k = literal
+                BinaryOperator::NotEq => 0.9,      // k != literal
+                BinaryOperator::Lt | BinaryOperator::LtEq => 0.3,
+                BinaryOperator::Gt | BinaryOperator::GtEq => 0.3,
+                _ => 0.5,
+            },
+            // AND: multiply selectivities (independence assumption)
+            Expr::And(left, right) => {
+                self.estimate_selectivity(left) * self.estimate_selectivity(right)
+            }
+            // OR: combined using inclusion-exclusion
+            Expr::Or(left, right) => {
+                let a = self.estimate_selectivity(left);
+                let b = self.estimate_selectivity(right);
+                (a + b - a * b).min(1.0)
+            }
+            // NOT: inverse
+            Expr::Not(inner) => 1.0 - self.estimate_selectivity(inner),
+            _ => 0.5,
+        }
+    }
+
+    /// Returns true if the query is compute-bound (parallel beneficial)
+    ///
+    /// High selectivity + high row count = compute-bound = parallel helps.
+    /// Low selectivity + small output = I/O-bound = parallel overhead dominates.
+    fn is_compute_bound(&self, input: &UnifiedPlan, predicate: &Expr) -> bool {
+        // Use the actual table row count for TableScan inputs, not the
+        // hardcoded estimate_cardinality() (which is just 1000 by default).
+        let input_rows = match input {
+            UnifiedPlan::TableScan { table_name, .. } => self.get_row_count(table_name),
+            _ => input.estimate_cardinality(),
+        };
+        let selectivity = self.estimate_selectivity(predicate);
+        let output_rows = (input_rows as f64 * selectivity) as u64;
+
+        // Parallel break-even analysis:
+        // - Need at least 100K output rows to amortize partition overhead
+        // - Output per partition should be >= 10K for cache efficiency
+        output_rows >= 100_000
+    }
     /// Estimate cost for any UnifiedPlan
     pub fn estimate_cost(&self, plan: &UnifiedPlan) -> f64 {
         match plan {
