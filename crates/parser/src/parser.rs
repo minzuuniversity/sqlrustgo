@@ -1810,7 +1810,7 @@ impl Parser {
         // we chain left-to-right; the planner may add a normalisation
         // pass in a follow-up.
         loop {
-            let (is_union, is_intersect, is_except) = match self.current() {
+            let (is_union, is_intersect, _is_except) = match self.current() {
                 Some(Token::Union) => (true, false, false),
                 Some(Token::Intersect) => (false, true, false),
                 Some(Token::Except) => (false, false, true),
