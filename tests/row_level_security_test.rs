@@ -7,8 +7,9 @@
 //! In-memory RLS policy catalog with USING/WITH CHECK enforcement.
 //! Real executor integration in v3.9.0.
 
+use parking_lot::RwLock;
 use std::collections::HashMap;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum PolicyCommand {

@@ -7,8 +7,9 @@
 //! #2969 for the RC1 fix plan and `docs/releases/v3.8.0/V380_FROZEN_TO_V390.md`
 //! for the freeze rationale.
 
+use parking_lot::RwLock;
 use sqlrustgo::{ExecutionEngine, MemoryStorage, StorageEngine};
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 
 fn fresh() -> ExecutionEngine<MemoryStorage> {
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));

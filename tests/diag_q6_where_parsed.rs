@@ -6,11 +6,12 @@
 //! - BETWEEN operator
 //! - Compare logic for dates
 
+use parking_lot::RwLock;
 use sqlrustgo::{ExecutionEngine, MemoryStorage, StorageEngine};
 use sqlrustgo_types::Value as SqlValue;
 use std::fs;
 use std::path::PathBuf;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 
 const FIXTURE: &str = match option_env!("TPCH_DATA_DIR") {
     Some(p) => p,

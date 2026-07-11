@@ -5,9 +5,10 @@
 //! - 创建表后 partition_info 可读取
 //! - PARTITION BY 子句的解析需要 parser 扩展 (跟踪 issue #3400+)
 
+use parking_lot::RwLock;
 use sqlrustgo::MemoryExecutionEngine;
 use sqlrustgo_storage::MemoryStorage;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 
 fn make_engine() -> MemoryExecutionEngine {
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));

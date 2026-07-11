@@ -16,9 +16,10 @@
 //! here without the full SF=0.1 fixture, but the synthetic micro-
 //! benchmark is a tight proxy for the chain's scaling behavior.
 
+use parking_lot::RwLock;
 use sqlrustgo::ExecutionEngine;
 use sqlrustgo::MemoryStorage;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 use std::time::Instant;
 
 fn fresh_engine() -> ExecutionEngine<MemoryStorage> {

@@ -13,8 +13,9 @@
 //! StorageEngine}` and seed the same minimal 2-row TPC-H lineitem
 //! schema used by the other tpch tests.
 
+use parking_lot::RwLock;
 use sqlrustgo::{ExecutionEngine, MemoryStorage, StorageEngine};
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 
 const SCHEMA_DDL: &[&str] = &["CREATE TABLE lineitem (
         l_orderkey      INTEGER,
