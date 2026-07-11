@@ -655,6 +655,36 @@ impl MemoryStorage {
             tx_log: None,
         }
     }
+
+    /// v3.10.0 Issue #3703: returns pre-partitioned chunks so the caller
+    /// (typically `engine_select::filter_partitions_parallel`) can
+    /// process each chunk on a separate rayon worker, fusing scan
+    /// + filter into one parallel pipeline.
+    ///
+    /// Returns `Vec<Vec<Record>>` of `num_partitions` chunks. Falls
+    /// back to a single-chunk vector when `num_partitions <= 1` or
+    /// `rows.len() < PARALLEL_SCAN_MIN_ROWS`.
+    pub fn partition_rows(&self, table: &str, num_partitions: usize) -> Vec<Vec<Record>> {
+        const PARALLEL_SCAN_MIN_ROWS: usize = 500_000;
+        let n_partitions = num_partitions.max(1);
+        let Some(all_rows) = self.tables.get(table) else {
+            return vec![Vec::new()];
+        };
+        if all_rows.len() < PARALLEL_SCAN_MIN_ROWS || n_partitions <= 1 {
+            return vec![all_rows.clone()];
+        }
+        let total = all_rows.len();
+        let base = total / n_partitions;
+        let rem = total % n_partitions;
+        let mut out: Vec<Vec<Record>> = Vec::with_capacity(n_partitions);
+        let mut cur = 0usize;
+        for i in 0..n_partitions {
+            let size = base + if i < rem { 1 } else { 0 };
+            out.push(all_rows[cur..cur + size].to_vec());
+            cur += size;
+        }
+        out
+    }
 }
 
 impl Default for MemoryStorage {
@@ -1390,5 +1420,62 @@ mod tests {
 
         let records = storage.scan("users").unwrap();
         assert_eq!(records[0][0], Value::Integer(99));
+    }
+
+    // v3.10.0 Issue #3703: partition_rows
+
+    #[test]
+    fn test_partition_rows_below_threshold_returns_single_chunk() {
+        let mut storage = MemoryStorage::new();
+        storage.tables.insert(
+            "t".to_string(),
+            (0..100_000_i64).map(|i| vec![Value::Integer(i)]).collect(),
+        );
+        let parts = storage.partition_rows("t", 8);
+        assert_eq!(parts.len(), 1, "below threshold should return 1 chunk");
+        assert_eq!(parts[0].len(), 100_000);
+    }
+
+    #[test]
+    fn test_partition_rows_above_threshold_splits_evenly() {
+        let mut storage = MemoryStorage::new();
+        storage.tables.insert(
+            "t".to_string(),
+            (0..600_000_i64).map(|i| vec![Value::Integer(i)]).collect(),
+        );
+        let parts = storage.partition_rows("t", 4);
+        assert_eq!(parts.len(), 4);
+        let total: usize = parts.iter().map(|p| p.len()).sum();
+        assert_eq!(total, 600_000);
+        for p in &parts {
+            assert_eq!(p.len(), 150_000);
+        }
+    }
+
+    #[test]
+    fn test_partition_rows_uneven_remainder() {
+        // 503_003 rows / 4 partitions: base=125_750, rem=3
+        // Expected chunks: [125751, 125751, 125751, 125750]
+        let mut storage = MemoryStorage::new();
+        storage.tables.insert(
+            "t".to_string(),
+            (0..503_003_i64).map(|i| vec![Value::Integer(i)]).collect(),
+        );
+        let parts = storage.partition_rows("t", 4);
+        assert_eq!(parts.len(), 4);
+        let total: usize = parts.iter().map(|p| p.len()).sum();
+        assert_eq!(total, 503_003);
+        assert_eq!(parts[0].len(), 125_751);
+        assert_eq!(parts[1].len(), 125_751);
+        assert_eq!(parts[2].len(), 125_751);
+        assert_eq!(parts[3].len(), 125_750);
+    }
+
+    #[test]
+    fn test_partition_rows_missing_table() {
+        let storage = MemoryStorage::new();
+        let parts = storage.partition_rows("does_not_exist", 4);
+        assert_eq!(parts.len(), 1);
+        assert!(parts[0].is_empty());
     }
 }
