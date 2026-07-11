@@ -1,12 +1,25 @@
 //! TaskScheduler Module
 //!
 //! Provides task scheduling and thread pool management for parallel query execution.
+//!
+//! v3.10.0 Issue #3703: Rayon-based implementations are feature-gated
+//! behind `parallel-executor`. When the feature is OFF, a stub sequential
+//! scheduler is exported so the binary still compiles.
 
-use rayon::ThreadPool;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
+
+// v3.10.0 Issue #3703: rayon gated by parallel-executor feature
+#[cfg(feature = "parallel-executor")]
+mod rayon_impl {
+    use super::*;
+    pub use rayon::ThreadPool;
+    pub use std::sync::atomic::AtomicUsize;
+    pub use std::sync::atomic::Ordering;
+}
+#[cfg(feature = "parallel-executor")]
+use rayon_impl::*;
 
 /// TaskScheduler trait - unified interface for task scheduling
 pub trait TaskScheduler: Send + Sync {
@@ -30,12 +43,14 @@ pub trait TaskScheduler: Send + Sync {
     fn current_parallelism(&self) -> usize;
 }
 
+#[cfg(feature = "parallel-executor")]
 /// Rayon-based implementation of TaskScheduler
 pub struct RayonTaskScheduler {
     pool: Arc<ThreadPool>,
     active_tasks: Arc<AtomicUsize>,
 }
 
+#[cfg(feature = "parallel-executor")]
 impl RayonTaskScheduler {
     /// Create a new RayonTaskScheduler with specified parallelism
     pub fn new(parallelism: usize) -> Self {
@@ -65,6 +80,7 @@ impl RayonTaskScheduler {
     }
 }
 
+#[cfg(feature = "parallel-executor")]
 impl TaskScheduler for RayonTaskScheduler {
     fn submit<F>(&self, task: F)
     where
@@ -107,9 +123,55 @@ impl TaskScheduler for RayonTaskScheduler {
     }
 }
 
+/// Sequential stub scheduler (used when parallel-executor feature is OFF)
+#[cfg(not(feature = "parallel-executor"))]
+pub struct RayonTaskScheduler {
+    active_tasks: std::sync::atomic::AtomicUsize,
+}
+
+#[cfg(not(feature = "parallel-executor"))]
+impl RayonTaskScheduler {
+    pub fn new(_parallelism: usize) -> Self {
+        Self {
+            active_tasks: std::sync::atomic::AtomicUsize::new(0),
+        }
+    }
+
+    pub fn with_config(_parallelism: usize, _stack_size: usize) -> Self {
+        Self::new(1)
+    }
+}
+
+#[cfg(not(feature = "parallel-executor"))]
+impl TaskScheduler for RayonTaskScheduler {
+    fn submit<F>(&self, task: F)
+    where
+        F: FnOnce() + Send + 'static,
+    {
+        task();
+    }
+
+    fn submit_batch<I>(&self, tasks: I)
+    where
+        I: IntoIterator<Item = Box<dyn FnOnce() + Send + 'static>>,
+    {
+        for task in tasks {
+            task();
+        }
+    }
+
+    fn wait(&self) {}
+
+    fn set_parallelism(&self, _n: usize) {}
+
+    fn current_parallelism(&self) -> usize {
+        1
+    }
+}
+
 /// Create a default TaskScheduler with optimal parallelism
 pub fn create_default_scheduler() -> impl TaskScheduler {
-    let parallelism = std::thread::available_parallelism()
+    let parallelism = thread::available_parallelism()
         .map(|n| n.get())
         .unwrap_or(4);
     RayonTaskScheduler::new(parallelism)
@@ -118,6 +180,7 @@ pub fn create_default_scheduler() -> impl TaskScheduler {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::atomic::AtomicUsize;
 
     #[test]
     fn test_task_scheduler_creation() {
@@ -128,7 +191,7 @@ mod tests {
     #[test]
     fn test_task_submission() {
         let scheduler = RayonTaskScheduler::new(2);
-        let counter = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let counter = Arc::new(AtomicUsize::new(0));
         let counter_clone = counter.clone();
 
         scheduler.submit(move || {
@@ -142,7 +205,7 @@ mod tests {
     #[test]
     fn test_batch_submission() {
         let scheduler = RayonTaskScheduler::new(4);
-        let counter = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let counter = Arc::new(AtomicUsize::new(0));
 
         let tasks: Vec<Box<dyn FnOnce() + Send + 'static>> = (0..10)
             .map(|_| {
@@ -166,11 +229,12 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "parallel-executor")]
     fn test_parallel_execution() {
         use std::time::Instant;
 
         let scheduler = RayonTaskScheduler::new(4);
-        let counter = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let counter = Arc::new(AtomicUsize::new(0));
 
         let start = Instant::now();
 
@@ -183,7 +247,6 @@ mod tests {
 
         scheduler.wait();
         let elapsed = start.elapsed();
-
         assert_eq!(counter.load(std::sync::atomic::Ordering::SeqCst), 1000);
         assert!(
             elapsed.as_secs() < 5,
