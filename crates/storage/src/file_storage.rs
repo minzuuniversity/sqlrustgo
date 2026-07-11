@@ -1374,6 +1374,46 @@ impl FileStorage {
         }
         Ok(())
     }
+
+    /// v3.10.0 Issue #3703: returns pre-partitioned chunks so the caller
+    /// (typically `engine_select::filter_partitions_parallel`) can
+    /// process each chunk on a separate rayon worker, fusing scan
+    /// + filter into one parallel pipeline. Same semantics as
+    /// `MemoryStorage::partition_rows`.
+    ///
+    /// Merges `insert_buffer` rows (F-09 fix from `scan()`) so same-
+    /// transaction SELECT/UPDATE sees rows that were just inserted.
+    pub fn partition_rows(&self, table: &str, num_partitions: usize) -> Vec<Vec<Record>> {
+        const PARALLEL_SCAN_MIN_ROWS: usize = 500_000;
+        let n_partitions = num_partitions.max(1);
+        let Some(table_data) = self.get_table(table) else {
+            return vec![Vec::new()];
+        };
+        let total_rows = table_data.rows.len()
+            + self.insert_buffer.get(table).map(|b| b.len()).unwrap_or(0);
+        if total_rows < PARALLEL_SCAN_MIN_ROWS || n_partitions <= 1 {
+            let mut all: Vec<Record> = table_data.rows.clone();
+            if let Some(buffered) = self.insert_buffer.get(table) {
+                all.extend(buffered.iter().cloned());
+            }
+            return vec![all];
+        }
+        let mut all: Vec<Record> = table_data.rows.clone();
+        if let Some(buffered) = self.insert_buffer.get(table) {
+            all.extend(buffered.iter().cloned());
+        }
+        let total = all.len();
+        let base = total / n_partitions;
+        let rem = total % n_partitions;
+        let mut out: Vec<Vec<Record>> = Vec::with_capacity(n_partitions);
+        let mut cur = 0usize;
+        for i in 0..n_partitions {
+            let size = base + if i < rem { 1 } else { 0 };
+            out.push(all[cur..cur + size].to_vec());
+            cur += size;
+        }
+        out
+    }
 }
 
 impl FileStorage {
