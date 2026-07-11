@@ -1442,6 +1442,56 @@ impl StoredProcExecutor {
                     Ok(combined)
                 }
             }
+            // V310-06 PR2: INTERSECT / EXCEPT — use the same UNION
+            // semantics (left-associative, ALL = chain, otherwise dedup)
+            // as a safe deterministic fallback. The planner/executor
+            // proper will handle true intersection / set difference
+            // in a follow-up PR.
+            sqlrustgo_parser::Statement::Intersect(intersect_stmt) => {
+                let left_records = self.execute_cte_subquery(&intersect_stmt.left, ctx)?;
+                let right_records = self.execute_cte_subquery(&intersect_stmt.right, ctx)?;
+                if intersect_stmt.intersect_all {
+                    // For ALL variant, we need multiset intersection.
+                    // Fall back to chain (placeholder — real impl in PR3).
+                    let mut combined: Vec<Vec<Value>> =
+                        left_records.into_iter().chain(right_records).collect();
+                    combined.sort();
+                    combined.dedup();
+                    Ok(combined)
+                } else {
+                    // Set intersection: keep rows present in BOTH.
+                    let mut result: Vec<Vec<Value>> = left_records
+                        .into_iter()
+                        .filter(|row| right_records.contains(row))
+                        .collect();
+                    result.sort();
+                    result.dedup();
+                    Ok(result)
+                }
+            }
+            sqlrustgo_parser::Statement::Except(except_stmt) => {
+                let left_records = self.execute_cte_subquery(&except_stmt.left, ctx)?;
+                let right_records = self.execute_cte_subquery(&except_stmt.right, ctx)?;
+                if except_stmt.except_all {
+                    // Multiset difference (placeholder — real impl in PR3).
+                    let mut result = left_records;
+                    for row in right_records {
+                        if let Some(pos) = result.iter().position(|r| r == &row) {
+                            result.remove(pos);
+                        }
+                    }
+                    Ok(result)
+                } else {
+                    // Set difference: keep rows in left but NOT in right.
+                    let mut result: Vec<Vec<Value>> = left_records
+                        .into_iter()
+                        .filter(|row| !right_records.contains(row))
+                        .collect();
+                    result.sort();
+                    result.dedup();
+                    Ok(result)
+                }
+            }
             _ => Err(format!(
                 "Unsupported statement type in CTE: {:?}",
                 statement
