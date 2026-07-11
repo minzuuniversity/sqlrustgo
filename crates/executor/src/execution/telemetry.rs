@@ -438,4 +438,127 @@ mod tests {
         assert!(!TelemetryCollector::is_causal_link("SqlReceived"));
         assert!(!TelemetryCollector::is_causal_link("StorageRead"));
     }
+
+    #[test]
+    fn test_event_buffer_with_default_size() {
+        let buf = EventBuffer::default();
+        assert_eq!(buf.capacity, 256);
+    }
+
+    #[test]
+    fn test_event_buffer_push_many() {
+        let mut buf = EventBuffer::new(3);
+        for i in 0..5 {
+            buf.push(ExecutionEvent::SqlReceived {
+                sql: format!("q{}", i),
+            });
+        }
+        assert!(buf.len() <= 3);
+    }
+
+    #[test]
+    fn test_telemetry_collector_trace_id() {
+        let tc = TelemetryCollector::new("trace-X".into());
+        assert_eq!(tc.trace_id(), "trace-X");
+    }
+
+    #[test]
+    fn test_telemetry_collector_has_violations_false() {
+        let tc = TelemetryCollector::new("trace".into());
+        assert!(!tc.has_violations());
+    }
+
+    #[test]
+    fn test_telemetry_collector_emit_wal_events() {
+        let tc = TelemetryCollector::new("trace".into());
+        tc.emit(ExecutionEvent::WalBegin { txn_id: 1 });
+        tc.emit(ExecutionEvent::WalWrite {
+            txn_id: 1,
+            segment: "seg1".into(),
+        });
+        tc.emit(ExecutionEvent::WalCommit { txn_id: 1 });
+        assert!(!tc.has_violations());
+    }
+
+    #[test]
+    fn test_telemetry_collector_emit_txn_events() {
+        let tc = TelemetryCollector::new("trace".into());
+        tc.emit(ExecutionEvent::TxnBegin { txn_id: 1 });
+        tc.emit(ExecutionEvent::TxnRollback { txn_id: 1 });
+        assert!(!tc.has_violations());
+    }
+
+    #[test]
+    fn test_event_buffer_zero_capacity() {
+        let mut buf = EventBuffer::new(0);
+        let batch = buf.push(ExecutionEvent::SqlReceived { sql: "q".into() });
+        assert!(batch.is_some());
+    }
+
+    #[test]
+    fn test_event_buffer_drain_returns_events_in_order() {
+        let mut buf = EventBuffer::new(2);
+        buf.push(ExecutionEvent::SqlReceived { sql: "a".into() });
+        let batch = buf.push(ExecutionEvent::SqlReceived { sql: "b".into() });
+        let drained = batch.unwrap();
+        if let ExecutionEvent::SqlReceived { sql } = &drained[0] {
+            assert_eq!(sql, "a");
+        } else {
+            panic!("Expected SqlReceived");
+        }
+        if let ExecutionEvent::SqlReceived { sql } = &drained[1] {
+            assert_eq!(sql, "b");
+        } else {
+            panic!("Expected SqlReceived");
+        }
+    }
+
+    #[test]
+    fn test_event_buffer_drain_creates_new_buffer() {
+        let mut buf = EventBuffer::new(2);
+        buf.push(ExecutionEvent::SqlReceived { sql: "a".into() });
+        let batch = buf.push(ExecutionEvent::SqlReceived { sql: "b".into() });
+        assert!(batch.is_some());
+        assert_eq!(buf.len(), 0);
+        assert!(buf.is_empty());
+    }
+
+    #[test]
+    fn test_telemetry_collector_emit_capacity_3() {
+        let tc = TelemetryCollector::with_capacity("trace".into(), 3);
+        tc.emit(ExecutionEvent::SqlReceived { sql: "q1".into() });
+        tc.emit(ExecutionEvent::SqlReceived { sql: "q2".into() });
+        tc.emit(ExecutionEvent::SqlReceived { sql: "q3".into() });
+    }
+
+    #[test]
+    fn test_telemetry_collector_emit_all_dml_ops() {
+        let tc = TelemetryCollector::new("trace".into());
+        tc.emit(ExecutionEvent::StorageMutation {
+            table: "t".into(),
+            op: DmlOperation::Insert,
+        });
+        tc.emit(ExecutionEvent::StorageMutation {
+            table: "t".into(),
+            op: DmlOperation::Update,
+        });
+        tc.emit(ExecutionEvent::StorageMutation {
+            table: "t".into(),
+            op: DmlOperation::Delete,
+        });
+    }
+
+    #[test]
+    fn test_telemetry_collector_emit_with_storage_read() {
+        let tc = TelemetryCollector::new("trace".into());
+        tc.emit(ExecutionEvent::StorageRead {
+            table: "t".into(),
+            rows: 10,
+        });
+        tc.emit(ExecutionEvent::StorageWrite {
+            table: "t".into(),
+            rows: 5,
+        });
+        assert!(!tc.has_violations());
+    }
 }
