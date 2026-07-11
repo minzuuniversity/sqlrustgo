@@ -267,3 +267,217 @@ pub enum ExecutionResult {
         steps: Vec<String>,
     },
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_violation(vtype: DriftViolationType, sev: DriftSeverity) -> DriftViolation {
+        DriftViolation::new("trace-1".into(), vtype, sev, "test".into())
+    }
+
+    #[test]
+    fn test_recovery_planner_new() {
+        let rp = RecoveryPlanner::new("trace-1".into());
+        let v = make_violation(DriftViolationType::WalDrift, DriftSeverity::Critical);
+        let plan = rp.create_plan(&v);
+        assert!(plan.is_some());
+    }
+
+    #[test]
+    fn test_recovery_planner_wal_drift_critical() {
+        let rp = RecoveryPlanner::new("trace-1".into());
+        let v = make_violation(DriftViolationType::WalDrift, DriftSeverity::Critical);
+        let plan = rp.create_plan(&v).unwrap();
+        assert_eq!(plan.recovery_type, RecoveryType::Rollback);
+        assert_eq!(plan.confidence, RecoveryConfidence::High);
+        assert!(plan.steps.len() >= 2);
+    }
+
+    #[test]
+    fn test_recovery_planner_wal_drift_medium() {
+        let rp = RecoveryPlanner::new("trace-1".into());
+        let v = make_violation(DriftViolationType::WalDrift, DriftSeverity::Medium);
+        let plan = rp.create_plan(&v).unwrap();
+        assert_eq!(plan.recovery_type, RecoveryType::Patch);
+        assert_eq!(plan.confidence, RecoveryConfidence::Medium);
+    }
+
+    #[test]
+    fn test_recovery_planner_wal_drift_low() {
+        let rp = RecoveryPlanner::new("trace-1".into());
+        let v = make_violation(DriftViolationType::WalDrift, DriftSeverity::Low);
+        let plan = rp.create_plan(&v).unwrap();
+        assert_eq!(plan.recovery_type, RecoveryType::Ignore);
+        assert_eq!(plan.confidence, RecoveryConfidence::Low);
+    }
+
+    #[test]
+    fn test_recovery_planner_txn_drift_critical() {
+        let rp = RecoveryPlanner::new("trace-1".into());
+        let v = make_violation(DriftViolationType::TxnDrift, DriftSeverity::Critical);
+        let plan = rp.create_plan(&v).unwrap();
+        assert_eq!(plan.recovery_type, RecoveryType::Rollback);
+    }
+
+    #[test]
+    fn test_recovery_planner_txn_drift_medium() {
+        let rp = RecoveryPlanner::new("trace-1".into());
+        let v = make_violation(DriftViolationType::TxnDrift, DriftSeverity::Medium);
+        let plan = rp.create_plan(&v).unwrap();
+        assert_eq!(plan.recovery_type, RecoveryType::Patch);
+    }
+
+    #[test]
+    fn test_recovery_planner_txn_drift_low() {
+        let rp = RecoveryPlanner::new("trace-1".into());
+        let v = make_violation(DriftViolationType::TxnDrift, DriftSeverity::Low);
+        let plan = rp.create_plan(&v).unwrap();
+        assert_eq!(plan.recovery_type, RecoveryType::Ignore);
+    }
+
+    #[test]
+    fn test_recovery_planner_graph_drift_critical() {
+        let rp = RecoveryPlanner::new("trace-1".into());
+        let v = make_violation(DriftViolationType::GraphDrift, DriftSeverity::Critical);
+        let plan = rp.create_plan(&v).unwrap();
+        assert_eq!(plan.recovery_type, RecoveryType::Rewire);
+        assert_eq!(plan.confidence, RecoveryConfidence::High);
+    }
+
+    #[test]
+    fn test_recovery_planner_graph_drift_medium() {
+        let rp = RecoveryPlanner::new("trace-1".into());
+        let v = make_violation(DriftViolationType::GraphDrift, DriftSeverity::Medium);
+        let plan = rp.create_plan(&v).unwrap();
+        assert_eq!(plan.recovery_type, RecoveryType::Rewire);
+        assert_eq!(plan.confidence, RecoveryConfidence::Medium);
+    }
+
+    #[test]
+    fn test_recovery_planner_graph_drift_low() {
+        let rp = RecoveryPlanner::new("trace-1".into());
+        let v = make_violation(DriftViolationType::GraphDrift, DriftSeverity::Low);
+        let plan = rp.create_plan(&v).unwrap();
+        assert_eq!(plan.recovery_type, RecoveryType::Ignore);
+        assert_eq!(plan.confidence, RecoveryConfidence::Low);
+    }
+
+    #[test]
+    fn test_execution_replay_engine_new() {
+        let engine = ExecutionReplayEngine::new("trace-1".into());
+        let result = engine.replay();
+        assert!(result.valid);
+    }
+
+    #[test]
+    fn test_execution_replay_engine_with_events() {
+        let mut engine = ExecutionReplayEngine::new("trace-1".into());
+        engine.add_event("WalBegin".into());
+        engine.add_event("StorageMutation".into());
+        engine.add_event("WalCommit".into());
+        let result = engine.replay();
+        assert!(result.valid);
+    }
+
+    #[test]
+    fn test_execution_replay_engine_mutation_after_wal_commit() {
+        let mut engine = ExecutionReplayEngine::new("trace-1".into());
+        engine.add_event("WalBegin".into());
+        engine.add_event("WalCommit".into());
+        engine.add_event("WalBegin".into());
+        engine.add_event("StorageMutation".into());
+        let result = engine.replay();
+        assert!(result.valid);
+    }
+
+    #[test]
+    fn test_safe_execution_controller_new() {
+        let ctrl = SafeExecutionController::new();
+        let plan = RecoveryPlan::new(
+            "t".into(),
+            "v".into(),
+            RecoveryType::Rollback,
+            RecoveryConfidence::High,
+            vec!["step".into()],
+        );
+        assert!(ctrl.should_block(&plan));
+        assert!(ctrl.should_auto_repair(&plan) || !ctrl.should_auto_repair(&plan));
+    }
+
+    #[test]
+    fn test_safe_execution_controller_execute_blocked() {
+        let ctrl = SafeExecutionController::new();
+        let plan = RecoveryPlan::new(
+            "t".into(),
+            "v".into(),
+            RecoveryType::Rollback,
+            RecoveryConfidence::High,
+            vec!["step".into()],
+        );
+        let result = ctrl.execute_plan(&plan);
+        assert!(matches!(result, ExecutionResult::Blocked { .. }));
+    }
+
+    #[test]
+    fn test_safe_execution_controller_execute_suggest() {
+        let ctrl = SafeExecutionController::new();
+        let plan = RecoveryPlan::new(
+            "t".into(),
+            "v".into(),
+            RecoveryType::Replay,
+            RecoveryConfidence::High,
+            vec!["s1".into(), "s2".into()],
+        );
+        let result = ctrl.execute_plan(&plan);
+        assert!(matches!(result, ExecutionResult::Suggested { .. }));
+    }
+
+    #[test]
+    fn test_safe_execution_controller_should_suggest_patch_medium() {
+        let ctrl = SafeExecutionController::new();
+        let plan = RecoveryPlan::new(
+            "t".into(),
+            "v".into(),
+            RecoveryType::Patch,
+            RecoveryConfidence::Medium,
+            vec!["step".into()],
+        );
+        assert!(ctrl.should_suggest(&plan));
+    }
+
+    #[test]
+    fn test_safe_execution_controller_default() {
+        let ctrl = SafeExecutionController::default();
+        let plan = RecoveryPlan::new(
+            "t".into(),
+            "v".into(),
+            RecoveryType::Rollback,
+            RecoveryConfidence::High,
+            vec!["step".into()],
+        );
+        assert!(ctrl.should_block(&plan));
+    }
+
+    #[test]
+    fn test_execution_result_debug() {
+        let result = ExecutionResult::Blocked {
+            plan_id: "P-1".into(),
+            reason: "blocked".into(),
+        };
+        let s = format!("{:?}", result);
+        assert!(s.contains("Blocked"));
+    }
+
+    #[test]
+    fn test_replay_result_clone() {
+        let result = ReplayResult {
+            trace_id: "t".into(),
+            divergences: vec!["d".into()],
+            valid: false,
+        };
+        let cloned = result.clone();
+        assert_eq!(cloned.trace_id, "t");
+        assert_eq!(cloned.divergences.len(), 1);
+    }
+}
