@@ -66,6 +66,7 @@ sqlrustgo-storage = { path = "crates/storage" }
 sqlrustgo-catalog = { path = "crates/catalog" }
 sqlrustgo-transaction = { path = "crates/transaction" }
 sqlrustgo-server = { path = "crates/server" }
+sqlrustgo-security = { path = "crates/security" }
 sqlrustgo-telemetry = { path = "crates/telemetry" }
 sqlrustgo-network = { path = "crates/network" }
 sqlrustgo-gmp = { path = "crates/gmp" }
