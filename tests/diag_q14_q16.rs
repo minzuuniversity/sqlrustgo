@@ -43,14 +43,14 @@ fn load(storage: &Arc<RwLock<MemoryStorage>>, tbl: &str, ncols: usize) -> usize 
             .collect();
         batch.push(record);
         if batch.len() >= BATCH_SIZE {
-            let mut s = storage.write().unwrap();
+            let mut s = storage.write();
             let _ = s.insert(tbl, batch.clone());
             count += batch.len();
             batch.clear();
         }
     }
     if !batch.is_empty() {
-        let mut s = storage.write().unwrap();
+        let mut s = storage.write();
         let _ = s.insert(tbl, batch.clone());
         count += batch.len();
     }
