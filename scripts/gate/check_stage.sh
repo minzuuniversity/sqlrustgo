@@ -286,10 +286,12 @@ if [[ ${#REQ_GATES[@]} -gt 0 ]]; then
     for g in "${REQ_GATES[@]}"; do
         # Strip trailing args (e.g. "check_rc_ga_gate.sh ga" -> "check_rc_ga_gate.sh")
         # for the -f existence check below.
-        script_path="${g%% *}"
+        # 2026-07-11: Apply {VER}/{VERSION} expansion to script_path too,
+        # otherwise per-version gate paths like check_alpha_v{VER}.sh fail
+        # the existence check (and incorrectly mark as SKIP/NOT FOUND).
         g_expanded=$(expand_version "$g")
+        script_path="${g_expanded%% *}"
         if [[ "$g_expanded" =~ ^cargo ]]; then
-            label="${g_expanded:0:70}"
             if [[ "$DRY_RUN" == true ]]; then
                 echo "  [DRY]  $g_expanded"
                 continue
