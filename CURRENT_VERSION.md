@@ -1,84 +1,75 @@
 # 当前版本状态
 
-alpha/v3.8.0
+v3.9.0 GA
 
 ## 阶段信息
 
-- **阶段**: Alpha (功能开发阶段)
-- **当前里程碑**: Execution Semantics Freeze → TransactionManager 集成
-- **开始日期**: 2026-05-28
-- **开发分支**: develop/v3.8.0
-- **目标**: WAL + MVCC 事务 + TransactionManager → GA
-- **协作 Issue**: [#2778](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/2778)
+- **阶段**: GA（正式发布）
+- **发布日期**: 2026-07-10
+- **开发分支**: develop/v3.9.0
+- **目标**: Production Readiness — TPC-H 22/22 + Q9 6.7x 加速 + 168h SOAK PASS
+- **协作 Issue**: [#3266](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/3266)（168h SOAK）
 
 ## 版本概述
 
-v3.8.0 将 SQLRustGo 从**查询执行引擎**升级为**服务器级事务数据库**，具备明确的事务生命周期管理。
+v3.9.0 是 Production Readiness 版本，聚焦三个核心目标：TPC-H 22/22 全通、Q9 6.7x 加速（600ms→90ms）、Q13 子查询三值逻辑修正，以及 168h SOAK 稳定性验证。
 
-**核心目标**:
-- TransactionManager 事务所有权
-- WriteBuffer DML 暂存
-- COMMIT/ROLLBACK 完整生命周期
-- WAL + MVCC 支持
+## 核心里程碑
 
-## v3.8.0 核心任务
+| 里程碑 | 状态 |
+|--------|------|
+| TPC-H 22/22 in-process（SF=0.1）| ✅ |
+| TPC-H 22/22 wire round-trip | ✅ |
+| Cell-level MATCH 21/22（vs SQLite）| ✅ |
+| Q9 6.7x 加速（600ms → 90ms）| ✅ |
+| Q13 子查询修正 | ✅ |
+| 72h SOAK 119h57m，0 错误，0 重连 | ✅ |
+| 168h SOAK PASS | ✅ |
+| G13 deadlock 修复（parking_lot RwLock）| ✅ |
+| execution_engine.rs 2630 → 1471 行 | ✅ |
+| Statement cache（1.7x 热路径加速）| ✅ |
+| SCRAM-SHA-256 加固 | ✅ |
+| TLS 1.3 默认启用 | ✅ |
 
-### Phase 1 - TransactionManager 集成
+## 已知限制（GA 条件通过）
 
-| 功能 | 状态 | Issue |
-|------|------|-------|
-| TransactionManager 连接调度层 | ✅ | PR-820 |
-| BEGIN/COMMIT/ROLLBACK 路由 | ✅ | PR-830F |
-| LocalExecutor 保持无状态 | ✅ | PR-830F |
+| 项目 | 状态 | 说明 |
+|------|------|------|
+| 覆盖率均值 | ⚠️ ~67% < 85% | 条件通过；目标 v3.10.0 GA ≥80% per crate |
+| TPC-H SF=1 | ⚠️ 6/10 | 4 个 parser 限制（Q7/Q8/Q9/Q12）；目标 v3.10.0 GA 22/22 |
 
-### Phase 2-3 - WriteBuffer + Commit Engine
+## v3.9.0 vs v3.8.0
 
-| 功能 | 状态 | Issue |
-|------|------|-------|
-| DML 暂存 write_buffer | 🔄 | PR-840 |
-| COMMIT 刷新到 StorageEngine | 🔄 | PR-840 |
-| 无直接 DML → StorageEngine 路径 | 🔄 | PR-840 |
-
-### Phase 4-5 - Rollback + Read Consistency
-
-| 功能 | 状态 | Issue |
-|------|------|-------|
-| ROLLBACK 丢弃 write_buffer | ⏳ | PR-850 |
-| 事务快照 (read-your-writes) | ⏳ | PR-860 |
-| SSI 冲突检测 | ✅ | 已有 |
-
-## v3.8.0 vs v3.7.0
-
-| 方面 | v3.7.0 | v3.8.0 |
+| 方面 | v3.8.0 | v3.9.0 |
 |------|---------|---------|
-| 事务所有权 | 隐式 | 显式 (TransactionManager) |
-| 写暂存 | 直接写 StorageEngine | 暂存 TransactionManager |
-| BEGIN 处理 | N/A | txn_manager.begin() |
-| COMMIT 处理 | N/A | txn_manager.commit() → flush |
-| ROLLBACK 处理 | N/A | txn_manager.rollback() → discard |
-| LocalExecutor | 无状态 | 无状态 (不变) |
-| 读一致性 | StorageEngine 级别 | TransactionManager 快照 |
-| SSI 冲突检测 | Yes | Yes (保留) |
+| TPC-H SF=0.1 | 22/22 | 22/22 ✅ |
+| TPC-H SF=1 | 6/10 | 6/10（parser 限制）|
+| Q9 耗时 | 600ms | **90ms**（6.7x）|
+| Q1 耗时 | 150ms | **50ms**（3x）|
+| SOAK | 72h 有 G13 deadlock | 168h PASS ✅ |
+| Cell-level 匹配 | 18/22 | **21/22** |
 
 ## 开发时间线
 
 | 版本 | 日期 | 目标 |
 |------|------|------|
-| v3.8.0-alpha | 2026-05-28 | Phase 1 完成 |
-| v3.8.0-beta | 2026-06-07 | Phase 2-3 完成 |
-| v3.8.0-rc | 2026-06-21 | Phase 4-5 完成 |
-| v3.8.0-GA | 2026-06-28 | 正式发布 |
+| v3.9.0-alpha | 2026-06-05 | 功能开发 |
+| v3.9.0-beta | 2026-06-10 | RC 门禁开始 |
+| v3.9.0-rc8 | 2026-07-08 | 最后 RC |
+| v3.9.0 GA | 2026-07-10 | 正式发布 |
 
 ## 相关文档
 
-- [v3.8.0 文档入口](docs/releases/v3.8.0/README.md)
-- [v3.8.0 开发计划](docs/releases/v3.8.0/DEVELOPMENT_PLAN.md)
-- [v3.8.0 路线图](docs/releases/v3.8.0/ROADMAP.md)
-- [v3.8.0 版本计划](docs/releases/v3.8.0/VERSION_PLAN.md)
+- [v3.9.0 文档入口](docs/releases/v3.9.0/README.md)
+- [v3.9.0 GA 发行说明](docs/releases/v3.9.0/ga/GA_RELEASE_NOTES.md)
+- [GA 门禁报告](docs/releases/v3.9.0/ga/GA_GATE_REPORT.md)
+- [v3.9.0 升级指南](docs/releases/v3.9.0/MIGRATION_GUIDE.md)
 
 ## 变更历史
 
 | 版本 | 日期 | 说明 |
 |------|------|------|
-| 2.0 | 2026-04-22 | 创建 v2.8.0 开发分支，基于 v2.7.0 GA |
-| 3.0 | 2026-05-28 | 创建 v3.8.0 开发分支，基于 v3.7.0 GA |
+| 1.0 | 2026-02 | 首个正式版本 |
+| ... | ... | ... |
+| 4.0 | 2026-06-05 | 创建 v3.9.0 开发分支，基于 v3.8.0 GA |
+| 5.0 | 2026-07-10 | v3.9.0 GA 发布 |

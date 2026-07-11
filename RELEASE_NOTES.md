@@ -1,9 +1,8 @@
-# SQLRustGo 发行说明 (Release Notes)
+# SQLRustGo 发行说明
 
-> **当前活跃版本**: **v3.9.0** (RC7, 2026-06-17, GA 目标 2026-12-15)
-> **Latest GA**: **v3.8.0** (2026-06-04)
+> **当前活跃版本**: **v3.9.0** (GA, 2026-07-10)
 > **维护人**: yinglichina8848
-> **更新日期**: 2026-06-17
+> **更新日期**: 2026-07-11
 
 本文件是 **所有发行版本的索引页**。每个版本的详细 release notes 见
 `docs/releases/<version>/RELEASE_NOTES.md`。
@@ -14,9 +13,9 @@
 
 | 版本 | 状态 | 发布日期 | 一句话总结 | 详细 |
 |------|------|---------|-----------|------|
-| **v3.9.0** | RC7 | 2026-12-15 (GA 目标) | Production-readiness：TPC-H 22/22 + Q8 165,000× + Q13 subquery fix | [`docs/releases/v3.9.0/RELEASE_NOTES.md`](docs/releases/v3.9.0/RELEASE_NOTES.md) |
-| v3.8.0 | GA | 2026-06-04 | Long Convergence Release (WAL + MVCC 强约束) | [`docs/releases/v3.8.0/RELEASE_NOTES.md`](docs/releases/v3.8.0/RELEASE_NOTES.md) |
-| v3.7.0 | GA | 2026-05-30 | Stability enhancement (87.36% 覆盖率) | [`docs/releases/v3.7.0/RELEASE_NOTES.md`](docs/releases/v3.7.0/RELEASE_NOTES.md) |
+| **v3.9.0** | **GA** | 2026-07-10 | Production-readiness：TPC-H 22/22（SF=0.1）+ Q9 6.7x 加速 + Q13 子查询修正 + 168h SOAK PASS | [`docs/releases/v3.9.0/RELEASE_NOTES.md`](docs/releases/v3.9.0/RELEASE_NOTES.md) |
+| v3.8.0 | GA | 2026-06-08 | Long Convergence Release (WAL + MVCC 强约束) | [`docs/releases/v3.8.0/RELEASE_NOTES.md`](docs/releases/v3.8.0/RELEASE_NOTES.md) |
+| v3.7.0 | GA | 2026-05-30 | 稳定性增强（覆盖率 87.36%）| [`docs/releases/v3.7.0/RELEASE_NOTES.md`](docs/releases/v3.7.0/RELEASE_NOTES.md) |
 | v3.6.0 | GA | 2026-05-30 | CBO + TPC-H 22/22 | [`docs/releases/v3.6.0/RELEASE_NOTES.md`](docs/releases/v3.6.0/RELEASE_NOTES.md) |
 | v3.5.0 | GA | 2026-05-28 | AI Native GMP Platform | [`docs/releases/v3.5.0/RELEASE_NOTES.md`](docs/releases/v3.5.0/RELEASE_NOTES.md) |
 | v3.4.0 | GA | 2026-05-24 | GMP Management Suite | [`docs/releases/v3.4.0/RELEASE_NOTES.md`](docs/releases/v3.4.0/RELEASE_NOTES.md) |
@@ -25,43 +24,65 @@
 
 ---
 
-## v3.9.0 速览 (RC7)
+## v3.9.0 速览 (GA)
 
 ### 三大主题
-1. **TPC-H 22/22** — in-process + wire-protocol 双通过，21/22 cell-level match SQLite (Q22 有 SQL 标准差异)
-2. **Q13 subquery fix** — `NOT IN (subquery_with_LIKE)` 三值逻辑正确 (was 60/60 → now 11/11 excluded)
-3. **Q9 6x faster** — 600ms → 90ms via hash-join pre-filter pushdown
+1. **TPC-H 22/22** — SF=0.1 in-process + wire-protocol 双通过，21/22 cell-level 匹配 SQLite（Q22 为已知 SQL 标准差异）
+2. **Q13 子查询修正** — `NOT IN (subquery_with_LIKE)` 三值逻辑正确（was 60/60 → now 11/11 excluded）
+3. **Q9 6.7x 加速** — 600ms → 90ms via hash-join pre-filter pushdown
 
-### Sprint 8 增量 (2026-06-17)
-- **Q8 165,000× faster** — Track A: 33,000ms → 0.18ms via `extract_comma_join_keys` + `JoinKey::All` hash-join fallback
-- **ADR-006 V5/V6/V8/V2 治理** — 5/5 meta-gates (P11/P12/P13/P14/P15) 全部 PASS
-- **`sqlrustgo-mysql-server soak` 子命令** — 真实 wall-clock 长期浸泡 binary, 24h/72h/168h infra READY
-- **26 long-stability 测试分析** — 全部需 Z6G4 验证
+### 关键指标
+| 指标 | 结果 |
+|------|------|
+| TPC-H SF=0.1 | 22/22 PASS，耗时 -92%（30s→2.3s）|
+| TPC-H SF=1 | 6/10 PASS（4 个 parser 限制报错，12 个未实现）|
+| Cell-level 匹配 | 21/22（Q22 SQL 标准差异）|
+| 72h SOAK | ✅ 119h57m，0 错误，0 重连 |
+| 168h SOAK | ✅ PASS |
+| G13 Deadlock | ✅ 已修复（parking_lot RwLock）|
 
-### On-disk Format
-**v3.8.0 → v3.9.0 零数据迁移** (binary-swap upgrade)。
+### 已知限制（GA 条件通过）
+| 项目 | 状态 | 说明 |
+|------|------|------|
+| 覆盖率 | ⚠️ ~67% < 85% | 条件通过；目标 v3.10.0 GA ≥80% |
+| TPC-H SF=1 | ⚠️ 6/10 | 4 个 parser 限制；目标 v3.10.0 GA 22/22 |
+| 168h SOAK | ✅ PASS | — |
 
-### Known Gaps (Open)
-- 4 EAGAIN-failing integration tests on macOS debug build ([Issue #3307](http://192.168.0.250:3000/openclaw/sqlrustgo/issues/3307))
-- 24h/72h/168h real wall-clock soak pending Z6G4 hardware
-- v3.10 wired-soak DDL + wire protocol repair ([Issue #3302](http://192.168.0.250:3000/openclaw/sqlrustgo/issues/3302))
+详见 [v3.9.0 GA 发行说明](docs/releases/v3.9.0/ga/GA_RELEASE_NOTES.md) 与 [GA 门禁报告](docs/releases/v3.9.0/ga/GA_GATE_REPORT.md)。
 
-### 迁移指南
-详见 [`docs/releases/v3.9.0/MIGRATION_GUIDE.md`](docs/releases/v3.9.0/MIGRATION_GUIDE.md)。
+### v3.9.0 GA 里程碑
+| 里程碑 | 状态 |
+|--------|------|
+| TPC-H 22/22 in-process | ✅ |
+| TPC-H 22/22 wire round-trip | ✅ |
+| Cell-level MATCH 21/22 (vs SQLite) | ✅ |
+| Q9 6.7x 加速（600ms → 90ms）| ✅ |
+| Q13 子查询修正 | ✅ |
+| 72h SOAK（0 错误，0 重连）| ✅ |
+| G13 deadlock 修复（parking_lot RwLock）| ✅ |
+| execution_engine.rs 2630 → 1471 行 | ✅ |
+| Statement cache（1.7x 热路径加速）| ✅ |
+| SCRAM-SHA-256 加固 | ✅ |
+| TLS 1.3 默认启用 | ✅ |
+| 168h SOAK | ✅ PASS |
+
+### v3.9.0 已知限制（GA 条件通过）
+| 项目 | 状态 | 说明 |
+|------|------|------|
+| 覆盖率均值 | ⚠️ ~67% < 85% | 条件通过；目标 v3.10.0 GA ≥80% per crate |
+| TPC-H SF=1 | ⚠️ 6/10 | 4 个 parser 限制（Q7/Q8/Q9/Q12）；目标 v3.10.0 GA 22/22 |
+
+### 升级说明
+v3.9.0 是 v3.8.0 的 **二进制互换升级**，无需数据迁移。
+详见 [v3.9.0 升级指南](docs/releases/v3.9.0/MIGRATION_GUIDE.md)。
 
 ### 关键文档
-- [Comprehensive Assessment v2.0](docs/releases/v3.9.0/V390_COMPREHENSIVE_ASSESSMENT.md)
-- [Evidence Status](docs/releases/v3.9.0/EVIDENCE_STATUS.md)
-- [GA Gate Report](docs/releases/v3.9.0/GA_GATE_REPORT.md)
-- [GA Readiness Final (2026-06-19)](docs/releases/v3.9.0/GA_READINESS_FINAL_2026-06-19.md)
-- [Changelog](docs/releases/v3.9.0/CHANGELOG.md)
-- [Roadmap](docs/releases/v3.9.0/ROADMAP.md)
-- [Evaluation Report](docs/releases/v3.9.0/EVALUATION_REPORT.md)
-- [Feature Matrix](docs/releases/v3.9.0/FEATURE_MATRIX.md)
-- [Q8 Performance Analysis](docs/releases/v3.9.0/Q8_PERF_ANALYSIS.md)
-- [TPC-H E2E Testing](docs/releases/v3.9.0/TPCH_E2E_TESTING.md)
-
----
+- [v3.9.0 GA 发行说明](docs/releases/v3.9.0/ga/GA_RELEASE_NOTES.md)
+- [GA 门禁报告](docs/releases/v3.9.0/ga/GA_GATE_REPORT.md)
+- [覆盖率缺口说明](docs/releases/v3.9.0/ga/COVERAGE_GAP_RATIONALE.md)
+- [TPC-H SF=1 部分结果说明](docs/releases/v3.9.0/ga/TPC-H_PARTIAL_RESULT.md)
+- [v3.9.0 性能报告](docs/releases/v3.9.0/ga/PERFORMANCE_REPORT.md)
+- [v3.9.0 安全审计](docs/releases/v3.9.0/ga/SECURITY_AUDIT.md)
 
 ## v3.8.0 速览 (GA)
 
