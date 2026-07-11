@@ -2137,6 +2137,105 @@ mod tests {
             .unwrap();
         let _ = remove_dir_all(&dir);
     }
+
+    #[test]
+    fn test_partition_rows_below_threshold() {
+        let mut storage = make_storage("fs_pr_below");
+        let info = TableInfo {
+            name: "t".into(),
+            columns: vec![ColumnDefinition::new("a", "INTEGER")],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
+        };
+        storage.create_table(&info).unwrap();
+        storage
+            .insert("t", (0..100_i64).map(|i| vec![Value::Integer(i)]).collect())
+            .unwrap();
+        let parts = storage.partition_rows("t", 4);
+        assert_eq!(parts.len(), 1);
+        assert_eq!(parts[0].len(), 100);
+    }
+
+    #[test]
+    fn test_partition_rows_above_threshold() {
+        let mut storage = make_storage("fs_pr_above");
+        let info = TableInfo {
+            name: "t".into(),
+            columns: vec![ColumnDefinition::new("a", "INTEGER")],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
+        };
+        storage.create_table(&info).unwrap();
+        storage
+            .insert(
+                "t",
+                (0..600_000_i64).map(|i| vec![Value::Integer(i)]).collect(),
+            )
+            .unwrap();
+        let parts = storage.partition_rows("t", 4);
+        assert_eq!(parts.len(), 4);
+        let total: usize = parts.iter().map(|p| p.len()).sum();
+        assert_eq!(total, 600_000);
+    }
+
+    #[test]
+    fn test_partition_rows_missing_table() {
+        let storage = make_storage("fs_pr_missing");
+        let parts = storage.partition_rows("nonexistent", 4);
+        assert_eq!(parts.len(), 1);
+        assert!(parts[0].is_empty());
+    }
+
+    #[test]
+    fn test_partition_rows_num_partitions_zero() {
+        let mut storage = make_storage("fs_pr_zero");
+        let info = TableInfo {
+            name: "t".into(),
+            columns: vec![ColumnDefinition::new("a", "INTEGER")],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
+        };
+        storage.create_table(&info).unwrap();
+        storage
+            .insert(
+                "t",
+                (0..600_000_i64).map(|i| vec![Value::Integer(i)]).collect(),
+            )
+            .unwrap();
+        let parts = storage.partition_rows("t", 0);
+        assert_eq!(parts.len(), 1);
+    }
+
+    #[test]
+    fn test_partition_rows_with_buffer() {
+        let dir = std::env::temp_dir().join("fs_pr_buf");
+        let _ = remove_dir_all(&dir);
+        let mut storage = FileStorage::new_with_buffer_config(dir.clone(), 1000, true).unwrap();
+        let info = TableInfo {
+            name: "t".into(),
+            columns: vec![ColumnDefinition::new("a", "INTEGER")],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
+        };
+        storage.create_table(&info).unwrap();
+        storage.set_current_tx_id(1);
+        storage
+            .insert(
+                "t",
+                (0..600_000_i64).map(|i| vec![Value::Integer(i)]).collect(),
+            )
+            .unwrap();
+        let _ = storage.partition_rows("t", 4);
+        let _ = remove_dir_all(&dir);
+    }
 }
 
 impl FileStorage {
@@ -2188,8 +2287,8 @@ impl FileStorage {
         let Some(table_data) = self.get_table(table) else {
             return vec![Vec::new()];
         };
-        let total_rows = table_data.rows.len()
-            + self.insert_buffer.get(table).map(|b| b.len()).unwrap_or(0);
+        let total_rows =
+            table_data.rows.len() + self.insert_buffer.get(table).map(|b| b.len()).unwrap_or(0);
         if total_rows < PARALLEL_SCAN_MIN_ROWS || n_partitions <= 1 {
             let mut all: Vec<Record> = table_data.rows.clone();
             if let Some(buffered) = self.insert_buffer.get(table) {
