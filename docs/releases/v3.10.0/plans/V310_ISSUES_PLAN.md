@@ -141,22 +141,23 @@ cargo test transaction_rollback_undoes_dml \
 ---
 
 ### [V310-04] ALTER TABLE 完整性
+| Gitea Issue | 标题 | 主题标签 |
+|-------------|------|---------|
+| #3721 | [V310-MASTER] v3.10.0 总控 | P0, architecture |
+| #3722 | [V310-01] DML 完整性 | P0, executor |
+| #3723 | [V310-02] UNION 集合操作 | P0, sql-semantics |
+| #3724 | [V310-03] ACID 事务正确性 | P0, semantics |
+| #3725 | [V310-04] ALTER TABLE 完整性 | P0, mysql-compatibility |
+| #3726 | [V310-05] 真实崩溃恢复 + 24h SOAK | P0, stability |
+| #3727 | [V310-06] Wired-SOAK DDL 修复 (PR1) | P0, architecture |
+| #3728 | [V310-07] Catalog 4 层重构 (PR2) | P0, architecture |
+| #3729 | [V310-08] DDL 执行路径实现 (PR3) | P0, executor |
+| #3730 | [V310-09] Wire 协议握手修复 (PR4) | P0, mysql-server |
+| #3731 | [V310-10] 覆盖率提升至 ≥80% | P1, coverage |
+| #3732 | [V310-11] TPC-H SF=1 22/22 闭环 | P1, ga-p0-tpch |
+| #3733 | [V310-12] 其他 ignore 测试 + 跨版本债 | P2 |
 
-**来源**: V310_DEVELOPMENT_PLAN.md §1.4 (SEM-3)
-**优先级**: P0
-**估时**: 20h
-**依赖**: 无
-
-**子任务**:
-- [V310-04a] ALTER TABLE RENAME TABLE (C-4b) — 5h, 跨 schema 重命名
-- [V310-04b] ALTER TABLE RENAME COLUMN (C-4c) — 10h, 列重命名
-- [V310-04c] ALTER TABLE MODIFY COLUMN (C-4d) — 5h, 列类型修改
-
-**验证**: 4 类 ALTER TABLE 操作均有实际效果（非 stub）
-
-**完成判据**: ADD/DROP/RENAME-TABLE/RENAME-COLUMN/MODIFY-COLUMN 5 类全部功能完整
-
----
+> **状态**: ✅ 全部创建于 2026-07-11 (Gitea 252)。
 
 ### [V310-05] 真实崩溃恢复 + 24h SOAK
 
