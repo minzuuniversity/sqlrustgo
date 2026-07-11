@@ -146,6 +146,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     /// `with_cbo` / `with_catalog` (was historically a 1535-line violation
     /// of C-ARCH-05 because the three ctors were spelled out separately).
     fn base_with(storage: Arc<parking_lot::RwLock<S>>, cbo_enabled: bool) -> Self {
+        // v3.10.0 Issue #3703: --executor-parallelism env var (default 1 = sequential)
+        #[rustfmt::skip] let parallel_degree = std::env::var("SQLRUSTGO_EXECUTOR_PARALLELISM").ok().and_then(|s| s.parse::<usize>().ok()).filter(|n| *n >= 1).unwrap_or(1);
         Self {
             storage,
             catalog: None,
@@ -158,12 +160,11 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             default_isolation: TmIsolationLevel::default(),
             current_role: None,
             checkpoint_manager: None,
-            parallel_degree: 1,
+            parallel_degree,
             stmt_cache: sqlrustgo_cache::PreparedStatementCache::new(100),
             views: HashMap::new(),
         }
     }
-
     /// Create a new execution engine with CBO enabled by default
     pub fn new(storage: Arc<parking_lot::RwLock<S>>) -> Self {
         Self::base_with(storage, true)
