@@ -6,8 +6,9 @@
 //!
 //! In-memory performance instrumentation. Real integration in v3.9.0.
 
+use parking_lot::RwLock;
 use std::collections::HashMap;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 use std::time::Duration;
 
 #[derive(Debug, Clone, Default)]
