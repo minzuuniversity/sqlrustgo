@@ -1,16 +1,16 @@
 //! Q14 isolated - just the SUM and division
 
+use parking_lot::RwLock;
 use sqlrustgo::{ExecutionEngine, MemoryStorage, StorageEngine};
 use sqlrustgo_types::Value as SqlValue;
 use std::fs;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 
 const FIXTURE: &str = match option_env!("TPCH_DATA_DIR") {
     Some(p) => p,
     None => "tests/data/tpch-sf01",
 };
-
-fn load(storage: &Arc<RwLock<MemoryStorage>>, tbl: &str, ncols: usize) -> usize {
+fn load(storage: &Arc<parking_lot::RwLock<MemoryStorage>>, tbl: &str, ncols: usize) -> usize {
     let path = format!("{}/{}.tbl", FIXTURE, tbl);
     let content = fs::read_to_string(&path).expect("read");
     const BATCH_SIZE: usize = 10000;
@@ -42,14 +42,14 @@ fn load(storage: &Arc<RwLock<MemoryStorage>>, tbl: &str, ncols: usize) -> usize 
             .collect();
         batch.push(record);
         if batch.len() >= BATCH_SIZE {
-            let mut s = storage.write().unwrap();
+            let mut s = storage.write();
             let _ = s.insert(tbl, batch.clone());
             count += batch.len();
             batch.clear();
         }
     }
     if !batch.is_empty() {
-        let mut s = storage.write().unwrap();
+        let mut s = storage.write();
         let _ = s.insert(tbl, batch.clone());
         count += batch.len();
     }

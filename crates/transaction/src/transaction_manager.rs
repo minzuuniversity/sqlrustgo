@@ -226,7 +226,7 @@ impl TransactionManager {
             .ok_or(SsiError::TransactionNotFound { tx_id })?;
         active
             .savepoint_manager
-            .rollback_to(name)
+            .rollback_to(name, |_| Ok(()))
             .map_err(|e| match e {
                 crate::savepoint::SavepointError::NotFound => SsiError::LockTimeout,
                 crate::savepoint::SavepointError::InvalidOperation => SsiError::LockTimeout,

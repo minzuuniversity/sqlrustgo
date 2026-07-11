@@ -1,0 +1,45 @@
+name: SOAK Probe — Runner Liveness Test
+run-name: probe-${{ gitea.sha }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      message:
+        description: 'Test message'
+        required: false
+        default: 'runner-liveness-probe'
+
+jobs:
+  probe:
+    runs-on: [hp-z6g4]
+    timeout-minutes: 10
+    steps:
+      - name: Checkout (local Gitea)
+        run: |
+          REPO="openclaw/sqlrustgo"
+          git clone --depth=1 "http://192.168.0.252:3000/$REPO" repo
+          cd repo
+          echo "Checked out $(git rev-parse HEAD)"
+
+      - name: System info
+        run: |
+          cd repo
+          echo "=== HOSTNAME ==="
+          hostname
+          echo "=== UPTIME ==="
+          uptime
+          echo "=== CPU ==="
+          nproc
+          echo "=== MEMORY ==="
+          free -h
+          echo "=== DISK ==="
+          df -h /
+          echo "=== CARGO ==="
+          cargo --version 2>/dev/null || echo "cargo not found"
+          echo "=== RUSTC ==="
+          rustc --version 2>/dev/null || echo "rustc not found"
+
+      - name: Report status
+        run: |
+          echo "✅ Z6G4 RUNNER ALIVE at $(date -u)"
+          echo "Message: ${{ github.event.inputs.message || 'default' }}"

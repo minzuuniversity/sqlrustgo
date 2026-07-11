@@ -51,7 +51,7 @@ impl WalManager for FileBackedWalManager {
                 },
             )?);
         }
-        if let Some(ref mut writer) = self.writer {
+        if let Some(writer) = &mut self.writer {
             writer.append(&entry).map_err(|e| {
                 crate::engine::SqlError::ExecutionError(format!("WAL append failed: {}", e))
             })?;
@@ -60,7 +60,7 @@ impl WalManager for FileBackedWalManager {
     }
 
     fn flush(&mut self) -> SqlResult<()> {
-        if let Some(ref mut writer) = self.writer {
+        if let Some(writer) = &mut self.writer {
             writer.flush().map_err(|e| {
                 crate::engine::SqlError::ExecutionError(format!("WAL flush failed: {}", e))
             })?;
@@ -69,9 +69,15 @@ impl WalManager for FileBackedWalManager {
     }
 
     fn sync(&mut self) -> SqlResult<()> {
-        if let Some(ref mut writer) = self.writer {
+        if let Some(writer) = &mut self.writer {
             writer.flush().map_err(|e| {
-                crate::engine::SqlError::ExecutionError(format!("WAL sync failed: {}", e))
+                crate::engine::SqlError::ExecutionError(format!("WAL flush failed: {}", e))
+            })?;
+            // Call sync_data on the underlying file for true durability.
+            // Without this, only BufWriter's buffer is flushed to kernel
+            // page cache, not to durable storage.
+            writer.get_mut().get_ref().sync_data().map_err(|e| {
+                crate::engine::SqlError::ExecutionError(format!("WAL sync_data failed: {}", e))
             })?;
         }
         Ok(())
@@ -119,6 +125,10 @@ impl WalManager for FileBackedWalManager {
         self.writer.as_ref().map(|w| w.current_lsn()).unwrap_or(0)
     }
 
+    fn size(&self) -> SqlResult<u64> {
+        Ok(std::fs::metadata(&self.wal_path)?.len())
+    }
+
     fn is_batch_mode(&self) -> bool {
         self.writer
             .as_ref()
@@ -134,13 +144,13 @@ impl WalManager for FileBackedWalManager {
     }
 
     fn set_batch_mode(&mut self, enable: bool) {
-        if let Some(ref mut writer) = self.writer {
+        if let Some(writer) = &mut self.writer {
             writer.enable_batch_mode(enable);
         }
     }
 
     fn set_flush_threshold(&mut self, threshold: usize) {
-        if let Some(ref mut writer) = self.writer {
+        if let Some(writer) = &mut self.writer {
             writer.set_flush_threshold(threshold);
         }
     }

@@ -417,6 +417,51 @@ pub fn build_combined_schema(
     })
 }
 
+/// Combine N `TableInfo`s into a single schema whose columns are
+/// prefixed with the supplied per-table prefix (alias or table name).
+/// Used by the multi-table UPDATE / DELETE executors.
+pub fn build_multi_table_combined_schema(infos: &[TableInfo], prefixes: &[String]) -> TableInfo {
+    let mut columns = Vec::new();
+    for (info, prefix) in infos.iter().zip(prefixes.iter()) {
+        for c in &info.columns {
+            columns.push(ColumnDefinition {
+                name: format!("{}.{}", prefix, c.name),
+                data_type: c.data_type.clone(),
+                nullable: c.nullable,
+                primary_key: c.primary_key,
+                char_max_length: c.char_max_length,
+            });
+        }
+    }
+    TableInfo {
+        name: prefixes.join("_join_"),
+        columns,
+        foreign_keys: vec![],
+        unique_constraints: vec![],
+        check_constraints: vec![],
+        partition_info: None,
+    }
+}
+
+/// Cartesian product of per-table row sets. The returned vector
+/// contains one combined row per `(r0, r1, ..., rn)` tuple with all
+/// rows concatenated in order.
+pub fn cartesian_product(per_table_rows: &[Vec<Vec<Value>>]) -> Vec<Vec<Value>> {
+    let mut out: Vec<Vec<Value>> = vec![Vec::new()];
+    for table_rows in per_table_rows {
+        let mut next = Vec::with_capacity(out.len() * table_rows.len());
+        for prefix in &out {
+            for row in table_rows {
+                let mut combined = prefix.clone();
+                combined.extend(row.iter().cloned());
+                next.push(combined);
+            }
+        }
+        out = next;
+    }
+    out
+}
+
 pub fn build_aggregate_schema(
     group_by: &[Expression],
     aggregates: &[AggregateCall],
@@ -961,7 +1006,11 @@ fn substitute_qualified_outer_refs_in_place(
         Expression::Identifier(name) => {
             if let Some((qualifier, _col)) = name.split_once('.') {
                 let qual_lower = qualifier.to_lowercase();
-                if !own_qualifiers.iter().any(|q| q == &qual_lower) {
+                let matches_own = own_qualifiers.iter().any(|q| {
+                    q == &qual_lower
+                        || q.rsplit_once('|').map(|(_, a)| a) == Some(qual_lower.as_str())
+                });
+                if !matches_own {
                     if let Some(idx) = find_column_index(name, outer_table_info) {
                         if let Some(v) = outer_row.get(idx) {
                             *expr = Expression::Literal(value_to_literal_string(v));

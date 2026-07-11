@@ -1,3 +1,13 @@
+> **2026-07-04 status addendum**
+> - HEAD `b670aae9c6` (develop/v3.9.0, 252) ✅ E2E SELECT 16/16 (PR #3684)
+> - G13 Deadlock fix: PR #3680 ✅ merged (parking_lot RwLock, 72h36m root cause)
+> - TPC-H Q1-Q10 baseline: PR #3678 merged, Q11-Q22 实现中
+> - Clippy: 0 warnings ✅ (PR #3683 + PR #3687)
+> - Open issues (4, 全部硬件阻塞): #3265/#3266 (soak), #3423 (SF=1 磁盘), #3648 (TPC-H SOAK)
+> - 本文件原始内容保持不变,仅顶部加 addendum。
+
+---
+
 # v3.9.0 Evidence Index (G1-G16 Single-Page Reference)
 
 > **Last update**: 2026-06-24
@@ -44,7 +54,7 @@ Legend: ✅ verified, ⏳ pending real-data, ⚠️ partial, ❌ failing
 | G16 | Compatibility v3.8→v3.9 | ✅ | `v380_to_v390_full_upgrade_test` (18 tests) | ⚠️ No independent oracle compare |
 | **G17** | **Coverage ≥ 80%** | ✅ **DEFINED** (RC8 2026-06-18) | `check_coverage.sh` parameterized + G17 ≥80% in `GATE_CONDITIONS.md` v3.1 + integrated into `check_g_all.sh` | ✅ V9 fix closed |
 
-## Meta-gates (P11-P16, ADR-006, Sprint 8)
+| G13 | 24h Stability (extended) | 🟡 **FIXED** | PR #3680 merged ✅; re-run pending (Z6G4, hardware-blocked) | 72h36m deadlock root cause fixed; real re-run pending |
 
 | Meta-gate | Topic | Status | Notes |
 |-----------|-------|--------|-------|
