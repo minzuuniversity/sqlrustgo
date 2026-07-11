@@ -379,7 +379,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     if select.columns.is_empty() || select.columns.iter().any(|c| c.name == "*") {
                         vec![agg_values.clone()]
                     } else {
-                        select
+                        let row: Vec<Value> = select
                             .columns
                             .iter()
                             .map(|col| match &col.expression {
@@ -387,10 +387,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                                     .unwrap_or(Value::Null),
                                 None => agg_values.first().cloned().unwrap_or(Value::Null),
                             })
-                            .collect::<Vec<_>>()
-                            .into_iter()
-                            .map(|v| vec![v])
-                            .collect()
+                            .collect();
+                        vec![row]
                     };
                 let row_count = projected.len();
                 return Ok(ExecutorResult::new(projected, row_count));
@@ -1134,10 +1132,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                             _ => {}
                         }
                     }
-                    if values.is_empty() {
-                        // SQL standard: SUM over empty set is NULL.
-                        // PG returns 0 rows, others return 1 row with NULL.
-                        // We follow the standard (NULL), not PG's quirk.
+                    if values.is_empty() || values.iter().all(|v| matches!(v, Value::Null)) {
+                        // SQL standard: SUM over all-NULL column is NULL
                         Value::Null
                     } else if any_float {
                         Value::Float(float_sum)

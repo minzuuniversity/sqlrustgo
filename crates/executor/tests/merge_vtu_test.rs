@@ -148,7 +148,6 @@ fn test_storage_insert_and_scan() {
 }
 
 #[test]
-#[ignore = "pre-existing logic bug, see #3742; expects delete-ignores-filter=2, actual=1"]
 fn test_storage_delete() {
     let storage = create_memory_storage();
     let table_info = TableInfo {
@@ -167,14 +166,18 @@ fn test_storage_delete() {
     }
     {
         let mut s = storage.write();
-        // MemoryStorage::delete ignores filters and deletes ALL rows
+        // SQL standard: DELETE with filter deletes only matching rows
+        // delete("t", &[Value::Integer(1)]) = DELETE FROM t WHERE id = 1
+        // Only 1 row matches (id=1), so deleted = 1
         let deleted = s.delete("t", &[Value::Integer(1)]).unwrap();
-        assert_eq!(deleted, 2);
+        assert_eq!(deleted, 1);
     }
     {
         let s = storage.read();
         let rows = s.scan("t").unwrap();
-        assert_eq!(rows.len(), 0);
+        // One row remains (id=2)
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0][0], Value::Integer(2));
     }
 }
 
