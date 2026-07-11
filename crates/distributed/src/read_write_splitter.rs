@@ -124,8 +124,11 @@ impl ReadWriteSplitter {
             sqlrustgo_parser::Statement::Describe(_) => QueryClass::Read,
             sqlrustgo_parser::Statement::Call(_) => QueryClass::Read,
             sqlrustgo_parser::Statement::Union(_) => QueryClass::Read,
+            // V310-06 PR2: set-op chains also read from both sides —
+            // route them to a replica just like UNION.
+            sqlrustgo_parser::Statement::Intersect(_) => QueryClass::Read,
+            sqlrustgo_parser::Statement::Except(_) => QueryClass::Read,
             sqlrustgo_parser::Statement::WithSelect(_) => QueryClass::Read,
-            // WITH ... DML: classify based on the body. If the body is a
             // read-only statement, classify as Read; otherwise Write.
             sqlrustgo_parser::Statement::WithDml(with_dml) => {
                 Self::classify_statement(&with_dml.body)
