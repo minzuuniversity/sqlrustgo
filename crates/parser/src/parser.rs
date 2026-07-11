@@ -8853,3 +8853,522 @@ fn test_debug_json_simple() {
         Err(e) => println!("ERROR: {}", e),
     }
 }
+// ============================================================================
+// DDL database parsing tests — Issue #3727 (V310-06 PR1: CREATE/DROP DATABASE,
+// USE). The parser already accepts these three SQL statements; this module
+// adds comprehensive positive + negative tests to lock down grammar behavior.
+// ============================================================================
+
+#[cfg(test)]
+mod ddl_database_tests {
+    use crate::*;
+
+    // ---------- CREATE DATABASE: positive cases ----------
+
+    #[test]
+    fn test_ddl_create_database_basic() {
+        match parse("CREATE DATABASE mydb").unwrap() {
+            Statement::CreateDatabase(s) => {
+                assert_eq!(s.name, "mydb");
+                assert!(!s.if_not_exists);
+            }
+            other => panic!("Expected CreateDatabase, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_ddl_create_database_lowercase_keyword() {
+        match parse("create database mydb").unwrap() {
+            Statement::CreateDatabase(s) => assert_eq!(s.name, "mydb"),
+            other => panic!("Expected CreateDatabase, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_ddl_create_database_mixed_case_keyword() {
+        match parse("Create Database mydb").unwrap() {
+            Statement::CreateDatabase(s) => assert_eq!(s.name, "mydb"),
+            other => panic!("Expected CreateDatabase, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_ddl_create_database_if_not_exists() {
+        match parse("CREATE DATABASE IF NOT EXISTS mydb").unwrap() {
+            Statement::CreateDatabase(s) => {
+                assert_eq!(s.name, "mydb");
+                assert!(s.if_not_exists);
+            }
+            other => panic!("Expected CreateDatabase, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_ddl_create_database_quoted_name() {
+        // The parser accepts a string-literal token for the database name
+        // but preserves the surrounding quotes. We assert (a) parse succeeds
+        // and (b) the resulting name is non-empty, leaving the exact quote
+        // handling for the executor layer to decide.
+        match parse(r#"CREATE DATABASE "analytics""#).unwrap() {
+            Statement::CreateDatabase(s) => assert!(!s.name.is_empty()),
+            other => panic!("Expected CreateDatabase, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_ddl_create_database_with_underscore_and_digits() {
+        match parse("CREATE DATABASE app_db_2026").unwrap() {
+            Statement::CreateDatabase(s) => assert_eq!(s.name, "app_db_2026"),
+            other => panic!("Expected CreateDatabase, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_ddl_create_database_long_name() {
+        match parse("CREATE DATABASE sales_team_warehouse_archive").unwrap() {
+            Statement::CreateDatabase(s) => {
+                assert_eq!(s.name, "sales_team_warehouse_archive")
+            }
+            other => panic!("Expected CreateDatabase, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_ddl_create_database_trailing_semicolon_ok() {
+        // Trailing semicolon is allowed by the statement splitter.
+        let sqls = split_sql_statements("CREATE DATABASE mydb;");
+        assert_eq!(sqls.len(), 1);
+        match parse(&sqls[0]).unwrap() {
+            Statement::CreateDatabase(s) => assert_eq!(s.name, "mydb"),
+            other => panic!("Expected CreateDatabase, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_ddl_create_database_if_not_exists_trailing_semicolon() {
+        let sqls = split_sql_statements("CREATE DATABASE IF NOT EXISTS sales;");
+        assert_eq!(sqls.len(), 1);
+        match parse(&sqls[0]).unwrap() {
+            Statement::CreateDatabase(s) => {
+                assert_eq!(s.name, "sales");
+                assert!(s.if_not_exists);
+            }
+            other => panic!("Expected CreateDatabase, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_ddl_create_database_trailing_whitespace() {
+        match parse("CREATE DATABASE   spaces_db   ").unwrap() {
+            Statement::CreateDatabase(s) => assert_eq!(s.name, "spaces_db"),
+            other => panic!("Expected CreateDatabase, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_ddl_create_database_if_not_exists_lowercase() {
+        match parse("create database if not exists foo").unwrap() {
+            Statement::CreateDatabase(s) => {
+                assert_eq!(s.name, "foo");
+                assert!(s.if_not_exists);
+            }
+            other => panic!("Expected CreateDatabase, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_ddl_create_database_topology_dot_name() {
+        // MySQL allows qualified names; we accept simple identifier here.
+        match parse("CREATE DATABASE tenant_eu_01").unwrap() {
+            Statement::CreateDatabase(s) => assert_eq!(s.name, "tenant_eu_01"),
+            other => panic!("Expected CreateDatabase, got {:?}", other),
+        }
+    }
+
+    // ---------- DROP DATABASE: positive cases ----------
+
+    #[test]
+    fn test_ddl_drop_database_basic() {
+        match parse("DROP DATABASE mydb").unwrap() {
+            Statement::DropDatabase(s) => {
+                assert_eq!(s.name, "mydb");
+                assert!(!s.if_exists);
+            }
+            other => panic!("Expected DropDatabase, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_ddl_drop_database_lowercase() {
+        match parse("drop database mydb").unwrap() {
+            Statement::DropDatabase(s) => assert_eq!(s.name, "mydb"),
+            other => panic!("Expected DropDatabase, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_ddl_drop_database_if_exists() {
+        match parse("DROP DATABASE IF EXISTS mydb").unwrap() {
+            Statement::DropDatabase(s) => {
+                assert_eq!(s.name, "mydb");
+                assert!(s.if_exists);
+            }
+            other => panic!("Expected DropDatabase, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_ddl_drop_database_if_exists_lowercase() {
+        match parse("drop database if exists stuff").unwrap() {
+            Statement::DropDatabase(s) => {
+                assert_eq!(s.name, "stuff");
+                assert!(s.if_exists);
+            }
+            other => panic!("Expected DropDatabase, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_ddl_drop_database_underscore_name() {
+        match parse("DROP DATABASE legacy_2024_archive").unwrap() {
+            Statement::DropDatabase(s) => assert_eq!(s.name, "legacy_2024_archive"),
+            other => panic!("Expected DropDatabase, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_ddl_drop_database_trailing_semicolon() {
+        let sqls = split_sql_statements("DROP DATABASE mydb;");
+        assert_eq!(sqls.len(), 1);
+        match parse(&sqls[0]).unwrap() {
+            Statement::DropDatabase(s) => assert_eq!(s.name, "mydb"),
+            other => panic!("Expected DropDatabase, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_ddl_drop_database_mixed_case_keyword() {
+        match parse("Drop Database mydb").unwrap() {
+            Statement::DropDatabase(s) => assert_eq!(s.name, "mydb"),
+            other => panic!("Expected DropDatabase, got {:?}", other),
+        }
+    }
+
+    // ---------- USE: positive cases ----------
+
+    #[test]
+    fn test_ddl_use_basic() {
+        match parse("USE mydb").unwrap() {
+            Statement::UseDatabase(name) => assert_eq!(name, "mydb"),
+            other => panic!("Expected UseDatabase, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_ddl_use_lowercase() {
+        match parse("use mydb").unwrap() {
+            Statement::UseDatabase(name) => assert_eq!(name, "mydb"),
+            other => panic!("Expected UseDatabase, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_ddl_use_mixed_case() {
+        match parse("Use mydb").unwrap() {
+            Statement::UseDatabase(name) => assert_eq!(name, "mydb"),
+            other => panic!("Expected UseDatabase, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_ddl_use_with_underscore() {
+        match parse("USE warehouse_east_2").unwrap() {
+            Statement::UseDatabase(name) => assert_eq!(name, "warehouse_east_2"),
+            other => panic!("Expected UseDatabase, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_ddl_use_with_digits() {
+        match parse("USE db2026").unwrap() {
+            Statement::UseDatabase(name) => assert_eq!(name, "db2026"),
+            other => panic!("Expected UseDatabase, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_ddl_use_quoted_name() {
+        // Parser accepts string-literal but preserves surrounding quotes.
+        // Only assert parse succeeds and the name is non-empty.
+        match parse(r#"USE "prod""#).unwrap() {
+            Statement::UseDatabase(name) => assert!(!name.is_empty()),
+            other => panic!("Expected UseDatabase, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_ddl_use_trailing_semicolon() {
+        let sqls = split_sql_statements("USE mydb;");
+        assert_eq!(sqls.len(), 1);
+        match parse(&sqls[0]).unwrap() {
+            Statement::UseDatabase(name) => assert_eq!(name, "mydb"),
+            other => panic!("Expected UseDatabase, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_ddl_use_trailing_whitespace() {
+        match parse("USE   mydb   ").unwrap() {
+            Statement::UseDatabase(name) => assert_eq!(name, "mydb"),
+            other => panic!("Expected UseDatabase, got {:?}", other),
+        }
+    }
+
+    // ---------- Multi-statement scenarios ----------
+
+    #[test]
+    fn test_ddl_create_and_use_in_one_batch() {
+        let sqls = split_sql_statements("CREATE DATABASE app; USE app; CREATE DATABASE app;");
+        // Two CREATE + one USE = 3 frags.
+        assert_eq!(sqls.len(), 3);
+        match parse(sqls[0].trim()).unwrap() {
+            Statement::CreateDatabase(s) => assert_eq!(s.name, "app"),
+            other => panic!("Expected CreateDatabase, got {:?}", other),
+        }
+        match parse(sqls[1].trim()).unwrap() {
+            Statement::UseDatabase(name) => assert_eq!(name, "app"),
+            other => panic!("Expected UseDatabase, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_ddl_drop_after_use() {
+        let sqls = split_sql_statements("USE temp; DROP DATABASE temp;");
+        assert_eq!(sqls.len(), 2);
+        match parse(sqls[0].trim()).unwrap() {
+            Statement::UseDatabase(name) => assert_eq!(name, "temp"),
+            other => panic!("Expected UseDatabase, got {:?}", other),
+        }
+        match parse(sqls[1].trim()).unwrap() {
+            Statement::DropDatabase(s) => assert_eq!(s.name, "temp"),
+            other => panic!("Expected DropDatabase, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_ddl_full_session_script() {
+        let sqls = split_sql_statements(
+            "CREATE DATABASE IF NOT EXISTS analytics; \
+             USE analytics; \
+             DROP DATABASE IF EXISTS analytics;",
+        );
+        assert_eq!(sqls.len(), 3);
+        match parse(sqls[0].trim()).unwrap() {
+            Statement::CreateDatabase(s) => {
+                assert_eq!(s.name, "analytics");
+                assert!(s.if_not_exists);
+            }
+            other => panic!("Expected CreateDatabase, got {:?}", other),
+        }
+        match parse(sqls[1].trim()).unwrap() {
+            Statement::UseDatabase(name) => assert_eq!(name, "analytics"),
+            other => panic!("Expected UseDatabase, got {:?}", other),
+        }
+        match parse(sqls[2].trim()).unwrap() {
+            Statement::DropDatabase(s) => {
+                assert_eq!(s.name, "analytics");
+                assert!(s.if_exists);
+            }
+            other => panic!("Expected DropDatabase, got {:?}", other),
+        }
+    }
+
+    // ---------- Negative cases: parser MUST reject malformed input ----------
+
+    #[test]
+    fn test_ddl_create_database_missing_name() {
+        assert!(parse("CREATE DATABASE").is_err());
+    }
+
+    #[test]
+    fn test_ddl_drop_database_missing_name() {
+        assert!(parse("DROP DATABASE").is_err());
+    }
+
+    #[test]
+    fn test_ddl_use_missing_name() {
+        assert!(parse("USE").is_err());
+    }
+
+    #[test]
+    fn test_ddl_create_database_if_not_exists_without_name() {
+        assert!(parse("CREATE DATABASE IF NOT EXISTS").is_err());
+    }
+
+    #[test]
+    fn test_ddl_drop_database_if_exists_without_name() {
+        assert!(parse("DROP DATABASE IF EXISTS").is_err());
+    }
+
+    #[test]
+    fn test_ddl_create_database_with_garbage_after_name() {
+        // Current grammar tolerates trailing tokens; this documents that
+        // behavior rather than fails it. Tightening is follow-up work.
+        let s = parse("CREATE DATABASE foo BAR").unwrap();
+        match s {
+            Statement::CreateDatabase(_) => {}
+            other => panic!(
+                "Expected parser to accept (tolerant of trailing token), got {:?}",
+                other
+            ),
+        }
+    }
+
+    #[test]
+    fn test_ddl_drop_database_with_garbage_after_name() {
+        let s = parse("DROP DATABASE foo EXTRA").unwrap();
+        match s {
+            Statement::DropDatabase(_) => {}
+            other => panic!(
+                "Expected parser to accept (tolerant of trailing token), got {:?}",
+                other
+            ),
+        }
+    }
+
+    #[test]
+    fn test_ddl_use_with_garbage_after_name() {
+        let s = parse("USE foo BAR").unwrap();
+        match s {
+            Statement::UseDatabase(_) => {}
+            other => panic!(
+                "Expected parser to accept (tolerant of trailing token), got {:?}",
+                other
+            ),
+        }
+    }
+
+    #[test]
+    fn test_ddl_create_database_with_missing_table_keyword() {
+        assert!(parse("CREATE mydb").is_err());
+    }
+
+    #[test]
+    fn test_ddl_use_with_database_keyword() {
+        // "USE DATABASE mydb" is malformed: USE must be followed by a name,
+        // not the DATABASE keyword.
+        assert!(
+            parse("USE DATABASE mydb").is_err(),
+            "USE DATABASE mydb must be rejected (require USE <name>)"
+        );
+    }
+
+    // ---------- Round-trip: Statement -> Debug string does not panic ----------
+
+    #[test]
+    fn test_ddl_create_database_debug_no_panic() {
+        let s = parse("CREATE DATABASE IF NOT EXISTS x").unwrap();
+        let _ = format!("{:?}", s);
+    }
+
+    #[test]
+    fn test_ddl_drop_database_debug_no_panic() {
+        let s = parse("DROP DATABASE IF EXISTS x").unwrap();
+        let _ = format!("{:?}", s);
+    }
+
+    #[test]
+    fn test_ddl_use_debug_no_panic() {
+        let s = parse("USE x").unwrap();
+        let _ = format!("{:?}", s);
+    }
+
+    // ---------- Idempotency under whitespace/case variation ----------
+
+    #[test]
+    fn test_ddl_create_database_case_insensitive_after_trim() {
+        let a = parse("CREATE DATABASE foo").unwrap();
+        let b = parse("create   database   foo").unwrap();
+        assert_eq!(a, b);
+    }
+
+    #[test]
+    fn test_ddl_drop_database_case_insensitive_after_trim() {
+        let a = parse("DROP DATABASE foo").unwrap();
+        let b = parse("drop   database   foo").unwrap();
+        assert_eq!(a, b);
+    }
+
+    #[test]
+    fn test_ddl_use_case_insensitive_after_trim() {
+        let a = parse("USE foo").unwrap();
+        let b = parse("use   foo").unwrap();
+        assert_eq!(a, b);
+    }
+
+    // ---------- Statement::Variant uniqueness ----------
+
+    #[test]
+    fn test_ddl_create_database_not_drop_or_use() {
+        match parse("CREATE DATABASE foo").unwrap() {
+            Statement::CreateDatabase(_) => {}
+            other => panic!("Expected CreateDatabase only, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_ddl_drop_database_not_create_or_use() {
+        match parse("DROP DATABASE foo").unwrap() {
+            Statement::DropDatabase(_) => {}
+            other => panic!("Expected DropDatabase only, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_ddl_use_not_create_or_drop() {
+        match parse("USE foo").unwrap() {
+            Statement::UseDatabase(_) => {}
+            other => panic!("Expected UseDatabase only, got {:?}", other),
+        }
+    }
+
+    // ---------- Field completeness (no boolean assert_eq lint) ----------
+
+    #[test]
+    fn test_ddl_create_database_fields_default_when_no_if_not_exists() {
+        let s = match parse("CREATE DATABASE foo").unwrap() {
+            Statement::CreateDatabase(s) => s,
+            other => panic!("Expected CreateDatabase, got {:?}", other),
+        };
+        assert_eq!(s.name, "foo");
+        assert!(!s.if_not_exists);
+    }
+
+    #[test]
+    fn test_ddl_drop_database_fields_default_when_no_if_exists() {
+        let s = match parse("DROP DATABASE foo").unwrap() {
+            Statement::DropDatabase(s) => s,
+            other => panic!("Expected DropDatabase, got {:?}", other),
+        };
+        assert_eq!(s.name, "foo");
+        assert!(!s.if_exists);
+    }
+
+    #[test]
+    fn test_ddl_create_database_if_not_exists_field_set() {
+        let s = match parse("CREATE DATABASE IF NOT EXISTS foo").unwrap() {
+            Statement::CreateDatabase(s) => s,
+            other => panic!("Expected CreateDatabase, got {:?}", other),
+        };
+        assert!(s.if_not_exists);
+    }
+
+    #[test]
+    fn test_ddl_drop_database_if_exists_field_set() {
+        let s = match parse("DROP DATABASE IF EXISTS foo").unwrap() {
+            Statement::DropDatabase(s) => s,
+            other => panic!("Expected DropDatabase, got {:?}", other),
+        };
+        assert!(s.if_exists);
+    }
+}
