@@ -11,11 +11,11 @@
 //! test directory). Tests placed in `crates/executor/src/local_executor.rs`
 //! are dead code — that file is NOT in the executor's lib.rs mod tree.
 
+use parking_lot::RwLock;
 use sqlrustgo::ExecutionEngine;
 use sqlrustgo_storage::MemoryStorage;
 use sqlrustgo_types::Value;
 use std::sync::Arc;
-use parking_lot::RwLock;
 
 fn create_engine() -> ExecutionEngine<MemoryStorage> {
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));
