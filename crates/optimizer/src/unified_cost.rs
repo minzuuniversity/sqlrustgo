@@ -131,6 +131,33 @@ impl UnifiedCostModel {
             .map(|(_, pages)| *pages)
             .unwrap_or(10) // Default estimate
     }
+    /// Determine if a plan should be parallelized based on cost estimation
+    ///
+    /// v3.10.0 Issue #3703 Phase 3: CBO-driven parallelism.
+    ///
+    /// Returns true if:
+    /// - Table has more than 500K rows (PARALLEL_MIN_ROWS threshold)
+    /// - Estimated CPU cost exceeds I/O cost (compute-bound query benefits from parallelism)
+    ///
+    /// Note: This is a simple heuristic. Future versions can use selectivity
+    /// and predicate complexity for better decisions.
+    pub fn should_parallelize(&self, plan: &UnifiedPlan) -> bool {
+        match plan {
+            UnifiedPlan::TableScan { table_name, .. } => {
+                let row_count = self.get_row_count(table_name);
+                row_count >= 500_000
+            }
+            UnifiedPlan::Filter { input, .. } => {
+                // Delegate to input plan
+                self.should_parallelize(input)
+            }
+            _ => {
+                // For other operations, estimate total cost
+                let cost = self.estimate_cost(plan);
+                cost >= 500_000.0 // Simple threshold matching PARALLEL_MIN_ROWS
+            }
+        }
+    }
 
     /// Estimate cost for any UnifiedPlan
     pub fn estimate_cost(&self, plan: &UnifiedPlan) -> f64 {
