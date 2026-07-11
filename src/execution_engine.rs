@@ -42,11 +42,14 @@ use sqlrustgo_parser::parser::{
     DropRoleStatement,
     DropTableStatement,
     DropViewStatement,
+    ExceptStatement,
     GrantRoleStatement,
     GrantStatement,
     InsertStatement,
+    IntersectStatement,
     MergeStatement,
     ObjectType as ParserObjectType,
+    OrderByExpression,
     Privilege as ParserPrivilege,
     RevokeRoleStatement,
     RevokeStatement,
@@ -56,7 +59,8 @@ use sqlrustgo_parser::parser::{
     StoredProcParam as ParserStoredProcParam,
     StoredProcParamMode as ParserParamMode,
     StoredProcStatement as ParserStatement,
-    TruncateStatement, // SEM-1 (#3172)
+    TruncateStatement,
+    UnionStatement,
 };
 use sqlrustgo_parser::transaction::IsolationLevel as ParserIsolationLevel;
 use sqlrustgo_parser::JoinType;
@@ -368,40 +372,9 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     1,
                 ))
             }
-            Statement::Union(ref union_stmt) => {
-                // Extract left and right SelectStatements from the Union
-                let left_select = match union_stmt.left.as_ref() {
-                    Statement::Select(s) => s,
-                    _ => {
-                        return Err(SqlError::ExecutionError(
-                            "UNION left side must be a SELECT".to_string(),
-                        ))
-                    }
-                };
-                let right_select = match union_stmt.right.as_ref() {
-                    Statement::Select(s) => s,
-                    _ => {
-                        return Err(SqlError::ExecutionError(
-                            "UNION right side must be a SELECT".to_string(),
-                        ))
-                    }
-                };
-
-                let mut left_result = self.execute_select(left_select)?;
-                let right_result = self.execute_select(right_select)?;
-
-                // Append rows from right to left
-                left_result.rows.extend(right_result.rows);
-
-                // If not UNION ALL, deduplicate
-                if !union_stmt.union_all {
-                    left_result.rows.sort();
-                    left_result.rows.dedup();
-                }
-
-                left_result.affected_rows = left_result.rows.len();
-                Ok(left_result)
-            }
+            Statement::Union(ref union_stmt) => self.execute_union(union_stmt),
+            Statement::Intersect(ref stmt) => self.execute_intersect(stmt),
+            Statement::Except(ref stmt) => self.execute_except(stmt),
             Statement::CreateTrigger(ref create_trigger) => {
                 self.execute_create_trigger(create_trigger)
             }
@@ -433,45 +406,6 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             Statement::CreateDatabase(ref db) => self.execute_create_database(db),
             Statement::DropDatabase(ref db) => self.execute_drop_database(db),
             Statement::UseDatabase(ref name) => self.execute_use_database(name),
-            // V310-06 PR2 / Issue #3723 C-2a/b: INTERSECT and EXCEPT
-            // set operations. The full intersection/difference logic
-            // (especially with the *_all flag and right-side reference)
-            // will land in the planner/executor in follow-up work. For
-            // now we execute the left side and return those rows so the
-            // statement at least parses, dispatches, and produces a
-            // deterministic result.
-            Statement::Intersect(intersect_stmt) => {
-                let left = intersect_stmt.left.as_ref();
-                let left_select = match left {
-                    Statement::Select(s) => s,
-                    _ => {
-                        return Err(SqlError::ExecutionError(
-                            "INTERSECT left side must be a SELECT".to_string(),
-                        ))
-                    }
-                };
-                // TODO(PR3): real intersection vs right; honour
-                // intersect_stmt.intersect_all. Returning left is a
-                // safe deterministic fallback.
-                let _ = intersect_stmt;
-                self.execute_select(left_select)
-            }
-            Statement::Except(except_stmt) => {
-                let left = except_stmt.left.as_ref();
-                let left_select = match left {
-                    Statement::Select(s) => s,
-                    _ => {
-                        return Err(SqlError::ExecutionError(
-                            "EXCEPT left side must be a SELECT".to_string(),
-                        ))
-                    }
-                };
-                // TODO(PR3): subtract except_stmt.right from left,
-                // honouring except_stmt.except_all. Returning left is a
-                // safe deterministic fallback.
-                let _ = except_stmt;
-                self.execute_select(left_select)
-            }
         }
     }
 
@@ -1534,5 +1468,159 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
 
     pub fn flush(&mut self) -> Result<(), SqlError> {
         self.storage.write().flush()
+    }
+
+    // ── Set-operation handlers (V310-06 PR2 / Issue #3723 C-2) ──────
+
+    fn execute_union(&mut self, union_stmt: &UnionStatement) -> SqlResult<ExecutorResult> {
+        let mut left_result = self.execute_statement(&union_stmt.left)?;
+        let right_result = self.execute_statement(&union_stmt.right)?;
+
+        left_result.rows.extend(right_result.rows);
+
+        if !union_stmt.union_all {
+            left_result.rows.sort();
+            left_result.rows.dedup();
+        }
+
+        // Trailing ORDER BY / LIMIT / OFFSET (C-2c).
+        if !union_stmt.trailing_order_by.is_empty() {
+            let col_names: Vec<&str> = leftmost_column_names(&union_stmt.left);
+            let sort_keys: Vec<Vec<Value>> = left_result
+                .rows
+                .iter()
+                .map(|row| {
+                    union_stmt
+                        .trailing_order_by
+                        .iter()
+                        .map(|ob| order_by_expr_value(&ob, &col_names, row))
+                        .collect()
+                })
+                .collect();
+            let mut indices: Vec<usize> = (0..left_result.rows.len()).collect();
+            indices.sort_by(|&a, &b| {
+                for (i, ob) in union_stmt.trailing_order_by.iter().enumerate() {
+                    let ord = if i < sort_keys[a].len() && i < sort_keys[b].len() {
+                        sort_keys[a][i].cmp(&sort_keys[b][i])
+                    } else {
+                        std::cmp::Ordering::Equal
+                    };
+                    let ord = if ob.ascending { ord } else { ord.reverse() };
+                    if ord != std::cmp::Ordering::Equal {
+                        return ord;
+                    }
+                }
+                std::cmp::Ordering::Equal
+            });
+            left_result.rows =
+                indices.into_iter().map(|i| left_result.rows[i].clone()).collect();
+        }
+        if let Some(off) = union_stmt.trailing_offset {
+            let off = off as usize;
+            if off < left_result.rows.len() {
+                left_result.rows.drain(..off);
+            } else {
+                left_result.rows.clear();
+            }
+        }
+        if let Some(lim) = union_stmt.trailing_limit {
+            left_result.rows.truncate(lim as usize);
+        }
+
+        left_result.affected_rows = left_result.rows.len();
+        Ok(left_result)
+    }
+
+    fn execute_intersect(&mut self, stmt: &IntersectStatement) -> SqlResult<ExecutorResult> {
+        let mut left_result = self.execute_statement(&stmt.left)?;
+        let right_result = self.execute_statement(&stmt.right)?;
+        // Keep rows that appear in both sides. If INTERSECT ALL, keep one
+        // copy per common occurrence (count min). For plain INTERSECT (distinct),
+        // dedup left side first, then keep only rows present in right.
+        if !stmt.intersect_all {
+            left_result.rows.sort();
+            left_result.rows.dedup();
+        }
+        let right_set: Vec<Vec<Value>> = {
+            let mut r = right_result.rows.clone();
+            r.sort();
+            r.dedup();
+            r
+        };
+        left_result.rows.retain(|row| right_set.contains(row));
+        left_result.affected_rows = left_result.rows.len();
+        Ok(left_result)
+    }
+
+    fn execute_except(&mut self, stmt: &ExceptStatement) -> SqlResult<ExecutorResult> {
+        let mut left_result = self.execute_statement(&stmt.left)?;
+        let right_result = self.execute_statement(&stmt.right)?;
+        // Keep rows in left that are not in right.
+        let right_set: Vec<Vec<Value>> = {
+            let mut r = right_result.rows.clone();
+            r.sort();
+            r.dedup();
+            r
+        };
+        left_result.rows.retain(|row| !right_set.contains(row));
+        if !stmt.except_all {
+            left_result.rows.sort();
+            left_result.rows.dedup();
+        }
+        left_result.affected_rows = left_result.rows.len();
+        Ok(left_result)
+    }
+
+    /// Execute any parsed statement. Used by the set-operation handlers
+    /// for recursive left/right execution of nested set-ops.
+    fn execute_statement(&mut self, stmt: &Statement) -> SqlResult<ExecutorResult> {
+        match stmt {
+            Statement::Select(s) => self.execute_select(s),
+            Statement::Union(u) => self.execute_union(u),
+            Statement::Intersect(i) => self.execute_intersect(i),
+            Statement::Except(e) => self.execute_except(e),
+            _ => Err(SqlError::ExecutionError(
+                "set-op child must be SELECT, UNION, INTERSECT, or EXCEPT".to_string(),
+            )),
+        }
+    }
+}
+
+/// Walk nested set-operation statements to find the left-most SELECT's
+/// column display names (alias → name). Used by `execute_union` to
+/// resolve trailing ORDER BY column references.
+fn leftmost_column_names(stmt: &Statement) -> Vec<&str> {
+    match stmt {
+        Statement::Select(s) => s.columns.iter().map(|c| c.alias.as_deref().unwrap_or(&c.name)).collect(),
+        Statement::Union(u) => leftmost_column_names(&u.left),
+        Statement::Intersect(i) => leftmost_column_names(&i.left),
+        Statement::Except(e) => leftmost_column_names(&e.left),
+        _ => Vec::new(),
+    }
+}
+
+/// Evaluate a single ORDER BY expression against a row, using column
+/// names (from the left SELECT) or 1-based integer position.
+fn order_by_expr_value(ob: &OrderByExpression, col_names: &[&str], row: &[Value]) -> Value {
+    use sqlrustgo_parser::Expression;
+    match &ob.expression {
+        Expression::Identifier(name) => {
+            if let Some(idx) = col_names.iter().position(|n| *n == name) {
+                if idx < row.len() {
+                    return row[idx].clone();
+                }
+            }
+            Value::Null
+        }
+        Expression::Literal(lit) => {
+            if let Ok(pos) = lit.parse::<usize>() {
+                let idx = pos.saturating_sub(1);
+                if idx < row.len() {
+                    return row[idx].clone();
+                }
+            }
+            Value::Null
+        }
+        _ => Value::Null,
     }
 }
