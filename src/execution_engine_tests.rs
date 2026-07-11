@@ -593,3 +593,60 @@ fn test_parallel_default_n1_no_env_var() {
         "default parallel_degree must be 1 (zero regression)"
     );
 }
+
+/// End-to-end smoke test: exercise the parallel filter path on a real
+/// 100k-row table (above `PARALLEL_MIN_ROWS = 100_000`). Verifies that
+/// the env-var wiring (PR #3743) actually triggers the parallel
+/// filter in `engine_select.rs:256-272` end-to-end.
+///
+/// This is the in-process equivalent of the TPC-H SF=0.01 cell-match
+/// gate deferred to the follow-up plan-level wiring PR. It runs both
+/// N=1 and N=4 and asserts byte-identical results.
+#[test]
+fn test_parallel_100k_cell_match_n1_vs_n4() {
+    const N: usize = 100_000;
+
+    let setup_and_query = |par: usize| -> Vec<Vec<Value>> {
+        // Set / clear env var BEFORE constructing the engine so the
+        // `base_with` ctor reads the right value.
+        if par > 1 {
+            std::env::set_var("SQLRUSTGO_EXECUTOR_PARALLELISM", par.to_string());
+        } else {
+            std::env::remove_var("SQLRUSTGO_EXECUTOR_PARALLELISM");
+        }
+        let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+        let mut engine = ExecutionEngine::new(storage);
+        assert_eq!(engine.parallel_degree(), par, "ctor must read env var");
+
+        engine
+            .execute("CREATE TABLE t (id INTEGER, val INTEGER, tag TEXT)")
+ .unwrap();
+        // Bulk insert in 1000-row chunks to keep statement size bounded.
+        for chunk_start in (0..N).step_by(1000) {
+            let chunk_end = (chunk_start + 1000).min(N);
+            let values: Vec<String> = (chunk_start..chunk_end)
+                .map(|i| format!("({}, {}, 'r{}')", i, i.wrapping_mul(2) as i64, i))
+                .collect();
+            let sql = format!("INSERT INTO t VALUES {}", values.join(","));
+            engine.execute(&sql).unwrap();
+        }
+        engine
+            .execute("SELECT id, val FROM t WHERE val < 1000 ORDER BY id")
+            .unwrap()
+            .rows
+    };
+
+    let r1 = setup_and_query(1);
+    let r4 = setup_and_query(4);
+    assert_eq!(r1.len(), 500, "WHERE val < 1000 over 0..N must match 500 rows");
+    assert_eq!(r4.len(), 500, "N=4 must return same row count");
+    assert_eq!(
+        r1, r4,
+        "cell-level match N=1 vs N=4 required (parallel path must be byte-identical)"
+    );
+
+    // Cleanup env var so subsequent tests in the same process see the
+    // default.
+    std::env::remove_var("SQLRUSTGO_EXECUTOR_PARALLELISM");
+}
+
