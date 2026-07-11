@@ -57,19 +57,37 @@ stage_history:
     exited: null  # still in ALPHA
     notes: "Alpha 1 cut. 6/6 ALPHA gates PASS (C-ARCH-05 fix execution_engine.rs 1523→1488; check_alpha_v3.10.0.sh 15/15; STAGE_CONFIG ALPHA gates now use per-version check_alpha_v{VER}.sh pattern following v3.8.0). Phase 0 (C-3 ACID + C-4 ALTER) starts next."
 # Branch protection rules (this version)
+# Branch protection rules (this version)
 # =============================================================================
+# 2026-07-11: Gitea branch protection APPLIED for develop/v3.10.0 (rule id
+# applied via POST /api/v1/repos/.../branch_protections). Mirrors the
+# protection pattern used for develop/v3.5.0..v3.9.0 in BRANCH_GOVERNANCE.md §2.2.
+# Verified by 4 negative tests:
+#   1) non-fast-forward direct push → rejected (block_on_outdated_branch=true)
+#   2) force push → rejected (enable_force_push=false)
+#   3) feature branch push → succeeds (unprotected, as designed)
+#   4) PR #3739 merged via /api/v1/repos/.../pulls/{n}/merge (no direct push)
 branch_protection:
   develop_v3_10_0:
-    required_reviewers: 1
-    ci_required: [lint, build, docs-links, cargo-build]
-    allow_force_push: false
-    allow_deletion: false
+    gitea_rule: "develop/v3.10.0"
+    priority: 0
+    enable_push: false                  # direct push blocked
+    push_whitelist_usernames: ["openclaw"]  # admin override (for emergency hotfix)
+    enable_force_push: false            # force push rejected (verified)
+    required_approvals: 1               # PR needs 1 approval
+    block_on_rejected_reviews: true     # rejected reviews block merge
+    block_on_outdated_branch: true      # branch must be up-to-date (verified)
+    dismiss_stale_approvals: true       # new push invalidates old approvals
+    enable_status_check: true
+    status_check_contexts: [lint, build, docs-links, cargo-build]
+    require_signed_commits: false
+    block_admin_merge_override: false   # admin can still bypass (audit logged)
+    applied_at: "2026-07-11"
+    applied_via: "POST /api/v1/repos/openclaw/sqlrustgo/branch_protections"
   feature_X:
-    required_reviewers: 1
-    ci_required: [lint, build]
+    gitea_rule: "UNPROTECTED"  # feature/* follows BRANCH_GOVERNANCE.md §2.2
     allow_force_push: false
     allow_deletion: false
-
 # =============================================================================
 # Promotion criteria (v3.10.0 specific)
 # =============================================================================
