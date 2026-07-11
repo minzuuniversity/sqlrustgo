@@ -212,3 +212,214 @@ impl PredicateIR {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::engine::ColumnDefinition;
+
+    fn make_table() -> TableInfo {
+        TableInfo {
+            name: "t".to_string(),
+            columns: vec![
+                ColumnDefinition::new("a", "INTEGER"),
+                ColumnDefinition::new("b", "TEXT"),
+            ],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
+        }
+    }
+
+    #[test]
+    fn test_predicate_all_matches_any_row() {
+        let pred = PredicateIR::All;
+        let table = make_table();
+        let row = vec![Value::Integer(1), Value::Text("x".into())];
+        assert!(pred.evaluate(&row, &table));
+    }
+
+    #[test]
+    fn test_predicate_expr_column_match_true() {
+        let pred = PredicateIR::Expr(ExprIR::Column("a".to_string()));
+        let table = make_table();
+        let row = vec![Value::Boolean(true), Value::Null];
+        assert!(pred.evaluate(&row, &table));
+    }
+
+    #[test]
+    fn test_predicate_expr_column_match_false() {
+        let pred = PredicateIR::Expr(ExprIR::Column("a".to_string()));
+        let table = make_table();
+        let row = vec![Value::Boolean(false), Value::Null];
+        assert!(!pred.evaluate(&row, &table));
+    }
+
+    #[test]
+    fn test_predicate_expr_literal_true() {
+        let pred = PredicateIR::Expr(ExprIR::Literal(Value::Boolean(true)));
+        let table = make_table();
+        let row = vec![Value::Null, Value::Null];
+        assert!(pred.evaluate(&row, &table));
+    }
+
+    #[test]
+    fn test_predicate_expr_literal_false() {
+        let pred = PredicateIR::Expr(ExprIR::Literal(Value::Boolean(false)));
+        let table = make_table();
+        let row = vec![Value::Null, Value::Null];
+        assert!(!pred.evaluate(&row, &table));
+    }
+
+    #[test]
+    fn test_predicate_expr_literal_non_bool() {
+        let pred = PredicateIR::Expr(ExprIR::Literal(Value::Integer(42)));
+        let table = make_table();
+        let row = vec![Value::Null, Value::Null];
+        assert!(pred.evaluate(&row, &table));
+    }
+
+    #[test]
+    fn test_predicate_is_null_true() {
+        let pred = PredicateIR::Expr(ExprIR::IsNull(Box::new(ExprIR::Column("a".to_string()))));
+        let table = make_table();
+        let row = vec![Value::Null, Value::Null];
+        assert!(pred.evaluate(&row, &table));
+    }
+
+    #[test]
+    fn test_predicate_is_null_false() {
+        let pred = PredicateIR::Expr(ExprIR::IsNull(Box::new(ExprIR::Column("a".to_string()))));
+        let table = make_table();
+        let row = vec![Value::Integer(42), Value::Null];
+        assert!(!pred.evaluate(&row, &table));
+    }
+
+    #[test]
+    fn test_predicate_is_not_null_true() {
+        let pred = PredicateIR::Expr(ExprIR::IsNotNull(Box::new(ExprIR::Column("a".to_string()))));
+        let table = make_table();
+        let row = vec![Value::Integer(42), Value::Null];
+        assert!(pred.evaluate(&row, &table));
+    }
+
+    #[test]
+    fn test_predicate_is_not_null_false() {
+        let pred = PredicateIR::Expr(ExprIR::IsNotNull(Box::new(ExprIR::Column("a".to_string()))));
+        let table = make_table();
+        let row = vec![Value::Null, Value::Null];
+        assert!(!pred.evaluate(&row, &table));
+    }
+
+    #[test]
+    fn test_predicate_unary_not() {
+        let pred = PredicateIR::Expr(ExprIR::Unary {
+            op: "NOT".to_string(),
+            expr: Box::new(ExprIR::Literal(Value::Boolean(true))),
+        });
+        let table = make_table();
+        let row = vec![];
+        assert!(!pred.evaluate(&row, &table));
+    }
+
+    #[test]
+    fn test_predicate_binary_and() {
+        let pred = PredicateIR::Expr(ExprIR::Binary {
+            op: "AND".to_string(),
+            left: Box::new(ExprIR::Literal(Value::Boolean(true))),
+            right: Box::new(ExprIR::Literal(Value::Boolean(false))),
+        });
+        let table = make_table();
+        let row = vec![];
+        assert!(!pred.evaluate(&row, &table));
+    }
+
+    #[test]
+    fn test_predicate_binary_or() {
+        let pred = PredicateIR::Expr(ExprIR::Binary {
+            op: "OR".to_string(),
+            left: Box::new(ExprIR::Literal(Value::Boolean(false))),
+            right: Box::new(ExprIR::Literal(Value::Boolean(true))),
+        });
+        let table = make_table();
+        let row = vec![];
+        assert!(pred.evaluate(&row, &table));
+    }
+
+    #[test]
+    fn test_predicate_binary_eq() {
+        let pred = PredicateIR::Expr(ExprIR::Binary {
+            op: "=".to_string(),
+            left: Box::new(ExprIR::Literal(Value::Integer(5))),
+            right: Box::new(ExprIR::Literal(Value::Integer(5))),
+        });
+        let table = make_table();
+        let row = vec![];
+        assert!(pred.evaluate(&row, &table));
+    }
+
+    #[test]
+    fn test_predicate_binary_gt() {
+        let pred = PredicateIR::Expr(ExprIR::Binary {
+            op: ">".to_string(),
+            left: Box::new(ExprIR::Literal(Value::Integer(10))),
+            right: Box::new(ExprIR::Literal(Value::Integer(5))),
+        });
+        let table = make_table();
+        let row = vec![];
+        assert!(pred.evaluate(&row, &table));
+    }
+
+    #[test]
+    fn test_predicate_binary_lt() {
+        let pred = PredicateIR::Expr(ExprIR::Binary {
+            op: "<".to_string(),
+            left: Box::new(ExprIR::Literal(Value::Integer(5))),
+            right: Box::new(ExprIR::Literal(Value::Integer(10))),
+        });
+        let table = make_table();
+        let row = vec![];
+        assert!(pred.evaluate(&row, &table));
+    }
+
+    #[test]
+    fn test_predicate_binary_neq() {
+        let pred = PredicateIR::Expr(ExprIR::Binary {
+            op: "!=".to_string(),
+            left: Box::new(ExprIR::Literal(Value::Integer(5))),
+            right: Box::new(ExprIR::Literal(Value::Integer(10))),
+        });
+        let table = make_table();
+        let row = vec![];
+        assert!(pred.evaluate(&row, &table));
+    }
+
+    #[test]
+    fn test_predicate_unknown_op_returns_false() {
+        let pred = PredicateIR::Expr(ExprIR::Binary {
+            op: "BOGUS".to_string(),
+            left: Box::new(ExprIR::Literal(Value::Boolean(true))),
+            right: Box::new(ExprIR::Literal(Value::Boolean(true))),
+        });
+        let table = make_table();
+        let row = vec![];
+        assert!(!pred.evaluate(&row, &table));
+    }
+
+    #[test]
+    fn test_cmp_values() {
+        assert_eq!(
+            super::PredicateIR::cmp_values(&Value::Integer(1), &Value::Integer(2)),
+            -1
+        );
+        assert_eq!(
+            super::PredicateIR::cmp_values(&Value::Integer(2), &Value::Integer(1)),
+            1
+        );
+        assert_eq!(
+            super::PredicateIR::cmp_values(&Value::Integer(1), &Value::Integer(1)),
+            0
+        );
+    }
+}

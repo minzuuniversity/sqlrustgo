@@ -49,3 +49,74 @@ impl MutationIR {
         crate::engine::RowMutation::new(assigns, self.mutation_hash)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_literal_assignment() -> AssignmentIR {
+        AssignmentIR {
+            column: "a".to_string(),
+            column_index: 0,
+            expr: ExprIR::Literal(Value::Integer(42)),
+        }
+    }
+
+    #[test]
+    fn test_mutation_new() {
+        let m = MutationIR::new(vec![make_literal_assignment()]);
+        assert_eq!(m.assignments.len(), 1);
+        assert_eq!(m.assignments[0].column, "a");
+        assert_eq!(m.assignments[0].column_index, 0);
+    }
+
+    #[test]
+    fn test_mutation_empty() {
+        let m = MutationIR::new(vec![]);
+        assert_eq!(m.assignments.len(), 0);
+    }
+
+    #[test]
+    fn test_mutation_assignments_accessor() {
+        let m = MutationIR::new(vec![make_literal_assignment()]);
+        assert_eq!(m.assignments().len(), 1);
+    }
+
+    #[test]
+    fn test_mutation_hash_accessor() {
+        let m = MutationIR::new(vec![make_literal_assignment()]);
+        assert!(m.mutation_hash() != 0);
+    }
+
+    #[test]
+    fn test_mutation_to_row_mutation() {
+        let m = MutationIR::new(vec![make_literal_assignment()]);
+        let row_mutation = m.to_row_mutation();
+        assert_eq!(row_mutation.assignments().len(), 1);
+        assert_eq!(row_mutation.assignments()[0].0, 0);
+    }
+
+    #[test]
+    fn test_mutation_hash_deterministic() {
+        let m1 = MutationIR::new(vec![make_literal_assignment()]);
+        let m2 = MutationIR::new(vec![make_literal_assignment()]);
+        assert_eq!(m1.mutation_hash(), m2.mutation_hash());
+    }
+
+    #[test]
+    fn test_mutation_hash_differs_on_col() {
+        let a1 = AssignmentIR {
+            column: "a".to_string(),
+            column_index: 0,
+            expr: ExprIR::Literal(Value::Integer(1)),
+        };
+        let a2 = AssignmentIR {
+            column: "b".to_string(),
+            column_index: 1,
+            expr: ExprIR::Literal(Value::Integer(1)),
+        };
+        let m1 = MutationIR::new(vec![a1]);
+        let m2 = MutationIR::new(vec![a2]);
+        assert_ne!(m1.mutation_hash(), m2.mutation_hash());
+    }
+}
