@@ -7,8 +7,9 @@
 //! In-memory AHI with auto-promote/demote based on access frequency.
 //! Real B+ tree integration in v3.9.0.
 
+use parking_lot::RwLock;
 use std::collections::HashMap;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 
 pub const DEFAULT_PROMOTION_THRESHOLD: u64 = 17;
 

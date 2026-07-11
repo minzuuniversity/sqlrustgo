@@ -23,9 +23,10 @@
 
 #![allow(clippy::needless_range_loop)]
 
+use parking_lot::RwLock;
 use sqlrustgo::{ExecutionEngine, MemoryStorage};
 use sqlrustgo_types::Value;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 
 /// Version chain: v3.6.0 → v3.7.0 → v3.8.0 → v3.9.0
 const CHAIN: &[&str] = &["3.6.0", "3.7.0", "3.8.0", "3.9.0"];

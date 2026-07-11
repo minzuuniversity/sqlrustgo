@@ -174,8 +174,9 @@ fn run_sqlrustgo_queries(
     queries: &[(u8, String)],
     data_dir: &Path,
 ) -> BTreeMap<u8, Vec<Vec<String>>> {
+    use parking_lot::RwLock;
     use sqlrustgo::{ExecutionEngine, MemoryStorage};
-    use std::sync::{Arc, RwLock};
+    use std::sync::Arc;
     let mut out = BTreeMap::new();
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));
     let mut engine = ExecutionEngine::new(Arc::clone(&storage));
