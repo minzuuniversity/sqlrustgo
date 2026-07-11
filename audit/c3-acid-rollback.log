@@ -1,0 +1,138 @@
+==========================================
+C-3 ACID Rollback gate run
+Date: 2026-07-11T08:33:29Z
+Host: Darwin 25.5.0 arm64
+Branch: fix/v310-c3-acid
+Commit: 4ca8092934e81e58ddbabb1e83f2dc2d35cc7375
+Tests: 5
+==========================================
+--- Running transaction_rollback_undoes_dml ---
+warning: /Users/liying/workspace/dev/yinglichina163/sqlrustgo/.worktrees/v310-c3-acid/crates/wal-verification/Cargo.toml: unused manifest key: tlaplus
+warning: type `UserStore` is more private than the item `ServerJob::user_store`
+    --> crates/mysql-server/src/lib.rs:4447:9
+     |
+4447 |         pub user_store: UserStore,
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^ field `ServerJob::user_store` is reachable at visibility `pub`
+     |
+note: but type `UserStore` is only usable at visibility `pub(crate)`
+    --> crates/mysql-server/src/lib.rs:274:1
+     |
+ 274 | pub(crate) struct UserStore {
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     = note: `#[warn(private_interfaces)]` on by default
+
+warning: `sqlrustgo-mysql-server` (lib) generated 1 warning
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.16s
+     Running tests/dml_integration_test.rs (target/debug/deps/dml_integration_test-1cd4e4a39be1b6d9)
+
+running 1 test
+test transaction_rollback_undoes_dml ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 23 filtered out; finished in 0.00s
+
+PASS: transaction_rollback_undoes_dml
+--- Running transaction_update_then_rollback ---
+warning: /Users/liying/workspace/dev/yinglichina163/sqlrustgo/.worktrees/v310-c3-acid/crates/wal-verification/Cargo.toml: unused manifest key: tlaplus
+warning: type `UserStore` is more private than the item `ServerJob::user_store`
+    --> crates/mysql-server/src/lib.rs:4447:9
+     |
+4447 |         pub user_store: UserStore,
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^ field `ServerJob::user_store` is reachable at visibility `pub`
+     |
+note: but type `UserStore` is only usable at visibility `pub(crate)`
+    --> crates/mysql-server/src/lib.rs:274:1
+     |
+ 274 | pub(crate) struct UserStore {
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     = note: `#[warn(private_interfaces)]` on by default
+
+warning: `sqlrustgo-mysql-server` (lib) generated 1 warning
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.15s
+     Running tests/dml_integration_test.rs (target/debug/deps/dml_integration_test-1cd4e4a39be1b6d9)
+
+running 1 test
+test transaction_update_then_rollback ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 23 filtered out; finished in 0.00s
+
+PASS: transaction_update_then_rollback
+--- Running transaction_commit_persists_dml ---
+warning: /Users/liying/workspace/dev/yinglichina163/sqlrustgo/.worktrees/v310-c3-acid/crates/wal-verification/Cargo.toml: unused manifest key: tlaplus
+warning: type `UserStore` is more private than the item `ServerJob::user_store`
+    --> crates/mysql-server/src/lib.rs:4447:9
+     |
+4447 |         pub user_store: UserStore,
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^ field `ServerJob::user_store` is reachable at visibility `pub`
+     |
+note: but type `UserStore` is only usable at visibility `pub(crate)`
+    --> crates/mysql-server/src/lib.rs:274:1
+     |
+ 274 | pub(crate) struct UserStore {
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     = note: `#[warn(private_interfaces)]` on by default
+
+warning: `sqlrustgo-mysql-server` (lib) generated 1 warning
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.15s
+     Running tests/dml_integration_test.rs (target/debug/deps/dml_integration_test-1cd4e4a39be1b6d9)
+
+running 1 test
+test transaction_commit_persists_dml ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 23 filtered out; finished in 0.00s
+
+PASS: transaction_commit_persists_dml
+--- Running transaction_delete_then_commit ---
+warning: /Users/liying/workspace/dev/yinglichina163/sqlrustgo/.worktrees/v310-c3-acid/crates/wal-verification/Cargo.toml: unused manifest key: tlaplus
+warning: type `UserStore` is more private than the item `ServerJob::user_store`
+    --> crates/mysql-server/src/lib.rs:4447:9
+     |
+4447 |         pub user_store: UserStore,
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^ field `ServerJob::user_store` is reachable at visibility `pub`
+     |
+note: but type `UserStore` is only usable at visibility `pub(crate)`
+    --> crates/mysql-server/src/lib.rs:274:1
+     |
+ 274 | pub(crate) struct UserStore {
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     = note: `#[warn(private_interfaces)]` on by default
+
+warning: `sqlrustgo-mysql-server` (lib) generated 1 warning
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.17s
+     Running tests/dml_integration_test.rs (target/debug/deps/dml_integration_test-1cd4e4a39be1b6d9)
+
+running 1 test
+test transaction_delete_then_commit ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 23 filtered out; finished in 0.00s
+
+PASS: transaction_delete_then_commit
+--- Running failed_insert_does_not_corrupt_table ---
+warning: /Users/liying/workspace/dev/yinglichina163/sqlrustgo/.worktrees/v310-c3-acid/crates/wal-verification/Cargo.toml: unused manifest key: tlaplus
+warning: type `UserStore` is more private than the item `ServerJob::user_store`
+    --> crates/mysql-server/src/lib.rs:4447:9
+     |
+4447 |         pub user_store: UserStore,
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^ field `ServerJob::user_store` is reachable at visibility `pub`
+     |
+note: but type `UserStore` is only usable at visibility `pub(crate)`
+    --> crates/mysql-server/src/lib.rs:274:1
+     |
+ 274 | pub(crate) struct UserStore {
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     = note: `#[warn(private_interfaces)]` on by default
+
+warning: `sqlrustgo-mysql-server` (lib) generated 1 warning
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.17s
+     Running tests/dml_integration_test.rs (target/debug/deps/dml_integration_test-1cd4e4a39be1b6d9)
+
+running 1 test
+test failed_insert_does_not_corrupt_table ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 23 filtered out; finished in 0.00s
+
+PASS: failed_insert_does_not_corrupt_table
+
+==========================================
+RESULT: PASS (5/5 tests)
+Log: /Users/liying/workspace/dev/yinglichina163/sqlrustgo/.worktrees/v310-c3-acid/audit/c3-acid-rollback.log
+==========================================
