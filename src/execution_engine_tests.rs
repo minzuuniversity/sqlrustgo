@@ -620,7 +620,7 @@ fn test_parallel_100k_cell_match_n1_vs_n4() {
 
         engine
             .execute("CREATE TABLE t (id INTEGER, val INTEGER, tag TEXT)")
- .unwrap();
+            .unwrap();
         // Bulk insert in 1000-row chunks to keep statement size bounded.
         for chunk_start in (0..N).step_by(1000) {
             let chunk_end = (chunk_start + 1000).min(N);
@@ -638,7 +638,11 @@ fn test_parallel_100k_cell_match_n1_vs_n4() {
 
     let r1 = setup_and_query(1);
     let r4 = setup_and_query(4);
-    assert_eq!(r1.len(), 500, "WHERE val < 1000 over 0..N must match 500 rows");
+    assert_eq!(
+        r1.len(),
+        500,
+        "WHERE val < 1000 over 0..N must match 500 rows"
+    );
     assert_eq!(r4.len(), 500, "N=4 must return same row count");
     assert_eq!(
         r1, r4,
@@ -649,4 +653,3 @@ fn test_parallel_100k_cell_match_n1_vs_n4() {
     // default.
     std::env::remove_var("SQLRUSTGO_EXECUTOR_PARALLELISM");
 }
-

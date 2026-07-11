@@ -9,10 +9,10 @@
 //! queries use EXTRACT, table aliases (n1/n2), and CASE WHEN — those are
 //! separate follow-up tasks.
 
+use parking_lot::RwLock;
 use sqlrustgo::ExecutionEngine;
 use sqlrustgo_storage::MemoryStorage;
 use std::sync::Arc;
-use parking_lot::RwLock;
 
 fn create_engine() -> ExecutionEngine<MemoryStorage> {
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));
