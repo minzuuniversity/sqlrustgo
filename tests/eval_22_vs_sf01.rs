@@ -27,12 +27,13 @@
 //!    query engine's `storage.read()` calls. If you create the query
 //!    engine *after* loading, you get an empty schema for queries.
 
+use parking_lot::RwLock;
 use sqlrustgo::{ExecutionEngine, MemoryStorage, StorageEngine};
 use sqlrustgo_types::Value as SqlValue;
 use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 
 const FIXTURE_DIR: &str = match option_env!("TPCH_DATA_DIR") {
     Some(p) => p,
