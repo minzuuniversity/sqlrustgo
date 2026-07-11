@@ -24,6 +24,7 @@ use parking_lot::RwLock;
 use sqlrustgo::MemoryExecutionEngine;
 use sqlrustgo_storage::MemoryStorage;
 use std::sync::Arc;
+use sqlrustgo_types::Value;
 
 fn make_engine() -> MemoryExecutionEngine {
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));
@@ -325,6 +326,26 @@ fn test_alter_table_rename_to() {
 
     let r = engine.execute("SELECT id FROM new_name").unwrap();
     assert_eq!(r.rows.len(), 1, "Expected 1 row");
+}
+
+#[test]
+fn test_alter_table_rename_column() {
+    let mut engine = make_engine();
+    let _ = engine
+        .execute("CREATE TABLE t (id INTEGER, name TEXT)")
+        .unwrap();
+    let _ = engine.execute("INSERT INTO t VALUES (1, 'hello')").unwrap();
+
+    let result = engine.execute("ALTER TABLE t RENAME COLUMN name TO full_name");
+    assert!(
+        result.is_ok(),
+        "ALTER TABLE RENAME COLUMN failed: {:?}",
+        result.err()
+    );
+
+    let r = engine.execute("SELECT full_name FROM t").unwrap();
+    assert_eq!(r.rows.len(), 1, "Expected 1 row");
+    assert_eq!(r.rows[0][0], Value::Text("hello".to_string()));
 }
 
 // =============================================================================

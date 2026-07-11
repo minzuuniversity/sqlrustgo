@@ -209,7 +209,13 @@ pub enum AlterTableOperation {
         data_type: String,
         nullable: bool,
     },
+    /// `ALTER TABLE t RENAME TO new_name` — renames the table.
     RenameTo {
+        new_name: String,
+    },
+    /// `ALTER TABLE t RENAME COLUMN old_name TO new_name` — renames a column.
+    RenameColumn {
+        name: String,
         new_name: String,
     },
 }
@@ -7155,18 +7161,6 @@ impl Parser {
                     },
                 }))
             }
-            Some(Token::Rename) => {
-                self.next();
-                self.expect(Token::To)?;
-                let new_name = match self.next() {
-                    Some(Token::Identifier(name)) => name,
-                    _ => return Err("Expected new table name".to_string()),
-                };
-                Ok(Statement::AlterTable(AlterTableStatement {
-                    table_name,
-                    operation: AlterTableOperation::RenameTo { new_name },
-                }))
-            }
             Some(Token::Drop) => {
                 self.next();
                 if matches!(self.current(), Some(Token::Column)) {
@@ -7207,6 +7201,39 @@ impl Parser {
                         nullable,
                     },
                 }))
+            }
+            Some(Token::Rename) => {
+                self.next();
+                // Distinguish `RENAME TO new_table` from `RENAME COLUMN old TO new`.
+                if matches!(self.current(), Some(Token::Column)) {
+                    self.next();
+                    let old_name = match self.next() {
+                        Some(Token::Identifier(name)) => name,
+                        _ => return Err("Expected column name".to_string()),
+                    };
+                    self.expect(Token::To)?;
+                    let new_name = match self.next() {
+                        Some(Token::Identifier(name)) => name,
+                        _ => return Err("Expected new column name".to_string()),
+                    };
+                    Ok(Statement::AlterTable(AlterTableStatement {
+                        table_name,
+                        operation: AlterTableOperation::RenameColumn {
+                            name: old_name,
+                            new_name,
+                        },
+                    }))
+                } else {
+                    self.expect(Token::To)?;
+                    let new_name = match self.next() {
+                        Some(Token::Identifier(name)) => name,
+                        _ => return Err("Expected new table name".to_string()),
+                    };
+                    Ok(Statement::AlterTable(AlterTableStatement {
+                        table_name,
+                        operation: AlterTableOperation::RenameTo { new_name },
+                    }))
+                }
             }
             _ => Err("Expected ADD, DROP, MODIFY or RENAME".to_string()),
         }
@@ -8128,6 +8155,25 @@ mod tests {
                         assert_eq!(new_name, "old_users");
                     }
                     _ => panic!("Expected RenameTo operation"),
+                }
+            }
+            _ => panic!("Expected ALTER TABLE statement"),
+        }
+    }
+
+    #[test]
+    fn test_parse_alter_table_rename_column() {
+        let result = parse("ALTER TABLE users RENAME COLUMN name TO full_name");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        match result.unwrap() {
+            Statement::AlterTable(a) => {
+                assert_eq!(a.table_name, "users");
+                match a.operation {
+                    AlterTableOperation::RenameColumn { name, new_name } => {
+                        assert_eq!(name, "name");
+                        assert_eq!(new_name, "full_name");
+                    }
+                    _ => panic!("Expected RenameColumn operation"),
                 }
             }
             _ => panic!("Expected ALTER TABLE statement"),

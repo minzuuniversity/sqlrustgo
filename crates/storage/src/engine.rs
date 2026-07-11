@@ -532,6 +532,17 @@ pub trait StorageEngine: Send + Sync {
             "drop_column not supported by this storage engine".to_string(),
         ))
     }
+    /// Rename a column in a table
+    fn rename_column(
+        &mut self,
+        _table: &str,
+        _old_name: &str,
+        _new_name: &str,
+    ) -> SqlResult<()> {
+        Err(SqlError::ExecutionError(
+            "rename_column not supported by this storage engine".to_string(),
+        ))
+    }
 
     /// Modify a column definition
     fn modify_column(
@@ -993,6 +1004,25 @@ impl StorageEngine for MemoryStorage {
             .position(|c| c.name == column)
             .ok_or_else(|| SqlError::ExecutionError(format!("Column not found: {}", column)))?;
         info.columns[col_idx] = new_def;
+        Ok(())
+    }
+
+    fn rename_column(
+        &mut self,
+        table: &str,
+        old_name: &str,
+        new_name: &str,
+    ) -> SqlResult<()> {
+        let info = self
+            .table_infos
+            .get_mut(table)
+            .ok_or_else(|| SqlError::ExecutionError(format!("Table not found: {}", table)))?;
+        let col = info
+            .columns
+            .iter_mut()
+            .find(|c| c.name == old_name)
+            .ok_or_else(|| SqlError::ExecutionError(format!("Column not found: {}", old_name)))?;
+        col.name = new_name.to_string();
         Ok(())
     }
 }
