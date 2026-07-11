@@ -7,7 +7,13 @@ license.workspace = true
 
 [dependencies]
 serde.workspace = true
+serde_json.workspace = true
 thiserror.workspace = true
 log.workspace = true
 anyhow.workspace = true
 async-trait.workspace = true
+chrono = "0.4"
+flate2 = "1.0"
+
+[dev-dependencies]
+tempfile.workspace = true

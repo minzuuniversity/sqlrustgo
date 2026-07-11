@@ -458,8 +458,16 @@ mod tests {
     #[allow(unused_imports)]
     use super::*;
     use crate::execution::ExecutionResult;
-    use sqlrustgo_storage::{ColumnDefinition, Record, RowFilter, RowMutation, TriggerInfo};
+    use sqlrustgo_storage::{
+        ColumnDefinition, MemoryStorage, Record, RowFilter, RowMutation, TriggerInfo,
+    };
     use sqlrustgo_types::SqlError;
+
+    fn make_test_executor() -> MergeExecutor {
+        let storage: Arc<RwLock<dyn StorageEngine>> = Arc::new(RwLock::new(MemoryStorage::new()));
+        let engine: Arc<Mutex<dyn ExecutionEngine>> = Arc::new(Mutex::new(MockEngine));
+        MergeExecutor { storage, engine }
+    }
 
     struct MockStorage;
     impl StorageEngine for MockStorage {
@@ -1066,5 +1074,127 @@ mod tests {
             eval_binary_op(&Value::Null, &Value::Null, &Operator::Gt),
             Value::Boolean(false)
         );
+    }
+
+    #[test]
+    fn test_compare_values_blob_returns_zero() {
+        assert_eq!(
+            compare_values(&Value::Blob(vec![1, 2]), &Value::Blob(vec![3, 4])),
+            0
+        );
+    }
+
+    #[test]
+    fn test_compare_values_cross_type_returns_zero() {
+        assert_eq!(compare_values(&Value::Integer(1), &Value::Float(1.5)), 0);
+    }
+
+    #[test]
+    fn test_op_compare_unsupported_op_returns_false() {
+        assert!(!op_compare(
+            &Operator::And,
+            &Value::Integer(1),
+            &Value::Integer(1)
+        ));
+    }
+
+    #[test]
+    fn test_op_compare_null_returns_false() {
+        assert!(!op_compare(&Operator::Eq, &Value::Null, &Value::Integer(1)));
+        assert!(!op_compare(&Operator::Eq, &Value::Integer(1), &Value::Null));
+    }
+
+    #[test]
+    fn test_op_compare_gte_lte() {
+        assert!(op_compare(
+            &Operator::GtEq,
+            &Value::Integer(2),
+            &Value::Integer(1)
+        ));
+        assert!(op_compare(
+            &Operator::GtEq,
+            &Value::Integer(1),
+            &Value::Integer(1)
+        ));
+        assert!(op_compare(
+            &Operator::LtEq,
+            &Value::Integer(1),
+            &Value::Integer(2)
+        ));
+        assert!(op_compare(
+            &Operator::LtEq,
+            &Value::Integer(1),
+            &Value::Integer(1)
+        ));
+    }
+
+    #[test]
+    fn test_value_to_sql_blob_is_null() {
+        let storage = make_test_executor();
+        assert_eq!(storage.value_to_sql(&Value::Blob(vec![1, 2])), "NULL");
+    }
+
+    #[test]
+    fn test_value_to_sql_boolean_false() {
+        let storage = make_test_executor();
+        assert_eq!(storage.value_to_sql(&Value::Boolean(false)), "FALSE");
+    }
+
+    #[test]
+    fn test_value_to_sql_text_with_quotes() {
+        let storage = make_test_executor();
+        assert_eq!(storage.value_to_sql(&Value::Text("it's".into())), "'it''s'");
+    }
+
+    #[test]
+    fn test_find_column_index_qualified_match() {
+        let info = TableInfo {
+            name: "t".into(),
+            columns: vec![ColumnDefinition::new("id", "INTEGER")],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
+        };
+        assert_eq!(find_column_index("t.id", &info), Some(0));
+    }
+
+    #[test]
+    fn test_find_column_index_unqualified_match() {
+        let info = TableInfo {
+            name: "t".into(),
+            columns: vec![ColumnDefinition::new("id", "INTEGER")],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
+        };
+        assert_eq!(find_column_index("id", &info), Some(0));
+    }
+
+    #[test]
+    fn test_find_column_index_case_insensitive() {
+        let info = TableInfo {
+            name: "t".into(),
+            columns: vec![ColumnDefinition::new("MyCol", "INTEGER")],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
+        };
+        assert_eq!(find_column_index("mycol", &info), Some(0));
+    }
+
+    #[test]
+    fn test_find_column_index_no_match() {
+        let info = TableInfo {
+            name: "t".into(),
+            columns: vec![ColumnDefinition::new("id", "INTEGER")],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
+        };
+        assert_eq!(find_column_index("name", &info), None);
     }
 }

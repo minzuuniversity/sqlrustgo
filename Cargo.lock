@@ -4316,8 +4316,12 @@ version = "3.9.0"
 dependencies = [
  "anyhow",
  "async-trait",
+ "chrono",
+ "flate2",
  "log",
  "serde",
+ "serde_json",
+ "tempfile",
  "thiserror 2.0.18",
 ]
 
@@ -4558,6 +4562,7 @@ dependencies = [
  "ctrlc",
  "env_logger",
  "log",
+ "parking_lot",
  "serde",
  "serde_json",
  "sqlrustgo-catalog",
@@ -4566,8 +4571,10 @@ dependencies = [
  "sqlrustgo-optimizer",
  "sqlrustgo-parser",
  "sqlrustgo-planner",
+ "sqlrustgo-security",
  "sqlrustgo-storage",
  "sqlrustgo-transaction",
+ "sqlrustgo-types",
  "tempfile",
  "thiserror 2.0.18",
  "tokio",
