@@ -1,5 +1,5 @@
 > **Date**: 2026-07-10
-> **Status**: ✅ **GA CUT** — v3.9.0 GA tag applied at `184ad102e9`; 72h SOAK PASS (119h57m, 0 errors); G3/G4 conditional approved by Hermes C; 168h SOAK in progress (ETA 2026-07-12 22:02)
+> **Status**: ✅ **GA** — v3.9.0 GA tag applied at `184ad102e9`; 168h SOAK ✅ PASS (2026-07-12, Issue #3266 closed); 72h SOAK PASS (119h57m, 0 errors); G3/G4 conditional approved by Hermes C
 
 ---
 
@@ -19,8 +19,7 @@
 | 2 | TPC-H SF=1: 6/10 (parser scope) | G4 | ⚠️ **CONDITIONAL** — rationale in `TPC-H_PARTIAL_RESULT.md` |
 | 3 | G3/G4 conditional approval | G3/G4 | ✅ Hermes C approved (see this document) |
 
-> **Note**: 168h SOAK (Issue #3266) is in progress at time of GA cut.
-> Tag is cut based on 72h evidence + G13 fix (PR #3680). 168h ETA: 2026-07-12 22:02.
+> **Note**: 168h SOAK ✅ PASS (2026-07-12, Issue #3266 closed). Tag cut based on 72h evidence + G13 fix (PR #3680).
 
 ---
 
