@@ -116,7 +116,7 @@ impl SimpleExecutor {
                 if delete.where_clause.is_none() {
                     let count = self
                         .storage
-                        .delete(&delete.table, &[])
+                        .delete(&delete.tables[0].name, &[])
                         .map_err(|e| format!("Delete error: {:?}", e))?;
                     return Ok(ExecutorResult::new(vec![], count));
                 }
@@ -124,13 +124,13 @@ impl SimpleExecutor {
                 // Get table info to find column indices
                 let table_info = self
                     .storage
-                    .get_table_info(&delete.table)
+                    .get_table_info(&delete.tables[0].name)
                     .map_err(|e| format!("Get table info error: {:?}", e))?;
 
                 // Scan all rows
                 let all_rows = self
                     .storage
-                    .scan(&delete.table)
+                    .scan(&delete.tables[0].name)
                     .map_err(|e| format!("Scan error: {:?}", e))?;
 
                 // Filter rows based on WHERE clause
@@ -155,12 +155,12 @@ impl SimpleExecutor {
 
                 // Delete all rows and re-insert non-matching ones
                 self.storage
-                    .delete(&delete.table, &[])
+                    .delete(&delete.tables[0].name, &[])
                     .map_err(|e| format!("Delete error: {:?}", e))?;
 
                 if !rows_to_keep.is_empty() {
                     self.storage
-                        .insert(&delete.table, rows_to_keep)
+                        .insert(&delete.tables[0].name, rows_to_keep)
                         .map_err(|e| format!("Insert error: {:?}", e))?;
                 }
 
@@ -181,7 +181,7 @@ impl SimpleExecutor {
                     .collect();
                 let count = self
                     .storage
-                    .update(&update.table, &[], &updates)
+                    .update(&update.tables[0].name, &[], &updates)
                     .map_err(|e| format!("Update error: {:?}", e))?;
                 Ok(ExecutorResult::new(vec![], count))
             }
@@ -295,7 +295,7 @@ impl SimpleExecutor {
                 // build a (col_index, new_value) list by name lookup.
                 let table_info = self
                     .storage
-                    .get_table_info(&update.table)
+                    .get_table_info(&update.tables[0].name)
                     .map_err(|e| format!("Get table info error: {:?}", e))?;
                 let updates: Vec<(usize, Value)> = update
                     .set_clauses
@@ -312,14 +312,14 @@ impl SimpleExecutor {
                     })
                     .collect();
                 self.storage
-                    .update(&update.table, &[], &updates)
+                    .update(&update.tables[0].name, &[], &updates)
                     .map_err(|e| format!("Update error: {:?}", e))?;
                 Ok(())
             }
             Statement::Delete(delete) => {
                 let _count = self
                     .storage
-                    .delete(&delete.table, &[])
+                    .delete(&delete.tables[0].name, &[])
                     .map_err(|e| format!("Delete error: {:?}", e))?;
                 Ok(())
             }

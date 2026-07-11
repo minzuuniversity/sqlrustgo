@@ -1,5 +1,19 @@
 # v2.8.0 发布流程 (Release Process)
 
+<!-- 2026-07-01 v3.9.0 banner (auto-applied) -->
+> **v3.9.0 增量**: 本文是 v1.0 baseline (2026-03-07), 未大改. v3.9.0 增量:
+> - **当前阶段**: RC8 (develop/v3.9.0 @ d77821f6d1), 本机 L1 闭环 (PR #3664/#3665/#3666)
+> - **新增 ADR**: 006a (Meta-Governance), 007a (Truthfulness Recovery), 008 (Test Claim Transparency), 011a (Debt State Machine), 014 (Multi-AI Coordination)
+> - **新增治理资产**: 债务注册表 `debt-registry.yaml` (SSOT 取代 Markdown 散落), 5-step doc check (DOC_CHECK_CORRECTION_RULES.md), Issue 关闭 PR 关联 (ISSUE_CLOSING_VERIFICATION.md)
+> - **本机可推进项**: 全部闭环. 4 个 open GA-P0 项 (#3648/#3423/#3265/#3266) 硬件阻塞, 本机无法推进
+> - **详细**: docs/governance/INDEX.md §5, docs/governance/GOVERNANCE_COMPLIANCE_REPORT.md §7
+> - **完整状态快照**: issue #3667 (closed 2026-07-01)
+>
+> 本文件原始内容保持不变,仅顶部加 banner.
+
+---
+
+
 > **版本**: 1.0
 > **更新日期**: 2026-05-01
 > **维护人**: macmini opencode

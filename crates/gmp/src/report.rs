@@ -204,7 +204,7 @@ pub fn generate_audit_report(
 
     // Get recent logs (last 10)
     let mut recent_logs: Vec<_> = logs;
-    recent_logs.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
+    recent_logs.sort_by_key(|a| std::cmp::Reverse(a.timestamp));
     let recent_logs = recent_logs
         .into_iter()
         .take(10)
@@ -267,7 +267,7 @@ pub fn generate_deviation_report(
         if changes.len() > 3 {
             // Multiple changes - check time gaps
             let mut sorted_changes = changes.clone();
-            sorted_changes.sort_by(|a, b| a.timestamp.cmp(&b.timestamp));
+            sorted_changes.sort_by_key(|a| a.timestamp);
 
             for window in sorted_changes.windows(2) {
                 let gap = window[1].timestamp - window[0].timestamp;

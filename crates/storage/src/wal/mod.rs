@@ -60,6 +60,12 @@ pub trait WalManager: Send + Sync {
     /// Returns 0 if no entries have been written.
     fn current_lsn(&self) -> u64;
 
+    /// Returns the current WAL file size in bytes.
+    /// Returns 0 if the size cannot be determined.
+    fn size(&self) -> SqlResult<u64> {
+        Ok(0)
+    }
+
     /// Returns `true` if batch mode is currently enabled.
     ///
     /// Batch mode allows the implementor to buffer multiple `append` calls
@@ -70,24 +76,21 @@ pub trait WalManager: Send + Sync {
         false
     }
 
-    /// Returns the auto-flush threshold used while batch mode is enabled.
-    /// Default: `100`.
+    /// Enable or disable batch mode.
+    fn set_batch_mode(&mut self, enable: bool) {
+        let _ = enable;
+    }
+
+    /// Returns the number of buffered entries that trigger an automatic flush.
     fn flush_threshold(&self) -> usize {
         100
     }
 
-    /// Enable or disable batch mode.
-    ///
-    /// When transitioning from `true` → `false`, implementations should
-    /// flush any buffered records so durability is preserved at the boundary.
-    /// Default: no-op (batching unsupported).
-    fn set_batch_mode(&mut self, _enable: bool) {}
-
-    /// Set the auto-flush threshold (records between auto-flushes while in
-    /// batch mode). Default: no-op.
-    fn set_flush_threshold(&mut self, _threshold: usize) {}
+    /// Set the flush threshold.
+    fn set_flush_threshold(&mut self, threshold: usize) {
+        let _ = threshold;
+    }
 }
-
 /// WAL truncation safety gate
 pub trait WalTruncationGate: Send + Sync {
     /// Returns the LSN below which WAL entries can be safely deleted.

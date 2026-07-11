@@ -1,0 +1,252 @@
+name: SOAK 168h — GA-P0/S4
+run-name: soak-${{ inputs.branch }}-${{ gitea.sha }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: 'Branch to test'
+        required: false
+        default: 'develop/v3.9.0'
+      hours:
+        description: 'Soak duration per segment in minutes (max 150)'
+        required: false
+        default: '60'
+      load_profile:
+        description: 'Workload profile: "standard" (3 workers), "light" (1 worker), "heavy" (5 workers)'
+        required: false
+        default: 'standard'
+      segment:
+        description: 'Segment number (1 = first)'
+        required: false
+        default: '1'
+
+env:
+  CARGO_HOME: ${{ runner.temp }}/.cargo
+  RUSTUP_HOME: ${{ runner.temp }}/.rustup
+  CARGO_TERM_COLOR: always
+  CARGO_HTTP_TIMEOUT: 120
+  CARGO_HTTP_RETRY: 5
+  CARGO_REGISTRIES_CRATES_IO_PROTOCOL: sparse
+
+jobs:
+  soak:
+    runs-on: [hp-z6g4]
+    timeout-minutes: 155
+    steps:
+      - name: Write inputs file
+        run: |
+          # Write inputs to a file — GITHUB_OUTPUT is not available in hermes-runner Docker
+          # format() expansion works here since it's a simple echo (no complex syntax)
+          INPUTS_FILE="/tmp/soak_inputs.sh"
+          echo "SOAK_HOURS=${{ github.event.inputs.hours }}" > "$INPUTS_FILE"
+          echo "SOAK_LOAD=${{ github.event.inputs.load_profile }}" >> "$INPUTS_FILE"
+          echo "SOAK_SEG=${{ github.event.inputs.segment }}" >> "$INPUTS_FILE"
+          echo "BRANCH=${{ github.event.inputs.branch }}" >> "$INPUTS_FILE"
+          echo "Wrote inputs: hours=${{ github.event.inputs.hours }}, load=${{ github.event.inputs.load_profile }}, seg=${{ github.event.inputs.segment }}"
+
+      - name: Checkout
+        run: |
+          INPUTS_FILE="/tmp/soak_inputs.sh"
+          source "$INPUTS_FILE"
+          git clone --depth=1 --branch "${BRANCH:-develop/v3.9.0}" \
+            "http://192.168.0.252:3000/openclaw/sqlrustgo" repo
+          cd repo
+          echo "Checked out $(git rev-parse HEAD) on ${BRANCH:-develop/v3.9.0}"
+          echo "REPO=$PWD" >> $GITHUB_ENV
+
+      - name: Build
+        run: |
+          cd repo
+          cargo build --release --bin sqlrustgo-mysql-server -p sqlrustgo-mysql-server
+          cargo build --release --bin sqlrustgo
+          cargo build --release --bin sqlrustgo-soak -p sqlrustgo-soak
+          ls -lh target/release/sqlrustgo-mysql-server target/release/sqlrustgo target/release/sqlrustgo-soak
+
+      - name: Run SOAK
+        run: |
+          cd repo
+          set -euo pipefail
+
+          INPUTS_FILE="/tmp/soak_inputs.sh"
+          source "$INPUTS_FILE"
+          SERVER_BIN="$PWD/target/release/sqlrustgo-mysql-server"
+          CLI_BIN="$PWD/target/release/sqlrustgo"
+          SOAK_BIN="$PWD/target/release/sqlrustgo-soak"
+          PORT=3397
+          MINUTES="${SOAK_HOURS:-60}"
+          LOAD_PROFILE="${SOAK_LOAD:-standard}"
+          SEG_NUM="${SOAK_SEG:-1}"
+          DATA_DIR="$PWD/data/soak-seg${SEG_NUM}"
+          RESULTS_DIR="$PWD/results/soak-seg${SEG_NUM}"
+          rm -rf "$DATA_DIR" "$RESULTS_DIR"
+          mkdir -p "$DATA_DIR" "$RESULTS_DIR"
+
+          echo "=== SOAK Segment $SEG_NUM / Duration ${MINUTES}min ==="
+
+          "$SERVER_BIN" serve \
+            --port "$PORT" \
+            --data-dir "$DATA_DIR" \
+            --server-threads 16 \
+            --max-connections 200 \
+            --log-level warn \
+            > "$RESULTS_DIR/server.log" 2>&1 &
+          SERVER_PID=$!
+          echo "$SERVER_PID" > "$RESULTS_DIR/server.pid"
+
+          for i in $(seq 1 30); do
+            if echo "SELECT 1" | "$CLI_BIN" soak --port "$PORT" --user root > /dev/null 2>&1; then
+              echo "Server ready after ${i}s"; break
+            fi
+            if [ "$i" -eq 30 ]; then echo "Server FAILED"; tail -20 "$RESULTS_DIR/server.log"; exit 1; fi
+            sleep 2
+          done
+
+          echo "CREATE DATABASE IF NOT EXISTS sbtest" | "$CLI_BIN" soak --port "$PORT" --user root || true
+
+          get_rss_kb() { ps -o rss= -p $1 2>/dev/null | tr -d ' ' || echo 0; }
+          get_fd_count() { ls /proc/$1/fd 2>/dev/null | wc -l || echo 0; }
+          get_thread_count() { ps -o nlwp= -p $1 2>/dev/null | tr -d ' ' || echo 0; }
+          get_wal_bytes() { du -sb "$DATA_DIR" 2>/dev/null | cut -f1 || echo 0; }
+          get_disk_kb() { df / 2>/dev/null | tail -1 | awk '{print $4}' || echo 0; }
+          parse_soak_qps() {
+            [ -f "$1" ] || { echo "$2:--:--"; return; }
+            local last=$(grep 'SOAK:' "$1" 2>/dev/null | tail -1)
+            [ -n "$last" ] || { echo "$2:--:--"; return; }
+            local q=$(echo "$last" | sed 's/.*SOAK:[[:space:]]*\([0-9][0-9]*\).*/\1/' 2>/dev/null)
+            local p=$(echo "$last" | sed 's/.*qps,[[:space:]]*\([0-9.]*\).*/\1/' 2>/dev/null)
+            echo "$2:${q:-0}:${p:-0}"
+          }
+
+          SOAK_DIR="$RESULTS_DIR/soak"
+          mkdir -p "$SOAK_DIR"
+          printf '%s\n' \
+            'SELECT COUNT(*) FROM sbtest.sbtest1' \
+            'SELECT * FROM sbtest.sbtest1 WHERE id = 1' \
+            'SELECT * FROM sbtest.sbtest1 WHERE id BETWEEN 1 AND 100' \
+            'SELECT id, k, c, pad FROM sbtest.sbtest1 WHERE k = 500' \
+            'SELECT SUM(k), AVG(k), MIN(k), MAX(k) FROM sbtest.sbtest1' \
+            > "$SOAK_DIR/queries_read.sql"
+          printf '%s\n' \
+            'SELECT id, k FROM sbtest.sbtest1 WHERE id = 1' \
+            "INSERT INTO sbtest.sbtest1 (id, k, c, pad) VALUES (999991, 1000, 'i', 'p')" \
+            'DELETE FROM sbtest.sbtest1 WHERE id = 999991' \
+            'SELECT COUNT(*) FROM sbtest.sbtest1' \
+            "INSERT INTO sbtest.sbtest1 (id, k, c, pad) VALUES (999992, 2000, 'w', 'x')" \
+            'DELETE FROM sbtest.sbtest1 WHERE id = 999992' \
+            > "$SOAK_DIR/queries_write.sql"
+          printf '%s\n' \
+            'SELECT * FROM sbtest.sbtest1 WHERE k BETWEEN 100 AND 500 ORDER BY k' \
+            'SELECT AVG(k) AS avg_k, MIN(id), MAX(id), COUNT(*) FROM sbtest.sbtest1' \
+            > "$SOAK_DIR/queries_olap.sql"
+
+          SEG_DUR=$(($MINUTES * 60))
+          echo "[$(date -u)] Starting workers (seg $SEG_NUM, ${SEG_DUR}s = ${MINUTES}min)"
+
+          "$SOAK_BIN" soak --port "$PORT" --user root \
+            --duration "$SEG_DUR" --rate 0 \
+            --query-file "$SOAK_DIR/queries_read.sql" \
+            --report-interval 30 \
+            > "$SOAK_DIR/read_worker.log" 2>&1 &
+          R_PID=$!; PIDS="$R_PID"
+
+          if [ "$LOAD_PROFILE" != "light" ]; then
+            "$SOAK_BIN" soak --port "$PORT" --user root \
+              --duration "$SEG_DUR" --rate 50 \
+              --query-file "$SOAK_DIR/queries_write.sql" \
+              --report-interval 30 \
+              > "$SOAK_DIR/write_worker.log" 2>&1 &
+            W_PID=$!; PIDS="$PIDS $W_PID"
+            "$SOAK_BIN" soak --port "$PORT" --user root \
+              --duration "$SEG_DUR" --rate 5 \
+              --query-file "$SOAK_DIR/queries_olap.sql" \
+              --report-interval 30 \
+              > "$SOAK_DIR/olap_worker.log" 2>&1 &
+            O_PID=$!; PIDS="$PIDS $O_PID"
+          fi
+
+          if [ "$LOAD_PROFILE" = "heavy" ]; then
+            "$SOAK_BIN" soak --port "$PORT" --user root \
+              --duration "$SEG_DUR" --rate 0 \
+              --query-file "$SOAK_DIR/queries_read.sql" \
+              --report-interval 30 \
+              > "$SOAK_DIR/read2_worker.log" 2>&1 &
+            X_PID=$!; PIDS="$PIDS $X_PID"
+            "$SOAK_BIN" soak --port "$PORT" --user root \
+              --duration "$SEG_DUR" --rate 100 \
+              --query-file "$SOAK_DIR/queries_write.sql" \
+              --report-interval 30 \
+              > "$SOAK_DIR/write2_worker.log" 2>&1 &
+            Y_PID=$!; PIDS="$PIDS $Y_PID"
+          fi
+
+          echo "Workers started: $PIDS"
+
+          END_TS=$(($(date +%s) + SEG_DUR))
+          START_TS=$(date +%s)
+          SAMPLE=0
+          METRICS="$RESULTS_DIR/metrics.csv"
+          echo "ts,elapsed_s,rss_kb,fd,threads,wal_bytes,disk_kb,queries_ok,r_qps,w_qps,o_qps" > "$METRICS"
+          QUERIES_OK=0; FAILS=0; EARLY_FAIL=0
+
+          while [ $(date +%s) -lt $END_TS ]; do
+            SAMPLE=$(($SAMPLE + 1)); TS=$(date +%s); ELAPSED=$(($TS - START_TS))
+
+            if ! kill -0 $SERVER_PID 2>/dev/null; then
+              echo "!!! SERVER DIED"; EARLY_FAIL=1; break
+            fi
+
+            RSS=$(get_rss_kb $SERVER_PID)
+            FD=$(get_fd_count $SERVER_PID)
+            THREADS=$(get_thread_count $SERVER_PID)
+            WAL=$(get_wal_bytes)
+            DISK=$(get_disk_kb)
+
+            if echo "SELECT $SAMPLE" | "$CLI_BIN" soak --port "$PORT" --user root > /dev/null 2>&1; then
+              QUERIES_OK=$(($QUERIES_OK + 1))
+            else
+              FAILS=$(($FAILS + 1))
+            fi
+
+            R_DATA=$(parse_soak_qps "$SOAK_DIR/read_worker.log" "r")
+            W_DATA=$(parse_soak_qps "$SOAK_DIR/write_worker.log" "w")
+            O_DATA=$(parse_soak_qps "$SOAK_DIR/olap_worker.log" "o")
+            IFS=':' read -r L R_QTY R_QPS <<< "$R_DATA"
+            IFS=':' read -r L W_QTY W_QPS <<< "$W_DATA"
+            IFS=':' read -r L O_QTY O_QPS <<< "$O_DATA"
+
+            echo "$TS,$ELAPSED,$RSS,$FD,$THREADS,$WAL,$DISK,$QUERIES_OK,$R_QPS,$W_QPS,$O_QPS" >> "$METRICS"
+
+            if [ $(($SAMPLE % 10)) -eq 0 ]; then
+              RSS_MB=$(($RSS / 1024))
+              if [ $RSS -gt 1048576 ]; then echo "WARN: RSS ${RSS_MB}MB > 1GB"; EARLY_FAIL=1; fi
+              if [ $DISK -lt 1048576 ]; then echo "WARN: DISK < 1GB"; EARLY_FAIL=1; fi
+              if [ $FAILS -gt 0 ] && [ $(($FAILS * 100 / ($QUERIES_OK + $FAILS + 1))) -gt 10 ]; then
+                echo "WARN: ERROR RATE > 10%"; EARLY_FAIL=1; fi
+            fi
+
+            [ $EARLY_FAIL -eq 1 ] && break
+
+            if [ $(($SAMPLE % 10)) -eq 0 ]; then
+              echo "[$(date -u)] seg=$SEG_NUM h=$(($ELAPSED/3600)).$((($ELAPSED%3600)/60))m RSS=${RSS_MB:-0}MB FD=$FD THR=$THREADS Q_ok=$QUERIES_OK fails=$FAILS"
+            fi
+
+            sleep 60
+          done
+
+          for pid in $PIDS; do kill -TERM $pid 2>/dev/null || true; done
+          sleep 3
+          for pid in $PIDS; do kill -KILL $pid 2>/dev/null || true; done
+          kill -TERM $SERVER_PID 2>/dev/null || true
+
+          echo "=== Segment $SEG_NUM complete: QUERIES_OK=$QUERIES_OK FAILS=$FAILS ==="
+
+      - name: Upload results
+        if: always()
+        run: |
+          INPUTS_FILE="/tmp/soak_inputs.sh"
+          source "$INPUTS_FILE"
+          SEG_NUM="${SOAK_SEG:-1}"
+          tar czf "soak-results-seg${SEG_NUM}.tar.gz" \
+            -C results/soak-seg${SEG_NUM} . 2>/dev/null || echo "No results"
+          ls -lh "soak-results-seg${SEG_NUM}.tar.gz"

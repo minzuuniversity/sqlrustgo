@@ -373,10 +373,11 @@ impl TpchDataGenerator {
         writeln!(csv, "l_orderkey,l_partkey,l_suppkey,l_linenumber,l_quantity,l_extendedprice,l_discount,l_tax,l_returnflag,l_linestatus,l_shipdate,l_commitdate,l_receiptdate,l_shipinstruct,l_shipmode,l_comment")?;
 
         for i in 1..=count {
-            let orderkey = ((i as f64 / 15.0).floor() as usize) + 1;
-            let partkey = ((i as f64 / 4.0).floor() as usize) % 2000 + 1;
-            let suppkey = ((i as f64 / 8.0).floor() as usize) % 1000 + 1;
-            let linenumber = ((i - 1) % 7) + 1;
+            let order_idx = i - 1; // 0-indexed
+            let orderkey = (order_idx / 4) + 1; // TPC-H: ~4 lineitems/order on avg → 6M/4 = 1.5M orders
+            let partkey = ((i as f64 / 4.0).floor() as usize) % 200_000 + 1;
+            let suppkey = ((i as f64 / 4.0).floor() as usize) % 10_000 + 1;
+            let linenumber = (order_idx % 4) + 1; // 1-4 lineitems per order
             let quantity = (rng.gen::<u32>() % 50) + 1;
             let extendedprice =
                 (quantity as f64 * (rng.gen::<f64>() * 1000.0 + 100.0)).round() / 100.0;
