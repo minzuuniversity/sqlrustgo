@@ -22,8 +22,9 @@
 //! | Transaction: ROLLBACK  | yes    |                                        |
 //! | Trigger via DML        | partial| Trigger parsing supported; firing covered by stored_proc_catalog_test.rs |
 
+use parking_lot::RwLock;
 use sqlrustgo::{ExecutionEngine, MemoryStorage, Value};
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 
 fn fresh() -> ExecutionEngine<MemoryStorage> {
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));
