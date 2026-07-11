@@ -1,14 +1,11 @@
-# SQLRustGo
-
-> **Last updated**: 2026-06-13
+> **Last updated**: 2026-07-10
 > **Current dev branch**: [`3d817386d9`](http://192.168.0.252:3000/openclaw/sqlrustgo/commit/3d817386d9) @ develop/v3.9.0
-> **Latest stable**: v3.8.0 (GA, 2026-06-08) | v3.9.0-rc7 (in soak, GA target TBD)
-> **Latest RC**: v3.9.0-rc7 (RC, 2026-06-12, 6/6 meta-gates PASS, 2026-06-26)
+> **Latest stable**: v3.9.0 (GA, 2026-07-10)
+> **Latest RC**: v3.9.0-rc8 (RC, 2026-07-08)
 
 <p align="center">
   <img src="https://img.shields.io/badge/Rust-1.85+-dea584?style=flat-square&logo=rust" alt="Rust">
-  <img src="https://img.shields.io/badge/v3.8.0-GA-green?style=flat-square" alt="GA">
-  <img src="https://img.shields.io/badge/v3.9.0-rc7-yellow?style=flat-square" alt="RC7">
+  <img src="https://img.shields.io/badge/v3.9.0-GA-green?style=flat-square" alt="GA">
   <img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="License">
   <img src="https://img.shields.io/badge/TPC--H-22%2F22-brightgreen?style=flat-square" alt="TPC-H">
   <img src="https://img.shields.io/badge/Corpus-100.0%25-brightgreen?style=flat-square" alt="Corpus">
@@ -18,7 +15,7 @@
 
 SQLRustGo 是一个纯 Rust 实现的 SQL 执行引擎，支持完整 SQL-92 语法、窗口函数、CTE、CBO 成本优化器、WAL + MVCC 事务、向量存储与图存储，以及 AI Native GMP 工作流。
 
-> **v3.8.0 当前状态 (2026-06-05)**: **RC1** (Strong Beta → RC) — INT-1 (P0) 已修复, GROUP BY/JOIN 核心 100%, **Corpus 100.0%** (818/818), TPC-H 22/22, D9 9 维门禁 8/8 ALL PASS. 详见 [RELEASE_NOTES.md](docs/releases/v3.8.0/RELEASE_NOTES.md), [MYSQL_5_7_KEYWORD_FUNCTION_FIX_REPORT.md](docs/releases/v3.8.0/MYSQL_5_7_KEYWORD_FUNCTION_FIX_REPORT.md). **v3.8.0 是长期收敛版本** (beta → rc1 → rc2 → ga), **不创建 3.9.0**. 详见 [RELEASE_NOTES.md](docs/releases/v3.8.0/RELEASE_NOTES.md), [V380_ROADMAP.md](docs/releases/v3.8.0/V380_ROADMAP.md) 与 [V380_COMPREHENSIVE_ASSESSMENT.md](docs/releases/v3.8.0/V380_COMPREHENSIVE_ASSESSMENT.md).
+> **v3.9.0 当前状态 (2026-07-10)**: **GA** — TPC-H 22/22 全通，Q13 子查询修正，Q9 6x 加速（600ms→90ms），72h SOAK 0 错误 0 重连。TPC-H cell-level 21/22 匹配 SQLite（Q22 为已知 SQL 标准差异，见 [EVALUATION_REPORT.md](../EVALUATION_REPORT.md)）。详见 [RELEASE_NOTES.md](docs/releases/v3.9.0/RELEASE_NOTES.md)、[GA_RELEASE_NOTES.md](docs/releases/v3.9.0/ga/GA_RELEASE_NOTES.md) 与 [GA_GATE_REPORT.md](docs/releases/v3.9.0/ga/GA_GATE_REPORT.md)。
 
 ---
 
