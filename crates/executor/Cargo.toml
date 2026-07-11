@@ -20,6 +20,22 @@ log.workspace = true
 parking_lot.workspace = true
 reqwest = { version = "0.12", features = ["blocking", "json"] }
 
+# v3.10.0 Issue #3703: intra-query parallel executor (scan/join/agg)
+# Enabling this feature pulls in rayon and activates the parallel
+# pipeline path. Default (feature off) = sequential, zero regression.
+# See openspec/changes/issue-3703-intra-query-parallel-executor/.
+rayon = { version = "1.10", optional = true }
+
+[features]
+# Parallel intra-query executor (Issue #3703).
+# When enabled, the `parallel_executor` and `parallel_vector_executor`
+# modules are activated and `LocalExecutor::execute_select_parallel`
+# is wired into the production path. N>1 takes effect at runtime when
+# the engine is built with `set_parallel_degree(N) > 1` (typically
+# driven by `--executor-parallelism=N` CLI flag).
+default = []
+parallel-executor = ["dep:rayon"]
+
 [dev-dependencies]
 tempfile.workspace = true
 sqlrustgo = { path = "../.." }
