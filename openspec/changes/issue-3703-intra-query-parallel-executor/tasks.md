@@ -4,8 +4,7 @@
 > **Target**: v3.10.0 Phase 0/1 (per V310_DEVELOPMENT_PLAN.md §4)
 > **Branch**: `develop/v3.10.0` (this work extends the v3.10.0-alpha1 baseline)
 > **Est**: 1 week design + implementation, 1 day testing/bench
-> **Status (2026-07-11)**: PR #3739 covers section 1 (CLI + feature gate). Section 2 deferred — see architectural finding.
-
+> **Status (2026-07-11)**: PR #3739 covers section 1 (CLI + feature gate). Section 2 implemented in follow-up PR on branch `feature/issue-3703-parallel-scan-exec` (target: develop/v3.10.0). Plan node is `ParallelFilterExec` (parallel point is the **filter**, not the scan — `partition_scan` just splits rows; benefit comes from parallel predicate evaluation). See Section 2.x below.
 ---
 
 ## Architectural finding (2026-07-11)
@@ -32,20 +31,22 @@ Will be a separate follow-up PR: `feat/issue-3703-parallel-scan-exec` (TBD, targ
 - [x] 1.6 Verify: `cargo build --release` (no features) produces binary identical in size to v3.10.0-alpha1 (+784 bytes for CLI flag metadata)
 - [x] 1.7 Verify: `cargo build --release --features sqlrustgo-executor/parallel-executor` includes rayon code
 
-## 2. LocalExecutor parallel path (wiring) — **DEFERRED to follow-up PR**
+## 2. LocalExecutor parallel path (wiring) — **DONE on `feature/issue-3703-parallel-scan-exec`**
 
-Original tasks 2.1-2.7 (with `execute_select_parallel(&SelectStatement, usize)` signature) were based on an incorrect assumption about `LocalExecutor`'s API. Re-scoped below as plan-level integration.
+Original tasks 2.1-2.7 (with `execute_select_parallel(&SelectStatement, usize)` signature) were based on an incorrect assumption about `LocalExecutor`'s API. Re-scoped below as plan-level `ParallelFilterExec` integration (parallel point = the **filter**, not the scan).
 
-### Follow-up task 2.x — Plan-level parallel scan (deferred to PR `feat/issue-3703-parallel-scan-exec`)
+### Follow-up task 2.x — Plan-level parallel filter (DONE)
 
-- [ ] 2.1 Add `ParallelSeqScanExec` to `sqlrustgo_planner` (new plan node, partitions output by hash/row-range)
-- [ ] 2.2 Planner: emit `ParallelSeqScan` instead of `SeqScan` when `parallel_degree > 1` AND feature enabled AND no ORDER BY AND table row count >= `PARALLEL_MIN_ROWS`
-- [ ] 2.3 `LocalExecutor::execute_parallel_seq_scan`: scan + partition + rayon::par_iter Filter/Project/Agg + merge
-- [ ] 2.4 `LocalExecutor::execute_with_cache` dispatch: add `"ParallelSeqScan"` case
-- [ ] 2.5 ORDER BY check: planner-side, not executor-side — emit `SeqScan` if ORDER BY present
-- [ ] 2.6 `PARALLEL_MIN_ROWS` threshold: planner-side decision
-- [ ] 2.7 Cell-level TPC-H match N=1 vs N=4 integration test
 
+- [x] 2.1 Add `ParallelFilterExec` to `sqlrustgo_planner` (`crates/planner/src/physical_plan.rs`) — mirrors `FilterExec` with added `parallel_degree: usize` field; `#[allow(dead_code)]` since `LocalExecutor` is dead-code architectural completeness.
+- [x] 2.2 Planner: `create_physical_plan_internal_with_degree` emits `ParallelFilterExec` instead of `FilterExec` when `parallel_degree > 1` AND no `Sort` ancestor (gated by threading `parallel_degree` down the tree; `Sort` forces its subtree to degree=1). `parallel_degree` defaults to 1 (sequential) and reads `SQLRUSTGO_EXECUTOR_PARALLELISM` env var.
+- [x] 2.3 `LocalExecutor::execute_parallel_filter` (`crates/executor/src/local_executor.rs`): executes child plan, partitions rows via `ParallelVolcanoExecutor::partition_rows`, filters each partition in parallel via `rayon::par_iter` (feature-gated; sequential `into_iter` fallback), merges with `Vec::concat`. Honors plan-level `parallel_degree` over `self.parallel_degree`.
+- [x] 2.4 `LocalExecutor::execute_with_cache` dispatch: added `"ParallelFilter"` case in both cached and uncached branches.
+- [x] 2.5 ORDER BY check: planner-side via `plan_has_sort` walk + `Sort` node forces subtree degree=1 (executor-side ORDER BY preservation is not the planner's concern).
+- [x] 2.6 `PARALLEL_MIN_ROWS` threshold: handled in `ParallelVolcanoExecutor::partition_scan` (returns single partition below threshold — no planner-side row-count gate needed; avoids O(2N) double scan).
+- [x] 2.7 Cell-level match test: `test_parallel_filter_cell_match_vs_sequential` (planner) + `test_parallel_filter_cell_match_vs_sequential` (parallel_executor primitive) assert identical row multisets for N=1 vs N=4 under predicate `id > 100` over 200 rows.
+
+> **Dead-code note**: `LocalExecutor` is orphaned from `crates/executor/src/lib.rs` (removed in commit `c79b390`) and its imports reference APIs absent from current `develop/v3.10.0`, so it does NOT compile in the current tree. The `ParallelFilterExec` planner emission + `parallel_executor` primitive ARE live and tested. `LocalExecutor::execute_parallel_filter` is architectural completeness only — it documents the intended executor path but is not wired into production (the production `src/execution_engine.rs` uses a separate self-contained executor that does not consume `PhysicalPlan` nodes).
 ## 3. Tests
 
 - [x] 3.1 Unit: `parallel_scan_partitions_evenly` (1000 rows / 4 partitions = [250, 250, 250, 250]) — N/A: `PARALLEL_MIN_ROWS = 100_000` short-circuits partitioning below threshold; existing `test_partition_scan_large_4_workers` (400k rows → 4 even partitions) covers the partitioning logic.
