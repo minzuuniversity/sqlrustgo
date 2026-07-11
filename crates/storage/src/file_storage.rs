@@ -1338,6 +1338,904 @@ mod tests {
 
         let _ = remove_dir_all(&temp_dir);
     }
+
+    fn make_storage(dir: &str) -> FileStorage {
+        let temp_dir = std::env::temp_dir().join(dir);
+        let _ = remove_dir_all(&temp_dir);
+        FileStorage::new_with_buffer_config(temp_dir, 100, false).unwrap()
+    }
+
+    #[test]
+    fn test_new_with_buffer_config() {
+        let temp_dir = std::env::temp_dir().join("file_storage_buf_cfg");
+        let _ = remove_dir_all(&temp_dir);
+        let storage = FileStorage::new_with_buffer_config(temp_dir.clone(), 50, false).unwrap();
+        assert!(storage.buffer_threshold == 50);
+        assert!(!storage.enable_buffer);
+        let _ = remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_new_with_wal() {
+        let temp_dir = std::env::temp_dir().join("file_storage_wal");
+        let _ = remove_dir_all(&temp_dir);
+        let storage = FileStorage::new_with_wal(temp_dir.clone()).unwrap();
+        assert!(storage.data_dir.ends_with("file_storage_wal"));
+        let _ = remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_get_table_mut() {
+        let mut storage = make_storage("fs_get_table_mut");
+        let info = TableInfo {
+            name: "t".into(),
+            columns: vec![ColumnDefinition::new("a", "INTEGER")],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
+        };
+        storage.create_table(&info).unwrap();
+        let t = storage.get_table_mut("t");
+        assert!(t.is_some());
+    }
+
+    #[test]
+    fn test_get_table_mut_nonexistent() {
+        let mut storage = make_storage("fs_get_table_mut_ne");
+        assert!(storage.get_table_mut("nonexistent").is_none());
+    }
+
+    #[test]
+    fn test_insert_table() {
+        let mut storage = make_storage("fs_insert_table");
+        let info = TableInfo {
+            name: "t1".into(),
+            columns: vec![ColumnDefinition::new("x", "INTEGER")],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
+        };
+        let data = TableData { info, rows: vec![] };
+        storage.insert_table("t1".into(), data).unwrap();
+        assert!(storage.contains_table("t1"));
+    }
+
+    #[test]
+    fn test_table_names() {
+        let mut storage = make_storage("fs_table_names");
+        let info = TableInfo {
+            name: "t".into(),
+            columns: vec![],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
+        };
+        storage.create_table(&info).unwrap();
+        let names = storage.table_names();
+        assert!(names.contains(&"t".to_string()));
+    }
+
+    #[test]
+    fn test_table_names_empty() {
+        let storage = make_storage("fs_table_names_empty");
+        assert!(storage.table_names().is_empty());
+    }
+
+    #[test]
+    fn test_contains_table() {
+        let mut storage = make_storage("fs_contains_table");
+        let info = TableInfo {
+            name: "x".into(),
+            columns: vec![],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
+        };
+        storage.create_table(&info).unwrap();
+        assert!(storage.contains_table("x"));
+        assert!(!storage.contains_table("y"));
+    }
+
+    #[test]
+    fn test_drop_database_nonexistent() {
+        let mut storage = make_storage("fs_drop_db_ne");
+        let result = storage.drop_database("nonexistent_db");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_create_database() {
+        let mut storage = make_storage("fs_create_db");
+        let result = storage.create_database("my_db");
+        assert!(result.is_ok());
+        let _ = std::fs::remove_dir_all(storage.data_dir.join("my_db"));
+    }
+
+    #[test]
+    fn test_clear_all_tables() {
+        let mut storage = make_storage("fs_clear_all");
+        let info = TableInfo {
+            name: "t".into(),
+            columns: vec![ColumnDefinition::new("a", "INTEGER")],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
+        };
+        storage.create_table(&info).unwrap();
+        storage.insert("t", vec![vec![Value::Integer(1)]]).unwrap();
+        storage.clear_all_tables();
+        let rows = storage.scan("t").unwrap();
+        assert!(rows.is_empty());
+    }
+
+    #[test]
+    fn test_flush_all_buffers_extra() {
+        let mut storage = make_storage("fs_flush_all_ex");
+        storage.flush_all_buffers().unwrap();
+    }
+
+    #[test]
+    fn test_in_transaction() {
+        let storage = make_storage("fs_in_tx");
+        assert!(!storage.in_transaction());
+        assert_eq!(storage.current_tx_id(), 0);
+    }
+
+    #[test]
+    fn test_set_current_tx_id() {
+        let mut storage = make_storage("fs_set_tx");
+        storage.set_current_tx_id(42);
+        assert_eq!(storage.current_tx_id(), 42);
+        assert!(storage.in_transaction());
+    }
+
+    #[test]
+    fn test_force_insert() {
+        let mut storage = make_storage("fs_force_ins");
+        let info = TableInfo {
+            name: "t".into(),
+            columns: vec![ColumnDefinition::new("a", "INTEGER")],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
+        };
+        storage.create_table(&info).unwrap();
+        storage.force_insert("t", vec![Value::Integer(5)]).unwrap();
+        let rows = storage.scan("t").unwrap();
+        assert_eq!(rows, vec![vec![Value::Integer(5)]]);
+    }
+
+    #[test]
+    fn test_delete_if() {
+        let mut storage = make_storage("fs_del_if");
+        let info = TableInfo {
+            name: "t".into(),
+            columns: vec![ColumnDefinition::new("a", "INTEGER")],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
+        };
+        storage.create_table(&info).unwrap();
+        storage
+            .insert("t", vec![vec![Value::Integer(1)], vec![Value::Integer(2)]])
+            .unwrap();
+        let filter: RowFilter = Box::new(|row: &Record| row[0] == Value::Integer(1));
+        let removed = storage.delete_if("t", &filter).unwrap();
+        assert_eq!(removed, 1);
+    }
+
+    #[test]
+    fn test_delete_if_nonexistent() {
+        let mut storage = make_storage("fs_del_if_ne");
+        let filter: RowFilter = Box::new(|_: &Record| true);
+        let removed = storage.delete_if("nonexistent", &filter).unwrap();
+        assert_eq!(removed, 0);
+    }
+
+    #[test]
+    fn test_update_nonexistent() {
+        let mut storage = make_storage("fs_upd_ne");
+        let count = storage
+            .update(
+                "nonexistent",
+                &[Value::Integer(1)],
+                &[(0, Value::Integer(99))],
+            )
+            .unwrap();
+        assert_eq!(count, 0);
+    }
+
+    #[test]
+    fn test_update_if_nonexistent() {
+        let mut storage = make_storage("fs_upd_if_ne");
+        let filter: RowFilter = Box::new(|_: &Record| true);
+        let mutation = RowMutation::new(vec![(0, Value::Integer(99))], 0);
+        let count = storage
+            .update_if("nonexistent", &filter, &mutation)
+            .unwrap();
+        assert_eq!(count, 0);
+    }
+
+    #[test]
+    fn test_update_if_existing() {
+        let mut storage = make_storage("fs_upd_if_ex");
+        let info = TableInfo {
+            name: "t".into(),
+            columns: vec![
+                ColumnDefinition::new("x", "INTEGER"),
+                ColumnDefinition::new("y", "INTEGER"),
+            ],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
+        };
+        storage.create_table(&info).unwrap();
+        storage
+            .insert("t", vec![vec![Value::Integer(1), Value::Integer(10)]])
+            .unwrap();
+        let filter: RowFilter = Box::new(|row: &Record| row[0] == Value::Integer(1));
+        let mutation = RowMutation::new(vec![(1, Value::Integer(99))], 0);
+        let count = storage.update_if("t", &filter, &mutation).unwrap();
+        assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn test_create_table_storage() {
+        let mut storage = make_storage("fs_create_t");
+        let info = TableInfo {
+            name: "users".into(),
+            columns: vec![ColumnDefinition::new("id", "INTEGER")],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
+        };
+        storage.create_table(&info).unwrap();
+        assert!(storage.has_table("users"));
+    }
+
+    #[test]
+    fn test_get_table_info_not_found() {
+        let storage = make_storage("fs_gti_ne");
+        let result = storage.get_table_info("nonexistent");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_has_table_storage() {
+        let mut storage = make_storage("fs_has_t");
+        let info = TableInfo {
+            name: "x".into(),
+            columns: vec![],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
+        };
+        storage.create_table(&info).unwrap();
+        assert!(storage.has_table("x"));
+        assert!(!storage.has_table("y"));
+    }
+
+    #[test]
+    fn test_list_tables_storage() {
+        let mut storage = make_storage("fs_list_t");
+        let info = TableInfo {
+            name: "t1".into(),
+            columns: vec![],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
+        };
+        storage.create_table(&info).unwrap();
+        let tables = storage.list_tables();
+        assert!(tables.contains(&"t1".to_string()));
+    }
+
+    #[test]
+    fn test_create_index_storage() {
+        let mut storage = make_storage("fs_create_idx");
+        let info = TableInfo {
+            name: "t".into(),
+            columns: vec![ColumnDefinition::new("id", "INTEGER")],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
+        };
+        storage.create_table(&info).unwrap();
+        storage
+            .insert(
+                "t",
+                vec![
+                    vec![Value::Integer(1)],
+                    vec![Value::Integer(2)],
+                    vec![Value::Integer(3)],
+                ],
+            )
+            .unwrap();
+        storage.create_index("t", "id", 0).unwrap();
+        assert!(storage.has_index("t", "id"));
+    }
+
+    #[test]
+    fn test_create_index_table_not_found() {
+        let mut storage = make_storage("fs_create_idx_ne");
+        let result = storage.create_index("nonexistent", "c", 0);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_drop_index_storage() {
+        let mut storage = make_storage("fs_drop_idx");
+        let info = TableInfo {
+            name: "t".into(),
+            columns: vec![ColumnDefinition::new("id", "INTEGER")],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
+        };
+        storage.create_table(&info).unwrap();
+        storage.insert("t", vec![vec![Value::Integer(1)]]).unwrap();
+        storage.create_index("t", "id", 0).unwrap();
+        storage.drop_index("t", "id").unwrap();
+        assert!(!storage.has_index("t", "id"));
+    }
+
+    #[test]
+    fn test_has_index_no_table() {
+        let storage = make_storage("fs_has_idx_no_t");
+        assert!(!storage.has_index("nonexistent", "c"));
+    }
+
+    #[test]
+    fn test_add_column_storage() {
+        let mut storage = make_storage("fs_add_col");
+        let info = TableInfo {
+            name: "t".into(),
+            columns: vec![ColumnDefinition::new("a", "INTEGER")],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
+        };
+        storage.create_table(&info).unwrap();
+        storage
+            .add_column("t", ColumnDefinition::new("b", "TEXT"))
+            .unwrap();
+        let info_after = storage.get_table_info("t").unwrap();
+        assert_eq!(info_after.columns.len(), 2);
+    }
+
+    #[test]
+    fn test_rename_table_storage() {
+        let mut storage = make_storage("fs_rename_t");
+        let info = TableInfo {
+            name: "old".into(),
+            columns: vec![ColumnDefinition::new("a", "INTEGER")],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
+        };
+        storage.create_table(&info).unwrap();
+        storage
+            .insert("old", vec![vec![Value::Integer(1)]])
+            .unwrap();
+        storage.rename_table("old", "new").unwrap();
+        assert!(!storage.has_table("old"));
+        assert!(storage.has_table("new"));
+    }
+
+    #[test]
+    fn test_rename_table_nonexistent() {
+        let mut storage = make_storage("fs_rename_t_ne");
+        storage.rename_table("nonexistent", "new_name").unwrap();
+    }
+
+    #[test]
+    fn test_trigger_operations_storage() {
+        let mut storage = make_storage("fs_trigger_ops");
+        let trigger = TriggerInfo {
+            name: "trig1".into(),
+            table_name: "t".into(),
+            timing: crate::engine::TriggerTiming::Before,
+            event: crate::engine::TriggerEvent::Insert,
+            body: "BEGIN UPDATE stats SET n = n + 1; END".into(),
+        };
+        storage.create_trigger(trigger).unwrap();
+        let got = storage.get_trigger("trig1");
+        assert!(got.is_some());
+        let triggers = storage.list_triggers("t");
+        assert_eq!(triggers.len(), 1);
+        storage.drop_trigger("trig1").unwrap();
+        assert!(storage.get_trigger("trig1").is_none());
+    }
+
+    #[test]
+    fn test_get_trigger_none() {
+        let storage = make_storage("fs_get_trig_none");
+        assert!(storage.get_trigger("nonexistent").is_none());
+    }
+
+    #[test]
+    fn test_list_triggers_by_table() {
+        let mut storage = make_storage("fs_list_triggers");
+        let trigger1 = TriggerInfo {
+            name: "t1".into(),
+            table_name: "users".into(),
+            timing: crate::engine::TriggerTiming::Before,
+            event: crate::engine::TriggerEvent::Insert,
+            body: "".into(),
+        };
+        let trigger2 = TriggerInfo {
+            name: "t2".into(),
+            table_name: "orders".into(),
+            timing: crate::engine::TriggerTiming::After,
+            event: crate::engine::TriggerEvent::Update,
+            body: "".into(),
+        };
+        storage.create_trigger(trigger1).unwrap();
+        storage.create_trigger(trigger2).unwrap();
+        let users_triggers = storage.list_triggers("users");
+        let orders_triggers = storage.list_triggers("orders");
+        assert_eq!(users_triggers.len(), 1);
+        assert_eq!(orders_triggers.len(), 1);
+    }
+
+    #[test]
+    fn test_has_view_storage() {
+        let storage = make_storage("fs_has_view");
+        assert!(!storage.has_view("v"));
+    }
+
+    #[test]
+    fn test_list_indexes_storage() {
+        let mut storage = make_storage("fs_list_idx");
+        let info = TableInfo {
+            name: "t".into(),
+            columns: vec![ColumnDefinition::new("id", "INTEGER")],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
+        };
+        storage.create_table(&info).unwrap();
+        storage.insert("t", vec![vec![Value::Integer(1)]]).unwrap();
+        storage.create_index("t", "id", 0).unwrap();
+        let indexes = storage.list_indexes("t");
+        assert_eq!(indexes.len(), 1);
+    }
+
+    #[test]
+    fn test_list_indexes_empty() {
+        let storage = make_storage("fs_list_idx_empty");
+        let indexes = storage.list_indexes("nonexistent");
+        assert!(indexes.is_empty());
+    }
+
+    #[test]
+    fn test_create_database_storage() {
+        let mut storage = make_storage("fs_create_db_s");
+        storage.create_database("db1").unwrap();
+        let path = storage.data_dir.join("db1");
+        assert!(path.exists());
+        let _ = std::fs::remove_dir_all(path);
+    }
+
+    #[test]
+    fn test_drop_database_nonempty() {
+        let mut storage = make_storage("fs_drop_db_ne2");
+        storage.create_database("db1").unwrap();
+        let path = storage.data_dir.join("db1");
+        std::fs::write(path.join("marker.txt"), "x").unwrap();
+        let result = storage.drop_database("db1");
+        assert!(result.is_err());
+        let _ = std::fs::remove_dir_all(storage.data_dir.join("db1"));
+    }
+
+    #[test]
+    fn test_drop_column_storage() {
+        let mut storage = make_storage("fs_drop_col");
+        let info = TableInfo {
+            name: "t".into(),
+            columns: vec![
+                ColumnDefinition::new("a", "INTEGER"),
+                ColumnDefinition::new("b", "TEXT"),
+            ],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
+        };
+        storage.create_table(&info).unwrap();
+        storage
+            .insert(
+                "t",
+                vec![vec![Value::Integer(1), Value::Text("hello".into())]],
+            )
+            .unwrap();
+        storage.drop_column("t", "b").unwrap();
+        let info_after = storage.get_table_info("t").unwrap();
+        assert_eq!(info_after.columns.len(), 1);
+    }
+
+    #[test]
+    fn test_drop_column_table_not_found() {
+        let mut storage = make_storage("fs_drop_col_ne");
+        let result = storage.drop_column("nonexistent", "a");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_drop_column_not_found() {
+        let mut storage = make_storage("fs_drop_col_nf");
+        let info = TableInfo {
+            name: "t".into(),
+            columns: vec![ColumnDefinition::new("a", "INTEGER")],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
+        };
+        storage.create_table(&info).unwrap();
+        let result = storage.drop_column("t", "nonexistent");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_modify_column_storage() {
+        let mut storage = make_storage("fs_mod_col");
+        let info = TableInfo {
+            name: "t".into(),
+            columns: vec![ColumnDefinition::new("a", "INTEGER")],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
+        };
+        storage.create_table(&info).unwrap();
+        let new_def = ColumnDefinition {
+            name: "a".into(),
+            data_type: "TEXT".into(),
+            nullable: true,
+            primary_key: false,
+            char_max_length: None,
+        };
+        storage.modify_column("t", "a", new_def).unwrap();
+    }
+
+    #[test]
+    fn test_modify_column_table_not_found() {
+        let mut storage = make_storage("fs_mod_col_ne");
+        let new_def = ColumnDefinition::new("a", "TEXT");
+        let result = storage.modify_column("nonexistent", "a", new_def);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_modify_column_not_found() {
+        let mut storage = make_storage("fs_mod_col_nf");
+        let info = TableInfo {
+            name: "t".into(),
+            columns: vec![ColumnDefinition::new("a", "INTEGER")],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
+        };
+        storage.create_table(&info).unwrap();
+        let new_def = ColumnDefinition::new("nonexistent", "TEXT");
+        let result = storage.modify_column("t", "nonexistent", new_def);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_scan_merges_buffer() {
+        let mut storage = make_storage("fs_scan_buf");
+        let info = TableInfo {
+            name: "t".into(),
+            columns: vec![ColumnDefinition::new("x", "INTEGER")],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
+        };
+        storage.create_table(&info).unwrap();
+        storage.set_current_tx_id(1);
+        storage.insert("t", vec![vec![Value::Integer(1)]]).unwrap();
+        let rows = storage.scan("t").unwrap();
+        assert_eq!(rows.len(), 1);
+        storage.set_current_tx_id(0);
+    }
+
+    #[test]
+    fn test_buffered_insert_flush() {
+        let dir = std::env::temp_dir().join("fs_buf_flush");
+        let _ = remove_dir_all(&dir);
+        let mut storage = FileStorage::new_with_buffer_config(dir.clone(), 2, true).unwrap();
+        let info = TableInfo {
+            name: "t".into(),
+            columns: vec![ColumnDefinition::new("x", "INTEGER")],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
+        };
+        storage.create_table(&info).unwrap();
+        storage.insert("t", vec![vec![Value::Integer(1)]]).unwrap();
+        storage.insert("t", vec![vec![Value::Integer(2)]]).unwrap();
+        let rows = storage.scan("t").unwrap();
+        assert!(rows.len() >= 1);
+        let _ = remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_buffered_insert_in_tx() {
+        let dir = std::env::temp_dir().join("fs_buf_tx");
+        let _ = remove_dir_all(&dir);
+        let mut storage = FileStorage::new_with_buffer_config(dir.clone(), 10, true).unwrap();
+        let info = TableInfo {
+            name: "t".into(),
+            columns: vec![ColumnDefinition::new("x", "INTEGER")],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
+        };
+        storage.create_table(&info).unwrap();
+        storage.set_current_tx_id(1);
+        storage.insert("t", vec![vec![Value::Integer(1)]]).unwrap();
+        storage.flush_all_buffers().unwrap();
+        storage.set_current_tx_id(0);
+        let _ = remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_trigger_roundtrip_disk() {
+        let temp_dir = std::env::temp_dir().join("fs_trigger_roundtrip");
+        let _ = remove_dir_all(&temp_dir);
+        let mut storage = FileStorage::new_with_wal(temp_dir.clone()).unwrap();
+        let trigger = TriggerInfo {
+            name: "trig_disk".to_string(),
+            table_name: "t".to_string(),
+            timing: crate::engine::TriggerTiming::Before,
+            event: crate::engine::TriggerEvent::Insert,
+            body: "BEGIN UPDATE s SET n = n + 1; END".to_string(),
+        };
+        storage.create_trigger(trigger).unwrap();
+        drop(storage);
+
+        let mut storage2 = FileStorage::new_with_wal(temp_dir.clone()).unwrap();
+        let got = storage2.get_trigger("trig_disk");
+        assert!(got.is_some());
+        let _ = remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_save_trigger_load_trigger_duplicate() {
+        let temp_dir = std::env::temp_dir().join("fs_trigger_dup");
+        let _ = remove_dir_all(&temp_dir);
+        let mut storage = FileStorage::new(temp_dir.clone()).unwrap();
+        let trigger = TriggerInfo {
+            name: "trig_dup".to_string(),
+            table_name: "t".to_string(),
+            timing: crate::engine::TriggerTiming::After,
+            event: crate::engine::TriggerEvent::Update,
+            body: "".to_string(),
+        };
+        storage.create_trigger(trigger.clone()).unwrap();
+        storage.create_trigger(trigger).unwrap();
+        let count = storage.list_triggers("t").len();
+        assert!(count >= 1);
+        let _ = remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_drop_trigger_disk_removal() {
+        let temp_dir = std::env::temp_dir().join("fs_drop_trig_disk");
+        let _ = remove_dir_all(&temp_dir);
+        let mut storage = FileStorage::new_with_wal(temp_dir.clone()).unwrap();
+        let trigger = TriggerInfo {
+            name: "trig_x".to_string(),
+            table_name: "t".to_string(),
+            timing: crate::engine::TriggerTiming::Before,
+            event: crate::engine::TriggerEvent::Delete,
+            body: "".to_string(),
+        };
+        storage.create_trigger(trigger).unwrap();
+        storage.drop_trigger("trig_x").unwrap();
+        let path = temp_dir.join("trigger_trig_x.json");
+        assert!(!path.exists());
+    }
+
+    #[test]
+    fn test_file_with_buffer_disabled_flow() {
+        let mut storage = make_storage("fs_no_buf");
+        let info = TableInfo {
+            name: "t".into(),
+            columns: vec![ColumnDefinition::new("a", "INTEGER")],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
+        };
+        storage.create_table(&info).unwrap();
+        storage.insert("t", vec![vec![Value::Integer(1)]]).unwrap();
+        storage.delete("t", &[Value::Integer(1)]).unwrap();
+        storage
+            .update("t", &[Value::Integer(1)], &[(0, Value::Integer(99))])
+            .unwrap();
+        let rows = storage.scan("t").unwrap();
+        assert!(rows.is_empty() || rows[0][0] != Value::Integer(1));
+    }
+
+    #[test]
+    fn test_flush_all_buffers_with_buffered_table() {
+        let dir = std::env::temp_dir().join("fs_flush_buf_table");
+        let _ = remove_dir_all(&dir);
+        let mut storage = FileStorage::new_with_buffer_config(dir.clone(), 1000, true).unwrap();
+        let info = TableInfo {
+            name: "t".into(),
+            columns: vec![],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
+        };
+        storage.create_table(&info).unwrap();
+        storage.insert("t", vec![vec![Value::Integer(1)]]).unwrap();
+        storage.flush_all_buffers().unwrap();
+        let _ = remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_load_table_invalid_json() {
+        let temp_dir = std::env::temp_dir().join("fs_invalid_json");
+        let _ = remove_dir_all(&temp_dir);
+        std::fs::create_dir_all(&temp_dir).unwrap();
+        std::fs::write(temp_dir.join("bad.json"), "not valid json{{{").unwrap();
+        let storage = FileStorage::new(temp_dir.clone()).unwrap();
+        let result = storage.get_table("bad");
+        assert!(result.is_none());
+        let _ = remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_insert_buffered_threshold_flushing() {
+        let dir = std::env::temp_dir().join("fs_thr_flush");
+        let _ = remove_dir_all(&dir);
+        let mut storage = FileStorage::new_with_buffer_config(dir.clone(), 2, true).unwrap();
+        let info = TableInfo {
+            name: "t".into(),
+            columns: vec![ColumnDefinition::new("a", "INTEGER")],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
+        };
+        storage.create_table(&info).unwrap();
+        storage
+            .insert(
+                "t",
+                vec![
+                    vec![Value::Integer(1)],
+                    vec![Value::Integer(2)],
+                    vec![Value::Integer(3)],
+                ],
+            )
+            .unwrap();
+        let _ = remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_partition_rows_below_threshold() {
+        let mut storage = make_storage("fs_pr_below");
+        let info = TableInfo {
+            name: "t".into(),
+            columns: vec![ColumnDefinition::new("a", "INTEGER")],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
+        };
+        storage.create_table(&info).unwrap();
+        storage
+            .insert("t", (0..100_i64).map(|i| vec![Value::Integer(i)]).collect())
+            .unwrap();
+        let parts = storage.partition_rows("t", 4);
+        assert_eq!(parts.len(), 1);
+        assert_eq!(parts[0].len(), 100);
+    }
+
+    #[test]
+    fn test_partition_rows_above_threshold() {
+        let mut storage = make_storage("fs_pr_above");
+        let info = TableInfo {
+            name: "t".into(),
+            columns: vec![ColumnDefinition::new("a", "INTEGER")],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
+        };
+        storage.create_table(&info).unwrap();
+        storage
+            .insert(
+                "t",
+                (0..600_000_i64).map(|i| vec![Value::Integer(i)]).collect(),
+            )
+            .unwrap();
+        let parts = storage.partition_rows("t", 4);
+        assert_eq!(parts.len(), 4);
+        let total: usize = parts.iter().map(|p| p.len()).sum();
+        assert_eq!(total, 600_000);
+    }
+
+    #[test]
+    fn test_partition_rows_missing_table() {
+        let storage = make_storage("fs_pr_missing");
+        let parts = storage.partition_rows("nonexistent", 4);
+        assert_eq!(parts.len(), 1);
+        assert!(parts[0].is_empty());
+    }
+
+    #[test]
+    fn test_partition_rows_num_partitions_zero() {
+        let mut storage = make_storage("fs_pr_zero");
+        let info = TableInfo {
+            name: "t".into(),
+            columns: vec![ColumnDefinition::new("a", "INTEGER")],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
+        };
+        storage.create_table(&info).unwrap();
+        storage
+            .insert(
+                "t",
+                (0..600_000_i64).map(|i| vec![Value::Integer(i)]).collect(),
+            )
+            .unwrap();
+        let parts = storage.partition_rows("t", 0);
+        assert_eq!(parts.len(), 1);
+    }
+
+    #[test]
+    fn test_partition_rows_with_buffer() {
+        let dir = std::env::temp_dir().join("fs_pr_buf");
+        let _ = remove_dir_all(&dir);
+        let mut storage = FileStorage::new_with_buffer_config(dir.clone(), 1000, true).unwrap();
+        let info = TableInfo {
+            name: "t".into(),
+            columns: vec![ColumnDefinition::new("a", "INTEGER")],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
+        };
+        storage.create_table(&info).unwrap();
+        storage.set_current_tx_id(1);
+        storage
+            .insert(
+                "t",
+                (0..600_000_i64).map(|i| vec![Value::Integer(i)]).collect(),
+            )
+            .unwrap();
+        let _ = storage.partition_rows("t", 4);
+        let _ = remove_dir_all(&dir);
+    }
 }
 
 impl FileStorage {
@@ -1389,8 +2287,8 @@ impl FileStorage {
         let Some(table_data) = self.get_table(table) else {
             return vec![Vec::new()];
         };
-        let total_rows = table_data.rows.len()
-            + self.insert_buffer.get(table).map(|b| b.len()).unwrap_or(0);
+        let total_rows =
+            table_data.rows.len() + self.insert_buffer.get(table).map(|b| b.len()).unwrap_or(0);
         if total_rows < PARALLEL_SCAN_MIN_ROWS || n_partitions <= 1 {
             let mut all: Vec<Record> = table_data.rows.clone();
             if let Some(buffered) = self.insert_buffer.get(table) {

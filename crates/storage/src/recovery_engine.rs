@@ -805,4 +805,271 @@ mod tests {
         let result = key_to_filter_values(&key).unwrap();
         assert!(result.is_empty());
     }
+
+    #[test]
+    fn test_key_to_filter_values_integer_key() {
+        let key: Vec<u8> = 42i64.to_le_bytes().to_vec();
+        let result = key_to_filter_values(&key).unwrap();
+        assert_eq!(result, vec![Value::Integer(42)]);
+    }
+
+    #[test]
+    fn test_key_to_filter_values_invalid_key() {
+        let key = vec![0xff, 0xfe, 0xfd];
+        let result = key_to_filter_values(&key);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_bytes_to_record_truncated_prefix() {
+        let result = bytes_to_record(&[b'i']);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_bytes_to_record_truncated_integer() {
+        let result = bytes_to_record(b"i:0123");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_bytes_to_record_text_no_null_terminator() {
+        let result = bytes_to_record(b"s:hello");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_bytes_to_record_truncated_boolean() {
+        let result = bytes_to_record(b"b:");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_bytes_to_record_truncated_float() {
+        let result = bytes_to_record(b"f:012345");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_bytes_to_record_blob_no_null_terminator() {
+        let result = bytes_to_record(b"B:abc");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_bytes_to_record_unknown_prefix() {
+        let result = bytes_to_record(b"xx:somedata");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_resolve_table_name_found() {
+        use crate::engine::{ColumnDefinition, StorageEngine, TableInfo};
+        let mut storage = MemoryStorage::new();
+        let table_info = TableInfo {
+            name: "orders".to_string(),
+            columns: vec![ColumnDefinition::new("id", "INTEGER")],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
+        };
+        storage.create_table(&table_info).unwrap();
+        let id = table_name_to_id("orders");
+        let resolved = resolve_table_name(&storage, id).unwrap();
+        assert_eq!(resolved, "orders");
+    }
+
+    #[test]
+    fn test_resolve_table_name_not_found() {
+        let storage = MemoryStorage::new();
+        let result = resolve_table_name(&storage, 99999);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_bytes_to_updates_empty() {
+        let result = bytes_to_updates(&[0, 0, 0, 0]);
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_empty());
+    }
+
+    #[test]
+    fn test_bytes_to_updates_truncated_length() {
+        let result = bytes_to_updates(&[0, 0]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_bytes_to_updates_truncated_index() {
+        let data = vec![1, 0, 0, 0, 0];
+        let result = bytes_to_updates(&data);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_bytes_to_updates_single_pair() {
+        let mut data = vec![1, 0, 0, 0];
+        data.extend_from_slice(&[5u8, 0, 0, 0]);
+        data.extend_from_slice(b"i:");
+        data.extend_from_slice(&42i64.to_le_bytes());
+        let result = bytes_to_updates(&data).unwrap();
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].0, 5);
+        assert_eq!(result[0].1, Value::Integer(42));
+    }
+
+    #[test]
+    fn test_bytes_to_filters_matches_record() {
+        let values = vec![Value::Integer(42), Value::Text("x".into())];
+        let mut bytes = Vec::new();
+        for v in &values {
+            match v {
+                Value::Integer(i) => {
+                    bytes.extend_from_slice(b"i:");
+                    bytes.extend_from_slice(&i.to_le_bytes());
+                }
+                Value::Text(s) => {
+                    bytes.extend_from_slice(b"s:");
+                    bytes.extend_from_slice(s.as_bytes());
+                    bytes.push(0);
+                }
+                _ => {}
+            }
+        }
+        let filters = bytes_to_filters(&bytes).unwrap();
+        assert_eq!(filters.len(), 2);
+    }
+
+    #[test]
+    fn test_recovery_report_default() {
+        let report = RecoveryReport::default();
+        assert_eq!(report.entries_total, 0);
+        assert_eq!(report.committed_txns, 0);
+        assert_eq!(report.rolled_back_txns, 0);
+        assert_eq!(report.incomplete_txns, 0);
+    }
+
+    #[test]
+    fn test_stateful_engine_first_recovery() {
+        use crate::engine::MemoryStorage;
+        use crate::wal::MemoryWalManager;
+        let mut storage = MemoryStorage::new();
+        let mut wal = MemoryWalManager::new();
+        let mut engine = StatefulRecoveryEngine::new();
+        let result = engine.recover(&mut storage, &mut wal);
+        assert!(result.is_ok());
+        let report = result.unwrap();
+        assert_eq!(report.entries_total, 0);
+    }
+
+    #[test]
+    fn test_stateful_engine_apply_entry() {
+        use crate::engine::MemoryStorage;
+        let mut storage = MemoryStorage::new();
+        let mut engine: StatefulRecoveryEngine<MemoryStorage> = StatefulRecoveryEngine::new();
+        let entry = crate::wal::WalEntry {
+            tx_id: 1,
+            entry_type: crate::wal::WalEntryType::Insert,
+            table_id: 0,
+            key: None,
+            data: None,
+            lsn: 0,
+            timestamp: 0,
+        };
+        let _ = engine.apply_entry(&mut storage, &entry);
+    }
+
+    #[test]
+    fn test_count_status_all_committed() {
+        use crate::wal::WalEntryType;
+        let entries = vec![
+            WalEntry {
+                tx_id: 1,
+                entry_type: WalEntryType::Begin,
+                table_id: 0,
+                key: None,
+                data: None,
+                lsn: 1,
+                timestamp: 0,
+            },
+            WalEntry {
+                tx_id: 1,
+                entry_type: WalEntryType::Commit,
+                table_id: 0,
+                key: None,
+                data: None,
+                lsn: 2,
+                timestamp: 0,
+            },
+        ];
+        let (committed, rolled_back, incomplete) = count_status(&entries);
+        assert_eq!(committed, 1);
+        assert_eq!(rolled_back, 0);
+        assert_eq!(incomplete, 0);
+    }
+
+    #[test]
+    fn test_count_status_mixed() {
+        use crate::wal::WalEntryType;
+        let entries = vec![
+            WalEntry {
+                tx_id: 1,
+                entry_type: WalEntryType::Begin,
+                table_id: 0,
+                key: None,
+                data: None,
+                lsn: 1,
+                timestamp: 0,
+            },
+            WalEntry {
+                tx_id: 1,
+                entry_type: WalEntryType::Commit,
+                table_id: 0,
+                key: None,
+                data: None,
+                lsn: 2,
+                timestamp: 0,
+            },
+            WalEntry {
+                tx_id: 2,
+                entry_type: WalEntryType::Begin,
+                table_id: 0,
+                key: None,
+                data: None,
+                lsn: 3,
+                timestamp: 0,
+            },
+            WalEntry {
+                tx_id: 2,
+                entry_type: WalEntryType::Rollback,
+                table_id: 0,
+                key: None,
+                data: None,
+                lsn: 4,
+                timestamp: 0,
+            },
+            WalEntry {
+                tx_id: 3,
+                entry_type: WalEntryType::Begin,
+                table_id: 0,
+                key: None,
+                data: None,
+                lsn: 5,
+                timestamp: 0,
+            },
+        ];
+        let (committed, rolled_back, incomplete) = count_status(&entries);
+        assert_eq!(committed, 1);
+        assert_eq!(rolled_back, 1);
+        assert_eq!(incomplete, 1);
+    }
+
+    #[test]
+    fn test_count_status_empty() {
+        let (committed, rolled_back, incomplete) = count_status(&[]);
+        assert_eq!(committed, 0);
+        assert_eq!(rolled_back, 0);
+        assert_eq!(incomplete, 0);
+    }
 }
