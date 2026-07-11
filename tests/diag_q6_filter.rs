@@ -47,14 +47,14 @@ fn load_lineitem(storage: &Arc<RwLock<MemoryStorage>>) -> usize {
             .collect();
         batch.push(record);
         if batch.len() >= BATCH_SIZE {
-            let mut s = storage.write().unwrap();
+            let mut s = storage.write();
             let _ = s.insert("lineitem", batch.clone());
             count += batch.len();
             batch.clear();
         }
     }
     if !batch.is_empty() {
-        let mut s = storage.write().unwrap();
+        let mut s = storage.write();
         let _ = s.insert("lineitem", batch.clone());
         count += batch.len();
     }
