@@ -217,6 +217,11 @@ impl SimpleExecutor {
                     }
                     AlterTableOperation::DropColumn { .. } => {}
                     AlterTableOperation::ModifyColumn { .. } => {}
+                    AlterTableOperation::RenameColumn { name, new_name } => {
+                        self.storage
+                            .rename_column(&alter.table_name, name, new_name)
+                            .map_err(|e| format!("Rename column error: {:?}", e))?;
+                    }
                 }
                 Ok(ExecutorResult::new(vec![], 0))
             }
