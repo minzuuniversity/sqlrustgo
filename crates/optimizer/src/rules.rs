@@ -14,7 +14,6 @@ pub enum JoinType {
     RightSemi,
     RightAnti,
 }
-
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expr {
     Column(String),
@@ -24,8 +23,13 @@ pub enum Expr {
         op: BinaryOperator,
         right: Box<Expr>,
     },
+    /// AND: logical conjunction of two expressions
+    And(Box<Expr>, Box<Expr>),
+    /// OR: logical disjunction
+    Or(Box<Expr>, Box<Expr>),
+    /// NOT: logical negation
+    Not(Box<Expr>),
 }
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BinaryOperator {
     Eq,
