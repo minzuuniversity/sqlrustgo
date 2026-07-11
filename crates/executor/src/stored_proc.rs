@@ -1196,6 +1196,14 @@ impl StoredProcExecutor {
                             name, data_type
                         ));
                     }
+                    sqlrustgo_parser::AlterTableOperation::RenameColumn {
+                        name,
+                        new_name,
+                    } => {
+                        storage
+                            .rename_column(table_name, name, new_name)
+                            .map_err(|e| format!("Failed to rename column: {}", e))?;
+                    }
                 }
                 Ok(())
             }
