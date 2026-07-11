@@ -26,12 +26,26 @@ use std::collections::VecDeque;
 use std::io::{self, BufRead, Write};
 use std::process::ExitCode;
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
-
 /// Validate `--server-threads` value: must be integer in 0..=80.
 fn validate_server_threads(s: &str) -> Result<usize, String> {
     let n: usize = s.parse().map_err(|e| format!("not an integer: {e}"))?;
     if n > 80 {
         return Err(format!("must be ≤ 80 (got {n})"));
+    }
+    Ok(n)
+}
+
+/// Validate `--executor-parallelism` value: must be integer in 1..=1024.
+/// Issue #3703 + OpenSpec change `issue-3703-intra-query-parallel-executor`:
+/// intra-query executor parallelism (default 1 = sequential, opt-in N for
+/// parallel scan/join/agg pipelines). See specs/cli-executor-parallelism-flag.
+fn validate_executor_parallelism(s: &str) -> Result<usize, String> {
+    let n: usize = s.parse().map_err(|e| format!("not an integer: {e}"))?;
+    if n == 0 {
+        return Err("must be >= 1 (got 0)".to_string());
+    }
+    if n > 1024 {
+        return Err(format!("must be <= 1024 (got {n})"));
     }
     Ok(n)
 }
@@ -76,6 +90,16 @@ enum Command {
         /// Storage engine: "file" (default, WAL+FileStorage) or "binary" (BinaryTableStorage, fast TPC-H load)
         #[arg(long, default_value = "file")]
         storage: String,
+        /// INTRA-QUERY PARALLEL EXECUTOR (Issue #3703, OpenSpec issue-3703-*):
+        /// N = number of worker threads for parallel scan/join/agg
+        /// pipelines within a single query. Default 1 = sequential
+        /// (zero regression). Set to num_cpus for large analytic
+        /// queries. Requires `--features parallel-executor` at build
+        /// time to take effect (otherwise capped to 1 at runtime).
+        #[arg(long, default_value_t = 1,
+              value_parser = validate_executor_parallelism,
+              env = "SQLRUSTGO_EXECUTOR_PARALLELISM")]
+        executor_parallelism: usize,
         /// SERVER-01: show detailed startup banner
         #[arg(long, default_value_t = false)]
         verbose: bool,
@@ -162,6 +186,7 @@ fn main() -> ExitCode {
         server_threads: 16,
         auth_mode: "none".to_string(),
         storage: "file".to_string(),
+        executor_parallelism: 1,
         verbose: false,
     });
 
@@ -174,6 +199,7 @@ fn main() -> ExitCode {
             server_threads,
             auth_mode,
             storage,
+            executor_parallelism,
             verbose,
         } => {
             // SERVER-01: print startup banner
@@ -184,9 +210,11 @@ fn main() -> ExitCode {
             println!("  Max conn:   {}", max_connections);
             println!("  Auth mode:  {}", auth_mode);
             println!("  Storage:    {}", storage);
+            println!(
+                "  Exec par:   {} (Issue #3703, --executor-parallelism)",
+                executor_parallelism
+            );
             if verbose {
-                println!("  TLS:        self-signed (default)");
-                println!("  WAL:        enabled");
                 println!("  MVCC:       enabled");
             }
             println!("Ready to accept connections.");
@@ -205,7 +233,6 @@ fn main() -> ExitCode {
             }
 
             tracing::info!("SQLRustGo MySQL Server starting on {}:{}", host, port);
-            // SERVER-01 Stage 2: use v2 with all options
             if let Err(e) = run_server_v2(
                 &host,
                 port,
@@ -214,6 +241,7 @@ fn main() -> ExitCode {
                 &auth_mode,
                 server_threads,
                 &storage,
+                executor_parallelism,
             ) {
                 tracing::error!("server error: {e}");
                 return ExitCode::from(1);

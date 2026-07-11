@@ -23,6 +23,33 @@ use std::time::Duration;
 
 const SERVER_VERSION: &str = "8.0.33-SQLRustGo";
 
+/// v3.10.0 Issue #3703: read intra-query executor parallelism from
+/// the `SQLRUSTGO_EXECUTOR_PARALLELISM` env var (set by
+/// `run_server_v2` from the `--executor-parallelism` CLI flag).
+/// Defaults to 1 = sequential, zero regression. The env var is
+/// honored regardless of whether the binary was built with
+/// `--features parallel-executor`; the engine stores the value and
+/// `LocalExecutor::execute_select_parallel` (feature-gated) reads it.
+fn read_executor_parallelism() -> usize {
+    std::env::var("SQLRUSTGO_EXECUTOR_PARALLELISM")
+        .ok()
+        .and_then(|s| s.parse::<usize>().ok())
+        .filter(|n| *n >= 1)
+        .unwrap_or(1)
+}
+
+/// v3.10.0 Issue #3703: build an `ExecutionEngine` with intra-query
+/// parallelism pre-configured from the CLI flag / env var. Centralizes
+/// the wiring so all engine construction sites pick up parallelism
+/// uniformly.
+pub(crate) fn build_engine_with_parallelism<S: StorageEngine + 'static>(
+    storage: Arc<parking_lot::RwLock<S>>,
+) -> ExecutionEngine<S> {
+    let mut eng = ExecutionEngine::new(storage);
+    eng.set_parallel_degree(read_executor_parallelism());
+    eng
+}
+
 /// Global connection counter for diagnostics. Incremented when a
 /// connection is accepted, decremented when it closes.
 pub static ACTIVE_CONNECTIONS: AtomicI64 = AtomicI64::new(0);
@@ -30,9 +57,6 @@ pub static TOTAL_CONNECTIONS_ACCEPTED: AtomicU64 = AtomicU64::new(0);
 pub static TOTAL_QUERIES_SERVED: AtomicU64 = AtomicU64::new(0);
 pub static TOTAL_QUERY_ERRORS: AtomicU64 = AtomicU64::new(0);
 
-/// Spawn a background thread that periodically logs resource usage
-/// (RSS, FD count, thread count) to the tracing log. This is critical
-/// for diagnosing server crashes where the process disappears silently.
 pub fn spawn_resource_monitor(interval_s: u64) {
     // Capture the main process PID at spawn time. Subsequent reads
     // happen in a child thread, but we want the main process metrics.
@@ -46,10 +70,8 @@ pub fn spawn_resource_monitor(interval_s: u64) {
                 let total_acc = TOTAL_CONNECTIONS_ACCEPTED.load(Ordering::Relaxed);
                 let total_q = TOTAL_QUERIES_SERVED.load(Ordering::Relaxed);
                 let total_err = TOTAL_QUERY_ERRORS.load(Ordering::Relaxed);
-
                 // Read /proc/<pid>/status for RSS
                 let (rss_kb, fd_count) = read_proc_status(main_pid);
-
                 // Check FD threshold
                 let (soft_limit, _hard_limit) = read_fd_limit();
                 let fd_pct = if soft_limit > 0 {
@@ -3238,22 +3260,31 @@ pub fn run_server_v2(
     auth_mode: &str,
     server_threads: usize,
     storage: &str,
+    executor_parallelism: usize,
 ) -> MySqlResult<()> {
     let addr = format!("{}:{}", host, port);
     let listener = TcpListener::bind(&addr)?;
     tracing::info!(
-        "MySQL server listening on {} (data_dir={}, max_conn={}, auth={}, server_threads={})",
+        "MySQL server listening on {} (data_dir={}, max_conn={}, auth={}, server_threads={}, executor_parallelism={})",
         addr,
         data_dir,
         max_connections,
         auth_mode,
-        server_threads
+        server_threads,
+        executor_parallelism
     );
     // Store options in env so the run_server_with_listener path can read them
     std::env::set_var("SQLRUSTGO_DATA_DIR", data_dir);
     std::env::set_var("SQLRUSTGO_MAX_CONN", max_connections.to_string());
     std::env::set_var("SQLRUSTGO_AUTH_MODE", auth_mode);
     std::env::set_var("SQLRUSTGO_STORAGE", storage);
+    // v3.10.0 Issue #3703: propagate intra-query executor parallelism.
+    // Engine reads this env var on construction (see
+    // `ExecutionEngine::new` + `set_parallel_degree`).
+    std::env::set_var(
+        "SQLRUSTGO_EXECUTOR_PARALLELISM",
+        executor_parallelism.to_string(),
+    );
     // v3.8.0-rc2 Week 1 Day 7: also publish the data_dir to
     // ACTIVE_CONFIG so that the LOAD DATA LOCAL INFILE handler
     // recognizes files inside the data dir as in-whitelist.
