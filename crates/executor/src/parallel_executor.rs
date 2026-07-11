@@ -1,6 +1,11 @@
 use sqlrustgo_types::Value;
 
-pub const PARALLEL_MIN_ROWS: usize = 100_000;
+/// Minimum row count to engage parallel filter path. v3.10.0 Issue #3703:
+/// raised from 100K to 500K after benchmarking showed 100K-200K rows fall
+/// below the break-even point where partition+merge overhead < parallel
+/// speedup. See report: /tmp/sqlrustgo-parallel-executor-report.md
+/// (Phase 1 quick win per DeepSeek's review).
+pub const PARALLEL_MIN_ROWS: usize = 500_000;
 
 pub trait ParallelExecutor: Send + Sync {
     fn parallel_degree(&self) -> usize;
@@ -96,20 +101,23 @@ mod tests {
     #[test]
     fn test_partition_scan_large_4_workers() {
         let exec = ParallelVolcanoExecutor::new(4);
-        let rows = make_rows(400_000);
+        // Bumped from 400_000 to 600_000 to exceed PARALLEL_MIN_ROWS (500K) threshold.
+        let rows = make_rows(600_000);
         let parts = exec.partition_scan(rows, 4);
         assert_eq!(parts.len(), 4);
         let total: usize = parts.iter().map(|p| p.len()).sum();
-        assert_eq!(total, 400_000);
+        assert_eq!(total, 600_000);
     }
 
     #[test]
     fn test_partition_scan_uneven_remainder() {
         let exec = ParallelVolcanoExecutor::new(3);
-        let rows = make_rows(200_000);
+        // Bumped from 200_000 to 600_000 to exceed PARALLEL_MIN_ROWS (500K) threshold.
+        let rows = make_rows(600_000);
         let parts = exec.partition_scan(rows, 3);
+        assert_eq!(parts.len(), 3);
         let total: usize = parts.iter().map(|p| p.len()).sum();
-        assert_eq!(total, 200_000);
+        assert_eq!(total, 600_000);
     }
 
     #[test]
