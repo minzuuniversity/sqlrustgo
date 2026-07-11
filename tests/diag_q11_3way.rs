@@ -1,9 +1,10 @@
 //! Q11 isolated test - to see the actual debug output for aggregate lookup
 
+use parking_lot::RwLock;
 use sqlrustgo::{ExecutionEngine, MemoryStorage, StorageEngine};
 use sqlrustgo_types::Value as SqlValue;
 use std::fs;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 
 const FIXTURE: &str = match option_env!("TPCH_DATA_DIR") {
     Some(p) => p,

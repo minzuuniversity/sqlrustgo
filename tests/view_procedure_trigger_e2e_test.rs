@@ -2,9 +2,10 @@
 //!
 //! 对应的功能矩阵: docs/standard/SQL92_FUNCTIONALITY_MATRIX.md §3.3
 
+use parking_lot::RwLock;
 use sqlrustgo::MemoryExecutionEngine;
 use sqlrustgo_storage::MemoryStorage;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 
 fn make_engine() -> MemoryExecutionEngine {
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));
