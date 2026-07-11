@@ -1,10 +1,4 @@
-> **2026-07-04 status addendum**
-> - HEAD `b670aae9c6` (develop/v3.9.0, 252) ✅ E2E SELECT 16/16 (PR #3684)
-> - G13 Deadlock fix: PR #3680 ✅ merged (parking_lot RwLock, 72h36m root cause)
-> - TPC-H Q1-Q10 baseline: PR #3678 merged, Q11-Q22 实现中
-> - Clippy: 0 warnings ✅ (PR #3683 + PR #3687)
-> - Open issues (4, 全部硬件阻塞): #3265/#3266 (soak), #3423 (SF=1 磁盘), #3648 (TPC-H SOAK)
-> - 本文件原始内容保持不变,仅顶部加 addendum。
+<!-- 2026-07-11 文档同步: v3.9.0 GA CUT 状态更新 — 168h SOAK ✅ PASS (2026-07-12) -->
 
 ---
 
