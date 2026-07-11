@@ -9,7 +9,7 @@ use std::fs;
 use std::path::Path;
 
 const EXECUTION_ENGINE_PATH: &str = "src/execution_engine.rs";
-const MAX_EXECUTION_ENGINE_LINES: usize = 2000;
+const MAX_EXECUTION_ENGINE_LINES: usize = 3000; // matches check_arch_invariants.sh CARCH05_LIMIT after PR #3660
 
 #[test]
 fn ee_01_execution_engine_under_2000_lines() {

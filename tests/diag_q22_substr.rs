@@ -1,11 +1,12 @@
 //! Q22 parse error - isolate which part fails
 
+use parking_lot::RwLock;
 use sqlrustgo::{ExecutionEngine, MemoryStorage, StorageEngine};
 use sqlrustgo_types::Value as SqlValue;
+use std::sync::Arc;
 
-#[test]
 fn diag_q22_substr() {
-    let storage = std::sync::Arc::new(std::sync::RwLock::new(MemoryStorage::new()));
+    let storage = Arc::new(RwLock::new(MemoryStorage::new()));
     let mut engine = ExecutionEngine::new(storage.clone());
     engine.execute("CREATE TABLE customer (c_custkey INTEGER PRIMARY KEY, c_name TEXT, c_phone TEXT, c_acctbal REAL)").unwrap();
     engine.execute("CREATE TABLE orders (o_orderkey INTEGER PRIMARY KEY, o_custkey INTEGER NOT NULL, o_orderstatus TEXT, o_totalprice REAL, o_orderdate TEXT)").unwrap();

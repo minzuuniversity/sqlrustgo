@@ -3,13 +3,15 @@
 //! This module provides trigger execution functionality for SQL triggers.
 //! Triggers are executed before or after INSERT, UPDATE, or DELETE operations.
 
+use log::error as log_error;
+use parking_lot::RwLock;
 use sqlrustgo_parser::parse;
 use sqlrustgo_storage::{
     Record, StorageEngine, TriggerEvent as StorageTriggerEvent, TriggerInfo,
     TriggerTiming as StorageTriggerTiming,
 };
 use sqlrustgo_types::{SqlError, SqlResult, Value};
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 
 /// Trigger timing: BEFORE or AFTER
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -101,10 +103,16 @@ pub struct TriggerExecutor {
 impl TriggerExecutor {
     pub fn new(storage: Arc<RwLock<dyn StorageEngine>>) -> Self {
         if !cfg!(test) {
-            assert!(
-                storage.read().unwrap().is_wal_enabled(),
-                "Storage MUST be WalStorage in production - WAL is mandatory"
-            );
+            // BinaryTableStorage has no WAL. Triggers on a non-WAL storage are
+            // a no-op (no DML recovery is possible) — warn and proceed instead
+            // of panicking the server. WalStorage continues to enforce the
+            // WAL contract at write time.
+            if !storage.read().is_wal_enabled() {
+                log_error!(
+                    "TriggerExecutor::new: storage has no WAL enabled — \
+                     triggers will be silently skipped (binary mode)"
+                );
+            }
         }
         Self { storage }
     }
@@ -119,7 +127,7 @@ impl TriggerExecutor {
     where
         F: FnOnce(&mut dyn StorageEngine) -> SqlResult<R>,
     {
-        let mut storage = self.storage.write().unwrap();
+        let mut storage = self.storage.write();
         storage.begin_transaction()?;
         let result = op(&mut *storage);
         match &result {
@@ -133,7 +141,7 @@ impl TriggerExecutor {
 
     /// Get all triggers for a specific table
     pub fn get_table_triggers(&self, table: &str) -> Vec<TriggerInfo> {
-        self.storage.read().unwrap().list_triggers(table)
+        self.storage.read().list_triggers(table)
     }
 
     /// Get triggers filtered by timing and event
@@ -304,7 +312,7 @@ impl TriggerExecutor {
         let mut result = sql.replace(". ", ".");
 
         if new_row.is_some() || old_row.is_some() {
-            if let Ok(info) = self.storage.read().unwrap().get_table_info(table_name) {
+            if let Ok(info) = self.storage.read().get_table_info(table_name) {
                 self.do_expand_row_variables(&mut result, &info, old_row, new_row);
             }
         }
@@ -428,7 +436,7 @@ impl TriggerExecutor {
         if let sqlrustgo_parser::Statement::Insert(insert) = statement {
             let table_name = insert.table.clone();
             let table_info = {
-                let storage = self.storage.read().unwrap();
+                let storage = self.storage.read();
                 storage.get_table_info(&table_name)?
             };
             let num_cols = table_info.columns.len();
@@ -473,8 +481,13 @@ impl TriggerExecutor {
             .map_err(|e| SqlError::ExecutionError(format!("Parse error: {}", e)))?;
 
         if let sqlrustgo_parser::Statement::Update(update) = statement {
-            let storage = self.storage.read().unwrap();
-            let table_name = &update.table;
+            if update.tables.len() != 1 {
+                return Err(SqlError::ExecutionError(
+                    "Trigger UPDATE only supports single-table form".to_string(),
+                ));
+            }
+            let storage = self.storage.read();
+            let table_name = &update.tables[0].name;
             let table_info = storage.get_table_info(table_name)?;
             let target_col_names: Vec<String> =
                 table_info.columns.iter().map(|c| c.name.clone()).collect();
@@ -553,13 +566,18 @@ impl TriggerExecutor {
         trigger_table: &str,
         old_row: Option<&Record>,
     ) -> SqlResult<()> {
-        let table_info = self.storage.read().unwrap().get_table_info(trigger_table)?;
+        let table_info = self.storage.read().get_table_info(trigger_table)?;
         let expanded = self.expand_delete_values_with_info(sql, &table_info, old_row);
         let statement = parse(&expanded)
             .map_err(|e| SqlError::ExecutionError(format!("Parse error: {}", e)))?;
 
         if let sqlrustgo_parser::Statement::Delete(delete) = statement {
-            self.execute_dml_in_tx(|storage| storage.delete(&delete.table, &[]))?;
+            if delete.tables.len() != 1 {
+                return Err(SqlError::ExecutionError(
+                    "Trigger DELETE only supports single-table form".to_string(),
+                ));
+            }
+            self.execute_dml_in_tx(|storage| storage.delete(&delete.tables[0].name, &[]))?;
         }
         Ok(())
     }
@@ -578,7 +596,7 @@ impl TriggerExecutor {
 
         if let sqlrustgo_parser::Statement::Select(select) = statement {
             #[allow(clippy::match_result_ok)]
-            let storage = self.storage.read().unwrap();
+            let storage = self.storage.read();
             let table_info = storage.get_table_info(&select.table).ok();
 
             for col in &select.columns {
@@ -608,7 +626,7 @@ impl TriggerExecutor {
     /// Execute SET within a trigger (modify NEW row)
     fn execute_trigger_set(&self, sql: &str, table_name: &str, new_row: &Record) -> SqlResult<()> {
         if let Some(assignments) = self.parse_simple_set_assignments(sql) {
-            let table_info = self.storage.read().unwrap().get_table_info(table_name)?;
+            let table_info = self.storage.read().get_table_info(table_name)?;
             let mut updated = new_row.to_vec();
 
             for (col_name, value) in assignments {
@@ -2071,5 +2089,23 @@ mod tests {
 
         let statements = executor.split_body_statements("SET NEW.col1 = 1;;; SET NEW.col2 = 2");
         assert_eq!(statements.len(), 2);
+    }
+
+    /// Regression: TriggerExecutor::new must NOT panic on non-WAL storage
+    /// (e.g. BinaryTableStorage). The previous assert!() caused the
+    /// server to enter a busy-loop panic storm under --storage binary
+    /// (see reports/SERVER_DEADLOCK_FIX_PLAN_2026-06-28.md).
+    #[test]
+    fn test_trigger_executor_with_non_wal_storage() {
+        use sqlrustgo_storage::BinaryTableStorage;
+        let dir = tempfile::tempdir().expect("tempdir");
+        let bin = BinaryTableStorage::new(dir.path().to_path_buf()).expect("new bin storage");
+        assert!(
+            !bin.is_wal_enabled(),
+            "sanity: BinaryTableStorage is non-WAL"
+        );
+        let executor = TriggerExecutor::new(Arc::new(RwLock::new(bin)));
+        // Triggers list is empty, no panic, no DML attempted.
+        assert!(executor.get_table_triggers("any_table").is_empty());
     }
 }

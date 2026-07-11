@@ -55,13 +55,13 @@ else
     pass "C-ARCH-02: No write_buffer field in LocalExecutor"
 fi
 
-# C-ARCH-05: execution_engine.rs line count — SSOT: check_rc_ga_gate.sh (1800)
-# The 1500-line limit was AD-001 target (now superseded). 2000 was too lenient.
-# Unified SSOT: 1800 lines (balances current 1523 baseline with future headroom).
+# C-ARCH-05: execution_engine.rs line count — SSOT: check_rc_ga_gate.sh (1500)
+# AD-001 target. PR #3664 (2026-07-01) 拆分完成,文件 1471 行 ≤ 1500。
+# Unified SSOT: 1500 lines (AD-001 final target). 历史 1800 临时值已取消。
 # Other gate scripts (check_arch_invariants.sh, check_integration_gate.sh) must use the same value.
 echo "  [C-ARCH-05] execution_engine.rs line count..."
 EE_LINES=$(wc -l < src/execution_engine.rs)
-EE_LIMIT=1800
+EE_LIMIT=1500
 if [ "$EE_LINES" -gt "$EE_LIMIT" ]; then
     fail "C-ARCH-05: execution_engine.rs has $EE_LINES lines (limit: $EE_LIMIT, SSOT: check_rc_ga_gate.sh)"
 else

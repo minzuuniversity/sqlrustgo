@@ -20,9 +20,7 @@ mod common;
 use common::MySqlTestClient;
 use sqlrustgo::{ExecutionEngine, MemoryExecutionEngine};
 use sqlrustgo_mysql_server::testing::{start_ephemeral, EphemeralConfig};
-use sqlrustgo_storage::{
-    FileBackedWalManager, FileStorage, MemoryStorage, MemoryWalManager, StorageEngine, WalStorage,
-};
+use sqlrustgo_storage::{MemoryStorage, MemoryWalManager, WalStorage};
 use std::sync::{Arc, RwLock};
 use tempfile::TempDir;
 
@@ -47,6 +45,8 @@ fn create_wal_file_engine(dir: &std::path::Path) -> MySqlTestClient {
         bootstrap_sql: Vec::new(),
         bulk_insert_buffer_size: 1_048_576,
         server_threads: 16,
+        storage: None,
+        ..Default::default()
     };
     let handle = start_ephemeral(cfg).expect("start_ephemeral");
     MySqlTestClient::connect_handle(handle).expect("MySqlTestClient::connect_handle")
