@@ -25,6 +25,7 @@ pub mod trigger;
 pub mod trigger_eval;
 pub mod update_compiler;
 pub mod vec_simd;
+pub mod parallel_group_by;
 pub mod window_executor;
 
 pub use execution::trace::ExecutionTrace;
