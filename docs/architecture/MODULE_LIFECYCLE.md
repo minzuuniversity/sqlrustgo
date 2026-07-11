@@ -84,7 +84,7 @@
   - 要么标记为 deprecated
   - 要么删除
 示例:
-  - parallel_executor (无主路径调用)
+  - parallel_executor (部分集成: engine_select.rs filter_partitions_parallel)
   - local_executor_dml (PLACEHOLDER)
 ```
 
@@ -219,16 +219,14 @@
 |-------|------|------|-----------|
 | mysql-server | 合并到 network | 开始收敛 | #2591, #2605 |
 | expr | 合并表达式系统 | 开始收敛 | #2590, #2604 |
+ | parallel_executor | 合并到执行引擎 (Phase 3) | 部分集成: engine_select.rs 主路径调用 #3703 | #3703, #2603 |
 
 ### Isolated (孤岛)
 
-| Crate | 问题 | 建议 | 相关 Issue |
-|-------|------|------|-----------|
-| parallel_executor | 63KB，无主路径调用 | 删除/合并 | #2603 |
-| parallel_vector_executor | 无主路径调用 | 删除 | #2603 |
-| local_executor_dml | PLACEHOLDER | 必须实现 | #2602 |
-| expression | 与 expr 重叠 | 删除 | #2604 |
-| qmd-bridge | 不确定 | 评估 | - |
+ | parallel_vector_executor | 无主路径调用 | 删除 | #2603 |
+ | local_executor_dml | PLACEHOLDER | 必须实现 | #2602 |
+ | expression | 与 expr 重叠 | 删除 | #2604 |
+ | qmd-bridge | 不确定 | 评估 | - |
 
 ### Deprecated (待删除)
 
