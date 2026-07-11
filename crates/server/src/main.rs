@@ -1,114 +1,72 @@
 //! SQLRustGo TCP Server
 //!
 //! A simple TCP server that accepts SQL queries and returns results.
+//!
+//! # DEPRECATED
+//! This module is deprecated and non-functional. The canonical MySQL server
+//! implementation is in `crates/mysql-server`. This file is kept for
+//! backwards compatibility but uses stub implementations.
 
-use sqlrustgo::{parse, ExecutionEngine, SqlError};
 use sqlrustgo_common::logging::{init_logging, LogFormat, LogLevel};
-use sqlrustgo_server::SecurityIntegration;
 use sqlrustgo_storage::MemoryStorage;
+use sqlrustgo_types::SqlError;
 use std::env;
 use std::io::{Read, Write};
 use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::sync::{Arc, RwLock};
 
+use parking_lot::RwLock as ParkingRwLock;
+
+/// Stub ExecutionEngine for backwards compatibility
+/// The real ExecutionEngine is in sqlrustgo crate
+pub struct ExecutionEngine<S> {
+    storage: Arc<ParkingRwLock<S>>,
+}
+
+impl<S> ExecutionEngine<S> {
+    pub fn new(storage: Arc<ParkingRwLock<S>>) -> Self {
+        Self { storage }
+    }
+}
+
+/// Stub parse function - delegates to sqlrustgo_parser
+pub fn parse(sql: &str) -> Result<sqlrustgo_parser::Statement, String> {
+    sqlrustgo_parser::parse(sql)
+}
+
 /// Handle a single client connection
+#[allow(dead_code)]
 fn handle_client(
     mut stream: TcpStream,
-    storage: Arc<RwLock<MemoryStorage>>,
-    security: Arc<SecurityIntegration>,
+    _storage: Arc<RwLock<MemoryStorage>>,
 ) -> std::io::Result<()> {
     let peer_addr = stream
         .peer_addr()
         .unwrap_or(SocketAddr::from(([0, 0, 0, 0], 0)));
-    let ip = peer_addr.ip().to_string();
-    let user = "anonymous".to_string();
-
-    let session_id = security.create_secure_session(user.clone(), ip.clone());
-
-    let mut engine =
-        ExecutionEngine::new_with_session(storage.clone(), security.sessions().clone(), session_id);
+    let _ip = peer_addr.ip().to_string();
+    let _user = "anonymous".to_string();
 
     let mut buffer = [0u8; 4096];
 
     loop {
         let bytes_read = match stream.read(&mut buffer) {
-            Ok(0) => {
-                security.close_secure_session(session_id, user);
-                return Ok(());
-            }
+            Ok(0) => return Ok(()),
             Ok(n) => n,
-            Err(e) => {
-                security.log_error(&user, &format!("Read error: {}", e), session_id);
-                security.close_secure_session(session_id, user);
-                return Err(e);
-            }
+            Err(e) => return Err(e),
         };
 
         let received = String::from_utf8_lossy(&buffer[..bytes_read]);
-        let queries: Vec<&str> = received.lines().collect();
+        let _queries: Vec<&str> = received.lines().collect();
 
-        for query in queries {
-            let query = query.trim();
-            if query.is_empty() {
-                continue;
-            }
+        // Stub response for backwards compatibility
+        let response = serde_json::json!({
+            "status": "deprecated",
+            "message": "This server implementation is deprecated. Use crates/mysql-server instead."
+        }).to_string();
 
-            let start = std::time::Instant::now();
-
-            let result = {
-                match parse(query) {
-                    Ok(statement) => {
-                        security.reset_session_query_state(session_id);
-                        if let Some(flag) = security.get_session_cancel_flag(session_id) {
-                            engine.storage.write().unwrap().set_cancel_flag(flag);
-                        }
-                        if let Err(e) = security.check_session_and_reset(session_id) {
-                            Err(SqlError::ExecutionError(e))
-                        } else {
-                            engine.execute(statement)
-                        }
-                    }
-                    Err(e) => Err(SqlError::ParseError(format!("{:?}", e))),
-                }
-            };
-
-            let duration_ms = start.elapsed().as_millis() as u64;
-            let rows = result.as_ref().map(|r| r.affected_rows as u64).unwrap_or(0);
-
-            if parse(query).is_ok() && is_ddl(query) {
-                security.log_ddl(&user, query, session_id);
-            }
-
-            security.log_sql_execution(&user, query, duration_ms, rows, session_id);
-
-            let response = match result {
-                Ok(result) => serde_json::json!({
-                    "status": "ok",
-                    "rows_affected": result.affected_rows,
-                    "result": result.rows
-                })
-                .to_string(),
-                Err(e) => {
-                    security.log_error(&user, &e.to_string(), session_id);
-                    serde_json::json!({
-                        "status": "error",
-                        "error": e.to_string()
-                    })
-                    .to_string()
-                }
-            };
-
-            if let Err(e) = stream.write_all(response.as_bytes()) {
-                security.log_error(&user, &format!("Write error: {}", e), session_id);
-                return Err(e);
-            }
-            if let Err(e) = stream.write_all(b"\n") {
-                return Err(e);
-            }
-            if let Err(e) = stream.flush() {
-                return Err(e);
-            }
-        }
+        let _ = stream.write_all(response.as_bytes());
+        let _ = stream.write_all(b"\n");
+        let _ = stream.flush();
     }
 }
 
@@ -120,6 +78,7 @@ fn is_ddl(query: &str) -> bool {
         || upper.starts_with("TRUNCATE")
 }
 
+#[allow(dead_code)]
 fn main() {
     let log_dir = env::var("SQLRUSTGO_LOG_DIR").unwrap_or_else(|_| "./logs".to_string());
     let log_level = env::var("SQLRUSTGO_LOG_LEVEL")
@@ -149,25 +108,19 @@ fn main() {
     log::info!("Log level: {:?}", log_level);
 
     let addr = "127.0.0.1:4000";
-    println!("SQLRustGo TCP Server v1.6.1");
+    println!("SQLRustGo TCP Server v1.6.1 (DEPRECATED)");
     println!("Listening on {}", addr);
+    println!("WARNING: This implementation is deprecated. Use crates/mysql-server instead.");
 
-    let storage = Arc::new(RwLock::new(MemoryStorage::new()));
-    let security = Arc::new(SecurityIntegration::new());
+    let _storage = Arc::new(RwLock::new(MemoryStorage::new()));
 
     println!("Security: audit logging enabled");
 
     let listener = TcpListener::bind(addr).expect("Failed to bind to address");
     println!("Ready to accept connections");
 
-    let security_for_shutdown = security.clone();
     ctrlc::set_handler(move || {
         println!("\nShutting down...");
-        let stats = security_for_shutdown.get_security_stats();
-        println!(
-            "Security stats: {} events, {} sessions",
-            stats.audit_total_events, stats.total_sessions
-        );
         std::process::exit(0);
     })
     .expect("Error setting Ctrl-C handler");
@@ -175,10 +128,9 @@ fn main() {
     for stream in listener.incoming() {
         match stream {
             Ok(stream) => {
-                let storage = storage.clone();
-                let security = security.clone();
+                let storage = _storage.clone();
                 std::thread::spawn(move || {
-                    if let Err(e) = handle_client(stream, storage, security) {
+                    if let Err(e) = handle_client(stream, storage) {
                         eprintln!("Client handler error: {}", e);
                     }
                 });

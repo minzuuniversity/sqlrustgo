@@ -882,4 +882,466 @@ mod tests {
 
         std::fs::remove_dir_all(tmp).ok();
     }
+
+    use super::*;
+    use sqlrustgo_types::Value;
+
+    fn make_cols(names: &[&str], types: &[&str]) -> Vec<ColumnDefinition> {
+        names
+            .iter()
+            .zip(types.iter())
+            .map(|(n, t)| ColumnDefinition {
+                name: n.to_string(),
+                data_type: t.to_string(),
+                nullable: false,
+                primary_key: false,
+                char_max_length: None,
+            })
+            .collect()
+    }
+
+    fn make_info(name: &str, cols: Vec<ColumnDefinition>) -> TableInfo {
+        TableInfo {
+            name: name.to_string(),
+            columns: cols,
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
+        }
+    }
+
+    #[test]
+    fn test_bin_scan() {
+        let tmp = std::env::temp_dir().join("bin_test_scan");
+        let mut storage = BinaryTableStorage::new(tmp.clone()).unwrap();
+        let cols = make_cols(&["a", "b"], &["INTEGER", "TEXT"]);
+        let info = make_info("t", cols);
+        storage.create_table(&info).unwrap();
+        storage
+            .insert(
+                "t",
+                vec![
+                    vec![Value::Integer(1), Value::Text("x".into())],
+                    vec![Value::Integer(2), Value::Text("y".into())],
+                ],
+            )
+            .unwrap();
+        let scanned = storage.scan("t").unwrap();
+        assert_eq!(scanned.len(), 2);
+        std::fs::remove_dir_all(tmp).ok();
+    }
+
+    #[test]
+    fn test_bin_scan_nonexistent() {
+        let tmp = std::env::temp_dir().join("bin_test_scan_empty");
+        let storage = BinaryTableStorage::new(tmp.clone()).unwrap();
+        assert!(storage.scan("nonexistent").unwrap().is_empty());
+        std::fs::remove_dir_all(tmp).ok();
+    }
+
+    #[test]
+    fn test_bin_insert() {
+        let tmp = std::env::temp_dir().join("bin_test_insert");
+        let mut storage = BinaryTableStorage::new(tmp.clone()).unwrap();
+        let cols = make_cols(&["x"], &["INTEGER"]);
+        let info = make_info("t", cols);
+        storage.create_table(&info).unwrap();
+        storage.insert("t", vec![vec![Value::Integer(10)]]).unwrap();
+        let rows = storage.scan("t").unwrap();
+        assert_eq!(rows, vec![vec![Value::Integer(10)]]);
+        std::fs::remove_dir_all(tmp).ok();
+    }
+
+    #[test]
+    fn test_bin_force_insert() {
+        let tmp = std::env::temp_dir().join("bin_test_fi");
+        let mut storage = BinaryTableStorage::new(tmp.clone()).unwrap();
+        storage.force_insert("t", vec![Value::Integer(99)]).unwrap();
+        let rows = storage.scan("t").unwrap();
+        assert_eq!(rows, vec![vec![Value::Integer(99)]]);
+        std::fs::remove_dir_all(tmp).ok();
+    }
+
+    #[test]
+    fn test_bin_delete() {
+        let tmp = std::env::temp_dir().join("bin_test_delete");
+        let mut storage = BinaryTableStorage::new(tmp.clone()).unwrap();
+        let cols = make_cols(&["x"], &["INTEGER"]);
+        let info = make_info("t", cols);
+        storage.create_table(&info).unwrap();
+        storage
+            .insert(
+                "t",
+                vec![
+                    vec![Value::Integer(1)],
+                    vec![Value::Integer(2)],
+                    vec![Value::Integer(3)],
+                ],
+            )
+            .unwrap();
+        let deleted = storage.delete("t", &[Value::Integer(2)]).unwrap();
+        assert_eq!(deleted, 1);
+        let remaining = storage.scan("t").unwrap();
+        assert_eq!(remaining.len(), 2);
+        std::fs::remove_dir_all(tmp).ok();
+    }
+
+    #[test]
+    fn test_bin_delete_all() {
+        let tmp = std::env::temp_dir().join("bin_test_del_all");
+        let mut storage = BinaryTableStorage::new(tmp.clone()).unwrap();
+        let cols = make_cols(&["x"], &["INTEGER"]);
+        let info = make_info("t", cols);
+        storage.create_table(&info).unwrap();
+        storage
+            .insert("t", vec![vec![Value::Integer(1)], vec![Value::Integer(2)]])
+            .unwrap();
+        storage.delete("t", &[]).unwrap();
+        assert!(storage.scan("t").unwrap().is_empty());
+        std::fs::remove_dir_all(tmp).ok();
+    }
+
+    #[test]
+    fn test_bin_update() {
+        let tmp = std::env::temp_dir().join("bin_test_update");
+        let mut storage = BinaryTableStorage::new(tmp.clone()).unwrap();
+        let cols = make_cols(&["x", "y"], &["INTEGER", "TEXT"]);
+        let info = make_info("t", cols);
+        storage.create_table(&info).unwrap();
+        storage
+            .insert(
+                "t",
+                vec![
+                    vec![Value::Integer(1), Value::Text("a".into())],
+                    vec![Value::Integer(2), Value::Text("b".into())],
+                ],
+            )
+            .unwrap();
+        let updated = storage
+            .update("t", &[Value::Integer(1)], &[(1, Value::Text("z".into()))])
+            .unwrap();
+        assert_eq!(updated, 1);
+        let rows = storage.scan("t").unwrap();
+        assert_eq!(rows[0][1], Value::Text("z".into()));
+        std::fs::remove_dir_all(tmp).ok();
+    }
+
+    #[test]
+    fn test_bin_create_drop_table() {
+        let tmp = std::env::temp_dir().join("bin_test_cd");
+        let mut storage = BinaryTableStorage::new(tmp.clone()).unwrap();
+        let cols = make_cols(&["a", "b"], &["INTEGER", "TEXT"]);
+        let info = make_info("new_table", cols);
+        storage.create_table(&info).unwrap();
+        assert!(storage.has_table("new_table"));
+        let got = storage.get_table_info("new_table").unwrap();
+        assert_eq!(got.columns.len(), 2);
+        storage.drop_table("new_table").unwrap();
+        assert!(!storage.has_table("new_table"));
+        std::fs::remove_dir_all(tmp).ok();
+    }
+
+    #[test]
+    fn test_bin_list_tables() {
+        let tmp = std::env::temp_dir().join("bin_test_lt");
+        let mut storage = BinaryTableStorage::new(tmp.clone()).unwrap();
+        storage
+            .create_table(&make_info("t1", make_cols(&["x"], &["INTEGER"])))
+            .unwrap();
+        storage
+            .create_table(&make_info("t2", make_cols(&["x"], &["INTEGER"])))
+            .unwrap();
+        let tables = storage.list_tables();
+        assert!(tables.contains(&"t1".into()));
+        assert!(tables.contains(&"t2".into()));
+        std::fs::remove_dir_all(tmp).ok();
+    }
+
+    #[test]
+    fn test_bin_add_column() {
+        let tmp = std::env::temp_dir().join("bin_test_ac");
+        let mut storage = BinaryTableStorage::new(tmp.clone()).unwrap();
+        storage
+            .create_table(&make_info("t", make_cols(&["a"], &["INTEGER"])))
+            .unwrap();
+        storage
+            .add_column(
+                "t",
+                ColumnDefinition {
+                    name: "b".to_string(),
+                    data_type: "TEXT".to_string(),
+                    nullable: true,
+                    primary_key: false,
+                    char_max_length: None,
+                },
+            )
+            .unwrap();
+        let info = storage.get_table_info("t").unwrap();
+        assert_eq!(info.columns.len(), 2);
+        std::fs::remove_dir_all(tmp).ok();
+    }
+
+    #[test]
+    fn test_bin_rename_table() {
+        let tmp = std::env::temp_dir().join("bin_test_rt");
+        let mut storage = BinaryTableStorage::new(tmp.clone()).unwrap();
+        storage
+            .create_table(&make_info("old", make_cols(&["x"], &["INTEGER"])))
+            .unwrap();
+        storage.rename_table("old", "new").unwrap();
+        assert!(!storage.has_table("old"));
+        assert!(storage.has_table("new"));
+        std::fs::remove_dir_all(tmp).ok();
+    }
+
+    #[test]
+    fn test_bin_get_table_info_not_found() {
+        let tmp = std::env::temp_dir().join("bin_test_gti");
+        let storage = BinaryTableStorage::new(tmp.clone()).unwrap();
+        assert!(storage.get_table_info("nonexistent").is_err());
+        std::fs::remove_dir_all(tmp).ok();
+    }
+
+    #[test]
+    fn test_bin_persist_table() {
+        let tmp = std::env::temp_dir().join("bin_test_pt");
+        let storage = BinaryTableStorage::new(tmp.clone()).unwrap();
+        let cols = make_cols(&["x"], &["INTEGER"]);
+        let rows = vec![vec![Value::Integer(5)]];
+        let data = TableData {
+            info: make_info("t", cols),
+            rows,
+        };
+        storage.save("t", &data).unwrap();
+        storage.persist_table("t").unwrap();
+        assert!(storage.exists("t"));
+        std::fs::remove_dir_all(tmp).ok();
+    }
+
+    #[test]
+    fn test_bin_flush() {
+        let tmp = std::env::temp_dir().join("bin_test_flush");
+        let mut storage = BinaryTableStorage::new(tmp.clone()).unwrap();
+        storage
+            .create_table(&make_info("t", make_cols(&["x"], &["INTEGER"])))
+            .unwrap();
+        storage.flush().unwrap();
+        std::fs::remove_dir_all(tmp).ok();
+    }
+
+    #[test]
+    fn test_bin_null_value() {
+        let tmp = std::env::temp_dir().join("bin_test_null");
+        let storage = BinaryTableStorage::new(tmp.clone()).unwrap();
+        let cols = make_cols(&["x", "y"], &["INTEGER", "TEXT"]);
+        let rows = vec![vec![Value::Null, Value::Null]];
+        let data = TableData {
+            info: make_info("t", cols),
+            rows,
+        };
+        storage.save("t", &data).unwrap();
+        let loaded = storage.load("t").unwrap();
+        assert!(matches!(loaded.rows[0][0], Value::Null));
+        assert!(matches!(loaded.rows[0][1], Value::Null));
+        std::fs::remove_dir_all(tmp).ok();
+    }
+
+    #[test]
+    fn test_bin_box_storage_engine_new() {
+        let inner = BinaryTableStorage::new(std::env::temp_dir().join("box_inner")).unwrap();
+        let _boxed = BoxStorageEngine::new(inner);
+    }
+
+    #[test]
+    fn test_bin_box_storage_engine_delegate() {
+        let tmp = std::env::temp_dir().join("box_delegate");
+        let inner = BinaryTableStorage::new(tmp.clone()).unwrap();
+        let mut boxed = BoxStorageEngine::new(inner);
+        boxed
+            .create_table(&make_info("t", make_cols(&["x"], &["INTEGER"])))
+            .unwrap();
+        boxed.insert("t", vec![vec![Value::Integer(1)]]).unwrap();
+        assert_eq!(boxed.scan("t").unwrap().len(), 1);
+        std::fs::remove_dir_all(tmp).ok();
+    }
+
+    #[test]
+    fn test_bin_box_storage_engine_delete_if() {
+        let tmp = std::env::temp_dir().join("box_del_if");
+        let inner = BinaryTableStorage::new(tmp.clone()).unwrap();
+        let mut boxed = BoxStorageEngine::new(inner);
+        boxed
+            .create_table(&make_info("t", make_cols(&["x"], &["INTEGER"])))
+            .unwrap();
+        boxed
+            .insert("t", vec![vec![Value::Integer(1)], vec![Value::Integer(2)]])
+            .unwrap();
+        let filter: RowFilter = Box::new(|row: &Record| row[0] == Value::Integer(1));
+        let deleted = boxed.delete_if("t", &filter).unwrap();
+        assert_eq!(deleted, 1);
+        std::fs::remove_dir_all(tmp).ok();
+    }
+
+    #[test]
+    fn test_bin_box_storage_engine_update_if() {
+        let tmp = std::env::temp_dir().join("box_upd_if");
+        let inner = BinaryTableStorage::new(tmp.clone()).unwrap();
+        let mut boxed = BoxStorageEngine::new(inner);
+        boxed
+            .create_table(&make_info(
+                "t",
+                make_cols(&["x", "y"], &["INTEGER", "TEXT"]),
+            ))
+            .unwrap();
+        boxed
+            .insert("t", vec![vec![Value::Integer(1), Value::Text("a".into())]])
+            .unwrap();
+        let filter: RowFilter = Box::new(|row: &Record| row[0] == Value::Integer(1));
+        let mutation = RowMutation::new(vec![(1, Value::Text("b".into()))], 0);
+        boxed.update_if("t", &filter, &mutation).unwrap();
+        let rows = boxed.scan("t").unwrap();
+        assert_eq!(rows[0][1], Value::Text("b".into()));
+        std::fs::remove_dir_all(tmp).ok();
+    }
+
+    #[test]
+    fn test_bin_box_storage_engine_list_indexes() {
+        let inner = BinaryTableStorage::new(std::env::temp_dir().join("box_li")).unwrap();
+        let boxed = BoxStorageEngine::new(inner);
+        assert!(boxed.list_indexes("t").is_empty());
+    }
+
+    #[test]
+    fn test_bin_box_storage_engine_list_triggers() {
+        let inner = BinaryTableStorage::new(std::env::temp_dir().join("box_lt")).unwrap();
+        let boxed = BoxStorageEngine::new(inner);
+        assert!(boxed.list_triggers("t").is_empty());
+    }
+
+    #[test]
+    fn test_bin_box_storage_engine_has_view() {
+        let inner = BinaryTableStorage::new(std::env::temp_dir().join("box_hv")).unwrap();
+        let boxed = BoxStorageEngine::new(inner);
+        assert!(!boxed.has_view("v"));
+    }
+
+    #[test]
+    fn test_bin_box_storage_engine_is_wal_enabled() {
+        let inner = BinaryTableStorage::new(std::env::temp_dir().join("box_wal")).unwrap();
+        let boxed = BoxStorageEngine::new(inner);
+        assert!(!boxed.is_wal_enabled());
+    }
+
+    #[test]
+    fn test_bin_delete_nonexistent() {
+        let tmp = std::env::temp_dir().join("bin_test_del_ne");
+        let mut storage = BinaryTableStorage::new(tmp.clone()).unwrap();
+        assert_eq!(
+            storage.delete("nonexistent", &[Value::Integer(1)]).unwrap(),
+            0
+        );
+        std::fs::remove_dir_all(tmp).ok();
+    }
+
+    #[test]
+    fn test_bin_update_nonexistent() {
+        let tmp = std::env::temp_dir().join("bin_test_upd_ne");
+        let mut storage = BinaryTableStorage::new(tmp.clone()).unwrap();
+        let count = storage
+            .update(
+                "nonexistent",
+                &[Value::Integer(1)],
+                &[(0, Value::Integer(99))],
+            )
+            .unwrap();
+        assert_eq!(count, 0);
+        std::fs::remove_dir_all(tmp).ok();
+    }
+
+    #[test]
+    fn test_bin_update_if_nonexistent() {
+        let tmp = std::env::temp_dir().join("bin_test_upd_if_ne");
+        let mut storage = BinaryTableStorage::new(tmp.clone()).unwrap();
+        let filter: RowFilter = Box::new(|_: &Record| true);
+        let mutation = RowMutation::new(vec![(0, Value::Integer(99))], 0);
+        let updated = storage
+            .update_if("nonexistent", &filter, &mutation)
+            .unwrap();
+        assert_eq!(updated, 0);
+        std::fs::remove_dir_all(tmp).ok();
+    }
+
+    #[test]
+    fn test_bin_delete_if_nonexistent() {
+        let tmp = std::env::temp_dir().join("bin_test_del_if_ne");
+        let mut storage = BinaryTableStorage::new(tmp.clone()).unwrap();
+        let filter: RowFilter = Box::new(|_: &Record| true);
+        let deleted = storage.delete_if("nonexistent", &filter).unwrap();
+        assert_eq!(deleted, 0);
+        std::fs::remove_dir_all(tmp).ok();
+    }
+
+    #[test]
+    fn test_bin_create_index_noop() {
+        let tmp = std::env::temp_dir().join("bin_test_ci");
+        let mut storage = BinaryTableStorage::new(tmp.clone()).unwrap();
+        storage.create_index("t", "c", 0).unwrap();
+        std::fs::remove_dir_all(tmp).ok();
+    }
+
+    #[test]
+    fn test_bin_drop_index_noop() {
+        let tmp = std::env::temp_dir().join("bin_test_di");
+        let mut storage = BinaryTableStorage::new(tmp.clone()).unwrap();
+        storage.drop_index("t", "c").unwrap();
+        std::fs::remove_dir_all(tmp).ok();
+    }
+
+    #[test]
+    fn test_bin_create_trigger_noop() {
+        let tmp = std::env::temp_dir().join("bin_test_ct");
+        let mut storage = BinaryTableStorage::new(tmp.clone()).unwrap();
+        let trigger = TriggerInfo {
+            name: "trig".to_string(),
+            table_name: "t".to_string(),
+            timing: crate::engine::TriggerTiming::Before,
+            event: crate::engine::TriggerEvent::Insert,
+            body: "".to_string(),
+        };
+        storage.create_trigger(trigger).unwrap();
+        std::fs::remove_dir_all(tmp).ok();
+    }
+
+    #[test]
+    fn test_bin_drop_trigger_noop() {
+        let tmp = std::env::temp_dir().join("bin_test_dt");
+        let mut storage = BinaryTableStorage::new(tmp.clone()).unwrap();
+        storage.drop_trigger("trig").unwrap();
+        std::fs::remove_dir_all(tmp).ok();
+    }
+
+    #[test]
+    fn test_bin_get_trigger_none() {
+        let tmp = std::env::temp_dir().join("bin_test_gt");
+        let storage = BinaryTableStorage::new(tmp.clone()).unwrap();
+        assert!(storage.get_trigger("trig").is_none());
+        std::fs::remove_dir_all(tmp).ok();
+    }
+
+    #[test]
+    fn test_bin_create_database_noop() {
+        let tmp = std::env::temp_dir().join("bin_test_cdb");
+        let mut storage = BinaryTableStorage::new(tmp.clone()).unwrap();
+        storage.create_database("db").unwrap();
+        std::fs::remove_dir_all(tmp).ok();
+    }
+
+    #[test]
+    fn test_bin_drop_database_noop() {
+        let tmp = std::env::temp_dir().join("bin_test_ddb");
+        let mut storage = BinaryTableStorage::new(tmp.clone()).unwrap();
+        storage.drop_database("db").unwrap();
+        std::fs::remove_dir_all(tmp).ok();
+    }
 }

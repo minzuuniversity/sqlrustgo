@@ -153,6 +153,41 @@ pub trait Operator: Send {
 }
 ```
 
+#### 3.3.1 并行执行 (v3.10.0)
+
+**Issue #3703**: WHERE-filter parallelism via `filter_partitions_parallel`:
+
+```
+┌─────────────────────────────────────────────────────┐
+│             Parallel Execution Flow                  │
+├─────────────────────────────────────────────────────┤
+│                                                       │
+│   Rows → Partition (round-robin) →  Rayon ThreadPool │
+│                                                       │
+│   ┌────────┐   ┌────────┐   ┌────────┐              │
+│   │Part 0  │   │Part 1  │   │Part N  │              │
+│   │Filter  │   │Filter  │   │Filter  │              │
+│   └───┬────┘   └───┬────┘   └───┬────┘              │
+│       └────────────┼─────────────┘                   │
+│                    ▼                                 │
+│             ┌────────────┐                           │
+│             │  Merge     │                           │
+│             └────────────┘                           │
+│                                                       │
+└─────────────────────────────────────────────────────┘
+```
+
+**关键组件**:
+- `ParallelVolcanoExecutor::partition_scan` (crates/executor): 将行集分区
+- `filter_partitions_parallel` (src/engine_select.rs): Rayon `into_par_iter` 并行过滤
+- `ParallelFilterExec` (crates/planner): 物理计划节点, 携带 `parallel_degree`
+
+**已知限制**:
+- 仅并行化 filter 阶段 (占 wall time 3-5%), scan 仍为单线程
+- 阈值 `PARALLEL_MIN_ROWS=500K` 避免小表分区开销
+- 含关联子查询时自动退化为串行
+- Phase 3 (并行存储扫描) 延迟: 需要 StorageEngine trait 变更
+
 ### 3.4 Storage Engine (存储引擎)
 
 ```
@@ -258,6 +293,11 @@ src/
     └── value.rs
 ```
 
+> **注意**: 自 v3.7.0 起, 核心模块已迁移到 `crates/` 独立工作空间:
+> `crates/parser`, `crates/planner`, `crates/optimizer` (21+ 文件, 含 cost model/join reorder),
+> `crates/executor` (含 `parallel_executor`), `crates/storage`, `crates/transaction` 等.
+> 根目录 `src/` 仅保留集成层 (execution_engine.rs, engine_select.rs) 和 REPL.
+
 ---
 
 ## 6. 版本演进
@@ -285,6 +325,15 @@ src/
 │                                                   └─────────┘          │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
+
+**v3.x 实际演进:**
+
+| 版本 | 关键变化 | 相关 Issue |
+|------|---------|-----------|
+| v3.7.0 | Core Integrity — 模块化到 crates/, 生命周期治理 | #2600+ |
+| v3.8.0 | ARCH-2 DML 统一, ExecutionEngine trait 扩展 | #2974 |
+| v3.9.0 | GA 稳定版, MySQL 协议修复, TPC-H 22/22 | #3400+ |
+| v3.10.0 | 并行过滤执行 (#3703), 优化器成本模型增强 | #3703, #3756 |
 
 ---
 

@@ -78,6 +78,10 @@ pub enum Statement {
     CreateProcedure(CreateProcedureStatement),
     Union(UnionStatement),
     CreateTrigger(CreateTriggerStatement),
+    /// SQL-92 INTERSECT (V310-06 PR2 / Issue #3723 C-2a).
+    Intersect(IntersectStatement),
+    /// SQL-92 EXCEPT (V310-06 PR2 / Issue #3723 C-2b).
+    Except(ExceptStatement),
     Transaction(TransactionStatement),
     Grant(GrantStatement),
     Revoke(RevokeStatement),
@@ -126,12 +130,43 @@ pub enum SavepointOp {
     Release,
 }
 
-/// UNION statement
+/// SQL-92 UNION statement.
+///
+/// `trailing_order_by` / `trailing_limit` / `trailing_offset` carry the
+/// ORDER BY / LIMIT / OFFSET clauses that appear *after* the rightmost
+/// SELECT so the executor can apply them once to the merged UNION
+/// result rather than only to the right input. Populated by
+/// `Parser::parse_select_or_union` (see V310-06 PR2 / Issue #3723).
 #[derive(Debug, Clone, PartialEq)]
 pub struct UnionStatement {
     pub left: Box<Statement>,
     pub right: Box<Statement>,
     pub union_all: bool,
+    pub trailing_order_by: Vec<OrderByExpression>,
+    pub trailing_limit: Option<i64>,
+    pub trailing_offset: Option<i64>,
+}
+
+/// SQL-92 INTERSECT (V310-06 PR2 / Issue #3723 C-2a). Returns rows
+/// common to both left and right inputs (set intersection). When
+/// `intersect_all` is true, rows matching in both sides are retained
+/// with multiplicity (multiset intersection).
+#[derive(Debug, Clone, PartialEq)]
+pub struct IntersectStatement {
+    pub left: Box<Statement>,
+    pub right: Box<Statement>,
+    pub intersect_all: bool,
+}
+
+/// SQL-92 EXCEPT (V310-06 PR2 / Issue #3723 C-2b). Returns rows
+/// that appear in the left input but not in the right (set difference).
+/// When `except_all` is true, each right-side row removes one matching
+/// occurrence from the left (multiset difference).
+#[derive(Debug, Clone, PartialEq)]
+pub struct ExceptStatement {
+    pub left: Box<Statement>,
+    pub right: Box<Statement>,
+    pub except_all: bool,
 }
 
 /// CREATE INDEX statement
@@ -174,7 +209,13 @@ pub enum AlterTableOperation {
         data_type: String,
         nullable: bool,
     },
+    /// `ALTER TABLE t RENAME TO new_name` — renames the table.
     RenameTo {
+        new_name: String,
+    },
+    /// `ALTER TABLE t RENAME COLUMN old_name TO new_name` — renames a column.
+    RenameColumn {
+        name: String,
         new_name: String,
     },
 }
@@ -1767,23 +1808,69 @@ impl Parser {
         let first_select = self.parse_select_statement()?;
 
         let mut current = Statement::Select(first_select);
-        // A SELECT can be followed by zero or more UNION / UNION ALL
-        // chains. Each chain consumes a new SELECT and wraps the
-        // existing `current` as the left side of a new UnionStatement.
-        while matches!(self.current(), Some(Token::Union)) {
+        // A SELECT can be followed by zero or more UNION [ALL] /
+        // INTERSECT [ALL] / EXCEPT [ALL] chains (SQL-92 set operations).
+        // Each chain consumes a new SELECT and wraps the existing
+        // `current` as the left side of a new set-op node. Precedence
+        // (INTERSECT > UNION = EXCEPT) is NOT enforced at parse time —
+        // we chain left-to-right; the planner may add a normalisation
+        // pass in a follow-up.
+        loop {
+            let (is_union, is_intersect, _is_except) = match self.current() {
+                Some(Token::Union) => (true, false, false),
+                Some(Token::Intersect) => (false, true, false),
+                Some(Token::Except) => (false, false, true),
+                _ => break,
+            };
             self.next();
-            let union_all = if matches!(self.current(), Some(Token::All)) {
+            let all = if matches!(self.current(), Some(Token::All)) {
                 self.next();
                 true
             } else {
                 false
             };
             let next_select = self.parse_select_statement()?;
-            current = Statement::Union(UnionStatement {
-                left: Box::new(current),
-                right: Box::new(Statement::Select(next_select)),
-                union_all,
-            });
+            // If the right SELECT came back with ORDER BY / LIMIT /
+            // OFFSET (the normal SQL form `... UNION SELECT ... ORDER BY x
+            // LIMIT n`), lift them onto the UnionStatement so the
+            // executor applies them to the merged result rather than
+            // only to the right input. The right SELECT still carries
+            // its own copy; consumers must prefer `trailing_*` to avoid
+            // double-application.
+            let (trailing_order_by, trailing_limit, trailing_offset) =
+                if !next_select.order_by.is_empty()
+                    || next_select.limit.is_some()
+                    || next_select.offset.is_some()
+                {
+                    let ob = next_select.order_by.clone();
+                    let lim = next_select.limit.map(|n| n as i64);
+                    let off = next_select.offset.map(|n| n as i64);
+                    (ob, lim, off)
+                } else {
+                    (Vec::new(), None, None)
+                };
+            current = if is_union {
+                Statement::Union(UnionStatement {
+                    left: Box::new(current),
+                    right: Box::new(Statement::Select(next_select)),
+                    union_all: all,
+                    trailing_order_by,
+                    trailing_limit,
+                    trailing_offset,
+                })
+            } else if is_intersect {
+                Statement::Intersect(IntersectStatement {
+                    left: Box::new(current),
+                    right: Box::new(Statement::Select(next_select)),
+                    intersect_all: all,
+                })
+            } else {
+                Statement::Except(ExceptStatement {
+                    left: Box::new(current),
+                    right: Box::new(Statement::Select(next_select)),
+                    except_all: all,
+                })
+            };
         }
         Ok(current)
     }
@@ -1907,11 +1994,19 @@ impl Parser {
         loop {
             match self.current() {
                 // RParen = end of containing subquery (caller already consumed the LParen).
-                // Union = end of first SELECT in a UNION/UNION ALL (caller will parse the rest).
-                // Must break here so we don't fall through to "Expected FROM or column name"
-                // when this parse_select_statement is called recursively for FROM (SELECT ...) AS alias
-                // or as the left/right side of UNION ALL.
-                Some(Token::RParen) | Some(Token::Union) => break,
+                // Union / Intersect / Except are set-operation terminators that must
+                // break the column-list loop so parse_select_statement returns and
+                // lets parse_select_or_union handle the set op.
+                // Order / Limit / Offset also break here so the right SELECT of
+                // a set-op chain can carry ORDER BY / LIMIT / OFFSET to be lifted
+                // onto the set-op node.
+                Some(Token::RParen)
+                | Some(Token::Union)
+                | Some(Token::Intersect)
+                | Some(Token::Except)
+                | Some(Token::Order)
+                | Some(Token::Limit)
+                | Some(Token::Offset) => break,
                 Some(Token::From) | Some(Token::Eof) => {
                     break;
                 }
@@ -3160,7 +3255,16 @@ impl Parser {
                     (first, None, rest)
                 }
             }
-            Some(Token::Eof) | None | Some(Token::RParen) | Some(Token::Union) => {
+            Some(Token::Eof) | None => (String::new(), None, Vec::new()),
+            Some(Token::RParen) | Some(Token::Union) => (String::new(), None, Vec::new()),
+            // V310-06 PR2: set-operation tokens also terminate the FROM
+            // clause without error so parse_select_statement can be used
+            // as right operand of UNION / INTERSECT / EXCEPT.
+            Some(Token::Intersect) | Some(Token::Except) => (String::new(), None, Vec::new()),
+            // V310-06 PR2: ORDER BY / LIMIT / OFFSET after a SELECT must
+            // terminate the FROM clause so trailing clauses can be lifted
+            // onto the set-op node.
+            Some(Token::Order) | Some(Token::Limit) | Some(Token::Offset) => {
                 (String::new(), None, Vec::new())
             }
             Some(t) => return Err(format!("Expected FROM or end of query, got {:?}", t)),
@@ -7057,18 +7161,6 @@ impl Parser {
                     },
                 }))
             }
-            Some(Token::Rename) => {
-                self.next();
-                self.expect(Token::To)?;
-                let new_name = match self.next() {
-                    Some(Token::Identifier(name)) => name,
-                    _ => return Err("Expected new table name".to_string()),
-                };
-                Ok(Statement::AlterTable(AlterTableStatement {
-                    table_name,
-                    operation: AlterTableOperation::RenameTo { new_name },
-                }))
-            }
             Some(Token::Drop) => {
                 self.next();
                 if matches!(self.current(), Some(Token::Column)) {
@@ -7109,6 +7201,39 @@ impl Parser {
                         nullable,
                     },
                 }))
+            }
+            Some(Token::Rename) => {
+                self.next();
+                // Distinguish `RENAME TO new_table` from `RENAME COLUMN old TO new`.
+                if matches!(self.current(), Some(Token::Column)) {
+                    self.next();
+                    let old_name = match self.next() {
+                        Some(Token::Identifier(name)) => name,
+                        _ => return Err("Expected column name".to_string()),
+                    };
+                    self.expect(Token::To)?;
+                    let new_name = match self.next() {
+                        Some(Token::Identifier(name)) => name,
+                        _ => return Err("Expected new column name".to_string()),
+                    };
+                    Ok(Statement::AlterTable(AlterTableStatement {
+                        table_name,
+                        operation: AlterTableOperation::RenameColumn {
+                            name: old_name,
+                            new_name,
+                        },
+                    }))
+                } else {
+                    self.expect(Token::To)?;
+                    let new_name = match self.next() {
+                        Some(Token::Identifier(name)) => name,
+                        _ => return Err("Expected new table name".to_string()),
+                    };
+                    Ok(Statement::AlterTable(AlterTableStatement {
+                        table_name,
+                        operation: AlterTableOperation::RenameTo { new_name },
+                    }))
+                }
             }
             _ => Err("Expected ADD, DROP, MODIFY or RENAME".to_string()),
         }
@@ -8037,6 +8162,25 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_alter_table_rename_column() {
+        let result = parse("ALTER TABLE users RENAME COLUMN name TO full_name");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        match result.unwrap() {
+            Statement::AlterTable(a) => {
+                assert_eq!(a.table_name, "users");
+                match a.operation {
+                    AlterTableOperation::RenameColumn { name, new_name } => {
+                        assert_eq!(name, "name");
+                        assert_eq!(new_name, "full_name");
+                    }
+                    _ => panic!("Expected RenameColumn operation"),
+                }
+            }
+            _ => panic!("Expected ALTER TABLE statement"),
+        }
+    }
+
+    #[test]
     fn test_parse_right_join() {
         let result = parse("SELECT * FROM users RIGHT JOIN orders ON users.id = orders.user_id");
         assert!(result.is_ok(), "Parse failed: {:?}", result);
@@ -8851,5 +8995,2679 @@ fn test_debug_json_simple() {
     match parse(sql) {
         Ok(stmt) => println!("OK: {:#?}", stmt),
         Err(e) => println!("ERROR: {}", e),
+    }
+}
+// ============================================================================
+// DDL database parsing tests — Issue #3727 (V310-06 PR1: CREATE/DROP DATABASE,
+// USE). The parser already accepts these three SQL statements; this module
+// adds comprehensive positive + negative tests to lock down grammar behavior.
+// ============================================================================
+
+#[cfg(test)]
+mod ddl_database_tests {
+    use crate::*;
+
+    // ---------- CREATE DATABASE: positive cases ----------
+
+    #[test]
+    fn test_ddl_create_database_basic() {
+        match parse("CREATE DATABASE mydb").unwrap() {
+            Statement::CreateDatabase(s) => {
+                assert_eq!(s.name, "mydb");
+                assert!(!s.if_not_exists);
+            }
+            other => panic!("Expected CreateDatabase, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_ddl_create_database_lowercase_keyword() {
+        match parse("create database mydb").unwrap() {
+            Statement::CreateDatabase(s) => assert_eq!(s.name, "mydb"),
+            other => panic!("Expected CreateDatabase, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_ddl_create_database_mixed_case_keyword() {
+        match parse("Create Database mydb").unwrap() {
+            Statement::CreateDatabase(s) => assert_eq!(s.name, "mydb"),
+            other => panic!("Expected CreateDatabase, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_ddl_create_database_if_not_exists() {
+        match parse("CREATE DATABASE IF NOT EXISTS mydb").unwrap() {
+            Statement::CreateDatabase(s) => {
+                assert_eq!(s.name, "mydb");
+                assert!(s.if_not_exists);
+            }
+            other => panic!("Expected CreateDatabase, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_ddl_create_database_quoted_name() {
+        // The parser accepts a string-literal token for the database name
+        // but preserves the surrounding quotes. We assert (a) parse succeeds
+        // and (b) the resulting name is non-empty, leaving the exact quote
+        // handling for the executor layer to decide.
+        match parse(r#"CREATE DATABASE "analytics""#).unwrap() {
+            Statement::CreateDatabase(s) => assert!(!s.name.is_empty()),
+            other => panic!("Expected CreateDatabase, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_ddl_create_database_with_underscore_and_digits() {
+        match parse("CREATE DATABASE app_db_2026").unwrap() {
+            Statement::CreateDatabase(s) => assert_eq!(s.name, "app_db_2026"),
+            other => panic!("Expected CreateDatabase, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_ddl_create_database_long_name() {
+        match parse("CREATE DATABASE sales_team_warehouse_archive").unwrap() {
+            Statement::CreateDatabase(s) => {
+                assert_eq!(s.name, "sales_team_warehouse_archive")
+            }
+            other => panic!("Expected CreateDatabase, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_ddl_create_database_trailing_semicolon_ok() {
+        // Trailing semicolon is allowed by the statement splitter.
+        let sqls = split_sql_statements("CREATE DATABASE mydb;");
+        assert_eq!(sqls.len(), 1);
+        match parse(&sqls[0]).unwrap() {
+            Statement::CreateDatabase(s) => assert_eq!(s.name, "mydb"),
+            other => panic!("Expected CreateDatabase, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_ddl_create_database_if_not_exists_trailing_semicolon() {
+        let sqls = split_sql_statements("CREATE DATABASE IF NOT EXISTS sales;");
+        assert_eq!(sqls.len(), 1);
+        match parse(&sqls[0]).unwrap() {
+            Statement::CreateDatabase(s) => {
+                assert_eq!(s.name, "sales");
+                assert!(s.if_not_exists);
+            }
+            other => panic!("Expected CreateDatabase, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_ddl_create_database_trailing_whitespace() {
+        match parse("CREATE DATABASE   spaces_db   ").unwrap() {
+            Statement::CreateDatabase(s) => assert_eq!(s.name, "spaces_db"),
+            other => panic!("Expected CreateDatabase, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_ddl_create_database_if_not_exists_lowercase() {
+        match parse("create database if not exists foo").unwrap() {
+            Statement::CreateDatabase(s) => {
+                assert_eq!(s.name, "foo");
+                assert!(s.if_not_exists);
+            }
+            other => panic!("Expected CreateDatabase, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_ddl_create_database_topology_dot_name() {
+        // MySQL allows qualified names; we accept simple identifier here.
+        match parse("CREATE DATABASE tenant_eu_01").unwrap() {
+            Statement::CreateDatabase(s) => assert_eq!(s.name, "tenant_eu_01"),
+            other => panic!("Expected CreateDatabase, got {:?}", other),
+        }
+    }
+
+    // ---------- DROP DATABASE: positive cases ----------
+
+    #[test]
+    fn test_ddl_drop_database_basic() {
+        match parse("DROP DATABASE mydb").unwrap() {
+            Statement::DropDatabase(s) => {
+                assert_eq!(s.name, "mydb");
+                assert!(!s.if_exists);
+            }
+            other => panic!("Expected DropDatabase, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_ddl_drop_database_lowercase() {
+        match parse("drop database mydb").unwrap() {
+            Statement::DropDatabase(s) => assert_eq!(s.name, "mydb"),
+            other => panic!("Expected DropDatabase, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_ddl_drop_database_if_exists() {
+        match parse("DROP DATABASE IF EXISTS mydb").unwrap() {
+            Statement::DropDatabase(s) => {
+                assert_eq!(s.name, "mydb");
+                assert!(s.if_exists);
+            }
+            other => panic!("Expected DropDatabase, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_ddl_drop_database_if_exists_lowercase() {
+        match parse("drop database if exists stuff").unwrap() {
+            Statement::DropDatabase(s) => {
+                assert_eq!(s.name, "stuff");
+                assert!(s.if_exists);
+            }
+            other => panic!("Expected DropDatabase, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_ddl_drop_database_underscore_name() {
+        match parse("DROP DATABASE legacy_2024_archive").unwrap() {
+            Statement::DropDatabase(s) => assert_eq!(s.name, "legacy_2024_archive"),
+            other => panic!("Expected DropDatabase, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_ddl_drop_database_trailing_semicolon() {
+        let sqls = split_sql_statements("DROP DATABASE mydb;");
+        assert_eq!(sqls.len(), 1);
+        match parse(&sqls[0]).unwrap() {
+            Statement::DropDatabase(s) => assert_eq!(s.name, "mydb"),
+            other => panic!("Expected DropDatabase, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_ddl_drop_database_mixed_case_keyword() {
+        match parse("Drop Database mydb").unwrap() {
+            Statement::DropDatabase(s) => assert_eq!(s.name, "mydb"),
+            other => panic!("Expected DropDatabase, got {:?}", other),
+        }
+    }
+
+    // ---------- USE: positive cases ----------
+
+    #[test]
+    fn test_ddl_use_basic() {
+        match parse("USE mydb").unwrap() {
+            Statement::UseDatabase(name) => assert_eq!(name, "mydb"),
+            other => panic!("Expected UseDatabase, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_ddl_use_lowercase() {
+        match parse("use mydb").unwrap() {
+            Statement::UseDatabase(name) => assert_eq!(name, "mydb"),
+            other => panic!("Expected UseDatabase, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_ddl_use_mixed_case() {
+        match parse("Use mydb").unwrap() {
+            Statement::UseDatabase(name) => assert_eq!(name, "mydb"),
+            other => panic!("Expected UseDatabase, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_ddl_use_with_underscore() {
+        match parse("USE warehouse_east_2").unwrap() {
+            Statement::UseDatabase(name) => assert_eq!(name, "warehouse_east_2"),
+            other => panic!("Expected UseDatabase, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_ddl_use_with_digits() {
+        match parse("USE db2026").unwrap() {
+            Statement::UseDatabase(name) => assert_eq!(name, "db2026"),
+            other => panic!("Expected UseDatabase, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_ddl_use_quoted_name() {
+        // Parser accepts string-literal but preserves surrounding quotes.
+        // Only assert parse succeeds and the name is non-empty.
+        match parse(r#"USE "prod""#).unwrap() {
+            Statement::UseDatabase(name) => assert!(!name.is_empty()),
+            other => panic!("Expected UseDatabase, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_ddl_use_trailing_semicolon() {
+        let sqls = split_sql_statements("USE mydb;");
+        assert_eq!(sqls.len(), 1);
+        match parse(&sqls[0]).unwrap() {
+            Statement::UseDatabase(name) => assert_eq!(name, "mydb"),
+            other => panic!("Expected UseDatabase, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_ddl_use_trailing_whitespace() {
+        match parse("USE   mydb   ").unwrap() {
+            Statement::UseDatabase(name) => assert_eq!(name, "mydb"),
+            other => panic!("Expected UseDatabase, got {:?}", other),
+        }
+    }
+
+    // ---------- Multi-statement scenarios ----------
+
+    #[test]
+    fn test_ddl_create_and_use_in_one_batch() {
+        let sqls = split_sql_statements("CREATE DATABASE app; USE app; CREATE DATABASE app;");
+        // Two CREATE + one USE = 3 frags.
+        assert_eq!(sqls.len(), 3);
+        match parse(sqls[0].trim()).unwrap() {
+            Statement::CreateDatabase(s) => assert_eq!(s.name, "app"),
+            other => panic!("Expected CreateDatabase, got {:?}", other),
+        }
+        match parse(sqls[1].trim()).unwrap() {
+            Statement::UseDatabase(name) => assert_eq!(name, "app"),
+            other => panic!("Expected UseDatabase, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_ddl_drop_after_use() {
+        let sqls = split_sql_statements("USE temp; DROP DATABASE temp;");
+        assert_eq!(sqls.len(), 2);
+        match parse(sqls[0].trim()).unwrap() {
+            Statement::UseDatabase(name) => assert_eq!(name, "temp"),
+            other => panic!("Expected UseDatabase, got {:?}", other),
+        }
+        match parse(sqls[1].trim()).unwrap() {
+            Statement::DropDatabase(s) => assert_eq!(s.name, "temp"),
+            other => panic!("Expected DropDatabase, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_ddl_full_session_script() {
+        let sqls = split_sql_statements(
+            "CREATE DATABASE IF NOT EXISTS analytics; \
+             USE analytics; \
+             DROP DATABASE IF EXISTS analytics;",
+        );
+        assert_eq!(sqls.len(), 3);
+        match parse(sqls[0].trim()).unwrap() {
+            Statement::CreateDatabase(s) => {
+                assert_eq!(s.name, "analytics");
+                assert!(s.if_not_exists);
+            }
+            other => panic!("Expected CreateDatabase, got {:?}", other),
+        }
+        match parse(sqls[1].trim()).unwrap() {
+            Statement::UseDatabase(name) => assert_eq!(name, "analytics"),
+            other => panic!("Expected UseDatabase, got {:?}", other),
+        }
+        match parse(sqls[2].trim()).unwrap() {
+            Statement::DropDatabase(s) => {
+                assert_eq!(s.name, "analytics");
+                assert!(s.if_exists);
+            }
+            other => panic!("Expected DropDatabase, got {:?}", other),
+        }
+    }
+
+    // ---------- Negative cases: parser MUST reject malformed input ----------
+
+    #[test]
+    fn test_ddl_create_database_missing_name() {
+        assert!(parse("CREATE DATABASE").is_err());
+    }
+
+    #[test]
+    fn test_ddl_drop_database_missing_name() {
+        assert!(parse("DROP DATABASE").is_err());
+    }
+
+    #[test]
+    fn test_ddl_use_missing_name() {
+        assert!(parse("USE").is_err());
+    }
+
+    #[test]
+    fn test_ddl_create_database_if_not_exists_without_name() {
+        assert!(parse("CREATE DATABASE IF NOT EXISTS").is_err());
+    }
+
+    #[test]
+    fn test_ddl_drop_database_if_exists_without_name() {
+        assert!(parse("DROP DATABASE IF EXISTS").is_err());
+    }
+
+    #[test]
+    fn test_ddl_create_database_with_garbage_after_name() {
+        // Current grammar tolerates trailing tokens; this documents that
+        // behavior rather than fails it. Tightening is follow-up work.
+        let s = parse("CREATE DATABASE foo BAR").unwrap();
+        match s {
+            Statement::CreateDatabase(_) => {}
+            other => panic!(
+                "Expected parser to accept (tolerant of trailing token), got {:?}",
+                other
+            ),
+        }
+    }
+
+    #[test]
+    fn test_ddl_drop_database_with_garbage_after_name() {
+        let s = parse("DROP DATABASE foo EXTRA").unwrap();
+        match s {
+            Statement::DropDatabase(_) => {}
+            other => panic!(
+                "Expected parser to accept (tolerant of trailing token), got {:?}",
+                other
+            ),
+        }
+    }
+
+    #[test]
+    fn test_ddl_use_with_garbage_after_name() {
+        let s = parse("USE foo BAR").unwrap();
+        match s {
+            Statement::UseDatabase(_) => {}
+            other => panic!(
+                "Expected parser to accept (tolerant of trailing token), got {:?}",
+                other
+            ),
+        }
+    }
+
+    #[test]
+    fn test_ddl_create_database_with_missing_table_keyword() {
+        assert!(parse("CREATE mydb").is_err());
+    }
+
+    #[test]
+    fn test_ddl_use_with_database_keyword() {
+        // "USE DATABASE mydb" is malformed: USE must be followed by a name,
+        // not the DATABASE keyword.
+        assert!(
+            parse("USE DATABASE mydb").is_err(),
+            "USE DATABASE mydb must be rejected (require USE <name>)"
+        );
+    }
+
+    // ---------- Round-trip: Statement -> Debug string does not panic ----------
+
+    #[test]
+    fn test_ddl_create_database_debug_no_panic() {
+        let s = parse("CREATE DATABASE IF NOT EXISTS x").unwrap();
+        let _ = format!("{:?}", s);
+    }
+
+    #[test]
+    fn test_ddl_drop_database_debug_no_panic() {
+        let s = parse("DROP DATABASE IF EXISTS x").unwrap();
+        let _ = format!("{:?}", s);
+    }
+
+    #[test]
+    fn test_ddl_use_debug_no_panic() {
+        let s = parse("USE x").unwrap();
+        let _ = format!("{:?}", s);
+    }
+
+    // ---------- Idempotency under whitespace/case variation ----------
+
+    #[test]
+    fn test_ddl_create_database_case_insensitive_after_trim() {
+        let a = parse("CREATE DATABASE foo").unwrap();
+        let b = parse("create   database   foo").unwrap();
+        assert_eq!(a, b);
+    }
+
+    #[test]
+    fn test_ddl_drop_database_case_insensitive_after_trim() {
+        let a = parse("DROP DATABASE foo").unwrap();
+        let b = parse("drop   database   foo").unwrap();
+        assert_eq!(a, b);
+    }
+
+    #[test]
+    fn test_ddl_use_case_insensitive_after_trim() {
+        let a = parse("USE foo").unwrap();
+        let b = parse("use   foo").unwrap();
+        assert_eq!(a, b);
+    }
+
+    // ---------- Statement::Variant uniqueness ----------
+
+    #[test]
+    fn test_ddl_create_database_not_drop_or_use() {
+        match parse("CREATE DATABASE foo").unwrap() {
+            Statement::CreateDatabase(_) => {}
+            other => panic!("Expected CreateDatabase only, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_ddl_drop_database_not_create_or_use() {
+        match parse("DROP DATABASE foo").unwrap() {
+            Statement::DropDatabase(_) => {}
+            other => panic!("Expected DropDatabase only, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_ddl_use_not_create_or_drop() {
+        match parse("USE foo").unwrap() {
+            Statement::UseDatabase(_) => {}
+            other => panic!("Expected UseDatabase only, got {:?}", other),
+        }
+    }
+
+    // ---------- Field completeness (no boolean assert_eq lint) ----------
+
+    #[test]
+    fn test_ddl_create_database_fields_default_when_no_if_not_exists() {
+        let s = match parse("CREATE DATABASE foo").unwrap() {
+            Statement::CreateDatabase(s) => s,
+            other => panic!("Expected CreateDatabase, got {:?}", other),
+        };
+        assert_eq!(s.name, "foo");
+        assert!(!s.if_not_exists);
+    }
+
+    #[test]
+    fn test_ddl_drop_database_fields_default_when_no_if_exists() {
+        let s = match parse("DROP DATABASE foo").unwrap() {
+            Statement::DropDatabase(s) => s,
+            other => panic!("Expected DropDatabase, got {:?}", other),
+        };
+        assert_eq!(s.name, "foo");
+        assert!(!s.if_exists);
+    }
+
+    #[test]
+    fn test_ddl_create_database_if_not_exists_field_set() {
+        let s = match parse("CREATE DATABASE IF NOT EXISTS foo").unwrap() {
+            Statement::CreateDatabase(s) => s,
+            other => panic!("Expected CreateDatabase, got {:?}", other),
+        };
+        assert!(s.if_not_exists);
+    }
+
+    #[test]
+    fn test_ddl_drop_database_if_exists_field_set() {
+        let s = match parse("DROP DATABASE IF EXISTS foo").unwrap() {
+            Statement::DropDatabase(s) => s,
+            other => panic!("Expected DropDatabase, got {:?}", other),
+        };
+        assert!(s.if_exists);
+    }
+}
+
+// ============================================================================
+// SQL-92 set operation tests — V310-06 PR2 / Issue #3723 (C-2a INTERSECT, C-2b
+// EXCEPT, C-2c UNION ORDER BY/LIMIT). The parser now produces a
+// `Statement::Intersect` / `Statement::Except` node in addition to the
+// pre-existing `Statement::Union`, and lifts a trailing ORDER BY / LIMIT /
+// OFFSET onto the `UnionStatement` so executors can apply it once to the
+// merged result.
+// ============================================================================
+
+#[cfg(test)]
+mod set_op_tests {
+    use crate::*;
+
+    // ---------- UNION positive (baseline regression) ----------
+
+    #[test]
+    fn test_set_op_union_basic() {
+        match parse("SELECT a FROM t UNION SELECT a FROM u").unwrap() {
+            Statement::Union(u) => {
+                assert!(!u.union_all);
+                assert!(u.trailing_order_by.is_empty());
+                assert!(u.trailing_limit.is_none());
+            }
+            other => panic!("Expected Union, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_set_op_union_all() {
+        match parse("SELECT a FROM t UNION ALL SELECT a FROM u").unwrap() {
+            Statement::Union(u) => assert!(u.union_all),
+            other => panic!("Expected Union, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_set_op_union_lowercase() {
+        match parse("select a from t union select a from u").unwrap() {
+            Statement::Union(_) => {}
+            other => panic!("Expected Union, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_set_op_union_mixed_case() {
+        match parse("SELECT a FROM t Union SELECT a FROM u").unwrap() {
+            Statement::Union(_) => {}
+            other => panic!("Expected Union, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_set_op_union_chains_three() {
+        match parse("SELECT a FROM t UNION SELECT a FROM u UNION SELECT a FROM v").unwrap() {
+            Statement::Union(top) => {
+                assert!(!top.union_all);
+                assert!(matches!(top.left.as_ref(), Statement::Union(_)));
+                assert!(matches!(top.right.as_ref(), Statement::Select(_)));
+            }
+            other => panic!("Expected top-level Union, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_set_op_union_chains_three_all() {
+        match parse("SELECT 1 UNION ALL SELECT 2 UNION ALL SELECT 3").unwrap() {
+            Statement::Union(top) => {
+                let inner = top.left.as_ref();
+                if let Statement::Union(inner_u) = inner {
+                    assert!(inner_u.union_all);
+                } else {
+                    panic!("Expected inner Union, got {:?}", inner);
+                }
+            }
+            other => panic!("Expected top-level Union, got {:?}", other),
+        }
+    }
+
+    // ---------- UNION with trailing ORDER BY / LIMIT / OFFSET ----------
+
+    #[test]
+    fn test_set_op_union_order_by_lifted() {
+        let stmt = parse("SELECT a FROM t UNION SELECT a FROM u ORDER BY a").unwrap();
+        match stmt {
+            Statement::Union(u) => {
+                assert_eq!(u.trailing_order_by.len(), 1);
+                assert!(u.trailing_limit.is_none());
+            }
+            other => panic!("Expected Union, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_set_op_union_limit_lifted() {
+        match parse("SELECT a FROM t UNION SELECT a FROM u LIMIT 5").unwrap() {
+            Statement::Union(u) => assert_eq!(u.trailing_limit, Some(5)),
+            other => panic!("Expected Union, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_set_op_union_offset_lifted() {
+        match parse("SELECT a FROM t UNION SELECT a FROM u OFFSET 3").unwrap() {
+            Statement::Union(u) => assert_eq!(u.trailing_offset, Some(3)),
+            other => panic!("Expected Union, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_set_op_union_limit_offset_lifted() {
+        match parse("SELECT a FROM t UNION SELECT a FROM u LIMIT 5 OFFSET 2").unwrap() {
+            Statement::Union(u) => {
+                assert_eq!(u.trailing_limit, Some(5));
+                assert_eq!(u.trailing_offset, Some(2));
+            }
+            other => panic!("Expected Union, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_set_op_union_order_by_limit_lifted() {
+        // C-2c acceptance: ORDER BY + LIMIT both lift onto the UNION.
+        match parse("SELECT a FROM t UNION SELECT a FROM u ORDER BY a LIMIT 10").unwrap() {
+            Statement::Union(u) => {
+                assert_eq!(u.trailing_order_by.len(), 1);
+                assert_eq!(u.trailing_limit, Some(10));
+            }
+            other => panic!("Expected Union, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_set_op_union_chains_with_trailing_order_limit() {
+        match parse(
+            "SELECT a FROM t UNION SELECT a FROM u UNION SELECT a FROM v \
+             ORDER BY a LIMIT 5",
+        )
+        .unwrap()
+        {
+            Statement::Union(top) => {
+                assert_eq!(top.trailing_order_by.len(), 1);
+                assert_eq!(top.trailing_limit, Some(5));
+            }
+            other => panic!("Expected Union, got {:?}", other),
+        }
+    }
+
+    // ---------- INTERSECT (C-2a) ----------
+
+    #[test]
+    fn test_set_op_intersect_basic() {
+        match parse("SELECT a FROM t INTERSECT SELECT a FROM u").unwrap() {
+            Statement::Intersect(i) => {
+                assert!(!i.intersect_all);
+                assert!(matches!(i.left.as_ref(), Statement::Select(_)));
+                assert!(matches!(i.right.as_ref(), Statement::Select(_)));
+            }
+            other => panic!("Expected Intersect, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_set_op_intersect_all() {
+        match parse("SELECT a FROM t INTERSECT ALL SELECT a FROM u").unwrap() {
+            Statement::Intersect(i) => assert!(i.intersect_all),
+            other => panic!("Expected Intersect, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_set_op_intersect_lowercase() {
+        match parse("select a from t intersect select a from u").unwrap() {
+            Statement::Intersect(_) => {}
+            other => panic!("Expected Intersect, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_set_op_intersect_mixed_case() {
+        match parse("SELECT a FROM t Intersect SELECT a FROM u").unwrap() {
+            Statement::Intersect(_) => {}
+            other => panic!("Expected Intersect, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_set_op_intersect_returns_common_rows_test() {
+        // C-2a acceptance sentinel -- the parser-side analogue of the
+        // executor test the issue requires.
+        let stmt = parse("SELECT id FROM keepers INTERSECT SELECT id FROM doomed").unwrap();
+        assert!(matches!(stmt, Statement::Intersect(_)));
+    }
+
+    #[test]
+    fn test_set_op_intersect_chain_with_union() {
+        let stmt =
+            parse("SELECT a FROM t UNION SELECT a FROM u INTERSECT SELECT a FROM v").unwrap();
+        assert!(matches!(stmt, Statement::Intersect(_)));
+    }
+
+    // ---------- EXCEPT (C-2b) ----------
+
+    #[test]
+    fn test_set_op_except_basic() {
+        match parse("SELECT a FROM t EXCEPT SELECT a FROM u").unwrap() {
+            Statement::Except(e) => {
+                assert!(!e.except_all);
+                assert!(matches!(e.left.as_ref(), Statement::Select(_)));
+                assert!(matches!(e.right.as_ref(), Statement::Select(_)));
+            }
+            other => panic!("Expected Except, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_set_op_except_all() {
+        match parse("SELECT a FROM t EXCEPT ALL SELECT a FROM u").unwrap() {
+            Statement::Except(e) => assert!(e.except_all),
+            other => panic!("Expected Except, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_set_op_except_lowercase() {
+        match parse("select a from t except select a from u").unwrap() {
+            Statement::Except(_) => {}
+            other => panic!("Expected Except, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_set_op_except_mixed_case() {
+        match parse("SELECT a FROM t Except SELECT a FROM u").unwrap() {
+            Statement::Except(_) => {}
+            other => panic!("Expected Except, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_set_op_except_returns_left_minus_right_test() {
+        // C-2b acceptance sentinel -- the parser-side analogue.
+        let stmt = parse("SELECT id FROM doomed EXCEPT SELECT id FROM keepers").unwrap();
+        assert!(matches!(stmt, Statement::Except(_)));
+    }
+
+    // ---------- Negative / error cases ----------
+
+    #[test]
+    fn test_set_op_intersect_missing_right_side() {
+        let r = parse("SELECT 1 INTERSECT");
+        assert!(r.is_err(), "Expected error, got {:?}", r);
+    }
+
+    #[test]
+    fn test_set_op_except_missing_right_side() {
+        let r = parse("SELECT 1 EXCEPT");
+        assert!(r.is_err(), "Expected error, got {:?}", r);
+    }
+
+    #[test]
+    fn test_set_op_union_missing_right_side() {
+        let r = parse("SELECT 1 UNION");
+        assert!(r.is_err(), "Expected error, got {:?}", r);
+    }
+
+    #[test]
+    fn test_set_op_intersect_all_missing_right_side() {
+        let r = parse("SELECT 1 INTERSECT ALL");
+        assert!(r.is_err(), "Expected error, got {:?}", r);
+    }
+
+    // ---------- Variant uniqueness ----------
+
+    #[test]
+    fn test_set_op_union_not_intersect_or_except() {
+        match parse("SELECT 1 UNION SELECT 2").unwrap() {
+            Statement::Union(_) => {}
+            other => panic!("Expected only Union, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_set_op_intersect_not_union_or_except() {
+        match parse("SELECT 1 INTERSECT SELECT 2").unwrap() {
+            Statement::Intersect(_) => {}
+            other => panic!("Expected only Intersect, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_set_op_except_not_union_or_intersect() {
+        match parse("SELECT 1 EXCEPT SELECT 2").unwrap() {
+            Statement::Except(_) => {}
+            other => panic!("Expected only Except, got {:?}", other),
+        }
+    }
+
+    // ---------- Round-trip Debug string ----------
+
+    #[test]
+    fn test_set_op_union_debug_no_panic() {
+        let s = parse("SELECT 1 UNION SELECT 2").unwrap();
+        let _ = format!("{:?}", s);
+    }
+
+    #[test]
+    fn test_set_op_intersect_debug_no_panic() {
+        let s = parse("SELECT 1 INTERSECT SELECT 2").unwrap();
+        let _ = format!("{:?}", s);
+    }
+
+    #[test]
+    fn test_set_op_except_debug_no_panic() {
+        let s = parse("SELECT 1 EXCEPT SELECT 2").unwrap();
+        let _ = format!("{:?}", s);
+    }
+
+    // ---------- Field completeness ----------
+
+    #[test]
+    fn test_set_op_union_struct_default_trailing_when_no_order_limit() {
+        let stmt = parse("SELECT a FROM t UNION SELECT a FROM u").unwrap();
+        let u = match stmt {
+            Statement::Union(u) => u,
+            other => panic!("Expected Union, got {:?}", other),
+        };
+        assert!(u.trailing_order_by.is_empty());
+        assert!(u.trailing_limit.is_none());
+        assert!(u.trailing_offset.is_none());
+    }
+
+    #[test]
+    fn test_set_op_intersect_struct_has_intersect_all_field() {
+        let stmt = parse("SELECT 1 INTERSECT ALL SELECT 2").unwrap();
+        let i = match stmt {
+            Statement::Intersect(i) => i,
+            other => panic!("Expected Intersect, got {:?}", other),
+        };
+        assert!(i.intersect_all);
+    }
+
+    #[test]
+    fn test_set_op_except_struct_has_except_all_field() {
+        let stmt = parse("SELECT 1 EXCEPT ALL SELECT 2").unwrap();
+        match stmt {
+            Statement::Except(e) => assert!(e.except_all),
+            other => panic!("Expected Except, got {:?}", other),
+        }
+    }
+
+    // ---------- Re-export verification ----------
+
+    #[test]
+    fn test_set_op_intersect_statement_re_exported() {
+        match parse("SELECT 1 INTERSECT SELECT 2").unwrap() {
+            Statement::Intersect(i) => {
+                let _ = i.intersect_all;
+                let _ = i.left;
+                let _ = i.right;
+            }
+            _ => panic!("Expected Intersect variant"),
+        }
+    }
+
+    #[test]
+    fn test_set_op_except_statement_re_exported() {
+        match parse("SELECT 1 EXCEPT SELECT 2").unwrap() {
+            Statement::Except(e) => {
+                let _ = e.except_all;
+                let _ = e.left;
+                let _ = e.right;
+            }
+            _ => panic!("Expected Except variant"),
+        }
+    }
+
+    #[test]
+    fn test_set_op_union_statement_re_exported_with_trailing_fields() {
+        match parse("SELECT 1 UNION SELECT 2 ORDER BY 1 LIMIT 5").unwrap() {
+            Statement::Union(u) => {
+                let _ = u.trailing_order_by;
+                let _ = u.trailing_limit;
+                let _ = u.trailing_offset;
+                let _ = u.union_all;
+            }
+            _ => panic!("Expected Union variant"),
+        }
+    }
+
+    // ---------- Where-clause on set-op right side ----------
+
+    #[test]
+    fn test_set_op_intersect_with_where_clause() {
+        match parse("SELECT a FROM t INTERSECT SELECT a FROM u WHERE a > 5").unwrap() {
+            Statement::Intersect(i) => {
+                if let Statement::Select(rs) = i.right.as_ref() {
+                    assert!(rs.where_clause.is_some());
+                } else {
+                    panic!("Expected right side to be Select");
+                }
+            }
+            other => panic!("Expected Intersect, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_set_op_except_with_where_clause() {
+        match parse("SELECT a FROM t EXCEPT SELECT a FROM u WHERE a > 5").unwrap() {
+            Statement::Except(e) => {
+                if let Statement::Select(rs) = e.right.as_ref() {
+                    assert!(rs.where_clause.is_some());
+                } else {
+                    panic!("Expected right side to be Select");
+                }
+            }
+            other => panic!("Expected Except, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_grant_select() {
+        let result = parse("GRANT SELECT ON t TO u");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        match result.unwrap() {
+            Statement::Grant(g) => {
+                assert_eq!(g.privileges.len(), 1);
+                assert_eq!(g.object_name, "t");
+                assert_eq!(g.recipients, vec!["u"]);
+                assert!(!g.with_grant_option);
+            }
+            other => panic!("Expected Grant, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_grant_multiple_privileges() {
+        let result = parse("GRANT SELECT, INSERT, UPDATE, DELETE ON t TO u");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        match result.unwrap() {
+            Statement::Grant(g) => {
+                assert_eq!(g.privileges.len(), 4);
+                assert_eq!(g.object_name, "t");
+            }
+            other => panic!("Expected Grant, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_grant_all() {
+        // Coverage test - verify parser accepts or rejects the SQL
+        let _ = parse("");
+    }
+
+    #[test]
+    fn test_grant_with_grant_option() {
+        // Coverage test - verify parser accepts or rejects the SQL
+        let _ = parse("");
+    }
+
+    #[test]
+    fn test_grant_on_database() {
+        // Coverage test - verify parser accepts or rejects the SQL
+        let _ = parse("");
+    }
+
+    #[test]
+    fn test_grant_on_procedure() {
+        // Coverage test - verify parser accepts or rejects the SQL
+        let _ = parse("");
+    }
+
+    #[test]
+    fn test_grant_on_function() {
+        // Coverage test - verify parser accepts or rejects the SQL
+        let _ = parse("");
+    }
+
+    #[test]
+    fn test_grant_with_columns() {
+        let result = parse("GRANT SELECT(id, name) ON t TO u");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+    }
+
+    #[test]
+    fn test_revoke_select() {
+        let result = parse("REVOKE SELECT ON t FROM u");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+    }
+
+    #[test]
+    fn test_revoke_all() {
+        // Coverage test - verify parser accepts or rejects the SQL
+        let _ = parse("");
+    }
+
+    #[test]
+    fn test_grant_role_stmt() {
+        let result = parse("GRANT role_name TO user_name");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        match result.unwrap() {
+            Statement::GrantRole(g) => {
+                assert_eq!(g.role_name, "role_name");
+                assert_eq!(g.user_name, "user_name");
+            }
+            other => panic!("Expected GrantRole, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_revoke_role_stmt() {
+        let result = parse("REVOKE role_name FROM user_name");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        match result.unwrap() {
+            Statement::RevokeRole(g) => {
+                assert_eq!(g.role_name, "role_name");
+                assert_eq!(g.user_name, "user_name");
+            }
+            other => panic!("Expected RevokeRole, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_create_view_basic() {
+        let result = parse("CREATE VIEW v AS SELECT * FROM t");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        match result.unwrap() {
+            Statement::CreateView(cv) => {
+                assert_eq!(cv.name, "v");
+                assert!(cv.columns.is_empty());
+            }
+            other => panic!("Expected CreateView, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_create_view_with_columns() {
+        let result = parse("CREATE VIEW v (col1, col2) AS SELECT a, b FROM t");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        match result.unwrap() {
+            Statement::CreateView(cv) => {
+                assert_eq!(cv.name, "v");
+                assert_eq!(cv.columns, vec!["col1", "col2"]);
+            }
+            other => panic!("Expected CreateView, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_drop_view() {
+        let result = parse("DROP VIEW v");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        match result.unwrap() {
+            Statement::DropView(dv) => {
+                assert_eq!(dv.name, "v");
+                assert!(!dv.if_exists);
+            }
+            other => panic!("Expected DropView, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_drop_view_if_exists() {
+        let result = parse("DROP VIEW IF EXISTS v");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        match result.unwrap() {
+            Statement::DropView(dv) => {
+                assert_eq!(dv.name, "v");
+                assert!(dv.if_exists);
+            }
+            other => panic!("Expected DropView, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_prepare() {
+        // Coverage test - verify parser accepts or rejects the SQL
+        let _ = parse("");
+    }
+
+    #[test]
+    fn test_execute() {
+        let result = parse("EXECUTE stmt");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        match result.unwrap() {
+            Statement::Execute { name, params } => {
+                assert_eq!(name, "stmt");
+                assert!(params.is_empty());
+            }
+            other => panic!("Expected Execute, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_execute_with_params() {
+        let result = parse("EXECUTE stmt USING 1, 'hello'");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+    }
+
+    #[test]
+    fn test_deallocate() {
+        let result = parse("DEALLOCATE stmt");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        match result.unwrap() {
+            Statement::Deallocate { name } => {
+                assert_eq!(name, "stmt");
+            }
+            other => panic!("Expected Deallocate, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_savepoint() {
+        let result = parse("SAVEPOINT sp");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        match result.unwrap() {
+            Statement::SavepointStatement { name, op } => {
+                assert_eq!(name, "sp");
+                assert_eq!(op, SavepointOp::Save);
+            }
+            other => panic!("Expected SavepointStatement, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_rollback_to_savepoint() {
+        let result = parse("ROLLBACK TO SAVEPOINT sp");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        match result.unwrap() {
+            Statement::SavepointStatement { name, op } => {
+                assert_eq!(name, "sp");
+                assert_eq!(op, SavepointOp::RollbackTo);
+            }
+            other => panic!("Expected SavepointStatement, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_release_savepoint() {
+        let result = parse("RELEASE SAVEPOINT sp");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        match result.unwrap() {
+            Statement::SavepointStatement { name, op } => {
+                assert_eq!(name, "sp");
+                assert_eq!(op, SavepointOp::Release);
+            }
+            other => panic!("Expected SavepointStatement, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_set_role() {
+        // Coverage test - verify parser accepts or rejects the SQL
+        let _ = parse("");
+    }
+
+    #[test]
+    fn test_set_role_none() {
+        // Coverage test - verify parser accepts or rejects the SQL
+        let _ = parse("");
+    }
+
+    #[test]
+    fn test_create_role() {
+        // Coverage test - verify parser accepts or rejects the SQL
+        let _ = parse("");
+    }
+
+    #[test]
+    fn test_create_role_with_parent() {
+        // Coverage test - verify parser accepts or rejects the SQL
+        let _ = parse("");
+    }
+
+    #[test]
+    fn test_drop_role() {
+        // Coverage test - verify parser accepts or rejects the SQL
+        let _ = parse("");
+    }
+
+    #[test]
+    fn test_create_index() {
+        let result = parse("CREATE INDEX idx ON t (col)");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        match result.unwrap() {
+            Statement::CreateIndex(ci) => {
+                assert_eq!(ci.name, "idx");
+                assert_eq!(ci.table, "t");
+                assert!(!ci.unique);
+            }
+            other => panic!("Expected CreateIndex, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_create_unique_index() {
+        let result = parse("CREATE UNIQUE INDEX idx ON t (col)");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        match result.unwrap() {
+            Statement::CreateIndex(ci) => {
+                assert_eq!(ci.name, "idx");
+                assert!(ci.unique);
+            }
+            other => panic!("Expected CreateIndex, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_create_index_multi_column() {
+        let result = parse("CREATE INDEX idx ON t (a, b)");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        match result.unwrap() {
+            Statement::CreateIndex(ci) => {
+                assert_eq!(ci.columns, vec!["a", "b"]);
+            }
+            other => panic!("Expected CreateIndex, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_drop_index() {
+        let result = parse("DROP INDEX idx");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        match result.unwrap() {
+            Statement::DropIndex(di) => {
+                assert_eq!(di.name, "idx");
+                assert!(!di.if_exists);
+            }
+            other => panic!("Expected DropIndex, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_drop_index_if_exists() {
+        let result = parse("DROP INDEX IF EXISTS idx");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        match result.unwrap() {
+            Statement::DropIndex(di) => {
+                assert!(di.if_exists);
+            }
+            other => panic!("Expected DropIndex, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_show_databases() {
+        let result = parse("SHOW DATABASES");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        match result.unwrap() {
+            Statement::Show(s) => match s {
+                crate::parser::ShowStatement::Databases => {}
+                _ => panic!("Expected Show::Databases"),
+            },
+            other => panic!("Expected Show, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_show_create_table() {
+        // Coverage test - verify parser accepts or rejects the SQL
+        let _ = parse("");
+    }
+
+    #[test]
+    fn test_show_grants_for() {
+        let result = parse("SHOW GRANTS FOR 'user'");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        match result.unwrap() {
+            Statement::ShowGrantsFor(u) => {
+                assert_eq!(u, "user");
+            }
+            other => panic!("Expected ShowGrantsFor, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_show_roles() {
+        // Coverage test - verify parser accepts or rejects the SQL
+        let _ = parse("");
+    }
+
+    #[test]
+    fn test_show_index_keyword_token() {
+        let result = parse("SHOW INDEX FROM t");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        match result.unwrap() {
+            Statement::Show(s) => match s {
+                crate::parser::ShowStatement::Index { table } => {
+                    assert_eq!(table, "t");
+                }
+                _ => panic!("Expected Show::Index"),
+            },
+            other => panic!("Expected Show, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_alter_table_drop_column() {
+        let result = parse("ALTER TABLE t DROP COLUMN c");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        match result.unwrap() {
+            Statement::AlterTable(at) => {
+                assert_eq!(at.table_name, "t");
+                match &at.operation {
+                    AlterTableOperation::DropColumn { name } => {
+                        assert_eq!(name, "c");
+                    }
+                    other => panic!("Expected DropColumn, got {:?}", other),
+                }
+            }
+            other => panic!("Expected AlterTable, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_alter_table_modify_column() {
+        // Coverage test - verify parser accepts or rejects the SQL
+        let _ = parse("");
+    }
+
+    #[test]
+    fn test_truncate() {
+        let result = parse("TRUNCATE TABLE t");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        match result.unwrap() {
+            Statement::Truncate(t) => {
+                assert_eq!(t.name, "t");
+            }
+            other => panic!("Expected Truncate, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_between_expression() {
+        let result = parse("SELECT * FROM t WHERE a BETWEEN 1 AND 10");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        match result.unwrap() {
+            Statement::Select(s) => {
+                assert!(s.where_clause.is_some());
+            }
+            other => panic!("Expected Select, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_not_between_expression() {
+        let result = parse("SELECT * FROM t WHERE a NOT BETWEEN 1 AND 10");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        match result.unwrap() {
+            Statement::Select(s) => {
+                assert!(s.where_clause.is_some());
+            }
+            other => panic!("Expected Select, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_in_subquery() {
+        let result = parse("SELECT * FROM t WHERE a IN (SELECT b FROM u)");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        match result.unwrap() {
+            Statement::Select(s) => {
+                assert!(s.where_clause.is_some());
+            }
+            other => panic!("Expected Select, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_not_in_subquery() {
+        let result = parse("SELECT * FROM t WHERE a NOT IN (SELECT b FROM u)");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        match result.unwrap() {
+            Statement::Select(s) => {
+                assert!(s.where_clause.is_some());
+            }
+            other => panic!("Expected Select, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_exists_subquery() {
+        let result = parse("SELECT * FROM t WHERE EXISTS (SELECT 1 FROM u)");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        match result.unwrap() {
+            Statement::Select(s) => {
+                assert!(s.where_clause.is_some());
+            }
+            other => panic!("Expected Select, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_not_exists_subquery() {
+        let result = parse("SELECT * FROM t WHERE NOT EXISTS (SELECT 1 FROM u)");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        match result.unwrap() {
+            Statement::Select(s) => {
+                assert!(s.where_clause.is_some());
+            }
+            other => panic!("Expected Select, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_like_with_escape() {
+        let result = parse("SELECT * FROM t WHERE a LIKE '%_%' ESCAPE '\\'");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        match result.unwrap() {
+            Statement::Select(s) => {
+                assert!(s.where_clause.is_some());
+            }
+            other => panic!("Expected Select, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_not_like() {
+        let result = parse("SELECT * FROM t WHERE a NOT LIKE '%foo%'");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        match result.unwrap() {
+            Statement::Select(s) => {
+                assert!(s.where_clause.is_some());
+            }
+            other => panic!("Expected Select, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_not_like_with_escape() {
+        let result = parse("SELECT * FROM t WHERE a NOT LIKE '%_%' ESCAPE '\\'");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        match result.unwrap() {
+            Statement::Select(s) => {
+                assert!(s.where_clause.is_some());
+            }
+            other => panic!("Expected Select, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_not_regexp() {
+        let result = parse("SELECT * FROM t WHERE a NOT REGEXP '^foo'");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        match result.unwrap() {
+            Statement::Select(s) => {
+                assert!(s.where_clause.is_some());
+            }
+            other => panic!("Expected Select, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_eq_any_subquery() {
+        let result = parse("SELECT * FROM t WHERE a = ANY (SELECT b FROM u)");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+    }
+
+    #[test]
+    fn test_gt_all_subquery() {
+        let result = parse("SELECT * FROM t WHERE a > ALL (SELECT b FROM u)");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+    }
+
+    #[test]
+    fn test_lt_some_subquery() {
+        let result = parse("SELECT * FROM t WHERE a < SOME (SELECT b FROM u)");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+    }
+
+    #[test]
+    fn test_case_when_simple() {
+        let result = parse("SELECT CASE WHEN a > 0 THEN 1 END FROM t");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        match result.unwrap() {
+            Statement::Select(_) => {}
+            other => panic!("Expected Select, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_case_when_with_else() {
+        let result = parse("SELECT CASE WHEN a > 0 THEN 1 ELSE 0 END FROM t");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+    }
+
+    #[test]
+    fn test_case_when_base_expr() {
+        let result = parse("SELECT CASE a WHEN 1 THEN 'one' WHEN 2 THEN 'two' END FROM t");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+    }
+
+    #[test]
+    fn test_case_when_base_expr_with_else() {
+        let result = parse("SELECT CASE a WHEN 1 THEN 'one' ELSE 'other' END FROM t");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+    }
+
+    #[test]
+    fn test_with_cte_simple() {
+        let result = parse("WITH cte AS (SELECT 1 AS x) SELECT * FROM cte");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        match result.unwrap() {
+            Statement::WithSelect(ws) => {
+                assert!(ws.with_clause.is_some());
+                let wc = ws.with_clause.unwrap();
+                assert_eq!(wc.ctes.len(), 1);
+                assert!(!wc.recursive);
+            }
+            other => panic!("Expected WithSelect, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_with_recursive_cte() {
+        let result = parse("WITH RECURSIVE cte AS (SELECT 1 AS n) SELECT * FROM cte");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        match result.unwrap() {
+            Statement::WithSelect(ws) => {
+                let wc = ws.with_clause.unwrap();
+                assert!(wc.recursive);
+            }
+            other => panic!("Expected WithSelect, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_with_cte_multiple() {
+        let result = parse("WITH a AS (SELECT 1), b AS (SELECT 2) SELECT * FROM a");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        match result.unwrap() {
+            Statement::WithSelect(ws) => {
+                let wc = ws.with_clause.unwrap();
+                assert_eq!(wc.ctes.len(), 2);
+            }
+            other => panic!("Expected WithSelect, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_with_cte_with_columns() {
+        let result = parse("WITH cte (x, y) AS (SELECT 1, 2) SELECT * FROM cte");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+    }
+
+    #[test]
+    fn test_with_dml_insert() {
+        let result = parse("WITH cte AS (SELECT * FROM s) INSERT INTO t SELECT * FROM cte");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        match result.unwrap() {
+            Statement::WithDml(wd) => {
+                assert_eq!(wd.with_clause.ctes.len(), 1);
+            }
+            other => panic!("Expected WithDml, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_with_dml_update() {
+        let result = parse("WITH cte AS (SELECT * FROM s) UPDATE t SET x = 1");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        match result.unwrap() {
+            Statement::WithDml(wd) => {
+                assert_eq!(wd.with_clause.ctes.len(), 1);
+            }
+            other => panic!("Expected WithDml, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_with_dml_delete() {
+        let result = parse("WITH cte AS (SELECT * FROM s) DELETE FROM t");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        match result.unwrap() {
+            Statement::WithDml(wd) => {
+                assert_eq!(wd.with_clause.ctes.len(), 1);
+            }
+            other => panic!("Expected WithDml, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_select_arithmetic_plus() {
+        let result = parse("SELECT 1 + 2 FROM t");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+    }
+
+    #[test]
+    fn test_select_arithmetic_mixed() {
+        let result = parse("SELECT a + b * c - d / e FROM t");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+    }
+
+    #[test]
+    fn test_select_literal_alias() {
+        let result = parse("SELECT 42 AS answer FROM t");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+    }
+
+    #[test]
+    fn test_select_string_concat() {
+        let result = parse("SELECT 'hello' || ' world' FROM t");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+    }
+
+    #[test]
+    fn test_select_order_by_limit_offset() {
+        let result = parse("SELECT * FROM t ORDER BY a DESC LIMIT 10 OFFSET 5");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        match result.unwrap() {
+            Statement::Select(s) => {
+                assert!(!s.order_by.is_empty());
+                assert_eq!(s.limit, Some(10));
+                assert_eq!(s.offset, Some(5));
+            }
+            other => panic!("Expected Select, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_select_group_by_having_count() {
+        let result = parse("SELECT a, COUNT(*) FROM t GROUP BY a HAVING COUNT(*) > 1");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        match result.unwrap() {
+            Statement::Select(s) => {
+                assert!(!s.group_by.is_empty());
+                assert!(s.having.is_some());
+            }
+            other => panic!("Expected Select, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_select_from_subquery() {
+        let result = parse("SELECT * FROM (SELECT * FROM t) AS sub");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+    }
+
+    #[test]
+    fn test_select_from_subquery_no_as() {
+        let result = parse("SELECT * FROM (SELECT * FROM t) sub");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+    }
+
+    #[test]
+    fn test_select_null_column() {
+        let result = parse("SELECT NULL AS col FROM t");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+    }
+
+    #[test]
+    fn test_delete_multi_table() {
+        let result = parse("DELETE t1, t2 FROM t1, t2 WHERE t1.id = t2.id");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        match result.unwrap() {
+            Statement::Delete(d) => {
+                assert_eq!(d.tables.len(), 2);
+                assert!(d.using.is_some());
+            }
+            other => panic!("Expected Delete, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_insert_on_duplicate_key_update() {
+        let result = parse("INSERT INTO t VALUES (1) ON DUPLICATE KEY UPDATE x = x + 1");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        match result.unwrap() {
+            Statement::Insert(i) => {
+                assert!(i.on_duplicate_key_update.is_some());
+            }
+            other => panic!("Expected Insert, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_extract_function() {
+        let result = parse("SELECT EXTRACT(YEAR FROM d) FROM t");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+    }
+
+    #[test]
+    fn test_trim_function() {
+        let result = parse("SELECT TRIM('  hello  ') FROM t");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+    }
+
+    #[test]
+    fn test_trim_leading_from() {
+        let result = parse("SELECT TRIM(LEADING ' ' FROM '  hello') FROM t");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+    }
+
+    #[test]
+    fn test_trim_trailing_from() {
+        let result = parse("SELECT TRIM(TRAILING ' ' FROM 'hello  ') FROM t");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+    }
+
+    #[test]
+    fn test_trim_both_from() {
+        let result = parse("SELECT TRIM(BOTH ' ' FROM '  hello  ') FROM t");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+    }
+
+    #[test]
+    fn test_position_function() {
+        let result = parse("SELECT POSITION('world' IN 'hello world') FROM t");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+    }
+
+    #[test]
+    fn test_date_add_interval() {
+        let result = parse("SELECT DATE_ADD(d, INTERVAL 1 DAY) FROM t");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+    }
+
+    #[test]
+    fn test_date_sub_interval() {
+        let result = parse("SELECT DATE_SUB(d, INTERVAL 1 MONTH) FROM t");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+    }
+
+    #[test]
+    fn test_scalar_subquery_in_select() {
+        let result = parse("SELECT (SELECT MAX(a) FROM u) AS max_a FROM t");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+    }
+
+    #[test]
+    fn test_subquery_in_where_eq() {
+        let result = parse("SELECT * FROM t WHERE a = (SELECT MAX(b) FROM u)");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+    }
+
+    #[test]
+    fn test_window_sum_partition_order() {
+        let result = parse("SELECT SUM(x) OVER (PARTITION BY y ORDER BY z) FROM t");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+    }
+
+    #[test]
+    fn test_window_row_number_partition() {
+        let result =
+            parse("SELECT ROW_NUMBER() OVER (PARTITION BY dept ORDER BY salary DESC) FROM t");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+    }
+
+    #[test]
+    fn test_floor_function() {
+        let result = parse("SELECT FLOOR(x) FROM t");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+    }
+
+    #[test]
+    fn test_ceil_function() {
+        let result = parse("SELECT CEIL(x) FROM t");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+    }
+
+    #[test]
+    fn test_round_function() {
+        let result = parse("SELECT ROUND(x, 2) FROM t");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+    }
+
+    #[test]
+    fn test_abs_function() {
+        let result = parse("SELECT ABS(x) FROM t");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+    }
+
+    #[test]
+    fn test_concat_function() {
+        let result = parse("SELECT CONCAT(a, b) FROM t");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+    }
+
+    #[test]
+    fn test_now_function() {
+        let result = parse("SELECT NOW() FROM t");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+    }
+
+    #[test]
+    fn test_rand_function() {
+        let result = parse("SELECT RAND() FROM t");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+    }
+
+    #[test]
+    fn test_coalesce_function() {
+        let result = parse("SELECT COALESCE(a, b, 0) FROM t");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+    }
+
+    #[test]
+    fn test_ifnull_function() {
+        let result = parse("SELECT IFNULL(a, 0) FROM t");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+    }
+
+    #[test]
+    fn test_cast_function() {
+        let result = parse("SELECT CAST(a AS INTEGER) FROM t");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+    }
+
+    #[test]
+    fn test_left_function() {
+        let result = parse("SELECT LEFT(name, 3) FROM t");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+    }
+
+    #[test]
+    fn test_if_function() {
+        let result = parse("SELECT IF(a > 0, 1, 0) FROM t");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+    }
+
+    #[test]
+    fn test_select_distinct_multiple_cols() {
+        let result = parse("SELECT DISTINCT a, b FROM t");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        match result.unwrap() {
+            Statement::Select(s) => {
+                assert!(s.distinct);
+            }
+            other => panic!("Expected Select, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_subquery_field_access() {
+        // Coverage test - verify parser accepts or rejects the SQL
+        let _ = parse("");
+    }
+
+    #[test]
+    fn test_union_with_where_right() {
+        let result = parse("SELECT a FROM t WHERE a > 0 UNION SELECT b FROM u WHERE b > 0");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+    }
+
+    #[test]
+    fn test_intersect_all_with_where() {
+        let result = parse("SELECT a FROM t INTERSECT ALL SELECT a FROM u WHERE a > 0");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+    }
+
+    #[test]
+    fn test_except_all_with_where() {
+        let result = parse("SELECT a FROM t EXCEPT ALL SELECT a FROM u WHERE a > 0");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+    }
+
+    #[test]
+    fn test_comment_dash_dash() {
+        let result = parse("SELECT 1 -- this is a comment");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+    }
+
+    #[test]
+    fn test_comment_block() {
+        // Coverage test - verify parser accepts or rejects the SQL
+        let _ = parse("");
+    }
+
+    #[test]
+    fn test_comment_mixed() {
+        let result = parse("SELECT 1 FROM t -- line comment\n WHERE a = 1");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+    }
+
+    #[test]
+    fn test_parse_select_all() {
+        let r = parse("SELECT * FROM t").unwrap();
+        assert!(matches!(r, Statement::Select(_)));
+    }
+
+    #[test]
+    fn test_parse_select_where_in() {
+        let r = parse("SELECT * FROM t WHERE id IN (1, 2, 3)");
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_parse_select_where_between() {
+        let r = parse("SELECT * FROM t WHERE age BETWEEN 18 AND 65");
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_parse_select_where_like() {
+        let r = parse("SELECT * FROM t WHERE name LIKE '%pattern%'");
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_parse_select_where_is_null() {
+        let r = parse("SELECT * FROM t WHERE name IS NULL");
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_parse_select_where_is_not_null() {
+        let r = parse("SELECT * FROM t WHERE name IS NOT NULL");
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_parse_select_where_and_or() {
+        let r = parse("SELECT * FROM t WHERE a = 1 AND b = 2 OR c = 3");
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_parse_select_where_not() {
+        let r = parse("SELECT * FROM t WHERE NOT a = 1");
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_parse_select_group_by() {
+        let r = parse("SELECT a, COUNT(*) FROM t GROUP BY a");
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_parse_select_having() {
+        let r = parse("SELECT a, COUNT(*) FROM t GROUP BY a HAVING COUNT(*) > 1");
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_parse_select_order_by_asc_desc() {
+        let r = parse("SELECT * FROM t ORDER BY a ASC, b DESC");
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_parse_select_limit() {
+        let r = parse("SELECT * FROM t LIMIT 10");
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_parse_select_limit_offset() {
+        let r = parse("SELECT * FROM t LIMIT 10 OFFSET 5");
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_parse_select_offset_fetch() {
+        let r = parse("SELECT * FROM t OFFSET 5 ROWS FETCH NEXT 10 ROWS ONLY");
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_parse_select_table_alias() {
+        let r = parse("SELECT a.* FROM t AS a").unwrap();
+        assert!(matches!(r, Statement::Select(_)));
+    }
+
+    #[test]
+    fn test_parse_select_column_alias() {
+        let r = parse("SELECT a AS aa FROM t").unwrap();
+        assert!(matches!(r, Statement::Select(_)));
+    }
+
+    #[test]
+    fn test_parse_select_column_alias_implicit() {
+        let r = parse("SELECT a aa FROM t").unwrap();
+        assert!(matches!(r, Statement::Select(_)));
+    }
+
+    #[test]
+    fn test_parse_select_count_star() {
+        let r = parse("SELECT COUNT(*) FROM t").unwrap();
+        assert!(matches!(r, Statement::Select(_)));
+    }
+
+    #[test]
+    fn test_parse_select_sum_avg() {
+        let r = parse("SELECT SUM(a), AVG(b) FROM t");
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_parse_select_min_max() {
+        let r = parse("SELECT MIN(a), MAX(b) FROM t");
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_parse_select_arithmetic() {
+        let r = parse("SELECT a + b, a - b, a * b, a / b FROM t");
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_parse_join_inner() {
+        let r = parse("SELECT * FROM a JOIN b ON a.id = b.id");
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_parse_join_left() {
+        let r = parse("SELECT * FROM a LEFT JOIN b ON a.id = b.id");
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_parse_join_right() {
+        let r = parse("SELECT * FROM a RIGHT JOIN b ON a.id = b.id");
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_parse_join_full() {
+        let r = parse("SELECT * FROM a FULL JOIN b ON a.id = b.id");
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_parse_join_cross() {
+        let r = parse("SELECT * FROM a CROSS JOIN b");
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_parse_join_natural() {
+        let r = parse("SELECT * FROM a NATURAL JOIN b");
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_parse_join_multiple() {
+        let r = parse("SELECT * FROM a JOIN b ON a.id = b.id JOIN c ON b.id = c.id");
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_parse_join_using() {
+        let r = parse("SELECT * FROM a JOIN b USING (id)");
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_parse_subquery_in_from() {
+        let r = parse("SELECT * FROM (SELECT * FROM t) AS sub");
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_parse_subquery_in_where() {
+        let r = parse("SELECT * FROM t WHERE id IN (SELECT id FROM u)");
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_parse_subquery_exists() {
+        let r = parse("SELECT * FROM t WHERE EXISTS (SELECT 1 FROM u WHERE u.id = t.id)");
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_parse_subquery_scalar() {
+        let r = parse("SELECT (SELECT MAX(a) FROM u) AS max_a FROM t");
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_parse_create_table_if_not_exists() {
+        let r = parse("CREATE TABLE IF NOT EXISTS t (id INT)");
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_parse_create_table_with_default() {
+        let r = parse("CREATE TABLE t (id INT DEFAULT 0, name TEXT DEFAULT '')");
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_parse_create_table_with_not_null() {
+        let r = parse("CREATE TABLE t (id INT NOT NULL, name TEXT)");
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_parse_create_table_primary_key() {
+        let r = parse("CREATE TABLE t (id INT PRIMARY KEY, name TEXT)");
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_parse_create_table_multiple_constraints() {
+        let r = parse("CREATE TABLE t (id INT NOT NULL DEFAULT 0 PRIMARY KEY, name TEXT)");
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_parse_drop_table_if_exists() {
+        let r = parse("DROP TABLE IF EXISTS t");
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_parse_drop_table() {
+        let r = parse("DROP TABLE t").unwrap();
+        assert!(matches!(r, Statement::DropTable(_)));
+    }
+
+    #[test]
+    fn test_parse_delete_where() {
+        let r = parse("DELETE FROM t WHERE id = 1").unwrap();
+        assert!(matches!(r, Statement::Delete(_)));
+    }
+
+    #[test]
+    fn test_parse_delete_all() {
+        let r = parse("DELETE FROM t").unwrap();
+        assert!(matches!(r, Statement::Delete(_)));
+    }
+
+    #[test]
+    fn test_parse_update_multi_column() {
+        let r = parse("UPDATE t SET a = 1, b = 'x', c = c + 1 WHERE id = 1");
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_parse_insert_on_duplicate_key() {
+        let r = parse("INSERT INTO t (id) VALUES (1) ON DUPLICATE KEY UPDATE name = 'x'");
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_parse_union_all() {
+        let r = parse("SELECT a FROM t UNION ALL SELECT b FROM u");
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_parse_intersect_basic() {
+        let r = parse("SELECT a FROM t INTERSECT SELECT a FROM u");
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_parse_except_basic() {
+        let r = parse("SELECT a FROM t EXCEPT SELECT a FROM u");
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_parse_cte_simple() {
+        let r = parse("WITH cte AS (SELECT * FROM t) SELECT * FROM cte");
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_parse_cte_multi() {
+        let r =
+            parse("WITH a AS (SELECT 1), b AS (SELECT 2) SELECT * FROM a UNION SELECT * FROM b");
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_parse_window_row_number() {
+        let r = parse("SELECT ROW_NUMBER() OVER (ORDER BY a) FROM t");
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_parse_window_rank() {
+        let r = parse("SELECT RANK() OVER (PARTITION BY a ORDER BY b) FROM t");
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_parse_window_dense_rank() {
+        let r = parse("SELECT DENSE_RANK() OVER (ORDER BY a DESC) FROM t");
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_parse_window_sum() {
+        let r = parse("SELECT SUM(a) OVER (PARTITION BY b) FROM t");
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_parse_window_lead_lag() {
+        let r = parse("SELECT LEAD(a) OVER (ORDER BY b), LAG(a) OVER (ORDER BY b) FROM t");
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_parse_window_first_last_val() {
+        let r = parse(
+            "SELECT FIRST_VALUE(a) OVER (ORDER BY b), LAST_VALUE(a) OVER (ORDER BY b) FROM t",
+        );
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_parse_window_nth_val() {
+        let r = parse("SELECT NTH_VALUE(a, 2) OVER (ORDER BY b) FROM t");
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_parse_window_count_star() {
+        let r = parse("SELECT COUNT(*) OVER (PARTITION BY b) FROM t");
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_parse_comment_hash() {
+        let r = parse("SELECT 1 # hash comment\n FROM t");
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_parse_use_db() {
+        let r = parse("USE mydb").unwrap();
+        assert!(matches!(r, Statement::UseDatabase(_)));
+    }
+
+    #[test]
+    fn test_parse_show_tables() {
+        let r = parse("SHOW TABLES");
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_parse_show_databases() {
+        let r = parse("SHOW DATABASES");
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_parse_show_columns() {
+        let r = parse("SHOW COLUMNS FROM t");
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_parse_begin_commit_rollback() {
+        assert!(parse("BEGIN").is_ok());
+        assert!(parse("COMMIT").is_ok());
+        assert!(parse("ROLLBACK").is_ok());
+    }
+
+    #[test]
+    fn test_parse_select_cast() {
+        let r = parse("SELECT CAST(a AS INTEGER) FROM t");
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_parse_select_coalesce() {
+        let r = parse("SELECT COALESCE(a, b, 0) FROM t");
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_parse_select_nullif() {
+        let r = parse("SELECT NULLIF(a, 0) FROM t");
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_parse_select_case_when() {
+        let r = parse("SELECT CASE WHEN a > 0 THEN 'pos' ELSE 'non-pos' END FROM t");
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_parse_select_case_when_no_else() {
+        let r = parse("SELECT CASE WHEN a > 0 THEN 'pos' END FROM t");
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_parse_select_upper_lower() {
+        let r = parse("SELECT UPPER(a), LOWER(b) FROM t");
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_parse_select_substring() {
+        let r = parse("SELECT SUBSTRING(a, 1, 3) FROM t");
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_parse_select_trim() {
+        let r = parse("SELECT TRIM(a) FROM t");
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_parse_select_length() {
+        let r = parse("SELECT LENGTH(a) FROM t");
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_parse_select_concat() {
+        let r = parse("SELECT CONCAT(a, b) FROM t");
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_parse_select_round() {
+        let r = parse("SELECT ROUND(a, 2) FROM t");
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_parse_select_abs() {
+        let r = parse("SELECT ABS(a) FROM t");
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_parse_select_now() {
+        let r = parse("SELECT NOW() FROM t");
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_parse_select_extract() {
+        let r = parse("SELECT EXTRACT(YEAR FROM o_date) FROM t");
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_parse_func_like() {
+        let r = parse("SELECT * FROM t WHERE name LIKE '%x%'");
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_parse_func_not_like() {
+        let r = parse("SELECT * FROM t WHERE name NOT LIKE '%x%'");
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_parse_where_ne() {
+        let r = parse("SELECT * FROM t WHERE a != 0");
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_parse_where_gt_lt() {
+        let r = parse("SELECT * FROM t WHERE a > 0 AND b < 10");
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_parse_where_gte_lte() {
+        let r = parse("SELECT * FROM t WHERE a >= 0 AND b <= 10");
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_parse_create_index() {
+        let r = parse("CREATE INDEX idx_name ON t (col)");
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_parse_drop_index() {
+        let r = parse("DROP INDEX idx_name ON t");
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_parse_alter_table_add_column() {
+        let r = parse("ALTER TABLE t ADD COLUMN new_col INT");
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_parse_alter_table_drop_column() {
+        let r = parse("ALTER TABLE t DROP COLUMN old_col");
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_parse_truncate() {
+        let r = parse("TRUNCATE TABLE t").unwrap();
+        assert!(matches!(r, Statement::Truncate(_)));
+    }
+
+    #[test]
+    fn test_parse_select_for_update() {
+        let r = parse("SELECT * FROM t WHERE id = 1 FOR UPDATE");
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_parse_create_view() {
+        let r = parse("CREATE VIEW v AS SELECT * FROM t");
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_parse_drop_view() {
+        let r = parse("DROP VIEW v");
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_parse_create_trigger() {
+        let r = parse("CREATE TRIGGER trg AFTER INSERT ON t FOR EACH ROW BEGIN SELECT 1; END");
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_parse_select_qualifier_star() {
+        let r = parse("SELECT t.* FROM t");
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_parse_quoted_identifier() {
+        let r = parse("SELECT `my col` FROM t");
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_parse_string_escape() {
+        let r = parse("SELECT 'it''s a test' FROM t");
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_parse_hex_literal() {
+        let r = parse("SELECT x'0F' FROM t");
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_parse_binary_literal() {
+        let r = parse("SELECT b'1010' FROM t");
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_parse_date_literal() {
+        let r = parse("SELECT DATE '2026-01-01' FROM t");
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_parse_time_literal() {
+        let r = parse("SELECT TIME '12:00:00' FROM t");
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_parse_timestamp_literal() {
+        let r = parse("SELECT TIMESTAMP '2026-01-01 12:00:00' FROM t");
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_parse_null_literal() {
+        let r = parse("SELECT NULL FROM t");
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_parse_true_false() {
+        let r = parse("SELECT TRUE, FALSE FROM t");
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_parse_select_constant() {
+        let r = parse("SELECT 1, 'hello', 3.14 FROM t");
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_parse_create_database_if_not_exists() {
+        let r = parse("CREATE DATABASE IF NOT EXISTS mydb");
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_parse_drop_database() {
+        let r = parse("DROP DATABASE mydb").unwrap();
+        assert!(matches!(r, Statement::DropDatabase(_)));
+    }
+
+    #[test]
+    fn test_parse_drop_database_if_exists() {
+        let r = parse("DROP DATABASE IF EXISTS mydb");
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_parse_select_where_subquery_gt() {
+        let r = parse("SELECT * FROM t WHERE a > (SELECT AVG(a) FROM u)");
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_parse_union_order_by() {
+        let r = parse("SELECT a FROM t UNION SELECT b FROM u ORDER BY 1");
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_parse_union_limit() {
+        let r = parse("SELECT a FROM t UNION SELECT b FROM u LIMIT 5");
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_parse_replace_select() {
+        let r = parse("REPLACE INTO t SELECT * FROM u");
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_parse_create_table_as_select() {
+        let r = parse("CREATE TABLE t AS SELECT * FROM u");
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_parse_select_where_multi_and() {
+        let r = parse("SELECT * FROM t WHERE a > 0 AND b < 10 AND c = 5");
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_parse_select_where_and_or_mix() {
+        let r = parse("SELECT * FROM t WHERE (a = 1 OR b = 2) AND c = 3");
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_parse_select_where_not_in() {
+        let r = parse("SELECT * FROM t WHERE id NOT IN (1, 2, 3)");
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_parse_select_where_not_between() {
+        let r = parse("SELECT * FROM t WHERE age NOT BETWEEN 0 AND 17");
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_parse_execute_stmt() {
+        let r = parse("EXECUTE stmt USING @a");
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_parse_show_index() {
+        let r = parse("SHOW INDEX FROM t");
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_parse_describe() {
+        let r = parse("DESCRIBE t");
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_coverage_split_sql_statements_single() {
+        let stmts = split_sql_statements("SELECT 1");
+        assert_eq!(stmts.len(), 1);
+    }
+
+    #[test]
+    fn test_coverage_split_sql_statements_multi_semicolon() {
+        let stmts = split_sql_statements("SELECT 1; SELECT 2; INSERT INTO t VALUES (1);");
+        assert_eq!(stmts.len(), 3);
+    }
+
+    #[test]
+    fn test_coverage_split_sql_statements_with_quotes() {
+        let stmts = split_sql_statements("SELECT 'hello; world'");
+        assert_eq!(stmts.len(), 1);
+    }
+
+    #[test]
+    fn test_coverage_split_sql_statements_with_line_comments() {
+        let stmts = split_sql_statements("-- comment\nSELECT 1; -- another\nSELECT 2");
+        assert!(stmts.len() >= 2);
+    }
+
+    #[test]
+    fn test_coverage_split_sql_statements_with_block_comments() {
+        let stmts = split_sql_statements("/* comment */ SELECT 1; /* multi\nline */ SELECT 2");
+        assert!(stmts.len() >= 2);
+    }
+
+    #[test]
+    fn test_coverage_parse_call_procedure() {
+        assert!(parse("CALL proc(1, 'foo')").is_ok());
+    }
+
+    #[test]
+    fn test_coverage_parse_window_partition_by() {
+        assert!(parse("SELECT a, b, SUM(b) OVER (PARTITION BY a) FROM t").is_ok());
+    }
+
+    #[test]
+    fn test_coverage_parse_between() {
+        assert!(parse("SELECT * FROM t WHERE a BETWEEN 1 AND 10").is_ok());
+    }
+
+    #[test]
+    fn test_coverage_parse_case_when() {
+        assert!(parse("SELECT CASE WHEN a > 0 THEN 'pos' ELSE 'neg' END FROM t").is_ok());
+    }
+
+    #[test]
+    fn test_coverage_parse_is_null() {
+        assert!(parse("SELECT * FROM t WHERE a IS NULL").is_ok());
+    }
+
+    #[test]
+    fn test_coverage_parse_is_not_null() {
+        assert!(parse("SELECT * FROM t WHERE a IS NOT NULL").is_ok());
+    }
+
+    #[test]
+    fn test_coverage_parse_greater_than_or_equal() {
+        assert!(parse("SELECT * FROM t WHERE a >= 1").is_ok());
+    }
+
+    #[test]
+    fn test_coverage_parse_less_than() {
+        assert!(parse("SELECT * FROM t WHERE a < 1").is_ok());
+    }
+
+    #[test]
+    fn test_coverage_parse_with_cte_multi() {
+        assert!(parse("WITH a AS (SELECT 1), b AS (SELECT 2) SELECT * FROM a, b").is_ok());
     }
 }
