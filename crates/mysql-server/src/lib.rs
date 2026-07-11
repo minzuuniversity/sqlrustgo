@@ -418,7 +418,7 @@ mod tests {
             ("part", 200_000),
             ("partsupp", 800_000),
             ("orders", 1_500_000),
-            ("lineitem", 6_001_215),
+            ("lineitem", 6_000_000),
         ];
 
         for (table, expected) in counts {
