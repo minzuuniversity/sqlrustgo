@@ -438,7 +438,7 @@ pub struct AggregateCall {
 }
 
 /// SELECT statement
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct SelectStatement {
     pub columns: Vec<SelectColumn>,
     pub table: String,
@@ -470,8 +470,22 @@ pub struct SelectStatement {
     pub limit: Option<u64>,
     pub offset: Option<u64>,
     pub distinct: bool,
+    /// v3.10.0 Issue #3703: FOR UPDATE / LOCK IN SHARE MODE clause.
+    /// When set, parallel execution MUST be disabled to prevent
+    /// deadlocks with the global LockManager singleton.
+    pub lock_clause: Option<LockClause>,
 }
 
+/// Lock clause for SELECT statements (FOR UPDATE / LOCK IN SHARE MODE)
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct LockClause {
+    /// True for FOR UPDATE, false for LOCK IN SHARE MODE
+    pub for_update: bool,
+    /// SKIP LOCKED modifier
+    pub skip_locked: bool,
+    /// NOWAIT modifier (don't wait for lock if not available)
+    pub nowait: bool,
+}
 /// ORDER BY expression
 #[derive(Debug, Clone, PartialEq)]
 pub struct OrderByExpression {
@@ -3049,8 +3063,8 @@ impl Parser {
                             limit: None,
                             offset: None,
                             distinct: false,
+                            lock_clause: None,
                         };
-                        // Skip remaining tokens until matching RParen (consume
                         // any JOINs, ON clauses, etc. — we don't model them
                         // in the synthetic SELECT but the executor will at
                         // least find the first table).
@@ -3728,6 +3742,46 @@ impl Parser {
             None
         };
 
+        // Parse FOR UPDATE / LOCK IN SHARE MODE clause
+        let lock_clause = if matches!(self.current(), Some(Token::For)) {
+            self.next(); // consume FOR
+            self.expect(Token::Update)?;
+            // Check for SKIP LOCKED or NOWAIT modifiers
+            let mut skip_locked = false;
+            let mut nowait = false;
+            loop {
+                match self.current() {
+                    Some(Token::Skip) => {
+                        self.next();
+                        self.expect(Token::Locked)?;
+                        skip_locked = true;
+                    }
+                    Some(Token::Nowait) => {
+                        self.next();
+                        nowait = true;
+                    }
+                    _ => break,
+                }
+            }
+            Some(LockClause {
+                for_update: true,
+                skip_locked,
+                nowait,
+            })
+        } else if matches!(self.current(), Some(Token::Lock)) {
+            self.next();
+            self.expect(Token::In)?;
+            self.expect(Token::Share)?;
+            self.expect(Token::Mode)?;
+            Some(LockClause {
+                for_update: false,
+                skip_locked: false,
+                nowait: false,
+            })
+        } else {
+            None
+        };
+
         // Post-processing pass: scan the column list for
         // `FunctionCall("SUM"|"AVG"|"COUNT"|"MIN"|"MAX", args)` and
         // re-register them as `Expression::Aggregate` plus add to the
@@ -3773,6 +3827,7 @@ impl Parser {
             limit,
             offset,
             distinct,
+            lock_clause,
         })
     }
 

@@ -270,6 +270,13 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 .where_clause
                 .as_ref()
                 .is_some_and(where_expr_has_correlated_subquery)
+            // v3.10.0 Issue #3703: FOR UPDATE / LOCK IN SHARE MODE
+            // disables parallel execution. LockManager is a global
+            // singleton; concurrent lock acquisitions across threads
+            // can cause deadlocks. The CBO's should_parallelize() also
+            // returns false for lock reads, but the engine enforces
+            // this as a hard safety gate.
+            && select.lock_clause.is_none()
         {
             let t_start = Instant::now();
             let n_rows_in = rows.len();
@@ -294,7 +301,6 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         } else {
             None
         };
-
         // Step 1.5: correlated EXISTS / NOT EXISTS pre-evaluation
         // Before applying WHERE row-by-row, substitute the outer column
         // references in the subquery with concrete values from each
