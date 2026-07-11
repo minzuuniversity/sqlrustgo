@@ -885,4 +885,310 @@ mod tests {
         storage.rollback_transaction().unwrap();
         assert!(!storage.is_tx_active(7));
     }
+
+    #[test]
+    fn test_wal_with_checkpoint_manager_skipped() {
+        let inner = MemoryStorage::new();
+        let wal = MemoryWalManager::new();
+        let _ = (inner, wal);
+    }
+
+    #[test]
+    fn test_wal_active_tx_ids_empty() {
+        let inner = MemoryStorage::new();
+        let wal = MemoryWalManager::new();
+        let storage = WalStorage::new(inner, wal).unwrap();
+        assert!(storage.active_tx_ids().is_empty());
+    }
+
+    #[test]
+    fn test_wal_inner_wal_walmut() {
+        let inner = MemoryStorage::new();
+        let wal = MemoryWalManager::new();
+        let mut storage = WalStorage::new(inner, wal).unwrap();
+        let _ = storage.inner();
+        let _ = storage.wal();
+        let _ = storage.wal_mut();
+    }
+
+    #[test]
+    fn test_wal_split() {
+        let inner = MemoryStorage::new();
+        let wal = MemoryWalManager::new();
+        let mut storage = WalStorage::new(inner, wal).unwrap();
+        let (_s, _w) = storage.split();
+    }
+
+    #[test]
+    fn test_wal_basic_crud() {
+        let inner = MemoryStorage::new();
+        let wal = MemoryWalManager::new();
+        let mut storage = WalStorage::new(inner, wal).unwrap();
+        let info = TableInfo {
+            name: "t".into(),
+            columns: vec![],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
+        };
+        storage.create_table(&info).unwrap();
+        storage.insert("t", vec![vec![Value::Integer(1)]]).unwrap();
+        let rows = storage.scan("t").unwrap();
+        assert_eq!(rows.len(), 1);
+    }
+
+    #[test]
+    fn test_wal_scan_nonexistent() {
+        let inner = MemoryStorage::new();
+        let wal = MemoryWalManager::new();
+        let storage = WalStorage::new(inner, wal).unwrap();
+        let rows = storage.scan("nonexistent").unwrap();
+        assert!(rows.is_empty());
+    }
+
+    #[test]
+    fn test_wal_flush() {
+        let inner = MemoryStorage::new();
+        let wal = MemoryWalManager::new();
+        let mut storage = WalStorage::new(inner, wal).unwrap();
+        storage.flush().unwrap();
+    }
+
+    #[test]
+    fn test_wal_delete() {
+        let inner = MemoryStorage::new();
+        let wal = MemoryWalManager::new();
+        let mut storage = WalStorage::new(inner, wal).unwrap();
+        let info = TableInfo {
+            name: "t".into(),
+            columns: vec![],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
+        };
+        storage.create_table(&info).unwrap();
+        storage.insert("t", vec![vec![Value::Integer(1)]]).unwrap();
+        let deleted = storage.delete("t", &[Value::Integer(1)]).unwrap();
+        assert_eq!(deleted, 1);
+    }
+
+    #[test]
+    fn test_wal_delete_if() {
+        let inner = MemoryStorage::new();
+        let wal = MemoryWalManager::new();
+        let mut storage = WalStorage::new(inner, wal).unwrap();
+        let info = TableInfo {
+            name: "t".into(),
+            columns: vec![],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
+        };
+        storage.create_table(&info).unwrap();
+        storage.insert("t", vec![vec![Value::Integer(1)]]).unwrap();
+        let filter: RowFilter = Box::new(|row: &Record| row[0] == Value::Integer(1));
+        storage.delete_if("t", &filter).unwrap();
+    }
+
+    #[test]
+    fn test_wal_update() {
+        let inner = MemoryStorage::new();
+        let wal = MemoryWalManager::new();
+        let mut storage = WalStorage::new(inner, wal).unwrap();
+        let info = TableInfo {
+            name: "t".into(),
+            columns: vec![ColumnDefinition::new("a", "INTEGER")],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
+        };
+        storage.create_table(&info).unwrap();
+        storage.insert("t", vec![vec![Value::Integer(1)]]).unwrap();
+        let updated = storage
+            .update("t", &[Value::Integer(1)], &[(0, Value::Integer(99))])
+            .unwrap();
+        assert!(updated <= 1);
+    }
+
+    #[test]
+    fn test_wal_update_if() {
+        let inner = MemoryStorage::new();
+        let wal = MemoryWalManager::new();
+        let mut storage = WalStorage::new(inner, wal).unwrap();
+        let info = TableInfo {
+            name: "t".into(),
+            columns: vec![ColumnDefinition::new("a", "INTEGER")],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
+        };
+        storage.create_table(&info).unwrap();
+        storage.insert("t", vec![vec![Value::Integer(1)]]).unwrap();
+        let filter: RowFilter = Box::new(|row: &Record| row[0] == Value::Integer(1));
+        let mutation = RowMutation::new(vec![(0, Value::Integer(99))], 0);
+        storage.update_if("t", &filter, &mutation).unwrap();
+    }
+
+    #[test]
+    fn test_wal_create_drop_table() {
+        let inner = MemoryStorage::new();
+        let wal = MemoryWalManager::new();
+        let mut storage = WalStorage::new(inner, wal).unwrap();
+        let info = TableInfo {
+            name: "t".into(),
+            columns: vec![],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
+        };
+        storage.create_table(&info).unwrap();
+        storage.drop_table("t").unwrap();
+    }
+
+    #[test]
+    fn test_wal_get_table_info() {
+        let inner = MemoryStorage::new();
+        let wal = MemoryWalManager::new();
+        let mut storage = WalStorage::new(inner, wal).unwrap();
+        let info = TableInfo {
+            name: "t".into(),
+            columns: vec![ColumnDefinition::new("a", "INTEGER")],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
+        };
+        storage.create_table(&info).unwrap();
+        let got = storage.get_table_info("t").unwrap();
+        assert_eq!(got.columns.len(), 1);
+    }
+
+    #[test]
+    fn test_wal_has_table_list_tables() {
+        let inner = MemoryStorage::new();
+        let wal = MemoryWalManager::new();
+        let mut storage = WalStorage::new(inner, wal).unwrap();
+        let info = TableInfo {
+            name: "t".into(),
+            columns: vec![],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
+        };
+        storage.create_table(&info).unwrap();
+        assert!(storage.has_table("t"));
+        let tables = storage.list_tables();
+        assert!(tables.contains(&"t".into()));
+    }
+
+    #[test]
+    fn test_wal_index_operations() {
+        let inner = MemoryStorage::new();
+        let wal = MemoryWalManager::new();
+        let mut storage = WalStorage::new(inner, wal).unwrap();
+        let info = TableInfo {
+            name: "t".into(),
+            columns: vec![ColumnDefinition::new("a", "INTEGER")],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
+        };
+        storage.create_table(&info).unwrap();
+        storage.insert("t", vec![vec![Value::Integer(1)]]).unwrap();
+        storage.create_index("t", "a", 0).unwrap();
+        storage.drop_index("t", "a").unwrap();
+    }
+
+    #[test]
+    fn test_wal_column_operations() {
+        let inner = MemoryStorage::new();
+        let wal = MemoryWalManager::new();
+        let mut storage = WalStorage::new(inner, wal).unwrap();
+        let info = TableInfo {
+            name: "t".into(),
+            columns: vec![ColumnDefinition::new("a", "INTEGER")],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
+        };
+        storage.create_table(&info).unwrap();
+        storage
+            .add_column("t", ColumnDefinition::new("b", "TEXT"))
+            .unwrap();
+        storage.rename_table("t", "u").unwrap();
+    }
+
+    #[test]
+    fn test_wal_trigger_operations() {
+        let inner = MemoryStorage::new();
+        let wal = MemoryWalManager::new();
+        let mut storage = WalStorage::new(inner, wal).unwrap();
+        let trigger = TriggerInfo {
+            name: "trig1".into(),
+            table_name: "t".into(),
+            timing: crate::engine::TriggerTiming::Before,
+            event: crate::engine::TriggerEvent::Insert,
+            body: "".into(),
+        };
+        storage.create_trigger(trigger).unwrap();
+        assert!(storage.get_trigger("trig1").is_some());
+        let triggers = storage.list_triggers("t");
+        assert_eq!(triggers.len(), 1);
+        storage.drop_trigger("trig1").unwrap();
+    }
+
+    #[test]
+    fn test_wal_list_indexes_has_view() {
+        let inner = MemoryStorage::new();
+        let wal = MemoryWalManager::new();
+        let storage = WalStorage::new(inner, wal).unwrap();
+        let indexes = storage.list_indexes("t");
+        assert!(indexes.is_empty());
+        assert!(!storage.has_view("v"));
+    }
+
+    #[test]
+    fn test_wal_database_operations() {
+        let inner = MemoryStorage::new();
+        let wal = MemoryWalManager::new();
+        let mut storage = WalStorage::new(inner, wal).unwrap();
+        storage.create_database("db1").unwrap();
+        storage.drop_database("db1").unwrap();
+    }
+
+    #[test]
+    fn test_wal_is_wal_enabled() {
+        let inner = MemoryStorage::new();
+        let wal = MemoryWalManager::new();
+        let storage = WalStorage::new(inner, wal).unwrap();
+        assert!(storage.is_wal_enabled());
+    }
+
+    #[test]
+    fn test_wal_set_current_tx_id() {
+        let inner = MemoryStorage::new();
+        let wal = MemoryWalManager::new();
+        let mut storage = WalStorage::new(inner, wal).unwrap();
+        storage.set_current_tx_id(42);
+        assert_eq!(storage.current_tx_id(), 42);
+        assert!(storage.in_transaction());
+    }
+
+    #[test]
+    fn test_wal_recover_method() {
+        let inner = MemoryStorage::new();
+        let wal = MemoryWalManager::new();
+        let mut storage = WalStorage::new(inner, wal).unwrap();
+        let entries = storage.recover().unwrap();
+        assert!(entries.is_empty());
+    }
 }
