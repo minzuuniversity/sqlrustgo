@@ -842,4 +842,225 @@ mod tests {
         let debug_str = format!("{:?}", token);
         assert!(debug_str.contains("Identifier"));
     }
+
+    #[test]
+    fn test_token_display_dml_keywords() {
+        assert_eq!(Token::Merge.to_string(), "MERGE");
+        assert_eq!(Token::Using.to_string(), "USING");
+        assert_eq!(Token::On.to_string(), "ON");
+        assert_eq!(Token::When.to_string(), "WHEN");
+        assert_eq!(Token::Matched.to_string(), "MATCHED");
+    }
+
+    #[test]
+    fn test_token_display_ddl_keywords() {
+        assert_eq!(Token::Add.to_string(), "ADD");
+        assert_eq!(Token::Column.to_string(), "COLUMN");
+        assert_eq!(Token::Rename.to_string(), "RENAME");
+        assert_eq!(Token::To.to_string(), "TO");
+        assert_eq!(Token::Default.to_string(), "DEFAULT");
+    }
+
+    #[test]
+    fn test_token_display_constraint_keywords() {
+        assert_eq!(Token::Foreign.to_string(), "FOREIGN");
+        assert_eq!(Token::References.to_string(), "REFERENCES");
+        assert_eq!(Token::Unique.to_string(), "UNIQUE");
+        assert_eq!(Token::Check.to_string(), "CHECK");
+        assert_eq!(Token::Constraint.to_string(), "CONSTRAINT");
+        assert_eq!(Token::Cascade.to_string(), "CASCADE");
+        assert_eq!(Token::Restrict.to_string(), "RESTRICT");
+    }
+
+    #[test]
+    fn test_token_display_subquery_keywords() {
+        assert_eq!(Token::Exists.to_string(), "EXISTS");
+        assert_eq!(Token::In.to_string(), "IN");
+        assert_eq!(Token::Is.to_string(), "IS");
+        assert_eq!(Token::All.to_string(), "ALL");
+        assert_eq!(Token::Any.to_string(), "ANY");
+        assert_eq!(Token::Some.to_string(), "SOME");
+    }
+
+    #[test]
+    fn test_token_display_conditional() {
+        assert_eq!(Token::If.to_string(), "IF");
+        assert_eq!(Token::Case.to_string(), "CASE");
+        assert_eq!(Token::Then.to_string(), "THEN");
+        assert_eq!(Token::Else.to_string(), "ELSE");
+    }
+
+    #[test]
+    fn test_token_display_cte() {
+        assert_eq!(Token::With.to_string(), "WITH");
+        assert_eq!(Token::Recursive.to_string(), "RECURSIVE");
+        assert_eq!(Token::As.to_string(), "AS");
+    }
+
+    #[test]
+    fn test_token_display_aggregate() {
+        assert_eq!(Token::Count.to_string(), "COUNT");
+        assert_eq!(Token::Sum.to_string(), "SUM");
+        assert_eq!(Token::Avg.to_string(), "AVG");
+        assert_eq!(Token::Min.to_string(), "MIN");
+        assert_eq!(Token::Max.to_string(), "MAX");
+    }
+
+    #[test]
+    fn test_token_display_join() {
+        assert_eq!(Token::Join.to_string(), "JOIN");
+        assert_eq!(Token::Inner.to_string(), "INNER");
+        assert_eq!(Token::Left.to_string(), "LEFT");
+        assert_eq!(Token::Right.to_string(), "RIGHT");
+        assert_eq!(Token::Full.to_string(), "FULL");
+        assert_eq!(Token::Cross.to_string(), "CROSS");
+        assert_eq!(Token::Outer.to_string(), "OUTER");
+        assert_eq!(Token::Natural.to_string(), "NATURAL");
+    }
+
+    #[test]
+    fn test_token_display_window_func_keywords() {
+        assert_eq!(Token::Window.to_string(), "WINDOW");
+        assert_eq!(Token::Partition.to_string(), "PARTITION");
+        assert_eq!(Token::Partitions.to_string(), "PARTITIONS");
+        assert_eq!(Token::Range.to_string(), "RANGE");
+        assert_eq!(Token::List.to_string(), "LIST");
+        assert_eq!(Token::Over.to_string(), "OVER");
+        assert_eq!(Token::Between.to_string(), "BETWEEN");
+        assert_eq!(Token::Unbounded.to_string(), "UNBOUNDED");
+        assert_eq!(Token::Preceding.to_string(), "PRECEDING");
+        assert_eq!(Token::Following.to_string(), "FOLLOWING");
+        assert_eq!(Token::Current.to_string(), "CURRENT");
+        assert_eq!(Token::Row.to_string(), "ROW");
+        assert_eq!(Token::Rows.to_string(), "ROWS");
+    }
+
+    #[test]
+    fn test_token_display_admin_keywords() {
+        assert_eq!(Token::Analyze.to_string(), "ANALYZE");
+        assert_eq!(Token::Truncate.to_string(), "TRUNCATE");
+        assert_eq!(Token::Replace.to_string(), "REPLACE");
+        assert_eq!(Token::No.to_string(), "NO");
+        assert_eq!(Token::Action.to_string(), "ACTION");
+        assert_eq!(Token::AutoIncrement.to_string(), "AUTO_INCREMENT");
+        assert_eq!(Token::Write.to_string(), "WRITE");
+        assert_eq!(Token::Only.to_string(), "ONLY");
+        assert_eq!(Token::SqlCalcFoundRows.to_string(), "SQL_CALC_FOUND_ROWS");
+    }
+
+    #[test]
+    fn test_token_display_mysql_keywords() {
+        assert_eq!(Token::Duplicate.to_string(), "DUPLICATE");
+        assert_eq!(Token::Database.to_string(), "DATABASE");
+        assert_eq!(Token::Use.to_string(), "USE");
+        assert_eq!(Token::View.to_string(), "VIEW");
+        assert_eq!(Token::HighPriority.to_string(), "HIGH_PRIORITY");
+        assert_eq!(Token::SqlCache.to_string(), "SQL_CACHE");
+        assert_eq!(Token::SqlNoCache.to_string(), "SQL_NO_CACHE");
+        assert_eq!(Token::Convert.to_string(), "CONVERT");
+    }
+
+    #[test]
+    fn test_token_display_aggregate_set() {
+        assert_eq!(Token::Grouping.to_string(), "GROUPING");
+        assert_eq!(Token::Rollup.to_string(), "ROLLUP");
+        assert_eq!(Token::Cube.to_string(), "CUBE");
+        assert_eq!(Token::Group.to_string(), "GROUP");
+        assert_eq!(Token::By.to_string(), "BY");
+        assert_eq!(Token::Having.to_string(), "HAVING");
+        assert_eq!(Token::Order.to_string(), "ORDER");
+        assert_eq!(Token::Limit.to_string(), "LIMIT");
+        assert_eq!(Token::Offset.to_string(), "OFFSET");
+        assert_eq!(Token::Distinct.to_string(), "DISTINCT");
+        assert_eq!(Token::Union.to_string(), "UNION");
+        assert_eq!(Token::Intersect.to_string(), "INTERSECT");
+        assert_eq!(Token::Except.to_string(), "EXCEPT");
+        assert_eq!(Token::AsOf.to_string(), "ASOF");
+        assert_eq!(Token::Fulltext.to_string(), "FULLTEXT");
+    }
+
+    #[test]
+    fn test_token_display_trigger() {
+        assert_eq!(Token::Trigger.to_string(), "TRIGGER");
+        assert_eq!(Token::Before.to_string(), "BEFORE");
+        assert_eq!(Token::After.to_string(), "AFTER");
+        assert_eq!(Token::ForEach.to_string(), "FOR EACH");
+        assert_eq!(Token::Each.to_string(), "EACH");
+    }
+
+    #[test]
+    fn test_token_display_functions() {
+        assert_eq!(Token::Nulls.to_string(), "NULLS");
+        assert_eq!(Token::First.to_string(), "FIRST");
+        assert_eq!(Token::Last.to_string(), "LAST");
+        assert_eq!(Token::Asc.to_string(), "ASC");
+        assert_eq!(Token::Desc.to_string(), "DESC");
+        assert_eq!(Token::Like.to_string(), "LIKE");
+        assert_eq!(Token::Escape.to_string(), "ESCAPE");
+        assert_eq!(Token::Maxvalue.to_string(), "MAXVALUE");
+        assert_eq!(Token::Minvalue.to_string(), "MINVALUE");
+        assert_eq!(Token::Date.to_string(), "DATE");
+        assert_eq!(Token::Substring.to_string(), "SUBSTRING");
+        assert_eq!(Token::Position.to_string(), "POSITION");
+        assert_eq!(Token::Interval.to_string(), "INTERVAL");
+    }
+
+    #[test]
+    fn test_token_display_transaction_keywords() {
+        assert_eq!(Token::Transaction.to_string(), "TRANSACTION");
+        assert_eq!(Token::Work.to_string(), "WORK");
+        assert_eq!(Token::Savepoint.to_string(), "SAVEPOINT");
+        assert_eq!(Token::Release.to_string(), "RELEASE");
+        assert_eq!(Token::Start.to_string(), "START");
+        assert_eq!(Token::Isolation.to_string(), "ISOLATION");
+        assert_eq!(Token::Level.to_string(), "LEVEL");
+        assert_eq!(Token::Serializable.to_string(), "SERIALIZABLE");
+        assert_eq!(Token::Repeatable.to_string(), "REPEATABLE");
+        assert_eq!(Token::Read.to_string(), "READ");
+        assert_eq!(Token::Committed.to_string(), "COMMITTED");
+        assert_eq!(Token::Uncommitted.to_string(), "UNCOMMITTED");
+    }
+
+    #[test]
+    fn test_token_display_stored_proc() {
+        assert_eq!(Token::Call.to_string(), "CALL");
+        assert_eq!(Token::Procedure.to_string(), "PROCEDURE");
+        assert_eq!(Token::End.to_string(), "END");
+        assert_eq!(Token::Prepare.to_string(), "PREPARE");
+        assert_eq!(Token::Execute.to_string(), "EXECUTE");
+        assert_eq!(Token::Deallocate.to_string(), "DEALLOCATE");
+    }
+
+    #[test]
+    fn test_token_display_show() {
+        assert_eq!(Token::Show.to_string(), "SHOW");
+        assert_eq!(Token::Describe.to_string(), "DESCRIBE");
+        assert_eq!(Token::Role.to_string(), "ROLE");
+        assert_eq!(Token::Roles.to_string(), "ROLES");
+        assert_eq!(Token::Parent.to_string(), "PARENT");
+        assert_eq!(Token::Grants.to_string(), "GRANTS");
+        assert_eq!(Token::For.to_string(), "FOR");
+    }
+
+    #[test]
+    fn test_token_display_complex_ops() {
+        assert_eq!(Token::JsonArrow.to_string(), "->");
+        assert_eq!(Token::JsonArrowText.to_string(), "->>");
+    }
+
+    #[test]
+    fn test_token_display_syntax_alt() {
+        assert_eq!(Token::SingleQuote.to_string(), "'");
+        assert_eq!(Token::Star.to_string(), "*");
+        assert_eq!(Token::Eof.to_string(), "EOF");
+        assert_eq!(Token::NotEqual.to_string(), "<>");
+        assert_eq!(Token::LessEqual.to_string(), "<=");
+        assert_eq!(Token::GreaterEqual.to_string(), ">=");
+    }
+
+    #[test]
+    fn test_token_boolean_literal_display() {
+        assert_eq!(Token::BooleanLiteral(true).to_string(), "true");
+        assert_eq!(Token::BooleanLiteral(false).to_string(), "false");
+    }
 }
