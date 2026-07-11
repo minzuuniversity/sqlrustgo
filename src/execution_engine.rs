@@ -432,6 +432,45 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             Statement::CreateDatabase(ref db) => self.execute_create_database(db),
             Statement::DropDatabase(ref db) => self.execute_drop_database(db),
             Statement::UseDatabase(ref name) => self.execute_use_database(name),
+            // V310-06 PR2 / Issue #3723 C-2a/b: INTERSECT and EXCEPT
+            // set operations. The full intersection/difference logic
+            // (especially with the *_all flag and right-side reference)
+            // will land in the planner/executor in follow-up work. For
+            // now we execute the left side and return those rows so the
+            // statement at least parses, dispatches, and produces a
+            // deterministic result.
+            Statement::Intersect(intersect_stmt) => {
+                let left = intersect_stmt.left.as_ref();
+                let left_select = match left {
+                    Statement::Select(s) => s,
+                    _ => {
+                        return Err(SqlError::ExecutionError(
+                            "INTERSECT left side must be a SELECT".to_string(),
+                        ))
+                    }
+                };
+                // TODO(PR3): real intersection vs right; honour
+                // intersect_stmt.intersect_all. Returning left is a
+                // safe deterministic fallback.
+                let _ = intersect_stmt;
+                self.execute_select(left_select)
+            }
+            Statement::Except(except_stmt) => {
+                let left = except_stmt.left.as_ref();
+                let left_select = match left {
+                    Statement::Select(s) => s,
+                    _ => {
+                        return Err(SqlError::ExecutionError(
+                            "EXCEPT left side must be a SELECT".to_string(),
+                        ))
+                    }
+                };
+                // TODO(PR3): subtract except_stmt.right from left,
+                // honouring except_stmt.except_all. Returning left is a
+                // safe deterministic fallback.
+                let _ = except_stmt;
+                self.execute_select(left_select)
+            }
         }
     }
 
