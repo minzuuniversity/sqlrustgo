@@ -369,10 +369,10 @@ while [ "$(date +%s)" -lt "$END_TS" ]; do
     # Threshold: 50MB per 24h; for 0.5h run, expect ≤ ~1MB.
     if [ "$SAMPLE_COUNT" -gt 5 ]; then
         expected_rss_growth=$(awk -v e="$ELAPSED" 'BEGIN { printf "%d", (50 * e / 86400) + 1 }')
-        if [ "$RSS_GROWTH" -gt "$expected_rss_growth" ] 2>/dev/null; then
+        if [ "$RSS_DELTA" -gt "$expected_rss_growth" ] 2>/dev/null; then
             echo "  WARN[${ELAPSED}s]: RSS growth $RSS_DELTA MB > expected $expected_rss_growth MB" >&2
         fi
-        if [ "$FD_GROWTH" -gt 5 ] 2>/dev/null; then
+        if [ "$FD_DELTA" -gt 5 ] 2>/dev/null; then
             echo "  WARN[${ELAPSED}s]: FD growth > 5 (delta=$FD_DELTA)" >&2
         fi
     fi

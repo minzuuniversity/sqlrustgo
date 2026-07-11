@@ -43,9 +43,9 @@ fi
 # C-ARCH rules (consistent across all gates)
 CARCH01_BY_DESIGN="true"          # txn_manager is by design (PR-830)
 CARCH02_WRITE_BUFFER="forbidden"  # LocalExecutor must NOT have write_buffer
-CARCH05_LIMIT=1800                # execution_engine.rs line limit (SSOT - all other gate scripts must use this value)
-                                # AD-001 original target was 1500; current 1523. 1800 balances current state with future headroom.
-                                # Issue #2877: unified to 1800 across check_arch_invariants.sh, check_integration_gate.sh, check_rc_ga_gate.sh.
+CARCH05_LIMIT=1500                # execution_engine.rs line limit (SSOT - all other gate scripts must use this value)
+                                # AD-001 target. PR #3664 (2026-07-01) 完成拆分,文件降到 1471 行。
+                                # 历史: 2026-06-30 临时 1800; PR-3660 (2026-06-29) 临时 3000; 原 AD-001 1500 不变。
 
 # Coverage threshold
 COVERAGE_MIN=75                   # Alpha: 75%, Beta/RC: 80%
@@ -688,7 +688,7 @@ check_carch_unified() {
         ca_pass=$((ca_pass+1))
     fi
 
-    # C-ARCH-05: execution_engine.rs line limit (SSOT CARCH05_LIMIT, currently 1800)
+    # C-ARCH-05: execution_engine.rs line limit (SSOT CARCH05_LIMIT, currently 1500)
     ca_total=$((ca_total+1))
     EE_LINES=$(wc -l < src/execution_engine.rs 2>/dev/null || echo "0")
     echo -n "  [C-ARCH-05] execution_engine.rs ($EE_LINES/$CARCH05_LIMIT lines) ... "

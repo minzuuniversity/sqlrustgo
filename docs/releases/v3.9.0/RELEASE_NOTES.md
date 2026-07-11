@@ -1,6 +1,18 @@
+<!-- 2026-07-10 GA CUT addendum (auto-applied) -->
+> **状态更新**: v3.9.0 GA CUT 已于 2026-07-10 在 commit `184ad102e9` 完成。
+> - Tag `v3.9.0` 已创建并推送至 252 remote
+> - 72h SOAK 完成 (119h57m, 0 错误, Issue #3265 已关闭)
+> - 168h SOAK 进行中 (ETA 2026-07-12 22:02, Issue #3266)
+> - G3/G4 conditional 已获 Hermes C 授权
+> - `ga/GA_RELEASE_NOTES.md` 已创建
+>
+> 本文件原始内容保持不变,仅顶部加 addendum。
+
+---
+
 # Release Notes — SQLRustGo v3.9.0
 
-> **当前阶段**: RC7 (2026-06-12) — awaiting 24h/72h/168h soak for GA cut
+> **当前阶段**: RC8 (2026-06-18) + 本机 L1 闭环 (PR #3664/#3665/#3666, 2026-07-01) — awaiting 24h/72h/168h real soak for GA cut
 > Comprehensive list of changes from v3.8.0 → v3.9.0.
 > For migration instructions see [`MIGRATION_GUIDE.md`](MIGRATION_GUIDE.md).
 > For benchmark numbers see [`EVALUATION_REPORT.md`](EVALUATION_REPORT.md).

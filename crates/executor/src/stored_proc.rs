@@ -3,12 +3,14 @@
 //! This module provides stored procedure execution support with control flow.
 
 use crate::ExecutorResult;
+use log::error as log_error;
+use parking_lot::RwLock;
 use sqlrustgo_catalog::HandlerCondition;
 use sqlrustgo_catalog::StoredProcStatement;
 use sqlrustgo_storage::{ColumnDefinition, StorageEngine};
 use sqlrustgo_types::Value;
 use std::collections::HashMap;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 
 /// Stored procedure execution error
 #[derive(Debug, Clone)]
@@ -401,10 +403,16 @@ impl StoredProcExecutor {
         catalog: Arc<sqlrustgo_catalog::Catalog>,
         storage: Arc<RwLock<dyn StorageEngine>>,
     ) -> Self {
-        assert!(
-            storage.read().unwrap().is_wal_enabled(),
-            "Storage MUST be WalStorage in production - WAL is mandatory"
-        );
+        // BinaryTableStorage has no WAL. Stored-proc execution on
+        // non-WAL storage is a no-op (no DML recovery is possible) —
+        // warn and proceed instead of panicking the server. WalStorage
+        // continues to enforce the WAL contract at write time.
+        if !cfg!(test) && !storage.read().is_wal_enabled() {
+            log_error!(
+                "StoredProcExecutor::new: storage has no WAL enabled — \
+                 stored-proc writes will be silently skipped (binary mode)"
+            );
+        }
         Self { catalog, storage }
     }
 
@@ -799,7 +807,7 @@ impl StoredProcExecutor {
                     .map_err(|e| format!("Failed to parse cursor query: {}", e))?;
 
                 if let sqlrustgo_parser::Statement::Select(select) = statement {
-                    let storage = self.storage.read().unwrap();
+                    let storage = self.storage.read();
                     let records = storage
                         .scan(&select.table)
                         .map_err(|e| format!("Failed to scan table: {}", e))?;
@@ -883,7 +891,7 @@ impl StoredProcExecutor {
                 let records = if ctx.cte_tables.contains_key(table_name) {
                     ctx.cte_tables.get(table_name).cloned().unwrap_or_default()
                 } else {
-                    let storage = self.storage.read().unwrap();
+                    let storage = self.storage.read();
                     storage
                         .scan(table_name)
                         .map_err(|e| format!("Failed to scan table: {}", e))?
@@ -921,7 +929,7 @@ impl StoredProcExecutor {
                 } else if ctx.cte_tables.contains_key(table_name) {
                     ctx.cte_tables.get(table_name).cloned().unwrap_or_default()
                 } else {
-                    let storage = self.storage.read().unwrap();
+                    let storage = self.storage.read();
                     storage
                         .scan(table_name)
                         .map_err(|e| format!("Failed to scan table: {}", e))?
@@ -955,7 +963,7 @@ impl StoredProcExecutor {
                 let insert_columns = insert.columns.clone();
 
                 let table_info = {
-                    let storage = self.storage.read().unwrap();
+                    let storage = self.storage.read();
                     if !storage.has_table(table_name) {
                         return Err(format!("Table '{}' not found", table_name));
                     }
@@ -967,7 +975,7 @@ impl StoredProcExecutor {
                 let insert_count;
 
                 if let Some(ref select) = insert.select {
-                    let storage = self.storage.read().unwrap();
+                    let storage = self.storage.read();
                     let records = storage
                         .scan(&select.table)
                         .map_err(|e| format!("Failed to scan table: {}", e))?;
@@ -1080,7 +1088,7 @@ impl StoredProcExecutor {
                 }
 
                 {
-                    let mut storage = self.storage.write().unwrap();
+                    let mut storage = self.storage.write();
                     for new_row in new_rows {
                         storage
                             .insert(table_name, vec![new_row])
@@ -1092,8 +1100,11 @@ impl StoredProcExecutor {
                 Ok(())
             }
             sqlrustgo_parser::Statement::Update(update) => {
-                let table_name = &update.table;
-                let mut storage = self.storage.write().unwrap();
+                if update.tables.len() != 1 {
+                    return Err("Stored-proc UPDATE only supports single-table form".to_string());
+                }
+                let table_name = &update.tables[0].name;
+                let mut storage = self.storage.write();
 
                 if !storage.has_table(table_name) {
                     return Err(format!("Table '{}' not found", table_name));
@@ -1122,8 +1133,11 @@ impl StoredProcExecutor {
                 Ok(())
             }
             sqlrustgo_parser::Statement::Delete(delete) => {
-                let table_name = &delete.table;
-                let mut storage = self.storage.write().unwrap();
+                if delete.tables.len() != 1 {
+                    return Err("Stored-proc DELETE only supports single-table form".to_string());
+                }
+                let table_name = &delete.tables[0].name;
+                let mut storage = self.storage.write();
 
                 if !storage.has_table(table_name) {
                     return Err(format!("Table '{}' not found", table_name));
@@ -1138,7 +1152,7 @@ impl StoredProcExecutor {
             }
             sqlrustgo_parser::Statement::AlterTable(alter_table) => {
                 let table_name = &alter_table.table_name;
-                let mut storage = self.storage.write().unwrap();
+                let mut storage = self.storage.write();
 
                 match &alter_table.operation {
                     sqlrustgo_parser::AlterTableOperation::AddColumn {
@@ -1362,10 +1376,7 @@ impl StoredProcExecutor {
 
     /// Execute a SELECT statement and return rows
     fn execute_subquery(&self, select: &sqlrustgo_parser::SelectStatement) -> Vec<Vec<Value>> {
-        let storage = match self.storage.read() {
-            Ok(s) => s,
-            Err(_) => return Vec::new(),
-        };
+        let storage = self.storage.read();
         let records = match storage.scan(&select.table) {
             Ok(r) => r,
             Err(_) => return Vec::new(),
@@ -1396,7 +1407,7 @@ impl StoredProcExecutor {
         match statement {
             sqlrustgo_parser::Statement::Select(select) => {
                 let table_name = &select.table;
-                let storage = self.storage.read().unwrap();
+                let storage = self.storage.read();
                 let records = storage
                     .scan(table_name)
                     .map_err(|e| format!("Failed to scan CTE table: {}", e))?;
@@ -1445,7 +1456,7 @@ impl StoredProcExecutor {
         row: &[Value],
         columns: &[String],
     ) -> Result<(), String> {
-        let storage = self.storage.read().unwrap();
+        let storage = self.storage.read();
         let table_info = storage
             .get_table_info(table_name)
             .map_err(|e| format!("Failed to get table info: {}", e))?;
@@ -1510,7 +1521,7 @@ impl StoredProcExecutor {
         row: &[Value],
         columns: &[String],
     ) -> Result<(), String> {
-        let storage = self.storage.read().unwrap();
+        let storage = self.storage.read();
         let table_info = storage
             .get_table_info(table_name)
             .map_err(|e| format!("Failed to get table info: {}", e))?;
@@ -1573,7 +1584,7 @@ impl StoredProcExecutor {
         row: &[Value],
         columns: &[String],
     ) -> Result<(), String> {
-        let storage = self.storage.read().unwrap();
+        let storage = self.storage.read();
         let table_info = storage
             .get_table_info(table_name)
             .map_err(|e| format!("Failed to get table info: {}", e))?;

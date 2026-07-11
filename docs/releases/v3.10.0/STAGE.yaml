@@ -1,0 +1,101 @@
+# Per-Version Stage State — v3.10.0
+#
+# This file is the **per-version override** of docs/governance/STAGE_CONFIG.yaml.
+# SSOT chain:
+#   1. docs/governance/STAGE_CONFIG.yaml (framework, version-agnostic)
+#   2. docs/releases/vX.Y.Z/STAGE.yaml (per-version, this file)
+#   3. scripts/gate/check_stage.sh (reads both, runs gates)
+#
+# v3.10.0 当前状态: DRAFT (设计与规划阶段)
+# 战略定位: MySQL 5.7 替代 — 功能稳定 + 基本性能优先
+# 父版本: v3.9.0 (develop/v3.9.0)
+#
+# Maintainer: claude-macmini (initial creation)
+# Last update: 2026-07-01
+
+# =============================================================================
+# Current state
+# =============================================================================
+version: "v3.10.0"
+current_stage: "DRAFT"
+branch: "develop/v3.10.0"  # NOT YET CREATED — to be created from develop/v3.9.0
+last_transition:
+  from: null  # first version state
+  to: "DRAFT"
+  date: "2026-07-01"
+  reason: "Initial DRAFT stage — design + architecture + planning in progress"
+
+# =============================================================================
+# Blocker issues (from openclaw Gitea)
+# =============================================================================
+# Hardware-blocked items that block progression to ALPHA
+blocker_issues: []
+# Empty for now. Will populate as Phase 0 completes and ALPHA is approached.
+# Note: 4 open issues tracked in debt-registry.yaml#ga_p0 are v3.9.0 items
+# (not v3.10.0 blockers) — they affect v3.9.0 GA, not v3.10.0 development.
+
+# =============================================================================
+# Tag history (v3.10.0)
+# =============================================================================
+tags: []
+# (No tags yet — version not cut)
+
+# =============================================================================
+# Stage history (v3.10.0)
+# =============================================================================
+stage_history:
+  - stage: DRAFT
+    entered: "2026-07-01"
+    exited: null  # still in DRAFT
+    notes: "Initial design + architecture + planning. Parent version v3.9.0 RC8. 3 PRs from v3.9.0 already merged into develop/v3.9.0: #3664 (execution_engine 拆分), #3665 (C-ARCH-05 锁回), #3666 (SGL-001 fmt fix)."
+
+# =============================================================================
+# Branch protection rules (this version)
+# =============================================================================
+branch_protection:
+  develop_v3_10_0:
+    required_reviewers: 1
+    ci_required: [lint, build, docs-links, cargo-build]
+    allow_force_push: false
+    allow_deletion: false
+  feature_X:
+    required_reviewers: 1
+    ci_required: [lint, build]
+    allow_force_push: false
+    allow_deletion: false
+
+# =============================================================================
+# Promotion criteria (v3.10.0 specific)
+# =============================================================================
+promotion_to_ALPHA_requires:
+  - "develop/v3.10.0 branch created from develop/v3.9.0"
+  - "V310_VERSION_PLAN.md approved"
+  - "V310_DEVELOPMENT_PLAN.md with concrete task breakdown (P0/P1/P2)"
+  - "All 4 phase plans documented (Phase 0/1/2/3)"
+  - "Initial gate: build + clippy + fmt PASS"
+
+# =============================================================================
+# Per-version threshold overrides (v3.10.0 specific)
+# =============================================================================
+thresholds_override: {}
+# Empty for now. Will populate as v3.10.0-specific requirements emerge
+# (e.g. wire protocol compatibility, MySQL 5.7 feature coverage targets).
+
+# =============================================================================
+# Cross-references
+# =============================================================================
+# When this file is updated, also update:
+#   - docs/governance/STAGE_CONFIG.yaml (if framework defaults change)
+#   - docs/releases/v3.10.0/CHANGELOG.md (transition entry)
+#   - docs/governance/GOVERNANCE_COMPLIANCE_REPORT.md (transition evidence)
+#   - debt-registry.yaml (blocker issues state)
+#
+# Stage transition command (from DRAFT to ALPHA):
+#   1. Create develop/v3.10.0 branch from develop/v3.9.0:
+#        git checkout -b develop/v3.10.0 develop/v3.9.0
+#        git push origin develop/v3.10.0
+#   2. Verify V310_VERSION_PLAN.md and V310_DEVELOPMENT_PLAN.md are complete
+#   3. Run: bash scripts/gate/check_stage.sh --version v3.10.0 --stage ALPHA
+#   4. If PASS, human architect signs off
+#   5. Update this file: current_stage: ALPHA, last_transition: {to: ALPHA, ...}
+#   6. Commit + push to mirror (Gitea 252 or 250)
