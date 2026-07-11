@@ -3168,4 +3168,198 @@ mod tests {
         let sql = "@x";
         assert_eq!(executor.expand_variables_in_sql(sql, &ctx), "NULL");
     }
+
+    #[test]
+    fn test_expand_variables_in_sql_blob_var() {
+        let catalog = Arc::new(Catalog::new("test"));
+        let executor = StoredProcExecutor::new_for_test(catalog);
+        let mut ctx = ProcedureContext::new();
+        ctx.set_var("x", Value::Blob(vec![1, 2, 3]));
+        let sql = "@x";
+        assert_eq!(executor.expand_variables_in_sql(sql, &ctx), "\x01\x02\x03");
+    }
+
+    #[test]
+    fn test_expand_variables_in_sql_float_var() {
+        let catalog = Arc::new(Catalog::new("test"));
+        let executor = StoredProcExecutor::new_for_test(catalog);
+        let mut ctx = ProcedureContext::new();
+        ctx.set_var("x", Value::Float(3.14));
+        let sql = "@x";
+        assert_eq!(executor.expand_variables_in_sql(sql, &ctx), "3.14");
+    }
+
+    #[test]
+    fn test_expand_variables_in_sql_boolean_var() {
+        let catalog = Arc::new(Catalog::new("test"));
+        let executor = StoredProcExecutor::new_for_test(catalog);
+        let mut ctx = ProcedureContext::new();
+        ctx.set_var("x", Value::Boolean(true));
+        let sql = "@x";
+        assert_eq!(executor.expand_variables_in_sql(sql, &ctx), "TRUE");
+    }
+
+    #[test]
+    fn test_evaluate_constant_blob_returns_text() {
+        let mut ctx = ProcedureContext::new();
+        ctx.set_var("x", Value::Text("hello".into()));
+        assert_eq!(ctx.get_var("x"), Some(&Value::Text("hello".into())));
+    }
+
+    #[test]
+    fn test_procedure_context_set_local_var() {
+        let mut ctx = ProcedureContext::new();
+        ctx.set_local_var("x", Value::Integer(42));
+        assert_eq!(ctx.get_local_var("x"), Some(&Value::Integer(42)));
+        assert_eq!(ctx.get_var("x"), Some(&Value::Integer(42)));
+    }
+
+    #[test]
+    fn test_procedure_context_set_session_var() {
+        let mut ctx = ProcedureContext::new();
+        ctx.set_session_var("s", Value::Text("hello".into()));
+        assert_eq!(ctx.get_session_var("s"), Some(&Value::Text("hello".into())));
+    }
+
+    #[test]
+    fn test_procedure_context_get_var_local_overrides_session() {
+        let mut ctx = ProcedureContext::new();
+        ctx.set_session_var("x", Value::Integer(1));
+        ctx.set_local_var("x", Value::Integer(2));
+        let v = ctx.get_var("x");
+        assert_eq!(v, Some(&Value::Integer(2)));
+    }
+
+    #[test]
+    fn test_procedure_context_clear_local_vars_only_clears_local() {
+        let mut ctx = ProcedureContext::new();
+        ctx.set_session_var("s", Value::Integer(1));
+        ctx.set_local_var("l", Value::Integer(2));
+        ctx.clear_local_vars();
+        assert!(ctx.get_local_var("l").is_none());
+        assert!(ctx.get_session_var("s").is_some());
+    }
+
+    #[test]
+    fn test_procedure_context_get_session_vars() {
+        let mut ctx = ProcedureContext::new();
+        ctx.set_session_var("a", Value::Integer(1));
+        ctx.set_session_var("b", Value::Integer(2));
+        let vars = ctx.get_session_vars();
+        assert_eq!(vars.len(), 2);
+    }
+
+    #[test]
+    fn test_procedure_context_set_get_return() {
+        let mut ctx = ProcedureContext::new();
+        assert_eq!(ctx.get_return(), None);
+        ctx.set_return(Value::Integer(42));
+        assert_eq!(ctx.get_return(), Some(Value::Integer(42)));
+    }
+
+    #[test]
+    fn test_procedure_context_leave_iterate() {
+        let mut ctx = ProcedureContext::new();
+        assert!(!ctx.should_leave());
+        assert!(!ctx.should_iterate());
+        ctx.set_leave();
+        ctx.set_iterate();
+        assert!(ctx.should_leave());
+        assert!(ctx.should_iterate());
+        ctx.reset_leave();
+        ctx.reset_iterate();
+        assert!(!ctx.should_leave());
+        assert!(!ctx.should_iterate());
+    }
+
+    #[test]
+    fn test_procedure_context_label_get_set() {
+        let mut ctx = ProcedureContext::new();
+        assert_eq!(ctx.get_label(), None);
+        ctx.set_label(Some("outer".into()));
+        assert_eq!(ctx.get_label(), Some(&"outer".to_string()));
+        ctx.set_label(None);
+        assert_eq!(ctx.get_label(), None);
+    }
+
+    #[test]
+    fn test_procedure_context_has_var_negative() {
+        let ctx = ProcedureContext::new();
+        assert!(!ctx.has_var("nope"));
+    }
+
+    #[test]
+    fn test_procedure_context_exception_handling() {
+        let mut ctx = ProcedureContext::new();
+        assert!(!ctx.is_handling_exception());
+        ctx.set_exception_handling(true);
+        assert!(ctx.is_handling_exception());
+        assert!(ctx.get_exception().is_none());
+        ctx.set_exception("45000".into(), "boom".into());
+        assert!(ctx.get_exception().is_some());
+        ctx.clear_exception();
+        assert!(ctx.get_exception().is_none());
+        ctx.set_exception_handling(false);
+        assert!(!ctx.is_handling_exception());
+    }
+
+    #[test]
+    fn test_procedure_context_cursor_operations() {
+        let mut ctx = ProcedureContext::new();
+        assert!(!ctx.has_cursor("c1"));
+        ctx.declare_cursor("c1".into(), "SELECT 1".into());
+        assert!(ctx.has_cursor("c1"));
+        let open = ctx.open_cursor("c1");
+        assert!(open.is_ok());
+        let fetch_empty = ctx.fetch_cursor("c1", &["x".to_string()]);
+        assert!(fetch_empty.is_ok());
+        ctx.set_cursor_records("c1", vec![vec![Value::Integer(42)]]);
+        ctx.open_cursor("c1").unwrap();
+        let fetch = ctx.fetch_cursor("c1", &["x".to_string()]);
+        assert!(fetch.is_ok());
+        ctx.close_cursor("c1").unwrap();
+        assert!(ctx.close_cursor("nonexistent").is_err());
+    }
+
+    #[test]
+    fn test_procedure_context_cursor_invalid_fetch() {
+        let mut ctx = ProcedureContext::new();
+        let r = ctx.fetch_cursor("nonexistent", &[]);
+        assert!(r.is_err());
+    }
+
+    #[test]
+    fn test_procedure_context_handler_operations() {
+        let mut ctx = ProcedureContext::new();
+        ctx.push_handler(HandlerCondition::SqlException, vec![]);
+        ctx.pop_handler();
+        let exc = StoredProcError {
+            sqlstate: "45000".to_string(),
+            message: "test".to_string(),
+        };
+        let handler = ctx.find_matching_handler(&exc);
+        assert!(handler.is_none());
+    }
+
+    #[test]
+    fn test_procedure_context_labels() {
+        let mut ctx = ProcedureContext::new();
+        ctx.enter_label("outer".into());
+        assert!(ctx.has_label("outer"));
+        ctx.enter_label("inner".into());
+        assert!(ctx.has_label("inner"));
+        assert!(ctx.has_label("outer"));
+        ctx.exit_label();
+        assert!(ctx.has_label("outer"));
+        assert!(!ctx.has_label("inner"));
+        ctx.exit_label();
+        assert!(!ctx.has_label("outer"));
+    }
+
+    #[test]
+    fn test_procedure_context_scope_operations() {
+        let mut ctx = ProcedureContext::new();
+        ctx.enter_scope();
+        ctx.exit_scope();
+    }
 }
