@@ -5,8 +5,9 @@
 //! Validates the 3-state classification (clean_match / data_limitation /
 //! engine_issue) on hand-picked subsets.
 
+use parking_lot::RwLock;
 use sqlrustgo::{ExecutionEngine, MemoryStorage};
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 
 /// Load SF=1 simplified TPC-H data into a fresh in-memory engine.
 fn make_engine_with_data() -> Option<ExecutionEngine<MemoryStorage>> {

@@ -8,8 +8,9 @@ use four_way_harness::Engine;
 use std::time::Instant;
 
 fn load_into_sqlrustgo() -> sqlrustgo::ExecutionEngine<sqlrustgo::MemoryStorage> {
+    use parking_lot::RwLock;
     use sqlrustgo::{ExecutionEngine, MemoryStorage};
-    use std::sync::{Arc, RwLock};
+    use std::sync::Arc;
 
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));
     let mut engine = ExecutionEngine::new(Arc::clone(&storage));
