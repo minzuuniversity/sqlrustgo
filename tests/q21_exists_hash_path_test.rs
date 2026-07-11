@@ -25,10 +25,11 @@
 //! would use, with a minimal hand-rolled fixture so the test
 //! doesn't depend on the SF=0.1 dataset.
 
+use parking_lot::RwLock;
 use sqlrustgo::ExecutionEngine;
 use sqlrustgo::MemoryStorage;
 use sqlrustgo_types::Value;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 
 fn fresh_engine() -> ExecutionEngine<MemoryStorage> {
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));
