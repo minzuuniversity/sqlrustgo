@@ -307,4 +307,50 @@ mod tests {
         let _s: Arc<RwLock<dyn StorageEngine>> = dml.storage();
         let _e: Arc<Mutex<dyn ExecutionEngine>> = dml.engine();
     }
+
+    #[test]
+    fn test_convert_expression_all_variants() {
+        let parser_expr = sqlrustgo_parser::Expression::BinaryOp(
+            Box::new(sqlrustgo_parser::Expression::Identifier("a".into())),
+            "=".into(),
+            Box::new(sqlrustgo_parser::Expression::Literal("42".into())),
+        );
+        let _converted = convert_expression(&parser_expr);
+    }
+
+    #[test]
+    fn test_convert_expression_unknown_op_falls_back_to_eq() {
+        let parser_expr = sqlrustgo_parser::Expression::BinaryOp(
+            Box::new(sqlrustgo_parser::Expression::Literal("1".into())),
+            "UNKNOWN_OP".into(),
+            Box::new(sqlrustgo_parser::Expression::Literal("2".into())),
+        );
+        let _converted = convert_expression(&parser_expr);
+    }
+
+    #[test]
+    fn test_convert_expression_unsupported_falls_back_to_null() {
+        let parser_expr = sqlrustgo_parser::Expression::FunctionCall("now".into(), vec![]);
+        let _converted = convert_expression(&parser_expr);
+    }
+
+    #[test]
+    fn test_convert_expression_float_literal() {
+        let parser_expr = sqlrustgo_parser::Expression::Literal("3.14".into());
+        let _converted = convert_expression(&parser_expr);
+    }
+
+    #[test]
+    fn test_noop_engine_methods() {
+        let mut engine = NoopExecutionEngine;
+        let mut ctx = crate::execution::QueryContext::new("SELECT 1".into());
+        let result = engine.execute(&mut ctx);
+        assert!(result.is_ok());
+        let begin_result = engine.begin();
+        assert!(begin_result.is_err());
+        let commit_result = engine.commit(1);
+        assert!(commit_result.is_err());
+        let rollback_result = engine.rollback(1);
+        assert!(rollback_result.is_err());
+    }
 }
