@@ -1,3 +1,4 @@
+use parking_lot::RwLock;
 use sqlrustgo_executor::execution::ExecutionResult;
 use sqlrustgo_executor::ExecutorResult;
 use sqlrustgo_planner::{Expr, MergeClause, MergeStatement};
@@ -5,7 +6,6 @@ use sqlrustgo_storage::engine::{ColumnDefinition, StorageEngine, TableInfo};
 use sqlrustgo_storage::MemoryStorage;
 use sqlrustgo_types::Value;
 use std::sync::Arc;
-use parking_lot::RwLock;
 
 fn create_memory_storage() -> Arc<RwLock<MemoryStorage>> {
     Arc::new(RwLock::new(MemoryStorage::new()))

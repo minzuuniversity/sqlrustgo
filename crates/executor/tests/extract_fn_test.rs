@@ -12,10 +12,10 @@
 //! follow-up; until then, these tests assert on row counts that
 //! depend on EXTRACT's predicate result.
 
+use parking_lot::RwLock;
 use sqlrustgo::ExecutionEngine;
 use sqlrustgo_storage::MemoryStorage;
 use std::sync::Arc;
-use parking_lot::RwLock;
 
 fn create_engine() -> ExecutionEngine<MemoryStorage> {
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));
