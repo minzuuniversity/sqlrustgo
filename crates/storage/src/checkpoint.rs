@@ -182,7 +182,7 @@ impl CheckpointManager {
             }
         }
 
-        checkpoints.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
+        checkpoints.sort_by_key(|b| std::cmp::Reverse(b.timestamp));
         Ok(checkpoints)
     }
 
@@ -270,6 +270,7 @@ mod tests {
             dirty_pages: 10,
             file_path: temp.path().join("checkpoint.1"),
         };
+        assert_eq!(meta.lsn, 1000);
 
         manager.record_checkpoint(meta.clone());
 

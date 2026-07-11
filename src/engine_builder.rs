@@ -3,8 +3,10 @@
 
 #![allow(unused_variables, unused_imports)]
 
+use parking_lot::RwLock;
+use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 
 use sqlrustgo_catalog::Catalog;
 use sqlrustgo_storage::{
@@ -37,6 +39,7 @@ impl ExecutionEngine<MemoryStorage> {
             checkpoint_manager: None,
             parallel_degree: 1,
             stmt_cache: sqlrustgo_cache::PreparedStatementCache::new(100),
+            views: HashMap::new(),
         }
     }
 
@@ -56,6 +59,7 @@ impl ExecutionEngine<MemoryStorage> {
             checkpoint_manager: None,
             parallel_degree: 1,
             stmt_cache: sqlrustgo_cache::PreparedStatementCache::new(100),
+            views: HashMap::new(),
         }
     }
 
@@ -75,6 +79,7 @@ impl ExecutionEngine<MemoryStorage> {
             checkpoint_manager: None,
             parallel_degree: 1,
             stmt_cache: sqlrustgo_cache::PreparedStatementCache::new(100),
+            views: HashMap::new(),
         }
     }
 }
@@ -105,6 +110,7 @@ impl ExecutionEngine<MemoryStorage> {
             checkpoint_manager: None,
             parallel_degree: 1,
             stmt_cache: sqlrustgo_cache::PreparedStatementCache::new(100),
+            views: HashMap::new(),
         }
     }
 }
@@ -140,6 +146,7 @@ impl ExecutionEngine<MemoryStorage> {
             checkpoint_manager: None,
             parallel_degree: 1,
             stmt_cache: sqlrustgo_cache::PreparedStatementCache::new(100),
+            views: HashMap::new(),
         })
     }
 
@@ -170,6 +177,7 @@ impl ExecutionEngine<MemoryStorage> {
             checkpoint_manager: None,
             parallel_degree: 1,
             stmt_cache: sqlrustgo_cache::PreparedStatementCache::new(100),
+            views: HashMap::new(),
         })
     }
 
@@ -201,6 +209,7 @@ impl ExecutionEngine<MemoryStorage> {
             checkpoint_manager: checkpoint_manager.map(|cp| Arc::new(RwLock::new(cp))),
             parallel_degree: 1,
             stmt_cache: sqlrustgo_cache::PreparedStatementCache::new(100),
+            views: HashMap::new(),
         })
     }
 
@@ -216,9 +225,7 @@ impl ExecutionEngine<MemoryStorage> {
         // persisted during normal operation would be reapplied by the
         // recovery engine, producing duplicates on every restart.
         {
-            let mut storage = engine.storage.write().map_err(|e| {
-                SqlError::ExecutionError(format!("Failed to lock storage: {:?}", e))
-            })?;
+            let mut storage = engine.storage.write();
             let (inner, _wal_mgr) = storage.split();
             inner.clear_all_tables();
         }
@@ -231,9 +238,7 @@ impl ExecutionEngine<MemoryStorage> {
 pub fn recover_wal(
     engine: &mut ExecutionEngine<WalStorage<FileStorage, FileBackedWalManager>>,
 ) -> SqlResult<RecoveryReport> {
-    let storage = &mut *engine.storage.write().map_err(|e| {
-        SqlError::ExecutionError(format!("Failed to lock storage for recovery: {:?}", e))
-    })?;
+    let storage = &mut *engine.storage.write();
     let (inner, wal_mgr) = storage.split();
     let mut recovery = StatefulRecoveryEngine::new();
     let report = RecoveryEngine::recover(&mut recovery, inner, wal_mgr)?;

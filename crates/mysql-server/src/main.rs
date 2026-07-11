@@ -73,6 +73,9 @@ enum Command {
         /// SERVER-01: auth mode (none = allow all, password = require password)
         #[arg(long, default_value = "none")]
         auth_mode: String,
+        /// Storage engine: "file" (default, WAL+FileStorage) or "binary" (BinaryTableStorage, fast TPC-H load)
+        #[arg(long, default_value = "file")]
+        storage: String,
         /// SERVER-01: show detailed startup banner
         #[arg(long, default_value_t = false)]
         verbose: bool,
@@ -158,6 +161,7 @@ fn main() -> ExitCode {
         max_connections: 100,
         server_threads: 16,
         auth_mode: "none".to_string(),
+        storage: "file".to_string(),
         verbose: false,
     });
 
@@ -169,6 +173,7 @@ fn main() -> ExitCode {
             max_connections,
             server_threads,
             auth_mode,
+            storage,
             verbose,
         } => {
             // SERVER-01: print startup banner
@@ -178,6 +183,7 @@ fn main() -> ExitCode {
             println!("  Data dir:   {}", data_dir);
             println!("  Max conn:   {}", max_connections);
             println!("  Auth mode:  {}", auth_mode);
+            println!("  Storage:    {}", storage);
             if verbose {
                 println!("  TLS:        self-signed (default)");
                 println!("  WAL:        enabled");
@@ -207,6 +213,7 @@ fn main() -> ExitCode {
                 max_connections,
                 &auth_mode,
                 server_threads,
+                &storage,
             ) {
                 tracing::error!("server error: {e}");
                 return ExitCode::from(1);
@@ -288,8 +295,9 @@ fn install_signal_handler() -> std::io::Result<()> {
     Ok(())
 }
 
+use parking_lot::RwLock;
 use sqlrustgo::MemoryExecutionEngine;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 
 /// CLI-01 Stage 2: Shared REPL engine factory
 ///

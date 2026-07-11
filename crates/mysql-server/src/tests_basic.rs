@@ -2,6 +2,36 @@
 mod tests {
     use super::*;
 
+    #[test]
+    fn test_binary_storage_tpch_sf1_load() {
+        use sqlrustgo_storage::BinaryTableStorage;
+
+        let bin_dir = std::path::PathBuf::from("/tmp/tpch-sf1-bin");
+        if !bin_dir.exists() {
+            println!("SKIP: /tmp/tpch-sf1-bin not found (run tbl2bin first)");
+            return;
+        }
+
+        let storage = BinaryTableStorage::new_with_data(bin_dir).expect("load .bin files");
+        let counts: Vec<(&str, usize)> = vec![
+            ("region", 5),
+            ("nation", 25),
+            ("customer", 150_000),
+            ("supplier", 10_000),
+            ("part", 200_000),
+            ("partsupp", 800_000),
+            ("orders", 1_500_000),
+            ("lineitem", 6_001_215),
+        ];
+
+        for (table, expected) in counts {
+            let rows = storage.scan(table).expect(table);
+            assert_eq!(rows.len(), expected, "table {} row count", table);
+            println!("  {}: {} rows OK", table, rows.len());
+        }
+        println!("BinaryTableStorage loaded all 8 TPC-H tables correctly");
+    }
+
     // Test Packet serialization - roundtrip
     #[test]
     fn test_packet_roundtrip() {

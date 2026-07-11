@@ -139,11 +139,7 @@ impl IvfpqIndex {
             .collect();
 
         // Build final clusters with PQ codes
-        for (i, (ids, vectors)) in cluster_ids
-            .into_iter()
-            .zip(cluster_vectors.into_iter())
-            .enumerate()
-        {
+        for (i, (ids, vectors)) in cluster_ids.into_iter().zip(cluster_vectors).enumerate() {
             if ids.is_empty() {
                 continue;
             }

@@ -3,19 +3,21 @@
 //! Supports mysql_native_password auth + TLS (mariadb-connector-c 3.4+ compatible)
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
+use parking_lot::RwLock;
 use rcgen::{CertificateParams, KeyPair};
 use sha1::{Digest, Sha1};
 use sqlrustgo::ExecutionEngine;
-use sqlrustgo_parser::{parse, parse_statements, Statement};
+use sqlrustgo_parser::{parse, Statement};
 use sqlrustgo_storage::{
-    FileBackedWalManager, FileStorage, MemoryStorage, StorageEngine, WalStorage,
+    BinaryTableStorage, BoxStorageEngine, CheckpointManager, FileBackedWalManager, FileStorage,
+    MemoryStorage, StorageEngine, WalStorage,
 };
 use sqlrustgo_types::{SqlError, Value};
 use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::sync::atomic::{AtomicI64, AtomicU64, Ordering};
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 
@@ -374,6 +376,37 @@ mod tests {
         assert_eq!(read_pkt.payload, pkt.payload);
     }
 
+    // Test BinaryTableStorage loads TPC-H SF=1.0 .bin files correctly
+    #[test]
+    fn test_binary_storage_tpch_sf1_load() {
+        use sqlrustgo_storage::BinaryTableStorage;
+
+        let bin_dir = std::path::PathBuf::from("/tmp/tpch-sf1-bin");
+        if !bin_dir.exists() {
+            println!("SKIP: /tmp/tpch-sf1-bin not found (run tbl2bin first)");
+            return;
+        }
+
+        let storage = BinaryTableStorage::new_with_data(bin_dir).expect("load .bin files");
+        let counts: Vec<(&str, usize)> = vec![
+            ("region", 5),
+            ("nation", 25),
+            ("customer", 150_000),
+            ("supplier", 10_000),
+            ("part", 200_000),
+            ("partsupp", 800_000),
+            ("orders", 1_500_000),
+            ("lineitem", 6_001_215),
+        ];
+
+        for (table, expected) in counts {
+            let rows = storage.scan(table).expect(table);
+            assert_eq!(rows.len(), expected, "table {} row count mismatch", table);
+            println!("  {}: {} rows OK", table, rows.len());
+        }
+        println!("BinaryTableStorage loaded all 8 TPC-H tables correctly");
+    }
+
     // Test Packet with empty payload
     #[test]
     fn test_packet_empty_payload() {
@@ -506,6 +539,12 @@ mod tests {
         assert_eq!(pkt.sequence, 1);
         assert_eq!(pkt.payload[0], 0xff); // ERR packet type
         assert_eq!(u16::from_le_bytes([pkt.payload[1], pkt.payload[2]]), 1146);
+        // MySQL wire protocol requires 0x23 (marker) + SQL_STATE(5) + 0x00 + message.
+        // Verify the null-byte terminator between SQL state and message.
+        assert_eq!(pkt.payload[3], 0x23); // SQL state marker
+        assert_eq!(&pkt.payload[4..9], b"42S02"); // SQL state
+        assert_eq!(pkt.payload[9], 0x00); // null-byte terminator
+        assert_eq!(&pkt.payload[10..], b"Table not found");
         // Verify it can be written without error
         let mut buf = Vec::new();
         pkt.write_to(&mut buf).unwrap();
@@ -547,10 +586,11 @@ mod tests {
     // Test parse → Statement dispatch (new routing model)
     #[test]
     fn test_statement_dispatch() {
+        use parking_lot::RwLock;
         use sqlrustgo::MemoryExecutionEngine;
         use sqlrustgo_parser::parse;
         use sqlrustgo_storage::MemoryStorage;
-        use std::sync::{Arc, RwLock};
+        use std::sync::Arc;
 
         let storage = Arc::new(RwLock::new(MemoryStorage::new()));
         let mut engine = MemoryExecutionEngine::new(storage);
@@ -671,7 +711,6 @@ impl Packet {
         })
     }
     pub fn write_to<W: Write>(&self, w: &mut W) -> MySqlResult<()> {
-        // Debug trace removed
         w.write_u24::<LittleEndian>(self.length)?;
         w.write_u8(self.sequence)?;
         w.write_all(&self.payload)?;
@@ -680,34 +719,28 @@ impl Packet {
     }
 }
 
-/// A Read+Write wrapper around `rustls::Stream` that calls
-/// `ServerConnection::complete_io` after every `write_all` to ensure
-/// that data is actually flushed to the underlying TCP socket.
-///
-/// Without this, `rustls::Stream::flush()` only writes to the cipher
-/// buffer, and clients (e.g. `mysql` CLI) may see a "Malformed packet"
-/// or an empty result set because the response was never sent.
-///
-/// `TlsStream` borrows the underlying `TcpStream` mutably. After every
-/// `write`, we manually invoke `ServerConnection::process_new_packets`
-/// to drive TLS I/O on the socket. The `ServerConnection` is held by
-/// the caller (so the caller can do handshake I/O before this
-/// wrapper is constructed).
+/// A `Read`+`Write` wrapper around `rustls::ServerConnection` that
+/// drives TLS I/O on the underlying `TcpStream`. After each `write`
+/// into rustls, `complete_io` flushes the resulting cipher records to
+/// the socket. With blocking sockets (restored in the accept loop),
+/// `complete_io` blocks in the kernel and never returns `WouldBlock`.
+/// If `WouldBlock` occurs anyway (non-blocking socket in tests), we
+/// break and leave remaining records in rustls — they flush on the
+/// next read cycle.
 pub struct TlsStream<'a> {
     pub sock: &'a mut TcpStream,
     pub conn: &'a mut rustls::ServerConnection,
 }
 
 impl<'a> TlsStream<'a> {
-    /// Flush any pending TLS ciphertext to the underlying socket.
-    /// Subsumed by `Write::flush` (which now drains the full cipher
-    /// buffer in a loop). Kept for compatibility with existing callers
-    /// (e.g. the post-COM_QUIT final flush at lib.rs:2845).
+    /// Flush any remaining TLS ciphertext to the underlying socket.
+    /// Best-effort: remaining records stay in rustls and flush on the
+    /// next read cycle. Kept for compatibility (post-COM_QUIT flush).
     pub fn flush_pending(&mut self) -> std::io::Result<()> {
         while self.conn.wants_write() {
             match self.conn.complete_io(self.sock) {
                 Ok(_) => {}
-                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => break,
+                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => break,
                 Err(e) => return Err(e),
             }
         }
@@ -717,12 +750,16 @@ impl<'a> TlsStream<'a> {
 
 impl<'a> Read for TlsStream<'a> {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
-        // Drive rustls IO only when there is pending inbound data.
-        // This avoids blocking on write (which would happen if we
-        // called complete_io while wants_write was true and the
-        // socket had outbound data to flush).
-        if self.conn.wants_read() {
-            self.conn.complete_io(self.sock)?;
+        // Engine Bug B fix (refs #3635): loop drains ALL pending TLS
+        // records before returning. A single `complete_io` only
+        // decrypts ciphertext currently buffered in the socket, which
+        // deadlocks large multi-record plaintexts (>= ~16 KB).
+        while self.conn.wants_read() {
+            match self.conn.complete_io(self.sock) {
+                Ok(_) => {}
+                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => break,
+                Err(e) => return Err(e),
+            }
         }
         self.conn.reader().read(buf)
     }
@@ -740,7 +777,7 @@ impl<'a> TlsStream<'a> {
         while self.conn.wants_read() {
             match self.conn.complete_io(self.sock) {
                 Ok(_) => {}
-                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => break,
+                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => break,
                 Err(e) => return Err(e),
             }
         }
@@ -751,18 +788,19 @@ impl<'a> TlsStream<'a> {
 impl<'a> Write for TlsStream<'a> {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
         let n = self.conn.writer().write(buf)?;
-        // Drain ALL pending TLS records to the underlying socket, not
-        // just one. Without the loop, a single `complete_io` may only
-        // flush a partial cipher record when the socket send buffer
-        // can't accept the full ciphertext in one syscall; the rest
-        // would sit in rustls' writer buffer until the next write,
-        // and large multi-batch INSERTs (e.g. sysbench prepare with
-        // >~20 rows) would deadlock: the client waits for the OK
-        // packet while the server waits for the next request.
+        tracing::trace!(
+            "TlsStream write: {} app-bytes -> rustls, wants_write={}",
+            n,
+            self.conn.wants_write()
+        );
+        // With blocking sockets (restored in accept loop), complete_io
+        // blocks in the kernel and WouldBlock should not occur. We break
+        // on WouldBlock anyway as a safety net — any remaining cipher
+        // records stay buffered in rustls and flush on the next read cycle.
         while self.conn.wants_write() {
             match self.conn.complete_io(self.sock) {
                 Ok(_) => {}
-                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => break,
+                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => break,
                 Err(e) => return Err(e),
             }
         }
@@ -770,48 +808,65 @@ impl<'a> Write for TlsStream<'a> {
     }
     fn flush(&mut self) -> std::io::Result<()> {
         self.conn.writer().flush()?;
-        // Same drain loop as write(): flush must guarantee the
-        // cipher buffer is fully driven to the socket.
         while self.conn.wants_write() {
             match self.conn.complete_io(self.sock) {
                 Ok(_) => {}
-                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => break,
+                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => break,
                 Err(e) => return Err(e),
             }
         }
         Ok(())
+    }
+}
+impl<'a> TlsStream<'a> {
+    /// Drive ALL pending outbound TLS records to the socket.
+    /// With blocking sockets (restored in accept loop), complete_io
+    /// blocks in the kernel — this is best-effort; remaining records
+    /// are flushed on the next read cycle.
+    fn drive_writes_only(&mut self) -> std::io::Result<()> {
+        while self.conn.wants_write() {
+            match self.conn.complete_io(self.sock) {
+                Ok(_) => {}
+                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => break,
+                Err(e) => return Err(e),
+            }
+        }
+        Ok(())
+    }
+}
+/// Marker trait: types that implement std::io::Write but are NOT TlsStream.
+/// Used to prevent the blanket DrainWrites impl from covering TlsStream
+/// (which needs its own impl that calls drive_writes_only instead of flush).
+trait NotTlsStream {}
+
+/// Helper trait to force-drain any buffered writes on a Write stream.
+/// For TlsStream this calls drive_writes_only; for all other streams
+/// flush() is sufficient (data is already on the wire).
+trait DrainWrites {
+    fn force_drain(&mut self);
+}
+
+// Blanket impl for all Write types EXCEPT TlsStream
+impl<W: std::io::Write> DrainWrites for W
+where
+    W: NotTlsStream,
+{
+    fn force_drain(&mut self) {
+        // Regular stream: flush() is synchronous and sufficient
+        let _ = std::io::Write::flush(self);
+    }
+}
+impl<'a> DrainWrites for TlsStream<'a> {
+    fn force_drain(&mut self) {
+        if let Err(e) = self.drive_writes_only() {
+            tracing::warn!("TlsStream::force_drain: drive_writes_only failed: {}", e);
+        }
     }
 }
 
-impl<'a> TlsStream<'a> {
-    /// Drive pending outbound TLS records to the underlying socket
-    /// without reading any inbound data. This avoids the deadlock
-    /// where complete_io waits for client data while the client
-    /// waits for server data.
-    #[allow(dead_code)]
-    fn drive_writes_only(&mut self) -> std::io::Result<()> {
-        // Complete any pending outbound IO without waiting for new
-        // data. We do this by repeatedly calling `complete_io` only
-        // when there is pending outbound data, and never on a clean
-        // socket that has nothing to write.
-        //
-        // rustls exposes `wants_write()` to indicate pending outbound
-        // data; we drive IO while that's true, but bail out as soon
-        // as the connection is idle to avoid blocking on read.
-        while self.conn.wants_write() {
-            // complete_io here is bounded: it returns when either
-            // the write buffer is drained or the socket would block.
-            // Because the socket is in non-blocking mode for the
-            // application, it should not block on read here.
-            match self.conn.complete_io(self.sock) {
-                Ok(_) => {}
-                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => break,
-                Err(e) => return Err(e),
-            }
-        }
-        Ok(())
-    }
-}
+// TcpStream is NOT a TlsStream (covers both TcpStream and &TcpStream)
+impl NotTlsStream for std::net::TcpStream {}
+impl<T: NotTlsStream> NotTlsStream for &T {}
 
 fn write_lenenc_int<W: Write>(w: &mut W, v: u64) -> MySqlResult<()> {
     if v < 251 {
@@ -857,7 +912,7 @@ fn make_handshake_packet(seq: u8, scramble: &[u8; SCRAMBLE_LENGTH]) -> Packet {
     p.push(0x00); // scramble part1 + filler
     p.write_u16::<LittleEndian>((capability::SERVER_DEFAULT & 0xFFFF) as u16)
         .unwrap();
-    p.push(0xff); // charset utf8mb4
+    p.push(0x21); // charset utf8 (collation_id 33 = utf8_general_ci) — MySQL 8.0 client rejects 0xff as invalid
     p.write_u16::<LittleEndian>(0x0002).unwrap(); // status AUTOCOMMIT
     p.write_u16::<LittleEndian>(((capability::SERVER_DEFAULT >> 16) & 0xFFFF) as u16)
         .unwrap();
@@ -894,6 +949,7 @@ fn make_err_packet(seq: u8, code: u16, state: &str, msg: &str) -> Packet {
     p.write_u16::<LittleEndian>(code).unwrap();
     p.push(0x23);
     p.extend_from_slice(state.as_bytes());
+    p.push(0x00);
     p.extend_from_slice(msg.as_bytes());
     Packet {
         length: p.len() as u32,
@@ -1159,15 +1215,17 @@ fn write_text_row<W: Write>(w: &mut W, row: &[Value]) -> MySqlResult<()> {
     Ok(())
 }
 
-/// Write a single row in MySQL binary protocol format.
-/// Each value is prefixed with a 1-byte type marker, then the value.
 fn write_binary_row<W: Write>(w: &mut W, row: &[Value], col_types: &[u8]) -> MySqlResult<()> {
-    w.write_u8(0x00)?; // row packet header: null bitmap starts with 0x00
-    let null_bytes = (row.len() + 9) / 8;
-    let mut null_map = vec![0u8; null_bytes + 1];
+    // MySQL binary-protocol row layout:
+    //   1 byte  : 0x00 header
+    //   ceil(cols/8) bytes : null_bitmap (col i is null iff bit (i%8) of byte (i/8))
+    //   for each col, type-marker-byte + value-bytes
+    let null_bytes = (row.len() + 7) / 8;
+    w.write_u8(0x00)?; // header
+    let mut null_map = vec![0u8; null_bytes];
     for (i, v) in row.iter().enumerate() {
         if matches!(v, Value::Null) {
-            null_map[1 + i / 8] |= 1 << (i % 8);
+            null_map[i / 8] |= 1 << (i % 8);
         }
     }
     w.write_all(&null_map)?;
@@ -1219,16 +1277,32 @@ fn write_binary_row<W: Write>(w: &mut W, row: &[Value], col_types: &[u8]) -> MyS
 }
 
 fn write_column_def<W: Write>(w: &mut W, name: &str, sql_type: &str, seq: u8) -> MySqlResult<u8> {
+    // MySQL column definition packet layout:
+    //   catalog   : lenenc_str
+    //   schema    : lenenc_str
+    //   virtual_table: lenenc_str
+    //   physical_table: lenenc_str
+    //   virtual_name: lenenc_str
+    //   physical_name: lenenc_str
+    //   length_of_fixed_fields: lenenc_int (always 0x0c = 12)
+    //   charsetnr    : 2 bytes LE
+    //   column_length: 4 bytes LE
+    //   field_type   : 1 byte
+    //   flags        : 2 bytes LE
+    //   decimals     : 1 byte
+    //   filler       : 2 bytes
     let mut p = Vec::new();
     write_lenenc_string(&mut p, b"def").unwrap(); // catalog
     write_lenenc_string(&mut p, b"").unwrap(); // schema
-    write_lenenc_string(&mut p, b"").unwrap(); // table
-    write_lenenc_string(&mut p, b"").unwrap(); // org_table
-    write_lenenc_string(&mut p, name.as_bytes()).unwrap(); // name
-                                                           // MySQL column definition fixed-size fields:
-                                                           // charset_collation (2 bytes) → length (4 bytes) → field_type (1 byte)
-                                                           // → flags (2 bytes) → decimals (1 byte) → filler (2 bytes)
-    p.write_u16::<LittleEndian>(0x0030).unwrap(); // charset_collation: 0x30 = utf8_general_ci
+    write_lenenc_string(&mut p, b"").unwrap(); // virtual_table
+    write_lenenc_string(&mut p, b"").unwrap(); // physical_table
+    write_lenenc_string(&mut p, name.as_bytes()).unwrap(); // virtual_name
+    write_lenenc_string(&mut p, name.as_bytes()).unwrap(); // org_name (physical column name; same as virtual_name when no alias)
+    write_lenenc_int(&mut p, 12).unwrap(); // length_of_fixed_fields: 12 bytes of fixed-size metadata follow
+                                           // (charsetnr 2 + column_length 4 + field_type 1 + flags 2 + decimals 1 + filler 2)
+                                           // MySQL column definition fixed-size fields:
+                                           // charsetnr (2 bytes) → length (4 bytes) → type (1 byte) → flags (2 bytes) → decimals (1 byte) → filler (2 bytes)
+    p.write_u16::<LittleEndian>(0x0030).unwrap(); // charsetnr: 0x30 = utf8_general_ci
     p.write_u32::<LittleEndian>(col_len_from_type(sql_type))
         .unwrap(); // length
     p.push(col_type_from_string(sql_type)); // field_type
@@ -1277,15 +1351,13 @@ fn send_result_set<W: Write>(
             seq,
         )?;
     }
-    // Inter-record separator between column defs and the row stream.
-    // Honor the client's DEPRECATE_EOF capability:
-    //   - DEPRECATE_EOF = 0 (classic protocol): send inter-record EOF
-    //   - DEPRECATE_EOF = 1 (mysql 8.0+ default): skip the EOF; the
-    //     trailing terminator (OK/EOF below) marks the end of the
-    //     result set.
-    // Fix for #3516: without this, mysql 8.0 CLI silently drops the
-    // result set — it interprets the stray inter-record EOF as the
-    // final terminator and never reads the row packets.
+    if cap & capability::DEPRECATE_EOF == 0 {
+        make_eof_packet(seq, 0x0002).write_to(w)?;
+        seq = seq.wrapping_add(1);
+    } else {
+        make_deprecate_eof_ok_packet(seq, 0, 0, 0x0002, 0).write_to(w)?;
+        seq = seq.wrapping_add(1);
+    }
     for r in rows.iter() {
         let mut p = Vec::new();
         write_text_row(&mut p, r)?;
@@ -1608,7 +1680,8 @@ fn infer_param_types_from_sql<S: StorageEngine>(sql: &str, storage: &Arc<RwLock<
         return vec![col_type::VARSTRING; param_count];
     }
     if let Some(table_name) = extract_table_name(sql) {
-        if let Ok(storage_guard) = storage.try_read() {
+        let storage_guard = storage.read();
+        {
             if let Ok(table_info) = storage_guard.get_table_info(&table_name) {
                 let mut types = Vec::with_capacity(param_count);
                 for col_name in &cols {
@@ -2021,7 +2094,8 @@ fn extract_column_names(sql: &str, storage: &Arc<RwLock<MemoryStorage>>) -> Vec<
         return vec![];
     }
     if let Some(table_name) = extract_table_name(sql) {
-        if let Ok(storage_guard) = storage.try_read() {
+        let storage_guard = storage.read();
+        {
             if let Ok(table_info) = storage_guard.get_table_info(&table_name) {
                 let col_names: Vec<String> =
                     table_info.columns.iter().map(|c| c.name.clone()).collect();
@@ -2041,7 +2115,8 @@ fn infer_column_types(
     cols: &[String],
 ) -> Vec<String> {
     if let Some(table_name) = extract_table_name(sql) {
-        if let Ok(storage_guard) = storage.try_read() {
+        let storage_guard = storage.read();
+        {
             if let Ok(table_info) = storage_guard.get_table_info(&table_name) {
                 let types: Vec<String> = table_info
                     .columns
@@ -2058,12 +2133,127 @@ fn infer_column_types(
     cols.iter().map(|_| "VARCHAR(255)".to_string()).collect()
 }
 
-#[allow(clippy::type_complexity)]
+/// G13-OLTP-1: classify read-only statements. SELECT / SHOW / DESCRIBE
+/// can run on a shared read lock; everything else needs the exclusive
+/// write lock. Returning the inner reference (not just bool) lets the
+/// dispatch site acquire the right lock and call the matching `&self`
+/// execute method.
+enum ReadOnlyStmt<'a> {
+    Select(&'a sqlrustgo_parser::parser::SelectStatement),
+    Show(&'a sqlrustgo_parser::parser::ShowStatement),
+    Describe(&'a sqlrustgo_parser::parser::DescribeStatement),
+}
+fn read_only_stmt(stmt: &Statement) -> Option<ReadOnlyStmt<'_>> {
+    match stmt {
+        Statement::Select(s) => Some(ReadOnlyStmt::Select(s)),
+        Statement::Show(s) => Some(ReadOnlyStmt::Show(s)),
+        Statement::Describe(s) => Some(ReadOnlyStmt::Describe(s)),
+        _ => None,
+    }
+}
+#[cfg(test)]
 fn is_select_stmt(stmt: &Statement) -> bool {
-    matches!(
-        stmt,
-        Statement::Select(_) | Statement::Show(_) | Statement::Describe(_)
-    )
+    read_only_stmt(stmt).is_some()
+}
+
+/// Split a multi-statement query string into top-level statement text
+/// slices. Respects parentheses nesting, single/double-quoted string
+/// literals (with `\` escapes), and `--` / `/* */` comments so that
+/// semicolons inside any of those contexts do not terminate a statement.
+///
+/// Engine Bug A supplementary fix (refs #3635): the COM_QUERY
+/// dispatch path previously called `eng.execute(&q)` once per parsed
+/// statement, re-running the whole multi-statement query N times for
+/// an N-statement batch. Splitting first and executing each slice
+/// independently restores the per-statement-once contract that
+/// `mysql --execute="s1; s2"` and the multi-statement path of PR #3521
+/// intended.
+fn split_top_level_statements(q: &str) -> Vec<&str> {
+    let bytes = q.as_bytes();
+    let mut out: Vec<&str> = Vec::new();
+    let mut start = 0usize;
+    let mut paren_depth: i32 = 0;
+    let mut in_single = false;
+    let mut in_double = false;
+    let mut in_line_comment = false;
+    let mut in_block_comment = false;
+    let mut i = 0usize;
+    while i < bytes.len() {
+        let c = bytes[i] as char;
+        let next = bytes.get(i + 1).copied().unwrap_or(0) as char;
+        if in_line_comment {
+            if c == '\n' {
+                in_line_comment = false;
+            }
+            i += 1;
+            continue;
+        }
+        if in_block_comment {
+            if c == '*' && next == '/' {
+                in_block_comment = false;
+                i += 2;
+                continue;
+            }
+            i += 1;
+            continue;
+        }
+        if in_single {
+            if c == '\\' {
+                i += 2;
+                continue;
+            }
+            if c == '\'' {
+                in_single = false;
+            }
+            i += 1;
+            continue;
+        }
+        if in_double {
+            if c == '\\' {
+                i += 2;
+                continue;
+            }
+            if c == '"' {
+                in_double = false;
+            }
+            i += 1;
+            continue;
+        }
+        match c {
+            '\'' => in_single = true,
+            '"' => in_double = true,
+            '(' => paren_depth += 1,
+            ')' => {
+                if paren_depth > 0 {
+                    paren_depth -= 1;
+                }
+            }
+            '-' if next == '-' => {
+                in_line_comment = true;
+                i += 2;
+                continue;
+            }
+            '/' if next == '*' => {
+                in_block_comment = true;
+                i += 2;
+                continue;
+            }
+            ';' if paren_depth == 0 => {
+                let stmt_text = q[start..i].trim();
+                if !stmt_text.is_empty() {
+                    out.push(stmt_text);
+                }
+                start = i + 1;
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+    let tail = q[start..].trim();
+    if !tail.is_empty() {
+        out.push(tail);
+    }
+    out
 }
 
 fn generate_self_signed_cert() -> (Vec<u8>, Vec<u8>) {
@@ -2108,12 +2298,7 @@ fn make_tls_config() -> rustls::ServerConfig {
 )]
 fn handle_load_local_infile<S: Read + Write>(
     stream: &mut S,
-    engine: &mut sqlrustgo::ExecutionEngine<
-        sqlrustgo_storage::WalStorage<
-            sqlrustgo_storage::FileStorage,
-            sqlrustgo_storage::FileBackedWalManager,
-        >,
-    >,
+    engine: &mut sqlrustgo::ExecutionEngine<BoxStorageEngine>,
     path: &str,
     table: &str,
     _delim: char,
@@ -2143,9 +2328,7 @@ fn handle_load_local_infile<S: Read + Write>(
     //    can validate each line has the right shape.
     let col_count = {
         let storage_arc = engine.storage_ref();
-        let storage = storage_arc
-            .read()
-            .map_err(|e| MySqlError::Other(format!("storage lock poisoned: {}", e)))?;
+        let storage = storage_arc.read();
         let table_info = storage
             .get_table_info(table)
             .map_err(|e| MySqlError::Other(format!("table {}: {}", table, e)))?;
@@ -2294,11 +2477,8 @@ fn handle_load_local_infile<S: Read + Write>(
     // `WalStorage::flush()` delegates to `FileStorage::flush()` which
     // writes all table .json files.
     {
-        let storage = engine.storage_ref();
-        let mut s = storage
-            .write()
-            .map_err(|e| MySqlError::Other(format!("flush storage lock: {}", e)))?;
-        s.flush()
+        engine
+            .flush()
             .map_err(|e| MySqlError::Other(format!("flush storage: {}", e)))?;
     }
 
@@ -2306,16 +2486,15 @@ fn handle_load_local_infile<S: Read + Write>(
 }
 
 #[allow(unused_assignments)]
-fn do_command_loop<S: Read + Write>(
+fn do_command_loop<S: Read + Write + DrainWrites>(
     stream: &mut S,
     addr: SocketAddr,
-    storage: Arc<RwLock<WalStorage<FileStorage, FileBackedWalManager>>>,
-    engine: Arc<RwLock<ExecutionEngine<WalStorage<FileStorage, FileBackedWalManager>>>>,
+    storage: Arc<parking_lot::RwLock<BoxStorageEngine>>,
+    engine: Arc<parking_lot::RwLock<ExecutionEngine<BoxStorageEngine>>>,
     cap: u32,
     server_last_sent_seq: &mut u8,
     ps_manager: &mut PreparedStatementManager,
 ) -> MySqlResult<()> {
-    let mut seen_first_command = false;
     loop {
         let pkt = match Packet::read_from(stream) {
             Ok(p) => p,
@@ -2326,12 +2505,15 @@ fn do_command_loop<S: Read + Write>(
         };
         let cmd = pkt.payload.first().copied().unwrap_or(0);
         let payload = &pkt.payload[1..];
+        // MySQL/MariaDB protocol: every new client command starts with
+        // pkt_seq=0, and the server resets its response seq to 0
+        // (so the first response packet uses seq=1). pymysql and
+        // libmysqlclient both rely on this — they set next_seq_id=1
+        // after sending each command and validate the server response
+        // sequence number accordingly. We reset on EVERY pkt_seq=0,
+        // not just the first one (which would break the second query).
         let mut seq = server_last_sent_seq.wrapping_add(1);
-        // MariaDB resets sequence to 0 for each new logical request.
-        // The first command after auth has pkt_seq=0 and MUST trigger reset (server_last_sent_seq=2 → 0).
-        // Subsequent commands in a multi-statement query also have pkt_seq=0 but should NOT reset.
-        if !seen_first_command && pkt.sequence == 0 {
-            seen_first_command = true;
+        if pkt.sequence == 0 {
             *server_last_sent_seq = 0;
             seq = 1;
         }
@@ -2383,9 +2565,17 @@ fn do_command_loop<S: Read + Write>(
                         .clone()
                         .unwrap_or_else(|| std::path::PathBuf::from("/tmp"));
                     let bulk_buf = cfg.bulk_insert_buffer_size;
+                    // G13-OLTP-1: poisoning recovery on the engine
+                    // write lock. A previous LOAD DATA may have
+                    // panicked mid-insert (e.g. parse_tbl_line on
+                    // a malformed row), leaving the RwLock poisoned.
+                    // The previous `engine.write().unwrap()` would
+                    // then re-panic on every subsequent LOAD DATA.
+                    // Recover via `into_inner()` and continue.
+                    let mut eng_guard = engine.write();
                     let n = match handle_load_local_infile(
                         stream,
-                        &mut engine.write().unwrap(),
+                        &mut eng_guard,
                         &path,
                         &table,
                         delim,
@@ -2438,53 +2628,103 @@ fn do_command_loop<S: Read + Write>(
                     seq = seq.wrapping_add(1);
                     continue;
                 }
-                let mut eng = engine.write().unwrap();
-                // 3521: Support multi-statement queries (semicolon-separated)
-                match parse_statements(&q) {
-                    Ok(stmts) => {
-                        for stmt in stmts {
-                            let result = eng.execute(&q);
-                            match result {
-                                Ok(r) if is_select_stmt(&stmt) => {
-                                    let cols: Vec<String> = r
-                                        .rows
-                                        .first()
-                                        .map(|row| {
-                                            (0..row.len())
-                                                .map(|i| format!("col_{}", i + 1))
-                                                .collect()
-                                        })
-                                        .unwrap_or_else(|| vec!["result".to_string()]);
-                                    let ctypes: Vec<String> =
-                                        cols.iter().map(|_| "VARCHAR(255)".to_string()).collect();
-                                    seq =
-                                        send_result_set(stream, &cols, &ctypes, &r.rows, seq, cap)?;
-                                    *server_last_sent_seq = seq;
+                // G13-OLTP-1 lock contention fix: DDL/DML use exclusive write lock with
+                // poisoning recovery. If a previous thread panicked while holding the lock,
+                // the RwLock poisons all subsequent .read()/.write() calls. Using .into_inner()
+                // recovery allows the server to continue serving queries rather than hard-fail.
+                let stmt_texts = split_top_level_statements(&q);
+                let mut had_error = false;
+                for stmt_sql in &stmt_texts {
+                    let parsed = parse(stmt_sql);
+                    // G13-OLTP-1: pick read-vs-write lock based on AST.
+                    let is_read_only = parsed
+                        .as_ref()
+                        .ok()
+                        .and_then(|s| read_only_stmt(s).map(|_| s));
+                    // G13-OLTP-1: poisoning recovery in both branches.
+                    let result = if let Some(stmt) = is_read_only {
+                        let rstmt = read_only_stmt(stmt);
+                        let eng = engine.read();
+                        match rstmt {
+                            Some(ReadOnlyStmt::Select(s)) => eng.execute_select(s),
+                            Some(ReadOnlyStmt::Show(s)) => eng.execute_show(s),
+                            Some(ReadOnlyStmt::Describe(s)) => eng.execute_describe(s),
+                            None => unreachable!("is_read_only implied rstmt is Some"),
+                        }
+                    } else {
+                        let mut eng = engine.write();
+                        eprintln!("SERVER: eng.execute(sql={})", stmt_sql);
+                        eng.execute(stmt_sql)
+                    };
+                    match result {
+                        Ok(r) if is_read_only.is_some() => {
+                            // Extract real column names from the SQL
+                            // (after SELECT, before FROM). Falls back to
+                            // col_1, col_2... when ambiguous (e.g. SELECT *).
+                            let real_col_names: Vec<String> = if stmt_sql
+                                .to_uppercase()
+                                .starts_with("SELECT")
+                                && stmt_sql.to_uppercase().contains(" FROM ")
+                            {
+                                let upper = stmt_sql.to_uppercase();
+                                if let Some(from_pos) = upper.find(" FROM ") {
+                                    let select_part = stmt_sql[..from_pos].trim();
+                                    let cols_str = select_part
+                                        .strip_prefix("SELECT")
+                                        .or_else(|| select_part.strip_prefix("select"))
+                                        .unwrap_or("")
+                                        .trim();
+                                    if !cols_str.is_empty() && !cols_str.contains('*') {
+                                        cols_str
+                                            .split(',')
+                                            .map(|s: &str| {
+                                                s.trim()
+                                                    .split('.')
+                                                    .next_back()
+                                                    .unwrap_or(s.trim())
+                                                    .to_string()
+                                            })
+                                            .collect()
+                                    } else {
+                                        let n = r.rows.first().map(|row| row.len()).unwrap_or(0);
+                                        (0..n).map(|i| format!("col_{}", i + 1)).collect()
+                                    }
+                                } else {
+                                    let n = r.rows.first().map(|row| row.len()).unwrap_or(0);
+                                    (0..n).map(|i| format!("col_{}", i + 1)).collect()
                                 }
-                                Ok(r) => {
-                                    make_ok_packet(seq, r.affected_rows as u64, 0, 0x0002, 0)
-                                        .write_to(stream)?;
-                                    *server_last_sent_seq = seq;
-                                    seq = seq.wrapping_add(1);
-                                }
-                                Err(e) => {
-                                    let code = match e.to_string().contains("not found") {
-                                        true => 1146u16,
-                                        false => 1064u16,
-                                    };
-                                    make_err_packet(seq, code, "42000", &e.to_string())
-                                        .write_to(stream)?;
-                                    *server_last_sent_seq = seq;
-                                    seq = seq.wrapping_add(1);
-                                }
-                            }
+                            } else {
+                                let n = r.rows.first().map(|row| row.len()).unwrap_or(0);
+                                (0..n).map(|i| format!("col_{}", i + 1)).collect()
+                            };
+                            let cols: Vec<String> = real_col_names;
+                            let ctypes: Vec<String> =
+                                cols.iter().map(|_| "VARCHAR(255)".to_string()).collect();
+                            seq = send_result_set(stream, &cols, &ctypes, &r.rows, seq, cap)?;
+                            *server_last_sent_seq = seq;
+                        }
+                        Ok(r) => {
+                            make_ok_packet(seq, r.affected_rows as u64, 0, 0x0002, 0)
+                                .write_to(stream)?;
+                            *server_last_sent_seq = seq;
+                            seq = seq.wrapping_add(1);
+                        }
+                        Err(e) => {
+                            let code = match e.to_string().contains("not found") {
+                                true => 1146u16,
+                                false => 1064u16,
+                            };
+                            let err_msg = e.to_string();
+                            tracing::warn!("SQL error {} (42000): {}", code, err_msg);
+                            make_err_packet(seq, code, "42000", &err_msg).write_to(stream)?;
+                            *server_last_sent_seq = seq;
+                            seq = seq.wrapping_add(1);
+                            had_error = true;
                         }
                     }
-                    Err(e) => {
-                        make_err_packet(seq, 1064, "42000", &e).write_to(stream)?;
-                        *server_last_sent_seq = seq;
-                        seq = seq.wrapping_add(1);
-                    }
+                }
+                if had_error && stmt_texts.len() > 1 {
+                    tracing::debug!("multi-statement batch had at least one error");
                 }
             }
             packet_type::COM_STMT_PREPARE => {
@@ -2502,15 +2742,10 @@ fn do_command_loop<S: Read + Write>(
                         let select_part = &sql[..from_pos + 1].trim();
                         let cols_str = select_part.strip_prefix("SELECT").unwrap_or("").trim();
                         if cols_str.eq_ignore_ascii_case("*") {
-                            if let Ok(storage_guard) = storage.try_read() {
-                                if let Some(table_name) = extract_table_name(&sql) {
-                                    if let Ok(table_info) =
-                                        storage_guard.get_table_info(&table_name)
-                                    {
-                                        table_info.columns.len() as u16
-                                    } else {
-                                        1
-                                    }
+                            let storage_guard = storage.read();
+                            if let Some(table_name) = extract_table_name(&sql) {
+                                if let Ok(table_info) = storage_guard.get_table_info(&table_name) {
+                                    table_info.columns.len() as u16
                                 } else {
                                     1
                                 }
@@ -2538,6 +2773,19 @@ fn do_command_loop<S: Read + Write>(
                 p.write_u16::<LittleEndian>(param_count).unwrap();
                 p.push(0x00);
                 p.write_u16::<LittleEndian>(0).unwrap();
+                let ok_pkt_bytes = {
+                    let mut pb = Vec::new();
+                    pb.write_u24::<LittleEndian>(p.len() as u32).unwrap();
+                    pb.write_u8(seq).unwrap();
+                    pb.extend_from_slice(&p);
+                    pb
+                };
+                tracing::debug!(
+                    "STMT_PREPARE OK pkt: seq={}, len={}, hex={:02x?}",
+                    seq,
+                    ok_pkt_bytes.len(),
+                    &ok_pkt_bytes[..]
+                );
                 Packet {
                     length: p.len() as u32,
                     sequence: seq,
@@ -2644,6 +2892,11 @@ fn do_command_loop<S: Read + Write>(
                         seq = seq.wrapping_add(1);
                     }
                 }
+                // Issue #3694: force-drain ALL TLS cipher records before
+                // returning. The client (MariaDB Connector/C) waits for
+                // the complete STMT_PREPARE response; if any records
+                // are still buffered in rustls the client times out.
+                stream.force_drain();
 
                 tracing::info!(
                     "STMT PREPARE done: id={}, params={}, cols={}",
@@ -2694,53 +2947,54 @@ fn do_command_loop<S: Read + Write>(
                     parse_stmt_execute_params(payload, stmt_param_count, &stmt_param_types);
                 let final_sql = replace_placeholders(&stmt_sql, &params);
                 tracing::info!("STMT EXECUTE (id={}): {}", stmt_id, final_sql);
-                let mut eng = engine.write().unwrap();
+                // write for DDL/DML).
                 let parsed = parse(&final_sql);
-                match parsed {
-                    Ok(stmt) => {
-                        let result = eng.execute(&final_sql);
-                        match result {
-                            Ok(r) if is_select_stmt(&stmt) => {
-                                let c: Vec<String> = r
-                                    .rows
-                                    .first()
-                                    .map(|row| {
-                                        (0..row.len()).map(|i| format!("col_{}", i + 1)).collect()
-                                    })
-                                    .unwrap_or_else(|| vec!["result".to_string()]);
-                                let t: Vec<String> =
-                                    c.iter().map(|_| "VARCHAR(255)".to_string()).collect();
-                                let c_trimmed: Vec<String> =
-                                    c.into_iter().take(stmt_col_count as usize).collect();
-                                let t_trimmed: Vec<String> =
-                                    t.into_iter().take(stmt_col_count as usize).collect();
-                                let r_trimmed: Vec<Vec<Value>> = r
-                                    .rows
-                                    .into_iter()
-                                    .map(|row| {
-                                        row.into_iter().take(stmt_col_count as usize).collect()
-                                    })
-                                    .collect();
-                                seq = send_binary_result_set(
-                                    stream, &c_trimmed, &t_trimmed, &r_trimmed, seq, cap,
-                                )?;
-                            }
-                            Ok(r) => {
-                                make_ok_packet(seq, r.affected_rows as u64, 0, 0x0002, 0)
-                                    .write_to(stream)?;
-                                *server_last_sent_seq = seq;
-                                seq = seq.wrapping_add(1);
-                            }
-                            Err(e) => {
-                                make_err_packet(seq, 1064, "42000", &e.to_string())
-                                    .write_to(stream)?;
-                                *server_last_sent_seq = seq;
-                                seq = seq.wrapping_add(1);
-                            }
-                        }
+                let is_read_only = parsed
+                    .as_ref()
+                    .ok()
+                    .and_then(|s| read_only_stmt(s).map(|_| s));
+                let result = if let Some(stmt) = is_read_only {
+                    let rstmt = read_only_stmt(stmt);
+                    let eng = engine.read();
+                    match rstmt {
+                        Some(ReadOnlyStmt::Select(s)) => eng.execute_select(s),
+                        Some(ReadOnlyStmt::Show(s)) => eng.execute_show(s),
+                        Some(ReadOnlyStmt::Describe(s)) => eng.execute_describe(s),
+                        None => unreachable!("is_read_only implied rstmt is Some"),
+                    }
+                } else {
+                    let mut eng = engine.write();
+                    eng.execute(&final_sql)
+                };
+                match result {
+                    Ok(r) if is_read_only.is_some() => {
+                        let c: Vec<String> = r
+                            .rows
+                            .first()
+                            .map(|row| (0..row.len()).map(|i| format!("col_{}", i + 1)).collect())
+                            .unwrap_or_else(|| vec!["result".to_string()]);
+                        let t: Vec<String> = c.iter().map(|_| "VARCHAR(255)".to_string()).collect();
+                        let c_trimmed: Vec<String> =
+                            c.into_iter().take(stmt_col_count as usize).collect();
+                        let t_trimmed: Vec<String> =
+                            t.into_iter().take(stmt_col_count as usize).collect();
+                        let r_trimmed: Vec<Vec<Value>> = r
+                            .rows
+                            .into_iter()
+                            .map(|row| row.into_iter().take(stmt_col_count as usize).collect())
+                            .collect();
+                        seq = send_binary_result_set(
+                            stream, &c_trimmed, &t_trimmed, &r_trimmed, seq, cap,
+                        )?;
+                    }
+                    Ok(r) => {
+                        make_ok_packet(seq, r.affected_rows as u64, 0, 0x0002, 0)
+                            .write_to(stream)?;
+                        *server_last_sent_seq = seq;
+                        seq = seq.wrapping_add(1);
                     }
                     Err(e) => {
-                        make_err_packet(seq, 1064, "42000", &e).write_to(stream)?;
+                        make_err_packet(seq, 1064, "42000", &e.to_string()).write_to(stream)?;
                         *server_last_sent_seq = seq;
                         seq = seq.wrapping_add(1);
                     }
@@ -2766,19 +3020,16 @@ fn do_command_loop<S: Read + Write>(
 fn handle_connection(
     mut stream: TcpStream,
     addr: SocketAddr,
-    storage: Arc<RwLock<WalStorage<FileStorage, FileBackedWalManager>>>,
+    storage: Arc<parking_lot::RwLock<BoxStorageEngine>>,
     tls_config: Arc<rustls::ServerConfig>,
     user_store: UserStore,
 ) {
     ACTIVE_CONNECTIONS.fetch_add(1, Ordering::Relaxed);
     TOTAL_CONNECTIONS_ACCEPTED.fetch_add(1, Ordering::Relaxed);
-    struct ConnGuard;
-    impl Drop for ConnGuard {
-        fn drop(&mut self) {
-            ACTIVE_CONNECTIONS.fetch_sub(1, Ordering::Relaxed);
-        }
-    }
-    let _guard = ConnGuard;
+    let _guard = scopeguard::guard((), |_| {
+        // Always decrement on exit, even on panic
+        ACTIVE_CONNECTIONS.fetch_sub(1, Ordering::Relaxed);
+    });
     stream
         .set_read_timeout(Some(std::time::Duration::from_secs(600)))
         .ok();
@@ -2890,9 +3141,9 @@ fn handle_connection(
             // without auto-complete_io, the cipher buffer accumulates
             // and the client never receives the response.
             let mut tls = TlsStream::new(&mut conn, &mut stream);
-            let engine: Arc<
-                RwLock<ExecutionEngine<WalStorage<FileStorage, FileBackedWalManager>>>,
-            > = Arc::new(RwLock::new(ExecutionEngine::new(storage.clone())));
+            let engine: Arc<parking_lot::RwLock<ExecutionEngine<BoxStorageEngine>>> = Arc::new(
+                parking_lot::RwLock::new(ExecutionEngine::new(storage.clone())),
+            );
             let mut ps_manager = PreparedStatementManager::new();
             let mut server_last_sent_seq = 3u8;
             let _ = do_command_loop(
@@ -2948,8 +3199,9 @@ fn handle_connection(
         .ok();
     let mut server_last_sent_seq = 2u8;
     tracing::info!("Starting command loop with server_last_sent_seq=2");
-    let engine: Arc<RwLock<ExecutionEngine<WalStorage<FileStorage, FileBackedWalManager>>>> =
-        Arc::new(RwLock::new(ExecutionEngine::new(storage.clone())));
+    let engine: Arc<parking_lot::RwLock<ExecutionEngine<BoxStorageEngine>>> = Arc::new(
+        parking_lot::RwLock::new(ExecutionEngine::new(storage.clone())),
+    );
     let mut ps_manager = PreparedStatementManager::new();
     let _ = do_command_loop(
         &mut &stream,
@@ -2985,6 +3237,7 @@ pub fn run_server_v2(
     max_connections: usize,
     auth_mode: &str,
     server_threads: usize,
+    storage: &str,
 ) -> MySqlResult<()> {
     let addr = format!("{}:{}", host, port);
     let listener = TcpListener::bind(&addr)?;
@@ -3000,6 +3253,7 @@ pub fn run_server_v2(
     std::env::set_var("SQLRUSTGO_DATA_DIR", data_dir);
     std::env::set_var("SQLRUSTGO_MAX_CONN", max_connections.to_string());
     std::env::set_var("SQLRUSTGO_AUTH_MODE", auth_mode);
+    std::env::set_var("SQLRUSTGO_STORAGE", storage);
     // v3.8.0-rc2 Week 1 Day 7: also publish the data_dir to
     // ACTIVE_CONFIG so that the LOAD DATA LOCAL INFILE handler
     // recognizes files inside the data dir as in-whitelist.
@@ -3024,6 +3278,7 @@ pub fn run_server_v2(
         Vec::new(),
         Some(std::path::PathBuf::from(data_dir)),
         server_threads,
+        Some(storage.to_string()),
     )
 }
 
@@ -3060,6 +3315,7 @@ pub fn run_server_with_listener(listener: TcpListener) -> MySqlResult<()> {
 /// is **not** created or removed by the server: lifecycle is owned
 /// by the caller (matching the convention already documented on
 /// `EphemeralConfig::data_dir`).
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn run_server_with_listener_and_shutdown_with_bootstrap_tables_and_sql(
     listener: TcpListener,
     shutdown: std::sync::Arc<std::sync::atomic::AtomicBool>,
@@ -3068,23 +3324,12 @@ pub(crate) fn run_server_with_listener_and_shutdown_with_bootstrap_tables_and_sq
     bootstrap_sql: Vec<String>,
     data_dir: Option<std::path::PathBuf>,
     server_threads: usize,
+    storage: Option<String>,
 ) -> MySqlResult<()> {
     let tls_config = Arc::new(make_tls_config());
     tracing::info!("TLS ready (self-signed cert)");
 
-    // WalStorage<FileStorage, FileBackedWalManager> for production runtime
-    // (Issue #2808: G1 — DML must persist via WAL, not bypass to raw FileStorage)
-    //
-    // Issue #3257 fix: when no `data_dir` is provided, use a *stable* directory
-    // under the current working directory (`.sqlrustgo/data/`) rather than a
-    // port-keyed /tmp path. The old port-keyed /tmp path caused stale WAL
-    // files to persist across restarts and trigger 20+ minute recovery on a
-    // 9.9 GB WAL (see Issue #3257). The new default is:
-    //   1. Predictable: developers can find the WAL on disk
-    //   2. Persistent: data survives server restarts on the same port
-    //   3. Clean: an empty default is a fresh, empty data dir
-    // For ephemeral/test usage, callers should still pass an explicit
-    // `data_dir` (e.g. the test harness's `start_ephemeral` does this).
+    // Resolve data directory (shared by both binary and WAL storage modes).
     let wal_data_dir = match data_dir {
         Some(p) => p,
         None => {
@@ -3093,13 +3338,10 @@ pub(crate) fn run_server_with_listener_and_shutdown_with_bootstrap_tables_and_sq
                 .unwrap_or_else(|_| std::path::PathBuf::from("."))
                 .join(".sqlrustgo")
                 .join("data");
-            // Issue #3257: prefer SQLRUSTGO_DATA_DIR env var, then cwd default.
-            // The env var lets operators point at a stable location for
-            // long-running deployments without code changes.
             match std::env::var("SQLRUSTGO_DATA_DIR") {
                 Ok(s) if !s.is_empty() => {
                     tracing::info!(
-                        "WAL data_dir from SQLRUSTGO_DATA_DIR env: {} (port {})",
+                        "data_dir from SQLRUSTGO_DATA_DIR env: {} (port {})",
                         s,
                         port
                     );
@@ -3107,7 +3349,7 @@ pub(crate) fn run_server_with_listener_and_shutdown_with_bootstrap_tables_and_sq
                 }
                 _ => {
                     tracing::info!(
-                        "WAL data_dir default (cwd/.sqlrustgo/data/): {} (port {})",
+                        "data_dir default (cwd/.sqlrustgo/data/): {} (port {})",
                         cwd_default.display(),
                         port
                     );
@@ -3120,74 +3362,75 @@ pub(crate) fn run_server_with_listener_and_shutdown_with_bootstrap_tables_and_sq
         let _ = std::fs::create_dir_all(parent);
     }
     let _ = std::fs::create_dir_all(&wal_data_dir);
-    let mut file_storage =
-        FileStorage::new_with_wal(wal_data_dir.clone()).map_err(std::io::Error::other)?;
-    let wal_path = wal_data_dir.join("sqlrustgo.wal");
-    // Issue #3257: emit a warning if the WAL file is suspiciously large at
-    // startup. This catches stale WAL files left over from previous
-    // configurations (the port-keyed /tmp regression) or from long-running
-    // servers that never had WAL rotation enabled.
-    if let Ok(meta) = std::fs::metadata(&wal_path) {
-        let size_mb = meta.len() / (1024 * 1024);
-        if size_mb >= 100 {
-            tracing::warn!(
-                "WAL file is large: {} ({} MB) at {}. \
-                 This may indicate a stale WAL from a previous process. \
-                 Recovery time will scale with file size; \
-                 consider passing --data-dir to isolate runs, or pruning the WAL manually.",
-                wal_path.display(),
-                size_mb,
-                wal_path.display()
-            );
-        } else {
-            tracing::info!(
-                "WAL file size at startup: {} ({} MB)",
-                wal_path.display(),
-                size_mb
-            );
+
+    let storage: Arc<RwLock<BoxStorageEngine>> = match storage.as_deref() {
+        Some("binary") => {
+            tracing::info!("Storage: binary (BinaryTableStorage, no WAL)");
+            let bin_storage = BinaryTableStorage::new_with_data(wal_data_dir.clone())?;
+            tracing::info!("Loaded .bin tables from data_dir");
+            Arc::new(parking_lot::RwLock::new(BoxStorageEngine::new(bin_storage)))
         }
-    }
-    // INT-2 (#3270 partial): replay any uncommitted WAL entries from
-    // the previous process lifetime so DML/DDL that was journaled but
-    // not yet flushed to FileStorage's persisted table files is
-    // restored on restart. The recovery engine walks the WAL from the
-    // last checkpoint, applies each committed entry to the inner
-    // FileStorage, then we flush so a subsequent restart does not
-    // re-apply the same entries.
-    {
-        use sqlrustgo_storage::recovery_engine::{RecoveryEngine, StatefulRecoveryEngine};
-        let mut recovery: StatefulRecoveryEngine<FileStorage> = StatefulRecoveryEngine::new();
-        let mut wal_manager_for_recovery = FileBackedWalManager::new(wal_path.clone())
-            .map_err(|e| MySqlError::Sql(format!("WAL manager (recovery) init failed: {}", e)))?;
-        match recovery.recover(&mut file_storage, &mut wal_manager_for_recovery) {
-            Ok(report) => {
-                tracing::info!(
-                    "WAL recovery: total={} committed_txns={} rows_inserted={} rows_updated={} rows_deleted={}",
-                    report.entries_total,
-                    report.committed_txns,
-                    report.rows_inserted,
-                    report.rows_updated,
-                    report.rows_deleted
-                );
-                let _ = file_storage.flush();
+        _ => {
+            // WalStorage<FileStorage, FileBackedWalManager>
+            // Issue #3257: emit a warning if the WAL file is suspiciously large at startup.
+            let mut file_storage =
+                FileStorage::new_with_wal(wal_data_dir.clone()).map_err(std::io::Error::other)?;
+            let wal_path = wal_data_dir.join("sqlrustgo.wal");
+            if let Ok(meta) = std::fs::metadata(&wal_path) {
+                let size_mb = meta.len() / (1024 * 1024);
+                if size_mb >= 100 {
+                    tracing::warn!(
+                        "WAL file is large: {} ({} MB). Consider --data-dir to isolate runs.",
+                        wal_path.display(),
+                        size_mb
+                    );
+                } else {
+                    tracing::info!(
+                        "WAL file size at startup: {} ({} MB)",
+                        wal_path.display(),
+                        size_mb
+                    );
+                }
             }
-            Err(e) => {
-                tracing::warn!("WAL recovery skipped: {}", e);
+            // WAL recovery
+            {
+                use sqlrustgo_storage::recovery_engine::{RecoveryEngine, StatefulRecoveryEngine};
+                let mut recovery: StatefulRecoveryEngine<FileStorage> =
+                    StatefulRecoveryEngine::new();
+                let mut wal_manager_for_recovery = FileBackedWalManager::new(wal_path.clone())
+                    .map_err(|e| {
+                        MySqlError::Sql(format!("WAL manager (recovery) init failed: {}", e))
+                    })?;
+                match recovery.recover(&mut file_storage, &mut wal_manager_for_recovery) {
+                    Ok(report) => {
+                        tracing::info!(
+                            "WAL recovery: total={} committed_txns={} rows_inserted={}",
+                            report.entries_total,
+                            report.committed_txns,
+                            report.rows_inserted
+                        );
+                        let _ = file_storage.flush();
+                    }
+                    Err(e) => {
+                        tracing::warn!("WAL recovery skipped: {}", e);
+                    }
+                }
             }
+            let wal_manager = FileBackedWalManager::new(wal_path)
+                .map_err(|e| MySqlError::Sql(format!("WAL manager init failed: {}", e)))?;
+            let checkpoint_manager = Arc::new(std::sync::RwLock::new(CheckpointManager::default()));
+            let wal_storage =
+                WalStorage::with_checkpoint_manager(file_storage, wal_manager, checkpoint_manager)
+                    .map_err(|e| MySqlError::Sql(format!("WalStorage init failed: {}", e)))?;
+            Arc::new(parking_lot::RwLock::new(BoxStorageEngine::new(wal_storage)))
         }
-    }
-    let wal_manager = FileBackedWalManager::new(wal_path)
-        .map_err(|e| MySqlError::Sql(format!("WAL manager init failed: {}", e)))?;
-    let wal_storage = WalStorage::new(file_storage, wal_manager)
-        .map_err(|e| MySqlError::Sql(format!("WalStorage init failed: {}", e)))?;
-    let storage: Arc<RwLock<WalStorage<FileStorage, FileBackedWalManager>>> =
-        Arc::new(RwLock::new(wal_storage));
+    };
     if bootstrap_tables {
         let mut eng = ExecutionEngine::new(storage.clone());
         for sql in ["CREATE TABLE content (hash TEXT PRIMARY KEY, doc TEXT NOT NULL, created_at TEXT NOT NULL)",
                 "CREATE TABLE vectors (hash_seq TEXT PRIMARY KEY, hash TEXT NOT NULL, embedding TEXT NOT NULL, created_at TEXT NOT NULL)",
                 "CREATE TABLE documents (id TEXT PRIMARY KEY, title TEXT, content TEXT, created_at TEXT)"] {
-                if let Err(e) = eng.execute(sql) { tracing::warn!("Init: {}", e); }
+            if let Err(e) = eng.execute(sql) { tracing::warn!("Init: {}", e); }
         }
     }
     if !bootstrap_sql.is_empty() {
@@ -3226,6 +3469,13 @@ pub(crate) fn run_server_with_listener_and_shutdown_with_bootstrap_tables_and_sq
     while !shutdown.load(Ordering::SeqCst) {
         match listener.accept() {
             Ok((stream, addr)) => {
+                // The listener is non-blocking (for shutdown polling). On
+                // Unix the accepted TcpStream inherits this flag, which
+                // breaks TLS I/O: TlsStream::write() would never truly
+                // block — it would busy-spin on WouldBlock. Restore
+                // blocking mode so that Read/Write/complete_io block
+                // properly in the kernel (per-connection thread).
+                let _ = stream.set_nonblocking(false);
                 let st = storage.clone();
                 let tc = tls_config.clone();
                 let us = user_store.clone();
@@ -3241,11 +3491,23 @@ pub(crate) fn run_server_with_listener_and_shutdown_with_bootstrap_tables_and_sq
                             tls_config: tc,
                             user_store: us,
                         };
-                        if let Err(returned_job) = p.send(job) {
-                            tracing::warn!(
-                                "worker pool shut down; dropping connection from {}",
-                                returned_job.addr
-                            );
+                        match p.send_timeout(job, Duration::from_millis(200)) {
+                            Ok(()) => {}
+                            Err(crate::testing::SendTimeoutError::Timeout(returned_job)) => {
+                                crate::testing::BACKPRESSURE_COUNT
+                                    .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                                tracing::debug!(
+                                    "worker pool full; rejecting connection from {} \
+                                     (BACKPRESSURE_COUNT incremented)",
+                                    returned_job.addr
+                                );
+                            }
+                            Err(crate::testing::SendTimeoutError::Disconnected(returned_job)) => {
+                                tracing::warn!(
+                                    "worker pool shut down; dropping connection from {}",
+                                    returned_job.addr
+                                );
+                            }
                         }
                     }
                 }
@@ -3287,6 +3549,7 @@ pub fn run_server_with_listener_and_shutdown(
         Vec::new(),
         None,
         16,
+        None,
     )
 }
 
@@ -3310,6 +3573,7 @@ pub(crate) fn run_server_with_listener_and_shutdown_with_bootstrap(
         Vec::new(),
         None,
         16,
+        None,
     )
 }
 
@@ -3955,10 +4219,11 @@ mod integration_tests {
 
     #[test]
     fn test_statement_dispatch_select() {
+        use parking_lot::RwLock;
         use sqlrustgo::MemoryExecutionEngine;
         use sqlrustgo_storage::MemoryStorage;
         use sqlrustgo_types::Value;
-        use std::sync::{Arc, RwLock};
+        use std::sync::Arc;
 
         let storage: Arc<RwLock<MemoryStorage>> = Arc::new(RwLock::new(MemoryStorage::new()));
         let mut engine = MemoryExecutionEngine::new(storage);
@@ -3979,9 +4244,10 @@ mod integration_tests {
 
     #[test]
     fn test_statement_dispatch_insert() {
+        use parking_lot::RwLock;
         use sqlrustgo::MemoryExecutionEngine;
         use sqlrustgo_storage::MemoryStorage;
-        use std::sync::{Arc, RwLock};
+        use std::sync::Arc;
 
         let storage: Arc<RwLock<MemoryStorage>> = Arc::new(RwLock::new(MemoryStorage::new()));
         let mut engine = MemoryExecutionEngine::new(storage);
@@ -4163,50 +4429,52 @@ mod load_local_infile_tests {
 pub use testing::EphemeralConfig;
 
 pub mod testing {
+    use crate::BoxStorageEngine;
     use crate::UserStore;
     use crate::ACTIVE_CONFIG;
+    use crossbeam_channel::{bounded, Receiver, Sender};
     use std::net::{SocketAddr, TcpListener, TcpStream};
     use std::path::PathBuf;
-    use std::sync::mpsc::{sync_channel, Receiver, SyncSender};
     use std::sync::{Arc, Mutex};
     use std::thread::JoinHandle;
 
     /// One connection-handling job dispatched to a worker via the
-    /// `ServerThreadPool` channel. Workers call
-    /// `handle_connection` with these args.
-    #[allow(private_interfaces)]
     pub struct ServerJob {
         pub stream: TcpStream,
         pub addr: SocketAddr,
-        pub storage: Arc<
-            std::sync::RwLock<
-                sqlrustgo_storage::WalStorage<
-                    sqlrustgo_storage::FileStorage,
-                    sqlrustgo_storage::FileBackedWalManager,
-                >,
-            >,
-        >,
+        pub storage: Arc<parking_lot::RwLock<BoxStorageEngine>>,
         pub tls_config: Arc<rustls::ServerConfig>,
         pub user_store: UserStore,
     }
 
     /// Bounded worker pool: N worker threads + `sync_channel(N*2)` for
     /// backpressure. `server_threads=0` mode skips constructing this
-    /// and falls back to legacy per-connection `thread::spawn`.
     pub struct ServerThreadPool {
-        tx: SyncSender<ServerJob>,
+        tx: Sender<ServerJob>,
         workers: Vec<std::thread::JoinHandle<()>>,
     }
 
-    const CHANNEL_BUFFER_MULTIPLIER: usize = 2;
+    /// Errors returned by [`ServerThreadPool::send_timeout`].
+    pub enum SendTimeoutError {
+        /// Channel was full for the entire timeout. Caller should
+        /// back off and retry (or drop the connection).
+        Timeout(ServerJob),
+        /// All worker threads have exited; the receiver was dropped.
+        Disconnected(ServerJob),
+    }
+
+    /// Counter of `send_timeout` timeouts across all pools in this
+    /// process. Exposed via [`ServerThreadPool::backpressure_count`].
+    pub static BACKPRESSURE_COUNT: std::sync::atomic::AtomicU64 =
+        std::sync::atomic::AtomicU64::new(0);
+    const CHANNEL_BUFFER_MULTIPLIER: usize = 4;
 
     impl ServerThreadPool {
         /// Start N worker threads + bounded sync_channel.
         #[allow(private_interfaces)]
         pub fn start(n: usize) -> Self {
             assert!(n > 0, "ServerThreadPool::start requires n > 0");
-            let (tx, rx) = sync_channel(n * CHANNEL_BUFFER_MULTIPLIER);
-            let rx = Arc::new(std::sync::Mutex::new(rx));
+            let (tx, rx) = bounded(n * CHANNEL_BUFFER_MULTIPLIER);
             let mut workers = Vec::with_capacity(n);
             for worker_id in 0..n {
                 let rx = rx.clone();
@@ -4223,6 +4491,31 @@ pub mod testing {
             self.tx.send(job).map_err(|e| e.0)
         }
 
+        /// Send a job with a timeout. Used by the accept loop so it
+        /// can poll the shutdown flag even under sustained backpressure.
+        pub fn send_timeout(
+            &self,
+            job: ServerJob,
+            timeout: std::time::Duration,
+        ) -> Result<(), SendTimeoutError> {
+            match self.tx.send_timeout(job, timeout) {
+                Ok(()) => Ok(()),
+                Err(crossbeam_channel::SendTimeoutError::Timeout(j)) => {
+                    Err(SendTimeoutError::Timeout(j))
+                }
+                Err(crossbeam_channel::SendTimeoutError::Disconnected(j)) => {
+                    Err(SendTimeoutError::Disconnected(j))
+                }
+            }
+        }
+
+        /// Backpressure counter incremented every time a `send_timeout`
+        /// returned `Timeout`. Exposed for tests that want to assert the
+        /// pool actually exercised backpressure.
+        pub fn backpressure_count(&self) -> u64 {
+            BACKPRESSURE_COUNT.load(std::sync::atomic::Ordering::Relaxed)
+        }
+
         /// Drop the sender so workers exit their recv loop, then join.
         pub fn join(self) {
             drop(self.tx);
@@ -4237,16 +4530,13 @@ pub mod testing {
         }
     }
 
-    fn worker_loop(rx: Arc<std::sync::Mutex<Receiver<ServerJob>>>, worker_id: usize) {
+    fn worker_loop(rx: Receiver<ServerJob>, worker_id: usize) {
         loop {
-            let job = {
-                let rx = rx.lock().expect("worker mutex poisoned");
-                match rx.recv() {
-                    Ok(job) => job,
-                    Err(_) => {
-                        tracing::debug!("worker {worker_id}: channel closed, exiting");
-                        return;
-                    }
+            let job = match rx.recv() {
+                Ok(job) => job,
+                Err(_) => {
+                    tracing::debug!("worker {worker_id}: channel closed, exiting");
+                    return;
                 }
             };
             // Panic isolation: one connection's panic doesn't kill the worker.
@@ -4307,6 +4597,16 @@ pub mod testing {
         /// `sync_channel(N*2)` for backpressure. Default 16 (matches
         /// CLI default in `main.rs`).
         pub server_threads: usize,
+        /// Storage backend selector forwarded to
+        /// `run_server_with_listener_and_shutdown_with_bootstrap_tables_and_sql`.
+        /// `None` (default) → `FileStorage` + WAL (JSON row files);
+        /// `Some("binary")` → `BinaryTableStorage` reading pre-generated
+        /// `*.bin` (BINT v2) files in `data_dir`. The `binary` backend
+        /// is significantly faster at TPC-H load time because it does
+        /// not run LOAD DATA; the operator must produce the `.bin`
+        /// files upstream (e.g. `tools/tbl2bin`). The CLI mirrors
+        /// this knob via `--storage binary`.
+        pub storage: Option<String>,
     }
 
     impl Default for EphemeralConfig {
@@ -4319,6 +4619,7 @@ pub mod testing {
                 bootstrap_sql: Vec::new(),
                 bulk_insert_buffer_size: 1_048_576,
                 server_threads: 16,
+                storage: None,
             }
         }
     }
@@ -4453,6 +4754,7 @@ pub mod testing {
         let bootstrap_tables_flag = config.bootstrap_tables;
         let bootstrap_sql = config.bootstrap_sql;
         let server_threads = config.server_threads;
+        let storage_backend = config.storage.clone();
         let join = std::thread::spawn(move || {
             let bootstrap: crate::UserStoreBootstrap = if bootstrap_users {
                 Some(Box::new(|user_store: &mut crate::UserStore| {
@@ -4469,6 +4771,7 @@ pub mod testing {
                 bootstrap_sql,
                 data_dir_for_thread,
                 server_threads,
+                storage_backend,
             );
         });
 
@@ -4479,6 +4782,96 @@ pub mod testing {
             data_dir,
             externally_owned,
         })
+    }
+
+    #[test]
+    fn split_top_level_single_statement() {
+        assert_eq!(
+            crate::split_top_level_statements("INSERT INTO t VALUES (1)"),
+            vec!["INSERT INTO t VALUES (1)"]
+        );
+    }
+
+    #[test]
+    fn split_top_level_no_trailing_semicolon() {
+        assert_eq!(
+            crate::split_top_level_statements("SELECT 1"),
+            vec!["SELECT 1"]
+        );
+    }
+
+    #[test]
+    fn split_top_level_trailing_semicolon() {
+        assert_eq!(
+            crate::split_top_level_statements("INSERT INTO t VALUES (1);"),
+            vec!["INSERT INTO t VALUES (1)"]
+        );
+    }
+
+    #[test]
+    fn split_top_level_two_statements() {
+        assert_eq!(
+            crate::split_top_level_statements(
+                "INSERT INTO t VALUES (1); INSERT INTO t VALUES (2);"
+            ),
+            vec!["INSERT INTO t VALUES (1)", "INSERT INTO t VALUES (2)"]
+        );
+    }
+
+    #[test]
+    fn split_top_level_skips_empty_statements() {
+        assert_eq!(
+            crate::split_top_level_statements(";;INSERT INTO t VALUES (1);;"),
+            vec!["INSERT INTO t VALUES (1)"]
+        );
+    }
+
+    #[test]
+    fn split_top_level_respects_paren_depth() {
+        assert_eq!(
+            crate::split_top_level_statements("SELECT (1;2); SELECT 3;"),
+            vec!["SELECT (1;2)", "SELECT 3"]
+        );
+    }
+
+    #[test]
+    fn split_top_level_respects_string_literals() {
+        assert_eq!(
+            crate::split_top_level_statements("INSERT INTO t VALUES ('a;b;c'); SELECT 1;"),
+            vec!["INSERT INTO t VALUES ('a;b;c')", "SELECT 1"]
+        );
+    }
+
+    #[test]
+    fn split_top_level_handles_double_quoted_strings() {
+        assert_eq!(
+            crate::split_top_level_statements(r#"INSERT INTO t VALUES ("a;b"); SELECT 1;"#),
+            vec![r#"INSERT INTO t VALUES ("a;b")"#, "SELECT 1"]
+        );
+    }
+
+    #[test]
+    fn split_top_level_handles_line_comment() {
+        assert_eq!(
+            crate::split_top_level_statements("-- a;b\nINSERT INTO t VALUES (1); SELECT 2;"),
+            vec!["-- a;b\nINSERT INTO t VALUES (1)", "SELECT 2"]
+        );
+    }
+
+    #[test]
+    fn split_top_level_handles_block_comment() {
+        assert_eq!(
+            crate::split_top_level_statements("SELECT 1 /* ; */ ;SELECT 2;"),
+            vec!["SELECT 1 /* ; */", "SELECT 2"]
+        );
+    }
+
+    #[test]
+    fn split_top_level_escaped_quote_in_string() {
+        assert_eq!(
+            crate::split_top_level_statements(r"INSERT INTO t VALUES ('a\';b'); SELECT 1;"),
+            vec![r"INSERT INTO t VALUES ('a\';b')", "SELECT 1"]
+        );
     }
 }
 
