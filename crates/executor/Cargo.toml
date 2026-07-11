@@ -18,6 +18,7 @@ serde_json.workspace = true
 thiserror.workspace = true
 log.workspace = true
 parking_lot.workspace = true
+tracing.workspace = true
 reqwest = { version = "0.12", features = ["blocking", "json"] }
 
 # v3.10.0 Issue #3703: intra-query parallel executor (scan/join/agg)
@@ -35,7 +36,9 @@ rayon = { version = "1.10", optional = true }
 # driven by `--executor-parallelism=N` CLI flag).
 default = []
 parallel-executor = ["dep:rayon"]
-
+# SIMD batch filter evaluation (Phase 5)
+# Experimental - uses portable SIMD-like operations
+simd = []
 [dev-dependencies]
 tempfile.workspace = true
 sqlrustgo = { path = "../.." }
