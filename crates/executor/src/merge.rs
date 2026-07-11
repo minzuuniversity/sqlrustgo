@@ -453,9 +453,119 @@ fn find_column_index(col_name: &str, table_info: &TableInfo) -> Option<usize> {
     }
 }
 
+#[cfg(test)]
 mod tests {
     #[allow(unused_imports)]
     use super::*;
+    use crate::execution::ExecutionResult;
+    use sqlrustgo_storage::{ColumnDefinition, Record, RowFilter, RowMutation, TriggerInfo};
+    use sqlrustgo_types::SqlError;
+
+    struct MockStorage;
+    impl StorageEngine for MockStorage {
+        fn scan(&self, _table: &str) -> SqlResult<Vec<Record>> {
+            Ok(vec![])
+        }
+        fn insert(&mut self, _table: &str, _records: Vec<Record>) -> SqlResult<()> {
+            Ok(())
+        }
+        fn delete(&mut self, _table: &str, _filters: &[Value]) -> SqlResult<usize> {
+            Ok(0)
+        }
+        fn delete_if(&mut self, _table: &str, _filter: &RowFilter) -> SqlResult<usize> {
+            Ok(0)
+        }
+        fn update(
+            &mut self,
+            _table: &str,
+            _filters: &[Value],
+            _updates: &[(usize, Value)],
+        ) -> SqlResult<usize> {
+            Ok(0)
+        }
+        fn update_if(
+            &mut self,
+            _table: &str,
+            _filter: &RowFilter,
+            _mutation: &RowMutation,
+        ) -> SqlResult<usize> {
+            Ok(0)
+        }
+        fn create_table(&mut self, _info: &TableInfo) -> SqlResult<()> {
+            Ok(())
+        }
+        fn drop_table(&mut self, _table: &str) -> SqlResult<()> {
+            Ok(())
+        }
+        fn get_table_info(&self, table: &str) -> SqlResult<TableInfo> {
+            Ok(TableInfo {
+                name: table.to_string(),
+                columns: vec![],
+                ..Default::default()
+            })
+        }
+        fn has_table(&self, _table: &str) -> bool {
+            false
+        }
+        fn list_tables(&self) -> Vec<String> {
+            vec![]
+        }
+        fn create_index(
+            &mut self,
+            _table: &str,
+            _column: &str,
+            _column_index: usize,
+        ) -> SqlResult<()> {
+            Ok(())
+        }
+        fn drop_index(&mut self, _table: &str, _column: &str) -> SqlResult<()> {
+            Ok(())
+        }
+        fn add_column(&mut self, _table: &str, _column: ColumnDefinition) -> SqlResult<()> {
+            Ok(())
+        }
+        fn rename_table(&mut self, _table: &str, _new_name: &str) -> SqlResult<()> {
+            Ok(())
+        }
+        fn create_trigger(&mut self, _info: TriggerInfo) -> SqlResult<()> {
+            Ok(())
+        }
+        fn drop_trigger(&mut self, _name: &str) -> SqlResult<()> {
+            Ok(())
+        }
+        fn get_trigger(&self, _name: &str) -> Option<TriggerInfo> {
+            None
+        }
+        fn list_triggers(&self, _table: &str) -> Vec<TriggerInfo> {
+            vec![]
+        }
+        fn list_indexes(&self, _table: &str) -> Vec<(String, String)> {
+            vec![]
+        }
+        fn has_view(&self, _name: &str) -> bool {
+            false
+        }
+    }
+
+    struct MockEngine;
+    impl ExecutionEngine for MockEngine {
+        fn execute(&mut self, _ctx: &mut QueryContext) -> Result<ExecutionResult, SqlError> {
+            Ok(ExecutionResult {
+                affected_rows: 0,
+                last_insert_id: None,
+                payload: None,
+            })
+        }
+        fn begin(&mut self) -> Result<u64, SqlError> {
+            Ok(1)
+        }
+        fn commit(&mut self, _txn: u64) -> Result<(), SqlError> {
+            Ok(())
+        }
+        fn rollback(&mut self, _txn: u64) -> Result<(), SqlError> {
+            Ok(())
+        }
+    }
 
     #[test]
     fn test_compare_values_integer() {
@@ -687,6 +797,274 @@ mod tests {
                 &Operator::NotEq
             ),
             Value::Boolean(true)
+        );
+    }
+
+    #[test]
+    fn test_value_to_sql_all_variants() {
+        let ex = MergeExecutor::new(
+            Arc::new(RwLock::new(MockStorage)),
+            Arc::new(std::sync::Mutex::new(MockEngine)),
+        );
+        assert_eq!(ex.value_to_sql(&Value::Null), "NULL");
+        assert_eq!(ex.value_to_sql(&Value::Integer(42)), "42");
+        assert_eq!(ex.value_to_sql(&Value::Float(3.14)), "3.14");
+        assert_eq!(
+            ex.value_to_sql(&Value::Text("hello".to_string())),
+            "'hello'"
+        );
+        assert_eq!(ex.value_to_sql(&Value::Text("it's".to_string())), "'it''s'");
+        assert_eq!(ex.value_to_sql(&Value::Boolean(true)), "TRUE");
+        assert_eq!(ex.value_to_sql(&Value::Boolean(false)), "FALSE");
+        assert_eq!(ex.value_to_sql(&Value::Blob(vec![1, 2, 3])), "NULL");
+    }
+
+    #[test]
+    fn test_value_to_sql_text_escape() {
+        let ex = MergeExecutor::new(
+            Arc::new(RwLock::new(MockStorage)),
+            Arc::new(std::sync::Mutex::new(MockEngine)),
+        );
+        assert_eq!(ex.value_to_sql(&Value::Text("".to_string())), "''");
+        assert_eq!(ex.value_to_sql(&Value::Text("'".to_string())), "''''");
+        assert_eq!(ex.value_to_sql(&Value::Text("a'b".to_string())), "'a''b'");
+        assert_eq!(
+            ex.value_to_sql(&Value::Text("hello 'world'".to_string())),
+            "'hello ''world'''"
+        );
+    }
+
+    #[test]
+    fn test_build_insert_sql_basic() {
+        let table_info = sqlrustgo_storage::TableInfo {
+            name: "test_table".to_string(),
+            columns: vec![
+                sqlrustgo_storage::ColumnDefinition {
+                    name: "id".to_string(),
+                    ..Default::default()
+                },
+                sqlrustgo_storage::ColumnDefinition {
+                    name: "name".to_string(),
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        };
+        let ex = MergeExecutor::new(
+            Arc::new(RwLock::new(MockStorage)),
+            Arc::new(std::sync::Mutex::new(MockEngine)),
+        );
+        let sql = ex.build_insert_sql(
+            "target",
+            &table_info,
+            &[Value::Integer(1), Value::Text("a".to_string())],
+        );
+        assert_eq!(sql, "INSERT INTO target (id, name) VALUES (1, 'a')");
+    }
+
+    #[test]
+    fn test_build_update_sql_with_pk_filter() {
+        let table_info = sqlrustgo_storage::TableInfo {
+            name: "t".to_string(),
+            columns: vec![
+                sqlrustgo_storage::ColumnDefinition {
+                    name: "id".to_string(),
+                    primary_key: true,
+                    ..Default::default()
+                },
+                sqlrustgo_storage::ColumnDefinition {
+                    name: "val".to_string(),
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        };
+        let ex = MergeExecutor::new(
+            Arc::new(RwLock::new(MockStorage)),
+            Arc::new(std::sync::Mutex::new(MockEngine)),
+        );
+        let sql = ex.build_update_sql(
+            "t",
+            &table_info,
+            &[(1, Value::Integer(99))],
+            &[Value::Integer(5)],
+        );
+        assert!(sql.contains("UPDATE t SET"));
+        assert!(sql.contains("val = 99"));
+        assert!(sql.contains("WHERE id = 5"));
+    }
+
+    #[test]
+    fn test_build_update_sql_no_filter() {
+        let table_info = sqlrustgo_storage::TableInfo {
+            name: "t".to_string(),
+            columns: vec![sqlrustgo_storage::ColumnDefinition {
+                name: "id".to_string(),
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        let ex = MergeExecutor::new(
+            Arc::new(RwLock::new(MockStorage)),
+            Arc::new(std::sync::Mutex::new(MockEngine)),
+        );
+        let sql = ex.build_update_sql("t", &table_info, &[(0, Value::Integer(1))], &[]);
+        assert_eq!(sql, "UPDATE t SET id = 1");
+    }
+
+    #[test]
+    fn test_build_update_sql_empty_pk_first_col_fallback() {
+        let table_info = sqlrustgo_storage::TableInfo {
+            name: "t".to_string(),
+            columns: vec![sqlrustgo_storage::ColumnDefinition {
+                name: "id".to_string(),
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        let ex = MergeExecutor::new(
+            Arc::new(RwLock::new(MockStorage)),
+            Arc::new(std::sync::Mutex::new(MockEngine)),
+        );
+        let sql = ex.build_update_sql(
+            "t",
+            &table_info,
+            &[(0, Value::Integer(1))],
+            &[Value::Integer(5)],
+        );
+        assert!(sql.contains("WHERE id"));
+    }
+
+    #[test]
+    fn test_find_column_index_qualified() {
+        let table_info = sqlrustgo_storage::TableInfo {
+            name: "test".to_string(),
+            columns: vec![
+                sqlrustgo_storage::ColumnDefinition {
+                    name: "id".to_string(),
+                    ..Default::default()
+                },
+                sqlrustgo_storage::ColumnDefinition {
+                    name: "name".to_string(),
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        };
+        assert_eq!(find_column_index("t.id", &table_info), Some(0));
+        assert_eq!(find_column_index("t.name", &table_info), Some(1));
+        assert_eq!(find_column_index("t.x", &table_info), None);
+    }
+
+    #[test]
+    fn test_compare_values_float() {
+        assert_eq!(compare_values(&Value::Float(1.0), &Value::Float(1.0)), 0);
+        assert_eq!(compare_values(&Value::Float(1.0), &Value::Float(2.0)), -1);
+        assert_eq!(compare_values(&Value::Float(2.0), &Value::Float(1.0)), 1);
+    }
+
+    #[test]
+    fn test_compare_values_cross_type() {
+        assert_eq!(
+            compare_values(&Value::Integer(1), &Value::Text("a".to_string())),
+            0
+        );
+    }
+
+    #[test]
+    fn test_op_compare_all_ops() {
+        assert!(op_compare(
+            &Operator::Gt,
+            &Value::Integer(5),
+            &Value::Integer(3)
+        ));
+        assert!(!op_compare(
+            &Operator::Gt,
+            &Value::Integer(3),
+            &Value::Integer(5)
+        ));
+        assert!(op_compare(
+            &Operator::GtEq,
+            &Value::Integer(5),
+            &Value::Integer(5)
+        ));
+        assert!(!op_compare(
+            &Operator::GtEq,
+            &Value::Integer(4),
+            &Value::Integer(5)
+        ));
+        assert!(op_compare(
+            &Operator::Lt,
+            &Value::Integer(3),
+            &Value::Integer(5)
+        ));
+        assert!(!op_compare(
+            &Operator::Lt,
+            &Value::Integer(5),
+            &Value::Integer(3)
+        ));
+        assert!(op_compare(
+            &Operator::LtEq,
+            &Value::Integer(5),
+            &Value::Integer(5)
+        ));
+        assert!(!op_compare(
+            &Operator::LtEq,
+            &Value::Integer(6),
+            &Value::Integer(5)
+        ));
+        assert!(!op_compare(
+            &Operator::Like,
+            &Value::Integer(1),
+            &Value::Integer(1)
+        ));
+        assert!(!op_compare(&Operator::Eq, &Value::Null, &Value::Integer(1)));
+        assert!(!op_compare(&Operator::Eq, &Value::Integer(1), &Value::Null));
+    }
+
+    #[test]
+    fn test_compare_values_null_and_float() {
+        assert_eq!(compare_values(&Value::Null, &Value::Float(1.5)), -1);
+        assert_eq!(compare_values(&Value::Float(1.5), &Value::Null), 1);
+    }
+
+    #[test]
+    fn test_eval_binary_op_gt_lt_with_floats() {
+        assert_eq!(
+            eval_binary_op(&Value::Float(5.0), &Value::Float(3.0), &Operator::Gt),
+            Value::Boolean(true)
+        );
+        assert_eq!(
+            eval_binary_op(&Value::Float(3.0), &Value::Float(5.0), &Operator::Gt),
+            Value::Boolean(false)
+        );
+        assert_eq!(
+            eval_binary_op(&Value::Float(3.0), &Value::Float(5.0), &Operator::Lt),
+            Value::Boolean(true)
+        );
+        assert_eq!(
+            eval_binary_op(&Value::Float(5.0), &Value::Float(3.0), &Operator::Lt),
+            Value::Boolean(false)
+        );
+    }
+
+    #[test]
+    fn test_eval_binary_op_non_bool_and_or() {
+        assert_eq!(
+            eval_binary_op(&Value::Integer(1), &Value::Integer(0), &Operator::And),
+            Value::Boolean(false)
+        );
+        assert_eq!(
+            eval_binary_op(&Value::Integer(1), &Value::Integer(0), &Operator::Or),
+            Value::Boolean(false)
+        );
+    }
+
+    #[test]
+    fn test_eval_binary_op_null_inequality() {
+        assert_eq!(
+            eval_binary_op(&Value::Null, &Value::Null, &Operator::Gt),
+            Value::Boolean(false)
         );
     }
 }
