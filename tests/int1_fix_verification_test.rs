@@ -9,9 +9,10 @@
 //! 3. ROLLBACK 仍能撤销
 //! 4. 多语句 autocommit 正常
 
+use parking_lot::RwLock;
 use sqlrustgo::MemoryExecutionEngine;
 use sqlrustgo_storage::MemoryStorage;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 
 fn create_engine() -> MemoryExecutionEngine {
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));

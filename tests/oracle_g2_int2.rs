@@ -7,9 +7,10 @@
 
 mod common;
 
+use parking_lot::RwLock;
 use sqlrustgo::{ExecutionEngine, MemoryStorage};
 use sqlrustgo_types::Value;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 
 fn make_engine(parallel_degree: usize) -> ExecutionEngine<MemoryStorage> {
     let mut engine = ExecutionEngine::new(Arc::new(RwLock::new(MemoryStorage::new())));

@@ -6,9 +6,10 @@
 //! These tests are designed to run with --ignored flag:
 //!   cargo test --test qps_benchmark_test -- --ignored
 
+use parking_lot::RwLock;
 use sqlrustgo::MemoryExecutionEngine;
 use sqlrustgo_storage::MemoryStorage;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 use std::thread;
 use std::time::Instant;
 
