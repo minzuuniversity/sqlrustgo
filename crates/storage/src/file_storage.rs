@@ -2236,6 +2236,142 @@ mod tests {
         let _ = storage.partition_rows("t", 4);
         let _ = remove_dir_all(&dir);
     }
+
+    #[test]
+    fn test_partition_rows_uneven_remainder() {
+        let mut storage = FileStorage::new_with_buffer_config(
+            std::env::temp_dir().join("fs_pr_uneven"),
+            100,
+            true,
+        )
+        .unwrap();
+        let dir = std::env::temp_dir().join("fs_pr_uneven");
+        let _ = remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut storage = FileStorage::new_with_buffer_config(dir.clone(), 100, true).unwrap();
+        let info = TableInfo {
+            name: "t".into(),
+            columns: vec![ColumnDefinition::new("a", "INTEGER")],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
+        };
+        storage.create_table(&info).unwrap();
+        storage
+            .insert(
+                "t",
+                (0..503_003_i64).map(|i| vec![Value::Integer(i)]).collect(),
+            )
+            .unwrap();
+        let parts = storage.partition_rows("t", 4);
+        assert_eq!(parts.len(), 4);
+        let total: usize = parts.iter().map(|p| p.len()).sum();
+        assert_eq!(total, 503_003);
+        let _ = remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_partition_rows_two_partitions_above_threshold() {
+        let dir = std::env::temp_dir().join("fs_pr_2p");
+        let _ = remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut storage = FileStorage::new_with_buffer_config(dir.clone(), 100, true).unwrap();
+        let info = TableInfo {
+            name: "t".into(),
+            columns: vec![ColumnDefinition::new("a", "INTEGER")],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
+        };
+        storage.create_table(&info).unwrap();
+        storage
+            .insert(
+                "t",
+                (0..500_100_i64).map(|i| vec![Value::Integer(i)]).collect(),
+            )
+            .unwrap();
+        let parts = storage.partition_rows("t", 2);
+        assert_eq!(parts.len(), 2);
+        let _ = remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_insert_direct_table_not_in_map() {
+        let mut storage = make_storage("fs_ins_direct_ne");
+        storage
+            .insert("nonexistent", vec![vec![Value::Integer(1)]])
+            .unwrap();
+    }
+
+    #[test]
+    fn test_flush_buffer_with_buffered_rows() {
+        let dir = std::env::temp_dir().join("fs_flush_buf");
+        let _ = remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut storage = FileStorage::new_with_buffer_config(dir.clone(), 5, true).unwrap();
+        let info = TableInfo {
+            name: "t".into(),
+            columns: vec![ColumnDefinition::new("a", "INTEGER")],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
+        };
+        storage.create_table(&info).unwrap();
+        storage
+            .insert("t", (0..10_i64).map(|i| vec![Value::Integer(i)]).collect())
+            .unwrap();
+        storage.flush_all_buffers().unwrap();
+        let _ = remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_storage_save_reload_roundtrip() {
+        let dir = std::env::temp_dir().join("fs_save_reload");
+        let _ = remove_dir_all(&dir);
+        let mut storage = FileStorage::new_with_buffer_config(dir.clone(), 100, false).unwrap();
+        let info = TableInfo {
+            name: "users".to_string(),
+            columns: vec![ColumnDefinition::new("id", "INTEGER")],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
+        };
+        storage.create_table(&info).unwrap();
+        storage
+            .insert("users", vec![vec![Value::Integer(42)]])
+            .unwrap();
+        drop(storage);
+
+        let storage2 = FileStorage::new(dir.clone()).unwrap();
+        let rows = storage2.scan("users").unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0][0], Value::Integer(42));
+        let _ = remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_storage_engine_get_table_info_not_found() {
+        let storage = make_storage("fs_eng_gti_ne");
+        let result = storage.get_table_info("missing");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_storage_engine_table_operations_empty() {
+        let mut storage = make_storage("fs_eng_empty");
+        assert!(storage.list_tables().is_empty());
+        assert!(!storage.has_table("anytable"));
+    }
+
+    #[test]
+    fn test_storage_engine_drop_index_nonexistent_table() {
+        let mut storage = make_storage("fs_drop_idx_ne");
+        storage.drop_index("nonexistent", "col").unwrap();
+    }
 }
 
 impl FileStorage {
