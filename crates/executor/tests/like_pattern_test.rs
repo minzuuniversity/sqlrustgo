@@ -5,10 +5,10 @@
 //! in src/expr_utils.rs has no arm for it, so the predicate falls
 //! through to Null. These tests verify the substring-match path.
 
+use parking_lot::RwLock;
 use sqlrustgo::ExecutionEngine;
 use sqlrustgo_storage::MemoryStorage;
 use std::sync::Arc;
-use parking_lot::RwLock;
 
 fn create_engine() -> ExecutionEngine<MemoryStorage> {
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));

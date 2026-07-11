@@ -2011,4 +2011,551 @@ mod tests {
             Value::Null
         );
     }
+
+    #[test]
+    fn test_eval_is_null_functions() {
+        assert_eq!(eval_is_null(&Value::Null), Value::Boolean(true));
+        assert_eq!(eval_is_null(&Value::Integer(0)), Value::Boolean(false));
+        assert_eq!(eval_is_not_null(&Value::Null), Value::Boolean(false));
+        assert_eq!(eval_is_not_null(&Value::Integer(0)), Value::Boolean(true));
+    }
+
+    #[test]
+    fn test_compare_values_cross_type() {
+        assert_eq!(compare_values(&Value::Float(5.0), &Value::Integer(5)), 0);
+        assert_eq!(compare_values(&Value::Float(3.0), &Value::Integer(5)), -1);
+        assert_eq!(compare_values(&Value::Float(7.0), &Value::Integer(5)), 1);
+        assert_eq!(compare_values(&Value::Integer(5), &Value::Float(5.0)), 0);
+        assert_eq!(compare_values(&Value::Integer(3), &Value::Float(5.0)), -1);
+        assert_eq!(compare_values(&Value::Integer(7), &Value::Float(5.0)), 1);
+        assert_eq!(
+            compare_values(&Value::Text("a".into()), &Value::Integer(1)),
+            0
+        );
+        assert_eq!(compare_values(&Value::Null, &Value::Null), 0);
+        assert_eq!(compare_values(&Value::Null, &Value::Integer(1)), -1);
+        assert_eq!(compare_values(&Value::Integer(1), &Value::Null), 1);
+    }
+
+    #[test]
+    fn test_eval_between_standalone() {
+        assert_eq!(
+            eval_between(&Value::Integer(5), &Value::Integer(1), &Value::Integer(10)),
+            Value::Boolean(true)
+        );
+        assert_eq!(
+            eval_between(&Value::Integer(0), &Value::Integer(1), &Value::Integer(10)),
+            Value::Boolean(false)
+        );
+        assert_eq!(
+            eval_between(&Value::Integer(5), &Value::Integer(5), &Value::Integer(10)),
+            Value::Boolean(true)
+        );
+        assert_eq!(
+            eval_between(&Value::Integer(10), &Value::Integer(1), &Value::Integer(10)),
+            Value::Boolean(true)
+        );
+        assert_eq!(
+            eval_between(&Value::Null, &Value::Integer(1), &Value::Integer(10)),
+            Value::Boolean(false)
+        );
+    }
+
+    #[test]
+    fn test_eval_not_between_standalone() {
+        assert_eq!(
+            eval_not_between(&Value::Integer(5), &Value::Integer(1), &Value::Integer(10)),
+            Value::Boolean(false)
+        );
+        assert_eq!(
+            eval_not_between(&Value::Integer(0), &Value::Integer(1), &Value::Integer(10)),
+            Value::Boolean(true)
+        );
+    }
+
+    #[test]
+    fn test_parse_lit_more() {
+        assert_eq!(parse_lit("  42  "), Value::Integer(42));
+        assert_eq!(parse_lit("\"quoted\""), Value::Text("quoted".into()));
+        assert_eq!(
+            parse_lit("'hello world'"),
+            Value::Text("hello world".into())
+        );
+        assert_eq!(parse_lit("3.14"), Value::Integer(3));
+        assert_eq!(parse_lit("unquoted"), Value::Text("unquoted".into()));
+    }
+
+    #[test]
+    fn test_eval_unary_op_not() {
+        assert_eq!(
+            eval_unary_op(&Value::Boolean(true), "NOT"),
+            Value::Boolean(false)
+        );
+        assert_eq!(
+            eval_unary_op(&Value::Boolean(false), "NOT"),
+            Value::Boolean(true)
+        );
+        assert_eq!(
+            eval_unary_op(&Value::Integer(0), "NOT"),
+            Value::Boolean(true)
+        );
+        assert_eq!(
+            eval_unary_op(&Value::Integer(1), "NOT"),
+            Value::Boolean(false)
+        );
+        assert_eq!(eval_unary_op(&Value::Null, "!"), Value::Boolean(true));
+        assert_eq!(
+            eval_unary_op(&Value::Integer(42), "UNKNOWN_OP"),
+            Value::Null
+        );
+    }
+
+    #[test]
+    fn test_eval_binary_op_text_compare() {
+        assert_eq!(
+            eval_binary_op(&Value::Text("b".into()), &Value::Text("a".into()), ">"),
+            Value::Boolean(true)
+        );
+        assert_eq!(
+            eval_binary_op(&Value::Text("a".into()), &Value::Text("b".into()), "<"),
+            Value::Boolean(true)
+        );
+        assert_eq!(
+            eval_binary_op(&Value::Text("a".into()), &Value::Text("a".into()), "<>"),
+            Value::Boolean(false)
+        );
+    }
+
+    #[test]
+    fn test_eval_binary_op_eq_null() {
+        assert_eq!(
+            eval_binary_op(&Value::Null, &Value::Integer(5), "="),
+            Value::Boolean(false)
+        );
+        assert_eq!(
+            eval_binary_op(&Value::Null, &Value::Null, "=="),
+            Value::Boolean(false)
+        );
+    }
+
+    #[test]
+    fn test_eval_binary_op_unknown_operator() {
+        assert_eq!(
+            eval_binary_op(&Value::Integer(1), &Value::Integer(2), "LIKE"),
+            Value::Null
+        );
+    }
+
+    #[test]
+    fn test_eval_arithmetic_boolean_operands() {
+        assert_eq!(
+            eval_arithmetic(&Value::Boolean(true), &Value::Boolean(false), "+"),
+            Value::Integer(1)
+        );
+        assert_eq!(
+            eval_arithmetic(&Value::Boolean(true), &Value::Boolean(true), "*"),
+            Value::Integer(1)
+        );
+        assert_eq!(
+            eval_arithmetic(&Value::Boolean(false), &Value::Boolean(true), "-"),
+            Value::Integer(-1)
+        );
+    }
+
+    #[test]
+    fn test_eval_arithmetic_float_division_by_zero() {
+        assert_eq!(
+            eval_arithmetic(&Value::Float(5.0), &Value::Float(0.0), "/"),
+            Value::Null
+        );
+    }
+
+    #[test]
+    fn test_eval_arithmetic_null_operand() {
+        assert_eq!(
+            eval_arithmetic(&Value::Null, &Value::Integer(5), "+"),
+            Value::Null
+        );
+        assert_eq!(
+            eval_arithmetic(&Value::Integer(5), &Value::Null, "-"),
+            Value::Null
+        );
+    }
+
+    #[test]
+    fn test_to_f64_variants() {
+        assert_eq!(to_f64(&Value::Integer(42)), 42.0);
+        assert_eq!(to_f64(&Value::Float(3.14)), 3.14);
+        assert_eq!(to_f64(&Value::Boolean(true)), 1.0);
+        assert_eq!(to_f64(&Value::Boolean(false)), 0.0);
+        assert_eq!(to_f64(&Value::Null), 0.0);
+        assert_eq!(to_f64(&Value::Text("hello".into())), 0.0);
+        assert_eq!(to_f64(&Value::Blob(vec![])), 0.0);
+    }
+
+    #[test]
+    fn test_to_i64_variants() {
+        assert_eq!(to_i64(&Value::Integer(42)), 42);
+        assert_eq!(to_i64(&Value::Boolean(true)), 1);
+        assert_eq!(to_i64(&Value::Boolean(false)), 0);
+        assert_eq!(to_i64(&Value::Null), 0);
+        assert_eq!(to_i64(&Value::Float(3.14)), 0);
+        assert_eq!(to_i64(&Value::Text("hello".into())), 0);
+        assert_eq!(to_i64(&Value::Blob(vec![])), 0);
+    }
+
+    #[test]
+    fn test_eval_fn_length() {
+        let v = eval_fn("LENGTH", &[Value::Text("hello".into())]);
+        assert_eq!(v, Value::Integer(5));
+    }
+
+    #[test]
+    fn test_eval_fn_lower_upper() {
+        let v = eval_fn("LOWER", &[Value::Text("Hello".into())]);
+        assert_eq!(v, Value::Text("hello".into()));
+        let v = eval_fn("UPPER", &[Value::Text("Hello".into())]);
+        assert_eq!(v, Value::Text("HELLO".into()));
+    }
+
+    #[test]
+    fn test_eval_fn_trim_leading_trailing() {
+        let v = eval_fn("TRIM", &[Value::Text("  hi  ".into())]);
+        assert_eq!(v, Value::Text("hi".into()));
+    }
+
+    #[test]
+    fn test_eval_fn_substring() {
+        let v = eval_fn(
+            "SUBSTRING",
+            &[
+                Value::Text("hello".into()),
+                Value::Integer(2),
+                Value::Integer(3),
+            ],
+        );
+        assert_eq!(v, Value::Text("ell".into()));
+    }
+
+    #[test]
+    fn test_eval_fn_coalesce_single_arg() {
+        let v = eval_fn("COALESCE", &[Value::Integer(42)]);
+        assert_eq!(v, Value::Integer(42));
+    }
+
+    #[test]
+    fn test_unified_expr_unary_op() {
+        let e = UnifiedExpr::UnaryOp {
+            op: "NOT".into(),
+            expr: Box::new(UnifiedExpr::Literal(Value::Boolean(true))),
+        };
+        assert_eq!(e.evaluate(&[], &[]), Value::Boolean(false));
+    }
+
+    #[test]
+    fn test_unified_expr_is_not_null() {
+        let e = UnifiedExpr::IsNotNull(Box::new(UnifiedExpr::Column("x".into())));
+        assert_eq!(
+            e.evaluate(&[Value::Integer(1)], &["x".into()]),
+            Value::Boolean(true)
+        );
+        assert_eq!(
+            e.evaluate(&[Value::Null], &["x".into()]),
+            Value::Boolean(false)
+        );
+    }
+
+    #[test]
+    fn test_unified_expr_function_call() {
+        let e = UnifiedExpr::FunctionCall {
+            name: "LENGTH".into(),
+            args: vec![UnifiedExpr::Literal(Value::Text("abc".into()))],
+        };
+        assert_eq!(e.evaluate(&[], &[]), Value::Integer(3));
+    }
+
+    #[test]
+    fn test_unified_expr_column_missing() {
+        let e = UnifiedExpr::Column("missing".into());
+        assert_eq!(e.evaluate(&[Value::Integer(1)], &["x".into()]), Value::Null);
+    }
+
+    #[test]
+    fn test_literal_from_str() {
+        assert_eq!(eval_literal_from_str("NULL"), Value::Null);
+        assert_eq!(eval_literal_from_str("42"), Value::Integer(42));
+        assert_eq!(eval_literal_from_str("3.14"), Value::Float(3.14));
+        assert_eq!(
+            eval_literal_from_str("'hello'"),
+            Value::Text("hello".into())
+        );
+        assert_eq!(eval_literal_from_str("hello"), Value::Text("hello".into()));
+        assert_eq!(eval_literal_from_str("  true  "), Value::Boolean(true));
+    }
+
+    #[test]
+    fn test_like_match_basic() {
+        assert!(sql_like_match("hello", "hello"));
+        assert!(!sql_like_match("hello", "world"));
+    }
+
+    #[test]
+    fn test_like_match_wildcard() {
+        assert!(sql_like_match("hello", "h%"));
+        assert!(sql_like_match("hello", "%o"));
+        assert!(sql_like_match("hello", "%ell%"));
+        assert!(!sql_like_match("hello", "h%d"));
+    }
+
+    #[test]
+    fn test_like_match_single_char() {
+        assert!(sql_like_match("hello", "h_llo"));
+        assert!(sql_like_match("hello", "_____"));
+        assert!(!sql_like_match("hello", "____"));
+    }
+
+    #[test]
+    fn test_like_match_percent_only() {
+        assert!(sql_like_match("anything", "%"));
+        assert!(sql_like_match("", "%"));
+    }
+
+    #[test]
+    fn test_like_match_empty_pattern() {
+        assert!(sql_like_match("", ""));
+        assert!(!sql_like_match("a", ""));
+    }
+
+    #[test]
+    fn test_find_column_index_qualified_name() {
+        let cols = vec![
+            sqlrustgo_storage::ColumnDefinition {
+                name: "id".to_string(),
+                ..Default::default()
+            },
+            sqlrustgo_storage::ColumnDefinition {
+                name: "val".to_string(),
+                ..Default::default()
+            },
+        ];
+        assert_eq!(find_column_index("id", &cols), Some(0));
+        assert_eq!(find_column_index("val", &cols), Some(1));
+        assert_eq!(find_column_index("t.id", &cols), Some(0));
+        assert_eq!(find_column_index("nonexistent", &cols), None);
+    }
+
+    #[test]
+    fn test_case_when_no_else_returns_null() {
+        let e = UnifiedExpr::CaseWhen {
+            whens: vec![(
+                UnifiedExpr::BinaryOp {
+                    left: Box::new(UnifiedExpr::Literal(Value::Integer(1))),
+                    op: "=".into(),
+                    right: Box::new(UnifiedExpr::Literal(Value::Integer(0))),
+                },
+                UnifiedExpr::Literal(Value::Text("yes".into())),
+            )],
+            else_val: None,
+        };
+        assert_eq!(e.evaluate(&[], &[]), Value::Null);
+    }
+
+    #[test]
+    fn test_eval_fn_replace() {
+        let v = eval_fn(
+            "REPLACE",
+            &[
+                Value::Text("hello world".into()),
+                Value::Text("world".into()),
+                Value::Text("there".into()),
+            ],
+        );
+        assert_eq!(v, Value::Text("hello there".into()));
+    }
+
+    #[test]
+    fn test_eval_fn_repeat() {
+        let v = eval_fn("REPEAT", &[Value::Text("ab".into()), Value::Integer(3)]);
+        assert_eq!(v, Value::Text("ababab".into()));
+    }
+
+    #[test]
+    fn test_eval_fn_reverse() {
+        let v = eval_fn("REVERSE", &[Value::Text("abc".into())]);
+        assert_eq!(v, Value::Text("cba".into()));
+    }
+
+    #[test]
+    fn test_eval_fn_unknown_returns_null() {
+        let v = eval_fn("NONEXISTENT_FN", &[Value::Integer(1)]);
+        assert_eq!(v, Value::Null);
+    }
+
+    #[test]
+    fn test_referenced_columns_complex() {
+        let e = UnifiedExpr::CaseWhen {
+            whens: vec![(
+                UnifiedExpr::BinaryOp {
+                    left: Box::new(UnifiedExpr::Column("a".into())),
+                    op: "=".into(),
+                    right: Box::new(UnifiedExpr::Literal(Value::Integer(1))),
+                },
+                UnifiedExpr::Column("b".into()),
+            )],
+            else_val: Some(Box::new(UnifiedExpr::Column("c".into()))),
+        };
+        let cols = e.referenced_columns();
+        assert_eq!(cols.len(), 3);
+        assert!(cols.contains(&"a".into()));
+        assert!(cols.contains(&"b".into()));
+        assert!(cols.contains(&"c".into()));
+    }
+
+    #[test]
+    fn test_referenced_columns_in_list() {
+        let e = UnifiedExpr::InList {
+            expr: Box::new(UnifiedExpr::Column("x".into())),
+            list: vec![
+                UnifiedExpr::Column("a".into()),
+                UnifiedExpr::Column("b".into()),
+            ],
+        };
+        let cols = e.referenced_columns();
+        assert_eq!(cols.len(), 3);
+    }
+
+    #[test]
+    fn test_referenced_columns_between() {
+        let e = UnifiedExpr::Between {
+            expr: Box::new(UnifiedExpr::Column("v".into())),
+            low: Box::new(UnifiedExpr::Column("lo".into())),
+            high: Box::new(UnifiedExpr::Column("hi".into())),
+        };
+        let cols = e.referenced_columns();
+        assert_eq!(cols.len(), 3);
+    }
+
+    #[test]
+    fn test_referenced_columns_function_call() {
+        let e = UnifiedExpr::FunctionCall {
+            name: "CONCAT".into(),
+            args: vec![
+                UnifiedExpr::Column("a".into()),
+                UnifiedExpr::Column("b".into()),
+            ],
+        };
+        let cols = e.referenced_columns();
+        assert_eq!(cols.len(), 2);
+    }
+
+    #[test]
+    fn test_like_match_backtracking() {
+        assert!(like_match_recursive("abcd", "a%cd"));
+        assert!(like_match_recursive("abcd", "%d"));
+        assert!(!like_match_recursive("abc", "a%d"));
+    }
+
+    #[test]
+    fn test_like_match_leading_percent() {
+        assert!(sql_like_match("abc", "%c"));
+        assert!(sql_like_match("abc", "%bc"));
+        assert!(!sql_like_match("abc", "%d"));
+    }
+
+    #[test]
+    fn test_referenced_columns_is_null() {
+        let e = UnifiedExpr::IsNull(Box::new(UnifiedExpr::Column("x".into())));
+        let cols = e.referenced_columns();
+        assert_eq!(cols, vec!["x".to_string()]);
+    }
+
+    #[test]
+    fn test_referenced_columns_cast() {
+        let e = UnifiedExpr::Cast {
+            expr: Box::new(UnifiedExpr::Column("x".into())),
+            target_type: "INTEGER".into(),
+        };
+        let cols = e.referenced_columns();
+        assert_eq!(cols, vec!["x".to_string()]);
+    }
+
+    #[test]
+    fn test_in_list_null_value() {
+        let e = UnifiedExpr::InList {
+            expr: Box::new(UnifiedExpr::Column("x".into())),
+            list: vec![UnifiedExpr::Literal(Value::Integer(1))],
+        };
+        assert_eq!(
+            e.evaluate(&[Value::Null], &["x".into()]),
+            Value::Boolean(false)
+        );
+    }
+
+    #[test]
+    fn test_arithmetic_text_type() {
+        assert_eq!(to_f64(&Value::Text("42".into())), 0.0);
+        assert_eq!(to_i64(&Value::Text("42".into())), 0);
+    }
+
+    #[test]
+    fn test_eval_fn_ltrim_rtrim() {
+        let v = eval_fn("LTRIM", &[Value::Text("  hi".into())]);
+        assert_eq!(v, Value::Text("hi".into()));
+        let v = eval_fn("RTRIM", &[Value::Text("hi  ".into())]);
+        assert_eq!(v, Value::Text("hi".into()));
+    }
+
+    #[test]
+    fn test_eval_fn_left_right() {
+        let v = eval_fn("LEFT", &[Value::Text("hello".into()), Value::Integer(2)]);
+        assert_eq!(v, Value::Text("he".into()));
+        let v = eval_fn("RIGHT", &[Value::Text("hello".into()), Value::Integer(2)]);
+        assert_eq!(v, Value::Text("lo".into()));
+    }
+
+    #[test]
+    fn test_eval_fn_space() {
+        let v = eval_fn("SPACE", &[Value::Integer(3)]);
+        assert_eq!(v, Value::Text("   ".into()));
+    }
+
+    #[test]
+    fn test_eval_fn_field() {
+        let v = eval_fn(
+            "FIELD",
+            &[
+                Value::Text("b".into()),
+                Value::Text("a".into()),
+                Value::Text("b".into()),
+                Value::Text("c".into()),
+            ],
+        );
+        assert_eq!(v, Value::Integer(2));
+    }
+
+    #[test]
+    fn test_eval_fn_elt() {
+        let v = eval_fn(
+            "ELT",
+            &[
+                Value::Integer(2),
+                Value::Text("a".into()),
+                Value::Text("b".into()),
+            ],
+        );
+        assert_eq!(v, Value::Text("b".into()));
+    }
+
+    #[test]
+    fn test_like_match_with_special_chars() {
+        assert!(like_match_recursive("hello_world", "hello_world"));
+        assert!(!like_match_recursive("helloworld", "hello_world"));
+    }
+
+    #[test]
+    fn test_like_match_empty_text() {
+        assert!(sql_like_match("", ""));
+        assert!(sql_like_match("", "%"));
+        assert!(!sql_like_match("", "a"));
+    }
 }
