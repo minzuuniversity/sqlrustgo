@@ -1,109 +1,130 @@
-# Contributing to SQLRustGo
+# Contributing to SQLRustGo / SQLRustGo 贡献指南
 
-> **Maintainer**: Hermes C (openclaw@gaoyuanyiyao.com)
+> **Maintainer**: openclaw <openclaw@gaoyuanyiyao.com>
 > **Status**: Active
-> **Last Updated**: 2026-06-03
+> **Last Updated**: 2026-07-11
+> **当前版本**: v3.9.0 (GA, 2026-07-10)
 
-Thank you for your interest in contributing to SQLRustGo! This document provides a quick overview of how to contribute effectively.
+欢迎为 SQLRustGo 做出贡献！本文件提供贡献代码的快速指南。
 
-## Quick Links
+---
 
-- [Architecture Decisions](docs/governance/adr/) — Design rationale
-- [Release Lifecycle](docs/governance/RELEASE_LIFECYCLE.md) — Alpha/Beta/RC/GA process
-- [Version History](docs/releases/VERSION_HISTORY.md) — All past versions
-- [Current Development](docs/releases/v3.8.0/) — v3.8.0 docs
+## 快速链接
 
-## Development Setup
+- [架构决策](docs/governance/adr/) — 设计依据
+- [发布生命周期](docs/governance/RELEASE_LIFECYCLE.md) — Alpha/Beta/RC/GA 流程
+- [版本历史](docs/releases/) — 所有历史版本
+- [当前版本文档](docs/releases/v3.9.0/) — v3.9.0 GA 文档
+
+---
+
+## 开发环境 / Development Setup
 
 ```bash
-# Clone the repo
-git clone https://github.com/minzuuniversity/sqlrustgo.git
+# 克隆仓库
+git clone http://192.168.0.252:3000/openclaw/sqlrustgo.git
 cd sqlrustgo
 
-# Install Rust (1.75+ recommended)
+# 安装 Rust (1.85+ 推荐)
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 
-# Build the workspace
+# 构建项目
 cargo build --all-features
 
-# Run tests
+# 运行测试
 cargo test --all-features
 ```
 
-## Development Workflow
+---
 
-1. **Pick an issue** from the Gitea issue tracker (or create one)
-2. **Branch** from `develop/v3.8.0`: `git checkout -b fix/<descriptive-name>`
-3. **Implement** + test + commit (`git commit -m "fix(scope): description"`)
-4. **Push** to fork or Gitea
-5. **Open PR** against `develop/v3.8.0`
+## 开发工作流 / Development Workflow
 
-## Code Style
+1. **选择 issue** — 从 Gitea issue 列表选择一个（或新建一个）
+2. **分支** — 从 `develop/v3.9.0`: `git checkout -b fix/<descriptive-name>`
+3. **实现** + 测试 + 提交 — `git commit -m "fix(scope): description"`
+4. **推送** — 到 fork 或 Gitea remote
+5. **创建 PR** — 指向 `develop/v3.9.0`
 
-- Follow `rustfmt` defaults: `cargo fmt --all`
-- Pass `cargo clippy --all-features -- -D warnings` (zero warnings)
-- Document public APIs with `///` doc comments
-- Add unit tests for new functionality
+---
 
-## Commit Message Convention
+## 代码规范 / Code Style
+
+- 遵循 `rustfmt` 默认规范: `cargo fmt --all`
+- 通过 clippy 检查: `cargo clippy --all-features -- -D warnings`（零警告）
+- 公共 API 使用 `///` 文档注释
+- 新功能需添加单元测试
+
+---
+
+## 提交信息规范 / Commit Message Convention
 
 ```
-<type>(<scope>): <short description>
+<type>(<scope>): <简短描述>
 
-[body - detailed explanation]
+[详细说明]
 
-[footer - references to issues]
+[关联的 issue 引用]
 ```
 
-**Types**: `feat`, `fix`, `docs`, `refactor`, `test`, `chore`
-**Scopes**: `executor`, `storage`, `parser`, `planner`, `wal`, `gate`, `docs`
+**类型 (type)**: `feat`, `fix`, `docs`, `refactor`, `test`, `chore`
 
-Example:
+**范围 (scope)**: `executor`, `storage`, `parser`, `planner`, `wal`, `gate`, `docs`
+
+**示例**:
 ```
-fix(wal): correct LSN assignment in WalStorage commit path
+fix(wal): 修正 WalStorage 提交路径中的 LSN 分配
 
-Previously, all WAL entries were assigned lsn=0, causing
-checkpoint advance to never trigger. Add a per-instance LSN
-counter and route all append operations through it.
+之前所有 WAL 条目都被分配 lsn=0，导致检查点推进永不触发。
+添加每实例 LSN 计数器，并将所有追加操作路由通过它。
 
 Fixes #2588
 ```
 
-## Testing
+---
+
+## 测试 / Testing
 
 ```bash
-# Run unit tests
+# 运行单元测试
 cargo test --lib
 
-# Run doc tests
+# 运行文档测试
 cargo test --doc
 
-# Run specific test
+# 运行特定测试
 cargo test -p sqlrustgo-executor test_name
 
-# Coverage (requires cargo-llvm-cov)
+# 覆盖率（需要 cargo-llvm-cov）
 cargo llvm-cov --all-features --workspace
 ```
 
-## Pull Request Process
+---
 
-1. Update `CHANGELOG.md` if your change is user-facing
-2. Ensure CI passes (clippy + tests + format)
-3. Request review from a maintainer
-4. Squash-merge after approval
+## Pull Request 流程 / Pull Request Process
 
-## Governance
+1. 如果是面向用户的变更，更新 `CHANGELOG.md`
+2. 确保 CI 通过（clippy + tests + format）
+3. 请求维护者审核
+4. 审核通过后 squash-merge
 
-- All changes go through **Alpha → Beta → RC → GA** gates
-- Architecture changes require ADR (Architecture Decision Record)
-- Truthfulness framework applies — never fabricate test results
+---
 
-See `docs/governance/` for full governance framework.
+## 治理 / Governance
 
-## License
+- 所有变更需经过 **Alpha → Beta → RC → GA** 门禁
+- 架构变更需要 ADR（架构决策记录）
+- 真实性框架适用 — 不得伪造测试结果
 
-By contributing, you agree your contributions will be licensed under the same license as the project.
+详见 `docs/governance/` 下的完整治理框架。
 
-## Questions?
+---
 
-Open an issue or contact the maintainers.
+## 许可证 / License
+
+贡献代码即表示同意您的贡献将使用与项目相同的许可证（MIT）。
+
+---
+
+## 问题？/ Questions?
+
+创建 issue 或联系维护者。

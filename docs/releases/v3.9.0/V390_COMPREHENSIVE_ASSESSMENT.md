@@ -1,11 +1,7 @@
-<!-- 2026-07-04 status update -->
-> **版本状态**: RC8 ✅ (2026-06-18) + 本机 L1 闭环 (2026-07-01) + E2E SELECT 测试修复 (2026-07-04)
-> **HEAD**: `972f15bc43` (develop/v3.9.0, 252)
-> **E2E 测试**: 16/16 PASS ✅ (MySQL column_def 包修复: org_name, length_of_fixed_fields, real_col_names)
-> **Build**: 0 errors ✅ | **Clippy**: 0 warnings ✅ | **Coverage**: ~67% (各 crate 不均)
-> **GA Gate**: 9/11 PASS, 2 CONDITIONAL (G3 覆盖率, G4 TPC-H SF=1.0 6/10), 1 IN PROGRESS (72h soak)
-> **可信度评级**: B (70%) — form-only + substance 门禁已闭环, 真实 soak 被硬件阻断
->
+<!-- 2026-07-11 文档同步: v3.9.0 GA CUT 状态更新 — 168h SOAK ✅ PASS (2026-07-12) -->
+
+> **版本状态**: **GA ✅** (2026-07-10) — 168h SOAK ✅ PASS (2026-07-12), G3 覆盖率 ~67% 条件通过, G4 TPC-H SF=1 6/10 PASS
+> **可信度评级**: B+ (GA CUT 完成, 168h SOAK PASS)
 > **本文件原始内容保持不变,仅顶部更新状态段落**。
 
 ---

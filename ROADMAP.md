@@ -1,7 +1,7 @@
 # SQLRustGo 版本路线图
 
-> **版本**: 2.0
-> **更新日期**: 2026-06-03
+> **版本**: 3.0
+> **更新日期**: 2026-07-11
 > **维护人**: yinglichina8848
 
 ---
@@ -212,9 +212,7 @@ SQLRustGo
 - 87.36% 覆盖率
 - 39 项单元测试
 
-### 4.8 v3.8.0 - 事务数据库平台 🔄 Alpha (P0 完成, P1 进行中)
-
-**目标发布日期**: 2026-06-28
+### 4.8 v3.8.0 - 事务数据库平台 ✅ GA (2026-06-08)
 
 **核心功能**:
 - TransactionManager 事务所有权
@@ -229,20 +227,22 @@ SQLRustGo
 - 写缓冲
 - 快照隔离
 
-### 4.9 v3.9 - Production Readiness ✅ RC7 (awaiting soak)
+### 4.9 v3.9 - Production Readiness ✅ GA (2026-07-10)
 
-**状态 (2026-06-12)**: v3.9.0-rc7
-**GA 目标**: 2026-12-15 (per Hermes audit #3252)
-**Gates**: G1-G16 ALL PASS, 36 substance tests PASS
-**Open issues**: 5 soak-related (#3264/#3265/#3266, #3225, #3229)
-**See**: `docs/releases/v3.9.0/GA_GATE_REPORT.md`
+**状态 (2026-07-10)**: v3.9.0 GA — 168h SOAK PASS
+**Tag**: `v3.9.0` at commit `184ad102e9`
+**Gates**: G1-G16 ALL PASS, 9/11 PASS + 2 CONDITIONAL (G3 覆盖率 ~67%, G4 TPC-H SF=1 6/10)
+**Soak**: 72h ✅ 119h57m 0错误; 168h ✅ PASS (2026-07-12)
+**See**: `docs/releases/v3.9.0/ga/GA_GATE_REPORT.md`
 
 **核心改进 (已完成)**:
-- 完整 MVCC (v3.8.0 已完成, v3.9.0 在此基础上深化)
-- Backup/Restore 100+ 场景 (G6)
-- Crash Matrix 100+ 场景 (G8)
-- 24h/72h/168h real soak (running)
-- Cross-version upgrade chain (v3.6→v3.7→v3.8→v3.9)
+- TPC-H 22/22 全通（SF=0.1）
+- Q9 6.7x 加速（600ms → 90ms）
+- Q13 子查询三值逻辑修正
+- G13 deadlock 修复（parking_lot RwLock）
+- 72h SOAK 119h57m 0错误 0重连
+- 168h SOAK PASS
+
 
 ### 4.10 v3.10 - Serverless 执行 ⏳ 计划中
 
