@@ -7,11 +7,11 @@
 //! Each test creates small in-memory tables, runs a multi-table join, and
 //! asserts on the resulting rows.
 
+use parking_lot::RwLock;
 use sqlrustgo::ExecutionEngine;
 use sqlrustgo_storage::MemoryStorage;
 use sqlrustgo_types::Value;
 use std::sync::Arc;
-use parking_lot::RwLock;
 
 fn create_engine() -> ExecutionEngine<MemoryStorage> {
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));

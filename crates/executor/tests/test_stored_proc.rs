@@ -1,5 +1,6 @@
 //! Integration tests for Stored Procedure Executor - Issue #1164
 
+use parking_lot::RwLock;
 use sqlrustgo_catalog::{
     Catalog, HandlerCondition, ParamMode, StoredProcParam, StoredProcStatement, StoredProcedure,
 };
@@ -7,7 +8,6 @@ use sqlrustgo_executor::stored_proc::{ProcedureContext, StoredProcError, StoredP
 use sqlrustgo_storage::{MemoryStorage, StorageEngine};
 use sqlrustgo_types::Value;
 use std::sync::Arc;
-use parking_lot::RwLock;
 
 fn create_executor_with_proc(proc: StoredProcedure) -> StoredProcExecutor {
     let storage: Arc<RwLock<dyn StorageEngine>> = Arc::new(RwLock::new(MemoryStorage::new()));
