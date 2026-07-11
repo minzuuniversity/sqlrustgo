@@ -1,4 +1,5 @@
 use sqlrustgo_types::Value;
+use tracing::instrument;
 
 /// Minimum row count to engage parallel filter path. v3.10.0 Issue #3703:
 /// raised from 100K to 500K after benchmarking showed 100K-200K rows fall
@@ -51,7 +52,7 @@ impl ParallelExecutor for ParallelVolcanoExecutor {
     fn set_parallel_degree(&mut self, degree: usize) {
         self.parallel_degree = degree.max(1);
     }
-
+    #[instrument(skip(self, rows), fields(total_rows = rows.len(), degree, partitions_created))]
     fn partition_scan(&self, rows: Vec<Vec<Value>>, degree: usize) -> Vec<Vec<Vec<Value>>> {
         let degree = degree.max(1);
         let total = rows.len();
