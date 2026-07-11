@@ -3,9 +3,10 @@
 //! 验证 v3.10.0 多数据库支持 (CREATE DATABASE / DROP DATABASE).
 //! 当前 USE 仅作 no-op，因为 table lookup 路径尚未按数据库隔离.
 
+use parking_lot::RwLock;
 use sqlrustgo::MemoryExecutionEngine;
 use sqlrustgo_storage::MemoryStorage;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 
 fn make_engine() -> MemoryExecutionEngine {
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));

@@ -9,9 +9,10 @@
 //! **Reference**: OpenSpec tasks.md §4 (P0-2 delegation matrix)
 //! **Issue**: #3146 (INT-3 follow-up), #3108 (INT-2/INT-3 debt)
 
+use parking_lot::RwLock;
 use sqlrustgo::{ExecutionEngine, MemoryStorage};
 use sqlrustgo_types::Value;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 
 fn make_engine() -> ExecutionEngine<MemoryStorage> {
     ExecutionEngine::new(Arc::new(RwLock::new(MemoryStorage::new())))
