@@ -5,11 +5,12 @@
 //! whether the Macmini "execute_joins comma-list drops rows" root-cause
 //! analysis was based on the corrupt sf001 fixture.
 
+use parking_lot::RwLock;
 use sqlrustgo::{ExecutionEngine, MemoryStorage, StorageEngine};
 use sqlrustgo_types::Value as SqlValue;
 use std::fs;
 use std::path::PathBuf;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 
 const FIXTURE: &str = match option_env!("DIAG22_FIXTURE_DIR") {
     Some(p) => p,

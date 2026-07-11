@@ -27,8 +27,9 @@
 //!
 //! See: docs/audit/status/2026-06-07-sprint5-q18-investigation.md
 
+use parking_lot::RwLock;
 use sqlrustgo::{parse, ExecutionEngine, MemoryStorage, Statement, Value};
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 
 fn engine() -> ExecutionEngine<MemoryStorage> {
     ExecutionEngine::new(Arc::new(RwLock::new(MemoryStorage::new())))

@@ -128,8 +128,9 @@ fn test_four_way_tpch_22() {
 // ============================================================================
 
 fn run_sqlrustgo(queries: &[(u8, String)], data_dir: &PathBuf) -> Vec<QueryResult> {
+    use parking_lot::RwLock;
     use sqlrustgo::{ExecutionEngine, MemoryStorage};
-    use std::sync::{Arc, RwLock};
+    use std::sync::Arc;
 
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));
     let mut engine = ExecutionEngine::new(Arc::clone(&storage));

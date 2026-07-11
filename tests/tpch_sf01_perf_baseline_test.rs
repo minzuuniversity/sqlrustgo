@@ -23,6 +23,7 @@
 //! Run: `cargo test --test tpch_sf01_perf_baseline_test --release -- --nocapture`
 //! Run + save: `SAVE_BASELINE=1 cargo test --test tpch_sf01_perf_baseline_test --release -- --nocapture`
 
+use parking_lot::RwLock;
 use sqlrustgo::{ExecutionEngine, MemoryStorage, StorageEngine};
 use sqlrustgo_storage::Record;
 use sqlrustgo_types::Value as SqlValue;
@@ -30,7 +31,7 @@ use std::env;
 use std::fs;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 use std::time::Instant;
 
 const DATA_DIR: &str = "tests/data/tpch-sf01";
