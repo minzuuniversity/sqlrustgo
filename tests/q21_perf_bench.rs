@@ -1,5 +1,6 @@
+use parking_lot::RwLock;
 use sqlrustgo::{ExecutionEngine, MemoryStorage, StorageEngine, Value};
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 use std::time::Instant;
 
 type Engine = ExecutionEngine<MemoryStorage>;

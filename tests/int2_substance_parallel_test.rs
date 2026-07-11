@@ -15,12 +15,13 @@
 //! Note: For test isolation, we use direct invocation of ParallelVolcanoExecutor
 //! via `engine.build_parallel_executor()` which is the public API.
 
+use parking_lot::RwLock;
 use sqlrustgo::{ExecutionEngine, MemoryStorage};
 use sqlrustgo_executor::parallel_executor::{
     ParallelExecutor, ParallelVolcanoExecutor, PARALLEL_MIN_ROWS,
 };
 use sqlrustgo_types::Value;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 
 fn make_engine(parallel_degree: usize) -> ExecutionEngine<MemoryStorage> {
     let mut engine = ExecutionEngine::new(Arc::new(RwLock::new(MemoryStorage::new())));
