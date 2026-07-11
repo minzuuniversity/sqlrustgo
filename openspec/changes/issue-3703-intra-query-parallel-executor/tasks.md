@@ -52,7 +52,7 @@ Original tasks 2.1-2.7 (with `execute_select_parallel(&SelectStatement, usize)` 
 - [x] 3.2 Unit: `parallel_scan_partitions_remainder` (1003 rows / 4 partitions = [251, 251, 251, 250]) — N/A (same reason as 3.1); existing `test_partition_scan_uneven_remainder` (200_000 rows / 3 partitions) covers the remainder logic.
 - [x] 3.3 Unit: `parallel_scan_empty_table` (0 rows → empty result, no panic) — added in PR #3744 (`test_partition_scan_empty_table`).
 - [x] 3.4 Unit: `parallel_scan_n_exceeds_rows` (3 rows / 8 partitions → 3 non-empty partitions) — N/A (same reason as 3.1); the degree<=1 short-circuit is covered by `test_partition_scan_degree_one_with_large_rows` (PR #3744).
-- [x] 3.5 Integration: `parallel_n1_eq_n4_cell_match` (TPC-H Q1 SF=0.01, diff = 0) — partial: PR #3743 ships a 200-row in-process variant `test_parallel_n1_eq_n4_cell_match` (sequential path, both N=1 and N=4 hit the same code due to `PARALLEL_MIN_ROWS`); full TPC-H SF=0.01 deferred to follow-up PR (requires plan-level `ParallelSeqScanExec` wiring).
+- [x] 3.5 Integration: `parallel_n1_eq_n4_cell_match` (TPC-H Q1 SF=0.01, diff = 0) — DONE for in-process (PR #3746): `test_parallel_100k_cell_match_n1_vs_n4` seeds 100k rows, runs SELECT WHERE val < 1000 under N=1 and N=4, asserts byte-identical 500-row result. Full TPC-H SF=0.01 (6M+ rows) deferred to `tpch_sf01_inprocess_test` regression run (CI/nightly, not unit-test scope).
 - [ ] 3.6 Integration: `parallel_n1_eq_n4_tpch_22_22` (all 22 TPC-H queries, cell-level match)
 - [ ] 3.7 Integration: `parallel_preserves_order_by_falls_back` (ORDER BY query → sequential, rows in order)
 - [ ] 3.8 Integration: `parallel_below_threshold_falls_back` (small table → sequential path)
