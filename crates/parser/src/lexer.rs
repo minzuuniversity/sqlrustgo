@@ -295,6 +295,7 @@ impl<'a> Lexer<'a> {
                     "KEY" => Token::Key,
                     "ADD" => Token::Add,
                     "COLUMN" => Token::Column,
+                    "MODIFY" => Token::Modify,
                     "RENAME" => Token::Rename,
                     "TO" => Token::To,
                     "BEGIN" => Token::Begin,
