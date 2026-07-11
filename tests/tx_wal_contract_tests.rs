@@ -11,13 +11,14 @@
 //! Important: EEK v0 returns Err, NOT panic.
 //! Each test validates the actual Err behavior.
 
+use parking_lot::RwLock;
 use sqlrustgo::ExecutionEngine;
 use sqlrustgo_storage::engine::{ColumnDefinition, MemoryStorage, StorageEngine, TableInfo};
 use sqlrustgo_storage::recovery_engine::{RecoveryEngine, RecoveryEngineImpl};
 use sqlrustgo_storage::wal::{MemoryWalManager, WalManager};
 use sqlrustgo_storage::wal_legacy::{WalEntry, WalEntryType};
 use sqlrustgo_types::Value;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 
 // ========================================================================
 // TX-LIFECYCLE TESTS (TX-001 ~ TX-006)

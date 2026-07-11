@@ -20,9 +20,10 @@
 //! - DROP INDEX: Parser 和 Storage 层支持，但 ExecutionEngine 未分发 (#3170)
 //! - DROP VIEW: Parser 支持，但 ExecutionEngine 未分发
 
+use parking_lot::RwLock;
 use sqlrustgo::MemoryExecutionEngine;
 use sqlrustgo_storage::MemoryStorage;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 
 fn make_engine() -> MemoryExecutionEngine {
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));

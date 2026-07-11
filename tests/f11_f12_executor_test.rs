@@ -10,8 +10,9 @@
 //!
 //! 复用 qps_benchmark_test.rs 模式 (MemoryExecutionEngine)
 
+use parking_lot::RwLock;
 use sqlrustgo::MemoryExecutionEngine;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 
 fn create_engine() -> MemoryExecutionEngine {
     let storage = Arc::new(RwLock::new(sqlrustgo_storage::MemoryStorage::new()));
