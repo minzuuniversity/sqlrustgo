@@ -18,8 +18,9 @@
 //! Tests for unsupported features are `#[ignore]`-ed with TODO comments so
 //! they can be enabled when the parser/executor support lands.
 
+use parking_lot::RwLock;
 use sqlrustgo::{ExecutionEngine, MemoryStorage, Value};
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 
 fn fresh() -> ExecutionEngine<MemoryStorage> {
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));

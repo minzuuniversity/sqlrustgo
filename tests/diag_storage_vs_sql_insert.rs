@@ -1,8 +1,9 @@
 //! Compare `storage.insert` path vs `INSERT INTO` path for column resolution
 
+use parking_lot::RwLock;
 use sqlrustgo::{ExecutionEngine, MemoryStorage, StorageEngine};
 use sqlrustgo_types::Value as SqlValue;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 
 #[test]
 fn test_storage_insert_path() {

@@ -7,9 +7,10 @@
 //! (fast enough to run in <1s on commodity hardware).
 //!   cargo test --test long_run_stability_test
 
+use parking_lot::RwLock;
 use sqlrustgo::MemoryExecutionEngine;
 use sqlrustgo_storage::MemoryStorage;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 use std::thread;
 use std::time::Instant;
 
