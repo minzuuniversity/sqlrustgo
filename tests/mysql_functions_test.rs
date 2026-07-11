@@ -1,7 +1,8 @@
 //! Integration tests for MySQL 5.7 function compatibility (Issue #2988 / MySQL-01)
 
+use parking_lot::RwLock;
 use sqlrustgo::{ExecutionEngine, MemoryStorage, StorageEngine};
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 
 fn fresh() -> ExecutionEngine<MemoryStorage> {
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));

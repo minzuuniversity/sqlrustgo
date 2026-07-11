@@ -7,9 +7,10 @@
 //! 策略: 用 SQL 端到端, 观察 DML 是否成功 + 副作用
 //! (不依赖 VtuGuard/TM 内部 API, 因为都是 pub(crate))
 
+use parking_lot::RwLock;
 use sqlrustgo::MemoryExecutionEngine;
 use sqlrustgo_storage::MemoryStorage;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 
 fn create_engine() -> MemoryExecutionEngine {
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));

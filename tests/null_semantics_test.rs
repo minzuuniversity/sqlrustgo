@@ -13,8 +13,9 @@
 //! 6. val > NULL, val < NULL 应该 UNKNOWN
 //! 7. NULL 在聚合中应被忽略 (COUNT(col) 不计 NULL)
 
+use parking_lot::RwLock;
 use sqlrustgo::MemoryExecutionEngine;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 
 fn create_engine() -> MemoryExecutionEngine {
     let storage = Arc::new(RwLock::new(sqlrustgo_storage::MemoryStorage::new()));
