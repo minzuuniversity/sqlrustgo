@@ -11595,4 +11595,79 @@ mod set_op_tests {
         let r = parse("DESCRIBE t");
         assert!(r.is_ok());
     }
+
+    #[test]
+    fn test_coverage_split_sql_statements_single() {
+        let stmts = split_sql_statements("SELECT 1");
+        assert_eq!(stmts.len(), 1);
+    }
+
+    #[test]
+    fn test_coverage_split_sql_statements_multi_semicolon() {
+        let stmts = split_sql_statements("SELECT 1; SELECT 2; INSERT INTO t VALUES (1);");
+        assert_eq!(stmts.len(), 3);
+    }
+
+    #[test]
+    fn test_coverage_split_sql_statements_with_quotes() {
+        let stmts = split_sql_statements("SELECT 'hello; world'");
+        assert_eq!(stmts.len(), 1);
+    }
+
+    #[test]
+    fn test_coverage_split_sql_statements_with_line_comments() {
+        let stmts = split_sql_statements("-- comment\nSELECT 1; -- another\nSELECT 2");
+        assert!(stmts.len() >= 2);
+    }
+
+    #[test]
+    fn test_coverage_split_sql_statements_with_block_comments() {
+        let stmts = split_sql_statements("/* comment */ SELECT 1; /* multi\nline */ SELECT 2");
+        assert!(stmts.len() >= 2);
+    }
+
+    #[test]
+    fn test_coverage_parse_call_procedure() {
+        assert!(parse("CALL proc(1, 'foo')").is_ok());
+    }
+
+    #[test]
+    fn test_coverage_parse_window_partition_by() {
+        assert!(parse("SELECT a, b, SUM(b) OVER (PARTITION BY a) FROM t").is_ok());
+    }
+
+    #[test]
+    fn test_coverage_parse_between() {
+        assert!(parse("SELECT * FROM t WHERE a BETWEEN 1 AND 10").is_ok());
+    }
+
+    #[test]
+    fn test_coverage_parse_case_when() {
+        assert!(parse("SELECT CASE WHEN a > 0 THEN 'pos' ELSE 'neg' END FROM t").is_ok());
+    }
+
+    #[test]
+    fn test_coverage_parse_is_null() {
+        assert!(parse("SELECT * FROM t WHERE a IS NULL").is_ok());
+    }
+
+    #[test]
+    fn test_coverage_parse_is_not_null() {
+        assert!(parse("SELECT * FROM t WHERE a IS NOT NULL").is_ok());
+    }
+
+    #[test]
+    fn test_coverage_parse_greater_than_or_equal() {
+        assert!(parse("SELECT * FROM t WHERE a >= 1").is_ok());
+    }
+
+    #[test]
+    fn test_coverage_parse_less_than() {
+        assert!(parse("SELECT * FROM t WHERE a < 1").is_ok());
+    }
+
+    #[test]
+    fn test_coverage_parse_with_cte_multi() {
+        assert!(parse("WITH a AS (SELECT 1), b AS (SELECT 2) SELECT * FROM a, b").is_ok());
+    }
 }
