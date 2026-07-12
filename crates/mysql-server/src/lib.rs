@@ -10,8 +10,8 @@ use sqlrustgo::ExecutionEngine;
 use sqlrustgo_parser::{parse, Statement};
 use sqlrustgo_storage::wal::FileBackedWalManager;
 use sqlrustgo_storage::{
-    BinaryTableStorage, BoxStorageEngine, CheckpointManager, FileStorage,
-    MemoryStorage, StorageEngine, WalStorage,
+    BinaryTableStorage, BoxStorageEngine, CheckpointManager, FileStorage, MemoryStorage,
+    StorageEngine, WalStorage,
 };
 use sqlrustgo_types::{SqlError, Value};
 use std::collections::HashMap;
@@ -567,7 +567,7 @@ mod tests {
         assert_eq!(&pkt.payload[4..9], b"42S02"); // SQL state
         assert_eq!(&pkt.payload[9..24], b"Table not found"); // message
         assert_eq!(pkt.payload[24], 0x00); // null terminator at end of message
-        // Verify it can be written without error
+                                           // Verify it can be written without error
         let mut buf = Vec::new();
         pkt.write_to(&mut buf).unwrap();
     }
