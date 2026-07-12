@@ -115,10 +115,24 @@ crates/catalog/src/alter_table.rs
 ### 2.5 C-5: 真实崩溃恢复
 
 ```
+crates/storage/src/
+├── io_delay.rs      # C-5c I/O 延迟 / 损坏 / 丢弃 故障注入 ✅ (T-19, Issue #3772)
+│   ├── IoDelayConfig   — delay_ms, corruption_rate, dropout_rate
+│   ├── IoFaultInjector — apply_read / apply_write 闭包包装
+│   └── LcgRng          — 自制 LCG (零外部依赖)
+tests/
+├── process_kill_crash_test.rs  # T-20 WalStorage crash recovery ✅ (Issue #3769)
+│   ├── test_kill_mid_insert_update_uncommitted
+│   ├── test_kill_mid_delete_uncommitted
+│   ├── test_committed_survives_crash
+│   ├── test_committed_delete_survives_crash
+│   ├── test_empty_transaction_crash
+│   ├── test_mixed_workload_recovery_report
+│   ├── test_large_batch_crash
+│   └── test_multiple_crash_recovery_cycles
 crates/recovery/src/
 ├── crash_inject.rs  # NEW, C-5a 真实 kill -9 注入
-├── long_soak.rs     # NEW, C-5b 24h 真实负载
-└── io_delay.rs      # NEW, C-5c I/O 延迟注入 (T-19)
+└── long_soak.rs     # NEW, C-5b 24h 真实负载
 ```
 
 ---
