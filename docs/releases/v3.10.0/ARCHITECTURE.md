@@ -27,7 +27,7 @@ sqlrustgo (主入口)
 │   ├── restore → sqlrustgo-mysql-server restore
 │   └── cli    → Phase 3 skeleton (TCP connect + handshake)
 ├── sqlrustgo-mysql-server (full-featured server)
-└── sqlrustgo-admin (offline admin)
+└── sqlrustgo-admin (offline admin: backup/restore/pitr + mysqladmin: status/reload/refresh/flush-tables/processlist/kill)
 
 crates/
 ├── parser/         # SQL 解析器 (含 INTERSECT/EXCEPT/RENAME COLUMN 等 v3.10.0 新增)
@@ -65,10 +65,10 @@ crates/
 | ACID 正确性 | C-3a, C-3b (2 项) | SEM-1 + F-4b |
 | ALTER TABLE 完整 | C-4b ~ C-4d (3 项 stub 实现) | SEM-3 |
 | 真实崩溃恢复 | C-5a (3 项) | SEM-1 + T-20 + T-19 |
+| mysqladmin CLI 二进制 | V310-14 (6 subcommands) | F-32 (v3.8.0 遗留, Issue #3768) |
 | ARCH-2 双路径统一 | H-1 | ARCH-2 历史债务 |
 | ARCH-3 VTU 剩余 5% | H-2 | ARCH-3 历史债务 |
 | CBO 完善 | M-2 | I-11 历史债务 |
-| **总架构变化** | **~26 项** | 见 `V310_DEVELOPMENT_PLAN.md` |
 
 ---
 
