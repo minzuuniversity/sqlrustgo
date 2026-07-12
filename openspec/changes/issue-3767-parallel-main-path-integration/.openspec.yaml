@@ -1,0 +1,25 @@
+name: issue-3767-parallel-main-path-integration
+issue: 3767
+description: |
+  Wire ParallelVolcanoExecutor into production query execution path
+  so --executor-parallelism=N>1 actually delivers N-way parallel execution
+  end-to-end.
+type: integration
+parent: issue-3703-intra-query-parallel-executor
+created: 2026-07-12
+status: proposed
+components:
+  - crates/executor/src/parallel_executor.rs
+  - src/engine_select.rs
+  - src/execution_engine.rs
+  - crates/mysql-server/src/main.rs
+scope:
+  - verify-main-path-integration
+  - add-tracing-instrumentation
+  - add-e2e-tests
+acceptance:
+  - pub mod parallel_executor declared (already present)
+  - CLI flag --executor-parallelism plumbs through
+  - parallel filter guard activates with correct preconditions
+  - tracing span emitted on engagement
+  - E2E tests verify cell-level equivalence N=1 vs N=4
