@@ -238,35 +238,35 @@ path = "tests/ci/buffer_pool_benchmark_test.rs"
 
 [[test]]
 name = "binary_format_test"
-path = "tests/binary_format_test.rs"
+path = "tests/integration/sql/binary_format_test.rs"
 
 [[test]]
 name = "regression_test"
-path = "tests/regression_test.rs"
+path = "tests/integration/sql/regression_test.rs"
 
 [[test]]
 name = "wal_integration_test"
-path = "tests/wal_integration_test.rs"
+path = "tests/integration/migration/wal_integration_test.rs"
 
 [[test]]
 name = "parser_token_test"
-path = "tests/parser_token_test.rs"
+path = "tests/integration/sql/parser_token_test.rs"
 
 [[test]]
 name = "cbo_integration_test"
-path = "tests/cbo_integration_test.rs"
+path = "tests/integration/optimizer/cbo_integration_test.rs"
 
 [[test]]
 name = "stored_proc_catalog_test"
-path = "tests/stored_proc_catalog_test.rs"
+path = "tests/integration/transaction/stored_proc_catalog_test.rs"
 
 [[test]]
 name = "page_io_benchmark_test"
-path = "tests/page_io_benchmark_test.rs"
+path = "tests/benchmark/page_io_benchmark_test.rs"
 
 [[test]]
 name = "data_loader"
-path = "tests/data_loader.rs"
+path = "tests/integration/sql/data_loader.rs"
 
 [[test]]
 name = "e2e_query_test"
@@ -282,7 +282,7 @@ path = "tests/e2e/monitoring_test.rs"
 
 [[test]]
 name = "stored_procedure_parser_test"
-path = "tests/stored_procedure_parser_test.rs"
+path = "tests/integration/transaction/stored_procedure_parser_test.rs"
 
 [[test]]
 name = "scheduler_integration_test"
@@ -294,151 +294,151 @@ path = "crates/server/tests/scheduler_integration_test.rs"
 
 [[test]]
 name = "adaptive_hash_index_test"
-path = "tests/adaptive_hash_index_test.rs"
+path = "tests/integration/sql/adaptive_hash_index_test.rs"
 
 [[test]]
 name = "aggregate_functions_test"
-path = "tests/aggregate_functions_test.rs"
+path = "tests/integration/sql/aggregate_functions_test.rs"
 
 [[test]]
 name = "boundary_test"
-path = "tests/boundary_test.rs"
+path = "tests/integration/sql/boundary_test.rs"
 
 [[test]]
 name = "change_buffer_test"
-path = "tests/change_buffer_test.rs"
+path = "tests/integration/sql/change_buffer_test.rs"
 
 [[test]]
 name = "clustered_index_test"
-path = "tests/clustered_index_test.rs"
+path = "tests/integration/sql/clustered_index_test.rs"
 
 [[test]]
 name = "concurrency_stress_test"
-path = "tests/concurrency_stress_test.rs"
+path = "tests/integration/sql/concurrency_stress_test.rs"
 
 [[test]]
 name = "distinct_test"
-path = "tests/distinct_test.rs"
+path = "tests/integration/sql/distinct_test.rs"
 
 [[test]]
 name = "double_write_buffer_test"
-path = "tests/double_write_buffer_test.rs"
+path = "tests/integration/sql/double_write_buffer_test.rs"
 
 [[test]]
 name = "e2e_trigger_wal_recovery"
-path = "tests/e2e_trigger_wal_recovery.rs"
+path = "tests/integration/migration/e2e_trigger_wal_recovery.rs"
 
 [[test]]
 name = "ee_module_boundary_test"
-path = "tests/ee_module_boundary_test.rs"
+path = "tests/integration/sql/ee_module_boundary_test.rs"
 
 [[test]]
 name = "embedded_harness_isolation"
-path = "tests/embedded_harness_isolation.rs"
+path = "tests/e2e/embedded_harness_isolation.rs"
 
 [[test]]
 name = "embedded_harness_smoke"
-path = "tests/embedded_harness_smoke.rs"
+path = "tests/e2e/embedded_harness_smoke.rs"
 
 [[test]]
 name = "exp_g_wal_contracts_verified"
-path = "tests/exp_g_wal_contracts_verified.rs"
+path = "tests/integration/migration/exp_g_wal_contracts_verified.rs"
 
 [[test]]
 name = "expression_operators_test"
-path = "tests/expression_operators_test.rs"
+path = "tests/integration/sql/expression_operators_test.rs"
 
 [[test]]
 name = "gap_locking_test"
-path = "tests/gap_locking_test.rs"
+path = "tests/integration/sql/gap_locking_test.rs"
 
 [[test]]
 name = "in_value_list_test"
-path = "tests/in_value_list_test.rs"
+path = "tests/integration/sql/in_value_list_test.rs"
 
 [[test]]
 name = "limit_clause_test"
-path = "tests/limit_clause_test.rs"
+path = "tests/integration/sql/limit_clause_test.rs"
 
 [[test]]
 name = "long_run_stability_72h_test"
-path = "tests/long_run_stability_72h_test.rs"
+path = "tests/integration/sql/long_run_stability_72h_test.rs"
 
 [[test]]
 name = "long_run_stability_test"
-path = "tests/long_run_stability_test.rs"
+path = "tests/integration/sql/long_run_stability_test.rs"
 
 [[test]]
 name = "memory_fault_injection_test"
-path = "tests/memory_fault_injection_test.rs"
+path = "tests/integration/sql/memory_fault_injection_test.rs"
 
 [[test]]
 name = "mvcc_transaction_test"
-path = "tests/mvcc_transaction_test.rs"
+path = "tests/integration/transaction/mvcc_transaction_test.rs"
 
 [[test]]
 name = "mysqladmin_test"
-path = "tests/mysqladmin_test.rs"
+path = "tests/integration/wire/mysqladmin_test.rs"
 
 [[test]]
 name = "network_fault_injection_test"
-path = "tests/network_fault_injection_test.rs"
+path = "tests/integration/sql/network_fault_injection_test.rs"
 
 [[test]]
 name = "parallel_executor_test"
-path = "tests/parallel_executor_test.rs"
+path = "tests/integration/sql/parallel_executor_test.rs"
 
 [[test]]
 name = "password_rotation_test"
-path = "tests/password_rotation_test.rs"
+path = "tests/integration/sql/password_rotation_test.rs"
 
 [[test]]
 name = "performance_schema_test"
-path = "tests/performance_schema_test.rs"
+path = "tests/benchmark/performance_schema_test.rs"
 
 [[test]]
 name = "qps_benchmark_test"
-path = "tests/qps_benchmark_test.rs"
+path = "tests/benchmark/qps_benchmark_test.rs"
 
 [[test]]
 name = "r_gate_yaml_test"
-path = "tests/r_gate_yaml_test.rs"
+path = "tests/integration/sql/r_gate_yaml_test.rs"
 
 [[test]]
 name = "row_level_security_test"
-path = "tests/row_level_security_test.rs"
+path = "tests/integration/sql/row_level_security_test.rs"
 
 [[test]]
 name = "savepoint_test"
-path = "tests/savepoint_test.rs"
+path = "tests/integration/transaction/savepoint_test.rs"
 
 [[test]]
 name = "show_tables_test"
-path = "tests/show_tables_test.rs"
+path = "tests/integration/sql/show_tables_test.rs"
 
 [[test]]
 name = "table_compression_test"
-path = "tests/table_compression_test.rs"
+path = "tests/integration/sql/table_compression_test.rs"
 
 [[test]]
 name = "test_inventory_gate_test"
-path = "tests/test_inventory_gate_test.rs"
+path = "tests/integration/sql/test_inventory_gate_test.rs"
 
 [[test]]
 name = "tpch_full_22_test"
-path = "tests/tpch_full_22_test.rs"
+path = "tests/integration/tpch/tpch_full_22_test.rs"
 
 [[test]]
 name = "tpch_gate_test"
-path = "tests/tpch_gate_test.rs"
+path = "tests/integration/tpch/tpch_gate_test.rs"
 
 [[test]]
 name = "tx_wal_contract_tests"
-path = "tests/tx_wal_contract_tests.rs"
+path = "tests/integration/migration/tx_wal_contract_tests.rs"
 
 [[test]]
 name = "wal_tx_contract_test"
-path = "tests/wal_tx_contract_test.rs"
+path = "tests/integration/migration/wal_tx_contract_test.rs"
 
 # === End of P0-2 additions (36 new [[test]] entries) ===
 
@@ -447,7 +447,7 @@ path = "tests/wal_tx_contract_test.rs"
 
 [[test]]
 name = "cargo_toml_test_paths_test"
-path = "tests/cargo_toml_test_paths_test.rs"
+path = "tests/integration/sql/cargo_toml_test_paths_test.rs"
 
 # P1-1 / P1-2 / P1-3 self-tests (added by P1-3 to fix orphan test files)
 # These test the gate scripts themselves and need explicit [[test]] entries
@@ -455,15 +455,15 @@ path = "tests/cargo_toml_test_paths_test.rs"
 
 [[test]]
 name = "int_debt_gate_test"
-path = "tests/int_debt_gate_test.rs"
+path = "tests/integration/sql/int_debt_gate_test.rs"
 
 [[test]]
 name = "arch_sem_debt_gate_test"
-path = "tests/arch_sem_debt_gate_test.rs"
+path = "tests/integration/optimizer/arch_sem_debt_gate_test.rs"
 
 [[test]]
 name = "test_plan_integrated_test"
-path = "tests/test_plan_integrated_test.rs"
+path = "tests/integration/sql/test_plan_integrated_test.rs"
 
 # Other P1.x self-tests that need explicit registration:
 # - l3_canonical_binary (P-X), wire_protocol_smoke (P-X), cross_path_consistency_test (P-X)
@@ -471,38 +471,38 @@ path = "tests/test_plan_integrated_test.rs"
 
 [[test]]
 name = "l3_canonical_binary"
-path = "tests/l3_canonical_binary.rs"
+path = "tests/integration/sql/l3_canonical_binary.rs"
 
 [[test]]
 name = "wire_protocol_smoke"
-path = "tests/wire_protocol_smoke.rs"
+path = "tests/integration/wire/wire_protocol_smoke.rs"
 
 [[test]]
 name = "cross_path_consistency_test"
-path = "tests/cross_path_consistency_test.rs"
+path = "tests/integration/sql/cross_path_consistency_test.rs"
 
 # L3 acceptance + D9 self-tests: registered so D9 (check_full_gate_verification.sh)
 # can run them via `cargo test --test <name>`. Without these entries D9 fails
 # with "ERROR (no test result)" because cargo's test discovery cannot find them.
 [[test]]
 name = "e2e_canonical_subprocess"
-path = "tests/e2e_canonical_subprocess.rs"
+path = "tests/e2e/e2e_canonical_subprocess.rs"
 
 [[test]]
 name = "pr_template_and_full_gate_test"
-path = "tests/pr_template_and_full_gate_test.rs"
+path = "tests/integration/sql/pr_template_and_full_gate_test.rs"
 
 [[test]]
 name = "tpch_value_correctness_test"
-path = "tests/tpch_value_correctness_test.rs"
+path = "tests/integration/tpch/tpch_value_correctness_test.rs"
 
 [[test]]
 name = "tpch_per_query_timeout_test"
-path = "tests/tpch_per_query_timeout_test.rs"
+path = "tests/integration/tpch/tpch_per_query_timeout_test.rs"
 
 [[test]]
 name = "harness_validation_test"
-path = "tests/harness_validation_test.rs"
+path = "tests/integration/stress/harness_validation_test.rs"
 
 # Aliases for ci/ subdir tests (basename != cargo name)
 [[test]]
@@ -512,15 +512,15 @@ path = "tests/ci/ci_test.rs"
 # v3.8.0 feature integration tests
 [[test]]
 name = "alter_table_test"
-path = "tests/alter_table_test.rs"
+path = "tests/integration/ddl/alter_table_test.rs"
 # ARCH-3 (#3169) — VtuGuard main-path enforcement
 [[test]]
 name = "arch3_vtu_main_path_test"
-path = "tests/arch3_vtu_main_path_test.rs"
+path = "tests/integration/optimizer/arch3_vtu_main_path_test.rs"
 # INT-3 (#3170) — Single Expression Engine
 [[test]]
 name = "int3_single_expression_test"
-path = "tests/int3_single_expression_test.rs"
+path = "tests/integration/sql/int3_single_expression_test.rs"
 
 # INT-3 (#3271) — Mixed-scenario integration (WAL + DDL + TPC-H)
 [[test]]
@@ -545,117 +545,117 @@ path = "tests/integration/issue_3257_wal_fallback_test.rs"
 # SEM-1 (#3172) — Savepoint
 [[test]]
 name = "sem1_savepoint_test"
-path = "tests/sem1_savepoint_test.rs"
+path = "tests/integration/transaction/sem1_savepoint_test.rs"
 # P1-2 (#3174) — Crash Test Framework
 [[test]]
 name = "crash_test_framework"
-path = "tests/crash_test_framework.rs"
+path = "tests/integration/stress/crash_test_framework.rs"
 # P1-2 (#3174) — Crash Test Harness (shared helper, not a test target)
 # T-20 (#3769) — Process kill -9 mid-transaction crash recovery
 [[test]]
 name = "process_kill_crash_test"
-path = "tests/process_kill_crash_test.rs"
+path = "tests/integration/stress/process_kill_crash_test.rs"
 [[test]]
 name = "crash_test_harness"
-path = "tests/crash_test_harness.rs"
+path = "tests/integration/stress/crash_test_harness.rs"
 # P1-3 (#3175) — Soak Test (3-level smoke equivalent)
 [[test]]
 name = "soak_test"
-path = "tests/soak_test.rs"
+path = "tests/integration/stress/soak_test.rs"
 # P1-3 (#3175) — Soak Test Harness (shared helper)
 [[test]]
 name = "soak_test_harness"
-path = "tests/soak_test_harness.rs"
+path = "tests/integration/stress/soak_test_harness.rs"
 [[test]]
 name = "g13_oltp1_concurrent_select_test"
-path = "tests/g13_oltp1_concurrent_select_test.rs"
+path = "tests/integration/sql/g13_oltp1_concurrent_select_test.rs"
 [[test]]
 name = "mixed_workload_deadlock_regression_test"
-path = "tests/mixed_workload_deadlock_regression_test.rs"
+path = "tests/integration/sql/mixed_workload_deadlock_regression_test.rs"
 # P1-4 (#3176) — Upgrade Test (v3.8 → v3.9, 50+ scenarios)
 [[test]]
 name = "upgrade_test"
-path = "tests/upgrade_test.rs"
+path = "tests/integration/migration/upgrade_test.rs"
 # P1-4 (#3176) — Upgrade Test Harness (shared helper)
 [[test]]
 name = "upgrade_test_harness"
-path = "tests/upgrade_test_harness.rs"
+path = "tests/integration/migration/upgrade_test_harness.rs"
 # P2-1 (#3177) — Audit Log (20+ tests, 7 categories)
 [[test]]
 name = "audit_log_test"
-path = "tests/audit_log_test.rs"
+path = "tests/integration/stress/audit_log_test.rs"
 # P2-1 (#3177) — Audit Log Harness (shared helper)
 [[test]]
 name = "audit_log_harness"
-path = "tests/audit_log_harness.rs"
+path = "tests/integration/stress/audit_log_harness.rs"
 # P2-2 (#3178) — Time Travel Query (20+ tests, 5 categories)
 [[test]]
 name = "time_travel_test"
-path = "tests/time_travel_test.rs"
+path = "tests/integration/sql/time_travel_test.rs"
 # P2-2 (#3178) — Time Travel Harness (shared helper)
 [[test]]
 name = "time_travel_harness"
-path = "tests/time_travel_harness.rs"
+path = "tests/integration/sql/time_travel_harness.rs"
 # P2-3 (#3179) — Hash Chain (20+ tests, 4 categories)
 [[test]]
 name = "hash_chain_test"
-path = "tests/hash_chain_test.rs"
+path = "tests/integration/sql/hash_chain_test.rs"
 # P2-3 (#3179) — Hash Chain Harness (shared helper)
 [[test]]
 name = "hash_chain_harness"
-path = "tests/hash_chain_harness.rs"
+path = "tests/integration/sql/hash_chain_harness.rs"
 # P3-2 (#3181) — Statistics (ANALYZE TABLE, 20+ tests, 5 categories)
 [[test]]
 name = "statistics_test"
-path = "tests/statistics_test.rs"
+path = "tests/integration/sql/statistics_test.rs"
 # P3-2 (#3181) — Statistics Harness (shared helper)
 [[test]]
 name = "statistics_harness"
-path = "tests/statistics_harness.rs"
+path = "tests/integration/sql/statistics_harness.rs"
 # P3-3 (#3182) — Cost Optimizer (CBO, 20+ tests, 5 categories)
 [[test]]
 name = "cost_optimizer_test"
-path = "tests/cost_optimizer_test.rs"
+path = "tests/integration/optimizer/cost_optimizer_test.rs"
 # P3-3 (#3182) — Cost Optimizer Harness (shared helper)
 [[test]]
 name = "cost_optimizer_harness"
-path = "tests/cost_optimizer_harness.rs"
+path = "tests/integration/optimizer/cost_optimizer_harness.rs"
 # P3-4 (#3183) — ParallelExecutor Harness (shared helper, NOTE: parallel_executor_test already exists at line ~357 from P0-3)
 [[test]]
 name = "parallel_executor_harness"
-path = "tests/parallel_executor_harness.rs"
+path = "tests/integration/sql/parallel_executor_harness.rs"
 # P3-5 (#3184) — SIMD 集成 SQL Executor (20+ tests, 5 categories)
 [[test]]
 name = "simd_test"
-path = "tests/simd_test.rs"
+path = "tests/integration/sql/simd_test.rs"
 # P3-5 (#3184) — SIMD Harness (shared helper)
 [[test]]
 name = "simd_harness"
-path = "tests/simd_harness.rs"
+path = "tests/integration/sql/simd_harness.rs"
 # G16 Compatibility — v3.8.0 → v3.9.0 升级兼容 (5 cases: 4 + 回滚)
 [[test]]
 name = "v380_to_v390_full_upgrade_test"
-path = "tests/v380_to_v390_full_upgrade_test.rs"
+path = "tests/integration/migration/v380_to_v390_full_upgrade_test.rs"
 # G16 Compatibility Harness (shared helper)
 [[test]]
 name = "compatibility_harness"
-path = "tests/compatibility_harness.rs"
+path = "tests/integration/wire/compatibility_harness.rs"
 
 [[test]]
 name = "truncate_table_test"
-path = "tests/truncate_table_test.rs"
+path = "tests/integration/ddl/truncate_table_test.rs"
 
 [[test]]
 name = "insert_odku_test"
-path = "tests/insert_odku_test.rs"
+path = "tests/integration/dml/insert_odku_test.rs"
 
 [[test]]
 name = "replace_test"
-path = "tests/replace_test.rs"
+path = "tests/integration/dml/replace_test.rs"
 
 [[test]]
 name = "int4_explicit_tx_test"
-path = "tests/int4_explicit_tx_test.rs"
+path = "tests/integration/sql/int4_explicit_tx_test.rs"
 
 [[test]]
 name = "operators_aggregate"
@@ -705,12 +705,12 @@ path = "tests/operators/char_padding.rs"
 # Issue #3285 reproduction (Sprint 4)
 [[test]]
 name = "repro_3285_real_preservation"
-path = "tests/repro_3285_real_preservation_test.rs"
+path = "tests/integration/sql/repro_3285_real_preservation_test.rs"
 
 # Issue #3282 reproduction (Sprint 5)
 [[test]]
 name = "repro_3282_orderby_desc"
-path = "tests/repro_3282_orderby_desc_test.rs"
+path = "tests/integration/sql/repro_3282_orderby_desc_test.rs"
 
 # Memory limit for tests: 8GB (8 * 1024 * 1024 * 1024 bytes)
 # This prevents any single test from consuming excessive memory
