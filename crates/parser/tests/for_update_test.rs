@@ -1,6 +1,6 @@
 //! FOR UPDATE / LOCK IN SHARE MODE parsing integration tests
 
-use sqlrustgo_parser::{parse, Statement, SelectStatement, LockClause};
+use sqlrustgo_parser::{parse, LockClause, SelectStatement, Statement};
 
 #[test]
 fn test_parse_for_update_clause() {
@@ -38,7 +38,9 @@ fn test_parse_for_update_nowait() {
     let r = r.unwrap();
     match r {
         Statement::Select(s) => {
-            let lock = s.lock_clause.expect("FOR UPDATE NOWAIT should set lock_clause");
+            let lock = s
+                .lock_clause
+                .expect("FOR UPDATE NOWAIT should set lock_clause");
             assert!(lock.for_update);
             assert!(lock.nowait, "nowait should be true");
         }
@@ -51,7 +53,10 @@ fn test_parse_no_lock_clause() {
     let r = parse("SELECT * FROM t WHERE id = 1").unwrap();
     match r {
         Statement::Select(s) => {
-            assert!(s.lock_clause.is_none(), "Regular SELECT should have no lock clause");
+            assert!(
+                s.lock_clause.is_none(),
+                "Regular SELECT should have no lock clause"
+            );
         }
         _ => panic!("Expected SELECT"),
     }
