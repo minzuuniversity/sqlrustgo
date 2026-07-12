@@ -606,6 +606,14 @@ pub trait StorageEngine: Send + Sync {
         ))
     }
 
+    /// Release all gap locks held by a transaction
+    ///
+    /// Called during transaction commit/rollback to release gap locks.
+    /// No-op if gap locking is not enabled.
+    fn release_all_gap_locks(&mut self, _tx_id: u64) {
+        // Default: no-op
+    }
+
     /// Check if a transaction is in progress
     fn in_transaction(&self) -> bool {
         false
