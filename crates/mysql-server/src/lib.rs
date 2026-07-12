@@ -8,8 +8,9 @@ use rcgen::{CertificateParams, KeyPair};
 use sha1::{Digest, Sha1};
 use sqlrustgo::ExecutionEngine;
 use sqlrustgo_parser::{parse, Statement};
+use sqlrustgo_storage::wal::FileBackedWalManager;
 use sqlrustgo_storage::{
-    BinaryTableStorage, BoxStorageEngine, CheckpointManager, FileBackedWalManager, FileStorage,
+    BinaryTableStorage, BoxStorageEngine, CheckpointManager, FileStorage,
     MemoryStorage, StorageEngine, WalStorage,
 };
 use sqlrustgo_types::{SqlError, Value};
@@ -561,12 +562,11 @@ mod tests {
         assert_eq!(pkt.sequence, 1);
         assert_eq!(pkt.payload[0], 0xff); // ERR packet type
         assert_eq!(u16::from_le_bytes([pkt.payload[1], pkt.payload[2]]), 1146);
-        // MySQL wire protocol requires 0x23 (marker) + SQL_STATE(5) + 0x00 + message.
-        // Verify the null-byte terminator between SQL state and message.
+        // Format: 0xFF + error_code(2 LE) + 0x23 + SQL_STATE(5) + message + 0x00
         assert_eq!(pkt.payload[3], 0x23); // SQL state marker
         assert_eq!(&pkt.payload[4..9], b"42S02"); // SQL state
-        assert_eq!(pkt.payload[9], 0x00); // null-byte terminator
-        assert_eq!(&pkt.payload[10..], b"Table not found");
+        assert_eq!(&pkt.payload[9..24], b"Table not found"); // message
+        assert_eq!(pkt.payload[24], 0x00); // null terminator at end of message
         // Verify it can be written without error
         let mut buf = Vec::new();
         pkt.write_to(&mut buf).unwrap();
@@ -971,8 +971,8 @@ fn make_err_packet(seq: u8, code: u16, state: &str, msg: &str) -> Packet {
     p.write_u16::<LittleEndian>(code).unwrap();
     p.push(0x23);
     p.extend_from_slice(state.as_bytes());
-    p.push(0x00);
     p.extend_from_slice(msg.as_bytes());
+    p.push(0x00); // null-terminate message for C-compatible clients
     Packet {
         length: p.len() as u32,
         sequence: seq,
@@ -2732,10 +2732,7 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                             seq = seq.wrapping_add(1);
                         }
                         Err(e) => {
-                            let code = match e.to_string().contains("not found") {
-                                true => 1146u16,
-                                false => 1064u16,
-                            };
+                            let code = e.mysql_error_code();
                             let err_msg = e.to_string();
                             tracing::warn!("SQL error {} (42000): {}", code, err_msg);
                             make_err_packet(seq, code, "42000", &err_msg).write_to(stream)?;
@@ -3016,7 +3013,8 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                         seq = seq.wrapping_add(1);
                     }
                     Err(e) => {
-                        make_err_packet(seq, 1064, "42000", &e.to_string()).write_to(stream)?;
+                        let code = e.mysql_error_code();
+                        make_err_packet(seq, code, "42000", &e.to_string()).write_to(stream)?;
                         *server_last_sent_seq = seq;
                         seq = seq.wrapping_add(1);
                     }
@@ -3909,10 +3907,10 @@ mod integration_tests {
         assert_eq!(pkt.payload[0], 0xff);
     }
     #[test]
-    fn test_make_err_packet_null_byte_separator() {
-        // MySQL wire protocol: error packet format is
-        // 0xFF + error_code(u16 LE) + 0x23 + SQL_STATE(5 bytes) + 0x00 + ERROR_MSG
-        // The null-byte between SQL state and error message is required.
+    fn test_make_err_packet_format() {
+        // MySQL wire protocol error packet format (4.1+):
+        // 0xFF + error_code(u16 LE) + 0x23 + SQL_STATE(5 bytes) + ERROR_MSG + 0x00
+        // The null byte at the end terminates the message for C-compatible clients.
         let pkt = make_err_packet(1, 1146, "42S02", "Table not found");
         assert_eq!(pkt.payload[0], 0xff); // ERR packet type
                                           // Bytes 1-2: error code (1146 = 0x047A little-endian)
@@ -3920,12 +3918,10 @@ mod integration_tests {
         assert_eq!(pkt.payload[3], 0x23); // '#' marker
                                           // Bytes 4-8: SQL state "42S02"
         assert_eq!(&pkt.payload[4..9], b"42S02");
-        // Byte 9: null-byte separator
-        assert_eq!(pkt.payload[9], 0x00);
-        // Bytes 10+: error message
-        assert_eq!(&pkt.payload[10..], b"Table not found");
+        // Bytes 9+: error message
+        assert_eq!(&pkt.payload[9..24], b"Table not found");
+        assert_eq!(pkt.payload[pkt.payload.len() - 1], 0x00);
     }
-    // ============ make_eof_packet Tests ============
 
     #[test]
     fn test_make_eof_packet() {
