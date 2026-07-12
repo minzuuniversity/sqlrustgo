@@ -16,7 +16,9 @@ fn make_engine(parallel: usize) -> ExecutionEngine<MemoryStorage> {
 
 /// Populate N rows: k = i % distinct_keys, v = i
 fn populate(engine: &mut ExecutionEngine<MemoryStorage>, rows: usize, distinct_keys: usize) {
-    engine.execute("CREATE TABLE t (k INTEGER, v INTEGER)").unwrap();
+    engine
+        .execute("CREATE TABLE t (k INTEGER, v INTEGER)")
+        .unwrap();
     for i in 0..rows {
         engine
             .execute(&format!(
@@ -86,15 +88,11 @@ fn test_above_500k_rows_parallel_engages() {
 
     let mut seq = make_engine(1);
     populate(&mut seq, 600_000, 1000);
-    let seq_result = seq
-        .execute("SELECT k, v FROM t WHERE k < 100")
-        .unwrap();
+    let seq_result = seq.execute("SELECT k, v FROM t WHERE k < 100").unwrap();
 
     let mut par = make_engine(4);
     populate(&mut par, 600_000, 1000);
-    let par_result = par
-        .execute("SELECT k, v FROM t WHERE k < 100")
-        .unwrap();
+    let par_result = par.execute("SELECT k, v FROM t WHERE k < 100").unwrap();
 
     assert_eq!(
         seq_result.rows.len(),
@@ -167,7 +165,8 @@ fn test_clamp_zero_to_one() {
 #[test]
 fn test_default_build_compiles() {
     // Sanity: default executor builds (no features needed)
-    let _engine: ExecutionEngine<MemoryStorage> = ExecutionEngine::new(Arc::new(parking_lot::RwLock::new(MemoryStorage::new())));
+    let _engine: ExecutionEngine<MemoryStorage> =
+        ExecutionEngine::new(Arc::new(parking_lot::RwLock::new(MemoryStorage::new())));
 }
 
 #[test]
@@ -179,5 +178,8 @@ fn test_for_update_still_disables_parallel() {
         .execute("SELECT k, v FROM t WHERE k < 100 FOR UPDATE")
         .unwrap();
     // Same row count as non-FOR-UPDATE
-    assert!(result.rows.len() > 0, "FOR UPDATE should still return filtered rows");
+    assert!(
+        result.rows.len() > 0,
+        "FOR UPDATE should still return filtered rows"
+    );
 }

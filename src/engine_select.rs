@@ -16,9 +16,8 @@ use sqlrustgo_executor::parallel_executor::{
     ParallelExecutor, ParallelVolcanoExecutor, PARALLEL_MIN_ROWS,
 };
 use sqlrustgo_executor::simd_eval::{
-    BatchPredicate, BitMask, EqualsPredicate, GreaterThanOrEqualPredicate,
-    GreaterThanPredicate, LessThanOrEqualPredicate, LessThanPredicate,
-    NotEqualPredicate,
+    BatchPredicate, BitMask, EqualsPredicate, GreaterThanOrEqualPredicate, GreaterThanPredicate,
+    LessThanOrEqualPredicate, LessThanPredicate, NotEqualPredicate,
 };
 use sqlrustgo_parser::{
     get_and_clear_derived_subqueries, AggregateCall, AggregateFunction, Expression,
@@ -2412,28 +2411,36 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             // Extract column values for this partition
             let values: Vec<i64> = partition
                 .iter()
-                .map(|row| {
-                    row.get(col_idx)
-                        .and_then(Value::as_integer)
-                        .unwrap_or(0)
-                })
+                .map(|row| row.get(col_idx).and_then(Value::as_integer).unwrap_or(0))
                 .collect();
 
             // Process in chunks of 64 (BitMask capacity)
             for (chunk_idx, chunk) in values.chunks(64).enumerate() {
                 let mask: BitMask = match op.as_str() {
                     "<" => <LessThanPredicate as BatchPredicate>::eval_batch_i64(
-                        &LessThanPredicate { threshold: lit }, chunk),
+                        &LessThanPredicate { threshold: lit },
+                        chunk,
+                    ),
                     "<=" => <LessThanOrEqualPredicate as BatchPredicate>::eval_batch_i64(
-                        &LessThanOrEqualPredicate { threshold: lit }, chunk),
+                        &LessThanOrEqualPredicate { threshold: lit },
+                        chunk,
+                    ),
                     ">" => <GreaterThanPredicate as BatchPredicate>::eval_batch_i64(
-                        &GreaterThanPredicate { threshold: lit }, chunk),
+                        &GreaterThanPredicate { threshold: lit },
+                        chunk,
+                    ),
                     ">=" => <GreaterThanOrEqualPredicate as BatchPredicate>::eval_batch_i64(
-                        &GreaterThanOrEqualPredicate { threshold: lit }, chunk),
+                        &GreaterThanOrEqualPredicate { threshold: lit },
+                        chunk,
+                    ),
                     "=" => <EqualsPredicate as BatchPredicate>::eval_batch_i64(
-                        &EqualsPredicate { value: lit }, chunk),
+                        &EqualsPredicate { value: lit },
+                        chunk,
+                    ),
                     "!=" => <NotEqualPredicate as BatchPredicate>::eval_batch_i64(
-                        &NotEqualPredicate { value: lit }, chunk),
+                        &NotEqualPredicate { value: lit },
+                        chunk,
+                    ),
                     _ => return None,
                 };
                 // Map mask bit i → row at chunk_idx*64 + i in this partition
@@ -2477,8 +2484,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             return None;
         }
         // Pattern A: col <op> literal
-        if let (Expression::Identifier(col_name), Expression::Literal(lit_s)) =
-            (&**left, &**right)
+        if let (Expression::Identifier(col_name), Expression::Literal(lit_s)) = (&**left, &**right)
         {
             let col_idx = table_info
                 .columns
@@ -2488,8 +2494,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             return Some((col_idx, op_str.to_string(), lit));
         }
         // Pattern B: literal <op> col  (auto-invert operator)
-        if let (Expression::Literal(lit_s), Expression::Identifier(col_name)) =
-            (&**left, &**right)
+        if let (Expression::Literal(lit_s), Expression::Identifier(col_name)) = (&**left, &**right)
         {
             let col_idx = table_info
                 .columns
@@ -2518,11 +2523,9 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     ) -> Vec<Vec<Value>> {
         // Layer 3 SIMD fast path: filter the whole column in one
         // batch call instead of one eval_predicate per row.
-        if let Some(filtered) = self.filter_partitions_simd(
-            partitions.clone(),
-            &where_expr,
-            &table_info,
-        ) {
+        if let Some(filtered) =
+            self.filter_partitions_simd(partitions.clone(), &where_expr, &table_info)
+        {
             return filtered;
         }
 

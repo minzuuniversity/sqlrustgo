@@ -327,7 +327,9 @@ impl BTreeIndex {
         }
     }
 
-    pub fn new_with_lock_manager(lock_manager: std::sync::Arc<crate::lock::GapLockManager>) -> Self {
+    pub fn new_with_lock_manager(
+        lock_manager: std::sync::Arc<crate::lock::GapLockManager>,
+    ) -> Self {
         Self {
             metadata: BTreeMetadata::default(),
             nodes: vec![None],

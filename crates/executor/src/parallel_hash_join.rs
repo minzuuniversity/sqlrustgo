@@ -85,11 +85,7 @@ impl ParallelHashJoin {
     }
 
     /// Hash-partition a relation's rows by join key
-    pub fn partition_relation(
-        &self,
-        rows: Vec<Vec<Value>>,
-        key_col_idx: usize,
-    ) -> Vec<Partition> {
+    pub fn partition_relation(&self, rows: Vec<Vec<Value>>, key_col_idx: usize) -> Vec<Partition> {
         let n = self.degree;
         let mut partitions: Vec<Partition> = (0..n).map(|_| Partition::new()).collect();
         for row in rows {
@@ -267,12 +263,7 @@ mod tests {
         ];
 
         let p4 = ParallelHashJoin::new(4);
-        assert!(p4.execute_correctness_check(
-            build.clone(),
-            0,
-            probe.clone(),
-            0
-        ));
+        assert!(p4.execute_correctness_check(build.clone(), 0, probe.clone(), 0));
     }
 
     #[test]
@@ -297,7 +288,10 @@ mod tests {
         let p = ParallelHashJoin::new(4);
         let key1 = JoinKey("hello".to_string());
         let key2 = JoinKey("hello".to_string());
-        assert_eq!(ParallelHashJoin::hash_bucket(&key1, 4), ParallelHashJoin::hash_bucket(&key2, 4));
+        assert_eq!(
+            ParallelHashJoin::hash_bucket(&key1, 4),
+            ParallelHashJoin::hash_bucket(&key2, 4)
+        );
     }
 
     #[test]
