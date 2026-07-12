@@ -195,8 +195,8 @@ impl UnifiedCostModel {
         match predicate {
             // Binary comparisons
             Expr::BinaryExpr { op, .. } => match op {
-                BinaryOperator::Eq => 0.1,         // k = literal
-                BinaryOperator::NotEq => 0.9,      // k != literal
+                BinaryOperator::Eq => 0.1,    // k = literal
+                BinaryOperator::NotEq => 0.9, // k != literal
                 BinaryOperator::Lt | BinaryOperator::LtEq => 0.3,
                 BinaryOperator::Gt | BinaryOperator::GtEq => 0.3,
                 _ => 0.5,
