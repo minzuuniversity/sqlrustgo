@@ -83,6 +83,7 @@ impl BinaryTableStorage {
     ///   Float:   8 bytes LE f64
     ///   Text:    4 bytes LE u32 (len) + len bytes
     pub fn save(&self, table: &str, data: &TableData) -> std::io::Result<()> {
+        crate::io_delay::maybe_delay();
         let path = self.table_path(table);
         let file = File::create(&path)?;
         let mut w = BufWriter::new(file);
@@ -138,7 +139,9 @@ impl BinaryTableStorage {
             }
         }
 
-        w.flush()
+        w.flush()?;
+        crate::io_delay::maybe_delay();
+        Ok(())
     }
 
     /// Load table from binary format (supports BINT v1 and v2).
@@ -146,6 +149,7 @@ impl BinaryTableStorage {
     /// v2: header has col_count + (type_code + name_len + name) per column.
     pub fn load(&self, table: &str) -> std::io::Result<TableData> {
         use std::io::{BufReader, Read};
+        crate::io_delay::maybe_delay();
         let path = self.table_path(table);
         let file = File::open(path)?;
         let mut reader = BufReader::with_capacity(8 * 1024 * 1024, file);
@@ -254,7 +258,9 @@ impl BinaryTableStorage {
             rows.push(row);
         }
 
-        Ok(TableData { info, rows })
+        let result = TableData { info, rows };
+        crate::io_delay::maybe_delay();
+        Ok(result)
     }
 
     pub fn exists(&self, table: &str) -> bool {
