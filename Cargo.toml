@@ -175,13 +175,6 @@ parking_lot.workspace = true
 
 sqlrustgo-cli.workspace = true
 
-[[bin]]
-name = "sqlrustgo"
-path = "src/bin/sqlrustgo/main.rs"
-
-# Canonical name `ci_test` is owned by the subdir file (tests/ci/ci_test.rs).
-# The legacy top-level tests/ci_test.rs was removed because it shadowed the
-# subdir test with identical content.
 
 [[bench]]
 name = "sql_operations"
