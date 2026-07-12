@@ -4628,6 +4628,7 @@ dependencies = [
  "criterion 0.8.2",
  "log",
  "miniz_oxide 0.7.4",
+ "parking_lot",
  "serde",
  "serde_json",
  "sqlrustgo-common",
