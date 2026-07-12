@@ -25,7 +25,7 @@ reqwest = { version = "0.12", features = ["blocking", "json"] }
 # Enabling this feature pulls in rayon and activates the parallel
 # pipeline path. Default (feature off) = sequential, zero regression.
 # See openspec/changes/issue-3703-intra-query-parallel-executor/.
-rayon = { version = "1.10", optional = true }
+rayon.workspace = true
 
 [features]
 # Parallel intra-query executor (Issue #3703).
@@ -35,7 +35,7 @@ rayon = { version = "1.10", optional = true }
 # the engine is built with `set_parallel_degree(N) > 1` (typically
 # driven by `--executor-parallelism=N` CLI flag).
 default = []
-parallel-executor = ["dep:rayon"]
+parallel-executor = []
 # SIMD batch filter evaluation (Phase 5)
 # Experimental - uses portable SIMD-like operations
 simd = []

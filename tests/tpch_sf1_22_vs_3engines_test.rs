@@ -26,7 +26,17 @@ use std::time::{Duration, Instant};
 /// Path to the SF=1.0 fixture. Operator must generate this with
 /// `dbgen -s 1 -f` (see scripts/tpch_sf1_baseline.sh) or with
 /// `scripts/generate_tpch_data.sh --sf 1 --backend dbgen`.
-const SF1_DIR: &str = "/tmp/tpch-sf1";
+const DEFAULT_SF1_DIR: &str = "/tmp/tpch-sf1";
+
+fn sf1_dir() -> String {
+    std::env::var("TPCH_SF1_DIR").unwrap_or_else(|_| DEFAULT_SF1_DIR.to_string())
+}
+
+fn sqlrustgo_data_dir() -> String {
+    std::env::var("TPCH_SF1_SQLRUSTGO_DATA_DIR")
+        .or_else(|_| std::env::var("TPCH_SF1_DIR"))
+        .unwrap_or_else(|_| DEFAULT_SQLRUSTGO_DATA_DIR.to_string())
+}
 
 /// BINT v2 (BinaryTableStorage) directory produced by
 /// `cargo run --bin tbl2bin -- <SF1_DIR> <BINT_DIR>`. When all 8
@@ -42,7 +52,7 @@ const BINT_DIR: &str = "/tmp/tpch-sf1-bin";
 /// first run, the data is materialized as a WAL plus per-table
 /// files inside this directory and subsequent runs recover from
 /// it without re-running LOAD DATA.
-const SQLRUSTGO_DATA_DIR: &str = "/tmp/tpch-sf1";
+const DEFAULT_SQLRUSTGO_DATA_DIR: &str = "/tmp/tpch-sf1";
 
 /// Where the report is written. Operators may move or rename it
 /// after generation; the test will write to this exact path.
@@ -60,7 +70,8 @@ const QUERIES_DIR: &str = "queries";
 
 /// True iff the SF=1.0 fixture is present at SF1_DIR.
 fn fixture_present() -> bool {
-    let p = Path::new(SF1_DIR);
+    let dir = sf1_dir();
+    let p = Path::new(&dir);
     p.join("region.tbl").exists()
         && p.join("nation.tbl").exists()
         && p.join("supplier.tbl").exists()
@@ -84,7 +95,8 @@ fn json_data_ready() -> bool {
         ("orders", 1_500_000),
         ("lineitem", 6_001_215),
     ];
-    let data_dir = Path::new(SQLRUSTGO_DATA_DIR);
+    let data_dir_value = sqlrustgo_data_dir();
+    let data_dir = Path::new(&data_dir_value);
     for (name, expected_rows) in EXPECTED {
         let json_path = data_dir.join(format!("{}.json", name));
         if !json_path.exists() {
@@ -174,6 +186,7 @@ fn bint_data_ready() -> bool {
 }
 
 fn emit_skip_message() {
+    let dir = sf1_dir();
     eprintln!(
         "tpch_sf1_22_vs_3engines_test: SF=1.0 fixture not present at {}. \
          Generate it with:\n  \
@@ -182,7 +195,7 @@ fn emit_skip_message() {
          mv /home/openclaw/tpch-dbgen-master/*.tbl {}/\n\
          (or `scripts/generate_tpch_data.sh --sf 1 --backend dbgen`).\n\
          The test is marked #[ignore] so it does not consume the 10-minute budget.",
-        SF1_DIR, SF1_DIR, SF1_DIR
+        dir, dir, dir
     );
 }
 
@@ -208,7 +221,8 @@ fn tpch_sf1_22_in_process_regression() {
         eprintln!("SF=1.0 .bin (BINT v2) ready at {BINT_DIR} — using BinaryTableStorage.");
         (Path::new(BINT_DIR).to_path_buf(), false)
     } else {
-        let dir = Path::new(SQLRUSTGO_DATA_DIR).to_path_buf();
+        let data_dir_value = sqlrustgo_data_dir();
+        let dir = Path::new(&data_dir_value).to_path_buf();
         std::fs::create_dir_all(&dir).expect("create sqlrustgo data dir");
         let json_ready = json_data_ready();
         if json_ready {
@@ -274,7 +288,8 @@ fn tpch_sf1_22_in_process_regression() {
     // 2) Cold-path LOAD DATA. Skipped when .bin or .json are pre-materialized.
     if use_load_data {
         eprintln!("Loading SF=1.0 fixture (only required on first run) ...");
-        tpch_wire_harness::load_fixture(&mut client, SF1_DIR);
+        let sf1_dir_value = sf1_dir();
+        tpch_wire_harness::load_fixture(&mut client, &sf1_dir_value);
         eprintln!("SF=1.0 fixture loaded.");
     }
 
@@ -335,10 +350,11 @@ fn write_report(rows: &[(u8, usize, Duration, String)]) {
     out.push_str("- Commit: see `git log` on the branch\n");
     out.push_str("- External-client follow-up: issue #3474 (out of scope here)\n\n");
     out.push_str("## Setup\n\n");
+    let fixture_dir = sf1_dir();
     out.push_str(&format!(
         "- Fixture path: `{}`\n- Generation tool: `dbgen -s 1 -f` \
          (TPC-H dbgen, official)\n",
-        SF1_DIR
+        fixture_dir
     ));
     out.push_str("- Row counts (verified at fixture load time):\n");
     for (tbl, expected) in &[
@@ -349,9 +365,9 @@ fn write_report(rows: &[(u8, usize, Duration, String)]) {
         ("part", 200_000),
         ("partsupp", 800_000),
         ("orders", 1_500_000),
-        ("lineitem", 6_000_000),
+        ("lineitem", 6_001_215),
     ] {
-        let p = format!("{}/{}.tbl", SF1_DIR, tbl);
+        let p = format!("{}/{}.tbl", fixture_dir, tbl);
         let actual = std::fs::read_to_string(&p)
             .map(|s| s.lines().filter(|l| !l.is_empty()).count())
             .unwrap_or(0);
