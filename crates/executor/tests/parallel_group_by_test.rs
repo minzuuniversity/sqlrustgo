@@ -82,7 +82,13 @@ fn test_parallel_group_by_sum_correctness() {
     // Total sum should be 0+1+2+...+(n-1) = n*(n-1)/2 = 499500
     let total: i64 = result
         .iter()
-        .map(|(_, vals)| if let Value::Integer(n) = &vals[0] { *n } else { 0 })
+        .map(|(_, vals)| {
+            if let Value::Integer(n) = &vals[0] {
+                *n
+            } else {
+                0
+            }
+        })
         .sum();
     assert_eq!(total, (n * (n - 1) / 2) as i64);
 }
@@ -92,7 +98,12 @@ fn test_parallel_group_by_correctness_n1_vs_n4() {
     // Cell-level equivalence: same query with N=1 and N=4 must give same results
     let n = 500;
     let rows: Vec<Vec<Value>> = (0..n)
-        .map(|i| vec![Value::Integer((i % 7) as i64), Value::Integer((i * 3) as i64)])
+        .map(|i| {
+            vec![
+                Value::Integer((i % 7) as i64),
+                Value::Integer((i * 3) as i64),
+            ]
+        })
         .collect();
 
     let table_info = make_table_info();
@@ -138,7 +149,12 @@ fn test_parallel_group_by_avg_correctness() {
     // AVG correctness: same query with N=1 and N=4 must give same average
     let n = 500;
     let rows: Vec<Vec<Value>> = (0..n)
-        .map(|i| vec![Value::Integer((i % 5) as i64), Value::Integer((i + 1) as i64)])
+        .map(|i| {
+            vec![
+                Value::Integer((i % 5) as i64),
+                Value::Integer((i + 1) as i64),
+            ]
+        })
         .collect();
 
     let table_info = make_table_info();
@@ -256,16 +272,10 @@ fn test_parallel_group_by_empty_input() {
 fn test_parallel_group_by_constant_key() {
     // All rows have same group key (GROUP BY 1)
     let n = 100;
-    let rows: Vec<Vec<Value>> = (0..n)
-        .map(|i| vec![Value::Integer(i as i64)])
-        .collect();
+    let rows: Vec<Vec<Value>> = (0..n).map(|i| vec![Value::Integer(i as i64)]).collect();
 
     let table_info = make_table_info();
-    let keys = compute_group_keys(
-        &rows,
-        &[Expression::Literal("1".to_string())],
-        &table_info,
-    );
+    let keys = compute_group_keys(&rows, &[Expression::Literal("1".to_string())], &table_info);
     let pg = ParallelGroupBy::new(4);
     let result = pg.execute(rows, keys, &[count_call(), sum_call("k")], &table_info);
     // All rows should be in one group

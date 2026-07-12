@@ -8,10 +8,10 @@ use crate::engine::{
 };
 use sqlrustgo_types::{SqlError, SqlResult, Value};
 use std::collections::HashMap;
-use std::sync::Arc;
 use std::fs::{self, File};
 use std::io::{BufReader, BufWriter, Write};
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::sync::RwLock;
 
 /// File-based storage manager
@@ -2529,9 +2529,7 @@ impl StorageEngine for FileStorage {
             let size = if i < rem { base + 1 } else { base };
             if size > 0 {
                 let part = Arc::clone(&shared);
-                partitions.push(Box::new(
-                    SharedSliceIter::new(part, cur, cur + size)
-                ));
+                partitions.push(Box::new(SharedSliceIter::new(part, cur, cur + size)));
             }
             cur += size;
         }
