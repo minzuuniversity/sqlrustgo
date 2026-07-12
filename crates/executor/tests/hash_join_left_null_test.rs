@@ -495,7 +495,6 @@ fn test_semantic_having_with_group_by() {
 
 // Risk 3: Aggregate with all NULL values
 #[test]
-#[ignore = "pre-existing logic bug, see #3742; expects COUNT(all NULL)=0, actual=5"]
 fn test_semantic_aggregate_all_null() {
     let mut engine = create_engine();
     engine.execute("CREATE TABLE t (val INTEGER)").unwrap();

@@ -8179,6 +8179,25 @@ mod tests {
             _ => panic!("Expected ALTER TABLE statement"),
         }
     }
+    #[test]
+    fn test_parse_alter_table_modify_column() {
+        let result = parse("ALTER TABLE users MODIFY COLUMN age INTEGER");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        match result.unwrap() {
+            Statement::AlterTable(a) => {
+                assert_eq!(a.table_name, "users");
+                match a.operation {
+                    AlterTableOperation::ModifyColumn { name, data_type, nullable } => {
+                        assert_eq!(name, "age");
+                        assert_eq!(data_type, "INTEGER");
+                        assert!(nullable);
+                    }
+                    _ => panic!("Expected ModifyColumn operation"),
+                }
+            }
+            _ => panic!("Expected ALTER TABLE statement"),
+        }
+    }
 
     #[test]
     fn test_parse_right_join() {
@@ -11671,3 +11690,4 @@ mod set_op_tests {
         assert!(parse("WITH a AS (SELECT 1), b AS (SELECT 2) SELECT * FROM a, b").is_ok());
     }
 }
+
