@@ -2413,7 +2413,7 @@ impl FileStorage {
     /// (typically `engine_select::filter_partitions_parallel`) can
     /// process each chunk on a separate rayon worker, fusing scan
     /// + filter into one parallel pipeline. Same semantics as
-    /// `MemoryStorage::partition_rows`.
+    ///   `MemoryStorage::partition_rows`.
     ///
     /// Merges `insert_buffer` rows (F-09 fix from `scan()`) so same-
     /// transaction SELECT/UPDATE sees rows that were just inserted.
