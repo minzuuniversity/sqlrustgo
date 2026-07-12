@@ -8,6 +8,7 @@ pub mod buffer_pool;
 pub mod checkpoint;
 pub mod engine;
 pub mod file_storage;
+pub mod io_delay;
 pub mod page;
 pub mod predicate;
 pub mod read_write_split;
@@ -29,6 +30,7 @@ pub use engine::{
     TriggerEvent, TriggerInfo, TriggerTiming, UniqueConstraint, Value,
 };
 pub use file_storage::FileStorage;
+pub use io_delay::maybe_delay;
 pub use page::Page;
 pub use recovery_engine::{RecoveryEngine, RecoveryEngineImpl, RecoveryReport};
 pub use vtu_guard::VtuGuard;
