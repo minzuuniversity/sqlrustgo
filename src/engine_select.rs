@@ -6,6 +6,7 @@
 //!   - rows.len() >= PARALLEL_MIN_ROWS (currently 500_000, see crates/executor/src/parallel_executor.rs)
 //!   - self.parallel_degree > 1 (env SQLRUSTGO_EXECUTOR_PARALLELISM or --executor-parallelism)
 //!   - no correlated subquery in WHERE (would break parallel eval_predicate)
+//!
 //! Tracing spans (RUST_LOG=sqlrustgo=trace) reveal whether the path engages at runtime.
 use crate::engine_utils::*;
 use crate::expr_utils::*;
