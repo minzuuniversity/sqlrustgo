@@ -53,13 +53,13 @@
 
 ## 8. Validation gates
 
-- [ ] 8.1 `cargo build --test tpch_sf1_22_vs_3engines_test` exits 0
-- [ ] 8.2 `cargo test --test tpch_sf1_22_vs_3engines_test` (no `--ignored`) skips cleanly when the fixture is absent
-- [ ] 8.3 `cargo test --test tpch_sf1_22_vs_3engines_test -- --include-ignored` runs 22/22 queries PASS in the 10-minute budget
-- [ ] 8.4 `bash scripts/tpch_sf1_baseline.sh --dry-run` exits 0
-- [ ] 8.5 `bash scripts/tpch_sf1_baseline.sh` exits 0 and produces the report
-- [ ] 8.6 `cargo clippy --all-features -- -D warnings` exits 0
-- [ ] 8.7 `cargo fmt --check --all` exits 0
+- [x] 8.1 `cargo build --test tpch_sf1_22_vs_3engines_test` exits 0
+- [x] 8.2 `cargo test --test tpch_sf1_22_vs_3engines_test` (no `--ignored`) skips cleanly when the fixture is absent
+- [ ] 8.3 `cargo test --test tpch_sf1_22_vs_3engines_test -- --include-ignored` runs 22/22 queries PASS in the 10-minute budget (blocked on V310-11a/b + SF=1.0 fixture present at /tmp/tpch-sf1)
+- [x] 8.4 `bash scripts/tpch_sf1_baseline.sh --dry-run` exits 0
+- [ ] 8.5 `bash scripts/tpch_sf1_baseline.sh` exits 0 and produces the report (blocked on 8.3)
+- [x] 8.6 `cargo clippy --all-features -- -D warnings` exits 0
+- [x] 8.7 `cargo fmt --check --all` exits 0
 
 ## 9. Commit and push
 
