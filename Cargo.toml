@@ -44,6 +44,9 @@ members = [
     "crates/types",
     "crates/unified-query",
     "crates/wal-verification",
+    "tools/graph-cli",
+    "tools/sqlrustgo-gate",
+    "tools/xtask",
 ]
 
 [workspace.package]
