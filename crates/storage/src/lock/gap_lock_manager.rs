@@ -178,8 +178,9 @@ impl GapLockManager {
         lock_type: GapLockType,
         is_insert_intention: bool,
     ) -> bool {
+        let mut locks = self.locks.lock();
+
         // Check if this transaction already holds a conflicting lock
-        let locks = self.locks.lock();
         let table_locks = locks.get(table);
 
         if let Some(table_locks) = table_locks {
@@ -197,8 +198,7 @@ impl GapLockManager {
                     &existing.range_end,
                 ) && !is_gap_lock_compatible(&existing.lock_type, &lock_type)
                 {
-                    // Conflict - increment block count
-                    drop(locks);
+                    // Conflict - increment block count and return false
                     let mut block_count = self.block_count.lock();
                     *block_count += 1;
                     return false;
@@ -207,7 +207,6 @@ impl GapLockManager {
         }
 
         // No conflict - acquire the lock
-        let mut locks = self.locks.lock();
         let table_locks = locks.entry(table.to_string()).or_insert_with(Vec::new);
 
         let new_lock = GapLock::new(
@@ -349,8 +348,9 @@ mod tests {
             false,
         ));
 
-        // Tx2 cannot acquire overlapping gap lock
-        assert!(!manager.acquire_gap(
+        // Tx2 can also acquire shared gap lock on overlapping range
+        // (Shared locks don't conflict with each other - only InsertIntention/Exclusive do)
+        assert!(manager.acquire_gap(
             2,
             "t1",
             Some("15".to_string()),
@@ -369,10 +369,20 @@ mod tests {
             false,
         ));
 
+        // But InsertIntention conflicts with existing Shared lock
+        assert!(!manager.acquire_gap(
+            3,
+            "t1",
+            Some("15".to_string()),
+            Some("25".to_string()),
+            GapLockType::InsertIntention,
+            true,
+        ));
+
         // Release all locks for tx1
         manager.release_all(1);
 
-        // Now tx2's lock should be unaffected
+        // Tx2's lock should still be held
         assert!(manager.has_locks(2, "t1"));
         assert!(!manager.has_locks(1, "t1"));
     }
@@ -479,35 +489,35 @@ mod tests {
         // Initial block count is 0
         assert_eq!(manager.get_block_count(), 0);
 
-        // Acquire a lock
+        // Acquire an exclusive gap lock
         assert!(manager.acquire_gap(
             1,
             "t1",
             Some("10".to_string()),
             Some("20".to_string()),
-            GapLockType::Shared,
+            GapLockType::Exclusive,
             false,
         ));
 
-        // Conflicting lock is blocked
+        // Conflicting exclusive lock is blocked
         assert!(!manager.acquire_gap(
             2,
             "t1",
             Some("15".to_string()),
             Some("25".to_string()),
-            GapLockType::Shared,
+            GapLockType::Exclusive,
             false,
         ));
 
         assert_eq!(manager.get_block_count(), 1);
 
-        // Another blocked lock
+        // Another blocked exclusive lock
         assert!(!manager.acquire_gap(
             3,
             "t1",
             Some("12".to_string()),
             Some("18".to_string()),
-            GapLockType::Shared,
+            GapLockType::Exclusive,
             false,
         ));
 
