@@ -108,3 +108,29 @@ Per-version plan classification: docs/releases/v3.10.0/plans/INDEX.md
 - Issue #3732, [V310-11] TPC-H SF=1 22/22 闭环 (P1, ga-p0-tpch)
 - Branch: `opencode/issue-3732-tpch-sf1` (基于 `develop/v3.10.0` @ `9a47d397`)
 - PR: 待 push 到 Gitea 252 后创建
+
+## v3.10.0-rc.1 (2026-07-12)
+
+### Features
+
+- **F-16 Gap Locking**: GapLockManager infrastructure integrated into FileStorage
+  - `GapLockManager` with parking_lot::Mutex for thread-safety
+  - `FileStorage::new_with_lock_manager()` for GapLockManager setup
+  - `BTreeIndex` gap lock integration methods ready
+  - `StorageEngine::release_all_gap_locks()` on commit/rollback
+
+- **P3 Parallel Storage Scan**: FileStorage::parallel_scan() implemented
+  - Returns partitions as `Box<dyn Iterator>` for parallel processing
+  - Consistent behavior with MemoryStorage::parallel_scan()
+
+### Bug Fixes
+
+- Fixed deadlock in GapLockManager::acquire_gap()
+- Fixed test expectations per SQL standard (Shared locks don't conflict)
+- Fixed lib.rs to export WalManager types
+
+### Tests
+
+- 5 GapLockManager tests: all passing
+- 3 FileStorage parallel_scan tests: all passing
+- 91 FileStorage tests: all passing
