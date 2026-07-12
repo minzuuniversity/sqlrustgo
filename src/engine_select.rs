@@ -15,6 +15,11 @@ use sqlrustgo_executor::join::hash_join::multi_way_hash_chain;
 use sqlrustgo_executor::parallel_executor::{
     ParallelExecutor, ParallelVolcanoExecutor, PARALLEL_MIN_ROWS,
 };
+use sqlrustgo_executor::simd_eval::{
+    BatchPredicate, BitMask, EqualsPredicate, GreaterThanOrEqualPredicate,
+    GreaterThanPredicate, LessThanOrEqualPredicate, LessThanPredicate,
+    NotEqualPredicate,
+};
 use sqlrustgo_parser::{
     get_and_clear_derived_subqueries, AggregateCall, AggregateFunction, Expression,
     JoinClause as ParserJoinClause, JoinType, SelectStatement,
@@ -2370,12 +2375,158 @@ fn decode_value_key(s: &str) -> Value {
 }
 
 impl<S: StorageEngine + 'static> ExecutionEngine<S> {
+    /// Issue #3703 / Layer 3: SIMD batch eval fast path.
+    ///
+    /// Detects a simple `col <op> literal` predicate and processes the
+    /// whole column in one pass via `simd_eval` instead of calling
+    /// `eval_predicate` per-row. Returns Some(filtered rows) on success,
+    /// or None to fall through to the scalar path.
+    ///
+    /// Supported shapes: `col <op> literal` and `literal <op> col` (with
+    /// operator auto-inversion). Operators: `<`, `<=`, `>`, `>=`, `=`, `!=`.
+    /// Values must be i64. NULLs coerce to 0 (NULLs compare false, so
+    /// they get dropped — same as scalar path semantics).
+    fn filter_partitions_simd(
+        &self,
+        partitions: Vec<Vec<Vec<Value>>>,
+        where_expr: &Expression,
+        table_info: &TableInfo,
+    ) -> Option<Vec<Vec<Value>>> {
+        let start = std::time::Instant::now();
+        let (col_idx, op, lit) = match Self::is_batchable_predicate(where_expr, table_info) {
+            Some(v) => v,
+            None => return None,
+        };
+
+        // Per-partition SIMD eval. Each partition is processed independently:
+        //   1. Extract i64 column values for THIS partition
+        //   2. Process in 64-element chunks (BitMask size)
+        //   3. Keep rows where the corresponding mask bit is set
+        // Then flatten across partitions.
+        let mut kept: Vec<Vec<Value>> = Vec::new();
+        for partition in &partitions {
+            let n = partition.len();
+            if n == 0 {
+                continue;
+            }
+            // Extract column values for this partition
+            let values: Vec<i64> = partition
+                .iter()
+                .map(|row| {
+                    row.get(col_idx)
+                        .and_then(Value::as_integer)
+                        .unwrap_or(0)
+                })
+                .collect();
+
+            // Process in chunks of 64 (BitMask capacity)
+            for (chunk_idx, chunk) in values.chunks(64).enumerate() {
+                let mask: BitMask = match op.as_str() {
+                    "<" => <LessThanPredicate as BatchPredicate>::eval_batch_i64(
+                        &LessThanPredicate { threshold: lit }, chunk),
+                    "<=" => <LessThanOrEqualPredicate as BatchPredicate>::eval_batch_i64(
+                        &LessThanOrEqualPredicate { threshold: lit }, chunk),
+                    ">" => <GreaterThanPredicate as BatchPredicate>::eval_batch_i64(
+                        &GreaterThanPredicate { threshold: lit }, chunk),
+                    ">=" => <GreaterThanOrEqualPredicate as BatchPredicate>::eval_batch_i64(
+                        &GreaterThanOrEqualPredicate { threshold: lit }, chunk),
+                    "=" => <EqualsPredicate as BatchPredicate>::eval_batch_i64(
+                        &EqualsPredicate { value: lit }, chunk),
+                    "!=" => <NotEqualPredicate as BatchPredicate>::eval_batch_i64(
+                        &NotEqualPredicate { value: lit }, chunk),
+                    _ => return None,
+                };
+                // Map mask bit i → row at chunk_idx*64 + i in this partition
+                let base = chunk_idx * 64;
+                let upper = (base + chunk.len()).min(n);
+                for i in base..upper {
+                    if mask.is_set(i - base) {
+                        kept.push(partition[i].clone());
+                    }
+                }
+            }
+        }
+
+        tracing::debug!(
+            target: "sqlrustgo.parallel.simd",
+            "SIMD fast path: col_idx={}, op={}, lit={}, rows_in={}, rows_out={}, elapsed_us={}",
+            col_idx, op, lit,
+            partitions.iter().map(|p| p.len()).sum::<usize>(),
+            kept.len(),
+            start.elapsed().as_micros()
+        );
+
+        Some(kept)
+    }
+
+    /// Detect simple batchable predicates: `col <op> literal` or
+    /// `literal <op> col`. Returns `(col_idx, op_string, literal)`.
+    /// Returns None for any non-batchable shape (caller falls back to scalar).
+    fn is_batchable_predicate(
+        expr: &Expression,
+        table_info: &TableInfo,
+    ) -> Option<(usize, String, i64)> {
+        let (left, op_str, right) = match expr {
+            Expression::BinaryOp(l, op, r) => (l, op.as_str(), r),
+            _ => return None,
+        };
+        // Multi-char ops: check < <= > >= = != explicitly. Using
+        // matches! on `&str` slices is exact-equality, so "<=" does NOT
+        // match "<" — they're distinct patterns.
+        if !matches!(op_str, "<" | "<=" | ">" | ">=" | "=" | "!=") {
+            return None;
+        }
+        // Pattern A: col <op> literal
+        if let (Expression::Identifier(col_name), Expression::Literal(lit_s)) =
+            (&**left, &**right)
+        {
+            let col_idx = table_info
+                .columns
+                .iter()
+                .position(|c| c.name == *col_name)?;
+            let lit = lit_s.parse::<i64>().ok()?;
+            return Some((col_idx, op_str.to_string(), lit));
+        }
+        // Pattern B: literal <op> col  (auto-invert operator)
+        if let (Expression::Literal(lit_s), Expression::Identifier(col_name)) =
+            (&**left, &**right)
+        {
+            let col_idx = table_info
+                .columns
+                .iter()
+                .position(|c| c.name == *col_name)?;
+            let lit = lit_s.parse::<i64>().ok()?;
+            let inverted = match op_str {
+                "<" => ">",
+                ">" => "<",
+                "<=" => ">=",
+                ">=" => "<=",
+                "=" => "=",
+                "!=" => "!=",
+                _ => return None,
+            };
+            return Some((col_idx, inverted.to_string(), lit));
+        }
+        None
+    }
+
     fn filter_partitions_parallel(
         &self,
         partitions: Vec<Vec<Vec<Value>>>,
         where_expr: &Expression,
         table_info: &TableInfo,
     ) -> Vec<Vec<Value>> {
+        // Layer 3 SIMD fast path: filter the whole column in one
+        // batch call instead of one eval_predicate per row.
+        if let Some(filtered) = self.filter_partitions_simd(
+            partitions.clone(),
+            &where_expr,
+            &table_info,
+        ) {
+            return filtered;
+        }
+
+        // Fallback: original rayon-par scalar path.
         use rayon::prelude::*;
         let where_expr = where_expr.clone();
         let table_info = table_info.clone();
