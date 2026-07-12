@@ -49,9 +49,13 @@ use sqlrustgo_parser::{
 use sqlrustgo_storage::checkpoint::{CheckpointManager, CheckpointMetadata};
 use sqlrustgo_storage::{
     recovery_engine::{RecoveryEngine, RecoveryEngineImpl},
-    ColumnDefinition, FileBackedWalManager, FileStorage, MemoryStorage, StorageEngine, TableInfo,
+    wal::{FileBackedWalManager, MemoryWalManager},
+    ColumnDefinition, FileStorage, MemoryStorage, StorageEngine, TableInfo,
     WalStorage,
 };
+use sqlrustgo_optimizer::rules::{BinaryOperator, Expr};
+use sqlrustgo_optimizer::unified_cost::UnifiedCostModel;
+use sqlrustgo_optimizer::unified_plan::UnifiedPlan;
 use sqlrustgo_transaction::{IsolationLevel as TmIsolationLevel, TransactionManager, TxId};
 use sqlrustgo_types::Value as SqlValue;
 use std::collections::HashMap;
@@ -76,6 +80,8 @@ pub struct ExecutionEngine<S: StorageEngine> {
     /// kept for future re-introduction without changing the public struct layout.
     #[allow(dead_code)]
     pub(crate) checkpoint_manager: Option<Arc<parking_lot::RwLock<CheckpointManager>>>,
+    /// Cost model for CBO-driven decisions (parallelism, query planning).
+    pub(crate) cost_model: parking_lot::RwLock<UnifiedCostModel>,
     pub(crate) parallel_degree: usize,
     pub(crate) stmt_cache: sqlrustgo_cache::PreparedStatementCache,
     /// View definitions: view_name → CREATE VIEW SQL text.
@@ -151,6 +157,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             checkpoint_manager: None,
             parallel_degree,
             stmt_cache: sqlrustgo_cache::PreparedStatementCache::new(100),
+            cost_model: parking_lot::RwLock::new(UnifiedCostModel::default_model(0, 0)),
             views: HashMap::new(),
         }
     }
@@ -198,6 +205,106 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         self.stats.clone()
     }
 
+    /// Read-only access to the underlying storage handle.
+
+    /// Determine whether a SELECT query should be parallelized.
+    ///
+    /// Uses the CBO cost model when enabled, otherwise falls back to the
+    /// hardcoded `PARALLEL_MIN_ROWS` threshold from the executor crate.
+    ///
+    /// `table_name` — the physical table name (alias stripped).
+    /// `where_clause` — optional WHERE expression (used for selectivity).
+    /// `rows` — number of rows in the scan result.
+    pub fn should_parallelize_query(
+        &self,
+        table_name: &str,
+        where_clause: Option<&Expression>,
+        rows: usize,
+    ) -> bool {
+        if !self.cbo_enabled {
+            return rows >= sqlrustgo_executor::parallel_executor::PARALLEL_MIN_ROWS;
+        }
+        let plan = match where_clause {
+            Some(where_expr) => UnifiedPlan::Filter {
+                predicate: parser_expr_to_optimizer_expr(where_expr),
+                input: Box::new(UnifiedPlan::TableScan {
+                    table_name: table_name.to_string(),
+                    projection: None,
+                }),
+            },
+            None => UnifiedPlan::TableScan {
+                table_name: table_name.to_string(),
+                projection: None,
+            },
+        };
+        let cost_model = self.cost_model.read();
+        cost_model.should_parallelize(&plan)
+    }
+
+    /// Sync table statistics from ExecutionStats into the cost model.
+    pub fn update_cost_model_stats(&self) {
+        let stats = self.stats.read();
+        let mut cost_model = self.cost_model.write();
+        for (name, tstats) in &stats.table_stats {
+            cost_model.update_table_stats(name.clone(), tstats.row_count, 0);
+        }
+    }
+}
+
+// ── Expression conversion helpers ────────────────────────────────────
+// Convert sqlrustgo_parser::Expression → sqlrustgo_optimizer::rules::Expr
+// for CBO selectivity estimation. Not a complete conversion — focuses on
+// predicates relevant to filter selectivity (comparisons, AND/OR, NOT).
+
+/// Convert a parser BinaryOp string to optimizer BinaryOperator.
+fn parser_binop_to_optimizer(op: &str) -> BinaryOperator {
+    match op.to_uppercase().as_str() {
+        "=" => BinaryOperator::Eq,
+        "!=" | "<>" => BinaryOperator::NotEq,
+        "<" => BinaryOperator::Lt,
+        "<=" => BinaryOperator::LtEq,
+        ">" => BinaryOperator::Gt,
+        ">=" => BinaryOperator::GtEq,
+        "+" => BinaryOperator::Plus,
+        "-" => BinaryOperator::Minus,
+        "*" => BinaryOperator::Multiply,
+        "/" => BinaryOperator::Divide,
+        _ => BinaryOperator::Eq,
+    }
+}
+
+/// Convert a parser Expression to optimizer Expr for selectivity estimation.
+fn parser_expr_to_optimizer_expr(expr: &Expression) -> Expr {
+    match expr {
+        Expression::Identifier(name) => Expr::Column(name.clone()),
+        Expression::Literal(s) => Expr::Literal(s.clone()),
+        Expression::BinaryOp(left, op, right) => match op.to_uppercase().as_str() {
+            "AND" => Expr::And(
+                Box::new(parser_expr_to_optimizer_expr(left)),
+                Box::new(parser_expr_to_optimizer_expr(right)),
+            ),
+            "OR" => Expr::Or(
+                Box::new(parser_expr_to_optimizer_expr(left)),
+                Box::new(parser_expr_to_optimizer_expr(right)),
+            ),
+            other => Expr::BinaryExpr {
+                left: Box::new(parser_expr_to_optimizer_expr(left)),
+                op: parser_binop_to_optimizer(other),
+                right: Box::new(parser_expr_to_optimizer_expr(right)),
+            },
+        },
+        // For complex expressions (subqueries, function calls, etc.), return a
+        // neutral "1 = 1" which has 0.5 selectivity — keeps the CBO decision
+        // based primarily on row count.
+        _ => Expr::BinaryExpr {
+            left: Box::new(Expr::Literal("1".into())),
+            op: BinaryOperator::Eq,
+            right: Box::new(Expr::Literal("1".into())),
+        },
+    }
+
+}
+impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     /// Read-only access to the underlying storage handle.
     ///
     /// Returned as `&Arc<parking_lot::RwLock<S>>` so callers can lock it themselves
