@@ -3020,10 +3020,7 @@ mod parallel_scan_tests {
             assert!(!partitions.is_empty(), "Should have at least 1 partition");
 
             // Collect all rows from all partitions
-            let total_rows: usize = partitions
-                .into_iter()
-                .map(|p| p.count())
-                .sum();
+            let total_rows: usize = partitions.into_iter().map(|p| p.count()).sum();
             assert_eq!(total_rows, 100, "Should return all 100 rows");
         }
 
@@ -3038,7 +3035,10 @@ mod parallel_scan_tests {
         let storage = FileStorage::new(temp_dir.clone()).unwrap();
         // Should return empty vec for non-existent table
         let partitions = storage.parallel_scan("nonexistent", 4).unwrap();
-        assert!(partitions.is_empty(), "Non-existent table should return empty partitions");
+        assert!(
+            partitions.is_empty(),
+            "Non-existent table should return empty partitions"
+        );
 
         let _ = std::fs::remove_dir_all(&temp_dir);
     }
