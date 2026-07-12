@@ -424,7 +424,7 @@ impl BTreeIndex {
 
         // Acquire gap lock around the key position
         // For a key 'k', we lock the gap between the previous key and next key
-        let key_str = key.to_string();
+        let _key_str = key.to_string();
         let prev_key = (key - 1).to_string();
         let next_key = (key + 1).to_string();
 

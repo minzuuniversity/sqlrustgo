@@ -15,7 +15,6 @@
 //! 3. Each thread probes its build partition against matching probe partition
 //! 4. Main thread concatenates results
 
-use sqlrustgo_storage::TableInfo;
 use sqlrustgo_types::Value;
 use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;

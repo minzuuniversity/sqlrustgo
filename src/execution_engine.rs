@@ -204,8 +204,6 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         self.stats.clone()
     }
 
-    /// Read-only access to the underlying storage handle.
-
     /// Determine whether a SELECT query should be parallelized.
     ///
     /// Uses the CBO cost model when enabled, otherwise falls back to the
