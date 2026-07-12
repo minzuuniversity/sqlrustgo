@@ -185,6 +185,105 @@ impl BatchPredicate for EqualsPredicate {
     }
 }
 
+/// Predicate: value != literal
+pub struct NotEqualPredicate {
+    pub value: i64,
+}
+
+impl BatchPredicate for NotEqualPredicate {
+    fn eval_batch_i64(&self, values: &[i64]) -> BitMask {
+        let mut mask = BitMask::all_false();
+        let len = values.len().min(64);
+
+        let mut i = 0;
+        while i + 4 <= len {
+            let pass_0 = (values[i] != self.value) as u64;
+            let pass_1 = (values[i + 1] != self.value) as u64;
+            let pass_2 = (values[i + 2] != self.value) as u64;
+            let pass_3 = (values[i + 3] != self.value) as u64;
+
+            let chunk = pass_0 | (pass_1 << 1) | (pass_2 << 2) | (pass_3 << 3);
+            mask.bits |= chunk << i;
+            i += 4;
+        }
+
+        while i < len {
+            if values[i] != self.value {
+                mask.bits |= 1 << i;
+            }
+            i += 1;
+        }
+
+        mask
+    }
+}
+
+/// Predicate: value <= threshold
+pub struct LessThanOrEqualPredicate {
+    pub threshold: i64,
+}
+
+impl BatchPredicate for LessThanOrEqualPredicate {
+    fn eval_batch_i64(&self, values: &[i64]) -> BitMask {
+        let mut mask = BitMask::all_false();
+        let len = values.len().min(64);
+
+        let mut i = 0;
+        while i + 4 <= len {
+            let pass_0 = (values[i] <= self.threshold) as u64;
+            let pass_1 = (values[i + 1] <= self.threshold) as u64;
+            let pass_2 = (values[i + 2] <= self.threshold) as u64;
+            let pass_3 = (values[i + 3] <= self.threshold) as u64;
+
+            let chunk = pass_0 | (pass_1 << 1) | (pass_2 << 2) | (pass_3 << 3);
+            mask.bits |= chunk << i;
+            i += 4;
+        }
+
+        while i < len {
+            if values[i] <= self.threshold {
+                mask.bits |= 1 << i;
+            }
+            i += 1;
+        }
+
+        mask
+    }
+}
+
+/// Predicate: value >= threshold
+pub struct GreaterThanOrEqualPredicate {
+    pub threshold: i64,
+}
+
+impl BatchPredicate for GreaterThanOrEqualPredicate {
+    fn eval_batch_i64(&self, values: &[i64]) -> BitMask {
+        let mut mask = BitMask::all_false();
+        let len = values.len().min(64);
+
+        let mut i = 0;
+        while i + 4 <= len {
+            let pass_0 = (values[i] >= self.threshold) as u64;
+            let pass_1 = (values[i + 1] >= self.threshold) as u64;
+            let pass_2 = (values[i + 2] >= self.threshold) as u64;
+            let pass_3 = (values[i + 3] >= self.threshold) as u64;
+
+            let chunk = pass_0 | (pass_1 << 1) | (pass_2 << 2) | (pass_3 << 3);
+            mask.bits |= chunk << i;
+            i += 4;
+        }
+
+        while i < len {
+            if values[i] >= self.threshold {
+                mask.bits |= 1 << i;
+            }
+            i += 1;
+        }
+
+        mask
+    }
+}
+
 /// Extract a column of i64 values from a columnar record batch
 ///
 /// Returns None if the column doesn't exist or values are not i64.
