@@ -2,11 +2,11 @@ use sqlrustgo_types::Value;
 use tracing::instrument;
 
 /// Minimum row count to engage parallel filter path. v3.10.0 Issue #3703:
-/// raised from 100K to 500K after benchmarking showed 100K-200K rows fall
-/// below the break-even point where partition+merge overhead < parallel
-/// speedup. See report: /tmp/sqlrustgo-parallel-executor-report.md
-/// (Phase 1 quick win per DeepSeek's review).
-pub const PARALLEL_MIN_ROWS: usize = 500_000;
+/// originally 500K, lowered from 500K to 100K per Issue #3776 / F-36 fix
+/// after Arc-shared iterator (zero-copy partitions) reduced per-partition
+/// overhead below 50K-row break-even. See design.md at
+/// openspec/changes/issue-3768-parallel-perf-fix/.
+pub const PARALLEL_MIN_ROWS: usize = 100_000;
 
 pub trait ParallelExecutor: Send + Sync {
     fn parallel_degree(&self) -> usize;

@@ -3,11 +3,12 @@
 
 use crate::bplus_tree::BPlusTree;
 use crate::engine::{
-    ColumnDefinition, ForeignKeyConstraint, Record, RowFilter, RowMutation, StorageEngine,
-    TableData, TableInfo, TriggerInfo, UniqueConstraint,
+    ColumnDefinition, ForeignKeyConstraint, Record, RowFilter, RowMutation, SharedSliceIter,
+    StorageEngine, TableData, TableInfo, TriggerInfo, UniqueConstraint,
 };
 use sqlrustgo_types::{SqlError, SqlResult, Value};
 use std::collections::HashMap;
+use std::sync::Arc;
 use std::fs::{self, File};
 use std::io::{BufReader, BufWriter, Write};
 use std::path::PathBuf;
@@ -2522,11 +2523,15 @@ impl StorageEngine for FileStorage {
         let mut partitions: Vec<Box<dyn Iterator<Item = Record> + Send>> =
             Vec::with_capacity(num_partitions);
         let mut cur = 0;
+        // v3.10.0 Issue #3776 / F-36: Arc-shared, no per-partition Vec clone
+        let shared: Arc<Vec<Record>> = Arc::new(rows);
         for i in 0..num_partitions {
             let size = if i < rem { base + 1 } else { base };
             if size > 0 {
-                let partition: Vec<Record> = rows[cur..cur + size].to_vec();
-                partitions.push(Box::new(partition.into_iter()));
+                let part = Arc::clone(&shared);
+                partitions.push(Box::new(
+                    SharedSliceIter::new(part, cur, cur + size)
+                ));
             }
             cur += size;
         }

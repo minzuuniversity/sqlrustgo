@@ -1,0 +1,24 @@
+name: issue-3768-parallel-perf-fix
+issue: 3776
+parent: issue-3767-parallel-main-path-integration
+type: performance-fix
+created: 2026-07-12
+status: proposed
+description: |
+  Eliminate parallel-execution throughput regression.
+  Fix MemoryStorage::FileStorage parallel_scan deep-copy and wire
+  CBO should_parallelize_with() into the engine_select filter guard.
+scope:
+  - memory: zero-copy shared iterators
+  - cbo: wire CBO into existing guard
+  - tests: regression baselines (parallel_scan_perf_baseline)
+components:
+  - crates/storage/src/engine.rs
+  - crates/storage/src/file_storage.rs
+  - src/engine_select.rs
+  - crates/executor/src/parallel_cbo.rs (NEW)
+acceptance:
+  - parallel_scan(1K, 4) within 10% of scan(1K) wall-clock
+  - parallel_scan(1M, 8) >= 1.5x scan(1M)
+  - peak memory of parallel_scan(1M, 4) < 1.5x scan(1M)
+  - existing INT-2 + parallel tests all pass bit-exact

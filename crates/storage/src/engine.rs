@@ -4,6 +4,7 @@
 use serde::{Deserialize, Serialize};
 pub use sqlrustgo_types::{SqlError, SqlResult, Value};
 use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 
 /// Referential action for foreign key constraints
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -1088,16 +1089,61 @@ impl StorageEngine for MemoryStorage {
         let mut partitions: Vec<Box<dyn Iterator<Item = Record> + Send>> =
             Vec::with_capacity(num_partitions);
         let mut cur = 0;
+        // v3.10.0 Issue #3776 / F-36: Arc-shared, no per-partition Vec clone
+        let shared: Arc<Vec<Record>> = Arc::new((*data).clone());
         for i in 0..num_partitions {
             let size = if i < rem { base + 1 } else { base };
             if size > 0 {
-                // Clone the partition data - each partition gets its own copy
-                let partition: Vec<Record> = data[cur..cur + size].to_vec();
-                partitions.push(Box::new(partition.into_iter()));
+                let part = Arc::clone(&shared);
+                partitions.push(Box::new(
+                    SharedSliceIter::new(part, cur, cur + size)
+                ));
             }
             cur += size;
         }
         Ok(partitions)
+    }
+}
+
+/// Zero-copy iterator over a contiguous slice of an `Arc<Vec<Record>>`.
+/// Each `next()` returns a row clone but no per-partition Vec deep copy.
+#[derive(Debug, Clone)]
+pub struct SharedSliceIter {
+    data: Arc<Vec<Record>>,
+    pos: usize,
+    end: usize,
+}
+
+impl SharedSliceIter {
+    pub fn new(data: Arc<Vec<Record>>, start: usize, end: usize) -> Self {
+        debug_assert!(start <= end);
+        debug_assert!(end <= data.len());
+        Self { data, pos: start, end }
+    }
+
+    pub fn remaining(&self) -> usize {
+        self.end.saturating_sub(self.pos)
+    }
+
+    pub fn strong_count(&self) -> usize {
+        Arc::strong_count(&self.data)
+    }
+}
+
+impl Iterator for SharedSliceIter {
+    type Item = Record;
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.pos < self.end {
+            let r = self.data[self.pos].clone();
+            self.pos += 1;
+            Some(r)
+        } else {
+            None
+        }
+    }
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let rem = self.remaining();
+        (rem, Some(rem))
     }
 }
 
