@@ -210,31 +210,32 @@ impl PartialAggregate {
             // Handle mismatched slot types via promotion
             let result_clone = other_slot.clone();
             match (&mut self.slots[i], other_slot) {
-                (PartialSlot::Count(_) | PartialSlot::CountNonNull(_),
-                 PartialSlot::Sum(_)) => {
+                (PartialSlot::Count(_) | PartialSlot::CountNonNull(_), PartialSlot::Sum(_)) => {
                     // Fresh Count slot being merged with Sum slot
                     // The merging group has no Sum contribution yet, but
                     // we need to keep the Sum data. Promote self.
                     self.slots[i] = result_clone;
                 }
-                (PartialSlot::Count(_) | PartialSlot::CountNonNull(_),
-                 PartialSlot::Avg(_)) => {
+                (PartialSlot::Count(_) | PartialSlot::CountNonNull(_), PartialSlot::Avg(_)) => {
                     self.slots[i] = result_clone;
                 }
-                (PartialSlot::Count(_) | PartialSlot::CountNonNull(_),
-                 PartialSlot::MinMax(_)) => {
+                (PartialSlot::Count(_) | PartialSlot::CountNonNull(_), PartialSlot::MinMax(_)) => {
                     self.slots[i] = result_clone;
                 }
                 (PartialSlot::Sum(a), PartialSlot::Sum(b)) => Self::merge_sum(a, b),
                 (PartialSlot::Avg(a), PartialSlot::Avg(b)) => Self::merge_avg(a, b),
                 (PartialSlot::MinMax(a), PartialSlot::MinMax(b)) => {
                     if let (Some(x), Some(y)) = (&a.min, &b.min) {
-                        if y < x { a.min = Some(y.clone()); }
+                        if y < x {
+                            a.min = Some(y.clone());
+                        }
                     } else if a.min.is_none() {
                         a.min = b.min.clone();
                     }
                     if let (Some(x), Some(y)) = (&a.max, &b.max) {
-                        if y > x { a.max = Some(y.clone()); }
+                        if y > x {
+                            a.max = Some(y.clone());
+                        }
                     } else if a.max.is_none() {
                         a.max = b.max.clone();
                     }
@@ -314,11 +315,7 @@ pub struct GroupKey(pub String);
 /// Evaluate a simple expression against a row.
 /// Supports Identifier (column reference) and Literal (constant).
 /// Other expressions return Value::Null.
-pub fn evaluate_simple_expr(
-    expr: &Expression,
-    row: &[Value],
-    table_info: &TableInfo,
-) -> Value {
+pub fn evaluate_simple_expr(expr: &Expression, row: &[Value], table_info: &TableInfo) -> Value {
     match expr {
         Expression::Identifier(name) => {
             let target = name.to_lowercase();
@@ -391,8 +388,7 @@ impl ParallelGroupBy {
         group_keys: Vec<GroupKey>,
     ) -> Vec<Vec<(GroupKey, Vec<Value>)>> {
         let n = self.degree;
-        let mut partitions: Vec<Vec<(GroupKey, Vec<Value>)>> =
-            (0..n).map(|_| Vec::new()).collect();
+        let mut partitions: Vec<Vec<(GroupKey, Vec<Value>)>> = (0..n).map(|_| Vec::new()).collect();
         for (row, key) in rows.into_iter().zip(group_keys.into_iter()) {
             let mut hasher = DefaultHasher::new();
             key.0.hash(&mut hasher);
@@ -465,26 +461,20 @@ impl ParallelGroupBy {
                 use rayon::prelude::*;
                 partitions
                     .into_par_iter()
-                    .map(|p| {
-                        self.partial_aggregate_partition(p, aggregate_calls, table_info)
-                    })
+                    .map(|p| self.partial_aggregate_partition(p, aggregate_calls, table_info))
                     .collect()
             }
             #[cfg(not(feature = "parallel-executor"))]
             {
                 partitions
                     .into_iter()
-                    .map(|p| {
-                        self.partial_aggregate_partition(p, aggregate_calls, table_info)
-                    })
+                    .map(|p| self.partial_aggregate_partition(p, aggregate_calls, table_info))
                     .collect()
             }
         } else {
             partitions
                 .into_iter()
-                .map(|p| {
-                    self.partial_aggregate_partition(p, aggregate_calls, table_info)
-                })
+                .map(|p| self.partial_aggregate_partition(p, aggregate_calls, table_info))
                 .collect()
         };
 
