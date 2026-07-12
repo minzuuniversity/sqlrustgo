@@ -8187,7 +8187,11 @@ mod tests {
             Statement::AlterTable(a) => {
                 assert_eq!(a.table_name, "users");
                 match a.operation {
-                    AlterTableOperation::ModifyColumn { name, data_type, nullable } => {
+                    AlterTableOperation::ModifyColumn {
+                        name,
+                        data_type,
+                        nullable,
+                    } => {
                         assert_eq!(name, "age");
                         assert_eq!(data_type, "INTEGER");
                         assert!(nullable);
@@ -11690,4 +11694,3 @@ mod set_op_tests {
         assert!(parse("WITH a AS (SELECT 1), b AS (SELECT 2) SELECT * FROM a, b").is_ok());
     }
 }
-

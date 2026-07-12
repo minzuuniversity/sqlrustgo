@@ -126,7 +126,7 @@ impl RecordBatch {
         let mut new_data: Vec<Vec<Value>> = self
             .data
             .iter()
-            .map(|col| Vec::with_capacity(self.num_rows / 2))
+            .map(|_col| Vec::with_capacity(self.num_rows / 2))
             .collect();
 
         for row_idx in 0..self.num_rows.min(64) {

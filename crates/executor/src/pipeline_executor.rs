@@ -95,9 +95,7 @@ impl<S: StorageEngine> PipelineExecutor<S> {
         // Filter each partition in parallel using rayon
         let filtered: Vec<Vec<Record>> = partitions
             .into_iter()
-            .map(|partition: Vec<Record>| {
-                partition.into_iter().filter(predicate).collect()
-            })
+            .map(|partition: Vec<Record>| partition.into_iter().filter(predicate).collect())
             .collect();
 
         // Merge results
@@ -116,7 +114,9 @@ mod tests {
     use sqlrustgo_storage::engine::MemoryStorage;
 
     fn make_rows(n: usize) -> Vec<Record> {
-        (0..n).map(|i| vec![sqlrustgo_types::Value::Integer(i as i64)]).collect()
+        (0..n)
+            .map(|i| vec![sqlrustgo_types::Value::Integer(i as i64)])
+            .collect()
     }
 
     #[test]
