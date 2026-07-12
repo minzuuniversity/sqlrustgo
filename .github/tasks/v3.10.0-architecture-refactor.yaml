@@ -1,0 +1,194 @@
+# v3.10.0 架构重构 Task 分解
+# 生成日期: 2026-07-12
+# 目标: 并行存储扫描 + Gap Locking + 非唯一索引 + 双路径统一
+# 依据: docs/releases/v3.10.0/ARCHITECTURE_DEBT_ANALYSIS.md
+
+project: v3.10.0-architecture-refactor
+milestone: v3.10.0
+
+phases:
+  - name: Phase 3 - Parallel Storage Scan (P0)
+    duration: 2 weeks
+    priority: P0
+    tasks:
+      - id: P3-1
+        description: "扩展 StorageEngine trait: 添加 parallel_scan() 和 get_partition_boundaries()"
+        files:
+          - crates/storage/src/engine.rs
+        est_loc: 50
+        tests:
+          - test_parallel_scan_interface
+        deps: []
+      - id: P3-2
+        description: "实现 MemoryStorage::parallel_scan() (返回分区迭代器)"
+        files:
+          - crates/storage/src/memory.rs
+        est_loc: 80
+        tests:
+          - test_memory_parallel_scan
+          - test_memory_parallel_scan_empty
+          - test_memory_parallel_scan_single_row
+        deps: [P3-1]
+      - id: P3-3
+        description: "实现 FileStorage::parallel_scan() (多线程读取同一文件不同偏移)"
+        files:
+          - crates/storage/src/file_storage.rs
+        est_loc: 150
+        tests:
+          - test_file_parallel_scan
+          - test_file_parallel_scan_mvcc_snapshot
+        deps: [P3-1]
+      - id: P3-4
+        description: "修改 PipelineExecutor 消费并行迭代器 (替换 partition_scan)"
+        files:
+          - crates/executor/src/pipeline/pipeline_executor.rs
+        est_loc: 120
+        tests:
+          - test_pipeline_parallel_scan
+          - test_pipeline_parallel_scan_with_order_by
+        deps: [P3-2, P3-3]
+      - id: P3-5
+        description: "性能基准对比 (N=1 vs N=8, 1M rows)"
+        files:
+          - benches/parallel_scan_bench.rs
+        est_loc: 60
+        tests: []
+        deps: [P3-4]
+    acceptance:
+      - "加速比 >= 1.8x (N=8 vs N=1) for WHERE k<5000 on 1M rows"
+      - "ps -M 显示 >= 6 个 Rayon worker 处于 R 状态"
+      - "峰值内存 <= 1.5x 串行执行"
+
+  - name: F-16 Gap Locking Integration (P1)
+    duration: 1 week
+    priority: P1
+    tasks:
+      - id: GL-1
+        description: "迁移 GapLockManager 到 storage/lock/ 并泛化 key 类型"
+        files:
+          - crates/storage/src/lock/gap_lock_manager.rs (新建)
+          - tests/gap_locking_test.rs (删除或标记 deprecated)
+        est_loc: 120
+        tests:
+          - test_gap_lock_manager_basic
+          - test_gap_lock_manager_concurrent
+        deps: []
+      - id: GL-2
+        description: "BTreeIndex 添加 gap_lock_manager 字段，insert/delete 调用锁检查"
+        files:
+          - crates/storage/src/bplus_tree/index.rs
+        est_loc: 80
+        tests:
+          - test_btree_insert_with_gap_lock
+          - test_btree_delete_with_gap_lock
+        deps: [GL-1]
+      - id: GL-3
+        description: "事务 commit/rollback 时释放 gap locks"
+        files:
+          - crates/transaction/src/transaction_manager.rs
+        est_loc: 60
+        tests:
+          - test_txn_commit_release_locks
+          - test_txn_rollback_release_locks
+        deps: [GL-2]
+      - id: GL-4
+        description: "并行扫描集成 Gap Lock (跨分区一致性)"
+        files:
+          - crates/executor/src/pipeline/pipeline_executor.rs
+        est_loc: 50
+        tests:
+          - test_parallel_scan_gap_lock_isolation
+        deps: [P3-4, GL-3]
+    acceptance:
+      - "所有事务隔离测试通过 (REPEATABLE_READ 下 Gap Lock 生效)"
+      - "并行扫描 + 并发插入无死锁 (stress test)"
+      - "性能退化 < 5% (与无锁版本对比)"
+
+  - name: Non-unique Index + ARCH-2 (P2/P3)
+    duration: 1 week
+    priority: P2
+    tasks:
+      - id: NI-1
+        description: "BTreeIndex 支持重复键 (修改 insert/search 逻辑)"
+        files:
+          - crates/storage/src/bplus_tree/index.rs
+        est_loc: 150
+        tests:
+          - test_non_unique_insert
+          - test_non_unique_search
+          - test_unique_constraint_check
+        deps: [GL-2]  # 确保锁逻辑也支持非唯一
+      - id: NI-2
+        description: "迁移现有索引测试以覆盖唯一/非唯一两种模式"
+        files:
+          - tests/index_test.rs
+        est_loc: 100
+        tests: []
+        deps: [NI-1]
+      - id: ARCH2-1
+        description: "统一 mysql-server 和 bench-cli 的执行引擎入口"
+        files:
+          - src/main.rs
+          - crates/mysql-server/src/main.rs
+          - crates/server/src/lib.rs (提取公共 Engine)
+        est_loc: 200
+        tests:
+          - test_cross_binary_result_consistency
+        deps: []
+    acceptance:
+      - "非唯一索引查询返回所有匹配行"
+      - "唯一约束在重复插入时正确报错"
+      - "mysql-server 和 bench-cli 对同一查询输出一致"
+
+  - name: Integration & Release (Week 5)
+    duration: 1 week
+    priority: P0
+    tasks:
+      - id: INT-1
+        description: "168h SOAK 测试 (并行 + Gap Lock + 非唯一索引)"
+        files: []
+        est_loc: 0
+        tests: []
+        deps: [P3-5, GL-4, NI-2, ARCH2-1]
+      - id: INT-2
+        description: "更新架构文档 (EXECUTION_PATH.md, ARCHITECTURE_DEBT_ANALYSIS.md)"
+        files:
+          - docs/architecture/EXECUTION_PATH.md
+          - docs/releases/v3.10.0/ARCHITECTURE_DEBT_ANALYSIS.md
+        est_loc: 100
+        tests: []
+        deps: [INT-1]
+      - id: INT-3
+        description: "发布前性能基准报告生成"
+        files: []
+        est_loc: 0
+        tests: []
+        deps: [INT-2]
+
+# Issue 关联
+issues:
+  - id: "#3770"
+    name: "F-16 Gap Locking"
+    status: "in_progress"
+    phase: "F-16 Gap Locking Integration"
+  - id: "#3771"
+    name: "F-23 Clustered Index"
+    status: "deferred"
+    phase: "v3.11.0"
+    reason: "存储格式重构，与并行扫描顺序依赖"
+  - id: "#3770-parent"
+    name: "Parallel Storage Scan Phase 3"
+    status: "todo"
+    phase: "Phase 3 - Parallel Storage Scan"
+    reason: "P0 性能任务，待创建新 Issue"
+
+# 依赖关系图
+# GL-1 可以与 P3-1/P3-2 并行开发 (无依赖)
+# P3-4 依赖 P3-2 和 P3-3
+# GL-4 依赖 P3-4 和 GL-3
+# INT-1 依赖所有其他 phase
+
+# 资源分配建议
+# 开发者 A: 并行存储扫描 (P3-1 -> P3-2 -> P3-3 -> P3-4)
+# 开发者 B: Gap Locking (GL-1 -> GL-2 -> GL-3 -> GL-4)
+# 开发者 A/B: 非唯一索引 + ARCH-2 (在 PR review 等待期间)
