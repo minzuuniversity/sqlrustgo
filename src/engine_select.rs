@@ -13,9 +13,7 @@ use crate::engine_utils::*;
 use crate::expr_utils::*;
 use crate::{ExecutionEngine, ExecutorResult, SqlError, SqlResult, Value};
 use sqlrustgo_executor::join::hash_join::multi_way_hash_chain;
-use sqlrustgo_executor::parallel_executor::{
-    ParallelExecutor, ParallelVolcanoExecutor,
-};
+use sqlrustgo_executor::parallel_executor::{ParallelExecutor, ParallelVolcanoExecutor};
 use sqlrustgo_executor::simd_eval::{
     BatchPredicate, BitMask, EqualsPredicate, GreaterThanOrEqualPredicate, GreaterThanPredicate,
     LessThanOrEqualPredicate, LessThanPredicate, NotEqualPredicate,
