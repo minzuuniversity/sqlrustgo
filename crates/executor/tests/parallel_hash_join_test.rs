@@ -46,19 +46,19 @@ fn test_correctness_n1_vs_n4_simple() {
     ];
 
     let p = ParallelHashJoin::new(4);
-    assert!(p.execute_correctness_check(
-        build,
-        0,
-        probe,
-        0
-    ));
+    assert!(p.execute_correctness_check(build, 0, probe, 0));
 }
 
 #[test]
 fn test_correctness_n1_vs_n4_larger() {
     // Larger test with 100 rows on each side
     let build: Vec<Vec<Value>> = (0..100)
-        .map(|i| vec![Value::Integer((i % 10) as i64), Value::Text(format!("b{}", i))])
+        .map(|i| {
+            vec![
+                Value::Integer((i % 10) as i64),
+                Value::Text(format!("b{}", i)),
+            ]
+        })
         .collect();
     let probe: Vec<Vec<Value>> = (0..50)
         .map(|i| vec![Value::Integer((i % 7) as i64), Value::Integer(i * 10)])
@@ -80,8 +80,14 @@ fn test_partition_deterministic_distribution() {
         vec![vec![Value::Integer(42), Value::Text("b".to_string())]],
         0,
     );
-    let i1 = partitions1.iter().position(|p| p.total_rows() == 1).unwrap();
-    let i2 = partitions2.iter().position(|p| p.total_rows() == 1).unwrap();
+    let i1 = partitions1
+        .iter()
+        .position(|p| p.total_rows() == 1)
+        .unwrap();
+    let i2 = partitions2
+        .iter()
+        .position(|p| p.total_rows() == 1)
+        .unwrap();
     assert_eq!(i1, i2);
 }
 
