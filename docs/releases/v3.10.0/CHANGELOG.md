@@ -79,3 +79,32 @@ v3.10.0 开发开始。`develop/v3.10.0` 分支待创建 (从 `develop/v3.9.0` �
 Per-version state file: docs/releases/v3.10.0/STAGE.yaml
 Per-version plan classification: docs/releases/v3.10.0/plans/INDEX.md
 -->
+
+## 2026-07-12 — #3732 G4 gate 入口 + pre-existing rustfmt/clippy drift 修复
+
+[Issue #3732 / V310-11c] TPC-H SF=1 22/22 闭环子任务 V310-11c 的 gate 入口与测试基础设施落地。V310-11a/b (parser 修复 + 12 个查询实现) 仍待推进；本批不达成 22/22 PASS。
+
+### Changed
+
+| Commit | 内容 | 验证 |
+| --- | --- | --- |
+| `321e98aa` | `chore(fmt,clippy)`: reconcile pre-existing rustfmt + clippy drift across 16 files (allow `cargo fmt --check --all` + `cargo clippy --all-features -- -D warnings` to exit 0 on v3.10.0 baseline). 与 #3732 主题无关的前置 commit | cargo fmt --check --all exit 0; cargo clippy --all-features -- -D warnings exit 0 |
+| `512b383c` | `feat(tpch) #3732`: G4 gate 入口 (`scripts/gate/check_tpch_sf1.sh`) + gate 合约测试 (`tests/tpch_sf1_gate_contract_test.rs` 3/3 PASS) + `TPCH_SF1_DIR` 环境变量注入 + canonical dbgen lineitem count 6,001,215 + rayon dep 重构 (optional → workspace) + 暴露的 pre-existing `TaskScheduler` trait import 缺失修复 | gate contract test 3/3 PASS; gate --dry-run exit 0; baseline --dry-run exit 0 |
+
+### Documentation
+
+- `docs/governance/GATE_CONDITIONS.md` G4 入口从 `scripts/tpch/run_tpch.sh --sf 1` 更新为 `bash scripts/gate/check_tpch_sf1.sh --sf1-dir $SF1_DIR` (issue #3732, v3.10.0+)
+- `docs/releases/v3.10.0/plans/V310_ISSUES_PLAN.md` V310-11c 标记 ✅ 部分完成（gate 入口 + 测试基础设施，commit `512b383c`；22/22 PASS 仍需 V310-11a/b）
+- `openspec/changes/2026-06-18-tpch-sf1-baseline/tasks.md` 步骤 8.1/8.2/8.4/8.6/8.7 勾选；8.3/8.5 标注 blocked on V310-11a/b + SF=1.0 fixture
+
+### Known Gap (待 V310-11a/b)
+
+- V310-11a: 修复 Q7/Q8/Q9/Q12 parser 错误 (32h)
+- V310-11b: 实现 12 个未实现 TPC-H 查询 (40h)
+- SF=1.0 fixture 落地 (`/tmp/tpch-sf1/*.tbl` ~1.1 GB) — Mac mini 1GB 磁盘不可生成，需 75GB+ 平台
+
+### Refs
+
+- Issue #3732, [V310-11] TPC-H SF=1 22/22 闭环 (P1, ga-p0-tpch)
+- Branch: `opencode/issue-3732-tpch-sf1` (基于 `develop/v3.10.0` @ `9a47d397`)
+- PR: 待 push 到 Gitea 252 后创建

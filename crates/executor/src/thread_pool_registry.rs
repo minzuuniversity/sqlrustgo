@@ -121,7 +121,7 @@ impl Default for ThreadPoolRegistry {
 
 /// Global registry instance for server-wide use
 static GLOBAL_REGISTRY: std::sync::LazyLock<ThreadPoolRegistry> =
-    std::sync::LazyLock::new(|| ThreadPoolRegistry::new());
+    std::sync::LazyLock::new(ThreadPoolRegistry::new);
 
 impl ThreadPoolRegistry {
     /// Get the global registry instance
@@ -138,6 +138,7 @@ impl ThreadPoolRegistry {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::task_scheduler::TaskScheduler;
 
     #[test]
     fn test_registry_creates_pools() {

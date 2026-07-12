@@ -307,7 +307,7 @@ cargo llvm-cov --workspace --summary-only
   - Q7/Q8/Q9/Q12 子查询 in FROM 子句语法
   - OR 优先级问题
 - [V310-11b] 实现其余 12 个未实现查询 — 40h
-- [V310-11c] SF=1.0 22/22 全测试 — 8h
+- [V310-11c] SF=1.0 22/22 全测试 — 8h ✅ 部分完成 (gate 入口 + 测试基础设施，commit `512b383c`，2026-07-12；22/22 PASS 仍需 V310-11a/b)
 
 **验证**:
 ```bash
