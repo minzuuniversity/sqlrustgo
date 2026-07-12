@@ -213,7 +213,9 @@ fn create_tables(engine: &mut ExecutionEngine<MemoryStorage>) {
 // ── Load .tbl data ────────────────────────────────────────────────────────────
 
 fn load_tbl_data(engine: &mut ExecutionEngine<MemoryStorage>, data_dir: &str, sf: f64) {
-    let tables = ["region", "nation", "supplier", "customer", "part", "partsupp", "orders", "lineitem"];
+    let tables = [
+        "region", "nation", "supplier", "customer", "part", "partsupp", "orders", "lineitem",
+    ];
     for table in tables {
         let path = format!("{}/{}.tbl", data_dir, table);
         if !std::path::Path::new(&path).exists() {
@@ -308,7 +310,8 @@ fn generate_synthetic_data(engine: &mut ExecutionEngine<MemoryStorage>, sf: f64)
         ));
         let _ = engine.execute(&format!(
             "INSERT INTO supplier VALUES ({}, 'supplier{}', 'addr', 1, '13-111-111', 1000.0, '')",
-            i as i64 + 1, i as i64 + 1
+            i as i64 + 1,
+            i as i64 + 1
         ));
     }
     let _ = engine.execute("INSERT INTO nation VALUES (1, 'FRANCE', 1, ''), (2, 'GERMANY', 1, ''), (3, 'CANADA', 1, ''), (4, 'BRAZIL', 1, ''), (5, 'PERU', 1, ''), (6, 'INDIA', 1, '')");
@@ -317,7 +320,10 @@ fn generate_synthetic_data(engine: &mut ExecutionEngine<MemoryStorage>, sf: f64)
 
 // ── Run a single query, return (duration_ms, row_count, error) ───────────────
 
-fn run_query(engine: &mut ExecutionEngine<MemoryStorage>, sql: &str) -> (u128, usize, Option<String>) {
+fn run_query(
+    engine: &mut ExecutionEngine<MemoryStorage>,
+    sql: &str,
+) -> (u128, usize, Option<String>) {
     let start = Instant::now();
     match engine.execute(sql) {
         Ok(result) => (start.elapsed().as_millis(), result.rows.len(), None),
@@ -401,7 +407,13 @@ fn run_olap_benchmark(sf: f64, degrees: &[usize], runs: u32, data_dir: &str) -> 
 
     let total_parallel_4 = query_results
         .iter()
-        .map(|r| r.parallel_ms.iter().find(|(d, _)| *d == 4).map(|(_, m)| *m).unwrap_or(r.serial_ms))
+        .map(|r| {
+            r.parallel_ms
+                .iter()
+                .find(|(d, _)| *d == 4)
+                .map(|(_, m)| *m)
+                .unwrap_or(r.serial_ms)
+        })
         .sum::<u128>();
 
     OlapResults {
@@ -464,7 +476,11 @@ fn run_oltp_benchmark(sf: f64, degrees: &[usize]) -> OltpResults {
                     let _ = engine.execute(&sql);
                 }
                 let ms = start.elapsed().as_millis();
-                let ops_sec = if ms > 0 { 200.0 * 1000.0 / ms as f64 } else { 0.0 };
+                let ops_sec = if ms > 0 {
+                    200.0 * 1000.0 / ms as f64
+                } else {
+                    0.0
+                };
                 parallel_results.push((deg, ops_sec));
             }
 
@@ -501,19 +517,37 @@ fn generate_markdown_report(report: &BenchmarkReport) -> String {
         report.config.sf,
         report.config.degrees,
         report.config.runs,
-        if report.config.quick { " (QUICK mode)" } else { "" }
+        if report.config.quick {
+            " (QUICK mode)"
+        } else {
+            ""
+        }
     ));
 
     md.push_str("## OLAP: TPC-H Queries\n\n");
-    md.push_str("| Query | Serial (ms) | Parallel 4 (ms) | Speedup 4x | Parallel 8 (ms) | Speedup 8x |\n");
-    md.push_str("|-------|-------------|----------------|-------------|----------------|-------------|\n");
+    md.push_str(
+        "| Query | Serial (ms) | Parallel 4 (ms) | Speedup 4x | Parallel 8 (ms) | Speedup 8x |\n",
+    );
+    md.push_str(
+        "|-------|-------------|----------------|-------------|----------------|-------------|\n",
+    );
     for q in &report.olap.queries {
         let p4 = q.parallel_ms.iter().find(|(d, _)| *d == 4);
         let p8 = q.parallel_ms.iter().find(|(d, _)| *d == 8);
-        let p4s = p4.map(|(_, m)| m.to_string()).unwrap_or_else(|| "N/A".to_string());
-        let p8s = p8.map(|(_, m)| m.to_string()).unwrap_or_else(|| "N/A".to_string());
-        let s4s = q.speedup_4.map(|s| format!("{:.2}x", s)).unwrap_or_else(|| "N/A".to_string());
-        let s8s = q.speedup_8.map(|s| format!("{:.2}x", s)).unwrap_or_else(|| "N/A".to_string());
+        let p4s = p4
+            .map(|(_, m)| m.to_string())
+            .unwrap_or_else(|| "N/A".to_string());
+        let p8s = p8
+            .map(|(_, m)| m.to_string())
+            .unwrap_or_else(|| "N/A".to_string());
+        let s4s = q
+            .speedup_4
+            .map(|s| format!("{:.2}x", s))
+            .unwrap_or_else(|| "N/A".to_string());
+        let s8s = q
+            .speedup_8
+            .map(|s| format!("{:.2}x", s))
+            .unwrap_or_else(|| "N/A".to_string());
         md.push_str(&format!(
             "| {} | {} | {} | {} | {} | {} |\n",
             q.query, q.serial_ms, p4s, s4s, p8s, s8s
@@ -522,17 +556,30 @@ fn generate_markdown_report(report: &BenchmarkReport) -> String {
     md.push_str("\n**Summary:**\n\n");
     md.push_str(&format!(
         "- Total Serial: {} ms\n  - Total Parallel 4: {} ms ({:.2}x speedup)\n\n",
-        report.olap.summary.total_serial_ms, report.olap.summary.total_parallel_4_ms, report.olap.summary.speedup_4
+        report.olap.summary.total_serial_ms,
+        report.olap.summary.total_parallel_4_ms,
+        report.olap.summary.speedup_4
     ));
 
     md.push_str("## OLTP: Microbenchmarks\n\n");
-    md.push_str("| Benchmark | Serial (ops/s) | Parallel 4 (ops/s) | Speedup 4x | Triggered Parallel |\n");
+    md.push_str(
+        "| Benchmark | Serial (ops/s) | Parallel 4 (ops/s) | Speedup 4x | Triggered Parallel |\n",
+    );
     md.push_str("|------------|----------------|----------------|---------|-------------------|\n");
     for b in &report.oltp.benchmarks {
         let p4 = b.parallel_ops_sec.iter().find(|(d, _)| *d == 4);
-        let p4s = p4.map(|(_, o)| format!("{:.1}", o)).unwrap_or_else(|| "N/A".to_string());
-        let s4s = b.speedup_4.map(|s| format!("{:.2}x", s)).unwrap_or_else(|| "N/A".to_string());
-        let triggered = if b.triggered_parallel { "Yes" } else { "No (<100K rows)" };
+        let p4s = p4
+            .map(|(_, o)| format!("{:.1}", o))
+            .unwrap_or_else(|| "N/A".to_string());
+        let s4s = b
+            .speedup_4
+            .map(|s| format!("{:.2}x", s))
+            .unwrap_or_else(|| "N/A".to_string());
+        let triggered = if b.triggered_parallel {
+            "Yes"
+        } else {
+            "No (<100K rows)"
+        };
         md.push_str(&format!(
             "| {} | {:.1} | {} | {} | {} |\n",
             b.name, b.serial_ops_sec, p4s, s4s, triggered
