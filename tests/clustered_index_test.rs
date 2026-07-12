@@ -5,7 +5,8 @@
 //! **Change**: openspec/changes/f-23-clustered-index
 //!
 //! In-memory B+ tree where leaf nodes store full rows ordered by PK.
-//! Real disk-based integration in v3.9.0.
+//! Real disk-based integration deferred to v3.11.0+ per ISOLATED_MODULES.md §1 (F-23).
+//! v3.10.0 status: VERIFIED, ISOLATED (Phase 1 plan).
 
 use std::collections::BTreeMap;
 
