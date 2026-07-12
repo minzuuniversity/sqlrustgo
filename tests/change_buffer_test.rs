@@ -6,6 +6,7 @@
 //!
 //! In-memory mock of InnoDB-style Change Buffer. Real storage integration
 //! in v3.9.0.
+//! v3.10.0 status: VERIFIED, ISOLATED (Phase 1 plan); see ISOLATED_MODULES.md §1 (F-25).
 
 use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, Mutex};
