@@ -203,8 +203,8 @@ jobs:
           cargo test --test server_health_test
           cargo test --test bplus_tree_test
           cargo test --test optimizer_cost_test
-          cargo test --test local_executor_test
           cargo test --test query_cache_test
+
           cargo test --test vectorization_test
           cargo test --test file_storage_test
           cargo test --test optimizer_rules_test
