@@ -4,8 +4,8 @@
 //! **Source**: v3.0.0 COMPLETE_LEGACY_TRACKING_REPORT.md (F-24)
 //! **Change**: openspec/changes/f-24-adaptive-hash-index
 //!
-//! In-memory AHI with auto-promote/demote based on access frequency.
 //! Real B+ tree integration in v3.9.0.
+//! v3.10.0 status: VERIFIED, ISOLATED (Phase 1 plan); see ISOLATED_MODULES.md §1 (F-24).
 
 use parking_lot::RwLock;
 use std::collections::HashMap;
