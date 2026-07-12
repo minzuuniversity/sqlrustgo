@@ -227,7 +227,6 @@ impl PhysicalPlan for FilterExec {
 ///
 /// The child plan (typically a `SeqScanExec`) runs sequentially to
 /// produce the full row set; the filter step gets parallelized.
-///
 /// Threshold and ORDER BY fall-back are planner-side: this struct is
 /// only emitted when `parallel_degree > 1`, no `SortExec` ancestor is
 /// present, and (optionally) the underlying table's row count is above
