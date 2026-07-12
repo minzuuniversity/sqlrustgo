@@ -8,6 +8,7 @@ license.workspace = true
 [dependencies]
 sqlrustgo-storage.workspace = true
 sqlrustgo-types.workspace = true
+sqlrustgo-mysql-client = { path = "../mysql-client" }
 clap = { version = "4.0", features = ["derive"] }
 serde.workspace = true
 serde_json.workspace = true
