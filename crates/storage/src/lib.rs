@@ -9,6 +9,7 @@ pub mod checkpoint;
 pub mod engine;
 pub mod file_storage;
 pub mod io_delay;
+pub mod lock;
 pub mod page;
 pub mod predicate;
 pub mod read_write_split;
@@ -31,8 +32,7 @@ pub use engine::{
 };
 pub use file_storage::FileStorage;
 pub use io_delay::{io_delay_ms, maybe_delay, IoDelayConfig, IoFaultInjector, LcgRng};
+pub use lock::{GapLock, GapLockManager, GapLockType, IsolationLevel};
+>>>>>>> 5eb02ce08 (feat(storage): add GapLockManager for REPEATABLE-READ isolation)
 pub use page::Page;
-pub use recovery_engine::{RecoveryEngine, RecoveryEngineImpl, RecoveryReport};
-pub use vtu_guard::VtuGuard;
-pub use wal::{FileBackedWalManager, MemoryWalManager, WalManager};
 pub use wal_storage::WalStorage;
