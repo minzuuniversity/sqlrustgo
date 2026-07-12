@@ -162,9 +162,7 @@ fn test_partition_single_row() {
 #[test]
 fn test_partition_all_null_rows() {
     let exec = ParallelVolcanoExecutor::new(4);
-    let rows: Vec<Vec<Value>> = (0..1000)
-        .map(|_| vec![Value::Null; 5])
-        .collect();
+    let rows: Vec<Vec<Value>> = (0..1000).map(|_| vec![Value::Null; 5]).collect();
     let parts = exec.partition_scan(rows, 4);
     // Small dataset should not partition
     assert_eq!(parts.len(), 1);
@@ -220,10 +218,18 @@ fn test_parallel_degree_bounds() {
 
     let mut exec = ParallelVolcanoExecutor::new(4);
     exec.set_parallel_degree(0);
-    assert_eq!(exec.parallel_degree(), 1, "set_parallel_degree(0) should become 1");
+    assert_eq!(
+        exec.parallel_degree(),
+        1,
+        "set_parallel_degree(0) should become 1"
+    );
 
     exec.set_parallel_degree(100);
-    assert_eq!(exec.parallel_degree(), 100, "Large degree should be preserved");
+    assert_eq!(
+        exec.parallel_degree(),
+        100,
+        "Large degree should be preserved"
+    );
 }
 
 // =============================================================================
@@ -233,7 +239,9 @@ fn test_parallel_degree_bounds() {
 #[test]
 fn test_partition_even_distribution() {
     let exec = ParallelVolcanoExecutor::new(4);
-    let rows: Vec<Vec<Value>> = (0..600_000).map(|i| vec![Value::Integer(i as i64)]).collect();
+    let rows: Vec<Vec<Value>> = (0..600_000)
+        .map(|i| vec![Value::Integer(i as i64)])
+        .collect();
     let parts = exec.partition_scan(rows, 4);
 
     let sizes: Vec<usize> = parts.iter().map(|p| p.len()).collect();
@@ -246,7 +254,9 @@ fn test_partition_even_distribution() {
 #[test]
 fn test_partition_uneven_distribution() {
     let exec = ParallelVolcanoExecutor::new(4);
-    let rows: Vec<Vec<Value>> = (0..600_001).map(|i| vec![Value::Integer(i as i64)]).collect();
+    let rows: Vec<Vec<Value>> = (0..600_001)
+        .map(|i| vec![Value::Integer(i as i64)])
+        .collect();
     let parts = exec.partition_scan(rows, 4);
 
     let sizes: Vec<usize> = parts.iter().map(|p| p.len()).collect();
@@ -267,9 +277,15 @@ fn test_partition_uneven_distribution() {
 fn test_parallel_path_activates_for_large_dataset() {
     // Verify that for large datasets, we get multiple partitions
     let exec = ParallelVolcanoExecutor::new(8);
-    let rows: Vec<Vec<Value>> = (0..600_000).map(|i| vec![Value::Integer(i as i64)]).collect();
+    let rows: Vec<Vec<Value>> = (0..600_000)
+        .map(|i| vec![Value::Integer(i as i64)])
+        .collect();
     let parts = exec.partition_scan(rows, 8);
-    assert_eq!(parts.len(), 8, "Large dataset should activate 8-way parallelism");
+    assert_eq!(
+        parts.len(),
+        8,
+        "Large dataset should activate 8-way parallelism"
+    );
 }
 
 #[test]
