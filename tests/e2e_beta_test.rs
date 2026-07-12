@@ -30,13 +30,18 @@ fn is_e2e_disabled() -> bool {
 }
 
 fn server_bin() -> PathBuf {
-    PathBuf::from(std::env::var("SQLRUSTGO_MYSQL_SERVER_BIN")
-        .unwrap_or_else(|_| "target/release/sqlrustgo-mysql-server".to_string()))
+    PathBuf::from(
+        std::env::var("SQLRUSTGO_MYSQL_SERVER_BIN")
+            .unwrap_or_else(|_| "target/release/sqlrustgo-mysql-server".to_string()),
+    )
 }
 
 fn data_dir(scenario: &str) -> PathBuf {
-    PathBuf::from(format!("/tmp/sqlrustgo-e2e-{}-{}", scenario,
-        std::process::id()))
+    PathBuf::from(format!(
+        "/tmp/sqlrustgo-e2e-{}-{}",
+        scenario,
+        std::process::id()
+    ))
 }
 
 // ========================================================================
@@ -52,10 +57,16 @@ fn e2e_01_startup_connect_select_1() {
     }
     let bin = server_bin();
     if !bin.exists() {
-        eprintln!("[E2E-01] SKIPPED: server binary not found at {}", bin.display());
+        eprintln!(
+            "[E2E-01] SKIPPED: server binary not found at {}",
+            bin.display()
+        );
         return;
     }
-    eprintln!("[E2E-01] Would start {} on port 13397, send 'SELECT 1'", bin.display());
+    eprintln!(
+        "[E2E-01] Would start {} on port 13397, send 'SELECT 1'",
+        bin.display()
+    );
     eprintln!("[E2E-01] STUB PASS: see tests/e2e_query_test.rs for actual query tests");
     let _ = Duration::from_secs(0); // suppress unused import warning
 }
