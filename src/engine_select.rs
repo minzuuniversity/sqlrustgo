@@ -3,7 +3,8 @@
 //! Handles SELECT statement dispatch, projection, join planning, and result assembly.
 //!
 //! v3.10.0 Issue #3703: parallel filter is gated by:
-//!   - rows.len() >= PARALLEL_MIN_ROWS (currently 500_000, see crates/executor/src/parallel_executor.rs)
+//!   - CBO-driven `ExecutionEngine::should_parallelize_query()` (replaces
+//!     hardcoded `PARALLEL_MIN_ROWS` threshold)
 //!   - self.parallel_degree > 1 (env SQLRUSTGO_EXECUTOR_PARALLELISM or --executor-parallelism)
 //!   - no correlated subquery in WHERE (would break parallel eval_predicate)
 //!
@@ -13,7 +14,7 @@ use crate::expr_utils::*;
 use crate::{ExecutionEngine, ExecutorResult, SqlError, SqlResult, Value};
 use sqlrustgo_executor::join::hash_join::multi_way_hash_chain;
 use sqlrustgo_executor::parallel_executor::{
-    ParallelExecutor, ParallelVolcanoExecutor, PARALLEL_MIN_ROWS,
+    ParallelExecutor, ParallelVolcanoExecutor,
 };
 use sqlrustgo_executor::simd_eval::{
     BatchPredicate, BitMask, EqualsPredicate, GreaterThanOrEqualPredicate,
@@ -266,7 +267,17 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         // that any recursive execution (e.g. correlated subqueries)
         // cannot deadlock against a held lock.
         let _parallel_guard = if self.parallel_degree > 1
-            && rows.len() >= PARALLEL_MIN_ROWS
+            && {
+                // CBO-driven parallelism threshold:
+                // Extract the bare table name (strip alias suffix) and delegate
+                // to UnifiedCostModel::should_parallelize for the decision.
+                let cbo_table = select
+                    .table
+                    .split_once('|')
+                    .map(|(t, _)| t)
+                    .unwrap_or(&select.table);
+                self.should_parallelize_query(cbo_table, select.where_clause.as_ref(), rows.len())
+            }
             // Skip parallel filter when WHERE contains correlated subqueries
             // (Subquery, EXISTS/NOT EXISTS with outer refs). The sequential
             // path below handles these correctly; parallel filter uses

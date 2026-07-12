@@ -7,11 +7,13 @@ use parking_lot::RwLock;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
+use sqlrustgo_optimizer::unified_cost::UnifiedCostModel;
 
 use sqlrustgo_catalog::Catalog;
 use sqlrustgo_storage::{
     recovery_engine::{RecoveryEngine, RecoveryEngineImpl, RecoveryReport, StatefulRecoveryEngine},
-    FileBackedWalManager, FileStorage, MemoryStorage, StorageEngine, WalStorage,
+    wal::{FileBackedWalManager, MemoryWalManager},
+    FileStorage, MemoryStorage, StorageEngine, WalStorage,
 };
 use sqlrustgo_transaction::{IsolationLevel as TmIsolationLevel, TransactionManager};
 
@@ -37,6 +39,7 @@ impl ExecutionEngine<MemoryStorage> {
             default_isolation: TmIsolationLevel::default(),
             current_role: None,
             checkpoint_manager: None,
+            cost_model: parking_lot::RwLock::new(UnifiedCostModel::default_model(0, 0)),
             parallel_degree: 1,
             stmt_cache: sqlrustgo_cache::PreparedStatementCache::new(100),
             views: HashMap::new(),
@@ -57,6 +60,7 @@ impl ExecutionEngine<MemoryStorage> {
             default_isolation: TmIsolationLevel::default(),
             current_role: None,
             checkpoint_manager: None,
+            cost_model: parking_lot::RwLock::new(UnifiedCostModel::default_model(0, 0)),
             parallel_degree: 1,
             stmt_cache: sqlrustgo_cache::PreparedStatementCache::new(100),
             views: HashMap::new(),
@@ -77,6 +81,7 @@ impl ExecutionEngine<MemoryStorage> {
             default_isolation: TmIsolationLevel::default(),
             current_role: None,
             checkpoint_manager: None,
+            cost_model: parking_lot::RwLock::new(UnifiedCostModel::default_model(0, 0)),
             parallel_degree: 1,
             stmt_cache: sqlrustgo_cache::PreparedStatementCache::new(100),
             views: HashMap::new(),
@@ -92,9 +97,9 @@ impl ExecutionEngine<MemoryStorage> {
 
 impl ExecutionEngine<MemoryStorage> {
     pub fn with_wal_stub(
-    ) -> ExecutionEngine<WalStorage<MemoryStorage, sqlrustgo_storage::MemoryWalManager>> {
+    ) -> ExecutionEngine<WalStorage<MemoryStorage, sqlrustgo_storage::wal::MemoryWalManager>> {
         let inner = MemoryStorage::new();
-        let wal = sqlrustgo_storage::MemoryWalManager::new();
+        let wal = sqlrustgo_storage::wal::MemoryWalManager::new();
         let wal_storage = WalStorage::new(inner, wal).unwrap();
         ExecutionEngine {
             storage: Arc::new(RwLock::new(wal_storage)),
@@ -107,6 +112,7 @@ impl ExecutionEngine<MemoryStorage> {
             tx_readonly: false,
             default_isolation: TmIsolationLevel::default(),
             current_role: None,
+            cost_model: parking_lot::RwLock::new(UnifiedCostModel::default_model(0, 0)),
             checkpoint_manager: None,
             parallel_degree: 1,
             stmt_cache: sqlrustgo_cache::PreparedStatementCache::new(100),
@@ -127,10 +133,10 @@ impl ExecutionEngine<MemoryStorage> {
     pub fn with_wal(
         wal_path: PathBuf,
     ) -> SqlResult<
-        ExecutionEngine<WalStorage<MemoryStorage, sqlrustgo_storage::FileBackedWalManager>>,
+        ExecutionEngine<WalStorage<MemoryStorage, sqlrustgo_storage::wal::FileBackedWalManager>>,
     > {
         let inner = MemoryStorage::new();
-        let wal_manager = sqlrustgo_storage::FileBackedWalManager::new(wal_path)?;
+        let wal_manager = sqlrustgo_storage::wal::FileBackedWalManager::new(wal_path)?;
         let wal = WalStorage::new(inner, wal_manager)?;
         Ok(ExecutionEngine {
             storage: Arc::new(RwLock::new(wal)),
@@ -144,6 +150,7 @@ impl ExecutionEngine<MemoryStorage> {
             default_isolation: TmIsolationLevel::default(),
             current_role: None,
             checkpoint_manager: None,
+            cost_model: parking_lot::RwLock::new(UnifiedCostModel::default_model(0, 0)),
             parallel_degree: 1,
             stmt_cache: sqlrustgo_cache::PreparedStatementCache::new(100),
             views: HashMap::new(),
@@ -175,6 +182,7 @@ impl ExecutionEngine<MemoryStorage> {
             default_isolation: TmIsolationLevel::default(),
             current_role: None,
             checkpoint_manager: None,
+            cost_model: parking_lot::RwLock::new(UnifiedCostModel::default_model(0, 0)),
             parallel_degree: 1,
             stmt_cache: sqlrustgo_cache::PreparedStatementCache::new(100),
             views: HashMap::new(),
@@ -207,6 +215,7 @@ impl ExecutionEngine<MemoryStorage> {
             default_isolation: TmIsolationLevel::default(),
             current_role: None,
             checkpoint_manager: checkpoint_manager.map(|cp| Arc::new(RwLock::new(cp))),
+            cost_model: parking_lot::RwLock::new(UnifiedCostModel::default_model(0, 0)),
             parallel_degree: 1,
             stmt_cache: sqlrustgo_cache::PreparedStatementCache::new(100),
             views: HashMap::new(),
