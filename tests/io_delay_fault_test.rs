@@ -1,8 +1,8 @@
-use std::sync::Arc;
-use std::time::{Duration, Instant};
 use parking_lot::RwLock;
 use sqlrustgo::{ExecutionEngine, MemoryStorage, StorageEngine};
 use sqlrustgo_storage::binary_storage::BinaryTableStorage;
+use std::sync::Arc;
+use std::time::{Duration, Instant};
 use tempfile::TempDir;
 
 fn set_io_delay(delay_ms: u64) {
