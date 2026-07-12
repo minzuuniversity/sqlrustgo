@@ -269,6 +269,9 @@ pub struct BTreeMetadata {
     pub height: u32,
     /// Whether this is a unique index
     pub is_unique: bool,
+    /// Table name this index belongs to (for gap locking)
+    #[serde(default)]
+    pub table_name: String,
 }
 
 /// Index statistics
@@ -309,6 +312,9 @@ pub struct BTreeIndex {
     pub metadata: BTreeMetadata,
     nodes: Vec<Option<BTreeNode>>,
     dirty: bool,
+    /// Optional gap lock manager for REPEATABLE-READ isolation
+    #[allow(dead_code)]
+    gap_lock_manager: Option<std::sync::Arc<crate::lock::GapLockManager>>,
 }
 
 impl BTreeIndex {
@@ -317,6 +323,16 @@ impl BTreeIndex {
             metadata: BTreeMetadata::default(),
             nodes: vec![None],
             dirty: true,
+            gap_lock_manager: None,
+        }
+    }
+
+    pub fn new_with_lock_manager(lock_manager: std::sync::Arc<crate::lock::GapLockManager>) -> Self {
+        Self {
+            metadata: BTreeMetadata::default(),
+            nodes: vec![None],
+            dirty: true,
+            gap_lock_manager: Some(lock_manager),
         }
     }
 
@@ -325,6 +341,19 @@ impl BTreeIndex {
             metadata,
             nodes: Vec::new(),
             dirty: false,
+            gap_lock_manager: None,
+        }
+    }
+
+    pub fn from_metadata_with_lock_manager(
+        metadata: BTreeMetadata,
+        lock_manager: std::sync::Arc<crate::lock::GapLockManager>,
+    ) -> Self {
+        Self {
+            metadata,
+            nodes: Vec::new(),
+            dirty: false,
+            gap_lock_manager: Some(lock_manager),
         }
     }
 
@@ -367,6 +396,101 @@ impl BTreeIndex {
         }
         self.insert(key, value);
         Ok(())
+    }
+
+    /// Insert a key-value pair with gap locking for REPEATABLE-READ isolation
+    ///
+    /// # Arguments
+    /// * `tx_id` - Transaction ID for lock ownership
+    /// * `key` - Key to insert
+    /// * `value` - Value (page pointer) associated with the key
+    ///
+    /// # Returns
+    /// * `Ok(())` - Inserted successfully
+    /// * `Err(UniqueConstraintViolation)` - Key already exists
+    /// * `Err(...)` - Gap lock conflict (would block other transaction)
+    pub fn insert_unique_with_lock(
+        &mut self,
+        tx_id: u64,
+        key: i64,
+        value: u32,
+    ) -> Result<(), UniqueConstraintViolation> {
+        // If no lock manager, fall back to regular insert_unique
+        let Some(lock_mgr) = &self.gap_lock_manager else {
+            return self.insert_unique(key, value);
+        };
+
+        // Acquire gap lock around the key position
+        // For a key 'k', we lock the gap between the previous key and next key
+        let key_str = key.to_string();
+        let prev_key = (key - 1).to_string();
+        let next_key = (key + 1).to_string();
+
+        // Try to acquire exclusive gap lock on the range [prev_key, next_key)
+        // This prevents phantom inserts in this key range
+        if !lock_mgr.acquire_gap(
+            tx_id,
+            &self.metadata.table_name,
+            Some(prev_key),
+            Some(next_key),
+            crate::lock::GapLockType::InsertIntention,
+            true, // is_insert_intention
+        ) {
+            // Could not acquire lock - another transaction holds a conflicting lock
+            // In a real implementation, this would block until the lock is released
+            // For now, we return an error indicating lock conflict
+            return Err(UniqueConstraintViolation { key });
+        }
+
+        // Now check if key exists and insert
+        if self.search(key).is_some() {
+            // Release the gap lock since insert failed
+            lock_mgr.release_table(tx_id, &self.metadata.table_name);
+            return Err(UniqueConstraintViolation { key });
+        }
+
+        self.insert(key, value);
+        Ok(())
+    }
+
+    /// Acquire a shared gap lock for a key range (used during scans)
+    ///
+    /// # Arguments
+    /// * `tx_id` - Transaction ID for lock ownership
+    /// * `range_start` - Start of range (inclusive)
+    /// * `range_end` - End of range (exclusive)
+    ///
+    /// # Returns
+    /// * `true` - Lock acquired successfully
+    /// * `false` - Lock conflict
+    pub fn acquire_scan_lock(
+        &self,
+        tx_id: u64,
+        range_start: Option<i64>,
+        range_end: Option<i64>,
+    ) -> bool {
+        let Some(lock_mgr) = &self.gap_lock_manager else {
+            return true; // No lock manager, allow scan
+        };
+
+        let start_str = range_start.map(|k| k.to_string());
+        let end_str = range_end.map(|k| k.to_string());
+
+        lock_mgr.acquire_gap(
+            tx_id,
+            &self.metadata.table_name,
+            start_str,
+            end_str,
+            crate::lock::GapLockType::Shared,
+            false,
+        )
+    }
+
+    /// Release all gap locks held by a transaction on this index
+    pub fn release_locks(&self, tx_id: u64) {
+        if let Some(lock_mgr) = &self.gap_lock_manager {
+            lock_mgr.release_table(tx_id, &self.metadata.table_name);
+        }
     }
 
     /// Check if this is a unique index
