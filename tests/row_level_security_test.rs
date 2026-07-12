@@ -4,8 +4,8 @@
 //! **Source**: v3.0.0 COMPLETE_LEGACY_TRACKING_REPORT.md (F-29)
 //! **Change**: openspec/changes/f-29-row-level-security
 //!
-//! In-memory RLS policy catalog with USING/WITH CHECK enforcement.
 //! Real executor integration in v3.9.0.
+//! v3.10.0 status: VERIFIED, ISOLATED (Phase 2 plan); see ISOLATED_MODULES.md §1 (F-29).
 
 use parking_lot::RwLock;
 use std::collections::HashMap;

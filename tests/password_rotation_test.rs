@@ -13,6 +13,7 @@
 //! Note: The module is defined inline here (not in src/) to keep the change
 //! isolated and avoid cross-crate dependency issues. In v3.9.0 this can be
 //! promoted to `src/auth/password_rotation.rs`.
+//! v3.10.0 status: VERIFIED, ISOLATED (Phase 1 plan); see ISOLATED_MODULES.md §1 (F-35).
 
 use std::collections::{HashMap, VecDeque};
 use std::sync::RwLock;
