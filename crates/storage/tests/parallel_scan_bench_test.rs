@@ -74,11 +74,7 @@ fn bench_parallel_vs_sequential_correctness() {
     assert_eq!(par_result.len(), 1000);
 
     // Print timings for inspection
-    println!(
-        "Sequential: {:?} ({} rows)",
-        seq_time,
-        seq_result.len()
-    );
+    println!("Sequential: {:?} ({} rows)", seq_time, seq_result.len());
     println!(
         "Parallel:   {:?} ({} rows, 4 partitions)",
         par_time,

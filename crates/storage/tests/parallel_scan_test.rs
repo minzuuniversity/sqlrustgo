@@ -94,13 +94,19 @@ fn test_parallel_scan_uneven_distribution() {
     storage.insert("t", rows).expect("insert");
     let result = storage.parallel_scan("t", 4).expect("parallel_scan");
     let all = materialize(result);
-    assert_eq!(all.len(), 1001, "All rows must be preserved across partitions");
+    assert_eq!(
+        all.len(),
+        1001,
+        "All rows must be preserved across partitions"
+    );
 }
 
 #[test]
 fn test_parallel_scan_nonexistent_table() {
     let (storage, _dir) = make_test_storage();
-    let result = storage.parallel_scan("nonexistent", 4).expect("parallel_scan");
+    let result = storage
+        .parallel_scan("nonexistent", 4)
+        .expect("parallel_scan");
     assert!(result.is_empty());
 }
 
@@ -112,13 +118,7 @@ fn test_parallel_scan_all_values_preserved() {
     storage.insert("t", rows).expect("insert");
     let result = storage.parallel_scan("t", 4).expect("parallel_scan");
     let mut all = materialize(result);
-    all.sort_by_key(|r| {
-        if let Value::Integer(i) = &r[0] {
-            *i
-        } else {
-            0
-        }
-    });
+    all.sort_by_key(|r| if let Value::Integer(i) = &r[0] { *i } else { 0 });
     let expected: Vec<i64> = (0..100).collect();
     let actual: Vec<i64> = all
         .iter()
