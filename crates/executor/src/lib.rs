@@ -11,6 +11,8 @@ pub mod local_executor_dml;
 pub mod merge;
 pub mod mutation_compiler;
 pub mod parallel_executor;
+pub mod parallel_group_by;
+pub mod parallel_hash_join;
 pub mod pipeline_executor;
 pub mod predicate_compiler;
 pub mod query_cache;
@@ -25,9 +27,7 @@ pub mod trigger;
 pub mod trigger_eval;
 pub mod update_compiler;
 pub mod vec_simd;
-pub mod parallel_group_by;
 pub mod window_executor;
-pub mod parallel_hash_join;
 
 pub use execution::trace::ExecutionTrace;
 pub use executor::{Executor, ExecutorResult, VolcanoExecutor};

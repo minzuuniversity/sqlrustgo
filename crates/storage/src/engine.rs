@@ -1095,9 +1095,7 @@ impl StorageEngine for MemoryStorage {
             let size = if i < rem { base + 1 } else { base };
             if size > 0 {
                 let part = Arc::clone(&shared);
-                partitions.push(Box::new(
-                    SharedSliceIter::new(part, cur, cur + size)
-                ));
+                partitions.push(Box::new(SharedSliceIter::new(part, cur, cur + size)));
             }
             cur += size;
         }
@@ -1118,7 +1116,11 @@ impl SharedSliceIter {
     pub fn new(data: Arc<Vec<Record>>, start: usize, end: usize) -> Self {
         debug_assert!(start <= end);
         debug_assert!(end <= data.len());
-        Self { data, pos: start, end }
+        Self {
+            data,
+            pos: start,
+            end,
+        }
     }
 
     pub fn remaining(&self) -> usize {

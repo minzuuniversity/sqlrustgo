@@ -4,6 +4,4 @@
 
 pub mod gap_lock_manager;
 
-pub use gap_lock_manager::{
-    GapLock, GapLockManager, GapLockType, IsolationLevel,
-};
+pub use gap_lock_manager::{GapLock, GapLockManager, GapLockType, IsolationLevel};
