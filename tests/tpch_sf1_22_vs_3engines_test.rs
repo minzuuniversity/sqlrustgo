@@ -199,6 +199,7 @@ fn emit_skip_message() {
     );
 }
 
+#[ignore = "requires SF=1.0 fixture at /tmp/tpch-sf1 (dbgen -s 1 -f); run with --ignored"]
 #[test]
 fn tpch_sf1_22_in_process_regression() {
     if !fixture_present() {
