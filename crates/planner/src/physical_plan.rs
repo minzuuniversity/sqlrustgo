@@ -224,8 +224,8 @@ impl PhysicalPlan for FilterExec {
 /// Wraps a `FilterExec` plan node and dispatches filtering across N
 /// partitions in parallel via `ParallelVolcanoExecutor::partition_scan`
 /// + `rayon::into_par_iter`. The child plan (typically a `SeqScanExec`)
-/// is executed sequentially to produce the full row set; the filter
-/// step is what gets parallelized.
+///   is executed sequentially to produce the full row set; the filter
+///   step is what gets parallelized.
 ///
 /// Threshold and ORDER BY fall-back are planner-side: this struct is
 /// only emitted when `parallel_degree > 1`, no `SortExec` ancestor is
