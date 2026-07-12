@@ -2969,65 +2969,6 @@ impl StorageEngine for FileStorage {
         table_data.info.columns[col_idx] = new_def;
         Ok(())
     }
-
-    fn parallel_scan(
-        &self,
-        table: &str,
-        num_partitions: usize,
-    ) -> SqlResult<Vec<Box<dyn Iterator<Item = Record> + Send>>> {
-        use std::io::BufRead;
-
-        // Get table data - return empty vec if table not found (consistent with MemoryStorage)
-        let data = match self.get_table(table) {
-            Some(data) => data,
-            None => return Ok(vec![]),
-        };
-
-        let total_rows = data.rows.len();
-        if total_rows == 0 || num_partitions == 0 {
-            return Ok(vec![]);
-        }
-
-        let num_partitions = num_partitions.min(total_rows);
-        let base = total_rows / num_partitions;
-        let rem = total_rows % num_partitions;
-
-        let mut partitions: Vec<Box<dyn Iterator<Item = Record> + Send>> =
-            Vec::with_capacity(num_partitions);
-
-        // Load table from file for parallel reading
-        let table_path = self.table_path(table);
-        let file = std::fs::File::open(&table_path)?;
-        let reader = std::io::BufReader::new(file);
-
-        // Parse the table data from file
-        let table_data: crate::engine::TableData = match serde_json::from_reader(reader) {
-            Ok(data) => data,
-            Err(_) => {
-                // Fall back to in-memory data if file can't be parsed
-                let rows = data.rows.clone();
-                return Ok(vec![Box::new(rows.into_iter()) as Box<dyn Iterator<Item = Record> + Send>]);
-            }
-        };
-
-        let total = table_data.rows.len();
-        let num_partitions = num_partitions.min(total);
-        let base = total / num_partitions;
-        let rem = total % num_partitions;
-
-        let mut cur = 0;
-        for i in 0..num_partitions {
-            let size = if i < rem { base + 1 } else { base };
-            if size > 0 {
-                // Clone the partition data - each partition gets its own copy
-                let partition: Vec<Record> = table_data.rows[cur..cur + size].to_vec();
-                partitions.push(Box::new(partition.into_iter()));
-            }
-            cur += size;
-        }
-
-        Ok(partitions)
-    }
 }
 
 #[cfg(test)]
