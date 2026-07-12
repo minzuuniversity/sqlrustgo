@@ -30,7 +30,7 @@ pub use engine::{
     TriggerEvent, TriggerInfo, TriggerTiming, UniqueConstraint, Value,
 };
 pub use file_storage::FileStorage;
-pub use io_delay::maybe_delay;
+pub use io_delay::{io_delay_ms, maybe_delay, IoDelayConfig, IoFaultInjector, LcgRng};
 pub use page::Page;
 pub use recovery_engine::{RecoveryEngine, RecoveryEngineImpl, RecoveryReport};
 pub use vtu_guard::VtuGuard;
