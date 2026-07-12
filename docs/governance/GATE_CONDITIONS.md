@@ -175,7 +175,7 @@ Beta Gate 不仅检查基础设施（Build/Test/Clippy/Fmt），还必须追踪�
 | G1 | R1-R4 | 所有 RC 指标 | PASS |
 | G2 | Full test | `cargo test --workspace` | PASS |
 | G3 | Full coverage | L1 avg ≥ 85%, 每 crate ≥ 80% | PASS |
-| G4 | TPC-H SF=1 | `scripts/tpch/run_tpch.sh --sf 1` | 22/22 PASS |
+| G4 | TPC-H SF=1 | `bash scripts/gate/check_tpch_sf1.sh --sf1-dir $SF1_DIR` (issue #3732, v3.10.0+) | 22/22 PASS |
 | G5 | Security | `cargo audit` + 手动审计 | PASS |
 | G6 | Documentation | API reference, CHANGELOG, UPGRADE_GUIDE | PASS |
 
