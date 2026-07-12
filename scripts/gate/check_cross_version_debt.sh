@@ -70,8 +70,13 @@ fi
 echo "✅ Cross-version debt docs resolved:"
 echo "    CROSS-VERSION-DEBT: $(realpath --relative-to="$REPO_DIR" "$CROSS_VERSION_DEBT_DOC" 2>/dev/null || echo "$CROSS_VERSION_DEBT_DOC")"
 echo "    INT5_INVENTORY:      $(realpath --relative-to="$REPO_DIR" "$INT5_INVENTORY_DOC" 2>/dev/null || echo "$INT5_INVENTORY_DOC")"
+# Bash 3.2 compatible: no declare -A (bash 4+ only). Use temp CSV instead.
+DEBT_TMP=$(mktemp)
+cleanup_debt_tmp() { rm -f "$DEBT_TMP"; }
+trap cleanup_debt_tmp EXIT
+_set_status() { echo "$1,$2" >> "$DEBT_TMP"; }
+_get_status() { grep "^$1," "$DEBT_TMP" | tail -1 | cut -d, -f2; }
 
-declare -A DEBT_STATUS
 TOTAL=0
 PASS_COUNT=0
 FAIL_COUNT=0
@@ -87,24 +92,24 @@ for debt_id in INT-1 INT-2 INT-3 INT-4; do
     TOTAL=$((TOTAL + 1))
     status_line=$(grep -A2 "$debt_id" "$CROSS_VERSION_DEBT_DOC" | grep -E "ACTIVE|CLOSED|DEFERRED" | head -1)
     if echo "$status_line" | grep -q "ACTIVE"; then
-        DEBT_STATUS[$debt_id]="ACTIVE"
+        _set_status "$debt_id" "ACTIVE"
     elif echo "$status_line" | grep -q "CLOSED"; then
-        DEBT_STATUS[$debt_id]="CLOSED"
+        _set_status "$debt_id" "CLOSED"
     elif echo "$status_line" | grep -q "DEFERRED"; then
-        DEBT_STATUS[$debt_id]="DEFERRED"
+        _set_status "$debt_id" "DEFERRED"
     else
         status_line=$(grep "$debt_id" "$CROSS_VERSION_DEBT_DOC" | grep -E "ACTIVE|CLOSED|DEFERRED" | head -1)
         if echo "$status_line" | grep -q "ACTIVE"; then
-            DEBT_STATUS[$debt_id]="ACTIVE"
+            _set_status "$debt_id" "ACTIVE"
         elif echo "$status_line" | grep -q "CLOSED"; then
-            DEBT_STATUS[$debt_id]="CLOSED"
+            _set_status "$debt_id" "CLOSED"
         elif echo "$status_line" | grep -q "DEFERRED"; then
-            DEBT_STATUS[$debt_id]="DEFERRED"
+            _set_status "$debt_id" "DEFERRED"
         else
-            DEBT_STATUS[$debt_id]="UNKNOWN"
+            _set_status "$debt_id" "UNKNOWN"
         fi
     fi
-    status=${DEBT_STATUS[$debt_id]}
+    status=$(_get_status "$debt_id")
     echo "  $debt_id: $status"
     if [ "$status" = "UNKNOWN" ]; then
         FAIL_COUNT=$((FAIL_COUNT + 1))
@@ -124,17 +129,17 @@ for f_id in $(seq -f "F-%02g" 1 36); do
     status_line=$(grep -E "^\| (${f_id}) \||^${f_id} \||\| ${f_id} \|" "$INT5_INVENTORY_DOC" | head -1)
     # Extract status indicator (✅ = closed, ⚠️ = partial, ❌ = open)
     if echo "$status_line" | grep -q "✅"; then
-        DEBT_STATUS[$f_id]="CLOSED"
+        _set_status "$f_id" "CLOSED"
     elif echo "$status_line" | grep -q "⚠️"; then
-        DEBT_STATUS[$f_id]="PARTIAL"
+        _set_status "$f_id" "PARTIAL"
     elif echo "$status_line" | grep -q "❌"; then
-        DEBT_STATUS[$f_id]="OPEN"
+        _set_status "$f_id" "OPEN"
     elif echo "$status_line" | grep -q "DEFERRED"; then
-        DEBT_STATUS[$f_id]="DEFERRED"
+        _set_status "$f_id" "DEFERRED"
     else
-        DEBT_STATUS[$f_id]="UNKNOWN"
+        _set_status "$f_id" "UNKNOWN"
     fi
-    status=${DEBT_STATUS[$f_id]}
+    status=$(_get_status "$f_id")
     if [ "$status" = "UNKNOWN" ]; then
         echo "  ⚠️  $f_id: $status (could not extract from inventory)"
         WARN_COUNT=$((WARN_COUNT + 1))
@@ -153,15 +158,15 @@ for i in $(seq -f "I-%02g" 1 12); do
     TOTAL=$((TOTAL + 1))
     status_line=$(grep -E "^\| (${i}) \||^${i} \||\| ${i} \|" "$INT5_INVENTORY_DOC" | head -1)
     if echo "$status_line" | grep -q "✅"; then
-        DEBT_STATUS[$i]="CLOSED"
+        _set_status "$i" "CLOSED"
     elif echo "$status_line" | grep -q "⚠️"; then
-        DEBT_STATUS[$i]="PARTIAL"
+        _set_status "$i" "PARTIAL"
     elif echo "$status_line" | grep -q "❌"; then
-        DEBT_STATUS[$i]="OPEN"
+        _set_status "$i" "OPEN"
     else
-        DEBT_STATUS[$i]="UNKNOWN"
+        _set_status "$i" "UNKNOWN"
     fi
-    status=${DEBT_STATUS[$i]}
+    status=$(_get_status "$i")
     if [ "$status" = "UNKNOWN" ]; then
         echo "  ⚠️  $i: $status"
         WARN_COUNT=$((WARN_COUNT + 1))
@@ -180,15 +185,15 @@ for t in $(seq -f "T-%02g" 1 20); do
     TOTAL=$((TOTAL + 1))
     status_line=$(grep -E "^\| (${t}) \||^${t} \||\| ${t} \|" "$INT5_INVENTORY_DOC" | head -1)
     if echo "$status_line" | grep -q "✅"; then
-        DEBT_STATUS[$t]="CLOSED"
+        _set_status "$t" "CLOSED"
     elif echo "$status_line" | grep -q "⚠️"; then
-        DEBT_STATUS[$t]="PARTIAL"
+        _set_status "$t" "PARTIAL"
     elif echo "$status_line" | grep -q "❌"; then
-        DEBT_STATUS[$t]="OPEN"
+        _set_status "$t" "OPEN"
     else
-        DEBT_STATUS[$t]="UNKNOWN"
+        _set_status "$t" "UNKNOWN"
     fi
-    status=${DEBT_STATUS[$t]}
+    status=$(_get_status "$t")
     if [ "$status" = "UNKNOWN" ]; then
         echo "  ⚠️  $t: $status"
         WARN_COUNT=$((WARN_COUNT + 1))
@@ -223,21 +228,30 @@ REALITY_WARN=0
 #   (b) zero production-struct constructors in body (heuristic)
 ISOLATED_F_LIST=(F-16 F-23 F-24 F-25 F-26 F-27 F-29 F-31 F-32 F-35)
 # Hardcoded mapping: F-id -> test file basename (per docs/releases/v3.8.0/historical/LEGACY_ISSUES_2026-06-05_AUDIT.md §2.3)
-declare -A F_TEST_FILE=(
-    [F-16]="gap_locking_test.rs"
-    [F-23]="clustered_index_test.rs"
-    [F-24]="adaptive_hash_index_test.rs"
-    [F-25]="change_buffer_test.rs"
-    [F-26]="double_write_buffer_test.rs"
-    [F-27]="table_compression_test.rs"
-    [F-29]="row_level_security_test.rs"
-    [F-31]="performance_schema_test.rs"
-    [F-32]="mysqladmin_test.rs"
-    [F-35]="password_rotation_test.rs"
-)
-ISOLATED_TESTS=()
-for f_id in "${ISOLATED_F_LIST[@]}"; do
-    test_basename="${F_TEST_FILE[$f_id]}"
+# Bash 3.2 compatible: sequential mapping instead of declare -A
+# Format: alternating id/value lines (no associative arrays)
+_F_TEST_FILE_COUNT=10
+F_TEST_FILE_IDS="F-16 F-23 F-24 F-25 F-26 F-27 F-29 F-31 F-32 F-35"
+F_TEST_FILE_VALS="gap_locking_test.rs clustered_index_test.rs adaptive_hash_index_test.rs change_buffer_test.rs double_write_buffer_test.rs table_compression_test.rs row_level_security_test.rs performance_schema_test.rs mysqladmin_test.rs password_rotation_test.rs"
+_f_test_file_get() {
+    _idx=1
+    for _id in $F_TEST_FILE_IDS; do
+        [ "$_id" = "$1" ] && echo $(echo $F_TEST_FILE_VALS | awk -v n=$_idx '{print $n}')
+        _idx=$((_idx+1))
+    done
+}
+_F_KEYWORD_IDS="F-16 F-23 F-24 F-25 F-26 F-27 F-29 F-31 F-32 F-35"
+_F_KEYWORD_VALS="gap_lock clustered_index adaptive_hash change_buffer double_write table_compression row_level_security performance_schema mysqladmin password_rotation"
+_f_keyword_get() {
+    _idx=1
+    for _id in $_F_KEYWORD_IDS; do
+        [ "$_id" = "$1" ] && echo $(echo $_F_KEYWORD_VALS | awk -v n=$_idx '{print $n}')
+        _idx=$((_idx+1))
+    done
+}
+ISOLATED_F_LIST="F-16 F-23 F-24 F-25 F-26 F-27 F-29 F-31 F-32 F-35"
+for f_id in $ISOLATED_F_LIST; do
+    test_basename=$(_f_test_file_get "$f_id")
     # Find candidate test file (handle both .rs at root and in subdirs)
     test_file=$(find tests -name "$test_basename" -not -path "*/target/*" 2>/dev/null | head -1)
     if [ -z "$test_file" ]; then
@@ -307,20 +321,8 @@ fi
 echo ""
 echo "  --- 10 F-XX main-path detection (#3136 Part 2: rg 'fn execute_.* {FXX}') ---"
 MAIN_PATH_MISSING=()
-declare -A F_KEYWORD=(
-    [F-16]="gap_lock"
-    [F-23]="clustered_index"
-    [F-24]="adaptive_hash"
-    [F-25]="change_buffer"
-    [F-26]="double_write"
-    [F-27]="table_compression"
-    [F-29]="row_level_security"
-    [F-31]="performance_schema"
-    [F-32]="mysqladmin"
-    [F-35]="password_rotation"
-)
-for f_id in "${!F_KEYWORD[@]}"; do
-    kw="${F_KEYWORD[$f_id]}"
+for f_id in $_F_KEYWORD_IDS; do
+    kw=$(_f_keyword_get "$f_id")
     if [ -z "$(rg -l "fn\\s+execute_${kw}\\b|fn\\s+${kw}_\\w+\\s*\\(" src/execution_engine.rs 2>/dev/null | head -1)" ] \
        && [ -z "$(rg -l "fn\\s+${kw}\\b" src/execution_engine.rs 2>/dev/null | head -1)" ]; then
         MAIN_PATH_MISSING+=("$f_id:no execute_${kw}* or ${kw}* in src/execution_engine.rs")
@@ -344,7 +346,7 @@ echo ""
 echo "  --- 10 F-XX SPEC docs detection (#3136 Part 3: docs/.../specs/debt/F{XX}_*.md) ---"
 SPEC_MISSING=()
 SPEC_DIR="$REPO_DIR/docs/releases/v3.8.0/specs/debt"
-for f_id in "${!F_TEST_FILE[@]}"; do
+for f_id in $F_TEST_FILE_IDS; do
     # Convert F-16 -> F16
     spec_prefix=$(echo "$f_id" | tr -d '-')
     if [ ! -d "$SPEC_DIR" ]; then
@@ -374,9 +376,8 @@ echo ""
 echo "  --- 10 F-XX CI D6_INTEGRATION_TESTS registration (#3136 Part 4) ---"
 CI_MISSING=()
 D6_ARRAY_FILE="$REPO_DIR/scripts/gate/check_rc_ga_gate.sh"
-for f_id in "${!F_TEST_FILE[@]}"; do
-    test_basename="${F_TEST_FILE[$f_id]}"
-    # Strip .rs extension (D6 array uses basenames without .rs)
+for f_id in $F_TEST_FILE_IDS; do
+    test_basename=$(_f_test_file_get "$f_id")
     test_name="${test_basename%.rs}"
     if [ -f "$D6_ARRAY_FILE" ] && ! grep -qE "\"$test_name\"|^$test_name\\b" "$D6_ARRAY_FILE" 2>/dev/null; then
         CI_MISSING+=("$f_id:'$test_name' not in check_rc_ga_gate.sh D6_INTEGRATION_TESTS")
@@ -413,13 +414,13 @@ echo "=== Cross-Version Debt Summary ==="
 
 ACTIVE_COUNT=0
 CLOSED_COUNT=0
-DEFERRED_COUNT=0
-PARTIAL_COUNT=0
-OPEN_COUNT=0
-UNKNOWN_COUNT=0
 
-for id in "${!DEBT_STATUS[@]}"; do
-    status=${DEBT_STATUS[$id]}
+# Bash 3.2 compatible: no process substitution; use named pipe via PIPE
+# Accumulate status counts directly in the loop over the sorted CSV
+sorted_tmp=$(mktemp)
+sort "$DEBT_TMP" > "$sorted_tmp"
+while IFS=, read -r id status; do
+    [ -z "$id" ] && continue
     case "$status" in
         ACTIVE)   ACTIVE_COUNT=$((ACTIVE_COUNT + 1)) ;;
         CLOSED)   CLOSED_COUNT=$((CLOSED_COUNT + 1)) ;;
@@ -428,7 +429,8 @@ for id in "${!DEBT_STATUS[@]}"; do
         OPEN)     OPEN_COUNT=$((OPEN_COUNT + 1)) ;;
         UNKNOWN)  UNKNOWN_COUNT=$((UNKNOWN_COUNT + 1)) ;;
     esac
-done
+done < "$sorted_tmp"
+rm -f "$sorted_tmp"
 
 echo "  Total debt items tracked: $TOTAL"
 echo "  ✅ CLOSED:    $CLOSED_COUNT"
