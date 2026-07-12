@@ -3,8 +3,8 @@
 //! v3.10.0 Issue #3703 Phase 5: SIMD optimization
 
 use sqlrustgo_executor::simd_eval::{
-    apply_mask, extract_i64_column, BatchPredicate, BitMask, EqualsPredicate,
-    GreaterThanPredicate, LessThanPredicate,
+    apply_mask, extract_i64_column, BatchPredicate, BitMask, EqualsPredicate, GreaterThanPredicate,
+    LessThanPredicate,
 };
 use sqlrustgo_types::Value;
 

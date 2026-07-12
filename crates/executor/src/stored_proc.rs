@@ -13,7 +13,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 #[cfg(test)]
-use sqlrustgo_catalog::{ParamMode, StoredProcedure, StoredProcParam};
+use sqlrustgo_catalog::{ParamMode, StoredProcParam, StoredProcedure};
 
 /// Stored procedure execution error
 #[derive(Debug, Clone)]
@@ -3491,7 +3491,8 @@ mod tests {
         catalog.add_stored_procedure(proc).unwrap();
         let catalog = Arc::new(catalog);
         let executor = StoredProcExecutor::new_for_test(catalog);
-        let result = executor.execute_call("no_param_proc", vec![Value::Integer(1), Value::Integer(2)]);
+        let result =
+            executor.execute_call("no_param_proc", vec![Value::Integer(1), Value::Integer(2)]);
         assert!(result.is_ok());
     }
 

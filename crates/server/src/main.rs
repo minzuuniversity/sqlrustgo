@@ -62,7 +62,8 @@ fn handle_client(
         let response = serde_json::json!({
             "status": "deprecated",
             "message": "This server implementation is deprecated. Use crates/mysql-server instead."
-        }).to_string();
+        })
+        .to_string();
 
         let _ = stream.write_all(response.as_bytes());
         let _ = stream.write_all(b"\n");
