@@ -278,6 +278,14 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             // this as a hard safety gate.
             && select.lock_clause.is_none()
         {
+            let _span = tracing::info_span!(
+                "parallel_filter_engaged",
+                degree = self.parallel_degree,
+                rows_in = rows.len(),
+                has_correlated_subquery = false,
+                has_lock_clause = false,
+            )
+            .entered();
             let t_start = Instant::now();
             let n_rows_in = rows.len();
             if let Some(where_expr) = &select.where_clause {
