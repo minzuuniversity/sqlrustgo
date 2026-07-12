@@ -34,5 +34,5 @@ pub use file_storage::FileStorage;
 pub use io_delay::{io_delay_ms, maybe_delay, IoDelayConfig, IoFaultInjector, LcgRng};
 pub use lock::{GapLock, GapLockManager, GapLockType, IsolationLevel};
 pub use page::Page;
-pub use wal::{FileBackedWalManager, MemoryWalManager};
+pub use wal::{FileBackedWalManager, MemoryWalManager, WalManager};
 pub use wal_storage::WalStorage;
