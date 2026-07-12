@@ -162,7 +162,10 @@ impl GapLockManager {
     /// Get the isolation level for a transaction
     pub fn get_isolation(&self, tx_id: u64) -> IsolationLevel {
         let isolation = self.isolation.lock();
-        isolation.get(&tx_id).copied().unwrap_or(IsolationLevel::RepeatableRead)
+        isolation
+            .get(&tx_id)
+            .copied()
+            .unwrap_or(IsolationLevel::RepeatableRead)
     }
 
     /// Acquire a gap lock for a transaction
@@ -244,7 +247,10 @@ impl GapLockManager {
     /// would conflict with the insert.
     pub fn can_insert(&self, tx_id: u64, table: &str, value: &str) -> bool {
         let isolation = self.isolation.lock();
-        let level = isolation.get(&tx_id).copied().unwrap_or(IsolationLevel::RepeatableRead);
+        let level = isolation
+            .get(&tx_id)
+            .copied()
+            .unwrap_or(IsolationLevel::RepeatableRead);
         drop(isolation);
 
         // Only check gap locks for REPEATABLE_READ and above
