@@ -87,31 +87,19 @@ impl PolicyCatalog {
     }
 
     pub fn enable_rls(&self, table: &str) {
-        self.rls_enabled
-            .write()
-            .insert(table.to_string(), true);
+        self.rls_enabled.write().insert(table.to_string(), true);
     }
 
     pub fn disable_rls(&self, table: &str) {
-        self.rls_enabled
-            .write()
-            .insert(table.to_string(), false);
+        self.rls_enabled.write().insert(table.to_string(), false);
     }
 
     pub fn is_rls_enabled(&self, table: &str) -> bool {
-        self.rls_enabled
-            .read()
-            .get(table)
-            .copied()
-            .unwrap_or(false)
+        self.rls_enabled.read().get(table).copied().unwrap_or(false)
     }
 
     pub fn get_policies(&self, table: &str) -> Vec<Policy> {
-        self.policies
-            .read()
-            .get(table)
-            .cloned()
-            .unwrap_or_default()
+        self.policies.read().get(table).cloned().unwrap_or_default()
     }
 
     /// Filter rows by applying all applicable USING policies.

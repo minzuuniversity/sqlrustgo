@@ -1,6 +1,7 @@
 // SQLRustGo executor module
 
 pub mod ast_adapter;
+pub mod cancellation_token;
 pub mod execution;
 pub mod executor;
 pub mod executor_metrics;
@@ -10,17 +11,16 @@ pub mod local_executor_dml;
 pub mod merge;
 pub mod mutation_compiler;
 pub mod parallel_executor;
-pub mod task_scheduler;
-pub mod thread_pool_registry;
 pub mod pipeline_executor;
-pub mod cancellation_token;
-pub mod simd_eval;
-pub mod record_batch;
 pub mod predicate_compiler;
 pub mod query_cache;
 pub mod query_cache_config;
+pub mod record_batch;
+pub mod simd_eval;
 pub mod sql_executor;
 pub mod stored_proc;
+pub mod task_scheduler;
+pub mod thread_pool_registry;
 pub mod trigger;
 pub mod trigger_eval;
 pub mod update_compiler;
