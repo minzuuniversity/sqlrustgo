@@ -33,6 +33,5 @@ pub use engine::{
 pub use file_storage::FileStorage;
 pub use io_delay::{io_delay_ms, maybe_delay, IoDelayConfig, IoFaultInjector, LcgRng};
 pub use lock::{GapLock, GapLockManager, GapLockType, IsolationLevel};
->>>>>>> 5eb02ce08 (feat(storage): add GapLockManager for REPEATABLE-READ isolation)
 pub use page::Page;
 pub use wal_storage::WalStorage;
