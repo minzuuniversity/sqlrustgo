@@ -6,9 +6,7 @@
 //! behind `parallel-executor`. When the feature is OFF, a stub sequential
 //! scheduler is exported so the binary still compiles.
 
-use std::sync::Arc;
 use std::thread;
-use std::time::Duration;
 
 // v3.10.0 Issue #3703: rayon gated by parallel-executor feature
 #[cfg(feature = "parallel-executor")]
@@ -126,14 +124,14 @@ impl TaskScheduler for RayonTaskScheduler {
 /// Sequential stub scheduler (used when parallel-executor feature is OFF)
 #[cfg(not(feature = "parallel-executor"))]
 pub struct RayonTaskScheduler {
-    active_tasks: std::sync::atomic::AtomicUsize,
+    _active_tasks: std::sync::atomic::AtomicUsize,
 }
 
 #[cfg(not(feature = "parallel-executor"))]
 impl RayonTaskScheduler {
     pub fn new(_parallelism: usize) -> Self {
         Self {
-            active_tasks: std::sync::atomic::AtomicUsize::new(0),
+            _active_tasks: std::sync::atomic::AtomicUsize::new(0),
         }
     }
 
