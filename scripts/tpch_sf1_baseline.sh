@@ -35,7 +35,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$PROJECT_ROOT"
 
-SF1_DIR="${SF1_DIR:-/tmp/tpch-sf1}"
+SF1_DIR="${SF1_DIR:-${TPCH_SF1_DIR:-/tmp/tpch-sf1}}"
 REPORT_PATH="$PROJECT_ROOT/docs/releases/v3.10.0/perf/SF1_BASELINE_REPORT.md"
 LOADER_TIMEOUT_S="${LOADER_TIMEOUT_S:-1800}"   # 30 min per query (Q9 headroom)
 TEST_BUDGET_S="${TEST_BUDGET_S:-1800}"          # 30 min total wall clock
@@ -74,7 +74,7 @@ EXPECTED_ROWS=(
     "part:200000"
     "partsupp:800000"
     "orders:1500000"
-    "lineitem:6000000"
+    "lineitem:6001215"
 )
 FIXTURE_OK=true
 for spec in "${EXPECTED_ROWS[@]}"; do
@@ -185,6 +185,7 @@ echo "=== Step 5: run cargo test --test tpch_sf1_22_vs_3engines_test -- --ignore
 # ---------------------------------------------------------------------
 echo "=== Step 5: run cargo test --test tpch_sf1_22_vs_3engines_test -- --include-ignored --nocapture ==="
 mkdir -p "$(dirname "$REPORT_PATH")"
+export TPCH_SF1_DIR="$SF1_DIR"
 # `--include-ignored` is required: the test is `#[ignore]`d when the fixture
 # is absent. We have just verified the fixture is present, so we
 # know the test will not be skipped. Note: libtest's `--ignored` only

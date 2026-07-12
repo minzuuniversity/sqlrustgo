@@ -24,43 +24,16 @@ use sqlrustgo_executor::trigger::{
 };
 use sqlrustgo_executor::ExecutorResult;
 use sqlrustgo_parser::parser::{
-    AggregateCall,
-    AggregateFunction,
-    AlterTableOperation,
-    AlterTableStatement,
-    CallStatement,
-    CreateDatabaseStatement,
-    CreateIndexStatement,
-    CreateProcedureStatement,
-    CreateRoleStatement,
-    CreateTableStatement,
-    CreateTriggerStatement,
-    CreateViewStatement,
-    DescribeStatement,
-    DropDatabaseStatement,
-    DropIndexStatement,
-    DropRoleStatement,
-    DropTableStatement,
-    DropViewStatement,
-    ExceptStatement,
-    GrantRoleStatement,
-    GrantStatement,
-    InsertStatement,
-    IntersectStatement,
-    MergeStatement,
-    ObjectType as ParserObjectType,
-    OrderByExpression,
-    Privilege as ParserPrivilege,
-    RevokeRoleStatement,
-    RevokeStatement,
-    SelectStatement,
-    SetRoleStatement,
-    ShowStatement,
-    StoredProcParam as ParserStoredProcParam,
-    StoredProcParamMode as ParserParamMode,
-    StoredProcStatement as ParserStatement,
-    TruncateStatement,
-    UnionStatement,
+    AggregateCall, AggregateFunction, AlterTableOperation, AlterTableStatement, CallStatement,
+    CreateDatabaseStatement, CreateIndexStatement, CreateProcedureStatement, CreateRoleStatement,
+    CreateTableStatement, CreateTriggerStatement, CreateViewStatement, DescribeStatement,
+    DropDatabaseStatement, DropIndexStatement, DropRoleStatement, DropTableStatement,
+    DropViewStatement, ExceptStatement, GrantRoleStatement, GrantStatement, InsertStatement,
+    IntersectStatement, MergeStatement, ObjectType as ParserObjectType, OrderByExpression,
+    Privilege as ParserPrivilege, RevokeRoleStatement, RevokeStatement, SelectStatement,
+    SetRoleStatement, ShowStatement, StoredProcParam as ParserStoredProcParam,
+    StoredProcParamMode as ParserParamMode, StoredProcStatement as ParserStatement,
+    TruncateStatement, UnionStatement,
 };
 use sqlrustgo_parser::transaction::IsolationLevel as ParserIsolationLevel;
 use sqlrustgo_parser::JoinType;
@@ -1527,8 +1500,10 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 }
                 std::cmp::Ordering::Equal
             });
-            left_result.rows =
-                indices.into_iter().map(|i| left_result.rows[i].clone()).collect();
+            left_result.rows = indices
+                .into_iter()
+                .map(|i| left_result.rows[i].clone())
+                .collect();
         }
         if let Some(off) = union_stmt.trailing_offset {
             let off = off as usize;
@@ -1606,7 +1581,11 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
 /// resolve trailing ORDER BY column references.
 fn leftmost_column_names(stmt: &Statement) -> Vec<&str> {
     match stmt {
-        Statement::Select(s) => s.columns.iter().map(|c| c.alias.as_deref().unwrap_or(&c.name)).collect(),
+        Statement::Select(s) => s
+            .columns
+            .iter()
+            .map(|c| c.alias.as_deref().unwrap_or(&c.name))
+            .collect(),
         Statement::Union(u) => leftmost_column_names(&u.left),
         Statement::Intersect(i) => leftmost_column_names(&i.left),
         Statement::Except(e) => leftmost_column_names(&e.left),
