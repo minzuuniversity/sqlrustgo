@@ -4,10 +4,10 @@
 #![allow(unused_variables, unused_imports)]
 
 use parking_lot::RwLock;
+use sqlrustgo_optimizer::unified_cost::UnifiedCostModel;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
-use sqlrustgo_optimizer::unified_cost::UnifiedCostModel;
 
 use sqlrustgo_catalog::Catalog;
 use sqlrustgo_storage::{
