@@ -555,6 +555,10 @@ path = "tests/sem1_savepoint_test.rs"
 name = "crash_test_framework"
 path = "tests/crash_test_framework.rs"
 # P1-2 (#3174) — Crash Test Harness (shared helper, not a test target)
+# T-20 (#3769) — Process kill -9 mid-transaction crash recovery
+[[test]]
+name = "process_kill_crash_test"
+path = "tests/process_kill_crash_test.rs"
 [[test]]
 name = "crash_test_harness"
 path = "tests/crash_test_harness.rs"
