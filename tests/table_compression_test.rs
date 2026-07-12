@@ -4,8 +4,8 @@
 //! **Source**: v3.0.0 COMPLETE_LEGACY_TRACKING_REPORT.md (F-27)
 //! **Change**: openspec/changes/f-27-table-compression
 //!
-//! zlib-based page compression with transparent decompress on read.
 //! Real storage integration in v3.9.0.
+//! v3.10.0 status: VERIFIED, ISOLATED (RLE only); Phase 2 plan; see ISOLATED_MODULES.md §1 (F-27).
 
 use std::collections::HashMap;
 
