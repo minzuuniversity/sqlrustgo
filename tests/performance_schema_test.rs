@@ -5,6 +5,7 @@
 //! **Change**: openspec/changes/f-31-performance-schema
 //!
 //! In-memory performance instrumentation. Real integration in v3.9.0.
+//! v3.10.0 status: VERIFIED, ISOLATED (Phase 2 plan); see ISOLATED_MODULES.md §1 (F-31).
 
 use parking_lot::RwLock;
 use std::collections::HashMap;
