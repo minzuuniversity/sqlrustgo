@@ -793,6 +793,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         let mut storage = self.storage.write();
         {
             let _ = storage.commit_transaction();
+            // F-16 Gap Locking: release all gap locks on commit
+            storage.release_all_gap_locks(tx_id.as_u64());
         }
         self.transaction_manager.commit(tx_id).map_err(|e| {
             SqlError::ExecutionError(format!("Failed to commit transaction: {:?}", e))
@@ -863,6 +865,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         let mut storage = self.storage.write();
         {
             let _ = storage.rollback_transaction();
+            // F-16 Gap Locking: release all gap locks on rollback
+            storage.release_all_gap_locks(tx_id.as_u64());
         }
         self.transaction_manager.rollback(tx_id).map_err(|e| {
             SqlError::ExecutionError(format!("Failed to rollback transaction: {:?}", e))
@@ -1447,7 +1451,11 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             let tx_id = self.current_tx_id.unwrap();
             let _ = self.transaction_manager.commit(tx_id);
             // WAL checkpoint + truncation lives in StorageEngine::commit_transaction
-            let _ = self.storage.write().commit_transaction();
+            let mut storage = self.storage.write();
+            let _ = storage.commit_transaction();
+            // F-16 Gap Locking: release all gap locks on commit
+            storage.release_all_gap_locks(tx_id.as_u64());
+            drop(storage);
             self.current_tx_id = None;
             self.tx_status = TxStatus::Idle;
         }
