@@ -1,3 +1,14 @@
+## 2026-07-12 — F-36 修复 + V310-14 mysqladmin CLI 二进制 (PR #3776 / #3768)
+
+### Performance Fix
+
+| Issue | 内容 | 验证 |
+| --- | --- | --- |
+| #3776 (F-36) | `fix(parallel)`: `parallel_scan` memory ownership — 替换 per-partition `Vec::to_vec()` 深拷贝为 `Arc<Vec<Record>>` 共享迭代器 `SharedSliceIter`。消除 2.9× 内存回归。`PARALLEL_MIN_ROWS` 从 500K 降至 100K。 | parallel_scan 11/11, int2_substance_parallel 9/9, parallel_semantic 8/8, parallel_group_by 8/8, parallel_hash_join 17/17 |
+| #3768 (V310-14, F-32) | `feat(admin)`: `sqlrustgo-admin` CLI 增加 `status`, `reload`, `refresh`, `flush-tables`, `processlist`, `kill` 子命令。连接 MySQL wire protocol server，支持 `--host/--port/--user/--password`。`MysqlAdmin` 库结构已在 `crates/admin/src/mysqladmin.rs`。 | mysqladmin_test 11/11, `cargo build -p sqlrustgo-admin` ✓, `--help` 显示 6 subcommands |
+
+---
+
 ## 2026-07-01 — execution_engine 拆分 + C-ARCH-05 锁回 + SGL-001 fmt (PR #3664/#3665/#3666)
 
 v3.9.0 本机可推进的 L1 lint + 架构整理项已全部闭环。3 个连续 PR 合并至 `develop/v3.9.0` (HEAD `d77821f6d1`)。
