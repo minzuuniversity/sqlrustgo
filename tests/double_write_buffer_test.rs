@@ -6,6 +6,7 @@
 //!
 //! In-memory mock of InnoDB-style Double-Write buffer. Real storage
 //! integration in v3.9.0.
+//! v3.10.0 status: VERIFIED, ISOLATED (Phase 1 plan); see ISOLATED_MODULES.md §1 (F-26).
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
