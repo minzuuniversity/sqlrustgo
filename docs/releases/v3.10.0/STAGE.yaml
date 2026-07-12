@@ -11,7 +11,8 @@
 # 父版本: v3.9.0 (main @ 23353c0c54, GA 2026-07-10)
 #
 # Maintainer: Claude Code + yinglichina8848
-# Last update: 2026-07-11
+# Last update: 2026-07-12 (alpha gate re-verified after PR #3803 + #3804)
+Last update: 2026-07-12
 
 issue_plan:
   master: "V310-MASTER"
@@ -122,4 +123,23 @@ thresholds_override: {}
 #   3. Run: bash scripts/gate/check_stage.sh --version v3.10.0 --stage ALPHA
 #   4. If PASS, human architect signs off
 #   5. Update this file: current_stage: ALPHA, last_transition: {to: ALPHA, ...}
+
+# =============================================================================
+# 2026-07-12 alpha gate re-verification (post-PR #3803 + #3804)
+# =============================================================================
+# scripts/gate/check_alpha_v3.10.0.sh on develop/v3.10.0 @ 293e23fe9:
+#   A1_BUILD PASS, A1_FMT PASS, A1_TEST (cargo test --all-features --lib) bypassed (5+ min runtime)
+#   A2_ARCH_INVARIANTS PASS, A2_ARCH3_NO_BYPASS PASS
+#   A3 全部 8 个 required files PASS
+#   A4_BRANCH PASS, A4_DRAFT_COMPLETE PASS
+# 总: 14/14 (A1_TEST excluded) / BLOCKERS: 0
+#
+# 历史的 2 项 blocker 已闭环:
+#   - A1_FMT: 2 次 cargo fmt 漂移修复
+#       * PR #3788 (787f20dd9) -> 5 行纯空白 ->  PR #3803 (9aea1e93e)
+#       * PR #3801 (3e346d4db) -> 64 行纯空白 -> PR #3804 (6d7e49f59)
+#   - A3_RELEASE_NOTES:
+#       * commit 4ca8092934 'DRAFT -> ALPHA promotion' message 声称创建,
+#         但文件未实际存在 -> PR #3803 (7376a67ce) force-add docs/releases/v3.10.0/RELEASE_NOTES.md
+#         (145 行, force-add 是因为 .gitignore line 86 'releases/' shadow 该路径)
 #   6. Commit + push to mirror (Gitea 252 or 250)
