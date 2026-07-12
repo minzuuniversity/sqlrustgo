@@ -20,8 +20,10 @@ use tracing::{debug, warn};
 #[derive(Clone)]
 pub struct CancellationToken {
     cancelled: Arc<AtomicBool>,
-    callbacks: Arc<Mutex<Vec<Box<dyn Fn() + Send + Sync>>>>,
+    callbacks: Arc<Mutex<Vec<CancellationCallback>>>,
 }
+
+type CancellationCallback = Box<dyn Fn() + Send + Sync>;
 
 impl CancellationToken {
     /// Create a new CancellationToken

@@ -127,7 +127,9 @@ impl Catalog {
     /// Add a schema to the default database.
     pub fn add_schema(&mut self, schema: Schema) -> CatalogResult<()> {
         let db_name = self.default_database.clone();
-        let db = self.databases.get_mut(&db_name)
+        let db = self
+            .databases
+            .get_mut(&db_name)
             .ok_or(CatalogError::SchemaNotFound(db_name))?;
         db.add_schema(schema)
     }
@@ -139,37 +141,49 @@ impl Catalog {
 
     /// Get all schema names in the default database.
     pub fn schema_names(&self) -> Vec<&str> {
-        self.default_db().map(|db| db.schema_names()).unwrap_or_default()
+        self.default_db()
+            .map(|db| db.schema_names())
+            .unwrap_or_default()
     }
 
     /// Check if a schema exists in the default database.
     pub fn has_schema(&self, name: &str) -> bool {
-        self.default_db().map(|db| db.has_schema(name)).unwrap_or(false)
+        self.default_db()
+            .map(|db| db.has_schema(name))
+            .unwrap_or(false)
     }
 
     /// Get the default schema name of the default database.
     pub fn default_schema(&self) -> &str {
-        self.default_db().map(|db| db.default_schema()).unwrap_or("public")
+        self.default_db()
+            .map(|db| db.default_schema())
+            .unwrap_or("public")
     }
 
     /// Set the default schema in the default database.
     pub fn set_default_schema(&mut self, name: String) -> CatalogResult<()> {
         let db_name = self.default_database.clone();
-        let db = self.databases.get_mut(&db_name)
+        let db = self
+            .databases
+            .get_mut(&db_name)
             .ok_or(CatalogError::SchemaNotFound(db_name))?;
         db.set_default_schema(name)
     }
 
     /// Get all schemas from the default database.
     pub fn schemas(&self) -> Vec<&Schema> {
-        self.default_db().map(|db| db.schemas().values().collect::<Vec<_>>()).unwrap_or_default()
+        self.default_db()
+            .map(|db| db.schemas().values().collect::<Vec<_>>())
+            .unwrap_or_default()
     }
 
     /// Get all schemas across all databases (for INFORMATION_SCHEMA).
     pub fn all_schemas(&self) -> Vec<(&str, &Schema)> {
-        self.databases.iter()
+        self.databases
+            .iter()
             .flat_map(|(db_name, db)| {
-                db.schemas().values()
+                db.schemas()
+                    .values()
                     .map(|s| (db_name.as_str(), s))
                     .collect::<Vec<_>>()
             })
@@ -370,7 +384,6 @@ mod tests {
         let schema = catalog.get_schema("others").unwrap();
         assert!(schema.has_table("users"));
     }
-
 
     #[test]
     fn test_duplicate_schema() {
