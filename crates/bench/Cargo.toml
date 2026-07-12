@@ -22,3 +22,7 @@ chrono = "0.4"
 mysql = "25"
 sqlrustgo = { path = "../.." }
 sqlrustgo-storage = { path = "../storage" }
+
+parking_lot = "0.12"
+hostname = "0.4"
+sys-info = "0.9"
