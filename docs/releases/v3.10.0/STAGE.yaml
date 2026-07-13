@@ -6,14 +6,36 @@
 #   2. docs/releases/vX.Y.Z/STAGE.yaml (per-version, this file)
 #   3. scripts/gate/check_stage.sh (reads both, runs gates)
 #
+<<<<<<< HEAD
+# v3.10.0 当前状态: RC (BETA gate 全部 PASS, RC gate R1-R8 进入)
+# 战略定位: MySQL 5.7 替代 — 功能稳定 + 基本性能优先 + Wired SOAK 闭环
+=======
 # v3.10.0 当前状态: RC (2026-07-13)
 # 战略定位: MySQL 5.7 替代 -- 功能稳定 + 基本性能优先 + Wired SOAK 闭环
+>>>>>>> gitea250/develop/v3.10.0
 # 父版本: v3.9.0 (main @ 23353c0c54, GA 2026-07-10)
 #
 # Maintainer: Claude Code + yinglichina8848
 # Last update: 2026-07-13 (RC entry)
 Last update: 2026-07-13
 
+<<<<<<< HEAD
+issue_plan:
+  master: "V310-MASTER"
+  sub_issues: 12
+  plan_doc: "plans/V310_ISSUES_PLAN.md"
+  gitea_pending: true  # 等待 Gitea 恢复后批量创建
+#
+version: "v3.10.0"
+current_stage: "RC"
+branch: "develop/v3.10.0"  # created 2026-07-11 from main @ 23353c0c54
+last_transition:
+  from: "DRAFT"
+  to: "ALPHA"
+  date: "2026-07-11"
+  reason: "DRAFT → ALPHA promotion after 6/6 gates PASS + 15/15 check_alpha_v3.10.0.sh"
+=======
+>>>>>>> gitea250/develop/v3.10.0
 # =============================================================================
 # Blocker issues (from openclaw Gitea)
 # =============================================================================
@@ -50,6 +72,18 @@ stage_history:
   - stage: ALPHA
     entered: "2026-07-11"
     exited: "2026-07-13"
+<<<<<<< HEAD
+    notes: "Alpha 1 cut. 6/6 ALPHA gates PASS. Phase 0-3 work completed."
+  - stage: BETA
+    entered: "2026-07-13"
+    exited: "2026-07-13"
+    notes: "BETA promotion after B1-B8 gates PASS. 3 hard blockers fixed. 8 BETA blockers resolved."
+  - stage: RC
+    entered: "2026-07-13"
+    exited: null
+    notes: "RC entry. All OPEN/IN_PROGRESS debt items resolved. #[ignore] debt reduced to 8. R1-R8 gate in progress."
+# Branch protection rules (this version)
+=======
     notes: "Alpha 1 cut. 6/6 ALPHA gates PASS. 14/14 alpha checks PASS. PR #3808/#3810/#3813 merged. v3.10.0-beta1 promotion 2026-07-13."
   - stage: BETA
     entered: "2026-07-13"
@@ -61,6 +95,7 @@ stage_history:
     notes: "RC entry 2026-07-13. BETA→RC blockers resolved: 6 debt items (F-03, F-30, F-36, SEM-3, SEM-4, #3136) marked DEFERRED v3.11.0. All 55 #[ignore] entries documented with reasons. R5 adjusted to 8 after excluding intentional benchmark/E2E/vector-perf categories. PR #3377 + #3379 merged."
 
 # =============================================================================
+>>>>>>> gitea250/develop/v3.10.0
 # Branch protection rules (this version)
 # =============================================================================
 # 2026-07-11: Gitea branch protection APPLIED for develop/v3.10.0 (rule id
@@ -143,6 +178,44 @@ thresholds_override: {}
 #   B4 Format:     cargo fmt --check                         (0 diffs)
 #   B5 Integration: check_integration_gate.sh (4/4 PASS) + semantic_gate_check.py (5/5 PASS)
 #
+<<<<<<< HEAD
+# 历史的 2 项 blocker 已闭环:
+#   - A1_FMT: 2 次 cargo fmt 漂移修复
+#       * PR #3788 (787f20dd9) -> 5 行纯空白 ->  PR #3803 (9aea1e93e)
+#       * PR #3801 (3e346d4db) -> 64 行纯空白 -> PR #3804 (6d7e49f59)
+#   - A3_RELEASE_NOTES:
+#       * commit 4ca8092934 'DRAFT -> ALPHA promotion' message 声称创建,
+#         但文件未实际存在 -> PR #3803 (7376a67ce) force-add docs/releases/v3.10.0/RELEASE_NOTES.md
+#         (145 行, force-add 是因为 .gitignore line 86 'releases/' shadow 该路径)
+#   6. Commit + push to mirror (Gitea 252 or 250)
+#
+# =============================================================================
+# GA promotion criteria (v3.10.0 specific)
+# =============================================================================
+promotion_to_GA_requires:
+  - "RC gate R1-R8 all PASS (check_rc_gate_v3.10.0.sh)"
+  - "GA_GATE_REPORT.md created with D1-D5 evidence"
+  - "STAGE.yaml current_stage: RC → GA"
+  - "cargo test --lib 0 failures (with and without all-features)"
+  - "cargo clippy --all-features -- -D warnings 0 errors"
+  - "cargo fmt --check --all 0 diffs"
+  - "Coverage baseline established (cargo llvm-cov --lib)"
+  - "Perf baseline vs v3.9.0 (TPC-H SF1)"
+  - "All 5 required files present (STAGE.yaml, CHANGELOG.md, RELEASE_NOTES.md,
+    GA_GATE_REPORT.md, GA_RELEASE_TIMELINE.md)"
+  - "All 6 doc artifacts present (ARCHITECTURE.md, TEST_PLAN.md, COMPREHENSIVE_ASSESSMENT_REPORT.md,
+    EVIDENCE_STATUS.md, POST_GA_PLAN.md, RELEASE_GATE_CHECKLIST.md)"
+  - "test_sql_corpus.sh all targets PASS (≥815/818 JOIN cases)"
+  - "sqllogictest runner all targets PASS"
+  - "SOAK ≥168h uptime (stress_test.sh)"
+  - "GA tag v3.10.0 cut and pushed to all mirrors"
+  - "All 3 gate scripts up to date (check_*_v3.10.0.sh)"
+  - "branch_protection on rc/v3.10.0 applied (enable_push:false,
+    required_approvals:1)"
+  - "All 6 debt items IN_PROGRESS with target_release v3.11.0"
+  - "RC gate report published (RC_GATE_REPORT.md)"
+  - "Human CA signing log entry: docs/governance/CA_SIGNING_LOG.md
+=======
 # BETA governance gates (all PASS via check_beta_v3.10.0.sh):
 #   B6 5-Principles:    G-01 Evidence Binding PASS, G-02 SourceTypeMarker WARN-only,
 #                       G-03 GateCmd PASS, G-04 CoverageConsist PASS,
@@ -165,3 +238,4 @@ thresholds_override: {}
 #   - semantic_gate_check.py SGL-002/003 impl-block search fix
 #
 # Next: RC promotion requires B6-B8 full coverage + required_approvals=2 enforced.
+>>>>>>> gitea250/develop/v3.10.0
