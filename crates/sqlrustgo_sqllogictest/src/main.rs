@@ -205,7 +205,11 @@ async fn async_main() {
         .filter_map(|e| e.ok())
     {
         let path = entry.path();
-        if path.extension().and_then(|s| s.to_str()) != Some("test") {
+        // Skip files in _unsupported subdirectories
+        if path.to_string_lossy().contains("_unsupported") {
+            continue;
+        }
+        if !matches!(path.extension().and_then(|s| s.to_str()), Some("test") | Some("slt")) {
             continue;
         }
         let filename = path.file_name().and_then(|s| s.to_str()).unwrap_or("");
