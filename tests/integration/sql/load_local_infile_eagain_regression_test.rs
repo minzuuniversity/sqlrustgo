@@ -33,6 +33,7 @@
 //! counts. Before the fix, this would panic at `orders.tbl` with
 //! "EAGAIN"; after the fix, all 8 tables load in one go.
 
+#[path = "../../common/mod.rs"]
 mod common;
 
 use common::MySqlTestClient;

@@ -33,6 +33,7 @@
 //!    throughput in step 3 is much lower than in step 2. With the
 //!    fix (SELECTs take the read lock), A's throughput is unchanged.
 
+#[path = "../../common/mod.rs"]
 mod common;
 use common::MySqlTestClient;
 use sqlrustgo_mysql_server::testing::{start_ephemeral, EphemeralConfig};
