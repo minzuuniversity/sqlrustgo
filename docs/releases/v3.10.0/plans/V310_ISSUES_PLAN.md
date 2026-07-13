@@ -40,7 +40,7 @@
 | 9 | [V310-09] | Wire 协议握手修复 (PR4) | 60h | P0 |
 | 10 | [V310-10] | 覆盖率提升至 ≥80% | 40h | P1 |
 | 11 | [V310-11] | TPC-H SF=1 22/22 闭环 | 80h | P1 |
-| 12 | [V310-12] | 其他 ignore 测试 + 跨版本债 | 60h | P2 |
+| 13 | [V310-13] | Beta 测试体系建立 | 40h | P0 |
 
 **门禁达标要求**:
 - G1 TPC-H SF=0.1 22/22 ✅ (v3.9.0 已 PASS，需保持不退化)
@@ -54,13 +54,7 @@
 - G9 24h 真实 SOAK 0 errors
 - G10 Wired-SOAK sysbench prepare/run 真接入 PASS
 
-**参考文档**:
-- [`V310_DEVELOPMENT_PLAN.md`](V310_DEVELOPMENT_PLAN.md) (核心开发计划)
-- [`V310_CLI_BINARY_PLAN.md`](V310_CLI_BINARY_PLAN.md)
-- [`../../governance/adr/ADR-013-v310-wired-soak-ddl-and-wire-protocol-repair.md`](../../governance/adr/ADR-013-v310-wired-soak-ddl-and-wire-protocol-repair.md) (Wired-SOAK RFC)
-- [`V390_COMPREHENSIVE_ASSESSMENT.md`](../v3.9.0/V390_COMPREHENSIVE_ASSESSMENT.md) (v3.9.0 评估)
-
----
+| **Beta** | 4 周 | V310-05, 07, 08, 10, 13 | Crash + 24h SOAK + Catalog + 覆盖率 + 测试体系 |
 
 ## 2. 子 ISSUE 详细描述
 
@@ -336,6 +330,86 @@ bash scripts/gate/check_tpch_sf1.sh
 **验证**: 全部 ignore 测试 unignore + cargo test PASS
 
 **完成判据**: P2 债务全部关闭
+### [V310-13] Beta 测试体系建立
+
+**ISSUE**: #3372
+
+**目标**: 在 Beta 阶段建立全面测试体系，解决测试只验证「SQL 能执行」而不验证「结果是否正确」的根本问题。
+
+**现状问题**:
++ `crates/sqlancer`: ~100行骨架，从未使用
++ `sql_corpus/`: 103个SQL文件(7071行)，从未作为测试运行
++ 缺乏跨数据库语义验证（没有对比参考）
++ 无随机SQL生成（Fuzzing）能力
+
+**解决方案**:
+
+1. **完成 sqlancer SQLite 差异测试**（P0，2-3人天）
+   + 用 SQLite 作为「正确参考」实现
+   + sqlrustgo + SQLite 执行同一 SQL，比较结果集
+   + 已有: `DdlGenerator`, `DmlGenerator`, `TlpOracle`
+   + 缺失: SQLite adapter, 结果集比较器
+
+2. **激活 sql_corpus 回归测试**（P0，0.5人天）
+   + 利用已有的 103 个 SQL 文件
+   + 分级执行: fast(<5s) / medium(<30s) / full(<5min)
+   + 覆盖: DDL/DML/EXPRESSIONS/FUNCTIONS/TCL/TRANSACTION 等 16 类
+
+3. **Beta gate 集成**（P0）
+   + `check_beta_gate.sh` 增加 B10 (sqlancer) 和 B11 (sql_corpus)
+
+**验证**: sql_corpus/ 中所有 SQL 文件在 sqlrustgo 上执行不 panic
+
+**完成判据**: sqlancer 可运行 + sql_corpus fast 全部 PASS + Beta gate 含 B10/B11
+### [V310-14] SQLLogicTest 集成（590万用例基线）
+
+**ISSUE**: #3373
+
+**目标**: 在 Beta 阶段建立 SQLLogicTest (SLT) 测试框架，直接利用 SQLite 官方的 623 个测试文件（约 590 万用例）建立 SQL 兼容性基线。
+
+**现状**:
++ SLT 是 SQLite 官方核心测试套件，DuckDB/ClickHouse 等现代数据库均采用
++ 623 个 .test 文件公开可用，覆盖 JOIN/窗口函数/聚合/子查询/表达式求值等全场景
++ 比自研 sqlancer 更快速获得大量验证
+
+**解决方案**:
+
+1. **下载 SLT 用例集**（P0，1人天）
+   ```bash
+   wget https://www.sqlite.org/src/tarball/sqlite.tar.gz?r=release
+   tar xzf sqlite.tar.gz
+   mv sqlite/test/sqllogictest crates/sqllogictest/testdata/
+   ```
+
+2. **实现 SLT Runner**（P0，3-5人天）
+   + `crates/sqllogictest/` crate：解析 .test 文件格式
+   + 对每条 SQL 同时调用 sqlrustgo 和 SQLite 执行器
+   + 结果比较（浮点数容差支持）
+
+3. **Baseline 报告**（P1，1人天）
+   + 输出 `docs/releases/v3.10.0/sqllogictest-baseline/` 基线报告
+   + 记录每个 .test 文件的 pass/fail/skip 数
+
+**子任务**:
+
+- [x] [V310-14a] SLT Runner 实现 ✅ — sqllogictest-rs risinglightdb v0.29
+- [~] [V310-14b] SLT 用例集下载 — 部分完成: 23个文件 (risinglightdb 8 + DuckDB 7 + prior 9)
+  - risinglightdb/sqllogictest-rs 测试套: 8 个 .slt 文件 ✅
+  - DuckDB sample tests: 7 个 .test 文件 ✅
+  - SQLite 官方套件: 下载受阻于网络 (14MB tarball 超时)
+- [ ] [V310-14c] Baseline 报告生成 — 1人天
+
+**验证**: `cargo run -p sqlrustgo_sqllogictest -- --test-dir crates/sqlrustgo_sqllogictest/testdata`
+
+**Baseline (Beta, 2026-07-13)**: 1/16 files pass (6.3%)
+- PASS: `delete__test_delete.test`
+- FAILs reflect sqlrustgo SQL coverage gaps (DuckDB-specific syntax: SEQUENCE, PREPARE, nextval, OFFSET, etc.)
+
+**完成判据**: SLT 套件完整执行 + Beta gate B12 PASS
+
+
+
+
 
 ---
 
@@ -366,7 +440,7 @@ bash scripts/gate/check_tpch_sf1.sh
 | 阶段 | 周期 | 核心 ISSUE | 退出判据 |
 |------|------|-----------|---------|
 | **Alpha** | 4 周 | V310-01, 02, 03, 04, 06 | DML + ACID + ALTER + Wire-DDL 完成 |
-| **Beta** | 4 周 | V310-05, 07, 08, 10 | Crash + 24h SOAK + Catalog + 覆盖率 |
+| **Beta** | 4 周 | V310-05, 07, 08, 10, 13, 14 | Crash + 24h SOAK + Catalog + 覆盖率 + 测试体系 + SQLLogicTest |
 | **RC1** | 2 周 | V310-09 | Wire 协议修复 + sysbench 接入 |
 | **RC2-RC8** | 6 周 | V310-11, 12 | TPC-H SF=1 闭环 + P2 债 |
 | **GA** | 4 周 | 综合验证 | G1-G10 全 PASS, 168h SOAK PASS |

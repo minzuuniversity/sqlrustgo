@@ -123,10 +123,7 @@ fn determine_status(name: &str, path: &Path) -> String {
         }
     }
 
-    if name.contains("legacy")
-        || name.contains("deprecated")
-        || name == "expr-legacy"
-    {
+    if name.contains("legacy") || name.contains("deprecated") || name == "expr-legacy" {
         return "deprecated".to_string();
     }
 

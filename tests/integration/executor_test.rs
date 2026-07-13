@@ -1,26 +1,25 @@
 // Executor Tests - Volcano Model
+use parking_lot::RwLock;
 use sqlrustgo::{parse, ExecutionEngine, MemoryStorage, Privilege};
 use sqlrustgo_executor::ExecutorResult;
 use sqlrustgo_types::Value;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 
 #[test]
 fn test_batch_insert() {
     let mut engine = ExecutionEngine::new(Arc::new(RwLock::new(MemoryStorage::new())));
     engine
-        .execute(parse("CREATE TABLE users (id INTEGER, name TEXT)").unwrap())
+        .execute("CREATE TABLE users (id INTEGER, name TEXT)")
         .unwrap();
 
     let result = engine
-        .execute(
-            parse("INSERT INTO users VALUES (1, 'Alice'), (2, 'Bob'), (3, 'Charlie')").unwrap(),
-        )
+        .execute("INSERT INTO users VALUES (1, 'Alice'), (2, 'Bob'), (3, 'Charlie')")
         .unwrap();
 
     assert_eq!(result.affected_rows, 3);
 
     let result = engine
-        .execute(parse("SELECT * FROM users").unwrap())
+        .execute("SELECT * FROM users")
         .unwrap();
     assert_eq!(result.rows.len(), 3);
 }
@@ -29,19 +28,19 @@ fn test_batch_insert() {
 fn test_materialized_view() {
     let mut engine = ExecutionEngine::new(Arc::new(RwLock::new(MemoryStorage::new())));
     engine
-        .execute(parse("CREATE TABLE users (id INTEGER, name TEXT)").unwrap())
+        .execute("CREATE TABLE users (id INTEGER, name TEXT)")
         .unwrap();
     engine
-        .execute(parse("INSERT INTO users VALUES (1, 'Alice'), (2, 'Bob')").unwrap())
+        .execute("INSERT INTO users VALUES (1, 'Alice'), (2, 'Bob')")
         .unwrap();
 
     let result = engine
-        .execute(parse("CREATE VIEW user_view AS SELECT * FROM users").unwrap())
+        .execute("CREATE VIEW user_view AS SELECT * FROM users")
         .unwrap();
 
     assert_eq!(result.affected_rows, 0);
 
-    let storage = engine.storage.read().unwrap();
+    let storage = engine.storage.read();
     assert!(storage.has_view("user_view"));
 }
 
@@ -183,28 +182,25 @@ fn test_foreign_key_constraint_violation() {
 
     // Create parent table first
     engine
-        .execute(parse("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)").unwrap())
+        .execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)")
         .unwrap();
 
     // Insert some users
     engine
-        .execute(parse("INSERT INTO users VALUES (1, 'Alice'), (2, 'Bob')").unwrap())
+        .execute("INSERT INTO users VALUES (1, 'Alice'), (2, 'Bob')")
         .unwrap();
 
     // Create child table with FK
     engine
-        .execute(
-            parse("CREATE TABLE orders (id INTEGER, user_id INTEGER REFERENCES users(id))")
-                .unwrap(),
-        )
+        .execute("CREATE TABLE orders (id INTEGER, user_id INTEGER REFERENCES users(id))")
         .unwrap();
 
     // Insert order with valid user_id - should succeed
-    let result = engine.execute(parse("INSERT INTO orders VALUES (1, 1)").unwrap());
+    let result = engine.execute("INSERT INTO orders VALUES (1, 1)");
     assert!(result.is_ok(), "Should allow insert with valid FK");
 
     // Insert order with invalid user_id - should fail
-    let result = engine.execute(parse("INSERT INTO orders VALUES (2, 999)").unwrap());
+    let result = engine.execute("INSERT INTO orders VALUES (2, 999)");
     assert!(
         result.is_err(),
         "Should reject insert with invalid FK reference"
@@ -219,24 +215,21 @@ fn test_foreign_key_constraint_null_value() {
 
     // Create parent table
     engine
-        .execute(parse("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)").unwrap())
+        .execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)")
         .unwrap();
 
     // Insert a user
     engine
-        .execute(parse("INSERT INTO users VALUES (1, 'Alice')").unwrap())
+        .execute("INSERT INTO users VALUES (1, 'Alice')")
         .unwrap();
 
     // Create child table with FK
     engine
-        .execute(
-            parse("CREATE TABLE orders (id INTEGER, user_id INTEGER REFERENCES users(id))")
-                .unwrap(),
-        )
+        .execute("CREATE TABLE orders (id INTEGER, user_id INTEGER REFERENCES users(id))")
         .unwrap();
 
     // Insert order with NULL user_id - should succeed (NULL bypasses FK check)
-    let result = engine.execute(parse("INSERT INTO orders VALUES (1, NULL)").unwrap());
+    let result = engine.execute("INSERT INTO orders VALUES (1, NULL)");
     assert!(result.is_ok(), "Should allow NULL FK value");
 }
 
@@ -246,17 +239,17 @@ fn test_auto_increment_execution() {
 
     // Create table with AUTO_INCREMENT column as first column
     engine
-        .execute(parse("CREATE TABLE orders (id INTEGER AUTO_INCREMENT, name TEXT)").unwrap())
+        .execute("CREATE TABLE orders (id INTEGER AUTO_INCREMENT, name TEXT)")
         .unwrap();
 
     // Insert specifying only name column - id should auto-generate
-    let result = engine.execute(parse("INSERT INTO orders (name) VALUES ('Alice')").unwrap());
+    let result = engine.execute("INSERT INTO orders (name) VALUES ('Alice')");
     assert!(result.is_ok(), "INSERT should succeed: {:?}", result);
     assert_eq!(result.unwrap().affected_rows, 1);
 
     // Query the result
     let result = engine
-        .execute(parse("SELECT * FROM orders").unwrap())
+        .execute("SELECT * FROM orders")
         .unwrap();
     assert_eq!(result.rows.len(), 1);
     // First auto_increment should be 1, name should be Alice
@@ -265,11 +258,11 @@ fn test_auto_increment_execution() {
     assert_eq!(result.rows[0][0], Value::Integer(1), "id should be 1");
 
     // Insert another row - should get id=2
-    let result = engine.execute(parse("INSERT INTO orders (name) VALUES ('Bob')").unwrap());
+    let result = engine.execute("INSERT INTO orders (name) VALUES ('Bob')");
     assert!(result.is_ok(), "INSERT should succeed");
 
     let result = engine
-        .execute(parse("SELECT * FROM orders ORDER BY id").unwrap())
+        .execute("SELECT * FROM orders ORDER BY id")
         .unwrap();
     assert_eq!(result.rows.len(), 2);
     assert_eq!(
@@ -285,15 +278,15 @@ fn test_auto_increment_with_explicit_value() {
 
     // Create table with AUTO_INCREMENT column
     engine
-        .execute(parse("CREATE TABLE products (id INTEGER AUTO_INCREMENT, name TEXT)").unwrap())
+        .execute("CREATE TABLE products (id INTEGER AUTO_INCREMENT, name TEXT)")
         .unwrap();
 
     // Insert with explicit value - should use provided value
-    let result = engine.execute(parse("INSERT INTO products VALUES (100, 'Product1')").unwrap());
+    let result = engine.execute("INSERT INTO products VALUES (100, 'Product1')");
     assert!(result.is_ok(), "INSERT with explicit value should succeed");
 
     let result = engine
-        .execute(parse("SELECT * FROM products").unwrap())
+        .execute("SELECT * FROM products")
         .unwrap();
     assert_eq!(
         result.rows[0][0],
@@ -302,11 +295,11 @@ fn test_auto_increment_with_explicit_value() {
     );
 
     // Insert specifying only name - should auto-generate (starts from 1 since explicit didn't use counter)
-    let result = engine.execute(parse("INSERT INTO products (name) VALUES ('Product2')").unwrap());
+    let result = engine.execute("INSERT INTO products (name) VALUES ('Product2')");
     assert!(result.is_ok(), "INSERT should succeed");
 
     let result = engine
-        .execute(parse("SELECT * FROM products ORDER BY id").unwrap())
+        .execute("SELECT * FROM products ORDER BY id")
         .unwrap();
     // With ids 100 (explicit) and 2 (auto-generated), ASC order gives [2, 100]
     // So result.rows[0] is the auto-generated row with id=2
@@ -324,11 +317,11 @@ fn test_upsert_execution() {
 
     // Create table with primary key
     engine
-        .execute(parse("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)").unwrap())
+        .execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)")
         .unwrap();
 
     // Insert initial row
-    let result = engine.execute(parse("INSERT INTO users VALUES (1, 'Alice')").unwrap());
+    let result = engine.execute("INSERT INTO users VALUES (1, 'Alice')");
     assert!(
         result.is_ok(),
         "Initial insert should succeed: {:?}",
@@ -337,14 +330,12 @@ fn test_upsert_execution() {
     assert_eq!(result.unwrap().affected_rows, 1);
 
     // UPSERT - insert with duplicate key, should update
-    let result = engine.execute(
-        parse("INSERT INTO users VALUES (1, 'Bob') ON DUPLICATE KEY UPDATE name='Bob'").unwrap(),
-    );
+    let result = engine.execute("INSERT INTO users VALUES (1, 'Bob') ON DUPLICATE KEY UPDATE name='Bob'");
     assert!(result.is_ok(), "UPSERT should succeed: {:?}", result);
 
     // Should have only 1 row (updated, not inserted)
     let result = engine
-        .execute(parse("SELECT * FROM users").unwrap())
+        .execute("SELECT * FROM users")
         .unwrap();
     assert_eq!(result.rows.len(), 1, "Should have 1 row after UPSERT");
     assert_eq!(result.rows[0][0], Value::Integer(1), "id should be 1");
@@ -361,24 +352,21 @@ fn test_upsert_no_conflict() {
 
     // Create table with primary key
     engine
-        .execute(parse("CREATE TABLE products (id INTEGER PRIMARY KEY, name TEXT)").unwrap())
+        .execute("CREATE TABLE products (id INTEGER PRIMARY KEY, name TEXT)")
         .unwrap();
 
     // Insert first row
     engine
-        .execute(parse("INSERT INTO products VALUES (1, 'Product1')").unwrap())
+        .execute("INSERT INTO products VALUES (1, 'Product1')")
         .unwrap();
 
     // UPSERT with different key - should insert new row
-    let result = engine.execute(
-        parse("INSERT INTO products VALUES (2, 'Product2') ON DUPLICATE KEY UPDATE name='Updated'")
-            .unwrap(),
-    );
+    let result = engine.execute("INSERT INTO products VALUES (2, 'Product2') ON DUPLICATE KEY UPDATE name='Updated'");
     assert!(result.is_ok(), "UPSERT should succeed: {:?}", result);
 
     // Should have 2 rows
     let result = engine
-        .execute(parse("SELECT * FROM products ORDER BY id").unwrap())
+        .execute("SELECT * FROM products ORDER BY id")
         .unwrap();
     assert_eq!(result.rows.len(), 2, "Should have 2 rows");
     assert_eq!(result.rows[1][0], Value::Integer(2));
