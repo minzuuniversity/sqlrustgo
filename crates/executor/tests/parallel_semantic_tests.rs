@@ -44,20 +44,20 @@ fn test_partition_null_preservation_small() {
 
 #[test]
 fn test_partition_null_preservation_large() {
-    // For large datasets (>= PARALLEL_MIN_ROWS), should partition
+    // v3.10.0 Issue #3792: updated to exceed new PARALLEL_MIN_ROWS (2M) threshold.
     let exec = ParallelVolcanoExecutor::new(4);
-    let rows = make_rows_with_nulls(600_000, 7); // ~85,714 NULLs
+    let rows = make_rows_with_nulls(3_000_000, 7); // ~428,571 NULLs
     let parts = exec.partition_scan(rows, 4);
     assert_eq!(parts.len(), 4, "Large dataset should be partitioned");
     let total: usize = parts.iter().map(|p| p.len()).sum();
-    assert_eq!(total, 600_000, "All rows should be preserved");
+    assert_eq!(total, 3_000_000, "All rows should be preserved");
 }
 
 #[test]
 fn test_partition_null_distribution() {
-    // Verify NULLs are evenly distributed across partitions
+    // v3.10.0 Issue #3792: updated to exceed new PARALLEL_MIN_ROWS (2M) threshold.
     let exec = ParallelVolcanoExecutor::new(4);
-    let rows = make_rows_with_nulls(600_000, 3); // ~200,000 NULLs
+    let rows = make_rows_with_nulls(3_000_000, 3); // ~1,000,000 NULLs
     let parts = exec.partition_scan(rows, 4);
 
     let null_counts: Vec<usize> = parts
@@ -107,15 +107,15 @@ fn test_partition_order_non_split() {
 
 #[test]
 fn test_partition_all_rows_accounted() {
-    // Verify no rows are lost during partitioning
+    // v3.10.0 Issue #3792: updated to exceed new PARALLEL_MIN_ROWS (2M) threshold.
     let exec = ParallelVolcanoExecutor::new(8);
-    let rows: Vec<Vec<Value>> = (0..600_000)
+    let rows: Vec<Vec<Value>> = (0..3_000_000)
         .map(|i| vec![Value::Integer(i as i64)])
         .collect();
     let parts = exec.partition_scan(rows, 8);
 
     let total: usize = parts.iter().map(|p| p.len()).sum();
-    assert_eq!(total, 600_000, "All rows must be accounted for");
+    assert_eq!(total, 3_000_000, "All rows must be accounted for");
 
     // Verify all original values are present
     let mut all_values: Vec<i64> = parts
@@ -133,7 +133,7 @@ fn test_partition_all_rows_accounted() {
         })
         .collect();
     all_values.sort();
-    let expected: Vec<i64> = (0..600_000).collect();
+    let expected: Vec<i64> = (0..3_000_000).collect();
     assert_eq!(all_values, expected, "All values must be preserved");
 }
 
@@ -188,13 +188,14 @@ fn test_partition_mixed_types() {
 #[test]
 fn test_partition_degree_zero() {
     // partition_scan clamps degree to 1, so degree=0 means single partition
+    // v3.10.0 Issue #3792: updated to exceed new PARALLEL_MIN_ROWS (2M) threshold.
     let exec = ParallelVolcanoExecutor::new(4);
-    let rows = make_simple_rows(600_000);
+    let rows = make_simple_rows(3_000_000);
     let parts = exec.partition_scan(rows, 0);
     // degree=0 is clamped to 1 internally, but we still partition by total/degree
     // The actual partition happens based on total rows vs PARALLEL_MIN_ROWS
     let total: usize = parts.iter().map(|p| p.len()).sum();
-    assert_eq!(total, 600_000, "All rows should be preserved");
+    assert_eq!(total, 3_000_000, "All rows should be preserved");
 }
 
 #[test]
@@ -238,37 +239,39 @@ fn test_parallel_degree_bounds() {
 
 #[test]
 fn test_partition_even_distribution() {
+    // v3.10.0 Issue #3792: updated to exceed new PARALLEL_MIN_ROWS (2M) threshold.
     let exec = ParallelVolcanoExecutor::new(4);
-    let rows: Vec<Vec<Value>> = (0..600_000)
+    let rows: Vec<Vec<Value>> = (0..3_000_000)
         .map(|i| vec![Value::Integer(i as i64)])
         .collect();
     let parts = exec.partition_scan(rows, 4);
 
     let sizes: Vec<usize> = parts.iter().map(|p| p.len()).collect();
 
-    // With 600K rows and 4 partitions: base = 150K, rem = 0
-    // All partitions should be exactly 150K
-    assert_eq!(sizes, vec![150_000, 150_000, 150_000, 150_000]);
+    // With 3M rows and 4 partitions: base = 750K, rem = 0
+    // All partitions should be exactly 750K
+    assert_eq!(sizes, vec![750_000, 750_000, 750_000, 750_000]);
 }
-
 #[test]
 fn test_partition_uneven_distribution() {
+    // v3.10.0 Issue #3792: updated to exceed new PARALLEL_MIN_ROWS (2M) threshold.
     let exec = ParallelVolcanoExecutor::new(4);
-    let rows: Vec<Vec<Value>> = (0..600_001)
+    let rows: Vec<Vec<Value>> = (0..3_000_001)
         .map(|i| vec![Value::Integer(i as i64)])
         .collect();
     let parts = exec.partition_scan(rows, 4);
 
     let sizes: Vec<usize> = parts.iter().map(|p| p.len()).collect();
 
-    // With 600001 rows and 4 partitions: base = 150000, rem = 1
-    // First partition gets 150001, rest get 150000
-    assert_eq!(sizes[0], 150_001);
-    assert_eq!(sizes[1], 150_000);
-    assert_eq!(sizes[2], 150_000);
-    assert_eq!(sizes[3], 150_000);
-    assert_eq!(sizes.iter().sum::<usize>(), 600_001);
+    // With 3000001 rows and 4 partitions: base = 750000, rem = 1
+    // First partition gets 750001, rest get 750000
+    assert_eq!(sizes[0], 750_001);
+    assert_eq!(sizes[1], 750_000);
+    assert_eq!(sizes[2], 750_000);
+    assert_eq!(sizes[3], 750_000);
+    assert_eq!(sizes.iter().sum::<usize>(), 3_000_001);
 }
+
 // =============================================================================
 // Semantic Guard: Parallel path activation
 // =============================================================================
@@ -276,8 +279,9 @@ fn test_partition_uneven_distribution() {
 #[test]
 fn test_parallel_path_activates_for_large_dataset() {
     // Verify that for large datasets, we get multiple partitions
+    // v3.10.0 Issue #3792: updated to exceed new PARALLEL_MIN_ROWS (2M) threshold.
     let exec = ParallelVolcanoExecutor::new(8);
-    let rows: Vec<Vec<Value>> = (0..600_000)
+    let rows: Vec<Vec<Value>> = (0..3_000_000)
         .map(|i| vec![Value::Integer(i as i64)])
         .collect();
     let parts = exec.partition_scan(rows, 8);
@@ -287,8 +291,6 @@ fn test_parallel_path_activates_for_large_dataset() {
         "Large dataset should activate 8-way parallelism"
     );
 }
-
-#[test]
 fn test_parallel_path_skips_for_small_dataset() {
     // Verify that for small datasets, we don't activate parallel path
     let exec = ParallelVolcanoExecutor::new(8);
