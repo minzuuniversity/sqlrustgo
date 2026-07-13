@@ -11,7 +11,8 @@ use sqlrustgo::{
 };
 use sqlrustgo_security::{SessionManager, SessionStatus};
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc};
+use parking_lot::RwLock;
 use std::thread;
 use std::time::{Duration, Instant};
 
