@@ -19,7 +19,7 @@ use serde::{Deserialize, Serialize};
 use sqlrustgo::MemoryExecutionEngine;
 use sqlrustgo_storage::MemoryStorage;
 use std::io::Write;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 use std::time::Instant;
 
 use mysql::prelude::Queryable;
@@ -351,7 +351,7 @@ fn run_sqlrustgo_benchmarks() -> SystemResult {
         let mut latencies = LatencyStats::new();
 
         for _ in 0..ITERATIONS {
-            let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+            let storage = Arc::new(parking_lot::RwLock::new(MemoryStorage::new()));
             let mut engine = MemoryExecutionEngine::new(storage);
 
             // Create and populate tables

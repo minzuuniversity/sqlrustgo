@@ -275,11 +275,13 @@ fn test_memory_storage_scan_with_cancel() {
                 name: "id".to_string(),
                 data_type: "INTEGER".to_string(),
                 nullable: false,
-                is_unique: false,
-                is_primary_key: false,
-                auto_increment: false,
-                references: None,
+                primary_key: false,
+                char_max_length: None,
             }],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
         })
         .unwrap();
 
@@ -314,11 +316,13 @@ fn test_memory_storage_scan_batch_with_cancel() {
                 name: "id".to_string(),
                 data_type: "INTEGER".to_string(),
                 nullable: false,
-                is_unique: false,
-                is_primary_key: false,
-                auto_increment: false,
-                references: None,
+                primary_key: false,
+                char_max_length: None,
             }],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
         })
         .unwrap();
 
