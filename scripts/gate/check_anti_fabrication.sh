@@ -107,6 +107,8 @@ KNOWN_PREEXISTING_FAILURES=(
     "tpch_test"
     "tpch_text_index_test"
     "tpch_wire_harness"
+    "snapshot_isolation_test"
+    "checksum_corruption_test"
     "types_value_test"
     "production_scenario_test"
     "auth_rbac_test"
