@@ -1,0 +1,23 @@
+[package]
+name = "sqlrustgo_sqllogictest"
+version = "0.1.0"
+edition = "2021"
+description = "SQLLogicTest runner for sqlrustgo"
+license = "MIT"
+
+[[bin]]
+name = "sqlrustgo-sqllogictest"
+path = "src/main.rs"
+
+[dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+
+sqllogictest = "0.29"
+sqlrustgo = { path = "../.." }
+sqlrustgo-storage = { path = "../storage" }
+thiserror = "2.0"
+parking_lot = "0.12"
+walkdir = "2"
+
+[dev-dependencies]
+tempfile = "3"
