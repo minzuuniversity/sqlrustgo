@@ -43,14 +43,14 @@ fn load_lineitem(storage: &Arc<RwLock<MemoryStorage>>) -> usize {
             .collect();
         batch.push(record);
         if batch.len() >= BATCH_SIZE {
-            let mut s = storage.write().unwrap();
+            let mut s = storage.write();
             let _ = s.insert("lineitem", batch.clone());
             count += batch.len();
             batch.clear();
         }
     }
     if !batch.is_empty() {
-        let mut s = storage.write().unwrap();
+        let mut s = storage.write();
         let _ = s.insert("lineitem", batch.clone());
         count += batch.len();
     }
@@ -89,7 +89,7 @@ fn test_shipdate_actual_value() {
     );
 
     // Check storage directly
-    let s = storage.read().unwrap();
+    let s = storage.read();
     if let Some(rows) = s.scan("lineitem").ok() {
         eprintln!("storage directly - first row: {:?}", rows.first());
         eprintln!(
