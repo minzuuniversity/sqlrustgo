@@ -6,13 +6,13 @@
 //! - Transaction throughput: Measure TPS (transactions per second)
 //! - Memory pressure: Large data sets under load
 
+use parking_lot::RwLock;
 use sqlrustgo_common::connection_pool::PoolConfig;
 use sqlrustgo_server::connection_pool::ConnectionPool;
 use sqlrustgo_transaction::lock::{LockManager, LockMode};
 use sqlrustgo_transaction::mvcc::TxId;
 use sqlrustgo_transaction::TransactionManager;
 use std::io::Write;
-use parking_lot::RwLock;
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -821,7 +821,7 @@ mod wal_stress {
 mod stability_stress {
     use super::*;
     use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-    std::sync::\1std::sync::\1,std::sync::\1 std::sync::\1;
+    use std::sync::{Arc, RwLock};
 
     #[test]
     fn test_sustained_load_30s() {
@@ -949,7 +949,7 @@ mod crud_correctness {
     use super::*;
     use sqlrustgo::ExecutionEngine;
     use sqlrustgo::MemoryStorage;
-    std::sync::\1std::sync::\1,std::sync::\1 std::sync::\1;
+    use std::sync::{Arc, RwLock};
 
     #[test]
     fn test_crud_basic_correctness() {
