@@ -19,11 +19,13 @@ mod tests {
                 name: "id".to_string(),
                 data_type: "INTEGER".to_string(),
                 nullable: false,
-                is_unique: false,
-                is_primary_key: false,
-                auto_increment: false,
-                references: None,
+                primary_key: false,
+                char_max_length: None,
             }],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
         };
 
         storage.create_table(&info).ok();
@@ -43,11 +45,13 @@ mod tests {
                 name: "id".to_string(),
                 data_type: "INTEGER".to_string(),
                 nullable: false,
-                is_unique: false,
-                is_primary_key: false,
-                auto_increment: false,
-                references: None,
+                primary_key: false,
+                char_max_length: None,
             }],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
         };
 
         storage.create_table(&info).ok();
@@ -119,11 +123,13 @@ mod tests {
                 name: "num".to_string(),
                 data_type: "INTEGER".to_string(),
                 nullable: false,
-                is_unique: false,
-                is_primary_key: false,
-                auto_increment: false,
-                references: None,
+                primary_key: false,
+                char_max_length: None,
             }],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
         };
         storage.create_table(&info).ok();
         storage
@@ -174,11 +180,13 @@ mod tests {
                     name: "val".to_string(),
                     data_type: "INTEGER".to_string(),
                     nullable: false,
-                    is_unique: false,
-                    is_primary_key: false,
-                    auto_increment: false,
-                    references: None,
+                    primary_key: false,
+                    char_max_length: None,
                 }],
+                foreign_keys: vec![],
+                unique_constraints: vec![],
+                check_constraints: vec![],
+                partition_info: None,
             };
             storage.create_table(&info).ok();
             let table_name = format!("t{}", i);

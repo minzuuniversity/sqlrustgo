@@ -20,8 +20,14 @@ mod tests {
                 data_type: "INTEGER".to_string(),
                 nullable: false,
                 primary_key: false,
+                char_max_length: None,
+                primary_key: false,
                 ..Default::default()
             }],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
             ..Default::default()
         };
 
@@ -43,8 +49,14 @@ mod tests {
                 data_type: "INTEGER".to_string(),
                 nullable: true,
                 primary_key: false,
+                char_max_length: None,
+                primary_key: false,
                 ..Default::default()
             }],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
             ..Default::default()
         };
 
@@ -71,8 +83,14 @@ mod tests {
                 data_type: "INTEGER".to_string(),
                 nullable: false,
                 primary_key: false,
+                char_max_length: None,
+                primary_key: false,
                 ..Default::default()
             }],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
             ..Default::default()
         };
 
@@ -101,8 +119,14 @@ mod tests {
                 data_type: "VARCHAR".to_string(),
                 nullable: false,
                 primary_key: false,
+                char_max_length: None,
+                primary_key: false,
                 ..Default::default()
             }],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
             ..Default::default()
         };
 
@@ -129,8 +153,14 @@ mod tests {
                 data_type: "INTEGER".to_string(),
                 nullable: false,
                 primary_key: false,
+                char_max_length: None,
+                primary_key: false,
                 ..Default::default()
             }],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
             ..Default::default()
         };
 
@@ -156,8 +186,14 @@ mod tests {
                 data_type: "INTEGER".to_string(),
                 nullable: false,
                 primary_key: false,
+                char_max_length: None,
+                primary_key: false,
                 ..Default::default()
             }],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
             ..Default::default()
         };
 
@@ -185,8 +221,14 @@ mod tests {
                 data_type: "FLOAT".to_string(),
                 nullable: false,
                 primary_key: false,
+                char_max_length: None,
+                primary_key: false,
                 ..Default::default()
             }],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
             ..Default::default()
         };
 
@@ -213,6 +255,8 @@ mod tests {
                 name: format!("col{}", i),
                 data_type: "INTEGER".to_string(),
                 nullable: false,
+                primary_key: false,
+                char_max_length: None,
                 primary_key: false,
                 ..Default::default()
             })
@@ -245,8 +289,14 @@ mod tests {
                 data_type: "VARCHAR".to_string(),
                 nullable: false,
                 primary_key: false,
+                char_max_length: None,
+                primary_key: false,
                 ..Default::default()
             }],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
             ..Default::default()
         };
 
@@ -281,8 +331,14 @@ mod tests {
                 data_type: "VARCHAR".to_string(),
                 nullable: false,
                 primary_key: false,
+                char_max_length: None,
+                primary_key: false,
                 ..Default::default()
             }],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
             ..Default::default()
         };
 
