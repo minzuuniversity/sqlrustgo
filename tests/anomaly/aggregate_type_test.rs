@@ -23,9 +23,7 @@ mod tests {
             .execute("INSERT INTO counts VALUES (1, 10), (2, 20), (3, 30)")
             .unwrap();
 
-        let result = engine
-            .execute("SELECT COUNT(*) FROM counts")
-            .unwrap();
+        let result = engine.execute("SELECT COUNT(*) FROM counts").unwrap();
 
         assert_eq!(result.rows.len(), 1);
     }
@@ -40,9 +38,7 @@ mod tests {
             .execute("INSERT INTO counts VALUES (1, 10), (2, 20), (3, 30)")
             .unwrap();
 
-        let result = engine
-            .execute("SELECT COUNT(id) FROM counts")
-            .unwrap();
+        let result = engine.execute("SELECT COUNT(id) FROM counts").unwrap();
 
         assert_eq!(result.rows.len(), 1);
     }
@@ -57,9 +53,7 @@ mod tests {
             .execute("INSERT INTO numbers VALUES (1, 100), (2, 200), (3, 300)")
             .unwrap();
 
-        let result = engine
-            .execute("SELECT SUM(value) FROM numbers")
-            .unwrap();
+        let result = engine.execute("SELECT SUM(value) FROM numbers").unwrap();
 
         assert_eq!(result.rows.len(), 1);
     }
@@ -74,9 +68,7 @@ mod tests {
             .execute("INSERT INTO numbers VALUES (1, 10), (2, 20), (3, 30)")
             .unwrap();
 
-        let result = engine
-            .execute("SELECT AVG(value) FROM numbers")
-            .unwrap();
+        let result = engine.execute("SELECT AVG(value) FROM numbers").unwrap();
 
         assert_eq!(result.rows.len(), 1);
     }
@@ -91,9 +83,7 @@ mod tests {
             .execute("INSERT INTO numbers VALUES (1, 30), (2, 10), (3, 20)")
             .unwrap();
 
-        let result = engine
-            .execute("SELECT MIN(value) FROM numbers")
-            .unwrap();
+        let result = engine.execute("SELECT MIN(value) FROM numbers").unwrap();
 
         assert_eq!(result.rows.len(), 1);
     }
@@ -108,9 +98,7 @@ mod tests {
             .execute("INSERT INTO numbers VALUES (1, 30), (2, 10), (3, 20)")
             .unwrap();
 
-        let result = engine
-            .execute("SELECT MAX(value) FROM numbers")
-            .unwrap();
+        let result = engine.execute("SELECT MAX(value) FROM numbers").unwrap();
 
         assert_eq!(result.rows.len(), 1);
     }
@@ -152,9 +140,7 @@ mod tests {
         engine
             .execute("CREATE TABLE single (value INTEGER)")
             .unwrap();
-        engine
-            .execute("INSERT INTO single VALUES (42)")
-            .unwrap();
+        engine.execute("INSERT INTO single VALUES (42)").unwrap();
 
         let result = engine
             .execute(
