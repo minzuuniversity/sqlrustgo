@@ -55,8 +55,7 @@ mod tests {
             .execute("INSERT INTO null_test VALUES (2, 'test')")
             .ok();
 
-        let result =
-            engine.execute("SELECT * FROM null_test WHERE value IS NOT NULL");
+        let result = engine.execute("SELECT * FROM null_test WHERE value IS NOT NULL");
 
         assert!(result.is_ok());
     }
@@ -118,16 +117,10 @@ mod tests {
         engine
             .execute("CREATE TABLE str_test (id INTEGER, val TEXT)")
             .unwrap();
-        engine
-            .execute("INSERT INTO str_test VALUES (1, NULL)")
-            .ok();
-        engine
-            .execute("INSERT INTO str_test VALUES (2, '')")
-            .ok();
+        engine.execute("INSERT INTO str_test VALUES (1, NULL)").ok();
+        engine.execute("INSERT INTO str_test VALUES (2, '')").ok();
 
-        let result = engine
-            .execute("SELECT COUNT(*) FROM str_test")
-            .unwrap();
+        let result = engine.execute("SELECT COUNT(*) FROM str_test").unwrap();
 
         assert_eq!(result.rows.len(), 1);
     }
@@ -138,9 +131,7 @@ mod tests {
         engine
             .execute("CREATE TABLE outer_tbl (id INTEGER)")
             .unwrap();
-        engine
-            .execute("INSERT INTO outer_tbl VALUES (1), (2)")
-            .ok();
+        engine.execute("INSERT INTO outer_tbl VALUES (1), (2)").ok();
         engine
             .execute("CREATE TABLE inner_tbl (id INTEGER, val TEXT)")
             .unwrap();
