@@ -6,25 +6,25 @@
 #[cfg(test)]
 mod tests {
     #[test]
-    #[ignore]
+    #[ignore = "mysql_tpch_test: requires live MySQL server connection"]
     fn test_mysql_connection() {
         // Test skipped - requires MySQL server
     }
 
     #[test]
-    #[ignore]
+    #[ignore = "mysql_tpch_test: requires live MySQL server connection"]
     fn test_mysql_tpch_q1() {
         // Test skipped - requires MySQL server
     }
 
     #[test]
-    #[ignore]
+    #[ignore = "mysql_tpch_test: requires live MySQL server connection"]
     fn test_mysql_tpch_q6_aggregation() {
         // Test skipped - requires MySQL server
     }
 
     #[test]
-    #[ignore]
+    #[ignore = "mysql_tpch_test: requires live MySQL server connection"]
     fn test_mysql_tpch_join() {
         // Test skipped - requires MySQL server
     }

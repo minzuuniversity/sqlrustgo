@@ -559,9 +559,8 @@ mod tests {
 
         // Re-confirm the port is still bound (it should be — listener is alive)
         let addr = std::net::SocketAddr::from(([127, 0, 0, 1], port));
-        let _rebind = std::net::TcpListener::bind(addr).expect_err(
-            "port should still be bound while original listener is alive",
-        );
+        let _rebind = std::net::TcpListener::bind(addr)
+            .expect_err("port should still be bound while original listener is alive");
         // Now drop the original listener; port returns to the OS free pool.
         drop(listener);
         // Give the OS a moment to reclaim the port (SYN/ TIME_WAIT etc.)
