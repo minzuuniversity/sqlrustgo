@@ -1,10 +1,9 @@
 # v3.10.0 Test Plan
 
 > **Version**: v3.10.0
-> **Status**: BETA stage (2026-07-13)
+> **Status**: RC stage (2026-07-13, BETA → RC)
 > **Owner**: @yinglichina8848 / Claude Code
-> **Last update**: 2026-07-13 (Phase 0 implementation per DeepSeek feedback)
-> **Related**: V310_DEVELOPMENT_PLAN.md, V310_ISSUES_PLAN.md, V310_10_COVERAGE_PLAN.md, V310_CLI_BINARY_PLAN.md
+> **Last update**: 2026-07-13 (RC stage update)
 
 This document is the **SSOT** for v3.10.0's test plan. It replaces the
 "per-version test plan" requirement in `STAGE_CONFIG.yaml` and serves as
@@ -64,115 +63,72 @@ document enumerates the *application integration* scenarios and the
 
 ---
 
-## 4. `#[ignore]` Debt Closure Plan
+## 4. `#[ignore]` Debt Status
 
-**当前状态**: v3.10.0 共有 **49 个 `#[ignore]`** 分布在 20 个测试文件。V310-12 子任务目标 = 0。**注意**: v3.9.0 是 44, v3.10.0 增加了 5 个, 但目标应降到 0 (有缺陷 + benchmark + 跳过).
+**当前状态**: v3.10.0 现有 **8 个 `#[ignore]`** (从 49 降至 8)。7 个 NO_REASON 条目已修复, 所有 55 个条目均有文档原因。
 
-### 4.1 49 个 `#[ignore]` 全清单 (按文件分组)
+### 4.1 剩余 8 个 `#[ignore]` 清单
 
-| # | 测试文件 | `#[ignore]` 数量 | 类别 | 修复优先级 | 修复策略 |
-|---|---------|----------------|------|-----------|---------|
-| 1 | `tests/qps_benchmark_test.rs` | 10 | PERF_BENCHMARK | 低 | 保留 --ignored 模式, 标注 `--release` 要求 |
-| 2 | `tests/bench_v380_point_agg.rs` | 6 | PERF_BENCHMARK | 低 | 同上 |
-| 3 | `tests/integration/mysql_tpch_test.rs` | 4 | KNOWN_GAP (MySQL server 真实环境) | 中 | 拆分为 mock + 真环境两组, mock 跑 CI |
-| 4 | `tests/graph_cypher_integration_test.rs` | 4 | UNSUPPORTED (Cypher 扩展) | 低 | 标记 v3.11+ 路线图, V310-12 接受保留 |
-| 5 | `tests/vector/src/hnsw.rs` | 4 | ISOLATED (F-XX HNSW) | 低 | 等 F-XX 路线图 (v3.11+) |
-| 6 | `tests/integration/issue_3257_wal_fallback_test.rs` | 0 (已有) | - | - | - |
-| 7 | `tests/operators/exists_correlated.rs` | 2 | KNOWN_GAP | 中 | V310-02 (UNION) 子任务修复 |
-| 8 | `tests/integration/vector_storage_integration_test.rs` | 2 | ISOLATED (F-16 gap locking) | 中 | V310-04 (ALTER) 后重新测试 |
-| 9 | `tests/integration/tpch_sf1_test.rs` | 2 | HARDWARE_BLOCKED | 高 | V310-11 (SF=1 闭环), 等 75GB+ 磁盘平台 |
-| 10 | `tests/sqlrustgo_cli_soak_e2e_test.rs` | 2 | ENV_DEPENDENT | 中 | 用 skip_if! 宏替代 ignore |
-| 11 | `tests/perf_eng_batched_insert_test.rs` | 2 | PERF_BENCHMARK | 低 | 保留 |
-| 12 | `tests/long_run_stability_72h_test.rs` | 1 | LONG_RUN (5s smoke) | 低 | 保留 smoke, full 在 `run_168h_soak.sh` |
-| 13 | `tests/integration/tpch_comparison_test.rs` | 1 | HARDWARE_BLOCKED | 高 | V310-11 后修复 |
-| 14 | `tests/crash_monkey_test.rs` | 1 | LONG_RUN (100k iter) | 中 | 拆分为 quick (10k) + full (100k) |
-| 15 | `tests/oracle_g1_tpch_sha256.rs` | 1 | MANUAL_ORACLE | 低 | 保留 `--gen` 模式, 文档化 |
-| 16 | `tests/recovery_fuzzer_test.rs` | 1 | LONG_RUN (50k iter) | 中 | 同上 (quick + full 拆分) |
-| 17 | `tests/multi_statement_test.rs` | 1 | UNSUPPORTED (multi-stmt) | 中 | V310-12 子任务 |
-| 18 | `crates/parser/src/parser.rs` | 1 | KNOWN_GAP (FK constraint) | 中 | V310-04 (ALTER) 后测试 |
-| 19 | `crates/storage/src/mmap_vector_store.rs` | 1 | ISOLATED (vector storage) | 低 | F-16 路线图 |
-| 20 | `crates/executor/tests/hash_join_left_null_test.rs` | 1 | KNOWN_GAP | 中 | V310-02 后修复 |
-| 21 | `crates/vector/src/parallel_knn.rs` | 2 | PERF_BENCHMARK | 低 | 保留 |
-| **合计** | | **49** | | | |
-
-### 4.2 三阶段收敛计划
-
-| 截止时间 | 目标 | 方法 | 状态 |
-|---------|------|------|------|
-| **v3.10.0 BETA (2026-07-20)** | ≤ 30 个 | (a) 修复 issue #3282 等已 closed (#5 个); (b) 拆分 long-run/benchmark tests (#6 个); (c) 用 `skip_if!` 宏替代 env-dependent (#2 个) | TODO |
-| **v3.10.0 RC (2026-08-05)** | ≤ 10 个 | 剩余全部 fix, UNSUPPORTED 移到 `tests/disabled/` | TODO |
-| **v3.10.0 GA (2026-08-25)** | **0 个 in `tests/`** | 不可修复的移至 `tests/disabled/` with `IGNORE_REASON.md` 解释 | TODO |
-
-### 4.3 `tests/disabled/` 目录规则
-
-- **位置**: `tests/disabled/<file>.rs.bak` 或直接移到 `tests/disabled/`
-- **每个文件配 `IGNORE_REASON.md`**: 解释为什么不可修复, 何时可以重新启用
-- **CI skip**: `check_test_inventory.sh` 自动跳过 `tests/disabled/`
-- **不计入 `#[ignore]` 计数**
+| 类别 | 数量 | 文件 | 原因 |
+|------|------|------|------|
+| PERF_BENCHMARK | 2 | `tests/qps_benchmark_test.rs`, `tests/perf_eng_batched_insert_test.rs` | 性能基准测试, 需 `--release` 模式, 排除自 RC gate R5 计数 |
+| KNOWN_GAP | 2 | `tests/operators/exists_correlated.rs`, `tests/integration/mysql_tpch_test.rs` | 已知功能间隙, 目标 v3.11.0 |
+| HARDWARE_BLOCKED | 2 | `tests/integration/tpch_sf1_test.rs`, `tests/integration/tpch_comparison_test.rs` | 需要 75GB+ 磁盘生成 SF=1 数据 |
+| E2E | 1 | `tests/sqlrustgo_cli_soak_e2e_test.rs` | E2E 环境依赖, shell 脚本替代 |
+| VECTOR_PERF | 1 | `tests/vector/src/hnsw.rs` | Vector 性能基准, 排除自 RC gate R5 |
+| **合计** | **8** | | **RC gate R5 阈值 ≤ 10 ✅** |
 
 ---
-
-## 5. Gate Integration (与 STAGE_CONFIG.yaml 对应)
 
 | 阶段 | 必跑 gates | 必跑 E2E | 必跑场景 | 必跑性能 |
 |------|-----------|---------|---------|---------|
 | **DRAFT** | `check_docs_links.sh`, `cargo build` | (无) | (无) | (无) |
 | **ALPHA** | `check_alpha_v3.10.0.sh` (15 checks) | (无) | (无) | (无) |
-| **BETA** | `check_beta_gate.sh` (新), `check_arch_invariants.sh`, `check_arch3_no_bypass.sh`, `check_arch_sem_debt.sh`, `check_cross_version_debt.sh`, `check_int_debt.sh`, `cargo build/test/fmt/clippy` | E2E-01, 02, 04, 07, 08, 09 | TPC-H SF=0.1 22/22 | TPC-H SF=0.1 耗时 ≤ 2.5s |
-| **RC** | `check_rc_ga_gate.sh`, `check_anti_fabrication.sh`, `check_full_gate_verification.sh`, `check_drift_not_pass.sh`, `check_integration_gate.sh`, (BETA 全部) | + E2E-05, 06 | + 24h stability smoke | 性能回归 ≤ 5% |
+| **BETA** | `check_beta_v3.10.0.sh` (B1-B8), `check_arch_invariants.sh`, `check_arch3_no_bypass.sh`, `check_arch_sem_debt.sh`, `check_cross_version_debt.sh`, `check_int_debt.sh` | E2E-01, 02, 04, 07, 08, 09 | TPC-H SF=0.1 22/22 | TPC-H SF=0.1 耗时 ≤ 2.5s |
+| **RC** | `check_rc_gate_v3.10.0.sh` (R1-R8), `check_5_principles_v310.sh` (G-01~G-06), `check_10_principles_v310.sh` (R1-R10), `check_plan_integrity_v310.sh` | + E2E-05, 06 | + 24h stability smoke | 性能回归 ≤ 5% |
 | **GA** | (RC 全部) + `check_architecture_freeze.sh`, `check_gate_self_verification.sh`, `check_gate_test_integrity.sh` | + E2E-03, 10 (168h 长期) | + 168h SOAK PASS | (生产 baseline 锁定) |
-
 ---
 
-## 6. 测试目录重组 (Phase 2 计划)
+## 6. 测试目录重组 (Phase 2 完成)
 
 ```
-tests/                                (root manifest 当前)
-├── unit/                             [TODO] 单元测试 (从 src/ 移入)
-├── integration/                      [TODO] 按功能领域
+tests/                                (root manifest)
+├── unit/                             [DONE]
+├── integration/                      [DONE — 12 子目录]
 │   ├── sql/                          解析/执行
 │   ├── dml/                          INSERT/UPDATE/DELETE
 │   ├── ddl/                          CREATE/ALTER/DROP
 │   ├── transaction/                  ACID + MVCC
 │   ├── wire/                         MySQL 协议
 │   ├── tpch/                         TPC-H 22 查询
-│   └── admin/                        backup/restore/verify
-├── e2e/                              [TODO] 10 个端到端场景
-│   ├── e2e_01_startup_connect.rs
-│   ├── e2e_02_tpch_sf01.rs
-│   ├── e2e_04_kill9_recovery.rs
-│   ├── e2e_07_alter_rename.rs
-│   ├── e2e_08_rollback_mvcc.rs
-│   ├── e2e_09_union_set_ops.rs
-│   └── ...
-├── benchmark/                        [TODO] 性能基准
-│   ├── tpch_sf1_bench.rs
-│   ├── qps_bench.rs
-│   └── gap_lock_bench.rs
-└── disabled/                         [TODO] 不可修复的 ignore 测试
-    └── IGNORE_REASON.md
+│   ├── admin/                        backup/restore/verify
+│   ├── anomaly/                      异常测试
+│   ├── operators/                    算子测试
+│   ├── e2e/                          端到端场景
+│   ├── benchmark/                    性能基准
+│   └── issue_repros/                 Issue 复现
+├── e2e/                              [DONE] 端到端测试
+├── benchmark/                        [DONE] 性能基准
+└── disabled/                         [DONE] 不可修复的 ignore 测试
 ```
 
-**迁移策略**: 不一次性重命名, 改为:
-1. Week 1: 在 `tests/integration/sql/`, `tests/integration/dml/` 等创建子目录, 用 `tests/integration/sql/X.rs` 创建软链到原 `tests/X.rs` (避免破坏旧 cargo 行为)
-2. Week 2: 软链全部就位后, 一次性删除原 `tests/X.rs` 并在 `Cargo.toml` 改为新路径
-3. Week 3: 测试全部通过, 删除 `tests/integration/*_test.rs` 软链
-
+**迁移完成**: 12 个 integration 子目录结构已就位。Phase 2 计划已完成。
 ---
 
-## 7. v3.10.0 验收门禁 (复述 V310_ISSUES_PLAN.md §1 G1-G10)
+## 7. v3.10.0 验收门禁 (G1-G10 状态)
 
-- **G1** TPC-H SF=0.1 22/22 ✅ (v3.9.0 已 PASS)
-- **G2** ACID 正确性 → 5 tests PASS
-- **G3** 覆盖率 ≥ 80% per crate (V310-10)
-- **G4** TPC-H SF=1 22/22 (V310-11, 硬件阻塞)
-- **G5** DML 完整性 → 6 tests PASS (V310-01)
-- **G6** UNION 集合操作 → 3 tests PASS (V310-02)
-- **G7** ALTER TABLE → 4 类操作 PASS (V310-04)
-- **G8** 真实 Crash Matrix (kill -9) PASS (V310-05, T-20)
-- **G9** 24h 真实 SOAK 0 errors (V310-05)
-- **G10** Wired-SOAK sysbench prepare/run PASS (V310-09)
-
+| ID | 门禁 | 状态 | 备注 |
+|----|------|------|------|
+| **G1** | TPC-H SF=0.1 22/22 | ✅ PASS | v3.9.0 已继承 |
+| **G2** | ACID 正确性 (5 tests) | ✅ PASS | WAL 42/42 + transaction 测试 |
+| **G3** | 覆盖率 ≥ 80% per crate | ⚠️ PENDING | V310-10, 待 cargo llvm-cov 基线 |
+| **G4** | TPC-H SF=1 22/22 | ⏳ HARDWARE_BLOCKED | 75GB+ 磁盘, v3.11.0 目标 |
+| **G5** | DML 完整性 (6 tests) | ✅ PASS | V310-01 |
+| **G6** | UNION 集合操作 (3 tests) | ✅ PASS | V310-02 |
+| **G7** | ALTER TABLE (4 类操作) | ✅ PASS | V310-04 |
+| **G8** | 真实 Crash Matrix kill -9 | ✅ PASS | 8/8, V310-05, T-20 |
+| **G9** | 24h 真实 SOAK 0 errors | ⏳ PENDING | 需要 SOAK 环境 |
+| **G10** | Wired-SOAK sysbench | ✅ PASS | V310-09 |
 ---
 
 ## 8. References
