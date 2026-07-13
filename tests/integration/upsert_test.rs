@@ -12,17 +12,11 @@ fn test_replace_updates_existing_row() {
     engine
         .execute("CREATE TABLE t (id INTEGER PRIMARY KEY, name TEXT)")
         .unwrap();
-    engine
-        .execute("INSERT INTO t VALUES (1, 'Alice')")
-        .unwrap();
-    engine
-        .execute("REPLACE INTO t VALUES (1, 'Bob')")
-        .unwrap();
+    engine.execute("INSERT INTO t VALUES (1, 'Alice')").unwrap();
+    engine.execute("REPLACE INTO t VALUES (1, 'Bob')").unwrap();
 
     // Should still have 1 row (replaced)
-    let count = engine
-        .execute("SELECT COUNT(*) FROM t")
-        .unwrap();
+    let count = engine.execute("SELECT COUNT(*) FROM t").unwrap();
     assert_eq!(
         count.rows[0][0],
         Value::Integer(1),
@@ -48,9 +42,7 @@ fn test_insert_ignore_skips_duplicate() {
         .unwrap();
 
     // Should still have 1 row
-    let count = engine
-        .execute("SELECT COUNT(*) FROM t2")
-        .unwrap();
+    let count = engine.execute("SELECT COUNT(*) FROM t2").unwrap();
     assert_eq!(count.rows[0][0], Value::Integer(1), "Should have 1 row");
 
     println!("✓ INSERT IGNORE 跳过重复");
@@ -68,9 +60,7 @@ fn test_upsert_inserts_new_row() {
         .execute("INSERT INTO t3 VALUES (1, 'new') ON DUPLICATE KEY UPDATE name='updated'")
         .unwrap();
 
-    let count = engine
-        .execute("SELECT COUNT(*) FROM t3")
-        .unwrap();
+    let count = engine.execute("SELECT COUNT(*) FROM t3").unwrap();
     assert_eq!(count.rows[0][0], Value::Integer(1));
 
     println!("✓ UPSERT 插入新行");
