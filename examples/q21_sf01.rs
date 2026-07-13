@@ -4,7 +4,7 @@ use sqlrustgo::{ExecutionEngine, MemoryStorage};
 use sqlrustgo_storage::Record;
 use sqlrustgo_types::Value as SqlValue;
 use std::path::PathBuf;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 use std::time::Instant;
 
 fn parse(line: &str, n: usize) -> Option<Record> {
@@ -42,7 +42,7 @@ fn main() {
         eprintln!("[SKIP] {} not found", data.display());
         return;
     }
-    let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+    let storage = Arc::new(parking_lot::RwLock::new(MemoryStorage::new()));
     let mut e = ExecutionEngine::new(storage);
 
     let ddls: &[(&str, &str, usize)] = &[
