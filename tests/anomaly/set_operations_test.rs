@@ -73,8 +73,7 @@ mod tests {
         let storage = create_test_tables();
         let mut engine = ExecutionEngine::new(Arc::new(RwLock::new(storage)));
 
-        let result =
-            engine.execute("SELECT id FROM table_a UNION SELECT id FROM table_b");
+        let result = engine.execute("SELECT id FROM table_a UNION SELECT id FROM table_b");
 
         assert!(result.is_ok(), "UNION should execute without error");
     }
@@ -84,8 +83,7 @@ mod tests {
         let storage = create_test_tables();
         let mut engine = ExecutionEngine::new(Arc::new(RwLock::new(storage)));
 
-        let result = engine
-            .execute("SELECT id FROM table_a UNION ALL SELECT id FROM table_b");
+        let result = engine.execute("SELECT id FROM table_a UNION ALL SELECT id FROM table_b");
 
         assert!(result.is_ok(), "UNION ALL should execute without error");
     }
@@ -95,7 +93,8 @@ mod tests {
         let storage = create_test_tables();
         let mut engine = ExecutionEngine::new(Arc::new(RwLock::new(storage)));
 
-        let result = engine.execute("SELECT id FROM table_a UNION SELECT id FROM table_b ORDER BY id DESC");
+        let result =
+            engine.execute("SELECT id FROM table_a UNION SELECT id FROM table_b ORDER BY id DESC");
 
         assert!(result.is_ok(), "UNION with ORDER BY should work");
     }
@@ -105,8 +104,7 @@ mod tests {
         let storage = create_test_tables();
         let mut engine = ExecutionEngine::new(Arc::new(RwLock::new(storage)));
 
-        let result = engine
-            .execute("SELECT id FROM table_a UNION SELECT id FROM table_b LIMIT 3");
+        let result = engine.execute("SELECT id FROM table_a UNION SELECT id FROM table_b LIMIT 3");
 
         assert!(result.is_ok(), "UNION with LIMIT should work");
     }
@@ -139,8 +137,7 @@ mod tests {
 
         let mut engine = ExecutionEngine::new(Arc::new(RwLock::new(storage)));
 
-        let result =
-            engine.execute("SELECT num FROM numbers UNION SELECT num FROM numbers");
+        let result = engine.execute("SELECT num FROM numbers UNION SELECT num FROM numbers");
 
         assert!(result.is_ok());
     }
@@ -150,8 +147,7 @@ mod tests {
         let storage = create_test_tables();
         let mut engine = ExecutionEngine::new(Arc::new(RwLock::new(storage)));
 
-        let result = engine
-            .execute("SELECT id FROM table_a INTERSECT SELECT id FROM table_b");
+        let result = engine.execute("SELECT id FROM table_a INTERSECT SELECT id FROM table_b");
 
         assert!(result.is_ok() || result.is_err());
     }
@@ -161,8 +157,7 @@ mod tests {
         let storage = create_test_tables();
         let mut engine = ExecutionEngine::new(Arc::new(RwLock::new(storage)));
 
-        let result =
-            engine.execute("SELECT id FROM table_a EXCEPT SELECT id FROM table_b");
+        let result = engine.execute("SELECT id FROM table_a EXCEPT SELECT id FROM table_b");
 
         assert!(result.is_ok() || result.is_err());
     }
