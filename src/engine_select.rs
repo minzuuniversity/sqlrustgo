@@ -494,7 +494,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                                 .join("\x00");
                             subtotal_groups.entry(key).or_default().push(row.clone());
                         }
-                        for (key, _group_rows) in subtotal_groups.iter() {
+                        for key in subtotal_groups.keys() {
                             let parts: Vec<&str> = key.split('\x00').collect();
                             let mut combined: Vec<Value> =
                                 parts.iter().map(|s| decode_value_key(s)).collect();
@@ -1623,14 +1623,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             } else {
                 (cur_alias.clone(), prev_alias.clone())
             };
-            let (left_col, right_col) = match pair_key.get(&(a1.clone(), a2.clone())) {
-                Some(pair) => pair.clone(),
-                None => return None,
-            };
-            let prev_cols = match alias_to_columns.get(prev_alias) {
-                Some(c) => c.clone(),
-                None => return None,
-            };
+            let (left_col, right_col) = pair_key.get(&(a1.clone(), a2.clone())).cloned()?;
+            let prev_cols = alias_to_columns.get(prev_alias).cloned()?;
             let prev_idx = prev_cols.iter().position(|c| c == &left_col)?;
             let cur_bare = &cur.0;
             let cur_info = storage.get_table_info(cur_bare).ok()?.clone();
