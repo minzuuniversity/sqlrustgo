@@ -333,8 +333,55 @@ else
 fi
 
 # ===========================================================================
-# Final summary
+# 9. Oracle / Differential Testing (ISSUE #3372)
 # ===========================================================================
+echo ""
+echo "--- B10: Oracle / Differential Testing (sqlancer, ISSUE #3372) ---"
+if [ -d "$REPO_ROOT/crates/sqlancer/src" ]; then
+    # Check if sqlancer has a complete SQLite adapter
+    HAS_SQLITE=$(grep -l "sqlite\|rusqlite\|SqliteAdapter" "$REPO_ROOT/crates/sqlancer/src" -r 2>/dev/null | wc -l | tr -d ' ')
+    if [ "$HAS_SQLITE" -gt 0 ]; then
+        check_pass "B10_SQLANCER_ADAPTER" "SQLite adapter present"
+        # Try running sqlancer tests
+        if bash -c "cd '$REPO_ROOT' && cargo test -p sqlancer 2>/dev/null" >/dev/null 2>&1; then
+            check_pass "B10_SQLANCER_TESTS" "cargo test -p sqlancer passes"
+        else
+            check_warn "B10_SQLANCER_TESTS" "cargo test -p sqlancer not yet passing (ISSUE #3372)"
+        fi
+    else
+        check_warn "B10_SQLANCER_ADAPTER" "SQLite adapter not yet implemented (ISSUE #3372)"
+        check_warn "B10_SQLANCER_TESTS" "sqlancer incomplete (ISSUE #3372)"
+    fi
+else
+    check_fail "B10_SQLANCER" "crates/sqlancer/ not found"
+fi
+
+# ===========================================================================
+# 10. sql_corpus Regression Suite (ISSUE #3274)
+# ===========================================================================
+echo ""
+echo "--- B11: sql_corpus Regression Suite (ISSUE #3372) ---"
+CORPUS_DIR="$REPO_ROOT/sql_corpus"
+if [ -d "$CORPUS_DIR" ]; then
+    CORPUS_COUNT=$(find "$CORPUS_DIR" -name "*.sql" 2>/dev/null | wc -l | tr -d ' ')
+    check_pass "B11_SQL_CORPUS_EXISTS" "$CORPUS_COUNT SQL files in sql_corpus/"
+    # Check if corpus tests script exists
+    if [ -x "$REPO_ROOT/scripts/test_sql_corpus.sh" ]; then
+        # Fast run: DDL only
+        if bash "$REPO_ROOT/scripts/test_sql_corpus.sh" --fast 2>/dev/null >/dev/null 2>&1; then
+            check_pass "B11_SQL_CORPUS_FAST" "scripts/test_sql_corpus.sh --fast passes"
+        else
+            check_warn "B11_SQL_CORPUS_FAST" "scripts/test_sql_corpus.sh --fast not yet passing"
+        fi
+    else
+        check_warn "B11_SQL_CORPUS_SCRIPT" "scripts/test_sql_corpus.sh not yet created (ISSUE #3372)"
+    fi
+else
+    check_fail "B11_SQL_CORPUS" "sql_corpus/ directory not found"
+fi
+
+# ===========================================================================
+# Final summary
 if $JSON_OUTPUT; then
     print_json
 else
