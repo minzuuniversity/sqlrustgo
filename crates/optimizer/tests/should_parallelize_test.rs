@@ -47,9 +47,9 @@ fn test_should_parallelize_small_table() {
 
 #[test]
 fn test_should_parallelize_large_table() {
-    // 1M rows - above PARALLEL_MIN_ROWS
+    // 3M rows - above PARALLEL_MIN_ROWS (2M)
     let mut model = UnifiedCostModel::default_model(128, 10000);
-    model.update_table_stats("t".to_string(), 1_000_000, 10_000);
+    model.update_table_stats("t".to_string(), 3_000_000, 10_000);
     let plan = make_table_scan("t");
     assert!(model.should_parallelize(&plan));
 }
@@ -57,8 +57,9 @@ fn test_should_parallelize_large_table() {
 #[test]
 fn test_should_parallelize_for_update_disables() {
     // Even with large table, FOR UPDATE disables parallel
+    // v3.10.0 Issue #3792: updated to 3M rows (above new PARALLEL_MIN_ROWS=2M)
     let mut model = UnifiedCostModel::default_model(128, 10000);
-    model.update_table_stats("t".to_string(), 1_000_000, 10_000);
+    model.update_table_stats("t".to_string(), 3_000_000, 10_000);
     let plan = make_table_scan("t");
     assert!(!model.should_parallelize_with(&plan, true));
     // Without FOR UPDATE, should be parallel
