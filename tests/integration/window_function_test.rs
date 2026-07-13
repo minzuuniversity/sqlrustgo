@@ -168,15 +168,11 @@ fn test_summary_window_parse_works() {
 fn test_basic_table_operations() {
     // Test basic CREATE and INSERT works
     let mut engine = ExecutionEngine::new(Arc::new(RwLock::new(MemoryStorage::new())));
-    engine
-        .execute("CREATE TABLE test (id INTEGER)")
-        .unwrap();
+    engine.execute("CREATE TABLE test (id INTEGER)").unwrap();
     engine
         .execute("INSERT INTO test VALUES (1), (2), (3)")
         .unwrap();
 
-    let result = engine
-        .execute("SELECT * FROM test")
-        .unwrap();
+    let result = engine.execute("SELECT * FROM test").unwrap();
     assert_eq!(result.rows.len(), 3);
 }
