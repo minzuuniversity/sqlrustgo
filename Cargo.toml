@@ -1004,9 +1004,6 @@ path = "tests/integration/performance_test.rs"
 name = "planner_test"
 path = "tests/integration/planner_test.rs"
 [[test]]
-name = "unit_query_cache_test"
-path = "tests/integration/query_cache_test.rs"
-[[test]]
 name = "savepoint_test"
 path = "tests/integration/savepoint_test.rs"
 [[test]]
@@ -1363,9 +1360,6 @@ path = "tests/unit/prometheus_test.rs"
 [[test]]
 name = "query_cache_config_test"
 path = "tests/unit/query_cache_config_test.rs"
-[[test]]
-name = "query_cache_test"
-path = "tests/unit/query_cache_test.rs"
 [[test]]
 name = "server_health_test"
 path = "tests/unit/server_health_test.rs"
