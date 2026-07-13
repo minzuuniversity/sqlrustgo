@@ -9,14 +9,14 @@
 //!   cargo run -p sqlrustgo_sqllogictest -- --help
 //!   cargo run -p sqlrustgo_sqllogictest -- --test-dir crates/sqlrustgo_sqllogictest/testdata
 
-use std::path::PathBuf;
-use std::sync::Arc;
 use parking_lot::RwLock;
-use thiserror::Error;
-use tokio::runtime::Runtime;
-use sqllogictest::{DB, DBOutput, DefaultColumnType, Runner};
+use sqllogictest::{DBOutput, DefaultColumnType, Runner, DB};
 use sqlrustgo::MemoryExecutionEngine;
 use sqlrustgo_storage::MemoryStorage;
+use std::path::PathBuf;
+use std::sync::Arc;
+use thiserror::Error;
+use tokio::runtime::Runtime;
 
 #[derive(Error, Debug)]
 pub enum SltError {
@@ -26,7 +26,10 @@ pub enum SltError {
 
 impl PartialEq for SltError {
     fn eq(&self, other: &Self) -> bool {
-        matches!((self, other), (SltError::Execution(_), SltError::Execution(_)))
+        matches!(
+            (self, other),
+            (SltError::Execution(_), SltError::Execution(_))
+        )
     }
 }
 
@@ -209,7 +212,10 @@ async fn async_main() {
         if path.to_string_lossy().contains("_unsupported") {
             continue;
         }
-        if !matches!(path.extension().and_then(|s| s.to_str()), Some("test") | Some("slt")) {
+        if !matches!(
+            path.extension().and_then(|s| s.to_str()),
+            Some("test") | Some("slt")
+        ) {
             continue;
         }
         let filename = path.file_name().and_then(|s| s.to_str()).unwrap_or("");
@@ -222,10 +228,13 @@ async fn async_main() {
         let mut tester = Runner::new(|| async { Ok(SltDb::new()) });
         tester.with_normalizer(strip_debug_format);
         tester.with_validator(|norm, actual, expected| {
-            let expected_results: Vec<String> = expected.iter().map(|e| {
-                let normalized = norm(e);
-                normalized.split_whitespace().collect::<Vec<_>>().join(" ")
-            }).collect();
+            let expected_results: Vec<String> = expected
+                .iter()
+                .map(|e| {
+                    let normalized = norm(e);
+                    normalized.split_whitespace().collect::<Vec<_>>().join(" ")
+                })
+                .collect();
             let normalized_rows: Vec<String> = actual
                 .iter()
                 .map(|row| row.iter().map(|v| norm(v)).collect::<Vec<_>>().join(" "))
@@ -249,7 +258,6 @@ async fn async_main() {
             }
         }
     }
-
 
     println!("\n=== Summary ===");
     println!("files:    {}/{} (pass/fail)", files_pass, files_fail);
