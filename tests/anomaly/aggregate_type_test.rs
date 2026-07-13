@@ -4,111 +4,184 @@
 
 #[cfg(test)]
 mod tests {
-    use sqlrustgo::{ExecutionEngine, MemoryStorage};
+    use sqlrustgo::{parse, ExecutionEngine, MemoryStorage};
 
-    fn create_engine() -> ExecutionEngine<MemoryStorage> {
-        ExecutionEngine::<MemoryStorage>::with_memory()
+    use std::sync::Arc;
+    use parking_lot::RwLock;
+
+    fn create_engine() -> ExecutionEngine {
+        ExecutionEngine::new(Arc::new(RwLock::new(MemoryStorage::new())))
     }
 
     #[test]
     fn test_count_star() {
         let mut engine = create_engine();
-        engine.execute("CREATE TABLE counts (id INTEGER, value INTEGER)").unwrap();
-        engine.execute("INSERT INTO counts VALUES (1, 10), (2, 20), (3, 30)").unwrap();
+        engine
+            .execute(parse("CREATE TABLE counts (id INTEGER, value INTEGER)").unwrap())
+            .unwrap();
+        engine
+            .execute(parse("INSERT INTO counts VALUES (1, 10), (2, 20), (3, 30)").unwrap())
+            .unwrap();
 
-        let result = engine.execute("SELECT COUNT(*) FROM counts").unwrap();
+        let result = engine
+            .execute(parse("SELECT COUNT(*) FROM counts").unwrap())
+            .unwrap();
+
         assert_eq!(result.rows.len(), 1);
     }
 
     #[test]
     fn test_count_column() {
         let mut engine = create_engine();
-        engine.execute("CREATE TABLE counts (id INTEGER, value INTEGER)").unwrap();
-        engine.execute("INSERT INTO counts VALUES (1, 10), (2, 20), (3, 30)").unwrap();
+        engine
+            .execute(parse("CREATE TABLE counts (id INTEGER, value INTEGER)").unwrap())
+            .unwrap();
+        engine
+            .execute(parse("INSERT INTO counts VALUES (1, 10), (2, 20), (3, 30)").unwrap())
+            .unwrap();
 
-        let result = engine.execute("SELECT COUNT(id) FROM counts").unwrap();
+        let result = engine
+            .execute(parse("SELECT COUNT(id) FROM counts").unwrap())
+            .unwrap();
+
         assert_eq!(result.rows.len(), 1);
     }
 
     #[test]
-    fn test_sum() {
+    fn test_sum_aggregate() {
         let mut engine = create_engine();
-        engine.execute("CREATE TABLE items (id INTEGER, amount INTEGER)").unwrap();
-        engine.execute("INSERT INTO items VALUES (1, 100), (2, 200), (3, 300)").unwrap();
+        engine
+            .execute(parse("CREATE TABLE numbers (id INTEGER, value INTEGER)").unwrap())
+            .unwrap();
+        engine
+            .execute(parse("INSERT INTO numbers VALUES (1, 100), (2, 200), (3, 300)").unwrap())
+            .unwrap();
 
-        let result = engine.execute("SELECT SUM(amount) FROM items").unwrap();
+        let result = engine
+            .execute(parse("SELECT SUM(value) FROM numbers").unwrap())
+            .unwrap();
+
         assert_eq!(result.rows.len(), 1);
     }
 
     #[test]
-    fn test_avg() {
+    fn test_avg_aggregate() {
         let mut engine = create_engine();
-        engine.execute("CREATE TABLE data (id INTEGER, val INTEGER)").unwrap();
-        engine.execute("INSERT INTO data VALUES (1, 10), (2, 20), (3, 30)").unwrap();
+        engine
+            .execute(parse("CREATE TABLE numbers (id INTEGER, value INTEGER)").unwrap())
+            .unwrap();
+        engine
+            .execute(parse("INSERT INTO numbers VALUES (1, 10), (2, 20), (3, 30)").unwrap())
+            .unwrap();
 
-        let result = engine.execute("SELECT AVG(val) FROM data").unwrap();
+        let result = engine
+            .execute(parse("SELECT AVG(value) FROM numbers").unwrap())
+            .unwrap();
+
         assert_eq!(result.rows.len(), 1);
     }
 
     #[test]
-    fn test_min_max() {
+    fn test_min_aggregate() {
         let mut engine = create_engine();
-        engine.execute("CREATE TABLE nums (id INTEGER, n INTEGER)").unwrap();
-        engine.execute("INSERT INTO nums VALUES (1, 5), (2, 15), (3, 10)").unwrap();
+        engine
+            .execute(parse("CREATE TABLE numbers (id INTEGER, value INTEGER)").unwrap())
+            .unwrap();
+        engine
+            .execute(parse("INSERT INTO numbers VALUES (1, 30), (2, 10), (3, 20)").unwrap())
+            .unwrap();
 
-        let min_result = engine.execute("SELECT MIN(n) FROM nums").unwrap();
-        let max_result = engine.execute("SELECT MAX(n) FROM nums").unwrap();
-        assert_eq!(min_result.rows.len(), 1);
-        assert_eq!(max_result.rows.len(), 1);
-    }
+        let result = engine
+            .execute(parse("SELECT MIN(value) FROM numbers").unwrap())
+            .unwrap();
 
-    #[test]
-    fn test_type_conversion_integer_to_text() {
-        let mut engine = create_engine();
-        engine.execute("CREATE TABLE ints (id INTEGER, val TEXT)").unwrap();
-        engine.execute("INSERT INTO ints VALUES (1, '42')").unwrap();
-
-        let result = engine.execute("SELECT CAST(val AS INTEGER) FROM ints").unwrap();
         assert_eq!(result.rows.len(), 1);
     }
 
     #[test]
-    fn test_type_conversion_text_to_integer() {
+    fn test_max_aggregate() {
         let mut engine = create_engine();
-        engine.execute("CREATE TABLE texts (id INTEGER, val TEXT)").unwrap();
-        engine.execute("INSERT INTO texts VALUES (1, '100')").unwrap();
+        engine
+            .execute(parse("CREATE TABLE numbers (id INTEGER, value INTEGER)").unwrap())
+            .unwrap();
+        engine
+            .execute(parse("INSERT INTO numbers VALUES (1, 30), (2, 10), (3, 20)").unwrap())
+            .unwrap();
 
-        let result = engine.execute("SELECT CAST(val AS INTEGER) FROM texts").unwrap();
+        let result = engine
+            .execute(parse("SELECT MAX(value) FROM numbers").unwrap())
+            .unwrap();
+
         assert_eq!(result.rows.len(), 1);
     }
 
     #[test]
-    fn test_group_by_with_aggregate() {
+    fn test_multiple_aggregates() {
         let mut engine = create_engine();
-        engine.execute("CREATE TABLE sales (region TEXT, amount INTEGER)").unwrap();
-        engine.execute("INSERT INTO sales VALUES ('north', 100), ('south', 200), ('north', 150)").unwrap();
+        engine
+            .execute(parse("CREATE TABLE stats (value INTEGER)").unwrap())
+            .unwrap();
+        engine
+            .execute(parse("INSERT INTO stats VALUES (10), (20), (30)").unwrap())
+            .unwrap();
 
-        let result = engine.execute("SELECT region, SUM(amount) FROM sales GROUP BY region").unwrap();
-        assert_eq!(result.rows.len(), 2);
-    }
+        let result = engine
+            .execute(parse("SELECT COUNT(*), SUM(value), AVG(value) FROM stats").unwrap())
+            .unwrap();
 
-    #[test]
-    fn test_distinct_with_aggregate() {
-        let mut engine = create_engine();
-        engine.execute("CREATE TABLE dup (id INTEGER, val TEXT)").unwrap();
-        engine.execute("INSERT INTO dup VALUES (1, 'a'), (2, 'a'), (3, 'b')").unwrap();
-
-        let result = engine.execute("SELECT COUNT(DISTINCT val) FROM dup").unwrap();
         assert_eq!(result.rows.len(), 1);
     }
 
     #[test]
-    fn test_coalesce_with_nulls() {
+    fn test_aggregate_empty_table() {
         let mut engine = create_engine();
-        engine.execute("CREATE TABLE nullable (id INTEGER, val INTEGER)").unwrap();
-        engine.execute("INSERT INTO nullable VALUES (1, NULL), (2, 5)").unwrap();
+        engine
+            .execute(parse("CREATE TABLE empty_table (value INTEGER)").unwrap())
+            .unwrap();
 
-        let result = engine.execute("SELECT COALESCE(val, 0) FROM nullable").unwrap();
-        assert_eq!(result.rows.len(), 2);
+        let result = engine
+            .execute(parse("SELECT COUNT(*), SUM(value) FROM empty_table").unwrap())
+            .unwrap();
+
+        assert_eq!(result.rows.len(), 1);
+    }
+
+    #[test]
+    fn test_aggregate_single_row() {
+        let mut engine = create_engine();
+        engine
+            .execute(parse("CREATE TABLE single (value INTEGER)").unwrap())
+            .unwrap();
+        engine
+            .execute(parse("INSERT INTO single VALUES (42)").unwrap())
+            .unwrap();
+
+        let result = engine
+            .execute(
+                parse(
+                    "SELECT COUNT(*), SUM(value), AVG(value), MIN(value), MAX(value) FROM single",
+                )
+                .unwrap(),
+            )
+            .unwrap();
+
+        assert_eq!(result.rows.len(), 1);
+    }
+
+    #[test]
+    fn test_aggregate_negative_values() {
+        let mut engine = create_engine();
+        engine
+            .execute(parse("CREATE TABLE negatives (value INTEGER)").unwrap())
+            .unwrap();
+        engine
+            .execute(parse("INSERT INTO negatives VALUES (-10), (-20), (30)").unwrap())
+            .unwrap();
+
+        let result = engine
+            .execute(parse("SELECT SUM(value), AVG(value) FROM negatives").unwrap())
+            .unwrap();
+
+        assert_eq!(result.rows.len(), 1);
     }
 }

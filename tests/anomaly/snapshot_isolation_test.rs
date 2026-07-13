@@ -5,9 +5,9 @@
 
 #[cfg(test)]
 mod tests {
+    use parking_lot::RwLock;
     use sqlrustgo_transaction::{IsolationLevel, MvccEngine, TransactionManager, TxId};
     use std::sync::Arc;
-use parking_lot::RwLock;
     use std::thread;
     use std::time::Duration;
 

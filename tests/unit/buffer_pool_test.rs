@@ -1,5 +1,7 @@
 // Buffer Pool Tests
-use sqlrustgo_storage::buffer_pool::{BufferPool, BufferPoolStats, BufferPoolWithClock, ClockProCache};
+use sqlrustgo_storage::buffer_pool::{
+    BufferPool, BufferPoolStats, BufferPoolWithClock, ClockProCache,
+};
 use sqlrustgo_storage::page::Page;
 use std::sync::Arc;
 
@@ -23,7 +25,7 @@ fn test_buffer_pool_stats_hit_rate() {
     stats.record_hit();
     stats.record_hit();
     stats.record_miss();
-    
+
     assert_eq!(stats.hits(), 2);
     assert_eq!(stats.misses(), 1);
     assert!((stats.hit_rate() - 0.666).abs() < 0.01);
@@ -41,10 +43,10 @@ fn test_buffer_pool_new() {
 fn test_buffer_pool_insert_and_get() {
     let pool = BufferPool::new(5);
     let page = create_test_page(1, 100);
-    
+
     pool.insert(page.clone());
     assert_eq!(pool.len(), 1);
-    
+
     let retrieved = pool.get(1);
     assert!(retrieved.is_some());
     assert_eq!(retrieved.unwrap().id(), 1);
@@ -61,10 +63,10 @@ fn test_buffer_pool_get_missing() {
 fn test_buffer_pool_remove() {
     let pool = BufferPool::new(5);
     let page = create_test_page(1, 100);
-    
+
     pool.insert(page);
     assert_eq!(pool.len(), 1);
-    
+
     let removed = pool.remove(1);
     assert!(removed);
     assert_eq!(pool.len(), 0);
@@ -75,9 +77,9 @@ fn test_buffer_pool_clear() {
     let pool = BufferPool::new(5);
     pool.insert(create_test_page(1, 100));
     pool.insert(create_test_page(2, 100));
-    
+
     assert_eq!(pool.len(), 2);
-    
+
     pool.clear();
     assert!(pool.is_empty());
 }
@@ -85,11 +87,11 @@ fn test_buffer_pool_clear() {
 #[test]
 fn test_buffer_pool_stats_after_operations() {
     let pool = BufferPool::new(5);
-    
+
     pool.insert(create_test_page(1, 100));
     let _ = pool.get(1);
     let _ = pool.get(2);
-    
+
     let stats = pool.stats();
     assert_eq!(stats.hits(), 1);
     assert_eq!(stats.misses(), 1);
@@ -120,10 +122,10 @@ fn test_clock_pro_cache_new() {
 fn test_clock_pro_cache_insert_and_get() {
     let cache = ClockProCache::new(5, 3);
     let page = create_test_page(1, 100);
-    
+
     cache.insert(page.clone());
     assert_eq!(cache.len(), 1);
-    
+
     let retrieved = cache.get(1);
     assert!(retrieved.is_some());
 }
@@ -131,11 +133,11 @@ fn test_clock_pro_cache_insert_and_get() {
 #[test]
 fn test_clock_pro_cache_eviction() {
     let cache = ClockProCache::new(2, 3);
-    
+
     cache.insert(create_test_page(1, 100));
     cache.insert(create_test_page(2, 100));
     cache.insert(create_test_page(3, 100));
-    
+
     // After 3 inserts with capacity 2, one should be evicted
     assert!(cache.len() <= 2);
 }
