@@ -1059,7 +1059,7 @@ impl AuthManager {
         self.roles_by_name.remove(&role.name);
         self.user_roles.retain(|ur| ur.role_id != role_id);
 
-        for (_, grants) in self.privileges.iter_mut() {
+        for grants in self.privileges.values_mut() {
             grants.retain(|g| !(g.grantee_type == GranteeType::Role && g.grantee_id == role_id));
         }
 
