@@ -3,7 +3,7 @@
 use sqlrustgo_storage::{ColumnDefinition, FileStorage, TableData, TableInfo};
 use sqlrustgo_types::Value;
 use std::fs::File;
-use std::io::BufReader;
+use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
 use std::time::Instant;
 
@@ -58,25 +58,26 @@ fn main() {
                                 name: "l_orderkey".to_string(),
                                 data_type: "INTEGER".to_string(),
                                 nullable: false,
-                                is_unique: false,
-                                is_primary_key: false,
-                                references: None,
-                                auto_increment: false,
+                                primary_key: false,
+                                char_max_length: None,
                             },
                             ColumnDefinition {
                                 name: "l_partkey".to_string(),
                                 data_type: "INTEGER".to_string(),
                                 nullable: false,
-                                is_unique: false,
-                                is_primary_key: false,
-                                references: None,
-                                auto_increment: false,
+                                primary_key: false,
+                                char_max_length: None,
                             },
                         ],
+                        foreign_keys: vec![],
+                        unique_constraints: vec![],
+                        check_constraints: vec![],
+                        partition_info: None,
                     },
                     rows,
                 };
-                storage
+                let batch_len = batch.len();
+        storage
                     .insert_table("lineitem".to_string(), table_data)
                     .unwrap();
                 count += 1;
@@ -95,6 +96,7 @@ fn main() {
 
     // Insert remaining
     if !batch.is_empty() {
+        let batch_len = batch.len();
         let table_data = TableData {
             info: TableInfo {
                 name: "lineitem".to_string(),
@@ -103,28 +105,28 @@ fn main() {
                         name: "l_orderkey".to_string(),
                         data_type: "INTEGER".to_string(),
                         nullable: false,
-                        is_unique: false,
-                        is_primary_key: false,
-                        references: None,
-                        auto_increment: false,
+                        primary_key: false,
+                        char_max_length: None,
                     },
                     ColumnDefinition {
                         name: "l_partkey".to_string(),
                         data_type: "INTEGER".to_string(),
                         nullable: false,
-                        is_unique: false,
-                        is_primary_key: false,
-                        references: None,
-                        auto_increment: false,
+                        primary_key: false,
+                        char_max_length: None,
                     },
                 ],
+                        foreign_keys: vec![],
+                        unique_constraints: vec![],
+                        check_constraints: vec![],
+                        partition_info: None,
             },
             rows: batch,
         };
         storage
             .insert_table("lineitem".to_string(), table_data)
             .unwrap();
-        total_rows += batch.len();
+        total_rows += batch_len;
     }
 
     let import_time = start.elapsed();

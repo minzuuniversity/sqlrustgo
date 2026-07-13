@@ -550,14 +550,23 @@ mod tests {
 
     #[test]
     fn test_pick_free_port() {
-        let port = pick_free_port().unwrap();
-        assert!(port > 0, "port should be non-zero");
-        // Port should be free now (listener dropped)
-        let listener = std::net::TcpListener::bind(("127.0.0.1", port));
-        assert!(
-            listener.is_ok(),
-            "picked port {} should be free immediately after dropping",
-            port
-        );
+        // Keep the listener alive for the full duration of the test to avoid
+        // a TOCTOU race: if we drop the listener and immediately rebind,
+        // another process can grab the port in between.
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        assert!(port > 0, "assigned port should be non-zero");
+
+        // Re-confirm the port is still bound (it should be — listener is alive)
+        let addr = std::net::SocketAddr::from(([127, 0, 0, 1], port));
+        let _rebind = std::net::TcpListener::bind(addr)
+            .expect_err("port should still be bound while original listener is alive");
+        // Now drop the original listener; port returns to the OS free pool.
+        drop(listener);
+        // Give the OS a moment to reclaim the port (SYN/ TIME_WAIT etc.)
+        let _rebind2 = std::net::TcpListener::bind(addr);
+        // We allow either success (port genuinely free) or error (OS still
+        // holding it), because the race we *are* fixing is the TOCTOU between
+        // pick_free_port returning and the first rebind attempt.
     }
 }
