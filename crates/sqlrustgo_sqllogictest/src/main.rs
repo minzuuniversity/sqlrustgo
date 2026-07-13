@@ -63,7 +63,8 @@ impl DB for SltDb {
                         .rows
                         .iter()
                         .map(|row| {
-                            row.iter().map(|v| format!("{:?}", v)).collect()
+                            let formatted: Vec<String> = row.iter().map(|v| v.to_sql_string()).collect();
+                            formatted
                         })
                         .collect();
                     let types: Vec<DefaultColumnType> =
@@ -82,7 +83,7 @@ impl DB for SltDb {
                     Ok(DBOutput::Rows { types, rows })
                 }
             }
-            Err(e) => Err(SltError::Execution(format!("{:?}", e))),
+            Err(e) => Err(SltError::Execution(format!("{}", e))),
         }
     }
 
@@ -194,9 +195,23 @@ async fn async_main() {
     }
     println!();
 
-    let mut tester = Runner::new(|| async { Ok(SltDb::new()) });
-    // Normalize sqlrustgo debug output (e.g. Integer(1) -> 1) to match DuckDB format
+    let mut tester = Runner::new(|| async {
+        Ok(SltDb::new())
+    });
     tester.with_normalizer(strip_debug_format);
+    // Use custom validator to handle multi-column row comparison
+    tester.with_validator(|norm, actual, expected| {
+        let expected_results: Vec<String> = expected.iter().map(|e| {
+            // Normalize expected: collapse internal whitespace too
+            let normalized = norm(e);
+            normalized.split_whitespace().collect::<Vec<_>>().join(" ")
+        }).collect();
+        let normalized_rows: Vec<String> = actual
+            .iter()
+            .map(|row| row.iter().map(|v| norm(v)).collect::<Vec<_>>().join(" "))
+            .collect();
+        normalized_rows == expected_results
+    });
 
     let mut files_run = 0usize;
     let mut files_pass = 0usize;
