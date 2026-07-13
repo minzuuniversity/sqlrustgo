@@ -5,6 +5,7 @@
 //! - Performance: Bulk insert with FK, concurrent FK operations
 //! - Edge cases: Self-referencing FK, multiple FK constraints
 
+use parking_lot::RwLock;
 use sqlrustgo::parse;
 use sqlrustgo::{ExecutionEngine, MemoryStorage};
 use sqlrustgo_storage::engine::{
@@ -12,7 +13,6 @@ use sqlrustgo_storage::engine::{
 };
 use sqlrustgo_types::Value;
 use std::sync::Arc;
-use parking_lot::RwLock;
 use std::time::Instant;
 
 #[test]

@@ -6,11 +6,11 @@
 //!   cargo test --test tpch_compliance_test        # SQLRustGo vs SQLite
 //!   cargo test --test tpch_compliance_test -- --nocapture  # 显示详细输出
 
+use parking_lot::RwLock;
 use rusqlite::Connection;
 use sqlrustgo::{parse, ExecutionEngine, MemoryStorage, StorageEngine};
 use sqlrustgo_storage::{ColumnDefinition, TableInfo};
 use std::sync::Arc;
-use parking_lot::RwLock;
 
 // Use tiny dataset for quick testing, change to "data/tpch-sf001" for full SF=0.1 test
 const TBL_DATA_DIR: &str = "data/tpch-tiny";

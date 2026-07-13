@@ -1,13 +1,13 @@
 #[cfg(test)]
 mod tests {
+    use parking_lot::RwLock;
     use sqlrustgo_common::metrics::{DefaultMetrics, Metrics};
     use sqlrustgo_common::metrics_aggregator::MetricsAggregator;
     use sqlrustgo_common::network_metrics::NetworkMetrics;
     use sqlrustgo_executor::ExecutorMetrics;
     use sqlrustgo_server::health::{HealthChecker, HealthReport, HealthStatus};
     use sqlrustgo_server::metrics_endpoint::MetricsRegistry;
-    use std::sync::{Arc};
-use parking_lot::RwLock;
+    use std::sync::Arc;
 
     // ==================== Health Check Tests ====================
 

@@ -1,4 +1,5 @@
 // Performance and Integration Tests for v1.9.0 Features
+use parking_lot::RwLock;
 use sqlrustgo::{parse, ExecutionEngine, MemoryStorage, StorageEngine};
 use sqlrustgo_executor::vectorization::RecordBatch;
 use sqlrustgo_planner::{
@@ -7,8 +8,7 @@ use sqlrustgo_planner::{
 use sqlrustgo_server::{ConnectionPool, PoolConfig};
 use sqlrustgo_storage::{ColumnDefinition, TableInfo};
 use sqlrustgo_types::Value;
-use std::sync::{Arc};
-use parking_lot::RwLock;
+use std::sync::Arc;
 use std::time::Instant;
 
 const BENCH_ROW_COUNT: usize = 10000;
