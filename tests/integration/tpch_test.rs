@@ -228,9 +228,7 @@ mod tests {
     #[test]
     fn test_between_operator() {
         let mut engine = create_engine();
-        engine
-            .execute("CREATE TABLE t (a INT)")
-            .unwrap();
+        engine.execute("CREATE TABLE t (a INT)").unwrap();
         engine
             .execute("INSERT INTO t VALUES (5), (10), (15)")
             .unwrap();
@@ -249,9 +247,7 @@ mod tests {
     #[test]
     fn test_in_list_operator() {
         let mut engine = create_engine();
-        engine
-            .execute("CREATE TABLE t (a TEXT)")
-            .unwrap();
+        engine.execute("CREATE TABLE t (a TEXT)").unwrap();
         engine
             .execute("INSERT INTO t VALUES ('MAIL'), ('SHIP'), ('AIR'), ('TRUCK')")
             .unwrap();
@@ -266,9 +262,7 @@ mod tests {
     #[test]
     fn test_in_list_operator_three_values() {
         let mut engine = create_engine();
-        engine
-            .execute("CREATE TABLE t (a TEXT)")
-            .unwrap();
+        engine.execute("CREATE TABLE t (a TEXT)").unwrap();
         engine
             .execute("INSERT INTO t VALUES ('MAIL'), ('SHIP'), ('AIR'), ('TRUCK')")
             .unwrap();

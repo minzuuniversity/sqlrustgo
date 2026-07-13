@@ -26,8 +26,7 @@ fn main() {
 
     // Q1
     let start = std::time::Instant::now();
-    let r = engine
-        .execute("SELECT COUNT(*) FROM lineitem WHERE l_shipdate <= '1998-09-02'");
+    let r = engine.execute("SELECT COUNT(*) FROM lineitem WHERE l_shipdate <= '1998-09-02'");
     let elapsed = start.elapsed();
     match r {
         Ok(result) => results.push_str(&format!(
@@ -74,8 +73,7 @@ fn main() {
 
     // Q1
     let start = std::time::Instant::now();
-    let r = engine
-        .execute("SELECT COUNT(*) FROM lineitem WHERE l_shipdate <= '1998-09-02'");
+    let r = engine.execute("SELECT COUNT(*) FROM lineitem WHERE l_shipdate <= '1998-09-02'");
     let elapsed = start.elapsed();
     match r {
         Ok(result) => results.push_str(&format!(
