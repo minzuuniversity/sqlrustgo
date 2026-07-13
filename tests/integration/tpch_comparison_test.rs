@@ -53,8 +53,7 @@ fn test_sf01_q1_q6() {
     }
 }
 
-#[test]
-#[ignore]
+#[ignore = "tpch_comparison_test: requires data/tpch-sf0.3 dataset (SF=0.3 not included in repo)"]
 fn test_sf03_q1_q6() {
     eprintln!("\n=== SF=0.3 Performance ===");
     if let Some(mut engine) = setup_engine("data/tpch-sf03") {
