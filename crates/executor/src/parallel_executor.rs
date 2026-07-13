@@ -107,7 +107,6 @@ mod tests {
         assert_eq!(parts.len(), 4);
         let total: usize = parts.iter().map(|p| p.len()).sum();
         assert_eq!(total, 3_000_000);
-
     }
 
     #[test]

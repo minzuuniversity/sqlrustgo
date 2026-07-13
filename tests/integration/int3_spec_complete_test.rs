@@ -45,11 +45,11 @@
 //! - [x] No new Cargo deps
 //! - [x] No new public APIs
 
+use parking_lot::RwLock;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::{Arc};
-use parking_lot::RwLock;
+use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
 

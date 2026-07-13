@@ -5,12 +5,12 @@
 
 #[cfg(test)]
 mod tests {
+    use parking_lot::RwLock;
     use sqlrustgo_transaction::deadlock::DeadlockDetector;
     use sqlrustgo_transaction::manager::{IsolationLevel, TransactionManager};
     use sqlrustgo_transaction::mvcc::{MvccEngine, Snapshot, TransactionStatus, TxId};
     use std::collections::HashMap;
     use std::sync::Arc;
-use parking_lot::RwLock;
     use std::time::Duration;
 
     #[test]
