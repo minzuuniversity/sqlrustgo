@@ -6,8 +6,8 @@
 mod tests {
     use sqlrustgo::{parse, ExecutionEngine, MemoryStorage};
 
-    use parking_lot::RwLock;
     use std::sync::Arc;
+    use parking_lot::RwLock;
 
     fn create_engine() -> ExecutionEngine {
         ExecutionEngine::new(Arc::new(RwLock::new(MemoryStorage::new())))
