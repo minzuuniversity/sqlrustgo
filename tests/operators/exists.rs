@@ -6,9 +6,9 @@
 //! - NOT EXISTS semantics
 //! - 0-row subquery handling
 
+use parking_lot::RwLock;
 use sqlrustgo::{ExecutionEngine, MemoryStorage};
 use std::sync::Arc;
-use parking_lot::RwLock;
 
 fn engine() -> ExecutionEngine<MemoryStorage> {
     ExecutionEngine::new(Arc::new(RwLock::new(MemoryStorage::new())))

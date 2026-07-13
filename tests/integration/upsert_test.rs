@@ -1,9 +1,9 @@
 // UPSERT/REPLACE/INSERT IGNORE - 完整功能测试 (Issue #890)
 
+use parking_lot::RwLock;
 use sqlrustgo::{parse, ExecutionEngine, MemoryStorage};
 use sqlrustgo_types::Value;
 use std::sync::Arc;
-use parking_lot::RwLock;
 
 // ============== REPLACE 测试 ==============
 #[test]

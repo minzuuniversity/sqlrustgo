@@ -4,11 +4,11 @@
 //! - /health, /query, /nl_query, /schema, /stats
 //! - /memory/save, /memory/load, /memory/search, /memory/clear, /memory/stats
 
+use parking_lot::RwLock;
 use sqlrustgo_server::OpenClawHttpServer;
 use sqlrustgo_storage::MemoryStorage;
 use std::io::{Read, Write};
-use std::sync::{Arc};
-use parking_lot::RwLock;
+use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 
