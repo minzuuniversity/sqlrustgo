@@ -13,7 +13,8 @@
 #[cfg(test)]
 mod tests {
     use sqlrustgo::{parse, ExecutionEngine, MemoryStorage};
-    use std::sync::{Arc, RwLock};
+    use std::sync::{Arc};
+use parking_lot::RwLock;
     use std::time::Instant;
 
     fn create_engine() -> ExecutionEngine {

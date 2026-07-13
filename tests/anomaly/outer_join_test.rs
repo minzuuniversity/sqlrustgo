@@ -10,7 +10,8 @@ mod tests {
         DataType, Expr, Field, HashJoinExec, JoinType, Operator, Schema, SeqScanExec,
     };
     use sqlrustgo_types::Value;
-    use std::sync::{Arc, RwLock};
+    use std::sync::Arc;
+use parking_lot::RwLock;
 
     fn create_test_storage() -> MemoryStorage {
         let mut storage = MemoryStorage::new();

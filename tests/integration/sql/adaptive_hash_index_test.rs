@@ -51,7 +51,7 @@ impl AdaptiveHashIndex {
     }
 
     pub fn record_access(&self, table: &str, key: &[u8], page_id: u64, offset: u32) {
-        let mut counts = self.access_count.write().unwrap();
+        let mut counts = self.access_count.write();
         let count = counts.entry(page_id).or_insert(0);
         *count += 1;
         if *count >= self.threshold {
@@ -62,43 +62,42 @@ impl AdaptiveHashIndex {
             };
             self.map
                 .write()
-                .unwrap()
                 .insert(idx_key, PageLocation { page_id, offset });
-            *self.promoted_count.write().unwrap() += 1;
+            *self.promoted_count.write() += 1;
         }
     }
 
     pub fn lookup(&self, table: &str, key: &[u8]) -> Option<PageLocation> {
-        *self.lookups.write().unwrap() += 1;
+        *self.lookups.write() += 1;
         let idx_key = IndexKey {
             table: table.to_string(),
             key: key.to_vec(),
         };
-        let result = self.map.read().unwrap().get(&idx_key).cloned();
+        let result = self.map.read().get(&idx_key).cloned();
         if result.is_some() {
-            *self.hits.write().unwrap() += 1;
+            *self.hits.write() += 1;
         }
         result
     }
 
     pub fn invalidate_page(&self, page_id: u64) {
-        let mut map = self.map.write().unwrap();
+        let mut map = self.map.write();
         map.retain(|_, loc| loc.page_id != page_id);
-        self.access_count.write().unwrap().remove(&page_id);
+        self.access_count.write().remove(&page_id);
     }
 
     pub fn invalidate_table(&self, table: &str) {
-        let mut map = self.map.write().unwrap();
+        let mut map = self.map.write();
         map.retain(|k, _| k.table != table);
     }
 
     pub fn size(&self) -> usize {
-        self.map.read().unwrap().len()
+        self.map.read().len()
     }
 
     pub fn hit_rate(&self) -> f64 {
-        let lookups = *self.lookups.read().unwrap() as f64;
-        let hits = *self.hits.read().unwrap() as f64;
+        let lookups = *self.lookups.read() as f64;
+        let hits = *self.hits.read() as f64;
         if lookups == 0.0 {
             0.0
         } else {

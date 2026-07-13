@@ -11,7 +11,8 @@ use sqlrustgo_storage::engine::{
     ColumnDefinition, ForeignKeyAction, ForeignKeyConstraint, StorageEngine, TableInfo,
 };
 use sqlrustgo_types::Value;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
+use parking_lot::RwLock;
 use std::time::Instant;
 
 #[test]
@@ -149,7 +150,7 @@ fn test_fk_multiple_fk_columns() {
         .unwrap();
 
     // Verify the FK was created
-    let storage = engine.storage.read().unwrap();
+    let storage = engine.storage.read();
     let table_info = storage.get_table_info("orders").unwrap();
     assert_eq!(table_info.columns.len(), 2);
     assert!(table_info.columns[1].references.is_some());
@@ -382,7 +383,7 @@ fn test_fk_concurrent_insert_simulation() {
 
     // Create tables
     {
-        let mut storage = storage.write().unwrap();
+        let mut storage = storage.write();
         storage
             .create_table(&TableInfo {
                 name: "users".to_string(),
@@ -434,7 +435,6 @@ fn test_fk_concurrent_insert_simulation() {
     for i in 1..=100 {
         storage
             .write()
-            .unwrap()
             .insert("users", vec![vec![Value::Integer(i)]])
             .unwrap();
     }
@@ -445,7 +445,6 @@ fn test_fk_concurrent_insert_simulation() {
         let user_id = (i % 100) + 1;
         storage
             .write()
-            .unwrap()
             .insert(
                 "orders",
                 vec![vec![Value::Integer(i), Value::Integer(user_id)]],
@@ -474,7 +473,7 @@ fn test_fk_large_dataset_validation() {
 
     // Create parent table with 10000 records
     {
-        let mut storage = storage.write().unwrap();
+        let mut storage = storage.write();
         storage
             .create_table(&TableInfo {
                 name: "categories".to_string(),
@@ -527,7 +526,6 @@ fn test_fk_large_dataset_validation() {
     for i in 1..=10000 {
         storage
             .write()
-            .unwrap()
             .insert("categories", vec![vec![Value::Integer(i)]])
             .unwrap();
     }
@@ -539,7 +537,6 @@ fn test_fk_large_dataset_validation() {
         let category_id = (i % 10000) + 1;
         storage
             .write()
-            .unwrap()
             .insert(
                 "items",
                 vec![vec![Value::Integer(i), Value::Integer(category_id)]],
@@ -555,7 +552,7 @@ fn test_fk_large_dataset_validation() {
     );
 
     // Verify
-    let count = storage.read().unwrap().scan("items").unwrap().len();
+    let count = storage.read().scan("items").unwrap().len();
     assert_eq!(count, 10000);
 
     // Performance assertion - relaxed to 60s to avoid CI flakiness

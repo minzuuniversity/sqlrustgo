@@ -12,7 +12,7 @@ use sqlrustgo_transaction::lock::{LockManager, LockMode};
 use sqlrustgo_transaction::mvcc::TxId;
 use sqlrustgo_transaction::TransactionManager;
 use std::io::Write;
-use std::sync::RwLock;
+use parking_lot::RwLock;
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -311,8 +311,8 @@ mod transaction_throughput {
         let start = Instant::now();
         for _ in 0..10 {
             let mgr = RwLock::new(TransactionManager::new());
-            let _ = mgr.write().unwrap().begin();
-            let _ = mgr.write().unwrap().commit();
+            let _ = mgr.write().begin();
+            let _ = mgr.write().commit();
         }
         println!("Tx 10 sequential: {:?}", start.elapsed());
     }
@@ -322,8 +322,8 @@ mod transaction_throughput {
         let start = Instant::now();
         for _ in 0..50 {
             let mgr = RwLock::new(TransactionManager::new());
-            let _ = mgr.write().unwrap().begin();
-            let _ = mgr.write().unwrap().commit();
+            let _ = mgr.write().begin();
+            let _ = mgr.write().commit();
         }
         println!("Tx 50 sequential: {:?}", start.elapsed());
     }
@@ -333,8 +333,8 @@ mod transaction_throughput {
         let start = Instant::now();
         for _ in 0..100 {
             let mgr = RwLock::new(TransactionManager::new());
-            let _ = mgr.write().unwrap().begin();
-            let _ = mgr.write().unwrap().commit();
+            let _ = mgr.write().begin();
+            let _ = mgr.write().commit();
         }
         println!("Tx 100 sequential: {:?}", start.elapsed());
     }
@@ -346,8 +346,8 @@ mod transaction_throughput {
 
         for _ in 0..count {
             let mgr = RwLock::new(TransactionManager::new());
-            let _ = mgr.write().unwrap().begin();
-            let _ = mgr.write().unwrap().commit();
+            let _ = mgr.write().begin();
+            let _ = mgr.write().commit();
         }
 
         let elapsed = start.elapsed();
@@ -821,7 +821,7 @@ mod wal_stress {
 mod stability_stress {
     use super::*;
     use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-    use std::sync::{Arc, RwLock};
+    std::sync::\1std::sync::\1,std::sync::\1 std::sync::\1;
 
     #[test]
     fn test_sustained_load_30s() {
@@ -892,8 +892,8 @@ mod stability_stress {
 
         for _ in 0..tx_count {
             let mgr = RwLock::new(TransactionManager::new());
-            let _ = mgr.write().unwrap().begin();
-            let _ = mgr.write().unwrap().commit();
+            let _ = mgr.write().begin();
+            let _ = mgr.write().commit();
         }
 
         let elapsed = start.elapsed();
@@ -949,7 +949,7 @@ mod crud_correctness {
     use super::*;
     use sqlrustgo::ExecutionEngine;
     use sqlrustgo::MemoryStorage;
-    use std::sync::{Arc, RwLock};
+    std::sync::\1std::sync::\1,std::sync::\1 std::sync::\1;
 
     #[test]
     fn test_crud_basic_correctness() {

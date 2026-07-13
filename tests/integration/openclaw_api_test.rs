@@ -7,7 +7,8 @@
 use sqlrustgo_server::OpenClawHttpServer;
 use sqlrustgo_storage::MemoryStorage;
 use std::io::{Read, Write};
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc};
+use parking_lot::RwLock;
 use std::thread;
 use std::time::Duration;
 
