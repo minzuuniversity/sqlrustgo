@@ -1,0 +1,51 @@
+{
+  "crate": "sqlrustgo",
+  "baseline_date": "2026-07-13",
+  "tool": "cargo-llvm-cov",
+  "scope": "cargo llvm-cov --lib (sqlrustgo main crate only; 29 tests, 28 run, 1 excluded: test_parallel_100k_cell_match_n1_vs_n4)",
+  "data": [
+    {
+      "summary": {
+        "percent_covered": 14.71,
+        "region": {
+          "covered": 1554,
+          "total": 10565,
+          "percent": 14.71
+        },
+        "function": {
+          "covered": 98,
+          "total": 547,
+          "percent": 17.92
+        },
+        "line": {
+          "covered": 1051,
+          "total": 6456,
+          "percent": 16.28
+        },
+        "branch": {
+          "covered": 0,
+          "total": 0,
+          "percent": 0.0
+        }
+      },
+      "per_file": [
+        {"name": "executor/cbo_estimator.rs",        "region_pct": 94.88, "function_pct": 92.86, "line_pct": 94.67},
+        {"name": "executor/engine_builder.rs",      "region_pct": 16.23, "function_pct": 16.67, "line_pct": 20.88},
+        {"name": "executor/engine_cte.rs",          "region_pct":  0.00, "function_pct":  0.00, "line_pct":  0.00},
+        {"name": "executor/engine_ddl.rs",          "region_pct":  0.00, "function_pct":  0.00, "line_pct":  0.00},
+        {"name": "executor/engine_dml.rs",          "region_pct": 30.48, "function_pct": 20.31, "line_pct": 34.28},
+        {"name": "executor/engine_helpers.rs",      "region_pct": 24.90, "function_pct": 36.84, "line_pct": 32.18},
+        {"name": "executor/engine_select.rs",       "region_pct":  5.62, "function_pct":  7.84, "line_pct":  6.01},
+        {"name": "executor/engine_utils.rs",        "region_pct":  9.39, "function_pct": 20.00, "line_pct":  8.43},
+        {"name": "executor/execution_engine.rs",    "region_pct": 31.79, "function_pct": 32.67, "line_pct": 33.92},
+        {"name": "executor/expr_utils.rs",          "region_pct": 15.36, "function_pct": 23.33, "line_pct": 21.69},
+        {"name": "lib.rs",                          "region_pct":  0.00, "function_pct":  0.00, "line_pct":  0.00}
+      ]
+    }
+  ],
+  "notes": [
+    "BASELINE snapshot, 14.71% < 80% GA target. R6 will FAIL until coverage is raised.",
+    "Sub-crates (20+): coverage not yet instrumented; will require cargo llvm-cov --workspace --lib.",
+    "Use scripts/coverage/llvm_cov_baseline.sh to regenerate this file with a full workspace run."
+  ]
+}
