@@ -1,4 +1,5 @@
 // Performance and Integration Tests for v1.9.0 Features
+use parking_lot::RwLock;
 use sqlrustgo::{parse, ExecutionEngine, MemoryStorage, StorageEngine};
 use sqlrustgo_executor::vectorization::RecordBatch;
 use sqlrustgo_planner::{
@@ -7,7 +8,7 @@ use sqlrustgo_planner::{
 use sqlrustgo_server::{ConnectionPool, PoolConfig};
 use sqlrustgo_storage::{ColumnDefinition, TableInfo};
 use sqlrustgo_types::Value;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 use std::time::Instant;
 
 const BENCH_ROW_COUNT: usize = 10000;
@@ -17,7 +18,7 @@ fn test_single_insert_qps() {
     let mut engine = ExecutionEngine::new(Arc::new(RwLock::new(MemoryStorage::new())));
 
     engine
-        .execute(parse("CREATE TABLE single_insert_test (id INTEGER, value TEXT)").unwrap())
+        .execute("CREATE TABLE single_insert_test (id INTEGER, value TEXT)")
         .unwrap();
 
     let start = Instant::now();
@@ -43,7 +44,7 @@ fn test_single_insert_qps() {
 
     // Verify all rows were inserted
     let result = engine
-        .execute(parse("SELECT COUNT(*) FROM single_insert_test").unwrap())
+        .execute("SELECT COUNT(*) FROM single_insert_test")
         .unwrap();
     assert_eq!(result.rows[0][0], Value::Integer(BENCH_ROW_COUNT as i64));
 
@@ -56,7 +57,7 @@ fn test_batch_insert_performance() {
     let mut engine = ExecutionEngine::new(Arc::new(RwLock::new(MemoryStorage::new())));
 
     engine
-        .execute(parse("CREATE TABLE performance_test (id INTEGER, value TEXT)").unwrap())
+        .execute("CREATE TABLE performance_test (id INTEGER, value TEXT)")
         .unwrap();
 
     let start = Instant::now();
@@ -77,7 +78,7 @@ fn test_batch_insert_performance() {
     println!("Batch insert {} rows took: {:?}", BENCH_ROW_COUNT, elapsed);
 
     let result = engine
-        .execute(parse("SELECT COUNT(*) FROM performance_test").unwrap())
+        .execute("SELECT COUNT(*) FROM performance_test")
         .unwrap();
     assert_eq!(result.rows[0][0], Value::Integer(BENCH_ROW_COUNT as i64));
 }
@@ -87,20 +88,20 @@ fn test_batch_insert_single_statement() {
     let mut engine = ExecutionEngine::new(Arc::new(RwLock::new(MemoryStorage::new())));
 
     engine
-        .execute(parse("CREATE TABLE batch_test (id INTEGER, name TEXT)").unwrap())
+        .execute("CREATE TABLE batch_test (id INTEGER, name TEXT)")
         .unwrap();
 
     let values: Vec<String> = (1..=100).map(|i| format!("({}, 'Item{}')", i, i)).collect();
     let sql = format!("INSERT INTO batch_test VALUES {}", values.join(", "));
 
     let start = Instant::now();
-    engine.execute(parse(&sql).unwrap()).unwrap();
+    engine.execute(&sql).unwrap();
     let elapsed = start.elapsed();
 
     println!("Single statement batch insert 100 rows took: {:?}", elapsed);
 
     let result = engine
-        .execute(parse("SELECT COUNT(*) FROM batch_test").unwrap())
+        .execute("SELECT COUNT(*) FROM batch_test")
         .unwrap();
     assert_eq!(result.rows[0][0], Value::Integer(100));
 }
@@ -288,11 +289,13 @@ fn test_index_scan_performance_vs_seqscan() {
                 name: "id".to_string(),
                 data_type: "INTEGER".to_string(),
                 nullable: false,
-                is_unique: true,
-                is_primary_key: false,
-                auto_increment: false,
-                references: None,
+                primary_key: false,
+                char_max_length: None,
             }],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
         })
         .unwrap();
 
@@ -347,11 +350,13 @@ fn test_join_performance_hash_join() {
                 name: "id".to_string(),
                 data_type: "INTEGER".to_string(),
                 nullable: false,
-                is_unique: false,
-                is_primary_key: false,
-                auto_increment: false,
-                references: None,
+                primary_key: false,
+                char_max_length: None,
             }],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
         })
         .unwrap();
 
@@ -368,11 +373,13 @@ fn test_join_performance_hash_join() {
                 name: "emp_id".to_string(),
                 data_type: "INTEGER".to_string(),
                 nullable: false,
-                is_unique: false,
-                is_primary_key: false,
-                auto_increment: false,
-                references: None,
+                primary_key: false,
+                char_max_length: None,
             }],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
         })
         .unwrap();
 
@@ -412,7 +419,7 @@ fn test_order_by_performance() {
     let mut engine = ExecutionEngine::new(Arc::new(RwLock::new(MemoryStorage::new())));
 
     engine
-        .execute(parse("CREATE TABLE sorted_data (value INTEGER)").unwrap())
+        .execute("CREATE TABLE sorted_data (value INTEGER)")
         .unwrap();
 
     for i in (0..1000).rev() {
@@ -423,7 +430,7 @@ fn test_order_by_performance() {
 
     let start = Instant::now();
     let result = engine
-        .execute(parse("SELECT * FROM sorted_data ORDER BY value").unwrap())
+        .execute("SELECT * FROM sorted_data ORDER BY value")
         .unwrap();
     let elapsed = start.elapsed();
 
@@ -460,9 +467,7 @@ fn test_mixed_workload_performance() {
     let mut engine = ExecutionEngine::new(Arc::new(RwLock::new(MemoryStorage::new())));
 
     engine
-        .execute(
-            parse("CREATE TABLE mixed_test (id INTEGER, category TEXT, value INTEGER)").unwrap(),
-        )
+        .execute("CREATE TABLE mixed_test (id INTEGER, category TEXT, value INTEGER)")
         .unwrap();
 
     for i in 0..1000 {
@@ -482,13 +487,13 @@ fn test_mixed_workload_performance() {
     let start = Instant::now();
 
     engine
-        .execute(parse("SELECT COUNT(*) FROM mixed_test WHERE category = 'category5'").unwrap())
+        .execute("SELECT COUNT(*) FROM mixed_test WHERE category = 'category5'")
         .ok();
     engine
-        .execute(parse("SELECT * FROM mixed_test WHERE value > 5000 LIMIT 10").unwrap())
+        .execute("SELECT * FROM mixed_test WHERE value > 5000 LIMIT 10")
         .ok();
     engine
-        .execute(parse("SELECT category, COUNT(*) FROM mixed_test GROUP BY category").unwrap())
+        .execute("SELECT category, COUNT(*) FROM mixed_test GROUP BY category")
         .ok();
 
     let elapsed = start.elapsed();
@@ -574,21 +579,16 @@ fn test_insert_batch_optimization() {
     let mut engine = ExecutionEngine::new(Arc::new(RwLock::new(MemoryStorage::new())));
 
     engine
-        .execute(
-            parse("CREATE TABLE batch_optimization_test (id INTEGER PRIMARY KEY, value TEXT)")
-                .unwrap(),
-        )
+        .execute("CREATE TABLE batch_optimization_test (id INTEGER PRIMARY KEY, value TEXT)")
         .unwrap();
 
     // Multi-row insert (batch)
-    let result = engine.execute(
-        parse("INSERT INTO batch_optimization_test VALUES (1, 'a'), (2, 'b'), (3, 'c')").unwrap(),
-    );
+    let result = engine.execute("INSERT INTO batch_optimization_test VALUES (1, 'a'), (2, 'b'), (3, 'c')");
     assert!(result.is_ok(), "Multi-row insert should work");
 
     // Verify
     let result = engine
-        .execute(parse("SELECT COUNT(*) FROM batch_optimization_test").unwrap())
+        .execute("SELECT COUNT(*) FROM batch_optimization_test")
         .unwrap();
     assert_eq!(result.rows[0][0], Value::Integer(3));
 
@@ -601,11 +601,11 @@ fn test_insert_with_transaction() {
     let mut engine = ExecutionEngine::new(Arc::new(RwLock::new(MemoryStorage::new())));
 
     engine
-        .execute(parse("CREATE TABLE tx_insert_test (id INTEGER, value TEXT)").unwrap())
+        .execute("CREATE TABLE tx_insert_test (id INTEGER, value TEXT)")
         .unwrap();
 
     // Begin transaction
-    engine.execute(parse("BEGIN").unwrap()).unwrap();
+    engine.execute("BEGIN").unwrap();
 
     // Insert multiple rows
     for i in 0..100 {
@@ -621,11 +621,11 @@ fn test_insert_with_transaction() {
     }
 
     // Commit
-    engine.execute(parse("COMMIT").unwrap()).unwrap();
+    engine.execute("COMMIT").unwrap();
 
     // Verify
     let result = engine
-        .execute(parse("SELECT COUNT(*) FROM tx_insert_test").unwrap())
+        .execute("SELECT COUNT(*) FROM tx_insert_test")
         .unwrap();
     assert_eq!(result.rows[0][0], Value::Integer(100));
 
@@ -638,7 +638,7 @@ fn test_wal_write_optimization() {
     let mut engine = ExecutionEngine::new(Arc::new(RwLock::new(MemoryStorage::new())));
 
     engine
-        .execute(parse("CREATE TABLE wal_optimization_test (id INTEGER, data TEXT)").unwrap())
+        .execute("CREATE TABLE wal_optimization_test (id INTEGER, data TEXT)")
         .unwrap();
 
     let iterations = 500;
@@ -663,7 +663,7 @@ fn test_wal_write_optimization() {
 
     // Verify data integrity
     let result = engine
-        .execute(parse("SELECT COUNT(*) FROM wal_optimization_test").unwrap())
+        .execute("SELECT COUNT(*) FROM wal_optimization_test")
         .unwrap();
     assert_eq!(result.rows[0][0], Value::Integer(iterations as i64));
 }
@@ -680,21 +680,21 @@ fn test_composite_index() {
                     name: "customer_id".to_string(),
                     data_type: "INTEGER".to_string(),
                     nullable: false,
-                    is_unique: false,
-                    is_primary_key: false,
-                    references: None,
-                    auto_increment: false,
+                    primary_key: false,
+                    char_max_length: None,
                 },
                 ColumnDefinition {
                     name: "order_id".to_string(),
                     data_type: "INTEGER".to_string(),
                     nullable: false,
-                    is_unique: false,
-                    is_primary_key: false,
-                    references: None,
-                    auto_increment: false,
+                    primary_key: false,
+                    char_max_length: None,
                 },
             ],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
         })
         .unwrap();
 
@@ -732,21 +732,21 @@ fn test_covering_index() {
                     name: "id".to_string(),
                     data_type: "INTEGER".to_string(),
                     nullable: false,
-                    is_unique: true,
-                    is_primary_key: true,
-                    references: None,
-                    auto_increment: false,
+                    primary_key: false,
+                    char_max_length: None,
                 },
                 ColumnDefinition {
                     name: "name".to_string(),
                     data_type: "TEXT".to_string(),
                     nullable: false,
-                    is_unique: false,
-                    is_primary_key: false,
-                    references: None,
-                    auto_increment: false,
+                    primary_key: false,
+                    char_max_length: None,
                 },
             ],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
         })
         .unwrap();
 

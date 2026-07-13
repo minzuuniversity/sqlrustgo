@@ -251,12 +251,13 @@ sem:
     progress_metric: |
       v3.10.0: C-4a ADD/DROP ✅, C-4c RENAME COLUMN ✅ (PR #3753),
       MODIFY keyword 已加入 lexer (PR #3773).
-      Stub 仍 RENAME TABLE (C-4b) + MODIFY COLUMN (C-4d); V310-04 (20h, P0) 未关闭.
+      Stub 仍 RENAME TABLE (C-4b) + MODIFY COLUMN (C-4d); V310-04 (20h, P0) deferred to v3.11.0.
     owner: openclaw
-    target_release: v3.10.0
-    review_date: "2026-09-30"
+    target_release: v3.11.0
+    review_date: "2027-01-15"
     blocking: []
-    related_change: "V310-04 (P0, 20h remaining)"
+    note: "IN_PROGRESS with target_release=v3.11.0 per 5-Principle P5. ALTER TABLE partial (ADD/DROP/RENAME COLUMN done, RENAME TABLE + MODIFY COLUMN remaining); work continues in v3.11.0."
+    related_change: "V310-04 (P0, 20h, deferred to v3.11.0)"
 
   - id: SEM-4
     title: "Coverage 测量差异 (Z6G4 82% vs Z440 32%)"
@@ -266,9 +267,9 @@ sem:
       v3.10.0: 平均覆盖率 ~67% (Hermes C authorization); V310-10 (40h, 目标 ≥80%) 推迟.
       check_coverage.sh 测量方法未统一; 多 runner (cargo-llvm-cov, tarpaulin) 结果差异显著.
     owner: openclaw
-    target_release: v3.10.0
-    review_date: "2026-10-15"
-    note: "已通过 Hermes C conditional-pass, GA 非 blocker; v3.11+ 重点"
+    target_release: v3.11.0
+    review_date: "2027-01-15"
+    note: "IN_PROGRESS with target_release=v3.11.0 per 5-Principle P5. Coverage measurement methodology standardization and ≥80% per-crate target deferred to v3.11.0 (V310-10)."
 
 # =============================================================================
 # F-XX — Feature Gap (36 items, v3.0.0 baseline)
@@ -366,28 +367,29 @@ f_xx_isolated:  # 测试自包含, 10 项 v3.9.0+ 集成; v3.10.0 中 F-16 主�
 f_xx_not_implemented:  # 完全无实现, 5 项 v3.9.0+ 全量
   - id: F-03
     title: "GIS 空间数据类型"
-    state: OPEN
+    state: DEFERRED
     owner: unassigned
     target_release: v3.11.0
-
-    note: "0 代码 (Point/LineString/Polygon/WKT/WKB), '40 files' 声称是 false positive"
+    review_date: "2027-01-15"
+    note: "0 代码 (Point/LineString/Polygon/WKT/WKB); DEFERRED to v3.11.0 per v3.10.0 RC blocker analysis. GIS spatial types not blocking v3.10.0 GA."
 
   - id: F-30
     title: "CREATE SEQUENCE"
-    state: OPEN
+    state: DEFERRED
     owner: unassigned
     target_release: v3.11.0
     review_date: "2027-01-15"
-
-    note: "0 代码 (无 create_sequence/nextval), '11 files' 声称是 false claim"
+    note: "0 代码 (无 create_sequence/nextval); DEFERRED to v3.11.0 per v3.10.0 RC blocker analysis."
 
   - id: F-36
     title: "列级权限"
-    state: OPEN
+    state: DEFERRED
     owner: unassigned
     target_release: v3.11.0
     review_date: "2027-01-15"
-    note: "0 代码 (无 ColumnLevel/ColumnPrivilege), '4 files' 声称是 false claim"
+    note: "0 代码 (无 ColumnLevel/ColumnPrivilege); DEFERRED to v3.11.0 per v3.10.0 RC blocker analysis."
+
+
   - id: T-19
     title: "Disk I/O delay fault injection"
     state: CLOSED
@@ -435,14 +437,14 @@ follow_ups:
 
   - id: 3136
     title: "check_cross_version_debt.sh 1 周全量升级 (72 债务项 use 语句 + 主路径 + CI 集成)"
-    state: OPEN
+    state: DEFERRED
     priority: P1
     owner: openclaw
     target_release: v3.11.0
     review_date: "2027-01-15"
     blocking: []
     estimated_effort: "1 week"
-    note: "v3.10.0 debt-registry.yaml updated to v3.10.0 snapshot; full 72-item gate script upgrade deferred."
+    note: "DEFERRED to v3.11.0 per v3.10.0 RC blocker analysis. v3.10.0 debt-registry.yaml updated to v3.10.0 snapshot; full 72-item gate script upgrade deferred to next release cycle."
     linked_audit: 3136
 
   - id: 3146

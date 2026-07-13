@@ -4,7 +4,7 @@
 //! **Status**: Implemented (PR for #2973, LocalExecutor + UnifiedFacade path)
 
 use sqlrustgo_storage::wal::MemoryWalManager;
-use sqlrustgo_storage::{MemoryStorage, StorageEngine, VtuGuard, WalStorage};
+use sqlrustgo_storage::{vtu_guard::VtuGuard, MemoryStorage, StorageEngine, WalStorage};
 use sqlrustgo_transaction::manager::TransactionManager;
 
 #[test]

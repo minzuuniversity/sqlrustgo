@@ -147,9 +147,9 @@ fn test_concurrent_read_write_stability() {
                 ));
 
                 if result.is_ok() {
-                    *counter.write().unwrap() += 1;
+                    *counter.write() += 1;
                 } else {
-                    *errors.write().unwrap() += 1;
+                    *errors.write() += 1;
                 }
             }
         });
@@ -166,7 +166,7 @@ fn test_concurrent_read_write_stability() {
             for _ in 0..100 {
                 let result = engine.execute("SELECT * FROM stability_test");
                 if result.is_ok() {
-                    *counter.write().unwrap() += 1;
+                    *counter.write() += 1;
                 }
             }
         });
@@ -177,9 +177,9 @@ fn test_concurrent_read_write_stability() {
         handle.join().unwrap();
     }
 
-    let writes = *write_counter.read().unwrap();
-    let reads = *read_counter.read().unwrap();
-    let errors = *error_counter.read().unwrap();
+    let writes = *write_counter.read();
+    let reads = *read_counter.read();
+    let errors = *error_counter.read();
 
     println!(
         "Concurrent stability: {} writes, {} reads, {} errors",

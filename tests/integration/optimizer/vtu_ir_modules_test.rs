@@ -23,18 +23,24 @@ fn users_table() -> TableInfo {
                 name: "id".to_string(),
                 data_type: "INTEGER".to_string(),
                 nullable: false,
+                primary_key: false,
+                char_max_length: None,
                 ..Default::default()
             },
             ColumnDefinition {
                 name: "active".to_string(),
                 data_type: "BOOLEAN".to_string(),
                 nullable: false,
+                primary_key: false,
+                char_max_length: None,
                 ..Default::default()
             },
             ColumnDefinition {
                 name: "name".to_string(),
                 data_type: "TEXT".to_string(),
                 nullable: true,
+                primary_key: false,
+                char_max_length: None,
                 ..Default::default()
             },
         ],
@@ -53,18 +59,24 @@ fn products_table() -> TableInfo {
                 name: "sku".to_string(),
                 data_type: "TEXT".to_string(),
                 nullable: false,
+                primary_key: false,
+                char_max_length: None,
                 ..Default::default()
             },
             ColumnDefinition {
                 name: "price".to_string(),
                 data_type: "INTEGER".to_string(),
                 nullable: false,
+                primary_key: false,
+                char_max_length: None,
                 ..Default::default()
             },
             ColumnDefinition {
                 name: "stock".to_string(),
                 data_type: "INTEGER".to_string(),
                 nullable: false,
+                primary_key: false,
+                char_max_length: None,
                 ..Default::default()
             },
         ],

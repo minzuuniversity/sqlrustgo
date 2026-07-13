@@ -1,0 +1,28 @@
+# NULL handling in SQL
+
+statement ok
+CREATE TABLE null_test(a INTEGER);
+
+statement ok
+INSERT INTO null_test VALUES (1);
+
+statement ok
+INSERT INTO null_test VALUES (NULL);
+
+statement ok
+INSERT INTO null_test VALUES (3);
+
+query I
+SELECT COUNT(*) FROM null_test;
+----
+3
+
+query I
+SELECT COUNT(a) FROM null_test;
+----
+2
+
+query I
+SELECT COUNT(*) FROM null_test WHERE a IS NULL;
+----
+1

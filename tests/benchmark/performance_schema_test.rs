@@ -71,22 +71,22 @@ impl PerformanceSchema {
     }
 
     pub fn enable(&self) {
-        *self.enabled.write().unwrap() = true;
+        *self.enabled.write() = true;
     }
 
     pub fn disable(&self) {
-        *self.enabled.write().unwrap() = false;
+        *self.enabled.write() = false;
     }
 
     pub fn is_enabled(&self) -> bool {
-        *self.enabled.read().unwrap()
+        *self.enabled.read()
     }
 
     pub fn record_statement(&self, sql: &str, time: Duration) {
         if !self.is_enabled() {
             return;
         }
-        let mut stats = self.statements.write().unwrap();
+        let mut stats = self.statements.write();
         let entry = stats.entry(sql.to_string()).or_default();
         entry.record(time.as_nanos() as u64);
     }
@@ -95,7 +95,7 @@ impl PerformanceSchema {
         if !self.is_enabled() {
             return;
         }
-        self.mutex_events.write().unwrap().push(MutexEvent {
+        self.mutex_events.write().push(MutexEvent {
             name: name.to_string(),
             timestamp_ns: std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -109,7 +109,7 @@ impl PerformanceSchema {
         if !self.is_enabled() {
             return;
         }
-        let mut io = self.file_io.write().unwrap();
+        let mut io = self.file_io.write();
         let entry = io.entry(file.to_string()).or_insert_with(|| FileIoEvent {
             file: file.to_string(),
             bytes_read: 0,
@@ -124,7 +124,7 @@ impl PerformanceSchema {
         if !self.is_enabled() {
             return;
         }
-        let mut io = self.file_io.write().unwrap();
+        let mut io = self.file_io.write();
         let entry = io.entry(file.to_string()).or_insert_with(|| FileIoEvent {
             file: file.to_string(),
             bytes_read: 0,
@@ -135,25 +135,25 @@ impl PerformanceSchema {
     }
 
     pub fn get_statement(&self, sql: &str) -> Option<StatementMetrics> {
-        self.statements.read().unwrap().get(sql).cloned()
+        self.statements.read().get(sql).cloned()
     }
 
     pub fn all_statements(&self) -> HashMap<String, StatementMetrics> {
-        self.statements.read().unwrap().clone()
+        self.statements.read().clone()
     }
 
     pub fn mutex_event_count(&self) -> usize {
-        self.mutex_events.read().unwrap().len()
+        self.mutex_events.read().len()
     }
 
     pub fn file_io_count(&self) -> usize {
-        self.file_io.read().unwrap().len()
+        self.file_io.read().len()
     }
 
     pub fn reset(&self) {
-        self.statements.write().unwrap().clear();
-        self.mutex_events.write().unwrap().clear();
-        self.file_io.write().unwrap().clear();
+        self.statements.write().clear();
+        self.mutex_events.write().clear();
+        self.file_io.write().clear();
     }
 }
 

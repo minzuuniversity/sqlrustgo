@@ -13,7 +13,7 @@ fn test_storage_insert_path() {
         .execute("CREATE TABLE t (a TEXT, b INTEGER, c REAL)")
         .expect("create");
     {
-        let mut s = storage.write().unwrap();
+        let mut s = storage.write();
         s.insert(
             "t",
             vec![

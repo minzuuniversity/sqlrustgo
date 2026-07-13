@@ -20,21 +20,21 @@ mod tests {
                     name: "id".to_string(),
                     data_type: "INTEGER".to_string(),
                     nullable: false,
-                    is_unique: true,
-                    is_primary_key: false,
-                    auto_increment: false,
-                    references: None,
+                    primary_key: false,
+                    char_max_length: None,
                 },
                 sqlrustgo_storage::ColumnDefinition {
                     name: "name".to_string(),
                     data_type: "VARCHAR".to_string(),
                     nullable: false,
-                    is_unique: false,
-                    is_primary_key: false,
-                    auto_increment: false,
-                    references: None,
+                    primary_key: false,
+                    char_max_length: None,
                 },
             ],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
         };
 
         storage.create_table(&base_table).unwrap();
@@ -72,6 +72,10 @@ mod tests {
         let base_table = TableInfo {
             name: "test".to_string(),
             columns: vec![],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
         };
 
         storage.create_table(&base_table).ok();
@@ -102,6 +106,10 @@ mod tests {
         let base_table = TableInfo {
             name: "t".to_string(),
             columns: vec![],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
         };
 
         storage.create_table(&base_table).ok();
@@ -140,11 +148,13 @@ mod tests {
                 name: "id".to_string(),
                 data_type: "INTEGER".to_string(),
                 nullable: false,
-                is_unique: true,
-                is_primary_key: false,
-                auto_increment: false,
-                references: None,
+                primary_key: false,
+                char_max_length: None,
             }],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
         };
 
         storage.create_table(&base_table).ok();
@@ -178,21 +188,21 @@ mod tests {
                     name: "id".to_string(),
                     data_type: "INTEGER".to_string(),
                     nullable: false,
-                    is_unique: true,
-                    is_primary_key: false,
-                    auto_increment: false,
-                    references: None,
+                    primary_key: false,
+                    char_max_length: None,
                 },
                 sqlrustgo_storage::ColumnDefinition {
                     name: "total".to_string(),
                     data_type: "REAL".to_string(),
                     nullable: false,
-                    is_unique: false,
-                    is_primary_key: false,
-                    auto_increment: false,
-                    references: None,
+                    primary_key: false,
+                    char_max_length: None,
                 },
             ],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
         };
 
         storage.create_table(&base_table).ok();
@@ -228,21 +238,21 @@ mod tests {
                     name: "id".to_string(),
                     data_type: "INTEGER".to_string(),
                     nullable: false,
-                    is_unique: true,
-                    is_primary_key: false,
-                    auto_increment: false,
-                    references: None,
+                    primary_key: false,
+                    char_max_length: None,
                 },
                 sqlrustgo_storage::ColumnDefinition {
                     name: "category".to_string(),
                     data_type: "VARCHAR".to_string(),
                     nullable: false,
-                    is_unique: false,
-                    is_primary_key: false,
-                    auto_increment: false,
-                    references: None,
+                    primary_key: false,
+                    char_max_length: None,
                 },
             ],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
         };
 
         storage.create_table(&base_table).ok();
