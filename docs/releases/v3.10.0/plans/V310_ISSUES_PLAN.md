@@ -40,7 +40,7 @@
 | 9 | [V310-09] | Wire 协议握手修复 (PR4) | 60h | P0 |
 | 10 | [V310-10] | 覆盖率提升至 ≥80% | 40h | P1 |
 | 11 | [V310-11] | TPC-H SF=1 22/22 闭环 | 80h | P1 |
-| 12 | [V310-12] | 其他 ignore 测试 + 跨版本债 | 60h | P2 |
+| 13 | [V310-13] | Beta 测试体系建立 | 40h | P0 |
 
 **门禁达标要求**:
 - G1 TPC-H SF=0.1 22/22 ✅ (v3.9.0 已 PASS，需保持不退化)
@@ -54,13 +54,7 @@
 - G9 24h 真实 SOAK 0 errors
 - G10 Wired-SOAK sysbench prepare/run 真接入 PASS
 
-**参考文档**:
-- [`V310_DEVELOPMENT_PLAN.md`](V310_DEVELOPMENT_PLAN.md) (核心开发计划)
-- [`V310_CLI_BINARY_PLAN.md`](V310_CLI_BINARY_PLAN.md)
-- [`../../governance/adr/ADR-013-v310-wired-soak-ddl-and-wire-protocol-repair.md`](../../governance/adr/ADR-013-v310-wired-soak-ddl-and-wire-protocol-repair.md) (Wired-SOAK RFC)
-- [`V390_COMPREHENSIVE_ASSESSMENT.md`](../v3.9.0/V390_COMPREHENSIVE_ASSESSMENT.md) (v3.9.0 评估)
-
----
+| **Beta** | 4 周 | V310-05, 07, 08, 10, 13 | Crash + 24h SOAK + Catalog + 覆盖率 + 测试体系 |
 
 ## 2. 子 ISSUE 详细描述
 
@@ -336,6 +330,39 @@ bash scripts/gate/check_tpch_sf1.sh
 **验证**: 全部 ignore 测试 unignore + cargo test PASS
 
 **完成判据**: P2 债务全部关闭
+### [V310-13] Beta 测试体系建立
+
+**ISSUE**: #3372
+
+**目标**: 在 Beta 阶段建立全面测试体系，解决测试只验证「SQL 能执行」而不验证「结果是否正确」的根本问题。
+
+**现状问题**:
++ `crates/sqlancer`: ~100行骨架，从未使用
++ `sql_corpus/`: 103个SQL文件(7071行)，从未作为测试运行
++ 缺乏跨数据库语义验证（没有对比参考）
++ 无随机SQL生成（Fuzzing）能力
+
+**解决方案**:
+
+1. **完成 sqlancer SQLite 差异测试**（P0，2-3人天）
+   + 用 SQLite 作为「正确参考」实现
+   + sqlrustgo + SQLite 执行同一 SQL，比较结果集
+   + 已有: `DdlGenerator`, `DmlGenerator`, `TlpOracle`
+   + 缺失: SQLite adapter, 结果集比较器
+
+2. **激活 sql_corpus 回归测试**（P0，0.5人天）
+   + 利用已有的 103 个 SQL 文件
+   + 分级执行: fast(<5s) / medium(<30s) / full(<5min)
+   + 覆盖: DDL/DML/EXPRESSIONS/FUNCTIONS/TCL/TRANSACTION 等 16 类
+
+3. **Beta gate 集成**（P0）
+   + `check_beta_gate.sh` 增加 B10 (sqlancer) 和 B11 (sql_corpus)
+
+**验证**: sql_corpus/ 中所有 SQL 文件在 sqlrustgo 上执行不 panic
+
+**完成判据**: sqlancer 可运行 + sql_corpus fast 全部 PASS + Beta gate 含 B10/B11
+
+
 
 ---
 
@@ -366,7 +393,7 @@ bash scripts/gate/check_tpch_sf1.sh
 | 阶段 | 周期 | 核心 ISSUE | 退出判据 |
 |------|------|-----------|---------|
 | **Alpha** | 4 周 | V310-01, 02, 03, 04, 06 | DML + ACID + ALTER + Wire-DDL 完成 |
-| **Beta** | 4 周 | V310-05, 07, 08, 10 | Crash + 24h SOAK + Catalog + 覆盖率 |
+| **Beta** | 4 周 | V310-05, 07, 08, 10, 13 | Crash + 24h SOAK + Catalog + 覆盖率 + 测试体系 |
 | **RC1** | 2 周 | V310-09 | Wire 协议修复 + sysbench 接入 |
 | **RC2-RC8** | 6 周 | V310-11, 12 | TPC-H SF=1 闭环 + P2 债 |
 | **GA** | 4 周 | 综合验证 | G1-G10 全 PASS, 168h SOAK PASS |
