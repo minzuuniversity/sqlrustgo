@@ -289,11 +289,13 @@ fn test_index_scan_performance_vs_seqscan() {
                 name: "id".to_string(),
                 data_type: "INTEGER".to_string(),
                 nullable: false,
-                is_unique: true,
-                is_primary_key: false,
-                auto_increment: false,
-                references: None,
+                primary_key: false,
+                char_max_length: None,
             }],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
         })
         .unwrap();
 
@@ -348,11 +350,13 @@ fn test_join_performance_hash_join() {
                 name: "id".to_string(),
                 data_type: "INTEGER".to_string(),
                 nullable: false,
-                is_unique: false,
-                is_primary_key: false,
-                auto_increment: false,
-                references: None,
+                primary_key: false,
+                char_max_length: None,
             }],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
         })
         .unwrap();
 
@@ -369,11 +373,13 @@ fn test_join_performance_hash_join() {
                 name: "emp_id".to_string(),
                 data_type: "INTEGER".to_string(),
                 nullable: false,
-                is_unique: false,
-                is_primary_key: false,
-                auto_increment: false,
-                references: None,
+                primary_key: false,
+                char_max_length: None,
             }],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
         })
         .unwrap();
 
@@ -681,21 +687,21 @@ fn test_composite_index() {
                     name: "customer_id".to_string(),
                     data_type: "INTEGER".to_string(),
                     nullable: false,
-                    is_unique: false,
-                    is_primary_key: false,
-                    references: None,
-                    auto_increment: false,
+                    primary_key: false,
+                    char_max_length: None,
                 },
                 ColumnDefinition {
                     name: "order_id".to_string(),
                     data_type: "INTEGER".to_string(),
                     nullable: false,
-                    is_unique: false,
-                    is_primary_key: false,
-                    references: None,
-                    auto_increment: false,
+                    primary_key: false,
+                    char_max_length: None,
                 },
             ],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
         })
         .unwrap();
 
@@ -733,21 +739,21 @@ fn test_covering_index() {
                     name: "id".to_string(),
                     data_type: "INTEGER".to_string(),
                     nullable: false,
-                    is_unique: true,
-                    is_primary_key: true,
-                    references: None,
-                    auto_increment: false,
+                    primary_key: false,
+                    char_max_length: None,
                 },
                 ColumnDefinition {
                     name: "name".to_string(),
                     data_type: "TEXT".to_string(),
                     nullable: false,
-                    is_unique: false,
-                    is_primary_key: false,
-                    references: None,
-                    auto_increment: false,
+                    primary_key: false,
+                    char_max_length: None,
                 },
             ],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
         })
         .unwrap();
 
