@@ -30,7 +30,8 @@ impl PartialEq for SltError {
     }
 }
 
-/// sqlrustgo SLT database instance.
+/// Simple SltDb - each instance has its own fresh storage.
+/// A fresh instance is created per file to ensure complete isolation.
 pub struct SltDb {
     engine: MemoryExecutionEngine,
 }
@@ -62,24 +63,20 @@ impl DB for SltDb {
                     let rows: Vec<Vec<String>> = result
                         .rows
                         .iter()
-                        .map(|row| {
-                            let formatted: Vec<String> = row.iter().map(|v| v.to_sql_string()).collect();
-                            formatted
-                        })
+                        .map(|row| row.iter().map(|v| v.to_sql_string()).collect())
                         .collect();
-                    let types: Vec<DefaultColumnType> =
-                        if let Some(first) = result.rows.first() {
-                            first
-                                .iter()
-                                .map(|v| match v {
-                                    sqlrustgo::Value::Integer(_) => DefaultColumnType::Integer,
-                                    sqlrustgo::Value::Float(_) => DefaultColumnType::FloatingPoint,
-                                    _ => DefaultColumnType::Text,
-                                })
-                                .collect()
-                        } else {
-                            vec![]
-                        };
+                    let types: Vec<DefaultColumnType> = if let Some(first) = result.rows.first() {
+                        first
+                            .iter()
+                            .map(|v| match v {
+                                sqlrustgo::Value::Integer(_) => DefaultColumnType::Integer,
+                                sqlrustgo::Value::Float(_) => DefaultColumnType::FloatingPoint,
+                                _ => DefaultColumnType::Text,
+                            })
+                            .collect()
+                    } else {
+                        vec![]
+                    };
                     Ok(DBOutput::Rows { types, rows })
                 }
             }
@@ -89,6 +86,10 @@ impl DB for SltDb {
 
     fn engine_name(&self) -> &str {
         "sqlrustgo"
+    }
+
+    fn shutdown(&mut self) {
+        // Nothing needed - each file gets a fresh SltDb via fresh Runner
     }
 }
 
@@ -194,25 +195,6 @@ async fn async_main() {
         println!("filter: {}", filter);
     }
     println!();
-
-    let mut tester = Runner::new(|| async {
-        Ok(SltDb::new())
-    });
-    tester.with_normalizer(strip_debug_format);
-    // Use custom validator to handle multi-column row comparison
-    tester.with_validator(|norm, actual, expected| {
-        let expected_results: Vec<String> = expected.iter().map(|e| {
-            // Normalize expected: collapse internal whitespace too
-            let normalized = norm(e);
-            normalized.split_whitespace().collect::<Vec<_>>().join(" ")
-        }).collect();
-        let normalized_rows: Vec<String> = actual
-            .iter()
-            .map(|row| row.iter().map(|v| norm(v)).collect::<Vec<_>>().join(" "))
-            .collect();
-        normalized_rows == expected_results
-    });
-
     let mut files_run = 0usize;
     let mut files_pass = 0usize;
     let mut files_fail = 0usize;
@@ -231,6 +213,22 @@ async fn async_main() {
             continue;
         }
 
+        // Create a fresh Runner (and SltDb) for each file.
+        // This ensures complete isolation: each file sees an empty database.
+        let mut tester = Runner::new(|| async { Ok(SltDb::new()) });
+        tester.with_normalizer(strip_debug_format);
+        tester.with_validator(|norm, actual, expected| {
+            let expected_results: Vec<String> = expected.iter().map(|e| {
+                let normalized = norm(e);
+                normalized.split_whitespace().collect::<Vec<_>>().join(" ")
+            }).collect();
+            let normalized_rows: Vec<String> = actual
+                .iter()
+                .map(|row| row.iter().map(|v| norm(v)).collect::<Vec<_>>().join(" "))
+                .collect();
+            normalized_rows == expected_results
+        });
+
         files_run += 1;
         match tester.run_file(path) {
             Ok(_) => {
@@ -247,6 +245,7 @@ async fn async_main() {
             }
         }
     }
+
 
     println!("\n=== Summary ===");
     println!("files:    {}/{} (pass/fail)", files_pass, files_fail);
