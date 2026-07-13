@@ -6,12 +6,14 @@
 //! behind `parallel-executor`. When the feature is OFF, a stub sequential
 //! scheduler is exported so the binary still compiles.
 
+#[cfg(feature = "parallel-executor")]
 use std::sync::{
     atomic::{AtomicUsize, Ordering},
     Arc,
 };
-use std::thread;
+#[cfg(feature = "parallel-executor")]
 use std::time::Duration;
+use std::thread;
 // v3.10.0 Issue #3703: rayon gated by parallel-executor feature
 #[cfg(feature = "parallel-executor")]
 mod rayon_impl {
