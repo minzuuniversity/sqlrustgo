@@ -169,14 +169,14 @@ fn test_basic_table_operations() {
     // Test basic CREATE and INSERT works
     let mut engine = ExecutionEngine::new(Arc::new(RwLock::new(MemoryStorage::new())));
     engine
-        .execute(parse("CREATE TABLE test (id INTEGER)").unwrap())
+        .execute("CREATE TABLE test (id INTEGER)")
         .unwrap();
     engine
-        .execute(parse("INSERT INTO test VALUES (1), (2), (3)").unwrap())
+        .execute("INSERT INTO test VALUES (1), (2), (3)")
         .unwrap();
 
     let result = engine
-        .execute(parse("SELECT * FROM test").unwrap())
+        .execute("SELECT * FROM test")
         .unwrap();
     assert_eq!(result.rows.len(), 3);
 }
