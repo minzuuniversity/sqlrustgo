@@ -204,7 +204,25 @@ echo ""
 echo "--- R7: Cross-Version Debt (RC target: 0 OPEN) ---"
 DEBT_REGISTRY="$REPO_ROOT/docs/governance/debt/debt-registry.yaml"
 if [ -f "$DEBT_REGISTRY" ]; then
-    OPEN_DEBT=$(grep -cE "^\s*state:\s*OPEN|^\s*state:\s*IN_PROGRESS|^\s*state:\s*BLOCKED" "$DEBT_REGISTRY" 2>/dev/null || echo 0)
+    # Count OPEN/IN_PROGRESS/BLOCKED items targeting v3.10.x or no target_release.
+    # Items deferred to v3.11.0+ are excluded per ADR-011a.
+    OPEN_DEBT=$(awk '
+        /  - id:/ {
+            if (s && (s == "OPEN" || s == "IN_PROGRESS" || s == "BLOCKED")) {
+                if (tr == "" || tr ~ /v3\.[0-9]$/ || tr ~ /v3\.10/) cnt310++;
+            }
+            s = ""; tr = "";
+        }
+        /state:/ { s = $2; }
+        /target_release:/ { tr = $2; }
+        END {
+            if (s && (s == "OPEN" || s == "IN_PROGRESS" || s == "BLOCKED")) {
+                if (tr == "" || tr ~ /v3\.[0-9]$/ || tr ~ /v3\.10/) cnt310++;
+            }
+            print cnt310+0;
+        }
+    ' "$DEBT_REGISTRY" 2>/dev/null || echo 0)
+    OPEN_DEBT=${OPEN_DEBT:-0}
     if [ "$OPEN_DEBT" -eq 0 ]; then
         check_pass "R7_OPEN_DEBT" "0 (target met)"
     else
