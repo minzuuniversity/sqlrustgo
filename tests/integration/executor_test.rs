@@ -2,7 +2,8 @@
 use sqlrustgo::{parse, ExecutionEngine, MemoryStorage, Privilege};
 use sqlrustgo_executor::ExecutorResult;
 use sqlrustgo_types::Value;
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc};
+use parking_lot::RwLock;
 
 #[test]
 fn test_batch_insert() {
@@ -41,7 +42,7 @@ fn test_materialized_view() {
 
     assert_eq!(result.affected_rows, 0);
 
-    let storage = engine.storage.read().unwrap();
+    let storage = engine.storage.read();
     assert!(storage.has_view("user_view"));
 }
 

@@ -1,7 +1,8 @@
 //! Test TEXT field index
 use sqlrustgo::{parse, ExecutionEngine, MemoryStorage};
 use std::path::Path;
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc};
+use parking_lot::RwLock;
 
 #[test]
 fn test_text_index() {
@@ -48,7 +49,7 @@ fn test_text_index() {
 
     let filepath = "data/tpch-sf03/lineitem.tbl";
     if Path::new(&filepath).exists() {
-        let mut storage = engine.storage.write().unwrap();
+        let mut storage = engine.storage.write();
         match storage.bulk_load_tbl_file("lineitem", &filepath) {
             Ok(count) => {
                 println!("  Loaded {} rows", count);

@@ -335,7 +335,8 @@ fn test_memory_storage_scan_batch_with_cancel() {
 #[test]
 fn test_execution_engine_with_session_manager() {
     use sqlrustgo::{ExecutionEngine, MemoryStorage};
-    use std::sync::{Arc, RwLock};
+    use std::sync::{Arc};
+use parking_lot::RwLock;
 
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));
     let session_manager = Arc::new(SessionManager::new());
@@ -352,7 +353,8 @@ fn test_execution_engine_with_session_manager() {
 #[test]
 fn test_execution_engine_kill_query_via_session() {
     use sqlrustgo::{ExecutionEngine, MemoryStorage};
-    use std::sync::{Arc, RwLock};
+    use std::sync::{Arc};
+use parking_lot::RwLock;
 
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));
     let session_manager = Arc::new(SessionManager::new());
@@ -375,7 +377,8 @@ fn test_execution_engine_kill_query_via_session() {
 #[test]
 fn test_execution_engine_kill_self_prevention() {
     use sqlrustgo::{ExecutionEngine, MemoryStorage};
-    use std::sync::{Arc, RwLock};
+    use std::sync::{Arc};
+use parking_lot::RwLock;
 
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));
     let session_manager = Arc::new(SessionManager::new());
@@ -398,7 +401,8 @@ fn test_execution_engine_kill_self_prevention() {
 #[test]
 fn test_execution_engine_kill_nonexistent_session() {
     use sqlrustgo::{ExecutionEngine, MemoryStorage};
-    use std::sync::{Arc, RwLock};
+    use std::sync::{Arc};
+use parking_lot::RwLock;
 
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));
     let session_manager = Arc::new(SessionManager::new());
@@ -424,7 +428,8 @@ fn test_execution_engine_kill_nonexistent_session() {
 #[test]
 fn test_execution_engine_kill_different_user_without_privilege() {
     use sqlrustgo::{ExecutionEngine, MemoryStorage};
-    use std::sync::{Arc, RwLock};
+    use std::sync::{Arc};
+use parking_lot::RwLock;
 
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));
     let session_manager = Arc::new(SessionManager::new());
@@ -448,7 +453,8 @@ fn test_execution_engine_kill_different_user_without_privilege() {
 #[test]
 fn test_execution_engine_kill_connection() {
     use sqlrustgo::{ExecutionEngine, MemoryStorage};
-    use std::sync::{Arc, RwLock};
+    use std::sync::{Arc};
+use parking_lot::RwLock;
 
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));
     let session_manager = Arc::new(SessionManager::new());
