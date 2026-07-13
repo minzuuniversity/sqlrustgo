@@ -4,12 +4,12 @@
 
 # Release Notes — SQLRustGo v3.10.0
 
-> **当前阶段**: **ALPHA** (2026-07-11, DRAFT → ALPHA 已完成)
-> **目标阶段**: **GA** (target 2026-07 中下旬)
+> **当前阶段**: **RC** (2026-07-13, BETA → RC 已完成)
+> **目标阶段**: **GA** (target 2026-07 下旬)
 > **类型**: **MySQL 5.7 替代** — 功能稳定 + 基本性能优先 + Wired SOAK 闭环
-> **分支**: `develop/v3.10.0` (forked from `develop/v3.9.0` @ RC8)
-> **当前 head**: `develop/v3.10.0 @ af701f240` (post PR #3802 GA-prep cleanup)
-> **创建日期**: 2026-07-01
+> **分支**: `rc/v3.10.0` (forked from `develop/v3.10.0`)
+> **当前 head**: `rc/v3.10.0` (8ab6f3ce3, post BETA→RC promotion)
+> **前版本**: v3.9.0 (develop/v3.9.0 @ RC8 → GA 2026-07-10)
 >
 > Comprehensive list of changes from v3.9.0 → v3.10.0-rc.1
 > For migration instructions see [`CLI_USER_MANUAL.md`](CLI_USER_MANUAL.md) (TBW)
