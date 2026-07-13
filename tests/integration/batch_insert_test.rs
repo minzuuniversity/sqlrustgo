@@ -1,7 +1,8 @@
 // Batch Insert Tests - Performance, Concurrency, and Auto-Increment Tests (Issue #964)
+use parking_lot::RwLock;
 use sqlrustgo::{parse, ExecutionEngine, MemoryStorage};
 use sqlrustgo_types::Value;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 use std::time::Instant;
 
 // ============== 性能测试 ==============
@@ -10,12 +11,12 @@ use std::time::Instant;
 fn test_batch_insert_performance_10_rows() {
     let mut engine = ExecutionEngine::new(Arc::new(RwLock::new(MemoryStorage::new())));
     engine
-        .execute(parse("CREATE TABLE t (id INTEGER PRIMARY KEY AUTOINCREMENT, v TEXT)").unwrap())
+        .execute("CREATE TABLE t (id INTEGER PRIMARY KEY AUTOINCREMENT, v TEXT)")
         .unwrap();
 
     let start = Instant::now();
     let result = engine
-        .execute(parse("INSERT INTO t (v) VALUES ('a'),('b'),('c'),('d'),('e'),('f'),('g'),('h'),('i'),('j')").unwrap())
+        .execute("INSERT INTO t (v) VALUES ('a'),('b'),('c'),('d'),('e'),('f'),('g'),('h'),('i'),('j')")
         .unwrap();
     let elapsed = start.elapsed();
 
@@ -27,7 +28,7 @@ fn test_batch_insert_performance_10_rows() {
 fn test_batch_insert_performance_100_rows() {
     let mut engine = ExecutionEngine::new(Arc::new(RwLock::new(MemoryStorage::new())));
     engine
-        .execute(parse("CREATE TABLE t (id INTEGER PRIMARY KEY AUTOINCREMENT, v TEXT)").unwrap())
+        .execute("CREATE TABLE t (id INTEGER PRIMARY KEY AUTOINCREMENT, v TEXT)")
         .unwrap();
 
     // Generate 100 rows
@@ -41,7 +42,7 @@ fn test_batch_insert_performance_100_rows() {
     let sql = format!("INSERT INTO t (v) VALUES {}", values);
 
     let start = Instant::now();
-    let result = engine.execute(parse(&sql).unwrap()).unwrap();
+    let result = engine.execute(&sql).unwrap();
     let elapsed = start.elapsed();
 
     assert_eq!(result.affected_rows, 100);
@@ -52,7 +53,7 @@ fn test_batch_insert_performance_100_rows() {
 fn test_batch_insert_performance_1000_rows() {
     let mut engine = ExecutionEngine::new(Arc::new(RwLock::new(MemoryStorage::new())));
     engine
-        .execute(parse("CREATE TABLE t (id INTEGER PRIMARY KEY AUTOINCREMENT, v TEXT)").unwrap())
+        .execute("CREATE TABLE t (id INTEGER PRIMARY KEY AUTOINCREMENT, v TEXT)")
         .unwrap();
 
     // Generate 1000 rows
@@ -66,7 +67,7 @@ fn test_batch_insert_performance_1000_rows() {
     let sql = format!("INSERT INTO t (v) VALUES {}", values);
 
     let start = Instant::now();
-    let result = engine.execute(parse(&sql).unwrap()).unwrap();
+    let result = engine.execute(&sql).unwrap();
     let elapsed = start.elapsed();
 
     assert_eq!(result.affected_rows, 1000);
@@ -85,7 +86,7 @@ fn test_concurrent_batch_insert_no_deadlock() {
     {
         let mut engine = ExecutionEngine::new(storage.clone());
         engine
-            .execute(parse("CREATE TABLE t (id INTEGER PRIMARY KEY, v TEXT)").unwrap())
+            .execute("CREATE TABLE t (id INTEGER PRIMARY KEY, v TEXT)")
             .unwrap();
     }
 
@@ -100,7 +101,7 @@ fn test_concurrent_batch_insert_no_deadlock() {
             values.push_str(&format!("({}, 'v{}')", i, i));
         }
         let sql = format!("INSERT INTO t VALUES {}", values);
-        engine.execute(parse(&sql).unwrap())
+        engine.execute(&sql)
     });
 
     // Thread 2: Insert rows 11-20
@@ -114,7 +115,7 @@ fn test_concurrent_batch_insert_no_deadlock() {
             values.push_str(&format!("({}, 'v{}')", i, i));
         }
         let sql = format!("INSERT INTO t VALUES {}", values);
-        engine.execute(parse(&sql).unwrap())
+        engine.execute(&sql)
     });
 
     // Thread 3: Insert rows 21-30
@@ -128,7 +129,7 @@ fn test_concurrent_batch_insert_no_deadlock() {
             values.push_str(&format!("({}, 'v{}')", i, i));
         }
         let sql = format!("INSERT INTO t VALUES {}", values);
-        engine.execute(parse(&sql).unwrap())
+        engine.execute(&sql)
     });
 
     let r1 = handle1.join().unwrap();
@@ -143,7 +144,7 @@ fn test_concurrent_batch_insert_no_deadlock() {
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));
     let mut engine = ExecutionEngine::new(storage);
     engine
-        .execute(parse("CREATE TABLE t (id INTEGER PRIMARY KEY, v TEXT)").unwrap())
+        .execute("CREATE TABLE t (id INTEGER PRIMARY KEY, v TEXT)")
         .unwrap();
 
     // Re-insert the same data (we can't easily read from other threads' storage)
@@ -157,17 +158,17 @@ fn test_concurrent_batch_insert_no_deadlock() {
 fn test_auto_increment_sequential_batch() {
     let mut engine = ExecutionEngine::new(Arc::new(RwLock::new(MemoryStorage::new())));
     engine
-        .execute(parse("CREATE TABLE t (id INTEGER PRIMARY KEY AUTOINCREMENT, v TEXT)").unwrap())
+        .execute("CREATE TABLE t (id INTEGER PRIMARY KEY AUTOINCREMENT, v TEXT)")
         .unwrap();
 
     // Batch insert 10 rows
     engine
-        .execute(parse("INSERT INTO t (v) VALUES ('a'),('b'),('c'),('d'),('e'),('f'),('g'),('h'),('i'),('j')").unwrap())
+        .execute("INSERT INTO t (v) VALUES ('a'),('b'),('c'),('d'),('e'),('f'),('g'),('h'),('i'),('j')")
         .unwrap();
 
     // Check IDs are sequential: 1,2,3,...,10
     let result = engine
-        .execute(parse("SELECT id FROM t ORDER BY id").unwrap())
+        .execute("SELECT id FROM t ORDER BY id")
         .unwrap();
     for (i, row) in result.rows.iter().enumerate() {
         let expected = (i + 1) as i64;
@@ -185,22 +186,22 @@ fn test_auto_increment_sequential_batch() {
 fn test_auto_increment_sequential_after_single() {
     let mut engine = ExecutionEngine::new(Arc::new(RwLock::new(MemoryStorage::new())));
     engine
-        .execute(parse("CREATE TABLE t (id INTEGER PRIMARY KEY AUTOINCREMENT, v TEXT)").unwrap())
+        .execute("CREATE TABLE t (id INTEGER PRIMARY KEY AUTOINCREMENT, v TEXT)")
         .unwrap();
 
     // Single insert
     engine
-        .execute(parse("INSERT INTO t (v) VALUES ('first')").unwrap())
+        .execute("INSERT INTO t (v) VALUES ('first')")
         .unwrap();
 
     // Batch insert
     engine
-        .execute(parse("INSERT INTO t (v) VALUES ('a'),('b'),('c')").unwrap())
+        .execute("INSERT INTO t (v) VALUES ('a'),('b'),('c')")
         .unwrap();
 
     // Check IDs: 1, 2, 3, 4
     let result = engine
-        .execute(parse("SELECT id FROM t ORDER BY id").unwrap())
+        .execute("SELECT id FROM t ORDER BY id")
         .unwrap();
     assert_eq!(result.rows.len(), 4);
     for (i, row) in result.rows.iter().enumerate() {
@@ -213,26 +214,26 @@ fn test_auto_increment_sequential_after_single() {
 fn test_auto_increment_sequential_after_delete() {
     let mut engine = ExecutionEngine::new(Arc::new(RwLock::new(MemoryStorage::new())));
     engine
-        .execute(parse("CREATE TABLE t (id INTEGER PRIMARY KEY AUTOINCREMENT, v TEXT)").unwrap())
+        .execute("CREATE TABLE t (id INTEGER PRIMARY KEY AUTOINCREMENT, v TEXT)")
         .unwrap();
 
     // Insert 5 rows
     engine
-        .execute(parse("INSERT INTO t (v) VALUES ('1'),('2'),('3'),('4'),('5')").unwrap())
+        .execute("INSERT INTO t (v) VALUES ('1'),('2'),('3'),('4'),('5')")
         .unwrap();
 
     // Delete middle row
     engine
-        .execute(parse("DELETE FROM t WHERE id = 3").unwrap())
+        .execute("DELETE FROM t WHERE id = 3")
         .unwrap();
 
     // Insert 3 more rows (should get IDs 6,7,8)
     engine
-        .execute(parse("INSERT INTO t (v) VALUES ('6'),('7'),('8')").unwrap())
+        .execute("INSERT INTO t (v) VALUES ('6'),('7'),('8')")
         .unwrap();
 
     let result = engine
-        .execute(parse("SELECT id FROM t ORDER BY id").unwrap())
+        .execute("SELECT id FROM t ORDER BY id")
         .unwrap();
     assert_eq!(result.rows.len(), 7);
 
@@ -255,11 +256,11 @@ fn test_auto_increment_sequential_after_delete() {
 fn test_batch_insert_empty_values() {
     let mut engine = ExecutionEngine::new(Arc::new(RwLock::new(MemoryStorage::new())));
     engine
-        .execute(parse("CREATE TABLE t (id INTEGER, v TEXT)").unwrap())
+        .execute("CREATE TABLE t (id INTEGER, v TEXT)")
         .unwrap();
 
     // Empty batch should be valid but insert nothing
-    let result = engine.execute(parse("INSERT INTO t VALUES ()").unwrap());
+    let result = engine.execute("INSERT INTO t VALUES ()");
     // This might error or insert 0 rows - either is acceptable
     println!("Empty values result: {:?}", result);
 }
@@ -278,13 +279,13 @@ fn test_batch_insert_mixed_columns() {
 
     // Insert with different column combinations
     let result = engine
-        .execute(parse("INSERT INTO t (a, b, c) VALUES ('x', 1, 'y'), ('p', 2, 'q')").unwrap())
+        .execute("INSERT INTO t (a, b, c) VALUES ('x', 1, 'y'), ('p', 2, 'q')")
         .unwrap();
 
     assert_eq!(result.affected_rows, 2);
 
     let result = engine
-        .execute(parse("SELECT a, b, c FROM t ORDER BY id").unwrap())
+        .execute("SELECT a, b, c FROM t ORDER BY id")
         .unwrap();
     assert_eq!(result.rows.len(), 2);
     assert_eq!(result.rows[0][0], Value::Text("x".to_string()));

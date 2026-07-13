@@ -1,0 +1,19 @@
+# demo.test — a minimal SLT test for sqlrustgo
+
+statement ok
+CREATE TABLE t1 (a INT, b TEXT)
+
+statement ok
+INSERT INTO t1 VALUES (1, 'hello')
+
+statement ok
+INSERT INTO t1 VALUES (2, 'world')
+
+query I T
+SELECT a, b FROM t1 ORDER BY a
+----
+1    hello
+2    world
+
+statement ok
+DROP TABLE t1

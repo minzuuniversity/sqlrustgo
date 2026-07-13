@@ -6,13 +6,13 @@
 //! - Transaction throughput: Measure TPS (transactions per second)
 //! - Memory pressure: Large data sets under load
 
+use parking_lot::RwLock;
 use sqlrustgo_common::connection_pool::PoolConfig;
 use sqlrustgo_server::connection_pool::ConnectionPool;
 use sqlrustgo_transaction::lock::{LockManager, LockMode};
 use sqlrustgo_transaction::mvcc::TxId;
 use sqlrustgo_transaction::TransactionManager;
 use std::io::Write;
-use std::sync::RwLock;
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -311,8 +311,8 @@ mod transaction_throughput {
         let start = Instant::now();
         for _ in 0..10 {
             let mgr = RwLock::new(TransactionManager::new());
-            let _ = mgr.write().unwrap().begin();
-            let _ = mgr.write().unwrap().commit();
+            let _ = mgr.write().begin();
+            let _ = mgr.write().commit();
         }
         println!("Tx 10 sequential: {:?}", start.elapsed());
     }
@@ -322,8 +322,8 @@ mod transaction_throughput {
         let start = Instant::now();
         for _ in 0..50 {
             let mgr = RwLock::new(TransactionManager::new());
-            let _ = mgr.write().unwrap().begin();
-            let _ = mgr.write().unwrap().commit();
+            let _ = mgr.write().begin();
+            let _ = mgr.write().commit();
         }
         println!("Tx 50 sequential: {:?}", start.elapsed());
     }
@@ -333,8 +333,8 @@ mod transaction_throughput {
         let start = Instant::now();
         for _ in 0..100 {
             let mgr = RwLock::new(TransactionManager::new());
-            let _ = mgr.write().unwrap().begin();
-            let _ = mgr.write().unwrap().commit();
+            let _ = mgr.write().begin();
+            let _ = mgr.write().commit();
         }
         println!("Tx 100 sequential: {:?}", start.elapsed());
     }
@@ -346,8 +346,8 @@ mod transaction_throughput {
 
         for _ in 0..count {
             let mgr = RwLock::new(TransactionManager::new());
-            let _ = mgr.write().unwrap().begin();
-            let _ = mgr.write().unwrap().commit();
+            let _ = mgr.write().begin();
+            let _ = mgr.write().commit();
         }
 
         let elapsed = start.elapsed();
@@ -892,8 +892,8 @@ mod stability_stress {
 
         for _ in 0..tx_count {
             let mgr = RwLock::new(TransactionManager::new());
-            let _ = mgr.write().unwrap().begin();
-            let _ = mgr.write().unwrap().commit();
+            let _ = mgr.write().begin();
+            let _ = mgr.write().commit();
         }
 
         let elapsed = start.elapsed();
