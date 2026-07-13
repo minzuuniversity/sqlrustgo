@@ -333,27 +333,34 @@ else
 fi
 
 # ===========================================================================
-# 9. Oracle / Differential Testing (ISSUE #3372)
+# 9. Oracle / Differential Testing (ISSUE #3373 / #3372)
+#
+# SQLLogicTest (#3373) is the P0 priority: 590万 SQLite 官方用例基线。
+# SQLancer (#3372) is P1: deferred until #3373 establishes whether
+# differential testing is needed beyond the SLT corpus.
+# B10 checks only for the SLT runner existence (DEFERRED from #3372).
 # ===========================================================================
 echo ""
-echo "--- B10: Oracle / Differential Testing (sqlancer, ISSUE #3372) ---"
-if [ -d "$REPO_ROOT/crates/sqlancer/src" ]; then
-    # Check if sqlancer has a complete SQLite adapter
-    HAS_SQLITE=$(grep -l "sqlite\|rusqlite\|SqliteAdapter" "$REPO_ROOT/crates/sqlancer/src" -r 2>/dev/null | wc -l | tr -d ' ')
-    if [ "$HAS_SQLITE" -gt 0 ]; then
-        check_pass "B10_SQLANCER_ADAPTER" "SQLite adapter present"
-        # Try running sqlancer tests
-        if bash -c "cd '$REPO_ROOT' && cargo test -p sqlancer 2>/dev/null" >/dev/null 2>&1; then
-            check_pass "B10_SQLANCER_TESTS" "cargo test -p sqlancer passes"
-        else
-            check_warn "B10_SQLANCER_TESTS" "cargo test -p sqlancer not yet passing (ISSUE #3372)"
-        fi
+echo "--- B10: Oracle / Differential Testing (#3373 SLT priority, #3372 deferred) ---"
+# Phase 1: check for sqllogictest runner (ISSUE #3373 P0)
+if [ -d "$REPO_ROOT/crates/sqllogictest/src" ]; then
+    check_pass "B10_SQLLOGICTEST_CRATE" "crates/sqllogictest/ exists (ISSUE #3373)"
+    # Check if testdata has at least one .test file
+    TEST_FILE_COUNT=$(find "$REPO_ROOT/crates/sqllogictest/testdata" -name "*.test" 2>/dev/null | wc -l | tr -d ' ')
+    if [ "$TEST_FILE_COUNT" -gt 0 ]; then
+        check_pass "B10_SQLLOGICTEST_TESTDATA" "$TEST_FILE_COUNT .test files (ISSUE #3373)"
     else
-        check_warn "B10_SQLANCER_ADAPTER" "SQLite adapter not yet implemented (ISSUE #3372)"
-        check_warn "B10_SQLANCER_TESTS" "sqlancer incomplete (ISSUE #3372)"
+        check_warn "B10_SQLLOGICTEST_TESTDATA" "no .test files yet (ISSUE #3373 Phase 2)"
+    fi
+    # Try cargo build
+    if bash -c "cd '$REPO_ROOT' && cargo build -p sqlrustgo-sqllogictest 2>/dev/null" >/dev/null 2>&1; then
+        check_pass "B10_SQLLOGICTEST_BUILD" "cargo build -p sqllogictest succeeds"
+    else
+        check_warn "B10_SQLLOGICTEST_BUILD" "cargo build -p sqllogictest not yet passing"
     fi
 else
-    check_fail "B10_SQLANCER" "crates/sqlancer/ not found"
+    check_warn "B10_SQLLOGICTEST_CRATE" "crates/sqllogictest/ not found (ISSUE #3373 P0, defer SQLancer #3372)"
+    check_warn "B10_SQLANCER" "sqlancer (#3372) DEFERRED: SLT (#3373) is P0, establishes oracle baseline first"
 fi
 
 # ===========================================================================
