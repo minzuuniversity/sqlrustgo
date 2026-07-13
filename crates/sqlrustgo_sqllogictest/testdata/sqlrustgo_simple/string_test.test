@@ -1,0 +1,23 @@
+# String operations
+
+statement ok
+CREATE TABLE strings(name TEXT);
+
+statement ok
+INSERT INTO strings VALUES ('alice');
+
+statement ok
+INSERT INTO strings VALUES ('bob');
+
+statement ok
+INSERT INTO strings VALUES ('charlie');
+
+query I
+SELECT LENGTH(name) FROM strings WHERE name = 'alice';
+----
+5
+
+query I
+SELECT COUNT(*) FROM strings WHERE name LIKE 'a%';
+----
+1
