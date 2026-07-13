@@ -1,10 +1,10 @@
 //! TPC-H SF=0.3 Simple Query Test
 //! Run with: cargo test --test tpch_sf03_test -- --nocapture
 
+use parking_lot::RwLock;
 use sqlrustgo::{parse, ExecutionEngine, MemoryStorage};
 use std::path::Path;
 use std::sync::Arc;
-use parking_lot::RwLock;
 
 const TPCK_DATA_DIR: &str = "data/tpch-sf03";
 

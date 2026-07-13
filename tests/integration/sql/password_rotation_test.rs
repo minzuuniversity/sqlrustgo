@@ -15,8 +15,8 @@
 //! promoted to `src/auth/password_rotation.rs`.
 //! v3.10.0 status: VERIFIED, ISOLATED (Phase 1 plan); see ISOLATED_MODULES.md §1 (F-35).
 
-use std::collections::{HashMap, VecDeque};
 use parking_lot::RwLock;
+use std::collections::{HashMap, VecDeque};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 pub const DEFAULT_PASSWORD_LIFETIME_DAYS: u64 = 90;
