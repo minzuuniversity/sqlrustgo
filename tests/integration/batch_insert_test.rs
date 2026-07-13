@@ -16,7 +16,9 @@ fn test_batch_insert_performance_10_rows() {
 
     let start = Instant::now();
     let result = engine
-        .execute("INSERT INTO t (v) VALUES ('a'),('b'),('c'),('d'),('e'),('f'),('g'),('h'),('i'),('j')")
+        .execute(
+            "INSERT INTO t (v) VALUES ('a'),('b'),('c'),('d'),('e'),('f'),('g'),('h'),('i'),('j')",
+        )
         .unwrap();
     let elapsed = start.elapsed();
 
@@ -163,13 +165,13 @@ fn test_auto_increment_sequential_batch() {
 
     // Batch insert 10 rows
     engine
-        .execute("INSERT INTO t (v) VALUES ('a'),('b'),('c'),('d'),('e'),('f'),('g'),('h'),('i'),('j')")
+        .execute(
+            "INSERT INTO t (v) VALUES ('a'),('b'),('c'),('d'),('e'),('f'),('g'),('h'),('i'),('j')",
+        )
         .unwrap();
 
     // Check IDs are sequential: 1,2,3,...,10
-    let result = engine
-        .execute("SELECT id FROM t ORDER BY id")
-        .unwrap();
+    let result = engine.execute("SELECT id FROM t ORDER BY id").unwrap();
     for (i, row) in result.rows.iter().enumerate() {
         let expected = (i + 1) as i64;
         assert_eq!(
@@ -200,9 +202,7 @@ fn test_auto_increment_sequential_after_single() {
         .unwrap();
 
     // Check IDs: 1, 2, 3, 4
-    let result = engine
-        .execute("SELECT id FROM t ORDER BY id")
-        .unwrap();
+    let result = engine.execute("SELECT id FROM t ORDER BY id").unwrap();
     assert_eq!(result.rows.len(), 4);
     for (i, row) in result.rows.iter().enumerate() {
         let expected = (i + 1) as i64;
@@ -223,18 +223,14 @@ fn test_auto_increment_sequential_after_delete() {
         .unwrap();
 
     // Delete middle row
-    engine
-        .execute("DELETE FROM t WHERE id = 3")
-        .unwrap();
+    engine.execute("DELETE FROM t WHERE id = 3").unwrap();
 
     // Insert 3 more rows (should get IDs 6,7,8)
     engine
         .execute("INSERT INTO t (v) VALUES ('6'),('7'),('8')")
         .unwrap();
 
-    let result = engine
-        .execute("SELECT id FROM t ORDER BY id")
-        .unwrap();
+    let result = engine.execute("SELECT id FROM t ORDER BY id").unwrap();
     assert_eq!(result.rows.len(), 7);
 
     let ids: Vec<i64> = result
@@ -284,9 +280,7 @@ fn test_batch_insert_mixed_columns() {
 
     assert_eq!(result.affected_rows, 2);
 
-    let result = engine
-        .execute("SELECT a, b, c FROM t ORDER BY id")
-        .unwrap();
+    let result = engine.execute("SELECT a, b, c FROM t ORDER BY id").unwrap();
     assert_eq!(result.rows.len(), 2);
     assert_eq!(result.rows[0][0], Value::Text("x".to_string()));
     assert_eq!(result.rows[0][1], Value::Integer(1));
