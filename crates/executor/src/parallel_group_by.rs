@@ -389,7 +389,7 @@ impl ParallelGroupBy {
     ) -> Vec<Vec<(GroupKey, Vec<Value>)>> {
         let n = self.degree;
         let mut partitions: Vec<Vec<(GroupKey, Vec<Value>)>> = (0..n).map(|_| Vec::new()).collect();
-        for (row, key) in rows.into_iter().zip(group_keys.into_iter()) {
+        for (row, key) in rows.into_iter().zip(group_keys) {
             let mut hasher = DefaultHasher::new();
             key.0.hash(&mut hasher);
             let bucket = (hasher.finish() as usize) % n;
