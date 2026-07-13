@@ -95,7 +95,7 @@ fn test_batch_insert_single_statement() {
     let sql = format!("INSERT INTO batch_test VALUES {}", values.join(", "));
 
     let start = Instant::now();
-    engine.execute(parse(&sql).unwrap()).unwrap();
+    engine.execute(&sql).unwrap();
     let elapsed = start.elapsed();
 
     println!("Single statement batch insert 100 rows took: {:?}", elapsed);
