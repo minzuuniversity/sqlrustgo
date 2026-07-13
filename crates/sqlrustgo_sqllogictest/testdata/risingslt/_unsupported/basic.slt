@@ -1,0 +1,88 @@
+statement ok
+create table t(v1 int not null, v2 int not null, v3 int not null)
+
+statement ok
+insert into t values(1,4,2), (2,3,3), (3,4,4), (4,3,5)
+
+
+query T
+select * from example_basic
+----
+Alice
+Bob
+Eve
+
+statement ok
+drop table t
+
+# The error message is: Hey you got FakeDBError!
+
+statement error
+give me an error
+
+statement error FakeDB
+give me an error
+
+statement error (?i)fakedb
+give me an error
+
+statement error Hey you
+give me an error
+
+statement error
+give me a multiline error
+----
+Hey!
+
+You got:
+  Multiline FakeDBError!
+
+
+statement error Multiline
+give me a multiline error
+
+# statement is expected to fail with error: "Hey we", but got error: "Hey you got FakeDBError!"
+# statement error Hey we
+# give me an error
+
+# query error is actually equivalent to statement error
+query error Hey you
+give me an error
+
+hash-threshold 3
+
+query T
+select * from example_basic
+----
+Alice
+Bob
+Eve
+
+hash-threshold 1
+
+query T
+select * from example_basic
+----
+3 values hashing to b5b44edac84d34d6af3be2a88bfae352
+
+hash-threshold 0
+
+query T
+select * from example_basic
+----
+Alice
+Bob
+Eve
+
+# error is a regex. Special characters change the meaning of a regex and have to be escaped
+statement error The operation \(describe\) is not supported. Did you mean \[describe\]\?
+desc table example_basic;
+
+statement error The operation \(describe\) is not supported. Did you mean [describe]?
+desc table example_basic;
+
+query error The operation \(describe\) is not supported. Did you mean \[describe\]\?
+desc table example_basic;
+
+query error The operation \(describe\) is not supported. Did you mean [describe]?
+desc table example_basic;

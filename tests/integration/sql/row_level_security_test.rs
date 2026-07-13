@@ -70,7 +70,6 @@ impl PolicyCatalog {
     pub fn create_policy(&self, table: &str, policy: Policy) {
         self.policies
             .write()
-            .unwrap()
             .entry(table.to_string())
             .or_default()
             .push(policy);
