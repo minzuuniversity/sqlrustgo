@@ -100,9 +100,7 @@ fn test_batch_insert_single_statement() {
 
     println!("Single statement batch insert 100 rows took: {:?}", elapsed);
 
-    let result = engine
-        .execute("SELECT COUNT(*) FROM batch_test")
-        .unwrap();
+    let result = engine.execute("SELECT COUNT(*) FROM batch_test").unwrap();
     assert_eq!(result.rows[0][0], Value::Integer(100));
 }
 
@@ -583,7 +581,8 @@ fn test_insert_batch_optimization() {
         .unwrap();
 
     // Multi-row insert (batch)
-    let result = engine.execute("INSERT INTO batch_optimization_test VALUES (1, 'a'), (2, 'b'), (3, 'c')");
+    let result =
+        engine.execute("INSERT INTO batch_optimization_test VALUES (1, 'a'), (2, 'b'), (3, 'c')");
     assert!(result.is_ok(), "Multi-row insert should work");
 
     // Verify
