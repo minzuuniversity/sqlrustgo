@@ -50,9 +50,7 @@ fn test_fk_insert_valid_reference() {
     );
 
     // Verify orders were inserted
-    let result = engine
-        .execute("SELECT * FROM orders")
-        .unwrap();
+    let result = engine.execute("SELECT * FROM orders").unwrap();
     assert_eq!(result.rows.len(), 2);
 }
 
@@ -207,9 +205,7 @@ fn test_fk_update_validation() {
         .unwrap();
 
     // Insert child
-    engine
-        .execute("INSERT INTO orders VALUES (1, 1)")
-        .unwrap();
+    engine.execute("INSERT INTO orders VALUES (1, 1)").unwrap();
 
     // Note: UPDATE validation depends on implementation
     // Current MemoryStorage::update doesn't validate FK
@@ -306,9 +302,7 @@ fn test_fk_bulk_insert_performance() {
     );
 
     // Verify all orders were inserted
-    let result = engine
-        .execute("SELECT COUNT(*) FROM orders")
-        .unwrap();
+    let result = engine.execute("SELECT COUNT(*) FROM orders").unwrap();
     assert_eq!(result.rows.len(), 1);
 }
 
@@ -344,9 +338,7 @@ fn test_fk_bulk_insert_with_violations() {
     }
 
     // Verify valid inserts worked
-    let result = engine
-        .execute("SELECT COUNT(*) FROM orders")
-        .unwrap();
+    let result = engine.execute("SELECT COUNT(*) FROM orders").unwrap();
     assert_eq!(result.rows.len(), 1);
 
     // Try to insert with invalid FK - should fail
@@ -702,9 +694,7 @@ fn test_fk_delete_restrict() {
     }
 
     // Verify parent was not deleted
-    let result = engine
-        .execute("SELECT * FROM users WHERE id = 1")
-        .unwrap();
+    let result = engine.execute("SELECT * FROM users WHERE id = 1").unwrap();
     assert_eq!(result.rows.len(), 1, "Parent record should not be deleted");
 }
 
@@ -741,9 +731,7 @@ fn test_fk_delete_cascade() {
     );
 
     // Verify parent was deleted
-    let result = engine
-        .execute("SELECT * FROM users WHERE id = 1")
-        .unwrap();
+    let result = engine.execute("SELECT * FROM users WHERE id = 1").unwrap();
     assert_eq!(result.rows.len(), 0, "Parent record should be deleted");
 
     // Verify children were cascade deleted
@@ -796,15 +784,11 @@ fn test_fk_delete_set_null() {
     );
 
     // Verify parent was deleted
-    let result = engine
-        .execute("SELECT * FROM users WHERE id = 1")
-        .unwrap();
+    let result = engine.execute("SELECT * FROM users WHERE id = 1").unwrap();
     assert_eq!(result.rows.len(), 0, "Parent record should be deleted");
 
     // Verify children have NULL FK
-    let result = engine
-        .execute("SELECT * FROM orders ORDER BY id")
-        .unwrap();
+    let result = engine.execute("SELECT * FROM orders ORDER BY id").unwrap();
     assert_eq!(result.rows.len(), 3);
     // Orders 1 and 2 should have NULL user_id
     assert_eq!(result.rows[0][1], Value::Null);
@@ -853,9 +837,7 @@ fn test_fk_update_cascade() {
     assert_eq!(result.rows[0][1], Value::Text("Alice".to_string()));
 
     // Verify children were cascade updated
-    let result = engine
-        .execute("SELECT * FROM orders ORDER BY id")
-        .unwrap();
+    let result = engine.execute("SELECT * FROM orders ORDER BY id").unwrap();
     assert_eq!(result.rows.len(), 3);
     // Orders 1 and 2 should now have user_id = 100
     assert_eq!(result.rows[0][1], Value::Integer(100));
@@ -897,9 +879,7 @@ fn test_fk_update_set_null() {
     );
 
     // Verify children have NULL FK
-    let result = engine
-        .execute("SELECT * FROM orders ORDER BY id")
-        .unwrap();
+    let result = engine.execute("SELECT * FROM orders ORDER BY id").unwrap();
     assert_eq!(result.rows.len(), 3);
     // Orders 1 and 2 should have NULL user_id
     assert_eq!(result.rows[0][1], Value::Null);
@@ -949,9 +929,7 @@ fn test_fk_update_restrict() {
     }
 
     // Verify parent was not updated
-    let result = engine
-        .execute("SELECT * FROM users WHERE id = 1")
-        .unwrap();
+    let result = engine.execute("SELECT * FROM users WHERE id = 1").unwrap();
     assert_eq!(result.rows.len(), 1, "Parent record should not be updated");
     let result = engine
         .execute("SELECT * FROM users WHERE id = 100")
@@ -985,9 +963,7 @@ fn test_fk_multiple_fk_columns_delete_cascade() {
         .unwrap();
 
     // Insert order referencing user 1
-    engine
-        .execute("INSERT INTO orders VALUES (1, 1)")
-        .unwrap();
+    engine.execute("INSERT INTO orders VALUES (1, 1)").unwrap();
 
     // Delete user - should cascade delete order
     let result = engine.execute("DELETE FROM users WHERE id = 1");
@@ -998,9 +974,7 @@ fn test_fk_multiple_fk_columns_delete_cascade() {
     );
 
     // Verify order was cascade deleted
-    let result = engine
-        .execute("SELECT * FROM orders")
-        .unwrap();
+    let result = engine.execute("SELECT * FROM orders").unwrap();
     assert_eq!(result.rows.len(), 0, "Order should be cascade deleted");
 }
 
@@ -1042,9 +1016,7 @@ fn test_fk_self_reference_delete_cascade() {
     );
 
     // Verify all records were deleted
-    let result = engine
-        .execute("SELECT * FROM employees")
-        .unwrap();
+    let result = engine.execute("SELECT * FROM employees").unwrap();
     assert_eq!(
         result.rows.len(),
         0,
@@ -1100,9 +1072,7 @@ fn test_fk_combined_actions() {
     );
 
     // Verify child was deleted
-    let result = engine
-        .execute("SELECT * FROM orders")
-        .unwrap();
+    let result = engine.execute("SELECT * FROM orders").unwrap();
     // After UPDATE SET NULL, orders 1 and 2 have user_id = NULL (not 100)
     // DELETE CASCADE for user 100 only deletes orders with user_id = 100, which is none
     // So all 3 orders remain: orders 1 and 2 with NULL, order 3 with user_id = 2

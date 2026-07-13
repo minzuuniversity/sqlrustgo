@@ -77,7 +77,7 @@ fn main() {
                     rows,
                 };
                 let batch_len = batch.len();
-        storage
+                storage
                     .insert_table("lineitem".to_string(), table_data)
                     .unwrap();
                 count += 1;
@@ -116,10 +116,10 @@ fn main() {
                         char_max_length: None,
                     },
                 ],
-                        foreign_keys: vec![],
-                        unique_constraints: vec![],
-                        check_constraints: vec![],
-                        partition_info: None,
+                foreign_keys: vec![],
+                unique_constraints: vec![],
+                check_constraints: vec![],
+                partition_info: None,
             },
             rows: batch,
         };
