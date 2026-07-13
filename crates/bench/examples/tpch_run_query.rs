@@ -19,7 +19,7 @@
 use serde::{Deserialize, Serialize};
 use sqlrustgo::{ExecutionEngine, MemoryStorage};
 use std::io::{Read, Write};
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 use std::time::Instant;
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -94,7 +94,7 @@ fn format_value(v: &sqlrustgo::Value) -> String {
 
 fn run_query(sql: &str, query_name: &str, data_dir: &str, timeout_sec: u64) -> RunResult {
     let start = Instant::now();
-    let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+    let storage = Arc::new(parking_lot::RwLock::new(MemoryStorage::new()));
     let mut engine = ExecutionEngine::new(storage);
 
     load_data(&mut engine, data_dir);
