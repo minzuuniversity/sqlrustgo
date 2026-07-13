@@ -89,8 +89,7 @@ fn test_teaching_subquery_in_where() {
 
     // Note: IN subquery requires executor support
     // This test verifies basic subquery parsing
-    let result =
-        engine.execute("SELECT category FROM products WHERE name = 'Apple'");
+    let result = engine.execute("SELECT category FROM products WHERE name = 'Apple'");
     assert!(result.is_ok(), "Subquery parsing should work");
 }
 
@@ -281,9 +280,7 @@ fn test_isolation_level_read_committed() {
         .execute("INSERT INTO accounts VALUES (1, 1000)")
         .unwrap();
 
-    let result = engine
-        .execute("SELECT * FROM accounts")
-        .unwrap();
+    let result = engine.execute("SELECT * FROM accounts").unwrap();
     assert_eq!(result.rows.len(), 1);
 }
 
@@ -330,14 +327,10 @@ fn test_basic_select_operations() {
         .execute("INSERT INTO products VALUES (1, 'Apple', 100), (2, 'Banana', 200)")
         .ok();
 
-    let result = engine
-        .execute("SELECT * FROM products")
-        .unwrap();
+    let result = engine.execute("SELECT * FROM products").unwrap();
     assert_eq!(result.rows.len(), 2, "SELECT * should return all rows");
 
-    let result_col = engine
-        .execute("SELECT name FROM products")
-        .unwrap();
+    let result_col = engine.execute("SELECT name FROM products").unwrap();
     assert_eq!(
         result_col.rows.len(),
         2,
@@ -405,21 +398,13 @@ fn test_update_operations() {
 fn test_delete_operations() {
     let mut engine = ExecutionEngine::new(Arc::new(RwLock::new(MemoryStorage::new())));
 
-    engine
-        .execute("CREATE TABLE test (id INTEGER)")
-        .ok();
-    engine
-        .execute("INSERT INTO test VALUES (1), (2), (3)")
-        .ok();
+    engine.execute("CREATE TABLE test (id INTEGER)").ok();
+    engine.execute("INSERT INTO test VALUES (1), (2), (3)").ok();
 
-    let result = engine
-        .execute("DELETE FROM test WHERE id = 2")
-        .unwrap();
+    let result = engine.execute("DELETE FROM test WHERE id = 2").unwrap();
     assert_eq!(result.affected_rows, 1, "DELETE should affect 1 row");
 
-    let remaining = engine
-        .execute("SELECT COUNT(*) FROM test")
-        .unwrap();
+    let remaining = engine.execute("SELECT COUNT(*) FROM test").unwrap();
     assert_eq!(
         remaining.rows[0][0],
         Value::Integer(2),
@@ -439,9 +424,7 @@ fn test_table_creation_ddl() {
         "CREATE TABLE should return 0 affected rows"
     );
 
-    let exists = engine
-        .execute("SELECT * FROM users")
-        .unwrap();
+    let exists = engine.execute("SELECT * FROM users").unwrap();
     assert_eq!(exists.rows.len(), 0, "New table should be empty");
 }
 
@@ -529,9 +512,7 @@ fn test_teaching_insert_basic() {
         .unwrap();
     assert_eq!(result.affected_rows, 1);
 
-    let result = engine
-        .execute("SELECT * FROM students")
-        .unwrap();
+    let result = engine.execute("SELECT * FROM students").unwrap();
     assert_eq!(result.rows.len(), 1);
     assert_eq!(result.rows[0][0], Value::Integer(1));
 }
@@ -548,9 +529,7 @@ fn test_teaching_select_basic() {
         .execute("INSERT INTO products VALUES (1, 'Apple', 100), (2, 'Banana', 200)")
         .unwrap();
 
-    let result = engine
-        .execute("SELECT name, price FROM products")
-        .unwrap();
+    let result = engine.execute("SELECT name, price FROM products").unwrap();
     assert_eq!(result.rows.len(), 2);
 }
 
@@ -589,14 +568,10 @@ fn test_teaching_delete_basic() {
         .execute("INSERT INTO items VALUES (1, 'A'), (2, 'B'), (3, 'C')")
         .unwrap();
 
-    let result = engine
-        .execute("DELETE FROM items WHERE id = 2")
-        .unwrap();
+    let result = engine.execute("DELETE FROM items WHERE id = 2").unwrap();
     assert_eq!(result.affected_rows, 1);
 
-    let result = engine
-        .execute("SELECT * FROM items")
-        .unwrap();
+    let result = engine.execute("SELECT * FROM items").unwrap();
     assert_eq!(result.rows.len(), 2);
 }
 
@@ -638,9 +613,7 @@ fn test_teaching_transaction_commit() {
         .unwrap();
     engine.execute("COMMIT").unwrap();
 
-    let result = engine
-        .execute("SELECT * FROM test_table")
-        .unwrap();
+    let result = engine.execute("SELECT * FROM test_table").unwrap();
     assert_eq!(result.rows.len(), 1);
 }
 
@@ -770,9 +743,7 @@ fn test_teaching_aggregate_count() {
         .execute("INSERT INTO orders VALUES (1, 1, 100), (2, 1, 200), (3, 2, 150)")
         .unwrap();
 
-    let result = engine
-        .execute("SELECT COUNT(*) FROM orders")
-        .unwrap();
+    let result = engine.execute("SELECT COUNT(*) FROM orders").unwrap();
     assert_eq!(result.rows[0][0], Value::Integer(3));
 }
 
