@@ -4,9 +4,10 @@
 //! This is the proper way to test database system behavior - through the server path,
 //! not direct ExecutionEngine calls.
 
+use parking_lot::RwLock;
 use std::io::{Read, Write};
 use std::net::TcpStream;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 

@@ -6,12 +6,13 @@
 //! - Verify no deadlocks or memory leaks
 //! - Ensure proper privilege checking under load
 
+use parking_lot::RwLock;
 use sqlrustgo::{
     ExecutionEngine, KillStatement, KillType, MemoryStorage, Statement, StorageEngine,
 };
 use sqlrustgo_security::{SessionManager, SessionStatus};
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
 

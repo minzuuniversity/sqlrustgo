@@ -100,64 +100,54 @@ wal_storage_path = "crates/storage/src/wal_storage.rs"
 with open(wal_storage_path) as f:
     wal_content = f.read()
 
-# Extract commit_transaction from WalStorage
-match = re.search(
-    r"pub fn commit_transaction\s*\([^)]*\)\s*(?:->[^=]+)?\s*\{",
-    wal_content,
-)
-if not match:
-    log_fail("SGL-002: commit_transaction not found in wal_storage.rs")
+# WalStorage.rs has TWO commit_transaction definitions:
+#   1. pub fn commit_transaction()  — UFCS call wrapper
+#   2. fn commit_transaction() in impl StorageEngine for WalStorage — the real impl with checkpoint+truncate
+# Strategy: search within the StorageEngine impl block using a unique anchor.
+# Use 'impl<S: StorageEngine, T: WalManager> StorageEngine for WalStorage'
+# as the anchor and search for the fn AFTER it.
+wal_content_lines = wal_content.split('\n')
+impl_line = None
+for i, line in enumerate(wal_content_lines):
+    if re.search(r"impl\s*<.*StorageEngine\s*for\s*WalStorage", line):
+        impl_line = i
+        break
+if impl_line is None:
+    log_fail("SGL-002: impl StorageEngine for WalStorage not found")
 else:
-    start = match.end()
-    depth = 1
-    pos = start
-    while depth > 0 and pos < len(wal_content):
-        if wal_content[pos] == "{":
-            depth += 1
-        elif wal_content[pos] == "}":
-            depth -= 1
-        pos += 1
-    commit_fn_body = wal_content[start : pos - 1]
-
-    # WAL-002: checkpoint advance via record_checkpoint (the actual checkpoint mechanism)
-    if "record_checkpoint" in commit_fn_body or "advance_checkpoint" in commit_fn_body:
+    # Search for fn commit_transaction starting from the impl line
+    fn_body = ""
+    fn_start_line = None
+    for i in range(impl_line, len(wal_content_lines)):
+        if re.search(r"fn commit_transaction", wal_content_lines[i]):
+            fn_start_line = i
+            # Collect the function body by tracking brace depth
+            fn_body_lines = [wal_content_lines[i]]
+            depth = wal_content_lines[i].count('{') - wal_content_lines[i].count('}')
+            j = i + 1
+            while depth > 0 and j < len(wal_content_lines):
+                fn_body_lines.append(wal_content_lines[j])
+                depth += wal_content_lines[j].count('{') - wal_content_lines[j].count('}')
+                j += 1
+            fn_body = '\n'.join(fn_body_lines)
+            break
+    if not fn_body:
+        log_fail("SGL-002: fn commit_transaction not found in impl block")
+    elif "record_checkpoint" in fn_body:
         log_pass("SGL-002: checkpoint advance triggered in WalStorage.commit_transaction")
     else:
-        log_fail(
-            "SGL-002: checkpoint NOT advanced in WalStorage.commit_transaction (WAL truncation never triggers)"
-        )
-        print("  WAL-002 invariant violated: checkpoint_manager never receives record_checkpoint")
-
+        log_fail("SGL-002: checkpoint NOT advanced in WalStorage.commit_transaction")
 # ============================================================================
 # SGL-003: WAL-003 — WAL truncation after commit
 # Invariant WAL-003: "truncation only after durable commit"
 # ============================================================================
 print("\n=== SGL-003: WAL-003 — WAL truncation in commit path ===")
 
-wal_commit_fn_body = ""
-match3 = re.search(
-    r"pub fn commit_transaction\s*\([^)]*\)\s*(?:->[^=]+)?\s*\{",
-    wal_content,
-)
-if match3:
-    start = match3.end()
-    depth = 1
-    pos = start
-    while depth > 0 and pos < len(wal_content):
-        if wal_content[pos] == "{":
-            depth += 1
-        elif wal_content[pos] == "}":
-            depth -= 1
-        pos += 1
-    wal_commit_fn_body = wal_content[start : pos - 1]
-
-if wal_commit_fn_body and "truncate_before" in wal_commit_fn_body:
+# SGL-003: reuse fn_body extracted in SGL-002 (same StorageEngine impl block)
+if fn_body and "truncate_before" in fn_body:
     log_pass("SGL-003: truncate_before called in WalStorage.commit_transaction")
 else:
-    log_fail(
-        "SGL-003: WAL truncation NOT triggered in commit_transaction (WAL grows unbounded)"
-    )
-    print("  WAL-003 invariant violated: WAL never truncates after commit")
+    log_fail("SGL-003: WAL truncation NOT triggered in commit_transaction")
 
 # ============================================================================
 # SGL-004: WAL-004 — DELETE replay idempotency

@@ -15,8 +15,8 @@
 //! promoted to `src/auth/password_rotation.rs`.
 //! v3.10.0 status: VERIFIED, ISOLATED (Phase 1 plan); see ISOLATED_MODULES.md §1 (F-35).
 
+use parking_lot::RwLock;
 use std::collections::{HashMap, VecDeque};
-use std::sync::RwLock;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 pub const DEFAULT_PASSWORD_LIFETIME_DAYS: u64 = 90;
@@ -157,11 +157,10 @@ impl PasswordRotationManager {
     pub fn record_password_change(&self, user: &str, password_hash: &str) {
         self.ages
             .write()
-            .unwrap()
             .insert(user.to_string(), PasswordAge::new());
-        let policy = self.policy.read().unwrap().clone();
+        let policy = self.policy.read().clone();
         if policy.history_size > 0 {
-            let mut history_map = self.history.write().unwrap();
+            let mut history_map = self.history.write();
             let history = history_map
                 .entry(user.to_string())
                 .or_insert_with(|| PasswordHistory::new(policy.history_size));
@@ -170,8 +169,8 @@ impl PasswordRotationManager {
     }
 
     pub fn is_expired(&self, user: &str) -> bool {
-        let ages = self.ages.read().unwrap();
-        let policy = self.policy.read().unwrap();
+        let ages = self.ages.read();
+        let policy = self.policy.read();
         match ages.get(user) {
             Some(age) => age.is_expired(policy.lifetime_days),
             None => false,
@@ -179,11 +178,11 @@ impl PasswordRotationManager {
     }
 
     pub fn age_days(&self, user: &str) -> Option<u64> {
-        self.ages.read().unwrap().get(user).map(|a| a.age_days())
+        self.ages.read().get(user).map(|a| a.age_days())
     }
 
     pub fn expire_now(&self, user: &str) {
-        self.ages.write().unwrap().insert(
+        self.ages.write().insert(
             user.to_string(),
             PasswordAge {
                 set_at: SystemTime::now() - Duration::from_secs(365 * 86400),
@@ -193,7 +192,7 @@ impl PasswordRotationManager {
     }
 
     pub fn can_reuse(&self, user: &str, password_hash: &str) -> bool {
-        let history_map = self.history.read().unwrap();
+        let history_map = self.history.read();
         match history_map.get(user) {
             Some(h) => !h.contains(password_hash),
             None => true,
@@ -201,15 +200,15 @@ impl PasswordRotationManager {
     }
 
     pub fn policy(&self) -> PasswordPolicy {
-        self.policy.read().unwrap().clone()
+        self.policy.read().clone()
     }
 
     pub fn set_policy(&self, policy: PasswordPolicy) {
-        *self.policy.write().unwrap() = policy;
+        *self.policy.write() = policy;
     }
 
     pub fn is_write_blocked(&self, user: &str) -> bool {
-        if !self.policy.read().unwrap().enforce_on_write {
+        if !self.policy.read().enforce_on_write {
             return false;
         }
         self.is_expired(user)

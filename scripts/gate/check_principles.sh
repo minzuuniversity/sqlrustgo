@@ -41,7 +41,16 @@ declare -a RESULTS
 
 run_principle() {
     local label="$1" script="$2"
-    if [ ! -f "$REPO_ROOT/$script" ]; then
+    # Prefer the legacy unversioned script; fall back to versioned v310.
+    local ver_script="${script%.sh}_v310.sh"
+    local found=""
+    if [ -f "$REPO_ROOT/$script" ]; then
+        found="$script"
+    elif [ -f "$REPO_ROOT/$ver_script" ]; then
+        found="$ver_script"
+        script="$ver_script"
+    fi
+    if [ -z "$found" ]; then
         SKIP=$((SKIP+1))
         RESULTS+=("SKIP|$label|$script (not found)")
         printf "  [SKIP] %-30s %s (not present, may be in legacy/)\n" "$label" "$script"
