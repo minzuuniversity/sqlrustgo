@@ -1,0 +1,24 @@
+onlyif risinglight
+statement ok
+create table risinglight_t(v1 int not null)
+
+skipif risinglight
+statement ok
+create table example_basic(v1 int not null)
+
+
+onlyif risinglight
+query T
+select * from risinglight_t
+----
+Alice
+Bob
+Eve
+
+skipif risinglight
+query T
+select * from example_basic
+----
+Alice
+Bob
+Eve
