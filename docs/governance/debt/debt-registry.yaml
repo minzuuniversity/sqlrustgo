@@ -246,7 +246,7 @@ sem:
 
   - id: SEM-3
     title: "ALTER TABLE 不完整"
-    state: DEFERRED
+    state: IN_PROGRESS
     progress: 80%
     progress_metric: |
       v3.10.0: C-4a ADD/DROP ✅, C-4c RENAME COLUMN ✅ (PR #3753),
@@ -261,7 +261,7 @@ sem:
 
   - id: SEM-4
     title: "Coverage 测量差异 (Z6G4 82% vs Z440 32%)"
-    state: DEFERRED
+    state: IN_PROGRESS
     progress: 30%
     progress_metric: |
       v3.10.0: 平均覆盖率 ~67% (Hermes C authorization); V310-10 (40h, 目标 ≥80%) 推迟.
