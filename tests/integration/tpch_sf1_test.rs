@@ -3,9 +3,10 @@
 //!
 //! NOTE: SF=1 requires ~5GB memory. Only run on machines with 16GB+ RAM.
 
+use parking_lot::RwLock;
 use sqlrustgo::{parse, ExecutionEngine, MemoryStorage};
 use std::path::Path;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 
 const TPCK_DATA_DIR: &str = "data/tpch-sf1";
 
@@ -14,7 +15,7 @@ fn create_engine() -> ExecutionEngine {
 }
 
 fn setup_schema(engine: &mut ExecutionEngine) {
-    engine.execute(parse("CREATE TABLE lineitem (l_orderkey INTEGER, l_partkey INTEGER, l_suppkey INTEGER, l_linenumber INTEGER, l_quantity INTEGER, l_extendedprice REAL, l_discount REAL, l_tax REAL, l_returnflag TEXT, l_linestatus TEXT, l_shipdate TEXT, l_commitdate TEXT, l_receiptdate TEXT, l_shipinstruct TEXT, l_shipmode TEXT, l_comment TEXT)").unwrap()).unwrap();
+    engine.execute("CREATE TABLE lineitem (l_orderkey INTEGER, l_partkey INTEGER, l_suppkey INTEGER, l_linenumber INTEGER, l_quantity INTEGER, l_extendedprice REAL, l_discount REAL, l_tax REAL, l_returnflag TEXT, l_linestatus TEXT, l_shipdate TEXT, l_commitdate TEXT, l_receiptdate TEXT, l_shipinstruct TEXT, l_shipmode TEXT, l_comment TEXT)").unwrap();
 }
 
 fn setup_sqlrustgo_engine_sf1_lineitem() -> ExecutionEngine {
@@ -23,7 +24,7 @@ fn setup_sqlrustgo_engine_sf1_lineitem() -> ExecutionEngine {
 
     let filepath = format!("{}/lineitem.tbl", TPCK_DATA_DIR);
     if Path::new(&filepath).exists() {
-        let mut storage = engine.storage.write().unwrap();
+        let mut storage = engine.storage.write();
         match storage.bulk_load_tbl_file("lineitem", &filepath) {
             Ok(count) => println!("Loaded lineitem: {} rows", count),
             Err(e) => println!("Failed to load: {:?}", e),
@@ -36,14 +37,14 @@ fn setup_sqlrustgo_engine_sf1_lineitem() -> ExecutionEngine {
 }
 
 #[test]
-#[ignore] // SF=1 requires ~5GB memory, may OOM on 16GB systems
+#[ignore = "tpch_sf1_test: SF=1 requires ~5GB memory, may OOM on 16GB systems; run with --ignored on high-memory machines"]
 fn test_sqlrustgo_sf1_count() {
     let mut engine = setup_sqlrustgo_engine_sf1_lineitem();
 
     // COUNT(*) query
     println!("\nCOUNT(*) query (SF=1, 6M rows):");
     let start = std::time::Instant::now();
-    let result = engine.execute(parse("SELECT COUNT(*) FROM lineitem").unwrap());
+    let result = engine.execute("SELECT COUNT(*) FROM lineitem");
     let elapsed = start.elapsed();
 
     match result {
@@ -60,7 +61,7 @@ fn test_sqlrustgo_sf1_count() {
 }
 
 #[test]
-#[ignore] // SF=1 requires ~5GB memory, may OOM on 16GB systems
+#[ignore = "tpch_sf1_test: SF=1 requires ~5GB memory, may OOM on 16GB systems; run with --ignored on high-memory machines"]
 fn test_sqlrustgo_sf1_sum_filtered() {
     let mut engine = setup_sqlrustgo_engine_sf1_lineitem();
 
@@ -68,7 +69,7 @@ fn test_sqlrustgo_sf1_sum_filtered() {
     println!("\nSUM(l_quantity) with filter (SF=1):");
     let start = std::time::Instant::now();
     let result = engine
-        .execute(parse("SELECT SUM(l_quantity) FROM lineitem WHERE l_quantity < 10").unwrap());
+        .execute("SELECT SUM(l_quantity) FROM lineitem WHERE l_quantity < 10");
     let elapsed = start.elapsed();
 
     match result {

@@ -21,11 +21,13 @@ mod tests {
                 name: "id".to_string(),
                 data_type: "INTEGER".to_string(),
                 nullable: false,
-                is_unique: true,
-                is_primary_key: false,
-                auto_increment: false,
-                references: None,
+                primary_key: false,
+                char_max_length: None,
             }],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
         };
 
         let child = TableInfo {
@@ -35,18 +37,15 @@ mod tests {
                     name: "id".to_string(),
                     data_type: "INTEGER".to_string(),
                     nullable: false,
-                    is_unique: true,
-                    is_primary_key: false,
-                    auto_increment: false,
-                    references: None,
+                    primary_key: false,
+                    char_max_length: None,
                 },
                 ColumnDefinition {
                     name: "parent_id".to_string(),
                     data_type: "INTEGER".to_string(),
                     nullable: false,
-                    is_unique: false,
-                    is_primary_key: false,
-                    auto_increment: false,
+                    primary_key: false,
+                    char_max_length: None,
                     references: Some(ForeignKeyConstraint {
                         referenced_table: "parent".to_string(),
                         referenced_column: "id".to_string(),
@@ -55,6 +54,10 @@ mod tests {
                     }),
                 },
             ],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
         };
 
         storage.create_table(&parent).unwrap();
@@ -79,11 +82,13 @@ mod tests {
                 name: "id".to_string(),
                 data_type: "INTEGER".to_string(),
                 nullable: false,
-                is_unique: true,
-                is_primary_key: false,
-                auto_increment: false,
-                references: None,
+                primary_key: false,
+                char_max_length: None,
             }],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
         };
 
         let child = TableInfo {
@@ -93,18 +98,15 @@ mod tests {
                     name: "id".to_string(),
                     data_type: "INTEGER".to_string(),
                     nullable: false,
-                    is_unique: true,
-                    is_primary_key: false,
-                    auto_increment: false,
-                    references: None,
+                    primary_key: false,
+                    char_max_length: None,
                 },
                 ColumnDefinition {
                     name: "parent_id".to_string(),
                     data_type: "INTEGER".to_string(),
                     nullable: false,
-                    is_unique: false,
-                    is_primary_key: false,
-                    auto_increment: false,
+                    primary_key: false,
+                    char_max_length: None,
                     references: Some(ForeignKeyConstraint {
                         referenced_table: "parent".to_string(),
                         referenced_column: "id".to_string(),
@@ -113,6 +115,10 @@ mod tests {
                     }),
                 },
             ],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
         };
 
         storage.create_table(&parent).unwrap();
@@ -148,11 +154,13 @@ mod tests {
                 name: "id".to_string(),
                 data_type: "INTEGER".to_string(),
                 nullable: false,
-                is_unique: true,
-                is_primary_key: false,
-                auto_increment: false,
-                references: None,
+                primary_key: false,
+                char_max_length: None,
             }],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
         };
 
         let child = TableInfo {
@@ -162,18 +170,15 @@ mod tests {
                     name: "id".to_string(),
                     data_type: "INTEGER".to_string(),
                     nullable: false,
-                    is_unique: true,
-                    is_primary_key: false,
-                    auto_increment: false,
-                    references: None,
+                    primary_key: false,
+                    char_max_length: None,
                 },
                 ColumnDefinition {
                     name: "user_id".to_string(),
                     data_type: "INTEGER".to_string(),
                     nullable: false,
-                    is_unique: false,
-                    is_primary_key: false,
-                    auto_increment: false,
+                    primary_key: false,
+                    char_max_length: None,
                     references: Some(ForeignKeyConstraint {
                         referenced_table: "users".to_string(),
                         referenced_column: "id".to_string(),
@@ -182,6 +187,10 @@ mod tests {
                     }),
                 },
             ],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
         };
 
         storage.create_table(&parent).unwrap();
@@ -210,11 +219,13 @@ mod tests {
                 name: "id".to_string(),
                 data_type: "INTEGER".to_string(),
                 nullable: false,
-                is_unique: true,
-                is_primary_key: false,
-                auto_increment: false,
-                references: None,
+                primary_key: false,
+                char_max_length: None,
             }],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
         };
 
         let child = TableInfo {
@@ -224,18 +235,15 @@ mod tests {
                     name: "id".to_string(),
                     data_type: "INTEGER".to_string(),
                     nullable: false,
-                    is_unique: true,
-                    is_primary_key: false,
-                    auto_increment: false,
-                    references: None,
+                    primary_key: false,
+                    char_max_length: None,
                 },
                 ColumnDefinition {
                     name: "dept_id".to_string(),
                     data_type: "INTEGER".to_string(),
                     nullable: true,
-                    is_unique: false,
-                    is_primary_key: false,
-                    auto_increment: false,
+                    primary_key: false,
+                    char_max_length: None,
                     references: Some(ForeignKeyConstraint {
                         referenced_table: "departments".to_string(),
                         referenced_column: "id".to_string(),
@@ -244,6 +252,10 @@ mod tests {
                     }),
                 },
             ],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
         };
 
         let parent = TableInfo {
@@ -252,11 +264,13 @@ mod tests {
                 name: "id".to_string(),
                 data_type: "INTEGER".to_string(),
                 nullable: false,
-                is_unique: true,
-                is_primary_key: false,
-                auto_increment: false,
-                references: None,
+                primary_key: false,
+                char_max_length: None,
             }],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
         };
 
         storage.create_table(&parent).unwrap();
@@ -286,18 +300,15 @@ mod tests {
                     name: "id".to_string(),
                     data_type: "INTEGER".to_string(),
                     nullable: false,
-                    is_unique: true,
-                    is_primary_key: false,
-                    auto_increment: false,
-                    references: None,
+                    primary_key: false,
+                    char_max_length: None,
                 },
                 ColumnDefinition {
                     name: "manager_id".to_string(),
                     data_type: "INTEGER".to_string(),
                     nullable: true,
-                    is_unique: false,
-                    is_primary_key: false,
-                    auto_increment: false,
+                    primary_key: false,
+                    char_max_length: None,
                     references: Some(ForeignKeyConstraint {
                         referenced_table: "employees".to_string(),
                         referenced_column: "id".to_string(),
@@ -306,6 +317,10 @@ mod tests {
                     }),
                 },
             ],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
         };
 
         storage.create_table(&info).unwrap();
@@ -332,11 +347,13 @@ mod tests {
                 name: "id".to_string(),
                 data_type: "INTEGER".to_string(),
                 nullable: false,
-                is_unique: true,
-                is_primary_key: false,
-                auto_increment: false,
-                references: None,
+                primary_key: false,
+                char_max_length: None,
             }],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
         };
 
         let table2 = TableInfo {
@@ -345,11 +362,13 @@ mod tests {
                 name: "id".to_string(),
                 data_type: "INTEGER".to_string(),
                 nullable: false,
-                is_unique: true,
-                is_primary_key: false,
-                auto_increment: false,
-                references: None,
+                primary_key: false,
+                char_max_length: None,
             }],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
         };
 
         let table3 = TableInfo {
@@ -359,18 +378,15 @@ mod tests {
                     name: "id".to_string(),
                     data_type: "INTEGER".to_string(),
                     nullable: false,
-                    is_unique: true,
-                    is_primary_key: false,
-                    auto_increment: false,
-                    references: None,
+                    primary_key: false,
+                    char_max_length: None,
                 },
                 ColumnDefinition {
                     name: "customer_id".to_string(),
                     data_type: "INTEGER".to_string(),
                     nullable: false,
-                    is_unique: false,
-                    is_primary_key: false,
-                    auto_increment: false,
+                    primary_key: false,
+                    char_max_length: None,
                     references: Some(ForeignKeyConstraint {
                         referenced_table: "customers".to_string(),
                         referenced_column: "id".to_string(),
@@ -382,9 +398,8 @@ mod tests {
                     name: "product_id".to_string(),
                     data_type: "INTEGER".to_string(),
                     nullable: false,
-                    is_unique: false,
-                    is_primary_key: false,
-                    auto_increment: false,
+                    primary_key: false,
+                    char_max_length: None,
                     references: Some(ForeignKeyConstraint {
                         referenced_table: "products".to_string(),
                         referenced_column: "id".to_string(),
@@ -393,6 +408,10 @@ mod tests {
                     }),
                 },
             ],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
         };
 
         storage.create_table(&table1).unwrap();
@@ -428,11 +447,13 @@ mod tests {
                 name: "id".to_string(),
                 data_type: "INTEGER".to_string(),
                 nullable: false,
-                is_unique: true,
-                is_primary_key: false,
-                auto_increment: false,
-                references: None,
+                primary_key: false,
+                char_max_length: None,
             }],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
         };
 
         let child = TableInfo {
@@ -442,18 +463,15 @@ mod tests {
                     name: "id".to_string(),
                     data_type: "INTEGER".to_string(),
                     nullable: false,
-                    is_unique: true,
-                    is_primary_key: false,
-                    auto_increment: false,
-                    references: None,
+                    primary_key: false,
+                    char_max_length: None,
                 },
                 ColumnDefinition {
                     name: "category_id".to_string(),
                     data_type: "INTEGER".to_string(),
                     nullable: false,
-                    is_unique: false,
-                    is_primary_key: false,
-                    auto_increment: false,
+                    primary_key: false,
+                    char_max_length: None,
                     references: Some(ForeignKeyConstraint {
                         referenced_table: "categories".to_string(),
                         referenced_column: "id".to_string(),
@@ -462,6 +480,10 @@ mod tests {
                     }),
                 },
             ],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
         };
 
         storage.create_table(&parent).unwrap();
@@ -488,18 +510,15 @@ mod tests {
                     name: "id".to_string(),
                     data_type: "INTEGER".to_string(),
                     nullable: false,
-                    is_unique: true,
-                    is_primary_key: false,
-                    auto_increment: false,
-                    references: None,
+                    primary_key: false,
+                    char_max_length: None,
                 },
                 ColumnDefinition {
                     name: "customer_id".to_string(),
                     data_type: "INTEGER".to_string(),
                     nullable: false,
-                    is_unique: false,
-                    is_primary_key: false,
-                    auto_increment: false,
+                    primary_key: false,
+                    char_max_length: None,
                     references: Some(ForeignKeyConstraint {
                         referenced_table: "customers".to_string(),
                         referenced_column: "id".to_string(),
@@ -508,6 +527,10 @@ mod tests {
                     }),
                 },
             ],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
         };
 
         storage.create_table(&child).unwrap();

@@ -13,9 +13,7 @@ use crate::engine_utils::*;
 use crate::expr_utils::*;
 use crate::{ExecutionEngine, ExecutorResult, SqlError, SqlResult, Value};
 use sqlrustgo_executor::join::hash_join::multi_way_hash_chain;
-use sqlrustgo_executor::parallel_executor::{
-    ParallelExecutor, ParallelVolcanoExecutor,
-};
+use sqlrustgo_executor::parallel_executor::{ParallelExecutor, ParallelVolcanoExecutor};
 use sqlrustgo_executor::simd_eval::{
     BatchPredicate, BitMask, EqualsPredicate, GreaterThanOrEqualPredicate, GreaterThanPredicate,
     LessThanOrEqualPredicate, LessThanPredicate, NotEqualPredicate,
@@ -2403,10 +2401,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         table_info: &TableInfo,
     ) -> Option<Vec<Vec<Value>>> {
         let start = std::time::Instant::now();
-        let (col_idx, op, lit) = match Self::is_batchable_predicate(where_expr, table_info) {
-            Some(v) => v,
-            None => return None,
-        };
+        let (col_idx, op, lit) = Self::is_batchable_predicate(where_expr, table_info)?;
 
         // Per-partition SIMD eval. Each partition is processed independently:
         //   1. Extract i64 column values for THIS partition
@@ -2454,12 +2449,10 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     ),
                     _ => return None,
                 };
-                // Map mask bit i → row at chunk_idx*64 + i in this partition
-                let base = chunk_idx * 64;
-                let upper = (base + chunk.len()).min(n);
-                for i in base..upper {
-                    if mask.is_set(i - base) {
-                        kept.push(partition[i].clone());
+                // Map mask bit i → global row at chunk_idx*64 + i (i = local index in chunk)
+                for i in 0..chunk.len() {
+                    if mask.is_set(i) {
+                        kept.push(partition[chunk_idx * 64 + i].clone());
                     }
                 }
             }

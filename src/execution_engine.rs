@@ -23,6 +23,9 @@ use sqlrustgo_executor::trigger::{
     TriggerEvent as ExecTriggerEvent, TriggerExecutor, TriggerTiming as ExecTriggerTiming,
 };
 use sqlrustgo_executor::ExecutorResult;
+use sqlrustgo_optimizer::rules::{BinaryOperator, Expr};
+use sqlrustgo_optimizer::unified_cost::UnifiedCostModel;
+use sqlrustgo_optimizer::unified_plan::UnifiedPlan;
 use sqlrustgo_parser::parser::{
     AggregateCall, AggregateFunction, AlterTableOperation, AlterTableStatement, CallStatement,
     CreateDatabaseStatement, CreateIndexStatement, CreateProcedureStatement, CreateRoleStatement,
@@ -50,12 +53,8 @@ use sqlrustgo_storage::checkpoint::{CheckpointManager, CheckpointMetadata};
 use sqlrustgo_storage::{
     recovery_engine::{RecoveryEngine, RecoveryEngineImpl},
     wal::{FileBackedWalManager, MemoryWalManager},
-    ColumnDefinition, FileStorage, MemoryStorage, StorageEngine, TableInfo,
-    WalStorage,
+    ColumnDefinition, FileStorage, MemoryStorage, StorageEngine, TableInfo, WalStorage,
 };
-use sqlrustgo_optimizer::rules::{BinaryOperator, Expr};
-use sqlrustgo_optimizer::unified_cost::UnifiedCostModel;
-use sqlrustgo_optimizer::unified_plan::UnifiedPlan;
 use sqlrustgo_transaction::{IsolationLevel as TmIsolationLevel, TransactionManager, TxId};
 use sqlrustgo_types::Value as SqlValue;
 use std::collections::HashMap;
@@ -205,8 +204,6 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         self.stats.clone()
     }
 
-    /// Read-only access to the underlying storage handle.
-
     /// Determine whether a SELECT query should be parallelized.
     ///
     /// Uses the CBO cost model when enabled, otherwise falls back to the
@@ -302,7 +299,6 @@ fn parser_expr_to_optimizer_expr(expr: &Expression) -> Expr {
             right: Box::new(Expr::Literal("1".into())),
         },
     }
-
 }
 impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     /// Read-only access to the underlying storage handle.

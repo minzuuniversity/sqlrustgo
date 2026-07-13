@@ -5,10 +5,11 @@
 
 #[cfg(test)]
 mod tests {
+    use parking_lot::RwLock;
     use sqlrustgo_server::{ConnectionPool, PoolConfig};
     use sqlrustgo_storage::MemoryStorage;
     use sqlrustgo_transaction::{IsolationLevel, MvccEngine, TransactionManager, TxId};
-    use std::sync::{Arc, RwLock};
+    use std::sync::Arc;
     use std::thread;
     use std::time::Duration;
 
@@ -335,7 +336,7 @@ mod tests {
                     let ts = ctx.snapshot.snapshot_timestamp;
 
                     {
-                        let mut v = ts_clone.write().unwrap();
+                        let mut v = ts_clone.write();
                         v.push(ts);
                     }
 
@@ -351,7 +352,7 @@ mod tests {
         }
 
         // Verify timestamps are monotonically non-decreasing (allow equal due to concurrency)
-        let mut all_ts = timestamps.write().unwrap();
+        let mut all_ts = timestamps.write();
         all_ts.sort();
         let is_monotonic = all_ts.windows(2).all(|w| w[0] <= w[1]);
         assert!(

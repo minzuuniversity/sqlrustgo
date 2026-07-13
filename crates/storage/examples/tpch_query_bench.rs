@@ -5,7 +5,7 @@
 use sqlrustgo::{parse, ExecutionEngine};
 use sqlrustgo_storage::FileStorage;
 use std::path::PathBuf;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 use std::time::Instant;
 
 fn main() {
@@ -45,16 +45,17 @@ fn main() {
     for (name, sql) in &queries {
         println!("Running {}...", name);
 
-        let storage = Arc::new(RwLock::new(
+        let storage = Arc::new(parking_lot::RwLock::new(
             FileStorage::new(data_dir.clone()).expect("Failed to open storage"),
         ));
         let mut engine = ExecutionEngine::new(storage.clone());
 
         let start = Instant::now();
-        let result = engine.execute(parse(sql).expect("Failed to parse SQL"));
+        let parsed = parse(sql).expect("Failed to parse SQL");
+        let result = engine.execute(sql);
         let elapsed = start.elapsed();
 
-        let rows = result.as_ref().map(|r| r.rows().len()).unwrap_or(0);
+        let rows = result.as_ref().map(|r| r.rows.len()).unwrap_or(0);
         let status = if result.is_ok() { "✅" } else { "❌" };
 
         println!(
@@ -65,8 +66,10 @@ fn main() {
             status
         );
 
-        if let Err(e) = result {
-            println!("  Error: {:?}", e);
+        if result.is_err() {
+            if let Err(e) = &result {
+                println!("  Error: {:?}", e);
+            }
         }
 
         results.push((name.clone(), rows, elapsed, result.is_ok()));
@@ -99,7 +102,7 @@ fn main() {
 
     let avg_ms: f64 = results
         .iter()
-        .map(|(_, _, e, _)| e.as_secs_f64() * 1000.0)
+        .map(|(name, rows, e, ok)| e.as_secs_f64() * 1000.0)
         .sum::<f64>()
         / results.len() as f64;
     println!("Average query time: {:.2}ms", avg_ms);
