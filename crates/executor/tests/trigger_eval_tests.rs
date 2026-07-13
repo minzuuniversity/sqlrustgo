@@ -303,6 +303,7 @@ fn test_expression_to_value_subquery() {
         distinct: false,
         with_cube: false,
         with_rollup: false,
+        lock_clause: None,
     }));
     let result = expression_to_value(&expr, &eval_ctx, None);
     assert_eq!(result, Value::Null);
