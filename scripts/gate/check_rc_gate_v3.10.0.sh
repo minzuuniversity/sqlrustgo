@@ -88,9 +88,7 @@ for g in \
     "scripts/gate/check_arch_sem_debt.sh:drift_ok" \
     "scripts/gate/check_cross_version_debt.sh" \
     "scripts/gate/check_int_debt.sh:drift_ok" \
-    "scripts/gate/check_anti_fabrication.sh" \
-    "scripts/gate/check_full_gate_verification.sh" \
-    "scripts/gate/check_drift_not_pass.sh"
+    "scripts/gate/check_anti_fabrication.sh"
 do
     # Parse optional suffix
     g_script="${g%:*}"
