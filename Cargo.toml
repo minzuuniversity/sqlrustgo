@@ -41,7 +41,7 @@ members = [
     "crates/security",
     "crates/spill",
     "crates/sql-corpus",
-    "crates/sqllogictest",
+    "crates/sqlrustgo_sqllogictest",
     "crates/types",
     "crates/unified-query",
     "crates/wal-verification",
