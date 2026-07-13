@@ -447,15 +447,17 @@ impl SimpleExecutor {
                     .map_err(|e| format!("Insert from_subquery rows error: {:?}", e))?;
             }
         }
+        // Strip `|alias` suffix from base table name (parser encodes it).
+        let base_table = select.table.split('|').next().unwrap_or(&select.table);
         let mut rows = self
             .storage
-            .scan(&select.table)
+            .scan(base_table)
             .map_err(|e| format!("Scan error: {:?}", e))?;
 
         if let Some(ref where_clause) = select.where_clause {
             let table_info = self
                 .storage
-                .get_table_info(&select.table)
+                .get_table_info(base_table)
                 .map_err(|e| format!("Get table info error: {:?}", e))?;
             rows.retain(|row| self.evaluate_where(where_clause, row, &table_info));
         }
@@ -474,24 +476,27 @@ impl SimpleExecutor {
         &self,
         select: &SelectStatement,
     ) -> Result<Vec<Vec<Value>>, String> {
-        // Start with left table.
+        // Strip any `|alias` suffix the parser encodes into table names
+        // (e.g. `FROM users u` → `select.table = "users|u"`).
+        let base_table = select.table.split('|').next().unwrap_or(&select.table);
         let mut current_rows = self
             .storage
-            .scan(&select.table)
+            .scan(base_table)
             .map_err(|e| format!("Scan error: {:?}", e))?;
         let mut current_info = self
             .storage
-            .get_table_info(&select.table)
+            .get_table_info(base_table)
             .map_err(|e| format!("Get left table info error: {:?}", e))?;
 
         for join in &select.join_clause {
+            let right_table = join.table.split('|').next().unwrap_or(&join.table);
             let right_rows = self
                 .storage
-                .scan(&join.table)
+                .scan(right_table)
                 .map_err(|e| format!("Right scan error: {:?}", e))?;
             let right_info = self
                 .storage
-                .get_table_info(&join.table)
+                .get_table_info(right_table)
                 .map_err(|e| format!("Get right table info error: {:?}", e))?;
 
             // Build the combined TableInfo for this join step: current
