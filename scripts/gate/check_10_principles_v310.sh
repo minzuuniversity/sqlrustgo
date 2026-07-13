@@ -177,7 +177,7 @@ if [ ! -d "$REPO_ROOT/crates/sql-corpus" ]; then
   R6_P=1; TOTAL_PASS=$((TOTAL_PASS + 1))
 else
   # Run sql-corpus integration test if exists
-  if cargo test -p sql-corpus --release -- --test-threads=4 \
+  if cargo test -p sqlrustgo-sql-corpus --release -- --test-threads=4 \
     > "$OUT_DIR/r6_sql_corpus.log" 2>&1; then
     echo "  [PASS] R6: SQL Compatibility"
     R6_P=1; TOTAL_PASS=$((TOTAL_PASS + 1))
