@@ -3,8 +3,7 @@ mod common;
 use common::tpch_wire_harness::start_sf01;
 use std::time::Instant;
 
-#[test]
-#[ignore]
+#[ignore = "long_run_stability_72h: 72-hour stress test stub; use --ignored for full run"]
 fn long_run_stability_72h_smoke() {
     let duration_secs = 5u64;
     let mut client = start_sf01();

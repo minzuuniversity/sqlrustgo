@@ -97,8 +97,7 @@ fn test_soak_repl_dml_persistent_connection() {
 /// SELECT response is currently broken on the server side
 /// (column_def packet missing `org_name` field). Mark as ignored
 /// until server is fixed. The DML path works.
-#[ignore = "server column_def packet bug — DML path works, SELECT broken"]
-#[test]
+#[ignore = "server column_def packet bug — DML path works, SELECT broken; see #3165"]
 fn test_soak_repl_select_returns_rows() {
     let handle = start_ephemeral(EphemeralConfig::default()).expect("start_ephemeral");
     let port = handle.port;
@@ -246,8 +245,7 @@ fn test_soak_repl_50_dml_queries() {
 /// Comments (lines starting with #) and blank lines should be ignored.
 /// This test uses `SELECT 1` which triggers the server column_def bug,
 /// so it is marked as ignored.
-#[ignore = "server column_def packet bug — DML path works"]
-#[test]
+#[ignore = "server column_def packet bug — DML path works; see #3165"]
 fn test_soak_repl_skips_comments_and_blank_lines() {
     let handle = start_ephemeral(EphemeralConfig::default()).expect("start_ephemeral");
     let port = handle.port;
