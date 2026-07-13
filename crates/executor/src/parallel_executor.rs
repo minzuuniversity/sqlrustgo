@@ -1,12 +1,11 @@
 use sqlrustgo_types::Value;
 use tracing::instrument;
 
-/// Minimum row count to engage parallel filter path. v3.10.0 Issue #3703:
-/// originally 500K, lowered from 500K to 100K per Issue #3776 / F-36 fix
-/// after Arc-shared iterator (zero-copy partitions) reduced per-partition
-/// overhead below 50K-row break-even. See design.md at
-/// openspec/changes/issue-3768-parallel-perf-fix/.
-pub const PARALLEL_MIN_ROWS: usize = 100_000;
+/// Minimum row count to engage parallel filter path. v3.10.0 Issue #3792:
+/// raised from 100K to 2M after benchmark showed no speedup at SF=0.1/1.0/10.0.
+/// The bottleneck is shared I/O + partitioning overhead, not data size.
+/// CBO threshold in unified_cost.rs is also updated to match.
+pub const PARALLEL_MIN_ROWS: usize = 2_000_000;
 
 pub trait ParallelExecutor: Send + Sync {
     fn parallel_degree(&self) -> usize;
@@ -102,23 +101,24 @@ mod tests {
     #[test]
     fn test_partition_scan_large_4_workers() {
         let exec = ParallelVolcanoExecutor::new(4);
-        // Bumped from 400_000 to 600_000 to exceed PARALLEL_MIN_ROWS (500K) threshold.
-        let rows = make_rows(600_000);
+        // v3.10.0 Issue #3792: updated to exceed new PARALLEL_MIN_ROWS (2M) threshold.
+        let rows = make_rows(3_000_000);
         let parts = exec.partition_scan(rows, 4);
         assert_eq!(parts.len(), 4);
         let total: usize = parts.iter().map(|p| p.len()).sum();
-        assert_eq!(total, 600_000);
+        assert_eq!(total, 3_000_000);
+
     }
 
     #[test]
     fn test_partition_scan_uneven_remainder() {
         let exec = ParallelVolcanoExecutor::new(3);
-        // Bumped from 200_000 to 600_000 to exceed PARALLEL_MIN_ROWS (500K) threshold.
-        let rows = make_rows(600_000);
+        // v3.10.0 Issue #3792: updated to exceed new PARALLEL_MIN_ROWS (2M) threshold.
+        let rows = make_rows(3_000_000);
         let parts = exec.partition_scan(rows, 3);
         assert_eq!(parts.len(), 3);
         let total: usize = parts.iter().map(|p| p.len()).sum();
-        assert_eq!(total, 600_000);
+        assert_eq!(total, 3_000_000);
     }
 
     #[test]

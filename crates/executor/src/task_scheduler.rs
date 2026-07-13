@@ -179,6 +179,7 @@ pub fn create_default_scheduler() -> impl TaskScheduler {
 mod tests {
     use super::*;
     use std::sync::atomic::AtomicUsize;
+    use std::sync::Arc;
 
     #[test]
     fn test_task_scheduler_creation() {

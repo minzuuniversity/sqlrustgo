@@ -4,10 +4,11 @@ use crate::rules::{BinaryOperator, Expr, JoinType};
 use crate::unified_plan::UnifiedPlan;
 use crate::vector_cost::VectorCostModel;
 
-// v3.10.0 Issue #3703: parallel-execution row threshold
+// v3.10.0 Issue #3792: parallel-execution row threshold
 // (mirrors crates/executor/src/parallel_executor.rs::PARALLEL_MIN_ROWS
 // to keep CBO and executor in sync)
-const PARALLEL_MIN_ROWS: u64 = 500_000;
+// Raised from 500K to 2M after benchmark showed no speedup at SF=0.1/1.0/10.0.
+const PARALLEL_MIN_ROWS: u64 = 2_000_000;
 
 /// Execution path types for cost comparison
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
