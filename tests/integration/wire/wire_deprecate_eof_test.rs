@@ -10,6 +10,7 @@
 //! is responsible for emitting the right packet sequence per
 //! capability, and the client is responsible for parsing it.
 
+#[path = "../../common/mod.rs"]
 mod common;
 
 use common::MySqlTestClient;

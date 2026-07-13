@@ -1,3 +1,4 @@
+#[path = "../../common/mod.rs"]
 mod common;
 use common::tpch_wire_harness::{run_query_timed, start_sf001};
 use std::time::Duration;

@@ -12,6 +12,7 @@
 //! server reads the data from the shared data_dir (which the
 //! `EphemeralConfig::data_dir` field makes possible; see PR #3049).
 
+#[path = "../../common/mod.rs"]
 mod common;
 
 use common::MySqlTestClient;

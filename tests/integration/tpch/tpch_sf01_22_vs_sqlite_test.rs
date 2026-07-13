@@ -1,6 +1,7 @@
 //! TPC-H 22/22 wire-protocol on SF=0.01 fixture, compared against the
 //! SQLite baseline at `tests/data/tpch-sf01/expected/Q{N}_sf01_baseline.json`.
 
+#[path = "../../common/mod.rs"]
 mod common;
 use common::tpch_wire_harness::start_sf01;
 use std::fs;
