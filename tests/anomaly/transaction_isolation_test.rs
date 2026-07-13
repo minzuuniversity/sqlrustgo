@@ -9,7 +9,8 @@ mod tests {
     use sqlrustgo_transaction::manager::{IsolationLevel, TransactionManager};
     use sqlrustgo_transaction::mvcc::{MvccEngine, Snapshot, TransactionStatus, TxId};
     use std::collections::HashMap;
-    use std::sync::{Arc, RwLock};
+    use std::sync::Arc;
+use parking_lot::RwLock;
     use std::time::Duration;
 
     #[test]
@@ -17,12 +18,12 @@ mod tests {
         let mvcc = Arc::new(RwLock::new(MvccEngine::new()));
 
         let tx1 = {
-            let mut m = mvcc.write().unwrap();
+            let mut m = mvcc.write();
             m.begin_transaction()
         };
 
         let snapshot = {
-            let m = mvcc.read().unwrap();
+            let m = mvcc.read();
             m.create_snapshot(tx1)
         };
 
@@ -42,12 +43,12 @@ mod tests {
         let mvcc = Arc::new(RwLock::new(MvccEngine::new()));
 
         let tx1 = {
-            let mut m = mvcc.write().unwrap();
+            let mut m = mvcc.write();
             m.begin_transaction()
         };
 
         let snapshot = {
-            let m = mvcc.read().unwrap();
+            let m = mvcc.read();
             m.create_snapshot(tx1)
         };
 

@@ -139,13 +139,13 @@ fn load_tpch_table(
         batch.push(row);
         count += 1;
         if batch.len() >= BATCH_SIZE {
-            let mut st = storage.write().unwrap();
+            let mut st = storage.write();
             st.insert(tbl, batch).unwrap();
             batch = Vec::with_capacity(BATCH_SIZE);
         }
     }
     if !batch.is_empty() {
-        let mut st = storage.write().unwrap();
+        let mut st = storage.write();
         st.insert(tbl, batch).unwrap();
     }
     totals.push((tbl.to_string(), count));

@@ -3,7 +3,8 @@
 
 use sqlrustgo::{parse, ExecutionEngine, MemoryStorage};
 use std::path::Path;
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc};
+use parking_lot::RwLock;
 
 const TPCK_DATA_DIR: &str = "data/tpch-sf03";
 
@@ -24,7 +25,7 @@ fn test_index_usage() {
     let filepath = format!("{}/lineitem.tbl", TPCK_DATA_DIR);
     if Path::new(&filepath).exists() {
         let load_result = {
-            let mut storage = engine.storage.write().unwrap();
+            let mut storage = engine.storage.write();
             storage.bulk_load_tbl_file("lineitem", &filepath)
         };
         match load_result {

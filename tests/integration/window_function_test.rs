@@ -10,7 +10,8 @@
 
 use sqlrustgo::{parse, ExecutionEngine, MemoryStorage};
 use sqlrustgo_types::Value;
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc};
+use parking_lot::RwLock;
 
 /// Helper to test window function parsing
 fn test_window_parse(sql: &str) {

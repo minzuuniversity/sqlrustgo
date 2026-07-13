@@ -7,7 +7,8 @@
 mod tests {
     use sqlrustgo::{parse, ExecutionEngine, MemoryStorage, StorageEngine};
     use sqlrustgo_types::Value;
-    use std::sync::{Arc, RwLock};
+    use std::sync::Arc;
+use parking_lot::RwLock;
 
     fn create_test_tables() -> MemoryStorage {
         let mut storage = MemoryStorage::new();
