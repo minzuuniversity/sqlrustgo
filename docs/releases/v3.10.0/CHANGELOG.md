@@ -2,8 +2,8 @@
 
 > **版本**: v3.10.0
 > **类型**: **MySQL 5.7 替代** — 功能稳定 + 基本性能优先
-> **分支**: `develop/v3.10.0`
-> **当前阶段**: **ALPHA** (2026-07-11, DRAFT → ALPHA 已完成)
+> **分支**: `develop/v3.10.0` → `rc/v3.10.0`
+> **当前阶段**: **RC** (2026-07-13, ALPHA → BETA → RC 已完成)
 > **创建日期**: 2026-07-01
 > **前版本**: v3.9.0 (develop/v3.9.0 @ RC8 → GA 2026-07-10)
 > **Maintainer**: claude-macmini
@@ -134,3 +134,46 @@ Per-version plan classification: docs/releases/v3.10.0/plans/INDEX.md
 - 5 GapLockManager tests: all passing
 - 3 FileStorage parallel_scan tests: all passing
 - 91 FileStorage tests: all passing
+
+
+## 2026-07-13 — RC 阶段准入 (BETA → RC)
+
+RC gate R1-R8 进入。所有 OPEN/IN_PROGRESS 债务项已解析 (6 项 → IN_PROGRESS with target_release v3.11.0)。#[ignore] 债务从 49 降至 8。
+
+### Changed
+
+- `STAGE.yaml`: `current_stage: "BETA"` → `"RC"`, BETA→RC promotion documented (2026-07-13)
+- `docs/governance/STAGE_CONFIG.yaml`: RC gate scripts now use `check_rc_gate_v3.10.0.sh` (per-version)
+- `docs/releases/v3.10.0/RELEASE_NOTES.md`: header stage updated to RC
+- `docs/releases/v3.10.0/CHANGELOG.md`: RC entry record added (this entry)
+- `docs/releases/v3.10.0/ARCHITECTURE.md`: module tree synced with current crate structure, performance targets updated
+- `docs/releases/v3.10.0/TEST_PLAN.md`: #[ignore] section updated, test directory structure finalized
+
+### Added
+
+- `docs/releases/v3.10.0/GA_RELEASE_TIMELINE.md` — GA release timeline with 4 phases
+- `docs/releases/v3.10.0/EVIDENCE_STATUS.md` — D1-D5 evidence tracking (19/32 PASS)
+- `docs/releases/v3.10.0/POST_GA_PLAN.md` — Post-GA support plan
+- `docs/releases/v3.10.0/RELEASE_GATE_CHECKLIST.md` — Human architect sign-off checklist
+- `docs/releases/v3.10.0/COMPREHENSIVE_ASSESSMENT_REPORT.md` — Full assessment with MySQL comparison
+- `docs/releases/v3.10.0/GA_GATE_REPORT.md` — GA gate tracking (forward-looking)
+- `scripts/gate/check_rc_gate_v3.10.0.sh` — RC gate R1-R8 checker
+
+### Fixed
+
+- 8 clippy errors across 3 crates fixed
+- `check_cross_version_debt.sh`: bash 3.2 compatibility rewrite
+- `mod_common.rs` path for 10 `tests/integration/` subdirectories
+- `semantic_gate_check.py` SGL bug: anchored to impl block via regex + brace-depth extraction
+- `stress_test.rs` line 824, 952: `use std::sync::{Arc, RwLock};` corruption fixed
+- `task_scheduler.rs` + `pipeline_executor.rs`: clippy + import fixes
+- `cargo fmt --all`: 51 files formatted
+- sql_corpus JOIN bug: `select.table.split('|').next()` in 2 execute methods
+- 5 test parallelism issues: added `#[cfg(feature = "parallel-executor")]` guard
+- 20 pre-existing test file compiles fixed for ColumnDefinition/TableInfo API drift
+- 55 #[ignore] entries: all now have documented reason strings, 7 NO_REASON fixed
+
+### Dependencies
+
+- PR #3377 (debt DEFERRED→IN_PROGRESS), #3379 (ignore reasons), #3381 (RC entry)
+- PR #3385 (debt + example compiles), #3386 (GA_GATE_REPORT.md), #3387 (drift exit 2)
