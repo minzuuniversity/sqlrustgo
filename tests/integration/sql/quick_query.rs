@@ -1,4 +1,5 @@
 /// Quick query test against the existing WAL data in /tmp/tpch-sf1
+#[path = "../../common/mod.rs"]
 mod common;
 
 #[test]

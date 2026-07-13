@@ -9,6 +9,7 @@
 //!
 //! Run: cargo test --test tpch_gate_test -- --nocapture
 
+#[path = "../../common/mod.rs"]
 mod common;
 use common::tpch_wire_harness::*;
 use common::MySqlTestClient;

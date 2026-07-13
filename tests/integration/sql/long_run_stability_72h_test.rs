@@ -1,3 +1,4 @@
+#[path = "../../common/mod.rs"]
 mod common;
 use common::tpch_wire_harness::start_sf01;
 use std::time::Instant;

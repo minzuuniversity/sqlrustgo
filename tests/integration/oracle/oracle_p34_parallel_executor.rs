@@ -13,6 +13,7 @@
 //! 由于 ParallelExecutor 的实际执行依赖真实查询引擎, 这里采用
 //! ground-truth oracle: 验证 partition 算法本身的数学属性.
 
+#[path = "../../common/mod.rs"]
 mod common;
 
 /// Oracle: hash partition 输出范围 [0, num_shards)

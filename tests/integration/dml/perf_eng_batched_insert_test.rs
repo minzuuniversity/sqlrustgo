@@ -30,6 +30,7 @@
 //! the "Resource temporarily unavailable" errors that occurred in debug
 //! builds and some release configurations on Z440.
 //!
+#[path = "../../common/mod.rs"]
 mod common;
 use common::MySqlTestClient;
 use sqlrustgo_mysql_server::testing::{start_ephemeral, EphemeralConfig};
