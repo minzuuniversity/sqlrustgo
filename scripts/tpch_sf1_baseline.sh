@@ -106,7 +106,7 @@ fi
 # ---------------------------------------------------------------------
 # Step 2: Validate the test source exists
 # ---------------------------------------------------------------------
-TEST_FILE="$PROJECT_ROOT/tests/tpch_sf1_22_vs_3engines_test.rs"
+TEST_FILE="$PROJECT_ROOT/tests/integration/tpch/tpch_sf1_22_vs_3engines_test.rs"
 if [[ ! -f "$TEST_FILE" ]]; then
     echo "[ERROR] test file not found: $TEST_FILE" >&2
     exit 1

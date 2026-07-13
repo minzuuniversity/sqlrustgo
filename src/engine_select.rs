@@ -1265,6 +1265,12 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         let base_prefix = base_alias.as_ref().unwrap_or(&base_table);
 
         let mut rows = storage.scan(&base_table)?;
+        // Fast-path base-table predicate pushdown (single-table
+        // predicates that reference only the base table). For
+        // TPC-H Q2 (`FROM part WHERE p_size = 15 AND p_type LIKE
+        // '%BRASS'`) this collapses 20K part rows to ~400 rows
+        // before any join work, avoiding the full 5-table join
+        // explosion downstream.
         let raw_info = storage.get_table_info(&base_table)?;
         let mut table_info = if base_alias.is_some() {
             // Wrap the base columns in alias-prefixed names.
@@ -1277,6 +1283,36 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         } else {
             raw_info
         };
+        if let Some(where_expr) = select.where_clause.as_ref() {
+            // Build the base table's qualified column-name set
+            // (TPC-H prefix + bare names).
+            let base_qualified: Vec<String> = table_info.columns.iter()
+                .map(|c| c.name.clone())
+                .collect();
+            let mut base_keys: Vec<String> = vec![
+                base_table.clone(),
+                base_prefix.clone(),
+                Self::tpch_table_prefix(&base_table).to_string(),
+            ];
+            base_keys.extend(base_qualified);
+            let base_preds = self.extract_single_table_predicates(where_expr, &base_keys);
+            let preds_opt = base_preds.get(base_prefix)
+                .or_else(|| base_preds.get(&base_table))
+                .or_else(|| base_preds.get(Self::tpch_table_prefix(&base_table)));
+            if let Some(preds) = preds_opt {
+                if !preds.is_empty() {
+                    let before = rows.len();
+                    rows.retain(|r| preds.iter().all(|p| eval_predicate(p, r, &table_info)));
+                    tracing::debug!(
+                        target: "sqlrustgo.q2_fix",
+                        table = %base_table,
+                        before,
+                        after = rows.len(),
+                        "applied base-table pushdown"
+                    );
+                }
+            }
+        }
 
         // Phase 3 (TPCH-01 Q15): materialize any derived subqueries from
         // `FROM t, (SELECT ...) AS alias` before the join chain runs.
@@ -1391,6 +1427,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 &base_prefix,
                 rows.clone(),
                 &table_info,
+                &pushdown_filters,
             ) {
                 return Ok((new_rows, new_info));
             }
@@ -1406,9 +1443,16 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 Some((t, a)) => (t.to_string(), Some(a.to_string())),
                 None => (join_clause.table.clone(), None),
             };
+            // Look up pushdown filters by all the keys that might match
+            // `bare_right_table`: alias, bare name, or the TPC-H 1-/2-char
+            // column prefix (e.g. `region` -> `r`, `partsupp` -> `ps`),
+            // since `extract_single_table_predicates` keys single-table
+            // conjunctions by the qualifier that's actually referenced
+            // in the WHERE (often a prefix, not the table name).
             let right_filter = pushdown_filters
                 .get(right_alias.as_deref().unwrap_or(&bare_right_table))
                 .or_else(|| pushdown_filters.get(&bare_right_table))
+                .or_else(|| pushdown_filters.get(Self::tpch_table_prefix(&bare_right_table)))
                 .cloned();
             let (new_rows, new_info) = self.execute_single_join(
                 &rows,
@@ -1448,7 +1492,6 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     /// Scope: only `=` equality predicates between two distinct
     /// joined tables are considered. `!=`, `<`, `LIKE`, etc. are
     /// ignored. Tables must be reachable from the comma-join list
-    /// (`select.table` + `select.extra_tables`); if any table in
     /// the WHERE isn't in that list, the chain can't be built
     /// here and we return None.
     fn try_comma_join_hash_chain(
@@ -1458,11 +1501,12 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         _base_alias: &str,
         base_rows: Vec<Vec<Value>>,
         base_info: &TableInfo,
+        pushdown_filters: &std::collections::HashMap<String, Vec<Expression>>,
     ) -> Option<(Vec<Vec<Value>>, TableInfo)> {
         use std::collections::HashMap;
+        let where_expr = select.where_clause.as_ref()?;
         let storage = self.storage.read();
 
-        let where_expr = select.where_clause.as_ref()?;
 
         let (base_bare, base_alias_unwrapped) = match base_table.split_once('|') {
             Some((t, a)) => (t.to_string(), Some(a.to_string())),
@@ -1629,7 +1673,30 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             let cur_bare = &cur.0;
             let cur_info = storage.get_table_info(cur_bare).ok()?.clone();
             let cur_idx = cur_info.columns.iter().position(|c| c.name == right_col)?;
-            let cur_rows = storage.scan(cur_bare).ok()?;
+            let raw_cur_rows = storage.scan(cur_bare).ok()?;
+            let rows_before_filter = raw_cur_rows.len();
+            // Build alias-prefixed column names so that
+            // `eval_predicate` matches TPC-H-style predicates like
+            // `r.r_name = 'EUROPE'` against the aliased columns.
+            let mut cur_info_prefixed = cur_info.clone();
+            cur_info_prefixed.name = cur_alias.clone();
+            for col in &mut cur_info_prefixed.columns {
+                col.name = format!("{}.{}", cur_alias, col.name);
+            }
+            // Lookup pushdown predicates: alias first, then bare name.
+            let pred = pushdown_filters
+                .get(cur_alias.as_str())
+                .or_else(|| pushdown_filters.get(cur_bare.as_str()));
+            // Apply the filter.
+            let cur_rows: Vec<Vec<Value>> = match pred {
+                Some(preds) if !preds.is_empty() => raw_cur_rows
+                    .into_iter()
+                    .filter(|r| {
+                        preds.iter().all(|p| eval_predicate(p, r, &cur_info_prefixed))
+                    })
+                    .collect(),
+                _ => raw_cur_rows,
+            };
             alias_to_columns.insert(
                 cur_alias.clone(),
                 cur_info.columns.iter().map(|c| c.name.clone()).collect(),
