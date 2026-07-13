@@ -18,6 +18,7 @@
 //! python3 scripts/dev/build_tpch_sf01_sqlite.py
 //! ```
 
+#[path = "../../common/mod.rs"]
 mod common;
 use std::process::Command;
 

@@ -5,6 +5,7 @@
 //! by performing a full CREATE → INSERT → SELECT round trip through
 //! the embedded server.
 
+#[path = "../../common/mod.rs"]
 mod common;
 
 use common::MySqlTestClient;

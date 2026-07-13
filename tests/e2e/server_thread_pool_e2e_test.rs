@@ -12,6 +12,7 @@
 //!
 //! Refs: docs/superpowers/specs/2026-06-26-soak-1h-server-threads-design.md §6.3
 
+#[path = "../common/mod.rs"]
 mod common;
 use common::MySqlTestClient;
 use sqlrustgo_mysql_server::testing::{start_ephemeral, EphemeralConfig};

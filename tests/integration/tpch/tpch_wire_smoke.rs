@@ -15,6 +15,7 @@
 //! Refs: `docs/audit/analysis/2026-06-04-tpch-test-design.md`
 //! (Track 2 — wire-protocol TPC-H smoke).
 
+#[path = "../../common/mod.rs"]
 mod common;
 
 use common::MySqlTestClient;

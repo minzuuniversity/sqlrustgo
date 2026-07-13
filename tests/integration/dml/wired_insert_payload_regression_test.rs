@@ -24,6 +24,7 @@
 //! Each test uses a real `sqlrustgo-mysql-server` ephemeral handle and
 //! connects via the MySQL wire protocol.
 
+#[path = "../../common/mod.rs"]
 mod common;
 use common::MySqlTestClient;
 use sqlrustgo_mysql_server::testing::{start_ephemeral, EphemeralConfig};

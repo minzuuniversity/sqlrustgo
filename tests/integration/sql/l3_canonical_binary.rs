@@ -17,6 +17,7 @@
 //!
 //! Refs: `openspec/changes/mysql-server-canonical-entry/specs/mysql-server-canonical-entry/spec.md`
 
+#[path = "../../common/mod.rs"]
 mod common;
 
 use common::MySqlTestClient;

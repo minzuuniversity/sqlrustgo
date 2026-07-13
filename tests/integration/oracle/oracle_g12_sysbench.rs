@@ -3,6 +3,7 @@
 //! 验证 sysbench 风格 OLTP 实测 vs baseline 在 ±20% tolerance 内.
 //! Baseline 来源: `tests/oracle/baselines/perf/g12_sysbench_baseline.json`.
 
+#[path = "../../common/mod.rs"]
 mod common;
 
 use common::oracle_framework::PerfBaseline;

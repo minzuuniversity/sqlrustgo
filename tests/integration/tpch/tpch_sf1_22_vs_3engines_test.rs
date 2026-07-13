@@ -15,6 +15,7 @@
 //!
 //! See openspec/changes/2026-06-18-tpch-sf1-baseline.
 
+#[path = "../../common/mod.rs"]
 mod common;
 
 use common::tpch_wire_harness;
