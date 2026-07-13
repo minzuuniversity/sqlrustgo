@@ -2,10 +2,10 @@
 //
 // Note: These tests verify parsing and basic transaction flow.
 
+use parking_lot::RwLock;
 use sqlrustgo::{parse, ExecutionEngine, MemoryStorage, StorageEngine};
 use sqlrustgo_types::Value;
-use std::sync::{Arc};
-use parking_lot::RwLock;
+use std::sync::Arc;
 
 #[test]
 fn test_savepoint_parsing() {

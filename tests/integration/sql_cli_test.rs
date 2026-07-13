@@ -2,11 +2,11 @@
 //
 // Tests for UPDATE and DELETE support in sql-cli
 
+use parking_lot::RwLock;
 use sqlrustgo::{parse, ExecutionEngine, MemoryStorage, StorageEngine};
 use sqlrustgo_executor::ExecutorResult;
 use sqlrustgo_types::Value;
-use std::sync::{Arc};
-use parking_lot::RwLock;
+use std::sync::Arc;
 
 /// Test engine that maintains state across multiple SQL statements
 struct TestEngine {
