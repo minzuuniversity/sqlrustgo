@@ -21,31 +21,28 @@ fn test_fk_insert_valid_reference() {
 
     // Create parent table
     engine
-        .execute(parse("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)").unwrap())
+        .execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)")
         .unwrap();
 
     // Insert parent records
     engine
-        .execute(parse("INSERT INTO users VALUES (1, 'Alice'), (2, 'Bob')").unwrap())
+        .execute("INSERT INTO users VALUES (1, 'Alice'), (2, 'Bob')")
         .unwrap();
 
     // Create child table with FK
     engine
-        .execute(
-            parse("CREATE TABLE orders (id INTEGER, user_id INTEGER REFERENCES users(id))")
-                .unwrap(),
-        )
+        .execute("CREATE TABLE orders (id INTEGER, user_id INTEGER REFERENCES users(id))")
         .unwrap();
 
     // Insert with valid FK reference - should succeed
-    let result = engine.execute(parse("INSERT INTO orders VALUES (1, 1)").unwrap());
+    let result = engine.execute("INSERT INTO orders VALUES (1, 1)");
     assert!(
         result.is_ok(),
         "Should allow insert with valid FK reference: {:?}",
         result
     );
 
-    let result = engine.execute(parse("INSERT INTO orders VALUES (2, 2)").unwrap());
+    let result = engine.execute("INSERT INTO orders VALUES (2, 2)");
     assert!(
         result.is_ok(),
         "Should allow insert with valid FK reference: {:?}",
@@ -54,7 +51,7 @@ fn test_fk_insert_valid_reference() {
 
     // Verify orders were inserted
     let result = engine
-        .execute(parse("SELECT * FROM orders").unwrap())
+        .execute("SELECT * FROM orders")
         .unwrap();
     assert_eq!(result.rows.len(), 2);
 }
@@ -65,24 +62,21 @@ fn test_fk_insert_invalid_reference() {
 
     // Create parent table
     engine
-        .execute(parse("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)").unwrap())
+        .execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)")
         .unwrap();
 
     // Insert parent records
     engine
-        .execute(parse("INSERT INTO users VALUES (1, 'Alice'), (2, 'Bob')").unwrap())
+        .execute("INSERT INTO users VALUES (1, 'Alice'), (2, 'Bob')")
         .unwrap();
 
     // Create child table with FK
     engine
-        .execute(
-            parse("CREATE TABLE orders (id INTEGER, user_id INTEGER REFERENCES users(id))")
-                .unwrap(),
-        )
+        .execute("CREATE TABLE orders (id INTEGER, user_id INTEGER REFERENCES users(id))")
         .unwrap();
 
     // Insert with invalid FK reference - should fail
-    let result = engine.execute(parse("INSERT INTO orders VALUES (1, 999)").unwrap());
+    let result = engine.execute("INSERT INTO orders VALUES (1, 999)");
     assert!(
         result.is_err(),
         "Should reject insert with invalid FK reference"
@@ -104,19 +98,16 @@ fn test_fk_insert_null_reference() {
 
     // Create parent table
     engine
-        .execute(parse("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)").unwrap())
+        .execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)")
         .unwrap();
 
     // Create child table with FK
     engine
-        .execute(
-            parse("CREATE TABLE orders (id INTEGER, user_id INTEGER REFERENCES users(id))")
-                .unwrap(),
-        )
+        .execute("CREATE TABLE orders (id INTEGER, user_id INTEGER REFERENCES users(id))")
         .unwrap();
 
     // Insert with NULL FK - should succeed (NULL bypasses FK check)
-    let result = engine.execute(parse("INSERT INTO orders VALUES (1, NULL)").unwrap());
+    let result = engine.execute("INSERT INTO orders VALUES (1, NULL)");
     assert!(result.is_ok(), "Should allow NULL FK value: {:?}", result);
 }
 
@@ -126,27 +117,24 @@ fn test_fk_multiple_fk_columns() {
 
     // Create parent tables
     engine
-        .execute(parse("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)").unwrap())
+        .execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)")
         .unwrap();
     engine
-        .execute(parse("CREATE TABLE products (id INTEGER PRIMARY KEY, name TEXT)").unwrap())
+        .execute("CREATE TABLE products (id INTEGER PRIMARY KEY, name TEXT)")
         .unwrap();
 
     // Insert parents
     engine
-        .execute(parse("INSERT INTO users VALUES (1, 'Alice')").unwrap())
+        .execute("INSERT INTO users VALUES (1, 'Alice')")
         .unwrap();
     engine
-        .execute(parse("INSERT INTO products VALUES (1, 'Widget')").unwrap())
+        .execute("INSERT INTO products VALUES (1, 'Widget')")
         .unwrap();
 
     // Note: Current parser only supports one FK column per table
     // Create table with single FK
     engine
-        .execute(
-            parse("CREATE TABLE orders (id INTEGER, user_id INTEGER REFERENCES users(id))")
-                .unwrap(),
-        )
+        .execute("CREATE TABLE orders (id INTEGER, user_id INTEGER REFERENCES users(id))")
         .unwrap();
 
     // Verify the FK was created
@@ -160,11 +148,11 @@ fn test_fk_multiple_fk_columns() {
     drop(storage);
 
     // Insert with valid FK - should succeed
-    let result = engine.execute(parse("INSERT INTO orders VALUES (1, 1)").unwrap());
+    let result = engine.execute("INSERT INTO orders VALUES (1, 1)");
     assert!(result.is_ok());
 
     // Insert with invalid FK - should fail
-    let result = engine.execute(parse("INSERT INTO orders VALUES (2, 999)").unwrap());
+    let result = engine.execute("INSERT INTO orders VALUES (2, 999)");
     assert!(result.is_err());
 
     // TODO: When parser supports multiple FK columns, test:
@@ -187,15 +175,15 @@ fn test_fk_self_referencing() {
         .unwrap();
 
     // Insert root employee (no manager)
-    let result = engine.execute(parse("INSERT INTO employees VALUES (1, 'CEO', NULL)").unwrap());
+    let result = engine.execute("INSERT INTO employees VALUES (1, 'CEO', NULL)");
     assert!(result.is_ok());
 
     // Insert employee with valid self-reference
-    let result = engine.execute(parse("INSERT INTO employees VALUES (2, 'Manager', 1)").unwrap());
+    let result = engine.execute("INSERT INTO employees VALUES (2, 'Manager', 1)");
     assert!(result.is_ok());
 
     // Insert employee with invalid self-reference
-    let result = engine.execute(parse("INSERT INTO employees VALUES (3, 'Worker', 999)").unwrap());
+    let result = engine.execute("INSERT INTO employees VALUES (3, 'Worker', 999)");
     assert!(result.is_err());
 }
 
@@ -205,25 +193,22 @@ fn test_fk_update_validation() {
 
     // Create parent table
     engine
-        .execute(parse("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)").unwrap())
+        .execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)")
         .unwrap();
 
     // Insert parent
     engine
-        .execute(parse("INSERT INTO users VALUES (1, 'Alice')").unwrap())
+        .execute("INSERT INTO users VALUES (1, 'Alice')")
         .unwrap();
 
     // Create child table with FK
     engine
-        .execute(
-            parse("CREATE TABLE orders (id INTEGER, user_id INTEGER REFERENCES users(id))")
-                .unwrap(),
-        )
+        .execute("CREATE TABLE orders (id INTEGER, user_id INTEGER REFERENCES users(id))")
         .unwrap();
 
     // Insert child
     engine
-        .execute(parse("INSERT INTO orders VALUES (1, 1)").unwrap())
+        .execute("INSERT INTO orders VALUES (1, 1)")
         .unwrap();
 
     // Note: UPDATE validation depends on implementation
@@ -280,15 +265,12 @@ fn test_fk_bulk_insert_performance() {
 
     // Create parent table
     engine
-        .execute(parse("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)").unwrap())
+        .execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)")
         .unwrap();
 
     // Create child table with FK
     engine
-        .execute(
-            parse("CREATE TABLE orders (id INTEGER, user_id INTEGER REFERENCES users(id))")
-                .unwrap(),
-        )
+        .execute("CREATE TABLE orders (id INTEGER, user_id INTEGER REFERENCES users(id))")
         .unwrap();
 
     // Insert 1000 parent records
@@ -325,7 +307,7 @@ fn test_fk_bulk_insert_performance() {
 
     // Verify all orders were inserted
     let result = engine
-        .execute(parse("SELECT COUNT(*) FROM orders").unwrap())
+        .execute("SELECT COUNT(*) FROM orders")
         .unwrap();
     assert_eq!(result.rows.len(), 1);
 }
@@ -336,18 +318,15 @@ fn test_fk_bulk_insert_with_violations() {
 
     // Create parent table with limited records
     engine
-        .execute(parse("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)").unwrap())
+        .execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)")
         .unwrap();
     engine
-        .execute(parse("INSERT INTO users VALUES (1, 'Alice'), (2, 'Bob')").unwrap())
+        .execute("INSERT INTO users VALUES (1, 'Alice'), (2, 'Bob')")
         .unwrap();
 
     // Create child table with FK
     engine
-        .execute(
-            parse("CREATE TABLE orders (id INTEGER, user_id INTEGER REFERENCES users(id))")
-                .unwrap(),
-        )
+        .execute("CREATE TABLE orders (id INTEGER, user_id INTEGER REFERENCES users(id))")
         .unwrap();
 
     // Insert some valid orders
@@ -366,12 +345,12 @@ fn test_fk_bulk_insert_with_violations() {
 
     // Verify valid inserts worked
     let result = engine
-        .execute(parse("SELECT COUNT(*) FROM orders").unwrap())
+        .execute("SELECT COUNT(*) FROM orders")
         .unwrap();
     assert_eq!(result.rows.len(), 1);
 
     // Try to insert with invalid FK - should fail
-    let result = engine.execute(parse("INSERT INTO orders VALUES (999, 999)").unwrap());
+    let result = engine.execute("INSERT INTO orders VALUES (999, 999)");
     assert!(result.is_err());
 }
 
@@ -608,19 +587,16 @@ fn test_fk_edge_case_empty_parent_table() {
 
     // Create parent table but don't insert any records
     engine
-        .execute(parse("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)").unwrap())
+        .execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)")
         .unwrap();
 
     // Create child table with FK
     engine
-        .execute(
-            parse("CREATE TABLE orders (id INTEGER, user_id INTEGER REFERENCES users(id))")
-                .unwrap(),
-        )
+        .execute("CREATE TABLE orders (id INTEGER, user_id INTEGER REFERENCES users(id))")
         .unwrap();
 
     // Try to insert child with FK reference - should fail because parent table is empty
-    let result = engine.execute(parse("INSERT INTO orders VALUES (1, 1)").unwrap());
+    let result = engine.execute("INSERT INTO orders VALUES (1, 1)");
     assert!(result.is_err());
 
     if let Err(e) = result {
@@ -639,22 +615,19 @@ fn test_fk_edge_case_zero_value() {
 
     // Create parent table with id=0
     engine
-        .execute(parse("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)").unwrap())
+        .execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)")
         .unwrap();
     engine
-        .execute(parse("INSERT INTO users VALUES (0, 'ZeroUser')").unwrap())
+        .execute("INSERT INTO users VALUES (0, 'ZeroUser')")
         .unwrap();
 
     // Create child table with FK
     engine
-        .execute(
-            parse("CREATE TABLE orders (id INTEGER, user_id INTEGER REFERENCES users(id))")
-                .unwrap(),
-        )
+        .execute("CREATE TABLE orders (id INTEGER, user_id INTEGER REFERENCES users(id))")
         .unwrap();
 
     // Insert with FK reference to id=0 - should succeed
-    let result = engine.execute(parse("INSERT INTO orders VALUES (1, 0)").unwrap());
+    let result = engine.execute("INSERT INTO orders VALUES (1, 0)");
     assert!(result.is_ok(), "FK to id=0 should work: {:?}", result);
 }
 
@@ -664,22 +637,19 @@ fn test_fk_edge_case_negative_value() {
 
     // Create parent table with negative id
     engine
-        .execute(parse("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)").unwrap())
+        .execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)")
         .unwrap();
     engine
-        .execute(parse("INSERT INTO users VALUES (-1, 'NegativeUser')").unwrap())
+        .execute("INSERT INTO users VALUES (-1, 'NegativeUser')")
         .unwrap();
 
     // Create child table with FK
     engine
-        .execute(
-            parse("CREATE TABLE orders (id INTEGER, user_id INTEGER REFERENCES users(id))")
-                .unwrap(),
-        )
+        .execute("CREATE TABLE orders (id INTEGER, user_id INTEGER REFERENCES users(id))")
         .unwrap();
 
     // Insert with FK reference to id=-1 - should succeed
-    let result = engine.execute(parse("INSERT INTO orders VALUES (1, -1)").unwrap());
+    let result = engine.execute("INSERT INTO orders VALUES (1, -1)");
     assert!(
         result.is_ok(),
         "FK to negative id should work: {:?}",
@@ -697,29 +667,26 @@ fn test_fk_delete_restrict() {
 
     // Create parent table
     engine
-        .execute(parse("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)").unwrap())
+        .execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)")
         .unwrap();
 
     // Insert parent records
     engine
-        .execute(parse("INSERT INTO users VALUES (1, 'Alice'), (2, 'Bob')").unwrap())
+        .execute("INSERT INTO users VALUES (1, 'Alice'), (2, 'Bob')")
         .unwrap();
 
     // Create child table with FK and RESTRICT action
     engine
-        .execute(
-            parse("CREATE TABLE orders (id INTEGER, user_id INTEGER REFERENCES users(id) ON DELETE RESTRICT)")
-                .unwrap(),
-        )
+        .execute("CREATE TABLE orders (id INTEGER, user_id INTEGER REFERENCES users(id) ON DELETE RESTRICT)")
         .unwrap();
 
     // Insert child records
     engine
-        .execute(parse("INSERT INTO orders VALUES (1, 1), (2, 1)").unwrap())
+        .execute("INSERT INTO orders VALUES (1, 1), (2, 1)")
         .unwrap();
 
     // Try to delete parent with referencing children - should fail with RESTRICT
-    let result = engine.execute(parse("DELETE FROM users WHERE id = 1").unwrap());
+    let result = engine.execute("DELETE FROM users WHERE id = 1");
     assert!(
         result.is_err(),
         "DELETE with RESTRICT should fail when children exist"
@@ -736,7 +703,7 @@ fn test_fk_delete_restrict() {
 
     // Verify parent was not deleted
     let result = engine
-        .execute(parse("SELECT * FROM users WHERE id = 1").unwrap())
+        .execute("SELECT * FROM users WHERE id = 1")
         .unwrap();
     assert_eq!(result.rows.len(), 1, "Parent record should not be deleted");
 }
@@ -747,29 +714,26 @@ fn test_fk_delete_cascade() {
 
     // Create parent table
     engine
-        .execute(parse("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)").unwrap())
+        .execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)")
         .unwrap();
 
     // Insert parent records
     engine
-        .execute(parse("INSERT INTO users VALUES (1, 'Alice'), (2, 'Bob')").unwrap())
+        .execute("INSERT INTO users VALUES (1, 'Alice'), (2, 'Bob')")
         .unwrap();
 
     // Create child table with FK and CASCADE action
     engine
-        .execute(
-            parse("CREATE TABLE orders (id INTEGER, user_id INTEGER REFERENCES users(id) ON DELETE CASCADE)")
-                .unwrap(),
-        )
+        .execute("CREATE TABLE orders (id INTEGER, user_id INTEGER REFERENCES users(id) ON DELETE CASCADE)")
         .unwrap();
 
     // Insert child records
     engine
-        .execute(parse("INSERT INTO orders VALUES (1, 1), (2, 1), (3, 2)").unwrap())
+        .execute("INSERT INTO orders VALUES (1, 1), (2, 1), (3, 2)")
         .unwrap();
 
     // Delete parent - should CASCADE delete children
-    let result = engine.execute(parse("DELETE FROM users WHERE id = 1").unwrap());
+    let result = engine.execute("DELETE FROM users WHERE id = 1");
     assert!(
         result.is_ok(),
         "DELETE with CASCADE should succeed: {:?}",
@@ -778,13 +742,13 @@ fn test_fk_delete_cascade() {
 
     // Verify parent was deleted
     let result = engine
-        .execute(parse("SELECT * FROM users WHERE id = 1").unwrap())
+        .execute("SELECT * FROM users WHERE id = 1")
         .unwrap();
     assert_eq!(result.rows.len(), 0, "Parent record should be deleted");
 
     // Verify children were cascade deleted
     let result = engine
-        .execute(parse("SELECT * FROM orders WHERE user_id = 1").unwrap())
+        .execute("SELECT * FROM orders WHERE user_id = 1")
         .unwrap();
     assert_eq!(
         result.rows.len(),
@@ -794,7 +758,7 @@ fn test_fk_delete_cascade() {
 
     // Verify other child (user_id = 2) still exists
     let result = engine
-        .execute(parse("SELECT * FROM orders WHERE user_id = 2").unwrap())
+        .execute("SELECT * FROM orders WHERE user_id = 2")
         .unwrap();
     assert_eq!(result.rows.len(), 1, "Other child records should remain");
 }
@@ -805,29 +769,26 @@ fn test_fk_delete_set_null() {
 
     // Create parent table
     engine
-        .execute(parse("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)").unwrap())
+        .execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)")
         .unwrap();
 
     // Insert parent records
     engine
-        .execute(parse("INSERT INTO users VALUES (1, 'Alice'), (2, 'Bob')").unwrap())
+        .execute("INSERT INTO users VALUES (1, 'Alice'), (2, 'Bob')")
         .unwrap();
 
     // Create child table with FK and SET NULL action
     engine
-        .execute(
-            parse("CREATE TABLE orders (id INTEGER, user_id INTEGER REFERENCES users(id) ON DELETE SET NULL)")
-                .unwrap(),
-        )
+        .execute("CREATE TABLE orders (id INTEGER, user_id INTEGER REFERENCES users(id) ON DELETE SET NULL)")
         .unwrap();
 
     // Insert child records
     engine
-        .execute(parse("INSERT INTO orders VALUES (1, 1), (2, 1), (3, 2)").unwrap())
+        .execute("INSERT INTO orders VALUES (1, 1), (2, 1), (3, 2)")
         .unwrap();
 
     // Delete parent - should SET NULL on children
-    let result = engine.execute(parse("DELETE FROM users WHERE id = 1").unwrap());
+    let result = engine.execute("DELETE FROM users WHERE id = 1");
     assert!(
         result.is_ok(),
         "DELETE with SET NULL should succeed: {:?}",
@@ -836,13 +797,13 @@ fn test_fk_delete_set_null() {
 
     // Verify parent was deleted
     let result = engine
-        .execute(parse("SELECT * FROM users WHERE id = 1").unwrap())
+        .execute("SELECT * FROM users WHERE id = 1")
         .unwrap();
     assert_eq!(result.rows.len(), 0, "Parent record should be deleted");
 
     // Verify children have NULL FK
     let result = engine
-        .execute(parse("SELECT * FROM orders ORDER BY id").unwrap())
+        .execute("SELECT * FROM orders ORDER BY id")
         .unwrap();
     assert_eq!(result.rows.len(), 3);
     // Orders 1 and 2 should have NULL user_id
@@ -858,29 +819,26 @@ fn test_fk_update_cascade() {
 
     // Create parent table
     engine
-        .execute(parse("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)").unwrap())
+        .execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)")
         .unwrap();
 
     // Insert parent records
     engine
-        .execute(parse("INSERT INTO users VALUES (1, 'Alice'), (2, 'Bob')").unwrap())
+        .execute("INSERT INTO users VALUES (1, 'Alice'), (2, 'Bob')")
         .unwrap();
 
     // Create child table with FK and CASCADE action
     engine
-        .execute(
-            parse("CREATE TABLE orders (id INTEGER, user_id INTEGER REFERENCES users(id) ON UPDATE CASCADE)")
-                .unwrap(),
-        )
+        .execute("CREATE TABLE orders (id INTEGER, user_id INTEGER REFERENCES users(id) ON UPDATE CASCADE)")
         .unwrap();
 
     // Insert child records
     engine
-        .execute(parse("INSERT INTO orders VALUES (1, 1), (2, 1), (3, 2)").unwrap())
+        .execute("INSERT INTO orders VALUES (1, 1), (2, 1), (3, 2)")
         .unwrap();
 
     // Update parent - should CASCADE update children
-    let result = engine.execute(parse("UPDATE users SET id = 100 WHERE id = 1").unwrap());
+    let result = engine.execute("UPDATE users SET id = 100 WHERE id = 1");
     assert!(
         result.is_ok(),
         "UPDATE with CASCADE should succeed: {:?}",
@@ -889,14 +847,14 @@ fn test_fk_update_cascade() {
 
     // Verify parent was updated
     let result = engine
-        .execute(parse("SELECT * FROM users WHERE id = 100").unwrap())
+        .execute("SELECT * FROM users WHERE id = 100")
         .unwrap();
     assert_eq!(result.rows.len(), 1, "Parent should be updated to id=100");
     assert_eq!(result.rows[0][1], Value::Text("Alice".to_string()));
 
     // Verify children were cascade updated
     let result = engine
-        .execute(parse("SELECT * FROM orders ORDER BY id").unwrap())
+        .execute("SELECT * FROM orders ORDER BY id")
         .unwrap();
     assert_eq!(result.rows.len(), 3);
     // Orders 1 and 2 should now have user_id = 100
@@ -912,29 +870,26 @@ fn test_fk_update_set_null() {
 
     // Create parent table
     engine
-        .execute(parse("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)").unwrap())
+        .execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)")
         .unwrap();
 
     // Insert parent records
     engine
-        .execute(parse("INSERT INTO users VALUES (1, 'Alice'), (2, 'Bob')").unwrap())
+        .execute("INSERT INTO users VALUES (1, 'Alice'), (2, 'Bob')")
         .unwrap();
 
     // Create child table with FK and SET NULL action
     engine
-        .execute(
-            parse("CREATE TABLE orders (id INTEGER, user_id INTEGER REFERENCES users(id) ON UPDATE SET NULL)")
-                .unwrap(),
-        )
+        .execute("CREATE TABLE orders (id INTEGER, user_id INTEGER REFERENCES users(id) ON UPDATE SET NULL)")
         .unwrap();
 
     // Insert child records
     engine
-        .execute(parse("INSERT INTO orders VALUES (1, 1), (2, 1), (3, 2)").unwrap())
+        .execute("INSERT INTO orders VALUES (1, 1), (2, 1), (3, 2)")
         .unwrap();
 
     // Update parent - should SET NULL on children
-    let result = engine.execute(parse("UPDATE users SET id = 100 WHERE id = 1").unwrap());
+    let result = engine.execute("UPDATE users SET id = 100 WHERE id = 1");
     assert!(
         result.is_ok(),
         "UPDATE with SET NULL should succeed: {:?}",
@@ -943,7 +898,7 @@ fn test_fk_update_set_null() {
 
     // Verify children have NULL FK
     let result = engine
-        .execute(parse("SELECT * FROM orders ORDER BY id").unwrap())
+        .execute("SELECT * FROM orders ORDER BY id")
         .unwrap();
     assert_eq!(result.rows.len(), 3);
     // Orders 1 and 2 should have NULL user_id
@@ -959,29 +914,26 @@ fn test_fk_update_restrict() {
 
     // Create parent table
     engine
-        .execute(parse("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)").unwrap())
+        .execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)")
         .unwrap();
 
     // Insert parent records
     engine
-        .execute(parse("INSERT INTO users VALUES (1, 'Alice'), (2, 'Bob')").unwrap())
+        .execute("INSERT INTO users VALUES (1, 'Alice'), (2, 'Bob')")
         .unwrap();
 
     // Create child table with FK and RESTRICT action
     engine
-        .execute(
-            parse("CREATE TABLE orders (id INTEGER, user_id INTEGER REFERENCES users(id) ON UPDATE RESTRICT)")
-                .unwrap(),
-        )
+        .execute("CREATE TABLE orders (id INTEGER, user_id INTEGER REFERENCES users(id) ON UPDATE RESTRICT)")
         .unwrap();
 
     // Insert child records
     engine
-        .execute(parse("INSERT INTO orders VALUES (1, 1), (2, 1)").unwrap())
+        .execute("INSERT INTO orders VALUES (1, 1), (2, 1)")
         .unwrap();
 
     // Try to update parent with referencing children - should fail with RESTRICT
-    let result = engine.execute(parse("UPDATE users SET id = 100 WHERE id = 1").unwrap());
+    let result = engine.execute("UPDATE users SET id = 100 WHERE id = 1");
     assert!(
         result.is_err(),
         "UPDATE with RESTRICT should fail when children exist"
@@ -998,11 +950,11 @@ fn test_fk_update_restrict() {
 
     // Verify parent was not updated
     let result = engine
-        .execute(parse("SELECT * FROM users WHERE id = 1").unwrap())
+        .execute("SELECT * FROM users WHERE id = 1")
         .unwrap();
     assert_eq!(result.rows.len(), 1, "Parent record should not be updated");
     let result = engine
-        .execute(parse("SELECT * FROM users WHERE id = 100").unwrap())
+        .execute("SELECT * FROM users WHERE id = 100")
         .unwrap();
     assert_eq!(result.rows.len(), 0, "id=100 should not exist");
 }
@@ -1013,35 +965,32 @@ fn test_fk_multiple_fk_columns_delete_cascade() {
 
     // Create parent tables
     engine
-        .execute(parse("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)").unwrap())
+        .execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)")
         .unwrap();
     engine
-        .execute(parse("CREATE TABLE products (id INTEGER PRIMARY KEY, name TEXT)").unwrap())
+        .execute("CREATE TABLE products (id INTEGER PRIMARY KEY, name TEXT)")
         .unwrap();
 
     // Insert parents
     engine
-        .execute(parse("INSERT INTO users VALUES (1, 'Alice')").unwrap())
+        .execute("INSERT INTO users VALUES (1, 'Alice')")
         .unwrap();
     engine
-        .execute(parse("INSERT INTO products VALUES (1, 'Widget')").unwrap())
+        .execute("INSERT INTO products VALUES (1, 'Widget')")
         .unwrap();
 
     // Create table with single FK (parser limitation noted in test_fk_multiple_fk_columns)
     engine
-        .execute(
-            parse("CREATE TABLE orders (id INTEGER, user_id INTEGER REFERENCES users(id) ON DELETE CASCADE)")
-                .unwrap(),
-        )
+        .execute("CREATE TABLE orders (id INTEGER, user_id INTEGER REFERENCES users(id) ON DELETE CASCADE)")
         .unwrap();
 
     // Insert order referencing user 1
     engine
-        .execute(parse("INSERT INTO orders VALUES (1, 1)").unwrap())
+        .execute("INSERT INTO orders VALUES (1, 1)")
         .unwrap();
 
     // Delete user - should cascade delete order
-    let result = engine.execute(parse("DELETE FROM users WHERE id = 1").unwrap());
+    let result = engine.execute("DELETE FROM users WHERE id = 1");
     assert!(
         result.is_ok(),
         "DELETE with CASCADE should succeed: {:?}",
@@ -1050,7 +999,7 @@ fn test_fk_multiple_fk_columns_delete_cascade() {
 
     // Verify order was cascade deleted
     let result = engine
-        .execute(parse("SELECT * FROM orders").unwrap())
+        .execute("SELECT * FROM orders")
         .unwrap();
     assert_eq!(result.rows.len(), 0, "Order should be cascade deleted");
 }
@@ -1071,21 +1020,21 @@ fn test_fk_self_reference_delete_cascade() {
 
     // Insert CEO (no manager)
     engine
-        .execute(parse("INSERT INTO employees VALUES (1, 'CEO', NULL)").unwrap())
+        .execute("INSERT INTO employees VALUES (1, 'CEO', NULL)")
         .unwrap();
 
     // Insert Manager referencing CEO
     engine
-        .execute(parse("INSERT INTO employees VALUES (2, 'Manager', 1)").unwrap())
+        .execute("INSERT INTO employees VALUES (2, 'Manager', 1)")
         .unwrap();
 
     // Insert Worker referencing Manager
     engine
-        .execute(parse("INSERT INTO employees VALUES (3, 'Worker', 2)").unwrap())
+        .execute("INSERT INTO employees VALUES (3, 'Worker', 2)")
         .unwrap();
 
     // Delete CEO - should cascade delete Manager and Worker
-    let result = engine.execute(parse("DELETE FROM employees WHERE id = 1").unwrap());
+    let result = engine.execute("DELETE FROM employees WHERE id = 1");
     assert!(
         result.is_ok(),
         "DELETE with CASCADE should succeed: {:?}",
@@ -1094,7 +1043,7 @@ fn test_fk_self_reference_delete_cascade() {
 
     // Verify all records were deleted
     let result = engine
-        .execute(parse("SELECT * FROM employees").unwrap())
+        .execute("SELECT * FROM employees")
         .unwrap();
     assert_eq!(
         result.rows.len(),
@@ -1109,29 +1058,26 @@ fn test_fk_combined_actions() {
 
     // Create parent table
     engine
-        .execute(parse("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)").unwrap())
+        .execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)")
         .unwrap();
 
     // Insert parents
     engine
-        .execute(parse("INSERT INTO users VALUES (1, 'Alice'), (2, 'Bob')").unwrap())
+        .execute("INSERT INTO users VALUES (1, 'Alice'), (2, 'Bob')")
         .unwrap();
 
     // Create child with both ON DELETE and ON UPDATE actions
     engine
-        .execute(
-            parse("CREATE TABLE orders (id INTEGER, user_id INTEGER REFERENCES users(id) ON DELETE CASCADE ON UPDATE SET NULL)")
-                .unwrap(),
-        )
+        .execute("CREATE TABLE orders (id INTEGER, user_id INTEGER REFERENCES users(id) ON DELETE CASCADE ON UPDATE SET NULL)")
         .unwrap();
 
     // Insert orders
     engine
-        .execute(parse("INSERT INTO orders VALUES (1, 1), (2, 1), (3, 2)").unwrap())
+        .execute("INSERT INTO orders VALUES (1, 1), (2, 1), (3, 2)")
         .unwrap();
 
     // Update parent id - should SET NULL on children
-    let result = engine.execute(parse("UPDATE users SET id = 100 WHERE id = 1").unwrap());
+    let result = engine.execute("UPDATE users SET id = 100 WHERE id = 1");
     assert!(
         result.is_ok(),
         "UPDATE should succeed with SET NULL: {:?}",
@@ -1140,13 +1086,13 @@ fn test_fk_combined_actions() {
 
     // Verify children's FK is now NULL
     let result = engine
-        .execute(parse("SELECT user_id FROM orders WHERE id IN (1, 2)").unwrap())
+        .execute("SELECT user_id FROM orders WHERE id IN (1, 2)")
         .unwrap();
     assert_eq!(result.rows[0][0], Value::Null);
     assert_eq!(result.rows[1][0], Value::Null);
 
     // Delete remaining parent - should CASCADE delete child
-    let result = engine.execute(parse("DELETE FROM users WHERE id = 100").unwrap());
+    let result = engine.execute("DELETE FROM users WHERE id = 100");
     assert!(
         result.is_ok(),
         "DELETE should succeed with CASCADE: {:?}",
@@ -1155,7 +1101,7 @@ fn test_fk_combined_actions() {
 
     // Verify child was deleted
     let result = engine
-        .execute(parse("SELECT * FROM orders").unwrap())
+        .execute("SELECT * FROM orders")
         .unwrap();
     // After UPDATE SET NULL, orders 1 and 2 have user_id = NULL (not 100)
     // DELETE CASCADE for user 100 only deletes orders with user_id = 100, which is none

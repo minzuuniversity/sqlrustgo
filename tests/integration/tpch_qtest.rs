@@ -13,7 +13,7 @@ fn main() {
     results.push_str("=== SF=0.1 ===\n");
 
     let mut engine = ExecutionEngine::new(Arc::new(RwLock::new(MemoryStorage::new())));
-    engine.execute(parse("CREATE TABLE lineitem (l_orderkey INTEGER, l_partkey INTEGER, l_suppkey INTEGER, l_linenumber INTEGER, l_quantity INTEGER, l_extendedprice REAL, l_discount REAL, l_tax REAL, l_returnflag TEXT, l_linestatus TEXT, l_shipdate TEXT, l_commitdate TEXT, l_receiptdate TEXT, l_shipinstruct TEXT, l_shipmode TEXT, l_comment TEXT)").unwrap()).unwrap();
+    engine.execute("CREATE TABLE lineitem (l_orderkey INTEGER, l_partkey INTEGER, l_suppkey INTEGER, l_linenumber INTEGER, l_quantity INTEGER, l_extendedprice REAL, l_discount REAL, l_tax REAL, l_returnflag TEXT, l_linestatus TEXT, l_shipdate TEXT, l_commitdate TEXT, l_receiptdate TEXT, l_shipinstruct TEXT, l_shipmode TEXT, l_comment TEXT)").unwrap();
 
     let filepath = format!("{}/lineitem.tbl", data_dir);
     if Path::new(&filepath).exists() {
@@ -27,7 +27,7 @@ fn main() {
     // Q1
     let start = std::time::Instant::now();
     let r = engine
-        .execute(parse("SELECT COUNT(*) FROM lineitem WHERE l_shipdate <= '1998-09-02'").unwrap());
+        .execute("SELECT COUNT(*) FROM lineitem WHERE l_shipdate <= '1998-09-02'");
     let elapsed = start.elapsed();
     match r {
         Ok(result) => results.push_str(&format!(
@@ -40,7 +40,7 @@ fn main() {
 
     // Q6
     let start = std::time::Instant::now();
-    let r = engine.execute(parse("SELECT COUNT(*) FROM lineitem WHERE l_shipdate >= '1994-01-01' AND l_shipdate < '1995-01-01' AND l_discount >= 0.05 AND l_discount <= 0.07 AND l_quantity < 24").unwrap());
+    let r = engine.execute("SELECT COUNT(*) FROM lineitem WHERE l_shipdate >= '1994-01-01' AND l_shipdate < '1995-01-01' AND l_discount >= 0.05 AND l_discount <= 0.07 AND l_quantity < 24");
     let elapsed = start.elapsed();
     match r {
         Ok(result) => results.push_str(&format!(
@@ -61,7 +61,7 @@ fn main() {
     results.push_str("=== SF=0.3 ===\n");
 
     let mut engine = ExecutionEngine::new(Arc::new(RwLock::new(MemoryStorage::new())));
-    engine.execute(parse("CREATE TABLE lineitem (l_orderkey INTEGER, l_partkey INTEGER, l_suppkey INTEGER, l_linenumber INTEGER, l_quantity INTEGER, l_extendedprice REAL, l_discount REAL, l_tax REAL, l_returnflag TEXT, l_linestatus TEXT, l_shipdate TEXT, l_commitdate TEXT, l_receiptdate TEXT, l_shipinstruct TEXT, l_shipmode TEXT, l_comment TEXT)").unwrap()).unwrap();
+    engine.execute("CREATE TABLE lineitem (l_orderkey INTEGER, l_partkey INTEGER, l_suppkey INTEGER, l_linenumber INTEGER, l_quantity INTEGER, l_extendedprice REAL, l_discount REAL, l_tax REAL, l_returnflag TEXT, l_linestatus TEXT, l_shipdate TEXT, l_commitdate TEXT, l_receiptdate TEXT, l_shipinstruct TEXT, l_shipmode TEXT, l_comment TEXT)").unwrap();
 
     let filepath = "data/tpch-sf03/lineitem.tbl";
     if Path::new(&filepath).exists() {
@@ -75,7 +75,7 @@ fn main() {
     // Q1
     let start = std::time::Instant::now();
     let r = engine
-        .execute(parse("SELECT COUNT(*) FROM lineitem WHERE l_shipdate <= '1998-09-02'").unwrap());
+        .execute("SELECT COUNT(*) FROM lineitem WHERE l_shipdate <= '1998-09-02'");
     let elapsed = start.elapsed();
     match r {
         Ok(result) => results.push_str(&format!(
@@ -88,7 +88,7 @@ fn main() {
 
     // Q6
     let start = std::time::Instant::now();
-    let r = engine.execute(parse("SELECT COUNT(*) FROM lineitem WHERE l_shipdate >= '1994-01-01' AND l_shipdate < '1995-01-01' AND l_discount >= 0.05 AND l_discount <= 0.07 AND l_quantity < 24").unwrap());
+    let r = engine.execute("SELECT COUNT(*) FROM lineitem WHERE l_shipdate >= '1994-01-01' AND l_shipdate < '1995-01-01' AND l_discount >= 0.05 AND l_discount <= 0.07 AND l_quantity < 24");
     let elapsed = start.elapsed();
     match r {
         Ok(result) => results.push_str(&format!(
