@@ -99,6 +99,63 @@ SQL Generator ──▶ sqlrustgo 执行 ──▶ 结果集 A
 - 每个随机 SQL 同时在 sqlrustgo 和 SQLite 上执行
 - 结果不一致时输出详细诊断信息
 
+
+### 方案 D：SQLLogicTest（SQLite 官方题库 590万用例）⭐⭐⭐⭐
+
+**核心思路：** 直接下载 SQLite 官方的 SQLLogicTest 测试套件（623 个 .test 文件，约 590 万用例），用 sqlrustgo 执行每条 SQL，对比 SQLite 的结果。
+
+**为什么是 SLT 而不是自研：**
+- **拿来即用**：DuckDB、ClickHouse、Materialize 等现代数据库均采用 SLT 作为核心测试
+- **规模碾压**：590 万用例 vs 103 个手写 SQL vs 随机生成
+- **与 sql_corpus 互补**：SLT 是「标准题库」，sql_corpus 是「针对性用例」
+- **快速建立基线**：下载 + 解压 = 30 分钟，无需手写
+
+**SLT 格式简介：**
+
+```python
+# 每个 .test 文件格式
+statement ok
+CREATE TABLE t1 (a INTEGER, b TEXT)
+
+query I
+SELECT a FROM t1 ORDER BY a
+----
+1
+2
+3
+```
+
+- `statement ok` = 期望执行成功
+- `query I` = 期望返回特定结果（`----` 分隔期望值，列数+类型用字母标记：I=INT, T=TEXT, R=REAL）
+- `halt` / `skip` = 跳过该用例
+
+**实现方案：**
+
+1. **下载 SLT 用例集**（1 人天）
+   ```bash
+   wget https://www.sqlite.org/src/tarball/sqlite.tar.gz?r=release
+   tar xzf sqlite.tar.gz
+   # test/sqllogictest/*.test 即为目标文件
+   mv sqlite/test/sqllogictest crates/sqllogictest/testdata/
+   ```
+
+2. **实现 SLT Runner**（3-5 人天）
+   - `crates/sqllogictest/` crate：解析 .test 格式
+   - 对每条 SQL 同时调用 sqlrustgo 和 SQLite 执行器
+   - 结果比较（浮点数容差支持）
+
+3. **Baseline 报告**（1 人天）
+   - 输出 `docs/releases/v3.10.0/sqllogictest-baseline/` 基线报告
+   - 记录每个 .test 文件的 pass/fail/skip 数
+
+**工作量估算：** 约 500-800 行 Rust，5-7 人天
+
+**验收标准：**
+- `crates/sqllogictest/testdata/` 包含 ≥1 个 .test 文件
+- `cargo test -p sqlrustgo-sqllogictest` 可运行
+- Beta gate B12 PASS（套件可完整执行，建立基线）
+
+
 ### 方案 B：激活 `sql_corpus` 回归测试套件 ⭐⭐⭐
 
 **核心思路：** 已有 103 个 SQL 文件，7071 行，覆盖 16 个类别，从未作为测试运行。
@@ -189,23 +246,31 @@ check "B9_ORACLE_SQLANCER" \
 | T3: sql_corpus 分类测试报告 | P1 | 0.5 人天 | HTML 报告输出到 /tmp/corpus_report/ |
 | T4: DML 生成扩展（JOIN/聚合） | P1 | 1 人天 | 支持 GROUP BY + SUM/COUNT/AVG |
 | T5: 分层测试标记系统 | P2 | 1 人天 | Cargo.toml metadata 标注完成 |
-| T6: Beta gate 集成 | P0 | 0.5 人天 | `check_beta_gate.sh` 含 B9_ORACLE_SQLANCER |
-| T7: GA gate 集成 | P1 | 0.5 人天 | `check_rc_gate_v3.10.0.sh` 含差异测试 |
+| T6: Beta gate 集成 B10/B11 | P0 | 0.5 人天 | `check_beta_gate.sh` 含 B10/B11 |
+| T7: Beta gate 集成 B12 SLT | P0 | 0.5 人天 | `check_beta_gate.sh` 含 B12 |
+| T8: SLT Runner 实现 | P0 | 3-5 人天 | `crates/sqllogictest/` 可编译 |
+| T9: SLT 用例集下载 | P0 | 1 人天 | `crates/sqllogictest/testdata/` 含 .test 文件 |
+| T10: GA gate 集成 | P1 | 0.5 人天 | `check_rc_gate_v3.10.0.sh` 含 SLT/L3 gate |
 
 ### 5.3 Beta 门禁新增检查
 
 在 `check_beta_gate.sh` 中增加：
 
 ```bash
-# B9: Oracle / Differential Testing
-check "B9_ORACLE_SQLANCER" \
+# B10: Oracle / Differential Testing (ISSUE #3372)
+check "B10_ORACLE_SQLANCER" \
     "cargo test -p sqlancer 2>/dev/null || echo 'SKIP'" \
-    true   # WARN OK — sqlancer in development
+    true   # WARN OK in Beta, FAIL at GA
 
-# B10: sql_corpus Fast Regression
-check "B10_SQL_CORPUS_FAST" \
+# B11: sql_corpus Fast Regression (ISSUE #3372)
+check "B11_SQL_CORPUS_FAST" \
     "bash scripts/test_sql_corpus.sh --fast 2>/dev/null || echo 'SKIP'" \
-    true   # WARN OK — corpus not yet integrated
+    true   # WARN OK in Beta, FAIL at GA
+
+# B12: SQLLogicTest Baseline (ISSUE #3373)
+check "B12_SQLLOGICTEST" \
+    "cargo test -p sqlrustgo-sqllogictest 2>/dev/null || echo 'SKIP'" \
+    true   # WARN OK in Beta — baseline only, not all must pass
 ```
 
 ---
