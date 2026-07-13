@@ -15,7 +15,7 @@ fn create_engine() -> ExecutionEngine {
 }
 
 fn setup_schema(engine: &mut ExecutionEngine) {
-    engine.execute(parse("CREATE TABLE lineitem (l_orderkey INTEGER, l_partkey INTEGER, l_suppkey INTEGER, l_linenumber INTEGER, l_quantity INTEGER, l_extendedprice REAL, l_discount REAL, l_tax REAL, l_returnflag TEXT, l_linestatus TEXT, l_shipdate TEXT, l_commitdate TEXT, l_receiptdate TEXT, l_shipinstruct TEXT, l_shipmode TEXT, l_comment TEXT)").unwrap()).unwrap();
+    engine.execute("CREATE TABLE lineitem (l_orderkey INTEGER, l_partkey INTEGER, l_suppkey INTEGER, l_linenumber INTEGER, l_quantity INTEGER, l_extendedprice REAL, l_discount REAL, l_tax REAL, l_returnflag TEXT, l_linestatus TEXT, l_shipdate TEXT, l_commitdate TEXT, l_receiptdate TEXT, l_shipinstruct TEXT, l_shipmode TEXT, l_comment TEXT)").unwrap();
 }
 
 fn setup_sqlrustgo_engine_sf1_lineitem() -> ExecutionEngine {
@@ -44,7 +44,7 @@ fn test_sqlrustgo_sf1_count() {
     // COUNT(*) query
     println!("\nCOUNT(*) query (SF=1, 6M rows):");
     let start = std::time::Instant::now();
-    let result = engine.execute(parse("SELECT COUNT(*) FROM lineitem").unwrap());
+    let result = engine.execute("SELECT COUNT(*) FROM lineitem");
     let elapsed = start.elapsed();
 
     match result {
@@ -69,7 +69,7 @@ fn test_sqlrustgo_sf1_sum_filtered() {
     println!("\nSUM(l_quantity) with filter (SF=1):");
     let start = std::time::Instant::now();
     let result = engine
-        .execute(parse("SELECT SUM(l_quantity) FROM lineitem WHERE l_quantity < 10").unwrap());
+        .execute("SELECT SUM(l_quantity) FROM lineitem WHERE l_quantity < 10");
     let elapsed = start.elapsed();
 
     match result {
