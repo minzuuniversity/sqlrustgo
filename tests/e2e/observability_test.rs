@@ -1,12 +1,13 @@
 #[cfg(test)]
 mod tests {
+    use parking_lot::RwLock;
     use sqlrustgo_common::metrics::{DefaultMetrics, Metrics};
     use sqlrustgo_common::metrics_aggregator::MetricsAggregator;
     use sqlrustgo_common::network_metrics::NetworkMetrics;
     use sqlrustgo_executor::ExecutorMetrics;
     use sqlrustgo_server::health::{HealthChecker, HealthReport, HealthStatus};
     use sqlrustgo_server::metrics_endpoint::MetricsRegistry;
-    use std::sync::{Arc, RwLock};
+    use std::sync::Arc;
 
     // ==================== Health Check Tests ====================
 
@@ -223,7 +224,7 @@ mod tests {
     fn test_metrics_registry_with_default_metrics() {
         let metrics: Arc<RwLock<dyn Metrics>> = Arc::new(RwLock::new(DefaultMetrics::new()));
         {
-            let mut m = metrics.write().unwrap();
+            let mut m = metrics.write();
             m.record_query("SELECT", 100);
         }
 
@@ -247,7 +248,7 @@ mod tests {
     fn test_metrics_registry_prometheus_format() {
         let metrics: Arc<RwLock<dyn Metrics>> = Arc::new(RwLock::new(DefaultMetrics::new()));
         {
-            let mut m = metrics.write().unwrap();
+            let mut m = metrics.write();
             m.record_query("SELECT", 100);
             m.record_error();
         }
@@ -292,7 +293,7 @@ mod tests {
     fn test_metrics_aggregator_prometheus_format() {
         let metrics: Arc<RwLock<dyn Metrics>> = Arc::new(RwLock::new(DefaultMetrics::new()));
         {
-            let mut m = metrics.write().unwrap();
+            let mut m = metrics.write();
             m.record_query("SELECT", 100);
         }
 
@@ -327,7 +328,7 @@ mod tests {
         let executor_metrics: Arc<RwLock<dyn Metrics>> =
             Arc::new(RwLock::new(ExecutorMetrics::new()));
         {
-            let mut m = executor_metrics.write().unwrap();
+            let mut m = executor_metrics.write();
             m.record_query("SELECT", 100);
             m.record_query("INSERT", 50);
         }
@@ -335,7 +336,7 @@ mod tests {
         let network_metrics: Arc<RwLock<dyn Metrics>> =
             Arc::new(RwLock::new(NetworkMetrics::new()));
         {
-            let mut m = network_metrics.write().unwrap();
+            let mut m = network_metrics.write();
             m.record_bytes_read(1024);
         }
 
@@ -353,14 +354,14 @@ mod tests {
     fn test_metrics_aggregation_flow() {
         let exec_metrics: Arc<RwLock<dyn Metrics>> = Arc::new(RwLock::new(ExecutorMetrics::new()));
         {
-            let mut m = exec_metrics.write().unwrap();
+            let mut m = exec_metrics.write();
             m.record_query("SELECT", 100);
             m.record_query("SELECT", 200);
         }
 
         let net_metrics: Arc<RwLock<dyn Metrics>> = Arc::new(RwLock::new(NetworkMetrics::new()));
         {
-            let mut m = net_metrics.write().unwrap();
+            let mut m = net_metrics.write();
             m.record_bytes_read(4096);
         }
 
@@ -381,7 +382,7 @@ mod tests {
         let executor_metrics: Arc<RwLock<dyn Metrics>> =
             Arc::new(RwLock::new(ExecutorMetrics::new()));
         {
-            let mut m = executor_metrics.write().unwrap();
+            let mut m = executor_metrics.write();
             for _ in 0..100 {
                 m.record_query("SELECT", 50);
             }
