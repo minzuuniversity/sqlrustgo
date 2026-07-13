@@ -2967,16 +2967,14 @@ impl Parser {
                         expression: Some(Expression::Identifier("level".to_string())),
                     });
                 }
-                Some(Token::Minus) | Some(Token::Plus) => match self.parse_expression() {
-                    Ok(expr) => {
-                        columns.push(SelectColumn {
-                            name: "_expr".to_string(),
-                            alias: None,
-                            expression: Some(expr),
-                        });
-                    }
-                    Err(e) => return Err(e),
-                },
+                Some(Token::Minus) | Some(Token::Plus) => {
+                    let expr = self.parse_expression()?;
+                    columns.push(SelectColumn {
+                        name: "_expr".to_string(),
+                        alias: None,
+                        expression: Some(expr),
+                    });
+                }
                 _ => {
                     return Err("Expected FROM or column name".to_string());
                 }
@@ -7318,11 +7316,8 @@ pub fn parse_statements(sql: &str) -> Result<Vec<Statement>, String> {
                 // End of statement
                 if !current_batch.is_empty() {
                     let mut parser = Parser::new(current_batch.clone());
-                    match parser.parse_statement() {
-                        Ok(stmt) => statements.push(stmt),
-                        Err(e) => return Err(e),
-                    }
-                    current_batch.clear();
+                    let stmt = parser.parse_statement()?;
+                    statements.push(stmt);
                 }
             }
             Token::LParen => {
@@ -7346,10 +7341,8 @@ pub fn parse_statements(sql: &str) -> Result<Vec<Statement>, String> {
     // Handle last statement without trailing semicolon
     if !current_batch.iter().all(|t| matches!(t, Token::Eof)) {
         let mut parser = Parser::new(current_batch);
-        match parser.parse_statement() {
-            Ok(stmt) => statements.push(stmt),
-            Err(e) => return Err(e),
-        }
+        let stmt = parser.parse_statement()?;
+        statements.push(stmt);
     }
 
     if statements.is_empty() {
