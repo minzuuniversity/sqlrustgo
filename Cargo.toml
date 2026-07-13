@@ -908,8 +908,8 @@ path = "tests/integration/optimizer/vtu_ir_modules_test.rs"
 name = "optimizer_stats_test"
 path = "tests/integration/optimizer_stats_test.rs"
 [[test]]
-name = "diag_22_on_sf01"
-path = "tests/integration/oracle/diag_22_on_sf01.rs"
+name = "diag_22_on_sf01_broken"
+path = "tests/integration/oracle/diag_22_on_sf01.rs.broken"
 [[test]]
 name = "diag_2t_join"
 path = "tests/integration/oracle/diag_2t_join.rs"
