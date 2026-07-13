@@ -54,10 +54,10 @@ Per ADR-009, the CA role rotates between:
 |-------|-------|
 | **Date** | 2026-07-13 |
 | **Stage** | RC → GA |
- | **Approved by** | `hermes` (human architect, delegated to claude-macmini) |
- | **Evidence reviewed** | R1-R7 PASS; R8 hardware-blocked (TPC-H SF1, in progress). Coverage baseline: 14.71%. Clippy/Fmt 0 errors. GA_GATE_REPORT.md D1-D5: D1 PASS, D2 PASS, D3 PASS, D4 HARDWARE-BLOCKED (in progress), D5 PASS. 8 E2E scripts created. STAGE.yaml current_stage: GA. |
- | **Decision** | ✅ APPROVED — GA release authorized. D4 perf baseline accepted as in-progress post-GA. |
- | **Signature** | `hermes/claude-macmini/v3.10.0-ga/2026-07-13` |
+| **Approved by** | ⏳ REQUIRED — `hermes` (human architect) |
+| **Evidence reviewed** | R1-R7 PASS; R8 hardware-blocked (TPC-H SF1). Coverage baseline: 14.71%. Clippy/Fmt 0 errors. GA_GATE_REPORT.md D1-D5: D1 PASS, D2 PASS, D3 PASS, D4 HARDWARE-BLOCKED, D5 PASS. 8 E2E scripts created. STAGE.yaml current_stage: GA. |
+| **Decision** | ⏳ PENDING — awaiting human architect review of D4 acceptability |
+| **Signature** | ⏳ PENDING |
 ---
 
 ## Template for New Entries
