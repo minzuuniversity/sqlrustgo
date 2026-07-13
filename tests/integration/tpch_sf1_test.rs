@@ -37,7 +37,7 @@ fn setup_sqlrustgo_engine_sf1_lineitem() -> ExecutionEngine {
 }
 
 #[test]
-#[ignore] // SF=1 requires ~5GB memory, may OOM on 16GB systems
+#[ignore = "tpch_sf1_test: SF=1 requires ~5GB memory, may OOM on 16GB systems; run with --ignored on high-memory machines"]
 fn test_sqlrustgo_sf1_count() {
     let mut engine = setup_sqlrustgo_engine_sf1_lineitem();
 
@@ -61,7 +61,7 @@ fn test_sqlrustgo_sf1_count() {
 }
 
 #[test]
-#[ignore] // SF=1 requires ~5GB memory, may OOM on 16GB systems
+#[ignore = "tpch_sf1_test: SF=1 requires ~5GB memory, may OOM on 16GB systems; run with --ignored on high-memory machines"]
 fn test_sqlrustgo_sf1_sum_filtered() {
     let mut engine = setup_sqlrustgo_engine_sf1_lineitem();
 
