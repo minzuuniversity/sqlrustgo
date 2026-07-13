@@ -1,4 +1,5 @@
 // Teaching Scenario Tests - Comprehensive database education scenarios
+use parking_lot::RwLock;
 use sqlrustgo::{parse, ExecutionEngine, MemoryStorage, StorageEngine};
 use sqlrustgo_executor::query_cache_config::{CacheEntry, CacheKey, QueryCacheConfig};
 use sqlrustgo_executor::{ExecutorResult, QueryCache};
@@ -12,8 +13,7 @@ use sqlrustgo_transaction::{
     TxId,
 };
 use sqlrustgo_types::Value;
-use std::sync::{Arc};
-use parking_lot::RwLock;
+use std::sync::Arc;
 use std::time::Instant;
 
 #[test]

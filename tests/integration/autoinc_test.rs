@@ -1,9 +1,9 @@
 // AUTO_INCREMENT Integration Tests (Issue #889)
 
+use parking_lot::RwLock;
 use sqlrustgo::{parse, ExecutionEngine, MemoryStorage, StorageEngine};
 use sqlrustgo_types::Value;
-use std::sync::{Arc};
-use parking_lot::RwLock;
+use std::sync::Arc;
 
 #[test]
 fn test_autoinc_parsing() {
