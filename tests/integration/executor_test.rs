@@ -1,9 +1,9 @@
 // Executor Tests - Volcano Model
+use parking_lot::RwLock;
 use sqlrustgo::{parse, ExecutionEngine, MemoryStorage, Privilege};
 use sqlrustgo_executor::ExecutorResult;
 use sqlrustgo_types::Value;
-use std::sync::{Arc};
-use parking_lot::RwLock;
+use std::sync::Arc;
 
 #[test]
 fn test_batch_insert() {
