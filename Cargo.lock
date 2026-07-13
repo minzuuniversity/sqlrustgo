@@ -4217,6 +4217,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "sqllogictest"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "lazy_static",
+ "parking_lot",
+ "regex",
+ "serde",
+ "serde_json",
+ "sqlrustgo",
+ "sqlrustgo-executor",
+ "sqlrustgo-parser",
+ "sqlrustgo-storage",
+ "sqlrustgo-types",
+ "tempfile",
+ "thiserror 1.0.69",
+ "walkdir",
+]
+
+[[package]]
 name = "sqlrustgo"
 version = "3.9.0"
 dependencies = [
