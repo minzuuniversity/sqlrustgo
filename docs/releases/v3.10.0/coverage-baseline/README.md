@@ -1,26 +1,34 @@
 # v3.10.0 Coverage Baseline
 
-Coverage baseline measurement pending. Required by RC Gate R6 (≥ 80% per crate).
+**Date**: 2026-07-13
+**Tool**: `cargo llvm-cov`
+**Scope**: `cargo llvm-cov --lib` (sqlrustgo crate only)
 
-## Generate
+## Summary
 
-```bash
-cargo llvm-cov --lib --json > docs/releases/v3.10.0/coverage-baseline/coverage.json
-```
-
-## Format
-
-Each `-lib.json` file (e.g. `sqlrustgo-lib.json`) is read by the RC gate script
-(`check_rc_gate_v3.10.0.sh §R6`) using this structure:
-
-```json
-{
-  "data": [{"summary": {"percent_covered": 82.3}}]
-}
-```
+| Metric | Value |
+|--------|-------|
+| Region Coverage | 14.71% |
+| Function Coverage | 17.92% |
+| Line Coverage | 16.28% |
+| Branch Coverage | N/A |
 
 ## Notes
 
-- Only `--lib` targets are measured (not integration tests)
-- RC requirement: ≥ 80% per crate
-- Tracking issue: V310-10
+- This baseline covers the main `sqlrustgo` crate's lib tests (29 tests, 28 run).
+- One test excluded: `test_parallel_100k_cell_match_n1_vs_n4` (soak/benchmark, >60s).
+- Sub-crates (20+): coverage not yet instrumented.
+- Target: ≥80% per crate (STAGE_CONFIG.yaml).
+- This is a starting baseline — coverage will increase as more tests are added.
+
+## Files
+
+- `summary.txt` — one-line total coverage
+- `report.txt` — per-file coverage breakdown
+- `html/` — HTML coverage report (open in browser)
+
+## Next Steps
+
+- Expand coverage to full workspace: `cargo llvm-cov --workspace --lib`
+- Add integration test coverage
+- Meet ≥80% per-crate threshold for GA
