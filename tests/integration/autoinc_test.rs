@@ -28,25 +28,22 @@ fn test_autoinc_insert() {
     let mut engine = ExecutionEngine::new(Arc::new(RwLock::new(MemoryStorage::new())));
 
     engine
-        .execute(
-            parse("CREATE TABLE orders (id INTEGER AUTO_INCREMENT PRIMARY KEY, name TEXT)")
-                .unwrap(),
-        )
+        .execute("CREATE TABLE orders (id INTEGER AUTO_INCREMENT PRIMARY KEY, name TEXT)")
         .unwrap();
 
     // Insert without specifying id
     engine
-        .execute(parse("INSERT INTO orders (name) VALUES ('first')").unwrap())
+        .execute("INSERT INTO orders (name) VALUES ('first')")
         .unwrap();
 
     // Insert another
     engine
-        .execute(parse("INSERT INTO orders (name) VALUES ('second')").unwrap())
+        .execute("INSERT INTO orders (name) VALUES ('second')")
         .unwrap();
 
     // Should have 2 rows
     let count = engine
-        .execute(parse("SELECT COUNT(*) FROM orders").unwrap())
+        .execute("SELECT COUNT(*) FROM orders")
         .unwrap();
     assert_eq!(count.rows[0][0], Value::Integer(2));
 
@@ -59,24 +56,22 @@ fn test_autoinc_with_explicit_id() {
     let mut engine = ExecutionEngine::new(Arc::new(RwLock::new(MemoryStorage::new())));
 
     engine
-        .execute(
-            parse("CREATE TABLE items (id INTEGER AUTO_INCREMENT PRIMARY KEY, name TEXT)").unwrap(),
-        )
+        .execute("CREATE TABLE items (id INTEGER AUTO_INCREMENT PRIMARY KEY, name TEXT)")
         .unwrap();
 
     // Insert with explicit id
     engine
-        .execute(parse("INSERT INTO items VALUES (100, 'explicit')").unwrap())
+        .execute("INSERT INTO items VALUES (100, 'explicit')")
         .unwrap();
 
     // Insert without id (should get next auto value)
     engine
-        .execute(parse("INSERT INTO items (name) VALUES ('auto')").unwrap())
+        .execute("INSERT INTO items (name) VALUES ('auto')")
         .unwrap();
 
     // Should have 2 rows
     let count = engine
-        .execute(parse("SELECT COUNT(*) FROM items").unwrap())
+        .execute("SELECT COUNT(*) FROM items")
         .unwrap();
     assert_eq!(count.rows[0][0], Value::Integer(2));
 
