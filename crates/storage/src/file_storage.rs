@@ -2499,7 +2499,7 @@ impl FileStorage {
     /// of truth on startup, so we never end up with both persisted rows
     /// and replayed rows for the same entries.
     pub fn clear_all_tables(&mut self) {
-        for (_name, data) in self.tables.iter_mut() {
+        for data in self.tables.values_mut() {
             data.rows.clear();
         }
         self.insert_buffer.clear();
