@@ -10,6 +10,7 @@
 //! 由于完整 MVCC time-travel 在 in-process 难以模拟, 这里采用
 //! 基线一致的逻辑 oracle: 验证查询行为与 ground-truth 计算结果一致.
 
+#[path = "../../common/mod.rs"]
 mod common;
 
 use parking_lot::RwLock;

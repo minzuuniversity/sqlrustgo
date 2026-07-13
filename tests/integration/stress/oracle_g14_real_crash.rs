@@ -13,6 +13,7 @@
 //! 由于真实 crash 难以在 oracle 中模拟, 这里采用 in-process oracle:
 //!   验证在正常路径下, 8 种场景对应的 ground-truth 数据完整性
 
+#[path = "../../common/mod.rs"]
 mod common;
 
 use parking_lot::RwLock;

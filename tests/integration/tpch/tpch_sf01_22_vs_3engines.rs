@@ -5,6 +5,7 @@
 //! Migration: in-process `ExecutionEngine` + `MemoryStorage` + `load_tbl`
 //! replaced with wire protocol via `start_sf01()` + `client.query_rows()`.
 
+#[path = "../../common/mod.rs"]
 mod common;
 use common::tpch_wire_harness::start_sf01;
 use std::collections::HashSet;

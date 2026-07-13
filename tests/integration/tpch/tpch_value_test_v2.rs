@@ -46,6 +46,7 @@
 //! Migrated from in-process `ExecutionEngine` to wire protocol
 //! `MySqlTestClient` via `common::tpch_wire_harness`.
 
+#[path = "../../common/mod.rs"]
 mod common;
 use common::tpch_wire_harness::{
     compare_cells, read_baseline, run_query_timed, start_sf001, SF001_DIR,

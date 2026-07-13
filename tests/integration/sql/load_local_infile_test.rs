@@ -8,6 +8,7 @@
 //! Each loading test uses a unique table name so the tests are safe to
 //! run in parallel.
 
+#[path = "../../common/mod.rs"]
 mod common;
 
 use common::MySqlTestClient;

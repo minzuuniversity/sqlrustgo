@@ -3,6 +3,7 @@
 //! 验证从 v3.8 数据文件 upgrade 到 v3.9 后, 数据完整性保留.
 //! Oracle: 升级前后 row count + sum of key column 必须一致.
 
+#[path = "../../common/mod.rs"]
 mod common;
 
 use parking_lot::RwLock;

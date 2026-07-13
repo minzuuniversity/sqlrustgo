@@ -12,6 +12,7 @@
 //! test is independent: it creates its own ephemeral data dir
 //! via a fresh server spawn.
 
+#[path = "../common/mod.rs"]
 mod common;
 
 use common::MySqlTestClient;

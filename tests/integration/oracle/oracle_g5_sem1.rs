@@ -7,6 +7,7 @@
 //! - Bug A: ROLLBACK TO SAVEPOINT 不实际回滚, 仍保留 insert 数据 (#3474 跟踪)
 //! - Bug B: parser 对 lowercase savepoint name 解析失败 ("outer" 被识别为 keyword)
 
+#[path = "../../common/mod.rs"]
 mod common;
 
 use parking_lot::RwLock;
