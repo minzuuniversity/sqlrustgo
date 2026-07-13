@@ -3,6 +3,7 @@
 //! 验证 14+ Expression variants 各自产生 oracle-correct 结果.
 //! Oracle: 每个 expression variant 用 ground-truth computation 验证.
 
+#[path = "../../common/mod.rs"]
 mod common;
 
 use parking_lot::RwLock;

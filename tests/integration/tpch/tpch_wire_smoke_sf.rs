@@ -44,6 +44,7 @@
 //! - Issue #2953
 //! - TPC-H spec: http://www.tpc.org/tpch/
 
+#[path = "../../common/mod.rs"]
 mod common;
 
 use common::MySqlTestClient;

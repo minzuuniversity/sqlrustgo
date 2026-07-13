@@ -2,6 +2,7 @@
 //!
 //! Run with: cargo test --test stmt_execute_repro -- --nocapture
 
+#[path = "../../common/mod.rs"]
 mod common;
 
 use common::MySqlTestClient;

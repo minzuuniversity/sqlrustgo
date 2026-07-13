@@ -1,3 +1,4 @@
+#[path = "../../common/mod.rs"]
 mod common;
 use common::MySqlTestClient;
 use sqlrustgo_mysql_server::testing::{start_ephemeral, EphemeralConfig};
