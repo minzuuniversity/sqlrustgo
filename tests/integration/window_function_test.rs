@@ -8,9 +8,10 @@
 // 1. Window function SQL parsing works correctly
 // 2. Basic database operations work
 
+use parking_lot::RwLock;
 use sqlrustgo::{parse, ExecutionEngine, MemoryStorage};
 use sqlrustgo_types::Value;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 
 /// Helper to test window function parsing
 fn test_window_parse(sql: &str) {
@@ -168,14 +169,14 @@ fn test_basic_table_operations() {
     // Test basic CREATE and INSERT works
     let mut engine = ExecutionEngine::new(Arc::new(RwLock::new(MemoryStorage::new())));
     engine
-        .execute(parse("CREATE TABLE test (id INTEGER)").unwrap())
+        .execute("CREATE TABLE test (id INTEGER)")
         .unwrap();
     engine
-        .execute(parse("INSERT INTO test VALUES (1), (2), (3)").unwrap())
+        .execute("INSERT INTO test VALUES (1), (2), (3)")
         .unwrap();
 
     let result = engine
-        .execute(parse("SELECT * FROM test").unwrap())
+        .execute("SELECT * FROM test")
         .unwrap();
     assert_eq!(result.rows.len(), 3);
 }

@@ -210,7 +210,7 @@ impl GapLockManager {
         }
 
         // No conflict - acquire the lock
-        let table_locks = locks.entry(table.to_string()).or_insert_with(Vec::new);
+        let table_locks = locks.entry(table.to_string()).or_default();
 
         let new_lock = GapLock::new(
             tx_id,

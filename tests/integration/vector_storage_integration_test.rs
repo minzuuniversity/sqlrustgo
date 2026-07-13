@@ -82,8 +82,7 @@ fn test_t1_hnsw_basic_write_read() {
     test_basic_write_read(VectorIndexType::Hnsw);
 }
 
-#[test]
-#[ignore] // IVF requires build_index() not yet exposed via VectorStore
+#[ignore = "vector_storage: IVF requires build_index() not yet exposed via VectorStore API"]
 fn test_t1_ivf_basic_write_read() {
     test_basic_write_read(VectorIndexType::Ivf);
 }
@@ -152,8 +151,7 @@ fn test_t2_hnsw_serialization_roundtrip() {
     test_serialization_roundtrip(VectorIndexType::Hnsw);
 }
 
-#[test]
-#[ignore]
+#[ignore = "vector_storage: IVF requires build_index() not yet exposed via VectorStore API"]
 fn test_t2_ivf_serialization_roundtrip() {
     test_serialization_roundtrip(VectorIndexType::Ivf);
 }

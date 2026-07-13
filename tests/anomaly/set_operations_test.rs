@@ -5,9 +5,10 @@
 
 #[cfg(test)]
 mod tests {
+    use parking_lot::RwLock;
     use sqlrustgo::{parse, ExecutionEngine, MemoryStorage, StorageEngine};
     use sqlrustgo_types::Value;
-    use std::sync::{Arc, RwLock};
+    use std::sync::Arc;
 
     fn create_test_tables() -> MemoryStorage {
         let mut storage = MemoryStorage::new();
@@ -18,11 +19,13 @@ mod tests {
                 name: "id".to_string(),
                 data_type: "INTEGER".to_string(),
                 nullable: false,
-                is_unique: false,
-                is_primary_key: false,
-                auto_increment: false,
-                references: None,
+                primary_key: false,
+                char_max_length: None,
             }],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
         };
 
         storage.create_table(&info).ok();
@@ -42,11 +45,13 @@ mod tests {
                 name: "id".to_string(),
                 data_type: "INTEGER".to_string(),
                 nullable: false,
-                is_unique: false,
-                is_primary_key: false,
-                auto_increment: false,
-                references: None,
+                primary_key: false,
+                char_max_length: None,
             }],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
         };
 
         storage.create_table(&info).ok();
@@ -69,7 +74,7 @@ mod tests {
         let mut engine = ExecutionEngine::new(Arc::new(RwLock::new(storage)));
 
         let result =
-            engine.execute(parse("SELECT id FROM table_a UNION SELECT id FROM table_b").unwrap());
+            engine.execute("SELECT id FROM table_a UNION SELECT id FROM table_b");
 
         assert!(result.is_ok(), "UNION should execute without error");
     }
@@ -80,7 +85,7 @@ mod tests {
         let mut engine = ExecutionEngine::new(Arc::new(RwLock::new(storage)));
 
         let result = engine
-            .execute(parse("SELECT id FROM table_a UNION ALL SELECT id FROM table_b").unwrap());
+            .execute("SELECT id FROM table_a UNION ALL SELECT id FROM table_b");
 
         assert!(result.is_ok(), "UNION ALL should execute without error");
     }
@@ -90,9 +95,7 @@ mod tests {
         let storage = create_test_tables();
         let mut engine = ExecutionEngine::new(Arc::new(RwLock::new(storage)));
 
-        let result = engine.execute(
-            parse("SELECT id FROM table_a UNION SELECT id FROM table_b ORDER BY id DESC").unwrap(),
-        );
+        let result = engine.execute("SELECT id FROM table_a UNION SELECT id FROM table_b ORDER BY id DESC");
 
         assert!(result.is_ok(), "UNION with ORDER BY should work");
     }
@@ -103,7 +106,7 @@ mod tests {
         let mut engine = ExecutionEngine::new(Arc::new(RwLock::new(storage)));
 
         let result = engine
-            .execute(parse("SELECT id FROM table_a UNION SELECT id FROM table_b LIMIT 3").unwrap());
+            .execute("SELECT id FROM table_a UNION SELECT id FROM table_b LIMIT 3");
 
         assert!(result.is_ok(), "UNION with LIMIT should work");
     }
@@ -118,11 +121,13 @@ mod tests {
                 name: "num".to_string(),
                 data_type: "INTEGER".to_string(),
                 nullable: false,
-                is_unique: false,
-                is_primary_key: false,
-                auto_increment: false,
-                references: None,
+                primary_key: false,
+                char_max_length: None,
             }],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
         };
         storage.create_table(&info).ok();
         storage
@@ -135,7 +140,7 @@ mod tests {
         let mut engine = ExecutionEngine::new(Arc::new(RwLock::new(storage)));
 
         let result =
-            engine.execute(parse("SELECT num FROM numbers UNION SELECT num FROM numbers").unwrap());
+            engine.execute("SELECT num FROM numbers UNION SELECT num FROM numbers");
 
         assert!(result.is_ok());
     }
@@ -146,7 +151,7 @@ mod tests {
         let mut engine = ExecutionEngine::new(Arc::new(RwLock::new(storage)));
 
         let result = engine
-            .execute(parse("SELECT id FROM table_a INTERSECT SELECT id FROM table_b").unwrap());
+            .execute("SELECT id FROM table_a INTERSECT SELECT id FROM table_b");
 
         assert!(result.is_ok() || result.is_err());
     }
@@ -157,7 +162,7 @@ mod tests {
         let mut engine = ExecutionEngine::new(Arc::new(RwLock::new(storage)));
 
         let result =
-            engine.execute(parse("SELECT id FROM table_a EXCEPT SELECT id FROM table_b").unwrap());
+            engine.execute("SELECT id FROM table_a EXCEPT SELECT id FROM table_b");
 
         assert!(result.is_ok() || result.is_err());
     }
@@ -173,11 +178,13 @@ mod tests {
                     name: "val".to_string(),
                     data_type: "INTEGER".to_string(),
                     nullable: false,
-                    is_unique: false,
-                    is_primary_key: false,
-                    auto_increment: false,
-                    references: None,
+                    primary_key: false,
+                    char_max_length: None,
                 }],
+                foreign_keys: vec![],
+                unique_constraints: vec![],
+                check_constraints: vec![],
+                partition_info: None,
             };
             storage.create_table(&info).ok();
             let table_name = format!("t{}", i);
@@ -188,7 +195,7 @@ mod tests {
 
         let mut engine = ExecutionEngine::new(Arc::new(RwLock::new(storage)));
 
-        let result = engine.execute(parse("SELECT val FROM t1 UNION SELECT val FROM t2").unwrap());
+        let result = engine.execute("SELECT val FROM t1 UNION SELECT val FROM t2");
 
         assert!(result.is_ok());
     }

@@ -45,10 +45,11 @@
 //! - [x] No new Cargo deps
 //! - [x] No new public APIs
 
+use parking_lot::RwLock;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -103,7 +104,7 @@ fn int3_spec_sha1_stability_100_iterations() {
 
     // Pre-load TPC-H schema with fixed seed data.
     {
-        let mut eng = engine.write().unwrap();
+        let mut eng = engine.write();
         for stmt in TPC_H_SCHEMA {
             let _ = eng.execute(stmt);
         }
@@ -117,14 +118,14 @@ fn int3_spec_sha1_stability_100_iterations() {
 
     // First iteration: capture the SHA-1.
     let baseline = {
-        let mut eng = engine.write().unwrap();
+        let mut eng = engine.write();
         let result = eng.execute(TPC_H_Q1).expect("first Q1 run");
         compute_result_sha1(&result.rows)
     };
 
     // 99 more iterations — all must produce the same SHA-1.
     for iter in 1..100 {
-        let mut eng = engine.write().unwrap();
+        let mut eng = engine.write();
         let result = eng.execute(TPC_H_Q1).expect("Q1 run");
         let current = compute_result_sha1(&result.rows);
         assert_eq!(
@@ -154,7 +155,7 @@ fn int3_spec_wal_append_stress_concurrent() {
     let engine = Arc::new(RwLock::new(ExecutionEngine::new(storage)));
 
     {
-        let mut eng = engine.write().unwrap();
+        let mut eng = engine.write();
         eng.execute("CREATE TABLE wal_stress (id INTEGER PRIMARY KEY, tid INTEGER NOT NULL, payload TEXT NOT NULL)")
             .expect("CREATE");
     }
@@ -169,7 +170,7 @@ fn int3_spec_wal_append_stress_concurrent() {
                 if stop.load(Ordering::Relaxed) {
                     return;
                 }
-                let mut eng = engine_t.write().unwrap();
+                let mut eng = engine_t.write();
                 let id = tid * ROWS_PER_THREAD + i + 1;
                 let _ = eng.execute(&format!(
                     "INSERT INTO wal_stress VALUES ({}, {}, 't{}-r{}')",
@@ -186,7 +187,7 @@ fn int3_spec_wal_append_stress_concurrent() {
     // Verify exact row count: no lost writes, no duplicates.
     // The result of COUNT(*) is rendered as `Integer(N)` by the
     // engine's Debug formatting, so we extract the digits.
-    let mut eng = engine.write().unwrap();
+    let mut eng = engine.write();
     let result = eng
         .execute("SELECT COUNT(*) FROM wal_stress")
         .expect("COUNT");
@@ -265,6 +266,8 @@ fn int3_spec_crash_recovery_under_5s() {
                         name: "id".to_string(),
                         data_type: "INTEGER".to_string(),
                         nullable: false,
+                        primary_key: false,
+                        char_max_length: None,
                         primary_key: true,
                         char_max_length: None,
                     },
@@ -272,6 +275,8 @@ fn int3_spec_crash_recovery_under_5s() {
                         name: "payload".to_string(),
                         data_type: "TEXT".to_string(),
                         nullable: false,
+                        primary_key: false,
+                        char_max_length: None,
                         primary_key: false,
                         char_max_length: None,
                     },
@@ -372,7 +377,7 @@ fn int3_spec_full_mixed_scenario() {
 
     // Pre-load schema
     {
-        let mut eng = engine.write().unwrap();
+        let mut eng = engine.write();
         for stmt in TPC_H_SCHEMA {
             let _ = eng.execute(stmt);
         }
@@ -395,7 +400,7 @@ fn int3_spec_full_mixed_scenario() {
         let runs = Arc::clone(&tpc_h_runs);
         handles.push(thread::spawn(move || {
             while !stop_t.load(Ordering::Relaxed) {
-                let mut eng = engine_t.write().unwrap();
+                let mut eng = engine_t.write();
                 if eng.execute(TPC_H_Q1).is_ok() {
                     runs.fetch_add(1, Ordering::Relaxed);
                 }
@@ -417,7 +422,7 @@ fn int3_spec_full_mixed_scenario() {
                     format!("SELECT * FROM mixed_ddl_{} ORDER BY id", counter),
                     format!("DROP TABLE mixed_ddl_{}", counter),
                 ];
-                let mut eng = engine_t.write().unwrap();
+                let mut eng = engine_t.write();
                 for op in &ops {
                     let _ = eng.execute(op);
                 }
@@ -435,7 +440,7 @@ fn int3_spec_full_mixed_scenario() {
         handles.push(thread::spawn(move || {
             let mut next_id = 1u64;
             while !stop_t.load(Ordering::Relaxed) {
-                let mut eng = engine_t.write().unwrap();
+                let mut eng = engine_t.write();
                 let _ = eng.execute(&format!(
                     "INSERT INTO mixed_wal VALUES ({}, 'mixed-{}')",
                     next_id, next_id

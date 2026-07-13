@@ -5,8 +5,9 @@
 
 #[cfg(test)]
 mod tests {
+    use parking_lot::RwLock;
     use sqlrustgo_transaction::{IsolationLevel, MvccEngine, TransactionManager, TxId};
-    use std::sync::{Arc, RwLock};
+    use std::sync::Arc;
     use std::thread;
     use std::time::Duration;
 
@@ -60,7 +61,7 @@ mod tests {
             create_manager_with_isolation(mvcc.clone(), IsolationLevel::ReadCommitted);
         let tx1 = manager1.begin().unwrap();
         {
-            let mut mvcc_guard = mvcc.write().unwrap();
+            let mut mvcc_guard = mvcc.write();
             mvcc_guard.commit_transaction(tx1).unwrap();
         }
 
