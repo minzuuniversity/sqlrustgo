@@ -23,7 +23,7 @@ check_version_history_current() {
     local vh_current
     vh_current=$(grep '^> \*\*当前版本' docs/releases/VERSION_HISTORY.md 2>/dev/null | \
         sed -E 's/.*v([0-9]+\.[0-9]+\.[0-9]+).*/\1/' | head -1 || true)
-    local latest_ga_tag="3.7.0"
+    local latest_ga_tag="3.9.0"
     if [[ "$vh_current" == "$latest_ga_tag" ]]; then
         log_pass "VERSION_HISTORY.md current: v$vh_current"
     else
@@ -78,7 +78,7 @@ check_docs_index_version_listing() {
     log_info "CHECK 5: docs/README.md version listing..."
     local first_version
     first_version=$(grep '### v' docs/README.md | head -1 | sed -E 's/.*### v([0-9]+\.[0-9]+\.[0-9]+).*/\1/' || true)
-    local latest_ga_tag="3.7.0"
+    local latest_ga_tag="3.9.0"
 
     if [[ -z "$first_version" ]]; then
         log_warn "Cannot determine first version in docs/README.md"
