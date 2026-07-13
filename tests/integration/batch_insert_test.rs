@@ -42,7 +42,7 @@ fn test_batch_insert_performance_100_rows() {
     let sql = format!("INSERT INTO t (v) VALUES {}", values);
 
     let start = Instant::now();
-    let result = engine.execute(parse(&sql).unwrap()).unwrap();
+    let result = engine.execute(&sql).unwrap();
     let elapsed = start.elapsed();
 
     assert_eq!(result.affected_rows, 100);
@@ -67,7 +67,7 @@ fn test_batch_insert_performance_1000_rows() {
     let sql = format!("INSERT INTO t (v) VALUES {}", values);
 
     let start = Instant::now();
-    let result = engine.execute(parse(&sql).unwrap()).unwrap();
+    let result = engine.execute(&sql).unwrap();
     let elapsed = start.elapsed();
 
     assert_eq!(result.affected_rows, 1000);
@@ -101,7 +101,7 @@ fn test_concurrent_batch_insert_no_deadlock() {
             values.push_str(&format!("({}, 'v{}')", i, i));
         }
         let sql = format!("INSERT INTO t VALUES {}", values);
-        engine.execute(parse(&sql).unwrap())
+        engine.execute(&sql)
     });
 
     // Thread 2: Insert rows 11-20
@@ -115,7 +115,7 @@ fn test_concurrent_batch_insert_no_deadlock() {
             values.push_str(&format!("({}, 'v{}')", i, i));
         }
         let sql = format!("INSERT INTO t VALUES {}", values);
-        engine.execute(parse(&sql).unwrap())
+        engine.execute(&sql)
     });
 
     // Thread 3: Insert rows 21-30
@@ -129,7 +129,7 @@ fn test_concurrent_batch_insert_no_deadlock() {
             values.push_str(&format!("({}, 'v{}')", i, i));
         }
         let sql = format!("INSERT INTO t VALUES {}", values);
-        engine.execute(parse(&sql).unwrap())
+        engine.execute(&sql)
     });
 
     let r1 = handle1.join().unwrap();
