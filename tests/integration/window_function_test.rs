@@ -8,10 +8,10 @@
 // 1. Window function SQL parsing works correctly
 // 2. Basic database operations work
 
+use parking_lot::RwLock;
 use sqlrustgo::{parse, ExecutionEngine, MemoryStorage};
 use sqlrustgo_types::Value;
-use std::sync::{Arc};
-use parking_lot::RwLock;
+use std::sync::Arc;
 
 /// Helper to test window function parsing
 fn test_window_parse(sql: &str) {

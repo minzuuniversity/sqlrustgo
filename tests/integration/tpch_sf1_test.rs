@@ -3,10 +3,10 @@
 //!
 //! NOTE: SF=1 requires ~5GB memory. Only run on machines with 16GB+ RAM.
 
+use parking_lot::RwLock;
 use sqlrustgo::{parse, ExecutionEngine, MemoryStorage};
 use std::path::Path;
-use std::sync::{Arc};
-use parking_lot::RwLock;
+use std::sync::Arc;
 
 const TPCK_DATA_DIR: &str = "data/tpch-sf1";
 

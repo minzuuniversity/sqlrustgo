@@ -131,11 +131,11 @@ impl<S: StorageEngine> PipelineExecutor<S> {
                     if predicate(&row) {
                         batch.push(row);
                         if batch.len() >= batch_size {
-                            results.extend(batch.drain(..));
+                            results.append(&mut batch);
                         }
                     }
                 }
-                results.extend(batch);
+                results.append(&mut batch);
                 results
             })
             .collect();
@@ -172,10 +172,10 @@ impl<S: StorageEngine> PipelineExecutor<S> {
     /// 2-8 threads depending on scale. Leaves headroom on 28-core machines.
     pub fn adaptive_parallelism(rows: usize) -> usize {
         match rows {
-            r if r < 500_000 => 1,     // Not worth parallelizing
-            r if r < 2_000_000 => 2,   // Small: 2 threads
-            r if r < 5_000_000 => 4,   // Medium: 4 threads
-            _ => 8,                    // Large: 8 threads (20 cores left for OS)
+            r if r < 500_000 => 1,   // Not worth parallelizing
+            r if r < 2_000_000 => 2, // Small: 2 threads
+            r if r < 5_000_000 => 4, // Medium: 4 threads
+            _ => 8,                  // Large: 8 threads (20 cores left for OS)
         }
     }
 
