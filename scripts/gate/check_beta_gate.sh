@@ -333,8 +333,91 @@ else
 fi
 
 # ===========================================================================
-# Final summary
+# 9. Oracle / Differential Testing (ISSUE #3373 / #3372)
+#
+# SQLLogicTest (#3373) is the P0 priority: 590万 SQLite 官方用例基线。
+# SQLancer (#3372) is P1: deferred until #3373 establishes whether
+# differential testing is needed beyond the SLT corpus.
+# B10 checks only for the SLT runner existence (DEFERRED from #3372).
 # ===========================================================================
+echo ""
+echo "--- B10: Oracle / Differential Testing (#3373 SLT priority, #3372 deferred) ---"
+# Phase 1: check for sqllogictest runner (ISSUE #3373 P0)
+if [ -d "$REPO_ROOT/crates/sqllogictest/src" ]; then
+    check_pass "B10_SQLLOGICTEST_CRATE" "crates/sqllogictest/ exists (ISSUE #3373)"
+    # Check if testdata has at least one .test file
+    TEST_FILE_COUNT=$(find "$REPO_ROOT/crates/sqllogictest/testdata" -name "*.test" 2>/dev/null | wc -l | tr -d ' ')
+    if [ "$TEST_FILE_COUNT" -gt 0 ]; then
+        check_pass "B10_SQLLOGICTEST_TESTDATA" "$TEST_FILE_COUNT .test files (ISSUE #3373)"
+    else
+        check_warn "B10_SQLLOGICTEST_TESTDATA" "no .test files yet (ISSUE #3373 Phase 2)"
+    fi
+    # Try cargo build
+    if bash -c "cd '$REPO_ROOT' && cargo build -p sqlrustgo-sqllogictest 2>/dev/null" >/dev/null 2>&1; then
+        check_pass "B10_SQLLOGICTEST_BUILD" "cargo build -p sqllogictest succeeds"
+    else
+        check_warn "B10_SQLLOGICTEST_BUILD" "cargo build -p sqllogictest not yet passing"
+    fi
+else
+    check_warn "B10_SQLLOGICTEST_CRATE" "crates/sqllogictest/ not found (ISSUE #3373 P0, defer SQLancer #3372)"
+    check_warn "B10_SQLANCER" "sqlancer (#3372) DEFERRED: SLT (#3373) is P0, establishes oracle baseline first"
+fi
+
+# ===========================================================================
+# 10. sql_corpus Regression Suite (ISSUE #3274)
+# ===========================================================================
+echo ""
+echo "--- B11: sql_corpus Regression Suite (ISSUE #3372) ---"
+CORPUS_DIR="$REPO_ROOT/sql_corpus"
+if [ -d "$CORPUS_DIR" ]; then
+    CORPUS_COUNT=$(find "$CORPUS_DIR" -name "*.sql" 2>/dev/null | wc -l | tr -d ' ')
+    check_pass "B11_SQL_CORPUS_EXISTS" "$CORPUS_COUNT SQL files in sql_corpus/"
+    # Check if corpus tests script exists
+    if [ -x "$REPO_ROOT/scripts/test_sql_corpus.sh" ]; then
+        # Fast run: DDL only
+        if bash "$REPO_ROOT/scripts/test_sql_corpus.sh" --fast 2>/dev/null >/dev/null 2>&1; then
+            check_pass "B11_SQL_CORPUS_FAST" "scripts/test_sql_corpus.sh --fast passes"
+        else
+            check_warn "B11_SQL_CORPUS_FAST" "scripts/test_sql_corpus.sh --fast not yet passing"
+        fi
+    else
+        check_warn "B11_SQL_CORPUS_SCRIPT" "scripts/test_sql_corpus.sh not yet created (ISSUE #3372)"
+    fi
+else
+    check_fail "B11_SQL_CORPUS" "sql_corpus/ directory not found"
+fi
+# ===========================================================================
+# 11. SQLLogicTest Baseline (ISSUE #3373)
+# ===========================================================================
+echo ""
+echo "--- B12: SQLLogicTest Baseline (ISSUE #3373) ---"
+SLT_DIR="$REPO_ROOT/crates/sqlrustgo_sqllogictest"
+SLT_BIN="$REPO_ROOT/target/debug/sqlrustgo-sqllogictest"
+if [ -d "$SLT_DIR" ]; then
+    SLT_TEST_COUNT=$(find "$SLT_DIR" -name "*.test" 2>/dev/null | wc -l | tr -d ' ')
+    if [ "$SLT_TEST_COUNT" -gt 0 ]; then
+        check_pass "B12_SLT_TEST_FILES" "$SLT_TEST_COUNT .test files in crates/sqlrustgo_sqllogictest/"
+    else
+        check_warn "B12_SLT_TEST_FILES" "no .test files found in crates/sqlrustgo_sqllogictest/ (populate from SQLite SLT)"
+    fi
+    # Check if the SLT runner binary is built
+    if [ -x "$SLT_BIN" ]; then
+        check_pass "B12_SLT_BIN" "sqllogictest binary built"
+    else
+        check_warn "B12_SLT_BIN" "sqlrustgo-sqllogictest binary not built (cargo build -p sqlrustgo_sqllogictest)"
+    fi
+    # Check if SLT can at least enumerate/discover tests
+    if [ -x "$SLT_BIN" ] && "$SLT_BIN" --help 2>/dev/null | grep -q "sqllogictest"; then
+        check_pass "B12_SLT_RUNNER" "sqllogictest runner is functional"
+    else
+        check_warn "B12_SLT_RUNNER" "sqllogictest runner not yet functional (ISSUE #3373)"
+    fi
+else
+    check_warn "B12_SLT_CRATE" "crates/sqlrustgo_sqllogictest/ not found (ISSUE #3373)"
+fi
+
+# ===========================================================================
+# Final summary
 if $JSON_OUTPUT; then
     print_json
 else

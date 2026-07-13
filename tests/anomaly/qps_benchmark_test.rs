@@ -24,21 +24,21 @@ mod tests {
                     name: "id".to_string(),
                     data_type: "INTEGER".to_string(),
                     nullable: false,
-                    is_unique: true,
-                    is_primary_key: false,
-                    auto_increment: false,
-                    references: None,
+                    primary_key: false,
+                    char_max_length: None,
                 },
                 ColumnDefinition {
                     name: "data".to_string(),
                     data_type: "VARCHAR".to_string(),
                     nullable: true,
-                    is_unique: false,
-                    is_primary_key: false,
-                    auto_increment: false,
-                    references: None,
+                    primary_key: false,
+                    char_max_length: None,
                 },
             ],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
         }
     }
 
@@ -136,11 +136,13 @@ mod tests {
                 name: "id".to_string(),
                 data_type: "INTEGER".to_string(),
                 nullable: false,
-                is_unique: true,
-                is_primary_key: false,
-                auto_increment: false,
-                references: None,
+                primary_key: false,
+                char_max_length: None,
             }],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
         };
 
         storage.lock().unwrap().create_table(&info).unwrap();
@@ -424,11 +426,13 @@ mod tests {
                     name: "id".to_string(),
                     data_type: "INTEGER".to_string(),
                     nullable: false,
-                    is_unique: true,
-                    is_primary_key: false,
-                    auto_increment: false,
-                    references: None,
+                    primary_key: false,
+                    char_max_length: None,
                 }],
+                foreign_keys: vec![],
+                unique_constraints: vec![],
+                check_constraints: vec![],
+                partition_info: None,
             };
             storage.lock().unwrap().create_table(&info).unwrap();
         }

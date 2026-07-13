@@ -15,7 +15,7 @@ fn test_storage_insert_path() {
 
     // Direct insert via storage
     {
-        let mut s = storage.write().unwrap();
+        let mut s = storage.write();
         s.insert(
             "t",
             vec![

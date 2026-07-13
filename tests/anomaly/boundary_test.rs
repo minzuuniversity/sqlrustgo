@@ -19,11 +19,16 @@ mod tests {
                 name: "id".to_string(),
                 data_type: "INTEGER".to_string(),
                 nullable: false,
-                is_unique: true,
-                is_primary_key: false,
-                auto_increment: false,
-                references: None,
+                primary_key: false,
+                char_max_length: None,
+                primary_key: false,
+                ..Default::default()
             }],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
+            ..Default::default()
         };
 
         storage.create_table(&info).unwrap();
@@ -43,11 +48,16 @@ mod tests {
                 name: "col".to_string(),
                 data_type: "INTEGER".to_string(),
                 nullable: true,
-                is_unique: false,
-                is_primary_key: false,
-                auto_increment: false,
-                references: None,
+                primary_key: false,
+                char_max_length: None,
+                primary_key: false,
+                ..Default::default()
             }],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
+            ..Default::default()
         };
 
         storage.create_table(&info).unwrap();
@@ -72,11 +82,16 @@ mod tests {
                 name: "val".to_string(),
                 data_type: "INTEGER".to_string(),
                 nullable: false,
-                is_unique: false,
-                is_primary_key: false,
-                auto_increment: false,
-                references: None,
+                primary_key: false,
+                char_max_length: None,
+                primary_key: false,
+                ..Default::default()
             }],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
+            ..Default::default()
         };
 
         storage.create_table(&info).unwrap();
@@ -103,11 +118,16 @@ mod tests {
                 name: "text".to_string(),
                 data_type: "VARCHAR".to_string(),
                 nullable: false,
-                is_unique: false,
-                is_primary_key: false,
-                auto_increment: false,
-                references: None,
+                primary_key: false,
+                char_max_length: None,
+                primary_key: false,
+                ..Default::default()
             }],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
+            ..Default::default()
         };
 
         storage.create_table(&info).unwrap();
@@ -132,11 +152,16 @@ mod tests {
                 name: "val".to_string(),
                 data_type: "INTEGER".to_string(),
                 nullable: false,
-                is_unique: false,
-                is_primary_key: false,
-                auto_increment: false,
-                references: None,
+                primary_key: false,
+                char_max_length: None,
+                primary_key: false,
+                ..Default::default()
             }],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
+            ..Default::default()
         };
 
         storage.create_table(&info).unwrap();
@@ -160,11 +185,16 @@ mod tests {
                 name: "val".to_string(),
                 data_type: "INTEGER".to_string(),
                 nullable: false,
-                is_unique: false,
-                is_primary_key: false,
-                auto_increment: false,
-                references: None,
+                primary_key: false,
+                char_max_length: None,
+                primary_key: false,
+                ..Default::default()
             }],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
+            ..Default::default()
         };
 
         storage.create_table(&info).unwrap();
@@ -190,11 +220,16 @@ mod tests {
                 name: "val".to_string(),
                 data_type: "FLOAT".to_string(),
                 nullable: false,
-                is_unique: false,
-                is_primary_key: false,
-                auto_increment: false,
-                references: None,
+                primary_key: false,
+                char_max_length: None,
+                primary_key: false,
+                ..Default::default()
             }],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
+            ..Default::default()
         };
 
         storage.create_table(&info).unwrap();
@@ -220,16 +255,17 @@ mod tests {
                 name: format!("col{}", i),
                 data_type: "INTEGER".to_string(),
                 nullable: false,
-                is_unique: false,
-                is_primary_key: false,
-                auto_increment: false,
-                references: None,
+                primary_key: false,
+                char_max_length: None,
+                primary_key: false,
+                ..Default::default()
             })
             .collect();
 
         let info = TableInfo {
             name: "many_cols".to_string(),
             columns,
+            ..Default::default()
         };
 
         storage.create_table(&info).unwrap();
@@ -252,11 +288,16 @@ mod tests {
                 name: "text".to_string(),
                 data_type: "VARCHAR".to_string(),
                 nullable: false,
-                is_unique: false,
-                is_primary_key: false,
-                auto_increment: false,
-                references: None,
+                primary_key: false,
+                char_max_length: None,
+                primary_key: false,
+                ..Default::default()
             }],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
+            ..Default::default()
         };
 
         storage.create_table(&info).unwrap();
@@ -289,11 +330,16 @@ mod tests {
                 name: "text".to_string(),
                 data_type: "VARCHAR".to_string(),
                 nullable: false,
-                is_unique: false,
-                is_primary_key: false,
-                auto_increment: false,
-                references: None,
+                primary_key: false,
+                char_max_length: None,
+                primary_key: false,
+                ..Default::default()
             }],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
+            ..Default::default()
         };
 
         storage.create_table(&info).unwrap();

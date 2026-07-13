@@ -501,6 +501,8 @@ fn test_ast_adapter_to_update_plan_uses_all_when_no_where() {
             name: "active".to_string(),
             data_type: "BOOLEAN".to_string(),
             nullable: false,
+            primary_key: false,
+            char_max_length: None,
             ..Default::default()
         }],
         foreign_keys: vec![],
@@ -538,6 +540,8 @@ fn test_ast_adapter_to_update_plan_errors_on_unknown_column() {
             name: "id".to_string(),
             data_type: "INTEGER".to_string(),
             nullable: false,
+            primary_key: false,
+            char_max_length: None,
             ..Default::default()
         }],
         foreign_keys: vec![],
