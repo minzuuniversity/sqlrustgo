@@ -1,10 +1,10 @@
 //! TPC-H Q1-Q6 Performance Comparison Test
 //! Run with: cargo test --test tpch_comparison_test -- --nocapture --ignored
 
+use parking_lot::RwLock;
 use sqlrustgo::{parse, ExecutionEngine, MemoryStorage};
 use std::path::Path;
 use std::sync::Arc;
-use parking_lot::RwLock;
 
 fn setup_engine(data_dir: &str) -> Option<ExecutionEngine> {
     let mut engine = ExecutionEngine::new(Arc::new(RwLock::new(MemoryStorage::new())));

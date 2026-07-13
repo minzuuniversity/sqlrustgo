@@ -5,13 +5,13 @@
 
 #[cfg(test)]
 mod tests {
+    use parking_lot::RwLock;
     use sqlrustgo::{ExecutionEngine, MemoryStorage, StorageEngine};
     use sqlrustgo_planner::{
         DataType, Expr, Field, HashJoinExec, JoinType, Operator, Schema, SeqScanExec,
     };
     use sqlrustgo_types::Value;
     use std::sync::Arc;
-use parking_lot::RwLock;
 
     fn create_test_storage() -> MemoryStorage {
         let mut storage = MemoryStorage::new();
