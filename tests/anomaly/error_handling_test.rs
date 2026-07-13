@@ -45,6 +45,10 @@ mod tests {
         let info = TableInfo {
             name: "test_table".to_string(),
             columns: vec![],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
         };
 
         storage.create_table(&info).unwrap();
@@ -64,11 +68,13 @@ mod tests {
                 name: "id".to_string(),
                 data_type: "INTEGER".to_string(),
                 nullable: false,
-                is_unique: true,
-                is_primary_key: false,
-                auto_increment: false,
-                references: None,
+                primary_key: false,
+                char_max_length: None,
             }],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
         };
 
         storage.create_table(&info).unwrap();
@@ -100,11 +106,13 @@ mod tests {
                 name: "".to_string(),
                 data_type: "INTEGER".to_string(),
                 nullable: false,
-                is_unique: false,
-                is_primary_key: false,
-                auto_increment: false,
-                references: None,
+                primary_key: false,
+                char_max_length: None,
             }],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
         };
 
         let result = storage.create_table(&info);
@@ -121,6 +129,10 @@ mod tests {
         let info = TableInfo {
             name: "TestTable".to_string(),
             columns: vec![],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
         };
 
         storage.create_table(&info).ok();
@@ -138,11 +150,13 @@ mod tests {
                 name: "id".to_string(),
                 data_type: "INTEGER".to_string(),
                 nullable: false,
-                is_unique: true,
-                is_primary_key: false,
-                auto_increment: false,
-                references: None,
+                primary_key: false,
+                char_max_length: None,
             }],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
         };
 
         storage.create_table(&info).unwrap();
@@ -169,11 +183,13 @@ mod tests {
                 name: "col".to_string(),
                 data_type: "INVALID_TYPE".to_string(),
                 nullable: false,
-                is_unique: false,
-                is_primary_key: false,
-                auto_increment: false,
-                references: None,
+                primary_key: false,
+                char_max_length: None,
             }],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            partition_info: None,
         };
 
         let result = storage.create_table(&info);

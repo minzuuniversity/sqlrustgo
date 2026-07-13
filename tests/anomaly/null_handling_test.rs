@@ -6,7 +6,8 @@
 mod tests {
     use sqlrustgo::{parse, ExecutionEngine, MemoryStorage};
 
-    use std::sync::{Arc, RwLock};
+    use parking_lot::RwLock;
+    use std::sync::Arc;
 
     fn create_engine() -> ExecutionEngine {
         ExecutionEngine::new(Arc::new(RwLock::new(MemoryStorage::new())))
@@ -16,10 +17,10 @@ mod tests {
     fn test_null_insert() {
         let mut engine = create_engine();
         engine
-            .execute(parse("CREATE TABLE null_test (id INTEGER, value TEXT)").unwrap())
+            .execute("CREATE TABLE null_test (id INTEGER, value TEXT)")
             .unwrap();
 
-        let result = engine.execute(parse("INSERT INTO null_test VALUES (1, NULL)").unwrap());
+        let result = engine.execute("INSERT INTO null_test VALUES (1, NULL)");
         assert!(result.is_ok() || result.is_err());
     }
 
@@ -27,16 +28,16 @@ mod tests {
     fn test_null_comparison_is_null() {
         let mut engine = create_engine();
         engine
-            .execute(parse("CREATE TABLE null_test (id INTEGER, value TEXT)").unwrap())
+            .execute("CREATE TABLE null_test (id INTEGER, value TEXT)")
             .unwrap();
         engine
-            .execute(parse("INSERT INTO null_test VALUES (1, NULL)").unwrap())
+            .execute("INSERT INTO null_test VALUES (1, NULL)")
             .ok();
         engine
-            .execute(parse("INSERT INTO null_test VALUES (2, 'test')").unwrap())
+            .execute("INSERT INTO null_test VALUES (2, 'test')")
             .ok();
 
-        let result = engine.execute(parse("SELECT * FROM null_test WHERE value IS NULL").unwrap());
+        let result = engine.execute("SELECT * FROM null_test WHERE value IS NULL");
 
         assert!(result.is_ok());
     }
@@ -45,17 +46,17 @@ mod tests {
     fn test_null_comparison_is_not_null() {
         let mut engine = create_engine();
         engine
-            .execute(parse("CREATE TABLE null_test (id INTEGER, value TEXT)").unwrap())
+            .execute("CREATE TABLE null_test (id INTEGER, value TEXT)")
             .unwrap();
         engine
-            .execute(parse("INSERT INTO null_test VALUES (1, NULL)").unwrap())
+            .execute("INSERT INTO null_test VALUES (1, NULL)")
             .ok();
         engine
-            .execute(parse("INSERT INTO null_test VALUES (2, 'test')").unwrap())
+            .execute("INSERT INTO null_test VALUES (2, 'test')")
             .ok();
 
         let result =
-            engine.execute(parse("SELECT * FROM null_test WHERE value IS NOT NULL").unwrap());
+            engine.execute("SELECT * FROM null_test WHERE value IS NOT NULL");
 
         assert!(result.is_ok());
     }
@@ -64,14 +65,14 @@ mod tests {
     fn test_null_in_where_clause() {
         let mut engine = create_engine();
         engine
-            .execute(parse("CREATE TABLE products (id INTEGER, price INTEGER)").unwrap())
+            .execute("CREATE TABLE products (id INTEGER, price INTEGER)")
             .unwrap();
         engine
-            .execute(parse("INSERT INTO products VALUES (1, 100), (2, NULL), (3, 50)").unwrap())
+            .execute("INSERT INTO products VALUES (1, 100), (2, NULL), (3, 50)")
             .ok();
 
         let result = engine
-            .execute(parse("SELECT * FROM products WHERE price > 50").unwrap())
+            .execute("SELECT * FROM products WHERE price > 50")
             .unwrap();
 
         assert!(result.rows.len() >= 1);
@@ -81,14 +82,14 @@ mod tests {
     fn test_null_in_aggregate() {
         let mut engine = create_engine();
         engine
-            .execute(parse("CREATE TABLE agg_null (value INTEGER)").unwrap())
+            .execute("CREATE TABLE agg_null (value INTEGER)")
             .unwrap();
         engine
-            .execute(parse("INSERT INTO agg_null VALUES (10), (20), (NULL), (40)").unwrap())
+            .execute("INSERT INTO agg_null VALUES (10), (20), (NULL), (40)")
             .ok();
 
         let result = engine
-            .execute(parse("SELECT COUNT(*), SUM(value) FROM agg_null").unwrap())
+            .execute("SELECT COUNT(*), SUM(value) FROM agg_null")
             .unwrap();
 
         assert_eq!(result.rows.len(), 1);
@@ -98,14 +99,14 @@ mod tests {
     fn test_count_null_column() {
         let mut engine = create_engine();
         engine
-            .execute(parse("CREATE TABLE count_null (value INTEGER)").unwrap())
+            .execute("CREATE TABLE count_null (value INTEGER)")
             .unwrap();
         engine
-            .execute(parse("INSERT INTO count_null VALUES (10), (20), (NULL), (40)").unwrap())
+            .execute("INSERT INTO count_null VALUES (10), (20), (NULL), (40)")
             .ok();
 
         let result = engine
-            .execute(parse("SELECT COUNT(value) FROM count_null").unwrap())
+            .execute("SELECT COUNT(value) FROM count_null")
             .unwrap();
 
         assert_eq!(result.rows.len(), 1);
@@ -115,17 +116,17 @@ mod tests {
     fn test_null_versus_empty_string() {
         let mut engine = create_engine();
         engine
-            .execute(parse("CREATE TABLE str_test (id INTEGER, val TEXT)").unwrap())
+            .execute("CREATE TABLE str_test (id INTEGER, val TEXT)")
             .unwrap();
         engine
-            .execute(parse("INSERT INTO str_test VALUES (1, NULL)").unwrap())
+            .execute("INSERT INTO str_test VALUES (1, NULL)")
             .ok();
         engine
-            .execute(parse("INSERT INTO str_test VALUES (2, '')").unwrap())
+            .execute("INSERT INTO str_test VALUES (2, '')")
             .ok();
 
         let result = engine
-            .execute(parse("SELECT COUNT(*) FROM str_test").unwrap())
+            .execute("SELECT COUNT(*) FROM str_test")
             .unwrap();
 
         assert_eq!(result.rows.len(), 1);
@@ -135,19 +136,19 @@ mod tests {
     fn test_null_in_subquery() {
         let mut engine = create_engine();
         engine
-            .execute(parse("CREATE TABLE outer_tbl (id INTEGER)").unwrap())
+            .execute("CREATE TABLE outer_tbl (id INTEGER)")
             .unwrap();
         engine
-            .execute(parse("INSERT INTO outer_tbl VALUES (1), (2)").unwrap())
+            .execute("INSERT INTO outer_tbl VALUES (1), (2)")
             .ok();
         engine
-            .execute(parse("CREATE TABLE inner_tbl (id INTEGER, val TEXT)").unwrap())
+            .execute("CREATE TABLE inner_tbl (id INTEGER, val TEXT)")
             .unwrap();
         engine
-            .execute(parse("INSERT INTO inner_tbl VALUES (1, 'a'), (3, NULL)").unwrap())
+            .execute("INSERT INTO inner_tbl VALUES (1, 'a'), (3, NULL)")
             .ok();
 
-        let result = engine.execute(parse("SELECT * FROM outer_tbl WHERE id IN (1, 3)").unwrap());
+        let result = engine.execute("SELECT * FROM outer_tbl WHERE id IN (1, 3)");
 
         assert!(result.is_ok());
     }
@@ -156,13 +157,13 @@ mod tests {
     fn test_null_equality() {
         let mut engine = create_engine();
         engine
-            .execute(parse("CREATE TABLE eq_test (a TEXT, b TEXT)").unwrap())
+            .execute("CREATE TABLE eq_test (a TEXT, b TEXT)")
             .unwrap();
         engine
-            .execute(parse("INSERT INTO eq_test VALUES (NULL, NULL)").unwrap())
+            .execute("INSERT INTO eq_test VALUES (NULL, NULL)")
             .ok();
 
-        let result = engine.execute(parse("SELECT * FROM eq_test WHERE a = b").unwrap());
+        let result = engine.execute("SELECT * FROM eq_test WHERE a = b");
 
         assert!(result.is_ok());
     }
@@ -171,10 +172,10 @@ mod tests {
     fn test_not_null_constraint() {
         let mut engine = create_engine();
         engine
-            .execute(parse("CREATE TABLE not_null_test (id INTEGER NOT NULL, name TEXT)").unwrap())
+            .execute("CREATE TABLE not_null_test (id INTEGER NOT NULL, name TEXT)")
             .unwrap();
 
-        let result = engine.execute(parse("INSERT INTO not_null_test VALUES (1, 'test')").unwrap());
+        let result = engine.execute("INSERT INTO not_null_test VALUES (1, 'test')");
 
         assert!(result.is_ok());
     }

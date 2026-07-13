@@ -12,8 +12,9 @@
 
 #[cfg(test)]
 mod tests {
+    use parking_lot::RwLock;
     use sqlrustgo::{parse, ExecutionEngine, MemoryStorage};
-    use std::sync::{Arc, RwLock};
+    use std::sync::Arc;
     use std::time::Instant;
 
     fn create_engine() -> ExecutionEngine {
@@ -21,67 +22,64 @@ mod tests {
     }
 
     fn setup_full_tpch_schema(engine: &mut ExecutionEngine) {
-        engine.execute(parse("CREATE TABLE nation (n_nationkey INTEGER, n_name TEXT, n_regionkey INTEGER, n_comment TEXT)").unwrap()).unwrap();
+        engine.execute("CREATE TABLE nation (n_nationkey INTEGER, n_name TEXT, n_regionkey INTEGER, n_comment TEXT)").unwrap();
         engine
-            .execute(
-                parse("CREATE TABLE region (r_regionkey INTEGER, r_name TEXT, r_comment TEXT)")
-                    .unwrap(),
-            )
+            .execute("CREATE TABLE region (r_regionkey INTEGER, r_name TEXT, r_comment TEXT)")
             .unwrap();
-        engine.execute(parse("CREATE TABLE part (p_partkey INTEGER, p_name TEXT, p_mfgr TEXT, p_brand TEXT, p_type TEXT, p_size INTEGER, p_container TEXT, p_retailprice REAL, p_comment TEXT)").unwrap()).unwrap();
-        engine.execute(parse("CREATE TABLE supplier (s_suppkey INTEGER, s_name TEXT, s_address TEXT, s_nationkey INTEGER, s_phone TEXT, s_acctbal REAL, s_comment TEXT)").unwrap()).unwrap();
-        engine.execute(parse("CREATE TABLE partsupp (ps_partkey INTEGER, ps_suppkey INTEGER, ps_availqty INTEGER, ps_supplycost REAL, ps_comment TEXT)").unwrap()).unwrap();
-        engine.execute(parse("CREATE TABLE customer (c_custkey INTEGER, c_name TEXT, c_address TEXT, c_nationkey INTEGER, c_phone TEXT, c_acctbal REAL, c_mktsegment TEXT, c_comment TEXT)").unwrap()).unwrap();
-        engine.execute(parse("CREATE TABLE orders (o_orderkey INTEGER, o_custkey INTEGER, o_orderstatus TEXT, o_totalprice REAL, o_orderdate TEXT, o_orderpriority TEXT, o_clerk TEXT, o_shippriority INTEGER, o_comment TEXT)").unwrap()).unwrap();
-        engine.execute(parse("CREATE TABLE lineitem (l_orderkey INTEGER, l_partkey INTEGER, l_suppkey INTEGER, l_linenumber INTEGER, l_quantity INTEGER, l_extendedprice REAL, l_discount REAL, l_tax REAL, l_returnflag TEXT, l_linestatus TEXT, l_shipdate TEXT, l_commitdate TEXT, l_receiptdate TEXT, l_shipinstruct TEXT, l_shipmode TEXT, l_comment TEXT)").unwrap()).unwrap();
+        engine.execute("CREATE TABLE part (p_partkey INTEGER, p_name TEXT, p_mfgr TEXT, p_brand TEXT, p_type TEXT, p_size INTEGER, p_container TEXT, p_retailprice REAL, p_comment TEXT)").unwrap();
+        engine.execute("CREATE TABLE supplier (s_suppkey INTEGER, s_name TEXT, s_address TEXT, s_nationkey INTEGER, s_phone TEXT, s_acctbal REAL, s_comment TEXT)").unwrap();
+        engine.execute("CREATE TABLE partsupp (ps_partkey INTEGER, ps_suppkey INTEGER, ps_availqty INTEGER, ps_supplycost REAL, ps_comment TEXT)").unwrap();
+        engine.execute("CREATE TABLE customer (c_custkey INTEGER, c_name TEXT, c_address TEXT, c_nationkey INTEGER, c_phone TEXT, c_acctbal REAL, c_mktsegment TEXT, c_comment TEXT)").unwrap();
+        engine.execute("CREATE TABLE orders (o_orderkey INTEGER, o_custkey INTEGER, o_orderstatus TEXT, o_totalprice REAL, o_orderdate TEXT, o_orderpriority TEXT, o_clerk TEXT, o_shippriority INTEGER, o_comment TEXT)").unwrap();
+        engine.execute("CREATE TABLE lineitem (l_orderkey INTEGER, l_partkey INTEGER, l_suppkey INTEGER, l_linenumber INTEGER, l_quantity INTEGER, l_extendedprice REAL, l_discount REAL, l_tax REAL, l_returnflag TEXT, l_linestatus TEXT, l_shipdate TEXT, l_commitdate TEXT, l_receiptdate TEXT, l_shipinstruct TEXT, l_shipmode TEXT, l_comment TEXT)").unwrap();
     }
 
     fn insert_tpch_data(engine: &mut ExecutionEngine) {
         engine
-            .execute(parse("INSERT INTO region VALUES (1, 'ASIA', 'Asia region')").unwrap())
+            .execute("INSERT INTO region VALUES (1, 'ASIA', 'Asia region')")
             .unwrap();
         engine
-            .execute(parse("INSERT INTO region VALUES (2, 'AMERICA', 'America region')").unwrap())
+            .execute("INSERT INTO region VALUES (2, 'AMERICA', 'America region')")
             .unwrap();
         engine
-            .execute(parse("INSERT INTO nation VALUES (1, 'CHINA', 1, 'China')").unwrap())
+            .execute("INSERT INTO nation VALUES (1, 'CHINA', 1, 'China')")
             .unwrap();
         engine
-            .execute(parse("INSERT INTO nation VALUES (2, 'JAPAN', 1, 'Japan')").unwrap())
+            .execute("INSERT INTO nation VALUES (2, 'JAPAN', 1, 'Japan')")
             .unwrap();
         engine
-            .execute(parse("INSERT INTO nation VALUES (3, 'USA', 2, 'United States')").unwrap())
+            .execute("INSERT INTO nation VALUES (3, 'USA', 2, 'United States')")
             .unwrap();
-        engine.execute(parse("INSERT INTO supplier VALUES (1, 'Supplier#1', 'Address1', 1, '10-1111111', 1000.00, 'Supplier1')").unwrap()).unwrap();
-        engine.execute(parse("INSERT INTO supplier VALUES (2, 'Supplier#2', 'Address2', 2, '10-2222222', 2000.00, 'Supplier2')").unwrap()).unwrap();
-        engine.execute(parse("INSERT INTO supplier VALUES (3, 'Supplier#3', 'Address3', 1, '10-3333333', 3000.00, 'Supplier3')").unwrap()).unwrap();
-        engine.execute(parse("INSERT INTO customer VALUES (1, 'Customer#1', 'Address1', 1, '10-1111111', 1000.00, 'AUTOMOBILE', 'Customer1')").unwrap()).unwrap();
-        engine.execute(parse("INSERT INTO customer VALUES (2, 'Customer#2', 'Address2', 2, '10-2222222', 2000.00, 'BUILDING', 'Customer2')").unwrap()).unwrap();
-        engine.execute(parse("INSERT INTO customer VALUES (3, 'Customer#3', 'Address3', 1, '10-3333333', 3000.00, 'FURNITURE', 'Customer3')").unwrap()).unwrap();
-        engine.execute(parse("INSERT INTO part VALUES (1, 'Part1', 'MFGR#1', 'Brand#1', 'ECONOMY', 10, 'MED PKG', 1000.00, 'Part1')").unwrap()).unwrap();
-        engine.execute(parse("INSERT INTO part VALUES (2, 'Part2', 'MFGR#1', 'Brand#2', 'PROMO', 20, 'LG CASE', 2000.00, 'Part2')").unwrap()).unwrap();
-        engine.execute(parse("INSERT INTO part VALUES (3, 'Part3', 'MFGR#2', 'Brand#3', 'STANDARD', 15, 'MED CASE', 1500.00, 'Part3')").unwrap()).unwrap();
+        engine.execute("INSERT INTO supplier VALUES (1, 'Supplier#1', 'Address1', 1, '10-1111111', 1000.00, 'Supplier1')").unwrap();
+        engine.execute("INSERT INTO supplier VALUES (2, 'Supplier#2', 'Address2', 2, '10-2222222', 2000.00, 'Supplier2')").unwrap();
+        engine.execute("INSERT INTO supplier VALUES (3, 'Supplier#3', 'Address3', 1, '10-3333333', 3000.00, 'Supplier3')").unwrap();
+        engine.execute("INSERT INTO customer VALUES (1, 'Customer#1', 'Address1', 1, '10-1111111', 1000.00, 'AUTOMOBILE', 'Customer1')").unwrap();
+        engine.execute("INSERT INTO customer VALUES (2, 'Customer#2', 'Address2', 2, '10-2222222', 2000.00, 'BUILDING', 'Customer2')").unwrap();
+        engine.execute("INSERT INTO customer VALUES (3, 'Customer#3', 'Address3', 1, '10-3333333', 3000.00, 'FURNITURE', 'Customer3')").unwrap();
+        engine.execute("INSERT INTO part VALUES (1, 'Part1', 'MFGR#1', 'Brand#1', 'ECONOMY', 10, 'MED PKG', 1000.00, 'Part1')").unwrap();
+        engine.execute("INSERT INTO part VALUES (2, 'Part2', 'MFGR#1', 'Brand#2', 'PROMO', 20, 'LG CASE', 2000.00, 'Part2')").unwrap();
+        engine.execute("INSERT INTO part VALUES (3, 'Part3', 'MFGR#2', 'Brand#3', 'STANDARD', 15, 'MED CASE', 1500.00, 'Part3')").unwrap();
         engine
-            .execute(parse("INSERT INTO partsupp VALUES (1, 1, 100, 500.00, 'PartSupp1')").unwrap())
-            .unwrap();
-        engine
-            .execute(parse("INSERT INTO partsupp VALUES (2, 2, 200, 600.00, 'PartSupp2')").unwrap())
+            .execute("INSERT INTO partsupp VALUES (1, 1, 100, 500.00, 'PartSupp1')")
             .unwrap();
         engine
-            .execute(parse("INSERT INTO partsupp VALUES (3, 3, 150, 700.00, 'PartSupp3')").unwrap())
+            .execute("INSERT INTO partsupp VALUES (2, 2, 200, 600.00, 'PartSupp2')")
             .unwrap();
-        engine.execute(parse("INSERT INTO orders VALUES (1, 1, 'O', 15000.00, '2024-01-15', '1-URGENT', 'Clerk#1', 0, 'comment')").unwrap()).unwrap();
-        engine.execute(parse("INSERT INTO orders VALUES (2, 2, 'O', 5000.00, '2024-01-20', '5-LOW', 'Clerk#2', 0, 'comment')").unwrap()).unwrap();
-        engine.execute(parse("INSERT INTO orders VALUES (3, 3, 'F', 8000.00, '2024-02-01', '3-MEDIUM', 'Clerk#3', 0, 'comment')").unwrap()).unwrap();
-        engine.execute(parse("INSERT INTO orders VALUES (4, 1, 'O', 25000.00, '2024-02-15', '1-URGENT', 'Clerk#1', 0, 'comment')").unwrap()).unwrap();
-        engine.execute(parse("INSERT INTO orders VALUES (5, 2, 'O', 3000.00, '2024-03-01', '2-HIGH', 'Clerk#2', 0, 'comment')").unwrap()).unwrap();
-        engine.execute(parse("INSERT INTO lineitem VALUES (1, 1, 1, 1, 15, 15000.00, 0.05, 1.2, 'N', 'O', '2024-01-20', '2024-01-18', '2024-01-25', 'NONE', 'AIR', 'comment1')").unwrap()).unwrap();
-        engine.execute(parse("INSERT INTO lineitem VALUES (1, 2, 2, 2, 20, 20000.00, 0.05, 1.6, 'N', 'O', '2024-01-20', '2024-01-18', '2024-01-25', 'NONE', 'AIR', 'comment2')").unwrap()).unwrap();
-        engine.execute(parse("INSERT INTO lineitem VALUES (2, 3, 3, 1, 5, 5000.00, 0.10, 0.4, 'N', 'O', '2024-01-25', '2024-01-23', '2024-01-30', 'NONE', 'TRUCK', 'comment3')").unwrap()).unwrap();
-        engine.execute(parse("INSERT INTO lineitem VALUES (3, 1, 1, 1, 8, 8000.00, 0.08, 0.64, 'N', 'O', '2024-02-10', '2024-02-08', '2024-02-15', 'NONE', 'RAIL', 'comment4')").unwrap()).unwrap();
-        engine.execute(parse("INSERT INTO lineitem VALUES (3, 2, 2, 1, 25, 25000.00, 0.03, 2.0, 'A', 'F', '2024-02-10', '2024-02-08', '2024-02-15', 'NONE', 'AIR', 'comment5')").unwrap()).unwrap();
-        engine.execute(parse("INSERT INTO lineitem VALUES (4, 3, 3, 1, 10, 10000.00, 0.06, 0.8, 'N', 'O', '2024-02-20', '2024-02-18', '2024-02-25', 'NONE', 'SHIP', 'comment6')").unwrap()).unwrap();
-        engine.execute(parse("INSERT INTO lineitem VALUES (5, 1, 1, 1, 12, 12000.00, 0.04, 0.96, 'R', 'F', '2024-03-05', '2024-03-03', '2024-03-10', 'NONE', 'AIR', 'comment7')").unwrap()).unwrap();
+        engine
+            .execute("INSERT INTO partsupp VALUES (3, 3, 150, 700.00, 'PartSupp3')")
+            .unwrap();
+        engine.execute("INSERT INTO orders VALUES (1, 1, 'O', 15000.00, '2024-01-15', '1-URGENT', 'Clerk#1', 0, 'comment')").unwrap();
+        engine.execute("INSERT INTO orders VALUES (2, 2, 'O', 5000.00, '2024-01-20', '5-LOW', 'Clerk#2', 0, 'comment')").unwrap();
+        engine.execute("INSERT INTO orders VALUES (3, 3, 'F', 8000.00, '2024-02-01', '3-MEDIUM', 'Clerk#3', 0, 'comment')").unwrap();
+        engine.execute("INSERT INTO orders VALUES (4, 1, 'O', 25000.00, '2024-02-15', '1-URGENT', 'Clerk#1', 0, 'comment')").unwrap();
+        engine.execute("INSERT INTO orders VALUES (5, 2, 'O', 3000.00, '2024-03-01', '2-HIGH', 'Clerk#2', 0, 'comment')").unwrap();
+        engine.execute("INSERT INTO lineitem VALUES (1, 1, 1, 1, 15, 15000.00, 0.05, 1.2, 'N', 'O', '2024-01-20', '2024-01-18', '2024-01-25', 'NONE', 'AIR', 'comment1')").unwrap();
+        engine.execute("INSERT INTO lineitem VALUES (1, 2, 2, 2, 20, 20000.00, 0.05, 1.6, 'N', 'O', '2024-01-20', '2024-01-18', '2024-01-25', 'NONE', 'AIR', 'comment2')").unwrap();
+        engine.execute("INSERT INTO lineitem VALUES (2, 3, 3, 1, 5, 5000.00, 0.10, 0.4, 'N', 'O', '2024-01-25', '2024-01-23', '2024-01-30', 'NONE', 'TRUCK', 'comment3')").unwrap();
+        engine.execute("INSERT INTO lineitem VALUES (3, 1, 1, 1, 8, 8000.00, 0.08, 0.64, 'N', 'O', '2024-02-10', '2024-02-08', '2024-02-15', 'NONE', 'RAIL', 'comment4')").unwrap();
+        engine.execute("INSERT INTO lineitem VALUES (3, 2, 2, 1, 25, 25000.00, 0.03, 2.0, 'A', 'F', '2024-02-10', '2024-02-08', '2024-02-15', 'NONE', 'AIR', 'comment5')").unwrap();
+        engine.execute("INSERT INTO lineitem VALUES (4, 3, 3, 1, 10, 10000.00, 0.06, 0.8, 'N', 'O', '2024-02-20', '2024-02-18', '2024-02-25', 'NONE', 'SHIP', 'comment6')").unwrap();
+        engine.execute("INSERT INTO lineitem VALUES (5, 1, 1, 1, 12, 12000.00, 0.04, 0.96, 'R', 'F', '2024-03-05', '2024-03-03', '2024-03-10', 'NONE', 'AIR', 'comment7')").unwrap();
     }
 
     fn setup_engine_with_data() -> ExecutionEngine {
