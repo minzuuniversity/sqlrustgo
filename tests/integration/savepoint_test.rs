@@ -2,9 +2,10 @@
 //
 // Note: These tests verify parsing and basic transaction flow.
 
+use parking_lot::RwLock;
 use sqlrustgo::{parse, ExecutionEngine, MemoryStorage, StorageEngine};
 use sqlrustgo_types::Value;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 
 #[test]
 fn test_savepoint_parsing() {
@@ -35,20 +36,20 @@ fn test_transaction_basic() {
     let mut engine = ExecutionEngine::new(Arc::new(RwLock::new(MemoryStorage::new())));
 
     engine
-        .execute(parse("CREATE TABLE tx_test (id INTEGER)").unwrap())
+        .execute("CREATE TABLE tx_test (id INTEGER)")
         .unwrap();
 
-    engine.execute(parse("BEGIN").unwrap()).unwrap();
+    engine.execute("BEGIN").unwrap();
     engine
-        .execute(parse("INSERT INTO tx_test VALUES (1)").unwrap())
+        .execute("INSERT INTO tx_test VALUES (1)")
         .unwrap();
 
     // Commit
-    engine.execute(parse("COMMIT").unwrap()).unwrap();
+    engine.execute("COMMIT").unwrap();
 
     // Verify row was inserted
     let result = engine
-        .execute(parse("SELECT COUNT(*) FROM tx_test").unwrap())
+        .execute("SELECT COUNT(*) FROM tx_test")
         .unwrap();
     assert_eq!(result.rows[0][0], Value::Integer(1));
 
