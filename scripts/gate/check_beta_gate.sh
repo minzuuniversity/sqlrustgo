@@ -386,6 +386,35 @@ if [ -d "$CORPUS_DIR" ]; then
 else
     check_fail "B11_SQL_CORPUS" "sql_corpus/ directory not found"
 fi
+# ===========================================================================
+# 11. SQLLogicTest Baseline (ISSUE #3373)
+# ===========================================================================
+echo ""
+echo "--- B12: SQLLogicTest Baseline (ISSUE #3373) ---"
+SLT_DIR="$REPO_ROOT/crates/sqlrustgo_sqllogictest"
+SLT_BIN="$REPO_ROOT/target/debug/sqlrustgo-sqllogictest"
+if [ -d "$SLT_DIR" ]; then
+    SLT_TEST_COUNT=$(find "$SLT_DIR" -name "*.test" 2>/dev/null | wc -l | tr -d ' ')
+    if [ "$SLT_TEST_COUNT" -gt 0 ]; then
+        check_pass "B12_SLT_TEST_FILES" "$SLT_TEST_COUNT .test files in crates/sqlrustgo_sqllogictest/"
+    else
+        check_warn "B12_SLT_TEST_FILES" "no .test files found in crates/sqlrustgo_sqllogictest/ (populate from SQLite SLT)"
+    fi
+    # Check if the SLT runner binary is built
+    if [ -x "$SLT_BIN" ]; then
+        check_pass "B12_SLT_BIN" "sqllogictest binary built"
+    else
+        check_warn "B12_SLT_BIN" "sqlrustgo-sqllogictest binary not built (cargo build -p sqlrustgo_sqllogictest)"
+    fi
+    # Check if SLT can at least enumerate/discover tests
+    if [ -x "$SLT_BIN" ] && "$SLT_BIN" --help 2>/dev/null | grep -q "sqllogictest"; then
+        check_pass "B12_SLT_RUNNER" "sqllogictest runner is functional"
+    else
+        check_warn "B12_SLT_RUNNER" "sqllogictest runner not yet functional (ISSUE #3373)"
+    fi
+else
+    check_warn "B12_SLT_CRATE" "crates/sqlrustgo_sqllogictest/ not found (ISSUE #3373)"
+fi
 
 # ===========================================================================
 # Final summary

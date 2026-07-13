@@ -361,6 +361,53 @@ bash scripts/gate/check_tpch_sf1.sh
 **验证**: sql_corpus/ 中所有 SQL 文件在 sqlrustgo 上执行不 panic
 
 **完成判据**: sqlancer 可运行 + sql_corpus fast 全部 PASS + Beta gate 含 B10/B11
+### [V310-14] SQLLogicTest 集成（590万用例基线）
+
+**ISSUE**: #3373
+
+**目标**: 在 Beta 阶段建立 SQLLogicTest (SLT) 测试框架，直接利用 SQLite 官方的 623 个测试文件（约 590 万用例）建立 SQL 兼容性基线。
+
+**现状**:
++ SLT 是 SQLite 官方核心测试套件，DuckDB/ClickHouse 等现代数据库均采用
++ 623 个 .test 文件公开可用，覆盖 JOIN/窗口函数/聚合/子查询/表达式求值等全场景
++ 比自研 sqlancer 更快速获得大量验证
+
+**解决方案**:
+
+1. **下载 SLT 用例集**（P0，1人天）
+   ```bash
+   wget https://www.sqlite.org/src/tarball/sqlite.tar.gz?r=release
+   tar xzf sqlite.tar.gz
+   mv sqlite/test/sqllogictest crates/sqllogictest/testdata/
+   ```
+
+2. **实现 SLT Runner**（P0，3-5人天）
+   + `crates/sqllogictest/` crate：解析 .test 文件格式
+   + 对每条 SQL 同时调用 sqlrustgo 和 SQLite 执行器
+   + 结果比较（浮点数容差支持）
+
+3. **Baseline 报告**（P1，1人天）
+   + 输出 `docs/releases/v3.10.0/sqllogictest-baseline/` 基线报告
+   + 记录每个 .test 文件的 pass/fail/skip 数
+
+**子任务**:
+
+- [x] [V310-14a] SLT Runner 实现 ✅ — sqllogictest-rs risinglightdb v0.29
+- [~] [V310-14b] SLT 用例集下载 — 部分完成: 23个文件 (risinglightdb 8 + DuckDB 7 + prior 9)
+  - risinglightdb/sqllogictest-rs 测试套: 8 个 .slt 文件 ✅
+  - DuckDB sample tests: 7 个 .test 文件 ✅
+  - SQLite 官方套件: 下载受阻于网络 (14MB tarball 超时)
+- [ ] [V310-14c] Baseline 报告生成 — 1人天
+
+**验证**: `cargo run -p sqlrustgo_sqllogictest -- --test-dir crates/sqlrustgo_sqllogictest/testdata`
+
+**Baseline (Beta, 2026-07-13)**: 1/16 files pass (6.3%)
+- PASS: `delete__test_delete.test`
+- FAILs reflect sqlrustgo SQL coverage gaps (DuckDB-specific syntax: SEQUENCE, PREPARE, nextval, OFFSET, etc.)
+
+**完成判据**: SLT 套件完整执行 + Beta gate B12 PASS
+
+
 
 
 
@@ -393,7 +440,7 @@ bash scripts/gate/check_tpch_sf1.sh
 | 阶段 | 周期 | 核心 ISSUE | 退出判据 |
 |------|------|-----------|---------|
 | **Alpha** | 4 周 | V310-01, 02, 03, 04, 06 | DML + ACID + ALTER + Wire-DDL 完成 |
-| **Beta** | 4 周 | V310-05, 07, 08, 10, 13 | Crash + 24h SOAK + Catalog + 覆盖率 + 测试体系 |
+| **Beta** | 4 周 | V310-05, 07, 08, 10, 13, 14 | Crash + 24h SOAK + Catalog + 覆盖率 + 测试体系 + SQLLogicTest |
 | **RC1** | 2 周 | V310-09 | Wire 协议修复 + sysbench 接入 |
 | **RC2-RC8** | 6 周 | V310-11, 12 | TPC-H SF=1 闭环 + P2 债 |
 | **GA** | 4 周 | 综合验证 | G1-G10 全 PASS, 168h SOAK PASS |
