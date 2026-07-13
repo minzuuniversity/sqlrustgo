@@ -1,8 +1,8 @@
 // Batch Insert Tests - Performance, Concurrency, and Auto-Increment Tests (Issue #964)
+use parking_lot::RwLock;
 use sqlrustgo::{parse, ExecutionEngine, MemoryStorage};
 use sqlrustgo_types::Value;
-use std::sync::{Arc};
-use parking_lot::RwLock;
+use std::sync::Arc;
 use std::time::Instant;
 
 // ============== 性能测试 ==============

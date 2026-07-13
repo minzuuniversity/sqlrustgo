@@ -1,8 +1,8 @@
 //! Test TEXT field index
+use parking_lot::RwLock;
 use sqlrustgo::{parse, ExecutionEngine, MemoryStorage};
 use std::path::Path;
-use std::sync::{Arc};
-use parking_lot::RwLock;
+use std::sync::Arc;
 
 #[test]
 fn test_text_index() {

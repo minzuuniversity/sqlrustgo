@@ -1,9 +1,9 @@
 // Foreign Key DELETE/UPDATE Actions Tests (Issue #888)
 
+use parking_lot::RwLock;
 use sqlrustgo::{parse, ExecutionEngine, MemoryStorage, StorageEngine};
 use sqlrustgo_types::Value;
-use std::sync::{Arc};
-use parking_lot::RwLock;
+use std::sync::Arc;
 
 #[test]
 fn test_fk_cascade_parsing() {
