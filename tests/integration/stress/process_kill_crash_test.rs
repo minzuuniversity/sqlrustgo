@@ -25,7 +25,7 @@
 //! - src/engine_builder.rs:238-262 (recover_wal wiring)
 
 use std::path::Path;
-use std::sync::RwLock;
+use parking_lot::RwLock;
 
 use sqlrustgo_storage::engine::{ColumnDefinition, StorageEngine, TableInfo, Value};
 use sqlrustgo_storage::recovery_engine::{RecoveryEngine, RecoveryReport, StatefulRecoveryEngine};
