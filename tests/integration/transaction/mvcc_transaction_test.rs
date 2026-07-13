@@ -4,6 +4,7 @@
 //! **Phase 2b migration**: rewritten on top of `MySqlTestClient`
 //! to drive SQL through the canonical entry point.
 
+#[path = "../../common/mod.rs"]
 mod common;
 
 use common::MySqlTestClient;

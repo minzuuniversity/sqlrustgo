@@ -20,6 +20,7 @@
 //!
 //! See: docs/plans/2026-06-05-tpch-22-wire-three-way.md §3.1
 
+#[path = "../../common/mod.rs"]
 mod common;
 use common::tpch_wire_harness::start_sf001;
 

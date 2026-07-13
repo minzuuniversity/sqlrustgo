@@ -18,6 +18,7 @@
 //            must emit OK, ERR, and (per MySQL semantics) stop the
 //            batch without executing the trailing statements.
 
+#[path = "../../common/mod.rs"]
 mod common;
 use common::MySqlTestClient;
 

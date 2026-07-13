@@ -11,6 +11,7 @@
 //! embedded `start_ephemeral` harness (see
 //! `openspec/changes/mysql-server-canonical-entry/specs/wire-protocol-execution/spec.md`).
 
+#[path = "../../common/mod.rs"]
 mod common;
 
 use common::MySqlTestClient;
