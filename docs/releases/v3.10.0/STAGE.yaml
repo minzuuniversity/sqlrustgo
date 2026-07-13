@@ -6,7 +6,7 @@
 #   2. docs/releases/vX.Y.Z/STAGE.yaml (per-version, this file)
 #   3. scripts/gate/check_stage.sh (reads both, runs gates)
 #
-# v3.10.0 当前状态: DRAFT (设计完成, 计划阶段, 等待 Gitea 创建 issue)
+# v3.10.0 当前状态: RC (BETA gate 全部 PASS, RC gate R1-R8 进入)
 # 战略定位: MySQL 5.7 替代 — 功能稳定 + 基本性能优先 + Wired SOAK 闭环
 # 父版本: v3.9.0 (main @ 23353c0c54, GA 2026-07-10)
 #
@@ -21,7 +21,7 @@ issue_plan:
   gitea_pending: true  # 等待 Gitea 恢复后批量创建
 #
 version: "v3.10.0"
-current_stage: "ALPHA"
+current_stage: "RC"
 branch: "develop/v3.10.0"  # created 2026-07-11 from main @ 23353c0c54
 last_transition:
   from: "DRAFT"
@@ -55,8 +55,16 @@ stage_history:
     notes: "Initial design + architecture + planning. Parent version v3.9.0 RC8. 3 PRs from v3.9.0 already merged into develop/v3.9.0: #3664 (execution_engine 拆分), #3665 (C-ARCH-05 锁回), #3666 (SGL-001 fmt fix)."
   - stage: ALPHA
     entered: "2026-07-11"
-    exited: null  # still in ALPHA
-    notes: "Alpha 1 cut. 6/6 ALPHA gates PASS (C-ARCH-05 fix execution_engine.rs 1523→1488; check_alpha_v3.10.0.sh 15/15; STAGE_CONFIG ALPHA gates now use per-version check_alpha_v{VER}.sh pattern following v3.8.0). Phase 0 (C-3 ACID + C-4 ALTER) starts next."
+    exited: "2026-07-13"
+    notes: "Alpha 1 cut. 6/6 ALPHA gates PASS. Phase 0-3 work completed."
+  - stage: BETA
+    entered: "2026-07-13"
+    exited: "2026-07-13"
+    notes: "BETA promotion after B1-B8 gates PASS. 3 hard blockers fixed. 8 BETA blockers resolved."
+  - stage: RC
+    entered: "2026-07-13"
+    exited: null
+    notes: "RC entry. All OPEN/IN_PROGRESS debt items resolved. #[ignore] debt reduced to 8. R1-R8 gate in progress."
 # Branch protection rules (this version)
 # Branch protection rules (this version)
 # =============================================================================
@@ -143,3 +151,30 @@ thresholds_override: {}
 #         但文件未实际存在 -> PR #3803 (7376a67ce) force-add docs/releases/v3.10.0/RELEASE_NOTES.md
 #         (145 行, force-add 是因为 .gitignore line 86 'releases/' shadow 该路径)
 #   6. Commit + push to mirror (Gitea 252 or 250)
+#
+# =============================================================================
+# GA promotion criteria (v3.10.0 specific)
+# =============================================================================
+promotion_to_GA_requires:
+  - "RC gate R1-R8 all PASS (check_rc_gate_v3.10.0.sh)"
+  - "GA_GATE_REPORT.md created with D1-D5 evidence"
+  - "STAGE.yaml current_stage: RC → GA"
+  - "cargo test --lib 0 failures (with and without all-features)"
+  - "cargo clippy --all-features -- -D warnings 0 errors"
+  - "cargo fmt --check --all 0 diffs"
+  - "Coverage baseline established (cargo llvm-cov --lib)"
+  - "Perf baseline vs v3.9.0 (TPC-H SF1)"
+  - "All 5 required files present (STAGE.yaml, CHANGELOG.md, RELEASE_NOTES.md,
+    GA_GATE_REPORT.md, GA_RELEASE_TIMELINE.md)"
+  - "All 6 doc artifacts present (ARCHITECTURE.md, TEST_PLAN.md, COMPREHENSIVE_ASSESSMENT_REPORT.md,
+    EVIDENCE_STATUS.md, POST_GA_PLAN.md, RELEASE_GATE_CHECKLIST.md)"
+  - "test_sql_corpus.sh all targets PASS (≥815/818 JOIN cases)"
+  - "sqllogictest runner all targets PASS"
+  - "SOAK ≥168h uptime (stress_test.sh)"
+  - "GA tag v3.10.0 cut and pushed to all mirrors"
+  - "All 3 gate scripts up to date (check_*_v3.10.0.sh)"
+  - "branch_protection on rc/v3.10.0 applied (enable_push:false,
+    required_approvals:1)"
+  - "All 6 debt items IN_PROGRESS with target_release v3.11.0"
+  - "RC gate report published (RC_GATE_REPORT.md)"
+  - "Human CA signing log entry: docs/governance/CA_SIGNING_LOG.md
