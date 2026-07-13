@@ -9,11 +9,11 @@
 ## 1. RC Gate Status (R1-R8)
 
 | Gate | Status | Detail |
-|------|--------|--------|
+|---|---|---|
 | R1 Required Files | ✅ PASS | 5/5 GA files, 6/6 doc artifacts, 3/3 gate scripts |
 | R2 Universal Gates | ✅ **6/6 PASS** | All 6 scripts PASS (anti-fab fixed PR #3398; debt drift accepted) |
 | R3 Cargo | ✅ **PASS** | Build 0 errors, Clippy 0 errors, Fmt 0 diffs (verified 2026-07-13) |
-| R4 E2E | ⚠️ TBD | 8 E2E shell scripts exist in `scripts/gate/e2e/` (need running server) |
+| R4 E2E | ⚠️ TBD | 8 E2E shell scripts exist in `scripts/gate/e2e/`. Server runs; mysql client connects. DDL causes connection loss (MySQL wire protocol bug). `exec` subcommand works. |
 | R5 `#[ignore]` | ✅ PASS | 10 ≤ 10 (after excluding intentional benchmark/E2E/vector-perf categories) |
 | R6 Coverage | ✅ **PASS** | Baseline created: 14.71% (`cargo llvm-cov --lib`, saved to `coverage-baseline/`) |
 | R7 OPEN debt | ✅ PASS | 0 OPEN/IN_PROGRESS with v3.10.x target (all deferred to v3.11.0) |
