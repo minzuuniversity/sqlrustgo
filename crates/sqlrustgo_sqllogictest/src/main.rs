@@ -220,6 +220,7 @@ async fn async_main() {
         match tester.run_file(path) {
             Ok(_) => {
                 files_pass += 1;
+                println!("PASS [{}]", filename);
             }
             Err(e) => {
                 files_fail += 1;
