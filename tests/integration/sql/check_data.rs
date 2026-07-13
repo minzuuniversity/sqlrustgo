@@ -1,3 +1,4 @@
+#[path = "../../common/mod.rs"]
 mod common;
 
 /// Quick data verification for SF=1.0 fixture

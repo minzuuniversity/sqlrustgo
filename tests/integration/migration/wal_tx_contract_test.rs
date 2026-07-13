@@ -10,6 +10,7 @@
 //! recovery) all sit above the wire-protocol layer, so every test
 //! in this file must go through the wire.
 
+#[path = "../../common/mod.rs"]
 mod common;
 
 use common::MySqlTestClient;

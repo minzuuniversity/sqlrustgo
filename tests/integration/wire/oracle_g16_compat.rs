@@ -3,6 +3,7 @@
 //! 验证 v3.9.0 in-process 模拟 v3.8→v3.9 upgrade 流程后, 数据完整性保留.
 //! Baseline 来源: `tests/oracle/baselines/compat_v3.8_v3.9.json`.
 
+#[path = "../../common/mod.rs"]
 mod common;
 
 use parking_lot::RwLock;

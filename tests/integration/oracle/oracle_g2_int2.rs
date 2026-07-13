@@ -5,6 +5,7 @@
 //!
 //! Oracle: 同一 query 的 sequential 结果是 ground truth, parallel 必须 MATCH.
 
+#[path = "../../common/mod.rs"]
 mod common;
 
 use parking_lot::RwLock;

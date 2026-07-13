@@ -9,6 +9,7 @@
 //!
 //! 已知偏差: Q9 cell-level bug (#3312) 只影响 cell 值, 仍能用 SHA-256 检测 row-level 漂移.
 
+#[path = "../../common/mod.rs"]
 mod common;
 use common::oracle_framework::{
     sha256_capture, Row, RowSet, Sha256Baseline, Sha256QueryEntry, Value,
