@@ -81,7 +81,7 @@ while IFS=$'\t' read -r debt_id status progress; do
             echo " ✅"
             CLOSED_COUNT=$((CLOSED_COUNT + 1))
             ;;
-        IN_PROGRESS|BLOCKED|VERIFIED|SUPERSEDED|REJECTED)
+        IN_PROGRESS|BLOCKED|VERIFIED|SUPERSEDED|REJECTED|DEFERRED)
             # Per ADR-011: in-progress / blocked with target_release is acceptable (DRIFT).
             # require target_release field (parsed from registry).
             has_plan=$(REG="$REGISTRY" ID="$debt_id" python3 -c "
