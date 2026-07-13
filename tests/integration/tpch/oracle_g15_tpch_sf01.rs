@@ -15,6 +15,7 @@
 //! pair; Q15 was listing all 91 suppliers instead of just the max;
 //! Q20 was 0 rows from pre-data fixture).
 
+#[path = "../../common/mod.rs"]
 mod common;
 
 use common::oracle_framework::{compare_to_baseline, Row, RowSet, Value};

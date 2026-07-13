@@ -16,6 +16,7 @@
 //! - `SOAK_QUERIES`: comma-separated query numbers to run (default: "Q1,Q6")
 //! - `SOAK_SCALE`: "sf001" or "sf01" (default: "sf001")
 
+#[path = "../../common/mod.rs"]
 mod common;
 
 use common::tpch_cli_harness::{mysql_query, start_sf001_cli};

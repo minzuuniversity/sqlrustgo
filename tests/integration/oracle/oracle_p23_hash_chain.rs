@@ -10,6 +10,7 @@
 //! 由于完整 hash_chain_harness 不一定暴露 oracle 接口, 这里使用
 //! in-process ground-truth oracle: 验证 hash 函数本身的属性.
 
+#[path = "../../common/mod.rs"]
 mod common;
 
 use sha2::{Digest, Sha256};

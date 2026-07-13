@@ -15,6 +15,7 @@
 //! "in-process direct-call tests are kept for unit tests below
 //! the wire-protocol layer".
 
+#[path = "../../common/mod.rs"]
 mod common;
 
 use common::MySqlTestClient;

@@ -4,6 +4,7 @@
 //! untested: COM_PING, COM_INIT_DB, COM_STMT_CLOSE, and COM_QUERY error
 //! responses (ERR packets).
 
+#[path = "../../common/mod.rs"]
 mod common;
 
 use common::MySqlTestClient;
