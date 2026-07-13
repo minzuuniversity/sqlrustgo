@@ -3,7 +3,8 @@
 
 use sqlrustgo::{parse, ExecutionEngine, MemoryStorage};
 use std::path::Path;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
+use parking_lot::RwLock;
 
 fn setup_engine(data_dir: &str) -> Option<ExecutionEngine> {
     let mut engine = ExecutionEngine::new(Arc::new(RwLock::new(MemoryStorage::new())));
@@ -13,7 +14,7 @@ fn setup_engine(data_dir: &str) -> Option<ExecutionEngine> {
 
     let filepath = format!("{}/lineitem.tbl", data_dir);
     if Path::new(&filepath).exists() {
-        let mut storage = engine.storage.write().unwrap();
+        let mut storage = engine.storage.write();
         if let Ok(count) = storage.bulk_load_tbl_file("lineitem", &filepath) {
             eprintln!("Loaded {} rows", count);
         }

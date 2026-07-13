@@ -7,7 +7,8 @@ use sqlrustgo_planner::{
 use sqlrustgo_server::{ConnectionPool, PoolConfig};
 use sqlrustgo_storage::{ColumnDefinition, TableInfo};
 use sqlrustgo_types::Value;
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc};
+use parking_lot::RwLock;
 use std::time::Instant;
 
 const BENCH_ROW_COUNT: usize = 10000;

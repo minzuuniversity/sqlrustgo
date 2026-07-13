@@ -9,7 +9,8 @@
 //! - Mixed Integer/Real in same column
 
 use sqlrustgo::{ExecutionEngine, MemoryStorage};
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
+use parking_lot::RwLock;
 
 fn engine() -> ExecutionEngine<MemoryStorage> {
     ExecutionEngine::new(Arc::new(RwLock::new(MemoryStorage::new())))

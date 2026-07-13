@@ -2,7 +2,8 @@
 
 use sqlrustgo::{parse, ExecutionEngine, MemoryStorage};
 use sqlrustgo_types::Value;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
+use parking_lot::RwLock;
 
 // ============== REPLACE 测试 ==============
 #[test]

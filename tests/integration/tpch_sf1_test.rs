@@ -5,7 +5,8 @@
 
 use sqlrustgo::{parse, ExecutionEngine, MemoryStorage};
 use std::path::Path;
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc};
+use parking_lot::RwLock;
 
 const TPCK_DATA_DIR: &str = "data/tpch-sf1";
 
@@ -23,7 +24,7 @@ fn setup_sqlrustgo_engine_sf1_lineitem() -> ExecutionEngine {
 
     let filepath = format!("{}/lineitem.tbl", TPCK_DATA_DIR);
     if Path::new(&filepath).exists() {
-        let mut storage = engine.storage.write().unwrap();
+        let mut storage = engine.storage.write();
         match storage.bulk_load_tbl_file("lineitem", &filepath) {
             Ok(count) => println!("Loaded lineitem: {} rows", count),
             Err(e) => println!("Failed to load: {:?}", e),
