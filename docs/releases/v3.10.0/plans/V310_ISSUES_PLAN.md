@@ -392,11 +392,18 @@ bash scripts/gate/check_tpch_sf1.sh
 
 **子任务**:
 
-- [V310-14a] SLT Runner 实现 — 3-5人天
-- [V310-14b] SLT 用例集下载 + testdata 目录创建 — 1人天
-- [V310-14c] Baseline 报告生成 — 1人天
+- [x] [V310-14a] SLT Runner 实现 ✅ — sqllogictest-rs risinglightdb v0.29
+- [~] [V310-14b] SLT 用例集下载 — 部分完成: 23个文件 (risinglightdb 8 + DuckDB 7 + prior 9)
+  - risinglightdb/sqllogictest-rs 测试套: 8 个 .slt 文件 ✅
+  - DuckDB sample tests: 7 个 .test 文件 ✅
+  - SQLite 官方套件: 下载受阻于网络 (14MB tarball 超时)
+- [ ] [V310-14c] Baseline 报告生成 — 1人天
 
-**验证**: `cargo test -p sqlrustgo-sqllogictest` 可运行，建立基线
+**验证**: `cargo run -p sqlrustgo_sqllogictest -- --test-dir crates/sqlrustgo_sqllogictest/testdata`
+
+**Baseline (Beta, 2026-07-13)**: 1/16 files pass (6.3%)
+- PASS: `delete__test_delete.test`
+- FAILs reflect sqlrustgo SQL coverage gaps (DuckDB-specific syntax: SEQUENCE, PREPARE, nextval, OFFSET, etc.)
 
 **完成判据**: SLT 套件完整执行 + Beta gate B12 PASS
 
@@ -433,7 +440,7 @@ bash scripts/gate/check_tpch_sf1.sh
 | 阶段 | 周期 | 核心 ISSUE | 退出判据 |
 |------|------|-----------|---------|
 | **Alpha** | 4 周 | V310-01, 02, 03, 04, 06 | DML + ACID + ALTER + Wire-DDL 完成 |
-| **Beta** | 4 周 | V310-05, 07, 08, 10, 13 | Crash + 24h SOAK + Catalog + 覆盖率 + 测试体系 |
+| **Beta** | 4 周 | V310-05, 07, 08, 10, 13, 14 | Crash + 24h SOAK + Catalog + 覆盖率 + 测试体系 + SQLLogicTest |
 | **RC1** | 2 周 | V310-09 | Wire 协议修复 + sysbench 接入 |
 | **RC2-RC8** | 6 周 | V310-11, 12 | TPC-H SF=1 闭环 + P2 债 |
 | **GA** | 4 周 | 综合验证 | G1-G10 全 PASS, 168h SOAK PASS |
