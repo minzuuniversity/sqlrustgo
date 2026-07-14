@@ -12,4 +12,10 @@ cd "$REPO_ROOT"
 
 SF1_DIR="${TPCH_SF1_DIR:-${SF1_DIR:-/tmp/tpch-sf1}}"
 
-exec bash scripts/tpch_sf1_baseline.sh --sf1-dir "$SF1_DIR" "${@:--dry-run}"
+if [[ ${1:-} == "--run" ]]; then
+    shift
+elif [[ $# -eq 0 ]]; then
+    set -- --dry-run
+fi
+
+exec bash scripts/tpch_sf1_baseline.sh --sf1-dir "$SF1_DIR" "$@"
