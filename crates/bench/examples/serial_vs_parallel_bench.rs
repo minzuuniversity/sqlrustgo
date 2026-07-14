@@ -16,7 +16,7 @@ use clap::Parser;
 use parking_lot::RwLock;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
-use sqlrustgo::{ExecutionEngine, MemoryStorage};
+use sqlrustgo::{ExecutionEngine, MemoryStorage, StorageEngine};
 use std::fs;
 use std::sync::Arc;
 use std::time::Instant;
@@ -212,6 +212,52 @@ fn create_tables(engine: &mut ExecutionEngine<MemoryStorage>) {
 
 // ── Load .tbl data ────────────────────────────────────────────────────────────
 
+
+/// v3.10.0: Fast .tbl loader — bypasses SQL parser for bulk inserts.
+/// Reads .tbl files and inserts directly via StorageEngine::insert().
+/// ~100x faster than per-row INSERT execution.
+fn fast_load_tbl_data(storage: &Arc<RwLock<MemoryStorage>>, data_dir: &str, _sf: f64) {
+    use sqlrustgo::Value;
+    let tables = [
+        "region", "nation", "supplier", "customer", "part", "partsupp", "orders", "lineitem",
+    ];
+    for table in tables {
+        let path = format!("{}/{}.tbl", data_dir, table);
+        if !std::path::Path::new(&path).exists() {
+            continue;
+        }
+        let Ok(content) = fs::read_to_string(&path) else { continue };
+        let mut batch: Vec<Vec<Value>> = Vec::with_capacity(100_000);
+        for line in content.lines() {
+            if line.is_empty() {
+                continue;
+            }
+            let cols: Vec<&str> = line.trim_end_matches('|').split('|').collect();
+            let mut record = Vec::with_capacity(cols.len());
+            for c in &cols {
+                if let Ok(n) = c.parse::<i64>() {
+                    record.push(Value::Integer(n));
+                } else if let Ok(f) = c.parse::<f64>() {
+                    record.push(Value::Float(f));
+                } else {
+                    record.push(Value::Text(c.to_string()));
+                }
+            }
+            batch.push(record);
+            if batch.len() >= 100_000 {
+                let mut g = storage.write();
+                let _ = g.insert(table, std::mem::take(&mut batch));
+            }
+        }
+        if !batch.is_empty() {
+            let mut g = storage.write();
+            let _ = g.insert(table, batch);
+        }
+        let row_count = storage.read().scan(table).map(|v| v.len()).unwrap_or(0);
+        eprintln!("  loaded {}.tbl: {} rows", table, row_count);
+    }
+}
+
 fn load_tbl_data(engine: &mut ExecutionEngine<MemoryStorage>, data_dir: &str, sf: f64) {
     let tables = [
         "region", "nation", "supplier", "customer", "part", "partsupp", "orders", "lineitem",
@@ -252,11 +298,11 @@ fn load_tbl_data(engine: &mut ExecutionEngine<MemoryStorage>, data_dir: &str, sf
 // ── Generate synthetic data ───────────────────────────────────────────────────
 
 fn generate_synthetic_data(engine: &mut ExecutionEngine<MemoryStorage>, sf: f64) {
+    // v3.10.0 Issue #3792: remove .min(1.0) cap — real TPC-H scaling.
+    // SF=1.0 → 100K rows, SF=3.0 → 300K rows (capped at 500K to fit reasonable runtime).
     let mut rng = rand::thread_rng();
 
-    // lineitem rows: 100K * SF (capped at 100K).
-    // SF=0.1 → 10K rows (fast smoke). SF=1.0 → 100K rows (triggers parallel).
-    let target_lineitem = ((100_000.0 * sf.min(1.0)) as usize).max(1_000);
+    let target_lineitem = ((100_000.0 * sf) as usize).min(500_000).max(1_000);
     for i in 0..target_lineitem {
         let qty = rng.gen_range(1.0..50.0);
         let price = rng.gen_range(100.0..50_000.0);
@@ -274,7 +320,7 @@ fn generate_synthetic_data(engine: &mut ExecutionEngine<MemoryStorage>, sf: f64)
     }
 
     // orders
-    for i in 0..((1_000.0 * sf.min(1.0)) as usize).max(100) {
+    for i in 0..((1_000.0 * sf) as usize).min(5_000).max(100) {
         let _ = engine.execute(&format!(
             "INSERT INTO orders VALUES ({}, {}, 'O', 1000.0, '1998-01-01', '1-URGENT', 'Clerk#001', 0, '')",
             i as i64 + 1,
@@ -283,7 +329,7 @@ fn generate_synthetic_data(engine: &mut ExecutionEngine<MemoryStorage>, sf: f64)
     }
 
     // partsupp
-    for i in 0..((500.0 * sf.min(1.0)) as usize).max(50) {
+    for i in 0..((500.0 * sf) as usize).min(2_500).max(50) {
         let _ = engine.execute(&format!(
             "INSERT INTO partsupp VALUES ({}, {}, {}, 10.0, '')",
             (i % 2_000) as i64 + 1,
@@ -293,7 +339,7 @@ fn generate_synthetic_data(engine: &mut ExecutionEngine<MemoryStorage>, sf: f64)
     }
 
     // part
-    for i in 0..((200.0 * sf.min(1.0)) as usize).max(20) {
+    for i in 0..((200.0 * sf) as usize).min(1_000).max(20) {
         let _ = engine.execute(&format!(
             "INSERT INTO part VALUES ({}, 'part name', 'mfgr', 'Brand#{}', 'ECONOMY ANODIZED STEEL', {}, 'MED JAR', 100.0, '')",
             i as i64 + 1,
@@ -303,7 +349,7 @@ fn generate_synthetic_data(engine: &mut ExecutionEngine<MemoryStorage>, sf: f64)
     }
 
     // customer, supplier, nation, region
-    for i in 0..((10.0 * sf.min(1.0)) as usize).max(2) {
+    for i in 0..((10.0 * sf) as usize).min(50).max(2) {
         let _ = engine.execute(&format!(
             "INSERT INTO customer VALUES ({}, 'customer{}', 'addr', 1, '13-111-111', 1000.0, 'BUILDING', '')",
             i as i64 + 1, i as i64 + 1
@@ -317,6 +363,7 @@ fn generate_synthetic_data(engine: &mut ExecutionEngine<MemoryStorage>, sf: f64)
     let _ = engine.execute("INSERT INTO nation VALUES (1, 'FRANCE', 1, ''), (2, 'GERMANY', 1, ''), (3, 'CANADA', 1, ''), (4, 'BRAZIL', 1, ''), (5, 'PERU', 1, ''), (6, 'INDIA', 1, '')");
     let _ = engine.execute("INSERT INTO region VALUES (1, 'EUROPE', ''), (2, 'AMERICA', '')");
 }
+
 
 // ── Run a single query, return (duration_ms, row_count, error) ───────────────
 
@@ -350,19 +397,23 @@ fn run_olap_benchmark(sf: f64, degrees: &[usize], runs: u32, data_dir: &str) -> 
     let mut query_results = Vec::new();
     let mut total_serial = 0u128;
 
-    for (qname, sql) in queries {
-        // Shared storage across runs
-        let storage: Arc<RwLock<MemoryStorage>> = Arc::new(RwLock::new(MemoryStorage::new()));
-        {
-            let mut engine = ExecutionEngine::new(storage.clone());
-            create_tables(&mut engine);
-            if std::path::Path::new(data_dir).exists() {
-                load_tbl_data(&mut engine, data_dir, sf);
-            } else {
-                generate_synthetic_data(&mut engine, sf);
-            }
-        } // engine dropped, storage populated
+    // v3.10.0: load data ONCE before the query loop (was loading per-query before)
+    let storage: Arc<RwLock<MemoryStorage>> = Arc::new(RwLock::new(MemoryStorage::new()));
+    {
+        let mut engine = ExecutionEngine::new(storage.clone());
+        create_tables(&mut engine);
+        if std::path::Path::new(data_dir).exists() {
+            drop(engine);
+            fast_load_tbl_data(&storage, data_dir, sf);
+        } else {
+            generate_synthetic_data(&mut engine, sf);
+        }
+    }
 
+    eprintln!("[OLAP] Running {} queries", queries.len());
+    for (qname, sql) in queries {
+
+        eprintln!("[OLAP] {} starting...", qname);
         // Serial (degree=1)
         let mut serial_times = Vec::new();
         for _ in 0..runs {
@@ -373,6 +424,7 @@ fn run_olap_benchmark(sf: f64, degrees: &[usize], runs: u32, data_dir: &str) -> 
         }
         let serial_ms = median(&mut serial_times);
         total_serial += serial_ms;
+        eprintln!("[OLAP] {} serial done in {}ms", qname, serial_ms);
 
         // Parallel runs
         let mut parallel_results = Vec::new();
