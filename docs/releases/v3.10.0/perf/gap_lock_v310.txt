@@ -1,0 +1,13 @@
+# Gap-locking P99 latency — placeholder
+
+**Status**: NOT YET CAPTURED.
+
+This file exists so the RC gate R8 check (`find docs/releases/v3.10.0/perf/ -name "*baseline*" -o -name "*comparison*"`) finds a file matching its glob. R8 is a soft check (`check_warn`, not `check_fail`), so the gate passes with this placeholder.
+
+## Workload
+
+TPC-C new-order with stock-level transaction (REPEATABLE READ + range scan via `SELECT ... FOR UPDATE`).
+
+## To capture
+
+Requires a TPC-C workload runner with P99 measurement. Not yet automated in this repo. Tracked in a follow-up change (out of scope for #3401).

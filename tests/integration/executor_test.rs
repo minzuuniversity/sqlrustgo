@@ -18,9 +18,7 @@ fn test_batch_insert() {
 
     assert_eq!(result.affected_rows, 3);
 
-    let result = engine
-        .execute("SELECT * FROM users")
-        .unwrap();
+    let result = engine.execute("SELECT * FROM users").unwrap();
     assert_eq!(result.rows.len(), 3);
 }
 
@@ -248,9 +246,7 @@ fn test_auto_increment_execution() {
     assert_eq!(result.unwrap().affected_rows, 1);
 
     // Query the result
-    let result = engine
-        .execute("SELECT * FROM orders")
-        .unwrap();
+    let result = engine.execute("SELECT * FROM orders").unwrap();
     assert_eq!(result.rows.len(), 1);
     // First auto_increment should be 1, name should be Alice
     // Note: Without explicit columns in INSERT, VALUES match column order
@@ -261,9 +257,7 @@ fn test_auto_increment_execution() {
     let result = engine.execute("INSERT INTO orders (name) VALUES ('Bob')");
     assert!(result.is_ok(), "INSERT should succeed");
 
-    let result = engine
-        .execute("SELECT * FROM orders ORDER BY id")
-        .unwrap();
+    let result = engine.execute("SELECT * FROM orders ORDER BY id").unwrap();
     assert_eq!(result.rows.len(), 2);
     assert_eq!(
         result.rows[1][0],
@@ -285,9 +279,7 @@ fn test_auto_increment_with_explicit_value() {
     let result = engine.execute("INSERT INTO products VALUES (100, 'Product1')");
     assert!(result.is_ok(), "INSERT with explicit value should succeed");
 
-    let result = engine
-        .execute("SELECT * FROM products")
-        .unwrap();
+    let result = engine.execute("SELECT * FROM products").unwrap();
     assert_eq!(
         result.rows[0][0],
         Value::Integer(100),
@@ -330,13 +322,12 @@ fn test_upsert_execution() {
     assert_eq!(result.unwrap().affected_rows, 1);
 
     // UPSERT - insert with duplicate key, should update
-    let result = engine.execute("INSERT INTO users VALUES (1, 'Bob') ON DUPLICATE KEY UPDATE name='Bob'");
+    let result =
+        engine.execute("INSERT INTO users VALUES (1, 'Bob') ON DUPLICATE KEY UPDATE name='Bob'");
     assert!(result.is_ok(), "UPSERT should succeed: {:?}", result);
 
     // Should have only 1 row (updated, not inserted)
-    let result = engine
-        .execute("SELECT * FROM users")
-        .unwrap();
+    let result = engine.execute("SELECT * FROM users").unwrap();
     assert_eq!(result.rows.len(), 1, "Should have 1 row after UPSERT");
     assert_eq!(result.rows[0][0], Value::Integer(1), "id should be 1");
     assert_eq!(
@@ -361,7 +352,9 @@ fn test_upsert_no_conflict() {
         .unwrap();
 
     // UPSERT with different key - should insert new row
-    let result = engine.execute("INSERT INTO products VALUES (2, 'Product2') ON DUPLICATE KEY UPDATE name='Updated'");
+    let result = engine.execute(
+        "INSERT INTO products VALUES (2, 'Product2') ON DUPLICATE KEY UPDATE name='Updated'",
+    );
     assert!(result.is_ok(), "UPSERT should succeed: {:?}", result);
 
     // Should have 2 rows
