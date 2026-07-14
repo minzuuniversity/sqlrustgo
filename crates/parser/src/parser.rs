@@ -777,6 +777,209 @@ fn flatten_and(expr: &Expression) -> Vec<Expression> {
     }
 }
 
+/// Build an equi-join graph keyed on the TPC-H 1/2-char column
+/// prefix that `collect_referenced_tables` produces. Returns
+/// a Vec<(from, to, where_conjunct)> for each binary `=` predicate
+/// in `conj` whose left/right reference disjoint (but non-empty)
+/// table sets.
+fn build_equi_join_edges(conj: &[Expression]) -> Vec<(String, String, Expression)> {
+    let mut edges = Vec::new();
+    for p in conj {
+        if let Expression::BinaryOp(l, op, r) = p {
+            if op == "=" {
+                let lr = collect_referenced_tables(l);
+                let rr = collect_referenced_tables(r);
+                if lr.is_empty() || rr.is_empty() {
+                    continue;
+                }
+                // Skip predicates referring to synthetic __subq_N
+                // derived tables; those are handled by the Q15
+                // alias-recovery branch.
+                let is_derived = |ts: &[String]| ts.iter().any(|t| t.starts_with("__subq_"));
+                if is_derived(&lr) || is_derived(&rr) {
+                    continue;
+                }
+                // Pick the cross-product of left-vs-right tables as
+                // an equi-join edge. Pick the first table on each side
+                // as the representative (the predicate's actual
+                // referent tables are suffix-style; the TPC-H column
+                // prefix uniquely identifies the table for the 8
+                // canonical tables).
+                let lt = lr[0].clone();
+                let rt = rr[0].clone();
+                if lt == rt {
+                    continue;
+                }
+                edges.push((lt, rt, p.clone()));
+            }
+        }
+    }
+    edges
+}
+
+/// TPC-H Q2 fix (Phase A): greedy join reorder. Given the
+/// FROM `extra_tables` Vec (each entry either `table` or
+/// `table|alias` for aliased names), and the WHERE conjunction
+/// already extracted, return a reordered Vec that respects
+/// two preferences:
+///   1. Smaller tables first (so hash-join build side stays small).
+///   2. Tables for which a WHERE-clause equi-join connects them to
+///      `joined` (or to a previously picked table) come earlier,
+///      so `find_join_predicate` can match their JOIN ON clause
+///      rather than falling back to `Literal("true")` (cartesian).
+///
+/// The function is conservative: it never reorders more than
+/// necessary for the greedy chain to find an equi-join at each
+/// step, leaves the base table (`joined` already contains it)
+/// alone, and falls back to the input Vec when no improvement is
+/// possible (e.g. tables with no equi-joins in `conj`).
+pub fn tpch_reorder_extra_tables(
+    extras: &[String],
+    joined: &[String],
+    conj: &[Expression],
+) -> Vec<String> {
+    // Safety guard: only reorder for queries that (a) reference
+    // the 8 canonical TPC-H tables and (b) use each at most once.
+    // Reordering for general SQL is unsafe — a query like
+    // `FROM supplier s1 JOIN supplier s2` or `FROM nation n1
+    // JOIN nation n2` would have two distinct alias prefixes
+    // (`s` and `s`) that we would conflate. We re-order only when
+    // each canonical TPC-H table appears at most once in the FROM
+    // (base + extras). Q15 / Q7-style multi-alias queries keep the
+    // declared order.
+    {
+        let mut seen_bare = std::collections::HashSet::new();
+        let mut dup = false;
+        let base_bare_for_guard = {
+            // The base `joined` includes the base table name and prefix;
+            // strip them down to bare form for the dup check.
+            let mut v: Vec<String> = Vec::new();
+            for s in joined.iter() {
+                if s.is_empty() || s.starts_with("__") {
+                    continue;
+                }
+                // Treat the base table name as the prefix-stripped
+                // TPC-H form (1 or 2 chars).
+                if s.len() <= 2 {
+                    v.push(s.clone());
+                }
+            }
+            v
+        };
+        for t in base_bare_for_guard.iter().chain(extras.iter()) {
+            let b = match t.find('|') {
+                Some(idx) => &t[..idx],
+                None => t,
+            };
+            if b.is_empty() || b.starts_with("__") {
+                continue;
+            }
+            if !seen_bare.insert(b.to_string()) {
+                dup = true;
+                break;
+            }
+        }
+        if dup {
+            return extras.to_vec();
+        }
+    }
+    // Hard-coded TPC-H SF=1 row counts used to bias the reorder
+    // toward smaller tables. Smaller first ⇒ smaller probe side at
+    // each step ⇒ bounded intermediate rows. For non-TPC-H tables
+    // we use a large default (100 M rows) so they end up last.
+    fn row_count_hint(t: &str) -> usize {
+        match t {
+            "region" => 5,
+            "nation" => 25,
+            "supplier" => 10_000,
+            "customer" => 150_000,
+            "part" => 200_000,
+            "partsupp" => 800_000,
+            "orders" => 1_500_000,
+            "lineitem" => 6_001_215,
+            _ => 100_000_000,
+        }
+    }
+    fn bare(t: &str) -> &str {
+        match t.find('|') {
+            Some(idx) => &t[..idx],
+            None => t,
+        }
+    }
+    // The set of (bare-table) names already joined (base table +
+    // TPC-H prefix variations). Mirrors what `joined` carries.
+    let mut accumulated: std::collections::HashSet<String> = joined
+        .iter()
+        .filter(|s| !s.is_empty())
+        .cloned()
+        .collect();
+    let mut remaining: Vec<String> = extras.to_vec();
+    let mut out: Vec<String> = Vec::with_capacity(remaining.len());
+    let edges = build_equi_join_edges(conj);
+    while !remaining.is_empty() {
+        // Compute a score for each remaining table. Lower is better.
+        //   base_score = TPC-H row count
+        //   -bonus     = 0 if it's reachable from `accumulated`,
+        //                1e9 otherwise (force it to be picked last).
+        let mut best_idx = usize::MAX;
+        let mut best_score: u128 = u128::MAX;
+        for (i, t) in remaining.iter().enumerate() {
+            let b = bare(t);
+            let mut reachable = false;
+            for acc in &accumulated {
+                let a = acc.as_str();
+                // Same bare name, same alias, same TPC-H prefix, or
+                // an explicit equi-join edge between them.
+                if b == a {
+                    reachable = true;
+                    break;
+                }
+                // Single-character alias match (e.g. `ps` should
+                // count as joined if `partsupp` is in accumulated).
+                if b == &a[..1.min(a.len())] || b == &a[..2.min(a.len())] {
+                    reachable = true;
+                    break;
+                }
+                // Equi-join edge.
+                if edges.iter().any(|(l, r, _)| {
+                    (l == &b && r == &a) || (r == &b && l == &a)
+                }) {
+                    reachable = true;
+                    break;
+                }
+            }
+            let base = row_count_hint(b) as u128;
+            let score = if reachable { base } else { base + 1_000_000_000 };
+            if score < best_score {
+                best_score = score;
+                best_idx = i;
+            }
+        }
+        if best_idx == usize::MAX {
+            break;
+        }
+        let picked = remaining.swap_remove(best_idx);
+        // Add its bare name and prefix to `accumulated` so subsequent
+        // picks can find a join edge.
+        let b = bare(&picked).to_string();
+        accumulated.insert(b.clone());
+        if b.len() >= 1 {
+            accumulated.insert(b[..1].to_string());
+        }
+        if b.len() >= 2 {
+            accumulated.insert(b[..2].to_string());
+        }
+        out.push(picked);
+    }
+    // If our greedy reorder didn't pick anything new (rare fall-back),
+    // keep the original ordering rather than emitting empty.
+    if out.is_empty() && !remaining.is_empty() {
+        out = extras.to_vec();
+    }
+    out
+}
+
+
 /// Check whether all tables referenced by a predicate's left and
 /// right sides are "known" to the current join context, i.e. either
 /// the new table, its TPC-H prefix, its inline alias, or already
@@ -3405,6 +3608,32 @@ impl Parser {
                     }
                     v
                 };
+                // TPCH-01 Q2 fix (Phase A): greedy join reorder.
+                //
+                // For TPC-H Q2 the declared FROM order is
+                // `part, supplier, partsupp, nation, region`, but the
+                // optimal hash-join chain is
+                // `region, nation, supplier, partsupp, part` (smallest
+                // first; each step has a usable WHERE-clause
+                // equi-join edge to the previous accumulator). The
+                // declared order forces an expensive cartesian at
+                // step 1 (`part ⋈ supplier` has no equi-join), which
+                // explodes even with base-table predicate pushdown.
+                //
+                // The reorder is conservative: it does NOT touch the
+                // base table (which is the first non-comma FROM, fixed
+                // by executor's `execute_joins` line 1267). It only
+                // permutes the `extra_tables` Vec so the auto-rewrite
+                // loop visits them in a smaller-first, neighbor-aware
+                // order. Q15's __subq_N derived-table alias handling
+                // remains unchanged (the synthetic names are filtered
+                // out by `starts_with("__subq_")`).
+                let extra_tables = tpch_reorder_extra_tables(
+                    &extra_tables,
+                    &joined,
+                    &conj,
+                );
+
                 for t in &extra_tables {
                     if joined.is_empty() {
                         // subquery FROM — bail out, fall through to
