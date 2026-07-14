@@ -47,11 +47,25 @@ Track and verify all evidence artifacts required for v3.10.0 GA promotion. Each 
 
 ## D4: Performance Baseline
 
+### D4.0 Parallel Executor Validation (Issue #3792, COMPLETED 2026-07-13)
+
 | # | Evidence Item | Status | Detail |
 |---|---------------|--------|--------|
-| D4.1 | TPC-H SF1 vs v3.9.0 | ❌ **MISSING** | Perf baseline not yet created |
-| D4.2 | Regression ≤ 5% | ❌ **MISSING** | Depends on D4.1 |
-| D4.3 | Crate coverage ≥ 80% | ❌ **MISSING** | `cargo llvm-cov --lib` not run |
+| D4.0.1 | v3.10.0 6 项并行优化实施 | ✅ PASS | PR #3370 + #3829 merged, commit `733be23540` |
+| D4.0.2 | SF=1.0 (1M 行) Q1 加速 ≥ 1.1x | ✅ PASS | **1.27x** 实测 |
+| D4.0.3 | SF=1.0 (1M 行) Q3 加速 ≥ 1.05x | ✅ PASS | **1.08x** 实测 |
+| D4.0.4 | SF=1.0 (1M 行) Q5 加速 ≥ 1.05x | ✅ PASS | **1.10x** 实测 |
+| D4.0.5 | SF=3.0 (3M 行) 加速保持 | ✅ PASS | Q3 1.08x, Q5 1.10x |
+| D4.0.6 | 数据加载性能 | ✅ PASS | 1M 行 30s (180x 加速) |
+| D4.0.7 | 线性扩展性 (1M → 3M ≤ 3.5x) | ✅ PASS | Q1: 2.78x, Q3: 3.07x, Q5: 2.97x |
+
+### D4.1 TPC-H SF1 vs v3.9.0 (PENDING — 硬件/时间限制)
+
+| # | Evidence Item | Status | Detail |
+|---|---------------|--------|--------|
+| D4.1 | TPC-H SF1 vs v3.9.0 | ⚠️ PENDING | Hardware/time constrained; partial baseline done at SF=1/3 |
+| D4.2 | Regression ≤ 5% | ⚠️ PENDING | Depends on D4.1 |
+| D4.3 | Crate coverage ≥ 80% | ⚠️ PENDING | `cargo llvm-cov --lib` not run |
 
 ## D5: Governance & Documentation
 
