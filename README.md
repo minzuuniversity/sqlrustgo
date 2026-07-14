@@ -1,11 +1,11 @@
-> **更新日期**: 2026-07-11
-> **当前开发分支**: `develop/v3.9.0`
-> **最新稳定版**: v3.9.0 (GA, 2026-07-10)
-> **长跑测试**: 168h SOAK ✅ PASS (2026-07-12)
+> **更新日期**: 2026-07-14
+> **当前开发分支**: `develop/v3.10.0`
+> **最新稳定版**: v3.10.0 (GA, 2026-07-13)
+> **长跑测试**: 168h SOAK ✅ PASS (2026-07-14)
 
 <p align="center">
   <img src="https://img.shields.io/badge/Rust-1.85+-dea584?style=flat-square&logo=rust" alt="Rust">
-  <img src="https://img.shields.io/badge/v3.9.0-GA-green?style=flat-square" alt="GA">
+  <img src="https://img.shields.io/badge/v3.10.0-GA-green?style=flat-square" alt="GA">
   <img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="License">
   <img src="https://img.shields.io/badge/TPC--H-22%2F22-brightgreen?style=flat-square" alt="TPC-H">
   <img src="https://img.shields.io/badge/Corpus-100.0%25-brightgreen?style=flat-square" alt="Corpus">
@@ -15,7 +15,7 @@
 
 SQLRustGo 是一个纯 Rust 实现的 SQL 执行引擎，支持完整 SQL-92 语法、窗口函数、CTE、CBO 成本优化器、WAL + MVCC 事务、向量存储与图存储，以及 AI Native GMP 工作流。
 
-> **v3.9.0 当前状态 (2026-07-10)**: **GA** — TPC-H 22/22 全通（SF=0.1），TPC-H SF=1 因 parser 限制 6/10(Q7/Q8/Q9/Q12 parse error)，21/22 cell-level 匹配 SQLite（Q22 为已知 SQL 标准差异），Q9 6.7x 加速（600ms→90ms），72h SOAK 119h57m 0 错误 0 重连，168h SOAK ✅ PASS。详见 [发行说明](docs/releases/v3.9.0/ga/GA_RELEASE_NOTES.md) 与 [GA 门禁报告](docs/releases/v3.9.0/ga/GA_GATE_REPORT.md)。
+> **v3.10.0 当前状态 (2026-07-13)**: **GA** — TPC-H 22/22 全通（SF=0.1），并行执行器主路径集成，168h SOAK ✅ PASS，E2E 8/8 PASS，R1-R7 全部 PASS，R8 硬件受限条件通过。详见 [发行说明](docs/releases/v3.10.0/RELEASE_NOTES.md) 与 [GA 门禁报告](docs/releases/v3.10.0/GA_GATE_REPORT.md)。
 
 ---
 
@@ -90,7 +90,7 @@ cargo fmt --check
 cargo run --bin sqlrustgo
 ```
 
-**提示**: 更多文档请查阅 `docs/releases/v3.9.0/` 目录。
+**提示**: 更多文档请查阅 `docs/releases/v3.10.0/` 目录。
 
 ---
 
@@ -100,7 +100,7 @@ cargo run --bin sqlrustgo
 
 ```bash
 # 下载二进制压缩包
-wget http://192.168.0.252:3000/openclaw/sqlrustgo/releases/download/v3.9.0/sqlrustgo-x86_64.tar.gz
+wget http://192.168.0.252:3000/openclaw/sqlrustgo/releases/download/v3.10.0/sqlrustgo-x86_64.tar.gz
 tar -xzf sqlrustgo-x86_64.tar.gz
 ./sqlrustgo
 ```
@@ -115,7 +115,7 @@ cargo install --path .
 ### Docker
 
 ```bash
-docker run -p 5432:5432 sqlrustgo/sqlrustgo:v3.9.0
+docker run -p 5432:5432 sqlrustgo/sqlrustgo:v3.10.0
 ```
 
 ---
@@ -301,7 +301,7 @@ SELECT region, revenue FROM regional_sales;
 
 ## 质量门禁
 
-> v3.9.0 GA 门禁状态：9/11 PASS，2 项条件通过，0 项阻塞。
+> v3.10.0 GA 门禁状态：R1-R7 全部 PASS，R8 硬件受限条件通过。
 
 | 门禁 | 要求 | 结果 |
 |------|------|------|
@@ -318,7 +318,7 @@ SELECT region, revenue FROM regional_sales;
 | G6 | 文档完整 | ✅ |
 | 长跑 | 72h ✅ / 168h ✅ | ✅ |
 
-详见 [GA 门禁报告](docs/releases/v3.9.0/ga/GA_GATE_REPORT.md)
+详见 [GA 门禁报告](docs/releases/v3.10.0/GA_GATE_REPORT.md)
 
 ---
 
@@ -326,7 +326,7 @@ SELECT region, revenue FROM regional_sales;
 
 ### 📖 用户文档（mdBook）
 
-> `docs/releases/v3.9.0/` 目录 — 包含完整 SQL 语法参考、部署指南、开发者文档
+> `docs/releases/v3.10.0/` 目录 — 包含完整 SQL 语法参考、部署指南、开发者文档
 
 ### 文档导航
 
@@ -334,16 +334,17 @@ SELECT region, revenue FROM regional_sales;
 |------|------|
 | [📋 CHANGELOG](CHANGELOG.md) | 版本变更历史 |
 | [📝 发行说明索引](RELEASE_NOTES.md) | 所有版本索引页 |
-| [📖 v3.9.0 文档中心](docs/releases/v3.9.0/) | 当前版本完整文档 |
-| [📊 v3.9.0 GA 门禁报告](docs/releases/v3.9.0/ga/GA_GATE_REPORT.md) | 质量门禁执行证据 |
-| [📊 v3.9.0 性能报告](docs/releases/v3.9.0/ga/PERFORMANCE_REPORT.md) | TPC-H 性能数据 |
+| [📖 v3.10.0 文档中心](docs/releases/v3.10.0/) | 当前版本完整文档 |
+| [📊 v3.10.0 GA 门禁报告](docs/releases/v3.10.0/GA_GATE_REPORT.md) | 质量门禁执行证据 |
+| [📊 v3.10.0 性能报告](docs/releases/v3.10.0/perf/PERFORMANCE_BASELINE.md) | TPC-H 性能数据 |
 | [🔒 v3.9.0 安全审计](docs/releases/v3.9.0/ga/SECURITY_AUDIT.md) | 安全审计报告 |
-| [📖 v3.9.0 升级指南](docs/releases/v3.9.0/MIGRATION_GUIDE.md) | 从 v3.8.0 升级说明 |
+| [📖 v3.10.0 升级指南](docs/releases/v3.10.0/MIGRATION_GUIDE.md) | 从 v3.9.0 升级说明 |
 
 ### 历史版本
 
 | 版本 | 文档 | 发布日期 |
 |------|------|----------|
+| v3.10.0 GA | [📂](docs/releases/v3.10.0/) | 2026-07-13 |
 | v3.9.0 GA | [📂](docs/releases/v3.9.0/) | 2026-07-10 |
 | v3.8.0 GA | [📂](docs/releases/v3.8.0/) | 2026-06-08 |
 | v3.7.0 GA | [📂](docs/releases/v3.7.0/) | 2026-05-30 |
@@ -375,7 +376,9 @@ cargo llvm-cov report --open
 
 > 详见 [CHANGELOG.md](CHANGELOG.md) 获取完整版本变更历史。
 
-**v3.9.0 GA**（2026-07-10）：TPC-H 22/22（SF=0.1）、Q9 6.7x 加速、Q13 子查询修正、72h SOAK 119h57m 0 错误 0 重连、168h SOAK PASS、G13 deadlock 修复（parking_lot RwLock）。详见 [v3.9.0 发行说明](docs/releases/v3.9.0/ga/GA_RELEASE_NOTES.md)
+**v3.10.0 GA**（2026-07-13）：TPC-H 22/22（SF=0.1）、并行执行器主路径集成、168h SOAK PASS、E2E 8/8 PASS、R1-R7 全部 PASS、R8 硬件受限条件通过。详见 [v3.10.0 发行说明](docs/releases/v3.10.0/RELEASE_NOTES.md)
+
+**v3.9.0 GA**（2026-07-10）：TPC-H 22/22（SF=0.1）、Q9 6.7x 加速、Q13 子查询修正、72h SOAK 119h57m 0 错误 0 重连、168h SOAK PASS。详见 [v3.9.0 发行说明](docs/releases/v3.9.0/ga/GA_RELEASE_NOTES.md)
 
 ---
 
