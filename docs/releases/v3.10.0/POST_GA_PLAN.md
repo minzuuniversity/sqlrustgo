@@ -44,6 +44,7 @@ Continuing the **MySQL 5.7 alternative** roadmap, v3.11.0 will focus on:
 3. **SEM-4 coverage ≥ 80%** closure
 4. **Extension crates evaluation** (product decision required)
 5. **TPC-H 22/22 CI** (V310-11a/b completion)
+6. **#3792 Q4 相关子查询优化** (Hash Semi Join + 去相关，~140h)
 
 ### Schedule Outline
 
@@ -67,6 +68,11 @@ Continuing the **MySQL 5.7 alternative** roadmap, v3.11.0 will focus on:
 | F-23/24/25/26/27/29/31/32/35 ISOLATED | ISOLATED | ~960 LOC | P1 |
 | #3136 Arch sem debt (CONTAINS macro) | IN_PROGRESS | 8h | P1 |
 | 8 extension crates (SCOPE_DEFERRED) | DEFERRED | TBD | P2 |
+| **#3792 Q4 相关子查询加速** (NEW) | **INHERITED** | **40h** | **P1** |
+| **Hash Semi Join / Anti Join 算子** (NEW) | **NOT_IMPLEMENTED** | **60h** | **P1** |
+| **子查询去相关（subquery decorrelation）** (NEW) | **NOT_IMPLEMENTED** | **40h** | **P2** |
+
+> **Issue #3792 新增债务：** v3.10.0 实测显示 Q4 相关子查询占 96% 总执行时间（450K orders × 3M lineitem = 1.35 万亿次 naive 比较）。v3.11+ 需实现 Hash Semi Join / Anti Join + 子查询去相关优化以充分释放并行潜力。详见 `PARALLEL_EXECUTOR_OPTIMIZATION.md` §8.1。
 
 ---
 
