@@ -1,3 +1,27 @@
+## 2026-07-14 — v3.10.0 GA Post-Release + 168h SOAK 启动
+
+### v3.10.0 正式发布
+- **commit**: `8056d5fb66` (develop/v3.10.0) — 已合并到 gitcode/gitee/release/main
+- **发布公告**: `docs/releases/v3.10.0/V310_GA_RELEASE_ANNOUNCEMENT.md`
+- **任务闭环**: 23/23 v3.10.0 任务完成, 11/11 移交 v3.11.0 (V311-01 ~ V311-22)
+- **PRs**: #3836 (V310 closure), #3833 (v3.11 plans), #3831/#3830 (perf docs), #3829 (fast loader), #3370 (parallel exec)
+
+### 168h SOAK 启动 (Post-GA Continuous Monitoring)
+- **启动时间**: 2026-07-14 13:33 UTC
+- **预计结束**: 2026-07-21 13:34 UTC
+- **架构**: `sqlrustgo-mysql-server` v3.10.0 GA + TPC-H Q1/Q6/Q12/Q14 轮询 + 8 线程 OLTP 自定义工作负载
+- **数据集**: TPC-H SF=0.01 (100K lineitem, 8 表, 115K 行)
+- **编排器**: `/tmp/soak_v310/orchestrator_v2.sh` (可复用)
+- **当前状态** (5h 37m 后): RSS 1.7GB 稳定, FD 25, CPU 237%, WAL 77MB, TPC-H 645 轮完成, 0 错误
+
+### 性能基线 (Issue #3792)
+- Q1 (聚合): **1.27x** @ 1M 行
+- Q3 (3-way join): **1.08x** @ 1M/3M 行
+- Q5 (6-way join): **1.10x** @ 1M/3M 行
+- 数据加载 (`fast_load_tbl_data`): **180x 加速** (1M 行从 10+ min → 30s)
+
+---
+
 ## 2026-07-12 — F-36 修复 + V310-14 mysqladmin CLI 二进制 (PR #3776 / #3768)
 
 ### Performance Fix

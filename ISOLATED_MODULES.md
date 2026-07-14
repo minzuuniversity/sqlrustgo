@@ -1,13 +1,17 @@
-# ISOLATED_MODULES.md — SQLRustGo v3.10.0
+# ISOLATED_MODULES.md — SQLRustGo v3.10.0 (Post-GA)
 
-> 反映 `develop/v3.10.0` @ `0dade6fb6` (2026-07-12) 实时状态。
+> 反映 `develop/v3.10.0` @ `8056d5fb66` (2026-07-14, post-GA) 实时状态。
 >
 > **SSOT**: `docs/governance/debt/debt-registry.yaml` (v3.10.0-snapshot-2026-07-12) +
-> `docs/releases/v3.10.0/LEGACY_DEBT_CLOSURE_TRACKING_REPORT.md` (PR #3794)。
+> `docs/releases/v3.10.0/LEGACY_DEBT_CLOSURE_TRACKING_REPORT.md` (PR #3794) +
+> `docs/releases/v3.10.0/V310_TASK_CLOSURE_VERIFICATION.md` (PR #3836)。
 >
-> **生成日期**: 2026-07-12 (v3.10.0 GA 准备窗口)
+> **生成日期**: 2026-07-14 (v3.10.0 GA Post-Release 更新)
 >
 > **范围**: 9 F-XX ISOLATED 项 + 11 extension crate 孤岛 + 其余非主路径组件。
+>
+> **v3.10.0 GA 状态**: 23/23 任务完成, 11/11 移交 v3.11.0 (V311-01 ~ V311-22)
+> **v3.10.0 168h SOAK**: 🔄 IN PROGRESS (2026-07-14 启动, 预计 2026-07-21 完成)
 
 ---
 
