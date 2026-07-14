@@ -1,0 +1,484 @@
+{
+  "crate": "sqlrustgo-bench",
+  "status": "instrumented",
+  "data": [
+    {
+      "summary": {
+        "percent_covered": 16.3,
+        "region": {
+          "covered": 1557,
+          "total": 10659,
+          "percent": 14.61
+        },
+        "function": {
+          "covered": 98,
+          "total": 547,
+          "percent": 17.92
+        },
+        "line": {
+          "covered": 1055,
+          "total": 6472,
+          "percent": 16.3
+        },
+        "branch": {
+          "covered": 0,
+          "total": 0,
+          "percent": 0
+        }
+      },
+      "files": [
+        {
+          "filename": "/home/yingli/sqlrustgo/src/cbo_estimator.rs",
+          "summary": {
+            "branches": {
+              "count": 0,
+              "covered": 0,
+              "notcovered": 0,
+              "percent": 0.0
+            },
+            "mcdc": {
+              "count": 0,
+              "covered": 0,
+              "notcovered": 0,
+              "percent": 0.0
+            },
+            "functions": {
+              "count": 14,
+              "covered": 13,
+              "percent": 92.85714285714286
+            },
+            "instantiations": {
+              "count": 31,
+              "covered": 13,
+              "percent": 41.935483870967744
+            },
+            "lines": {
+              "count": 150,
+              "covered": 142,
+              "percent": 94.66666666666667
+            },
+            "regions": {
+              "count": 216,
+              "covered": 205,
+              "notcovered": 11,
+              "percent": 94.9074074074074
+            }
+          },
+          "lines": 0,
+          "regions": 0,
+          "functions": 0
+        },
+        {
+          "filename": "/home/yingli/sqlrustgo/src/engine_builder.rs",
+          "summary": {
+            "branches": {
+              "count": 0,
+              "covered": 0,
+              "notcovered": 0,
+              "percent": 0.0
+            },
+            "mcdc": {
+              "count": 0,
+              "covered": 0,
+              "notcovered": 0,
+              "percent": 0.0
+            },
+            "functions": {
+              "count": 12,
+              "covered": 2,
+              "percent": 16.666666666666664
+            },
+            "instantiations": {
+              "count": 24,
+              "covered": 2,
+              "percent": 8.333333333333332
+            },
+            "lines": {
+              "count": 183,
+              "covered": 38,
+              "percent": 20.76502732240437
+            },
+            "regions": {
+              "count": 231,
+              "covered": 37,
+              "notcovered": 194,
+              "percent": 16.017316017316016
+            }
+          },
+          "lines": 0,
+          "regions": 0,
+          "functions": 0
+        },
+        {
+          "filename": "/home/yingli/sqlrustgo/src/engine_cte.rs",
+          "summary": {
+            "branches": {
+              "count": 0,
+              "covered": 0,
+              "notcovered": 0,
+              "percent": 0.0
+            },
+            "mcdc": {
+              "count": 0,
+              "covered": 0,
+              "notcovered": 0,
+              "percent": 0.0
+            },
+            "functions": {
+              "count": 8,
+              "covered": 0,
+              "percent": 0.0
+            },
+            "instantiations": {
+              "count": 24,
+              "covered": 0,
+              "percent": 0.0
+            },
+            "lines": {
+              "count": 89,
+              "covered": 0,
+              "percent": 0.0
+            },
+            "regions": {
+              "count": 123,
+              "covered": 0,
+              "notcovered": 123,
+              "percent": 0.0
+            }
+          },
+          "lines": 0,
+          "regions": 0,
+          "functions": 0
+        },
+        {
+          "filename": "/home/yingli/sqlrustgo/src/engine_ddl.rs",
+          "summary": {
+            "branches": {
+              "count": 0,
+              "covered": 0,
+              "notcovered": 0,
+              "percent": 0.0
+            },
+            "mcdc": {
+              "count": 0,
+              "covered": 0,
+              "notcovered": 0,
+              "percent": 0.0
+            },
+            "functions": {
+              "count": 59,
+              "covered": 0,
+              "percent": 0.0
+            },
+            "instantiations": {
+              "count": 175,
+              "covered": 0,
+              "percent": 0.0
+            },
+            "lines": {
+              "count": 479,
+              "covered": 0,
+              "percent": 0.0
+            },
+            "regions": {
+              "count": 627,
+              "covered": 0,
+              "notcovered": 627,
+              "percent": 0.0
+            }
+          },
+          "lines": 0,
+          "regions": 0,
+          "functions": 0
+        },
+        {
+          "filename": "/home/yingli/sqlrustgo/src/engine_dml.rs",
+          "summary": {
+            "branches": {
+              "count": 0,
+              "covered": 0,
+              "notcovered": 0,
+              "percent": 0.0
+            },
+            "mcdc": {
+              "count": 0,
+              "covered": 0,
+              "notcovered": 0,
+              "percent": 0.0
+            },
+            "functions": {
+              "count": 64,
+              "covered": 13,
+              "percent": 20.3125
+            },
+            "instantiations": {
+              "count": 192,
+              "covered": 13,
+              "percent": 6.770833333333333
+            },
+            "lines": {
+              "count": 671,
+              "covered": 230,
+              "percent": 34.277198211624444
+            },
+            "regions": {
+              "count": 1292,
+              "covered": 391,
+              "notcovered": 901,
+              "percent": 30.26315789473684
+            }
+          },
+          "lines": 0,
+          "regions": 0,
+          "functions": 0
+        },
+        {
+          "filename": "/home/yingli/sqlrustgo/src/engine_helpers.rs",
+          "summary": {
+            "branches": {
+              "count": 0,
+              "covered": 0,
+              "notcovered": 0,
+              "percent": 0.0
+            },
+            "mcdc": {
+              "count": 0,
+              "covered": 0,
+              "notcovered": 0,
+              "percent": 0.0
+            },
+            "functions": {
+              "count": 19,
+              "covered": 7,
+              "percent": 36.84210526315789
+            },
+            "instantiations": {
+              "count": 38,
+              "covered": 7,
+              "percent": 18.421052631578945
+            },
+            "lines": {
+              "count": 175,
+              "covered": 56,
+              "percent": 32.0
+            },
+            "regions": {
+              "count": 263,
+              "covered": 65,
+              "notcovered": 198,
+              "percent": 24.714828897338403
+            }
+          },
+          "lines": 0,
+          "regions": 0,
+          "functions": 0
+        },
+        {
+          "filename": "/home/yingli/sqlrustgo/src/engine_select.rs",
+          "summary": {
+            "branches": {
+              "count": 0,
+              "covered": 0,
+              "notcovered": 0,
+              "percent": 0.0
+            },
+            "mcdc": {
+              "count": 0,
+              "covered": 0,
+              "notcovered": 0,
+              "percent": 0.0
+            },
+            "functions": {
+              "count": 204,
+              "covered": 16,
+              "percent": 7.84313725490196
+            },
+            "instantiations": {
+              "count": 555,
+              "covered": 16,
+              "percent": 2.8828828828828827
+            },
+            "lines": {
+              "count": 2763,
+              "covered": 166,
+              "percent": 6.007962359753891
+            },
+            "regions": {
+              "count": 4944,
+              "covered": 276,
+              "notcovered": 4668,
+              "percent": 5.582524271844661
+            }
+          },
+          "lines": 0,
+          "regions": 0,
+          "functions": 0
+        },
+        {
+          "filename": "/home/yingli/sqlrustgo/src/engine_utils.rs",
+          "summary": {
+            "branches": {
+              "count": 0,
+              "covered": 0,
+              "notcovered": 0,
+              "percent": 0.0
+            },
+            "mcdc": {
+              "count": 0,
+              "covered": 0,
+              "notcovered": 0,
+              "percent": 0.0
+            },
+            "functions": {
+              "count": 35,
+              "covered": 7,
+              "percent": 20.0
+            },
+            "instantiations": {
+              "count": 70,
+              "covered": 7,
+              "percent": 10.0
+            },
+            "lines": {
+              "count": 812,
+              "covered": 68,
+              "percent": 8.374384236453201
+            },
+            "regions": {
+              "count": 1150,
+              "covered": 107,
+              "notcovered": 1043,
+              "percent": 9.304347826086955
+            }
+          },
+          "lines": 0,
+          "regions": 0,
+          "functions": 0
+        },
+        {
+          "filename": "/home/yingli/sqlrustgo/src/execution_engine.rs",
+          "summary": {
+            "branches": {
+              "count": 0,
+              "covered": 0,
+              "notcovered": 0,
+              "percent": 0.0
+            },
+            "mcdc": {
+              "count": 0,
+              "covered": 0,
+              "notcovered": 0,
+              "percent": 0.0
+            },
+            "functions": {
+              "count": 101,
+              "covered": 33,
+              "percent": 32.67326732673268
+            },
+            "instantiations": {
+              "count": 261,
+              "covered": 33,
+              "percent": 12.643678160919542
+            },
+            "lines": {
+              "count": 846,
+              "covered": 291,
+              "percent": 34.39716312056738
+            },
+            "regions": {
+              "count": 1215,
+              "covered": 386,
+              "notcovered": 829,
+              "percent": 31.76954732510288
+            }
+          },
+          "lines": 0,
+          "regions": 0,
+          "functions": 0
+        },
+        {
+          "filename": "/home/yingli/sqlrustgo/src/expr_utils.rs",
+          "summary": {
+            "branches": {
+              "count": 0,
+              "covered": 0,
+              "notcovered": 0,
+              "percent": 0.0
+            },
+            "mcdc": {
+              "count": 0,
+              "covered": 0,
+              "notcovered": 0,
+              "percent": 0.0
+            },
+            "functions": {
+              "count": 30,
+              "covered": 7,
+              "percent": 23.333333333333332
+            },
+            "instantiations": {
+              "count": 101,
+              "covered": 8,
+              "percent": 7.92079207920792
+            },
+            "lines": {
+              "count": 301,
+              "covered": 64,
+              "percent": 21.2624584717608
+            },
+            "regions": {
+              "count": 594,
+              "covered": 90,
+              "notcovered": 504,
+              "percent": 15.151515151515152
+            }
+          },
+          "lines": 0,
+          "regions": 0,
+          "functions": 0
+        },
+        {
+          "filename": "/home/yingli/sqlrustgo/src/lib.rs",
+          "summary": {
+            "branches": {
+              "count": 0,
+              "covered": 0,
+              "notcovered": 0,
+              "percent": 0.0
+            },
+            "mcdc": {
+              "count": 0,
+              "covered": 0,
+              "notcovered": 0,
+              "percent": 0.0
+            },
+            "functions": {
+              "count": 1,
+              "covered": 0,
+              "percent": 0.0
+            },
+            "instantiations": {
+              "count": 1,
+              "covered": 0,
+              "percent": 0.0
+            },
+            "lines": {
+              "count": 3,
+              "covered": 0,
+              "percent": 0.0
+            },
+            "regions": {
+              "count": 4,
+              "covered": 0,
+              "notcovered": 4,
+              "percent": 0.0
+            }
+          },
+          "lines": 0,
+          "regions": 0,
+          "functions": 0
+        }
+      ]
+    }
+  ]
+}
