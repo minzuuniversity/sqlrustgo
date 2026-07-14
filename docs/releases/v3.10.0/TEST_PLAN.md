@@ -1,9 +1,9 @@
 # v3.10.0 Test Plan
 
 > **Version**: v3.10.0
-> **Status**: RC stage (2026-07-13, BETA → RC)
+> **Status**: GA (2026-07-13, RC → GA) + 168h SOAK Post-GA 🔄 IN PROGRESS
 > **Owner**: @yinglichina8848 / Claude Code
-> **Last update**: 2026-07-13 (RC stage update)
+> **Last update**: 2026-07-14 (Post-GA + 168h SOAK status)
 
 This document is the **SSOT** for v3.10.0's test plan. It replaces the
 "per-version test plan" requirement in `STAGE_CONFIG.yaml` and serves as
@@ -144,3 +144,45 @@ tests/                                (root manifest)
 
 *Last updated: 2026-07-13 by Claude Code (hermes-agent)*
 *Phase 0 implementation per DeepSeek review feedback (local://attachment-1)*
+
+---
+
+## 6. Post-GA 168h SOAK (2026-07-14 启动)
+
+### 6.1 状态
+
+| Item | 状态 | Detail |
+|------|------|--------|
+| 启动时间 | ✅ | 2026-07-14 13:33 UTC |
+| 预计结束 | 🔄 | 2026-07-21 13:34 UTC (7 天) |
+| 硬件 | ✅ | gaoyuan (28 cores, 94 GB RAM) |
+| 服务器 | ✅ | `sqlrustgo-mysql-server` v3.10.0 GA (commit `8056d5fb66`) |
+| 数据集 | ✅ | TPC-H SF=0.01 (100K lineitem, 8 表) |
+| 工作负载 | ✅ | TPC-H Q1/Q6/Q12/Q14 轮询 + 8 线程 OLTP 自定义 |
+
+### 6.2 监控指标 (持续采样, 5 分钟间隔)
+
+| 指标 | 当前值 | 阈值 | 状态 |
+|------|--------|------|------|
+| RSS | 1,693 MB | < 6 GB | ✅ 稳定 |
+| FD | 25 | < 1024 | ✅ 稳定 |
+| CPU | 237% | < 80% (per core) | ✅ 健康 |
+| WAL | 77 MB | < 10 GB | ✅ 稳定 |
+| TPC-H 延迟 (Q1/Q6/Q12/Q14) | 200-400ms | < 1000ms | ✅ 正常 |
+| OLTP ops/min | ~280 | 任意 | ✅ 运行中 |
+
+### 6.3 监控文件
+
+- 编排器: `/tmp/soak_v310/orchestrator_v2.sh`
+- 指标: `/tmp/soak_v310/run_*/metrics.csv`
+- TPC-H: `/tmp/soak_v310/run_*/tpch_rotation.log`
+- OLTP: `/tmp/soak_v310/run_*/oltp_workload.log`
+- 完整报告: `/tmp/soak_v310/PROGRESS_REPORT.md`
+
+### 6.4 异常检测
+
+- RSS > 6 GB → 告警
+- FD > 1024 → 告警
+- WAL > 10 GB → 告警
+- 服务器进程消失 → 失败
+- 任何 SQL 错误 → 记录到日志

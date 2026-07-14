@@ -1,8 +1,8 @@
 # v3.10.0 GA Gate Report
 
-**Date**: 2026-07-13
-**Stage**: RC → GA (final verification)
-**Status**: ✅ GA READY — R1-R7 all PASS, R8 hardware-blocked. CA signed. STAGE=GA.
+**Date**: 2026-07-14 (updated post-GA)
+**Stage**: GA → Post-GA (with continuous monitoring)
+**Status**: ✅ GA RELEASED — R1-R7 all PASS, R8 hardware-blocked (TPC-H SF1 vs v3.9.0). Parallel executor validated (Issue #3792). 168h SOAK in progress. CA signed. STAGE=GA.
 
 ---
 
@@ -123,3 +123,52 @@
 
 1. **D4 perf baseline**: Run TPC-H SF1 on dedicated hardware (openclaw — in progress)
 2. **R4 E2E wire protocol fix**: MySQL protocol DDL response bug (non-blocking, server crate issue)
+
+---
+
+## 3. Post-GA Updates (2026-07-14)
+
+### 3.1 Parallel Executor Validation (Issue #3792)
+
+| Item | Status | Detail |
+|---|---|---|
+| v3.10.0 6 项并行优化实施 | ✅ PASS | PR #3370 (Gitea 250) + #3829 (Gitea 252) merged, commit `733be23540` |
+| PARALLEL_MIN_ROWS=2M | ✅ PASS | 三处定义统一（executor / optimizer / storage） |
+| SF=1.0 (1M 行) Q1 加速 ≥ 1.1x | ✅ PASS | **1.27x** 实测 |
+| SF=1.0 (1M 行) Q3 加速 ≥ 1.05x | ✅ PASS | **1.08x** 实测 |
+| SF=1.0 (1M 行) Q5 加速 ≥ 1.05x | ✅ PASS | **1.10x** 实测 |
+| SF=3.0 (3M 行) 加速保持 | ✅ PASS | Q3 1.08x, Q5 1.10x |
+| 数据加载性能 | ✅ PASS | 1M 行 30s (180x 加速 via `fast_load_tbl_data`) |
+| 线性扩展性 (1M → 3M ≤ 3.5x) | ✅ PASS | Q1: 2.78x, Q3: 3.07x, Q5: 2.97x |
+
+**详细结果**: `docs/releases/v3.10.0/perf/PERFORMANCE_BASELINE.md`
+
+### 3.2 168h SOAK (Post-GA Continuous Monitoring)
+
+| Item | Status | Detail |
+|---|---|---|
+| SOAK 启动 | ✅ PASS | 2026-07-14 13:33:59 UTC, 端口 3399 |
+| 持续运行 | ✅ PASS | 5h 37m 时已稳定运行无崩溃 |
+| 内存稳定 | ✅ PASS | RSS 稳定在 1.7GB (无泄漏，buffer pool 预热) |
+| TPC-H Q1/Q6/Q12/Q14 轮询 | ✅ PASS | 645 轮完成，平均 200-400ms 延迟 |
+| OLTP 8 线程并发 | ✅ PASS | point_select + range_select + count + insert + update |
+| 异常检测 | ✅ PASS | RSS < 6GB, FD < 1024, WAL < 10GB |
+
+**详细报告**: `/tmp/soak_v310/PROGRESS_REPORT.md` (会话内)
+
+### 3.3 v3.10.0 任务闭环验证 (V310_TASK_CLOSURE_VERIFICATION.md)
+
+- ✅ 23/23 v3.10.0 范围内任务完成
+- ✅ 11/11 移交 v3.11.0 任务有完整计划 (V311-01 ~ V311-22)
+- ✅ 0 失联任务
+
+### 3.4 文档同步状态
+
+| 镜像 | develop/v3.10.0 | ga/v3.10.0 | release/v3.10.0 | main |
+|------|:---:|:---:|:---:|:---:|
+| Gitea 252 | ✅ | ✅* | ✅ | ✅ |
+| Gitea 250 (backup) | ✅ | ✅ | ✅ | ✅ |
+| Gitcode | ✅ | ✅ | ✅ | ✅ |
+| Gitee | ✅ | ✅ | ✅ | ✅ |
+
+*Gitea 252 的 ga/v3.10.0 因 merge API 速率限制落后，已通过 gitcode/gitee 同步
