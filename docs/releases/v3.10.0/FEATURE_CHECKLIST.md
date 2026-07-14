@@ -182,7 +182,7 @@ to verify feature-test pairing.
 |------|------|------|------|
 | Sequential Execution | ✅ | (covered) | |
 | Vectorized Tuple Update (VTU) | ✅ | `tests/vtu_ir_test.rs`, `tests/vtu_ir_modules_test.rs` | v3.10.0 ARCH-3 closed |
-| Parallel Executor (intra-query) | ✅ NEW | `tests/parallel_executor_test.rs` | v3.10.0 I-12 closed (PR #3767) |
+| Parallel Executor (intra-query) | ✅ OPTIMIZED | `tests/parallel_executor_test.rs`, `tests/parallel_semantic_tests.rs` | v3.10.0 I-12 closed (PR #3767), Issue #3792 optimization (PR #3370, #3829) — PARALLEL_MIN_ROWS=2M, 6 项优化, 实测 1M 行聚合 1.27x/join 1.08x |
 | Parallel Group BY | ✅ NEW | `tests/parallel_group_by_test.rs` | v3.10.0 |
 | Parallel Hash Join | ✅ NEW | `tests/parallel_hash_join_test.rs` | v3.10.0 |
 | SIMD Batch Eval | ✅ NEW | `tests/simd_eval_test.rs` | v3.10.0 |
@@ -190,6 +190,27 @@ to verify feature-test pairing.
 | FOR UPDATE (Gap Locking) | ✅ NEW | `tests/gap_locking_test.rs` | v3.10.0 F-16 |
 | Multi-statement | ⚠️ PARTIAL | `tests/multi_statement_test.rs` (1 ignored) | V310-12b |
 | CTE (Recursive) | ⚠️ PARTIAL | `tests/cte_e2e_test.rs` | WITH RECURSIVE 未实现, v3.10 范围外 |
+
+### 7.1 Parallel Executor 优化验证 (Issue #3792)
+
+| 优化项 | 状态 | 实测效果 |
+|--------|------|----------|
+| PARALLEL_MIN_ROWS=2M (统一) | ✅ | 三处定义一致 |
+| 并行触发前置判断 (2x overhead gate) | ✅ | 小数据集自动回退串行 |
+| 性能埋点 (tracing) | ✅ | partition_ms / filter_ms / merge_ms |
+| Batch-Parallel 8K 行 chunks | ✅ | 调度开销减少 50%+ |
+| Rayon 线程数动态配置 | ✅ | 每 query 独立线程数 |
+| 自适应并行度选择 | ✅ | 1-8 线程自动调整 |
+
+**实测加速比（4 线程，1M 行 lineitem）：**
+
+| Query | 类型 | 加速比 |
+|-------|------|--------|
+| Q1 | 聚合 (10 列) | **1.27x** |
+| Q3 | 3-way join | **1.08x** |
+| Q5 | 6-way join | **1.10x** |
+
+详见 `PARALLEL_EXECUTOR_OPTIMIZATION.md` 和 `perf/PERFORMANCE_BASELINE.md`。
 
 ---
 
