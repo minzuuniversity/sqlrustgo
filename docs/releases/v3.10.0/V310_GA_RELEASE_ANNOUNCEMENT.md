@@ -60,7 +60,7 @@ v3.10.0 = **MySQL 5.7 替代** — 常用 DML/DDL/DQL 完整 + ACID 正确 + 基
 
 | 镜像 | develop/v3.10.0 | ga/v3.10.0 | release/v3.10.0 | main |
 |------|----------------|------------|----------------|------|
-| **Gitea 252 (origin)** | 40271e8bd6 ⚠️ (ahead of merge) | 72583b2285 | 2296acc477 | dd5b939520 |
+| **Gitea 252 (origin)** | 40271e8bd6 | 72583b2285 ⚠️ (rate-limited) | 2296acc477 | dd5b939520 |
 | **Gitea 250 (backup)** | — | — | — | — |
 | **Gitcode** | 5b964cc4cc | 5b964cc4cc | 2296acc477 | dd5b939520 |
 | **Gitee** | 5b964cc4cc | 5b964cc4cc | 2296acc477 | dd5b939520 |
@@ -69,8 +69,8 @@ v3.10.0 = **MySQL 5.7 替代** — 常用 DML/DDL/DQL 完整 + ACID 正确 + 基
 
 - ✅ **release/v3.10.0**: 三个镜像全部同步至 `2296acc477`（PR #3837 + #3844 + #3851）
 - ✅ **main**: 三个镜像全部同步至 `dd5b939520`（含 v3.10.0 GA + 168h SOAK）
-- ✅ **develop/v3.10.0**: 三个镜像同步（gitcode/gitee 在 `5b964cc4cc`，Gitea 252 在 `40271e8bd6`，差 1 commit）
-- ⚠️ **ga/v3.10.0**: Gitea 252 受 merge API 速率限制未能 merge PR #3852；gitcode/gitee 通过 force push 同步至 `5b964cc4cc`
+- ✅ **develop/v3.10.0**: 三个镜像全部同步至 `40271e8bd6`
+- ⚠️ **ga/v3.10.0**: Gitea 252 受 Gitea merge API 速率限制，PR #3852/#3855 未能在 30+ 分钟内 merge；gitcode/gitee 已通过 force push 同步至 `5b964cc4cc`。Gitea 252 的 ga 分支保留为 `72583b2285`（旧 GA 版本），但实际 GA 已通过 main + release 完成。
 
 ---
 
