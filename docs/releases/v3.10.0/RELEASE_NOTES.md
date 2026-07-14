@@ -4,12 +4,13 @@
 
 # Release Notes — SQLRustGo v3.10.0
 
-> **当前阶段**: **RC** (2026-07-13, BETA → RC 已完成)
-> **目标阶段**: **GA** (target 2026-07 下旬)
+> **当前阶段**: **GA (2026-07-13)** + 168h SOAK 🔄 IN PROGRESS (2026-07-14 启动)
+> **目标阶段**: ✅ GA REACHED — 2026-07-13
 > **类型**: **MySQL 5.7 替代** — 功能稳定 + 基本性能优先 + Wired SOAK 闭环
-> **分支**: `rc/v3.10.0` (forked from `develop/v3.10.0`)
-> **当前 head**: `rc/v3.10.0` (8ab6f3ce3, post BETA→RC promotion)
+> **分支**: `develop/v3.10.0` (commit `8056d5fb66`, post-GA)
+> **当前 head**: `develop/v3.10.0` (post V311 plans merge, 2026-07-14)
 > **前版本**: v3.9.0 (develop/v3.9.0 @ RC8 → GA 2026-07-10)
+> **下一版本**: v3.11.0 (规划中, Issue #3835, 预计 2026-10-01 GA)
 >
 > Comprehensive list of changes from v3.9.0 → v3.10.0-rc.1
 > For migration instructions see [`CLI_USER_MANUAL.md`](CLI_USER_MANUAL.md) (TBW)
@@ -143,3 +144,43 @@ Per-component breakdown in [`docs/releases/v3.10.0/perf/`](perf/)（待 GA 前�
 **Tag**: v3.10.0-alpha1 (cut 2026-07-11)
 **Next**: BETA → RC → GA
 **Maintainer**: claude-macmini + openclaw
+
+---
+
+## Post-GA Updates (2026-07-14)
+
+### 168h SOAK 启动 (Post-GA Continuous Monitoring)
+
+**启动时间**: 2026-07-14 13:33:59 UTC
+**预计结束**: 2026-07-21 13:34:00 UTC
+**状态**: 🔄 IN PROGRESS
+
+**架构**:
+- 服务器: `sqlrustgo-mysql-server` v3.10.0 GA (commit `8056d5fb66`)
+- 数据集: TPC-H SF=0.01 (100K lineitem, 8 表, 115K 行)
+- OLAP: TPC-H Q1/Q6/Q12/Q14 轮询 (每 30s 一轮)
+- OLTP: 8 线程并发 (point_select + range_select + count + insert + update)
+
+**5h 37m 后状态**:
+- RSS 1,693 MB (稳定，无泄漏)
+- FD 25 (稳定)
+- CPU 237% (2.4 cores, 健康)
+- WAL 77 MB (稳定)
+- TPC-H 645 轮完成, 延迟 200-400ms
+- 0 错误, 0 告警
+
+**监控文件**:
+- 编排器: `/tmp/soak_v310/orchestrator_v2.sh`
+- 指标: `/tmp/soak_v310/run_*/metrics.csv`
+- 报告: `/tmp/soak_v310/PROGRESS_REPORT.md`
+
+### 性能基线 (Issue #3792 实测)
+
+| Query | SF=1.0 (1M) | SF=3.0 (3M) |
+|-------|:---:|:---:|
+| Q1 (聚合) | **1.27x** | 1.00x |
+| Q3 (3-way join) | **1.08x** | **1.08x** |
+| Q5 (6-way join) | **1.10x** | **1.10x** |
+| Q4 (相关子查询) | 1.00x | 1.02x |
+
+**数据加载性能** (`fast_load_tbl_data`): **180x 加速** (1M 行从 10+ min → 30s)

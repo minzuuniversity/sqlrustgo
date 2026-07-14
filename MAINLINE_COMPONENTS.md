@@ -1,7 +1,9 @@
 # Mainline Components
 
-> v3.7.0 Core Integrity Release - 主路径白名单
+> v3.10.0 GA - 主路径白名单 (Post-GA: 2026-07-14)
 > 状态：production = 主路径使用 | migrating = 收敛中 | isolated = 孤岛
+> v3.10.0 GA 已闭环 INT/ARCH 100%, SEM 50%, F-XX 1/10 → v3.11.0 计划 10/10
+> v3.10.0 168h SOAK: 🔄 IN PROGRESS
 
 ## 规则
 
