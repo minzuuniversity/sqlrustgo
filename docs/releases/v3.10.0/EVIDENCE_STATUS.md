@@ -105,3 +105,40 @@ Track and verify all evidence artifacts required for v3.10.0 GA promotion. Each 
 - `docs/governance/CA_SIGNING_LOG.md` — CA signing log
 - `scripts/gate/check_anti_fabrication.sh` — anti-fab enforcement
 - `scripts/gate/e2e/` — E2E test scripts (8 scenarios)
+
+---
+
+## D6: Post-GA Performance Validation (2026-07-14)
+
+### D6.1 Parallel Executor Validation (Issue #3792)
+
+| # | Evidence | Status | Artifact |
+|---|----------|--------|----------|
+| D6.1.1 | v3.10.0 6 项并行优化实施 | ✅ PASS | PR #3370 + #3829 merged (commit `733be23540`) |
+| D6.1.2 | PARALLEL_MIN_ROWS=2M (executor/optimizer/storage 统一) | ✅ PASS | `crates/executor/src/parallel_executor.rs:9` |
+| D6.1.3 | SF=1.0 (1M 行) Q1 聚合 1.27x | ✅ PASS | 实测 `docs/releases/v3.10.0/perf/PERFORMANCE_BASELINE.md` |
+| D6.1.4 | SF=1.0 (1M 行) Q3 3-way join 1.08x | ✅ PASS | 同上 |
+| D6.1.5 | SF=1.0 (1M 行) Q5 6-way join 1.10x | ✅ PASS | 同上 |
+| D6.1.6 | SF=3.0 (3M 行) 加速保持 | ✅ PASS | Q3 1.08x, Q5 1.10x @ 3M |
+| D6.1.7 | fast_load_tbl_data (180x 加速) | ✅ PASS | `crates/bench/examples/serial_vs_parallel_bench.rs` |
+| D6.1.8 | 线性扩展性 1M→3M (≤ 3.5x) | ✅ PASS | Q1 2.78x, Q3 3.07x, Q5 2.97x |
+
+### D6.2 168h SOAK (Post-GA Continuous Monitoring)
+
+| # | Evidence | Status | Detail |
+|---|----------|--------|--------|
+| D6.2.1 | SOAK 启动 2026-07-14 13:33 UTC | ✅ PASS | 端口 3399, 8 OLTP 线程 + TPC-H 轮询 |
+| D6.2.2 | 5.6h 持续运行无崩溃 | ✅ PASS | Server PID 3983542 单一实例持续运行 |
+| D6.2.3 | 内存稳定 1.7GB (无泄漏) | ✅ PASS | RSS 5h 增长 < 0.1MB/小时 |
+| D6.2.4 | FD 数量稳定 25 | ✅ PASS | 无文件描述符泄漏 |
+| D6.2.5 | WAL 稳定 77MB | ✅ PASS | 正常 checkpoint 行为 |
+| D6.2.6 | TPC-H Q1/Q6/Q12/Q14 645 轮 | ✅ PASS | 平均延迟 200-400ms |
+| D6.2.7 | metrics.csv 持续记录 | ✅ PASS | `/tmp/soak_v310/run_*/metrics.csv` |
+
+### D6.3 V310 任务闭环验证
+
+| # | Evidence | Status | Detail |
+|---|----------|--------|--------|
+| D6.3.1 | 23/23 v3.10.0 任务完成 | ✅ PASS | `docs/releases/v3.10.0/V310_TASK_CLOSURE_VERIFICATION.md` |
+| D6.3.2 | 11/11 移交 v3.11.0 | ✅ PASS | V311-01 ~ V311-22 + debt-registry.yaml |
+| D6.3.3 | 0 失联任务 | ✅ PASS | 所有任务有 closure 或 v3.11.0 计划 |

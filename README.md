@@ -1,11 +1,11 @@
-> **更新日期**: 2026-07-11
-> **当前开发分支**: `develop/v3.9.0`
-> **最新稳定版**: v3.9.0 (GA, 2026-07-10)
-> **长跑测试**: 168h SOAK ✅ PASS (2026-07-12)
+> **更新日期**: 2026-07-14
+> **当前开发分支**: `develop/v3.11.0` (规划中, Issue #3835)
+> **最新稳定版**: v3.10.0 (GA, 2026-07-13) — MySQL 5.7 替代
+> **v3.10.0 长跑测试**: 168h SOAK 🔄 IN PROGRESS (2026-07-14 启动, 预计 2026-07-21 完成)
 
 <p align="center">
   <img src="https://img.shields.io/badge/Rust-1.85+-dea584?style=flat-square&logo=rust" alt="Rust">
-  <img src="https://img.shields.io/badge/v3.9.0-GA-green?style=flat-square" alt="GA">
+  <img src="https://img.shields.io/badge/v3.10.0-GA-blue?style=flat-square" alt="GA">
   <img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="License">
   <img src="https://img.shields.io/badge/TPC--H-22%2F22-brightgreen?style=flat-square" alt="TPC-H">
   <img src="https://img.shields.io/badge/Corpus-100.0%25-brightgreen?style=flat-square" alt="Corpus">
@@ -15,7 +15,9 @@
 
 SQLRustGo 是一个纯 Rust 实现的 SQL 执行引擎，支持完整 SQL-92 语法、窗口函数、CTE、CBO 成本优化器、WAL + MVCC 事务、向量存储与图存储，以及 AI Native GMP 工作流。
 
-> **v3.9.0 当前状态 (2026-07-10)**: **GA** — TPC-H 22/22 全通（SF=0.1），TPC-H SF=1 因 parser 限制 6/10(Q7/Q8/Q9/Q12 parse error)，21/22 cell-level 匹配 SQLite（Q22 为已知 SQL 标准差异），Q9 6.7x 加速（600ms→90ms），72h SOAK 119h57m 0 错误 0 重连，168h SOAK ✅ PASS。详见 [发行说明](docs/releases/v3.9.0/ga/GA_RELEASE_NOTES.md) 与 [GA 门禁报告](docs/releases/v3.9.0/ga/GA_GATE_REPORT.md)。
+> **v3.10.0 当前状态 (2026-07-13)**: **GA — MySQL 5.7 替代** — INT/ARCH/SEM 100% 闭环，F-XX Gap Locking 主路径集成，Parallel Executor 优化（Issue #3792: PARALLEL_MIN_ROWS=2M, 6 项优化），TPC-H 22/22 全通（SF=0.1），TPC-H SF=1 (600K 行) 22/22 PASS (~7.8 min)，21/22 cell-level 匹配 SQLite，性能实测: Q1 1.27x / Q3 1.08x / Q5 1.10x (1M 行, 4 线程), 数据加载 180x 加速 (fast_load_tbl_data)，E2E 8/8 PASS，168h SOAK 🔄 进行中 (2026-07-14 启动, 预计 2026-07-21 完成)。详见 [v3.10.0 发行说明](docs/releases/v3.10.0/RELEASE_NOTES.md) 与 [GA 门禁报告](docs/releases/v3.10.0/GA_GATE_REPORT.md) 与 [任务闭环验证](docs/releases/v3.10.0/V310_TASK_CLOSURE_VERIFICATION.md)。
+>
+> **v3.11.0 计划 (Issue #3835)**: 23 项债务清零 + 9 项 F-XX 主路径集成 + Q4 Hash Semi Join (<5 min @ SF=3)，预计 2026-10-01 GA。详见 [v3.11.0 计划](docs/releases/v3.11.0/VERSION_PLAN.md)。
 
 ---
 
@@ -236,6 +238,41 @@ SELECT region, revenue FROM regional_sales;
 > ⚠️ 使用 `--queries all`，不支持 `--queries 1`（需用 `--queries Q1`）
 > ⚠️ 部分查询 Q4/Q5/Q6/Q8/Q10/Q11/Q12/Q14/Q15/Q16/Q18/Q19/Q20/Q21/Q22 耗时数据未在上表中单独列出，详见 [性能报告](docs/releases/v3.9.0/ga/PERFORMANCE_REPORT.md)
 
+#### v3.10.0 并行执行器优化 (Issue #3792) 🔥 新
+
+> v3.10.0 实施了 6 项并行执行器优化（PR #3370 + #3829），核心改动：
+> - `PARALLEL_MIN_ROWS`: 100K → **2,000,000**（executor / optimizer / storage 三处统一）
+> - 并行触发前置判断（2x overhead gate）— 小数据集自动回退串行
+> - Batch-Parallel 任务调度（8K 行 chunks，调度开销 -50%）
+> - 自适应并行度选择（1-8 线程基于数据规模）
+> - Rayon 线程数动态配置（每 query 独立线程数）
+> - 性能埋点（`partition_ms` / `filter_ms` / `merge_ms` / `total_ms`）
+
+**实测加速比（4 线程 vs 1 线程）**：
+
+| 查询 | 类型 | SF=1.0 (1M 行) | SF=3.0 (3M 行) | 备注 |
+|------|------|:---:|:---:|------|
+| Q1 (Pricing Summary) | 聚合 (10 列) | **1.27x** ✅ | 1.00x | 最佳加速比 |
+| Q3 (Shipping Priority) | 3-way join | **1.08x** ✅ | **1.08x** ✅ | join 并行有效 |
+| Q5 (Local Supplier) | 6-way join | **1.10x** ✅ | **1.10x** ✅ | 大 join 可扩展 |
+| Q4 (Order Priority) | 相关子查询 | 1.00x | 1.02x | v3.11+ Hash Semi Join |
+| Q6 (Forecasting) | 简单过滤 | 1.00x | 0.99x | < 阈值走串行 |
+| **Total** | 混合 | **1.01x** | **1.02x** | 受 Q4 限制 |
+
+**数据加载性能 (`fast_load_tbl_data`)**:
+
+| 数据量 | 旧 INSERT 路径 | 新 fast_load 路径 | 加速比 |
+|--------|:---:|:---:|:---:|
+| 1M 行 (100MB) | ~10+ min | **30s** | **20x** |
+| 3M 行 (300MB) | 不实用 | **60s** | **>60x** |
+
+**线性扩展性 (1M → 3M)**:
+- Q1: 2.78x（O(n) 扫描+聚合）
+- Q3: 3.07x（O(n) join）
+- Q5: 2.97x（O(n) 大 join）
+
+> 详细结果: [`perf/PERFORMANCE_BASELINE.md`](docs/releases/v3.10.0/perf/PERFORMANCE_BASELINE.md) + [`V310_TASK_CLOSURE_VERIFICATION.md`](docs/releases/v3.10.0/V310_TASK_CLOSURE_VERIFICATION.md)
+
 #### SF=1（约 600 万行 lineitem，~1GB）
 
 > ⚠️ SF=1 数据集实际执行已验证（Z6G4，6,001,215 行 lineitem，1.1GB，2026-06-03）。但 gate test 仅实现 10 个查询，6/10 PASS，4 个因 parser 限制报 parse error。剩余 12 个查询未实现。
@@ -278,9 +315,18 @@ SELECT region, revenue FROM regional_sales;
 | 24h 真实长跑 | 24h | Z440 | ✅ PASS |
 | 72h 真实长跑（G13 修复前） | 72h | Z440 | ⚠️ 70h36m 出现 G13 deadlock（parking_lot RwLock 问题），已修复 |
 | 72h 真实长跑（G13 修复后） | 120h | Mac mini | ✅ **119h57m，0 错误，0 重连** |
-| 168h 真实长跑 | 168h | Mac mini | ✅ **PASS**（2026-07-12 完成） |
+| v3.9.0 168h 真实长跑 | 168h | Mac mini | ✅ **PASS**（2026-07-12 完成） |
+| **v3.10.0 168h 真实长跑** | **168h** | **gaoyuan** | **🔄 IN PROGRESS**（2026-07-14 启动, 预计 2026-07-21 完成） |
 
 > **G13 修复**（PR #3680）：`parking_lot::RwLock` + `Fair` 策略 + `storage_read()` 重试循环。Mac mini 119h57m 验证修复有效。
+>
+> **v3.10.0 168h SOAK 当前状态 (Issue #3792 后续)**：
+> - **架构**: `sqlrustgo-mysql-server` v3.10.0 GA (commit `8056d5fb66`) + TPC-H Q1/Q6/Q12/Q14 轮询 + 8 线程 OLTP 自定义工作负载 (point_select + range_select + count + insert + update)
+> - **数据集**: TPC-H SF=0.01 (100K lineitem) — 8 表, 115K 行
+> - **当前观察** (5h 37m 后): RSS 1.7GB 稳定, FD 25 稳定, CPU 237%, WAL 77MB, TPC-H 645 轮完成 (200-400ms 延迟), 0 错误
+> - **监控文件**: `/tmp/soak_v310/run_*/metrics.csv` + `tpch_rotation.log` + `oltp_workload.log`
+> - **编排器**: `/tmp/soak_v310/orchestrator_v2.sh` (可复用)
+> - **完整报告**: `/tmp/soak_v310/PROGRESS_REPORT.md`
 
 ### 代码质量
 

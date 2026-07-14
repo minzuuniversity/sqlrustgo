@@ -264,3 +264,38 @@ to verify feature-test pairing.
 
 *Last updated: 2026-07-13 by Claude Code (hermes-agent)*
 *Phase 0 implementation per DeepSeek review feedback (local://attachment-1)*
+
+---
+
+## 8. v3.10.0 GA Post-Release (2026-07-14)
+
+### 8.1 168h SOAK 状态
+
+| Item | Status | Detail |
+|------|--------|--------|
+| SOAK 启动 | ✅ PASS | 2026-07-14 13:33 UTC, 端口 3399 |
+| 持续运行 | ✅ PASS | 5h 37m 时已稳定运行无崩溃 |
+| 内存稳定 | ✅ PASS | RSS 稳定在 1.7GB (无泄漏) |
+| TPC-H 轮询 | ✅ PASS | 645 轮完成，平均 200-400ms 延迟 |
+| OLTP 工作负载 | ✅ PASS | 8 线程并发，零错误 |
+| 异常检测 | ✅ PASS | RSS/FD/WAL 均在阈值内 |
+
+### 8.2 v3.11.0 移交状态
+
+11 项 v3.10.0 未完成任务已全部移交 v3.11.0：
+
+| 类别 | v3.10.0 项 | v3.11.0 任务 | 工作量 |
+|------|-----------|-------------|--------|
+| SEM | SEM-3 (ALTER RENAME/MODIFY) | V311-13 | 20h |
+| SEM | SEM-4 (Coverage ≥85%) | V311-14 | 60h |
+| F-XX | F-23/24/25/26/27/29/31/35 (8 项 ISOLATED) | V311-01~08, V311-12 | 400h |
+| F-XX | F-36 (列级权限) | V311-09 | 40h |
+| F-XX | F-30 (SEQUENCE) | V311-10 | 20h |
+| F-XX | F-03 (GIS) | V311-11 | 80h |
+| Crate | 11 extension crates | V311-19 (5 删 + 3 归档 + 1 集成 + 1 保留) | 84h |
+| Perf | Q4 Hash Semi Join (PERF-1) | V311-15 | 80h |
+| Perf | Q4 Decorrelation (PERF-4) | V311-16 | 60h |
+| Perf | Hash Anti Join (PERF-2) | V311-17 | 40h |
+| Perf | CTE 物化 (PERF-3) | V311-18 | 30h |
+
+**详见**: `docs/releases/v3.11.0/VERSION_PLAN.md` + `docs/releases/v3.11.0/plans/`
