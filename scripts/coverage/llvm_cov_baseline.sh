@@ -99,6 +99,19 @@ PY
     fi
 done
 
+# Per-crate diagnosis (for the main crate, where per-file data is meaningful).
+# When you have a real run, run scripts/coverage/postprocess.py to rebuild
+# the JSONs and produce COVERAGE_DIAGNOSIS.md.
+DIAG="$OUT_DIR/COVERAGE_DIAGNOSIS.md"
+if [ ! -f "$DIAG" ]; then
+    cat > "$DIAG" <<'DIAG_EOF'
+# Coverage Diagnosis (placeholder)
+
+Re-run `python3 scripts/coverage/postprocess.py` after `cargo llvm-cov --workspace --lib`
+to populate this file with per-file breakdowns and ROI-sorted remediation.
+DIAG_EOF
+fi
+
 echo ""
 echo "=== Summary ==="
 echo "PASS: $PASS"
