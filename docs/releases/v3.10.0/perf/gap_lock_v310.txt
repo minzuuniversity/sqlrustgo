@@ -1,13 +1,68 @@
-# Gap-locking P99 latency — placeholder
+# Gap-Lock P99 Latency — v3.10.0
 
-**Status**: NOT YET CAPTURED.
+**Status**: BLOCKED — TRUNCATE/DROP crash server; need AUTO_INCREMENT workaround
 
-This file exists so the RC gate R8 check (`find docs/releases/v3.10.0/perf/ -name "*baseline*" -o -name "*comparison*"`) finds a file matching its glob. R8 is a soft check (`check_warn`, not `check_fail`), so the gate passes with this placeholder.
+**Test date**: 2026-07-14
+**Platform**: MacBook Pro M2, macOS Darwin 25.5.0
 
-## Workload
+## Background
 
-TPC-C new-order with stock-level transaction (REPEATABLE READ + range scan via `SELECT ... FOR UPDATE`).
+Gap-lock P99 latency requires running concurrent transactions to measure lock
+contention. This is standard TPC-C OLTP benchmark territory. The sysbench
+`oltp_read_write` or custom Lua script would normally be used.
 
-## To capture
+## Current Blocker
 
-Requires a TPC-C workload runner with P99 measurement. Not yet automated in this repo. Tracked in a follow-up change (out of scope for #3401).
+To test gap-lock P99, we need TPC-C tables (ORDER, ORDER_LINE, CUSTOMER, etc.)
+with AUTO_INCREMENT primary keys and concurrent transactions running:
+
+```sql
+-- TPC-C standard tables require AUTO_INCREMENT
+CREATE TABLE order_line (
+  ol_o_id INT AUTO_INCREMENT PRIMARY KEY,  -- crashes server
+  ...
+);
+```
+
+### Crash Points
+
+| Operation | Works? | Notes |
+|-----------|--------|-------|
+| CREATE TABLE (no auto_inc) | ✓ | Simple schema works |
+| INSERT (no auto_inc) | ✓ | Manual values work |
+| REPEAT() function | ✓ | String functions work |
+| TRUNCATE TABLE | ✗ | Crashes server |
+| DROP TABLE | ✗ | Crashes server |
+| AUTO_INCREMENT | ✗ | Crashes server |
+
+## Gap-Lock Detection
+
+Even with workaround tables (no AUTO_INCREMENT), gap-lock testing requires:
+1. Multiple concurrent connections
+2. Transactions with `SELECT ... FOR UPDATE` or explicit row locks
+3. Measurement of P99 lock wait time
+
+Without proper TPC-C table schema (AUTO_INCREMENT), we cannot construct
+realistic gap-lock contention scenarios.
+
+## Root Cause
+
+TRUNCATE, DROP, and AUTO_INCREMENT all crash the server:
+- TRUNCATE: not implemented, panic
+- DROP TABLE: cleanup bug, panic
+- AUTO_INCREMENT: column definition parsing bug, panic
+
+## Required Fix (v3.11.0)
+
+Fix the three crash bugs above, then gap-lock P99 can be measured using:
+1. sysbench with `oltp_read_write` (realistic TPC-C mix)
+2. Custom Lua script with `SELECT ... FOR UPDATE` contention pattern
+3. P99 lock wait metric from `performance_schema.events_waits_summary_*`
+
+## Previous: Z440's 168h SOAK Test
+
+Z440's soak test (250) ran for 168 hours without crash. That test uses
+an in-process test runner (not MySQL wire protocol), which bypasses the
+wire protocol crash points. The in-process path does not trigger
+TRUNCATE/DROP/AUTO_INCREMENT bugs because it uses the storage engine API
+directly.

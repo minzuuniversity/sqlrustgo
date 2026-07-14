@@ -1,12 +1,14 @@
-# v3.10.0 Performance Baseline (extracted from SF1_BASELINE_REPORT.md)
+# v3.10.0 Performance Baseline (TPC-H SF=0.1 / 10%)
 
-**Date**: 2026-07-07 (TPC-H run)
-**Test**: `tests/tpch_sf01_inprocess_test::tpch_sf01_sanity`
-**Fixture**: `tests/data/tpch-sf01/` (150K orders, 600K lineitem)
+**⚠️ WARNING**: This is SF=0.1 scale (600K lineitem rows = 10% of official SF=1 spec of 6,001,215).
+Source: extracted from `SF01_BASELINE_REPORT.md`.
+
+**Date**: 2026-07-07
+**Fixture**: `tests/data/tpch-sf01/` (150K orders, 600,572 lineitem)
 **Storage**: in-process wire protocol
 **Duration**: ~7.8 min for 22 queries
 
-## TPC-H SF=1 Query Results (22/22 PASS)
+## TPC-H SF=0.1 Query Results (22/22 PASS)
 
 | Query | Rows | Time (s) |
 |-------|-----:|---------:|

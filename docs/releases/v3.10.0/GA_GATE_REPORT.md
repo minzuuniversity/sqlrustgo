@@ -65,7 +65,7 @@
 |---|----------|--------|-------|
 | D4.1 | TPC-H SF1 vs v3.9.0 | ⏳ **NOT EXECUTED** | Performance comparison doc created; execution blocked — requires SF1 data generation (75GB+ disk) + dedicated test machine |
 | D4.2 | Regression ≤ 5% (critical paths) | ⏳ PENDING | Depends on D4.1 |
-| D4.3 | Crate-level coverage ≥ 80% | ⚠️ PARTIAL | `cargo llvm-cov --lib` baseline: 14.71% (sqlrustgo crate only, 29 lib tests) |
+| D4.3 | Crate-level coverage ≥ 80% | ⚠️ PARTIAL | `cargo llvm-cov --lib`: 14.71% regions / 17.92% fns / 16.28% lines (sqlrustgo crate, 29 lib tests only). Plan: v3.11.0 target ≥80% via integration + E2E tests (see §2.4) |
 | **D4 Result** | | **⚠️ HARDWARE-BLOCKED** | Full TPC-H SF1 baseline cannot be executed in current environment |
 
 ### D5: Governance & Documentation

@@ -1,22 +1,110 @@
-# sysbench v3.10.0 OLTP QPS — placeholder
+# OLTP QPS Benchmark — v3.10.0
 
-**Status**: NOT YET CAPTURED.
+**Status**: PARTIALLY WORKING — TLS fixed, basic DML works, but TRUNCATE/DROP crash server
 
-This file exists so the RC gate R8 check (`find docs/releases/v3.10.0/perf/ -name "*baseline*" -o -name "*comparison*"`) finds a file matching its glob. R8 is a soft check (`check_warn`, not `check_fail`), so the gate passes with this placeholder.
+**Test date**: 2026-07-14
+**Platform**: MacBook Pro M2, macOS Darwin 25.5.0
+**sysbench**: 1.0.20 (Homebrew)
+**sqlrustgo**: `develop/v3.10.0`, commit `5c42917a91` (252 pull)
 
-## To capture
+## Test Results
+
+### 1. TLS Protocol — FIXED ✓
 
 ```bash
-# Build server
-cargo build --release -p sqlrustgo
-
-# Install sysbench (apt)
-apt-get install sysbench
-
-# Run baseline collector (this also creates sysbench_v310.txt with real data)
-bash scripts/perf/collect_v310_vs_v390.sh
+$ mysql -h 127.0.0.1 -P 3306 -u root --ssl=off -e "SELECT VERSION()"
+SQLRustGo v3.8.0-beta (Strong Beta, 8.0/10)
 ```
 
-Expected: oltp_read_only, 4 threads, 30s → QPS figure.
+Connection succeeds. No more TLS alert / unexpected_eof errors.
 
-See `COMPARISON.md` for v3.9.0 column (pending v3.9.0 binary).
+### 2. Basic DML — WORKS ✓
+
+```sql
+CREATE TABLE sbtest1 (id INT PRIMARY KEY, k INT, c CHAR(120), pad CHAR(60));
+INSERT INTO sbtest1 VALUES (1, 1, 'data1', 'padding1');
+SELECT * FROM sbtest1 WHERE id=1;
+SELECT COUNT(*) FROM sbtest1;
+```
+
+All work correctly via MySQL wire protocol.
+
+### 3. REPEAT() Function — WORKS ✓
+
+```sql
+SELECT REPEAT('x', 120);
+-- Returns: xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+```
+
+### 4. TRUNCATE TABLE — CRASHES ✗
+
+```sql
+TRUNCATE TABLE sbtest1;
+-- ERROR 2013 (HY000): Lost connection to server during query
+-- Server process terminates
+```
+
+### 5. DROP TABLE — CRASHES ✗
+
+```sql
+DROP TABLE sbtest1;
+-- ERROR 2013 (HY000): Lost connection to server during query
+-- Server process terminates
+```
+
+### 6. CREATE TABLE with AUTO_INCREMENT — CRASHES ✗
+
+```sql
+CREATE TABLE sbtest1 (id INT AUTO_INCREMENT PRIMARY KEY, ...);
+-- ERROR 2013 (HY000): Lost connection to server during query
+-- Server process terminates
+```
+
+## sysbench OLTP Status
+
+sysbench cannot run because:
+
+1. **sysbench prepare** creates tables with AUTO_INCREMENT → server crash
+2. Even if tables exist, TRUNCATE between test rounds → server crash
+3. DROP TABLE between test rounds → server crash
+
+Workaround: manual table creation without AUTO_INCREMENT (100 rows inserted one-by-one):
+
+```sql
+CREATE TABLE sbtest1 (id INT PRIMARY KEY, k INT, c CHAR(120), pad CHAR(60));
+-- Insert 100 rows manually
+```
+
+Point-select works:
+```sql
+SELECT * FROM sbtest1 WHERE id=50;
+-- Returns correct row in ~0.5s (mysql CLI overhead, server is fast)
+```
+
+## Root Causes of Remaining Crashes
+
+1. **TRUNCATE**: Not implemented — server panics when processing `TRUNCATE` statement
+2. **DROP TABLE**: Bug in table drop cleanup — server panics during cascade cleanup
+3. **AUTO_INCREMENT**: Bug in AUTO_INCREMENT column handling in CREATE TABLE
+
+## Required Fixes (v3.11.0)
+
+1. Implement TRUNCATE TABLE properly (or return "not supported" error gracefully)
+2. Fix DROP TABLE cleanup (handle cascade deletion without panic)
+3. Fix AUTO_INCREMENT in CREATE TABLE (or parse but return "not implemented" gracefully)
+
+## Target (once bugs fixed)
+
+After fixes, run:
+```bash
+# 1. Prepare with auto-increment workaround (manual)
+mysql -h 127.0.0.1 -P 3306 -u root --ssl=off < sysbench_schema.sql
+# Insert ~10K rows
+
+# 2. Run sysbench
+sysbench oltp_point_select --threads=4 --time=60 \
+  --mysql-host=127.0.0.1 --mysql-port=3306 --mysql-user=root \
+  --mysql-ssl=off --tables=1 --table-size=10000 run
+
+# Target: 5000+ qps (single connection, point-select)
+```

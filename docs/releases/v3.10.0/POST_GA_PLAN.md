@@ -68,6 +68,36 @@ Continuing the **MySQL 5.7 alternative** roadmap, v3.11.0 will focus on:
 | #3136 Arch sem debt (CONTAINS macro) | IN_PROGRESS | 8h | P1 |
 | 8 extension crates (SCOPE_DEFERRED) | DEFERRED | TBD | P2 |
 
+### v3.11.0 GitHub Milestone Creation (GA + 1 day)
+
+To avoid "promises that erode trust", all v3.11.0 commitments from this release's documentation must be tracked as GitHub Issues under a formal Milestone before GA is declared complete.
+
+**Action**: Create Milestone `v3.11.0` on the primary Gitea instance (250) immediately after `v3.10.0` tag.
+
+**Required Issues** (create all 8):
+
+| Issue | Title | Labels | Linked Document |
+|-------|-------|--------|----------------|
+| v3.11.0-M1 | F-03 GIS geography support | `feature`, `high-priority` | COMPREHENSIVE_ASSESSMENT_REPORT.md §6 |
+| v3.11.0-M2 | F-30 SEQUENCE support | `feature` | COMPREHENSIVE_ASSESSMENT_REPORT.md §6 |
+| v3.11.0-M3 | SEM-3 ALTER TABLE RENAME/MODIFY | `debt`, `p0` | POST_GA_PLAN.md §Inherited Debt |
+| v3.11.0-M4 | SEM-4 coverage ≥ 80% per crate | `debt`, `testing` | GA_GATE_REPORT.md D4.3 |
+| v3.11.0-M5 | F-XX ISOLATED 9 items integration | `feature`, `refactoring` | ISOLATED_MODULES.md |
+| v3.11.0-M6 | WITH RECURSIVE CTE support | `feature` | COMPREHENSIVE_ASSESSMENT_REPORT.md §6 |
+| v3.11.0-M7 | Window functions (ROW_NUMBER, RANK, etc.) | `feature` | COMPREHENSIVE_ASSESSMENT_REPORT.md §6 |
+| v3.11.0-M8 | TPC-H SF=1 full 22/22 queries | `testing`, `performance` | PERF_BASELINE.md R8 |
+
+**Verification command** (run post-milestone-creation):
+```bash
+# Verify all 8 issues exist and are in milestone
+MILESTONE_ID=$(curl -s "http://192.168.0.250:3000/api/v1/repos/openclaw/sqlrustgo/milestones?state=open" | python3 -c "import sys,json; ms=[m for m in json.load(sys.stdin) if m['title']=='v3.11.0']; print(ms[0]['id'] if ms else 'NOT_FOUND')")
+for i in M1 M2 M3 M4 M5 M6 M7 M8; do
+  echo -n "Issue $i: "
+  curl -s "http://192.168.0.250:3000/api/v1/repos/openclaw/sqlrustgo/issues?milestone=$MILESTONE_ID&labels=$i&state=all" | python3 -c "import sys,json; print('found' if json.load(sys.stdin) else 'MISSING')"
+done
+```
+
+**Closing criteria**: Each issue must be referenced in the code change that resolves it. No issue may be closed without a corresponding code commit and test.
 ---
 
 ## Phase 3: Long-Term Maintenance (GA + 30 days onward)
@@ -110,6 +140,23 @@ Continuing the **MySQL 5.7 alternative** roadmap, v3.11.0 will focus on:
 - Archive v3.10.0-specific plans to `docs/releases/v3.10.0/archive/`
 
 ---
+### 社区采用风险
+
+| 风险 | 可能性 | 影响 | 缓解策略 |
+|------|--------|------|---------|
+| 用户获取困难（新 DB 难以撼动 MySQL 习惯） | 高 | 中 | 强调零配置启动 + Docker 单行部署，对比 MySQL 10 分钟初始化 |
+| ORM/工具兼容性出现 regression | 中 | 高 | 建立 CI 回归测试矩阵（ Sequelize, Prisma, mysql-connector-python）；每次发布前运行 |
+| 文档不够导致用户流失 | 中 | 中 | 完善 README 和 MYSQL57_COMPARISON_REPORT.md；补充 5 分钟快速入门 |
+| 贡献者招募困难 | 中 | 低 | 明确标注 good-first-issue；维护 CHANGELOG 可见度 |
+
+### 市场定位风险
+
+| 风险 | 可能性 | 影响 | 缓解策略 |
+|------|--------|------|---------|
+| MySQL 8.0 推出更轻量替代方案 | 低 | 高 | 差异化：v3.10.0 已针对嵌入式/IoT 优化；持续迭代避免被赶上 |
+| 大厂推出"SQLite 替代"云数据库 | 中 | 中 | 强调本地部署能力（离线、低延迟）vs 云依赖 |
+| 定位模糊（既不是 MySQL 替代也不够轻量） | 中 | 高 | 通过适用场景速查表（MYSQL57_COMPARISON_REPORT.md §8.3）明确边界，不夸大能力 |
+| 功能承诺无法按时交付（侵蚀信任） | 中 | 高 | 所有 v3.11.0 承诺通过 GitHub Milestone 跟踪（见 §v3.11.0 GitHub Milestone Creation） |
 
 ## Resource Requirements
 
