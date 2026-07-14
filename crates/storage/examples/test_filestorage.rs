@@ -41,10 +41,10 @@ fn main() {
                 char_max_length: None,
             },
         ],
-                        foreign_keys: vec![],
-                        unique_constraints: vec![],
-                        check_constraints: vec![],
-                        partition_info: None,
+        foreign_keys: vec![],
+        unique_constraints: vec![],
+        check_constraints: vec![],
+        partition_info: None,
     };
 
     let start = Instant::now();
