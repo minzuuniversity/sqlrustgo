@@ -6,11 +6,6 @@
 > **当前阶段**: **RC** (2026-07-13, ALPHA → BETA → RC 已完成)
 > **创建日期**: 2026-07-01
 > **前版本**: v3.9.0 (develop/v3.9.0 @ RC8 → GA 2026-07-10)
-> **Maintainer**: claude-macmini
-> **当前阶段**: **DRAFT** (2026-07-01, 设计与规划阶段)
-> **创建日期**: 2026-07-01
-> **前版本**: v3.9.0 (develop/v3.9.0 @ RC8, 待 GA)
-> **Maintainer**: claude-macmini (initial DRAFT setup)
 
 ---
 ## 2026-07-11 — ALPHA 阶段准入 (DRAFT → ALPHA)
@@ -94,7 +89,7 @@ Per-version plan classification: docs/releases/v3.10.0/plans/INDEX.md
 ### Documentation
 
 - `docs/governance/GATE_CONDITIONS.md` G4 入口从 `scripts/tpch/run_tpch.sh --sf 1` 更新为 `bash scripts/gate/check_tpch_sf1.sh --sf1-dir $SF1_DIR` (issue #3732, v3.10.0+)
-- `docs/releases/v3.10.0/plans/V310_ISSUES_PLAN.md` V310-11c 标记 ✅ 部分完成（gate 入口 + 测试基础设施，commit `512b383c`；22/22 PASS 仍需 V310-11a/b）
+- `docs/releases/v3.10.0/plans/V310_ISSUES_PLAN.md` V310-11c 标记 ✅ 部分完成（gate 入口 + 测试基础设施，；22/22 PASS 仍需 V310-11a/b）
 - `openspec/changes/2026-06-18-tpch-sf1-baseline/tasks.md` 步骤 8.1/8.2/8.4/8.6/8.7 勾选；8.3/8.5 标注 blocked on V310-11a/b + SF=1.0 fixture
 
 ### Known Gap (待 V310-11a/b)

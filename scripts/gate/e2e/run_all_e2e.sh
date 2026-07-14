@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Run all E2E scenarios
-# Usage: ./scripts/gate/e2e/run_all_e2e.sh [server_port]
+# Run all RC E2E scenarios (8 RC scenarios in tests/e2e/, named by scenario)
+# Usage: ./scripts/gate/e2e/run_all_e2e.sh [server_port] [srv_bin]
 set -euo pipefail
 
 SERVER_PORT="${1:-3307}"
 SRV_BIN="${2:-./target/release/sqlrustgo}"
-DIR="$(cd "$(dirname "$0")" && pwd)"
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)/tests/e2e"
 PASS=0
 FAIL=0
 TOTAL=0
@@ -17,7 +17,9 @@ echo "Server port: $SERVER_PORT"
 echo "========================================"
 echo ""
 
-for script in "$DIR"/e2e_*.sh; do
+for script in "$DIR"/startup_connect.sh "$DIR"/tpch_sf01.sh "$DIR"/kill9_recovery.sh \
+              "$DIR"/alter_rename.sh "$DIR"/rollback_mvcc.sh "$DIR"/union_set_ops.sh \
+              "$DIR"/backup_restore.sh "$DIR"/sysbench_wired.sh; do
     NAME=$(basename "$script" .sh)
     echo ""
     echo "--- Running $NAME ---"

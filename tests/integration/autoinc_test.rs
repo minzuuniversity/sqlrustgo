@@ -42,9 +42,7 @@ fn test_autoinc_insert() {
         .unwrap();
 
     // Should have 2 rows
-    let count = engine
-        .execute("SELECT COUNT(*) FROM orders")
-        .unwrap();
+    let count = engine.execute("SELECT COUNT(*) FROM orders").unwrap();
     assert_eq!(count.rows[0][0], Value::Integer(2));
 
     println!("✓ AUTO_INCREMENT insert test completed");
@@ -70,9 +68,7 @@ fn test_autoinc_with_explicit_id() {
         .unwrap();
 
     // Should have 2 rows
-    let count = engine
-        .execute("SELECT COUNT(*) FROM items")
-        .unwrap();
+    let count = engine.execute("SELECT COUNT(*) FROM items").unwrap();
     assert_eq!(count.rows[0][0], Value::Integer(2));
 
     println!("✓ AUTO_INCREMENT with explicit ID works");
