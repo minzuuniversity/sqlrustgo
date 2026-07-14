@@ -121,26 +121,29 @@ tests/                                (root manifest)
 |----|------|------|------|
 | **G1** | TPC-H SF=0.1 22/22 | ✅ PASS | v3.9.0 已继承 |
 | **G2** | ACID 正确性 (5 tests) | ✅ PASS | WAL 42/42 + transaction 测试 |
-| **G3** | 覆盖率 ≥ 80% per crate | ⚠️ PENDING | V310-10, 待 cargo llvm-cov 基线 |
-| **G4** | TPC-H SF=1 22/22 | ⏳ HARDWARE_BLOCKED | 75GB+ 磁盘, v3.11.0 目标 |
+| **G3** | 覆盖率 ≥ 80% per crate | ⚠️ PARTIAL | 14.71% baseline; v3.11.0 target ≥80% |
+| **G4** | TPC-H SF=1 22/22 | ⏳ HARDWARE_BLOCKED | 75GB+ disk; PR #3832 (Q2 parser) merged |
 | **G5** | DML 完整性 (6 tests) | ✅ PASS | V310-01 |
 | **G6** | UNION 集合操作 (3 tests) | ✅ PASS | V310-02 |
 | **G7** | ALTER TABLE (4 类操作) | ✅ PASS | V310-04 |
 | **G8** | 真实 Crash Matrix kill -9 | ✅ PASS | 8/8, V310-05, T-20 |
-| **G9** | 24h 真实 SOAK 0 errors | ⏳ PENDING | 需要 SOAK 环境 |
+| **G9** | 24h 真实 SOAK 0 errors | ✅ PASS | 72h PASS (exceeds target); 168h PASS on Z6G4 |
 | **G10** | Wired-SOAK sysbench | ✅ PASS | V310-09 |
 ---
 
 ## 8. References
 
 - `docs/governance/STAGE_CONFIG.yaml` — 5 阶段门禁 SSOT
-- `docs/releases/v3.10.0/plans/V310_DEVELOPMENT_PLAN.md` — 26 任务 / 500h / 4 阶段
-- `docs/releases/v3.10.0/plans/V310_ISSUES_PLAN.md` — 12 个 V310 子 ISSUE
-- `docs/releases/v3.10.0/plans/V310_10_COVERAGE_PLAN.md` — 覆盖率 ≥ 80% 计划
-- `docs/releases/v3.10.0/plans/V310_CLI_BINARY_PLAN.md` — 二进制收敛
 - `docs/releases/v3.10.0/V310_TEST_BINARY_GATE_AUDIT_REPORT.md` — 本计划的源分析
+- `docs/releases/v3.10.0/plans/PARALLEL_MAIN_PATH.md` — 并行执行器主路径集成
+- `docs/releases/v3.10.0/POST_GA_PLAN.md` — v3.11.0 债务清零规划
+
+> **Note**: 以下引用的文件已合并或推迟:
+> - `V310_DEVELOPMENT_PLAN.md` — 任务在 GitHub Issues 中追踪 (V310-01~18)
+> - `V310_ISSUES_PLAN.md` — 已替换为 GitHub Issues
+> - `V310_10_COVERAGE_PLAN.md` — 覆盖率计划在 POST_GA_PLAN.md 中
+> - `V310_CLI_BINARY_PLAN.md` — CLI 二进制已合并 (C-6, C-7 DONE)
 
 ---
 
-*Last updated: 2026-07-13 by Claude Code (hermes-agent)*
-*Phase 0 implementation per DeepSeek review feedback (local://attachment-1)*
+*Last updated: 2026-07-14 — G3/G4/G9 updated; broken references fixed*

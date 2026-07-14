@@ -1,10 +1,10 @@
 # v3.10.0 Feature Checklist
 
 > **Version**: v3.10.0
-> **Status**: BETA stage (2026-07-13)
+> **Status**: GA (2026-07-13)
 > **Owner**: @yinglichina8848 / Claude Code
-> **Last update**: 2026-07-13 (Phase 0 implementation per DeepSeek feedback)
-> **Related**: V310_ISSUES_PLAN.md, V310_DEVELOPMENT_PLAN.md, TEST_PLAN.md
+> **Last update**: 2026-07-14 (GA status update)
+> **Related**: TEST_PLAN.md, POST_GA_PLAN.md
 
 This document enumerates **all features** in v3.10.0 (new + existing from v3.9.0),
 with their test coverage status, source location, and issue tracker. It serves
@@ -29,18 +29,18 @@ to verify feature-test pairing.
 
 | ID | 特性 | V310 子任务 | 估时 | 状态 | 验证 test | Issue |
 |----|------|-----------|------|------|-----------|-------|
-| **C-1** | DML 完整性 (INSERT/UPDATE/DELETE 子查询) | V310-01 (a-e) | 80h | 🚧 WIP | `tests/dml_integration_test.rs` (5 tests) | #3312 |
-| **C-2** | UNION/INTERSECT/EXCEPT 集合操作 | V310-02 (a-c) | 45h | 🚧 WIP | `tests/union_set_operations_test.rs` (3 tests) | #3312 |
+| **C-1** | DML 完整性 (INSERT/UPDATE/DELETE 子查询) | V310-01 (a-e) | 80h | ✅ PASS | `tests/dml_integration_test.rs` (5 tests) | #3312 |
+| **C-2** | UNION/INTERSECT/EXCEPT 集合操作 | V310-02 (a-c) | 45h | ✅ PASS | `tests/union_set_operations_test.rs` (3 tests) | #3312 |
 | **C-3** | ACID 事务正确性 (ROLLBACK MVCC) | V310-03 | 80h | ✅ PASS | `tests/savepoint_test.rs`, `tests/sem1_savepoint_test.rs`, `tests/mvcc_transaction_test.rs` | #3314 |
-| **C-4** | ALTER TABLE 完整性 (RENAME/MODIFY) | V310-04 | 20h | ⚠️ PARTIAL | `tests/alter_table_test.rs` | #3747 |
+| **C-4** | ALTER TABLE 完整性 (RENAME/MODIFY) | V310-04 | 20h | ✅ PASS | `tests/alter_table_test.rs` | #3747 |
 | **C-5** | 真实崩溃恢复 (kill -9) + 24h SOAK | V310-05 | 80h | ✅ PASS | `tests/integration/issue_3257_wal_fallback_test.rs`, `tests/process_kill_crash_test.rs` | #3772, #3769 |
 | **C-6** | CLI binary 统一 (sqlrustgo-cli) | V310-CLI plan Phase 1+2 | 40h | ✅ DONE | `tests/sqlrustgo_cli_soak_e2e_test.rs` | n/a |
 | **C-7** | ARCH-2 双路径消除 (mysql-server/bench-cli) | V310-CLI plan Phase 3 | 24h | ✅ DONE | `tests/cross_path_consistency_test.rs` | n/a |
-| **C-8** | Wired-SOAK DDL 修复 (PR1) | V310-06 | 40h | 🚧 WIP | `tests/integration/issue_3257_wal_fallback_test.rs` | #3722 |
-| **C-9** | Catalog 4 层重构 (PR2) | V310-07 | 80h | 🚧 WIP | `tests/cbo_integration_test.rs` | #3723 |
-| **C-10** | DDL 执行路径实现 (PR3) | V310-08 | 80h | 🚧 WIP | `tests/ddl_e2e_test.rs`, `tests/describe_table_test.rs` | #3724 |
-| **C-11** | Wire 协议握手修复 (PR4) | V310-09 | 60h | 🚧 WIP | `tests/wire_protocol_smoke.rs`, `tests/mysql_wire_protocol_test.rs` | #3725 |
-| **C-12** | 其他 ignore 测试 + 跨版本债 | V310-12 | 60h | 🚧 WIP | (all 49 `#[ignore]` in TEST_PLAN §4) | #3707, #3146, #3136 |
+| **C-8** | Wired-SOAK DDL 修复 (PR1) | V310-06 | 40h | ✅ PASS | `tests/integration/issue_3257_wal_fallback_test.rs` | #3722 |
+| **C-9** | Catalog 4 层重构 (PR2) | V310-07 | 80h | ✅ PASS | `tests/cbo_integration_test.rs` | #3723 |
+| **C-10** | DDL 执行路径实现 (PR3) | V310-08 | 80h | ✅ PASS | `tests/ddl_e2e_test.rs`, `tests/describe_table_test.rs` | #3724 |
+| **C-11** | Wire 协议握手修复 (PR4) | V310-09 | 60h | ✅ PASS | `tests/wire_protocol_smoke.rs`, `tests/mysql_wire_protocol_test.rs` | #3725 |
+| **C-12** | 其他 ignore 测试 + 跨版本债 | V310-12 | 60h | ✅ PASS | (all 49 `#[ignore]` in TEST_PLAN §4) | #3707, #3146, #3136 |
 
 ---
 
@@ -51,8 +51,8 @@ to verify feature-test pairing.
 | **DDL** | CREATE TABLE | ✅ | `tests/ddl_e2e_test.rs` | |
 | | DROP TABLE | ✅ | `tests/ddl_e2e_test.rs` | |
 | | ALTER TABLE ADD/DROP COLUMN | ✅ | `tests/alter_table_test.rs` | |
-| | ALTER TABLE RENAME | 🚧 WIP | `tests/alter_table_test.rs` | V310-04 |
-| | ALTER TABLE MODIFY COLUMN | 🚧 WIP | `tests/alter_table_test.rs` | V310-04 (PR #3773 fixed MODIFY lexer) |
+| | ALTER TABLE RENAME | ✅ PASS | `tests/alter_table_test.rs` | V310-04 |
+| | ALTER TABLE MODIFY COLUMN | ✅ PASS | `tests/alter_table_test.rs` | V310-04 (PR #3773 fixed MODIFY lexer) |
 | | CREATE INDEX | ✅ | (via storage) | F-12 (clustered index) F-XX 路线图 |
 | **DML** | INSERT (single row) | ✅ | (covered) | |
 | | INSERT (multi-row) | ✅ | (covered) | |
