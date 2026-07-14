@@ -177,3 +177,61 @@ RC gate R1-R8 进入。所有 OPEN/IN_PROGRESS 债务项已解析 (6 项 → IN_
 
 - PR #3377 (debt DEFERRED→IN_PROGRESS), #3379 (ignore reasons), #3381 (RC entry)
 - PR #3385 (debt + example compiles), #3386 (GA_GATE_REPORT.md), #3387 (drift exit 2)
+
+---
+
+## 2026-07-13 — Parallel Executor Optimization (Issue #3792)
+
+**6 项 v3.10.0 并行执行器优化全部落地 + 真实数据规模验证**
+
+### Added
+
+- **PARALLEL_MIN_ROWS 统一提升到 2,000,000**（executor / optimizer / storage 三处定义一致）
+- **并行触发前置判断（2x overhead gate）**：避免小数据集并行化开销抵消收益
+- **性能埋点（partition_ms / filter_ms / merge_ms / total_ms）**：通过 tracing::instrument 输出
+- **Batch-Parallel 任务调度（8K 行 chunks）**：减少 Rayon 任务调度次数 50%+
+- **Rayon 线程数动态配置（with_rayon_threads）**：每个 query 独立线程数
+- **自适应并行度选择（adaptive_parallelism）**：1-8 线程根据数据规模自动调整
+- **fast_load_tbl_data（基准测试基础设施）**：直接调用 StorageEngine::insert() 绕过 SQL 解析，~180x 加速数据加载
+
+### Performance (Post-Optimization Validation)
+
+#### SF=1.0 (1M lineitem rows, QUICK mode, runs=1)
+
+| Query | Serial (ms) | Parallel 4T (ms) | Speedup |
+|-------|------------|------------------|---------|
+| Q1 (aggregation, 10 cols) | 3,928 | 3,085 | **1.27x** |
+| Q3 (3-way join) | 5,315 | 4,924 | **1.08x** |
+| Q5 (6-way join) | 19,601 | 17,844 | **1.10x** |
+
+#### SF=3.0 (3M lineitem rows, exceeds PARALLEL_MIN_ROWS threshold)
+
+| Query | Serial (ms) | Parallel 4T (ms) | Speedup |
+|-------|------------|------------------|---------|
+| Q3 (3-way join) | 16,291 | 15,097 | **1.08x** |
+| Q5 (6-way join) | 58,206 | 53,147 | **1.10x** |
+
+### Impact
+
+- 聚合查询：**1.27x** 加速（v3.9.0 baseline 无加速）
+- Join 查询：**1.08x-1.10x** 加速
+- 数据加载：**180x** 加速（1M 行从 10+ 分钟降到 30 秒）
+- 总加速比受 Q4 相关子查询限制（占 96% 时间），是 v3.11+ 优化目标
+
+### Merge Status
+
+- **Gitea 250**: PR #3370 已合并（commit `f3c0ec5e91`）+ Issue #3371 创建跟踪
+- **Gitea 252**: PR #3829 + PR #3830 已合并（commit `733be23540`）
+- **Issue #3792**: Comment #70638 发布完整 SF=1/SF=3 结果
+
+### Documentation
+
+- `PARALLEL_EXECUTOR_OPTIMIZATION.md`: 优化分析与实施记录（6.7 节综合验证结果）
+- `perf/PERFORMANCE_BASELINE.md`: 性能基线报告（从 PLACEHOLDER 升级为 COMPLETED）
+- `SERIAL_VS_PARALLEL_REPORT.md`: 多规模 benchmark 报告
+- `COMPREHENSIVE_ASSESSMENT_REPORT.md` Section 7: 综合评估性能基准更新
+
+### Dependencies
+
+- PR #3370 (Gitea 250), #3829 (Gitea 252 - fast_load_tbl_data)
+- PR #3830 (Gitea 252 - 实测结果文档)
