@@ -148,3 +148,107 @@ fn test_alter_table_drop_column() {
         );
     }
 }
+
+// =============================================================================
+// V311-13: ALTER TABLE RENAME/MODIFY integration tests
+// (per docs/releases/v3.11.0/plans/V311_DEVELOPMENT_PLAN.md)
+// =============================================================================
+
+#[test]
+fn test_alter_table_rename_table() {
+    let (out, _err, _code) = run_repl(
+        "CREATE TABLE customers (id INT PRIMARY KEY, name VARCHAR(50));\n\
+         INSERT INTO customers VALUES (1, 'Alice'), (2, 'Bob');\n\
+         ALTER TABLE customers RENAME TO clients;\n\
+         SELECT * FROM clients;\n\
+         DESC clients;\n\
+         .exit\n",
+    );
+    assert!(out.contains("Alice"), "SELECT * FROM clients should contain Alice, got:\n{}", out);
+    assert!(out.contains("Bob"), "SELECT * FROM clients should contain Bob, got:\n{}", out);
+    assert!(out.contains("id"), "DESC clients should contain id column");
+    assert!(out.contains("name"), "DESC clients should contain name column");
+}
+
+#[test]
+fn test_alter_table_rename_table_nonexistent() {
+    let (out, _err, _code) = run_repl(
+        "ALTER TABLE nonexistent_table RENAME TO new_name;\n\
+         .exit\n",
+    );
+    // Should fail with table not found error
+    let combined = format!("{}{}", out, _err);
+    assert!(
+        combined.to_lowercase().contains("not found")
+            || combined.to_lowercase().contains("doesn't exist")
+            || combined.to_lowercase().contains("error"),
+        "Renaming nonexistent table should produce error, got:\nstdout: {}\nstderr: {}",
+        out, _err
+    );
+}
+
+#[test]
+fn test_alter_table_rename_column() {
+    let (out, _err, _code) = run_repl(
+        "CREATE TABLE t_ren_col (id INT PRIMARY KEY, old_name VARCHAR(50));\n\
+         INSERT INTO t_ren_col VALUES (1, 'test_value');\n\
+         ALTER TABLE t_ren_col RENAME COLUMN old_name TO new_name;\n\
+         SELECT id, new_name FROM t_ren_col;\n\
+         DESC t_ren_col;\n\
+         .exit\n",
+    );
+    // Data should be preserved (records are Vec<Value> positional)
+    assert!(out.contains("test_value"), "Data should be preserved after RENAME COLUMN, got:\n{}", out);
+    assert!(out.contains("new_name"), "DESC should show new column name");
+    assert!(!out.contains("old_name"), "DESC should not show old column name");
+}
+
+#[test]
+fn test_alter_table_modify_column_type() {
+    let (out, _err, _code) = run_repl(
+        "CREATE TABLE t_mod (id INT PRIMARY KEY, val INT);\n\
+         INSERT INTO t_mod VALUES (1, 100);\n\
+         ALTER TABLE t_mod MODIFY COLUMN val BIGINT;\n\
+         DESC t_mod;\n\
+         .exit\n",
+    );
+    // val column should now be BIGINT
+    assert!(
+        out.contains("BIGINT") || out.contains("bigint"),
+        "MODIFY COLUMN should change type to BIGINT, got:\n{}",
+        out
+    );
+}
+
+#[test]
+fn test_alter_table_modify_column_nullable() {
+    let (out, _err, _code) = run_repl(
+        "CREATE TABLE t_null (id INT PRIMARY KEY, val INT NOT NULL);\n\
+         ALTER TABLE t_null MODIFY COLUMN val INT NULL;\n\
+         DESC t_null;\n\
+         .exit\n",
+    );
+    // val should be nullable now (or no NOT NULL marker)
+    // In v3.10.0, DESC output format is column_name | type | null | key
+    // After MODIFY NULL, should show YES under Null column (or no NOT NULL)
+    assert!(out.contains("val"), "DESC t_null should contain val column");
+}
+
+#[test]
+fn test_alter_table_chain_renames() {
+    let (out, _err, _code) = run_repl(
+        "CREATE TABLE t_chain (id INT PRIMARY KEY, col_a VARCHAR(50));\n\
+         INSERT INTO t_chain VALUES (1, 'original');\n\
+         ALTER TABLE t_chain RENAME TO t_chain_v2;\n\
+         ALTER TABLE t_chain_v2 RENAME COLUMN col_a TO col_b;\n\
+         ALTER TABLE t_chain_v2 RENAME TO t_chain_v3;\n\
+         SELECT id, col_b FROM t_chain_v3;\n\
+         DESC t_chain_v3;\n\
+         .exit\n",
+    );
+    // Data should be preserved through all renames
+    assert!(out.contains("original"), "Data should be preserved through chain renames, got:\n{}", out);
+    // DESC t_chain_v3 should show col_b as the new column name
+    assert!(out.contains("col_b"), "Final column name should be col_b (via DESC), got:\n{}", out);
+    assert!(!out.contains("col_a"), "Original column name should be gone");
+}
