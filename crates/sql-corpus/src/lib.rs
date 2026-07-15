@@ -72,6 +72,7 @@ impl SimpleExecutor {
                     foreign_keys: vec![],
                     unique_constraints: vec![],
                     check_constraints: vec![],
+                        compression: None,
                     partition_info: None,
                 };
                 self.storage
@@ -273,6 +274,7 @@ impl SimpleExecutor {
                 foreign_keys: vec![],
                 unique_constraints: vec![],
                 check_constraints: vec![],
+                    compression: None,
                 partition_info: None,
             };
             self.storage
@@ -398,6 +400,7 @@ impl SimpleExecutor {
                 foreign_keys: vec![],
                 unique_constraints: vec![],
                 check_constraints: vec![],
+                    compression: None,
                 partition_info: None,
             };
             self.storage
@@ -437,6 +440,7 @@ impl SimpleExecutor {
                 foreign_keys: vec![],
                 unique_constraints: vec![],
                 check_constraints: vec![],
+                    compression: None,
                 partition_info: None,
             };
             // Create table only if it doesn't exist yet
@@ -510,6 +514,7 @@ impl SimpleExecutor {
                 foreign_keys: vec![],
                 unique_constraints: vec![],
                 check_constraints: vec![],
+                    compression: None,
                 partition_info: None,
             };
 
@@ -780,6 +785,7 @@ impl SimpleExecutor {
                         foreign_keys: vec![],
                         unique_constraints: vec![],
                         check_constraints: vec![],
+                            compression: None,
                         partition_info: None,
                     };
                     self.storage
@@ -846,6 +852,7 @@ impl SimpleExecutor {
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
+                compression: None,
             partition_info: None,
         };
         self.storage

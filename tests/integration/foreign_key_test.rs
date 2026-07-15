@@ -368,6 +368,7 @@ fn test_fk_concurrent_insert_simulation() {
                 foreign_keys: vec![],
                 unique_constraints: vec![],
                 check_constraints: vec![],
+                    compression: None,
                 partition_info: None,
             })
             .unwrap();
@@ -400,6 +401,7 @@ fn test_fk_concurrent_insert_simulation() {
                 foreign_keys: vec![],
                 unique_constraints: vec![],
                 check_constraints: vec![],
+                    compression: None,
                 partition_info: None,
             })
             .unwrap();
@@ -461,6 +463,7 @@ fn test_fk_large_dataset_validation() {
                 foreign_keys: vec![],
                 unique_constraints: vec![],
                 check_constraints: vec![],
+                    compression: None,
                 partition_info: None,
             })
             .unwrap();
@@ -493,6 +496,7 @@ fn test_fk_large_dataset_validation() {
                 foreign_keys: vec![],
                 unique_constraints: vec![],
                 check_constraints: vec![],
+                    compression: None,
                 partition_info: None,
             })
             .unwrap();
