@@ -22,10 +22,10 @@ use sqlrustgo_parser::{
     get_and_clear_derived_subqueries, AggregateCall, AggregateFunction, Expression,
     JoinClause as ParserJoinClause, JoinType, SelectStatement,
 };
-use sqlrustgo_storage::{PageLocation, StorageEngine, TableInfo};
+use sqlrustgo_storage::{StorageEngine, TableInfo};
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::sync::{Mutex, OnceLock};
+use std::sync::OnceLock;
 use std::time::Instant;
 
 type DerivedResult = (Vec<Vec<Value>>, TableInfo);
@@ -46,18 +46,18 @@ thread_local! {
 // the first call, then reuse it for subsequent calls.
 type LineitemIndexMap = HashMap<String, HashMap<Value, Vec<usize>>>;
 type LineitemRowsMap = HashMap<String, std::sync::Arc<Vec<Vec<Value>>>>;
-static LINEITEM_INDEX_CACHE: OnceLock<Mutex<LineitemIndexMap>> = OnceLock::new();
-fn lineitem_index_cache() -> &'static Mutex<LineitemIndexMap> {
-    LINEITEM_INDEX_CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+static LINEITEM_INDEX_CACHE: OnceLock<parking_lot::Mutex<LineitemIndexMap>> = OnceLock::new();
+fn lineitem_index_cache() -> &'static parking_lot::Mutex<LineitemIndexMap> {
+    LINEITEM_INDEX_CACHE.get_or_init(|| parking_lot::Mutex::new(HashMap::new()))
 }
 
 // Companion cache for the actual inner table rows. We cache
 // the rows under an Arc so subsequent per-outer-row calls
 // don't pay the deep-clone cost of MemoryStorage::scan()
 // (which does `.cloned()` on 60K lineitem rows each call).
-static LINEITEM_ROWS_CACHE: OnceLock<Mutex<LineitemRowsMap>> = OnceLock::new();
-fn lineitem_rows_cache() -> &'static Mutex<LineitemRowsMap> {
-    LINEITEM_ROWS_CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+static LINEITEM_ROWS_CACHE: OnceLock<parking_lot::Mutex<LineitemRowsMap>> = OnceLock::new();
+fn lineitem_rows_cache() -> &'static parking_lot::Mutex<LineitemRowsMap> {
+    LINEITEM_ROWS_CACHE.get_or_init(|| parking_lot::Mutex::new(HashMap::new()))
 }
 
 // Sprint 5 v2 (Q17 fix): per-(table, column, key) scalar subquery cache.
@@ -65,9 +65,9 @@ fn lineitem_rows_cache() -> &'static Mutex<LineitemRowsMap> {
 // FROM lineitem WHERE l_partkey = p_partkey)`. For each outer partkey value,
 // we cache the scalar subquery result so we don't scan lineitem N times.
 // Key: (table_name, outer_ref_col, inner_filter_col) → HashMap<outer_value, scalar_result>
-static SCALAR_SUBQ_CACHE: OnceLock<Mutex<HashMap<Value, Value>>> = OnceLock::new();
-fn scalar_subq_cache() -> &'static Mutex<HashMap<Value, Value>> {
-    SCALAR_SUBQ_CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+static SCALAR_SUBQ_CACHE: OnceLock<parking_lot::Mutex<HashMap<Value, Value>>> = OnceLock::new();
+fn scalar_subq_cache() -> &'static parking_lot::Mutex<HashMap<Value, Value>> {
+    SCALAR_SUBQ_CACHE.get_or_init(|| parking_lot::Mutex::new(HashMap::new()))
 }
 
 // TPC-H Q17 perf: pre-computed `key_value → aggregate_result` index for
@@ -82,10 +82,10 @@ type ScalarAggIndexMap = HashMap<Value, Value>;
 struct ScalarAggIndexEntry {
     map: std::sync::Arc<ScalarAggIndexMap>,
 }
-static SCALAR_AGG_INDEX_CACHE: OnceLock<Mutex<HashMap<String, ScalarAggIndexEntry>>> =
+static SCALAR_AGG_INDEX_CACHE: OnceLock<parking_lot::Mutex<HashMap<String, ScalarAggIndexEntry>>> =
     OnceLock::new();
-fn scalar_agg_index_cache() -> &'static Mutex<HashMap<String, ScalarAggIndexEntry>> {
-    SCALAR_AGG_INDEX_CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+fn scalar_agg_index_cache() -> &'static parking_lot::Mutex<HashMap<String, ScalarAggIndexEntry>> {
+    SCALAR_AGG_INDEX_CACHE.get_or_init(|| parking_lot::Mutex::new(HashMap::new()))
 }
 
 fn extract_first_literal_from_where(select: &SelectStatement) -> Option<Value> {
@@ -163,7 +163,29 @@ fn value_to_literal_string_v(v: &Value) -> String {
 }
 
 impl<S: StorageEngine + 'static> ExecutionEngine<S> {
+    fn clear_tpch_caches() {
+        thread_local! {
+            static CACHE_CLEARED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+        }
+        CACHE_CLEARED.with(|flag| {
+            if flag.get() {
+                return;
+            }
+            flag.set(true);
+        });
+        if let Some(c) = LINEITEM_ROWS_CACHE.get() {
+            c.lock().clear();
+        }
+        if let Some(c) = LINEITEM_INDEX_CACHE.get() {
+            c.lock().clear();
+        }
+        if let Some(c) = SCALAR_AGG_INDEX_CACHE.get() {
+            c.lock().clear();
+        }
+    }
+
     pub fn execute_select(&self, select: &SelectStatement) -> SqlResult<ExecutorResult> {
+        Self::clear_tpch_caches();
         // Sprint 1b fix (Q7/Q8/Q9): handle FROM (subquery) AS alias by
         // first executing the subquery to materialize its result into a
         // synthetic in-memory table, then running the outer SELECT against
@@ -2896,7 +2918,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                         ))
                     });
                 {
-                    let cache = scalar_subq_cache().lock().unwrap();
+                    let cache = scalar_subq_cache().lock();
                     if let Some(cached) = cache.get(&cache_key) {
                         return Expression::Literal(cached.to_string());
                     }
@@ -2908,9 +2930,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     }
                     _ => Value::Null,
                 };
-                scalar_subq_cache()
-                    .lock()
-                    .unwrap()
+                scalar_subq_cache().lock()
                     .insert(cache_key, scalar.clone());
                 Expression::Literal(scalar.to_string())
             }
@@ -3246,7 +3266,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             let engine_tag = std::sync::Arc::as_ptr(&self.storage) as *const () as usize;
             let table_name = format!("{}{:x}", real_subq_table, engine_tag);
             let rows_arc: std::sync::Arc<Vec<Vec<Value>>> = {
-                let mut rc = rows_cache.lock().unwrap();
+                let mut rc = rows_cache.lock();
                 if let Some(c) = rc.get(&table_name) {
                     c.clone()
                 } else {
@@ -3259,7 +3279,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             // Get or build the index for this column.
             let cache_key = format!("{}:{}", table_name, idx);
             let candidate_ids: Vec<usize> = {
-                let mut ic = idx_cache.lock().unwrap();
+                let mut ic = idx_cache.lock();
                 if !ic.contains_key(&cache_key) {
                     let mut new_index: std::collections::HashMap<Value, Vec<usize>> =
                         std::collections::HashMap::new();
@@ -3483,7 +3503,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
 
         // ── Get or build the index ──────────────────────────────────
         let entry: ScalarAggIndexEntry = {
-            let cache = scalar_agg_index_cache().lock().unwrap();
+            let cache = scalar_agg_index_cache().lock();
             if let Some(e) = cache.get(&cache_key) {
                 e.clone()
             } else {
@@ -3502,7 +3522,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 let entry = ScalarAggIndexEntry {
                     map: std::sync::Arc::new(new_map),
                 };
-                let mut cache = scalar_agg_index_cache().lock().unwrap();
+                let mut cache = scalar_agg_index_cache().lock();
                 cache.insert(cache_key.clone(), entry.clone());
                 entry
             }
