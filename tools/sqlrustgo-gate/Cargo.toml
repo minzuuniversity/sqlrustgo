@@ -22,5 +22,3 @@ thiserror = "1.0"
 chrono = { version = "0.4", features = ["serde"] }
 dirs = "5.0"
 
-[profile.release]
-opt-level = 3
