@@ -1,0 +1,143 @@
+{
+  "crate": "sqlrustgo",
+  "baseline_date": "2026-07-14",
+  "tool": "cargo-llvm-cov 0.8.7",
+  "scope": "cargo llvm-cov --lib (sqlrustgo root crate; 28 tests, 27 run, 1 excluded: test_parallel_100k_cell_match_n1_vs_n4)",
+  "data": [
+    {
+      "summary": {
+        "percent_covered": 16.3,
+        "region": {
+          "covered": 1557,
+          "total": 10659,
+          "percent": 14.61
+        },
+        "function": {
+          "covered": 98,
+          "total": 547,
+          "percent": 17.92
+        },
+        "line": {
+          "covered": 1055,
+          "total": 6472,
+          "percent": 16.3
+        },
+        "branch": {
+          "covered": 0,
+          "total": 0,
+          "percent": 0
+        }
+      },
+      "per_file": [
+        {
+          "name": "src/cbo_estimator.rs",
+          "region_pct": 94.91,
+          "function_pct": 92.86,
+          "line_pct": 94.67,
+          "region_total": 216,
+          "line_total": 150,
+          "function_total": 14
+        },
+        {
+          "name": "src/engine_builder.rs",
+          "region_pct": 16.02,
+          "function_pct": 16.67,
+          "line_pct": 20.77,
+          "region_total": 231,
+          "line_total": 183,
+          "function_total": 12
+        },
+        {
+          "name": "src/engine_cte.rs",
+          "region_pct": 0.0,
+          "function_pct": 0.0,
+          "line_pct": 0.0,
+          "region_total": 123,
+          "line_total": 89,
+          "function_total": 8
+        },
+        {
+          "name": "src/engine_ddl.rs",
+          "region_pct": 0.0,
+          "function_pct": 0.0,
+          "line_pct": 0.0,
+          "region_total": 627,
+          "line_total": 479,
+          "function_total": 59
+        },
+        {
+          "name": "src/engine_dml.rs",
+          "region_pct": 30.26,
+          "function_pct": 20.31,
+          "line_pct": 34.28,
+          "region_total": 1292,
+          "line_total": 671,
+          "function_total": 64
+        },
+        {
+          "name": "src/engine_helpers.rs",
+          "region_pct": 24.71,
+          "function_pct": 36.84,
+          "line_pct": 32.0,
+          "region_total": 263,
+          "line_total": 175,
+          "function_total": 19
+        },
+        {
+          "name": "src/engine_select.rs",
+          "region_pct": 5.58,
+          "function_pct": 7.84,
+          "line_pct": 6.01,
+          "region_total": 4944,
+          "line_total": 2763,
+          "function_total": 204
+        },
+        {
+          "name": "src/engine_utils.rs",
+          "region_pct": 9.3,
+          "function_pct": 20.0,
+          "line_pct": 8.37,
+          "region_total": 1150,
+          "line_total": 812,
+          "function_total": 35
+        },
+        {
+          "name": "src/execution_engine.rs",
+          "region_pct": 31.77,
+          "function_pct": 32.67,
+          "line_pct": 34.4,
+          "region_total": 1215,
+          "line_total": 846,
+          "function_total": 101
+        },
+        {
+          "name": "src/expr_utils.rs",
+          "region_pct": 15.15,
+          "function_pct": 23.33,
+          "line_pct": 21.26,
+          "region_total": 594,
+          "line_total": 301,
+          "function_total": 30
+        },
+        {
+          "name": "src/lib.rs",
+          "region_pct": 0.0,
+          "function_pct": 0.0,
+          "line_pct": 0.0,
+          "region_total": 4,
+          "line_total": 3,
+          "function_total": 1
+        }
+      ]
+    }
+  ],
+  "notes": [
+    "REAL coverage from cargo-llvm-cov run on 2026-07-14 (workspace --lib, merged).",
+    "16.30% < 80% GA target. R6 will FAIL until coverage is raised.",
+    "Top priority files to test (see COVERAGE_DIAGNOSIS.md):",
+    "  engine_ddl.rs     (627 regions, 0%)     - DDL parser/executor not covered",
+    "  engine_cte.rs     (123 regions, 0%)     - CTE/recursive queries not covered",
+    "  engine_select.rs  (4944 regions, 5.58%) - main SELECT path under-tested",
+    "  engine_utils.rs   (1150 regions, 9.30%) - utils under-tested"
+  ]
+}
