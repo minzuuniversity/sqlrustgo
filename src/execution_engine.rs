@@ -566,6 +566,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             Statement::CreateSequence(ref seq) => self.execute_create_sequence(seq),
             Statement::DropSequence(ref seq) => self.execute_drop_sequence(seq),
             Statement::UseDatabase(ref name) => self.execute_use_database(name),
+            Statement::AlterUser(_) => Err(SqlError::ExecutionError("ALTER USER not yet implemented".to_string())),
          }
      }
 
