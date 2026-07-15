@@ -4,6 +4,7 @@ pub mod logging;
 pub mod metrics;
 pub mod metrics_aggregator;
 pub mod network_metrics;
+pub mod compression;
 
 #[derive(Debug, Clone)]
 pub struct SqlError {

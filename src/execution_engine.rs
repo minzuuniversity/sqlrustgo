@@ -27,15 +27,14 @@ use sqlrustgo_optimizer::rules::{BinaryOperator, Expr};
 use sqlrustgo_optimizer::unified_cost::UnifiedCostModel;
 use sqlrustgo_optimizer::unified_plan::UnifiedPlan;
 use sqlrustgo_parser::parser::{
-    AggregateCall, AggregateFunction, AlterSequenceStatement, AlterTableOperation, AlterTableStatement, CallStatement,
-    CreateDatabaseStatement, CreateIndexStatement, CreateProcedureStatement, CreateRoleStatement,
-    CreateSequenceStatement, CreateTableStatement, CreateTriggerStatement, CreateViewStatement,
-    DescribeStatement, DropDatabaseStatement, DropIndexStatement, DropRoleStatement,
-    DropSequenceStatement, DropTableStatement, DropViewStatement, ExceptStatement,
-    GrantRoleStatement, GrantStatement, InsertStatement, IntersectStatement, MergeStatement,
-    ObjectType as ParserObjectType, OrderByExpression, Privilege as ParserPrivilege,
-    RevokeRoleStatement, RevokeStatement, SelectStatement, SetRoleStatement, ShowStatement,
-    StorageEngineSpec, StoredProcParam as ParserStoredProcParam,
+    AggregateCall, AggregateFunction, AlterSequenceStatement, AlterTableOperation, AlterTableStatement, AlterUserStatement,
+    CallStatement, CompressionAlgorithm, CreateDatabaseStatement, CreateIndexStatement, CreateProcedureStatement,
+    CreateRoleStatement, CreateSequenceStatement, CreateTableStatement, CreateTriggerStatement, CreateViewStatement,
+    DescribeStatement, DropDatabaseStatement, DropIndexStatement, DropRoleStatement, DropSequenceStatement,
+    DropTableStatement, DropViewStatement, ExceptStatement, GrantRoleStatement, GrantStatement, InsertStatement,
+    IntersectStatement, MergeStatement, ObjectType as ParserObjectType, OrderByExpression,
+    Privilege as ParserPrivilege, RevokeRoleStatement, RevokeStatement, SelectStatement, SetRoleStatement,
+    ShowStatement, StorageEngineSpec, StoredProcParam as ParserStoredProcParam,
     StoredProcParamMode as ParserParamMode, StoredProcStatement as ParserStatement,
     TruncateStatement, UnionStatement,
 };
@@ -235,6 +234,11 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         let mut e = Self::base_with(storage, true);
         e.catalog = Some(catalog);
         e
+    }
+    /// V311-08 F-35: Access the catalog for password write blocking checks.
+    /// Returns None if no catalog is configured.
+    pub fn catalog(&self) -> Option<Arc<parking_lot::RwLock<Catalog>>> {
+        self.catalog.clone()
     }
 
     /// V311-02 F-24: Access the shared AdaptiveHashIndex for hot-page
@@ -567,6 +571,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             Statement::DropSequence(ref seq) => self.execute_drop_sequence(seq),
             Statement::AlterSequence(ref seq) => self.execute_alter_sequence(seq),
             Statement::UseDatabase(ref name) => self.execute_use_database(name),
+            Statement::AlterUser(_) => Err(SqlError::ExecutionError("ALTER USER not yet implemented".to_string())),
          }
      }
 
@@ -634,6 +639,13 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 char_max_length: c.char_max_length,
             })
             .collect();
+        let compression = create.compress.as_ref().map(|spec| {
+        match spec.algorithm {
+            CompressionAlgorithm::Lz4 => "LZ4".to_string(),
+            CompressionAlgorithm::Zstd => "ZSTD".to_string(),
+            CompressionAlgorithm::Zlib => "ZLIB".to_string(),
+        }
+    });
         let info = TableInfo {
             name: create.name.clone(),
             columns: columns.clone(),
@@ -641,6 +653,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             unique_constraints: vec![],
             check_constraints: vec![],
             partition_info: None,
+            compression,
         };
 
         // V311-01 F-23: route to ClusteredTable when storage_engine = Clustered.
@@ -663,6 +676,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 unique_constraints: vec![],
                 check_constraints: vec![],
                 partition_info: None,
+                    compression: None,
             })?;
             self.clustered_tables
                 .write()
@@ -716,11 +730,14 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         Ok(ExecutorResult::empty())
     }
 
-    fn execute_create_sequence(&self, seq_stmt: &CreateSequenceStatement) -> SqlResult<ExecutorResult> {
+    fn execute_create_sequence(
+        &self,
+        seq_stmt: &CreateSequenceStatement,
+    ) -> SqlResult<ExecutorResult> {
         use sqlrustgo_storage::engine::SequenceInfo;
-        
+
         let mut storage = self.storage.write();
-        
+
         // Check if sequence already exists
         if storage.has_sequence(&seq_stmt.name) {
             if seq_stmt.if_not_exists {
@@ -731,31 +748,47 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 seq_stmt.name
             )));
         }
-        
+
         // Parse sequence options from String to i64
-        let start_with = seq_stmt.start_with.as_ref()
+        let start_with = seq_stmt
+            .start_with
+            .as_ref()
             .and_then(|s| s.parse::<i64>().ok())
             .unwrap_or(1);
-        let increment_by = seq_stmt.increment_by.as_ref()
+        let increment_by = seq_stmt
+            .increment_by
+            .as_ref()
             .and_then(|s| s.parse::<i64>().ok())
             .unwrap_or(1);
-        let minvalue = seq_stmt.minvalue.as_ref()
+        let minvalue = seq_stmt
+            .minvalue
+            .as_ref()
             .and_then(|s| {
-                if s == "NO MINVALUE" { Some(i64::MIN) }
-                else { s.parse::<i64>().ok() }
+                if s == "NO MINVALUE" {
+                    Some(i64::MIN)
+                } else {
+                    s.parse::<i64>().ok()
+                }
             })
             .unwrap_or(1);
-        let maxvalue = seq_stmt.maxvalue.as_ref()
+        let maxvalue = seq_stmt
+            .maxvalue
+            .as_ref()
             .and_then(|s| {
-                if s == "NO MAXVALUE" { Some(i64::MAX) }
-                else { s.parse::<i64>().ok() }
+                if s == "NO MAXVALUE" {
+                    Some(i64::MAX)
+                } else {
+                    s.parse::<i64>().ok()
+                }
             })
             .unwrap_or(i64::MAX);
-        let cache = seq_stmt.cache.as_ref()
+        let cache = seq_stmt
+            .cache
+            .as_ref()
             .and_then(|s| s.parse::<i64>().ok())
             .unwrap_or(1);
         let cycle = seq_stmt.cycle.unwrap_or(false);
-        
+
         let seq_info = SequenceInfo {
             name: seq_stmt.name.clone(),
             start_with,
@@ -766,14 +799,14 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             cycle,
             current_value: start_with - increment_by, // Start position before first NEXT VALUE
         };
-        
+
         storage.create_sequence(seq_info)?;
         Ok(ExecutorResult::empty())
     }
 
     fn execute_drop_sequence(&self, seq_stmt: &DropSequenceStatement) -> SqlResult<ExecutorResult> {
         let mut storage = self.storage.write();
-        
+
         if !storage.has_sequence(&seq_stmt.name) {
             if seq_stmt.if_exists {
                 return Ok(ExecutorResult::empty());
@@ -783,7 +816,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 seq_stmt.name
             )));
         }
-        
+
         storage.drop_sequence(&seq_stmt.name)?;
         Ok(ExecutorResult::empty())
     }

@@ -2624,6 +2624,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "lz4_flex"
+version = "0.11.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "373f5eceeeab7925e0c1098212f2fbc4d416adec9d35051a6ab251e824c1854a"
+dependencies = [
+ "twox-hash 2.1.2",
+]
+
+[[package]]
 name = "matchers"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2734,7 +2743,7 @@ dependencies = [
  "serde",
  "serde_json",
  "socket2 0.5.10",
- "twox-hash",
+ "twox-hash 1.6.3",
  "url",
 ]
 
@@ -4341,6 +4350,7 @@ version = "3.9.0"
 dependencies = [
  "hmac 0.12.1",
  "log",
+ "parking_lot",
  "pbkdf2",
  "rand 0.8.6",
  "serde",
@@ -4369,10 +4379,12 @@ dependencies = [
  "chrono",
  "flate2",
  "log",
+ "lz4_flex",
  "serde",
  "serde_json",
  "tempfile",
  "thiserror 2.0.18",
+ "zstd",
 ]
 
 [[package]]
@@ -4393,6 +4405,7 @@ dependencies = [
  "sqlrustgo-spill",
  "sqlrustgo-storage",
  "sqlrustgo-types",
+ "sqlrustgo_gis",
  "tempfile",
  "thiserror 2.0.18",
  "tracing",
@@ -4446,6 +4459,7 @@ dependencies = [
  "serde_json",
  "sha1 0.10.6",
  "sqlrustgo",
+ "sqlrustgo-catalog",
  "sqlrustgo-common",
  "sqlrustgo-executor",
  "sqlrustgo-parser",
@@ -4709,6 +4723,13 @@ dependencies = [
  "serde_json",
  "sqlrustgo-storage",
  "tempfile",
+]
+
+[[package]]
+name = "sqlrustgo_gis"
+version = "0.1.0"
+dependencies = [
+ "sqlrustgo-types",
 ]
 
 [[package]]
@@ -5452,6 +5473,12 @@ dependencies = [
  "rand 0.8.6",
  "static_assertions",
 ]
+
+[[package]]
+name = "twox-hash"
+version = "2.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9ea3136b675547379c4bd395ca6b938e5ad3c3d20fad76e7fe85f9e0d011419c"
 
 [[package]]
 name = "typenum"
