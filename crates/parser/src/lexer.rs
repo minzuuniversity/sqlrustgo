@@ -426,6 +426,20 @@ impl<'a> Lexer<'a> {
                     "OVER" => Token::Over,
                     "BETWEEN" => Token::Between,
                     "ESCAPE" => Token::Escape,
+                    // F-30 CREATE SEQUENCE
+                    "SEQUENCE" => Token::Sequence,
+                    "CYCLE" => Token::Cycle,
+                    "NOCYCLE" => Token::NoCycle,
+                    "CACHE" => Token::Cache,
+                    "INCREMENT" => Token::Increment,
+                    "OWNED" => Token::Owned,
+                    "NEXT" => Token::NextValue,
+                    "CURRVAL" => Token::Currval,
+                    "RESTART" => Token::Restart,
+                    "MINVALUE" => Token::Minvalue,
+                    "MAXVALUE" => Token::Maxvalue,
+                    "NOMINVALUE" => Token::NoMinValue,
+                    "NOMAXVALUE" => Token::NoMaxValue,
                     _ => Token::Identifier(ident),
                 }
             }
