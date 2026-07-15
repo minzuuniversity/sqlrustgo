@@ -1,8 +1,11 @@
+#![allow(dead_code)]
+
 use regex::Regex;
 use std::path::Path;
 use std::process::exit;
 use walkdir::WalkDir;
 
+#[allow(dead_code)]
 struct Config {
     check_mainline: bool,
     check_forbidden: bool,
@@ -101,7 +104,11 @@ fn check_dml_without_txn(errors: &mut Vec<String>) {
     for entry in WalkDir::new("crates/executor/src")
         .into_iter()
         .filter_map(|e| e.ok())
-        .filter(|e| e.path().extension().map_or(false, |ext| ext == "rs"))
+        .filter(|e| {
+            e.path()
+                .extension()
+                .is_some_and(|ext: &std::ffi::OsStr| ext == "rs")
+        })
     {
         if let Ok(content) = std::fs::read_to_string(entry.path()) {
             if forbidden_re.is_match(&content) {
@@ -119,6 +126,7 @@ fn check_dml_without_txn(errors: &mut Vec<String>) {
     }
 }
 
+#[allow(dead_code)]
 fn check_isolated_in_mainline(errors: &mut Vec<String>) {
     let isolated_modules = [
         "parallel_executor",
@@ -130,7 +138,11 @@ fn check_isolated_in_mainline(errors: &mut Vec<String>) {
     for entry in WalkDir::new("crates")
         .into_iter()
         .filter_map(|e| e.ok())
-        .filter(|e| e.path().extension().map_or(false, |ext| ext == "rs"))
+        .filter(|e| {
+            e.path()
+                .extension()
+                .is_some_and(|ext: &std::ffi::OsStr| ext == "rs")
+        })
     {
         if let Ok(content) = std::fs::read_to_string(entry.path()) {
             for module in &isolated_modules {
@@ -148,11 +160,13 @@ fn check_isolated_in_mainline(errors: &mut Vec<String>) {
     }
 }
 
+#[allow(dead_code)]
 fn check_forbidden_deps(_errors: &mut Vec<String>) {
     // Placeholder - would need cargo tree parsing
     println!("  (dependency check skipped - requires cargo tree)")
 }
 
+#[allow(dead_code)]
 fn check_wal_in_executor(errors: &mut Vec<String>) {
     let executor_files = [
         "crates/executor/src/executor.rs",

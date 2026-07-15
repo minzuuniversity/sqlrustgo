@@ -27,8 +27,10 @@ fn ahi_accessor_returns_valid_instance() {
 #[test]
 fn single_scan_records_access_via_scan_with_ahi() {
     let mut e = fresh_engine();
-    e.execute("CREATE TABLE t (id INTEGER PRIMARY KEY, name TEXT)").unwrap();
-    e.execute("INSERT INTO t VALUES (1, 'alice'), (2, 'bob'), (3, 'charlie')").unwrap();
+    e.execute("CREATE TABLE t (id INTEGER PRIMARY KEY, name TEXT)")
+        .unwrap();
+    e.execute("INSERT INTO t VALUES (1, 'alice'), (2, 'bob'), (3, 'charlie')")
+        .unwrap();
 
     // Snapshot AHI stats before query
     let before = e.ahi().promoted_count();
@@ -46,7 +48,8 @@ fn single_scan_records_access_via_scan_with_ahi() {
 #[test]
 fn repeated_scans_eventually_promote_to_ahi() {
     let mut e = fresh_engine();
-    e.execute("CREATE TABLE t (id INTEGER PRIMARY KEY, name TEXT)").unwrap();
+    e.execute("CREATE TABLE t (id INTEGER PRIMARY KEY, name TEXT)")
+        .unwrap();
     e.execute("INSERT INTO t VALUES (1, 'alice')").unwrap();
 
     // Run 20 queries to exceed the default threshold of 17
@@ -72,7 +75,8 @@ fn repeated_scans_eventually_promote_to_ahi() {
 #[test]
 fn ahi_hit_rate_grows_with_repeated_queries() {
     let mut e = fresh_engine();
-    e.execute("CREATE TABLE t (id INTEGER PRIMARY KEY, name TEXT)").unwrap();
+    e.execute("CREATE TABLE t (id INTEGER PRIMARY KEY, name TEXT)")
+        .unwrap();
     e.execute("INSERT INTO t VALUES (1, 'alice')").unwrap();
 
     // Run 30 queries to ensure promotion + lookups
@@ -82,8 +86,11 @@ fn ahi_hit_rate_grows_with_repeated_queries() {
 
     // After 30 queries, AHI should have entries (promotion at 17 hits)
     let promoted = e.ahi().promoted_count();
-    assert!(promoted >= 1, "should have ≥ 1 promoted entry, got {promoted}");
-    
+    assert!(
+        promoted >= 1,
+        "should have ≥ 1 promoted entry, got {promoted}"
+    );
+
     // AHI size should reflect the 1 promoted entry
     assert!(e.ahi().size() >= 1, "AHI size should grow after promotion");
 }
@@ -91,8 +98,10 @@ fn ahi_hit_rate_grows_with_repeated_queries() {
 #[test]
 fn multiple_tables_have_isolated_ahi_state() {
     let mut e = fresh_engine();
-    e.execute("CREATE TABLE t1 (id INTEGER PRIMARY KEY, val TEXT)").unwrap();
-    e.execute("CREATE TABLE t2 (id INTEGER PRIMARY KEY, val TEXT)").unwrap();
+    e.execute("CREATE TABLE t1 (id INTEGER PRIMARY KEY, val TEXT)")
+        .unwrap();
+    e.execute("CREATE TABLE t2 (id INTEGER PRIMARY KEY, val TEXT)")
+        .unwrap();
 
     // Touch each table enough to promote
     for _ in 0..20 {
@@ -111,15 +120,21 @@ fn multiple_tables_have_isolated_ahi_state() {
 #[test]
 fn queries_with_join_use_ahi_via_base_table_scan() {
     let mut e = fresh_engine();
-    e.execute("CREATE TABLE orders (oid INTEGER PRIMARY KEY, pid INTEGER)").unwrap();
-    e.execute("CREATE TABLE items (oid INTEGER, qty INTEGER)").unwrap();
-    e.execute("INSERT INTO orders VALUES (1, 100), (2, 200)").unwrap();
-    e.execute("INSERT INTO items VALUES (1, 5), (2, 10)").unwrap();
+    e.execute("CREATE TABLE orders (oid INTEGER PRIMARY KEY, pid INTEGER)")
+        .unwrap();
+    e.execute("CREATE TABLE items (oid INTEGER, qty INTEGER)")
+        .unwrap();
+    e.execute("INSERT INTO orders VALUES (1, 100), (2, 200)")
+        .unwrap();
+    e.execute("INSERT INTO items VALUES (1, 5), (2, 10)")
+        .unwrap();
 
     // Run a join query 25 times
     let mut total_promotions = 0;
     for _ in 0..25 {
-        let _ = e.execute("SELECT * FROM orders, items WHERE orders.oid = items.oid").unwrap();
+        let _ = e
+            .execute("SELECT * FROM orders, items WHERE orders.oid = items.oid")
+            .unwrap();
         total_promotions = e.ahi().promoted_count() as usize;
     }
 
@@ -133,12 +148,13 @@ fn queries_with_join_use_ahi_via_base_table_scan() {
 #[test]
 fn ahi_accessor_works_across_query_types() {
     let mut e = fresh_engine();
-    e.execute("CREATE TABLE t (id INTEGER PRIMARY KEY)").unwrap();
+    e.execute("CREATE TABLE t (id INTEGER PRIMARY KEY)")
+        .unwrap();
     e.execute("INSERT INTO t VALUES (1), (2), (3)").unwrap();
 
     // Mix of query types: simple SELECT, COUNT, filtered SELECT
     let start_promoted = e.ahi().promoted_count();
-    
+
     for _ in 0..25 {
         let _ = e.execute("SELECT * FROM t").unwrap();
         let _ = e.execute("SELECT COUNT(*) FROM t").unwrap();

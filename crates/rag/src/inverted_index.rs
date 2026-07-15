@@ -75,7 +75,7 @@ impl InvertedIndex {
         }
 
         let mut sorted: Vec<_> = results.into_iter().collect();
-        sorted.sort_by(|a, b| b.1.cmp(&a.1));
+        sorted.sort_by_key(|pair| std::cmp::Reverse(pair.1));
         sorted.into_iter().map(|(doc_id, _)| doc_id).collect()
     }
 

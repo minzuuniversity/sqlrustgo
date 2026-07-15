@@ -96,8 +96,11 @@ fn noop_hook_has_zero_overhead_benchmark() {
     }
     let noop_dur = start.elapsed();
 
-    println!("Noop hook: {:?} total, {:?} per call", noop_dur,
-             noop_dur / iters as u32);
+    println!(
+        "Noop hook: {:?} total, {:?} per call",
+        noop_dur,
+        noop_dur / iters as u32
+    );
     // Sanity: noop should complete in well under 1 second
     assert!(noop_dur.as_secs() < 5, "noop hook took too long");
 }
@@ -125,8 +128,10 @@ fn hook_in_engine_path_records_scan_events() {
     // Integration: a real SELECT triggers scan_with_ahi → which calls
     // instrumentation.on_seq_scan_start. This verifies wiring is alive.
     let mut e = fresh_engine();
-    e.execute("CREATE TABLE t1 (id INTEGER PRIMARY KEY, name TEXT)").unwrap();
-    e.execute("INSERT INTO t1 VALUES (1, 'alice'), (2, 'bob'), (3, 'charlie')").unwrap();
+    e.execute("CREATE TABLE t1 (id INTEGER PRIMARY KEY, name TEXT)")
+        .unwrap();
+    e.execute("INSERT INTO t1 VALUES (1, 'alice'), (2, 'bob'), (3, 'charlie')")
+        .unwrap();
 
     // Default is Noop so no observable counting, but verify the hook
     // dispatcher is reachable and doesn't panic.
@@ -134,9 +139,11 @@ fn hook_in_engine_path_records_scan_events() {
 
     // The hook should be the default no-op
     let hook = e.instrumentation();
-    let hook_ptr: *const () = (&**hook as &dyn InstrumentationHook) as *const dyn InstrumentationHook as *const ();
+    let hook_ptr: *const () =
+        (&**hook as &dyn InstrumentationHook) as *const dyn InstrumentationHook as *const ();
     let noop = NoopInstrumentationHook;
-    let noop_ptr: *const () = (&noop as &dyn InstrumentationHook) as *const dyn InstrumentationHook as *const ();
+    let noop_ptr: *const () =
+        (&noop as &dyn InstrumentationHook) as *const dyn InstrumentationHook as *const ();
     // Pointers should differ (each instance is distinct) but both implement
     // the trait; we don't enforce pointer equality here.
     assert!(!hook_ptr.is_null());

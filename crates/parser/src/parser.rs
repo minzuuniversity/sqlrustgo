@@ -954,11 +954,8 @@ pub fn tpch_reorder_extra_tables(
     }
     // The set of (bare-table) names already joined (base table +
     // TPC-H prefix variations). Mirrors what `joined` carries.
-    let mut accumulated: std::collections::HashSet<String> = joined
-        .iter()
-        .filter(|s| !s.is_empty())
-        .cloned()
-        .collect();
+    let mut accumulated: std::collections::HashSet<String> =
+        joined.iter().filter(|s| !s.is_empty()).cloned().collect();
     let mut remaining: Vec<String> = extras.to_vec();
     let mut out: Vec<String> = Vec::with_capacity(remaining.len());
     let edges = build_equi_join_edges(conj);
@@ -987,15 +984,20 @@ pub fn tpch_reorder_extra_tables(
                     break;
                 }
                 // Equi-join edge.
-                if edges.iter().any(|(l, r, _)| {
-                    (l == &b && r == &a) || (r == &b && l == &a)
-                }) {
+                if edges
+                    .iter()
+                    .any(|(l, r, _)| l == b && r == a || r == b && l == a)
+                {
                     reachable = true;
                     break;
                 }
             }
             let base = row_count_hint(b) as u128;
-            let score = if reachable { base } else { base + 1_000_000_000 };
+            let score = if reachable {
+                base
+            } else {
+                base + 1_000_000_000
+            };
             if score < best_score {
                 best_score = score;
                 best_idx = i;
@@ -1009,7 +1011,7 @@ pub fn tpch_reorder_extra_tables(
         // picks can find a join edge.
         let b = bare(&picked).to_string();
         accumulated.insert(b.clone());
-        if b.len() >= 1 {
+        if !b.is_empty() {
             accumulated.insert(b[..1].to_string());
         }
         if b.len() >= 2 {
@@ -1024,7 +1026,6 @@ pub fn tpch_reorder_extra_tables(
     }
     out
 }
-
 
 /// Check whether all tables referenced by a predicate's left and
 /// right sides are "known" to the current join context, i.e. either
@@ -3674,11 +3675,7 @@ impl Parser {
                 // order. Q15's __subq_N derived-table alias handling
                 // remains unchanged (the synthetic names are filtered
                 // out by `starts_with("__subq_")`).
-                let extra_tables = tpch_reorder_extra_tables(
-                    &extra_tables,
-                    &joined,
-                    &conj,
-                );
+                let extra_tables = tpch_reorder_extra_tables(&extra_tables, &joined, &conj);
 
                 for t in &extra_tables {
                     if joined.is_empty() {
@@ -6535,7 +6532,7 @@ impl Parser {
     ///   - `ENGINE=InnoDB CLUSTERED` → Some(StorageEngineSpec::Clustered)
     ///   - `ENGINE=InnoDB`           → Some(StorageEngineSpec::Heap) (explicit)
     ///   - absent                    → None (use default Heap)
-    /// Returns `None` when no ENGINE clause is present.
+    ///     Returns `None` when no ENGINE clause is present.
     fn parse_table_storage_engine_clause(&mut self) -> Option<StorageEngineSpec> {
         // Tolerate optional whitespace before ENGINE keyword (already lexed
         // away by the tokenizer). Match either `Token::Identifier("ENGINE")`
@@ -6552,7 +6549,7 @@ impl Parser {
             return None;
         }
         self.next(); // consume =
-        // Expect engine name identifier (e.g. INNODB, MEMORY, HEAP)
+                     // Expect engine name identifier (e.g. INNODB, MEMORY, HEAP)
         let engine_name = match self.current() {
             Some(Token::Identifier(s)) => {
                 let n = s.clone();
@@ -7594,17 +7591,20 @@ impl Parser {
                     _ => return Err("Expected data type".to_string()),
                 };
                 // Optional (N) length for CHAR / VARCHAR / DECIMAL etc.
-                let char_max_length: Option<usize> = if matches!(self.current(), Some(Token::LParen)) {
-                    self.next(); // consume (
-                    let n = match self.next() {
-                        Some(Token::NumberLiteral(s)) => s.parse::<usize>().map_err(|e| format!("Invalid length: {}", e))?,
-                        _ => return Err("Expected integer length in (N)".to_string()),
+                let char_max_length: Option<usize> =
+                    if matches!(self.current(), Some(Token::LParen)) {
+                        self.next(); // consume (
+                        let n = match self.next() {
+                            Some(Token::NumberLiteral(s)) => s
+                                .parse::<usize>()
+                                .map_err(|e| format!("Invalid length: {}", e))?,
+                            _ => return Err("Expected integer length in (N)".to_string()),
+                        };
+                        self.expect(Token::RParen)?;
+                        Some(n)
+                    } else {
+                        None
                     };
-                    self.expect(Token::RParen)?;
-                    Some(n)
-                } else {
-                    None
-                };
                 // Optional [NOT] NULL
                 let nullable = if matches!(self.current(), Some(Token::Not)) {
                     self.next();
