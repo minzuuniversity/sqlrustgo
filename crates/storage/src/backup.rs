@@ -88,6 +88,7 @@ impl BackupExporter {
             }
             Value::Boolean(b) => b.to_string(),
             Value::Blob(b) => format!("[BLOB: {} bytes]", b.len()),
+            Value::Point(x, y) => format!("POINT({}, {})", x, y),
         }
     }
 
@@ -143,6 +144,7 @@ impl BackupExporter {
             Value::Text(s) => format!("\"{}\"", s.replace('\\', "\\\\").replace('"', "\\\"")),
             Value::Boolean(b) => b.to_string(),
             Value::Blob(b) => format!("\"[BLOB: {} bytes]\"", b.len()),
+            Value::Point(x, y) => format!("POINT({}, {})", x, y),
         }
     }
 
@@ -186,6 +188,7 @@ impl BackupExporter {
                 }
             }
             Value::Blob(b) => format!("X'{}'", use_hex::encode(b)),
+            Value::Point(x, y) => format!("POINT({}, {})", x, y),
         }
     }
 }
@@ -246,6 +249,7 @@ impl DataRestorer {
             unique_constraints: vec![],
             check_constraints: vec![],
             partition_info: None,
+                        compression: None,
         };
 
         let count = rows.len();
@@ -315,6 +319,7 @@ impl DataRestorer {
             unique_constraints: vec![],
             check_constraints: vec![],
             partition_info: None,
+                        compression: None,
         };
 
         let count = rows.len();
@@ -362,6 +367,7 @@ impl DataRestorer {
                         unique_constraints: vec![],
                         check_constraints: vec![],
                         partition_info: None,
+                        compression: None,
                     };
                     storage.create_table(&table_info)?;
                 }

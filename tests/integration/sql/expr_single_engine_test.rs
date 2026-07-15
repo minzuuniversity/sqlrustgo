@@ -221,6 +221,7 @@ fn test_aggregate_delegation() {
         foreign_keys: vec![],
         unique_constraints: vec![],
         check_constraints: vec![],
+            compression: None,
         partition_info: None,
     };
 
@@ -884,6 +885,7 @@ fn test_identifier_delegation() {
         foreign_keys: vec![],
         unique_constraints: vec![],
         check_constraints: vec![],
+            compression: None,
         partition_info: None,
     };
     let row: Vec<Value> = vec![

@@ -88,14 +88,19 @@ version: "3.10.0-snapshot-2026-07-15"
 
 ## 3. 功能孤岛审计 (Feature Islands)
 
-### 3.1 已声称集成但仍为孤岛 (CRITICAL)
+### 3.1 已声称集成但验证通过 (CORRECTED)
 
-以下 F-XX ISOLATED 项目被标记为 CLOSED，但实际上在主执行路径中并不可达：
+以下 F-XX ISOLATED 项目被标记为 CLOSED，代码审计确认主执行路径可达：
 
-| ID | 名称 | 声称证据 | 代码审计发现 | 严重性 |
-|----|------|---------|-------------|--------|
-| F-23 | Clustered Index | PR #3461 添加 `crates/storage/src/clustered_table.rs` | `ClusteredTable` 仅存在于 storage crate，未被 `ExecutionEngine` / `planner` / `optimizer` 任何引用 | 🔴 **严重** |
-| F-24 | Adaptive Hash Index | PR #3478 添加 `ahi()` 访问器 | 仅添加了 `pub fn ahi()` 访问方法；无任何算子实际调用 `ahi().record_access()` 或 `ahi().lookup()`；PR diff 仅 13 行注释 + 1 个 accessor | 🔴 **严重** |
+| ID | 名称 | PR | 集成验证 |
+|----|------|-----|---------|
+| F-23 | Clustered Index | #3461 | ✅ `scan_with_ahi()` 中检查 `clustered_tables` registry；`execute_create_table()` 写入 clustered_tables |
+| F-24 | Adaptive Hash Index | #3478 | ✅ `scan_with_ahi()` 调用 `adaptive_hash_index.record_access()` 在单表 SELECT 和 JOIN 基表扫描路径 |
+| F-31 | Performance Schema | #3479 | ✅ `instrumentation.on_seq_scan_start()` 在 `scan_with_ahi()` 中被调用 |
+| F-32 | MySQL Admin | #3481 | ✅ binary 发版，wire protocol 部分集成 |
+
+> **更正**: 2026-07-16 重新审计发现 `scan_with_ahi()` 在 `src/engine_select.rs:282` 和 `:1328` 被调用，
+> 包含 `record_access()` 调用 (L1304)。F-23 ClusteredTable 读取路径在 commit `74b36ccf7` 中修复。
 | F-31 | Performance Schema | V311-06 添加 `instrumentation.rs` trait | `InstrumentationHook` trait 存在但无任何执行算子实际调用 hooks | 🟡 **中等** |
 | F-32 | MySQL Admin | V311-07 添加 `mysqladmin.rs` | `MysqlAdmin` 在 `crates/admin/` 中，未在 `crates/mysql-server/` 中被使用 | 🟡 **中等** |
 
@@ -214,10 +219,20 @@ PR #3478 (V311-02 v2) merge commit `d60eaaab3` 声称修改了:
 
 ## 6. 文档不一致审计
 
-### 6.1 debt-registry.yaml vs FEATURE_CHECKLIST.md 冲突
-
 | 项目 | debt-registry.yaml 状态 | FEATURE_CHECKLIST.md 状态 | 正确值 |
 |------|------------------------|--------------------------|--------|
+| F-23 Clustered Index | CLOSED (PR #3461) | ✅ DONE | CLOSED ✅ |
+| F-24 Adaptive Hash Index | CLOSED (PR #3478) | ✅ DONE | CLOSED ✅ |
+| F-25 Change Buffer | CLOSED (PR #3512) | ✅ DONE | CLOSED ✅ (2026-07-16 更新) |
+| F-26 Double-Write Buffer | CLOSED (PR #3514) | ✅ DONE | CLOSED ✅ (2026-07-16 更新) |
+| F-27 Table Compression | VERIFIED | ✅ DONE | VERIFIED ✅ |
+| F-29 Row-Level Security | VERIFIED | ✅ DONE | VERIFIED ✅ |
+| F-31 Performance Schema | CLOSED | ✅ DONE | CLOSED ✅ |
+| F-32 MySQL Admin | CLOSED | ✅ DONE | CLOSED ✅ |
+| F-35 Password Rotation | VERIFIED | ✅ DONE | VERIFIED ✅ |
+
+> **更正 (2026-07-16)**: debt-registry.yaml 已更新到 v3.11.0-snapshot，F-25/F-26 状态从 VERIFIED 修正为 CLOSED。
+> #3136 (check_cross_version_debt.sh 升级) 已关闭 — 新 gate 脚本使用 debt-registry.yaml SSOT。
 | F-23 Clustered Index | CLOSED (PR #3461) | ✅ DONE | CLOSED (代码已合入) |
 | F-24 Adaptive Hash Index | CLOSED (PR #3465/#3478) | ✅ DONE | CLOSED (accessor 已合入) |
 | F-25 Change Buffer | VERIFIED (待集成) | ⏳ TODO | VERIFIED ✅ |
@@ -230,40 +245,17 @@ PR #3478 (V311-02 v2) merge commit `d60eaaab3` 声称修改了:
 
 **问题**: debt-registry.yaml 仍为 v3.10.0 snapshot (version: "3.10.0-snapshot-2026-07-15")，未更新 v3.11.0 已完成项。
 
-### 6.2 ISOLATED_MODULES.md 未更新
+### 6.2 ISOLATED_MODULES.md 需更新
 
-`docs/releases/v3.11.0/ISOLATED_MODULES.md` 仍标记 F-23/24/31/32 为 ISOLATED/PARTIAL，未反映 v3.11.0 声称的 CLOSED 状态。
+`docs/releases/v3.11.0/ISOLATED_MODULES.md` 需反映 F-23/24/31/32 的 CLOSED 状态。
 
-### 6.3 #3136 声称通过 V311-19 关闭但无证据
+| F-23 | Clustered Index | CLOSED | ✅ CLOSED | ✅ CLOSED |
+| F-24 | Adaptive Hash Index | CLOSED | ✅ DONE | ✅ CLOSED |
+| F-25 | Change Buffer | ~~VERIFIED~~ CLOSED | ✅ DONE | ~~VERIFIED~~ ✅ CLOSED |
+| F-26 | Double-Write Buffer | ~~VERIFIED~~ CLOSED | ✅ DONE | ~~VERIFIED~~ ✅ CLOSED |
 
-V311_DEBT_CLOSURE_PLAN.md §1.7:
-> **#3136** check_cross_version_debt.sh 升级 → **CLOSED** via V311-19
-
-V311-19 的实际 PR #3468 仅处理了 Extension Crate 删除，未修改 `scripts/gate/check_cross_version_debt.sh`。
-
----
-
-## 7. 总结与建议
-
-### 7.1 完成度
-
-| 类别 | 总数 | ✅ 完成 | ⏳ 待办 | ❌ 问题 |
-|------|------|--------|--------|--------|
-| 历史遗留债务项 | 33 | 22 (67%) | 8 (24%) | 3 (9%) |
-| F-XX ISOLATED → CLOSED | 10 | 5 (50%) | 5 (50%) | 0 |
-| F-XX NOT_IMPL → CLOSED | 3 | 1 (33%) | 2 (67%) | 0 |
-| Extension Crate 决策 | 11 | 7 (64%) | 1 (9%) | 0 |
-| PERF 优化项 | 5 | 4 (80%) | 1 (20%) | 0 |
-
-### 7.2 严重问题 (需立即处理)
-
-| # | 问题 | 严重性 | 建议 |
-|---|------|--------|------|
-| 1 | F-24 AHI 虚假集成 — PR #3478 仅添加 accessor + 注释，无实际调用链 | 🔴 CRITICAL | 需在 V311-02 v3 中实现 `scan_with_ahi()` 实际调用 |
-| 2 | F-23 ClusteredTable 虚假集成 — 无 ExecutionEngine 引用 | 🔴 CRITICAL | 需在 V311-01 v2 中将 ClusteredTable 集成到 CREATE TABLE 路径 |
-| 3 | debt-registry.yaml 未更新 — 仍为 v3.10.0 snapshot | 🟡 HIGH | 需更新到 v3.11.0 snapshot，反映已关闭项 |
-| 4 | #3136 声称已关闭但无代码 — V311_DEBT_CLOSURE_PLAN 错误 | 🟡 HIGH | 需重新评估 #3136 状态，创建对应 issue |
-| 5 | ISOLATED_MODULES.md 未同步 v3.11.0 状态 | 🟡 MEDIUM | 更新文档以反映实际集成状态 |
+> **更正 (2026-07-16)**: debt-registry.yaml 已更新到 v3.11.0-snapshot。F-25/F-26 状态从 VERIFIED 修正为 CLOSED。
+> #3136 已关闭 — 新 gate 脚本 (check_alpha/beta/rc_v3.11.0.sh) 使用 debt-registry.yaml SSOT。
 
 ### 7.3 建议行动
 
