@@ -26,7 +26,10 @@ fn test_version_info_parse_with_v_prefix() {
 fn test_version_info_parse_invalid_format() {
     let r = VersionInfo::parse("3.11");
     assert!(r.is_err());
-    assert!(r.unwrap_err().to_string().contains("Invalid version format"));
+    assert!(r
+        .unwrap_err()
+        .to_string()
+        .contains("Invalid version format"));
 }
 
 #[test]
@@ -261,14 +264,26 @@ fn test_upgrade_command_type_exists() {
 fn test_version_info_chain_valid_upgrades() {
     let current = VersionInfo::parse("3.10.0").unwrap();
     assert!(current.can_upgrade_to(&VersionInfo::parse("3.11.0").unwrap()));
-    assert!(VersionInfo::parse("3.11.0").unwrap().can_upgrade_to(&VersionInfo::parse("3.11.5").unwrap()));
-    assert!(VersionInfo::parse("3.11.5").unwrap().can_upgrade_to(&VersionInfo::parse("3.12.0").unwrap()));
+    assert!(VersionInfo::parse("3.11.0")
+        .unwrap()
+        .can_upgrade_to(&VersionInfo::parse("3.11.5").unwrap()));
+    assert!(VersionInfo::parse("3.11.5")
+        .unwrap()
+        .can_upgrade_to(&VersionInfo::parse("3.12.0").unwrap()));
 }
 
 #[test]
 fn test_version_info_edge_zero() {
-    let v0 = VersionInfo { major: 0, minor: 0, patch: 0 };
-    let v1 = VersionInfo { major: 0, minor: 0, patch: 1 };
+    let v0 = VersionInfo {
+        major: 0,
+        minor: 0,
+        patch: 0,
+    };
+    let v1 = VersionInfo {
+        major: 0,
+        minor: 0,
+        patch: 1,
+    };
     assert!(v0.can_upgrade_to(&v1));
     assert!(!v0.can_upgrade_to(&v0));
 }
