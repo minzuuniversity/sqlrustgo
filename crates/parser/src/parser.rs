@@ -967,12 +967,58 @@ pub fn tpch_reorder_extra_tables(
                 Some(b)
             })
             .collect();
+        // Prefix-collision guard (FIX): build prefix→connected-prefixes map from
+        // equi-join predicates in conj, then use it when checking collisions.
+        let mut prefix_edge: std::collections::HashMap<String, std::collections::HashSet<String>> =
+            std::collections::HashMap::new();
+        for p in conj {
+            if let Expression::BinaryOp(l, op, r) = p {
+                if op == "=" {
+                    // Collect prefixes from both sides of the equality
+                    let mut prefixes = Vec::new();
+                    fn extract_prefixes(e: &Expression, out: &mut Vec<String>) {
+                        if let Expression::Identifier(name) = e {
+                            let prefix = if let Some((q, _)) = name.split_once('.') {
+                                q
+                            } else {
+                                &name[..name.len().min(2)]
+                            };
+                            if !out.iter().any(|p| *p == prefix) {
+                                out.push(prefix.to_string());
+                            }
+                        }
+                    }
+                    extract_prefixes(l, &mut prefixes);
+                    extract_prefixes(r, &mut prefixes);
+                    // Record edges between different prefixes
+                    for (i, pi) in prefixes.iter().enumerate() {
+                        for pj in prefixes.iter().skip(i + 1) {
+                            if pi != pj {
+                                prefix_edge
+                                    .entry(pi.clone())
+                                    .or_default()
+                                    .insert(pj.clone());
+                                prefix_edge
+                                    .entry(pj.clone())
+                                    .or_default()
+                                    .insert(pi.clone());
+                            }
+                        }
+                    }
+                }
+            }
+        }
         let mut collision = false;
         for t in &all_tables {
             let p1 = &t[..1];
             if !seen_prefix.insert(p1.to_string()) {
-                collision = true;
-                break;
+                // Second table shares this prefix — if prefix_edge has an entry
+                // for p1, at least one pair of colliding tables is connected
+                // by an equi-join → safe, continue. Otherwise fatal.
+                if !prefix_edge.contains_key(p1) {
+                    collision = true;
+                    break;
+                }
             }
         }
         if collision {
@@ -1144,6 +1190,19 @@ pub fn tpch_reorder_extra_tables(
                     reachable = true;
                     break;
                 }
+                // Nation-bridge skip for customer: if force_orders_first AND
+                // orders not yet joined, ignore c_nationkey=s_nationkey edge
+                // so customer gets the 1e9 penalty and waits for orders.
+                let is_nation_bridge_to_supplier =
+                    (b == "customer" && a == "supplier")
+                    || (b == "supplier" && a == "customer");
+                let skip_bridge = force_orders_first
+                    && b == "customer"
+                    && !accumulated.contains("orders")
+                    && is_nation_bridge_to_supplier;
+                if skip_bridge {
+                    continue;
+                }
                 // Equi-join edge.
                 if edges
                     .iter()
@@ -1154,8 +1213,8 @@ pub fn tpch_reorder_extra_tables(
                 }
             }
             // Nation-bridge heuristic: force orders before customer when
-            // nation-bridge AND date filter both exist, to prevent supplier x
-            // customer cartesian explosion before the orders date filter applies.
+            // nation-bridge AND date filter both exist, to prevent the orders
+            // date filter from being bypassed by a customer×supplier cartesian.
             if force_orders_first && b == "orders" {
                 let customer_in_remaining = remaining.iter().any(|rt| bare(rt) == "customer");
                 if customer_in_remaining {
@@ -1176,6 +1235,37 @@ pub fn tpch_reorder_extra_tables(
         }
         if best_idx == usize::MAX {
             break;
+        }
+        // Defensive (Q5 OOM fix): if the pick is unreachable from the
+        // accumulated set, no equi-join predicate can match the new table
+        // to anything in joined_tables. The auto-rewrite then falls back
+        // to ON=true, which produces a cartesian product that explodes
+        // for 6+ table joins. Bail out of the reordering and keep the
+        // original input order rather than emitting a cartesian.
+        let picked_unreachable = {
+            let b = bare(&remaining[best_idx]);
+            let mut reach = false;
+            for acc in &accumulated {
+                let a = acc.as_str();
+                if b == a
+                    || b == &a[..1.min(a.len())]
+                    || b == &a[..2.min(a.len())]
+                {
+                    reach = true;
+                    break;
+                }
+                if edges
+                    .iter()
+                    .any(|(l, r, _)| (l == b && r == a) || (r == b && l == a))
+                {
+                    reach = true;
+                    break;
+                }
+            }
+            !reach
+        };
+        if picked_unreachable {
+            return extras.to_vec();
         }
         let picked = remaining.swap_remove(best_idx);
         // Add its bare name and prefix to `accumulated` so subsequent
