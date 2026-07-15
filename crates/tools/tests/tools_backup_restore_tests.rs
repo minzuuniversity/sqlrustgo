@@ -1,8 +1,6 @@
 // Tools crate backup_restore coverage tests
 
-use sqlrustgo_tools::backup_restore::{
-    BackupMetadata, BackupStatus, BackupType, ExportOptions,
-};
+use sqlrustgo_tools::backup_restore::{BackupMetadata, BackupStatus, BackupType, ExportOptions};
 use std::collections::HashMap;
 
 // ============ BackupType tests ============
@@ -53,11 +51,7 @@ fn test_backup_status_clone() {
 
 #[test]
 fn test_backup_metadata_new() {
-    let meta = BackupMetadata::new(
-        "bkp_001".to_string(),
-        BackupType::Full,
-        "mydb".to_string(),
-    );
+    let meta = BackupMetadata::new("bkp_001".to_string(), BackupType::Full, "mydb".to_string());
     assert_eq!(meta.id, "bkp_001");
     assert!(matches!(meta.backup_type, BackupType::Full));
     assert_eq!(meta.database, "mydb");
@@ -84,11 +78,7 @@ fn test_backup_metadata_complete() {
 
 #[test]
 fn test_backup_metadata_fail() {
-    let mut meta = BackupMetadata::new(
-        "bkp_003".to_string(),
-        BackupType::Full,
-        "mydb".to_string(),
-    );
+    let mut meta = BackupMetadata::new("bkp_003".to_string(), BackupType::Full, "mydb".to_string());
     meta.fail("network timeout".to_string());
     match &meta.status {
         BackupStatus::Failed(msg) => assert!(msg.contains("network")),
@@ -99,11 +89,7 @@ fn test_backup_metadata_fail() {
 
 #[test]
 fn test_backup_metadata_add_table() {
-    let mut meta = BackupMetadata::new(
-        "bkp_004".to_string(),
-        BackupType::Full,
-        "mydb".to_string(),
-    );
+    let mut meta = BackupMetadata::new("bkp_004".to_string(), BackupType::Full, "mydb".to_string());
     meta.tables.push("users".to_string());
     meta.tables.push("orders".to_string());
     assert_eq!(meta.tables.len(), 2);
@@ -180,9 +166,16 @@ fn test_backup_lifecycle_failure() {
 
 #[test]
 fn test_backup_multiple_types() {
-    for bt in [BackupType::Full, BackupType::Incremental, BackupType::Differential] {
+    for bt in [
+        BackupType::Full,
+        BackupType::Incremental,
+        BackupType::Differential,
+    ] {
         let meta = BackupMetadata::new("id".to_string(), bt, "db".to_string());
-        assert!(matches!(meta.backup_type, BackupType::Full | BackupType::Incremental | BackupType::Differential));
+        assert!(matches!(
+            meta.backup_type,
+            BackupType::Full | BackupType::Incremental | BackupType::Differential
+        ));
     }
 }
 
