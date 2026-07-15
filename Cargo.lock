@@ -4724,6 +4724,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "sqlrustgo_gis"
+version = "0.1.0"
+dependencies = [
+ "sqlrustgo-types",
+]
+
+[[package]]
 name = "sqlrustgo_sqllogictest"
 version = "0.1.0"
 dependencies = [

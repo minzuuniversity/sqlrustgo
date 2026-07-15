@@ -159,6 +159,7 @@ fn value_to_literal_string_v(v: &Value) -> String {
         Value::Text(s) => s.clone(),
         Value::Boolean(b) => if *b { "TRUE" } else { "FALSE" }.to_string(),
         Value::Blob(b) => format!("BLOB({} bytes)", b.len()),
+            Value::Point(x, y) => format!("POINT({}, {})", x, y),
     }
 }
 
@@ -225,7 +226,9 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                                 Value::Text(_) => "TEXT",
                                 Value::Boolean(_) => "BOOLEAN",
                                 Value::Blob(_) => "BLOB",
+                                Value::Point(_, _) => "POINT",
                                 Value::Null => "NULL",
+                                Value::Point(_, _) => "POINT",
                             })
                         })
                         .unwrap_or("TEXT")
@@ -520,6 +523,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                                         Value::Text(s) => format!("T{}", s),
                                         Value::Boolean(b) => format!("B{}", b as i32),
                                         Value::Blob(b) => format!("X{}", b.len()),
+                                        Value::Point(x, y) => format!("POINT({}, {})", x, y),
                                     }
                                 })
                                 .collect::<Vec<_>>()
@@ -1479,7 +1483,9 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                                 Value::Text(_) => "TEXT",
                                 Value::Boolean(_) => "BOOLEAN",
                                 Value::Blob(_) => "BLOB",
+                                Value::Point(_, _) => "POINT",
                                 Value::Null => "NULL",
+                                Value::Point(_, _) => "POINT",
                             })
                         })
                         .unwrap_or("TEXT")
@@ -3940,6 +3946,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                                     V::Float(f) => f.to_string(),
                                     V::Text(s) => s,
                                     V::Null => "NULL".to_string(),
+                                    V::Point(x, y) => format!("POINT({}, {})", x, y),
                                     V::Boolean(b) => b.to_string(),
                                     V::Blob(_) => "BLOB".to_string(),
                                 };
@@ -3962,6 +3969,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                                     V::Float(f) => f.to_string(),
                                     V::Text(s) => s,
                                     V::Null => "NULL".to_string(),
+                                    V::Point(x, y) => format!("POINT({}, {})", x, y),
                                     V::Boolean(b) => b.to_string(),
                                     V::Blob(_) => "BLOB".to_string(),
                                 };
