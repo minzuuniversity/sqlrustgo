@@ -54,14 +54,15 @@ cargo llvm-cov test --no-clean --ignore-run-fail --workspace
 | sqlrustgo-cache | 99.47% | 27 | ≥85% | ✅ |
 | sqlrustgo-telemetry | 96.67% | 60 | ≥85% | ✅ |
 | sqlrustgo-wal-verification | 97.20% | 84 | ≥85% | ✅ |
-| sqlrustgo-types | 92.57% | 121 | ≥85% | ✅ |
+| sqlrustgo-types | 91.16% | 121 | ≥85% | ✅ |
 | sqlrustgo-common | 89.17% | 192 | ≥85% | ✅ |
 | sqlrustgo-optimizer | 88.23% | 404 | ≥85% | ✅ |
-| sqlrustgo-planner | 87.20% | 212 | ≥85% | ✅ |
+| sqlrustgo-planner | 86.75% | 212 | ≥85% | ✅ |
 | sqlrustgo-transaction | 85.41% | 308 | ≥85% | ✅ |
+| sqlrustgo-server | 85.00% | 178 | ≥85% | ✅ |
 | sqlrustgo-catalog | 85.19% | 476 | ≥85% | ✅ |
 
-### 80–84% (2 packages — GA gate OK, SEM-4 gap)
+### 80–84% (1 package — GA gate OK, SEM-4 gap)
 
 | Package | Line % | Missed | Target | Gap |
 |---------|--------:|-------:|--------:|-----:|
@@ -208,7 +209,7 @@ cargo llvm-cov report -p <crate> --show-missing 2>/dev/null | grep "src/foo.rs" 
 | #3543 | ✅ MERGED | Build fixes: compression field, Point arm, dead test deletion | Unblocked storage + executor |
 | #3544 | 🔄 OPEN | verify.rs + mysql-server helper tests | admin + mysql-server |
 | #3545 | ✅ MERGED | common crate: logging.rs + network_metrics.rs tests | common 82.67% → 89.17% |
-| fix/v311-14-sem4-common-coverage | 🔄 OPEN | Catalog (+7 tests), storage (+7 tests), executor (+3 tests), manifest (+2 tests), workspace test fixes | 8→9 crates ≥85% |
+| fix/v311-14-sem4-common-coverage | 🔄 OPEN | Catalog (+7 tests), storage (+10 tests), executor (+3 tests), server (+7 tests), manifest (+2 tests), workspace test fixes, COVERAGE_TESTING_METHODOLOGY.md | 8→12 crates ≥85% |
 
 **Branch**: `gitea250/fix/v311-14-sem4-common-coverage`
 **PR**: http://192.168.0.250:3000/openclaw/sqlrustgo/pulls?state=open
