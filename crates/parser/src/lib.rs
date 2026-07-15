@@ -13,11 +13,12 @@ pub use token::Token;
 pub use parser::{
     get_and_clear_derived_subqueries, AggregateCall, AggregateFunction, AlterTableOperation,
     AlterTableStatement, CallStatement, ColumnDefinition, CommonTableExpression,
-    CreateProcedureStatement, CreateTableStatement, CreateTriggerStatement, CreateViewStatement,
-    DeleteStatement, DropIndexStatement, DropTableStatement, DropViewStatement, Expression,
-    InsertStatement, JoinClause, JoinType, LockClause, MergeAction, MergeSource, MergeStatement,
-    MergeWhenClause, SavepointOp, SelectColumn, SelectStatement, Statement, StoredProcParam,
-    StoredProcParamMode, StoredProcStatement, TableConstraint, TableRef, UpdateStatement,
+    CreateProcedureStatement, CreateSequenceStatement, CreateTableStatement, CreateTriggerStatement,
+    CreateViewStatement, DropSequenceStatement, DeleteStatement, DropIndexStatement, DropTableStatement,
+    DropViewStatement, Expression, InsertStatement, JoinClause, JoinType, LockClause, MergeAction,
+    MergeSource, MergeStatement, MergeWhenClause, SavepointOp, SelectColumn, SelectStatement,
+    Statement, StoredProcParam, StoredProcParamMode, StoredProcStatement, TableConstraint,
+    TableRef, UpdateStatement,
 };
 pub use parser::{parse, parse_statements, split_sql_statements};
 pub use transaction::TransactionStatement;

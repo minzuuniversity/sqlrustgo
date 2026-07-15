@@ -66,6 +66,8 @@ pub enum Statement {
     DropTable(DropTableStatement),
     DropIndex(DropIndexStatement),
     DropView(DropViewStatement),
+    CreateSequence(CreateSequenceStatement),
+    DropSequence(DropSequenceStatement),
     Truncate(TruncateStatement),
     Analyze(AnalyzeStatement),
     WithSelect(WithSelect),
@@ -632,6 +634,26 @@ pub struct CreateDatabaseStatement {
 /// DROP DATABASE statement
 #[derive(Debug, Clone, PartialEq)]
 pub struct DropDatabaseStatement {
+    pub name: String,
+    pub if_exists: bool,
+}
+
+/// CREATE SEQUENCE statement
+#[derive(Debug, Clone, PartialEq)]
+pub struct CreateSequenceStatement {
+    pub name: String,
+    pub start_with: Option<String>,
+    pub increment_by: Option<String>,
+    pub minvalue: Option<String>,
+    pub maxvalue: Option<String>,
+    pub cache: Option<String>,
+    pub cycle: Option<bool>,
+    pub if_not_exists: bool,
+}
+
+/// DROP SEQUENCE statement
+#[derive(Debug, Clone, PartialEq)]
+pub struct DropSequenceStatement {
     pub name: String,
     pub if_exists: bool,
 }
@@ -1838,16 +1860,146 @@ impl Parser {
             Some(Token::Role) => self.parse_create_role(),
             Some(Token::View) => self.parse_create_view(),
             Some(Token::Database) => self.parse_create_database(),
+            Some(Token::Sequence) => self.parse_create_sequence(),
             Some(t) => Err(format!(
-                "Expected TABLE, INDEX, PROCEDURE, TRIGGER, ROLE, VIEW, or DATABASE after CREATE, got {:?}",
+                "Expected TABLE, INDEX, PROCEDURE, TRIGGER, ROLE, VIEW, SEQUENCE, or DATABASE after CREATE, got {:?}",
                 t
             )),
             None => Err(
-                "Expected TABLE, INDEX, PROCEDURE, TRIGGER, ROLE, VIEW, or DATABASE after CREATE".to_string(),
+                "Expected TABLE, INDEX, PROCEDURE, TRIGGER, ROLE, VIEW, SEQUENCE, or DATABASE after CREATE".to_string(),
             ),
         }
     }
 
+    fn parse_create_sequence(&mut self) -> Result<Statement, String> {
+        self.expect(Token::Sequence)?;
+        
+        // Parse IF NOT EXISTS before the name
+        let mut if_not_exists = false;
+        if matches!(self.current(), Some(Token::If)) {
+            self.next();
+            self.expect(Token::Not)?;
+            self.expect(Token::Exists)?;
+            if_not_exists = true;
+        }
+        
+        let name = match self.next() {
+            Some(Token::Identifier(name)) => name,
+            Some(Token::StringLiteral(s)) => s,
+            Some(t) => return Err(format!("Expected sequence name, got {:?}", t)),
+            None => return Err("Expected sequence name".to_string()),
+        };
+        let mut start_with = None;
+        let mut increment_by = None;
+        let mut minvalue = None;
+        let mut maxvalue = None;
+        let mut cache = None;
+        let mut cycle = None;
+
+        loop {
+            match self.current() {
+                Some(Token::Start) => {
+                    self.next();
+                    self.expect(Token::With)?;
+                    let tok = self.next();
+                    match tok {
+                        Some(Token::NumberLiteral(n)) => start_with = Some(n),
+                        Some(Token::Minus) => {
+                            // Negative number
+                            if let Some(Token::NumberLiteral(n)) = self.next() {
+                                start_with = Some(format!("-{}", n));
+                            } else {
+                                return Err("Expected number after MINUS".to_string());
+                            }
+                        }
+                        _ => return Err(format!("Expected number in START WITH, got {:?}", tok)),
+                    }
+                }
+                Some(Token::Increment) => {
+                    self.next();
+                    self.expect(Token::By)?;
+                    let tok = self.next();
+                    match tok {
+                        Some(Token::NumberLiteral(n)) => increment_by = Some(n),
+                        Some(Token::Minus) => {
+                            if let Some(Token::NumberLiteral(n)) = self.next() {
+                                increment_by = Some(format!("-{}", n));
+                            } else {
+                                return Err("Expected number after MINUS".to_string());
+                            }
+                        }
+                        _ => return Err(format!("Expected number in INCREMENT BY, got {:?}", tok)),
+                    }
+                }
+                Some(Token::Minvalue) => {
+                    self.next();
+                    let tok = self.next();
+                    match tok {
+                        Some(Token::NumberLiteral(n)) => minvalue = Some(n),
+                        Some(Token::Minus) => {
+                            if let Some(Token::NumberLiteral(n)) = self.next() {
+                                minvalue = Some(format!("-{}", n));
+                            } else {
+                                return Err("Expected number after MINUS".to_string());
+                            }
+                        }
+                        _ => return Err(format!("Expected number in MINVALUE, got {:?}", tok)),
+                    }
+                }
+                Some(Token::Maxvalue) => {
+                    self.next();
+                    let tok = self.next();
+                    match tok {
+                        Some(Token::NumberLiteral(n)) => maxvalue = Some(n),
+                        Some(Token::Minus) => {
+                            if let Some(Token::NumberLiteral(n)) = self.next() {
+                                maxvalue = Some(format!("-{}", n));
+                            } else {
+                                return Err("Expected number after MINUS".to_string());
+                            }
+                        }
+                        _ => return Err(format!("Expected number in MAXVALUE, got {:?}", tok)),
+                    }
+                }
+                Some(Token::NoMinValue) => {
+                    self.next();
+                    minvalue = Some(String::from("NO MINVALUE"));
+                }
+                Some(Token::NoMaxValue) => {
+                    self.next();
+                    maxvalue = Some(String::from("NO MAXVALUE"));
+                }
+                Some(Token::Cache) => {
+                    self.next();
+                    match self.next() {
+                        Some(Token::NumberLiteral(n)) => cache = Some(n),
+                        _ => return Err("Expected number after CACHE".to_string()),
+                    }
+                }
+                Some(Token::Cycle) => {
+                    self.next();
+                    cycle = Some(true);
+                }
+                Some(Token::NoCycle) => {
+                    self.next();
+                    cycle = Some(false);
+                }
+                Some(Token::Identifier(_)) | None => break,
+                _ => break,
+            }
+        }
+
+        Ok(Statement::CreateSequence(CreateSequenceStatement {
+            name,
+            start_with,
+            increment_by,
+            minvalue,
+            maxvalue,
+            cache,
+            cycle,
+            if_not_exists,
+        }))
+    }
     fn parse_create_role(&mut self) -> Result<Statement, String> {
         self.expect(Token::Role)?;
         let name = match self.next() {
@@ -6994,12 +7146,34 @@ impl Parser {
             Some(Token::View) => self.parse_drop_view(),
             Some(Token::Role) => self.parse_drop_role(),
             Some(Token::Database) => self.parse_drop_database(),
+            Some(Token::Sequence) => self.parse_drop_sequence(),
             Some(t) => Err(format!(
-                "Expected TABLE, INDEX, VIEW, ROLE, or DATABASE after DROP, got {:?}",
+                "Expected TABLE, INDEX, VIEW, ROLE, SEQUENCE, or DATABASE after DROP, got {:?}",
                 t
             )),
-            None => Err("Expected TABLE, INDEX, VIEW, ROLE, or DATABASE after DROP".to_string()),
+            None => Err("Expected TABLE, INDEX, VIEW, ROLE, SEQUENCE, or DATABASE after DROP".to_string()),
         }
+    }
+
+    fn parse_drop_sequence(&mut self) -> Result<Statement, String> {
+        self.expect(Token::Sequence)?;
+        let if_exists = if matches!(self.current(), Some(Token::If)) {
+            self.next();
+            match self.current() {
+                Some(Token::Exists) => {
+                    self.next();
+                    true
+                }
+                _ => return Err("Expected 'EXISTS' after 'IF'".to_string()),
+            }
+        } else {
+            false
+        };
+        let name = match self.next() {
+            Some(Token::Identifier(name)) => name,
+            _ => return Err("Expected sequence name".to_string()),
+        };
+        Ok(Statement::DropSequence(DropSequenceStatement { name, if_exists }))
     }
 
     fn parse_drop_role(&mut self) -> Result<Statement, String> {
