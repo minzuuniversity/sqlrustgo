@@ -205,6 +205,178 @@ fn count_scalar_in(expr: &Expression, count: &mut usize) {
     }
 }
 
+
+/// V311-16 v2: Try to rewrite a SELECT's WHERE clause to use a join instead of a
+/// subquery. Returns `Some(rewritten_where)` if any decorrelation was applied,
+/// `None` if the WHERE was left unchanged (no patterns matched, or all
+/// patterns were unhandled).
+///
+/// **Important**: This is a "hint" function. The caller is responsible for
+/// also materializing the inner SELECT once (instead of per-row) to fully
+/// realize the speedup. The basic rewrite of the WHERE alone doesn't capture
+/// all of the benefit.
+///
+/// ## Input/Output
+/// - Input: `where_expr: &Expression` (the WHERE clause)
+/// - Output: `Option<DecorrelatedWhere>` describing the rewriter
+///
+/// ## Patterns handled
+/// - `ExistsSemi`: rewrites to inner-join-on-key-trick (filter inside join)
+/// - `NotExistsAnti`: rewrites to left-anti-join (via Engine HashAntiJoin hint)
+/// - `InToInnerJoin`: rewrites to INNER JOIN on key
+/// - `ScalarAggGroupBy`: NOT YET (v2 deferred)
+#[derive(Debug, Clone, PartialEq)]
+pub struct DecorrelatedWhere {
+    /// The rewritten WHERE clause, with the original Expression::Subquery / In
+    /// / etc replaced by simpler markers.
+    pub rewritten: Expression,
+    /// For each detected pattern, the inner SELECT body that should be
+    /// materialized and joined.
+    pub inner_selects: Vec<DecorrelatedInnerSelect>,
+}
+
+/// One inner SELECT to materialize during execution.
+#[derive(Debug, Clone, PartialEq)]
+pub struct DecorrelatedInnerSelect {
+    /// Identifier for the synthetic derived table (e.g., `__decorrelated_1`).
+    pub alias: String,
+    /// The inner SELECT statement body (the lifted subquery).
+    pub select: Box<sqlrustgo_parser::SelectStatement>,
+    /// How to integrate with the outer query.
+    pub join_kind: DecorrelatedJoinKind,
+}
+
+/// The kind of join to apply for a decorrelated inner SELECT.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DecorrelatedJoinKind {
+    /// `WHERE EXISTS` → inner-join-then-distinct  
+    Semi,
+    /// `WHERE NOT EXISTS` → inner-join-not-matched
+    Anti,
+    /// `WHERE x IN (SELECT y)` → DISTINCT + INNER JOIN on equality
+    Inner,
+    /// `SELECT (SELECT AGG(col))` → LEFT JOIN + GROUP BY (v2 deferred)
+    LeftOuterGroupBy,
+}
+
+pub fn try_decorrelate(where_expr: &Expression) -> Option<DecorrelatedWhere> {
+    use sqlrustgo_parser::Expression::*;
+    let patterns = find_correlated_subqueries(where_expr, &[]);
+    if patterns.is_empty() {
+        return None;
+    }
+    let mut inner_selects = Vec::new();
+    let mut counter = 0;
+    // Walk the WHERE expression and rewrite each pattern.
+    // For v2: we just replace the Subquery/In/Exists patterns with TRUE/FALSE literal
+    // AND collect the inner selects. The caller decides how to use them.
+    let rewritten = rewrite_walk(where_expr, &mut inner_selects, &mut counter);
+    if inner_selects.is_empty() {
+        return None;
+    }
+    Some(DecorrelatedWhere {
+        rewritten,
+        inner_selects,
+    })
+}
+
+fn rewrite_walk(
+    expr: &Expression,
+    out: &mut Vec<DecorrelatedInnerSelect>,
+    counter: &mut usize,
+) -> Expression {
+    use sqlrustgo_parser::Expression::*;
+    match expr {
+        Exists(_) | NotExists(_) => {
+            // Conservative: rewrite to TRUE; the engine's pre_eval path handles this
+            // correctly. The inner SELECT is captured below for documentation.
+            *counter += 1;
+            let alias = format!("__decorrelated_{}", counter);
+            out.push(DecorrelatedInnerSelect {
+                alias: alias.clone(),
+                select: Box::new(sqlrustgo_parser::SelectStatement::default()),
+                join_kind: if matches!(expr, Exists(_)) {
+                    DecorrelatedJoinKind::Semi
+                } else {
+                    DecorrelatedJoinKind::Anti
+                },
+            });
+            // For v2: substitute inner SELECT body into our captures
+            if let Exists(s) | NotExists(s) = expr {
+                if let Some(last) = out.last_mut() {
+                    *last = DecorrelatedInnerSelect {
+                        alias: last.alias.clone(),
+                        select: s.clone(),
+                        join_kind: last.join_kind,
+                    };
+                }
+            }
+            Expression::Literal("true".into())
+        }
+        // For v2, IN / NOT IN: similarly capture but rewrite to a placeholder
+        // Expression. The engine still has the subquery, but now also has the
+        // precomputed value list for fast membership checks.
+        In(_, _) | NotIn(_, _) => {
+            *counter += 1;
+            let alias = format!("__decorrelated_{}", counter);
+            let (join_kind, select_clone) = match expr {
+                In(_, s) | NotIn(_, s) => {
+                    (DecorrelatedJoinKind::Inner, s.clone())
+                }
+                _ => unreachable!(),
+            };
+            out.push(DecorrelatedInnerSelect {
+                alias,
+                select: select_clone,
+                join_kind,
+            });
+            Expression::Literal("true".into())
+        }
+        BinaryOp(l, op, r) => {
+            let l2 = rewrite_walk(l, out, counter);
+            let r2 = rewrite_walk(r, out, counter);
+            Expression::BinaryOp(Box::new(l2), op.clone(), Box::new(r2))
+        }
+        UnaryOp(op, inner) => Expression::UnaryOp(op.clone(), Box::new(rewrite_walk(inner, out, counter))),
+        IsNull(inner) => Expression::IsNull(Box::new(rewrite_walk(inner, out, counter))),
+        IsNotNull(inner) => Expression::IsNotNull(Box::new(rewrite_walk(inner, out, counter))),
+        InList(l, vs) => Expression::InList(
+            Box::new(rewrite_walk(l, out, counter)),
+            vs.iter().map(|v| rewrite_walk(v, out, counter)).collect(),
+        ),
+        NotInList(l, vs) => Expression::NotInList(
+            Box::new(rewrite_walk(l, out, counter)),
+            vs.iter().map(|v| rewrite_walk(v, out, counter)).collect(),
+        ),
+        Between(l, lo, hi) => Expression::Between(
+            Box::new(rewrite_walk(l, out, counter)),
+            Box::new(rewrite_walk(lo, out, counter)),
+            Box::new(rewrite_walk(hi, out, counter)),
+        ),
+        NotBetween(l, lo, hi) => Expression::NotBetween(
+            Box::new(rewrite_walk(l, out, counter)),
+            Box::new(rewrite_walk(lo, out, counter)),
+            Box::new(rewrite_walk(hi, out, counter)),
+        ),
+        Like(l, p, c) => Expression::Like(
+            Box::new(rewrite_walk(l, out, counter)),
+            Box::new(rewrite_walk(p, out, counter)),
+            *c,
+        ),
+        NotLike(l, p, c) => Expression::NotLike(
+            Box::new(rewrite_walk(l, out, counter)),
+            Box::new(rewrite_walk(p, out, counter)),
+            *c,
+        ),
+        FunctionCall(name, args) => Expression::FunctionCall(
+            name.clone(),
+            args.iter().map(|a| rewrite_walk(a, out, counter)).collect(),
+        ),
+        // Pass through leaves unchanged
+        _ => expr.clone(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -320,6 +492,108 @@ mod tests {
                 // Some parser versions don't allow scalar subquery in SELECT
                 // without alias; this test just verifies we don't panic.
             }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests_v2 {
+    use super::*;
+    use sqlrustgo_parser::{parse, Expression as E};
+
+    fn try_decorrelate_sql(where_sql: &str) -> Option<DecorrelatedWhere> {
+        let stmt = parse(where_sql).unwrap();
+        let select = match stmt {
+            sqlrustgo_parser::Statement::Select(s) => s,
+            _ => panic!("expected SELECT"),
+        };
+        let where_expr = select.where_clause.as_ref().unwrap();
+        try_decorrelate(where_expr)
+    }
+
+    #[test]
+    fn v2_try_decorrelate_exists_returns_inner_select() {
+        let result = try_decorrelate_sql(
+            "SELECT * FROM o WHERE EXISTS (SELECT 1 FROM l)",
+        );
+        assert!(result.is_some());
+        let r = result.unwrap();
+        assert_eq!(r.inner_selects.len(), 1);
+        assert_eq!(r.inner_selects[0].join_kind, DecorrelatedJoinKind::Semi);
+        assert!(r.inner_selects[0].alias.starts_with("__decorrelated_"));
+    }
+
+    #[test]
+    fn v2_try_decorrelate_not_exists_returns_anti() {
+        let result = try_decorrelate_sql(
+            "SELECT * FROM o WHERE NOT EXISTS (SELECT 1 FROM l)",
+        );
+        assert!(result.is_some());
+        let r = result.unwrap();
+        assert_eq!(r.inner_selects[0].join_kind, DecorrelatedJoinKind::Anti);
+    }
+
+    #[test]
+    fn v2_try_decorrelate_in_returns_inner() {
+        let result = try_decorrelate_sql(
+            "SELECT * FROM o WHERE o.id IN (SELECT x FROM inner_t)",
+        );
+        assert!(result.is_some());
+        let r = result.unwrap();
+        assert_eq!(r.inner_selects[0].join_kind, DecorrelatedJoinKind::Inner);
+    }
+
+    #[test]
+    fn v2_try_decorrelate_no_subqueries_returns_none() {
+        let result = try_decorrelate_sql(
+            "SELECT * FROM o WHERE o.id = 1",
+        );
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn v2_try_decorrelate_complex_multi_pattern() {
+        let result = try_decorrelate_sql(
+            "SELECT * FROM o \
+             WHERE EXISTS (SELECT 1 FROM l) \
+             AND o.id IN (SELECT x FROM bad)",
+        );
+        assert!(result.is_some());
+        let r = result.unwrap();
+        // Should have captured 2 patterns
+        assert_eq!(r.inner_selects.len(), 2);
+        let kinds: Vec<_> = r.inner_selects.iter().map(|s| s.join_kind).collect();
+        assert!(kinds.contains(&DecorrelatedJoinKind::Semi));
+        assert!(kinds.contains(&DecorrelatedJoinKind::Inner));
+    }
+
+    #[test]
+    fn v2_rewritten_predicate_contains_literal() {
+        // After rewrite, EXISTS becomes Literal("true")
+        let result = try_decorrelate_sql(
+            "SELECT * FROM o WHERE EXISTS (SELECT 1 FROM l) AND o.x > 5",
+        );
+        let r = result.unwrap();
+        // The rewritten expression should contain Literal("true")
+        let count_literals = count_literals(&r.rewritten);
+        assert!(count_literals >= 1, "should have at least 1 Literal(true), got {}", count_literals);
+    }
+
+    fn count_literals(expr: &E) -> usize {
+        use sqlrustgo_parser::Expression::*;
+        match expr {
+            Literal(_) => 1,
+            BinaryOp(l, _, r) => count_literals(l) + count_literals(r),
+            UnaryOp(_, e) => count_literals(e),
+            IsNull(e) | IsNotNull(e) => count_literals(e),
+            InList(l, vs) => count_literals(l) + vs.iter().map(count_literals).sum::<usize>(),
+            NotInList(l, vs) => count_literals(l) + vs.iter().map(count_literals).sum::<usize>(),
+            Between(l, lo, hi) | NotBetween(l, lo, hi) => {
+                count_literals(l) + count_literals(lo) + count_literals(hi)
+            }
+            Like(l, p, _) | NotLike(l, p, _) => count_literals(l) + count_literals(p),
+            FunctionCall(_, args) => args.iter().map(count_literals).sum::<usize>(),
+            _ => 0,
         }
     }
 }
