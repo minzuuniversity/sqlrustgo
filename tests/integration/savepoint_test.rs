@@ -1,3 +1,4 @@
+ 
 // SAVEPOINT Integration Tests (Issue #892)
 //
 // Note: These tests verify parsing and basic transaction flow.
@@ -35,16 +36,22 @@ fn test_transaction_basic() {
     // Basic transaction test
     let mut engine = ExecutionEngine::new(Arc::new(RwLock::new(MemoryStorage::new())));
 
-    engine.execute("CREATE TABLE tx_test (id INTEGER)").unwrap();
+    engine
+        .execute("CREATE TABLE tx_test (id INTEGER)")
+        .unwrap();
 
     engine.execute("BEGIN").unwrap();
-    engine.execute("INSERT INTO tx_test VALUES (1)").unwrap();
+    engine
+        .execute("INSERT INTO tx_test VALUES (1)")
+        .unwrap();
 
     // Commit
     engine.execute("COMMIT").unwrap();
 
     // Verify row was inserted
-    let result = engine.execute("SELECT COUNT(*) FROM tx_test").unwrap();
+    let result = engine
+        .execute("SELECT COUNT(*) FROM tx_test")
+        .unwrap();
     assert_eq!(result.rows[0][0], Value::Integer(1));
 
     println!("✓ Basic transaction works");
