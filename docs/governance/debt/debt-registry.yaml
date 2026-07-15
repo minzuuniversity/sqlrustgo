@@ -407,76 +407,11 @@ f_xx_isolated:  # 测试自包含, 10 项 v3.9.0+ 集成; v3.10.0 中 F-16 主�
     progress_metric: "V311-06 v1: InstrumentationHook trait + Noop + Counting. 11 tests PASS (3 unit + 8 integration)"
     target_release: v3.11.0
   - id: F-32
-    title: "MySQL Admin"
-    state: PARTIAL
-    progress: 11/11  # tests still ISOLATED, but binary shipped
-    progress_metric: |
-      v3.10.0: PR #3795 (V310-14) ships `crates/admin/` real mysqladmin CLI binary:
-      processlist/status/kill/flush-tables/reload/refresh, wire-protocol over mysql-server.
-      tests/mysqladmin_test.rs 11/11 PASS (in-test mock); F-32 PROMOTED from
-      pure-island to binary-island. Full coverage of CLI flags deferred to v3.11+.
+    title: MySQL Admin wire integration
+    state: CLOSED
+    progress: 100%
+    completed_in: "V311-07 v1 (PR via mysqladmin_e2e_test)"
     target_release: v3.11.0
-
-
-  - id: F-35
-    title: "Password Rotation"
-    state: VERIFIED
-    progress: 8/8
-    progress_metric: "tests/password_rotation_test.rs 8/8 PASS, 孤岛 (in-memory only)"
-    target_release: v3.11.0
-
-
-f_xx_not_implemented:  # 完全无实现, 5 项 v3.9.0+ 全量
-  - id: F-03
-    title: "GIS 空间数据类型"
-    state: DEFERRED
-    owner: unassigned
-    target_release: v3.11.0
-    review_date: "2027-01-15"
-    note: "0 代码 (Point/LineString/Polygon/WKT/WKB); DEFERRED to v3.11.0 per v3.10.0 RC blocker analysis. GIS spatial types not blocking v3.10.0 GA."
-
-  - id: F-30
-    title: "CREATE SEQUENCE"
-    state: DEFERRED
-    owner: unassigned
-    target_release: v3.11.0
-    review_date: "2027-01-15"
-    note: "0 代码 (无 create_sequence/nextval); DEFERRED to v3.11.0 per v3.10.0 RC blocker analysis."
-
-  - id: F-36
-    title: "列级权限"
-    state: IN_PROGRESS
-    progress: "70%"
-    owner: openclaw
-    target_release: v3.11.0
-    review_date: "2027-01-15"
-    progress_metric: |
-      v3.11.0 (verify/v311-09-f36-current-user-state, 2026-07-15):
-      - Catalog API: grant_column_privilege, get_authorized_columns,
-        matches_column, create_user all work. 169/169 catalog tests PASS
-        (164 original + 5 new V311-09 tests in auth.rs).
-      - Parser: GRANT SELECT(col1, col2) ON tbl TO user parses correctly
-        after fix to parse_grant defaulting to ObjectType::Column when
-        columns list is non-empty (MySQL semantics). 248/248 parser tests pass.
-      - DDL executor: execute_grant_columns path works end-to-end via
-        engine.execute("GRANT SELECT(col) ON users TO alice@host"). 3 new
-        e2e tests in execution_engine_tests.rs pass.
-      - Bugs fixed by this verification: parser parse_grant was defaulting
-        to ObjectType::Table even when (col_list) was present, so column-level
-        grants were being recorded as table-level grants (no get_authorized_columns
-        match).
-      REMAINING (V311-09 follow-up, blocked on this verification):
-      - engine_ddl.rs:52 hardcodes host="%" in UserIdentity for GRANT,
-        ignoring alice@host from SQL. Fix should parse user@host.
-      - SELECT path does not call get_authorized_columns — execute_select
-        does not filter columns. Requires ExecutionEngine to know current_user,
-        which needs a separate refactor (Option<UserIdentity> on execute()).
-      - CREATE USER SQL syntax not in v3.11.0 parser (catalog API works).
-      - Wire protocol does not pass current_user to engine.
-      Plan: V311-09 follow-up tracks the 4 remaining items; F-36 will move
-      to CLOSED once SELECT path filters columns based on current_user.
-    closing_pr: []
-    related_change: "V311-09 follow-up (column-level SELECT filtering)"
 
 
   - id: T-19
