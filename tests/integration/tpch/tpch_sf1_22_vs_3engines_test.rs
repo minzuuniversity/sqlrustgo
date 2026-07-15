@@ -95,7 +95,8 @@ fn expected_row_counts() -> Vec<(&'static str, usize)> {
         if let Ok(map) = serde_json::from_str::<std::collections::BTreeMap<String, usize>>(&s) {
             // Stable table order matters for downstream assertions.
             const TABLES: &[&str] = &[
-                "region","nation","supplier","customer","part","partsupp","orders","lineitem",
+                "region", "nation", "supplier", "customer", "part", "partsupp", "orders",
+                "lineitem",
             ];
             return TABLES
                 .iter()
@@ -246,7 +247,10 @@ fn tpch_sf1_22_in_process_regression() {
     //    is ~45 min and tails off the runner).
     let use_bint = bint_data_ready();
     let (data_dir, use_load_data): (std::path::PathBuf, bool) = if use_bint {
-        eprintln!("SF=1.0 .bin (BINT v2) ready at {} — using BinaryTableStorage.", bint_dir());
+        eprintln!(
+            "SF=1.0 .bin (BINT v2) ready at {} — using BinaryTableStorage.",
+            bint_dir()
+        );
         (Path::new(&bint_dir()).to_path_buf(), false)
     } else {
         let data_dir_value = sqlrustgo_data_dir();
@@ -386,7 +390,8 @@ fn tpch_sf1_22_in_process_regression() {
 }
 
 fn write_report(rows: &[(u8, usize, Duration, String)]) {
-    std::fs::create_dir_all(Path::new(&report_path()).parent().unwrap()).expect("create report dir");
+    std::fs::create_dir_all(Path::new(&report_path()).parent().unwrap())
+        .expect("create report dir");
     let mut out = String::new();
     out.push_str("# TPC-H SF=1.0 cross-engine baseline (in-process)\n\n");
     out.push_str("- Issue: #3423\n");

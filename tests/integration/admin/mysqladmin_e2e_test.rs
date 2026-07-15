@@ -60,12 +60,18 @@ impl ServerHandle {
         let child = Command::new(&bin)
             .args([
                 "serve",
-                "--host", "127.0.0.1",
-                "--port", &port.to_string(),
-                "--data-dir", data_dir.to_str().unwrap(),
-                "--auth-mode", "none",
-                "--storage", "memory",
-                "--max-connections", "10",
+                "--host",
+                "127.0.0.1",
+                "--port",
+                &port.to_string(),
+                "--data-dir",
+                data_dir.to_str().unwrap(),
+                "--auth-mode",
+                "none",
+                "--storage",
+                "memory",
+                "--max-connections",
+                "10",
             ])
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -100,13 +106,8 @@ fn fresh_server() -> ServerHandle {
 #[test]
 fn wire_client_connects_to_server() {
     let server = fresh_server();
-let mut admin = WireAdmin::connect(
-        "127.0.0.1",
-        server.addr.port(),
-        "root",
-        "",
-        "test",
-    ).expect("connect");
+    let mut admin =
+        WireAdmin::connect("127.0.0.1", server.addr.port(), "root", "", "test").expect("connect");
     admin.ping().expect("ping should succeed");
 }
 
@@ -114,8 +115,7 @@ let mut admin = WireAdmin::connect(
 fn wire_client_ping_returns_ok() {
     let server = fresh_server();
     let mut admin =
-        WireAdmin::connect("127.0.0.1", server.addr.port(), "root", "", "test")
-            .expect("connect");
+        WireAdmin::connect("127.0.0.1", server.addr.port(), "root", "", "test").expect("connect");
     assert!(admin.ping().is_ok());
 }
 
@@ -123,8 +123,7 @@ fn wire_client_ping_returns_ok() {
 fn wire_client_version_is_non_empty() {
     let server = fresh_server();
     let mut admin =
-        WireAdmin::connect("127.0.0.1", server.addr.port(), "root", "", "test")
-            .expect("connect");
+        WireAdmin::connect("127.0.0.1", server.addr.port(), "root", "", "test").expect("connect");
     let v = admin.version().expect("version query");
     // version can be empty (server may not have @@version)
 }
@@ -133,13 +132,17 @@ fn wire_client_version_is_non_empty() {
 fn wire_client_status_returns_well_formed_report() {
     let server = fresh_server();
     let mut admin =
-        WireAdmin::connect("127.0.0.1", server.addr.port(), "root", "", "test")
-            .expect("connect");
+        WireAdmin::connect("127.0.0.1", server.addr.port(), "root", "", "test").expect("connect");
     let status = admin.status().expect("status query");
     // At minimum, the server version string is populated (or empty)
-    println!("Status: version='{}', total_queries={}, slow={}, uptime={}s, active={}",
-             status.server_version, status.total_queries, status.slow_queries,
-             status.uptime_seconds, status.active_connections);
+    println!(
+        "Status: version='{}', total_queries={}, slow={}, uptime={}s, active={}",
+        status.server_version,
+        status.total_queries,
+        status.slow_queries,
+        status.uptime_seconds,
+        status.active_connections
+    );
     // Just verify the call returns successfully and fields are populated
     let _: StatusReport = status;
 }
@@ -148,13 +151,12 @@ fn wire_client_status_returns_well_formed_report() {
 fn wire_logical_backup_creates_archive_with_data() {
     let server = fresh_server();
     let mut admin =
-        WireAdmin::connect("127.0.0.1", server.addr.port(), "root", "", "test")
-            .expect("connect");
+        WireAdmin::connect("127.0.0.1", server.addr.port(), "root", "", "test").expect("connect");
 
     // First, populate the database via raw wire client
     {
-        let mut conn = MySqlConnection::connect(&server.addr, "root", "", "test")
-            .expect("secondary connect");
+        let mut conn =
+            MySqlConnection::connect(&server.addr, "root", "", "test").expect("secondary connect");
         conn.execute("CREATE TABLE accounts (id INTEGER PRIMARY KEY, name TEXT)")
             .expect("CREATE");
         conn.execute("INSERT INTO accounts VALUES (1, 'alice'), (2, 'bob'), (3, 'charlie')")
@@ -162,18 +164,16 @@ fn wire_logical_backup_creates_archive_with_data() {
     }
 
     // Now run logical backup
-    let output_path = std::env::temp_dir().join(format!(
-        "wirebackup-test-{}.tar.gz",
-        server.addr.port()
-    ));
+    let output_path =
+        std::env::temp_dir().join(format!("wirebackup-test-{}.tar.gz", server.addr.port()));
     if output_path.exists() {
         std::fs::remove_file(&output_path).unwrap();
     }
-    let result = admin
-        .logical_backup(&output_path)
-        .expect("logical backup");
-    println!("Backup result: tables={:?} size={} path={}",
-             result.tables, result.output_size_bytes, result.output_path);
+    let result = admin.logical_backup(&output_path).expect("logical backup");
+    println!(
+        "Backup result: tables={:?} size={} path={}",
+        result.tables, result.output_size_bytes, result.output_path
+    );
 
     // Verify the file was created and has some content
     assert!(output_path.exists(), "backup file should exist");
@@ -185,11 +185,7 @@ fn wire_logical_backup_creates_archive_with_data() {
     let mut header = [0u8; 2];
     use std::io::Read;
     file.read_exact(&mut header).unwrap();
-    assert_eq!(
-        header,
-        [0x1f, 0x8b],
-        "file should be gzipped (RFC 1952)"
-    );
+    assert_eq!(header, [0x1f, 0x8b], "file should be gzipped (RFC 1952)");
 
     let _: LogicalBackupResult = result;
 }
@@ -200,7 +196,7 @@ fn wire_admin_handles_connection_failure_gracefully() {
     // Try to connect with wrong port (off by 1)
     let result = WireAdmin::connect(
         "127.0.0.1",
-        server.addr.port() + 1,  // wrong port
+        server.addr.port() + 1, // wrong port
         "root",
         "",
         "test",
@@ -217,13 +213,10 @@ fn wire_admin_handles_connection_failure_gracefully() {
 fn wire_admin_logical_backup_with_no_tables_returns_empty_archive() {
     let server = fresh_server();
     let mut admin =
-        WireAdmin::connect("127.0.0.1", server.addr.port(), "root", "", "test")
-            .expect("connect");
+        WireAdmin::connect("127.0.0.1", server.addr.port(), "root", "", "test").expect("connect");
 
-    let output_path = std::env::temp_dir().join(format!(
-        "wirebackup-empty-{}.tar.gz",
-        server.addr.port()
-    ));
+    let output_path =
+        std::env::temp_dir().join(format!("wirebackup-empty-{}.tar.gz", server.addr.port()));
     if output_path.exists() {
         std::fs::remove_file(&output_path).unwrap();
     }

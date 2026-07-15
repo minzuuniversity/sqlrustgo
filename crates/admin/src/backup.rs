@@ -10,6 +10,7 @@ pub struct BackupResult {
     pub manifest: Manifest,
     pub output_path: PathBuf,
     pub output_size_bytes: u64,
+    #[allow(dead_code)]
     pub manifest_sha256: String,
 }
 
@@ -160,6 +161,7 @@ pub fn tar_extract_all(input: &Path, out_dir: &Path) -> Result<Vec<String>, Back
     Ok(entries)
 }
 
+#[allow(dead_code)]
 pub fn tar_extract_one(input: &Path, name: &str) -> Result<Vec<u8>, BackupError> {
     let compressed = fs::read(input).map_err(BackupError::Io)?;
     let bytes = decode_gzip_or_raw(&compressed)?;

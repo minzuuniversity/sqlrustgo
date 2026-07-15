@@ -28,6 +28,7 @@ pub struct ClusteredTable {
     /// The actual B+ Tree: pk_value → row.
     pk_index: BTreeMap<Value, Record>,
     /// Secondary indexes: column_name → index_value → list_of_pk_values.
+    #[allow(dead_code)]
     secondary_index: HashMap<String, BTreeMap<Value, Vec<Value>>>,
     /// Schema metadata.
     table_info: TableInfo,
@@ -63,16 +64,17 @@ impl ClusteredTable {
 
     /// Insert a single row. Returns Err if PK already exists.
     pub fn insert(&mut self, row: Record) -> SqlResult<()> {
-        let pk = row
-            .get(self.pk_col_idx)
-            .cloned()
-            .ok_or_else(|| SqlError::ExecutionError(
-                format!("Primary key column index {} out of range", self.pk_col_idx)
-            ))?;
+        let pk = row.get(self.pk_col_idx).cloned().ok_or_else(|| {
+            SqlError::ExecutionError(format!(
+                "Primary key column index {} out of range",
+                self.pk_col_idx
+            ))
+        })?;
         if self.pk_index.contains_key(&pk) {
-            return Err(SqlError::ExecutionError(
-                format!("Duplicate primary key value: {:?}", pk),
-            ));
+            return Err(SqlError::ExecutionError(format!(
+                "Duplicate primary key value: {:?}",
+                pk
+            )));
         }
         self.pk_index.insert(pk, row);
         Ok(())
@@ -95,17 +97,17 @@ impl ClusteredTable {
             return Ok(false);
         }
         // Verify the new row has the same PK (defense in depth).
-        let new_pk = new_row
-            .get(self.pk_col_idx)
-            .cloned()
-            .ok_or_else(|| SqlError::ExecutionError(
-                format!("Primary key column index {} out of range", self.pk_col_idx)
-            ))?;
+        let new_pk = new_row.get(self.pk_col_idx).cloned().ok_or_else(|| {
+            SqlError::ExecutionError(format!(
+                "Primary key column index {} out of range",
+                self.pk_col_idx
+            ))
+        })?;
         if &new_pk != pk_value {
-            return Err(SqlError::ExecutionError(
-                format!("Cannot change primary key value during UPDATE (was {:?}, got {:?})",
-                    pk_value, new_pk),
-            ));
+            return Err(SqlError::ExecutionError(format!(
+                "Cannot change primary key value during UPDATE (was {:?}, got {:?})",
+                pk_value, new_pk
+            )));
         }
         self.pk_index.insert(pk_value.clone(), new_row);
         Ok(true)
@@ -114,6 +116,11 @@ impl ClusteredTable {
     /// Count rows in the table (O(1)).
     pub fn len(&self) -> usize {
         self.pk_index.len()
+    }
+
+    /// Returns true if the table has no rows.
+    pub fn is_empty(&self) -> bool {
+        self.pk_index.is_empty()
     }
 
     /// Get the table info.
@@ -197,8 +204,11 @@ mod tests {
         let mut ct = ClusteredTable::new(make_info(), 0);
         ct.insert(vec![Value::Integer(1), Value::Text("a".to_string())])
             .unwrap();
-        ct.update_pk(&Value::Integer(1), vec![Value::Integer(1), Value::Text("A".to_string())])
-            .unwrap();
+        ct.update_pk(
+            &Value::Integer(1),
+            vec![Value::Integer(1), Value::Text("A".to_string())],
+        )
+        .unwrap();
         let rows = ct.full_scan();
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0][1], Value::Text("A".to_string()));

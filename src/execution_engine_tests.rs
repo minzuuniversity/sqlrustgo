@@ -672,17 +672,18 @@ fn test_engine_grant_select_column_stores_in_catalog() {
     // else.
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));
     let catalog = Arc::new(RwLock::new(Catalog::new("f36_test")));
-    let mut engine = ExecutionEngine::with_catalog(
-        storage,
-        Arc::clone(&catalog),
-    );
+    let mut engine = ExecutionEngine::with_catalog(storage, Arc::clone(&catalog));
 
     // Set up the user via catalog API.
     // NOTE: engine_ddl.rs:52 hardcodes host="%" in UserIdentity::new for GRANT,
     // so we create the user with host="%" to match what GRANT writes.
     // A future fix should parse the user@host from the GRANT recipient.
     let alice = sqlrustgo_catalog::auth::UserIdentity::new("alice", "%");
-    catalog.write().auth_manager_mut().create_user(&alice, "hash").expect("create_user via catalog API");
+    catalog
+        .write()
+        .auth_manager_mut()
+        .create_user(&alice, "hash")
+        .expect("create_user via catalog API");
 
     // Walk the GRANT SQL path: parser -> engine.execute_grant -> catalog.
     engine
@@ -694,9 +695,11 @@ fn test_engine_grant_select_column_stores_in_catalog() {
     // (a separate bug to fix later), so we look up alice@%.
     let catalog_guard = catalog.read();
     let alice_pct = sqlrustgo_catalog::auth::UserIdentity::new("alice", "%");
-    let authorized = catalog_guard
-        .auth_manager()
-        .get_authorized_columns(&alice_pct, "users", sqlrustgo_catalog::auth::Privilege::Read);
+    let authorized = catalog_guard.auth_manager().get_authorized_columns(
+        &alice_pct,
+        "users",
+        sqlrustgo_catalog::auth::Privilege::Read,
+    );
     assert_eq!(authorized.len(), 1);
     assert!(
         authorized.contains(&"email".to_string()),
@@ -715,16 +718,23 @@ fn test_engine_grant_select_multiple_columns() {
 
     // Set up the user via catalog API with host="%" (matches engine_ddl hardcode).
     let bob = sqlrustgo_catalog::auth::UserIdentity::new("bob", "%");
-    catalog.write().auth_manager_mut().create_user(&bob, "hash").expect("create_user via catalog API");
+    catalog
+        .write()
+        .auth_manager_mut()
+        .create_user(&bob, "hash")
+        .expect("create_user via catalog API");
 
     engine
         .execute("GRANT SELECT(id, email, name) ON users TO bob@localhost")
         .expect("GRANT SELECT multiple columns should succeed");
 
-    let catalog_guard = catalog.read(); sqlrustgo_catalog::auth::UserIdentity::new("bob", "localhost");
-    let authorized = catalog_guard
-        .auth_manager()
-        .get_authorized_columns(&bob, "users", sqlrustgo_catalog::auth::Privilege::Read);
+    let catalog_guard = catalog.read();
+    sqlrustgo_catalog::auth::UserIdentity::new("bob", "localhost");
+    let authorized = catalog_guard.auth_manager().get_authorized_columns(
+        &bob,
+        "users",
+        sqlrustgo_catalog::auth::Privilege::Read,
+    );
     assert_eq!(authorized.len(), 3);
     for col in &["id", "email", "name"] {
         assert!(
@@ -795,7 +805,10 @@ fn test_engine_adaptive_hash_index_record_and_lookup() {
     assert_eq!(ahi.size(), 1);
     assert_eq!(
         ahi.lookup("users", b"alice"),
-        Some(sqlrustgo_storage::PageLocation { page_id: 1, offset: 100 })
+        Some(sqlrustgo_storage::PageLocation {
+            page_id: 1,
+            offset: 100
+        })
     );
     assert_eq!(ahi.total_hits(), 1);
 }
@@ -822,12 +835,14 @@ fn test_engine_set_adaptive_hash_index_replaces_instance() {
     // (e.g. with a lower threshold for testing).
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));
     let mut engine = ExecutionEngine::new(storage);
-    let custom = sqlrustgo_storage::AdaptiveHashIndex::with_threshold(2)
-        .into_shared();
+    let custom = sqlrustgo_storage::AdaptiveHashIndex::with_threshold(2).into_shared();
     engine.set_adaptive_hash_index(Arc::clone(&custom));
 
     let ahi = engine.adaptive_hash_index();
-    assert!(Arc::ptr_eq(&ahi, &custom), "engine should expose the custom AHI");
+    assert!(
+        Arc::ptr_eq(&ahi, &custom),
+        "engine should expose the custom AHI"
+    );
 
     // With threshold 2, two accesses promote.
     ahi.record_access("users", b"alice", 1, 100);
@@ -952,10 +967,7 @@ fn test_ahi_does_not_promote_for_different_tables() {
     let mut engine = ExecutionEngine::new(storage);
     for t in &["a", "b", "c"] {
         engine
-            .execute(&format!(
-                "CREATE TABLE {} (id INTEGER, v TEXT)",
-                t
-            ))
+            .execute(&format!("CREATE TABLE {} (id INTEGER, v TEXT)", t))
             .expect("CREATE");
         engine
             .execute(&format!("INSERT INTO {} VALUES (1, 'x')", t))

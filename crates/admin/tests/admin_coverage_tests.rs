@@ -4,30 +4,38 @@
 use std::fs;
 use tempfile::TempDir;
 
-use sqlrustgo_admin::backup::{tar_extract_all, tar_extract_one, BackupError, physical_backup};
-use sqlrustgo_admin::manifest::{sha256_file, sha256_bytes, Manifest, FileEntry};
-use sqlrustgo_admin::verify::{verify_extracted, VerifyError, VerifyErrorKind};
+use sqlrustgo_admin::backup::{physical_backup, tar_extract_all, tar_extract_one, BackupError};
+use sqlrustgo_admin::manifest::{sha256_bytes, sha256_file, FileEntry, Manifest};
 use sqlrustgo_admin::restore::physical_restore;
+use sqlrustgo_admin::verify::{verify_extracted, VerifyError, VerifyErrorKind};
 
 // ============ sha256_bytes tests ============
 
 #[test]
 fn test_sha256_bytes_hello() {
     let h = sha256_bytes(b"hello");
-    assert_eq!(h, "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824");
+    assert_eq!(
+        h,
+        "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
+    );
 }
 
 #[test]
 fn test_sha256_bytes_empty() {
     let h = sha256_bytes(b"");
-    assert_eq!(h, "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
+    assert_eq!(
+        h,
+        "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    );
 }
 
 #[test]
 fn test_sha256_bytes_known() {
     let h = sha256_bytes(b"test data 123");
     assert_eq!(h.len(), 64);
-    assert!(h.chars().all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase()));
+    assert!(h
+        .chars()
+        .all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase()));
 }
 
 #[test]
@@ -36,7 +44,10 @@ fn test_sha256_file_known_content() {
     let path = tmp.path().join("f.txt");
     fs::write(&path, b"hello").unwrap();
     let h = sha256_file(&path).unwrap();
-    assert_eq!(h, "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824");
+    assert_eq!(
+        h,
+        "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
+    );
 }
 
 // ============ Manifest tests ============
@@ -303,8 +314,16 @@ fn test_verify_extracted_all_files_ok() {
         created_at: "2026-07-15T00:00:00Z".into(),
         sqlrustgo_version: "3.11.0".into(),
         data_files: vec![
-            FileEntry { path: "f1.dat".into(), size: content1.len() as u64, sha256: sha256_bytes(content1) },
-            FileEntry { path: "f2.dat".into(), size: content2.len() as u64, sha256: sha256_bytes(content2) },
+            FileEntry {
+                path: "f1.dat".into(),
+                size: content1.len() as u64,
+                sha256: sha256_bytes(content1),
+            },
+            FileEntry {
+                path: "f2.dat".into(),
+                size: content2.len() as u64,
+                sha256: sha256_bytes(content2),
+            },
         ],
         wal_file: None,
         total_size_bytes: (content1.len() + content2.len()) as u64,
@@ -318,7 +337,10 @@ fn test_verify_extracted_all_files_ok() {
 
 #[test]
 fn test_backup_error_display_io() {
-    let err = BackupError::Io(std::io::Error::new(std::io::ErrorKind::NotFound, "file not found"));
+    let err = BackupError::Io(std::io::Error::new(
+        std::io::ErrorKind::NotFound,
+        "file not found",
+    ));
     let display = format!("{}", err);
     assert!(display.contains("NotFound") || display.contains("not found"));
 }
@@ -346,7 +368,9 @@ fn test_backup_error_display_entry_not_found() {
 
 #[test]
 fn test_backup_error_display_checksum_mismatch() {
-    let err = BackupError::ChecksumMismatch { path: "wal/sqlrustgo.wal".into() };
+    let err = BackupError::ChecksumMismatch {
+        path: "wal/sqlrustgo.wal".into(),
+    };
     let display = format!("{}", err);
     assert!(display.contains("checksum") || display.contains("wal"));
 }
@@ -495,9 +519,8 @@ fn test_physical_restore_missing_manifest() {
     // Create a minimal gzip with no valid tar entries (empty after gzip decode)
     // Gzip header + empty payload + trailer = 20 bytes
     let empty_gzip: Vec<u8> = vec![
-        0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00,
-        0x00, 0x03, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00,
-        0x00, 0x00, 0x00, 0x00,
+        0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03, 0x03, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00,
     ];
     let corrupt = tmp.path().join("no_manifest.tar.gz");
     fs::write(&corrupt, &empty_gzip).unwrap();
