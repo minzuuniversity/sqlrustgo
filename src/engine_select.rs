@@ -205,6 +205,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     unique_constraints: Vec::new(),
                     check_constraints: Vec::new(),
                     partition_info: None,
+                        compression: None,
                 };
                 for col in &subq.columns {
                     let col_name = col.alias.clone().unwrap_or_else(|| col.name.clone());
@@ -264,6 +265,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 unique_constraints: Vec::new(),
                 check_constraints: Vec::new(),
                 partition_info: None,
+                    compression: None,
             };
             (vec![Vec::new()], empty_schema)
         } else {
@@ -1458,6 +1460,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     unique_constraints: Vec::new(),
                     check_constraints: Vec::new(),
                     partition_info: None,
+                        compression: None,
                 };
                 for col in &subq.columns {
                     let col_name = col.alias.clone().unwrap_or_else(|| col.name.clone());
@@ -2202,6 +2205,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     unique_constraints: vec![],
                     check_constraints: vec![],
                     partition_info: None,
+                        compression: None,
                 };
                 return Ok((cross, combined_schema));
             }

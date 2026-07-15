@@ -246,6 +246,7 @@ impl DataRestorer {
             unique_constraints: vec![],
             check_constraints: vec![],
             partition_info: None,
+                        compression: None,
         };
 
         let count = rows.len();
@@ -315,6 +316,7 @@ impl DataRestorer {
             unique_constraints: vec![],
             check_constraints: vec![],
             partition_info: None,
+                        compression: None,
         };
 
         let count = rows.len();
@@ -362,6 +364,7 @@ impl DataRestorer {
                         unique_constraints: vec![],
                         check_constraints: vec![],
                         partition_info: None,
+                        compression: None,
                     };
                     storage.create_table(&table_info)?;
                 }
