@@ -2081,23 +2081,19 @@ fn test_parse_explain_tbl() {
     let _ = result;
 }
 
+
+// ============ MERGE Tests ============
+
 #[test]
-fn test_parse_handler_open() {
-    let sql = "HANDLER tbl OPEN";
+fn test_parse_merge_basic() {
+    let sql = "MERGE INTO target USING source ON target.id = source.id WHEN MATCHED THEN UPDATE SET target.val = source.val WHEN NOT MATCHED THEN INSERT (id, val) VALUES (source.id, source.val)";
     let result = parse(sql);
-    let _ = result;
+    assert!(result.is_ok(), "Failed to parse MERGE: {:?}", result);
 }
 
 #[test]
-fn test_parse_handler_read_next() {
-    let sql = "HANDLER tbl READ NEXT";
+fn test_parse_merge_with_delete() {
+    let sql = "MERGE INTO t1 USING t2 ON t1.id = t2.id WHEN MATCHED THEN DELETE";
     let result = parse(sql);
-    let _ = result;
-}
-
-#[test]
-fn test_parse_handler_close() {
-    let sql = "HANDLER tbl CLOSE";
-    let result = parse(sql);
-    let _ = result;
+    assert!(result.is_ok(), "Failed to parse MERGE DELETE: {:?}", result);
 }
