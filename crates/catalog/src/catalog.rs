@@ -294,6 +294,16 @@ impl Catalog {
         &self.auth_manager
     }
 
+    /// Get a mutable reference to the auth manager for direct access.
+    ///
+    /// Required by tests that need to create users outside of the
+    /// CREATE USER SQL path (which is not yet implemented in the v3.11.0
+    /// parser). See V311-09 F-36 e2e tests in
+    /// `src/execution_engine_tests.rs::test_engine_grant_*`.
+    pub fn auth_manager_mut(&mut self) -> &mut AuthManager {
+        &mut self.auth_manager
+    }
+
     /// Create a new role.
     pub fn create_role(&mut self, name: &str, parent_role_id: Option<u64>) -> CatalogResult<u64> {
         self.auth_manager
