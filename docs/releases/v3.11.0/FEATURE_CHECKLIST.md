@@ -183,9 +183,9 @@ This document is the **SSOT** for v3.11.0's feature checklist, tracking 23 V311-
 | **总计** | **23** | **1** | **0** | **22** |
 
 ```
-完成度: 4.3% (1/23)
+完成度: 8.7% (2/23)
 总工作量: ~1156h
-ALPHA 起点: 2026-07-15 (DRAFT init)
+ALPHA 起点: 2026-07-15 (DRAFT init)\n- V311-13 完成: 2026-07-15
 GA 目标: 2026-10-01
 ```
 

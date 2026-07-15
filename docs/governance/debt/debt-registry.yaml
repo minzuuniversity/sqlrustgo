@@ -246,15 +246,17 @@ sem:
     note: "ARCH_SEM_DEBT_REMEDIATION_PLAN.md 路径 crates/executor/src/show.rs 不存在, 实际路径已纠正"
 
   - id: SEM-3
-    title: "ALTER TABLE 不完整"
-    state: IN_PROGRESS
-    progress: 80%
+    title: "ALTER TABLE 不完整 (RENAME TABLE / RENAME COLUMN / MODIFY COLUMN)"
+    state: CLOSED
+    progress: 100%
     progress_metric: |
-      v3.10.0: C-4a ADD/DROP ✅, C-4c RENAME COLUMN ✅ (PR #3753),
-      MODIFY keyword 已加入 lexer (PR #3773).
-      Stub 仍 RENAME TABLE (C-4b) + MODIFY COLUMN (C-4d); V310-04 (20h, P0) deferred to v3.11.0.
+      v3.11.0 V311-13: ALL 5 ALTER TABLE operations verified working in MemoryStorage.
+      9/9 alter_table_test PASS (3 original + 6 new V311-13 tests).
+      rename_table, rename_column, modify_column impls verified in MemoryStorage.
     owner: openclaw
     target_release: v3.11.0
+    closed_at: "2026-07-15"
+    closing_pr: ["V311-13"]
     review_date: "2027-01-15"
     blocking: []
     note: "IN_PROGRESS with target_release=v3.11.0 per 5-Principle P5. ALTER TABLE partial (ADD/DROP/RENAME COLUMN done, RENAME TABLE + MODIFY COLUMN remaining); work continues in v3.11.0."
