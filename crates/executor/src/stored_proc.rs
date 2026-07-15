@@ -2035,6 +2035,7 @@ impl StoredProcExecutor {
                 .map(|&x| x as char)
                 .collect::<String>()
                 .replace('\'', "''"),
+            Value::Point(x, y) => format!("POINT({}, {})", x, y),
         }
     }
 
