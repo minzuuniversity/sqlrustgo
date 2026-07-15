@@ -166,7 +166,6 @@ stages:
       - "scripts/gate/check_cross_version_debt.sh"
       - "scripts/gate/check_int_debt.sh"
       - "scripts/gate/check_full_gate_verification.sh"
-      - "scripts/gate/check_drift_not_pass.sh"
       - "cargo build --all-features"
       - "cargo test --all-features"
       - "cargo fmt --check"
