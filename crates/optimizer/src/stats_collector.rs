@@ -234,207 +234,24 @@ impl StatsCollector for StorageStatsCollector {
 mod tests {
     use super::*;
     use sqlrustgo_storage::engine::{
-        ColumnDefinition, Record, SqlError, SqlResult, StorageEngine, TableInfo,
+        ColumnDefinition, Record, SqlResult, StorageEngine, TableInfo,
     };
-    use std::collections::HashMap;
 
-    struct MockStorage {
-        tables: HashMap<String, Vec<Record>>,
-        table_infos: HashMap<String, TableInfo>,
-    }
-
-    impl MockStorage {
-        fn new() -> Self {
-            Self {
-                tables: HashMap::new(),
-                table_infos: HashMap::new(),
-            }
-        }
-
-        fn with_data(
-            mut self,
-            table: &str,
-            records: Vec<Record>,
-            columns: Vec<ColumnDefinition>,
-        ) -> Self {
-            self.tables.insert(table.to_string(), records);
-            let info = TableInfo {
-                name: table.to_string(),
-                columns,
-                table_foreign_keys: None,
-            };
-            self.table_infos.insert(table.to_string(), info);
-            self
-        }
-    }
-
-    impl StorageEngine for MockStorage {
-        fn scan(&self, table: &str) -> SqlResult<Vec<Record>> {
-            Ok(self.tables.get(table).cloned().unwrap_or_default())
-        }
-
-        fn insert(&mut self, _table: &str, _records: Vec<Record>) -> SqlResult<()> {
-            Ok(())
-        }
-
-        fn delete(&mut self, _table: &str, _filters: &[Value]) -> SqlResult<usize> {
-            Ok(0)
-        }
-
-        fn update(
-            &mut self,
-            _table: &str,
-            _filters: &[Value],
-            _updates: &[(usize, Value)],
-        ) -> SqlResult<usize> {
-            Ok(0)
-        }
-
-        fn create_table(&mut self, _info: &TableInfo) -> SqlResult<()> {
-            Ok(())
-        }
-
-        fn drop_table(&mut self, _table: &str) -> SqlResult<()> {
-            Ok(())
-        }
-
-        fn get_table_info(&self, table: &str) -> SqlResult<TableInfo> {
-            self.table_infos
-                .get(table)
-                .cloned()
-                .ok_or_else(|| SqlError::TableNotFound {
-                    table: table.to_string(),
-                })
-        }
-
-        fn has_table(&self, table: &str) -> bool {
-            self.tables.contains_key(table)
-        }
-
-        fn list_tables(&self) -> Vec<String> {
-            self.tables.keys().cloned().collect()
-        }
-
-        fn create_table_index(
-            &mut self,
-            _table: &str,
-            _column: &str,
-            _column_index: usize,
-        ) -> SqlResult<()> {
-            Ok(())
-        }
-
-        fn drop_table_index(&mut self, _table: &str, _column: &str) -> SqlResult<()> {
-            Ok(())
-        }
-
-        fn search_index(&self, _table: &str, _column: &str, _key: i64) -> Vec<u32> {
-            Vec::new()
-        }
-
-        fn get_row(&self, _table: &str, _row_index: usize) -> SqlResult<Option<Record>> {
-            Ok(None)
-        }
-
-        fn create_hash_index(
-            &mut self,
-            _table: &str,
-            _column: &str,
-            _slot_count: usize,
-        ) -> SqlResult<()> {
-            Ok(())
-        }
-
-        fn range_index(&self, _table: &str, _column: &str, _start: i64, _end: i64) -> Vec<u32> {
-            Vec::new()
-        }
-
-        fn create_view(&mut self, _info: sqlrustgo_storage::engine::ViewInfo) -> SqlResult<()> {
-            Ok(())
-        }
-
-        fn get_view(&self, _name: &str) -> Option<sqlrustgo_storage::engine::ViewInfo> {
-            None
-        }
-
-        fn list_views(&self) -> Vec<String> {
-            Vec::new()
-        }
-
-        fn has_view(&self, _name: &str) -> bool {
-            false
-        }
-
-        fn analyze_table(&self, _table: &str) -> SqlResult<sqlrustgo_storage::engine::TableStats> {
-            Ok(sqlrustgo_storage::engine::TableStats {
-                table_name: _table.to_string(),
-                row_count: 0,
-                column_stats: vec![],
-            })
-        }
-
-        fn create_trigger(
-            &mut self,
-            _info: sqlrustgo_storage::engine::TriggerInfo,
-        ) -> SqlResult<()> {
-            Ok(())
-        }
-
-        fn drop_trigger(&mut self, _name: &str) -> SqlResult<()> {
-            Ok(())
-        }
-
-        fn get_trigger(&self, _name: &str) -> Option<sqlrustgo_storage::engine::TriggerInfo> {
-            None
-        }
-
-        fn list_triggers(&self, _table: &str) -> Vec<sqlrustgo_storage::engine::TriggerInfo> {
-            Vec::new()
-        }
-
-        fn get_next_auto_increment(
-            &mut self,
-            _table: &str,
-            _column_index: usize,
-        ) -> SqlResult<i64> {
-            Ok(1)
-        }
-
-        fn get_auto_increment_counter(&self, _table: &str, _column_index: usize) -> SqlResult<i64> {
-            Ok(0)
-        }
-
-        fn create_composite_index(
-            &mut self,
-            _table: &str,
-            _columns: Vec<String>,
-        ) -> SqlResult<sqlrustgo_storage::engine::IndexId> {
-            Ok(sqlrustgo_storage::engine::IndexId(0))
-        }
-
-        fn search_composite_index(
-            &self,
-            _index_id: sqlrustgo_storage::engine::IndexId,
-            _key: &sqlrustgo_storage::bplus_tree::index::CompositeKey,
-        ) -> SqlResult<Vec<u32>> {
-            Ok(vec![])
-        }
-
-        fn range_composite_index(
-            &self,
-            _index_id: sqlrustgo_storage::engine::IndexId,
-            _start: &sqlrustgo_storage::bplus_tree::index::CompositeKey,
-            _end: &sqlrustgo_storage::bplus_tree::index::CompositeKey,
-        ) -> SqlResult<Vec<u32>> {
-            Ok(vec![])
-        }
-
-        fn get_referencing_foreign_keys(
-            &self,
-            _table: &str,
-        ) -> Vec<sqlrustgo_storage::engine::ReferencingForeignKey> {
-            Vec::new()
-        }
+    /// Helper: create a MemoryStorage pre-populated with test data
+    fn make_storage_with_data(
+        table: &str,
+        records: Vec<Record>,
+        columns: Vec<ColumnDefinition>,
+    ) -> sqlrustgo_storage::MemoryStorage {
+        let mut storage = sqlrustgo_storage::MemoryStorage::new();
+        let info = TableInfo {
+            name: table.to_string(),
+            columns,
+            table_foreign_keys: None,
+        };
+        storage.create_table(&info).unwrap();
+        storage.insert(table, records).unwrap();
+        storage
     }
 
     #[test]
@@ -466,7 +283,7 @@ mod tests {
                 compression: None,
             },
         ];
-        let storage = MockStorage::new().with_data("users", records, columns);
+        let storage = make_storage_with_data("users", records, columns);
 
         let result = collect_table_stats(&storage, "users");
         assert!(result.is_ok());
