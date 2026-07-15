@@ -317,10 +317,32 @@ f_xx_isolated:  # 测试自包含, 10 项 v3.9.0+ 集成; v3.10.0 中 F-16 主�
 
   - id: F-24
     title: "Adaptive Hash Index"
-    state: VERIFIED
-    progress: 7/7
-    progress_metric: "tests/adaptive_hash_index_test.rs 7/7 PASS, 孤岛"
+    state: IN_PROGRESS
+    progress: "60%"
+    owner: openclaw
     target_release: v3.11.0
+    progress_metric: |
+      v3.11.0 (V311-02 v1, fix/v311-02-f-24-adaptive-hash-index, 2026-07-15):
+      - AdaptiveHashIndex production storage landed in
+        crates/storage/src/adaptive_hash_index.rs (BTreeMap-backed,
+        parking_lot::RwLock-protected, full API: new / with_threshold /
+        record_access / lookup / invalidate_page / invalidate_table /
+        size / hit_rate / promoted_count / total_lookups / total_hits /
+        into_shared).
+      - 10 unit tests in storage crate PASS.
+      - ExecutionEngine exposes AHI via adaptive_hash_index() and
+        set_adaptive_hash_index() (same pattern as ClusteredTable
+        registry from V311-01).
+      - 4 engine-level integration tests PASS (default present,
+        record+lookup, invalidate, set custom).
+      - 610/610 storage lib tests PASS, 32/32 engine lib tests PASS, no
+        regression in any existing tests.
+      REMAINING (V311-02 v2, deferred):
+      - Wire AHI into secondary-index lookup path: BTreeIndex::scan
+        should call AHI.lookup() before traversing the B+ Tree.
+      - Record_access on every B+ Tree lookup (instrument call sites in
+        src/engine_select.rs / src/engine_dml.rs).
+      F-24 -> CLOSED when AHI is in the hot lookup path.
 
   - id: F-25
     title: "Change Buffer"
