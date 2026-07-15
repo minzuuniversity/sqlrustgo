@@ -1,5 +1,6 @@
 // SQLRustGo storage module
 
+pub mod adaptive_hash_index;
 pub mod backup;
 pub mod binary_format;
 pub mod binary_storage;
@@ -21,6 +22,9 @@ pub mod wal;
 pub mod wal_legacy;
 pub mod wal_storage;
 
+pub use adaptive_hash_index::{
+    AdaptiveHashIndex, IndexKey, PageLocation, DEFAULT_PROMOTION_THRESHOLD,
+};
 pub use binary_format::BinaryFormat;
 pub use binary_storage::{BinaryTableStorage, BoxStorageEngine};
 pub use bplus_tree::BPlusTree;

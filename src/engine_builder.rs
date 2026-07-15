@@ -11,6 +11,7 @@ use std::sync::Arc;
 
 use sqlrustgo_catalog::Catalog;
 use sqlrustgo_storage::{
+    adaptive_hash_index::AdaptiveHashIndex,
     recovery_engine::{RecoveryEngine, RecoveryEngineImpl, RecoveryReport, StatefulRecoveryEngine},
     wal::{FileBackedWalManager, MemoryWalManager},
     FileStorage, MemoryStorage, StorageEngine, WalStorage,
@@ -44,6 +45,7 @@ impl ExecutionEngine<MemoryStorage> {
             stmt_cache: sqlrustgo_cache::PreparedStatementCache::new(100),
             views: HashMap::new(),
             clustered_tables: parking_lot::RwLock::new(HashMap::new()),
+            adaptive_hash_index: AdaptiveHashIndex::new().into_shared(),
         }
     }
 
@@ -66,6 +68,7 @@ impl ExecutionEngine<MemoryStorage> {
             stmt_cache: sqlrustgo_cache::PreparedStatementCache::new(100),
             views: HashMap::new(),
             clustered_tables: parking_lot::RwLock::new(HashMap::new()),
+            adaptive_hash_index: AdaptiveHashIndex::new().into_shared(),
         }
     }
 
@@ -88,6 +91,7 @@ impl ExecutionEngine<MemoryStorage> {
             stmt_cache: sqlrustgo_cache::PreparedStatementCache::new(100),
             views: HashMap::new(),
             clustered_tables: parking_lot::RwLock::new(HashMap::new()),
+            adaptive_hash_index: AdaptiveHashIndex::new().into_shared(),
         }
     }
 }
@@ -121,6 +125,7 @@ impl ExecutionEngine<MemoryStorage> {
             stmt_cache: sqlrustgo_cache::PreparedStatementCache::new(100),
             views: HashMap::new(),
             clustered_tables: parking_lot::RwLock::new(HashMap::new()),
+            adaptive_hash_index: AdaptiveHashIndex::new().into_shared(),
         }
     }
 }
@@ -159,6 +164,7 @@ impl ExecutionEngine<MemoryStorage> {
             stmt_cache: sqlrustgo_cache::PreparedStatementCache::new(100),
             views: HashMap::new(),
             clustered_tables: parking_lot::RwLock::new(HashMap::new()),
+            adaptive_hash_index: AdaptiveHashIndex::new().into_shared(),
         })
     }
 
@@ -192,6 +198,7 @@ impl ExecutionEngine<MemoryStorage> {
             stmt_cache: sqlrustgo_cache::PreparedStatementCache::new(100),
             views: HashMap::new(),
             clustered_tables: parking_lot::RwLock::new(HashMap::new()),
+            adaptive_hash_index: AdaptiveHashIndex::new().into_shared(),
         })
     }
 
@@ -226,6 +233,7 @@ impl ExecutionEngine<MemoryStorage> {
             stmt_cache: sqlrustgo_cache::PreparedStatementCache::new(100),
             views: HashMap::new(),
             clustered_tables: parking_lot::RwLock::new(HashMap::new()),
+            adaptive_hash_index: AdaptiveHashIndex::new().into_shared(),
         })
     }
 
