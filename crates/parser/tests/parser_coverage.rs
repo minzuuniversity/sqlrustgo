@@ -255,7 +255,7 @@ fn t_create_database_rejected() {
 }
 #[test]
 fn t_drop_database_rejected() {
-    let result = parse("DROP DATABASE mydb");
+    let _ = parse("DROP DATABASE mydb");
 }
 
 // --- Window function ROWS/RANGE clauses (not supported by parser yet — reject) ---
