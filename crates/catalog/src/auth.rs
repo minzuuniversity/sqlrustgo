@@ -782,6 +782,26 @@ impl AuthManager {
             .record_password_change(&user_key, password_hash);
         Ok(())
     }
+    /// Set or change a user's password hash (updates password_changed_at, clears expired flag)
+    pub fn set_password_hash(
+        &mut self,
+        identity: &UserIdentity,
+        password_hash: &str,
+    ) -> AuthResult<()> {
+        let user = self.users.get_mut(identity).ok_or_else(|| AuthError {
+            code: AuthErrorCode::UserNotFound,
+            message: format!("User '{}'@'{}' not found", identity.username, identity.host),
+        })?;
+
+        user.password_hash = password_hash.to_string();
+        user.password_changed_at = current_timestamp();
+        user.password_expired = false;
+
+        let user_key = format!("{}@{}", identity.username, identity.host);
+        self.password_rotation
+            .record_password_change(&user_key, password_hash);
+        Ok(())
+    }
 
     pub fn find_exact_user(&self, identity: &UserIdentity) -> Option<&UserAuthInfo> {
         self.users.get(&identity.normalize())
@@ -1374,17 +1394,6 @@ impl AuthManager {
 
     // === Password Rotation ===
 
-    /// Whether the given user's password is expired (age-based or manual)
-    pub fn is_password_expired(&self, identity: &UserIdentity) -> bool {
-        let user_key = format!("{}@{}", identity.username, identity.host);
-        let manual_expired = self
-            .users
-            .get(identity)
-            .map(|u| u.password_expired)
-            .unwrap_or(false);
-        manual_expired || self.password_rotation.is_age_expired(&user_key)
-    }
-
     /// Mark a user's password as expired (ALTER USER ... PASSWORD EXPIRE)
     pub fn expire_password(&mut self, identity: &UserIdentity) {
         let user_key = format!("{}@{}", identity.username, identity.host);
@@ -1396,12 +1405,20 @@ impl AuthManager {
         self.password_rotation.expire_now(&user_key);
     }
 
-    /// Whether a user can reuse a password (not in history)
-    pub fn can_reuse_password(&self, identity: &UserIdentity, password_hash: &str) -> bool {
+    /// Whether the given user's password is expired (age-based or manual)
+    pub fn is_password_expired(&self, identity: &UserIdentity) -> bool {
         let user_key = format!("{}@{}", identity.username, identity.host);
-        self.password_rotation.can_reuse(&user_key, password_hash)
+        // If policy enforcement is disabled, never consider expired
+        if !self.password_rotation.policy().enforce_on_write {
+            return false;
+        }
+        let manual_expired = self
+            .users
+            .get(identity)
+            .map(|u| u.password_expired)
+            .unwrap_or(false);
+        manual_expired || self.password_rotation.is_age_expired(&user_key)
     }
-
     /// Get current password policy
     pub fn password_policy(&self) -> PasswordPolicy {
         self.password_rotation.policy()
@@ -1410,6 +1427,11 @@ impl AuthManager {
     /// Update password policy at runtime
     pub fn set_password_policy(&mut self, policy: PasswordPolicy) {
         self.password_rotation.set_policy(policy);
+    }
+    /// Whether a user can reuse a password (not in history)
+    pub fn can_reuse_password(&self, identity: &UserIdentity, password_hash: &str) -> bool {
+        let user_key = format!("{}@{}", identity.username, identity.host);
+        self.password_rotation.can_reuse(&user_key, password_hash)
     }
 
     /// Whether writes should be blocked for this user due to expired password
