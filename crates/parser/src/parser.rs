@@ -76,6 +76,7 @@ pub enum Statement {
     /// executed with the CTE tables materialized.
     WithDml(WithDmlStatement),
     AlterTable(AlterTableStatement),
+    AlterUser(AlterUserStatement),
     Call(CallStatement),
     CreateProcedure(CreateProcedureStatement),
     Union(UnionStatement),
@@ -186,12 +187,26 @@ pub struct DropIndexStatement {
     pub name: String,
     pub if_exists: bool,
 }
-
 /// ALTER TABLE statement
 #[derive(Debug, Clone, PartialEq)]
 pub struct AlterTableStatement {
     pub table_name: String,
     pub operation: AlterTableOperation,
+}
+
+/// ALTER USER statement
+#[derive(Debug, Clone, PartialEq)]
+pub struct AlterUserStatement {
+    /// Username for the ALTER USER statement
+    pub user: String,
+    /// Host for the ALTER USER statement (e.g., 'localhost', '%')
+    pub host: String,
+    /// Whether this is a PASSWORD EXPIRE operation
+    pub password_expire: bool,
+    /// Whether this is an IDENTIFIED BY operation (password change)
+    pub password_change: bool,
+    /// New password hash if IDENTIFIED BY is specified
+    pub new_password_hash: Option<String>,
 }
 
 /// ALTER TABLE operation types
@@ -1536,7 +1551,16 @@ impl Parser {
             Some(Token::Use) => self.parse_use_database(),
             Some(Token::Analyze) => self.parse_analyze(),
             Some(Token::With) => self.parse_with_select(),
-            Some(Token::Alter) => self.parse_alter_table(),
+            Some(Token::Alter) => {
+                // Peek ahead: ALTER USER vs ALTER TABLE
+                // ALTER USER: next token is StringLiteral/Identifier (user) or Token::User keyword
+                match self.peek() {
+                    Some(&Token::StringLiteral(_))
+                    | Some(&Token::Identifier(_))
+                    | Some(&Token::User) => self.parse_alter_user(),
+                    _ => self.parse_alter_table(),
+                }
+            }
             Some(Token::Call) => self.parse_call(),
             // SEM-1 (#3172): Rollback is now dispatched via the SAVEPOINT
             // arms below. The `parse_transaction` group no longer
@@ -7870,6 +7894,79 @@ impl Parser {
             args,
         }))
     }
+    /// Parse ALTER USER statement
+    /// Supports: ALTER USER 'username' 'host' PASSWORD EXPIRE
+    ///          ALTER USER 'username' 'host' IDENTIFIED BY 'password'
+    fn parse_alter_user(&mut self) -> Result<Statement, String> {
+        self.expect(Token::Alter)?;
+        self.expect(Token::User)?;
+
+        // Parse username (string literal or identifier)
+        let user = match self.next() {
+            Some(Token::StringLiteral(s)) => s,
+            Some(Token::Identifier(s)) => s,
+            Some(t) => {
+                return Err(format!(
+                    "Expected username (string or identifier), got {:?}",
+                    t
+                ))
+            }
+            None => return Err("Unexpected end of input".to_string()),
+        };
+
+        // Parse host (string literal or identifier, or default to 'localhost')
+        let host = match self.current() {
+            Some(Token::StringLiteral(s)) => {
+                let h = s.clone();
+                self.next();
+                h
+            }
+            Some(Token::Identifier(s)) => {
+                let h = s.clone();
+                self.next();
+                h
+            }
+            _ => "localhost".to_string(),
+        };
+
+        let mut password_expire = false;
+        let mut password_change = false;
+        let mut new_password_hash = None;
+
+        match self.current() {
+            Some(Token::Password) => {
+                self.next();
+                self.expect(Token::Expire)?;
+                password_expire = true;
+            }
+            Some(Token::Identified) => {
+                self.next();
+                self.expect(Token::By)?;
+                password_change = true;
+                new_password_hash = match self.next() {
+                    Some(Token::StringLiteral(s)) => Some(s),
+                    Some(Token::Identifier(s)) => Some(s),
+                    Some(t) => {
+                        return Err(format!(
+                            "Expected password (string or identifier), got {:?}",
+                            t
+                        ))
+                    }
+                    None => return Err("Unexpected end of input".to_string()),
+                };
+            }
+            Some(t) => return Err(format!("Unexpected token in ALTER USER: {:?}", t)),
+            None => {}
+        }
+
+        Ok(Statement::AlterUser(AlterUserStatement {
+            user,
+            host,
+            password_expire,
+            password_change,
+            new_password_hash,
+        }))
+    }
 
     fn parse_alter_table(&mut self) -> Result<Statement, String> {
         self.expect(Token::Alter)?;
@@ -8892,6 +8989,65 @@ mod tests {
                 assert_eq!(table, "users");
             }
             _ => panic!("Expected DESC users statement"),
+        }
+    }
+    #[test]
+    fn test_parse_alter_user_password_expire() {
+        let result = parse("ALTER USER 'alice' 'localhost' PASSWORD EXPIRE");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        match result.unwrap() {
+            Statement::AlterUser(u) => {
+                assert_eq!(u.user, "alice");
+                assert_eq!(u.host, "localhost");
+                assert!(u.password_expire);
+                assert!(!u.password_change);
+                assert!(u.new_password_hash.is_none());
+            }
+            _ => panic!("Expected ALTER USER statement"),
+        }
+    }
+
+    #[test]
+    fn test_parse_alter_user_password_expire_default_host() {
+        let result = parse("ALTER USER 'alice' PASSWORD EXPIRE");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        match result.unwrap() {
+            Statement::AlterUser(u) => {
+                assert_eq!(u.user, "alice");
+                assert_eq!(u.host, "localhost");
+                assert!(u.password_expire);
+            }
+            _ => panic!("Expected ALTER USER statement"),
+        }
+    }
+
+    #[test]
+    fn test_parse_alter_user_password_expire_wildcard_host() {
+        let result = parse("ALTER USER 'alice' '%' PASSWORD EXPIRE");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        match result.unwrap() {
+            Statement::AlterUser(u) => {
+                assert_eq!(u.user, "alice");
+                assert_eq!(u.host, "%");
+                assert!(u.password_expire);
+            }
+            _ => panic!("Expected ALTER USER statement"),
+        }
+    }
+
+    #[test]
+    fn test_parse_alter_user_identified_by() {
+        let result = parse("ALTER USER 'alice' 'localhost' IDENTIFIED BY 'newpassword'");
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        match result.unwrap() {
+            Statement::AlterUser(u) => {
+                assert_eq!(u.user, "alice");
+                assert_eq!(u.host, "localhost");
+                assert!(!u.password_expire);
+                assert!(u.password_change);
+                assert_eq!(u.new_password_hash, Some("newpassword".to_string()));
+            }
+            _ => panic!("Expected ALTER USER statement"),
         }
     }
 
