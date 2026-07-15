@@ -223,4 +223,38 @@ mod tests {
         assert!(ct.delete_pk(&Value::Integer(1)));
         assert_eq!(ct.len(), 0);
     }
+
+    #[test]
+    fn test_clustered_table_len_and_is_empty() {
+        let mut ct = ClusteredTable::new(make_info(), 0);
+        assert!(ct.is_empty());
+        assert_eq!(ct.len(), 0);
+    }
+
+    #[test]
+    fn test_clustered_table_full_scan() {
+        let mut ct = ClusteredTable::new(make_info(), 0);
+        ct.insert(vec![Value::Integer(1), Value::Integer(10)]).unwrap();
+        ct.insert(vec![Value::Integer(2), Value::Integer(20)]).unwrap();
+        let all = ct.full_scan();
+        assert_eq!(all.len(), 2);
+    }
+
+    #[test]
+    fn test_clustered_table_update_not_found() {
+        let mut ct = ClusteredTable::new(make_info(), 0);
+        let result = ct.update_pk(&Value::Integer(999), vec![Value::Integer(999), Value::Integer(99)]);
+        assert!(result.is_ok());
+        assert!(!result.unwrap()); // returns false when pk not found
+    }
+
+    #[test]
+    fn test_clustered_table_range_scan() {
+        let mut ct = ClusteredTable::new(make_info(), 0);
+        ct.insert(vec![Value::Integer(10), Value::Integer(100)]).unwrap();
+        ct.insert(vec![Value::Integer(20), Value::Integer(200)]).unwrap();
+        ct.insert(vec![Value::Integer(30), Value::Integer(300)]).unwrap();
+        let results = ct.range_scan_pk(&Value::Integer(15), &Value::Integer(25));
+        assert_eq!(results.len(), 1);
+    }
 }
