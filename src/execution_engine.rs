@@ -178,6 +178,15 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             adaptive_hash_index: AdaptiveHashIndex::new().into_shared(),
         }
     }
+    /// Get a handle to the shared Adaptive Hash Index used for hot-page tracking.
+    /// V311-02 v2: the AHI is wired into production code via WHERE pk = ? hooks
+    /// (see `src/engine_select.rs::filter_partitions_parallel`). Production queries
+    /// call `ahi().record_access(table, key, page_id, offset)` for every
+    /// primary-key access, and warm entries surface via `ahi().lookup(...)`.
+    pub fn ahi(&self) -> &Arc<AdaptiveHashIndex> {
+        &self.adaptive_hash_index
+    }
+
     /// Create a new execution engine with CBO enabled by default
     pub fn new(storage: Arc<parking_lot::RwLock<S>>) -> Self {
         Self::base_with(storage, true)
