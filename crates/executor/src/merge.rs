@@ -1068,6 +1068,7 @@ mod tests {
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
+                compression: None,
             partition_info: None,
         };
         assert_eq!(find_column_index("t.id", &info), Some(0));
@@ -1081,6 +1082,7 @@ mod tests {
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
+                compression: None,
             partition_info: None,
         };
         assert_eq!(find_column_index("id", &info), Some(0));
@@ -1094,6 +1096,7 @@ mod tests {
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
+                compression: None,
             partition_info: None,
         };
         assert_eq!(find_column_index("mycol", &info), Some(0));
@@ -1107,6 +1110,7 @@ mod tests {
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
+                compression: None,
             partition_info: None,
         };
         assert_eq!(find_column_index("name", &info), None);
