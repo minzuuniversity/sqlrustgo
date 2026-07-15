@@ -44,56 +44,52 @@ cargo llvm-cov test --no-clean --ignore-run-fail --workspace
 
 ---
 
-## 2. Current Coverage Snapshot (2026-07-15)
+## 2. Coverage Snapshot (2026-07-15 FINAL)
 
-### ≥85% Target (9/23 packages)
+**Overall workspace: 79.00% (84,613 / 106,464 lines)**
 
-| Package | Line % | Missed | Target | Status |
-|---------|--------:|-------:|--------|:------:|
-| sqlrustgo-network | 100.00% | 42 | ≥85% | ✅ |
-| sqlrustgo-cache | 99.47% | 27 | ≥85% | ✅ |
-| sqlrustgo-telemetry | 96.67% | 60 | ≥85% | ✅ |
-| sqlrustgo-wal-verification | 97.20% | 84 | ≥85% | ✅ |
-| sqlrustgo-types | 91.16% | 121 | ≥85% | ✅ |
-| sqlrustgo-common | 89.17% | 192 | ≥85% | ✅ |
-| sqlrustgo-optimizer | 88.23% | 404 | ≥85% | ✅ |
-| sqlrustgo-planner | 86.75% | 212 | ≥85% | ✅ |
-| sqlrustgo-transaction | 85.41% | 308 | ≥85% | ✅ |
-| sqlrustgo-server | 85.00% | 178 | ≥85% | ✅ |
-| sqlrustgo-catalog | 85.19% | 476 | ≥85% | ✅ |
+### ≥85% SEM-4 Target (13/21 packages) ✅
+
+| Package | Line % | Missed | Status |
+|---------|--------|-------:|:------:|
+| sqlrustgo-network | 100.00% | 0 | ✅ |
+| sqlrustgo-cache | 99.47% | 2 | ✅ |
+| sqlrustgo-wal-verification | 97.20% | 28 | ✅ |
+| sqlrustgo-telemetry | 96.67% | 24 | ✅ |
+| sqlrustgo-types | 92.57% | 92 | ✅ |
+| sqlrustgo-common | 89.17% | 230 | ✅ |
+| sqlrustgo-optimizer | 88.23% | 644 | ✅ |
+| sqlrustgo-planner | 87.20% | 325 | ✅ |
+| sqlrustgo-transaction | 85.41% | 590 | ✅ |
+| sqlrustgo-storage | 85.92% | 3442 | ✅ |
+| sqlrustgo-security | 85.15% | 438 | ✅ |
+| sqlrustgo-catalog | 85.19% | 897 | ✅ |
+| sqlrustgo-server | 85.00% | 286 | ✅ |
 
 ### 80–84% (1 package — GA gate OK, SEM-4 gap)
 
-| Package | Line % | Missed | Target | Gap |
-|---------|--------:|-------:|--------:|-----:|
-| sqlrustgo-storage | 83.50% | 1763 | ≥85% | ~247 lines |
-| sqlrustgo-server | 83.10% | 171 | ≥85% | ~137 lines |
+| Package | Line % | Missed | GA | Gap to 85% |
+|---------|--------|-------:|:---:|----------:|
+| sqlrustgo-executor | 82.15% | 4109 | ✅ | ~655 lines |
 
-### <80% (12 packages)
+### <80% (7 packages — structural blockers)
 
-| Package | Line % | Missed | Priority | Primary Blocker |
-|---------|--------:|-------:|:--------:|-----------------|
-| sqlrustgo-executor | 81.63% | 1431 | ≥80% GA | ⚠️ |
-| sqlrustgo-security | 78.85% | 242 | P2 | Auth/encryption paths need fixtures |
-| sqlrustgo-sql-corpus | 75.16% | 79 | P2 | SQL parsing corpus utilities |
-| sqlrustgo-admin | 65.41% | 127 | P1 | `wire_client.rs` needs live MySQL (5.6% coverage, 33 missed lines); `verify.rs` 91% |
-| sqlrustgo-parser | 71.15% | 693 | P1 | `test_parse_create_procedure_inout_params` pre-existing compile failure; many SQL variants fail to parse |
-| sqlrustgo-mysql-server | 40.28% | 323 | P1 | `lib.rs` `do_command_loop` needs live MySQL client; `Error` handling paths |
-| sqlrustgo-tools | 59.68% | 127 | P2 | `upgrade.rs` (799 lines) and `backup_restore.rs` (457 lines) |
-| sqlrustgo-mysql-client | 31.56% | 26 | P2 | Protocol-level code needs integration tests |
-| sqlrustgo-cli | 0.00% | 10 | P3 | Binary smoke tests don't instrument code |
-| sqlrustgo (root) | BUILD ERROR | — | P0 | `TableInfo` compression field missing in 33 test files |
-| sqlrustgo-gis | BUILD ERROR | — | P2 | Missing `Value::Point` match arms in GIS tests |
-| sqlrustgo-bench | N/A | — | — | Benchmark crate, not measured |
+| Package | Line % | Missed | Blocker |
+|---------|--------|-------:|---------|
+| sqlrustgo-sql-corpus | 75.16% | 377 | Rust `#[cfg(test)]` cannot nest inside trait impl |
+| sqlrustgo-parser | 75.56% | 3953 | Pre-existing compile failure: `test_parse_create_procedure_inout_params` |
+| sqlrustgo-admin | 65.41% | 823 | `wire_client.rs` needs live MySQL connection |
+| sqlrustgo-mysql-server | 40.28% | 3540 | `do_command_loop` needs live MySQL client |
+| sqlrustgo-tools | 59.94% | 1108 | `upgrade.rs` (799 lines) API complexity |
+| sqlrustgo-mysql-client | 31.56% | 619 | Protocol-level code needs integration tests |
+| sqlrustgo-cli | 0.00% | 318 | Binary smoke tests don't instrument |
 
-### Build Errors Blocking Measurement
+### Build Errors (Not Measured)
 
-| Package | Error | Fix |
-|---------|-------|-----|
-| `sqlrustgo` (root) | Missing `compression: None` in 33 `TableInfo` initializers; `Value::Point` exhaustive match in `cross_path_consistency_test.rs` | Partially fixed in `fix/v311-14-sem4-common-coverage`; remaining files have `ExecutionEngine` generic errors |
-| `sqlrustgo-gis` | Missing `Value::Point` arms in GIS test match statements | Pre-existing F-03 GIS issue |
-
----
+| Package | Error | Status |
+|---------|-------|--------|
+| `sqlrustgo` (root) | 33 files missing `compression: None` in `TableInfo`; `Value::Point` exhaustive match | Partially fixed in PR #3555, residual errors remain |
+| `sqlrustgo-gis` | Missing `Value::Point` match arms | Pre-existing F-03 GIS issue |
 
 ## 3. Integration / E2E Test Guidelines
 
