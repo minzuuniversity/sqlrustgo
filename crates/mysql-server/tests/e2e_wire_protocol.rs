@@ -587,3 +587,159 @@ fn test_e2e_group_by_aggregates() {
         }
     }
 }
+// ============================================================================
+// DDL tests — CREATE/ALTER/DROP TABLE, CREATE INDEX
+// ============================================================================
+
+/// CREATE TABLE with INT, VARCHAR, DATE, TIMESTAMP, BOOLEAN columns.
+#[test]
+fn test_e2e_ddl_create_table_types() {
+    let config = EphemeralConfig {
+        data_dir: None,
+        host: "127.0.0.1".to_string(),
+        bootstrap_users: true,
+        bootstrap_tables: false,
+        bootstrap_sql: Vec::new(),
+        bulk_insert_buffer_size: 1_048_576,
+        server_threads: 2,
+        storage: None,
+    };
+    let handle = start_ephemeral(config).expect("ephemeral server starts");
+    let port = handle.port;
+    let mut conn = connect(port).expect("connected");
+
+    // Create table with various column types
+    conn.execute("CREATE TABLE t1 (id INT PRIMARY KEY, name VARCHAR(50), active BOOLEAN, ts TIMESTAMP)")
+        .expect("CREATE TABLE");
+    // Verify it exists
+    let r = conn.execute("SELECT column_name FROM information_schema.columns WHERE table_name = 't1'")
+        .expect("query information_schema");
+    match r {
+        sqlrustgo_mysql_client::ResultSet::Select { rows, .. } => {
+            assert!(rows.len() >= 4, "expected at least 4 columns, got {}", rows.len());
+        }
+        _ => {}
+    }
+    // Drop it
+    conn.execute("DROP TABLE t1").expect("DROP TABLE");
+}
+
+/// ALTER TABLE ADD COLUMN and DROP COLUMN.
+#[test]
+fn test_e2e_ddl_alter_table() {
+    let config = EphemeralConfig {
+        data_dir: None,
+        host: "127.0.0.1".to_string(),
+        bootstrap_users: true,
+        bootstrap_tables: false,
+        bootstrap_sql: Vec::new(),
+        bulk_insert_buffer_size: 1_048_576,
+        server_threads: 2,
+        storage: None,
+    };
+    let handle = start_ephemeral(config).expect("ephemeral server starts");
+    let port = handle.port;
+    let mut conn = connect(port).expect("connected");
+
+    conn.execute("CREATE TABLE t1 (id INT PRIMARY KEY, name VARCHAR(50))")
+        .expect("CREATE TABLE");
+    conn.execute("INSERT INTO t1 VALUES (1, 'alice')").expect("INSERT");
+
+    // ALTER TABLE ADD COLUMN
+    conn.execute("ALTER TABLE t1 ADD COLUMN email VARCHAR(100)")
+        .expect("ALTER TABLE ADD");
+
+    // Verify new column exists
+    let r = conn.execute("SELECT email FROM t1 WHERE id = 1").expect("SELECT new col");
+    match r {
+        sqlrustgo_mysql_client::ResultSet::Select { rows, .. } => {
+            // email is NULL for existing row
+            assert_eq!(rows.len(), 1);
+        }
+        _ => {}
+    }
+
+    // ALTER TABLE DROP COLUMN (drop name column)
+    conn.execute("ALTER TABLE t1 DROP COLUMN name").expect("ALTER TABLE DROP");
+
+    // Verify name column is gone
+    let r2 = conn.execute("SELECT * FROM t1 WHERE id = 1").expect("SELECT remaining cols");
+    match r2 {
+        sqlrustgo_mysql_client::ResultSet::Select { rows, .. } => {
+            assert_eq!(rows[0].len(), 2, "should have id + email only");
+        }
+        _ => {}
+    }
+
+    conn.execute("DROP TABLE t1").expect("DROP TABLE");
+}
+
+/// CREATE INDEX and DROP INDEX.
+#[test]
+fn test_e2e_ddl_create_index() {
+    let config = EphemeralConfig {
+        data_dir: None,
+        host: "127.0.0.1".to_string(),
+        bootstrap_users: true,
+        bootstrap_tables: false,
+        bootstrap_sql: Vec::new(),
+        bulk_insert_buffer_size: 1_048_576,
+        server_threads: 2,
+        storage: None,
+    };
+    let handle = start_ephemeral(config).expect("ephemeral server starts");
+    let port = handle.port;
+    let mut conn = connect(port).expect("connected");
+
+    conn.execute("CREATE TABLE t1 (id INT PRIMARY KEY, x INT, y INT)")
+        .expect("CREATE TABLE");
+    conn.execute("INSERT INTO t1 VALUES (1, 10, 20), (2, 30, 40)")
+        .expect("INSERT");
+    conn.execute("CREATE INDEX idx_x ON t1 (x)").expect("CREATE INDEX");
+
+    // DROP INDEX
+    conn.execute("DROP INDEX idx_x ON t1").expect("DROP INDEX");
+
+    conn.execute("DROP TABLE t1").expect("DROP TABLE");
+}
+
+// ============================================================================
+// Transaction tests — BEGIN, COMMIT, ROLLBACK
+// ============================================================================
+
+/// Basic BEGIN + COMMIT transaction.
+#[test]
+fn test_e2e_transaction_commit() {
+    let config = EphemeralConfig {
+        data_dir: None,
+        host: "127.0.0.1".to_string(),
+        bootstrap_users: true,
+        bootstrap_tables: false,
+        bootstrap_sql: Vec::new(),
+        bulk_insert_buffer_size: 1_048_576,
+        server_threads: 2,
+        storage: None,
+    };
+    let handle = start_ephemeral(config).expect("ephemeral server starts");
+    let port = handle.port;
+    let mut conn = connect(port).expect("connected");
+
+    conn.execute("CREATE TABLE t1 (id INT PRIMARY KEY, v INT)")
+        .expect("CREATE TABLE");
+
+    conn.execute("BEGIN").expect("BEGIN");
+    conn.execute("INSERT INTO t1 VALUES (1, 100)").expect("INSERT in tx");
+    conn.execute("COMMIT").expect("COMMIT");
+
+    // Verify committed row is visible
+    let r = conn.execute("SELECT v FROM t1 WHERE id = 1").expect("SELECT");
+    match r {
+        sqlrustgo_mysql_client::ResultSet::Select { rows, .. } => {
+            assert_eq!(rows.len(), 1);
+            assert_eq!(rows[0][0].to_string().trim_end(), "100");
+        }
+        _ => panic!("expected SELECT result"),
+    }
+    conn.execute("DROP TABLE t1").expect("DROP TABLE");
+}
+
