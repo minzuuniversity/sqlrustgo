@@ -3307,22 +3307,25 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         let mut qualifying_keys: std::collections::HashSet<Value> =
             std::collections::HashSet::with_capacity(rows.len());
         let mut qualifying_rows: Vec<Vec<Value>> = Vec::with_capacity(rows.len());
+        // V311-15 perf: per-key bucket index for O(1) lookup in the
+        // fast path. TPC-H Q4's biggest cost was that pre_eval_exists_indexed
+        // iterated ALL qualifying rows per outer row, making it
+        // O(outer × qualifying_rows).
+        let mut key_to_rows: std::collections::HashMap<Value, Vec<Vec<Value>>> =
+            std::collections::HashMap::with_capacity(rows.len());
         for row in rows {
             if eval_predicate(&static_predicate, &row, &table_info) {
-                qualifying_keys.insert(row[col_idx].clone());
-                qualifying_rows.push(row);
+                let key = row[col_idx].clone();
+                qualifying_keys.insert(key.clone());
+                qualifying_rows.push(row.clone());
+                key_to_rows.entry(key).or_default().push(row);
             }
         }
-        // The "residual" is what split_outer_equality_with_table
-        // returned in static_predicate. A future improvement could
-        // decompose it into pure-static (filter at build) and
-        // outer-ref (re-evaluate per row) parts; for the current
-        // TPC-H Q21 workload the static_predicate IS the residual
-        // and is re-evaluated per outer row below.
         Some(SubqueryIndex {
             col_idx,
             qualifying_keys,
             qualifying_rows,
+            key_to_rows,
             residual: *static_predicate,
         })
     }
@@ -3511,16 +3514,25 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         if !index.qualifying_keys.contains(&lit) {
             return Some(false);
         }
-        // Re-evaluate the residual predicate against each
-        // qualifying inner row whose key column matches. If any
-        // match, the EXISTS subquery would return ≥1 row, so
-        // EXISTS is true. (The caller handles the NOT EXISTS
-        // inversion.)
-        for inner in &index.qualifying_rows {
+        // V311-15 perf: use the per-key bucket for O(1) lookup
+        // instead of scanning all qualifying_rows. TPC-H Q4-style
+        // queries (pure-static residual) skip per-row residual
+        // re-evaluation entirely; TPC-H Q21-style queries
+        // (outer-substituted residual) iterate ONLY the matching
+        // bucket instead of all qualifying rows.
+        let bucket = match index.key_to_rows.get(&lit) {
+            Some(b) => b,
+            None => return Some(false),
+        };
+        if !Self::residual_has_outer_ref(&index.residual) {
+            // Pure-static residual was already evaluated at build
+            // time; any row in the bucket passed, so EXISTS = true.
+            return Some(!bucket.is_empty());
+        }
+        // Slow path: residual references outer columns
+        // (TPC-H Q21-style). Re-evaluate per bucket row.
+        for inner in bucket {
             if inner.len() <= index.col_idx {
-                continue;
-            }
-            if inner[index.col_idx] != lit {
                 continue;
             }
             let substituted =
@@ -3530,6 +3542,29 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             }
         }
         Some(false)
+    }
+
+    /// V311-15 helper: does the residual predicate reference any outer
+    /// (correlated) columns? If not, it is purely static over the inner
+    /// rows and can be evaluated once at build time; we then know any
+    /// row in `key_to_rows[literal]` passes the residual, so EXISTS =
+    /// true iff the bucket is non-empty. This avoids the per-outer-row
+    /// re-evaluation that was killing Q4 performance.
+    fn residual_has_outer_ref(residual: &sqlrustgo_parser::Expression) -> bool {
+        use sqlrustgo_parser::Expression;
+        match residual {
+            Expression::Identifier(_) | Expression::Literal(_) => false,
+            Expression::BinaryOp(l, _, r) => {
+                Self::residual_has_outer_ref(l) || Self::residual_has_outer_ref(r)
+            }
+            Expression::UnaryOp(_, inner) => Self::residual_has_outer_ref(inner),
+            // IS NULL / IS NOT NULL predicate on a column - outer
+            // ref would be inside `inner` so we recurse.
+            Expression::IsNull(inner) | Expression::IsNotNull(inner) => {
+                Self::residual_has_outer_ref(inner)
+            }
+            _ => true, // Conservative default for Subquery etc.
+        }
     }
 
     /// TPC-H Q13 fix: pre-evaluate non-correlated `IN (subquery)` /
@@ -3913,7 +3948,19 @@ pub struct SubqueryIndex {
     /// `qualifying_keys`-only design silently dropped the residual
     /// for TPC-H Q21's `l3.l_receiptdate > l3.l_commitdate AND
     /// l3.l_suppkey <> l1.l_suppkey`.)
+    ///
+    /// V311-15 perf: superset of `key_to_rows[key]`. Kept for
+    /// backwards compatibility with code that does a flat scan
+    /// (which is now the slow path and only matters when the
+    /// residual has outer refs, e.g. TPC-H Q21).
     pub qualifying_rows: Vec<Vec<Value>>,
+    /// V311-15 perf: keyed bucket index. `key_to_rows[key]`
+    /// contains ALL rows with that key value. For TPC-H Q4
+    /// (`EXISTS (SELECT ... WHERE l_orderkey = outer_key AND
+    /// l_commitdate < l_receiptdate)`), this turns the inner
+    /// scan from O(outer × inner) = 450K × 3M = 1.35T ops to
+    /// O(outer × avg_bucket_size).
+    pub key_to_rows: std::collections::HashMap<Value, Vec<Vec<Value>>>,
     /// The portion of the WHERE clause that references outer
     /// columns (e.g. `l3.l_suppkey <> l1.l_suppkey AND
     /// l3.l_receiptdate > l3.l_commitdate` for Q21's NOT EXISTS).
