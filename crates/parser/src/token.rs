@@ -548,7 +548,7 @@ pub fn from_keyword(s: &str) -> Option<Token> {
         "ANALYZE" => Some(Token::Analyze),
         "TRUNCATE" => Some(Token::Truncate),
         "REPLACE" => Some(Token::Replace),
-            "IGNORE" => Some(Token::Ignore),
+        "IGNORE" => Some(Token::Ignore),
         "DUPLICATE" => Some(Token::Duplicate),
         "MODIFY" => Some(Token::Modify),
         "DATABASE" => Some(Token::Database),

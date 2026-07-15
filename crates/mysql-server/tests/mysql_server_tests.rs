@@ -207,7 +207,7 @@ fn test_replace_placeholders_basic() {
 
     let sql = "SELECT * FROM t WHERE id = ? AND name = ?";
     let params: &[StmtParam] = &[
-        (b"42".to_vec(), true),   // numeric
+        (b"42".to_vec(), true),     // numeric
         (b"Alice".to_vec(), false), // string
     ];
     let result = replace_placeholders(sql, params);
@@ -434,5 +434,3 @@ fn test_parse_stmt_execute_params_null_param() {
     assert_eq!(params.len(), 1);
     assert!(params[0].0.is_empty()); // NULL = empty bytes
 }
-
-

@@ -471,6 +471,7 @@ impl SimpleExecutor {
     /// left-associatively: ((t1 ⋈ t2) ⋈ t3). The ON condition for each
     /// join is evaluated against the running combined row using the
     /// synthesized TableInfo (left + all already-joined right columns).
+    #[allow(dead_code)]
     /// Outer joins are not supported.
     fn execute_select_with_join(
         &self,
