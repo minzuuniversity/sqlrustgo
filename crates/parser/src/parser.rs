@@ -68,6 +68,7 @@ pub enum Statement {
     DropView(DropViewStatement),
     CreateSequence(CreateSequenceStatement),
     DropSequence(DropSequenceStatement),
+    AlterSequence(AlterSequenceStatement),
     Truncate(TruncateStatement),
     Analyze(AnalyzeStatement),
     WithSelect(WithSelect),
@@ -687,6 +688,13 @@ pub struct DropSequenceStatement {
     pub if_exists: bool,
 }
 
+/// ALTER SEQUENCE statement
+#[derive(Debug, Clone, PartialEq)]
+pub struct AlterSequenceStatement {
+    pub name: String,
+    pub restart_with: Option<String>,
+}
+
 /// TRUNCATE TABLE statement
 #[derive(Debug, Clone, PartialEq)]
 pub struct TruncateStatement {
@@ -711,6 +719,7 @@ pub enum ShowStatement {
     CreateTable {
         table: String,
     },
+    Sequences,
 }
 
 /// DESCRIBE statement (aliased as DESC)
@@ -828,6 +837,10 @@ pub enum Expression {
     CaseWhen(Vec<WhenClause>, Option<Box<Expression>>), // CASE WHEN ... ELSE ... END
     FunctionCall(String, Vec<Expression>),
     WindowCall(WindowCall),
+    /// NEXT VALUE FOR sequence_name - advances sequence and returns next value
+    SequenceNextVal(String),
+    /// CURRVAL(sequence_name) - reads current value without advancing
+    SequenceCurrval(String),
 }
 
 /// Flatten a top-level AND conjunction: `a AND b AND c` -> vec![a, b, c].
@@ -1642,13 +1655,14 @@ impl Parser {
             Some(Token::Analyze) => self.parse_analyze(),
             Some(Token::With) => self.parse_with_select(),
             Some(Token::Alter) => {
-                // Peek ahead: ALTER USER vs ALTER TABLE
+                // Peek ahead: ALTER USER vs ALTER SEQUENCE vs ALTER TABLE
                 // ALTER USER: next token is StringLiteral/Identifier (user) or Token::User keyword
+                // ALTER SEQUENCE: handled by parse_alter() which dispatches to parse_alter_sequence
                 match self.peek() {
                     Some(&Token::StringLiteral(_))
                     | Some(&Token::Identifier(_))
                     | Some(&Token::User) => self.parse_alter_user(),
-                    _ => self.parse_alter_table(),
+                    _ => self.parse_alter(),
                 }
             }
             Some(Token::Call) => self.parse_call(),
@@ -6446,6 +6460,27 @@ impl Parser {
                 let subquery = self.parse_select_statement()?;
                 Ok(Expression::Subquery(Box::new(subquery)))
             }
+            // CURRVAL(sequence_name) - read current value without advancing
+            Some(Token::Currval) => {
+                self.next(); // consume CURRVAL
+                self.expect(Token::LParen)?;
+                let seq_name = match self.next() {
+                    Some(Token::Identifier(name)) => name,
+                    _ => return Err("Expected sequence name".to_string()),
+                };
+                self.expect(Token::RParen)?;
+                Ok(Expression::SequenceCurrval(seq_name))
+            }
+            // NEXT [VALUE] FOR sequence_name - advance and return next value
+            Some(Token::NextValue) => {
+                self.next(); // consume NEXT
+                self.expect(Token::For)?;
+                let seq_name = match self.next() {
+                    Some(Token::Identifier(name)) => name,
+                    _ => return Err("Expected sequence name".to_string()),
+                };
+                Ok(Expression::SequenceNextVal(seq_name))
+            }
             _ => Err("Expected expression".to_string()),
         }
     }
@@ -7349,6 +7384,32 @@ impl Parser {
         Ok(Statement::DropSequence(DropSequenceStatement { name, if_exists }))
     }
 
+    fn parse_alter_sequence(&mut self) -> Result<Statement, String> {
+        self.expect(Token::Sequence)?;
+        let name = match self.next() {
+            Some(Token::Identifier(name)) => name,
+            _ => return Err("Expected sequence name".to_string()),
+        };
+        // Expect RESTART
+        match self.current() {
+            Some(Token::Restart) => {
+                self.next();
+                let restart_with = match self.current() {
+                    Some(Token::With) => {
+                        self.next();
+                        match self.next() {
+                            Some(Token::NumberLiteral(n)) => Some(n),
+                            _ => return Err("Expected value after RESTART WITH".to_string()),
+                        }
+                    }
+                    _ => None, // RESTART without WITH resets to start_value
+                };
+                Ok(Statement::AlterSequence(AlterSequenceStatement { name, restart_with }))
+            }
+            _ => Err(format!("Expected RESTART after ALTER SEQUENCE name, got {:?}", self.current())),
+        }
+    }
+
     fn parse_drop_role(&mut self) -> Result<Statement, String> {
         self.expect(Token::Role)?;
         let name = match self.next() {
@@ -7490,6 +7551,10 @@ impl Parser {
             Some(Token::Roles) => {
                 self.next();
                 Ok(Statement::ShowRoles)
+            }
+            Some(Token::Identifier(ref ident)) if ident.to_uppercase() == "SEQUENCES" => {
+                self.next();
+                Ok(Statement::Show(ShowStatement::Sequences))
             }
             Some(t) => Err(format!("Unexpected token after SHOW: {:?}", t)),
             None => Err("Unexpected end of input after SHOW".to_string()),
@@ -8058,8 +8123,16 @@ impl Parser {
         }))
     }
 
-    fn parse_alter_table(&mut self) -> Result<Statement, String> {
+    fn parse_alter(&mut self) -> Result<Statement, String> {
         self.expect(Token::Alter)?;
+        match self.current() {
+            Some(Token::Sequence) => self.parse_alter_sequence(),
+            Some(Token::Table) => self.parse_alter_table(),
+            _ => Err(format!("Expected SEQUENCE or TABLE after ALTER, got {:?}", self.current())),
+        }
+    }
+
+    fn parse_alter_table(&mut self) -> Result<Statement, String> {
         self.expect(Token::Table)?;
 
         let table_name = match self.next() {
