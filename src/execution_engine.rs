@@ -29,12 +29,13 @@ use sqlrustgo_optimizer::unified_plan::UnifiedPlan;
 use sqlrustgo_parser::parser::{
     AggregateCall, AggregateFunction, AlterTableOperation, AlterTableStatement, CallStatement,
     CreateDatabaseStatement, CreateIndexStatement, CreateProcedureStatement, CreateRoleStatement,
-    CreateTableStatement, CreateTriggerStatement, CreateViewStatement, DescribeStatement,
-    DropDatabaseStatement, DropIndexStatement, DropRoleStatement, DropTableStatement,
-    DropViewStatement, ExceptStatement, GrantRoleStatement, GrantStatement, InsertStatement,
-    IntersectStatement, MergeStatement, ObjectType as ParserObjectType, OrderByExpression,
-    Privilege as ParserPrivilege, RevokeRoleStatement, RevokeStatement, SelectStatement,
-    SetRoleStatement, ShowStatement, StorageEngineSpec, StoredProcParam as ParserStoredProcParam,
+    CreateSequenceStatement, CreateTableStatement, CreateTriggerStatement, CreateViewStatement,
+    DescribeStatement, DropDatabaseStatement, DropIndexStatement, DropRoleStatement,
+    DropSequenceStatement, DropTableStatement, DropViewStatement, ExceptStatement,
+    GrantRoleStatement, GrantStatement, InsertStatement, IntersectStatement, MergeStatement,
+    ObjectType as ParserObjectType, OrderByExpression, Privilege as ParserPrivilege,
+    RevokeRoleStatement, RevokeStatement, SelectStatement, SetRoleStatement, ShowStatement,
+    StorageEngineSpec, StoredProcParam as ParserStoredProcParam,
     StoredProcParamMode as ParserParamMode, StoredProcStatement as ParserStatement,
     TruncateStatement, UnionStatement,
 };
@@ -560,11 +561,13 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 ref params,
             } => self.execute_execute(name, params),
             Statement::Deallocate { ref name } => self.execute_deallocate(name),
-            Statement::CreateDatabase(ref db) => self.execute_create_database(db),
             Statement::DropDatabase(ref db) => self.execute_drop_database(db),
+            Statement::CreateDatabase(ref db) => self.execute_create_database(db),
+            Statement::CreateSequence(ref seq) => self.execute_create_sequence(seq),
+            Statement::DropSequence(ref seq) => self.execute_drop_sequence(seq),
             Statement::UseDatabase(ref name) => self.execute_use_database(name),
-        }
-    }
+         }
+     }
 
     /// CTE 物化: 将每个 CTE 子查询结果存入临时表，然后执行主查询
     pub fn execute_with_select(
@@ -709,6 +712,78 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         storage
             .drop_database(&db.name)
             .map_err(|e| SqlError::ExecutionError(format!("DROP DATABASE: {}", e)))?;
+        Ok(ExecutorResult::empty())
+    }
+
+    fn execute_create_sequence(&self, seq_stmt: &CreateSequenceStatement) -> SqlResult<ExecutorResult> {
+        use sqlrustgo_storage::engine::SequenceInfo;
+        
+        let mut storage = self.storage.write();
+        
+        // Check if sequence already exists
+        if storage.has_sequence(&seq_stmt.name) {
+            if seq_stmt.if_not_exists {
+                return Ok(ExecutorResult::empty());
+            }
+            return Err(SqlError::ExecutionError(format!(
+                "Sequence '{}' already exists",
+                seq_stmt.name
+            )));
+        }
+        
+        // Parse sequence options from String to i64
+        let start_with = seq_stmt.start_with.as_ref()
+            .and_then(|s| s.parse::<i64>().ok())
+            .unwrap_or(1);
+        let increment_by = seq_stmt.increment_by.as_ref()
+            .and_then(|s| s.parse::<i64>().ok())
+            .unwrap_or(1);
+        let minvalue = seq_stmt.minvalue.as_ref()
+            .and_then(|s| {
+                if s == "NO MINVALUE" { Some(i64::MIN) }
+                else { s.parse::<i64>().ok() }
+            })
+            .unwrap_or(1);
+        let maxvalue = seq_stmt.maxvalue.as_ref()
+            .and_then(|s| {
+                if s == "NO MAXVALUE" { Some(i64::MAX) }
+                else { s.parse::<i64>().ok() }
+            })
+            .unwrap_or(i64::MAX);
+        let cache = seq_stmt.cache.as_ref()
+            .and_then(|s| s.parse::<i64>().ok())
+            .unwrap_or(1);
+        let cycle = seq_stmt.cycle.unwrap_or(false);
+        
+        let seq_info = SequenceInfo {
+            name: seq_stmt.name.clone(),
+            start_with,
+            increment_by,
+            minvalue,
+            maxvalue,
+            cache,
+            cycle,
+            current_value: start_with - increment_by, // Start position before first NEXT VALUE
+        };
+        
+        storage.create_sequence(seq_info)?;
+        Ok(ExecutorResult::empty())
+    }
+
+    fn execute_drop_sequence(&self, seq_stmt: &DropSequenceStatement) -> SqlResult<ExecutorResult> {
+        let mut storage = self.storage.write();
+        
+        if !storage.has_sequence(&seq_stmt.name) {
+            if seq_stmt.if_exists {
+                return Ok(ExecutorResult::empty());
+            }
+            return Err(SqlError::ExecutionError(format!(
+                "Sequence '{}' not found",
+                seq_stmt.name
+            )));
+        }
+        
+        storage.drop_sequence(&seq_stmt.name)?;
         Ok(ExecutorResult::empty())
     }
 
