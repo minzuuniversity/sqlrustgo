@@ -27,13 +27,13 @@ use sqlrustgo_optimizer::rules::{BinaryOperator, Expr};
 use sqlrustgo_optimizer::unified_cost::UnifiedCostModel;
 use sqlrustgo_optimizer::unified_plan::UnifiedPlan;
 use sqlrustgo_parser::parser::{
-    AggregateCall, AggregateFunction, AlterTableOperation, AlterTableStatement, CallStatement,
-    CreateDatabaseStatement, CreateIndexStatement, CreateProcedureStatement, CreateRoleStatement,
-    CreateSequenceStatement, CreateTableStatement, CreateTriggerStatement, CreateViewStatement,
-    DescribeStatement, DropDatabaseStatement, DropIndexStatement, DropRoleStatement,
-    DropSequenceStatement, DropTableStatement, DropViewStatement, ExceptStatement,
-    GrantRoleStatement, GrantStatement, InsertStatement, IntersectStatement, MergeStatement,
-    ObjectType as ParserObjectType, OrderByExpression, Privilege as ParserPrivilege,
+    AggregateCall, AggregateFunction, AlterTableOperation, AlterTableStatement, AlterUserStatement,
+    CallStatement, CreateDatabaseStatement, CreateIndexStatement, CreateProcedureStatement,
+    CreateRoleStatement, CreateSequenceStatement, CreateTableStatement, CreateTriggerStatement,
+    CreateViewStatement, DescribeStatement, DropDatabaseStatement, DropIndexStatement,
+    DropRoleStatement, DropSequenceStatement, DropTableStatement, DropViewStatement,
+    ExceptStatement, GrantRoleStatement, GrantStatement, InsertStatement, IntersectStatement,
+    MergeStatement, ObjectType as ParserObjectType, OrderByExpression, Privilege as ParserPrivilege,
     RevokeRoleStatement, RevokeStatement, SelectStatement, SetRoleStatement, ShowStatement,
     StorageEngineSpec, StoredProcParam as ParserStoredProcParam,
     StoredProcParamMode as ParserParamMode, StoredProcStatement as ParserStatement,
@@ -566,8 +566,10 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             Statement::CreateSequence(ref seq) => self.execute_create_sequence(seq),
             Statement::DropSequence(ref seq) => self.execute_drop_sequence(seq),
             Statement::UseDatabase(ref name) => self.execute_use_database(name),
-         }
-     }
+            Statement::UseDatabase(ref name) => self.execute_use_database(name),
+            Statement::AlterUser(ref alter_user) => self.execute_alter_user(alter_user),
+        }
+    }
 
     /// CTE 物化: 将每个 CTE 子查询结果存入临时表，然后执行主查询
     pub fn execute_with_select(
@@ -791,6 +793,38 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         // v3.9.0 single-database: USE <database> is accepted for MySQL wire
         // compatibility but is a no-op. v3.10 multi-database mode will switch
         // the active database context.
+        Ok(ExecutorResult::empty())
+    }
+    fn execute_alter_user(&self, alter_user: &AlterUserStatement) -> SqlResult<ExecutorResult> {
+        let catalog = self
+            .catalog
+            .as_ref()
+            .ok_or_else(|| SqlError::ExecutionError("ALTER USER requires a catalog".to_string()))?;
+        let mut catalog_guard = catalog.write();
+
+        // Find or validate user existence
+        let identity =
+            sqlrustgo_catalog::auth::UserIdentity::new(&alter_user.user, &alter_user.host);
+        if alter_user.password_expire {
+            // PASSWORD EXPIRE: mark the user's password as expired
+            catalog_guard.auth_manager_mut().expire_password(&identity);
+        }
+
+        if alter_user.password_change {
+            // IDENTIFIED BY 'password': change the user's password
+            let new_hash = alter_user.new_password_hash.as_ref().ok_or_else(|| {
+                SqlError::ExecutionError(
+                    "ALTER USER IDENTIFIED BY requires a password value".to_string(),
+                )
+            })?;
+            catalog_guard
+                .auth_manager_mut()
+                .set_password_hash(&identity, new_hash)
+                .map_err(|e| {
+                    SqlError::ExecutionError(format!("ALTER USER IDENTIFIED BY: {}", e))
+                })?;
+        }
+
         Ok(ExecutorResult::empty())
     }
 
