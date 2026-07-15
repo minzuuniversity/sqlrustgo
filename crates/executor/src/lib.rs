@@ -1,6 +1,7 @@
 // SQLRustGo executor module
 
 pub mod ast_adapter;
+pub mod instrumentation;
 pub mod cancellation_token;
 pub mod execution;
 pub mod executor;
