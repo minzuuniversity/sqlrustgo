@@ -78,7 +78,9 @@ impl WireAdmin {
         let addr_str = format!("{}:{}", host, port);
         let addr: SocketAddr = addr_str
             .to_socket_addrs()
-            .map_err(|e| WireError::Connect(format!("DNS resolution failed for {}: {}", addr_str, e)))?
+            .map_err(|e| {
+                WireError::Connect(format!("DNS resolution failed for {}: {}", addr_str, e))
+            })?
             .next()
             .ok_or_else(|| WireError::Connect(format!("no addresses for {}", addr_str)))?;
         let conn = MySqlConnection::connect(&addr, user, password, database)
@@ -207,8 +209,9 @@ impl WireAdmin {
 
         // Write manifest.json header
         let manifest = Manifest::new();
-        let manifest_data = serde_json::to_vec_pretty(&logical_manifest_from(&table_names, &row_counts))
-            .map_err(|e| WireError::Protocol(e.to_string()))?;
+        let manifest_data =
+            serde_json::to_vec_pretty(&logical_manifest_from(&table_names, &row_counts))
+                .map_err(|e| WireError::Protocol(e.to_string()))?;
         write_tar_header(&mut gz, "manifest.json", manifest_data.len() as u64)?;
         gz.write_all(&manifest_data)?;
         write_padding(&mut gz, manifest_data.len())?;
@@ -235,7 +238,7 @@ impl WireAdmin {
             let csv = serialize_result_set_csv(&columns, &rows);
             let arc = format!("data/{}.csv", table);
             write_tar_header(&mut gz, &arc, csv.len() as u64)?;
-            gz.write_all(&csv.as_bytes())?;
+            gz.write_all(csv.as_bytes())?;
             write_padding(&mut gz, csv.len())?;
             backed_up_tables.push((table.clone(), csv.len() as u64));
         }
@@ -245,9 +248,7 @@ impl WireAdmin {
             .map_err(|e| WireError::Io(std::io::Error::other(format!("gzip finish: {}", e))))?;
 
         // Get final size
-        let output_size = std::fs::metadata(output_path)
-            .map(|m| m.len())
-            .unwrap_or(0);
+        let output_size = std::fs::metadata(output_path).map(|m| m.len()).unwrap_or(0);
 
         // Suppress unused warning
         let _ = manifest;
@@ -276,7 +277,10 @@ fn extract_first_cell(
                 .ok_or_else(|| WireError::Protocol(format!("{}: empty row", err_ctx)))?;
             Ok(val.clone())
         }
-        _ => Err(WireError::Protocol(format!("{}: not a Select result", err_ctx))),
+        _ => Err(WireError::Protocol(format!(
+            "{}: not a Select result",
+            err_ctx
+        ))),
     }
 }
 
@@ -287,10 +291,7 @@ fn serialize_result_set_csv(
 ) -> String {
     let mut s = String::new();
     // Header
-    let headers: Vec<String> = columns
-        .iter()
-        .map(|c| csv_escape(&c.name))
-        .collect();
+    let headers: Vec<String> = columns.iter().map(|c| csv_escape(&c.name)).collect();
     s.push_str(&headers.join(","));
     s.push('\n');
     // Rows

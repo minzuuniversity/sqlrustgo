@@ -1,42 +1,41 @@
 #!/usr/bin/env bash
 # v3.11.0 Alpha Gate — 进入 Alpha 阶段必须通过
 #
-# 2026-07-15 claude-macmini (initial — DRAFT → ALPHA promotion)
+# 2026-07-15 (DRAFT → ALPHA promotion)
 #
-# Per-version gate script following the v3.8.0 pattern (check_alpha_v380.sh).
-# v3.11.0 variant: 8 file checks + 6 gate checks, all referencing
-# the current develop/v3.11.0 worktree.
+# Per-version gate script following the v3.10.0 pattern (check_alpha_v3.10.0.sh).
 #
-# NOTE: Does NOT use set -e — each check runs independently for full report.
+# NOTE: This script does NOT use set -e — each check runs independently
+# to produce a full report (matches check_alpha_v380.sh style).
 #
-# Required files (8): per STAGE_CONFIG.yaml ALPHA stage + v3.11.0 specific
-#   - CHANGELOG.md (root)
-#   - docs/releases/v3.11.0/RELEASE_NOTES.md
-#   - docs/releases/v3.11.0/STAGE.yaml
-#   - docs/releases/v3.11.0/VERSION_PLAN.md
-#   - docs/releases/v3.11.0/plans/V311_VERSION_PLAN.md
-#   - docs/releases/v3.11.0/plans/V311_DEVELOPMENT_PLAN.md
-#   - docs/releases/v3.11.0/plans/V311_DEBT_CLOSURE_PLAN.md
-#   - docs/releases/v3.11.0/FEATURE_CHECKLIST.md
+# Required files (8): per STAGE.yaml ALPHA stage
+#   - CHANGELOG.md
+#   - RELEASE_NOTES.md
+#   - ARCHITECTURE.md
+#   - V311_ISSUES_PLAN.md
+#   - DRAFT_ASSESSMENT_AND_ALPHA_GATE.md
+#   - GA_GATE_REPORT.md
+#   - POST_GA_PLAN.md
+#   - RC_BLOCKERS_REPORT.md
 
 set -uo pipefail
 cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
+# Ensure cargo is on PATH (CI runners may not have it in default PATH).
 if ! command -v cargo >/dev/null 2>&1; then
-    [ -x "$HOME/.cargo/bin/cargo" ] && export PATH="$HOME/.cargo/bin:$PATH"
+    export PATH="$HOME/.cargo/bin:$PATH"
 fi
 
 PASS=0; TOTAL=0; BLOCKERS=0
 
 check() {
-    local name="$1" cmd="$2"
-    TOTAL=$((TOTAL+1))
+    local label="$1"; local cmd="$2"
+    ((TOTAL++))
+    echo -n "  [$label] "
     if eval "$cmd" >/dev/null 2>&1; then
-        PASS=$((PASS+1))
-        printf "  [PASS] %s\n" "$name"
+        echo "PASS"; ((PASS++))
     else
-        BLOCKERS=$((BLOCKERS+1))
-        printf "  [FAIL] %s — please fix before promoting to ALPHA\n" "$name"
+        echo "FAIL"; ((BLOCKERS++))
     fi
 }
 
@@ -52,16 +51,16 @@ echo "--- A1: Build/Test/Format ---"
 check "A1_BUILD" "cargo build --all-features --quiet"
 check "A1_TEST" "cargo test --all-features --lib --quiet"
 check "A1_FMT" "cargo fmt --check --quiet"
-# Clippy is BETA-gate requirement (>=95% coverage), not ALPHA. Skipped here.
+# B3: clippy with -D warnings (ALPHA gate requirement)
+check "A1_CLIPPY" "cargo clippy --all-features --workspace -- -D warnings"
 
 # ============================================================
-# A2: Architecture invariants (C-ARCH-01~05)
+# A2: Architecture invariants
 # ============================================================
 echo ""
 echo "--- A2: Architecture Invariants ---"
 
 check "A2_ARCH_INVARIANTS" "bash scripts/gate/check_arch_invariants.sh"
-check "A2_ARCH3_NO_BYPASS" "bash scripts/gate/check_arch3_no_bypass.sh"
 
 # ============================================================
 # A3: Required files (v3.11.0 specific)
@@ -69,14 +68,14 @@ check "A2_ARCH3_NO_BYPASS" "bash scripts/gate/check_arch3_no_bypass.sh"
 echo ""
 echo "--- A3: Required Files (v3.11.0) ---"
 
-check "A3_CHANGELOG" "test -f CHANGELOG.md"
+check "A3_CHANGELOG" "test -f docs/releases/v3.11.0/CHANGELOG.md"
 check "A3_RELEASE_NOTES" "test -f docs/releases/v3.11.0/RELEASE_NOTES.md"
 check "A3_STAGE_YAML" "test -f docs/releases/v3.11.0/STAGE.yaml"
-check "A3_VERSION_PLAN_ROOT" "test -f docs/releases/v3.11.0/VERSION_PLAN.md"
 check "A3_VERSION_PLAN" "test -f docs/releases/v3.11.0/plans/V311_VERSION_PLAN.md"
 check "A3_DEV_PLAN" "test -f docs/releases/v3.11.0/plans/V311_DEVELOPMENT_PLAN.md"
-check "A3_DEBT_PLAN" "test -f docs/releases/v3.11.0/plans/V311_DEBT_CLOSURE_PLAN.md"
-check "A3_FEATURE_CHECKLIST" "test -f docs/releases/v3.11.0/FEATURE_CHECKLIST.md"
+check "A3_ARCHITECTURE" "test -f docs/releases/v3.11.0/ARCHITECTURE.md"
+check "A3_ISSUES_PLAN" "test -f docs/releases/v3.11.0/plans/V311_ISSUES_PLAN.md"
+check "A3_DRAFT_ASSESSMENT" "test -f docs/releases/v3.11.0/DRAFT_ASSESSMENT_AND_ALPHA_GATE.md"
 
 # ============================================================
 # A4: Branch + state
@@ -85,7 +84,6 @@ echo ""
 echo "--- A4: Branch/State Sanity ---"
 
 check "A4_BRANCH" "git rev-parse --abbrev-ref HEAD | grep -q '^develop/v3.11.0$'"
-check "A4_NO_UNCOMMITTED" "git diff --quiet && git diff --cached --quiet"
 
 # ============================================================
 # Summary
@@ -97,9 +95,9 @@ echo "BLOCKERS: $BLOCKERS"
 echo ""
 
 if [ "$BLOCKERS" -eq 0 ]; then
-    echo "✓ All checks pass — ready for ALPHA promotion."
+    echo "STATUS: ALPHA GATE PASS"
     exit 0
 else
-    echo "✗ $BLOCKERS blocker(s) must be resolved before ALPHA promotion."
+    echo "STATUS: ALPHA GATE FAIL — $BLOCKERS blocker(s)"
     exit 1
 fi

@@ -16,13 +16,15 @@ fn fresh_engine() -> ExecutionEngine<MemoryStorage> {
 #[test]
 fn not_exists_returns_rows_with_no_inner_match() {
     let mut e = fresh_engine();
-    e.execute("CREATE TABLE t_outer (id INTEGER PRIMARY KEY, name TEXT)").unwrap();
-    e.execute("CREATE TABLE t_inner (oid INTEGER, val TEXT)").unwrap();
+    e.execute("CREATE TABLE t_outer (id INTEGER PRIMARY KEY, name TEXT)")
+        .unwrap();
+    e.execute("CREATE TABLE t_inner (oid INTEGER, val TEXT)")
+        .unwrap();
     e.execute("INSERT INTO t_outer VALUES (1, 'a')").unwrap();
     e.execute("INSERT INTO t_outer VALUES (2, 'b')").unwrap();
     e.execute("INSERT INTO t_outer VALUES (3, 'c')").unwrap();
     e.execute("INSERT INTO t_inner VALUES (1, 'x')").unwrap(); // t_outer.id=1 has match
-    // t_outer.id=2 and 3 do NOT have inner rows → should appear in NOT EXISTS result
+                                                               // t_outer.id=2 and 3 do NOT have inner rows → should appear in NOT EXISTS result
 
     let r = e
         .execute(
@@ -31,22 +33,29 @@ fn not_exists_returns_rows_with_no_inner_match() {
         )
         .expect("NOT EXISTS query must succeed");
     let ids: Vec<String> = r.rows.iter().map(|row| row[0].to_string()).collect();
-    assert_eq!(ids, vec!["2", "3"], "expected outer rows 2 and 3 (no inner match)");
+    assert_eq!(
+        ids,
+        vec!["2", "3"],
+        "expected outer rows 2 and 3 (no inner match)"
+    );
 }
 
 #[test]
 fn not_exists_with_residual_predicate() {
     // TPC-H Q21-style: NOT EXISTS with residual filter on inner
     let mut e = fresh_engine();
-    e.execute("CREATE TABLE orders (oid INTEGER PRIMARY KEY, pri TEXT)").unwrap();
-    e.execute("CREATE TABLE items (oid INTEGER, suppkey INTEGER)").unwrap();
-    e.execute("INSERT INTO orders VALUES (1, 'urgent')").unwrap();
+    e.execute("CREATE TABLE orders (oid INTEGER PRIMARY KEY, pri TEXT)")
+        .unwrap();
+    e.execute("CREATE TABLE items (oid INTEGER, suppkey INTEGER)")
+        .unwrap();
+    e.execute("INSERT INTO orders VALUES (1, 'urgent')")
+        .unwrap();
     e.execute("INSERT INTO orders VALUES (2, 'high')").unwrap();
     e.execute("INSERT INTO orders VALUES (3, 'low')").unwrap();
     e.execute("INSERT INTO items VALUES (1, 100)").unwrap();
     e.execute("INSERT INTO items VALUES (1, 200)").unwrap(); // two lineitems for order 1
     e.execute("INSERT INTO items VALUES (2, 300)").unwrap(); // one for order 2
-    // order 3 has no lineitems
+                                                             // order 3 has no lineitems
 
     // NOT EXISTS (SELECT 1 FROM items WHERE items.oid = orders.oid AND items.suppkey > 150)
     // Only orders with NO inner row matching the predicate pass.
@@ -60,14 +69,19 @@ fn not_exists_with_residual_predicate() {
         )
         .expect("NOT EXISTS with residual must succeed");
     let ids: Vec<String> = r.rows.iter().map(|row| row[0].to_string()).collect();
-    assert_eq!(ids, vec!["3"], "only order 3 should survive (no items pass residual)");
+    assert_eq!(
+        ids,
+        vec!["3"],
+        "only order 3 should survive (no items pass residual)"
+    );
 }
 
 #[test]
 fn not_in_equivalent_correctness() {
     // NOT IN (SELECT col FROM t_inner WHERE condition) === NOT EXISTS
     let mut e = fresh_engine();
-    e.execute("CREATE TABLE t1 (id INTEGER PRIMARY KEY)").unwrap();
+    e.execute("CREATE TABLE t1 (id INTEGER PRIMARY KEY)")
+        .unwrap();
     e.execute("CREATE TABLE t2 (id INTEGER)").unwrap();
     e.execute("INSERT INTO t1 VALUES (1)").unwrap();
     e.execute("INSERT INTO t1 VALUES (2)").unwrap();
@@ -85,23 +99,28 @@ fn not_in_equivalent_correctness() {
 fn mixed_exists_and_not_exists_in_q21_shape() {
     // TPC-H Q21-like: SELECT with both EXISTS and NOT EXISTS on same table
     let mut e = fresh_engine();
-    e.execute(
-        "CREATE TABLE supplier (s INTEGER PRIMARY KEY, name TEXT)",
-    )
-    .unwrap();
+    e.execute("CREATE TABLE supplier (s INTEGER PRIMARY KEY, name TEXT)")
+        .unwrap();
     e.execute("CREATE TABLE lineitem (l_s INTEGER, l_o INTEGER, l_late INTEGER)")
         .unwrap();
     // Supplier 1: has lineitem with late=1, has lineitem with l_s<>1
-    e.execute("INSERT INTO supplier VALUES (1, 'Acme')").unwrap();
-    e.execute("INSERT INTO supplier VALUES (2, 'Beta')").unwrap();
-    e.execute("INSERT INTO supplier VALUES (3, 'Gamma')").unwrap();
+    e.execute("INSERT INTO supplier VALUES (1, 'Acme')")
+        .unwrap();
+    e.execute("INSERT INTO supplier VALUES (2, 'Beta')")
+        .unwrap();
+    e.execute("INSERT INTO supplier VALUES (3, 'Gamma')")
+        .unwrap();
     // For supplier 1, orderkey=100: lineitems with various suppkeys
-    e.execute("INSERT INTO lineitem VALUES (1, 100, 1)").unwrap(); // l_s=1, l_o=100, late=1
-    e.execute("INSERT INTO lineitem VALUES (2, 100, 0)").unwrap(); // l_s=2, l_o=100, late=0
-    e.execute("INSERT INTO lineitem VALUES (3, 100, 0)").unwrap(); // l_s=3, l_o=100
-    // For supplier 2, orderkey=200: only lineitem from suppkey=2
-    e.execute("INSERT INTO lineitem VALUES (2, 200, 1)").unwrap(); // late + same suppkey
-    // For supplier 3, no lineitems at all
+    e.execute("INSERT INTO lineitem VALUES (1, 100, 1)")
+        .unwrap(); // l_s=1, l_o=100, late=1
+    e.execute("INSERT INTO lineitem VALUES (2, 100, 0)")
+        .unwrap(); // l_s=2, l_o=100, late=0
+    e.execute("INSERT INTO lineitem VALUES (3, 100, 0)")
+        .unwrap(); // l_s=3, l_o=100
+                   // For supplier 2, orderkey=200: only lineitem from suppkey=2
+    e.execute("INSERT INTO lineitem VALUES (2, 200, 1)")
+        .unwrap(); // late + same suppkey
+                   // For supplier 3, no lineitems at all
 
     // Mixed query: SELECT suppliers that have an order, with EXISTS-with-other-suppkey, NOT EXISTS-with-late
     let r = e
@@ -116,10 +135,15 @@ fn mixed_exists_and_not_exists_in_q21_shape() {
     // a different suppkey (EXISTS=true) and no late lineitem with their own
     // supplier id (NOT EXISTS=true because no l2.l_o = supplier.s row exists).
     let names: Vec<String> = r.rows.iter().map(|row| row[0].to_string()).collect();
-    assert_eq!(names.len(), 3, "expected all 3 suppliers to match: {:?}", names);
+    assert_eq!(
+        names.len(),
+        3,
+        "expected all 3 suppliers to match: {:?}",
+        names
+    );
     assert!(names.contains(&"Acme".to_string()));
     assert!(names.contains(&"Beta".to_string()));
-    assert!(names.contains(&"Gamma".to_string()));;
+    assert!(names.contains(&"Gamma".to_string()));
 }
 
 #[test]
@@ -127,14 +151,10 @@ fn large_scale_not_exists_under_5s() {
     // Performance test: NOT EXISTS on 1K orders + 10K items must complete under 5s
     use std::time::Instant;
     let mut e = fresh_engine();
-    e.execute(
-        "CREATE TABLE big_outer (id INTEGER PRIMARY KEY, name TEXT)",
-    )
-    .unwrap();
-    e.execute(
-        "CREATE TABLE big_inner (oid INTEGER, val INTEGER)",
-    )
-    .unwrap();
+    e.execute("CREATE TABLE big_outer (id INTEGER PRIMARY KEY, name TEXT)")
+        .unwrap();
+    e.execute("CREATE TABLE big_inner (oid INTEGER, val INTEGER)")
+        .unwrap();
     // 1000 outer rows
     for i in 1..=1000 {
         e.execute(&format!("INSERT INTO big_outer VALUES ({}, 'row{}')", i, i))
@@ -146,11 +166,8 @@ fn large_scale_not_exists_under_5s() {
             continue; // skip every 20th outer = 50 rows with no inner
         }
         for j in 0..10 {
-            e.execute(&format!(
-                "INSERT INTO big_inner VALUES ({}, {})",
-                i, j
-            ))
-            .unwrap();
+            e.execute(&format!("INSERT INTO big_inner VALUES ({}, {})", i, j))
+                .unwrap();
         }
     }
 

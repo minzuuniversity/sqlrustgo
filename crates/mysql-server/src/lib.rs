@@ -32,7 +32,6 @@ const SERVER_VERSION: &str = "8.0.33-SQLRustGo";
 /// `--features parallel-executor`; the engine stores the value and
 /// `LocalExecutor::execute_select_parallel` (feature-gated) reads it.
 #[allow(dead_code)]
-#[allow(dead_code)]
 fn read_executor_parallelism() -> usize {
     std::env::var("SQLRUSTGO_EXECUTOR_PARALLELISM")
         .ok()
@@ -45,7 +44,6 @@ fn read_executor_parallelism() -> usize {
 /// parallelism pre-configured from the CLI flag / env var. Centralizes
 /// the wiring so all engine construction sites pick up parallelism
 /// uniformly.
-#[allow(dead_code)]
 #[allow(dead_code)]
 pub(crate) fn build_engine_with_parallelism<S: StorageEngine + 'static>(
     storage: Arc<parking_lot::RwLock<S>>,
@@ -1246,7 +1244,7 @@ fn write_binary_row<W: Write>(w: &mut W, row: &[Value], col_types: &[u8]) -> MyS
     //   1 byte  : 0x00 header
     //   ceil(cols/8) bytes : null_bitmap (col i is null iff bit (i%8) of byte (i/8))
     //   for each col, type-marker-byte + value-bytes
-    let null_bytes = (row.len() + 7) / 8;
+    let null_bytes = row.len().div_ceil(8);
     w.write_u8(0x00)?; // header
     let mut null_map = vec![0u8; null_bytes];
     for (i, v) in row.iter().enumerate() {
@@ -3254,6 +3252,7 @@ pub fn run_server(host: &str, port: u16) -> MySqlResult<()> {
 /// This is a Stage 2 evolution of [`run_server`] that wires the CLI
 /// args to real behavior. The previous Stage 1 banner-only fields
 /// (data_dir, max_connections, auth_mode) are now actually enforced.
+#[allow(clippy::too_many_arguments)]
 pub fn run_server_v2(
     host: &str,
     port: u16,

@@ -206,7 +206,6 @@ mod tests {
     use super::*;
     use crate::ColumnDefinition;
 
-
     #[test]
     #[should_panic(expected = "VTU VIOLATION")]
     fn test_vtu_violation_insert() {
